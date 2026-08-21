@@ -63,6 +63,14 @@ class ArcFarmsPlugin : JavaPlugin() {
             }
             stateRepository = ArcFarmsStateRepository(dataRoot)
             mineJournal = MineBlockJournal(dataRoot)
+            val regionGateway = if (settings.requiresWorldGuard) {
+                require(server.pluginManager.isPluginEnabled("WorldGuard")) {
+                    "WorldGuard is required because this node configures named regions"
+                }
+                WorldGuardRegionGateway()
+            } else {
+                CuboidRegionGateway()
+            }
             val activeService = ArcFarmsService(
                 plugin = this,
                 initialSettings = settings,
@@ -70,6 +78,7 @@ class ArcFarmsPlugin : JavaPlugin() {
                 stateRepository = requireNotNull(stateRepository),
                 mineJournal = requireNotNull(mineJournal),
                 network = networkGateway,
+                regionGateway = regionGateway,
             ).also { it.start() }
             service = activeService
             val menu = ArcFarmsMenu(activeService, locale, ::reloadPlugin)

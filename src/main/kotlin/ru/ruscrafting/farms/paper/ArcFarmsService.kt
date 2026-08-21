@@ -107,7 +107,7 @@ class ArcFarmsService(
     private val stateRepository: ArcFarmsStateRepository,
     private val mineJournal: MineBlockJournal,
     private val network: ActivityNetworkGateway = NoOpActivityNetworkGateway,
-    private val regionGateway: RegionGateway = WorldGuardRegionGateway(),
+    private val regionGateway: RegionGateway = CuboidRegionGateway(),
     private val clock: () -> Long = System::currentTimeMillis,
     private val random: RandomGenerator = RandomGenerator.getDefault(),
 ) : AutoCloseable {

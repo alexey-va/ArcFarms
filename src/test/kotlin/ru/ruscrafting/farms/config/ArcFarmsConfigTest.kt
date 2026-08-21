@@ -27,6 +27,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.serverId shouldBe "spawn"
         settings.network.allowedOrigins shouldBe setOf("spawn", "survival", "parkour")
         settings.network.workdayEnabled shouldBe true
+        settings.requiresWorldGuard shouldBe true
         settings.farms.single().incidentQuota shouldBe 4
         settings.lumbermills.single().fellingQuota shouldBe 16
         settings.mines.all { it.cartQuota == 16 && it.supportsRequired == 1 } shouldBe true
@@ -53,6 +54,7 @@ class ArcFarmsConfigTest : FunSpec({
             redis.enabled shouldBe true
             redis.serverName shouldBe expectedServerId
             if (runtime != "classic") {
+                settings.requiresWorldGuard shouldBe false
                 settings.farms shouldBe emptyList()
                 settings.lumbermills shouldBe emptyList()
                 settings.mines shouldBe emptyList()
@@ -88,6 +90,7 @@ class ArcFarmsConfigTest : FunSpec({
 
         settings.serverId shouldBe "lab"
         settings.network.allowedOrigins shouldBe setOf("lab")
+        settings.requiresWorldGuard shouldBe false
         settings.farms.single().orders.single().id shouldBe "lab_order"
         settings.lumbermills.single().fellingQuota shouldBe 2
         settings.mines.single().cartQuota shouldBe 4

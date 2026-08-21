@@ -77,8 +77,8 @@ a shift.
   zones and act only as network relays.
 - The same locale files are bundled as first-install defaults in the JAR.
 - Server-owned state: `plugins/ArcFarms/data/`.
-- WorldGuard is required. A zone may use a named WorldGuard region or explicit
-  cuboid bounds (the latter is primarily for the isolated lab).
+- WorldGuard is required only on a gameplay node that names WorldGuard regions.
+  Empty relay nodes and explicit-cuboid lab profiles load without it.
 
 ## Build
 
@@ -86,7 +86,7 @@ a shift.
 ../arc-core/gradlew -p . clean check shadowJar
 ```
 
-The deployable artifact is `build/libs/ArcFarms-0.3.0.jar`.
+The deployable artifact is `build/libs/ArcFarms-0.3.1.jar`.
 
 ## Isolated gameplay QA
 

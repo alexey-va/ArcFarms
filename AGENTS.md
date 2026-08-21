@@ -4,6 +4,8 @@ Standalone Kotlin/Paper plugin for the three shared RusCrafting worksite
 activities: farm, lumbermill, and mine.
 
 - Target Purpur/Paper 1.21.11, WorldGuard 7.0.16, Java 25, and Kotlin 2.3.0.
+- WorldGuard is a soft dependency: require it only when a configured zone uses
+  a named region. Relay-only and explicit-cuboid nodes must load without it.
 - Use `arc-core`, `arc-core-paper`, and `arc-core-redis` through the sibling
   composite build. ArcFarms owns its Redis profile and protocol; do not import
   ARC configuration or add ARC API/path compatibility.

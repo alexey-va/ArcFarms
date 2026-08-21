@@ -104,6 +104,12 @@ class ArcFarmsConfig private constructor(
     val lumbermills: List<LumberZoneSettings>,
     val mines: List<MineZoneSettings>,
 ) {
+    val requiresWorldGuard: Boolean = buildList {
+        addAll(farms.map(FarmZoneSettings::reference))
+        lumbermills.forEach { add(it.reference); add(it.station) }
+        addAll(mines.map(MineZoneSettings::reference))
+    }.any { it.region != null }
+
     companion object {
         fun load(dataRoot: Path): ArcFarmsConfig = parse(ConfigManager.of(dataRoot, "config.yml"))
 

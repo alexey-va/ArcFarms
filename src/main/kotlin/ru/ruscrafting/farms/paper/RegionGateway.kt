@@ -36,10 +36,20 @@ interface RegionGateway {
     fun resolve(reference: ZoneReference): ActivityRegion?
 }
 
-class WorldGuardRegionGateway : RegionGateway {
+class CuboidRegionGateway : RegionGateway {
     override fun resolve(reference: ZoneReference): ActivityRegion? {
         val world = Bukkit.getWorld(reference.world) ?: return null
-        reference.bounds?.let { return CuboidActivityRegion(world, "${reference.world}:${it.minX},${it.minY},${it.minZ}", it) }
+        val bounds = reference.bounds ?: return null
+        return CuboidActivityRegion(world, "${reference.world}:${bounds.minX},${bounds.minY},${bounds.minZ}", bounds)
+    }
+}
+
+class WorldGuardRegionGateway : RegionGateway {
+    private val cuboids = CuboidRegionGateway()
+
+    override fun resolve(reference: ZoneReference): ActivityRegion? {
+        reference.bounds?.let { return cuboids.resolve(reference) }
+        val world = Bukkit.getWorld(reference.world) ?: return null
         val regionId = reference.region ?: return null
         val manager = WorldGuard.getInstance().platform.regionContainer.get(BukkitAdapter.adapt(world)) ?: return null
         val region = manager.getRegion(regionId) ?: return null
