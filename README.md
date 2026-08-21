@@ -43,6 +43,20 @@ titles, boss bars, sounds, and particles. Completion fireworks are client-side
 particles and sounds only: no firework entity, explosion, damage, or block
 change is created.
 
+## Network workday
+
+ArcFarms uses its own `arc-core-redis` connection and protocol; it does not
+load configuration, state, or APIs from ARC. Significant transitions only
+(incidents, rescue/processing/extraction calls, and completions) are relayed to
+all Paper servers. Calls include a clickable route to the spawn worksites.
+
+Every completed farm, lumber, or mine shift stamps the persistent network
+workday. All three different stamps complete one cycle, trigger a cosmetic
+network celebration, and immediately open the next cycle. Stamps have no
+deadline and no inactivity reset, so one player may complete all three over any
+amount of time. Atomic Redis compare-and-set prevents duplicate cross-server
+stamps.
+
 ## Commands
 
 - `/arcfarms` — localized activity menu and current state.
@@ -56,8 +70,11 @@ a shift.
 
 ## Runtime ownership
 
-- Tracked configuration and active locales: `plugins/ArcFarms/config.yml` and
-  `plugins/ArcFarms/lang/{ru,en}.yml` on `classic`.
+- Tracked configuration, Redis profile, and active locales:
+  `plugins/ArcFarms/{config.yml,modules/redis.yml,lang/{ru,en}.yml}` on
+  `classic`, `classic_survival`, and `parkour`.
+- `classic` owns all gameplay zones. The survival and parkour installs have no
+  zones and act only as network relays.
 - The same locale files are bundled as first-install defaults in the JAR.
 - Server-owned state: `plugins/ArcFarms/data/`.
 - WorldGuard is required. A zone may use a named WorldGuard region or explicit
@@ -69,7 +86,7 @@ a shift.
 ../arc-core/gradlew -p . clean check shadowJar
 ```
 
-The deployable artifact is `build/libs/ArcFarms-0.2.0.jar`.
+The deployable artifact is `build/libs/ArcFarms-0.3.0.jar`.
 
 ## Isolated gameplay QA
 

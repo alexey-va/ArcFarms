@@ -1,4 +1,15 @@
 enabled: true
+server-id: spawn
+
+network:
+  enabled: true
+  hub-server: spawn
+  transfer-command: server spawn
+  allowed-origins: [spawn, survival, parkour]
+  calls: true
+  completions: true
+  workday: true
+  node-probe: true
 
 locale:
   default: ru

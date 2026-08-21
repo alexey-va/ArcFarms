@@ -34,11 +34,29 @@ class ArcFarmsCommand(
 
     private fun sendStatus(sender: CommandSender) {
         val statuses = service.statuses()
+        sender.sendMessage(locale.render(MessageKey.STATUS_HEADER, sender))
+        val workday = service.workday()
+        if (workday == null) {
+            sender.sendMessage(locale.render(MessageKey.STATUS_WORKDAY_LOADING, sender))
+        } else {
+            sender.sendMessage(
+                locale.render(
+                    MessageKey.STATUS_WORKDAY,
+                    sender,
+                    mapOf(
+                        "cycle" to locale.text(workday.cycle),
+                        "done" to locale.text(workday.completed.size),
+                        "total" to locale.text(ActivityKind.entries.size),
+                        "activity" to activityName(workday.recommended(), sender),
+                    ),
+                ),
+            )
+        }
         if (statuses.isEmpty()) {
-            sender.sendMessage(locale.render(MessageKey.STATUS_EMPTY, sender))
+            val key = if (ActivityKind.entries.any(service::canNavigate)) MessageKey.STATUS_RELAY else MessageKey.STATUS_EMPTY
+            sender.sendMessage(locale.render(key, sender))
             return
         }
-        sender.sendMessage(locale.render(MessageKey.STATUS_HEADER, sender))
         statuses.forEach { status ->
             sender.sendMessage(
                 locale.render(

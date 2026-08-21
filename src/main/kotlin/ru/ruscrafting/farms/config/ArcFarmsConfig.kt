@@ -2,7 +2,19 @@ package ru.ruscrafting.farms.config
 
 import ru.arc.config.Config
 import ru.arc.config.ConfigManager
+import ru.arc.redis.RedisModuleConfig
 import java.nio.file.Path
+
+data class NetworkSettings(
+    val enabled: Boolean,
+    val hubServer: String,
+    val transferCommand: String,
+    val allowedOrigins: Set<String>,
+    val callsEnabled: Boolean,
+    val completionsEnabled: Boolean,
+    val workdayEnabled: Boolean,
+    val nodeProbeEnabled: Boolean,
+)
 
 data class CuboidBounds(
     val minX: Int,
@@ -78,6 +90,8 @@ data class MineZoneSettings(
 
 class ArcFarmsConfig private constructor(
     val enabled: Boolean,
+    val serverId: String,
+    val network: NetworkSettings,
     val defaultLocale: String,
     val useClientLocale: Boolean,
     val bossbars: Boolean,
@@ -96,6 +110,7 @@ class ArcFarmsConfig private constructor(
         fun inspect(dataRoot: Path): ArcFarmsConfig = parse(Config(dataRoot, "config.yml"))
 
         private fun parse(config: Config): ArcFarmsConfig {
+            val serverId = serverId(config.string("server-id", "spawn"), "server-id")
             val defaultLocale = config.string("locale.default", "ru").lowercase()
             require(defaultLocale in setOf("ru", "en")) { "locale.default must be ru or en" }
             val farms = config.keys("farm-zones").sorted().mapNotNull { id ->
@@ -178,8 +193,26 @@ class ArcFarmsConfig private constructor(
                 "lumber" to command(config.string("navigation.lumber-command", "warp lumber")),
                 "mine" to command(config.string("navigation.mine-command", "warp mine")),
             )
+            val allowedOrigins = config.stringList("network.allowed-origins")
+                .ifEmpty { listOf("spawn", "survival", "parkour") }
+                .mapTo(linkedSetOf()) { serverId(it, "network.allowed-origins") }
+            require(serverId in allowedOrigins) { "network.allowed-origins must include server-id" }
+            val hubServer = serverId(config.string("network.hub-server", "spawn"), "network.hub-server")
+            require(hubServer in allowedOrigins) { "network.allowed-origins must include network.hub-server" }
+            val network = NetworkSettings(
+                enabled = config.boolean("network.enabled", true),
+                hubServer = hubServer,
+                transferCommand = command(config.string("network.transfer-command", "server $hubServer")),
+                allowedOrigins = allowedOrigins,
+                callsEnabled = config.boolean("network.calls", true),
+                completionsEnabled = config.boolean("network.completions", true),
+                workdayEnabled = config.boolean("network.workday", true),
+                nodeProbeEnabled = config.boolean("network.node-probe", true),
+            )
             return ArcFarmsConfig(
                 enabled = config.boolean("enabled", true),
+                serverId = serverId,
+                network = network,
                 defaultLocale = defaultLocale,
                 useClientLocale = config.boolean("locale.use-client-locale", true),
                 bossbars = config.boolean("ui.bossbars", true),
@@ -234,6 +267,10 @@ class ArcFarmsConfig private constructor(
             require(value.matches(Regex("[a-z0-9_-]{1,48}"))) { "Invalid $label id: $value" }
         }
 
+        private fun serverId(value: String, label: String): String = value.trim().lowercase().also {
+            require(it.matches(Regex("[a-z0-9_-]{1,32}"))) { "$label must use lowercase letters, digits, _ or -" }
+        }
+
         private fun materialName(value: String): String = value.trim().uppercase().also {
             require(it.matches(Regex("[A-Z0-9_]{2,64}"))) { "Invalid material name: $value" }
         }
@@ -253,5 +290,19 @@ class ArcFarmsConfig private constructor(
         private fun Int.checked(label: String, minimum: Int, maximum: Int): Int = also {
             require(it in minimum..maximum) { "$label must be in $minimum..$maximum" }
         }
+    }
+}
+
+object ArcFarmsRedisBootstrap {
+    fun load(dataRoot: Path, settings: ArcFarmsConfig): RedisModuleConfig {
+        val redis = RedisModuleConfig.load(dataRoot)
+        require(!settings.network.enabled || redis.enabled) { "Redis must be enabled when ArcFarms network is enabled" }
+        require(redis.serverName == settings.serverId) {
+            "modules/redis.yml server-name must match config.yml server-id"
+        }
+        require(redis.host.isNotBlank() && redis.host.length <= 253) { "Redis host is invalid" }
+        require(redis.port in 1..65_535) { "Redis port is outside 1..65535" }
+        require(redis.username.length <= 128 && redis.password.length <= 512) { "Redis credentials exceed safe bounds" }
+        return redis
     }
 }

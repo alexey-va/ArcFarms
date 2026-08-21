@@ -5,6 +5,8 @@ import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldStartWith
 import io.kotest.assertions.throwables.shouldThrow
+import ru.arc.config.Config
+import ru.arc.redis.RedisModuleConfig
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.writeText
@@ -22,12 +24,41 @@ class ArcFarmsConfigTest : FunSpec({
         settings.lumbermills.single().permission shouldStartWith "arcfarms."
         settings.mines.all { it.permission.startsWith("arcfarms.") } shouldBe true
         settings.farms.single().orders.maxOf { order -> order.required.values.sum() } shouldBe 32
+        settings.serverId shouldBe "spawn"
+        settings.network.allowedOrigins shouldBe setOf("spawn", "survival", "parkour")
+        settings.network.workdayEnabled shouldBe true
         settings.farms.single().incidentQuota shouldBe 4
         settings.lumbermills.single().fellingQuota shouldBe 16
         settings.mines.all { it.cartQuota == 16 && it.supportsRequired == 1 } shouldBe true
+        ArcFarmsRedisBootstrap.load(root, settings).serverName shouldBe "spawn"
         ArcFarmsLocale.validateFiles(root, settings)
         listOf("config.yml", "lang/ru.yml", "lang/en.yml").forEach { path ->
             Files.readString(repositoryRoot.resolve("classic/plugins/ArcFarms/$path")) shouldBe Files.readString(root.resolve(path))
+        }
+    }
+
+    test("survival and parkour profiles are standalone network relays") {
+        val repositoryRoot = Path.of(System.getProperty("arcfarms.repositoryRoot"))
+        mapOf(
+            "classic" to "spawn",
+            "classic_survival" to "survival",
+            "parkour" to "parkour",
+        ).forEach { (runtime, expectedServerId) ->
+            val root = repositoryRoot.resolve("$runtime/plugins/ArcFarms")
+            val settings = ArcFarmsConfig.inspect(root)
+            val redis = RedisModuleConfig(Config(root, "modules/redis.yml"))
+
+            settings.serverId shouldBe expectedServerId
+            settings.network.enabled shouldBe true
+            redis.enabled shouldBe true
+            redis.serverName shouldBe expectedServerId
+            if (runtime != "classic") {
+                settings.farms shouldBe emptyList()
+                settings.lumbermills shouldBe emptyList()
+                settings.mines shouldBe emptyList()
+                settings.network.transferCommand shouldBe "server spawn"
+            }
+            ArcFarmsLocale.validateFiles(root, settings)
         }
     }
 
@@ -55,6 +86,8 @@ class ArcFarmsConfigTest : FunSpec({
         val root = resourceTree(repositoryRoot.resolve("scripts/lab/plugin-configs/ArcFarms/config.yml"))
         val settings = ArcFarmsConfig.inspect(root)
 
+        settings.serverId shouldBe "lab"
+        settings.network.allowedOrigins shouldBe setOf("lab")
         settings.farms.single().orders.single().id shouldBe "lab_order"
         settings.lumbermills.single().fellingQuota shouldBe 2
         settings.mines.single().cartQuota shouldBe 4
@@ -78,6 +111,9 @@ class ArcFarmsConfigTest : FunSpec({
             if (configSource == null) {
                 val stream = requireNotNull(ArcFarmsConfigTest::class.java.classLoader.getResourceAsStream("config.yml"))
                 stream.use { Files.copy(it, root.resolve("config.yml")) }
+                Files.createDirectories(root.resolve("modules"))
+                val redis = requireNotNull(ArcFarmsConfigTest::class.java.classLoader.getResourceAsStream("modules/redis.yml"))
+                redis.use { Files.copy(it, root.resolve("modules/redis.yml")) }
             } else {
                 Files.copy(configSource, root.resolve("config.yml"))
             }

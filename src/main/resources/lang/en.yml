@@ -27,10 +27,19 @@ menu:
     name: '<red>Reload ArcFarms</red>'
     lore: '<gray>Validate and apply config.yml and locale files.</gray>'
   click: '<yellow>Click to travel there.</yellow>'
+  remote: '<gray>This worksite is located on the spawn server.</gray>'
+  workday:
+    name: '<gold><bold>Network Workday</bold></gold>'
+    lore: '<gray>Cycle #<cycle>, no deadline:</gray> <farm> <lumber> <mine>'
+    loading: '<gray>Syncing seals across servers… Local shifts are already available.</gray>'
+    click: '<yellow>Next useful goal: <activity>. Click to travel.</yellow>'
 status:
   header: '<prefix> <gold>Current work shifts:</gold>'
   entry: '<dark_gray>•</dark_gray> <name> <gray>— <phase>, <progress></gray>'
   empty: '<prefix> <gray>No worksites are active.</gray>'
+  relay: '<prefix> <gray>ArcFarms is a network relay on this server; the worksites are on spawn.</gray>'
+  workday: '<dark_gray>◆</dark_gray> <gold>Network workday #<cycle>:</gold> <yellow><done>/<total></yellow><gray>. Next goal:</gray> <activity><gray>. No deadline.</gray>'
+  workday-loading: '<dark_gray>◆</dark_gray> <gray>Network seals are syncing; shift progress will not reset.</gray>'
 top:
   header: '<prefix> <gold>Top contribution: <activity></gold>'
   entry: '<gray><place>.</gray> <white><player></white> <dark_gray>—</dark_gray> <gold><amount></gold>'
@@ -69,6 +78,23 @@ mine:
   journal-failed: '<red>The block was not mined because its recovery record could not be saved safely.</red>'
 shift:
   winner: '<prefix> <yellow>Top shift contributor:</yellow> <white><player></white> <gray>— <amount>.</gray>'
+network:
+  actor-fallback: '<gray>the crew</gray>'
+  farm-incident: '<prefix> <red><bold>Farm incident:</bold></red> <yellow>the fields need help. The goal waits until somebody rescues it.</yellow>'
+  farm-rescued: '<prefix> <green>The fields are safe.</green> <gray>The main order survived intact.</gray>'
+  lumber-processing: '<prefix> <gold>The lumber workshop needs hands:</gold> <gray>the timber is ready; run the machines.</gray>'
+  mine-hazard: '<prefix> <red><bold>The mine face is unstable:</bold></red> <yellow>one support is needed. Mining progress and the cart are safe.</yellow>'
+  mine-stable: '<prefix> <green>The miners stabilized the face.</green> <gray>The expedition continues.</gray>'
+  mine-extraction: '<prefix> <gold><bold>The cart is full:</bold></gold> <yellow>it can be delivered whenever someone is ready.</yellow>'
+  activity-completed: '<prefix> <actor> <gray>completed</gray> <activity><gray>. The network gained a useful result.</gray>'
+  workday-stamp: '<gold>Network workday #<cycle>:</gold> <seals> <gray>New seal —</gray> <activity>'
+  workday-completed: '<gold><bold>Network workday #<cycle> complete!</bold></gold>'
+  workday-next: '<gray>All three crafts are done. Workday #<cycle> is already open with no deadline.</gray>'
+  call-local: '<yellow><bold>[Help]</bold></yellow>'
+  call-remote: '<yellow><bold>[Go to spawn]</bold></yellow>'
+  call-hover: '<gray>Click to travel to the activity.</gray>'
+  seal-done: '<green>✓</green> <activity>'
+  seal-pending: '<dark_gray>○</dark_gray> <activity>'
 order:
   farm:
     miners_rations: '<gold>Miners’ Rations</gold>'

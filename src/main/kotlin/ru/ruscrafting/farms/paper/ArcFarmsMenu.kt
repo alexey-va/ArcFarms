@@ -27,6 +27,7 @@ class ArcFarmsMenu(
         val holder = Holder()
         val inventory = player.server.createInventory(holder, 27, locale.render(MessageKey.MENU_TITLE, player))
         holder.backing = inventory
+        inventory.setItem(4, workdayItem(player))
         inventory.setItem(10, activityItem(player, ActivityKind.FARM, Material.WHEAT, MessageKey.MENU_FARM_NAME, MessageKey.MENU_FARM_LORE))
         inventory.setItem(12, activityItem(player, ActivityKind.LUMBER, Material.IRON_AXE, MessageKey.MENU_LUMBER_NAME, MessageKey.MENU_LUMBER_LORE))
         inventory.setItem(14, activityItem(player, ActivityKind.MINE, Material.MINECART, MessageKey.MENU_MINE_NAME, MessageKey.MENU_MINE_LORE))
@@ -68,6 +69,7 @@ class ArcFarmsMenu(
         if (event.clickedInventory !== event.view.topInventory) return
         val player = event.whoClicked as? Player ?: return
         when (event.rawSlot) {
+            4 -> service.workday()?.recommended()?.let { navigate(player, it) }
             10 -> navigate(player, ActivityKind.FARM)
             12 -> navigate(player, ActivityKind.LUMBER)
             14 -> navigate(player, ActivityKind.MINE)
@@ -103,12 +105,58 @@ class ArcFarmsMenu(
         lore: MessageKey,
     ): ItemStack {
         val lines = mutableListOf(locale.render(lore, player))
-        if (service.isAvailable(kind) && service.canAccess(player, kind)) lines += locale.render(MessageKey.MENU_CLICK, player)
+        if (!service.isAvailable(kind) && service.canNavigate(kind)) lines += locale.render(MessageKey.MENU_REMOTE, player)
+        if (service.canNavigate(kind) && service.canAccess(player, kind)) lines += locale.render(MessageKey.MENU_CLICK, player)
         return item(material, locale.render(name, player), lines)
     }
 
+    private fun workdayItem(player: Player): ItemStack {
+        val state = service.workday()
+            ?: return item(
+                Material.CLOCK,
+                locale.render(MessageKey.MENU_WORKDAY_NAME, player),
+                listOf(locale.render(MessageKey.MENU_WORKDAY_LOADING, player)),
+            )
+        val recommended = state.recommended()
+        val lore = mutableListOf(
+            locale.render(
+                MessageKey.MENU_WORKDAY_LORE,
+                player,
+                mapOf(
+                    "cycle" to locale.text(state.cycle),
+                    "farm" to seal(player, ActivityKind.FARM, ActivityKind.FARM in state.completed),
+                    "lumber" to seal(player, ActivityKind.LUMBER, ActivityKind.LUMBER in state.completed),
+                    "mine" to seal(player, ActivityKind.MINE, ActivityKind.MINE in state.completed),
+                ),
+            ),
+        )
+        if (service.canNavigate(recommended)) {
+            lore += locale.render(
+                MessageKey.MENU_WORKDAY_CLICK,
+                player,
+                mapOf("activity" to activityName(player, recommended)),
+            )
+        }
+        return item(Material.WRITABLE_BOOK, locale.render(MessageKey.MENU_WORKDAY_NAME, player), lore)
+    }
+
+    private fun seal(player: Player, kind: ActivityKind, completed: Boolean): Component = locale.render(
+        if (completed) MessageKey.NETWORK_SEAL_DONE else MessageKey.NETWORK_SEAL_PENDING,
+        player,
+        mapOf("activity" to activityName(player, kind)),
+    )
+
+    private fun activityName(player: Player, kind: ActivityKind): Component = locale.render(
+        when (kind) {
+            ActivityKind.FARM -> MessageKey.MENU_FARM_NAME
+            ActivityKind.LUMBER -> MessageKey.MENU_LUMBER_NAME
+            ActivityKind.MINE -> MessageKey.MENU_MINE_NAME
+        },
+        player,
+    )
+
     private fun navigate(player: Player, kind: ActivityKind) {
-        if (!service.isAvailable(kind)) {
+        if (!service.canNavigate(kind)) {
             player.sendMessage(locale.render(MessageKey.ZONE_UNAVAILABLE, player))
             return
         }

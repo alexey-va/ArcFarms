@@ -4,8 +4,14 @@ plugins {
     jacoco
 }
 group = "ru.ruscrafting"
-version = "0.2.0"
+version = "0.3.0"
 description = "Shared farm, lumbermill, and mine activities for RusCrafting"
+
+val integrationTestSourceSet = sourceSets.create("integrationTest") {
+    kotlin.srcDir("src/integrationTest/kotlin")
+    compileClasspath += sourceSets.main.get().output + sourceSets.test.get().output
+    runtimeClasspath += sourceSets.main.get().output + sourceSets.test.get().output
+}
 
 repositories {
     mavenCentral()
@@ -20,7 +26,9 @@ dependencies {
     implementation(kotlin("stdlib"))
     implementation("ru.arc:arc-core:1.0-SNAPSHOT")
     implementation("ru.arc:arc-core-paper:1.0-SNAPSHOT")
+    implementation("ru.arc:arc-core-redis:1.0-SNAPSHOT")
     implementation("com.google.code.gson:gson:2.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
 
     compileOnly("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
     compileOnly("com.sk89q.worldguard:worldguard-bukkit:7.0.16")
@@ -30,6 +38,9 @@ dependencies {
     testImplementation("io.mockk:mockk:1.14.7")
     testImplementation("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    "integrationTestImplementation"(sourceSets.test.get().output)
+    configurations["integrationTestImplementation"].extendsFrom(configurations["testImplementation"])
+    configurations["integrationTestRuntimeOnly"].extendsFrom(configurations["testRuntimeOnly"])
 }
 
 tasks {
@@ -40,6 +51,14 @@ tasks {
         useJUnitPlatform()
         systemProperty("arcfarms.repositoryRoot", projectDir.parentFile.absolutePath)
     }
+    register<Test>("integrationTest") {
+        description = "Runs the disposable cross-node Redis integration tests."
+        group = "verification"
+        testClassesDirs = integrationTestSourceSet.output.classesDirs
+        classpath = integrationTestSourceSet.runtimeClasspath
+        useJUnitPlatform()
+        shouldRunAfter(test)
+    }
     jar { archiveClassifier.set("plain") }
     shadowJar {
         archiveClassifier.set("")
@@ -49,5 +68,5 @@ tasks {
         exclude("org/bukkit/**")
         exclude("io/papermc/**")
     }
-    check { dependsOn(shadowJar) }
+    check { dependsOn(shadowJar, "integrationTest") }
 }

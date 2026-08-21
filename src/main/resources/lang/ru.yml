@@ -27,10 +27,19 @@ menu:
     name: '<red>Перезагрузить ArcFarms</red>'
     lore: '<gray>Проверить и применить config.yml и локали.</gray>'
   click: '<yellow>Нажмите, чтобы отправиться туда.</yellow>'
+  remote: '<gray>Рабочая зона находится на спавне.</gray>'
+  workday:
+    name: '<gold><bold>Общий наряд сети</bold></gold>'
+    lore: '<gray>Цикл #<cycle>, без срока:</gray> <farm> <lumber> <mine>'
+    loading: '<gray>Сверяем печати между серверами… Локальные смены уже доступны.</gray>'
+    click: '<yellow>Следующая полезная цель: <activity>. Нажмите, чтобы отправиться.</yellow>'
 status:
   header: '<prefix> <gold>Текущие рабочие смены:</gold>'
   entry: '<dark_gray>•</dark_gray> <name> <gray>— <phase>, <progress></gray>'
   empty: '<prefix> <gray>Активных рабочих зон нет.</gray>'
+  relay: '<prefix> <gray>На этом сервере ArcFarms работает как сетевой ретранслятор; сами зоны находятся на спавне.</gray>'
+  workday: '<dark_gray>◆</dark_gray> <gold>Общий наряд #<cycle>:</gold> <yellow><done>/<total></yellow><gray>. Следующая цель:</gray> <activity><gray>. Срока нет.</gray>'
+  workday-loading: '<dark_gray>◆</dark_gray> <gray>Сетевые печати временно сверяются; прогресс смен от этого не сбрасывается.</gray>'
 top:
   header: '<prefix> <gold>Лучший вклад: <activity></gold>'
   entry: '<gray><place>.</gray> <white><player></white> <dark_gray>—</dark_gray> <gold><amount></gold>'
@@ -69,6 +78,23 @@ mine:
   journal-failed: '<red>Блок не был добыт: безопасная запись восстановления не удалась.</red>'
 shift:
   winner: '<prefix> <yellow>Лучший вклад смены:</yellow> <white><player></white> <gray>— <amount>.</gray>'
+network:
+  actor-fallback: '<gray>бригада</gray>'
+  farm-incident: '<prefix> <red><bold>На ферме бедствие:</bold></red> <yellow>полям нужна помощь. Цель будет ждать, пока её не спасут.</yellow>'
+  farm-rescued: '<prefix> <green>Поля спасены.</green> <gray>Бедствие пережито без потери основного заказа.</gray>'
+  lumber-processing: '<prefix> <gold>Лесопилке нужны руки в цеху:</gold> <gray>древесина собрана, осталось запустить станки.</gray>'
+  mine-hazard: '<prefix> <red><bold>Шахтный забой нестабилен:</bold></red> <yellow>нужна подпорка. Добыча и вагонетка никуда не пропадут.</yellow>'
+  mine-stable: '<prefix> <green>Шахтёры укрепили забой.</green> <gray>Экспедиция продолжается.</gray>'
+  mine-extraction: '<prefix> <gold><bold>Вагонетка заполнена:</bold></gold> <yellow>её можно доставить в любое время.</yellow>'
+  activity-completed: '<prefix> <actor> <gray>завершил(а)</gray> <activity><gray>. Сеть получила полезный результат.</gray>'
+  workday-stamp: '<gold>Общий наряд #<cycle>:</gold> <seals> <gray>Новая печать —</gray> <activity>'
+  workday-completed: '<gold><bold>Общий наряд #<cycle> выполнен!</bold></gold>'
+  workday-next: '<gray>Все три ремесла закрыты. Наряд #<cycle> уже открыт — без срока.</gray>'
+  call-local: '<yellow><bold>[Помочь]</bold></yellow>'
+  call-remote: '<yellow><bold>[На спавн]</bold></yellow>'
+  call-hover: '<gray>Нажмите, чтобы отправиться к активности.</gray>'
+  seal-done: '<green>✓</green> <activity>'
+  seal-pending: '<dark_gray>○</dark_gray> <activity>'
 order:
   farm:
     miners_rations: '<gold>Провизия для шахтёров</gold>'

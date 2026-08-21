@@ -51,6 +51,10 @@ import ru.ruscrafting.farms.domain.ShiftEvent
 import ru.ruscrafting.farms.domain.winner
 import ru.ruscrafting.farms.persistence.ArcFarmsStateRepository
 import ru.ruscrafting.farms.persistence.MineBlockJournal
+import ru.ruscrafting.farms.network.ActivityNetworkGateway
+import ru.ruscrafting.farms.network.NetworkSignal
+import ru.ruscrafting.farms.network.NoOpActivityNetworkGateway
+import ru.ruscrafting.farms.network.WorkdayState
 import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -102,6 +106,7 @@ class ArcFarmsService(
     private val locale: ArcFarmsLocale,
     private val stateRepository: ArcFarmsStateRepository,
     private val mineJournal: MineBlockJournal,
+    private val network: ActivityNetworkGateway = NoOpActivityNetworkGateway,
     private val regionGateway: RegionGateway = WorldGuardRegionGateway(),
     private val clock: () -> Long = System::currentTimeMillis,
     private val random: RandomGenerator = RandomGenerator.getDefault(),
@@ -254,11 +259,15 @@ class ArcFarmsService(
             .sortedWith(compareByDescending<Pair<UUID, Long>> { it.second }.thenBy { it.first.toString() })
             .take(limit.coerceIn(1, 50))
 
-    fun navigation(kind: ActivityKind): String = when (kind) {
-        ActivityKind.FARM -> settings.navigation.getValue("farm")
-        ActivityKind.LUMBER -> settings.navigation.getValue("lumber")
-        ActivityKind.MINE -> settings.navigation.getValue("mine")
+    fun navigation(kind: ActivityKind): String = if (isAvailable(kind)) {
+        settings.navigation.getValue(kind.configKey)
+    } else {
+        settings.network.transferCommand
     }
+
+    fun canNavigate(kind: ActivityKind): Boolean = isAvailable(kind) || settings.network.enabled
+
+    fun workday(): WorkdayState? = network.workday()
 
     fun isAvailable(kind: ActivityKind): Boolean = when (kind) {
         ActivityKind.FARM -> farms.isNotEmpty()
@@ -266,7 +275,9 @@ class ArcFarmsService(
         ActivityKind.MINE -> mines.isNotEmpty()
     }
 
-    fun canAccess(player: Player, kind: ActivityKind): Boolean = when (kind) {
+    fun canAccess(player: Player, kind: ActivityKind): Boolean = if (!isAvailable(kind)) {
+        settings.network.enabled
+    } else when (kind) {
         ActivityKind.FARM -> farms.any { hasAccess(player, it.settings.permission) }
         ActivityKind.LUMBER -> lumbermills.any { hasAccess(player, it.settings.permission) }
         ActivityKind.MINE -> mines.any { hasAccess(player, it.settings.permission) }
@@ -609,6 +620,12 @@ class ArcFarmsService(
                         title = true,
                     )
                     warningBurst(runtime.region)
+                    network.signal(
+                        NetworkSignal.FARM_INCIDENT,
+                        ActivityKind.FARM,
+                        actor?.name,
+                        players(runtime.region).mapTo(mutableSetOf(), Player::getUniqueId),
+                    )
                     persistAsync()
                 }
                 ShiftEvent.INCIDENT_PROGRESS -> if (actor != null) {
@@ -634,6 +651,12 @@ class ArcFarmsService(
                         title = true,
                     )
                     successBurst(runtime.region)
+                    network.signal(
+                        NetworkSignal.FARM_RESCUED,
+                        ActivityKind.FARM,
+                        actor?.name,
+                        players(runtime.region).mapTo(mutableSetOf(), Player::getUniqueId),
+                    )
                     persistAsync()
                 }
                 ShiftEvent.GOLDEN_STARTED -> broadcast(
@@ -658,6 +681,11 @@ class ArcFarmsService(
                     )
                     announceWinner(runtime.region, runtime.state.contributors)
                     celebration(runtime.region)
+                    network.complete(
+                        ActivityKind.FARM,
+                        actor?.name,
+                        players(runtime.region).mapTo(mutableSetOf(), Player::getUniqueId),
+                    )
                     persistAsync()
                 }
                 else -> Unit
@@ -684,6 +712,12 @@ class ArcFarmsService(
                         title = true,
                     )
                     successBurst(runtime.region)
+                    network.signal(
+                        NetworkSignal.LUMBER_PROCESSING,
+                        ActivityKind.LUMBER,
+                        actor?.name,
+                        listOf(runtime.region, runtime.station).flatMap(::players).mapTo(mutableSetOf(), Player::getUniqueId),
+                    )
                 }
                 ShiftEvent.COMPLETED -> {
                     recordCompletion(ActivityKind.LUMBER, runtime.state.contributors)
@@ -696,6 +730,11 @@ class ArcFarmsService(
                     )
                     announceWinner(listOf(runtime.region, runtime.station), runtime.state.contributors)
                     celebration(listOf(runtime.region, runtime.station))
+                    network.complete(
+                        ActivityKind.LUMBER,
+                        actor?.name,
+                        listOf(runtime.region, runtime.station).flatMap(::players).mapTo(mutableSetOf(), Player::getUniqueId),
+                    )
                     persistAsync()
                 }
                 else -> Unit
@@ -720,6 +759,12 @@ class ArcFarmsService(
                     broadcast(runtime.region, MessageKey.MINE_HAZARD_STARTED, sound = Sound.ENTITY_GENERIC_EXPLODE, title = true)
                     broadcast(runtime.region, MessageKey.MINE_HAZARD_HELP)
                     warningBurst(runtime.region)
+                    network.signal(
+                        NetworkSignal.MINE_HAZARD,
+                        ActivityKind.MINE,
+                        actor?.name,
+                        players(runtime.region).mapTo(mutableSetOf(), Player::getUniqueId),
+                    )
                     persistAsync()
                 }
                 ShiftEvent.HAZARD_RESOLVED -> {
@@ -730,18 +775,37 @@ class ArcFarmsService(
                         title = true,
                     )
                     successBurst(runtime.region)
+                    network.signal(
+                        NetworkSignal.MINE_STABLE,
+                        ActivityKind.MINE,
+                        actor?.name,
+                        players(runtime.region).mapTo(mutableSetOf(), Player::getUniqueId),
+                    )
                 }
-                ShiftEvent.EXTRACTION_STARTED -> broadcast(
-                    runtime.region,
-                    MessageKey.MINE_EXTRACTION_STARTED,
-                    sound = Sound.BLOCK_BELL_RESONATE,
-                    title = true,
-                )
+                ShiftEvent.EXTRACTION_STARTED -> {
+                    broadcast(
+                        runtime.region,
+                        MessageKey.MINE_EXTRACTION_STARTED,
+                        sound = Sound.BLOCK_BELL_RESONATE,
+                        title = true,
+                    )
+                    network.signal(
+                        NetworkSignal.MINE_EXTRACTION,
+                        ActivityKind.MINE,
+                        actor?.name,
+                        players(runtime.region).mapTo(mutableSetOf(), Player::getUniqueId),
+                    )
+                }
                 ShiftEvent.COMPLETED -> {
                     recordCompletion(ActivityKind.MINE, runtime.state.contributors)
                     broadcast(runtime.region, MessageKey.MINE_COMPLETED, sound = Sound.UI_TOAST_CHALLENGE_COMPLETE, title = true)
                     announceWinner(runtime.region, runtime.state.contributors)
                     celebration(runtime.region)
+                    network.complete(
+                        ActivityKind.MINE,
+                        actor?.name,
+                        players(runtime.region).mapTo(mutableSetOf(), Player::getUniqueId),
+                    )
                     persistAsync()
                 }
                 ShiftEvent.PROGRESS -> if (runtime.state.phase == MinePhase.HAZARD && actor != null) {
@@ -993,6 +1057,13 @@ class ArcFarmsService(
 
     private fun hasAccess(player: Player, permission: String): Boolean =
         player.hasPermission(permission) || player.hasPermission("arcfarms.admin")
+
+    private val ActivityKind.configKey: String
+        get() = when (this) {
+            ActivityKind.FARM -> "farm"
+            ActivityKind.LUMBER -> "lumber"
+            ActivityKind.MINE -> "mine"
+        }
 
     private fun players(region: ActivityRegion): List<Player> = region.world.players.filter { region.contains(it.location) }
 
