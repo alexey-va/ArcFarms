@@ -13,13 +13,13 @@ menu:
   title: '<dark_gray>Work Shifts</dark_gray>'
   farm:
     name: '<green>Harvest Shift</green>'
-    lore: '<gray>A shared order, varied crops, and a golden harvest.</gray>'
+    lore: '<gray>A persistent shared order, a farm incident, and a golden harvest. Solo-friendly.</gray>'
   lumber:
     name: '<gold>Lumbermill</gold>'
-    lore: '<gray>Cut the requested wood and process it in the workshop.</gray>'
+    lore: '<gray>A small persistent order: cut timber, then run the machine three times.</gray>'
   mine:
     name: '<aqua>Mine Expedition</aqua>'
-    lore: '<gray>Fill the cart, stabilize the face, and extract in time.</gray>'
+    lore: '<gray>Fill the cart, install one support, and leave when ready.</gray>'
   stats:
     name: '<yellow>Your Contribution</yellow>'
     lore: '<gray>Farm: <green><farm></green> · Wood: <gold><lumber></gold> · Mine: <aqua><mine></aqua></gray>'
@@ -36,34 +36,35 @@ top:
   entry: '<gray><place>.</gray> <white><player></white> <dark_gray>—</dark_gray> <gold><amount></gold>'
   empty: '<prefix> <gray>This activity has no recorded contribution yet.</gray>'
 farm:
-  started: '<prefix> <green>A harvest shift started:</green> <order><gray>. Harvest only the requested crops.</gray>'
+  started: '<prefix> <green>A persistent order started:</green> <order><gray>. It waits until completion.</gray>'
   wrong-target: '<gray>The current order needs <crops>.</gray>'
+  incident-started: '<red><bold>Pest outbreak!</bold></red> <yellow>Save <crop>: harvest <total> more. Main progress will not be lost.</yellow>'
+  incident-progress: '<gold>Fields rescued: <done>/<total>.</gold>'
+  incident-resolved: '<green><bold>The fields are safe!</bold></green> <gray>A golden harvest begins as the reward.</gray>'
   golden-started: '<gold><bold>Golden harvest!</bold></gold> <yellow><crop> gives double progress for <seconds> seconds.</yellow>'
   golden-ended: '<gray>The golden harvest ended. The order continues.</gray>'
   completed: '<green><bold>Order complete!</bold></green> <gray>Participants: <players>.</gray>'
-  timed-out: '<gray>The shift ended. A new order will appear after a short break.</gray>'
-  actionbar: '<order> <dark_gray>•</dark_gray> <green><done></green><gray>/</gray><gold><total></gold> <dark_gray>•</dark_gray> <gray><seconds>s</gray>'
+  actionbar: '<order> <dark_gray>•</dark_gray> <green><done></green><gray>/</gray><gold><total></gold> <dark_gray>•</dark_gray> <gray>no deadline</gray>'
+  incident-actionbar: '<red>Pests</red> <dark_gray>•</dark_gray> <crop> <gold><done></gold><gray>/</gray><yellow><total></yellow> <dark_gray>•</dark_gray> <gray>progress saved</gray>'
 lumber:
-  started: '<prefix> <gold>Lumbermill order:</gold> <wood><gray>. Cut the requested species.</gray>'
+  started: '<prefix> <gold>Persistent lumbermill order:</gold> <wood><gray>. It waits until completion.</gray>'
   wrong-species: '<gray>This order only accepts <wood>.</gray>'
   processing: '<gold>The timber quota is ready.</gold> <gray>Go to the workshop and use a machine.</gray>'
   station-required: '<gray>Processing happens at a machine inside the lumber workshop.</gray>'
   completed: '<green><bold>Timber batch complete!</bold></green> <gray>Participants: <players>.</gray>'
-  timed-out: '<gray>The lumber order closed until the next shift.</gray>'
   actionbar-felling: '<wood> <dark_gray>•</dark_gray> <gold><done></gold><gray>/</gray><yellow><total></yellow> logs'
   actionbar-processing: '<gold>Processing</gold> <dark_gray>•</dark_gray> <yellow><done></yellow><gray>/</gray><gold><total></gold>'
 mine:
-  started: '<prefix> <aqua>An expedition started:</aqua> <route><gray>. Fill the minecart.</gray>'
+  started: '<prefix> <aqua>A persistent expedition started:</aqua> <route><gray>. The cart waits until delivery.</gray>'
   pickaxe-required: '<red>You need a pickaxe to work this mine face.</red>'
   regenerating: '<gray>This part of the mine is still regenerating.</gray>'
   hazard-started: '<red><bold>The mine face is unstable!</bold></red> <gray>Stabilize it before continuing.</gray>'
   hazard-help: '<yellow>Sneak and right-click mine walls with a pickaxe.</yellow>'
   hazard-progress: '<gold>Support installed: <done>/<total>.</gold>'
   hazard-resolved: '<green>The face is stable. Mining can continue.</green>'
-  extraction-started: '<gold><bold>The cart is full!</bold></gold> <yellow>A contributor must leave the mine within <seconds> seconds.</yellow>'
+  extraction-started: '<gold><bold>The cart is full!</bold></gold> <yellow>Any player can leave the mine to deliver it. There is no timer.</yellow>'
   extraction-required: '<gray>Fill the cart and stabilize the face first.</gray>'
   completed: '<green><bold>Expedition complete!</bold></green> <gray>The minecart was delivered.</gray>'
-  timed-out: '<gray>The expedition ended without extracting the cart. Players keep the resources they mined.</gray>'
   actionbar: '<route> <dark_gray>•</dark_gray> <aqua><done></aqua><gray>/</gray><gold><total></gold> <dark_gray>•</dark_gray> <gray><phase></gray>'
   journal-failed: '<red>The block was not mined because its recovery record could not be saved safely.</red>'
 shift:
@@ -85,6 +86,7 @@ phase:
   farm:
     idle: '<gray>waiting</gray>'
     harvesting: '<green>harvesting</green>'
+    incident: '<red>rescuing fields</red>'
     golden_harvest: '<gold>golden harvest</gold>'
     cooldown: '<gray>cooldown</gray>'
   lumber:

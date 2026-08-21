@@ -9,14 +9,12 @@ enum class LumberPhase {
     COOLDOWN,
 }
 data class LumberRules(
-    val shiftMillis: Long,
     val fellingQuota: Int,
     val processingQuota: Int,
     val processingPerUse: Int,
     val cooldownMillis: Long,
 ) {
     init {
-        require(shiftMillis in 30_000..7_200_000)
         require(fellingQuota in 1..100_000)
         require(processingQuota in 1..100_000)
         require(processingPerUse in 1..processingQuota)
@@ -31,7 +29,6 @@ data class LumberShiftState(
     val felled: Int = 0,
     val processed: Int = 0,
     val startedAt: Long = 0,
-    val deadlineAt: Long = 0,
     val cooldownEndsAt: Long = 0,
     val outcome: ShiftOutcome = ShiftOutcome.NONE,
     val contributors: Map<UUID, Int> = emptyMap(),
@@ -52,7 +49,6 @@ object LumberShiftEngine {
                 sequence = current.sequence + 1,
                 species = species,
                 startedAt = now,
-                deadlineAt = now + rules.shiftMillis,
             ),
             true,
             events = listOf(ShiftEvent.STARTED),
@@ -122,15 +118,22 @@ object LumberShiftEngine {
         if (current.phase == LumberPhase.COOLDOWN && now >= current.cooldownEndsAt) {
             return EngineResult(LumberShiftState(sequence = current.sequence), true, events = listOf(ShiftEvent.RESET))
         }
-        if (current.phase in setOf(LumberPhase.FELLING, LumberPhase.PROCESSING) && now >= current.deadlineAt) {
+        if (current.phase == LumberPhase.FELLING && current.felled >= rules.fellingQuota) {
+            return EngineResult(
+                current.copy(phase = LumberPhase.PROCESSING),
+                true,
+                events = listOf(ShiftEvent.PHASE_CHANGED),
+            )
+        }
+        if (current.phase == LumberPhase.PROCESSING && current.processed >= rules.processingQuota) {
             return EngineResult(
                 current.copy(
                     phase = LumberPhase.COOLDOWN,
                     cooldownEndsAt = now + rules.cooldownMillis,
-                    outcome = ShiftOutcome.TIMED_OUT,
+                    outcome = ShiftOutcome.COMPLETED,
                 ),
                 true,
-                events = listOf(ShiftEvent.TIMED_OUT),
+                events = listOf(ShiftEvent.COMPLETED),
             )
         }
         return EngineResult(current, false)

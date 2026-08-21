@@ -13,13 +13,13 @@ menu:
   title: '<dark_gray>Рабочие смены</dark_gray>'
   farm:
     name: '<green>Урожайная смена</green>'
-    lore: '<gray>Общий заказ, разные культуры и золотой урожай.</gray>'
+    lore: '<gray>Вечный общий заказ, бедствие и золотой урожай. Можно пройти одному.</gray>'
   lumber:
     name: '<gold>Лесопилка</gold>'
-    lore: '<gray>Заготовьте нужную древесину и обработайте её в цехе.</gray>'
+    lore: '<gray>Небольшой вечный заказ: древесина, затем три запуска станка.</gray>'
   mine:
     name: '<aqua>Шахтная экспедиция</aqua>'
-    lore: '<gray>Наполните вагонетку, укрепите забой и выйдите вовремя.</gray>'
+    lore: '<gray>Наполните вагонетку, поставьте подпорку и спокойно выйдите.</gray>'
   stats:
     name: '<yellow>Ваш вклад</yellow>'
     lore: '<gray>Ферма: <green><farm></green> · Лес: <gold><lumber></gold> · Шахта: <aqua><mine></aqua></gray>'
@@ -36,34 +36,35 @@ top:
   entry: '<gray><place>.</gray> <white><player></white> <dark_gray>—</dark_gray> <gold><amount></gold>'
   empty: '<prefix> <gray>Для этой активности ещё нет вклада.</gray>'
 farm:
-  started: '<prefix> <green>Началась урожайная смена:</green> <order><gray>. Собирайте только нужные культуры.</gray>'
+  started: '<prefix> <green>Принят вечный заказ:</green> <order><gray>. Он будет ждать до завершения.</gray>'
   wrong-target: '<gray>Сейчас требуется <crops>.</gray>'
+  incident-started: '<red><bold>Нашествие вредителей!</bold></red> <yellow>Спасите <crop>: соберите ещё <total>. Основной прогресс не пропадёт.</yellow>'
+  incident-progress: '<gold>Спасение полей: <done>/<total>.</gold>'
+  incident-resolved: '<green><bold>Поля спасены!</bold></green> <gray>В награду начинается золотой урожай.</gray>'
   golden-started: '<gold><bold>Золотой урожай!</bold></gold> <yellow><crop> даёт двойной вклад <seconds> сек.</yellow>'
   golden-ended: '<gray>Золотой урожай закончился. Заказ продолжается.</gray>'
   completed: '<green><bold>Заказ собран!</bold></green> <gray>Участников: <players>.</gray>'
-  timed-out: '<gray>Смена закончилась. Новый заказ появится после короткого перерыва.</gray>'
-  actionbar: '<order> <dark_gray>•</dark_gray> <green><done></green><gray>/</gray><gold><total></gold> <dark_gray>•</dark_gray> <gray><seconds> сек.</gray>'
+  actionbar: '<order> <dark_gray>•</dark_gray> <green><done></green><gray>/</gray><gold><total></gold> <dark_gray>•</dark_gray> <gray>без срока</gray>'
+  incident-actionbar: '<red>Вредители</red> <dark_gray>•</dark_gray> <crop> <gold><done></gold><gray>/</gray><yellow><total></yellow> <dark_gray>•</dark_gray> <gray>прогресс сохранён</gray>'
 lumber:
-  started: '<prefix> <gold>Заказ лесопилки:</gold> <wood><gray>. Заготовьте отмеченную породу.</gray>'
+  started: '<prefix> <gold>Вечный заказ лесопилки:</gold> <wood><gray>. Заготовка будет ждать до завершения.</gray>'
   wrong-species: '<gray>Этот заказ принимает только <wood>.</gray>'
   processing: '<gold>Древесина собрана.</gold> <gray>Идите в цех и используйте станок.</gray>'
   station-required: '<gray>Обработка идёт на станке внутри лесопильного цеха.</gray>'
   completed: '<green><bold>Партия древесины готова!</bold></green> <gray>Участников: <players>.</gray>'
-  timed-out: '<gray>Заказ лесопилки закрыт до следующей смены.</gray>'
   actionbar-felling: '<wood> <dark_gray>•</dark_gray> <gold><done></gold><gray>/</gray><yellow><total></yellow> брёвен'
   actionbar-processing: '<gold>Обработка</gold> <dark_gray>•</dark_gray> <yellow><done></yellow><gray>/</gray><gold><total></gold>'
 mine:
-  started: '<prefix> <aqua>Началась экспедиция:</aqua> <route><gray>. Наполните вагонетку.</gray>'
+  started: '<prefix> <aqua>Началась вечная экспедиция:</aqua> <route><gray>. Вагонетка будет ждать до доставки.</gray>'
   pickaxe-required: '<red>Для работы в шахте нужна кирка.</red>'
   regenerating: '<gray>Этот участок ещё восстанавливается.</gray>'
   hazard-started: '<red><bold>Забой нестабилен!</bold></red> <gray>Укрепите его перед продолжением.</gray>'
   hazard-help: '<yellow>Крадитесь и нажимайте ПКМ киркой по стенам шахты.</yellow>'
   hazard-progress: '<gold>Установлена подпорка <done>/<total>.</gold>'
   hazard-resolved: '<green>Забой укреплён. Добыча продолжается.</green>'
-  extraction-started: '<gold><bold>Вагонетка заполнена!</bold></gold> <yellow>Участник должен выйти из шахты за <seconds> сек.</yellow>'
+  extraction-started: '<gold><bold>Вагонетка заполнена!</bold></gold> <yellow>Любой игрок может спокойно выйти из шахты и доставить её — таймера нет.</yellow>'
   extraction-required: '<gray>Сначала наполните вагонетку и укрепите забой.</gray>'
   completed: '<green><bold>Экспедиция завершена!</bold></green> <gray>Вагонетка доставлена.</gray>'
-  timed-out: '<gray>Экспедиция завершилась без доставки вагонетки. Добытые ресурсы остаются у игроков.</gray>'
   actionbar: '<route> <dark_gray>•</dark_gray> <aqua><done></aqua><gray>/</gray><gold><total></gold> <dark_gray>•</dark_gray> <gray><phase></gray>'
   journal-failed: '<red>Блок не был добыт: безопасная запись восстановления не удалась.</red>'
 shift:
@@ -85,6 +86,7 @@ phase:
   farm:
     idle: '<gray>ожидает</gray>'
     harvesting: '<green>сбор урожая</green>'
+    incident: '<red>спасение полей</red>'
     golden_harvest: '<gold>золотой урожай</gold>'
     cooldown: '<gray>перерыв</gray>'
   lumber:

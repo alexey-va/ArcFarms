@@ -7,7 +7,7 @@ import java.util.UUID
 
 class FarmShiftEngineTest : FunSpec({
     val order = FarmOrder("test_order", linkedMapOf("WHEAT" to 2, "CARROTS" to 2))
-    val rules = FarmRules(60_000, 50, 10_000, 5_000)
+    val rules = FarmRules(incidentTriggerPercent = 50, incidentQuota = 1, goldenWindowMillis = 10_000, cooldownMillis = 5_000)
     val player = UUID.fromString("00000000-0000-0000-0000-000000000001")
 
     test("farm starts on the selected order and only accepts requested crops") {
@@ -16,46 +16,57 @@ class FarmShiftEngineTest : FunSpec({
         started.accepted shouldBe true
         started.events shouldContainExactly listOf(ShiftEvent.STARTED)
         started.state.phase shouldBe FarmPhase.HARVESTING
-        started.state.deadlineAt shouldBe 61_000
 
         FarmShiftEngine.harvest(started.state, order, rules, "POTATOES", player, 2_000).accepted shouldBe false
     }
 
-    test("golden harvest doubles the selected remaining crop and completes the shift") {
+    test("farm incident pauses no progress and unlocks golden harvest when resolved") {
         var state = FarmShiftEngine.start(FarmShiftState(), order, rules, 1_000).state
         state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 2_000).state
-        val golden = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 3_000)
+        val incident = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 3_000)
 
-        golden.state.phase shouldBe FarmPhase.GOLDEN_HARVEST
-        golden.state.goldenCrop shouldBe "CARROTS"
-        golden.events.last() shouldBe ShiftEvent.GOLDEN_STARTED
+        incident.state.phase shouldBe FarmPhase.INCIDENT
+        incident.state.incidentCrop shouldBe "CARROTS"
+        incident.events.last() shouldBe ShiftEvent.INCIDENT_STARTED
 
-        val completed = FarmShiftEngine.harvest(golden.state, order, rules, "CARROTS", player, 4_000)
-        completed.contribution shouldBe 2
+        val rescued = FarmShiftEngine.harvest(incident.state, order, rules, "CARROTS", player, 4_000)
+        rescued.state.phase shouldBe FarmPhase.GOLDEN_HARVEST
+        rescued.state.incidentResolved shouldBe true
+        rescued.state.goldenCrop shouldBe "CARROTS"
+        rescued.events shouldContainExactly listOf(
+            ShiftEvent.PROGRESS,
+            ShiftEvent.INCIDENT_PROGRESS,
+            ShiftEvent.INCIDENT_RESOLVED,
+            ShiftEvent.GOLDEN_STARTED,
+        )
+
+        val completed = FarmShiftEngine.harvest(rescued.state, order, rules, "CARROTS", player, 5_000)
+        completed.contribution shouldBe 1
         completed.state.phase shouldBe FarmPhase.COOLDOWN
         completed.state.outcome shouldBe ShiftOutcome.COMPLETED
-        completed.state.contributors[player] shouldBe 4
+        completed.state.contributors[player] shouldBe 5
         completed.events.last() shouldBe ShiftEvent.COMPLETED
     }
 
-    test("golden window expires without ending the shared order") {
+    test("golden window expires without ending or resetting the shared order") {
         var state = FarmShiftEngine.start(FarmShiftState(), order, rules, 1_000).state
         state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 2_000).state
         state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 3_000).state
+        state = FarmShiftEngine.harvest(state, order, rules, "CARROTS", player, 4_000).state
 
-        val expired = FarmShiftEngine.tick(state, order, rules, 13_000)
+        val expired = FarmShiftEngine.tick(state, order, rules, 14_000)
         expired.state.phase shouldBe FarmPhase.HARVESTING
+        expired.state.completed(order) shouldBe 3
         expired.events shouldContainExactly listOf(ShiftEvent.GOLDEN_ENDED)
     }
 
-    test("farm times out and resets after cooldown") {
+    test("farm objective and incident survive indefinite inactivity") {
         val started = FarmShiftEngine.start(FarmShiftState(sequence = 4), order, rules, 1_000).state
-        val timedOut = FarmShiftEngine.tick(started, order, rules, 61_000)
-        timedOut.state.outcome shouldBe ShiftOutcome.TIMED_OUT
-        timedOut.state.phase shouldBe FarmPhase.COOLDOWN
+        val partial = FarmShiftEngine.harvest(started, order, rules, "WHEAT", player, 2_000).state
+        val afterMonth = FarmShiftEngine.tick(partial, order, rules, 2_592_002_000)
 
-        val reset = FarmShiftEngine.tick(timedOut.state, order, rules, 66_000)
-        reset.state shouldBe FarmShiftState(sequence = 5)
-        reset.events shouldContainExactly listOf(ShiftEvent.RESET)
+        afterMonth.accepted shouldBe false
+        afterMonth.state shouldBe partial
+        afterMonth.events shouldContainExactly emptyList()
     }
 })

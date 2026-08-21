@@ -13,6 +13,7 @@ class ArcFarmsConfigTest : FunSpec({
     test("bundled production config owns all three activities without ARC compatibility") {
         val root = resourceTree()
         val settings = ArcFarmsConfig.inspect(root)
+        val repositoryRoot = Path.of(System.getProperty("arcfarms.repositoryRoot"))
 
         settings.farms.map { it.id } shouldContainExactly listOf("communal_farm")
         settings.lumbermills.map { it.id } shouldContainExactly listOf("communal_lumbermill")
@@ -20,14 +21,21 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().permission shouldStartWith "arcfarms."
         settings.lumbermills.single().permission shouldStartWith "arcfarms."
         settings.mines.all { it.permission.startsWith("arcfarms.") } shouldBe true
+        settings.farms.single().orders.maxOf { order -> order.required.values.sum() } shouldBe 32
+        settings.farms.single().incidentQuota shouldBe 4
+        settings.lumbermills.single().fellingQuota shouldBe 16
+        settings.mines.all { it.cartQuota == 16 && it.supportsRequired == 1 } shouldBe true
         ArcFarmsLocale.validateFiles(root, settings)
+        listOf("config.yml", "lang/ru.yml", "lang/en.yml").forEach { path ->
+            Files.readString(repositoryRoot.resolve("classic/plugins/ArcFarms/$path")) shouldBe Files.readString(root.resolve(path))
+        }
     }
 
     test("invalid mine contract is rejected before startup") {
         val root = resourceTree()
         val configPath = root.resolve("config.yml")
         configPath.writeText(
-            Files.readString(configPath).replace("hazard-trigger: 20", "hazard-trigger: 48"),
+            Files.readString(configPath).replace("hazard-trigger: 6", "hazard-trigger: 16"),
         )
 
         shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(root) }

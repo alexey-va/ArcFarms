@@ -4,7 +4,7 @@ plugins {
     jacoco
 }
 group = "ru.ruscrafting"
-version = "0.1.0"
+version = "0.2.0"
 description = "Shared farm, lumbermill, and mine activities for RusCrafting"
 
 repositories {

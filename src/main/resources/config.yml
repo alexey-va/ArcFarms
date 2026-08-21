@@ -11,7 +11,7 @@ ui:
 
 state:
   save-seconds: 10
-  completed-cooldown-seconds: 180
+  completed-cooldown-seconds: 60
 
 navigation:
   farm-command: warp farm
@@ -24,14 +24,14 @@ farm-zones:
     world: sp11
     region: farm
     permission: arcfarms.farm
-    shift-seconds: 900
-    golden-trigger-percent: 40
+    incident-trigger-percent: 35
+    incident-quota: 4
     golden-window-seconds: 45
     crops: [WHEAT, CARROTS, POTATOES, BEETROOTS]
     orders:
-      miners_rations: [WHEAT:96, CARROTS:64, POTATOES:64]
-      bakery_supply: [WHEAT:160, BEETROOTS:48]
-      market_crates: [CARROTS:72, POTATOES:72, BEETROOTS:72]
+      miners_rations: [WHEAT:16, CARROTS:8, POTATOES:8]
+      bakery_supply: [WHEAT:24, BEETROOTS:8]
+      market_crates: [CARROTS:8, POTATOES:8, BEETROOTS:8]
 
 lumber-zones:
   communal_lumbermill:
@@ -40,10 +40,9 @@ lumber-zones:
     region: spawn_lumbermill
     station-region: spawn_lumberhouse
     permission: arcfarms.lumber
-    shift-seconds: 900
-    felling-quota: 96
-    processing-quota: 24
-    processing-per-use: 4
+    felling-quota: 16
+    processing-quota: 6
+    processing-per-use: 2
     species: [OAK, SPRUCE, BIRCH, JUNGLE, ACACIA, DARK_OAK, MANGROVE, CHERRY]
     station-materials: [STONECUTTER, GRINDSTONE, SMITHING_TABLE, LOOM]
 
@@ -54,11 +53,9 @@ mine-zones:
     world: sp11
     region: mine1
     permission: arcfarms.mine
-    shift-seconds: 720
-    cart-quota: 48
-    hazard-trigger: 20
-    supports-required: 3
-    extraction-seconds: 45
+    cart-quota: 16
+    hazard-trigger: 6
+    supports-required: 1
     restore-seconds: 60
     temp-material: COBBLESTONE
     base-material: STONE
@@ -69,11 +66,9 @@ mine-zones:
     world: sp11
     region: mine2
     permission: arcfarms.mine
-    shift-seconds: 720
-    cart-quota: 48
-    hazard-trigger: 20
-    supports-required: 3
-    extraction-seconds: 45
+    cart-quota: 16
+    hazard-trigger: 6
+    supports-required: 1
     restore-seconds: 60
     temp-material: BLACK_CONCRETE
     base-material: SANDSTONE
@@ -84,11 +79,9 @@ mine-zones:
     world: sp11
     region: minehell
     permission: arcfarms.mine
-    shift-seconds: 720
-    cart-quota: 48
-    hazard-trigger: 20
-    supports-required: 4
-    extraction-seconds: 40
+    cart-quota: 16
+    hazard-trigger: 6
+    supports-required: 1
     restore-seconds: 75
     temp-material: BLACK_CONCRETE
     base-material: NETHERRACK
@@ -99,11 +92,9 @@ mine-zones:
     world: sp11
     region: minelush
     permission: arcfarms.mine
-    shift-seconds: 720
-    cart-quota: 48
-    hazard-trigger: 20
-    supports-required: 3
-    extraction-seconds: 50
+    cart-quota: 16
+    hazard-trigger: 6
+    supports-required: 1
     restore-seconds: 60
     temp-material: COBBLESTONE
     base-material: STONE

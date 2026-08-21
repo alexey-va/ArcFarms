@@ -1,34 +1,47 @@
 # ArcFarms
 
 Standalone RusCrafting Paper plugin that turns the existing shared farm,
-lumbermill, and regenerating mine into three short cooperative activities.
+lumbermill, and regenerating mine into three persistent cooperative activities.
 It uses the existing worlds and WorldGuard regions; it does not add a season,
 currency, payout, tract restoration, or another game mode.
+
+Every active objective is deliberately solo-completable and has no inactivity
+deadline. Zero players may leave it untouched indefinitely; the exact shared
+progress resumes when somebody returns. Only a completed objective enters the
+short configured cooldown before the next one becomes available.
 
 ## Player flows
 
 ### Harvest shift
 
-Harvesting a mature crop starts a shared order. Only the requested crops fill
-the order. At the configured progress threshold a short golden-harvest window
-temporarily doubles one remaining crop. The shift ends with participant and
+Harvesting a mature crop starts a small shared order. Only the requested crops
+fill it. At the configured threshold a non-destructive pest outbreak becomes a
+second, persistent rescue counter over one requested crop; it never removes or
+blocks the main order progress. Resolving it starts a short golden-harvest
+window that doubles one remaining crop. The shift ends with participant and
 top-contributor recognition; normal crop drops remain the material outcome.
 
 ### Lumber order
 
-The shift names one requested wood species. Cutting that species fills the raw
-timber quota. The activity then moves to processing: players use a configured
-sawmill block inside the station region until the batch is complete. Logs still
-drop normally; processing does not consume inventory items.
+The order names one requested wood species. Cutting that species fills a small
+raw-timber quota. The activity then moves to processing: players use a
+configured sawmill block inside the station region until the batch is complete.
+Logs still drop normally; processing does not consume inventory items, and both
+phases wait indefinitely.
 
 ### Mine expedition
 
-Each configured mine is a route with its own block mix. Mining fills a shared
-cart and eventually triggers an instability phase. Players stabilize the face
-by sneak-right-clicking a block with a pickaxe. Once the cart is full, one
-contributor must leave the mine before the extraction timer expires. Ore is
-kept even if extraction fails. Broken mine blocks are durably journaled before
-replacement and regenerate from the configured weighted material table.
+Each configured mine is a route with its own block mix. Mining fills a small
+shared cart and triggers one instability phase. Players stabilize the face by
+sneak-right-clicking a block with a pickaxe. Once the cart is full, any later
+player can deliver it by leaving the mine; there is no extraction timer. Broken
+mine blocks are durably journaled before replacement and regenerate from the
+configured weighted material table.
+
+Farm incidents, mine instability, phase changes, and completions use localized
+titles, boss bars, sounds, and particles. Completion fireworks are client-side
+particles and sounds only: no firework entity, explosion, damage, or block
+change is created.
 
 ## Commands
 
@@ -43,8 +56,9 @@ a shift.
 
 ## Runtime ownership
 
-- Tracked configuration: `plugins/ArcFarms/config.yml`.
-- Bundled locale defaults: `lang/ru.yml`, `lang/en.yml`.
+- Tracked configuration and active locales: `plugins/ArcFarms/config.yml` and
+  `plugins/ArcFarms/lang/{ru,en}.yml` on `classic`.
+- The same locale files are bundled as first-install defaults in the JAR.
 - Server-owned state: `plugins/ArcFarms/data/`.
 - WorldGuard is required. A zone may use a named WorldGuard region or explicit
   cuboid bounds (the latter is primarily for the isolated lab).
@@ -55,7 +69,7 @@ a shift.
 ../arc-core/gradlew -p . clean check shadowJar
 ```
 
-The deployable artifact is `build/libs/ArcFarms-0.1.0.jar`.
+The deployable artifact is `build/libs/ArcFarms-0.2.0.jar`.
 
 ## Isolated gameplay QA
 

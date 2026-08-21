@@ -5,6 +5,7 @@ import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.JoinConfiguration
 import net.kyori.adventure.title.Title
 import org.bukkit.Bukkit
+import org.bukkit.Color
 import org.bukkit.GameMode
 import org.bukkit.Location
 import org.bukkit.Material
@@ -224,7 +225,12 @@ class ArcFarmsService(
             val order = currentOrder(runtime)
             val done = order?.let(runtime.state::completed) ?: 0
             val total = order?.totalRequired ?: 0
-            add(ActivityStatus(ActivityKind.FARM, runtime.settings.id, "phase.farm.${runtime.state.phase.name.lowercase()}", "$done/$total"))
+            val progress = if (runtime.state.phase == FarmPhase.INCIDENT) {
+                "${runtime.state.incidentProgress}/${runtime.state.incidentRequired}"
+            } else {
+                "$done/$total"
+            }
+            add(ActivityStatus(ActivityKind.FARM, runtime.settings.id, "phase.farm.${runtime.state.phase.name.lowercase()}", progress))
         }
         lumbermills.forEach { runtime ->
             val progress = if (runtime.state.phase == LumberPhase.PROCESSING) {
@@ -282,8 +288,8 @@ class ArcFarmsService(
                 orderMap,
                 orders,
                 FarmRules(
-                    configured.shiftSeconds * 1000L,
-                    configured.goldenTriggerPercent,
+                    configured.incidentTriggerPercent,
+                    configured.incidentQuota,
                     configured.goldenWindowSeconds * 1000L,
                     settings.completedCooldownSeconds * 1000L,
                 ),
@@ -305,7 +311,6 @@ class ArcFarmsService(
                 region,
                 station,
                 LumberRules(
-                    configured.shiftSeconds * 1000L,
                     configured.fellingQuota,
                     configured.processingQuota,
                     configured.processingPerUse,
@@ -324,11 +329,9 @@ class ArcFarmsService(
                 configured,
                 region,
                 MineRules(
-                    configured.shiftSeconds * 1000L,
                     configured.cartQuota,
                     configured.hazardTrigger,
                     configured.supportsRequired,
-                    configured.extractionSeconds * 1000L,
                     settings.completedCooldownSeconds * 1000L,
                 ),
                 MaterialRules.material(configured.temporaryMaterial),
@@ -432,7 +435,7 @@ class ArcFarmsService(
         val order = currentOrder(runtime) ?: return
         val result = FarmShiftEngine.harvest(runtime.state, order, runtime.rules, crop, player.uniqueId, now)
         applyFarmResult(runtime, result, player)
-        if (!result.accepted) {
+        if (!result.accepted && ShiftEvent.COMPLETED !in result.events) {
             val crops = Component.join(
                 JoinConfiguration.commas(true),
                 order.required.filter { (name, amount) -> (runtime.state.progress[name] ?: 0) < amount }
@@ -585,7 +588,6 @@ class ArcFarmsService(
         runtime.state = result.state
         if (actor != null && result.contribution > 0) recordContribution(actor.uniqueId, ActivityKind.FARM, result.contribution)
         result.events.forEach { event ->
-            val order = currentOrder(runtime)
             when (event) {
                 ShiftEvent.STARTED -> broadcast(
                     runtime.region,
@@ -595,6 +597,45 @@ class ArcFarmsService(
                         mapOf("order" to locale.renderPath("order.farm.${runtime.state.orderId}", player))
                     },
                 )
+                ShiftEvent.INCIDENT_STARTED -> {
+                    broadcast(
+                        runtime.region,
+                        MessageKey.FARM_INCIDENT_STARTED,
+                        mapOf(
+                            "crop" to MaterialRules.cropComponent(MaterialRules.material(requireNotNull(runtime.state.incidentCrop))),
+                            "total" to locale.text(runtime.state.incidentRequired),
+                        ),
+                        Sound.ENTITY_BEE_LOOP_AGGRESSIVE,
+                        title = true,
+                    )
+                    warningBurst(runtime.region)
+                    persistAsync()
+                }
+                ShiftEvent.INCIDENT_PROGRESS -> if (actor != null) {
+                    actor.sendActionBar(
+                        locale.render(
+                            MessageKey.FARM_INCIDENT_PROGRESS,
+                            actor,
+                            mapOf(
+                                "done" to locale.text(runtime.state.incidentProgress),
+                                "total" to locale.text(runtime.state.incidentRequired),
+                            ),
+                        ),
+                    )
+                    if (settings.particles) {
+                        actor.spawnParticle(Particle.COMPOSTER, actor.location.add(0.0, 1.0, 0.0), 6, 0.35, 0.4, 0.35, 0.02)
+                    }
+                }
+                ShiftEvent.INCIDENT_RESOLVED -> {
+                    broadcast(
+                        runtime.region,
+                        MessageKey.FARM_INCIDENT_RESOLVED,
+                        sound = Sound.ENTITY_VILLAGER_YES,
+                        title = true,
+                    )
+                    successBurst(runtime.region)
+                    persistAsync()
+                }
                 ShiftEvent.GOLDEN_STARTED -> broadcast(
                     runtime.region,
                     MessageKey.FARM_GOLDEN_STARTED,
@@ -616,12 +657,11 @@ class ArcFarmsService(
                         title = true,
                     )
                     announceWinner(runtime.region, runtime.state.contributors)
+                    celebration(runtime.region)
                     persistAsync()
                 }
-                ShiftEvent.TIMED_OUT -> broadcast(runtime.region, MessageKey.FARM_TIMED_OUT, sound = Sound.BLOCK_NOTE_BLOCK_BASS)
                 else -> Unit
             }
-            if (order == null) return@forEach
         }
     }
 
@@ -636,12 +676,15 @@ class ArcFarmsService(
                     mapOf("wood" to MaterialRules.woodComponent(requireNotNull(runtime.state.species))),
                     Sound.BLOCK_WOOD_PLACE,
                 )
-                ShiftEvent.PHASE_CHANGED -> broadcast(
-                    runtime.region,
-                    MessageKey.LUMBER_PROCESSING,
-                    sound = Sound.BLOCK_PISTON_EXTEND,
-                    title = true,
-                )
+                ShiftEvent.PHASE_CHANGED -> {
+                    broadcast(
+                        runtime.region,
+                        MessageKey.LUMBER_PROCESSING,
+                        sound = Sound.BLOCK_PISTON_EXTEND,
+                        title = true,
+                    )
+                    successBurst(runtime.region)
+                }
                 ShiftEvent.COMPLETED -> {
                     recordCompletion(ActivityKind.LUMBER, runtime.state.contributors)
                     broadcast(
@@ -652,9 +695,9 @@ class ArcFarmsService(
                         title = true,
                     )
                     announceWinner(listOf(runtime.region, runtime.station), runtime.state.contributors)
+                    celebration(listOf(runtime.region, runtime.station))
                     persistAsync()
                 }
-                ShiftEvent.TIMED_OUT -> broadcast(runtime.region, MessageKey.LUMBER_TIMED_OUT, sound = Sound.BLOCK_NOTE_BLOCK_BASS)
                 else -> Unit
             }
         }
@@ -676,28 +719,31 @@ class ArcFarmsService(
                 ShiftEvent.HAZARD_STARTED -> {
                     broadcast(runtime.region, MessageKey.MINE_HAZARD_STARTED, sound = Sound.ENTITY_GENERIC_EXPLODE, title = true)
                     broadcast(runtime.region, MessageKey.MINE_HAZARD_HELP)
+                    warningBurst(runtime.region)
                     persistAsync()
                 }
-                ShiftEvent.HAZARD_RESOLVED -> broadcast(
-                    runtime.region,
-                    MessageKey.MINE_HAZARD_RESOLVED,
-                    sound = Sound.BLOCK_ANVIL_USE,
-                    title = true,
-                )
+                ShiftEvent.HAZARD_RESOLVED -> {
+                    broadcast(
+                        runtime.region,
+                        MessageKey.MINE_HAZARD_RESOLVED,
+                        sound = Sound.BLOCK_ANVIL_USE,
+                        title = true,
+                    )
+                    successBurst(runtime.region)
+                }
                 ShiftEvent.EXTRACTION_STARTED -> broadcast(
                     runtime.region,
                     MessageKey.MINE_EXTRACTION_STARTED,
-                    mapOf("seconds" to locale.text(runtime.rules.extractionMillis / 1000)),
-                    Sound.BLOCK_BELL_RESONATE,
+                    sound = Sound.BLOCK_BELL_RESONATE,
                     title = true,
                 )
                 ShiftEvent.COMPLETED -> {
                     recordCompletion(ActivityKind.MINE, runtime.state.contributors)
                     broadcast(runtime.region, MessageKey.MINE_COMPLETED, sound = Sound.UI_TOAST_CHALLENGE_COMPLETE, title = true)
                     announceWinner(runtime.region, runtime.state.contributors)
+                    celebration(runtime.region)
                     persistAsync()
                 }
-                ShiftEvent.TIMED_OUT -> broadcast(runtime.region, MessageKey.MINE_TIMED_OUT, sound = Sound.BLOCK_NOTE_BLOCK_BASS)
                 ShiftEvent.PROGRESS -> if (runtime.state.phase == MinePhase.HAZARD && actor != null) {
                     actor.sendActionBar(
                         locale.render(
@@ -744,7 +790,7 @@ class ArcFarmsService(
             if (result.events.isNotEmpty()) applyMineResult(runtime, result, null)
         }
         restoreMineBlocks(now)
-        updatePlayerGuidance(now)
+        updatePlayerGuidance()
     }
 
     private fun restoreMineBlocks(now: Long) {
@@ -762,25 +808,48 @@ class ArcFarmsService(
         }
     }
 
-    private fun updatePlayerGuidance(now: Long) {
+    private fun updatePlayerGuidance() {
         val expectedBars = mutableSetOf<BarKey>()
         farms.forEach { runtime ->
-            if (runtime.state.phase !in setOf(FarmPhase.HARVESTING, FarmPhase.GOLDEN_HARVEST)) return@forEach
+            if (runtime.state.phase !in setOf(FarmPhase.HARVESTING, FarmPhase.INCIDENT, FarmPhase.GOLDEN_HARVEST)) return@forEach
             val order = currentOrder(runtime) ?: return@forEach
             val done = runtime.state.completed(order)
             players(runtime.region).forEach { player ->
-                val component = locale.render(
-                    MessageKey.FARM_ACTIONBAR,
-                    player,
-                    mapOf(
-                        "order" to locale.renderPath("order.farm.${order.id}", player),
-                        "done" to locale.text(done),
-                        "total" to locale.text(order.totalRequired),
-                        "seconds" to locale.text(remainingSeconds(runtime.state.deadlineAt, now)),
-                    ),
-                )
+                val incident = runtime.state.phase == FarmPhase.INCIDENT
+                val component = if (incident) {
+                    locale.render(
+                        MessageKey.FARM_INCIDENT_ACTIONBAR,
+                        player,
+                        mapOf(
+                            "crop" to MaterialRules.cropComponent(MaterialRules.material(requireNotNull(runtime.state.incidentCrop))),
+                            "done" to locale.text(runtime.state.incidentProgress),
+                            "total" to locale.text(runtime.state.incidentRequired),
+                        ),
+                    )
+                } else {
+                    locale.render(
+                        MessageKey.FARM_ACTIONBAR,
+                        player,
+                        mapOf(
+                            "order" to locale.renderPath("order.farm.${order.id}", player),
+                            "done" to locale.text(done),
+                            "total" to locale.text(order.totalRequired),
+                        ),
+                    )
+                }
                 player.sendActionBar(component)
-                updateBar(player, "farm:${runtime.settings.id}", component, runtime.state.progressRatio(order).toFloat(), BossBar.Color.GREEN, expectedBars)
+                updateBar(
+                    player,
+                    "farm:${runtime.settings.id}",
+                    component,
+                    if (incident) runtime.state.incidentProgress.toFloat() / runtime.state.incidentRequired else runtime.state.progressRatio(order).toFloat(),
+                    when (runtime.state.phase) {
+                        FarmPhase.INCIDENT -> BossBar.Color.RED
+                        FarmPhase.GOLDEN_HARVEST -> BossBar.Color.YELLOW
+                        else -> BossBar.Color.GREEN
+                    },
+                    expectedBars,
+                )
             }
         }
         lumbermills.forEach { runtime ->
@@ -869,6 +938,15 @@ class ArcFarmsService(
                 }
             }
         }
+        farms.filter { it.state.phase == FarmPhase.INCIDENT }.forEach { runtime ->
+            val target = MaterialRules.material(requireNotNull(runtime.state.incidentCrop))
+            players(runtime.region).forEach { player ->
+                nearbyBlocks(player.location, runtime.region, 5, 3, 12) { it.type == target }.forEach { block ->
+                    player.spawnParticle(Particle.ANGRY_VILLAGER, block.location.toCenterLocation().add(0.0, 0.45, 0.0), 1)
+                    player.spawnParticle(Particle.SMOKE, block.location.toCenterLocation(), 2, 0.18, 0.2, 0.18, 0.01)
+                }
+            }
+        }
         lumbermills.filter { it.state.phase == LumberPhase.FELLING }.forEach { runtime ->
             val species = runtime.state.species ?: return@forEach
             players(runtime.region).forEach { player ->
@@ -940,6 +1018,47 @@ class ArcFarmsService(
             player.sendMessage(message)
             if (title) player.showTitle(Title.title(message, Component.empty(), Title.Times.times(Duration.ofMillis(250), Duration.ofSeconds(2), Duration.ofMillis(500))))
             if (sound != null && settings.sounds) player.playSound(player.location, sound, 0.8f, 1.0f)
+        }
+    }
+
+    private fun warningBurst(region: ActivityRegion) {
+        if (!settings.particles) return
+        players(region).forEach { player ->
+            player.spawnParticle(Particle.LARGE_SMOKE, player.location.add(0.0, 1.0, 0.0), 12, 1.0, 0.45, 1.0, 0.02)
+            player.spawnParticle(Particle.ANGRY_VILLAGER, player.location.add(0.0, 1.8, 0.0), 4, 0.8, 0.3, 0.8, 0.0)
+        }
+    }
+
+    private fun successBurst(region: ActivityRegion) {
+        if (!settings.particles) return
+        players(region).forEach { player ->
+            player.spawnParticle(Particle.HAPPY_VILLAGER, player.location.add(0.0, 1.0, 0.0), 18, 1.0, 0.7, 1.0, 0.03)
+            player.spawnParticle(Particle.END_ROD, player.location.add(0.0, 1.0, 0.0), 10, 0.8, 0.6, 0.8, 0.02)
+        }
+    }
+
+    private fun celebration(region: ActivityRegion) = celebration(listOf(region))
+
+    private fun celebration(regions: Collection<ActivityRegion>) {
+        val recipients = regions.flatMap(::players).distinctBy(Player::getUniqueId)
+        recipients.forEach { player ->
+            if (settings.particles) {
+                player.spawnParticle(Particle.FIREWORK, player.location.add(0.0, 1.2, 0.0), 28, 1.4, 1.0, 1.4, 0.08)
+                player.spawnParticle(Particle.FLASH, player.location.add(0.0, 1.6, 0.0), 2, 0.5, 0.4, 0.5, 0.0, Color.LIME)
+            }
+            if (settings.sounds) player.playSound(player.location, Sound.ENTITY_FIREWORK_ROCKET_LAUNCH, 0.7f, 1.15f)
+        }
+        if (recipients.isEmpty()) return
+        Tasks.scheduler.runLater(8L) {
+            recipients.filter(Player::isOnline).forEach { player ->
+                if (settings.particles) {
+                    player.spawnParticle(Particle.FIREWORK, player.location.add(0.0, 2.0, 0.0), 36, 1.8, 1.2, 1.8, 0.12)
+                }
+                if (settings.sounds) {
+                    player.playSound(player.location, Sound.ENTITY_FIREWORK_ROCKET_BLAST, 0.9f, 1.0f)
+                    player.playSound(player.location, Sound.ENTITY_FIREWORK_ROCKET_TWINKLE, 0.65f, 1.2f)
+                }
+            }
         }
     }
 
