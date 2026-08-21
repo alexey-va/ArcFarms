@@ -26,10 +26,25 @@ class ArcFarmsCommand(
         when (args[0].lowercase()) {
             "status" -> sendStatus(sender)
             "top" -> sendTop(sender, args.getOrNull(1))
+            "travel" -> travel(sender, args.getOrNull(1))
             "reload" -> reload(sender)
             else -> sender.sendMessage(locale.render(MessageKey.HELP, sender))
         }
         return true
+    }
+
+    private fun travel(sender: CommandSender, rawKind: String?) {
+        val player = sender as? Player
+        if (player == null) {
+            sender.sendMessage(locale.render(MessageKey.PLAYER_ONLY, sender))
+            return
+        }
+        val kind = parseKind(rawKind)
+        if (kind == null) {
+            sender.sendMessage(locale.render(MessageKey.BAD_ACTIVITY, sender))
+            return
+        }
+        service.travel(player, kind)
     }
 
     private fun sendStatus(sender: CommandSender) {
@@ -130,9 +145,12 @@ class ArcFarmsCommand(
             1 -> buildList {
                 add("status")
                 add("top")
+                add("travel")
                 if (sender.hasPermission("arcfarms.admin")) add("reload")
             }.filter { it.startsWith(args[0], ignoreCase = true) }
-            2 -> if (args[0].equals("top", true)) listOf("farm", "lumber", "mine").filter { it.startsWith(args[1], true) } else emptyList()
+            2 -> if (args[0].equals("top", true) || args[0].equals("travel", true)) {
+                listOf("farm", "lumber", "mine").filter { it.startsWith(args[1], true) }
+            } else emptyList()
             else -> emptyList()
         }
 

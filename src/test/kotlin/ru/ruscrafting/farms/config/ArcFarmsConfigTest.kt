@@ -5,6 +5,8 @@ import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldStartWith
 import io.kotest.assertions.throwables.shouldThrow
+import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import ru.arc.config.Config
 import ru.arc.redis.RedisModuleConfig
 import java.nio.file.Files
@@ -23,10 +25,18 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().permission shouldStartWith "arcfarms."
         settings.lumbermills.single().permission shouldStartWith "arcfarms."
         settings.mines.all { it.permission.startsWith("arcfarms.") } shouldBe true
-        settings.farms.single().orders.maxOf { order -> order.required.values.sum() } shouldBe 32
+        settings.farms.single().orders.maxOf { order -> order.required.values.sum() } shouldBe 320
+        settings.farms.single().orders.associate { it.id to it.required } shouldBe mapOf(
+            "miners_rations" to mapOf("WHEAT" to 160, "CARROTS" to 80, "POTATOES" to 80),
+            "bakery_supply" to mapOf("WHEAT" to 240, "BEETROOTS" to 80),
+            "market_crates" to mapOf("CARROTS" to 80, "POTATOES" to 80, "BEETROOTS" to 80),
+        )
         settings.serverId shouldBe "spawn"
         settings.network.allowedOrigins shouldBe setOf("spawn", "survival", "parkour")
         settings.network.workdayEnabled shouldBe true
+        settings.network.playerAnnouncementsEnabled shouldBe false
+        settings.destinations.getValue("farm").server shouldBe "spawn"
+        settings.destinations.getValue("farm").world shouldBe "sp11"
         settings.requiresWorldGuard shouldBe true
         settings.farms.single().incidentQuota shouldBe 4
         settings.lumbermills.single().fellingQuota shouldBe 16
@@ -58,7 +68,7 @@ class ArcFarmsConfigTest : FunSpec({
                 settings.farms shouldBe emptyList()
                 settings.lumbermills shouldBe emptyList()
                 settings.mines shouldBe emptyList()
-                settings.network.transferCommand shouldBe "server spawn"
+                settings.destinations.values.all { it.server == "spawn" } shouldBe true
             }
             ArcFarmsLocale.validateFiles(root, settings)
         }
@@ -83,6 +93,25 @@ class ArcFarmsConfigTest : FunSpec({
         shouldThrow<IllegalArgumentException> { ArcFarmsLocale.validateFiles(root, settings) }
     }
 
+    test("hex-colored farm bossbar renders without leaking MiniMessage tags") {
+        val root = resourceTree()
+        val settings = ArcFarmsConfig.inspect(root)
+        val locale = ArcFarmsLocale(root) { settings }
+        val rendered = locale.render(
+            MessageKey.FARM_BOSSBAR,
+            values = mapOf(
+                "order" to Component.text("Заказ"),
+                "crop" to Component.text("Пшеница"),
+                "requirements" to Component.text("Пшеница 0/2, Морковь 0/2"),
+                "done" to Component.text("0"),
+                "total" to Component.text("4"),
+            ),
+        )
+
+        PlainTextComponentSerializer.plainText().serialize(rendered) shouldBe
+            "Заказ • Пшеница 0/2, Морковь 0/2 • всего 0/4"
+    }
+
     test("isolated lab profile is bounded and locale-complete") {
         val repositoryRoot = Path.of(System.getProperty("arcfarms.repositoryRoot"))
         val root = resourceTree(repositoryRoot.resolve("scripts/lab/plugin-configs/ArcFarms/config.yml"))
@@ -90,8 +119,13 @@ class ArcFarmsConfigTest : FunSpec({
 
         settings.serverId shouldBe "lab"
         settings.network.allowedOrigins shouldBe setOf("lab")
+        settings.network.playerAnnouncementsEnabled shouldBe false
+        settings.debug.enabled shouldBe true
+        settings.destinations.getValue("farm").server shouldBe "lab"
+        settings.destinations.getValue("farm").x shouldBe -5.5
         settings.requiresWorldGuard shouldBe false
         settings.farms.single().orders.single().id shouldBe "lab_order"
+        settings.farms.single().pestEntity shouldBe "SILVERFISH"
         settings.lumbermills.single().fellingQuota shouldBe 2
         settings.mines.single().cartQuota shouldBe 4
         settings.farms.single().reference.bounds!!.volume shouldBe 17_334L

@@ -44,24 +44,4 @@ object MaterialRules {
         return weights.keys.last()
     }
 
-    fun removeOneReplantItem(crop: Material, drops: Collection<ItemStack>): List<ItemStack> {
-        val replant = when (crop) {
-            Material.WHEAT -> Material.WHEAT_SEEDS
-            Material.BEETROOTS -> Material.BEETROOT_SEEDS
-            Material.CARROTS -> Material.CARROT
-            Material.POTATOES -> Material.POTATO
-            Material.NETHER_WART -> Material.NETHER_WART
-            Material.TORCHFLOWER_CROP -> Material.TORCHFLOWER_SEEDS
-            else -> null
-        }
-        var removed = false
-        return drops.mapNotNull { original ->
-            val copy = original.clone()
-            if (!removed && replant != null && copy.type == replant) {
-                copy.amount -= 1
-                removed = true
-            }
-            copy.takeIf { it.amount > 0 }
-        }
-    }
 }

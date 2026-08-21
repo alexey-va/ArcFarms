@@ -7,13 +7,25 @@ import java.nio.file.Path
 
 data class NetworkSettings(
     val enabled: Boolean,
-    val hubServer: String,
-    val transferCommand: String,
     val allowedOrigins: Set<String>,
-    val callsEnabled: Boolean,
-    val completionsEnabled: Boolean,
+    val playerAnnouncementsEnabled: Boolean,
     val workdayEnabled: Boolean,
     val nodeProbeEnabled: Boolean,
+    val travelTicketSeconds: Int,
+)
+
+data class DebugSettings(
+    val enabled: Boolean,
+)
+
+data class TeleportDestination(
+    val server: String,
+    val world: String,
+    val x: Double,
+    val y: Double,
+    val z: Double,
+    val yaw: Float,
+    val pitch: Float,
 )
 
 data class CuboidBounds(
@@ -52,6 +64,8 @@ data class FarmZoneSettings(
     val permission: String,
     val incidentTriggerPercent: Int,
     val incidentQuota: Int,
+    val pestEntity: String,
+    val pestSpawnRadius: Int,
     val goldenWindowSeconds: Int,
     val crops: Set<String>,
     val orders: List<FarmOrderSettings>,
@@ -99,7 +113,8 @@ class ArcFarmsConfig private constructor(
     val sounds: Boolean,
     val saveSeconds: Int,
     val completedCooldownSeconds: Int,
-    val navigation: Map<String, String>,
+    val debug: DebugSettings,
+    val destinations: Map<String, TeleportDestination>,
     val farms: List<FarmZoneSettings>,
     val lumbermills: List<LumberZoneSettings>,
     val mines: List<MineZoneSettings>,
@@ -138,6 +153,8 @@ class ArcFarmsConfig private constructor(
                     permission = permission(section.string("permission", "arcfarms.farm")),
                     incidentTriggerPercent = section.int("incident-trigger-percent", 35).checked("incident-trigger-percent", 1, 99),
                     incidentQuota = section.int("incident-quota", 4).checked("incident-quota", 1, 64),
+                    pestEntity = entityName(section.string("pest-entity", "SILVERFISH")),
+                    pestSpawnRadius = section.int("pest-spawn-radius", 6).checked("pest-spawn-radius", 2, 16),
                     goldenWindowSeconds = section.int("golden-window-seconds", 45).checked("golden-window-seconds", 5, 600),
                     crops = crops,
                     orders = orders,
@@ -194,26 +211,20 @@ class ArcFarmsConfig private constructor(
                 }
             }
 
-            val navigation = mapOf(
-                "farm" to command(config.string("navigation.farm-command", "warp farm")),
-                "lumber" to command(config.string("navigation.lumber-command", "warp lumber")),
-                "mine" to command(config.string("navigation.mine-command", "warp mine")),
-            )
             val allowedOrigins = config.stringList("network.allowed-origins")
                 .ifEmpty { listOf("spawn", "survival", "parkour") }
                 .mapTo(linkedSetOf()) { serverId(it, "network.allowed-origins") }
             require(serverId in allowedOrigins) { "network.allowed-origins must include server-id" }
-            val hubServer = serverId(config.string("network.hub-server", "spawn"), "network.hub-server")
-            require(hubServer in allowedOrigins) { "network.allowed-origins must include network.hub-server" }
+            val destinations = listOf("farm", "lumber", "mine").associateWith { activity ->
+                parseDestination(config, activity, allowedOrigins)
+            }
             val network = NetworkSettings(
                 enabled = config.boolean("network.enabled", true),
-                hubServer = hubServer,
-                transferCommand = command(config.string("network.transfer-command", "server $hubServer")),
                 allowedOrigins = allowedOrigins,
-                callsEnabled = config.boolean("network.calls", true),
-                completionsEnabled = config.boolean("network.completions", true),
+                playerAnnouncementsEnabled = config.boolean("network.player-announcements", false),
                 workdayEnabled = config.boolean("network.workday", true),
                 nodeProbeEnabled = config.boolean("network.node-probe", true),
+                travelTicketSeconds = config.int("network.travel-ticket-seconds", 30).checked("network.travel-ticket-seconds", 10, 300),
             )
             return ArcFarmsConfig(
                 enabled = config.boolean("enabled", true),
@@ -226,7 +237,10 @@ class ArcFarmsConfig private constructor(
                 sounds = config.boolean("ui.sounds", true),
                 saveSeconds = config.int("state.save-seconds", 10).checked("state.save-seconds", 1, 300),
                 completedCooldownSeconds = config.int("state.completed-cooldown-seconds", 180).checked("completed cooldown", 0, 3600),
-                navigation = navigation,
+                debug = DebugSettings(
+                    enabled = config.boolean("debug.enabled", false),
+                ),
+                destinations = destinations,
                 farms = farms,
                 lumbermills = lumbermills,
                 mines = mines.sortedByDescending(MineZoneSettings::priority),
@@ -251,6 +265,32 @@ class ArcFarmsConfig private constructor(
                 CuboidBounds(a[0], a[1], a[2], b[0], b[1], b[2])
             } else null
             return ZoneReference(world, region, bounds)
+        }
+
+        private fun parseDestination(
+            config: Config,
+            activity: String,
+            allowedOrigins: Set<String>,
+        ): TeleportDestination {
+            val path = "destinations.$activity"
+            val server = serverId(config.string("$path.server"), "$path.server")
+            require(server in allowedOrigins) { "$path.server must be present in network.allowed-origins" }
+            val world = config.string("$path.world").trim().also {
+                require(it.matches(Regex("[A-Za-z0-9._-]{1,128}"))) { "Invalid destination world: $it" }
+            }
+            fun coordinate(name: String, min: Double, max: Double): Double =
+                config.string("$path.$name").toDoubleOrNull()?.also {
+                    require(it.isFinite() && it in min..max) { "$path.$name is outside $min..$max" }
+                } ?: error("$path.$name must be a finite number")
+            return TeleportDestination(
+                server = server,
+                world = world,
+                x = coordinate("x", -30_000_000.0, 30_000_000.0),
+                y = coordinate("y", -2_048.0, 2_048.0),
+                z = coordinate("z", -30_000_000.0, 30_000_000.0),
+                yaw = coordinate("yaw", -360.0, 360.0).toFloat(),
+                pitch = coordinate("pitch", -90.0, 90.0).toFloat(),
+            )
         }
 
         private fun parseWeightedList(values: List<String>, label: String): LinkedHashMap<String, Int> {
@@ -281,16 +321,16 @@ class ArcFarmsConfig private constructor(
             require(it.matches(Regex("[A-Z0-9_]{2,64}"))) { "Invalid material name: $value" }
         }
 
+        private fun entityName(value: String): String = value.trim().uppercase().also {
+            require(it.matches(Regex("[A-Z0-9_]{2,64}"))) { "Invalid entity type: $value" }
+        }
+
         private fun speciesName(value: String): String = materialName(value).also {
             require(!it.endsWith("_LOG") && !it.endsWith("_WOOD")) { "Use a wood species, not a block material: $value" }
         }
 
         private fun permission(value: String): String = value.trim().also {
             require(it.matches(Regex("[a-z0-9._-]{1,128}"))) { "Invalid permission: $value" }
-        }
-
-        private fun command(value: String): String = value.trim().removePrefix("/").also {
-            require(it.length in 1..128 && '\n' !in it && '\r' !in it && ';' !in it) { "Invalid navigation command" }
         }
 
         private fun Int.checked(label: String, minimum: Int, maximum: Int): Int = also {

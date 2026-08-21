@@ -23,6 +23,7 @@ import ru.ruscrafting.farms.network.NetworkEvent
 import ru.ruscrafting.farms.network.NetworkSignal
 import ru.ruscrafting.farms.network.WorkdayState
 import ru.ruscrafting.farms.network.WorkdayUpdate
+import ru.ruscrafting.farms.network.TravelTicket
 import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -34,6 +35,7 @@ class ArcFarmsNetworkService(
     private val locale: ArcFarmsLocale,
     private val repository: ArcFarmsNetworkRepository,
     private val redis: RedisManager,
+    private val debug: ArcFarmsDebug = ArcFarmsDebug({ false }) {},
     private val clock: () -> Long = System::currentTimeMillis,
 ) : ActivityNetworkGateway, AutoCloseable {
     @Volatile
@@ -53,6 +55,7 @@ class ArcFarmsNetworkService(
         tasks += Tasks.scheduler.runLater(60L) { probe() }
         tasks += Tasks.scheduler.runTimer(1_200L, 1_200L) { maintain() }
         started = true
+        debug.event("network_started", "server" to settings().serverId, "announcements" to settings().network.playerAnnouncementsEnabled)
     }
 
     override fun signal(
@@ -65,12 +68,14 @@ class ArcFarmsNetworkService(
         require(signal !in setOf(NetworkSignal.ACTIVITY_COMPLETED, NetworkSignal.WORKDAY_STAMP, NetworkSignal.WORKDAY_COMPLETED)) {
             "Use the dedicated completion path for $signal"
         }
+        debug.event("network_signal", "signal" to signal, "activity" to activity, "actor" to actorName)
         emit(NetworkEvent.create(signal, activity, actorName), excludedPlayers)
     }
 
     override fun complete(activity: ActivityKind, actorName: String?, excludedPlayers: Set<UUID>) {
         val current = settings()
         if (!current.network.enabled) return
+        debug.event("network_completion", "activity" to activity, "actor" to actorName)
         emit(NetworkEvent.create(NetworkSignal.ACTIVITY_COMPLETED, activity, actorName), excludedPlayers)
         if (!current.network.workdayEnabled) return
         repository.markCompleted(activity).whenComplete { update, failure ->
@@ -113,13 +118,59 @@ class ArcFarmsNetworkService(
 
     override fun workday(): WorkdayState? = currentWorkday
 
+    override fun createTravelTicket(
+        playerId: UUID,
+        activity: ActivityKind,
+        destinationServer: String,
+    ) = repository.createTravelTicket(
+        playerId = playerId,
+        activity = activity,
+        destinationServer = destinationServer,
+        nowMs = clock(),
+        lifetimeMs = settings().network.travelTicketSeconds * 1_000L,
+    ).whenComplete { created, failure ->
+        debug.event(
+            "travel_ticket_created",
+            "player" to playerId,
+            "activity" to activity,
+            "destination" to destinationServer,
+            "created" to created,
+            "failure" to failure?.javaClass?.simpleName,
+        )
+    }
+
+    override fun claimTravelTicket(playerId: UUID, currentServer: String): java.util.concurrent.CompletableFuture<TravelTicket?> =
+        repository.claimTravelTicket(playerId, currentServer, clock()).whenComplete { ticket, failure ->
+            debug.event(
+                "travel_ticket_claimed",
+                "player" to playerId,
+                "server" to currentServer,
+                "activity" to ticket?.activity,
+                "claimed" to (ticket != null),
+                "failure" to failure?.javaClass?.simpleName,
+            )
+        }
+
     private fun receive(event: NetworkEvent, origin: String) {
         val current = settings()
-        if (!current.network.enabled || origin == current.serverId || origin !in current.network.allowedOrigins) return
+        if (!current.network.enabled || origin == current.serverId || origin !in current.network.allowedOrigins) {
+            debug.event("network_receive_skipped", "signal" to event.signal, "origin" to origin, "reason" to "origin_or_disabled")
+            return
+        }
         val now = clock()
-        if (event.occurredAtMs < now - EVENT_MAX_AGE_MS || event.occurredAtMs > now + EVENT_FUTURE_SKEW_MS) return
-        if (seenEvents.size >= MAX_SEEN_EVENTS) return
-        if (seenEvents.putIfAbsent(event.eventId, now) != null) return
+        if (event.occurredAtMs < now - EVENT_MAX_AGE_MS || event.occurredAtMs > now + EVENT_FUTURE_SKEW_MS) {
+            debug.event("network_receive_skipped", "signal" to event.signal, "origin" to origin, "reason" to "timestamp")
+            return
+        }
+        if (seenEvents.size >= MAX_SEEN_EVENTS) {
+            debug.event("network_receive_skipped", "signal" to event.signal, "origin" to origin, "reason" to "capacity")
+            return
+        }
+        if (seenEvents.putIfAbsent(event.eventId, now) != null) {
+            debug.event("network_receive_skipped", "signal" to event.signal, "origin" to origin, "reason" to "duplicate")
+            return
+        }
+        debug.event("network_received", "signal" to event.signal, "origin" to origin, "event_id" to event.eventId)
         Tasks.scheduler.runSync {
             when (event.signal) {
                 NetworkSignal.NODE_PROBE -> acknowledge(event, origin)
@@ -133,6 +184,7 @@ class ArcFarmsNetworkService(
     }
 
     private fun emit(event: NetworkEvent, excludedPlayers: Set<UUID>) {
+        debug.event("network_emitted", "signal" to event.signal, "event_id" to event.eventId, "excluded" to excludedPlayers.size)
         seenEvents[event.eventId] = clock()
         when (event.signal) {
             NetworkSignal.NODE_PROBE, NetworkSignal.NODE_ACK -> Unit
@@ -143,14 +195,18 @@ class ArcFarmsNetworkService(
 
     private fun deliver(event: NetworkEvent, excludedPlayers: Set<UUID>) {
         val current = settings()
+        if (!current.network.playerAnnouncementsEnabled) {
+            debug.event("network_delivery_skipped", "signal" to event.signal, "reason" to "announcements_disabled")
+            return
+        }
         val isCall = event.signal in CALL_SIGNALS
-        if (isCall && !current.network.callsEnabled) return
-        if (event.signal == NetworkSignal.ACTIVITY_COMPLETED && !current.network.completionsEnabled) return
         if (event.signal in WORKDAY_SIGNALS && !current.network.workdayEnabled) return
         val recipients = plugin.server.onlinePlayers.filterNot { it.uniqueId in excludedPlayers }
         when (event.signal) {
             NetworkSignal.WORKDAY_STAMP -> recipients.forEach { player ->
-                player.sendActionBar(render(event, player))
+                val message = render(event, player)
+                player.sendActionBar(message)
+                debug.message("actionbar", "network", MessageKey.NETWORK_WORKDAY_STAMP.path, player, message)
                 if (current.sounds) player.playSound(player.location, Sound.BLOCK_AMETHYST_BLOCK_CHIME, 0.55f, 1.35f)
             }
             NetworkSignal.WORKDAY_COMPLETED -> recipients.forEach { player -> celebrateWorkday(player, event) }
@@ -159,6 +215,7 @@ class ArcFarmsNetworkService(
                 var message = render(event, player)
                 if (isCall) message = message.append(Component.space()).append(callToAction(player, requireNotNull(event.activity)))
                 player.sendMessage(message)
+                debug.message("chat", "network", event.signal.name, player, message)
                 signalSound(player, event.signal)
             }
         }
@@ -193,9 +250,9 @@ class ArcFarmsNetworkService(
 
     private fun callToAction(player: Player, activity: ActivityKind): Component {
         val current = settings()
-        val onHub = current.serverId == current.network.hubServer
-        val command = if (onHub) current.navigation.getValue(activity.configKey) else current.network.transferCommand
-        val key = if (onHub) MessageKey.NETWORK_CALL_LOCAL else MessageKey.NETWORK_CALL_REMOTE
+        val onDestination = current.serverId == current.destinations.getValue(activity.configKey).server
+        val command = "arcfarms travel ${activity.configKey}"
+        val key = if (onDestination) MessageKey.NETWORK_CALL_LOCAL else MessageKey.NETWORK_CALL_REMOTE
         return locale.render(key, player)
             .clickEvent(ClickEvent.runCommand("/$command"))
             .hoverEvent(HoverEvent.showText(locale.render(MessageKey.NETWORK_CALL_HOVER, player)))
@@ -225,7 +282,7 @@ class ArcFarmsNetworkService(
                 Title.Times.times(Duration.ofMillis(250), Duration.ofSeconds(3), Duration.ofMillis(650)),
             ),
         )
-        player.sendMessage(message)
+        debug.message("title", "network", MessageKey.NETWORK_WORKDAY_COMPLETED.path, player, message)
         if (settings().sounds) {
             player.playSound(player.location, Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.9f, 1.0f)
             player.playSound(player.location, Sound.ENTITY_FIREWORK_ROCKET_BLAST, 0.55f, 1.2f)
@@ -288,6 +345,7 @@ class ArcFarmsNetworkService(
         val cutoff = clock() - EVENT_MAX_AGE_MS
         seenEvents.entries.removeIf { it.value < cutoff }
         pendingProbes.entries.removeIf { it.value < cutoff }
+        repository.cleanupExpiredTravelTickets(clock())
         if (!redis.isSubscriptionActive()) redis.init()
         refreshWorkday()
         if (clock() - lastProbeAtMs >= PROBE_INTERVAL_MS) probe()

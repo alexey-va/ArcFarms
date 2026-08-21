@@ -6,6 +6,9 @@ import org.bukkit.event.Listener
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryDragEvent
+import org.bukkit.event.entity.EntityDeathEvent
+import org.bukkit.event.entity.EntityChangeBlockEvent
+import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.event.player.PlayerQuitEvent
@@ -28,6 +31,15 @@ class ArcFarmsListener(
 
     @EventHandler
     fun onQuit(event: PlayerQuitEvent) = service.onQuit(event.player)
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    fun onJoin(event: PlayerJoinEvent) = service.onJoin(event.player)
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    fun onEntityDeath(event: EntityDeathEvent) = service.onEntityDeath(event)
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    fun onEntityChangeBlock(event: EntityChangeBlockEvent) = service.onEntityChangeBlock(event)
 
     @EventHandler
     fun onInventoryClick(event: InventoryClickEvent) = menu.onClick(event)

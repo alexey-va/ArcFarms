@@ -165,7 +165,7 @@ class ArcFarmsMenu(
             return
         }
         player.closeInventory()
-        player.performCommand(service.navigation(kind))
+        service.travel(player, kind)
     }
 
     private fun item(material: Material, name: Component, lore: List<Component>): ItemStack =

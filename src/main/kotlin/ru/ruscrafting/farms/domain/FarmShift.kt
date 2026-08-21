@@ -93,40 +93,20 @@ object FarmShiftEngine {
         if (state.phase !in setOf(FarmPhase.HARVESTING, FarmPhase.INCIDENT, FarmPhase.GOLDEN_HARVEST)) {
             return EngineResult(state, false, events = events)
         }
+        if (state.phase == FarmPhase.INCIDENT) return EngineResult(state, false, events = events)
         val required = order.required[crop] ?: return EngineResult(state, false, events = events)
         val before = state.progress[crop] ?: 0
-        val incidentDelta = if (state.phase == FarmPhase.INCIDENT && state.incidentCrop == crop) 1 else 0
-        if (before >= required && incidentDelta == 0) return EngineResult(state, false, events = events)
+        if (before >= required) return EngineResult(state, false, events = events)
 
         val multiplier = if (state.phase == FarmPhase.GOLDEN_HARVEST && state.goldenCrop == crop) 2 else 1
         val after = (before + multiplier).coerceAtMost(required)
         val orderDelta = after - before
-        val contribution = orderDelta + incidentDelta
+        val contribution = orderDelta
         state = state.copy(
             progress = state.progress + (crop to after),
-            incidentProgress = (state.incidentProgress + incidentDelta).coerceAtMost(state.incidentRequired),
             contributors = incrementContribution(state.contributors, playerId, contribution),
         )
         events += ShiftEvent.PROGRESS
-        if (incidentDelta > 0) events += ShiftEvent.INCIDENT_PROGRESS
-
-        if (state.phase == FarmPhase.INCIDENT && state.incidentProgress >= state.incidentRequired) {
-            state = state.copy(
-                phase = FarmPhase.HARVESTING,
-                incidentResolved = true,
-            )
-            events += ShiftEvent.INCIDENT_RESOLVED
-            val goldenCrop = remainingCrop(state, order)
-            if (goldenCrop != null) {
-                state = state.copy(
-                    phase = FarmPhase.GOLDEN_HARVEST,
-                    goldenCrop = goldenCrop,
-                    goldenUsed = true,
-                    goldenEndsAt = now + rules.goldenWindowMillis,
-                )
-                events += ShiftEvent.GOLDEN_STARTED
-            }
-        }
 
         if (state.completed(order) >= order.totalRequired && state.phase != FarmPhase.INCIDENT) {
             state = state.copy(
@@ -145,17 +125,50 @@ object FarmShiftEngine {
         if (!state.incidentResolved && state.incidentCrop == null && triggerReached) {
             val incidentCrop = remainingCrop(state, order)
             if (incidentCrop != null) {
-                val remaining = order.required.getValue(incidentCrop) - (state.progress[incidentCrop] ?: 0)
                 state = state.copy(
                     phase = FarmPhase.INCIDENT,
                     incidentCrop = incidentCrop,
                     incidentProgress = 0,
-                    incidentRequired = rules.incidentQuota.coerceAtMost(remaining.coerceAtLeast(1)),
+                    incidentRequired = rules.incidentQuota,
                 )
                 events += ShiftEvent.INCIDENT_STARTED
             }
         }
         return EngineResult(state, true, contribution, events)
+    }
+
+    fun defeatPest(
+        current: FarmShiftState,
+        order: FarmOrder,
+        rules: FarmRules,
+        playerId: UUID,
+        now: Long,
+    ): EngineResult<FarmShiftState> {
+        if (current.phase != FarmPhase.INCIDENT || current.incidentProgress >= current.incidentRequired) {
+            return EngineResult(current, false)
+        }
+        var state = current.copy(
+            incidentProgress = current.incidentProgress + 1,
+            contributors = incrementContribution(current.contributors, playerId, 1),
+        )
+        val events = mutableListOf(ShiftEvent.INCIDENT_PROGRESS)
+        if (state.incidentProgress >= state.incidentRequired) {
+            state = state.copy(
+                phase = FarmPhase.HARVESTING,
+                incidentResolved = true,
+            )
+            events += ShiftEvent.INCIDENT_RESOLVED
+            remainingCrop(state, order)?.let { goldenCrop ->
+                state = state.copy(
+                    phase = FarmPhase.GOLDEN_HARVEST,
+                    goldenCrop = goldenCrop,
+                    goldenUsed = true,
+                    goldenEndsAt = now + rules.goldenWindowMillis,
+                )
+                events += ShiftEvent.GOLDEN_STARTED
+            }
+        }
+        return EngineResult(state, true, contribution = 1, events = events)
     }
 
     fun tick(
@@ -168,6 +181,7 @@ object FarmShiftEngine {
         if (current.phase == FarmPhase.COOLDOWN && now >= current.cooldownEndsAt) {
             return EngineResult(FarmShiftState(sequence = current.sequence), true, events = listOf(ShiftEvent.RESET))
         }
+        if (current.phase == FarmPhase.COOLDOWN) return EngineResult(current, false)
         if (current.phase == FarmPhase.GOLDEN_HARVEST && now >= current.goldenEndsAt) {
             return EngineResult(
                 current.copy(phase = FarmPhase.HARVESTING, goldenCrop = null, goldenEndsAt = 0),

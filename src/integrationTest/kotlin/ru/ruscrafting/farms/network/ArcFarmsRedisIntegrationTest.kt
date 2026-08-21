@@ -12,6 +12,7 @@ import java.nio.file.Files
 import java.time.Duration
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.UUID
 
 class ArcFarmsRedisIntegrationTest : StringSpec({
     "two real Redis nodes exchange events and atomically share one workday" {
@@ -61,6 +62,17 @@ class ArcFarmsRedisIntegrationTest : StringSpec({
             updates.count { it is WorkdayUpdate.AlreadyStamped } shouldBe 1
             spawnRepository.loadWorkday().join().completed shouldBe setOf(ActivityKind.FARM)
             survivalRepository.loadWorkday().join().completed shouldBe setOf(ActivityKind.FARM)
+
+            val traveler = UUID.fromString("00000000-0000-0000-0000-000000000099")
+            survivalRepository.createTravelTicket(traveler, ActivityKind.FARM, "spawn", 1_000, 30_000).join() shouldBe true
+            survivalRepository.claimTravelTicket(traveler, "survival", 2_000).join() shouldBe null
+            spawnRepository.claimTravelTicket(traveler, "spawn", 2_000).join() shouldBe TravelTicket(
+                ActivityKind.FARM,
+                "spawn",
+                1_000,
+                31_000,
+            )
+            spawnRepository.claimTravelTicket(traveler, "spawn", 2_001).join() shouldBe null
         } finally {
             spawn?.close()
             survival?.close()

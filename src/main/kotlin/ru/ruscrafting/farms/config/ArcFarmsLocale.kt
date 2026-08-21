@@ -48,16 +48,22 @@ enum class MessageKey(val path: String) {
     TOP_HEADER("top.header"),
     TOP_ENTRY("top.entry"),
     TOP_EMPTY("top.empty"),
+    TRAVEL_PREPARING("travel.preparing"),
+    TRAVEL_FAILED("travel.failed"),
+    TRAVEL_ARRIVED("travel.arrived"),
     FARM_STARTED("farm.started"),
     FARM_WRONG_TARGET("farm.wrong-target"),
+    FARM_PESTS_REQUIRED("farm.pests-required"),
+    FARM_PEST_NAME("farm.pest-name"),
     FARM_INCIDENT_STARTED("farm.incident-started"),
     FARM_INCIDENT_PROGRESS("farm.incident-progress"),
     FARM_INCIDENT_RESOLVED("farm.incident-resolved"),
     FARM_GOLDEN_STARTED("farm.golden-started"),
     FARM_GOLDEN_ENDED("farm.golden-ended"),
     FARM_COMPLETED("farm.completed"),
-    FARM_ACTIONBAR("farm.actionbar"),
-    FARM_INCIDENT_ACTIONBAR("farm.incident-actionbar"),
+    FARM_BOSSBAR("farm.bossbar"),
+    FARM_INCIDENT_BOSSBAR("farm.incident-bossbar"),
+    FARM_GOLDEN_BOSSBAR("farm.golden-bossbar"),
     LUMBER_STARTED("lumber.started"),
     LUMBER_WRONG_SPECIES("lumber.wrong-species"),
     LUMBER_PROCESSING("lumber.processing"),
@@ -121,7 +127,10 @@ class ArcFarmsLocale(
             ?: fallback.stringOrNull(path)?.takeIf(String::isNotBlank)
             ?: path
         val prefixRaw = config.stringOrNull(MessageKey.PREFIX.path)?.takeIf(String::isNotBlank)
-            ?: fallback.string(MessageKey.PREFIX.path, "<gray>[ArcFarms]</gray>")
+            ?: fallback.string(
+                MessageKey.PREFIX.path,
+                "<color:#92bed8>Смена</color> <color:#666666>•</color>",
+            )
         val builder = TagResolver.builder().resolver(Placeholder.component("prefix", mini.deserialize(prefixRaw)))
         values.forEach { (name, value) -> builder.resolver(Placeholder.component(name, value)) }
         return mini.deserialize(raw, builder.build())

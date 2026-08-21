@@ -39,6 +39,8 @@ class ArcFarmsPlugin : JavaPlugin() {
             ArcFarmsLocale.validateFiles(dataRoot, settings)
             require(settings.enabled) { "ArcFarms is disabled in config.yml" }
             locale = ArcFarmsLocale(dataRoot) { settings }
+            val debug = ArcFarmsDebug({ settings.debug.enabled }, logger::info)
+            server.messenger.registerOutgoingPluginChannel(this, BungeeBackendTransfer.CHANNEL)
             val networkGateway = if (settings.network.enabled) {
                 val redisConfig = ArcFarmsRedisBootstrap.load(dataRoot, settings)
                 val manager = RedisManager(
@@ -53,6 +55,7 @@ class ArcFarmsPlugin : JavaPlugin() {
                     locale = locale,
                     repository = ArcFarmsNetworkRepository(manager, Gson()),
                     redis = manager,
+                    debug = debug,
                 ).also {
                     it.start()
                     network = it
@@ -78,6 +81,8 @@ class ArcFarmsPlugin : JavaPlugin() {
                 stateRepository = requireNotNull(stateRepository),
                 mineJournal = requireNotNull(mineJournal),
                 network = networkGateway,
+                transfer = BungeeBackendTransfer(this),
+                debug = debug,
                 regionGateway = regionGateway,
             ).also { it.start() }
             service = activeService
@@ -104,6 +109,7 @@ class ArcFarmsPlugin : JavaPlugin() {
         runCatching { redis?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close ArcFarms Redis", it) }
         runCatching { mineJournal?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close mine journal", it) }
         runCatching { stateRepository?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close state repository", it) }
+        server.messenger.unregisterOutgoingPluginChannel(this, BungeeBackendTransfer.CHANNEL)
         Tasks.reset()
     }
 

@@ -20,7 +20,7 @@ class FarmShiftEngineTest : FunSpec({
         FarmShiftEngine.harvest(started.state, order, rules, "POTATOES", player, 2_000).accepted shouldBe false
     }
 
-    test("farm incident pauses no progress and unlocks golden harvest when resolved") {
+    test("farm incident pauses harvesting and only pest defeats resolve it") {
         var state = FarmShiftEngine.start(FarmShiftState(), order, rules, 1_000).state
         state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 2_000).state
         val incident = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 3_000)
@@ -29,34 +29,54 @@ class FarmShiftEngineTest : FunSpec({
         incident.state.incidentCrop shouldBe "CARROTS"
         incident.events.last() shouldBe ShiftEvent.INCIDENT_STARTED
 
-        val rescued = FarmShiftEngine.harvest(incident.state, order, rules, "CARROTS", player, 4_000)
+        val blockedHarvest = FarmShiftEngine.harvest(incident.state, order, rules, "CARROTS", player, 3_500)
+        blockedHarvest.accepted shouldBe false
+        blockedHarvest.state shouldBe incident.state
+
+        val rescued = FarmShiftEngine.defeatPest(incident.state, order, rules, player, 4_000)
         rescued.state.phase shouldBe FarmPhase.GOLDEN_HARVEST
         rescued.state.incidentResolved shouldBe true
         rescued.state.goldenCrop shouldBe "CARROTS"
         rescued.events shouldContainExactly listOf(
-            ShiftEvent.PROGRESS,
             ShiftEvent.INCIDENT_PROGRESS,
             ShiftEvent.INCIDENT_RESOLVED,
             ShiftEvent.GOLDEN_STARTED,
         )
 
         val completed = FarmShiftEngine.harvest(rescued.state, order, rules, "CARROTS", player, 5_000)
-        completed.contribution shouldBe 1
+        completed.contribution shouldBe 2
         completed.state.phase shouldBe FarmPhase.COOLDOWN
         completed.state.outcome shouldBe ShiftOutcome.COMPLETED
         completed.state.contributors[player] shouldBe 5
         completed.events.last() shouldBe ShiftEvent.COMPLETED
     }
 
+    test("completed farm emits completion once and remains quiet during cooldown") {
+        var state = FarmShiftEngine.start(FarmShiftState(), order, rules, 1_000).state
+        state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 2_000).state
+        state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 3_000).state
+        state = FarmShiftEngine.defeatPest(state, order, rules, player, 4_000).state
+        val completed = FarmShiftEngine.harvest(state, order, rules, "CARROTS", player, 5_000)
+
+        completed.events.last() shouldBe ShiftEvent.COMPLETED
+        (5_100L..9_900L step 100).forEach { now ->
+            val nextTick = FarmShiftEngine.tick(completed.state, order, rules, now)
+            nextTick.accepted shouldBe false
+            nextTick.events shouldContainExactly emptyList()
+            nextTick.state shouldBe completed.state
+            nextTick.state.cooldownEndsAt shouldBe completed.state.cooldownEndsAt
+        }
+    }
+
     test("golden window expires without ending or resetting the shared order") {
         var state = FarmShiftEngine.start(FarmShiftState(), order, rules, 1_000).state
         state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 2_000).state
         state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 3_000).state
-        state = FarmShiftEngine.harvest(state, order, rules, "CARROTS", player, 4_000).state
+        state = FarmShiftEngine.defeatPest(state, order, rules, player, 4_000).state
 
         val expired = FarmShiftEngine.tick(state, order, rules, 14_000)
         expired.state.phase shouldBe FarmPhase.HARVESTING
-        expired.state.completed(order) shouldBe 3
+        expired.state.completed(order) shouldBe 2
         expired.events shouldContainExactly listOf(ShiftEvent.GOLDEN_ENDED)
     }
 

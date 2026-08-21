@@ -10,6 +10,8 @@ import ru.ruscrafting.farms.domain.ActivityKind
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 
+private const val MAX_TRAVEL_TICKET_MS = 5 * 60 * 1000L
+
 enum class NetworkSignal {
     FARM_INCIDENT,
     FARM_RESCUED,
@@ -105,6 +107,19 @@ data class WorkdayState(
     fun recommended(): ActivityKind = ActivityKind.entries.firstOrNull { it !in completed } ?: ActivityKind.FARM
 }
 
+data class TravelTicket(
+    val activity: ActivityKind,
+    val destinationServer: String,
+    val createdAtMs: Long,
+    val expiresAtMs: Long,
+) {
+    fun validated(): TravelTicket = apply {
+        require(destinationServer.matches(SERVER_ID_PATTERN)) { "Invalid travel destination server" }
+        require(createdAtMs > 0 && expiresAtMs > createdAtMs) { "Invalid travel ticket lifetime" }
+        require(expiresAtMs - createdAtMs <= MAX_TRAVEL_TICKET_MS) { "Travel ticket lifetime is too long" }
+    }
+}
+
 sealed interface WorkdayUpdate {
     val state: WorkdayState
 
@@ -148,6 +163,47 @@ class ArcFarmsNetworkRepository(
         }
 
     fun markCompleted(activity: ActivityKind): CompletableFuture<WorkdayUpdate> = markAttempt(activity, 0)
+
+    fun createTravelTicket(
+        playerId: UUID,
+        activity: ActivityKind,
+        destinationServer: String,
+        nowMs: Long,
+        lifetimeMs: Long,
+    ): CompletableFuture<Boolean> {
+        val ticket = TravelTicket(activity, destinationServer, nowMs, nowMs + lifetimeMs).validated()
+        return redis.loadMap(TRAVEL_KEY).thenCompose { current ->
+            if (current.size >= MAX_TRAVEL_TICKETS && playerId.toString() !in current) {
+                CompletableFuture.completedFuture(false)
+            } else {
+                redis.saveMapEntries(TRAVEL_KEY, playerId.toString(), encodeTravelTicket(ticket)).thenApply { true }
+            }
+        }
+    }
+
+    fun claimTravelTicket(playerId: UUID, currentServer: String, nowMs: Long): CompletableFuture<TravelTicket?> {
+        require(currentServer.matches(SERVER_ID_PATTERN)) { "Invalid current server id" }
+        val field = playerId.toString()
+        return redis.loadMapEntries(TRAVEL_KEY, field).thenCompose { values ->
+            val raw = values.firstOrNull() ?: return@thenCompose CompletableFuture.completedFuture(null)
+            val ticket = runCatching { decodeTravelTicket(raw) }.getOrNull()
+            if (ticket == null || ticket.expiresAtMs < nowMs) {
+                return@thenCompose redis.compareAndSetMapEntry(TRAVEL_KEY, field, raw, null).thenApply { null }
+            }
+            if (ticket.destinationServer != currentServer) return@thenCompose CompletableFuture.completedFuture(null)
+            redis.compareAndSetMapEntry(TRAVEL_KEY, field, raw, null).thenApply { claimed -> ticket.takeIf { claimed } }
+        }
+    }
+
+    fun cleanupExpiredTravelTickets(nowMs: Long): CompletableFuture<Int> = redis.loadMap(TRAVEL_KEY).thenCompose { entries ->
+        val expired = entries.entries.filter { (_, raw) ->
+            val ticket = runCatching { decodeTravelTicket(raw) }.getOrNull()
+            ticket == null || ticket.expiresAtMs < nowMs
+        }.take(MAX_TRAVEL_CLEANUP)
+        CompletableFuture.allOf(
+            *expired.map { (field, raw) -> redis.compareAndSetMapEntry(TRAVEL_KEY, field, raw, null) }.toTypedArray(),
+        ).thenApply { expired.size }
+    }
 
     private fun markAttempt(activity: ActivityKind, attempt: Int): CompletableFuture<WorkdayUpdate> {
         if (attempt >= MAX_CAS_ATTEMPTS) {
@@ -227,6 +283,28 @@ class ArcFarmsNetworkRepository(
         ).validated()
     }
 
+    private fun encodeTravelTicket(ticket: TravelTicket): String = ticket.validated().let { validated ->
+        JsonObject().apply {
+            addProperty("protocolVersion", PROTOCOL_VERSION)
+            addProperty("activity", validated.activity.name)
+            addProperty("destinationServer", validated.destinationServer)
+            addProperty("createdAtMs", validated.createdAtMs)
+            addProperty("expiresAtMs", validated.expiresAtMs)
+        }.toString().also { require(it.length <= MAX_TRAVEL_CHARS) { "Travel ticket is too large" } }
+    }
+
+    private fun decodeTravelTicket(raw: String): TravelTicket {
+        if (raw.length > MAX_TRAVEL_CHARS) throw JsonParseException("Travel ticket is too large")
+        val root = JsonParser.parseString(raw).asJsonObject
+        if (root.int("protocolVersion") != PROTOCOL_VERSION) throw JsonParseException("Unsupported travel protocol")
+        return TravelTicket(
+            activity = ActivityKind.valueOf(root.string("activity")),
+            destinationServer = root.string("destinationServer"),
+            createdAtMs = root.long("createdAtMs"),
+            expiresAtMs = root.long("expiresAtMs"),
+        ).validated()
+    }
+
     private fun JsonObject.string(name: String): String = get(name)?.takeUnless { it.isJsonNull }?.asString
         ?: throw JsonParseException("Missing $name")
 
@@ -244,9 +322,15 @@ class ArcFarmsNetworkRepository(
         const val EVENT_CHANNEL = "arc:farms:v1:events"
         const val WORKDAY_KEY = "arc:farms:v1:workday"
         const val WORKDAY_FIELD = "state"
+        const val TRAVEL_KEY = "arc:farms:v1:travel"
         private const val PROTOCOL_VERSION = 1
         private const val MAX_EVENT_CHARS = 2_048
         private const val MAX_WORKDAY_CHARS = 1_024
+        private const val MAX_TRAVEL_CHARS = 512
+        private const val MAX_TRAVEL_TICKETS = 10_000
+        private const val MAX_TRAVEL_CLEANUP = 512
         private const val MAX_CAS_ATTEMPTS = 12
     }
 }
+
+private val SERVER_ID_PATTERN = Regex("[a-z0-9_-]{1,32}")

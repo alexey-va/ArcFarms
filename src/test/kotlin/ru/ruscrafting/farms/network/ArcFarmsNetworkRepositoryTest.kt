@@ -7,6 +7,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import ru.arc.redis.InMemoryRedis
 import ru.arc.redis.ServerIdentity
 import ru.ruscrafting.farms.domain.ActivityKind
+import java.util.UUID
 import java.util.concurrent.CompletableFuture
 
 class ArcFarmsNetworkRepositoryTest : StringSpec({
@@ -62,5 +63,23 @@ class ArcFarmsNetworkRepositoryTest : StringSpec({
         attempts.count { it.join() is WorkdayUpdate.Stamped } shouldBe 1
         attempts.count { it.join() is WorkdayUpdate.AlreadyStamped } shouldBe 23
         repository.loadWorkday().join().completed shouldBe setOf(ActivityKind.LUMBER)
+    }
+
+    "travel ticket is destination-bound, expires, and can be claimed only once" {
+        val repository = ArcFarmsNetworkRepository(InMemoryRedis())
+        val player = UUID.fromString("00000000-0000-0000-0000-000000000099")
+
+        repository.createTravelTicket(player, ActivityKind.FARM, "spawn", 1_000, 30_000).join() shouldBe true
+        repository.claimTravelTicket(player, "survival", 2_000).join() shouldBe null
+        repository.claimTravelTicket(player, "spawn", 2_000).join() shouldBe TravelTicket(
+            ActivityKind.FARM,
+            "spawn",
+            1_000,
+            31_000,
+        )
+        repository.claimTravelTicket(player, "spawn", 2_001).join() shouldBe null
+
+        repository.createTravelTicket(player, ActivityKind.MINE, "spawn", 5_000, 10_000).join() shouldBe true
+        repository.claimTravelTicket(player, "spawn", 15_001).join() shouldBe null
     }
 })
