@@ -36,7 +36,8 @@ farm-zones:
     world: sp11
     region: farm
     permission: arcfarms.farm
-    preparation-quota: 3
+    preparation-patch-size: 100
+    preparation-search-radius: 48
     care-radius: 10
     incident-trigger-percent: 35
     incident-quota: 4

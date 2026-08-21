@@ -8,28 +8,40 @@ import java.util.UUID
 class FarmShiftEngineTest : FunSpec({
     val order = FarmOrder("test_order", linkedMapOf("WHEAT" to 2, "CARROTS" to 2))
     val rules = FarmRules(
-        preparationQuota = 2,
         incidentTriggerPercent = 50,
         incidentQuota = 1,
         goldenWindowMillis = 10_000,
         cooldownMillis = 5_000,
     )
     val player = UUID.fromString("00000000-0000-0000-0000-000000000001")
+    val patch = listOf(
+        FarmPlotPosition("world", 1, 64, 1),
+        FarmPlotPosition("world", 2, 64, 1),
+    )
 
-    test("farm starts with persistent field preparation and only then accepts crops") {
-        val started = FarmShiftEngine.start(FarmShiftState(), order, rules, 1_000)
+    test("farm requires every selected plot to be tilled and planted before harvesting") {
+        val started = FarmShiftEngine.start(FarmShiftState(), order, patch, "WHEAT", 1_000)
 
         started.accepted shouldBe true
         started.events shouldContainExactly listOf(ShiftEvent.STARTED)
         started.state.phase shouldBe FarmPhase.PREPARATION
 
         FarmShiftEngine.harvest(started.state, order, rules, "WHEAT", player, 1_500).accepted shouldBe false
-        val firstBed = FarmShiftEngine.prepare(started.state, player)
+        val firstBed = FarmShiftEngine.till(started.state, patch[0], player)
         firstBed.state.phase shouldBe FarmPhase.PREPARATION
         firstBed.state.preparationProgress shouldBe 1
-        val ready = FarmShiftEngine.prepare(firstBed.state, player)
+        FarmShiftEngine.till(firstBed.state, patch[0], player).accepted shouldBe false
+        val tilled = FarmShiftEngine.till(firstBed.state, patch[1], player)
+        tilled.state.phase shouldBe FarmPhase.PLANTING
+        tilled.events shouldContainExactly listOf(ShiftEvent.PREPARATION_PROGRESS, ShiftEvent.PLANTING_STARTED)
+
+        FarmShiftEngine.plant(tilled.state, patch[0], "CARROTS", player).accepted shouldBe false
+        val firstSeed = FarmShiftEngine.plant(tilled.state, patch[0], "WHEAT", player)
+        firstSeed.state.phase shouldBe FarmPhase.PLANTING
+        FarmShiftEngine.plant(firstSeed.state, patch[0], "WHEAT", player).accepted shouldBe false
+        val ready = FarmShiftEngine.plant(firstSeed.state, patch[1], "WHEAT", player)
         ready.state.phase shouldBe FarmPhase.HARVESTING
-        ready.events shouldContainExactly listOf(ShiftEvent.PREPARATION_PROGRESS, ShiftEvent.PREPARATION_COMPLETED)
+        ready.events shouldContainExactly listOf(ShiftEvent.PLANTING_PROGRESS, ShiftEvent.PREPARATION_COMPLETED)
 
         FarmShiftEngine.harvest(ready.state, order, rules, "POTATOES", player, 2_000).accepted shouldBe false
     }
@@ -65,7 +77,7 @@ class FarmShiftEngineTest : FunSpec({
         val completed = FarmShiftEngine.deliver(packed.state, rules, player, 6_000)
         completed.state.phase shouldBe FarmPhase.COOLDOWN
         completed.state.outcome shouldBe ShiftOutcome.COMPLETED
-        completed.state.contributors[player] shouldBe 8
+        completed.state.contributors[player] shouldBe 10
         completed.events shouldContainExactly listOf(ShiftEvent.COMPLETED)
     }
 
@@ -119,12 +131,41 @@ class FarmShiftEngineTest : FunSpec({
     }
 
     test("farm objective and incident survive indefinite inactivity") {
-        val started = FarmShiftEngine.start(FarmShiftState(sequence = 4), order, rules, 1_000).state
-        val partial = FarmShiftEngine.prepare(started, player).state
+        val started = FarmShiftEngine.start(FarmShiftState(sequence = 4), order, patch, "WHEAT", 1_000).state
+        val partial = FarmShiftEngine.till(started, patch.first(), player).state
         val afterMonth = FarmShiftEngine.tick(partial, order, rules, 2_592_002_000)
 
         afterMonth.accepted shouldBe false
         afterMonth.state shouldBe partial
+        afterMonth.events shouldContainExactly emptyList()
+    }
+
+    test("one player can prepare a one hundred plot patch without duplicate progress") {
+        val largePatch = (0 until 100).map { index ->
+            FarmPlotPosition("world", index % 20, 64, index / 20 * 2)
+        }
+        var state = FarmShiftEngine.start(FarmShiftState(), order, largePatch, "WHEAT", 1_000).state
+        largePatch.forEach { plot -> state = FarmShiftEngine.till(state, plot, player).state }
+
+        state.phase shouldBe FarmPhase.PLANTING
+        state.preparationProgress shouldBe 100
+        FarmShiftEngine.till(state, largePatch.first(), player).accepted shouldBe false
+
+        largePatch.forEach { plot -> state = FarmShiftEngine.plant(state, plot, "WHEAT", player).state }
+        state.phase shouldBe FarmPhase.HARVESTING
+        state.plantingProgress shouldBe 100
+        state.contributors[player] shouldBe 200
+    }
+
+    test("planting progress waits indefinitely when every player leaves") {
+        var state = FarmShiftEngine.start(FarmShiftState(), order, patch, "WHEAT", 1_000).state
+        patch.forEach { state = FarmShiftEngine.till(state, it, player).state }
+        state = FarmShiftEngine.plant(state, patch.first(), "WHEAT", player).state
+
+        val afterMonth = FarmShiftEngine.tick(state, order, rules, 2_592_002_000)
+
+        afterMonth.accepted shouldBe false
+        afterMonth.state shouldBe state
         afterMonth.events shouldContainExactly emptyList()
     }
 
@@ -142,7 +183,12 @@ class FarmShiftEngineTest : FunSpec({
 })
 
 private fun preparedState(order: FarmOrder, rules: FarmRules, player: UUID): FarmShiftState {
-    var state = FarmShiftEngine.start(FarmShiftState(), order, rules, 1_000).state
-    repeat(rules.preparationQuota) { state = FarmShiftEngine.prepare(state, player).state }
+    val patch = listOf(
+        FarmPlotPosition("world", 1, 64, 1),
+        FarmPlotPosition("world", 2, 64, 1),
+    )
+    var state = FarmShiftEngine.start(FarmShiftState(), order, patch, "WHEAT", 1_000).state
+    patch.forEach { state = FarmShiftEngine.till(state, it, player).state }
+    patch.forEach { state = FarmShiftEngine.plant(state, it, "WHEAT", player).state }
     return state
 }

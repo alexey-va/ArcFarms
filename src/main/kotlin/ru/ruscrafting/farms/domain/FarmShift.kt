@@ -5,11 +5,27 @@ import java.util.UUID
 enum class FarmPhase {
     IDLE,
     PREPARATION,
+    PLANTING,
     HARVESTING,
     INCIDENT,
     GOLDEN_HARVEST,
     DELIVERY,
     COOLDOWN,
+}
+
+data class FarmPlotPosition(
+    val world: String,
+    val x: Int,
+    val y: Int,
+    val z: Int,
+) {
+    init {
+        require(world.matches(Regex("[A-Za-z0-9._-]{1,128}"))) { "Invalid farm plot world: $world" }
+        require(x in -30_000_000..30_000_000 && z in -30_000_000..30_000_000) {
+            "Farm plot position is outside the world border"
+        }
+        require(y in -4_096..4_096) { "Farm plot height is invalid" }
+    }
 }
 
 enum class FarmIncidentType {
@@ -44,14 +60,12 @@ data class FarmOrder(
 }
 
 data class FarmRules(
-    val preparationQuota: Int,
     val incidentTriggerPercent: Int,
     val incidentQuota: Int,
     val goldenWindowMillis: Long,
     val cooldownMillis: Long,
 ) {
     init {
-        require(preparationQuota in 1..16)
         require(incidentTriggerPercent in 1..99)
         require(incidentQuota in 1..64)
         require(goldenWindowMillis in 5_000..600_000)
@@ -64,7 +78,13 @@ data class FarmShiftState(
     val sequence: Long = 0,
     val orderId: String? = null,
     val progress: Map<String, Int> = emptyMap(),
+    val preparationPatch: List<FarmPlotPosition> = emptyList(),
+    val preparationCrop: String? = null,
+    val preparationReleased: Boolean = false,
+    val tilledPlots: Set<FarmPlotPosition> = emptySet(),
+    val plantedPlots: Set<FarmPlotPosition> = emptySet(),
     val preparationProgress: Int = 0,
+    val plantingProgress: Int = 0,
     val preparationRequired: Int = 0,
     val incidentCrop: String? = null,
     val incidentType: FarmIncidentType? = null,
@@ -91,32 +111,44 @@ object FarmShiftEngine {
     fun start(
         current: FarmShiftState,
         order: FarmOrder,
-        rules: FarmRules,
+        patch: List<FarmPlotPosition>,
+        preparationCrop: String,
         now: Long,
     ): EngineResult<FarmShiftState> {
         if (current.phase != FarmPhase.IDLE) return EngineResult(current, false)
+        require(patch.isNotEmpty() && patch.size <= 512) { "Farm preparation patch must contain 1..512 plots" }
+        require(patch.distinct().size == patch.size) { "Farm preparation patch contains duplicate plots" }
+        require(patch.map(FarmPlotPosition::world).distinct().size == 1) { "Farm preparation patch crosses worlds" }
+        require(preparationCrop in order.required) { "Farm preparation crop is outside order ${order.id}" }
         val next = FarmShiftState(
             phase = FarmPhase.PREPARATION,
             sequence = current.sequence + 1,
             orderId = order.id,
             progress = order.required.keys.associateWith { 0 },
-            preparationRequired = rules.preparationQuota,
+            preparationPatch = patch,
+            preparationCrop = preparationCrop,
+            preparationRequired = patch.size,
             startedAt = now,
         )
         return EngineResult(next, true, events = listOf(ShiftEvent.STARTED))
     }
 
-    fun prepare(
+    fun till(
         current: FarmShiftState,
+        plot: FarmPlotPosition,
         playerId: UUID,
     ): EngineResult<FarmShiftState> {
-        if (current.phase != FarmPhase.PREPARATION || current.preparationProgress >= current.preparationRequired) {
+        if (
+            current.phase != FarmPhase.PREPARATION || plot !in current.preparationPatch ||
+            plot in current.tilledPlots || current.preparationProgress >= current.preparationRequired
+        ) {
             return EngineResult(current, false)
         }
         val progress = current.preparationProgress + 1
         val completed = progress >= current.preparationRequired
         val state = current.copy(
-            phase = if (completed) FarmPhase.HARVESTING else FarmPhase.PREPARATION,
+            phase = if (completed) FarmPhase.PLANTING else FarmPhase.PREPARATION,
+            tilledPlots = current.tilledPlots + plot,
             preparationProgress = progress,
             contributors = incrementContribution(current.contributors, playerId, 1),
         )
@@ -126,6 +158,38 @@ object FarmShiftEngine {
             contribution = 1,
             events = buildList {
                 add(ShiftEvent.PREPARATION_PROGRESS)
+                if (completed) add(ShiftEvent.PLANTING_STARTED)
+            },
+        )
+    }
+
+    fun plant(
+        current: FarmShiftState,
+        plot: FarmPlotPosition,
+        crop: String,
+        playerId: UUID,
+    ): EngineResult<FarmShiftState> {
+        if (
+            current.phase != FarmPhase.PLANTING || crop != current.preparationCrop ||
+            plot !in current.preparationPatch || plot !in current.tilledPlots || plot in current.plantedPlots ||
+            current.plantingProgress >= current.preparationRequired
+        ) {
+            return EngineResult(current, false)
+        }
+        val progress = current.plantingProgress + 1
+        val completed = progress >= current.preparationRequired
+        val state = current.copy(
+            phase = if (completed) FarmPhase.HARVESTING else FarmPhase.PLANTING,
+            plantedPlots = current.plantedPlots + plot,
+            plantingProgress = progress,
+            contributors = incrementContribution(current.contributors, playerId, 1),
+        )
+        return EngineResult(
+            state,
+            true,
+            contribution = 1,
+            events = buildList {
+                add(ShiftEvent.PLANTING_PROGRESS)
                 if (completed) add(ShiftEvent.PREPARATION_COMPLETED)
             },
         )

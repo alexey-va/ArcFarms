@@ -14,11 +14,23 @@ before the next one becomes available.
 
 ### Harvest shift
 
-Entering the farm starts a shared order with a short physical preparation
-phase: highlighted beds are right-clicked with a hoe before harvesting opens.
-The boss bar then shows every unfinished crop with its current and required
-amount. Only requested mature crops fill it, and accepted crops are consumed by
-the order instead of dropping.
+Entering the farm starts a shared order by selecting a compact patch of existing
+farm beds. The configured target is 100 plots on spawn; if the farm contains a
+smaller connected patch, every available plot is used, while zero suitable
+plots leaves the shift idle instead of creating an impossible objective. The
+chosen coordinates are persisted before the plugin clears their crops and
+returns the soil to dirt. Players till every marked plot with a hoe, then plant
+the requested crop with its matching seed item. Seeds act as a tool and are not
+consumed. Selected and previously discovered beds are kept at maximum farmland
+moisture and protected from trampling and drying.
+
+The active patch, tilling progress, and planting progress survive an empty
+farm, chunk unload, plugin reload, or process restart. Recovery replays an
+unfinished patch release idempotently and reconciles already tilled or planted
+blocks before accepting more actions. Once the patch is planted, the boss bar
+shows every unfinished crop with its current and required amount. Only
+requested mature crops fill it, and accepted crops are consumed by the order
+instead of dropping.
 
 At the configured threshold one of the farm incidents starts. A pest outbreak
 spawns real silverfish that must be defeated; a drought highlights dry beds that

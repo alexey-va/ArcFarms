@@ -4,6 +4,8 @@ import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
 import org.bukkit.event.block.BlockBreakEvent
+import org.bukkit.event.block.BlockFadeEvent
+import org.bukkit.event.block.BlockPlaceEvent
 import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.event.entity.EntityDeathEvent
@@ -24,6 +26,12 @@ class ArcFarmsListener(
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onBreakMonitor(event: BlockBreakEvent) = service.onBreakMonitor(event)
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    fun onBlockFade(event: BlockFadeEvent) = service.onBlockFade(event)
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    fun onBlockPlace(event: BlockPlaceEvent) = service.onBlockPlace(event)
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     fun onInteract(event: PlayerInteractEvent) = service.onInteract(event)

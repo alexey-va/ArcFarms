@@ -64,7 +64,8 @@ data class FarmZoneSettings(
     val id: String,
     val reference: ZoneReference,
     val permission: String,
-    val preparationQuota: Int,
+    val preparationPatchSize: Int,
+    val preparationSearchRadius: Int,
     val careRadius: Int,
     val incidentTriggerPercent: Int,
     val incidentQuota: Int,
@@ -180,7 +181,10 @@ class ArcFarmsConfig private constructor(
                     id = id,
                     reference = reference,
                     permission = permission(section.string("permission", "arcfarms.farm")),
-                    preparationQuota = section.int("preparation-quota", 3).checked("preparation-quota", 1, 16),
+                    preparationPatchSize = section.int("preparation-patch-size", 100)
+                        .checked("preparation-patch-size", 1, 512),
+                    preparationSearchRadius = section.int("preparation-search-radius", 48)
+                        .checked("preparation-search-radius", 4, 64),
                     careRadius = section.int("care-radius", 10).checked("care-radius", 3, 24),
                     incidentTriggerPercent = section.int("incident-trigger-percent", 35).checked("incident-trigger-percent", 1, 99),
                     incidentQuota = section.int("incident-quota", 4).checked("incident-quota", 1, 64),

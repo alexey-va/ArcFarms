@@ -40,7 +40,8 @@ class ArcFarmsConfigTest : FunSpec({
         settings.destinations.getValue("farm").world shouldBe "sp11"
         settings.requiresWorldGuard shouldBe true
         settings.farms.single().incidentQuota shouldBe 4
-        settings.farms.single().preparationQuota shouldBe 3
+        settings.farms.single().preparationPatchSize shouldBe 100
+        settings.farms.single().preparationSearchRadius shouldBe 48
         settings.farms.single().incidentTypes shouldContainExactly listOf(FarmIncidentType.PESTS, FarmIncidentType.DROUGHT)
         settings.farms.single().delivery.world shouldBe "sp11"
         settings.farms.single().delivery.x shouldBe 201.65
@@ -103,6 +104,16 @@ class ArcFarmsConfigTest : FunSpec({
         shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(root) }
     }
 
+    test("farm patch size is bounded before runtime scanning") {
+        val root = resourceTree()
+        val configPath = root.resolve("config.yml")
+        configPath.writeText(
+            Files.readString(configPath).replace("preparation-patch-size: 100", "preparation-patch-size: 513"),
+        )
+
+        shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(root) }
+    }
+
     test("locale parity includes dynamic order route and phase paths") {
         val root = resourceTree()
         val settings = ArcFarmsConfig.inspect(root)
@@ -131,6 +142,24 @@ class ArcFarmsConfigTest : FunSpec({
             "Заказ • Пшеница 0/2, Морковь 0/2 • всего 0/4"
     }
 
+    test("planting bossbar renders the exact next action without a chat prefix") {
+        val root = resourceTree()
+        val settings = ArcFarmsConfig.inspect(root)
+        val locale = ArcFarmsLocale(root) { settings }
+        val rendered = locale.render(
+            MessageKey.FARM_PLANTING_BOSSBAR,
+            values = mapOf(
+                "order" to Component.text("Заказ"),
+                "crop" to Component.text("Пшеница"),
+                "done" to Component.text("37"),
+                "total" to Component.text("100"),
+            ),
+        )
+
+        PlainTextComponentSerializer.plainText().serialize(rendered) shouldBe
+            "Заказ • посев Пшеница 37/100 • ПКМ семенами"
+    }
+
     test("isolated lab profile is bounded and locale-complete") {
         val repositoryRoot = Path.of(System.getProperty("arcfarms.repositoryRoot"))
         val root = resourceTree(repositoryRoot.resolve("scripts/lab/plugin-configs/ArcFarms/config.yml"))
@@ -145,7 +174,8 @@ class ArcFarmsConfigTest : FunSpec({
         settings.requiresWorldGuard shouldBe false
         settings.farms.single().orders.single().id shouldBe "lab_order"
         settings.farms.single().pestEntity shouldBe "SILVERFISH"
-        settings.farms.single().preparationQuota shouldBe 1
+        settings.farms.single().preparationPatchSize shouldBe 12
+        settings.farms.single().preparationSearchRadius shouldBe 4
         settings.farms.single().delivery.x shouldBe -3.5
         settings.lumbermills.single().fellingQuota shouldBe 2
         settings.mines.single().cartQuota shouldBe 4

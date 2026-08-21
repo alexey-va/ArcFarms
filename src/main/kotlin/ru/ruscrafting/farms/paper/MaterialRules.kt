@@ -6,6 +6,13 @@ import org.bukkit.inventory.ItemStack
 import java.util.random.RandomGenerator
 
 object MaterialRules {
+    private val seedsByCrop = mapOf(
+        Material.WHEAT to Material.WHEAT_SEEDS,
+        Material.CARROTS to Material.CARROT,
+        Material.POTATOES to Material.POTATO,
+        Material.BEETROOTS to Material.BEETROOT_SEEDS,
+    )
+
     fun material(name: String): Material =
         Material.matchMaterial(name) ?: error("Unknown Paper material: $name")
 
@@ -28,7 +35,16 @@ object MaterialRules {
 
     fun isHoe(item: ItemStack?): Boolean = item != null && item.type.name.endsWith("_HOE")
 
+    fun cropForSeed(item: ItemStack?): Material? = item?.type?.let(::cropForSeed)
+
+    fun cropForSeed(seed: Material): Material? =
+        seedsByCrop.entries.firstOrNull { it.value == seed }?.key
+
+    fun seedForCrop(crop: Material): Material? = seedsByCrop[crop]
+
     fun cropComponent(material: Material): Component = Component.translatable("block.minecraft.${material.name.lowercase()}")
+
+    fun itemComponent(material: Material): Component = Component.translatable(material.translationKey())
 
     fun woodComponent(species: String): Component = Component.translatable("block.minecraft.${species.lowercase()}_log")
 

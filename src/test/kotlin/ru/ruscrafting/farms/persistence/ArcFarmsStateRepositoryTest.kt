@@ -1,13 +1,16 @@
 package ru.ruscrafting.farms.persistence
 
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import ru.ruscrafting.farms.domain.ArcFarmsState
 import ru.ruscrafting.farms.domain.FarmDeliveryPosition
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
+import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmShiftState
 import java.nio.file.Files
+import java.util.concurrent.ExecutionException
 
 class ArcFarmsStateRepositoryTest : FunSpec({
     test("preparation incident type and delivery fields are additive to schema one") {
@@ -60,6 +63,10 @@ class ArcFarmsStateRepositoryTest : FunSpec({
 
     test("current farm state fields survive an atomic round trip") {
         val root = Files.createTempDirectory("arcfarms-state-current-test")
+        val patch = listOf(
+            FarmPlotPosition("world", 10, 63, -3),
+            FarmPlotPosition("world", 11, 63, -3),
+        )
         val expected = ArcFarmsState(
             farms = mapOf(
                 "delivery_farm" to FarmShiftState(
@@ -67,8 +74,14 @@ class ArcFarmsStateRepositoryTest : FunSpec({
                     sequence = 8,
                     orderId = "current_order",
                     progress = mapOf("WHEAT" to 4),
-                    preparationProgress = 3,
-                    preparationRequired = 3,
+                    preparationPatch = patch,
+                    preparationCrop = "WHEAT",
+                    preparationReleased = true,
+                    tilledPlots = patch.toSet(),
+                    plantedPlots = patch.toSet(),
+                    preparationProgress = 2,
+                    plantingProgress = 2,
+                    preparationRequired = 2,
                     deliveryPosition = FarmDeliveryPosition("world", 10.5, 64.0, -3.5),
                 ),
                 "drought_farm" to FarmShiftState(
@@ -76,8 +89,14 @@ class ArcFarmsStateRepositoryTest : FunSpec({
                     sequence = 9,
                     orderId = "current_order",
                     progress = mapOf("WHEAT" to 1),
-                    preparationProgress = 3,
-                    preparationRequired = 3,
+                    preparationPatch = patch,
+                    preparationCrop = "WHEAT",
+                    preparationReleased = true,
+                    tilledPlots = patch.toSet(),
+                    plantedPlots = patch.toSet(),
+                    preparationProgress = 2,
+                    plantingProgress = 2,
+                    preparationRequired = 2,
                     incidentCrop = "WHEAT",
                     incidentType = FarmIncidentType.DROUGHT,
                     incidentRequired = 4,
@@ -87,5 +106,29 @@ class ArcFarmsStateRepositoryTest : FunSpec({
 
         ArcFarmsStateRepository(root).use { it.saveBlocking(expected) }
         ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
+    }
+
+    test("state persistence rejects progress outside the selected patch") {
+        val root = Files.createTempDirectory("arcfarms-state-invalid-patch-test")
+        val patch = FarmPlotPosition("world", 10, 63, -3)
+        val escaped = FarmPlotPosition("world", 20, 63, -3)
+        val invalid = ArcFarmsState(
+            farms = mapOf(
+                "farm" to FarmShiftState(
+                    phase = FarmPhase.PREPARATION,
+                    orderId = "order",
+                    preparationPatch = listOf(patch),
+                    preparationCrop = "WHEAT",
+                    tilledPlots = setOf(escaped),
+                    preparationProgress = 1,
+                    preparationRequired = 1,
+                ),
+            ),
+        )
+
+        ArcFarmsStateRepository(root).use { repository ->
+            val failure = shouldThrow<ExecutionException> { repository.saveBlocking(invalid) }
+            (failure.cause is IllegalArgumentException) shouldBe true
+        }
     }
 })
