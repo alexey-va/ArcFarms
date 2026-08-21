@@ -3,7 +3,9 @@ package ru.ruscrafting.farms.config
 import ru.arc.config.Config
 import ru.arc.config.ConfigManager
 import ru.arc.redis.RedisModuleConfig
+import ru.ruscrafting.farms.domain.FarmIncidentType
 import java.nio.file.Path
+import kotlin.math.floor
 
 data class NetworkSettings(
     val enabled: Boolean,
@@ -62,13 +64,25 @@ data class FarmZoneSettings(
     val id: String,
     val reference: ZoneReference,
     val permission: String,
+    val preparationQuota: Int,
+    val careRadius: Int,
     val incidentTriggerPercent: Int,
     val incidentQuota: Int,
+    val incidentTypes: List<FarmIncidentType>,
     val pestEntity: String,
     val pestSpawnRadius: Int,
     val goldenWindowSeconds: Int,
+    val delivery: FarmDeliverySettings,
     val crops: Set<String>,
     val orders: List<FarmOrderSettings>,
+)
+
+data class FarmDeliverySettings(
+    val world: String,
+    val x: Double,
+    val y: Double,
+    val z: Double,
+    val radius: Double,
 )
 
 data class FarmOrderSettings(
@@ -147,15 +161,34 @@ class ArcFarmsConfig private constructor(
                     FarmOrderSettings(orderId, required.toMap())
                 }
                 require(orders.isNotEmpty()) { "Farm zone $id has no orders" }
+                val reference = parseReference(section, "", id)
+                val incidentTypes = section.stringList("incident-types")
+                    .ifEmpty { listOf(FarmIncidentType.PESTS.name, FarmIncidentType.DROUGHT.name) }
+                    .map { value ->
+                        runCatching { FarmIncidentType.valueOf(value.trim().uppercase()) }
+                            .getOrElse { error("Farm zone $id has unknown incident type: $value") }
+                    }
+                    .distinct()
+                require(incidentTypes.isNotEmpty()) { "Farm zone $id has no incident types" }
+                val delivery = parseFarmDelivery(section, reference.world, id)
+                reference.bounds?.let { bounds ->
+                    require(bounds.contains(floor(delivery.x).toInt(), floor(delivery.y).toInt(), floor(delivery.z).toInt())) {
+                        "Farm zone $id delivery point is outside its bounds"
+                    }
+                }
                 FarmZoneSettings(
                     id = id,
-                    reference = parseReference(section, "", id),
+                    reference = reference,
                     permission = permission(section.string("permission", "arcfarms.farm")),
+                    preparationQuota = section.int("preparation-quota", 3).checked("preparation-quota", 1, 16),
+                    careRadius = section.int("care-radius", 10).checked("care-radius", 3, 24),
                     incidentTriggerPercent = section.int("incident-trigger-percent", 35).checked("incident-trigger-percent", 1, 99),
                     incidentQuota = section.int("incident-quota", 4).checked("incident-quota", 1, 64),
+                    incidentTypes = incidentTypes,
                     pestEntity = entityName(section.string("pest-entity", "SILVERFISH")),
                     pestSpawnRadius = section.int("pest-spawn-radius", 6).checked("pest-spawn-radius", 2, 16),
                     goldenWindowSeconds = section.int("golden-window-seconds", 45).checked("golden-window-seconds", 5, 600),
+                    delivery = delivery,
                     crops = crops,
                     orders = orders,
                 )
@@ -290,6 +323,26 @@ class ArcFarmsConfig private constructor(
                 z = coordinate("z", -30_000_000.0, 30_000_000.0),
                 yaw = coordinate("yaw", -360.0, 360.0).toFloat(),
                 pitch = coordinate("pitch", -90.0, 90.0).toFloat(),
+            )
+        }
+
+        private fun parseFarmDelivery(
+            section: ru.arc.config.ConfigSection,
+            world: String,
+            zoneId: String,
+        ): FarmDeliverySettings {
+            fun coordinate(name: String, minimum: Double, maximum: Double): Double =
+                section.string("delivery.$name").toDoubleOrNull()?.also {
+                    require(it.isFinite() && it in minimum..maximum) {
+                        "farm-zones.$zoneId.delivery.$name is outside $minimum..$maximum"
+                    }
+                } ?: error("farm-zones.$zoneId.delivery.$name must be a finite number")
+            return FarmDeliverySettings(
+                world = world,
+                x = coordinate("x", -30_000_000.0, 30_000_000.0),
+                y = coordinate("y", -2_048.0, 2_048.0),
+                z = coordinate("z", -30_000_000.0, 30_000_000.0),
+                radius = coordinate("radius", 1.0, 8.0),
             )
         }
 

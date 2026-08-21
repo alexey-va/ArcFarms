@@ -7,21 +7,35 @@ import java.util.UUID
 
 class FarmShiftEngineTest : FunSpec({
     val order = FarmOrder("test_order", linkedMapOf("WHEAT" to 2, "CARROTS" to 2))
-    val rules = FarmRules(incidentTriggerPercent = 50, incidentQuota = 1, goldenWindowMillis = 10_000, cooldownMillis = 5_000)
+    val rules = FarmRules(
+        preparationQuota = 2,
+        incidentTriggerPercent = 50,
+        incidentQuota = 1,
+        goldenWindowMillis = 10_000,
+        cooldownMillis = 5_000,
+    )
     val player = UUID.fromString("00000000-0000-0000-0000-000000000001")
 
-    test("farm starts on the selected order and only accepts requested crops") {
+    test("farm starts with persistent field preparation and only then accepts crops") {
         val started = FarmShiftEngine.start(FarmShiftState(), order, rules, 1_000)
 
         started.accepted shouldBe true
         started.events shouldContainExactly listOf(ShiftEvent.STARTED)
-        started.state.phase shouldBe FarmPhase.HARVESTING
+        started.state.phase shouldBe FarmPhase.PREPARATION
 
-        FarmShiftEngine.harvest(started.state, order, rules, "POTATOES", player, 2_000).accepted shouldBe false
+        FarmShiftEngine.harvest(started.state, order, rules, "WHEAT", player, 1_500).accepted shouldBe false
+        val firstBed = FarmShiftEngine.prepare(started.state, player)
+        firstBed.state.phase shouldBe FarmPhase.PREPARATION
+        firstBed.state.preparationProgress shouldBe 1
+        val ready = FarmShiftEngine.prepare(firstBed.state, player)
+        ready.state.phase shouldBe FarmPhase.HARVESTING
+        ready.events shouldContainExactly listOf(ShiftEvent.PREPARATION_PROGRESS, ShiftEvent.PREPARATION_COMPLETED)
+
+        FarmShiftEngine.harvest(ready.state, order, rules, "POTATOES", player, 2_000).accepted shouldBe false
     }
 
     test("farm incident pauses harvesting and only pest defeats resolve it") {
-        var state = FarmShiftEngine.start(FarmShiftState(), order, rules, 1_000).state
+        var state = preparedState(order, rules, player)
         state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 2_000).state
         val incident = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 3_000)
 
@@ -43,23 +57,47 @@ class FarmShiftEngineTest : FunSpec({
             ShiftEvent.GOLDEN_STARTED,
         )
 
-        val completed = FarmShiftEngine.harvest(rescued.state, order, rules, "CARROTS", player, 5_000)
-        completed.contribution shouldBe 2
+        val packed = FarmShiftEngine.harvest(rescued.state, order, rules, "CARROTS", player, 5_000)
+        packed.contribution shouldBe 2
+        packed.state.phase shouldBe FarmPhase.DELIVERY
+        packed.events.last() shouldBe ShiftEvent.DELIVERY_STARTED
+
+        val completed = FarmShiftEngine.deliver(packed.state, rules, player, 6_000)
         completed.state.phase shouldBe FarmPhase.COOLDOWN
         completed.state.outcome shouldBe ShiftOutcome.COMPLETED
-        completed.state.contributors[player] shouldBe 5
-        completed.events.last() shouldBe ShiftEvent.COMPLETED
+        completed.state.contributors[player] shouldBe 8
+        completed.events shouldContainExactly listOf(ShiftEvent.COMPLETED)
+    }
+
+    test("drought is a distinct incident action and pest kills cannot bypass it") {
+        var state = preparedState(order, rules, player)
+        state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 2_000).state
+        state = FarmShiftEngine.harvest(
+            state,
+            order,
+            rules,
+            "WHEAT",
+            player,
+            3_000,
+            FarmIncidentType.DROUGHT,
+        ).state
+
+        state.phase shouldBe FarmPhase.INCIDENT
+        state.incidentType shouldBe FarmIncidentType.DROUGHT
+        FarmShiftEngine.defeatPest(state, order, rules, player, 3_500).accepted shouldBe false
+        FarmShiftEngine.waterDrySoil(state, order, rules, player, 4_000).state.phase shouldBe FarmPhase.GOLDEN_HARVEST
     }
 
     test("completed farm emits completion once and remains quiet during cooldown") {
-        var state = FarmShiftEngine.start(FarmShiftState(), order, rules, 1_000).state
+        var state = preparedState(order, rules, player)
         state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 2_000).state
         state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 3_000).state
         state = FarmShiftEngine.defeatPest(state, order, rules, player, 4_000).state
-        val completed = FarmShiftEngine.harvest(state, order, rules, "CARROTS", player, 5_000)
+        val packed = FarmShiftEngine.harvest(state, order, rules, "CARROTS", player, 5_000)
+        val completed = FarmShiftEngine.deliver(packed.state, rules, player, 5_100)
 
         completed.events.last() shouldBe ShiftEvent.COMPLETED
-        (5_100L..9_900L step 100).forEach { now ->
+        (5_200L..10_000L step 100).forEach { now ->
             val nextTick = FarmShiftEngine.tick(completed.state, order, rules, now)
             nextTick.accepted shouldBe false
             nextTick.events shouldContainExactly emptyList()
@@ -69,7 +107,7 @@ class FarmShiftEngineTest : FunSpec({
     }
 
     test("golden window expires without ending or resetting the shared order") {
-        var state = FarmShiftEngine.start(FarmShiftState(), order, rules, 1_000).state
+        var state = preparedState(order, rules, player)
         state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 2_000).state
         state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 3_000).state
         state = FarmShiftEngine.defeatPest(state, order, rules, player, 4_000).state
@@ -82,11 +120,29 @@ class FarmShiftEngineTest : FunSpec({
 
     test("farm objective and incident survive indefinite inactivity") {
         val started = FarmShiftEngine.start(FarmShiftState(sequence = 4), order, rules, 1_000).state
-        val partial = FarmShiftEngine.harvest(started, order, rules, "WHEAT", player, 2_000).state
+        val partial = FarmShiftEngine.prepare(started, player).state
         val afterMonth = FarmShiftEngine.tick(partial, order, rules, 2_592_002_000)
 
         afterMonth.accepted shouldBe false
         afterMonth.state shouldBe partial
         afterMonth.events shouldContainExactly emptyList()
     }
+
+    test("packed order waits indefinitely for a carrier and completes only on delivery") {
+        var state = preparedState(order, rules, player)
+        state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 2_000).state
+        state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 3_000).state
+        state = FarmShiftEngine.defeatPest(state, order, rules, player, 4_000).state
+        state = FarmShiftEngine.harvest(state, order, rules, "CARROTS", player, 5_000).state
+
+        state.phase shouldBe FarmPhase.DELIVERY
+        FarmShiftEngine.tick(state, order, rules, 2_592_005_000).state shouldBe state
+        FarmShiftEngine.tick(state, order, rules, 2_592_005_000).events shouldContainExactly emptyList()
+    }
 })
+
+private fun preparedState(order: FarmOrder, rules: FarmRules, player: UUID): FarmShiftState {
+    var state = FarmShiftEngine.start(FarmShiftState(), order, rules, 1_000).state
+    repeat(rules.preparationQuota) { state = FarmShiftEngine.prepare(state, player).state }
+    return state
+}

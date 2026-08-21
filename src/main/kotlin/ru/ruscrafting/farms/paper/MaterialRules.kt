@@ -26,6 +26,8 @@ object MaterialRules {
 
     fun isPickaxe(item: ItemStack?): Boolean = item != null && item.type.name.endsWith("_PICKAXE")
 
+    fun isHoe(item: ItemStack?): Boolean = item != null && item.type.name.endsWith("_HOE")
+
     fun cropComponent(material: Material): Component = Component.translatable("block.minecraft.${material.name.lowercase()}")
 
     fun woodComponent(species: String): Component = Component.translatable("block.minecraft.${species.lowercase()}_log")

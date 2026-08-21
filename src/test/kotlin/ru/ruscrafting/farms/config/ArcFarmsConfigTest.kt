@@ -9,6 +9,7 @@ import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import ru.arc.config.Config
 import ru.arc.redis.RedisModuleConfig
+import ru.ruscrafting.farms.domain.FarmIncidentType
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.writeText
@@ -39,6 +40,10 @@ class ArcFarmsConfigTest : FunSpec({
         settings.destinations.getValue("farm").world shouldBe "sp11"
         settings.requiresWorldGuard shouldBe true
         settings.farms.single().incidentQuota shouldBe 4
+        settings.farms.single().preparationQuota shouldBe 3
+        settings.farms.single().incidentTypes shouldContainExactly listOf(FarmIncidentType.PESTS, FarmIncidentType.DROUGHT)
+        settings.farms.single().delivery.world shouldBe "sp11"
+        settings.farms.single().delivery.x shouldBe 201.65
         settings.lumbermills.single().fellingQuota shouldBe 16
         settings.mines.all { it.cartQuota == 16 && it.supportsRequired == 1 } shouldBe true
         ArcFarmsRedisBootstrap.load(root, settings).serverName shouldBe "spawn"
@@ -79,6 +84,20 @@ class ArcFarmsConfigTest : FunSpec({
         val configPath = root.resolve("config.yml")
         configPath.writeText(
             Files.readString(configPath).replace("hazard-trigger: 6", "hazard-trigger: 16"),
+        )
+
+        shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(root) }
+    }
+
+    test("farm delivery point outside an explicit farm cuboid is rejected") {
+        val repositoryRoot = Path.of(System.getProperty("arcfarms.repositoryRoot"))
+        val root = resourceTree(repositoryRoot.resolve("scripts/lab/plugin-configs/ArcFarms/config.yml"))
+        val configPath = root.resolve("config.yml")
+        configPath.writeText(
+            Files.readString(configPath).replace(
+                "delivery: {x: -3.5, y: 100.0, z: 0.5, radius: 1.5}",
+                "delivery: {x: 50.0, y: 100.0, z: 0.5, radius: 1.5}",
+            ),
         )
 
         shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(root) }
@@ -126,6 +145,8 @@ class ArcFarmsConfigTest : FunSpec({
         settings.requiresWorldGuard shouldBe false
         settings.farms.single().orders.single().id shouldBe "lab_order"
         settings.farms.single().pestEntity shouldBe "SILVERFISH"
+        settings.farms.single().preparationQuota shouldBe 1
+        settings.farms.single().delivery.x shouldBe -3.5
         settings.lumbermills.single().fellingQuota shouldBe 2
         settings.mines.single().cartQuota shouldBe 4
         settings.farms.single().reference.bounds!!.volume shouldBe 17_334L

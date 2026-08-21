@@ -14,14 +14,22 @@ before the next one becomes available.
 
 ### Harvest shift
 
-Entering the farm starts a shared order and shows every unfinished crop with its
-current and required amount in a boss bar. Only requested mature crops fill it,
-and accepted crops are consumed by the order instead of dropping. At the
-configured threshold silverfish spawn
-inside the farm; players must defeat them before harvesting continues. The main
-order progress remains intact. Resolving the outbreak starts a short
-golden-harvest window that doubles one remaining crop. The shift ends with
-participant and top-contributor recognition.
+Entering the farm starts a shared order with a short physical preparation
+phase: highlighted beds are right-clicked with a hoe before harvesting opens.
+The boss bar then shows every unfinished crop with its current and required
+amount. Only requested mature crops fill it, and accepted crops are consumed by
+the order instead of dropping.
+
+At the configured threshold one of the farm incidents starts. A pest outbreak
+spawns real silverfish that must be defeated; a drought highlights dry beds that
+must be right-clicked with a water bucket. Either incident pauses harvesting
+without resetting the main order. Resolving it starts a short golden-harvest
+window that doubles one remaining crop. When the crop quota is ready, an
+interactive harvest crate appears at the last crop. A player carries its visual
+display to the configured receiving point; leaving the farm returns the crate,
+while the shared delivery objective remains available indefinitely. Only this
+physical delivery completes the order and triggers participant and
+top-contributor recognition.
 
 ### Lumber order
 

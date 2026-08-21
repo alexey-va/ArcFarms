@@ -36,11 +36,15 @@ farm-zones:
     world: sp11
     region: farm
     permission: arcfarms.farm
+    preparation-quota: 3
+    care-radius: 10
     incident-trigger-percent: 35
     incident-quota: 4
+    incident-types: [PESTS, DROUGHT]
     pest-entity: SILVERFISH
     pest-spawn-radius: 6
     golden-window-seconds: 45
+    delivery: {x: 201.65, y: 49.0, z: 453.46, radius: 2.5}
     crops: [WHEAT, CARROTS, POTATOES, BEETROOTS]
     orders:
       miners_rations: [WHEAT:160, CARROTS:80, POTATOES:80]

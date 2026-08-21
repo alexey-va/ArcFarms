@@ -4,11 +4,31 @@ import java.util.UUID
 
 enum class FarmPhase {
     IDLE,
+    PREPARATION,
     HARVESTING,
     INCIDENT,
     GOLDEN_HARVEST,
+    DELIVERY,
     COOLDOWN,
 }
+
+enum class FarmIncidentType {
+    PESTS,
+    DROUGHT,
+}
+
+data class FarmDeliveryPosition(
+    val world: String,
+    val x: Double,
+    val y: Double,
+    val z: Double,
+) {
+    init {
+        require(world.matches(Regex("[A-Za-z0-9._-]{1,128}"))) { "Invalid delivery world: $world" }
+        require(listOf(x, y, z).all(Double::isFinite)) { "Delivery position must be finite" }
+    }
+}
+
 data class FarmOrder(
     val id: String,
     val required: Map<String, Int>,
@@ -24,12 +44,14 @@ data class FarmOrder(
 }
 
 data class FarmRules(
+    val preparationQuota: Int,
     val incidentTriggerPercent: Int,
     val incidentQuota: Int,
     val goldenWindowMillis: Long,
     val cooldownMillis: Long,
 ) {
     init {
+        require(preparationQuota in 1..16)
         require(incidentTriggerPercent in 1..99)
         require(incidentQuota in 1..64)
         require(goldenWindowMillis in 5_000..600_000)
@@ -42,7 +64,10 @@ data class FarmShiftState(
     val sequence: Long = 0,
     val orderId: String? = null,
     val progress: Map<String, Int> = emptyMap(),
+    val preparationProgress: Int = 0,
+    val preparationRequired: Int = 0,
     val incidentCrop: String? = null,
+    val incidentType: FarmIncidentType? = null,
     val incidentProgress: Int = 0,
     val incidentRequired: Int = 0,
     val incidentResolved: Boolean = false,
@@ -51,6 +76,7 @@ data class FarmShiftState(
     val startedAt: Long = 0,
     val goldenEndsAt: Long = 0,
     val cooldownEndsAt: Long = 0,
+    val deliveryPosition: FarmDeliveryPosition? = null,
     val outcome: ShiftOutcome = ShiftOutcome.NONE,
     val contributors: Map<UUID, Int> = emptyMap(),
 ) {
@@ -70,13 +96,39 @@ object FarmShiftEngine {
     ): EngineResult<FarmShiftState> {
         if (current.phase != FarmPhase.IDLE) return EngineResult(current, false)
         val next = FarmShiftState(
-            phase = FarmPhase.HARVESTING,
+            phase = FarmPhase.PREPARATION,
             sequence = current.sequence + 1,
             orderId = order.id,
             progress = order.required.keys.associateWith { 0 },
+            preparationRequired = rules.preparationQuota,
             startedAt = now,
         )
         return EngineResult(next, true, events = listOf(ShiftEvent.STARTED))
+    }
+
+    fun prepare(
+        current: FarmShiftState,
+        playerId: UUID,
+    ): EngineResult<FarmShiftState> {
+        if (current.phase != FarmPhase.PREPARATION || current.preparationProgress >= current.preparationRequired) {
+            return EngineResult(current, false)
+        }
+        val progress = current.preparationProgress + 1
+        val completed = progress >= current.preparationRequired
+        val state = current.copy(
+            phase = if (completed) FarmPhase.HARVESTING else FarmPhase.PREPARATION,
+            preparationProgress = progress,
+            contributors = incrementContribution(current.contributors, playerId, 1),
+        )
+        return EngineResult(
+            state,
+            true,
+            contribution = 1,
+            events = buildList {
+                add(ShiftEvent.PREPARATION_PROGRESS)
+                if (completed) add(ShiftEvent.PREPARATION_COMPLETED)
+            },
+        )
     }
 
     fun harvest(
@@ -86,6 +138,7 @@ object FarmShiftEngine {
         crop: String,
         playerId: UUID,
         now: Long,
+        incidentType: FarmIncidentType = FarmIncidentType.PESTS,
     ): EngineResult<FarmShiftState> {
         val advanced = tick(current, order, rules, now)
         var state = advanced.state
@@ -110,14 +163,14 @@ object FarmShiftEngine {
 
         if (state.completed(order) >= order.totalRequired && state.phase != FarmPhase.INCIDENT) {
             state = state.copy(
-                phase = FarmPhase.COOLDOWN,
+                phase = FarmPhase.DELIVERY,
                 incidentCrop = null,
+                incidentType = null,
                 goldenCrop = null,
                 goldenEndsAt = 0,
-                cooldownEndsAt = now + rules.cooldownMillis,
-                outcome = ShiftOutcome.COMPLETED,
+                deliveryPosition = null,
             )
-            events += ShiftEvent.COMPLETED
+            events += ShiftEvent.DELIVERY_STARTED
             return EngineResult(state, true, contribution, events)
         }
 
@@ -128,6 +181,7 @@ object FarmShiftEngine {
                 state = state.copy(
                     phase = FarmPhase.INCIDENT,
                     incidentCrop = incidentCrop,
+                    incidentType = incidentType,
                     incidentProgress = 0,
                     incidentRequired = rules.incidentQuota,
                 )
@@ -143,8 +197,43 @@ object FarmShiftEngine {
         rules: FarmRules,
         playerId: UUID,
         now: Long,
+    ): EngineResult<FarmShiftState> = resolveIncident(
+        current,
+        order,
+        rules,
+        FarmIncidentType.PESTS,
+        playerId,
+        now,
+    )
+
+    fun waterDrySoil(
+        current: FarmShiftState,
+        order: FarmOrder,
+        rules: FarmRules,
+        playerId: UUID,
+        now: Long,
+    ): EngineResult<FarmShiftState> = resolveIncident(
+        current,
+        order,
+        rules,
+        FarmIncidentType.DROUGHT,
+        playerId,
+        now,
+    )
+
+    private fun resolveIncident(
+        current: FarmShiftState,
+        order: FarmOrder,
+        rules: FarmRules,
+        expectedType: FarmIncidentType,
+        playerId: UUID,
+        now: Long,
     ): EngineResult<FarmShiftState> {
-        if (current.phase != FarmPhase.INCIDENT || current.incidentProgress >= current.incidentRequired) {
+        val actualType = current.incidentType ?: FarmIncidentType.PESTS
+        if (
+            current.phase != FarmPhase.INCIDENT || actualType != expectedType ||
+            current.incidentProgress >= current.incidentRequired
+        ) {
             return EngineResult(current, false)
         }
         var state = current.copy(
@@ -156,6 +245,7 @@ object FarmShiftEngine {
             state = state.copy(
                 phase = FarmPhase.HARVESTING,
                 incidentResolved = true,
+                incidentType = null,
             )
             events += ShiftEvent.INCIDENT_RESOLVED
             remainingCrop(state, order)?.let { goldenCrop ->
@@ -171,6 +261,27 @@ object FarmShiftEngine {
         return EngineResult(state, true, contribution = 1, events = events)
     }
 
+    fun deliver(
+        current: FarmShiftState,
+        rules: FarmRules,
+        playerId: UUID,
+        now: Long,
+    ): EngineResult<FarmShiftState> {
+        if (current.phase != FarmPhase.DELIVERY) return EngineResult(current, false)
+        return EngineResult(
+            current.copy(
+                phase = FarmPhase.COOLDOWN,
+                cooldownEndsAt = now + rules.cooldownMillis,
+                deliveryPosition = null,
+                outcome = ShiftOutcome.COMPLETED,
+                contributors = incrementContribution(current.contributors, playerId, 1),
+            ),
+            true,
+            contribution = 1,
+            events = listOf(ShiftEvent.COMPLETED),
+        )
+    }
+
     fun tick(
         current: FarmShiftState,
         order: FarmOrder?,
@@ -182,6 +293,7 @@ object FarmShiftEngine {
             return EngineResult(FarmShiftState(sequence = current.sequence), true, events = listOf(ShiftEvent.RESET))
         }
         if (current.phase == FarmPhase.COOLDOWN) return EngineResult(current, false)
+        if (current.phase == FarmPhase.DELIVERY) return EngineResult(current, false)
         if (current.phase == FarmPhase.GOLDEN_HARVEST && now >= current.goldenEndsAt) {
             return EngineResult(
                 current.copy(phase = FarmPhase.HARVESTING, goldenCrop = null, goldenEndsAt = 0),
@@ -193,15 +305,15 @@ object FarmShiftEngine {
             if (current.phase == FarmPhase.INCIDENT) return EngineResult(current, false)
             return EngineResult(
                 current.copy(
-                    phase = FarmPhase.COOLDOWN,
+                    phase = FarmPhase.DELIVERY,
                     incidentCrop = null,
+                    incidentType = null,
                     goldenCrop = null,
                     goldenEndsAt = 0,
-                    cooldownEndsAt = now + rules.cooldownMillis,
-                    outcome = ShiftOutcome.COMPLETED,
+                    deliveryPosition = null,
                 ),
                 true,
-                events = listOf(ShiftEvent.COMPLETED),
+                events = listOf(ShiftEvent.DELIVERY_STARTED),
             )
         }
         return EngineResult(current, false)
