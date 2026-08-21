@@ -1,0 +1,100 @@
+prefix: '<dark_gray>[<gold>ArcFarms</gold>]</dark_gray>'
+help: '<prefix> <gray>/arcfarms — activities; /arcfarms status — state; /arcfarms top &lt;farm|lumber|mine&gt; — contributions.</gray>'
+no-permission: '<prefix> <red>You do not have permission.</red>'
+player-only: '<prefix> <red>Only a player can do that.</red>'
+bad-activity: '<prefix> <red>Activity must be farm, lumber, or mine.</red>'
+reload-ok: '<prefix> <green>ArcFarms configuration and locales reloaded.</green>'
+reload-failed: '<prefix> <red>Reload rejected:</red> <gray><reason></gray>'
+generic-error: '<prefix> <red>The action failed. Details were written to the server log.</red>'
+zone-unavailable: '<prefix> <red>This worksite is currently unavailable.</red>'
+zone-locked: '<prefix> <red>You do not have access to this worksite yet.</red>'
+cooldown: '<prefix> <gray>The next shift will be ready in <gold><seconds></gold> seconds.</gray>'
+menu:
+  title: '<dark_gray>Work Shifts</dark_gray>'
+  farm:
+    name: '<green>Harvest Shift</green>'
+    lore: '<gray>A shared order, varied crops, and a golden harvest.</gray>'
+  lumber:
+    name: '<gold>Lumbermill</gold>'
+    lore: '<gray>Cut the requested wood and process it in the workshop.</gray>'
+  mine:
+    name: '<aqua>Mine Expedition</aqua>'
+    lore: '<gray>Fill the cart, stabilize the face, and extract in time.</gray>'
+  stats:
+    name: '<yellow>Your Contribution</yellow>'
+    lore: '<gray>Farm: <green><farm></green> · Wood: <gold><lumber></gold> · Mine: <aqua><mine></aqua></gray>'
+  admin:
+    name: '<red>Reload ArcFarms</red>'
+    lore: '<gray>Validate and apply config.yml and locale files.</gray>'
+  click: '<yellow>Click to travel there.</yellow>'
+status:
+  header: '<prefix> <gold>Current work shifts:</gold>'
+  entry: '<dark_gray>•</dark_gray> <name> <gray>— <phase>, <progress></gray>'
+  empty: '<prefix> <gray>No worksites are active.</gray>'
+top:
+  header: '<prefix> <gold>Top contribution: <activity></gold>'
+  entry: '<gray><place>.</gray> <white><player></white> <dark_gray>—</dark_gray> <gold><amount></gold>'
+  empty: '<prefix> <gray>This activity has no recorded contribution yet.</gray>'
+farm:
+  started: '<prefix> <green>A harvest shift started:</green> <order><gray>. Harvest only the requested crops.</gray>'
+  wrong-target: '<gray>The current order needs <crops>.</gray>'
+  golden-started: '<gold><bold>Golden harvest!</bold></gold> <yellow><crop> gives double progress for <seconds> seconds.</yellow>'
+  golden-ended: '<gray>The golden harvest ended. The order continues.</gray>'
+  completed: '<green><bold>Order complete!</bold></green> <gray>Participants: <players>.</gray>'
+  timed-out: '<gray>The shift ended. A new order will appear after a short break.</gray>'
+  actionbar: '<order> <dark_gray>•</dark_gray> <green><done></green><gray>/</gray><gold><total></gold> <dark_gray>•</dark_gray> <gray><seconds>s</gray>'
+lumber:
+  started: '<prefix> <gold>Lumbermill order:</gold> <wood><gray>. Cut the requested species.</gray>'
+  wrong-species: '<gray>This order only accepts <wood>.</gray>'
+  processing: '<gold>The timber quota is ready.</gold> <gray>Go to the workshop and use a machine.</gray>'
+  station-required: '<gray>Processing happens at a machine inside the lumber workshop.</gray>'
+  completed: '<green><bold>Timber batch complete!</bold></green> <gray>Participants: <players>.</gray>'
+  timed-out: '<gray>The lumber order closed until the next shift.</gray>'
+  actionbar-felling: '<wood> <dark_gray>•</dark_gray> <gold><done></gold><gray>/</gray><yellow><total></yellow> logs'
+  actionbar-processing: '<gold>Processing</gold> <dark_gray>•</dark_gray> <yellow><done></yellow><gray>/</gray><gold><total></gold>'
+mine:
+  started: '<prefix> <aqua>An expedition started:</aqua> <route><gray>. Fill the minecart.</gray>'
+  pickaxe-required: '<red>You need a pickaxe to work this mine face.</red>'
+  regenerating: '<gray>This part of the mine is still regenerating.</gray>'
+  hazard-started: '<red><bold>The mine face is unstable!</bold></red> <gray>Stabilize it before continuing.</gray>'
+  hazard-help: '<yellow>Sneak and right-click mine walls with a pickaxe.</yellow>'
+  hazard-progress: '<gold>Support installed: <done>/<total>.</gold>'
+  hazard-resolved: '<green>The face is stable. Mining can continue.</green>'
+  extraction-started: '<gold><bold>The cart is full!</bold></gold> <yellow>A contributor must leave the mine within <seconds> seconds.</yellow>'
+  extraction-required: '<gray>Fill the cart and stabilize the face first.</gray>'
+  completed: '<green><bold>Expedition complete!</bold></green> <gray>The minecart was delivered.</gray>'
+  timed-out: '<gray>The expedition ended without extracting the cart. Players keep the resources they mined.</gray>'
+  actionbar: '<route> <dark_gray>•</dark_gray> <aqua><done></aqua><gray>/</gray><gold><total></gold> <dark_gray>•</dark_gray> <gray><phase></gray>'
+  journal-failed: '<red>The block was not mined because its recovery record could not be saved safely.</red>'
+shift:
+  winner: '<prefix> <yellow>Top shift contributor:</yellow> <white><player></white> <gray>— <amount>.</gray>'
+order:
+  farm:
+    miners_rations: '<gold>Miners’ Rations</gold>'
+    bakery_supply: '<gold>Bakery Supplies</gold>'
+    market_crates: '<gold>Market Crates</gold>'
+    lab_order: '<gold>Lab Order</gold>'
+route:
+  mine:
+    old_shafts: '<aqua>Old Shafts</aqua>'
+    sand_quarry: '<yellow>Sand Quarry</yellow>'
+    infernal_working: '<red>Infernal Working</red>'
+    lush_depths: '<green>Lush Depths</green>'
+    lab_mine: '<aqua>Lab Mine</aqua>'
+phase:
+  farm:
+    idle: '<gray>waiting</gray>'
+    harvesting: '<green>harvesting</green>'
+    golden_harvest: '<gold>golden harvest</gold>'
+    cooldown: '<gray>cooldown</gray>'
+  lumber:
+    idle: '<gray>waiting</gray>'
+    felling: '<gold>felling</gold>'
+    processing: '<yellow>processing</yellow>'
+    cooldown: '<gray>cooldown</gray>'
+  mine:
+    idle: '<gray>waiting</gray>'
+    mining: '<aqua>mining</aqua>'
+    hazard: '<red>stabilizing</red>'
+    extraction: '<gold>extracting</gold>'
+    cooldown: '<gray>cooldown</gray>'

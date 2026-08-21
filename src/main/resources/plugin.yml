@@ -1,0 +1,20 @@
+name: ArcFarms
+version: '${version}'
+main: ru.ruscrafting.farms.paper.ArcFarmsPlugin
+api-version: '1.21.11'
+authors: [RusCrafting]
+description: Shared farm, lumbermill, and mine activities
+depend: [WorldGuard]
+commands:
+  arcfarms:
+    description: Shared worksite activities
+    usage: /arcfarms
+permissions:
+  arcfarms.farm:
+    default: true
+  arcfarms.lumber:
+    default: true
+  arcfarms.mine:
+    default: true
+  arcfarms.admin:
+    default: op

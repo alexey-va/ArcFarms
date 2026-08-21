@@ -1,0 +1,110 @@
+enabled: true
+
+locale:
+  default: ru
+  use-client-locale: true
+
+ui:
+  bossbars: true
+  particles: true
+  sounds: true
+
+state:
+  save-seconds: 10
+  completed-cooldown-seconds: 180
+
+navigation:
+  farm-command: warp farm
+  lumber-command: warp lumber
+  mine-command: warp mine
+
+farm-zones:
+  communal_farm:
+    enabled: true
+    world: sp11
+    region: farm
+    permission: arcfarms.farm
+    shift-seconds: 900
+    golden-trigger-percent: 40
+    golden-window-seconds: 45
+    crops: [WHEAT, CARROTS, POTATOES, BEETROOTS]
+    orders:
+      miners_rations: [WHEAT:96, CARROTS:64, POTATOES:64]
+      bakery_supply: [WHEAT:160, BEETROOTS:48]
+      market_crates: [CARROTS:72, POTATOES:72, BEETROOTS:72]
+
+lumber-zones:
+  communal_lumbermill:
+    enabled: true
+    world: world
+    region: spawn_lumbermill
+    station-region: spawn_lumberhouse
+    permission: arcfarms.lumber
+    shift-seconds: 900
+    felling-quota: 96
+    processing-quota: 24
+    processing-per-use: 4
+    species: [OAK, SPRUCE, BIRCH, JUNGLE, ACACIA, DARK_OAK, MANGROVE, CHERRY]
+    station-materials: [STONECUTTER, GRINDSTONE, SMITHING_TABLE, LOOM]
+
+mine-zones:
+  old_shafts:
+    enabled: true
+    priority: 1
+    world: sp11
+    region: mine1
+    permission: arcfarms.mine
+    shift-seconds: 720
+    cart-quota: 48
+    hazard-trigger: 20
+    supports-required: 3
+    extraction-seconds: 45
+    restore-seconds: 60
+    temp-material: COBBLESTONE
+    base-material: STONE
+    materials: [STONE:240, COAL_ORE:45, IRON_ORE:45, COPPER_ORE:15, LAPIS_ORE:3, DIAMOND_ORE:3, EMERALD_ORE:6, REDSTONE_ORE:15, AMETHYST_BLOCK:5, GLOWSTONE:5]
+  sand_quarry:
+    enabled: true
+    priority: 2
+    world: sp11
+    region: mine2
+    permission: arcfarms.mine
+    shift-seconds: 720
+    cart-quota: 48
+    hazard-trigger: 20
+    supports-required: 3
+    extraction-seconds: 45
+    restore-seconds: 60
+    temp-material: BLACK_CONCRETE
+    base-material: SANDSTONE
+    materials: [SANDSTONE:250, SMOOTH_SANDSTONE:250, COAL_ORE:45, IRON_ORE:45, COPPER_ORE:15, LAPIS_ORE:3, DIAMOND_ORE:3, EMERALD_ORE:6, REDSTONE_ORE:15]
+  infernal_working:
+    enabled: true
+    priority: 2
+    world: sp11
+    region: minehell
+    permission: arcfarms.mine
+    shift-seconds: 720
+    cart-quota: 48
+    hazard-trigger: 20
+    supports-required: 4
+    extraction-seconds: 40
+    restore-seconds: 75
+    temp-material: BLACK_CONCRETE
+    base-material: NETHERRACK
+    materials: [NETHERRACK:400, RED_NETHER_BRICKS:30, NETHER_BRICKS:30, CRACKED_NETHER_BRICKS:30, SOUL_SAND:30, MAGMA_BLOCK:30, CRIMSON_NYLIUM:30, NETHER_QUARTZ_ORE:75, ANCIENT_DEBRIS:1, GLOWSTONE:50]
+  lush_depths:
+    enabled: true
+    priority: 2
+    world: sp11
+    region: minelush
+    permission: arcfarms.mine
+    shift-seconds: 720
+    cart-quota: 48
+    hazard-trigger: 20
+    supports-required: 3
+    extraction-seconds: 50
+    restore-seconds: 60
+    temp-material: COBBLESTONE
+    base-material: STONE
+    materials: [STONE:100, COAL_ORE:45, IRON_ORE:45, COPPER_ORE:15, LAPIS_ORE:3, DIAMOND_ORE:3, EMERALD_ORE:6, REDSTONE_ORE:15, AMETHYST_BLOCK:5, GLOWSTONE:5, CLAY:10]
