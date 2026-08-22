@@ -144,6 +144,31 @@ class FarmShiftEngineTest : FunSpec({
         afterMonth.events shouldContainExactly emptyList()
     }
 
+    test("field care keeps every target and waits indefinitely for one player") {
+        val ready = preparedState(order, rules, player)
+        val targets = listOf(
+            FarmCareTarget(0, FarmCareRole.WEED_ROOT, FarmPointPosition("world", 1.5, 65.0, 1.5), required = 2),
+            FarmCareTarget(1, FarmCareRole.WEED_ROOT, FarmPointPosition("world", 2.5, 65.0, 1.5), required = 2),
+        )
+        var state = FarmShiftEngine.startCare(ready, FarmCareType.WEEDS, targets).state
+
+        state.phase shouldBe FarmPhase.CARE
+        FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 2_000).accepted shouldBe false
+        repeat(3) { index ->
+            val target = if (index < 2) 0 else 1
+            state = FarmShiftEngine.advanceCare(state, target, player).state
+        }
+        state.phase shouldBe FarmPhase.CARE
+        state.careProgress() shouldBe 3
+        FarmShiftEngine.tick(state, order, rules, 2_592_002_000).state shouldBe state
+
+        val resolved = FarmShiftEngine.advanceCare(state, 1, player)
+        resolved.state.phase shouldBe FarmPhase.HARVESTING
+        resolved.state.careProgress() shouldBe 4
+        resolved.events shouldContainExactly listOf(ShiftEvent.CARE_PROGRESS, ShiftEvent.CARE_RESOLVED)
+        resolved.state.contributors[player] shouldBe 8
+    }
+
     test("one player can prepare a one hundred plot patch without duplicate progress") {
         val largePatch = (0 until 100).map { index ->
             FarmPlotPosition("world", index % 20, 64, index / 20 * 2)

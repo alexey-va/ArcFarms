@@ -7,6 +7,11 @@ enum class FarmPointKind {
     CRATES,
     RECEIVING,
     TRAVEL,
+    HIVE,
+    IRRIGATION,
+    COVERS,
+    SCARECROWS,
+    PEN,
 }
 
 data class FarmPointPosition(

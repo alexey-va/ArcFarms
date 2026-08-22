@@ -64,6 +64,10 @@ import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.ArcFarmsState
 import ru.ruscrafting.farms.domain.EngineResult
 import ru.ruscrafting.farms.domain.FarmOrder
+import ru.ruscrafting.farms.domain.FarmCarePlanner
+import ru.ruscrafting.farms.domain.FarmCareRole
+import ru.ruscrafting.farms.domain.FarmCareTarget
+import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmCropDamage
 import ru.ruscrafting.farms.domain.FarmDeliveryPlanner
 import ru.ruscrafting.farms.domain.FarmPatchPlanner
@@ -151,6 +155,7 @@ private data class BarKey(val playerId: UUID, val runtimeKey: String)
 private data class DeliveryKey(val zoneId: String, val index: Int)
 private data class SupplyKey(val zoneId: String, val kind: FarmSupplyKind)
 private data class PestNestKey(val zoneId: String, val position: FarmPlotPosition)
+private data class CareEntityKey(val zoneId: String, val targetId: Int)
 private enum class FarmSupplyKind { TOOL, SEEDS, WATER }
 
 private val FARM_SOIL_TYPES = setOf(Material.DIRT, Material.FARMLAND)
@@ -172,6 +177,7 @@ private val FARM_GOLDEN_COLOR = Color.fromRGB(255, 200, 87)
 private val FARM_DELIVERY_COLOR = Color.fromRGB(199, 120, 255)
 private val FARM_DANGER_COLOR = Color.fromRGB(255, 95, 109)
 private val FARM_SUCCESS_COLOR = Color.fromRGB(85, 217, 139)
+private val FARM_CARE_COLOR = Color.fromRGB(84, 201, 185)
 
 private fun Block.toFarmPlotPosition(): FarmPlotPosition = FarmPlotPosition(world.name, x, y, z)
 
@@ -218,6 +224,9 @@ class ArcFarmsService(
     private val carriedDisplays = mutableMapOf<DeliveryKey, UUID>()
     private val supplyEntities = mutableMapOf<SupplyKey, MutableSet<UUID>>()
     private val supplyVisualMaterials = mutableMapOf<SupplyKey, Material>()
+    private val careEntities = mutableMapOf<CareEntityKey, MutableSet<UUID>>()
+    private val animalFollowers = mutableMapOf<CareEntityKey, UUID>()
+    private val pollenCharges = mutableMapOf<UUID, Int>()
     private val waterFlows = mutableMapOf<String, FarmWaterFlowTracker>()
     private val pendingIncidentRestore = mutableSetOf<String>()
     private val adminPausedFarmZones = mutableSetOf<String>()
@@ -237,6 +246,10 @@ class ArcFarmsService(
     private val supplyZoneKey = NamespacedKey(plugin, "farm_supply_zone")
     private val supplyKindKey = NamespacedKey(plugin, "farm_supply_kind")
     private val serviceItemKey = NamespacedKey(plugin, "farm_service_item")
+    private val careZoneKey = NamespacedKey(plugin, "farm_care_zone")
+    private val careSequenceKey = NamespacedKey(plugin, "farm_care_sequence")
+    private val careTargetKey = NamespacedKey(plugin, "farm_care_target")
+    private val careRoleKey = NamespacedKey(plugin, "farm_care_role")
     private val tasks = mutableListOf<ScheduledTask>()
     private var started = false
 
@@ -481,11 +494,19 @@ class ArcFarmsService(
             }
         }
         removeFarmServiceItems(player, reason = "player_quit")
+        pollenCharges.remove(player.uniqueId)
+        animalFollowers.entries.removeIf { it.value == player.uniqueId }
         adminEditPlayers.remove(player.uniqueId)
     }
 
     fun onInteractEntity(event: PlayerInteractEntityEvent) {
         if (event.hand != EquipmentSlot.HAND) return
+        val careZone = event.rightClicked.persistentDataContainer.get(careZoneKey, PersistentDataType.STRING)
+        if (careZone != null) {
+            event.isCancelled = true
+            handleFarmCareEntityInteraction(event.player, event.rightClicked, careZone)
+            return
+        }
         val supplyZone = event.rightClicked.persistentDataContainer.get(supplyZoneKey, PersistentDataType.STRING)
         if (supplyZone != null) {
             event.isCancelled = true
@@ -518,6 +539,13 @@ class ArcFarmsService(
     }
 
     fun onEntityDamage(event: EntityDamageEvent) {
+        if (event.entity.persistentDataContainer.has(careZoneKey, PersistentDataType.STRING)) {
+            event.isCancelled = true
+            val player = (event as? EntityDamageByEntityEvent)?.damager as? Player ?: return
+            val zoneId = event.entity.persistentDataContainer.get(careZoneKey, PersistentDataType.STRING) ?: return
+            handleFarmCareEntityInteraction(player, event.entity, zoneId)
+            return
+        }
         val nestZoneId = event.entity.persistentDataContainer.get(pestNestZoneKey, PersistentDataType.STRING)
         if (nestZoneId != null) {
             event.isCancelled = true
@@ -573,7 +601,8 @@ class ArcFarmsService(
         }
         if (
             event.entity.persistentDataContainer.has(deliveryZoneKey, PersistentDataType.STRING) ||
-            event.entity.persistentDataContainer.has(supplyZoneKey, PersistentDataType.STRING)
+            event.entity.persistentDataContainer.has(supplyZoneKey, PersistentDataType.STRING) ||
+            event.entity.persistentDataContainer.has(careZoneKey, PersistentDataType.STRING)
         ) {
             event.isCancelled = true
             return
@@ -623,7 +652,19 @@ class ArcFarmsService(
 
     fun adminFarmPoints(zoneId: String): Map<FarmPointKind, FarmPointPosition>? {
         val runtime = farms.firstOrNull { it.settings.id == zoneId } ?: return null
-        return FarmPointKind.entries.associateWith { point(runtime, it) }
+        return FarmPointKind.entries.mapNotNull { kind ->
+            val configured = farmLocations.zones[runtime.settings.id]?.get(kind)
+            val resolved = configured ?: when (kind) {
+                FarmPointKind.HIVE,
+                FarmPointKind.IRRIGATION,
+                FarmPointKind.COVERS,
+                FarmPointKind.SCARECROWS,
+                FarmPointKind.PEN,
+                -> careFixturePoint(runtime, kind)
+                else -> point(runtime, kind)
+            }
+            resolved?.let { kind to it }
+        }.toMap()
     }
 
     fun adminSetFarmPoint(player: Player, zoneId: String, kind: FarmPointKind): Boolean {
@@ -680,6 +721,12 @@ class ArcFarmsService(
                 ensureFarmDelivery(runtime)
                 persistAsync()
             }
+            FarmPointKind.HIVE,
+            FarmPointKind.IRRIGATION,
+            FarmPointKind.COVERS,
+            FarmPointKind.SCARECROWS,
+            FarmPointKind.PEN,
+            -> refreshActiveFarmCarePoint(runtime, kind, position)
             else -> Unit
         }
         sendChat(
@@ -709,7 +756,15 @@ class ArcFarmsService(
             return false
         }
         val normalized = stage.lowercase()
-        if (normalized !in setOf("preparation", "planting", "harvesting", "pests", "drought", "golden", "delivery", "complete", "reset")) {
+        val careStages = mapOf(
+            "weeds" to FarmCareType.WEEDS,
+            "irrigation" to FarmCareType.IRRIGATION,
+            "pollination" to FarmCareType.POLLINATION,
+            "covers" to FarmCareType.STORM_COVERS,
+            "scarecrows" to FarmCareType.SCARECROWS,
+            "animals" to FarmCareType.ANIMAL_RESCUE,
+        )
+        if (normalized !in setOf("preparation", "planting", "harvesting", "pests", "drought", "golden", "delivery", "complete", "reset") && normalized !in careStages) {
             sendChat(player, MessageKey.ADMIN_STAGE_UNKNOWN)
             return false
         }
@@ -729,12 +784,34 @@ class ArcFarmsService(
         }
         if (!ensureAdminFarmShift(runtime, player)) return false
         clearTemporaryFarmWater("admin_stage")
+        clearFarmCare(runtime, "admin_stage")
         removePests(runtime, activePests(runtime), "admin_stage")
         removePestNestEntities(runtime, "admin_stage")
         restoreIncidentCrops(runtime)
         clearDelivery(runtime, "admin_stage")
         val order = currentOrder(runtime) ?: return false
         val nextCrop = nextRequiredCrop(runtime.state, order)?.key ?: order.required.keys.first()
+        careStages[normalized]?.let { careType ->
+            prepareAdminPatch(runtime, plant = true, mature = true)
+            runtime.state = runtime.state.copy(
+                phase = FarmPhase.HARVESTING,
+                preparationReleased = true,
+                tilledPlots = runtime.state.preparationPatch.toSet(),
+                plantedPlots = runtime.state.preparationPatch.toSet(),
+                preparationProgress = runtime.state.preparationRequired,
+                plantingProgress = runtime.state.preparationRequired,
+                careType = null,
+                careTargets = emptyList(),
+                incidentType = null,
+            )
+            if (!initializeFarmCare(runtime, player, careType)) {
+                sendChat(player, MessageKey.ADMIN_CARE_UNAVAILABLE)
+                return false
+            }
+            persistBlocking()
+            sendChat(player, MessageKey.ADMIN_STAGE_SET, mapOf("stage" to locale.renderPath("admin.stage.$normalized", player)))
+            return true
+        }
         val events: List<ShiftEvent>
         runtime.state = when (normalized) {
             "planting" -> {
@@ -747,6 +824,8 @@ class ArcFarmsService(
                     plantedPlots = emptySet(),
                     preparationProgress = runtime.state.preparationRequired,
                     plantingProgress = 0,
+                    careType = null,
+                    careTargets = emptyList(),
                     incidentType = null,
                     pestNestsInitialized = false,
                     pestNests = emptyList(),
@@ -755,7 +834,7 @@ class ArcFarmsService(
             }
             "harvesting" -> {
                 prepareAdminPatch(runtime, plant = true, mature = true)
-                events = listOf(ShiftEvent.PREPARATION_COMPLETED)
+                events = emptyList()
                 runtime.state.copy(
                     phase = FarmPhase.HARVESTING,
                     preparationReleased = true,
@@ -763,6 +842,8 @@ class ArcFarmsService(
                     plantedPlots = runtime.state.preparationPatch.toSet(),
                     preparationProgress = runtime.state.preparationRequired,
                     plantingProgress = runtime.state.preparationRequired,
+                    careType = null,
+                    careTargets = emptyList(),
                     incidentType = null,
                     pestNestsInitialized = false,
                     pestNests = emptyList(),
@@ -852,7 +933,10 @@ class ArcFarmsService(
         val next = when (runtime.state.phase) {
             FarmPhase.IDLE, FarmPhase.COOLDOWN -> "preparation"
             FarmPhase.PREPARATION -> "planting"
-            FarmPhase.PLANTING -> "harvesting"
+            FarmPhase.PLANTING -> runtime.settings.careTypes[
+                java.lang.Math.floorMod(runtime.state.sequence.toInt(), runtime.settings.careTypes.size)
+            ].adminStageName()
+            FarmPhase.CARE -> "harvesting"
             FarmPhase.HARVESTING, FarmPhase.GOLDEN_HARVEST -> if (runtime.state.sequence % 2L == 0L) "pests" else "drought"
             FarmPhase.INCIDENT -> "harvesting"
             FarmPhase.DELIVERY -> "complete"
@@ -907,6 +991,16 @@ class ArcFarmsService(
                 "spawned" to locale.text(state.pestNests.sumOf(FarmPestNest::spawned)),
                 "alive" to locale.text(state.pestAlive),
                 "entities" to locale.text(activePests(runtime).size),
+            ),
+        )
+        sendChat(
+            player,
+            MessageKey.ADMIN_DEBUG_CARE,
+            mapOf(
+                "care" to (state.careType?.let { locale.renderPath("care.${it.name.lowercase()}.name", player) } ?: locale.text("—")),
+                "done" to locale.text(state.careProgress()),
+                "total" to locale.text(state.careRequired()),
+                "entities" to locale.text(careEntities.keys.count { it.zoneId == zoneId }),
             ),
         )
         sendChat(
@@ -976,6 +1070,7 @@ class ArcFarmsService(
 
     private fun resetFarmForAdmin(runtime: FarmRuntime) {
         clearTemporaryFarmWater("admin_reset")
+        clearFarmCare(runtime, "admin_reset")
         removePests(runtime, activePests(runtime), "admin_reset")
         removePestNestEntities(runtime, "admin_reset")
         clearDelivery(runtime, "admin_reset")
@@ -1031,6 +1126,14 @@ class ArcFarmsService(
 
     fun onEntityDeath(event: EntityDeathEvent) {
         val entity = event.entity
+        val careZone = entity.persistentDataContainer.get(careZoneKey, PersistentDataType.STRING)
+        if (careZone != null) {
+            event.drops.clear()
+            event.droppedExp = 0
+            val targetId = entity.persistentDataContainer.get(careTargetKey, PersistentDataType.INTEGER)
+            if (targetId != null) careEntities[CareEntityKey(careZone, targetId)]?.remove(entity.uniqueId)
+            return
+        }
         val zoneId = entity.persistentDataContainer.get(pestZoneKey, PersistentDataType.STRING) ?: return
         val sequence = entity.persistentDataContainer.get(pestSequenceKey, PersistentDataType.LONG) ?: return
         pestEntities[zoneId]?.remove(entity.uniqueId)
@@ -1058,7 +1161,10 @@ class ArcFarmsService(
     }
 
     fun onEntityChangeBlock(event: EntityChangeBlockEvent) {
-        if (event.entity.persistentDataContainer.has(pestZoneKey, PersistentDataType.STRING)) {
+        if (
+            event.entity.persistentDataContainer.has(pestZoneKey, PersistentDataType.STRING) ||
+            event.entity.persistentDataContainer.has(careZoneKey, PersistentDataType.STRING)
+        ) {
             event.isCancelled = true
             return
         }
@@ -1094,6 +1200,7 @@ class ArcFarmsService(
             val progress = when (runtime.state.phase) {
                 FarmPhase.PREPARATION -> "${runtime.state.preparationProgress}/${runtime.state.preparationRequired}"
                 FarmPhase.PLANTING -> "${runtime.state.plantingProgress}/${runtime.state.preparationRequired}"
+                FarmPhase.CARE -> "${runtime.state.careProgress()}/${runtime.state.careRequired()}"
                 FarmPhase.INCIDENT -> "${runtime.state.incidentProgress}/${runtime.state.incidentRequired}"
                 FarmPhase.DELIVERY -> "${runtime.state.deliveredCrates.size}/${runtime.settings.delivery.crates}"
                 else -> "$done/$total"
@@ -1243,7 +1350,8 @@ class ArcFarmsService(
             val restored = persisted.farms[configured.id]?.takeIf { state ->
                 state.orderId == null || (
                     state.orderId in orderMap &&
-                        (state.preparationCrop == null || state.preparationCrop in orderMap.getValue(state.orderId).required)
+                        (state.preparationCrop == null || state.preparationCrop in orderMap.getValue(state.orderId).required) &&
+                        (state.phase != FarmPhase.CARE || state.careType != null && state.careTargets.isNotEmpty())
                     )
             }?.let { state ->
                 if (state.phase == FarmPhase.PREPARATION && state.preparationPatch.isEmpty()) {
@@ -1377,6 +1485,13 @@ class ArcFarmsService(
             }
             require(MaterialRules.isHoe(ItemStack(MaterialRules.material(zone.supplies.toolMaterial)))) {
                 "Farm zone ${zone.id} supplies.tool-material must be a hoe"
+            }
+            zone.careVisuals.values.forEach { MaterialRules.material(it.material) }
+            zone.careAnimalEntities.forEach { entityName ->
+                val entityType = EntityType.valueOf(entityName)
+                require(entityType.entityClass?.let(Mob::class.java::isAssignableFrom) == true) {
+                    "Farm zone ${zone.id} care-animal-entities must contain mobs"
+                }
             }
             MaterialRules.material(zone.delivery.itemMaterial)
             zone.crops.forEach { cropName ->
@@ -1593,6 +1708,203 @@ class ArcFarmsService(
             "complete" to complete,
         )
         return complete
+    }
+
+    private fun initializeFarmCare(
+        runtime: FarmRuntime,
+        actor: Player?,
+        preferredType: FarmCareType? = null,
+    ): Boolean {
+        if (runtime.state.phase != FarmPhase.HARVESTING || runtime.state.careType != null) return false
+        val configured = runtime.settings.careTypes
+        val start = if (preferredType == null) {
+            java.lang.Math.floorMod(runtime.state.sequence.toInt() * 17 + random.nextInt(configured.size), configured.size)
+        } else {
+            configured.indexOf(preferredType).takeIf { it >= 0 } ?: 0
+        }
+        val candidates = if (preferredType != null) {
+            listOf(preferredType)
+        } else {
+            configured.indices.map { configured[(start + it) % configured.size] }
+        }
+        val selected = candidates.firstNotNullOfOrNull { type ->
+            buildFarmCareTargets(runtime, type)?.let { type to it }
+        }
+        if (selected == null) {
+            debug.event(
+                "farm_care_unavailable",
+                "zone" to runtime.settings.id,
+                "sequence" to runtime.state.sequence,
+                "types" to configured.joinToString(","),
+                "procedural" to runtime.settings.proceduralCareFixtures,
+            )
+            return false
+        }
+        val result = FarmShiftEngine.startCare(runtime.state, selected.first, selected.second)
+        applyFarmResult(runtime, result, actor)
+        ensureFarmCare(runtime)
+        persistAsync()
+        return true
+    }
+
+    private fun buildFarmCareTargets(runtime: FarmRuntime, type: FarmCareType): List<FarmCareTarget>? {
+        val patch = runtime.state.preparationPatch
+        if (patch.isEmpty()) return null
+        val count = runtime.settings.careTargetCount
+        val salt = runtime.state.sequence * 101L + type.ordinal * 17L
+        fun bedTargets(role: FarmCareRole, amount: Int, required: Int = 1): List<FarmCareTarget> =
+            FarmCarePlanner.spread(patch, amount.coerceAtMost(patch.size), salt).mapIndexed { index, plot ->
+                FarmCareTarget(
+                    id = index,
+                    role = role,
+                    position = FarmPointPosition(plot.world, plot.x + 0.5, plot.y + 1.05, plot.z + 0.5),
+                    required = required,
+                )
+            }
+        fun explicit(kind: FarmPointKind): FarmPointPosition? = farmLocations.zones[runtime.settings.id]?.get(kind)
+
+        return when (type) {
+            FarmCareType.WEEDS -> bedTargets(FarmCareRole.WEED_ROOT, count + 1, required = 2)
+            FarmCareType.IRRIGATION -> {
+                val field = bedTargets(FarmCareRole.VALVE, count)
+                explicit(FarmPointKind.IRRIGATION)?.let { anchor ->
+                    listOf(FarmCareTarget(0, FarmCareRole.VALVE, anchor)) + field.drop(1).mapIndexed { index, target ->
+                        target.copy(id = index + 1)
+                    }
+                } ?: field
+            }
+            FarmCareType.POLLINATION -> {
+                val hive = careFixturePoint(runtime, FarmPointKind.HIVE) ?: return null
+                listOf(FarmCareTarget(0, FarmCareRole.HIVE, hive)) +
+                    bedTargets(FarmCareRole.FLOWER_PATCH, count).mapIndexed { index, target -> target.copy(id = index + 1) }
+            }
+            FarmCareType.STORM_COVERS -> {
+                val corners = FarmCarePlanner.corners(patch).mapIndexed { index, plot ->
+                    FarmCareTarget(
+                        index,
+                        FarmCareRole.COVER_ANCHOR,
+                        FarmPointPosition(plot.world, plot.x + 0.5, plot.y + 1.05, plot.z + 0.5),
+                    )
+                }
+                explicit(FarmPointKind.COVERS)?.let { anchor ->
+                    listOf(FarmCareTarget(0, FarmCareRole.COVER_ANCHOR, anchor)) +
+                        corners.drop(1).mapIndexed { index, target -> target.copy(id = index + 1) }
+                } ?: corners
+            }
+            FarmCareType.SCARECROWS -> {
+                val field = bedTargets(FarmCareRole.SCARECROW, minOf(3, count), required = 2)
+                explicit(FarmPointKind.SCARECROWS)?.let { anchor ->
+                    listOf(FarmCareTarget(0, FarmCareRole.SCARECROW, anchor, required = 2)) +
+                        field.drop(1).mapIndexed { index, target -> target.copy(id = index + 1) }
+                } ?: field
+            }
+            FarmCareType.ANIMAL_RESCUE -> {
+                val pen = careFixturePoint(runtime, FarmPointKind.PEN) ?: return null
+                val center = farmAreaCenter(patch)?.location() ?: return null
+                val safePoints = findDeliveryCandidates(runtime, center, runtime.settings.careRadius)
+                    .filter { candidate ->
+                        val dx = candidate.x - pen.x
+                        val dz = candidate.z - pen.z
+                        dx * dx + dz * dz >= 25.0
+                    }
+                    .map { FarmPointPosition(it.world, it.x, it.y, it.z) }
+                    .sortedWith(compareBy(FarmPointPosition::world, FarmPointPosition::x, FarmPointPosition::z))
+                if (safePoints.isEmpty()) return null
+                val targetCount = minOf(count, safePoints.size)
+                val startIndex = java.lang.Math.floorMod(salt, safePoints.size.toLong()).toInt()
+                List(targetCount) { index ->
+                    safePoints[(startIndex + index * safePoints.size / targetCount) % safePoints.size]
+                }.mapIndexed { index, position ->
+                    FarmCareTarget(index, FarmCareRole.ANIMAL, position)
+                }
+            }
+        }.takeIf { it.isNotEmpty() }
+    }
+
+    private fun handleFarmCareEntityInteraction(player: Player, entity: Entity, zoneId: String) {
+        val runtime = farms.firstOrNull { it.settings.id == zoneId } ?: return
+        val sequence = entity.persistentDataContainer.get(careSequenceKey, PersistentDataType.LONG) ?: return
+        val targetId = entity.persistentDataContainer.get(careTargetKey, PersistentDataType.INTEGER) ?: return
+        val roleName = entity.persistentDataContainer.get(careRoleKey, PersistentDataType.STRING) ?: return
+        val role = runCatching { FarmCareRole.valueOf(roleName) }.getOrNull() ?: return
+        if (runtime.state.phase != FarmPhase.CARE || runtime.state.sequence != sequence || !runtime.region.contains(entity.location)) return
+        if (!hasAccess(player, runtime.settings.permission)) {
+            sendChat(player, MessageKey.ZONE_LOCKED)
+            return
+        }
+        if (!allowInteraction("farm-care-target:$zoneId:$targetId:${player.uniqueId}", 250)) return
+        if (role == FarmCareRole.PEN) {
+            sendActionBar(player, MessageKey.FARM_CARE_ANIMAL_PEN)
+            return
+        }
+        val target = runtime.state.careTargets.firstOrNull { it.id == targetId && it.role == role } ?: return
+        when (role) {
+            FarmCareRole.WEED_ROOT -> if (!MaterialRules.isHoe(player.inventory.itemInMainHand)) {
+                sendActionBar(player, MessageKey.FARM_CARE_TOOL)
+                return
+            }
+            FarmCareRole.VALVE -> {
+                val next = runtime.state.careTargets.filterNot(FarmCareTarget::complete).minByOrNull(FarmCareTarget::id)
+                if (next?.id != target.id) {
+                    sendActionBar(player, MessageKey.FARM_CARE_ORDER)
+                    return
+                }
+            }
+            FarmCareRole.HIVE -> {
+                pollenCharges[player.uniqueId] = 2
+                sendActionBar(player, MessageKey.FARM_CARE_POLLEN_TAKEN)
+                if (target.complete) return
+            }
+            FarmCareRole.FLOWER_PATCH -> {
+                val charges = pollenCharges[player.uniqueId] ?: 0
+                if (charges <= 0) {
+                    sendActionBar(player, MessageKey.FARM_CARE_POLLEN_REQUIRED)
+                    return
+                }
+                pollenCharges[player.uniqueId] = charges - 1
+            }
+            FarmCareRole.ANIMAL -> {
+                val key = CareEntityKey(zoneId, targetId)
+                animalFollowers[key] = player.uniqueId
+                (entity as? Mob)?.pathfinder?.moveTo(player, 1.15)
+                sendActionBar(player, MessageKey.FARM_CARE_ANIMAL_FOLLOWING)
+                debug.event("farm_care_animal_following", "zone" to zoneId, "target" to targetId, "player" to player.name)
+                return
+            }
+            FarmCareRole.COVER_ANCHOR, FarmCareRole.SCARECROW -> Unit
+            FarmCareRole.PEN -> return
+        }
+        val result = FarmShiftEngine.advanceCare(runtime.state, target.id, player.uniqueId)
+        if (!result.accepted) return
+        farmCareFeedback(player, entity.location, role, result.state.careTargets.first { it.id == target.id }.complete)
+        applyFarmResult(runtime, result, player)
+    }
+
+    private fun farmCareFeedback(player: Player, location: Location, role: FarmCareRole, completed: Boolean) {
+        if (settings.particles) {
+            val color = if (completed) FARM_SUCCESS_COLOR else FARM_CARE_COLOR
+            player.spawnParticle(
+                Particle.DUST,
+                location.clone().add(0.0, 0.55, 0.0),
+                if (completed) 7 else 4,
+                0.35,
+                0.25,
+                0.35,
+                0.0,
+                Particle.DustOptions(color, if (completed) 1.35f else 1.05f),
+            )
+        }
+        if (settings.sounds) {
+            val sound = when (role) {
+                FarmCareRole.WEED_ROOT -> Sound.BLOCK_ROOTED_DIRT_BREAK
+                FarmCareRole.VALVE -> Sound.BLOCK_CHAIN_PLACE
+                FarmCareRole.HIVE, FarmCareRole.FLOWER_PATCH -> Sound.ENTITY_BEE_POLLINATE
+                FarmCareRole.COVER_ANCHOR -> Sound.BLOCK_WOOL_PLACE
+                FarmCareRole.SCARECROW -> Sound.BLOCK_WOODEN_TRAPDOOR_CLOSE
+                FarmCareRole.ANIMAL, FarmCareRole.PEN -> Sound.ENTITY_ITEM_PICKUP
+            }
+            player.playSound(location, sound, 0.7f, if (completed) 1.2f else 0.95f)
+        }
     }
 
     private fun handleFarmCareInteraction(event: PlayerInteractEvent, clicked: Block, player: Player): Boolean {
@@ -1861,24 +2173,39 @@ class ArcFarmsService(
                 return
             }
         }
-        if (runtime.state.phase in setOf(FarmPhase.PREPARATION, FarmPhase.PLANTING)) {
+        if (runtime.state.phase in setOf(FarmPhase.PREPARATION, FarmPhase.PLANTING, FarmPhase.CARE)) {
             event.isCancelled = true
-            if (runtime.state.phase == FarmPhase.PREPARATION) {
-                sendActionBar(player, MessageKey.FARM_PREPARATION_REQUIRED)
-            } else {
-                val preparationCrop = MaterialRules.material(requireNotNull(runtime.state.preparationCrop))
-                sendActionBar(
+            when (runtime.state.phase) {
+                FarmPhase.PREPARATION -> sendActionBar(player, MessageKey.FARM_PREPARATION_REQUIRED)
+                FarmPhase.PLANTING -> {
+                    val preparationCrop = MaterialRules.material(requireNotNull(runtime.state.preparationCrop))
+                    sendActionBar(
+                        player,
+                        MessageKey.FARM_PLANTING_REQUIRED,
+                        mapOf("crop" to MaterialRules.cropComponent(preparationCrop)),
+                    )
+                }
+                FarmPhase.CARE -> sendActionBar(
                     player,
-                    MessageKey.FARM_PLANTING_REQUIRED,
-                    mapOf("crop" to MaterialRules.cropComponent(preparationCrop)),
+                    MessageKey.FARM_CARE_REQUIRED,
+                    mapOf(
+                        "instruction" to (runtime.state.careType?.let {
+                            locale.renderPath("care.${it.name.lowercase()}.instruction", player)
+                        } ?: Component.empty()),
+                    ),
                 )
+                else -> Unit
             }
             debug.event(
                 "farm_crop_rejected",
                 "player" to player.name,
                 "zone" to runtime.settings.id,
                 "crop" to crop,
-                "reason" to if (runtime.state.phase == FarmPhase.PREPARATION) "tilling_required" else "planting_required",
+                "reason" to when (runtime.state.phase) {
+                    FarmPhase.PREPARATION -> "tilling_required"
+                    FarmPhase.PLANTING -> "planting_required"
+                    else -> "care_required"
+                },
             )
             return
         }
@@ -2156,6 +2483,7 @@ class ArcFarmsService(
 
     private fun applyFarmResult(runtime: FarmRuntime, result: EngineResult<FarmShiftState>, actor: Player?) {
         val incidentType = result.state.incidentType ?: runtime.state.incidentType ?: FarmIncidentType.PESTS
+        val careType = result.state.careType ?: runtime.state.careType
         runtime.state = result.state
         traceResult(
             activity = ActivityKind.FARM,
@@ -2232,13 +2560,72 @@ class ArcFarmsService(
                 }
                 ShiftEvent.PREPARATION_COMPLETED -> {
                     players(runtime.region).forEach { removeFarmServiceItems(it, runtime.settings.id, "phase_changed", FarmSupplyKind.SEEDS) }
+                    successBurst(runtime.region)
+                    if (!initializeFarmCare(runtime, actor)) {
+                        broadcast(
+                            runtime.region,
+                            MessageKey.FARM_PREPARATION_COMPLETED,
+                            sound = Sound.ENTITY_VILLAGER_YES,
+                            title = true,
+                        )
+                    }
+                    persistAsync()
+                }
+                ShiftEvent.CARE_STARTED -> {
+                    val type = requireNotNull(careType)
+                    players(runtime.region).forEach { player ->
+                        val title = locale.render(MessageKey.FARM_CARE_STARTED, player)
+                        val subtitle = locale.renderPath("care.${type.name.lowercase()}.instruction", player)
+                        showScreenTitle(
+                            player,
+                            title,
+                            subtitle,
+                        )
+                        debug.message("title", "local", MessageKey.FARM_CARE_STARTED.path, player, title)
+                        debug.message("subtitle", "local", "care.${type.name.lowercase()}.instruction", player, subtitle)
+                        if (settings.sounds) player.playSound(player.location, farmCareStartSound(type), 0.75f, 1.0f)
+                    }
+                    warningBurst(runtime.region)
+                    debug.event(
+                        "farm_care_started",
+                        "zone" to runtime.settings.id,
+                        "sequence" to runtime.state.sequence,
+                        "type" to type,
+                        "targets" to runtime.state.careTargets.size,
+                        "required" to runtime.state.careRequired(),
+                    )
+                    persistAsync()
+                }
+                ShiftEvent.CARE_PROGRESS -> {
+                    if (actor != null) {
+                        sendActionBar(
+                            actor,
+                            MessageKey.FARM_CARE_PROGRESS,
+                            mapOf(
+                                "done" to locale.text(runtime.state.careProgress()),
+                                "total" to locale.text(runtime.state.careRequired()),
+                            ),
+                        )
+                    }
+                    ensureFarmCare(runtime)
+                    persistAsync()
+                }
+                ShiftEvent.CARE_RESOLVED -> {
+                    clearFarmCare(runtime, "care_resolved")
+                    players(runtime.region).forEach { removeFarmServiceItems(it, runtime.settings.id, "care_resolved", FarmSupplyKind.TOOL) }
                     broadcast(
                         runtime.region,
-                        MessageKey.FARM_PREPARATION_COMPLETED,
+                        MessageKey.FARM_CARE_RESOLVED,
                         sound = Sound.ENTITY_VILLAGER_YES,
                         title = true,
                     )
                     successBurst(runtime.region)
+                    debug.event(
+                        "farm_care_resolved",
+                        "zone" to runtime.settings.id,
+                        "sequence" to runtime.state.sequence,
+                        "type" to careType,
+                    )
                     persistAsync()
                 }
                 ShiftEvent.INCIDENT_STARTED -> {
@@ -2546,6 +2933,8 @@ class ArcFarmsService(
             ensureFarmDroughtTargets(runtime)
             ensureFarmPests(runtime)
             letPestsEatCrops(runtime)
+            ensureFarmCare(runtime)
+            updateFarmCareAnimals(runtime)
             ensureFarmDelivery(runtime)
             ensureFarmSupplies(runtime)
             maintainWetFarmBeds(runtime)
@@ -2584,6 +2973,7 @@ class ArcFarmsService(
                 runtime.state.phase !in setOf(
                     FarmPhase.PREPARATION,
                     FarmPhase.PLANTING,
+                    FarmPhase.CARE,
                     FarmPhase.HARVESTING,
                     FarmPhase.INCIDENT,
                     FarmPhase.GOLDEN_HARVEST,
@@ -2620,6 +3010,7 @@ class ArcFarmsService(
                 val key = when (runtime.state.phase) {
                     FarmPhase.PREPARATION -> MessageKey.FARM_PREPARATION_BOSSBAR
                     FarmPhase.PLANTING -> MessageKey.FARM_PLANTING_BOSSBAR
+                    FarmPhase.CARE -> MessageKey.FARM_CARE_BOSSBAR
                     FarmPhase.INCIDENT -> if ((runtime.state.incidentType ?: FarmIncidentType.PESTS) == FarmIncidentType.DROUGHT) {
                         MessageKey.FARM_DROUGHT_BOSSBAR
                     } else {
@@ -2646,12 +3037,16 @@ class ArcFarmsService(
                             },
                         ))),
                         "requirements" to farmRequirements(runtime, order),
+                        "instruction" to (runtime.state.careType?.let { type ->
+                            locale.renderPath("care.${type.name.lowercase()}.instruction", player)
+                        } ?: Component.empty()),
                         "nests" to locale.text(runtime.state.pestNests.size),
                         "pests" to locale.text(runtime.state.pestAlive),
                         "done" to locale.text(
                             when (runtime.state.phase) {
                                 FarmPhase.PREPARATION -> runtime.state.preparationProgress
                                 FarmPhase.PLANTING -> runtime.state.plantingProgress
+                                FarmPhase.CARE -> runtime.state.careProgress()
                                 FarmPhase.INCIDENT -> runtime.state.incidentProgress
                                 FarmPhase.DELIVERY -> runtime.state.deliveredCrates.size
                                 else -> done
@@ -2661,6 +3056,7 @@ class ArcFarmsService(
                             when (runtime.state.phase) {
                                 FarmPhase.PREPARATION -> runtime.state.preparationRequired
                                 FarmPhase.PLANTING -> runtime.state.preparationRequired
+                                FarmPhase.CARE -> runtime.state.careRequired()
                                 FarmPhase.INCIDENT -> runtime.state.incidentRequired
                                 FarmPhase.DELIVERY -> runtime.settings.delivery.crates
                                 else -> order.totalRequired
@@ -2671,6 +3067,7 @@ class ArcFarmsService(
                 val progress = when (runtime.state.phase) {
                     FarmPhase.PREPARATION -> runtime.state.preparationProgress.toFloat() / runtime.state.preparationRequired
                     FarmPhase.PLANTING -> runtime.state.plantingProgress.toFloat() / runtime.state.preparationRequired
+                    FarmPhase.CARE -> runtime.state.careProgress().toFloat() / runtime.state.careRequired().coerceAtLeast(1)
                     FarmPhase.INCIDENT -> runtime.state.incidentProgress.toFloat() / runtime.state.incidentRequired
                     FarmPhase.DELIVERY -> runtime.state.deliveredCrates.size.toFloat() / runtime.settings.delivery.crates
                     else -> runtime.state.progressRatio(order).toFloat()
@@ -2683,6 +3080,7 @@ class ArcFarmsService(
                     when (runtime.state.phase) {
                         FarmPhase.PREPARATION -> BossBar.Color.WHITE
                         FarmPhase.PLANTING -> BossBar.Color.GREEN
+                        FarmPhase.CARE -> BossBar.Color.BLUE
                         FarmPhase.INCIDENT -> BossBar.Color.RED
                         FarmPhase.GOLDEN_HARVEST -> BossBar.Color.YELLOW
                         FarmPhase.DELIVERY -> BossBar.Color.PURPLE
@@ -2863,6 +3261,242 @@ class ArcFarmsService(
             "plots" to runtime.state.preparationPatch.size,
         )
         return true
+    }
+
+    private fun ensureFarmCare(runtime: FarmRuntime) {
+        if (runtime.state.phase != FarmPhase.CARE) {
+            if (careEntities.keys.any { it.zoneId == runtime.settings.id }) clearFarmCare(runtime, "phase_inactive")
+            return
+        }
+        val activeIds = runtime.state.careTargets.mapTo(mutableSetOf(), FarmCareTarget::id)
+        careEntities.keys.filter { it.zoneId == runtime.settings.id && it.targetId >= 0 && it.targetId !in activeIds }
+            .forEach { removeFarmCareEntities(it, "stale_target") }
+        runtime.state.careTargets.forEach { target ->
+            if (target.complete && target.role != FarmCareRole.HIVE) {
+                removeFarmCareEntities(CareEntityKey(runtime.settings.id, target.id), "target_complete")
+                return@forEach
+            }
+            ensureFarmCareTarget(runtime, target)
+        }
+        if (runtime.state.careType == FarmCareType.ANIMAL_RESCUE) ensureFarmAnimalPen(runtime)
+    }
+
+    private fun ensureFarmCareTarget(runtime: FarmRuntime, target: FarmCareTarget) {
+        val key = CareEntityKey(runtime.settings.id, target.id)
+        val expected = if (target.role == FarmCareRole.ANIMAL) 1 else 2
+        val active = careEntities[key].orEmpty().mapNotNull(Bukkit::getEntity).filter { entity ->
+                entity.isValid &&
+                entity.persistentDataContainer.get(careZoneKey, PersistentDataType.STRING) == runtime.settings.id &&
+                entity.persistentDataContainer.get(careSequenceKey, PersistentDataType.LONG) == runtime.state.sequence &&
+                entity.persistentDataContainer.get(careTargetKey, PersistentDataType.INTEGER) == target.id &&
+                entity.persistentDataContainer.get(careRoleKey, PersistentDataType.STRING) == target.role.name
+        }
+        if (active.size == expected) {
+            careEntities[key] = active.mapTo(mutableSetOf(), Entity::getUniqueId)
+            return
+        }
+        removeFarmCareEntities(key, "replace_target")
+        val world = Bukkit.getWorld(target.position.world) ?: return
+        if (!world.isChunkLoaded(target.position.x.toInt() shr 4, target.position.z.toInt() shr 4)) return
+        val location = Location(world, target.position.x, target.position.y, target.position.z)
+        if (!runtime.region.contains(location)) {
+            plugin.logger.warning("Farm care target ${runtime.settings.id}/${target.id} is outside ${runtime.region.label}")
+            return
+        }
+        if (target.role == FarmCareRole.ANIMAL) {
+            val typeName = runtime.settings.careAnimalEntities[
+                java.lang.Math.floorMod(runtime.state.sequence.toInt() + target.id, runtime.settings.careAnimalEntities.size)
+            ]
+            val mob = world.spawnEntity(location, EntityType.valueOf(typeName)) as? Mob ?: return
+            mob.isPersistent = true
+            mob.removeWhenFarAway = false
+            mob.isInvulnerable = true
+            mob.isCollidable = false
+            markFarmCareEntity(mob, runtime, target.id, target.role)
+            careEntities[key] = mutableSetOf(mob.uniqueId)
+            debug.event("farm_care_animal_spawned", "zone" to runtime.settings.id, "target" to target.id, "entity" to typeName)
+            return
+        }
+        val visual = runtime.settings.careVisuals.getValue(target.role)
+        val stack = ItemStack(MaterialRules.material(visual.material))
+        if (visual.customModelData > 0) {
+            val meta = stack.itemMeta
+            meta.setCustomModelData(visual.customModelData)
+            stack.itemMeta = meta
+        }
+        val display = world.spawn(location.clone().add(0.0, 0.45, 0.0), ItemDisplay::class.java) { entity ->
+            entity.setItemStack(stack)
+            entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
+            entity.isGlowing = true
+            entity.glowColorOverride = careRoleColor(target.role)
+            entity.isPersistent = true
+            markFarmCareEntity(entity, runtime, target.id, target.role)
+        }
+        val interaction = world.spawn(location.clone().add(0.0, 0.05, 0.0), Interaction::class.java) { entity ->
+            entity.interactionWidth = if (target.role == FarmCareRole.COVER_ANCHOR) 1.45f else 1.15f
+            entity.interactionHeight = 1.45f
+            entity.isResponsive = true
+            entity.isPersistent = true
+            markFarmCareEntity(entity, runtime, target.id, target.role)
+        }
+        careEntities[key] = mutableSetOf(display.uniqueId, interaction.uniqueId)
+        debug.event(
+            "farm_care_target_spawned",
+            "zone" to runtime.settings.id,
+            "target" to target.id,
+            "role" to target.role,
+            "x" to location.x,
+            "y" to location.y,
+            "z" to location.z,
+        )
+    }
+
+    private fun ensureFarmAnimalPen(runtime: FarmRuntime) {
+        val point = careFixturePoint(runtime, FarmPointKind.PEN) ?: return
+        val key = CareEntityKey(runtime.settings.id, -1)
+        val active = careEntities[key].orEmpty().mapNotNull(Bukkit::getEntity).filter { entity ->
+            entity.isValid &&
+                entity.persistentDataContainer.get(careZoneKey, PersistentDataType.STRING) == runtime.settings.id &&
+                entity.persistentDataContainer.get(careSequenceKey, PersistentDataType.LONG) == runtime.state.sequence &&
+                entity.persistentDataContainer.get(careTargetKey, PersistentDataType.INTEGER) == -1 &&
+                entity.persistentDataContainer.get(careRoleKey, PersistentDataType.STRING) == FarmCareRole.PEN.name
+        }
+        if (active.size == 2) return
+        removeFarmCareEntities(key, "replace_pen")
+        val world = Bukkit.getWorld(point.world) ?: return
+        if (!world.isChunkLoaded(point.x.toInt() shr 4, point.z.toInt() shr 4)) return
+        val location = Location(world, point.x, point.y, point.z)
+        if (!runtime.region.contains(location)) return
+        val visual = runtime.settings.careVisuals.getValue(FarmCareRole.PEN)
+        val stack = ItemStack(MaterialRules.material(visual.material)).also { item ->
+            if (visual.customModelData > 0) item.itemMeta = item.itemMeta.also { it.setCustomModelData(visual.customModelData) }
+        }
+        val display = world.spawn(location.clone().add(0.0, 0.55, 0.0), ItemDisplay::class.java) { entity ->
+            entity.setItemStack(stack)
+            entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
+            entity.isGlowing = true
+            entity.glowColorOverride = FARM_SUCCESS_COLOR
+            entity.isPersistent = true
+            markFarmCareEntity(entity, runtime, -1, FarmCareRole.PEN)
+        }
+        val interaction = world.spawn(location, Interaction::class.java) { entity ->
+            entity.interactionWidth = 2.2f
+            entity.interactionHeight = 1.8f
+            entity.isResponsive = true
+            entity.isPersistent = true
+            markFarmCareEntity(entity, runtime, -1, FarmCareRole.PEN)
+        }
+        careEntities[key] = mutableSetOf(display.uniqueId, interaction.uniqueId)
+        debug.event(
+            "farm_care_pen_spawned",
+            "zone" to runtime.settings.id,
+            "x" to location.x,
+            "y" to location.y,
+            "z" to location.z,
+        )
+    }
+
+    private fun updateFarmCareAnimals(runtime: FarmRuntime) {
+        if (runtime.state.phase != FarmPhase.CARE || runtime.state.careType != FarmCareType.ANIMAL_RESCUE) return
+        val pen = careFixturePoint(runtime, FarmPointKind.PEN) ?: return
+        val penLocation = Bukkit.getWorld(pen.world)?.let { Location(it, pen.x, pen.y, pen.z) } ?: return
+        runtime.state.careTargets.filter { it.role == FarmCareRole.ANIMAL && !it.complete }.forEach { target ->
+            val key = CareEntityKey(runtime.settings.id, target.id)
+            val mob = careEntities[key].orEmpty().firstNotNullOfOrNull(Bukkit::getEntity) as? Mob ?: return@forEach
+            val actor = animalFollowers[key]?.let(Bukkit::getPlayer)?.takeIf { player ->
+                player.isOnline && runtime.region.contains(player.location)
+            }
+            if (actor != null && mob.world == penLocation.world && mob.location.distanceSquared(penLocation) <= 9.0) {
+                animalFollowers.remove(key)
+                farmCareFeedback(actor, mob.location, FarmCareRole.ANIMAL, true)
+                applyFarmResult(runtime, FarmShiftEngine.advanceCare(runtime.state, target.id, actor.uniqueId), actor)
+                return@forEach
+            }
+            if (!runtime.region.contains(mob.location)) {
+                mob.teleport(Location(mob.world, target.position.x, target.position.y, target.position.z))
+                animalFollowers.remove(key)
+                return@forEach
+            }
+            if (actor == null) {
+                animalFollowers.remove(key)
+                mob.pathfinder.stopPathfinding()
+            } else if (mob.location.distanceSquared(actor.location) > 2.25) {
+                mob.pathfinder.moveTo(actor, 1.15)
+            }
+        }
+    }
+
+    private fun refreshActiveFarmCarePoint(runtime: FarmRuntime, kind: FarmPointKind, position: FarmPointPosition) {
+        if (runtime.state.phase != FarmPhase.CARE) return
+        if (kind == FarmPointKind.PEN) {
+            if (runtime.state.careType == FarmCareType.ANIMAL_RESCUE) {
+                removeFarmCareEntities(CareEntityKey(runtime.settings.id, -1), "admin_point_changed")
+                ensureFarmAnimalPen(runtime)
+            }
+            return
+        }
+        val role = when (kind) {
+            FarmPointKind.HIVE -> FarmCareRole.HIVE
+            FarmPointKind.IRRIGATION -> FarmCareRole.VALVE
+            FarmPointKind.COVERS -> FarmCareRole.COVER_ANCHOR
+            FarmPointKind.SCARECROWS -> FarmCareRole.SCARECROW
+            else -> return
+        }
+        val target = runtime.state.careTargets.filter { it.role == role }.minByOrNull(FarmCareTarget::id) ?: return
+        runtime.state = runtime.state.copy(
+            careTargets = runtime.state.careTargets.map { candidate ->
+                if (candidate.id == target.id) candidate.copy(position = position) else candidate
+            },
+        )
+        removeFarmCareEntities(CareEntityKey(runtime.settings.id, target.id), "admin_point_changed")
+        ensureFarmCare(runtime)
+        persistAsync()
+    }
+
+    private fun markFarmCareEntity(entity: Entity, runtime: FarmRuntime, targetId: Int, role: FarmCareRole) {
+        entity.persistentDataContainer.set(careZoneKey, PersistentDataType.STRING, runtime.settings.id)
+        entity.persistentDataContainer.set(careSequenceKey, PersistentDataType.LONG, runtime.state.sequence)
+        entity.persistentDataContainer.set(careTargetKey, PersistentDataType.INTEGER, targetId)
+        entity.persistentDataContainer.set(careRoleKey, PersistentDataType.STRING, role.name)
+    }
+
+    private fun removeFarmCareEntities(key: CareEntityKey, reason: String) {
+        val ids = careEntities.remove(key).orEmpty()
+        ids.forEach { Bukkit.getEntity(it)?.remove() }
+        animalFollowers.remove(key)
+        if (ids.isNotEmpty()) debug.event("farm_care_entities_removed", "zone" to key.zoneId, "target" to key.targetId, "reason" to reason)
+    }
+
+    private fun clearFarmCare(runtime: FarmRuntime, reason: String) {
+        careEntities.keys.filter { it.zoneId == runtime.settings.id }.toList().forEach { removeFarmCareEntities(it, reason) }
+        players(runtime.region).forEach { pollenCharges.remove(it.uniqueId) }
+    }
+
+    private fun careRoleColor(role: FarmCareRole): Color = when (role) {
+        FarmCareRole.WEED_ROOT -> Color.fromRGB(194, 137, 70)
+        FarmCareRole.VALVE -> Color.fromRGB(79, 195, 247)
+        FarmCareRole.HIVE, FarmCareRole.FLOWER_PATCH -> FARM_GOLDEN_COLOR
+        FarmCareRole.COVER_ANCHOR -> Color.fromRGB(154, 140, 255)
+        FarmCareRole.SCARECROW -> FARM_DANGER_COLOR
+        FarmCareRole.ANIMAL, FarmCareRole.PEN -> FARM_SUCCESS_COLOR
+    }
+
+    private fun farmCareStartSound(type: FarmCareType): Sound = when (type) {
+        FarmCareType.WEEDS -> Sound.BLOCK_ROOTED_DIRT_BREAK
+        FarmCareType.IRRIGATION -> Sound.BLOCK_CHAIN_PLACE
+        FarmCareType.POLLINATION -> Sound.ENTITY_BEE_POLLINATE
+        FarmCareType.STORM_COVERS -> Sound.WEATHER_RAIN_ABOVE
+        FarmCareType.SCARECROWS -> Sound.ENTITY_PARROT_FLY
+        FarmCareType.ANIMAL_RESCUE -> Sound.ENTITY_CHICKEN_AMBIENT
+    }
+
+    private fun FarmCareType.adminStageName(): String = when (this) {
+        FarmCareType.WEEDS -> "weeds"
+        FarmCareType.IRRIGATION -> "irrigation"
+        FarmCareType.POLLINATION -> "pollination"
+        FarmCareType.STORM_COVERS -> "covers"
+        FarmCareType.SCARECROWS -> "scarecrows"
+        FarmCareType.ANIMAL_RESCUE -> "animals"
     }
 
     private fun clearFarmPatchState(runtime: FarmRuntime) {
@@ -3930,7 +4564,8 @@ class ArcFarmsService(
         bypassPhase: Boolean = false,
     ): Boolean {
         val allowed = when (kind) {
-            FarmSupplyKind.TOOL -> runtime.state.phase == FarmPhase.PREPARATION
+            FarmSupplyKind.TOOL -> runtime.state.phase == FarmPhase.PREPARATION ||
+                (runtime.state.phase == FarmPhase.CARE && runtime.state.careType == FarmCareType.WEEDS)
             FarmSupplyKind.SEEDS -> runtime.state.phase == FarmPhase.PLANTING
             FarmSupplyKind.WATER -> runtime.state.phase == FarmPhase.INCIDENT &&
                 runtime.state.incidentType == FarmIncidentType.DROUGHT
@@ -4006,7 +4641,8 @@ class ArcFarmsService(
                 entity.persistentDataContainer.has(pestZoneKey, PersistentDataType.STRING) ||
                 entity.persistentDataContainer.has(pestNestZoneKey, PersistentDataType.STRING) ||
                 entity.persistentDataContainer.has(deliveryZoneKey, PersistentDataType.STRING) ||
-                entity.persistentDataContainer.has(supplyZoneKey, PersistentDataType.STRING)
+                entity.persistentDataContainer.has(supplyZoneKey, PersistentDataType.STRING) ||
+                entity.persistentDataContainer.has(careZoneKey, PersistentDataType.STRING)
             ) {
                 entity.remove()
                 removed++
@@ -4020,6 +4656,9 @@ class ArcFarmsService(
         carriedDisplays.clear()
         supplyEntities.clear()
         supplyVisualMaterials.clear()
+        careEntities.clear()
+        animalFollowers.clear()
+        pollenCharges.clear()
         pendingIncidentRestore.clear()
         Bukkit.getOnlinePlayers().forEach { removeFarmServiceItems(it, reason = "service_cleanup") }
         if (removed > 0) debug.event("farm_entities_cleanup", "count" to removed)
@@ -4097,6 +4736,50 @@ class ArcFarmsService(
             players(runtime.region).forEach { player ->
                 markers.forEach { location ->
                     spawnGuidanceColumn(player, location, FARM_DROUGHT_COLOR)
+                }
+            }
+        }
+        farms.filter { it.state.phase == FarmPhase.CARE }.forEach { runtime ->
+            val incomplete = runtime.state.careTargets.filterNot(FarmCareTarget::complete)
+            players(runtime.region).forEach { player ->
+                val hive = runtime.state.careTargets.firstOrNull { it.role == FarmCareRole.HIVE }
+                val visible = when (runtime.state.careType) {
+                    FarmCareType.IRRIGATION -> incomplete.minByOrNull(FarmCareTarget::id)?.let(::listOf).orEmpty()
+                    FarmCareType.POLLINATION -> if ((pollenCharges[player.uniqueId] ?: 0) > 0) {
+                        incomplete.filter { it.role == FarmCareRole.FLOWER_PATCH }
+                    } else {
+                        listOfNotNull(hive)
+                    }
+                    else -> incomplete
+                }
+                visible.forEach { target ->
+                    val world = Bukkit.getWorld(target.position.world) ?: return@forEach
+                    if (player.world == world) {
+                        spawnMissingPlotMarker(
+                            player,
+                            Location(world, target.position.x, target.position.y - 1.0, target.position.z),
+                            careRoleColor(target.role),
+                        )
+                    }
+                }
+                if (runtime.state.careType == FarmCareType.ANIMAL_RESCUE) {
+                    careFixturePoint(runtime, FarmPointKind.PEN)?.let { pen ->
+                        val world = Bukkit.getWorld(pen.world) ?: return@let
+                        if (player.world == world) spawnGuidanceColumn(player, Location(world, pen.x, pen.y, pen.z), FARM_SUCCESS_COLOR)
+                    }
+                } else {
+                    visible.filter { target -> Bukkit.getWorld(target.position.world) == player.world }
+                        .minByOrNull { target ->
+                            val dx = target.position.x - player.location.x
+                            val dz = target.position.z - player.location.z
+                            dx * dx + dz * dz
+                        }?.let { target ->
+                            spawnGuidanceColumn(
+                                player,
+                                Location(player.world, target.position.x, target.position.y, target.position.z),
+                                careRoleColor(target.role),
+                            )
+                        }
                 }
             }
         }
@@ -4199,6 +4882,11 @@ class ArcFarmsService(
             FarmPointKind.CRATES to FARM_GOLDEN_COLOR,
             FarmPointKind.RECEIVING to FARM_DELIVERY_COLOR,
             FarmPointKind.TRAVEL to FARM_SUCCESS_COLOR,
+            FarmPointKind.HIVE to FARM_GOLDEN_COLOR,
+            FarmPointKind.IRRIGATION to Color.fromRGB(79, 195, 247),
+            FarmPointKind.COVERS to Color.fromRGB(154, 140, 255),
+            FarmPointKind.SCARECROWS to FARM_DANGER_COLOR,
+            FarmPointKind.PEN to FARM_SUCCESS_COLOR,
         )
         pointColors.forEach { (kind, color) ->
             val point = point(runtime, kind)
@@ -4220,6 +4908,11 @@ class ArcFarmsService(
                 farmAreaCenter(runtime.state.preparationPatch.filterNot(runtime.state.plantedPlots::contains))?.location()
                     ?.let { it to FARM_PLANT_COLOR },
             )
+            FarmPhase.CARE -> runtime.state.careTargets.filterNot(FarmCareTarget::complete).mapNotNull { target ->
+                Bukkit.getWorld(target.position.world)?.let { world ->
+                    Location(world, target.position.x, target.position.y, target.position.z) to careRoleColor(target.role)
+                }
+            }
             FarmPhase.HARVESTING, FarmPhase.GOLDEN_HARVEST -> listOfNotNull(
                 farmAreaCenter(runtime.state.preparationPatch)?.location()?.let { it to FARM_GOLDEN_COLOR },
             )
@@ -4336,7 +5029,41 @@ class ArcFarmsService(
                     destination.pitch,
                 )
             }
+            FarmPointKind.HIVE,
+            FarmPointKind.IRRIGATION,
+            FarmPointKind.COVERS,
+            FarmPointKind.SCARECROWS,
+            FarmPointKind.PEN,
+            -> careFixturePoint(runtime, kind)
+                ?: farmAreaCenter(runtime.state.preparationPatch)?.let { plot ->
+                    FarmPointPosition(plot.world, plot.x + 0.5, plot.y + 1.0, plot.z + 0.5)
+                }
+                ?: zoneSettings.supplies.tool.toPoint()
         }
+    }
+
+    private fun careFixturePoint(runtime: FarmRuntime, kind: FarmPointKind): FarmPointPosition? {
+        farmLocations.zones[runtime.settings.id]?.get(kind)?.let { return it }
+        val patch = runtime.state.preparationPatch
+        if (patch.isEmpty()) return null
+        if (kind == FarmPointKind.HIVE) {
+            val center = farmAreaCenter(patch)?.location() ?: return null
+            nearbyBlocks(center, runtime.region, runtime.settings.careRadius, 4, 1) {
+                it.type == Material.BEE_NEST || it.type == Material.BEEHIVE
+            }.firstOrNull()?.let { hive ->
+                return FarmPointPosition(hive.world.name, hive.x + 0.5, hive.y + 0.5, hive.z + 0.5)
+            }
+        }
+        if (!runtime.settings.proceduralCareFixtures) return null
+        val center = farmAreaCenter(patch)?.location() ?: return null
+        val candidates = findDeliveryCandidates(runtime, center, runtime.settings.careRadius)
+        if (candidates.isNotEmpty()) {
+            val salt = kind.ordinal * 31 + runtime.state.sequence.toInt()
+            val chosen = candidates[java.lang.Math.floorMod(salt, candidates.size)]
+            return FarmPointPosition(chosen.world, chosen.x, chosen.y, chosen.z)
+        }
+        val fallback = FarmCarePlanner.spread(patch, 1, runtime.state.sequence + kind.ordinal).firstOrNull() ?: return null
+        return FarmPointPosition(fallback.world, fallback.x + 0.5, fallback.y + 1.0, fallback.z + 0.5)
     }
 
     private fun ru.ruscrafting.farms.config.FarmSupplyPointSettings.toPoint(): FarmPointPosition =
@@ -4542,6 +5269,7 @@ class ArcFarmsService(
             FarmPhase.IDLE, FarmPhase.COOLDOWN -> MessageKey.FARM_ENTRY_IDLE
             FarmPhase.PREPARATION -> MessageKey.FARM_ENTRY_PREPARATION
             FarmPhase.PLANTING -> MessageKey.FARM_ENTRY_PLANTING
+            FarmPhase.CARE -> null
             FarmPhase.HARVESTING, FarmPhase.GOLDEN_HARVEST -> MessageKey.FARM_ENTRY_HARVESTING
             FarmPhase.INCIDENT -> if ((runtime.state.incidentType ?: FarmIncidentType.PESTS) == FarmIncidentType.DROUGHT) {
                 MessageKey.FARM_ENTRY_DROUGHT
@@ -4550,16 +5278,20 @@ class ArcFarmsService(
             }
             FarmPhase.DELIVERY -> MessageKey.FARM_ENTRY_DELIVERY
         }
-        val action = locale.render(
-            actionKey,
-            player,
-            mapOf(
-                "crop" to (runtime.state.preparationCrop
-                    ?.let(MaterialRules::material)
-                    ?.let(MaterialRules::cropComponent)
-                    ?: Component.empty()),
-            ),
-        )
+        val action = if (actionKey == null) {
+            runtime.state.careType?.let { locale.renderPath("care.${it.name.lowercase()}.entry", player) } ?: Component.empty()
+        } else {
+            locale.render(
+                actionKey,
+                player,
+                mapOf(
+                    "crop" to (runtime.state.preparationCrop
+                        ?.let(MaterialRules::material)
+                        ?.let(MaterialRules::cropComponent)
+                        ?: Component.empty()),
+                ),
+            )
+        }
         showScreenTitle(player, MessageKey.FARM_ENTRY_TITLE, mapOf("action" to action), "zone_entry")
     }
 
@@ -4698,6 +5430,7 @@ class ArcFarmsService(
             MessageKey.FARM_ENTRY_TITLE to MessageKey.FARM_ENTRY_SUBTITLE,
             MessageKey.FARM_PLANTING_STARTED to MessageKey.FARM_PLANTING_STARTED_SUBTITLE,
             MessageKey.FARM_PREPARATION_COMPLETED to MessageKey.FARM_PREPARATION_COMPLETED_SUBTITLE,
+            MessageKey.FARM_CARE_RESOLVED to MessageKey.FARM_CARE_RESOLVED_SUBTITLE,
             MessageKey.FARM_INCIDENT_STARTED to MessageKey.FARM_INCIDENT_STARTED_SUBTITLE,
             MessageKey.FARM_INCIDENT_RESOLVED to MessageKey.FARM_INCIDENT_RESOLVED_SUBTITLE,
             MessageKey.FARM_DROUGHT_STARTED to MessageKey.FARM_DROUGHT_STARTED_SUBTITLE,

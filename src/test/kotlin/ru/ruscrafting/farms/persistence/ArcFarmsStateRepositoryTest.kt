@@ -4,9 +4,13 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import ru.ruscrafting.farms.domain.ArcFarmsState
+import ru.ruscrafting.farms.domain.FarmCareRole
+import ru.ruscrafting.farms.domain.FarmCareTarget
+import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmDeliveryPosition
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
+import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmShiftState
 import java.nio.file.Files
@@ -101,6 +105,24 @@ class ArcFarmsStateRepositoryTest : FunSpec({
                     incidentType = FarmIncidentType.DROUGHT,
                     incidentRequired = 4,
                     droughtPlots = setOf(patch.first()),
+                ),
+                "care_farm" to FarmShiftState(
+                    phase = FarmPhase.CARE,
+                    sequence = 10,
+                    orderId = "current_order",
+                    progress = mapOf("WHEAT" to 0),
+                    preparationPatch = patch,
+                    preparationCrop = "WHEAT",
+                    preparationReleased = true,
+                    tilledPlots = patch.toSet(),
+                    plantedPlots = patch.toSet(),
+                    preparationProgress = 2,
+                    plantingProgress = 2,
+                    preparationRequired = 2,
+                    careType = FarmCareType.WEEDS,
+                    careTargets = listOf(
+                        FarmCareTarget(0, FarmCareRole.WEED_ROOT, FarmPointPosition("world", 10.5, 64.0, -2.5), required = 2),
+                    ),
                 ),
             ),
         )

@@ -9,6 +9,7 @@ import org.bukkit.entity.Player
 import ru.arc.config.Config
 import ru.arc.config.ConfigManager
 import ru.ruscrafting.farms.domain.FarmPointKind
+import ru.ruscrafting.farms.domain.FarmCareType
 import java.nio.file.Path
 
 enum class MessageKey(val path: String) {
@@ -32,11 +33,13 @@ enum class MessageKey(val path: String) {
     ADMIN_POINTS_ENTRY("admin.points-entry"),
     ADMIN_STAGE_SET("admin.stage-set"),
     ADMIN_STAGE_UNKNOWN("admin.stage-unknown"),
+    ADMIN_CARE_UNAVAILABLE("admin.care-unavailable"),
     ADMIN_DEBUG_HELP("admin.debug.help"),
     ADMIN_DEBUG_HEADER("admin.debug.header"),
     ADMIN_DEBUG_SHIFT("admin.debug.shift"),
     ADMIN_DEBUG_PATCH("admin.debug.patch"),
     ADMIN_DEBUG_INCIDENT("admin.debug.incident"),
+    ADMIN_DEBUG_CARE("admin.debug.care"),
     ADMIN_DEBUG_DELIVERY("admin.debug.delivery"),
     ADMIN_DEBUG_SUPPLY_GIVEN("admin.debug.supply-given"),
     ADMIN_DEBUG_INVENTORY_FULL("admin.debug.inventory-full"),
@@ -95,6 +98,17 @@ enum class MessageKey(val path: String) {
     FARM_PLANTING_PROGRESS("farm.planting-progress"),
     FARM_PREPARATION_COMPLETED("farm.preparation-completed"),
     FARM_PREPARATION_COMPLETED_SUBTITLE("farm.preparation-completed-subtitle"),
+    FARM_CARE_STARTED("farm.care-started"),
+    FARM_CARE_REQUIRED("farm.care-required"),
+    FARM_CARE_PROGRESS("farm.care-progress"),
+    FARM_CARE_RESOLVED("farm.care-resolved"),
+    FARM_CARE_RESOLVED_SUBTITLE("farm.care-resolved-subtitle"),
+    FARM_CARE_TOOL("farm.care-tool"),
+    FARM_CARE_ORDER("farm.care-order"),
+    FARM_CARE_POLLEN_REQUIRED("farm.care-pollen-required"),
+    FARM_CARE_POLLEN_TAKEN("farm.care-pollen-taken"),
+    FARM_CARE_ANIMAL_FOLLOWING("farm.care-animal-following"),
+    FARM_CARE_ANIMAL_PEN("farm.care-animal-pen"),
     FARM_WRONG_TARGET("farm.wrong-target"),
     FARM_CROP_ALREADY_COMPLETE("farm.crop-already-complete"),
     FARM_CROP_COMPLETED("farm.crop-completed"),
@@ -133,6 +147,7 @@ enum class MessageKey(val path: String) {
     FARM_COOLDOWN_BOSSBAR("farm.cooldown-bossbar"),
     FARM_PREPARATION_BOSSBAR("farm.preparation-bossbar"),
     FARM_PLANTING_BOSSBAR("farm.planting-bossbar"),
+    FARM_CARE_BOSSBAR("farm.care-bossbar"),
     FARM_BOSSBAR("farm.bossbar"),
     FARM_INCIDENT_BOSSBAR("farm.incident-bossbar"),
     FARM_DROUGHT_BOSSBAR("farm.drought-bossbar"),
@@ -239,8 +254,16 @@ class ArcFarmsLocale(
                 }
             }
             FarmPointKind.entries.mapTo(this) { "admin.point.${it.name.lowercase()}" }
-            listOf("preparation", "planting", "harvesting", "pests", "drought", "golden", "delivery", "complete", "reset")
+            listOf(
+                "preparation", "planting", "harvesting", "weeds", "irrigation", "pollination", "covers", "scarecrows",
+                "animals", "pests", "drought", "golden", "delivery", "complete", "reset",
+            )
                 .mapTo(this) { "admin.stage.$it" }
+            FarmCareType.entries.forEach { type ->
+                add("care.${type.name.lowercase()}.name")
+                add("care.${type.name.lowercase()}.instruction")
+                add("care.${type.name.lowercase()}.entry")
+            }
             settings.mines.mapTo(this) { "route.mine.${it.id}" }
             enumValues<ru.ruscrafting.farms.domain.FarmPhase>().mapTo(this) { "phase.farm.${it.name.lowercase()}" }
             enumValues<ru.ruscrafting.farms.domain.LumberPhase>().mapTo(this) { "phase.lumber.${it.name.lowercase()}" }

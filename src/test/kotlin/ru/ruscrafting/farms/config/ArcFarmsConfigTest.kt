@@ -12,6 +12,8 @@ import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import ru.arc.config.Config
 import ru.arc.redis.RedisModuleConfig
 import ru.ruscrafting.farms.domain.FarmIncidentType
+import ru.ruscrafting.farms.domain.FarmCareRole
+import ru.ruscrafting.farms.domain.FarmCareType
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.writeText
@@ -54,6 +56,11 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().preparationPatchSize shouldBe 100
         settings.farms.single().preparationPatchMaxSize shouldBe 256
         settings.farms.single().preparationSearchRadius shouldBe 64
+        settings.farms.single().careTypes shouldContainExactly FarmCareType.entries
+        settings.farms.single().careTargetCount shouldBe 4
+        settings.farms.single().proceduralCareFixtures shouldBe true
+        settings.farms.single().careAnimalEntities shouldContainExactly listOf("CHICKEN", "SHEEP")
+        settings.farms.single().careVisuals.getValue(FarmCareRole.HIVE).material shouldBe "BEE_NEST"
         settings.farms.single().incidentTypes shouldContainExactly listOf(FarmIncidentType.PESTS, FarmIncidentType.DROUGHT)
         settings.farms.single().pestNestCount shouldBe 3
         settings.farms.single().pestNestHealth shouldBe 3
@@ -82,6 +89,9 @@ class ArcFarmsConfigTest : FunSpec({
         val classicSettings = ArcFarmsConfig.inspect(repositoryRoot.resolve("classic/plugins/ArcFarms"))
         classicSettings.farms.single().delivery.itemMaterial shouldBe "PAPER"
         classicSettings.farms.single().delivery.itemCustomModelData shouldBe 10_774
+        classicSettings.farms.single().careVisuals.getValue(FarmCareRole.VALVE).customModelData shouldBe 11_859
+        classicSettings.farms.single().careVisuals.getValue(FarmCareRole.SCARECROW).customModelData shouldBe 12_160
+        classicSettings.farms.single().careVisuals.getValue(FarmCareRole.PEN).customModelData shouldBe 11_864
         classicSettings.menuBackground.enabled shouldBe true
         classicSettings.menuBackground.material shouldBe "GRAY_STAINED_GLASS_PANE"
         classicSettings.menuBackground.customModelData shouldBe 11_000
@@ -250,6 +260,7 @@ class ArcFarmsConfigTest : FunSpec({
             MessageKey.FARM_ENTRY_TITLE to MessageKey.FARM_ENTRY_SUBTITLE,
             MessageKey.FARM_PLANTING_STARTED to MessageKey.FARM_PLANTING_STARTED_SUBTITLE,
             MessageKey.FARM_PREPARATION_COMPLETED to MessageKey.FARM_PREPARATION_COMPLETED_SUBTITLE,
+            MessageKey.FARM_CARE_RESOLVED to MessageKey.FARM_CARE_RESOLVED_SUBTITLE,
             MessageKey.FARM_INCIDENT_STARTED to MessageKey.FARM_INCIDENT_STARTED_SUBTITLE,
             MessageKey.FARM_INCIDENT_RESOLVED to MessageKey.FARM_INCIDENT_RESOLVED_SUBTITLE,
             MessageKey.FARM_DROUGHT_STARTED to MessageKey.FARM_DROUGHT_STARTED_SUBTITLE,
@@ -292,6 +303,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().preparationPatchSize shouldBe 12
         settings.farms.single().preparationPatchMaxSize shouldBe 160
         settings.farms.single().preparationSearchRadius shouldBe 4
+        settings.farms.single().careTargetCount shouldBe 3
         settings.missingBedHighlightThreshold shouldBe 4
         settings.farms.single().delivery.x shouldBe -3.5
         settings.farms.single().delivery.spawnRadius shouldBe 4

@@ -4,6 +4,8 @@ import ru.arc.config.Config
 import ru.arc.config.ConfigManager
 import ru.arc.redis.RedisModuleConfig
 import ru.ruscrafting.farms.domain.FarmIncidentType
+import ru.ruscrafting.farms.domain.FarmCareRole
+import ru.ruscrafting.farms.domain.FarmCareType
 import java.nio.file.Path
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -69,6 +71,11 @@ data class FarmZoneSettings(
     val preparationPatchMaxSize: Int,
     val preparationSearchRadius: Int,
     val careRadius: Int,
+    val careTypes: List<FarmCareType>,
+    val careTargetCount: Int,
+    val careAnimalEntities: List<String>,
+    val proceduralCareFixtures: Boolean,
+    val careVisuals: Map<FarmCareRole, FarmCareVisualSettings>,
     val incidentTriggerPercent: Int,
     val incidentQuota: Int,
     val droughtPatches: Int,
@@ -99,6 +106,11 @@ data class FarmZoneSettings(
         return proportional.coerceIn(droughtMinBeds, droughtMaxBeds).coerceAtMost(gardenBeds)
     }
 }
+
+data class FarmCareVisualSettings(
+    val material: String,
+    val customModelData: Int,
+)
 
 data class FarmSupplyPointSettings(
     val world: String,
@@ -223,6 +235,32 @@ class ArcFarmsConfig private constructor(
                     }
                     .distinct()
                 require(incidentTypes.isNotEmpty()) { "Farm zone $id has no incident types" }
+                val careTypes = section.stringList("care-types")
+                    .ifEmpty { FarmCareType.entries.map(FarmCareType::name) }
+                    .map { value ->
+                        runCatching { FarmCareType.valueOf(value.trim().uppercase()) }
+                            .getOrElse { error("Farm zone $id has unknown care type: $value") }
+                    }
+                    .distinct()
+                require(careTypes.isNotEmpty()) { "Farm zone $id has no care types" }
+                val careVisualDefaults = mapOf(
+                    FarmCareRole.WEED_ROOT to "MANGROVE_ROOTS",
+                    FarmCareRole.VALVE to "TRIPWIRE_HOOK",
+                    FarmCareRole.HIVE to "BEE_NEST",
+                    FarmCareRole.FLOWER_PATCH to "SUNFLOWER",
+                    FarmCareRole.COVER_ANCHOR to "WHITE_CARPET",
+                    FarmCareRole.SCARECROW to "CARVED_PUMPKIN",
+                    FarmCareRole.ANIMAL to "WHEAT_SEEDS",
+                    FarmCareRole.PEN to "OAK_FENCE_GATE",
+                )
+                val careVisuals = careVisualDefaults.mapValues { (role, defaultMaterial) ->
+                    val path = "care-visuals.${role.name.lowercase().replace('_', '-')}"
+                    FarmCareVisualSettings(
+                        material = materialName(section.string("$path.material", defaultMaterial)),
+                        customModelData = section.int("$path.custom-model-data", 0)
+                            .checked("$path.custom-model-data", 0, 2_000_000),
+                    )
+                }
                 val delivery = parseFarmDelivery(section, reference.world, id)
                 val supplies = parseFarmSupplies(section, reference.world, id)
                 reference.bounds?.let { bounds ->
@@ -259,6 +297,15 @@ class ArcFarmsConfig private constructor(
                     preparationSearchRadius = section.int("preparation-search-radius", 48)
                         .checked("preparation-search-radius", 4, 64),
                     careRadius = section.int("care-radius", 10).checked("care-radius", 3, 24),
+                    careTypes = careTypes,
+                    careTargetCount = section.int("care-targets", 4).checked("care-targets", 2, 8),
+                    careAnimalEntities = section.stringList("care-animal-entities")
+                        .ifEmpty { listOf("CHICKEN", "SHEEP") }
+                        .map(::entityName)
+                        .distinct()
+                        .also { require(it.isNotEmpty()) { "Farm zone $id has no care animal entities" } },
+                    proceduralCareFixtures = section.boolean("procedural-care-fixtures", true),
+                    careVisuals = careVisuals,
                     incidentTriggerPercent = section.int("incident-trigger-percent", 35).checked("incident-trigger-percent", 1, 99),
                     incidentQuota = section.int("incident-quota", 4).checked("incident-quota", 1, 64),
                     droughtPatches = droughtPatches,

@@ -6,6 +6,7 @@ enum class FarmPhase {
     IDLE,
     PREPARATION,
     PLANTING,
+    CARE,
     HARVESTING,
     INCIDENT,
     GOLDEN_HARVEST,
@@ -31,6 +32,42 @@ data class FarmPlotPosition(
 enum class FarmIncidentType {
     PESTS,
     DROUGHT,
+}
+
+enum class FarmCareType {
+    WEEDS,
+    IRRIGATION,
+    POLLINATION,
+    STORM_COVERS,
+    SCARECROWS,
+    ANIMAL_RESCUE,
+}
+
+enum class FarmCareRole {
+    WEED_ROOT,
+    VALVE,
+    HIVE,
+    FLOWER_PATCH,
+    COVER_ANCHOR,
+    SCARECROW,
+    ANIMAL,
+    PEN,
+}
+
+data class FarmCareTarget(
+    val id: Int,
+    val role: FarmCareRole,
+    val position: FarmPointPosition,
+    val progress: Int = 0,
+    val required: Int = 1,
+) {
+    init {
+        require(id in 0..63) { "Farm care target id is invalid" }
+        require(progress in 0..required) { "Farm care target progress is invalid" }
+        require(required in 1..8) { "Farm care target requirement is invalid" }
+    }
+
+    val complete: Boolean get() = progress >= required
 }
 
 data class FarmDeliveryPosition(
@@ -108,6 +145,8 @@ data class FarmShiftState(
     val preparationProgress: Int = 0,
     val plantingProgress: Int = 0,
     val preparationRequired: Int = 0,
+    val careType: FarmCareType? = null,
+    val careTargets: List<FarmCareTarget> = emptyList(),
     val incidentCrop: String? = null,
     val incidentType: FarmIncidentType? = null,
     val incidentProgress: Int = 0,
@@ -134,6 +173,10 @@ data class FarmShiftState(
     }
 
     fun progressRatio(order: FarmOrder): Double = completed(order).toDouble() / order.totalRequired.toDouble()
+
+    fun careProgress(): Int = careTargets.sumOf(FarmCareTarget::progress)
+
+    fun careRequired(): Int = careTargets.sumOf(FarmCareTarget::required)
 }
 
 object FarmShiftEngine {
@@ -295,6 +338,52 @@ object FarmShiftEngine {
             }
         }
         return EngineResult(state, true, contribution, events)
+    }
+
+    fun startCare(
+        current: FarmShiftState,
+        type: FarmCareType,
+        targets: List<FarmCareTarget>,
+    ): EngineResult<FarmShiftState> {
+        if (current.phase != FarmPhase.HARVESTING || current.careType != null) {
+            return EngineResult(current, false)
+        }
+        require(targets.isNotEmpty() && targets.size <= 64) { "Farm care scene must contain 1..64 targets" }
+        require(targets.map(FarmCareTarget::id).distinct().size == targets.size) { "Farm care scene contains duplicate target ids" }
+        require(targets.map { it.position.world }.distinct().size == 1) { "Farm care scene crosses worlds" }
+        return EngineResult(
+            current.copy(
+                phase = FarmPhase.CARE,
+                careType = type,
+                careTargets = targets,
+            ),
+            true,
+            events = listOf(ShiftEvent.CARE_STARTED),
+        )
+    }
+
+    fun advanceCare(
+        current: FarmShiftState,
+        targetId: Int,
+        playerId: UUID,
+    ): EngineResult<FarmShiftState> {
+        if (current.phase != FarmPhase.CARE) return EngineResult(current, false)
+        val target = current.careTargets.firstOrNull { it.id == targetId } ?: return EngineResult(current, false)
+        if (target.complete) return EngineResult(current, false)
+        val targets = current.careTargets.map { candidate ->
+            if (candidate.id == targetId) candidate.copy(progress = candidate.progress + 1) else candidate
+        }
+        val complete = targets.all(FarmCareTarget::complete)
+        return EngineResult(
+            current.copy(
+                phase = if (complete) FarmPhase.HARVESTING else FarmPhase.CARE,
+                careTargets = targets,
+                contributors = incrementContribution(current.contributors, playerId, 1),
+            ),
+            true,
+            contribution = 1,
+            events = listOf(ShiftEvent.CARE_PROGRESS) + if (complete) listOf(ShiftEvent.CARE_RESOLVED) else emptyList(),
+        )
     }
 
     fun defeatPest(
@@ -484,6 +573,7 @@ object FarmShiftEngine {
         }
         if (current.phase == FarmPhase.COOLDOWN) return EngineResult(current, false)
         if (current.phase == FarmPhase.DELIVERY) return EngineResult(current, false)
+        if (current.phase == FarmPhase.CARE) return EngineResult(current, false)
         if (current.phase == FarmPhase.GOLDEN_HARVEST && now >= current.goldenEndsAt) {
             return EngineResult(
                 current.copy(phase = FarmPhase.HARVESTING, goldenCrop = null, goldenEndsAt = 0),

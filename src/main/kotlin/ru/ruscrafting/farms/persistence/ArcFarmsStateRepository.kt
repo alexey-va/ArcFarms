@@ -43,6 +43,25 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 require(farm.preparationProgress >= 0 && farm.plantingProgress >= 0 && farm.preparationRequired >= 0) {
                     "Farm preparation progress is negative"
                 }
+                require(farm.careTargets.size <= 64) { "Farm care state is unbounded" }
+                require(farm.careTargets.map { it.id }.distinct().size == farm.careTargets.size) {
+                    "Farm care state contains duplicate target ids"
+                }
+                require(farm.careTargets.map { it.position.world }.distinct().size <= 1) {
+                    "Farm care state crosses worlds"
+                }
+                require(farm.careTargets.all { target ->
+                    target.id in 0..63 && target.required in 1..20 && target.progress in 0..target.required &&
+                        target.position.world.matches(Regex("[A-Za-z0-9._-]{1,128}")) &&
+                        target.position.x in -30_000_000.0..30_000_000.0 &&
+                        target.position.z in -30_000_000.0..30_000_000.0 &&
+                        target.position.y in -4_096.0..4_096.0
+                }) { "Farm care state contains an invalid target" }
+                if (farm.phase == ru.ruscrafting.farms.domain.FarmPhase.CARE) {
+                    require(farm.careType != null && farm.careTargets.isNotEmpty() && farm.careTargets.any { !it.complete }) {
+                        "Active farm care state is incomplete"
+                    }
+                }
                 require(farm.deliveredCrates.size <= 8 && farm.deliveredCrates.all { it in 0..7 }) {
                     "Farm delivery crate state is invalid"
                 }
