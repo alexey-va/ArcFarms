@@ -44,6 +44,7 @@ import org.bukkit.event.block.MoistureChangeEvent
 import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.event.inventory.InventoryType
+import org.bukkit.event.inventory.ClickType
 import org.bukkit.event.player.PlayerDropItemEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
@@ -63,6 +64,8 @@ import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.config.MineZoneSettings
 import ru.ruscrafting.farms.config.TeleportDestination
 import ru.ruscrafting.farms.domain.ActivityKind
+import ru.ruscrafting.farms.domain.ActivityStatsIndex
+import ru.ruscrafting.farms.domain.FarmAdminEdit
 import ru.ruscrafting.farms.domain.ArcFarmsState
 import ru.ruscrafting.farms.domain.EngineResult
 import ru.ruscrafting.farms.domain.FarmOrder
@@ -78,6 +81,7 @@ import ru.ruscrafting.farms.domain.FarmDeliveryPosition
 import ru.ruscrafting.farms.domain.FarmGuidancePlanner
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmIncidentPlanner
+import ru.ruscrafting.farms.domain.FarmIncidentRecovery
 import ru.ruscrafting.farms.domain.FarmLocationOverrides
 import ru.ruscrafting.farms.domain.FarmMusicLoop
 import ru.ruscrafting.farms.domain.FarmPestNest
@@ -224,9 +228,7 @@ class ArcFarmsService(
     private var farms: List<FarmRuntime> = emptyList()
     private var lumbermills: List<LumberRuntime> = emptyList()
     private var mines: List<MineRuntime> = emptyList()
-    private var stats: MutableMap<UUID, PlayerActivityStats> = mutableMapOf()
-    private var farmLeaderboardCache: List<Pair<UUID, Long>> = emptyList()
-    private var farmLeaderboardDirty = true
+    private val stats = ActivityStatsIndex()
     private val activeBars = mutableMapOf<BarKey, BossBar>()
     private val mineReservations = ConcurrentHashMap.newKeySet<String>()
     private val pendingPositions = ConcurrentHashMap<String, String>()
@@ -268,7 +270,9 @@ class ArcFarmsService(
     private val careTargetKey = NamespacedKey(plugin, "farm_care_target")
     private val careRoleKey = NamespacedKey(plugin, "farm_care_role")
     private val tasks = mutableListOf<ScheduledTask>()
+    @Volatile
     private var started = false
+    @Volatile
     private var closed = false
     private var stateSafeToPersist = false
     private var persistenceSuspended = false
@@ -282,8 +286,7 @@ class ArcFarmsService(
         val persisted = stateRepository.load()
         validatePersistedState(settings, persisted)
         validateMineJournalMaterials()
-        stats = persisted.stats.toMutableMap()
-        farmLeaderboardDirty = true
+        stats.replace(persisted.stats)
         rebuild(persisted)
         cleanupOwnedFarmEntities()
         reconcileFarmPatches()
@@ -367,16 +370,59 @@ class ArcFarmsService(
             }
             val runtime = soil?.let { farmAt(it.location) }
             if (soil != null && runtime != null) {
-                val removed = farmBlockLedger.remove(soil)
-                managedFarmBeds[runtime.settings.id]?.remove(soil.toFarmPlotPosition())
                 event.isCancelled = true
+                val position = soil.toFarmPlotPosition()
+                val previous = runtime.state
+                val removal = FarmAdminEdit.removePlot(previous, position)
+                runtime.state = removal.state
+                try {
+                    persistBlocking()
+                } catch (failure: Exception) {
+                    runtime.state = previous
+                    plugin.logger.log(Level.SEVERE, "Could not persist admin removal of managed farm plot $position", failure)
+                    sendChat(event.player, MessageKey.GENERIC_ERROR)
+                    return
+                }
+                val removedBlockType = event.block.type
+                val removed = farmBlockLedger.remove(soil)
+                managedFarmBeds[runtime.settings.id]?.remove(position)
+                removal.careTargetIds.forEach { targetId ->
+                    removeFarmCareEntities(CareEntityKey(runtime.settings.id, targetId), "admin_plot_removed")
+                }
+                if (removal.pestNestRemoved) {
+                    removePestNestEntities(PestNestKey(runtime.settings.id, position), "admin_plot_removed")
+                }
                 if (event.block == soil) soil.getRelative(org.bukkit.block.BlockFace.UP).setType(Material.AIR, false)
                 event.block.setType(Material.AIR, false)
+                if (removal.shiftRetired) {
+                    clearFarmCare(runtime, "admin_plot_removed")
+                    removePests(runtime, activePests(runtime), "admin_plot_removed")
+                    removePestNestEntities(runtime, "admin_plot_removed")
+                    clearDelivery(runtime, "admin_plot_removed")
+                } else if (
+                    runtime.state.phase == FarmPhase.INCIDENT &&
+                    (runtime.state.incidentType ?: FarmIncidentType.PESTS) == FarmIncidentType.PESTS &&
+                    runtime.state.pestNests.isEmpty() && runtime.state.pestAlive == 0
+                ) {
+                    currentOrder(runtime)?.let { order ->
+                        applyFarmResult(
+                            runtime,
+                            FarmShiftEngine.finishPestIncidentIfClear(
+                                runtime.state,
+                                order,
+                                runtime.rules,
+                                SYSTEM_PLAYER_ID,
+                                clock(),
+                            ),
+                            null,
+                        )
+                    }
+                }
                 debug.event(
                     "farm_admin_edit_break",
                     "player" to event.player.name,
                     "zone" to runtime.settings.id,
-                    "block" to event.block.type,
+                    "block" to removedBlockType,
                     "managed_record_removed" to removed,
                     "x" to event.block.x,
                     "y" to event.block.y,
@@ -592,6 +638,8 @@ class ArcFarmsService(
             val mob = careEntities[key].orEmpty().firstNotNullOfOrNull(Bukkit::getEntity) as? Mob
             releaseAnimalFollower(key, mob, "player_quit")
         }
+        val playerToken = player.uniqueId.toString()
+        interactionCooldowns.keys.removeIf { playerToken in it }
         adminEditPlayers.remove(player.uniqueId)
     }
 
@@ -717,6 +765,8 @@ class ArcFarmsService(
             return
         }
         val zoneId = event.entity.persistentDataContainer.get(pestZoneKey, PersistentDataType.STRING) ?: return
+        event.isCancelled = true
+        val sequence = event.entity.persistentDataContainer.get(pestSequenceKey, PersistentDataType.LONG) ?: return
         val attacker = when (event) {
             is EntityDamageByEntityEvent -> when (val damager = event.damager) {
                 is Player -> damager
@@ -726,9 +776,18 @@ class ArcFarmsService(
             else -> null
         } ?: return
         val runtime = farms.firstOrNull { it.settings.id == zoneId } ?: return
-        if (hasAccess(attacker, runtime.settings.permission) && runtime.region.contains(event.entity.location)) {
+        val allowed = FarmPestDamagePolicy.allows(
+            hasAccess = hasAccess(attacker, runtime.settings.permission),
+            insideRegion = runtime.region.contains(event.entity.location),
+            pestIncidentActive = runtime.state.phase == FarmPhase.INCIDENT &&
+                (runtime.state.incidentType ?: FarmIncidentType.PESTS) == FarmIncidentType.PESTS,
+            sequenceMatches = runtime.state.sequence == sequence,
+        )
+        if (allowed) {
             event.isCancelled = false
             debug.event("farm_pest_damage_allowed", "zone" to zoneId, "player" to attacker.name, "entity" to event.entity.type)
+        } else {
+            debug.event("farm_pest_damage_rejected", "zone" to zoneId, "player" to attacker.name, "entity" to event.entity.type)
         }
     }
 
@@ -874,14 +933,20 @@ class ArcFarmsService(
             return false
         }
         if (normalized == "reset") {
-            resetFarmForAdmin(runtime)
+            if (!resetFarmForAdmin(runtime)) {
+                sendChat(player, MessageKey.GENERIC_ERROR)
+                return false
+            }
             adminPausedFarmZones += zoneId
             sendChat(player, MessageKey.ADMIN_STAGE_SET, mapOf("stage" to locale.renderPath("admin.stage.reset", player)))
             return true
         }
         adminPausedFarmZones -= zoneId
         if (normalized == "preparation") {
-            resetFarmForAdmin(runtime)
+            if (!resetFarmForAdmin(runtime)) {
+                sendChat(player, MessageKey.GENERIC_ERROR)
+                return false
+            }
             interactionCooldowns.remove("farm-patch-scan:${runtime.settings.id}")
             if (!tryStartFarmShift(runtime, player, clock())) return false
             sendChat(player, MessageKey.ADMIN_STAGE_SET, mapOf("stage" to locale.renderPath("admin.stage.preparation", player)))
@@ -1168,25 +1233,28 @@ class ArcFarmsService(
         if (runtime.state.phase !in setOf(FarmPhase.IDLE, FarmPhase.COOLDOWN) && runtime.state.preparationPatch.isNotEmpty()) {
             return true
         }
-        resetFarmForAdmin(runtime)
+        if (!resetFarmForAdmin(runtime)) {
+            sendChat(player, MessageKey.GENERIC_ERROR)
+            return false
+        }
         interactionCooldowns.remove("farm-patch-scan:${runtime.settings.id}")
         return tryStartFarmShift(runtime, player, clock())
     }
 
-    private fun resetFarmForAdmin(runtime: FarmRuntime) {
+    private fun resetFarmForAdmin(runtime: FarmRuntime): Boolean {
         clearTemporaryFarmWater("admin_reset")
         clearFarmCare(runtime, "admin_reset")
         removePests(runtime, activePests(runtime), "admin_reset")
         removePestNestEntities(runtime, "admin_reset")
         clearDelivery(runtime, "admin_reset")
         restoreIncidentCrops(runtime)
-        if (runtime.state.preparationPatch.isNotEmpty()) restoreFarmPatchOriginal(runtime)
-        runtime.state = FarmShiftState(sequence = runtime.state.sequence)
-        managedFarmBeds.remove(runtime.settings.id)
+        if (FarmIncidentRecovery.pending(runtime.state)) return false
+        if (runtime.state.preparationPatch.isNotEmpty() && !restoreFarmPatchOriginal(runtime)) return false
+        commitFarmStateAfterPatchRecovery(runtime, FarmShiftState(sequence = runtime.state.sequence))
         pendingIncidentRestore.remove(runtime.settings.id)
         droughtGrowth.remove(runtime.settings.id)
         players(runtime.region).forEach { removeFarmServiceItems(it, runtime.settings.id, "admin_reset") }
-        persistBlocking()
+        return true
     }
 
     private fun prepareAdminPatch(runtime: FarmRuntime, plant: Boolean, mature: Boolean) {
@@ -1217,17 +1285,29 @@ class ArcFarmsService(
     }
 
     fun onInventoryClick(event: InventoryClickEvent) {
-        if (event.view.topInventory.type == InventoryType.CRAFTING) return
         val player = event.whoClicked as? Player ?: return
-        val hotbar = event.hotbarButton.takeIf { it >= 0 }?.let(player.inventory::getItem)
-        if (listOf(event.currentItem, event.cursor, hotbar).any(::isFarmServiceItem)) event.isCancelled = true
+        val hotbar = if (event.click == ClickType.SWAP_OFFHAND) {
+            player.inventory.itemInOffHand
+        } else {
+            event.hotbarButton.takeIf { it >= 0 }?.let(player.inventory::getItem)
+        }
+        if (
+            FarmServiceInventoryPolicy.cancelClick(
+                playerCraftingView = event.view.topInventory.type == InventoryType.CRAFTING,
+                rawSlot = event.rawSlot,
+                topSize = event.view.topInventory.size,
+                shiftClick = event.isShiftClick,
+                currentTagged = isFarmServiceItem(event.currentItem),
+                cursorTagged = isFarmServiceItem(event.cursor),
+                hotbarTagged = isFarmServiceItem(hotbar),
+            )
+        ) event.isCancelled = true
     }
 
     fun onInventoryDrag(event: InventoryDragEvent) {
-        if (
-            event.view.topInventory.type != InventoryType.CRAFTING && isFarmServiceItem(event.oldCursor) &&
-            event.rawSlots.any { it < event.view.topInventory.size }
-        ) event.isCancelled = true
+        if (FarmServiceInventoryPolicy.cancelDrag(isFarmServiceItem(event.oldCursor), event.rawSlots, event.view.topInventory.size)) {
+            event.isCancelled = true
+        }
     }
 
     fun onEntityDeath(event: EntityDeathEvent) {
@@ -1250,7 +1330,8 @@ class ArcFarmsService(
         if (
             runtime == null || runtime.state.phase != FarmPhase.INCIDENT ||
             (runtime.state.incidentType ?: FarmIncidentType.PESTS) != FarmIncidentType.PESTS ||
-            runtime.state.sequence != sequence || killer == null
+            runtime.state.sequence != sequence || killer == null ||
+            !hasAccess(killer, runtime.settings.permission) || !runtime.region.contains(entity.location)
         ) {
             debug.event(
                 "farm_pest_death_ignored",
@@ -1347,32 +1428,11 @@ class ArcFarmsService(
         }
     }
 
-    fun playerStats(playerId: UUID): PlayerActivityStats = stats[playerId] ?: PlayerActivityStats()
+    fun playerStats(playerId: UUID): PlayerActivityStats = stats.player(playerId)
 
-    fun leaderboard(kind: ActivityKind, limit: Int = 10): List<Pair<UUID, Long>> =
-        if (kind == ActivityKind.FARM) {
-            farmLeaderboard().take(limit.coerceIn(1, 50))
-        } else {
-            stats.entries
-                .map { it.key to (it.value.contributions[kind] ?: 0L) }
-                .filter { it.second > 0 }
-                .sortedWith(compareByDescending<Pair<UUID, Long>> { it.second }.thenBy { it.first.toString() })
-                .take(limit.coerceIn(1, 50))
-        }
+    fun leaderboard(kind: ActivityKind, limit: Int = 10): List<Pair<UUID, Long>> = stats.leaderboard(kind, limit)
 
-    fun leaderboardRank(playerId: UUID): Int? = farmLeaderboard().indexOfFirst { it.first == playerId }
-        .takeIf { it >= 0 }
-        ?.plus(1)
-
-    private fun farmLeaderboard(): List<Pair<UUID, Long>> {
-        if (!farmLeaderboardDirty) return farmLeaderboardCache
-        farmLeaderboardCache = stats.entries
-            .map { it.key to (it.value.contributions[ActivityKind.FARM] ?: 0L) }
-            .filter { it.second > 0 }
-            .sortedWith(compareByDescending<Pair<UUID, Long>> { it.second }.thenBy { it.first.toString() })
-        farmLeaderboardDirty = false
-        return farmLeaderboardCache
-    }
+    fun leaderboardRank(playerId: UUID): Int? = stats.farmRank(playerId)
 
     fun canNavigate(kind: ActivityKind): Boolean = kind.configKey in settings.destinations
 
@@ -1577,7 +1637,10 @@ class ArcFarmsService(
         persisted.farms.forEach { (id, state) ->
             if (state.phase == FarmPhase.IDLE) return@forEach
             val zone = farmZones[id]
-            if (zone == null && state.phase == FarmPhase.COOLDOWN && state.preparationPatch.isEmpty()) return@forEach
+            if (
+                zone == null && state.phase == FarmPhase.COOLDOWN && state.preparationPatch.isEmpty() &&
+                !FarmIncidentRecovery.pending(state)
+            ) return@forEach
             requireNotNull(zone) { "Persisted active farm zone $id is missing from config" }
             if (state.phase != FarmPhase.COOLDOWN) {
                 val order = zone.orders.firstOrNull { it.id == state.orderId }
@@ -1589,11 +1652,32 @@ class ArcFarmsService(
                 require(state.preparationCrop == null || state.preparationCrop in order.required) {
                     "Persisted farm preparation crop ${state.preparationCrop} is missing from $id"
                 }
+                require(state.incidentCrop == null || state.incidentCrop in order.required) {
+                    "Persisted farm incident crop ${state.incidentCrop} is missing from $id"
+                }
+                require(state.goldenCrop == null || state.goldenCrop in order.required) {
+                    "Persisted farm golden crop ${state.goldenCrop} is missing from $id"
+                }
             }
             val region = requireNotNull(regionGateway.resolve(zone.reference)) { "Persisted farm region $id cannot be resolved" }
-            require(state.preparationPatch.all { position ->
+            val managedPlots = buildList {
+                addAll(state.preparationPatch)
+                addAll(state.droughtPlots)
+                addAll(state.droughtDamagedPlots)
+                state.pestNests.mapTo(this) { it.position }
+                state.pestDamagedCrops.mapTo(this) { it.position }
+            }
+            require(managedPlots.all { position ->
                 position.world == region.world.name && position.location()?.let(region::contains) == true
-            }) { "Persisted farm patch escaped region $id" }
+            }) { "Persisted farm-managed block escaped region $id" }
+            require(state.careTargets.all { target ->
+                val position = target.position
+                val location = Location(region.world, position.x, position.y, position.z)
+                position.world == region.world.name && region.contains(location)
+            }) { "Persisted farm care target escaped region $id" }
+            require(state.pestDamagedCrops.all { it.crop in zone.crops }) {
+                "Persisted farm pest damage contains an unknown crop in $id"
+            }
             state.deliveryPosition?.let { position ->
                 val location = Location(region.world, position.x, position.y, position.z)
                 require(position.world == region.world.name && region.contains(location)) {
@@ -1626,14 +1710,17 @@ class ArcFarmsService(
     private fun validateReload(candidate: ArcFarmsConfig, snapshot: ArcFarmsState) {
         validatePersistedState(candidate, snapshot)
         val farmZones = candidate.farms.associateBy(FarmZoneSettings::id)
-        snapshot.farms.filterValues { it.phase !in setOf(FarmPhase.IDLE, FarmPhase.COOLDOWN) }.forEach { (id, state) ->
-            val zone = farmZones[id]
-            val order = zone?.orders?.firstOrNull { it.id == state.orderId }
-            require(order != null) {
-                "Cannot remove active farm zone/order $id during reload"
-            }
-            require(state.preparationCrop == null || state.preparationCrop in order.required) {
-                "Cannot remove active farm preparation crop ${state.preparationCrop} from $id"
+        snapshot.farms.filterValues {
+            it.phase !in setOf(FarmPhase.IDLE, FarmPhase.COOLDOWN) || it.preparationPatch.isNotEmpty() ||
+                FarmIncidentRecovery.pending(it)
+        }.forEach { (id, state) ->
+            val zone = requireNotNull(farmZones[id]) { "Cannot remove farm zone $id with pending world recovery" }
+            if (state.phase != FarmPhase.COOLDOWN) {
+                val order = zone.orders.firstOrNull { it.id == state.orderId }
+                require(order != null) { "Cannot remove active farm order $id/${state.orderId} during reload" }
+                require(state.preparationCrop == null || state.preparationCrop in order.required) {
+                    "Cannot remove active farm preparation crop ${state.preparationCrop} from $id"
+                }
             }
             if (state.preparationPatch.isNotEmpty()) {
                 val region = requireNotNull(regionGateway.resolve(zone.reference)) {
@@ -2917,7 +3004,10 @@ class ArcFarmsService(
                     players(runtime.region).forEach { removeFarmServiceItems(it, runtime.settings.id, "shift_completed") }
                     clearDelivery(runtime, "completed")
                     val contributors = runtime.state.contributors
-                    if (restoreFarmPatchOriginal(runtime)) clearFarmPatchState(runtime)
+                    restoreIncidentCrops(runtime)
+                    if (!FarmIncidentRecovery.pending(runtime.state) && restoreFarmPatchOriginal(runtime)) {
+                        clearFarmPatchState(runtime)
+                    }
                     recordCompletion(ActivityKind.FARM, runtime.state.contributors)
                     if (runtime.settings.completionExperience > 0) {
                         contributors.keys.mapNotNull(Bukkit::getPlayer).filter(Player::isOnline).forEach { player ->
@@ -3128,6 +3218,12 @@ class ArcFarmsService(
         farms.forEach { runtime ->
             runGuarded("farm:${runtime.settings.id}") {
                 if (isAdminEditingFarm(runtime)) return@runGuarded
+                if (runtime.state.phase != FarmPhase.INCIDENT && FarmIncidentRecovery.pending(runtime.state)) {
+                    restoreIncidentCrops(runtime)
+                    if (runtime.state.phase == FarmPhase.COOLDOWN && FarmIncidentRecovery.pending(runtime.state)) {
+                        return@runGuarded
+                    }
+                }
                 if (runtime.state.phase == FarmPhase.COOLDOWN && runtime.state.preparationPatch.isNotEmpty()) {
                     if (restoreFarmPatchOriginal(runtime)) {
                         clearFarmPatchState(runtime)
@@ -3472,21 +3568,24 @@ class ArcFarmsService(
     private fun restoreFarmPatchOriginal(runtime: FarmRuntime): Boolean {
         var complete = true
         runtime.state.preparationPatch.forEach { position ->
-            val world = Bukkit.getWorld(position.world)
-            if (world == null) {
+            val soil = position.block()
+            if (soil == null) {
                 complete = false
                 return@forEach
             }
             runCatching {
-                val soil = world.getBlockAt(position.x, position.y, position.z)
-                farmBlockLedger.restoreOriginal(soil)
+                if (!farmBlockLedger.restoreOriginal(soil, clear = false)) {
+                    complete = false
+                    if (allowInteraction("farm-ledger-missing:${runtime.settings.id}:$position", TimeUnit.MINUTES.toMillis(5))) {
+                        plugin.logger.severe("Managed farm plot $position has no recovery ledger and was retained for repair")
+                    }
+                }
             }.onFailure { failure ->
                 complete = false
                 plugin.logger.log(Level.SEVERE, "Could not restore managed farm plot $position", failure)
             }
         }
         if (!complete) return false
-        managedFarmBeds.remove(runtime.settings.id)
         debug.event(
             "farm_patch_restored",
             "zone" to runtime.settings.id,
@@ -3764,7 +3863,7 @@ class ArcFarmsService(
     }
 
     private fun clearFarmPatchState(runtime: FarmRuntime) {
-        runtime.state = runtime.state.copy(
+        commitFarmStateAfterPatchRecovery(runtime, runtime.state.copy(
             preparationPatch = emptyList(),
             preparationCrop = null,
             preparationReleased = false,
@@ -3774,12 +3873,30 @@ class ArcFarmsService(
             plantingProgress = 0,
             preparationRequired = 0,
             droughtPlots = emptySet(),
-            droughtDamagedPlots = emptySet(),
             pestNestsInitialized = false,
             pestNests = emptyList(),
             pestAlive = 0,
-            pestDamagedCrops = emptyList(),
-        )
+        ))
+    }
+
+    private fun commitFarmStateAfterPatchRecovery(runtime: FarmRuntime, next: FarmShiftState) {
+        val previous = runtime.state
+        val recoveredPatch = previous.preparationPatch
+        runtime.state = next
+        try {
+            persistBlocking()
+        } catch (failure: Exception) {
+            runtime.state = previous
+            throw failure
+        }
+        recoveredPatch.forEach { position ->
+            val soil = position.block() ?: return@forEach
+            runCatching { farmBlockLedger.remove(soil) }
+                .onFailure { failure ->
+                    plugin.logger.log(Level.WARNING, "Could not clear recovered farm ledger at $position", failure)
+                }
+        }
+        managedFarmBeds.remove(runtime.settings.id)
     }
 
     private fun maintainWetFarmBeds(runtime: FarmRuntime) {
@@ -4079,22 +4196,59 @@ class ArcFarmsService(
             pendingIncidentRestore += runtime.settings.id
             return
         }
-        runtime.state.droughtDamagedPlots.forEach { position ->
-            val soil = position.block() ?: return@forEach
-            val above = soil.getRelative(org.bukkit.block.BlockFace.UP)
-            if (above.type.isAir || above.type == Material.WATER) farmBlockLedger.restoreActiveCrop(soil)
-        }
-        runtime.state.pestDamagedCrops.forEach { damage ->
-            val soil = damage.position.block() ?: return@forEach
-            setWetFarmland(soil)
-            val above = soil.getRelative(org.bukkit.block.BlockFace.UP)
-            if (above.type.isAir || above.type == Material.WATER) {
-                above.setBlockData(MaterialRules.material(damage.crop).createBlockData(), false)
-                farmBlockLedger.captureActiveCrop(soil, runtime.settings.id)
+        val before = runtime.state
+        runtime.state = FarmIncidentRecovery.recover(
+            before,
+            restoreDrought = { position -> restoreDroughtCrop(runtime, position) },
+            restorePest = { damage -> restorePestCrop(runtime, damage) },
+        )
+        if (runtime.state != before) persistAsync()
+        if (FarmIncidentRecovery.pending(runtime.state)) {
+            if (allowInteraction("farm-incident-recovery:${runtime.settings.id}", TimeUnit.MINUTES.toMillis(1))) {
+                plugin.logger.warning(
+                    "Farm incident recovery in ${runtime.settings.id} is waiting for " +
+                        "${runtime.state.droughtDamagedPlots.size + runtime.state.pestDamagedCrops.size} loaded plot(s)",
+                )
             }
+        } else {
+            pendingIncidentRestore.remove(runtime.settings.id)
         }
-        runtime.state = runtime.state.copy(droughtDamagedPlots = emptySet(), pestDamagedCrops = emptyList())
-        persistAsync()
+    }
+
+    private fun restoreDroughtCrop(runtime: FarmRuntime, position: FarmPlotPosition): Boolean {
+        val soil = position.block() ?: return false
+        return runCatching {
+            setWetFarmland(soil)
+            val restored = farmBlockLedger.restoreActiveCrop(soil)
+            if (restored && position !in runtime.state.preparationPatch) farmBlockLedger.remove(soil)
+            restored
+        }.getOrElse { failure ->
+            plugin.logger.log(Level.SEVERE, "Could not restore drought-damaged farm plot $position", failure)
+            false
+        }
+    }
+
+    private fun restorePestCrop(runtime: FarmRuntime, damage: FarmCropDamage): Boolean {
+        val soil = damage.position.block() ?: return false
+        return runCatching {
+            setWetFarmland(soil)
+            val crop = MaterialRules.material(damage.crop)
+            val above = soil.getRelative(org.bukkit.block.BlockFace.UP)
+            val restored = when {
+                above.type == crop -> true
+                above.type.isAir || above.type == Material.WATER -> {
+                    above.setBlockData(crop.createBlockData(), false)
+                    farmBlockLedger.captureActiveCrop(soil, runtime.settings.id)
+                    true
+                }
+                else -> false
+            }
+            if (restored && damage.position !in runtime.state.preparationPatch) farmBlockLedger.remove(soil)
+            restored
+        }.getOrElse { failure ->
+            plugin.logger.log(Level.SEVERE, "Could not restore pest-damaged farm plot ${damage.position}", failure)
+            false
+        }
     }
 
     private fun selectDeliveryAnchor(runtime: FarmRuntime, source: Location): FarmDeliveryPosition {
@@ -4950,6 +5104,15 @@ class ArcFarmsService(
                 player.setItemOnCursor(null)
             }
         }
+        val top = player.openInventory.topInventory
+        top.contents.forEachIndexed { index, item ->
+            val value = item?.itemMeta?.persistentDataContainer?.get(serviceItemKey, PersistentDataType.STRING)
+                ?: return@forEachIndexed
+            if (zoneId != null && value.substringBefore(':') != zoneId) return@forEachIndexed
+            if (kind != null && value.substringAfter(':') != kind.name) return@forEachIndexed
+            removed += item.amount
+            top.setItem(index, null)
+        }
         if (removed > 0) debug.event("farm_supply_removed", "player" to player.name, "zone" to zoneId, "kind" to kind, "count" to removed, "reason" to reason)
     }
 
@@ -5780,22 +5943,28 @@ class ArcFarmsService(
     }
 
     private fun recordContribution(playerId: UUID, kind: ActivityKind, amount: Int) {
-        stats[playerId] = (stats[playerId] ?: PlayerActivityStats()).contribute(kind, amount)
-        if (kind == ActivityKind.FARM && amount > 0) farmLeaderboardDirty = true
+        stats.contribute(playerId, kind, amount)
     }
 
     private fun recordCompletion(kind: ActivityKind, contributors: Map<UUID, Int>) {
-        contributors.keys.forEach { playerId ->
-            stats[playerId] = (stats[playerId] ?: PlayerActivityStats()).complete(kind)
-        }
+        contributors.keys.forEach { playerId -> stats.complete(playerId, kind) }
     }
 
     private fun allowInteraction(key: String, cooldownMillis: Long): Boolean {
         val now = clock()
         val previous = interactionCooldowns[key] ?: 0
-        if (now - previous < cooldownMillis) return false
+        if (now >= previous && now - previous < cooldownMillis) return false
         interactionCooldowns[key] = now
-        if (interactionCooldowns.size > 10_000) interactionCooldowns.entries.removeIf { now - it.value > TimeUnit.HOURS.toMillis(1) }
+        if (interactionCooldowns.size > MAX_INTERACTION_COOLDOWNS) {
+            interactionCooldowns.entries.removeIf { timestamp ->
+                now >= timestamp.value && now - timestamp.value > TimeUnit.HOURS.toMillis(1)
+            }
+            val iterator = interactionCooldowns.entries.iterator()
+            while (interactionCooldowns.size > MAX_INTERACTION_COOLDOWNS && iterator.hasNext()) {
+                iterator.next()
+                iterator.remove()
+            }
+        }
         return true
     }
 
@@ -5864,7 +6033,7 @@ class ArcFarmsService(
         farms = farms.associate { it.settings.id to it.state },
         lumbermills = lumbermills.associate { it.settings.id to it.state },
         mines = mines.associate { it.settings.id to it.state },
-        stats = stats.toMap(),
+        stats = stats.snapshot(),
     )
 
     private fun persistAsync() {
@@ -5911,6 +6080,7 @@ class ArcFarmsService(
     companion object {
         private val SYSTEM_PLAYER_ID = UUID(0L, 0L)
         private const val MAX_INCIDENT_DAMAGED_CROPS = 4_096
+        private const val MAX_INTERACTION_COOLDOWNS = 10_000
 
         private val TITLE_SUBTITLES = mapOf(
             MessageKey.FARM_ENTRY_TITLE to MessageKey.FARM_ENTRY_SUBTITLE,

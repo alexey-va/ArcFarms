@@ -7,6 +7,8 @@ import org.bukkit.event.EventPriority
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.block.BlockSpreadEvent
 import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.event.player.PlayerPortalEvent
+import org.bukkit.event.player.PlayerTeleportEvent
 
 class ArcFarmsListenerContractTest : FunSpec({
     test("farm-owned interactions run before WorldGuard protection feedback") {
@@ -19,6 +21,16 @@ class ArcFarmsListenerContractTest : FunSpec({
 
         handler.priority shouldBe EventPriority.LOWEST
         handler.ignoreCancelled shouldBe true
+    }
+
+    test("teleports and portals cannot bypass farm exit cleanup") {
+        listOf(
+            handler("onTeleport", PlayerTeleportEvent::class.java),
+            handler("onPortal", PlayerPortalEvent::class.java),
+        ).forEach { handler ->
+            handler.priority shouldBe EventPriority.MONITOR
+            handler.ignoreCancelled shouldBe true
+        }
     }
 })
 

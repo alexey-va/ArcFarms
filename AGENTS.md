@@ -30,6 +30,14 @@ activities: farm, lumbermill, and mine.
 - Farm preparation rotates between spatially distinct same-height beds. It may
   bridge a one-block irrigation channel and expand a whole bed only up to the
   configured hard cap; active recovery may expand progress but never reset it.
+- Clear farm recovery entries only after the corresponding world repair was
+  confirmed. Patch restoration keeps its block ledger until the cleared state
+  is durably saved; unloaded or failed plots remain pending for a later retry.
+- Register move, teleport, and portal cleanup handlers separately: Paper gives
+  these event classes distinct handler lists despite their class inheritance.
+- Farm service items may move inside the player's own inventory, but must never
+  enter a crafting grid or external inventory and must be removed on every
+  farm/server exit path.
 - Runtime state belongs under `plugins/ArcFarms/data/` and is never tracked or
   deployed as configuration.
 - Network workday seals are persistent and deadline-free. Redis loss may

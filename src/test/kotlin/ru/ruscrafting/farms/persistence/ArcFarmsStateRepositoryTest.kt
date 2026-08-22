@@ -197,4 +197,20 @@ class ArcFarmsStateRepositoryTest : FunSpec({
             (failure.cause is IllegalArgumentException) shouldBe true
         }
     }
+
+    test("idle farm state cannot discard pending world recovery") {
+        val root = Files.createTempDirectory("arcfarms-state-idle-recovery-test")
+        val invalid = ArcFarmsState(
+            farms = mapOf(
+                "farm" to FarmShiftState(
+                    droughtDamagedPlots = setOf(FarmPlotPosition("world", 10, 63, 10)),
+                ),
+            ),
+        )
+
+        ArcFarmsStateRepository(root).use { repository ->
+            val failure = shouldThrow<ExecutionException> { repository.saveBlocking(invalid) }
+            (failure.cause is IllegalArgumentException) shouldBe true
+        }
+    }
 })

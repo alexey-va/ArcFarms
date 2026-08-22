@@ -86,6 +86,7 @@ class ArcFarmsNetworkService(
         repository.markCompleted(activity).whenComplete { update, failure ->
             if (!started) return@whenComplete
             Tasks.scheduler.runSync {
+                if (!started) return@runSync
                 if (failure != null) {
                     plugin.logger.log(Level.WARNING, "ArcFarms could not stamp the persistent network workday", failure)
                     return@runSync
@@ -157,6 +158,10 @@ class ArcFarmsNetworkService(
         }
 
     private fun receive(event: NetworkEvent, origin: String) {
+        if (!started) {
+            debug.event("network_receive_skipped", "signal" to event.signal, "origin" to origin, "reason" to "service_stopped")
+            return
+        }
         val current = settings()
         if (!current.network.enabled || origin == current.serverId || origin !in current.network.allowedOrigins) {
             debug.event("network_receive_skipped", "signal" to event.signal, "origin" to origin, "reason" to "origin_or_disabled")
@@ -177,6 +182,7 @@ class ArcFarmsNetworkService(
         }
         debug.event("network_received", "signal" to event.signal, "origin" to origin, "event_id" to event.eventId)
         Tasks.scheduler.runSync {
+            if (!started) return@runSync
             when (event.signal) {
                 NetworkSignal.NODE_PROBE -> acknowledge(event, origin)
                 NetworkSignal.NODE_ACK -> acceptAcknowledgement(event, origin)
@@ -295,7 +301,7 @@ class ArcFarmsNetworkService(
         if (settings().particles) {
             player.spawnParticle(Particle.FIREWORK, player.location.add(0.0, 1.3, 0.0), 10, 0.8, 0.6, 0.8, 0.035)
             Tasks.scheduler.runLater(10L) {
-                if (player.isOnline) {
+                if (started && player.isOnline) {
                     player.spawnParticle(
                         Particle.DUST,
                         player.location.add(0.0, 1.4, 0.0),

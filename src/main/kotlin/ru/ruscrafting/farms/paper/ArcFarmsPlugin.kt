@@ -20,6 +20,7 @@ import java.nio.file.Files
 import java.util.logging.Level
 
 class ArcFarmsPlugin : JavaPlugin() {
+    @Volatile
     private lateinit var settings: ArcFarmsConfig
     private lateinit var locale: ArcFarmsLocale
     private var service: ArcFarmsService? = null

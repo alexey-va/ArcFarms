@@ -21,7 +21,9 @@ import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerMoveEvent
+import org.bukkit.event.player.PlayerPortalEvent
 import org.bukkit.event.player.PlayerQuitEvent
+import org.bukkit.event.player.PlayerTeleportEvent
 
 class ArcFarmsListener(
     private val service: ArcFarmsService,
@@ -62,6 +64,12 @@ class ArcFarmsListener(
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onMove(event: PlayerMoveEvent) = service.onMove(event)
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    fun onTeleport(event: PlayerTeleportEvent) = service.onMove(event)
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    fun onPortal(event: PlayerPortalEvent) = service.onMove(event)
 
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onQuit(event: PlayerQuitEvent) = service.onQuit(event.player)

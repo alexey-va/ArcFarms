@@ -159,11 +159,24 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
             if (farm.phase == FarmPhase.IDLE) {
                 require(
                     farm.orderId == null && farm.progress.isEmpty() && farm.preparationPatch.isEmpty() &&
-                        farm.careTargets.isEmpty() && farm.incidentCrop == null && farm.deliveryPosition == null &&
-                        farm.contributors.isEmpty() && farm.outcome == ShiftOutcome.NONE,
+                        farm.preparationCrop == null && !farm.preparationReleased && farm.careType == null &&
+                        farm.careTargets.isEmpty() && farm.incidentCrop == null && farm.incidentType == null &&
+                        farm.incidentProgress == 0 && farm.incidentRequired == 0 && !farm.incidentResolved &&
+                        farm.droughtPlots.isEmpty() && farm.droughtDamagedPlots.isEmpty() &&
+                        !farm.pestNestsInitialized && farm.pestNests.isEmpty() && farm.pestAlive == 0 &&
+                        farm.pestDamagedCrops.isEmpty() && farm.goldenCrop == null && !farm.goldenUsed &&
+                        farm.goldenEndsAt == 0L && farm.deliveryPosition == null && farm.deliveredCrates.isEmpty() &&
+                        farm.startedAt == 0L && farm.cooldownEndsAt == 0L && farm.contributors.isEmpty() &&
+                        farm.outcome == ShiftOutcome.NONE,
                 ) { "Idle farm state contains an active shift" }
             } else {
                 require(farm.orderId != null) { "Active farm state has no order" }
+            }
+            if (farm.phase == FarmPhase.INCIDENT) {
+                require(
+                    farm.incidentCrop != null && farm.incidentRequired > 0 &&
+                        farm.incidentProgress < farm.incidentRequired && !farm.incidentResolved,
+                ) { "Active farm incident state is incomplete" }
             }
             if (farm.phase == FarmPhase.GOLDEN_HARVEST) {
                 require(farm.goldenCrop != null && farm.goldenEndsAt > 0) { "Golden harvest state is incomplete" }
