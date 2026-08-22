@@ -288,11 +288,19 @@ class ArcFarmsNetworkService(
             player.playSound(player.location, Sound.ENTITY_FIREWORK_ROCKET_BLAST, 0.55f, 1.2f)
         }
         if (settings().particles) {
-            player.spawnParticle(Particle.FIREWORK, player.location.add(0.0, 1.3, 0.0), 30, 1.5, 1.0, 1.5, 0.09)
-            player.spawnParticle(Particle.FLASH, player.location.add(0.0, 1.8, 0.0), 2, 0.6, 0.5, 0.6, 0.0, Color.YELLOW)
+            player.spawnParticle(Particle.FIREWORK, player.location.add(0.0, 1.3, 0.0), 10, 0.8, 0.6, 0.8, 0.035)
             Tasks.scheduler.runLater(10L) {
                 if (player.isOnline) {
-                    player.spawnParticle(Particle.END_ROD, player.location.add(0.0, 1.4, 0.0), 34, 1.6, 1.0, 1.6, 0.08)
+                    player.spawnParticle(
+                        Particle.DUST,
+                        player.location.add(0.0, 1.4, 0.0),
+                        6,
+                        0.55,
+                        0.45,
+                        0.55,
+                        0.0,
+                        Particle.DustOptions(Color.fromRGB(168, 230, 163), 1.15f),
+                    )
                     if (settings().sounds) player.playSound(player.location, Sound.ENTITY_PLAYER_LEVELUP, 0.7f, 1.25f)
                 }
             }

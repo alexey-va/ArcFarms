@@ -12,7 +12,7 @@ class FarmPatchPlannerTest : FunSpec({
             }
         }
 
-        val selected = FarmPatchPlanner.select(candidates, FarmPlotPosition("world", 0, 65, 0), 100)
+        val selected = FarmPatchPlanner.select(candidates, FarmPlotPosition("world", 0, 65, 0), 100, 100)
 
         selected.size shouldBe 100
         selected.distinct().size shouldBe 100
@@ -55,6 +55,92 @@ class FarmPatchPlannerTest : FunSpec({
 
         selected.size shouldBe 4
         selected.all { it in nearby } shouldBe true
+    }
+
+    test("planner cycles through separate beds instead of always selecting the center bed") {
+        val beds = listOf(0, 30, 60).map { start ->
+            (start until start + 6).flatMap { x ->
+                (0 until 4).map { z -> FarmPlotPosition("world", x, 64, z) }
+            }
+        }
+        val candidates = beds.flatten()
+        val anchor = FarmPlotPosition("world", 30, 64, 0)
+
+        val selectedBeds = (0L..2L).map { sequence ->
+            FarmPatchPlanner.select(candidates, anchor, targetSize = 20, maxSize = 30, selectionIndex = sequence).toSet()
+        }
+
+        selectedBeds.toSet().size shouldBe 3
+        selectedBeds.forEach { selected -> beds.any { selected == it.toSet() } shouldBe true }
+    }
+
+    test("planner expands a selected bed to its whole same-height component within the cap") {
+        val bed = (0 until 12).flatMap { x ->
+            (0 until 10).map { z -> FarmPlotPosition("world", x, 64, z) }
+        }
+        val upperTerrace = (0 until 12).map { x -> FarmPlotPosition("world", x, 65, 0) }
+
+        val selected = FarmPatchPlanner.select(
+            bed + upperTerrace,
+            FarmPlotPosition("world", 0, 64, 0),
+            targetSize = 100,
+            maxSize = 160,
+        )
+
+        selected.shouldContainExactlyInAnyOrder(bed)
+    }
+
+    test("planner bounds a huge connected field instead of absorbing thousands of plots") {
+        val hugeField = (0 until 50).flatMap { x ->
+            (0 until 20).map { z -> FarmPlotPosition("world", x, 64, z) }
+        }
+
+        val selected = FarmPatchPlanner.select(
+            hugeField,
+            FarmPlotPosition("world", 25, 64, 10),
+            targetSize = 100,
+            maxSize = 160,
+        )
+
+        selected.size shouldBe 160
+        selected.all { it.y == 64 && it in hugeField } shouldBe true
+    }
+
+    test("planner rotates bounded patches across one huge connected field") {
+        val hugeField = (0 until 50).flatMap { x ->
+            (0 until 20).map { z -> FarmPlotPosition("world", x, 64, z) }
+        }
+        val anchor = FarmPlotPosition("world", 25, 64, 10)
+
+        val first = FarmPatchPlanner.select(hugeField, anchor, 100, 160, selectionIndex = 0).toSet()
+        val second = FarmPatchPlanner.select(hugeField, anchor, 100, 160, selectionIndex = 1).toSet()
+
+        first.size shouldBe 160
+        second.size shouldBe 160
+        (first == second) shouldBe false
+        (first.intersect(second).size < 40) shouldBe true
+    }
+
+    test("recovery expands an old partial patch without resetting completed plots") {
+        val wholeBed = (0 until 12).flatMap { x ->
+            (0 until 10).map { z -> FarmPlotPosition("world", x, 64, z) }
+        }
+        val oldPatch = wholeBed.filter { it.x < 10 }
+
+        val expanded = FarmPatchPlanner.expand(wholeBed, oldPatch, maxSize = 160)
+
+        expanded.shouldContainExactlyInAnyOrder(wholeBed)
+        expanded.containsAll(oldPatch) shouldBe true
+    }
+
+    test("planner bridges one-block irrigation but not a wider path or another height") {
+        val left = (0 until 4).flatMap { x -> (0 until 4).map { z -> FarmPlotPosition("world", x, 64, z) } }
+        val right = (7 until 11).flatMap { x -> (0 until 4).map { z -> FarmPlotPosition("world", x, 64, z) } }
+        val raised = (0 until 4).flatMap { x -> (0 until 4).map { z -> FarmPlotPosition("world", x, 65, z) } }
+
+        val selected = FarmPatchPlanner.select(left + right + raised, left.first(), 12, 20)
+
+        selected.shouldContainExactlyInAnyOrder(left)
     }
 
     test("planner returns no patch when no usable plots were discovered") {

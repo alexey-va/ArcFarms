@@ -7,8 +7,11 @@ object FarmPatchPlanner {
         candidates: Collection<FarmPlotPosition>,
         anchor: FarmPlotPosition,
         targetSize: Int,
+        maxSize: Int = targetSize,
+        selectionIndex: Long = 0,
     ): List<FarmPlotPosition> {
         require(targetSize in 1..512) { "Farm patch target must be in 1..512" }
+        require(maxSize in targetSize..512) { "Farm patch maximum must be between target size and 512" }
         val available = candidates.asSequence()
             .filter { it.world == anchor.world }
             .distinct()
@@ -32,20 +35,26 @@ object FarmPatchPlanner {
             components += component
         }
 
-        val selectedComponent = components.maxWith(
-            compareBy<Set<FarmPlotPosition>> { minOf(it.size, targetSize) }
-                .thenByDescending { component -> component.minOf { distanceSquared(it, anchor) } }
-                .thenByDescending { component -> component.minWith(POSITION_ORDER).coordinateKey() },
+        val eligible = components.filter { it.size >= targetSize }.ifEmpty {
+            val largestSize = components.maxOf(Set<FarmPlotPosition>::size)
+            components.filter { it.size == largestSize }
+        }.sortedWith(
+            compareBy<Set<FarmPlotPosition>> { component -> component.minWith(POSITION_ORDER).coordinateKey() }
+                .thenBy { component -> component.minOf { distanceSquared(it, anchor) } },
         )
-        val start = selectedComponent.minWith(
-            compareBy<FarmPlotPosition> { distanceSquared(it, anchor) }.then(POSITION_ORDER),
-        )
+        val componentIndex = Math.floorMod(selectionIndex, eligible.size.toLong()).toInt()
+        val selectedComponent = eligible[componentIndex]
+        if (selectedComponent.size <= maxSize) return selectedComponent.sortedWith(POSITION_ORDER)
+
+        val starts = dispersedStarts(selectedComponent, anchor)
+        val startIndex = Math.floorMod(selectionIndex / eligible.size, starts.size.toLong()).toInt()
+        val start = starts[startIndex]
         val remaining = selectedComponent.toMutableSet()
-        val ordered = ArrayList<FarmPlotPosition>(minOf(targetSize, selectedComponent.size))
+        val ordered = ArrayList<FarmPlotPosition>(maxSize)
         val queue = ArrayDeque<FarmPlotPosition>()
         remaining.remove(start)
         queue.add(start)
-        while (queue.isNotEmpty() && ordered.size < targetSize) {
+        while (queue.isNotEmpty() && ordered.size < maxSize) {
             val current = queue.removeFirst()
             ordered += current
             neighbors(current).filter(remaining::remove).sortedWith(POSITION_ORDER).forEach(queue::add)
@@ -53,21 +62,60 @@ object FarmPatchPlanner {
         return ordered
     }
 
-    private fun neighbors(position: FarmPlotPosition): Sequence<FarmPlotPosition> = sequence {
-        for (dy in -1..1) {
-            for (dx in -2..2) {
-                for (dz in -2..2) {
-                    if (dx == 0 && dy == 0 && dz == 0) continue
-                    val x = position.x.toLong() + dx
-                    val y = position.y.toLong() + dy
-                    val z = position.z.toLong() + dz
-                    if (x !in -30_000_000L..30_000_000L || y !in -4_096L..4_096L || z !in -30_000_000L..30_000_000L) {
-                        continue
-                    }
-                    yield(FarmPlotPosition(position.world, x.toInt(), y.toInt(), z.toInt()))
-                }
+    fun expand(
+        candidates: Collection<FarmPlotPosition>,
+        currentPatch: Collection<FarmPlotPosition>,
+        maxSize: Int,
+    ): List<FarmPlotPosition> {
+        require(maxSize in 1..512) { "Farm patch maximum must be in 1..512" }
+        val current = currentPatch.distinct()
+        if (current.isEmpty()) return emptyList()
+        if (current.size >= maxSize) return current.sortedWith(POSITION_ORDER)
+        val worlds = current.map(FarmPlotPosition::world).distinct()
+        require(worlds.size == 1) { "Current farm patch crosses worlds" }
+        val available = candidates.asSequence()
+            .filter { it.world == worlds.single() }
+            .distinct()
+            .filterNot(current::contains)
+            .toMutableSet()
+        val expanded = current.toMutableSet()
+        val queue = ArrayDeque(current.sortedWith(POSITION_ORDER))
+        while (queue.isNotEmpty() && expanded.size < maxSize) {
+            val position = queue.removeFirst()
+            neighbors(position).filter(available::remove).sortedWith(POSITION_ORDER).forEach { neighbor ->
+                if (expanded.size < maxSize && expanded.add(neighbor)) queue.add(neighbor)
             }
         }
+        return expanded.sortedWith(POSITION_ORDER)
+    }
+
+    private fun neighbors(position: FarmPlotPosition): Sequence<FarmPlotPosition> = sequence {
+        IRRIGATED_ROW_OFFSETS.forEach { (dx, dz) ->
+            val x = position.x.toLong() + dx
+            val z = position.z.toLong() + dz
+            if (x in -30_000_000L..30_000_000L && z in -30_000_000L..30_000_000L) {
+                yield(FarmPlotPosition(position.world, x.toInt(), position.y, z.toInt()))
+            }
+        }
+    }
+
+    private fun dispersedStarts(
+        component: Set<FarmPlotPosition>,
+        anchor: FarmPlotPosition,
+    ): List<FarmPlotPosition> {
+        val limit = minOf(8, component.size)
+        val selected = mutableListOf(
+            component.maxWith(compareBy<FarmPlotPosition> { distanceSquared(it, anchor) }.then(POSITION_ORDER)),
+        )
+        while (selected.size < limit) {
+            val next = component.asSequence().filterNot(selected::contains).maxWithOrNull(
+                compareBy<FarmPlotPosition> { candidate ->
+                    selected.minOf { chosen -> distanceSquared(candidate, chosen) }
+                }.then(POSITION_ORDER),
+            ) ?: break
+            selected += next
+        }
+        return selected
     }
 
     private fun distanceSquared(left: FarmPlotPosition, right: FarmPlotPosition): Long {
@@ -82,6 +130,17 @@ object FarmPatchPlanner {
         FarmPlotPosition::x,
         FarmPlotPosition::z,
         FarmPlotPosition::world,
+    )
+
+    private val IRRIGATED_ROW_OFFSETS = listOf(
+        1 to 0,
+        -1 to 0,
+        0 to 1,
+        0 to -1,
+        2 to 0,
+        -2 to 0,
+        0 to 2,
+        0 to -2,
     )
 
     private fun FarmPlotPosition.coordinateKey(): String = "$world:$y:$x:$z"

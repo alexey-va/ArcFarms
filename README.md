@@ -24,6 +24,14 @@ the requested crop with its matching seed item. Seeds act as a tool and are not
 consumed. Selected and previously discovered beds are kept at maximum farmland
 moisture and protected from trampling and drying.
 
+Patch selection rotates between spatially distinct beds instead of always
+starting beside the entering player. Beds are connected only on one height,
+with a one-block irrigation channel allowed between rows. A selected bed grows
+from the configured target to its full connected shape when that shape fits
+under `preparation-patch-max-size`; larger fields remain hard-bounded. Recovery
+may add the missing edge of an old partial bed without discarding existing
+tilling or planting progress.
+
 The active patch, tilling progress, and planting progress survive an empty
 farm, chunk unload, plugin reload, or process restart. Recovery replays an
 unfinished patch release idempotently and reconciles already tilled or planted
@@ -32,19 +40,23 @@ shows every unfinished crop with its current and required amount. Only
 requested mature crops fill it, and accepted crops are consumed by the order
 instead of dropping.
 
-Three configured supply crates stand near the farm entrance. During the
-matching phase they issue a tagged unbreakable hoe, the required seeds, or one
-infinite service water bucket. These tools cannot be dropped, stored in another
+Three configured free-floating item displays stand on the path near the farm
+entrance, each with a short text label and interaction hitbox but no barrel or
+base block. During the matching phase they issue a tagged unbreakable hoe, the
+required seeds, or one infinite service water bucket. These tools cannot be
+dropped, stored in another
 inventory, used for unrelated farm changes, carried outside the farm, or moved
 to another backend; ArcFarms removes them at every such boundary.
 
 At the configured threshold one of the farm incidents starts. A pest outbreak
 spawns glowing silverfish that eat nearby managed crops until defeated. A
-drought creates several widely separated patches of visibly dry farmland and
+drought creates several widely separated patches of visibly dry dirt and
 removes their dead plants. The total dry area is derived from the active garden
 size, clamped by configured minimum and maximum bed counts, and distributed
-between the configured number of patches. Pouring the service bucket creates
-real flowing water: it spreads, hydrates every bed it reaches, and breaks plants
+between the configured number of patches. The service bucket may be poured on a
+replaceable block within flow reach instead of only on the dry block itself. It
+creates real flowing water: the flow spreads, hydrates only the dry beds it
+actually reaches, and breaks plants
 using normal water physics without leaving duplicate crop drops. ArcFarms tracks
 and removes every temporary flow after each pour. Managed plants remain absent
 until the entire drought is resolved, then their captured state is restored at

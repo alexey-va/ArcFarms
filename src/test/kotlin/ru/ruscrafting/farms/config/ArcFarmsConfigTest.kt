@@ -3,6 +3,8 @@ package ru.ruscrafting.farms.config
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.string.shouldStartWith
 import io.kotest.assertions.throwables.shouldThrow
 import net.kyori.adventure.text.Component
@@ -48,12 +50,16 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().droughtTargetBeds(60) shouldBe 30
         settings.farms.single().droughtTargetBeds(20) shouldBe 20
         settings.farms.single().preparationPatchSize shouldBe 100
+        settings.farms.single().preparationPatchMaxSize shouldBe 160
         settings.farms.single().preparationSearchRadius shouldBe 48
         settings.farms.single().incidentTypes shouldContainExactly listOf(FarmIncidentType.PESTS, FarmIncidentType.DROUGHT)
         settings.farms.single().delivery.world shouldBe "sp11"
         settings.farms.single().delivery.x shouldBe 201.65
         settings.farms.single().delivery.crates shouldBe 3
-        settings.farms.single().supplies.water.x shouldBe 204.5
+        settings.farms.single().supplies.tool.x shouldBe 212.5
+        settings.farms.single().supplies.tool.z shouldBe 448.5
+        settings.farms.single().supplies.seeds.z shouldBe 453.5
+        settings.farms.single().supplies.water.z shouldBe 458.5
         settings.farms.single().completionExperience shouldBe 75
         settings.lumbermills.single().fellingQuota shouldBe 16
         settings.mines.all { it.cartQuota == 16 && it.supportsRequired == 1 } shouldBe true
@@ -124,6 +130,17 @@ class ArcFarmsConfigTest : FunSpec({
         shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(root) }
     }
 
+    test("farm patch expansion cap cannot be smaller than its target") {
+        val configPath = resourceTree().resolve("config.yml")
+        Files.writeString(
+            configPath,
+            Files.readString(configPath).replace("preparation-patch-max-size: 160", "preparation-patch-max-size: 80"),
+        )
+
+        shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(configPath.parent) }
+            .message shouldContain "preparation-patch-max-size"
+    }
+
     test("locale parity includes dynamic order route and phase paths") {
         val root = resourceTree()
         val settings = ArcFarmsConfig.inspect(root)
@@ -149,7 +166,7 @@ class ArcFarmsConfigTest : FunSpec({
         )
 
         PlainTextComponentSerializer.plainText().serialize(rendered) shouldBe
-            "Заказ • Пшеница 0/2, Морковь 0/2 • всего 0/4"
+            "Пшеница 0/2, Морковь 0/2 • всего 0/4"
     }
 
     test("planting bossbar renders the exact next action without a chat prefix") {
@@ -167,7 +184,47 @@ class ArcFarmsConfigTest : FunSpec({
         )
 
         PlainTextComponentSerializer.plainText().serialize(rendered) shouldBe
-            "Заказ • посев Пшеница 37/100 • ПКМ семенами"
+            "Посев Пшеница 37/100 • ПКМ семенами"
+    }
+
+    test("titles keep details in non-empty subtitles without bullet separators") {
+        val root = resourceTree()
+        val settings = ArcFarmsConfig.inspect(root)
+        val locale = ArcFarmsLocale(root) { settings }
+        val values = mapOf(
+            "action" to Component.text("Действие"),
+            "crop" to Component.text("Пшеница"),
+            "total" to Component.text("100"),
+            "seconds" to Component.text("45"),
+            "players" to Component.text("1"),
+            "experience" to Component.text("75"),
+        )
+        val titlePairs = listOf(
+            MessageKey.FARM_ENTRY_TITLE to MessageKey.FARM_ENTRY_SUBTITLE,
+            MessageKey.FARM_PLANTING_STARTED to MessageKey.FARM_PLANTING_STARTED_SUBTITLE,
+            MessageKey.FARM_PREPARATION_COMPLETED to MessageKey.FARM_PREPARATION_COMPLETED_SUBTITLE,
+            MessageKey.FARM_INCIDENT_STARTED to MessageKey.FARM_INCIDENT_STARTED_SUBTITLE,
+            MessageKey.FARM_INCIDENT_RESOLVED to MessageKey.FARM_INCIDENT_RESOLVED_SUBTITLE,
+            MessageKey.FARM_DROUGHT_STARTED to MessageKey.FARM_DROUGHT_STARTED_SUBTITLE,
+            MessageKey.FARM_GOLDEN_STARTED to MessageKey.FARM_GOLDEN_STARTED_SUBTITLE,
+            MessageKey.FARM_DELIVERY_STARTED to MessageKey.FARM_DELIVERY_STARTED_SUBTITLE,
+            MessageKey.FARM_DELIVERY_PICKED_UP to MessageKey.FARM_DELIVERY_PICKED_UP_SUBTITLE,
+            MessageKey.FARM_COMPLETED to MessageKey.FARM_COMPLETED_SUBTITLE,
+            MessageKey.LUMBER_PROCESSING to MessageKey.LUMBER_PROCESSING_SUBTITLE,
+            MessageKey.LUMBER_COMPLETED to MessageKey.LUMBER_COMPLETED_SUBTITLE,
+            MessageKey.MINE_HAZARD_STARTED to MessageKey.MINE_HAZARD_STARTED_SUBTITLE,
+            MessageKey.MINE_HAZARD_RESOLVED to MessageKey.MINE_HAZARD_RESOLVED_SUBTITLE,
+            MessageKey.MINE_EXTRACTION_STARTED to MessageKey.MINE_EXTRACTION_STARTED_SUBTITLE,
+            MessageKey.MINE_COMPLETED to MessageKey.MINE_COMPLETED_SUBTITLE,
+        )
+
+        titlePairs.forEach { (titleKey, subtitleKey) ->
+            val title = PlainTextComponentSerializer.plainText().serialize(locale.render(titleKey, values = values))
+            val subtitle = PlainTextComponentSerializer.plainText().serialize(locale.render(subtitleKey, values = values))
+            title shouldNotContain "•"
+            title.isNotBlank() shouldBe true
+            subtitle.isNotBlank() shouldBe true
+        }
     }
 
     test("isolated lab profile is bounded and locale-complete") {
@@ -185,6 +242,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().orders.single().id shouldBe "lab_order"
         settings.farms.single().pestEntity shouldBe "SILVERFISH"
         settings.farms.single().preparationPatchSize shouldBe 12
+        settings.farms.single().preparationPatchMaxSize shouldBe 160
         settings.farms.single().preparationSearchRadius shouldBe 4
         settings.farms.single().delivery.x shouldBe -3.5
         settings.lumbermills.single().fellingQuota shouldBe 2

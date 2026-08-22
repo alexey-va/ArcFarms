@@ -37,6 +37,7 @@ farm-zones:
     region: farm
     permission: arcfarms.farm
     preparation-patch-size: 100
+    preparation-patch-max-size: 160
     preparation-search-radius: 48
     care-radius: 10
     incident-trigger-percent: 35
@@ -50,9 +51,9 @@ farm-zones:
     pest-spawn-radius: 6
     golden-window-seconds: 45
     supplies:
-      tool: {x: 198.5, y: 49.0, z: 450.5}
-      seeds: {x: 201.5, y: 49.0, z: 450.5}
-      water: {x: 204.5, y: 49.0, z: 450.5}
+      tool: {x: 212.5, y: 49.0, z: 448.5}
+      seeds: {x: 212.5, y: 49.0, z: 453.5}
+      water: {x: 212.5, y: 49.0, z: 458.5}
       tool-material: IRON_HOE
       seed-amount: 16
     delivery: {x: 201.65, y: 49.0, z: 453.46, radius: 2.5, crates: 3}

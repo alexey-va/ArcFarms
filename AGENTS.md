@@ -22,6 +22,14 @@ activities: farm, lumbermill, and mine.
 - Keep the three runtime locale copies synchronized through the `arcfarms`
   translation profile. Chat may use the locale prefix; titles, action bars,
   boss bars, entity names, and inventory titles must not.
+- Every gameplay title uses its subtitle for the next action or supporting
+  detail; never concatenate title and subtitle with a bullet separator.
+- Farm supply points are free-floating item and text displays with an
+  interaction hitbox. Do not add a barrel/base block or a visible custom name,
+  and keep configured points outside selectable crop beds.
+- Farm preparation rotates between spatially distinct same-height beds. It may
+  bridge a one-block irrigation channel and expand a whole bed only up to the
+  configured hard cap; active recovery may expand progress but never reset it.
 - Runtime state belongs under `plugins/ArcFarms/data/` and is never tracked or
   deployed as configuration.
 - Network workday seals are persistent and deadline-free. Redis loss may

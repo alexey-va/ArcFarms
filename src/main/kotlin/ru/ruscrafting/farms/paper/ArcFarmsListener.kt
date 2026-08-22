@@ -5,6 +5,7 @@ import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.block.BlockFadeEvent
+import org.bukkit.event.block.BlockFromToEvent
 import org.bukkit.event.block.BlockPlaceEvent
 import org.bukkit.event.block.MoistureChangeEvent
 import org.bukkit.event.inventory.InventoryClickEvent
@@ -41,6 +42,9 @@ class ArcFarmsListener(
 
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onMoistureChange(event: MoistureChangeEvent) = service.onMoistureChange(event)
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    fun onBlockFromTo(event: BlockFromToEvent) = service.onBlockFromTo(event)
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onMove(event: PlayerMoveEvent) = service.onMove(event)

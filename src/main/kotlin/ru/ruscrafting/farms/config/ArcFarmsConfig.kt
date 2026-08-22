@@ -66,6 +66,7 @@ data class FarmZoneSettings(
     val reference: ZoneReference,
     val permission: String,
     val preparationPatchSize: Int,
+    val preparationPatchMaxSize: Int,
     val preparationSearchRadius: Int,
     val careRadius: Int,
     val incidentTriggerPercent: Int,
@@ -220,12 +221,19 @@ class ArcFarmsConfig private constructor(
                 require(droughtMinBeds <= droughtMaxBeds) {
                     "Farm zone $id drought-min-beds must not exceed drought-max-beds"
                 }
+                val preparationPatchSize = section.int("preparation-patch-size", 100)
+                    .checked("preparation-patch-size", 1, 512)
+                val preparationPatchMaxSize = section.int("preparation-patch-max-size", 160)
+                    .checked("preparation-patch-max-size", 1, 512)
+                require(preparationPatchMaxSize >= preparationPatchSize) {
+                    "Farm zone $id preparation-patch-max-size must be at least preparation-patch-size"
+                }
                 FarmZoneSettings(
                     id = id,
                     reference = reference,
                     permission = permission(section.string("permission", "arcfarms.farm")),
-                    preparationPatchSize = section.int("preparation-patch-size", 100)
-                        .checked("preparation-patch-size", 1, 512),
+                    preparationPatchSize = preparationPatchSize,
+                    preparationPatchMaxSize = preparationPatchMaxSize,
                     preparationSearchRadius = section.int("preparation-search-radius", 48)
                         .checked("preparation-search-radius", 4, 64),
                     careRadius = section.int("care-radius", 10).checked("care-radius", 3, 24),
