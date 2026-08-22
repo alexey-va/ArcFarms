@@ -5,6 +5,7 @@ import ru.arc.config.ConfigManager
 import ru.arc.redis.RedisModuleConfig
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import java.nio.file.Path
+import kotlin.math.ceil
 import kotlin.math.floor
 
 data class NetworkSettings(
@@ -69,13 +70,40 @@ data class FarmZoneSettings(
     val careRadius: Int,
     val incidentTriggerPercent: Int,
     val incidentQuota: Int,
+    val droughtPatches: Int,
+    val droughtCoveragePercent: Int,
+    val droughtMinBeds: Int,
+    val droughtMaxBeds: Int,
     val incidentTypes: List<FarmIncidentType>,
     val pestEntity: String,
     val pestSpawnRadius: Int,
     val goldenWindowSeconds: Int,
+    val supplies: FarmSupplySettings,
     val delivery: FarmDeliverySettings,
+    val completionExperience: Int,
     val crops: Set<String>,
     val orders: List<FarmOrderSettings>,
+) {
+    fun droughtTargetBeds(gardenBeds: Int): Int {
+        if (gardenBeds <= 0) return 0
+        val proportional = ceil(gardenBeds * droughtCoveragePercent / 100.0).toInt()
+        return proportional.coerceIn(droughtMinBeds, droughtMaxBeds).coerceAtMost(gardenBeds)
+    }
+}
+
+data class FarmSupplyPointSettings(
+    val world: String,
+    val x: Double,
+    val y: Double,
+    val z: Double,
+)
+
+data class FarmSupplySettings(
+    val tool: FarmSupplyPointSettings,
+    val seeds: FarmSupplyPointSettings,
+    val water: FarmSupplyPointSettings,
+    val toolMaterial: String,
+    val seedAmount: Int,
 )
 
 data class FarmDeliverySettings(
@@ -84,6 +112,7 @@ data class FarmDeliverySettings(
     val y: Double,
     val z: Double,
     val radius: Double,
+    val crates: Int,
 )
 
 data class FarmOrderSettings(
@@ -172,10 +201,24 @@ class ArcFarmsConfig private constructor(
                     .distinct()
                 require(incidentTypes.isNotEmpty()) { "Farm zone $id has no incident types" }
                 val delivery = parseFarmDelivery(section, reference.world, id)
+                val supplies = parseFarmSupplies(section, reference.world, id)
                 reference.bounds?.let { bounds ->
                     require(bounds.contains(floor(delivery.x).toInt(), floor(delivery.y).toInt(), floor(delivery.z).toInt())) {
                         "Farm zone $id delivery point is outside its bounds"
                     }
+                    listOf(supplies.tool, supplies.seeds, supplies.water).forEach { point ->
+                        require(bounds.contains(floor(point.x).toInt(), floor(point.y).toInt(), floor(point.z).toInt())) {
+                            "Farm zone $id supply point is outside its bounds"
+                        }
+                    }
+                }
+                val droughtPatches = section.int("drought-patches", 3).checked("drought-patches", 1, 8)
+                val droughtCoveragePercent = section.int("drought-coverage-percent", 35)
+                    .checked("drought-coverage-percent", 1, 100)
+                val droughtMinBeds = section.int("drought-min-beds", 30).checked("drought-min-beds", 1, 64)
+                val droughtMaxBeds = section.int("drought-max-beds", 40).checked("drought-max-beds", 1, 64)
+                require(droughtMinBeds <= droughtMaxBeds) {
+                    "Farm zone $id drought-min-beds must not exceed drought-max-beds"
                 }
                 FarmZoneSettings(
                     id = id,
@@ -188,11 +231,18 @@ class ArcFarmsConfig private constructor(
                     careRadius = section.int("care-radius", 10).checked("care-radius", 3, 24),
                     incidentTriggerPercent = section.int("incident-trigger-percent", 35).checked("incident-trigger-percent", 1, 99),
                     incidentQuota = section.int("incident-quota", 4).checked("incident-quota", 1, 64),
+                    droughtPatches = droughtPatches,
+                    droughtCoveragePercent = droughtCoveragePercent,
+                    droughtMinBeds = droughtMinBeds,
+                    droughtMaxBeds = droughtMaxBeds,
                     incidentTypes = incidentTypes,
                     pestEntity = entityName(section.string("pest-entity", "SILVERFISH")),
                     pestSpawnRadius = section.int("pest-spawn-radius", 6).checked("pest-spawn-radius", 2, 16),
                     goldenWindowSeconds = section.int("golden-window-seconds", 45).checked("golden-window-seconds", 5, 600),
+                    supplies = supplies,
                     delivery = delivery,
+                    completionExperience = section.int("completion-experience", 75)
+                        .checked("completion-experience", 0, 10_000),
                     crops = crops,
                     orders = orders,
                 )
@@ -347,6 +397,35 @@ class ArcFarmsConfig private constructor(
                 y = coordinate("y", -2_048.0, 2_048.0),
                 z = coordinate("z", -30_000_000.0, 30_000_000.0),
                 radius = coordinate("radius", 1.0, 8.0),
+                crates = section.int("delivery.crates", 3).checked("delivery.crates", 1, 8),
+            )
+        }
+
+        private fun parseFarmSupplies(
+            section: ru.arc.config.ConfigSection,
+            world: String,
+            zoneId: String,
+        ): FarmSupplySettings {
+            fun point(name: String): FarmSupplyPointSettings {
+                fun coordinate(axis: String, minimum: Double, maximum: Double): Double =
+                    section.string("supplies.$name.$axis").toDoubleOrNull()?.also {
+                        require(it.isFinite() && it in minimum..maximum) {
+                            "farm-zones.$zoneId.supplies.$name.$axis is outside $minimum..$maximum"
+                        }
+                    } ?: error("farm-zones.$zoneId.supplies.$name.$axis must be a finite number")
+                return FarmSupplyPointSettings(
+                    world = world,
+                    x = coordinate("x", -30_000_000.0, 30_000_000.0),
+                    y = coordinate("y", -2_048.0, 2_048.0),
+                    z = coordinate("z", -30_000_000.0, 30_000_000.0),
+                )
+            }
+            return FarmSupplySettings(
+                tool = point("tool"),
+                seeds = point("seeds"),
+                water = point("water"),
+                toolMaterial = materialName(section.string("supplies.tool-material", "IRON_HOE")),
+                seedAmount = section.int("supplies.seed-amount", 16).checked("supplies.seed-amount", 1, 64),
             )
         }
 

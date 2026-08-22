@@ -100,6 +100,7 @@ class ArcFarmsStateRepositoryTest : FunSpec({
                     incidentCrop = "WHEAT",
                     incidentType = FarmIncidentType.DROUGHT,
                     incidentRequired = 4,
+                    droughtPlots = setOf(patch.first()),
                 ),
             ),
         )

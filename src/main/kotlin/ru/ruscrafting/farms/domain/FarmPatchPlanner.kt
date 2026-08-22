@@ -86,3 +86,48 @@ object FarmPatchPlanner {
 
     private fun FarmPlotPosition.coordinateKey(): String = "$world:$y:$x:$z"
 }
+
+object FarmDroughtPlanner {
+    fun select(
+        candidates: Collection<FarmPlotPosition>,
+        firstCenter: FarmPlotPosition,
+        targetSize: Int,
+        patchCount: Int,
+    ): List<List<FarmPlotPosition>> {
+        require(targetSize in 1..64) { "Farm drought target must be in 1..64" }
+        require(patchCount in 1..8) { "Farm drought patch count must be in 1..8" }
+        val available = candidates.asSequence().filter { it.world == firstCenter.world }.distinct().toList()
+        if (available.isEmpty()) return emptyList()
+        val desired = targetSize.coerceAtMost(available.size)
+        val centers = mutableListOf(firstCenter.takeIf(available::contains) ?: available.first())
+        while (centers.size < minOf(patchCount, desired)) {
+            val next = available.asSequence().filterNot(centers::contains).maxByOrNull { candidate ->
+                centers.minOf { center -> horizontalDistanceSquared(candidate, center) }
+            } ?: break
+            centers += next
+        }
+        val selected = linkedSetOf<FarmPlotPosition>()
+        return centers.mapIndexed { index, center ->
+            val quota = desired / centers.size + if (index < desired % centers.size) 1 else 0
+            available.asSequence()
+                .filterNot(selected::contains)
+                .sortedWith(compareBy<FarmPlotPosition> { horizontalDistanceSquared(it, center) }.then(POSITION_ORDER))
+                .take(quota)
+                .onEach(selected::add)
+                .toList()
+        }.filter { it.isNotEmpty() }
+    }
+
+    private fun horizontalDistanceSquared(first: FarmPlotPosition, second: FarmPlotPosition): Long {
+        val dx = first.x.toLong() - second.x
+        val dz = first.z.toLong() - second.z
+        return dx * dx + dz * dz
+    }
+
+    private val POSITION_ORDER = compareBy<FarmPlotPosition>(
+        FarmPlotPosition::y,
+        FarmPlotPosition::x,
+        FarmPlotPosition::z,
+        FarmPlotPosition::world,
+    )
+}

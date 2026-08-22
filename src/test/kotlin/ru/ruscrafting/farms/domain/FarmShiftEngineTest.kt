@@ -74,7 +74,7 @@ class FarmShiftEngineTest : FunSpec({
         packed.state.phase shouldBe FarmPhase.DELIVERY
         packed.events.last() shouldBe ShiftEvent.DELIVERY_STARTED
 
-        val completed = FarmShiftEngine.deliver(packed.state, rules, player, 6_000)
+        val completed = FarmShiftEngine.deliver(packed.state, rules, 0, 1, player, 6_000)
         completed.state.phase shouldBe FarmPhase.COOLDOWN
         completed.state.outcome shouldBe ShiftOutcome.COMPLETED
         completed.state.contributors[player] shouldBe 10
@@ -82,12 +82,13 @@ class FarmShiftEngineTest : FunSpec({
     }
 
     test("drought is a distinct incident action and pest kills cannot bypass it") {
-        var state = preparedState(order, rules, player)
-        state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 2_000).state
+        val droughtRules = rules.copy(droughtQuota = 4)
+        var state = preparedState(order, droughtRules, player)
+        state = FarmShiftEngine.harvest(state, order, droughtRules, "WHEAT", player, 2_000).state
         state = FarmShiftEngine.harvest(
             state,
             order,
-            rules,
+            droughtRules,
             "WHEAT",
             player,
             3_000,
@@ -96,8 +97,11 @@ class FarmShiftEngineTest : FunSpec({
 
         state.phase shouldBe FarmPhase.INCIDENT
         state.incidentType shouldBe FarmIncidentType.DROUGHT
-        FarmShiftEngine.defeatPest(state, order, rules, player, 3_500).accepted shouldBe false
-        FarmShiftEngine.waterDrySoil(state, order, rules, player, 4_000).state.phase shouldBe FarmPhase.GOLDEN_HARVEST
+        state.incidentRequired shouldBe 4
+        FarmShiftEngine.defeatPest(state, order, droughtRules, player, 3_500).accepted shouldBe false
+        repeat(3) { state = FarmShiftEngine.waterDrySoil(state, order, droughtRules, player, 4_000L + it).state }
+        state.phase shouldBe FarmPhase.INCIDENT
+        FarmShiftEngine.waterDrySoil(state, order, droughtRules, player, 5_000).state.phase shouldBe FarmPhase.GOLDEN_HARVEST
     }
 
     test("completed farm emits completion once and remains quiet during cooldown") {
@@ -106,7 +110,7 @@ class FarmShiftEngineTest : FunSpec({
         state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 3_000).state
         state = FarmShiftEngine.defeatPest(state, order, rules, player, 4_000).state
         val packed = FarmShiftEngine.harvest(state, order, rules, "CARROTS", player, 5_000)
-        val completed = FarmShiftEngine.deliver(packed.state, rules, player, 5_100)
+        val completed = FarmShiftEngine.deliver(packed.state, rules, 0, 1, player, 5_100)
 
         completed.events.last() shouldBe ShiftEvent.COMPLETED
         (5_200L..10_000L step 100).forEach { now ->
@@ -179,6 +183,22 @@ class FarmShiftEngineTest : FunSpec({
         state.phase shouldBe FarmPhase.DELIVERY
         FarmShiftEngine.tick(state, order, rules, 2_592_005_000).state shouldBe state
         FarmShiftEngine.tick(state, order, rules, 2_592_005_000).events shouldContainExactly emptyList()
+    }
+
+    test("every configured harvest crate must be delivered exactly once") {
+        val packed = FarmShiftState(phase = FarmPhase.DELIVERY)
+        val first = FarmShiftEngine.deliver(packed, rules, 0, 3, player, 1_000)
+        first.state.phase shouldBe FarmPhase.DELIVERY
+        first.state.deliveredCrates shouldBe setOf(0)
+        first.events shouldContainExactly listOf(ShiftEvent.DELIVERY_PROGRESS)
+
+        FarmShiftEngine.deliver(first.state, rules, 0, 3, player, 1_100).accepted shouldBe false
+        val second = FarmShiftEngine.deliver(first.state, rules, 2, 3, player, 1_200)
+        second.state.phase shouldBe FarmPhase.DELIVERY
+        val completed = FarmShiftEngine.deliver(second.state, rules, 1, 3, player, 1_300)
+        completed.state.phase shouldBe FarmPhase.COOLDOWN
+        completed.state.deliveredCrates shouldBe setOf(0, 2, 1)
+        completed.events shouldContainExactly listOf(ShiftEvent.COMPLETED)
     }
 })
 

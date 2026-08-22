@@ -40,11 +40,21 @@ class ArcFarmsConfigTest : FunSpec({
         settings.destinations.getValue("farm").world shouldBe "sp11"
         settings.requiresWorldGuard shouldBe true
         settings.farms.single().incidentQuota shouldBe 4
+        settings.farms.single().droughtPatches shouldBe 3
+        settings.farms.single().droughtCoveragePercent shouldBe 35
+        settings.farms.single().droughtMinBeds shouldBe 30
+        settings.farms.single().droughtMaxBeds shouldBe 40
+        settings.farms.single().droughtTargetBeds(100) shouldBe 35
+        settings.farms.single().droughtTargetBeds(60) shouldBe 30
+        settings.farms.single().droughtTargetBeds(20) shouldBe 20
         settings.farms.single().preparationPatchSize shouldBe 100
         settings.farms.single().preparationSearchRadius shouldBe 48
         settings.farms.single().incidentTypes shouldContainExactly listOf(FarmIncidentType.PESTS, FarmIncidentType.DROUGHT)
         settings.farms.single().delivery.world shouldBe "sp11"
         settings.farms.single().delivery.x shouldBe 201.65
+        settings.farms.single().delivery.crates shouldBe 3
+        settings.farms.single().supplies.water.x shouldBe 204.5
+        settings.farms.single().completionExperience shouldBe 75
         settings.lumbermills.single().fellingQuota shouldBe 16
         settings.mines.all { it.cartQuota == 16 && it.supportsRequired == 1 } shouldBe true
         ArcFarmsRedisBootstrap.load(root, settings).serverName shouldBe "spawn"
@@ -96,8 +106,8 @@ class ArcFarmsConfigTest : FunSpec({
         val configPath = root.resolve("config.yml")
         configPath.writeText(
             Files.readString(configPath).replace(
-                "delivery: {x: -3.5, y: 100.0, z: 0.5, radius: 1.5}",
-                "delivery: {x: 50.0, y: 100.0, z: 0.5, radius: 1.5}",
+                "delivery: {x: -3.5, y: 100.0, z: 0.5, radius: 1.5, crates: 3}",
+                "delivery: {x: 50.0, y: 100.0, z: 0.5, radius: 1.5, crates: 3}",
             ),
         )
 

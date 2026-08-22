@@ -6,11 +6,14 @@ import org.bukkit.event.Listener
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.block.BlockFadeEvent
 import org.bukkit.event.block.BlockPlaceEvent
+import org.bukkit.event.block.MoistureChangeEvent
 import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.event.entity.EntityDeathEvent
 import org.bukkit.event.entity.EntityChangeBlockEvent
 import org.bukkit.event.entity.EntityDamageEvent
+import org.bukkit.event.entity.PlayerDeathEvent
+import org.bukkit.event.player.PlayerDropItemEvent
 import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerInteractEvent
@@ -21,7 +24,7 @@ class ArcFarmsListener(
     private val service: ArcFarmsService,
     private val menu: ArcFarmsMenu,
 ) : Listener {
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST)
     fun onBreakHigh(event: BlockBreakEvent) = service.onBreakHigh(event)
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -33,13 +36,16 @@ class ArcFarmsListener(
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     fun onBlockPlace(event: BlockPlaceEvent) = service.onBlockPlace(event)
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST)
     fun onInteract(event: PlayerInteractEvent) = service.onInteract(event)
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    fun onMoistureChange(event: MoistureChangeEvent) = service.onMoistureChange(event)
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onMove(event: PlayerMoveEvent) = service.onMove(event)
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST)
     fun onQuit(event: PlayerQuitEvent) = service.onQuit(event.player)
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -51,15 +57,27 @@ class ArcFarmsListener(
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     fun onEntityChangeBlock(event: EntityChangeBlockEvent) = service.onEntityChangeBlock(event)
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST)
     fun onInteractEntity(event: PlayerInteractEntityEvent) = service.onInteractEntity(event)
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST)
     fun onEntityDamage(event: EntityDamageEvent) = service.onEntityDamage(event)
 
-    @EventHandler
-    fun onInventoryClick(event: InventoryClickEvent) = menu.onClick(event)
+    @EventHandler(priority = EventPriority.HIGHEST)
+    fun onDrop(event: PlayerDropItemEvent) = service.onDrop(event)
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    fun onDeath(event: PlayerDeathEvent) = service.onDeath(event)
 
     @EventHandler
-    fun onInventoryDrag(event: InventoryDragEvent) = menu.onDrag(event)
+    fun onInventoryClick(event: InventoryClickEvent) {
+        service.onInventoryClick(event)
+        menu.onClick(event)
+    }
+
+    @EventHandler
+    fun onInventoryDrag(event: InventoryDragEvent) {
+        service.onInventoryDrag(event)
+        menu.onDrag(event)
+    }
 }

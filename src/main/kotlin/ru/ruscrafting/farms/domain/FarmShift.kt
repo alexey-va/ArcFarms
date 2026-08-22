@@ -64,12 +64,14 @@ data class FarmRules(
     val incidentQuota: Int,
     val goldenWindowMillis: Long,
     val cooldownMillis: Long,
+    val droughtQuota: Int = incidentQuota,
 ) {
     init {
         require(incidentTriggerPercent in 1..99)
         require(incidentQuota in 1..64)
         require(goldenWindowMillis in 5_000..600_000)
         require(cooldownMillis in 0..3_600_000)
+        require(droughtQuota in 1..64)
     }
 }
 
@@ -91,12 +93,14 @@ data class FarmShiftState(
     val incidentProgress: Int = 0,
     val incidentRequired: Int = 0,
     val incidentResolved: Boolean = false,
+    val droughtPlots: Set<FarmPlotPosition> = emptySet(),
     val goldenCrop: String? = null,
     val goldenUsed: Boolean = false,
     val startedAt: Long = 0,
     val goldenEndsAt: Long = 0,
     val cooldownEndsAt: Long = 0,
     val deliveryPosition: FarmDeliveryPosition? = null,
+    val deliveredCrates: Set<Int> = emptySet(),
     val outcome: ShiftOutcome = ShiftOutcome.NONE,
     val contributors: Map<UUID, Int> = emptyMap(),
 ) {
@@ -230,9 +234,11 @@ object FarmShiftEngine {
                 phase = FarmPhase.DELIVERY,
                 incidentCrop = null,
                 incidentType = null,
+                droughtPlots = emptySet(),
                 goldenCrop = null,
                 goldenEndsAt = 0,
                 deliveryPosition = null,
+                deliveredCrates = emptySet(),
             )
             events += ShiftEvent.DELIVERY_STARTED
             return EngineResult(state, true, contribution, events)
@@ -247,7 +253,8 @@ object FarmShiftEngine {
                     incidentCrop = incidentCrop,
                     incidentType = incidentType,
                     incidentProgress = 0,
-                    incidentRequired = rules.incidentQuota,
+                    incidentRequired = if (incidentType == FarmIncidentType.DROUGHT) rules.droughtQuota else rules.incidentQuota,
+                    droughtPlots = emptySet(),
                 )
                 events += ShiftEvent.INCIDENT_STARTED
             }
@@ -310,6 +317,7 @@ object FarmShiftEngine {
                 phase = FarmPhase.HARVESTING,
                 incidentResolved = true,
                 incidentType = null,
+                droughtPlots = emptySet(),
             )
             events += ShiftEvent.INCIDENT_RESOLVED
             remainingCrop(state, order)?.let { goldenCrop ->
@@ -328,21 +336,29 @@ object FarmShiftEngine {
     fun deliver(
         current: FarmShiftState,
         rules: FarmRules,
+        crateIndex: Int,
+        requiredCrates: Int,
         playerId: UUID,
         now: Long,
     ): EngineResult<FarmShiftState> {
-        if (current.phase != FarmPhase.DELIVERY) return EngineResult(current, false)
+        require(requiredCrates in 1..8) { "Farm delivery must require 1..8 crates" }
+        if (current.phase != FarmPhase.DELIVERY || crateIndex !in 0 until requiredCrates || crateIndex in current.deliveredCrates) {
+            return EngineResult(current, false)
+        }
+        val delivered = current.deliveredCrates + crateIndex
+        val completed = delivered.size >= requiredCrates
         return EngineResult(
             current.copy(
-                phase = FarmPhase.COOLDOWN,
-                cooldownEndsAt = now + rules.cooldownMillis,
-                deliveryPosition = null,
-                outcome = ShiftOutcome.COMPLETED,
+                phase = if (completed) FarmPhase.COOLDOWN else FarmPhase.DELIVERY,
+                cooldownEndsAt = if (completed) now + rules.cooldownMillis else current.cooldownEndsAt,
+                deliveryPosition = if (completed) null else current.deliveryPosition,
+                deliveredCrates = delivered,
+                outcome = if (completed) ShiftOutcome.COMPLETED else current.outcome,
                 contributors = incrementContribution(current.contributors, playerId, 1),
             ),
             true,
             contribution = 1,
-            events = listOf(ShiftEvent.COMPLETED),
+            events = listOf(if (completed) ShiftEvent.COMPLETED else ShiftEvent.DELIVERY_PROGRESS),
         )
     }
 
@@ -372,9 +388,11 @@ object FarmShiftEngine {
                     phase = FarmPhase.DELIVERY,
                     incidentCrop = null,
                     incidentType = null,
+                    droughtPlots = emptySet(),
                     goldenCrop = null,
                     goldenEndsAt = 0,
                     deliveryPosition = null,
+                    deliveredCrates = emptySet(),
                 ),
                 true,
                 events = listOf(ShiftEvent.DELIVERY_STARTED),

@@ -28,6 +28,7 @@ class ArcFarmsCommand(
             "top" -> sendTop(sender, args.getOrNull(1))
             "travel" -> travel(sender, args.getOrNull(1))
             "reload" -> reload(sender)
+            "admin" -> admin(sender, args.getOrNull(1))
             else -> sender.sendMessage(locale.render(MessageKey.HELP, sender))
         }
         return true
@@ -140,17 +141,41 @@ class ArcFarmsCommand(
         )
     }
 
+    private fun admin(sender: CommandSender, action: String?) {
+        if (!sender.hasPermission("arcfarms.admin")) {
+            sender.sendMessage(locale.render(MessageKey.NO_PERMISSION, sender))
+            return
+        }
+        val player = sender as? Player
+        if (player == null) {
+            sender.sendMessage(locale.render(MessageKey.PLAYER_ONLY, sender))
+            return
+        }
+        if (!action.equals("edit", true)) {
+            sender.sendMessage(locale.render(MessageKey.HELP, sender))
+            return
+        }
+        service.toggleAdminEdit(player)
+    }
+
     override fun onTabComplete(sender: CommandSender, command: Command, alias: String, args: Array<out String>): List<String> =
         when (args.size) {
             1 -> buildList {
                 add("status")
                 add("top")
                 add("travel")
-                if (sender.hasPermission("arcfarms.admin")) add("reload")
+                if (sender.hasPermission("arcfarms.admin")) {
+                    add("reload")
+                    add("admin")
+                }
             }.filter { it.startsWith(args[0], ignoreCase = true) }
-            2 -> if (args[0].equals("top", true) || args[0].equals("travel", true)) {
-                listOf("farm", "lumber", "mine").filter { it.startsWith(args[1], true) }
-            } else emptyList()
+            2 -> when {
+                args[0].equals("top", true) || args[0].equals("travel", true) ->
+                    listOf("farm", "lumber", "mine").filter { it.startsWith(args[1], true) }
+                args[0].equals("admin", true) && sender.hasPermission("arcfarms.admin") ->
+                    listOf("edit").filter { it.startsWith(args[1], true) }
+                else -> emptyList()
+            }
             else -> emptyList()
         }
 

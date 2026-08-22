@@ -60,4 +60,29 @@ class FarmPatchPlannerTest : FunSpec({
     test("planner returns no patch when no usable plots were discovered") {
         FarmPatchPlanner.select(emptyList(), FarmPlotPosition("world", 0, 64, 0), 100) shouldBe emptyList()
     }
+
+    test("drought planner creates several distant patches with bounded sizes") {
+        val candidates = listOf(0, 100, 200).flatMap { start ->
+            (start until start + 8).map { x -> FarmPlotPosition("world", x, 64, 0) }
+        }
+
+        val patches = FarmDroughtPlanner.select(candidates, candidates.first(), targetSize = 12, patchCount = 3)
+
+        patches.map(List<FarmPlotPosition>::size) shouldBe listOf(4, 4, 4)
+        patches.flatten().distinct().size shouldBe 12
+        val centers = patches.map { patch -> patch.map(FarmPlotPosition::x).average() }.sorted()
+        (centers[0] < 10 && centers[1] in 100.0..110.0 && centers[2] > 190) shouldBe true
+    }
+
+    test("drought planner degrades to available beds without inventing targets") {
+        val candidates = listOf(
+            FarmPlotPosition("world", 0, 64, 0),
+            FarmPlotPosition("world", 10, 64, 0),
+        )
+
+        val patches = FarmDroughtPlanner.select(candidates, candidates.first(), targetSize = 12, patchCount = 3)
+
+        patches.flatten().shouldContainExactlyInAnyOrder(candidates)
+        patches.all { it.isNotEmpty() } shouldBe true
+    }
 })

@@ -43,6 +43,10 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 require(farm.preparationProgress >= 0 && farm.plantingProgress >= 0 && farm.preparationRequired >= 0) {
                     "Farm preparation progress is negative"
                 }
+                require(farm.deliveredCrates.size <= 8 && farm.deliveredCrates.all { it in 0..7 }) {
+                    "Farm delivery crate state is invalid"
+                }
+                require(farm.droughtPlots.all(farm.preparationPatch::contains)) { "Farm drought plots escaped their patch" }
                 require(farm.tilledPlots.all(farm.preparationPatch::contains)) { "Farm tilled plots escaped their patch" }
                 require(farm.plantedPlots.all(farm.tilledPlots::contains)) { "Farm planted plots were not tilled" }
                 if (farm.preparationPatch.isNotEmpty()) {

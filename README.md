@@ -32,16 +32,40 @@ shows every unfinished crop with its current and required amount. Only
 requested mature crops fill it, and accepted crops are consumed by the order
 instead of dropping.
 
+Three configured supply crates stand near the farm entrance. During the
+matching phase they issue a tagged unbreakable hoe, the required seeds, or one
+infinite service water bucket. These tools cannot be dropped, stored in another
+inventory, used for unrelated farm changes, carried outside the farm, or moved
+to another backend; ArcFarms removes them at every such boundary.
+
 At the configured threshold one of the farm incidents starts. A pest outbreak
-spawns real silverfish that must be defeated; a drought highlights dry beds that
-must be right-clicked with a water bucket. Either incident pauses harvesting
+spawns glowing silverfish that eat nearby managed crops until defeated. A
+drought creates several widely separated patches of visibly dry farmland and
+removes their dead plants. The total dry area is derived from the active garden
+size, clamped by configured minimum and maximum bed counts, and distributed
+between the configured number of patches. Pouring the service bucket creates
+real flowing water: it spreads, hydrates every bed it reaches, and breaks plants
+using normal water physics without leaving duplicate crop drops. ArcFarms tracks
+and removes every temporary flow after each pour. Managed plants remain absent
+until the entire drought is resolved, then their captured state is restored at
+once. Either incident pauses harvesting
 without resetting the main order. Resolving it starts a short golden-harvest
 window that doubles one remaining crop. When the crop quota is ready, an
-interactive harvest crate appears at the last crop. A player carries its visual
-display to the configured receiving point; leaving the farm returns the crate,
-while the shared delivery objective remains available indefinitely. Only this
-physical delivery completes the order and triggers participant and
-top-contributor recognition.
+configured set of interactive harvest crates appears at the last crop. Players
+carry their visual displays to the configured receiving point; leaving the farm
+returns only the carried crate, while the shared delivery objective remains
+available indefinitely. Delivering every crate completes the order, restores
+the selected beds to their captured pre-shift state, awards configured
+experience to online contributors, and triggers participant and top-contributor
+recognition.
+
+Every modified bed is recorded before mutation in the owning chunk's Paper PDC
+with its exact coordinates, original soil and crop block data, and current
+recoverable crop state. Startup reconciliation uses those records after a hard
+stop. `/arcfarms admin edit` is available only between active shifts and lets an
+administrator deliberately remove a bed and its ArcFarms record. Phase-colored
+particle columns mark the active patch from a distance; drought and delivery
+use their own local action areas.
 
 ### Lumber order
 
@@ -85,6 +109,8 @@ next cycle. Atomic Redis compare-and-set prevents duplicate cross-server stamps.
 - `/arcfarms travel <farm|lumber|mine>` — route to the exact configured server,
   world, and location.
 - `/arcfarms reload` — validate and reload configuration/locales (admin).
+- `/arcfarms admin edit` — toggle deliberate farm-bed deletion and PDC cleanup
+  between shifts (admin).
 
 The menu uses the same exact destinations as `/arcfarms travel`. Local routes
 use Paper asynchronous teleportation. Remote routes store a short-lived Redis
@@ -106,10 +132,10 @@ destination backend before the world teleport.
 ## Build
 
 ```bash
-../arc-core/gradlew -p . clean check shadowJar
+../ARC/gradlew -p . clean check shadowJar
 ```
 
-The deployable artifact is `build/libs/ArcFarms-0.4.0.jar`.
+The deployable artifact is `build/libs/ArcFarms-0.5.0.jar`.
 
 ## Isolated gameplay QA
 

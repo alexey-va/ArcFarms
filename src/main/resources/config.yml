@@ -41,11 +41,22 @@ farm-zones:
     care-radius: 10
     incident-trigger-percent: 35
     incident-quota: 4
+    drought-patches: 3
+    drought-coverage-percent: 35
+    drought-min-beds: 30
+    drought-max-beds: 40
     incident-types: [PESTS, DROUGHT]
     pest-entity: SILVERFISH
     pest-spawn-radius: 6
     golden-window-seconds: 45
-    delivery: {x: 201.65, y: 49.0, z: 453.46, radius: 2.5}
+    supplies:
+      tool: {x: 198.5, y: 49.0, z: 450.5}
+      seeds: {x: 201.5, y: 49.0, z: 450.5}
+      water: {x: 204.5, y: 49.0, z: 450.5}
+      tool-material: IRON_HOE
+      seed-amount: 16
+    delivery: {x: 201.65, y: 49.0, z: 453.46, radius: 2.5, crates: 3}
+    completion-experience: 75
     crops: [WHEAT, CARROTS, POTATOES, BEETROOTS]
     orders:
       miners_rations: [WHEAT:160, CARROTS:80, POTATOES:80]
