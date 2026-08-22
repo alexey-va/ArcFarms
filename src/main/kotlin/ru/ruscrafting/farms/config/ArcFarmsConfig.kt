@@ -122,6 +122,7 @@ data class FarmDeliverySettings(
     val z: Double,
     val radius: Double,
     val crates: Int,
+    val spawnRadius: Int,
     val pickup: FarmSupplyPointSettings,
     val itemMaterial: String,
     val itemCustomModelData: Int,
@@ -175,6 +176,7 @@ class ArcFarmsConfig private constructor(
     val sounds: Boolean,
     val titleStaySeconds: Int,
     val markerHeight: Int,
+    val missingBedHighlightThreshold: Int,
     val menuBackground: MenuBackgroundSettings,
     val saveSeconds: Int,
     val completedCooldownSeconds: Int,
@@ -362,6 +364,8 @@ class ArcFarmsConfig private constructor(
                 sounds = config.boolean("ui.sounds", true),
                 titleStaySeconds = config.int("ui.title-stay-seconds", 4).checked("ui.title-stay-seconds", 2, 10),
                 markerHeight = config.int("ui.marker-height", 12).checked("ui.marker-height", 6, 24),
+                missingBedHighlightThreshold = config.int("ui.missing-bed-highlight-threshold", 10)
+                    .checked("ui.missing-bed-highlight-threshold", 1, 32),
                 menuBackground = MenuBackgroundSettings(
                     enabled = config.boolean("ui.menu-background.enabled", false),
                     material = materialName(config.string("ui.menu-background.material", "GRAY_STAINED_GLASS_PANE")),
@@ -452,6 +456,7 @@ class ArcFarmsConfig private constructor(
                 z = coordinate("z", -30_000_000.0, 30_000_000.0),
                 radius = coordinate("radius", 1.0, 8.0),
                 crates = section.int("delivery.crates", 3).checked("delivery.crates", 1, 8),
+                spawnRadius = section.int("delivery.spawn-radius", 8).checked("delivery.spawn-radius", 3, 16),
                 pickup = FarmSupplyPointSettings(
                     world = world,
                     x = pickupCoordinate("x", -30_000_000.0, 30_000_000.0),

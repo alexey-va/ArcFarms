@@ -65,9 +65,11 @@ import ru.ruscrafting.farms.domain.ArcFarmsState
 import ru.ruscrafting.farms.domain.EngineResult
 import ru.ruscrafting.farms.domain.FarmOrder
 import ru.ruscrafting.farms.domain.FarmCropDamage
+import ru.ruscrafting.farms.domain.FarmDeliveryPlanner
 import ru.ruscrafting.farms.domain.FarmPatchPlanner
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmDeliveryPosition
+import ru.ruscrafting.farms.domain.FarmGuidancePlanner
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmIncidentPlanner
 import ru.ruscrafting.farms.domain.FarmLocationOverrides
@@ -105,7 +107,10 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.random.RandomGenerator
 import java.util.logging.Level
+import kotlin.math.PI
 import kotlin.math.ceil
+import kotlin.math.cos
+import kotlin.math.sin
 
 data class ActivityStatus(
     val kind: ActivityKind,
@@ -160,13 +165,13 @@ private val FARM_WATER_DROP_TYPES = setOf(
 )
 private const val PATCH_PERSIST_INTERVAL = 10
 private const val FARM_WATER_RADIUS = 7
-private val FARM_TILL_COLOR = Color.fromRGB(255, 184, 107)
-private val FARM_PLANT_COLOR = Color.fromRGB(180, 142, 255)
-private val FARM_DROUGHT_COLOR = Color.fromRGB(255, 159, 15)
-private val FARM_GOLDEN_COLOR = Color.fromRGB(255, 209, 102)
-private val FARM_DELIVERY_COLOR = Color.fromRGB(180, 142, 255)
-private val FARM_DANGER_COLOR = Color.fromRGB(255, 107, 107)
-private val FARM_SUCCESS_COLOR = Color.fromRGB(168, 230, 163)
+private val FARM_TILL_COLOR = Color.fromRGB(255, 173, 66)
+private val FARM_PLANT_COLOR = Color.fromRGB(199, 120, 255)
+private val FARM_DROUGHT_COLOR = Color.fromRGB(255, 122, 69)
+private val FARM_GOLDEN_COLOR = Color.fromRGB(255, 200, 87)
+private val FARM_DELIVERY_COLOR = Color.fromRGB(199, 120, 255)
+private val FARM_DANGER_COLOR = Color.fromRGB(255, 95, 109)
+private val FARM_SUCCESS_COLOR = Color.fromRGB(85, 217, 139)
 
 private fun Block.toFarmPlotPosition(): FarmPlotPosition = FarmPlotPosition(world.name, x, y, z)
 
@@ -799,7 +804,6 @@ class ArcFarmsService(
                 )
             }
             "delivery", "complete" -> {
-                val pickup = point(runtime, FarmPointKind.CRATES)
                 events = listOf(ShiftEvent.DELIVERY_STARTED)
                 runtime.state.copy(
                     phase = FarmPhase.DELIVERY,
@@ -809,7 +813,7 @@ class ArcFarmsService(
                     pestNests = emptyList(),
                     pestAlive = 0,
                     goldenCrop = null,
-                    deliveryPosition = FarmDeliveryPosition(pickup.world, pickup.x, pickup.y, pickup.z),
+                    deliveryPosition = selectDeliveryAnchor(runtime, player.location),
                     deliveredCrates = emptySet(),
                 )
             }
@@ -1984,15 +1988,9 @@ class ArcFarmsService(
             incidentType,
         )
         if (ShiftEvent.DELIVERY_STARTED in result.events) {
-            val pickup = point(runtime, FarmPointKind.CRATES)
             result = result.copy(
                 state = result.state.copy(
-                    deliveryPosition = FarmDeliveryPosition(
-                        pickup.world,
-                        pickup.x,
-                        pickup.y,
-                        pickup.z,
-                    ),
+                    deliveryPosition = selectDeliveryAnchor(runtime, player.location),
                 ),
             )
         }
@@ -2514,7 +2512,7 @@ class ArcFarmsService(
 
     private fun startTasks() {
         tasks += Tasks.scheduler.runTimer(20L, 20L) { tick() }
-        tasks += Tasks.scheduler.runTimer(20L, 20L) { emitGuidanceParticles() }
+        tasks += Tasks.scheduler.runTimer(10L, 10L) { emitGuidanceParticles() }
         tasks += Tasks.scheduler.runTimer(1L, 1L) { updateCarriedDisplays() }
         tasks += Tasks.scheduler.runTimer(
             settings.saveSeconds * 20L,
@@ -2538,13 +2536,13 @@ class ArcFarmsService(
                     return@forEach
                 }
             }
+            val result = FarmShiftEngine.tick(runtime.state, currentOrder(runtime), runtime.rules, now)
+            if (result.events.isNotEmpty()) applyFarmResult(runtime, result, null)
             if (runtime.state.phase == FarmPhase.IDLE) {
                 players(runtime.region).firstOrNull()?.let { player ->
                     tryStartFarmShift(runtime, player, now)
                 }
             }
-            val result = FarmShiftEngine.tick(runtime.state, currentOrder(runtime), runtime.rules, now)
-            if (result.events.isNotEmpty()) applyFarmResult(runtime, result, null)
             ensureFarmDroughtTargets(runtime)
             ensureFarmPests(runtime)
             letPestsEatCrops(runtime)
@@ -2590,8 +2588,29 @@ class ArcFarmsService(
                     FarmPhase.INCIDENT,
                     FarmPhase.GOLDEN_HARVEST,
                     FarmPhase.DELIVERY,
+                    FarmPhase.COOLDOWN,
                 )
             ) return@forEach
+            if (runtime.state.phase == FarmPhase.COOLDOWN) {
+                val now = clock()
+                val remainingMillis = (runtime.state.cooldownEndsAt - now).coerceAtLeast(0)
+                val cooldownMillis = runtime.rules.cooldownMillis.coerceAtLeast(1)
+                players(runtime.region).forEach { player ->
+                    updateBar(
+                        player,
+                        "farm:${runtime.settings.id}",
+                        locale.render(
+                            MessageKey.FARM_COOLDOWN_BOSSBAR,
+                            player,
+                            mapOf("seconds" to locale.text(remainingSeconds(runtime.state.cooldownEndsAt, now))),
+                        ),
+                        (1.0 - remainingMillis.toDouble() / cooldownMillis).toFloat(),
+                        BossBar.Color.YELLOW,
+                        expectedBars,
+                    )
+                }
+                return@forEach
+            }
             val order = currentOrder(runtime) ?: return@forEach
             val done = runtime.state.completed(order)
             players(runtime.region).forEach { player ->
@@ -3136,6 +3155,73 @@ class ArcFarmsService(
         persistAsync()
     }
 
+    private fun selectDeliveryAnchor(runtime: FarmRuntime, source: Location): FarmDeliveryPosition {
+        val candidates = findDeliveryCandidates(runtime, source, runtime.settings.delivery.spawnRadius)
+        val selected = FarmDeliveryPlanner.selectAnchor(
+            candidates,
+            source.x,
+            source.z,
+            if (candidates.isEmpty()) 0 else random.nextInt(minOf(candidates.size, 24)),
+        )
+        if (selected != null) {
+            debug.event(
+                "farm_delivery_anchor_selected",
+                "zone" to runtime.settings.id,
+                "sequence" to runtime.state.sequence,
+                "candidates" to candidates.size,
+                "x" to selected.x,
+                "y" to selected.y,
+                "z" to selected.z,
+            )
+            return selected
+        }
+        val fallback = point(runtime, FarmPointKind.CRATES)
+        plugin.logger.warning(
+            "No safe dynamic delivery position found near the harvester in ${runtime.settings.id}; using the configured fallback",
+        )
+        return FarmDeliveryPosition(fallback.world, fallback.x, fallback.y, fallback.z)
+    }
+
+    private fun findDeliveryCandidates(
+        runtime: FarmRuntime,
+        source: Location,
+        radius: Int,
+    ): List<FarmDeliveryPosition> {
+        val world = runtime.region.world
+        if (source.world != world) return emptyList()
+        val receiving = point(runtime, FarmPointKind.RECEIVING)
+        val receivingExclusion = runtime.settings.delivery.radius + 1.5
+        val receivingExclusionSquared = receivingExclusion * receivingExclusion
+        val patchColumns = runtime.state.preparationPatch.mapTo(hashSetOf()) { it.x to it.z }
+        val candidates = mutableListOf<FarmDeliveryPosition>()
+        val sourceX = source.blockX
+        val sourceY = source.blockY
+        val sourceZ = source.blockZ
+        val verticalOffsets = listOf(0, -1, 1, -2, 2)
+        for (x in sourceX - radius..sourceX + radius) {
+            for (z in sourceZ - radius..sourceZ + radius) {
+                val dx = x - sourceX
+                val dz = z - sourceZ
+                if (dx * dx + dz * dz > radius * radius || (x to z) in patchColumns) continue
+                val receivingDx = x + 0.5 - receiving.x
+                val receivingDz = z + 0.5 - receiving.z
+                if (receivingDx * receivingDx + receivingDz * receivingDz < receivingExclusionSquared) continue
+                verticalOffsets.firstNotNullOfOrNull { offset ->
+                    val feetY = sourceY + offset
+                    if (!world.isChunkLoaded(x shr 4, z shr 4)) return@firstNotNullOfOrNull null
+                    val location = Location(world, x + 0.5, feetY.toDouble(), z + 0.5)
+                    if (!runtime.region.contains(location)) return@firstNotNullOfOrNull null
+                    val floor = world.getBlockAt(x, feetY - 1, z)
+                    val feet = world.getBlockAt(x, feetY, z)
+                    val head = world.getBlockAt(x, feetY + 1, z)
+                    if (!floor.type.isSolid || !feet.type.isAir || !head.type.isAir) return@firstNotNullOfOrNull null
+                    FarmDeliveryPosition(world.name, location.x, location.y, location.z)
+                }?.let(candidates::add)
+            }
+        }
+        return candidates
+    }
+
     private fun ensureFarmDelivery(runtime: FarmRuntime) {
         if (runtime.state.phase != FarmPhase.DELIVERY) {
             if (deliveryKeys(runtime).isNotEmpty()) {
@@ -3144,8 +3230,11 @@ class ArcFarmsService(
             return
         }
         val zoneId = runtime.settings.id
-        val position = runtime.state.deliveryPosition ?: point(runtime, FarmPointKind.CRATES).let { location ->
-            FarmDeliveryPosition(location.world, location.x, location.y, location.z)
+        val position = runtime.state.deliveryPosition ?: run {
+            val source = players(runtime.region).firstOrNull()?.location
+                ?: farmAreaCenter(runtime.state.preparationPatch)?.location()
+                ?: point(runtime, FarmPointKind.CRATES).let { Location(runtime.region.world, it.x, it.y, it.z) }
+            selectDeliveryAnchor(runtime, source)
         }
         if (runtime.state.deliveryPosition == null) {
             runtime.state = runtime.state.copy(deliveryPosition = position)
@@ -3220,6 +3309,16 @@ class ArcFarmsService(
 
     private fun deliveryCrateLocation(runtime: FarmRuntime, position: FarmDeliveryPosition, index: Int): Location {
         val world = requireNotNull(Bukkit.getWorld(position.world))
+        val anchor = Location(world, position.x, position.y, position.z)
+        val candidates = findDeliveryCandidates(runtime, anchor, minOf(3, runtime.settings.delivery.spawnRadius))
+        FarmDeliveryPlanner.selectAnchor(
+            candidates,
+            position.x,
+            position.z,
+            (runtime.state.sequence + index).toInt(),
+        )?.let { selected ->
+            return Location(world, selected.x, selected.y, selected.z)
+        }
         val offsets = listOf(
             0.0 to 0.0,
             1.4 to 0.0,
@@ -3975,10 +4074,18 @@ class ArcFarmsService(
             }
         }
         farms.filter { it.state.phase == FarmPhase.PLANTING }.forEach { runtime ->
-            val marker = farmAreaCenter(runtime.state.preparationPatch.filterNot(runtime.state.plantedPlots::contains))?.location()
-                ?: return@forEach
+            val remaining = runtime.state.preparationPatch.filterNot(runtime.state.plantedPlots::contains)
+            val individual = FarmGuidancePlanner.individualMissingPlots(
+                remaining,
+                settings.missingBedHighlightThreshold,
+            ).mapNotNull(FarmPlotPosition::location)
+            val marker = if (individual.isEmpty()) farmAreaCenter(remaining)?.location() else null
             players(runtime.region).forEach { player ->
-                spawnGuidanceColumn(player, marker, FARM_PLANT_COLOR)
+                if (individual.isNotEmpty()) {
+                    individual.forEach { location -> spawnMissingPlotMarker(player, location, FARM_PLANT_COLOR) }
+                } else if (marker != null) {
+                    spawnGuidanceColumn(player, marker, FARM_PLANT_COLOR)
+                }
             }
         }
         farms.filter {
@@ -3997,8 +4104,16 @@ class ArcFarmsService(
             val delivery = point(runtime, FarmPointKind.RECEIVING)
             val world = Bukkit.getWorld(delivery.world) ?: return@forEach
             val target = Location(world, delivery.x, delivery.y, delivery.z)
+            val crateTargets = runtime.state.deliveryPosition?.let { position ->
+                (0 until runtime.settings.delivery.crates)
+                    .filterNot(runtime.state.deliveredCrates::contains)
+                    .filter { index -> DeliveryKey(runtime.settings.id, index) !in deliveryCarriers }
+                    .map { index -> deliveryCrateLocation(runtime, position, index) }
+            }.orEmpty()
             players(runtime.region).filter { it.world == world }.forEach { player ->
                 spawnGuidanceColumn(player, target, FARM_DELIVERY_COLOR)
+                spawnGuidanceRing(player, target, runtime.settings.delivery.radius, FARM_DELIVERY_COLOR)
+                crateTargets.forEach { location -> spawnMissingPlotMarker(player, location, FARM_GOLDEN_COLOR) }
             }
         }
         lumbermills.filter { it.state.phase == LumberPhase.FELLING }.forEach { runtime ->
@@ -4021,17 +4136,52 @@ class ArcFarmsService(
     }
 
     private fun spawnGuidanceColumn(player: Player, base: Location, color: Color) {
-        val center = base.toCenterLocation().add(0.0, 1.0, 0.0)
-        for (height in 0..settings.markerHeight) {
+        val center = base.clone().toCenterLocation().add(0.0, 1.0, 0.0)
+        val steps = settings.markerHeight * 2
+        for (step in 0..steps) {
             player.spawnParticle(
                 Particle.DUST,
-                center.clone().add(0.0, height.toDouble(), 0.0),
-                if (height == 0 || height == settings.markerHeight) 2 else 1,
-                0.16,
-                0.08,
-                0.16,
+                center.clone().add(0.0, step * 0.5, 0.0),
+                if (step == 0 || step == steps) 4 else 2,
+                0.22,
+                0.12,
+                0.22,
                 0.0,
-                Particle.DustOptions(color, if (height % 3 == 0) 1.8f else 1.35f),
+                Particle.DustOptions(color, if (step % 4 == 0) 2.2f else 1.7f),
+                true,
+            )
+        }
+    }
+
+    private fun spawnMissingPlotMarker(player: Player, soil: Location, color: Color) {
+        val center = soil.clone().toCenterLocation().add(0.0, 1.05, 0.0)
+        repeat(4) { layer ->
+            player.spawnParticle(
+                Particle.DUST,
+                center.clone().add(0.0, layer * 0.38, 0.0),
+                3,
+                0.18,
+                0.08,
+                0.18,
+                0.0,
+                Particle.DustOptions(color, if (layer == 0) 2.0f else 1.65f),
+                true,
+            )
+        }
+    }
+
+    private fun spawnGuidanceRing(player: Player, center: Location, radius: Double, color: Color) {
+        repeat(24) { index ->
+            val angle = 2.0 * PI * index / 24.0
+            player.spawnParticle(
+                Particle.DUST,
+                center.clone().add(cos(angle) * radius, 0.35, sin(angle) * radius),
+                2,
+                0.08,
+                0.04,
+                0.08,
+                0.0,
+                Particle.DustOptions(color, 1.75f),
                 true,
             )
         }

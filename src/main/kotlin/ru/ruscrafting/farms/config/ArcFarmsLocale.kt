@@ -130,6 +130,7 @@ enum class MessageKey(val path: String) {
     FARM_SUPPLY_TOOL("farm.supply-tool"),
     FARM_SUPPLY_SEEDS("farm.supply-seeds"),
     FARM_SUPPLY_WATER("farm.supply-water"),
+    FARM_COOLDOWN_BOSSBAR("farm.cooldown-bossbar"),
     FARM_PREPARATION_BOSSBAR("farm.preparation-bossbar"),
     FARM_PLANTING_BOSSBAR("farm.planting-bossbar"),
     FARM_BOSSBAR("farm.bossbar"),

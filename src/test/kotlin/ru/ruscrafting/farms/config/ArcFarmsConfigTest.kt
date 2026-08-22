@@ -38,6 +38,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.network.allowedOrigins shouldBe setOf("spawn", "survival", "parkour")
         settings.network.workdayEnabled shouldBe true
         settings.network.playerAnnouncementsEnabled shouldBe false
+        settings.missingBedHighlightThreshold shouldBe 10
         settings.menuBackground.enabled shouldBe false
         settings.destinations.getValue("farm").server shouldBe "spawn"
         settings.destinations.getValue("farm").world shouldBe "sp11"
@@ -62,6 +63,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().delivery.world shouldBe "sp11"
         settings.farms.single().delivery.x shouldBe 201.65
         settings.farms.single().delivery.crates shouldBe 3
+        settings.farms.single().delivery.spawnRadius shouldBe 8
         settings.farms.single().delivery.pickup.z shouldBe 463.5
         settings.farms.single().delivery.itemMaterial shouldBe "BARREL"
         settings.farms.single().delivery.itemCustomModelData shouldBe 0
@@ -127,8 +129,8 @@ class ArcFarmsConfigTest : FunSpec({
         val configPath = root.resolve("config.yml")
         configPath.writeText(
             Files.readString(configPath).replace(
-                "delivery: {x: -3.5, y: 100.0, z: 0.5, radius: 1.5, crates: 3}",
-                "delivery: {x: 50.0, y: 100.0, z: 0.5, radius: 1.5, crates: 3}",
+                "delivery: {x: -3.5, y: 100.0, z: 0.5, radius: 1.5, crates: 3, spawn-radius: 4}",
+                "delivery: {x: 50.0, y: 100.0, z: 0.5, radius: 1.5, crates: 3, spawn-radius: 4}",
             ),
         )
 
@@ -202,6 +204,34 @@ class ArcFarmsConfigTest : FunSpec({
             "Посев Пшеница 37/100 • ПКМ семенами"
     }
 
+    test("cooldown surfaces explain the automatic next order without a chat prefix") {
+        val root = resourceTree()
+        val settings = ArcFarmsConfig.inspect(root)
+        val locale = ArcFarmsLocale(root) { settings }
+        val values = mapOf("seconds" to Component.text("42"))
+
+        val actionbar = PlainTextComponentSerializer.plainText().serialize(locale.render(MessageKey.COOLDOWN, values = values))
+        val bossbar = PlainTextComponentSerializer.plainText().serialize(locale.renderPath("farm.cooldown-bossbar", values = values))
+
+        actionbar shouldBe "Следующая работа через 42 сек."
+        bossbar shouldBe "Новый заказ через 42 сек."
+        actionbar shouldNotContain "Смена"
+        actionbar shouldNotContain "•"
+    }
+
+    test("farm screen palette uses balanced bright colors instead of the retired muted pair") {
+        listOf("ru", "en").forEach { language ->
+            val raw = Files.readString(resourceTree().resolve("lang/$language.yml"))
+            val farm = raw.substringAfter("\nfarm:\n").substringBefore("\nlumber:\n")
+
+            farm shouldNotContain "#a8e6a3"
+            farm shouldNotContain "#d6d6d6"
+            farm shouldContain "#55d98b"
+            farm shouldContain "#f2fff7"
+            farm shouldContain "#c778ff"
+        }
+    }
+
     test("titles keep details in non-empty subtitles without bullet separators") {
         val root = resourceTree()
         val settings = ArcFarmsConfig.inspect(root)
@@ -262,7 +292,9 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().preparationPatchSize shouldBe 12
         settings.farms.single().preparationPatchMaxSize shouldBe 160
         settings.farms.single().preparationSearchRadius shouldBe 4
+        settings.missingBedHighlightThreshold shouldBe 4
         settings.farms.single().delivery.x shouldBe -3.5
+        settings.farms.single().delivery.spawnRadius shouldBe 4
         settings.lumbermills.single().fellingQuota shouldBe 2
         settings.mines.single().cartQuota shouldBe 4
         settings.farms.single().reference.bounds!!.volume shouldBe 17_334L
