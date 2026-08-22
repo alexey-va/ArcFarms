@@ -10,13 +10,14 @@ import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.InventoryHolder
 import org.bukkit.inventory.ItemStack
 import ru.ruscrafting.farms.config.ArcFarmsLocale
+import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.ActivityKind
 
 class ArcFarmsMenu(
     private val service: ArcFarmsService,
     private val locale: ArcFarmsLocale,
-    private val reload: () -> Result<Unit>,
+    private val settings: () -> ArcFarmsConfig,
 ) {
     private class Holder : InventoryHolder {
         lateinit var backing: Inventory
@@ -50,15 +51,10 @@ class ArcFarmsMenu(
                 ),
             ),
         )
-        if (player.hasPermission("arcfarms.admin")) {
-            inventory.setItem(
-                22,
-                item(
-                    Material.REDSTONE_TORCH,
-                    locale.render(MessageKey.MENU_ADMIN_NAME, player),
-                    listOf(locale.render(MessageKey.MENU_ADMIN_LORE, player)),
-                ),
-            )
+        backgroundItem()?.let { background ->
+            repeat(inventory.size) { slot ->
+                if (inventory.getItem(slot) == null) inventory.setItem(slot, background)
+            }
         }
         player.openInventory(inventory)
     }
@@ -73,23 +69,6 @@ class ArcFarmsMenu(
             10 -> navigate(player, ActivityKind.FARM)
             12 -> navigate(player, ActivityKind.LUMBER)
             14 -> navigate(player, ActivityKind.MINE)
-            22 -> if (player.hasPermission("arcfarms.admin")) {
-                reload().fold(
-                    onSuccess = {
-                        player.closeInventory()
-                        player.sendMessage(locale.render(MessageKey.RELOAD_OK, player))
-                    },
-                    onFailure = { failure ->
-                        player.sendMessage(
-                            locale.render(
-                                MessageKey.RELOAD_FAILED,
-                                player,
-                                mapOf("reason" to locale.text(failure.message ?: "unknown")),
-                            ),
-                        )
-                    },
-                )
-            }
         }
     }
 
@@ -166,6 +145,18 @@ class ArcFarmsMenu(
         }
         player.closeInventory()
         service.travel(player, kind)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun backgroundItem(): ItemStack? {
+        val background = settings().menuBackground
+        if (!background.enabled) return null
+        return ItemStack(MaterialRules.material(background.material)).apply {
+            editMeta { meta ->
+                if (background.customModelData > 0) meta.setCustomModelData(background.customModelData)
+                meta.setHideTooltip(true)
+            }
+        }
     }
 
     private fun item(material: Material, name: Component, lore: List<Component>): ItemStack =

@@ -45,6 +45,26 @@ data class FarmDeliveryPosition(
     }
 }
 
+data class FarmPestNest(
+    val position: FarmPlotPosition,
+    val health: Int,
+    val spawned: Int = 0,
+) {
+    init {
+        require(health in 1..20) { "Farm pest nest health is invalid" }
+        require(spawned in 0..64) { "Farm pest nest spawn count is invalid" }
+    }
+}
+
+data class FarmCropDamage(
+    val position: FarmPlotPosition,
+    val crop: String,
+) {
+    init {
+        require(crop.matches(Regex("[A-Z0-9_]{2,64}"))) { "Invalid damaged crop: $crop" }
+    }
+}
+
 data class FarmOrder(
     val id: String,
     val required: Map<String, Int>,
@@ -94,6 +114,11 @@ data class FarmShiftState(
     val incidentRequired: Int = 0,
     val incidentResolved: Boolean = false,
     val droughtPlots: Set<FarmPlotPosition> = emptySet(),
+    val droughtDamagedPlots: Set<FarmPlotPosition> = emptySet(),
+    val pestNestsInitialized: Boolean = false,
+    val pestNests: List<FarmPestNest> = emptyList(),
+    val pestAlive: Int = 0,
+    val pestDamagedCrops: List<FarmCropDamage> = emptyList(),
     val goldenCrop: String? = null,
     val goldenUsed: Boolean = false,
     val startedAt: Long = 0,
@@ -235,6 +260,11 @@ object FarmShiftEngine {
                 incidentCrop = null,
                 incidentType = null,
                 droughtPlots = emptySet(),
+                droughtDamagedPlots = emptySet(),
+                pestNests = emptyList(),
+                pestNestsInitialized = false,
+                pestAlive = 0,
+                pestDamagedCrops = emptyList(),
                 goldenCrop = null,
                 goldenEndsAt = 0,
                 deliveryPosition = null,
@@ -255,6 +285,11 @@ object FarmShiftEngine {
                     incidentProgress = 0,
                     incidentRequired = if (incidentType == FarmIncidentType.DROUGHT) rules.droughtQuota else rules.incidentQuota,
                     droughtPlots = emptySet(),
+                    droughtDamagedPlots = emptySet(),
+                    pestNests = emptyList(),
+                    pestNestsInitialized = false,
+                    pestAlive = 0,
+                    pestDamagedCrops = emptyList(),
                 )
                 events += ShiftEvent.INCIDENT_STARTED
             }
@@ -268,14 +303,73 @@ object FarmShiftEngine {
         rules: FarmRules,
         playerId: UUID,
         now: Long,
-    ): EngineResult<FarmShiftState> = resolveIncident(
-        current,
-        order,
-        rules,
-        FarmIncidentType.PESTS,
-        playerId,
-        now,
-    )
+    ): EngineResult<FarmShiftState> {
+        val actualType = current.incidentType ?: FarmIncidentType.PESTS
+        if (current.phase != FarmPhase.INCIDENT || actualType != FarmIncidentType.PESTS || current.pestAlive <= 0) {
+            return EngineResult(current, false)
+        }
+        val state = current.copy(
+            incidentProgress = current.incidentProgress + 1,
+            pestAlive = current.pestAlive - 1,
+            contributors = incrementContribution(current.contributors, playerId, 1),
+        )
+        return finishPestIncidentIfClear(state, order, rules, playerId, now, contribution = 1)
+    }
+
+    fun damagePestNest(
+        current: FarmShiftState,
+        order: FarmOrder,
+        rules: FarmRules,
+        position: FarmPlotPosition,
+        playerId: UUID,
+        now: Long,
+    ): EngineResult<FarmShiftState> {
+        val actualType = current.incidentType ?: FarmIncidentType.PESTS
+        if (current.phase != FarmPhase.INCIDENT || actualType != FarmIncidentType.PESTS) {
+            return EngineResult(current, false)
+        }
+        val nest = current.pestNests.firstOrNull { it.position == position } ?: return EngineResult(current, false)
+        if (nest.health > 1) {
+            return EngineResult(
+                current.copy(pestNests = current.pestNests.map { if (it.position == position) it.copy(health = it.health - 1) else it }),
+                true,
+            )
+        }
+        val state = current.copy(
+            pestNests = current.pestNests.filterNot { it.position == position },
+            incidentProgress = current.incidentProgress + 1,
+            contributors = incrementContribution(current.contributors, playerId, 1),
+        )
+        return finishPestIncidentIfClear(state, order, rules, playerId, now, contribution = 1)
+    }
+
+    fun finishPestIncidentIfClear(
+        current: FarmShiftState,
+        order: FarmOrder,
+        rules: FarmRules,
+        playerId: UUID,
+        now: Long,
+        contribution: Int = 0,
+    ): EngineResult<FarmShiftState> {
+        val actualType = current.incidentType ?: FarmIncidentType.PESTS
+        if (
+            current.phase != FarmPhase.INCIDENT || actualType != FarmIncidentType.PESTS ||
+            current.pestNests.isNotEmpty() || current.pestAlive > 0
+        ) {
+            return EngineResult(
+                current,
+                contribution > 0,
+                contribution = contribution,
+                events = if (contribution > 0) listOf(ShiftEvent.INCIDENT_PROGRESS) else emptyList(),
+            )
+        }
+        val completed = completeIncident(current, order, rules, playerId, now, contribution)
+        return if (contribution > 0) {
+            completed.copy(events = listOf(ShiftEvent.INCIDENT_PROGRESS) + completed.events)
+        } else {
+            completed
+        }
+    }
 
     fun waterDrySoil(
         current: FarmShiftState,
@@ -313,24 +407,40 @@ object FarmShiftEngine {
         )
         val events = mutableListOf(ShiftEvent.INCIDENT_PROGRESS)
         if (state.incidentProgress >= state.incidentRequired) {
-            state = state.copy(
-                phase = FarmPhase.HARVESTING,
-                incidentResolved = true,
-                incidentType = null,
-                droughtPlots = emptySet(),
-            )
-            events += ShiftEvent.INCIDENT_RESOLVED
-            remainingCrop(state, order)?.let { goldenCrop ->
-                state = state.copy(
-                    phase = FarmPhase.GOLDEN_HARVEST,
-                    goldenCrop = goldenCrop,
-                    goldenUsed = true,
-                    goldenEndsAt = now + rules.goldenWindowMillis,
-                )
-                events += ShiftEvent.GOLDEN_STARTED
-            }
+            val completed = completeIncident(state, order, rules, playerId, now, contribution = 1)
+            return completed.copy(events = events + completed.events.filterNot { it == ShiftEvent.INCIDENT_PROGRESS })
         }
         return EngineResult(state, true, contribution = 1, events = events)
+    }
+
+    private fun completeIncident(
+        current: FarmShiftState,
+        order: FarmOrder,
+        rules: FarmRules,
+        playerId: UUID,
+        now: Long,
+        contribution: Int,
+    ): EngineResult<FarmShiftState> {
+        var state = current.copy(
+            phase = FarmPhase.HARVESTING,
+            incidentResolved = true,
+            incidentType = null,
+            droughtPlots = emptySet(),
+            pestNests = emptyList(),
+            pestNestsInitialized = false,
+            pestAlive = 0,
+        )
+        val events = mutableListOf(ShiftEvent.INCIDENT_RESOLVED)
+        remainingCrop(state, order)?.let { goldenCrop ->
+            state = state.copy(
+                phase = FarmPhase.GOLDEN_HARVEST,
+                goldenCrop = goldenCrop,
+                goldenUsed = true,
+                goldenEndsAt = now + rules.goldenWindowMillis,
+            )
+            events += ShiftEvent.GOLDEN_STARTED
+        }
+        return EngineResult(state, true, contribution, events)
     }
 
     fun deliver(
@@ -389,6 +499,11 @@ object FarmShiftEngine {
                     incidentCrop = null,
                     incidentType = null,
                     droughtPlots = emptySet(),
+                    droughtDamagedPlots = emptySet(),
+                    pestNests = emptyList(),
+                    pestNestsInitialized = false,
+                    pestAlive = 0,
+                    pestDamagedCrops = emptyList(),
                     goldenCrop = null,
                     goldenEndsAt = 0,
                     deliveryPosition = null,

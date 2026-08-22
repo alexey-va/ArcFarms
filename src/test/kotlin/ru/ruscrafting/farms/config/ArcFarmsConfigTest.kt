@@ -38,6 +38,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.network.allowedOrigins shouldBe setOf("spawn", "survival", "parkour")
         settings.network.workdayEnabled shouldBe true
         settings.network.playerAnnouncementsEnabled shouldBe false
+        settings.menuBackground.enabled shouldBe false
         settings.destinations.getValue("farm").server shouldBe "spawn"
         settings.destinations.getValue("farm").world shouldBe "sp11"
         settings.requiresWorldGuard shouldBe true
@@ -50,12 +51,20 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().droughtTargetBeds(60) shouldBe 30
         settings.farms.single().droughtTargetBeds(20) shouldBe 20
         settings.farms.single().preparationPatchSize shouldBe 100
-        settings.farms.single().preparationPatchMaxSize shouldBe 160
-        settings.farms.single().preparationSearchRadius shouldBe 48
+        settings.farms.single().preparationPatchMaxSize shouldBe 256
+        settings.farms.single().preparationSearchRadius shouldBe 64
         settings.farms.single().incidentTypes shouldContainExactly listOf(FarmIncidentType.PESTS, FarmIncidentType.DROUGHT)
+        settings.farms.single().pestNestCount shouldBe 3
+        settings.farms.single().pestNestHealth shouldBe 3
+        settings.farms.single().pestSpawnsPerNest shouldBe 3
+        settings.farms.single().pestMaxAlive shouldBe 6
+        settings.farms.single().pestEatRadius shouldBe 3
         settings.farms.single().delivery.world shouldBe "sp11"
         settings.farms.single().delivery.x shouldBe 201.65
         settings.farms.single().delivery.crates shouldBe 3
+        settings.farms.single().delivery.pickup.z shouldBe 463.5
+        settings.farms.single().delivery.itemMaterial shouldBe "BARREL"
+        settings.farms.single().delivery.itemCustomModelData shouldBe 0
         settings.farms.single().supplies.tool.x shouldBe 212.5
         settings.farms.single().supplies.tool.z shouldBe 448.5
         settings.farms.single().supplies.seeds.z shouldBe 453.5
@@ -65,9 +74,15 @@ class ArcFarmsConfigTest : FunSpec({
         settings.mines.all { it.cartQuota == 16 && it.supportsRequired == 1 } shouldBe true
         ArcFarmsRedisBootstrap.load(root, settings).serverName shouldBe "spawn"
         ArcFarmsLocale.validateFiles(root, settings)
-        listOf("config.yml", "lang/ru.yml", "lang/en.yml").forEach { path ->
+        listOf("lang/ru.yml", "lang/en.yml").forEach { path ->
             Files.readString(repositoryRoot.resolve("classic/plugins/ArcFarms/$path")) shouldBe Files.readString(root.resolve(path))
         }
+        val classicSettings = ArcFarmsConfig.inspect(repositoryRoot.resolve("classic/plugins/ArcFarms"))
+        classicSettings.farms.single().delivery.itemMaterial shouldBe "PAPER"
+        classicSettings.farms.single().delivery.itemCustomModelData shouldBe 10_774
+        classicSettings.menuBackground.enabled shouldBe true
+        classicSettings.menuBackground.material shouldBe "GRAY_STAINED_GLASS_PANE"
+        classicSettings.menuBackground.customModelData shouldBe 11_000
     }
 
     test("survival and parkour profiles are standalone network relays") {
@@ -134,7 +149,7 @@ class ArcFarmsConfigTest : FunSpec({
         val configPath = resourceTree().resolve("config.yml")
         Files.writeString(
             configPath,
-            Files.readString(configPath).replace("preparation-patch-max-size: 160", "preparation-patch-max-size: 80"),
+            Files.readString(configPath).replace("preparation-patch-max-size: 256", "preparation-patch-max-size: 80"),
         )
 
         shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(configPath.parent) }
@@ -198,6 +213,8 @@ class ArcFarmsConfigTest : FunSpec({
             "seconds" to Component.text("45"),
             "players" to Component.text("1"),
             "experience" to Component.text("75"),
+            "next" to Component.text("Морковь"),
+            "amount" to Component.text("80"),
         )
         val titlePairs = listOf(
             MessageKey.FARM_ENTRY_TITLE to MessageKey.FARM_ENTRY_SUBTITLE,
@@ -209,6 +226,7 @@ class ArcFarmsConfigTest : FunSpec({
             MessageKey.FARM_GOLDEN_STARTED to MessageKey.FARM_GOLDEN_STARTED_SUBTITLE,
             MessageKey.FARM_DELIVERY_STARTED to MessageKey.FARM_DELIVERY_STARTED_SUBTITLE,
             MessageKey.FARM_DELIVERY_PICKED_UP to MessageKey.FARM_DELIVERY_PICKED_UP_SUBTITLE,
+            MessageKey.FARM_CROP_COMPLETED to MessageKey.FARM_CROP_COMPLETED_SUBTITLE,
             MessageKey.FARM_COMPLETED to MessageKey.FARM_COMPLETED_SUBTITLE,
             MessageKey.LUMBER_PROCESSING to MessageKey.LUMBER_PROCESSING_SUBTITLE,
             MessageKey.LUMBER_COMPLETED to MessageKey.LUMBER_COMPLETED_SUBTITLE,

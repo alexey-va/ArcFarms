@@ -46,7 +46,16 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 require(farm.deliveredCrates.size <= 8 && farm.deliveredCrates.all { it in 0..7 }) {
                     "Farm delivery crate state is invalid"
                 }
-                require(farm.droughtPlots.all(farm.preparationPatch::contains)) { "Farm drought plots escaped their patch" }
+                require(farm.droughtPlots.size <= 64 && farm.droughtDamagedPlots.size <= 4_096) {
+                    "Farm drought state is unbounded"
+                }
+                require(farm.pestNests.size <= 16 && farm.pestNests.distinctBy { it.position }.size == farm.pestNests.size) {
+                    "Farm pest nests are invalid"
+                }
+                require(farm.pestAlive in 0..32 && farm.pestDamagedCrops.size <= 4_096) { "Farm pest state is unbounded" }
+                require(farm.pestDamagedCrops.distinctBy { it.position }.size == farm.pestDamagedCrops.size) {
+                    "Farm pest crop damage contains duplicate plots"
+                }
                 require(farm.tilledPlots.all(farm.preparationPatch::contains)) { "Farm tilled plots escaped their patch" }
                 require(farm.plantedPlots.all(farm.tilledPlots::contains)) { "Farm planted plots were not tilled" }
                 if (farm.preparationPatch.isNotEmpty()) {

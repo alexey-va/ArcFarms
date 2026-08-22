@@ -42,7 +42,15 @@ object MaterialRules {
 
     fun seedForCrop(crop: Material): Material? = seedsByCrop[crop]
 
-    fun cropComponent(material: Material): Component = Component.translatable("block.minecraft.${material.name.lowercase()}")
+    fun cropComponent(material: Material): Component = Component.translatable(
+        when (material) {
+            Material.WHEAT -> "item.minecraft.wheat"
+            Material.CARROTS -> "item.minecraft.carrot"
+            Material.POTATOES -> "item.minecraft.potato"
+            Material.BEETROOTS -> "item.minecraft.beetroot"
+            else -> "block.minecraft.${material.name.lowercase()}"
+        },
+    )
 
     fun itemComponent(material: Material): Component = Component.translatable(material.translationKey())
 

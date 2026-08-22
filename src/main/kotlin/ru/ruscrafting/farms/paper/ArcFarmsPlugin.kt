@@ -14,6 +14,7 @@ import ru.ruscrafting.farms.config.ArcFarmsRedisBootstrap
 import ru.ruscrafting.farms.network.ArcFarmsNetworkRepository
 import ru.ruscrafting.farms.network.NoOpActivityNetworkGateway
 import ru.ruscrafting.farms.persistence.ArcFarmsStateRepository
+import ru.ruscrafting.farms.persistence.FarmLocationRepository
 import ru.ruscrafting.farms.persistence.MineBlockJournal
 import java.nio.file.Files
 import java.util.logging.Level
@@ -24,6 +25,7 @@ class ArcFarmsPlugin : JavaPlugin() {
     private var service: ArcFarmsService? = null
     private var stateRepository: ArcFarmsStateRepository? = null
     private var mineJournal: MineBlockJournal? = null
+    private var farmLocationRepository: FarmLocationRepository? = null
     private var redis: RedisManager? = null
     private var network: ArcFarmsNetworkService? = null
 
@@ -66,6 +68,7 @@ class ArcFarmsPlugin : JavaPlugin() {
             }
             stateRepository = ArcFarmsStateRepository(dataRoot)
             mineJournal = MineBlockJournal(dataRoot)
+            farmLocationRepository = FarmLocationRepository(dataRoot)
             val regionGateway = if (settings.requiresWorldGuard) {
                 require(server.pluginManager.isPluginEnabled("WorldGuard")) {
                     "WorldGuard is required because this node configures named regions"
@@ -80,13 +83,14 @@ class ArcFarmsPlugin : JavaPlugin() {
                 locale = locale,
                 stateRepository = requireNotNull(stateRepository),
                 mineJournal = requireNotNull(mineJournal),
+                farmLocationRepository = requireNotNull(farmLocationRepository),
                 network = networkGateway,
                 transfer = BungeeBackendTransfer(this),
                 debug = debug,
                 regionGateway = regionGateway,
             ).also { it.start() }
             service = activeService
-            val menu = ArcFarmsMenu(activeService, locale, ::reloadPlugin)
+            val menu = ArcFarmsMenu(activeService, locale) { settings }
             val command = ArcFarmsCommand(activeService, locale, menu, ::reloadPlugin)
             requireNotNull(getCommand("arcfarms")).apply {
                 setExecutor(command)
@@ -108,6 +112,9 @@ class ArcFarmsPlugin : JavaPlugin() {
         runCatching { network?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close ArcFarms network", it) }
         runCatching { redis?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close ArcFarms Redis", it) }
         runCatching { mineJournal?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close mine journal", it) }
+        runCatching { farmLocationRepository?.close() }.onFailure {
+            logger.log(Level.SEVERE, "Could not close farm location repository", it)
+        }
         runCatching { stateRepository?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close state repository", it) }
         server.messenger.unregisterOutgoingPluginChannel(this, BungeeBackendTransfer.CHANNEL)
         Tasks.reset()

@@ -78,6 +78,14 @@ data class FarmZoneSettings(
     val incidentTypes: List<FarmIncidentType>,
     val pestEntity: String,
     val pestSpawnRadius: Int,
+    val pestNestCount: Int,
+    val pestNestHealth: Int,
+    val pestSpawnsPerNest: Int,
+    val pestMaxAlive: Int,
+    val pestSpawnIntervalSeconds: Int,
+    val pestSpawnChancePercent: Int,
+    val pestEatRadius: Int,
+    val pestEatPerPulse: Int,
     val goldenWindowSeconds: Int,
     val supplies: FarmSupplySettings,
     val delivery: FarmDeliverySettings,
@@ -114,6 +122,9 @@ data class FarmDeliverySettings(
     val z: Double,
     val radius: Double,
     val crates: Int,
+    val pickup: FarmSupplyPointSettings,
+    val itemMaterial: String,
+    val itemCustomModelData: Int,
 )
 
 data class FarmOrderSettings(
@@ -147,6 +158,12 @@ data class MineZoneSettings(
     val materialWeights: LinkedHashMap<String, Int>,
 )
 
+data class MenuBackgroundSettings(
+    val enabled: Boolean,
+    val material: String,
+    val customModelData: Int,
+)
+
 class ArcFarmsConfig private constructor(
     val enabled: Boolean,
     val serverId: String,
@@ -156,6 +173,9 @@ class ArcFarmsConfig private constructor(
     val bossbars: Boolean,
     val particles: Boolean,
     val sounds: Boolean,
+    val titleStaySeconds: Int,
+    val markerHeight: Int,
+    val menuBackground: MenuBackgroundSettings,
     val saveSeconds: Int,
     val completedCooldownSeconds: Int,
     val debug: DebugSettings,
@@ -207,7 +227,7 @@ class ArcFarmsConfig private constructor(
                     require(bounds.contains(floor(delivery.x).toInt(), floor(delivery.y).toInt(), floor(delivery.z).toInt())) {
                         "Farm zone $id delivery point is outside its bounds"
                     }
-                    listOf(supplies.tool, supplies.seeds, supplies.water).forEach { point ->
+                    listOf(supplies.tool, supplies.seeds, supplies.water, delivery.pickup).forEach { point ->
                         require(bounds.contains(floor(point.x).toInt(), floor(point.y).toInt(), floor(point.z).toInt())) {
                             "Farm zone $id supply point is outside its bounds"
                         }
@@ -246,6 +266,16 @@ class ArcFarmsConfig private constructor(
                     incidentTypes = incidentTypes,
                     pestEntity = entityName(section.string("pest-entity", "SILVERFISH")),
                     pestSpawnRadius = section.int("pest-spawn-radius", 6).checked("pest-spawn-radius", 2, 16),
+                    pestNestCount = section.int("pest-nests", 3).checked("pest-nests", 1, 8),
+                    pestNestHealth = section.int("pest-nest-health", 3).checked("pest-nest-health", 1, 20),
+                    pestSpawnsPerNest = section.int("pest-spawns-per-nest", 3).checked("pest-spawns-per-nest", 1, 8),
+                    pestMaxAlive = section.int("pest-max-alive", 6).checked("pest-max-alive", 1, 32),
+                    pestSpawnIntervalSeconds = section.int("pest-spawn-interval-seconds", 4)
+                        .checked("pest-spawn-interval-seconds", 1, 60),
+                    pestSpawnChancePercent = section.int("pest-spawn-chance-percent", 45)
+                        .checked("pest-spawn-chance-percent", 1, 100),
+                    pestEatRadius = section.int("pest-eat-radius", 3).checked("pest-eat-radius", 1, 8),
+                    pestEatPerPulse = section.int("pest-eat-per-pulse", 8).checked("pest-eat-per-pulse", 1, 32),
                     goldenWindowSeconds = section.int("golden-window-seconds", 45).checked("golden-window-seconds", 5, 600),
                     supplies = supplies,
                     delivery = delivery,
@@ -330,6 +360,14 @@ class ArcFarmsConfig private constructor(
                 bossbars = config.boolean("ui.bossbars", true),
                 particles = config.boolean("ui.particles", true),
                 sounds = config.boolean("ui.sounds", true),
+                titleStaySeconds = config.int("ui.title-stay-seconds", 4).checked("ui.title-stay-seconds", 2, 10),
+                markerHeight = config.int("ui.marker-height", 12).checked("ui.marker-height", 6, 24),
+                menuBackground = MenuBackgroundSettings(
+                    enabled = config.boolean("ui.menu-background.enabled", false),
+                    material = materialName(config.string("ui.menu-background.material", "GRAY_STAINED_GLASS_PANE")),
+                    customModelData = config.int("ui.menu-background.custom-model-data", 0)
+                        .checked("ui.menu-background.custom-model-data", 0, 2_000_000),
+                ),
                 saveSeconds = config.int("state.save-seconds", 10).checked("state.save-seconds", 1, 300),
                 completedCooldownSeconds = config.int("state.completed-cooldown-seconds", 180).checked("completed cooldown", 0, 3600),
                 debug = DebugSettings(
@@ -399,6 +437,14 @@ class ArcFarmsConfig private constructor(
                         "farm-zones.$zoneId.delivery.$name is outside $minimum..$maximum"
                     }
                 } ?: error("farm-zones.$zoneId.delivery.$name must be a finite number")
+            fun pickupCoordinate(name: String, minimum: Double, maximum: Double): Double {
+                val raw = section.stringOrNull("delivery.pickup.$name") ?: section.string("delivery.$name")
+                return raw.toDoubleOrNull()?.also {
+                    require(it.isFinite() && it in minimum..maximum) {
+                        "farm-zones.$zoneId.delivery.pickup.$name is outside $minimum..$maximum"
+                    }
+                } ?: error("farm-zones.$zoneId.delivery.pickup.$name must be a finite number")
+            }
             return FarmDeliverySettings(
                 world = world,
                 x = coordinate("x", -30_000_000.0, 30_000_000.0),
@@ -406,6 +452,15 @@ class ArcFarmsConfig private constructor(
                 z = coordinate("z", -30_000_000.0, 30_000_000.0),
                 radius = coordinate("radius", 1.0, 8.0),
                 crates = section.int("delivery.crates", 3).checked("delivery.crates", 1, 8),
+                pickup = FarmSupplyPointSettings(
+                    world = world,
+                    x = pickupCoordinate("x", -30_000_000.0, 30_000_000.0),
+                    y = pickupCoordinate("y", -2_048.0, 2_048.0),
+                    z = pickupCoordinate("z", -30_000_000.0, 30_000_000.0),
+                ),
+                itemMaterial = materialName(section.string("delivery.item.material", "BARREL")),
+                itemCustomModelData = section.int("delivery.item.custom-model-data", 0)
+                    .checked("delivery.item.custom-model-data", 0, 2_000_000),
             )
         }
 

@@ -17,6 +17,12 @@ ui:
   bossbars: true
   particles: true
   sounds: true
+  title-stay-seconds: 4
+  marker-height: 12
+  menu-background:
+    enabled: false
+    material: GRAY_STAINED_GLASS_PANE
+    custom-model-data: 0
 
 state:
   save-seconds: 10
@@ -37,8 +43,8 @@ farm-zones:
     region: farm
     permission: arcfarms.farm
     preparation-patch-size: 100
-    preparation-patch-max-size: 160
-    preparation-search-radius: 48
+    preparation-patch-max-size: 256
+    preparation-search-radius: 64
     care-radius: 10
     incident-trigger-percent: 35
     incident-quota: 4
@@ -49,6 +55,14 @@ farm-zones:
     incident-types: [PESTS, DROUGHT]
     pest-entity: SILVERFISH
     pest-spawn-radius: 6
+    pest-nests: 3
+    pest-nest-health: 3
+    pest-spawns-per-nest: 3
+    pest-max-alive: 6
+    pest-spawn-interval-seconds: 4
+    pest-spawn-chance-percent: 45
+    pest-eat-radius: 3
+    pest-eat-per-pulse: 8
     golden-window-seconds: 45
     supplies:
       tool: {x: 212.5, y: 49.0, z: 448.5}
@@ -56,7 +70,14 @@ farm-zones:
       water: {x: 212.5, y: 49.0, z: 458.5}
       tool-material: IRON_HOE
       seed-amount: 16
-    delivery: {x: 201.65, y: 49.0, z: 453.46, radius: 2.5, crates: 3}
+    delivery:
+      x: 201.65
+      y: 49.0
+      z: 453.46
+      radius: 2.5
+      crates: 3
+      pickup: {x: 212.5, y: 49.0, z: 463.5}
+      item: {material: BARREL, custom-model-data: 0}
     completion-experience: 75
     crops: [WHEAT, CARROTS, POTATOES, BEETROOTS]
     orders:

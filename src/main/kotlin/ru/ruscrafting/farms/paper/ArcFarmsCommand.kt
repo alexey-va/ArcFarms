@@ -10,6 +10,7 @@ import org.bukkit.entity.Player
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.ActivityKind
+import ru.ruscrafting.farms.domain.FarmPointKind
 
 class ArcFarmsCommand(
     private val service: ArcFarmsService,
@@ -28,7 +29,7 @@ class ArcFarmsCommand(
             "top" -> sendTop(sender, args.getOrNull(1))
             "travel" -> travel(sender, args.getOrNull(1))
             "reload" -> reload(sender)
-            "admin" -> admin(sender, args.getOrNull(1))
+            "admin" -> admin(sender, args.drop(1))
             else -> sender.sendMessage(locale.render(MessageKey.HELP, sender))
         }
         return true
@@ -141,7 +142,7 @@ class ArcFarmsCommand(
         )
     }
 
-    private fun admin(sender: CommandSender, action: String?) {
+    private fun admin(sender: CommandSender, args: List<String>) {
         if (!sender.hasPermission("arcfarms.admin")) {
             sender.sendMessage(locale.render(MessageKey.NO_PERMISSION, sender))
             return
@@ -151,11 +152,66 @@ class ArcFarmsCommand(
             sender.sendMessage(locale.render(MessageKey.PLAYER_ONLY, sender))
             return
         }
-        if (!action.equals("edit", true)) {
-            sender.sendMessage(locale.render(MessageKey.HELP, sender))
-            return
+        when (args.firstOrNull()?.lowercase()) {
+            "edit" -> service.toggleAdminEdit(player)
+            "point" -> {
+                val zone = args.getOrNull(1)
+                val point = args.getOrNull(2)?.let(::parsePoint)
+                if (zone == null || point == null) {
+                    sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
+                    return
+                }
+                service.adminSetFarmPoint(player, zone, point)
+            }
+            "points" -> {
+                val zone = args.getOrNull(1)
+                val points = zone?.let(service::adminFarmPoints)
+                if (zone == null || points == null) {
+                    sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
+                    return
+                }
+                sender.sendMessage(locale.render(MessageKey.ADMIN_POINTS_HEADER, sender, mapOf("zone" to locale.text(zone))))
+                points.forEach { (kind, point) ->
+                    sender.sendMessage(
+                        locale.render(
+                            MessageKey.ADMIN_POINTS_ENTRY,
+                            sender,
+                            mapOf(
+                                "point" to locale.renderPath("admin.point.${kind.name.lowercase()}", sender),
+                                "world" to locale.text(point.world),
+                                "x" to locale.text("%.2f".format(java.util.Locale.ROOT, point.x)),
+                                "y" to locale.text("%.2f".format(java.util.Locale.ROOT, point.y)),
+                                "z" to locale.text("%.2f".format(java.util.Locale.ROOT, point.z)),
+                            ),
+                        ),
+                    )
+                }
+            }
+            "stage" -> {
+                val zone = args.getOrNull(1)
+                val stage = args.getOrNull(2)
+                if (zone == null || stage == null) {
+                    sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
+                    return
+                }
+                service.adminSetFarmStage(player, zone, stage)
+            }
+            "next" -> {
+                val zone = args.getOrNull(1)
+                if (zone == null) sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
+                else service.adminAdvanceFarm(player, zone)
+            }
+            "event" -> {
+                val zone = args.getOrNull(1)
+                val event = args.getOrNull(2)?.lowercase()
+                if (zone == null || event !in setOf("pests", "drought")) {
+                    sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
+                    return
+                }
+                service.adminSetFarmStage(player, zone, requireNotNull(event))
+            }
+            else -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
         }
-        service.toggleAdminEdit(player)
     }
 
     override fun onTabComplete(sender: CommandSender, command: Command, alias: String, args: Array<out String>): List<String> =
@@ -173,11 +229,36 @@ class ArcFarmsCommand(
                 args[0].equals("top", true) || args[0].equals("travel", true) ->
                     listOf("farm", "lumber", "mine").filter { it.startsWith(args[1], true) }
                 args[0].equals("admin", true) && sender.hasPermission("arcfarms.admin") ->
-                    listOf("edit").filter { it.startsWith(args[1], true) }
+                    listOf("edit", "point", "points", "stage", "next", "event").filter { it.startsWith(args[1], true) }
+                else -> emptyList()
+            }
+            3 -> when {
+                args[0].equals("admin", true) && args[1].lowercase() in setOf("point", "points", "stage", "next", "event") ->
+                    service.farmZoneIds().filter { it.startsWith(args[2], true) }
+                else -> emptyList()
+            }
+            4 -> when {
+                args[0].equals("admin", true) && args[1].equals("point", true) ->
+                    listOf("tool", "seeds", "water", "crates", "receiving", "travel").filter { it.startsWith(args[3], true) }
+                args[0].equals("admin", true) && args[1].equals("stage", true) ->
+                    listOf("preparation", "planting", "harvesting", "pests", "drought", "golden", "delivery", "complete", "reset")
+                        .filter { it.startsWith(args[3], true) }
+                args[0].equals("admin", true) && args[1].equals("event", true) ->
+                    listOf("pests", "drought").filter { it.startsWith(args[3], true) }
                 else -> emptyList()
             }
             else -> emptyList()
         }
+
+    private fun parsePoint(raw: String): FarmPointKind? = when (raw.lowercase()) {
+        "tool" -> FarmPointKind.TOOL
+        "seeds" -> FarmPointKind.SEEDS
+        "water" -> FarmPointKind.WATER
+        "crates" -> FarmPointKind.CRATES
+        "receiving" -> FarmPointKind.RECEIVING
+        "travel" -> FarmPointKind.TRAVEL
+        else -> null
+    }
 
     private fun parseKind(raw: String?): ActivityKind? = when (raw?.lowercase()) {
         "farm" -> ActivityKind.FARM

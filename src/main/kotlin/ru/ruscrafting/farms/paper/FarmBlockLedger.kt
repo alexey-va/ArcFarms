@@ -54,6 +54,12 @@ internal class FarmBlockLedger(plugin: Plugin) {
         return current.copy(activeCropData = cropData).also { update(soil, it) }
     }
 
+    fun captureActiveCropIfPresent(soil: Block, zoneId: String): ManagedFarmBlockRecord {
+        val crop = soil.getRelative(org.bukkit.block.BlockFace.UP)
+        if (crop.type.isAir || crop.type == Material.WATER) return record(soil) ?: capture(soil, zoneId)
+        return captureActiveCrop(soil, zoneId)
+    }
+
     fun record(soil: Block): ManagedFarmBlockRecord? = records(soil).firstOrNull {
         it.x == soil.x && it.y == soil.y && it.z == soil.z
     }

@@ -59,7 +59,7 @@ class FarmShiftEngineTest : FunSpec({
         blockedHarvest.accepted shouldBe false
         blockedHarvest.state shouldBe incident.state
 
-        val rescued = FarmShiftEngine.defeatPest(incident.state, order, rules, player, 4_000)
+        val rescued = FarmShiftEngine.defeatPest(activePestEncounter(incident.state), order, rules, player, 4_000)
         rescued.state.phase shouldBe FarmPhase.GOLDEN_HARVEST
         rescued.state.incidentResolved shouldBe true
         rescued.state.goldenCrop shouldBe "CARROTS"
@@ -108,7 +108,7 @@ class FarmShiftEngineTest : FunSpec({
         var state = preparedState(order, rules, player)
         state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 2_000).state
         state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 3_000).state
-        state = FarmShiftEngine.defeatPest(state, order, rules, player, 4_000).state
+        state = FarmShiftEngine.defeatPest(activePestEncounter(state), order, rules, player, 4_000).state
         val packed = FarmShiftEngine.harvest(state, order, rules, "CARROTS", player, 5_000)
         val completed = FarmShiftEngine.deliver(packed.state, rules, 0, 1, player, 5_100)
 
@@ -126,7 +126,7 @@ class FarmShiftEngineTest : FunSpec({
         var state = preparedState(order, rules, player)
         state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 2_000).state
         state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 3_000).state
-        state = FarmShiftEngine.defeatPest(state, order, rules, player, 4_000).state
+        state = FarmShiftEngine.defeatPest(activePestEncounter(state), order, rules, player, 4_000).state
 
         val expired = FarmShiftEngine.tick(state, order, rules, 14_000)
         expired.state.phase shouldBe FarmPhase.HARVESTING
@@ -177,7 +177,7 @@ class FarmShiftEngineTest : FunSpec({
         var state = preparedState(order, rules, player)
         state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 2_000).state
         state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 3_000).state
-        state = FarmShiftEngine.defeatPest(state, order, rules, player, 4_000).state
+        state = FarmShiftEngine.defeatPest(activePestEncounter(state), order, rules, player, 4_000).state
         state = FarmShiftEngine.harvest(state, order, rules, "CARROTS", player, 5_000).state
 
         state.phase shouldBe FarmPhase.DELIVERY
@@ -200,7 +200,41 @@ class FarmShiftEngineTest : FunSpec({
         completed.state.deliveredCrates shouldBe setOf(0, 2, 1)
         completed.events shouldContainExactly listOf(ShiftEvent.COMPLETED)
     }
+
+    test("pest incident waits for every nest and every live pest") {
+        var state = preparedState(order, rules, player)
+        state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 2_000).state
+        state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 3_000).state.copy(
+            pestNestsInitialized = true,
+            pestNests = listOf(FarmPestNest(patch.first(), health = 2, spawned = 1)),
+            pestAlive = 1,
+            incidentRequired = 2,
+        )
+
+        val hit = FarmShiftEngine.damagePestNest(state, order, rules, patch.first(), player, 3_500)
+        hit.state.pestNests.single().health shouldBe 1
+        hit.state.phase shouldBe FarmPhase.INCIDENT
+
+        val killed = FarmShiftEngine.defeatPest(hit.state, order, rules, player, 3_600)
+        killed.state.pestAlive shouldBe 0
+        killed.state.phase shouldBe FarmPhase.INCIDENT
+
+        val destroyed = FarmShiftEngine.damagePestNest(killed.state, order, rules, patch.first(), player, 3_700)
+        destroyed.state.pestNests shouldBe emptyList()
+        destroyed.state.phase shouldBe FarmPhase.GOLDEN_HARVEST
+        destroyed.events shouldContainExactly listOf(
+            ShiftEvent.INCIDENT_PROGRESS,
+            ShiftEvent.INCIDENT_RESOLVED,
+            ShiftEvent.GOLDEN_STARTED,
+        )
+    }
 })
+
+private fun activePestEncounter(state: FarmShiftState): FarmShiftState = state.copy(
+    pestNestsInitialized = true,
+    pestAlive = 1,
+    incidentRequired = 1,
+)
 
 private fun preparedState(order: FarmOrder, rules: FarmRules, player: UUID): FarmShiftState {
     val patch = listOf(

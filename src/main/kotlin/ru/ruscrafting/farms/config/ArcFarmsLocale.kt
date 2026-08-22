@@ -8,6 +8,7 @@ import org.bukkit.command.CommandSender
 import org.bukkit.entity.Player
 import ru.arc.config.Config
 import ru.arc.config.ConfigManager
+import ru.ruscrafting.farms.domain.FarmPointKind
 import java.nio.file.Path
 
 enum class MessageKey(val path: String) {
@@ -22,6 +23,15 @@ enum class MessageKey(val path: String) {
     ADMIN_EDIT_DISABLED("admin-edit.disabled"),
     ADMIN_EDIT_ACTIVE_SHIFT("admin-edit.active-shift"),
     ADMIN_EDIT_BLOCK_REMOVED("admin-edit.block-removed"),
+    ADMIN_HELP("admin.help"),
+    ADMIN_ZONE_UNKNOWN("admin.zone-unknown"),
+    ADMIN_POINT_OUTSIDE("admin.point-outside"),
+    ADMIN_POINT_ON_BED("admin.point-on-bed"),
+    ADMIN_POINT_SAVED("admin.point-saved"),
+    ADMIN_POINTS_HEADER("admin.points-header"),
+    ADMIN_POINTS_ENTRY("admin.points-entry"),
+    ADMIN_STAGE_SET("admin.stage-set"),
+    ADMIN_STAGE_UNKNOWN("admin.stage-unknown"),
     GENERIC_ERROR("generic-error"),
     ZONE_UNAVAILABLE("zone-unavailable"),
     ZONE_LOCKED("zone-locked"),
@@ -79,8 +89,14 @@ enum class MessageKey(val path: String) {
     FARM_PREPARATION_COMPLETED("farm.preparation-completed"),
     FARM_PREPARATION_COMPLETED_SUBTITLE("farm.preparation-completed-subtitle"),
     FARM_WRONG_TARGET("farm.wrong-target"),
+    FARM_CROP_ALREADY_COMPLETE("farm.crop-already-complete"),
+    FARM_CROP_COMPLETED("farm.crop-completed"),
+    FARM_CROP_COMPLETED_SUBTITLE("farm.crop-completed-subtitle"),
     FARM_PESTS_REQUIRED("farm.pests-required"),
     FARM_PEST_NAME("farm.pest-name"),
+    FARM_PEST_NEST_NAME("farm.pest-nest-name"),
+    FARM_PEST_NEST_DAMAGED("farm.pest-nest-damaged"),
+    FARM_PEST_NEST_DESTROYED("farm.pest-nest-destroyed"),
     FARM_INCIDENT_STARTED("farm.incident-started"),
     FARM_INCIDENT_STARTED_SUBTITLE("farm.incident-started-subtitle"),
     FARM_INCIDENT_PROGRESS("farm.incident-progress"),
@@ -204,6 +220,19 @@ class ArcFarmsLocale(
         fun requiredPaths(settings: ArcFarmsConfig): Set<String> = buildSet {
             addAll(MessageKey.entries.map(MessageKey::path))
             settings.farms.flatMapTo(this) { zone -> zone.orders.map { "order.farm.${it.id}" } }
+            settings.farms.flatMapTo(this) { zone ->
+                zone.orders.flatMap { order ->
+                    listOf(
+                        "story.farm.${order.id}.start",
+                        "story.farm.${order.id}.pests",
+                        "story.farm.${order.id}.drought",
+                        "story.farm.${order.id}.delivery",
+                    )
+                }
+            }
+            FarmPointKind.entries.mapTo(this) { "admin.point.${it.name.lowercase()}" }
+            listOf("preparation", "planting", "harvesting", "pests", "drought", "golden", "delivery", "complete", "reset")
+                .mapTo(this) { "admin.stage.$it" }
             settings.mines.mapTo(this) { "route.mine.${it.id}" }
             enumValues<ru.ruscrafting.farms.domain.FarmPhase>().mapTo(this) { "phase.farm.${it.name.lowercase()}" }
             enumValues<ru.ruscrafting.farms.domain.LumberPhase>().mapTo(this) { "phase.lumber.${it.name.lowercase()}" }

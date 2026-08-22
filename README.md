@@ -49,16 +49,20 @@ inventory, used for unrelated farm changes, carried outside the farm, or moved
 to another backend; ArcFarms removes them at every such boundary.
 
 At the configured threshold one of the farm incidents starts. A pest outbreak
-spawns glowing silverfish that eat nearby managed crops until defeated. A
+places several breakable nests across distant parts of the field. Each nest can
+spawn only a configured number of glowing silverfish, with a separate cap on
+simultaneously living pests. The pests eat any configured crops around them to
+open visible fighting space. Every eaten crop returns at its first growth stage
+only after all nests and pests are gone. A
 drought creates several widely separated patches of visibly dry dirt and
 removes their dead plants. The total dry area is derived from the active garden
 size, clamped by configured minimum and maximum bed counts, and distributed
 between the configured number of patches. The service bucket may be poured on a
 replaceable block within flow reach instead of only on the dry block itself. It
-creates real flowing water: the flow spreads, hydrates only the dry beds it
-actually reaches, and breaks plants
-using normal water physics without leaving duplicate crop drops. ArcFarms tracks
-and removes every temporary flow after each pour. Managed plants remain absent
+creates real flowing water: several pours may coexist, each flow spreads up to
+normal vanilla reach, hydrates only the dry beds it actually reaches, and clears
+plants without creating crop or seed drops. ArcFarms tracks and removes every
+temporary flow after each pour. Managed plants remain absent
 until the entire drought is resolved, then their captured state is restored at
 once. Either incident pauses harvesting
 without resetting the main order. Resolving it starts a short golden-harvest
@@ -123,11 +127,23 @@ next cycle. Atomic Redis compare-and-set prevents duplicate cross-server stamps.
 - `/arcfarms reload` — validate and reload configuration/locales (admin).
 - `/arcfarms admin edit` — toggle deliberate farm-bed deletion and PDC cleanup
   between shifts (admin).
+- `/arcfarms admin point <zone> <tool|seeds|water|crates|receiving|travel>` —
+  save the administrator's current world, coordinates, yaw, and pitch for a farm
+  operation point. Non-travel points must be inside the farm and off crop beds.
+- `/arcfarms admin points <zone>` — list the effective configured and overridden
+  farm points.
+- `/arcfarms admin stage <zone> <preparation|planting|harvesting|pests|drought|golden|delivery|complete|reset>` —
+  switch the current farm to an exact QA stage while preserving normal recovery.
+- `/arcfarms admin next <zone>` — advance to the next useful QA stage.
+- `/arcfarms admin event <zone> <pests|drought>` — start an exact incident.
 
 The menu uses the same exact destinations as `/arcfarms travel`. Local routes
 use Paper asynchronous teleportation. Remote routes store a short-lived Redis
 ticket, switch the player through the proxy, and consume that ticket on the
-destination backend before the world teleport.
+destination backend before the world teleport. Empty menu slots may use a
+server-owned `ui.menu-background` Material/CMD style; the bundled default leaves
+that override disabled. Reload remains available as a command, not as a GUI
+button.
 
 ## Runtime ownership
 
@@ -144,10 +160,10 @@ destination backend before the world teleport.
 ## Build
 
 ```bash
-../ARC/gradlew -p . clean check shadowJar
+../arc-core/gradlew clean check shadowJar
 ```
 
-The deployable artifact is `build/libs/ArcFarms-0.5.0.jar`.
+The deployable artifact is `build/libs/ArcFarms-0.7.0.jar`.
 
 ## Isolated gameplay QA
 
