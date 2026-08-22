@@ -82,6 +82,9 @@ data class FarmZoneSettings(
     val droughtCoveragePercent: Int,
     val droughtMinBeds: Int,
     val droughtMaxBeds: Int,
+    val droughtInitialBeds: Int,
+    val droughtGrowthBeds: Int,
+    val droughtGrowthSeconds: Int,
     val incidentTypes: List<FarmIncidentType>,
     val pestEntity: String,
     val pestSpawnRadius: Int,
@@ -281,6 +284,11 @@ class ArcFarmsConfig private constructor(
                 require(droughtMinBeds <= droughtMaxBeds) {
                     "Farm zone $id drought-min-beds must not exceed drought-max-beds"
                 }
+                val droughtInitialBeds = section.int("drought-initial-beds", minOf(10, droughtMaxBeds))
+                    .checked("drought-initial-beds", 1, 64)
+                require(droughtInitialBeds <= droughtMaxBeds) {
+                    "Farm zone $id drought-initial-beds must not exceed drought-max-beds"
+                }
                 val preparationPatchSize = section.int("preparation-patch-size", 100)
                     .checked("preparation-patch-size", 1, 512)
                 val preparationPatchMaxSize = section.int("preparation-patch-max-size", 160)
@@ -312,6 +320,11 @@ class ArcFarmsConfig private constructor(
                     droughtCoveragePercent = droughtCoveragePercent,
                     droughtMinBeds = droughtMinBeds,
                     droughtMaxBeds = droughtMaxBeds,
+                    droughtInitialBeds = droughtInitialBeds,
+                    droughtGrowthBeds = section.int("drought-growth-beds", 5)
+                        .checked("drought-growth-beds", 1, 64),
+                    droughtGrowthSeconds = section.int("drought-growth-seconds", 3)
+                        .checked("drought-growth-seconds", 1, 300),
                     incidentTypes = incidentTypes,
                     pestEntity = entityName(section.string("pest-entity", "SILVERFISH")),
                     pestSpawnRadius = section.int("pest-spawn-radius", 6).checked("pest-spawn-radius", 2, 16),

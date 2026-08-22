@@ -8,12 +8,12 @@ class FarmWaterPlannerTest : FunSpec({
     val dry = FarmPlotPosition("world", 10, 64, 10)
 
     test("water source may be placed five blocks from a dry plot") {
-        FarmWaterPlanner.canPlace(FarmPlotPosition("world", 15, 65, 10), listOf(dry), radius = 7) shouldBe true
+        FarmWaterPlanner.canPlace(FarmPlotPosition("world", 15, 65, 10), listOf(dry), radius = 5) shouldBe true
     }
 
     test("water source outside the bounded flow radius is rejected") {
-        FarmWaterPlanner.canPlace(FarmPlotPosition("world", 18, 65, 10), listOf(dry), radius = 7) shouldBe false
-        FarmWaterPlanner.canPlace(FarmPlotPosition("other", 10, 65, 10), listOf(dry), radius = 7) shouldBe false
+        FarmWaterPlanner.canPlace(FarmPlotPosition("world", 16, 65, 10), listOf(dry), radius = 5) shouldBe false
+        FarmWaterPlanner.canPlace(FarmPlotPosition("other", 10, 65, 10), listOf(dry), radius = 5) shouldBe false
     }
 
     test("only dry plots actually reached by tracked water are completed") {
@@ -29,5 +29,23 @@ class FarmWaterPlannerTest : FunSpec({
         )
 
         reached.toList().shouldContainExactly(dry, second)
+    }
+
+    test("a valid source immediately reaches every dry plot within five blocks") {
+        val reached = FarmWaterPlanner.reachedPlotsWithinRadius(
+            FarmPlotPosition("world", 10, 65, 10),
+            listOf(dry, FarmPlotPosition("world", 13, 64, 14), FarmPlotPosition("world", 16, 64, 10)),
+            radius = 5,
+        )
+
+        reached.toList().shouldContainExactly(dry, FarmPlotPosition("world", 13, 64, 14))
+    }
+
+    test("watering reports only fully completed connected drought patches") {
+        val firstPatch = listOf(dry, FarmPlotPosition("world", 11, 64, 10))
+        val secondPatch = listOf(FarmPlotPosition("world", 20, 64, 20), FarmPlotPosition("world", 21, 64, 20))
+
+        FarmWaterPlanner.completedPatchCount(firstPatch + secondPatch, firstPatch) shouldBe 1
+        FarmWaterPlanner.completedPatchCount(firstPatch + secondPatch, listOf(dry)) shouldBe 0
     }
 })

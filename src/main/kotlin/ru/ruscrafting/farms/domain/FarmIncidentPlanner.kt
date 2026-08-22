@@ -46,6 +46,51 @@ object FarmIncidentPlanner {
         }.filter(List<FarmPlotPosition>::isNotEmpty)
     }
 
+    fun growDroughtPatches(
+        candidates: Collection<FarmPlotPosition>,
+        existing: Collection<FarmPlotPosition>,
+        targetSize: Int,
+        patchCount: Int,
+        selectionIndex: Long,
+    ): Set<FarmPlotPosition> {
+        require(targetSize in 1..64) { "Farm drought target must be in 1..64" }
+        require(patchCount in 1..8) { "Farm drought patch count must be in 1..8" }
+        val available = candidates.distinct()
+        if (available.isEmpty()) return emptySet()
+        val retained = existing.filterTo(linkedSetOf(), available::contains)
+        if (retained.isEmpty()) {
+            return droughtPatches(available, targetSize, patchCount, selectionIndex).flatten().toSet()
+        }
+        if (retained.size >= targetSize) return retained.take(targetSize).toSet()
+        available.asSequence()
+            .filterNot(retained::contains)
+            .sortedWith(
+                compareBy<FarmPlotPosition> { candidate ->
+                    retained.minOf { selected -> horizontalDistanceSquared(candidate, selected) }
+                }.then(POSITION_ORDER),
+            )
+            .take(targetSize - retained.size)
+            .forEach(retained::add)
+        return retained
+    }
+
+    fun droughtSpawnLimit(
+        required: Int,
+        initial: Int,
+        growthStep: Int,
+        growthIntervalMillis: Long,
+        startedAt: Long,
+        now: Long,
+    ): Int {
+        require(required in 1..64) { "Farm drought quota must be in 1..64" }
+        require(initial in 1..64) { "Farm drought initial size must be in 1..64" }
+        require(growthStep in 1..64) { "Farm drought growth step must be in 1..64" }
+        require(growthIntervalMillis in 1_000..600_000) { "Farm drought growth interval is invalid" }
+        val elapsed = (now - startedAt).coerceAtLeast(0)
+        val growthRounds = elapsed / growthIntervalMillis
+        return (initial.toLong() + growthRounds * growthStep).coerceAtMost(required.toLong()).toInt()
+    }
+
     private fun mix(value: Long): Long {
         var mixed = value xor (value ushr 33)
         mixed *= -49064778989728563L

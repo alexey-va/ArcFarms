@@ -8,6 +8,7 @@ import org.bukkit.event.block.BlockFadeEvent
 import org.bukkit.event.block.BlockDropItemEvent
 import org.bukkit.event.block.BlockFromToEvent
 import org.bukkit.event.block.BlockPlaceEvent
+import org.bukkit.event.block.BlockSpreadEvent
 import org.bukkit.event.block.MoistureChangeEvent
 import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryDragEvent
@@ -26,6 +27,9 @@ class ArcFarmsListener(
     private val service: ArcFarmsService,
     private val menu: ArcFarmsMenu,
 ) : Listener {
+    @EventHandler(priority = EventPriority.LOWEST)
+    fun onBreakLowest(event: BlockBreakEvent) = service.onBreakLowest(event)
+
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onBreakHigh(event: BlockBreakEvent) = service.onBreakHigh(event)
 
@@ -38,8 +42,14 @@ class ArcFarmsListener(
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     fun onBlockFade(event: BlockFadeEvent) = service.onBlockFade(event)
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    fun onBlockSpread(event: BlockSpreadEvent) = service.onBlockSpread(event)
+
+    @EventHandler(priority = EventPriority.HIGHEST)
     fun onBlockPlace(event: BlockPlaceEvent) = service.onBlockPlace(event)
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    fun onInteractLowest(event: PlayerInteractEvent) = service.onInteractLowest(event)
 
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onInteract(event: PlayerInteractEvent) = service.onInteract(event)
@@ -64,6 +74,9 @@ class ArcFarmsListener(
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     fun onEntityChangeBlock(event: EntityChangeBlockEvent) = service.onEntityChangeBlock(event)
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    fun onInteractEntityLowest(event: PlayerInteractEntityEvent) = service.onInteractEntityLowest(event)
 
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onInteractEntity(event: PlayerInteractEntityEvent) = service.onInteractEntity(event)

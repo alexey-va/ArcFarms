@@ -26,6 +26,21 @@ class FarmIncidentPlannerTest : FunSpec({
         patches.flatten().distinct().size shouldBe 40
         patches.all { it.isNotEmpty() } shouldBe true
     }
+
+    test("drought grows outward from its existing patches without replacing them") {
+        val initial = FarmIncidentPlanner.droughtPatches(field, targetSize = 9, patchCount = 3, selectionIndex = 17).flatten().toSet()
+        val grown = FarmIncidentPlanner.growDroughtPatches(field, initial, targetSize = 18, patchCount = 3, selectionIndex = 17)
+
+        grown.size shouldBe 18
+        grown.containsAll(initial) shouldBe true
+        (grown.maxOf { candidate -> initial.minOf { selected -> distance(candidate, selected) } } <= 1L) shouldBe true
+    }
+
+    test("drought spawn limit expands by bounded timed steps") {
+        FarmIncidentPlanner.droughtSpawnLimit(40, 10, 5, 3_000, 1_000, 1_000) shouldBe 10
+        FarmIncidentPlanner.droughtSpawnLimit(40, 10, 5, 3_000, 1_000, 7_100) shouldBe 20
+        FarmIncidentPlanner.droughtSpawnLimit(40, 10, 5, 3_000, 1_000, 100_000) shouldBe 40
+    }
 })
 
 private fun distance(first: FarmPlotPosition, second: FarmPlotPosition): Long {

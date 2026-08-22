@@ -66,6 +66,9 @@ farm-zones:
     drought-coverage-percent: 35
     drought-min-beds: 30
     drought-max-beds: 40
+    drought-initial-beds: 10
+    drought-growth-beds: 5
+    drought-growth-seconds: 3
     incident-types: [PESTS, DROUGHT]
     pest-entity: SILVERFISH
     pest-spawn-radius: 6
