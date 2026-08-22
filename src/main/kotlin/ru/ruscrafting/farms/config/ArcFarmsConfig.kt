@@ -76,6 +76,10 @@ data class FarmZoneSettings(
     val careAnimalEntities: List<String>,
     val proceduralCareFixtures: Boolean,
     val careVisuals: Map<FarmCareRole, FarmCareVisualSettings>,
+    val music: FarmMusicSettings,
+    val placementMinObjectiveDistance: Int,
+    val placementMaxPlayerDistance: Int,
+    val placementSearchRadius: Int,
     val incidentTriggerPercent: Int,
     val incidentQuota: Int,
     val droughtPatches: Int,
@@ -109,6 +113,13 @@ data class FarmZoneSettings(
         return proportional.coerceIn(droughtMinBeds, droughtMaxBeds).coerceAtMost(gardenBeds)
     }
 }
+
+data class FarmMusicSettings(
+    val enabled: Boolean,
+    val sound: String,
+    val durationSeconds: Int,
+    val volume: Float,
+)
 
 data class FarmCareVisualSettings(
     val material: String,
@@ -296,6 +307,18 @@ class ArcFarmsConfig private constructor(
                 require(preparationPatchMaxSize >= preparationPatchSize) {
                     "Farm zone $id preparation-patch-max-size must be at least preparation-patch-size"
                 }
+                val placementMinObjectiveDistance = section.int("placement-min-objective-distance", 10)
+                    .checked("placement-min-objective-distance", 2, 32)
+                val placementMaxPlayerDistance = section.int("placement-max-player-distance", 28)
+                    .checked("placement-max-player-distance", 4, 64)
+                val placementSearchRadius = section.int("placement-search-radius", 32)
+                    .checked("placement-search-radius", 4, 64)
+                require(placementMinObjectiveDistance < placementMaxPlayerDistance) {
+                    "Farm zone $id placement-min-objective-distance must be below placement-max-player-distance"
+                }
+                require(placementSearchRadius >= placementMinObjectiveDistance) {
+                    "Farm zone $id placement-search-radius must reach placement-min-objective-distance"
+                }
                 FarmZoneSettings(
                     id = id,
                     reference = reference,
@@ -314,6 +337,18 @@ class ArcFarmsConfig private constructor(
                         .also { require(it.isNotEmpty()) { "Farm zone $id has no care animal entities" } },
                     proceduralCareFixtures = section.boolean("procedural-care-fixtures", true),
                     careVisuals = careVisuals,
+                    music = FarmMusicSettings(
+                        enabled = section.boolean("music.enabled", false),
+                        sound = soundKey(section.string("music.sound", "minecraft:music.overworld.forest")),
+                        durationSeconds = section.int("music.duration-seconds", 180)
+                            .checked("music.duration-seconds", 5, 3_600),
+                        volume = section.string("music.volume", "0.65").toFloatOrNull()?.also {
+                            require(it.isFinite() && it in 0.0f..1.0f) { "Farm zone $id music.volume must be in 0.0..1.0" }
+                        } ?: error("Farm zone $id music.volume must be a number"),
+                    ),
+                    placementMinObjectiveDistance = placementMinObjectiveDistance,
+                    placementMaxPlayerDistance = placementMaxPlayerDistance,
+                    placementSearchRadius = placementSearchRadius,
                     incidentTriggerPercent = section.int("incident-trigger-percent", 35).checked("incident-trigger-percent", 1, 99),
                     incidentQuota = section.int("incident-quota", 4).checked("incident-quota", 1, 64),
                     droughtPatches = droughtPatches,
@@ -587,6 +622,10 @@ class ArcFarmsConfig private constructor(
 
         private fun entityName(value: String): String = value.trim().uppercase().also {
             require(it.matches(Regex("[A-Z0-9_]{2,64}"))) { "Invalid entity type: $value" }
+        }
+
+        private fun soundKey(value: String): String = value.trim().lowercase().also {
+            require(it.matches(Regex("[a-z0-9._-]+:[a-z0-9/._-]+"))) { "Invalid sound key: $value" }
         }
 
         private fun speciesName(value: String): String = materialName(value).also {

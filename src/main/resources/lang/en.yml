@@ -43,7 +43,7 @@ admin:
     irrigation: '<white>irrigation</white>'
     covers: '<white>covers</white>'
     scarecrows: '<white>scarecrows</white>'
-    pen: '<white>pen</white>'
+    pen: '<white>barn</white>'
   stage:
     preparation: '<white>tilling</white>'
     planting: '<white>planting</white>'
@@ -133,7 +133,7 @@ farm:
   care-order: '<color:#ffad42>The valves open in sequence. Follow the blue marker.</color>'
   care-pollen-required: '<color:#ffad42>Collect pollen from the hive first.</color>'
   care-pollen-taken: '<color:#ffc857>Pollen collected. Treat two marked patches.</color>'
-  care-animal-following: '<color:#55d98b>The animal is following. Lead it to the green marker.</color>'
+  care-animal-following: '<color:#55d98b>The animal is leashed. Lead it to the highlighted barn.</color>'
   care-animal-pen: '<color:#55d98b>Bring every animal here.</color>'
   wrong-target: '<color:#f2fff7>Order accepts:</color> <crops>'
   crop-already-complete: '<color:#ff5f6d>The <crop> goal is already complete.</color> <color:#f2fff7>Now gather <next>: <amount></color>'
@@ -232,8 +232,8 @@ care:
     entry: '<color:#f2fff7>Click each marked scarecrow twice</color>'
   animal_rescue:
     name: '<color:#55d98b>Escaped animals</color>'
-    instruction: '<color:#f2fff7>Call the animals and lead them to the green marker</color>'
-    entry: '<color:#f2fff7>Right-click an animal and lead it into the pen</color>'
+    instruction: '<color:#f2fff7>Call the animals and lead them to the highlighted barn</color>'
+    entry: '<color:#f2fff7>Right-click an animal and lead it into the barn</color>'
 network:
   actor-fallback: '<gray>the crew</gray>'
   farm-incident: '<prefix> <color:#ff5f6d>Farm emergency:</color> <color:#f2fff7>the fields need help.</color>'

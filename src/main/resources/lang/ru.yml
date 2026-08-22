@@ -43,7 +43,7 @@ admin:
     irrigation: '<white>полив</white>'
     covers: '<white>укрытия</white>'
     scarecrows: '<white>пугала</white>'
-    pen: '<white>загон</white>'
+    pen: '<white>хлев</white>'
   stage:
     preparation: '<white>вспашка</white>'
     planting: '<white>посев</white>'
@@ -133,7 +133,7 @@ farm:
   care-order: '<color:#ffad42>Вентили открываются по цепочке. Ищите голубую метку.</color>'
   care-pollen-required: '<color:#ffad42>Сначала возьмите пыльцу у улья.</color>'
   care-pollen-taken: '<color:#ffc857>Пыльца набрана. Обработайте два отмеченных участка.</color>'
-  care-animal-following: '<color:#55d98b>Животное идёт за вами. Ведите его к зелёной метке.</color>'
+  care-animal-following: '<color:#55d98b>Животное на поводке. Ведите его к подсвеченному хлеву.</color>'
   care-animal-pen: '<color:#55d98b>Сюда нужно привести всех животных.</color>'
   wrong-target: '<color:#f2fff7>Заказ принимает:</color> <crops>'
   crop-already-complete: '<color:#ff5f6d>Цель по <crop> уже закрыта.</color> <color:#f2fff7>Теперь <next>: <amount></color>'
@@ -232,8 +232,8 @@ care:
     entry: '<color:#f2fff7>Дважды нажмите по каждому отмеченному пугалу</color>'
   animal_rescue:
     name: '<color:#55d98b>Сбежавшие животные</color>'
-    instruction: '<color:#f2fff7>Позовите животных и приведите их к зелёной метке</color>'
-    entry: '<color:#f2fff7>Нажмите ПКМ по животному и отведите его в загон</color>'
+    instruction: '<color:#f2fff7>Позовите животных и приведите их к подсвеченному хлеву</color>'
+    entry: '<color:#f2fff7>Нажмите ПКМ по животному и отведите его в хлев</color>'
 network:
   actor-fallback: '<gray>бригада</gray>'
   farm-incident: '<prefix> <color:#ff5f6d>На ферме бедствие:</color> <color:#f2fff7>полям нужна помощь.</color>'

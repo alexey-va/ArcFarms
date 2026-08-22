@@ -47,8 +47,8 @@ center:
 - storm preparation distributes cover anchors around the actual field corners;
 - scarecrow duty asks the player to assemble several decoys in separate parts
   of the field;
-- animal rescue spawns tagged farm animals that follow the interacting player
-  to a marked pen.
+- animal rescue spawns glowing tagged farm animals, attaches a visible leash
+  when a player calls one, and leads them to the highlighted barn.
 
 The current instruction and exact progress remain in the boss bar. The next
 useful target has one restrained long-range particle column, while nearby
@@ -65,9 +65,17 @@ exists and otherwise creates temporary, tagged display fixtures and animals at
 safe points derived from the selected field. `procedural-care-fixtures: false`
 turns that behavior off for fixture-dependent stories; those stories are then
 skipped until an administrator saves the required point. The optional points
-are `hive`, `irrigation`, `covers`, `scarecrows`, and `pen`. Their entities are
+are `hive`, `irrigation`, `covers`, `scarecrows`, and `barn`. The barn falls
+back to the crop receiving point until an administrator saves its own override.
+Their entities are
 removed when the story ends and are reconstructed from persisted state after a
 restart.
+
+Dynamic animals and delivery crates prefer safe ground at least
+`placement-min-objective-distance` blocks from their destination while staying
+within `placement-max-player-distance` of a current participant. Candidate
+search is capped by `placement-search-radius`; constrained fixtures degrade to
+the best available safe position instead of making a story impossible.
 
 Three configured free-floating item displays stand on the path near the farm
 entrance, each with a short text label and interaction hitbox but no barrel or
@@ -133,6 +141,12 @@ titles, boss bars, sounds, and particles. Completion fireworks are client-side
 particles and sounds only: no firework entity, explosion, damage, or block
 change is created.
 
+Each farm may configure one streamed background track. ArcFarms plays it from
+the player's own Adventure sound emitter while they remain inside the farm,
+stops it on every exit/reload/shutdown boundary, and restarts it only after the
+configured duration. A per-player session guard prevents movement and the
+periodic region check from starting the same track twice.
+
 ## Network workday
 
 ArcFarms uses its own `arc-core-redis` connection and protocol; it does not
@@ -156,7 +170,7 @@ next cycle. Atomic Redis compare-and-set prevents duplicate cross-server stamps.
 - `/arcfarms reload` — validate and reload configuration/locales (admin).
 - `/arcfarms admin edit` — toggle deliberate farm-bed deletion and PDC cleanup
   between shifts (admin).
-- `/arcfarms admin point <zone> <tool|seeds|water|crates|receiving|travel|hive|irrigation|covers|scarecrows|pen>` —
+- `/arcfarms admin point <zone> <tool|seeds|water|crates|receiving|travel|hive|irrigation|covers|scarecrows|barn>` —
   save the administrator's current world, coordinates, yaw, and pitch for a farm
   operation point. Non-travel points must be inside the farm and off crop beds.
 - `/arcfarms admin points <zone>` — list the effective configured and overridden
@@ -180,6 +194,19 @@ next cycle. Atomic Redis compare-and-set prevents duplicate cross-server stamps.
 - `/arcfarms debug <zone> show` — repeat active-target and configured-point
   columns for five seconds; `points` lists exact coordinates and `reset`
   removes temporary entities/water and restores managed blocks.
+
+## PlaceholderAPI
+
+When PlaceholderAPI is installed, ArcFarms exposes the persistent all-time farm
+contribution table for CMI holograms or Citizens scenes:
+
+- `%arcfarms_farm_top_1_name%` through rank `50`;
+- `%arcfarms_farm_top_1_skin%` — the same resolvable account name for a skin
+  provider, falling back to the UUID;
+- `%arcfarms_farm_top_1_uuid%` and `%arcfarms_farm_top_1_score%`;
+- `%arcfarms_farm_score%` and `%arcfarms_farm_rank%` for the viewing player.
+
+Replace `1` with the desired rank. Missing ranks return an empty string.
 
 The menu uses the same exact destinations as `/arcfarms travel`. Local routes
 use Paper asynchronous teleportation. Remote routes store a short-lived Redis
@@ -207,7 +234,7 @@ button.
 ../arc-core/gradlew clean check shadowJar
 ```
 
-The deployable artifact is `build/libs/ArcFarms-0.9.0.jar`.
+The deployable artifact is `build/libs/ArcFarms-0.10.0.jar`.
 
 ## Isolated gameplay QA
 

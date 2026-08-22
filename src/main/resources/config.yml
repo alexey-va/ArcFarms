@@ -51,6 +51,14 @@ farm-zones:
     care-targets: 4
     care-animal-entities: [CHICKEN, SHEEP]
     procedural-care-fixtures: true
+    placement-min-objective-distance: 10
+    placement-max-player-distance: 28
+    placement-search-radius: 32
+    music:
+      enabled: false
+      sound: minecraft:music.overworld.forest
+      duration-seconds: 180
+      volume: 0.65
     care-visuals:
       weed-root: {material: MANGROVE_ROOTS, custom-model-data: 0}
       valve: {material: TRIPWIRE_HOOK, custom-model-data: 0}

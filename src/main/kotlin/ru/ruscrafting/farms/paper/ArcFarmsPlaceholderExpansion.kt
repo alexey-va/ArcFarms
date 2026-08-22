@@ -1,0 +1,59 @@
+package ru.ruscrafting.farms.paper
+
+import me.clip.placeholderapi.expansion.PlaceholderExpansion
+import org.bukkit.Bukkit
+import org.bukkit.OfflinePlayer
+import ru.ruscrafting.farms.domain.ActivityKind
+
+class ArcFarmsPlaceholderExpansion(
+    private val version: String,
+    private val service: ArcFarmsService,
+) : PlaceholderExpansion() {
+    override fun getIdentifier(): String = "arcfarms"
+    override fun getAuthor(): String = "RusCrafting"
+    override fun getVersion(): String = version
+    override fun persist(): Boolean = true
+    override fun canRegister(): Boolean = true
+
+    override fun onRequest(player: OfflinePlayer?, params: String): String? {
+        return when (val request = FarmLeaderboardPlaceholder.parse(params)) {
+            FarmLeaderboardPlaceholder.PersonalScore -> player?.uniqueId?.let {
+                service.playerStats(it).contributions[ActivityKind.FARM] ?: 0L
+            }?.toString() ?: "0"
+            FarmLeaderboardPlaceholder.PersonalRank -> player?.uniqueId?.let(service::leaderboardRank)?.toString() ?: ""
+            is FarmLeaderboardPlaceholder.Top -> {
+                val entry = service.leaderboard(ActivityKind.FARM, request.rank).getOrNull(request.rank - 1) ?: return ""
+                val name = Bukkit.getOfflinePlayer(entry.first).name
+                when (request.field) {
+                    FarmLeaderboardPlaceholder.Field.NAME -> name ?: entry.first.toString().take(8)
+                    FarmLeaderboardPlaceholder.Field.SKIN -> name ?: entry.first.toString()
+                    FarmLeaderboardPlaceholder.Field.UUID -> entry.first.toString()
+                    FarmLeaderboardPlaceholder.Field.SCORE -> entry.second.toString()
+                }
+            }
+            null -> null
+        }
+    }
+}
+
+internal sealed interface FarmLeaderboardPlaceholder {
+    data object PersonalScore : FarmLeaderboardPlaceholder
+    data object PersonalRank : FarmLeaderboardPlaceholder
+    data class Top(val rank: Int, val field: Field) : FarmLeaderboardPlaceholder
+
+    enum class Field { NAME, SKIN, UUID, SCORE }
+
+    companion object {
+        private val TOP = Regex("farm_top_([1-9][0-9]?)_(name|skin|uuid|score)")
+
+        fun parse(raw: String): FarmLeaderboardPlaceholder? {
+            val normalized = raw.lowercase()
+            if (normalized == "farm_score") return PersonalScore
+            if (normalized == "farm_rank") return PersonalRank
+            val match = TOP.matchEntire(normalized) ?: return null
+            val rank = match.groupValues[1].toInt()
+            if (rank !in 1..50) return null
+            return Top(rank, Field.valueOf(match.groupValues[2].uppercase()))
+        }
+    }
+}

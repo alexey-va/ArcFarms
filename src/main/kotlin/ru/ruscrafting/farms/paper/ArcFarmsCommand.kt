@@ -311,7 +311,7 @@ class ArcFarmsCommand(
             }
             4 -> when {
                 args[0].equals("admin", true) && args[1].equals("point", true) ->
-                    listOf("tool", "seeds", "water", "crates", "receiving", "travel", "hive", "irrigation", "covers", "scarecrows", "pen")
+                    listOf("tool", "seeds", "water", "crates", "receiving", "travel", "hive", "irrigation", "covers", "scarecrows", "barn")
                         .filter { it.startsWith(args[3], true) }
                 args[0].equals("admin", true) && args[1].equals("stage", true) ->
                     (listOf("preparation", "planting", "harvesting") + CARE_STAGES + listOf("pests", "drought", "golden", "delivery", "complete", "reset"))
@@ -345,7 +345,7 @@ class ArcFarmsCommand(
         "irrigation" -> FarmPointKind.IRRIGATION
         "covers" -> FarmPointKind.COVERS
         "scarecrows" -> FarmPointKind.SCARECROWS
-        "pen" -> FarmPointKind.PEN
+        "barn", "pen" -> FarmPointKind.PEN
         else -> null
     }
 

@@ -25,4 +25,42 @@ class FarmGuidancePlannerTest : FunSpec({
         FarmDeliveryPlanner.selectAnchor(candidates, 0.5, 0.5, selectionIndex = 1) shouldBe candidates[1]
         FarmDeliveryPlanner.selectAnchor(candidates, 0.5, 0.5, selectionIndex = 2) shouldBe candidates[2]
     }
+
+    test("farm objects stay away from their objective and within reach of participants") {
+        val candidates = (1..40).map { x -> FarmDeliveryPosition("world", x + 0.5, 65.0, 0.5) }
+
+        val selected = FarmDeliveryPlanner.selectTargets(
+            candidates = candidates,
+            objectiveX = 0.5,
+            objectiveZ = 0.5,
+            participants = listOf(18.5 to 0.5),
+            minimumObjectiveDistance = 10.0,
+            maximumParticipantDistance = 12.0,
+            targetCount = 4,
+            selectionIndex = 3,
+        )
+
+        selected.size shouldBe 4
+        selected.all { it.x >= 10.5 } shouldBe true
+        selected.all { kotlin.math.abs(it.x - 18.5) <= 12.0 } shouldBe true
+        (selected.maxOf(FarmDeliveryPosition::x) - selected.minOf(FarmDeliveryPosition::x) >= 8.0) shouldBe true
+    }
+
+    test("farm object placement degrades to available safe ground in a tiny fixture") {
+        val candidates = listOf(
+            FarmDeliveryPosition("world", 1.5, 65.0, 0.5),
+            FarmDeliveryPosition("world", 2.5, 65.0, 0.5),
+        )
+
+        FarmDeliveryPlanner.selectTargets(
+            candidates,
+            objectiveX = 0.5,
+            objectiveZ = 0.5,
+            participants = listOf(100.0 to 100.0),
+            minimumObjectiveDistance = 10.0,
+            maximumParticipantDistance = 3.0,
+            targetCount = 4,
+            selectionIndex = 0,
+        ).toSet() shouldBe candidates.toSet()
+    }
 })

@@ -60,6 +60,10 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().careTargetCount shouldBe 4
         settings.farms.single().proceduralCareFixtures shouldBe true
         settings.farms.single().careAnimalEntities shouldContainExactly listOf("CHICKEN", "SHEEP")
+        settings.farms.single().music.enabled shouldBe false
+        settings.farms.single().placementMinObjectiveDistance shouldBe 10
+        settings.farms.single().placementMaxPlayerDistance shouldBe 28
+        settings.farms.single().placementSearchRadius shouldBe 32
         settings.farms.single().careVisuals.getValue(FarmCareRole.HIVE).material shouldBe "BEE_NEST"
         settings.farms.single().incidentTypes shouldContainExactly listOf(FarmIncidentType.PESTS, FarmIncidentType.DROUGHT)
         settings.farms.single().pestNestCount shouldBe 3
@@ -92,6 +96,10 @@ class ArcFarmsConfigTest : FunSpec({
         classicSettings.farms.single().careVisuals.getValue(FarmCareRole.VALVE).customModelData shouldBe 11_859
         classicSettings.farms.single().careVisuals.getValue(FarmCareRole.SCARECROW).customModelData shouldBe 12_160
         classicSettings.farms.single().careVisuals.getValue(FarmCareRole.PEN).customModelData shouldBe 11_864
+        classicSettings.farms.single().music.enabled shouldBe true
+        classicSettings.farms.single().music.sound shouldBe "arc:farm_valley_comes_alive"
+        classicSettings.farms.single().music.durationSeconds shouldBe 262
+        classicSettings.farms.single().music.volume shouldBe 0.65f
         classicSettings.menuBackground.enabled shouldBe true
         classicSettings.menuBackground.material shouldBe "GRAY_STAINED_GLASS_PANE"
         classicSettings.menuBackground.customModelData shouldBe 11_000

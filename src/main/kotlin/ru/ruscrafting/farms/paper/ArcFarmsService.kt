@@ -1,6 +1,8 @@
 package ru.ruscrafting.farms.paper
 
 import net.kyori.adventure.bossbar.BossBar
+import net.kyori.adventure.key.Key
+import net.kyori.adventure.sound.Sound as AdventureSound
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.JoinConfiguration
 import net.kyori.adventure.title.Title
@@ -77,6 +79,7 @@ import ru.ruscrafting.farms.domain.FarmGuidancePlanner
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmIncidentPlanner
 import ru.ruscrafting.farms.domain.FarmLocationOverrides
+import ru.ruscrafting.farms.domain.FarmMusicLoop
 import ru.ruscrafting.farms.domain.FarmPestNest
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPointKind
@@ -222,6 +225,8 @@ class ArcFarmsService(
     private var lumbermills: List<LumberRuntime> = emptyList()
     private var mines: List<MineRuntime> = emptyList()
     private var stats: MutableMap<UUID, PlayerActivityStats> = mutableMapOf()
+    private var farmLeaderboardCache: List<Pair<UUID, Long>> = emptyList()
+    private var farmLeaderboardDirty = true
     private val activeBars = mutableMapOf<BarKey, BossBar>()
     private val mineReservations = ConcurrentHashMap.newKeySet<String>()
     private val pendingPositions = ConcurrentHashMap<String, String>()
@@ -236,6 +241,7 @@ class ArcFarmsService(
     private val supplyVisualMaterials = mutableMapOf<SupplyKey, Material>()
     private val careEntities = mutableMapOf<CareEntityKey, MutableSet<UUID>>()
     private val animalFollowers = mutableMapOf<CareEntityKey, UUID>()
+    private val farmMusic = FarmMusicLoop()
     private val pollenCharges = mutableMapOf<UUID, Int>()
     private val waterFlows = mutableMapOf<String, FarmWaterFlowTracker>()
     private val droughtGrowth = mutableMapOf<String, DroughtGrowthRuntime>()
@@ -277,6 +283,7 @@ class ArcFarmsService(
         validatePersistedState(settings, persisted)
         validateMineJournalMaterials()
         stats = persisted.stats.toMutableMap()
+        farmLeaderboardDirty = true
         rebuild(persisted)
         cleanupOwnedFarmEntities()
         reconcileFarmPatches()
@@ -333,6 +340,7 @@ class ArcFarmsService(
     fun isOperational(): Boolean = started && !closed
 
     private fun replaceRuntime(candidate: ArcFarmsConfig, snapshot: ArcFarmsState, reason: String) {
+        stopAllFarmMusic(reason)
         clearTemporaryFarmWater(reason)
         droughtGrowth.clear()
         hideAllBars()
@@ -546,6 +554,7 @@ class ArcFarmsService(
             removeFarmServiceItems(player, fromFarm.settings.id, "left_zone")
         }
         if (toFarm != null && fromFarm !== toFarm) showFarmEntry(player, toFarm)
+        if (fromFarm !== toFarm) syncFarmMusic(player, toFarm, clock())
         deliveryCarriers.filterValues { it == player.uniqueId }.keys.toList().forEach { key ->
             farms.firstOrNull { it.settings.id == key.zoneId }?.let { runtime ->
                 handleDeliveryMovement(runtime, key, player, destination)
@@ -569,6 +578,7 @@ class ArcFarmsService(
     }
 
     fun onQuit(player: Player) {
+        stopFarmMusic(player, "player_quit")
         val keys = activeBars.keys.filter { it.playerId == player.uniqueId }
         keys.forEach { key -> activeBars.remove(key)?.let(player::hideBossBar) }
         deliveryCarriers.filterValues { it == player.uniqueId }.keys.toList().forEach { key ->
@@ -578,7 +588,10 @@ class ArcFarmsService(
         }
         removeFarmServiceItems(player, reason = "player_quit")
         pollenCharges.remove(player.uniqueId)
-        animalFollowers.entries.removeIf { it.value == player.uniqueId }
+        animalFollowers.filterValues { it == player.uniqueId }.keys.toList().forEach { key ->
+            val mob = careEntities[key].orEmpty().firstNotNullOfOrNull(Bukkit::getEntity) as? Mob
+            releaseAnimalFollower(key, mob, "player_quit")
+        }
         adminEditPlayers.remove(player.uniqueId)
     }
 
@@ -1337,11 +1350,29 @@ class ArcFarmsService(
     fun playerStats(playerId: UUID): PlayerActivityStats = stats[playerId] ?: PlayerActivityStats()
 
     fun leaderboard(kind: ActivityKind, limit: Int = 10): List<Pair<UUID, Long>> =
-        stats.entries
-            .map { it.key to (it.value.contributions[kind] ?: 0L) }
+        if (kind == ActivityKind.FARM) {
+            farmLeaderboard().take(limit.coerceIn(1, 50))
+        } else {
+            stats.entries
+                .map { it.key to (it.value.contributions[kind] ?: 0L) }
+                .filter { it.second > 0 }
+                .sortedWith(compareByDescending<Pair<UUID, Long>> { it.second }.thenBy { it.first.toString() })
+                .take(limit.coerceIn(1, 50))
+        }
+
+    fun leaderboardRank(playerId: UUID): Int? = farmLeaderboard().indexOfFirst { it.first == playerId }
+        .takeIf { it >= 0 }
+        ?.plus(1)
+
+    private fun farmLeaderboard(): List<Pair<UUID, Long>> {
+        if (!farmLeaderboardDirty) return farmLeaderboardCache
+        farmLeaderboardCache = stats.entries
+            .map { it.key to (it.value.contributions[ActivityKind.FARM] ?: 0L) }
             .filter { it.second > 0 }
             .sortedWith(compareByDescending<Pair<UUID, Long>> { it.second }.thenBy { it.first.toString() })
-            .take(limit.coerceIn(1, 50))
+        farmLeaderboardDirty = false
+        return farmLeaderboardCache
+    }
 
     fun canNavigate(kind: ActivityKind): Boolean = kind.configKey in settings.destinations
 
@@ -1387,6 +1418,9 @@ class ArcFarmsService(
 
     fun onJoin(player: Player) {
         removeFarmServiceItems(player, reason = "player_join")
+        Tasks.scheduler.runLater(1L) {
+            if (isOperational() && player.isOnline) syncFarmMusic(player, farmAt(player.location), clock())
+        }
         if (!settings.network.enabled) return
         network.claimTravelTicket(player.uniqueId, settings.serverId).whenComplete { ticket, failure ->
             if (!isOperational()) return@whenComplete
@@ -1899,7 +1933,7 @@ class ArcFarmsService(
             configured.indices.map { configured[(start + it) % configured.size] }
         }
         val selected = candidates.firstNotNullOfOrNull { type ->
-            buildFarmCareTargets(runtime, type)?.let { type to it }
+            buildFarmCareTargets(runtime, type, actor)?.let { type to it }
         }
         if (selected == null) {
             debug.event(
@@ -1918,7 +1952,7 @@ class ArcFarmsService(
         return true
     }
 
-    private fun buildFarmCareTargets(runtime: FarmRuntime, type: FarmCareType): List<FarmCareTarget>? {
+    private fun buildFarmCareTargets(runtime: FarmRuntime, type: FarmCareType, actor: Player?): List<FarmCareTarget>? {
         val patch = runtime.state.preparationPatch
         if (patch.isEmpty()) return null
         val count = runtime.settings.careTargetCount
@@ -1971,21 +2005,20 @@ class ArcFarmsService(
             }
             FarmCareType.ANIMAL_RESCUE -> {
                 val pen = careFixturePoint(runtime, FarmPointKind.PEN) ?: return null
-                val center = farmAreaCenter(patch)?.location() ?: return null
-                val safePoints = findDeliveryCandidates(runtime, center, runtime.settings.careRadius)
-                    .filter { candidate ->
-                        val dx = candidate.x - pen.x
-                        val dz = candidate.z - pen.z
-                        dx * dx + dz * dz >= 25.0
-                    }
+                val sources = farmPlacementSources(runtime, actor?.location)
+                val safePoints = FarmDeliveryPlanner.selectTargets(
+                    candidates = findDeliveryCandidates(runtime, sources, runtime.settings.placementSearchRadius),
+                    objectiveX = pen.x,
+                    objectiveZ = pen.z,
+                    participants = sources.map { it.x to it.z },
+                    minimumObjectiveDistance = runtime.settings.placementMinObjectiveDistance.toDouble(),
+                    maximumParticipantDistance = runtime.settings.placementMaxPlayerDistance.toDouble(),
+                    targetCount = count,
+                    selectionIndex = salt,
+                )
                     .map { FarmPointPosition(it.world, it.x, it.y, it.z) }
-                    .sortedWith(compareBy(FarmPointPosition::world, FarmPointPosition::x, FarmPointPosition::z))
                 if (safePoints.isEmpty()) return null
-                val targetCount = minOf(count, safePoints.size)
-                val startIndex = java.lang.Math.floorMod(salt, safePoints.size.toLong()).toInt()
-                List(targetCount) { index ->
-                    safePoints[(startIndex + index * safePoints.size / targetCount) % safePoints.size]
-                }.mapIndexed { index, position ->
+                safePoints.mapIndexed { index, position ->
                     FarmCareTarget(index, FarmCareRole.ANIMAL, position)
                 }
             }
@@ -2037,7 +2070,11 @@ class ArcFarmsService(
             FarmCareRole.ANIMAL -> {
                 val key = CareEntityKey(zoneId, targetId)
                 animalFollowers[key] = player.uniqueId
-                (entity as? Mob)?.pathfinder?.moveTo(player, 1.15)
+                (entity as? Mob)?.let { mob ->
+                    mob.isGlowing = true
+                    mob.setLeashHolder(player)
+                    mob.pathfinder.moveTo(player, 1.15)
+                }
                 sendActionBar(player, MessageKey.FARM_CARE_ANIMAL_FOLLOWING)
                 debug.event("farm_care_animal_following", "zone" to zoneId, "target" to targetId, "player" to player.name)
                 return
@@ -2704,6 +2741,7 @@ class ArcFarmsService(
                         Sound.ENTITY_PLAYER_LEVELUP,
                         title = true,
                     )
+                    playFarmStageFanfare(runtime, 0.95f)
                     persistAsync()
                 }
                 ShiftEvent.PLANTING_PROGRESS -> if (actor != null) {
@@ -2723,6 +2761,7 @@ class ArcFarmsService(
                 }
                 ShiftEvent.PREPARATION_COMPLETED -> {
                     successBurst(runtime.region)
+                    playFarmStageFanfare(runtime, 1.05f)
                     if (!initializeFarmCare(runtime, actor)) {
                         broadcast(
                             runtime.region,
@@ -2781,6 +2820,7 @@ class ArcFarmsService(
                         title = true,
                     )
                     successBurst(runtime.region)
+                    playFarmStageFanfare(runtime, 1.1f)
                     debug.event(
                         "farm_care_resolved",
                         "zone" to runtime.settings.id,
@@ -2838,6 +2878,7 @@ class ArcFarmsService(
                         title = true,
                     )
                     successBurst(runtime.region)
+                    playFarmStageFanfare(runtime, 1.15f)
                     network.signal(
                         NetworkSignal.FARM_RESCUED,
                         ActivityKind.FARM,
@@ -3062,6 +3103,13 @@ class ArcFarmsService(
     private fun startTasks() {
         tasks += Tasks.scheduler.runTimer(20L, 20L) { runGuarded("tick", ::tick) }
         tasks += Tasks.scheduler.runTimer(10L, 10L) { runGuarded("guidance_particles", ::emitGuidanceParticles) }
+        tasks += Tasks.scheduler.runTimer(5L, 5L) {
+            farms.forEach { runtime ->
+                runGuarded("farm_animals:${runtime.settings.id}") {
+                    if (!isAdminEditingFarm(runtime)) updateFarmCareAnimals(runtime)
+                }
+            }
+        }
         tasks += Tasks.scheduler.runTimer(1L, 1L) { runGuarded("carried_displays", ::updateCarriedDisplays) }
         tasks += Tasks.scheduler.runTimer(
             settings.saveSeconds * 20L,
@@ -3076,6 +3124,7 @@ class ArcFarmsService(
 
     private fun tick() {
         val now = clock()
+        Bukkit.getOnlinePlayers().forEach { player -> syncFarmMusic(player, farmAt(player.location), now) }
         farms.forEach { runtime ->
             runGuarded("farm:${runtime.settings.id}") {
                 if (isAdminEditingFarm(runtime)) return@runGuarded
@@ -3098,7 +3147,6 @@ class ArcFarmsService(
                 ensureFarmPests(runtime)
                 letPestsEatCrops(runtime)
                 ensureFarmCare(runtime)
-                updateFarmCareAnimals(runtime)
                 ensureFarmDelivery(runtime)
                 ensureFarmSupplies(runtime)
                 maintainWetFarmBeds(runtime)
@@ -3477,6 +3525,11 @@ class ArcFarmsService(
                 entity.persistentDataContainer.get(careRoleKey, PersistentDataType.STRING) == target.role.name
         }
         if (active.size == expected) {
+            if (target.role == FarmCareRole.ANIMAL) {
+                (active.singleOrNull() as? Mob)?.let { mob ->
+                    mob.isGlowing = true
+                }
+            }
             careEntities[key] = active.mapTo(mutableSetOf(), Entity::getUniqueId)
             return
         }
@@ -3497,6 +3550,7 @@ class ArcFarmsService(
             mob.removeWhenFarAway = false
             mob.isInvulnerable = true
             mob.isCollidable = false
+            mob.isGlowing = true
             markFarmCareEntity(mob, runtime, target.id, target.role)
             careEntities[key] = mutableSetOf(mob.uniqueId)
             debug.event("farm_care_animal_spawned", "zone" to runtime.settings.id, "target" to target.id, "entity" to typeName)
@@ -3592,23 +3646,35 @@ class ArcFarmsService(
                 player.isOnline && runtime.region.contains(player.location)
             }
             if (actor != null && mob.world == penLocation.world && mob.location.distanceSquared(penLocation) <= 9.0) {
-                animalFollowers.remove(key)
+                releaseAnimalFollower(key, mob, "delivered")
                 farmCareFeedback(actor, mob.location, FarmCareRole.ANIMAL, true)
                 applyFarmResult(runtime, FarmShiftEngine.advanceCare(runtime.state, target.id, actor.uniqueId), actor)
                 return@forEach
             }
             if (!runtime.region.contains(mob.location)) {
                 mob.teleport(Location(mob.world, target.position.x, target.position.y, target.position.z))
-                animalFollowers.remove(key)
+                releaseAnimalFollower(key, mob, "outside_zone")
                 return@forEach
             }
             if (actor == null) {
-                animalFollowers.remove(key)
-                mob.pathfinder.stopPathfinding()
+                releaseAnimalFollower(key, mob, "actor_unavailable")
             } else if (mob.location.distanceSquared(actor.location) > 2.25) {
-                mob.pathfinder.moveTo(actor, 1.15)
+                if (!mob.isLeashed || runCatching { mob.leashHolder }.getOrNull() != actor) mob.setLeashHolder(actor)
+                mob.pathfinder.moveTo(actor, 1.25)
+                pullFarmAnimalTowardHolder(mob, actor)
             }
         }
+    }
+
+    private fun pullFarmAnimalTowardHolder(mob: Mob, holder: Player) {
+        if (!mob.isOnGround || mob.world != holder.world) return
+        val delta = holder.location.toVector().subtract(mob.location.toVector()).setY(0.0)
+        val distance = delta.length()
+        if (distance <= 2.0) return
+        val speed = (0.16 + distance * 0.025).coerceAtMost(0.42)
+        val current = mob.velocity
+        val pull = delta.normalize().multiply(speed)
+        mob.velocity = current.multiply(0.25).setX(pull.x).setZ(pull.z)
     }
 
     private fun refreshActiveFarmCarePoint(runtime: FarmRuntime, kind: FarmPointKind, position: FarmPointPosition) {
@@ -3647,7 +3713,11 @@ class ArcFarmsService(
 
     private fun removeFarmCareEntities(key: CareEntityKey, reason: String) {
         val ids = careEntities.remove(key).orEmpty()
-        ids.forEach { Bukkit.getEntity(it)?.remove() }
+        ids.forEach { id ->
+            val entity = Bukkit.getEntity(id)
+            if (entity is Mob) releaseAnimalFollower(key, entity, reason)
+            entity?.remove()
+        }
         animalFollowers.remove(key)
         if (ids.isNotEmpty()) debug.event("farm_care_entities_removed", "zone" to key.zoneId, "target" to key.targetId, "reason" to reason)
     }
@@ -3655,6 +3725,15 @@ class ArcFarmsService(
     private fun clearFarmCare(runtime: FarmRuntime, reason: String) {
         careEntities.keys.filter { it.zoneId == runtime.settings.id }.toList().forEach { removeFarmCareEntities(it, reason) }
         players(runtime.region).forEach { pollenCharges.remove(it.uniqueId) }
+    }
+
+    private fun releaseAnimalFollower(key: CareEntityKey, mob: Mob?, reason: String) {
+        val playerId = animalFollowers.remove(key)
+        mob?.pathfinder?.stopPathfinding()
+        if (mob?.isLeashed == true) runCatching { mob.setLeashHolder(null) }
+        if (playerId != null) {
+            debug.event("farm_care_animal_released", "zone" to key.zoneId, "target" to key.targetId, "reason" to reason)
+        }
     }
 
     private fun careRoleColor(role: FarmCareRole): Color = when (role) {
@@ -4019,13 +4098,19 @@ class ArcFarmsService(
     }
 
     private fun selectDeliveryAnchor(runtime: FarmRuntime, source: Location): FarmDeliveryPosition {
-        val candidates = findDeliveryCandidates(runtime, source, runtime.settings.delivery.spawnRadius)
-        val selected = FarmDeliveryPlanner.selectAnchor(
-            candidates,
-            source.x,
-            source.z,
-            if (candidates.isEmpty()) 0 else random.nextInt(minOf(candidates.size, 24)),
-        )
+        val sources = farmPlacementSources(runtime, source)
+        val candidates = findDeliveryCandidates(runtime, sources, runtime.settings.placementSearchRadius)
+        val receiving = point(runtime, FarmPointKind.RECEIVING)
+        val selected = FarmDeliveryPlanner.selectTargets(
+            candidates = candidates,
+            objectiveX = receiving.x,
+            objectiveZ = receiving.z,
+            participants = sources.map { it.x to it.z },
+            minimumObjectiveDistance = runtime.settings.placementMinObjectiveDistance.toDouble(),
+            maximumParticipantDistance = runtime.settings.placementMaxPlayerDistance.toDouble(),
+            targetCount = 1,
+            selectionIndex = runtime.state.sequence + if (candidates.isEmpty()) 0 else random.nextInt(minOf(candidates.size, 24)),
+        ).firstOrNull()
         if (selected != null) {
             debug.event(
                 "farm_delivery_anchor_selected",
@@ -4044,6 +4129,27 @@ class ArcFarmsService(
         )
         return FarmDeliveryPosition(fallback.world, fallback.x, fallback.y, fallback.z)
     }
+
+    private fun farmPlacementSources(runtime: FarmRuntime, preferred: Location?): List<Location> {
+        val candidates = buildList {
+            preferred?.takeIf { it.world == runtime.region.world && runtime.region.contains(it) }?.let(::add)
+            players(runtime.region).map(Player::getLocation).forEach(::add)
+        }.distinctBy { Triple(it.blockX, it.blockY, it.blockZ) }
+        if (candidates.isNotEmpty()) return candidates.take(8)
+        val fallback = farmAreaCenter(runtime.state.preparationPatch)?.location()
+            ?: point(runtime, FarmPointKind.RECEIVING).let { Location(runtime.region.world, it.x, it.y, it.z) }
+        return listOf(fallback)
+    }
+
+    private fun findDeliveryCandidates(
+        runtime: FarmRuntime,
+        sources: Collection<Location>,
+        radius: Int,
+    ): List<FarmDeliveryPosition> = sources.asSequence()
+        .take(8)
+        .flatMap { source -> findDeliveryCandidates(runtime, source, radius).asSequence() }
+        .distinct()
+        .toList()
 
     private fun findDeliveryCandidates(
         runtime: FarmRuntime,
@@ -4973,7 +5079,7 @@ class ArcFarmsService(
                     }
                     else -> incomplete
                 }
-                visible.forEach { target ->
+                visible.filter { it.role != FarmCareRole.ANIMAL }.forEach { target ->
                     val world = Bukkit.getWorld(target.position.world) ?: return@forEach
                     if (player.world == world) {
                         spawnMissingPlotMarker(
@@ -5265,6 +5371,7 @@ class ArcFarmsService(
 
     private fun careFixturePoint(runtime: FarmRuntime, kind: FarmPointKind): FarmPointPosition? {
         farmLocations.zones[runtime.settings.id]?.get(kind)?.let { return it }
+        if (kind == FarmPointKind.PEN) return point(runtime, FarmPointKind.RECEIVING)
         val patch = runtime.state.preparationPatch
         if (patch.isEmpty()) return null
         if (kind == FarmPointKind.HIVE) {
@@ -5522,6 +5629,58 @@ class ArcFarmsService(
         showScreenTitle(player, MessageKey.FARM_ENTRY_TITLE, mapOf("action" to action), "zone_entry")
     }
 
+    private fun syncFarmMusic(player: Player, runtime: FarmRuntime?, now: Long) {
+        val music = runtime?.settings?.music?.takeIf { settings.sounds && it.enabled }
+        val transition = if (music == null) {
+            farmMusic.remove(player.uniqueId)
+        } else {
+            farmMusic.sync(
+                playerId = player.uniqueId,
+                desiredSound = music.sound,
+                now = now,
+                durationMillis = TimeUnit.SECONDS.toMillis(music.durationSeconds.toLong()),
+            )
+        }
+        transition.stopSound?.let { sound ->
+            player.stopSound(farmMusicSound(sound, 1.0f))
+            debug.event("farm_music_stopped", "player" to player.name, "sound" to sound)
+        }
+        transition.playSound?.let { sound ->
+            val volume = requireNotNull(music).volume
+            player.playSound(farmMusicSound(sound, volume), AdventureSound.Emitter.self())
+            debug.event(
+                "farm_music_started",
+                "player" to player.name,
+                "zone" to runtime.settings.id,
+                "sound" to sound,
+                "duration_seconds" to music.durationSeconds,
+            )
+        }
+    }
+
+    private fun stopFarmMusic(player: Player, reason: String) {
+        farmMusic.remove(player.uniqueId).stopSound?.let { sound ->
+            player.stopSound(farmMusicSound(sound, 1.0f))
+            debug.event("farm_music_stopped", "player" to player.name, "sound" to sound, "reason" to reason)
+        }
+    }
+
+    private fun stopAllFarmMusic(reason: String) {
+        farmMusic.clear().forEach { (playerId, sound) ->
+            Bukkit.getPlayer(playerId)?.takeIf(Player::isOnline)?.let { player ->
+                player.stopSound(farmMusicSound(sound, 1.0f))
+                debug.event("farm_music_stopped", "player" to player.name, "sound" to sound, "reason" to reason)
+            }
+        }
+    }
+
+    private fun farmMusicSound(sound: String, volume: Float): AdventureSound = AdventureSound.sound(
+        Key.key(sound),
+        AdventureSound.Source.MUSIC,
+        volume,
+        1.0f,
+    )
+
     private fun warningBurst(region: ActivityRegion) {
         if (!settings.particles) return
         players(region).forEach { player ->
@@ -5542,6 +5701,24 @@ class ArcFarmsService(
         if (!settings.sounds) return
         players(runtime.region).forEach { player ->
             player.playSound(player.location, sound, 0.85f, pitch)
+        }
+    }
+
+    private fun playFarmStageFanfare(runtime: FarmRuntime, basePitch: Float) {
+        if (!settings.sounds) return
+        val recipients = players(runtime.region).map(Player::getUniqueId)
+        recipients.mapNotNull(Bukkit::getPlayer).forEach { player ->
+            player.playSound(player.location, Sound.BLOCK_NOTE_BLOCK_CHIME, 0.65f, basePitch)
+        }
+        Tasks.scheduler.runLater(4L) {
+            recipients.mapNotNull(Bukkit::getPlayer).filter { runtime.region.contains(it.location) }.forEach { player ->
+                player.playSound(player.location, Sound.BLOCK_AMETHYST_BLOCK_CHIME, 0.6f, basePitch + 0.18f)
+            }
+        }
+        Tasks.scheduler.runLater(8L) {
+            recipients.mapNotNull(Bukkit::getPlayer).filter { runtime.region.contains(it.location) }.forEach { player ->
+                player.playSound(player.location, Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.55f, basePitch + 0.32f)
+            }
         }
     }
 
@@ -5604,6 +5781,7 @@ class ArcFarmsService(
 
     private fun recordContribution(playerId: UUID, kind: ActivityKind, amount: Int) {
         stats[playerId] = (stats[playerId] ?: PlayerActivityStats()).contribute(kind, amount)
+        if (kind == ActivityKind.FARM && amount > 0) farmLeaderboardDirty = true
     }
 
     private fun recordCompletion(kind: ActivityKind, contributors: Map<UUID, Int>) {
@@ -5718,6 +5896,7 @@ class ArcFarmsService(
         started = false
         val failures = mutableListOf<Throwable>()
         runCatching(::stopTasks).exceptionOrNull()?.let(failures::add)
+        runCatching { stopAllFarmMusic("plugin_close") }.exceptionOrNull()?.let(failures::add)
         runCatching { clearTemporaryFarmWater("plugin_close") }.exceptionOrNull()?.let(failures::add)
         runCatching(::hideAllBars).exceptionOrNull()?.let(failures::add)
         runCatching(::cleanupOwnedFarmEntities).exceptionOrNull()?.let(failures::add)

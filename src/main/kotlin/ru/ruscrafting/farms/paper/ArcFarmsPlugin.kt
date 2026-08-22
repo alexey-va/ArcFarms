@@ -28,6 +28,7 @@ class ArcFarmsPlugin : JavaPlugin() {
     private var farmLocationRepository: FarmLocationRepository? = null
     private var redis: RedisManager? = null
     private var network: ArcFarmsNetworkService? = null
+    private var placeholderExpansion: ArcFarmsPlaceholderExpansion? = null
 
     override fun onEnable() {
         saveDefaultConfig()
@@ -91,6 +92,13 @@ class ArcFarmsPlugin : JavaPlugin() {
             )
             service = activeService
             activeService.start()
+            if (server.pluginManager.isPluginEnabled("PlaceholderAPI")) {
+                placeholderExpansion = ArcFarmsPlaceholderExpansion(pluginMeta.version, activeService).also {
+                    require(it.register()) { "Could not register the PlaceholderAPI expansion" }
+                }
+            } else {
+                logger.warning("PlaceholderAPI is unavailable; ArcFarms leaderboard placeholders are disabled")
+            }
             val menu = ArcFarmsMenu(activeService, locale) { settings }
             val command = ArcFarmsCommand(activeService, locale, menu, ::reloadPlugin)
             requireNotNull(getCommand("arcfarms")).apply {
@@ -109,6 +117,8 @@ class ArcFarmsPlugin : JavaPlugin() {
     }
 
     override fun onDisable() {
+        runCatching { placeholderExpansion?.unregister() }
+        placeholderExpansion = null
         runCatching { service?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close ArcFarms service", it) }
         runCatching { network?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close ArcFarms network", it) }
         runCatching { redis?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close ArcFarms Redis", it) }
