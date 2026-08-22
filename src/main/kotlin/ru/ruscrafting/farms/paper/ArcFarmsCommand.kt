@@ -314,14 +314,14 @@ class ArcFarmsCommand(
                     listOf("tool", "seeds", "water", "crates", "receiving", "travel", "hive", "irrigation", "covers", "scarecrows", "barn")
                         .filter { it.startsWith(args[3], true) }
                 args[0].equals("admin", true) && args[1].equals("stage", true) ->
-                    (listOf("preparation", "planting", "harvesting") + CARE_STAGES + listOf("pests", "drought", "golden", "delivery", "complete", "reset"))
+                    (listOf("preparation", "planting", "harvesting") + CARE_STAGES + listOf("pests", "drought", "delivery", "complete", "reset"))
                         .filter { it.startsWith(args[3], true) }
                 args[0].equals("admin", true) && args[1].equals("event", true) ->
                     listOf("pests", "drought").filter { it.startsWith(args[3], true) }
                 args[0].equals("admin", true) && args[1].equals("care", true) ->
                     CARE_STAGES.filter { it.startsWith(args[3], true) }
                 args[0].equals("debug", true) && args[2].equals("stage", true) ->
-                    (listOf("preparation", "planting", "harvesting") + CARE_STAGES + listOf("pests", "drought", "golden", "delivery", "complete", "reset"))
+                    (listOf("preparation", "planting", "harvesting") + CARE_STAGES + listOf("pests", "drought", "delivery", "complete", "reset"))
                         .filter { it.startsWith(args[3], true) }
                 args[0].equals("debug", true) && args[2].equals("event", true) ->
                     listOf("pests", "drought").filter { it.startsWith(args[3], true) }

@@ -26,7 +26,11 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
     )
     private val writer = CoalescingAsyncWriter(store::saveAsync)
 
-    fun load(): ArcFarmsState = store.load()
+    fun load(): ArcFarmsState {
+        val state = store.load()
+        val farms = state.farms.mapValues { (_, farm) -> farm.withoutGoldenHarvest() }
+        return if (farms == state.farms) state else state.copy(farms = farms)
+    }
 
     fun saveAsync(state: ArcFarmsState): CompletableFuture<Unit> = writer.submit(state)
 
@@ -61,13 +65,13 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
         }
 
         private fun validateFarm(farm: FarmShiftState) {
-            validateSequenceAndTimes(farm.sequence, farm.startedAt, farm.goldenEndsAt, farm.cooldownEndsAt)
+            validateSequenceAndTimes(farm.sequence, farm.startedAt, farm.cooldownEndsAt)
             farm.orderId?.let { require(ZONE_ID.matches(it)) { "Farm order id is invalid" } }
             require(farm.progress.size <= 12 && farm.progress.keys.all(CONTENT_ID::matches)) {
                 "Farm crop progress is invalid"
             }
             require(farm.progress.values.all { it in 0..100_000 }) { "Farm crop progress is outside supported bounds" }
-            listOf(farm.preparationCrop, farm.incidentCrop, farm.goldenCrop).filterNotNull().forEach {
+            listOf(farm.preparationCrop, farm.incidentCrop).filterNotNull().forEach {
                 require(CONTENT_ID.matches(it)) { "Farm crop id is invalid" }
             }
             validateContributors(farm.contributors)
@@ -164,8 +168,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                         farm.incidentProgress == 0 && farm.incidentRequired == 0 && !farm.incidentResolved &&
                         farm.droughtPlots.isEmpty() && farm.droughtDamagedPlots.isEmpty() &&
                         !farm.pestNestsInitialized && farm.pestNests.isEmpty() && farm.pestAlive == 0 &&
-                        farm.pestDamagedCrops.isEmpty() && farm.goldenCrop == null && !farm.goldenUsed &&
-                        farm.goldenEndsAt == 0L && farm.deliveryPosition == null && farm.deliveredCrates.isEmpty() &&
+                        farm.pestDamagedCrops.isEmpty() && farm.deliveryPosition == null && farm.deliveredCrates.isEmpty() &&
                         farm.startedAt == 0L && farm.cooldownEndsAt == 0L && farm.contributors.isEmpty() &&
                         farm.outcome == ShiftOutcome.NONE,
                 ) { "Idle farm state contains an active shift" }
@@ -177,9 +180,6 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                     farm.incidentCrop != null && farm.incidentRequired > 0 &&
                         farm.incidentProgress < farm.incidentRequired && !farm.incidentResolved,
                 ) { "Active farm incident state is incomplete" }
-            }
-            if (farm.phase == FarmPhase.GOLDEN_HARVEST) {
-                require(farm.goldenCrop != null && farm.goldenEndsAt > 0) { "Golden harvest state is incomplete" }
             }
             if (farm.phase == FarmPhase.COOLDOWN) {
                 require(farm.outcome == ShiftOutcome.COMPLETED && farm.cooldownEndsAt > 0) { "Farm cooldown state is incomplete" }

@@ -12,6 +12,9 @@ activities: farm, lumbermill, and mine.
 - Keep shift state machines and persistence DTOs independent of Bukkit.
 - Use `Tasks.scheduler`; never schedule gameplay directly through Bukkit.
 - Farm, lumbermill, and mine must have different player verbs and phase flows.
+- A farm shift has one foreground objective. Resolving an incident resumes the
+  ordinary crop order directly; do not insert harvest multipliers or parallel
+  crop bonus windows between the incident and the next required crop.
 - Do not add money, item rewards, seasons, tract restoration, or world projects.
   Farm crops accepted by an order are consumed by that order and never drop;
   lumber and mine resources keep their existing material outcomes.

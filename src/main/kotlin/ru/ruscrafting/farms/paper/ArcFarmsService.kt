@@ -190,7 +190,7 @@ private const val FARM_WATER_RADIUS = 5
 private val FARM_TILL_COLOR = Color.fromRGB(255, 173, 66)
 private val FARM_PLANT_COLOR = Color.fromRGB(199, 120, 255)
 private val FARM_DROUGHT_COLOR = Color.fromRGB(255, 122, 69)
-private val FARM_GOLDEN_COLOR = Color.fromRGB(255, 200, 87)
+private val FARM_AMBER_COLOR = Color.fromRGB(255, 200, 87)
 private val FARM_DELIVERY_COLOR = Color.fromRGB(199, 120, 255)
 private val FARM_DANGER_COLOR = Color.fromRGB(255, 95, 109)
 private val FARM_SUCCESS_COLOR = Color.fromRGB(85, 217, 139)
@@ -404,16 +404,10 @@ class ArcFarmsService(
                     (runtime.state.incidentType ?: FarmIncidentType.PESTS) == FarmIncidentType.PESTS &&
                     runtime.state.pestNests.isEmpty() && runtime.state.pestAlive == 0
                 ) {
-                    currentOrder(runtime)?.let { order ->
+                    if (currentOrder(runtime) != null) {
                         applyFarmResult(
                             runtime,
-                            FarmShiftEngine.finishPestIncidentIfClear(
-                                runtime.state,
-                                order,
-                                runtime.rules,
-                                SYSTEM_PLAYER_ID,
-                                clock(),
-                            ),
+                            FarmShiftEngine.finishPestIncidentIfClear(runtime.state),
                             null,
                         )
                     }
@@ -717,8 +711,8 @@ class ArcFarmsService(
             val runtime = farms.firstOrNull { it.settings.id == nestZoneId } ?: return
             val position = pestNestPosition(event.entity) ?: return
             if (!hasAccess(attacker, runtime.settings.permission) || !runtime.region.contains(event.entity.location)) return
-            val order = currentOrder(runtime) ?: return
-            val result = FarmShiftEngine.damagePestNest(runtime.state, order, runtime.rules, position, attacker.uniqueId, clock())
+            currentOrder(runtime) ?: return
+            val result = FarmShiftEngine.damagePestNest(runtime.state, position, attacker.uniqueId)
             if (!result.accepted) return
             val remainingHealth = result.state.pestNests.firstOrNull { it.position == position }?.health ?: 0
             if (remainingHealth == 0) {
@@ -928,7 +922,7 @@ class ArcFarmsService(
             "scarecrows" to FarmCareType.SCARECROWS,
             "animals" to FarmCareType.ANIMAL_RESCUE,
         )
-        if (normalized !in setOf("preparation", "planting", "harvesting", "pests", "drought", "golden", "delivery", "complete", "reset") && normalized !in careStages) {
+        if (normalized !in setOf("preparation", "planting", "harvesting", "pests", "drought", "delivery", "complete", "reset") && normalized !in careStages) {
             sendChat(player, MessageKey.ADMIN_STAGE_UNKNOWN)
             return false
         }
@@ -1044,16 +1038,6 @@ class ArcFarmsService(
                     pestDamagedCrops = emptyList(),
                 )
             }
-            "golden" -> {
-                events = listOf(ShiftEvent.GOLDEN_STARTED)
-                runtime.state.copy(
-                    phase = FarmPhase.GOLDEN_HARVEST,
-                    goldenCrop = nextCrop,
-                    goldenUsed = true,
-                    goldenEndsAt = clock() + runtime.rules.goldenWindowMillis,
-                    incidentType = null,
-                )
-            }
             "delivery", "complete" -> {
                 events = listOf(ShiftEvent.DELIVERY_STARTED)
                 runtime.state.copy(
@@ -1063,7 +1047,6 @@ class ArcFarmsService(
                     pestNestsInitialized = false,
                     pestNests = emptyList(),
                     pestAlive = 0,
-                    goldenCrop = null,
                     deliveryPosition = selectDeliveryAnchor(runtime, player.location),
                     deliveredCrates = emptySet(),
                 )
@@ -1342,9 +1325,9 @@ class ArcFarmsService(
             )
             return
         }
-        val order = currentOrder(runtime) ?: return
+        currentOrder(runtime) ?: return
         debug.event("farm_pest_killed", "zone" to zoneId, "sequence" to sequence, "player" to killer.name, "entity" to entity.type)
-        applyFarmResult(runtime, FarmShiftEngine.defeatPest(runtime.state, order, runtime.rules, killer.uniqueId, clock()), killer)
+        applyFarmResult(runtime, FarmShiftEngine.defeatPest(runtime.state, killer.uniqueId), killer)
     }
 
     fun onEntityChangeBlock(event: EntityChangeBlockEvent) {
@@ -1580,7 +1563,6 @@ class ArcFarmsService(
                 FarmRules(
                     configured.incidentTriggerPercent,
                     configured.incidentQuota,
-                    configured.goldenWindowSeconds * 1000L,
                     settings.completedCooldownSeconds * 1000L,
                     configured.droughtTargetBeds(configured.preparationPatchSize),
                 ),
@@ -1654,9 +1636,6 @@ class ArcFarmsService(
                 }
                 require(state.incidentCrop == null || state.incidentCrop in order.required) {
                     "Persisted farm incident crop ${state.incidentCrop} is missing from $id"
-                }
-                require(state.goldenCrop == null || state.goldenCrop in order.required) {
-                    "Persisted farm golden crop ${state.goldenCrop} is missing from $id"
                 }
             }
             val region = requireNotNull(regionGateway.resolve(zone.reference)) { "Persisted farm region $id cannot be resolved" }
@@ -2974,17 +2953,6 @@ class ArcFarmsService(
                     )
                     persistAsync()
                 }
-                ShiftEvent.GOLDEN_STARTED -> broadcast(
-                    runtime.region,
-                    MessageKey.FARM_GOLDEN_STARTED,
-                    mapOf(
-                        "crop" to MaterialRules.cropComponent(MaterialRules.material(requireNotNull(runtime.state.goldenCrop))),
-                        "seconds" to locale.text(runtime.rules.goldenWindowMillis / 1000),
-                    ),
-                    Sound.ENTITY_PLAYER_LEVELUP,
-                    title = true,
-                )
-                ShiftEvent.GOLDEN_ENDED -> broadcast(runtime.region, MessageKey.FARM_GOLDEN_ENDED)
                 ShiftEvent.DELIVERY_STARTED -> {
                     broadcastStoryTitle(runtime, "delivery", Sound.BLOCK_BARREL_CLOSE) { player ->
                         locale.render(MessageKey.FARM_DELIVERY_STARTED, player) to emptyMap()
@@ -3232,7 +3200,7 @@ class ArcFarmsService(
                         return@runGuarded
                     }
                 }
-                val result = FarmShiftEngine.tick(runtime.state, currentOrder(runtime), runtime.rules, now)
+                val result = FarmShiftEngine.tick(runtime.state, currentOrder(runtime), now)
                 if (result.events.isNotEmpty()) applyFarmResult(runtime, result, null)
                 if (runtime.state.phase == FarmPhase.IDLE) {
                     players(runtime.region).firstOrNull()?.let { player ->
@@ -3345,7 +3313,6 @@ class ArcFarmsService(
                     } else {
                         MessageKey.FARM_INCIDENT_BOSSBAR
                     }
-                    FarmPhase.GOLDEN_HARVEST -> MessageKey.FARM_GOLDEN_BOSSBAR
                     FarmPhase.DELIVERY -> if (carrying) {
                         MessageKey.FARM_DELIVERY_CARRYING_BOSSBAR
                     } else {
@@ -3362,7 +3329,7 @@ class ArcFarmsService(
                             if (runtime.state.phase == FarmPhase.PLANTING) {
                                 runtime.state.preparationCrop
                             } else {
-                                runtime.state.goldenCrop ?: order.required.keys.firstOrNull()
+                                order.required.keys.firstOrNull()
                             },
                         ))),
                         "requirements" to farmRequirements(runtime, order),
@@ -3411,7 +3378,6 @@ class ArcFarmsService(
                         FarmPhase.PLANTING -> BossBar.Color.GREEN
                         FarmPhase.CARE -> BossBar.Color.BLUE
                         FarmPhase.INCIDENT -> BossBar.Color.RED
-                        FarmPhase.GOLDEN_HARVEST -> BossBar.Color.YELLOW
                         FarmPhase.DELIVERY -> BossBar.Color.PURPLE
                         else -> BossBar.Color.GREEN
                     },
@@ -3838,7 +3804,7 @@ class ArcFarmsService(
     private fun careRoleColor(role: FarmCareRole): Color = when (role) {
         FarmCareRole.WEED_ROOT -> Color.fromRGB(194, 137, 70)
         FarmCareRole.VALVE -> Color.fromRGB(79, 195, 247)
-        FarmCareRole.HIVE, FarmCareRole.FLOWER_PATCH -> FARM_GOLDEN_COLOR
+        FarmCareRole.HIVE, FarmCareRole.FLOWER_PATCH -> FARM_AMBER_COLOR
         FarmCareRole.COVER_ANCHOR -> Color.fromRGB(154, 140, 255)
         FarmCareRole.SCARECROW -> FARM_DANGER_COLOR
         FarmCareRole.ANIMAL, FarmCareRole.PEN -> FARM_SUCCESS_COLOR
@@ -4124,14 +4090,13 @@ class ArcFarmsService(
         )
         reachedImmediately.forEach { position -> position.block()?.let(::setWetFarmland) }
         val completedPatches = FarmWaterPlanner.completedPatchCount(droughtBefore, reachedImmediately)
-        val order = currentOrder(runtime)
-        if (order != null && reachedImmediately.isNotEmpty()) {
+        if (currentOrder(runtime) != null && reachedImmediately.isNotEmpty()) {
             var state = runtime.state
             var contribution = 0
             val events = mutableListOf<ShiftEvent>()
             reachedImmediately.forEach { position ->
                 state = state.copy(droughtPlots = state.droughtPlots - position)
-                val result = FarmShiftEngine.waterDrySoil(state, order, runtime.rules, player.uniqueId, clock())
+                val result = FarmShiftEngine.waterDrySoil(state, player.uniqueId)
                 state = result.state
                 contribution += result.contribution
                 result.events.forEach { event -> if (event !in events) events += event }
@@ -4795,16 +4760,10 @@ class ArcFarmsService(
             "nests" to nests.size,
         )
         if (nests.isEmpty()) {
-            val order = currentOrder(runtime) ?: return
+            currentOrder(runtime) ?: return
             applyFarmResult(
                 runtime,
-                FarmShiftEngine.finishPestIncidentIfClear(
-                    runtime.state,
-                    order,
-                    runtime.rules,
-                    SYSTEM_PLAYER_ID,
-                    clock(),
-                ),
+                FarmShiftEngine.finishPestIncidentIfClear(runtime.state),
                 null,
             )
             return
@@ -5286,14 +5245,14 @@ class ArcFarmsService(
             players(runtime.region).filter { it.world == world && !isAdminEditing(it) }.forEach { player ->
                 spawnGuidanceColumn(player, target, FARM_DELIVERY_COLOR)
                 spawnGuidanceRing(player, target, runtime.settings.delivery.radius, FARM_DELIVERY_COLOR)
-                crateTargets.forEach { location -> spawnMissingPlotMarker(player, location, FARM_GOLDEN_COLOR) }
+                crateTargets.forEach { location -> spawnMissingPlotMarker(player, location, FARM_AMBER_COLOR) }
             }
         }
         lumbermills.filter { it.state.phase == LumberPhase.FELLING }.forEach { runtime ->
             val species = runtime.state.species ?: return@forEach
             players(runtime.region).filterNot(::isAdminEditing).forEach { player ->
                 nearbyBlocks(player.location, runtime.region, 6, 5, 8) { MaterialRules.speciesOf(it.type) == species }.forEach { block ->
-                    spawnGuidanceDust(player, block.location.toCenterLocation().add(0.0, 0.8, 0.0), FARM_GOLDEN_COLOR)
+                    spawnGuidanceDust(player, block.location.toCenterLocation().add(0.0, 0.8, 0.0), FARM_AMBER_COLOR)
                 }
             }
         }
@@ -5369,10 +5328,10 @@ class ArcFarmsService(
             FarmPointKind.TOOL to FARM_TILL_COLOR,
             FarmPointKind.SEEDS to FARM_PLANT_COLOR,
             FarmPointKind.WATER to Color.fromRGB(79, 195, 247),
-            FarmPointKind.CRATES to FARM_GOLDEN_COLOR,
+            FarmPointKind.CRATES to FARM_AMBER_COLOR,
             FarmPointKind.RECEIVING to FARM_DELIVERY_COLOR,
             FarmPointKind.TRAVEL to FARM_SUCCESS_COLOR,
-            FarmPointKind.HIVE to FARM_GOLDEN_COLOR,
+            FarmPointKind.HIVE to FARM_AMBER_COLOR,
             FarmPointKind.IRRIGATION to Color.fromRGB(79, 195, 247),
             FarmPointKind.COVERS to Color.fromRGB(154, 140, 255),
             FarmPointKind.SCARECROWS to FARM_DANGER_COLOR,
@@ -5404,7 +5363,7 @@ class ArcFarmsService(
                 }
             }
             FarmPhase.HARVESTING, FarmPhase.GOLDEN_HARVEST -> listOfNotNull(
-                farmAreaCenter(runtime.state.preparationPatch)?.location()?.let { it to FARM_GOLDEN_COLOR },
+                farmAreaCenter(runtime.state.preparationPatch)?.location()?.let { it to FARM_AMBER_COLOR },
             )
             FarmPhase.INCIDENT -> when (runtime.state.incidentType) {
                 FarmIncidentType.DROUGHT -> clusterFarmPlots(runtime.state.droughtPlots, runtime.settings.droughtPatches)
@@ -6078,7 +6037,6 @@ class ArcFarmsService(
     }
 
     companion object {
-        private val SYSTEM_PLAYER_ID = UUID(0L, 0L)
         private const val MAX_INCIDENT_DAMAGED_CROPS = 4_096
         private const val MAX_INTERACTION_COOLDOWNS = 10_000
 
@@ -6090,7 +6048,6 @@ class ArcFarmsService(
             MessageKey.FARM_INCIDENT_STARTED to MessageKey.FARM_INCIDENT_STARTED_SUBTITLE,
             MessageKey.FARM_INCIDENT_RESOLVED to MessageKey.FARM_INCIDENT_RESOLVED_SUBTITLE,
             MessageKey.FARM_DROUGHT_STARTED to MessageKey.FARM_DROUGHT_STARTED_SUBTITLE,
-            MessageKey.FARM_GOLDEN_STARTED to MessageKey.FARM_GOLDEN_STARTED_SUBTITLE,
             MessageKey.FARM_DELIVERY_STARTED to MessageKey.FARM_DELIVERY_STARTED_SUBTITLE,
             MessageKey.FARM_DELIVERY_PICKED_UP to MessageKey.FARM_DELIVERY_PICKED_UP_SUBTITLE,
             MessageKey.FARM_CROP_COMPLETED to MessageKey.FARM_CROP_COMPLETED_SUBTITLE,

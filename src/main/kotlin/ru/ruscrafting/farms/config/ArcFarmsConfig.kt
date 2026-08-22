@@ -100,7 +100,6 @@ data class FarmZoneSettings(
     val pestSpawnChancePercent: Int,
     val pestEatRadius: Int,
     val pestEatPerPulse: Int,
-    val goldenWindowSeconds: Int,
     val supplies: FarmSupplySettings,
     val delivery: FarmDeliverySettings,
     val completionExperience: Int,
@@ -373,7 +372,6 @@ class ArcFarmsConfig private constructor(
                         .checked("pest-spawn-chance-percent", 1, 100),
                     pestEatRadius = section.int("pest-eat-radius", 3).checked("pest-eat-radius", 1, 8),
                     pestEatPerPulse = section.int("pest-eat-per-pulse", 8).checked("pest-eat-per-pulse", 1, 32),
-                    goldenWindowSeconds = section.int("golden-window-seconds", 45).checked("golden-window-seconds", 5, 600),
                     supplies = supplies,
                     delivery = delivery,
                     completionExperience = section.int("completion-experience", 75)

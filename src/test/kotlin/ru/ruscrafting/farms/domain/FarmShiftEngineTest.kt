@@ -10,7 +10,6 @@ class FarmShiftEngineTest : FunSpec({
     val rules = FarmRules(
         incidentTriggerPercent = 50,
         incidentQuota = 1,
-        goldenWindowMillis = 10_000,
         cooldownMillis = 5_000,
     )
     val player = UUID.fromString("00000000-0000-0000-0000-000000000001")
@@ -59,18 +58,19 @@ class FarmShiftEngineTest : FunSpec({
         blockedHarvest.accepted shouldBe false
         blockedHarvest.state shouldBe incident.state
 
-        val rescued = FarmShiftEngine.defeatPest(activePestEncounter(incident.state), order, rules, player, 4_000)
-        rescued.state.phase shouldBe FarmPhase.GOLDEN_HARVEST
+        val rescued = FarmShiftEngine.defeatPest(activePestEncounter(incident.state), player)
+        rescued.state.phase shouldBe FarmPhase.HARVESTING
         rescued.state.incidentResolved shouldBe true
-        rescued.state.goldenCrop shouldBe "CARROTS"
         rescued.events shouldContainExactly listOf(
             ShiftEvent.INCIDENT_PROGRESS,
             ShiftEvent.INCIDENT_RESOLVED,
-            ShiftEvent.GOLDEN_STARTED,
         )
 
-        val packed = FarmShiftEngine.harvest(rescued.state, order, rules, "CARROTS", player, 5_000)
-        packed.contribution shouldBe 2
+        val firstCarrot = FarmShiftEngine.harvest(rescued.state, order, rules, "CARROTS", player, 5_000)
+        firstCarrot.contribution shouldBe 1
+        firstCarrot.state.phase shouldBe FarmPhase.HARVESTING
+        val packed = FarmShiftEngine.harvest(firstCarrot.state, order, rules, "CARROTS", player, 5_100)
+        packed.contribution shouldBe 1
         packed.state.phase shouldBe FarmPhase.DELIVERY
         packed.events.last() shouldBe ShiftEvent.DELIVERY_STARTED
 
@@ -98,23 +98,24 @@ class FarmShiftEngineTest : FunSpec({
         state.phase shouldBe FarmPhase.INCIDENT
         state.incidentType shouldBe FarmIncidentType.DROUGHT
         state.incidentRequired shouldBe 4
-        FarmShiftEngine.defeatPest(state, order, droughtRules, player, 3_500).accepted shouldBe false
-        repeat(3) { state = FarmShiftEngine.waterDrySoil(state, order, droughtRules, player, 4_000L + it).state }
+        FarmShiftEngine.defeatPest(state, player).accepted shouldBe false
+        repeat(3) { state = FarmShiftEngine.waterDrySoil(state, player).state }
         state.phase shouldBe FarmPhase.INCIDENT
-        FarmShiftEngine.waterDrySoil(state, order, droughtRules, player, 5_000).state.phase shouldBe FarmPhase.GOLDEN_HARVEST
+        FarmShiftEngine.waterDrySoil(state, player).state.phase shouldBe FarmPhase.HARVESTING
     }
 
     test("completed farm emits completion once and remains quiet during cooldown") {
         var state = preparedState(order, rules, player)
         state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 2_000).state
         state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 3_000).state
-        state = FarmShiftEngine.defeatPest(activePestEncounter(state), order, rules, player, 4_000).state
-        val packed = FarmShiftEngine.harvest(state, order, rules, "CARROTS", player, 5_000)
+        state = FarmShiftEngine.defeatPest(activePestEncounter(state), player).state
+        state = FarmShiftEngine.harvest(state, order, rules, "CARROTS", player, 5_000).state
+        val packed = FarmShiftEngine.harvest(state, order, rules, "CARROTS", player, 5_050)
         val completed = FarmShiftEngine.deliver(packed.state, rules, 0, 1, player, 5_100)
 
         completed.events.last() shouldBe ShiftEvent.COMPLETED
         (5_200L..10_000L step 100).forEach { now ->
-            val nextTick = FarmShiftEngine.tick(completed.state, order, rules, now)
+            val nextTick = FarmShiftEngine.tick(completed.state, order, now)
             nextTick.accepted shouldBe false
             nextTick.events shouldContainExactly emptyList()
             nextTick.state shouldBe completed.state
@@ -122,22 +123,26 @@ class FarmShiftEngineTest : FunSpec({
         }
     }
 
-    test("golden window expires without ending or resetting the shared order") {
-        var state = preparedState(order, rules, player)
-        state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 2_000).state
-        state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 3_000).state
-        state = FarmShiftEngine.defeatPest(activePestEncounter(state), order, rules, player, 4_000).state
+    test("legacy golden state resumes ordinary harvesting without a multiplier") {
+        val legacy = FarmShiftState(
+            phase = FarmPhase.GOLDEN_HARVEST,
+            orderId = order.id,
+            progress = order.required.keys.associateWith { 0 },
+        )
 
-        val expired = FarmShiftEngine.tick(state, order, rules, 14_000)
-        expired.state.phase shouldBe FarmPhase.HARVESTING
-        expired.state.completed(order) shouldBe 2
-        expired.events shouldContainExactly listOf(ShiftEvent.GOLDEN_ENDED)
+        val harvested = FarmShiftEngine.harvest(legacy, order, rules, "WHEAT", player, 14_000)
+
+        harvested.accepted shouldBe true
+        harvested.state.phase shouldBe FarmPhase.HARVESTING
+        harvested.state.progress.getValue("WHEAT") shouldBe 1
+        harvested.contribution shouldBe 1
+        harvested.events shouldContainExactly listOf(ShiftEvent.PROGRESS)
     }
 
     test("farm objective and incident survive indefinite inactivity") {
         val started = FarmShiftEngine.start(FarmShiftState(sequence = 4), order, patch, "WHEAT", 1_000).state
         val partial = FarmShiftEngine.till(started, patch.first(), player).state
-        val afterMonth = FarmShiftEngine.tick(partial, order, rules, 2_592_002_000)
+        val afterMonth = FarmShiftEngine.tick(partial, order, 2_592_002_000)
 
         afterMonth.accepted shouldBe false
         afterMonth.state shouldBe partial
@@ -160,7 +165,7 @@ class FarmShiftEngineTest : FunSpec({
         }
         state.phase shouldBe FarmPhase.CARE
         state.careProgress() shouldBe 3
-        FarmShiftEngine.tick(state, order, rules, 2_592_002_000).state shouldBe state
+        FarmShiftEngine.tick(state, order, 2_592_002_000).state shouldBe state
 
         val resolved = FarmShiftEngine.advanceCare(state, 1, player)
         resolved.state.phase shouldBe FarmPhase.HARVESTING
@@ -191,7 +196,7 @@ class FarmShiftEngineTest : FunSpec({
         patch.forEach { state = FarmShiftEngine.till(state, it, player).state }
         state = FarmShiftEngine.plant(state, patch.first(), "WHEAT", player).state
 
-        val afterMonth = FarmShiftEngine.tick(state, order, rules, 2_592_002_000)
+        val afterMonth = FarmShiftEngine.tick(state, order, 2_592_002_000)
 
         afterMonth.accepted shouldBe false
         afterMonth.state shouldBe state
@@ -202,12 +207,13 @@ class FarmShiftEngineTest : FunSpec({
         var state = preparedState(order, rules, player)
         state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 2_000).state
         state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 3_000).state
-        state = FarmShiftEngine.defeatPest(activePestEncounter(state), order, rules, player, 4_000).state
+        state = FarmShiftEngine.defeatPest(activePestEncounter(state), player).state
         state = FarmShiftEngine.harvest(state, order, rules, "CARROTS", player, 5_000).state
+        state = FarmShiftEngine.harvest(state, order, rules, "CARROTS", player, 5_100).state
 
         state.phase shouldBe FarmPhase.DELIVERY
-        FarmShiftEngine.tick(state, order, rules, 2_592_005_000).state shouldBe state
-        FarmShiftEngine.tick(state, order, rules, 2_592_005_000).events shouldContainExactly emptyList()
+        FarmShiftEngine.tick(state, order, 2_592_005_000).state shouldBe state
+        FarmShiftEngine.tick(state, order, 2_592_005_000).events shouldContainExactly emptyList()
     }
 
     test("every configured harvest crate must be delivered exactly once") {
@@ -236,21 +242,20 @@ class FarmShiftEngineTest : FunSpec({
             incidentRequired = 2,
         )
 
-        val hit = FarmShiftEngine.damagePestNest(state, order, rules, patch.first(), player, 3_500)
+        val hit = FarmShiftEngine.damagePestNest(state, patch.first(), player)
         hit.state.pestNests.single().health shouldBe 1
         hit.state.phase shouldBe FarmPhase.INCIDENT
 
-        val killed = FarmShiftEngine.defeatPest(hit.state, order, rules, player, 3_600)
+        val killed = FarmShiftEngine.defeatPest(hit.state, player)
         killed.state.pestAlive shouldBe 0
         killed.state.phase shouldBe FarmPhase.INCIDENT
 
-        val destroyed = FarmShiftEngine.damagePestNest(killed.state, order, rules, patch.first(), player, 3_700)
+        val destroyed = FarmShiftEngine.damagePestNest(killed.state, patch.first(), player)
         destroyed.state.pestNests shouldBe emptyList()
-        destroyed.state.phase shouldBe FarmPhase.GOLDEN_HARVEST
+        destroyed.state.phase shouldBe FarmPhase.HARVESTING
         destroyed.events shouldContainExactly listOf(
             ShiftEvent.INCIDENT_PROGRESS,
             ShiftEvent.INCIDENT_RESOLVED,
-            ShiftEvent.GOLDEN_STARTED,
         )
     }
 })

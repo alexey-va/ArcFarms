@@ -128,9 +128,6 @@ enum class MessageKey(val path: String) {
     FARM_DROUGHT_STARTED_SUBTITLE("farm.drought-started-subtitle"),
     FARM_DROUGHT_TOOL("farm.drought-tool"),
     FARM_DROUGHT_PROGRESS("farm.drought-progress"),
-    FARM_GOLDEN_STARTED("farm.golden-started"),
-    FARM_GOLDEN_STARTED_SUBTITLE("farm.golden-started-subtitle"),
-    FARM_GOLDEN_ENDED("farm.golden-ended"),
     FARM_COMPLETED("farm.completed"),
     FARM_COMPLETED_SUBTITLE("farm.completed-subtitle"),
     FARM_DELIVERY_REQUIRED("farm.delivery-required"),
@@ -151,7 +148,6 @@ enum class MessageKey(val path: String) {
     FARM_BOSSBAR("farm.bossbar"),
     FARM_INCIDENT_BOSSBAR("farm.incident-bossbar"),
     FARM_DROUGHT_BOSSBAR("farm.drought-bossbar"),
-    FARM_GOLDEN_BOSSBAR("farm.golden-bossbar"),
     FARM_DELIVERY_BOSSBAR("farm.delivery-bossbar"),
     FARM_DELIVERY_CARRYING_BOSSBAR("farm.delivery-carrying-bossbar"),
     LUMBER_STARTED("lumber.started"),
@@ -256,7 +252,7 @@ class ArcFarmsLocale(
             FarmPointKind.entries.mapTo(this) { "admin.point.${it.name.lowercase()}" }
             listOf(
                 "preparation", "planting", "harvesting", "weeds", "irrigation", "pollination", "covers", "scarecrows",
-                "animals", "pests", "drought", "golden", "delivery", "complete", "reset",
+                "animals", "pests", "drought", "delivery", "complete", "reset",
             )
                 .mapTo(this) { "admin.stage.$it" }
             FarmCareType.entries.forEach { type ->

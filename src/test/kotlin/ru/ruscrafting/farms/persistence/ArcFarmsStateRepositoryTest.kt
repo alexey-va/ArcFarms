@@ -70,6 +70,41 @@ class ArcFarmsStateRepositoryTest : FunSpec({
         ArcFarmsStateRepository(root).use { repository -> repository.load() shouldBe loaded }
     }
 
+    test("legacy golden harvest is normalized to ordinary harvesting on load") {
+        val root = Files.createTempDirectory("arcfarms-state-golden-test")
+        val data = root.resolve("data")
+        Files.createDirectories(data)
+        Files.writeString(
+            data.resolve("state.json"),
+            """
+            {
+              "schemaVersion": 1,
+              "farms": {
+                "legacy_farm": {
+                  "phase": "GOLDEN_HARVEST",
+                  "sequence": 8,
+                  "orderId": "legacy_order",
+                  "progress": {"WHEAT": 3},
+                  "goldenCrop": "WHEAT",
+                  "goldenUsed": true,
+                  "startedAt": 1000,
+                  "goldenEndsAt": 999999,
+                  "outcome": "NONE",
+                  "contributors": {}
+                }
+              },
+              "lumbermills": {},
+              "mines": {},
+              "stats": {}
+            }
+            """.trimIndent(),
+        )
+
+        val loaded = ArcFarmsStateRepository(root).use(ArcFarmsStateRepository::load)
+
+        loaded.farms.getValue("legacy_farm").phase shouldBe FarmPhase.HARVESTING
+    }
+
     test("current farm state fields survive an atomic round trip") {
         val root = Files.createTempDirectory("arcfarms-state-current-test")
         val patch = listOf(

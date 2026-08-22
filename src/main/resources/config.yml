@@ -88,7 +88,6 @@ farm-zones:
     pest-spawn-chance-percent: 45
     pest-eat-radius: 3
     pest-eat-per-pulse: 8
-    golden-window-seconds: 45
     supplies:
       tool: {x: 212.5, y: 49.0, z: 448.5}
       seeds: {x: 212.5, y: 49.0, z: 453.5}

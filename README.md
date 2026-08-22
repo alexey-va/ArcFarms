@@ -101,10 +101,10 @@ normal vanilla reach, hydrates only the dry beds it actually reaches, and clears
 plants without creating crop or seed drops. ArcFarms tracks and removes every
 temporary flow after each pour. Managed plants remain absent
 until the entire drought is resolved, then their captured state is restored at
-once. Either incident pauses harvesting
-without resetting the main order. Resolving it starts a short golden-harvest
-window that doubles one remaining crop. When the crop quota is ready, an
-configured set of interactive harvest crates appears at the last crop. Players
+once. Either incident pauses harvesting without resetting the main order.
+Resolving it resumes the ordinary crop order at the next unfinished crop. When
+the crop quota is ready, a configured set of interactive harvest crates appears
+at the last crop. Players
 carry their visual displays to the configured receiving point; leaving the farm
 returns only the carried crate, while the shared delivery objective remains
 available indefinitely. Delivering every crate completes the order, restores
@@ -175,7 +175,7 @@ next cycle. Atomic Redis compare-and-set prevents duplicate cross-server stamps.
   operation point. Non-travel points must be inside the farm and off crop beds.
 - `/arcfarms admin points <zone>` — list the effective configured and overridden
   farm points.
-- `/arcfarms admin stage <zone> <preparation|planting|harvesting|weeds|irrigation|pollination|covers|scarecrows|animals|pests|drought|golden|delivery|complete|reset>` —
+- `/arcfarms admin stage <zone> <preparation|planting|harvesting|weeds|irrigation|pollination|covers|scarecrows|animals|pests|drought|delivery|complete|reset>` —
   switch the current farm to an exact QA stage while preserving normal recovery.
 - `/arcfarms admin next <zone>` — advance to the next useful QA stage.
 - `/arcfarms admin event <zone> <pests|drought>` — start an exact incident.
