@@ -56,8 +56,12 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().preparationPatchSize shouldBe 100
         settings.farms.single().preparationPatchMaxSize shouldBe 256
         settings.farms.single().preparationSearchRadius shouldBe 64
-        settings.farms.single().careTypes shouldContainExactly FarmCareType.entries
+        settings.farms.single().careTypes shouldContainExactly FarmCareType.entries.filterNot { it == FarmCareType.SEEDER }
         settings.farms.single().careTargetCount shouldBe 4
+        settings.farms.single().seederEveryShifts shouldBe 2
+        settings.farms.single().diseaseInitialSpots shouldBe 2
+        settings.farms.single().diseaseMaxSpots shouldBe 6
+        settings.farms.single().diseaseSpreadSeconds shouldBe 12
         settings.farms.single().proceduralCareFixtures shouldBe true
         settings.farms.single().careAnimalEntities shouldContainExactly listOf("CHICKEN", "SHEEP")
         settings.farms.single().music.enabled shouldBe false

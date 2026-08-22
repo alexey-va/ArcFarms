@@ -109,6 +109,12 @@ enum class MessageKey(val path: String) {
     FARM_CARE_POLLEN_TAKEN("farm.care-pollen-taken"),
     FARM_CARE_ANIMAL_FOLLOWING("farm.care-animal-following"),
     FARM_CARE_ANIMAL_PEN("farm.care-animal-pen"),
+    FARM_CARE_SEEDER_NAME("farm.care-seeder-name"),
+    FARM_CARE_SEEDER_FOLLOWING("farm.care-seeder-following"),
+    FARM_CARE_SEEDER_BLOCKED("farm.care-seeder-blocked"),
+    FARM_CARE_SEEDER_RESOLVED("farm.care-seeder-resolved"),
+    FARM_CARE_SEEDER_RESOLVED_SUBTITLE("farm.care-seeder-resolved-subtitle"),
+    FARM_CARE_DISEASE_SPREAD("farm.care-disease-spread"),
     FARM_WRONG_TARGET("farm.wrong-target"),
     FARM_CROP_ALREADY_COMPLETE("farm.crop-already-complete"),
     FARM_CROP_COMPLETED("farm.crop-completed"),
@@ -251,8 +257,8 @@ class ArcFarmsLocale(
             }
             FarmPointKind.entries.mapTo(this) { "admin.point.${it.name.lowercase()}" }
             listOf(
-                "preparation", "planting", "harvesting", "weeds", "irrigation", "pollination", "covers", "scarecrows",
-                "animals", "pests", "drought", "delivery", "complete", "reset",
+                "preparation", "planting", "harvesting", "seeder", "weeds", "irrigation", "pollination", "covers", "scarecrows",
+                "animals", "disease", "moles", "pests", "drought", "delivery", "complete", "reset",
             )
                 .mapTo(this) { "admin.stage.$it" }
             FarmCareType.entries.forEach { type ->

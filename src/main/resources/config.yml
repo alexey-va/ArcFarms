@@ -47,8 +47,12 @@ farm-zones:
     preparation-patch-max-size: 256
     preparation-search-radius: 64
     care-radius: 10
-    care-types: [WEEDS, IRRIGATION, POLLINATION, STORM_COVERS, SCARECROWS, ANIMAL_RESCUE]
+    care-types: [WEEDS, IRRIGATION, POLLINATION, STORM_COVERS, SCARECROWS, ANIMAL_RESCUE, DISEASE, MOLES]
     care-targets: 4
+    seeder-every-shifts: 2
+    disease-initial-spots: 2
+    disease-max-spots: 6
+    disease-spread-seconds: 12
     care-animal-entities: [CHICKEN, SHEEP]
     procedural-care-fixtures: true
     placement-min-objective-distance: 10
@@ -60,6 +64,8 @@ farm-zones:
       duration-seconds: 180
       volume: 0.65
     care-visuals:
+      seeder-horse: {material: SADDLE, custom-model-data: 0}
+      seeder-waypoint: {material: WHEAT_SEEDS, custom-model-data: 0}
       weed-root: {material: MANGROVE_ROOTS, custom-model-data: 0}
       valve: {material: TRIPWIRE_HOOK, custom-model-data: 0}
       hive: {material: BEE_NEST, custom-model-data: 0}
@@ -68,6 +74,8 @@ farm-zones:
       scarecrow: {material: CARVED_PUMPKIN, custom-model-data: 0}
       animal: {material: WHEAT_SEEDS, custom-model-data: 0}
       pen: {material: OAK_FENCE_GATE, custom-model-data: 0}
+      diseased-crop: {material: FERMENTED_SPIDER_EYE, custom-model-data: 0}
+      mole-mound: {material: MUD, custom-model-data: 0}
     incident-trigger-percent: 35
     incident-quota: 4
     drought-patches: 3

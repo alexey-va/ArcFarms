@@ -174,6 +174,68 @@ class FarmShiftEngineTest : FunSpec({
         resolved.state.contributors[player] shouldBe 8
     }
 
+    test("horse-drawn seeder plants persisted route groups before ordinary care") {
+        val planting = FarmShiftState(
+            phase = FarmPhase.PLANTING,
+            orderId = order.id,
+            preparationPatch = patch,
+            preparationCrop = "WHEAT",
+            preparationReleased = true,
+            tilledPlots = patch.toSet(),
+            preparationProgress = patch.size,
+            preparationRequired = patch.size,
+        )
+        val targets = listOf(
+            FarmCareTarget(0, FarmCareRole.SEEDER_HORSE, FarmPointPosition("world", 0.5, 65.0, 1.5)),
+            FarmCareTarget(1, FarmCareRole.SEEDER_WAYPOINT, FarmPointPosition("world", 1.5, 65.0, 1.5)),
+            FarmCareTarget(2, FarmCareRole.SEEDER_WAYPOINT, FarmPointPosition("world", 2.5, 65.0, 1.5)),
+        )
+        FarmShiftEngine.startCare(planting.copy(phase = FarmPhase.HARVESTING), FarmCareType.SEEDER, targets).accepted shouldBe false
+        var state = FarmShiftEngine.startCare(planting, FarmCareType.SEEDER, targets).state
+
+        state.phase shouldBe FarmPhase.CARE
+        state = FarmShiftEngine.advanceSeeder(state, 0, emptySet(), player).state
+        state = FarmShiftEngine.advanceSeeder(state, 1, setOf(patch[0]), player).state
+        state.phase shouldBe FarmPhase.CARE
+        state.plantedPlots shouldBe setOf(patch[0])
+        state.plantingProgress shouldBe 1
+
+        val incomplete = FarmShiftEngine.advanceSeeder(state, 2, emptySet(), player)
+        incomplete.accepted shouldBe false
+        incomplete.state shouldBe state
+
+        val completed = FarmShiftEngine.advanceSeeder(state, 2, setOf(patch[1]), player)
+        completed.state.phase shouldBe FarmPhase.HARVESTING
+        completed.state.plantedPlots shouldBe patch.toSet()
+        completed.state.plantingProgress shouldBe patch.size
+        completed.state.contributors[player] shouldBe 3
+        completed.events shouldContainExactly listOf(ShiftEvent.CARE_PROGRESS, ShiftEvent.CARE_RESOLVED)
+    }
+
+    test("crop disease adds bounded spots without resetting treated progress") {
+        val first = FarmCareTarget(
+            0,
+            FarmCareRole.DISEASED_CROP,
+            FarmPointPosition("world", 1.5, 65.0, 1.5),
+            required = 2,
+        )
+        var state = FarmShiftEngine.startCare(preparedState(order, rules, player), FarmCareType.DISEASE, listOf(first)).state
+        state = FarmShiftEngine.advanceCare(state, first.id, player).state
+        val second = FarmCareTarget(
+            1,
+            FarmCareRole.DISEASED_CROP,
+            FarmPointPosition("world", 2.5, 65.0, 1.5),
+            required = 2,
+        )
+
+        val spread = FarmShiftEngine.spreadDisease(state, second, maxSpots = 2)
+        spread.accepted shouldBe true
+        spread.state.careTargets.first().progress shouldBe 1
+        spread.state.careTargets.size shouldBe 2
+        FarmShiftEngine.spreadDisease(spread.state, second.copy(id = 2), maxSpots = 2).accepted shouldBe false
+        FarmShiftEngine.tick(spread.state, order, 2_592_002_000).state shouldBe spread.state
+    }
+
     test("one player can prepare a one hundred plot patch without duplicate progress") {
         val largePatch = (0 until 100).map { index ->
             FarmPlotPosition("world", index % 20, 64, index / 20 * 2)

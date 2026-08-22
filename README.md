@@ -35,20 +35,31 @@ tilling or planting progress.
 The active patch, tilling progress, and planting progress survive an empty
 farm, chunk unload, plugin reload, or process restart. Recovery replays an
 unfinished patch release idempotently and reconciles already tilled or planted
-blocks before accepting more actions. Once the patch is planted, the boss bar
-switches to one randomly selected field-care story before harvesting begins.
+blocks before accepting more actions. On every configured Nth shift,
+`seeder-every-shifts` replaces manual planting with a horse-drawn seeder: the
+player calls the glowing horse, keeps its visible leash, and leads it through a
+persisted route across the patch. Each reached waypoint plants its assigned
+part of the field; `0` disables this variant. After either planting path, the
+boss bar switches to one randomly selected field-care story before harvesting begins.
 Every story is spread across the active bed instead of clustering around its
 center:
 
 - weeds place several stubborn glowing roots that need two hoe strikes each;
-- irrigation exposes a chain of valves that must be opened in order;
+- irrigation exposes a chain of valves that must be opened in order; each
+  opened valve stays green, wets its linked beds, and extends the visible flow;
 - pollination asks the player to collect two charges from a hive and carry them
   to distant flower patches, returning to the hive as needed;
 - storm preparation distributes cover anchors around the actual field corners;
 - scarecrow duty asks the player to assemble several decoys in separate parts
   of the field;
 - animal rescue spawns glowing tagged farm animals, attaches a visible leash
-  when a player calls one, and leads them to the highlighted barn.
+  when a player calls one, and leads them to the highlighted barn;
+- crop disease begins with a few purple outbreaks. It spreads at a bounded
+  interval only while someone is present, never resets treated progress, and
+  stops at `disease-max-spots`; each outbreak needs two hoe treatments;
+- moles surface as glowing earth mounds. A hoe strike keeps the target's
+  persisted hit progress but moves it to a distant part of the same patch until
+  the mole is finally caught.
 
 The current instruction and exact progress remain in the boss bar. The next
 useful target has one restrained long-range particle column, while nearby
@@ -79,7 +90,7 @@ the best available safe position instead of making a story impossible.
 
 Three configured free-floating item displays stand on the path near the farm
 entrance, each with a short text label and interaction hitbox but no barrel or
-base block. During the matching phase they issue a tagged unbreakable hoe, the
+base block. At any time they issue a tagged unbreakable hoe, the
 required seeds, or one infinite service water bucket. These tools cannot be
 dropped, stored in another
 inventory, used for unrelated farm changes, carried outside the farm, or moved
@@ -168,18 +179,18 @@ next cycle. Atomic Redis compare-and-set prevents duplicate cross-server stamps.
 - `/arcfarms travel <farm|lumber|mine>` — route to the exact configured server,
   world, and location.
 - `/arcfarms reload` — validate and reload configuration/locales (admin).
-- `/arcfarms admin edit` — toggle deliberate farm-bed deletion and PDC cleanup
-  between shifts (admin).
+- `/arcfarms admin edit` — toggle deliberate farm-bed deletion and PDC cleanup;
+  edit mode stays authoritative even during an active scene (admin).
 - `/arcfarms admin point <zone> <tool|seeds|water|crates|receiving|travel|hive|irrigation|covers|scarecrows|barn>` —
   save the administrator's current world, coordinates, yaw, and pitch for a farm
   operation point. Non-travel points must be inside the farm and off crop beds.
 - `/arcfarms admin points <zone>` — list the effective configured and overridden
   farm points.
-- `/arcfarms admin stage <zone> <preparation|planting|harvesting|weeds|irrigation|pollination|covers|scarecrows|animals|pests|drought|delivery|complete|reset>` —
+- `/arcfarms admin stage <zone> <preparation|planting|harvesting|seeder|weeds|irrigation|pollination|covers|scarecrows|animals|disease|moles|pests|drought|delivery|complete|reset>` —
   switch the current farm to an exact QA stage while preserving normal recovery.
 - `/arcfarms admin next <zone>` — advance to the next useful QA stage.
 - `/arcfarms admin event <zone> <pests|drought>` — start an exact incident.
-- `/arcfarms admin care <zone> <weeds|irrigation|pollination|covers|scarecrows|animals>` —
+- `/arcfarms admin care <zone> <seeder|weeds|irrigation|pollination|covers|scarecrows|animals|disease|moles>` —
   start one exact field-care story, or report that its required fixture cannot
   be placed.
 - `/arcfarms debug <zone> status` — print the exact shift, patch, crop damage,
@@ -187,7 +198,7 @@ next cycle. Atomic Redis compare-and-set prevents duplicate cross-server stamps.
   used by the server.
 - `/arcfarms debug <zone> stage <stage>` / `event <pests|drought>` / `next` —
   force a deterministic QA transition without waiting for random gameplay.
-- `/arcfarms debug <zone> care <weeds|irrigation|pollination|covers|scarecrows|animals>` —
+- `/arcfarms debug <zone> care <seeder|weeds|irrigation|pollination|covers|scarecrows|animals|disease|moles>` —
   build a selected care scene immediately for visual and interaction QA.
 - `/arcfarms debug <zone> give <tool|seeds|water>` — issue the tagged service
   item for the requested interaction, even before that stage is active.
@@ -234,7 +245,7 @@ button.
 ../arc-core/gradlew clean check shadowJar
 ```
 
-The deployable artifact is `build/libs/ArcFarms-0.10.0.jar`.
+The deployable artifact is `build/libs/ArcFarms-0.11.0.jar`.
 
 ## Isolated gameplay QA
 

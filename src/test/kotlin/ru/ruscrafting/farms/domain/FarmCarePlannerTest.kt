@@ -37,4 +37,25 @@ class FarmCarePlannerTest : FunSpec({
         FarmCarePlanner.spread(tiny, 8, 0) shouldBe tiny
         FarmCarePlanner.corners(tiny) shouldBe tiny
     }
+
+    test("seeder route starts near the player and keeps dispersed waypoints") {
+        val route = FarmCarePlanner.route(field, 6, selectionIndex = 9, originX = -2.0, originZ = -2.0)
+
+        route.size shouldBe 6
+        route.distinct().size shouldBe 6
+        route.all { it in field } shouldBe true
+        route.first() shouldBe route.minBy { plot ->
+            val dx = plot.x + 2.5
+            val dz = plot.z + 2.5
+            dx * dx + dz * dz
+        }
+    }
+
+    test("moving underground target chooses space away from occupied mounds") {
+        val occupied = listOf(FarmPointPosition("world", 0.5, 65.0, 0.5))
+        val relocated = requireNotNull(FarmCarePlanner.relocate(field, occupied, selectionIndex = 3))
+
+        (relocated.x >= 10) shouldBe true
+        (relocated.z >= 8) shouldBe true
+    }
 })

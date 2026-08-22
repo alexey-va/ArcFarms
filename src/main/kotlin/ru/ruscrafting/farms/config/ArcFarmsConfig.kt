@@ -73,6 +73,10 @@ data class FarmZoneSettings(
     val careRadius: Int,
     val careTypes: List<FarmCareType>,
     val careTargetCount: Int,
+    val seederEveryShifts: Int,
+    val diseaseInitialSpots: Int,
+    val diseaseMaxSpots: Int,
+    val diseaseSpreadSeconds: Int,
     val careAnimalEntities: List<String>,
     val proceduralCareFixtures: Boolean,
     val careVisuals: Map<FarmCareRole, FarmCareVisualSettings>,
@@ -249,15 +253,20 @@ class ArcFarmsConfig private constructor(
                     .distinct()
                 require(incidentTypes.isNotEmpty()) { "Farm zone $id has no incident types" }
                 val careTypes = section.stringList("care-types")
-                    .ifEmpty { FarmCareType.entries.map(FarmCareType::name) }
+                    .ifEmpty { FarmCareType.entries.filterNot { it == FarmCareType.SEEDER }.map(FarmCareType::name) }
                     .map { value ->
                         runCatching { FarmCareType.valueOf(value.trim().uppercase()) }
                             .getOrElse { error("Farm zone $id has unknown care type: $value") }
                     }
                     .distinct()
                 require(careTypes.isNotEmpty()) { "Farm zone $id has no care types" }
+                require(FarmCareType.SEEDER !in careTypes) {
+                    "Farm zone $id must configure the seeder through seeder-every-shifts, not care-types"
+                }
                 val careVisualDefaults = mapOf(
                     FarmCareRole.WEED_ROOT to "MANGROVE_ROOTS",
+                    FarmCareRole.SEEDER_HORSE to "SADDLE",
+                    FarmCareRole.SEEDER_WAYPOINT to "WHEAT_SEEDS",
                     FarmCareRole.VALVE to "TRIPWIRE_HOOK",
                     FarmCareRole.HIVE to "BEE_NEST",
                     FarmCareRole.FLOWER_PATCH to "SUNFLOWER",
@@ -265,6 +274,8 @@ class ArcFarmsConfig private constructor(
                     FarmCareRole.SCARECROW to "CARVED_PUMPKIN",
                     FarmCareRole.ANIMAL to "WHEAT_SEEDS",
                     FarmCareRole.PEN to "OAK_FENCE_GATE",
+                    FarmCareRole.DISEASED_CROP to "FERMENTED_SPIDER_EYE",
+                    FarmCareRole.MOLE_MOUND to "MUD",
                 )
                 val careVisuals = careVisualDefaults.mapValues { (role, defaultMaterial) ->
                     val path = "care-visuals.${role.name.lowercase().replace('_', '-')}"
@@ -318,6 +329,13 @@ class ArcFarmsConfig private constructor(
                 require(placementSearchRadius >= placementMinObjectiveDistance) {
                     "Farm zone $id placement-search-radius must reach placement-min-objective-distance"
                 }
+                val diseaseInitialSpots = section.int("disease-initial-spots", 2)
+                    .checked("disease-initial-spots", 1, 16)
+                val diseaseMaxSpots = section.int("disease-max-spots", 6)
+                    .checked("disease-max-spots", 1, 32)
+                require(diseaseInitialSpots <= diseaseMaxSpots) {
+                    "Farm zone $id disease-initial-spots must not exceed disease-max-spots"
+                }
                 FarmZoneSettings(
                     id = id,
                     reference = reference,
@@ -329,6 +347,12 @@ class ArcFarmsConfig private constructor(
                     careRadius = section.int("care-radius", 10).checked("care-radius", 3, 24),
                     careTypes = careTypes,
                     careTargetCount = section.int("care-targets", 4).checked("care-targets", 2, 8),
+                    seederEveryShifts = section.int("seeder-every-shifts", 2)
+                        .checked("seeder-every-shifts", 0, 16),
+                    diseaseInitialSpots = diseaseInitialSpots,
+                    diseaseMaxSpots = diseaseMaxSpots,
+                    diseaseSpreadSeconds = section.int("disease-spread-seconds", 12)
+                        .checked("disease-spread-seconds", 3, 300),
                     careAnimalEntities = section.stringList("care-animal-entities")
                         .ifEmpty { listOf("CHICKEN", "SHEEP") }
                         .map(::entityName)

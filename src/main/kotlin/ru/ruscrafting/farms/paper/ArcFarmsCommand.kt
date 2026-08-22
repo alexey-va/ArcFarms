@@ -366,6 +366,8 @@ class ArcFarmsCommand(
     )
 
     companion object {
-        private val CARE_STAGES = listOf("weeds", "irrigation", "pollination", "covers", "scarecrows", "animals")
+        private val CARE_STAGES = listOf(
+            "seeder", "weeds", "irrigation", "pollination", "covers", "scarecrows", "animals", "disease", "moles",
+        )
     }
 }

@@ -36,15 +36,20 @@ enum class FarmIncidentType {
 }
 
 enum class FarmCareType {
+    SEEDER,
     WEEDS,
     IRRIGATION,
     POLLINATION,
     STORM_COVERS,
     SCARECROWS,
     ANIMAL_RESCUE,
+    DISEASE,
+    MOLES,
 }
 
 enum class FarmCareRole {
+    SEEDER_HORSE,
+    SEEDER_WAYPOINT,
     WEED_ROOT,
     VALVE,
     HIVE,
@@ -53,6 +58,8 @@ enum class FarmCareRole {
     SCARECROW,
     ANIMAL,
     PEN,
+    DISEASED_CROP,
+    MOLE_MOUND,
 }
 
 data class FarmCareTarget(
@@ -341,7 +348,12 @@ object FarmShiftEngine {
         type: FarmCareType,
         targets: List<FarmCareTarget>,
     ): EngineResult<FarmShiftState> {
-        if (current.phase != FarmPhase.HARVESTING || current.careType != null) {
+        val validSource = if (type == FarmCareType.SEEDER) {
+            current.phase == FarmPhase.PLANTING && current.plantingProgress == 0
+        } else {
+            current.phase == FarmPhase.HARVESTING
+        }
+        if (!validSource || current.careType != null) {
             return EngineResult(current, false)
         }
         require(targets.isNotEmpty() && targets.size <= 64) { "Farm care scene must contain 1..64 targets" }
@@ -355,6 +367,44 @@ object FarmShiftEngine {
             ),
             true,
             events = listOf(ShiftEvent.CARE_STARTED),
+        )
+    }
+
+    fun advanceSeeder(
+        current: FarmShiftState,
+        targetId: Int,
+        planted: Set<FarmPlotPosition>,
+        playerId: UUID,
+    ): EngineResult<FarmShiftState> {
+        if (current.phase != FarmPhase.CARE || current.careType != FarmCareType.SEEDER) {
+            return EngineResult(current, false)
+        }
+        require(planted.all(current.preparationPatch::contains)) { "Seeder planted outside the preparation patch" }
+        val target = current.careTargets.firstOrNull { it.id == targetId } ?: return EngineResult(current, false)
+        if (target.role !in setOf(FarmCareRole.SEEDER_HORSE, FarmCareRole.SEEDER_WAYPOINT)) {
+            return EngineResult(current, false)
+        }
+        if (target.role == FarmCareRole.SEEDER_HORSE && planted.isNotEmpty()) return EngineResult(current, false)
+        if (target.complete) return EngineResult(current, false)
+        val targets = current.careTargets.map { candidate ->
+            if (candidate.id == targetId) candidate.copy(progress = candidate.progress + 1) else candidate
+        }
+        val plantedPlots = current.plantedPlots + planted
+        val routeComplete = targets.all(FarmCareTarget::complete)
+        if (routeComplete && !plantedPlots.containsAll(current.preparationPatch)) return EngineResult(current, false)
+        val complete = routeComplete
+        val contribution = (plantedPlots.size - current.plantedPlots.size).coerceAtLeast(1)
+        return EngineResult(
+            current.copy(
+                phase = if (complete) FarmPhase.HARVESTING else FarmPhase.CARE,
+                careTargets = targets,
+                plantedPlots = plantedPlots,
+                plantingProgress = plantedPlots.size.coerceAtMost(current.preparationRequired),
+                contributors = incrementContribution(current.contributors, playerId, contribution),
+            ),
+            true,
+            contribution = contribution,
+            events = listOf(ShiftEvent.CARE_PROGRESS) + if (complete) listOf(ShiftEvent.CARE_RESOLVED) else emptyList(),
         )
     }
 
@@ -380,6 +430,28 @@ object FarmShiftEngine {
             contribution = 1,
             events = listOf(ShiftEvent.CARE_PROGRESS) + if (complete) listOf(ShiftEvent.CARE_RESOLVED) else emptyList(),
         )
+    }
+
+    fun spreadDisease(
+        current: FarmShiftState,
+        target: FarmCareTarget,
+        maxSpots: Int,
+    ): EngineResult<FarmShiftState> {
+        require(maxSpots in 1..32) { "Disease spread cap is invalid" }
+        if (current.phase != FarmPhase.CARE || current.careType != FarmCareType.DISEASE) {
+            return EngineResult(current, false)
+        }
+        if (target.role != FarmCareRole.DISEASED_CROP || current.careTargets.any { it.id == target.id }) {
+            return EngineResult(current, false)
+        }
+        val diseaseTargets = current.careTargets.filter { it.role == FarmCareRole.DISEASED_CROP }
+        if (diseaseTargets.size >= maxSpots) {
+            return EngineResult(current, false)
+        }
+        if (current.careTargets.firstOrNull()?.position?.world != target.position.world) {
+            return EngineResult(current, false)
+        }
+        return EngineResult(current.copy(careTargets = current.careTargets + target), true)
     }
 
     fun defeatPest(
