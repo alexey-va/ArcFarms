@@ -46,7 +46,6 @@ import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.event.player.PlayerTeleportEvent
-import org.bukkit.event.Event
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
@@ -252,20 +251,27 @@ class ArcFarmsService(
     private val careRoleKey = NamespacedKey(plugin, "farm_care_role")
     private val tasks = mutableListOf<ScheduledTask>()
     private var started = false
+    private var closed = false
+    private var stateSafeToPersist = false
+    private var persistenceSuspended = false
+    private var persistenceRequestedWhileSuspended = false
 
     fun start() {
-        check(!started) { "ArcFarms service is already started" }
+        check(!started && !closed) { "ArcFarms service cannot be started in its current lifecycle state" }
         farmLocations = farmLocationRepository.load()
         validateRuntime(settings)
+        validateLocationOverrides(settings)
         val persisted = stateRepository.load()
+        validatePersistedState(settings, persisted)
+        validateMineJournalMaterials()
         stats = persisted.stats.toMutableMap()
         rebuild(persisted)
-        validateLocationOverrides()
         cleanupOwnedFarmEntities()
         reconcileFarmPatches()
         farms.forEach(::ensureFarmSupplies)
         mineJournal.records().forEach { pendingPositions[it.positionKey] = it.id }
         startTasks()
+        stateSafeToPersist = true
         started = true
         plugin.logger.info(
             "ArcFarms ready: ${farms.size} farm, ${lumbermills.size} lumbermill, ${mines.size} mine zones; " +
@@ -273,23 +279,56 @@ class ArcFarmsService(
         )
     }
 
-    fun reload(candidate: ArcFarmsConfig) {
+    fun reload(candidate: ArcFarmsConfig, publishSettings: (ArcFarmsConfig) -> Unit) {
         check(started) { "ArcFarms service is not started" }
         val snapshot = snapshotState()
         validateReload(candidate, snapshot)
         validateRuntime(candidate)
+        validateLocationOverrides(candidate)
         persistBlocking()
-        stopTasks()
-        clearTemporaryFarmWater("reload")
+        val previous = settings
+        persistenceSuspended = true
+        persistenceRequestedWhileSuspended = false
+        publishSettings(candidate)
+        try {
+            stopTasks()
+            replaceRuntime(candidate, snapshot, "reload")
+        } catch (failure: Exception) {
+            plugin.logger.log(Level.SEVERE, "ArcFarms reload failed after runtime mutation; restoring the previous runtime", failure)
+            publishSettings(previous)
+            val rollback = runCatching {
+                stopTasks()
+                replaceRuntime(previous, snapshot, "reload_rollback")
+            }
+            if (rollback.isFailure) {
+                stateSafeToPersist = false
+                started = false
+                failure.addSuppressed(requireNotNull(rollback.exceptionOrNull()))
+                plugin.logger.log(Level.SEVERE, "ArcFarms reload rollback failed; the plugin must be disabled", rollback.exceptionOrNull())
+            }
+            persistenceRequestedWhileSuspended = false
+            persistenceSuspended = false
+            throw failure
+        }
+        persistenceSuspended = false
+        if (persistenceRequestedWhileSuspended) {
+            persistenceRequestedWhileSuspended = false
+            persistAsync()
+        }
+        plugin.logger.info("ArcFarms reloaded with ${farms.size + lumbermills.size + mines.size} zones")
+    }
+
+    fun isOperational(): Boolean = started && !closed
+
+    private fun replaceRuntime(candidate: ArcFarmsConfig, snapshot: ArcFarmsState, reason: String) {
+        clearTemporaryFarmWater(reason)
         hideAllBars()
         cleanupOwnedFarmEntities()
         settings = candidate
         rebuild(snapshot)
-        validateLocationOverrides()
         reconcileFarmPatches()
         farms.forEach(::ensureFarmSupplies)
         startTasks()
-        plugin.logger.info("ArcFarms reloaded with ${farms.size + lumbermills.size + mines.size} zones")
     }
 
     fun onBreakHigh(event: BlockBreakEvent) {
@@ -322,7 +361,6 @@ class ArcFarmsService(
             }
         }
         mineAt(event.block.location)?.let { runtime ->
-            if (event.isCancelled) return
             traceBlockBreak(event, ActivityKind.MINE, runtime.settings.id)
             handleMineBreak(event, runtime)
             return
@@ -333,7 +371,6 @@ class ArcFarmsService(
             return
         }
         lumberAt(event.block.location)?.let { runtime ->
-            if (event.isCancelled) return
             traceBlockBreak(event, ActivityKind.LUMBER, runtime.settings.id)
             handleLumberBreakHigh(event, runtime)
         }
@@ -376,9 +413,9 @@ class ArcFarmsService(
             event.isCancelled = true
             return
         }
-        if (event.useInteractedBlock() == Event.Result.DENY || event.useItemInHand() == Event.Result.DENY) return
         lumbermills.firstOrNull { it.station.contains(clicked.location) }?.let { runtime ->
             if (clicked.type !in runtime.stationMaterials) return@let
+            event.isCancelled = true
             debug.event(
                 "player_interact",
                 "player" to player.name,
@@ -393,8 +430,7 @@ class ArcFarmsService(
                 return
             }
             if (!allowInteraction("lumber:${runtime.settings.id}:${player.uniqueId}", 900)) return
-            val accepted = handleLumberProcessing(runtime, player)
-            if (accepted) event.isCancelled = true
+            handleLumberProcessing(runtime, player)
             return
         }
 
@@ -1251,7 +1287,9 @@ class ArcFarmsService(
         }
         sendActionBar(player, MessageKey.TRAVEL_PREPARING)
         network.createTravelTicket(player.uniqueId, kind, destination.server).whenComplete { created, failure ->
+            if (!isOperational()) return@whenComplete
             Tasks.scheduler.runSync {
+                if (!isOperational()) return@runSync
                 if (!player.isOnline) return@runSync
                 if (failure != null || created != true || !transfer.connect(player, destination.server)) {
                     debug.event(
@@ -1273,7 +1311,9 @@ class ArcFarmsService(
         removeFarmServiceItems(player, reason = "player_join")
         if (!settings.network.enabled) return
         network.claimTravelTicket(player.uniqueId, settings.serverId).whenComplete { ticket, failure ->
+            if (!isOperational()) return@whenComplete
             Tasks.scheduler.runLater(1L) {
+                if (!isOperational()) return@runLater
                 if (!player.isOnline) return@runLater
                 if (failure != null) {
                     debug.event("travel_claim_failed", "player" to player.name, "reason" to failure.javaClass.simpleName)
@@ -1313,7 +1353,9 @@ class ArcFarmsService(
         }
         val location = Location(world, destination.x, destination.y, destination.z, destination.yaw, destination.pitch)
         player.teleportAsync(location).whenComplete { success, failure ->
+            if (!isOperational()) return@whenComplete
             Tasks.scheduler.runSync {
+                if (!isOperational()) return@runSync
                 if (!player.isOnline) return@runSync
                 if (failure != null || success != true) {
                     debug.event(
@@ -1347,22 +1389,17 @@ class ArcFarmsService(
             }
             val orders = configured.orders.map { FarmOrder(it.id, it.required) }
             val orderMap = orders.associateBy(FarmOrder::id)
-            val restored = persisted.farms[configured.id]?.takeIf { state ->
-                state.orderId == null || (
-                    state.orderId in orderMap &&
-                        (state.preparationCrop == null || state.preparationCrop in orderMap.getValue(state.orderId).required) &&
-                        (state.phase != FarmPhase.CARE || state.careType != null && state.careTargets.isNotEmpty())
-                    )
-            }?.let { state ->
+            val restored = persisted.farms[configured.id]?.let { state ->
                 if (state.phase == FarmPhase.PREPARATION && state.preparationPatch.isEmpty()) {
                     state.copy(
                         phase = FarmPhase.HARVESTING,
+                        preparationCrop = null,
                         preparationProgress = state.preparationRequired,
                     )
                 } else {
                     state
                 }
-            } ?: FarmShiftState(sequence = persisted.farms[configured.id]?.sequence ?: 0)
+            } ?: FarmShiftState()
             FarmRuntime(
                 configured,
                 region,
@@ -1386,9 +1423,7 @@ class ArcFarmsService(
             val station = requireNotNull(regionGateway.resolve(configured.station)) {
                 "Lumber station ${configured.id} cannot resolve ${configured.station}"
             }
-            val restored = persisted.lumbermills[configured.id]?.takeIf { state ->
-                state.species == null || state.species in configured.species
-            } ?: LumberShiftState(sequence = persisted.lumbermills[configured.id]?.sequence ?: 0)
+            val restored = persisted.lumbermills[configured.id] ?: LumberShiftState()
             LumberRuntime(
                 configured,
                 region,
@@ -1425,7 +1460,59 @@ class ArcFarmsService(
         }
     }
 
+    private fun validatePersistedState(candidate: ArcFarmsConfig, persisted: ArcFarmsState) {
+        val farmZones = candidate.farms.associateBy(FarmZoneSettings::id)
+        persisted.farms.forEach { (id, state) ->
+            if (state.phase == FarmPhase.IDLE) return@forEach
+            val zone = farmZones[id]
+            if (zone == null && state.phase == FarmPhase.COOLDOWN && state.preparationPatch.isEmpty()) return@forEach
+            requireNotNull(zone) { "Persisted active farm zone $id is missing from config" }
+            if (state.phase != FarmPhase.COOLDOWN) {
+                val order = zone.orders.firstOrNull { it.id == state.orderId }
+                require(order != null) { "Persisted active farm order $id/${state.orderId} is missing from config" }
+                require(state.progress.keys == order.required.keys) { "Persisted farm order $id changed its crop set" }
+                require(state.progress.all { (crop, amount) -> amount <= order.required.getValue(crop) }) {
+                    "Persisted farm progress exceeds the configured order in $id"
+                }
+                require(state.preparationCrop == null || state.preparationCrop in order.required) {
+                    "Persisted farm preparation crop ${state.preparationCrop} is missing from $id"
+                }
+            }
+            val region = requireNotNull(regionGateway.resolve(zone.reference)) { "Persisted farm region $id cannot be resolved" }
+            require(state.preparationPatch.all { position ->
+                position.world == region.world.name && position.location()?.let(region::contains) == true
+            }) { "Persisted farm patch escaped region $id" }
+            state.deliveryPosition?.let { position ->
+                val location = Location(region.world, position.x, position.y, position.z)
+                require(position.world == region.world.name && region.contains(location)) {
+                    "Persisted farm delivery escaped region $id"
+                }
+            }
+        }
+
+        val lumberZones = candidate.lumbermills.associateBy(LumberZoneSettings::id)
+        persisted.lumbermills.forEach { (id, state) ->
+            if (state.phase in setOf(LumberPhase.IDLE, LumberPhase.COOLDOWN)) return@forEach
+            val zone = requireNotNull(lumberZones[id]) { "Persisted active lumber zone $id is missing from config" }
+            require(state.species in zone.species) { "Persisted lumber species ${state.species} is missing from $id" }
+        }
+
+        val mineIds = candidate.mines.mapTo(mutableSetOf(), MineZoneSettings::id)
+        persisted.mines.filterValues { it.phase !in setOf(MinePhase.IDLE, MinePhase.COOLDOWN) }.keys.forEach { id ->
+            require(id in mineIds) { "Persisted active mine zone $id is missing from config" }
+        }
+    }
+
+    private fun validateMineJournalMaterials() {
+        mineJournal.records().forEach { record ->
+            MaterialRules.material(record.originalMaterial)
+            MaterialRules.material(record.temporaryMaterial)
+            MaterialRules.material(record.nextMaterial)
+        }
+    }
+
     private fun validateReload(candidate: ArcFarmsConfig, snapshot: ArcFarmsState) {
+        validatePersistedState(candidate, snapshot)
         val farmZones = candidate.farms.associateBy(FarmZoneSettings::id)
         snapshot.farms.filterValues { it.phase !in setOf(FarmPhase.IDLE, FarmPhase.COOLDOWN) }.forEach { (id, state) ->
             val zone = farmZones[id]
@@ -1524,21 +1611,24 @@ class ArcFarmsService(
         }
     }
 
-    private fun validateLocationOverrides() {
+    private fun validateLocationOverrides(candidate: ArcFarmsConfig = settings) {
         farmLocations.zones.forEach { (zoneId, points) ->
-            val runtime = farms.firstOrNull { it.settings.id == zoneId }
+            val configured = candidate.farms.firstOrNull { it.id == zoneId }
                 ?: error("Farm location override references unknown zone $zoneId")
+            val region = requireNotNull(regionGateway.resolve(configured.reference)) {
+                "Farm location override cannot resolve zone $zoneId"
+            }
             points.forEach { (kind, point) ->
                 val world = requireNotNull(Bukkit.getWorld(point.world)) {
                     "Farm point $zoneId/$kind world ${point.world} is not loaded"
                 }
                 if (kind == FarmPointKind.TRAVEL) {
-                    require(settings.destinations.getValue(ActivityKind.FARM.configKey).server == settings.serverId) {
+                    require(candidate.destinations.getValue(ActivityKind.FARM.configKey).server == candidate.serverId) {
                         "Farm travel point can only be overridden on its destination server"
                     }
                 } else {
-                    require(runtime.region.contains(Location(world, point.x, point.y, point.z))) {
-                        "Farm point $zoneId/$kind is outside ${runtime.region.label}"
+                    require(region.contains(Location(world, point.x, point.y, point.z))) {
+                        "Farm point $zoneId/$kind is outside ${region.label}"
                     }
                 }
             }
@@ -2273,19 +2363,25 @@ class ArcFarmsService(
         event.isDropItems = false
         event.expToDrop = 0
         debug.event("farm_crop_committed", "player" to player.name, "zone" to runtime.settings.id, "crop" to crop, "drops" to "consumed_by_order")
+        val zoneId = runtime.settings.id
+        val sequence = runtime.state.sequence
         Tasks.scheduler.runLater(1L) {
+            val currentRuntime = farms.firstOrNull { it.settings.id == zoneId && it.state.sequence == sequence }
+                ?.takeIf { it.state.phase in setOf(FarmPhase.HARVESTING, FarmPhase.GOLDEN_HARVEST) }
+                ?: return@runLater
+            if (!isOperational()) return@runLater
             if (!block.type.isAir) return@runLater
             block.setBlockData(replantData, false)
             block.getRelative(org.bukkit.block.BlockFace.DOWN).takeIf { it.type == Material.FARMLAND }?.let { soil ->
-                farmBlockLedger.captureActiveCrop(soil, runtime.settings.id)
+                farmBlockLedger.captureActiveCrop(soil, currentRuntime.settings.id)
             }
             removeNewFarmDrops(block.location, 2.0, existingItems)
-            removeFarmDropInventoryGains(player, inventoryBefore, runtime.settings.id)
+            removeFarmDropInventoryGains(player, inventoryBefore, currentRuntime.settings.id)
             Tasks.scheduler.runLater(2L) {
                 removeNewFarmDrops(block.location, 2.0, existingItems)
-                removeFarmDropInventoryGains(player, inventoryBefore, runtime.settings.id)
+                removeFarmDropInventoryGains(player, inventoryBefore, currentRuntime.settings.id)
             }
-            handleFarmHarvest(runtime, player, crop.name)
+            handleFarmHarvest(currentRuntime, player, crop.name)
         }
     }
 
@@ -2326,16 +2422,20 @@ class ArcFarmsService(
         if (result.accepted && required != null && before < required && (result.state.progress[crop] ?: 0) >= required) {
             val next = nextRequiredCrop(result.state, order)
             if (next != null) {
+                val zoneId = runtime.settings.id
+                val sequence = result.state.sequence
                 val announce = {
-                    showScreenTitle(
-                        player,
-                        MessageKey.FARM_CROP_COMPLETED,
-                        mapOf(
-                            "crop" to MaterialRules.cropComponent(MaterialRules.material(crop)),
-                            "next" to MaterialRules.cropComponent(MaterialRules.material(next.key)),
-                            "amount" to locale.text(next.value - (result.state.progress[next.key] ?: 0)),
-                        ),
-                    )
+                    if (isOperational() && player.isOnline && farms.any { it.settings.id == zoneId && it.state.sequence == sequence }) {
+                        showScreenTitle(
+                            player,
+                            MessageKey.FARM_CROP_COMPLETED,
+                            mapOf(
+                                "crop" to MaterialRules.cropComponent(MaterialRules.material(crop)),
+                                "next" to MaterialRules.cropComponent(MaterialRules.material(next.key)),
+                                "amount" to locale.text(next.value - (result.state.progress[next.key] ?: 0)),
+                            ),
+                        )
+                    }
                 }
                 if (ShiftEvent.INCIDENT_STARTED in result.events) Tasks.scheduler.runLater(settings.titleStaySeconds * 20L + 10L, announce)
                 else announce()
@@ -2352,7 +2452,7 @@ class ArcFarmsService(
             sendChat(event.player, MessageKey.ZONE_LOCKED)
             return
         }
-        if (!MaterialRules.isLumberBreakable(event.block.type)) event.isCancelled = true
+        event.isCancelled = !MaterialRules.isLumberBreakable(event.block.type)
     }
 
     private fun handleLumberFell(runtime: LumberRuntime, player: Player, species: String) {
@@ -2444,11 +2544,24 @@ class ArcFarmsService(
         val originalMaterial = block.type
         val drops = block.getDrops(toolSnapshot, player).map { it.clone() }
         mineJournal.prepare(record).whenComplete { _, failure ->
+            if (!isOperational()) {
+                mineReservations.remove(positionKey)
+                return@whenComplete
+            }
             Tasks.scheduler.runSync {
                 if (failure != null) {
                     mineReservations.remove(positionKey)
                     if (player.isOnline) sendChat(player, MessageKey.MINE_JOURNAL_FAILED)
                     plugin.logger.log(Level.SEVERE, "Could not journal mine block ${record.id}", failure)
+                    return@runSync
+                }
+                if (!isOperational() || mines.none { it === runtime }) {
+                    mineReservations.remove(positionKey)
+                    mineJournal.remove(record.id).whenComplete { _, retireFailure ->
+                        if (retireFailure != null) {
+                            plugin.logger.log(Level.SEVERE, "Could not retire stale mine journal record ${record.id}", retireFailure)
+                        }
+                    }
                     return@runSync
                 }
                 if (block.type != originalMaterial) {
@@ -2460,7 +2573,7 @@ class ArcFarmsService(
                 pendingPositions[positionKey] = record.id
                 mineReservations.remove(positionKey)
                 drops.forEach { block.world.dropItemNaturally(block.location.toCenterLocation(), it) }
-                if (experience > 0) player.giveExp(experience)
+                if (experience > 0 && player.isOnline) player.giveExp(experience)
                 if (player.isOnline && player.gameMode != GameMode.CREATIVE) {
                     val currentTool = player.inventory.getItem(toolSlot)
                     if (currentTool != null && currentTool.isSimilar(toolSnapshot)) {
@@ -2898,13 +3011,13 @@ class ArcFarmsService(
     }
 
     private fun startTasks() {
-        tasks += Tasks.scheduler.runTimer(20L, 20L) { tick() }
-        tasks += Tasks.scheduler.runTimer(10L, 10L) { emitGuidanceParticles() }
-        tasks += Tasks.scheduler.runTimer(1L, 1L) { updateCarriedDisplays() }
+        tasks += Tasks.scheduler.runTimer(20L, 20L) { runGuarded("tick", ::tick) }
+        tasks += Tasks.scheduler.runTimer(10L, 10L) { runGuarded("guidance_particles", ::emitGuidanceParticles) }
+        tasks += Tasks.scheduler.runTimer(1L, 1L) { runGuarded("carried_displays", ::updateCarriedDisplays) }
         tasks += Tasks.scheduler.runTimer(
             settings.saveSeconds * 20L,
             settings.saveSeconds * 20L,
-        ) { persistAsync() }
+        ) { runGuarded("periodic_save", ::persistAsync) }
     }
 
     private fun stopTasks() {
@@ -2915,40 +3028,56 @@ class ArcFarmsService(
     private fun tick() {
         val now = clock()
         farms.forEach { runtime ->
-            if (runtime.state.phase == FarmPhase.COOLDOWN && runtime.state.preparationPatch.isNotEmpty()) {
-                if (restoreFarmPatchOriginal(runtime)) {
-                    clearFarmPatchState(runtime)
-                    persistAsync()
-                } else {
-                    return@forEach
+            runGuarded("farm:${runtime.settings.id}") {
+                if (runtime.state.phase == FarmPhase.COOLDOWN && runtime.state.preparationPatch.isNotEmpty()) {
+                    if (restoreFarmPatchOriginal(runtime)) {
+                        clearFarmPatchState(runtime)
+                        persistAsync()
+                    } else {
+                        return@runGuarded
+                    }
                 }
-            }
-            val result = FarmShiftEngine.tick(runtime.state, currentOrder(runtime), runtime.rules, now)
-            if (result.events.isNotEmpty()) applyFarmResult(runtime, result, null)
-            if (runtime.state.phase == FarmPhase.IDLE) {
-                players(runtime.region).firstOrNull()?.let { player ->
-                    tryStartFarmShift(runtime, player, now)
+                val result = FarmShiftEngine.tick(runtime.state, currentOrder(runtime), runtime.rules, now)
+                if (result.events.isNotEmpty()) applyFarmResult(runtime, result, null)
+                if (runtime.state.phase == FarmPhase.IDLE) {
+                    players(runtime.region).firstOrNull()?.let { player ->
+                        tryStartFarmShift(runtime, player, now)
+                    }
                 }
+                ensureFarmDroughtTargets(runtime)
+                ensureFarmPests(runtime)
+                letPestsEatCrops(runtime)
+                ensureFarmCare(runtime)
+                updateFarmCareAnimals(runtime)
+                ensureFarmDelivery(runtime)
+                ensureFarmSupplies(runtime)
+                maintainWetFarmBeds(runtime)
             }
-            ensureFarmDroughtTargets(runtime)
-            ensureFarmPests(runtime)
-            letPestsEatCrops(runtime)
-            ensureFarmCare(runtime)
-            updateFarmCareAnimals(runtime)
-            ensureFarmDelivery(runtime)
-            ensureFarmSupplies(runtime)
-            maintainWetFarmBeds(runtime)
         }
         lumbermills.forEach { runtime ->
-            val result = LumberShiftEngine.tick(runtime.state, runtime.rules, now)
-            if (result.events.isNotEmpty()) applyLumberResult(runtime, result, null)
+            runGuarded("lumber:${runtime.settings.id}") {
+                val result = LumberShiftEngine.tick(runtime.state, runtime.rules, now)
+                if (result.events.isNotEmpty()) applyLumberResult(runtime, result, null)
+            }
         }
         mines.forEach { runtime ->
-            val result = MineShiftEngine.tick(runtime.state, runtime.rules, now)
-            if (result.events.isNotEmpty()) applyMineResult(runtime, result, null)
+            runGuarded("mine:${runtime.settings.id}") {
+                val result = MineShiftEngine.tick(runtime.state, runtime.rules, now)
+                if (result.events.isNotEmpty()) applyMineResult(runtime, result, null)
+            }
         }
-        restoreMineBlocks(now)
-        updatePlayerGuidance()
+        runGuarded("mine_recovery") { restoreMineBlocks(now) }
+        runGuarded("player_guidance", ::updatePlayerGuidance)
+    }
+
+    private inline fun runGuarded(scope: String, action: () -> Unit) {
+        try {
+            action()
+        } catch (failure: Exception) {
+            if (allowInteraction("runtime-error:$scope", TimeUnit.MINUTES.toMillis(1))) {
+                plugin.logger.log(Level.SEVERE, "ArcFarms runtime task failed in $scope; other zones remain active", failure)
+            }
+        }
     }
 
     private fun restoreMineBlocks(now: Long) {
@@ -2958,7 +3087,13 @@ class ArcFarmsService(
             val block = world.getBlockAt(record.x, record.y, record.z)
             val temporary = runCatching { MaterialRules.material(record.temporaryMaterial) }.getOrNull()
             val next = runCatching { MaterialRules.material(record.nextMaterial) }.getOrNull()
-            if (temporary != null && next != null && block.type == temporary) block.setType(next, false)
+            if (temporary == null || next == null) {
+                if (allowInteraction("mine-journal-material:${record.id}", TimeUnit.MINUTES.toMillis(5))) {
+                    plugin.logger.severe("Mine journal record ${record.id} contains an unknown material and was retained for recovery")
+                }
+                return@forEach
+            }
+            if (block.type == temporary) block.setType(next, false)
             mineJournal.remove(record.id).whenComplete { _, failure ->
                 if (failure == null) pendingPositions.remove(record.positionKey, record.id)
                 else plugin.logger.log(Level.SEVERE, "Could not retire mine journal record ${record.id}", failure)
@@ -5400,9 +5535,19 @@ class ArcFarmsService(
     )
 
     private fun persistAsync() {
-        stateRepository.saveAsync(snapshotState()).whenComplete { _, failure ->
-            if (failure != null) plugin.logger.log(Level.SEVERE, "Could not persist ArcFarms state", failure)
+        if (persistenceSuspended) {
+            persistenceRequestedWhileSuspended = true
+            return
         }
+        runCatching { stateRepository.saveAsync(snapshotState()) }
+            .onSuccess { operation ->
+                operation.whenComplete { _, failure ->
+                    if (failure != null) plugin.logger.log(Level.SEVERE, "Could not persist ArcFarms state", failure)
+                }
+            }
+            .onFailure { failure ->
+                plugin.logger.log(Level.SEVERE, "Could not schedule ArcFarms state persistence", failure)
+            }
     }
 
     private fun persistBlocking() = stateRepository.saveBlocking(snapshotState())
@@ -5413,13 +5558,20 @@ class ArcFarmsService(
     }
 
     override fun close() {
-        if (!started) return
-        stopTasks()
-        clearTemporaryFarmWater("plugin_close")
-        hideAllBars()
-        cleanupOwnedFarmEntities()
-        persistBlocking()
+        if (closed) return
+        closed = true
         started = false
+        val failures = mutableListOf<Throwable>()
+        runCatching(::stopTasks).exceptionOrNull()?.let(failures::add)
+        runCatching { clearTemporaryFarmWater("plugin_close") }.exceptionOrNull()?.let(failures::add)
+        runCatching(::hideAllBars).exceptionOrNull()?.let(failures::add)
+        runCatching(::cleanupOwnedFarmEntities).exceptionOrNull()?.let(failures::add)
+        if (stateSafeToPersist) runCatching(::persistBlocking).exceptionOrNull()?.let(failures::add)
+        if (failures.isNotEmpty()) {
+            throw IllegalStateException("ArcFarms service shutdown completed with ${failures.size} failure(s)", failures.first()).also {
+                failures.drop(1).forEach(it::addSuppressed)
+            }
+        }
     }
 
     companion object {

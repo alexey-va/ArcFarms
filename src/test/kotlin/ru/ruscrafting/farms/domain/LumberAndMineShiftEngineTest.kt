@@ -69,4 +69,32 @@ class LumberAndMineShiftEngineTest : FunSpec({
         afterMonth.state shouldBe state
         afterMonth.events shouldBe emptyList()
     }
+
+    test("mine tick cannot skip an unresolved hazard after a quota reload") {
+        val rules = MineRules(cartQuota = 4, hazardTrigger = 2, supportsRequired = 2, cooldownMillis = 5_000)
+        val stale = MineShiftState(
+            phase = MinePhase.MINING,
+            sequence = 1,
+            cart = 6,
+            hazardResolved = false,
+            startedAt = 1_000,
+        )
+
+        val advanced = MineShiftEngine.tick(stale, rules, 2_000)
+
+        advanced.state.phase shouldBe MinePhase.HAZARD
+        advanced.state.supports shouldBe 0
+        advanced.events shouldContain ShiftEvent.HAZARD_STARTED
+    }
+
+    test("long-lived statistics saturate instead of wrapping negative") {
+        val stats = PlayerActivityStats(
+            contributions = mapOf(ActivityKind.FARM to Long.MAX_VALUE - 1),
+            completedShifts = mapOf(ActivityKind.FARM to Int.MAX_VALUE),
+        )
+
+        stats.contribute(ActivityKind.FARM, 10).contributions[ActivityKind.FARM] shouldBe Long.MAX_VALUE
+        stats.complete(ActivityKind.FARM).completedShifts[ActivityKind.FARM] shouldBe Int.MAX_VALUE
+        incrementContribution(mapOf(player to Int.MAX_VALUE), player, 1)[player] shouldBe Int.MAX_VALUE
+    }
 })

@@ -25,6 +25,16 @@ class FarmLocationRepository(dataRoot: Path) : AutoCloseable {
             require(points.size <= ru.ruscrafting.farms.domain.FarmPointKind.entries.size) {
                 "Farm location override contains too many points"
             }
+            points.values.forEach { point ->
+                require(point.world.matches(Regex("[A-Za-z0-9._-]{1,128}"))) { "Invalid farm point world" }
+                require(listOf(point.x, point.y, point.z).all(Double::isFinite)) { "Invalid farm point coordinates" }
+                require(point.x in -30_000_000.0..30_000_000.0 && point.z in -30_000_000.0..30_000_000.0) {
+                    "Farm point is outside the world border"
+                }
+                require(point.y in -2_048.0..2_048.0 && point.yaw.isFinite() && point.pitch.isFinite() && point.pitch in -90f..90f) {
+                    "Farm point rotation or height is invalid"
+                }
+            }
         }
     }
 }

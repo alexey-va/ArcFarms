@@ -88,8 +88,9 @@ class ArcFarmsPlugin : JavaPlugin() {
                 transfer = BungeeBackendTransfer(this),
                 debug = debug,
                 regionGateway = regionGateway,
-            ).also { it.start() }
+            )
             service = activeService
+            activeService.start()
             val menu = ArcFarmsMenu(activeService, locale) { settings }
             val command = ArcFarmsCommand(activeService, locale, menu, ::reloadPlugin)
             requireNotNull(getCommand("arcfarms")).apply {
@@ -128,8 +129,17 @@ class ArcFarmsPlugin : JavaPlugin() {
         require(candidate.network.enabled == settings.network.enabled) { "network.enabled requires a restart" }
         ArcFarmsLocale.validateFiles(dataRoot, candidate)
         ConfigManager.reloadAll()
-        requireNotNull(service).reload(candidate)
-        settings = candidate
+        val previous = settings
+        try {
+            requireNotNull(service).reload(candidate) { active -> settings = active }
+        } catch (failure: Exception) {
+            settings = previous
+            if (service?.isOperational() != true) {
+                logger.log(Level.SEVERE, "ArcFarms became inoperable during reload and will be disabled", failure)
+                server.pluginManager.disablePlugin(this)
+            }
+            throw failure
+        }
     }
 
     private fun saveResourceIfMissing(path: String) {

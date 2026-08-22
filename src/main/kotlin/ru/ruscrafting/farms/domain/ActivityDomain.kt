@@ -52,7 +52,8 @@ internal fun incrementContribution(
     delta: Int,
 ): Map<UUID, Int> {
     if (delta <= 0) return current
-    return current + (playerId to (current[playerId] ?: 0) + delta)
+    val updated = ((current[playerId] ?: 0).toLong() + delta).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+    return current + (playerId to updated)
 }
 
 internal fun winner(contributors: Map<UUID, Int>): UUID? =

@@ -146,7 +146,14 @@ object MineShiftEngine {
         if (current.phase == MinePhase.COOLDOWN && now >= current.cooldownEndsAt) {
             return EngineResult(MineShiftState(sequence = current.sequence), true, events = listOf(ShiftEvent.RESET))
         }
-        if (current.phase == MinePhase.MINING && current.cart >= rules.cartQuota) {
+        if (current.phase == MinePhase.MINING && !current.hazardResolved && current.cart >= rules.hazardTrigger) {
+            return EngineResult(
+                current.copy(phase = MinePhase.HAZARD, supports = 0),
+                true,
+                events = listOf(ShiftEvent.HAZARD_STARTED),
+            )
+        }
+        if (current.phase == MinePhase.MINING && current.hazardResolved && current.cart >= rules.cartQuota) {
             return EngineResult(
                 current.copy(phase = MinePhase.EXTRACTION),
                 true,

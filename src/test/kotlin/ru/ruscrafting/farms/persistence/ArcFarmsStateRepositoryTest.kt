@@ -13,7 +13,12 @@ import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmShiftState
+import ru.ruscrafting.farms.domain.LumberPhase
+import ru.ruscrafting.farms.domain.LumberShiftState
+import ru.ruscrafting.farms.domain.MinePhase
+import ru.ruscrafting.farms.domain.MineShiftState
 import java.nio.file.Files
+import java.util.UUID
 import java.util.concurrent.ExecutionException
 
 class ArcFarmsStateRepositoryTest : FunSpec({
@@ -87,6 +92,7 @@ class ArcFarmsStateRepositoryTest : FunSpec({
                     plantingProgress = 2,
                     preparationRequired = 2,
                     deliveryPosition = FarmDeliveryPosition("world", 10.5, 64.0, -3.5),
+                    contributors = mapOf(UUID(0, 1) to Int.MAX_VALUE),
                 ),
                 "drought_farm" to FarmShiftState(
                     phase = FarmPhase.INCIDENT,
@@ -145,6 +151,43 @@ class ArcFarmsStateRepositoryTest : FunSpec({
                     tilledPlots = setOf(escaped),
                     preparationProgress = 1,
                     preparationRequired = 1,
+                ),
+            ),
+        )
+
+        ArcFarmsStateRepository(root).use { repository ->
+            val failure = shouldThrow<ExecutionException> { repository.saveBlocking(invalid) }
+            (failure.cause is IllegalArgumentException) shouldBe true
+        }
+    }
+
+    test("state persistence rejects active lumber without a species") {
+        val root = Files.createTempDirectory("arcfarms-state-invalid-lumber-test")
+        val invalid = ArcFarmsState(
+            lumbermills = mapOf(
+                "lumber" to LumberShiftState(
+                    phase = LumberPhase.FELLING,
+                    sequence = 1,
+                    startedAt = 1_000,
+                ),
+            ),
+        )
+
+        ArcFarmsStateRepository(root).use { repository ->
+            val failure = shouldThrow<ExecutionException> { repository.saveBlocking(invalid) }
+            (failure.cause is IllegalArgumentException) shouldBe true
+        }
+    }
+
+    test("state persistence rejects extraction before the mine hazard is resolved") {
+        val root = Files.createTempDirectory("arcfarms-state-invalid-mine-test")
+        val invalid = ArcFarmsState(
+            mines = mapOf(
+                "mine" to MineShiftState(
+                    phase = MinePhase.EXTRACTION,
+                    sequence = 1,
+                    cart = 20,
+                    startedAt = 1_000,
                 ),
             ),
         )

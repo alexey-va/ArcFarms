@@ -7,11 +7,20 @@ data class PlayerActivityStats(
     val completedShifts: Map<ActivityKind, Int> = emptyMap(),
 ) {
     fun contribute(kind: ActivityKind, amount: Int): PlayerActivityStats =
-        copy(contributions = contributions + (kind to (contributions[kind] ?: 0L) + amount.coerceAtLeast(0)))
+        copy(
+            contributions = contributions + (
+                kind to saturatingAdd(contributions[kind] ?: 0L, amount.coerceAtLeast(0).toLong())
+            ),
+        )
 
-    fun complete(kind: ActivityKind): PlayerActivityStats =
-        copy(completedShifts = completedShifts + (kind to (completedShifts[kind] ?: 0) + 1))
+    fun complete(kind: ActivityKind): PlayerActivityStats {
+        val current = completedShifts[kind] ?: 0
+        return copy(completedShifts = completedShifts + (kind to if (current == Int.MAX_VALUE) current else current + 1))
+    }
 }
+
+private fun saturatingAdd(left: Long, right: Long): Long =
+    if (Long.MAX_VALUE - left < right) Long.MAX_VALUE else left + right
 
 data class ArcFarmsState(
     val schemaVersion: Int = SCHEMA_VERSION,

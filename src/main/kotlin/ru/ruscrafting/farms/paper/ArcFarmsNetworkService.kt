@@ -51,10 +51,15 @@ class ArcFarmsNetworkService(
     fun start() {
         check(!started) { "ArcFarms network service is already started" }
         listener = repository.registerEvents(::receive)
-        refreshWorkday()
-        tasks += Tasks.scheduler.runLater(60L) { probe() }
-        tasks += Tasks.scheduler.runTimer(1_200L, 1_200L) { maintain() }
         started = true
+        try {
+            refreshWorkday()
+            tasks += Tasks.scheduler.runLater(60L) { probe() }
+            tasks += Tasks.scheduler.runTimer(1_200L, 1_200L) { maintain() }
+        } catch (failure: Exception) {
+            close()
+            throw failure
+        }
         debug.event("network_started", "server" to settings().serverId, "announcements" to settings().network.playerAnnouncementsEnabled)
     }
 
@@ -362,6 +367,7 @@ class ArcFarmsNetworkService(
     private fun refreshWorkday() {
         if (!settings().network.enabled || !settings().network.workdayEnabled) return
         repository.loadWorkday().whenComplete { state, failure ->
+            if (!started) return@whenComplete
             if (failure == null) updateWorkday(state)
             else plugin.logger.log(Level.WARNING, "ArcFarms network workday is temporarily unavailable; local activities remain active", failure)
         }
@@ -398,13 +404,13 @@ class ArcFarmsNetworkService(
     }
 
     override fun close() {
+        started = false
         tasks.forEach(ScheduledTask::cancel)
         tasks.clear()
         listener?.let(repository::unregisterEvents)
         listener = null
         seenEvents.clear()
         pendingProbes.clear()
-        started = false
     }
 
     private val ActivityKind.configKey: String
