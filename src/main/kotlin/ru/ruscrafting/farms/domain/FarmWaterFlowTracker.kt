@@ -63,5 +63,9 @@ class FarmWaterFlowTracker {
 
     fun isActive(flowId: Long): Boolean = flowId in positionsByFlow
 
+    fun activeFlowCount(): Int = positionsByFlow.size
+
+    fun trackedBlockCount(): Int = flowsByPosition.size
+
     fun isEmpty(): Boolean = positionsByFlow.isEmpty()
 }

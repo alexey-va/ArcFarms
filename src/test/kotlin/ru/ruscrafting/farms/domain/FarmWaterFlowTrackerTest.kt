@@ -16,10 +16,14 @@ class FarmWaterFlowTrackerTest : FunSpec({
         tracker.propagate(firstSource, shared) shouldBe setOf(1L)
         tracker.propagate(secondSource, shared) shouldBe setOf(2L)
         tracker.owners(shared) shouldBe setOf(1L, 2L)
+        tracker.activeFlowCount() shouldBe 2
+        tracker.trackedBlockCount() shouldBe 3
 
         tracker.finish(1).shouldContainExactlyInAnyOrder(firstSource)
         tracker.owners(shared) shouldBe setOf(2L)
         tracker.finish(2).shouldContainExactlyInAnyOrder(secondSource, shared)
+        tracker.activeFlowCount() shouldBe 0
+        tracker.trackedBlockCount() shouldBe 0
         tracker.isEmpty() shouldBe true
     }
 

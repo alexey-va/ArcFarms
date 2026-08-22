@@ -11,7 +11,7 @@ admin-edit:
   active-shift: '<color:#ff6b6b>Wait for the current shift to finish first.</color>'
   block-removed: '<color:#ffb86b>The bed is no longer managed by ArcFarms.</color>'
 admin:
-  help: '<prefix> <gray>Farm admin:</gray> <white>edit</white>, <white>point &lt;zone&gt; &lt;tool|seeds|water|crates|receiving|travel&gt;</white>, <white>points &lt;zone&gt;</white>, <white>stage &lt;zone&gt; &lt;stage&gt;</white>, <white>next &lt;zone&gt;</white>, <white>event &lt;zone&gt; &lt;pests|drought&gt;</white>.'
+  help: '<prefix> <gray>Farm admin:</gray> <white>edit</white>, <white>point &lt;zone&gt; &lt;point&gt;</white>, <white>points &lt;zone&gt;</white>, <white>stage &lt;zone&gt; &lt;stage&gt;</white>, <white>next &lt;zone&gt;</white>, <white>event &lt;zone&gt; &lt;pests|drought&gt;</white>. For testing: <white>/arcfarms debug</white>.'
   zone-unknown: '<prefix> <red>Farm <zone> was not found.</red>'
   point-outside: '<prefix> <red>This point must be inside the farm region.</red>'
   point-on-bed: '<prefix> <red>Place this point on a path or platform, not on a crop bed.</red>'
@@ -20,6 +20,16 @@ admin:
   points-entry: '<dark_gray>•</dark_gray> <point> <gray>— <world> <x> <y> <z></gray>'
   stage-set: '<prefix> <green>Farm stage set:</green> <stage>'
   stage-unknown: '<prefix> <red>Unknown farm stage.</red>'
+  debug:
+    help: '<prefix> <gray>Farm test:</gray> <white>/arcfarms debug &lt;zone&gt; status</white> <dark_gray>│</dark_gray> <gray>actions:</gray> <white>stage, next, event, give, show, points, reset</white>'
+    header: '<prefix> <gold>Farm diagnostics: <zone></gold>'
+    shift: '<dark_gray>Shift</dark_gray> <gray>Stage:</gray> <phase> <dark_gray>│</dark_gray> <gray>#</gray><white><sequence></white> <dark_gray>│</dark_gray> <gray>Order:</gray> <order> <white><done>/<total></white>'
+    patch: '<dark_gray>Field</dark_gray> <gray>Beds:</gray> <white><size></white> <dark_gray>│</dark_gray> <gray>tilled:</gray> <white><tilled></white> <dark_gray>│</dark_gray> <gray>planted:</gray> <white><planted></white> <dark_gray>│</dark_gray> <gray>damaged:</gray> <white><damaged></white>'
+    incident: '<dark_gray>Incident</dark_gray> <incident> <dark_gray>│</dark_gray> <gray>dry:</gray> <white><dry></white> <dark_gray>│</dark_gray> <gray>water:</gray> <white><flows> flows, <water> blocks</white> <dark_gray>│</dark_gray> <gray>nests:</gray> <white><nests></white> <gray>(spawned <spawned>)</gray> <dark_gray>│</dark_gray> <gray>pests:</gray> <white><alive>/<entities></white>'
+    delivery: '<dark_gray>Delivery</dark_gray> <gray>Crates:</gray> <white><done>/<total></white> <dark_gray>│</dark_gray> <gray>carried:</gray> <white><carriers></white>'
+    supply-given: '<prefix> <green>Test item given:</green> <supply>'
+    inventory-full: '<prefix> <red>Free one inventory slot first.</red>'
+    highlighted: '<prefix> <green>Active targets and configured points are highlighted for 5 seconds.</green>'
   point:
     tool: '<white>hoe</white>'
     seeds: '<white>seeds</white>'
@@ -55,9 +65,6 @@ menu:
   stats:
     name: '<yellow>Your Contribution</yellow>'
     lore: '<gray>Farm: <green><farm></green> · Wood: <gold><lumber></gold> · Mine: <aqua><mine></aqua></gray>'
-  admin:
-    name: '<red>Reload ArcFarms</red>'
-    lore: '<gray>Validate and apply config.yml and locale files.</gray>'
   click: '<yellow>Click to travel there.</yellow>'
   remote: '<gray>This worksite is on another server.</gray>'
   workday:

@@ -11,7 +11,7 @@ admin-edit:
   active-shift: '<color:#ff6b6b>Сначала дождитесь завершения текущей смены.</color>'
   block-removed: '<color:#ffb86b>Грядка удалена из управления ArcFarms.</color>'
 admin:
-  help: '<prefix> <gray>Админ фермы:</gray> <white>edit</white>, <white>point &lt;зона&gt; &lt;tool|seeds|water|crates|receiving|travel&gt;</white>, <white>points &lt;зона&gt;</white>, <white>stage &lt;зона&gt; &lt;этап&gt;</white>, <white>next &lt;зона&gt;</white>, <white>event &lt;зона&gt; &lt;pests|drought&gt;</white>.'
+  help: '<prefix> <gray>Админ фермы:</gray> <white>edit</white>, <white>point &lt;зона&gt; &lt;точка&gt;</white>, <white>points &lt;зона&gt;</white>, <white>stage &lt;зона&gt; &lt;этап&gt;</white>, <white>next &lt;зона&gt;</white>, <white>event &lt;зона&gt; &lt;pests|drought&gt;</white>. Для тестов: <white>/arcfarms debug</white>.'
   zone-unknown: '<prefix> <red>Ферма <zone> не найдена.</red>'
   point-outside: '<prefix> <red>Эта точка должна находиться внутри региона фермы.</red>'
   point-on-bed: '<prefix> <red>Точку нельзя ставить на грядке. Встаньте на дорожку или площадку.</red>'
@@ -20,6 +20,16 @@ admin:
   points-entry: '<dark_gray>•</dark_gray> <point> <gray>— <world> <x> <y> <z></gray>'
   stage-set: '<prefix> <green>Этап переключён:</green> <stage>'
   stage-unknown: '<prefix> <red>Неизвестный этап фермы.</red>'
+  debug:
+    help: '<prefix> <gray>Тест фермы:</gray> <white>/arcfarms debug &lt;зона&gt; status</white> <dark_gray>│</dark_gray> <gray>действия:</gray> <white>stage, next, event, give, show, points, reset</white>'
+    header: '<prefix> <gold>Диагностика фермы <zone></gold>'
+    shift: '<dark_gray>Смена</dark_gray> <gray>Этап:</gray> <phase> <dark_gray>│</dark_gray> <gray>№</gray><white><sequence></white> <dark_gray>│</dark_gray> <gray>Заказ:</gray> <order> <white><done>/<total></white>'
+    patch: '<dark_gray>Поле</dark_gray> <gray>Грядок:</gray> <white><size></white> <dark_gray>│</dark_gray> <gray>вспахано:</gray> <white><tilled></white> <dark_gray>│</dark_gray> <gray>засеяно:</gray> <white><planted></white> <dark_gray>│</dark_gray> <gray>повреждено:</gray> <white><damaged></white>'
+    incident: '<dark_gray>Бедствие</dark_gray> <incident> <dark_gray>│</dark_gray> <gray>сухих:</gray> <white><dry></white> <dark_gray>│</dark_gray> <gray>вода:</gray> <white><flows> потоков, <water> блоков</white> <dark_gray>│</dark_gray> <gray>гнёзд:</gray> <white><nests></white> <gray>(выпущено <spawned>)</gray> <dark_gray>│</dark_gray> <gray>вредителей:</gray> <white><alive>/<entities></white>'
+    delivery: '<dark_gray>Доставка</dark_gray> <gray>Ящики:</gray> <white><done>/<total></white> <dark_gray>│</dark_gray> <gray>несут:</gray> <white><carriers></white>'
+    supply-given: '<prefix> <green>Тестовый предмет выдан:</green> <supply>'
+    inventory-full: '<prefix> <red>Освободите место в инвентаре.</red>'
+    highlighted: '<prefix> <green>Активные цели и настроенные точки подсвечены на 5 секунд.</green>'
   point:
     tool: '<white>мотыга</white>'
     seeds: '<white>семена</white>'
@@ -55,9 +65,6 @@ menu:
   stats:
     name: '<yellow>Ваш вклад</yellow>'
     lore: '<gray>Ферма: <green><farm></green> · Лес: <gold><lumber></gold> · Шахта: <aqua><mine></aqua></gray>'
-  admin:
-    name: '<red>Перезагрузить ArcFarms</red>'
-    lore: '<gray>Проверить и применить config.yml и локали.</gray>'
   click: '<yellow>Нажмите, чтобы отправиться туда.</yellow>'
   remote: '<gray>Рабочая зона находится на другом сервере.</gray>'
   workday:

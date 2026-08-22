@@ -136,6 +136,15 @@ next cycle. Atomic Redis compare-and-set prevents duplicate cross-server stamps.
   switch the current farm to an exact QA stage while preserving normal recovery.
 - `/arcfarms admin next <zone>` — advance to the next useful QA stage.
 - `/arcfarms admin event <zone> <pests|drought>` — start an exact incident.
+- `/arcfarms debug <zone> status` — print the exact shift, patch, crop damage,
+  water-flow, nest, pest, and delivery state used by the server.
+- `/arcfarms debug <zone> stage <stage>` / `event <pests|drought>` / `next` —
+  force a deterministic QA transition without waiting for random gameplay.
+- `/arcfarms debug <zone> give <tool|seeds|water>` — issue the tagged service
+  item for the requested interaction, even before that stage is active.
+- `/arcfarms debug <zone> show` — repeat active-target and configured-point
+  columns for five seconds; `points` lists exact coordinates and `reset`
+  removes temporary entities/water and restores managed blocks.
 
 The menu uses the same exact destinations as `/arcfarms travel`. Local routes
 use Paper asynchronous teleportation. Remote routes store a short-lived Redis
@@ -169,7 +178,7 @@ The deployable artifact is `build/libs/ArcFarms-0.7.0.jar`.
 
 `scripts/lab/plugin-configs/ArcFarms/config.yml` defines three small cuboid
 fixtures. The player-bot session exposes only the fixed `arcfarms` operations
-`fixture-setup`, `reload`, `travel`, `pest-stability`, `farm`, `lumber`, `mine`,
-`status`, and `fixture-cleanup` on
+`fixture-setup`, `reload`, `travel`, `debug-controls`, `drought-flow`,
+`pest-stability`, `farm`, `lumber`, `mine`, `status`, and `fixture-cleanup` on
 the lab port and documented OP QA identities; it accepts no command or target
 arguments. Always clean the scene after a smoke run.
