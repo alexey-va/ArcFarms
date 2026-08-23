@@ -365,7 +365,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().delivery.x shouldBe -3.5
         settings.farms.single().delivery.spawnRadius shouldBe 4
         settings.farms.single().rewards.experience.amount shouldBe 10
-        settings.farms.single().rewards.money.amountCents shouldBe 1_000
+        settings.farms.single().rewards.money.amountCents shouldBe 0
         settings.farms.single().rewards.randomBundles.entries.single().id shouldBe "lab_snack"
         settings.lumbermills.single().fellingQuota shouldBe 2
         settings.mines.single().cartQuota shouldBe 4
