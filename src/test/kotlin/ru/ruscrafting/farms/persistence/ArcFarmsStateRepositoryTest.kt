@@ -17,6 +17,8 @@ import ru.ruscrafting.farms.domain.LumberPhase
 import ru.ruscrafting.farms.domain.LumberShiftState
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineShiftState
+import ru.ruscrafting.farms.domain.FarmRewardItem
+import ru.ruscrafting.farms.domain.PendingFarmReward
 import java.nio.file.Files
 import java.util.UUID
 import java.util.concurrent.ExecutionException
@@ -170,6 +172,49 @@ class ArcFarmsStateRepositoryTest : FunSpec({
 
         ArcFarmsStateRepository(root).use { it.saveBlocking(expected) }
         ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
+    }
+
+    test("pending farm rewards and claim watermarks survive an atomic round trip") {
+        val root = Files.createTempDirectory("arcfarms-state-reward-test")
+        val playerId = UUID(0, 42)
+        val reward = PendingFarmReward(
+            id = "communal_farm:7:$playerId",
+            zoneId = "communal_farm",
+            sequence = 7,
+            playerId = playerId,
+            contribution = 321,
+            experience = 75,
+            moneyCents = 50_000,
+            items = listOf(FarmRewardItem("BREAD", 8)),
+            fixedItemUnits = 0,
+            commands = listOf("crate give Farmer farm"),
+            bundleIds = listOf("field_lunch"),
+        )
+        val expected = ArcFarmsState(
+            pendingFarmRewards = listOf(reward),
+            claimedFarmRewardSequences = mapOf("communal_farm:${UUID(0, 41)}" to 6),
+        )
+
+        ArcFarmsStateRepository(root).use { it.saveBlocking(expected) }
+        ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
+    }
+
+    test("state persistence rejects duplicate pending farm reward ids") {
+        val root = Files.createTempDirectory("arcfarms-state-duplicate-reward-test")
+        val playerId = UUID(0, 42)
+        val reward = PendingFarmReward(
+            id = "farm:1:$playerId",
+            zoneId = "farm",
+            sequence = 1,
+            playerId = playerId,
+            contribution = 1,
+        )
+        val invalid = ArcFarmsState(pendingFarmRewards = listOf(reward, reward))
+
+        ArcFarmsStateRepository(root).use { repository ->
+            val failure = shouldThrow<ExecutionException> { repository.saveBlocking(invalid) }
+            (failure.cause is IllegalArgumentException) shouldBe true
+        }
     }
 
     test("state persistence rejects progress outside the selected patch") {

@@ -167,7 +167,15 @@ farm:
   golden-started-subtitle: '<color:#f2fff7><crop> gives double progress for <seconds> seconds</color>'
   golden-ended: '<color:#f2fff7>The golden harvest ended. The order continues.</color>'
   completed: '<color:#55d98b><bold>Order delivered</bold></color>'
-  completed-subtitle: '<color:#ffc857>Reward: <experience> XP</color>'
+  completed-subtitle: '<color:#ffc857>Rewards were resolved for every contributor</color>'
+  reward-received: '<color:#55d98b>Reward:</color> <reward>'
+  reward-missed: '<color:#ffad42>No extra reward dropped this time</color>'
+  reward-experience: '<color:#8bd3ff><amount> XP</color>'
+  reward-money: '<color:#ffc857><amount> coins</color>'
+  reward-bundle: '<color:#f2fff7><bundle></color>'
+  reward-items: '<color:#f2fff7>+<amount> pcs.</color>'
+  reward-special: '<color:#c69cff>special reward</color>'
+  reward-overflow: '<prefix> <color:#ffad42>Your inventory was full, so part of the reward is nearby.</color>'
   delivery-required: '<color:#ffad42>The harvest is packed. Carry the crate to receiving.</color>'
   delivery-started: '<color:#ffc857><bold>Harvest packed</bold></color>'
   delivery-started-subtitle: '<color:#f2fff7>Deliver every crate</color>'
@@ -278,6 +286,12 @@ order:
     bakery_supply: '<gold>Bakery Supplies</gold>'
     market_crates: '<gold>Market Crates</gold>'
     lab_order: '<gold>Lab Order</gold>'
+reward:
+  bundle:
+    field_lunch: 'Field lunch'
+    hearty_rations: 'Hearty rations'
+    beekeeper_basket: 'Beekeeper basket'
+    lab_snack: 'Tester snack'
 story:
   farm:
     miners_rations:

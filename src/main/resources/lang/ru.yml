@@ -167,7 +167,15 @@ farm:
   golden-started-subtitle: '<color:#f2fff7><crop> даёт двойной вклад <seconds> сек.</color>'
   golden-ended: '<color:#f2fff7>Золотой урожай завершён. Заказ продолжается.</color>'
   completed: '<color:#55d98b><bold>Заказ доставлен</bold></color>'
-  completed-subtitle: '<color:#ffc857>Награда: <experience> опыта</color>'
+  completed-subtitle: '<color:#ffc857>Награды рассчитаны для каждого участника</color>'
+  reward-received: '<color:#55d98b>Награда:</color> <reward>'
+  reward-missed: '<color:#ffad42>Дополнительная награда в этот раз не выпала</color>'
+  reward-experience: '<color:#8bd3ff><amount> опыта</color>'
+  reward-money: '<color:#ffc857><amount> монет</color>'
+  reward-bundle: '<color:#f2fff7><bundle></color>'
+  reward-items: '<color:#f2fff7>+<amount> шт.</color>'
+  reward-special: '<color:#c69cff>особая награда</color>'
+  reward-overflow: '<prefix> <color:#ffad42>Инвентарь заполнен — часть награды лежит рядом.</color>'
   delivery-required: '<color:#ffad42>Урожай собран. Заберите ящик и отнесите его к приёмке.</color>'
   delivery-started: '<color:#ffc857><bold>Урожай упакован</bold></color>'
   delivery-started-subtitle: '<color:#f2fff7>Доставьте все ящики</color>'
@@ -278,6 +286,12 @@ order:
     bakery_supply: '<gold>Запасы пекарни</gold>'
     market_crates: '<gold>Ящики для ярмарки</gold>'
     lab_order: '<gold>Лабораторный заказ</gold>'
+reward:
+  bundle:
+    field_lunch: 'Полевой обед'
+    hearty_rations: 'Сытный запас'
+    beekeeper_basket: 'Корзина пасечника'
+    lab_snack: 'Перекус испытателя'
 story:
   farm:
     miners_rations:

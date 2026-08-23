@@ -4,7 +4,7 @@ plugins {
     jacoco
 }
 group = "ru.ruscrafting"
-version = "0.11.0"
+version = "0.12.0"
 description = "Shared farm, lumbermill, and mine activities for RusCrafting"
 
 val integrationTestSourceSet = sourceSets.create("integrationTest") {
@@ -18,6 +18,7 @@ repositories {
     maven("https://repo.papermc.io/repository/maven-public/")
     maven("https://maven.enginehub.org/repo/")
     maven("https://repo.extendedclip.com/releases/")
+    maven("https://jitpack.io")
 }
 
 java { toolchain { languageVersion.set(JavaLanguageVersion.of(25)) } }
@@ -34,6 +35,9 @@ dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
     compileOnly("com.sk89q.worldguard:worldguard-bukkit:7.0.16")
     compileOnly("me.clip:placeholderapi:2.12.3")
+    compileOnly("com.github.MilkBowl:VaultAPI:1.7") {
+        exclude(group = "org.bukkit", module = "bukkit")
+    }
 
     testImplementation("io.kotest:kotest-runner-junit5:6.0.7")
     testImplementation("io.kotest:kotest-assertions-core:6.0.7")

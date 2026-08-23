@@ -90,6 +90,8 @@ import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmRules
+import ru.ruscrafting.farms.domain.FarmRewardPlanner
+import ru.ruscrafting.farms.domain.FarmRewardRecipient
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.domain.FarmWaterPlanner
@@ -103,6 +105,7 @@ import ru.ruscrafting.farms.domain.MineRules
 import ru.ruscrafting.farms.domain.MineShiftEngine
 import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.domain.PendingMineBlock
+import ru.ruscrafting.farms.domain.PendingFarmReward
 import ru.ruscrafting.farms.domain.PlayerActivityStats
 import ru.ruscrafting.farms.domain.ShiftEvent
 import ru.ruscrafting.farms.domain.winner
@@ -114,6 +117,7 @@ import ru.ruscrafting.farms.network.NetworkSignal
 import ru.ruscrafting.farms.network.NoOpActivityNetworkGateway
 import ru.ruscrafting.farms.network.WorkdayState
 import java.time.Duration
+import java.math.BigDecimal
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -222,6 +226,7 @@ class ArcFarmsService(
     private val transfer: BackendTransfer = BackendTransfer { _, _ -> false },
     private val debug: ArcFarmsDebug = ArcFarmsDebug({ false }) {},
     private val regionGateway: RegionGateway = CuboidRegionGateway(),
+    private val economy: FarmEconomyGateway = NoOpFarmEconomyGateway,
     private val clock: () -> Long = System::currentTimeMillis,
     private val random: RandomGenerator = RandomGenerator.getDefault(),
 ) : AutoCloseable {
@@ -231,6 +236,8 @@ class ArcFarmsService(
     private var lumbermills: List<LumberRuntime> = emptyList()
     private var mines: List<MineRuntime> = emptyList()
     private val stats = ActivityStatsIndex()
+    private val pendingFarmRewards = mutableListOf<PendingFarmReward>()
+    private val claimedFarmRewardSequences = mutableMapOf<String, Long>()
     private val activeBars = mutableMapOf<BarKey, BossBar>()
     private val mineReservations = ConcurrentHashMap.newKeySet<String>()
     private val pendingPositions = ConcurrentHashMap<String, String>()
@@ -291,6 +298,10 @@ class ArcFarmsService(
         validatePersistedState(settings, persisted)
         validateMineJournalMaterials()
         stats.replace(persisted.stats)
+        pendingFarmRewards.clear()
+        pendingFarmRewards += persisted.pendingFarmRewards
+        claimedFarmRewardSequences.clear()
+        claimedFarmRewardSequences += persisted.claimedFarmRewardSequences
         rebuild(persisted)
         cleanupOwnedFarmEntities()
         reconcileFarmPatches()
@@ -299,6 +310,9 @@ class ArcFarmsService(
         startTasks()
         stateSafeToPersist = true
         started = true
+        Tasks.scheduler.runLater(1L) {
+            if (isOperational()) deliverPendingFarmRewards(Bukkit.getOnlinePlayers())
+        }
         plugin.logger.info(
             "ArcFarms ready: ${farms.size} farm, ${lumbermills.size} lumbermill, ${mines.size} mine zones; " +
                 "${pendingPositions.size} pending mine blocks",
@@ -1470,7 +1484,10 @@ class ArcFarmsService(
     fun onJoin(player: Player) {
         removeFarmServiceItems(player, reason = "player_join")
         Tasks.scheduler.runLater(1L) {
-            if (isOperational() && player.isOnline) syncFarmMusic(player, farmAt(player.location), clock())
+            if (isOperational() && player.isOnline) {
+                deliverPendingFarmRewards(player)
+                syncFarmMusic(player, farmAt(player.location), clock())
+            }
         }
         if (!settings.network.enabled) return
         network.claimTravelTicket(player.uniqueId, settings.serverId).whenComplete { ticket, failure ->
@@ -1623,6 +1640,12 @@ class ArcFarmsService(
     }
 
     private fun validatePersistedState(candidate: ArcFarmsConfig, persisted: ArcFarmsState) {
+        persisted.pendingFarmRewards.forEach { reward ->
+            reward.items.forEach { item -> MaterialRules.material(item.material) }
+            require(reward.moneyCents == 0L || economy.available) {
+                "Pending farm money reward ${reward.id} requires Vault and an economy provider"
+            }
+        }
         val farmZones = candidate.farms.associateBy(FarmZoneSettings::id)
         persisted.farms.forEach { (id, state) ->
             if (state.phase == FarmPhase.IDLE) return@forEach
@@ -1740,6 +1763,27 @@ class ArcFarmsService(
             }
         }
         candidate.farms.forEach { zone ->
+            require(!zone.rewards.requiresEconomy || economy.available) {
+                "Farm zone ${zone.id} money reward requires Vault and an economy provider"
+            }
+            zone.rewards.items.forEach { reward ->
+                val material = MaterialRules.material(reward.material)
+                require(material.isItem) { "Farm zone ${zone.id} reward ${reward.id} must use an item material" }
+            }
+            require(zone.rewards.items.sumOf { reward ->
+                val stackSize = MaterialRules.material(reward.material).maxStackSize
+                (reward.amount + stackSize - 1) / stackSize
+            } <= 54) { "Farm zone ${zone.id} fixed item rewards exceed 54 inventory stacks" }
+            zone.rewards.randomBundles.entries.forEach { bundle ->
+                bundle.items.forEach { reward ->
+                    val material = MaterialRules.material(reward.material)
+                    require(material.isItem) { "Farm zone ${zone.id} reward bundle ${bundle.id} must use item materials" }
+                }
+                require(bundle.items.sumOf { reward ->
+                    val stackSize = MaterialRules.material(reward.material).maxStackSize
+                    (reward.amount + stackSize - 1) / stackSize
+                } <= 27) { "Farm zone ${zone.id} reward bundle ${bundle.id} exceeds 27 inventory stacks" }
+            }
             val region = requireNotNull(regionGateway.resolve(zone.reference)) {
                 "Farm zone ${zone.id} cannot resolve ${zone.reference}"
             }
@@ -3182,24 +3226,11 @@ class ArcFarmsService(
                         clearFarmPatchState(runtime)
                     }
                     recordCompletion(ActivityKind.FARM, runtime.state.contributors)
-                    if (runtime.settings.completionExperience > 0) {
-                        contributors.keys.mapNotNull(Bukkit::getPlayer).filter(Player::isOnline).forEach { player ->
-                            player.giveExp(runtime.settings.completionExperience)
-                            debug.event(
-                                "farm_completion_reward",
-                                "zone" to runtime.settings.id,
-                                "player" to player.name,
-                                "experience" to runtime.settings.completionExperience,
-                            )
-                        }
-                    }
+                    queueFarmCompletionRewards(runtime, contributors)
                     broadcast(
                         runtime.region,
                         MessageKey.FARM_COMPLETED,
-                        mapOf(
-                            "players" to locale.text(runtime.state.contributors.size),
-                            "experience" to locale.text(runtime.settings.completionExperience),
-                        ),
+                        mapOf("players" to locale.text(runtime.state.contributors.size)),
                         Sound.UI_TOAST_CHALLENGE_COMPLETE,
                         title = true,
                     )
@@ -6372,6 +6403,183 @@ class ArcFarmsService(
         contributors.keys.forEach { playerId -> stats.complete(playerId, kind) }
     }
 
+    private fun queueFarmCompletionRewards(runtime: FarmRuntime, contributors: Map<UUID, Int>) {
+        val ranked = contributors.entries.sortedWith(
+            compareByDescending<Map.Entry<UUID, Int>> { it.value }.thenBy { it.key.toString() },
+        )
+        val planned = ranked.mapIndexedNotNull { index, (playerId, contribution) ->
+            val claimKey = "${runtime.settings.id}:$playerId"
+            if ((claimedFarmRewardSequences[claimKey] ?: -1L) >= runtime.state.sequence) return@mapIndexedNotNull null
+            FarmRewardPlanner.plan(
+                settings = runtime.settings.rewards,
+                zoneId = runtime.settings.id,
+                sequence = runtime.state.sequence,
+                recipient = FarmRewardRecipient(
+                    playerId = playerId,
+                    playerName = Bukkit.getOfflinePlayer(playerId).name ?: playerId.toString(),
+                    contribution = contribution,
+                    rank = index + 1,
+                ),
+            ).takeUnless { grant -> pendingFarmRewards.any { it.id == grant.id } }
+        }
+        if (planned.isEmpty()) return
+        pendingFarmRewards += planned
+        val saved = runCatching(::persistBlocking).onFailure { failure ->
+            plugin.logger.log(Level.SEVERE, "Could not persist resolved farm completion rewards", failure)
+        }.isSuccess
+        planned.forEach { reward ->
+            debug.event(
+                "farm_reward_planned",
+                "zone" to reward.zoneId,
+                "sequence" to reward.sequence,
+                "player" to reward.playerId,
+                "experience" to reward.experience,
+                "money_cents" to reward.moneyCents,
+                "items" to reward.items.size,
+                "commands" to reward.commands.size,
+                "bundles" to reward.bundleIds.joinToString(","),
+                "persisted" to saved,
+            )
+        }
+        if (saved) {
+            deliverPendingFarmRewards(
+                planned.mapNotNull { Bukkit.getPlayer(it.playerId) }.filter(Player::isOnline).distinctBy(Player::getUniqueId),
+            )
+        } else {
+            Tasks.scheduler.runLater(20L) {
+                if (isOperational()) {
+                    deliverPendingFarmRewards(
+                        planned.mapNotNull { Bukkit.getPlayer(it.playerId) }.filter(Player::isOnline)
+                            .distinctBy(Player::getUniqueId),
+                    )
+                }
+            }
+        }
+    }
+
+    private fun deliverPendingFarmRewards(player: Player) = deliverPendingFarmRewards(listOf(player))
+
+    private fun deliverPendingFarmRewards(players: Collection<Player>) {
+        val online = players.filter(Player::isOnline).distinctBy(Player::getUniqueId).associateBy(Player::getUniqueId)
+        if (online.isEmpty()) return
+        val candidates = pendingFarmRewards.filter { it.playerId in online }
+        if (candidates.isEmpty()) return
+        val deliverable = candidates.filter { reward ->
+            (claimedFarmRewardSequences[reward.claimKey] ?: -1L) < reward.sequence
+        }.sortedWith(compareBy(PendingFarmReward::sequence, PendingFarmReward::id))
+        val beforePending = pendingFarmRewards.toList()
+        val beforeClaims = claimedFarmRewardSequences.toMap()
+        pendingFarmRewards.removeAll(candidates.toSet())
+        deliverable.groupBy(PendingFarmReward::claimKey).forEach { (claimKey, rewards) ->
+            claimedFarmRewardSequences[claimKey] = rewards.maxOf(PendingFarmReward::sequence)
+        }
+        try {
+            persistBlocking()
+        } catch (failure: Exception) {
+            pendingFarmRewards.clear()
+            pendingFarmRewards += beforePending
+            claimedFarmRewardSequences.clear()
+            claimedFarmRewardSequences += beforeClaims
+            plugin.logger.log(Level.SEVERE, "Could not claim ${deliverable.size} farm reward(s); delivery was not attempted", failure)
+            deliverable.forEach { reward ->
+                debug.event("farm_reward_claim_failed", "grant" to reward.id, "player" to reward.playerId)
+            }
+            return
+        }
+        deliverable.forEach { reward -> online[reward.playerId]?.let { player -> deliverClaimedFarmReward(player, reward) } }
+    }
+
+    private fun deliverClaimedFarmReward(player: Player, reward: PendingFarmReward) {
+        if (reward.experience > 0) player.giveExp(reward.experience)
+        val moneySuccess = reward.moneyCents == 0L || runCatching {
+            economy.deposit(player, reward.moneyCents / 100.0)
+        }.onFailure { failure ->
+            plugin.logger.log(Level.SEVERE, "Farm reward ${reward.id} economy provider failed", failure)
+        }.getOrDefault(false)
+        if (!moneySuccess) {
+            plugin.logger.severe("Farm reward ${reward.id} could not deposit ${reward.moneyCents} cents")
+        }
+
+        var overflow = false
+        reward.items.forEach { item ->
+            val material = MaterialRules.material(item.material)
+            var remaining = item.amount
+            while (remaining > 0) {
+                val stack = ItemStack(material, minOf(remaining, material.maxStackSize))
+                remaining -= stack.amount
+                player.inventory.addItem(stack).values.forEach { leftover ->
+                    overflow = true
+                    player.world.dropItemNaturally(player.location, leftover)
+                }
+            }
+        }
+
+        reward.commands.forEachIndexed { index, command ->
+            val commandRoot = command.substringBefore(' ').take(64)
+            val success = runCatching { Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command) }
+                .onFailure { failure ->
+                    plugin.logger.log(Level.SEVERE, "Farm reward ${reward.id} command #$index failed", failure)
+                }.getOrDefault(false)
+            debug.event(
+                "farm_reward_command",
+                "grant" to reward.id,
+                "player" to player.name,
+                "index" to index,
+                "root" to commandRoot,
+                "success" to success,
+            )
+        }
+
+        val parts = mutableListOf<Component>()
+        if (reward.experience > 0) {
+            parts += locale.render(MessageKey.FARM_REWARD_EXPERIENCE, player, mapOf("amount" to locale.text(reward.experience)))
+        }
+        if (reward.moneyCents > 0 && moneySuccess) {
+            parts += locale.render(
+                MessageKey.FARM_REWARD_MONEY,
+                player,
+                mapOf("amount" to locale.text(BigDecimal.valueOf(reward.moneyCents, 2).stripTrailingZeros().toPlainString())),
+            )
+        }
+        reward.bundleIds.forEach { bundleId ->
+            parts += locale.render(
+                MessageKey.FARM_REWARD_BUNDLE,
+                player,
+                mapOf("bundle" to locale.renderPath("reward.bundle.$bundleId", player)),
+            )
+        }
+        if (reward.fixedItemUnits > 0) {
+            parts += locale.render(
+                MessageKey.FARM_REWARD_ITEMS,
+                player,
+                mapOf("amount" to locale.text(reward.fixedItemUnits)),
+            )
+        }
+        if (reward.commands.isNotEmpty()) parts += locale.render(MessageKey.FARM_REWARD_SPECIAL, player)
+        if (parts.isEmpty()) {
+            sendActionBar(player, MessageKey.FARM_REWARD_MISSED)
+        } else {
+            sendActionBar(
+                player,
+                MessageKey.FARM_REWARD_RECEIVED,
+                mapOf("reward" to Component.join(JoinConfiguration.commas(true), parts)),
+            )
+        }
+        if (overflow) sendChat(player, MessageKey.FARM_REWARD_OVERFLOW)
+        debug.event(
+            "farm_reward_delivered",
+            "grant" to reward.id,
+            "zone" to reward.zoneId,
+            "player" to player.name,
+            "experience" to reward.experience,
+            "money_cents" to reward.moneyCents,
+            "money_success" to moneySuccess,
+            "item_units" to reward.items.sumOf { it.amount },
+            "commands" to reward.commands.size,
+            "overflow" to overflow,
+        )
+    }
+
     private fun allowInteraction(key: String, cooldownMillis: Long): Boolean {
         val now = clock()
         val previous = interactionCooldowns[key] ?: 0
@@ -6456,6 +6664,8 @@ class ArcFarmsService(
         lumbermills = lumbermills.associate { it.settings.id to it.state },
         mines = mines.associate { it.settings.id to it.state },
         stats = stats.snapshot(),
+        pendingFarmRewards = pendingFarmRewards.toList(),
+        claimedFarmRewardSequences = claimedFarmRewardSequences.toMap(),
     )
 
     private fun persistAsync() {

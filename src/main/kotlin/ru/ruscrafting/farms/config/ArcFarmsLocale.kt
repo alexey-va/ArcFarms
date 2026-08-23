@@ -136,6 +136,14 @@ enum class MessageKey(val path: String) {
     FARM_DROUGHT_PROGRESS("farm.drought-progress"),
     FARM_COMPLETED("farm.completed"),
     FARM_COMPLETED_SUBTITLE("farm.completed-subtitle"),
+    FARM_REWARD_RECEIVED("farm.reward-received"),
+    FARM_REWARD_MISSED("farm.reward-missed"),
+    FARM_REWARD_EXPERIENCE("farm.reward-experience"),
+    FARM_REWARD_MONEY("farm.reward-money"),
+    FARM_REWARD_BUNDLE("farm.reward-bundle"),
+    FARM_REWARD_ITEMS("farm.reward-items"),
+    FARM_REWARD_SPECIAL("farm.reward-special"),
+    FARM_REWARD_OVERFLOW("farm.reward-overflow"),
     FARM_DELIVERY_REQUIRED("farm.delivery-required"),
     FARM_DELIVERY_STARTED("farm.delivery-started"),
     FARM_DELIVERY_STARTED_SUBTITLE("farm.delivery-started-subtitle"),
@@ -245,6 +253,9 @@ class ArcFarmsLocale(
         fun requiredPaths(settings: ArcFarmsConfig): Set<String> = buildSet {
             addAll(MessageKey.entries.map(MessageKey::path))
             settings.farms.flatMapTo(this) { zone -> zone.orders.map { "order.farm.${it.id}" } }
+            settings.farms.flatMapTo(this) { zone ->
+                zone.rewards.randomBundles.entries.map { "reward.bundle.${it.id}" }
+            }
             settings.farms.flatMapTo(this) { zone ->
                 zone.orders.flatMap { order ->
                     listOf(

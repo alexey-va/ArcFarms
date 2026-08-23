@@ -86,7 +86,9 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().supplies.tool.z shouldBe 448.5
         settings.farms.single().supplies.seeds.z shouldBe 453.5
         settings.farms.single().supplies.water.z shouldBe 458.5
-        settings.farms.single().completionExperience shouldBe 75
+        settings.farms.single().rewards.experience.amount shouldBe 75
+        settings.farms.single().rewards.experience.chancePercent shouldBe 100
+        settings.farms.single().rewards.money.amountCents shouldBe 0
         settings.lumbermills.single().fellingQuota shouldBe 16
         settings.mines.all { it.cartQuota == 16 && it.supportsRequired == 1 } shouldBe true
         ArcFarmsRedisBootstrap.load(root, settings).serverName shouldBe "spawn"
@@ -104,6 +106,17 @@ class ArcFarmsConfigTest : FunSpec({
         classicSettings.farms.single().music.sound shouldBe "arc:farm_valley_comes_alive"
         classicSettings.farms.single().music.durationSeconds shouldBe 262
         classicSettings.farms.single().music.volume shouldBe 0.65f
+        classicSettings.farms.single().rewards.money.amountCents shouldBe 50_000
+        classicSettings.farms.single().rewards.money.chancePercent shouldBe 100
+        classicSettings.farms.single().rewards.items.single().id shouldBe "golden_apple"
+        classicSettings.farms.single().rewards.items.single().chancePercent shouldBe 5
+        classicSettings.farms.single().rewards.randomBundles.rolls shouldBe 1
+        classicSettings.farms.single().rewards.randomBundles.chancePercent shouldBe 85
+        classicSettings.farms.single().rewards.randomBundles.entries.map { it.id } shouldContainExactly listOf(
+            "beekeeper_basket",
+            "field_lunch",
+            "hearty_rations",
+        )
         classicSettings.menuBackground.enabled shouldBe true
         classicSettings.menuBackground.material shouldBe "GRAY_STAINED_GLASS_PANE"
         classicSettings.menuBackground.customModelData shouldBe 11_000
@@ -164,6 +177,39 @@ class ArcFarmsConfigTest : FunSpec({
         val configPath = root.resolve("config.yml")
         configPath.writeText(
             Files.readString(configPath).replace("preparation-patch-size: 100", "preparation-patch-size: 513"),
+        )
+
+        shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(root) }
+    }
+
+    test("farm reward chances and money precision are validated before startup") {
+        val chanceRoot = resourceTree()
+        chanceRoot.resolve("config.yml").writeText(
+            Files.readString(chanceRoot.resolve("config.yml"))
+                .replace("chance-percent: 100\n      money:", "chance-percent: 101\n      money:"),
+        )
+        shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(chanceRoot) }
+
+        val moneyRoot = resourceTree()
+        moneyRoot.resolve("config.yml").writeText(
+            Files.readString(moneyRoot.resolve("config.yml")).replace("amount: 0\n        chance-percent", "amount: 1.001\n        chance-percent"),
+        )
+        shouldThrow<IllegalStateException> { ArcFarmsConfig.inspect(moneyRoot) }
+    }
+
+    test("farm command rewards reject unknown placeholders") {
+        val root = resourceTree()
+        val configPath = root.resolve("config.yml")
+        configPath.writeText(
+            Files.readString(configPath).replace(
+                "      commands: {}",
+                """
+                      commands:
+                        broken:
+                          command: 'crate give %nickname% farm'
+                          chance-percent: 100
+                """.trimIndent(),
+            ),
         )
 
         shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(root) }
@@ -318,6 +364,9 @@ class ArcFarmsConfigTest : FunSpec({
         settings.missingBedHighlightThreshold shouldBe 4
         settings.farms.single().delivery.x shouldBe -3.5
         settings.farms.single().delivery.spawnRadius shouldBe 4
+        settings.farms.single().rewards.experience.amount shouldBe 10
+        settings.farms.single().rewards.money.amountCents shouldBe 1_000
+        settings.farms.single().rewards.randomBundles.entries.single().id shouldBe "lab_snack"
         settings.lumbermills.single().fellingQuota shouldBe 2
         settings.mines.single().cartQuota shouldBe 4
         settings.farms.single().reference.bounds!!.volume shouldBe 17_334L

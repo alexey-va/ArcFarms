@@ -111,7 +111,26 @@ farm-zones:
       spawn-radius: 8
       pickup: {x: 212.5, y: 49.0, z: 463.5}
       item: {material: BARREL, custom-model-data: 0}
-    completion-experience: 75
+    rewards:
+      # Every reward rolls independently. Commands run as console after the grant is durably claimed.
+      # Supported command placeholders: %player%, %uuid%, %zone%, %sequence%, %contribution%, %rank%, %grant_id%.
+      experience:
+        amount: 75
+        chance-percent: 100
+      money:
+        amount: 0
+        chance-percent: 100
+      items: {}
+      # Example console reward:
+      # commands:
+      #   farm_crate_key:
+      #     command: 'crate key give %player% farm 1'
+      #     chance-percent: 10
+      commands: {}
+      random-bundles:
+        rolls: 0
+        chance-percent: 100
+        entries: {}
     crops: [WHEAT, CARROTS, POTATOES, BEETROOTS]
     orders:
       miners_rations: [WHEAT:160, CARROTS:80, POTATOES:80]

@@ -4,7 +4,7 @@ main: ru.ruscrafting.farms.paper.ArcFarmsPlugin
 api-version: '1.21.11'
 authors: [RusCrafting]
 description: Shared farm, lumbermill, and mine activities
-softdepend: [WorldGuard, PlaceholderAPI]
+softdepend: [WorldGuard, PlaceholderAPI, Vault]
 commands:
   arcfarms:
     description: Shared worksite activities

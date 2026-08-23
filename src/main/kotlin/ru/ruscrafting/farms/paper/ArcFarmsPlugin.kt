@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper
 
 import com.google.gson.Gson
+import net.milkbowl.vault.economy.Economy
 import org.bukkit.plugin.java.JavaPlugin
 import org.slf4j.LoggerFactory
 import ru.arc.config.ConfigManager
@@ -90,6 +91,7 @@ class ArcFarmsPlugin : JavaPlugin() {
                 transfer = BungeeBackendTransfer(this),
                 debug = debug,
                 regionGateway = regionGateway,
+                economy = resolveEconomy(settings),
             )
             service = activeService
             activeService.start()
@@ -151,6 +153,17 @@ class ArcFarmsPlugin : JavaPlugin() {
             }
             throw failure
         }
+    }
+
+    private fun resolveEconomy(settings: ArcFarmsConfig): FarmEconomyGateway {
+        val provider = if (server.pluginManager.isPluginEnabled("Vault")) {
+            server.servicesManager.getRegistration(Economy::class.java)?.provider
+        } else null
+        if (provider != null) return VaultFarmEconomyGateway(provider)
+        require(settings.farms.none { it.rewards.requiresEconomy }) {
+            "Vault and an economy provider are required because a farm money reward is configured"
+        }
+        return NoOpFarmEconomyGateway
     }
 
     private fun saveResourceIfMissing(path: String) {

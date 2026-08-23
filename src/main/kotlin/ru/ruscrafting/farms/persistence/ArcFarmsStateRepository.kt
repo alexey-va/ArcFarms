@@ -7,6 +7,7 @@ import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmShiftState
+import ru.ruscrafting.farms.domain.PendingFarmReward
 import ru.ruscrafting.farms.domain.LumberPhase
 import ru.ruscrafting.farms.domain.LumberShiftState
 import ru.ruscrafting.farms.domain.MinePhase
@@ -62,6 +63,18 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
             state.lumbermills.values.forEach(::validateLumber)
             state.mines.values.forEach(::validateMine)
             state.stats.values.forEach(::validateStats)
+            require(state.pendingFarmRewards.size <= 10_000) { "Pending farm rewards are unbounded" }
+            require(state.pendingFarmRewards.map(PendingFarmReward::id).distinct().size == state.pendingFarmRewards.size) {
+                "Pending farm rewards contain duplicate ids"
+            }
+            state.pendingFarmRewards.forEach(::validateFarmReward)
+            require(state.claimedFarmRewardSequences.size <= 1_000_000) { "Claimed farm reward watermarks are unbounded" }
+            require(state.claimedFarmRewardSequences.keys.all(REWARD_CLAIM_KEY::matches)) {
+                "Claimed farm reward watermark contains an invalid key"
+            }
+            require(state.claimedFarmRewardSequences.values.all { it in 0 until Long.MAX_VALUE }) {
+                "Claimed farm reward watermark contains an invalid sequence"
+            }
         }
 
         private fun validateFarm(farm: FarmShiftState) {
@@ -244,6 +257,31 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
             require(stats.completedShifts.values.all { it >= 0 }) { "Negative completion count" }
         }
 
+        private fun validateFarmReward(reward: PendingFarmReward) {
+            require(REWARD_ID.matches(reward.id)) { "Pending farm reward id is invalid" }
+            require(ZONE_ID.matches(reward.zoneId) && reward.id == "${reward.zoneId}:${reward.sequence}:${reward.playerId}") {
+                "Pending farm reward identity is inconsistent"
+            }
+            require(reward.sequence in 0 until Long.MAX_VALUE && reward.contribution > 0) {
+                "Pending farm reward sequence or contribution is invalid"
+            }
+            require(reward.experience in 0..10_000 && reward.moneyCents in 0..100_000_000L) {
+                "Pending farm reward amount is outside supported bounds"
+            }
+            require(reward.items.size <= 128 && reward.items.all { item ->
+                CONTENT_ID.matches(item.material) && item.amount in 1..2_304
+            }) { "Pending farm reward items are invalid" }
+            require(reward.fixedItemUnits in 0..reward.items.sumOf { it.amount }) {
+                "Pending farm reward fixed item count is invalid"
+            }
+            require(reward.commands.size <= 32 && reward.commands.all { command ->
+                command.length in 1..1_024 && '\n' !in command && '\r' !in command
+            }) { "Pending farm reward commands are invalid" }
+            require(reward.bundleIds.size <= 4 && reward.bundleIds.all(ZONE_ID::matches)) {
+                "Pending farm reward bundle ids are invalid"
+            }
+        }
+
         private fun validateContributors(contributors: Map<java.util.UUID, Int>) {
             require(contributors.size <= MAX_ZONE_CONTRIBUTORS) { "Shift contributor state is unbounded" }
             require(contributors.values.all { it > 0 }) { "Shift contribution is invalid" }
@@ -272,5 +310,8 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 "Farm point rotation or height is invalid"
             }
         }
+
+        val REWARD_ID = Regex("[a-z0-9_-]{1,48}:[0-9]{1,19}:[0-9a-f-]{36}")
+        val REWARD_CLAIM_KEY = Regex("[a-z0-9_-]{1,48}:[0-9a-f-]{36}")
     }
 }

@@ -15,9 +15,12 @@ activities: farm, lumbermill, and mine.
 - A farm shift has one foreground objective. Resolving an incident resumes the
   ordinary crop order directly; do not insert harvest multipliers or parallel
   crop bonus windows between the incident and the next required crop.
-- Do not add money, item rewards, seasons, tract restoration, or world projects.
-  Farm crops accepted by an order are consumed by that order and never drop;
-  lumber and mine resources keep their existing material outcomes.
+- Farm completion rewards may use independently-chanced experience, Vault
+  money, ordinary items, weighted item bundles, and bounded console commands.
+  Persist each resolved grant before delivery and claim it durably before side
+  effects so a relog or restart cannot reroll or duplicate it. Farm crops
+  accepted by an order are consumed by that order and never drop; lumber and
+  mine resources keep their existing material outcomes.
 - Mine block replacement is journaled before mutation and must converge after
   restart without duplicate drops or permanent temporary blocks.
 - All player text belongs in `lang/ru.yml` and `lang/en.yml`; keys stay equal

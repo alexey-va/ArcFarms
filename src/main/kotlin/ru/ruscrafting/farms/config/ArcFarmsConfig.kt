@@ -7,6 +7,8 @@ import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareType
 import java.nio.file.Path
+import java.math.BigDecimal
+import java.math.RoundingMode
 import kotlin.math.ceil
 import kotlin.math.floor
 
@@ -106,7 +108,7 @@ data class FarmZoneSettings(
     val pestEatPerPulse: Int,
     val supplies: FarmSupplySettings,
     val delivery: FarmDeliverySettings,
-    val completionExperience: Int,
+    val rewards: FarmRewardSettings,
     val crops: Set<String>,
     val orders: List<FarmOrderSettings>,
 ) {
@@ -116,6 +118,56 @@ data class FarmZoneSettings(
         return proportional.coerceIn(droughtMinBeds, droughtMaxBeds).coerceAtMost(gardenBeds)
     }
 }
+
+data class FarmRewardSettings(
+    val experience: FarmExperienceRewardSettings,
+    val money: FarmMoneyRewardSettings,
+    val items: List<FarmItemRewardSettings>,
+    val commands: List<FarmCommandRewardSettings>,
+    val randomBundles: FarmRandomBundleSettings,
+) {
+    val requiresEconomy: Boolean get() = money.amountCents > 0
+}
+
+data class FarmExperienceRewardSettings(
+    val amount: Int,
+    val chancePercent: Int,
+)
+
+data class FarmMoneyRewardSettings(
+    val amountCents: Long,
+    val chancePercent: Int,
+)
+
+data class FarmItemRewardSettings(
+    val id: String,
+    val material: String,
+    val amount: Int,
+    val chancePercent: Int,
+)
+
+data class FarmCommandRewardSettings(
+    val id: String,
+    val command: String,
+    val chancePercent: Int,
+)
+
+data class FarmRandomBundleSettings(
+    val rolls: Int,
+    val chancePercent: Int,
+    val entries: List<FarmRewardBundleSettings>,
+)
+
+data class FarmRewardBundleSettings(
+    val id: String,
+    val weight: Int,
+    val items: List<FarmBundleItemSettings>,
+)
+
+data class FarmBundleItemSettings(
+    val material: String,
+    val amount: Int,
+)
 
 data class FarmMusicSettings(
     val enabled: Boolean,
@@ -398,8 +450,7 @@ class ArcFarmsConfig private constructor(
                     pestEatPerPulse = section.int("pest-eat-per-pulse", 8).checked("pest-eat-per-pulse", 1, 32),
                     supplies = supplies,
                     delivery = delivery,
-                    completionExperience = section.int("completion-experience", 75)
-                        .checked("completion-experience", 0, 10_000),
+                    rewards = parseFarmRewards(section, id),
                     crops = crops,
                     orders = orders,
                 )
@@ -614,6 +665,108 @@ class ArcFarmsConfig private constructor(
             )
         }
 
+        private fun parseFarmRewards(
+            section: ru.arc.config.ConfigSection,
+            zoneId: String,
+        ): FarmRewardSettings {
+            fun chance(path: String, default: Int = 100): Int =
+                section.int(path, default).checked("farm-zones.$zoneId.$path", 0, 100)
+
+            fun item(path: String, id: String): FarmItemRewardSettings = FarmItemRewardSettings(
+                id = id,
+                material = materialName(section.string("$path.material")),
+                amount = section.int("$path.amount").checked("farm-zones.$zoneId.$path.amount", 1, 2_304),
+                chancePercent = chance("$path.chance-percent"),
+            )
+
+            val items = section.keys("rewards.items").sorted().map { rewardId ->
+                validateId(rewardId, "farm reward")
+                item("rewards.items.$rewardId", rewardId)
+            }
+            require(items.size <= 64) { "Farm zone $zoneId has too many item rewards" }
+
+            val commands = section.keys("rewards.commands").sorted().map { rewardId ->
+                validateId(rewardId, "farm command reward")
+                val path = "rewards.commands.$rewardId"
+                val command = section.string("$path.command").trim().removePrefix("/").also {
+                    require(it.length in 1..512 && '\n' !in it && '\r' !in it) {
+                        "Farm zone $zoneId command reward $rewardId is empty or too long"
+                    }
+                    val placeholders = COMMAND_PLACEHOLDER.findAll(it).map { match -> match.value }.toSet()
+                    require(placeholders.all(ALLOWED_COMMAND_PLACEHOLDERS::contains)) {
+                        "Farm zone $zoneId command reward $rewardId uses an unknown placeholder"
+                    }
+                    require('%' !in COMMAND_PLACEHOLDER.replace(it, "")) {
+                        "Farm zone $zoneId command reward $rewardId contains an incomplete placeholder"
+                    }
+                }
+                FarmCommandRewardSettings(rewardId, command, chance("$path.chance-percent"))
+            }
+            require(commands.size <= 32) { "Farm zone $zoneId has too many command rewards" }
+
+            val bundleEntries = section.keys("rewards.random-bundles.entries").sorted().map { bundleId ->
+                validateId(bundleId, "farm reward bundle")
+                val path = "rewards.random-bundles.entries.$bundleId"
+                val bundleItems = section.keys("$path.items").sorted().map { itemId ->
+                    validateId(itemId, "farm reward bundle item")
+                    FarmBundleItemSettings(
+                        material = materialName(section.string("$path.items.$itemId.material")),
+                        amount = section.int("$path.items.$itemId.amount")
+                            .checked("farm-zones.$zoneId.$path.items.$itemId.amount", 1, 2_304),
+                    )
+                }
+                require(bundleItems.isNotEmpty() && bundleItems.size <= 27) {
+                    "Farm zone $zoneId reward bundle $bundleId must contain 1..27 items"
+                }
+                FarmRewardBundleSettings(
+                    id = bundleId,
+                    weight = section.int("$path.weight", 1).checked("farm-zones.$zoneId.$path.weight", 1, 100_000),
+                    items = bundleItems,
+                )
+            }
+            require(bundleEntries.size <= 32) { "Farm zone $zoneId has too many random reward bundles" }
+            require(bundleEntries.sumOf { it.weight.toLong() } <= 1_000_000L) {
+                "Farm zone $zoneId random reward bundle weight is unbounded"
+            }
+            val bundleRolls = section.int("rewards.random-bundles.rolls", 0)
+                .checked("farm-zones.$zoneId.rewards.random-bundles.rolls", 0, 4)
+            require(bundleRolls == 0 || bundleEntries.isNotEmpty()) {
+                "Farm zone $zoneId enables random bundle rolls without bundle entries"
+            }
+
+            return FarmRewardSettings(
+                experience = FarmExperienceRewardSettings(
+                    amount = section.int("rewards.experience.amount", 75)
+                        .checked("farm-zones.$zoneId.rewards.experience.amount", 0, 10_000),
+                    chancePercent = chance("rewards.experience.chance-percent"),
+                ),
+                money = FarmMoneyRewardSettings(
+                    amountCents = moneyCents(section.string("rewards.money.amount", "0"), zoneId),
+                    chancePercent = chance("rewards.money.chance-percent"),
+                ),
+                items = items,
+                commands = commands,
+                randomBundles = FarmRandomBundleSettings(
+                    rolls = bundleRolls,
+                    chancePercent = chance("rewards.random-bundles.chance-percent"),
+                    entries = bundleEntries,
+                ),
+            )
+        }
+
+        private fun moneyCents(value: String, zoneId: String): Long {
+            val amount = value.trim().toBigDecimalOrNull()
+                ?: error("Farm zone $zoneId rewards.money.amount must be a number")
+            require(amount.signum() >= 0 && amount <= BigDecimal("1000000")) {
+                "Farm zone $zoneId rewards.money.amount must be in 0..1000000"
+            }
+            return try {
+                amount.setScale(2, RoundingMode.UNNECESSARY).movePointRight(2).longValueExact()
+            } catch (_: ArithmeticException) {
+                error("Farm zone $zoneId rewards.money.amount supports at most two decimal places")
+            }
+        }
+
         private fun parseWeightedList(values: List<String>, label: String): LinkedHashMap<String, Int> {
             require(values.isNotEmpty()) { "$label must not be empty" }
             val parsed = linkedMapOf<String, Int>()
@@ -661,6 +814,17 @@ class ArcFarmsConfig private constructor(
         private fun Int.checked(label: String, minimum: Int, maximum: Int): Int = also {
             require(it in minimum..maximum) { "$label must be in $minimum..$maximum" }
         }
+
+        private val COMMAND_PLACEHOLDER = Regex("%[a-z_]+%")
+        private val ALLOWED_COMMAND_PLACEHOLDERS = setOf(
+            "%player%",
+            "%uuid%",
+            "%zone%",
+            "%sequence%",
+            "%contribution%",
+            "%rank%",
+            "%grant_id%",
+        )
     }
 }
 

@@ -28,6 +28,8 @@ data class ArcFarmsState(
     val lumbermills: Map<String, LumberShiftState> = emptyMap(),
     val mines: Map<String, MineShiftState> = emptyMap(),
     val stats: Map<UUID, PlayerActivityStats> = emptyMap(),
+    val pendingFarmRewards: List<PendingFarmReward> = emptyList(),
+    val claimedFarmRewardSequences: Map<String, Long> = emptyMap(),
 ) {
     init {
         require(schemaVersion == SCHEMA_VERSION) { "Unsupported ArcFarms state schema: $schemaVersion" }
@@ -36,6 +38,27 @@ data class ArcFarmsState(
     companion object {
         const val SCHEMA_VERSION = 1
     }
+}
+
+data class FarmRewardItem(
+    val material: String,
+    val amount: Int,
+)
+
+data class PendingFarmReward(
+    val id: String,
+    val zoneId: String,
+    val sequence: Long,
+    val playerId: UUID,
+    val contribution: Int,
+    val experience: Int = 0,
+    val moneyCents: Long = 0,
+    val items: List<FarmRewardItem> = emptyList(),
+    val fixedItemUnits: Int = 0,
+    val commands: List<String> = emptyList(),
+    val bundleIds: List<String> = emptyList(),
+) {
+    val claimKey: String get() = "$zoneId:$playerId"
 }
 
 data class PendingMineBlock(
