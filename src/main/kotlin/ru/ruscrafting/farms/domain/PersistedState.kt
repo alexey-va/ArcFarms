@@ -5,6 +5,9 @@ import java.util.UUID
 data class PlayerActivityStats(
     val contributions: Map<ActivityKind, Long> = emptyMap(),
     val completedShifts: Map<ActivityKind, Int> = emptyMap(),
+    // Nullable only so Gson can safely read pre-weekly state files where the
+    // field is absent. ArcFarmsStateRepository normalizes it after loading.
+    val weeklyContributions: Map<ActivityKind, WeeklyActivityContribution>? = emptyMap(),
 ) {
     fun contribute(kind: ActivityKind, amount: Int): PlayerActivityStats =
         copy(
@@ -13,11 +16,33 @@ data class PlayerActivityStats(
             ),
         )
 
+    fun contributeWeekly(
+        kind: ActivityKind,
+        amount: Int,
+        weekStartEpochDay: Long,
+    ): PlayerActivityStats {
+        val delta = amount.coerceAtLeast(0).toLong()
+        val current = weeklyContributions.orEmpty()[kind]
+        val weekly = if (current?.weekStartEpochDay == weekStartEpochDay) {
+            current.copy(contribution = saturatingAdd(current.contribution, delta))
+        } else {
+            WeeklyActivityContribution(weekStartEpochDay, delta)
+        }
+        return contribute(kind, amount).copy(
+            weeklyContributions = weeklyContributions.orEmpty() + (kind to weekly),
+        )
+    }
+
     fun complete(kind: ActivityKind): PlayerActivityStats {
         val current = completedShifts[kind] ?: 0
         return copy(completedShifts = completedShifts + (kind to if (current == Int.MAX_VALUE) current else current + 1))
     }
 }
+
+data class WeeklyActivityContribution(
+    val weekStartEpochDay: Long,
+    val contribution: Long,
+)
 
 private fun saturatingAdd(left: Long, right: Long): Long =
     if (Long.MAX_VALUE - left < right) Long.MAX_VALUE else left + right

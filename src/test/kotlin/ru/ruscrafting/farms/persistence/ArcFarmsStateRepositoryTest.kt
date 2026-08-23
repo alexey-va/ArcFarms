@@ -4,6 +4,7 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import ru.ruscrafting.farms.domain.ArcFarmsState
+import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareTarget
 import ru.ruscrafting.farms.domain.FarmCareType
@@ -19,11 +20,66 @@ import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.domain.FarmRewardItem
 import ru.ruscrafting.farms.domain.PendingFarmReward
+import ru.ruscrafting.farms.domain.PlayerActivityStats
+import ru.ruscrafting.farms.domain.WeeklyActivityContribution
 import java.nio.file.Files
 import java.util.UUID
 import java.util.concurrent.ExecutionException
 
 class ArcFarmsStateRepositoryTest : FunSpec({
+    test("legacy player statistics load with an empty weekly contribution map") {
+        val root = Files.createTempDirectory("arcfarms-state-weekly-legacy-test")
+        val data = root.resolve("data")
+        Files.createDirectories(data)
+        val playerId = UUID(0, 42)
+        Files.writeString(
+            data.resolve("state.json"),
+            """
+            {
+              "schemaVersion": 1,
+              "farms": {},
+              "lumbermills": {},
+              "mines": {},
+              "stats": {
+                "$playerId": {
+                  "contributions": {"FARM": 321},
+                  "completedShifts": {"FARM": 2}
+                }
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val loaded = ArcFarmsStateRepository(root).use(ArcFarmsStateRepository::load)
+
+        loaded.stats.getValue(playerId) shouldBe PlayerActivityStats(
+            contributions = mapOf(ActivityKind.FARM to 321L),
+            completedShifts = mapOf(ActivityKind.FARM to 2),
+            weeklyContributions = emptyMap(),
+        )
+    }
+
+    test("weekly contribution survives an atomic state round trip") {
+        val root = Files.createTempDirectory("arcfarms-state-weekly-roundtrip-test")
+        val playerId = UUID(0, 43)
+        val expected = ArcFarmsState(
+            stats = mapOf(
+                playerId to PlayerActivityStats(
+                    contributions = mapOf(ActivityKind.FARM to 900L),
+                    weeklyContributions = mapOf(
+                        ActivityKind.FARM to WeeklyActivityContribution(
+                            weekStartEpochDay = 20_690,
+                            contribution = 75L,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        ArcFarmsStateRepository(root).use { it.saveBlocking(expected) }
+        ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
+    }
+
     test("preparation incident type and delivery fields are additive to schema one") {
         val root = Files.createTempDirectory("arcfarms-state-legacy-test")
         val data = root.resolve("data")

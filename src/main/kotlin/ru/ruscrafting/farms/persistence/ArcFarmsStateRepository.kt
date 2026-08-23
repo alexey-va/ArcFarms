@@ -30,7 +30,14 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
     fun load(): ArcFarmsState {
         val state = store.load()
         val farms = state.farms.mapValues { (_, farm) -> farm.withoutGoldenHarvest() }
-        return if (farms == state.farms) state else state.copy(farms = farms)
+        val stats = state.stats.mapValues { (_, playerStats) ->
+            if (playerStats.weeklyContributions == null) {
+                playerStats.copy(weeklyContributions = emptyMap())
+            } else {
+                playerStats
+            }
+        }
+        return if (farms == state.farms && stats == state.stats) state else state.copy(farms = farms, stats = stats)
     }
 
     fun saveAsync(state: ArcFarmsState): CompletableFuture<Unit> = writer.submit(state)
@@ -247,14 +254,19 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
 
         private fun validateStats(stats: PlayerActivityStats) {
             val activities = ActivityKind.entries.toSet()
+            val weekly = stats.weeklyContributions.orEmpty()
             require(
                 stats.contributions.size <= activities.size && stats.completedShifts.size <= activities.size &&
-                    stats.contributions.keys.all(activities::contains) && stats.completedShifts.keys.all(activities::contains),
+                    weekly.size <= activities.size && stats.contributions.keys.all(activities::contains) &&
+                    stats.completedShifts.keys.all(activities::contains) && weekly.keys.all(activities::contains),
             ) {
                 "Player activity statistics contain unknown entries"
             }
             require(stats.contributions.values.all { it >= 0 }) { "Negative contribution" }
             require(stats.completedShifts.values.all { it >= 0 }) { "Negative completion count" }
+            require(weekly.values.all { it.weekStartEpochDay in 0..4_000_000 && it.contribution >= 0 }) {
+                "Invalid weekly contribution"
+            }
         }
 
         private fun validateFarmReward(reward: PendingFarmReward) {

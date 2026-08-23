@@ -66,6 +66,7 @@ import ru.ruscrafting.farms.config.MineZoneSettings
 import ru.ruscrafting.farms.config.TeleportDestination
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.ActivityStatsIndex
+import ru.ruscrafting.farms.domain.farmWeekStartEpochDay
 import ru.ruscrafting.farms.domain.FarmAdminEdit
 import ru.ruscrafting.farms.domain.ArcFarmsState
 import ru.ruscrafting.farms.domain.EngineResult
@@ -235,7 +236,7 @@ class ArcFarmsService(
     private var farms: List<FarmRuntime> = emptyList()
     private var lumbermills: List<LumberRuntime> = emptyList()
     private var mines: List<MineRuntime> = emptyList()
-    private val stats = ActivityStatsIndex()
+    private val stats = ActivityStatsIndex(currentWeekStartEpochDay = { farmWeekStartEpochDay(clock()) })
     private val pendingFarmRewards = mutableListOf<PendingFarmReward>()
     private val claimedFarmRewardSequences = mutableMapOf<String, Long>()
     private val activeBars = mutableMapOf<BarKey, BossBar>()
@@ -1438,6 +1439,13 @@ class ArcFarmsService(
     fun leaderboard(kind: ActivityKind, limit: Int = 10): List<Pair<UUID, Long>> = stats.leaderboard(kind, limit)
 
     fun leaderboardRank(playerId: UUID): Int? = stats.farmRank(playerId)
+
+    fun weeklyLeaderboard(kind: ActivityKind, limit: Int = 10): List<Pair<UUID, Long>> =
+        stats.weeklyLeaderboard(kind, limit)
+
+    fun weeklyLeaderboardRank(playerId: UUID): Int? = stats.farmWeeklyRank(playerId)
+
+    fun weeklyContribution(playerId: UUID, kind: ActivityKind): Long = stats.weeklyContribution(playerId, kind)
 
     fun canNavigate(kind: ActivityKind): Boolean = kind.configKey in settings.destinations
 

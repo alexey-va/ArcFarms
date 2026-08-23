@@ -4,6 +4,7 @@ import me.clip.placeholderapi.expansion.PlaceholderExpansion
 import org.bukkit.Bukkit
 import org.bukkit.OfflinePlayer
 import ru.ruscrafting.farms.domain.ActivityKind
+import java.util.UUID
 
 class ArcFarmsPlaceholderExpansion(
     private val version: String,
@@ -21,17 +22,31 @@ class ArcFarmsPlaceholderExpansion(
                 service.playerStats(it).contributions[ActivityKind.FARM] ?: 0L
             }?.toString() ?: "0"
             FarmLeaderboardPlaceholder.PersonalRank -> player?.uniqueId?.let(service::leaderboardRank)?.toString() ?: ""
+            FarmLeaderboardPlaceholder.PersonalWeeklyScore -> player?.uniqueId?.let {
+                service.weeklyContribution(it, ActivityKind.FARM)
+            }?.toString() ?: "0"
+            FarmLeaderboardPlaceholder.PersonalWeeklyRank ->
+                player?.uniqueId?.let(service::weeklyLeaderboardRank)?.toString() ?: ""
             is FarmLeaderboardPlaceholder.Top -> {
                 val entry = service.leaderboard(ActivityKind.FARM, request.rank).getOrNull(request.rank - 1) ?: return ""
-                val name = Bukkit.getOfflinePlayer(entry.first).name
-                when (request.field) {
-                    FarmLeaderboardPlaceholder.Field.NAME -> name ?: entry.first.toString().take(8)
-                    FarmLeaderboardPlaceholder.Field.SKIN -> name ?: entry.first.toString()
-                    FarmLeaderboardPlaceholder.Field.UUID -> entry.first.toString()
-                    FarmLeaderboardPlaceholder.Field.SCORE -> entry.second.toString()
-                }
+                renderTop(entry, request.field)
+            }
+            is FarmLeaderboardPlaceholder.WeeklyTop -> {
+                val entry = service.weeklyLeaderboard(ActivityKind.FARM, request.rank)
+                    .getOrNull(request.rank - 1) ?: return ""
+                renderTop(entry, request.field)
             }
             null -> null
+        }
+    }
+
+    private fun renderTop(entry: Pair<UUID, Long>, field: FarmLeaderboardPlaceholder.Field): String {
+        val name = Bukkit.getOfflinePlayer(entry.first).name
+        return when (field) {
+            FarmLeaderboardPlaceholder.Field.NAME -> name ?: entry.first.toString().take(8)
+            FarmLeaderboardPlaceholder.Field.SKIN -> name ?: entry.first.toString()
+            FarmLeaderboardPlaceholder.Field.UUID -> entry.first.toString()
+            FarmLeaderboardPlaceholder.Field.SCORE -> entry.second.toString()
         }
     }
 }
@@ -39,17 +54,28 @@ class ArcFarmsPlaceholderExpansion(
 internal sealed interface FarmLeaderboardPlaceholder {
     data object PersonalScore : FarmLeaderboardPlaceholder
     data object PersonalRank : FarmLeaderboardPlaceholder
+    data object PersonalWeeklyScore : FarmLeaderboardPlaceholder
+    data object PersonalWeeklyRank : FarmLeaderboardPlaceholder
     data class Top(val rank: Int, val field: Field) : FarmLeaderboardPlaceholder
+    data class WeeklyTop(val rank: Int, val field: Field) : FarmLeaderboardPlaceholder
 
     enum class Field { NAME, SKIN, UUID, SCORE }
 
     companion object {
         private val TOP = Regex("farm_top_([1-9][0-9]?)_(name|skin|uuid|score)")
+        private val WEEKLY_TOP = Regex("farm_weekly_top_([1-9][0-9]?)_(name|skin|uuid|score)")
 
         fun parse(raw: String): FarmLeaderboardPlaceholder? {
             val normalized = raw.lowercase()
             if (normalized == "farm_score") return PersonalScore
             if (normalized == "farm_rank") return PersonalRank
+            if (normalized == "farm_weekly_score") return PersonalWeeklyScore
+            if (normalized == "farm_weekly_rank") return PersonalWeeklyRank
+            WEEKLY_TOP.matchEntire(normalized)?.let { match ->
+                val rank = match.groupValues[1].toInt()
+                if (rank !in 1..50) return null
+                return WeeklyTop(rank, Field.valueOf(match.groupValues[2].uppercase()))
+            }
             val match = TOP.matchEntire(normalized) ?: return null
             val rank = match.groupValues[1].toInt()
             if (rank !in 1..50) return null

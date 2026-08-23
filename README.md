@@ -216,6 +216,12 @@ contribution table for CMI holograms or Citizens scenes:
   provider, falling back to the UUID;
 - `%arcfarms_farm_top_1_uuid%` and `%arcfarms_farm_top_1_score%`;
 - `%arcfarms_farm_score%` and `%arcfarms_farm_rank%` for the viewing player.
+- `%arcfarms_farm_weekly_top_1_name%`, `%arcfarms_farm_weekly_top_1_skin%`,
+  `%arcfarms_farm_weekly_top_1_uuid%`, and `%arcfarms_farm_weekly_top_1_score%`
+  through rank `50` for the current Moscow-time week;
+- `%arcfarms_farm_weekly_score%` and `%arcfarms_farm_weekly_rank%` for the
+  viewing player. The weekly table rolls over at 00:00 Monday without changing
+  the persistent all-time table.
 
 Replace `1` with the desired rank. Missing ranks return an empty string.
 
