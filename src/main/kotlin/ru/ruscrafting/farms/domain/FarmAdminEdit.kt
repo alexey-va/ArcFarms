@@ -10,13 +10,22 @@ data class FarmAdminPlotRemoval(
 )
 
 object FarmAdminEdit {
-    fun removePlot(state: FarmShiftState, plot: FarmPlotPosition): FarmAdminPlotRemoval {
-        val targetIds = state.careTargets.filter { target -> target.position.isAbove(plot) }.mapTo(mutableSetOf()) { it.id }
-        val nestRemoved = state.pestNests.any { it.position == plot }
-        val patch = state.preparationPatch.filterNot { it == plot }
+    fun removePlot(state: FarmShiftState, plot: FarmPlotPosition): FarmAdminPlotRemoval =
+        removePlots(state, setOf(plot))
+
+    fun removePlots(state: FarmShiftState, plots: Set<FarmPlotPosition>): FarmAdminPlotRemoval {
+        if (plots.isEmpty()) return FarmAdminPlotRemoval(state, emptySet(), pestNestRemoved = false)
+        val targetIds = if (state.careType == FarmCareType.SEEDER) {
+            emptySet()
+        } else {
+            state.careTargets.filter { target -> plots.any { plot -> target.position.isAbove(plot) } }
+                .mapTo(mutableSetOf()) { it.id }
+        }
+        val nestRemoved = state.pestNests.any { it.position in plots }
+        val patch = state.preparationPatch.filterNot(plots::contains)
         if (state.preparationPatch.isNotEmpty() && patch.isEmpty()) {
-            val droughtDamage = state.droughtDamagedPlots - plot
-            val pestDamage = state.pestDamagedCrops.filterNot { it.position == plot }
+            val droughtDamage = state.droughtDamagedPlots - plots
+            val pestDamage = state.pestDamagedCrops.filterNot { it.position in plots }
             val retiredState = if (droughtDamage.isEmpty() && pestDamage.isEmpty()) {
                 FarmShiftState(sequence = state.sequence)
             } else {
@@ -38,11 +47,14 @@ object FarmAdminEdit {
             )
         }
 
-        val tilled = state.tilledPlots - plot
-        val planted = state.plantedPlots - plot
+        val tilled = state.tilledPlots - plots
+        val planted = state.plantedPlots - plots
         val careTargets = state.careTargets.filterNot { it.id in targetIds }
         val phase = when {
-            state.phase == FarmPhase.CARE && (careTargets.isEmpty() || careTargets.all(FarmCareTarget::complete)) -> FarmPhase.HARVESTING
+            state.phase == FarmPhase.CARE && state.careType == FarmCareType.SEEDER &&
+                planted.containsAll(patch) && (careTargets.isEmpty() || careTargets.all(FarmCareTarget::complete)) -> FarmPhase.HARVESTING
+            state.phase == FarmPhase.CARE && state.careType != FarmCareType.SEEDER &&
+                (careTargets.isEmpty() || careTargets.all(FarmCareTarget::complete)) -> FarmPhase.HARVESTING
             state.phase in setOf(FarmPhase.PREPARATION, FarmPhase.PLANTING) && patch.isNotEmpty() && planted.size >= patch.size ->
                 FarmPhase.HARVESTING
             state.phase == FarmPhase.PREPARATION && patch.isNotEmpty() && tilled.size >= patch.size -> FarmPhase.PLANTING
@@ -58,10 +70,10 @@ object FarmAdminEdit {
                 plantingProgress = planted.size,
                 preparationRequired = patch.size,
                 careTargets = careTargets,
-                droughtPlots = state.droughtPlots - plot,
-                droughtDamagedPlots = state.droughtDamagedPlots - plot,
-                pestNests = state.pestNests.filterNot { it.position == plot },
-                pestDamagedCrops = state.pestDamagedCrops.filterNot { it.position == plot },
+                droughtPlots = state.droughtPlots - plots,
+                droughtDamagedPlots = state.droughtDamagedPlots - plots,
+                pestNests = state.pestNests.filterNot { it.position in plots },
+                pestDamagedCrops = state.pestDamagedCrops.filterNot { it.position in plots },
             ),
             careTargetIds = targetIds,
             pestNestRemoved = nestRemoved,

@@ -12,6 +12,7 @@ import ru.ruscrafting.farms.domain.LumberPhase
 import ru.ruscrafting.farms.domain.LumberShiftState
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineShiftState
+import ru.ruscrafting.farms.domain.MAX_FARM_PATCH_PLOTS
 import ru.ruscrafting.farms.domain.PlayerActivityStats
 import ru.ruscrafting.farms.domain.ShiftOutcome
 import java.nio.file.Path
@@ -113,7 +114,10 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
             }
             validateContributors(farm.contributors)
 
-            require(farm.preparationPatch.size <= 512 && farm.preparationPatch.distinct().size == farm.preparationPatch.size) {
+            require(
+                farm.preparationPatch.size <= MAX_FARM_PATCH_PLOTS &&
+                    farm.preparationPatch.distinct().size == farm.preparationPatch.size,
+            ) {
                 "Farm preparation patch is invalid"
             }
             farm.preparationPatch.forEach(::validatePlot)

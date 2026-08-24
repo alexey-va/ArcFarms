@@ -59,6 +59,10 @@ farm-zones:
     animal-delivery-radius: 3.0
     display-view-range: 2.0
     seeder-every-shifts: 2
+    seeder-patch-size: 640
+    seeder-patch-max-size: 1024
+    seeder-working-width: 3
+    seeder-waypoint-reach: 2.8
     disease-initial-spots: 2
     disease-max-spots: 6
     disease-spread-seconds: 12

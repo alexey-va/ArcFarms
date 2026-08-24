@@ -46,34 +46,6 @@ object FarmCarePlanner {
             .distinct()
     }
 
-    fun route(
-        candidates: Collection<FarmPlotPosition>,
-        targetCount: Int,
-        selectionIndex: Long,
-        originX: Double,
-        originZ: Double,
-    ): List<FarmPlotPosition> {
-        val points = spread(candidates, targetCount, selectionIndex).toMutableList()
-        if (points.size <= 1) return points
-        val ordered = mutableListOf<FarmPlotPosition>()
-        var x = originX
-        var z = originZ
-        while (points.isNotEmpty()) {
-            val next = points.minWith(
-                compareBy<FarmPlotPosition> { candidate ->
-                    val dx = candidate.x + 0.5 - x
-                    val dz = candidate.z + 0.5 - z
-                    dx * dx + dz * dz
-                }.thenBy(FarmPlotPosition::x).thenBy(FarmPlotPosition::z),
-            )
-            ordered += next
-            points -= next
-            x = next.x + 0.5
-            z = next.z + 0.5
-        }
-        return ordered
-    }
-
     fun relocate(
         candidates: Collection<FarmPlotPosition>,
         occupied: Collection<FarmPointPosition>,

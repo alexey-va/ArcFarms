@@ -73,6 +73,10 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().droughtTargetBeds(20) shouldBe 20
         settings.farms.single().preparationPatchSize shouldBe 100
         settings.farms.single().preparationPatchMaxSize shouldBe 256
+        settings.farms.single().seederPatchSize shouldBe 640
+        settings.farms.single().seederPatchMaxSize shouldBe 1_024
+        settings.farms.single().seederWorkingWidth shouldBe 3
+        settings.farms.single().seederWaypointReach shouldBe 2.8
         settings.farms.single().preparationSearchRadius shouldBe 64
         settings.farms.single().careTypes shouldContainExactly FarmCareType.entries.filterNot { it == FarmCareType.SEEDER }
         settings.farms.single().careTargetCount shouldBe 4
@@ -313,6 +317,17 @@ class ArcFarmsConfigTest : FunSpec({
             .message shouldContain "preparation-patch-max-size"
     }
 
+    test("mechanized patch remains bounded before runtime scanning") {
+        val root = resourceTree()
+        val configPath = root.resolve("config.yml")
+        configPath.writeText(
+            Files.readString(configPath).replace("seeder-patch-max-size: 1024", "seeder-patch-max-size: 2049"),
+        )
+
+        shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(root) }
+            .message shouldContain "seeder-patch-max-size"
+    }
+
     test("locale parity includes dynamic order route and phase paths") {
         val root = resourceTree()
         val settings = ArcFarmsConfig.inspect(root)
@@ -338,7 +353,7 @@ class ArcFarmsConfigTest : FunSpec({
         )
 
         PlainTextComponentSerializer.plainText().serialize(rendered) shouldBe
-            "Заказ • Пшеница 0/2, Морковь 0/2"
+            "Пшеница 0/2, Морковь 0/2"
     }
 
     test("planting bossbar renders the exact next action without a chat prefix") {
@@ -356,10 +371,10 @@ class ArcFarmsConfigTest : FunSpec({
         )
 
         PlainTextComponentSerializer.plainText().serialize(rendered) shouldBe
-            "Заказ • Посев Пшеница 37/100 • ПКМ семенами"
+            "Посев Пшеница 37/100 • ПКМ семенами"
     }
 
-    test("every active farm bossbar leads with the current order name") {
+    test("active farm bossbars omit the order name reserved for the scoreboard") {
         val root = resourceTree()
         val settings = ArcFarmsConfig.inspect(root)
         val locale = ArcFarmsLocale(root) { settings }
@@ -384,8 +399,8 @@ class ArcFarmsConfigTest : FunSpec({
             MessageKey.FARM_DELIVERY_BOSSBAR,
             MessageKey.FARM_DELIVERY_CARRYING_BOSSBAR,
         ).forEach { key ->
-            PlainTextComponentSerializer.plainText().serialize(locale.render(key, values = values)) shouldStartWith
-                "Заказ •"
+            PlainTextComponentSerializer.plainText().serialize(locale.render(key, values = values)) shouldNotContain
+                "Заказ"
         }
     }
 
@@ -478,6 +493,10 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().pestEntity shouldBe "SILVERFISH"
         settings.farms.single().preparationPatchSize shouldBe 12
         settings.farms.single().preparationPatchMaxSize shouldBe 160
+        settings.farms.single().seederPatchSize shouldBe 24
+        settings.farms.single().seederPatchMaxSize shouldBe 48
+        settings.farms.single().seederWorkingWidth shouldBe 2
+        settings.farms.single().seederWaypointReach shouldBe 2.5
         settings.farms.single().preparationSearchRadius shouldBe 4
         settings.farms.single().careTargetCount shouldBe 3
         settings.farms.single().animalRescueTargetCount shouldBe 4
@@ -565,7 +584,7 @@ class ArcFarmsConfigTest : FunSpec({
             base.copy(phase = FarmPhase.DELIVERY, carrying = true) to "Несите ящик к фиолетовой метке",
             base.copy(phase = FarmPhase.COOLDOWN) to "Новый заказ появится позже",
         ) + mapOf(
-            FarmCareType.SEEDER to "Ведите лошадь по меткам",
+            FarmCareType.SEEDER to "Ведите технику по отмеченному проходу",
             FarmCareType.WEEDS to "Ищите подсвеченные корни",
             FarmCareType.IRRIGATION to "Открывайте вентили по порядку",
             FarmCareType.POLLINATION to "Пыльцу из улья несите к цветам",

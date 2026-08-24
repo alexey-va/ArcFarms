@@ -83,4 +83,76 @@ class FarmAdminEditTest : FunSpec({
         result.state.outcome shouldBe ShiftOutcome.COMPLETED
         result.shiftRetired shouldBe true
     }
+
+    test("bulk removal clears every selected recovery reference and preserves unselected beds") {
+        val selected = (0 until 4).map { FarmPlotPosition("world", it, 63, 1) }.toSet()
+        val retained = (4 until 8).map { FarmPlotPosition("world", it, 63, 1) }.toSet()
+        val result = FarmAdminEdit.removePlots(
+            FarmShiftState(
+                phase = FarmPhase.CARE,
+                sequence = 10,
+                orderId = "order",
+                preparationPatch = (selected + retained).toList(),
+                preparationCrop = "WHEAT",
+                preparationReleased = true,
+                tilledPlots = selected + retained,
+                plantedPlots = selected + retained,
+                preparationProgress = 8,
+                plantingProgress = 8,
+                preparationRequired = 8,
+                careType = FarmCareType.WEEDS,
+                careTargets = listOf(
+                    FarmCareTarget(1, FarmCareRole.WEED_ROOT, FarmPointPosition("world", 0.5, 64.0, 1.5)),
+                    FarmCareTarget(2, FarmCareRole.WEED_ROOT, FarmPointPosition("world", 7.5, 64.0, 1.5)),
+                ),
+                droughtPlots = selected,
+                pestNests = listOf(FarmPestNest(selected.first(), health = 2)),
+            ),
+            selected,
+        )
+
+        result.state.preparationPatch.toSet() shouldBe retained
+        result.state.tilledPlots shouldBe retained
+        result.state.plantedPlots shouldBe retained
+        result.state.preparationRequired shouldBe retained.size
+        result.state.careTargets.map(FarmCareTarget::id) shouldBe listOf(2)
+        result.careTargetIds shouldBe setOf(1)
+        result.state.droughtPlots shouldBe emptySet()
+        result.state.pestNests shouldBe emptyList()
+        result.shiftRetired shouldBe false
+    }
+
+    test("removing a machine endpoint keeps the persisted route available for the remaining field") {
+        val endpoint = FarmPlotPosition("world", 0, 63, 0)
+        val retained = FarmPlotPosition("world", 1, 63, 0)
+        val targets = listOf(
+            FarmCareTarget(
+                0,
+                FarmCareRole.SEEDER_HORSE,
+                FarmPointPosition("world", 0.5, 64.0, 0.5),
+                progress = 1,
+            ),
+            FarmCareTarget(1, FarmCareRole.SEEDER_WAYPOINT, FarmPointPosition("world", 0.5, 64.0, 0.5)),
+        )
+
+        val result = FarmAdminEdit.removePlot(
+            FarmShiftState(
+                phase = FarmPhase.CARE,
+                sequence = 11,
+                orderId = "order",
+                preparationPatch = listOf(endpoint, retained),
+                preparationCrop = "WHEAT",
+                preparationReleased = true,
+                preparationRequired = 2,
+                careType = FarmCareType.SEEDER,
+                careTargets = targets,
+            ),
+            endpoint,
+        )
+
+        result.state.phase shouldBe FarmPhase.CARE
+        result.state.preparationPatch shouldBe listOf(retained)
+        result.state.careTargets shouldBe targets
+        result.careTargetIds shouldBe emptySet()
+    }
 })

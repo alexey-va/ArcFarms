@@ -8,6 +8,7 @@ import ru.ruscrafting.farms.domain.FarmContractRarity
 import ru.ruscrafting.farms.domain.FarmCustomerType
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareType
+import ru.ruscrafting.farms.domain.MAX_FARM_PATCH_PLOTS
 import java.nio.file.Path
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -83,6 +84,10 @@ data class FarmZoneSettings(
     val animalDeliveryRadius: Double,
     val displayViewRange: Float,
     val seederEveryShifts: Int,
+    val seederPatchSize: Int,
+    val seederPatchMaxSize: Int,
+    val seederWorkingWidth: Int,
+    val seederWaypointReach: Double,
     val diseaseInitialSpots: Int,
     val diseaseMaxSpots: Int,
     val diseaseSpreadSeconds: Int,
@@ -476,6 +481,13 @@ class ArcFarmsConfig private constructor(
                 require(preparationPatchMaxSize >= preparationPatchSize) {
                     "Farm zone $id preparation-patch-max-size must be at least preparation-patch-size"
                 }
+                val seederPatchSize = section.int("seeder-patch-size", 640)
+                    .checked("seeder-patch-size", 1, MAX_FARM_PATCH_PLOTS)
+                val seederPatchMaxSize = section.int("seeder-patch-max-size", 1_024)
+                    .checked("seeder-patch-max-size", 1, MAX_FARM_PATCH_PLOTS)
+                require(seederPatchMaxSize >= seederPatchSize) {
+                    "Farm zone $id seeder-patch-max-size must be at least seeder-patch-size"
+                }
                 val placementMinObjectiveDistance = section.int("placement-min-objective-distance", 10)
                     .checked("placement-min-objective-distance", 2, 32)
                 val placementMaxPlayerDistance = section.int("placement-max-player-distance", 28)
@@ -535,6 +547,11 @@ class ArcFarmsConfig private constructor(
                     displayViewRange = section.finiteFloat("display-view-range", 2.0f, 0.25f, 8.0f),
                     seederEveryShifts = section.int("seeder-every-shifts", 2)
                         .checked("seeder-every-shifts", 0, 16),
+                    seederPatchSize = seederPatchSize,
+                    seederPatchMaxSize = seederPatchMaxSize,
+                    seederWorkingWidth = section.int("seeder-working-width", 3)
+                        .checked("seeder-working-width", 1, 12),
+                    seederWaypointReach = section.finiteDouble("seeder-waypoint-reach", 2.8, 1.0, 6.0),
                     diseaseInitialSpots = diseaseInitialSpots,
                     diseaseMaxSpots = diseaseMaxSpots,
                     diseaseSpreadSeconds = section.int("disease-spread-seconds", 12)

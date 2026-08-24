@@ -203,41 +203,48 @@ class FarmShiftEngineTest : FunSpec({
         resolved.state.contributors[player] shouldBe 8
     }
 
-    test("horse-drawn seeder plants persisted route groups before ordinary care") {
-        val planting = FarmShiftState(
-            phase = FarmPhase.PLANTING,
+    test("field machinery only completes passes and the event after physically working every bed") {
+        val preparation = FarmShiftState(
+            phase = FarmPhase.PREPARATION,
             orderId = order.id,
             preparationPatch = patch,
             preparationCrop = "WHEAT",
             preparationReleased = true,
-            tilledPlots = patch.toSet(),
-            preparationProgress = patch.size,
             preparationRequired = patch.size,
         )
         val targets = listOf(
             FarmCareTarget(0, FarmCareRole.SEEDER_HORSE, FarmPointPosition("world", 0.5, 65.0, 1.5)),
             FarmCareTarget(1, FarmCareRole.SEEDER_WAYPOINT, FarmPointPosition("world", 1.5, 65.0, 1.5)),
             FarmCareTarget(2, FarmCareRole.SEEDER_WAYPOINT, FarmPointPosition("world", 2.5, 65.0, 1.5)),
+            FarmCareTarget(3, FarmCareRole.SEEDER_WAYPOINT, FarmPointPosition("world", 3.5, 65.0, 1.5)),
         )
-        FarmShiftEngine.startCare(planting.copy(phase = FarmPhase.HARVESTING), FarmCareType.SEEDER, targets).accepted shouldBe false
-        var state = FarmShiftEngine.startCare(planting, FarmCareType.SEEDER, targets).state
+        FarmShiftEngine.startCare(preparation.copy(phase = FarmPhase.HARVESTING), FarmCareType.SEEDER, targets).accepted shouldBe false
+        var state = FarmShiftEngine.startCare(preparation, FarmCareType.SEEDER, targets).state
 
         state.phase shouldBe FarmPhase.CARE
-        state = FarmShiftEngine.advanceSeeder(state, 0, emptySet(), player).state
-        state = FarmShiftEngine.advanceSeeder(state, 1, setOf(patch[0]), player).state
+        state = FarmShiftEngine.startSeeder(state, 0).state
+        state = FarmShiftEngine.workSeeder(state, setOf(patch[0]), player).state
+        state = FarmShiftEngine.completeSeederPass(state, 1, setOf(patch[0])).state
         state.phase shouldBe FarmPhase.CARE
+        state.tilledPlots shouldBe setOf(patch[0])
         state.plantedPlots shouldBe setOf(patch[0])
         state.plantingProgress shouldBe 1
 
-        val incomplete = FarmShiftEngine.advanceSeeder(state, 2, emptySet(), player)
+        val incomplete = FarmShiftEngine.completeSeederPass(state, 2, setOf(patch[1]))
         incomplete.accepted shouldBe false
         incomplete.state shouldBe state
 
-        val completed = FarmShiftEngine.advanceSeeder(state, 2, setOf(patch[1]), player)
+        val secondPlayer = UUID(0, 99)
+        state = FarmShiftEngine.workSeeder(state, setOf(patch[1]), secondPlayer).state
+        state = FarmShiftEngine.completeSeederPass(state, 2, setOf(patch[1])).state
+        state.phase shouldBe FarmPhase.CARE
+        val completed = FarmShiftEngine.completeSeederPass(state, 3, emptySet())
         completed.state.phase shouldBe FarmPhase.HARVESTING
+        completed.state.tilledPlots shouldBe patch.toSet()
         completed.state.plantedPlots shouldBe patch.toSet()
         completed.state.plantingProgress shouldBe patch.size
-        completed.state.contributors[player] shouldBe 3
+        completed.state.contributors[player] shouldBe 1
+        completed.state.contributors[secondPlayer] shouldBe 1
         completed.events shouldContainExactly listOf(ShiftEvent.CARE_PROGRESS, ShiftEvent.CARE_RESOLVED)
     }
 

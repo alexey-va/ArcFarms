@@ -36,11 +36,16 @@ The active patch, tilling progress, and planting progress survive an empty
 farm, chunk unload, plugin reload, or process restart. Recovery replays an
 unfinished patch release idempotently and reconciles already tilled or planted
 blocks before accepting more actions. On every configured Nth shift,
-`seeder-every-shifts` replaces manual planting with a horse-drawn seeder: the
-player calls the glowing horse, keeps its visible leash, and leads it through a
-persisted route across the patch. Each reached waypoint plants its assigned
-part of the field; `0` disables this variant. After either planting path, the
-boss bar switches to one randomly selected field-care story before harvesting begins.
+`seeder-every-shifts` replaces both manual tilling and planting with
+horse-drawn field machinery; `0` disables this variant. It receives a separate,
+larger field bounded by `seeder-patch-size` and `seeder-patch-max-size`. The
+player calls the glowing horse, keeps its visible leash, and leads it through
+straight, alternating passes across the field. The configured
+`seeder-working-width` is processed only where the machine physically travels.
+Reaching the end of a pass cannot complete it while any assigned bed remains
+untilled or unplanted, and the story cannot finish until the whole persisted
+field is done. After either planting path, the boss bar switches to one
+randomly selected field-care story before harvesting begins.
 Every story is spread across the active bed instead of clustering around its
 center:
 
@@ -66,10 +71,11 @@ useful target has one restrained long-range particle column, while nearby
 targets use glowing models and small local feedback. There is no failure timer:
 an empty farm, one player, disconnect, chunk unload, or restart leaves the same
 shared objective waiting. Finishing field care starts normal harvesting. Its
-boss bar starts with the current contract name and shows every unfinished crop
-with its current and required amount. Every other active farm boss bar follows
-the same `contract • action • progress` hierarchy. Only requested mature crops
-fill it, and accepted crops are consumed by the order instead of dropping.
+boss bar shows every unfinished crop with its current and required amount;
+other active boss bars show only the current action and progress. The contract
+name stays in the roomier farm scoreboard instead of consuming boss-bar space.
+Only requested mature crops fill the order, and accepted crops are consumed
+instead of dropping.
 
 While a player is inside an active farm, the optional `ui.farm-scoreboard`
 sidebar expands that compact guidance into the contract name, current action,
@@ -159,7 +165,10 @@ with its exact coordinates, original soil and crop block data, and current
 recoverable crop state. Startup reconciliation uses those records after a hard
 stop. `/arcfarms admin edit` remains authoritative during an active shift and
 lets an administrator deliberately remove a bed and its ArcFarms record without
-the current objective blocking the edit. Phase-colored
+the current objective blocking the edit. For WorldEdit rebuilds, select the
+area and run `/arcfarms admin unmanage <zone>` before or after replacing it; ArcFarms
+removes every selected managed bed from its durable state and chunk ledger in
+one operation. Phase-colored
 particle columns mark the active patch from a distance; drought and delivery
 use their own local action areas.
 
@@ -218,28 +227,29 @@ next cycle. Atomic Redis compare-and-set prevents duplicate cross-server stamps.
   operation point. Non-travel points must be inside the farm and off crop beds.
 - `/arcfarms admin points <zone>` — list the effective configured and overridden
   farm points.
+- `/arcfarms admin unmanage <zone>` — remove ArcFarms control and recovery
+  records from every managed bed inside the player's exact WorldEdit selection.
 - `/arcfarms admin stage <zone> <preparation|planting|harvesting|seeder|weeds|irrigation|pollination|covers|scarecrows|animals|disease|moles|pests|drought|delivery|complete|reset>` —
   switch the current farm to an exact QA stage while preserving normal recovery.
 - `/arcfarms admin next <zone>` — advance to the next useful QA stage.
-- `/arcfarms admin event <zone> <pests|drought>` — start an exact incident.
+- `/arcfarms admin finish <zone>` — finish the current order through its normal
+  completion and reward path.
+- `/arcfarms admin event <zone> <seeder|weeds|irrigation|pollination|covers|scarecrows|animals|disease|moles|pests|drought>` —
+  start any exact farm story or harvest incident.
 
-Farm counts, spacing, spawn/search radii, incident ranges and checkpoints,
-display scale/offset/view range, care timings, drought/pest tuning, UI toggles,
-sounds, particles, rewards, and operation points are hot-reloadable. Only
+Farm counts, manual and mechanized patch sizes, machinery width/reach, spacing,
+spawn/search radii, incident ranges and checkpoints, display
+scale/offset/view range, care timings, drought/pest tuning, UI toggles, sounds,
+particles, rewards, and operation points are hot-reloadable. Only
 `server-id`, the Redis network enablement boundary, the plugin JAR itself, and
 server-wide living-entity tracking in `spigot.yml` require a restart.
-- `/arcfarms admin care <zone> <seeder|weeds|irrigation|pollination|covers|scarecrows|animals|disease|moles>` —
-  start one exact field-care story, or report that its required fixture cannot
-  be placed.
 - `/arcfarms debug <zone> status` — print the exact shift, patch, crop damage,
   order rarity, customer, cart fill, water-flow, care targets, animal followers,
   nest, pest, and delivery state used by the server.
 - `/arcfarms debug <zone> contract <order-id>` — reset the QA scene and start
   that exact ordinary or rare contract with normal patch selection.
-- `/arcfarms debug <zone> stage <stage>` / `event <pests|drought>` / `next` —
+- `/arcfarms debug <zone> stage <stage>` / `event <story>` / `next` / `finish` —
   force a deterministic QA transition without waiting for random gameplay.
-- `/arcfarms debug <zone> care <seeder|weeds|irrigation|pollination|covers|scarecrows|animals|disease|moles>` —
-  build a selected care scene immediately for visual and interaction QA.
 - `/arcfarms debug <zone> give <tool|seeds|water>` — issue the tagged service
   item for the requested interaction, even before that stage is active.
 - `/arcfarms debug <zone> show` — repeat active-target and configured-point

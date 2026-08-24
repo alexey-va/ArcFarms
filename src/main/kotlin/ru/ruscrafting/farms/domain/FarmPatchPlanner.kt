@@ -10,8 +10,12 @@ object FarmPatchPlanner {
         maxSize: Int = targetSize,
         selectionIndex: Long = 0,
     ): List<FarmPlotPosition> {
-        require(targetSize in 1..512) { "Farm patch target must be in 1..512" }
-        require(maxSize in targetSize..512) { "Farm patch maximum must be between target size and 512" }
+        require(targetSize in 1..MAX_FARM_PATCH_PLOTS) {
+            "Farm patch target must be in 1..$MAX_FARM_PATCH_PLOTS"
+        }
+        require(maxSize in targetSize..MAX_FARM_PATCH_PLOTS) {
+            "Farm patch maximum must be between target size and $MAX_FARM_PATCH_PLOTS"
+        }
         val available = candidates.asSequence()
             .filter { it.world == anchor.world }
             .distinct()
@@ -67,7 +71,9 @@ object FarmPatchPlanner {
         currentPatch: Collection<FarmPlotPosition>,
         maxSize: Int,
     ): List<FarmPlotPosition> {
-        require(maxSize in 1..512) { "Farm patch maximum must be in 1..512" }
+        require(maxSize in 1..MAX_FARM_PATCH_PLOTS) {
+            "Farm patch maximum must be in 1..$MAX_FARM_PATCH_PLOTS"
+        }
         val current = currentPatch.distinct()
         if (current.isEmpty()) return emptyList()
         if (current.size >= maxSize) return current.sortedWith(POSITION_ORDER)

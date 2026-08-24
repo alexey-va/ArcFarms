@@ -106,6 +106,22 @@ class FarmPatchPlannerTest : FunSpec({
         selected.all { it.y == 64 && it in hugeField } shouldBe true
     }
 
+    test("planner can allocate a large bounded field for machinery") {
+        val hugeField = (0 until 64).flatMap { x ->
+            (0 until 32).map { z -> FarmPlotPosition("world", x, 64, z) }
+        }
+
+        val selected = FarmPatchPlanner.select(
+            hugeField,
+            FarmPlotPosition("world", 32, 64, 16),
+            targetSize = 640,
+            maxSize = 1_024,
+        )
+
+        selected.size shouldBe 1_024
+        selected.all(hugeField::contains) shouldBe true
+    }
+
     test("planner rotates bounded patches across one huge connected field") {
         val hugeField = (0 until 50).flatMap { x ->
             (0 until 20).map { z -> FarmPlotPosition("world", x, 64, z) }

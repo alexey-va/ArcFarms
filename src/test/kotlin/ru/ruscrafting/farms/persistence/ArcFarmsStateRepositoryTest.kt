@@ -235,6 +235,39 @@ class ArcFarmsStateRepositoryTest : FunSpec({
         ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
     }
 
+    test("large mechanized field state survives an atomic round trip") {
+        val root = Files.createTempDirectory("arcfarms-state-machine-field-test")
+        val patch = (0 until 64).flatMap { x ->
+            (0 until 16).map { z -> FarmPlotPosition("world", x, 63, z) }
+        }
+        val expected = ArcFarmsState(
+            farms = mapOf(
+                "machine_farm" to FarmShiftState(
+                    phase = FarmPhase.CARE,
+                    sequence = 12,
+                    orderId = "current_order",
+                    progress = mapOf("WHEAT" to 0),
+                    preparationPatch = patch,
+                    preparationCrop = "WHEAT",
+                    preparationReleased = true,
+                    tilledPlots = patch.take(320).toSet(),
+                    plantedPlots = patch.take(320).toSet(),
+                    preparationProgress = 320,
+                    plantingProgress = 320,
+                    preparationRequired = patch.size,
+                    careType = FarmCareType.SEEDER,
+                    careTargets = listOf(
+                        FarmCareTarget(0, FarmCareRole.SEEDER_HORSE, FarmPointPosition("world", 0.5, 64.05, 0.5), progress = 1),
+                        FarmCareTarget(1, FarmCareRole.SEEDER_WAYPOINT, FarmPointPosition("world", 63.5, 64.05, 7.5)),
+                    ),
+                ),
+            ),
+        )
+
+        ArcFarmsStateRepository(root).use { it.saveBlocking(expected) }
+        ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
+    }
+
     test("pending farm rewards and claim watermarks survive an atomic round trip") {
         val root = Files.createTempDirectory("arcfarms-state-reward-test")
         val playerId = UUID(0, 42)

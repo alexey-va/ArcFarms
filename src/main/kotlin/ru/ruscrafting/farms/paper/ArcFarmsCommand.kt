@@ -170,6 +170,11 @@ class ArcFarmsCommand(
                     sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
                 }
             }
+            "unmanage" -> {
+                val zone = args.getOrNull(1)
+                if (zone == null) sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
+                else service.adminUnmanageSelection(player, zone)
+            }
             "stage" -> {
                 val zone = args.getOrNull(1)
                 val stage = args.getOrNull(2)
@@ -184,23 +189,19 @@ class ArcFarmsCommand(
                 if (zone == null) sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
                 else service.adminAdvanceFarm(player, zone)
             }
+            "finish" -> {
+                val zone = args.getOrNull(1)
+                if (zone == null) sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
+                else service.adminSetFarmStage(player, zone, "complete")
+            }
             "event" -> {
                 val zone = args.getOrNull(1)
                 val event = args.getOrNull(2)?.lowercase()
-                if (zone == null || event !in setOf("pests", "drought")) {
+                if (zone == null || event !in EVENT_STAGES) {
                     sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
                     return
                 }
                 service.adminSetFarmStage(player, zone, requireNotNull(event))
-            }
-            "care" -> {
-                val zone = args.getOrNull(1)
-                val care = args.getOrNull(2)?.lowercase()
-                if (zone == null || care !in CARE_STAGES) {
-                    sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
-                    return
-                }
-                service.adminSetFarmStage(player, zone, requireNotNull(care))
             }
             else -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
         }
@@ -228,6 +229,7 @@ class ArcFarmsCommand(
             }
             "show", "markers" -> service.adminShowFarmGuidance(player, zone)
             "next", "resolve" -> service.adminAdvanceFarm(player, zone)
+            "finish" -> service.adminSetFarmStage(player, zone, "complete")
             "reset" -> service.adminSetFarmStage(player, zone, "reset")
             "contract" -> {
                 val orderId = args.getOrNull(2)
@@ -241,16 +243,11 @@ class ArcFarmsCommand(
             }
             "event" -> {
                 val event = args.getOrNull(2)?.lowercase()
-                if (event !in setOf("pests", "drought")) {
+                if (event !in EVENT_STAGES) {
                     sender.sendMessage(locale.render(MessageKey.ADMIN_DEBUG_HELP, sender))
                 } else {
                     service.adminSetFarmStage(player, zone, requireNotNull(event))
                 }
-            }
-            "care" -> {
-                val care = args.getOrNull(2)?.lowercase()
-                if (care !in CARE_STAGES) sender.sendMessage(locale.render(MessageKey.ADMIN_DEBUG_HELP, sender))
-                else service.adminSetFarmStage(player, zone, requireNotNull(care))
             }
             "give" -> {
                 val kind = args.getOrNull(2)?.lowercase()
@@ -285,8 +282,16 @@ class ArcFarmsCommand(
         return true
     }
 
-    override fun onTabComplete(sender: CommandSender, command: Command, alias: String, args: Array<out String>): List<String> =
-        when (args.size) {
+    override fun onTabComplete(
+        sender: CommandSender,
+        command: Command,
+        alias: String,
+        args: Array<out String>,
+    ): List<String> {
+        if (args.firstOrNull()?.lowercase() in setOf("admin", "debug") && !sender.hasPermission("arcfarms.admin")) {
+            return emptyList()
+        }
+        return when (args.size) {
             1 -> buildList {
                 add("status")
                 add("top")
@@ -301,16 +306,18 @@ class ArcFarmsCommand(
                 args[0].equals("top", true) || args[0].equals("travel", true) ->
                     listOf("farm", "lumber", "mine").filter { it.startsWith(args[1], true) }
                 args[0].equals("admin", true) && sender.hasPermission("arcfarms.admin") ->
-                    listOf("edit", "point", "points", "stage", "next", "event", "care").filter { it.startsWith(args[1], true) }
+                    listOf("edit", "point", "points", "unmanage", "stage", "next", "finish", "event")
+                        .filter { it.startsWith(args[1], true) }
                 args[0].equals("debug", true) && sender.hasPermission("arcfarms.admin") ->
                     service.farmZoneIds().filter { it.startsWith(args[1], true) }
                 else -> emptyList()
             }
             3 -> when {
-                args[0].equals("admin", true) && args[1].lowercase() in setOf("point", "points", "stage", "next", "event", "care") ->
+                args[0].equals("admin", true) && args[1].lowercase() in
+                    setOf("point", "points", "unmanage", "stage", "next", "finish", "event") ->
                     service.farmZoneIds().filter { it.startsWith(args[2], true) }
                 args[0].equals("debug", true) && sender.hasPermission("arcfarms.admin") ->
-                    listOf("status", "contract", "stage", "next", "event", "care", "give", "show", "points", "reset")
+                    listOf("status", "contract", "stage", "next", "finish", "event", "give", "show", "points", "reset")
                         .filter { it.startsWith(args[2], true) }
                 else -> emptyList()
             }
@@ -322,16 +329,12 @@ class ArcFarmsCommand(
                     (listOf("preparation", "planting", "harvesting") + CARE_STAGES + listOf("pests", "drought", "delivery", "complete", "reset"))
                         .filter { it.startsWith(args[3], true) }
                 args[0].equals("admin", true) && args[1].equals("event", true) ->
-                    listOf("pests", "drought").filter { it.startsWith(args[3], true) }
-                args[0].equals("admin", true) && args[1].equals("care", true) ->
-                    CARE_STAGES.filter { it.startsWith(args[3], true) }
+                    EVENT_STAGES.filter { it.startsWith(args[3], true) }
                 args[0].equals("debug", true) && args[2].equals("stage", true) ->
                     (listOf("preparation", "planting", "harvesting") + CARE_STAGES + listOf("pests", "drought", "delivery", "complete", "reset"))
                         .filter { it.startsWith(args[3], true) }
                 args[0].equals("debug", true) && args[2].equals("event", true) ->
-                    listOf("pests", "drought").filter { it.startsWith(args[3], true) }
-                args[0].equals("debug", true) && args[2].equals("care", true) ->
-                    CARE_STAGES.filter { it.startsWith(args[3], true) }
+                    EVENT_STAGES.filter { it.startsWith(args[3], true) }
                 args[0].equals("debug", true) && args[2].equals("give", true) ->
                     listOf("tool", "seeds", "water").filter { it.startsWith(args[3], true) }
                 args[0].equals("debug", true) && args[2].equals("contract", true) ->
@@ -340,6 +343,7 @@ class ArcFarmsCommand(
             }
             else -> emptyList()
         }
+    }
 
     private fun parsePoint(raw: String): FarmPointKind? = when (raw.lowercase()) {
         "tool" -> FarmPointKind.TOOL
@@ -378,5 +382,6 @@ class ArcFarmsCommand(
         private val CARE_STAGES = listOf(
             "seeder", "weeds", "irrigation", "pollination", "covers", "scarecrows", "animals", "disease", "moles",
         )
+        private val EVENT_STAGES = CARE_STAGES + listOf("pests", "drought")
     }
 }
