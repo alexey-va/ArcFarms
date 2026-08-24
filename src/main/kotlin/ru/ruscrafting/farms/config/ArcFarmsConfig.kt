@@ -77,9 +77,15 @@ data class FarmZoneSettings(
     val preparationSearchRadius: Int,
     val fixedCropRespawnSeconds: Int,
     val restoreBlocksPerTick: Int,
+    val blockReindexBlocksPerTick: Int,
+    val blockReindexMaxBlocks: Int,
     val careRadius: Int,
     val careTypes: List<FarmCareType>,
     val careTargetCount: Int,
+    val appleTargetCount: Int,
+    val appleMinSpacing: Double,
+    val appleDisplayScale: Float,
+    val appleLeafIndexLimit: Int,
     val animalRescueTargetCount: Int,
     val animalRescueMinSpacing: Double,
     val animalRescueMaxPlayerDistance: Int,
@@ -417,6 +423,7 @@ class ArcFarmsConfig private constructor(
                     FarmCareRole.VALVE to "TRIPWIRE_HOOK",
                     FarmCareRole.HIVE to "BEE_NEST",
                     FarmCareRole.FLOWER_PATCH to "SUNFLOWER",
+                    FarmCareRole.APPLE to "APPLE",
                     FarmCareRole.COVER_ANCHOR to "WHITE_CARPET",
                     FarmCareRole.SCARECROW to "CARVED_PUMPKIN",
                     FarmCareRole.ANIMAL to "WHEAT_SEEDS",
@@ -541,9 +548,18 @@ class ArcFarmsConfig private constructor(
                         .checked("fixed-crop-respawn-seconds", 1, 3_600),
                     restoreBlocksPerTick = section.int("restore-blocks-per-tick", 24)
                         .checked("restore-blocks-per-tick", 1, 128),
+                    blockReindexBlocksPerTick = section.int("block-reindex-blocks-per-tick", 4_096)
+                        .checked("block-reindex-blocks-per-tick", 256, 16_384),
+                    blockReindexMaxBlocks = section.int("block-reindex-max-blocks", 20_000_000)
+                        .checked("block-reindex-max-blocks", 100_000, 50_000_000),
                     careRadius = section.int("care-radius", 10).checked("care-radius", 3, 24),
                     careTypes = careTypes,
                     careTargetCount = section.int("care-targets", 4).checked("care-targets", 2, 8),
+                    appleTargetCount = section.int("apple-targets", 8).checked("apple-targets", 3, 16),
+                    appleMinSpacing = section.finiteDouble("apple-min-spacing", 4.0, 0.0, 24.0),
+                    appleDisplayScale = section.finiteFloat("apple-display-scale", 1.35f, 0.5f, 3.0f),
+                    appleLeafIndexLimit = section.int("apple-leaf-index-limit", 8_192)
+                        .checked("apple-leaf-index-limit", 256, 32_768),
                     animalRescueTargetCount = section.int("animal-rescue-targets", 6)
                         .checked("animal-rescue-targets", 2, 12),
                     animalRescueMinSpacing = section.finiteDouble("animal-rescue-min-spacing", 8.0, 0.0, 32.0),

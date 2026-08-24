@@ -66,6 +66,7 @@ class ArcFarmsConfigTest : FunSpec({
             ),
             "bakery_supply" to listOf(
                 FarmCareType.POLLINATION,
+                FarmCareType.APPLE_HARVEST,
                 FarmCareType.DISEASE,
                 FarmCareType.IRRIGATION,
                 FarmCareType.SCARECROWS,
@@ -73,12 +74,14 @@ class ArcFarmsConfigTest : FunSpec({
             ),
             "market_crates" to listOf(
                 FarmCareType.WEEDS,
+                FarmCareType.APPLE_HARVEST,
                 FarmCareType.SCARECROWS,
                 FarmCareType.ANIMAL_RESCUE,
                 FarmCareType.STORM_COVERS,
             ),
             "harvest_festival" to listOf(
                 FarmCareType.POLLINATION,
+                FarmCareType.APPLE_HARVEST,
                 FarmCareType.STORM_COVERS,
                 FarmCareType.SCARECROWS,
             ),
@@ -89,6 +92,7 @@ class ArcFarmsConfigTest : FunSpec({
             ),
             "master_baker_request" to listOf(
                 FarmCareType.POLLINATION,
+                FarmCareType.APPLE_HARVEST,
                 FarmCareType.DISEASE,
                 FarmCareType.STORM_COVERS,
             ),
@@ -129,9 +133,15 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().preparationSearchRadius shouldBe 64
         settings.farms.single().fixedCropRespawnSeconds shouldBe 20
         settings.farms.single().restoreBlocksPerTick shouldBe 24
+        settings.farms.single().blockReindexBlocksPerTick shouldBe 4_096
+        settings.farms.single().blockReindexMaxBlocks shouldBe 20_000_000
         settings.farms.single().crops shouldBe setOf("WHEAT", "CARROTS", "POTATOES", "BEETROOTS", "MELON", "PUMPKIN")
         settings.farms.single().careTypes shouldContainExactly FarmCareType.entries.filterNot { it == FarmCareType.SEEDER }
         settings.farms.single().careTargetCount shouldBe 4
+        settings.farms.single().appleTargetCount shouldBe 8
+        settings.farms.single().appleMinSpacing shouldBe 4.0
+        settings.farms.single().appleDisplayScale shouldBe 1.35f
+        settings.farms.single().appleLeafIndexLimit shouldBe 8_192
         settings.farms.single().animalRescueTargetCount shouldBe 6
         settings.farms.single().animalRescueMinSpacing shouldBe 8.0
         settings.farms.single().animalRescueMaxPlayerDistance shouldBe 28
@@ -154,6 +164,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().placementMaxPlayerDistance shouldBe 28
         settings.farms.single().placementSearchRadius shouldBe 32
         settings.farms.single().careVisuals.getValue(FarmCareRole.HIVE).material shouldBe "BEE_NEST"
+        settings.farms.single().careVisuals.getValue(FarmCareRole.APPLE).material shouldBe "APPLE"
         settings.farms.single().incidentTypes shouldContainExactly listOf(FarmIncidentType.PESTS, FarmIncidentType.DROUGHT)
         settings.farms.single().pestNestCount shouldBe 3
         settings.farms.single().pestNestHealth shouldBe 3
@@ -653,6 +664,7 @@ class ArcFarmsConfigTest : FunSpec({
             FarmCareType.ANIMAL_RESCUE to "Ведите животных к зелёной метке",
             FarmCareType.DISEASE to "Обработайте каждый очаг дважды",
             FarmCareType.MOLES to "Бейте свежие холмики мотыгой",
+            FarmCareType.APPLE_HARVEST to "Ищите светящиеся яблоки под кронами",
         ).map { (type, hint) -> base.copy(phase = FarmPhase.CARE, careType = type) to hint }
 
         scenarios.forEach { (view, expectedHint) ->

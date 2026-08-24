@@ -1,0 +1,26 @@
+package ru.ruscrafting.farms.paper
+
+import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.shouldBe
+import org.bukkit.Material
+
+class FarmBlockPolicyTest : FunSpec({
+    val crops = setOf("WHEAT", "CARROTS", "POTATOES", "BEETROOTS", "MELON", "PUMPKIN")
+
+    test("only open or normally planted farmland can be selected") {
+        FarmBlockPolicy.isSelectableBed(Material.FARMLAND, Material.AIR, crops) shouldBe true
+        FarmBlockPolicy.isSelectableBed(Material.FARMLAND, Material.WHEAT, crops) shouldBe true
+        FarmBlockPolicy.isSelectableBed(Material.FARMLAND, Material.STONE, crops) shouldBe false
+        FarmBlockPolicy.isSelectableBed(Material.FARMLAND, Material.OAK_PLANKS, crops) shouldBe false
+        FarmBlockPolicy.isSelectableBed(Material.FARMLAND, Material.MELON_STEM, crops) shouldBe false
+        FarmBlockPolicy.isSelectableBed(Material.FARMLAND, Material.MELON, crops) shouldBe false
+        FarmBlockPolicy.isSelectableBed(Material.DIRT, Material.AIR, crops) shouldBe false
+    }
+
+    test("apple anchors require leaves with free hanging space below") {
+        FarmBlockPolicy.isOrchardLeaf(Material.OAK_LEAVES, Material.AIR) shouldBe true
+        FarmBlockPolicy.isOrchardLeaf(Material.CHERRY_LEAVES, Material.AIR) shouldBe true
+        FarmBlockPolicy.isOrchardLeaf(Material.OAK_LEAVES, Material.OAK_LOG) shouldBe false
+        FarmBlockPolicy.isOrchardLeaf(Material.OAK_LOG, Material.AIR) shouldBe false
+    }
+})

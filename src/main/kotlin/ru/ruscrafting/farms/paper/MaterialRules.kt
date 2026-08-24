@@ -48,6 +48,8 @@ object MaterialRules {
 
     fun isFixedBlockCrop(crop: Material): Boolean = crop in fixedBlockCrops
 
+    fun isLeaf(material: Material): Boolean = material.name.endsWith("_LEAVES")
+
     fun cropComponent(material: Material): Component = Component.translatable(
         when (material) {
             Material.WHEAT -> "item.minecraft.wheat"

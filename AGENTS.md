@@ -49,6 +49,16 @@ activities: farm, lumbermill, and mine.
 - Clear farm recovery entries only after the corresponding world repair was
   confirmed. Patch restoration keeps its block ledger until the cleared state
   is durably saved; unloaded or failed plots remain pending for a later retry.
+- Persistent farm topology is owned by the chunk-PDC block index, not by a
+  service-local cache. Rebuild it only through the bounded two-phase admin
+  reindex: load chunks asynchronously, hold and release exact plugin tickets,
+  scan a configured block budget per tick, validate again before applying, and
+  replace one chunk at a time. Indexed farmland is kept fully moist; any bed
+  covered by a non-plantable block is removed from event selection.
+- Orchard care uses reindexed open leaf anchors and non-persistent
+  `ItemDisplay`/`Interaction` pairs. Keep target count, spacing, display scale,
+  and leaf-index bounds configurable, and degrade safely when an orchard has
+  fewer valid anchors.
 - Register move, teleport, and portal cleanup handlers separately: Paper gives
   these event classes distinct handler lists despite their class inheritance.
 - Farm service items may move inside the player's own inventory, but must never

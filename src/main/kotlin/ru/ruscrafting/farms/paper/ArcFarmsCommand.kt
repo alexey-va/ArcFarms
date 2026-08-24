@@ -162,6 +162,7 @@ class ArcFarmsCommand(
                 "point" -> sendPointHelp(sender, zone)
                 "points" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_POINTS, sender))
                 "unmanage" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_UNMANAGE, sender))
+                "blockreset" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_BLOCKRESET, sender))
                 "stage" -> sendStageHelp(sender, zone)
                 "next" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_NEXT, sender))
                 "finish" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_FINISH, sender))
@@ -205,6 +206,18 @@ class ArcFarmsCommand(
                 val zone = args.getOrNull(1)
                 if (zone == null) sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
                 else service.adminUnmanageSelection(player, zone)
+            }
+            "blockreset" -> {
+                val zone = args.getOrNull(1)
+                if (zone == null) {
+                    sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_BLOCKRESET, sender))
+                } else {
+                    when (args.getOrNull(2)?.lowercase()) {
+                        null -> service.adminStartFarmBlockReset(player, zone)
+                        "status" -> service.adminFarmBlockResetStatus(player, zone)
+                        else -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_BLOCKRESET, sender))
+                    }
+                }
             }
             "stage" -> {
                 val zone = args.getOrNull(1)
@@ -418,7 +431,7 @@ class ArcFarmsCommand(
                 args[0].equals("top", true) || args[0].equals("travel", true) ->
                     listOf("farm", "lumber", "mine").filter { it.startsWith(args[1], true) }
                 args[0].equals("admin", true) && sender.hasPermission("arcfarms.admin") ->
-                    listOf("help", "edit", "inspect", "point", "points", "unmanage", "stage", "next", "finish", "event")
+                    listOf("help", "edit", "inspect", "point", "points", "unmanage", "blockreset", "stage", "next", "finish", "event")
                         .filter { it.startsWith(args[1], true) }
                 args[0].equals("debug", true) && sender.hasPermission("arcfarms.admin") ->
                     service.farmZoneIds().filter { it.startsWith(args[1], true) }
@@ -428,7 +441,7 @@ class ArcFarmsCommand(
                 args[0].equals("admin", true) && args[1].lowercase() in setOf("edit", "inspect") ->
                     listOf("help").filter { it.startsWith(args[2], true) }
                 args[0].equals("admin", true) && args[1].lowercase() in
-                    setOf("point", "points", "unmanage", "stage", "next", "finish", "event") ->
+                    setOf("point", "points", "unmanage", "blockreset", "stage", "next", "finish", "event") ->
                     (service.farmZoneIds() + "help").filter { it.startsWith(args[2], true) }
                 args[0].equals("debug", true) && sender.hasPermission("arcfarms.admin") ->
                     listOf("status", "contract", "stage", "next", "finish", "event", "give", "show", "points", "reset")
@@ -444,6 +457,8 @@ class ArcFarmsCommand(
                         .filter { it.startsWith(args[3], true) }
                 args[0].equals("admin", true) && args[1].equals("event", true) ->
                     (EVENT_STAGES + "help").filter { it.startsWith(args[3], true) }
+                args[0].equals("admin", true) && args[1].equals("blockreset", true) ->
+                    listOf("status", "help").filter { it.startsWith(args[3], true) }
                 args[0].equals("admin", true) && args[1].lowercase() in
                     setOf("points", "unmanage", "next", "finish") ->
                     listOf("help").filter { it.startsWith(args[3], true) }
@@ -515,6 +530,7 @@ class ArcFarmsCommand(
             "animals" to FarmCareType.ANIMAL_RESCUE,
             "disease" to FarmCareType.DISEASE,
             "moles" to FarmCareType.MOLES,
+            "apples" to FarmCareType.APPLE_HARVEST,
         )
         private val CARE_STAGES = CARE_EVENT_TYPES.keys.toList()
         private val EVENT_STAGES = CARE_STAGES + listOf("pests", "drought")

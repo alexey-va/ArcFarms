@@ -32,6 +32,14 @@ enum class MessageKey(val path: String) {
     ADMIN_INSPECT_PLOT("admin-inspect.plot"),
     ADMIN_INSPECT_TRACKING("admin-inspect.tracking"),
     ADMIN_INSPECT_NONE("admin-inspect.none"),
+    ADMIN_BLOCKRESET_STARTED("admin.blockreset-started"),
+    ADMIN_BLOCKRESET_STATUS("admin.blockreset-status"),
+    ADMIN_BLOCKRESET_COMPLETED("admin.blockreset-completed"),
+    ADMIN_BLOCKRESET_ACTIVE("admin.blockreset-active"),
+    ADMIN_BLOCKRESET_PENDING("admin.blockreset-pending"),
+    ADMIN_BLOCKRESET_TOO_LARGE("admin.blockreset-too-large"),
+    ADMIN_BLOCKRESET_FAILED("admin.blockreset-failed"),
+    ADMIN_BLOCKRESET_IDLE("admin.blockreset-idle"),
     ADMIN_UNMANAGE_WORLD_EDIT_REQUIRED("admin.unmanage-worldedit-required"),
     ADMIN_UNMANAGE_SELECTION_REQUIRED("admin.unmanage-selection-required"),
     ADMIN_UNMANAGE_WRONG_WORLD("admin.unmanage-wrong-world"),
@@ -40,6 +48,7 @@ enum class MessageKey(val path: String) {
     ADMIN_HELP("admin.help"),
     ADMIN_HELP_EDIT("admin.command-help.edit"),
     ADMIN_HELP_INSPECT("admin.command-help.inspect"),
+    ADMIN_HELP_BLOCKRESET("admin.command-help.blockreset"),
     ADMIN_HELP_POINTS("admin.command-help.points"),
     ADMIN_HELP_UNMANAGE("admin.command-help.unmanage"),
     ADMIN_HELP_NEXT("admin.command-help.next"),
@@ -337,11 +346,13 @@ class ArcFarmsLocale(
             add("admin.point-source.default")
             add("admin-inspect.restore.ready")
             add("admin-inspect.restore.pending")
-            listOf("managed", "patch", "drought", "drought-damaged", "pest-nest", "pest-damaged")
+            add("admin.blockreset-phase.scanning")
+            add("admin.blockreset-phase.applying")
+            listOf("managed", "patch", "drought", "drought-damaged", "pest-nest", "pest-damaged", "orchard")
                 .mapTo(this) { "admin-inspect.tracking-kind.$it" }
             val adminStages = listOf(
                 "preparation", "planting", "harvesting", "seeder", "weeds", "irrigation", "pollination", "covers", "scarecrows",
-                "animals", "disease", "moles", "pests", "drought", "delivery", "complete", "reset",
+                "animals", "disease", "moles", "apples", "pests", "drought", "delivery", "complete", "reset",
             )
             adminStages.mapTo(this) { "admin.stage.$it" }
             adminStages.mapTo(this) { "admin.stage-description.$it" }

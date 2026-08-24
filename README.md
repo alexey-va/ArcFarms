@@ -256,16 +256,22 @@ are available through commands such as `/arcfarms admin point <zone> help`,
 - `/arcfarms admin unmanage <zone>` — remove ArcFarms control and recovery
   records from every managed bed or fixed crop inside the player's exact
   WorldEdit selection.
-- `/arcfarms admin stage <zone> <preparation|planting|harvesting|seeder|weeds|irrigation|pollination|covers|scarecrows|animals|disease|moles|pests|drought|delivery|complete|reset>` —
+- `/arcfarms admin blockreset <zone>` — while the farm is idle, rebuild its
+  durable block index from the current WorldGuard region. The bounded two-phase
+  scan records usable farmland, fixed melons/pumpkins, and open leaf anchors;
+  it keeps indexed farmland wet and excludes beds covered by structures,
+  stems, or fixed fruit. Use the optional `status` argument to inspect progress.
+- `/arcfarms admin stage <zone> <preparation|planting|harvesting|seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought|delivery|complete|reset>` —
   switch the current farm to an exact QA stage while preserving normal recovery.
 - `/arcfarms admin next <zone>` — advance to the next useful QA stage.
 - `/arcfarms admin finish <zone>` — finish the current order through its normal
   completion and reward path.
-- `/arcfarms admin event <zone> <seeder|weeds|irrigation|pollination|covers|scarecrows|animals|disease|moles|pests|drought>` —
+- `/arcfarms admin event <zone> <seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought>` —
   start any exact farm story or harvest incident.
 
 Farm counts, manual and mechanized patch sizes, machinery width/reach, spacing,
-spawn/search radii, incident ranges and checkpoints, display
+spawn/search radii, incident ranges and checkpoints, apple count/spacing,
+block-reindex batch/size limits, display
 scale/offset/view range, care timings, drought/pest tuning, UI toggles, sounds,
 particles, rewards, fixed-crop respawn delay, restoration batch size, and
 operation points are hot-reloadable. Only
@@ -329,7 +335,7 @@ button.
 ../arc-core/gradlew clean check shadowJar
 ```
 
-The deployable artifact is `build/libs/ArcFarms-0.16.3.jar`.
+The deployable artifact is `build/libs/ArcFarms-0.17.0.jar`.
 
 ## Isolated gameplay QA
 
