@@ -30,6 +30,8 @@ import org.bukkit.entity.Item
 import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Horse
 import org.bukkit.entity.TextDisplay
+import org.bukkit.entity.Minecart
+import org.bukkit.entity.Villager
 import org.bukkit.event.entity.EntityDeathEvent
 import org.bukkit.event.entity.EntityChangeBlockEvent
 import org.bukkit.event.entity.EntityDamageByEntityEvent
@@ -71,6 +73,8 @@ import ru.ruscrafting.farms.domain.FarmAdminEdit
 import ru.ruscrafting.farms.domain.ArcFarmsState
 import ru.ruscrafting.farms.domain.EngineResult
 import ru.ruscrafting.farms.domain.FarmOrder
+import ru.ruscrafting.farms.domain.FarmContractPlanner
+import ru.ruscrafting.farms.domain.FarmCustomerType
 import ru.ruscrafting.farms.domain.FarmCarePlanner
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareTarget
@@ -128,6 +132,10 @@ import kotlin.math.PI
 import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.sin
+import org.bukkit.util.Transformation
+import org.bukkit.util.Vector
+import org.joml.AxisAngle4f
+import org.joml.Vector3f
 
 data class ActivityStatus(
     val kind: ActivityKind,
@@ -169,8 +177,10 @@ private data class DeliveryKey(val zoneId: String, val index: Int)
 private data class SupplyKey(val zoneId: String, val kind: FarmSupplyKind)
 private data class PestNestKey(val zoneId: String, val position: FarmPlotPosition)
 private data class CareEntityKey(val zoneId: String, val targetId: Int)
+private data class ContractSceneKey(val zoneId: String, val role: ContractSceneRole, val slot: Int = 0)
 private data class DroughtGrowthRuntime(var startedAt: Long, var spawned: Int)
 private enum class FarmSupplyKind { TOOL, SEEDS, WATER }
+private enum class ContractSceneRole { CART, CART_LOAD, CUSTOMER }
 
 private val FARM_SOIL_TYPES = setOf(
     Material.DIRT,
@@ -252,6 +262,7 @@ class ArcFarmsService(
     private val supplyEntities = mutableMapOf<SupplyKey, MutableSet<UUID>>()
     private val supplyVisualMaterials = mutableMapOf<SupplyKey, Material>()
     private val careEntities = mutableMapOf<CareEntityKey, MutableSet<UUID>>()
+    private val contractSceneEntities = mutableMapOf<ContractSceneKey, UUID>()
     private val animalFollowers = mutableMapOf<CareEntityKey, UUID>()
     private val diseaseNextSpreadAt = mutableMapOf<String, Long>()
     private val careNextReconcileAt = mutableMapOf<String, Long>()
@@ -281,6 +292,10 @@ class ArcFarmsService(
     private val careSequenceKey = NamespacedKey(plugin, "farm_care_sequence")
     private val careTargetKey = NamespacedKey(plugin, "farm_care_target")
     private val careRoleKey = NamespacedKey(plugin, "farm_care_role")
+    private val contractSceneZoneKey = NamespacedKey(plugin, "farm_contract_scene_zone")
+    private val contractSceneSequenceKey = NamespacedKey(plugin, "farm_contract_scene_sequence")
+    private val contractSceneRoleKey = NamespacedKey(plugin, "farm_contract_scene_role")
+    private val contractSceneSlotKey = NamespacedKey(plugin, "farm_contract_scene_slot")
     private val tasks = mutableListOf<ScheduledTask>()
     @Volatile
     private var started = false
@@ -662,7 +677,8 @@ class ArcFarmsService(
         if (
             data.has(careZoneKey, PersistentDataType.STRING) ||
             data.has(supplyZoneKey, PersistentDataType.STRING) ||
-            data.has(deliveryZoneKey, PersistentDataType.STRING)
+            data.has(deliveryZoneKey, PersistentDataType.STRING) ||
+            data.has(contractSceneZoneKey, PersistentDataType.STRING)
         ) {
             event.isCancelled = true
         }
@@ -671,6 +687,12 @@ class ArcFarmsService(
     fun onInteractEntity(event: PlayerInteractEntityEvent) {
         if (event.player.uniqueId in adminEditPlayers) return
         if (event.hand != EquipmentSlot.HAND) return
+        val contractZone = event.rightClicked.persistentDataContainer.get(contractSceneZoneKey, PersistentDataType.STRING)
+        if (contractZone != null) {
+            event.isCancelled = true
+            handleFarmContractSceneInteraction(event.player, event.rightClicked, contractZone)
+            return
+        }
         val careZone = event.rightClicked.persistentDataContainer.get(careZoneKey, PersistentDataType.STRING)
         if (careZone != null) {
             event.isCancelled = true
@@ -709,6 +731,10 @@ class ArcFarmsService(
     }
 
     fun onEntityDamage(event: EntityDamageEvent) {
+        if (event.entity.persistentDataContainer.has(contractSceneZoneKey, PersistentDataType.STRING)) {
+            event.isCancelled = true
+            return
+        }
         if (event.entity.persistentDataContainer.has(careZoneKey, PersistentDataType.STRING)) {
             event.isCancelled = true
             val player = (event as? EntityDamageByEntityEvent)?.damager as? Player ?: return
@@ -772,7 +798,8 @@ class ArcFarmsService(
         if (
             event.entity.persistentDataContainer.has(deliveryZoneKey, PersistentDataType.STRING) ||
             event.entity.persistentDataContainer.has(supplyZoneKey, PersistentDataType.STRING) ||
-            event.entity.persistentDataContainer.has(careZoneKey, PersistentDataType.STRING)
+            event.entity.persistentDataContainer.has(careZoneKey, PersistentDataType.STRING) ||
+            event.entity.persistentDataContainer.has(contractSceneZoneKey, PersistentDataType.STRING)
         ) {
             event.isCancelled = true
             return
@@ -826,6 +853,11 @@ class ArcFarmsService(
     }
 
     fun farmZoneIds(): List<String> = farms.map { it.settings.id }
+
+    fun farmOrderIds(zoneId: String): List<String> = farms.firstOrNull { it.settings.id == zoneId }
+        ?.orderList
+        ?.map(FarmOrder::id)
+        .orEmpty()
 
     fun adminFarmPoints(zoneId: String): Map<FarmPointKind, FarmPointPosition>? {
         val runtime = farms.firstOrNull { it.settings.id == zoneId } ?: return null
@@ -897,6 +929,10 @@ class ArcFarmsService(
                 clearDelivery(runtime, "admin_point_changed")
                 ensureFarmDelivery(runtime)
                 persistAsync()
+            }
+            FarmPointKind.CART, FarmPointKind.CUSTOMER -> {
+                clearFarmContractScene(runtime, "admin_point_changed")
+                ensureFarmContractScene(runtime)
             }
             FarmPointKind.HIVE,
             FarmPointKind.IRRIGATION,
@@ -1066,6 +1102,7 @@ class ArcFarmsService(
                 runtime.state.copy(
                     phase = FarmPhase.DELIVERY,
                     progress = order.required,
+                    harvestMilestone = 4,
                     incidentType = null,
                     pestNestsInitialized = false,
                     pestNests = emptyList(),
@@ -1109,11 +1146,13 @@ class ArcFarmsService(
         val next = when (runtime.state.phase) {
             FarmPhase.IDLE, FarmPhase.COOLDOWN -> "preparation"
             FarmPhase.PREPARATION -> "planting"
-            FarmPhase.PLANTING -> runtime.settings.careTypes[
-                java.lang.Math.floorMod(runtime.state.sequence.toInt(), runtime.settings.careTypes.size)
-            ].adminStageName()
+            FarmPhase.PLANTING -> currentOrder(runtime)?.careTypes?.let { careTypes ->
+                careTypes[java.lang.Math.floorMod(runtime.state.sequence.toInt(), careTypes.size)].adminStageName()
+            } ?: "harvesting"
             FarmPhase.CARE -> "harvesting"
-            FarmPhase.HARVESTING, FarmPhase.GOLDEN_HARVEST -> if (runtime.state.sequence % 2L == 0L) "pests" else "drought"
+            FarmPhase.HARVESTING -> currentOrder(runtime)?.incidentTypes?.let { types ->
+                types[java.lang.Math.floorMod(runtime.state.sequence.toInt(), types.size)].name.lowercase()
+            } ?: "pests"
             FarmPhase.INCIDENT -> "harvesting"
             FarmPhase.DELIVERY -> "complete"
         }
@@ -1143,6 +1182,11 @@ class ArcFarmsService(
                 "order" to (state.orderId?.let { locale.renderPath("order.farm.$it", player) } ?: locale.text("—")),
                 "done" to locale.text(order?.let(state::completed) ?: 0),
                 "total" to locale.text(order?.totalRequired ?: 0),
+                "rarity" to locale.text(order?.rarity?.name?.lowercase() ?: "—"),
+                "customer" to (order?.let {
+                    locale.renderPath("customer.${it.customerType.name.lowercase()}.name", player)
+                } ?: locale.text("—")),
+                "cart" to locale.text(state.harvestMilestone * 25),
             ),
         )
         sendChat(
@@ -1205,6 +1249,36 @@ class ArcFarmsService(
         return true
     }
 
+    fun adminSetFarmContract(player: Player, zoneId: String, orderId: String): Boolean {
+        val runtime = farms.firstOrNull { it.settings.id == zoneId } ?: run {
+            sendChat(player, MessageKey.ADMIN_ZONE_UNKNOWN, mapOf("zone" to locale.text(zoneId)))
+            return false
+        }
+        val order = runtime.orders[orderId] ?: run {
+            sendChat(player, MessageKey.ADMIN_DEBUG_CONTRACT_UNKNOWN, mapOf("order" to locale.text(orderId)))
+            return false
+        }
+        if (adminEditPlayers.any { it != player.uniqueId }) {
+            sendChat(player, MessageKey.GENERIC_ERROR)
+            debug.event("farm_admin_contract_blocked", "zone" to zoneId, "reason" to "another_editor")
+            return false
+        }
+        if (adminEditPlayers.remove(player.uniqueId)) sendActionBar(player, MessageKey.ADMIN_EDIT_DISABLED)
+        if (!resetFarmForAdmin(runtime)) {
+            sendChat(player, MessageKey.GENERIC_ERROR)
+            return false
+        }
+        adminPausedFarmZones -= runtime.settings.id
+        interactionCooldowns.remove("farm-patch-scan:${runtime.settings.id}")
+        if (!tryStartFarmShift(runtime, player, clock(), order)) return false
+        sendChat(
+            player,
+            MessageKey.ADMIN_DEBUG_CONTRACT_SET,
+            mapOf("order" to locale.renderPath("order.farm.${order.id}", player)),
+        )
+        return true
+    }
+
     fun adminGiveFarmSupply(player: Player, zoneId: String, rawKind: String): Boolean {
         val runtime = farms.firstOrNull { it.settings.id == zoneId } ?: run {
             sendChat(player, MessageKey.ADMIN_ZONE_UNKNOWN, mapOf("zone" to locale.text(zoneId)))
@@ -1253,6 +1327,7 @@ class ArcFarmsService(
         removePests(runtime, activePests(runtime), "admin_reset")
         removePestNestEntities(runtime, "admin_reset")
         clearDelivery(runtime, "admin_reset")
+        clearFarmContractScene(runtime, "admin_reset")
         restoreIncidentCrops(runtime)
         if (FarmIncidentRecovery.pending(runtime.state)) return false
         if (runtime.state.preparationPatch.isNotEmpty() && !restoreFarmPatchOriginal(runtime)) return false
@@ -1575,7 +1650,18 @@ class ArcFarmsService(
             val region = requireNotNull(regionGateway.resolve(configured.reference)) {
                 "Farm zone ${configured.id} cannot resolve ${configured.reference}"
             }
-            val orders = configured.orders.map { FarmOrder(it.id, it.required) }
+            val orders = configured.orders.map { order ->
+                FarmOrder(
+                    id = order.id,
+                    required = order.required,
+                    rarity = order.rarity,
+                    careTypes = order.careTypes,
+                    incidentTypes = order.incidentTypes,
+                    customerType = order.customerType,
+                    cartLoadMaterial = order.cartLoadMaterial,
+                    cartLoadCustomModelData = order.cartLoadCustomModelData,
+                )
+            }
             val orderMap = orders.associateBy(FarmOrder::id)
             val restored = persisted.farms[configured.id]?.let { state ->
                 if (state.phase == FarmPhase.PREPARATION && state.preparationPatch.isEmpty()) {
@@ -1812,6 +1898,10 @@ class ArcFarmsService(
                 "Farm zone ${zone.id} supplies.tool-material must be a hoe"
             }
             zone.careVisuals.values.forEach { MaterialRules.material(it.material) }
+            zone.orders.forEach { order ->
+                val load = MaterialRules.material(order.cartLoadMaterial)
+                require(load.isItem) { "Farm order ${zone.id}/${order.id} cart load must use an item material" }
+            }
             zone.careAnimalEntities.forEach { entityName ->
                 val entityType = EntityType.valueOf(entityName)
                 require(entityType.entityClass?.let(Mob::class.java::isAssignableFrom) == true) {
@@ -1873,12 +1963,22 @@ class ArcFarmsService(
         }
     }
 
-    private fun tryStartFarmShift(runtime: FarmRuntime, player: Player, now: Long): Boolean {
+    private fun tryStartFarmShift(
+        runtime: FarmRuntime,
+        player: Player,
+        now: Long,
+        forcedOrder: FarmOrder? = null,
+    ): Boolean {
         if (runtime.state.phase != FarmPhase.IDLE) return false
         if (runtime.settings.id in adminPausedFarmZones) return false
         if (adminEditPlayers.isNotEmpty()) return false
         if (!allowInteraction("farm-patch-scan:${runtime.settings.id}", 5_000)) return false
-        val order = runtime.orderList[(runtime.state.sequence % runtime.orderList.size).toInt()]
+        val order = forcedOrder ?: FarmContractPlanner.select(
+            orders = runtime.orderList,
+            rareChancePercent = runtime.settings.rareOrderChancePercent,
+            rareRoll = random.nextInt(100),
+            selectionIndex = runtime.state.sequence,
+        )
         val candidates = discoverFarmBeds(runtime, player.location)
         val anchor = player.location.toFarmPlotPosition()
         val patch = FarmPatchPlanner.select(
@@ -1933,6 +2033,8 @@ class ArcFarmsService(
             "farm_patch_selected",
             "zone" to runtime.settings.id,
             "sequence" to runtime.state.sequence,
+            "order" to order.id,
+            "rarity" to order.rarity,
             "plots" to patch.size,
             "min_x" to patch.minOf(FarmPlotPosition::x),
             "max_x" to patch.maxOf(FarmPlotPosition::x),
@@ -2011,6 +2113,8 @@ class ArcFarmsService(
         FarmPointKind.WATER,
         FarmPointKind.CRATES,
         FarmPointKind.RECEIVING,
+        FarmPointKind.CART,
+        FarmPointKind.CUSTOMER,
     ).any { kind ->
         val point = point(runtime, kind)
         point.world == location.world.name && kotlin.math.abs(point.y - location.y) <= 3.0 &&
@@ -2052,7 +2156,7 @@ class ArcFarmsService(
             runtime.state.phase == FarmPhase.HARVESTING
         }
         if (!sourceReady || runtime.state.careType != null) return false
-        val configured = runtime.settings.careTypes
+        val configured = currentOrder(runtime)?.careTypes ?: return false
         val start = if (preferredType == null) {
             java.lang.Math.floorMod(runtime.state.sequence.toInt() * 17 + random.nextInt(configured.size), configured.size)
         } else {
@@ -2763,7 +2867,7 @@ class ArcFarmsService(
         val sequence = runtime.state.sequence
         Tasks.scheduler.runLater(1L) {
             val currentRuntime = farms.firstOrNull { it.settings.id == zoneId && it.state.sequence == sequence }
-                ?.takeIf { it.state.phase in setOf(FarmPhase.HARVESTING, FarmPhase.GOLDEN_HARVEST) }
+                ?.takeIf { it.state.phase == FarmPhase.HARVESTING }
                 ?: return@runLater
             if (!isOperational()) return@runLater
             if (!block.type.isAir) return@runLater
@@ -2789,7 +2893,7 @@ class ArcFarmsService(
             return
         }
         val order = currentOrder(runtime) ?: return
-        val incidentType = runtime.settings.incidentTypes[random.nextInt(runtime.settings.incidentTypes.size)]
+        val incidentType = order.incidentTypes[random.nextInt(order.incidentTypes.size)]
         val activeRules = if (incidentType == FarmIncidentType.DROUGHT) {
             val gardenBeds = runtime.state.preparationPatch.size.takeIf { it > 0 } ?: runtime.settings.preparationPatchSize
             runtime.rules.copy(droughtQuota = runtime.settings.droughtTargetBeds(gardenBeds))
@@ -3152,6 +3256,40 @@ class ArcFarmsService(
                     if (careType == FarmCareType.SEEDER) initializeFarmCare(runtime, actor)
                     persistAsync()
                 }
+                ShiftEvent.HARVEST_MILESTONE -> {
+                    ensureFarmContractScene(runtime)
+                    val milestone = runtime.state.harvestMilestone
+                    if (actor != null && milestone < 4) {
+                        sendActionBar(
+                            actor,
+                            MessageKey.FARM_HARVEST_MILESTONE,
+                            mapOf("percent" to locale.text(milestone * 25)),
+                        )
+                    }
+                    playFarmMilestone(runtime, Sound.BLOCK_COMPOSTER_FILL_SUCCESS, 0.9f + milestone * 0.08f)
+                    if (settings.particles) {
+                        val cart = point(runtime, FarmPointKind.CART)
+                        Bukkit.getWorld(cart.world)?.let { world ->
+                            world.spawnParticle(
+                                Particle.COMPOSTER,
+                                Location(world, cart.x, cart.y + 0.9, cart.z),
+                                5,
+                                0.35,
+                                0.25,
+                                0.35,
+                                0.02,
+                            )
+                        }
+                    }
+                    debug.event(
+                        "farm_harvest_milestone",
+                        "zone" to runtime.settings.id,
+                        "sequence" to runtime.state.sequence,
+                        "milestone" to milestone,
+                        "percent" to milestone * 25,
+                    )
+                    persistAsync()
+                }
                 ShiftEvent.INCIDENT_STARTED -> {
                     if (incidentType == FarmIncidentType.DROUGHT) {
                         ensureFarmDroughtTargets(runtime)
@@ -3254,6 +3392,7 @@ class ArcFarmsService(
                 else -> Unit
             }
         }
+        ensureFarmContractScene(runtime)
     }
 
     private fun applyLumberResult(runtime: LumberRuntime, result: EngineResult<LumberShiftState>, actor: Player?) {
@@ -3464,6 +3603,7 @@ class ArcFarmsService(
                 reconcileLoadedFarmCareEntities(runtime)
                 ensureFarmCare(runtime)
                 ensureFarmDelivery(runtime)
+                ensureFarmContractScene(runtime)
                 ensureFarmSupplies(runtime)
                 maintainWetFarmBeds(runtime)
             }
@@ -3525,7 +3665,6 @@ class ArcFarmsService(
                     FarmPhase.CARE,
                     FarmPhase.HARVESTING,
                     FarmPhase.INCIDENT,
-                    FarmPhase.GOLDEN_HARVEST,
                     FarmPhase.DELIVERY,
                     FarmPhase.COOLDOWN,
                 )
@@ -4809,6 +4948,208 @@ class ArcFarmsService(
         return candidates
     }
 
+    private fun ensureFarmContractScene(runtime: FarmRuntime) {
+        val order = currentOrder(runtime)
+        if (order == null || runtime.state.phase in setOf(FarmPhase.IDLE, FarmPhase.COOLDOWN)) {
+            clearFarmContractScene(runtime, "contract_inactive")
+            return
+        }
+        val recoveredMilestone = FarmContractPlanner.harvestMilestone(runtime.state.completed(order), order.totalRequired)
+        if (recoveredMilestone > runtime.state.harvestMilestone) {
+            runtime.state = runtime.state.copy(harvestMilestone = recoveredMilestone)
+            persistAsync()
+            debug.event(
+                "farm_cart_progress_recovered",
+                "zone" to runtime.settings.id,
+                "sequence" to runtime.state.sequence,
+                "milestone" to recoveredMilestone,
+            )
+        }
+        ensureFarmCustomer(runtime, order)
+        ensureFarmCart(runtime, order)
+        val desiredLoads = runtime.state.harvestMilestone.coerceIn(0, 4)
+        repeat(4) { slot ->
+            val key = ContractSceneKey(runtime.settings.id, ContractSceneRole.CART_LOAD, slot)
+            if (slot < desiredLoads) ensureFarmCartLoad(runtime, order, slot)
+            else removeFarmContractSceneEntity(key, "load_not_reached")
+        }
+    }
+
+    private fun handleFarmContractSceneInteraction(player: Player, entity: Entity, zoneId: String) {
+        val runtime = farms.firstOrNull { it.settings.id == zoneId } ?: return
+        val sequence = entity.persistentDataContainer.get(contractSceneSequenceKey, PersistentDataType.LONG) ?: return
+        val roleName = entity.persistentDataContainer.get(contractSceneRoleKey, PersistentDataType.STRING) ?: return
+        val role = runCatching { ContractSceneRole.valueOf(roleName) }.getOrNull() ?: return
+        if (runtime.state.sequence != sequence || !runtime.region.contains(entity.location)) return
+        if (!hasAccess(player, runtime.settings.permission)) {
+            sendChat(player, MessageKey.ZONE_LOCKED)
+            return
+        }
+        if (!allowInteraction("farm-contract-scene:$zoneId:$role:${player.uniqueId}", 700)) return
+        val order = currentOrder(runtime) ?: return
+        when (role) {
+            ContractSceneRole.CUSTOMER -> {
+                sendActionBar(
+                    player,
+                    MessageKey.FARM_CUSTOMER_REMINDER,
+                    mapOf(
+                        "customer" to locale.renderPath("customer.${order.customerType.name.lowercase()}.name", player),
+                        "order" to locale.renderPath("order.farm.${order.id}", player),
+                    ),
+                )
+                if (settings.sounds) player.playSound(entity.location, Sound.ENTITY_VILLAGER_YES, 0.65f, 1.05f)
+            }
+            ContractSceneRole.CART, ContractSceneRole.CART_LOAD -> sendActionBar(
+                player,
+                MessageKey.FARM_CART_PROGRESS,
+                mapOf(
+                    "order" to locale.renderPath("order.farm.${order.id}", player),
+                    "percent" to locale.text(runtime.state.harvestMilestone * 25),
+                ),
+            )
+        }
+        debug.event(
+            "farm_contract_scene_interaction",
+            "zone" to zoneId,
+            "sequence" to sequence,
+            "order" to order.id,
+            "role" to role,
+            "player" to player.name,
+        )
+    }
+
+    private fun ensureFarmCustomer(runtime: FarmRuntime, order: FarmOrder) {
+        val key = ContractSceneKey(runtime.settings.id, ContractSceneRole.CUSTOMER)
+        val existing = contractSceneEntities[key]?.let(Bukkit::getEntity) as? Villager
+        if (existing != null && validFarmContractSceneEntity(existing, runtime, key)) return
+        removeFarmContractSceneEntity(key, "replace_customer")
+        val point = point(runtime, FarmPointKind.CUSTOMER)
+        val world = Bukkit.getWorld(point.world) ?: return
+        val location = Location(world, point.x, point.y, point.z, point.yaw, 0f)
+        if (!runtime.region.contains(location)) return
+        val customer = world.spawn(location, Villager::class.java) { entity ->
+            entity.profession = when (order.customerType) {
+                FarmCustomerType.BAKER -> Villager.Profession.FARMER
+                FarmCustomerType.MINE_SUPPLIER -> Villager.Profession.TOOLSMITH
+                FarmCustomerType.MARKET_TRADER -> Villager.Profession.CARTOGRAPHER
+            }
+            entity.villagerType = Villager.Type.PLAINS
+            entity.setAI(false)
+            entity.isAware = false
+            entity.isCollidable = false
+            entity.isInvulnerable = true
+            entity.isPersistent = true
+            entity.removeWhenFarAway = false
+            entity.setCanPickupItems(false)
+            entity.isSilent = true
+            entity.setGravity(false)
+            markFarmContractSceneEntity(entity, runtime, key)
+        }
+        contractSceneEntities[key] = customer.uniqueId
+        debug.event(
+            "farm_customer_spawned",
+            "zone" to runtime.settings.id,
+            "sequence" to runtime.state.sequence,
+            "order" to order.id,
+            "customer" to order.customerType,
+        )
+    }
+
+    private fun ensureFarmCart(runtime: FarmRuntime, order: FarmOrder) {
+        val key = ContractSceneKey(runtime.settings.id, ContractSceneRole.CART)
+        val existing = contractSceneEntities[key]?.let(Bukkit::getEntity) as? Minecart
+        if (existing != null && validFarmContractSceneEntity(existing, runtime, key)) return
+        removeFarmContractSceneEntity(key, "replace_cart")
+        val point = point(runtime, FarmPointKind.CART)
+        val world = Bukkit.getWorld(point.world) ?: return
+        val location = Location(world, point.x, point.y + 0.15, point.z, point.yaw, 0f)
+        if (!runtime.region.contains(location)) return
+        val cart = world.spawnEntity(location, EntityType.MINECART) as Minecart
+        cart.setRotation(point.yaw, 0f)
+        cart.setGravity(false)
+        cart.setNoPhysics(true)
+        cart.velocity = Vector()
+        cart.maxSpeed = 0.0
+        cart.isSlowWhenEmpty = true
+        cart.isInvulnerable = true
+        cart.isPersistent = true
+        markFarmContractSceneEntity(cart, runtime, key)
+        contractSceneEntities[key] = cart.uniqueId
+        debug.event(
+            "farm_cart_spawned",
+            "zone" to runtime.settings.id,
+            "sequence" to runtime.state.sequence,
+            "order" to order.id,
+        )
+    }
+
+    @Suppress("DEPRECATION")
+    private fun ensureFarmCartLoad(runtime: FarmRuntime, order: FarmOrder, slot: Int) {
+        val key = ContractSceneKey(runtime.settings.id, ContractSceneRole.CART_LOAD, slot)
+        val existing = contractSceneEntities[key]?.let(Bukkit::getEntity) as? ItemDisplay
+        if (existing != null && validFarmContractSceneEntity(existing, runtime, key)) return
+        removeFarmContractSceneEntity(key, "replace_cart_load")
+        val point = point(runtime, FarmPointKind.CART)
+        val world = Bukkit.getWorld(point.world) ?: return
+        val location = cartLoadLocation(point, slot, world)
+        if (!runtime.region.contains(location)) return
+        val item = ItemStack(MaterialRules.material(order.cartLoadMaterial))
+        if (order.cartLoadCustomModelData > 0) {
+            val meta = item.itemMeta
+            meta.setCustomModelData(order.cartLoadCustomModelData)
+            item.itemMeta = meta
+        }
+        val display = world.spawn(location, ItemDisplay::class.java) { entity ->
+            entity.setItemStack(item)
+            entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.GROUND
+            entity.transformation = Transformation(
+                Vector3f(),
+                AxisAngle4f(),
+                Vector3f(0.48f, 0.48f, 0.48f),
+                AxisAngle4f(),
+            )
+            entity.isPersistent = true
+            entity.setGravity(false)
+            entity.teleportDuration = 1
+            markFarmContractSceneEntity(entity, runtime, key)
+        }
+        contractSceneEntities[key] = display.uniqueId
+    }
+
+    private fun cartLoadLocation(point: FarmPointPosition, slot: Int, world: org.bukkit.World): Location {
+        val offsets = listOf(-0.22 to -0.08, 0.22 to -0.08, -0.22 to 0.18, 0.22 to 0.18)
+        val (localX, localZ) = offsets[slot.coerceIn(0, offsets.lastIndex)]
+        val radians = Math.toRadians(point.yaw.toDouble())
+        val x = localX * cos(radians) - localZ * sin(radians)
+        val z = localX * sin(radians) + localZ * cos(radians)
+        return Location(world, point.x + x, point.y + 0.55 + (slot / 2) * 0.12, point.z + z, point.yaw, 0f)
+    }
+
+    private fun markFarmContractSceneEntity(entity: Entity, runtime: FarmRuntime, key: ContractSceneKey) {
+        entity.persistentDataContainer.set(contractSceneZoneKey, PersistentDataType.STRING, runtime.settings.id)
+        entity.persistentDataContainer.set(contractSceneSequenceKey, PersistentDataType.LONG, runtime.state.sequence)
+        entity.persistentDataContainer.set(contractSceneRoleKey, PersistentDataType.STRING, key.role.name)
+        entity.persistentDataContainer.set(contractSceneSlotKey, PersistentDataType.INTEGER, key.slot)
+    }
+
+    private fun validFarmContractSceneEntity(entity: Entity, runtime: FarmRuntime, key: ContractSceneKey): Boolean =
+        entity.isValid && entity.persistentDataContainer.get(contractSceneZoneKey, PersistentDataType.STRING) == key.zoneId &&
+            entity.persistentDataContainer.get(contractSceneSequenceKey, PersistentDataType.LONG) == runtime.state.sequence &&
+            entity.persistentDataContainer.get(contractSceneRoleKey, PersistentDataType.STRING) == key.role.name &&
+            entity.persistentDataContainer.get(contractSceneSlotKey, PersistentDataType.INTEGER) == key.slot
+
+    private fun removeFarmContractSceneEntity(key: ContractSceneKey, reason: String) {
+        val id = contractSceneEntities.remove(key) ?: return
+        Bukkit.getEntity(id)?.remove()
+        debug.event("farm_contract_scene_removed", "zone" to key.zoneId, "role" to key.role, "slot" to key.slot, "reason" to reason)
+    }
+
+    private fun clearFarmContractScene(runtime: FarmRuntime, reason: String) {
+        contractSceneEntities.keys.filter { it.zoneId == runtime.settings.id }.toList().forEach { key ->
+            removeFarmContractSceneEntity(key, reason)
+        }
+    }
+
     private fun ensureFarmDelivery(runtime: FarmRuntime) {
         if (runtime.state.phase != FarmPhase.DELIVERY) {
             if (deliveryKeys(runtime).isNotEmpty()) {
@@ -5590,7 +5931,8 @@ class ArcFarmsService(
                 entity.persistentDataContainer.has(pestNestZoneKey, PersistentDataType.STRING) ||
                 entity.persistentDataContainer.has(deliveryZoneKey, PersistentDataType.STRING) ||
                 entity.persistentDataContainer.has(supplyZoneKey, PersistentDataType.STRING) ||
-                entity.persistentDataContainer.has(careZoneKey, PersistentDataType.STRING)
+                entity.persistentDataContainer.has(careZoneKey, PersistentDataType.STRING) ||
+                entity.persistentDataContainer.has(contractSceneZoneKey, PersistentDataType.STRING)
             ) {
                 entity.remove()
                 removed++
@@ -5605,6 +5947,7 @@ class ArcFarmsService(
         supplyEntities.clear()
         supplyVisualMaterials.clear()
         careEntities.clear()
+        contractSceneEntities.clear()
         animalFollowers.clear()
         diseaseNextSpreadAt.clear()
         careNextReconcileAt.clear()
@@ -5832,6 +6175,8 @@ class ArcFarmsService(
             FarmPointKind.WATER to Color.fromRGB(79, 195, 247),
             FarmPointKind.CRATES to FARM_AMBER_COLOR,
             FarmPointKind.RECEIVING to FARM_DELIVERY_COLOR,
+            FarmPointKind.CART to FARM_AMBER_COLOR,
+            FarmPointKind.CUSTOMER to FARM_SUCCESS_COLOR,
             FarmPointKind.TRAVEL to FARM_SUCCESS_COLOR,
             FarmPointKind.HIVE to FARM_AMBER_COLOR,
             FarmPointKind.IRRIGATION to Color.fromRGB(79, 195, 247),
@@ -5864,7 +6209,7 @@ class ArcFarmsService(
                     Location(world, target.position.x, target.position.y, target.position.z) to careRoleColor(target.role)
                 }
             }
-            FarmPhase.HARVESTING, FarmPhase.GOLDEN_HARVEST -> listOfNotNull(
+            FarmPhase.HARVESTING -> listOfNotNull(
                 farmAreaCenter(runtime.state.preparationPatch)?.location()?.let { it to FARM_AMBER_COLOR },
             )
             FarmPhase.INCIDENT -> when (runtime.state.incidentType) {
@@ -5970,6 +6315,29 @@ class ArcFarmsService(
                 zoneSettings.delivery.y,
                 zoneSettings.delivery.z,
             )
+            FarmPointKind.CART -> point(runtime, FarmPointKind.CRATES)
+            FarmPointKind.CUSTOMER -> point(runtime, FarmPointKind.RECEIVING).let { receiving ->
+                val radians = Math.toRadians(receiving.yaw.toDouble())
+                val candidate = FarmPointPosition(
+                    receiving.world,
+                    receiving.x - kotlin.math.sin(radians) * 1.8,
+                    receiving.y,
+                    receiving.z + kotlin.math.cos(radians) * 1.8,
+                    receiving.yaw + 180f,
+                    0f,
+                )
+                val opposite = FarmPointPosition(
+                    receiving.world,
+                    receiving.x + kotlin.math.sin(radians) * 1.8,
+                    receiving.y,
+                    receiving.z - kotlin.math.cos(radians) * 1.8,
+                    receiving.yaw,
+                    0f,
+                )
+                listOf(candidate, opposite).firstOrNull { point ->
+                    runtime.region.contains(Location(runtime.region.world, point.x, point.y, point.z))
+                } ?: receiving.copy(yaw = receiving.yaw + 180f, pitch = 0f)
+            }
             FarmPointKind.TRAVEL -> settings.destinations.getValue(ActivityKind.FARM.configKey).let { destination ->
                 FarmPointPosition(
                     destination.world,
@@ -6228,7 +6596,7 @@ class ArcFarmsService(
             FarmPhase.PREPARATION -> MessageKey.FARM_ENTRY_PREPARATION
             FarmPhase.PLANTING -> MessageKey.FARM_ENTRY_PLANTING
             FarmPhase.CARE -> null
-            FarmPhase.HARVESTING, FarmPhase.GOLDEN_HARVEST -> MessageKey.FARM_ENTRY_HARVESTING
+            FarmPhase.HARVESTING -> MessageKey.FARM_ENTRY_HARVESTING
             FarmPhase.INCIDENT -> if ((runtime.state.incidentType ?: FarmIncidentType.PESTS) == FarmIncidentType.DROUGHT) {
                 MessageKey.FARM_ENTRY_DROUGHT
             } else {
@@ -6643,7 +7011,7 @@ class ArcFarmsService(
                 },
             )
             FarmPhase.DELIVERY -> sendActionBar(player, MessageKey.FARM_DELIVERY_REQUIRED)
-            FarmPhase.HARVESTING, FarmPhase.GOLDEN_HARVEST -> currentOrder(runtime)?.let { order ->
+            FarmPhase.HARVESTING -> currentOrder(runtime)?.let { order ->
                 sendActionBar(player, MessageKey.FARM_WRONG_TARGET, mapOf("crops" to remainingCrops(runtime, order)))
             }
             FarmPhase.COOLDOWN -> sendActionBar(

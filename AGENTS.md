@@ -15,6 +15,11 @@ activities: farm, lumbermill, and mine.
 - A farm shift has one foreground objective. Resolving an incident resumes the
   ordinary crop order directly; do not insert harvest multipliers or parallel
   crop bonus windows between the incident and the next required crop.
+- Farm orders are complete contract variants: rarity, crop quota, permitted
+  care and incident pools, customer identity, and cart-load visual belong to
+  the order. The active order name leads every farm boss bar. Harvest progress
+  fills one persistent four-step cart, while the customer and cart are tagged
+  scene entities reconstructed from shift state.
 - Farm completion rewards may use independently-chanced experience, Vault
   money, ordinary items, weighted item bundles, and bounded console commands.
   Persist each resolved grant before delivery and claim it durably before side

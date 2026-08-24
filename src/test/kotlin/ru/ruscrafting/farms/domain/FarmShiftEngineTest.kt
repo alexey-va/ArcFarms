@@ -123,22 +123,6 @@ class FarmShiftEngineTest : FunSpec({
         }
     }
 
-    test("legacy golden state resumes ordinary harvesting without a multiplier") {
-        val legacy = FarmShiftState(
-            phase = FarmPhase.GOLDEN_HARVEST,
-            orderId = order.id,
-            progress = order.required.keys.associateWith { 0 },
-        )
-
-        val harvested = FarmShiftEngine.harvest(legacy, order, rules, "WHEAT", player, 14_000)
-
-        harvested.accepted shouldBe true
-        harvested.state.phase shouldBe FarmPhase.HARVESTING
-        harvested.state.progress.getValue("WHEAT") shouldBe 1
-        harvested.contribution shouldBe 1
-        harvested.events shouldContainExactly listOf(ShiftEvent.PROGRESS)
-    }
-
     test("farm objective and incident survive indefinite inactivity") {
         val started = FarmShiftEngine.start(FarmShiftState(sequence = 4), order, patch, "WHEAT", 1_000).state
         val partial = FarmShiftEngine.till(started, patch.first(), player).state

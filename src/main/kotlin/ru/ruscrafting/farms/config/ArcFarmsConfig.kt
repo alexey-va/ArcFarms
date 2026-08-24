@@ -4,6 +4,8 @@ import ru.arc.config.Config
 import ru.arc.config.ConfigManager
 import ru.arc.redis.RedisModuleConfig
 import ru.ruscrafting.farms.domain.FarmIncidentType
+import ru.ruscrafting.farms.domain.FarmContractRarity
+import ru.ruscrafting.farms.domain.FarmCustomerType
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareType
 import java.nio.file.Path
@@ -110,6 +112,7 @@ data class FarmZoneSettings(
     val delivery: FarmDeliverySettings,
     val rewards: FarmRewardSettings,
     val crops: Set<String>,
+    val rareOrderChancePercent: Int,
     val orders: List<FarmOrderSettings>,
 ) {
     fun droughtTargetBeds(gardenBeds: Int): Int {
@@ -212,6 +215,12 @@ data class FarmDeliverySettings(
 data class FarmOrderSettings(
     val id: String,
     val required: Map<String, Int>,
+    val rarity: FarmContractRarity,
+    val careTypes: List<FarmCareType>,
+    val incidentTypes: List<FarmIncidentType>,
+    val customerType: FarmCustomerType,
+    val cartLoadMaterial: String,
+    val cartLoadCustomModelData: Int,
 )
 
 data class LumberZoneSettings(
@@ -288,13 +297,6 @@ class ArcFarmsConfig private constructor(
                 validateId(id, "farm zone")
                 val crops = section.stringList("crops").map(::materialName).toSet()
                 require(crops.isNotEmpty()) { "Farm zone $id has no crops" }
-                val orders = section.keys("orders").sorted().map { orderId ->
-                    validateId(orderId, "farm order")
-                    val required = parseWeightedList(section.stringList("orders.$orderId"), "farm order $orderId")
-                    require(required.keys.all(crops::contains)) { "Farm order $orderId contains a crop outside farm-zones.$id.crops" }
-                    FarmOrderSettings(orderId, required.toMap())
-                }
-                require(orders.isNotEmpty()) { "Farm zone $id has no orders" }
                 val reference = parseReference(section, "", id)
                 val incidentTypes = section.stringList("incident-types")
                     .ifEmpty { listOf(FarmIncidentType.PESTS.name, FarmIncidentType.DROUGHT.name) }
@@ -314,6 +316,51 @@ class ArcFarmsConfig private constructor(
                 require(careTypes.isNotEmpty()) { "Farm zone $id has no care types" }
                 require(FarmCareType.SEEDER !in careTypes) {
                     "Farm zone $id must configure the seeder through seeder-every-shifts, not care-types"
+                }
+                val rareOrderChancePercent = section.int("rare-order-chance-percent", 15)
+                    .checked("rare-order-chance-percent", 0, 100)
+                val orders = section.keys("orders").sorted().map { orderId ->
+                    validateId(orderId, "farm order")
+                    val path = "orders.$orderId"
+                    val required = parseWeightedList(section.stringList("$path.crops"), "farm order $orderId crops")
+                    require(required.keys.all(crops::contains)) { "Farm order $orderId contains a crop outside farm-zones.$id.crops" }
+                    val orderCareTypes = section.stringList("$path.care-types").map { value ->
+                        runCatching { FarmCareType.valueOf(value.trim().uppercase()) }
+                            .getOrElse { error("Farm order $orderId has unknown care type: $value") }
+                    }.distinct()
+                    require(orderCareTypes.isNotEmpty() && FarmCareType.SEEDER !in orderCareTypes) {
+                        "Farm order $orderId must define non-seeder care types"
+                    }
+                    require(orderCareTypes.all(careTypes::contains)) {
+                        "Farm order $orderId uses a care type disabled in farm-zones.$id.care-types"
+                    }
+                    val orderIncidentTypes = section.stringList("$path.incident-types").map { value ->
+                        runCatching { FarmIncidentType.valueOf(value.trim().uppercase()) }
+                            .getOrElse { error("Farm order $orderId has unknown incident type: $value") }
+                    }.distinct()
+                    require(orderIncidentTypes.isNotEmpty() && orderIncidentTypes.all(incidentTypes::contains)) {
+                        "Farm order $orderId must use incident types enabled in farm-zones.$id.incident-types"
+                    }
+                    FarmOrderSettings(
+                        id = orderId,
+                        required = required.toMap(),
+                        rarity = runCatching {
+                            FarmContractRarity.valueOf(section.string("$path.rarity").trim().uppercase())
+                        }.getOrElse { error("Farm order $orderId has unknown rarity") },
+                        careTypes = orderCareTypes,
+                        incidentTypes = orderIncidentTypes,
+                        customerType = runCatching {
+                            FarmCustomerType.valueOf(section.string("$path.customer").trim().uppercase())
+                        }.getOrElse { error("Farm order $orderId has unknown customer") },
+                        cartLoadMaterial = materialName(section.string("$path.cart-load.material")),
+                        cartLoadCustomModelData = section.int("$path.cart-load.custom-model-data", 0)
+                            .checked("$path.cart-load.custom-model-data", 0, 2_000_000),
+                    )
+                }
+                require(orders.isNotEmpty()) { "Farm zone $id has no orders" }
+                require(orders.any { it.rarity == FarmContractRarity.COMMON }) { "Farm zone $id has no common orders" }
+                require(rareOrderChancePercent == 0 || orders.any { it.rarity == FarmContractRarity.RARE }) {
+                    "Farm zone $id enables rare contracts without rare orders"
                 }
                 val careVisualDefaults = mapOf(
                     FarmCareRole.WEED_ROOT to "MANGROVE_ROOTS",
@@ -452,6 +499,7 @@ class ArcFarmsConfig private constructor(
                     delivery = delivery,
                     rewards = parseFarmRewards(section, id),
                     crops = crops,
+                    rareOrderChancePercent = rareOrderChancePercent,
                     orders = orders,
                 )
             }

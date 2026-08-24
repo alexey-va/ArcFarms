@@ -41,6 +41,8 @@ enum class MessageKey(val path: String) {
     ADMIN_DEBUG_INCIDENT("admin.debug.incident"),
     ADMIN_DEBUG_CARE("admin.debug.care"),
     ADMIN_DEBUG_DELIVERY("admin.debug.delivery"),
+    ADMIN_DEBUG_CONTRACT_SET("admin.debug.contract-set"),
+    ADMIN_DEBUG_CONTRACT_UNKNOWN("admin.debug.contract-unknown"),
     ADMIN_DEBUG_SUPPLY_GIVEN("admin.debug.supply-given"),
     ADMIN_DEBUG_INVENTORY_FULL("admin.debug.inventory-full"),
     ADMIN_DEBUG_HIGHLIGHTED("admin.debug.highlighted"),
@@ -119,6 +121,9 @@ enum class MessageKey(val path: String) {
     FARM_CROP_ALREADY_COMPLETE("farm.crop-already-complete"),
     FARM_CROP_COMPLETED("farm.crop-completed"),
     FARM_CROP_COMPLETED_SUBTITLE("farm.crop-completed-subtitle"),
+    FARM_HARVEST_MILESTONE("farm.harvest-milestone"),
+    FARM_CART_PROGRESS("farm.cart-progress"),
+    FARM_CUSTOMER_REMINDER("farm.customer-reminder"),
     FARM_PESTS_REQUIRED("farm.pests-required"),
     FARM_PEST_NAME("farm.pest-name"),
     FARM_PEST_NEST_NAME("farm.pest-nest-name"),
@@ -276,6 +281,9 @@ class ArcFarmsLocale(
                 add("care.${type.name.lowercase()}.name")
                 add("care.${type.name.lowercase()}.instruction")
                 add("care.${type.name.lowercase()}.entry")
+            }
+            settings.farms.flatMapTo(this) { zone ->
+                zone.orders.map { "customer.${it.customerType.name.lowercase()}.name" }
             }
             settings.mines.mapTo(this) { "route.mine.${it.id}" }
             enumValues<ru.ruscrafting.farms.domain.FarmPhase>().mapTo(this) { "phase.farm.${it.name.lowercase()}" }

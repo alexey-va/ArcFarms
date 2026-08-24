@@ -99,10 +99,7 @@ class ArcFarmsStateRepositoryTest : FunSpec({
                   "incidentProgress": 0,
                   "incidentRequired": 0,
                   "incidentResolved": false,
-                  "goldenCrop": null,
-                  "goldenUsed": false,
                   "startedAt": 1000,
-                  "goldenEndsAt": 0,
                   "cooldownEndsAt": 0,
                   "outcome": "NONE",
                   "contributors": {}
@@ -128,41 +125,6 @@ class ArcFarmsStateRepositoryTest : FunSpec({
         ArcFarmsStateRepository(root).use { repository -> repository.load() shouldBe loaded }
     }
 
-    test("legacy golden harvest is normalized to ordinary harvesting on load") {
-        val root = Files.createTempDirectory("arcfarms-state-golden-test")
-        val data = root.resolve("data")
-        Files.createDirectories(data)
-        Files.writeString(
-            data.resolve("state.json"),
-            """
-            {
-              "schemaVersion": 1,
-              "farms": {
-                "legacy_farm": {
-                  "phase": "GOLDEN_HARVEST",
-                  "sequence": 8,
-                  "orderId": "legacy_order",
-                  "progress": {"WHEAT": 3},
-                  "goldenCrop": "WHEAT",
-                  "goldenUsed": true,
-                  "startedAt": 1000,
-                  "goldenEndsAt": 999999,
-                  "outcome": "NONE",
-                  "contributors": {}
-                }
-              },
-              "lumbermills": {},
-              "mines": {},
-              "stats": {}
-            }
-            """.trimIndent(),
-        )
-
-        val loaded = ArcFarmsStateRepository(root).use(ArcFarmsStateRepository::load)
-
-        loaded.farms.getValue("legacy_farm").phase shouldBe FarmPhase.HARVESTING
-    }
-
     test("current farm state fields survive an atomic round trip") {
         val root = Files.createTempDirectory("arcfarms-state-current-test")
         val patch = listOf(
@@ -176,6 +138,7 @@ class ArcFarmsStateRepositoryTest : FunSpec({
                     sequence = 8,
                     orderId = "current_order",
                     progress = mapOf("WHEAT" to 4),
+                    harvestMilestone = 4,
                     preparationPatch = patch,
                     preparationCrop = "WHEAT",
                     preparationReleased = true,

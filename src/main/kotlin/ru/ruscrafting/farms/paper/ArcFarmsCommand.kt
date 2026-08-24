@@ -229,6 +229,11 @@ class ArcFarmsCommand(
             "show", "markers" -> service.adminShowFarmGuidance(player, zone)
             "next", "resolve" -> service.adminAdvanceFarm(player, zone)
             "reset" -> service.adminSetFarmStage(player, zone, "reset")
+            "contract" -> {
+                val orderId = args.getOrNull(2)
+                if (orderId == null) sender.sendMessage(locale.render(MessageKey.ADMIN_DEBUG_HELP, sender))
+                else service.adminSetFarmContract(player, zone, orderId)
+            }
             "stage" -> {
                 val stage = args.getOrNull(2)
                 if (stage == null) sender.sendMessage(locale.render(MessageKey.ADMIN_DEBUG_HELP, sender))
@@ -305,13 +310,13 @@ class ArcFarmsCommand(
                 args[0].equals("admin", true) && args[1].lowercase() in setOf("point", "points", "stage", "next", "event", "care") ->
                     service.farmZoneIds().filter { it.startsWith(args[2], true) }
                 args[0].equals("debug", true) && sender.hasPermission("arcfarms.admin") ->
-                    listOf("status", "stage", "next", "event", "care", "give", "show", "points", "reset")
+                    listOf("status", "contract", "stage", "next", "event", "care", "give", "show", "points", "reset")
                         .filter { it.startsWith(args[2], true) }
                 else -> emptyList()
             }
             4 -> when {
                 args[0].equals("admin", true) && args[1].equals("point", true) ->
-                    listOf("tool", "seeds", "water", "crates", "receiving", "travel", "hive", "irrigation", "covers", "scarecrows", "barn")
+                    listOf("tool", "seeds", "water", "crates", "receiving", "cart", "customer", "travel", "hive", "irrigation", "covers", "scarecrows", "barn")
                         .filter { it.startsWith(args[3], true) }
                 args[0].equals("admin", true) && args[1].equals("stage", true) ->
                     (listOf("preparation", "planting", "harvesting") + CARE_STAGES + listOf("pests", "drought", "delivery", "complete", "reset"))
@@ -329,6 +334,8 @@ class ArcFarmsCommand(
                     CARE_STAGES.filter { it.startsWith(args[3], true) }
                 args[0].equals("debug", true) && args[2].equals("give", true) ->
                     listOf("tool", "seeds", "water").filter { it.startsWith(args[3], true) }
+                args[0].equals("debug", true) && args[2].equals("contract", true) ->
+                    service.farmOrderIds(args[1]).filter { it.startsWith(args[3], true) }
                 else -> emptyList()
             }
             else -> emptyList()
@@ -340,6 +347,8 @@ class ArcFarmsCommand(
         "water" -> FarmPointKind.WATER
         "crates" -> FarmPointKind.CRATES
         "receiving" -> FarmPointKind.RECEIVING
+        "cart" -> FarmPointKind.CART
+        "customer" -> FarmPointKind.CUSTOMER
         "travel" -> FarmPointKind.TRAVEL
         "hive" -> FarmPointKind.HIVE
         "irrigation" -> FarmPointKind.IRRIGATION

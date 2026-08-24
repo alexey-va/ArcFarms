@@ -9,10 +9,19 @@ enum class FarmPhase {
     CARE,
     HARVESTING,
     INCIDENT,
-    // Retained only so state files written before 0.10.2 can be normalized on load.
-    GOLDEN_HARVEST,
     DELIVERY,
     COOLDOWN,
+}
+
+enum class FarmContractRarity {
+    COMMON,
+    RARE,
+}
+
+enum class FarmCustomerType {
+    BAKER,
+    MINE_SUPPLIER,
+    MARKET_TRADER,
 }
 
 data class FarmPlotPosition(
@@ -113,12 +122,25 @@ data class FarmCropDamage(
 data class FarmOrder(
     val id: String,
     val required: Map<String, Int>,
+    val rarity: FarmContractRarity = FarmContractRarity.COMMON,
+    val careTypes: List<FarmCareType> = FarmCareType.entries.filterNot { it == FarmCareType.SEEDER },
+    val incidentTypes: List<FarmIncidentType> = FarmIncidentType.entries,
+    val customerType: FarmCustomerType = FarmCustomerType.MARKET_TRADER,
+    val cartLoadMaterial: String = required.keys.first(),
+    val cartLoadCustomModelData: Int = 0,
 ) {
     init {
         require(id.matches(Regex("[a-z0-9_-]{1,48}"))) { "Invalid farm order id: $id" }
         require(required.isNotEmpty()) { "Farm order $id must require crops" }
         require(required.size <= 12) { "Farm order $id has too many crops" }
         require(required.values.all { it in 1..100_000 }) { "Farm order $id has an invalid crop quota" }
+        require(careTypes.isNotEmpty() && FarmCareType.SEEDER !in careTypes) { "Farm order $id has invalid care types" }
+        require(careTypes.distinct().size == careTypes.size) { "Farm order $id duplicates a care type" }
+        require(incidentTypes.isNotEmpty() && incidentTypes.distinct().size == incidentTypes.size) {
+            "Farm order $id has invalid incident types"
+        }
+        require(cartLoadMaterial.matches(Regex("[A-Z0-9_]{2,64}"))) { "Farm order $id has an invalid cart load material" }
+        require(cartLoadCustomModelData in 0..2_000_000) { "Farm order $id has an invalid cart load model" }
     }
 
     val totalRequired: Int = required.values.sum()
@@ -151,6 +173,7 @@ data class FarmShiftState(
     val preparationProgress: Int = 0,
     val plantingProgress: Int = 0,
     val preparationRequired: Int = 0,
+    val harvestMilestone: Int = 0,
     val careType: FarmCareType? = null,
     val careTargets: List<FarmCareTarget> = emptyList(),
     val incidentCrop: String? = null,
@@ -180,9 +203,6 @@ data class FarmShiftState(
     fun careProgress(): Int = careTargets.sumOf(FarmCareTarget::progress)
 
     fun careRequired(): Int = careTargets.sumOf(FarmCareTarget::required)
-
-    fun withoutGoldenHarvest(): FarmShiftState =
-        if (phase == FarmPhase.GOLDEN_HARVEST) copy(phase = FarmPhase.HARVESTING) else this
 }
 
 object FarmShiftEngine {
@@ -301,6 +321,12 @@ object FarmShiftEngine {
             contributors = incrementContribution(state.contributors, playerId, contribution),
         )
         events += ShiftEvent.PROGRESS
+
+        val milestone = FarmContractPlanner.harvestMilestone(state.completed(order), order.totalRequired)
+        if (milestone > state.harvestMilestone) {
+            state = state.copy(harvestMilestone = milestone)
+            events += ShiftEvent.HARVEST_MILESTONE
+        }
 
         if (state.completed(order) >= order.totalRequired && state.phase != FarmPhase.INCIDENT) {
             state = state.copy(
@@ -601,17 +627,16 @@ object FarmShiftEngine {
         order: FarmOrder?,
         now: Long,
     ): EngineResult<FarmShiftState> {
-        var state = current.withoutGoldenHarvest()
-        val normalized = state !== current
-        if (state.phase == FarmPhase.IDLE) return EngineResult(state, normalized)
+        val state = current
+        if (state.phase == FarmPhase.IDLE) return EngineResult(state, false)
         if (state.phase == FarmPhase.COOLDOWN && now >= state.cooldownEndsAt) {
             return EngineResult(FarmShiftState(sequence = state.sequence), true, events = listOf(ShiftEvent.RESET))
         }
-        if (state.phase == FarmPhase.COOLDOWN) return EngineResult(state, normalized)
-        if (state.phase == FarmPhase.DELIVERY) return EngineResult(state, normalized)
-        if (state.phase == FarmPhase.CARE) return EngineResult(state, normalized)
+        if (state.phase == FarmPhase.COOLDOWN) return EngineResult(state, false)
+        if (state.phase == FarmPhase.DELIVERY) return EngineResult(state, false)
+        if (state.phase == FarmPhase.CARE) return EngineResult(state, false)
         if (order != null && state.completed(order) >= order.totalRequired) {
-            if (state.phase == FarmPhase.INCIDENT) return EngineResult(state, normalized)
+            if (state.phase == FarmPhase.INCIDENT) return EngineResult(state, false)
             return EngineResult(
                 state.copy(
                     phase = FarmPhase.DELIVERY,
@@ -630,7 +655,7 @@ object FarmShiftEngine {
                 events = listOf(ShiftEvent.DELIVERY_STARTED),
             )
         }
-        return EngineResult(state, normalized)
+        return EngineResult(state, false)
     }
 
     private fun remainingCrop(state: FarmShiftState, order: FarmOrder): String? = order.required.entries

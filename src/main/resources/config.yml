@@ -132,10 +132,50 @@ farm-zones:
         chance-percent: 100
         entries: {}
     crops: [WHEAT, CARROTS, POTATOES, BEETROOTS]
+    rare-order-chance-percent: 20
     orders:
-      miners_rations: [WHEAT:160, CARROTS:80, POTATOES:80]
-      bakery_supply: [WHEAT:240, BEETROOTS:80]
-      market_crates: [CARROTS:80, POTATOES:80, BEETROOTS:80]
+      miners_rations:
+        rarity: COMMON
+        crops: [WHEAT:160, CARROTS:80, POTATOES:80]
+        care-types: [MOLES, IRRIGATION, ANIMAL_RESCUE]
+        incident-types: [DROUGHT, PESTS]
+        customer: MINE_SUPPLIER
+        cart-load: {material: POTATO, custom-model-data: 0}
+      bakery_supply:
+        rarity: COMMON
+        crops: [WHEAT:240, BEETROOTS:80]
+        care-types: [POLLINATION, DISEASE, IRRIGATION]
+        incident-types: [PESTS, DROUGHT]
+        customer: BAKER
+        cart-load: {material: WHEAT, custom-model-data: 0}
+      market_crates:
+        rarity: COMMON
+        crops: [CARROTS:80, POTATOES:80, BEETROOTS:80]
+        care-types: [WEEDS, SCARECROWS, ANIMAL_RESCUE]
+        incident-types: [PESTS, DROUGHT]
+        customer: MARKET_TRADER
+        cart-load: {material: CARROT, custom-model-data: 0}
+      harvest_festival:
+        rarity: RARE
+        crops: [WHEAT:200, CARROTS:120, POTATOES:120, BEETROOTS:80]
+        care-types: [POLLINATION, STORM_COVERS, SCARECROWS]
+        incident-types: [PESTS]
+        customer: MARKET_TRADER
+        cart-load: {material: HAY_BLOCK, custom-model-data: 0}
+      deep_mine_relief:
+        rarity: RARE
+        crops: [WHEAT:200, CARROTS:120, POTATOES:160]
+        care-types: [MOLES, IRRIGATION, DISEASE]
+        incident-types: [DROUGHT]
+        customer: MINE_SUPPLIER
+        cart-load: {material: BAKED_POTATO, custom-model-data: 0}
+      master_baker_request:
+        rarity: RARE
+        crops: [WHEAT:360, BEETROOTS:120]
+        care-types: [POLLINATION, DISEASE, STORM_COVERS]
+        incident-types: [PESTS]
+        customer: BAKER
+        cart-load: {material: BREAD, custom-model-data: 0}
 
 lumber-zones:
   communal_lumbermill:

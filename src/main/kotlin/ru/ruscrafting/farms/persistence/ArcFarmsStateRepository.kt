@@ -29,7 +29,6 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
 
     fun load(): ArcFarmsState {
         val state = store.load()
-        val farms = state.farms.mapValues { (_, farm) -> farm.withoutGoldenHarvest() }
         val stats = state.stats.mapValues { (_, playerStats) ->
             if (playerStats.weeklyContributions == null) {
                 playerStats.copy(weeklyContributions = emptyMap())
@@ -37,7 +36,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 playerStats
             }
         }
-        return if (farms == state.farms && stats == state.stats) state else state.copy(farms = farms, stats = stats)
+        return if (stats == state.stats) state else state.copy(stats = stats)
     }
 
     fun saveAsync(state: ArcFarmsState): CompletableFuture<Unit> = writer.submit(state)
@@ -91,6 +90,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 "Farm crop progress is invalid"
             }
             require(farm.progress.values.all { it in 0..100_000 }) { "Farm crop progress is outside supported bounds" }
+            require(farm.harvestMilestone in 0..4) { "Farm harvest milestone is invalid" }
             listOf(farm.preparationCrop, farm.incidentCrop).filterNotNull().forEach {
                 require(CONTENT_ID.matches(it)) { "Farm crop id is invalid" }
             }

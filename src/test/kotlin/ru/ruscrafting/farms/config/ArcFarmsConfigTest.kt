@@ -14,6 +14,8 @@ import ru.arc.redis.RedisModuleConfig
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareType
+import ru.ruscrafting.farms.domain.FarmContractRarity
+import ru.ruscrafting.farms.domain.FarmCustomerType
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.writeText
@@ -30,12 +32,19 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().permission shouldStartWith "arcfarms."
         settings.lumbermills.single().permission shouldStartWith "arcfarms."
         settings.mines.all { it.permission.startsWith("arcfarms.") } shouldBe true
-        settings.farms.single().orders.maxOf { order -> order.required.values.sum() } shouldBe 320
+        settings.farms.single().orders.maxOf { order -> order.required.values.sum() } shouldBe 520
         settings.farms.single().orders.associate { it.id to it.required } shouldBe mapOf(
             "miners_rations" to mapOf("WHEAT" to 160, "CARROTS" to 80, "POTATOES" to 80),
             "bakery_supply" to mapOf("WHEAT" to 240, "BEETROOTS" to 80),
             "market_crates" to mapOf("CARROTS" to 80, "POTATOES" to 80, "BEETROOTS" to 80),
+            "harvest_festival" to mapOf("WHEAT" to 200, "CARROTS" to 120, "POTATOES" to 120, "BEETROOTS" to 80),
+            "deep_mine_relief" to mapOf("WHEAT" to 200, "CARROTS" to 120, "POTATOES" to 160),
+            "master_baker_request" to mapOf("WHEAT" to 360, "BEETROOTS" to 120),
         )
+        settings.farms.single().rareOrderChancePercent shouldBe 20
+        settings.farms.single().orders.count { it.rarity == FarmContractRarity.RARE } shouldBe 3
+        settings.farms.single().orders.first { it.id == "bakery_supply" }.customerType shouldBe FarmCustomerType.BAKER
+        settings.farms.single().orders.first { it.id == "harvest_festival" }.cartLoadMaterial shouldBe "HAY_BLOCK"
         settings.serverId shouldBe "spawn"
         settings.network.allowedOrigins shouldBe setOf("spawn", "survival", "parkour")
         settings.network.workdayEnabled shouldBe true
@@ -182,6 +191,14 @@ class ArcFarmsConfigTest : FunSpec({
         shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(root) }
     }
 
+    test("rare contract chance is rejected when the farm has no rare order") {
+        val root = resourceTree()
+        val configPath = root.resolve("config.yml")
+        configPath.writeText(Files.readString(configPath).replace("rarity: RARE", "rarity: COMMON"))
+
+        shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(root) }
+    }
+
     test("farm reward chances and money precision are validated before startup") {
         val chanceRoot = resourceTree()
         chanceRoot.resolve("config.yml").writeText(
@@ -251,7 +268,7 @@ class ArcFarmsConfigTest : FunSpec({
         )
 
         PlainTextComponentSerializer.plainText().serialize(rendered) shouldBe
-            "Пшеница 0/2, Морковь 0/2 • всего 0/4"
+            "Заказ • Пшеница 0/2, Морковь 0/2 • 0/4"
     }
 
     test("planting bossbar renders the exact next action without a chat prefix") {
@@ -269,7 +286,37 @@ class ArcFarmsConfigTest : FunSpec({
         )
 
         PlainTextComponentSerializer.plainText().serialize(rendered) shouldBe
-            "Посев Пшеница 37/100 • ПКМ семенами"
+            "Заказ • Посев Пшеница 37/100 • ПКМ семенами"
+    }
+
+    test("every active farm bossbar leads with the current order name") {
+        val root = resourceTree()
+        val settings = ArcFarmsConfig.inspect(root)
+        val locale = ArcFarmsLocale(root) { settings }
+        val values = mapOf(
+            "order" to Component.text("Заказ"),
+            "crop" to Component.text("Пшеница"),
+            "requirements" to Component.text("Пшеница 0/2"),
+            "instruction" to Component.text("Откройте вентили"),
+            "nests" to Component.text("3"),
+            "pests" to Component.text("4"),
+            "done" to Component.text("0"),
+            "total" to Component.text("4"),
+        )
+
+        listOf(
+            MessageKey.FARM_PREPARATION_BOSSBAR,
+            MessageKey.FARM_PLANTING_BOSSBAR,
+            MessageKey.FARM_CARE_BOSSBAR,
+            MessageKey.FARM_BOSSBAR,
+            MessageKey.FARM_INCIDENT_BOSSBAR,
+            MessageKey.FARM_DROUGHT_BOSSBAR,
+            MessageKey.FARM_DELIVERY_BOSSBAR,
+            MessageKey.FARM_DELIVERY_CARRYING_BOSSBAR,
+        ).forEach { key ->
+            PlainTextComponentSerializer.plainText().serialize(locale.render(key, values = values)) shouldStartWith
+                "Заказ •"
+        }
     }
 
     test("cooldown surfaces explain the automatic next order without a chat prefix") {
@@ -356,6 +403,8 @@ class ArcFarmsConfigTest : FunSpec({
         settings.destinations.getValue("farm").x shouldBe -5.5
         settings.requiresWorldGuard shouldBe false
         settings.farms.single().orders.single().id shouldBe "lab_order"
+        settings.farms.single().rareOrderChancePercent shouldBe 0
+        settings.farms.single().orders.single().customerType shouldBe FarmCustomerType.MARKET_TRADER
         settings.farms.single().pestEntity shouldBe "SILVERFISH"
         settings.farms.single().preparationPatchSize shouldBe 12
         settings.farms.single().preparationPatchMaxSize shouldBe 160

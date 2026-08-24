@@ -65,10 +65,18 @@ The current instruction and exact progress remain in the boss bar. The next
 useful target has one restrained long-range particle column, while nearby
 targets use glowing models and small local feedback. There is no failure timer:
 an empty farm, one player, disconnect, chunk unload, or restart leaves the same
-shared objective waiting. Finishing field care starts normal harvesting, whose
-boss bar shows every unfinished crop with its current and required amount. Only
-requested mature crops fill it, and accepted crops are consumed by the order
-instead of dropping.
+shared objective waiting. Finishing field care starts normal harvesting. Its
+boss bar starts with the current contract name and shows every unfinished crop
+with its current and required amount. Every other active farm boss bar follows
+the same `contract • action • progress` hierarchy. Only requested mature crops
+fill it, and accepted crops are consumed by the order instead of dropping.
+
+Orders are complete contract variants rather than temporary multipliers. Most
+shifts rotate through ordinary bakery, mine-supply, and market contracts; a
+bounded configurable roll may choose one of the larger rare contracts instead.
+Each contract owns its crop quota, possible care stories, possible incident,
+customer, and cart cargo visual. It remains one shared indefinite objective and
+does not add a second progress track.
 
 Care fixtures do not assume that the map already contains hives, valves,
 covers, scarecrows, or animals. By default ArcFarms finds a real hive where one
@@ -113,8 +121,14 @@ plants without creating crop or seed drops. ArcFarms tracks and removes every
 temporary flow after each pour. Managed plants remain absent
 until the entire drought is resolved, then their captured state is restored at
 once. Either incident pauses harvesting without resetting the main order.
-Resolving it resumes the ordinary crop order at the next unfinished crop. When
-the crop quota is ready, a configured set of interactive harvest crates appears
+Resolving it resumes the ordinary crop order at the next unfinished crop. At
+each quarter of the harvest quota another visible cargo bundle appears in the
+stationary order cart. The tagged cart and its customer are reconstructed from
+persisted shift state after reload or restart. Clicking the cart reports its
+fill percentage; clicking the baker, mine supplier, or market trader repeats
+the current order. The customer waits beside receiving by default, while both
+`cart` and `customer` support administrator point overrides. When the crop
+quota is ready, a configured set of interactive harvest crates appears
 at the last crop. Players
 carry their visual displays to the configured receiving point; leaving the farm
 returns only the carried crate, while the shared delivery objective remains
@@ -126,8 +140,9 @@ recognition.
 Every modified bed is recorded before mutation in the owning chunk's Paper PDC
 with its exact coordinates, original soil and crop block data, and current
 recoverable crop state. Startup reconciliation uses those records after a hard
-stop. `/arcfarms admin edit` is available only between active shifts and lets an
-administrator deliberately remove a bed and its ArcFarms record. Phase-colored
+stop. `/arcfarms admin edit` remains authoritative during an active shift and
+lets an administrator deliberately remove a bed and its ArcFarms record without
+the current objective blocking the edit. Phase-colored
 particle columns mark the active patch from a distance; drought and delivery
 use their own local action areas.
 
@@ -181,7 +196,7 @@ next cycle. Atomic Redis compare-and-set prevents duplicate cross-server stamps.
 - `/arcfarms reload` — validate and reload configuration/locales (admin).
 - `/arcfarms admin edit` — toggle deliberate farm-bed deletion and PDC cleanup;
   edit mode stays authoritative even during an active scene (admin).
-- `/arcfarms admin point <zone> <tool|seeds|water|crates|receiving|travel|hive|irrigation|covers|scarecrows|barn>` —
+- `/arcfarms admin point <zone> <tool|seeds|water|crates|receiving|cart|customer|travel|hive|irrigation|covers|scarecrows|barn>` —
   save the administrator's current world, coordinates, yaw, and pitch for a farm
   operation point. Non-travel points must be inside the farm and off crop beds.
 - `/arcfarms admin points <zone>` — list the effective configured and overridden
@@ -194,8 +209,10 @@ next cycle. Atomic Redis compare-and-set prevents duplicate cross-server stamps.
   start one exact field-care story, or report that its required fixture cannot
   be placed.
 - `/arcfarms debug <zone> status` — print the exact shift, patch, crop damage,
-  water-flow, care targets, animal followers, nest, pest, and delivery state
-  used by the server.
+  order rarity, customer, cart fill, water-flow, care targets, animal followers,
+  nest, pest, and delivery state used by the server.
+- `/arcfarms debug <zone> contract <order-id>` — reset the QA scene and start
+  that exact ordinary or rare contract with normal patch selection.
 - `/arcfarms debug <zone> stage <stage>` / `event <pests|drought>` / `next` —
   force a deterministic QA transition without waiting for random gameplay.
 - `/arcfarms debug <zone> care <seeder|weeds|irrigation|pollination|covers|scarecrows|animals|disease|moles>` —
@@ -251,7 +268,7 @@ button.
 ../arc-core/gradlew clean check shadowJar
 ```
 
-The deployable artifact is `build/libs/ArcFarms-0.11.0.jar`.
+The deployable artifact is `build/libs/ArcFarms-0.13.0.jar`.
 
 ## Isolated gameplay QA
 

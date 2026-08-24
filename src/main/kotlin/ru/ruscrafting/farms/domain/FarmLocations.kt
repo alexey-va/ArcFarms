@@ -6,6 +6,8 @@ enum class FarmPointKind {
     WATER,
     CRATES,
     RECEIVING,
+    CART,
+    CUSTOMER,
     TRAVEL,
     HIVE,
     IRRIGATION,
