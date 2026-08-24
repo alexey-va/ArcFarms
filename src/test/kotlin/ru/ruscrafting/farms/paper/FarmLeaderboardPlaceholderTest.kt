@@ -4,6 +4,15 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 
 class FarmLeaderboardPlaceholderTest : FunSpec({
+    test("farm scoreboard placeholders stay within the fixed TAB surface") {
+        FarmScoreboardPlaceholder.parse("farm_active") shouldBe FarmScoreboardPlaceholder.Active
+        FarmScoreboardPlaceholder.parse("farm_title") shouldBe FarmScoreboardPlaceholder.Title
+        FarmScoreboardPlaceholder.parse("farm_line_1") shouldBe FarmScoreboardPlaceholder.Line(1)
+        FarmScoreboardPlaceholder.parse("farm_line_15") shouldBe FarmScoreboardPlaceholder.Line(15)
+        FarmScoreboardPlaceholder.parse("farm_line_0") shouldBe null
+        FarmScoreboardPlaceholder.parse("farm_line_16") shouldBe null
+    }
+
     test("leaderboard placeholders expose personal and ranked farm fields") {
         FarmLeaderboardPlaceholder.parse("farm_score") shouldBe FarmLeaderboardPlaceholder.PersonalScore
         FarmLeaderboardPlaceholder.parse("farm_rank") shouldBe FarmLeaderboardPlaceholder.PersonalRank

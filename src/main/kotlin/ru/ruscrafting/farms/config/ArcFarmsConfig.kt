@@ -257,8 +257,11 @@ data class MenuBackgroundSettings(
 
 data class FarmScoreboardSettings(
     val enabled: Boolean,
+    val provider: FarmScoreboardProvider,
     val replaceExisting: Boolean,
 )
+
+enum class FarmScoreboardProvider { BUKKIT, TAB }
 
 class ArcFarmsConfig private constructor(
     val enabled: Boolean,
@@ -590,6 +593,10 @@ class ArcFarmsConfig private constructor(
                     .checked("ui.missing-bed-highlight-threshold", 1, 32),
                 farmScoreboard = FarmScoreboardSettings(
                     enabled = config.boolean("ui.farm-scoreboard.enabled", true),
+                    provider = config.string("ui.farm-scoreboard.provider", "BUKKIT").uppercase().let { raw ->
+                        FarmScoreboardProvider.entries.firstOrNull { it.name == raw }
+                            ?: error("ui.farm-scoreboard.provider must be BUKKIT or TAB")
+                    },
                     replaceExisting = config.boolean("ui.farm-scoreboard.replace-existing", false),
                 ),
                 menuBackground = MenuBackgroundSettings(

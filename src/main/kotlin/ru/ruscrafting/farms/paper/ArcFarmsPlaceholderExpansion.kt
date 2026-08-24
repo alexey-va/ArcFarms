@@ -17,6 +17,16 @@ class ArcFarmsPlaceholderExpansion(
     override fun canRegister(): Boolean = true
 
     override fun onRequest(player: OfflinePlayer?, params: String): String? {
+        when (val request = FarmScoreboardPlaceholder.parse(params)) {
+            FarmScoreboardPlaceholder.Active -> return player?.uniqueId
+                ?.let(service::farmScoreboardActive)
+                ?.toString() ?: "false"
+            FarmScoreboardPlaceholder.Title -> return player?.uniqueId?.let(service::farmScoreboardTitle).orEmpty()
+            is FarmScoreboardPlaceholder.Line -> return player?.uniqueId
+                ?.let { service.farmScoreboardLine(it, request.number) }
+                .orEmpty()
+            null -> Unit
+        }
         return when (val request = FarmLeaderboardPlaceholder.parse(params)) {
             FarmLeaderboardPlaceholder.PersonalScore -> player?.uniqueId?.let {
                 service.playerStats(it).contributions[ActivityKind.FARM] ?: 0L
@@ -47,6 +57,22 @@ class ArcFarmsPlaceholderExpansion(
             FarmLeaderboardPlaceholder.Field.SKIN -> name ?: entry.first.toString()
             FarmLeaderboardPlaceholder.Field.UUID -> entry.first.toString()
             FarmLeaderboardPlaceholder.Field.SCORE -> entry.second.toString()
+        }
+    }
+}
+
+internal sealed interface FarmScoreboardPlaceholder {
+    data object Active : FarmScoreboardPlaceholder
+    data object Title : FarmScoreboardPlaceholder
+    data class Line(val number: Int) : FarmScoreboardPlaceholder
+
+    companion object {
+        private val LINE = Regex("farm_line_([1-9]|1[0-5])")
+
+        fun parse(raw: String): FarmScoreboardPlaceholder? = when (val normalized = raw.lowercase()) {
+            "farm_active" -> Active
+            "farm_title" -> Title
+            else -> LINE.matchEntire(normalized)?.groupValues?.get(1)?.toIntOrNull()?.let(::Line)
         }
     }
 }

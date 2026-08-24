@@ -22,6 +22,7 @@ ui:
   missing-bed-highlight-threshold: 10
   farm-scoreboard:
     enabled: true
+    provider: BUKKIT
     replace-existing: false
   menu-background:
     enabled: false

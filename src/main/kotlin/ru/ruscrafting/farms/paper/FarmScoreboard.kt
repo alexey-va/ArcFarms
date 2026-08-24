@@ -27,10 +27,14 @@ internal class FarmScoreboardRenderer(
 
     fun rows(view: FarmScoreboardView, audience: CommandSender?): List<Component> = buildList {
         add(locale.renderPath("scoreboard.section.order", audience))
-        add(locale.renderPath("order.farm.${view.orderId}", audience))
+        add(locale.renderPath(
+            "scoreboard.order",
+            audience,
+            mapOf("order" to locale.renderPath("order.farm.${view.orderId}", audience)),
+        ))
         add(Component.empty())
         add(locale.renderPath("scoreboard.section.current", audience))
-        add(objective(view, audience))
+        add(locale.renderPath("scoreboard.objective-line", audience, mapOf("objective" to objective(view, audience))))
         add(locale.renderPath(
             "scoreboard.progress",
             audience,
@@ -39,7 +43,7 @@ internal class FarmScoreboardRenderer(
                 "total" to locale.text(view.total.coerceAtLeast(1)),
             ),
         ))
-        add(hint(view, audience))
+        add(locale.renderPath("scoreboard.hint-line", audience, mapOf("hint" to hint(view, audience))))
         add(Component.empty())
         add(locale.renderPath("scoreboard.section.crops", audience))
         view.required.entries.take(MAX_CROP_ROWS).forEach { (cropName, required) ->

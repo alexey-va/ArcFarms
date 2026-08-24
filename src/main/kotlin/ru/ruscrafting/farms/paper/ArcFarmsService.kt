@@ -1,6 +1,5 @@
 package ru.ruscrafting.farms.paper
 
-import io.papermc.paper.scoreboard.numbers.NumberFormat
 import net.kyori.adventure.bossbar.BossBar
 import net.kyori.adventure.key.Key
 import net.kyori.adventure.sound.Sound as AdventureSound
@@ -31,8 +30,6 @@ import org.bukkit.entity.Item
 import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Horse
 import org.bukkit.entity.TextDisplay
-import org.bukkit.entity.Minecart
-import org.bukkit.entity.Villager
 import org.bukkit.event.entity.EntityDeathEvent
 import org.bukkit.event.entity.EntityChangeBlockEvent
 import org.bukkit.event.entity.EntityDamageByEntityEvent
@@ -58,9 +55,6 @@ import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
-import org.bukkit.scoreboard.Criteria
-import org.bukkit.scoreboard.DisplaySlot
-import org.bukkit.scoreboard.Scoreboard
 import ru.arc.core.ScheduledTask
 import ru.arc.core.Tasks
 import ru.ruscrafting.farms.config.ArcFarmsConfig
@@ -78,7 +72,6 @@ import ru.ruscrafting.farms.domain.ArcFarmsState
 import ru.ruscrafting.farms.domain.EngineResult
 import ru.ruscrafting.farms.domain.FarmOrder
 import ru.ruscrafting.farms.domain.FarmContractPlanner
-import ru.ruscrafting.farms.domain.FarmCustomerType
 import ru.ruscrafting.farms.domain.FarmCarePlanner
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareTarget
@@ -136,10 +129,7 @@ import kotlin.math.PI
 import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.sin
-import org.bukkit.util.Transformation
 import org.bukkit.util.Vector
-import org.joml.AxisAngle4f
-import org.joml.Vector3f
 
 data class ActivityStatus(
     val kind: ActivityKind,
@@ -177,20 +167,12 @@ private data class MineRuntime(
 )
 
 private data class BarKey(val playerId: UUID, val runtimeKey: String)
-private data class FarmScoreboardSession(
-    val zoneId: String,
-    val scoreboard: Scoreboard,
-    val previous: Scoreboard,
-    var view: FarmScoreboardView? = null,
-)
 private data class DeliveryKey(val zoneId: String, val index: Int)
 private data class SupplyKey(val zoneId: String, val kind: FarmSupplyKind)
 private data class PestNestKey(val zoneId: String, val position: FarmPlotPosition)
 private data class CareEntityKey(val zoneId: String, val targetId: Int)
-private data class ContractSceneKey(val zoneId: String, val role: ContractSceneRole, val slot: Int = 0)
 private data class DroughtGrowthRuntime(var startedAt: Long, var spawned: Int)
 private enum class FarmSupplyKind { TOOL, SEEDS, WATER }
-private enum class ContractSceneRole { CART, CART_LOAD, CUSTOMER }
 
 private val FARM_SOIL_TYPES = setOf(
     Material.DIRT,
@@ -260,9 +242,8 @@ class ArcFarmsService(
     private val pendingFarmRewards = mutableListOf<PendingFarmReward>()
     private val claimedFarmRewardSequences = mutableMapOf<String, Long>()
     private val activeBars = mutableMapOf<BarKey, BossBar>()
-    private val farmScoreboardRenderer = FarmScoreboardRenderer(locale)
-    private val farmScoreboards = mutableMapOf<UUID, FarmScoreboardSession>()
-    private val farmScoreboardSuppressed = mutableSetOf<UUID>()
+    private val farmScoreboards = FarmScoreboardController(FarmScoreboardRenderer(locale), { settings.farmScoreboard }, debug)
+    private val contractScene = FarmContractSceneManager(plugin, debug)
     private val mineReservations = ConcurrentHashMap.newKeySet<String>()
     private val pendingPositions = ConcurrentHashMap<String, String>()
     private val interactionCooldowns = mutableMapOf<String, Long>()
@@ -275,7 +256,6 @@ class ArcFarmsService(
     private val supplyEntities = mutableMapOf<SupplyKey, MutableSet<UUID>>()
     private val supplyVisualMaterials = mutableMapOf<SupplyKey, Material>()
     private val careEntities = mutableMapOf<CareEntityKey, MutableSet<UUID>>()
-    private val contractSceneEntities = mutableMapOf<ContractSceneKey, UUID>()
     private val animalFollowers = mutableMapOf<CareEntityKey, UUID>()
     private val diseaseNextSpreadAt = mutableMapOf<String, Long>()
     private val careNextReconcileAt = mutableMapOf<String, Long>()
@@ -305,10 +285,6 @@ class ArcFarmsService(
     private val careSequenceKey = NamespacedKey(plugin, "farm_care_sequence")
     private val careTargetKey = NamespacedKey(plugin, "farm_care_target")
     private val careRoleKey = NamespacedKey(plugin, "farm_care_role")
-    private val contractSceneZoneKey = NamespacedKey(plugin, "farm_contract_scene_zone")
-    private val contractSceneSequenceKey = NamespacedKey(plugin, "farm_contract_scene_sequence")
-    private val contractSceneRoleKey = NamespacedKey(plugin, "farm_contract_scene_role")
-    private val contractSceneSlotKey = NamespacedKey(plugin, "farm_contract_scene_slot")
     private val tasks = mutableListOf<ScheduledTask>()
     @Volatile
     private var started = false
@@ -335,6 +311,7 @@ class ArcFarmsService(
         cleanupOwnedFarmEntities()
         reconcileFarmPatches()
         farms.forEach(::ensureFarmSupplies)
+        farms.forEach(::ensureFarmContractScene)
         mineJournal.records().forEach { pendingPositions[it.positionKey] = it.id }
         startTasks()
         stateSafeToPersist = true
@@ -394,12 +371,13 @@ class ArcFarmsService(
         clearTemporaryFarmWater(reason)
         droughtGrowth.clear()
         hideAllBars()
-        restoreAllFarmScoreboards(reason)
+        farmScoreboards.restoreAll(reason)
         cleanupOwnedFarmEntities()
         settings = candidate
         rebuild(snapshot)
         reconcileFarmPatches()
         farms.forEach(::ensureFarmSupplies)
+        farms.forEach(::ensureFarmContractScene)
         startTasks()
     }
 
@@ -640,10 +618,9 @@ class ArcFarmsService(
         val toFarm = farmAt(destination)
         if (fromFarm != null && fromFarm !== toFarm) {
             removeFarmServiceItems(player, fromFarm.settings.id, "left_zone")
-            restoreFarmScoreboard(player, "left_zone")
+            farmScoreboards.remove(player, "left_zone")
         }
         if (toFarm != null && fromFarm !== toFarm) {
-            farmScoreboardSuppressed.remove(player.uniqueId)
             showFarmEntry(player, toFarm)
         }
         if (fromFarm !== toFarm) syncFarmMusic(player, toFarm, clock())
@@ -671,7 +648,7 @@ class ArcFarmsService(
 
     fun onQuit(player: Player) {
         stopFarmMusic(player, "player_quit")
-        restoreFarmScoreboard(player, "player_quit")
+        farmScoreboards.remove(player, "player_quit")
         val keys = activeBars.keys.filter { it.playerId == player.uniqueId }
         keys.forEach { key -> activeBars.remove(key)?.let(player::hideBossBar) }
         deliveryCarriers.filterValues { it == player.uniqueId }.keys.toList().forEach { key ->
@@ -697,7 +674,7 @@ class ArcFarmsService(
             data.has(careZoneKey, PersistentDataType.STRING) ||
             data.has(supplyZoneKey, PersistentDataType.STRING) ||
             data.has(deliveryZoneKey, PersistentDataType.STRING) ||
-            data.has(contractSceneZoneKey, PersistentDataType.STRING)
+            contractScene.owns(event.rightClicked)
         ) {
             event.isCancelled = true
         }
@@ -706,10 +683,9 @@ class ArcFarmsService(
     fun onInteractEntity(event: PlayerInteractEntityEvent) {
         if (event.player.uniqueId in adminEditPlayers) return
         if (event.hand != EquipmentSlot.HAND) return
-        val contractZone = event.rightClicked.persistentDataContainer.get(contractSceneZoneKey, PersistentDataType.STRING)
-        if (contractZone != null) {
+        if (contractScene.owns(event.rightClicked)) {
             event.isCancelled = true
-            handleFarmContractSceneInteraction(event.player, event.rightClicked, contractZone)
+            handleFarmContractSceneInteraction(event.player, event.rightClicked)
             return
         }
         val careZone = event.rightClicked.persistentDataContainer.get(careZoneKey, PersistentDataType.STRING)
@@ -750,7 +726,7 @@ class ArcFarmsService(
     }
 
     fun onEntityDamage(event: EntityDamageEvent) {
-        if (event.entity.persistentDataContainer.has(contractSceneZoneKey, PersistentDataType.STRING)) {
+        if (contractScene.owns(event.entity)) {
             event.isCancelled = true
             return
         }
@@ -818,7 +794,7 @@ class ArcFarmsService(
             event.entity.persistentDataContainer.has(deliveryZoneKey, PersistentDataType.STRING) ||
             event.entity.persistentDataContainer.has(supplyZoneKey, PersistentDataType.STRING) ||
             event.entity.persistentDataContainer.has(careZoneKey, PersistentDataType.STRING) ||
-            event.entity.persistentDataContainer.has(contractSceneZoneKey, PersistentDataType.STRING)
+            contractScene.owns(event.entity)
         ) {
             event.isCancelled = true
             return
@@ -1540,6 +1516,37 @@ class ArcFarmsService(
     fun weeklyLeaderboardRank(playerId: UUID): Int? = stats.farmWeeklyRank(playerId)
 
     fun weeklyContribution(playerId: UUID, kind: ActivityKind): Long = stats.weeklyContribution(playerId, kind)
+
+    fun farmScoreboardActive(playerId: UUID): Boolean = farmScoreboards.active(playerId)
+
+    fun farmScoreboardTitle(playerId: UUID): String = farmScoreboards.tabTitle(playerId)
+
+    fun farmScoreboardLine(playerId: UUID, line: Int): String = farmScoreboards.tabLine(playerId, line)
+
+    fun onChunkLoad(chunk: org.bukkit.Chunk) {
+        contractScene.onChunkLoad(chunk)
+        var removed = 0
+        chunk.entities.filter { entity ->
+            val data = entity.persistentDataContainer
+            data.has(pestZoneKey, PersistentDataType.STRING) ||
+                data.has(pestNestZoneKey, PersistentDataType.STRING) ||
+                data.has(deliveryZoneKey, PersistentDataType.STRING) ||
+                data.has(supplyZoneKey, PersistentDataType.STRING) ||
+                data.has(careZoneKey, PersistentDataType.STRING)
+        }.forEach { entity ->
+            entity.remove()
+            removed++
+        }
+        if (removed > 0) {
+            debug.event(
+                "farm_transient_entities_reconciled",
+                "world" to chunk.world.name,
+                "chunk" to "${chunk.x},${chunk.z}",
+                "removed" to removed,
+                "reason" to "chunk_load",
+            )
+        }
+    }
 
     fun canNavigate(kind: ActivityKind): Boolean = kind.configKey in settings.destinations
 
@@ -4045,7 +4052,7 @@ class ArcFarmsService(
         if (!runtime.region.contains(location) || !world.isChunkLoaded(location.blockX shr 4, location.blockZ shr 4)) return
         val horse = world.spawn(location, Horse::class.java) { entity ->
             entity.setAdult()
-            entity.isPersistent = true
+            entity.isPersistent = false
             entity.removeWhenFarAway = false
             entity.isInvulnerable = true
             entity.isCollidable = false
@@ -4061,7 +4068,7 @@ class ArcFarmsService(
             entity.backgroundColor = Color.fromARGB(128, 16, 16, 16)
             entity.isShadowed = true
             entity.viewRange = 0.7f
-            entity.isPersistent = true
+            entity.isPersistent = false
             markFarmCareEntity(entity, runtime, target.id, target.role)
         }
         careEntities[key] = mutableSetOf(horse.uniqueId, label.uniqueId)
@@ -4100,7 +4107,7 @@ class ArcFarmsService(
                 java.lang.Math.floorMod(runtime.state.sequence.toInt() + target.id, runtime.settings.careAnimalEntities.size)
             ]
             val mob = world.spawnEntity(location, EntityType.valueOf(typeName)) as? Mob ?: return
-            mob.isPersistent = true
+            mob.isPersistent = false
             mob.removeWhenFarAway = false
             mob.isInvulnerable = true
             mob.isCollidable = false
@@ -4122,14 +4129,14 @@ class ArcFarmsService(
             entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
             entity.isGlowing = true
             entity.glowColorOverride = if (target.complete) FARM_SUCCESS_COLOR else careRoleColor(target.role)
-            entity.isPersistent = true
+            entity.isPersistent = false
             markFarmCareEntity(entity, runtime, target.id, target.role)
         }
         val interaction = world.spawn(location.clone().add(0.0, 0.05, 0.0), Interaction::class.java) { entity ->
             entity.interactionWidth = if (target.role == FarmCareRole.COVER_ANCHOR) 1.45f else 1.15f
             entity.interactionHeight = 1.45f
             entity.isResponsive = true
-            entity.isPersistent = true
+            entity.isPersistent = false
             markFarmCareEntity(entity, runtime, target.id, target.role)
         }
         careEntities[key] = mutableSetOf(display.uniqueId, interaction.uniqueId)
@@ -4169,14 +4176,14 @@ class ArcFarmsService(
             entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
             entity.isGlowing = true
             entity.glowColorOverride = FARM_SUCCESS_COLOR
-            entity.isPersistent = true
+            entity.isPersistent = false
             markFarmCareEntity(entity, runtime, -1, FarmCareRole.PEN)
         }
         val interaction = world.spawn(location, Interaction::class.java) { entity ->
             entity.interactionWidth = 2.2f
             entity.interactionHeight = 1.8f
             entity.isResponsive = true
-            entity.isPersistent = true
+            entity.isPersistent = false
             markFarmCareEntity(entity, runtime, -1, FarmCareRole.PEN)
         }
         careEntities[key] = mutableSetOf(display.uniqueId, interaction.uniqueId)
@@ -4986,30 +4993,47 @@ class ArcFarmsService(
                 "milestone" to recoveredMilestone,
             )
         }
-        ensureFarmCustomer(runtime, order)
-        ensureFarmCart(runtime, order)
-        val desiredLoads = runtime.state.harvestMilestone.coerceIn(0, 4)
-        repeat(4) { slot ->
-            val key = ContractSceneKey(runtime.settings.id, ContractSceneRole.CART_LOAD, slot)
-            if (slot < desiredLoads) ensureFarmCartLoad(runtime, order, slot)
-            else removeFarmContractSceneEntity(key, "load_not_reached")
+        val customerPoint = point(runtime, FarmPointKind.CUSTOMER)
+        val cartPoint = point(runtime, FarmPointKind.CART)
+        val customerWorld = Bukkit.getWorld(customerPoint.world) ?: return
+        val cartWorld = Bukkit.getWorld(cartPoint.world) ?: return
+        if (customerWorld !== cartWorld) return
+        val customerLocation = Location(customerWorld, customerPoint.x, customerPoint.y, customerPoint.z, customerPoint.yaw, 0f)
+        val cartLocation = Location(cartWorld, cartPoint.x, cartPoint.y + 0.15, cartPoint.z, cartPoint.yaw, 0f)
+        if (!runtime.region.contains(customerLocation) || !runtime.region.contains(cartLocation)) return
+        val loadItem = ItemStack(MaterialRules.material(order.cartLoadMaterial)).also { item ->
+            if (order.cartLoadCustomModelData > 0) {
+                val meta = item.itemMeta
+                @Suppress("DEPRECATION")
+                meta.setCustomModelData(order.cartLoadCustomModelData)
+                item.itemMeta = meta
+            }
         }
+        contractScene.ensure(
+            FarmContractSceneSpec(
+                zoneId = runtime.settings.id,
+                sequence = runtime.state.sequence,
+                customerType = order.customerType,
+                customerLocation = customerLocation,
+                cartLocation = cartLocation,
+                loadItem = loadItem,
+                loadCount = runtime.state.harvestMilestone.coerceIn(0, 4),
+            ),
+        )
     }
 
-    private fun handleFarmContractSceneInteraction(player: Player, entity: Entity, zoneId: String) {
-        val runtime = farms.firstOrNull { it.settings.id == zoneId } ?: return
-        val sequence = entity.persistentDataContainer.get(contractSceneSequenceKey, PersistentDataType.LONG) ?: return
-        val roleName = entity.persistentDataContainer.get(contractSceneRoleKey, PersistentDataType.STRING) ?: return
-        val role = runCatching { ContractSceneRole.valueOf(roleName) }.getOrNull() ?: return
-        if (runtime.state.sequence != sequence || !runtime.region.contains(entity.location)) return
+    private fun handleFarmContractSceneInteraction(player: Player, entity: Entity) {
+        val identity = contractScene.metadata(entity) ?: return
+        val runtime = farms.firstOrNull { it.settings.id == identity.zoneId } ?: return
+        if (runtime.state.sequence != identity.sequence || !runtime.region.contains(entity.location)) return
         if (!hasAccess(player, runtime.settings.permission)) {
             sendChat(player, MessageKey.ZONE_LOCKED)
             return
         }
-        if (!allowInteraction("farm-contract-scene:$zoneId:$role:${player.uniqueId}", 700)) return
+        if (!allowInteraction("farm-contract-scene:${identity.zoneId}:${identity.role}:${player.uniqueId}", 700)) return
         val order = currentOrder(runtime) ?: return
-        when (role) {
-            ContractSceneRole.CUSTOMER -> {
+        when (identity.role) {
+            FarmContractSceneRole.CUSTOMER -> {
                 sendActionBar(
                     player,
                     MessageKey.FARM_CUSTOMER_REMINDER,
@@ -5020,7 +5044,7 @@ class ArcFarmsService(
                 )
                 if (settings.sounds) player.playSound(entity.location, Sound.ENTITY_VILLAGER_YES, 0.65f, 1.05f)
             }
-            ContractSceneRole.CART, ContractSceneRole.CART_LOAD -> sendActionBar(
+            FarmContractSceneRole.CART, FarmContractSceneRole.CART_LOAD -> sendActionBar(
                 player,
                 MessageKey.FARM_CART_PROGRESS,
                 mapOf(
@@ -5031,144 +5055,16 @@ class ArcFarmsService(
         }
         debug.event(
             "farm_contract_scene_interaction",
-            "zone" to zoneId,
-            "sequence" to sequence,
+            "zone" to identity.zoneId,
+            "sequence" to identity.sequence,
             "order" to order.id,
-            "role" to role,
+            "role" to identity.role,
             "player" to player.name,
         )
     }
 
-    private fun ensureFarmCustomer(runtime: FarmRuntime, order: FarmOrder) {
-        val key = ContractSceneKey(runtime.settings.id, ContractSceneRole.CUSTOMER)
-        val existing = contractSceneEntities[key]?.let(Bukkit::getEntity) as? Villager
-        if (existing != null && validFarmContractSceneEntity(existing, runtime, key)) return
-        removeFarmContractSceneEntity(key, "replace_customer")
-        val point = point(runtime, FarmPointKind.CUSTOMER)
-        val world = Bukkit.getWorld(point.world) ?: return
-        val location = Location(world, point.x, point.y, point.z, point.yaw, 0f)
-        if (!runtime.region.contains(location)) return
-        val customer = world.spawn(location, Villager::class.java) { entity ->
-            entity.profession = when (order.customerType) {
-                FarmCustomerType.BAKER -> Villager.Profession.FARMER
-                FarmCustomerType.MINE_SUPPLIER -> Villager.Profession.TOOLSMITH
-                FarmCustomerType.MARKET_TRADER -> Villager.Profession.CARTOGRAPHER
-            }
-            entity.villagerType = Villager.Type.PLAINS
-            entity.setAI(false)
-            entity.isAware = false
-            entity.isCollidable = false
-            entity.isInvulnerable = true
-            entity.isPersistent = true
-            entity.removeWhenFarAway = false
-            entity.setCanPickupItems(false)
-            entity.isSilent = true
-            entity.setGravity(false)
-            markFarmContractSceneEntity(entity, runtime, key)
-        }
-        contractSceneEntities[key] = customer.uniqueId
-        debug.event(
-            "farm_customer_spawned",
-            "zone" to runtime.settings.id,
-            "sequence" to runtime.state.sequence,
-            "order" to order.id,
-            "customer" to order.customerType,
-        )
-    }
-
-    private fun ensureFarmCart(runtime: FarmRuntime, order: FarmOrder) {
-        val key = ContractSceneKey(runtime.settings.id, ContractSceneRole.CART)
-        val existing = contractSceneEntities[key]?.let(Bukkit::getEntity) as? Minecart
-        if (existing != null && validFarmContractSceneEntity(existing, runtime, key)) return
-        removeFarmContractSceneEntity(key, "replace_cart")
-        val point = point(runtime, FarmPointKind.CART)
-        val world = Bukkit.getWorld(point.world) ?: return
-        val location = Location(world, point.x, point.y + 0.15, point.z, point.yaw, 0f)
-        if (!runtime.region.contains(location)) return
-        val cart = world.spawnEntity(location, EntityType.MINECART) as Minecart
-        cart.setRotation(point.yaw, 0f)
-        cart.setGravity(false)
-        cart.setNoPhysics(true)
-        cart.velocity = Vector()
-        cart.maxSpeed = 0.0
-        cart.isSlowWhenEmpty = true
-        cart.isInvulnerable = true
-        cart.isPersistent = true
-        markFarmContractSceneEntity(cart, runtime, key)
-        contractSceneEntities[key] = cart.uniqueId
-        debug.event(
-            "farm_cart_spawned",
-            "zone" to runtime.settings.id,
-            "sequence" to runtime.state.sequence,
-            "order" to order.id,
-        )
-    }
-
-    @Suppress("DEPRECATION")
-    private fun ensureFarmCartLoad(runtime: FarmRuntime, order: FarmOrder, slot: Int) {
-        val key = ContractSceneKey(runtime.settings.id, ContractSceneRole.CART_LOAD, slot)
-        val existing = contractSceneEntities[key]?.let(Bukkit::getEntity) as? ItemDisplay
-        if (existing != null && validFarmContractSceneEntity(existing, runtime, key)) return
-        removeFarmContractSceneEntity(key, "replace_cart_load")
-        val point = point(runtime, FarmPointKind.CART)
-        val world = Bukkit.getWorld(point.world) ?: return
-        val location = cartLoadLocation(point, slot, world)
-        if (!runtime.region.contains(location)) return
-        val item = ItemStack(MaterialRules.material(order.cartLoadMaterial))
-        if (order.cartLoadCustomModelData > 0) {
-            val meta = item.itemMeta
-            meta.setCustomModelData(order.cartLoadCustomModelData)
-            item.itemMeta = meta
-        }
-        val display = world.spawn(location, ItemDisplay::class.java) { entity ->
-            entity.setItemStack(item)
-            entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.GROUND
-            entity.transformation = Transformation(
-                Vector3f(),
-                AxisAngle4f(),
-                Vector3f(0.48f, 0.48f, 0.48f),
-                AxisAngle4f(),
-            )
-            entity.isPersistent = true
-            entity.setGravity(false)
-            entity.teleportDuration = 1
-            markFarmContractSceneEntity(entity, runtime, key)
-        }
-        contractSceneEntities[key] = display.uniqueId
-    }
-
-    private fun cartLoadLocation(point: FarmPointPosition, slot: Int, world: org.bukkit.World): Location {
-        val offsets = listOf(-0.22 to -0.08, 0.22 to -0.08, -0.22 to 0.18, 0.22 to 0.18)
-        val (localX, localZ) = offsets[slot.coerceIn(0, offsets.lastIndex)]
-        val radians = Math.toRadians(point.yaw.toDouble())
-        val x = localX * cos(radians) - localZ * sin(radians)
-        val z = localX * sin(radians) + localZ * cos(radians)
-        return Location(world, point.x + x, point.y + 0.55 + (slot / 2) * 0.12, point.z + z, point.yaw, 0f)
-    }
-
-    private fun markFarmContractSceneEntity(entity: Entity, runtime: FarmRuntime, key: ContractSceneKey) {
-        entity.persistentDataContainer.set(contractSceneZoneKey, PersistentDataType.STRING, runtime.settings.id)
-        entity.persistentDataContainer.set(contractSceneSequenceKey, PersistentDataType.LONG, runtime.state.sequence)
-        entity.persistentDataContainer.set(contractSceneRoleKey, PersistentDataType.STRING, key.role.name)
-        entity.persistentDataContainer.set(contractSceneSlotKey, PersistentDataType.INTEGER, key.slot)
-    }
-
-    private fun validFarmContractSceneEntity(entity: Entity, runtime: FarmRuntime, key: ContractSceneKey): Boolean =
-        entity.isValid && entity.persistentDataContainer.get(contractSceneZoneKey, PersistentDataType.STRING) == key.zoneId &&
-            entity.persistentDataContainer.get(contractSceneSequenceKey, PersistentDataType.LONG) == runtime.state.sequence &&
-            entity.persistentDataContainer.get(contractSceneRoleKey, PersistentDataType.STRING) == key.role.name &&
-            entity.persistentDataContainer.get(contractSceneSlotKey, PersistentDataType.INTEGER) == key.slot
-
-    private fun removeFarmContractSceneEntity(key: ContractSceneKey, reason: String) {
-        val id = contractSceneEntities.remove(key) ?: return
-        Bukkit.getEntity(id)?.remove()
-        debug.event("farm_contract_scene_removed", "zone" to key.zoneId, "role" to key.role, "slot" to key.slot, "reason" to reason)
-    }
-
     private fun clearFarmContractScene(runtime: FarmRuntime, reason: String) {
-        contractSceneEntities.keys.filter { it.zoneId == runtime.settings.id }.toList().forEach { key ->
-            removeFarmContractSceneEntity(key, reason)
-        }
+        contractScene.clearZone(runtime.settings.id, reason)
     }
 
     private fun ensureFarmDelivery(runtime: FarmRuntime) {
@@ -5226,6 +5122,7 @@ class ArcFarmsService(
     private fun spawnDeliveryCrate(runtime: FarmRuntime, key: DeliveryKey, position: FarmDeliveryPosition) {
         val world = Bukkit.getWorld(position.world) ?: return
         val location = deliveryCrateLocation(runtime, position, key.index)
+        if (!world.isChunkLoaded(location.blockX shr 4, location.blockZ shr 4)) return
         if (!runtime.region.contains(location)) {
             plugin.logger.severe("Farm delivery position left ${runtime.region.label} for ${runtime.settings.id}; crate ${key.index} was not spawned")
             return
@@ -5234,14 +5131,14 @@ class ArcFarmsService(
             entity.setItemStack(deliveryItemStack(runtime))
             entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.GROUND
             entity.isGlowing = true
-            entity.isPersistent = true
+            entity.isPersistent = false
             markDeliveryEntity(entity, runtime, key.index)
         }
         val interaction = world.spawn(location, Interaction::class.java) { entity ->
             entity.interactionWidth = 1.35f
             entity.interactionHeight = 1.45f
             entity.isResponsive = true
-            entity.isPersistent = true
+            entity.isPersistent = false
             markDeliveryEntity(entity, runtime, key.index)
         }
         deliveryEntities.getOrPut(key) { mutableSetOf() }.addAll(listOf(display.uniqueId, interaction.uniqueId))
@@ -5308,7 +5205,7 @@ class ArcFarmsService(
             entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.GROUND
             entity.teleportDuration = 1
             entity.isGlowing = true
-            entity.isPersistent = true
+            entity.isPersistent = false
             markDeliveryEntity(entity, runtime, key.index)
         }
         carriedDisplays[key] = display.uniqueId
@@ -5657,18 +5554,19 @@ class ArcFarmsService(
             if (active.size == 2) return@forEach
             removePestNestEntities(key, "refresh")
             val base = nest.position.location()?.add(0.5, 1.0, 0.5) ?: return@forEach
+            if (!base.world.isChunkLoaded(base.blockX shr 4, base.blockZ shr 4)) return@forEach
             val display = runtime.region.world.spawn(base.clone().add(0.0, 0.25, 0.0), ItemDisplay::class.java) { entity ->
                 entity.setItemStack(ItemStack(Material.MANGROVE_ROOTS))
                 entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
                 entity.isGlowing = true
-                entity.isPersistent = true
+                entity.isPersistent = false
                 markPestNestEntity(entity, runtime, nest.position)
             }
             val hitbox = runtime.region.world.spawn(base, ArmorStand::class.java) { entity ->
                 entity.isInvisible = true
                 entity.setGravity(false)
                 entity.isSmall = false
-                entity.isPersistent = true
+                entity.isPersistent = false
                 entity.isInvulnerable = false
                 entity.customName(locale.render(MessageKey.FARM_PEST_NEST_NAME))
                 entity.isCustomNameVisible = true
@@ -5724,7 +5622,7 @@ class ArcFarmsService(
         val entity = runtime.region.world.spawnEntity(location, EntityType.valueOf(runtime.settings.pestEntity)) as? LivingEntity ?: return null
         entity.persistentDataContainer.set(pestZoneKey, PersistentDataType.STRING, runtime.settings.id)
         entity.persistentDataContainer.set(pestSequenceKey, PersistentDataType.LONG, runtime.state.sequence)
-        entity.isPersistent = true
+        entity.isPersistent = false
         entity.removeWhenFarAway = false
         entity.isGlowing = true
         (entity as? Mob)?.target = target
@@ -5749,6 +5647,7 @@ class ArcFarmsService(
         repeat(24) {
             val x = anchor.blockX + random.nextInt(-radius, radius + 1)
             val z = anchor.blockZ + random.nextInt(-radius, radius + 1)
+            if (!runtime.region.world.isChunkLoaded(x shr 4, z shr 4)) return@repeat
             for (y in (anchor.blockY - 2)..(anchor.blockY + 2)) {
                 val feet = runtime.region.world.getBlockAt(x, y, z)
                 val head = runtime.region.world.getBlockAt(x, y + 1, z)
@@ -5806,7 +5705,7 @@ class ArcFarmsService(
                 entity.setItemStack(ItemStack(visual))
                 entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
                 entity.isGlowing = true
-                entity.isPersistent = true
+                entity.isPersistent = false
                 markSupplyEntity(entity, runtime, kind)
             }
             val label = world.spawn(location.clone().add(0.0, 1.45, 0.0), TextDisplay::class.java) { entity ->
@@ -5817,14 +5716,14 @@ class ArcFarmsService(
                 entity.backgroundColor = Color.fromARGB(128, 16, 16, 16)
                 entity.isShadowed = true
                 entity.viewRange = 0.5f
-                entity.isPersistent = true
+                entity.isPersistent = false
                 markSupplyEntity(entity, runtime, kind)
             }
             val interaction = world.spawn(location.clone().add(0.0, 0.35, 0.0), Interaction::class.java) { entity ->
                 entity.interactionWidth = 1.35f
                 entity.interactionHeight = 1.4f
                 entity.isResponsive = true
-                entity.isPersistent = true
+                entity.isPersistent = false
                 markSupplyEntity(entity, runtime, kind)
             }
             supplyEntities[key] = mutableSetOf(item.uniqueId, label.uniqueId, interaction.uniqueId)
@@ -5944,7 +5843,8 @@ class ArcFarmsService(
     }
 
     private fun cleanupOwnedFarmEntities() {
-        val worlds = farms.map { it.region.world }.distinct()
+        val worlds = Bukkit.getWorlds()
+        contractScene.cleanupLoaded("service_cleanup")
         var removed = 0
         worlds.flatMap { it.entities }.forEach { entity ->
             if (
@@ -5952,8 +5852,7 @@ class ArcFarmsService(
                 entity.persistentDataContainer.has(pestNestZoneKey, PersistentDataType.STRING) ||
                 entity.persistentDataContainer.has(deliveryZoneKey, PersistentDataType.STRING) ||
                 entity.persistentDataContainer.has(supplyZoneKey, PersistentDataType.STRING) ||
-                entity.persistentDataContainer.has(careZoneKey, PersistentDataType.STRING) ||
-                entity.persistentDataContainer.has(contractSceneZoneKey, PersistentDataType.STRING)
+                entity.persistentDataContainer.has(careZoneKey, PersistentDataType.STRING)
             ) {
                 entity.remove()
                 removed++
@@ -5968,7 +5867,6 @@ class ArcFarmsService(
         supplyEntities.clear()
         supplyVisualMaterials.clear()
         careEntities.clear()
-        contractSceneEntities.clear()
         animalFollowers.clear()
         diseaseNextSpreadAt.clear()
         careNextReconcileAt.clear()
@@ -6002,25 +5900,6 @@ class ArcFarmsService(
         if (!settings.farmScoreboard.enabled) return
         val playerId = player.uniqueId
         expected += playerId
-        if (playerId in farmScoreboardSuppressed) return
-
-        var session = farmScoreboards[playerId]
-        if (session != null && session.zoneId != runtime.settings.id) {
-            restoreFarmScoreboard(player, "changed_zone")
-            session = null
-        }
-        if (session != null && player.scoreboard !== session.scoreboard) {
-            farmScoreboards.remove(playerId)
-            farmScoreboardSuppressed += playerId
-            debug.event(
-                "farm_scoreboard_yielded",
-                "player" to player.name,
-                "zone" to runtime.settings.id,
-                "reason" to "replaced_by_other_plugin",
-            )
-            return
-        }
-
         val view = FarmScoreboardView(
             orderId = order.id,
             phase = runtime.state.phase,
@@ -6033,89 +5912,11 @@ class ArcFarmsService(
             incidentType = runtime.state.incidentType,
             carrying = carrying,
         )
-        if (session == null) {
-            val previous = player.scoreboard
-            if (!settings.farmScoreboard.replaceExisting && previous.getObjective(DisplaySlot.SIDEBAR) != null) {
-                farmScoreboardSuppressed += playerId
-                debug.event(
-                    "farm_scoreboard_yielded",
-                    "player" to player.name,
-                    "zone" to runtime.settings.id,
-                    "reason" to "existing_sidebar",
-                )
-                return
-            }
-            val scoreboard = Bukkit.getScoreboardManager().newScoreboard
-            scoreboard.registerNewObjective(
-                FARM_SCOREBOARD_OBJECTIVE,
-                Criteria.DUMMY,
-                farmScoreboardRenderer.title(player),
-            ).also { objective ->
-                objective.displaySlot = DisplaySlot.SIDEBAR
-                objective.numberFormat(NumberFormat.blank())
-            }
-            session = FarmScoreboardSession(runtime.settings.id, scoreboard, previous)
-            farmScoreboards[playerId] = session
-            renderFarmScoreboard(player, session, view)
-            player.scoreboard = scoreboard
-            debug.message("scoreboard", "local", "farm:${runtime.settings.id}", player, farmScoreboardRenderer.title(player))
-            return
-        }
-        if (session.view != view) renderFarmScoreboard(player, session, view)
-    }
-
-    private fun renderFarmScoreboard(player: Player, session: FarmScoreboardSession, view: FarmScoreboardView) {
-        val objective = requireNotNull(session.scoreboard.getObjective(FARM_SCOREBOARD_OBJECTIVE)) {
-            "Farm scoreboard objective disappeared for ${player.name}"
-        }
-        objective.displayName(farmScoreboardRenderer.title(player))
-        session.scoreboard.entries.toList().forEach(session.scoreboard::resetScores)
-        farmScoreboardRenderer.rows(view, player).forEachIndexed { index, row ->
-            objective.getScore("§${index.toString(16)}").also { score ->
-                score.customName(row)
-                score.score = FarmScoreboardRenderer.MAX_ROWS - index
-            }
-        }
-        session.view = view
-        debug.event(
-            "farm_scoreboard_updated",
-            "player" to player.name,
-            "zone" to session.zoneId,
-            "order" to view.orderId,
-            "phase" to view.phase,
-            "progress" to "${view.done}/${view.total}",
-            "rows" to session.scoreboard.entries.size,
-        )
+        farmScoreboards.update(player, runtime.settings.id, view)
     }
 
     private fun reconcileFarmScoreboards(expected: Set<UUID>) {
-        (farmScoreboards.keys - expected).toList().forEach { playerId ->
-            Bukkit.getPlayer(playerId)?.let { restoreFarmScoreboard(it, "not_in_active_farm") }
-                ?: farmScoreboards.remove(playerId)
-        }
-        farmScoreboardSuppressed.retainAll(expected)
-    }
-
-    private fun restoreFarmScoreboard(player: Player, reason: String) {
-        val session = farmScoreboards.remove(player.uniqueId)
-        if (session != null && player.scoreboard === session.scoreboard) {
-            player.scoreboard = session.previous
-            debug.event(
-                "farm_scoreboard_restored",
-                "player" to player.name,
-                "zone" to session.zoneId,
-                "reason" to reason,
-            )
-        }
-        farmScoreboardSuppressed.remove(player.uniqueId)
-    }
-
-    private fun restoreAllFarmScoreboards(reason: String) {
-        farmScoreboards.keys.toList().forEach { playerId ->
-            Bukkit.getPlayer(playerId)?.let { restoreFarmScoreboard(it, reason) }
-                ?: farmScoreboards.remove(playerId)
-        }
-        farmScoreboardSuppressed.clear()
+        farmScoreboards.reconcile(expected)
     }
 
     private fun updateBar(
@@ -7226,7 +7027,7 @@ class ArcFarmsService(
         runCatching { stopAllFarmMusic("plugin_close") }.exceptionOrNull()?.let(failures::add)
         runCatching { clearTemporaryFarmWater("plugin_close") }.exceptionOrNull()?.let(failures::add)
         runCatching(::hideAllBars).exceptionOrNull()?.let(failures::add)
-        runCatching { restoreAllFarmScoreboards("plugin_close") }.exceptionOrNull()?.let(failures::add)
+        runCatching { farmScoreboards.restoreAll("plugin_close") }.exceptionOrNull()?.let(failures::add)
         runCatching(::cleanupOwnedFarmEntities).exceptionOrNull()?.let(failures::add)
         if (stateSafeToPersist) runCatching(::persistBlocking).exceptionOrNull()?.let(failures::add)
         if (failures.isNotEmpty()) {
@@ -7239,8 +7040,6 @@ class ArcFarmsService(
     companion object {
         private const val MAX_INCIDENT_DAMAGED_CROPS = 4_096
         private const val MAX_INTERACTION_COOLDOWNS = 10_000
-        private const val FARM_SCOREBOARD_OBJECTIVE = "arcfarms_farm"
-
         private val TITLE_SUBTITLES = mapOf(
             MessageKey.FARM_ENTRY_TITLE to MessageKey.FARM_ENTRY_SUBTITLE,
             MessageKey.FARM_PLANTING_STARTED to MessageKey.FARM_PLANTING_STARTED_SUBTITLE,

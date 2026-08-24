@@ -9,6 +9,7 @@ import org.bukkit.event.block.BlockSpreadEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerPortalEvent
 import org.bukkit.event.player.PlayerTeleportEvent
+import org.bukkit.event.world.ChunkLoadEvent
 
 class ArcFarmsListenerContractTest : FunSpec({
     test("farm-owned interactions run before WorldGuard protection feedback") {
@@ -21,6 +22,10 @@ class ArcFarmsListenerContractTest : FunSpec({
 
         handler.priority shouldBe EventPriority.LOWEST
         handler.ignoreCancelled shouldBe true
+    }
+
+    test("contract scene reconciliation runs as soon as a chunk becomes available") {
+        handler("onChunkLoad", ChunkLoadEvent::class.java).priority shouldBe EventPriority.LOWEST
     }
 
     test("teleports and portals cannot bypass farm exit cleanup") {

@@ -24,11 +24,15 @@ import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.event.player.PlayerPortalEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.event.player.PlayerTeleportEvent
+import org.bukkit.event.world.ChunkLoadEvent
 
 class ArcFarmsListener(
     private val service: ArcFarmsService,
     private val menu: ArcFarmsMenu,
 ) : Listener {
+    @EventHandler(priority = EventPriority.LOWEST)
+    fun onChunkLoad(event: ChunkLoadEvent) = service.onChunkLoad(event.chunk)
+
     @EventHandler(priority = EventPriority.LOWEST)
     fun onBreakLowest(event: BlockBreakEvent) = service.onBreakLowest(event)
 

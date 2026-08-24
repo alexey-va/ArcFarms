@@ -52,6 +52,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.network.allowedOrigins shouldBe setOf("spawn", "survival", "parkour")
         settings.network.workdayEnabled shouldBe true
         settings.network.playerAnnouncementsEnabled shouldBe false
+        settings.farmScoreboard.provider shouldBe FarmScoreboardProvider.BUKKIT
         settings.missingBedHighlightThreshold shouldBe 10
         settings.farmScoreboard.enabled shouldBe true
         settings.farmScoreboard.replaceExisting shouldBe false
@@ -111,6 +112,7 @@ class ArcFarmsConfigTest : FunSpec({
             Files.readString(repositoryRoot.resolve("classic/plugins/ArcFarms/$path")) shouldBe Files.readString(root.resolve(path))
         }
         val classicSettings = ArcFarmsConfig.inspect(repositoryRoot.resolve("classic/plugins/ArcFarms"))
+        classicSettings.farmScoreboard.provider shouldBe FarmScoreboardProvider.TAB
         classicSettings.farms.single().delivery.itemMaterial shouldBe "PAPER"
         classicSettings.farms.single().delivery.itemCustomModelData shouldBe 10_774
         classicSettings.farms.single().careVisuals.getValue(FarmCareRole.VALVE).customModelData shouldBe 11_859
@@ -159,6 +161,7 @@ class ArcFarmsConfigTest : FunSpec({
                 settings.lumbermills shouldBe emptyList()
                 settings.mines shouldBe emptyList()
                 settings.farmScoreboard.enabled shouldBe false
+                settings.farmScoreboard.provider shouldBe FarmScoreboardProvider.TAB
                 settings.destinations.values.all { it.server == "spawn" } shouldBe true
             }
             ArcFarmsLocale.validateFiles(root, settings)
@@ -461,12 +464,13 @@ class ArcFarmsConfigTest : FunSpec({
 
         rows.size shouldBe 15
         plain[0] shouldBe "Заказ"
-        plain[3] shouldBe "Сейчас"
-        plain[4] shouldBe "Сбор урожая"
-        plain[5] shouldBe "1250 / 3200"
-        plain[6] shouldBe "Собирайте культуры из списка"
+        plain[1].startsWith("| ") shouldBe true
+        plain[3] shouldBe "Задача"
+        plain[4] shouldBe "| Сбор урожая"
+        plain[5] shouldBe "| 1250 / 3200"
+        plain[6] shouldBe "| Собирайте культуры из списка"
         plain[8] shouldBe "Урожай"
-        plain.last() shouldBe "Телега 39%"
+        plain.last() shouldBe "| Телега 39%"
         plain.any { "pumpkin" in it.lowercase() || "тыкв" in it.lowercase() } shouldBe true
     }
 
@@ -511,7 +515,7 @@ class ArcFarmsConfigTest : FunSpec({
         scenarios.forEach { (view, expectedHint) ->
             val rows = renderer.rows(view, null)
             rows.size shouldBe 11
-            PlainTextComponentSerializer.plainText().serialize(rows[6]) shouldBe expectedHint
+            PlainTextComponentSerializer.plainText().serialize(rows[6]) shouldBe "| $expectedHint"
         }
     }
 }) {

@@ -12,6 +12,7 @@ import ru.arc.redis.ServerIdentity
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.ArcFarmsRedisBootstrap
+import ru.ruscrafting.farms.config.FarmScoreboardProvider
 import ru.ruscrafting.farms.network.ArcFarmsNetworkRepository
 import ru.ruscrafting.farms.network.NoOpActivityNetworkGateway
 import ru.ruscrafting.farms.persistence.ArcFarmsStateRepository
@@ -80,6 +81,10 @@ class ArcFarmsPlugin : JavaPlugin() {
             } else {
                 CuboidRegionGateway()
             }
+            require(
+                !settings.farmScoreboard.enabled || settings.farmScoreboard.provider != FarmScoreboardProvider.TAB ||
+                    server.pluginManager.isPluginEnabled("PlaceholderAPI"),
+            ) { "PlaceholderAPI is required when ui.farm-scoreboard.provider is TAB" }
             val activeService = ArcFarmsService(
                 plugin = this,
                 initialSettings = settings,
