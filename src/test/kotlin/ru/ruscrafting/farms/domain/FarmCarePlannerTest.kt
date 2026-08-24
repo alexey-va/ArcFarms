@@ -45,4 +45,57 @@ class FarmCarePlannerTest : FunSpec({
         (relocated.x >= 10) shouldBe true
         (relocated.z >= 8) shouldBe true
     }
+
+    test("scene anchor changes traversal order without moving field targets") {
+        val targets = listOf(
+            FarmCareTarget(0, FarmCareRole.VALVE, FarmPointPosition("world", 0.5, 65.0, 0.5)),
+            FarmCareTarget(1, FarmCareRole.VALVE, FarmPointPosition("world", 10.5, 65.0, 0.5)),
+            FarmCareTarget(2, FarmCareRole.VALVE, FarmPointPosition("world", 10.5, 65.0, 10.5)),
+        )
+
+        val oriented = FarmCarePlanner.orient(targets, FarmPointPosition("world", 12.0, 65.0, 1.0))
+
+        oriented.map(FarmCareTarget::position).toSet() shouldBe targets.map(FarmCareTarget::position).toSet()
+        oriented.map(FarmCareTarget::id) shouldBe listOf(0, 1, 2)
+        oriented.first().position shouldBe targets[1].position
+        oriented[1].position shouldBe targets[0].position
+    }
+
+    test("scene without an anchor keeps its procedural order") {
+        val targets = field.take(3).mapIndexed { index, plot ->
+            FarmCareTarget(
+                index,
+                FarmCareRole.SCARECROW,
+                FarmPointPosition(plot.world, plot.x + 0.5, plot.y + 1.0, plot.z + 0.5),
+            )
+        }
+
+        FarmCarePlanner.orient(targets, null) shouldBe targets
+    }
+
+    test("rebuilding an oriented scene preserves progress by field position") {
+        val first = FarmPointPosition("world", 0.5, 65.0, 0.5)
+        val second = FarmPointPosition("world", 10.5, 65.0, 0.5)
+        val previous = listOf(
+            FarmCareTarget(0, FarmCareRole.VALVE, first, progress = 1),
+            FarmCareTarget(1, FarmCareRole.VALVE, second),
+        )
+        val rebuilt = listOf(
+            FarmCareTarget(0, FarmCareRole.VALVE, second),
+            FarmCareTarget(1, FarmCareRole.VALVE, first),
+        )
+
+        FarmCarePlanner.preserveProgress(previous, rebuilt).map(FarmCareTarget::progress) shouldBe listOf(0, 1)
+    }
+
+    test("moving a unique hive preserves its completed state") {
+        val previous = listOf(
+            FarmCareTarget(0, FarmCareRole.HIVE, FarmPointPosition("world", 0.5, 65.0, 0.5), progress = 1),
+        )
+        val rebuilt = listOf(
+            FarmCareTarget(0, FarmCareRole.HIVE, FarmPointPosition("world", 20.5, 65.0, 20.5)),
+        )
+
+        FarmCarePlanner.preserveProgress(previous, rebuilt).single().progress shouldBe 1
+    }
 })

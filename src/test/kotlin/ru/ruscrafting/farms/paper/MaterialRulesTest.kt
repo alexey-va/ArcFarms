@@ -17,6 +17,11 @@ class MaterialRulesTest : FunSpec({
             MaterialRules.seedForCrop(crop) shouldBe seed
         }
         MaterialRules.cropForSeed(Material.MELON_SEEDS) shouldBe null
+        MaterialRules.isPlantableCrop(Material.WHEAT) shouldBe true
+        MaterialRules.isPlantableCrop(Material.MELON) shouldBe false
+        MaterialRules.isFixedBlockCrop(Material.MELON) shouldBe true
+        MaterialRules.isFixedBlockCrop(Material.PUMPKIN) shouldBe true
+        MaterialRules.isFixedBlockCrop(Material.CARVED_PUMPKIN) shouldBe false
     }
 
     test("crop labels use harvested item names rather than sprout block names") {

@@ -44,6 +44,14 @@ data class FarmLocationOverrides(
         require(schemaVersion == SCHEMA_VERSION) { "Unsupported farm location schema: $schemaVersion" }
     }
 
+    fun without(zoneId: String, kind: FarmPointKind): FarmLocationOverrides {
+        val zone = zones[zoneId] ?: return this
+        if (kind !in zone) return this
+        val remaining = zone - kind
+        val updatedZones = if (remaining.isEmpty()) zones - zoneId else zones + (zoneId to remaining)
+        return copy(zones = updatedZones)
+    }
+
     companion object {
         const val SCHEMA_VERSION = 1
     }

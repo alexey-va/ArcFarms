@@ -6,6 +6,7 @@ import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.block.BlockSpreadEvent
+import org.bukkit.event.block.BlockGrowEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerPortalEvent
 import org.bukkit.event.player.PlayerTeleportEvent
@@ -19,6 +20,13 @@ class ArcFarmsListenerContractTest : FunSpec({
 
     test("farm ground spread is cancelled before another plugin can commit it") {
         val handler = handler("onBlockSpread", BlockSpreadEvent::class.java)
+
+        handler.priority shouldBe EventPriority.LOWEST
+        handler.ignoreCancelled shouldBe true
+    }
+
+    test("natural fixed crop growth is cancelled before the world changes") {
+        val handler = handler("onBlockGrow", BlockGrowEvent::class.java)
 
         handler.priority shouldBe EventPriority.LOWEST
         handler.ignoreCancelled shouldBe true

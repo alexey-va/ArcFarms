@@ -50,6 +50,10 @@ farm-zones:
     preparation-patch-size: 100
     preparation-patch-max-size: 256
     preparation-search-radius: 64
+    # Full-block crops are restored at their recorded coordinates after this delay.
+    fixed-crop-respawn-seconds: 20
+    # Recovery after incidents and completed orders is spread across server ticks.
+    restore-blocks-per-tick: 24
     care-radius: 10
     care-types: [WEEDS, IRRIGATION, POLLINATION, STORM_COVERS, SCARECROWS, ANIMAL_RESCUE, DISEASE, MOLES]
     care-targets: 4
@@ -165,33 +169,33 @@ farm-zones:
         rolls: 0
         chance-percent: 100
         entries: {}
-    crops: [WHEAT, CARROTS, POTATOES, BEETROOTS]
+    crops: [WHEAT, CARROTS, POTATOES, BEETROOTS, MELON, PUMPKIN]
     rare-order-chance-percent: 20
     orders:
       miners_rations:
         rarity: COMMON
         crops: [WHEAT:640, CARROTS:320, POTATOES:320]
-        care-types: [MOLES, IRRIGATION, ANIMAL_RESCUE]
+        care-types: [MOLES, IRRIGATION, ANIMAL_RESCUE, WEEDS]
         incident-types: [DROUGHT, PESTS]
         customer: MINE_SUPPLIER
         cart-load: {material: POTATO, custom-model-data: 0}
       bakery_supply:
         rarity: COMMON
         crops: [WHEAT:960, BEETROOTS:320]
-        care-types: [POLLINATION, DISEASE, IRRIGATION]
+        care-types: [POLLINATION, DISEASE, IRRIGATION, SCARECROWS, MOLES]
         incident-types: [PESTS, DROUGHT]
         customer: BAKER
         cart-load: {material: WHEAT, custom-model-data: 0}
       market_crates:
         rarity: COMMON
-        crops: [CARROTS:320, POTATOES:320, BEETROOTS:320]
-        care-types: [WEEDS, SCARECROWS, ANIMAL_RESCUE]
+        crops: [CARROTS:320, POTATOES:320, BEETROOTS:320, MELON:160, PUMPKIN:160]
+        care-types: [WEEDS, SCARECROWS, ANIMAL_RESCUE, STORM_COVERS]
         incident-types: [PESTS, DROUGHT]
         customer: MARKET_TRADER
         cart-load: {material: CARROT, custom-model-data: 0}
       harvest_festival:
         rarity: RARE
-        crops: [WHEAT:800, CARROTS:480, POTATOES:480, BEETROOTS:320]
+        crops: [WHEAT:800, CARROTS:480, POTATOES:480, BEETROOTS:320, MELON:240, PUMPKIN:240]
         care-types: [POLLINATION, STORM_COVERS, SCARECROWS]
         incident-types: [PESTS, DROUGHT]
         customer: MARKET_TRADER

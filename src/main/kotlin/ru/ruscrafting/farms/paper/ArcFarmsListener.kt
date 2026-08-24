@@ -7,6 +7,7 @@ import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.block.BlockFadeEvent
 import org.bukkit.event.block.BlockDropItemEvent
 import org.bukkit.event.block.BlockFromToEvent
+import org.bukkit.event.block.BlockGrowEvent
 import org.bukkit.event.block.BlockPlaceEvent
 import org.bukkit.event.block.BlockSpreadEvent
 import org.bukkit.event.block.MoistureChangeEvent
@@ -50,6 +51,9 @@ class ArcFarmsListener(
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     fun onBlockSpread(event: BlockSpreadEvent) = service.onBlockSpread(event)
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    fun onBlockGrow(event: BlockGrowEvent) = service.onBlockGrow(event)
 
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onBlockPlace(event: BlockPlaceEvent) = service.onBlockPlace(event)

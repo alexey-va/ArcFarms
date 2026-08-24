@@ -6,6 +6,8 @@ import org.bukkit.inventory.ItemStack
 import java.util.random.RandomGenerator
 
 object MaterialRules {
+    private val fixedBlockCrops = setOf(Material.MELON, Material.PUMPKIN)
+
     private val seedsByCrop = mapOf(
         Material.WHEAT to Material.WHEAT_SEEDS,
         Material.CARROTS to Material.CARROT,
@@ -41,6 +43,10 @@ object MaterialRules {
         seedsByCrop.entries.firstOrNull { it.value == seed }?.key
 
     fun seedForCrop(crop: Material): Material? = seedsByCrop[crop]
+
+    fun isPlantableCrop(crop: Material): Boolean = crop in seedsByCrop
+
+    fun isFixedBlockCrop(crop: Material): Boolean = crop in fixedBlockCrops
 
     fun cropComponent(material: Material): Component = Component.translatable(
         when (material) {

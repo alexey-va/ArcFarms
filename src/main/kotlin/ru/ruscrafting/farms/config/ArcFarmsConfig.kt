@@ -75,6 +75,8 @@ data class FarmZoneSettings(
     val preparationPatchSize: Int,
     val preparationPatchMaxSize: Int,
     val preparationSearchRadius: Int,
+    val fixedCropRespawnSeconds: Int,
+    val restoreBlocksPerTick: Int,
     val careRadius: Int,
     val careTypes: List<FarmCareType>,
     val careTargetCount: Int,
@@ -535,6 +537,10 @@ class ArcFarmsConfig private constructor(
                     preparationPatchMaxSize = preparationPatchMaxSize,
                     preparationSearchRadius = section.int("preparation-search-radius", 48)
                         .checked("preparation-search-radius", 4, 64),
+                    fixedCropRespawnSeconds = section.int("fixed-crop-respawn-seconds", 20)
+                        .checked("fixed-crop-respawn-seconds", 1, 3_600),
+                    restoreBlocksPerTick = section.int("restore-blocks-per-tick", 24)
+                        .checked("restore-blocks-per-tick", 1, 128),
                     careRadius = section.int("care-radius", 10).checked("care-radius", 3, 24),
                     careTypes = careTypes,
                     careTargetCount = section.int("care-targets", 4).checked("care-targets", 2, 8),

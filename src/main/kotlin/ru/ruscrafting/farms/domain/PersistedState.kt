@@ -117,3 +117,31 @@ data class MineBlockJournalState(
         require(records.size <= 100_000) { "Mine journal is unbounded" }
     }
 }
+
+data class PendingFixedFarmCrop(
+    val zoneId: String,
+    val world: String,
+    val x: Int,
+    val y: Int,
+    val z: Int,
+    val originalBlockData: String,
+    val restoreAt: Long,
+) {
+    init {
+        require(zoneId.matches(Regex("[a-z0-9_-]{1,48}"))) { "Invalid farm zone id" }
+        require(world.matches(Regex("[A-Za-z0-9._-]{1,128}"))) { "Invalid fixed crop world" }
+        require(x in -30_000_000..30_000_000 && z in -30_000_000..30_000_000) {
+            "Fixed crop is outside the world border"
+        }
+        require(y in -4_096..4_096) { "Fixed crop height is invalid" }
+        require(originalBlockData.length in 1..512) { "Fixed crop block data is invalid" }
+        require(restoreAt > 0L) { "Fixed crop restore time is invalid" }
+    }
+
+    val positionKey: String get() = "$world:$x:$y:$z"
+}
+
+data class FixedFarmCropJournalState(
+    val schemaVersion: Int = 1,
+    val records: Map<String, PendingFixedFarmCrop> = emptyMap(),
+)

@@ -39,6 +39,7 @@ import org.bukkit.event.block.Action
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.block.BlockDropItemEvent
 import org.bukkit.event.block.BlockFadeEvent
+import org.bukkit.event.block.BlockGrowEvent
 import org.bukkit.event.block.BlockPlaceEvent
 import org.bukkit.event.block.BlockSpreadEvent
 import org.bukkit.event.block.MoistureChangeEvent
@@ -112,12 +113,14 @@ import ru.ruscrafting.farms.domain.MineRules
 import ru.ruscrafting.farms.domain.MineShiftEngine
 import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.domain.PendingMineBlock
+import ru.ruscrafting.farms.domain.PendingFixedFarmCrop
 import ru.ruscrafting.farms.domain.PendingFarmReward
 import ru.ruscrafting.farms.domain.PlayerActivityStats
 import ru.ruscrafting.farms.domain.ShiftEvent
 import ru.ruscrafting.farms.domain.winner
 import ru.ruscrafting.farms.persistence.ArcFarmsStateRepository
 import ru.ruscrafting.farms.persistence.FarmLocationRepository
+import ru.ruscrafting.farms.persistence.FixedFarmCropJournal
 import ru.ruscrafting.farms.persistence.MineBlockJournal
 import ru.ruscrafting.farms.network.ActivityNetworkGateway
 import ru.ruscrafting.farms.network.NetworkSignal
@@ -229,6 +232,7 @@ class ArcFarmsService(
     private val locale: ArcFarmsLocale,
     private val stateRepository: ArcFarmsStateRepository,
     private val mineJournal: MineBlockJournal,
+    private val fixedCropJournal: FixedFarmCropJournal,
     private val farmLocationRepository: FarmLocationRepository,
     private val network: ActivityNetworkGateway = NoOpActivityNetworkGateway,
     private val transfer: BackendTransfer = BackendTransfer { _, _ -> false },
@@ -269,10 +273,13 @@ class ArcFarmsService(
     private val waterFlows = mutableMapOf<String, FarmWaterFlowTracker>()
     private val droughtGrowth = mutableMapOf<String, DroughtGrowthRuntime>()
     private val pendingIncidentRestore = mutableSetOf<String>()
+    private val patchRestoreProgress = mutableMapOf<String, MutableSet<FarmPlotPosition>>()
+    private val fixedCropRestoreQueue = FarmBlockRestoreQueue()
     private val adminPausedFarmZones = mutableSetOf<String>()
     private var nextWaterFlowId = 1L
     private var farmLocations: FarmLocationOverrides = FarmLocationOverrides()
     private val adminEditPlayers = mutableSetOf<UUID>()
+    private val adminInspectPlayers = mutableSetOf<UUID>()
     private val farmBlockLedger = FarmBlockLedger(plugin)
     private val pestZoneKey = NamespacedKey(plugin, "farm_pest_zone")
     private val pestSequenceKey = NamespacedKey(plugin, "farm_pest_sequence")
@@ -316,6 +323,7 @@ class ArcFarmsService(
         rebuild(persisted)
         cleanupOwnedFarmEntities()
         reconcileFarmPatches()
+        reconcileLoadedFixedCrops()
         farms.forEach(::ensureFarmSupplies)
         farms.forEach(::ensureFarmContractScene)
         mineJournal.records().forEach { pendingPositions[it.positionKey] = it.id }
@@ -384,18 +392,51 @@ class ArcFarmsService(
         settings = candidate
         rebuild(snapshot)
         reconcileFarmPatches()
+        reconcileLoadedFixedCrops()
         farms.forEach(::ensureFarmSupplies)
         farms.forEach(::ensureFarmContractScene)
         startTasks()
     }
 
     fun onBreakLowest(event: BlockBreakEvent) {
+        if (event.player.uniqueId in adminInspectPlayers) {
+            event.isCancelled = true
+            inspectFarmBlock(event.player, event.block)
+            return
+        }
         if (event.player.uniqueId in adminEditPlayers) return
         if (farmAt(event.block.location) != null) event.isCancelled = true
     }
 
     fun onBreakHigh(event: BlockBreakEvent) {
+        if (event.player.uniqueId in adminInspectPlayers) {
+            event.isCancelled = true
+            return
+        }
         if (event.player.uniqueId in adminEditPlayers) {
+            val fixedRecord = farmBlockLedger.fixedCropRecord(event.block)
+            if (fixedRecord != null) {
+                event.isCancelled = true
+                val removedBlockType = event.block.type
+                val removed = farmBlockLedger.removeFixedCrop(event.block)
+                val fixedPositionKey = positionKey(event.block.location)
+                if (fixedCropJournal.contains(fixedPositionKey)) {
+                    retireFixedCropJournal(fixedPositionKey, "admin_edit_break")
+                }
+                event.block.setType(Material.AIR, false)
+                debug.event(
+                    "farm_admin_edit_fixed_crop_removed",
+                    "player" to event.player.name,
+                    "zone" to fixedRecord.zoneId,
+                    "block" to removedBlockType,
+                    "managed_record_removed" to removed,
+                    "x" to event.block.x,
+                    "y" to event.block.y,
+                    "z" to event.block.z,
+                )
+                sendActionBar(event.player, MessageKey.ADMIN_EDIT_BLOCK_REMOVED)
+                return
+            }
             val soil = when {
                 farmAt(event.block.location) != null && event.block.type in FARM_SOIL_TYPES -> event.block
                 farmAt(event.block.location) != null && event.block.getRelative(org.bukkit.block.BlockFace.DOWN).type in FARM_SOIL_TYPES ->
@@ -502,6 +543,14 @@ class ArcFarmsService(
     }
 
     fun onInteractLowest(event: PlayerInteractEvent) {
+        if (event.player.uniqueId in adminInspectPlayers) {
+            val clicked = event.clickedBlock ?: return
+            if (event.action != Action.PHYSICAL && (event.hand == null || event.hand == EquipmentSlot.HAND)) {
+                denyInteraction(event)
+                inspectFarmBlock(event.player, clicked)
+            }
+            return
+        }
         if (event.player.uniqueId in adminEditPlayers) return
         val clicked = event.clickedBlock ?: return
         val runtime = farmAt(clicked.location) ?: return
@@ -520,6 +569,10 @@ class ArcFarmsService(
     }
 
     fun onInteract(event: PlayerInteractEvent) {
+        if (event.player.uniqueId in adminInspectPlayers) {
+            if (event.clickedBlock != null && event.action != Action.PHYSICAL) denyInteraction(event)
+            return
+        }
         if (event.player.uniqueId in adminEditPlayers) {
             if (event.clickedBlock?.location?.let(::farmAt) != null) {
                 event.setUseInteractedBlock(org.bukkit.event.Event.Result.ALLOW)
@@ -595,7 +648,7 @@ class ArcFarmsService(
         }
         event.isCancelled = false
         val target = event.toBlock
-        if (target.type.name in runtime.settings.crops) {
+        if (target.type.name in runtime.settings.crops && !MaterialRules.isFixedBlockCrop(target.type)) {
             val soil = target.getRelative(org.bukkit.block.BlockFace.DOWN)
             if (soil.type in FARM_SOIL_TYPES) {
                 farmBlockLedger.captureActiveCropIfPresent(soil, runtime.settings.id)
@@ -673,9 +726,14 @@ class ArcFarmsService(
         val playerToken = player.uniqueId.toString()
         interactionCooldowns.keys.removeIf { playerToken in it }
         adminEditPlayers.remove(player.uniqueId)
+        adminInspectPlayers.remove(player.uniqueId)
     }
 
     fun onInteractEntityLowest(event: PlayerInteractEntityEvent) {
+        if (event.player.uniqueId in adminInspectPlayers) {
+            event.isCancelled = true
+            return
+        }
         if (event.player.uniqueId in adminEditPlayers) return
         val data = event.rightClicked.persistentDataContainer
         if (
@@ -689,6 +747,10 @@ class ArcFarmsService(
     }
 
     fun onInteractEntity(event: PlayerInteractEntityEvent) {
+        if (event.player.uniqueId in adminInspectPlayers) {
+            event.isCancelled = true
+            return
+        }
         if (event.player.uniqueId in adminEditPlayers) return
         if (event.hand != EquipmentSlot.HAND) return
         if (contractScene.owns(event.rightClicked)) {
@@ -734,6 +796,17 @@ class ArcFarmsService(
     }
 
     fun onEntityDamage(event: EntityDamageEvent) {
+        val inspectingAttacker = (event as? EntityDamageByEntityEvent)?.let { damage ->
+            when (val damager = damage.damager) {
+                is Player -> damager
+                is Projectile -> damager.shooter as? Player
+                else -> null
+            }
+        }?.takeIf { it.uniqueId in adminInspectPlayers }
+        if (inspectingAttacker != null) {
+            event.isCancelled = true
+            return
+        }
         if (contractScene.owns(event.entity)) {
             event.isCancelled = true
             return
@@ -849,10 +922,131 @@ class ArcFarmsService(
             sendActionBar(player, MessageKey.ADMIN_EDIT_DISABLED)
             return false
         }
+        if (adminInspectPlayers.remove(player.uniqueId)) {
+            sendActionBar(player, MessageKey.ADMIN_INSPECT_DISABLED)
+        }
         adminEditPlayers += player.uniqueId
         debug.event("farm_admin_edit", "player" to player.name, "enabled" to true)
         sendActionBar(player, MessageKey.ADMIN_EDIT_ENABLED)
         return true
+    }
+
+    fun toggleAdminInspect(player: Player): Boolean {
+        if (adminInspectPlayers.remove(player.uniqueId)) {
+            debug.event("farm_admin_inspect", "player" to player.name, "enabled" to false)
+            sendActionBar(player, MessageKey.ADMIN_INSPECT_DISABLED)
+            return false
+        }
+        if (adminEditPlayers.remove(player.uniqueId)) sendActionBar(player, MessageKey.ADMIN_EDIT_DISABLED)
+        adminInspectPlayers += player.uniqueId
+        debug.event("farm_admin_inspect", "player" to player.name, "enabled" to true)
+        sendActionBar(player, MessageKey.ADMIN_INSPECT_ENABLED)
+        return true
+    }
+
+    private fun inspectFarmBlock(player: Player, block: Block) {
+        val cooldown = "farm-admin-inspect:${player.uniqueId}:${block.world.name}:${block.x}:${block.y}:${block.z}"
+        if (!allowInteraction(cooldown, 250L)) return
+        val runtime = farmAt(block.location)
+        val fixedBlock = when {
+            farmBlockLedger.fixedCropRecord(block) != null -> block
+            farmBlockLedger.fixedCropRecord(block.getRelative(org.bukkit.block.BlockFace.UP)) != null ->
+                block.getRelative(org.bukkit.block.BlockFace.UP)
+            else -> null
+        }
+        val fixed = fixedBlock?.let(farmBlockLedger::fixedCropRecord)
+        val soil = when {
+            farmBlockLedger.record(block) != null -> block
+            farmBlockLedger.record(block.getRelative(org.bukkit.block.BlockFace.DOWN)) != null ->
+                block.getRelative(org.bukkit.block.BlockFace.DOWN)
+            else -> null
+        }
+        val plotRecord = soil?.let(farmBlockLedger::record)
+        val position = soil?.toFarmPlotPosition() ?: block.toFarmPlotPosition()
+        val state = runtime?.state
+        val tracking = buildList {
+            if (runtime != null && position in managedFarmBeds[runtime.settings.id].orEmpty()) add("managed")
+            if (state != null && position in state.preparationPatch) add("patch")
+            if (state != null && position in state.droughtPlots) add("drought")
+            if (state != null && position in state.droughtDamagedPlots) add("drought-damaged")
+            if (state != null && state.pestNests.any { it.position == position }) add("pest-nest")
+            if (state != null && state.pestDamagedCrops.any { it.position == position }) add("pest-damaged")
+        }
+        sendChat(
+            player,
+            MessageKey.ADMIN_INSPECT_HEADER,
+            mapOf(
+                "world" to locale.text(block.world.name),
+                "x" to locale.text(block.x),
+                "y" to locale.text(block.y),
+                "z" to locale.text(block.z),
+            ),
+        )
+        sendChat(
+            player,
+            MessageKey.ADMIN_INSPECT_BLOCK,
+            mapOf(
+                "material" to locale.text(block.type.name),
+                "data" to locale.text(block.blockData.asString.take(256)),
+                "zone" to locale.text(runtime?.settings?.id ?: "—"),
+            ),
+        )
+        fixed?.let { record ->
+            val restore = record.restoreAt?.let { timestamp ->
+                locale.renderPath(
+                    "admin-inspect.restore.pending",
+                    player,
+                    mapOf("seconds" to locale.text(remainingSeconds(timestamp, clock()))),
+                )
+            } ?: locale.renderPath("admin-inspect.restore.ready", player)
+            sendChat(
+                player,
+                MessageKey.ADMIN_INSPECT_FIXED,
+                mapOf(
+                    "zone" to locale.text(record.zoneId),
+                    "original" to locale.text(record.originalBlockData.take(256)),
+                    "restore" to restore,
+                    "x" to locale.text(record.x),
+                    "y" to locale.text(record.y),
+                    "z" to locale.text(record.z),
+                ),
+            )
+        }
+        plotRecord?.let { record ->
+            sendChat(
+                player,
+                MessageKey.ADMIN_INSPECT_PLOT,
+                mapOf(
+                    "zone" to locale.text(record.zoneId),
+                    "soil" to locale.text(record.originalSoilData.take(256)),
+                    "original" to locale.text(record.originalCropData?.take(256) ?: "—"),
+                    "active" to locale.text(record.activeCropData?.take(256) ?: "—"),
+                ),
+            )
+        }
+        if (tracking.isNotEmpty()) {
+            val rendered = tracking.map { kind ->
+                Component.text("  • ").append(locale.renderPath("admin-inspect.tracking-kind.$kind", player))
+            }
+            sendChat(
+                player,
+                MessageKey.ADMIN_INSPECT_TRACKING,
+                mapOf("tracking" to Component.join(JoinConfiguration.separator(Component.newline()), rendered)),
+            )
+        }
+        if (fixed == null && plotRecord == null && tracking.isEmpty()) sendChat(player, MessageKey.ADMIN_INSPECT_NONE)
+        debug.event(
+            "farm_admin_block_inspected",
+            "player" to player.name,
+            "zone" to runtime?.settings?.id,
+            "block" to block.type,
+            "fixed_record" to (fixed != null),
+            "plot_record" to (plotRecord != null),
+            "tracking" to tracking.joinToString(","),
+            "x" to block.x,
+            "y" to block.y,
+            "z" to block.z,
+        )
     }
 
     fun adminUnmanageSelection(player: Player, zoneId: String): Boolean {
@@ -892,7 +1086,17 @@ class ArcFarmsService(
             runtime.state.pestDamagedCrops.mapTo(this) { it.position }
         }
         val selected = tracked.filterTo(linkedSetOf(), selection::contains)
-        if (selected.isEmpty()) {
+        val selectedFixed = linkedSetOf<FarmFixedCropPosition>()
+        runtime.region.world.loadedChunks.asSequence()
+            .flatMap { farmBlockLedger.fixedCropRecords(it).asSequence() }
+            .filter { it.zoneId == runtime.settings.id }
+            .filter { selection.contains(FarmPlotPosition(selection.world, it.x, it.y, it.z)) }
+            .mapTo(selectedFixed) { FarmFixedCropPosition(selection.world, it.x, it.y, it.z) }
+        fixedCropJournal.records().asSequence()
+            .filter { it.zoneId == runtime.settings.id && it.world == selection.world }
+            .filter { selection.contains(FarmPlotPosition(it.world, it.x, it.y, it.z)) }
+            .mapTo(selectedFixed) { FarmFixedCropPosition(it.world, it.x, it.y, it.z) }
+        if (selected.isEmpty() && selectedFixed.isEmpty()) {
             sendChat(player, MessageKey.ADMIN_UNMANAGE_EMPTY)
             return false
         }
@@ -914,6 +1118,14 @@ class ArcFarmsService(
             val world = Bukkit.getWorld(position.world) ?: return@forEach
             world.getChunkAt(position.x shr 4, position.z shr 4)
             if (farmBlockLedger.remove(world.getBlockAt(position.x, position.y, position.z))) removedRecords++
+        }
+        selectedFixed.forEach { position ->
+            val block = runtime.region.world.getBlockAt(position.x, position.y, position.z)
+            if (farmBlockLedger.removeFixedCrop(block)) removedRecords++
+            if (fixedCropJournal.contains(positionKey(block.location))) {
+                retireFixedCropJournal(positionKey(block.location), "admin_worldedit_unmanage")
+                removedRecords++
+            }
         }
         managedFarmBeds[runtime.settings.id]?.removeAll(selected)
         removal.careTargetIds.forEach { targetId ->
@@ -938,7 +1150,7 @@ class ArcFarmsService(
         sendChat(
             player,
             MessageKey.ADMIN_UNMANAGE_DONE,
-            mapOf("plots" to locale.text(selected.size), "records" to locale.text(removedRecords)),
+            mapOf("plots" to locale.text(selected.size + selectedFixed.size), "records" to locale.text(removedRecords)),
         )
         debug.event(
             "farm_admin_worldedit_unmanage",
@@ -946,6 +1158,7 @@ class ArcFarmsService(
             "zone" to runtime.settings.id,
             "selection_volume" to selection.volume,
             "plots" to selected.size,
+            "fixed_crops" to selectedFixed.size,
             "records" to removedRecords,
             "shift_retired" to removal.shiftRetired,
         )
@@ -974,6 +1187,11 @@ class ArcFarmsService(
             }
             resolved?.let { kind to it }
         }.toMap()
+    }
+
+    fun adminOverriddenFarmPoints(zoneId: String): Set<FarmPointKind>? {
+        if (farms.none { it.settings.id == zoneId }) return null
+        return farmLocations.zones[zoneId].orEmpty().keys
     }
 
     fun adminSetFarmPoint(player: Player, zoneId: String, kind: FarmPointKind): Boolean {
@@ -1012,36 +1230,7 @@ class ArcFarmsService(
             sendChat(player, MessageKey.GENERIC_ERROR)
             return false
         }
-        when (kind) {
-            FarmPointKind.TOOL, FarmPointKind.SEEDS, FarmPointKind.WATER -> {
-                val supplyKind = when (kind) {
-                    FarmPointKind.TOOL -> FarmSupplyKind.TOOL
-                    FarmPointKind.SEEDS -> FarmSupplyKind.SEEDS
-                    else -> FarmSupplyKind.WATER
-                }
-                removeSupplyEntities(SupplyKey(zoneId, supplyKind), "admin_point_changed")
-                ensureFarmSupplies(runtime)
-            }
-            FarmPointKind.CRATES -> if (runtime.state.phase == FarmPhase.DELIVERY) {
-                runtime.state = runtime.state.copy(
-                    deliveryPosition = FarmDeliveryPosition(position.world, position.x, position.y, position.z),
-                )
-                clearDelivery(runtime, "admin_point_changed")
-                ensureFarmDelivery(runtime)
-                persistAsync()
-            }
-            FarmPointKind.CART, FarmPointKind.CUSTOMER -> {
-                clearFarmContractScene(runtime, "admin_point_changed")
-                ensureFarmContractScene(runtime)
-            }
-            FarmPointKind.HIVE,
-            FarmPointKind.IRRIGATION,
-            FarmPointKind.COVERS,
-            FarmPointKind.SCARECROWS,
-            FarmPointKind.PEN,
-            -> refreshActiveFarmCarePoint(runtime, kind, position)
-            else -> Unit
-        }
+        refreshFarmPoint(runtime, kind, player, "admin_point_changed")
         sendChat(
             player,
             MessageKey.ADMIN_POINT_SAVED,
@@ -1059,6 +1248,49 @@ class ArcFarmsService(
             "x" to position.x,
             "y" to position.y,
             "z" to position.z,
+        )
+        return true
+    }
+
+    fun adminClearFarmPoint(player: Player, zoneId: String, kind: FarmPointKind): Boolean {
+        val runtime = farms.firstOrNull { it.settings.id == zoneId } ?: run {
+            sendChat(player, MessageKey.ADMIN_ZONE_UNKNOWN, mapOf("zone" to locale.text(zoneId)))
+            return false
+        }
+        val previous = farmLocations
+        val updated = farmLocations.without(zoneId, kind)
+        if (updated == previous) {
+            sendChat(
+                player,
+                MessageKey.ADMIN_POINT_NOT_OVERRIDDEN,
+                mapOf("point" to locale.renderPath("admin.point.${kind.name.lowercase()}", player)),
+            )
+            return false
+        }
+        farmLocations = updated
+        try {
+            validateLocationOverrides()
+            farmLocationRepository.saveBlocking(farmLocations)
+        } catch (failure: Exception) {
+            farmLocations = previous
+            plugin.logger.log(Level.SEVERE, "Could not clear farm point $zoneId/$kind", failure)
+            sendChat(player, MessageKey.GENERIC_ERROR)
+            return false
+        }
+        refreshFarmPoint(runtime, kind, player, "admin_point_cleared")
+        sendChat(
+            player,
+            MessageKey.ADMIN_POINT_CLEARED,
+            mapOf(
+                "point" to locale.renderPath("admin.point.${kind.name.lowercase()}", player),
+                "zone" to locale.text(zoneId),
+            ),
+        )
+        debug.event(
+            "farm_admin_point_cleared",
+            "player" to player.name,
+            "zone" to zoneId,
+            "point" to kind,
         )
         return true
     }
@@ -1583,9 +1815,30 @@ class ArcFarmsService(
         }
     }
 
+    fun onBlockGrow(event: BlockGrowEvent) {
+        if (!MaterialRules.isFixedBlockCrop(event.newState.type)) return
+        val runtime = farmAt(event.block.location) ?: return
+        event.isCancelled = true
+        debug.event(
+            "farm_fixed_crop_natural_growth_cancelled",
+            "zone" to runtime.settings.id,
+            "crop" to event.newState.type,
+            "x" to event.block.x,
+            "y" to event.block.y,
+            "z" to event.block.z,
+        )
+    }
+
     fun onBlockPlace(event: BlockPlaceEvent) {
         if (event.player.uniqueId in adminEditPlayers) {
-            if (farmAt(event.blockPlaced.location) != null) event.isCancelled = false
+            if (farmAt(event.blockPlaced.location) != null) {
+                farmBlockLedger.removeFixedCrop(event.blockPlaced)
+                val fixedPositionKey = positionKey(event.blockPlaced.location)
+                if (fixedCropJournal.contains(fixedPositionKey)) {
+                    retireFixedCropJournal(fixedPositionKey, "admin_edit_place")
+                }
+                event.isCancelled = false
+            }
             return
         }
         val soil = event.blockPlaced.getRelative(org.bukkit.block.BlockFace.DOWN)
@@ -1657,6 +1910,7 @@ class ArcFarmsService(
 
     fun onChunkLoad(chunk: org.bukkit.Chunk) {
         contractScene.onChunkLoad(chunk)
+        reconcileFixedCrops(chunk)
         var removed = 0
         chunk.entities.filter { entity ->
             val data = entity.persistentDataContainer
@@ -1677,6 +1931,157 @@ class ArcFarmsService(
                 "removed" to removed,
                 "reason" to "chunk_load",
             )
+        }
+    }
+
+    private fun reconcileLoadedFixedCrops() {
+        Bukkit.getWorlds().asSequence()
+            .flatMap { it.loadedChunks.asSequence() }
+            .forEach(::reconcileFixedCrops)
+    }
+
+    private fun reconcileFixedCrops(chunk: org.bukkit.Chunk) {
+        val now = clock()
+        farmBlockLedger.fixedCropRecords(chunk).forEach { record ->
+            val runtime = farms.firstOrNull { it.settings.id == record.zoneId && it.region.world == chunk.world }
+                ?: return@forEach
+            val block = chunk.world.getBlockAt(record.x, record.y, record.z)
+            if (!runtime.region.contains(block.location)) return@forEach
+            val original = runCatching { Bukkit.createBlockData(record.originalBlockData) }.getOrNull()
+                ?: return@forEach
+            if (!MaterialRules.isFixedBlockCrop(original.material) || original.material.name !in runtime.settings.crops) {
+                return@forEach
+            }
+            val restoreAt = when {
+                record.restoreAt != null -> record.restoreAt
+                block.type.isAir || block.isReplaceable -> now
+                else -> null
+            } ?: return@forEach
+            if (record.restoreAt == null) farmBlockLedger.scheduleExistingFixedCropRestore(block, restoreAt)
+            fixedCropRestoreQueue.schedule(FarmFixedCropRestore(record.position(chunk.world.name), restoreAt))
+        }
+        fixedCropJournal.records().asSequence().filter { pending ->
+            pending.world == chunk.world.name && (pending.x shr 4) == chunk.x && (pending.z shr 4) == chunk.z
+        }.forEach { pending ->
+            val runtime = farms.firstOrNull { it.settings.id == pending.zoneId && it.region.world == chunk.world }
+                ?: return@forEach
+            val block = chunk.world.getBlockAt(pending.x, pending.y, pending.z)
+            if (!runtime.region.contains(block.location)) return@forEach
+            val original = runCatching { Bukkit.createBlockData(pending.originalBlockData) }.getOrNull()
+                ?: return@forEach
+            if (!MaterialRules.isFixedBlockCrop(original.material) || original.material.name !in runtime.settings.crops) {
+                return@forEach
+            }
+            if (block.type == original.material) {
+                farmBlockLedger.reconcileFixedCrop(block, pending.zoneId, pending.originalBlockData, null)
+                retireFixedCropJournal(pending.positionKey, "block_already_present")
+                return@forEach
+            }
+            farmBlockLedger.reconcileFixedCrop(
+                block,
+                pending.zoneId,
+                pending.originalBlockData,
+                pending.restoreAt,
+            )
+            fixedCropRestoreQueue.schedule(
+                FarmFixedCropRestore(
+                    FarmFixedCropPosition(pending.world, pending.x, pending.y, pending.z),
+                    pending.restoreAt,
+                ),
+            )
+        }
+    }
+
+    private fun processFarmBlockRestores() {
+        val now = clock()
+        val fixedLimit = farms.maxOfOrNull { it.settings.restoreBlocksPerTick } ?: 1
+        fixedCropRestoreQueue.pollDue(now, fixedLimit).forEach { entry ->
+            restoreFixedCrop(entry, now)
+        }
+        farms.forEach { runtime ->
+            if (isAdminEditingFarm(runtime)) return@forEach
+            var remaining = runtime.settings.restoreBlocksPerTick
+            if (runtime.state.phase != FarmPhase.INCIDENT && FarmIncidentRecovery.pending(runtime.state)) {
+                val before = runtime.state.droughtDamagedPlots.size + runtime.state.pestDamagedCrops.size
+                restoreIncidentCrops(runtime, remaining)
+                val after = runtime.state.droughtDamagedPlots.size + runtime.state.pestDamagedCrops.size
+                remaining -= (before - after).coerceAtLeast(0)
+            }
+            if (
+                remaining > 0 && runtime.state.phase == FarmPhase.COOLDOWN &&
+                !FarmIncidentRecovery.pending(runtime.state) && runtime.state.preparationPatch.isNotEmpty() &&
+                restoreFarmPatchOriginal(runtime, remaining)
+            ) {
+                clearFarmPatchState(runtime)
+                persistAsync()
+            }
+        }
+    }
+
+    private fun restoreFixedCrop(entry: FarmFixedCropRestore, now: Long) {
+        val world = Bukkit.getWorld(entry.position.world) ?: return
+        if (!world.isChunkLoaded(entry.position.x shr 4, entry.position.z shr 4)) return
+        val block = world.getBlockAt(entry.position.x, entry.position.y, entry.position.z)
+        val positionKey = positionKey(block.location)
+        val pending = fixedCropJournal.record(positionKey)
+        val record = farmBlockLedger.fixedCropRecord(block)
+        val restoreAt = pending?.restoreAt ?: record?.restoreAt ?: return
+        if (restoreAt > now) {
+            fixedCropRestoreQueue.schedule(entry.copy(restoreAt = restoreAt))
+            return
+        }
+        val zoneId = pending?.zoneId ?: requireNotNull(record).zoneId
+        val originalData = pending?.originalBlockData ?: requireNotNull(record).originalBlockData
+        val runtime = farms.firstOrNull { it.settings.id == zoneId && it.region.contains(block.location) } ?: return
+        val original = runCatching { Bukkit.createBlockData(originalData) }.getOrElse { failure ->
+            plugin.logger.log(Level.SEVERE, "Could not decode fixed crop at ${entry.position}", failure)
+            return
+        }
+        if (!MaterialRules.isFixedBlockCrop(original.material) || original.material.name !in runtime.settings.crops) return
+        when {
+            block.type == original.material -> {
+                farmBlockLedger.reconcileFixedCrop(block, zoneId, originalData, null)
+                retireFixedCropJournal(positionKey, "block_present")
+            }
+            block.type.isAir || block.isReplaceable -> {
+                block.setBlockData(original, false)
+                farmBlockLedger.reconcileFixedCrop(block, zoneId, originalData, null)
+                retireFixedCropJournal(positionKey, "restored")
+                debug.event(
+                    "farm_fixed_crop_restored",
+                    "zone" to runtime.settings.id,
+                    "crop" to original.material,
+                    "x" to block.x,
+                    "y" to block.y,
+                    "z" to block.z,
+                )
+            }
+            else -> {
+                fixedCropRestoreQueue.schedule(entry.copy(restoreAt = now + 1_000L))
+                if (allowInteraction("farm-fixed-crop-obstructed:${entry.position}", TimeUnit.MINUTES.toMillis(5))) {
+                    plugin.logger.warning("Fixed crop recovery at ${entry.position} is obstructed by ${block.type}; record retained")
+                }
+            }
+        }
+    }
+
+    private fun retireFixedCropJournal(positionKey: String, reason: String) {
+        fixedCropJournal.remove(positionKey).whenComplete { _, failure ->
+            if (failure != null) {
+                plugin.logger.log(Level.SEVERE, "Could not retire fixed crop journal at $positionKey", failure)
+                Tasks.scheduler.runSync {
+                    fixedCropJournal.record(positionKey)?.let { pending ->
+                        fixedCropRestoreQueue.schedule(
+                            FarmFixedCropRestore(
+                                FarmFixedCropPosition(pending.world, pending.x, pending.y, pending.z),
+                                clock() + 1_000L,
+                            ),
+                        )
+                    }
+                }
+            } else {
+                debug.event("farm_fixed_crop_journal_retired", "position" to positionKey, "reason" to reason)
+            }
         }
     }
 
@@ -2083,13 +2488,26 @@ class ArcFarmsService(
             MaterialRules.material(zone.delivery.itemMaterial)
             zone.crops.forEach { cropName ->
                 val crop = MaterialRules.material(cropName)
-                requireNotNull(MaterialRules.seedForCrop(crop)) {
-                    "Farm zone ${zone.id} crop $cropName cannot be planted by the preparation flow"
+                require(MaterialRules.isPlantableCrop(crop) || MaterialRules.isFixedBlockCrop(crop)) {
+                    "Farm zone ${zone.id} crop $cropName is neither plantable nor a managed block crop"
+                }
+            }
+            zone.orders.forEach { order ->
+                require(order.required.keys.any { MaterialRules.isPlantableCrop(MaterialRules.material(it)) }) {
+                    "Farm order ${zone.id}/${order.id} needs at least one plantable crop for preparation"
                 }
             }
             val pestType = EntityType.valueOf(zone.pestEntity)
             require(pestType.entityClass?.let(LivingEntity::class.java::isAssignableFrom) == true) {
                 "Farm zone ${zone.id} pest-entity must be a living entity"
+            }
+        }
+        fixedCropJournal.records().forEach { pending ->
+            val zone = candidate.farms.firstOrNull { it.id == pending.zoneId }
+                ?: error("Pending fixed crop references missing farm zone ${pending.zoneId}")
+            val material = Bukkit.createBlockData(pending.originalBlockData).material
+            require(MaterialRules.isFixedBlockCrop(material) && material.name in zone.crops) {
+                "Pending fixed crop ${pending.positionKey} is no longer configured in ${pending.zoneId}"
             }
         }
         candidate.lumbermills.forEach { zone ->
@@ -2175,7 +2593,9 @@ class ArcFarmsService(
             }
             return false
         }
-        val preparationCrop = order.required.maxWith(
+        val preparationCrop = order.required.filterKeys {
+            MaterialRules.isPlantableCrop(MaterialRules.material(it))
+        }.maxWith(
             compareBy<Map.Entry<String, Int>> { it.value }.thenBy { it.key },
         ).key
         val started = FarmShiftEngine.start(runtime.state, order, patch, preparationCrop, now)
@@ -2236,6 +2656,7 @@ class ArcFarmsService(
                     if (!runtime.region.contains(block.location) || block.type != Material.FARMLAND) continue
                     if (isNearFarmOperationPoint(runtime, block.location)) continue
                     val above = block.getRelative(org.bukkit.block.BlockFace.UP).type
+                    if (MaterialRules.isFixedBlockCrop(above)) continue
                     if (!above.isAir && above.name !in runtime.settings.crops) continue
                     candidates += block.toFarmPlotPosition()
                 }
@@ -2270,6 +2691,7 @@ class ArcFarmsService(
                     if (!runtime.region.contains(soil.location) || soil.type !in FARM_SOIL_TYPES) return@forEach
                     if (isNearFarmOperationPoint(runtime, soil.location)) return@forEach
                     val above = soil.getRelative(org.bukkit.block.BlockFace.UP).type
+                    if (MaterialRules.isFixedBlockCrop(above)) return@forEach
                     if (above.isAir || above.name in runtime.settings.crops) candidates += position
                 }
             }
@@ -2309,7 +2731,9 @@ class ArcFarmsService(
             }
             farmBlockLedger.capture(soil, runtime.settings.id)
             val above = soil.getRelative(org.bukkit.block.BlockFace.UP)
-            if (above.type.name in runtime.settings.crops) above.setType(Material.AIR, false)
+            if (above.type.name in runtime.settings.crops && !MaterialRules.isFixedBlockCrop(above.type)) {
+                above.setType(Material.AIR, false)
+            }
             soil.setType(Material.DIRT, false)
         }
         debug.event(
@@ -2421,11 +2845,7 @@ class ArcFarmsService(
             FarmCareType.WEEDS -> bedTargets(FarmCareRole.WEED_ROOT, count + 1, required = 2)
             FarmCareType.IRRIGATION -> {
                 val field = bedTargets(FarmCareRole.VALVE, count)
-                explicit(FarmPointKind.IRRIGATION)?.let { anchor ->
-                    listOf(FarmCareTarget(0, FarmCareRole.VALVE, anchor)) + field.drop(1).mapIndexed { index, target ->
-                        target.copy(id = index + 1)
-                    }
-                } ?: field
+                FarmCarePlanner.orient(field, explicit(FarmPointKind.IRRIGATION))
             }
             FarmCareType.POLLINATION -> {
                 val hive = careFixturePoint(runtime, FarmPointKind.HIVE) ?: return null
@@ -2440,17 +2860,11 @@ class ArcFarmsService(
                         FarmPointPosition(plot.world, plot.x + 0.5, plot.y + 1.05, plot.z + 0.5),
                     )
                 }
-                explicit(FarmPointKind.COVERS)?.let { anchor ->
-                    listOf(FarmCareTarget(0, FarmCareRole.COVER_ANCHOR, anchor)) +
-                        corners.drop(1).mapIndexed { index, target -> target.copy(id = index + 1) }
-                } ?: corners
+                FarmCarePlanner.orient(corners, explicit(FarmPointKind.COVERS))
             }
             FarmCareType.SCARECROWS -> {
                 val field = bedTargets(FarmCareRole.SCARECROW, minOf(3, count), required = 2)
-                explicit(FarmPointKind.SCARECROWS)?.let { anchor ->
-                    listOf(FarmCareTarget(0, FarmCareRole.SCARECROW, anchor, required = 2)) +
-                        field.drop(1).mapIndexed { index, target -> target.copy(id = index + 1) }
-                } ?: field
+                FarmCarePlanner.orient(field, explicit(FarmPointKind.SCARECROWS))
             }
             FarmCareType.ANIMAL_RESCUE -> {
                 val pen = careFixturePoint(runtime, FarmPointKind.PEN) ?: return null
@@ -2962,8 +3376,14 @@ class ArcFarmsService(
             sendFarmCurrentTaskHint(player, runtime, "wrong_block_break")
             return
         }
-        val ageable = event.block.blockData as? Ageable ?: return
-        if (ageable.age < ageable.maximumAge) {
+        val fixedCrop = MaterialRules.isFixedBlockCrop(crop)
+        val ageable = event.block.blockData as? Ageable
+        if (!fixedCrop && ageable == null) {
+            event.isCancelled = true
+            sendFarmCurrentTaskHint(player, runtime, "unsupported_crop_break")
+            return
+        }
+        if (ageable != null && ageable.age < ageable.maximumAge) {
             event.isCancelled = true
             sendFarmCurrentTaskHint(player, runtime, "immature_crop_break")
             debug.event("farm_crop_rejected", "player" to player.name, "zone" to runtime.settings.id, "crop" to crop, "reason" to "immature")
@@ -3027,8 +3447,14 @@ class ArcFarmsService(
             return
         }
         val block = event.block
-        val replantData = block.blockData.clone() as Ageable
-        replantData.age = 0
+        if (fixedCrop) {
+            event.isCancelled = true
+            event.isDropItems = false
+            event.expToDrop = 0
+            harvestFixedCrop(runtime, player, block, now)
+            return
+        }
+        val replantData = requireNotNull(ageable).let { (it.clone() as Ageable).also { data -> data.age = 0 } }
         val existingItems = nearbyFarmDropIds(block.location, 2.0)
         val inventoryBefore = farmDropInventory(player)
         event.isCancelled = false
@@ -3054,6 +3480,76 @@ class ArcFarmsService(
                 removeFarmDropInventoryGains(player, inventoryBefore, currentRuntime.settings.id)
             }
             handleFarmHarvest(currentRuntime, player, crop.name)
+        }
+    }
+
+    private fun harvestFixedCrop(runtime: FarmRuntime, player: Player, block: Block, now: Long) {
+        val positionKey = positionKey(block.location)
+        if (fixedCropJournal.contains(positionKey)) {
+            sendActionBar(player, MessageKey.FARM_FIXED_CROP_PENDING)
+            return
+        }
+        val ledgerRecord = runCatching { farmBlockLedger.captureFixedCrop(block, runtime.settings.id) }.getOrElse { failure ->
+            plugin.logger.log(Level.SEVERE, "Could not capture fixed crop metadata at $positionKey", failure)
+            sendChat(player, MessageKey.GENERIC_ERROR)
+            return
+        }
+        val restoreAt = now + TimeUnit.SECONDS.toMillis(runtime.settings.fixedCropRespawnSeconds.toLong())
+        val pending = PendingFixedFarmCrop(
+            zoneId = runtime.settings.id,
+            world = block.world.name,
+            x = block.x,
+            y = block.y,
+            z = block.z,
+            originalBlockData = ledgerRecord.originalBlockData,
+            restoreAt = restoreAt,
+        )
+        val crop = block.type
+        val sequence = runtime.state.sequence
+        runCatching { fixedCropJournal.prepare(pending) }.getOrElse { failure ->
+            plugin.logger.log(Level.SEVERE, "Could not prepare fixed crop journal at $positionKey", failure)
+            sendChat(player, MessageKey.GENERIC_ERROR)
+            return
+        }.whenComplete { _, failure ->
+            Tasks.scheduler.runSync {
+                if (failure != null) {
+                    plugin.logger.log(Level.SEVERE, "Could not persist fixed crop journal at $positionKey", failure)
+                    if (player.isOnline) sendChat(player, MessageKey.GENERIC_ERROR)
+                    return@runSync
+                }
+                val currentRuntime = farms.firstOrNull {
+                    it.settings.id == pending.zoneId && it.state.sequence == sequence && it.state.phase == FarmPhase.HARVESTING
+                }
+                if (!isOperational() || currentRuntime == null || !player.isOnline || block.type != crop) {
+                    fixedCropJournal.remove(positionKey).whenComplete { _, retireFailure ->
+                        if (retireFailure != null) {
+                            plugin.logger.log(Level.SEVERE, "Could not retire unchanged fixed crop journal at $positionKey", retireFailure)
+                        }
+                    }
+                    return@runSync
+                }
+                runCatching {
+                    val record = farmBlockLedger.scheduleExistingFixedCropRestore(block, restoreAt)
+                        ?: error("Fixed crop PDC disappeared before committed harvest")
+                    block.setType(Material.AIR, false)
+                    fixedCropRestoreQueue.schedule(FarmFixedCropRestore(record.position(block.world.name), restoreAt))
+                }.onFailure { commitFailure ->
+                    plugin.logger.log(Level.SEVERE, "Could not commit fixed crop harvest at $positionKey", commitFailure)
+                    if (player.isOnline) sendChat(player, MessageKey.GENERIC_ERROR)
+                    return@runSync
+                }
+                debug.event(
+                    "farm_fixed_crop_committed",
+                    "player" to player.name,
+                    "zone" to currentRuntime.settings.id,
+                    "crop" to crop,
+                    "restore_at" to restoreAt,
+                    "x" to block.x,
+                    "y" to block.y,
+                    "z" to block.z,
+                )
+                handleFarmHarvest(currentRuntime, player, crop.name)
+            }
         }
     }
 
@@ -3543,7 +4039,6 @@ class ArcFarmsService(
                 ShiftEvent.INCIDENT_RESOLVED -> {
                     droughtGrowth.remove(runtime.settings.id)
                     removePestNestEntities(runtime, "incident_resolved")
-                    restoreIncidentCrops(runtime)
                     broadcast(
                         runtime.region,
                         MessageKey.FARM_INCIDENT_RESOLVED,
@@ -3566,7 +4061,6 @@ class ArcFarmsService(
                     }
                     removePests(runtime, activePests(runtime), "delivery_started")
                     removePestNestEntities(runtime, "delivery_started")
-                    restoreIncidentCrops(runtime)
                     ensureFarmDelivery(runtime)
                     persistAsync()
                 }
@@ -3579,10 +4073,6 @@ class ArcFarmsService(
                     players(runtime.region).forEach { removeFarmServiceItems(it, runtime.settings.id, "shift_completed") }
                     clearDelivery(runtime, "completed")
                     val contributors = runtime.state.contributors
-                    restoreIncidentCrops(runtime)
-                    if (!FarmIncidentRecovery.pending(runtime.state) && restoreFarmPatchOriginal(runtime)) {
-                        clearFarmPatchState(runtime)
-                    }
                     recordCompletion(ActivityKind.FARM, runtime.state.contributors)
                     queueFarmCompletionRewards(runtime, contributors)
                     broadcast(
@@ -3754,6 +4244,7 @@ class ArcFarmsService(
     }
 
     private fun startTasks() {
+        tasks += Tasks.scheduler.runTimer(1L, 1L) { runGuarded("farm_block_restores", ::processFarmBlockRestores) }
         tasks += Tasks.scheduler.runTimer(20L, 20L) { runGuarded("tick", ::tick) }
         tasks += Tasks.scheduler.runTimer(10L, 10L) { runGuarded("guidance_particles", ::emitGuidanceParticles) }
         tasks += Tasks.scheduler.runTimer(5L, 5L) {
@@ -3784,19 +4275,9 @@ class ArcFarmsService(
         farms.forEach { runtime ->
             runGuarded("farm:${runtime.settings.id}") {
                 if (isAdminEditingFarm(runtime)) return@runGuarded
-                if (runtime.state.phase != FarmPhase.INCIDENT && FarmIncidentRecovery.pending(runtime.state)) {
-                    restoreIncidentCrops(runtime)
-                    if (runtime.state.phase == FarmPhase.COOLDOWN && FarmIncidentRecovery.pending(runtime.state)) {
-                        return@runGuarded
-                    }
-                }
+                if (runtime.state.phase != FarmPhase.INCIDENT && FarmIncidentRecovery.pending(runtime.state)) return@runGuarded
                 if (runtime.state.phase == FarmPhase.COOLDOWN && runtime.state.preparationPatch.isNotEmpty()) {
-                    if (restoreFarmPatchOriginal(runtime)) {
-                        clearFarmPatchState(runtime)
-                        persistAsync()
-                    } else {
-                        return@runGuarded
-                    }
+                    return@runGuarded
                 }
                 val result = FarmShiftEngine.tick(runtime.state, currentOrder(runtime), now)
                 if (result.events.isNotEmpty()) applyFarmResult(runtime, result, null)
@@ -4144,27 +4625,29 @@ class ArcFarmsService(
         if (changed) persistBlocking()
     }
 
-    private fun restoreFarmPatchOriginal(runtime: FarmRuntime): Boolean {
-        var complete = true
-        runtime.state.preparationPatch.forEach { position ->
+    private fun restoreFarmPatchOriginal(runtime: FarmRuntime, limit: Int = Int.MAX_VALUE): Boolean {
+        require(limit >= 1) { "Farm patch restore limit must be positive" }
+        val restored = patchRestoreProgress.getOrPut(runtime.settings.id, ::linkedSetOf)
+        runtime.state.preparationPatch.asSequence().filterNot(restored::contains).take(limit).forEach { position ->
             val soil = position.block()
             if (soil == null) {
-                complete = false
                 return@forEach
             }
             runCatching {
                 if (!farmBlockLedger.restoreOriginal(soil, clear = false)) {
-                    complete = false
                     if (allowInteraction("farm-ledger-missing:${runtime.settings.id}:$position", TimeUnit.MINUTES.toMillis(5))) {
                         plugin.logger.severe("Managed farm plot $position has no recovery ledger and was retained for repair")
                     }
+                } else {
+                    restored += position
                 }
             }.onFailure { failure ->
-                complete = false
                 plugin.logger.log(Level.SEVERE, "Could not restore managed farm plot $position", failure)
             }
         }
+        val complete = restored.containsAll(runtime.state.preparationPatch)
         if (!complete) return false
+        patchRestoreProgress.remove(runtime.settings.id)
         debug.event(
             "farm_patch_restored",
             "zone" to runtime.settings.id,
@@ -4619,29 +5102,65 @@ class ArcFarmsService(
         mob.velocity = current.multiply(0.25).setX(pull.x).setZ(pull.z)
     }
 
-    private fun refreshActiveFarmCarePoint(runtime: FarmRuntime, kind: FarmPointKind, position: FarmPointPosition) {
+    private fun refreshFarmPoint(runtime: FarmRuntime, kind: FarmPointKind, actor: Player, reason: String) {
+        when (kind) {
+            FarmPointKind.TOOL, FarmPointKind.SEEDS, FarmPointKind.WATER -> {
+                val supplyKind = when (kind) {
+                    FarmPointKind.TOOL -> FarmSupplyKind.TOOL
+                    FarmPointKind.SEEDS -> FarmSupplyKind.SEEDS
+                    else -> FarmSupplyKind.WATER
+                }
+                removeSupplyEntities(SupplyKey(runtime.settings.id, supplyKind), reason)
+                ensureFarmSupplies(runtime)
+            }
+            FarmPointKind.CRATES -> if (runtime.state.phase == FarmPhase.DELIVERY) {
+                val position = farmLocations.zones[runtime.settings.id]?.get(FarmPointKind.CRATES)
+                runtime.state = runtime.state.copy(
+                    deliveryPosition = position?.let {
+                        FarmDeliveryPosition(it.world, it.x, it.y, it.z)
+                    } ?: selectDeliveryAnchor(runtime, actor.location),
+                )
+                clearDelivery(runtime, reason)
+                ensureFarmDelivery(runtime)
+                persistAsync()
+            }
+            FarmPointKind.CART, FarmPointKind.CUSTOMER -> {
+                clearFarmContractScene(runtime, reason)
+                ensureFarmContractScene(runtime)
+            }
+            FarmPointKind.RECEIVING -> refreshActiveFarmCarePoint(runtime, FarmPointKind.PEN, reason)
+            FarmPointKind.HIVE,
+            FarmPointKind.IRRIGATION,
+            FarmPointKind.COVERS,
+            FarmPointKind.SCARECROWS,
+            FarmPointKind.PEN,
+            -> refreshActiveFarmCarePoint(runtime, kind, reason)
+            FarmPointKind.TRAVEL -> Unit
+        }
+    }
+
+    private fun refreshActiveFarmCarePoint(runtime: FarmRuntime, kind: FarmPointKind, reason: String) {
         if (runtime.state.phase != FarmPhase.CARE) return
         if (kind == FarmPointKind.PEN) {
             if (runtime.state.careType == FarmCareType.ANIMAL_RESCUE) {
-                removeFarmCareEntities(CareEntityKey(runtime.settings.id, -1), "admin_point_changed")
+                removeFarmCareEntities(CareEntityKey(runtime.settings.id, -1), reason)
                 ensureFarmAnimalPen(runtime)
             }
             return
         }
-        val role = when (kind) {
-            FarmPointKind.HIVE -> FarmCareRole.HIVE
-            FarmPointKind.IRRIGATION -> FarmCareRole.VALVE
-            FarmPointKind.COVERS -> FarmCareRole.COVER_ANCHOR
-            FarmPointKind.SCARECROWS -> FarmCareRole.SCARECROW
+        val type = when (kind) {
+            FarmPointKind.HIVE -> FarmCareType.POLLINATION
+            FarmPointKind.IRRIGATION -> FarmCareType.IRRIGATION
+            FarmPointKind.COVERS -> FarmCareType.STORM_COVERS
+            FarmPointKind.SCARECROWS -> FarmCareType.SCARECROWS
             else -> return
         }
-        val target = runtime.state.careTargets.filter { it.role == role }.minByOrNull(FarmCareTarget::id) ?: return
-        runtime.state = runtime.state.copy(
-            careTargets = runtime.state.careTargets.map { candidate ->
-                if (candidate.id == target.id) candidate.copy(position = position) else candidate
-            },
-        )
-        removeFarmCareEntities(CareEntityKey(runtime.settings.id, target.id), "admin_point_changed")
+        if (runtime.state.careType != type) return
+        val previousTargets = runtime.state.careTargets
+        val rebuilt = buildFarmCareTargets(runtime, type, null) ?: return
+        val merged = FarmCarePlanner.preserveProgress(previousTargets, rebuilt)
+        clearFarmCare(runtime, reason)
+        runtime.state = runtime.state.copy(careTargets = merged)
         ensureFarmCare(runtime)
         persistAsync()
     }
@@ -4750,6 +5269,7 @@ class ArcFarmsService(
                     plugin.logger.log(Level.WARNING, "Could not clear recovered farm ledger at $position", failure)
                 }
         }
+        patchRestoreProgress.remove(runtime.settings.id)
         managedFarmBeds.remove(runtime.settings.id)
     }
 
@@ -4954,7 +5474,7 @@ class ArcFarmsService(
             }
         }
         val sourcePosition = source.toFarmPlotPosition()
-        if (source.type.name in runtime.settings.crops) {
+        if (source.type.name in runtime.settings.crops && !MaterialRules.isFixedBlockCrop(source.type)) {
             val soil = source.getRelative(org.bukkit.block.BlockFace.DOWN)
             if (soil.type in FARM_SOIL_TYPES) {
                 farmBlockLedger.captureActiveCropIfPresent(soil, runtime.settings.id)
@@ -5026,7 +5546,6 @@ class ArcFarmsService(
             persistAsync()
             if (!hasActiveWater(runtime.settings.id) && runtime.settings.id in pendingIncidentRestore) {
                 pendingIncidentRestore.remove(runtime.settings.id)
-                restoreIncidentCrops(runtime)
             }
             debug.event(
                 "farm_water_settled",
@@ -5040,7 +5559,7 @@ class ArcFarmsService(
         }
     }
 
-    private fun restoreIncidentCrops(runtime: FarmRuntime) {
+    private fun restoreIncidentCrops(runtime: FarmRuntime, limit: Int = Int.MAX_VALUE) {
         if (hasActiveWater(runtime.settings.id)) {
             pendingIncidentRestore += runtime.settings.id
             return
@@ -5050,6 +5569,7 @@ class ArcFarmsService(
             before,
             restoreDrought = { position -> restoreDroughtCrop(runtime, position) },
             restorePest = { damage -> restorePestCrop(runtime, damage) },
+            limit = limit,
         )
         if (runtime.state != before) persistAsync()
         if (FarmIncidentRecovery.pending(runtime.state)) {
@@ -5677,7 +6197,10 @@ class ArcFarmsService(
                     for (z in pest.location.blockZ - radius..pest.location.blockZ + radius) {
                         for (y in pest.location.blockY - 1..pest.location.blockY + 1) {
                             val crop = runtime.region.world.getBlockAt(x, y, z)
-                            if (runtime.region.contains(crop.location) && crop.type.name in runtime.settings.crops) add(crop)
+                            if (
+                                runtime.region.contains(crop.location) && crop.type.name in runtime.settings.crops &&
+                                !MaterialRules.isFixedBlockCrop(crop.type)
+                            ) add(crop)
                         }
                     }
                 }
@@ -6122,6 +6645,8 @@ class ArcFarmsService(
         careNextReconcileAt.clear()
         pollenCharges.clear()
         pendingIncidentRestore.clear()
+        patchRestoreProgress.clear()
+        fixedCropRestoreQueue.clear()
         Bukkit.getOnlinePlayers().forEach { removeFarmServiceItems(it, reason = "service_cleanup") }
         if (removed > 0) debug.event("farm_entities_cleanup", "count" to removed)
     }

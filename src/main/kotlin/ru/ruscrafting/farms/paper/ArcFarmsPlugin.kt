@@ -17,6 +17,7 @@ import ru.ruscrafting.farms.network.ArcFarmsNetworkRepository
 import ru.ruscrafting.farms.network.NoOpActivityNetworkGateway
 import ru.ruscrafting.farms.persistence.ArcFarmsStateRepository
 import ru.ruscrafting.farms.persistence.FarmLocationRepository
+import ru.ruscrafting.farms.persistence.FixedFarmCropJournal
 import ru.ruscrafting.farms.persistence.MineBlockJournal
 import java.nio.file.Files
 import java.util.logging.Level
@@ -28,6 +29,7 @@ class ArcFarmsPlugin : JavaPlugin() {
     private var service: ArcFarmsService? = null
     private var stateRepository: ArcFarmsStateRepository? = null
     private var mineJournal: MineBlockJournal? = null
+    private var fixedCropJournal: FixedFarmCropJournal? = null
     private var farmLocationRepository: FarmLocationRepository? = null
     private var redis: RedisManager? = null
     private var network: ArcFarmsNetworkService? = null
@@ -72,6 +74,7 @@ class ArcFarmsPlugin : JavaPlugin() {
             }
             stateRepository = ArcFarmsStateRepository(dataRoot)
             mineJournal = MineBlockJournal(dataRoot)
+            fixedCropJournal = FixedFarmCropJournal(dataRoot)
             farmLocationRepository = FarmLocationRepository(dataRoot)
             val regionGateway = if (settings.requiresWorldGuard) {
                 require(server.pluginManager.isPluginEnabled("WorldGuard")) {
@@ -91,6 +94,7 @@ class ArcFarmsPlugin : JavaPlugin() {
                 locale = locale,
                 stateRepository = requireNotNull(stateRepository),
                 mineJournal = requireNotNull(mineJournal),
+                fixedCropJournal = requireNotNull(fixedCropJournal),
                 farmLocationRepository = requireNotNull(farmLocationRepository),
                 network = networkGateway,
                 transfer = BungeeBackendTransfer(this),
@@ -131,6 +135,9 @@ class ArcFarmsPlugin : JavaPlugin() {
         runCatching { network?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close ArcFarms network", it) }
         runCatching { redis?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close ArcFarms Redis", it) }
         runCatching { mineJournal?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close mine journal", it) }
+        runCatching { fixedCropJournal?.close() }.onFailure {
+            logger.log(Level.SEVERE, "Could not close fixed crop journal", it)
+        }
         runCatching { farmLocationRepository?.close() }.onFailure {
             logger.log(Level.SEVERE, "Could not close farm location repository", it)
         }

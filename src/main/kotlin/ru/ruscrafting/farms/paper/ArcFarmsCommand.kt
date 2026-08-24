@@ -158,6 +158,7 @@ class ArcFarmsCommand(
             val zone = args.getOrNull(1)?.takeUnless { it.equals("help", true) }
             when (action) {
                 "edit" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_EDIT, sender))
+                "inspect" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_INSPECT, sender))
                 "point" -> sendPointHelp(sender, zone)
                 "points" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_POINTS, sender))
                 "unmanage" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_UNMANAGE, sender))
@@ -176,6 +177,7 @@ class ArcFarmsCommand(
         }
         when (action) {
             "edit" -> service.toggleAdminEdit(player)
+            "inspect" -> service.toggleAdminInspect(player)
             "point" -> {
                 val zone = args.getOrNull(1)
                 val point = args.getOrNull(2)?.let(::parsePoint)
@@ -183,7 +185,15 @@ class ArcFarmsCommand(
                     sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
                     return
                 }
-                service.adminSetFarmPoint(player, zone, point)
+                if (args.size > 4) {
+                    sendPointHelp(sender, zone)
+                    return
+                }
+                when (args.getOrNull(3)?.lowercase()) {
+                    null -> service.adminSetFarmPoint(player, zone, point)
+                    "clear", "remove" -> service.adminClearFarmPoint(player, zone, point)
+                    else -> sendPointHelp(sender, zone)
+                }
             }
             "points" -> {
                 val zone = args.getOrNull(1)
@@ -284,6 +294,7 @@ class ArcFarmsCommand(
 
     private fun sendFarmPoints(sender: CommandSender, zone: String): Boolean {
         val points = service.adminFarmPoints(zone) ?: return false
+        val overridden = service.adminOverriddenFarmPoints(zone).orEmpty()
         sender.sendMessage(locale.render(MessageKey.ADMIN_POINTS_HEADER, sender, mapOf("zone" to locale.text(zone))))
         points.forEach { (kind, point) ->
             sender.sendMessage(
@@ -296,6 +307,10 @@ class ArcFarmsCommand(
                         "x" to locale.text("%.2f".format(java.util.Locale.ROOT, point.x)),
                         "y" to locale.text("%.2f".format(java.util.Locale.ROOT, point.y)),
                         "z" to locale.text("%.2f".format(java.util.Locale.ROOT, point.z)),
+                        "source" to locale.renderPath(
+                            if (kind in overridden) "admin.point-source.override" else "admin.point-source.default",
+                            sender,
+                        ),
                     ),
                 ),
             )
@@ -403,14 +418,14 @@ class ArcFarmsCommand(
                 args[0].equals("top", true) || args[0].equals("travel", true) ->
                     listOf("farm", "lumber", "mine").filter { it.startsWith(args[1], true) }
                 args[0].equals("admin", true) && sender.hasPermission("arcfarms.admin") ->
-                    listOf("help", "edit", "point", "points", "unmanage", "stage", "next", "finish", "event")
+                    listOf("help", "edit", "inspect", "point", "points", "unmanage", "stage", "next", "finish", "event")
                         .filter { it.startsWith(args[1], true) }
                 args[0].equals("debug", true) && sender.hasPermission("arcfarms.admin") ->
                     service.farmZoneIds().filter { it.startsWith(args[1], true) }
                 else -> emptyList()
             }
             3 -> when {
-                args[0].equals("admin", true) && args[1].equals("edit", true) ->
+                args[0].equals("admin", true) && args[1].lowercase() in setOf("edit", "inspect") ->
                     listOf("help").filter { it.startsWith(args[2], true) }
                 args[0].equals("admin", true) && args[1].lowercase() in
                     setOf("point", "points", "unmanage", "stage", "next", "finish", "event") ->
@@ -441,6 +456,11 @@ class ArcFarmsCommand(
                     listOf("tool", "seeds", "water").filter { it.startsWith(args[3], true) }
                 args[0].equals("debug", true) && args[2].equals("contract", true) ->
                     service.farmOrderIds(args[1]).filter { it.startsWith(args[3], true) }
+                else -> emptyList()
+            }
+            5 -> when {
+                args[0].equals("admin", true) && args[1].equals("point", true) ->
+                    listOf("clear", "remove", "help").filter { it.startsWith(args[4], true) }
                 else -> emptyList()
             }
             else -> emptyList()

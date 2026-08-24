@@ -35,4 +35,19 @@ class FarmIncidentRecoveryTest : FunSpec({
 
         FarmIncidentRecovery.pending(recovered) shouldBe false
     }
+
+    test("recovery respects its per-tick repair budget") {
+        val plots = (1..5).map { FarmPlotPosition("world", it, 63, 1) }.toSet()
+        var repairs = 0
+
+        val recovered = FarmIncidentRecovery.recover(
+            FarmShiftState(droughtDamagedPlots = plots),
+            restoreDrought = { repairs++; true },
+            restorePest = { error("No pest repair expected") },
+            limit = 2,
+        )
+
+        repairs shouldBe 2
+        recovered.droughtDamagedPlots.size shouldBe 3
+    }
 })

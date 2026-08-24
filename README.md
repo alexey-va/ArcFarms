@@ -101,8 +101,11 @@ exists and otherwise creates temporary, tagged display fixtures and animals at
 safe points derived from the selected field. `procedural-care-fixtures: false`
 turns that behavior off for fixture-dependent stories; those stories are then
 skipped until an administrator saves the required point. The optional points
-are `hive`, `irrigation`, `covers`, `scarecrows`, and `barn`. The barn falls
-back to the crop receiving point until an administrator saves its own override.
+are `hive`, `irrigation`, `covers`, `scarecrows`, and `barn`. Irrigation,
+covers, and scarecrow points orient the procedural field layout without moving
+one fixture off the crop beds. The barn falls back to the crop receiving point
+until an administrator saves its own override. Any override can be removed with
+`/arcfarms admin point <zone> <point> clear`.
 Their entities are
 removed when the story ends and are reconstructed from persisted state after a
 restart.
@@ -145,7 +148,9 @@ normal vanilla reach, hydrates only the dry beds it actually reaches, and clears
 plants without creating crop or seed drops. ArcFarms tracks and removes every
 temporary flow after each pour. Managed plants remain absent
 until the entire drought is resolved, then their captured state is restored at
-once. Either incident pauses harvesting without resetting the main order.
+the configured number of blocks per tick. Completed-order field recovery uses
+the same batch limit, so a large mechanized field cannot produce one restoration
+lag spike. Either incident pauses harvesting without resetting the main order.
 Resolving it resumes the ordinary crop order at the next unfinished crop. At
 each quarter of the harvest quota another visible cargo bundle appears in the
 stationary order cart. The tagged cart and its customer are reconstructed from
@@ -173,6 +178,16 @@ removes every selected managed bed from its durable state and chunk ledger in
 one operation. Phase-colored
 particle columns mark the active patch from a distance; drought and delivery
 use their own local action areas.
+
+`MELON` and `PUMPKIN` are fixed block crops rather than preparation crops.
+ArcFarms records their exact block data and coordinates in a separate chunk PDC
+ledger before the first harvest, suppresses natural fruit placement from stems
+inside the farm, and restores a harvested fruit at that same coordinate after
+`fixed-crop-respawn-seconds`. Pending repairs are reconstructed whenever their
+chunk loads. Before the fruit disappears, an atomic pending-repair journal is
+also flushed to `data/fixed-farm-crops.json`; this closes the hard-stop window
+before the chunk itself is saved. A solid obstruction is never overwritten;
+both durable records are retained and retried instead.
 
 ### Lumber order
 
@@ -228,13 +243,19 @@ are available through commands such as `/arcfarms admin point <zone> help`,
 - `/arcfarms reload` — validate and reload configuration/locales (admin).
 - `/arcfarms admin edit` — toggle deliberate farm-bed deletion and PDC cleanup;
   edit mode stays authoritative even during an active scene (admin).
+- `/arcfarms admin inspect` — toggle read-only block inspection. Clicking a
+  block prints its BlockData, fixed-crop or bed ledger entry, pending restore,
+  and current patch/incident ownership.
 - `/arcfarms admin point <zone> <tool|seeds|water|crates|receiving|cart|customer|travel|hive|irrigation|covers|scarecrows|barn>` —
   save the administrator's current world, coordinates, yaw, and pitch for a farm
   operation point. Non-travel points must be inside the farm and off crop beds.
+- `/arcfarms admin point <zone> <point> clear` — remove an administrator point
+  override and return to the configured or procedural placement.
 - `/arcfarms admin points <zone>` — list the effective configured and overridden
   farm points.
 - `/arcfarms admin unmanage <zone>` — remove ArcFarms control and recovery
-  records from every managed bed inside the player's exact WorldEdit selection.
+  records from every managed bed or fixed crop inside the player's exact
+  WorldEdit selection.
 - `/arcfarms admin stage <zone> <preparation|planting|harvesting|seeder|weeds|irrigation|pollination|covers|scarecrows|animals|disease|moles|pests|drought|delivery|complete|reset>` —
   switch the current farm to an exact QA stage while preserving normal recovery.
 - `/arcfarms admin next <zone>` — advance to the next useful QA stage.
@@ -246,7 +267,8 @@ are available through commands such as `/arcfarms admin point <zone> help`,
 Farm counts, manual and mechanized patch sizes, machinery width/reach, spacing,
 spawn/search radii, incident ranges and checkpoints, display
 scale/offset/view range, care timings, drought/pest tuning, UI toggles, sounds,
-particles, rewards, and operation points are hot-reloadable. Only
+particles, rewards, fixed-crop respawn delay, restoration batch size, and
+operation points are hot-reloadable. Only
 `server-id`, the Redis network enablement boundary, the plugin JAR itself, and
 server-wide living-entity tracking in `spigot.yml` require a restart.
 - `/arcfarms debug <zone> status` — print the exact shift, patch, crop damage,
@@ -307,7 +329,7 @@ button.
 ../arc-core/gradlew clean check shadowJar
 ```
 
-The deployable artifact is `build/libs/ArcFarms-0.15.4.jar`.
+The deployable artifact is `build/libs/ArcFarms-0.16.3.jar`.
 
 ## Isolated gameplay QA
 

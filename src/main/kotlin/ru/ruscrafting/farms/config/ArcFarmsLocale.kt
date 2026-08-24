@@ -24,6 +24,14 @@ enum class MessageKey(val path: String) {
     ADMIN_EDIT_DISABLED("admin-edit.disabled"),
     ADMIN_EDIT_ACTIVE_SHIFT("admin-edit.active-shift"),
     ADMIN_EDIT_BLOCK_REMOVED("admin-edit.block-removed"),
+    ADMIN_INSPECT_ENABLED("admin-inspect.enabled"),
+    ADMIN_INSPECT_DISABLED("admin-inspect.disabled"),
+    ADMIN_INSPECT_HEADER("admin-inspect.header"),
+    ADMIN_INSPECT_BLOCK("admin-inspect.block"),
+    ADMIN_INSPECT_FIXED("admin-inspect.fixed-crop"),
+    ADMIN_INSPECT_PLOT("admin-inspect.plot"),
+    ADMIN_INSPECT_TRACKING("admin-inspect.tracking"),
+    ADMIN_INSPECT_NONE("admin-inspect.none"),
     ADMIN_UNMANAGE_WORLD_EDIT_REQUIRED("admin.unmanage-worldedit-required"),
     ADMIN_UNMANAGE_SELECTION_REQUIRED("admin.unmanage-selection-required"),
     ADMIN_UNMANAGE_WRONG_WORLD("admin.unmanage-wrong-world"),
@@ -31,6 +39,7 @@ enum class MessageKey(val path: String) {
     ADMIN_UNMANAGE_DONE("admin.unmanage-done"),
     ADMIN_HELP("admin.help"),
     ADMIN_HELP_EDIT("admin.command-help.edit"),
+    ADMIN_HELP_INSPECT("admin.command-help.inspect"),
     ADMIN_HELP_POINTS("admin.command-help.points"),
     ADMIN_HELP_UNMANAGE("admin.command-help.unmanage"),
     ADMIN_HELP_NEXT("admin.command-help.next"),
@@ -46,6 +55,8 @@ enum class MessageKey(val path: String) {
     ADMIN_POINT_OUTSIDE("admin.point-outside"),
     ADMIN_POINT_ON_BED("admin.point-on-bed"),
     ADMIN_POINT_SAVED("admin.point-saved"),
+    ADMIN_POINT_CLEARED("admin.point-cleared"),
+    ADMIN_POINT_NOT_OVERRIDDEN("admin.point-not-overridden"),
     ADMIN_POINTS_HEADER("admin.points-header"),
     ADMIN_POINTS_ENTRY("admin.points-entry"),
     ADMIN_STAGE_SET("admin.stage-set"),
@@ -137,6 +148,7 @@ enum class MessageKey(val path: String) {
     FARM_CARE_DISEASE_SPREAD("farm.care-disease-spread"),
     FARM_WRONG_TARGET("farm.wrong-target"),
     FARM_CROP_ALREADY_COMPLETE("farm.crop-already-complete"),
+    FARM_FIXED_CROP_PENDING("farm.fixed-crop-pending"),
     FARM_CROP_COMPLETED("farm.crop-completed"),
     FARM_CROP_COMPLETED_SUBTITLE("farm.crop-completed-subtitle"),
     FARM_HARVEST_MILESTONE("farm.harvest-milestone"),
@@ -321,6 +333,12 @@ class ArcFarmsLocale(
             }
             FarmPointKind.entries.mapTo(this) { "admin.point.${it.name.lowercase()}" }
             FarmPointKind.entries.mapTo(this) { "admin.point-description.${it.name.lowercase()}" }
+            add("admin.point-source.override")
+            add("admin.point-source.default")
+            add("admin-inspect.restore.ready")
+            add("admin-inspect.restore.pending")
+            listOf("managed", "patch", "drought", "drought-damaged", "pest-nest", "pest-damaged")
+                .mapTo(this) { "admin-inspect.tracking-kind.$it" }
             val adminStages = listOf(
                 "preparation", "planting", "harvesting", "seeder", "weeds", "irrigation", "pollination", "covers", "scarecrows",
                 "animals", "disease", "moles", "pests", "drought", "delivery", "complete", "reset",

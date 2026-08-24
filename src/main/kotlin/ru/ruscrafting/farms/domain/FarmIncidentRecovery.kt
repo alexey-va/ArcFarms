@@ -9,8 +9,20 @@ object FarmIncidentRecovery {
         state: FarmShiftState,
         restoreDrought: (FarmPlotPosition) -> Boolean,
         restorePest: (FarmCropDamage) -> Boolean,
-    ): FarmShiftState = state.copy(
-        droughtDamagedPlots = state.droughtDamagedPlots.filterNot(restoreDrought).toSet(),
-        pestDamagedCrops = state.pestDamagedCrops.filterNot(restorePest),
-    )
+        limit: Int = Int.MAX_VALUE,
+    ): FarmShiftState {
+        require(limit >= 1) { "Incident recovery limit must be positive" }
+        var attempts = 0
+        val drought = state.droughtDamagedPlots.filterNot { position ->
+            if (attempts >= limit) return@filterNot false
+            attempts++
+            restoreDrought(position)
+        }.toSet()
+        val pests = state.pestDamagedCrops.filterNot { damage ->
+            if (attempts >= limit) return@filterNot false
+            attempts++
+            restorePest(damage)
+        }
+        return state.copy(droughtDamagedPlots = drought, pestDamagedCrops = pests)
+    }
 }

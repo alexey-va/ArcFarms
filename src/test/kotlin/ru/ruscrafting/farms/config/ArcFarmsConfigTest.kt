@@ -35,14 +35,63 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().permission shouldStartWith "arcfarms."
         settings.lumbermills.single().permission shouldStartWith "arcfarms."
         settings.mines.all { it.permission.startsWith("arcfarms.") } shouldBe true
-        settings.farms.single().orders.maxOf { order -> order.required.values.sum() } shouldBe 2_080
+        settings.farms.single().orders.maxOf { order -> order.required.values.sum() } shouldBe 2_560
         settings.farms.single().orders.associate { it.id to it.required } shouldBe mapOf(
             "miners_rations" to mapOf("WHEAT" to 640, "CARROTS" to 320, "POTATOES" to 320),
             "bakery_supply" to mapOf("WHEAT" to 960, "BEETROOTS" to 320),
-            "market_crates" to mapOf("CARROTS" to 320, "POTATOES" to 320, "BEETROOTS" to 320),
-            "harvest_festival" to mapOf("WHEAT" to 800, "CARROTS" to 480, "POTATOES" to 480, "BEETROOTS" to 320),
+            "market_crates" to mapOf(
+                "CARROTS" to 320,
+                "POTATOES" to 320,
+                "BEETROOTS" to 320,
+                "MELON" to 160,
+                "PUMPKIN" to 160,
+            ),
+            "harvest_festival" to mapOf(
+                "WHEAT" to 800,
+                "CARROTS" to 480,
+                "POTATOES" to 480,
+                "BEETROOTS" to 320,
+                "MELON" to 240,
+                "PUMPKIN" to 240,
+            ),
             "deep_mine_relief" to mapOf("WHEAT" to 800, "CARROTS" to 480, "POTATOES" to 640),
             "master_baker_request" to mapOf("WHEAT" to 1_440, "BEETROOTS" to 480),
+        )
+        settings.farms.single().orders.associate { it.id to it.careTypes } shouldBe mapOf(
+            "miners_rations" to listOf(
+                FarmCareType.MOLES,
+                FarmCareType.IRRIGATION,
+                FarmCareType.ANIMAL_RESCUE,
+                FarmCareType.WEEDS,
+            ),
+            "bakery_supply" to listOf(
+                FarmCareType.POLLINATION,
+                FarmCareType.DISEASE,
+                FarmCareType.IRRIGATION,
+                FarmCareType.SCARECROWS,
+                FarmCareType.MOLES,
+            ),
+            "market_crates" to listOf(
+                FarmCareType.WEEDS,
+                FarmCareType.SCARECROWS,
+                FarmCareType.ANIMAL_RESCUE,
+                FarmCareType.STORM_COVERS,
+            ),
+            "harvest_festival" to listOf(
+                FarmCareType.POLLINATION,
+                FarmCareType.STORM_COVERS,
+                FarmCareType.SCARECROWS,
+            ),
+            "deep_mine_relief" to listOf(
+                FarmCareType.MOLES,
+                FarmCareType.IRRIGATION,
+                FarmCareType.DISEASE,
+            ),
+            "master_baker_request" to listOf(
+                FarmCareType.POLLINATION,
+                FarmCareType.DISEASE,
+                FarmCareType.STORM_COVERS,
+            ),
         )
         settings.farms.single().rareOrderChancePercent shouldBe 20
         settings.farms.single().orders.count { it.rarity == FarmContractRarity.RARE } shouldBe 3
@@ -78,6 +127,9 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().seederWorkingWidth shouldBe 3
         settings.farms.single().seederWaypointReach shouldBe 2.8
         settings.farms.single().preparationSearchRadius shouldBe 64
+        settings.farms.single().fixedCropRespawnSeconds shouldBe 20
+        settings.farms.single().restoreBlocksPerTick shouldBe 24
+        settings.farms.single().crops shouldBe setOf("WHEAT", "CARROTS", "POTATOES", "BEETROOTS", "MELON", "PUMPKIN")
         settings.farms.single().careTypes shouldContainExactly FarmCareType.entries.filterNot { it == FarmCareType.SEEDER }
         settings.farms.single().careTargetCount shouldBe 4
         settings.farms.single().animalRescueTargetCount shouldBe 6

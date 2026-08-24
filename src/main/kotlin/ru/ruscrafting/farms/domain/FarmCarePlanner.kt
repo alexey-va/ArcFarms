@@ -3,6 +3,39 @@ package ru.ruscrafting.farms.domain
 import java.lang.Math.floorMod
 
 object FarmCarePlanner {
+    fun orient(
+        targets: List<FarmCareTarget>,
+        anchor: FarmPointPosition?,
+    ): List<FarmCareTarget> {
+        if (anchor == null || targets.size <= 1) return targets
+        val remaining = targets.toMutableList()
+        val ordered = ArrayList<FarmCareTarget>(targets.size)
+        var cursor = requireNotNull(anchor)
+        while (remaining.isNotEmpty()) {
+            val next = remaining.minWith(
+                compareBy<FarmCareTarget> { target -> horizontalDistanceSquared(cursor, target.position) }
+                    .thenBy(FarmCareTarget::id),
+            )
+            remaining.remove(next)
+            ordered += next
+            cursor = next.position
+        }
+        return ordered.mapIndexed { index, target -> target.copy(id = index) }
+    }
+
+    fun preserveProgress(
+        previous: List<FarmCareTarget>,
+        rebuilt: List<FarmCareTarget>,
+    ): List<FarmCareTarget> {
+        val previousByPosition = previous.associateBy { target -> target.role to target.position }
+        val previousByRole = previous.groupBy(FarmCareTarget::role)
+        return rebuilt.map { target ->
+            val old = previousByPosition[target.role to target.position]
+                ?: previousByRole[target.role]?.singleOrNull()
+            target.copy(progress = (old?.progress ?: 0).coerceAtMost(target.required))
+        }
+    }
+
     fun spread(
         candidates: Collection<FarmPlotPosition>,
         targetCount: Int,
@@ -70,6 +103,13 @@ object FarmCarePlanner {
     }
 
     private fun horizontalDistanceSquared(first: FarmPlotPosition, second: FarmPlotPosition): Int {
+        val dx = first.x - second.x
+        val dz = first.z - second.z
+        return dx * dx + dz * dz
+    }
+
+    private fun horizontalDistanceSquared(first: FarmPointPosition, second: FarmPointPosition): Double {
+        if (first.world != second.world) return Double.POSITIVE_INFINITY
         val dx = first.x - second.x
         val dz = first.z - second.z
         return dx * dx + dz * dz
