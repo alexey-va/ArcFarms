@@ -13,6 +13,7 @@ object MaterialRules {
         Material.CARROTS to Material.CARROT,
         Material.POTATOES to Material.POTATO,
         Material.BEETROOTS to Material.BEETROOT_SEEDS,
+        Material.SWEET_BERRY_BUSH to Material.SWEET_BERRIES,
     )
 
     fun material(name: String): Material =
@@ -56,6 +57,7 @@ object MaterialRules {
             Material.CARROTS -> "item.minecraft.carrot"
             Material.POTATOES -> "item.minecraft.potato"
             Material.BEETROOTS -> "item.minecraft.beetroot"
+            Material.SWEET_BERRY_BUSH -> "item.minecraft.sweet_berries"
             else -> "block.minecraft.${material.name.lowercase()}"
         },
     )

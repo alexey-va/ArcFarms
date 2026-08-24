@@ -178,7 +178,7 @@ farm-zones:
         rolls: 0
         chance-percent: 100
         entries: {}
-    crops: [WHEAT, CARROTS, POTATOES, BEETROOTS, MELON, PUMPKIN]
+    crops: [WHEAT, CARROTS, POTATOES, BEETROOTS, SWEET_BERRY_BUSH, MELON, PUMPKIN]
     rare-order-chance-percent: 20
     orders:
       miners_rations:
@@ -197,7 +197,7 @@ farm-zones:
         cart-load: {material: WHEAT, custom-model-data: 0}
       market_crates:
         rarity: COMMON
-        crops: [CARROTS:320, POTATOES:320, BEETROOTS:320, MELON:160, PUMPKIN:160]
+        crops: [CARROTS:320, POTATOES:320, BEETROOTS:320, SWEET_BERRY_BUSH:320, MELON:160, PUMPKIN:160]
         care-types: [WEEDS, APPLE_HARVEST, SCARECROWS, ANIMAL_RESCUE, STORM_COVERS]
         incident-types: [PESTS, DROUGHT]
         customer: MARKET_TRADER

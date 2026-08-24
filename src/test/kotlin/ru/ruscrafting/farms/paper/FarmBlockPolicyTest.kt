@@ -5,11 +5,12 @@ import io.kotest.matchers.shouldBe
 import org.bukkit.Material
 
 class FarmBlockPolicyTest : FunSpec({
-    val crops = setOf("WHEAT", "CARROTS", "POTATOES", "BEETROOTS", "MELON", "PUMPKIN")
+    val crops = setOf("WHEAT", "CARROTS", "POTATOES", "BEETROOTS", "SWEET_BERRY_BUSH", "MELON", "PUMPKIN")
 
     test("only open or normally planted farmland can be selected") {
         FarmBlockPolicy.isSelectableBed(Material.FARMLAND, Material.AIR, crops) shouldBe true
         FarmBlockPolicy.isSelectableBed(Material.FARMLAND, Material.WHEAT, crops) shouldBe true
+        FarmBlockPolicy.isSelectableBed(Material.FARMLAND, Material.SWEET_BERRY_BUSH, crops) shouldBe true
         FarmBlockPolicy.isSelectableBed(Material.FARMLAND, Material.STONE, crops) shouldBe false
         FarmBlockPolicy.isSelectableBed(Material.FARMLAND, Material.OAK_PLANKS, crops) shouldBe false
         FarmBlockPolicy.isSelectableBed(Material.FARMLAND, Material.MELON_STEM, crops) shouldBe false

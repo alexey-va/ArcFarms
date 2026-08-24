@@ -39,6 +39,26 @@ class FarmOrderProgressReconcilerTest : FunSpec({
         FarmOrderProgressReconciler.reconcile(state, mapOf("CARROTS" to 100)).state shouldBe state
     }
 
+    test("a newly configured crop joins an active order without resetting progress") {
+        val state = FarmShiftState(
+            phase = FarmPhase.HARVESTING,
+            orderId = "market",
+            progress = linkedMapOf("CARROTS" to 215, "POTATOES" to 90),
+        )
+
+        val result = FarmOrderProgressReconciler.reconcile(
+            state,
+            linkedMapOf("CARROTS" to 320, "POTATOES" to 320, "SWEET_BERRY_BUSH" to 320),
+        )
+
+        result.changed shouldBe true
+        result.state.progress shouldBe linkedMapOf(
+            "CARROTS" to 215,
+            "POTATOES" to 90,
+            "SWEET_BERRY_BUSH" to 0,
+        )
+    }
+
     test("a quota reduction leaves one harvest to drive the normal delivery transition") {
         val state = FarmShiftState(
             phase = FarmPhase.INCIDENT,

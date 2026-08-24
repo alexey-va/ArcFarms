@@ -43,6 +43,7 @@ class ArcFarmsConfigTest : FunSpec({
                 "CARROTS" to 320,
                 "POTATOES" to 320,
                 "BEETROOTS" to 320,
+                "SWEET_BERRY_BUSH" to 320,
                 "MELON" to 160,
                 "PUMPKIN" to 160,
             ),
@@ -135,7 +136,8 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().restoreBlocksPerTick shouldBe 24
         settings.farms.single().blockReindexBlocksPerTick shouldBe 4_096
         settings.farms.single().blockReindexMaxBlocks shouldBe 20_000_000
-        settings.farms.single().crops shouldBe setOf("WHEAT", "CARROTS", "POTATOES", "BEETROOTS", "MELON", "PUMPKIN")
+        settings.farms.single().crops shouldBe
+            setOf("WHEAT", "CARROTS", "POTATOES", "BEETROOTS", "SWEET_BERRY_BUSH", "MELON", "PUMPKIN")
         settings.farms.single().careTypes shouldContainExactly FarmCareType.entries.filterNot { it == FarmCareType.SEEDER }
         settings.farms.single().careTargetCount shouldBe 4
         settings.farms.single().appleTargetCount shouldBe 8
@@ -425,6 +427,19 @@ class ArcFarmsConfigTest : FunSpec({
         val locale = ArcFarmsLocale(root) { settings }
 
         PlainTextComponentSerializer.plainText().serialize(locale.render(MessageKey.PREFIX)) shouldBe "Ферма •"
+    }
+
+    test("farm reward chat is a rare framed block with the exact delivered reward") {
+        val root = resourceTree()
+        val settings = ArcFarmsConfig.inspect(root)
+        val locale = ArcFarmsLocale(root) { settings }
+        val rendered = locale.render(
+            MessageKey.FARM_REWARD_CHAT,
+            values = mapOf("reward" to Component.text("75 опыта, 500 монет")),
+        )
+
+        PlainTextComponentSerializer.plainText().serialize(rendered) shouldBe
+            "\n  Награда за заказ\n  • 75 опыта, 500 монет\n"
     }
 
     test("planting bossbar renders the exact next action without a chat prefix") {

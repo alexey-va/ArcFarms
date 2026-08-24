@@ -101,6 +101,7 @@ import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmRules
 import ru.ruscrafting.farms.domain.FarmRewardPlanner
 import ru.ruscrafting.farms.domain.FarmRewardRecipient
+import ru.ruscrafting.farms.domain.FarmRewardItem
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.domain.FarmWaterPlanner
@@ -181,6 +182,12 @@ private data class SupplyKey(val zoneId: String, val kind: FarmSupplyKind)
 private data class PestNestKey(val zoneId: String, val position: FarmPlotPosition)
 private data class CareEntityKey(val zoneId: String, val targetId: Int)
 private data class DroughtGrowthRuntime(var startedAt: Long, var spawned: Int)
+private data class FarmCropHarvestCommit(
+    val crop: Material,
+    val replantData: Ageable?,
+    val fixedCrop: Boolean,
+    val now: Long,
+)
 private enum class FarmSupplyKind { TOOL, SEEDS, WATER }
 
 private val FARM_SOIL_TYPES = setOf(
@@ -201,6 +208,7 @@ private val FARM_WATER_DROP_TYPES = setOf(
     Material.POISONOUS_POTATO,
     Material.BEETROOT,
     Material.BEETROOT_SEEDS,
+    Material.SWEET_BERRIES,
 )
 private const val PATCH_PERSIST_INTERVAL = 10
 private const val FARM_WATER_RADIUS = 5
@@ -409,6 +417,13 @@ class ArcFarmsService(
     }
 
     fun onBreakLowest(event: BlockBreakEvent) {
+        if (
+            farmAt(event.block.location) != null &&
+            WorldEditToolGuard.ownsInteraction(event.player, event.player.inventory.itemInMainHand)
+        ) {
+            event.isCancelled = true
+            return
+        }
         if (event.player.uniqueId in adminInspectPlayers) {
             event.isCancelled = true
             inspectFarmBlock(event.player, event.block)
@@ -419,6 +434,13 @@ class ArcFarmsService(
     }
 
     fun onBreakHigh(event: BlockBreakEvent) {
+        if (
+            farmAt(event.block.location) != null &&
+            WorldEditToolGuard.ownsInteraction(event.player, event.player.inventory.itemInMainHand)
+        ) {
+            event.isCancelled = true
+            return
+        }
         if (event.player.uniqueId in adminInspectPlayers) {
             event.isCancelled = true
             return
@@ -553,6 +575,7 @@ class ArcFarmsService(
     }
 
     fun onInteractLowest(event: PlayerInteractEvent) {
+        if (WorldEditToolGuard.ownsInteraction(event.player, event.item)) return
         if (event.player.uniqueId in adminInspectPlayers) {
             val clicked = event.clickedBlock ?: return
             if (event.action != Action.PHYSICAL && (event.hand == null || event.hand == EquipmentSlot.HAND)) {
@@ -570,7 +593,8 @@ class ArcFarmsService(
         }
         if (event.hand != EquipmentSlot.HAND || event.action != Action.RIGHT_CLICK_BLOCK) return
         val item = event.player.inventory.itemInMainHand
-        val ownedInteraction = isFarmServiceItem(item) ||
+        val ownedInteraction = (clicked.type == Material.SWEET_BERRY_BUSH && clicked.type.name in runtime.settings.crops) ||
+            isFarmServiceItem(item) ||
             (runtime.state.phase == FarmPhase.PREPARATION && MaterialRules.isHoe(item)) ||
             (runtime.state.phase == FarmPhase.PLANTING && MaterialRules.cropForSeed(item) != null) ||
             (runtime.state.phase == FarmPhase.INCIDENT &&
@@ -579,6 +603,7 @@ class ArcFarmsService(
     }
 
     fun onInteract(event: PlayerInteractEvent) {
+        if (WorldEditToolGuard.ownsInteraction(event.player, event.item)) return
         if (event.player.uniqueId in adminInspectPlayers) {
             if (event.clickedBlock != null && event.action != Action.PHYSICAL) denyInteraction(event)
             return
@@ -600,6 +625,32 @@ class ArcFarmsService(
         val clicked = event.clickedBlock ?: return
         val player = event.player
         if (handleFarmCareInteraction(event, clicked, player)) return
+        farmAt(clicked.location)?.takeIf { runtime ->
+            clicked.type == Material.SWEET_BERRY_BUSH && clicked.type.name in runtime.settings.crops
+        }?.let { runtime ->
+            event.isCancelled = true
+            handleFarmCropHarvest(runtime, player, clicked) { commit ->
+                check(!commit.fixedCrop) { "Sweet berry harvest cannot use fixed crop recovery" }
+                val replantData = requireNotNull(commit.replantData)
+                clicked.setBlockData(replantData, false)
+                clicked.getRelative(org.bukkit.block.BlockFace.DOWN).takeIf { it.type == Material.FARMLAND }?.let { soil ->
+                    farmBlockLedger.captureActiveCrop(soil, runtime.settings.id)
+                }
+                debug.event(
+                    "farm_crop_committed",
+                    "player" to player.name,
+                    "zone" to runtime.settings.id,
+                    "crop" to commit.crop,
+                    "input" to "right_click",
+                    "drops" to "consumed_by_order",
+                )
+                if (settings.sounds) {
+                    player.playSound(clicked.location, Sound.BLOCK_SWEET_BERRY_BUSH_PICK_BERRIES, 0.7f, 1.05f)
+                }
+                handleFarmHarvest(runtime, player, commit.crop.name)
+            }
+            return
+        }
         farmAt(clicked.location)?.takeIf { isFarmServiceItem(player.inventory.itemInMainHand) }?.let { runtime ->
             event.isCancelled = true
             sendFarmCurrentTaskHint(player, runtime, "service_item_wrong_phase")
@@ -3442,9 +3493,32 @@ class ArcFarmsService(
     }
 
     private fun handleFarmBreakHigh(event: BlockBreakEvent, runtime: FarmRuntime) {
-        val player = event.player
+        event.isCancelled = true
+        handleFarmCropHarvest(runtime, event.player, event.block) { commit ->
+            event.isDropItems = false
+            event.expToDrop = 0
+            if (commit.fixedCrop) {
+                harvestFixedCrop(runtime, event.player, event.block, commit.now)
+                return@handleFarmCropHarvest
+            }
+            event.isCancelled = false
+            commitBrokenFarmCrop(
+                runtime = runtime,
+                player = event.player,
+                block = event.block,
+                crop = commit.crop,
+                replantData = requireNotNull(commit.replantData),
+            )
+        }
+    }
+
+    private fun handleFarmCropHarvest(
+        runtime: FarmRuntime,
+        player: Player,
+        block: Block,
+        commit: (FarmCropHarvestCommit) -> Unit,
+    ) {
         if (!hasAccess(player, runtime.settings.permission)) {
-            event.isCancelled = true
             sendChat(player, MessageKey.ZONE_LOCKED)
             return
         }
@@ -3457,32 +3531,27 @@ class ArcFarmsService(
                 FarmPhase.DELIVERY,
             )
         ) {
-            event.isCancelled = true
             sendFarmCurrentTaskHint(player, runtime, "block_break_during_${runtime.state.phase.name.lowercase()}")
             return
         }
-        val crop = event.block.type
+        val crop = block.type
         if (crop.name !in runtime.settings.crops) {
-            event.isCancelled = true
             sendFarmCurrentTaskHint(player, runtime, "wrong_block_break")
             return
         }
         val fixedCrop = MaterialRules.isFixedBlockCrop(crop)
-        val ageable = event.block.blockData as? Ageable
+        val ageable = block.blockData as? Ageable
         if (!fixedCrop && ageable == null) {
-            event.isCancelled = true
             sendFarmCurrentTaskHint(player, runtime, "unsupported_crop_break")
             return
         }
         if (ageable != null && ageable.age < ageable.maximumAge) {
-            event.isCancelled = true
             sendFarmCurrentTaskHint(player, runtime, "immature_crop_break")
             debug.event("farm_crop_rejected", "player" to player.name, "zone" to runtime.settings.id, "crop" to crop, "reason" to "immature")
             return
         }
         val now = clock()
         if (runtime.state.phase == FarmPhase.COOLDOWN) {
-            event.isCancelled = true
             sendActionBar(
                 player,
                 MessageKey.COOLDOWN,
@@ -3494,24 +3563,18 @@ class ArcFarmsService(
         if (runtime.state.phase == FarmPhase.IDLE) {
             tryStartFarmShift(runtime, player, now)
             if (runtime.state.phase == FarmPhase.IDLE) {
-                event.isCancelled = true
                 return
             }
-            event.isCancelled = true
             sendFarmCurrentTaskHint(player, runtime, "shift_started_by_crop_break")
             return
         }
         val order = currentOrder(runtime) ?: return
         if (crop.name !in order.required) {
-            event.isCancelled = true
             sendActionBar(player, MessageKey.FARM_WRONG_TARGET, mapOf("crops" to remainingCrops(runtime, order)))
             debug.event("farm_crop_rejected", "player" to player.name, "zone" to runtime.settings.id, "crop" to crop, "reason" to "not_requested")
             return
         }
         if ((runtime.state.progress[crop.name] ?: 0) >= order.required.getValue(crop.name)) {
-            event.isCancelled = true
-            event.isDropItems = false
-            event.expToDrop = 0
             val next = nextRequiredCrop(runtime.state, order)
             sendActionBar(
                 player,
@@ -3525,7 +3588,7 @@ class ArcFarmsService(
             if (settings.particles) {
                 player.spawnParticle(
                     Particle.DUST,
-                    event.block.location.toCenterLocation().add(0.0, 1.0, 0.0),
+                    block.location.toCenterLocation().add(0.0, 1.0, 0.0),
                     8,
                     0.32,
                     0.4,
@@ -3537,20 +3600,19 @@ class ArcFarmsService(
             debug.event("farm_crop_rejected", "player" to player.name, "zone" to runtime.settings.id, "crop" to crop, "reason" to "quota_complete")
             return
         }
-        val block = event.block
-        if (fixedCrop) {
-            event.isCancelled = true
-            event.isDropItems = false
-            event.expToDrop = 0
-            harvestFixedCrop(runtime, player, block, now)
-            return
-        }
-        val replantData = requireNotNull(ageable).let { (it.clone() as Ageable).also { data -> data.age = 0 } }
+        val replantData = ageable?.let { (it.clone() as Ageable).also { data -> data.age = 0 } }
+        commit(FarmCropHarvestCommit(crop, replantData, fixedCrop, now))
+    }
+
+    private fun commitBrokenFarmCrop(
+        runtime: FarmRuntime,
+        player: Player,
+        block: Block,
+        crop: Material,
+        replantData: Ageable,
+    ) {
         val existingItems = nearbyFarmDropIds(block.location, 2.0)
         val inventoryBefore = farmDropInventory(player)
-        event.isCancelled = false
-        event.isDropItems = false
-        event.expToDrop = 0
         debug.event("farm_crop_committed", "player" to player.name, "zone" to runtime.settings.id, "crop" to crop, "drops" to "consumed_by_order")
         val zoneId = runtime.settings.id
         val sequence = runtime.state.sequence
@@ -7769,6 +7831,7 @@ class ArcFarmsService(
             }
         }
 
+        var successfulCommands = 0
         reward.commands.forEachIndexed { index, command ->
             val commandRoot = command.substringBefore(' ').take(64)
             val success = runCatching { Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command) }
@@ -7783,6 +7846,7 @@ class ArcFarmsService(
                 "root" to commandRoot,
                 "success" to success,
             )
+            if (success) successfulCommands++
         }
 
         val parts = mutableListOf<Component>()
@@ -7803,23 +7867,32 @@ class ArcFarmsService(
                 mapOf("bundle" to locale.renderPath("reward.bundle.$bundleId", player)),
             )
         }
-        if (reward.fixedItemUnits > 0) {
+        fixedRewardItems(reward).forEach { item ->
             parts += locale.render(
                 MessageKey.FARM_REWARD_ITEMS,
                 player,
-                mapOf("amount" to locale.text(reward.fixedItemUnits)),
+                mapOf(
+                    "amount" to locale.text(item.amount),
+                    "item" to MaterialRules.itemComponent(MaterialRules.material(item.material)),
+                ),
             )
         }
-        if (reward.commands.isNotEmpty()) parts += locale.render(MessageKey.FARM_REWARD_SPECIAL, player)
+        if (successfulCommands > 0) parts += locale.render(MessageKey.FARM_REWARD_SPECIAL, player)
+        val summary = if (parts.isEmpty()) {
+            locale.render(MessageKey.FARM_REWARD_MISSED, player)
+        } else {
+            Component.join(JoinConfiguration.commas(true), parts)
+        }
         if (parts.isEmpty()) {
             sendActionBar(player, MessageKey.FARM_REWARD_MISSED)
         } else {
             sendActionBar(
                 player,
                 MessageKey.FARM_REWARD_RECEIVED,
-                mapOf("reward" to Component.join(JoinConfiguration.commas(true), parts)),
+                mapOf("reward" to summary),
             )
         }
+        sendChat(player, MessageKey.FARM_REWARD_CHAT, mapOf("reward" to summary))
         if (overflow) sendChat(player, MessageKey.FARM_REWARD_OVERFLOW)
         debug.event(
             "farm_reward_delivered",
@@ -7833,6 +7906,18 @@ class ArcFarmsService(
             "commands" to reward.commands.size,
             "overflow" to overflow,
         )
+    }
+
+    private fun fixedRewardItems(reward: PendingFarmReward): List<FarmRewardItem> {
+        var remaining = reward.fixedItemUnits
+        return buildList {
+            reward.items.forEach { item ->
+                if (remaining <= 0) return@forEach
+                val amount = minOf(item.amount, remaining)
+                add(item.copy(amount = amount))
+                remaining -= amount
+            }
+        }
     }
 
     private fun allowInteraction(key: String, cooldownMillis: Long): Boolean {

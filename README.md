@@ -335,7 +335,7 @@ button.
 ../arc-core/gradlew clean check shadowJar
 ```
 
-The deployable artifact is `build/libs/ArcFarms-0.17.0.jar`.
+The deployable artifact is `build/libs/ArcFarms-0.17.1.jar`.
 
 ## Isolated gameplay QA
 

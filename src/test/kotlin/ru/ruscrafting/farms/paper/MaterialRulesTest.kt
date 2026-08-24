@@ -12,6 +12,7 @@ class MaterialRulesTest : FunSpec({
             Material.CARROT to Material.CARROTS,
             Material.POTATO to Material.POTATOES,
             Material.BEETROOT_SEEDS to Material.BEETROOTS,
+            Material.SWEET_BERRIES to Material.SWEET_BERRY_BUSH,
         ).forEach { (seed, crop) ->
             MaterialRules.cropForSeed(seed) shouldBe crop
             MaterialRules.seedForCrop(crop) shouldBe seed
@@ -29,5 +30,7 @@ class MaterialRulesTest : FunSpec({
         (MaterialRules.cropComponent(Material.CARROTS) as TranslatableComponent).key() shouldBe "item.minecraft.carrot"
         (MaterialRules.cropComponent(Material.POTATOES) as TranslatableComponent).key() shouldBe "item.minecraft.potato"
         (MaterialRules.cropComponent(Material.BEETROOTS) as TranslatableComponent).key() shouldBe "item.minecraft.beetroot"
+        (MaterialRules.cropComponent(Material.SWEET_BERRY_BUSH) as TranslatableComponent).key() shouldBe
+            "item.minecraft.sweet_berries"
     }
 })

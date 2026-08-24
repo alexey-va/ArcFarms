@@ -181,6 +181,7 @@ enum class MessageKey(val path: String) {
     FARM_COMPLETED("farm.completed"),
     FARM_COMPLETED_SUBTITLE("farm.completed-subtitle"),
     FARM_REWARD_RECEIVED("farm.reward-received"),
+    FARM_REWARD_CHAT("farm.reward-chat"),
     FARM_REWARD_MISSED("farm.reward-missed"),
     FARM_REWARD_EXPERIENCE("farm.reward-experience"),
     FARM_REWARD_MONEY("farm.reward-money"),

@@ -7,11 +7,14 @@ data class FarmOrderProgressReconciliation(
 
 object FarmOrderProgressReconciler {
     fun reconcile(state: FarmShiftState, required: Map<String, Int>): FarmOrderProgressReconciliation {
-        if (state.phase in setOf(FarmPhase.IDLE, FarmPhase.COOLDOWN) || state.progress.keys != required.keys) {
+        if (
+            state.phase in setOf(FarmPhase.IDLE, FarmPhase.COOLDOWN) ||
+            !state.progress.keys.all(required::containsKey)
+        ) {
             return FarmOrderProgressReconciliation(state, false)
         }
         val progress = required.mapValues { (crop, quota) ->
-            state.progress.getValue(crop).coerceIn(0, quota)
+            (state.progress[crop] ?: 0).coerceIn(0, quota)
         }.toMutableMap()
         var completed = required.entries.sumOf { (crop, quota) -> progress.getValue(crop).coerceAtMost(quota) }
         val total = required.values.sum()
