@@ -462,11 +462,57 @@ class ArcFarmsConfigTest : FunSpec({
         rows.size shouldBe 15
         plain[0] shouldBe "Заказ"
         plain[3] shouldBe "Сейчас"
-        plain[4] shouldBe "Собирайте культуры заказа"
+        plain[4] shouldBe "Сбор урожая"
         plain[5] shouldBe "1250 / 3200"
-        plain[7] shouldBe "Урожай"
+        plain[6] shouldBe "Собирайте культуры из списка"
+        plain[8] shouldBe "Урожай"
         plain.last() shouldBe "Телега 39%"
         plain.any { "pumpkin" in it.lowercase() || "тыкв" in it.lowercase() } shouldBe true
+    }
+
+    test("farm scoreboard gives a concrete next action for every farm flow") {
+        val root = resourceTree()
+        val settings = ArcFarmsConfig.inspect(root)
+        val renderer = FarmScoreboardRenderer(ArcFarmsLocale(root) { settings })
+        val base = FarmScoreboardView(
+            orderId = "miners_rations",
+            phase = FarmPhase.PREPARATION,
+            done = 0,
+            total = 100,
+            required = mapOf("WHEAT" to 100),
+            cropProgress = emptyMap(),
+            cartPercent = 0,
+        )
+        val scenarios = listOf(
+            base.copy(phase = FarmPhase.IDLE) to "Заказ появится автоматически",
+            base to "Найдите метку и вспашите землю",
+            base.copy(phase = FarmPhase.PLANTING) to "Найдите метку и засейте грядки",
+            base.copy(phase = FarmPhase.CARE, careType = null) to "Следуйте к ближайшей метке",
+            base.copy(phase = FarmPhase.HARVESTING) to "Собирайте культуры из списка",
+            base.copy(phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.PESTS) to
+                "У красных меток ломайте гнёзда",
+            base.copy(phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.DROUGHT) to
+                "У меток поливайте сухую землю",
+            base.copy(phase = FarmPhase.DELIVERY) to "Берите ящики у телеги",
+            base.copy(phase = FarmPhase.DELIVERY, carrying = true) to "Несите ящик к фиолетовой метке",
+            base.copy(phase = FarmPhase.COOLDOWN) to "Новый заказ появится позже",
+        ) + mapOf(
+            FarmCareType.SEEDER to "Ведите лошадь по меткам",
+            FarmCareType.WEEDS to "Ищите подсвеченные корни",
+            FarmCareType.IRRIGATION to "Открывайте вентили по порядку",
+            FarmCareType.POLLINATION to "Пыльцу из улья несите к цветам",
+            FarmCareType.STORM_COVERS to "Закрепите отмеченные углы",
+            FarmCareType.SCARECROWS to "Дважды почините каждое пугало",
+            FarmCareType.ANIMAL_RESCUE to "Ведите животных к зелёной метке",
+            FarmCareType.DISEASE to "Обработайте каждый очаг дважды",
+            FarmCareType.MOLES to "Бейте свежие холмики мотыгой",
+        ).map { (type, hint) -> base.copy(phase = FarmPhase.CARE, careType = type) to hint }
+
+        scenarios.forEach { (view, expectedHint) ->
+            val rows = renderer.rows(view, null)
+            rows.size shouldBe 11
+            PlainTextComponentSerializer.plainText().serialize(rows[6]) shouldBe expectedHint
+        }
     }
 }) {
     companion object {

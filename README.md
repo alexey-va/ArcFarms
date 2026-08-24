@@ -73,8 +73,9 @@ fill it, and accepted crops are consumed by the order instead of dropping.
 
 While a player is inside an active farm, the optional `ui.farm-scoreboard`
 sidebar expands that compact guidance into the contract name, current action,
-phase progress, every crop quota, and cart fill. It restores the player's prior
-scoreboard on exit, reload, quit, or shutdown. If another plugin replaces the
+contextual next-action hint, phase progress, every crop quota, and cart fill.
+It restores the player's prior scoreboard on exit, reload, quit, or shutdown.
+If another plugin replaces the
 farm sidebar during a visit, ArcFarms yields until the player next enters the
 farm instead of fighting it and causing flicker. The portable default does not
 replace an existing sidebar; `replace-existing` is an explicit runtime choice.

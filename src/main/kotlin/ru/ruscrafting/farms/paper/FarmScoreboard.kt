@@ -39,6 +39,7 @@ internal class FarmScoreboardRenderer(
                 "total" to locale.text(view.total.coerceAtLeast(1)),
             ),
         ))
+        add(hint(view, audience))
         add(Component.empty())
         add(locale.renderPath("scoreboard.section.crops", audience))
         view.required.entries.take(MAX_CROP_ROWS).forEach { (cropName, required) ->
@@ -52,7 +53,6 @@ internal class FarmScoreboardRenderer(
                 ),
             ))
         }
-        add(Component.empty())
         add(locale.renderPath(
             "scoreboard.cart",
             audience,
@@ -85,6 +85,29 @@ internal class FarmScoreboardRenderer(
             mapOf("care" to locale.renderPath("care.${type.name.lowercase()}.name", audience))
         }.orEmpty()
         return locale.renderPath(path, audience, values)
+    }
+
+    private fun hint(view: FarmScoreboardView, audience: CommandSender?): Component {
+        val path = when (view.phase) {
+            FarmPhase.IDLE -> "scoreboard.hint.idle"
+            FarmPhase.PREPARATION -> "scoreboard.hint.preparation"
+            FarmPhase.PLANTING -> "scoreboard.hint.planting"
+            FarmPhase.CARE -> view.careType?.let { "scoreboard.hint.care.${it.name.lowercase()}" }
+                ?: "scoreboard.hint.care.generic"
+            FarmPhase.HARVESTING -> "scoreboard.hint.harvesting"
+            FarmPhase.INCIDENT -> if (view.incidentType == FarmIncidentType.DROUGHT) {
+                "scoreboard.hint.drought"
+            } else {
+                "scoreboard.hint.pests"
+            }
+            FarmPhase.DELIVERY -> if (view.carrying) {
+                "scoreboard.hint.delivery-carrying"
+            } else {
+                "scoreboard.hint.delivery"
+            }
+            FarmPhase.COOLDOWN -> "scoreboard.hint.cooldown"
+        }
+        return locale.renderPath(path, audience)
     }
 
     private fun Int?.orZero(): Int = this ?: 0

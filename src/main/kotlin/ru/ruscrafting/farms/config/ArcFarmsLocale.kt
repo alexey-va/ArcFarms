@@ -186,6 +186,16 @@ enum class MessageKey(val path: String) {
     FARM_SCOREBOARD_OBJECTIVE_DELIVERY("scoreboard.objective.delivery"),
     FARM_SCOREBOARD_OBJECTIVE_DELIVERY_CARRYING("scoreboard.objective.delivery-carrying"),
     FARM_SCOREBOARD_OBJECTIVE_COOLDOWN("scoreboard.objective.cooldown"),
+    FARM_SCOREBOARD_HINT_IDLE("scoreboard.hint.idle"),
+    FARM_SCOREBOARD_HINT_PREPARATION("scoreboard.hint.preparation"),
+    FARM_SCOREBOARD_HINT_PLANTING("scoreboard.hint.planting"),
+    FARM_SCOREBOARD_HINT_CARE_GENERIC("scoreboard.hint.care.generic"),
+    FARM_SCOREBOARD_HINT_HARVESTING("scoreboard.hint.harvesting"),
+    FARM_SCOREBOARD_HINT_PESTS("scoreboard.hint.pests"),
+    FARM_SCOREBOARD_HINT_DROUGHT("scoreboard.hint.drought"),
+    FARM_SCOREBOARD_HINT_DELIVERY("scoreboard.hint.delivery"),
+    FARM_SCOREBOARD_HINT_DELIVERY_CARRYING("scoreboard.hint.delivery-carrying"),
+    FARM_SCOREBOARD_HINT_COOLDOWN("scoreboard.hint.cooldown"),
     LUMBER_STARTED("lumber.started"),
     LUMBER_WRONG_SPECIES("lumber.wrong-species"),
     LUMBER_PROCESSING("lumber.processing"),
@@ -298,6 +308,7 @@ class ArcFarmsLocale(
                 add("care.${type.name.lowercase()}.name")
                 add("care.${type.name.lowercase()}.instruction")
                 add("care.${type.name.lowercase()}.entry")
+                add("scoreboard.hint.care.${type.name.lowercase()}")
             }
             settings.farms.flatMapTo(this) { zone ->
                 zone.orders.map { "customer.${it.customerType.name.lowercase()}.name" }
