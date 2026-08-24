@@ -35,14 +35,14 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().permission shouldStartWith "arcfarms."
         settings.lumbermills.single().permission shouldStartWith "arcfarms."
         settings.mines.all { it.permission.startsWith("arcfarms.") } shouldBe true
-        settings.farms.single().orders.maxOf { order -> order.required.values.sum() } shouldBe 5_200
+        settings.farms.single().orders.maxOf { order -> order.required.values.sum() } shouldBe 2_080
         settings.farms.single().orders.associate { it.id to it.required } shouldBe mapOf(
-            "miners_rations" to mapOf("WHEAT" to 1_600, "CARROTS" to 800, "POTATOES" to 800),
-            "bakery_supply" to mapOf("WHEAT" to 2_400, "BEETROOTS" to 800),
-            "market_crates" to mapOf("CARROTS" to 800, "POTATOES" to 800, "BEETROOTS" to 800),
-            "harvest_festival" to mapOf("WHEAT" to 2_000, "CARROTS" to 1_200, "POTATOES" to 1_200, "BEETROOTS" to 800),
-            "deep_mine_relief" to mapOf("WHEAT" to 2_000, "CARROTS" to 1_200, "POTATOES" to 1_600),
-            "master_baker_request" to mapOf("WHEAT" to 3_600, "BEETROOTS" to 1_200),
+            "miners_rations" to mapOf("WHEAT" to 640, "CARROTS" to 320, "POTATOES" to 320),
+            "bakery_supply" to mapOf("WHEAT" to 960, "BEETROOTS" to 320),
+            "market_crates" to mapOf("CARROTS" to 320, "POTATOES" to 320, "BEETROOTS" to 320),
+            "harvest_festival" to mapOf("WHEAT" to 800, "CARROTS" to 480, "POTATOES" to 480, "BEETROOTS" to 320),
+            "deep_mine_relief" to mapOf("WHEAT" to 800, "CARROTS" to 480, "POTATOES" to 640),
+            "master_baker_request" to mapOf("WHEAT" to 1_440, "BEETROOTS" to 480),
         )
         settings.farms.single().rareOrderChancePercent shouldBe 20
         settings.farms.single().orders.count { it.rarity == FarmContractRarity.RARE } shouldBe 3
@@ -61,6 +61,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.destinations.getValue("farm").world shouldBe "sp11"
         settings.requiresWorldGuard shouldBe true
         settings.farms.single().incidentQuota shouldBe 4
+        settings.farms.single().incidentTriggerPercents shouldContainExactly listOf(30, 65)
         settings.farms.single().droughtPatches shouldBe 3
         settings.farms.single().droughtCoveragePercent shouldBe 35
         settings.farms.single().droughtMinBeds shouldBe 30
@@ -102,6 +103,11 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().delivery.pickup.z shouldBe 463.5
         settings.farms.single().delivery.itemMaterial shouldBe "BARREL"
         settings.farms.single().delivery.itemCustomModelData shouldBe 0
+        settings.farms.single().delivery.displayTransform shouldBe FarmItemDisplayTransform.GROUND
+        settings.farms.single().delivery.displayScale shouldBe 2.0f
+        settings.farms.single().delivery.displayYOffset shouldBe 0.15
+        settings.farms.single().delivery.carriedScale shouldBe 1.5f
+        settings.farms.single().delivery.carriedYOffset shouldBe 0.65
         settings.farms.single().supplies.tool.x shouldBe 212.5
         settings.farms.single().supplies.tool.z shouldBe 448.5
         settings.farms.single().supplies.seeds.z shouldBe 453.5
@@ -119,7 +125,10 @@ class ArcFarmsConfigTest : FunSpec({
         val classicSettings = ArcFarmsConfig.inspect(repositoryRoot.resolve("classic/plugins/ArcFarms"))
         classicSettings.farmScoreboard.provider shouldBe FarmScoreboardProvider.TAB
         classicSettings.farms.single().delivery.itemMaterial shouldBe "PAPER"
-        classicSettings.farms.single().delivery.itemCustomModelData shouldBe 10_774
+        classicSettings.farms.single().delivery.itemCustomModelData shouldBe 10_749
+        classicSettings.farms.single().delivery.displayScale shouldBe 2.4f
+        classicSettings.farms.single().delivery.displayYOffset shouldBe 0.15
+        classicSettings.farms.single().delivery.carriedScale shouldBe 2.0f
         classicSettings.farms.single().careVisuals.getValue(FarmCareRole.VALVE).customModelData shouldBe 11_859
         classicSettings.farms.single().careVisuals.getValue(FarmCareRole.SCARECROW).customModelData shouldBe 12_160
         classicSettings.farms.single().careVisuals.getValue(FarmCareRole.PEN).customModelData shouldBe 11_864
@@ -130,8 +139,9 @@ class ArcFarmsConfigTest : FunSpec({
         classicSettings.farms.single().contractCartVisual.material shouldBe "PAPER"
         classicSettings.farms.single().contractCartVisual.customModelData shouldBe 10_747
         classicSettings.farms.single().contractCartVisual.displayTransform shouldBe FarmItemDisplayTransform.GROUND
-        classicSettings.farms.single().contractCartVisual.scale shouldBe 4.0f
-        classicSettings.farms.single().contractCartVisual.yOffset shouldBe 0.75
+        classicSettings.farms.single().contractCartVisual.scale shouldBe 4.4f
+        classicSettings.farms.single().contractCartVisual.yOffset shouldBe 0.28
+        classicSettings.farms.single().contractCartVisual.loadScale shouldBe 1.35f
         classicSettings.farms.single().rewards.money.amountCents shouldBe 50_000
         classicSettings.farms.single().rewards.money.chancePercent shouldBe 100
         classicSettings.farms.single().rewards.items.single().id shouldBe "golden_apple"
@@ -308,7 +318,7 @@ class ArcFarmsConfigTest : FunSpec({
         )
 
         PlainTextComponentSerializer.plainText().serialize(rendered) shouldBe
-            "Заказ • Пшеница 0/2, Морковь 0/2 • 0/4"
+            "Заказ • Пшеница 0/2, Морковь 0/2"
     }
 
     test("planting bossbar renders the exact next action without a chat prefix") {

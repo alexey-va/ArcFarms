@@ -125,6 +125,48 @@ class ArcFarmsStateRepositoryTest : FunSpec({
         ArcFarmsStateRepository(root).use { repository -> repository.load() shouldBe loaded }
     }
 
+    test("legacy resolved incident becomes the first completed incident") {
+        val root = Files.createTempDirectory("arcfarms-state-incident-legacy-test")
+        val data = root.resolve("data")
+        Files.createDirectories(data)
+        Files.writeString(
+            data.resolve("state.json"),
+            """
+            {
+              "schemaVersion": 1,
+              "farms": {
+                "legacy_farm": {
+                  "phase": "HARVESTING",
+                  "sequence": 7,
+                  "orderId": "legacy_order",
+                  "progress": {"WHEAT": 3},
+                  "incidentCrop": "WHEAT",
+                  "incidentProgress": 1,
+                  "incidentRequired": 1,
+                  "incidentResolved": true,
+                  "startedAt": 1000,
+                  "cooldownEndsAt": 0,
+                  "outcome": "NONE",
+                  "contributors": {}
+                }
+              },
+              "lumbermills": {},
+              "mines": {},
+              "stats": {}
+            }
+            """.trimIndent(),
+        )
+
+        val loaded = ArcFarmsStateRepository(root).use(ArcFarmsStateRepository::load)
+
+        loaded.farms.getValue("legacy_farm").also { farm ->
+            farm.incidentsResolved shouldBe 1
+            farm.incidentCrop shouldBe null
+            farm.incidentProgress shouldBe 0
+            farm.incidentRequired shouldBe 0
+        }
+    }
+
     test("current farm state fields survive an atomic round trip") {
         val root = Files.createTempDirectory("arcfarms-state-current-test")
         val patch = listOf(

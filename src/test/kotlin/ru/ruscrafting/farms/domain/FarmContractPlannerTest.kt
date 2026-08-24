@@ -42,4 +42,13 @@ class FarmContractPlannerTest : FunSpec({
         FarmContractPlanner.harvestMilestone(320, 320) shouldBe 4
         FarmContractPlanner.harvestMilestone(400, 320) shouldBe 4
     }
+
+    test("harvest feedback checkpoints cover every ten percent without exceeding completion") {
+        FarmContractPlanner.harvestCheckpoint(0, 1_000) shouldBe 0
+        FarmContractPlanner.harvestCheckpoint(99, 1_000) shouldBe 0
+        FarmContractPlanner.harvestCheckpoint(100, 1_000) shouldBe 1
+        FarmContractPlanner.harvestCheckpoint(650, 1_000) shouldBe 6
+        FarmContractPlanner.harvestCheckpoint(1_000, 1_000) shouldBe 10
+        FarmContractPlanner.harvestCheckpoint(2_000, 1_000) shouldBe 10
+    }
 })

@@ -89,7 +89,7 @@ data class FarmZoneSettings(
     val placementMinObjectiveDistance: Int,
     val placementMaxPlayerDistance: Int,
     val placementSearchRadius: Int,
-    val incidentTriggerPercent: Int,
+    val incidentTriggerPercents: List<Int>,
     val incidentQuota: Int,
     val droughtPatches: Int,
     val droughtCoveragePercent: Int,
@@ -224,6 +224,11 @@ data class FarmDeliverySettings(
     val pickup: FarmSupplyPointSettings,
     val itemMaterial: String,
     val itemCustomModelData: Int,
+    val displayTransform: FarmItemDisplayTransform,
+    val displayScale: Float,
+    val displayYOffset: Double,
+    val carriedScale: Float,
+    val carriedYOffset: Double,
 )
 
 data class FarmOrderSettings(
@@ -364,6 +369,9 @@ class ArcFarmsConfig private constructor(
                     require(orderIncidentTypes.isNotEmpty() && orderIncidentTypes.all(incidentTypes::contains)) {
                         "Farm order $orderId must use incident types enabled in farm-zones.$id.incident-types"
                     }
+                    require(orderIncidentTypes.size >= minOf(2, incidentTypes.size)) {
+                        "Farm order $orderId must define both incident types so repeated incidents stay varied"
+                    }
                     FarmOrderSettings(
                         id = orderId,
                         required = required.toMap(),
@@ -423,7 +431,7 @@ class ArcFarmsConfig private constructor(
                     yOffset = section.finiteDouble("$contractCartPath.y-offset", 0.15, -4.0, 4.0),
                     yawOffset = section.finiteFloat("$contractCartPath.yaw-offset", 0.0f, -360.0f, 360.0f),
                     loadYOffset = section.finiteDouble("$contractCartPath.load-y-offset", 0.4, -2.0, 4.0),
-                    loadScale = section.finiteFloat("$contractCartPath.load-scale", 0.48f, 0.05f, 4.0f),
+                    loadScale = section.finiteFloat("$contractCartPath.load-scale", 1.1f, 0.05f, 4.0f),
                 )
                 val delivery = parseFarmDelivery(section, reference.world, id)
                 val supplies = parseFarmSupplies(section, reference.world, id)
@@ -513,7 +521,17 @@ class ArcFarmsConfig private constructor(
                     placementMinObjectiveDistance = placementMinObjectiveDistance,
                     placementMaxPlayerDistance = placementMaxPlayerDistance,
                     placementSearchRadius = placementSearchRadius,
-                    incidentTriggerPercent = section.int("incident-trigger-percent", 35).checked("incident-trigger-percent", 1, 99),
+                    incidentTriggerPercents = section.stringList("incident-trigger-percents").map { value ->
+                        value.toIntOrNull()?.checked("incident-trigger-percents", 1, 99)
+                            ?: error("farm-zones.$id.incident-trigger-percents must contain integers")
+                    }.also { values ->
+                        require(values.size in 2..4 && values == values.distinct().sorted()) {
+                            "farm-zones.$id.incident-trigger-percents must contain 2..4 increasing unique percentages"
+                        }
+                        require(values.zipWithNext().all { (left, right) -> right - left >= 15 }) {
+                            "farm-zones.$id incident triggers must be at least 15 percentage points apart"
+                        }
+                    },
                     incidentQuota = section.int("incident-quota", 4).checked("incident-quota", 1, 64),
                     droughtPatches = droughtPatches,
                     droughtCoveragePercent = droughtCoveragePercent,
@@ -750,6 +768,17 @@ class ArcFarmsConfig private constructor(
                 itemMaterial = materialName(section.string("delivery.item.material", "BARREL")),
                 itemCustomModelData = section.int("delivery.item.custom-model-data", 0)
                     .checked("delivery.item.custom-model-data", 0, 2_000_000),
+                displayTransform = section.string("delivery.display-transform", "GROUND")
+                    .trim()
+                    .uppercase()
+                    .let { raw ->
+                        FarmItemDisplayTransform.entries.firstOrNull { it.name == raw }
+                            ?: error("farm-zones.$zoneId.delivery.display-transform must be GROUND, FIXED, or HEAD")
+                    },
+                displayScale = section.finiteFloat("delivery.display-scale", 2.0f, 0.05f, 8.0f),
+                displayYOffset = section.finiteDouble("delivery.display-y-offset", 0.15, -2.0, 4.0),
+                carriedScale = section.finiteFloat("delivery.carried-scale", 1.5f, 0.05f, 8.0f),
+                carriedYOffset = section.finiteDouble("delivery.carried-y-offset", 0.65, -1.0, 3.0),
             )
         }
 

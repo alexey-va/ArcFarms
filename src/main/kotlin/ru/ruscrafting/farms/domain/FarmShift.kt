@@ -147,13 +147,15 @@ data class FarmOrder(
 }
 
 data class FarmRules(
-    val incidentTriggerPercent: Int,
+    val incidentTriggerPercents: List<Int>,
     val incidentQuota: Int,
     val cooldownMillis: Long,
     val droughtQuota: Int = incidentQuota,
 ) {
     init {
-        require(incidentTriggerPercent in 1..99)
+        require(incidentTriggerPercents.isNotEmpty() && incidentTriggerPercents.size <= 4)
+        require(incidentTriggerPercents.all { it in 1..99 })
+        require(incidentTriggerPercents == incidentTriggerPercents.distinct().sorted())
         require(incidentQuota in 1..64)
         require(cooldownMillis in 0..3_600_000)
         require(droughtQuota in 1..64)
@@ -173,6 +175,7 @@ data class FarmShiftState(
     val preparationProgress: Int = 0,
     val plantingProgress: Int = 0,
     val preparationRequired: Int = 0,
+    val harvestCheckpoint: Int = 0,
     val harvestMilestone: Int = 0,
     val careType: FarmCareType? = null,
     val careTargets: List<FarmCareTarget> = emptyList(),
@@ -181,6 +184,7 @@ data class FarmShiftState(
     val incidentProgress: Int = 0,
     val incidentRequired: Int = 0,
     val incidentResolved: Boolean = false,
+    val incidentsResolved: Int = 0,
     val droughtPlots: Set<FarmPlotPosition> = emptySet(),
     val droughtDamagedPlots: Set<FarmPlotPosition> = emptySet(),
     val pestNestsInitialized: Boolean = false,
@@ -328,6 +332,12 @@ object FarmShiftEngine {
             events += ShiftEvent.HARVEST_MILESTONE
         }
 
+        val checkpoint = FarmContractPlanner.harvestCheckpoint(state.completed(order), order.totalRequired)
+        if (checkpoint > state.harvestCheckpoint) {
+            state = state.copy(harvestCheckpoint = checkpoint)
+            if (checkpoint < 10) events += ShiftEvent.HARVEST_CHECKPOINT
+        }
+
         if (state.completed(order) >= order.totalRequired && state.phase != FarmPhase.INCIDENT) {
             state = state.copy(
                 phase = FarmPhase.DELIVERY,
@@ -346,8 +356,9 @@ object FarmShiftEngine {
             return EngineResult(state, true, contribution, events)
         }
 
-        val triggerReached = state.completed(order) * 100 >= order.totalRequired * rules.incidentTriggerPercent
-        if (!state.incidentResolved && state.incidentCrop == null && triggerReached) {
+        val nextTrigger = rules.incidentTriggerPercents.getOrNull(state.incidentsResolved)
+        val triggerReached = nextTrigger != null && state.completed(order) * 100 >= order.totalRequired * nextTrigger
+        if (state.incidentCrop == null && triggerReached) {
             val incidentCrop = remainingCrop(state, order)
             if (incidentCrop != null) {
                 state = state.copy(
@@ -356,6 +367,7 @@ object FarmShiftEngine {
                     incidentType = incidentType,
                     incidentProgress = 0,
                     incidentRequired = if (incidentType == FarmIncidentType.DROUGHT) rules.droughtQuota else rules.incidentQuota,
+                    incidentResolved = false,
                     droughtPlots = emptySet(),
                     droughtDamagedPlots = emptySet(),
                     pestNests = emptyList(),
@@ -584,7 +596,11 @@ object FarmShiftEngine {
         val state = current.copy(
             phase = FarmPhase.HARVESTING,
             incidentResolved = true,
+            incidentsResolved = current.incidentsResolved + 1,
+            incidentCrop = null,
             incidentType = null,
+            incidentProgress = 0,
+            incidentRequired = 0,
             droughtPlots = emptySet(),
             pestNests = emptyList(),
             pestNestsInitialized = false,

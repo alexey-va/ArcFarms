@@ -76,7 +76,7 @@ farm-zones:
         y-offset: 0.15
         yaw-offset: 0.0
         load-y-offset: 0.4
-        load-scale: 0.48
+        load-scale: 1.1
     care-visuals:
       seeder-horse: {material: SADDLE, custom-model-data: 0}
       seeder-waypoint: {material: WHEAT_SEEDS, custom-model-data: 0}
@@ -90,7 +90,7 @@ farm-zones:
       pen: {material: OAK_FENCE_GATE, custom-model-data: 0}
       diseased-crop: {material: FERMENTED_SPIDER_EYE, custom-model-data: 0}
       mole-mound: {material: MUD, custom-model-data: 0}
-    incident-trigger-percent: 35
+    incident-trigger-percents: [30, 65]
     incident-quota: 4
     drought-patches: 3
     drought-coverage-percent: 35
@@ -125,6 +125,11 @@ farm-zones:
       spawn-radius: 8
       pickup: {x: 212.5, y: 49.0, z: 463.5}
       item: {material: BARREL, custom-model-data: 0}
+      display-transform: GROUND
+      display-scale: 2.0
+      display-y-offset: 0.15
+      carried-scale: 1.5
+      carried-y-offset: 0.65
     rewards:
       # Every reward rolls independently. Commands run as console after the grant is durably claimed.
       # Supported command placeholders: %player%, %uuid%, %zone%, %sequence%, %contribution%, %rank%, %grant_id%.
@@ -150,44 +155,44 @@ farm-zones:
     orders:
       miners_rations:
         rarity: COMMON
-        crops: [WHEAT:1600, CARROTS:800, POTATOES:800]
+        crops: [WHEAT:640, CARROTS:320, POTATOES:320]
         care-types: [MOLES, IRRIGATION, ANIMAL_RESCUE]
         incident-types: [DROUGHT, PESTS]
         customer: MINE_SUPPLIER
         cart-load: {material: POTATO, custom-model-data: 0}
       bakery_supply:
         rarity: COMMON
-        crops: [WHEAT:2400, BEETROOTS:800]
+        crops: [WHEAT:960, BEETROOTS:320]
         care-types: [POLLINATION, DISEASE, IRRIGATION]
         incident-types: [PESTS, DROUGHT]
         customer: BAKER
         cart-load: {material: WHEAT, custom-model-data: 0}
       market_crates:
         rarity: COMMON
-        crops: [CARROTS:800, POTATOES:800, BEETROOTS:800]
+        crops: [CARROTS:320, POTATOES:320, BEETROOTS:320]
         care-types: [WEEDS, SCARECROWS, ANIMAL_RESCUE]
         incident-types: [PESTS, DROUGHT]
         customer: MARKET_TRADER
         cart-load: {material: CARROT, custom-model-data: 0}
       harvest_festival:
         rarity: RARE
-        crops: [WHEAT:2000, CARROTS:1200, POTATOES:1200, BEETROOTS:800]
+        crops: [WHEAT:800, CARROTS:480, POTATOES:480, BEETROOTS:320]
         care-types: [POLLINATION, STORM_COVERS, SCARECROWS]
-        incident-types: [PESTS]
+        incident-types: [PESTS, DROUGHT]
         customer: MARKET_TRADER
         cart-load: {material: HAY_BLOCK, custom-model-data: 0}
       deep_mine_relief:
         rarity: RARE
-        crops: [WHEAT:2000, CARROTS:1200, POTATOES:1600]
+        crops: [WHEAT:800, CARROTS:480, POTATOES:640]
         care-types: [MOLES, IRRIGATION, DISEASE]
-        incident-types: [DROUGHT]
+        incident-types: [DROUGHT, PESTS]
         customer: MINE_SUPPLIER
         cart-load: {material: BAKED_POTATO, custom-model-data: 0}
       master_baker_request:
         rarity: RARE
-        crops: [WHEAT:3600, BEETROOTS:1200]
+        crops: [WHEAT:1440, BEETROOTS:480]
         care-types: [POLLINATION, DISEASE, STORM_COVERS]
-        incident-types: [PESTS]
+        incident-types: [PESTS, DROUGHT]
         customer: BAKER
         cart-load: {material: BREAD, custom-model-data: 0}
 

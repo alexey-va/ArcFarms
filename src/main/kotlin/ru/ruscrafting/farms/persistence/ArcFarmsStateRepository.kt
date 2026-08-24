@@ -29,6 +29,21 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
 
     fun load(): ArcFarmsState {
         val state = store.load()
+        val farms = state.farms.mapValues { (_, farm) ->
+            val resolved = maxOf(farm.incidentsResolved, if (farm.incidentResolved) 1 else 0)
+            val completedLegacyIncident = farm.phase == FarmPhase.HARVESTING &&
+                farm.incidentResolved && farm.incidentType == null && farm.incidentCrop != null
+            if (resolved == farm.incidentsResolved && !completedLegacyIncident) {
+                farm
+            } else {
+                farm.copy(
+                    incidentsResolved = resolved,
+                    incidentCrop = if (completedLegacyIncident) null else farm.incidentCrop,
+                    incidentProgress = if (completedLegacyIncident) 0 else farm.incidentProgress,
+                    incidentRequired = if (completedLegacyIncident) 0 else farm.incidentRequired,
+                )
+            }
+        }
         val stats = state.stats.mapValues { (_, playerStats) ->
             if (playerStats.weeklyContributions == null) {
                 playerStats.copy(weeklyContributions = emptyMap())
@@ -36,7 +51,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 playerStats
             }
         }
-        return if (stats == state.stats) state else state.copy(stats = stats)
+        return if (stats == state.stats && farms == state.farms) state else state.copy(farms = farms, stats = stats)
     }
 
     fun saveAsync(state: ArcFarmsState): CompletableFuture<Unit> = writer.submit(state)
@@ -90,7 +105,9 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 "Farm crop progress is invalid"
             }
             require(farm.progress.values.all { it in 0..100_000 }) { "Farm crop progress is outside supported bounds" }
+            require(farm.harvestCheckpoint in 0..10) { "Farm harvest checkpoint is invalid" }
             require(farm.harvestMilestone in 0..4) { "Farm harvest milestone is invalid" }
+            require(farm.incidentsResolved in 0..4) { "Farm incident completion count is invalid" }
             listOf(farm.preparationCrop, farm.incidentCrop).filterNotNull().forEach {
                 require(CONTENT_ID.matches(it)) { "Farm crop id is invalid" }
             }
@@ -186,6 +203,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                         farm.preparationCrop == null && !farm.preparationReleased && farm.careType == null &&
                         farm.careTargets.isEmpty() && farm.incidentCrop == null && farm.incidentType == null &&
                         farm.incidentProgress == 0 && farm.incidentRequired == 0 && !farm.incidentResolved &&
+                        farm.incidentsResolved == 0 && farm.harvestCheckpoint == 0 && farm.harvestMilestone == 0 &&
                         farm.droughtPlots.isEmpty() && farm.droughtDamagedPlots.isEmpty() &&
                         !farm.pestNestsInitialized && farm.pestNests.isEmpty() && farm.pestAlive == 0 &&
                         farm.pestDamagedCrops.isEmpty() && farm.deliveryPosition == null && farm.deliveredCrates.isEmpty() &&

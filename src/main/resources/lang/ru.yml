@@ -194,7 +194,7 @@ farm:
   preparation-bossbar: '<order> <color:#707a76>•</color> <color:#55d98b>Вспашка <done>/<total></color> <color:#707a76>•</color> <color:#f2fff7>ПКМ мотыгой</color>'
   planting-bossbar: '<order> <color:#707a76>•</color> <color:#55d98b>Посев <crop> <done>/<total></color> <color:#707a76>•</color> <color:#f2fff7>ПКМ семенами</color>'
   care-bossbar: '<order> <color:#707a76>•</color> <color:#45c8f5><instruction></color> <color:#f2fff7><done>/<total></color>'
-  bossbar: '<order> <color:#707a76>•</color> <color:#55d98b><requirements></color> <color:#707a76>•</color> <color:#f2fff7><done>/<total></color>'
+  bossbar: '<order> <color:#707a76>•</color> <color:#55d98b><requirements></color>'
   incident-bossbar: '<order> <color:#707a76>•</color> <color:#ff5f6d>Гнёзда <nests></color> <color:#707a76>•</color> <color:#f2fff7>вредители <pests></color>'
   drought-bossbar: '<order> <color:#707a76>•</color> <color:#ff7a45>Засуха</color> <color:#707a76>•</color> <color:#45c8f5>полив <done>/<total></color>'
   delivery-bossbar: '<order> <color:#707a76>•</color> <color:#ffc857>Ящики <done>/<total></color> <color:#707a76>•</color> <color:#f2fff7>ПКМ, затем к приёмке</color>'

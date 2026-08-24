@@ -25,4 +25,9 @@ object FarmContractPlanner {
         require(total > 0) { "Farm contract total must be positive" }
         return ((completed.coerceIn(0, total).toLong() * 4L) / total.toLong()).toInt().coerceIn(0, 4)
     }
+
+    fun harvestCheckpoint(completed: Int, total: Int): Int {
+        require(total > 0) { "Farm contract total must be positive" }
+        return ((completed.coerceIn(0, total).toLong() * 10L) / total.toLong()).toInt().coerceIn(0, 10)
+    }
 }

@@ -8,7 +8,7 @@ import java.util.UUID
 class FarmShiftEngineTest : FunSpec({
     val order = FarmOrder("test_order", linkedMapOf("WHEAT" to 2, "CARROTS" to 2))
     val rules = FarmRules(
-        incidentTriggerPercent = 50,
+        incidentTriggerPercents = listOf(50),
         incidentQuota = 1,
         cooldownMillis = 5_000,
     )
@@ -61,6 +61,7 @@ class FarmShiftEngineTest : FunSpec({
         val rescued = FarmShiftEngine.defeatPest(activePestEncounter(incident.state), player)
         rescued.state.phase shouldBe FarmPhase.HARVESTING
         rescued.state.incidentResolved shouldBe true
+        rescued.state.incidentsResolved shouldBe 1
         rescued.events shouldContainExactly listOf(
             ShiftEvent.INCIDENT_PROGRESS,
             ShiftEvent.INCIDENT_RESOLVED,
@@ -102,6 +103,33 @@ class FarmShiftEngineTest : FunSpec({
         repeat(3) { state = FarmShiftEngine.waterDrySoil(state, player).state }
         state.phase shouldBe FarmPhase.INCIDENT
         FarmShiftEngine.waterDrySoil(state, player).state.phase shouldBe FarmPhase.HARVESTING
+    }
+
+    test("a long harvest triggers two spaced incidents and never a third") {
+        val longOrder = FarmOrder("long_order", linkedMapOf("WHEAT" to 20))
+        val longRules = FarmRules(
+            incidentTriggerPercents = listOf(30, 65),
+            incidentQuota = 1,
+            cooldownMillis = 5_000,
+        )
+        var state = FarmShiftState(
+            phase = FarmPhase.HARVESTING,
+            orderId = longOrder.id,
+            progress = mapOf("WHEAT" to 0),
+        )
+        val incidentStarts = mutableListOf<Int>()
+        repeat(20) {
+            if (state.phase == FarmPhase.INCIDENT) {
+                state = FarmShiftEngine.defeatPest(activePestEncounter(state), player).state
+            }
+            val result = FarmShiftEngine.harvest(state, longOrder, longRules, "WHEAT", player, 2_000L + it)
+            state = result.state
+            if (ShiftEvent.INCIDENT_STARTED in result.events) incidentStarts += state.completed(longOrder)
+        }
+
+        incidentStarts shouldContainExactly listOf(6, 13)
+        state.phase shouldBe FarmPhase.DELIVERY
+        state.incidentsResolved shouldBe 2
     }
 
     test("completed farm emits completion once and remains quiet during cooldown") {

@@ -194,7 +194,7 @@ farm:
   preparation-bossbar: '<order> <color:#707a76>•</color> <color:#55d98b>Tilling <done>/<total></color> <color:#707a76>•</color> <color:#f2fff7>right-click with a hoe</color>'
   planting-bossbar: '<order> <color:#707a76>•</color> <color:#55d98b>Plant <crop> <done>/<total></color> <color:#707a76>•</color> <color:#f2fff7>right-click with seeds</color>'
   care-bossbar: '<order> <color:#707a76>•</color> <color:#45c8f5><instruction></color> <color:#f2fff7><done>/<total></color>'
-  bossbar: '<order> <color:#707a76>•</color> <color:#55d98b><requirements></color> <color:#707a76>•</color> <color:#f2fff7><done>/<total></color>'
+  bossbar: '<order> <color:#707a76>•</color> <color:#55d98b><requirements></color>'
   incident-bossbar: '<order> <color:#707a76>•</color> <color:#ff5f6d>Nests <nests></color> <color:#707a76>•</color> <color:#f2fff7>pests <pests></color>'
   drought-bossbar: '<order> <color:#707a76>•</color> <color:#ff7a45>Drought</color> <color:#707a76>•</color> <color:#45c8f5>watering <done>/<total></color>'
   delivery-bossbar: '<order> <color:#707a76>•</color> <color:#ffc857>Crates <done>/<total></color> <color:#707a76>•</color> <color:#f2fff7>right-click, then receiving</color>'

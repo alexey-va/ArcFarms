@@ -55,6 +55,9 @@ import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
+import org.bukkit.util.Transformation
+import org.joml.AxisAngle4f
+import org.joml.Vector3f
 import ru.arc.core.ScheduledTask
 import ru.arc.core.Tasks
 import ru.ruscrafting.farms.config.ArcFarmsConfig
@@ -71,6 +74,7 @@ import ru.ruscrafting.farms.domain.FarmAdminEdit
 import ru.ruscrafting.farms.domain.ArcFarmsState
 import ru.ruscrafting.farms.domain.EngineResult
 import ru.ruscrafting.farms.domain.FarmOrder
+import ru.ruscrafting.farms.domain.FarmOrderProgressReconciler
 import ru.ruscrafting.farms.domain.FarmContractPlanner
 import ru.ruscrafting.farms.domain.FarmCarePlanner
 import ru.ruscrafting.farms.domain.FarmCareRole
@@ -299,7 +303,8 @@ class ArcFarmsService(
         farmLocations = farmLocationRepository.load()
         validateRuntime(settings)
         validateLocationOverrides(settings)
-        val persisted = stateRepository.load()
+        val loaded = stateRepository.load()
+        val persisted = reconcileFarmOrderProgress(settings, loaded)
         validatePersistedState(settings, persisted)
         validateMineJournalMaterials()
         stats.replace(persisted.stats)
@@ -316,6 +321,7 @@ class ArcFarmsService(
         startTasks()
         stateSafeToPersist = true
         started = true
+        if (persisted != loaded) persistAsync()
         Tasks.scheduler.runLater(1L) {
             if (isOperational()) deliverPendingFarmRewards(Bukkit.getOnlinePlayers())
         }
@@ -328,7 +334,8 @@ class ArcFarmsService(
     fun reload(candidate: ArcFarmsConfig, publishSettings: (ArcFarmsConfig) -> Unit) {
         check(started) { "ArcFarms service is not started" }
         val snapshot = snapshotState()
-        validateReload(candidate, snapshot)
+        val reconciledSnapshot = reconcileFarmOrderProgress(candidate, snapshot)
+        validateReload(candidate, reconciledSnapshot)
         validateRuntime(candidate)
         validateLocationOverrides(candidate)
         persistBlocking()
@@ -338,7 +345,7 @@ class ArcFarmsService(
         publishSettings(candidate)
         try {
             stopTasks()
-            replaceRuntime(candidate, snapshot, "reload")
+            replaceRuntime(candidate, reconciledSnapshot, "reload")
         } catch (failure: Exception) {
             plugin.logger.log(Level.SEVERE, "ArcFarms reload failed after runtime mutation; restoring the previous runtime", failure)
             publishSettings(previous)
@@ -357,7 +364,7 @@ class ArcFarmsService(
             throw failure
         }
         persistenceSuspended = false
-        if (persistenceRequestedWhileSuspended) {
+        if (persistenceRequestedWhileSuspended || reconciledSnapshot != snapshot) {
             persistenceRequestedWhileSuspended = false
             persistAsync()
         }
@@ -1053,6 +1060,8 @@ class ArcFarmsService(
             "harvesting" -> {
                 prepareAdminPatch(runtime, plant = true, mature = true)
                 events = emptyList()
+                val resolvedIncidents = runtime.state.incidentsResolved +
+                    if (runtime.state.phase == FarmPhase.INCIDENT) 1 else 0
                 runtime.state.copy(
                     phase = FarmPhase.HARVESTING,
                     preparationReleased = true,
@@ -1062,7 +1071,12 @@ class ArcFarmsService(
                     plantingProgress = runtime.state.preparationRequired,
                     careType = null,
                     careTargets = emptyList(),
+                    incidentCrop = null,
                     incidentType = null,
+                    incidentProgress = 0,
+                    incidentRequired = 0,
+                    incidentResolved = resolvedIncidents > 0,
+                    incidentsResolved = resolvedIncidents.coerceAtMost(runtime.rules.incidentTriggerPercents.size),
                     pestNestsInitialized = false,
                     pestNests = emptyList(),
                     pestAlive = 0,
@@ -1097,8 +1111,12 @@ class ArcFarmsService(
                 runtime.state.copy(
                     phase = FarmPhase.DELIVERY,
                     progress = order.required,
+                    harvestCheckpoint = 10,
                     harvestMilestone = 4,
+                    incidentCrop = null,
                     incidentType = null,
+                    incidentProgress = 0,
+                    incidentRequired = 0,
                     pestNestsInitialized = false,
                     pestNests = emptyList(),
                     pestAlive = 0,
@@ -1146,7 +1164,12 @@ class ArcFarmsService(
             } ?: "harvesting"
             FarmPhase.CARE -> "harvesting"
             FarmPhase.HARVESTING -> currentOrder(runtime)?.incidentTypes?.let { types ->
-                types[java.lang.Math.floorMod(runtime.state.sequence.toInt(), types.size)].name.lowercase()
+                types[
+                    java.lang.Math.floorMod(
+                        runtime.state.sequence.toInt() + runtime.state.incidentsResolved,
+                        types.size,
+                    )
+                ].name.lowercase()
             } ?: "pests"
             FarmPhase.INCIDENT -> "harvesting"
             FarmPhase.DELIVERY -> "complete"
@@ -1706,7 +1729,7 @@ class ArcFarmsService(
                 orderMap,
                 orders,
                 FarmRules(
-                    configured.incidentTriggerPercent,
+                    configured.incidentTriggerPercents,
                     configured.incidentQuota,
                     settings.completedCooldownSeconds * 1000L,
                     configured.droughtTargetBeds(configured.preparationPatchSize),
@@ -1827,6 +1850,18 @@ class ArcFarmsService(
         persisted.mines.filterValues { it.phase !in setOf(MinePhase.IDLE, MinePhase.COOLDOWN) }.keys.forEach { id ->
             require(id in mineIds) { "Persisted active mine zone $id is missing from config" }
         }
+    }
+
+    private fun reconcileFarmOrderProgress(candidate: ArcFarmsConfig, persisted: ArcFarmsState): ArcFarmsState {
+        val zones = candidate.farms.associateBy(FarmZoneSettings::id)
+        var changed = false
+        val farms = persisted.farms.mapValues { (zoneId, state) ->
+            val order = zones[zoneId]?.orders?.firstOrNull { it.id == state.orderId } ?: return@mapValues state
+            val result = FarmOrderProgressReconciler.reconcile(state, order.required)
+            changed = changed || result.changed
+            result.state
+        }
+        return if (changed) persisted.copy(farms = farms) else persisted
     }
 
     private fun validateMineJournalMaterials() {
@@ -2919,7 +2954,12 @@ class ArcFarmsService(
             return
         }
         val order = currentOrder(runtime) ?: return
-        val incidentType = order.incidentTypes[random.nextInt(order.incidentTypes.size)]
+        val incidentType = order.incidentTypes[
+            java.lang.Math.floorMod(
+                runtime.state.sequence.toInt() + runtime.state.incidentsResolved,
+                order.incidentTypes.size,
+            )
+        ]
         val activeRules = if (incidentType == FarmIncidentType.DROUGHT) {
             val gardenBeds = runtime.state.preparationPatch.size.takeIf { it > 0 } ?: runtime.settings.preparationPatchSize
             runtime.rules.copy(droughtQuota = runtime.settings.droughtTargetBeds(gardenBeds))
@@ -3282,17 +3322,39 @@ class ArcFarmsService(
                     if (careType == FarmCareType.SEEDER) initializeFarmCare(runtime, actor)
                     persistAsync()
                 }
-                ShiftEvent.HARVEST_MILESTONE -> {
-                    ensureFarmContractScene(runtime)
-                    val milestone = runtime.state.harvestMilestone
-                    if (actor != null && milestone < 4) {
+                ShiftEvent.HARVEST_CHECKPOINT -> {
+                    val checkpoint = runtime.state.harvestCheckpoint
+                    if (actor != null) {
                         sendActionBar(
                             actor,
                             MessageKey.FARM_HARVEST_MILESTONE,
-                            mapOf("percent" to locale.text(milestone * 25)),
+                            mapOf("percent" to locale.text(checkpoint * 10)),
                         )
+                        if (settings.particles) {
+                            actor.spawnParticle(
+                                Particle.COMPOSTER,
+                                actor.location.clone().add(0.0, 1.0, 0.0),
+                                5,
+                                0.35,
+                                0.3,
+                                0.35,
+                                0.02,
+                            )
+                        }
                     }
-                    playFarmMilestone(runtime, Sound.BLOCK_COMPOSTER_FILL_SUCCESS, 0.9f + milestone * 0.08f)
+                    playFarmMilestone(runtime, Sound.BLOCK_NOTE_BLOCK_HAT, 0.85f + checkpoint * 0.035f)
+                    debug.event(
+                        "farm_harvest_checkpoint",
+                        "zone" to runtime.settings.id,
+                        "sequence" to runtime.state.sequence,
+                        "checkpoint" to checkpoint,
+                        "percent" to checkpoint * 10,
+                    )
+                    persistAsync()
+                }
+                ShiftEvent.HARVEST_MILESTONE -> {
+                    ensureFarmContractScene(runtime)
+                    val milestone = runtime.state.harvestMilestone
                     if (settings.particles) {
                         val cart = point(runtime, FarmPointKind.CART)
                         Bukkit.getWorld(cart.world)?.let { world ->
@@ -5140,9 +5202,13 @@ class ArcFarmsService(
             plugin.logger.severe("Farm delivery position left ${runtime.region.label} for ${runtime.settings.id}; crate ${key.index} was not spawned")
             return
         }
-        val display = world.spawn(location.clone().add(0.0, 0.45, 0.0), ItemDisplay::class.java) { entity ->
+        val display = world.spawn(
+            location.clone().add(0.0, runtime.settings.delivery.displayYOffset, 0.0),
+            ItemDisplay::class.java,
+        ) { entity ->
             entity.setItemStack(deliveryItemStack(runtime))
-            entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.GROUND
+            entity.itemDisplayTransform = runtime.settings.delivery.displayTransform.bukkit
+            entity.uniformScale(runtime.settings.delivery.displayScale)
             entity.isGlowing = true
             entity.isPersistent = false
             markDeliveryEntity(entity, runtime, key.index)
@@ -5215,7 +5281,8 @@ class ArcFarmsService(
         deliveryCarriers[key] = player.uniqueId
         val display = player.world.spawn(carriedDisplayLocation(player), ItemDisplay::class.java) { entity ->
             entity.setItemStack(deliveryItemStack(runtime))
-            entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.GROUND
+            entity.itemDisplayTransform = runtime.settings.delivery.displayTransform.bukkit
+            entity.uniformScale(runtime.settings.delivery.carriedScale)
             entity.teleportDuration = 1
             entity.isGlowing = true
             entity.isPersistent = false
@@ -5303,7 +5370,8 @@ class ArcFarmsService(
     private fun carriedDisplayLocation(player: Player): Location {
         val direction = player.location.direction.setY(0)
         if (direction.lengthSquared() > 0.001) direction.normalize().multiply(-0.65)
-        return player.location.clone().add(direction).add(0.0, 1.0, 0.0)
+        val runtime = farmAt(player.location)
+        return player.location.clone().add(direction).add(0.0, runtime?.settings?.delivery?.carriedYOffset ?: 0.65, 0.0)
     }
 
     private fun returnDelivery(runtime: FarmRuntime, key: DeliveryKey, player: Player?, reason: String, notify: Boolean = true) {
@@ -5714,14 +5782,15 @@ class ArcFarmsService(
                 return@forEach
             }
             removeSupplyEntities(key, "refresh")
-            val item = world.spawn(location.clone().add(0.0, 0.65, 0.0), ItemDisplay::class.java) { entity ->
+            val item = world.spawn(location.clone().add(0.0, SUPPLY_ITEM_Y_OFFSET, 0.0), ItemDisplay::class.java) { entity ->
                 entity.setItemStack(ItemStack(visual))
                 entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
+                entity.uniformScale(SUPPLY_ITEM_SCALE)
                 entity.isGlowing = true
                 entity.isPersistent = false
                 markSupplyEntity(entity, runtime, kind)
             }
-            val label = world.spawn(location.clone().add(0.0, 1.45, 0.0), TextDisplay::class.java) { entity ->
+            val label = world.spawn(location.clone().add(0.0, SUPPLY_LABEL_Y_OFFSET, 0.0), TextDisplay::class.java) { entity ->
                 entity.text(supplyLabel(runtime, kind, visual))
                 entity.billboard = Display.Billboard.VERTICAL
                 entity.alignment = TextDisplay.TextAlignment.CENTER
@@ -5732,7 +5801,7 @@ class ArcFarmsService(
                 entity.isPersistent = false
                 markSupplyEntity(entity, runtime, kind)
             }
-            val interaction = world.spawn(location.clone().add(0.0, 0.35, 0.0), Interaction::class.java) { entity ->
+            val interaction = world.spawn(location.clone().add(0.0, SUPPLY_INTERACTION_Y_OFFSET, 0.0), Interaction::class.java) { entity ->
                 entity.interactionWidth = 1.35f
                 entity.interactionHeight = 1.4f
                 entity.isResponsive = true
@@ -5748,9 +5817,9 @@ class ArcFarmsService(
     private fun supplyEntitiesMatchLocation(entities: Collection<Entity>, base: Location): Boolean {
         fun Entity.near(yOffset: Double): Boolean = world == base.world &&
             location.distanceSquared(base.clone().add(0.0, yOffset, 0.0)) <= 0.04
-        return entities.count { it is ItemDisplay && it.near(0.65) } == 1 &&
-            entities.count { it is TextDisplay && it.near(1.45) } == 1 &&
-            entities.count { it is Interaction && it.near(0.35) } == 1
+        return entities.count { it is ItemDisplay && it.near(SUPPLY_ITEM_Y_OFFSET) } == 1 &&
+            entities.count { it is TextDisplay && it.near(SUPPLY_LABEL_Y_OFFSET) } == 1 &&
+            entities.count { it is Interaction && it.near(SUPPLY_INTERACTION_Y_OFFSET) } == 1
     }
 
     private fun supplyMaterial(runtime: FarmRuntime, kind: FarmSupplyKind): Material = when (kind) {
@@ -6470,6 +6539,22 @@ class ArcFarmsService(
     private fun isAdminEditingFarm(runtime: FarmRuntime): Boolean =
         players(runtime.region).any(::isAdminEditing)
 
+    private fun ItemDisplay.uniformScale(scale: Float) {
+        transformation = Transformation(
+            Vector3f(),
+            AxisAngle4f(),
+            Vector3f(scale, scale, scale),
+            AxisAngle4f(),
+        )
+    }
+
+    private val ru.ruscrafting.farms.config.FarmItemDisplayTransform.bukkit: ItemDisplay.ItemDisplayTransform
+        get() = when (this) {
+            ru.ruscrafting.farms.config.FarmItemDisplayTransform.GROUND -> ItemDisplay.ItemDisplayTransform.GROUND
+            ru.ruscrafting.farms.config.FarmItemDisplayTransform.FIXED -> ItemDisplay.ItemDisplayTransform.FIXED
+            ru.ruscrafting.farms.config.FarmItemDisplayTransform.HEAD -> ItemDisplay.ItemDisplayTransform.HEAD
+        }
+
     private fun broadcast(
         region: ActivityRegion,
         key: MessageKey,
@@ -7053,6 +7138,10 @@ class ArcFarmsService(
     companion object {
         private const val MAX_INCIDENT_DAMAGED_CROPS = 4_096
         private const val MAX_INTERACTION_COOLDOWNS = 10_000
+        private const val SUPPLY_ITEM_Y_OFFSET = 0.25
+        private const val SUPPLY_LABEL_Y_OFFSET = 1.15
+        private const val SUPPLY_INTERACTION_Y_OFFSET = 0.25
+        private const val SUPPLY_ITEM_SCALE = 1.35f
         private val TITLE_SUBTITLES = mapOf(
             MessageKey.FARM_ENTRY_TITLE to MessageKey.FARM_ENTRY_SUBTITLE,
             MessageKey.FARM_PLANTING_STARTED to MessageKey.FARM_PLANTING_STARTED_SUBTITLE,
