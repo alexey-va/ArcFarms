@@ -356,6 +356,14 @@ class ArcFarmsConfigTest : FunSpec({
             "Пшеница 0/2, Морковь 0/2"
     }
 
+    test("localized chat prefix identifies the farm instead of a shift") {
+        val root = resourceTree()
+        val settings = ArcFarmsConfig.inspect(root)
+        val locale = ArcFarmsLocale(root) { settings }
+
+        PlainTextComponentSerializer.plainText().serialize(locale.render(MessageKey.PREFIX)) shouldBe "Ферма •"
+    }
+
     test("planting bossbar renders the exact next action without a chat prefix") {
         val root = resourceTree()
         val settings = ArcFarmsConfig.inspect(root)

@@ -1565,8 +1565,11 @@ class ArcFarmsService(
 
     fun onBlockSpread(event: BlockSpreadEvent) {
         if (
-            event.newState.type in setOf(Material.GRASS_BLOCK, Material.MYCELIUM) &&
-            farmAt(event.block.location) != null && isManagedFarmSoil(event.block)
+            FarmGroundSpreadPolicy.blocks(
+                insideFarm = farmAt(event.block.location) != null,
+                source = event.source.type,
+                result = event.newState.type,
+            )
         ) {
             event.isCancelled = true
             debug.event(
@@ -4811,11 +4814,6 @@ class ArcFarmsService(
 
     private fun setDrySoil(block: Block) {
         if (block.type != Material.DIRT) block.setType(Material.DIRT, false)
-    }
-
-    private fun isManagedFarmSoil(block: Block): Boolean {
-        val position = block.toFarmPlotPosition()
-        return managedFarmBeds.values.any { position in it } || farms.any { position in it.state.preparationPatch }
     }
 
     private fun ensureFarmDroughtTargets(runtime: FarmRuntime) {

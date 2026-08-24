@@ -17,7 +17,7 @@ class ArcFarmsListenerContractTest : FunSpec({
         handler("onBreakLowest", BlockBreakEvent::class.java).priority shouldBe EventPriority.LOWEST
     }
 
-    test("managed soil spread is cancelled before another plugin can commit it") {
+    test("farm ground spread is cancelled before another plugin can commit it") {
         val handler = handler("onBlockSpread", BlockSpreadEvent::class.java)
 
         handler.priority shouldBe EventPriority.LOWEST

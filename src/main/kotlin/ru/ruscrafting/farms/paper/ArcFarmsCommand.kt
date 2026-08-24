@@ -10,6 +10,7 @@ import org.bukkit.entity.Player
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.ActivityKind
+import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmPointKind
 
 class ArcFarmsCommand(
@@ -148,12 +149,32 @@ class ArcFarmsCommand(
             sender.sendMessage(locale.render(MessageKey.NO_PERMISSION, sender))
             return
         }
+        val action = args.firstOrNull()?.lowercase()
+        if (action == null || action == "help") {
+            sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
+            return
+        }
+        if (args.requestsHelp()) {
+            val zone = args.getOrNull(1)?.takeUnless { it.equals("help", true) }
+            when (action) {
+                "edit" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_EDIT, sender))
+                "point" -> sendPointHelp(sender, zone)
+                "points" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_POINTS, sender))
+                "unmanage" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_UNMANAGE, sender))
+                "stage" -> sendStageHelp(sender, zone)
+                "next" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_NEXT, sender))
+                "finish" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_FINISH, sender))
+                "event" -> sendEventHelp(sender, zone)
+                else -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
+            }
+            return
+        }
         val player = sender as? Player
         if (player == null) {
             sender.sendMessage(locale.render(MessageKey.PLAYER_ONLY, sender))
             return
         }
-        when (args.firstOrNull()?.lowercase()) {
+        when (action) {
             "edit" -> service.toggleAdminEdit(player)
             "point" -> {
                 val zone = args.getOrNull(1)
@@ -282,6 +303,82 @@ class ArcFarmsCommand(
         return true
     }
 
+    private fun sendPointHelp(sender: CommandSender, zone: String?) {
+        sender.sendMessage(
+            locale.render(
+                MessageKey.ADMIN_POINT_HELP_HEADER,
+                sender,
+                mapOf("zone" to locale.text(zone ?: "…")),
+            ),
+        )
+        FarmPointKind.entries.forEach { kind ->
+            sender.sendMessage(
+                locale.render(
+                    MessageKey.ADMIN_POINT_HELP_ENTRY,
+                    sender,
+                    mapOf(
+                        "id" to locale.text(pointArgument(kind)),
+                        "point" to locale.renderPath("admin.point.${kind.name.lowercase()}", sender),
+                        "description" to locale.renderPath("admin.point-description.${kind.name.lowercase()}", sender),
+                    ),
+                ),
+            )
+        }
+        sender.sendMessage(locale.render(MessageKey.ADMIN_POINT_HELP_FOOTER, sender))
+    }
+
+    private fun sendStageHelp(sender: CommandSender, zone: String?) {
+        sender.sendMessage(
+            locale.render(
+                MessageKey.ADMIN_STAGE_HELP_HEADER,
+                sender,
+                mapOf("zone" to locale.text(zone ?: "…")),
+            ),
+        )
+        STAGE_STAGES.forEach { stage ->
+            sender.sendMessage(
+                locale.render(
+                    MessageKey.ADMIN_STAGE_HELP_ENTRY,
+                    sender,
+                    mapOf(
+                        "id" to locale.text(stage),
+                        "stage" to locale.renderPath("admin.stage.$stage", sender),
+                        "description" to locale.renderPath("admin.stage-description.$stage", sender),
+                    ),
+                ),
+            )
+        }
+    }
+
+    private fun sendEventHelp(sender: CommandSender, zone: String?) {
+        sender.sendMessage(
+            locale.render(
+                MessageKey.ADMIN_EVENT_HELP_HEADER,
+                sender,
+                mapOf("zone" to locale.text(zone ?: "…")),
+            ),
+        )
+        EVENT_STAGES.forEach { event ->
+            val careType = CARE_EVENT_TYPES[event]
+            val description = if (careType == null) {
+                locale.renderPath("admin.event-description.$event", sender)
+            } else {
+                locale.renderPath("care.${careType.name.lowercase()}.instruction", sender)
+            }
+            sender.sendMessage(
+                locale.render(
+                    MessageKey.ADMIN_EVENT_HELP_ENTRY,
+                    sender,
+                    mapOf(
+                        "id" to locale.text(event),
+                        "event" to locale.renderPath("admin.stage.$event", sender),
+                        "description" to description,
+                    ),
+                ),
+            )
+        }
+    }
+
     override fun onTabComplete(
         sender: CommandSender,
         command: Command,
@@ -306,16 +403,18 @@ class ArcFarmsCommand(
                 args[0].equals("top", true) || args[0].equals("travel", true) ->
                     listOf("farm", "lumber", "mine").filter { it.startsWith(args[1], true) }
                 args[0].equals("admin", true) && sender.hasPermission("arcfarms.admin") ->
-                    listOf("edit", "point", "points", "unmanage", "stage", "next", "finish", "event")
+                    listOf("help", "edit", "point", "points", "unmanage", "stage", "next", "finish", "event")
                         .filter { it.startsWith(args[1], true) }
                 args[0].equals("debug", true) && sender.hasPermission("arcfarms.admin") ->
                     service.farmZoneIds().filter { it.startsWith(args[1], true) }
                 else -> emptyList()
             }
             3 -> when {
+                args[0].equals("admin", true) && args[1].equals("edit", true) ->
+                    listOf("help").filter { it.startsWith(args[2], true) }
                 args[0].equals("admin", true) && args[1].lowercase() in
                     setOf("point", "points", "unmanage", "stage", "next", "finish", "event") ->
-                    service.farmZoneIds().filter { it.startsWith(args[2], true) }
+                    (service.farmZoneIds() + "help").filter { it.startsWith(args[2], true) }
                 args[0].equals("debug", true) && sender.hasPermission("arcfarms.admin") ->
                     listOf("status", "contract", "stage", "next", "finish", "event", "give", "show", "points", "reset")
                         .filter { it.startsWith(args[2], true) }
@@ -323,13 +422,16 @@ class ArcFarmsCommand(
             }
             4 -> when {
                 args[0].equals("admin", true) && args[1].equals("point", true) ->
-                    listOf("tool", "seeds", "water", "crates", "receiving", "cart", "customer", "travel", "hive", "irrigation", "covers", "scarecrows", "barn")
+                    (POINT_ARGUMENTS + "help")
                         .filter { it.startsWith(args[3], true) }
                 args[0].equals("admin", true) && args[1].equals("stage", true) ->
-                    (listOf("preparation", "planting", "harvesting") + CARE_STAGES + listOf("pests", "drought", "delivery", "complete", "reset"))
+                    (STAGE_STAGES + "help")
                         .filter { it.startsWith(args[3], true) }
                 args[0].equals("admin", true) && args[1].equals("event", true) ->
-                    EVENT_STAGES.filter { it.startsWith(args[3], true) }
+                    (EVENT_STAGES + "help").filter { it.startsWith(args[3], true) }
+                args[0].equals("admin", true) && args[1].lowercase() in
+                    setOf("points", "unmanage", "next", "finish") ->
+                    listOf("help").filter { it.startsWith(args[3], true) }
                 args[0].equals("debug", true) && args[2].equals("stage", true) ->
                     (listOf("preparation", "planting", "harvesting") + CARE_STAGES + listOf("pests", "drought", "delivery", "complete", "reset"))
                         .filter { it.startsWith(args[3], true) }
@@ -362,6 +464,10 @@ class ArcFarmsCommand(
         else -> null
     }
 
+    private fun pointArgument(kind: FarmPointKind): String = if (kind == FarmPointKind.PEN) "barn" else kind.name.lowercase()
+
+    private fun List<String>.requestsHelp(): Boolean = drop(1).any { it.equals("help", ignoreCase = true) }
+
     private fun parseKind(raw: String?): ActivityKind? = when (raw?.lowercase()) {
         "farm" -> ActivityKind.FARM
         "lumber" -> ActivityKind.LUMBER
@@ -379,9 +485,24 @@ class ArcFarmsCommand(
     )
 
     companion object {
-        private val CARE_STAGES = listOf(
-            "seeder", "weeds", "irrigation", "pollination", "covers", "scarecrows", "animals", "disease", "moles",
+        private val CARE_EVENT_TYPES = linkedMapOf(
+            "seeder" to FarmCareType.SEEDER,
+            "weeds" to FarmCareType.WEEDS,
+            "irrigation" to FarmCareType.IRRIGATION,
+            "pollination" to FarmCareType.POLLINATION,
+            "covers" to FarmCareType.STORM_COVERS,
+            "scarecrows" to FarmCareType.SCARECROWS,
+            "animals" to FarmCareType.ANIMAL_RESCUE,
+            "disease" to FarmCareType.DISEASE,
+            "moles" to FarmCareType.MOLES,
         )
+        private val CARE_STAGES = CARE_EVENT_TYPES.keys.toList()
         private val EVENT_STAGES = CARE_STAGES + listOf("pests", "drought")
+        private val STAGE_STAGES = listOf("preparation", "planting", "harvesting") +
+            EVENT_STAGES + listOf("delivery", "complete", "reset")
+        private val POINT_ARGUMENTS = listOf(
+            "tool", "seeds", "water", "crates", "receiving", "cart", "customer", "travel", "hive", "irrigation",
+            "covers", "scarecrows", "barn",
+        )
     }
 }

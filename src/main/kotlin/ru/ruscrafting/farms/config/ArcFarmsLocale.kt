@@ -30,6 +30,18 @@ enum class MessageKey(val path: String) {
     ADMIN_UNMANAGE_EMPTY("admin.unmanage-empty"),
     ADMIN_UNMANAGE_DONE("admin.unmanage-done"),
     ADMIN_HELP("admin.help"),
+    ADMIN_HELP_EDIT("admin.command-help.edit"),
+    ADMIN_HELP_POINTS("admin.command-help.points"),
+    ADMIN_HELP_UNMANAGE("admin.command-help.unmanage"),
+    ADMIN_HELP_NEXT("admin.command-help.next"),
+    ADMIN_HELP_FINISH("admin.command-help.finish"),
+    ADMIN_POINT_HELP_HEADER("admin.point-help-header"),
+    ADMIN_POINT_HELP_ENTRY("admin.point-help-entry"),
+    ADMIN_POINT_HELP_FOOTER("admin.point-help-footer"),
+    ADMIN_STAGE_HELP_HEADER("admin.stage-help-header"),
+    ADMIN_STAGE_HELP_ENTRY("admin.stage-help-entry"),
+    ADMIN_EVENT_HELP_HEADER("admin.event-help-header"),
+    ADMIN_EVENT_HELP_ENTRY("admin.event-help-entry"),
     ADMIN_ZONE_UNKNOWN("admin.zone-unknown"),
     ADMIN_POINT_OUTSIDE("admin.point-outside"),
     ADMIN_POINT_ON_BED("admin.point-on-bed"),
@@ -308,11 +320,14 @@ class ArcFarmsLocale(
                 }
             }
             FarmPointKind.entries.mapTo(this) { "admin.point.${it.name.lowercase()}" }
-            listOf(
+            FarmPointKind.entries.mapTo(this) { "admin.point-description.${it.name.lowercase()}" }
+            val adminStages = listOf(
                 "preparation", "planting", "harvesting", "seeder", "weeds", "irrigation", "pollination", "covers", "scarecrows",
                 "animals", "disease", "moles", "pests", "drought", "delivery", "complete", "reset",
             )
-                .mapTo(this) { "admin.stage.$it" }
+            adminStages.mapTo(this) { "admin.stage.$it" }
+            adminStages.mapTo(this) { "admin.stage-description.$it" }
+            listOf("pests", "drought").mapTo(this) { "admin.event-description.$it" }
             FarmCareType.entries.forEach { type ->
                 add("care.${type.name.lowercase()}.name")
                 add("care.${type.name.lowercase()}.instruction")

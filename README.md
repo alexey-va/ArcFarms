@@ -22,7 +22,9 @@ chosen coordinates are persisted before the plugin clears their crops and
 returns the soil to dirt. Players till every marked plot with a hoe, then plant
 the requested crop with its matching seed item. Seeds act as a tool and are not
 consumed. Selected and previously discovered beds are kept at maximum farmland
-moisture and protected from trampling and drying.
+moisture and protected from trampling and drying. Grass, mycelium, and podzol
+spread into any block inside the farm region is always cancelled, even when
+that block is not part of the current patch or durable recovery ledger.
 
 Patch selection rotates between spatially distinct beds instead of always
 starting beside the entering player. Beds are connected only on one height,
@@ -213,6 +215,10 @@ network celebration when announcements are enabled, and immediately open the
 next cycle. Atomic Redis compare-and-set prevents duplicate cross-server stamps.
 
 ## Commands
+
+Every `/arcfarms admin` subcommand accepts a trailing `help`. Contextual lists
+are available through commands such as `/arcfarms admin point <zone> help`,
+`/arcfarms admin stage <zone> help`, and `/arcfarms admin event <zone> help`.
 
 - `/arcfarms` — localized activity menu and current state.
 - `/arcfarms status` — compact status for all configured zones.
