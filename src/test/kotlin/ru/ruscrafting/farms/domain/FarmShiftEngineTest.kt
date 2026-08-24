@@ -105,10 +105,10 @@ class FarmShiftEngineTest : FunSpec({
         FarmShiftEngine.waterDrySoil(state, player).state.phase shouldBe FarmPhase.HARVESTING
     }
 
-    test("a long harvest triggers two spaced incidents and never a third") {
+    test("a long harvest triggers three spaced incidents before delivery") {
         val longOrder = FarmOrder("long_order", linkedMapOf("WHEAT" to 20))
         val longRules = FarmRules(
-            incidentTriggerPercents = listOf(30, 65),
+            incidentTriggerPercents = listOf(25, 50, 75),
             incidentQuota = 1,
             cooldownMillis = 5_000,
         )
@@ -127,9 +127,26 @@ class FarmShiftEngineTest : FunSpec({
             if (ShiftEvent.INCIDENT_STARTED in result.events) incidentStarts += state.completed(longOrder)
         }
 
-        incidentStarts shouldContainExactly listOf(6, 13)
+        incidentStarts shouldContainExactly listOf(5, 10, 15)
         state.phase shouldBe FarmPhase.DELIVERY
-        state.incidentsResolved shouldBe 2
+        state.incidentsResolved shouldBe 3
+    }
+
+    test("incident count varies deterministically inside the configured range") {
+        val rangedRules = FarmRules(
+            incidentTriggerPercents = listOf(15, 32, 50, 68, 85),
+            incidentQuota = 1,
+            cooldownMillis = 5_000,
+            incidentCountMin = 3,
+            incidentCountMax = 5,
+        )
+
+        rangedRules.incidentTargetCount(0) shouldBe 3
+        rangedRules.incidentTargetCount(1) shouldBe 4
+        rangedRules.incidentTargetCount(2) shouldBe 5
+        rangedRules.incidentTriggers(0) shouldContainExactly listOf(15, 50, 85)
+        rangedRules.incidentTriggers(1) shouldContainExactly listOf(15, 32, 68, 85)
+        rangedRules.incidentTriggers(2) shouldContainExactly listOf(15, 32, 50, 68, 85)
     }
 
     test("completed farm emits completion once and remains quiet during cooldown") {

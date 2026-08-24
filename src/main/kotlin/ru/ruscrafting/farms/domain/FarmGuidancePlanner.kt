@@ -15,6 +15,7 @@ object FarmGuidancePlanner {
 
 object FarmDeliveryPlanner {
     private const val NEAREST_CANDIDATE_LIMIT = 24
+    private const val SPREAD_CANDIDATE_LIMIT = 1_024
 
     fun selectAnchor(
         candidates: Collection<FarmDeliveryPosition>,
@@ -46,6 +47,7 @@ object FarmDeliveryPlanner {
         maximumParticipantDistance: Double,
         targetCount: Int,
         selectionIndex: Long,
+        minimumTargetDistance: Double = 0.0,
     ): List<FarmDeliveryPosition> {
         require(minimumObjectiveDistance >= 0.0 && minimumObjectiveDistance.isFinite()) {
             "Minimum objective distance is invalid"
@@ -54,6 +56,9 @@ object FarmDeliveryPlanner {
             "Maximum participant distance is invalid"
         }
         require(targetCount > 0) { "Placement target count must be positive" }
+        require(minimumTargetDistance >= 0.0 && minimumTargetDistance.isFinite()) {
+            "Minimum target distance is invalid"
+        }
         val unique = candidates.distinct().sortedWith(
             compareBy(FarmDeliveryPosition::world, FarmDeliveryPosition::x, FarmDeliveryPosition::y, FarmDeliveryPosition::z),
         )
@@ -75,10 +80,18 @@ object FarmDeliveryPlanner {
             }.thenBy(FarmDeliveryPosition::x)
                 .thenBy(FarmDeliveryPosition::y)
                 .thenBy(FarmDeliveryPosition::z),
-        ).take(maxOf(NEAREST_CANDIDATE_LIMIT, targetCount))
+        ).take(maxOf(SPREAD_CANDIDATE_LIMIT, targetCount))
         val selected = mutableListOf(nearest[floorMod(selectionIndex, nearest.size.toLong()).toInt()])
+        val minimumTargetDistanceSquared = minimumTargetDistance * minimumTargetDistance
         while (selected.size < minOf(targetCount, nearest.size)) {
-            val next = nearest.asSequence().filterNot(selected::contains).maxWithOrNull(
+            val remaining = nearest.asSequence().filterNot(selected::contains).toList()
+            val sufficientlyDistant = remaining.filter { candidate ->
+                selected.all { existing ->
+                    horizontalDistanceSquared(candidate.x, candidate.z, existing.x, existing.z) >= minimumTargetDistanceSquared
+                }
+            }
+            val pool = sufficientlyDistant.ifEmpty { remaining }
+            val next = pool.maxWithOrNull(
                 compareBy<FarmDeliveryPosition> { candidate ->
                     selected.minOf { existing ->
                         horizontalDistanceSquared(candidate.x, candidate.z, existing.x, existing.z)

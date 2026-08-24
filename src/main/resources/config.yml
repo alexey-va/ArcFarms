@@ -53,6 +53,11 @@ farm-zones:
     care-radius: 10
     care-types: [WEEDS, IRRIGATION, POLLINATION, STORM_COVERS, SCARECROWS, ANIMAL_RESCUE, DISEASE, MOLES]
     care-targets: 4
+    animal-rescue-targets: 6
+    animal-rescue-min-spacing: 8.0
+    animal-rescue-max-player-distance: 28
+    animal-delivery-radius: 3.0
+    display-view-range: 2.0
     seeder-every-shifts: 2
     disease-initial-spots: 2
     disease-max-spots: 6
@@ -77,6 +82,7 @@ farm-zones:
         yaw-offset: 0.0
         load-y-offset: 0.4
         load-scale: 1.1
+        view-range: 2.0
     care-visuals:
       seeder-horse: {material: SADDLE, custom-model-data: 0}
       seeder-waypoint: {material: WHEAT_SEEDS, custom-model-data: 0}
@@ -90,7 +96,10 @@ farm-zones:
       pen: {material: OAK_FENCE_GATE, custom-model-data: 0}
       diseased-crop: {material: FERMENTED_SPIDER_EYE, custom-model-data: 0}
       mole-mound: {material: MUD, custom-model-data: 0}
-    incident-trigger-percents: [30, 65]
+    # One order deterministically picks a count in this range, then uses that many
+    # evenly spread checkpoints from incident-trigger-percents.
+    incident-count: {min: 3, max: 5}
+    incident-trigger-percents: [15, 32, 50, 68, 85]
     incident-quota: 4
     drought-patches: 3
     drought-coverage-percent: 35
@@ -123,6 +132,7 @@ farm-zones:
       radius: 2.5
       crates: 3
       spawn-radius: 8
+      min-crate-spacing: 5.0
       pickup: {x: 212.5, y: 49.0, z: 463.5}
       item: {material: BARREL, custom-model-data: 0}
       display-transform: GROUND
@@ -130,6 +140,7 @@ farm-zones:
       display-y-offset: 0.15
       carried-scale: 1.5
       carried-y-offset: 0.65
+      display-view-range: 2.0
     rewards:
       # Every reward rolls independently. Commands run as console after the grant is durably claimed.
       # Supported command placeholders: %player%, %uuid%, %zone%, %sequence%, %contribution%, %rank%, %grant_id%.

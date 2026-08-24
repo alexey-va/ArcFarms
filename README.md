@@ -99,10 +99,14 @@ Their entities are
 removed when the story ends and are reconstructed from persisted state after a
 restart.
 
-Dynamic animals and delivery crates prefer safe ground at least
-`placement-min-objective-distance` blocks from their destination while staying
-within `placement-max-player-distance` of a current participant. Candidate
-search is capped by `placement-search-radius`; constrained fixtures degrade to
+Dynamic animals and delivery crates prefer safe ground away from their
+destination while staying within reach of a current participant. The general
+search limits are `placement-min-objective-distance`,
+`placement-max-player-distance`, and `placement-search-radius`. Animal rescue
+adds its own `animal-rescue-targets`, `animal-rescue-min-spacing`,
+`animal-rescue-max-player-distance`, and `animal-delivery-radius` controls.
+Delivery crates use `delivery.spawn-radius` and
+`delivery.min-crate-spacing`. Constrained fixtures degrade to
 the best available safe position instead of making a story impossible.
 
 Three configured free-floating item displays stand on the path near the farm
@@ -113,7 +117,11 @@ dropped, stored in another
 inventory, used for unrelated farm changes, carried outside the farm, or moved
 to another backend; ArcFarms removes them at every such boundary.
 
-At the configured threshold one of the farm incidents starts. A pest outbreak
+At each selected threshold one of the farm incidents starts. Every order picks
+a deterministic count inside `incident-count.min..max`, so reloads cannot reroll
+an active order, then distributes that count across
+`incident-trigger-percents`. The spawn profile produces three to five
+interruptions per harvest. A pest outbreak
 places several breakable nests across distant parts of the field. Each nest can
 spawn only a configured number of glowing silverfish, with a separate cap on
 simultaneously living pests. The pests eat any configured crops around them to
@@ -214,6 +222,12 @@ next cycle. Atomic Redis compare-and-set prevents duplicate cross-server stamps.
   switch the current farm to an exact QA stage while preserving normal recovery.
 - `/arcfarms admin next <zone>` — advance to the next useful QA stage.
 - `/arcfarms admin event <zone> <pests|drought>` — start an exact incident.
+
+Farm counts, spacing, spawn/search radii, incident ranges and checkpoints,
+display scale/offset/view range, care timings, drought/pest tuning, UI toggles,
+sounds, particles, rewards, and operation points are hot-reloadable. Only
+`server-id`, the Redis network enablement boundary, the plugin JAR itself, and
+server-wide living-entity tracking in `spigot.yml` require a restart.
 - `/arcfarms admin care <zone> <seeder|weeds|irrigation|pollination|covers|scarecrows|animals|disease|moles>` —
   start one exact field-care story, or report that its required fixture cannot
   be placed.
@@ -277,7 +291,7 @@ button.
 ../arc-core/gradlew clean check shadowJar
 ```
 
-The deployable artifact is `build/libs/ArcFarms-0.15.3.jar`.
+The deployable artifact is `build/libs/ArcFarms-0.15.4.jar`.
 
 ## Isolated gameplay QA
 

@@ -77,6 +77,11 @@ data class FarmZoneSettings(
     val careRadius: Int,
     val careTypes: List<FarmCareType>,
     val careTargetCount: Int,
+    val animalRescueTargetCount: Int,
+    val animalRescueMinSpacing: Double,
+    val animalRescueMaxPlayerDistance: Int,
+    val animalDeliveryRadius: Double,
+    val displayViewRange: Float,
     val seederEveryShifts: Int,
     val diseaseInitialSpots: Int,
     val diseaseMaxSpots: Int,
@@ -90,6 +95,8 @@ data class FarmZoneSettings(
     val placementMaxPlayerDistance: Int,
     val placementSearchRadius: Int,
     val incidentTriggerPercents: List<Int>,
+    val incidentCountMin: Int,
+    val incidentCountMax: Int,
     val incidentQuota: Int,
     val droughtPatches: Int,
     val droughtCoveragePercent: Int,
@@ -191,6 +198,7 @@ data class FarmContractCartVisualSettings(
     val yawOffset: Float,
     val loadYOffset: Double,
     val loadScale: Float,
+    val viewRange: Float,
 )
 
 data class FarmCareVisualSettings(
@@ -221,6 +229,7 @@ data class FarmDeliverySettings(
     val radius: Double,
     val crates: Int,
     val spawnRadius: Int,
+    val minCrateSpacing: Double,
     val pickup: FarmSupplyPointSettings,
     val itemMaterial: String,
     val itemCustomModelData: Int,
@@ -229,6 +238,7 @@ data class FarmDeliverySettings(
     val displayYOffset: Double,
     val carriedScale: Float,
     val carriedYOffset: Double,
+    val displayViewRange: Float,
 )
 
 data class FarmOrderSettings(
@@ -432,6 +442,7 @@ class ArcFarmsConfig private constructor(
                     yawOffset = section.finiteFloat("$contractCartPath.yaw-offset", 0.0f, -360.0f, 360.0f),
                     loadYOffset = section.finiteDouble("$contractCartPath.load-y-offset", 0.4, -2.0, 4.0),
                     loadScale = section.finiteFloat("$contractCartPath.load-scale", 1.1f, 0.05f, 4.0f),
+                    viewRange = section.finiteFloat("$contractCartPath.view-range", 2.0f, 0.25f, 8.0f),
                 )
                 val delivery = parseFarmDelivery(section, reference.world, id)
                 val supplies = parseFarmSupplies(section, reference.world, id)
@@ -484,6 +495,26 @@ class ArcFarmsConfig private constructor(
                 require(diseaseInitialSpots <= diseaseMaxSpots) {
                     "Farm zone $id disease-initial-spots must not exceed disease-max-spots"
                 }
+                val incidentTriggerPercents = section.stringList("incident-trigger-percents")
+                    .ifEmpty { listOf("15", "32", "50", "68", "85") }
+                    .map { value ->
+                        value.toIntOrNull()?.checked("incident-trigger-percents", 1, 99)
+                            ?: error("farm-zones.$id.incident-trigger-percents must contain integers")
+                    }.also { values ->
+                        require(values.size in 1..8 && values == values.distinct().sorted()) {
+                            "farm-zones.$id.incident-trigger-percents must contain 1..8 increasing unique percentages"
+                        }
+                        require(values.zipWithNext().all { (left, right) -> right - left >= 8 }) {
+                            "farm-zones.$id incident triggers must be at least 8 percentage points apart"
+                        }
+                    }
+                val incidentCountMin = section.int("incident-count.min", incidentTriggerPercents.size)
+                    .checked("incident-count.min", 1, incidentTriggerPercents.size)
+                val incidentCountMax = section.int("incident-count.max", incidentTriggerPercents.size)
+                    .checked("incident-count.max", 1, incidentTriggerPercents.size)
+                require(incidentCountMin <= incidentCountMax) {
+                    "farm-zones.$id incident-count.min must not exceed incident-count.max"
+                }
                 FarmZoneSettings(
                     id = id,
                     reference = reference,
@@ -495,6 +526,13 @@ class ArcFarmsConfig private constructor(
                     careRadius = section.int("care-radius", 10).checked("care-radius", 3, 24),
                     careTypes = careTypes,
                     careTargetCount = section.int("care-targets", 4).checked("care-targets", 2, 8),
+                    animalRescueTargetCount = section.int("animal-rescue-targets", 6)
+                        .checked("animal-rescue-targets", 2, 12),
+                    animalRescueMinSpacing = section.finiteDouble("animal-rescue-min-spacing", 8.0, 0.0, 32.0),
+                    animalRescueMaxPlayerDistance = section.int("animal-rescue-max-player-distance", placementMaxPlayerDistance)
+                        .checked("animal-rescue-max-player-distance", 4, 64),
+                    animalDeliveryRadius = section.finiteDouble("animal-delivery-radius", 3.0, 1.0, 8.0),
+                    displayViewRange = section.finiteFloat("display-view-range", 2.0f, 0.25f, 8.0f),
                     seederEveryShifts = section.int("seeder-every-shifts", 2)
                         .checked("seeder-every-shifts", 0, 16),
                     diseaseInitialSpots = diseaseInitialSpots,
@@ -521,17 +559,9 @@ class ArcFarmsConfig private constructor(
                     placementMinObjectiveDistance = placementMinObjectiveDistance,
                     placementMaxPlayerDistance = placementMaxPlayerDistance,
                     placementSearchRadius = placementSearchRadius,
-                    incidentTriggerPercents = section.stringList("incident-trigger-percents").map { value ->
-                        value.toIntOrNull()?.checked("incident-trigger-percents", 1, 99)
-                            ?: error("farm-zones.$id.incident-trigger-percents must contain integers")
-                    }.also { values ->
-                        require(values.size in 2..4 && values == values.distinct().sorted()) {
-                            "farm-zones.$id.incident-trigger-percents must contain 2..4 increasing unique percentages"
-                        }
-                        require(values.zipWithNext().all { (left, right) -> right - left >= 15 }) {
-                            "farm-zones.$id incident triggers must be at least 15 percentage points apart"
-                        }
-                    },
+                    incidentTriggerPercents = incidentTriggerPercents,
+                    incidentCountMin = incidentCountMin,
+                    incidentCountMax = incidentCountMax,
                     incidentQuota = section.int("incident-quota", 4).checked("incident-quota", 1, 64),
                     droughtPatches = droughtPatches,
                     droughtCoveragePercent = droughtCoveragePercent,
@@ -759,6 +789,7 @@ class ArcFarmsConfig private constructor(
                 radius = coordinate("radius", 1.0, 8.0),
                 crates = section.int("delivery.crates", 3).checked("delivery.crates", 1, 8),
                 spawnRadius = section.int("delivery.spawn-radius", 8).checked("delivery.spawn-radius", 3, 16),
+                minCrateSpacing = section.finiteDouble("delivery.min-crate-spacing", 5.0, 0.0, 16.0),
                 pickup = FarmSupplyPointSettings(
                     world = world,
                     x = pickupCoordinate("x", -30_000_000.0, 30_000_000.0),
@@ -779,6 +810,7 @@ class ArcFarmsConfig private constructor(
                 displayYOffset = section.finiteDouble("delivery.display-y-offset", 0.15, -2.0, 4.0),
                 carriedScale = section.finiteFloat("delivery.carried-scale", 1.5f, 0.05f, 8.0f),
                 carriedYOffset = section.finiteDouble("delivery.carried-y-offset", 0.65, -1.0, 3.0),
+                displayViewRange = section.finiteFloat("delivery.display-view-range", 2.0f, 0.25f, 8.0f),
             )
         }
 

@@ -107,7 +107,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
             require(farm.progress.values.all { it in 0..100_000 }) { "Farm crop progress is outside supported bounds" }
             require(farm.harvestCheckpoint in 0..10) { "Farm harvest checkpoint is invalid" }
             require(farm.harvestMilestone in 0..4) { "Farm harvest milestone is invalid" }
-            require(farm.incidentsResolved in 0..4) { "Farm incident completion count is invalid" }
+            require(farm.incidentsResolved in 0..8) { "Farm incident completion count is invalid" }
             listOf(farm.preparationCrop, farm.incidentCrop).filterNotNull().forEach {
                 require(CONTENT_ID.matches(it)) { "Farm crop id is invalid" }
             }

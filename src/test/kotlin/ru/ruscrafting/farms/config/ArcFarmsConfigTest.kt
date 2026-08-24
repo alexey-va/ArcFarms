@@ -61,7 +61,9 @@ class ArcFarmsConfigTest : FunSpec({
         settings.destinations.getValue("farm").world shouldBe "sp11"
         settings.requiresWorldGuard shouldBe true
         settings.farms.single().incidentQuota shouldBe 4
-        settings.farms.single().incidentTriggerPercents shouldContainExactly listOf(30, 65)
+        settings.farms.single().incidentTriggerPercents shouldContainExactly listOf(15, 32, 50, 68, 85)
+        settings.farms.single().incidentCountMin shouldBe 3
+        settings.farms.single().incidentCountMax shouldBe 5
         settings.farms.single().droughtPatches shouldBe 3
         settings.farms.single().droughtCoveragePercent shouldBe 35
         settings.farms.single().droughtMinBeds shouldBe 30
@@ -74,6 +76,11 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().preparationSearchRadius shouldBe 64
         settings.farms.single().careTypes shouldContainExactly FarmCareType.entries.filterNot { it == FarmCareType.SEEDER }
         settings.farms.single().careTargetCount shouldBe 4
+        settings.farms.single().animalRescueTargetCount shouldBe 6
+        settings.farms.single().animalRescueMinSpacing shouldBe 8.0
+        settings.farms.single().animalRescueMaxPlayerDistance shouldBe 28
+        settings.farms.single().animalDeliveryRadius shouldBe 3.0
+        settings.farms.single().displayViewRange shouldBe 2.0f
         settings.farms.single().seederEveryShifts shouldBe 2
         settings.farms.single().diseaseInitialSpots shouldBe 2
         settings.farms.single().diseaseMaxSpots shouldBe 6
@@ -86,6 +93,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().contractCartVisual.displayTransform shouldBe FarmItemDisplayTransform.GROUND
         settings.farms.single().contractCartVisual.scale shouldBe 1.0f
         settings.farms.single().contractCartVisual.yOffset shouldBe 0.15
+        settings.farms.single().contractCartVisual.viewRange shouldBe 2.0f
         settings.farms.single().placementMinObjectiveDistance shouldBe 10
         settings.farms.single().placementMaxPlayerDistance shouldBe 28
         settings.farms.single().placementSearchRadius shouldBe 32
@@ -100,6 +108,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().delivery.x shouldBe 201.65
         settings.farms.single().delivery.crates shouldBe 3
         settings.farms.single().delivery.spawnRadius shouldBe 8
+        settings.farms.single().delivery.minCrateSpacing shouldBe 5.0
         settings.farms.single().delivery.pickup.z shouldBe 463.5
         settings.farms.single().delivery.itemMaterial shouldBe "BARREL"
         settings.farms.single().delivery.itemCustomModelData shouldBe 0
@@ -108,6 +117,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().delivery.displayYOffset shouldBe 0.15
         settings.farms.single().delivery.carriedScale shouldBe 1.5f
         settings.farms.single().delivery.carriedYOffset shouldBe 0.65
+        settings.farms.single().delivery.displayViewRange shouldBe 2.0f
         settings.farms.single().supplies.tool.x shouldBe 212.5
         settings.farms.single().supplies.tool.z shouldBe 448.5
         settings.farms.single().supplies.seeds.z shouldBe 453.5
@@ -125,10 +135,12 @@ class ArcFarmsConfigTest : FunSpec({
         val classicSettings = ArcFarmsConfig.inspect(repositoryRoot.resolve("classic/plugins/ArcFarms"))
         classicSettings.farmScoreboard.provider shouldBe FarmScoreboardProvider.TAB
         classicSettings.farms.single().delivery.itemMaterial shouldBe "PAPER"
-        classicSettings.farms.single().delivery.itemCustomModelData shouldBe 10_749
-        classicSettings.farms.single().delivery.displayScale shouldBe 2.4f
-        classicSettings.farms.single().delivery.displayYOffset shouldBe 0.15
-        classicSettings.farms.single().delivery.carriedScale shouldBe 2.0f
+        classicSettings.farms.single().delivery.itemCustomModelData shouldBe 10_774
+        classicSettings.farms.single().delivery.spawnRadius shouldBe 12
+        classicSettings.farms.single().delivery.minCrateSpacing shouldBe 5.0
+        classicSettings.farms.single().delivery.displayScale shouldBe 1.8f
+        classicSettings.farms.single().delivery.displayYOffset shouldBe -0.05
+        classicSettings.farms.single().delivery.carriedScale shouldBe 1.4f
         classicSettings.farms.single().careVisuals.getValue(FarmCareRole.VALVE).customModelData shouldBe 11_859
         classicSettings.farms.single().careVisuals.getValue(FarmCareRole.SCARECROW).customModelData shouldBe 12_160
         classicSettings.farms.single().careVisuals.getValue(FarmCareRole.PEN).customModelData shouldBe 11_864
@@ -140,8 +152,9 @@ class ArcFarmsConfigTest : FunSpec({
         classicSettings.farms.single().contractCartVisual.customModelData shouldBe 10_747
         classicSettings.farms.single().contractCartVisual.displayTransform shouldBe FarmItemDisplayTransform.GROUND
         classicSettings.farms.single().contractCartVisual.scale shouldBe 4.4f
-        classicSettings.farms.single().contractCartVisual.yOffset shouldBe 0.28
-        classicSettings.farms.single().contractCartVisual.loadScale shouldBe 1.35f
+        classicSettings.farms.single().contractCartVisual.yOffset shouldBe -0.05
+        classicSettings.farms.single().contractCartVisual.loadScale shouldBe 1.55f
+        classicSettings.farms.single().contractCartVisual.viewRange shouldBe 2.0f
         classicSettings.farms.single().rewards.money.amountCents shouldBe 50_000
         classicSettings.farms.single().rewards.money.chancePercent shouldBe 100
         classicSettings.farms.single().rewards.items.single().id shouldBe "golden_apple"
@@ -164,8 +177,15 @@ class ArcFarmsConfigTest : FunSpec({
                 "classic/plugins/ItemsAdder/contents/elitecreatures/configs/medieval/pack_medieval_market_decoration_v1.yml",
             ),
         ) shouldContain "medieval_market_decoration_v1_cart_2:"
+        Files.readString(
+            repositoryRoot.resolve(
+                "classic/plugins/ItemsAdder/contents/elitecreatures/configs/medieval/pack_medieval_market_decoration_v2.yml",
+            ),
+        ) shouldContain "medieval_market_decoration_v2_crate_3:"
         Files.readString(repositoryRoot.resolve("classic/plugins/ItemsAdder/storage/items_ids_cache.yml")) shouldContain
             "elitecreatures:medieval_market_decoration_v1_cart_2: 10747"
+        Files.readString(repositoryRoot.resolve("classic/plugins/ItemsAdder/storage/items_ids_cache.yml")) shouldContain
+            "elitecreatures:medieval_market_decoration_v2_crate_3: 10774"
     }
 
     test("survival and parkour profiles are standalone network relays") {
@@ -212,8 +232,8 @@ class ArcFarmsConfigTest : FunSpec({
         val configPath = root.resolve("config.yml")
         configPath.writeText(
             Files.readString(configPath).replace(
-                "delivery: {x: -3.5, y: 100.0, z: 0.5, radius: 1.5, crates: 3, spawn-radius: 4}",
-                "delivery: {x: 50.0, y: 100.0, z: 0.5, radius: 1.5, crates: 3, spawn-radius: 4}",
+                "      x: -3.5",
+                "      x: 50.0",
             ),
         )
 
@@ -460,9 +480,14 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().preparationPatchMaxSize shouldBe 160
         settings.farms.single().preparationSearchRadius shouldBe 4
         settings.farms.single().careTargetCount shouldBe 3
+        settings.farms.single().animalRescueTargetCount shouldBe 4
+        settings.farms.single().animalRescueMinSpacing shouldBe 2.0
+        settings.farms.single().incidentCountMin shouldBe 2
+        settings.farms.single().incidentCountMax shouldBe 3
         settings.missingBedHighlightThreshold shouldBe 4
         settings.farms.single().delivery.x shouldBe -3.5
         settings.farms.single().delivery.spawnRadius shouldBe 4
+        settings.farms.single().delivery.minCrateSpacing shouldBe 2.0
         settings.farms.single().rewards.experience.amount shouldBe 10
         settings.farms.single().rewards.money.amountCents shouldBe 1_000
         settings.farms.single().rewards.randomBundles.entries.single().id shouldBe "lab_snack"

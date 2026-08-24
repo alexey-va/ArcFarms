@@ -102,6 +102,7 @@ internal data class FarmContractSceneSpec(
     val loadCount: Int,
     val loadYOffset: Double,
     val loadScale: Float,
+    val viewRange: Float,
 ) {
     init {
         require(loadCount in 0..4) { "Farm contract cart load count must be between 0 and 4" }
@@ -268,6 +269,7 @@ internal class FarmContractSceneManager(
                     )
                     entity.displayWidth = maxOf(1.0f, spec.cartScale)
                     entity.displayHeight = maxOf(1.0f, spec.cartScale * 0.75f)
+                    entity.viewRange = spec.viewRange
                     entity.setRotation(spec.cartLocation.yaw, 0f)
                 }
                 FarmContractSceneRole.CART_LOAD -> {
@@ -279,6 +281,7 @@ internal class FarmContractSceneManager(
                         Vector3f(spec.loadScale, spec.loadScale, spec.loadScale),
                         AxisAngle4f(),
                     )
+                    entity.viewRange = spec.viewRange
                     entity.setRotation(spec.cartLocation.yaw, 0f)
                 }
                 else -> return

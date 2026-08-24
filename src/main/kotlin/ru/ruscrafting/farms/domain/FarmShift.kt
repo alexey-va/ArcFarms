@@ -151,14 +151,35 @@ data class FarmRules(
     val incidentQuota: Int,
     val cooldownMillis: Long,
     val droughtQuota: Int = incidentQuota,
+    val incidentCountMin: Int = incidentTriggerPercents.size,
+    val incidentCountMax: Int = incidentTriggerPercents.size,
 ) {
     init {
-        require(incidentTriggerPercents.isNotEmpty() && incidentTriggerPercents.size <= 4)
+        require(incidentTriggerPercents.isNotEmpty() && incidentTriggerPercents.size <= 8)
         require(incidentTriggerPercents.all { it in 1..99 })
         require(incidentTriggerPercents == incidentTriggerPercents.distinct().sorted())
+        require(incidentCountMin in 1..incidentTriggerPercents.size)
+        require(incidentCountMax in incidentCountMin..incidentTriggerPercents.size)
         require(incidentQuota in 1..64)
         require(cooldownMillis in 0..3_600_000)
         require(droughtQuota in 1..64)
+    }
+
+    fun incidentTargetCount(sequence: Long): Int {
+        val span = incidentCountMax - incidentCountMin + 1
+        return incidentCountMin + java.lang.Math.floorMod((sequence xor (sequence ushr 32)).toInt(), span)
+    }
+
+    fun incidentTriggers(sequence: Long): List<Int> {
+        val count = incidentTargetCount(sequence)
+        if (count == incidentTriggerPercents.size) return incidentTriggerPercents
+        if (count == 1) return listOf(incidentTriggerPercents[incidentTriggerPercents.lastIndex / 2])
+        return (0 until count).map { index ->
+            val sourceIndex = kotlin.math.round(
+                index * incidentTriggerPercents.lastIndex.toDouble() / (count - 1),
+            ).toInt()
+            incidentTriggerPercents[sourceIndex]
+        }
     }
 }
 
@@ -356,7 +377,7 @@ object FarmShiftEngine {
             return EngineResult(state, true, contribution, events)
         }
 
-        val nextTrigger = rules.incidentTriggerPercents.getOrNull(state.incidentsResolved)
+        val nextTrigger = rules.incidentTriggers(state.sequence).getOrNull(state.incidentsResolved)
         val triggerReached = nextTrigger != null && state.completed(order) * 100 >= order.totalRequired * nextTrigger
         if (state.incidentCrop == null && triggerReached) {
             val incidentCrop = remainingCrop(state, order)

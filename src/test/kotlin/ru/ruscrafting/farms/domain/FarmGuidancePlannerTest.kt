@@ -46,6 +46,33 @@ class FarmGuidancePlannerTest : FunSpec({
         (selected.maxOf(FarmDeliveryPosition::x) - selected.minOf(FarmDeliveryPosition::x) >= 8.0) shouldBe true
     }
 
+    test("dynamic farm targets keep five blocks apart when the field has enough safe ground") {
+        val candidates = (0..20).flatMap { x ->
+            (0..20).map { z -> FarmDeliveryPosition("world", x + 0.5, 65.0, z + 0.5) }
+        }
+
+        val selected = FarmDeliveryPlanner.selectTargets(
+            candidates = candidates,
+            objectiveX = 10.5,
+            objectiveZ = 10.5,
+            participants = listOf(10.5 to 10.5),
+            minimumObjectiveDistance = 0.0,
+            maximumParticipantDistance = 16.0,
+            targetCount = 6,
+            selectionIndex = 7,
+            minimumTargetDistance = 5.0,
+        )
+
+        selected.size shouldBe 6
+        selected.indices.all { left ->
+            (left + 1 until selected.size).all { right ->
+                val dx = selected[left].x - selected[right].x
+                val dz = selected[left].z - selected[right].z
+                dx * dx + dz * dz >= 25.0
+            }
+        } shouldBe true
+    }
+
     test("farm object placement degrades to available safe ground in a tiny fixture") {
         val candidates = listOf(
             FarmDeliveryPosition("world", 1.5, 65.0, 0.5),

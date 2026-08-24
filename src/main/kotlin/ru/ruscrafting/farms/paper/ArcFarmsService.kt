@@ -1076,7 +1076,7 @@ class ArcFarmsService(
                     incidentProgress = 0,
                     incidentRequired = 0,
                     incidentResolved = resolvedIncidents > 0,
-                    incidentsResolved = resolvedIncidents.coerceAtMost(runtime.rules.incidentTriggerPercents.size),
+                    incidentsResolved = resolvedIncidents.coerceAtMost(runtime.rules.incidentTargetCount(runtime.state.sequence)),
                     pestNestsInitialized = false,
                     pestNests = emptyList(),
                     pestAlive = 0,
@@ -1729,10 +1729,12 @@ class ArcFarmsService(
                 orderMap,
                 orders,
                 FarmRules(
-                    configured.incidentTriggerPercents,
-                    configured.incidentQuota,
-                    settings.completedCooldownSeconds * 1000L,
-                    configured.droughtTargetBeds(configured.preparationPatchSize),
+                    incidentTriggerPercents = configured.incidentTriggerPercents,
+                    incidentQuota = configured.incidentQuota,
+                    cooldownMillis = settings.completedCooldownSeconds * 1000L,
+                    droughtQuota = configured.droughtTargetBeds(configured.preparationPatchSize),
+                    incidentCountMin = configured.incidentCountMin,
+                    incidentCountMax = configured.incidentCountMax,
                 ),
                 restored,
             )
@@ -2351,9 +2353,10 @@ class ArcFarmsService(
                     objectiveZ = pen.z,
                     participants = sources.map { it.x to it.z },
                     minimumObjectiveDistance = runtime.settings.placementMinObjectiveDistance.toDouble(),
-                    maximumParticipantDistance = runtime.settings.placementMaxPlayerDistance.toDouble(),
-                    targetCount = count,
+                    maximumParticipantDistance = runtime.settings.animalRescueMaxPlayerDistance.toDouble(),
+                    targetCount = runtime.settings.animalRescueTargetCount,
                     selectionIndex = salt,
+                    minimumTargetDistance = runtime.settings.animalRescueMinSpacing,
                 )
                     .map { FarmPointPosition(it.world, it.x, it.y, it.z) }
                 if (safePoints.isEmpty()) return null
@@ -4189,6 +4192,7 @@ class ArcFarmsService(
         val display = world.spawn(location.clone().add(0.0, 0.45, 0.0), ItemDisplay::class.java) { entity ->
             entity.setItemStack(stack)
             entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
+            entity.viewRange = runtime.settings.displayViewRange
             entity.isGlowing = true
             entity.glowColorOverride = if (target.complete) FARM_SUCCESS_COLOR else careRoleColor(target.role)
             entity.isPersistent = false
@@ -4236,6 +4240,7 @@ class ArcFarmsService(
         val display = world.spawn(location.clone().add(0.0, 0.55, 0.0), ItemDisplay::class.java) { entity ->
             entity.setItemStack(stack)
             entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
+            entity.viewRange = runtime.settings.displayViewRange
             entity.isGlowing = true
             entity.glowColorOverride = FARM_SUCCESS_COLOR
             entity.isPersistent = false
@@ -4269,7 +4274,9 @@ class ArcFarmsService(
             val actor = animalFollowers[key]?.let(Bukkit::getPlayer)?.takeIf { player ->
                 player.isOnline && runtime.region.contains(player.location)
             }
-            if (actor != null && mob.world == penLocation.world && mob.location.distanceSquared(penLocation) <= 9.0) {
+            if (actor != null && mob.world == penLocation.world &&
+                mob.location.distanceSquared(penLocation) <= runtime.settings.animalDeliveryRadius * runtime.settings.animalDeliveryRadius
+            ) {
                 releaseAnimalFollower(key, mob, "delivered")
                 farmCareFeedback(actor, mob.location, FarmCareRole.ANIMAL, true)
                 applyFarmResult(runtime, FarmShiftEngine.advanceCare(runtime.state, target.id, actor.uniqueId), actor)
@@ -5093,6 +5100,7 @@ class ArcFarmsService(
                 loadCount = runtime.state.harvestMilestone.coerceIn(0, 4),
                 loadYOffset = cartVisual.loadYOffset,
                 loadScale = cartVisual.loadScale,
+                viewRange = cartVisual.viewRange,
             ),
         )
     }
@@ -5209,6 +5217,7 @@ class ArcFarmsService(
             entity.setItemStack(deliveryItemStack(runtime))
             entity.itemDisplayTransform = runtime.settings.delivery.displayTransform.bukkit
             entity.uniformScale(runtime.settings.delivery.displayScale)
+            entity.viewRange = runtime.settings.delivery.displayViewRange
             entity.isGlowing = true
             entity.isPersistent = false
             markDeliveryEntity(entity, runtime, key.index)
@@ -5235,24 +5244,31 @@ class ArcFarmsService(
     private fun deliveryCrateLocation(runtime: FarmRuntime, position: FarmDeliveryPosition, index: Int): Location {
         val world = requireNotNull(Bukkit.getWorld(position.world))
         val anchor = Location(world, position.x, position.y, position.z)
-        val candidates = findDeliveryCandidates(runtime, anchor, minOf(3, runtime.settings.delivery.spawnRadius))
-        FarmDeliveryPlanner.selectAnchor(
-            candidates,
-            position.x,
-            position.z,
-            (runtime.state.sequence + index).toInt(),
-        )?.let { selected ->
+        val candidates = findDeliveryCandidates(runtime, anchor, runtime.settings.delivery.spawnRadius)
+        val selectedTargets = FarmDeliveryPlanner.selectTargets(
+            candidates = candidates,
+            objectiveX = position.x,
+            objectiveZ = position.z,
+            participants = listOf(position.x to position.z),
+            minimumObjectiveDistance = 0.0,
+            maximumParticipantDistance = runtime.settings.delivery.spawnRadius.toDouble(),
+            targetCount = runtime.settings.delivery.crates,
+            selectionIndex = runtime.state.sequence,
+            minimumTargetDistance = runtime.settings.delivery.minCrateSpacing,
+        )
+        selectedTargets.getOrNull(index)?.let { selected ->
             return Location(world, selected.x, selected.y, selected.z)
         }
+        val spacing = maxOf(runtime.settings.delivery.minCrateSpacing, 1.4)
         val offsets = listOf(
             0.0 to 0.0,
-            1.4 to 0.0,
-            -1.4 to 0.0,
-            0.0 to 1.4,
-            0.0 to -1.4,
-            1.4 to 1.4,
-            -1.4 to 1.4,
-            1.4 to -1.4,
+            spacing to 0.0,
+            -spacing to 0.0,
+            0.0 to spacing,
+            0.0 to -spacing,
+            spacing to spacing,
+            -spacing to spacing,
+            spacing to -spacing,
         )
         val (x, z) = offsets[index]
         val candidate = Location(world, position.x + x, position.y, position.z + z)
@@ -5283,6 +5299,7 @@ class ArcFarmsService(
             entity.setItemStack(deliveryItemStack(runtime))
             entity.itemDisplayTransform = runtime.settings.delivery.displayTransform.bukkit
             entity.uniformScale(runtime.settings.delivery.carriedScale)
+            entity.viewRange = runtime.settings.delivery.displayViewRange
             entity.teleportDuration = 1
             entity.isGlowing = true
             entity.isPersistent = false
@@ -5639,6 +5656,7 @@ class ArcFarmsService(
             val display = runtime.region.world.spawn(base.clone().add(0.0, 0.25, 0.0), ItemDisplay::class.java) { entity ->
                 entity.setItemStack(ItemStack(Material.MANGROVE_ROOTS))
                 entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
+                entity.viewRange = runtime.settings.displayViewRange
                 entity.isGlowing = true
                 entity.isPersistent = false
                 markPestNestEntity(entity, runtime, nest.position)
@@ -5786,6 +5804,7 @@ class ArcFarmsService(
                 entity.setItemStack(ItemStack(visual))
                 entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
                 entity.uniformScale(SUPPLY_ITEM_SCALE)
+                entity.viewRange = runtime.settings.displayViewRange
                 entity.isGlowing = true
                 entity.isPersistent = false
                 markSupplyEntity(entity, runtime, kind)
