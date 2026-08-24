@@ -16,6 +16,9 @@ import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmContractRarity
 import ru.ruscrafting.farms.domain.FarmCustomerType
+import ru.ruscrafting.farms.domain.FarmPhase
+import ru.ruscrafting.farms.paper.FarmScoreboardRenderer
+import ru.ruscrafting.farms.paper.FarmScoreboardView
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.writeText
@@ -50,6 +53,8 @@ class ArcFarmsConfigTest : FunSpec({
         settings.network.workdayEnabled shouldBe true
         settings.network.playerAnnouncementsEnabled shouldBe false
         settings.missingBedHighlightThreshold shouldBe 10
+        settings.farmScoreboard.enabled shouldBe true
+        settings.farmScoreboard.replaceExisting shouldBe false
         settings.menuBackground.enabled shouldBe false
         settings.destinations.getValue("farm").server shouldBe "spawn"
         settings.destinations.getValue("farm").world shouldBe "sp11"
@@ -129,6 +134,8 @@ class ArcFarmsConfigTest : FunSpec({
         classicSettings.menuBackground.enabled shouldBe true
         classicSettings.menuBackground.material shouldBe "GRAY_STAINED_GLASS_PANE"
         classicSettings.menuBackground.customModelData shouldBe 11_000
+        classicSettings.farmScoreboard.enabled shouldBe true
+        classicSettings.farmScoreboard.replaceExisting shouldBe true
     }
 
     test("survival and parkour profiles are standalone network relays") {
@@ -151,6 +158,7 @@ class ArcFarmsConfigTest : FunSpec({
                 settings.farms shouldBe emptyList()
                 settings.lumbermills shouldBe emptyList()
                 settings.mines shouldBe emptyList()
+                settings.farmScoreboard.enabled shouldBe false
                 settings.destinations.values.all { it.server == "spawn" } shouldBe true
             }
             ArcFarmsLocale.validateFiles(root, settings)
@@ -425,6 +433,40 @@ class ArcFarmsConfigTest : FunSpec({
     test("production farm sized bounds remain valid while excessive cuboids fail closed") {
         CuboidBounds(109, -64, 363, 298, 139, 575).volume shouldBe 8_255_880L
         shouldThrow<IllegalArgumentException> { CuboidBounds(0, 0, 0, 399, 399, 399) }
+    }
+
+    test("farm scoreboard renders a compact localized objective with every supported crop") {
+        val root = resourceTree()
+        val settings = ArcFarmsConfig.inspect(root)
+        val locale = ArcFarmsLocale(root) { settings }
+        val rows = FarmScoreboardRenderer(locale).rows(
+            FarmScoreboardView(
+                orderId = "miners_rations",
+                phase = FarmPhase.HARVESTING,
+                done = 1_250,
+                total = 3_200,
+                required = linkedMapOf(
+                    "WHEAT" to 1_600,
+                    "CARROTS" to 800,
+                    "POTATOES" to 800,
+                    "BEETROOTS" to 800,
+                    "PUMPKIN" to 200,
+                ),
+                cropProgress = mapOf("WHEAT" to 1_000, "CARROTS" to 250),
+                cartPercent = 39,
+            ),
+            null,
+        )
+        val plain = rows.map(PlainTextComponentSerializer.plainText()::serialize)
+
+        rows.size shouldBe 15
+        plain[0] shouldBe "Заказ"
+        plain[3] shouldBe "Сейчас"
+        plain[4] shouldBe "Собирайте культуры заказа"
+        plain[5] shouldBe "1250 / 3200"
+        plain[7] shouldBe "Урожай"
+        plain.last() shouldBe "Телега 39%"
+        plain.any { "pumpkin" in it.lowercase() || "тыкв" in it.lowercase() } shouldBe true
     }
 }) {
     companion object {

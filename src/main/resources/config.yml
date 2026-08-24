@@ -20,6 +20,9 @@ ui:
   title-stay-seconds: 4
   marker-height: 12
   missing-bed-highlight-threshold: 10
+  farm-scoreboard:
+    enabled: true
+    replace-existing: false
   menu-background:
     enabled: false
     material: GRAY_STAINED_GLASS_PANE

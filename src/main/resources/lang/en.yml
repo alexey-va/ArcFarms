@@ -199,6 +199,26 @@ farm:
   drought-bossbar: '<order> <color:#707a76>•</color> <color:#ff7a45>Drought</color> <color:#707a76>•</color> <color:#45c8f5>watering <done>/<total></color>'
   delivery-bossbar: '<order> <color:#707a76>•</color> <color:#ffc857>Crates <done>/<total></color> <color:#707a76>•</color> <color:#f2fff7>right-click, then receiving</color>'
   delivery-carrying-bossbar: '<order> <color:#707a76>•</color> <color:#ffc857>Crates <done>/<total></color> <color:#707a76>•</color> <color:#c778ff>to the purple marker</color>'
+scoreboard:
+  title: '<color:#55d98b><bold>FARM</bold></color>'
+  section:
+    order: '<color:#8fa69b>Order</color>'
+    current: '<color:#8fa69b>Current task</color>'
+    crops: '<color:#8fa69b>Harvest</color>'
+  progress: '<color:#55d98b><done></color><color:#707a76> / </color><color:#f2fff7><total></color>'
+  crop: '<color:#f2fff7><crop></color> <color:#55d98b><done></color><color:#707a76>/</color><color:#b8c8c0><total></color>'
+  cart: '<color:#8fa69b>Cart</color> <color:#ffc857><percent>%</color>'
+  objective:
+    idle: '<color:#f2fff7>Wait for a new order</color>'
+    preparation: '<color:#f2fff7>Till the marked field</color>'
+    planting: '<color:#f2fff7>Plant the marked field</color>'
+    care: '<color:#f2fff7>Care:</color> <care>'
+    harvesting: '<color:#f2fff7>Harvest the ordered crops</color>'
+    pests: '<color:#ff7a45>Break the pest nests</color>'
+    drought: '<color:#45c8f5>Flood the dry patches</color>'
+    delivery: '<color:#f2fff7>Collect and deliver the crates</color>'
+    delivery-carrying: '<color:#ffc857>Carry the crate to receiving</color>'
+    cooldown: '<color:#55d98b>Shift complete</color>'
 lumber:
   started: '<color:#ffc857>Lumbermill order</color> <color:#707a76>•</color> <wood>'
   wrong-species: '<gray>This order only accepts <wood>.</gray>'

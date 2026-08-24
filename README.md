@@ -71,6 +71,14 @@ with its current and required amount. Every other active farm boss bar follows
 the same `contract • action • progress` hierarchy. Only requested mature crops
 fill it, and accepted crops are consumed by the order instead of dropping.
 
+While a player is inside an active farm, the optional `ui.farm-scoreboard`
+sidebar expands that compact guidance into the contract name, current action,
+phase progress, every crop quota, and cart fill. It restores the player's prior
+scoreboard on exit, reload, quit, or shutdown. If another plugin replaces the
+farm sidebar during a visit, ArcFarms yields until the player next enters the
+farm instead of fighting it and causing flicker. The portable default does not
+replace an existing sidebar; `replace-existing` is an explicit runtime choice.
+
 Orders are complete contract variants rather than temporary multipliers. Most
 shifts rotate through ordinary bakery, mine-supply, and market contracts; a
 bounded configurable roll may choose one of the larger rare contracts instead.
@@ -268,13 +276,13 @@ button.
 ../arc-core/gradlew clean check shadowJar
 ```
 
-The deployable artifact is `build/libs/ArcFarms-0.13.0.jar`.
+The deployable artifact is `build/libs/ArcFarms-0.14.0.jar`.
 
 ## Isolated gameplay QA
 
 `scripts/lab/plugin-configs/ArcFarms/config.yml` defines three small cuboid
 fixtures. The player-bot session exposes only the fixed `arcfarms` operations
-`fixture-setup`, `reload`, `travel`, `debug-controls`, `care-stories`, `drought-flow`,
+`fixture-setup`, `reload`, `travel`, `debug-controls`, `scoreboard`, `care-stories`, `drought-flow`,
 `pest-stability`, `farm`, `lumber`, `mine`, `status`, and `fixture-cleanup` on
 the lab port and documented OP QA identities; it accepts no command or target
 arguments. Always clean the scene after a smoke run.

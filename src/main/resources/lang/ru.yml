@@ -199,6 +199,26 @@ farm:
   drought-bossbar: '<order> <color:#707a76>•</color> <color:#ff7a45>Засуха</color> <color:#707a76>•</color> <color:#45c8f5>полив <done>/<total></color>'
   delivery-bossbar: '<order> <color:#707a76>•</color> <color:#ffc857>Ящики <done>/<total></color> <color:#707a76>•</color> <color:#f2fff7>ПКМ, затем к приёмке</color>'
   delivery-carrying-bossbar: '<order> <color:#707a76>•</color> <color:#ffc857>Ящики <done>/<total></color> <color:#707a76>•</color> <color:#c778ff>к фиолетовой метке</color>'
+scoreboard:
+  title: '<color:#55d98b><bold>ФЕРМА</bold></color>'
+  section:
+    order: '<color:#8fa69b>Заказ</color>'
+    current: '<color:#8fa69b>Сейчас</color>'
+    crops: '<color:#8fa69b>Урожай</color>'
+  progress: '<color:#55d98b><done></color><color:#707a76> / </color><color:#f2fff7><total></color>'
+  crop: '<color:#f2fff7><crop></color> <color:#55d98b><done></color><color:#707a76>/</color><color:#b8c8c0><total></color>'
+  cart: '<color:#8fa69b>Телега</color> <color:#ffc857><percent>%</color>'
+  objective:
+    idle: '<color:#f2fff7>Ожидайте новый заказ</color>'
+    preparation: '<color:#f2fff7>Вспашите отмеченное поле</color>'
+    planting: '<color:#f2fff7>Засейте отмеченное поле</color>'
+    care: '<color:#f2fff7>Уход:</color> <care>'
+    harvesting: '<color:#f2fff7>Собирайте культуры заказа</color>'
+    pests: '<color:#ff7a45>Разбейте гнёзда вредителей</color>'
+    drought: '<color:#45c8f5>Залейте сухие пятна водой</color>'
+    delivery: '<color:#f2fff7>Заберите и доставьте ящики</color>'
+    delivery-carrying: '<color:#ffc857>Несите ящик к приёмке</color>'
+    cooldown: '<color:#55d98b>Смена завершена</color>'
 lumber:
   started: '<color:#ffc857>Заказ лесопилки</color> <color:#707a76>•</color> <wood>'
   wrong-species: '<gray>Этот заказ принимает только <wood>.</gray>'

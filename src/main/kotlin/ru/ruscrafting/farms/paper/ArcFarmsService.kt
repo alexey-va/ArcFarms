@@ -1,5 +1,6 @@
 package ru.ruscrafting.farms.paper
 
+import io.papermc.paper.scoreboard.numbers.NumberFormat
 import net.kyori.adventure.bossbar.BossBar
 import net.kyori.adventure.key.Key
 import net.kyori.adventure.sound.Sound as AdventureSound
@@ -57,6 +58,9 @@ import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
+import org.bukkit.scoreboard.Criteria
+import org.bukkit.scoreboard.DisplaySlot
+import org.bukkit.scoreboard.Scoreboard
 import ru.arc.core.ScheduledTask
 import ru.arc.core.Tasks
 import ru.ruscrafting.farms.config.ArcFarmsConfig
@@ -173,6 +177,12 @@ private data class MineRuntime(
 )
 
 private data class BarKey(val playerId: UUID, val runtimeKey: String)
+private data class FarmScoreboardSession(
+    val zoneId: String,
+    val scoreboard: Scoreboard,
+    val previous: Scoreboard,
+    var view: FarmScoreboardView? = null,
+)
 private data class DeliveryKey(val zoneId: String, val index: Int)
 private data class SupplyKey(val zoneId: String, val kind: FarmSupplyKind)
 private data class PestNestKey(val zoneId: String, val position: FarmPlotPosition)
@@ -250,6 +260,9 @@ class ArcFarmsService(
     private val pendingFarmRewards = mutableListOf<PendingFarmReward>()
     private val claimedFarmRewardSequences = mutableMapOf<String, Long>()
     private val activeBars = mutableMapOf<BarKey, BossBar>()
+    private val farmScoreboardRenderer = FarmScoreboardRenderer(locale)
+    private val farmScoreboards = mutableMapOf<UUID, FarmScoreboardSession>()
+    private val farmScoreboardSuppressed = mutableSetOf<UUID>()
     private val mineReservations = ConcurrentHashMap.newKeySet<String>()
     private val pendingPositions = ConcurrentHashMap<String, String>()
     private val interactionCooldowns = mutableMapOf<String, Long>()
@@ -381,6 +394,7 @@ class ArcFarmsService(
         clearTemporaryFarmWater(reason)
         droughtGrowth.clear()
         hideAllBars()
+        restoreAllFarmScoreboards(reason)
         cleanupOwnedFarmEntities()
         settings = candidate
         rebuild(snapshot)
@@ -626,8 +640,12 @@ class ArcFarmsService(
         val toFarm = farmAt(destination)
         if (fromFarm != null && fromFarm !== toFarm) {
             removeFarmServiceItems(player, fromFarm.settings.id, "left_zone")
+            restoreFarmScoreboard(player, "left_zone")
         }
-        if (toFarm != null && fromFarm !== toFarm) showFarmEntry(player, toFarm)
+        if (toFarm != null && fromFarm !== toFarm) {
+            farmScoreboardSuppressed.remove(player.uniqueId)
+            showFarmEntry(player, toFarm)
+        }
         if (fromFarm !== toFarm) syncFarmMusic(player, toFarm, clock())
         deliveryCarriers.filterValues { it == player.uniqueId }.keys.toList().forEach { key ->
             farms.firstOrNull { it.settings.id == key.zoneId }?.let { runtime ->
@@ -653,6 +671,7 @@ class ArcFarmsService(
 
     fun onQuit(player: Player) {
         stopFarmMusic(player, "player_quit")
+        restoreFarmScoreboard(player, "player_quit")
         val keys = activeBars.keys.filter { it.playerId == player.uniqueId }
         keys.forEach { key -> activeBars.remove(key)?.let(player::hideBossBar) }
         deliveryCarriers.filterValues { it == player.uniqueId }.keys.toList().forEach { key ->
@@ -3657,6 +3676,7 @@ class ArcFarmsService(
 
     private fun updatePlayerGuidance() {
         val expectedBars = mutableSetOf<BarKey>()
+        val expectedScoreboards = mutableSetOf<UUID>()
         farms.forEach { runtime ->
             if (
                 runtime.state.phase !in setOf(
@@ -3695,6 +3715,21 @@ class ArcFarmsService(
                 val carrying = deliveryCarriers.any { (delivery, carrierId) ->
                     delivery.zoneId == runtime.settings.id && carrierId == player.uniqueId
                 }
+                val phaseDone = when (runtime.state.phase) {
+                    FarmPhase.PREPARATION -> runtime.state.preparationProgress
+                    FarmPhase.PLANTING -> runtime.state.plantingProgress
+                    FarmPhase.CARE -> runtime.state.careProgress()
+                    FarmPhase.INCIDENT -> runtime.state.incidentProgress
+                    FarmPhase.DELIVERY -> runtime.state.deliveredCrates.size
+                    else -> done
+                }
+                val phaseTotal = when (runtime.state.phase) {
+                    FarmPhase.PREPARATION, FarmPhase.PLANTING -> runtime.state.preparationRequired
+                    FarmPhase.CARE -> runtime.state.careRequired()
+                    FarmPhase.INCIDENT -> runtime.state.incidentRequired
+                    FarmPhase.DELIVERY -> runtime.settings.delivery.crates
+                    else -> order.totalRequired
+                }.coerceAtLeast(1)
                 val key = when (runtime.state.phase) {
                     FarmPhase.PREPARATION -> MessageKey.FARM_PREPARATION_BOSSBAR
                     FarmPhase.PLANTING -> MessageKey.FARM_PLANTING_BOSSBAR
@@ -3729,36 +3764,11 @@ class ArcFarmsService(
                         } ?: Component.empty()),
                         "nests" to locale.text(runtime.state.pestNests.size),
                         "pests" to locale.text(runtime.state.pestAlive),
-                        "done" to locale.text(
-                            when (runtime.state.phase) {
-                                FarmPhase.PREPARATION -> runtime.state.preparationProgress
-                                FarmPhase.PLANTING -> runtime.state.plantingProgress
-                                FarmPhase.CARE -> runtime.state.careProgress()
-                                FarmPhase.INCIDENT -> runtime.state.incidentProgress
-                                FarmPhase.DELIVERY -> runtime.state.deliveredCrates.size
-                                else -> done
-                            },
-                        ),
-                        "total" to locale.text(
-                            when (runtime.state.phase) {
-                                FarmPhase.PREPARATION -> runtime.state.preparationRequired
-                                FarmPhase.PLANTING -> runtime.state.preparationRequired
-                                FarmPhase.CARE -> runtime.state.careRequired()
-                                FarmPhase.INCIDENT -> runtime.state.incidentRequired
-                                FarmPhase.DELIVERY -> runtime.settings.delivery.crates
-                                else -> order.totalRequired
-                            },
-                        ),
+                        "done" to locale.text(phaseDone),
+                        "total" to locale.text(phaseTotal),
                     ),
                 )
-                val progress = when (runtime.state.phase) {
-                    FarmPhase.PREPARATION -> runtime.state.preparationProgress.toFloat() / runtime.state.preparationRequired
-                    FarmPhase.PLANTING -> runtime.state.plantingProgress.toFloat() / runtime.state.preparationRequired
-                    FarmPhase.CARE -> runtime.state.careProgress().toFloat() / runtime.state.careRequired().coerceAtLeast(1)
-                    FarmPhase.INCIDENT -> runtime.state.incidentProgress.toFloat() / runtime.state.incidentRequired
-                    FarmPhase.DELIVERY -> runtime.state.deliveredCrates.size.toFloat() / runtime.settings.delivery.crates
-                    else -> runtime.state.progressRatio(order).toFloat()
-                }
+                val progress = phaseDone.toFloat() / phaseTotal
                 updateBar(
                     player,
                     "farm:${runtime.settings.id}",
@@ -3774,8 +3784,19 @@ class ArcFarmsService(
                     },
                     expectedBars,
                 )
+                updateFarmScoreboard(
+                    runtime = runtime,
+                    order = order,
+                    player = player,
+                    phaseDone = phaseDone,
+                    phaseTotal = phaseTotal,
+                    completed = done,
+                    carrying = carrying,
+                    expected = expectedScoreboards,
+                )
             }
         }
+        reconcileFarmScoreboards(expectedScoreboards)
         lumbermills.forEach { runtime ->
             if (runtime.state.phase !in setOf(LumberPhase.FELLING, LumberPhase.PROCESSING)) return@forEach
             val region = if (runtime.state.phase == LumberPhase.PROCESSING) runtime.station else runtime.region
@@ -5968,6 +5989,135 @@ class ArcFarmsService(
 
     private fun hasActiveWater(zoneId: String): Boolean = waterFlows[zoneId]?.isEmpty() == false
 
+    private fun updateFarmScoreboard(
+        runtime: FarmRuntime,
+        order: FarmOrder,
+        player: Player,
+        phaseDone: Int,
+        phaseTotal: Int,
+        completed: Int,
+        carrying: Boolean,
+        expected: MutableSet<UUID>,
+    ) {
+        if (!settings.farmScoreboard.enabled) return
+        val playerId = player.uniqueId
+        expected += playerId
+        if (playerId in farmScoreboardSuppressed) return
+
+        var session = farmScoreboards[playerId]
+        if (session != null && session.zoneId != runtime.settings.id) {
+            restoreFarmScoreboard(player, "changed_zone")
+            session = null
+        }
+        if (session != null && player.scoreboard !== session.scoreboard) {
+            farmScoreboards.remove(playerId)
+            farmScoreboardSuppressed += playerId
+            debug.event(
+                "farm_scoreboard_yielded",
+                "player" to player.name,
+                "zone" to runtime.settings.id,
+                "reason" to "replaced_by_other_plugin",
+            )
+            return
+        }
+
+        val view = FarmScoreboardView(
+            orderId = order.id,
+            phase = runtime.state.phase,
+            done = phaseDone,
+            total = phaseTotal,
+            required = order.required,
+            cropProgress = runtime.state.progress,
+            cartPercent = ((completed.toLong() * 100L) / order.totalRequired.coerceAtLeast(1)).toInt(),
+            careType = runtime.state.careType,
+            incidentType = runtime.state.incidentType,
+            carrying = carrying,
+        )
+        if (session == null) {
+            val previous = player.scoreboard
+            if (!settings.farmScoreboard.replaceExisting && previous.getObjective(DisplaySlot.SIDEBAR) != null) {
+                farmScoreboardSuppressed += playerId
+                debug.event(
+                    "farm_scoreboard_yielded",
+                    "player" to player.name,
+                    "zone" to runtime.settings.id,
+                    "reason" to "existing_sidebar",
+                )
+                return
+            }
+            val scoreboard = Bukkit.getScoreboardManager().newScoreboard
+            scoreboard.registerNewObjective(
+                FARM_SCOREBOARD_OBJECTIVE,
+                Criteria.DUMMY,
+                farmScoreboardRenderer.title(player),
+            ).also { objective ->
+                objective.displaySlot = DisplaySlot.SIDEBAR
+                objective.numberFormat(NumberFormat.blank())
+            }
+            session = FarmScoreboardSession(runtime.settings.id, scoreboard, previous)
+            farmScoreboards[playerId] = session
+            renderFarmScoreboard(player, session, view)
+            player.scoreboard = scoreboard
+            debug.message("scoreboard", "local", "farm:${runtime.settings.id}", player, farmScoreboardRenderer.title(player))
+            return
+        }
+        if (session.view != view) renderFarmScoreboard(player, session, view)
+    }
+
+    private fun renderFarmScoreboard(player: Player, session: FarmScoreboardSession, view: FarmScoreboardView) {
+        val objective = requireNotNull(session.scoreboard.getObjective(FARM_SCOREBOARD_OBJECTIVE)) {
+            "Farm scoreboard objective disappeared for ${player.name}"
+        }
+        objective.displayName(farmScoreboardRenderer.title(player))
+        session.scoreboard.entries.toList().forEach(session.scoreboard::resetScores)
+        farmScoreboardRenderer.rows(view, player).forEachIndexed { index, row ->
+            objective.getScore("§${index.toString(16)}").also { score ->
+                score.customName(row)
+                score.score = FarmScoreboardRenderer.MAX_ROWS - index
+            }
+        }
+        session.view = view
+        debug.event(
+            "farm_scoreboard_updated",
+            "player" to player.name,
+            "zone" to session.zoneId,
+            "order" to view.orderId,
+            "phase" to view.phase,
+            "progress" to "${view.done}/${view.total}",
+            "rows" to session.scoreboard.entries.size,
+        )
+    }
+
+    private fun reconcileFarmScoreboards(expected: Set<UUID>) {
+        (farmScoreboards.keys - expected).toList().forEach { playerId ->
+            Bukkit.getPlayer(playerId)?.let { restoreFarmScoreboard(it, "not_in_active_farm") }
+                ?: farmScoreboards.remove(playerId)
+        }
+        farmScoreboardSuppressed.retainAll(expected)
+    }
+
+    private fun restoreFarmScoreboard(player: Player, reason: String) {
+        val session = farmScoreboards.remove(player.uniqueId)
+        if (session != null && player.scoreboard === session.scoreboard) {
+            player.scoreboard = session.previous
+            debug.event(
+                "farm_scoreboard_restored",
+                "player" to player.name,
+                "zone" to session.zoneId,
+                "reason" to reason,
+            )
+        }
+        farmScoreboardSuppressed.remove(player.uniqueId)
+    }
+
+    private fun restoreAllFarmScoreboards(reason: String) {
+        farmScoreboards.keys.toList().forEach { playerId ->
+            Bukkit.getPlayer(playerId)?.let { restoreFarmScoreboard(it, reason) }
+                ?: farmScoreboards.remove(playerId)
+        }
+        farmScoreboardSuppressed.clear()
+    }
+
     private fun updateBar(
         player: Player,
         runtimeKey: String,
@@ -7076,6 +7226,7 @@ class ArcFarmsService(
         runCatching { stopAllFarmMusic("plugin_close") }.exceptionOrNull()?.let(failures::add)
         runCatching { clearTemporaryFarmWater("plugin_close") }.exceptionOrNull()?.let(failures::add)
         runCatching(::hideAllBars).exceptionOrNull()?.let(failures::add)
+        runCatching { restoreAllFarmScoreboards("plugin_close") }.exceptionOrNull()?.let(failures::add)
         runCatching(::cleanupOwnedFarmEntities).exceptionOrNull()?.let(failures::add)
         if (stateSafeToPersist) runCatching(::persistBlocking).exceptionOrNull()?.let(failures::add)
         if (failures.isNotEmpty()) {
@@ -7088,6 +7239,7 @@ class ArcFarmsService(
     companion object {
         private const val MAX_INCIDENT_DAMAGED_CROPS = 4_096
         private const val MAX_INTERACTION_COOLDOWNS = 10_000
+        private const val FARM_SCOREBOARD_OBJECTIVE = "arcfarms_farm"
 
         private val TITLE_SUBTITLES = mapOf(
             MessageKey.FARM_ENTRY_TITLE to MessageKey.FARM_ENTRY_SUBTITLE,

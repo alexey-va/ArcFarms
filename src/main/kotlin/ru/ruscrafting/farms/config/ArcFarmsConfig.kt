@@ -255,6 +255,11 @@ data class MenuBackgroundSettings(
     val customModelData: Int,
 )
 
+data class FarmScoreboardSettings(
+    val enabled: Boolean,
+    val replaceExisting: Boolean,
+)
+
 class ArcFarmsConfig private constructor(
     val enabled: Boolean,
     val serverId: String,
@@ -267,6 +272,7 @@ class ArcFarmsConfig private constructor(
     val titleStaySeconds: Int,
     val markerHeight: Int,
     val missingBedHighlightThreshold: Int,
+    val farmScoreboard: FarmScoreboardSettings,
     val menuBackground: MenuBackgroundSettings,
     val saveSeconds: Int,
     val completedCooldownSeconds: Int,
@@ -582,6 +588,10 @@ class ArcFarmsConfig private constructor(
                 markerHeight = config.int("ui.marker-height", 12).checked("ui.marker-height", 6, 24),
                 missingBedHighlightThreshold = config.int("ui.missing-bed-highlight-threshold", 10)
                     .checked("ui.missing-bed-highlight-threshold", 1, 32),
+                farmScoreboard = FarmScoreboardSettings(
+                    enabled = config.boolean("ui.farm-scoreboard.enabled", true),
+                    replaceExisting = config.boolean("ui.farm-scoreboard.replace-existing", false),
+                ),
                 menuBackground = MenuBackgroundSettings(
                     enabled = config.boolean("ui.menu-background.enabled", false),
                     material = materialName(config.string("ui.menu-background.material", "GRAY_STAINED_GLASS_PANE")),
