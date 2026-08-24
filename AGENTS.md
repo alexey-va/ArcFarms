@@ -18,8 +18,13 @@ activities: farm, lumbermill, and mine.
 - Farm orders are complete contract variants: rarity, crop quota, permitted
   care and incident pools, customer identity, and cart-load visual belong to
   the order. The active order name leads every farm boss bar. Harvest progress
-  fills one persistent four-step cart, while the customer and cart are tagged
-  scene entities reconstructed from shift state.
+  fills one four-step cart visual, while the customer and cart are tagged scene
+  entities reconstructed from shift state. The cart itself is a configurable,
+  non-persistent `ItemDisplay` with a separate non-persistent `Interaction`
+  hitbox; never use a `Minecart` or another ticking collision vehicle for this
+  decoration. Keep portable vanilla defaults in the bundled config and apply
+  the verified ItemsAdder material/custom-model-data override only in the
+  owning runtime config.
 - Farm completion rewards may use independently-chanced experience, Vault
   money, ordinary items, weighted item bundles, and bounded console commands.
   Persist each resolved grant before delivery and claim it durably before side
