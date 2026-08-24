@@ -80,6 +80,11 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().proceduralCareFixtures shouldBe true
         settings.farms.single().careAnimalEntities shouldContainExactly listOf("CHICKEN", "SHEEP")
         settings.farms.single().music.enabled shouldBe false
+        settings.farms.single().contractCartVisual.material shouldBe "MINECART"
+        settings.farms.single().contractCartVisual.customModelData shouldBe 0
+        settings.farms.single().contractCartVisual.displayTransform shouldBe FarmItemDisplayTransform.GROUND
+        settings.farms.single().contractCartVisual.scale shouldBe 1.0f
+        settings.farms.single().contractCartVisual.yOffset shouldBe 0.15
         settings.farms.single().placementMinObjectiveDistance shouldBe 10
         settings.farms.single().placementMaxPlayerDistance shouldBe 28
         settings.farms.single().placementSearchRadius shouldBe 32
@@ -122,6 +127,11 @@ class ArcFarmsConfigTest : FunSpec({
         classicSettings.farms.single().music.sound shouldBe "arc:farm_valley_comes_alive"
         classicSettings.farms.single().music.durationSeconds shouldBe 262
         classicSettings.farms.single().music.volume shouldBe 0.65f
+        classicSettings.farms.single().contractCartVisual.material shouldBe "PAPER"
+        classicSettings.farms.single().contractCartVisual.customModelData shouldBe 10_747
+        classicSettings.farms.single().contractCartVisual.displayTransform shouldBe FarmItemDisplayTransform.GROUND
+        classicSettings.farms.single().contractCartVisual.scale shouldBe 4.0f
+        classicSettings.farms.single().contractCartVisual.yOffset shouldBe 0.75
         classicSettings.farms.single().rewards.money.amountCents shouldBe 50_000
         classicSettings.farms.single().rewards.money.chancePercent shouldBe 100
         classicSettings.farms.single().rewards.items.single().id shouldBe "golden_apple"
@@ -138,6 +148,14 @@ class ArcFarmsConfigTest : FunSpec({
         classicSettings.menuBackground.customModelData shouldBe 11_000
         classicSettings.farmScoreboard.enabled shouldBe true
         classicSettings.farmScoreboard.replaceExisting shouldBe true
+
+        Files.readString(
+            repositoryRoot.resolve(
+                "classic/plugins/ItemsAdder/contents/elitecreatures/configs/medieval/pack_medieval_market_decoration_v1.yml",
+            ),
+        ) shouldContain "medieval_market_decoration_v1_cart_2:"
+        Files.readString(repositoryRoot.resolve("classic/plugins/ItemsAdder/storage/items_ids_cache.yml")) shouldContain
+            "elitecreatures:medieval_market_decoration_v1_cart_2: 10747"
     }
 
     test("survival and parkour profiles are standalone network relays") {
@@ -200,6 +218,17 @@ class ArcFarmsConfigTest : FunSpec({
         )
 
         shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(root) }
+    }
+
+    test("farm contract cart transform is validated before entity creation") {
+        val root = resourceTree()
+        val configPath = root.resolve("config.yml")
+        configPath.writeText(
+            Files.readString(configPath).replace("display-transform: GROUND", "display-transform: SIDEWAYS"),
+        )
+
+        shouldThrow<IllegalStateException> { ArcFarmsConfig.inspect(root) }
+            .message shouldContain "display-transform"
     }
 
     test("rare contract chance is rejected when the farm has no rare order") {

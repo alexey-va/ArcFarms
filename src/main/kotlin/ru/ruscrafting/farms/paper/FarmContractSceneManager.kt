@@ -4,22 +4,22 @@ import org.bukkit.Chunk
 import org.bukkit.Location
 import org.bukkit.NamespacedKey
 import org.bukkit.entity.Entity
+import org.bukkit.entity.Interaction
 import org.bukkit.entity.ItemDisplay
-import org.bukkit.entity.Minecart
 import org.bukkit.entity.Villager
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
 import org.bukkit.util.Transformation
-import org.bukkit.util.Vector
 import org.joml.AxisAngle4f
 import org.joml.Vector3f
+import ru.ruscrafting.farms.config.FarmItemDisplayTransform
 import ru.ruscrafting.farms.domain.FarmCustomerType
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.floor
 
-internal enum class FarmContractSceneRole { CART, CART_LOAD, CUSTOMER }
+internal enum class FarmContractSceneRole { CART, CART_INTERACTION, CART_LOAD, CUSTOMER }
 
 internal data class FarmContractSceneIdentity(
     val zoneId: String,
@@ -95,8 +95,13 @@ internal data class FarmContractSceneSpec(
     val customerType: FarmCustomerType,
     val customerLocation: Location,
     val cartLocation: Location,
+    val cartItem: ItemStack,
+    val cartDisplayTransform: FarmItemDisplayTransform,
+    val cartScale: Float,
     val loadItem: ItemStack,
     val loadCount: Int,
+    val loadYOffset: Double,
+    val loadScale: Float,
 ) {
     init {
         require(loadCount in 0..4) { "Farm contract cart load count must be between 0 and 4" }
@@ -125,14 +130,14 @@ internal class FarmContractSceneManager(
     fun metadata(entity: Entity): FarmContractSceneIdentity? = decode(entity)
 
     fun ensure(spec: FarmContractSceneSpec) {
-        desired[spec.zoneId] = spec
+        val previous = desired.put(spec.zoneId, spec)
         val targets = targets(spec)
         val expected = targets.mapTo(hashSetOf(), FarmContractSceneTarget::identity)
         tracked.keys.filter { it.zoneId == spec.zoneId && it !in expected }.toList().forEach { identity ->
             removeTracked(identity, "target_inactive")
         }
 
-        if (targets.all(::trackedEntityIsCurrent)) return
+        if (previous == spec && targets.all(::trackedEntityIsCurrent)) return
         targets.mapNotNull(::loadedChunk).distinctBy { it.world.uid to (it.x to it.z) }.forEach { chunk ->
             reconcileChunk(chunk, "ensure")
         }
@@ -205,11 +210,12 @@ internal class FarmContractSceneManager(
             FarmContractSceneRole.CUSTOMER -> location.world.spawn(location, Villager::class.java) { customer ->
                 normalize(customer, spec, target.identity)
             }
-            FarmContractSceneRole.CART -> location.world.spawn(location, Minecart::class.java) { cart ->
-                normalize(cart, spec, target.identity)
-            }
-            FarmContractSceneRole.CART_LOAD -> location.world.spawn(location, ItemDisplay::class.java) { display ->
-                normalize(display, spec, target.identity)
+            FarmContractSceneRole.CART, FarmContractSceneRole.CART_LOAD ->
+                location.world.spawn(location, ItemDisplay::class.java) { display ->
+                    normalize(display, spec, target.identity)
+                }
+            FarmContractSceneRole.CART_INTERACTION -> location.world.spawn(location, Interaction::class.java) { interaction ->
+                normalize(interaction, spec, target.identity)
             }
         }
         mark(entity, target.identity)
@@ -223,7 +229,6 @@ internal class FarmContractSceneManager(
         )
     }
 
-    @Suppress("DEPRECATION")
     private fun normalize(entity: Entity, spec: FarmContractSceneSpec, identity: FarmContractSceneIdentity) {
         entity.isPersistent = false
         entity.setGravity(false)
@@ -245,24 +250,38 @@ internal class FarmContractSceneManager(
                 entity.isSilent = true
                 entity.setRotation(spec.customerLocation.yaw, 0f)
             }
-            is Minecart -> {
+            is Interaction -> {
+                entity.interactionWidth = 1.8f
+                entity.interactionHeight = 1.6f
+                entity.isResponsive = true
                 entity.setRotation(spec.cartLocation.yaw, 0f)
-                entity.setNoPhysics(true)
-                entity.velocity = Vector()
-                entity.maxSpeed = 0.0
-                entity.isSlowWhenEmpty = true
             }
-            is ItemDisplay -> {
-                entity.setItemStack(spec.loadItem.clone())
-                entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.GROUND
-                entity.transformation = Transformation(
-                    Vector3f(),
-                    AxisAngle4f(),
-                    Vector3f(0.48f, 0.48f, 0.48f),
-                    AxisAngle4f(),
-                )
-                entity.teleportDuration = 1
-                entity.setRotation(spec.cartLocation.yaw, 0f)
+            is ItemDisplay -> when (identity.role) {
+                FarmContractSceneRole.CART -> {
+                    entity.setItemStack(spec.cartItem.clone())
+                    entity.itemDisplayTransform = spec.cartDisplayTransform.bukkit
+                    entity.transformation = Transformation(
+                        Vector3f(),
+                        AxisAngle4f(),
+                        Vector3f(spec.cartScale, spec.cartScale, spec.cartScale),
+                        AxisAngle4f(),
+                    )
+                    entity.displayWidth = maxOf(1.0f, spec.cartScale)
+                    entity.displayHeight = maxOf(1.0f, spec.cartScale * 0.75f)
+                    entity.setRotation(spec.cartLocation.yaw, 0f)
+                }
+                FarmContractSceneRole.CART_LOAD -> {
+                    entity.setItemStack(spec.loadItem.clone())
+                    entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.GROUND
+                    entity.transformation = Transformation(
+                        Vector3f(),
+                        AxisAngle4f(),
+                        Vector3f(spec.loadScale, spec.loadScale, spec.loadScale),
+                        AxisAngle4f(),
+                    )
+                    entity.setRotation(spec.cartLocation.yaw, 0f)
+                }
+                else -> return
             }
         }
     }
@@ -270,7 +289,8 @@ internal class FarmContractSceneManager(
     private fun targets(spec: FarmContractSceneSpec): List<FarmContractSceneTarget> = buildList {
         add(target(spec, FarmContractSceneRole.CUSTOMER, 0, spec.customerLocation))
         add(target(spec, FarmContractSceneRole.CART, 0, spec.cartLocation))
-        repeat(spec.loadCount) { slot -> add(target(spec, FarmContractSceneRole.CART_LOAD, slot, cartLoadLocation(spec.cartLocation, slot))) }
+        add(target(spec, FarmContractSceneRole.CART_INTERACTION, 0, spec.cartLocation))
+        repeat(spec.loadCount) { slot -> add(target(spec, FarmContractSceneRole.CART_LOAD, slot, cartLoadLocation(spec, slot))) }
     }
 
     private fun target(
@@ -286,29 +306,35 @@ internal class FarmContractSceneManager(
         z = location.z,
     )
 
-    private fun cartLoadLocation(cart: Location, slot: Int): Location {
+    private fun cartLoadLocation(spec: FarmContractSceneSpec, slot: Int): Location {
+        val cart = spec.cartLocation
         val offsets = listOf(-0.22 to -0.08, 0.22 to -0.08, -0.22 to 0.18, 0.22 to 0.18)
         val (localX, localZ) = offsets[slot.coerceIn(0, offsets.lastIndex)]
         val radians = Math.toRadians(cart.yaw.toDouble())
         val x = localX * kotlin.math.cos(radians) - localZ * kotlin.math.sin(radians)
         val z = localX * kotlin.math.sin(radians) + localZ * kotlin.math.cos(radians)
-        return cart.clone().add(x, 0.4 + (slot / 2) * 0.12, z)
+        return cart.clone().add(x, spec.loadYOffset + (slot / 2) * 0.12, z)
     }
 
-    private fun candidate(entity: Entity): FarmContractSceneCandidate = FarmContractSceneCandidate(
-        id = entity.uniqueId.toString(),
-        identity = decode(entity),
-        role = when (entity) {
-            is Villager -> FarmContractSceneRole.CUSTOMER
-            is Minecart -> FarmContractSceneRole.CART
-            is ItemDisplay -> FarmContractSceneRole.CART_LOAD
+    private fun candidate(entity: Entity): FarmContractSceneCandidate {
+        val identity = decode(entity)
+        val role = when {
+            entity is Villager && identity?.role == FarmContractSceneRole.CUSTOMER -> FarmContractSceneRole.CUSTOMER
+            entity is Interaction && identity?.role == FarmContractSceneRole.CART_INTERACTION -> FarmContractSceneRole.CART_INTERACTION
+            entity is ItemDisplay && identity?.role == FarmContractSceneRole.CART -> FarmContractSceneRole.CART
+            entity is ItemDisplay && identity?.role == FarmContractSceneRole.CART_LOAD -> FarmContractSceneRole.CART_LOAD
             else -> null
-        },
-        world = entity.world.name,
-        x = entity.location.x,
-        y = entity.location.y,
-        z = entity.location.z,
-    )
+        }
+        return FarmContractSceneCandidate(
+            id = entity.uniqueId.toString(),
+            identity = identity,
+            role = role,
+            world = entity.world.name,
+            x = entity.location.x,
+            y = entity.location.y,
+            z = entity.location.z,
+        )
+    }
 
     private fun decode(entity: Entity): FarmContractSceneIdentity? {
         val data = entity.persistentDataContainer
@@ -362,4 +388,11 @@ internal class FarmContractSceneManager(
         .filter(::owns)
 
     private fun chunkCoordinate(coordinate: Double): Int = floor(coordinate).toInt() shr 4
+
+    private val FarmItemDisplayTransform.bukkit: ItemDisplay.ItemDisplayTransform
+        get() = when (this) {
+            FarmItemDisplayTransform.GROUND -> ItemDisplay.ItemDisplayTransform.GROUND
+            FarmItemDisplayTransform.FIXED -> ItemDisplay.ItemDisplayTransform.FIXED
+            FarmItemDisplayTransform.HEAD -> ItemDisplay.ItemDisplayTransform.HEAD
+        }
 }

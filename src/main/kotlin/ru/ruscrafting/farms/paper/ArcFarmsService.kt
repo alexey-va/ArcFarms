@@ -4995,20 +4995,28 @@ class ArcFarmsService(
         }
         val customerPoint = point(runtime, FarmPointKind.CUSTOMER)
         val cartPoint = point(runtime, FarmPointKind.CART)
+        val cartVisual = runtime.settings.contractCartVisual
         val customerWorld = Bukkit.getWorld(customerPoint.world) ?: return
         val cartWorld = Bukkit.getWorld(cartPoint.world) ?: return
         if (customerWorld !== cartWorld) return
         val customerLocation = Location(customerWorld, customerPoint.x, customerPoint.y, customerPoint.z, customerPoint.yaw, 0f)
-        val cartLocation = Location(cartWorld, cartPoint.x, cartPoint.y + 0.15, cartPoint.z, cartPoint.yaw, 0f)
+        val cartLocation = Location(
+            cartWorld,
+            cartPoint.x,
+            cartPoint.y + cartVisual.yOffset,
+            cartPoint.z,
+            cartPoint.yaw + cartVisual.yawOffset,
+            0f,
+        )
         if (!runtime.region.contains(customerLocation) || !runtime.region.contains(cartLocation)) return
-        val loadItem = ItemStack(MaterialRules.material(order.cartLoadMaterial)).also { item ->
-            if (order.cartLoadCustomModelData > 0) {
+        @Suppress("DEPRECATION")
+        fun sceneItem(material: String, customModelData: Int): ItemStack =
+            ItemStack(MaterialRules.material(material)).also { item ->
+                if (customModelData <= 0) return@also
                 val meta = item.itemMeta
-                @Suppress("DEPRECATION")
-                meta.setCustomModelData(order.cartLoadCustomModelData)
+                meta.setCustomModelData(customModelData)
                 item.itemMeta = meta
             }
-        }
         contractScene.ensure(
             FarmContractSceneSpec(
                 zoneId = runtime.settings.id,
@@ -5016,8 +5024,13 @@ class ArcFarmsService(
                 customerType = order.customerType,
                 customerLocation = customerLocation,
                 cartLocation = cartLocation,
-                loadItem = loadItem,
+                cartItem = sceneItem(cartVisual.material, cartVisual.customModelData),
+                cartDisplayTransform = cartVisual.displayTransform,
+                cartScale = cartVisual.scale,
+                loadItem = sceneItem(order.cartLoadMaterial, order.cartLoadCustomModelData),
                 loadCount = runtime.state.harvestMilestone.coerceIn(0, 4),
+                loadYOffset = cartVisual.loadYOffset,
+                loadScale = cartVisual.loadScale,
             ),
         )
     }
@@ -5044,7 +5057,7 @@ class ArcFarmsService(
                 )
                 if (settings.sounds) player.playSound(entity.location, Sound.ENTITY_VILLAGER_YES, 0.65f, 1.05f)
             }
-            FarmContractSceneRole.CART, FarmContractSceneRole.CART_LOAD -> sendActionBar(
+            FarmContractSceneRole.CART, FarmContractSceneRole.CART_INTERACTION, FarmContractSceneRole.CART_LOAD -> sendActionBar(
                 player,
                 MessageKey.FARM_CART_PROGRESS,
                 mapOf(

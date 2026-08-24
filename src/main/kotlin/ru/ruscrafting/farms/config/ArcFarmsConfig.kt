@@ -84,6 +84,7 @@ data class FarmZoneSettings(
     val careAnimalEntities: List<String>,
     val proceduralCareFixtures: Boolean,
     val careVisuals: Map<FarmCareRole, FarmCareVisualSettings>,
+    val contractCartVisual: FarmContractCartVisualSettings,
     val music: FarmMusicSettings,
     val placementMinObjectiveDistance: Int,
     val placementMaxPlayerDistance: Int,
@@ -177,6 +178,19 @@ data class FarmMusicSettings(
     val sound: String,
     val durationSeconds: Int,
     val volume: Float,
+)
+
+enum class FarmItemDisplayTransform { GROUND, FIXED, HEAD }
+
+data class FarmContractCartVisualSettings(
+    val material: String,
+    val customModelData: Int,
+    val displayTransform: FarmItemDisplayTransform,
+    val scale: Float,
+    val yOffset: Double,
+    val yawOffset: Float,
+    val loadYOffset: Double,
+    val loadScale: Float,
 )
 
 data class FarmCareVisualSettings(
@@ -393,6 +407,24 @@ class ArcFarmsConfig private constructor(
                             .checked("$path.custom-model-data", 0, 2_000_000),
                     )
                 }
+                val contractCartPath = "contract-scene.cart"
+                val contractCartVisual = FarmContractCartVisualSettings(
+                    material = materialName(section.string("$contractCartPath.material", "MINECART")),
+                    customModelData = section.int("$contractCartPath.custom-model-data", 0)
+                        .checked("$contractCartPath.custom-model-data", 0, 2_000_000),
+                    displayTransform = section.string("$contractCartPath.display-transform", "GROUND")
+                        .trim()
+                        .uppercase()
+                        .let { raw ->
+                            FarmItemDisplayTransform.entries.firstOrNull { it.name == raw }
+                                ?: error("$contractCartPath.display-transform must be GROUND, FIXED, or HEAD")
+                        },
+                    scale = section.finiteFloat("$contractCartPath.scale", 1.0f, 0.05f, 8.0f),
+                    yOffset = section.finiteDouble("$contractCartPath.y-offset", 0.15, -4.0, 4.0),
+                    yawOffset = section.finiteFloat("$contractCartPath.yaw-offset", 0.0f, -360.0f, 360.0f),
+                    loadYOffset = section.finiteDouble("$contractCartPath.load-y-offset", 0.4, -2.0, 4.0),
+                    loadScale = section.finiteFloat("$contractCartPath.load-scale", 0.48f, 0.05f, 4.0f),
+                )
                 val delivery = parseFarmDelivery(section, reference.world, id)
                 val supplies = parseFarmSupplies(section, reference.world, id)
                 reference.bounds?.let { bounds ->
@@ -468,6 +500,7 @@ class ArcFarmsConfig private constructor(
                         .also { require(it.isNotEmpty()) { "Farm zone $id has no care animal entities" } },
                     proceduralCareFixtures = section.boolean("procedural-care-fixtures", true),
                     careVisuals = careVisuals,
+                    contractCartVisual = contractCartVisual,
                     music = FarmMusicSettings(
                         enabled = section.boolean("music.enabled", false),
                         sound = soundKey(section.string("music.sound", "minecraft:music.overworld.forest")),
@@ -636,6 +669,24 @@ class ArcFarmsConfig private constructor(
             } else null
             return ZoneReference(world, region, bounds)
         }
+
+        private fun ru.arc.config.ConfigSection.finiteFloat(
+            path: String,
+            default: Float,
+            minimum: Float,
+            maximum: Float,
+        ): Float = string(path, default.toString()).toFloatOrNull()?.also {
+            require(it.isFinite() && it in minimum..maximum) { "$path must be in $minimum..$maximum" }
+        } ?: error("$path must be a finite number")
+
+        private fun ru.arc.config.ConfigSection.finiteDouble(
+            path: String,
+            default: Double,
+            minimum: Double,
+            maximum: Double,
+        ): Double = string(path, default.toString()).toDoubleOrNull()?.also {
+            require(it.isFinite() && it in minimum..maximum) { "$path must be in $minimum..$maximum" }
+        } ?: error("$path must be a finite number")
 
         private fun parseDestination(
             config: Config,

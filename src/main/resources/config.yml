@@ -67,6 +67,16 @@ farm-zones:
       sound: minecraft:music.overworld.forest
       duration-seconds: 180
       volume: 0.65
+    contract-scene:
+      cart:
+        material: MINECART
+        custom-model-data: 0
+        display-transform: GROUND
+        scale: 1.0
+        y-offset: 0.15
+        yaw-offset: 0.0
+        load-y-offset: 0.4
+        load-scale: 0.48
     care-visuals:
       seeder-horse: {material: SADDLE, custom-model-data: 0}
       seeder-waypoint: {material: WHEAT_SEEDS, custom-model-data: 0}

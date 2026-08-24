@@ -18,4 +18,16 @@ class ArcFarmsEntityLifecycleContractTest : FunSpec({
 
         offenders shouldBe emptyList()
     }
+
+    test("farm contract cart is display-only and cannot reintroduce minecart collision ticks") {
+        val repositoryRoot = Path.of(requireNotNull(System.getProperty("arcfarms.repositoryRoot")))
+        val source = Files.readString(
+            repositoryRoot.resolve("ArcFarms/src/main/kotlin/ru/ruscrafting/farms/paper/FarmContractSceneManager.kt"),
+        )
+
+        source.contains("org.bukkit.entity.Minecart") shouldBe false
+        source.contains("Minecart::class.java") shouldBe false
+        source.contains("FarmContractSceneRole.CART, FarmContractSceneRole.CART_LOAD") shouldBe true
+        source.contains("ItemDisplay::class.java") shouldBe true
+    }
 })
