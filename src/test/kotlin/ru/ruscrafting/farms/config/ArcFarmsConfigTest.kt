@@ -32,14 +32,14 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().permission shouldStartWith "arcfarms."
         settings.lumbermills.single().permission shouldStartWith "arcfarms."
         settings.mines.all { it.permission.startsWith("arcfarms.") } shouldBe true
-        settings.farms.single().orders.maxOf { order -> order.required.values.sum() } shouldBe 520
+        settings.farms.single().orders.maxOf { order -> order.required.values.sum() } shouldBe 5_200
         settings.farms.single().orders.associate { it.id to it.required } shouldBe mapOf(
-            "miners_rations" to mapOf("WHEAT" to 160, "CARROTS" to 80, "POTATOES" to 80),
-            "bakery_supply" to mapOf("WHEAT" to 240, "BEETROOTS" to 80),
-            "market_crates" to mapOf("CARROTS" to 80, "POTATOES" to 80, "BEETROOTS" to 80),
-            "harvest_festival" to mapOf("WHEAT" to 200, "CARROTS" to 120, "POTATOES" to 120, "BEETROOTS" to 80),
-            "deep_mine_relief" to mapOf("WHEAT" to 200, "CARROTS" to 120, "POTATOES" to 160),
-            "master_baker_request" to mapOf("WHEAT" to 360, "BEETROOTS" to 120),
+            "miners_rations" to mapOf("WHEAT" to 1_600, "CARROTS" to 800, "POTATOES" to 800),
+            "bakery_supply" to mapOf("WHEAT" to 2_400, "BEETROOTS" to 800),
+            "market_crates" to mapOf("CARROTS" to 800, "POTATOES" to 800, "BEETROOTS" to 800),
+            "harvest_festival" to mapOf("WHEAT" to 2_000, "CARROTS" to 1_200, "POTATOES" to 1_200, "BEETROOTS" to 800),
+            "deep_mine_relief" to mapOf("WHEAT" to 2_000, "CARROTS" to 1_200, "POTATOES" to 1_600),
+            "master_baker_request" to mapOf("WHEAT" to 3_600, "BEETROOTS" to 1_200),
         )
         settings.farms.single().rareOrderChancePercent shouldBe 20
         settings.farms.single().orders.count { it.rarity == FarmContractRarity.RARE } shouldBe 3
