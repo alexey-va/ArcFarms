@@ -54,7 +54,12 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 playerStats
             }
         }
-        return if (stats == state.stats && farms == state.farms) state else state.copy(farms = farms, stats = stats)
+        val pausedFarmZones = state.pausedFarmZones.orEmpty()
+        return if (stats == state.stats && farms == state.farms && pausedFarmZones == state.pausedFarmZones) {
+            state
+        } else {
+            state.copy(farms = farms, pausedFarmZones = pausedFarmZones, stats = stats)
+        }
     }
 
     fun saveAsync(state: ArcFarmsState): CompletableFuture<Unit> = writer.submit(state)
@@ -81,6 +86,9 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
             }
             require(state.stats.size <= 1_000_000) { "ArcFarms player statistics are unbounded" }
             require(state.farms.keys.all(ZONE_ID::matches)) { "ArcFarms state contains an invalid farm zone id" }
+            require(state.pausedFarmZones.orEmpty().size <= 256 && state.pausedFarmZones.orEmpty().all(ZONE_ID::matches)) {
+                "ArcFarms paused farm zones are invalid"
+            }
             require(state.lumbermills.keys.all(ZONE_ID::matches)) { "ArcFarms state contains an invalid lumber zone id" }
             require(state.mines.keys.all(ZONE_ID::matches)) { "ArcFarms state contains an invalid mine zone id" }
             state.farms.values.forEach(::validateFarm)

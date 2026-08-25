@@ -66,7 +66,33 @@ internal sealed interface FarmBackupStart {
     data class Rejected(val reason: FarmBackupRejection) : FarmBackupStart
 }
 
-internal enum class FarmBackupRejection { SELECTION_REQUIRED, CUBOID_REQUIRED, WRONG_WORLD, OUTSIDE_ZONE, TOO_LARGE, UNKNOWN_BACKUP }
+internal enum class FarmBackupRejection { WRONG_WORLD, OUTSIDE_ZONE, TOO_LARGE, UNKNOWN_BACKUP }
+
+internal data class FarmBackupArea(
+    val minimum: FarmPlotPosition,
+    val maximum: FarmPlotPosition,
+) {
+    val volume: Long = (maximum.x - minimum.x + 1L) *
+        (maximum.y - minimum.y + 1L) *
+        (maximum.z - minimum.z + 1L)
+
+    companion object {
+        fun wholeRegion(region: ActivityRegion): FarmBackupArea = FarmBackupArea(
+            minimum = FarmPlotPosition(
+                region.world.name,
+                region.bounds.minX,
+                region.bounds.minY,
+                region.bounds.minZ,
+            ),
+            maximum = FarmPlotPosition(
+                region.world.name,
+                region.bounds.maxX,
+                region.bounds.maxY,
+                region.bounds.maxZ,
+            ),
+        )
+    }
+}
 
 /** Owns bounded WorldEdit clipboard capture/restore jobs and their durable catalog. */
 internal class FarmWorldBackupManager(
@@ -90,19 +116,18 @@ internal class FarmWorldBackupManager(
     fun save(
         zoneId: String,
         region: ActivityRegion,
-        selection: FarmWorldEditSelection,
         blocksPerTick: Int,
         maxBlocks: Int,
         onComplete: (FarmBackupManifest) -> Unit,
         onFailure: (Throwable) -> Unit,
     ): FarmBackupStart {
         active?.let { return FarmBackupStart.Busy(it.status()) }
-        validateSelection(region, selection, maxBlocks)?.let { return FarmBackupStart.Rejected(it) }
+        val area = FarmBackupArea.wholeRegion(region)
         return startCapture(
             zoneId,
             region,
-            selection.minimum,
-            selection.maximum,
+            area.minimum,
+            area.maximum,
             blocksPerTick,
             maxBlocks,
             "manual",
@@ -186,18 +211,6 @@ internal class FarmWorldBackupManager(
         executor.shutdownNow()
     }
 
-    private fun validateSelection(
-        region: ActivityRegion,
-        selection: FarmWorldEditSelection,
-        maxBlocks: Int,
-    ): FarmBackupRejection? = when {
-        !selection.cuboid -> FarmBackupRejection.CUBOID_REQUIRED
-        selection.world != region.world.name -> FarmBackupRejection.WRONG_WORLD
-        selection.volume > maxBlocks -> FarmBackupRejection.TOO_LARGE
-        !contains(region, selection.minimum) || !contains(region, selection.maximum) -> FarmBackupRejection.OUTSIDE_ZONE
-        else -> null
-    }
-
     private fun startCapture(
         zoneId: String,
         region: ActivityRegion,
@@ -217,9 +230,6 @@ internal class FarmWorldBackupManager(
         if (geometry.volume > maxBlocks) return FarmBackupStart.Rejected(FarmBackupRejection.TOO_LARGE)
         if (minimum.world != region.world.name || maximum.world != region.world.name) {
             return FarmBackupStart.Rejected(FarmBackupRejection.WRONG_WORLD)
-        }
-        if (!contains(region, minimum) || !contains(region, maximum)) {
-            return FarmBackupStart.Rejected(FarmBackupRejection.OUTSIDE_ZONE)
         }
         val id = nextId(reason)
         val job = CaptureJob(
@@ -310,8 +320,7 @@ internal class FarmWorldBackupManager(
             while (chunkCursor < end) {
                 val position = slice.vectorAt(chunkCursor++)
                 val location = Location(region.world, position.x().toDouble(), position.y().toDouble(), position.z().toDouble())
-                if (!region.contains(location)) return fail(IllegalArgumentException("WorldEdit selection leaves the farm region"))
-                clipboard.setBlock(position, worldEditWorld.getFullBlock(position))
+                if (region.contains(location)) clipboard.setBlock(position, worldEditWorld.getFullBlock(position))
                 done++
             }
             if (chunkCursor < slice.volume) {
@@ -415,6 +424,11 @@ internal class FarmWorldBackupManager(
             val end = minOf(slice.volume, chunkCursor + blocksPerTick)
             while (chunkCursor < end) {
                 val target = slice.vectorAt(chunkCursor++)
+                val location = Location(region.world, target.x().toDouble(), target.y().toDouble(), target.z().toDouble())
+                if (!region.contains(location)) {
+                    done++
+                    continue
+                }
                 val source = sourceMinimum.add(
                     target.x() - geometry.minimum.x,
                     target.y() - geometry.minimum.y,
@@ -667,7 +681,7 @@ internal class FarmWorldBackupManager(
 
     companion object {
         private const val SCHEMA_VERSION = 1
-        private const val MAX_ABSOLUTE_BLOCKS = 4_000_000L
+        private const val MAX_ABSOLUTE_BLOCKS = 20_000_000L
         private const val MAX_MANIFEST_BYTES = 64 * 1024
         private const val MAX_LISTED_BACKUPS = 50
         private const val MANIFEST_SUFFIX = ".manifest.json"

@@ -50,6 +50,8 @@ private fun saturatingAdd(left: Long, right: Long): Long =
 data class ArcFarmsState(
     val schemaVersion: Int = SCHEMA_VERSION,
     val farms: Map<String, FarmShiftState> = emptyMap(),
+    // Nullable so Gson can read state files written before durable admin pauses existed.
+    val pausedFarmZones: Set<String>? = emptySet(),
     val lumbermills: Map<String, LumberShiftState> = emptyMap(),
     val mines: Map<String, MineShiftState> = emptyMap(),
     val stats: Map<UUID, PlayerActivityStats> = emptyMap(),

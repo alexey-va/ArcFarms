@@ -58,7 +58,7 @@ farm-zones:
     block-reindex-blocks-per-tick: 4096
     # Refuse accidentally huge WorldGuard bounds instead of freezing the server.
     block-reindex-max-blocks: 20000000
-    # WorldEdit farm backups copy and restore in bounded main-thread slices.
+    # Farm backups capture the configured region and process it in bounded main-thread slices.
     backup-blocks-per-tick: 2048
     backup-max-blocks: 4000000
     care-radius: 10

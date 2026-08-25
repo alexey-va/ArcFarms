@@ -2,6 +2,10 @@ package ru.ruscrafting.farms.paper
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import io.mockk.every
+import io.mockk.mockk
+import org.bukkit.World
+import ru.ruscrafting.farms.config.CuboidBounds
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 
 class FarmWorldBackupManagerTest : FunSpec({
@@ -39,5 +43,20 @@ class FarmWorldBackupManagerTest : FunSpec({
         FarmWorldBackupManager.isValidZone("communal_farm") shouldBe true
         FarmWorldBackupManager.isValidZone("Farm") shouldBe false
         FarmWorldBackupManager.isValidZone("../../world") shouldBe false
+    }
+
+    test("manual backups use the complete configured farm region") {
+        val world = mockk<World> { every { name } returns "sp11" }
+        val area = FarmBackupArea.wholeRegion(
+            CuboidActivityRegion(
+                world = world,
+                label = "sp11:farm",
+                bounds = CuboidBounds(109, -64, 363, 298, 139, 575),
+            ),
+        )
+
+        area.minimum shouldBe FarmPlotPosition("sp11", 109, -64, 363)
+        area.maximum shouldBe FarmPlotPosition("sp11", 298, 139, 575)
+        area.volume shouldBe 8_255_880L
     }
 })

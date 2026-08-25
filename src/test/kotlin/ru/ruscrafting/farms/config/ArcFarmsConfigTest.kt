@@ -222,6 +222,7 @@ class ArcFarmsConfigTest : FunSpec({
         classicSettings.farms.single().music.sound shouldBe "arc:farm_valley_comes_alive"
         classicSettings.farms.single().music.durationSeconds shouldBe 262
         classicSettings.farms.single().music.volume shouldBe 0.65f
+        classicSettings.farms.single().backupMaxBlocks shouldBe 10_000_000
         classicSettings.farms.single().contractCartVisual.material shouldBe "PAPER"
         classicSettings.farms.single().contractCartVisual.customModelData shouldBe 10_747
         classicSettings.farms.single().contractCartVisual.displayTransform shouldBe FarmItemDisplayTransform.GROUND
@@ -446,7 +447,7 @@ class ArcFarmsConfigTest : FunSpec({
         PlainTextComponentSerializer.plainText().serialize(locale.render(MessageKey.PREFIX)) shouldBe "Ферма •"
     }
 
-    test("help renders command argument brackets instead of html entities") {
+    test("help never renders command arguments as html entities") {
         val root = resourceTree()
         val settings = ArcFarmsConfig.inspect(root)
         val locale = ArcFarmsLocale(root) { settings }
@@ -457,9 +458,14 @@ class ArcFarmsConfigTest : FunSpec({
             source shouldNotContain "&gt;"
         }
 
+        val shortAdminHelp = PlainTextComponentSerializer.plainText().serialize(locale.render(MessageKey.ADMIN_HELP))
+        shortAdminHelp shouldNotContain "&lt;"
+        shortAdminHelp shouldNotContain "&gt;"
+        shortAdminHelp shouldNotContain "<"
+        shortAdminHelp shouldNotContain ">"
+
         listOf(
             locale.render(MessageKey.HELP),
-            locale.render(MessageKey.ADMIN_HELP),
             locale.render(MessageKey.ADMIN_HELP_BLOCKRESET),
             locale.render(MessageKey.ADMIN_DEBUG_HELP),
         ).forEach { component ->

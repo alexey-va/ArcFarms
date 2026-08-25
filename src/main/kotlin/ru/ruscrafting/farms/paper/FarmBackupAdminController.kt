@@ -41,23 +41,11 @@ internal class FarmBackupAdminController(
 
     fun save(player: Player, context: FarmBackupAdminContext): Boolean {
         if (!allowed(player, context)) return false
-        val selection = when (val result = WorldEditSelectionReader.current(player)) {
-            WorldEditSelectionResult.PluginUnavailable -> {
-                send(player, MessageKey.ADMIN_UNMANAGE_WORLD_EDIT_REQUIRED)
-                return false
-            }
-            WorldEditSelectionResult.Incomplete -> {
-                send(player, MessageKey.ADMIN_BACKUP_SELECTION_REQUIRED)
-                return false
-            }
-            is WorldEditSelectionResult.Available -> result.selection
-        }
         return handleStart(
             player,
             backups.save(
                 zoneId = context.zoneId,
                 region = context.region,
-                selection = selection,
                 blocksPerTick = context.backupBlocksPerTick,
                 maxBlocks = context.backupMaxBlocks,
                 onComplete = { manifest ->

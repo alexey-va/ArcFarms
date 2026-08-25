@@ -349,6 +349,8 @@ class ArcFarmsService(
         pendingFarmRewards += persisted.pendingFarmRewards
         claimedFarmRewardSequences.clear()
         claimedFarmRewardSequences += persisted.claimedFarmRewardSequences
+        adminPausedFarmZones.clear()
+        adminPausedFarmZones += persisted.pausedFarmZones.orEmpty()
         rebuild(persisted)
         cleanupOwnedFarmEntities()
         reconcileFarmPatches()
@@ -1068,8 +1070,10 @@ class ArcFarmsService(
             backupBlocksPerTick = runtime.settings.backupBlocksPerTick,
             backupMaxBlocks = runtime.settings.backupMaxBlocks,
             paused = zoneId in adminPausedFarmZones,
-            pause = { adminPausedFarmZones += zoneId },
-            resume = { adminPausedFarmZones -= zoneId },
+            pause = {
+                if (!setFarmOrderCyclePaused(zoneId, paused = true)) adminPausedFarmZones.add(zoneId)
+            },
+            resume = { setFarmOrderCyclePaused(zoneId, paused = false) },
             clearAdminModes = {
                 adminEditPlayers.remove(player.uniqueId)
                 adminInspectPlayers.remove(player.uniqueId)
@@ -1471,7 +1475,10 @@ class ArcFarmsService(
                 sendChat(player, MessageKey.GENERIC_ERROR)
                 return false
             }
-            adminPausedFarmZones += zoneId
+            if (!setFarmOrderCyclePaused(zoneId, paused = true)) {
+                sendChat(player, MessageKey.GENERIC_ERROR)
+                return false
+            }
             sendChat(player, MessageKey.ADMIN_STAGE_SET, mapOf("stage" to locale.renderPath("admin.stage.reset", player)))
             return true
         }
@@ -1634,6 +1641,51 @@ class ArcFarmsService(
         persistBlocking()
         sendChat(player, MessageKey.ADMIN_STAGE_SET, mapOf("stage" to locale.renderPath("admin.stage.$normalized", player)))
         return true
+    }
+
+    fun adminStopFarmOrderCycle(player: Player, zoneId: String): Boolean {
+        if (farms.none { it.settings.id == zoneId }) {
+            sendChat(player, MessageKey.ADMIN_ZONE_UNKNOWN, mapOf("zone" to locale.text(zoneId)))
+            return false
+        }
+        if (!setFarmOrderCyclePaused(zoneId, paused = true)) {
+            sendChat(player, MessageKey.GENERIC_ERROR)
+            return false
+        }
+        sendChat(player, MessageKey.ADMIN_ORDER_CYCLE_STOPPED)
+        debug.event("farm_admin_order_cycle", "player" to player.name, "zone" to zoneId, "paused" to true)
+        return true
+    }
+
+    fun adminStartFarmOrderCycle(player: Player, zoneId: String): Boolean {
+        val runtime = farms.firstOrNull { it.settings.id == zoneId } ?: run {
+            sendChat(player, MessageKey.ADMIN_ZONE_UNKNOWN, mapOf("zone" to locale.text(zoneId)))
+            return false
+        }
+        if (!setFarmOrderCyclePaused(zoneId, paused = false)) {
+            sendChat(player, MessageKey.GENERIC_ERROR)
+            return false
+        }
+        if (runtime.state.phase == FarmPhase.IDLE && runtime.region.contains(player.location)) {
+            interactionCooldowns.remove("farm-patch-scan:${runtime.settings.id}")
+            tryStartFarmShift(runtime, player, clock())
+        }
+        sendChat(player, MessageKey.ADMIN_ORDER_CYCLE_STARTED)
+        debug.event("farm_admin_order_cycle", "player" to player.name, "zone" to zoneId, "paused" to false)
+        return true
+    }
+
+    private fun setFarmOrderCyclePaused(zoneId: String, paused: Boolean): Boolean {
+        val changed = if (paused) adminPausedFarmZones.add(zoneId) else adminPausedFarmZones.remove(zoneId)
+        if (!changed) return true
+        return runCatching { persistBlocking() }.fold(
+            onSuccess = { true },
+            onFailure = { failure ->
+                if (paused) adminPausedFarmZones.remove(zoneId) else adminPausedFarmZones.add(zoneId)
+                plugin.logger.log(Level.SEVERE, "Could not persist farm order cycle state for $zoneId paused=$paused", failure)
+                false
+            },
+        )
     }
 
     fun adminAdvanceFarm(player: Player, zoneId: String): Boolean {
@@ -8118,6 +8170,7 @@ class ArcFarmsService(
 
     private fun snapshotState(): ArcFarmsState = ArcFarmsState(
         farms = farms.associate { it.settings.id to it.state },
+        pausedFarmZones = adminPausedFarmZones.toSet(),
         lumbermills = lumbermills.associate { it.settings.id to it.state },
         mines = mines.associate { it.settings.id to it.state },
         stats = stats.snapshot(),

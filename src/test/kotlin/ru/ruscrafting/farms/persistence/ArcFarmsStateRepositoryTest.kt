@@ -28,6 +28,36 @@ import java.util.UUID
 import java.util.concurrent.ExecutionException
 
 class ArcFarmsStateRepositoryTest : FunSpec({
+    test("legacy state loads with no paused farm order cycles") {
+        val root = Files.createTempDirectory("arcfarms-state-paused-legacy-test")
+        val data = root.resolve("data")
+        Files.createDirectories(data)
+        Files.writeString(
+            data.resolve("state.json"),
+            """
+            {
+              "schemaVersion": 1,
+              "farms": {},
+              "lumbermills": {},
+              "mines": {},
+              "stats": {}
+            }
+            """.trimIndent(),
+        )
+
+        val loaded = ArcFarmsStateRepository(root).use(ArcFarmsStateRepository::load)
+
+        loaded.pausedFarmZones shouldBe emptySet()
+    }
+
+    test("paused farm order cycles survive an atomic state round trip") {
+        val root = Files.createTempDirectory("arcfarms-state-paused-roundtrip-test")
+        val expected = ArcFarmsState(pausedFarmZones = setOf("communal_farm"))
+
+        ArcFarmsStateRepository(root).use { it.saveBlocking(expected) }
+        ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
+    }
+
     test("legacy player statistics load with an empty weekly contribution map") {
         val root = Files.createTempDirectory("arcfarms-state-weekly-legacy-test")
         val data = root.resolve("data")

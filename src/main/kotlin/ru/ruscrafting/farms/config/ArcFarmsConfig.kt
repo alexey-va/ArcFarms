@@ -559,7 +559,7 @@ class ArcFarmsConfig private constructor(
                     backupBlocksPerTick = section.int("backup-blocks-per-tick", 2_048)
                         .checked("backup-blocks-per-tick", 128, 8_192),
                     backupMaxBlocks = section.int("backup-max-blocks", 4_000_000)
-                        .checked("backup-max-blocks", 10_000, 4_000_000),
+                        .checked("backup-max-blocks", 10_000, 20_000_000),
                     careRadius = section.int("care-radius", 10).checked("care-radius", 3, 24),
                     careTypes = careTypes,
                     careTargetCount = section.int("care-targets", 4).checked("care-targets", 2, 8),

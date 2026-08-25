@@ -168,6 +168,7 @@ class ArcFarmsCommand(
                 "next" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_NEXT, sender))
                 "finish" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_FINISH, sender))
                 "event" -> sendEventHelp(sender, zone)
+                in ADMIN_SHORTCUTS -> sendShortcutHelp(sender, action)
                 else -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
             }
             return
@@ -263,6 +264,28 @@ class ArcFarmsCommand(
                 }
                 service.adminSetFarmStage(player, zone, requireNotNull(event))
             }
+            "reset-farm" -> args.getOrNull(1)?.let { service.adminSetFarmStage(player, it, "reset") }
+                ?: sendShortcutHelp(sender, action)
+            "stop-order-cycle" -> args.getOrNull(1)?.let { service.adminStopFarmOrderCycle(player, it) }
+                ?: sendShortcutHelp(sender, action)
+            "start-order-cycle" -> args.getOrNull(1)?.let { service.adminStartFarmOrderCycle(player, it) }
+                ?: sendShortcutHelp(sender, action)
+            "save-farm-backup" -> args.getOrNull(1)?.let { service.adminSaveFarmBackup(player, it) }
+                ?: sendShortcutHelp(sender, action)
+            "list-farm-backups" -> args.getOrNull(1)?.let { service.adminListFarmBackups(player, it) }
+                ?: sendShortcutHelp(sender, action)
+            "restore-farm-backup" -> {
+                val zone = args.getOrNull(1)
+                val backupId = args.getOrNull(2)
+                if (zone == null || backupId == null) sendShortcutHelp(sender, action)
+                else service.adminRestoreFarmBackup(player, zone, backupId)
+            }
+            "farm-backup-status" -> args.getOrNull(1)?.let { service.adminFarmBackupStatus(player, it) }
+                ?: sendShortcutHelp(sender, action)
+            "reindex-farm" -> args.getOrNull(1)?.let { service.adminStartFarmBlockReset(player, it) }
+                ?: sendShortcutHelp(sender, action)
+            "farm-reindex-status" -> args.getOrNull(1)?.let { service.adminFarmBlockResetStatus(player, it) }
+                ?: sendShortcutHelp(sender, action)
             else -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
         }
     }
@@ -423,6 +446,20 @@ class ArcFarmsCommand(
         }
     }
 
+    private fun sendShortcutHelp(sender: CommandSender, action: String) {
+        sender.sendMessage(
+            locale.render(
+                MessageKey.ADMIN_HELP_SHORTCUT,
+                sender,
+                mapOf(
+                    "command" to locale.text(action),
+                    "arguments" to locale.text(if (action == "restore-farm-backup") "zone id" else "zone"),
+                    "description" to locale.renderPath("admin.shortcut-description.$action", sender),
+                ),
+            ),
+        )
+    }
+
     override fun onTabComplete(
         sender: CommandSender,
         command: Command,
@@ -447,7 +484,7 @@ class ArcFarmsCommand(
                 args[0].equals("top", true) || args[0].equals("travel", true) ->
                     listOf("farm", "lumber", "mine").filter { it.startsWith(args[1], true) }
                 args[0].equals("admin", true) && sender.hasPermission("arcfarms.admin") ->
-                    listOf("help", "edit", "inspect", "point", "points", "unmanage", "blockreset", "backup", "stage", "next", "finish", "event")
+                    (listOf("help", "edit", "inspect", "point", "points", "unmanage", "blockreset", "backup", "stage", "next", "finish", "event") + ADMIN_SHORTCUTS)
                         .filter { it.startsWith(args[1], true) }
                 args[0].equals("debug", true) && sender.hasPermission("arcfarms.admin") ->
                     service.farmZoneIds().filter { it.startsWith(args[1], true) }
@@ -458,6 +495,8 @@ class ArcFarmsCommand(
                     listOf("help").filter { it.startsWith(args[2], true) }
                 args[0].equals("admin", true) && args[1].lowercase() in
                     setOf("point", "points", "unmanage", "blockreset", "backup", "stage", "next", "finish", "event") ->
+                    (service.farmZoneIds() + "help").filter { it.startsWith(args[2], true) }
+                args[0].equals("admin", true) && args[1].lowercase() in ADMIN_SHORTCUTS ->
                     (service.farmZoneIds() + "help").filter { it.startsWith(args[2], true) }
                 args[0].equals("debug", true) && sender.hasPermission("arcfarms.admin") ->
                     listOf("status", "contract", "stage", "next", "finish", "event", "give", "show", "points", "reset")
@@ -479,6 +518,8 @@ class ArcFarmsCommand(
                     listOf("save", "list", "status", "restore", "help").filter { it.startsWith(args[3], true) }
                 args[0].equals("admin", true) && args[1].lowercase() in
                     setOf("points", "unmanage", "next", "finish") ->
+                    listOf("help").filter { it.startsWith(args[3], true) }
+                args[0].equals("admin", true) && args[1].lowercase() in ADMIN_SHORTCUTS ->
                     listOf("help").filter { it.startsWith(args[3], true) }
                 args[0].equals("debug", true) && args[2].equals("stage", true) ->
                     (listOf("preparation", "planting", "harvesting") + CARE_STAGES + listOf("pests", "drought", "delivery", "complete", "reset"))
@@ -559,6 +600,17 @@ class ArcFarmsCommand(
         private val POINT_ARGUMENTS = listOf(
             "tool", "seeds", "water", "crates", "receiving", "cart", "customer", "travel", "hive", "irrigation",
             "covers", "scarecrows", "barn",
+        )
+        private val ADMIN_SHORTCUTS = listOf(
+            "reset-farm",
+            "stop-order-cycle",
+            "start-order-cycle",
+            "save-farm-backup",
+            "list-farm-backups",
+            "restore-farm-backup",
+            "farm-backup-status",
+            "reindex-farm",
+            "farm-reindex-status",
         )
     }
 }
