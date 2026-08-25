@@ -160,9 +160,23 @@ data class FarmSpecialIncidentSettings(
     val channelGateCount: Int,
     val channelDisplayScale: Float,
     val nightCropCount: Int,
+    val nightCropMinSpacing: Double,
     val nightPlayerTime: Long,
+    val nightPatrolCount: Int,
+    val nightPatrolEntity: String,
+    val nightPatrolMinSpacing: Double,
+    val nightPatrolRoamRadius: Double,
+    val nightPatrolSpawnMinPlayerDistance: Double,
+    val nightPatrolMovementSpeed: Double,
+    val nightPatrolFollowRange: Double,
+    val nightPatrolAttackDamage: Double,
+    val nightPatrolHeldItem: String,
     val marketCropCount: Int,
     val marketMoneyBonusPercent: Int,
+    val marketBaseSeconds: Int,
+    val marketSecondsPerCrop: Double,
+    val marketMinimumSeconds: Int,
+    val marketMaximumSeconds: Int,
 )
 
 data class FarmRewardSettings(
@@ -583,14 +597,77 @@ class ArcFarmsConfig private constructor(
                     channelDisplayScale = section.finiteFloat("special-incidents.channels.display-scale", 1.35f, 0.5f, 3.0f),
                     nightCropCount = section.int("special-incidents.night-shift.crops", 24)
                         .checked("special-incidents.night-shift.crops", 6, 64),
+                    nightCropMinSpacing = section.finiteDouble(
+                        "special-incidents.night-shift.crop-min-spacing",
+                        6.0,
+                        0.0,
+                        32.0,
+                    ),
                     nightPlayerTime = section.string("special-incidents.night-shift.player-time", "18000")
                         .toLongOrNull()?.also { require(it in 0..24_000) { "night-shift.player-time must be in 0..24000" } }
                         ?: error("night-shift.player-time must be an integer"),
+                    nightPatrolCount = section.int("special-incidents.night-shift.patrols.count", 3)
+                        .checked("special-incidents.night-shift.patrols.count", 0, 8),
+                    nightPatrolEntity = entityName(section.string("special-incidents.night-shift.patrols.entity", "HUSK")),
+                    nightPatrolMinSpacing = section.finiteDouble(
+                        "special-incidents.night-shift.patrols.min-spacing",
+                        12.0,
+                        0.0,
+                        32.0,
+                    ),
+                    nightPatrolRoamRadius = section.finiteDouble(
+                        "special-incidents.night-shift.patrols.roam-radius",
+                        14.0,
+                        4.0,
+                        32.0,
+                    ),
+                    nightPatrolSpawnMinPlayerDistance = section.finiteDouble(
+                        "special-incidents.night-shift.patrols.spawn-min-player-distance",
+                        8.0,
+                        0.0,
+                        32.0,
+                    ),
+                    nightPatrolMovementSpeed = section.finiteDouble(
+                        "special-incidents.night-shift.patrols.movement-speed",
+                        0.18,
+                        0.05,
+                        0.5,
+                    ),
+                    nightPatrolFollowRange = section.finiteDouble(
+                        "special-incidents.night-shift.patrols.follow-range",
+                        8.0,
+                        2.0,
+                        32.0,
+                    ),
+                    nightPatrolAttackDamage = section.finiteDouble(
+                        "special-incidents.night-shift.patrols.attack-damage",
+                        2.0,
+                        0.0,
+                        20.0,
+                    ),
+                    nightPatrolHeldItem = materialName(
+                        section.string("special-incidents.night-shift.patrols.held-item", "TORCH"),
+                    ),
                     marketCropCount = section.int("special-incidents.market.crops", 32)
                         .checked("special-incidents.market.crops", 8, 64),
                     marketMoneyBonusPercent = section.int("special-incidents.market.money-bonus-percent", 25)
                         .checked("special-incidents.market.money-bonus-percent", 0, 200),
+                    marketBaseSeconds = section.int("special-incidents.market.timer.base-seconds", 45)
+                        .checked("special-incidents.market.timer.base-seconds", 0, 600),
+                    marketSecondsPerCrop = section.finiteDouble(
+                        "special-incidents.market.timer.seconds-per-crop",
+                        3.0,
+                        0.0,
+                        30.0,
+                    ),
+                    marketMinimumSeconds = section.int("special-incidents.market.timer.minimum-seconds", 120)
+                        .checked("special-incidents.market.timer.minimum-seconds", 10, 3_600),
+                    marketMaximumSeconds = section.int("special-incidents.market.timer.maximum-seconds", 300)
+                        .checked("special-incidents.market.timer.maximum-seconds", 10, 3_600),
                 )
+                require(specialIncidents.marketMinimumSeconds <= specialIncidents.marketMaximumSeconds) {
+                    "farm-zones.$id market timer minimum-seconds must not exceed maximum-seconds"
+                }
                 FarmZoneSettings(
                     id = id,
                     reference = reference,

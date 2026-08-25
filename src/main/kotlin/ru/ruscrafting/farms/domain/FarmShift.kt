@@ -139,6 +139,7 @@ data class FarmSpecialIncidentState(
     val solution: Set<Int> = emptySet(),
     val active: Set<Int> = emptySet(),
     val marketAccepted: Boolean = false,
+    val marketDeadlineAt: Long = 0,
 ) {
     init {
         require(points.size <= 16) { "Farm special incident has too many points" }
@@ -146,6 +147,7 @@ data class FarmSpecialIncidentState(
             "Farm special incident has invalid plots"
         }
         crop?.let { require(it.matches(Regex("[A-Z0-9_]{2,64}"))) { "Invalid special incident crop: $it" } }
+        require(marketDeadlineAt >= 0) { "Farm market deadline is invalid" }
         val gateRange = points.indices
         require(solution.all(gateRange::contains) && active.all(gateRange::contains)) {
             "Farm channel state references an unknown gate"

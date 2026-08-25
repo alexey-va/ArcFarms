@@ -69,13 +69,31 @@ object FarmSpecialIncidentEngine {
         )
     }
 
-    fun acceptMarket(current: FarmShiftState): EngineResult<FarmShiftState> {
+    fun acceptMarket(current: FarmShiftState, now: Long, durationMillis: Long): EngineResult<FarmShiftState> {
+        require(now >= 0) { "Market clock is invalid" }
+        require(durationMillis in 10_000L..3_600_000L) { "Market duration is invalid" }
         if (current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.MARKET) {
             return EngineResult(current, false)
         }
         val special = current.specialIncident ?: return EngineResult(current, false)
         if (special.marketAccepted) return EngineResult(current, false)
-        return EngineResult(current.copy(specialIncident = special.copy(marketAccepted = true)), true)
+        val deadline = if (Long.MAX_VALUE - now < durationMillis) Long.MAX_VALUE else now + durationMillis
+        return EngineResult(
+            current.copy(specialIncident = special.copy(marketAccepted = true, marketDeadlineAt = deadline)),
+            true,
+        )
+    }
+
+    fun expireMarket(current: FarmShiftState, now: Long): EngineResult<FarmShiftState> {
+        require(now >= 0) { "Market clock is invalid" }
+        if (current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.MARKET) {
+            return EngineResult(current, false)
+        }
+        val special = current.specialIncident ?: return EngineResult(current, false)
+        if (!special.marketAccepted || special.marketDeadlineAt <= 0 || now < special.marketDeadlineAt) {
+            return EngineResult(current, false)
+        }
+        return complete(current, playerId = null, contribution = 0, event = ShiftEvent.MARKET_EXPIRED)
     }
 
     fun declineMarket(current: FarmShiftState): EngineResult<FarmShiftState> {
@@ -151,6 +169,7 @@ object FarmSpecialIncidentEngine {
         current: FarmShiftState,
         playerId: UUID?,
         contribution: Int,
+        event: ShiftEvent = ShiftEvent.INCIDENT_RESOLVED,
     ): EngineResult<FarmShiftState> {
         val contributors = if (playerId != null && contribution > 0) {
             incrementContribution(current.contributors, playerId, contribution)
@@ -169,7 +188,7 @@ object FarmSpecialIncidentEngine {
             ),
             true,
             contribution = contribution,
-            events = listOf(ShiftEvent.INCIDENT_RESOLVED),
+            events = listOf(event),
         )
     }
 }

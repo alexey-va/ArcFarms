@@ -22,6 +22,7 @@ import org.bukkit.entity.Display
 import org.bukkit.entity.ArmorStand
 import org.bukkit.entity.LivingEntity
 import org.bukkit.entity.Mob
+import org.bukkit.entity.Monster
 import org.bukkit.entity.Player
 import org.bukkit.entity.Projectile
 import org.bukkit.entity.EntityType
@@ -95,6 +96,7 @@ import ru.ruscrafting.farms.domain.FarmIncidentPlanner
 import ru.ruscrafting.farms.domain.FarmIncidentRecovery
 import ru.ruscrafting.farms.domain.FarmLocationOverrides
 import ru.ruscrafting.farms.domain.FarmMachinePlanner
+import ru.ruscrafting.farms.domain.FarmMarketTimer
 import ru.ruscrafting.farms.domain.FarmMusicLoop
 import ru.ruscrafting.farms.domain.FarmPestNest
 import ru.ruscrafting.farms.domain.FarmPhase
@@ -271,7 +273,7 @@ class ArcFarmsService(
     private val farmScoreboards = FarmScoreboardController(FarmScoreboardRenderer(locale), { settings.farmScoreboard }, debug)
     private val contractScene = FarmContractSceneManager(plugin, debug)
     private val specialIncidentScene = FarmSpecialIncidentSceneManager(plugin, debug)
-    private val nightShift = FarmNightShiftController()
+    private val nightShift = FarmNightShiftController(plugin)
     private val marketMenu = FarmMarketMenu(locale) { settings }
     private val seederRig = FarmSeederRigManager(plugin)
     private val mineReservations = ConcurrentHashMap.newKeySet<String>()
@@ -926,6 +928,20 @@ class ArcFarmsService(
         }?.takeIf { it.uniqueId in adminInspectPlayers }
         if (inspectingAttacker != null) {
             event.isCancelled = true
+            return
+        }
+        if (nightShift.owns(event.entity)) {
+            event.isCancelled = true
+            val attacker = (event as? EntityDamageByEntityEvent)?.let { damage ->
+                when (val damager = damage.damager) {
+                    is Player -> damager
+                    is Projectile -> damager.shooter as? Player
+                    else -> null
+                }
+            }
+            if (attacker != null && allowInteraction("farm-night-patrol:${attacker.uniqueId}", 1_500L)) {
+                sendActionBar(attacker, MessageKey.FARM_NIGHT_PATROL_AVOID)
+            }
             return
         }
         if (contractScene.owns(event.entity)) {
@@ -2079,7 +2095,8 @@ class ArcFarmsService(
     fun onEntityChangeBlock(event: EntityChangeBlockEvent) {
         if (
             event.entity.persistentDataContainer.has(pestZoneKey, PersistentDataType.STRING) ||
-            event.entity.persistentDataContainer.has(careZoneKey, PersistentDataType.STRING)
+            event.entity.persistentDataContainer.has(careZoneKey, PersistentDataType.STRING) ||
+            nightShift.owns(event.entity)
         ) {
             event.isCancelled = true
             return
@@ -2823,6 +2840,12 @@ class ArcFarmsService(
             require(pestType.entityClass?.let(LivingEntity::class.java::isAssignableFrom) == true) {
                 "Farm zone ${zone.id} pest-entity must be a living entity"
             }
+            val patrolType = EntityType.valueOf(zone.specialIncidents.nightPatrolEntity)
+            require(patrolType.entityClass?.let(Monster::class.java::isAssignableFrom) == true) {
+                "Farm zone ${zone.id} night-shift patrol entity must be a monster"
+            }
+            val patrolItem = MaterialRules.material(zone.specialIncidents.nightPatrolHeldItem)
+            require(patrolItem.isItem) { "Farm zone ${zone.id} night-shift patrol held-item must be an item" }
         }
         fixedCropJournal.records().forEach { pending ->
             val zone = candidate.farms.firstOrNull { it.id == pending.zoneId }
@@ -3735,6 +3758,7 @@ class ArcFarmsService(
         if (runtime.state.phase != FarmPhase.INCIDENT || type !in setOf(FarmIncidentType.NIGHT_SHIFT, FarmIncidentType.MARKET)) {
             return false
         }
+        if (type == FarmIncidentType.MARKET && expireFarmMarket(runtime, clock())) return true
         val special = runtime.state.specialIncident ?: return true
         if (!hasAccess(player, runtime.settings.permission)) {
             sendChat(player, MessageKey.ZONE_LOCKED)
@@ -3752,19 +3776,24 @@ class ArcFarmsService(
             type = type,
             position = position,
             plannedPlots = special.plots,
-            managedPlots = farmBlockRegistry.beds(runtime.settings.id),
+            managedPlots = if (type == FarmIncidentType.MARKET) {
+                farmBlockRegistry.beds(runtime.settings.id) + runtime.state.preparationPatch
+            } else {
+                discoverIncidentBeds(runtime)
+            },
         ) && data != null && data.age == data.maximumAge &&
             (expected == null || block.type == expected)
         if (!valid) {
             sendActionBar(
                 player,
                 if (type == FarmIncidentType.MARKET) MessageKey.FARM_MARKET_ACTIVE else MessageKey.FARM_SPECIAL_PROGRESS,
-                mapOf(
-                    "event" to specialIncidentName(type, player),
-                    "crop" to (expected?.let(MaterialRules::cropComponent) ?: Component.empty()),
-                    "done" to locale.text(runtime.state.incidentProgress),
-                    "total" to locale.text(runtime.state.incidentRequired),
-                ),
+                buildMap {
+                    put("event", specialIncidentName(type, player))
+                    put("crop", expected?.let(MaterialRules::cropComponent) ?: Component.empty())
+                    put("done", locale.text(runtime.state.incidentProgress))
+                    put("total", locale.text(runtime.state.incidentRequired))
+                    if (type == FarmIncidentType.MARKET) put("time", locale.text(marketTime(runtime, special)))
+                },
             )
             return true
         }
@@ -4549,8 +4578,11 @@ class ArcFarmsService(
                         put("total", locale.text(runtime.state.incidentRequired))
                         if (incidentType in SPECIAL_FARM_INCIDENT_TYPES) put("event", specialIncidentName(incidentType, actor))
                         if (incidentType == FarmIncidentType.MARKET) {
-                            runtime.state.specialIncident?.crop?.let { crop ->
-                                put("crop", MaterialRules.cropComponent(MaterialRules.material(crop)))
+                            runtime.state.specialIncident?.let { special ->
+                                special.crop?.let { crop ->
+                                    put("crop", MaterialRules.cropComponent(MaterialRules.material(crop)))
+                                }
+                                put("time", locale.text(marketTime(runtime, special)))
                             }
                         }
                     })
@@ -4577,6 +4609,25 @@ class ArcFarmsService(
                         ActivityKind.FARM,
                         actor?.name,
                         players(runtime.region).mapTo(mutableSetOf(), Player::getUniqueId),
+                    )
+                    persistAsync()
+                }
+                ShiftEvent.MARKET_EXPIRED -> {
+                    droughtGrowth.remove(runtime.settings.id)
+                    specialIncidentScene.clearZone(runtime.settings.id, "market_expired")
+                    nightShift.clearZone(runtime.settings.id)
+                    broadcast(
+                        runtime.region,
+                        MessageKey.FARM_MARKET_EXPIRED,
+                        sound = Sound.ENTITY_VILLAGER_NO,
+                        title = true,
+                    )
+                    warningBurst(runtime.region)
+                    debug.event(
+                        "farm_market_expired",
+                        "zone" to runtime.settings.id,
+                        "sequence" to runtime.state.sequence,
+                        "restores" to runtime.state.specialDamagedCrops.size,
                     )
                     persistAsync()
                 }
@@ -4817,6 +4868,7 @@ class ArcFarmsService(
                 if (runtime.state.phase == FarmPhase.COOLDOWN && runtime.state.preparationPatch.isNotEmpty()) {
                     return@runGuarded
                 }
+                if (expireFarmMarket(runtime, now)) return@runGuarded
                 val result = FarmShiftEngine.tick(runtime.state, currentOrder(runtime), now)
                 if (result.events.isNotEmpty()) applyFarmResult(runtime, result, null)
                 if (runtime.state.phase == FarmPhase.IDLE) {
@@ -5002,6 +5054,9 @@ class ArcFarmsService(
                         "pests" to locale.text(runtime.state.pestAlive),
                         "event" to (runtime.state.incidentType?.takeIf { it in SPECIAL_FARM_INCIDENT_TYPES }
                             ?.let { specialIncidentName(it, player) } ?: Component.empty()),
+                        "time" to (runtime.state.specialIncident?.takeIf {
+                            runtime.state.incidentType == FarmIncidentType.MARKET && it.marketAccepted
+                        }?.let { locale.text(marketTime(runtime, it)) } ?: Component.empty()),
                         "done" to locale.text(phaseDone),
                         "total" to locale.text(phaseTotal),
                     ),
@@ -5893,7 +5948,26 @@ class ArcFarmsService(
             FarmIncidentType.CHANNELS -> ensureChannelScene(runtime, special)
             FarmIncidentType.NIGHT_SHIFT -> {
                 specialIncidentScene.clearZone(runtime.settings.id, "night_shift")
-                nightShift.sync(runtime.settings.id, players(runtime.region), runtime.settings.specialIncidents.nightPlayerTime)
+                val sync = nightShift.sync(
+                    zoneId = runtime.settings.id,
+                    sequence = runtime.state.sequence,
+                    region = runtime.region,
+                    players = players(runtime.region),
+                    playerTime = runtime.settings.specialIncidents.nightPlayerTime,
+                    anchors = special.points,
+                    settings = runtime.settings.specialIncidents,
+                    particles = settings.particles,
+                )
+                if (sync.spawnedPatrols > 0 || sync.removedPatrols > 0) {
+                    debug.event(
+                        "farm_night_patrols_reconciled",
+                        "zone" to runtime.settings.id,
+                        "sequence" to runtime.state.sequence,
+                        "active" to sync.activePatrols,
+                        "spawned" to sync.spawnedPatrols,
+                        "removed" to sync.removedPatrols,
+                    )
+                }
             }
             FarmIncidentType.MARKET -> specialIncidentScene.clearZone(runtime.settings.id, "market")
             else -> Unit
@@ -5913,7 +5987,6 @@ class ArcFarmsService(
             FarmIncidentType.CHANNELS -> Sound.BLOCK_CONDUIT_ACTIVATE
             FarmIncidentType.NIGHT_SHIFT -> Sound.BLOCK_AMETHYST_BLOCK_RESONATE
             FarmIncidentType.MARKET -> Sound.ENTITY_VILLAGER_TRADE
-            else -> Sound.BLOCK_NOTE_BLOCK_CHIME
         }
         broadcast(
             runtime.region,
@@ -5943,6 +6016,9 @@ class ArcFarmsService(
             giantHits = settings.giantCropHits,
             channelGates = settings.channelGateCount,
             nightCrops = settings.nightCropCount,
+            nightCropMinSpacing = settings.nightCropMinSpacing,
+            nightPatrols = settings.nightPatrolCount,
+            nightPatrolMinSpacing = settings.nightPatrolMinSpacing,
             marketCrops = settings.marketCropCount,
         ) ?: return
         val initialized = FarmSpecialIncidentEngine.initialize(runtime.state, type, plan.state, plan.required)
@@ -6108,7 +6184,11 @@ class ArcFarmsService(
             return
         }
         val result = when (click.decision) {
-            FarmMarketDecision.ACCEPT -> FarmSpecialIncidentEngine.acceptMarket(runtime.state)
+            FarmMarketDecision.ACCEPT -> FarmSpecialIncidentEngine.acceptMarket(
+                runtime.state,
+                clock(),
+                marketDurationMillis(runtime),
+            )
             FarmMarketDecision.DECLINE -> FarmSpecialIncidentEngine.declineMarket(runtime.state)
             FarmMarketDecision.CLOSE -> return
         }
@@ -6152,6 +6232,7 @@ class ArcFarmsService(
                 runtime.state.incidentProgress,
                 runtime.state.incidentRequired,
                 runtime.settings.specialIncidents.marketMoneyBonusPercent,
+                marketTime(runtime, special),
             )
         } else {
             marketMenu.openPending(
@@ -6161,6 +6242,7 @@ class ArcFarmsService(
                 crop,
                 runtime.state.incidentRequired,
                 runtime.settings.specialIncidents.marketMoneyBonusPercent,
+                marketTime(runtime, special),
             )
         }
         debug.event(
@@ -6185,8 +6267,57 @@ class ArcFarmsService(
             "crop" to locale.renderPath("crop.${crop.name.lowercase()}", audience),
             "done" to locale.text(runtime.state.incidentProgress),
             "total" to locale.text(runtime.state.incidentRequired),
+            "time" to locale.text(marketTime(runtime, special)),
             "event" to locale.renderPath("incident.market.name", audience),
         )
+    }
+
+    private fun marketDurationMillis(runtime: FarmRuntime): Long {
+        val timer = runtime.settings.specialIncidents
+        return FarmMarketTimer.durationMillis(
+            required = runtime.state.incidentRequired,
+            baseSeconds = timer.marketBaseSeconds,
+            secondsPerCrop = timer.marketSecondsPerCrop,
+            minimumSeconds = timer.marketMinimumSeconds,
+            maximumSeconds = timer.marketMaximumSeconds,
+        )
+    }
+
+    private fun marketTime(runtime: FarmRuntime, special: FarmSpecialIncidentState): String {
+        val seconds = if (special.marketAccepted && special.marketDeadlineAt > 0) {
+            FarmMarketTimer.remainingSeconds(special.marketDeadlineAt, clock())
+        } else {
+            marketDurationMillis(runtime) / 1_000L
+        }
+        return "%d:%02d".format(java.util.Locale.ROOT, seconds / 60, seconds % 60)
+    }
+
+    /**
+     * Returns true only when the accepted delivery expired during this call.
+     * A zero deadline belongs to pre-timer persisted state and is migrated once without resetting progress.
+     */
+    private fun expireFarmMarket(runtime: FarmRuntime, now: Long): Boolean {
+        if (runtime.state.phase != FarmPhase.INCIDENT || runtime.state.incidentType != FarmIncidentType.MARKET) return false
+        val special = runtime.state.specialIncident?.takeIf { it.marketAccepted } ?: return false
+        if (special.marketDeadlineAt == 0L) {
+            val duration = marketDurationMillis(runtime)
+            val deadline = if (Long.MAX_VALUE - now < duration) Long.MAX_VALUE else now + duration
+            runtime.state = runtime.state.copy(
+                specialIncident = special.copy(marketDeadlineAt = deadline),
+            )
+            debug.event(
+                "farm_market_deadline_migrated",
+                "zone" to runtime.settings.id,
+                "sequence" to runtime.state.sequence,
+                "deadline" to deadline,
+            )
+            persistAsync()
+            return false
+        }
+        val result = FarmSpecialIncidentEngine.expireMarket(runtime.state, now)
+        if (!result.accepted) return false
+        applyFarmResult(runtime, result, null)
+        return true
     }
 
     private fun specialIncidentName(type: FarmIncidentType, audience: Player): Component = locale.renderPath(
@@ -8908,6 +9039,7 @@ class ArcFarmsService(
             MessageKey.FARM_GIANT_CROP_STARTED to MessageKey.FARM_GIANT_CROP_STARTED_SUBTITLE,
             MessageKey.FARM_CHANNELS_STARTED to MessageKey.FARM_CHANNELS_STARTED_SUBTITLE,
             MessageKey.FARM_NIGHT_SHIFT_STARTED to MessageKey.FARM_NIGHT_SHIFT_STARTED_SUBTITLE,
+            MessageKey.FARM_MARKET_EXPIRED to MessageKey.FARM_MARKET_EXPIRED_SUBTITLE,
             MessageKey.FARM_MARKET_STARTED to MessageKey.FARM_MARKET_STARTED_SUBTITLE,
             MessageKey.FARM_MARKET_ACCEPTED to MessageKey.FARM_MARKET_ACCEPTED_SUBTITLE,
             MessageKey.FARM_DELIVERY_STARTED to MessageKey.FARM_DELIVERY_STARTED_SUBTITLE,

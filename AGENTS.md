@@ -17,8 +17,9 @@ activities: farm, lumbermill, and mine.
   crop bonus windows between the incident and the next required crop.
 - Farm orders are complete contract variants: rarity, crop quota, permitted
   care and incident pools, customer identity, and cart-load visual belong to
-  the order. The active order name leads every farm boss bar. Harvest progress
-  fills one four-step cart visual, while the customer and cart are tagged scene
+  the order. The active order name belongs on the farm scoreboard; keep boss
+  bars compact and limited to the immediate objective. Harvest progress fills
+  one four-step cart visual, while the customer and cart are tagged scene
   entities reconstructed from shift state. The cart itself is a configurable,
   non-persistent `ItemDisplay` with a separate non-persistent `Interaction`
   hitbox; never use a `Minecart` or another ticking collision vehicle for this

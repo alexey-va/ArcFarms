@@ -235,6 +235,13 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                     }
                     else -> error("Farm special incident state has an invalid type")
                 }
+                if (farm.incidentType != FarmIncidentType.MARKET) {
+                    require(!special.marketAccepted && special.marketDeadlineAt == 0L) {
+                        "Non-market farm incident contains market state"
+                    }
+                } else if (!special.marketAccepted) {
+                    require(special.marketDeadlineAt == 0L) { "Pending farm market has a deadline" }
+                }
             }
             require(farm.specialDamagedCrops.size <= 4_096) { "Farm special crop damage is unbounded" }
             require(farm.specialDamagedCrops.distinctBy(FarmCropDamage::position).size == farm.specialDamagedCrops.size) {

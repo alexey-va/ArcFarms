@@ -183,7 +183,21 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().specialIncidents.giantCropHits shouldBe 16
         settings.farms.single().specialIncidents.channelGateCount shouldBe 4
         settings.farms.single().specialIncidents.nightCropCount shouldBe 24
+        settings.farms.single().specialIncidents.nightCropMinSpacing shouldBe 6.0
+        settings.farms.single().specialIncidents.nightPatrolCount shouldBe 3
+        settings.farms.single().specialIncidents.nightPatrolEntity shouldBe "HUSK"
+        settings.farms.single().specialIncidents.nightPatrolMinSpacing shouldBe 12.0
+        settings.farms.single().specialIncidents.nightPatrolRoamRadius shouldBe 14.0
+        settings.farms.single().specialIncidents.nightPatrolSpawnMinPlayerDistance shouldBe 8.0
+        settings.farms.single().specialIncidents.nightPatrolMovementSpeed shouldBe 0.18
+        settings.farms.single().specialIncidents.nightPatrolFollowRange shouldBe 8.0
+        settings.farms.single().specialIncidents.nightPatrolAttackDamage shouldBe 2.0
+        settings.farms.single().specialIncidents.nightPatrolHeldItem shouldBe "TORCH"
         settings.farms.single().specialIncidents.marketMoneyBonusPercent shouldBe 25
+        settings.farms.single().specialIncidents.marketBaseSeconds shouldBe 45
+        settings.farms.single().specialIncidents.marketSecondsPerCrop shouldBe 3.0
+        settings.farms.single().specialIncidents.marketMinimumSeconds shouldBe 120
+        settings.farms.single().specialIncidents.marketMaximumSeconds shouldBe 300
         settings.farms.single().pestNestCount shouldBe 3
         settings.farms.single().pestNestHealth shouldBe 3
         settings.farms.single().pestSpawnsPerNest shouldBe 3
@@ -650,9 +664,13 @@ class ArcFarmsConfigTest : FunSpec({
         settings.destinations.getValue("farm").server shouldBe "lab"
         settings.destinations.getValue("farm").x shouldBe -5.5
         settings.requiresWorldGuard shouldBe false
-        settings.farms.single().orders.single().id shouldBe "lab_order"
+        settings.farms.single().orders.map { it.id }.toSet() shouldBe setOf("lab_order", "lab_berry_order")
         settings.farms.single().rareOrderChancePercent shouldBe 0
-        settings.farms.single().orders.single().customerType shouldBe FarmCustomerType.MARKET_TRADER
+        settings.farms.single().orders.forEach { order ->
+            order.customerType shouldBe FarmCustomerType.MARKET_TRADER
+        }
+        settings.farms.single().orders.single { it.id == "lab_berry_order" }.required shouldBe
+            mapOf("SWEET_BERRY_BUSH" to 2)
         settings.farms.single().pestEntity shouldBe "SILVERFISH"
         settings.farms.single().preparationPatchSize shouldBe 12
         settings.farms.single().preparationPatchMaxSize shouldBe 160

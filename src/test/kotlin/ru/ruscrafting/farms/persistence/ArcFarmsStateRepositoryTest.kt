@@ -200,6 +200,52 @@ class ArcFarmsStateRepositoryTest : FunSpec({
         }
     }
 
+    test("accepted market from the pre-timer format loads for runtime deadline migration") {
+        val root = Files.createTempDirectory("arcfarms-state-market-timer-legacy-test")
+        val data = root.resolve("data")
+        Files.createDirectories(data)
+        Files.writeString(
+            data.resolve("state.json"),
+            """
+            {
+              "schemaVersion": 1,
+              "farms": {
+                "legacy_market": {
+                  "phase": "INCIDENT",
+                  "sequence": 12,
+                  "orderId": "legacy_order",
+                  "progress": {"SWEET_BERRY_BUSH": 2},
+                  "incidentCrop": "SWEET_BERRY_BUSH",
+                  "incidentType": "MARKET",
+                  "incidentProgress": 1,
+                  "incidentRequired": 8,
+                  "incidentResolved": false,
+                  "specialIncident": {
+                    "plots": [{"world": "world", "x": 1, "y": 63, "z": 1}],
+                    "crop": "SWEET_BERRY_BUSH",
+                    "marketAccepted": true
+                  },
+                  "startedAt": 1000,
+                  "cooldownEndsAt": 0,
+                  "outcome": "NONE",
+                  "contributors": {}
+                }
+              },
+              "lumbermills": {},
+              "mines": {},
+              "stats": {}
+            }
+            """.trimIndent(),
+        )
+
+        val loaded = ArcFarmsStateRepository(root).use(ArcFarmsStateRepository::load)
+            .farms.getValue("legacy_market")
+
+        loaded.specialIncident?.marketAccepted shouldBe true
+        loaded.specialIncident?.marketDeadlineAt shouldBe 0L
+        loaded.incidentProgress shouldBe 1
+    }
+
     test("current farm state fields survive an atomic round trip") {
         val root = Files.createTempDirectory("arcfarms-state-current-test")
         val patch = listOf(
@@ -263,6 +309,30 @@ class ArcFarmsStateRepositoryTest : FunSpec({
                     incidentRequired = 2,
                     specialIncident = FarmSpecialIncidentState(plots = patch),
                     specialDamagedCrops = listOf(FarmCropDamage(patch.first(), "WHEAT")),
+                ),
+                "market_farm" to FarmShiftState(
+                    phase = FarmPhase.INCIDENT,
+                    sequence = 11,
+                    orderId = "current_order",
+                    progress = mapOf("SWEET_BERRY_BUSH" to 3),
+                    preparationPatch = patch,
+                    preparationCrop = "WHEAT",
+                    preparationReleased = true,
+                    tilledPlots = patch.toSet(),
+                    plantedPlots = patch.toSet(),
+                    preparationProgress = 2,
+                    plantingProgress = 2,
+                    preparationRequired = 2,
+                    incidentCrop = "SWEET_BERRY_BUSH",
+                    incidentType = FarmIncidentType.MARKET,
+                    incidentProgress = 1,
+                    incidentRequired = 8,
+                    specialIncident = FarmSpecialIncidentState(
+                        plots = patch,
+                        crop = "SWEET_BERRY_BUSH",
+                        marketAccepted = true,
+                        marketDeadlineAt = 145_000,
+                    ),
                 ),
                 "care_farm" to FarmShiftState(
                     phase = FarmPhase.CARE,

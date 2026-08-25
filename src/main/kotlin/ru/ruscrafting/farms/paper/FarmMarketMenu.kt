@@ -33,8 +33,16 @@ internal class FarmMarketMenu(
         override fun getInventory(): Inventory = backing
     }
 
-    fun openPending(player: Player, zoneId: String, sequence: Long, crop: Material, required: Int, bonusPercent: Int) {
-        open(player, zoneId, sequence, crop, 0, required, bonusPercent, FarmMarketMode.PENDING)
+    fun openPending(
+        player: Player,
+        zoneId: String,
+        sequence: Long,
+        crop: Material,
+        required: Int,
+        bonusPercent: Int,
+        time: String,
+    ) {
+        open(player, zoneId, sequence, crop, 0, required, bonusPercent, time, FarmMarketMode.PENDING)
     }
 
     fun openActive(
@@ -45,8 +53,9 @@ internal class FarmMarketMenu(
         progress: Int,
         required: Int,
         bonusPercent: Int,
+        time: String,
     ) {
-        open(player, zoneId, sequence, crop, progress, required, bonusPercent, FarmMarketMode.ACTIVE)
+        open(player, zoneId, sequence, crop, progress, required, bonusPercent, time, FarmMarketMode.ACTIVE)
     }
 
     private fun open(
@@ -57,6 +66,7 @@ internal class FarmMarketMenu(
         progress: Int,
         required: Int,
         bonusPercent: Int,
+        time: String,
         mode: FarmMarketMode,
     ) {
         val holder = Holder(zoneId, sequence, mode)
@@ -83,6 +93,15 @@ internal class FarmMarketMenu(
                         ))
                     }
                     add(locale.render(MessageKey.FARM_MARKET_MENU_BONUS, player, mapOf("bonus" to locale.text(bonusPercent))))
+                    add(locale.render(
+                        if (mode == FarmMarketMode.ACTIVE) {
+                            MessageKey.FARM_MARKET_MENU_TIME_REMAINING
+                        } else {
+                            MessageKey.FARM_MARKET_MENU_TIME_LIMIT
+                        },
+                        player,
+                        mapOf("time" to locale.text(time)),
+                    ))
                 },
             ),
         )

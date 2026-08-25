@@ -145,8 +145,24 @@ farm-zones:
     special-incidents:
       giant-crop: {hits: 16, scale: 3.2}
       channels: {gates: 4, display-scale: 1.35}
-      night-shift: {crops: 24, player-time: 18000}
-      market: {crops: 32, money-bonus-percent: 25}
+      night-shift:
+        crops: 24
+        crop-min-spacing: 6.0
+        player-time: 18000
+        patrols:
+          count: 3
+          entity: HUSK
+          min-spacing: 12.0
+          roam-radius: 14.0
+          spawn-min-player-distance: 8.0
+          movement-speed: 0.18
+          follow-range: 8.0
+          attack-damage: 2.0
+          held-item: TORCH
+      market:
+        crops: 32
+        money-bonus-percent: 25
+        timer: {base-seconds: 45, seconds-per-crop: 3.0, minimum-seconds: 120, maximum-seconds: 300}
     pest-entity: SILVERFISH
     pest-spawn-radius: 6
     pest-nests: 3

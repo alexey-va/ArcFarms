@@ -50,7 +50,8 @@ class FarmSpecialIncidentEngineTest : FunSpec({
         )
         FarmSpecialIncidentEngine.declineMarket(initial).state.phase shouldBe FarmPhase.HARVESTING
 
-        var accepted = FarmSpecialIncidentEngine.acceptMarket(initial).state
+        var accepted = FarmSpecialIncidentEngine.acceptMarket(initial, now = 100, durationMillis = 120_000).state
+        accepted.specialIncident?.marketDeadlineAt shouldBe 120_100
         cropPlots.forEach { plot ->
             accepted = FarmSpecialIncidentEngine.harvestSpecialCrop(
                 accepted,
@@ -63,6 +64,21 @@ class FarmSpecialIncidentEngineTest : FunSpec({
         accepted.phase shouldBe FarmPhase.HARVESTING
         accepted.rewardMoneyBonusPercent shouldBe 25
         accepted.specialDamagedCrops.size shouldBe 4
+    }
+
+    test("accepted market expires at its persisted deadline without granting the money bonus") {
+        val initial = incident(FarmIncidentType.MARKET).copy(
+            specialIncident = FarmSpecialIncidentState(plots = cropPlots, crop = "WHEAT"),
+            incidentRequired = cropPlots.size,
+        )
+        val accepted = FarmSpecialIncidentEngine.acceptMarket(initial, now = 5_000, durationMillis = 120_000).state
+        FarmSpecialIncidentEngine.expireMarket(accepted, 124_999).accepted shouldBe false
+
+        val expired = FarmSpecialIncidentEngine.expireMarket(accepted, 125_000)
+        expired.accepted shouldBe true
+        expired.events shouldBe listOf(ShiftEvent.MARKET_EXPIRED)
+        expired.state.phase shouldBe FarmPhase.HARVESTING
+        expired.state.rewardMoneyBonusPercent shouldBe 0
     }
 
     test("main harvest cannot erase crops still waiting for incident recovery") {
@@ -103,6 +119,9 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             giantHits = 16,
             channelGates = 4,
             nightCrops = 4,
+            nightCropMinSpacing = 4.0,
+            nightPatrols = 2,
+            nightPatrolMinSpacing = 4.0,
             marketCrops = 3,
         )
         val second = FarmSpecialIncidentPlanner.plan(
@@ -114,6 +133,9 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             giantHits = 16,
             channelGates = 4,
             nightCrops = 4,
+            nightCropMinSpacing = 4.0,
+            nightPatrols = 2,
+            nightPatrolMinSpacing = 4.0,
             marketCrops = 3,
         )
 
@@ -121,7 +143,77 @@ class FarmSpecialIncidentEngineTest : FunSpec({
         first?.state?.crop shouldBe "WHEAT"
         first?.required shouldBe 3
     }
+
+    test("night shift spreads crop targets and patrol anchors across the available field") {
+        val mature = (0 until 10).flatMap { x ->
+            (0 until 10).map { z ->
+                FarmMatureCrop(FarmPlotPosition("world", x * 2, 64, z * 2), "WHEAT")
+            }
+        }
+        val plan = FarmSpecialIncidentPlanner.plan(
+            FarmIncidentType.NIGHT_SHIFT,
+            sequence = 7,
+            matureCrops = mature,
+            fallbackPlot = mature.first().plot,
+            irrigationSource = FarmPointPosition("world", -2.0, 65.0, 0.0),
+            giantHits = 16,
+            channelGates = 4,
+            nightCrops = 12,
+            nightCropMinSpacing = 6.0,
+            nightPatrols = 3,
+            nightPatrolMinSpacing = 10.0,
+            marketCrops = 3,
+        ) ?: error("Night shift plan is missing")
+
+        plan.required shouldBe 12
+        plan.state.plots.size shouldBe 12
+        plan.state.points.size shouldBe 3
+        (minimumPlotDistance(plan.state.plots) >= 5.5) shouldBe true
+        (plan.state.plots.maxOf { it.x } - plan.state.plots.minOf { it.x } >= 16) shouldBe true
+        (plan.state.plots.maxOf { it.z } - plan.state.plots.minOf { it.z } >= 16) shouldBe true
+        (minimumPointDistance(plan.state.points) >= 10.0) shouldBe true
+    }
+
+    test("night shift keeps the configured patrol count when few unmarked beds remain") {
+        val mature = (0 until 7).map { x ->
+            FarmMatureCrop(FarmPlotPosition("world", x * 2, 64, 0), "WHEAT")
+        }
+        val plan = FarmSpecialIncidentPlanner.plan(
+            FarmIncidentType.NIGHT_SHIFT,
+            sequence = 11,
+            matureCrops = mature,
+            fallbackPlot = mature.first().plot,
+            irrigationSource = FarmPointPosition("world", -2.0, 65.0, 0.0),
+            giantHits = 16,
+            channelGates = 4,
+            nightCrops = 6,
+            nightCropMinSpacing = 3.0,
+            nightPatrols = 2,
+            nightPatrolMinSpacing = 6.0,
+            marketCrops = 3,
+        ) ?: error("Night shift plan is missing")
+
+        plan.state.plots.size shouldBe 6
+        plan.state.points.size shouldBe 2
+        (minimumPointDistance(plan.state.points) >= 6.0) shouldBe true
+    }
 })
+
+private fun minimumPlotDistance(values: List<FarmPlotPosition>): Double = (0 until values.lastIndex).minOf { first ->
+    (first + 1 until values.size).minOf { second ->
+        val dx = (values[first].x - values[second].x).toDouble()
+        val dz = (values[first].z - values[second].z).toDouble()
+        kotlin.math.sqrt(dx * dx + dz * dz)
+    }
+}
+
+private fun minimumPointDistance(values: List<FarmPointPosition>): Double = (0 until values.lastIndex).minOf { first ->
+    (first + 1 until values.size).minOf { second ->
+        val dx = values[first].x - values[second].x
+        val dz = values[first].z - values[second].z
+        kotlin.math.sqrt(dx * dx + dz * dz)
+    }
+}
 
 private fun incident(type: FarmIncidentType) = FarmShiftState(
     phase = FarmPhase.INCIDENT,

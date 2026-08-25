@@ -135,11 +135,14 @@ interruptions per harvest, with at most one classic field disaster. Four
 special incidents deliberately avoid repeating the same marker interaction: a
 giant crop is one large physical target hit with a hoe; irrigation channels
 form a gate puzzle whose visible water advances only through the correct
-prefix; night shift uses per-player night without changing the world clock and
-asks for highlighted mature crops; and the living market offers an optional
-rush order through the existing customer for a configured final money bonus.
-Declining the market has no penalty. Every target and decision is persisted and
-waits indefinitely when zero players are present. A pest outbreak
+prefix; night shift uses per-player night without changing the world clock,
+spreads highlighted mature crops across the farm, and releases bounded,
+non-persistent torch patrols that players must avoid; and the living market
+offers an optional timed rush order through the existing customer for a
+configured final money bonus. Declining or timing out the market has no penalty
+and never resets the main order. Market deadlines and every target or decision
+are persisted; all non-timed goals still wait indefinitely when zero players
+are present. A pest outbreak
 places several breakable nests across distant parts of the field. Each nest can
 spawn only a configured number of glowing silverfish, with a separate cap on
 simultaneously living pests. The pests eat any configured crops around them to
@@ -285,7 +288,8 @@ are available through commands such as `/arcfarms admin point <zone> help`,
 
 Farm counts, manual and mechanized patch sizes, machinery radius, spacing,
 spawn/search radii, incident ranges/checkpoints, special-event quotas, display
-scales, personal night time and market bonus, apple count/spacing,
+scales, personal night time, crop/patrol spacing, patrol entity and movement,
+market timer and bonus, apple count/spacing,
 block-reindex and backup batch/size limits, display
 scale/offset/view range, care timings, drought/pest tuning, UI toggles, sounds,
 particles, rewards, fixed-crop respawn delay, restoration batch size, and
@@ -350,13 +354,13 @@ button.
 ../arc-core/gradlew clean check shadowJar
 ```
 
-The deployable artifact is `build/libs/ArcFarms-0.18.2.jar`.
+The deployable artifact is `build/libs/ArcFarms-0.18.4.jar`.
 
 ## Isolated gameplay QA
 
 `scripts/lab/plugin-configs/ArcFarms/config.yml` defines three small cuboid
 fixtures. The player-bot session exposes only the fixed `arcfarms` operations
-`fixture-setup`, `reload`, `travel`, `debug-controls`, `scoreboard`, `market-flow`, `care-stories`, `drought-flow`,
+`fixture-setup`, `reload`, `travel`, `debug-controls`, `scoreboard`, `market-flow`, `night-shift`, `care-stories`, `drought-flow`,
 `pest-stability`, `farm`, `lumber`, `mine`, `status`, and `fixture-cleanup` on
 the lab port and documented OP QA identities; it accepts no command or target
 arguments. Always clean the scene after a smoke run.
