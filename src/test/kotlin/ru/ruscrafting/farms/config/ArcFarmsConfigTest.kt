@@ -399,15 +399,15 @@ class ArcFarmsConfigTest : FunSpec({
             .message shouldContain "preparation-patch-max-size"
     }
 
-    test("mechanized fieldwork explains radius control without checkpoints") {
+    test("mechanized fieldwork explains mounted pig-team control without checkpoints") {
         val repositoryRoot = Path.of(System.getProperty("arcfarms.repositoryRoot"))
         val root = repositoryRoot.resolve("ArcFarms/src/main/resources")
         val ru = Config(root, "lang/ru.yml")
         val en = Config(root, "lang/en.yml")
 
-        ru.string("farm.care-seeder-following") shouldContain "рядом"
+        ru.string("farm.care-seeder-following") shouldContain "свиньи"
         ru.string("scoreboard.hint.care.seeder-tilling") shouldNotContain "метк"
-        en.string("farm.care-seeder-following") shouldContain "nearby"
+        en.string("farm.care-seeder-following") shouldContain "pigs"
         en.string("scoreboard.hint.care.seeder-planting") shouldNotContain "marker"
     }
 
@@ -420,6 +420,24 @@ class ArcFarmsConfigTest : FunSpec({
 
         shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(root) }
             .message shouldContain "seeder-patch-max-size"
+    }
+
+    test("mechanized pig team remains bounded and can catch up with the horse") {
+        val pigCountRoot = resourceTree()
+        val pigCountConfig = pigCountRoot.resolve("config.yml")
+        pigCountConfig.writeText(
+            Files.readString(pigCountConfig).replace("seeder-pig-count: 3", "seeder-pig-count: 6"),
+        )
+        shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(pigCountRoot) }
+            .message shouldContain "seeder-pig-count"
+
+        val catchupRoot = resourceTree()
+        val catchupConfig = catchupRoot.resolve("config.yml")
+        catchupConfig.writeText(
+            Files.readString(catchupConfig).replace("seeder-pig-catchup-distance: 7.0", "seeder-pig-catchup-distance: 2.5"),
+        )
+        shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(catchupRoot) }
+            .message shouldContain "seeder-pig-catchup-distance"
     }
 
     test("locale parity includes dynamic order route and phase paths") {
@@ -737,12 +755,12 @@ class ArcFarmsConfigTest : FunSpec({
                 phase = FarmPhase.CARE,
                 careType = FarmCareType.SEEDER,
                 seederStage = FarmSeederStage.TILLING,
-            ) to "Проведите лошадь рядом с необработанными грядками",
+            ) to "Проезжайте так, чтобы свиньи прошли над невспаханными грядками",
             base.copy(
                 phase = FarmPhase.CARE,
                 careType = FarmCareType.SEEDER,
                 seederStage = FarmSeederStage.PLANTING,
-            ) to "Проведите лошадь рядом с оставшимися грядками",
+            ) to "Проведите свиней над оставшимися незасеянными грядками",
         ) + mapOf(
             FarmCareType.WEEDS to "Ищите подсвеченные корни",
             FarmCareType.IRRIGATION to "Открывайте вентили по порядку",

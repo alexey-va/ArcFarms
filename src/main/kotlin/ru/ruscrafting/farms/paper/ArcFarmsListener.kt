@@ -25,6 +25,7 @@ import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.event.player.PlayerPortalEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.event.player.PlayerTeleportEvent
+import org.bukkit.event.vehicle.VehicleEnterEvent
 import org.bukkit.event.world.ChunkLoadEvent
 
 class ArcFarmsListener(
@@ -96,6 +97,9 @@ class ArcFarmsListener(
 
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onInteractEntity(event: PlayerInteractEntityEvent) = service.onInteractEntity(event)
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    fun onVehicleEnter(event: VehicleEnterEvent) = service.onVehicleEnter(event)
 
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onEntityDamage(event: EntityDamageEvent) = service.onEntityDamage(event)

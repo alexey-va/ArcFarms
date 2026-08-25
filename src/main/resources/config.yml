@@ -79,7 +79,14 @@ farm-zones:
     seeder-patch-max-size: 2048
     seeder-component-gap: 16
     seeder-component-limit: 8
-    # Every indexed bed inside this radius around the horse is processed.
+    # The player rides the horse; this many leashed pigs work in a row ahead of it.
+    seeder-pig-count: 3
+    seeder-pig-lead-distance: 2.5
+    seeder-pig-spacing: 1.4
+    seeder-pig-catchup-distance: 7.0
+    seeder-horse-speed: 0.24
+    seeder-pig-speed: 0.38
+    # Every indexed bed inside this radius around any working pig is processed.
     seeder-working-radius: 8.0
     # Bounds tilling/planting mutations per machinery update (every 5 ticks).
     seeder-blocks-per-update: 128

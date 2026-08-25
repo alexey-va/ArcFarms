@@ -98,6 +98,12 @@ data class FarmZoneSettings(
     val seederPatchMaxSize: Int,
     val seederComponentGap: Int,
     val seederComponentLimit: Int,
+    val seederPigCount: Int,
+    val seederPigLeadDistance: Double,
+    val seederPigSpacing: Double,
+    val seederPigCatchupDistance: Double,
+    val seederHorseSpeed: Double,
+    val seederPigSpeed: Double,
     val seederWorkingRadius: Double,
     val seederBlocksPerUpdate: Int,
     val diseaseInitialSpots: Int,
@@ -513,6 +519,14 @@ class ArcFarmsConfig private constructor(
                 require(seederPatchMaxSize >= seederPatchSize) {
                     "Farm zone $id seeder-patch-max-size must be at least seeder-patch-size"
                 }
+                val seederPigCount = section.int("seeder-pig-count", 3)
+                    .checked("seeder-pig-count", 1, 5)
+                val seederPigLeadDistance = section.finiteDouble("seeder-pig-lead-distance", 2.5, 1.0, 6.0)
+                val seederPigSpacing = section.finiteDouble("seeder-pig-spacing", 1.4, 0.6, 3.0)
+                val seederPigCatchupDistance = section.finiteDouble("seeder-pig-catchup-distance", 7.0, 3.0, 16.0)
+                require(seederPigCatchupDistance > seederPigLeadDistance) {
+                    "Farm zone $id seeder-pig-catchup-distance must exceed seeder-pig-lead-distance"
+                }
                 val placementMinObjectiveDistance = section.int("placement-min-objective-distance", 10)
                     .checked("placement-min-objective-distance", 2, 32)
                 val placementMaxPlayerDistance = section.int("placement-max-player-distance", 28)
@@ -620,6 +634,12 @@ class ArcFarmsConfig private constructor(
                         .checked("seeder-component-gap", 0, 32),
                     seederComponentLimit = section.int("seeder-component-limit", 8)
                         .checked("seeder-component-limit", 1, 16),
+                    seederPigCount = seederPigCount,
+                    seederPigLeadDistance = seederPigLeadDistance,
+                    seederPigSpacing = seederPigSpacing,
+                    seederPigCatchupDistance = seederPigCatchupDistance,
+                    seederHorseSpeed = section.finiteDouble("seeder-horse-speed", 0.24, 0.1, 0.6),
+                    seederPigSpeed = section.finiteDouble("seeder-pig-speed", 0.38, 0.1, 0.8),
                     seederWorkingRadius = section.finiteDouble("seeder-working-radius", 8.0, 1.0, 16.0),
                     seederBlocksPerUpdate = section.int("seeder-blocks-per-update", 128)
                         .checked("seeder-blocks-per-update", 8, 256),

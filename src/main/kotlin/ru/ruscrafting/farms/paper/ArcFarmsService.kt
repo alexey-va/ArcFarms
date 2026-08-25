@@ -52,6 +52,7 @@ import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.event.player.PlayerTeleportEvent
+import org.bukkit.event.vehicle.VehicleEnterEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
@@ -271,6 +272,7 @@ class ArcFarmsService(
     private val specialIncidentScene = FarmSpecialIncidentSceneManager(plugin, debug)
     private val nightShift = FarmNightShiftController()
     private val marketMenu = FarmMarketMenu(locale) { settings }
+    private val seederRig = FarmSeederRigManager(plugin)
     private val mineReservations = ConcurrentHashMap.newKeySet<String>()
     private val pendingPositions = ConcurrentHashMap<String, String>()
     private val interactionCooldowns = mutableMapOf<String, Long>()
@@ -887,6 +889,30 @@ class ArcFarmsService(
         if (deliveryCarriers.containsKey(key) || deliveryCarriers.containsValue(player.uniqueId)) return
         if (!allowInteraction("farm-delivery:$zoneId:$index:${player.uniqueId}", 500)) return
         pickupDelivery(runtime, key, player)
+    }
+
+    fun onVehicleEnter(event: VehicleEnterEvent) {
+        val player = event.entered as? Player ?: return
+        val data = event.vehicle.persistentDataContainer
+        val zoneId = data.get(careZoneKey, PersistentDataType.STRING) ?: return
+        val sequence = data.get(careSequenceKey, PersistentDataType.LONG) ?: return
+        val targetId = data.get(careTargetKey, PersistentDataType.INTEGER) ?: return
+        val role = data.get(careRoleKey, PersistentDataType.STRING) ?: return
+        val runtime = farms.firstOrNull { it.settings.id == zoneId } ?: return
+        val validRig = event.vehicle is Horse && role == FarmCareRole.SEEDER_HORSE.name && runtime.state.phase == FarmPhase.CARE &&
+            runtime.state.careType == FarmCareType.SEEDER && runtime.state.sequence == sequence &&
+            runtime.state.careTargets.any { target ->
+                target.id == targetId && target.role == FarmCareRole.SEEDER_HORSE
+            } && runtime.region.contains(event.vehicle.location) &&
+            runtime.region.contains(player.location) && !isAdminEditing(player) &&
+            hasAccess(player, runtime.settings.permission)
+        event.isCancelled = !validRig
+        debug.event(
+            "farm_seeder_mount",
+            "zone" to zoneId,
+            "player" to player.name,
+            "allowed" to validRig,
+        )
     }
 
     fun onEntityDamage(event: EntityDamageEvent) {
@@ -3233,16 +3259,23 @@ class ArcFarmsService(
         val target = runtime.state.careTargets.firstOrNull { it.id == targetId && it.role == role } ?: return
         if (role == FarmCareRole.SEEDER_HORSE) {
             val key = CareEntityKey(zoneId, targetId)
-            animalFollowers[key] = player.uniqueId
-            ((entity as? Horse) ?: careEntities[key].orEmpty().asSequence()
-                .mapNotNull(Bukkit::getEntity).filterIsInstance<Horse>().firstOrNull())?.let { horse ->
-                horse.isGlowing = true
-                horse.isAware = true
-                horse.setLeashHolder(player)
-                horse.pathfinder.moveTo(player, 1.15)
+            val rig = seederRig.resolve(
+                careEntities[key].orEmpty().mapNotNull(Bukkit::getEntity),
+                runtime.settings.seederPigCount,
+            ) ?: return
+            when (seederRig.mount(rig, player)) {
+                FarmSeederMountResult.OCCUPIED -> {
+                    sendActionBar(player, MessageKey.FARM_CARE_SEEDER_OCCUPIED)
+                    return
+                }
+                FarmSeederMountResult.RIDER_BUSY, FarmSeederMountResult.FAILED -> {
+                    sendActionBar(player, MessageKey.FARM_CARE_SEEDER_MOUNT_FAILED)
+                    return
+                }
+                FarmSeederMountResult.MOUNTED -> Unit
             }
             if (!target.complete) {
-                farmCareFeedback(player, entity.location, role, true)
+                farmCareFeedback(player, rig.horse.location, role, true)
                 applyFarmResult(
                     runtime,
                     FarmShiftEngine.startSeeder(runtime.state, target.id),
@@ -5222,7 +5255,7 @@ class ArcFarmsService(
                 entity.persistentDataContainer.get(careTargetKey, PersistentDataType.INTEGER) == target.id &&
                 entity.persistentDataContainer.get(careRoleKey, PersistentDataType.STRING) == target.role.name
         }
-        if (active.size == 2 && active.count { it is Horse } == 1 && active.count { it is TextDisplay } == 1) {
+        if (seederRig.resolve(active, runtime.settings.seederPigCount) != null) {
             careEntities[key] = active.mapTo(mutableSetOf(), Entity::getUniqueId)
             return
         }
@@ -5230,28 +5263,19 @@ class ArcFarmsService(
         val world = Bukkit.getWorld(target.position.world) ?: return
         val location = Location(world, target.position.x, target.position.y, target.position.z)
         if (!runtime.region.contains(location) || !world.isChunkLoaded(location.blockX shr 4, location.blockZ shr 4)) return
-        val horse = world.spawn(location, Horse::class.java) { entity ->
-            entity.setAdult()
-            entity.isPersistent = false
-            entity.removeWhenFarAway = false
-            entity.isInvulnerable = true
-            entity.isCollidable = false
-            entity.isGlowing = true
-            entity.isAware = false
-            entity.inventory.saddle = ItemStack(Material.SADDLE)
-            markFarmCareEntity(entity, runtime, target.id, target.role)
-        }
-        val label = world.spawn(location.clone().add(0.0, 2.25, 0.0), TextDisplay::class.java) { entity ->
-            entity.text(locale.render(MessageKey.FARM_CARE_SEEDER_NAME))
-            entity.billboard = Display.Billboard.VERTICAL
-            entity.alignment = TextDisplay.TextAlignment.CENTER
-            entity.backgroundColor = Color.fromARGB(128, 16, 16, 16)
-            entity.isShadowed = true
-            entity.viewRange = 0.7f
-            entity.isPersistent = false
-            markFarmCareEntity(entity, runtime, target.id, target.role)
-        }
-        careEntities[key] = mutableSetOf(horse.uniqueId, label.uniqueId)
+        val rig = seederRig.spawn(
+            location = location,
+            pigCount = runtime.settings.seederPigCount,
+            leadDistance = runtime.settings.seederPigLeadDistance,
+            spacing = runtime.settings.seederPigSpacing,
+            horseSpeed = runtime.settings.seederHorseSpeed,
+            pigSpeed = runtime.settings.seederPigSpeed,
+            labelText = locale.render(MessageKey.FARM_CARE_SEEDER_NAME),
+            labelViewRange = 0.7f,
+            mark = { entity -> markFarmCareEntity(entity, runtime, target.id, target.role) },
+            validPosition = runtime.region::contains,
+        )
+        careEntities[key] = rig.entities.mapTo(mutableSetOf(), Entity::getUniqueId)
         debug.event("farm_seeder_spawned", "zone" to runtime.settings.id, "x" to location.x, "y" to location.y, "z" to location.z)
     }
 
@@ -5426,33 +5450,40 @@ class ArcFarmsService(
         if (runtime.state.phase != FarmPhase.CARE || runtime.state.careType != FarmCareType.SEEDER) return
         val horseTarget = runtime.state.careTargets.firstOrNull { it.role == FarmCareRole.SEEDER_HORSE } ?: return
         val key = CareEntityKey(runtime.settings.id, horseTarget.id)
-        val horse = careEntities[key].orEmpty().asSequence()
-            .mapNotNull(Bukkit::getEntity).filterIsInstance<Horse>().firstOrNull() ?: return
-        careEntities[key].orEmpty().mapNotNull(Bukkit::getEntity).filterIsInstance<TextDisplay>().forEach { label ->
-            label.teleport(horse.location.clone().add(0.0, 2.25, 0.0))
-        }
-        val actor = animalFollowers[key]?.let(Bukkit::getPlayer)?.takeIf { player ->
-            player.isOnline && runtime.region.contains(player.location)
+        val rig = seederRig.resolve(
+            careEntities[key].orEmpty().mapNotNull(Bukkit::getEntity),
+            runtime.settings.seederPigCount,
+        ) ?: return
+        val horse = rig.horse
+        val actor = seederRig.rider(rig)?.takeIf { player ->
+            player.isOnline && hasAccess(player, runtime.settings.permission) && runtime.region.contains(player.location)
         }
         if (actor == null) {
-            horse.isAware = false
-            releaseAnimalFollower(key, horse, "seeder_actor_unavailable")
+            seederRig.park(rig)
             return
         }
-        horse.isAware = true
         if (!runtime.region.contains(horse.location)) {
+            seederRig.release(rig)
             horse.teleport(Location(horse.world, horseTarget.position.x, horseTarget.position.y, horseTarget.position.z))
-            releaseAnimalFollower(key, horse, "seeder_outside_zone")
+            sendActionBar(actor, MessageKey.FARM_CARE_SEEDER_OUTSIDE)
             return
         }
+        val workingAnimals = seederRig.update(
+            rig = rig,
+            pigCount = runtime.settings.seederPigCount,
+            leadDistance = runtime.settings.seederPigLeadDistance,
+            spacing = runtime.settings.seederPigSpacing,
+            catchupDistance = runtime.settings.seederPigCatchupDistance,
+            validPosition = runtime.region::contains,
+        ).filter { position ->
+            runtime.region.contains(Location(runtime.region.world, position.x, position.y, position.z))
+        }
+        if (workingAnimals.isEmpty()) return
         val stage = requireNotNull(runtime.state.seederStage())
         val completedPlots = if (stage == FarmSeederStage.TILLING) runtime.state.tilledPlots else runtime.state.plantedPlots
         val reachable = FarmMachinePlanner.plotsInWorkingRadius(
             candidates = runtime.state.preparationPatch.filterNot(completedPlots::contains),
-            world = horse.world.name,
-            machineX = horse.location.x,
-            machineY = horse.location.y,
-            machineZ = horse.location.z,
+            machines = workingAnimals,
             radius = runtime.settings.seederWorkingRadius,
         )
         val mutation = when (stage) {
@@ -5473,9 +5504,6 @@ class ArcFarmsService(
             applyFarmResult(runtime, FarmShiftEngine.workSeeder(runtime.state, mutation.processed, actor.uniqueId), actor)
         }
         if (runtime.state.phase != FarmPhase.CARE || runtime.state.careType != FarmCareType.SEEDER || !horse.isValid) return
-        if (!horse.isLeashed || runCatching { horse.leashHolder }.getOrNull() != actor) horse.setLeashHolder(actor)
-        horse.pathfinder.moveTo(actor, 1.2)
-        pullFarmAnimalTowardHolder(horse, actor)
     }
 
     private fun machineSwathFeedback(

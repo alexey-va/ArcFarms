@@ -44,6 +44,30 @@ class FarmMachinePlannerTest : FunSpec({
         ).shouldContainExactly(FarmPlotPosition("world", 1, 64, 1))
     }
 
+    test("the working swath is the union around all three pigs") {
+        val candidates = (-5..5).map { x -> FarmPlotPosition("world", x, 64, 0) }
+
+        FarmMachinePlanner.plotsInWorkingRadius(
+            candidates = candidates,
+            machines = listOf(
+                FarmMachinePosition("world", -3.5, 65.0, 0.5),
+                FarmMachinePosition("world", 0.5, 65.0, 0.5),
+                FarmMachinePosition("world", 3.5, 65.0, 0.5),
+            ),
+            radius = 1.0,
+        ) shouldBe setOf(
+            FarmPlotPosition("world", -5, 64, 0),
+            FarmPlotPosition("world", -4, 64, 0),
+            FarmPlotPosition("world", -3, 64, 0),
+            FarmPlotPosition("world", -1, 64, 0),
+            FarmPlotPosition("world", 0, 64, 0),
+            FarmPlotPosition("world", 1, 64, 0),
+            FarmPlotPosition("world", 2, 64, 0),
+            FarmPlotPosition("world", 3, 64, 0),
+            FarmPlotPosition("world", 4, 64, 0),
+        )
+    }
+
     test("machine radius and patch size stay bounded") {
         shouldThrow<IllegalArgumentException> {
             FarmMachinePlanner.plotsInWorkingRadius(
@@ -62,6 +86,13 @@ class FarmMachinePlannerTest : FunSpec({
                 machineX = 0.0,
                 machineY = 65.0,
                 machineZ = 0.0,
+                radius = 8.0,
+            )
+        }
+        shouldThrow<IllegalArgumentException> {
+            FarmMachinePlanner.plotsInWorkingRadius(
+                emptyList(),
+                machines = List(6) { FarmMachinePosition("world", it.toDouble(), 65.0, 0.0) },
                 radius = 8.0,
             )
         }
