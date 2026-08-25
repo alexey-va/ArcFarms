@@ -2810,6 +2810,9 @@ class ArcFarmsService(
                 require(MaterialRules.isPlantableCrop(crop) || MaterialRules.isFixedBlockCrop(crop)) {
                     "Farm zone ${zone.id} crop $cropName is neither plantable nor a managed block crop"
                 }
+                require(MaterialRules.harvestItemForCrop(crop).isItem) {
+                    "Farm zone ${zone.id} crop $cropName has no inventory-safe harvest item"
+                }
             }
             zone.orders.forEach { order ->
                 require(order.required.keys.any { MaterialRules.isPlantableCrop(MaterialRules.material(it)) }) {

@@ -33,4 +33,18 @@ class MaterialRulesTest : FunSpec({
         (MaterialRules.cropComponent(Material.SWEET_BERRY_BUSH) as TranslatableComponent).key() shouldBe
             "item.minecraft.sweet_berries"
     }
+
+    test("every configured farm crop resolves to an inventory-safe harvest item") {
+        mapOf(
+            Material.WHEAT to Material.WHEAT,
+            Material.CARROTS to Material.CARROT,
+            Material.POTATOES to Material.POTATO,
+            Material.BEETROOTS to Material.BEETROOT,
+            Material.SWEET_BERRY_BUSH to Material.SWEET_BERRIES,
+            Material.MELON to Material.MELON,
+            Material.PUMPKIN to Material.PUMPKIN,
+        ).forEach { (crop, expectedItem) ->
+            MaterialRules.harvestItemForCrop(crop) shouldBe expectedItem
+        }
+    }
 })

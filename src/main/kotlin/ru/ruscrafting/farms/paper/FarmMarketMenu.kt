@@ -65,7 +65,7 @@ internal class FarmMarketMenu(
         inventory.setItem(
             13,
             item(
-                crop,
+                MaterialRules.harvestItemForCrop(crop),
                 locale.render(
                     MessageKey.FARM_MARKET_MENU_ORDER,
                     player,

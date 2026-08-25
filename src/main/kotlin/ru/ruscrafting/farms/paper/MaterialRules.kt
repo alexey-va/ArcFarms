@@ -16,6 +16,13 @@ object MaterialRules {
         Material.SWEET_BERRY_BUSH to Material.SWEET_BERRIES,
     )
 
+    private val harvestItemsByCrop = mapOf(
+        Material.CARROTS to Material.CARROT,
+        Material.POTATOES to Material.POTATO,
+        Material.BEETROOTS to Material.BEETROOT,
+        Material.SWEET_BERRY_BUSH to Material.SWEET_BERRIES,
+    )
+
     fun material(name: String): Material =
         Material.matchMaterial(name) ?: error("Unknown Paper material: $name")
 
@@ -44,6 +51,8 @@ object MaterialRules {
         seedsByCrop.entries.firstOrNull { it.value == seed }?.key
 
     fun seedForCrop(crop: Material): Material? = seedsByCrop[crop]
+
+    fun harvestItemForCrop(crop: Material): Material = harvestItemsByCrop[crop] ?: crop
 
     fun isPlantableCrop(crop: Material): Boolean = crop in seedsByCrop
 
