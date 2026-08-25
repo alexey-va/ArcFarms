@@ -44,6 +44,10 @@ data class FarmPlotPosition(
 enum class FarmIncidentType {
     PESTS,
     DROUGHT,
+    GIANT_CROP,
+    CHANNELS,
+    NIGHT_SHIFT,
+    MARKET,
 }
 
 enum class FarmCareType {
@@ -125,6 +129,27 @@ data class FarmCropDamage(
 ) {
     init {
         require(crop.matches(Regex("[A-Z0-9_]{2,64}"))) { "Invalid damaged crop: $crop" }
+    }
+}
+
+data class FarmSpecialIncidentState(
+    val points: List<FarmPointPosition> = emptyList(),
+    val plots: List<FarmPlotPosition> = emptyList(),
+    val crop: String? = null,
+    val solution: Set<Int> = emptySet(),
+    val active: Set<Int> = emptySet(),
+    val marketAccepted: Boolean = false,
+) {
+    init {
+        require(points.size <= 16) { "Farm special incident has too many points" }
+        require(plots.size <= 128 && plots.distinct().size == plots.size) {
+            "Farm special incident has invalid plots"
+        }
+        crop?.let { require(it.matches(Regex("[A-Z0-9_]{2,64}"))) { "Invalid special incident crop: $it" } }
+        val gateRange = points.indices
+        require(solution.all(gateRange::contains) && active.all(gateRange::contains)) {
+            "Farm channel state references an unknown gate"
+        }
     }
 }
 
@@ -222,6 +247,9 @@ data class FarmShiftState(
     val pestNests: List<FarmPestNest> = emptyList(),
     val pestAlive: Int = 0,
     val pestDamagedCrops: List<FarmCropDamage> = emptyList(),
+    val specialIncident: FarmSpecialIncidentState? = null,
+    val specialDamagedCrops: List<FarmCropDamage> = emptyList(),
+    val rewardMoneyBonusPercent: Int = 0,
     val startedAt: Long = 0,
     val cooldownEndsAt: Long = 0,
     val deliveryPosition: FarmDeliveryPosition? = null,
@@ -351,6 +379,7 @@ object FarmShiftEngine {
             return EngineResult(state, false, events = events)
         }
         if (state.phase == FarmPhase.INCIDENT) return EngineResult(state, false, events = events)
+        if (FarmIncidentRecovery.pending(state)) return EngineResult(state, false, events = events)
         val required = order.required[crop] ?: return EngineResult(state, false, events = events)
         val before = state.progress[crop] ?: 0
         if (before >= required) return EngineResult(state, false, events = events)
@@ -387,6 +416,8 @@ object FarmShiftEngine {
                 pestNestsInitialized = false,
                 pestAlive = 0,
                 pestDamagedCrops = emptyList(),
+                specialIncident = null,
+                specialDamagedCrops = emptyList(),
                 deliveryPosition = null,
                 deliveredCrates = emptySet(),
             )
@@ -412,6 +443,8 @@ object FarmShiftEngine {
                     pestNestsInitialized = false,
                     pestAlive = 0,
                     pestDamagedCrops = emptyList(),
+                    specialIncident = null,
+                    specialDamagedCrops = emptyList(),
                 )
                 events += ShiftEvent.INCIDENT_STARTED
             }
@@ -691,6 +724,7 @@ object FarmShiftEngine {
             pestNests = emptyList(),
             pestNestsInitialized = false,
             pestAlive = 0,
+            specialIncident = null,
         )
         return EngineResult(state, true, contribution, listOf(ShiftEvent.INCIDENT_RESOLVED))
     }
@@ -750,6 +784,8 @@ object FarmShiftEngine {
                     pestNestsInitialized = false,
                     pestAlive = 0,
                     pestDamagedCrops = emptyList(),
+                    specialIncident = null,
+                    specialDamagedCrops = emptyList(),
                     deliveryPosition = null,
                     deliveredCrates = emptySet(),
                 ),

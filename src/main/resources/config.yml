@@ -132,7 +132,14 @@ farm-zones:
     drought-initial-beds: 10
     drought-growth-beds: 5
     drought-growth-seconds: 3
-    incident-types: [PESTS, DROUGHT]
+    # В одном заказе планировщик не повторяет события и допускает максимум
+    # одно обычное полевое происшествие (вредители или засуха).
+    incident-types: [GIANT_CROP, CHANNELS, NIGHT_SHIFT, MARKET, PESTS, DROUGHT]
+    special-incidents:
+      giant-crop: {hits: 16, scale: 3.2}
+      channels: {gates: 4, display-scale: 1.35}
+      night-shift: {crops: 24, player-time: 18000}
+      market: {crops: 32, money-bonus-percent: 25}
     pest-entity: SILVERFISH
     pest-spawn-radius: 6
     pest-nests: 3
@@ -192,42 +199,42 @@ farm-zones:
         rarity: COMMON
         crops: [WHEAT:640, CARROTS:320, POTATOES:320]
         care-types: [MOLES, IRRIGATION, ANIMAL_RESCUE, WEEDS]
-        incident-types: [DROUGHT, PESTS]
+        incident-types: [GIANT_CROP, CHANNELS, NIGHT_SHIFT, MARKET, DROUGHT, PESTS]
         customer: MINE_SUPPLIER
         cart-load: {material: POTATO, custom-model-data: 0}
       bakery_supply:
         rarity: COMMON
         crops: [WHEAT:960, BEETROOTS:320]
         care-types: [POLLINATION, APPLE_HARVEST, DISEASE, IRRIGATION, SCARECROWS, MOLES]
-        incident-types: [PESTS, DROUGHT]
+        incident-types: [CHANNELS, NIGHT_SHIFT, MARKET, GIANT_CROP, PESTS, DROUGHT]
         customer: BAKER
         cart-load: {material: WHEAT, custom-model-data: 0}
       market_crates:
         rarity: COMMON
         crops: [CARROTS:320, POTATOES:320, BEETROOTS:320, SWEET_BERRY_BUSH:320, MELON:48, PUMPKIN:48]
         care-types: [WEEDS, APPLE_HARVEST, SCARECROWS, ANIMAL_RESCUE, STORM_COVERS]
-        incident-types: [PESTS, DROUGHT]
+        incident-types: [MARKET, GIANT_CROP, NIGHT_SHIFT, CHANNELS, PESTS, DROUGHT]
         customer: MARKET_TRADER
         cart-load: {material: CARROT, custom-model-data: 0}
       harvest_festival:
         rarity: RARE
         crops: [WHEAT:800, CARROTS:480, POTATOES:480, BEETROOTS:320, MELON:64, PUMPKIN:64]
         care-types: [POLLINATION, APPLE_HARVEST, STORM_COVERS, SCARECROWS]
-        incident-types: [PESTS, DROUGHT]
+        incident-types: [GIANT_CROP, MARKET, CHANNELS, NIGHT_SHIFT, DROUGHT, PESTS]
         customer: MARKET_TRADER
         cart-load: {material: HAY_BLOCK, custom-model-data: 0}
       deep_mine_relief:
         rarity: RARE
         crops: [WHEAT:800, CARROTS:480, POTATOES:640]
         care-types: [MOLES, IRRIGATION, DISEASE]
-        incident-types: [DROUGHT, PESTS]
+        incident-types: [CHANNELS, GIANT_CROP, NIGHT_SHIFT, MARKET, DROUGHT, PESTS]
         customer: MINE_SUPPLIER
         cart-load: {material: BAKED_POTATO, custom-model-data: 0}
       master_baker_request:
         rarity: RARE
         crops: [WHEAT:1440, BEETROOTS:480]
         care-types: [POLLINATION, APPLE_HARVEST, DISEASE, STORM_COVERS]
-        incident-types: [PESTS, DROUGHT]
+        incident-types: [NIGHT_SHIFT, MARKET, GIANT_CROP, CHANNELS, PESTS, DROUGHT]
         customer: BAKER
         cart-load: {material: BREAD, custom-model-data: 0}
 

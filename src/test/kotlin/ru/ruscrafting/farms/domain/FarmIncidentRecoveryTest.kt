@@ -50,4 +50,18 @@ class FarmIncidentRecoveryTest : FunSpec({
         repairs shouldBe 2
         recovered.droughtDamagedPlots.size shouldBe 3
     }
+
+    test("special incident crops remain pending until their world blocks are restored") {
+        val restored = FarmCropDamage(FarmPlotPosition("world", 6, 63, 1), "WHEAT")
+        val pending = FarmCropDamage(FarmPlotPosition("world", 7, 63, 1), "CARROTS")
+        val recovered = FarmIncidentRecovery.recover(
+            FarmShiftState(specialDamagedCrops = listOf(restored, pending)),
+            restoreDrought = { true },
+            restorePest = { true },
+            restoreSpecial = { it == restored },
+        )
+
+        recovered.specialDamagedCrops shouldBe listOf(pending)
+        FarmIncidentRecovery.pending(recovered) shouldBe true
+    }
 })

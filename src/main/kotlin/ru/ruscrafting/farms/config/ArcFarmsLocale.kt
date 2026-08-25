@@ -90,6 +90,7 @@ enum class MessageKey(val path: String) {
     ADMIN_STAGE_SET("admin.stage-set"),
     ADMIN_STAGE_UNKNOWN("admin.stage-unknown"),
     ADMIN_CARE_UNAVAILABLE("admin.care-unavailable"),
+    ADMIN_INCIDENT_RECOVERY_PENDING("admin.incident-recovery-pending"),
     ADMIN_DEBUG_HELP("admin.debug.help"),
     ADMIN_DEBUG_HEADER("admin.debug.header"),
     ADMIN_DEBUG_SHIFT("admin.debug.shift"),
@@ -179,6 +180,7 @@ enum class MessageKey(val path: String) {
     FARM_WRONG_TARGET("farm.wrong-target"),
     FARM_CROP_ALREADY_COMPLETE("farm.crop-already-complete"),
     FARM_FIXED_CROP_PENDING("farm.fixed-crop-pending"),
+    FARM_FIELD_RESTORING("farm.field-restoring"),
     FARM_CROP_COMPLETED("farm.crop-completed"),
     FARM_CROP_COMPLETED_SUBTITLE("farm.crop-completed-subtitle"),
     FARM_HARVEST_MILESTONE("farm.harvest-milestone"),
@@ -199,6 +201,26 @@ enum class MessageKey(val path: String) {
     FARM_DROUGHT_STARTED_SUBTITLE("farm.drought-started-subtitle"),
     FARM_DROUGHT_TOOL("farm.drought-tool"),
     FARM_DROUGHT_PROGRESS("farm.drought-progress"),
+    FARM_SPECIAL_PROGRESS("farm.special-progress"),
+    FARM_SPECIAL_RESOLVED("farm.special-resolved"),
+    FARM_SPECIAL_RESOLVED_SUBTITLE("farm.special-resolved-subtitle"),
+    FARM_GIANT_CROP_STARTED("farm.giant-crop-started"),
+    FARM_GIANT_CROP_STARTED_SUBTITLE("farm.giant-crop-started-subtitle"),
+    FARM_GIANT_CROP_TOOL("farm.giant-crop-tool"),
+    FARM_CHANNELS_STARTED("farm.channels-started"),
+    FARM_CHANNELS_STARTED_SUBTITLE("farm.channels-started-subtitle"),
+    FARM_NIGHT_SHIFT_STARTED("farm.night-shift-started"),
+    FARM_NIGHT_SHIFT_STARTED_SUBTITLE("farm.night-shift-started-subtitle"),
+    FARM_MARKET_STARTED("farm.market-started"),
+    FARM_MARKET_STARTED_SUBTITLE("farm.market-started-subtitle"),
+    FARM_MARKET_REQUIRED("farm.market-required"),
+    FARM_MARKET_ACCEPTED("farm.market-accepted"),
+    FARM_MARKET_DECLINED("farm.market-declined"),
+    FARM_MARKET_MENU_TITLE("farm.market-menu.title"),
+    FARM_MARKET_MENU_ORDER("farm.market-menu.order"),
+    FARM_MARKET_MENU_BONUS("farm.market-menu.bonus"),
+    FARM_MARKET_MENU_ACCEPT("farm.market-menu.accept"),
+    FARM_MARKET_MENU_DECLINE("farm.market-menu.decline"),
     FARM_COMPLETED("farm.completed"),
     FARM_COMPLETED_SUBTITLE("farm.completed-subtitle"),
     FARM_REWARD_RECEIVED("farm.reward-received"),
@@ -228,6 +250,7 @@ enum class MessageKey(val path: String) {
     FARM_BOSSBAR("farm.bossbar"),
     FARM_INCIDENT_BOSSBAR("farm.incident-bossbar"),
     FARM_DROUGHT_BOSSBAR("farm.drought-bossbar"),
+    FARM_SPECIAL_BOSSBAR("farm.special-bossbar"),
     FARM_DELIVERY_BOSSBAR("farm.delivery-bossbar"),
     FARM_DELIVERY_CARRYING_BOSSBAR("farm.delivery-carrying-bossbar"),
     FARM_SCOREBOARD_TITLE("scoreboard.title"),
@@ -376,15 +399,26 @@ class ArcFarmsLocale(
                 .mapTo(this) { "admin.backup-rejection.$it" }
             add("admin.backup-reason.manual")
             add("admin.backup-reason.pre_restore")
-            listOf("managed", "patch", "drought", "drought-damaged", "pest-nest", "pest-damaged", "orchard")
+            listOf(
+                "managed", "patch", "drought", "drought-damaged", "pest-nest", "pest-damaged",
+                "special-target", "special-damaged", "orchard",
+            )
                 .mapTo(this) { "admin-inspect.tracking-kind.$it" }
             val adminStages = listOf(
                 "preparation", "planting", "harvesting", "seeder", "weeds", "irrigation", "pollination", "covers", "scarecrows",
-                "animals", "disease", "moles", "apples", "pests", "drought", "delivery", "complete", "reset",
+                "animals", "disease", "moles", "apples", "pests", "drought", "giant-crop", "channels", "night-shift", "market",
+                "delivery", "complete", "reset",
             )
             adminStages.mapTo(this) { "admin.stage.$it" }
             adminStages.mapTo(this) { "admin.stage-description.$it" }
-            listOf("pests", "drought").mapTo(this) { "admin.event-description.$it" }
+            listOf("pests", "drought", "giant-crop", "channels", "night-shift", "market")
+                .mapTo(this) { "admin.event-description.$it" }
+            listOf("giant-crop", "channels", "night-shift", "market").forEach { incident ->
+                add("incident.$incident.name")
+                add("farm.entry-$incident")
+                add("scoreboard.objective.$incident")
+                add("scoreboard.hint.$incident")
+            }
             FarmCareType.entries.forEach { type ->
                 add("care.${type.name.lowercase()}.name")
                 add("care.${type.name.lowercase()}.instruction")

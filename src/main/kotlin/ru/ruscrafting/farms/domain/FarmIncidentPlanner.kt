@@ -1,6 +1,26 @@
 package ru.ruscrafting.farms.domain
 
 object FarmIncidentPlanner {
+    fun sequence(
+        configured: Collection<FarmIncidentType>,
+        count: Int,
+        selectionIndex: Long,
+    ): List<FarmIncidentType> {
+        require(count in 1..8) { "Farm incident sequence count must be in 1..8" }
+        val unique = configured.distinct()
+        require(unique.isNotEmpty()) { "Farm incident sequence has no configured types" }
+        val special = rotate(unique.filter(SPECIAL_TYPES::contains), selectionIndex)
+        val field = rotate(unique.filterNot(SPECIAL_TYPES::contains), selectionIndex xor 0x51A7L)
+        val selected = mutableListOf<FarmIncidentType>()
+        selected += special.take(minOf(count, special.size))
+        if (selected.size < count) selected += field.take(1)
+        if (selected.size < count) {
+            selected += rotate(unique.filterNot(selected::contains), selectionIndex xor 0x2D35L)
+                .take(count - selected.size)
+        }
+        return selected.take(minOf(count, unique.size))
+    }
+
     fun dispersedCenters(
         candidates: Collection<FarmPlotPosition>,
         count: Int,
@@ -99,6 +119,12 @@ object FarmIncidentPlanner {
         return mixed xor (mixed ushr 33)
     }
 
+    private fun <T> rotate(values: List<T>, selectionIndex: Long): List<T> {
+        if (values.isEmpty()) return emptyList()
+        val offset = Math.floorMod(mix(selectionIndex), values.size.toLong()).toInt()
+        return values.drop(offset) + values.take(offset)
+    }
+
     private fun horizontalDistanceSquared(first: FarmPlotPosition, second: FarmPlotPosition): Long {
         val dx = first.x.toLong() - second.x
         val dz = first.z.toLong() - second.z
@@ -110,5 +136,12 @@ object FarmIncidentPlanner {
         FarmPlotPosition::y,
         FarmPlotPosition::x,
         FarmPlotPosition::z,
+    )
+
+    private val SPECIAL_TYPES = setOf(
+        FarmIncidentType.GIANT_CROP,
+        FarmIncidentType.CHANNELS,
+        FarmIncidentType.NIGHT_SHIFT,
+        FarmIncidentType.MARKET,
     )
 }

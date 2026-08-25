@@ -130,8 +130,16 @@ to another backend; ArcFarms removes them at every such boundary.
 At each selected threshold one of the farm incidents starts. Every order picks
 a deterministic count inside `incident-count.min..max`, so reloads cannot reroll
 an active order, then distributes that count across
-`incident-trigger-percents`. The spawn profile produces three to five
-interruptions per harvest. A pest outbreak
+`incident-trigger-percents`. The spawn profile produces three to five distinct
+interruptions per harvest, with at most one classic field disaster. Four
+special incidents deliberately avoid repeating the same marker interaction: a
+giant crop is one large physical target hit with a hoe; irrigation channels
+form a gate puzzle whose visible water advances only through the correct
+prefix; night shift uses per-player night without changing the world clock and
+asks for highlighted mature crops; and the living market offers an optional
+rush order through the existing customer for a configured final money bonus.
+Declining the market has no penalty. Every target and decision is persisted and
+waits indefinitely when zero players are present. A pest outbreak
 places several breakable nests across distant parts of the field. Each nest can
 spawn only a configured number of glowing silverfish, with a separate cap on
 simultaneously living pests. The pests eat any configured crops around them to
@@ -149,7 +157,7 @@ temporary flow after each pour. Managed plants remain absent
 until the entire drought is resolved, then their captured state is restored at
 the configured number of blocks per tick. Completed-order field recovery uses
 the same batch limit, so a large mechanized field cannot produce one restoration
-lag spike. Either incident pauses harvesting without resetting the main order.
+lag spike. Every incident pauses harvesting without resetting the main order.
 Resolving it resumes the ordinary crop order at the next unfinished crop. At
 each quarter of the harvest quota another visible cargo bundle appears in the
 stationary order cart. The tagged cart and its customer are reconstructed from
@@ -267,16 +275,17 @@ are available through commands such as `/arcfarms admin point <zone> help`,
   original coordinates in bounded tick slices. ArcFarms first saves the exact
   target bounds as a `pre_restore` safety backup, then rebuilds the farm block
   index; a failed restore leaves the farm paused.
-- `/arcfarms admin stage <zone> <preparation|planting|harvesting|seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought|delivery|complete|reset>` —
+- `/arcfarms admin stage <zone> <preparation|planting|harvesting|seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought|giant-crop|channels|night-shift|market|delivery|complete|reset>` —
   switch the current farm to an exact QA stage while preserving normal recovery.
 - `/arcfarms admin next <zone>` — advance to the next useful QA stage.
 - `/arcfarms admin finish <zone>` — finish the current order through its normal
   completion and reward path.
-- `/arcfarms admin event <zone> <seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought>` —
+- `/arcfarms admin event <zone> <seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought|giant-crop|channels|night-shift|market>` —
   start any exact farm story or harvest incident.
 
 Farm counts, manual and mechanized patch sizes, machinery radius, spacing,
-spawn/search radii, incident ranges and checkpoints, apple count/spacing,
+spawn/search radii, incident ranges/checkpoints, special-event quotas, display
+scales, personal night time and market bonus, apple count/spacing,
 block-reindex and backup batch/size limits, display
 scale/offset/view range, care timings, drought/pest tuning, UI toggles, sounds,
 particles, rewards, fixed-crop respawn delay, restoration batch size, and

@@ -172,7 +172,18 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().placementSearchRadius shouldBe 32
         settings.farms.single().careVisuals.getValue(FarmCareRole.HIVE).material shouldBe "BEE_NEST"
         settings.farms.single().careVisuals.getValue(FarmCareRole.APPLE).material shouldBe "APPLE"
-        settings.farms.single().incidentTypes shouldContainExactly listOf(FarmIncidentType.PESTS, FarmIncidentType.DROUGHT)
+        settings.farms.single().incidentTypes shouldContainExactly listOf(
+            FarmIncidentType.GIANT_CROP,
+            FarmIncidentType.CHANNELS,
+            FarmIncidentType.NIGHT_SHIFT,
+            FarmIncidentType.MARKET,
+            FarmIncidentType.PESTS,
+            FarmIncidentType.DROUGHT,
+        )
+        settings.farms.single().specialIncidents.giantCropHits shouldBe 16
+        settings.farms.single().specialIncidents.channelGateCount shouldBe 4
+        settings.farms.single().specialIncidents.nightCropCount shouldBe 24
+        settings.farms.single().specialIncidents.marketMoneyBonusPercent shouldBe 25
         settings.farms.single().pestNestCount shouldBe 3
         settings.farms.single().pestNestHealth shouldBe 3
         settings.farms.single().pestSpawnsPerNest shouldBe 3

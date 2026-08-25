@@ -6,6 +6,7 @@ import ru.ruscrafting.farms.domain.FarmCropDamage
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmPhase
+import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmShiftState
@@ -201,6 +202,49 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 validatePlot(damage.position)
                 require(CONTENT_ID.matches(damage.crop)) { "Farm pest crop damage has an invalid crop" }
             }
+            farm.specialIncident?.let { special ->
+                require(
+                    farm.phase == FarmPhase.INCIDENT && farm.incidentType in setOf(
+                        FarmIncidentType.GIANT_CROP,
+                        FarmIncidentType.CHANNELS,
+                        FarmIncidentType.NIGHT_SHIFT,
+                        FarmIncidentType.MARKET,
+                    ),
+                ) { "Farm special incident state escaped its active incident" }
+                require(special.points.size <= 16 && special.plots.size <= 128) {
+                    "Farm special incident state is unbounded"
+                }
+                special.points.forEach(::validatePoint)
+                special.plots.forEach(::validatePlot)
+                special.crop?.let { require(CONTENT_ID.matches(it)) { "Farm special incident crop is invalid" } }
+                require(special.solution.all { it in special.points.indices } && special.active.all { it in special.points.indices }) {
+                    "Farm channel state references an unknown gate"
+                }
+                when (farm.incidentType) {
+                    FarmIncidentType.GIANT_CROP -> require(special.points.size == 1 && special.crop != null) {
+                        "Farm giant crop state is incomplete"
+                    }
+                    FarmIncidentType.CHANNELS -> require(special.points.size in 3..8 && special.solution.isNotEmpty()) {
+                        "Farm channel state is incomplete"
+                    }
+                    FarmIncidentType.NIGHT_SHIFT -> require(special.plots.isNotEmpty()) {
+                        "Farm night shift state is incomplete"
+                    }
+                    FarmIncidentType.MARKET -> require(special.plots.isNotEmpty() && special.crop != null) {
+                        "Farm market state is incomplete"
+                    }
+                    else -> error("Farm special incident state has an invalid type")
+                }
+            }
+            require(farm.specialDamagedCrops.size <= 4_096) { "Farm special crop damage is unbounded" }
+            require(farm.specialDamagedCrops.distinctBy(FarmCropDamage::position).size == farm.specialDamagedCrops.size) {
+                "Farm special crop damage contains duplicate plots"
+            }
+            farm.specialDamagedCrops.forEach { damage ->
+                validatePlot(damage.position)
+                require(CONTENT_ID.matches(damage.crop)) { "Farm special crop damage has an invalid crop" }
+            }
+            require(farm.rewardMoneyBonusPercent in 0..200) { "Farm reward money bonus is invalid" }
             farm.deliveryPosition?.let { position ->
                 require(position.world.matches(Regex("[A-Za-z0-9._-]{1,128}"))) { "Farm delivery world is invalid" }
                 require(listOf(position.x, position.y, position.z).all(Double::isFinite)) { "Farm delivery position is invalid" }
@@ -220,6 +264,9 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 farm.droughtDamagedPlots.mapTo(this, FarmPlotPosition::world)
                 farm.pestNests.mapTo(this) { it.position.world }
                 farm.pestDamagedCrops.mapTo(this) { it.position.world }
+                farm.specialIncident?.points?.mapTo(this) { it.world }
+                farm.specialIncident?.plots?.mapTo(this, FarmPlotPosition::world)
+                farm.specialDamagedCrops.mapTo(this) { it.position.world }
                 farm.deliveryPosition?.world?.let(::add)
             }
             require(worlds.size <= 1) { "Farm shift crosses worlds" }
@@ -232,7 +279,9 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                         farm.incidentsResolved == 0 && farm.harvestCheckpoint == 0 && farm.harvestMilestone == 0 &&
                         farm.droughtPlots.isEmpty() && farm.droughtDamagedPlots.isEmpty() &&
                         !farm.pestNestsInitialized && farm.pestNests.isEmpty() && farm.pestAlive == 0 &&
-                        farm.pestDamagedCrops.isEmpty() && farm.deliveryPosition == null && farm.deliveredCrates.isEmpty() &&
+                        farm.pestDamagedCrops.isEmpty() && farm.specialIncident == null &&
+                        farm.specialDamagedCrops.isEmpty() && farm.rewardMoneyBonusPercent == 0 &&
+                        farm.deliveryPosition == null && farm.deliveredCrates.isEmpty() &&
                         farm.startedAt == 0L && farm.cooldownEndsAt == 0L && farm.contributors.isEmpty() &&
                         farm.outcome == ShiftOutcome.NONE,
                 ) { "Idle farm state contains an active shift" }

@@ -26,7 +26,8 @@ object FarmAdminEdit {
         if (state.preparationPatch.isNotEmpty() && patch.isEmpty()) {
             val droughtDamage = state.droughtDamagedPlots - plots
             val pestDamage = state.pestDamagedCrops.filterNot { it.position in plots }
-            val retiredState = if (droughtDamage.isEmpty() && pestDamage.isEmpty()) {
+            val specialDamage = state.specialDamagedCrops.filterNot { it.position in plots }
+            val retiredState = if (droughtDamage.isEmpty() && pestDamage.isEmpty() && specialDamage.isEmpty()) {
                 FarmShiftState(sequence = state.sequence)
             } else {
                 FarmShiftState(
@@ -35,6 +36,7 @@ object FarmAdminEdit {
                     orderId = state.orderId,
                     droughtDamagedPlots = droughtDamage,
                     pestDamagedCrops = pestDamage,
+                    specialDamagedCrops = specialDamage,
                     cooldownEndsAt = 1,
                     outcome = ShiftOutcome.COMPLETED,
                 )
@@ -50,7 +52,17 @@ object FarmAdminEdit {
         val tilled = state.tilledPlots - plots
         val planted = state.plantedPlots - plots
         val careTargets = state.careTargets.filterNot { it.id in targetIds }
+        val specialPlots = state.specialIncident?.plots.orEmpty().filterNot(plots::contains)
+        val specialDamage = state.specialDamagedCrops.filterNot { it.position in plots }
+        val specialRequired = if (
+            state.phase == FarmPhase.INCIDENT &&
+            state.incidentType in setOf(FarmIncidentType.NIGHT_SHIFT, FarmIncidentType.MARKET)
+        ) {
+            state.incidentProgress + specialPlots.count { plot -> specialDamage.none { it.position == plot } }
+        } else state.incidentRequired
+        val specialResolved = state.phase == FarmPhase.INCIDENT && specialRequired <= state.incidentProgress
         val phase = when {
+            specialResolved -> FarmPhase.HARVESTING
             state.phase == FarmPhase.CARE && state.careType == FarmCareType.SEEDER &&
                 planted.containsAll(patch) && (careTargets.isEmpty() || careTargets.all(FarmCareTarget::complete)) -> FarmPhase.HARVESTING
             state.phase == FarmPhase.CARE && state.careType != FarmCareType.SEEDER &&
@@ -74,6 +86,14 @@ object FarmAdminEdit {
                 droughtDamagedPlots = state.droughtDamagedPlots - plots,
                 pestNests = state.pestNests.filterNot { it.position in plots },
                 pestDamagedCrops = state.pestDamagedCrops.filterNot { it.position in plots },
+                specialIncident = if (specialResolved) null else state.specialIncident?.copy(plots = specialPlots),
+                specialDamagedCrops = specialDamage,
+                incidentCrop = if (specialResolved) null else state.incidentCrop,
+                incidentType = if (specialResolved) null else state.incidentType,
+                incidentProgress = if (specialResolved) 0 else state.incidentProgress,
+                incidentRequired = if (specialResolved) 0 else specialRequired,
+                incidentResolved = state.incidentResolved || specialResolved,
+                incidentsResolved = state.incidentsResolved + if (specialResolved) 1 else 0,
             ),
             careTargetIds = targetIds,
             pestNestRemoved = nestRemoved,

@@ -19,7 +19,9 @@ object FarmRewardPlanner {
         zoneId: String,
         sequence: Long,
         recipient: FarmRewardRecipient,
+        moneyMultiplierPercent: Int = 100,
     ): PendingFarmReward {
+        require(moneyMultiplierPercent in 100..300) { "Farm money reward multiplier is invalid" }
         val grantId = "$zoneId:$sequence:${recipient.playerId}"
         val items = mutableListOf<FarmRewardItem>()
         val bundleIds = mutableListOf<String>()
@@ -57,7 +59,7 @@ object FarmRewardPlanner {
             experience = settings.experience.amount.takeIf {
                 passes(grantId, "experience", settings.experience.chancePercent)
             } ?: 0,
-            moneyCents = settings.money.amountCents.takeIf {
+            moneyCents = scaledMoney(settings.money.amountCents, moneyMultiplierPercent).takeIf {
                 passes(grantId, "money", settings.money.chancePercent)
             } ?: 0,
             items = items,
@@ -106,4 +108,7 @@ object FarmRewardPlanner {
     }
 
     private fun unsigned(value: Long): Long = value and Long.MAX_VALUE
+
+    private fun scaledMoney(amountCents: Long, multiplierPercent: Int): Long =
+        Math.multiplyExact(amountCents, multiplierPercent.toLong()) / 100L
 }

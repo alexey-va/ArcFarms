@@ -522,7 +522,8 @@ class ArcFarmsCommand(
                 args[0].equals("admin", true) && args[1].lowercase() in ADMIN_SHORTCUTS ->
                     listOf("help").filter { it.startsWith(args[3], true) }
                 args[0].equals("debug", true) && args[2].equals("stage", true) ->
-                    (listOf("preparation", "planting", "harvesting") + CARE_STAGES + listOf("pests", "drought", "delivery", "complete", "reset"))
+                    (listOf("preparation", "planting", "harvesting") + CARE_STAGES +
+                        listOf("pests", "drought", "giant-crop", "channels", "night-shift", "market", "delivery", "complete", "reset"))
                         .filter { it.startsWith(args[3], true) }
                 args[0].equals("debug", true) && args[2].equals("event", true) ->
                     EVENT_STAGES.filter { it.startsWith(args[3], true) }
@@ -594,7 +595,7 @@ class ArcFarmsCommand(
             "apples" to FarmCareType.APPLE_HARVEST,
         )
         private val CARE_STAGES = CARE_EVENT_TYPES.keys.toList()
-        private val EVENT_STAGES = CARE_STAGES + listOf("pests", "drought")
+        private val EVENT_STAGES = CARE_STAGES + listOf("pests", "drought", "giant-crop", "channels", "night-shift", "market")
         private val STAGE_STAGES = listOf("preparation", "planting", "harvesting") +
             EVENT_STAGES + listOf("delivery", "complete", "reset")
         private val POINT_ARGUMENTS = listOf(

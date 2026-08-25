@@ -8,12 +8,14 @@ import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareTarget
 import ru.ruscrafting.farms.domain.FarmCareType
+import ru.ruscrafting.farms.domain.FarmCropDamage
 import ru.ruscrafting.farms.domain.FarmDeliveryPosition
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmShiftState
+import ru.ruscrafting.farms.domain.FarmSpecialIncidentState
 import ru.ruscrafting.farms.domain.FarmSeederStage
 import ru.ruscrafting.farms.domain.LumberPhase
 import ru.ruscrafting.farms.domain.LumberShiftState
@@ -220,6 +222,7 @@ class ArcFarmsStateRepositoryTest : FunSpec({
                     preparationProgress = 2,
                     plantingProgress = 2,
                     preparationRequired = 2,
+                    rewardMoneyBonusPercent = 25,
                     deliveryPosition = FarmDeliveryPosition("world", 10.5, 64.0, -3.5),
                     contributors = mapOf(UUID(0, 1) to Int.MAX_VALUE),
                 ),
@@ -241,9 +244,29 @@ class ArcFarmsStateRepositoryTest : FunSpec({
                     incidentRequired = 4,
                     droughtPlots = setOf(patch.first()),
                 ),
+                "night_farm" to FarmShiftState(
+                    phase = FarmPhase.INCIDENT,
+                    sequence = 10,
+                    orderId = "current_order",
+                    progress = mapOf("WHEAT" to 1),
+                    preparationPatch = patch,
+                    preparationCrop = "WHEAT",
+                    preparationReleased = true,
+                    tilledPlots = patch.toSet(),
+                    plantedPlots = patch.toSet(),
+                    preparationProgress = 2,
+                    plantingProgress = 2,
+                    preparationRequired = 2,
+                    incidentCrop = "WHEAT",
+                    incidentType = FarmIncidentType.NIGHT_SHIFT,
+                    incidentProgress = 1,
+                    incidentRequired = 2,
+                    specialIncident = FarmSpecialIncidentState(plots = patch),
+                    specialDamagedCrops = listOf(FarmCropDamage(patch.first(), "WHEAT")),
+                ),
                 "care_farm" to FarmShiftState(
                     phase = FarmPhase.CARE,
-                    sequence = 10,
+                    sequence = 11,
                     orderId = "current_order",
                     progress = mapOf("WHEAT" to 0),
                     preparationPatch = patch,

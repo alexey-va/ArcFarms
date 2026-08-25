@@ -105,6 +105,10 @@ import ru.ruscrafting.farms.domain.FarmRewardRecipient
 import ru.ruscrafting.farms.domain.FarmRewardItem
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.domain.FarmShiftState
+import ru.ruscrafting.farms.domain.FarmSpecialIncidentEngine
+import ru.ruscrafting.farms.domain.FarmSpecialIncidentState
+import ru.ruscrafting.farms.domain.FarmSpecialIncidentPlanner
+import ru.ruscrafting.farms.domain.FarmMatureCrop
 import ru.ruscrafting.farms.domain.seederStage
 import ru.ruscrafting.farms.domain.FarmWaterPlanner
 import ru.ruscrafting.farms.domain.FarmWaterFlowTracker
@@ -264,6 +268,9 @@ class ArcFarmsService(
     private val activeBars = mutableMapOf<BarKey, BossBar>()
     private val farmScoreboards = FarmScoreboardController(FarmScoreboardRenderer(locale), { settings.farmScoreboard }, debug)
     private val contractScene = FarmContractSceneManager(plugin, debug)
+    private val specialIncidentScene = FarmSpecialIncidentSceneManager(plugin, debug)
+    private val nightShift = FarmNightShiftController()
+    private val marketMenu = FarmMarketMenu(locale) { settings }
     private val mineReservations = ConcurrentHashMap.newKeySet<String>()
     private val pendingPositions = ConcurrentHashMap<String, String>()
     private val interactionCooldowns = mutableMapOf<String, Long>()
@@ -358,6 +365,7 @@ class ArcFarmsService(
         reconcileLoadedFixedCrops()
         farms.forEach(::ensureFarmSupplies)
         farms.forEach(::ensureFarmContractScene)
+        farms.forEach(::ensureFarmSpecialIncident)
         mineJournal.records().forEach { pendingPositions[it.positionKey] = it.id }
         startTasks()
         stateSafeToPersist = true
@@ -429,6 +437,7 @@ class ArcFarmsService(
         reconcileLoadedFixedCrops()
         farms.forEach(::ensureFarmSupplies)
         farms.forEach(::ensureFarmContractScene)
+        farms.forEach(::ensureFarmSpecialIncident)
         startTasks()
     }
 
@@ -645,6 +654,7 @@ class ArcFarmsService(
             clicked.type == Material.SWEET_BERRY_BUSH && clicked.type.name in runtime.settings.crops
         }?.let { runtime ->
             event.isCancelled = true
+            if (handleFarmSpecialCropBreak(runtime, player, clicked)) return
             handleFarmCropHarvest(runtime, player, clicked) { commit ->
                 check(!commit.fixedCrop) { "Sweet berry harvest cannot use fixed crop recovery" }
                 val replantData = requireNotNull(commit.replantData)
@@ -786,6 +796,7 @@ class ArcFarmsService(
 
     fun onQuit(player: Player) {
         stopFarmMusic(player, "player_quit")
+        nightShift.clear(player)
         farmScoreboards.remove(player, "player_quit")
         val keys = activeBars.keys.filter { it.playerId == player.uniqueId }
         keys.forEach { key -> activeBars.remove(key)?.let(player::hideBossBar) }
@@ -817,7 +828,8 @@ class ArcFarmsService(
             data.has(careZoneKey, PersistentDataType.STRING) ||
             data.has(supplyZoneKey, PersistentDataType.STRING) ||
             data.has(deliveryZoneKey, PersistentDataType.STRING) ||
-            contractScene.owns(event.rightClicked)
+            contractScene.owns(event.rightClicked) ||
+            specialIncidentScene.owns(event.rightClicked)
         ) {
             event.isCancelled = true
         }
@@ -830,6 +842,11 @@ class ArcFarmsService(
         }
         if (event.player.uniqueId in adminEditPlayers) return
         if (event.hand != EquipmentSlot.HAND) return
+        if (specialIncidentScene.owns(event.rightClicked)) {
+            event.isCancelled = true
+            handleFarmSpecialSceneInteraction(event.player, event.rightClicked)
+            return
+        }
         if (contractScene.owns(event.rightClicked)) {
             event.isCancelled = true
             handleFarmContractSceneInteraction(event.player, event.rightClicked)
@@ -886,6 +903,11 @@ class ArcFarmsService(
         }
         if (contractScene.owns(event.entity)) {
             event.isCancelled = true
+            return
+        }
+        if (specialIncidentScene.owns(event.entity)) {
+            event.isCancelled = true
+            handleFarmSpecialSceneDamage(event)
             return
         }
         if (event.entity.persistentDataContainer.has(careZoneKey, PersistentDataType.STRING)) {
@@ -1109,6 +1131,8 @@ class ArcFarmsService(
             if (state != null && position in state.droughtDamagedPlots) add("drought-damaged")
             if (state != null && state.pestNests.any { it.position == position }) add("pest-nest")
             if (state != null && state.pestDamagedCrops.any { it.position == position }) add("pest-damaged")
+            if (state != null && position in state.specialIncident?.plots.orEmpty()) add("special-target")
+            if (state != null && state.specialDamagedCrops.any { it.position == position }) add("special-damaged")
             if (orchardRecord != null) add("orchard")
         }
         sendChat(
@@ -1226,6 +1250,8 @@ class ArcFarmsService(
             addAll(runtime.state.droughtDamagedPlots)
             runtime.state.pestNests.mapTo(this) { it.position }
             runtime.state.pestDamagedCrops.mapTo(this) { it.position }
+            runtime.state.specialIncident?.plots?.let(::addAll)
+            runtime.state.specialDamagedCrops.mapTo(this) { it.position }
         }
         val selected = tracked.filterTo(linkedSetOf(), selection::contains)
         val selectedFixed = linkedSetOf<FarmFixedCropPosition>()
@@ -1466,7 +1492,11 @@ class ArcFarmsService(
             "moles" to FarmCareType.MOLES,
             "apples" to FarmCareType.APPLE_HARVEST,
         )
-        if (normalized !in setOf("preparation", "planting", "harvesting", "pests", "drought", "delivery", "complete", "reset") && normalized !in careStages) {
+        if (normalized !in setOf(
+                "preparation", "planting", "harvesting", "pests", "drought", "giant-crop", "channels", "night-shift", "market",
+                "delivery", "complete", "reset",
+            ) && normalized !in careStages
+        ) {
             sendChat(player, MessageKey.ADMIN_STAGE_UNKNOWN)
             return false
         }
@@ -1499,7 +1529,23 @@ class ArcFarmsService(
         runtime.state = runtime.state.copy(careType = null, seederStage = null, careTargets = emptyList())
         removePests(runtime, activePests(runtime), "admin_stage")
         removePestNestEntities(runtime, "admin_stage")
-        restoreIncidentCrops(runtime)
+        specialIncidentScene.clearZone(runtime.settings.id, "admin_stage")
+        nightShift.clearZone(runtime.settings.id)
+        restoreIncidentCrops(runtime, runtime.settings.restoreBlocksPerTick)
+        if (FarmIncidentRecovery.pending(runtime.state)) {
+            sendChat(
+                player,
+                MessageKey.ADMIN_INCIDENT_RECOVERY_PENDING,
+                mapOf(
+                    "count" to locale.text(
+                        runtime.state.droughtDamagedPlots.size + runtime.state.pestDamagedCrops.size +
+                            runtime.state.specialDamagedCrops.size,
+                    ),
+                ),
+            )
+            return false
+        }
+        runtime.state = runtime.state.copy(specialIncident = null, specialDamagedCrops = emptyList())
         clearDelivery(runtime, "admin_stage")
         val order = currentOrder(runtime) ?: return false
         val nextCrop = nextRequiredCrop(runtime.state, order)?.key ?: order.required.keys.first()
@@ -1574,9 +1620,17 @@ class ArcFarmsService(
                     pestAlive = 0,
                 )
             }
-            "pests", "drought" -> {
+            "pests", "drought", "giant-crop", "channels", "night-shift", "market" -> {
                 prepareAdminPatch(runtime, plant = true, mature = true)
-                val incidentType = if (normalized == "pests") FarmIncidentType.PESTS else FarmIncidentType.DROUGHT
+                val incidentType = when (normalized) {
+                    "pests" -> FarmIncidentType.PESTS
+                    "drought" -> FarmIncidentType.DROUGHT
+                    "giant-crop" -> FarmIncidentType.GIANT_CROP
+                    "channels" -> FarmIncidentType.CHANNELS
+                    "night-shift" -> FarmIncidentType.NIGHT_SHIFT
+                    "market" -> FarmIncidentType.MARKET
+                    else -> error("unreachable")
+                }
                 val quota = if (incidentType == FarmIncidentType.DROUGHT) {
                     runtime.settings.droughtTargetBeds(discoverIncidentBeds(runtime).size.coerceAtLeast(runtime.state.preparationPatch.size))
                 } else {
@@ -1596,6 +1650,8 @@ class ArcFarmsService(
                     pestNests = emptyList(),
                     pestAlive = 0,
                     pestDamagedCrops = emptyList(),
+                    specialIncident = null,
+                    specialDamagedCrops = emptyList(),
                 )
             }
             "delivery", "complete" -> {
@@ -1700,13 +1756,8 @@ class ArcFarmsService(
                 careTypes[java.lang.Math.floorMod(runtime.state.sequence.toInt(), careTypes.size)].adminStageName()
             } ?: "harvesting"
             FarmPhase.CARE -> "harvesting"
-            FarmPhase.HARVESTING -> currentOrder(runtime)?.incidentTypes?.let { types ->
-                types[
-                    java.lang.Math.floorMod(
-                        runtime.state.sequence.toInt() + runtime.state.incidentsResolved,
-                        types.size,
-                    )
-                ].name.lowercase()
+            FarmPhase.HARVESTING -> currentOrder(runtime)?.let { order ->
+                nextFarmIncident(runtime, order).specialId()
             } ?: "pests"
             FarmPhase.INCIDENT -> "harvesting"
             FarmPhase.DELIVERY -> "complete"
@@ -1724,6 +1775,10 @@ class ArcFarmsService(
         val tracker = waterFlows[zoneId]
         val incident = when (state.incidentType) {
             FarmIncidentType.PESTS -> locale.renderPath("admin.stage.pests", player)
+            FarmIncidentType.GIANT_CROP -> locale.renderPath("admin.stage.giant-crop", player)
+            FarmIncidentType.CHANNELS -> locale.renderPath("admin.stage.channels", player)
+            FarmIncidentType.NIGHT_SHIFT -> locale.renderPath("admin.stage.night-shift", player)
+            FarmIncidentType.MARKET -> locale.renderPath("admin.stage.market", player)
             FarmIncidentType.DROUGHT -> locale.renderPath("admin.stage.drought", player)
             null -> locale.text("—")
         }
@@ -1928,6 +1983,10 @@ class ArcFarmsService(
 
     fun onInventoryClick(event: InventoryClickEvent) {
         val player = event.whoClicked as? Player ?: return
+        marketMenu.handleClick(event)?.let { click ->
+            handleFarmMarketDecision(player, click)
+            return
+        }
         val hotbar = if (event.click == ClickType.SWAP_OFFHAND) {
             player.inventory.itemInOffHand
         } else {
@@ -1947,6 +2006,7 @@ class ArcFarmsService(
     }
 
     fun onInventoryDrag(event: InventoryDragEvent) {
+        if (marketMenu.handleDrag(event)) return
         if (FarmServiceInventoryPolicy.cancelDrag(isFarmServiceItem(event.oldCursor), event.rawSlots, event.view.topInventory.size)) {
             event.isCancelled = true
         }
@@ -2119,6 +2179,7 @@ class ArcFarmsService(
 
     fun onChunkLoad(chunk: org.bukkit.Chunk) {
         contractScene.onChunkLoad(chunk)
+        specialIncidentScene.onChunkLoad(chunk)
         farms.asSequence().filter { it.region.world == chunk.world }.forEach { runtime ->
             farmBlockRegistry.reconcileChunk(farmBlockIndexDefinition(runtime), chunk)
         }
@@ -2231,9 +2292,11 @@ class ArcFarmsService(
             if (isAdminEditingFarm(runtime)) return@forEach
             var remaining = runtime.settings.restoreBlocksPerTick
             if (runtime.state.phase != FarmPhase.INCIDENT && FarmIncidentRecovery.pending(runtime.state)) {
-                val before = runtime.state.droughtDamagedPlots.size + runtime.state.pestDamagedCrops.size
+                val before = runtime.state.droughtDamagedPlots.size + runtime.state.pestDamagedCrops.size +
+                    runtime.state.specialDamagedCrops.size
                 restoreIncidentCrops(runtime, remaining)
-                val after = runtime.state.droughtDamagedPlots.size + runtime.state.pestDamagedCrops.size
+                val after = runtime.state.droughtDamagedPlots.size + runtime.state.pestDamagedCrops.size +
+                    runtime.state.specialDamagedCrops.size
                 remaining -= (before - after).coerceAtLeast(0)
             }
             if (
@@ -3609,6 +3672,7 @@ class ArcFarmsService(
 
     private fun handleFarmBreakHigh(event: BlockBreakEvent, runtime: FarmRuntime) {
         event.isCancelled = true
+        if (handleFarmSpecialCropBreak(runtime, event.player, event.block)) return
         handleFarmCropHarvest(runtime, event.player, event.block) { commit ->
             event.isDropItems = false
             event.expToDrop = 0
@@ -3629,6 +3693,72 @@ class ArcFarmsService(
         }
     }
 
+    private fun handleFarmSpecialCropBreak(runtime: FarmRuntime, player: Player, block: Block): Boolean {
+        val type = runtime.state.incidentType ?: return false
+        if (runtime.state.phase != FarmPhase.INCIDENT || type !in setOf(FarmIncidentType.NIGHT_SHIFT, FarmIncidentType.MARKET)) {
+            return false
+        }
+        val special = runtime.state.specialIncident ?: return true
+        if (!hasAccess(player, runtime.settings.permission)) {
+            sendChat(player, MessageKey.ZONE_LOCKED)
+            return true
+        }
+        if (type == FarmIncidentType.MARKET && !special.marketAccepted) {
+            sendActionBar(player, MessageKey.FARM_MARKET_REQUIRED)
+            return true
+        }
+        val soil = block.getRelative(org.bukkit.block.BlockFace.DOWN)
+        val position = soil.toFarmPlotPosition()
+        val data = block.blockData as? Ageable
+        val expected = special.crop?.let(MaterialRules::material)
+        val valid = position in special.plots && data != null && data.age == data.maximumAge &&
+            (expected == null || block.type == expected)
+        if (!valid) {
+            sendActionBar(
+                player,
+                MessageKey.FARM_SPECIAL_PROGRESS,
+                mapOf(
+                    "event" to specialIncidentName(type, player),
+                    "done" to locale.text(runtime.state.incidentProgress),
+                    "total" to locale.text(runtime.state.incidentRequired),
+                ),
+            )
+            return true
+        }
+        val crop = block.type
+        farmBlockLedger.captureActiveCrop(soil, runtime.settings.id)
+        val result = FarmSpecialIncidentEngine.harvestSpecialCrop(
+            current = runtime.state,
+            type = type,
+            damage = FarmCropDamage(position, crop.name),
+            playerId = player.uniqueId,
+            marketBonusPercent = runtime.settings.specialIncidents.marketMoneyBonusPercent,
+        )
+        if (!result.accepted) return true
+        block.setType(Material.AIR, false)
+        if (settings.particles) {
+            block.world.spawnParticle(
+                if (type == FarmIncidentType.NIGHT_SHIFT) Particle.END_ROD else Particle.HAPPY_VILLAGER,
+                block.location.toCenterLocation().add(0.0, 0.65, 0.0),
+                4,
+                0.2,
+                0.25,
+                0.2,
+                0.01,
+            )
+        }
+        if (settings.sounds) {
+            player.playSound(
+                block.location,
+                if (type == FarmIncidentType.NIGHT_SHIFT) Sound.BLOCK_AMETHYST_BLOCK_CHIME else Sound.ENTITY_VILLAGER_TRADE,
+                0.7f,
+                1.2f + runtime.state.incidentProgress.coerceAtMost(12) * 0.025f,
+            )
+        }
+        applyFarmResult(runtime, result, player)
+        return true
+    }
+
     private fun handleFarmCropHarvest(
         runtime: FarmRuntime,
         player: Player,
@@ -3638,6 +3768,20 @@ class ArcFarmsService(
         if (!hasAccess(player, runtime.settings.permission)) {
             sendChat(player, MessageKey.ZONE_LOCKED)
             return
+        }
+        if (runtime.state.phase != FarmPhase.INCIDENT && FarmIncidentRecovery.pending(runtime.state)) {
+            restoreIncidentCrops(runtime, runtime.settings.restoreBlocksPerTick)
+            if (FarmIncidentRecovery.pending(runtime.state)) {
+                sendActionBar(player, MessageKey.FARM_FIELD_RESTORING)
+                debug.event(
+                    "farm_crop_rejected",
+                    "player" to player.name,
+                    "zone" to runtime.settings.id,
+                    "crop" to block.type,
+                    "reason" to "incident_recovery_pending",
+                )
+                return
+            }
         }
         if (
             runtime.state.phase in setOf(
@@ -3846,12 +3990,7 @@ class ArcFarmsService(
             return
         }
         val order = currentOrder(runtime) ?: return
-        val incidentType = order.incidentTypes[
-            java.lang.Math.floorMod(
-                runtime.state.sequence.toInt() + runtime.state.incidentsResolved,
-                order.incidentTypes.size,
-            )
-        ]
+        val incidentType = nextFarmIncident(runtime, order)
         val activeRules = if (incidentType == FarmIncidentType.DROUGHT) {
             val gardenBeds = runtime.state.preparationPatch.size.takeIf { it > 0 } ?: runtime.settings.preparationPatchSize
             runtime.rules.copy(droughtQuota = runtime.settings.droughtTargetBeds(gardenBeds))
@@ -3902,6 +4041,12 @@ class ArcFarmsService(
         if (!result.accepted && ShiftEvent.COMPLETED !in result.events) {
             sendActionBar(player, MessageKey.FARM_WRONG_TARGET, mapOf("crops" to remainingCrops(runtime, order)))
         }
+    }
+
+    private fun nextFarmIncident(runtime: FarmRuntime, order: FarmOrder): FarmIncidentType {
+        val count = runtime.rules.incidentTargetCount(runtime.state.sequence)
+        val plan = FarmIncidentPlanner.sequence(order.incidentTypes, count, runtime.state.sequence)
+        return plan.getOrElse(runtime.state.incidentsResolved) { plan.last() }
     }
 
     private fun handleLumberBreakHigh(event: BlockBreakEvent, runtime: LumberRuntime) {
@@ -4314,22 +4459,30 @@ class ArcFarmsService(
                     persistAsync()
                 }
                 ShiftEvent.INCIDENT_STARTED -> {
-                    if (incidentType == FarmIncidentType.DROUGHT) {
-                        ensureFarmDroughtTargets(runtime)
-                        broadcastStoryTitle(runtime, "drought", Sound.WEATHER_RAIN_ABOVE) { player ->
-                            locale.render(MessageKey.FARM_DROUGHT_STARTED, player) to mapOf(
-                                "total" to locale.text(runtime.state.incidentRequired),
-                            )
+                    when (incidentType) {
+                        FarmIncidentType.DROUGHT -> {
+                            ensureFarmDroughtTargets(runtime)
+                            broadcastStoryTitle(runtime, "drought", Sound.WEATHER_RAIN_ABOVE) { player ->
+                                locale.render(MessageKey.FARM_DROUGHT_STARTED, player) to mapOf(
+                                    "total" to locale.text(runtime.state.incidentRequired),
+                                )
+                            }
                         }
-                    } else {
-                        ensureFarmPestNests(runtime)
-                        ensurePestNestEntities(runtime)
-                        broadcastStoryTitle(runtime, "pests", Sound.ENTITY_BEE_LOOP_AGGRESSIVE) { player ->
-                            locale.render(MessageKey.FARM_INCIDENT_STARTED, player) to mapOf(
-                                "crop" to MaterialRules.cropComponent(MaterialRules.material(requireNotNull(runtime.state.incidentCrop))),
-                                "nests" to locale.text(runtime.state.pestNests.size),
-                                "pests" to locale.text(runtime.state.pestAlive),
-                            )
+                        FarmIncidentType.PESTS -> {
+                            ensureFarmPestNests(runtime)
+                            ensurePestNestEntities(runtime)
+                            broadcastStoryTitle(runtime, "pests", Sound.ENTITY_BEE_LOOP_AGGRESSIVE) { player ->
+                                locale.render(MessageKey.FARM_INCIDENT_STARTED, player) to mapOf(
+                                    "crop" to MaterialRules.cropComponent(MaterialRules.material(requireNotNull(runtime.state.incidentCrop))),
+                                    "nests" to locale.text(runtime.state.pestNests.size),
+                                    "pests" to locale.text(runtime.state.pestAlive),
+                                )
+                            }
+                        }
+                        else -> {
+                            initializeFarmSpecialIncident(runtime, incidentType)
+                            announceFarmSpecialIncident(runtime, incidentType)
+                            ensureFarmSpecialIncident(runtime)
                         }
                     }
                     warningBurst(runtime.region)
@@ -4342,21 +4495,29 @@ class ArcFarmsService(
                     persistAsync()
                 }
                 ShiftEvent.INCIDENT_PROGRESS -> if (actor != null) {
-                    sendActionBar(
-                        actor,
-                        if (incidentType == FarmIncidentType.DROUGHT) MessageKey.FARM_DROUGHT_PROGRESS else MessageKey.FARM_INCIDENT_PROGRESS,
-                        mapOf(
-                            "done" to locale.text(runtime.state.incidentProgress),
-                            "total" to locale.text(runtime.state.incidentRequired),
-                        ),
-                    )
+                    val key = when (incidentType) {
+                        FarmIncidentType.DROUGHT -> MessageKey.FARM_DROUGHT_PROGRESS
+                        FarmIncidentType.PESTS -> MessageKey.FARM_INCIDENT_PROGRESS
+                        else -> MessageKey.FARM_SPECIAL_PROGRESS
+                    }
+                    sendActionBar(actor, key, buildMap {
+                        put("done", locale.text(runtime.state.incidentProgress))
+                        put("total", locale.text(runtime.state.incidentRequired))
+                        if (incidentType in SPECIAL_FARM_INCIDENT_TYPES) put("event", specialIncidentName(incidentType, actor))
+                    })
                 }
                 ShiftEvent.INCIDENT_RESOLVED -> {
                     droughtGrowth.remove(runtime.settings.id)
                     removePestNestEntities(runtime, "incident_resolved")
+                    specialIncidentScene.clearZone(runtime.settings.id, "incident_resolved")
+                    nightShift.clearZone(runtime.settings.id)
                     broadcast(
                         runtime.region,
-                        MessageKey.FARM_INCIDENT_RESOLVED,
+                        if (incidentType in SPECIAL_FARM_INCIDENT_TYPES) {
+                            MessageKey.FARM_SPECIAL_RESOLVED
+                        } else {
+                            MessageKey.FARM_INCIDENT_RESOLVED
+                        },
                         sound = Sound.ENTITY_VILLAGER_YES,
                         title = true,
                     )
@@ -4619,6 +4780,7 @@ class ArcFarmsService(
                 }
                 ensureFarmDroughtTargets(runtime)
                 ensureFarmPests(runtime)
+                ensureFarmSpecialIncident(runtime)
                 letPestsEatCrops(runtime)
                 updateFarmDisease(runtime, now)
                 reconcileLoadedFarmCareEntities(runtime)
@@ -4748,10 +4910,10 @@ class ArcFarmsService(
                     FarmPhase.PREPARATION -> MessageKey.FARM_PREPARATION_BOSSBAR
                     FarmPhase.PLANTING -> MessageKey.FARM_PLANTING_BOSSBAR
                     FarmPhase.CARE -> MessageKey.FARM_CARE_BOSSBAR
-                    FarmPhase.INCIDENT -> if ((runtime.state.incidentType ?: FarmIncidentType.PESTS) == FarmIncidentType.DROUGHT) {
-                        MessageKey.FARM_DROUGHT_BOSSBAR
-                    } else {
-                        MessageKey.FARM_INCIDENT_BOSSBAR
+                    FarmPhase.INCIDENT -> when (runtime.state.incidentType ?: FarmIncidentType.PESTS) {
+                        FarmIncidentType.DROUGHT -> MessageKey.FARM_DROUGHT_BOSSBAR
+                        FarmIncidentType.PESTS -> MessageKey.FARM_INCIDENT_BOSSBAR
+                        else -> MessageKey.FARM_SPECIAL_BOSSBAR
                     }
                     FarmPhase.DELIVERY -> if (carrying) {
                         MessageKey.FARM_DELIVERY_CARRYING_BOSSBAR
@@ -4782,6 +4944,8 @@ class ArcFarmsService(
                         } ?: Component.empty()),
                         "nests" to locale.text(runtime.state.pestNests.size),
                         "pests" to locale.text(runtime.state.pestAlive),
+                        "event" to (runtime.state.incidentType?.takeIf { it in SPECIAL_FARM_INCIDENT_TYPES }
+                            ?.let { specialIncidentName(it, player) } ?: Component.empty()),
                         "done" to locale.text(phaseDone),
                         "total" to locale.text(phaseTotal),
                     ),
@@ -5663,6 +5827,230 @@ class ArcFarmsService(
         if (block.type != Material.DIRT) block.setType(Material.DIRT, false)
     }
 
+    private fun ensureFarmSpecialIncident(runtime: FarmRuntime) {
+        val type = runtime.state.incidentType
+        if (runtime.state.phase != FarmPhase.INCIDENT || type !in SPECIAL_FARM_INCIDENT_TYPES) {
+            specialIncidentScene.clearZone(runtime.settings.id, "inactive")
+            nightShift.clearZone(runtime.settings.id)
+            return
+        }
+        val activeType = requireNotNull(type)
+        if (runtime.state.specialIncident == null) initializeFarmSpecialIncident(runtime, activeType)
+        val special = runtime.state.specialIncident ?: return
+        when (activeType) {
+            FarmIncidentType.GIANT_CROP -> ensureGiantCropScene(runtime, special)
+            FarmIncidentType.CHANNELS -> ensureChannelScene(runtime, special)
+            FarmIncidentType.NIGHT_SHIFT -> {
+                specialIncidentScene.clearZone(runtime.settings.id, "night_shift")
+                nightShift.sync(runtime.settings.id, players(runtime.region), runtime.settings.specialIncidents.nightPlayerTime)
+            }
+            FarmIncidentType.MARKET -> specialIncidentScene.clearZone(runtime.settings.id, "market")
+            else -> Unit
+        }
+    }
+
+    private fun announceFarmSpecialIncident(runtime: FarmRuntime, type: FarmIncidentType) {
+        val title = when (type) {
+            FarmIncidentType.GIANT_CROP -> MessageKey.FARM_GIANT_CROP_STARTED
+            FarmIncidentType.CHANNELS -> MessageKey.FARM_CHANNELS_STARTED
+            FarmIncidentType.NIGHT_SHIFT -> MessageKey.FARM_NIGHT_SHIFT_STARTED
+            FarmIncidentType.MARKET -> MessageKey.FARM_MARKET_STARTED
+            else -> return
+        }
+        val sound = when (type) {
+            FarmIncidentType.GIANT_CROP -> Sound.BLOCK_ROOTED_DIRT_BREAK
+            FarmIncidentType.CHANNELS -> Sound.BLOCK_CONDUIT_ACTIVATE
+            FarmIncidentType.NIGHT_SHIFT -> Sound.BLOCK_AMETHYST_BLOCK_RESONATE
+            FarmIncidentType.MARKET -> Sound.ENTITY_VILLAGER_TRADE
+            else -> Sound.BLOCK_NOTE_BLOCK_CHIME
+        }
+        broadcast(
+            runtime.region,
+            title,
+            mapOf("total" to locale.text(runtime.state.incidentRequired)),
+            sound = sound,
+            title = true,
+        )
+    }
+
+    private fun initializeFarmSpecialIncident(runtime: FarmRuntime, type: FarmIncidentType) {
+        if (type !in SPECIAL_FARM_INCIDENT_TYPES || runtime.state.specialIncident != null) return
+        val mature = discoverIncidentBeds(runtime).mapNotNull { plot ->
+            val soil = plot.block() ?: return@mapNotNull null
+            val crop = soil.getRelative(org.bukkit.block.BlockFace.UP)
+            val age = crop.blockData as? Ageable ?: return@mapNotNull null
+            if (age.age != age.maximumAge || crop.type.name !in runtime.settings.crops) return@mapNotNull null
+            FarmMatureCrop(plot, crop.type.name)
+        }
+        val settings = runtime.settings.specialIncidents
+        val plan = FarmSpecialIncidentPlanner.plan(
+            type = type,
+            sequence = runtime.state.sequence,
+            matureCrops = mature,
+            fallbackPlot = farmAreaCenter(runtime.state.preparationPatch),
+            irrigationSource = point(runtime, FarmPointKind.IRRIGATION),
+            giantHits = settings.giantCropHits,
+            channelGates = settings.channelGateCount,
+            nightCrops = settings.nightCropCount,
+            marketCrops = settings.marketCropCount,
+        ) ?: return
+        val initialized = FarmSpecialIncidentEngine.initialize(runtime.state, type, plan.state, plan.required)
+        if (!initialized.accepted) return
+        runtime.state = initialized.state
+        debug.event(
+            "farm_special_incident_initialized",
+            "zone" to runtime.settings.id,
+            "sequence" to runtime.state.sequence,
+            "type" to type,
+            "required" to runtime.state.incidentRequired,
+        )
+        persistAsync()
+    }
+
+    private fun ensureGiantCropScene(runtime: FarmRuntime, special: FarmSpecialIncidentState) {
+        val point = special.points.firstOrNull() ?: return
+        val location = Location(runtime.region.world, point.x, point.y, point.z)
+        val item = ItemStack(special.crop?.let(MaterialRules::material) ?: Material.PUMPKIN)
+        val scale = runtime.settings.specialIncidents.giantCropScale
+        specialIncidentScene.ensure(
+            FarmSpecialSceneSpec(
+                runtime.settings.id,
+                runtime.state.sequence,
+                runtime.settings.displayViewRange,
+                listOf(
+                    FarmSpecialSceneObject(FarmSpecialSceneRole.GIANT_CROP, 0, location, item, scale),
+                    FarmSpecialSceneObject(FarmSpecialSceneRole.GIANT_HITBOX, 0, location, scale = scale),
+                ),
+            ),
+        )
+    }
+
+    private fun ensureChannelScene(runtime: FarmRuntime, special: FarmSpecialIncidentState) {
+        val visual = runtime.settings.careVisuals.getValue(FarmCareRole.VALVE)
+        val item = ItemStack(MaterialRules.material(visual.material)).apply {
+            if (visual.customModelData > 0) editMeta { it.setCustomModelData(visual.customModelData) }
+        }
+        val objects = special.points.flatMapIndexed { index, point ->
+            val location = Location(runtime.region.world, point.x, point.y, point.z)
+            val active = index in special.active
+            listOf(
+                FarmSpecialSceneObject(
+                    FarmSpecialSceneRole.CHANNEL_GATE,
+                    index,
+                    location.clone().add(0.0, 0.35, 0.0),
+                    item,
+                    runtime.settings.specialIncidents.channelDisplayScale,
+                    active,
+                ),
+                FarmSpecialSceneObject(FarmSpecialSceneRole.CHANNEL_HITBOX, index, location, active = active),
+            )
+        }
+        specialIncidentScene.ensure(
+            FarmSpecialSceneSpec(runtime.settings.id, runtime.state.sequence, runtime.settings.displayViewRange, objects),
+        )
+    }
+
+    private fun handleFarmSpecialSceneInteraction(player: Player, entity: Entity) {
+        val identity = specialIncidentScene.metadata(entity) ?: return
+        val runtime = farms.firstOrNull { it.settings.id == identity.zoneId } ?: return
+        if (!hasAccess(player, runtime.settings.permission) || !runtime.region.contains(player.location)) return
+        if (runtime.state.sequence != identity.sequence || runtime.state.phase != FarmPhase.INCIDENT) return
+        when (identity.role) {
+            FarmSpecialSceneRole.CHANNEL_GATE, FarmSpecialSceneRole.CHANNEL_HITBOX -> {
+                if (runtime.state.incidentType != FarmIncidentType.CHANNELS) return
+                if (!allowInteraction("farm-channel:${identity.zoneId}:${identity.index}:${player.uniqueId}", 250)) return
+                val result = FarmSpecialIncidentEngine.toggleChannelGate(runtime.state, identity.index, player.uniqueId)
+                if (!result.accepted) return
+                if (settings.sounds) {
+                    player.playSound(entity.location, Sound.BLOCK_LEVER_CLICK, 0.8f, if (identity.index in result.state.specialIncident.orEmptyActive()) 1.45f else 0.8f)
+                }
+                applyFarmResult(runtime, result, player)
+                ensureFarmSpecialIncident(runtime)
+            }
+            FarmSpecialSceneRole.GIANT_CROP, FarmSpecialSceneRole.GIANT_HITBOX ->
+                sendActionBar(player, MessageKey.FARM_GIANT_CROP_TOOL)
+        }
+    }
+
+    private fun FarmSpecialIncidentState?.orEmptyActive(): Set<Int> = this?.active.orEmpty()
+
+    private fun handleFarmSpecialSceneDamage(event: EntityDamageEvent) {
+        val identity = specialIncidentScene.metadata(event.entity) ?: return
+        if (identity.role !in setOf(FarmSpecialSceneRole.GIANT_CROP, FarmSpecialSceneRole.GIANT_HITBOX)) return
+        val player = (event as? EntityDamageByEntityEvent)?.let { damage ->
+            when (val source = damage.damager) {
+                is Player -> source
+                is Projectile -> source.shooter as? Player
+                else -> null
+            }
+        } ?: return
+        val runtime = farms.firstOrNull { it.settings.id == identity.zoneId } ?: return
+        if (!hasAccess(player, runtime.settings.permission) || !runtime.region.contains(player.location)) return
+        if (
+            runtime.state.sequence != identity.sequence || runtime.state.phase != FarmPhase.INCIDENT ||
+            runtime.state.incidentType != FarmIncidentType.GIANT_CROP
+        ) return
+        if (!MaterialRules.isHoe(player.inventory.itemInMainHand)) {
+            sendActionBar(player, MessageKey.FARM_GIANT_CROP_TOOL)
+            return
+        }
+        if (!allowInteraction("farm-giant:${identity.zoneId}:${player.uniqueId}", 180)) return
+        val result = FarmSpecialIncidentEngine.damageGiantCrop(runtime.state, player.uniqueId)
+        if (!result.accepted) return
+        if (settings.particles) {
+            val crop = runtime.state.specialIncident?.crop?.let(MaterialRules::material) ?: Material.PUMPKIN
+            event.entity.world.spawnParticle(Particle.BLOCK, event.entity.location, 16, 0.65, 0.8, 0.65, crop.createBlockData())
+        }
+        if (settings.sounds) {
+            player.playSound(event.entity.location, Sound.BLOCK_WOOD_HIT, 0.9f, 0.75f + result.state.incidentProgress * 0.025f)
+        }
+        applyFarmResult(runtime, result, player)
+    }
+
+    private fun handleFarmMarketDecision(player: Player, click: FarmMarketClick) {
+        val runtime = farms.firstOrNull { it.settings.id == click.zoneId } ?: return
+        if (!hasAccess(player, runtime.settings.permission) || !runtime.region.contains(player.location)) return
+        if (
+            runtime.state.sequence != click.sequence || runtime.state.phase != FarmPhase.INCIDENT ||
+            runtime.state.incidentType != FarmIncidentType.MARKET
+        ) return
+        val special = runtime.state.specialIncident ?: return
+        val result = when (click.decision) {
+            FarmMarketDecision.ACCEPT -> FarmSpecialIncidentEngine.acceptMarket(runtime.state)
+            FarmMarketDecision.DECLINE -> FarmSpecialIncidentEngine.declineMarket(runtime.state)
+        }
+        if (!result.accepted) return
+        player.closeInventory()
+        if (click.decision == FarmMarketDecision.ACCEPT) {
+            sendActionBar(
+                player,
+                MessageKey.FARM_MARKET_ACCEPTED,
+                mapOf(
+                    "crop" to MaterialRules.cropComponent(MaterialRules.material(requireNotNull(special.crop))),
+                    "total" to locale.text(runtime.state.incidentRequired),
+                ),
+            )
+            if (settings.sounds) player.playSound(player.location, Sound.ENTITY_VILLAGER_YES, 0.85f, 1.15f)
+        } else {
+            sendActionBar(player, MessageKey.FARM_MARKET_DECLINED)
+        }
+        applyFarmResult(runtime, result, player)
+    }
+
+    private fun specialIncidentName(type: FarmIncidentType, audience: Player): Component = locale.renderPath(
+        "incident.${type.specialId()}.name",
+        audience,
+    )
+
+    private fun FarmIncidentType.specialId(): String = when (this) {
+        FarmIncidentType.GIANT_CROP -> "giant-crop"
+        FarmIncidentType.CHANNELS -> "channels"
+        FarmIncidentType.NIGHT_SHIFT -> "night-shift"
+        FarmIncidentType.MARKET -> "market"
+        FarmIncidentType.PESTS -> "pests"
+        FarmIncidentType.DROUGHT -> "drought"
+    }
+
     private fun ensureFarmDroughtTargets(runtime: FarmRuntime) {
         val active = runtime.state.phase == FarmPhase.INCIDENT &&
             (runtime.state.incidentType ?: FarmIncidentType.PESTS) == FarmIncidentType.DROUGHT
@@ -5896,6 +6284,7 @@ class ArcFarmsService(
             before,
             restoreDrought = { position -> restoreDroughtCrop(runtime, position) },
             restorePest = { damage -> restorePestCrop(runtime, damage) },
+            restoreSpecial = { damage -> restorePestCrop(runtime, damage) },
             limit = limit,
         )
         if (runtime.state != before) persistAsync()
@@ -5903,7 +6292,7 @@ class ArcFarmsService(
             if (allowInteraction("farm-incident-recovery:${runtime.settings.id}", TimeUnit.MINUTES.toMillis(1))) {
                 plugin.logger.warning(
                     "Farm incident recovery in ${runtime.settings.id} is waiting for " +
-                        "${runtime.state.droughtDamagedPlots.size + runtime.state.pestDamagedCrops.size} loaded plot(s)",
+                        "${runtime.state.droughtDamagedPlots.size + runtime.state.pestDamagedCrops.size + runtime.state.specialDamagedCrops.size} loaded plot(s)",
                 )
             }
         } else {
@@ -6144,6 +6533,32 @@ class ArcFarmsService(
         val order = currentOrder(runtime) ?: return
         when (identity.role) {
             FarmContractSceneRole.CUSTOMER -> {
+                val market = runtime.state.specialIncident?.takeIf {
+                    runtime.state.phase == FarmPhase.INCIDENT && runtime.state.incidentType == FarmIncidentType.MARKET
+                }
+                if (market != null) {
+                    if (!market.marketAccepted) {
+                        marketMenu.open(
+                            player,
+                            runtime.settings.id,
+                            runtime.state.sequence,
+                            MaterialRules.material(requireNotNull(market.crop)),
+                            runtime.state.incidentRequired,
+                            runtime.settings.specialIncidents.marketMoneyBonusPercent,
+                        )
+                    } else {
+                        sendActionBar(
+                            player,
+                            MessageKey.FARM_SPECIAL_PROGRESS,
+                            mapOf(
+                                "event" to specialIncidentName(FarmIncidentType.MARKET, player),
+                                "done" to locale.text(runtime.state.incidentProgress),
+                                "total" to locale.text(runtime.state.incidentRequired),
+                            ),
+                        )
+                    }
+                    return
+                }
                 sendActionBar(
                     player,
                     MessageKey.FARM_CUSTOMER_REMINDER,
@@ -6976,6 +7391,8 @@ class ArcFarmsService(
     private fun cleanupOwnedFarmEntities() {
         val worlds = Bukkit.getWorlds()
         contractScene.cleanupLoaded("service_cleanup")
+        specialIncidentScene.cleanupLoaded("service_cleanup")
+        nightShift.clearAll(Bukkit.getOnlinePlayers())
         var removed = 0
         worlds.flatMap { it.entities }.forEach { entity ->
             if (
@@ -7115,6 +7532,8 @@ class ArcFarmsService(
                 }
             }
         }
+        farms.filter { it.state.phase == FarmPhase.INCIDENT && it.state.incidentType in SPECIAL_FARM_INCIDENT_TYPES }
+            .forEach { runtime -> emitFarmSpecialGuidance(runtime) }
         farms.filter { it.state.phase == FarmPhase.CARE }.forEach { runtime ->
             val incomplete = runtime.state.careTargets.filterNot(FarmCareTarget::complete)
             players(runtime.region).filterNot(::isAdminEditing).forEach { player ->
@@ -7194,6 +7613,68 @@ class ArcFarmsService(
 
     private fun spawnGuidanceDust(player: Player, location: Location, color: Color, size: Float = 1.1f) {
         player.spawnParticle(Particle.DUST, location, 1, 0.0, 0.0, 0.0, 0.0, Particle.DustOptions(color, size))
+    }
+
+    private fun emitFarmSpecialGuidance(runtime: FarmRuntime) {
+        val special = runtime.state.specialIncident ?: return
+        val remaining = special.plots.filter { plot -> runtime.state.specialDamagedCrops.none { it.position == plot } }
+        players(runtime.region).filterNot(::isAdminEditing).forEach { player ->
+            when (runtime.state.incidentType) {
+                FarmIncidentType.GIANT_CROP -> special.points.firstOrNull()?.let { point ->
+                    spawnGuidanceRing(player, Location(player.world, point.x, point.y - 1.0, point.z), 2.3, FARM_AMBER_COLOR)
+                }
+                FarmIncidentType.CHANNELS -> special.points.forEachIndexed { index, point ->
+                    spawnGuidanceDust(
+                        player,
+                        Location(player.world, point.x, point.y + 1.1, point.z),
+                        if (index in special.active) FARM_SUCCESS_COLOR else Color.fromRGB(79, 195, 247),
+                        1.35f,
+                    )
+                }.also {
+                    val source = point(runtime, FarmPointKind.IRRIGATION)
+                    val reached = listOf(source) + special.points.take(runtime.state.incidentProgress)
+                    reached.zipWithNext().forEach { (from, to) -> spawnWaterTrail(player, from, to) }
+                }
+                FarmIncidentType.NIGHT_SHIFT -> remaining.forEachIndexed { index, plot ->
+                    if (index % 3 == 0) plot.location()?.let { location ->
+                        player.spawnParticle(Particle.END_ROD, location.add(0.5, 1.65, 0.5), 1, 0.08, 0.12, 0.08, 0.0)
+                    }
+                }
+                FarmIncidentType.MARKET -> {
+                    val customer = point(runtime, FarmPointKind.CUSTOMER)
+                    player.spawnParticle(
+                        Particle.HAPPY_VILLAGER,
+                        Location(player.world, customer.x, customer.y + 1.25, customer.z),
+                        3,
+                        0.35,
+                        0.5,
+                        0.35,
+                        0.0,
+                    )
+                }
+                else -> Unit
+            }
+        }
+    }
+
+    private fun spawnWaterTrail(player: Player, from: FarmPointPosition, to: FarmPointPosition) {
+        val dx = to.x - from.x
+        val dy = to.y - from.y
+        val dz = to.z - from.z
+        val distance = kotlin.math.sqrt(dx * dx + dy * dy + dz * dz)
+        val steps = (distance * 2.0).toInt().coerceIn(1, 48)
+        repeat(steps) { step ->
+            val ratio = (step + 1).toDouble() / steps
+            player.spawnParticle(
+                Particle.SPLASH,
+                Location(player.world, from.x + dx * ratio, from.y + dy * ratio + 0.2, from.z + dz * ratio),
+                1,
+                0.04,
+                0.02,
+                0.04,
+                0.0,
+            )
+        }
     }
 
     private fun spawnGuidanceColumn(player: Player, base: Location, color: Color) {
@@ -7303,6 +7784,17 @@ class ArcFarmsService(
                     .map { it to FARM_DROUGHT_COLOR }
                 FarmIncidentType.PESTS -> runtime.state.pestNests.mapNotNull { it.position.location() }
                     .map { it to FARM_DANGER_COLOR }
+                FarmIncidentType.GIANT_CROP -> runtime.state.specialIncident?.points.orEmpty().mapNotNull { point ->
+                    Bukkit.getWorld(point.world)?.let { Location(it, point.x, point.y, point.z) to FARM_AMBER_COLOR }
+                }
+                FarmIncidentType.CHANNELS -> runtime.state.specialIncident?.points.orEmpty().mapNotNull { point ->
+                    Bukkit.getWorld(point.world)?.let { Location(it, point.x, point.y, point.z) to Color.fromRGB(79, 195, 247) }
+                }
+                FarmIncidentType.NIGHT_SHIFT -> runtime.state.specialIncident?.plots.orEmpty().mapNotNull { it.location() }
+                    .map { it to Color.fromRGB(139, 211, 255) }
+                FarmIncidentType.MARKET -> point(runtime, FarmPointKind.CUSTOMER).let { point ->
+                    listOf(Location(runtime.region.world, point.x, point.y, point.z) to FARM_AMBER_COLOR)
+                }
                 null -> emptyList()
             }
             FarmPhase.DELIVERY -> point(runtime, FarmPointKind.RECEIVING).let { point ->
@@ -7697,15 +8189,23 @@ class ArcFarmsService(
             FarmPhase.PLANTING -> MessageKey.FARM_ENTRY_PLANTING
             FarmPhase.CARE -> null
             FarmPhase.HARVESTING -> MessageKey.FARM_ENTRY_HARVESTING
-            FarmPhase.INCIDENT -> if ((runtime.state.incidentType ?: FarmIncidentType.PESTS) == FarmIncidentType.DROUGHT) {
-                MessageKey.FARM_ENTRY_DROUGHT
-            } else {
-                MessageKey.FARM_ENTRY_PESTS
+            FarmPhase.INCIDENT -> when (runtime.state.incidentType ?: FarmIncidentType.PESTS) {
+                FarmIncidentType.DROUGHT -> MessageKey.FARM_ENTRY_DROUGHT
+                FarmIncidentType.PESTS -> MessageKey.FARM_ENTRY_PESTS
+                else -> null
             }
             FarmPhase.DELIVERY -> MessageKey.FARM_ENTRY_DELIVERY
         }
         val action = if (actionKey == null) {
-            runtime.state.careType?.let { locale.renderPath("care.${it.name.lowercase()}.entry", player) } ?: Component.empty()
+            when (runtime.state.phase) {
+                FarmPhase.CARE -> runtime.state.careType?.let {
+                    locale.renderPath("care.${it.name.lowercase()}.entry", player)
+                } ?: Component.empty()
+                FarmPhase.INCIDENT -> runtime.state.incidentType?.takeIf { it in SPECIAL_FARM_INCIDENT_TYPES }?.let {
+                    locale.renderPath("farm.entry-${it.specialId()}", player)
+                } ?: Component.empty()
+                else -> Component.empty()
+            }
         } else {
             locale.render(
                 actionKey,
@@ -7896,6 +8396,7 @@ class ArcFarmsService(
                     contribution = contribution,
                     rank = index + 1,
                 ),
+                moneyMultiplierPercent = 100 + runtime.state.rewardMoneyBonusPercent,
             ).takeUnless { grant -> pendingFarmRewards.any { it.id == grant.id } }
         }
         if (planned.isEmpty()) return
@@ -8223,6 +8724,12 @@ class ArcFarmsService(
     }
 
     companion object {
+        private val SPECIAL_FARM_INCIDENT_TYPES = setOf(
+            FarmIncidentType.GIANT_CROP,
+            FarmIncidentType.CHANNELS,
+            FarmIncidentType.NIGHT_SHIFT,
+            FarmIncidentType.MARKET,
+        )
         private const val MAX_INCIDENT_DAMAGED_CROPS = 4_096
         private const val MAX_INTERACTION_COOLDOWNS = 10_000
         private const val SUPPLY_ITEM_Y_OFFSET = 0.25
@@ -8238,6 +8745,11 @@ class ArcFarmsService(
             MessageKey.FARM_INCIDENT_STARTED to MessageKey.FARM_INCIDENT_STARTED_SUBTITLE,
             MessageKey.FARM_INCIDENT_RESOLVED to MessageKey.FARM_INCIDENT_RESOLVED_SUBTITLE,
             MessageKey.FARM_DROUGHT_STARTED to MessageKey.FARM_DROUGHT_STARTED_SUBTITLE,
+            MessageKey.FARM_SPECIAL_RESOLVED to MessageKey.FARM_SPECIAL_RESOLVED_SUBTITLE,
+            MessageKey.FARM_GIANT_CROP_STARTED to MessageKey.FARM_GIANT_CROP_STARTED_SUBTITLE,
+            MessageKey.FARM_CHANNELS_STARTED to MessageKey.FARM_CHANNELS_STARTED_SUBTITLE,
+            MessageKey.FARM_NIGHT_SHIFT_STARTED to MessageKey.FARM_NIGHT_SHIFT_STARTED_SUBTITLE,
+            MessageKey.FARM_MARKET_STARTED to MessageKey.FARM_MARKET_STARTED_SUBTITLE,
             MessageKey.FARM_DELIVERY_STARTED to MessageKey.FARM_DELIVERY_STARTED_SUBTITLE,
             MessageKey.FARM_DELIVERY_PICKED_UP to MessageKey.FARM_DELIVERY_PICKED_UP_SUBTITLE,
             MessageKey.FARM_CROP_COMPLETED to MessageKey.FARM_CROP_COMPLETED_SUBTITLE,

@@ -76,11 +76,7 @@ internal class FarmScoreboardRenderer(
                 null -> "scoreboard.objective.care"
             }
             FarmPhase.HARVESTING -> "scoreboard.objective.harvesting"
-            FarmPhase.INCIDENT -> if (view.incidentType == FarmIncidentType.DROUGHT) {
-                "scoreboard.objective.drought"
-            } else {
-                "scoreboard.objective.pests"
-            }
+            FarmPhase.INCIDENT -> "scoreboard.objective.${view.incidentType.scoreboardId()}"
             FarmPhase.DELIVERY -> if (view.carrying) {
                 "scoreboard.objective.delivery-carrying"
             } else {
@@ -106,11 +102,7 @@ internal class FarmScoreboardRenderer(
                     ?: "scoreboard.hint.care.generic"
             }
             FarmPhase.HARVESTING -> "scoreboard.hint.harvesting"
-            FarmPhase.INCIDENT -> if (view.incidentType == FarmIncidentType.DROUGHT) {
-                "scoreboard.hint.drought"
-            } else {
-                "scoreboard.hint.pests"
-            }
+            FarmPhase.INCIDENT -> "scoreboard.hint.${view.incidentType.scoreboardId()}"
             FarmPhase.DELIVERY -> if (view.carrying) {
                 "scoreboard.hint.delivery-carrying"
             } else {
@@ -122,6 +114,15 @@ internal class FarmScoreboardRenderer(
     }
 
     private fun Int?.orZero(): Int = this ?: 0
+
+    private fun FarmIncidentType?.scoreboardId(): String = when (this) {
+        null, FarmIncidentType.PESTS -> "pests"
+        FarmIncidentType.DROUGHT -> "drought"
+        FarmIncidentType.GIANT_CROP -> "giant-crop"
+        FarmIncidentType.CHANNELS -> "channels"
+        FarmIncidentType.NIGHT_SHIFT -> "night-shift"
+        FarmIncidentType.MARKET -> "market"
+    }
 
     companion object {
         const val MAX_ROWS = 15

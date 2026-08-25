@@ -41,6 +41,17 @@ class FarmIncidentPlannerTest : FunSpec({
         FarmIncidentPlanner.droughtSpawnLimit(40, 10, 5, 3_000, 1_000, 7_100) shouldBe 20
         FarmIncidentPlanner.droughtSpawnLimit(40, 10, 5, 3_000, 1_000, 100_000) shouldBe 40
     }
+
+    test("order plan uses distinct special incidents and at most one field disaster") {
+        val configured = FarmIncidentType.entries
+
+        (3..5).forEach { count ->
+            val plan = FarmIncidentPlanner.sequence(configured, count, selectionIndex = 41)
+            plan.size shouldBe count
+            plan.distinct().size shouldBe count
+            plan.count { it == FarmIncidentType.PESTS || it == FarmIncidentType.DROUGHT } shouldBe if (count == 5) 1 else 0
+        }
+    }
 })
 
 private fun distance(first: FarmPlotPosition, second: FarmPlotPosition): Long {

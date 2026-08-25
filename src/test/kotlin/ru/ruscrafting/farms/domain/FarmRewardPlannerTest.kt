@@ -72,4 +72,19 @@ class FarmRewardPlannerTest : FunSpec({
         reward.commands shouldBe emptyList()
         reward.bundleIds shouldBe emptyList()
     }
+
+    test("accepted market order scales only the deterministic money reward") {
+        val settings = FarmRewardSettings(
+            experience = FarmExperienceRewardSettings(75, 100),
+            money = FarmMoneyRewardSettings(50_000, 100),
+            items = emptyList(),
+            commands = emptyList(),
+            randomBundles = FarmRandomBundleSettings(0, 0, emptyList()),
+        )
+
+        val reward = FarmRewardPlanner.plan(settings, "communal_farm", 9, recipient, moneyMultiplierPercent = 125)
+
+        reward.moneyCents shouldBe 62_500
+        reward.experience shouldBe 75
+    }
 })

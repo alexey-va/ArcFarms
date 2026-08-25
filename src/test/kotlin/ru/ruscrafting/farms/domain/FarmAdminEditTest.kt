@@ -155,4 +155,30 @@ class FarmAdminEditTest : FunSpec({
         result.state.careTargets shouldBe targets
         result.careTargetIds shouldBe emptySet()
     }
+
+    test("admin removal retires removed night targets without losing crop recovery") {
+        val removed = FarmPlotPosition("world", 1, 63, 1)
+        val retained = FarmPlotPosition("world", 2, 63, 1)
+        val result = FarmAdminEdit.removePlot(
+            FarmShiftState(
+                phase = FarmPhase.INCIDENT,
+                sequence = 12,
+                orderId = "order",
+                preparationPatch = listOf(removed, retained),
+                preparationCrop = "WHEAT",
+                preparationRequired = 2,
+                incidentCrop = "WHEAT",
+                incidentType = FarmIncidentType.NIGHT_SHIFT,
+                incidentRequired = 2,
+                specialIncident = FarmSpecialIncidentState(plots = listOf(removed, retained)),
+                specialDamagedCrops = listOf(FarmCropDamage(retained, "WHEAT")),
+            ),
+            removed,
+        )
+
+        result.state.phase shouldBe FarmPhase.HARVESTING
+        result.state.specialIncident shouldBe null
+        result.state.specialDamagedCrops shouldBe listOf(FarmCropDamage(retained, "WHEAT"))
+        result.state.incidentsResolved shouldBe 1
+    }
 })

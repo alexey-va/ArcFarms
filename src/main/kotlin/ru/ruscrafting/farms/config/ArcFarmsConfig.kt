@@ -123,6 +123,7 @@ data class FarmZoneSettings(
     val droughtGrowthBeds: Int,
     val droughtGrowthSeconds: Int,
     val incidentTypes: List<FarmIncidentType>,
+    val specialIncidents: FarmSpecialIncidentSettings,
     val pestEntity: String,
     val pestSpawnRadius: Int,
     val pestNestCount: Int,
@@ -146,6 +147,17 @@ data class FarmZoneSettings(
         return proportional.coerceIn(droughtMinBeds, droughtMaxBeds).coerceAtMost(gardenBeds)
     }
 }
+
+data class FarmSpecialIncidentSettings(
+    val giantCropHits: Int,
+    val giantCropScale: Float,
+    val channelGateCount: Int,
+    val channelDisplayScale: Float,
+    val nightCropCount: Int,
+    val nightPlayerTime: Long,
+    val marketCropCount: Int,
+    val marketMoneyBonusPercent: Int,
+)
 
 data class FarmRewardSettings(
     val experience: FarmExperienceRewardSettings,
@@ -540,6 +552,31 @@ class ArcFarmsConfig private constructor(
                 require(incidentCountMin <= incidentCountMax) {
                     "farm-zones.$id incident-count.min must not exceed incident-count.max"
                 }
+                require(incidentTypes.size >= incidentCountMax) {
+                    "farm-zones.$id must enable at least incident-count.max distinct incident types"
+                }
+                orders.forEach { order ->
+                    require(order.incidentTypes.size >= incidentCountMax) {
+                        "Farm order ${order.id} must define at least incident-count.max distinct incident types"
+                    }
+                }
+                val specialIncidents = FarmSpecialIncidentSettings(
+                    giantCropHits = section.int("special-incidents.giant-crop.hits", 16)
+                        .checked("special-incidents.giant-crop.hits", 4, 64),
+                    giantCropScale = section.finiteFloat("special-incidents.giant-crop.scale", 3.2f, 1.5f, 6.0f),
+                    channelGateCount = section.int("special-incidents.channels.gates", 4)
+                        .checked("special-incidents.channels.gates", 3, 8),
+                    channelDisplayScale = section.finiteFloat("special-incidents.channels.display-scale", 1.35f, 0.5f, 3.0f),
+                    nightCropCount = section.int("special-incidents.night-shift.crops", 24)
+                        .checked("special-incidents.night-shift.crops", 6, 64),
+                    nightPlayerTime = section.string("special-incidents.night-shift.player-time", "18000")
+                        .toLongOrNull()?.also { require(it in 0..24_000) { "night-shift.player-time must be in 0..24000" } }
+                        ?: error("night-shift.player-time must be an integer"),
+                    marketCropCount = section.int("special-incidents.market.crops", 32)
+                        .checked("special-incidents.market.crops", 8, 64),
+                    marketMoneyBonusPercent = section.int("special-incidents.market.money-bonus-percent", 25)
+                        .checked("special-incidents.market.money-bonus-percent", 0, 200),
+                )
                 FarmZoneSettings(
                     id = id,
                     reference = reference,
@@ -624,6 +661,7 @@ class ArcFarmsConfig private constructor(
                     droughtGrowthSeconds = section.int("drought-growth-seconds", 3)
                         .checked("drought-growth-seconds", 1, 300),
                     incidentTypes = incidentTypes,
+                    specialIncidents = specialIncidents,
                     pestEntity = entityName(section.string("pest-entity", "SILVERFISH")),
                     pestSpawnRadius = section.int("pest-spawn-radius", 6).checked("pest-spawn-radius", 2, 16),
                     pestNestCount = section.int("pest-nests", 3).checked("pest-nests", 1, 8),
