@@ -656,14 +656,12 @@ class ArcFarmsConfigTest : FunSpec({
                     "PUMPKIN" to 200,
                 ),
                 cropProgress = mapOf("WHEAT" to 1_000, "CARROTS" to 250),
-                deliveredCrates = 1,
-                requiredCrates = 3,
             ),
             null,
         )
         val plain = rows.map(PlainTextComponentSerializer.plainText()::serialize)
 
-        rows.size shouldBe 15
+        rows.size shouldBe 14
         plain[0] shouldBe "Заказ"
         plain[1].startsWith("| ") shouldBe true
         plain[3] shouldBe "Задача"
@@ -671,8 +669,14 @@ class ArcFarmsConfigTest : FunSpec({
         plain[5] shouldBe "| 1250 / 3200"
         plain[6] shouldBe "| Собирайте культуры из списка"
         plain[8] shouldBe "Урожай"
-        plain.last() shouldBe "| Телега 1/3"
-        plain.any { "pumpkin" in it.lowercase() || "тыкв" in it.lowercase() } shouldBe true
+        plain.drop(9) shouldBe listOf(
+            "| Пшеница 1000/1600",
+            "| Морковь 250/800",
+            "| Картофель 0/800",
+            "| Свёкла 0/800",
+            "| Тыква 0/200",
+        )
+        plain.none { "телег" in it.lowercase() || "cart" in it.lowercase() } shouldBe true
     }
 
     test("farm scoreboard gives a concrete next action for every farm flow") {
@@ -686,8 +690,6 @@ class ArcFarmsConfigTest : FunSpec({
             total = 100,
             required = mapOf("WHEAT" to 100),
             cropProgress = emptyMap(),
-            deliveredCrates = 0,
-            requiredCrates = 3,
         )
         val scenarios = listOf(
             base.copy(phase = FarmPhase.IDLE) to "Заказ появится автоматически",
@@ -726,7 +728,7 @@ class ArcFarmsConfigTest : FunSpec({
 
         scenarios.forEach { (view, expectedHint) ->
             val rows = renderer.rows(view, null)
-            rows.size shouldBe 11
+            rows.size shouldBe 10
             PlainTextComponentSerializer.plainText().serialize(rows[6]) shouldBe "| $expectedHint"
         }
     }

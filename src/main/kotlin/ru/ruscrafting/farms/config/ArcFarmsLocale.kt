@@ -220,7 +220,6 @@ enum class MessageKey(val path: String) {
     FARM_SCOREBOARD_HINT_LINE("scoreboard.hint-line"),
     FARM_SCOREBOARD_PROGRESS("scoreboard.progress"),
     FARM_SCOREBOARD_CROP("scoreboard.crop"),
-    FARM_SCOREBOARD_CART("scoreboard.cart"),
     FARM_SCOREBOARD_OBJECTIVE_IDLE("scoreboard.objective.idle"),
     FARM_SCOREBOARD_OBJECTIVE_PREPARATION("scoreboard.objective.preparation"),
     FARM_SCOREBOARD_OBJECTIVE_PLANTING("scoreboard.objective.planting"),
@@ -330,6 +329,7 @@ class ArcFarmsLocale(
         fun requiredPaths(settings: ArcFarmsConfig): Set<String> = buildSet {
             addAll(MessageKey.entries.map(MessageKey::path))
             settings.farms.flatMapTo(this) { zone -> zone.orders.map { "order.farm.${it.id}" } }
+            settings.farms.flatMapTo(this) { zone -> zone.crops.map { "crop.${it.lowercase()}" } }
             settings.farms.flatMapTo(this) { zone ->
                 zone.rewards.randomBundles.entries.map { "reward.bundle.${it.id}" }
             }

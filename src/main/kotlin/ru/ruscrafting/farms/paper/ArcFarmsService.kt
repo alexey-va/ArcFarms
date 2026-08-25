@@ -6962,8 +6962,6 @@ class ArcFarmsService(
             total = phaseTotal,
             required = order.required,
             cropProgress = runtime.state.progress,
-            deliveredCrates = runtime.state.deliveredCrates.size,
-            requiredCrates = runtime.settings.delivery.crates,
             careType = runtime.state.careType,
             seederStage = runtime.state.seederStage(),
             incidentType = runtime.state.incidentType,

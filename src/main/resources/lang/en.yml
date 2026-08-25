@@ -297,6 +297,14 @@ farm:
   drought-bossbar: '<color:#ff7a45>Drought</color> <color:#707a76>•</color> <color:#45c8f5>watering <done>/<total></color>'
   delivery-bossbar: '<color:#ffc857>Crates <done>/<total></color> <color:#707a76>•</color> <color:#f2fff7>right-click, then receiving</color>'
   delivery-carrying-bossbar: '<color:#ffc857>Crates <done>/<total></color> <color:#707a76>•</color> <color:#c778ff>to the purple marker</color>'
+crop:
+  wheat: 'Wheat'
+  carrots: 'Carrots'
+  potatoes: 'Potatoes'
+  beetroots: 'Beetroot'
+  sweet_berry_bush: 'Sweet Berries'
+  melon: 'Melon'
+  pumpkin: 'Pumpkin'
 scoreboard:
   title: '<color:#55d98b>Farm</color>'
   section:

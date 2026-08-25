@@ -15,8 +15,6 @@ internal data class FarmScoreboardView(
     val total: Int,
     val required: Map<String, Int>,
     val cropProgress: Map<String, Int>,
-    val deliveredCrates: Int,
-    val requiredCrates: Int,
     val careType: FarmCareType? = null,
     val seederStage: FarmSeederStage? = null,
     val incidentType: FarmIncidentType? = null,
@@ -54,20 +52,15 @@ internal class FarmScoreboardRenderer(
                 "scoreboard.crop",
                 audience,
                 mapOf(
-                    "crop" to MaterialRules.cropComponent(MaterialRules.material(cropName)),
+                    "crop" to locale.renderPath(
+                        "crop.${MaterialRules.material(cropName).name.lowercase()}",
+                        audience,
+                    ),
                     "done" to locale.text(view.cropProgress[cropName].orZero().coerceAtMost(required)),
                     "total" to locale.text(required),
                 ),
             ))
         }
-        add(locale.renderPath(
-            "scoreboard.cart",
-            audience,
-            mapOf(
-                "done" to locale.text(view.deliveredCrates.coerceAtLeast(0)),
-                "total" to locale.text(view.requiredCrates.coerceAtLeast(1)),
-            ),
-        ))
     }.also { rows ->
         require(rows.size <= MAX_ROWS) { "Farm scoreboard exceeds $MAX_ROWS rows" }
     }
