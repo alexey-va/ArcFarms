@@ -79,6 +79,8 @@ data class FarmZoneSettings(
     val restoreBlocksPerTick: Int,
     val blockReindexBlocksPerTick: Int,
     val blockReindexMaxBlocks: Int,
+    val backupBlocksPerTick: Int,
+    val backupMaxBlocks: Int,
     val careRadius: Int,
     val careTypes: List<FarmCareType>,
     val careTargetCount: Int,
@@ -96,9 +98,7 @@ data class FarmZoneSettings(
     val seederPatchMaxSize: Int,
     val seederComponentGap: Int,
     val seederComponentLimit: Int,
-    val seederWorkingWidth: Int,
-    val seederLaneTolerance: Double,
-    val seederWaypointReach: Double,
+    val seederWorkingRadius: Double,
     val seederBlocksPerUpdate: Int,
     val diseaseInitialSpots: Int,
     val diseaseMaxSpots: Int,
@@ -556,6 +556,10 @@ class ArcFarmsConfig private constructor(
                         .checked("block-reindex-blocks-per-tick", 256, 16_384),
                     blockReindexMaxBlocks = section.int("block-reindex-max-blocks", 20_000_000)
                         .checked("block-reindex-max-blocks", 100_000, 50_000_000),
+                    backupBlocksPerTick = section.int("backup-blocks-per-tick", 2_048)
+                        .checked("backup-blocks-per-tick", 128, 8_192),
+                    backupMaxBlocks = section.int("backup-max-blocks", 4_000_000)
+                        .checked("backup-max-blocks", 10_000, 4_000_000),
                     careRadius = section.int("care-radius", 10).checked("care-radius", 3, 24),
                     careTypes = careTypes,
                     careTargetCount = section.int("care-targets", 4).checked("care-targets", 2, 8),
@@ -579,10 +583,7 @@ class ArcFarmsConfig private constructor(
                         .checked("seeder-component-gap", 0, 32),
                     seederComponentLimit = section.int("seeder-component-limit", 8)
                         .checked("seeder-component-limit", 1, 16),
-                    seederWorkingWidth = section.int("seeder-working-width", 7)
-                        .checked("seeder-working-width", 1, 12),
-                    seederLaneTolerance = section.finiteDouble("seeder-lane-tolerance", 7.0, 0.5, 16.0),
-                    seederWaypointReach = section.finiteDouble("seeder-waypoint-reach", 6.0, 1.0, 8.0),
+                    seederWorkingRadius = section.finiteDouble("seeder-working-radius", 8.0, 1.0, 16.0),
                     seederBlocksPerUpdate = section.int("seeder-blocks-per-update", 128)
                         .checked("seeder-blocks-per-update", 8, 256),
                     diseaseInitialSpots = diseaseInitialSpots,
@@ -838,7 +839,7 @@ class ArcFarmsConfig private constructor(
                 z = coordinate("z", -30_000_000.0, 30_000_000.0),
                 radius = coordinate("radius", 1.0, 8.0),
                 crates = section.int("delivery.crates", 3).checked("delivery.crates", 1, 8),
-                spawnRadius = section.int("delivery.spawn-radius", 8).checked("delivery.spawn-radius", 3, 16),
+                spawnRadius = section.int("delivery.spawn-radius", 16).checked("delivery.spawn-radius", 3, 48),
                 minCrateSpacing = section.finiteDouble("delivery.min-crate-spacing", 5.0, 0.0, 16.0),
                 pickup = FarmSupplyPointSettings(
                     world = world,

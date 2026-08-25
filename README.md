@@ -42,11 +42,10 @@ blocks before accepting more actions. On every configured Nth shift,
 horse-drawn field machinery; `0` disables this variant. It receives a separate,
 larger field bounded by `seeder-patch-size` and `seeder-patch-max-size`. The
 player calls the glowing horse, keeps its visible leash, and leads it through
-straight, alternating passes across the field. The configured
-`seeder-working-width` is processed only where the machine physically travels.
-Reaching the end of a pass cannot complete it while any assigned bed remains
-untilled or unplanted, and the story cannot finish until the whole persisted
-field is done. After either planting path, the boss bar switches to one
+the field without checkpoints or a prescribed route. Every managed bed inside
+`seeder-working-radius` is processed where the horse physically travels; the
+story cannot finish until the whole persisted field is tilled and then planted.
+After either planting path, the boss bar switches to one
 randomly selected field-care story before harvesting begins.
 Every story is spread across the active bed instead of clustering around its
 center:
@@ -261,6 +260,13 @@ are available through commands such as `/arcfarms admin point <zone> help`,
   scan records usable farmland, fixed melons/pumpkins, and open leaf anchors;
   it keeps indexed farmland wet and excludes beds covered by structures,
   stems, or fixed fruit. Use the optional `status` argument to inspect progress.
+- `/arcfarms admin backup <zone> save` — save the current cuboid WorldEdit
+  selection as an immutable Sponge v3 schematic plus a validated SHA-256
+  manifest under server-owned plugin data. `list` and `status` inspect it.
+- `/arcfarms admin backup <zone> restore <id>` — restore the schematic to its
+  original coordinates in bounded tick slices. ArcFarms first saves the exact
+  target bounds as a `pre_restore` safety backup, then rebuilds the farm block
+  index; a failed restore leaves the farm paused.
 - `/arcfarms admin stage <zone> <preparation|planting|harvesting|seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought|delivery|complete|reset>` —
   switch the current farm to an exact QA stage while preserving normal recovery.
 - `/arcfarms admin next <zone>` — advance to the next useful QA stage.
@@ -269,9 +275,9 @@ are available through commands such as `/arcfarms admin point <zone> help`,
 - `/arcfarms admin event <zone> <seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought>` —
   start any exact farm story or harvest incident.
 
-Farm counts, manual and mechanized patch sizes, machinery width/reach, spacing,
+Farm counts, manual and mechanized patch sizes, machinery radius, spacing,
 spawn/search radii, incident ranges and checkpoints, apple count/spacing,
-block-reindex batch/size limits, display
+block-reindex and backup batch/size limits, display
 scale/offset/view range, care timings, drought/pest tuning, UI toggles, sounds,
 particles, rewards, fixed-crop respawn delay, restoration batch size, and
 operation points are hot-reloadable. Only
@@ -335,7 +341,7 @@ button.
 ../arc-core/gradlew clean check shadowJar
 ```
 
-The deployable artifact is `build/libs/ArcFarms-0.17.2.jar`.
+The deployable artifact is `build/libs/ArcFarms-0.17.3.jar`.
 
 ## Isolated gameplay QA
 

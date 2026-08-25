@@ -203,13 +203,11 @@ class FarmShiftEngineTest : FunSpec({
         resolved.state.contributors[player] shouldBe 8
     }
 
-    test("field machinery tills and plants in two complete horse-driven routes") {
+    test("field machinery tills and plants by proximity without checkpoints") {
         val machinePatch = buildList {
             (1..6).forEach { x -> add(FarmPlotPosition("world", x, 64, 1)) }
             (1..6).forEach { x -> add(FarmPlotPosition("world", x, 64, 3)) }
         }
-        val passes = FarmMachinePlanner.plan(machinePatch, workingWidth = 1, originX = 0.5, originZ = 1.5)
-        val first = passes.first().entry
         val preparation = FarmShiftState(
             phase = FarmPhase.PREPARATION,
             orderId = order.id,
@@ -222,58 +220,32 @@ class FarmShiftEngineTest : FunSpec({
             FarmCareTarget(
                 0,
                 FarmCareRole.SEEDER_HORSE,
-                FarmPointPosition("world", first.x + 0.5, 65.0, first.z + 0.5),
+                FarmPointPosition("world", 1.5, 65.0, 1.5),
             ),
-        ) + passes.mapIndexed { index, pass ->
-            FarmCareTarget(
-                index + 1,
-                FarmCareRole.SEEDER_WAYPOINT,
-                FarmPointPosition("world", pass.exit.x + 0.5, 65.0, pass.exit.z + 0.5),
-            )
-        }
+        )
         FarmShiftEngine.startCare(preparation.copy(phase = FarmPhase.HARVESTING), FarmCareType.SEEDER, targets).accepted shouldBe false
         var state = FarmShiftEngine.startCare(preparation, FarmCareType.SEEDER, targets).state
 
         state.phase shouldBe FarmPhase.CARE
         state = FarmShiftEngine.startSeeder(state, 0).state
-        val tillingAssignments = FarmMachinePlanner.assignToWaypoints(
-            machinePatch,
-            targets.filter { it.role == FarmCareRole.SEEDER_WAYPOINT }.map { it.id to it.position },
-            targets.first().position,
-        )
-        var tillingCompleted: EngineResult<FarmShiftState>? = null
-        targets.filter { it.role == FarmCareRole.SEEDER_WAYPOINT }.reversed().forEach { target ->
-            val assigned = tillingAssignments.getValue(target.id)
-            state = FarmShiftEngine.workSeeder(state, assigned, player).state
-            tillingCompleted = FarmShiftEngine.completeSeederPass(state, target.id, assigned)
-            state = requireNotNull(tillingCompleted).state
-        }
-        val tillingResult = requireNotNull(tillingCompleted)
+        val firstHalf = machinePatch.take(6).toSet()
+        val partial = FarmShiftEngine.workSeeder(state, firstHalf, player)
+        partial.state.phase shouldBe FarmPhase.CARE
+        partial.state.seederStage() shouldBe FarmSeederStage.TILLING
+        partial.events shouldContainExactly listOf(ShiftEvent.SEEDER_PROGRESS)
+
+        val tillingResult = FarmShiftEngine.workSeeder(partial.state, machinePatch.drop(6).toSet(), player)
         tillingResult.accepted shouldBe true
         tillingResult.state.phase shouldBe FarmPhase.CARE
         tillingResult.state.seederStage() shouldBe FarmSeederStage.PLANTING
         tillingResult.state.tilledPlots shouldBe machinePatch.toSet()
         tillingResult.state.plantedPlots shouldBe emptySet()
-        tillingResult.state.careTargets.filter { it.role == FarmCareRole.SEEDER_WAYPOINT }
-            .all { !it.complete } shouldBe true
-        tillingResult.events shouldContainExactly listOf(ShiftEvent.CARE_PROGRESS, ShiftEvent.SEEDER_PLANTING_STARTED)
+        tillingResult.state.careTargets shouldBe targets.map { it.copy(progress = 1) }
+        tillingResult.events shouldContainExactly listOf(ShiftEvent.SEEDER_PLANTING_STARTED)
 
         state = tillingResult.state
-        val plantingTargets = state.careTargets.filter { it.role == FarmCareRole.SEEDER_WAYPOINT }
-        val plantingAssignments = FarmMachinePlanner.assignToWaypoints(
-            machinePatch,
-            plantingTargets.map { it.id to it.position },
-            state.careTargets.first { it.role == FarmCareRole.SEEDER_HORSE }.position,
-        )
         val secondPlayer = UUID(0, 99)
-        var completed: EngineResult<FarmShiftState>? = null
-        plantingTargets.forEach { target ->
-            val assigned = plantingAssignments.getValue(target.id)
-            state = FarmShiftEngine.workSeeder(state, assigned, secondPlayer).state
-            completed = FarmShiftEngine.completeSeederPass(state, target.id, assigned)
-            state = requireNotNull(completed).state
-        }
-        val completedResult = requireNotNull(completed)
+        val completedResult = FarmShiftEngine.workSeeder(state, machinePatch.toSet(), secondPlayer)
         completedResult.accepted shouldBe true
         completedResult.state.phase shouldBe FarmPhase.HARVESTING
         completedResult.state.tilledPlots shouldBe machinePatch.toSet()
@@ -281,7 +253,7 @@ class FarmShiftEngineTest : FunSpec({
         completedResult.state.plantingProgress shouldBe machinePatch.size
         completedResult.state.contributors[player] shouldBe machinePatch.size
         completedResult.state.contributors[secondPlayer] shouldBe machinePatch.size
-        completedResult.events shouldContainExactly listOf(ShiftEvent.CARE_PROGRESS, ShiftEvent.CARE_RESOLVED)
+        completedResult.events shouldContainExactly listOf(ShiftEvent.CARE_RESOLVED)
     }
 
     test("crop disease adds bounded spots without resetting treated progress") {

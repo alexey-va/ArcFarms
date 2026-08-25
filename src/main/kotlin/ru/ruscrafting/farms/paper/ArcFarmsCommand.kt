@@ -163,6 +163,7 @@ class ArcFarmsCommand(
                 "points" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_POINTS, sender))
                 "unmanage" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_UNMANAGE, sender))
                 "blockreset" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_BLOCKRESET, sender))
+                "backup" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_BACKUP, sender))
                 "stage" -> sendStageHelp(sender, zone)
                 "next" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_NEXT, sender))
                 "finish" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_FINISH, sender))
@@ -216,6 +217,21 @@ class ArcFarmsCommand(
                         null -> service.adminStartFarmBlockReset(player, zone)
                         "status" -> service.adminFarmBlockResetStatus(player, zone)
                         else -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_BLOCKRESET, sender))
+                    }
+                }
+            }
+            "backup" -> {
+                val zone = args.getOrNull(1)
+                if (zone == null) {
+                    sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_BACKUP, sender))
+                } else {
+                    when (args.getOrNull(2)?.lowercase()) {
+                        "save" -> service.adminSaveFarmBackup(player, zone)
+                        "list" -> service.adminListFarmBackups(player, zone)
+                        "status" -> service.adminFarmBackupStatus(player, zone)
+                        "restore" -> args.getOrNull(3)?.let { service.adminRestoreFarmBackup(player, zone, it) }
+                            ?: sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_BACKUP, sender))
+                        else -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_BACKUP, sender))
                     }
                 }
             }
@@ -431,7 +447,7 @@ class ArcFarmsCommand(
                 args[0].equals("top", true) || args[0].equals("travel", true) ->
                     listOf("farm", "lumber", "mine").filter { it.startsWith(args[1], true) }
                 args[0].equals("admin", true) && sender.hasPermission("arcfarms.admin") ->
-                    listOf("help", "edit", "inspect", "point", "points", "unmanage", "blockreset", "stage", "next", "finish", "event")
+                    listOf("help", "edit", "inspect", "point", "points", "unmanage", "blockreset", "backup", "stage", "next", "finish", "event")
                         .filter { it.startsWith(args[1], true) }
                 args[0].equals("debug", true) && sender.hasPermission("arcfarms.admin") ->
                     service.farmZoneIds().filter { it.startsWith(args[1], true) }
@@ -441,7 +457,7 @@ class ArcFarmsCommand(
                 args[0].equals("admin", true) && args[1].lowercase() in setOf("edit", "inspect") ->
                     listOf("help").filter { it.startsWith(args[2], true) }
                 args[0].equals("admin", true) && args[1].lowercase() in
-                    setOf("point", "points", "unmanage", "blockreset", "stage", "next", "finish", "event") ->
+                    setOf("point", "points", "unmanage", "blockreset", "backup", "stage", "next", "finish", "event") ->
                     (service.farmZoneIds() + "help").filter { it.startsWith(args[2], true) }
                 args[0].equals("debug", true) && sender.hasPermission("arcfarms.admin") ->
                     listOf("status", "contract", "stage", "next", "finish", "event", "give", "show", "points", "reset")
@@ -459,6 +475,8 @@ class ArcFarmsCommand(
                     (EVENT_STAGES + "help").filter { it.startsWith(args[3], true) }
                 args[0].equals("admin", true) && args[1].equals("blockreset", true) ->
                     listOf("status", "help").filter { it.startsWith(args[3], true) }
+                args[0].equals("admin", true) && args[1].equals("backup", true) ->
+                    listOf("save", "list", "status", "restore", "help").filter { it.startsWith(args[3], true) }
                 args[0].equals("admin", true) && args[1].lowercase() in
                     setOf("points", "unmanage", "next", "finish") ->
                     listOf("help").filter { it.startsWith(args[3], true) }
@@ -476,6 +494,8 @@ class ArcFarmsCommand(
             5 -> when {
                 args[0].equals("admin", true) && args[1].equals("point", true) ->
                     listOf("clear", "remove", "help").filter { it.startsWith(args[4], true) }
+                args[0].equals("admin", true) && args[1].equals("backup", true) && args[3].equals("restore", true) ->
+                    listOf("help").filter { it.startsWith(args[4], true) }
                 else -> emptyList()
             }
             else -> emptyList()

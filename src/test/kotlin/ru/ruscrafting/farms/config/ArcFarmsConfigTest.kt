@@ -36,7 +36,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().permission shouldStartWith "arcfarms."
         settings.lumbermills.single().permission shouldStartWith "arcfarms."
         settings.mines.all { it.permission.startsWith("arcfarms.") } shouldBe true
-        settings.farms.single().orders.maxOf { order -> order.required.values.sum() } shouldBe 2_560
+        settings.farms.single().orders.maxOf { order -> order.required.values.sum() } shouldBe 2_208
         settings.farms.single().orders.associate { it.id to it.required } shouldBe mapOf(
             "miners_rations" to mapOf("WHEAT" to 640, "CARROTS" to 320, "POTATOES" to 320),
             "bakery_supply" to mapOf("WHEAT" to 960, "BEETROOTS" to 320),
@@ -45,16 +45,16 @@ class ArcFarmsConfigTest : FunSpec({
                 "POTATOES" to 320,
                 "BEETROOTS" to 320,
                 "SWEET_BERRY_BUSH" to 320,
-                "MELON" to 160,
-                "PUMPKIN" to 160,
+                "MELON" to 48,
+                "PUMPKIN" to 48,
             ),
             "harvest_festival" to mapOf(
                 "WHEAT" to 800,
                 "CARROTS" to 480,
                 "POTATOES" to 480,
                 "BEETROOTS" to 320,
-                "MELON" to 240,
-                "PUMPKIN" to 240,
+                "MELON" to 64,
+                "PUMPKIN" to 64,
             ),
             "deep_mine_relief" to mapOf("WHEAT" to 800, "CARROTS" to 480, "POTATOES" to 640),
             "master_baker_request" to mapOf("WHEAT" to 1_440, "BEETROOTS" to 480),
@@ -132,15 +132,15 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().seederPatchMaxSize shouldBe 2_048
         settings.farms.single().seederComponentGap shouldBe 16
         settings.farms.single().seederComponentLimit shouldBe 8
-        settings.farms.single().seederWorkingWidth shouldBe 7
-        settings.farms.single().seederLaneTolerance shouldBe 7.0
-        settings.farms.single().seederWaypointReach shouldBe 6.0
+        settings.farms.single().seederWorkingRadius shouldBe 8.0
         settings.farms.single().seederBlocksPerUpdate shouldBe 128
         settings.farms.single().preparationSearchRadius shouldBe 64
         settings.farms.single().fixedCropRespawnSeconds shouldBe 20
         settings.farms.single().restoreBlocksPerTick shouldBe 24
         settings.farms.single().blockReindexBlocksPerTick shouldBe 4_096
         settings.farms.single().blockReindexMaxBlocks shouldBe 20_000_000
+        settings.farms.single().backupBlocksPerTick shouldBe 2_048
+        settings.farms.single().backupMaxBlocks shouldBe 4_000_000
         settings.farms.single().crops shouldBe
             setOf("WHEAT", "CARROTS", "POTATOES", "BEETROOTS", "SWEET_BERRY_BUSH", "MELON", "PUMPKIN")
         settings.farms.single().careTypes shouldContainExactly FarmCareType.entries.filterNot { it == FarmCareType.SEEDER }
@@ -181,14 +181,14 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().delivery.world shouldBe "sp11"
         settings.farms.single().delivery.x shouldBe 201.65
         settings.farms.single().delivery.crates shouldBe 3
-        settings.farms.single().delivery.spawnRadius shouldBe 8
+        settings.farms.single().delivery.spawnRadius shouldBe 24
         settings.farms.single().delivery.minCrateSpacing shouldBe 5.0
         settings.farms.single().delivery.pickup.z shouldBe 463.5
         settings.farms.single().delivery.itemMaterial shouldBe "BARREL"
         settings.farms.single().delivery.itemCustomModelData shouldBe 0
         settings.farms.single().delivery.displayTransform shouldBe FarmItemDisplayTransform.GROUND
         settings.farms.single().delivery.displayScale shouldBe 2.0f
-        settings.farms.single().delivery.displayYOffset shouldBe 0.15
+        settings.farms.single().delivery.displayYOffset shouldBe 0.55
         settings.farms.single().delivery.carriedScale shouldBe 1.5f
         settings.farms.single().delivery.carriedYOffset shouldBe 0.65
         settings.farms.single().delivery.displayViewRange shouldBe 2.0f
@@ -210,10 +210,10 @@ class ArcFarmsConfigTest : FunSpec({
         classicSettings.farmScoreboard.provider shouldBe FarmScoreboardProvider.TAB
         classicSettings.farms.single().delivery.itemMaterial shouldBe "PAPER"
         classicSettings.farms.single().delivery.itemCustomModelData shouldBe 10_774
-        classicSettings.farms.single().delivery.spawnRadius shouldBe 12
+        classicSettings.farms.single().delivery.spawnRadius shouldBe 24
         classicSettings.farms.single().delivery.minCrateSpacing shouldBe 5.0
         classicSettings.farms.single().delivery.displayScale shouldBe 1.8f
-        classicSettings.farms.single().delivery.displayYOffset shouldBe 0.04
+        classicSettings.farms.single().delivery.displayYOffset shouldBe 0.55
         classicSettings.farms.single().delivery.carriedScale shouldBe 1.4f
         classicSettings.farms.single().careVisuals.getValue(FarmCareRole.VALVE).customModelData shouldBe 11_859
         classicSettings.farms.single().careVisuals.getValue(FarmCareRole.SCARECROW).customModelData shouldBe 12_160
@@ -226,7 +226,7 @@ class ArcFarmsConfigTest : FunSpec({
         classicSettings.farms.single().contractCartVisual.customModelData shouldBe 10_747
         classicSettings.farms.single().contractCartVisual.displayTransform shouldBe FarmItemDisplayTransform.GROUND
         classicSettings.farms.single().contractCartVisual.scale shouldBe 4.4f
-        classicSettings.farms.single().contractCartVisual.yOffset shouldBe -0.20
+        classicSettings.farms.single().contractCartVisual.yOffset shouldBe 0.00
         classicSettings.farms.single().contractCartVisual.loadScale shouldBe 1.55f
         classicSettings.farms.single().contractCartVisual.viewRange shouldBe 2.0f
         classicSettings.farms.single().rewards.money.amountCents shouldBe 50_000
@@ -385,6 +385,18 @@ class ArcFarmsConfigTest : FunSpec({
 
         shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(configPath.parent) }
             .message shouldContain "preparation-patch-max-size"
+    }
+
+    test("mechanized fieldwork explains radius control without checkpoints") {
+        val repositoryRoot = Path.of(System.getProperty("arcfarms.repositoryRoot"))
+        val root = repositoryRoot.resolve("ArcFarms/src/main/resources")
+        val ru = Config(root, "lang/ru.yml")
+        val en = Config(root, "lang/en.yml")
+
+        ru.string("farm.care-seeder-following") shouldContain "рядом"
+        ru.string("scoreboard.hint.care.seeder-tilling") shouldNotContain "метк"
+        en.string("farm.care-seeder-following") shouldContain "nearby"
+        en.string("scoreboard.hint.care.seeder-planting") shouldNotContain "marker"
     }
 
     test("mechanized patch remains bounded before runtime scanning") {
@@ -611,9 +623,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().preparationPatchMaxSize shouldBe 160
         settings.farms.single().seederPatchSize shouldBe 24
         settings.farms.single().seederPatchMaxSize shouldBe 48
-        settings.farms.single().seederWorkingWidth shouldBe 4
-        settings.farms.single().seederLaneTolerance shouldBe 4.0
-        settings.farms.single().seederWaypointReach shouldBe 4.0
+        settings.farms.single().seederWorkingRadius shouldBe 4.0
         settings.farms.single().preparationSearchRadius shouldBe 4
         settings.farms.single().careTargetCount shouldBe 3
         settings.farms.single().animalRescueTargetCount shouldBe 4
@@ -664,10 +674,12 @@ class ArcFarmsConfigTest : FunSpec({
         rows.size shouldBe 14
         plain[0] shouldBe "Заказ"
         plain[1].startsWith("| ") shouldBe true
+        plain[2] shouldBe ""
         plain[3] shouldBe "Задача"
         plain[4] shouldBe "| Сбор урожая"
         plain[5] shouldBe "| 1250 / 3200"
         plain[6] shouldBe "| Собирайте культуры из списка"
+        plain[7] shouldBe ""
         plain[8] shouldBe "Урожай"
         plain.drop(9) shouldBe listOf(
             "| Пшеница 1000/1600",
@@ -708,12 +720,12 @@ class ArcFarmsConfigTest : FunSpec({
                 phase = FarmPhase.CARE,
                 careType = FarmCareType.SEEDER,
                 seederStage = FarmSeederStage.TILLING,
-            ) to "Проходите любые метки — техника вспашет широкую полосу",
+            ) to "Проведите лошадь рядом с необработанными грядками",
             base.copy(
                 phase = FarmPhase.CARE,
                 careType = FarmCareType.SEEDER,
                 seederStage = FarmSeederStage.PLANTING,
-            ) to "Проходите любые оставшиеся метки и засейте поле",
+            ) to "Проведите лошадь рядом с оставшимися грядками",
         ) + mapOf(
             FarmCareType.WEEDS to "Ищите подсвеченные корни",
             FarmCareType.IRRIGATION to "Открывайте вентили по порядку",

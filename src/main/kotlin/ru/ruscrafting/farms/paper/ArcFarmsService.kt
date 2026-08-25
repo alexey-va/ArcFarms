@@ -300,6 +300,16 @@ class ArcFarmsService(
         locale,
         debug,
     ) { player, key, values -> sendChat(player, key, values) }
+    private val farmBackupAdmin = FarmBackupAdminController(
+        plugin,
+        plugin.dataFolder.toPath(),
+        farmBlockRegistry,
+        fixedCropJournal,
+        locale,
+        debug,
+        { player, key, values -> sendChat(player, key, values) },
+        clock,
+    )
     private val pestZoneKey = NamespacedKey(plugin, "farm_pest_zone")
     private val pestSequenceKey = NamespacedKey(plugin, "farm_pest_sequence")
     private val pestNestZoneKey = NamespacedKey(plugin, "farm_pest_nest_zone")
@@ -362,6 +372,7 @@ class ArcFarmsService(
 
     fun reload(candidate: ArcFarmsConfig, publishSettings: (ArcFarmsConfig) -> Unit) {
         check(started) { "ArcFarms service is not started" }
+        require(!farmBackupAdmin.busy()) { "ArcFarms cannot reload while a farm backup operation is active" }
         val snapshot = snapshotState()
         val reconciledSnapshot = reconcileFarmOrderProgress(candidate, snapshot)
         validateReload(candidate, reconciledSnapshot)
@@ -1030,6 +1041,40 @@ class ArcFarmsService(
             return false
         }
         return farmBlockAdmin.status(player, zoneId)
+    }
+
+    fun adminSaveFarmBackup(player: Player, zoneId: String): Boolean =
+        farmBackupContext(player, zoneId)?.let { farmBackupAdmin.save(player, it) } ?: false
+
+    fun adminRestoreFarmBackup(player: Player, zoneId: String, backupId: String): Boolean =
+        farmBackupContext(player, zoneId)?.let { farmBackupAdmin.restore(player, it, backupId) } ?: false
+
+    fun adminListFarmBackups(player: Player, zoneId: String): Boolean =
+        farmBackupContext(player, zoneId)?.let { farmBackupAdmin.list(player, it) } ?: false
+
+    fun adminFarmBackupStatus(player: Player, zoneId: String): Boolean =
+        farmBackupContext(player, zoneId)?.let { farmBackupAdmin.status(player, it) } ?: false
+
+    private fun farmBackupContext(player: Player, zoneId: String): FarmBackupAdminContext? {
+        val runtime = farms.firstOrNull { it.settings.id == zoneId } ?: run {
+            sendChat(player, MessageKey.ADMIN_ZONE_UNKNOWN, mapOf("zone" to locale.text(zoneId)))
+            return null
+        }
+        return FarmBackupAdminContext(
+            zoneId = zoneId,
+            region = runtime.region,
+            idle = runtime.state.phase == FarmPhase.IDLE,
+            reindexDefinition = farmBlockIndexDefinition(runtime),
+            backupBlocksPerTick = runtime.settings.backupBlocksPerTick,
+            backupMaxBlocks = runtime.settings.backupMaxBlocks,
+            paused = zoneId in adminPausedFarmZones,
+            pause = { adminPausedFarmZones += zoneId },
+            resume = { adminPausedFarmZones -= zoneId },
+            clearAdminModes = {
+                adminEditPlayers.remove(player.uniqueId)
+                adminInspectPlayers.remove(player.uniqueId)
+            },
+        )
     }
 
     private fun inspectFarmBlock(player: Player, block: Block) {
@@ -2965,24 +3010,20 @@ class ArcFarmsService(
                 val origin = actor?.location?.takeIf(runtime.region::contains)
                     ?: farmAreaCenter(patch)?.location()
                     ?: return null
-                val passes = FarmMachinePlanner.plan(
-                    patch,
-                    runtime.settings.seederWorkingWidth,
-                    origin.x,
-                    origin.z,
+                val start = patch.minWithOrNull(
+                    compareBy<FarmPlotPosition> { plot ->
+                        val dx = plot.x + 0.5 - origin.x
+                        val dz = plot.z + 0.5 - origin.z
+                        dx * dx + dz * dz
+                    }.thenBy(FarmPlotPosition::x).thenBy(FarmPlotPosition::z),
+                ) ?: return null
+                listOf(
+                    FarmCareTarget(
+                        0,
+                        FarmCareRole.SEEDER_HORSE,
+                        FarmPointPosition(start.world, start.x + 0.5, start.y + 1.05, start.z + 0.5),
+                    ),
                 )
-                if (passes.isEmpty()) return null
-                val first = passes.first().entry
-                val start = FarmPointPosition(first.world, first.x + 0.5, first.y + 1.05, first.z + 0.5)
-                listOf(FarmCareTarget(0, FarmCareRole.SEEDER_HORSE, start)) +
-                    passes.mapIndexed { index, pass ->
-                        val plot = pass.exit
-                        FarmCareTarget(
-                            index + 1,
-                            FarmCareRole.SEEDER_WAYPOINT,
-                            FarmPointPosition(plot.world, plot.x + 0.5, plot.y + 1.05, plot.z + 0.5),
-                        )
-                    }
             }
             FarmCareType.WEEDS -> bedTargets(FarmCareRole.WEED_ROOT, count + 1, required = 2)
             FarmCareType.IRRIGATION -> {
@@ -3520,7 +3561,9 @@ class ArcFarmsService(
             event.isDropItems = false
             event.expToDrop = 0
             if (commit.fixedCrop) {
-                harvestFixedCrop(runtime, event.player, event.block, commit.now)
+                if (prepareFixedCropHarvest(runtime, event.player, event.block, commit.now)) {
+                    event.isCancelled = false
+                }
                 return@handleFarmCropHarvest
             }
             event.isCancelled = false
@@ -3658,18 +3701,26 @@ class ArcFarmsService(
         }
     }
 
-    private fun harvestFixedCrop(runtime: FarmRuntime, player: Player, block: Block, now: Long) {
+    private fun prepareFixedCropHarvest(runtime: FarmRuntime, player: Player, block: Block, now: Long): Boolean {
         val positionKey = positionKey(block.location)
         if (fixedCropJournal.contains(positionKey)) {
             sendActionBar(player, MessageKey.FARM_FIXED_CROP_PENDING)
-            return
+            return false
         }
         val ledgerRecord = runCatching { farmBlockLedger.captureFixedCrop(block, runtime.settings.id) }.getOrElse { failure ->
             plugin.logger.log(Level.SEVERE, "Could not capture fixed crop metadata at $positionKey", failure)
             sendChat(player, MessageKey.GENERIC_ERROR)
-            return
+            return false
         }
         val restoreAt = now + TimeUnit.SECONDS.toMillis(runtime.settings.fixedCropRespawnSeconds.toLong())
+        val scheduledRecord = runCatching {
+            farmBlockLedger.scheduleExistingFixedCropRestore(block, restoreAt)
+                ?: error("Fixed crop PDC disappeared before harvest")
+        }.getOrElse { failure ->
+            plugin.logger.log(Level.SEVERE, "Could not schedule fixed crop restore at $positionKey", failure)
+            sendChat(player, MessageKey.GENERIC_ERROR)
+            return false
+        }
         val pending = PendingFixedFarmCrop(
             zoneId = runtime.settings.id,
             world = block.world.name,
@@ -3683,49 +3734,56 @@ class ArcFarmsService(
         val sequence = runtime.state.sequence
         runCatching { fixedCropJournal.prepare(pending) }.getOrElse { failure ->
             plugin.logger.log(Level.SEVERE, "Could not prepare fixed crop journal at $positionKey", failure)
+            farmBlockLedger.reconcileFixedCrop(
+                block,
+                runtime.settings.id,
+                scheduledRecord.originalBlockData,
+                null,
+            )
             sendChat(player, MessageKey.GENERIC_ERROR)
-            return
+            return false
         }.whenComplete { _, failure ->
-            Tasks.scheduler.runSync {
-                if (failure != null) {
-                    plugin.logger.log(Level.SEVERE, "Could not persist fixed crop journal at $positionKey", failure)
-                    if (player.isOnline) sendChat(player, MessageKey.GENERIC_ERROR)
-                    return@runSync
-                }
-                val currentRuntime = farms.firstOrNull {
-                    it.settings.id == pending.zoneId && it.state.sequence == sequence && it.state.phase == FarmPhase.HARVESTING
-                }
-                if (!isOperational() || currentRuntime == null || !player.isOnline || block.type != crop) {
-                    fixedCropJournal.remove(positionKey).whenComplete { _, retireFailure ->
-                        if (retireFailure != null) {
-                            plugin.logger.log(Level.SEVERE, "Could not retire unchanged fixed crop journal at $positionKey", retireFailure)
-                        }
-                    }
-                    return@runSync
-                }
-                runCatching {
-                    val record = farmBlockLedger.scheduleExistingFixedCropRestore(block, restoreAt)
-                        ?: error("Fixed crop PDC disappeared before committed harvest")
-                    block.setType(Material.AIR, false)
-                    fixedCropRestoreQueue.schedule(FarmFixedCropRestore(record.position(block.world.name), restoreAt))
-                }.onFailure { commitFailure ->
-                    plugin.logger.log(Level.SEVERE, "Could not commit fixed crop harvest at $positionKey", commitFailure)
-                    if (player.isOnline) sendChat(player, MessageKey.GENERIC_ERROR)
-                    return@runSync
-                }
-                debug.event(
-                    "farm_fixed_crop_committed",
-                    "player" to player.name,
-                    "zone" to currentRuntime.settings.id,
-                    "crop" to crop,
-                    "restore_at" to restoreAt,
-                    "x" to block.x,
-                    "y" to block.y,
-                    "z" to block.z,
+            if (failure != null) {
+                plugin.logger.log(
+                    Level.SEVERE,
+                    "Could not persist fixed crop journal at $positionKey; chunk PDC remains authoritative",
+                    failure,
                 )
-                handleFarmHarvest(currentRuntime, player, crop.name)
             }
         }
+        Tasks.scheduler.runLater(1L) {
+            if (!isOperational()) return@runLater
+            if (!block.type.isAir) {
+                farmBlockLedger.reconcileFixedCrop(
+                    block,
+                    pending.zoneId,
+                    pending.originalBlockData,
+                    null,
+                )
+                fixedCropJournal.remove(positionKey).whenComplete { _, failure ->
+                    if (failure != null) {
+                        plugin.logger.log(Level.SEVERE, "Could not roll back fixed crop journal at $positionKey", failure)
+                    }
+                }
+                return@runLater
+            }
+            fixedCropRestoreQueue.schedule(FarmFixedCropRestore(scheduledRecord.position(block.world.name), restoreAt))
+            val currentRuntime = farms.firstOrNull {
+                it.settings.id == pending.zoneId && it.state.sequence == sequence && it.state.phase == FarmPhase.HARVESTING
+            } ?: return@runLater
+            debug.event(
+                "farm_fixed_crop_committed",
+                "player" to player.name,
+                "zone" to currentRuntime.settings.id,
+                "crop" to crop,
+                "restore_at" to restoreAt,
+                "x" to block.x,
+                "y" to block.y,
+                "z" to block.z,
+            )
+            handleFarmHarvest(currentRuntime, player, crop.name)
+        }
+        return true
     }
 
     private fun handleFarmHarvest(runtime: FarmRuntime, player: Player, crop: String) {
@@ -4893,6 +4951,10 @@ class ArcFarmsService(
             .forEach { removeFarmCareEntities(it, "stale_target") }
         runtime.state.careTargets.forEach { target ->
             if (target.role == FarmCareRole.SEEDER_HORSE) return@forEach
+            if (target.role == FarmCareRole.SEEDER_WAYPOINT) {
+                removeFarmCareEntities(CareEntityKey(runtime.settings.id, target.id), "seeder_route_removed")
+                return@forEach
+            }
             if (target.complete && target.role !in setOf(FarmCareRole.HIVE, FarmCareRole.VALVE)) {
                 removeFarmCareEntities(CareEntityKey(runtime.settings.id, target.id), "target_complete")
                 return@forEach
@@ -5167,46 +5229,16 @@ class ArcFarmsService(
             releaseAnimalFollower(key, horse, "seeder_outside_zone")
             return
         }
-        val next = runtime.state.careTargets
-            .filter { it.role == FarmCareRole.SEEDER_WAYPOINT && !it.complete }
-            .minByOrNull { target ->
-                if (target.position.world != horse.world.name) return@minByOrNull Double.MAX_VALUE
-                val dx = target.position.x - horse.location.x
-                val dz = target.position.z - horse.location.z
-                dx * dx + dz * dz
-            }
-            ?: return
-        val world = Bukkit.getWorld(next.position.world) ?: return
-        val waypoint = Location(world, next.position.x, next.position.y, next.position.z)
-        val assignments = FarmMachinePlanner.assignToWaypoints(
-            runtime.state.preparationPatch,
-            runtime.state.careTargets.filter { it.role == FarmCareRole.SEEDER_WAYPOINT }
-                .map { it.id to it.position },
-            horseTarget.position,
-        )
-        val assigned = assignments[next.id].orEmpty()
-        if (assigned.isEmpty()) {
-            removeFarmCareEntities(CareEntityKey(runtime.settings.id, next.id), "seeder_lane_empty")
-            applyFarmResult(runtime, FarmShiftEngine.completeSeederPass(runtime.state, next.id, emptySet()), actor)
-            return
-        }
         val stage = requireNotNull(runtime.state.seederStage())
-        val reachedWaypoint = horse.world == world &&
-            horse.location.distanceSquared(waypoint) <= runtime.settings.seederWaypointReach * runtime.settings.seederWaypointReach
         val completedPlots = if (stage == FarmSeederStage.TILLING) runtime.state.tilledPlots else runtime.state.plantedPlots
-        val missing = assigned.filterNot(completedPlots::contains)
-        val reachable = if (reachedWaypoint) {
-            missing.toSet()
-        } else {
-            FarmMachinePlanner.plotsReachedToward(
-                pass = missing,
-                destination = next.position,
-                machineX = horse.location.x,
-                machineZ = horse.location.z,
-                laneTolerance = runtime.settings.seederLaneTolerance,
-                leadDistance = runtime.settings.seederWorkingWidth / 2.0 + 1.5,
-            )
-        }
+        val reachable = FarmMachinePlanner.plotsInWorkingRadius(
+            candidates = runtime.state.preparationPatch.filterNot(completedPlots::contains),
+            world = horse.world.name,
+            machineX = horse.location.x,
+            machineY = horse.location.y,
+            machineZ = horse.location.z,
+            radius = runtime.settings.seederWorkingRadius,
+        )
         val mutation = when (stage) {
             FarmSeederStage.TILLING -> farmMachineBlocks.till(
                 runtime.settings.id,
@@ -5224,44 +5256,7 @@ class ArcFarmsService(
             machineSwathFeedback(runtime, mutation.processed, stage)
             applyFarmResult(runtime, FarmShiftEngine.workSeeder(runtime.state, mutation.processed, actor.uniqueId), actor)
         }
-        if (reachedWaypoint) {
-            val worked = if (stage == FarmSeederStage.TILLING) runtime.state.tilledPlots else runtime.state.plantedPlots
-            if (!worked.containsAll(assigned)) {
-                if (allowInteraction("farm-seeder-pass-missing:${runtime.settings.id}:${actor.uniqueId}", 1_000)) {
-                    sendActionBar(actor, MessageKey.FARM_CARE_SEEDER_BLOCKED)
-                    debug.event(
-                        "farm_seeder_lane_blocked",
-                        "zone" to runtime.settings.id,
-                        "target" to next.id,
-                        "stage" to stage,
-                        "missing" to assigned.count { it !in worked },
-                        "player" to actor.name,
-                    )
-                }
-                return
-            }
-            removeFarmCareEntities(CareEntityKey(runtime.settings.id, next.id), "seeder_lane_complete")
-            debug.event(
-                "farm_seeder_lane_complete",
-                "zone" to runtime.settings.id,
-                "target" to next.id,
-                "plots" to assigned.size,
-                "stage" to stage,
-                "field_progress" to if (stage == FarmSeederStage.TILLING) {
-                    runtime.state.preparationProgress
-                } else {
-                    runtime.state.plantingProgress
-                },
-                "player" to actor.name,
-            )
-            farmCareFeedback(actor, waypoint, FarmCareRole.SEEDER_WAYPOINT, true)
-            applyFarmResult(
-                runtime,
-                FarmShiftEngine.completeSeederPass(runtime.state, next.id, assigned),
-                actor,
-            )
-            return
-        }
+        if (runtime.state.phase != FarmPhase.CARE || runtime.state.careType != FarmCareType.SEEDER || !horse.isValid) return
         if (!horse.isLeashed || runCatching { horse.leashHolder }.getOrNull() != actor) horse.setLeashHolder(actor)
         horse.pathfinder.moveTo(actor, 1.2)
         pullFarmAnimalTowardHolder(horse, actor)
@@ -5902,7 +5897,7 @@ class ArcFarmsService(
 
     private fun selectDeliveryAnchor(runtime: FarmRuntime, source: Location): FarmDeliveryPosition {
         val sources = farmPlacementSources(runtime, source)
-        val candidates = findDeliveryCandidates(runtime, sources, runtime.settings.placementSearchRadius)
+        val candidates = findDeliveryBedCandidates(runtime, sources, runtime.settings.placementSearchRadius)
         val receiving = point(runtime, FarmPointKind.RECEIVING)
         val selected = FarmDeliveryPlanner.selectTargets(
             candidates = candidates,
@@ -5928,7 +5923,7 @@ class ArcFarmsService(
         }
         val fallback = point(runtime, FarmPointKind.CRATES)
         plugin.logger.warning(
-            "No safe dynamic delivery position found near the harvester in ${runtime.settings.id}; using the configured fallback",
+            "No indexed farm bed is available for delivery crates in ${runtime.settings.id}; using the configured fallback",
         )
         return FarmDeliveryPosition(fallback.world, fallback.x, fallback.y, fallback.z)
     }
@@ -5992,6 +5987,37 @@ class ArcFarmsService(
             }
         }
         return candidates
+    }
+
+    private fun findDeliveryBedCandidates(
+        runtime: FarmRuntime,
+        sources: Collection<Location>,
+        radius: Int,
+    ): List<FarmDeliveryPosition> {
+        val world = runtime.region.world
+        val sourcePoints = sources.filter { it.world == world }.take(8)
+        if (sourcePoints.isEmpty()) return emptyList()
+        val radiusSquared = radius.toDouble() * radius
+        return farmBlockRegistry.beds(runtime.settings.id).asSequence()
+            .filter { it.world == world.name && world.isChunkLoaded(it.x shr 4, it.z shr 4) }
+            .filter { bed ->
+                sourcePoints.any { source ->
+                    val dx = bed.x + 0.5 - source.x
+                    val dz = bed.z + 0.5 - source.z
+                    dx * dx + dz * dz <= radiusSquared
+                }
+            }
+            .mapNotNull { bed ->
+                val soil = world.getBlockAt(bed.x, bed.y, bed.z)
+                val crop = soil.getRelative(org.bukkit.block.BlockFace.UP)
+                val overhead = crop.getRelative(org.bukkit.block.BlockFace.UP)
+                if (!FarmBlockPolicy.isSelectableBed(soil.type, crop.type, runtime.settings.crops)) return@mapNotNull null
+                if (crop.type.name !in runtime.settings.crops) return@mapNotNull null
+                if (!overhead.type.isAir || !runtime.region.contains(crop.location)) return@mapNotNull null
+                FarmDeliveryPosition(world.name, bed.x + 0.5, bed.y + 1.05, bed.z + 0.5)
+            }
+            .distinct()
+            .toList()
     }
 
     private fun ensureFarmContractScene(runtime: FarmRuntime) {
@@ -6154,7 +6180,10 @@ class ArcFarmsService(
 
     private fun spawnDeliveryCrate(runtime: FarmRuntime, key: DeliveryKey, position: FarmDeliveryPosition) {
         val world = Bukkit.getWorld(position.world) ?: return
-        val location = deliveryCrateLocation(runtime, position, key.index)
+        val location = deliveryCrateLocation(runtime, position, key.index) ?: run {
+            plugin.logger.severe("Farm ${runtime.settings.id} has no indexed bed for delivery crate ${key.index}")
+            return
+        }
         if (!world.isChunkLoaded(location.blockX shr 4, location.blockZ shr 4)) return
         if (!runtime.region.contains(location)) {
             plugin.logger.severe("Farm delivery position left ${runtime.region.label} for ${runtime.settings.id}; crate ${key.index} was not spawned")
@@ -6191,10 +6220,19 @@ class ArcFarmsService(
         )
     }
 
-    private fun deliveryCrateLocation(runtime: FarmRuntime, position: FarmDeliveryPosition, index: Int): Location {
+    private fun deliveryCrateLocation(runtime: FarmRuntime, position: FarmDeliveryPosition, index: Int): Location? {
         val world = requireNotNull(Bukkit.getWorld(position.world))
         val anchor = Location(world, position.x, position.y, position.z)
-        val candidates = findDeliveryCandidates(runtime, anchor, runtime.settings.delivery.spawnRadius)
+        val nearby = findDeliveryBedCandidates(runtime, listOf(anchor), runtime.settings.delivery.spawnRadius)
+        val candidates = if (nearby.size >= runtime.settings.delivery.crates) {
+            nearby
+        } else {
+            findDeliveryBedCandidates(
+                runtime,
+                farmPlacementSources(runtime, anchor),
+                runtime.settings.placementSearchRadius,
+            )
+        }
         val selectedTargets = FarmDeliveryPlanner.selectTargets(
             candidates = candidates,
             objectiveX = position.x,
@@ -6209,20 +6247,7 @@ class ArcFarmsService(
         selectedTargets.getOrNull(index)?.let { selected ->
             return Location(world, selected.x, selected.y, selected.z)
         }
-        val spacing = maxOf(runtime.settings.delivery.minCrateSpacing, 1.4)
-        val offsets = listOf(
-            0.0 to 0.0,
-            spacing to 0.0,
-            -spacing to 0.0,
-            0.0 to spacing,
-            0.0 to -spacing,
-            spacing to spacing,
-            -spacing to spacing,
-            spacing to -spacing,
-        )
-        val (x, z) = offsets[index]
-        val candidate = Location(world, position.x + x, position.y, position.z + z)
-        return candidate.takeIf(runtime.region::contains) ?: Location(world, position.x, position.y, position.z)
+        return null
     }
 
     private fun markDeliveryEntity(entity: Entity, runtime: FarmRuntime, index: Int) {
@@ -7044,13 +7069,7 @@ class ArcFarmsService(
                 val hive = runtime.state.careTargets.firstOrNull { it.role == FarmCareRole.HIVE }
                 val visible = when (runtime.state.careType) {
                     FarmCareType.SEEDER -> incomplete.firstOrNull { it.role == FarmCareRole.SEEDER_HORSE }
-                        ?.let(::listOf)
-                        ?: incomplete.filter { it.role == FarmCareRole.SEEDER_WAYPOINT }.minByOrNull { target ->
-                            if (target.position.world != player.world.name) return@minByOrNull Double.MAX_VALUE
-                            val dx = target.position.x - player.location.x
-                            val dz = target.position.z - player.location.z
-                            dx * dx + dz * dz
-                        }?.let(::listOf).orEmpty()
+                        ?.let(::listOf).orEmpty()
                     FarmCareType.IRRIGATION -> incomplete.minByOrNull(FarmCareTarget::id)?.let(::listOf).orEmpty()
                     FarmCareType.POLLINATION -> if ((pollenCharges[player.uniqueId] ?: 0) > 0) {
                         incomplete.filter { it.role == FarmCareRole.FLOWER_PATCH }
@@ -7067,29 +7086,6 @@ class ArcFarmsService(
                             Location(world, target.position.x, target.position.y - 1.0, target.position.z),
                             careRoleColor(target.role),
                         )
-                    }
-                }
-                if (runtime.state.careType == FarmCareType.SEEDER) {
-                    val next = visible.firstOrNull { it.role == FarmCareRole.SEEDER_WAYPOINT }
-                    if (next != null) {
-                        val assignments = FarmMachinePlanner.assignToWaypoints(
-                            runtime.state.preparationPatch,
-                            runtime.state.careTargets.filter { it.role == FarmCareRole.SEEDER_WAYPOINT }
-                                .map { it.id to it.position },
-                            runtime.state.careTargets.firstOrNull { it.role == FarmCareRole.SEEDER_HORSE }?.position,
-                        )
-                        FarmMachinePlanner.guidanceLine(assignments[next.id].orEmpty()).forEach { plot ->
-                            plot.location()?.let { location ->
-                                if (location.world == player.world) {
-                                    val color = if (runtime.state.seederStage() == FarmSeederStage.TILLING) {
-                                        FARM_TILL_COLOR
-                                    } else {
-                                        FARM_PLANT_COLOR
-                                    }
-                                    spawnGuidanceDust(player, location.toCenterLocation().add(0.0, 1.1, 0.0), color, 1.35f)
-                                }
-                            }
-                        }
                     }
                 }
                 if (runtime.state.careType == FarmCareType.ANIMAL_RESCUE) {
@@ -7121,7 +7117,7 @@ class ArcFarmsService(
                 (0 until runtime.settings.delivery.crates)
                     .filterNot(runtime.state.deliveredCrates::contains)
                     .filter { index -> DeliveryKey(runtime.settings.id, index) !in deliveryCarriers }
-                    .map { index -> deliveryCrateLocation(runtime, position, index) }
+                    .mapNotNull { index -> deliveryCrateLocation(runtime, position, index) }
             }.orEmpty()
             players(runtime.region).filter { it.world == world && !isAdminEditing(it) }.forEach { player ->
                 spawnGuidanceColumn(player, target, FARM_DELIVERY_COLOR)
@@ -8163,6 +8159,7 @@ class ArcFarmsService(
         runCatching(::hideAllBars).exceptionOrNull()?.let(failures::add)
         runCatching { farmScoreboards.restoreAll("plugin_close") }.exceptionOrNull()?.let(failures::add)
         runCatching(::cleanupOwnedFarmEntities).exceptionOrNull()?.let(failures::add)
+        runCatching(farmBackupAdmin::close).exceptionOrNull()?.let(failures::add)
         runCatching(farmBlockRegistry::close).exceptionOrNull()?.let(failures::add)
         if (stateSafeToPersist) runCatching(::persistBlocking).exceptionOrNull()?.let(failures::add)
         if (failures.isNotEmpty()) {

@@ -4,6 +4,7 @@ import com.sk89q.worldedit.IncompleteRegionException
 import com.sk89q.worldedit.WorldEdit
 import com.sk89q.worldedit.bukkit.BukkitAdapter
 import com.sk89q.worldedit.math.BlockVector3
+import com.sk89q.worldedit.regions.CuboidRegion
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 import ru.ruscrafting.farms.domain.FarmPlotPosition
@@ -11,6 +12,9 @@ import ru.ruscrafting.farms.domain.FarmPlotPosition
 internal class FarmWorldEditSelection(
     val world: String,
     val volume: Long,
+    val minimum: FarmPlotPosition,
+    val maximum: FarmPlotPosition,
+    val cuboid: Boolean,
     private val containsCoordinates: (Int, Int, Int) -> Boolean,
 ) {
     fun contains(position: FarmPlotPosition): Boolean =
@@ -37,10 +41,15 @@ internal object WorldEditSelectionReader {
             return WorldEditSelectionResult.Incomplete
         }
         val world = BukkitAdapter.adapt(selectionWorld).name
+        val minimum = region.minimumPoint
+        val maximum = region.maximumPoint
         return WorldEditSelectionResult.Available(
             FarmWorldEditSelection(
                 world = world,
                 volume = region.volume,
+                minimum = FarmPlotPosition(world, minimum.x(), minimum.y(), minimum.z()),
+                maximum = FarmPlotPosition(world, maximum.x(), maximum.y(), maximum.z()),
+                cuboid = region is CuboidRegion,
                 containsCoordinates = { x, y, z -> region.contains(BlockVector3.at(x, y, z)) },
             ),
         )

@@ -437,7 +437,6 @@ object FarmShiftEngine {
         require(targets.map { it.position.world }.distinct().size == 1) { "Farm care scene crosses worlds" }
         if (type == FarmCareType.SEEDER) {
             require(targets.count { it.role == FarmCareRole.SEEDER_HORSE } == 1) { "Seeder scene must contain one horse" }
-            require(targets.any { it.role == FarmCareRole.SEEDER_WAYPOINT }) { "Seeder scene has no field passes" }
         }
         return EngineResult(
             current.copy(
@@ -484,15 +483,26 @@ object FarmShiftEngine {
                 val added = processed - current.tilledPlots
                 if (added.isEmpty()) return EngineResult(current, false)
                 val tilled = current.tilledPlots + added
+                val complete = tilled.containsAll(current.preparationPatch)
                 EngineResult(
                     current.copy(
                         tilledPlots = tilled,
                         preparationProgress = tilled.size.coerceAtMost(current.preparationRequired),
+                        seederStage = if (complete) FarmSeederStage.PLANTING else FarmSeederStage.TILLING,
+                        careTargets = if (complete) {
+                            current.careTargets.filter { it.role == FarmCareRole.SEEDER_HORSE }
+                        } else {
+                            current.careTargets
+                        },
                         contributors = incrementContribution(current.contributors, playerId, added.size),
                     ),
                     true,
                     contribution = added.size,
-                    events = listOf(ShiftEvent.SEEDER_PROGRESS),
+                    events = if (complete) {
+                        listOf(ShiftEvent.SEEDER_PLANTING_STARTED)
+                    } else {
+                        listOf(ShiftEvent.SEEDER_PROGRESS)
+                    },
                 )
             }
             FarmSeederStage.PLANTING -> {
@@ -500,75 +510,26 @@ object FarmShiftEngine {
                 val added = processed - current.plantedPlots
                 if (added.isEmpty()) return EngineResult(current, false)
                 val planted = current.plantedPlots + added
+                val complete = planted.containsAll(current.preparationPatch)
                 EngineResult(
                     current.copy(
+                        phase = if (complete) FarmPhase.HARVESTING else FarmPhase.CARE,
                         plantedPlots = planted,
                         plantingProgress = planted.size.coerceAtMost(current.preparationRequired),
+                        seederStage = if (complete) null else FarmSeederStage.PLANTING,
+                        careTargets = if (complete) emptyList() else current.careTargets,
                         contributors = incrementContribution(current.contributors, playerId, added.size),
                     ),
                     true,
                     contribution = added.size,
-                    events = listOf(ShiftEvent.SEEDER_PROGRESS),
-                )
-            }
-        }
-    }
-
-    fun completeSeederPass(
-        current: FarmShiftState,
-        targetId: Int,
-        passPlots: Set<FarmPlotPosition>,
-    ): EngineResult<FarmShiftState> {
-        if (current.phase != FarmPhase.CARE || current.careType != FarmCareType.SEEDER) {
-            return EngineResult(current, false)
-        }
-        require(passPlots.all(current.preparationPatch::contains)) {
-            "Seeder pass escaped the preparation patch"
-        }
-        val stage = requireNotNull(current.seederStage())
-        val target = current.careTargets.firstOrNull { it.id == targetId } ?: return EngineResult(current, false)
-        if (target.role != FarmCareRole.SEEDER_WAYPOINT) return EngineResult(current, false)
-        if (target.complete) return EngineResult(current, false)
-        val completedPlots = if (stage == FarmSeederStage.TILLING) current.tilledPlots else current.plantedPlots
-        if (!completedPlots.containsAll(passPlots)) return EngineResult(current, false)
-        val targets = current.careTargets.map { candidate ->
-            if (candidate.id == targetId) candidate.copy(progress = candidate.progress + 1) else candidate
-        }
-        val routeComplete = targets.filter { it.role == FarmCareRole.SEEDER_WAYPOINT }.all(FarmCareTarget::complete)
-        if (routeComplete && !completedPlots.containsAll(current.preparationPatch)) return EngineResult(current, false)
-        if (routeComplete && stage == FarmSeederStage.TILLING) {
-            val horse = targets.single { it.role == FarmCareRole.SEEDER_HORSE }
-            val waypoints = targets.filter { it.role == FarmCareRole.SEEDER_WAYPOINT }
-            val assignments = FarmMachinePlanner.assignToWaypoints(
-                current.preparationPatch,
-                waypoints.map { it.id to it.position },
-                horse.position,
-            )
-            val plantingTargets = targets.map { candidate ->
-                if (candidate.role != FarmCareRole.SEEDER_WAYPOINT) return@map candidate
-                val pass = assignments[candidate.id].orEmpty()
-                candidate.copy(
-                    position = if (pass.isEmpty()) candidate.position else {
-                        FarmMachinePlanner.oppositeEndpoint(pass, candidate.position)
+                    events = if (complete) {
+                        listOf(ShiftEvent.CARE_RESOLVED)
+                    } else {
+                        listOf(ShiftEvent.SEEDER_PROGRESS)
                     },
-                    progress = 0,
                 )
             }
-            return EngineResult(
-                current.copy(careTargets = plantingTargets, seederStage = FarmSeederStage.PLANTING),
-                true,
-                events = listOf(ShiftEvent.CARE_PROGRESS, ShiftEvent.SEEDER_PLANTING_STARTED),
-            )
         }
-        return EngineResult(
-            current.copy(
-                phase = if (routeComplete) FarmPhase.HARVESTING else FarmPhase.CARE,
-                careTargets = targets,
-                seederStage = if (routeComplete) null else current.seederStage,
-            ),
-            true,
-            events = listOf(ShiftEvent.CARE_PROGRESS) + if (routeComplete) listOf(ShiftEvent.CARE_RESOLVED) else emptyList(),
-        )
     }
 
     fun advanceCare(

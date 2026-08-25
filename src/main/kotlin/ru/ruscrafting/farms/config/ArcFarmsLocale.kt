@@ -49,10 +49,26 @@ enum class MessageKey(val path: String) {
     ADMIN_HELP_EDIT("admin.command-help.edit"),
     ADMIN_HELP_INSPECT("admin.command-help.inspect"),
     ADMIN_HELP_BLOCKRESET("admin.command-help.blockreset"),
+    ADMIN_HELP_BACKUP("admin.command-help.backup"),
     ADMIN_HELP_POINTS("admin.command-help.points"),
     ADMIN_HELP_UNMANAGE("admin.command-help.unmanage"),
     ADMIN_HELP_NEXT("admin.command-help.next"),
     ADMIN_HELP_FINISH("admin.command-help.finish"),
+    ADMIN_BACKUP_SELECTION_REQUIRED("admin.backup-selection-required"),
+    ADMIN_BACKUP_ACTIVE_SHIFT("admin.backup-active-shift"),
+    ADMIN_BACKUP_STARTED("admin.backup-started"),
+    ADMIN_BACKUP_BUSY("admin.backup-busy"),
+    ADMIN_BACKUP_REJECTED("admin.backup-rejected"),
+    ADMIN_BACKUP_STATUS("admin.backup-status"),
+    ADMIN_BACKUP_IDLE("admin.backup-idle"),
+    ADMIN_BACKUP_SAVED("admin.backup-saved"),
+    ADMIN_BACKUP_SAFETY_SAVED("admin.backup-safety-saved"),
+    ADMIN_BACKUP_RESTORED("admin.backup-restored"),
+    ADMIN_BACKUP_REINDEXED("admin.backup-reindexed"),
+    ADMIN_BACKUP_LIST_HEADER("admin.backup-list-header"),
+    ADMIN_BACKUP_LIST_ENTRY("admin.backup-list-entry"),
+    ADMIN_BACKUP_LIST_EMPTY("admin.backup-list-empty"),
+    ADMIN_BACKUP_FAILED("admin.backup-failed"),
     ADMIN_POINT_HELP_HEADER("admin.point-help-header"),
     ADMIN_POINT_HELP_ENTRY("admin.point-help-entry"),
     ADMIN_POINT_HELP_FOOTER("admin.point-help-footer"),
@@ -351,6 +367,12 @@ class ArcFarmsLocale(
             add("admin-inspect.restore.pending")
             add("admin.blockreset-phase.scanning")
             add("admin.blockreset-phase.applying")
+            listOf("copying", "writing", "reading", "safety_backup", "restoring")
+                .mapTo(this) { "admin.backup-phase.$it" }
+            listOf("selection_required", "cuboid_required", "wrong_world", "outside_zone", "too_large", "unknown_backup")
+                .mapTo(this) { "admin.backup-rejection.$it" }
+            add("admin.backup-reason.manual")
+            add("admin.backup-reason.pre_restore")
             listOf("managed", "patch", "drought", "drought-damaged", "pest-nest", "pest-damaged", "orchard")
                 .mapTo(this) { "admin-inspect.tracking-kind.$it" }
             val adminStages = listOf(

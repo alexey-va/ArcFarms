@@ -58,6 +58,9 @@ farm-zones:
     block-reindex-blocks-per-tick: 4096
     # Refuse accidentally huge WorldGuard bounds instead of freezing the server.
     block-reindex-max-blocks: 20000000
+    # WorldEdit farm backups copy and restore in bounded main-thread slices.
+    backup-blocks-per-tick: 2048
+    backup-max-blocks: 4000000
     care-radius: 10
     care-types: [WEEDS, IRRIGATION, POLLINATION, APPLE_HARVEST, STORM_COVERS, SCARECROWS, ANIMAL_RESCUE, DISEASE, MOLES]
     care-targets: 4
@@ -76,10 +79,8 @@ farm-zones:
     seeder-patch-max-size: 2048
     seeder-component-gap: 16
     seeder-component-limit: 8
-    seeder-working-width: 7
-    # Forgives a horse that is several blocks off the exact guidance line.
-    seeder-lane-tolerance: 7.0
-    seeder-waypoint-reach: 6.0
+    # Every indexed bed inside this radius around the horse is processed.
+    seeder-working-radius: 8.0
     # Bounds tilling/planting mutations per machinery update (every 5 ticks).
     seeder-blocks-per-update: 128
     disease-initial-spots: 2
@@ -108,7 +109,6 @@ farm-zones:
         view-range: 2.0
     care-visuals:
       seeder-horse: {material: SADDLE, custom-model-data: 0}
-      seeder-waypoint: {material: WHEAT_SEEDS, custom-model-data: 0}
       weed-root: {material: MANGROVE_ROOTS, custom-model-data: 0}
       valve: {material: TRIPWIRE_HOOK, custom-model-data: 0}
       hive: {material: BEE_NEST, custom-model-data: 0}
@@ -155,13 +155,13 @@ farm-zones:
       z: 453.46
       radius: 2.5
       crates: 3
-      spawn-radius: 8
+      spawn-radius: 24
       min-crate-spacing: 5.0
       pickup: {x: 212.5, y: 49.0, z: 463.5}
       item: {material: BARREL, custom-model-data: 0}
       display-transform: GROUND
       display-scale: 2.0
-      display-y-offset: 0.15
+      display-y-offset: 0.55
       carried-scale: 1.5
       carried-y-offset: 0.65
       display-view-range: 2.0
@@ -204,14 +204,14 @@ farm-zones:
         cart-load: {material: WHEAT, custom-model-data: 0}
       market_crates:
         rarity: COMMON
-        crops: [CARROTS:320, POTATOES:320, BEETROOTS:320, SWEET_BERRY_BUSH:320, MELON:160, PUMPKIN:160]
+        crops: [CARROTS:320, POTATOES:320, BEETROOTS:320, SWEET_BERRY_BUSH:320, MELON:48, PUMPKIN:48]
         care-types: [WEEDS, APPLE_HARVEST, SCARECROWS, ANIMAL_RESCUE, STORM_COVERS]
         incident-types: [PESTS, DROUGHT]
         customer: MARKET_TRADER
         cart-load: {material: CARROT, custom-model-data: 0}
       harvest_festival:
         rarity: RARE
-        crops: [WHEAT:800, CARROTS:480, POTATOES:480, BEETROOTS:320, MELON:240, PUMPKIN:240]
+        crops: [WHEAT:800, CARROTS:480, POTATOES:480, BEETROOTS:320, MELON:64, PUMPKIN:64]
         care-types: [POLLINATION, APPLE_HARVEST, STORM_COVERS, SCARECROWS]
         incident-types: [PESTS, DROUGHT]
         customer: MARKET_TRADER

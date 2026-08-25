@@ -152,7 +152,10 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 validatePoint(target.position)
             }
             if (farm.phase == FarmPhase.CARE) {
-                require(farm.careType != null && farm.careTargets.isNotEmpty() && farm.careTargets.any { !it.complete }) {
+                require(
+                    farm.careType != null && farm.careTargets.isNotEmpty() &&
+                        (farm.careType == FarmCareType.SEEDER || farm.careTargets.any { !it.complete }),
+                ) {
                     "Active farm care state is incomplete"
                 }
             }
@@ -163,9 +166,6 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
             if (farm.phase == FarmPhase.CARE && farm.careType == FarmCareType.SEEDER) {
                 require(farm.careTargets.count { it.role == FarmCareRole.SEEDER_HORSE } == 1) {
                     "Farm seeder state must contain one horse"
-                }
-                require(farm.careTargets.any { it.role == FarmCareRole.SEEDER_WAYPOINT }) {
-                    "Farm seeder state has no field passes"
                 }
             }
 
