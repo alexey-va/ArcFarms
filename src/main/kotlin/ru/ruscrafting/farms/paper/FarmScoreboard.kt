@@ -18,6 +18,8 @@ internal data class FarmScoreboardView(
     val careType: FarmCareType? = null,
     val seederStage: FarmSeederStage? = null,
     val incidentType: FarmIncidentType? = null,
+    val incidentCrop: String? = null,
+    val marketAccepted: Boolean = false,
     val carrying: Boolean = false,
 )
 
@@ -36,14 +38,18 @@ internal class FarmScoreboardRenderer(
         add(Component.empty())
         add(locale.renderPath("scoreboard.section.current", audience))
         add(locale.renderPath("scoreboard.objective-line", audience, mapOf("objective" to objective(view, audience))))
-        add(locale.renderPath(
-            "scoreboard.progress",
-            audience,
-            mapOf(
-                "done" to locale.text(view.done.coerceAtLeast(0)),
-                "total" to locale.text(view.total.coerceAtLeast(1)),
-            ),
-        ))
+        if (view.phase == FarmPhase.INCIDENT && view.incidentType == FarmIncidentType.MARKET && !view.marketAccepted) {
+            add(locale.renderPath("scoreboard.market-pending", audience))
+        } else {
+            add(locale.renderPath(
+                "scoreboard.progress",
+                audience,
+                mapOf(
+                    "done" to locale.text(view.done.coerceAtLeast(0)),
+                    "total" to locale.text(view.total.coerceAtLeast(1)),
+                ),
+            ))
+        }
         add(locale.renderPath("scoreboard.hint-line", audience, mapOf("hint" to hint(view, audience))))
         add(Component.empty())
         add(locale.renderPath("scoreboard.section.crops", audience))
@@ -76,7 +82,11 @@ internal class FarmScoreboardRenderer(
                 null -> "scoreboard.objective.care"
             }
             FarmPhase.HARVESTING -> "scoreboard.objective.harvesting"
-            FarmPhase.INCIDENT -> "scoreboard.objective.${view.incidentType.scoreboardId()}"
+            FarmPhase.INCIDENT -> if (view.incidentType == FarmIncidentType.MARKET) {
+                if (view.marketAccepted) "scoreboard.objective.market-active" else "scoreboard.objective.market-pending"
+            } else {
+                "scoreboard.objective.${view.incidentType.scoreboardId()}"
+            }
             FarmPhase.DELIVERY -> if (view.carrying) {
                 "scoreboard.objective.delivery-carrying"
             } else {
@@ -84,9 +94,14 @@ internal class FarmScoreboardRenderer(
             }
             FarmPhase.COOLDOWN -> "scoreboard.objective.cooldown"
         }
-        val values = view.careType?.let { type ->
-            mapOf("care" to locale.renderPath("care.${type.name.lowercase()}.name", audience))
-        }.orEmpty()
+        val values = buildMap {
+            view.careType?.let { type ->
+                put("care", locale.renderPath("care.${type.name.lowercase()}.name", audience))
+            }
+            view.incidentCrop?.let { crop ->
+                put("crop", locale.renderPath("crop.${MaterialRules.material(crop).name.lowercase()}", audience))
+            }
+        }
         return locale.renderPath(path, audience, values)
     }
 
@@ -102,7 +117,11 @@ internal class FarmScoreboardRenderer(
                     ?: "scoreboard.hint.care.generic"
             }
             FarmPhase.HARVESTING -> "scoreboard.hint.harvesting"
-            FarmPhase.INCIDENT -> "scoreboard.hint.${view.incidentType.scoreboardId()}"
+            FarmPhase.INCIDENT -> if (view.incidentType == FarmIncidentType.MARKET) {
+                if (view.marketAccepted) "scoreboard.hint.market-active" else "scoreboard.hint.market-pending"
+            } else {
+                "scoreboard.hint.${view.incidentType.scoreboardId()}"
+            }
             FarmPhase.DELIVERY -> if (view.carrying) {
                 "scoreboard.hint.delivery-carrying"
             } else {
@@ -110,7 +129,10 @@ internal class FarmScoreboardRenderer(
             }
             FarmPhase.COOLDOWN -> "scoreboard.hint.cooldown"
         }
-        return locale.renderPath(path, audience)
+        val values = view.incidentCrop?.let { crop ->
+            mapOf("crop" to locale.renderPath("crop.${MaterialRules.material(crop).name.lowercase()}", audience))
+        }.orEmpty()
+        return locale.renderPath(path, audience, values)
     }
 
     private fun Int?.orZero(): Int = this ?: 0

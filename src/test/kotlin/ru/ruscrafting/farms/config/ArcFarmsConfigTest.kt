@@ -748,6 +748,17 @@ class ArcFarmsConfigTest : FunSpec({
                 "У красных меток ломайте гнёзда",
             base.copy(phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.DROUGHT) to
                 "У меток поливайте сухую землю",
+            base.copy(
+                phase = FarmPhase.INCIDENT,
+                incidentType = FarmIncidentType.MARKET,
+                incidentCrop = "WHEAT",
+            ) to "Найдите светящегося покупателя и нажмите ПКМ",
+            base.copy(
+                phase = FarmPhase.INCIDENT,
+                incidentType = FarmIncidentType.MARKET,
+                incidentCrop = "WHEAT",
+                marketAccepted = true,
+            ) to "Собирайте зрелую культуру: Пшеница",
             base.copy(phase = FarmPhase.DELIVERY) to "Берите ящики у телеги",
             base.copy(phase = FarmPhase.DELIVERY, carrying = true) to "Несите ящик к фиолетовой метке",
             base.copy(phase = FarmPhase.COOLDOWN) to "Новый заказ появится позже",

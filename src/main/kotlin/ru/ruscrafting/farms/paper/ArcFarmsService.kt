@@ -84,6 +84,7 @@ import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareTarget
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmCropDamage
+import ru.ruscrafting.farms.domain.FarmSpecialCropPolicy
 import ru.ruscrafting.farms.domain.FarmDeliveryPlanner
 import ru.ruscrafting.farms.domain.FarmPatchPlanner
 import ru.ruscrafting.farms.domain.FarmPlotPosition
@@ -3744,14 +3745,20 @@ class ArcFarmsService(
         val position = soil.toFarmPlotPosition()
         val data = block.blockData as? Ageable
         val expected = special.crop?.let(MaterialRules::material)
-        val valid = position in special.plots && data != null && data.age == data.maximumAge &&
+        val valid = FarmSpecialCropPolicy.isEligible(
+            type = type,
+            position = position,
+            plannedPlots = special.plots,
+            managedPlots = farmBlockRegistry.beds(runtime.settings.id),
+        ) && data != null && data.age == data.maximumAge &&
             (expected == null || block.type == expected)
         if (!valid) {
             sendActionBar(
                 player,
-                MessageKey.FARM_SPECIAL_PROGRESS,
+                if (type == FarmIncidentType.MARKET) MessageKey.FARM_MARKET_ACTIVE else MessageKey.FARM_SPECIAL_PROGRESS,
                 mapOf(
                     "event" to specialIncidentName(type, player),
+                    "crop" to (expected?.let(MaterialRules::cropComponent) ?: Component.empty()),
                     "done" to locale.text(runtime.state.incidentProgress),
                     "total" to locale.text(runtime.state.incidentRequired),
                 ),
@@ -4531,12 +4538,18 @@ class ArcFarmsService(
                     val key = when (incidentType) {
                         FarmIncidentType.DROUGHT -> MessageKey.FARM_DROUGHT_PROGRESS
                         FarmIncidentType.PESTS -> MessageKey.FARM_INCIDENT_PROGRESS
+                        FarmIncidentType.MARKET -> MessageKey.FARM_MARKET_PROGRESS
                         else -> MessageKey.FARM_SPECIAL_PROGRESS
                     }
                     sendActionBar(actor, key, buildMap {
                         put("done", locale.text(runtime.state.incidentProgress))
                         put("total", locale.text(runtime.state.incidentRequired))
                         if (incidentType in SPECIAL_FARM_INCIDENT_TYPES) put("event", specialIncidentName(incidentType, actor))
+                        if (incidentType == FarmIncidentType.MARKET) {
+                            runtime.state.specialIncident?.crop?.let { crop ->
+                                put("crop", MaterialRules.cropComponent(MaterialRules.material(crop)))
+                            }
+                        }
                     })
                 }
                 ShiftEvent.INCIDENT_RESOLVED -> {
@@ -4946,6 +4959,11 @@ class ArcFarmsService(
                     FarmPhase.INCIDENT -> when (runtime.state.incidentType ?: FarmIncidentType.PESTS) {
                         FarmIncidentType.DROUGHT -> MessageKey.FARM_DROUGHT_BOSSBAR
                         FarmIncidentType.PESTS -> MessageKey.FARM_INCIDENT_BOSSBAR
+                        FarmIncidentType.MARKET -> if (runtime.state.specialIncident?.marketAccepted == true) {
+                            MessageKey.FARM_MARKET_ACTIVE_BOSSBAR
+                        } else {
+                            MessageKey.FARM_MARKET_PENDING_BOSSBAR
+                        }
                         else -> MessageKey.FARM_SPECIAL_BOSSBAR
                     }
                     FarmPhase.DELIVERY -> if (carrying) {
@@ -4961,10 +4979,12 @@ class ArcFarmsService(
                     mapOf(
                         "order" to locale.renderPath("order.farm.${order.id}", player),
                         "crop" to MaterialRules.cropComponent(MaterialRules.material(requireNotNull(
-                            if (runtime.state.phase == FarmPhase.PLANTING) {
-                                runtime.state.preparationCrop
-                            } else {
-                                order.required.keys.firstOrNull()
+                            when {
+                                runtime.state.phase == FarmPhase.PLANTING -> runtime.state.preparationCrop
+                                runtime.state.phase == FarmPhase.INCIDENT &&
+                                    runtime.state.incidentType == FarmIncidentType.MARKET ->
+                                    runtime.state.specialIncident?.crop ?: order.required.keys.firstOrNull()
+                                else -> order.required.keys.firstOrNull()
                             },
                         ))),
                         "requirements" to farmRequirements(runtime, order),
@@ -6037,32 +6057,133 @@ class ArcFarmsService(
 
     private fun handleFarmMarketDecision(player: Player, click: FarmMarketClick) {
         val runtime = farms.firstOrNull { it.settings.id == click.zoneId } ?: return
-        if (!hasAccess(player, runtime.settings.permission) || !runtime.region.contains(player.location)) return
+        if (!hasAccess(player, runtime.settings.permission) || !runtime.region.contains(player.location)) {
+            player.closeInventory()
+            return
+        }
+        if (click.decision == FarmMarketDecision.CLOSE) {
+            player.closeInventory()
+            debug.event(
+                "farm_market_menu_closed",
+                "zone" to click.zoneId,
+                "sequence" to click.sequence,
+                "player" to player.name,
+            )
+            return
+        }
         if (
             runtime.state.sequence != click.sequence || runtime.state.phase != FarmPhase.INCIDENT ||
             runtime.state.incidentType != FarmIncidentType.MARKET
-        ) return
+        ) {
+            player.closeInventory()
+            sendActionBar(player, MessageKey.FARM_MARKET_CHANGED)
+            debug.event(
+                "farm_market_stale_decision",
+                "zone" to click.zoneId,
+                "sequence" to click.sequence,
+                "current_sequence" to runtime.state.sequence,
+                "player" to player.name,
+                "decision" to click.decision,
+            )
+            return
+        }
         val special = runtime.state.specialIncident ?: return
+        if (special.marketAccepted) {
+            openFarmMarketMenu(player, runtime, special)
+            sendActionBar(
+                player,
+                MessageKey.FARM_MARKET_ACTIVE,
+                farmMarketValues(runtime, special, player),
+            )
+            debug.event(
+                "farm_market_existing_decision",
+                "zone" to click.zoneId,
+                "sequence" to click.sequence,
+                "player" to player.name,
+                "decision" to click.decision,
+            )
+            return
+        }
         val result = when (click.decision) {
             FarmMarketDecision.ACCEPT -> FarmSpecialIncidentEngine.acceptMarket(runtime.state)
             FarmMarketDecision.DECLINE -> FarmSpecialIncidentEngine.declineMarket(runtime.state)
+            FarmMarketDecision.CLOSE -> return
         }
-        if (!result.accepted) return
+        if (!result.accepted) {
+            openFarmMarketMenu(player, runtime, requireNotNull(runtime.state.specialIncident))
+            return
+        }
         player.closeInventory()
         if (click.decision == FarmMarketDecision.ACCEPT) {
-            sendActionBar(
-                player,
+            applyFarmResult(runtime, result, player)
+            persistAsync()
+            val accepted = requireNotNull(runtime.state.specialIncident)
+            broadcast(
+                runtime.region,
                 MessageKey.FARM_MARKET_ACCEPTED,
-                mapOf(
-                    "crop" to MaterialRules.cropComponent(MaterialRules.material(requireNotNull(special.crop))),
-                    "total" to locale.text(runtime.state.incidentRequired),
-                ),
+                sound = Sound.ENTITY_VILLAGER_YES,
+                title = true,
+                valuesForPlayer = { audience -> farmMarketValues(runtime, accepted, audience) },
             )
-            if (settings.sounds) player.playSound(player.location, Sound.ENTITY_VILLAGER_YES, 0.85f, 1.15f)
         } else {
-            sendActionBar(player, MessageKey.FARM_MARKET_DECLINED)
+            applyFarmResult(runtime, result, player)
+            broadcast(runtime.region, MessageKey.FARM_MARKET_DECLINED, sound = Sound.ENTITY_VILLAGER_NO)
         }
-        applyFarmResult(runtime, result, player)
+        debug.event(
+            "farm_market_decision",
+            "zone" to click.zoneId,
+            "sequence" to click.sequence,
+            "player" to player.name,
+            "decision" to click.decision,
+        )
+    }
+
+    private fun openFarmMarketMenu(player: Player, runtime: FarmRuntime, special: FarmSpecialIncidentState) {
+        val crop = MaterialRules.material(requireNotNull(special.crop))
+        if (special.marketAccepted) {
+            marketMenu.openActive(
+                player,
+                runtime.settings.id,
+                runtime.state.sequence,
+                crop,
+                runtime.state.incidentProgress,
+                runtime.state.incidentRequired,
+                runtime.settings.specialIncidents.marketMoneyBonusPercent,
+            )
+        } else {
+            marketMenu.openPending(
+                player,
+                runtime.settings.id,
+                runtime.state.sequence,
+                crop,
+                runtime.state.incidentRequired,
+                runtime.settings.specialIncidents.marketMoneyBonusPercent,
+            )
+        }
+        debug.event(
+            "farm_market_menu_opened",
+            "zone" to runtime.settings.id,
+            "sequence" to runtime.state.sequence,
+            "player" to player.name,
+            "accepted" to special.marketAccepted,
+            "crop" to special.crop,
+            "progress" to runtime.state.incidentProgress,
+            "required" to runtime.state.incidentRequired,
+        )
+    }
+
+    private fun farmMarketValues(
+        runtime: FarmRuntime,
+        special: FarmSpecialIncidentState,
+        audience: Player?,
+    ): Map<String, Component> {
+        val crop = MaterialRules.material(requireNotNull(special.crop))
+        return mapOf(
+            "crop" to locale.renderPath("crop.${crop.name.lowercase()}", audience),
+            "done" to locale.text(runtime.state.incidentProgress),
+            "total" to locale.text(runtime.state.incidentRequired),
+            "event" to locale.renderPath("incident.market.name", audience),
+        )
     }
 
     private fun specialIncidentName(type: FarmIncidentType, audience: Player): Component = locale.renderPath(
@@ -6530,6 +6651,9 @@ class ArcFarmsService(
                 meta.setCustomModelData(customModelData)
                 item.itemMeta = meta
             }
+        val market = runtime.state.specialIncident?.takeIf {
+            runtime.state.phase == FarmPhase.INCIDENT && runtime.state.incidentType == FarmIncidentType.MARKET
+        }
         contractScene.ensure(
             FarmContractSceneSpec(
                 zoneId = runtime.settings.id,
@@ -6545,6 +6669,8 @@ class ArcFarmsService(
                 loadYOffset = cartVisual.loadYOffset,
                 loadScale = cartVisual.loadScale,
                 viewRange = cartVisual.viewRange,
+                customerName = market?.let { locale.renderPath("farm.market-buyer-name", null) },
+                customerGlowing = market?.marketAccepted == false,
             ),
         )
     }
@@ -6559,32 +6685,23 @@ class ArcFarmsService(
         }
         if (!allowInteraction("farm-contract-scene:${identity.zoneId}:${identity.role}:${player.uniqueId}", 700)) return
         val order = currentOrder(runtime) ?: return
+        debug.event(
+            "farm_contract_scene_interaction",
+            "zone" to identity.zoneId,
+            "sequence" to identity.sequence,
+            "order" to order.id,
+            "role" to identity.role,
+            "player" to player.name,
+            "market" to (runtime.state.incidentType == FarmIncidentType.MARKET),
+            "market_accepted" to runtime.state.specialIncident?.marketAccepted,
+        )
         when (identity.role) {
             FarmContractSceneRole.CUSTOMER -> {
                 val market = runtime.state.specialIncident?.takeIf {
                     runtime.state.phase == FarmPhase.INCIDENT && runtime.state.incidentType == FarmIncidentType.MARKET
                 }
                 if (market != null) {
-                    if (!market.marketAccepted) {
-                        marketMenu.open(
-                            player,
-                            runtime.settings.id,
-                            runtime.state.sequence,
-                            MaterialRules.material(requireNotNull(market.crop)),
-                            runtime.state.incidentRequired,
-                            runtime.settings.specialIncidents.marketMoneyBonusPercent,
-                        )
-                    } else {
-                        sendActionBar(
-                            player,
-                            MessageKey.FARM_SPECIAL_PROGRESS,
-                            mapOf(
-                                "event" to specialIncidentName(FarmIncidentType.MARKET, player),
-                                "done" to locale.text(runtime.state.incidentProgress),
-                                "total" to locale.text(runtime.state.incidentRequired),
-                            ),
-                        )
-                    }
+                    openFarmMarketMenu(player, runtime, market)
                     return
                 }
                 sendActionBar(
@@ -6607,14 +6724,6 @@ class ArcFarmsService(
                 ),
             )
         }
-        debug.event(
-            "farm_contract_scene_interaction",
-            "zone" to identity.zoneId,
-            "sequence" to identity.sequence,
-            "order" to order.id,
-            "role" to identity.role,
-            "player" to player.name,
-        )
     }
 
     private fun clearFarmContractScene(runtime: FarmRuntime, reason: String) {
@@ -7487,6 +7596,8 @@ class ArcFarmsService(
             careType = runtime.state.careType,
             seederStage = runtime.state.seederStage(),
             incidentType = runtime.state.incidentType,
+            incidentCrop = runtime.state.specialIncident?.crop,
+            marketAccepted = runtime.state.specialIncident?.marketAccepted == true,
             carrying = carrying,
         )
         farmScoreboards.update(player, runtime.settings.id, view)
@@ -7669,16 +7780,10 @@ class ArcFarmsService(
                     }
                 }
                 FarmIncidentType.MARKET -> {
-                    val customer = point(runtime, FarmPointKind.CUSTOMER)
-                    player.spawnParticle(
-                        Particle.HAPPY_VILLAGER,
-                        Location(player.world, customer.x, customer.y + 1.25, customer.z),
-                        3,
-                        0.35,
-                        0.5,
-                        0.35,
-                        0.0,
-                    )
+                    if (!special.marketAccepted) {
+                        val customer = point(runtime, FarmPointKind.CUSTOMER)
+                        spawnGuidanceColumn(player, Location(player.world, customer.x, customer.y, customer.z), FARM_AMBER_COLOR)
+                    }
                 }
                 else -> Unit
             }
@@ -8229,8 +8334,18 @@ class ArcFarmsService(
                 FarmPhase.CARE -> runtime.state.careType?.let {
                     locale.renderPath("care.${it.name.lowercase()}.entry", player)
                 } ?: Component.empty()
-                FarmPhase.INCIDENT -> runtime.state.incidentType?.takeIf { it in SPECIAL_FARM_INCIDENT_TYPES }?.let {
-                    locale.renderPath("farm.entry-${it.specialId()}", player)
+                FarmPhase.INCIDENT -> runtime.state.incidentType?.takeIf { it in SPECIAL_FARM_INCIDENT_TYPES }?.let { type ->
+                    if (type == FarmIncidentType.MARKET) {
+                        runtime.state.specialIncident?.let { special ->
+                            locale.renderPath(
+                                if (special.marketAccepted) "farm.entry-market-active" else "farm.entry-market-pending",
+                                player,
+                                farmMarketValues(runtime, special, player),
+                            )
+                        } ?: locale.renderPath("farm.entry-market", player)
+                    } else {
+                        locale.renderPath("farm.entry-${type.specialId()}", player)
+                    }
                 } ?: Component.empty()
                 else -> Component.empty()
             }
@@ -8664,14 +8779,27 @@ class ArcFarmsService(
                     } ?: Component.empty()),
                 ),
             )
-            FarmPhase.INCIDENT -> sendActionBar(
-                player,
-                if (runtime.state.incidentType == FarmIncidentType.DROUGHT) {
-                    MessageKey.FARM_DROUGHT_REQUIRED
-                } else {
-                    MessageKey.FARM_PESTS_REQUIRED
-                },
-            )
+            FarmPhase.INCIDENT -> when (runtime.state.incidentType) {
+                FarmIncidentType.DROUGHT -> sendActionBar(player, MessageKey.FARM_DROUGHT_REQUIRED)
+                FarmIncidentType.MARKET -> {
+                    val special = runtime.state.specialIncident ?: return
+                    sendActionBar(
+                        player,
+                        if (special.marketAccepted) MessageKey.FARM_MARKET_ACTIVE else MessageKey.FARM_MARKET_REQUIRED,
+                        farmMarketValues(runtime, special, player),
+                    )
+                }
+                FarmIncidentType.NIGHT_SHIFT -> sendActionBar(
+                    player,
+                    MessageKey.FARM_SPECIAL_PROGRESS,
+                    mapOf(
+                        "event" to specialIncidentName(FarmIncidentType.NIGHT_SHIFT, player),
+                        "done" to locale.text(runtime.state.incidentProgress),
+                        "total" to locale.text(runtime.state.incidentRequired),
+                    ),
+                )
+                else -> sendActionBar(player, MessageKey.FARM_PESTS_REQUIRED)
+            }
             FarmPhase.DELIVERY -> sendActionBar(player, MessageKey.FARM_DELIVERY_REQUIRED)
             FarmPhase.HARVESTING -> currentOrder(runtime)?.let { order ->
                 sendActionBar(player, MessageKey.FARM_WRONG_TARGET, mapOf("crops" to remainingCrops(runtime, order)))
@@ -8778,6 +8906,7 @@ class ArcFarmsService(
             MessageKey.FARM_CHANNELS_STARTED to MessageKey.FARM_CHANNELS_STARTED_SUBTITLE,
             MessageKey.FARM_NIGHT_SHIFT_STARTED to MessageKey.FARM_NIGHT_SHIFT_STARTED_SUBTITLE,
             MessageKey.FARM_MARKET_STARTED to MessageKey.FARM_MARKET_STARTED_SUBTITLE,
+            MessageKey.FARM_MARKET_ACCEPTED to MessageKey.FARM_MARKET_ACCEPTED_SUBTITLE,
             MessageKey.FARM_DELIVERY_STARTED to MessageKey.FARM_DELIVERY_STARTED_SUBTITLE,
             MessageKey.FARM_DELIVERY_PICKED_UP to MessageKey.FARM_DELIVERY_PICKED_UP_SUBTITLE,
             MessageKey.FARM_CROP_COMPLETED to MessageKey.FARM_CROP_COMPLETED_SUBTITLE,

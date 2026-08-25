@@ -1,5 +1,6 @@
 package ru.ruscrafting.farms.paper
 
+import net.kyori.adventure.text.Component
 import org.bukkit.Chunk
 import org.bukkit.Location
 import org.bukkit.NamespacedKey
@@ -103,6 +104,8 @@ internal data class FarmContractSceneSpec(
     val loadYOffset: Double,
     val loadScale: Float,
     val viewRange: Float,
+    val customerName: Component? = null,
+    val customerGlowing: Boolean = false,
 ) {
     init {
         require(loadCount in 0..8) { "Farm contract cart load count must be between 0 and 8" }
@@ -249,6 +252,9 @@ internal class FarmContractSceneManager(
                 entity.removeWhenFarAway = false
                 entity.setCanPickupItems(false)
                 entity.isSilent = true
+                entity.customName(spec.customerName)
+                entity.isCustomNameVisible = spec.customerName != null
+                entity.isGlowing = spec.customerGlowing
                 entity.setRotation(spec.customerLocation.yaw, 0f)
             }
             is Interaction -> {

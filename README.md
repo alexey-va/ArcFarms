@@ -350,13 +350,13 @@ button.
 ../arc-core/gradlew clean check shadowJar
 ```
 
-The deployable artifact is `build/libs/ArcFarms-0.17.3.jar`.
+The deployable artifact is `build/libs/ArcFarms-0.18.2.jar`.
 
 ## Isolated gameplay QA
 
 `scripts/lab/plugin-configs/ArcFarms/config.yml` defines three small cuboid
 fixtures. The player-bot session exposes only the fixed `arcfarms` operations
-`fixture-setup`, `reload`, `travel`, `debug-controls`, `scoreboard`, `care-stories`, `drought-flow`,
+`fixture-setup`, `reload`, `travel`, `debug-controls`, `scoreboard`, `market-flow`, `care-stories`, `drought-flow`,
 `pest-stability`, `farm`, `lumber`, `mine`, `status`, and `fixture-cleanup` on
 the lab port and documented OP QA identities; it accepts no command or target
 arguments. Always clean the scene after a smoke run.
