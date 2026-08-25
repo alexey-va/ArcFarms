@@ -71,10 +71,17 @@ farm-zones:
     animal-delivery-radius: 3.0
     display-view-range: 2.0
     seeder-every-shifts: 2
-    seeder-patch-size: 640
-    seeder-patch-max-size: 1024
-    seeder-working-width: 3
-    seeder-waypoint-reach: 2.8
+    # Machinery may combine this many nearby same-height beds into one field.
+    seeder-patch-size: 1280
+    seeder-patch-max-size: 2048
+    seeder-component-gap: 16
+    seeder-component-limit: 8
+    seeder-working-width: 7
+    # Forgives a horse that is several blocks off the exact guidance line.
+    seeder-lane-tolerance: 7.0
+    seeder-waypoint-reach: 6.0
+    # Bounds tilling/planting mutations per machinery update (every 5 ticks).
+    seeder-blocks-per-update: 128
     disease-initial-spots: 2
     disease-max-spots: 6
     disease-spread-seconds: 12

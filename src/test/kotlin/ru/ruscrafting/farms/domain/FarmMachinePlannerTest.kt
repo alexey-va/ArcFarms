@@ -60,13 +60,36 @@ class FarmMachinePlannerTest : FunSpec({
         }
     }
 
-    test("machine only processes beds physically reached by its working width") {
-        val pass = field.filter { it.z in 0..2 }
+    test("one forgiving machine pass reaches the whole swath behind the horse") {
+        val pass = field.filter { it.z in 0..4 }
+        val destination = FarmPointPosition("world", 29.5, 65.05, 2.5)
 
-        val reached = FarmMachinePlanner.plotsUnderMachine(pass, machineX = 10.5, machineZ = 1.5, workingWidth = 3)
+        val reached = FarmMachinePlanner.plotsReachedToward(
+            pass = pass,
+            destination = destination,
+            machineX = 10.5,
+            machineZ = 5.5,
+            laneTolerance = 4.0,
+            leadDistance = 2.0,
+        )
 
-        reached.isNotEmpty() shouldBe true
-        reached.all { it.x in 9..11 && it.z in 0..2 } shouldBe true
+        reached shouldBe pass.filter { it.x <= 12 }.toSet()
+        FarmMachinePlanner.plotsReachedToward(
+            pass,
+            destination,
+            machineX = 10.5,
+            machineZ = 8.0,
+            laneTolerance = 4.0,
+            leadDistance = 2.0,
+        ) shouldBe emptySet()
         FarmMachinePlanner.guidanceLine(pass).size shouldBe 12
+    }
+
+    test("opposite endpoint reverses the same persisted pass for the planting run") {
+        val pass = field.filter { it.z in 0..4 }
+        val tillingDestination = FarmPointPosition("world", 29.5, 65.05, 2.5)
+
+        FarmMachinePlanner.oppositeEndpoint(pass, tillingDestination) shouldBe
+            FarmPointPosition("world", 0.5, 65.05, 2.5)
     }
 })

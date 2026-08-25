@@ -14,6 +14,7 @@ import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmShiftState
+import ru.ruscrafting.farms.domain.FarmSeederStage
 import ru.ruscrafting.farms.domain.LumberPhase
 import ru.ruscrafting.farms.domain.LumberShiftState
 import ru.ruscrafting.farms.domain.MinePhase
@@ -256,6 +257,7 @@ class ArcFarmsStateRepositoryTest : FunSpec({
                     plantingProgress = 320,
                     preparationRequired = patch.size,
                     careType = FarmCareType.SEEDER,
+                    seederStage = FarmSeederStage.PLANTING,
                     careTargets = listOf(
                         FarmCareTarget(0, FarmCareRole.SEEDER_HORSE, FarmPointPosition("world", 0.5, 64.05, 0.5), progress = 1),
                         FarmCareTarget(1, FarmCareRole.SEEDER_WAYPOINT, FarmPointPosition("world", 63.5, 64.05, 7.5)),

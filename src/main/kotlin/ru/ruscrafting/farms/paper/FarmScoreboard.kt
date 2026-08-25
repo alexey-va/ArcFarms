@@ -6,6 +6,7 @@ import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
+import ru.ruscrafting.farms.domain.FarmSeederStage
 
 internal data class FarmScoreboardView(
     val orderId: String,
@@ -14,8 +15,10 @@ internal data class FarmScoreboardView(
     val total: Int,
     val required: Map<String, Int>,
     val cropProgress: Map<String, Int>,
-    val cartPercent: Int,
+    val deliveredCrates: Int,
+    val requiredCrates: Int,
     val careType: FarmCareType? = null,
+    val seederStage: FarmSeederStage? = null,
     val incidentType: FarmIncidentType? = null,
     val carrying: Boolean = false,
 )
@@ -60,7 +63,10 @@ internal class FarmScoreboardRenderer(
         add(locale.renderPath(
             "scoreboard.cart",
             audience,
-            mapOf("percent" to locale.text(view.cartPercent.coerceIn(0, 100))),
+            mapOf(
+                "done" to locale.text(view.deliveredCrates.coerceAtLeast(0)),
+                "total" to locale.text(view.requiredCrates.coerceAtLeast(1)),
+            ),
         ))
     }.also { rows ->
         require(rows.size <= MAX_ROWS) { "Farm scoreboard exceeds $MAX_ROWS rows" }
@@ -71,7 +77,11 @@ internal class FarmScoreboardRenderer(
             FarmPhase.IDLE -> "scoreboard.objective.idle"
             FarmPhase.PREPARATION -> "scoreboard.objective.preparation"
             FarmPhase.PLANTING -> "scoreboard.objective.planting"
-            FarmPhase.CARE -> "scoreboard.objective.care"
+            FarmPhase.CARE -> when (view.seederStage) {
+                FarmSeederStage.TILLING -> "scoreboard.objective.seeder-tilling"
+                FarmSeederStage.PLANTING -> "scoreboard.objective.seeder-planting"
+                null -> "scoreboard.objective.care"
+            }
             FarmPhase.HARVESTING -> "scoreboard.objective.harvesting"
             FarmPhase.INCIDENT -> if (view.incidentType == FarmIncidentType.DROUGHT) {
                 "scoreboard.objective.drought"
@@ -96,8 +106,12 @@ internal class FarmScoreboardRenderer(
             FarmPhase.IDLE -> "scoreboard.hint.idle"
             FarmPhase.PREPARATION -> "scoreboard.hint.preparation"
             FarmPhase.PLANTING -> "scoreboard.hint.planting"
-            FarmPhase.CARE -> view.careType?.let { "scoreboard.hint.care.${it.name.lowercase()}" }
-                ?: "scoreboard.hint.care.generic"
+            FarmPhase.CARE -> when (view.seederStage) {
+                FarmSeederStage.TILLING -> "scoreboard.hint.care.seeder-tilling"
+                FarmSeederStage.PLANTING -> "scoreboard.hint.care.seeder-planting"
+                null -> view.careType?.let { "scoreboard.hint.care.${it.name.lowercase()}" }
+                    ?: "scoreboard.hint.care.generic"
+            }
             FarmPhase.HARVESTING -> "scoreboard.hint.harvesting"
             FarmPhase.INCIDENT -> if (view.incidentType == FarmIncidentType.DROUGHT) {
                 "scoreboard.hint.drought"

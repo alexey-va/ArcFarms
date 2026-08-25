@@ -99,11 +99,13 @@ import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmRules
+import ru.ruscrafting.farms.domain.FarmSeederStage
 import ru.ruscrafting.farms.domain.FarmRewardPlanner
 import ru.ruscrafting.farms.domain.FarmRewardRecipient
 import ru.ruscrafting.farms.domain.FarmRewardItem
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.domain.FarmShiftState
+import ru.ruscrafting.farms.domain.seederStage
 import ru.ruscrafting.farms.domain.FarmWaterPlanner
 import ru.ruscrafting.farms.domain.FarmWaterFlowTracker
 import ru.ruscrafting.farms.domain.LumberPhase
@@ -289,6 +291,7 @@ class ArcFarmsService(
     private val adminEditPlayers = mutableSetOf<UUID>()
     private val adminInspectPlayers = mutableSetOf<UUID>()
     private val farmBlockLedger = FarmBlockLedger(plugin)
+    private val farmMachineBlocks = FarmMachineBlockProcessor(farmBlockLedger)
     private val farmBlockRegistry = FarmBlockRegistry(plugin, farmBlockLedger, clock)
     private val farmBlockAdmin = FarmBlockAdminController(
         plugin,
@@ -1441,6 +1444,7 @@ class ArcFarmsService(
         if (!ensureAdminFarmShift(runtime, player)) return false
         clearTemporaryFarmWater("admin_stage")
         clearFarmCare(runtime, "admin_stage")
+        runtime.state = runtime.state.copy(careType = null, seederStage = null, careTargets = emptyList())
         removePests(runtime, activePests(runtime), "admin_stage")
         removePestNestEntities(runtime, "admin_stage")
         restoreIncidentCrops(runtime)
@@ -1640,7 +1644,9 @@ class ArcFarmsService(
                 "customer" to (order?.let {
                     locale.renderPath("customer.${it.customerType.name.lowercase()}.name", player)
                 } ?: locale.text("—")),
-                "cart" to locale.text(state.harvestMilestone * 25),
+                "cart" to locale.text(
+                    state.deliveredCrates.size * 100 / (runtime.settings.delivery.crates.coerceAtLeast(1)),
+                ),
             ),
         )
         sendChat(
@@ -1672,7 +1678,11 @@ class ArcFarmsService(
             MessageKey.ADMIN_DEBUG_CARE,
             mapOf(
                 "care" to (state.careType?.let { locale.renderPath("care.${it.name.lowercase()}.name", player) } ?: locale.text("—")),
-                "done" to locale.text(if (state.careType == FarmCareType.SEEDER) state.plantingProgress else state.careProgress()),
+                "done" to locale.text(if (state.careType == FarmCareType.SEEDER) {
+                    if (state.seederStage() == FarmSeederStage.TILLING) state.preparationProgress else state.plantingProgress
+                } else {
+                    state.careProgress()
+                }),
                 "total" to locale.text(if (state.careType == FarmCareType.SEEDER) state.preparationRequired else state.careRequired()),
                 "entities" to locale.text(careEntities.keys.count { it.zoneId == zoneId }),
             ),
@@ -2696,13 +2706,25 @@ class ArcFarmsService(
         val seederShift = isSeederSequence(runtime, runtime.state.sequence + 1L)
         val targetSize = if (seederShift) runtime.settings.seederPatchSize else runtime.settings.preparationPatchSize
         val maxSize = if (seederShift) runtime.settings.seederPatchMaxSize else runtime.settings.preparationPatchMaxSize
-        val patch = FarmPatchPlanner.select(
-            candidates = candidates,
-            anchor = anchor,
-            targetSize = targetSize,
-            maxSize = maxSize,
-            selectionIndex = runtime.state.sequence,
-        )
+        val patch = if (seederShift) {
+            FarmPatchPlanner.selectMechanized(
+                candidates = candidates,
+                anchor = anchor,
+                targetSize = targetSize,
+                maxSize = maxSize,
+                componentGap = runtime.settings.seederComponentGap,
+                maxComponents = runtime.settings.seederComponentLimit,
+                selectionIndex = runtime.state.sequence,
+            )
+        } else {
+            FarmPatchPlanner.select(
+                candidates = candidates,
+                anchor = anchor,
+                targetSize = targetSize,
+                maxSize = maxSize,
+                selectionIndex = runtime.state.sequence,
+            )
+        }
         if (patch.isEmpty()) {
             if (allowInteraction("farm-patch-empty:${runtime.settings.id}:${player.uniqueId}", 10_000)) {
                 sendActionBar(player, MessageKey.FARM_PATCH_UNAVAILABLE)
@@ -4018,14 +4040,19 @@ class ArcFarmsService(
                     val type = requireNotNull(careType)
                     players(runtime.region).forEach { player ->
                         val title = locale.renderPath("care.${type.name.lowercase()}.name", player)
-                        val subtitle = locale.renderPath("care.${type.name.lowercase()}.instruction", player)
+                        val instructionPath = if (type == FarmCareType.SEEDER) {
+                            seederInstructionPath(runtime.state)
+                        } else {
+                            "care.${type.name.lowercase()}.instruction"
+                        }
+                        val subtitle = locale.renderPath(instructionPath, player)
                         showScreenTitle(
                             player,
                             title,
                             subtitle,
                         )
                         debug.message("title", "local", "care.${type.name.lowercase()}.name", player, title)
-                        debug.message("subtitle", "local", "care.${type.name.lowercase()}.instruction", player, subtitle)
+                        debug.message("subtitle", "local", instructionPath, player, subtitle)
                         if (settings.sounds) player.playSound(player.location, farmCareStartSound(type), 0.75f, 1.0f)
                     }
                     warningBurst(runtime.region)
@@ -4040,7 +4067,7 @@ class ArcFarmsService(
                     persistAsync()
                 }
                 ShiftEvent.CARE_PROGRESS -> {
-                    if (actor != null) {
+                    if (actor != null && careType != FarmCareType.SEEDER) {
                         sendActionBar(
                             actor,
                             MessageKey.FARM_CARE_PROGRESS,
@@ -4055,22 +4082,62 @@ class ArcFarmsService(
                 }
                 ShiftEvent.SEEDER_PROGRESS -> {
                     if (actor != null) {
+                        val stage = requireNotNull(runtime.state.seederStage())
                         sendActionBar(
                             actor,
                             MessageKey.FARM_CARE_SEEDER_PROGRESS,
                             mapOf(
-                                "done" to locale.text(runtime.state.plantingProgress),
+                                "stage" to locale.renderPath("care.seeder.stage.${stage.name.lowercase()}", actor),
+                                "done" to locale.text(if (stage == FarmSeederStage.TILLING) {
+                                    runtime.state.preparationProgress
+                                } else {
+                                    runtime.state.plantingProgress
+                                }),
                                 "total" to locale.text(runtime.state.preparationRequired),
                             ),
                         )
                     }
                     persistAsync()
                 }
+                ShiftEvent.SEEDER_PLANTING_STARTED -> {
+                    runtime.state.careTargets.filter { it.role == FarmCareRole.SEEDER_WAYPOINT }.forEach { target ->
+                        removeFarmCareEntities(
+                            CareEntityKey(runtime.settings.id, target.id),
+                            "seeder_planting_route",
+                        )
+                    }
+                    ensureFarmCare(runtime)
+                    players(runtime.region).forEach { player ->
+                        val title = locale.render(MessageKey.FARM_CARE_SEEDER_PLANTING_STARTED, player)
+                        val subtitle = locale.render(MessageKey.FARM_CARE_SEEDER_PLANTING_STARTED_SUBTITLE, player)
+                        showScreenTitle(player, title, subtitle)
+                        debug.message("title", "local", MessageKey.FARM_CARE_SEEDER_PLANTING_STARTED.path, player, title)
+                        debug.message(
+                            "subtitle",
+                            "local",
+                            MessageKey.FARM_CARE_SEEDER_PLANTING_STARTED_SUBTITLE.path,
+                            player,
+                            subtitle,
+                        )
+                        if (settings.sounds) {
+                            player.playSound(player.location, Sound.BLOCK_GRINDSTONE_USE, 0.85f, 1.25f)
+                        }
+                    }
+                    successBurst(runtime.region)
+                    playFarmStageFanfare(runtime, 1.05f)
+                    debug.event(
+                        "farm_seeder_planting_started",
+                        "zone" to runtime.settings.id,
+                        "sequence" to runtime.state.sequence,
+                        "plots" to runtime.state.preparationRequired,
+                    )
+                    persistAsync()
+                }
                 ShiftEvent.CARE_RESOLVED -> {
                     clearFarmCare(runtime, "care_resolved")
                     diseaseNextSpreadAt.remove(runtime.settings.id)
                     if (careType == FarmCareType.SEEDER) {
-                        runtime.state = runtime.state.copy(careType = null, careTargets = emptyList())
+                        runtime.state = runtime.state.copy(careType = null, seederStage = null, careTargets = emptyList())
                         broadcast(
                             runtime.region,
                             MessageKey.FARM_CARE_SEEDER_RESOLVED,
@@ -4126,22 +4193,7 @@ class ArcFarmsService(
                     persistAsync()
                 }
                 ShiftEvent.HARVEST_MILESTONE -> {
-                    ensureFarmContractScene(runtime)
                     val milestone = runtime.state.harvestMilestone
-                    if (settings.particles) {
-                        val cart = point(runtime, FarmPointKind.CART)
-                        Bukkit.getWorld(cart.world)?.let { world ->
-                            world.spawnParticle(
-                                Particle.COMPOSTER,
-                                Location(world, cart.x, cart.y + 0.9, cart.z),
-                                5,
-                                0.35,
-                                0.25,
-                                0.35,
-                                0.02,
-                            )
-                        }
-                    }
                     debug.event(
                         "farm_harvest_milestone",
                         "zone" to runtime.settings.id,
@@ -4220,6 +4272,19 @@ class ArcFarmsService(
                 ShiftEvent.DELIVERY_PROGRESS -> {
                     if (actor != null) sendActionBar(actor, MessageKey.FARM_DELIVERY_REQUIRED)
                     ensureFarmDelivery(runtime)
+                    ensureFarmContractScene(runtime)
+                    val cart = point(runtime, FarmPointKind.CART)
+                    Bukkit.getWorld(cart.world)?.let { world ->
+                        val location = Location(world, cart.x, cart.y + 0.9, cart.z)
+                        if (settings.particles) {
+                            world.spawnParticle(Particle.COMPOSTER, location, 10, 0.45, 0.3, 0.45, 0.03)
+                        }
+                        if (settings.sounds) {
+                            players(runtime.region).forEach { player ->
+                                player.playSound(location, Sound.BLOCK_BARREL_CLOSE, 0.75f, 1.1f)
+                            }
+                        }
+                    }
                     persistAsync()
                 }
                 ShiftEvent.COMPLETED -> {
@@ -4546,7 +4611,11 @@ class ArcFarmsService(
                     FarmPhase.PREPARATION -> runtime.state.preparationProgress
                     FarmPhase.PLANTING -> runtime.state.plantingProgress
                     FarmPhase.CARE -> if (runtime.state.careType == FarmCareType.SEEDER) {
-                        runtime.state.plantingProgress
+                        if (runtime.state.seederStage() == FarmSeederStage.TILLING) {
+                            runtime.state.preparationProgress
+                        } else {
+                            runtime.state.plantingProgress
+                        }
                     } else {
                         runtime.state.careProgress()
                     }
@@ -4595,7 +4664,11 @@ class ArcFarmsService(
                         ))),
                         "requirements" to farmRequirements(runtime, order),
                         "instruction" to (runtime.state.careType?.let { type ->
-                            locale.renderPath("care.${type.name.lowercase()}.instruction", player)
+                            locale.renderPath(if (type == FarmCareType.SEEDER) {
+                                seederInstructionPath(runtime.state)
+                            } else {
+                                "care.${type.name.lowercase()}.instruction"
+                            }, player)
                         } ?: Component.empty()),
                         "nests" to locale.text(runtime.state.pestNests.size),
                         "pests" to locale.text(runtime.state.pestAlive),
@@ -4625,7 +4698,6 @@ class ArcFarmsService(
                     player = player,
                     phaseDone = phaseDone,
                     phaseTotal = phaseTotal,
-                    completed = done,
                     carrying = carrying,
                     expected = expectedScoreboards,
                 )
@@ -5097,7 +5169,12 @@ class ArcFarmsService(
         }
         val next = runtime.state.careTargets
             .filter { it.role == FarmCareRole.SEEDER_WAYPOINT && !it.complete }
-            .minByOrNull(FarmCareTarget::id)
+            .minByOrNull { target ->
+                if (target.position.world != horse.world.name) return@minByOrNull Double.MAX_VALUE
+                val dx = target.position.x - horse.location.x
+                val dz = target.position.z - horse.location.z
+                dx * dx + dz * dz
+            }
             ?: return
         val world = Bukkit.getWorld(next.position.world) ?: return
         val waypoint = Location(world, next.position.x, next.position.y, next.position.z)
@@ -5113,22 +5190,53 @@ class ArcFarmsService(
             applyFarmResult(runtime, FarmShiftEngine.completeSeederPass(runtime.state, next.id, emptySet()), actor)
             return
         }
-        val underMachine = FarmMachinePlanner.plotsUnderMachine(
-            assigned.filterNot(runtime.state.plantedPlots::contains),
-            horse.location.x,
-            horse.location.z,
-            runtime.settings.seederWorkingWidth,
-        )
-        val planted = plantSeederPlots(runtime, underMachine)
-        if (planted.isNotEmpty()) {
-            applyFarmResult(runtime, FarmShiftEngine.workSeeder(runtime.state, planted, actor.uniqueId), actor)
-        }
+        val stage = requireNotNull(runtime.state.seederStage())
         val reachedWaypoint = horse.world == world &&
             horse.location.distanceSquared(waypoint) <= runtime.settings.seederWaypointReach * runtime.settings.seederWaypointReach
+        val completedPlots = if (stage == FarmSeederStage.TILLING) runtime.state.tilledPlots else runtime.state.plantedPlots
+        val missing = assigned.filterNot(completedPlots::contains)
+        val reachable = if (reachedWaypoint) {
+            missing.toSet()
+        } else {
+            FarmMachinePlanner.plotsReachedToward(
+                pass = missing,
+                destination = next.position,
+                machineX = horse.location.x,
+                machineZ = horse.location.z,
+                laneTolerance = runtime.settings.seederLaneTolerance,
+                leadDistance = runtime.settings.seederWorkingWidth / 2.0 + 1.5,
+            )
+        }
+        val mutation = when (stage) {
+            FarmSeederStage.TILLING -> farmMachineBlocks.till(
+                runtime.settings.id,
+                reachable,
+                runtime.settings.seederBlocksPerUpdate,
+            )
+            FarmSeederStage.PLANTING -> farmMachineBlocks.plant(
+                runtime.settings.id,
+                MaterialRules.material(requireNotNull(runtime.state.preparationCrop)),
+                reachable,
+                runtime.settings.seederBlocksPerUpdate,
+            )
+        }
+        if (mutation.processed.isNotEmpty()) {
+            machineSwathFeedback(runtime, mutation.processed, stage)
+            applyFarmResult(runtime, FarmShiftEngine.workSeeder(runtime.state, mutation.processed, actor.uniqueId), actor)
+        }
         if (reachedWaypoint) {
-            if (!runtime.state.plantedPlots.containsAll(assigned)) {
+            val worked = if (stage == FarmSeederStage.TILLING) runtime.state.tilledPlots else runtime.state.plantedPlots
+            if (!worked.containsAll(assigned)) {
                 if (allowInteraction("farm-seeder-pass-missing:${runtime.settings.id}:${actor.uniqueId}", 1_000)) {
                     sendActionBar(actor, MessageKey.FARM_CARE_SEEDER_BLOCKED)
+                    debug.event(
+                        "farm_seeder_lane_blocked",
+                        "zone" to runtime.settings.id,
+                        "target" to next.id,
+                        "stage" to stage,
+                        "missing" to assigned.count { it !in worked },
+                        "player" to actor.name,
+                    )
                 }
                 return
             }
@@ -5138,7 +5246,12 @@ class ArcFarmsService(
                 "zone" to runtime.settings.id,
                 "target" to next.id,
                 "plots" to assigned.size,
-                "field_progress" to runtime.state.plantingProgress,
+                "stage" to stage,
+                "field_progress" to if (stage == FarmSeederStage.TILLING) {
+                    runtime.state.preparationProgress
+                } else {
+                    runtime.state.plantingProgress
+                },
                 "player" to actor.name,
             )
             farmCareFeedback(actor, waypoint, FarmCareRole.SEEDER_WAYPOINT, true)
@@ -5152,6 +5265,28 @@ class ArcFarmsService(
         if (!horse.isLeashed || runCatching { horse.leashHolder }.getOrNull() != actor) horse.setLeashHolder(actor)
         horse.pathfinder.moveTo(actor, 1.2)
         pullFarmAnimalTowardHolder(horse, actor)
+    }
+
+    private fun machineSwathFeedback(
+        runtime: FarmRuntime,
+        plots: Collection<FarmPlotPosition>,
+        stage: FarmSeederStage,
+    ) {
+        if (!settings.particles) return
+        val color = if (stage == FarmSeederStage.TILLING) FARM_TILL_COLOR else FARM_PLANT_COLOR
+        plots.asSequence().filterIndexed { index, _ -> index % 4 == 0 }.forEach { position ->
+            val above = position.block()?.getRelative(org.bukkit.block.BlockFace.UP) ?: return@forEach
+            runtime.region.world.spawnParticle(
+                Particle.DUST,
+                above.location.toCenterLocation().add(0.0, 0.75, 0.0),
+                2,
+                0.16,
+                0.16,
+                0.16,
+                0.0,
+                Particle.DustOptions(color, 0.95f),
+            )
+        }
     }
 
     private fun carePlotsForTarget(
@@ -5169,42 +5304,6 @@ class ArcFarmsService(
                     dx * dx + dz * dz
                 }.thenBy(FarmCareTarget::id),
             ).id == target.id
-        }
-    }
-
-    private fun plantSeederPlots(runtime: FarmRuntime, plots: Collection<FarmPlotPosition>): Set<FarmPlotPosition> {
-        val crop = runtime.state.preparationCrop?.let(MaterialRules::material) ?: return emptySet()
-        return plots.filterTo(linkedSetOf()) { position ->
-            if (position in runtime.state.plantedPlots) return@filterTo false
-            val soil = position.block() ?: return@filterTo false
-            val above = soil.getRelative(org.bukkit.block.BlockFace.UP)
-            if (!above.type.isAir && above.type != crop) {
-                debug.event(
-                    "farm_seeder_blocked",
-                    "zone" to runtime.settings.id,
-                    "x" to position.x,
-                    "y" to position.y,
-                    "z" to position.z,
-                    "block" to above.type,
-                )
-                return@filterTo false
-            }
-            setWetFarmland(soil)
-            above.setBlockData(crop.createBlockData(), false)
-            farmBlockLedger.captureActiveCrop(soil, runtime.settings.id)
-            if (settings.particles) {
-                runtime.region.world.spawnParticle(
-                    Particle.DUST,
-                    above.location.toCenterLocation().add(0.0, 0.75, 0.0),
-                    2,
-                    0.16,
-                    0.16,
-                    0.16,
-                    0.0,
-                    Particle.DustOptions(FARM_PLANT_COLOR, 0.9f),
-                )
-            }
-            true
         }
     }
 
@@ -5897,7 +5996,7 @@ class ArcFarmsService(
 
     private fun ensureFarmContractScene(runtime: FarmRuntime) {
         val order = currentOrder(runtime)
-        if (order == null || runtime.state.phase in setOf(FarmPhase.IDLE, FarmPhase.COOLDOWN)) {
+        if (order == null || runtime.state.phase == FarmPhase.IDLE) {
             clearFarmContractScene(runtime, "contract_inactive")
             return
         }
@@ -5947,7 +6046,7 @@ class ArcFarmsService(
                 cartDisplayTransform = cartVisual.displayTransform,
                 cartScale = cartVisual.scale,
                 loadItem = sceneItem(order.cartLoadMaterial, order.cartLoadCustomModelData),
-                loadCount = runtime.state.harvestMilestone.coerceIn(0, 4),
+                loadCount = runtime.state.deliveredCrates.size.coerceIn(0, runtime.settings.delivery.crates),
                 loadYOffset = cartVisual.loadYOffset,
                 loadScale = cartVisual.loadScale,
                 viewRange = cartVisual.viewRange,
@@ -5982,7 +6081,8 @@ class ArcFarmsService(
                 MessageKey.FARM_CART_PROGRESS,
                 mapOf(
                     "order" to locale.renderPath("order.farm.${order.id}", player),
-                    "percent" to locale.text(runtime.state.harvestMilestone * 25),
+                    "done" to locale.text(runtime.state.deliveredCrates.size),
+                    "total" to locale.text(runtime.settings.delivery.crates),
                 ),
             )
         }
@@ -6849,7 +6949,6 @@ class ArcFarmsService(
         player: Player,
         phaseDone: Int,
         phaseTotal: Int,
-        completed: Int,
         carrying: Boolean,
         expected: MutableSet<UUID>,
     ) {
@@ -6863,8 +6962,10 @@ class ArcFarmsService(
             total = phaseTotal,
             required = order.required,
             cropProgress = runtime.state.progress,
-            cartPercent = ((completed.toLong() * 100L) / order.totalRequired.coerceAtLeast(1)).toInt(),
+            deliveredCrates = runtime.state.deliveredCrates.size,
+            requiredCrates = runtime.settings.delivery.crates,
             careType = runtime.state.careType,
+            seederStage = runtime.state.seederStage(),
             incidentType = runtime.state.incidentType,
             carrying = carrying,
         )
@@ -6944,8 +7045,15 @@ class ArcFarmsService(
             players(runtime.region).filterNot(::isAdminEditing).forEach { player ->
                 val hive = runtime.state.careTargets.firstOrNull { it.role == FarmCareRole.HIVE }
                 val visible = when (runtime.state.careType) {
-                    FarmCareType.SEEDER, FarmCareType.IRRIGATION ->
-                        incomplete.minByOrNull(FarmCareTarget::id)?.let(::listOf).orEmpty()
+                    FarmCareType.SEEDER -> incomplete.firstOrNull { it.role == FarmCareRole.SEEDER_HORSE }
+                        ?.let(::listOf)
+                        ?: incomplete.filter { it.role == FarmCareRole.SEEDER_WAYPOINT }.minByOrNull { target ->
+                            if (target.position.world != player.world.name) return@minByOrNull Double.MAX_VALUE
+                            val dx = target.position.x - player.location.x
+                            val dz = target.position.z - player.location.z
+                            dx * dx + dz * dz
+                        }?.let(::listOf).orEmpty()
+                    FarmCareType.IRRIGATION -> incomplete.minByOrNull(FarmCareTarget::id)?.let(::listOf).orEmpty()
                     FarmCareType.POLLINATION -> if ((pollenCharges[player.uniqueId] ?: 0) > 0) {
                         incomplete.filter { it.role == FarmCareRole.FLOWER_PATCH }
                     } else {
@@ -6964,7 +7072,7 @@ class ArcFarmsService(
                     }
                 }
                 if (runtime.state.careType == FarmCareType.SEEDER) {
-                    val next = incomplete.firstOrNull { it.role == FarmCareRole.SEEDER_WAYPOINT }
+                    val next = visible.firstOrNull { it.role == FarmCareRole.SEEDER_WAYPOINT }
                     if (next != null) {
                         val assignments = FarmMachinePlanner.assignToWaypoints(
                             runtime.state.preparationPatch,
@@ -6975,7 +7083,12 @@ class ArcFarmsService(
                         FarmMachinePlanner.guidanceLine(assignments[next.id].orEmpty()).forEach { plot ->
                             plot.location()?.let { location ->
                                 if (location.world == player.world) {
-                                    spawnGuidanceDust(player, location.toCenterLocation().add(0.0, 1.1, 0.0), FARM_PLANT_COLOR, 1.35f)
+                                    val color = if (runtime.state.seederStage() == FarmSeederStage.TILLING) {
+                                        FARM_TILL_COLOR
+                                    } else {
+                                        FARM_PLANT_COLOR
+                                    }
+                                    spawnGuidanceDust(player, location.toCenterLocation().add(0.0, 1.1, 0.0), color, 1.35f)
                                 }
                             }
                         }
@@ -7944,6 +8057,12 @@ class ArcFarmsService(
         event.isCancelled = true
     }
 
+    private fun seederInstructionPath(state: FarmShiftState): String = when (state.seederStage()) {
+        FarmSeederStage.TILLING -> "care.seeder.tilling-instruction"
+        FarmSeederStage.PLANTING -> "care.seeder.planting-instruction"
+        null -> "care.seeder.instruction"
+    }
+
     private fun sendFarmCurrentTaskHint(player: Player, runtime: FarmRuntime, reason: String) {
         if (!allowInteraction("farm-task-hint:${runtime.settings.id}:${player.uniqueId}", 900)) return
         when (runtime.state.phase) {
@@ -7962,7 +8081,11 @@ class ArcFarmsService(
                 MessageKey.FARM_CARE_REQUIRED,
                 mapOf(
                     "instruction" to (runtime.state.careType?.let { type ->
-                        locale.renderPath("care.${type.name.lowercase()}.instruction", player)
+                        locale.renderPath(if (type == FarmCareType.SEEDER) {
+                            seederInstructionPath(runtime.state)
+                        } else {
+                            "care.${type.name.lowercase()}.instruction"
+                        }, player)
                     } ?: Component.empty()),
                 ),
             )

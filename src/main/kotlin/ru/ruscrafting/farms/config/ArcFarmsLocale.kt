@@ -152,6 +152,8 @@ enum class MessageKey(val path: String) {
     FARM_CARE_SEEDER_FOLLOWING("farm.care-seeder-following"),
     FARM_CARE_SEEDER_BLOCKED("farm.care-seeder-blocked"),
     FARM_CARE_SEEDER_PROGRESS("farm.care-seeder-progress"),
+    FARM_CARE_SEEDER_PLANTING_STARTED("farm.care-seeder-planting-started"),
+    FARM_CARE_SEEDER_PLANTING_STARTED_SUBTITLE("farm.care-seeder-planting-started-subtitle"),
     FARM_CARE_SEEDER_RESOLVED("farm.care-seeder-resolved"),
     FARM_CARE_SEEDER_RESOLVED_SUBTITLE("farm.care-seeder-resolved-subtitle"),
     FARM_CARE_DISEASE_SPREAD("farm.care-disease-spread"),

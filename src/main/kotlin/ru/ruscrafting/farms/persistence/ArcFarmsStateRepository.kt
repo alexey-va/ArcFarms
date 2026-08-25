@@ -3,6 +3,8 @@ package ru.ruscrafting.farms.persistence
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.ArcFarmsState
 import ru.ruscrafting.farms.domain.FarmCropDamage
+import ru.ruscrafting.farms.domain.FarmCareRole
+import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmPointPosition
@@ -152,6 +154,18 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
             if (farm.phase == FarmPhase.CARE) {
                 require(farm.careType != null && farm.careTargets.isNotEmpty() && farm.careTargets.any { !it.complete }) {
                     "Active farm care state is incomplete"
+                }
+            }
+            require(
+                farm.seederStage == null ||
+                    (farm.phase == FarmPhase.CARE && farm.careType == FarmCareType.SEEDER),
+            ) { "Farm seeder stage escaped machine care" }
+            if (farm.phase == FarmPhase.CARE && farm.careType == FarmCareType.SEEDER) {
+                require(farm.careTargets.count { it.role == FarmCareRole.SEEDER_HORSE } == 1) {
+                    "Farm seeder state must contain one horse"
+                }
+                require(farm.careTargets.any { it.role == FarmCareRole.SEEDER_WAYPOINT }) {
+                    "Farm seeder state has no field passes"
                 }
             }
 

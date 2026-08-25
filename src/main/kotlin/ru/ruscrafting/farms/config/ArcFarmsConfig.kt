@@ -94,8 +94,12 @@ data class FarmZoneSettings(
     val seederEveryShifts: Int,
     val seederPatchSize: Int,
     val seederPatchMaxSize: Int,
+    val seederComponentGap: Int,
+    val seederComponentLimit: Int,
     val seederWorkingWidth: Int,
+    val seederLaneTolerance: Double,
     val seederWaypointReach: Double,
+    val seederBlocksPerUpdate: Int,
     val diseaseInitialSpots: Int,
     val diseaseMaxSpots: Int,
     val diseaseSpreadSeconds: Int,
@@ -490,9 +494,9 @@ class ArcFarmsConfig private constructor(
                 require(preparationPatchMaxSize >= preparationPatchSize) {
                     "Farm zone $id preparation-patch-max-size must be at least preparation-patch-size"
                 }
-                val seederPatchSize = section.int("seeder-patch-size", 640)
+                val seederPatchSize = section.int("seeder-patch-size", 1_280)
                     .checked("seeder-patch-size", 1, MAX_FARM_PATCH_PLOTS)
-                val seederPatchMaxSize = section.int("seeder-patch-max-size", 1_024)
+                val seederPatchMaxSize = section.int("seeder-patch-max-size", 2_048)
                     .checked("seeder-patch-max-size", 1, MAX_FARM_PATCH_PLOTS)
                 require(seederPatchMaxSize >= seederPatchSize) {
                     "Farm zone $id seeder-patch-max-size must be at least seeder-patch-size"
@@ -571,9 +575,16 @@ class ArcFarmsConfig private constructor(
                         .checked("seeder-every-shifts", 0, 16),
                     seederPatchSize = seederPatchSize,
                     seederPatchMaxSize = seederPatchMaxSize,
-                    seederWorkingWidth = section.int("seeder-working-width", 3)
+                    seederComponentGap = section.int("seeder-component-gap", 16)
+                        .checked("seeder-component-gap", 0, 32),
+                    seederComponentLimit = section.int("seeder-component-limit", 8)
+                        .checked("seeder-component-limit", 1, 16),
+                    seederWorkingWidth = section.int("seeder-working-width", 7)
                         .checked("seeder-working-width", 1, 12),
-                    seederWaypointReach = section.finiteDouble("seeder-waypoint-reach", 2.8, 1.0, 6.0),
+                    seederLaneTolerance = section.finiteDouble("seeder-lane-tolerance", 7.0, 0.5, 16.0),
+                    seederWaypointReach = section.finiteDouble("seeder-waypoint-reach", 6.0, 1.0, 8.0),
+                    seederBlocksPerUpdate = section.int("seeder-blocks-per-update", 128)
+                        .checked("seeder-blocks-per-update", 8, 256),
                     diseaseInitialSpots = diseaseInitialSpots,
                     diseaseMaxSpots = diseaseMaxSpots,
                     diseaseSpreadSeconds = section.int("disease-spread-seconds", 12)

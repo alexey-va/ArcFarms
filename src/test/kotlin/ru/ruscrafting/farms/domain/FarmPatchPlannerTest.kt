@@ -122,6 +122,50 @@ class FarmPatchPlannerTest : FunSpec({
         selected.all(hugeField::contains) shouldBe true
     }
 
+    test("mechanized planner combines several nearby beds on the same level") {
+        val beds = listOf(0, 14, 28).map { start ->
+            (start until start + 10).flatMap { x ->
+                (0 until 10).map { z -> FarmPlotPosition("world", x, 64, z) }
+            }
+        }
+        val distant = (80 until 90).flatMap { x ->
+            (0 until 10).map { z -> FarmPlotPosition("world", x, 64, z) }
+        }
+        val raised = beds.first().map { it.copy(y = 65) }
+
+        val selected = FarmPatchPlanner.selectMechanized(
+            candidates = beds.flatten() + distant + raised,
+            anchor = beds.first().first(),
+            targetSize = 240,
+            maxSize = 300,
+            componentGap = 4,
+            maxComponents = 4,
+        )
+
+        selected.size shouldBe 300
+        selected.toSet() shouldBe beds.flatten().toSet()
+    }
+
+    test("mechanized planner does not bridge a distant bed just to reach its target") {
+        val local = (0 until 10).flatMap { x ->
+            (0 until 10).map { z -> FarmPlotPosition("world", x, 64, z) }
+        }
+        val distant = (40 until 50).flatMap { x ->
+            (0 until 10).map { z -> FarmPlotPosition("world", x, 64, z) }
+        }
+
+        val selected = FarmPatchPlanner.selectMechanized(
+            candidates = local + distant,
+            anchor = local.first(),
+            targetSize = 180,
+            maxSize = 200,
+            componentGap = 8,
+            maxComponents = 4,
+        )
+
+        selected.shouldContainExactlyInAnyOrder(local)
+    }
+
     test("planner rotates bounded patches across one huge connected field") {
         val hugeField = (0 until 50).flatMap { x ->
             (0 until 20).map { z -> FarmPlotPosition("world", x, 64, z) }

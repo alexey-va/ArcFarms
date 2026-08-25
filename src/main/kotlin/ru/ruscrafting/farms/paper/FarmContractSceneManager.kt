@@ -105,7 +105,7 @@ internal data class FarmContractSceneSpec(
     val viewRange: Float,
 ) {
     init {
-        require(loadCount in 0..4) { "Farm contract cart load count must be between 0 and 4" }
+        require(loadCount in 0..8) { "Farm contract cart load count must be between 0 and 8" }
         require(customerLocation.world === cartLocation.world) { "Farm contract scene must stay in one world" }
     }
 }
@@ -311,12 +311,21 @@ internal class FarmContractSceneManager(
 
     private fun cartLoadLocation(spec: FarmContractSceneSpec, slot: Int): Location {
         val cart = spec.cartLocation
-        val offsets = listOf(-0.22 to -0.08, 0.22 to -0.08, -0.22 to 0.18, 0.22 to 0.18)
+        val offsets = listOf(
+            -0.24 to -0.16,
+            0.24 to -0.16,
+            -0.24 to 0.10,
+            0.24 to 0.10,
+            -0.24 to 0.36,
+            0.24 to 0.36,
+            -0.24 to 0.62,
+            0.24 to 0.62,
+        )
         val (localX, localZ) = offsets[slot.coerceIn(0, offsets.lastIndex)]
         val radians = Math.toRadians(cart.yaw.toDouble())
         val x = localX * kotlin.math.cos(radians) - localZ * kotlin.math.sin(radians)
         val z = localX * kotlin.math.sin(radians) + localZ * kotlin.math.cos(radians)
-        return cart.clone().add(x, spec.loadYOffset + (slot / 2) * 0.12, z)
+        return cart.clone().add(x, spec.loadYOffset + (slot / 4) * 0.13, z)
     }
 
     private fun candidate(entity: Entity): FarmContractSceneCandidate {

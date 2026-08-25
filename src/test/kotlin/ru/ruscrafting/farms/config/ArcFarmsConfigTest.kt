@@ -17,6 +17,7 @@ import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmContractRarity
 import ru.ruscrafting.farms.domain.FarmCustomerType
 import ru.ruscrafting.farms.domain.FarmPhase
+import ru.ruscrafting.farms.domain.FarmSeederStage
 import ru.ruscrafting.farms.paper.FarmScoreboardRenderer
 import ru.ruscrafting.farms.paper.FarmScoreboardView
 import java.nio.file.Files
@@ -127,10 +128,14 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().droughtTargetBeds(20) shouldBe 20
         settings.farms.single().preparationPatchSize shouldBe 100
         settings.farms.single().preparationPatchMaxSize shouldBe 256
-        settings.farms.single().seederPatchSize shouldBe 640
-        settings.farms.single().seederPatchMaxSize shouldBe 1_024
-        settings.farms.single().seederWorkingWidth shouldBe 3
-        settings.farms.single().seederWaypointReach shouldBe 2.8
+        settings.farms.single().seederPatchSize shouldBe 1_280
+        settings.farms.single().seederPatchMaxSize shouldBe 2_048
+        settings.farms.single().seederComponentGap shouldBe 16
+        settings.farms.single().seederComponentLimit shouldBe 8
+        settings.farms.single().seederWorkingWidth shouldBe 7
+        settings.farms.single().seederLaneTolerance shouldBe 7.0
+        settings.farms.single().seederWaypointReach shouldBe 6.0
+        settings.farms.single().seederBlocksPerUpdate shouldBe 128
         settings.farms.single().preparationSearchRadius shouldBe 64
         settings.farms.single().fixedCropRespawnSeconds shouldBe 20
         settings.farms.single().restoreBlocksPerTick shouldBe 24
@@ -208,7 +213,7 @@ class ArcFarmsConfigTest : FunSpec({
         classicSettings.farms.single().delivery.spawnRadius shouldBe 12
         classicSettings.farms.single().delivery.minCrateSpacing shouldBe 5.0
         classicSettings.farms.single().delivery.displayScale shouldBe 1.8f
-        classicSettings.farms.single().delivery.displayYOffset shouldBe -0.05
+        classicSettings.farms.single().delivery.displayYOffset shouldBe 0.04
         classicSettings.farms.single().delivery.carriedScale shouldBe 1.4f
         classicSettings.farms.single().careVisuals.getValue(FarmCareRole.VALVE).customModelData shouldBe 11_859
         classicSettings.farms.single().careVisuals.getValue(FarmCareRole.SCARECROW).customModelData shouldBe 12_160
@@ -221,7 +226,7 @@ class ArcFarmsConfigTest : FunSpec({
         classicSettings.farms.single().contractCartVisual.customModelData shouldBe 10_747
         classicSettings.farms.single().contractCartVisual.displayTransform shouldBe FarmItemDisplayTransform.GROUND
         classicSettings.farms.single().contractCartVisual.scale shouldBe 4.4f
-        classicSettings.farms.single().contractCartVisual.yOffset shouldBe -0.05
+        classicSettings.farms.single().contractCartVisual.yOffset shouldBe -0.20
         classicSettings.farms.single().contractCartVisual.loadScale shouldBe 1.55f
         classicSettings.farms.single().contractCartVisual.viewRange shouldBe 2.0f
         classicSettings.farms.single().rewards.money.amountCents shouldBe 50_000
@@ -386,7 +391,7 @@ class ArcFarmsConfigTest : FunSpec({
         val root = resourceTree()
         val configPath = root.resolve("config.yml")
         configPath.writeText(
-            Files.readString(configPath).replace("seeder-patch-max-size: 1024", "seeder-patch-max-size: 2049"),
+            Files.readString(configPath).replace("seeder-patch-max-size: 2048", "seeder-patch-max-size: 2049"),
         )
 
         shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(root) }
@@ -427,6 +432,31 @@ class ArcFarmsConfigTest : FunSpec({
         val locale = ArcFarmsLocale(root) { settings }
 
         PlainTextComponentSerializer.plainText().serialize(locale.render(MessageKey.PREFIX)) shouldBe "Ферма •"
+    }
+
+    test("help renders command argument brackets instead of html entities") {
+        val root = resourceTree()
+        val settings = ArcFarmsConfig.inspect(root)
+        val locale = ArcFarmsLocale(root) { settings }
+
+        listOf("ru.yml", "en.yml").forEach { fileName ->
+            val source = Files.readString(root.resolve("lang").resolve(fileName))
+            source shouldNotContain "&lt;"
+            source shouldNotContain "&gt;"
+        }
+
+        listOf(
+            locale.render(MessageKey.HELP),
+            locale.render(MessageKey.ADMIN_HELP),
+            locale.render(MessageKey.ADMIN_HELP_BLOCKRESET),
+            locale.render(MessageKey.ADMIN_DEBUG_HELP),
+        ).forEach { component ->
+            val text = PlainTextComponentSerializer.plainText().serialize(component)
+            text shouldNotContain "&lt;"
+            text shouldNotContain "&gt;"
+            text shouldContain "<"
+            text shouldContain ">"
+        }
     }
 
     test("farm reward chat is a rare framed block with the exact delivered reward") {
@@ -581,8 +611,9 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().preparationPatchMaxSize shouldBe 160
         settings.farms.single().seederPatchSize shouldBe 24
         settings.farms.single().seederPatchMaxSize shouldBe 48
-        settings.farms.single().seederWorkingWidth shouldBe 2
-        settings.farms.single().seederWaypointReach shouldBe 2.5
+        settings.farms.single().seederWorkingWidth shouldBe 4
+        settings.farms.single().seederLaneTolerance shouldBe 4.0
+        settings.farms.single().seederWaypointReach shouldBe 4.0
         settings.farms.single().preparationSearchRadius shouldBe 4
         settings.farms.single().careTargetCount shouldBe 3
         settings.farms.single().animalRescueTargetCount shouldBe 4
@@ -625,7 +656,8 @@ class ArcFarmsConfigTest : FunSpec({
                     "PUMPKIN" to 200,
                 ),
                 cropProgress = mapOf("WHEAT" to 1_000, "CARROTS" to 250),
-                cartPercent = 39,
+                deliveredCrates = 1,
+                requiredCrates = 3,
             ),
             null,
         )
@@ -639,7 +671,7 @@ class ArcFarmsConfigTest : FunSpec({
         plain[5] shouldBe "| 1250 / 3200"
         plain[6] shouldBe "| Собирайте культуры из списка"
         plain[8] shouldBe "Урожай"
-        plain.last() shouldBe "| Телега 39%"
+        plain.last() shouldBe "| Телега 1/3"
         plain.any { "pumpkin" in it.lowercase() || "тыкв" in it.lowercase() } shouldBe true
     }
 
@@ -654,7 +686,8 @@ class ArcFarmsConfigTest : FunSpec({
             total = 100,
             required = mapOf("WHEAT" to 100),
             cropProgress = emptyMap(),
-            cartPercent = 0,
+            deliveredCrates = 0,
+            requiredCrates = 3,
         )
         val scenarios = listOf(
             base.copy(phase = FarmPhase.IDLE) to "Заказ появится автоматически",
@@ -669,8 +702,17 @@ class ArcFarmsConfigTest : FunSpec({
             base.copy(phase = FarmPhase.DELIVERY) to "Берите ящики у телеги",
             base.copy(phase = FarmPhase.DELIVERY, carrying = true) to "Несите ящик к фиолетовой метке",
             base.copy(phase = FarmPhase.COOLDOWN) to "Новый заказ появится позже",
+            base.copy(
+                phase = FarmPhase.CARE,
+                careType = FarmCareType.SEEDER,
+                seederStage = FarmSeederStage.TILLING,
+            ) to "Проходите любые метки — техника вспашет широкую полосу",
+            base.copy(
+                phase = FarmPhase.CARE,
+                careType = FarmCareType.SEEDER,
+                seederStage = FarmSeederStage.PLANTING,
+            ) to "Проходите любые оставшиеся метки и засейте поле",
         ) + mapOf(
-            FarmCareType.SEEDER to "Ведите технику по отмеченному проходу",
             FarmCareType.WEEDS to "Ищите подсвеченные корни",
             FarmCareType.IRRIGATION to "Открывайте вентили по порядку",
             FarmCareType.POLLINATION to "Пыльцу из улья несите к цветам",
@@ -687,6 +729,18 @@ class ArcFarmsConfigTest : FunSpec({
             rows.size shouldBe 11
             PlainTextComponentSerializer.plainText().serialize(rows[6]) shouldBe "| $expectedHint"
         }
+    }
+
+    test("money reward uses the dedicated coin glyph without a redundant noun") {
+        val root = resourceTree()
+        val settings = ArcFarmsConfig.inspect(root)
+        val locale = ArcFarmsLocale(root) { settings }
+        val rendered = locale.render(
+            MessageKey.FARM_REWARD_MONEY,
+            values = mapOf("amount" to Component.text("500")),
+        )
+
+        PlainTextComponentSerializer.plainText().serialize(rendered) shouldBe "500 💰"
     }
 }) {
     companion object {

@@ -86,20 +86,59 @@ object FarmMachinePlanner {
         return assignments
     }
 
-    fun plotsUnderMachine(
+    fun plotsReachedToward(
         pass: Collection<FarmPlotPosition>,
+        destination: FarmPointPosition,
         machineX: Double,
         machineZ: Double,
-        workingWidth: Int,
+        laneTolerance: Double,
+        leadDistance: Double,
     ): Set<FarmPlotPosition> {
-        require(workingWidth in 1..12) { "Farm machine working width must be in 1..12" }
-        val radius = maxOf(0.9, workingWidth / 2.0 + 0.35)
-        val radiusSquared = radius * radius
-        return pass.filterTo(linkedSetOf()) { plot ->
-            val dx = plot.x + 0.5 - machineX
-            val dz = plot.z + 0.5 - machineZ
-            dx * dx + dz * dz <= radiusSquared
+        require(laneTolerance.isFinite() && laneTolerance in 0.5..16.0) {
+            "Farm machine lane tolerance must be in 0.5..16"
         }
+        require(leadDistance.isFinite() && leadDistance in 0.0..16.0) {
+            "Farm machine lead distance must be in 0..16"
+        }
+        val plots = pass.distinct()
+        if (plots.isEmpty()) return emptySet()
+        require(plots.all { it.world == destination.world }) { "Farm machine destination crosses worlds" }
+        val axis = primaryAxis(plots)
+        val center = plots.map(axis::perpendicular).average() + 0.5
+        val machinePerpendicular = if (axis == Axis.X) machineZ else machineX
+        if (abs(machinePerpendicular - center) > laneTolerance) return emptySet()
+        val destinationForward = if (axis == Axis.X) destination.x else destination.z
+        val machineForward = if (axis == Axis.X) machineX else machineZ
+        val minimum = plots.minOf(axis::forward) + 0.5
+        val maximum = plots.maxOf(axis::forward) + 0.5
+        val movingPositive = abs(destinationForward - maximum) <= abs(destinationForward - minimum)
+        return plots.filterTo(linkedSetOf()) { plot ->
+            val forward = axis.forward(plot) + 0.5
+            if (movingPositive) forward <= machineForward + leadDistance else forward >= machineForward - leadDistance
+        }
+    }
+
+    fun oppositeEndpoint(
+        pass: Collection<FarmPlotPosition>,
+        endpoint: FarmPointPosition,
+    ): FarmPointPosition {
+        val plots = pass.distinct()
+        require(plots.isNotEmpty()) { "Farm machine pass has no plots" }
+        require(plots.all { it.world == endpoint.world }) { "Farm machine endpoint crosses worlds" }
+        val axis = primaryAxis(plots)
+        val minimum = plots.minOf(axis::forward)
+        val maximum = plots.maxOf(axis::forward)
+        val endpointForward = if (axis == Axis.X) endpoint.x else endpoint.z
+        val oppositeForward = if (abs(endpointForward - (minimum + 0.5)) <= abs(endpointForward - (maximum + 0.5))) {
+            maximum
+        } else {
+            minimum
+        }
+        val center = plots.map(axis::perpendicular).average()
+        val plot = plots.asSequence().filter { axis.forward(it) == oppositeForward }.minWith(
+            compareBy<FarmPlotPosition> { abs(axis.perpendicular(it) - center) }.then(POSITION_ORDER),
+        )
+        return FarmPointPosition(plot.world, plot.x + 0.5, plot.y + 1.05, plot.z + 0.5)
     }
 
     fun guidanceLine(pass: Collection<FarmPlotPosition>, maximumMarkers: Int = 12): List<FarmPlotPosition> {
