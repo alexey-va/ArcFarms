@@ -15,6 +15,13 @@ class FarmWaterFlowTracker {
         flowsByPosition.getOrPut(source, ::linkedSetOf) += flowId
     }
 
+    fun tryStart(flowId: Long, source: FarmPlotPosition, maximumActiveFlows: Int): Boolean {
+        require(maximumActiveFlows > 0) { "Maximum active farm water flows must be positive" }
+        if (positionsByFlow.size >= maximumActiveFlows) return false
+        start(flowId, source)
+        return true
+    }
+
     fun propagate(from: FarmPlotPosition, to: FarmPlotPosition): Set<Long> {
         val owners = flowsByPosition[from].orEmpty().toSet()
         owners.forEach { flowId ->
@@ -68,4 +75,14 @@ class FarmWaterFlowTracker {
     fun trackedBlockCount(): Int = flowsByPosition.size
 
     fun isEmpty(): Boolean = positionsByFlow.isEmpty()
+}
+
+/** Fixed, bounded observations are enough to catch vanilla water propagation before cleanup. */
+internal object FarmWaterObservationPlan {
+    fun delays(settleTicks: Long): List<Long> {
+        require(settleTicks > 1L) { "Farm water settle delay must exceed one tick" }
+        return generateSequence(3L) { it + 4L }.takeWhile { it < settleTicks }.take(MAX_OBSERVATIONS).toList()
+    }
+
+    private const val MAX_OBSERVATIONS = 5
 }

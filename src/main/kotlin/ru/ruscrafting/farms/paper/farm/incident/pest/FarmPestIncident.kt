@@ -34,6 +34,8 @@ import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmBlockRegistry
+import ru.ruscrafting.farms.paper.BukkitFarmEntityLookup
+import ru.ruscrafting.farms.paper.FarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.FarmPestDamagePolicy
@@ -62,6 +64,7 @@ internal class FarmPestIncident(
     private val beds: FarmIncidentBedProvider,
     private val transitions: FarmTransitionSink,
     private val random: RandomGenerator,
+    private val entityLookup: FarmEntityLookup = BukkitFarmEntityLookup,
 ) {
     private val pestZoneKey = NamespacedKey(plugin, "farm_pest_zone")
     private val pestSequenceKey = NamespacedKey(plugin, "farm_pest_sequence")
@@ -73,6 +76,8 @@ internal class FarmPestIncident(
     private val nestRoleKey = NamespacedKey(plugin, "farm_pest_nest_role")
     private val pestIds = mutableMapOf<String, MutableSet<UUID>>()
     private val nestEntities = mutableMapOf<PestNestKey, MutableSet<UUID>>()
+    private val reconciledSequences = mutableMapOf<String, Long>()
+    private val spawnLocator = FarmPestSpawnLocator(random)
 
     fun ownsPest(entity: Entity): Boolean = entity.persistentDataContainer.has(pestZoneKey, PersistentDataType.STRING)
 
@@ -191,9 +196,10 @@ internal class FarmPestIncident(
 
     fun ensure(runtime: FarmRuntime) {
         if (!active(runtime)) {
-            clear(runtime, "incident_inactive")
+            if (hasTrackedLifecycle(runtime.settings.id)) clear(runtime, "incident_inactive")
             return
         }
+        reconcileLifecycle(runtime)
         ensureNests(runtime)
         ensureNestEntities(runtime)
         val nearbyPlayers = port.players(runtime.region)
@@ -205,7 +211,7 @@ internal class FarmPestIncident(
             }
             return
         }
-        pests.forEach { pest ->
+        pests = pests.filter { pest ->
             (pest as? Mob)?.let { mob ->
                 mob.isAware = true
                 mob.target = nearbyPlayers.minByOrNull { it.location.distanceSquared(pest.location) }
@@ -219,9 +225,11 @@ internal class FarmPestIncident(
                     "uuid" to pest.uniqueId,
                     "reason" to "outside_region",
                 )
+                false
+            } else {
+                true
             }
-        }
-        pests = activePests(runtime).toMutableList()
+        }.toMutableList()
         if (pests.size > runtime.state.pestAlive) {
             removePests(runtime, pests.drop(runtime.state.pestAlive), "surplus")
             pests = pests.take(runtime.state.pestAlive).toMutableList()
@@ -265,10 +273,9 @@ internal class FarmPestIncident(
     }
 
     fun eatCrops(runtime: FarmRuntime) {
-        var state = runtime.state
-        var changed = false
-        activePests(runtime).forEach { pest ->
-            if (!port.allowInteraction("farm-pest-eat:${pest.uniqueId}", PEST_EAT_INTERVAL_MILLIS)) return@forEach
+        val claimed = hashSetOf<Triple<Int, Int, Int>>()
+        val scheduled = activePests(runtime).mapNotNull { pest ->
+            if (!port.allowInteraction("farm-pest-eat:${pest.uniqueId}", PEST_EAT_INTERVAL_MILLIS)) return@mapNotNull null
             val radius = runtime.settings.pestEatRadius
             val targets = buildList {
                 for (x in pest.location.blockX - radius..pest.location.blockX + radius) {
@@ -282,19 +289,28 @@ internal class FarmPestIncident(
                         }
                     }
                 }
-            }.distinctBy { "${it.world.name}:${it.x}:${it.y}:${it.z}" }
+            }.distinctBy { Triple(it.x, it.y, it.z) }
                 .sortedBy { it.location.distanceSquared(pest.location) }
+                .filter { claimed.add(Triple(it.x, it.y, it.z)) }
                 .take(runtime.settings.pestEatPerPulse)
+            pest to targets
+        }
+        val soils = scheduled.flatMap { (_, targets) ->
+            targets.map { it.getRelative(org.bukkit.block.BlockFace.DOWN) }
+        }
+        blockLedger.captureActiveCrops(soils, runtime.settings.id)
+        val positions = soils.map { it.toFarmPlotPosition() }
+        blockRegistry.addBeds(runtime.settings.id, positions)
+        val damages = runtime.state.pestDamagedCrops.toMutableList()
+        val damagedPositions = damages.mapTo(hashSetOf(), FarmCropDamage::position)
+        scheduled.forEach { (pest, targets) ->
             targets.forEach { target ->
                 val soil = target.getRelative(org.bukkit.block.BlockFace.DOWN)
                 val position = soil.toFarmPlotPosition()
                 val crop = target.type.name
-                blockLedger.captureActiveCropIfPresent(soil, runtime.settings.id)
-                if (state.pestDamagedCrops.size < MAX_DAMAGED_CROPS && state.pestDamagedCrops.none { it.position == position }) {
-                    state = state.copy(pestDamagedCrops = state.pestDamagedCrops + FarmCropDamage(position, crop))
-                    changed = true
+                if (damages.size < MAX_DAMAGED_CROPS && damagedPositions.add(position)) {
+                    damages += FarmCropDamage(position, crop)
                 }
-                blockRegistry.addBeds(runtime.settings.id, listOf(position))
                 val cropData = target.blockData
                 target.setType(Material.AIR, false)
                 if (settings().particles) {
@@ -324,7 +340,9 @@ internal class FarmPestIncident(
                 runtime.region.world.playSound(pest.location, Sound.ENTITY_SILVERFISH_AMBIENT, 0.7f, 0.75f)
             }
         }
-        if (changed) transitions.apply(runtime, EngineResult(state, accepted = true), null)
+        if (damages.size != runtime.state.pestDamagedCrops.size) {
+            transitions.apply(runtime, EngineResult(runtime.state.copy(pestDamagedCrops = damages), accepted = true), null)
+        }
     }
 
     fun removeNestAt(runtime: FarmRuntime, position: FarmPlotPosition, reason: String) {
@@ -332,16 +350,24 @@ internal class FarmPestIncident(
     }
 
     fun clear(runtime: FarmRuntime, reason: String) {
+        val zoneId = runtime.settings.id
         removePests(runtime, activePests(runtime), reason)
         nestEntities.keys.filter { it.zoneId == runtime.settings.id }.toList().forEach { removeNest(it, reason) }
-        loadedNests(runtime.settings.id).forEach(Entity::remove)
+        if (reconciledSequences.remove(zoneId) != null) {
+            entityLookup.inWorld(runtime.region.world).filter { entity ->
+                entity.persistentDataContainer.get(pestZoneKey, PersistentDataType.STRING) == zoneId ||
+                    entity.persistentDataContainer.get(nestZoneKey, PersistentDataType.STRING) == zoneId
+            }.forEach(Entity::remove)
+        }
+        pestIds.remove(zoneId)
     }
 
     fun cleanup(reason: String) {
-        val owned = Bukkit.getWorlds().flatMap { it.entities }.filter { ownsPest(it) || ownsNest(it) }
+        val owned = entityLookup.inAllWorlds().filter { ownsPest(it) || ownsNest(it) }
         owned.forEach(Entity::remove)
         pestIds.clear()
         nestEntities.clear()
+        reconciledSequences.clear()
         if (owned.isNotEmpty()) debug.event("farm_pest_cleanup", "count" to owned.size, "reason" to reason)
     }
 
@@ -356,11 +382,14 @@ internal class FarmPestIncident(
             runtime.state.sequence * 53L + 11L,
         )
         val damages = runtime.state.pestDamagedCrops.toMutableList()
-        val nests = centers.mapNotNull { position ->
+        val nestBlocks = centers.mapNotNull { position ->
             val soil = position.block() ?: return@mapNotNull null
             val crop = soil.getRelative(org.bukkit.block.BlockFace.UP)
             if (crop.type.name !in runtime.settings.crops) return@mapNotNull null
-            blockLedger.captureActiveCropIfPresent(soil, runtime.settings.id)
+            Triple(position, soil, crop)
+        }
+        blockLedger.captureActiveCrops(nestBlocks.map { it.second }, runtime.settings.id)
+        val nests = nestBlocks.map { (position, _, crop) ->
             if (damages.none { it.position == position }) damages += FarmCropDamage(position, crop.type.name)
             crop.setType(Material.AIR, false)
             FarmPestNest(position, runtime.settings.pestNestHealth)
@@ -405,11 +434,10 @@ internal class FarmPestIncident(
         nestEntities.keys.filter { it.zoneId == runtime.settings.id && it !in activeKeys }.toList().forEach {
             removeNest(it, "state_removed")
         }
-        loadedNests(runtime.settings.id).filter { nestIdentity(it)?.third != runtime.state.sequence }.forEach(Entity::remove)
         runtime.state.pestNests.forEach { nest ->
             val key = PestNestKey(runtime.settings.id, nest.position)
             val expected = Triple(runtime.settings.id, nest.position, runtime.state.sequence)
-            val activeEntities = (nestEntities[key].orEmpty().mapNotNull(Bukkit::getEntity) + loadedNests(runtime.settings.id))
+            val activeEntities = nestEntities[key].orEmpty().mapNotNull(Bukkit::getEntity)
                 .distinctBy(Entity::getUniqueId)
                 .filter { nestIdentity(it) == expected }
             nestEntities[key] = activeEntities.mapTo(mutableSetOf(), Entity::getUniqueId)
@@ -444,7 +472,8 @@ internal class FarmPestIncident(
     }
 
     private fun activePests(runtime: FarmRuntime): List<LivingEntity> {
-        val matching = runtime.region.world.entities.asSequence().filterIsInstance<LivingEntity>().filter { entity ->
+        val matching = pestIds[runtime.settings.id].orEmpty().asSequence().mapNotNull(Bukkit::getEntity)
+            .filterIsInstance<LivingEntity>().filter { entity ->
             entity.isValid && entity.persistentDataContainer.get(pestZoneKey, PersistentDataType.STRING) == runtime.settings.id &&
                 entity.persistentDataContainer.get(pestSequenceKey, PersistentDataType.LONG) == runtime.state.sequence
         }.sortedBy { it.uniqueId.toString() }.toList()
@@ -453,7 +482,7 @@ internal class FarmPestIncident(
     }
 
     private fun spawnPest(runtime: FarmRuntime, preferred: Location, target: Player?): LivingEntity? {
-        val location = findSpawn(runtime, preferred) ?: run {
+        val location = spawnLocator.find(runtime.region, preferred, runtime.settings.pestSpawnRadius) ?: run {
             debug.event("farm_pest_spawn_failed", "zone" to runtime.settings.id, "reason" to "no_safe_location")
             return null
         }
@@ -481,23 +510,6 @@ internal class FarmPestIncident(
         return entity
     }
 
-    private fun findSpawn(runtime: FarmRuntime, anchor: Location): Location? {
-        repeat(MAX_SPAWN_ATTEMPTS) {
-            val radius = runtime.settings.pestSpawnRadius
-            val x = anchor.blockX + random.nextInt(-radius, radius + 1)
-            val z = anchor.blockZ + random.nextInt(-radius, radius + 1)
-            if (!runtime.region.world.isChunkLoaded(x shr 4, z shr 4)) return@repeat
-            for (y in anchor.blockY - 2..anchor.blockY + 2) {
-                val feet = runtime.region.world.getBlockAt(x, y, z)
-                val head = runtime.region.world.getBlockAt(x, y + 1, z)
-                val floor = runtime.region.world.getBlockAt(x, y - 1, z)
-                val candidate = Location(runtime.region.world, x + 0.5, y.toDouble(), z + 0.5)
-                if (runtime.region.contains(candidate) && feet.isPassable && head.isPassable && floor.type.isSolid) return candidate
-            }
-        }
-        return null
-    }
-
     private fun removePests(runtime: FarmRuntime, entities: Collection<LivingEntity>, reason: String) {
         entities.forEach { entity ->
             pestIds[runtime.settings.id]?.remove(entity.uniqueId)
@@ -511,7 +523,6 @@ internal class FarmPestIncident(
     private fun removeNest(key: PestNestKey, reason: String) {
         val tracked = nestEntities.remove(key).orEmpty()
         tracked.forEach { Bukkit.getEntity(it)?.remove() }
-        loadedNests(key.zoneId).filter { nestIdentity(it)?.second == key.position }.forEach(Entity::remove)
         if (tracked.isNotEmpty()) {
             debug.event(
                 "farm_pest_nest_entities_removed",
@@ -545,10 +556,31 @@ internal class FarmPestIncident(
         .get(nestRoleKey, PersistentDataType.STRING)
         ?.let { runCatching { PestNestRole.valueOf(it) }.getOrNull() }
 
-    private fun loadedNests(zoneId: String): List<Entity> = Bukkit.getWorlds().asSequence()
-        .flatMap { it.entities.asSequence() }
-        .filter { entity -> entity.persistentDataContainer.get(nestZoneKey, PersistentDataType.STRING) == zoneId }
-        .toList()
+    private fun reconcileLifecycle(runtime: FarmRuntime) {
+        val zoneId = runtime.settings.id
+        if (reconciledSequences[zoneId] == runtime.state.sequence) return
+        pestIds.remove(zoneId)
+        nestEntities.keys.removeIf { it.zoneId == zoneId }
+        val loaded = entityLookup.inWorld(runtime.region.world).filter { entity ->
+            entity.persistentDataContainer.get(pestZoneKey, PersistentDataType.STRING) == zoneId ||
+                entity.persistentDataContainer.get(nestZoneKey, PersistentDataType.STRING) == zoneId
+        }
+        loaded.forEach { entity ->
+            val pestSequence = entity.persistentDataContainer.get(pestSequenceKey, PersistentDataType.LONG)
+            val nest = nestIdentity(entity)
+            when {
+                ownsPest(entity) && pestSequence == runtime.state.sequence && entity is LivingEntity ->
+                    pestIds.getOrPut(zoneId, ::linkedSetOf) += entity.uniqueId
+                nest != null && nest.first == zoneId && nest.third == runtime.state.sequence ->
+                    nestEntities.getOrPut(PestNestKey(zoneId, nest.second), ::linkedSetOf) += entity.uniqueId
+                else -> entity.remove()
+            }
+        }
+        reconciledSequences[zoneId] = runtime.state.sequence
+    }
+
+    private fun hasTrackedLifecycle(zoneId: String): Boolean =
+        zoneId in reconciledSequences || pestIds[zoneId].isNullOrEmpty().not() || nestEntities.keys.any { it.zoneId == zoneId }
 
     private fun active(runtime: FarmRuntime): Boolean =
         runtime.state.phase == FarmPhase.INCIDENT &&
@@ -557,7 +589,6 @@ internal class FarmPestIncident(
     private companion object {
         const val NEST_ENTITY_COUNT = 2
         const val MAX_DAMAGED_CROPS = 4_096
-        const val MAX_SPAWN_ATTEMPTS = 24
         const val PEST_EAT_INTERVAL_MILLIS = 1_000L
     }
 }

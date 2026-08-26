@@ -36,4 +36,24 @@ class FarmWaterFlowTrackerTest : FunSpec({
         tracker.isActive(10) shouldBe true
         tracker.isActive(11) shouldBe true
     }
+
+    test("concurrent pours are bounded and capacity returns after settlement") {
+        val tracker = FarmWaterFlowTracker()
+        repeat(8) { index ->
+            tracker.tryStart(
+                (index + 1).toLong(),
+                FarmPlotPosition("world", index, 65, 0),
+                maximumActiveFlows = 8,
+            ) shouldBe true
+        }
+
+        tracker.tryStart(9, FarmPlotPosition("world", 9, 65, 0), maximumActiveFlows = 8) shouldBe false
+        tracker.finish(1)
+        tracker.tryStart(9, FarmPlotPosition("world", 9, 65, 0), maximumActiveFlows = 8) shouldBe true
+    }
+
+    test("water observation schedule remains bounded before settlement") {
+        FarmWaterObservationPlan.delays(21) shouldBe listOf(3L, 7L, 11L, 15L, 19L)
+        FarmWaterObservationPlan.delays(10) shouldBe listOf(3L, 7L)
+    }
 })

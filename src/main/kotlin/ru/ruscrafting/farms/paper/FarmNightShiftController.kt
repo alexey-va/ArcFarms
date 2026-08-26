@@ -32,7 +32,10 @@ internal data class FarmNightShiftSyncResult(
 )
 
 /** Owns participant time and every ephemeral patrol entity for a night shift. */
-internal class FarmNightShiftController(plugin: Plugin) {
+internal class FarmNightShiftController(
+    plugin: Plugin,
+    private val entityLookup: FarmEntityLookup = BukkitFarmEntityLookup,
+) {
     private data class PatrolKey(val zoneId: String, val index: Int)
     private data class LightCell(val world: String, val x: Int, val y: Int, val z: Int)
 
@@ -42,6 +45,7 @@ internal class FarmNightShiftController(plugin: Plugin) {
     private val patrolNextRouteAt = mutableMapOf<PatrolKey, Long>()
     private val patrolLights = mutableMapOf<PatrolKey, LightCell>()
     private val lightOwners = mutableMapOf<LightCell, MutableSet<PatrolKey>>()
+    private val reconciledSequences = mutableMapOf<String, Long>()
     private val zoneKey = NamespacedKey(plugin, "farm_night_patrol_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_night_patrol_sequence")
     private val indexKey = NamespacedKey(plugin, "farm_night_patrol_index")
@@ -57,6 +61,7 @@ internal class FarmNightShiftController(plugin: Plugin) {
         settings: FarmSpecialIncidentSettings,
         particles: Boolean,
     ): FarmNightShiftSyncResult {
+        reconcileLifecycle(zoneId, sequence, region)
         syncPlayerTime(zoneId, players, playerTime)
         if (players.isEmpty() || anchors.isEmpty()) {
             return FarmNightShiftSyncResult(0, 0, clearPatrols(zoneId))
@@ -163,8 +168,12 @@ internal class FarmNightShiftController(plugin: Plugin) {
     }
 
     fun clearZone(zoneId: String) {
+        val hasState = zoneId in playerZones || zoneId in reconciledSequences ||
+            patrols.keys.any { it.zoneId == zoneId } || patrolLights.keys.any { it.zoneId == zoneId }
+        if (!hasState) return
         playerZones.remove(zoneId).orEmpty().forEach { id -> Bukkit.getPlayer(id)?.resetPlayerTime() }
         clearPatrols(zoneId)
+        reconciledSequences.remove(zoneId)
     }
 
     fun clearAll(players: Collection<Player>) {
@@ -172,10 +181,11 @@ internal class FarmNightShiftController(plugin: Plugin) {
         players.filter { it.uniqueId in activePlayers }.forEach(Player::resetPlayerTime)
         playerZones.clear()
         patrolLights.keys.toList().forEach(::releaseLight)
-        Bukkit.getWorlds().asSequence().flatMap { it.entities.asSequence() }.filter(::owns).forEach(Entity::remove)
+        entityLookup.inAllWorlds().asSequence().filter(::owns).forEach(Entity::remove)
         patrols.clear()
         patrolRouteSteps.clear()
         patrolNextRouteAt.clear()
+        reconciledSequences.clear()
         Bukkit.getWorlds().forEach { world -> world.loadedChunks.forEach(::onChunkLoad) }
     }
 
@@ -231,13 +241,30 @@ internal class FarmNightShiftController(plugin: Plugin) {
             patrols.remove(key)?.let(Bukkit::getEntity)?.remove()
             removed++
         }
-        Bukkit.getWorlds().asSequence().flatMap { it.entities.asSequence() }.filter { entity ->
-            entity.persistentDataContainer.get(zoneKey, PersistentDataType.STRING) == zoneId
-        }.forEach { entity ->
-            entity.remove()
-            removed++
-        }
         return removed
+    }
+
+    private fun reconcileLifecycle(zoneId: String, sequence: Long, region: ActivityRegion) {
+        if (reconciledSequences[zoneId] == sequence) return
+        patrols.keys.removeIf { it.zoneId == zoneId }
+        entityLookup.inWorld(region.world).filter { entity ->
+            entity.persistentDataContainer.get(zoneKey, PersistentDataType.STRING) == zoneId
+        }.groupBy { entity ->
+            val currentSequence = entity.persistentDataContainer.get(sequenceKey, PersistentDataType.LONG)
+            val index = entity.persistentDataContainer.get(indexKey, PersistentDataType.INTEGER)
+            if (entity is Monster && currentSequence == sequence && index != null && index >= 0) {
+                PatrolKey(zoneId, index)
+            } else null
+        }.forEach { (key, entities) ->
+            if (key == null) {
+                entities.forEach(Entity::remove)
+                return@forEach
+            }
+            val keep = entities.minByOrNull { it.uniqueId.toString() }
+            entities.filter { it !== keep }.forEach(Entity::remove)
+            if (keep != null) patrols[key] = keep.uniqueId
+        }
+        reconciledSequences[zoneId] = sequence
     }
 
     private fun routePatrol(

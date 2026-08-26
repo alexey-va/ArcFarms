@@ -54,8 +54,9 @@ internal class FarmPlacementService(
         return FarmDeliveryPosition(fallback.world, fallback.x, fallback.y, fallback.z)
     }
 
-    fun deliveryCrateLocation(runtime: FarmRuntime, anchor: FarmDeliveryPosition, index: Int): Location? {
-        val world = runtime.region.world.takeIf { it.name == anchor.world } ?: return null
+    /** Resolves the complete delivery layout with one indexed-bed scan. */
+    fun deliveryCrateLocations(runtime: FarmRuntime, anchor: FarmDeliveryPosition): List<Location> {
+        val world = runtime.region.world.takeIf { it.name == anchor.world } ?: return emptyList()
         val anchorLocation = Location(world, anchor.x, anchor.y, anchor.z)
         val nearby = bedCandidates(runtime, listOf(anchorLocation), runtime.settings.delivery.spawnRadius)
         val candidates = if (nearby.size >= runtime.settings.delivery.crates) {
@@ -73,8 +74,11 @@ internal class FarmPlacementService(
             targetCount = runtime.settings.delivery.crates,
             selectionIndex = runtime.state.sequence,
             minimumTargetDistance = runtime.settings.delivery.minCrateSpacing,
-        ).getOrNull(index)?.let { selected -> Location(world, selected.x, selected.y, selected.z) }
+        ).map { selected -> Location(world, selected.x, selected.y, selected.z) }
     }
+
+    fun deliveryCrateLocation(runtime: FarmRuntime, anchor: FarmDeliveryPosition, index: Int): Location? =
+        deliveryCrateLocations(runtime, anchor).getOrNull(index)
 
     fun sources(runtime: FarmRuntime, preferred: Location?): List<Location> {
         val candidates = buildList {

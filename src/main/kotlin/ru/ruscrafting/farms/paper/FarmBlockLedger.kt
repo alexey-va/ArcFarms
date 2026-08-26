@@ -84,6 +84,13 @@ internal class FarmBlockLedger(plugin: Plugin) {
         return current.copy(activeCropData = cropData).also { update(soil, it) }
     }
 
+    /** Captures original and active crop state with at most two PDC writes per affected chunk. */
+    fun captureActiveCrops(soils: Collection<Block>, zoneId: String) {
+        if (soils.isEmpty()) return
+        captureAll(soils, zoneId)
+        updateActiveCrops(soils)
+    }
+
     /** Updates active crop snapshots with one PDC decode/write per affected chunk. Blocks must be captured first. */
     fun updateActiveCrops(soils: Collection<Block>) {
         if (soils.isEmpty()) return

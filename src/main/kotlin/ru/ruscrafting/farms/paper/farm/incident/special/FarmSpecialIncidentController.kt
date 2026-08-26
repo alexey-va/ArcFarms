@@ -23,6 +23,8 @@ import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.FarmCropDamage
 import ru.ruscrafting.farms.domain.FarmGiantCropBlueprint
 import ru.ruscrafting.farms.domain.FarmGiantCropCandidate
+import ru.ruscrafting.farms.domain.FarmGiantCropCandidateSelection
+import ru.ruscrafting.farms.domain.FarmGiantCropCandidateSelector
 import ru.ruscrafting.farms.domain.FarmIncidentPlanner
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmMarketTimer
@@ -64,6 +66,8 @@ internal val SPECIAL_FARM_INCIDENT_TYPES = setOf(
     FarmIncidentType.NIGHT_SHIFT,
     FarmIncidentType.MARKET,
 )
+
+private const val MAX_GIANT_CROP_PLACEMENT_CHECKS = 128
 
 /** Complete owner for giant crop, channels, night shift and urgent market incidents. */
 internal class FarmSpecialIncidentController(
@@ -118,7 +122,7 @@ internal class FarmSpecialIncidentController(
         val specialSettings = runtime.settings.specialIncidents
         val indexedBedCount = registry.beds(runtime.settings.id).size
         val requestedPatrols = specialSettings.nightPatrolCount(indexedBedCount)
-        val giantCandidates = giantCandidates(runtime, mature)
+        var giantSelection: FarmGiantCropCandidateSelection? = null
         val order = runtime.state.orderId?.let(runtime.orders::get)
         val configuredTypes = order?.incidentTypes.orEmpty().filter(SPECIAL_FARM_INCIDENT_TYPES::contains)
         val scheduledTypes = order?.let { configured ->
@@ -130,6 +134,10 @@ internal class FarmSpecialIncidentController(
         }.orEmpty()
         val candidateTypes = (listOf(type) + configuredTypes.filterNot(scheduledTypes::contains) + configuredTypes).distinct()
         val selected = candidateTypes.firstNotNullOfOrNull { candidateType ->
+            val giantCandidates = if (candidateType == FarmIncidentType.GIANT_CROP) {
+                val selection = giantSelection ?: selectGiantCandidate(runtime, mature).also { giantSelection = it }
+                listOfNotNull(selection.candidate)
+            } else emptyList()
             FarmSpecialIncidentPlanner.plan(
                 type = candidateType,
                 sequence = runtime.state.sequence,
@@ -157,7 +165,9 @@ internal class FarmSpecialIncidentController(
                 "sequence" to runtime.state.sequence,
                 "type" to type,
                 "mature_crops" to mature.size,
-                "giant_candidates" to giantCandidates.size,
+                "giant_candidates" to giantSelection?.considered,
+                "giant_candidates_checked" to giantSelection?.checked,
+                "giant_candidates_rejected" to giantSelection?.rejected,
             )
             port.persistAsync()
             return null
@@ -188,7 +198,8 @@ internal class FarmSpecialIncidentController(
             "incident_beds" to incidentBeds.size,
             "patrols_requested" to requestedPatrols,
             "patrols_planned" to plan.state.points.size,
-            "giant_candidates" to giantCandidates.size,
+            "giant_candidates" to giantSelection?.considered,
+            "giant_candidates_checked" to giantSelection?.checked,
         )
         port.persistAsync()
         return activeType
@@ -478,30 +489,37 @@ internal class FarmSpecialIncidentController(
         )
     }
 
-    private fun giantCandidates(runtime: FarmRuntime, mature: Collection<FarmMatureCrop>): List<FarmGiantCropCandidate> {
-        val rejected = linkedMapOf<String, Int>()
+    private fun selectGiantCandidate(
+        runtime: FarmRuntime,
+        mature: Collection<FarmMatureCrop>,
+    ): FarmGiantCropCandidateSelection {
         val candidates = buildList {
-            mature.filter { FarmGiantCropBlueprint.supports(it.crop) }.forEach { add(it.plot.copy(y = it.plot.y + 1) to it.crop) }
+            mature.filter { FarmGiantCropBlueprint.supports(it.crop) }.forEach {
+                add(FarmGiantCropCandidate(it.plot.copy(y = it.plot.y + 1), it.crop))
+            }
             registry.fixedCrops(runtime.settings.id).forEach { position ->
                 val block = position.block() ?: return@forEach
-                if (FarmGiantCropBlueprint.supports(block.type.name)) add(position to block.type.name)
+                if (FarmGiantCropBlueprint.supports(block.type.name)) {
+                    add(FarmGiantCropCandidate(position, block.type.name))
+                }
             }
         }
-        return candidates.distinctBy { it.first }.mapNotNull { (position, crop) ->
-            val anchor = position.block() ?: return@mapNotNull null
-            val issue = giantCrop.placementIssue(runtime.region, anchor, crop, runtime.settings.crops)
-            FarmGiantCropCandidate(position, crop).takeIf {
-                if (issue != null) rejected[issue] = rejected.getOrDefault(issue, 0) + 1
-                issue == null
-            }
-        }.also { accepted ->
+        return FarmGiantCropCandidateSelector.select(
+            candidates = candidates,
+            sequence = runtime.state.sequence,
+            maxChecks = MAX_GIANT_CROP_PLACEMENT_CHECKS,
+        ) { candidate ->
+            val anchor = candidate.block.block() ?: return@select "missing_block"
+            giantCrop.placementIssue(runtime.region, anchor, candidate.crop, runtime.settings.crops)
+        }.also { selection ->
             debug.event(
                 "farm_giant_crop_candidates_discovered",
                 "zone" to runtime.settings.id,
                 "mature" to mature.size,
-                "considered" to candidates.size,
-                "accepted" to accepted.size,
-                "rejected" to rejected,
+                "considered" to selection.considered,
+                "checked" to selection.checked,
+                "accepted" to (selection.candidate != null),
+                "rejected" to selection.rejected,
             )
         }
     }

@@ -5,6 +5,7 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import org.bukkit.Location
 import org.bukkit.entity.Interaction
 import org.bukkit.plugin.Plugin
@@ -25,6 +26,7 @@ import ru.ruscrafting.farms.domain.FarmRules
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.CuboidActivityRegion
+import ru.ruscrafting.farms.paper.CountingFarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
@@ -94,15 +96,28 @@ class FarmDeliveryControllerMockBukkitTest : FunSpec({
         fixture.runtime.state.deliveredCrates shouldBe setOf(0)
         fixture.controller.carrierCount(fixture.runtime.settings.id) shouldBe 0
     }
+
+    test("delivery reconciliation and layout selection run once per shift sequence") {
+        val fixture = deliveryFixture(world, plugin, crates = 3)
+
+        repeat(20) { fixture.controller.ensure(fixture.runtime) }
+
+        fixture.entityLookup.worldScans shouldBe 1
+        fixture.entityLookup.globalScans shouldBe 0
+        verify(exactly = 1) { fixture.placement.deliveryCrateLocations(fixture.runtime, any()) }
+    }
 })
 
 private data class DeliveryFixture(
     val runtime: FarmRuntime,
     val controller: FarmDeliveryController,
     val newController: () -> FarmDeliveryController,
+    val entityLookup: CountingFarmEntityLookup,
+    val placement: FarmPlacementService,
 )
 
 private fun deliveryFixture(world: WorldMock, plugin: Plugin, crates: Int): DeliveryFixture {
+    val entityLookup = CountingFarmEntityLookup()
     val delivery = FarmDeliverySettings(
         world = world.name,
         x = 12.5,
@@ -150,6 +165,9 @@ private fun deliveryFixture(world: WorldMock, plugin: Plugin, crates: Int): Deli
         }
     }
     val placement = mockk<FarmPlacementService> {
+        every { deliveryCrateLocations(any(), any()) } answers {
+            List(crates) { index -> Location(world, 4.5 + index * 4.0, 65.0, 4.5) }
+        }
         every { deliveryCrateLocation(any(), any(), any()) } answers {
             Location(world, 4.5 + thirdArg<Int>() * 4.0, 65.0, 4.5)
         }
@@ -165,6 +183,7 @@ private fun deliveryFixture(world: WorldMock, plugin: Plugin, crates: Int): Deli
         placement = placement,
         transitions = sink,
         clock = { 10_000L },
+        entityLookup = entityLookup,
     )
-    return DeliveryFixture(runtime, create(), ::create)
+    return DeliveryFixture(runtime, create(), ::create, entityLookup, placement)
 }

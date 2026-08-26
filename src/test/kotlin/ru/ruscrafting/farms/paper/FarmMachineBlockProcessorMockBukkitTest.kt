@@ -37,4 +37,23 @@ class FarmMachineBlockProcessorMockBukkitTest : FunSpec({
             it.activeCropData?.startsWith("minecraft:wheat") == true
         } shouldBe true
     }
+
+    test("active crop snapshots are captured as a multi-chunk batch") {
+        world.getChunkAt(1, 0).load()
+        val soils = listOf(0, 1, 16, 17).map { x ->
+            world.getBlockAt(x, 64, 0).also { soil ->
+                soil.type = Material.FARMLAND
+                soil.getRelative(org.bukkit.block.BlockFace.UP).type = Material.WHEAT
+            }
+        }
+        val ledger = FarmBlockLedger(paper.createSimplePlugin("FarmLedgerBatchTest"))
+
+        ledger.captureActiveCrops(soils + soils, "farm")
+
+        soils.all { soil ->
+            ledger.record(soil)?.activeCropData?.startsWith("minecraft:wheat") == true
+        } shouldBe true
+        ledger.blockRecords(world.getChunkAt(0, 0)).size shouldBe 2
+        ledger.blockRecords(world.getChunkAt(1, 0)).size shouldBe 2
+    }
 })

@@ -21,6 +21,7 @@ import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.CuboidActivityRegion
+import ru.ruscrafting.farms.paper.CountingFarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmBlockRegistry
 import ru.ruscrafting.farms.paper.FarmRuntime
@@ -82,15 +83,26 @@ class FarmPestIncidentMockBukkitTest : FunSpec({
 
         world.entities.count(fixture.controller::ownsNest) shouldBe 0
     }
+
+    test("active pest lifecycle scans the world once instead of every ensure tick") {
+        val fixture = pestFixture(world, plugin)
+
+        repeat(20) { fixture.controller.ensure(fixture.runtime) }
+
+        fixture.entityLookup.worldScans shouldBe 1
+        fixture.entityLookup.globalScans shouldBe 0
+    }
 })
 
 private data class PestFixture(
     val runtime: FarmRuntime,
     val controller: FarmPestIncident,
     val newController: () -> FarmPestIncident,
+    val entityLookup: CountingFarmEntityLookup,
 )
 
 private fun pestFixture(world: WorldMock, plugin: Plugin): PestFixture {
+    val entityLookup = CountingFarmEntityLookup()
     val config = mockk<ArcFarmsConfig> {
         every { sounds } returns false
         every { particles } returns false
@@ -135,6 +147,7 @@ private fun pestFixture(world: WorldMock, plugin: Plugin): PestFixture {
         beds = FarmIncidentBedProvider { emptySet() },
         transitions = sink,
         random = Random(1L),
+        entityLookup = entityLookup,
     )
-    return PestFixture(runtime, create(), ::create)
+    return PestFixture(runtime, create(), ::create, entityLookup)
 }

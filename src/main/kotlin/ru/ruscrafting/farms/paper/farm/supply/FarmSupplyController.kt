@@ -24,6 +24,8 @@ import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
+import ru.ruscrafting.farms.paper.BukkitFarmEntityLookup
+import ru.ruscrafting.farms.paper.FarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
 import java.util.UUID
@@ -40,12 +42,14 @@ internal class FarmSupplyController(
     private val locale: ArcFarmsLocale,
     private val debug: ArcFarmsDebug,
     private val settings: () -> ArcFarmsConfig,
+    private val entityLookup: FarmEntityLookup = BukkitFarmEntityLookup,
 ) {
     private val zoneKey = NamespacedKey(plugin, "farm_supply_zone")
     private val kindKey = NamespacedKey(plugin, "farm_supply_kind")
     private val serviceItemKey = NamespacedKey(plugin, "farm_service_item")
     private val entities = mutableMapOf<SupplyKey, MutableSet<UUID>>()
     private val visualMaterials = mutableMapOf<SupplyKey, Material>()
+    private val reconciledZones = mutableSetOf<String>()
 
     fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING)
 
@@ -57,9 +61,18 @@ internal class FarmSupplyController(
     }
 
     fun ensure(runtime: FarmRuntime, point: (FarmSupplyKind) -> FarmPointPosition) {
-        val loadedByKind = runtime.region.world.entities.asSequence().mapNotNull { entity ->
-            interaction(entity)?.takeIf { it.zoneId == runtime.settings.id }?.let { it.kind to entity }
-        }.groupBy({ it.first }, { it.second })
+        val loadedByKind = if (reconciledZones.add(runtime.settings.id)) {
+            entityLookup.inWorld(runtime.region.world).asSequence().filter(::owns).mapNotNull { entity ->
+                val identity = interaction(entity)
+                if (identity?.zoneId == runtime.settings.id) identity.kind to entity
+                else {
+                    if (entity.persistentDataContainer.get(zoneKey, PersistentDataType.STRING) == runtime.settings.id) {
+                        entity.remove()
+                    }
+                    null
+                }
+            }.groupBy({ it.first }, { it.second })
+        } else emptyMap()
         FarmSupplyKind.entries.forEach { kind ->
             val position = point(kind)
             val key = SupplyKey(runtime.settings.id, kind)
@@ -191,12 +204,13 @@ internal class FarmSupplyController(
 
     fun cleanup(reason: String) {
         var removed = 0
-        Bukkit.getWorlds().flatMap { it.entities }.filter(::owns).forEach { entity ->
+        entityLookup.inAllWorlds().filter(::owns).forEach { entity ->
             entity.remove()
             removed++
         }
         entities.clear()
         visualMaterials.clear()
+        reconciledZones.clear()
         Bukkit.getOnlinePlayers().forEach { removeServiceItems(it, reason = reason) }
         if (removed > 0) debug.event("farm_supply_entities_cleanup", "count" to removed, "reason" to reason)
     }

@@ -24,6 +24,8 @@ import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
+import ru.ruscrafting.farms.paper.BukkitFarmEntityLookup
+import ru.ruscrafting.farms.paper.FarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
@@ -35,6 +37,12 @@ import java.util.UUID
 internal data class FarmDeliveryIdentity(val zoneId: String, val sequence: Long, val index: Int)
 
 private data class DeliveryKey(val zoneId: String, val index: Int)
+
+private data class DeliveryLayout(
+    val sequence: Long,
+    val anchor: FarmDeliveryPosition,
+    val locations: List<Location?>,
+)
 
 private enum class DeliveryEntityRole { GROUND_DISPLAY, GROUND_INTERACTION, CARRIED_DISPLAY }
 
@@ -48,6 +56,7 @@ internal class FarmDeliveryController(
     private val placement: FarmPlacementService,
     private val transitions: FarmTransitionSink,
     private val clock: () -> Long,
+    private val entityLookup: FarmEntityLookup = BukkitFarmEntityLookup,
 ) {
     private val zoneKey = NamespacedKey(plugin, "farm_delivery_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_delivery_sequence")
@@ -56,6 +65,8 @@ internal class FarmDeliveryController(
     private val groundEntities = mutableMapOf<DeliveryKey, MutableSet<UUID>>()
     private val carriers = mutableMapOf<DeliveryKey, UUID>()
     private val carriedDisplays = mutableMapOf<DeliveryKey, UUID>()
+    private val reconciledSequences = mutableMapOf<String, Long>()
+    private val layouts = mutableMapOf<String, DeliveryLayout>()
 
     fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING)
 
@@ -80,12 +91,12 @@ internal class FarmDeliveryController(
         return (0 until runtime.settings.delivery.crates)
             .filterNot(runtime.state.deliveredCrates::contains)
             .filterNot { index -> DeliveryKey(runtime.settings.id, index) in carriers }
-            .mapNotNull { index -> placement.deliveryCrateLocation(runtime, anchor, index) }
+            .mapNotNull { index -> crateLocations(runtime, anchor).getOrNull(index)?.clone() }
     }
 
     fun ensure(runtime: FarmRuntime) {
         if (runtime.state.phase != FarmPhase.DELIVERY) {
-            if (keys(runtime.settings.id).isNotEmpty() || loaded(runtime.settings.id).isNotEmpty()) {
+            if (hasTrackedLifecycle(runtime.settings.id)) {
                 clear(runtime, "phase_inactive")
             }
             return
@@ -96,19 +107,14 @@ internal class FarmDeliveryController(
         ).also { selected ->
             transitions.apply(runtime, EngineResult(runtime.state.copy(deliveryPosition = selected), accepted = true), null)
         }
-        // Carrier ownership is intentionally ephemeral. A hard restart returns every
-        // formerly carried crate to the ground instead of retaining an orphan display.
-        val trackedCarried = carriedDisplays.values.toHashSet()
-        loaded(runtime.settings.id)
-            .filter { role(it) == DeliveryEntityRole.CARRIED_DISPLAY && it.uniqueId !in trackedCarried }
-            .forEach(Entity::remove)
+        reconcileLifecycle(runtime)
+        crateLocations(runtime, position)
         repeat(runtime.settings.delivery.crates) { index ->
             val key = DeliveryKey(runtime.settings.id, index)
             if (index in runtime.state.deliveredCrates) {
                 removeGround(key, "already_delivered")
                 carriers.remove(key)
                 removeCarriedDisplay(key)
-                removeLoaded(runtime, index, "already_delivered")
                 return@repeat
             }
             carriers[key]?.let { playerId ->
@@ -195,26 +201,32 @@ internal class FarmDeliveryController(
     }
 
     fun clear(runtime: FarmRuntime, reason: String) {
-        keys(runtime.settings.id).forEach { key ->
+        val zoneId = runtime.settings.id
+        keys(zoneId).forEach { key ->
             removeGround(key, reason)
             carriers.remove(key)
             removeCarriedDisplay(key)
         }
-        loaded(runtime.settings.id).forEach(Entity::remove)
+        if (reconciledSequences.remove(zoneId) != null) {
+            entityLookup.inWorld(runtime.region.world).filter { entity -> identity(entity)?.zoneId == zoneId }.forEach(Entity::remove)
+        }
+        layouts.remove(zoneId)
     }
 
     fun cleanup(reason: String) {
-        val owned = Bukkit.getWorlds().flatMap { it.entities }.filter(::owns)
+        val owned = entityLookup.inAllWorlds().filter(::owns)
         owned.forEach(Entity::remove)
         groundEntities.clear()
         carriers.clear()
         carriedDisplays.clear()
+        reconciledSequences.clear()
+        layouts.clear()
         if (owned.isNotEmpty()) debug.event("farm_delivery_cleanup", "count" to owned.size, "reason" to reason)
     }
 
     private fun reconcileGround(runtime: FarmRuntime, key: DeliveryKey, anchor: FarmDeliveryPosition) {
         val expected = FarmDeliveryIdentity(runtime.settings.id, runtime.state.sequence, key.index)
-        val active = (groundEntities[key].orEmpty().mapNotNull(Bukkit::getEntity) + loaded(runtime.settings.id))
+        val active = groundEntities[key].orEmpty().mapNotNull(Bukkit::getEntity)
             .distinctBy(Entity::getUniqueId)
             .filter { entity -> identity(entity) == expected && role(entity) != DeliveryEntityRole.CARRIED_DISPLAY }
         groundEntities[key] = active.mapTo(mutableSetOf(), Entity::getUniqueId)
@@ -228,7 +240,7 @@ internal class FarmDeliveryController(
     }
 
     private fun spawnGround(runtime: FarmRuntime, key: DeliveryKey, anchor: FarmDeliveryPosition) {
-        val location = placement.deliveryCrateLocation(runtime, anchor, key.index) ?: run {
+        val location = crateLocations(runtime, anchor).getOrNull(key.index)?.clone() ?: run {
             plugin.logger.severe("Farm ${runtime.settings.id} has no indexed bed for delivery crate ${key.index}")
             return
         }
@@ -356,7 +368,9 @@ internal class FarmDeliveryController(
     }
 
     private fun removeLoaded(runtime: FarmRuntime, index: Int, reason: String) {
-        val removed = loaded(runtime.settings.id).filter { identity(it)?.index == index }
+        val removed = entityLookup.inWorld(runtime.region.world).filter {
+            identity(it)?.let { identity -> identity.zoneId == runtime.settings.id && identity.index == index } == true
+        }
         removed.forEach(Entity::remove)
         if (removed.isNotEmpty()) {
             debug.event(
@@ -373,10 +387,45 @@ internal class FarmDeliveryController(
         carriedDisplays.remove(key)?.let(Bukkit::getEntity)?.remove()
     }
 
-    private fun loaded(zoneId: String): List<Entity> = Bukkit.getWorlds().asSequence()
-        .flatMap { it.entities.asSequence() }
-        .filter { entity -> identity(entity)?.zoneId == zoneId }
-        .toList()
+    private fun reconcileLifecycle(runtime: FarmRuntime) {
+        val zoneId = runtime.settings.id
+        if (reconciledSequences[zoneId] == runtime.state.sequence) return
+        groundEntities.keys.removeIf { it.zoneId == zoneId }
+        carriers.keys.removeIf { it.zoneId == zoneId }
+        carriedDisplays.keys.removeIf { it.zoneId == zoneId }
+        entityLookup.inWorld(runtime.region.world).filter { entity -> identity(entity)?.zoneId == zoneId }.forEach { entity ->
+            val identity = identity(entity)
+            val entityRole = role(entity)
+            if (
+                identity == null || identity.sequence != runtime.state.sequence ||
+                identity.index !in 0 until runtime.settings.delivery.crates
+            ) {
+                entity.remove()
+                return@forEach
+            }
+            val key = DeliveryKey(zoneId, identity.index)
+            if (entityRole == DeliveryEntityRole.CARRIED_DISPLAY) {
+                // Carrier ownership is intentionally ephemeral. A hard restart returns
+                // every formerly carried crate to its cached ground layout.
+                entity.remove()
+            } else {
+                groundEntities.getOrPut(key, ::linkedSetOf) += entity.uniqueId
+            }
+        }
+        reconciledSequences[zoneId] = runtime.state.sequence
+    }
+
+    private fun crateLocations(runtime: FarmRuntime, anchor: FarmDeliveryPosition): List<Location?> {
+        val current = layouts[runtime.settings.id]
+        if (current != null && current.sequence == runtime.state.sequence && current.anchor == anchor) return current.locations
+        val selected = placement.deliveryCrateLocations(runtime, anchor)
+        val locations = List(runtime.settings.delivery.crates) { index -> selected.getOrNull(index)?.clone() }
+        layouts[runtime.settings.id] = DeliveryLayout(runtime.state.sequence, anchor, locations)
+        return locations
+    }
+
+    private fun hasTrackedLifecycle(zoneId: String): Boolean =
+        zoneId in reconciledSequences || keys(zoneId).isNotEmpty() || zoneId in layouts
 
     private fun keys(zoneId: String): Set<DeliveryKey> = buildSet {
         groundEntities.keys.filterTo(this) { it.zoneId == zoneId }

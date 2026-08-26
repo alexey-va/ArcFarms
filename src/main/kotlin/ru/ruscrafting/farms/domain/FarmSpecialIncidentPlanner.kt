@@ -39,12 +39,14 @@ object FarmSpecialIncidentPlanner {
         require(nightPatrols in 0..16)
         require(nightPatrolMinSpacing.isFinite() && nightPatrolMinSpacing in 0.0..64.0)
         require(marketCrops in 1..512)
-        val candidates = rotate(
-            matureCrops.distinctBy(FarmMatureCrop::plot).sortedWith(
-                compareBy<FarmMatureCrop> { it.plot.x }.thenBy { it.plot.z }.thenBy { it.plot.y }.thenBy { it.crop },
-            ),
-            sequence + type.ordinal * 37L,
-        )
+        val candidates by lazy {
+            rotate(
+                matureCrops.distinctBy(FarmMatureCrop::plot).sortedWith(
+                    compareBy<FarmMatureCrop> { it.plot.x }.thenBy { it.plot.z }.thenBy { it.plot.y }.thenBy { it.crop },
+                ),
+                sequence + type.ordinal * 37L,
+            )
+        }
         return when (type) {
             FarmIncidentType.GIANT_CROP -> {
                 val chosen = rotate(
@@ -84,7 +86,11 @@ object FarmSpecialIncidentPlanner {
                     gates.size,
                 )
             }
-            FarmIncidentType.NIGHT_SHIFT -> selectSpaced(candidates, nightCropPlacements, nightCropMinSpacing)
+            FarmIncidentType.NIGHT_SHIFT -> FarmSpacedPlotSelector.select(
+                candidates,
+                nightCropPlacements,
+                nightCropMinSpacing,
+            ).values
                 .takeIf(List<FarmMatureCrop>::isNotEmpty)?.let { chosen ->
                     val patrolCandidates = rotate(
                         nightPatrolPlots.distinct().sortedWith(
@@ -92,11 +98,11 @@ object FarmSpecialIncidentPlanner {
                         ).map { FarmMatureCrop(it, "") },
                         sequence + 911L,
                     )
-                    val patrols = selectSpaced(
+                    val patrols = FarmSpacedPlotSelector.select(
                         patrolCandidates,
                         nightPatrols,
                         nightPatrolMinSpacing,
-                    ).map { candidate ->
+                    ).values.map { candidate ->
                         FarmPointPosition(
                             candidate.plot.world,
                             candidate.plot.x + 0.5,
@@ -129,38 +135,6 @@ object FarmSpecialIncidentPlanner {
         if (values.isEmpty()) return values
         val offset = java.lang.Math.floorMod((salt xor (salt ushr 32)).toInt(), values.size)
         return values.drop(offset) + values.take(offset)
-    }
-
-    private fun selectSpaced(
-        candidates: List<FarmMatureCrop>,
-        count: Int,
-        minimumSpacing: Double,
-    ): List<FarmMatureCrop> {
-        if (candidates.isEmpty() || count == 0) return emptyList()
-        val selected = mutableListOf(candidates.first())
-        val minimumSquared = minimumSpacing * minimumSpacing
-        while (selected.size < minOf(count, candidates.size)) {
-            val remaining = candidates.filterNot(selected::contains)
-            val sufficientlyDistant = remaining.filter { candidate ->
-                selected.all { existing -> horizontalDistanceSquared(candidate.plot, existing.plot) >= minimumSquared }
-            }
-            val pool = sufficientlyDistant.ifEmpty { remaining }
-            val next = pool.maxWithOrNull(
-                compareBy<FarmMatureCrop> { candidate ->
-                    selected.minOf { existing -> horizontalDistanceSquared(candidate.plot, existing.plot) }
-                }.thenByDescending { it.plot.x }
-                    .thenByDescending { it.plot.z }
-                    .thenByDescending { it.plot.y },
-            ) ?: break
-            selected += next
-        }
-        return selected
-    }
-
-    private fun horizontalDistanceSquared(first: FarmPlotPosition, second: FarmPlotPosition): Double {
-        val dx = (first.x - second.x).toDouble()
-        val dz = (first.z - second.z).toDouble()
-        return dx * dx + dz * dz
     }
 
     private fun interpolate(

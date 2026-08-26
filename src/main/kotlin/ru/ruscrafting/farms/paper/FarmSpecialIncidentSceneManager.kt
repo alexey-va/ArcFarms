@@ -14,6 +14,7 @@ import org.bukkit.util.Transformation
 import org.joml.AxisAngle4f
 import org.joml.Vector3f
 import java.util.concurrent.ConcurrentHashMap
+import java.util.UUID
 import kotlin.math.floor
 
 internal enum class FarmSpecialSceneRole { CHANNEL_GATE, CHANNEL_HITBOX }
@@ -49,39 +50,60 @@ internal data class FarmSpecialSceneSpec(
 internal class FarmSpecialIncidentSceneManager(
     plugin: Plugin,
     private val debug: ArcFarmsDebug,
+    private val entityLookup: FarmEntityLookup = BukkitFarmEntityLookup,
 ) {
     private val zoneKey = NamespacedKey(plugin, "farm_special_scene_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_special_scene_sequence")
     private val roleKey = NamespacedKey(plugin, "farm_special_scene_role")
     private val indexKey = NamespacedKey(plugin, "farm_special_scene_index")
     private val desired = ConcurrentHashMap<String, FarmSpecialSceneSpec>()
+    private val tracked = mutableMapOf<FarmSpecialSceneIdentity, UUID>()
 
     fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING)
 
     fun metadata(entity: Entity): FarmSpecialSceneIdentity? = decode(entity)
 
     fun ensure(spec: FarmSpecialSceneSpec) {
-        desired[spec.zoneId] = spec
+        val previous = desired.put(spec.zoneId, spec)
+        val expected = spec.objects.mapTo(hashSetOf()) { target -> identity(spec, target) }
+        tracked.keys.filter { it.zoneId == spec.zoneId && it !in expected }.toList().forEach(::removeTracked)
+        if (previous == spec && spec.objects.all { trackedEntityIsCurrent(spec, it) }) return
         val targetChunks = spec.objects.mapNotNull { loadedChunk(it.location) }.distinctBy { it.world.uid to (it.x to it.z) }
         targetChunks.forEach { reconcileChunk(it, "ensure") }
     }
 
     fun clearZone(zoneId: String, reason: String) {
-        desired.remove(zoneId)
+        val previous = desired.remove(zoneId)
+        val identities = tracked.keys.filter { it.zoneId == zoneId }.toList()
+        if (previous == null && identities.isEmpty()) return
         var removed = 0
-        loadedOwnedEntities().filter { decode(it)?.zoneId == zoneId }.forEach {
-            it.remove()
-            removed++
+        identities.forEach { identity ->
+            tracked.remove(identity)?.let(Bukkit::getEntity)?.let { entity ->
+                entity.remove()
+                removed++
+            }
         }
-        if (removed > 0) debug.event("farm_special_scene_cleared", "zone" to zoneId, "count" to removed, "reason" to reason)
+        previous?.objects.orEmpty().mapNotNull { loadedChunk(it.location) }
+            .distinctBy { it.world.uid to (it.x to it.z) }
+            .flatMap { it.entities.asList() }
+            .filter { decode(it)?.zoneId == zoneId }
+            .forEach { entity ->
+                entity.remove()
+                removed++
+            }
+        tracked.keys.removeIf { it.zoneId == zoneId }
+        if (removed > 0) {
+            debug.event("farm_special_scene_cleared", "zone" to zoneId, "count" to removed, "reason" to reason)
+        }
     }
 
     fun onChunkLoad(chunk: Chunk) = reconcileChunk(chunk, "chunk_load")
 
     fun cleanupLoaded(reason: String) {
         desired.clear()
+        tracked.clear()
         var removed = 0
-        loadedOwnedEntities().forEach {
+        entityLookup.inAllWorlds().asSequence().filter(::owns).forEach {
             it.remove()
             removed++
         }
@@ -107,9 +129,18 @@ internal class FarmSpecialIncidentSceneManager(
             matching.filter { it !== keep }.forEach(Entity::remove)
             val entity = keep ?: spawn(pair.first, pair.second, identity)
             normalize(entity, pair.first, pair.second, identity)
+            tracked[identity] = entity.uniqueId
             retained += entity
         }
-        candidates.filter { it !in retained }.forEach(Entity::remove)
+        candidates.filter { it !in retained }.forEach { entity ->
+            decode(entity)?.let { identity ->
+                if (tracked[identity] == entity.uniqueId) tracked.remove(identity)
+            }
+            entity.remove()
+        }
+        tracked.entries.removeIf { (identity, id) ->
+            identity in targetByIdentity && Bukkit.getEntity(id)?.isValid != true
+        }
         if (candidates.size != retained.size) {
             debug.event(
                 "farm_special_scene_reconciled",
@@ -210,9 +241,19 @@ internal class FarmSpecialIncidentSceneManager(
         return world.getChunkAt(x, z)
     }
 
-    private fun loadedOwnedEntities(): Sequence<Entity> = Bukkit.getWorlds().asSequence()
-        .flatMap { it.entities.asSequence() }
-        .filter(::owns)
+    private fun identity(spec: FarmSpecialSceneSpec, target: FarmSpecialSceneObject) =
+        FarmSpecialSceneIdentity(spec.zoneId, spec.sequence, target.role, target.index)
+
+    private fun trackedEntityIsCurrent(spec: FarmSpecialSceneSpec, target: FarmSpecialSceneObject): Boolean {
+        val identity = identity(spec, target)
+        val entity = tracked[identity]?.let(Bukkit::getEntity) ?: return false
+        return entity.isValid && decode(entity) == identity && entityMatchesRole(entity, identity.role) &&
+            entity.world === target.location.world && entity.location.distanceSquared(target.location) <= 0.0001
+    }
+
+    private fun removeTracked(identity: FarmSpecialSceneIdentity) {
+        tracked.remove(identity)?.let(Bukkit::getEntity)?.remove()
+    }
 
     private fun chunkCoordinate(coordinate: Double): Int = floor(coordinate).toInt() shr 4
 }

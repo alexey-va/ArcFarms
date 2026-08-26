@@ -40,9 +40,11 @@ import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.domain.seederStage
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
+import ru.ruscrafting.farms.paper.BukkitFarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmBlockPolicy
 import ru.ruscrafting.farms.paper.FarmBlockRegistry
+import ru.ruscrafting.farms.paper.FarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmMachineBlockProcessor
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.FarmSeederMountResult
@@ -79,6 +81,7 @@ internal class FarmCareController(
     private val transitions: FarmTransitionSink,
     private val runtimes: () -> Collection<FarmRuntime>,
     private val clock: () -> Long,
+    private val entityLookup: FarmEntityLookup = BukkitFarmEntityLookup,
 ) {
     private val presentation = FarmCarePresentation(settings)
     private val disease = FarmDiseaseController(
@@ -92,7 +95,7 @@ internal class FarmCareController(
     private val machineBlocks = FarmMachineBlockProcessor(ledger)
     private val entities = mutableMapOf<FarmCareEntityKey, MutableSet<UUID>>()
     private val animalFollowers = mutableMapOf<FarmCareEntityKey, UUID>()
-    private val nextReconcileAt = mutableMapOf<String, Long>()
+    private val reconciledSequences = mutableMapOf<String, Long>()
     private val pollenCharges = FarmPollenCharges()
     private val zoneKey = NamespacedKey(plugin, "farm_care_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_care_sequence")
@@ -173,11 +176,11 @@ internal class FarmCareController(
         pollenCharges.remaining(player.uniqueId, runtime.settings.id, runtime.state.sequence) > 0
 
     fun cleanup(reason: String) {
-        Bukkit.getWorlds().asSequence().flatMap { it.entities.asSequence() }.filter(::owns).forEach(Entity::remove)
+        entityLookup.inAllWorlds().asSequence().filter(::owns).forEach(Entity::remove)
         entities.clear()
         animalFollowers.clear()
         disease.clearAll()
-        nextReconcileAt.clear()
+        reconciledSequences.clear()
         pollenCharges.clearAll()
         debug.event("farm_care_cleanup", "reason" to reason)
     }
@@ -412,12 +415,12 @@ internal class FarmCareController(
     }
 
     fun reconcile(runtime: FarmRuntime) {
-        val now = clock()
-        if (now < nextReconcileAt.getOrDefault(runtime.settings.id, 0L)) return
-        nextReconcileAt[runtime.settings.id] = now + RECONCILE_INTERVAL_MILLIS
+        val zoneId = runtime.settings.id
+        if (runtime.state.phase != FarmPhase.CARE && entities.keys.none { it.zoneId == zoneId }) return
+        if (reconciledSequences[zoneId] == runtime.state.sequence) return
         val targets = runtime.state.careTargets.associateBy(FarmCareTarget::id)
-        runtime.region.world.entities.asSequence().filter { entity ->
-            entity.persistentDataContainer.get(zoneKey, PersistentDataType.STRING) == runtime.settings.id
+        entityLookup.inWorld(runtime.region.world).asSequence().filter { entity ->
+            entity.persistentDataContainer.get(zoneKey, PersistentDataType.STRING) == zoneId
         }.forEach { entity ->
             val sequence = entity.persistentDataContainer.get(sequenceKey, PersistentDataType.LONG)
             val targetId = entity.persistentDataContainer.get(targetKey, PersistentDataType.INTEGER)
@@ -440,6 +443,7 @@ internal class FarmCareController(
             }
             entities.getOrPut(FarmCareEntityKey(runtime.settings.id, requireNotNull(targetId)), ::linkedSetOf) += entity.uniqueId
         }
+        reconciledSequences[zoneId] = runtime.state.sequence
     }
 
     private fun ensureFarmSeeder(runtime: FarmRuntime) {
@@ -771,7 +775,7 @@ internal class FarmCareController(
         entities.keys.filter { it.zoneId == runtime.settings.id }.toList().forEach { removeEntities(it, reason) }
         pollenCharges.clear(runtime.settings.id, runtime.state.sequence)
         disease.clear(runtime.settings.id)
-        nextReconcileAt.remove(runtime.settings.id)
+        reconciledSequences.remove(runtime.settings.id)
     }
 
     private fun releaseFollower(key: FarmCareEntityKey, mob: Mob?, reason: String) {
@@ -785,7 +789,4 @@ internal class FarmCareController(
 
     fun startSound(type: FarmCareType): Sound = presentation.startSound(type)
 
-    private companion object {
-        const val RECONCILE_INTERVAL_MILLIS = 10_000L
-    }
 }

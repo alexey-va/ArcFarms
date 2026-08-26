@@ -20,6 +20,7 @@ import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.domain.FarmWaterFlowTracker
+import ru.ruscrafting.farms.domain.FarmWaterObservationPlan
 import ru.ruscrafting.farms.domain.FarmWaterPlanner
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockLedger
@@ -109,9 +110,9 @@ internal class FarmDroughtIncident(
             selectionIndex = runtime.state.sequence * 37L,
         )
         val targets = selected - existing
-        targets.forEach { position ->
-            val soil = positionBlock(position) ?: return@forEach
-            blockLedger.captureActiveCropIfPresent(soil, runtime.settings.id)
+        val targetSoils = targets.mapNotNull(::positionBlock)
+        blockLedger.captureActiveCrops(targetSoils, runtime.settings.id)
+        targetSoils.forEach { soil ->
             dry(soil)
             soil.getRelative(org.bukkit.block.BlockFace.UP).setType(Material.AIR, false)
         }
@@ -270,6 +271,18 @@ internal class FarmDroughtIncident(
     private fun pour(runtime: FarmRuntime, source: Block, player: Player) {
         val flowId = nextFlowId++
         val tracker = flows.getOrPut(runtime.settings.id, ::FarmWaterFlowTracker)
+        val sourcePosition = source.toFarmPlotPosition()
+        if (!tracker.tryStart(flowId, sourcePosition, MAX_ACTIVE_WATER_FLOWS)) {
+            port.sendActionBar(player, MessageKey.FARM_DROUGHT_REQUIRED)
+            debug.event(
+                "farm_water_rejected",
+                "player" to player.name,
+                "zone" to runtime.settings.id,
+                "reason" to "active_flow_limit",
+                "active_flows" to tracker.activeFlowCount(),
+            )
+            return
+        }
         val beforeWater = mutableSetOf<FarmPlotPosition>()
         val existingItems = source.world.getNearbyEntities(
             source.location.toCenterLocation(), WATER_RADIUS + 2.0, 4.0, WATER_RADIUS + 2.0,
@@ -295,7 +308,6 @@ internal class FarmDroughtIncident(
                 removedDrops++
             }
         }
-        val sourcePosition = source.toFarmPlotPosition()
         if (source.type.name in runtime.settings.crops && !MaterialRules.isFixedBlockCrop(source.type)) {
             val soil = source.getRelative(org.bukkit.block.BlockFace.DOWN)
             if (soil.type in FARM_SOIL_TYPES) {
@@ -306,7 +318,6 @@ internal class FarmDroughtIncident(
                 source.setType(Material.AIR, false)
             }
         }
-        tracker.start(flowId, sourcePosition)
         source.setType(Material.WATER, true)
         val droughtBefore = runtime.state.droughtPlots
         val reached = FarmWaterPlanner.reachedPlotsWithinRadius(sourcePosition, droughtBefore, WATER_RADIUS)
@@ -336,7 +347,9 @@ internal class FarmDroughtIncident(
                 "patches" to completedPatches,
             )
         }
-        for (delay in 1L..19L step 2L) port.runLater(delay) { if (tracker.isActive(flowId)) observeWaterAndDrops() }
+        FarmWaterObservationPlan.delays(WATER_SETTLE_TICKS).forEach { delay ->
+            port.runLater(delay) { if (tracker.isActive(flowId)) observeWaterAndDrops() }
+        }
         if (settings().sounds) player.playSound(source.location, Sound.ITEM_BUCKET_EMPTY, 0.8f, 1.05f)
         if (settings().particles) player.spawnParticle(
             Particle.SPLASH, source.location.toCenterLocation(), 8, 0.35, 0.18, 0.35, 0.05,
@@ -400,6 +413,7 @@ internal class FarmDroughtIncident(
     private companion object {
         const val WATER_RADIUS = 5
         const val WATER_SETTLE_TICKS = 21L
+        const val MAX_ACTIVE_WATER_FLOWS = 8
         const val MAX_ACTIVE_DROUGHT_BEDS = 64
         const val PERSIST_EVERY_DAMAGED_CROPS = 5
         val FARM_SOIL_TYPES = setOf(

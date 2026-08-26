@@ -23,6 +23,7 @@ import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.CuboidActivityRegion
+import ru.ruscrafting.farms.paper.CountingFarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.arc.paper.testing.MockBukkitTestRuntime
 
@@ -89,9 +90,20 @@ class FarmSupplyControllerMockBukkitTest : FunSpec({
         world.entities.count(controller::owns) shouldBe 0
         player.inventory.storageContents.filterNotNull().count(controller::isServiceItem) shouldBe 0
     }
+
+    test("supply scene scans existing entities once and then uses tracked UUIDs") {
+        val lookup = CountingFarmEntityLookup()
+        val controller = controller(plugin, lookup)
+        val runtime = runtime(world)
+
+        repeat(20) { controller.ensure(runtime, supplyPoints(world)::getValue) }
+
+        lookup.worldScans shouldBe 1
+        lookup.globalScans shouldBe 0
+    }
 })
 
-private fun controller(plugin: Plugin): FarmSupplyController {
+private fun controller(plugin: Plugin, entityLookup: CountingFarmEntityLookup = CountingFarmEntityLookup()): FarmSupplyController {
     val config = mockk<ArcFarmsConfig> { every { sounds } returns false }
     val locale = mockk<ArcFarmsLocale>(relaxed = true) {
         every { render(any(), any(), any()) } answers { Component.text(firstArg<MessageKey>().path) }
@@ -101,6 +113,7 @@ private fun controller(plugin: Plugin): FarmSupplyController {
         locale = locale,
         debug = ArcFarmsDebug({ false }) {},
         settings = { config },
+        entityLookup = entityLookup,
     )
 }
 
