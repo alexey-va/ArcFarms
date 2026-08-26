@@ -33,6 +33,23 @@ class FarmBoundedSelectionTest : FunSpec({
         first.checked shouldBeLessThanOrEqual 32
     }
 
+    test("successive giant crop selections rotate crop families and positions") {
+        val candidates = listOf("WHEAT", "MELON", "PUMPKIN").flatMapIndexed { cropIndex, crop ->
+            (0 until 5).map { position ->
+                FarmGiantCropCandidate(FarmPlotPosition("world", cropIndex * 100 + position * 8, 64, cropIndex * 12), crop)
+            }
+        }
+
+        val selected = (0L until 6L).map { selectionKey ->
+            FarmGiantCropCandidateSelector.select(candidates, selectionKey, 32) { null }.candidate
+                ?: error("No giant crop candidate selected")
+        }
+
+        selected.take(3).map(FarmGiantCropCandidate::crop).toSet().size shouldBe 3
+        selected[0].crop shouldBe selected[3].crop
+        (selected[0].block == selected[3].block) shouldBe false
+    }
+
     test("spaced selection uses a quadratic budget based only on the requested result size") {
         val candidates = (0 until 10_000).map { index ->
             FarmMatureCrop(FarmPlotPosition("world", index % 500, 64, index / 500), "WHEAT")

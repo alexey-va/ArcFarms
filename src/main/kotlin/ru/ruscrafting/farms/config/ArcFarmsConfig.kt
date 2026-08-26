@@ -162,9 +162,11 @@ data class FarmZoneSettings(
 }
 
 data class FarmSpecialIncidentSettings(
-    val channelGateCount: Int,
-    val channelDisplayScale: Float,
-    val channelDisplayYOffset: Double,
+    val channelBlockageCount: Int,
+    val channelBlockageMaterial: String,
+    val channelBlockageCustomModelData: Int,
+    val channelBlockageDisplayScale: Float,
+    val channelBlockageDisplayYOffset: Double,
     val nightCropPlacementCount: Int,
     val nightCropTargetCount: Int,
     val nightCropMinSpacing: Double,
@@ -617,11 +619,21 @@ class ArcFarmsConfig private constructor(
                     }
                 }
                 val specialIncidents = FarmSpecialIncidentSettings(
-                    channelGateCount = section.int("special-incidents.channels.gates", 4)
-                        .checked("special-incidents.channels.gates", 3, 8),
-                    channelDisplayScale = section.finiteFloat("special-incidents.channels.display-scale", 1.35f, 0.5f, 3.0f),
-                    channelDisplayYOffset = section.finiteDouble(
-                        "special-incidents.channels.y-offset",
+                    channelBlockageCount = section.int("special-incidents.channels.blockages", 5)
+                        .checked("special-incidents.channels.blockages", 3, 8),
+                    channelBlockageMaterial = materialName(
+                        section.string("special-incidents.channels.blockage.material", "MANGROVE_ROOTS"),
+                    ),
+                    channelBlockageCustomModelData = section.int("special-incidents.channels.blockage.custom-model-data", 0)
+                        .checked("special-incidents.channels.blockage.custom-model-data", 0, 2_000_000),
+                    channelBlockageDisplayScale = section.finiteFloat(
+                        "special-incidents.channels.blockage.display-scale",
+                        1.6f,
+                        0.5f,
+                        3.0f,
+                    ),
+                    channelBlockageDisplayYOffset = section.finiteDouble(
+                        "special-incidents.channels.blockage.y-offset",
                         0.8,
                         0.0,
                         2.0,

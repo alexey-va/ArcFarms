@@ -110,15 +110,18 @@ internal class FarmModule(
     }
 
     fun processRestores() {
-        val limit = registry.snapshot().maxOfOrNull { it.settings.restoreBlocksPerTick } ?: 1
+        val runtimes = registry.snapshot()
+        val limit = runtimes.maxOfOrNull { it.settings.restoreBlocksPerTick } ?: 1
         special.processRestores(limit).forEach { chunk ->
-            registry.snapshot().filter { it.region.world === chunk.world }.forEach { runtime ->
+            runtimes.filter { it.region.world === chunk.world }.forEach { runtime ->
                 blockRegistry.reconcileChunk(runtime.blockIndexDefinition(), chunk)
             }
         }
         fixedCrops.processDue(limit)
-        registry.snapshot().forEach { runtime ->
-            if (isAdminEditing(runtime)) return@forEach
+        val hasEditor = worldAdmin.anyEditing()
+        runtimes.forEach { runtime ->
+            if (!hasRestoreWork(runtime)) return@forEach
+            if (hasEditor && isAdminEditing(runtime)) return@forEach
             var remaining = runtime.settings.restoreBlocksPerTick
             if (runtime.state.preparationPatch.isNotEmpty() && !runtime.state.preparationReleased) {
                 val release = field.release(runtime, remaining)
@@ -272,6 +275,12 @@ internal class FarmModule(
     }
 
     private fun ensureSupplies(runtime: FarmRuntime) = supplies.ensure(runtime) { supplyPoint(runtime, it) }
+
+    private fun hasRestoreWork(runtime: FarmRuntime): Boolean =
+        (runtime.state.preparationPatch.isNotEmpty() && !runtime.state.preparationReleased) ||
+            field.hasPendingAutomaticQuota(runtime) ||
+            (runtime.state.phase != FarmPhase.INCIDENT && incidentRecovery.pending(runtime)) ||
+            (runtime.state.phase == FarmPhase.COOLDOWN && runtime.state.preparationPatch.isNotEmpty())
 
     private fun supplyPoint(runtime: FarmRuntime, kind: FarmSupplyKind): FarmPointPosition = points.resolve(
         runtime,

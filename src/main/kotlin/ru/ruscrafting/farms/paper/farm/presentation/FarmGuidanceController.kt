@@ -16,6 +16,7 @@ import ru.ruscrafting.farms.domain.FarmPlotGeometry
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
+import ru.ruscrafting.farms.domain.FarmSpecialIncidentEngine
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
@@ -154,15 +155,17 @@ internal class FarmGuidanceController(
                     spawnRing(player, Location(player.world, point.x, point.y - 1.0, point.z), 2.3, AMBER_COLOR)
                 }
                 FarmIncidentType.CHANNELS -> special.points.forEachIndexed { index, point ->
-                    val correct = (index in special.solution) == (index in special.active)
+                    if (index in special.active) return@forEachIndexed
                     spawnSlimColumn(
                         player,
                         Location(player.world, point.x, point.y, point.z),
-                        if (correct) SUCCESS_COLOR else AMBER_COLOR,
+                        WATER_COLOR,
                     )
                 }.also {
                     val source = points.resolve(runtime, FarmPointKind.IRRIGATION)
-                    (listOf(source) + special.points.take(runtime.state.incidentProgress)).zipWithNext()
+                    val reached = FarmSpecialIncidentEngine.channelFlowProgress(special.active, special.points.size)
+                    val visibleFlow = (reached + 1).coerceAtMost(special.points.size)
+                    (listOf(source) + special.points.take(visibleFlow)).zipWithNext()
                         .forEach { (from, to) -> spawnWaterTrail(player, from, to) }
                 }
                 FarmIncidentType.NIGHT_SHIFT -> remaining.forEachIndexed { index, plot ->
@@ -211,9 +214,13 @@ internal class FarmGuidanceController(
         FarmIncidentType.GIANT_CROP -> runtime.state.specialIncident?.points.orEmpty().mapNotNull { point ->
             Bukkit.getWorld(point.world)?.let { Location(it, point.x, point.y, point.z) to AMBER_COLOR }
         }
-        FarmIncidentType.CHANNELS -> runtime.state.specialIncident?.points.orEmpty().mapNotNull { point ->
-            Bukkit.getWorld(point.world)?.let { Location(it, point.x, point.y, point.z) to WATER_COLOR }
-        }
+        FarmIncidentType.CHANNELS -> runtime.state.specialIncident?.let { special ->
+            special.points.mapIndexedNotNull { index, point ->
+                if (index in special.active) null else {
+                    Bukkit.getWorld(point.world)?.let { Location(it, point.x, point.y, point.z) to WATER_COLOR }
+                }
+            }
+        }.orEmpty()
         FarmIncidentType.NIGHT_SHIFT -> runtime.state.specialIncident?.plots.orEmpty().mapNotNull(FarmPlotPosition::location)
             .map { it to NIGHT_COLOR }
         FarmIncidentType.MARKET -> points.resolve(runtime, FarmPointKind.CUSTOMER).let { point ->

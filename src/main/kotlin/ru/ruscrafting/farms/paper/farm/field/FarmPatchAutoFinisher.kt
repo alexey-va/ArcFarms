@@ -21,6 +21,11 @@ internal class FarmPatchAutoFinisher(
 
     fun clear() = completedActions.clear()
 
+    fun hasPending(runtime: FarmRuntime): Boolean {
+        val action = action(runtime) ?: return false
+        return ActionKey(runtime.settings.id, runtime.state.sequence, action) !in completedActions
+    }
+
     fun process(runtime: FarmRuntime, limit: Int): Int {
         require(limit >= 1) { "Farm patch auto-finish limit must be positive" }
         if (!runtime.state.preparationReleased || runtime.state.preparationPatch.isEmpty()) return 0

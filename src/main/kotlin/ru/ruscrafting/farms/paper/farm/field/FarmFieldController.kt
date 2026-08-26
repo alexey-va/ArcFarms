@@ -83,6 +83,8 @@ internal class FarmFieldController(
 
     fun finishAutomaticQuota(runtime: FarmRuntime, limit: Int): Int = autoFinisher.process(runtime, limit)
 
+    fun hasPendingAutomaticQuota(runtime: FarmRuntime): Boolean = autoFinisher.hasPending(runtime)
+
     fun release(runtime: FarmRuntime, limit: Int): FarmPatchReleaseResult {
         require(limit >= 1) { "Farm patch release limit must be positive" }
         val key = FarmPatchReleaseKey(runtime.settings.id, runtime.state.sequence)

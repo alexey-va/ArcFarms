@@ -17,7 +17,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.UUID
 import kotlin.math.floor
 
-internal enum class FarmSpecialSceneRole { CHANNEL_GATE, CHANNEL_HITBOX }
+internal enum class FarmSpecialSceneRole { CHANNEL_BLOCKAGE, CHANNEL_BLOCKAGE_HITBOX }
 
 internal data class FarmSpecialSceneIdentity(
     val zoneId: String,
@@ -160,8 +160,8 @@ internal class FarmSpecialIncidentSceneManager(
     ): Entity {
         val world = requireNotNull(target.location.world)
         val entity = when (target.role) {
-            FarmSpecialSceneRole.CHANNEL_GATE -> world.spawn(target.location, ItemDisplay::class.java)
-            FarmSpecialSceneRole.CHANNEL_HITBOX -> world.spawn(target.location, Interaction::class.java)
+            FarmSpecialSceneRole.CHANNEL_BLOCKAGE -> world.spawn(target.location, ItemDisplay::class.java)
+            FarmSpecialSceneRole.CHANNEL_BLOCKAGE_HITBOX -> world.spawn(target.location, Interaction::class.java)
         }
         normalize(entity, spec, target, identity)
         debug.event(
@@ -212,8 +212,8 @@ internal class FarmSpecialIncidentSceneManager(
     }
 
     private fun entityMatchesRole(entity: Entity, role: FarmSpecialSceneRole): Boolean = when (role) {
-        FarmSpecialSceneRole.CHANNEL_GATE -> entity is ItemDisplay
-        FarmSpecialSceneRole.CHANNEL_HITBOX -> entity is Interaction
+        FarmSpecialSceneRole.CHANNEL_BLOCKAGE -> entity is ItemDisplay
+        FarmSpecialSceneRole.CHANNEL_BLOCKAGE_HITBOX -> entity is Interaction
     }
 
     private fun decode(entity: Entity): FarmSpecialSceneIdentity? {

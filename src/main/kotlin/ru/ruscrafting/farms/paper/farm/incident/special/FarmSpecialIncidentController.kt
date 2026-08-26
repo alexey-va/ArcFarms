@@ -88,6 +88,7 @@ internal class FarmSpecialIncidentController(
     private val giantCrop = FarmGiantCropController(plugin)
     private val nightShift = FarmNightShiftController(plugin)
     private val marketMenu = FarmMarketMenu(locale, settings)
+    private val giantSelectionAttempts = mutableMapOf<String, Long>()
 
     fun ensure(runtime: FarmRuntime) {
         val type = runtime.state.incidentType
@@ -146,7 +147,7 @@ internal class FarmSpecialIncidentController(
                 nightPatrolPlots = incidentBeds,
                 fallbackPlot = areaCenter(runtime.state.preparationPatch),
                 irrigationSource = points.resolve(runtime, FarmPointKind.IRRIGATION),
-                channelGates = specialSettings.channelGateCount,
+                channelBlockages = specialSettings.channelBlockageCount,
                 nightCropPlacements = specialSettings.nightCropPlacementCount,
                 nightCropTarget = specialSettings.nightCropTargetCount,
                 nightCropMinSpacing = specialSettings.nightCropMinSpacing,
@@ -312,17 +313,34 @@ internal class FarmSpecialIncidentController(
         val runtime = runtimes().firstOrNull { it.settings.id == identity.zoneId } ?: return
         if (!port.hasAccess(player, runtime.settings.permission) || !runtime.region.contains(player.location)) return
         if (runtime.state.sequence != identity.sequence || runtime.state.phase != FarmPhase.INCIDENT) return
-        if (identity.role !in setOf(FarmSpecialSceneRole.CHANNEL_GATE, FarmSpecialSceneRole.CHANNEL_HITBOX)) return
+        if (identity.role !in setOf(
+                FarmSpecialSceneRole.CHANNEL_BLOCKAGE,
+                FarmSpecialSceneRole.CHANNEL_BLOCKAGE_HITBOX,
+            )
+        ) return
         if (runtime.state.incidentType != FarmIncidentType.CHANNELS) return
         if (!port.allowInteraction("farm-channel:${identity.zoneId}:${identity.index}:${player.uniqueId}", 250L)) return
-        val result = FarmSpecialIncidentEngine.toggleChannelGate(runtime.state, identity.index, player.uniqueId)
+        val beforeFlow = runtime.state.specialIncident?.let { incident ->
+            FarmSpecialIncidentEngine.channelFlowProgress(incident.active, incident.points.size)
+        } ?: 0
+        val result = FarmSpecialIncidentEngine.clearChannelBlockage(runtime.state, identity.index, player.uniqueId)
         if (!result.accepted) return
-        if (settings().sounds) player.playSound(
-            entity.location,
-            Sound.BLOCK_LEVER_CLICK,
-            0.8f,
-            if (identity.index in result.state.specialIncident?.active.orEmpty()) 1.45f else 0.8f,
+        if (settings().particles) entity.world.spawnParticle(
+            Particle.BLOCK,
+            entity.location.clone().add(0.0, 0.45, 0.0),
+            12,
+            0.35,
+            0.25,
+            0.35,
+            runtime.settings.specialIncidents.channelBlockageMaterial.let(MaterialRules::material).createBlockData(),
         )
+        if (settings().sounds) {
+            player.playSound(entity.location, Sound.BLOCK_ROOTED_DIRT_BREAK, 0.9f, 0.9f)
+            val incident = result.state.specialIncident
+            if (incident != null && FarmSpecialIncidentEngine.channelFlowProgress(incident.active, incident.points.size) > beforeFlow) {
+                player.playSound(entity.location, Sound.ITEM_BUCKET_EMPTY, 0.65f, 1.3f)
+            }
+        }
         transitions.apply(runtime, result, player)
         ensure(runtime)
     }
@@ -462,6 +480,7 @@ internal class FarmSpecialIncidentController(
     }
 
     fun cleanup(reason: String) {
+        giantSelectionAttempts.clear()
         giantCrop.restoreLoadedAll(reason)
         scene.cleanupLoaded(reason)
         nightShift.clearAll(org.bukkit.Bukkit.getOnlinePlayers())
@@ -506,7 +525,7 @@ internal class FarmSpecialIncidentController(
         }
         return FarmGiantCropCandidateSelector.select(
             candidates = candidates,
-            sequence = runtime.state.sequence,
+            sequence = nextGiantSelectionKey(runtime),
             maxChecks = MAX_GIANT_CROP_PLACEMENT_CHECKS,
         ) { candidate ->
             val anchor = candidate.block.block() ?: return@select "missing_block"
@@ -522,6 +541,11 @@ internal class FarmSpecialIncidentController(
                 "rejected" to selection.rejected,
             )
         }
+    }
+
+    private fun nextGiantSelectionKey(runtime: FarmRuntime): Long {
+        val attempt = giantSelectionAttempts.merge(runtime.settings.id, 1L, Long::plus) ?: 1L
+        return runtime.state.sequence * 1_000_003L + runtime.state.incidentsResolved * 101L + attempt - 1L
     }
 
     private fun ensureGiantCrop(runtime: FarmRuntime, special: FarmSpecialIncidentState) {
@@ -542,31 +566,56 @@ internal class FarmSpecialIncidentController(
     }
 
     private fun ensureChannels(runtime: FarmRuntime, special: FarmSpecialIncidentState) {
-        val visual = runtime.settings.careVisuals.getValue(ru.ruscrafting.farms.domain.FarmCareRole.VALVE)
-        val item = ItemStack(MaterialRules.material(visual.material)).apply {
-            if (visual.customModelData > 0) editMeta { it.setCustomModelData(visual.customModelData) }
+        val normalized = normalizeChannels(runtime, special)
+        val channel = runtime.settings.specialIncidents
+        val item = ItemStack(MaterialRules.material(channel.channelBlockageMaterial)).apply {
+            if (channel.channelBlockageCustomModelData > 0) editMeta {
+                it.setCustomModelData(channel.channelBlockageCustomModelData)
+            }
         }
-        val objects = special.points.flatMapIndexed { index, point ->
+        val nextBlockage = normalized.points.indices.firstOrNull { it !in normalized.active }
+        val objects = normalized.points.flatMapIndexed { index, point ->
+            if (index in normalized.active) return@flatMapIndexed emptyList()
             val location = Location(runtime.region.world, point.x, point.y, point.z)
-            val active = index in special.active
             listOf(
                 FarmSpecialSceneObject(
-                    FarmSpecialSceneRole.CHANNEL_GATE,
+                    FarmSpecialSceneRole.CHANNEL_BLOCKAGE,
                     index,
-                    location.clone().add(0.0, runtime.settings.specialIncidents.channelDisplayYOffset, 0.0),
+                    location.clone().add(0.0, channel.channelBlockageDisplayYOffset, 0.0),
                     item,
-                    runtime.settings.specialIncidents.channelDisplayScale,
-                    active,
+                    channel.channelBlockageDisplayScale,
+                    index == nextBlockage,
                 ),
                 FarmSpecialSceneObject(
-                    FarmSpecialSceneRole.CHANNEL_HITBOX,
+                    FarmSpecialSceneRole.CHANNEL_BLOCKAGE_HITBOX,
                     index,
-                    location.clone().add(0.0, runtime.settings.specialIncidents.channelDisplayYOffset - 0.25, 0.0),
-                    active = active,
+                    location.clone().add(0.0, channel.channelBlockageDisplayYOffset - 0.25, 0.0),
                 ),
             )
         }
         scene.ensure(FarmSpecialSceneSpec(runtime.settings.id, runtime.state.sequence, runtime.settings.displayViewRange, objects))
+    }
+
+    private fun normalizeChannels(runtime: FarmRuntime, special: FarmSpecialIncidentState): FarmSpecialIncidentState {
+        val expected = special.points.indices.toSet()
+        if (
+            special.solution == expected && runtime.state.incidentRequired == special.points.size &&
+            runtime.state.incidentProgress == special.active.size
+        ) return special
+        val normalized = special.copy(solution = expected, active = emptySet())
+        runtime.state = runtime.state.copy(
+            specialIncident = normalized,
+            incidentProgress = 0,
+            incidentRequired = special.points.size,
+        )
+        debug.event(
+            "farm_channel_state_migrated",
+            "zone" to runtime.settings.id,
+            "sequence" to runtime.state.sequence,
+            "blockages" to special.points.size,
+        )
+        port.persistAsync()
+        return normalized
     }
 
     private fun handleGiantCropBreak(runtime: FarmRuntime, player: Player, block: Block): Boolean {

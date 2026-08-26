@@ -187,8 +187,9 @@ class ArcFarmsConfigTest : FunSpec({
             FarmIncidentType.PESTS,
             FarmIncidentType.DROUGHT,
         )
-        settings.farms.single().specialIncidents.channelGateCount shouldBe 4
-        settings.farms.single().specialIncidents.channelDisplayYOffset shouldBe 0.8
+        settings.farms.single().specialIncidents.channelBlockageCount shouldBe 5
+        settings.farms.single().specialIncidents.channelBlockageMaterial shouldBe "MANGROVE_ROOTS"
+        settings.farms.single().specialIncidents.channelBlockageDisplayYOffset shouldBe 0.8
         settings.farms.single().specialIncidents.nightCropPlacementCount shouldBe 90
         settings.farms.single().specialIncidents.nightCropTargetCount shouldBe 24
         settings.farms.single().specialIncidents.nightCropMinSpacing shouldBe 6.0
@@ -841,7 +842,7 @@ class ArcFarmsConfigTest : FunSpec({
         }
     }
 
-    test("long field and channel instructions use separate compact scoreboard rows") {
+    test("long field and canal cleanup instructions use separate compact scoreboard rows") {
         val root = resourceTree()
         val settings = ArcFarmsConfig.inspect(root)
         val renderer = FarmScoreboardRenderer(ArcFarmsLocale(root) { settings })
@@ -861,8 +862,8 @@ class ArcFarmsConfigTest : FunSpec({
             base.copy(phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.CHANNELS, done = 1, total = 4),
             null,
         ).map(PlainTextComponentSerializer.plainText()::serialize)
-        channels[6] shouldBe "| Идите от источника к полю"
-        channels[7] shouldBe "| Золотой шлюз переключите; зелёный готов"
+        channels[6] shouldBe "| Идите вдоль синего потока"
+        channels[7] shouldBe "| Нажимайте ПКМ по завалам"
         (channels.size <= FarmScoreboardRenderer.MAX_ROWS) shouldBe true
     }
 

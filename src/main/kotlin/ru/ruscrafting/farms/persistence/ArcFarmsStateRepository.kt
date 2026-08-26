@@ -225,7 +225,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 special.plots.forEach(::validatePlot)
                 special.crop?.let { require(CONTENT_ID.matches(it)) { "Farm special incident crop is invalid" } }
                 require(special.solution.all { it in special.points.indices } && special.active.all { it in special.points.indices }) {
-                    "Farm channel state references an unknown gate"
+                    "Farm channel state references an unknown blockage"
                 }
                 when (farm.incidentType) {
                     FarmIncidentType.GIANT_CROP -> require(special.points.size == 1 && special.crop != null) {

@@ -51,25 +51,53 @@ class FarmSpecialIncidentEngineTest : FunSpec({
         skipped.state.incidentsResolved shouldBe 1
     }
 
-    test("channel water progress is the correctly configured prefix and supports backtracking") {
+    test("channel blockages can be cleared cooperatively while water follows the open prefix") {
         var state = incident(FarmIncidentType.CHANNELS).copy(
             specialIncident = FarmSpecialIncidentState(
                 points = (0 until 4).map { FarmPointPosition("world", it + 0.5, 65.0, 0.5) },
-                solution = setOf(0, 2, 3),
+                solution = setOf(0, 1, 2, 3),
             ),
             incidentRequired = 4,
         )
 
-        state = FarmSpecialIncidentEngine.toggleChannelGate(state, 2, player).state
-        state.incidentProgress shouldBe 0
-        state = FarmSpecialIncidentEngine.toggleChannelGate(state, 0, player).state
-        state.incidentProgress shouldBe 3
-        state = FarmSpecialIncidentEngine.toggleChannelGate(state, 2, player).state
+        state = FarmSpecialIncidentEngine.clearChannelBlockage(state, 2, player).state
+        state.incidentProgress shouldBe 1
+        FarmSpecialIncidentEngine.channelFlowProgress(state.specialIncident!!.active, 4) shouldBe 0
+        state = FarmSpecialIncidentEngine.clearChannelBlockage(state, 0, player).state
         state.incidentProgress shouldBe 2
-        state = FarmSpecialIncidentEngine.toggleChannelGate(state, 2, player).state
+        FarmSpecialIncidentEngine.channelFlowProgress(state.specialIncident!!.active, 4) shouldBe 1
+        val duplicate = FarmSpecialIncidentEngine.clearChannelBlockage(state, 2, player)
+        duplicate.accepted shouldBe false
+        state = FarmSpecialIncidentEngine.clearChannelBlockage(state, 1, player).state
         state.incidentProgress shouldBe 3
-        state = FarmSpecialIncidentEngine.toggleChannelGate(state, 3, player).state
+        FarmSpecialIncidentEngine.channelFlowProgress(state.specialIncident!!.active, 4) shouldBe 3
+        state = FarmSpecialIncidentEngine.clearChannelBlockage(state, 3, player).state
         state.phase shouldBe FarmPhase.HARVESTING
+    }
+
+    test("channel planner creates a visible blockage route with no hidden switch solution") {
+        val source = FarmPointPosition("world", 0.5, 65.0, 0.5)
+        val target = FarmMatureCrop(FarmPlotPosition("world", 25, 64, 0), "WHEAT")
+
+        val plan = FarmSpecialIncidentPlanner.plan(
+            type = FarmIncidentType.CHANNELS,
+            sequence = 8,
+            matureCrops = listOf(target),
+            fallbackPlot = target.plot,
+            irrigationSource = source,
+            channelBlockages = 5,
+            nightCropPlacements = 8,
+            nightCropTarget = 4,
+            nightCropMinSpacing = 4.0,
+            nightPatrols = 0,
+            nightPatrolMinSpacing = 4.0,
+            marketCrops = 32,
+        ) ?: error("Channel plan is missing")
+
+        plan.required shouldBe 5
+        plan.state.points.size shouldBe 5
+        plan.state.solution shouldBe setOf(0, 1, 2, 3, 4)
+        plan.state.active shouldBe emptySet()
     }
 
     test("market can be declined without a penalty or accepted for a persisted money bonus") {
@@ -122,7 +150,7 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             giantCandidates = listOf(candidate),
             fallbackPlot = null,
             irrigationSource = null,
-            channelGates = 4,
+            channelBlockages = 4,
             nightCropPlacements = 8,
             nightCropTarget = 4,
             nightCropMinSpacing = 4.0,
@@ -186,7 +214,7 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             matureCrops = mature,
             fallbackPlot = cropPlots.first(),
             irrigationSource = FarmPointPosition("world", -2.0, 65.0, 0.0),
-            channelGates = 4,
+            channelBlockages = 4,
             nightCropPlacements = 4,
             nightCropTarget = 2,
             nightCropMinSpacing = 4.0,
@@ -200,7 +228,7 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             matureCrops = mature,
             fallbackPlot = cropPlots.first(),
             irrigationSource = FarmPointPosition("world", -2.0, 65.0, 0.0),
-            channelGates = 4,
+            channelBlockages = 4,
             nightCropPlacements = 4,
             nightCropTarget = 2,
             nightCropMinSpacing = 4.0,
@@ -226,7 +254,7 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             matureCrops = mature,
             fallbackPlot = mature.first().plot,
             irrigationSource = FarmPointPosition("world", -2.0, 65.0, 0.0),
-            channelGates = 4,
+            channelBlockages = 4,
             nightCropPlacements = 12,
             nightCropTarget = 8,
             nightCropMinSpacing = 6.0,
@@ -259,7 +287,7 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             nightPatrolPlots = wholeFarm,
             fallbackPlot = mature.first().plot,
             irrigationSource = null,
-            channelGates = 4,
+            channelBlockages = 4,
             nightCropPlacements = 6,
             nightCropTarget = 4,
             nightCropMinSpacing = 2.0,
@@ -283,7 +311,7 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             matureCrops = mature,
             fallbackPlot = mature.first().plot,
             irrigationSource = FarmPointPosition("world", -2.0, 65.0, 0.0),
-            channelGates = 4,
+            channelBlockages = 4,
             nightCropPlacements = 6,
             nightCropTarget = 4,
             nightCropMinSpacing = 3.0,

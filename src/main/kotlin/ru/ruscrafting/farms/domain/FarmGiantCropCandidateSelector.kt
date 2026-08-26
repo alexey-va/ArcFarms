@@ -7,7 +7,11 @@ internal data class FarmGiantCropCandidateSelection(
     val rejected: Map<String, Int>,
 )
 
-/** Bounds expensive Paper placement checks while preserving deterministic rotation. */
+/**
+ * Bounds expensive Paper placement checks while rotating crop families before
+ * positions. This prevents a large contiguous wheat field from starving every
+ * other supported crop and keeps successive incidents spatially varied.
+ */
 internal object FarmGiantCropCandidateSelector {
     fun select(
         candidates: Collection<FarmGiantCropCandidate>,
@@ -16,14 +20,15 @@ internal object FarmGiantCropCandidateSelector {
         issue: (FarmGiantCropCandidate) -> String?,
     ): FarmGiantCropCandidateSelection {
         require(maxChecks >= 1) { "Giant crop candidate check limit must be positive" }
-        val ordered = candidates.filter { FarmGiantCropBlueprint.supports(it.crop) }
+        val grouped = candidates.filter { FarmGiantCropBlueprint.supports(it.crop) }
             .distinctBy(FarmGiantCropCandidate::block)
-            .sortedWith(
-                compareBy<FarmGiantCropCandidate> { it.block.x }
-                    .thenBy { it.block.z }
-                    .thenBy { it.block.y }
-                    .thenBy { it.crop },
-            ).rotate(sequence + 173L)
+            .groupBy(FarmGiantCropCandidate::crop)
+            .toSortedMap()
+        val cropOrder = grouped.keys.toList().rotate(sequence + 173L)
+        val queues = cropOrder.map { crop ->
+            grouped.getValue(crop).sortedWith(CANDIDATE_ORDER).rotate(sequence * 31L + stableHash(crop))
+        }
+        val ordered = interleave(queues)
         val rejected = linkedMapOf<String, Int>()
         var checked = 0
         ordered.take(maxChecks).forEach { candidate ->
@@ -42,4 +47,17 @@ internal object FarmGiantCropCandidateSelector {
         val offset = java.lang.Math.floorMod((salt xor (salt ushr 32)).toInt(), size)
         return drop(offset) + take(offset)
     }
+
+    private fun <T> interleave(groups: List<List<T>>): List<T> = buildList {
+        val maxSize = groups.maxOfOrNull(List<T>::size) ?: 0
+        repeat(maxSize) { index -> groups.forEach { group -> group.getOrNull(index)?.let(::add) } }
+    }
+
+    private fun stableHash(value: String): Long = value.fold(1_125_899_906_842_597L) { hash, character ->
+        hash * 31L + character.code
+    }
+
+    private val CANDIDATE_ORDER = compareBy<FarmGiantCropCandidate> { it.block.x }
+        .thenBy { it.block.z }
+        .thenBy { it.block.y }
 }

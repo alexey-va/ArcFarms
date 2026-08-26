@@ -10,7 +10,7 @@ data class FarmMachinePosition(
     val z: Double,
 ) {
     init {
-        require(world.matches(Regex("[A-Za-z0-9._-]{1,128}"))) { "Farm machine world is invalid" }
+        require(DomainIdentifiers.isWorld(world)) { "Farm machine world is invalid" }
         require(x.isFinite() && y.isFinite() && z.isFinite()) { "Farm machine position is invalid" }
     }
 }

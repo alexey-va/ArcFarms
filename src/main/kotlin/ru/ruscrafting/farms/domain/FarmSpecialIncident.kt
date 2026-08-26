@@ -75,36 +75,31 @@ object FarmSpecialIncidentEngine {
         }
     }
 
-    fun toggleChannelGate(
+    fun clearChannelBlockage(
         current: FarmShiftState,
-        gateIndex: Int,
+        blockageIndex: Int,
         playerId: UUID,
     ): EngineResult<FarmShiftState> {
         if (current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.CHANNELS) {
             return EngineResult(current, false)
         }
         val special = current.specialIncident ?: return EngineResult(current, false)
-        if (gateIndex !in special.points.indices) return EngineResult(current, false)
-        val active = special.active.toMutableSet().also { gates ->
-            if (!gates.add(gateIndex)) gates.remove(gateIndex)
+        if (blockageIndex !in special.points.indices || blockageIndex in special.active) {
+            return EngineResult(current, false)
         }
-        val progress = channelProgress(special.solution, active, special.points.size)
-        val contribution = (progress - current.incidentProgress).coerceAtLeast(0)
+        val cleared = special.active + blockageIndex
+        val progress = cleared.size
         val updated = current.copy(
             incidentProgress = progress,
-            specialIncident = special.copy(active = active),
+            specialIncident = special.copy(active = cleared),
         )
         if (progress >= current.incidentRequired) {
-            return complete(updated, playerId, contribution = contribution)
+            return complete(updated, playerId, contribution = 1)
         }
         return EngineResult(
-            updated.copy(
-                contributors = if (contribution > 0) {
-                    incrementContribution(updated.contributors, playerId, contribution)
-                } else updated.contributors,
-            ),
+            updated.copy(contributors = incrementContribution(updated.contributors, playerId, 1)),
             true,
-            contribution = contribution,
+            contribution = 1,
             events = listOf(ShiftEvent.INCIDENT_PROGRESS),
         )
     }
@@ -177,12 +172,12 @@ object FarmSpecialIncidentEngine {
         )
     }
 
-    fun channelProgress(solution: Set<Int>, active: Set<Int>, gateCount: Int): Int {
-        require(gateCount in 1..16) { "Farm channel gate count is invalid" }
-        require(solution.all { it in 0 until gateCount } && active.all { it in 0 until gateCount }) {
-            "Farm channel state references an unknown gate"
+    fun channelFlowProgress(cleared: Set<Int>, blockageCount: Int): Int {
+        require(blockageCount in 1..16) { "Farm channel blockage count is invalid" }
+        require(cleared.all { it in 0 until blockageCount }) {
+            "Farm channel state references an unknown blockage"
         }
-        return (0 until gateCount).takeWhile { index -> (index in solution) == (index in active) }.count()
+        return (0 until blockageCount).takeWhile(cleared::contains).count()
     }
 
     private fun advance(

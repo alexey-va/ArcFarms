@@ -24,7 +24,7 @@ object FarmSpecialIncidentPlanner {
         nightPatrolPlots: Collection<FarmPlotPosition> = matureCrops.map(FarmMatureCrop::plot),
         fallbackPlot: FarmPlotPosition?,
         irrigationSource: FarmPointPosition?,
-        channelGates: Int,
+        channelBlockages: Int,
         nightCropPlacements: Int,
         nightCropTarget: Int,
         nightCropMinSpacing: Double,
@@ -32,7 +32,7 @@ object FarmSpecialIncidentPlanner {
         nightPatrolMinSpacing: Double,
         marketCrops: Int,
     ): FarmSpecialIncidentPlan? {
-        require(channelGates in 1..16)
+        require(channelBlockages in 1..16)
         require(nightCropPlacements in 1..128)
         require(nightCropTarget in 1..nightCropPlacements)
         require(nightCropMinSpacing.isFinite() && nightCropMinSpacing in 0.0..64.0)
@@ -49,15 +49,11 @@ object FarmSpecialIncidentPlanner {
         }
         return when (type) {
             FarmIncidentType.GIANT_CROP -> {
-                val chosen = rotate(
-                    giantCandidates.filter { FarmGiantCropBlueprint.supports(it.crop) }
-                        .distinctBy(FarmGiantCropCandidate::block)
-                        .sortedWith(compareBy<FarmGiantCropCandidate> { it.block.x }
-                            .thenBy { it.block.z }
-                            .thenBy { it.block.y }
-                            .thenBy { it.crop }),
-                    sequence + 173L,
-                ).firstOrNull() ?: return null
+                val chosen = FarmGiantCropCandidateSelector.select(
+                    giantCandidates,
+                    sequence,
+                    maxChecks = giantCandidates.size.coerceAtLeast(1),
+                ) { null }.candidate ?: return null
                 FarmSpecialIncidentPlan(
                     FarmSpecialIncidentState(
                         points = listOf(
@@ -77,13 +73,14 @@ object FarmSpecialIncidentPlanner {
                 val source = irrigationSource ?: return null
                 val anchor = candidates.firstOrNull()?.plot ?: fallbackPlot ?: return null
                 val target = FarmPointPosition(anchor.world, anchor.x + 0.5, anchor.y + 1.05, anchor.z + 0.5)
-                val gates = interpolate(source, target, channelGates)
-                val solution = gates.indices.filterTo(linkedSetOf()) { index ->
-                    java.lang.Math.floorMod(sequence.toInt() + index * 3, 5) in 0..2
-                }.ifEmpty { linkedSetOf(0) }
+                val blockages = interpolate(source, target, channelBlockages)
                 FarmSpecialIncidentPlan(
-                    FarmSpecialIncidentState(points = gates, plots = listOf(anchor), solution = solution),
-                    gates.size,
+                    FarmSpecialIncidentState(
+                        points = blockages,
+                        plots = listOf(anchor),
+                        solution = blockages.indices.toSet(),
+                    ),
+                    blockages.size,
                 )
             }
             FarmIncidentType.NIGHT_SHIFT -> FarmSpacedPlotSelector.select(

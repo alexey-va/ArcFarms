@@ -25,7 +25,7 @@ data class FarmPointPosition(
     val pitch: Float = 0f,
 ) {
     init {
-        require(world.matches(Regex("[A-Za-z0-9._-]{1,128}"))) { "Invalid farm point world: $world" }
+        require(DomainIdentifiers.isWorld(world)) { "Invalid farm point world: $world" }
         require(listOf(x, y, z).all(Double::isFinite)) { "Farm point coordinates must be finite" }
         require(x in -30_000_000.0..30_000_000.0 && z in -30_000_000.0..30_000_000.0) {
             "Farm point is outside the world border"

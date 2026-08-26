@@ -139,9 +139,11 @@ an active order, then distributes that count across
 `incident-trigger-percents`. The spawn profile produces three to five distinct
 interruptions per harvest, with at most one classic field disaster. Four
 special incidents deliberately avoid repeating the same marker interaction: a
-giant crop is one large physical target hit with a hoe; irrigation channels
-form a gate puzzle whose visible water advances only through the correct
-prefix; night shift uses per-player night without changing the world clock,
+giant crop is one large physical target hit with a hoe, with crop families and
+field positions rotated separately so a large wheat field cannot dominate every
+spawn; a blocked irrigation canal places configurable debris along the route,
+lets players clear it cooperatively in any order, and advances a visible water
+trail only through the cleared prefix; night shift uses per-player night without changing the world clock,
 spreads highlighted mature crops across the farm, and releases bounded,
 non-persistent torch patrols across the full indexed field. Patrol count scales
 with the number of indexed usable beds between configured minimum and maximum
@@ -404,7 +406,7 @@ manifest targets Paper 1.21.11.
 ../arc-core/gradlew clean check shadowJar
 ```
 
-The deployable artifact is `build/libs/ArcFarms-0.20.0.jar`.
+The deployable artifact is `build/libs/ArcFarms-0.21.0.jar`.
 
 ## Isolated gameplay QA
 

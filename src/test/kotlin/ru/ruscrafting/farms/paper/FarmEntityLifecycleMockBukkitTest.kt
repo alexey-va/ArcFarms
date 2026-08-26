@@ -45,7 +45,7 @@ class FarmEntityLifecycleMockBukkitTest : FunSpec({
             viewRange = 1f,
             objects = listOf(
                 FarmSpecialSceneObject(
-                    role = FarmSpecialSceneRole.CHANNEL_GATE,
+                    role = FarmSpecialSceneRole.CHANNEL_BLOCKAGE,
                     index = 0,
                     location = Location(world, 4.5, 65.0, 4.5),
                     item = ItemStack(Material.LEVER),

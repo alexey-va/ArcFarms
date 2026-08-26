@@ -151,7 +151,9 @@ farm-zones:
     # одно обычное полевое происшествие (вредители или засуха).
     incident-types: [GIANT_CROP, CHANNELS, NIGHT_SHIFT, MARKET, PESTS, DROUGHT]
     special-incidents:
-      channels: {gates: 4, display-scale: 1.35, y-offset: 0.8}
+      channels:
+        blockages: 5
+        blockage: {material: MANGROVE_ROOTS, custom-model-data: 0, display-scale: 1.6, y-offset: 0.8}
       night-shift:
         placement-count: 90
         target-count: 24

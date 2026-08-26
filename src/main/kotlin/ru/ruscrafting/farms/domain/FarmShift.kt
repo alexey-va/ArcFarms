@@ -33,7 +33,7 @@ data class FarmPlotPosition(
     val z: Int,
 ) {
     init {
-        require(world.matches(Regex("[A-Za-z0-9._-]{1,128}"))) { "Invalid farm plot world: $world" }
+        require(DomainIdentifiers.isWorld(world)) { "Invalid farm plot world: $world" }
         require(x in -30_000_000..30_000_000 && z in -30_000_000..30_000_000) {
             "Farm plot position is outside the world border"
         }
@@ -107,7 +107,7 @@ data class FarmDeliveryPosition(
     val z: Double,
 ) {
     init {
-        require(world.matches(Regex("[A-Za-z0-9._-]{1,128}"))) { "Invalid delivery world: $world" }
+        require(DomainIdentifiers.isWorld(world)) { "Invalid delivery world: $world" }
         require(listOf(x, y, z).all(Double::isFinite)) { "Delivery position must be finite" }
     }
 }
@@ -128,7 +128,7 @@ data class FarmCropDamage(
     val crop: String,
 ) {
     init {
-        require(crop.matches(Regex("[A-Z0-9_]{2,64}"))) { "Invalid damaged crop: $crop" }
+        require(DomainIdentifiers.isContent(crop)) { "Invalid damaged crop: $crop" }
     }
 }
 
@@ -146,11 +146,11 @@ data class FarmSpecialIncidentState(
         require(plots.size <= 128 && plots.distinct().size == plots.size) {
             "Farm special incident has invalid plots"
         }
-        crop?.let { require(it.matches(Regex("[A-Z0-9_]{2,64}"))) { "Invalid special incident crop: $it" } }
+        crop?.let { require(DomainIdentifiers.isContent(it)) { "Invalid special incident crop: $it" } }
         require(marketDeadlineAt >= 0) { "Farm market deadline is invalid" }
         val gateRange = points.indices
         require(solution.all(gateRange::contains) && active.all(gateRange::contains)) {
-            "Farm channel state references an unknown gate"
+            "Farm channel state references an unknown blockage"
         }
     }
 }
@@ -166,7 +166,7 @@ data class FarmOrder(
     val cartLoadCustomModelData: Int = 0,
 ) {
     init {
-        require(id.matches(Regex("[a-z0-9_-]{1,48}"))) { "Invalid farm order id: $id" }
+        require(DomainIdentifiers.isOrder(id)) { "Invalid farm order id: $id" }
         require(required.isNotEmpty()) { "Farm order $id must require crops" }
         require(required.size <= 12) { "Farm order $id has too many crops" }
         require(required.values.all { it in 1..100_000 }) { "Farm order $id has an invalid crop quota" }
@@ -175,7 +175,7 @@ data class FarmOrder(
         require(incidentTypes.isNotEmpty() && incidentTypes.distinct().size == incidentTypes.size) {
             "Farm order $id has invalid incident types"
         }
-        require(cartLoadMaterial.matches(Regex("[A-Z0-9_]{2,64}"))) { "Farm order $id has an invalid cart load material" }
+        require(DomainIdentifiers.isContent(cartLoadMaterial)) { "Farm order $id has an invalid cart load material" }
         require(cartLoadCustomModelData in 0..2_000_000) { "Farm order $id has an invalid cart load model" }
     }
 
