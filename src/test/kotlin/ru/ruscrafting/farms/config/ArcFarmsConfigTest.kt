@@ -150,6 +150,8 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().appleSpawnsPerUpdate shouldBe 20
         settings.farms.single().appleMinSpacing shouldBe 4.0
         settings.farms.single().appleDisplayScale shouldBe 1.35f
+        settings.farms.single().appleDisplayYOffset shouldBe -0.82
+        settings.farms.single().appleInteractionYOffset shouldBe -0.88
         settings.farms.single().appleLeafIndexLimit shouldBe 8_192
         settings.farms.single().animalRescueTargetCount shouldBe 6
         settings.farms.single().animalRescueMinSpacing shouldBe 8.0
@@ -186,10 +188,17 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().specialIncidents.channelGateCount shouldBe 4
         settings.farms.single().specialIncidents.nightCropCount shouldBe 24
         settings.farms.single().specialIncidents.nightCropMinSpacing shouldBe 6.0
-        settings.farms.single().specialIncidents.nightPatrolCount shouldBe 3
+        settings.farms.single().specialIncidents.nightPatrolMinCount shouldBe 3
+        settings.farms.single().specialIncidents.nightPatrolMaxCount shouldBe 10
+        settings.farms.single().specialIncidents.nightPatrolBedsPerPatrol shouldBe 250
+        settings.farms.single().specialIncidents.nightPatrolCount(0) shouldBe 0
+        settings.farms.single().specialIncidents.nightPatrolCount(100) shouldBe 3
+        settings.farms.single().specialIncidents.nightPatrolCount(1_251) shouldBe 6
+        settings.farms.single().specialIncidents.nightPatrolCount(10_000) shouldBe 10
         settings.farms.single().specialIncidents.nightPatrolEntity shouldBe "HUSK"
         settings.farms.single().specialIncidents.nightPatrolMinSpacing shouldBe 12.0
         settings.farms.single().specialIncidents.nightPatrolRoamRadius shouldBe 14.0
+        settings.farms.single().specialIncidents.nightPatrolPathRefreshSeconds shouldBe 5
         settings.farms.single().specialIncidents.nightPatrolSpawnMinPlayerDistance shouldBe 8.0
         settings.farms.single().specialIncidents.nightPatrolMovementSpeed shouldBe 0.18
         settings.farms.single().specialIncidents.nightPatrolFollowRange shouldBe 8.0
@@ -686,6 +695,9 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().animalRescueMinSpacing shouldBe 2.0
         settings.farms.single().incidentCountMin shouldBe 2
         settings.farms.single().incidentCountMax shouldBe 3
+        settings.farms.single().specialIncidents.nightPatrolMinCount shouldBe 2
+        settings.farms.single().specialIncidents.nightPatrolMaxCount shouldBe 4
+        settings.farms.single().specialIncidents.nightPatrolCount(54) shouldBe 4
         settings.missingBedHighlightThreshold shouldBe 4
         settings.farms.single().delivery.x shouldBe -3.5
         settings.farms.single().delivery.spawnRadius shouldBe 4
@@ -810,6 +822,34 @@ class ArcFarmsConfigTest : FunSpec({
             rows.size shouldBe 10
             PlainTextComponentSerializer.plainText().serialize(rows[6]) shouldBe "| $expectedHint"
         }
+    }
+
+    test("night shift scoreboard keeps patrol guidance on its own row") {
+        val root = resourceTree()
+        val settings = ArcFarmsConfig.inspect(root)
+        val rows = FarmScoreboardRenderer(ArcFarmsLocale(root) { settings }).rows(
+            FarmScoreboardView(
+                orderId = "miners_rations",
+                phase = FarmPhase.INCIDENT,
+                done = 4,
+                total = 24,
+                required = linkedMapOf(
+                    "WHEAT" to 640,
+                    "CARROTS" to 320,
+                    "POTATOES" to 320,
+                    "BEETROOTS" to 320,
+                    "PUMPKIN" to 48,
+                ),
+                cropProgress = emptyMap(),
+                incidentType = FarmIncidentType.NIGHT_SHIFT,
+            ),
+            null,
+        ).map(PlainTextComponentSerializer.plainText()::serialize)
+
+        rows.size shouldBe 15
+        rows[6] shouldBe "| Ищите подсвеченные культуры"
+        rows[7] shouldBe "| Обходите дозор с факелами"
+        rows[8] shouldBe ""
     }
 
     test("money reward uses the dedicated coin glyph without a redundant noun") {

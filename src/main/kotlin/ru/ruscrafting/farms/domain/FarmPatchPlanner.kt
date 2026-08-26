@@ -148,6 +148,27 @@ object FarmPatchPlanner {
         return expanded.sortedWith(POSITION_ORDER)
     }
 
+    /** Keeps already-managed plots inside a newly selected patch without exceeding its configured cap. */
+    fun retainCurrent(
+        currentPatch: Collection<FarmPlotPosition>,
+        selectedPatch: Collection<FarmPlotPosition>,
+        maxSize: Int,
+    ): List<FarmPlotPosition> {
+        require(maxSize in 1..MAX_FARM_PATCH_PLOTS) {
+            "Farm patch maximum must be in 1..$MAX_FARM_PATCH_PLOTS"
+        }
+        val retained = currentPatch.distinct()
+        if (retained.size >= maxSize) return retained.sortedWith(POSITION_ORDER)
+        return buildList(maxSize) {
+            addAll(retained)
+            selectedPatch.asSequence()
+                .filterNot(retained::contains)
+                .distinct()
+                .take(maxSize - retained.size)
+                .forEach(::add)
+        }.sortedWith(POSITION_ORDER)
+    }
+
     private fun neighbors(position: FarmPlotPosition): Sequence<FarmPlotPosition> = sequence {
         IRRIGATED_ROW_OFFSETS.forEach { (dx, dz) ->
             val x = position.x.toLong() + dx

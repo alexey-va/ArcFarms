@@ -461,7 +461,7 @@ scoreboard:
     drought: '<color:#b8c8c0>У </color><color:#ff7a45>меток</color><color:#b8c8c0> поливайте сухую землю</color>'
     giant-crop: '<color:#b8c8c0>Рубите огромный плод мотыгой</color>'
     channels: '<color:#b8c8c0>Переключайте шлюзы, пока вода не дойдёт до поля</color>'
-    night-shift: '<color:#b8c8c0>Ищите подсвеченные культуры и обходите дозор с факелами</color>'
+    night-shift: '<color:#b8c8c0>Ищите подсвеченные культуры</color>'
     market: '<color:#b8c8c0>Найдите светящегося покупателя и нажмите ПКМ</color>'
     market-pending: '<color:#b8c8c0>Найдите светящегося покупателя и нажмите ПКМ</color>'
     market-active: '<color:#b8c8c0>Собирайте зрелую культуру:</color> <crop>'
@@ -482,6 +482,8 @@ scoreboard:
       disease: '<color:#b8c8c0>Обработайте каждый очаг дважды</color>'
       moles: '<color:#b8c8c0>Бейте свежие холмики мотыгой</color>'
       apple_harvest: '<color:#b8c8c0>Ищите светящиеся яблоки под кронами</color>'
+  hint-detail:
+    night-shift: '<color:#b8c8c0>Обходите дозор с факелами</color>'
 lumber:
   started: '<color:#ffc857>Заказ лесопилки</color> <color:#707a76>•</color> <wood>'
   wrong-species: '<gray>Этот заказ принимает только <wood>.</gray>'

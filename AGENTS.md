@@ -59,15 +59,22 @@ activities: farm, lumbermill, and mine.
 - Orchard care uses reindexed open leaf anchors and non-persistent
   `ItemDisplay`/`Interaction` pairs. Keep the visible placement count separate
   from the smaller any-target completion quota, batch entity creation, and keep
-  spacing, display scale, and leaf-index bounds configurable. Degrade safely
-  when an orchard has fewer valid anchors.
+  spacing, display scale, independent display/hitbox Y offsets, and leaf-index
+  bounds configurable. Degrade safely when an orchard has fewer valid anchors.
 - Durable reindex data is the authoritative candidate pool for preparation and
   incidents. A bounded scan around the current player may supplement and
   revalidate that pool, but must never replace the full loaded index with its
   local result.
+- A forced admin bed-care stage must select a fresh full-sized patch instead of
+  reusing stale saved coordinates. Startup recovery expands a zero-progress
+  legacy mechanized patch without discarding its already-managed plots; reindex
+  is not a workaround for active-stage selection bugs.
 - Night patrol illumination uses temporary `LIGHT` blocks, not particles.
   Record each placed light in its chunk before mutation and remove it on patrol
   movement, incident cleanup, chunk reconciliation, reload, and shutdown.
+- Scale night patrol count from the indexed usable bed count within configured
+  minimum/maximum bounds. Patrol movement uses Paper pathfinding and walkable
+  in-region waypoints; never position-correct a live patrol by teleporting it.
 - Register move, teleport, and portal cleanup handlers separately: Paper gives
   these event classes distinct handler lists despite their class inheritance.
 - Farm service items may move inside the player's own inventory, but must never

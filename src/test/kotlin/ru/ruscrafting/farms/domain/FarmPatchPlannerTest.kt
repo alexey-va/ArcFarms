@@ -193,6 +193,21 @@ class FarmPatchPlannerTest : FunSpec({
         expanded.containsAll(oldPatch) shouldBe true
     }
 
+    test("admin reselection keeps the old two managed plots while filling a large machine patch") {
+        val oldPatch = listOf(
+            FarmPlotPosition("world", 0, 64, 0),
+            FarmPlotPosition("world", 0, 64, 1),
+        )
+        val selected = (1..20).flatMap { x ->
+            (0 until 20).map { z -> FarmPlotPosition("world", x, 64, z) }
+        }
+
+        val replacement = FarmPatchPlanner.retainCurrent(oldPatch, selected, maxSize = 256)
+
+        replacement.size shouldBe 256
+        replacement.containsAll(oldPatch) shouldBe true
+    }
+
     test("planner bridges one-block irrigation but not a wider path or another height") {
         val left = (0 until 4).flatMap { x -> (0 until 4).map { z -> FarmPlotPosition("world", x, 64, z) } }
         val right = (7 until 11).flatMap { x -> (0 until 4).map { z -> FarmPlotPosition("world", x, 64, z) } }

@@ -32,7 +32,9 @@ with a one-block irrigation channel allowed between rows. A selected bed grows
 from the configured target to its full connected shape when that shape fits
 under `preparation-patch-max-size`; larger fields remain hard-bounded. Recovery
 may add the missing edge of an old partial bed without discarding existing
-tilling or planting progress.
+tilling or planting progress. Admin-forced field-care stages select a fresh
+full-sized patch as well; startup automatically expands a legacy zero-progress
+two-cell seeder patch, so this case does not require reindexing the farm.
 
 The active patch, tilling progress, and planting progress survive an empty
 farm, chunk unload, plugin reload, or process restart. Recovery replays an
@@ -68,7 +70,8 @@ center:
   the mole is finally caught.
 - orchard care hangs a large randomized set of apples across every loaded,
   reindexed open tree canopy, while the player may collect any smaller
-  configured quota. Apple display creation is spread across updates.
+  configured quota. Apple display creation is spread across updates, and its
+  model and interaction height can be tuned independently.
 
 The current instruction and exact progress remain in the boss bar. The next
 useful target has one restrained long-range particle column, while nearby
@@ -140,9 +143,12 @@ giant crop is one large physical target hit with a hoe; irrigation channels
 form a gate puzzle whose visible water advances only through the correct
 prefix; night shift uses per-player night without changing the world clock,
 spreads highlighted mature crops across the farm, and releases bounded,
-non-persistent torch patrols across the full indexed field. Each patrol carries
-an actual temporary `LIGHT` block with chunk-PDC recovery instead of pretending
-that particles emit light; and the living market
+non-persistent torch patrols across the full indexed field. Patrol count scales
+with the number of indexed usable beds between configured minimum and maximum
+bounds, and patrols walk between in-region waypoints through Paper pathfinding
+instead of being teleported. Each patrol carries an actual temporary `LIGHT`
+block with chunk-PDC recovery instead of pretending that particles emit light;
+and the living market
 offers an optional timed rush order through the existing customer for a
 configured final money bonus. Declining or timing out the market has no penalty
 and never resets the main order. Market deadlines and every target or decision
@@ -293,8 +299,9 @@ are available through commands such as `/arcfarms admin point <zone> help`,
 
 Farm counts, manual and mechanized patch sizes, machinery radius, spacing,
 spawn/search radii, incident ranges/checkpoints, special-event quotas, display
-scales, personal night time, crop/patrol spacing, patrol entity and movement,
-market timer and bonus, apple completion/placement counts and spawn batching,
+scales, personal night time, crop/patrol spacing, patrol density, entity,
+movement and route refresh, market timer and bonus, apple completion/placement
+counts, spawn batching and display/hitbox height,
 block-reindex and backup batch/size limits, display
 scale/offset/view range, care timings, drought/pest tuning, UI toggles, sounds,
 particles, rewards, fixed-crop respawn delay, restoration batch size, and
@@ -359,7 +366,7 @@ button.
 ../arc-core/gradlew clean check shadowJar
 ```
 
-The deployable artifact is `build/libs/ArcFarms-0.18.4.jar`.
+The deployable artifact is `build/libs/ArcFarms-0.18.6.jar`.
 
 ## Isolated gameplay QA
 

@@ -461,7 +461,7 @@ scoreboard:
     drought: '<color:#b8c8c0>Water dry soil at the </color><color:#ff7a45>markers</color>'
     giant-crop: '<color:#b8c8c0>Hit the huge fruit with a hoe</color>'
     channels: '<color:#b8c8c0>Toggle gates until water reaches the field</color>'
-    night-shift: '<color:#b8c8c0>Find highlighted crops and avoid the torch patrols</color>'
+    night-shift: '<color:#b8c8c0>Find highlighted crops</color>'
     market: '<color:#b8c8c0>Find the glowing buyer and right-click</color>'
     market-pending: '<color:#b8c8c0>Find the glowing buyer and right-click</color>'
     market-active: '<color:#b8c8c0>Harvest mature crops:</color> <crop>'
@@ -482,6 +482,8 @@ scoreboard:
       disease: '<color:#b8c8c0>Treat every patch twice</color>'
       moles: '<color:#b8c8c0>Hit fresh mounds with a hoe</color>'
       apple_harvest: '<color:#b8c8c0>Find glowing apples beneath the trees</color>'
+  hint-detail:
+    night-shift: '<color:#b8c8c0>Avoid the torch patrols</color>'
 lumber:
   started: '<color:#ffc857>Lumbermill order</color> <color:#707a76>•</color> <wood>'
   wrong-species: '<gray>This order only accepts <wood>.</gray>'

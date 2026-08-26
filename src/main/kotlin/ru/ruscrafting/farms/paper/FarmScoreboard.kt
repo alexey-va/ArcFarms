@@ -51,6 +51,9 @@ internal class FarmScoreboardRenderer(
             ))
         }
         add(locale.renderPath("scoreboard.hint-line", audience, mapOf("hint" to hint(view, audience))))
+        hintDetail(view, audience)?.let { detail ->
+            add(locale.renderPath("scoreboard.hint-line", audience, mapOf("hint" to detail)))
+        }
         add(Component.empty())
         add(locale.renderPath("scoreboard.section.crops", audience))
         view.required.entries.take(MAX_CROP_ROWS).forEach { (cropName, required) ->
@@ -134,6 +137,13 @@ internal class FarmScoreboardRenderer(
         }.orEmpty()
         return locale.renderPath(path, audience, values)
     }
+
+    private fun hintDetail(view: FarmScoreboardView, audience: CommandSender?): Component? =
+        if (view.phase == FarmPhase.INCIDENT && view.incidentType == FarmIncidentType.NIGHT_SHIFT) {
+            locale.renderPath("scoreboard.hint-detail.night-shift", audience)
+        } else {
+            null
+        }
 
     private fun Int?.orZero(): Int = this ?: 0
 

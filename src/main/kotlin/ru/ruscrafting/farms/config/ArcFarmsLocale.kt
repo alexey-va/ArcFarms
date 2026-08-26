@@ -435,6 +435,7 @@ class ArcFarmsLocale(
                 add("scoreboard.objective.$incident")
                 add("scoreboard.hint.$incident")
             }
+            add("scoreboard.hint-detail.night-shift")
             FarmCareType.entries.forEach { type ->
                 add("care.${type.name.lowercase()}.name")
                 add("care.${type.name.lowercase()}.instruction")

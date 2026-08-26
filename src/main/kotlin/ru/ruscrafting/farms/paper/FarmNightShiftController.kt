@@ -21,6 +21,9 @@ import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.config.FarmSpecialIncidentSettings
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import java.util.UUID
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.random.Random
 
 internal data class FarmNightShiftSyncResult(
     val activePatrols: Int,
@@ -35,6 +38,8 @@ internal class FarmNightShiftController(plugin: Plugin) {
 
     private val playerZones = mutableMapOf<String, MutableSet<UUID>>()
     private val patrols = mutableMapOf<PatrolKey, UUID>()
+    private val patrolRouteSteps = mutableMapOf<PatrolKey, Int>()
+    private val patrolNextRouteAt = mutableMapOf<PatrolKey, Long>()
     private val patrolLights = mutableMapOf<PatrolKey, LightCell>()
     private val lightOwners = mutableMapOf<LightCell, MutableSet<PatrolKey>>()
     private val zoneKey = NamespacedKey(plugin, "farm_night_patrol_zone")
@@ -53,14 +58,15 @@ internal class FarmNightShiftController(plugin: Plugin) {
         particles: Boolean,
     ): FarmNightShiftSyncResult {
         syncPlayerTime(zoneId, players, playerTime)
-        if (players.isEmpty() || settings.nightPatrolCount == 0 || anchors.isEmpty()) {
+        if (players.isEmpty() || anchors.isEmpty()) {
             return FarmNightShiftSyncResult(0, 0, clearPatrols(zoneId))
         }
 
-        val desired = anchors.take(settings.nightPatrolCount)
+        val desired = anchors.toList()
         var removed = 0
         patrols.keys.filter { it.zoneId == zoneId && it.index !in desired.indices }.forEach { key ->
             releaseLight(key)
+            clearRoute(key)
             patrols.remove(key)?.let(Bukkit::getEntity)?.remove()
             removed++
         }
@@ -72,6 +78,7 @@ internal class FarmNightShiftController(plugin: Plugin) {
             var patrol = patrols[key]?.let(Bukkit::getEntity) as? Monster
             if (patrol != null && (!patrol.isValid || patrol.isDead || patrolSequence(patrol) != sequence)) {
                 releaseLight(key)
+                clearRoute(key)
                 patrol.remove()
                 patrols.remove(key)
                 patrol = null
@@ -86,9 +93,23 @@ internal class FarmNightShiftController(plugin: Plugin) {
             }
             patrol ?: return@forEachIndexed
             val roamSquared = settings.nightPatrolRoamRadius * settings.nightPatrolRoamRadius
-            if (!region.contains(patrol.location) || patrol.world != anchor.world || patrol.location.distanceSquared(anchor) > roamSquared) {
-                patrol.teleport(anchor)
+            if (patrol.world != anchor.world) {
+                releaseLight(key)
+                clearRoute(key)
+                patrol.remove()
+                patrols.remove(key)
+                removed++
+                return@forEachIndexed
+            }
+            val outsidePatrolArea = !region.contains(patrol.location) || patrol.location.distanceSquared(anchor) > roamSquared
+            if (outsidePatrolArea) {
                 patrol.target = null
+                patrol.pathfinder.findPath(anchor)?.let { path -> patrol.pathfinder.moveTo(path, 1.0) }
+                patrolNextRouteAt[key] = System.currentTimeMillis() + settings.nightPatrolPathRefreshSeconds * 1_000L
+            } else if (patrol.target == null &&
+                (System.currentTimeMillis() >= patrolNextRouteAt.getOrDefault(key, 0L) || !patrol.pathfinder.hasPath())
+            ) {
+                routePatrol(key, patrol, anchor, region, sequence, settings)
             }
             patrol.fireTicks = 0
             updateLight(key, patrol, region, settings.nightPatrolLightLevel)
@@ -153,6 +174,8 @@ internal class FarmNightShiftController(plugin: Plugin) {
         patrolLights.keys.toList().forEach(::releaseLight)
         Bukkit.getWorlds().asSequence().flatMap { it.entities.asSequence() }.filter(::owns).forEach(Entity::remove)
         patrols.clear()
+        patrolRouteSteps.clear()
+        patrolNextRouteAt.clear()
         Bukkit.getWorlds().forEach { world -> world.loadedChunks.forEach(::onChunkLoad) }
     }
 
@@ -204,6 +227,7 @@ internal class FarmNightShiftController(plugin: Plugin) {
         var removed = 0
         patrols.keys.filter { it.zoneId == zoneId }.forEach { key ->
             releaseLight(key)
+            clearRoute(key)
             patrols.remove(key)?.let(Bukkit::getEntity)?.remove()
             removed++
         }
@@ -214,6 +238,56 @@ internal class FarmNightShiftController(plugin: Plugin) {
             removed++
         }
         return removed
+    }
+
+    private fun routePatrol(
+        key: PatrolKey,
+        patrol: Monster,
+        anchor: Location,
+        region: ActivityRegion,
+        sequence: Long,
+        settings: FarmSpecialIncidentSettings,
+    ) {
+        val step = patrolRouteSteps.getOrDefault(key, 0)
+        val destination = findPatrolDestination(anchor, region, sequence, key.index, step, settings.nightPatrolRoamRadius)
+        val moved = destination?.let { point ->
+            patrol.pathfinder.findPath(point)?.let { path -> patrol.pathfinder.moveTo(path, 1.0) }
+        } == true
+        patrolRouteSteps[key] = step + 1
+        patrolNextRouteAt[key] = System.currentTimeMillis() +
+            (if (moved) settings.nightPatrolPathRefreshSeconds else 2).coerceAtLeast(2) * 1_000L
+    }
+
+    private fun findPatrolDestination(
+        anchor: Location,
+        region: ActivityRegion,
+        sequence: Long,
+        patrolIndex: Int,
+        step: Int,
+        roamRadius: Double,
+    ): Location? {
+        val random = Random(sequence xor (patrolIndex.toLong() shl 32) xor step.toLong())
+        repeat(16) {
+            val angle = random.nextDouble(0.0, Math.PI * 2.0)
+            val radius = roamRadius * random.nextDouble(0.35, 0.95)
+            val x = kotlin.math.floor(anchor.x + cos(angle) * radius).toInt()
+            val z = kotlin.math.floor(anchor.z + sin(angle) * radius).toInt()
+            if (!anchor.world.isChunkLoaded(x shr 4, z shr 4)) return@repeat
+            for (floorY in anchor.blockY + 2 downTo anchor.blockY - 3) {
+                val floor = anchor.world.getBlockAt(x, floorY, z)
+                val feet = floor.getRelative(BlockFace.UP)
+                val head = feet.getRelative(BlockFace.UP)
+                if (!floor.isPassable && feet.isPassable && head.isPassable && region.contains(feet.location)) {
+                    return feet.location.add(0.5, 0.0, 0.5)
+                }
+            }
+        }
+        return null
+    }
+
+    private fun clearRoute(key: PatrolKey) {
+        patrolRouteSteps.remove(key)
+        patrolNextRouteAt.remove(key)
     }
 
     private fun updateLight(key: PatrolKey, patrol: Monster, region: ActivityRegion, level: Int) {

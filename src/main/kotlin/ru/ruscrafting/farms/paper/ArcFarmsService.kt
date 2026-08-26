@@ -1595,8 +1595,15 @@ class ArcFarmsService(
         val nextCrop = nextRequiredCrop(runtime.state, order)?.key ?: order.required.keys.first()
         careStages[normalized]?.let { careType ->
             val seeder = careType == FarmCareType.SEEDER
+            if (careType in BED_PATCH_CARE_TYPES && !reselectAdminCarePatch(runtime, player, seeder)) {
+                sendChat(player, MessageKey.FARM_PATCH_UNAVAILABLE)
+                return false
+            }
             if (seeder) {
-                releaseFarmPatch(runtime)
+                if (!releaseFarmPatch(runtime)) {
+                    sendChat(player, MessageKey.FARM_PATCH_UNAVAILABLE)
+                    return false
+                }
             } else {
                 prepareAdminPatch(runtime, plant = true, mature = true)
             }
@@ -2017,6 +2024,34 @@ class ArcFarmsService(
             above.setBlockData(data, false)
             farmBlockLedger.captureActiveCrop(soil, runtime.settings.id)
         }
+    }
+
+    private fun reselectAdminCarePatch(runtime: FarmRuntime, player: Player, mechanized: Boolean): Boolean {
+        val previous = runtime.state.preparationPatch
+        val selected = selectFarmPatch(
+            runtime = runtime,
+            anchor = player.location,
+            mechanized = mechanized,
+            selectionIndex = runtime.state.sequence,
+            additionalCandidates = previous,
+        )
+        if (selected.isEmpty()) return false
+        val maxSize = if (mechanized) runtime.settings.seederPatchMaxSize else runtime.settings.preparationPatchMaxSize
+        val replacement = FarmPatchPlanner.retainCurrent(previous, selected, maxSize)
+        runtime.state = runtime.state.copy(
+            preparationPatch = replacement,
+            preparationRequired = replacement.size,
+            preparationReleased = false,
+        )
+        farmBlockRegistry.addBeds(runtime.settings.id, replacement)
+        debug.event(
+            "farm_admin_patch_reselected",
+            "zone" to runtime.settings.id,
+            "stage" to if (mechanized) "mechanized" else "care",
+            "before" to previous.size,
+            "after" to replacement.size,
+        )
+        return true
     }
 
     fun onDrop(event: PlayerDropItemEvent) {
@@ -2919,30 +2954,9 @@ class ArcFarmsService(
             rareRoll = random.nextInt(100),
             selectionIndex = runtime.state.sequence,
         )
-        val candidates = discoverFarmBeds(runtime, player.location)
-        val anchor = player.location.toFarmPlotPosition()
         val seederShift = isSeederSequence(runtime, runtime.state.sequence + 1L)
         val targetSize = if (seederShift) runtime.settings.seederPatchSize else runtime.settings.preparationPatchSize
-        val maxSize = if (seederShift) runtime.settings.seederPatchMaxSize else runtime.settings.preparationPatchMaxSize
-        val patch = if (seederShift) {
-            FarmPatchPlanner.selectMechanized(
-                candidates = candidates,
-                anchor = anchor,
-                targetSize = targetSize,
-                maxSize = maxSize,
-                componentGap = runtime.settings.seederComponentGap,
-                maxComponents = runtime.settings.seederComponentLimit,
-                selectionIndex = runtime.state.sequence,
-            )
-        } else {
-            FarmPatchPlanner.select(
-                candidates = candidates,
-                anchor = anchor,
-                targetSize = targetSize,
-                maxSize = maxSize,
-                selectionIndex = runtime.state.sequence,
-            )
-        }
+        val patch = selectFarmPatch(runtime, player.location, seederShift, runtime.state.sequence)
         if (patch.isEmpty()) {
             if (allowInteraction("farm-patch-empty:${runtime.settings.id}:${player.uniqueId}", 10_000)) {
                 sendActionBar(player, MessageKey.FARM_PATCH_UNAVAILABLE)
@@ -3004,6 +3018,36 @@ class ArcFarmsService(
         applyFarmResult(runtime, started.copy(state = runtime.state), player)
         if (seederShift) initializeFarmCare(runtime, player, FarmCareType.SEEDER)
         return true
+    }
+
+    private fun selectFarmPatch(
+        runtime: FarmRuntime,
+        anchor: Location,
+        mechanized: Boolean,
+        selectionIndex: Long,
+        additionalCandidates: Collection<FarmPlotPosition> = emptyList(),
+    ): List<FarmPlotPosition> {
+        val candidates = discoverFarmBeds(runtime, anchor) + additionalCandidates
+        val anchorPlot = anchor.toFarmPlotPosition()
+        return if (mechanized) {
+            FarmPatchPlanner.selectMechanized(
+                candidates = candidates,
+                anchor = anchorPlot,
+                targetSize = runtime.settings.seederPatchSize,
+                maxSize = runtime.settings.seederPatchMaxSize,
+                componentGap = runtime.settings.seederComponentGap,
+                maxComponents = runtime.settings.seederComponentLimit,
+                selectionIndex = selectionIndex,
+            )
+        } else {
+            FarmPatchPlanner.select(
+                candidates = candidates,
+                anchor = anchorPlot,
+                targetSize = runtime.settings.preparationPatchSize,
+                maxSize = runtime.settings.preparationPatchMaxSize,
+                selectionIndex = selectionIndex,
+            )
+        }
     }
 
     private fun discoverFarmBeds(runtime: FarmRuntime, anchor: Location): Set<FarmPlotPosition> {
@@ -5193,14 +5237,32 @@ class ArcFarmsService(
         farms.forEach { runtime ->
             val originalPatch = runtime.state.preparationPatch
             if (originalPatch.isEmpty()) return@forEach
-            if (runtime.state.phase in setOf(FarmPhase.PREPARATION, FarmPhase.PLANTING)) {
+            val recoverableSeeder = runtime.state.phase == FarmPhase.CARE &&
+                runtime.state.careType == FarmCareType.SEEDER &&
+                runtime.state.seederStage == FarmSeederStage.TILLING &&
+                runtime.state.tilledPlots.isEmpty() && runtime.state.plantedPlots.isEmpty()
+            if (runtime.state.phase in setOf(FarmPhase.PREPARATION, FarmPhase.PLANTING) || recoverableSeeder) {
                 val anchor = originalPatch.firstNotNullOfOrNull(FarmPlotPosition::location)
                 if (anchor != null) {
-                    val expanded = FarmPatchPlanner.expand(
-                        candidates = discoverFarmBeds(runtime, anchor) + originalPatch,
-                        currentPatch = originalPatch,
-                        maxSize = runtime.settings.preparationPatchMaxSize,
-                    )
+                    val expanded = if (recoverableSeeder) {
+                        FarmPatchPlanner.retainCurrent(
+                            currentPatch = originalPatch,
+                            selectedPatch = selectFarmPatch(
+                                runtime = runtime,
+                                anchor = anchor,
+                                mechanized = true,
+                                selectionIndex = runtime.state.sequence,
+                                additionalCandidates = originalPatch,
+                            ),
+                            maxSize = runtime.settings.seederPatchMaxSize,
+                        )
+                    } else {
+                        FarmPatchPlanner.expand(
+                            candidates = discoverFarmBeds(runtime, anchor) + originalPatch,
+                            currentPatch = originalPatch,
+                            maxSize = runtime.settings.preparationPatchMaxSize,
+                        )
+                    }
                     if (expanded.size > originalPatch.size) {
                         runtime.state = runtime.state.copy(
                             preparationPatch = expanded,
@@ -5451,8 +5513,8 @@ class ArcFarmsService(
             meta.setCustomModelData(visual.customModelData)
             stack.itemMeta = meta
         }
-        val displayOffset = if (target.role == FarmCareRole.APPLE) -0.62 else 0.45
-        val interactionOffset = if (target.role == FarmCareRole.APPLE) -0.68 else 0.05
+        val displayOffset = if (target.role == FarmCareRole.APPLE) runtime.settings.appleDisplayYOffset else 0.45
+        val interactionOffset = if (target.role == FarmCareRole.APPLE) runtime.settings.appleInteractionYOffset else 0.05
         val display = world.spawn(location.clone().add(0.0, displayOffset, 0.0), ItemDisplay::class.java) { entity ->
             entity.setItemStack(stack)
             entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
@@ -6046,6 +6108,8 @@ class ArcFarmsService(
             FarmMatureCrop(plot, crop.type.name)
         }
         val settings = runtime.settings.specialIncidents
+        val indexedBedCount = farmBlockRegistry.beds(runtime.settings.id).size
+        val requestedPatrols = settings.nightPatrolCount(indexedBedCount)
         val plan = FarmSpecialIncidentPlanner.plan(
             type = type,
             sequence = runtime.state.sequence,
@@ -6057,7 +6121,7 @@ class ArcFarmsService(
             channelGates = settings.channelGateCount,
             nightCrops = settings.nightCropCount,
             nightCropMinSpacing = settings.nightCropMinSpacing,
-            nightPatrols = settings.nightPatrolCount,
+            nightPatrols = requestedPatrols,
             nightPatrolMinSpacing = settings.nightPatrolMinSpacing,
             marketCrops = settings.marketCropCount,
         ) ?: return
@@ -6070,6 +6134,10 @@ class ArcFarmsService(
             "sequence" to runtime.state.sequence,
             "type" to type,
             "required" to runtime.state.incidentRequired,
+            "indexed_beds" to indexedBedCount,
+            "incident_beds" to incidentBeds.size,
+            "patrols_requested" to requestedPatrols,
+            "patrols_planned" to plan.state.points.size,
         )
         persistAsync()
     }
@@ -9058,6 +9126,16 @@ class ArcFarmsService(
     }
 
     companion object {
+        private val BED_PATCH_CARE_TYPES = setOf(
+            FarmCareType.SEEDER,
+            FarmCareType.WEEDS,
+            FarmCareType.IRRIGATION,
+            FarmCareType.POLLINATION,
+            FarmCareType.STORM_COVERS,
+            FarmCareType.SCARECROWS,
+            FarmCareType.DISEASE,
+            FarmCareType.MOLES,
+        )
         private val SPECIAL_FARM_INCIDENT_TYPES = setOf(
             FarmIncidentType.GIANT_CROP,
             FarmIncidentType.CHANNELS,

@@ -89,6 +89,8 @@ data class FarmZoneSettings(
     val appleSpawnsPerUpdate: Int,
     val appleMinSpacing: Double,
     val appleDisplayScale: Float,
+    val appleDisplayYOffset: Double,
+    val appleInteractionYOffset: Double,
     val appleLeafIndexLimit: Int,
     val animalRescueTargetCount: Int,
     val animalRescueMinSpacing: Double,
@@ -164,10 +166,13 @@ data class FarmSpecialIncidentSettings(
     val nightCropCount: Int,
     val nightCropMinSpacing: Double,
     val nightPlayerTime: Long,
-    val nightPatrolCount: Int,
+    val nightPatrolMinCount: Int,
+    val nightPatrolMaxCount: Int,
+    val nightPatrolBedsPerPatrol: Int,
     val nightPatrolEntity: String,
     val nightPatrolMinSpacing: Double,
     val nightPatrolRoamRadius: Double,
+    val nightPatrolPathRefreshSeconds: Int,
     val nightPatrolSpawnMinPlayerDistance: Double,
     val nightPatrolMovementSpeed: Double,
     val nightPatrolFollowRange: Double,
@@ -180,7 +185,21 @@ data class FarmSpecialIncidentSettings(
     val marketSecondsPerCrop: Double,
     val marketMinimumSeconds: Int,
     val marketMaximumSeconds: Int,
-)
+) {
+    init {
+        require(nightPatrolMinCount <= nightPatrolMaxCount) {
+            "night-shift patrol minimum must not exceed its maximum"
+        }
+    }
+
+    fun nightPatrolCount(availableBeds: Int): Int {
+        if (availableBeds <= 0 || nightPatrolMaxCount == 0) return 0
+        return kotlin.math.ceil(availableBeds.toDouble() / nightPatrolBedsPerPatrol)
+            .toInt()
+            .coerceIn(nightPatrolMinCount, nightPatrolMaxCount)
+            .coerceAtMost(availableBeds)
+    }
+}
 
 data class FarmRewardSettings(
     val experience: FarmExperienceRewardSettings,
@@ -609,8 +628,12 @@ class ArcFarmsConfig private constructor(
                     nightPlayerTime = section.string("special-incidents.night-shift.player-time", "18000")
                         .toLongOrNull()?.also { require(it in 0..24_000) { "night-shift.player-time must be in 0..24000" } }
                         ?: error("night-shift.player-time must be an integer"),
-                    nightPatrolCount = section.int("special-incidents.night-shift.patrols.count", 3)
-                        .checked("special-incidents.night-shift.patrols.count", 0, 8),
+                    nightPatrolMinCount = section.int("special-incidents.night-shift.patrols.min-count", 3)
+                        .checked("special-incidents.night-shift.patrols.min-count", 0, 16),
+                    nightPatrolMaxCount = section.int("special-incidents.night-shift.patrols.max-count", 10)
+                        .checked("special-incidents.night-shift.patrols.max-count", 0, 16),
+                    nightPatrolBedsPerPatrol = section.int("special-incidents.night-shift.patrols.beds-per-patrol", 250)
+                        .checked("special-incidents.night-shift.patrols.beds-per-patrol", 1, 2_000),
                     nightPatrolEntity = entityName(section.string("special-incidents.night-shift.patrols.entity", "HUSK")),
                     nightPatrolMinSpacing = section.finiteDouble(
                         "special-incidents.night-shift.patrols.min-spacing",
@@ -624,6 +647,10 @@ class ArcFarmsConfig private constructor(
                         4.0,
                         32.0,
                     ),
+                    nightPatrolPathRefreshSeconds = section.int(
+                        "special-incidents.night-shift.patrols.path-refresh-seconds",
+                        5,
+                    ).checked("special-incidents.night-shift.patrols.path-refresh-seconds", 2, 30),
                     nightPatrolSpawnMinPlayerDistance = section.finiteDouble(
                         "special-incidents.night-shift.patrols.spawn-min-player-distance",
                         8.0,
@@ -703,6 +730,8 @@ class ArcFarmsConfig private constructor(
                         .checked("apple-spawns-per-update", 1, 64),
                     appleMinSpacing = section.finiteDouble("apple-min-spacing", 4.0, 0.0, 24.0),
                     appleDisplayScale = section.finiteFloat("apple-display-scale", 1.35f, 0.5f, 3.0f),
+                    appleDisplayYOffset = section.finiteDouble("apple-display-y-offset", -0.82, -2.0, 2.0),
+                    appleInteractionYOffset = section.finiteDouble("apple-interaction-y-offset", -0.88, -2.0, 2.0),
                     appleLeafIndexLimit = section.int("apple-leaf-index-limit", 8_192)
                         .checked("apple-leaf-index-limit", 256, 32_768),
                     animalRescueTargetCount = section.int("animal-rescue-targets", 6)
