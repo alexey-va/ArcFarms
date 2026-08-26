@@ -11,7 +11,7 @@ class FarmFieldQuotaTest : FunSpec({
     }
 
     test("giant crop blueprints are bounded and never overlap themselves") {
-        listOf("WHEAT", "CARROTS", "POTATOES", "BEETROOTS", "SWEET_BERRY_BUSH", "PUMPKIN", "MELON")
+        listOf("WHEAT", "CARROTS", "POTATOES", "BEETROOTS", "PUMPKIN", "MELON")
             .forEach { crop ->
             val voxels = FarmGiantCropBlueprint.voxels(crop)
             voxels.size shouldBe voxels.map { Triple(it.dx, it.dy, it.dz) }.distinct().size

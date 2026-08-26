@@ -152,7 +152,9 @@ internal class FarmGuidanceController(
         players(runtime).filterNot(port::isAdminEditing).forEach { player ->
             when (runtime.state.incidentType) {
                 FarmIncidentType.GIANT_CROP -> special.points.firstOrNull()?.let { point ->
-                    spawnRing(player, Location(player.world, point.x, point.y - 1.0, point.z), 2.3, AMBER_COLOR)
+                    val base = Location(player.world, point.x, point.y - 1.0, point.z)
+                    spawnRing(player, base, 2.3, AMBER_COLOR)
+                    spawnColumn(player, base, AMBER_COLOR)
                 }
                 FarmIncidentType.CHANNELS -> special.points.forEachIndexed { index, point ->
                     if (index in special.active) return@forEachIndexed

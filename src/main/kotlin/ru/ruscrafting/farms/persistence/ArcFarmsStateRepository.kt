@@ -17,6 +17,7 @@ import ru.ruscrafting.farms.domain.LumberShiftState
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.domain.MAX_FARM_PATCH_PLOTS
+import ru.ruscrafting.farms.domain.MAX_FARM_INCIDENTS
 import ru.ruscrafting.farms.domain.PlayerActivityStats
 import ru.ruscrafting.farms.domain.ShiftOutcome
 import java.nio.file.Path
@@ -120,7 +121,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
             require(farm.progress.values.all { it in 0..100_000 }) { "Farm crop progress is outside supported bounds" }
             require(farm.harvestCheckpoint in 0..10) { "Farm harvest checkpoint is invalid" }
             require(farm.harvestMilestone in 0..4) { "Farm harvest milestone is invalid" }
-            require(farm.incidentsResolved in 0..8) { "Farm incident completion count is invalid" }
+            require(farm.incidentsResolved in 0..MAX_FARM_INCIDENTS) { "Farm incident completion count is invalid" }
             listOf(farm.preparationCrop, farm.incidentCrop).filterNotNull().forEach {
                 require(CONTENT_ID.matches(it)) { "Farm crop id is invalid" }
             }

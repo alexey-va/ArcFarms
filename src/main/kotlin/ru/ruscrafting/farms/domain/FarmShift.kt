@@ -3,6 +3,7 @@ package ru.ruscrafting.farms.domain
 import java.util.UUID
 
 const val MAX_FARM_PATCH_PLOTS = 2_048
+const val MAX_FARM_INCIDENTS = 8
 
 enum class FarmPhase {
     IDLE,
@@ -191,7 +192,7 @@ data class FarmRules(
     val incidentCountMax: Int = incidentTriggerPercents.size,
 ) {
     init {
-        require(incidentTriggerPercents.isNotEmpty() && incidentTriggerPercents.size <= 8)
+        require(incidentTriggerPercents.isNotEmpty() && incidentTriggerPercents.size <= MAX_FARM_INCIDENTS)
         require(incidentTriggerPercents.all { it in 1..99 })
         require(incidentTriggerPercents == incidentTriggerPercents.distinct().sorted())
         require(incidentCountMin in 1..incidentTriggerPercents.size)
@@ -737,7 +738,7 @@ object FarmShiftEngine {
         val state = current.copy(
             phase = FarmPhase.HARVESTING,
             incidentResolved = true,
-            incidentsResolved = current.incidentsResolved + 1,
+            incidentsResolved = (current.incidentsResolved + 1).coerceAtMost(MAX_FARM_INCIDENTS),
             incidentCrop = null,
             incidentType = null,
             incidentProgress = 0,

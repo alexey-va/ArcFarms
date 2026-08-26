@@ -6,7 +6,7 @@ import io.kotest.matchers.shouldBe
 
 class FarmGiantCropBlueprintTest : FunSpec({
     test("every blueprint has unique bounded coordinates") {
-        listOf("WHEAT", "CARROTS", "POTATOES", "BEETROOTS", "SWEET_BERRY_BUSH", "PUMPKIN", "MELON")
+        listOf("WHEAT", "CARROTS", "POTATOES", "BEETROOTS", "PUMPKIN", "MELON")
             .forEach { crop ->
                 val voxels = FarmGiantCropBlueprint.voxels(crop)
                 voxels.map { Triple(it.dx, it.dy, it.dz) }.toSet().size shouldBe voxels.size
@@ -21,5 +21,7 @@ class FarmGiantCropBlueprintTest : FunSpec({
 
     test("unsupported crops fail before any world mutation") {
         shouldThrow<IllegalArgumentException> { FarmGiantCropBlueprint.voxels("CACTUS") }
+        FarmGiantCropBlueprint.supports("SWEET_BERRY_BUSH") shouldBe false
+        shouldThrow<IllegalArgumentException> { FarmGiantCropBlueprint.voxels("SWEET_BERRY_BUSH") }
     }
 })

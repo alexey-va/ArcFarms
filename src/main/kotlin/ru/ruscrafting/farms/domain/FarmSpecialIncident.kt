@@ -218,7 +218,7 @@ object FarmSpecialIncidentEngine {
             current.copy(
                 phase = FarmPhase.HARVESTING,
                 incidentResolved = true,
-                incidentsResolved = current.incidentsResolved + 1,
+                incidentsResolved = (current.incidentsResolved + 1).coerceAtMost(MAX_FARM_INCIDENTS),
                 incidentCrop = null,
                 incidentType = null,
                 incidentProgress = 0,

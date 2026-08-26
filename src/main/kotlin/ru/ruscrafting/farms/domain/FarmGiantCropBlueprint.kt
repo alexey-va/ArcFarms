@@ -14,7 +14,6 @@ object FarmGiantCropBlueprint {
         "CARROTS",
         "POTATOES",
         "BEETROOTS",
-        "SWEET_BERRY_BUSH",
         "PUMPKIN",
         "MELON",
     )
@@ -40,7 +39,6 @@ object FarmGiantCropBlueprint {
             "CARROTS" -> compactRoot("ORANGE_TERRACOTTA")
             "POTATOES" -> compactRoot("YELLOW_TERRACOTTA")
             "BEETROOTS" -> compactRoot("RED_TERRACOTTA")
-            "SWEET_BERRY_BUSH" -> compactRoot("RED_WOOL")
             else -> error("Unsupported giant crop: $crop")
         }
     }

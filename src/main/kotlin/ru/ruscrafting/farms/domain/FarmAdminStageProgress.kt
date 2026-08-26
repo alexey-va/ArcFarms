@@ -12,4 +12,12 @@ object FarmAdminStageProgress {
             plantingProgress = if (planted) plots.size else 0,
         )
     }
+
+    /** Leaves one incident slot available for a repeatedly forced admin scenario. */
+    fun forcedIncident(current: FarmShiftState, rules: FarmRules): FarmShiftState {
+        val lastCompletedBeforeForced = (rules.incidentTargetCount(current.sequence) - 1).coerceAtLeast(0)
+        return completed(current, planted = true).copy(
+            incidentsResolved = current.incidentsResolved.coerceIn(0, lastCompletedBeforeForced),
+        )
+    }
 }

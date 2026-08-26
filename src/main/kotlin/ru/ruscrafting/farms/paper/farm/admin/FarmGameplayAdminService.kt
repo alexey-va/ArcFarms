@@ -339,7 +339,7 @@ internal class FarmGameplayAdminService(
             runtime.settings.droughtTargetBeds(field.incidentBeds(runtime).size.coerceAtLeast(runtime.state.preparationPatch.size))
         } else runtime.rules.incidentQuota
         events += ShiftEvent.INCIDENT_STARTED
-        return FarmAdminStageProgress.completed(runtime.state, planted = true).copy(
+        return FarmAdminStageProgress.forcedIncident(runtime.state, runtime.rules).copy(
             phase = FarmPhase.INCIDENT, incidentCrop = crop, incidentType = type,
             incidentProgress = 0, incidentRequired = quota, incidentResolved = false,
             droughtPlots = emptySet(), droughtDamagedPlots = emptySet(),

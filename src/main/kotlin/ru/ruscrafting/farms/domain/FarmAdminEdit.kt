@@ -110,7 +110,9 @@ object FarmAdminEdit {
                 incidentProgress = if (specialResolved) 0 else state.incidentProgress,
                 incidentRequired = if (specialResolved) 0 else specialRequired,
                 incidentResolved = state.incidentResolved || specialResolved,
-                incidentsResolved = state.incidentsResolved + if (specialResolved) 1 else 0,
+                incidentsResolved = (
+                    state.incidentsResolved + if (specialResolved) 1 else 0
+                ).coerceAtMost(MAX_FARM_INCIDENTS),
             ),
             careTargetIds = targetIds,
             pestNestRemoved = nestRemoved,
