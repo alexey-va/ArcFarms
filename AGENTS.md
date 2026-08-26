@@ -6,8 +6,9 @@ activities: farm, lumbermill, and mine.
 - Target Purpur/Paper 1.21.11, WorldGuard 7.0.16, Java 25, and Kotlin 2.3.0.
 - WorldGuard is a soft dependency: require it only when a configured zone uses
   a named region. Relay-only and explicit-cuboid nodes must load without it.
-- Use `arc-core`, `arc-core-paper`, and `arc-core-redis` through the sibling
-  composite build. ArcFarms owns its Redis profile and protocol; do not import
+- Use the pinned public `arc-core` release by default; opt into a local
+  composite only with `-ParcCoreDir=/absolute/path/to/arc-core`. ArcFarms owns
+  its Redis profile and protocol; do not import
   ARC configuration or add ARC API/path compatibility.
 - Keep shift state machines and persistence DTOs independent of Bukkit.
 - Use `Tasks.scheduler`; never schedule gameplay directly through Bukkit.
