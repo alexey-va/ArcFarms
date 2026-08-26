@@ -11,11 +11,11 @@ import java.util.IdentityHashMap
  * Reload and shutdown invalidate the epoch before cancelling its task handles,
  * so a racing async completion cannot enter a replacement runtime.
  */
-internal class FarmTaskSupervisor(
+internal class RuntimeTaskSupervisor(
     private val scheduler: TaskScheduler = Tasks.scheduler,
 ) : AutoCloseable {
     internal class Token internal constructor(
-        internal val owner: FarmTaskSupervisor,
+        internal val owner: RuntimeTaskSupervisor,
         internal val generation: Long,
     )
 
@@ -31,14 +31,14 @@ internal class FarmTaskSupervisor(
 
     fun activate() {
         synchronized(monitor) {
-            check(!active) { "Farm task runtime is already active" }
+            check(!active) { "Worksite task runtime is already active" }
             generation = nextGeneration(generation)
             active = true
         }
     }
 
     fun token(): Token = synchronized(monitor) {
-        check(active) { "Farm task runtime is not active" }
+        check(active) { "Worksite task runtime is not active" }
         Token(this, generation)
     }
 
@@ -52,13 +52,13 @@ internal class FarmTaskSupervisor(
         currentToken()?.let { runLater(it, delayTicks, task) }
 
     fun runLater(token: Token, delayTicks: Long, task: () -> Unit): ScheduledTask? {
-        require(delayTicks >= 0L) { "Farm task delay must not be negative" }
+        require(delayTicks >= 0L) { "Runtime task delay must not be negative" }
         return schedule(token, repeating = false, { runnable -> scheduler.runLater(delayTicks, runnable) }, task)
     }
 
     fun runTimer(delayTicks: Long, periodTicks: Long, task: () -> Unit): ScheduledTask? {
-        require(delayTicks >= 0L) { "Farm timer delay must not be negative" }
-        require(periodTicks >= 1L) { "Farm timer period must be positive" }
+        require(delayTicks >= 0L) { "Runtime timer delay must not be negative" }
+        require(periodTicks >= 1L) { "Runtime timer period must be positive" }
         val token = currentToken() ?: return null
         return schedule(token, repeating = true, { runnable ->
             scheduler.runTimer(delayTicks, periodTicks, runnable)
@@ -80,7 +80,7 @@ internal class FarmTaskSupervisor(
                 if (previous == null) firstFailure = failure else previous.addSuppressed(failure)
             }
         }
-        firstFailure?.let { throw IllegalStateException("Could not cancel every farm runtime task", it) }
+        firstFailure?.let { throw IllegalStateException("Could not cancel every worksite runtime task", it) }
     }
 
     internal fun trackedCount(): Int = synchronized(monitor) { tracked.size }

@@ -7,10 +7,10 @@ import ru.arc.core.ScheduledTask
 import ru.arc.core.TaskScheduler
 import ru.arc.core.TestTaskScheduler
 
-class FarmTaskSupervisorTest : FunSpec({
+class RuntimeTaskSupervisorTest : FunSpec({
     test("reload cancels delayed work from the previous runtime") {
         val scheduler = TestTaskScheduler()
-        val tasks = FarmTaskSupervisor(scheduler)
+        val tasks = RuntimeTaskSupervisor(scheduler)
         var executions = 0
 
         tasks.activate()
@@ -25,7 +25,7 @@ class FarmTaskSupervisorTest : FunSpec({
 
     test("an async completion cannot enter a replacement runtime with an old token") {
         val scheduler = TestTaskScheduler()
-        val tasks = FarmTaskSupervisor(scheduler)
+        val tasks = RuntimeTaskSupervisor(scheduler)
         var executions = 0
 
         tasks.activate()
@@ -40,8 +40,8 @@ class FarmTaskSupervisorTest : FunSpec({
 
     test("a token from another service instance is never accepted") {
         val scheduler = TestTaskScheduler()
-        val first = FarmTaskSupervisor(scheduler)
-        val second = FarmTaskSupervisor(scheduler)
+        val first = RuntimeTaskSupervisor(scheduler)
+        val second = RuntimeTaskSupervisor(scheduler)
         first.activate()
         second.activate()
 
@@ -51,7 +51,7 @@ class FarmTaskSupervisorTest : FunSpec({
 
     test("completed one shot work is untracked") {
         val scheduler = TestTaskScheduler()
-        val tasks = FarmTaskSupervisor(scheduler)
+        val tasks = RuntimeTaskSupervisor(scheduler)
         tasks.activate()
 
         tasks.runLater(1L) {}
@@ -63,7 +63,7 @@ class FarmTaskSupervisorTest : FunSpec({
 
     test("shutdown cancels repeating work") {
         val scheduler = TestTaskScheduler()
-        val tasks = FarmTaskSupervisor(scheduler)
+        val tasks = RuntimeTaskSupervisor(scheduler)
         var executions = 0
         tasks.activate()
         tasks.runTimer(1L, 1L) { executions++ }
@@ -79,12 +79,12 @@ class FarmTaskSupervisorTest : FunSpec({
 
     test("cancellation racing task-handle attachment still cancels the submitted work") {
         val delegate = TestTaskScheduler()
-        lateinit var tasks: FarmTaskSupervisor
+        lateinit var tasks: RuntimeTaskSupervisor
         val scheduler = object : TaskScheduler by delegate {
             override fun runLater(delayTicks: Long, task: Runnable) =
                 delegate.runLater(delayTicks, task).also { tasks.cancelAll() }
         }
-        tasks = FarmTaskSupervisor(scheduler)
+        tasks = RuntimeTaskSupervisor(scheduler)
         tasks.activate()
 
         tasks.runLater(1L) {} shouldBe null
@@ -99,7 +99,7 @@ class FarmTaskSupervisorTest : FunSpec({
         val scheduler = object : TaskScheduler by delegate {
             override fun runLater(delayTicks: Long, task: Runnable) = error("scheduler unavailable")
         }
-        val tasks = FarmTaskSupervisor(scheduler)
+        val tasks = RuntimeTaskSupervisor(scheduler)
         tasks.activate()
 
         shouldThrow<IllegalStateException> { tasks.runLater(1L) {} }
@@ -114,7 +114,7 @@ class FarmTaskSupervisorTest : FunSpec({
             override fun runLater(delayTicks: Long, task: Runnable): ScheduledTask =
                 RecordingTask(handles.size + 1, failOnCancel = handles.isEmpty()).also(handles::add)
         }
-        val tasks = FarmTaskSupervisor(scheduler)
+        val tasks = RuntimeTaskSupervisor(scheduler)
         tasks.activate()
         tasks.runLater(1L) {}
         tasks.runLater(1L) {}

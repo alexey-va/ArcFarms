@@ -6,7 +6,14 @@ import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
-class MineBlockJournal(dataRoot: Path) : AutoCloseable {
+interface MineRecoveryJournal {
+    fun records(): List<PendingMineBlock>
+    fun containsPosition(positionKey: String): Boolean
+    fun prepare(record: PendingMineBlock): CompletableFuture<Unit>
+    fun remove(recordId: String): CompletableFuture<Unit>
+}
+
+class MineBlockJournal(dataRoot: Path) : MineRecoveryJournal, AutoCloseable {
     private val store = AtomicJsonStore(
         path = dataRoot.resolve("data/mine-blocks.json"),
         type = MineBlockJournalState::class.java,
@@ -17,13 +24,13 @@ class MineBlockJournal(dataRoot: Path) : AutoCloseable {
     private val lock = Any()
     private val records: MutableMap<String, PendingMineBlock> = store.load().records.toMutableMap()
 
-    fun records(): List<PendingMineBlock> = synchronized(lock) { records.values.toList() }
+    override fun records(): List<PendingMineBlock> = synchronized(lock) { records.values.toList() }
 
-    fun containsPosition(positionKey: String): Boolean = synchronized(lock) {
+    override fun containsPosition(positionKey: String): Boolean = synchronized(lock) {
         records.values.any { it.positionKey == positionKey }
     }
 
-    fun prepare(record: PendingMineBlock): CompletableFuture<Unit> {
+    override fun prepare(record: PendingMineBlock): CompletableFuture<Unit> {
         val snapshot = synchronized(lock) {
             require(record.id !in records) { "Duplicate mine journal id: ${record.id}" }
             require(records.values.none { it.positionKey == record.positionKey }) { "Mine block is already pending: ${record.positionKey}" }
@@ -35,7 +42,7 @@ class MineBlockJournal(dataRoot: Path) : AutoCloseable {
         }
     }
 
-    fun remove(recordId: String): CompletableFuture<Unit> {
+    override fun remove(recordId: String): CompletableFuture<Unit> {
         val removed = synchronized(lock) { records.remove(recordId) }
             ?: return CompletableFuture.completedFuture(Unit)
         val snapshot = synchronized(lock) { MineBlockJournalState(records = records.toMap()) }

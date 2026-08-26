@@ -4,7 +4,7 @@ plugins {
     jacoco
 }
 group = "ru.ruscrafting"
-version = "0.19.1"
+version = "0.20.0"
 description = "Shared farm, lumbermill, and mine activities for RusCrafting"
 
 val integrationTestSourceSet = sourceSets.create("integrationTest") {
@@ -43,6 +43,7 @@ dependencies {
     testImplementation("io.kotest:kotest-runner-junit5:6.0.7")
     testImplementation("io.kotest:kotest-assertions-core:6.0.7")
     testImplementation("io.mockk:mockk:1.14.7")
+    testImplementation("org.mockbukkit.mockbukkit:mockbukkit-v1.21:4.110.0")
     testImplementation("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     "integrationTestImplementation"(sourceSets.test.get().output)

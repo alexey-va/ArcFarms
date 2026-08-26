@@ -5,7 +5,6 @@ import net.kyori.adventure.key.Key
 import net.kyori.adventure.sound.Sound as AdventureSound
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.JoinConfiguration
-import net.kyori.adventure.title.Title
 import org.bukkit.Bukkit
 import org.bukkit.Color
 import org.bukkit.GameMode
@@ -63,10 +62,7 @@ import org.joml.AxisAngle4f
 import org.joml.Vector3f
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
-import ru.ruscrafting.farms.config.FarmZoneSettings
-import ru.ruscrafting.farms.config.LumberZoneSettings
 import ru.ruscrafting.farms.config.MessageKey
-import ru.ruscrafting.farms.config.MineZoneSettings
 import ru.ruscrafting.farms.config.TeleportDestination
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.ActivityStatsIndex
@@ -75,7 +71,6 @@ import ru.ruscrafting.farms.domain.FarmAdminEdit
 import ru.ruscrafting.farms.domain.ArcFarmsState
 import ru.ruscrafting.farms.domain.EngineResult
 import ru.ruscrafting.farms.domain.FarmOrder
-import ru.ruscrafting.farms.domain.FarmOrderProgressReconciler
 import ru.ruscrafting.farms.domain.FarmPollenCharges
 import ru.ruscrafting.farms.domain.FarmContractPlanner
 import ru.ruscrafting.farms.domain.FarmCarePlanner
@@ -106,7 +101,6 @@ import ru.ruscrafting.farms.domain.FarmPestNest
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
-import ru.ruscrafting.farms.domain.FarmRules
 import ru.ruscrafting.farms.domain.FarmSeederStage
 import ru.ruscrafting.farms.domain.FarmRewardPlanner
 import ru.ruscrafting.farms.domain.FarmRewardRecipient
@@ -121,20 +115,10 @@ import ru.ruscrafting.farms.domain.FarmMatureCrop
 import ru.ruscrafting.farms.domain.seederStage
 import ru.ruscrafting.farms.domain.FarmWaterPlanner
 import ru.ruscrafting.farms.domain.FarmWaterFlowTracker
-import ru.ruscrafting.farms.domain.LumberPhase
-import ru.ruscrafting.farms.domain.LumberRules
-import ru.ruscrafting.farms.domain.LumberShiftEngine
-import ru.ruscrafting.farms.domain.LumberShiftState
-import ru.ruscrafting.farms.domain.MinePhase
-import ru.ruscrafting.farms.domain.MineRules
-import ru.ruscrafting.farms.domain.MineShiftEngine
-import ru.ruscrafting.farms.domain.MineShiftState
-import ru.ruscrafting.farms.domain.PendingMineBlock
 import ru.ruscrafting.farms.domain.PendingFixedFarmCrop
 import ru.ruscrafting.farms.domain.PendingFarmReward
 import ru.ruscrafting.farms.domain.PlayerActivityStats
 import ru.ruscrafting.farms.domain.ShiftEvent
-import ru.ruscrafting.farms.domain.winner
 import ru.ruscrafting.farms.persistence.ArcFarmsStateRepository
 import ru.ruscrafting.farms.persistence.FarmLocationRepository
 import ru.ruscrafting.farms.persistence.FixedFarmCropJournal
@@ -143,10 +127,8 @@ import ru.ruscrafting.farms.network.ActivityNetworkGateway
 import ru.ruscrafting.farms.network.NetworkSignal
 import ru.ruscrafting.farms.network.NoOpActivityNetworkGateway
 import ru.ruscrafting.farms.network.WorkdayState
-import java.time.Duration
 import java.math.BigDecimal
 import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.random.RandomGenerator
 import java.util.logging.Level
@@ -163,35 +145,6 @@ data class ActivityStatus(
     val progress: String,
 )
 
-private data class FarmRuntime(
-    val settings: FarmZoneSettings,
-    val region: ActivityRegion,
-    val orders: Map<String, FarmOrder>,
-    val orderList: List<FarmOrder>,
-    val rules: FarmRules,
-    var state: FarmShiftState,
-)
-
-private data class LumberRuntime(
-    val settings: LumberZoneSettings,
-    val region: ActivityRegion,
-    val station: ActivityRegion,
-    val rules: LumberRules,
-    val stationMaterials: Set<Material>,
-    var state: LumberShiftState,
-)
-
-private data class MineRuntime(
-    val settings: MineZoneSettings,
-    val region: ActivityRegion,
-    val rules: MineRules,
-    val temporaryMaterial: Material,
-    val baseMaterial: Material,
-    val materialWeights: LinkedHashMap<Material, Int>,
-    var state: MineShiftState,
-)
-
-private data class BarKey(val playerId: UUID, val runtimeKey: String)
 private data class DeliveryKey(val zoneId: String, val index: Int)
 private data class SupplyKey(val zoneId: String, val kind: FarmSupplyKind)
 private data class PestNestKey(val zoneId: String, val position: FarmPlotPosition)
@@ -237,19 +190,6 @@ private val FARM_DANGER_COLOR = Color.fromRGB(255, 95, 109)
 private val FARM_SUCCESS_COLOR = Color.fromRGB(85, 217, 139)
 private val FARM_CARE_COLOR = Color.fromRGB(84, 201, 185)
 
-private fun Block.toFarmPlotPosition(): FarmPlotPosition = FarmPlotPosition(world.name, x, y, z)
-
-private fun Location.toFarmPlotPosition(): FarmPlotPosition = FarmPlotPosition(world.name, blockX, blockY, blockZ)
-
-private fun FarmPlotPosition.location(): Location? =
-    Bukkit.getWorld(world)?.let { Location(it, x.toDouble(), y.toDouble(), z.toDouble()) }
-
-private fun FarmPlotPosition.block(): Block? {
-    val loadedWorld = Bukkit.getWorld(world) ?: return null
-    if (!loadedWorld.isChunkLoaded(x shr 4, z shr 4)) return null
-    return loadedWorld.getBlockAt(x, y, z)
-}
-
 class ArcFarmsService(
     private val plugin: Plugin,
     initialSettings: ArcFarmsConfig,
@@ -269,11 +209,8 @@ class ArcFarmsService(
     @Volatile
     private var settings: ArcFarmsConfig = initialSettings
     private var farms: List<FarmRuntime> = emptyList()
-    private var lumbermills: List<LumberRuntime> = emptyList()
-    private var mines: List<MineRuntime> = emptyList()
     private val stats = ActivityStatsIndex(currentWeekStartEpochDay = { farmWeekStartEpochDay(clock()) })
     private val rewardLedger = FarmRewardLedger()
-    private val activeBars = mutableMapOf<BarKey, BossBar>()
     private val farmScoreboards = FarmScoreboardController(FarmScoreboardRenderer(locale), { settings.farmScoreboard }, debug)
     private val contractScene = FarmContractSceneManager(plugin, debug)
     private val specialIncidentScene = FarmSpecialIncidentSceneManager(plugin, debug)
@@ -281,8 +218,6 @@ class ArcFarmsService(
     private val nightShift = FarmNightShiftController(plugin)
     private val marketMenu = FarmMarketMenu(locale) { settings }
     private val seederRig = FarmSeederRigManager(plugin)
-    private val mineReservations = ConcurrentHashMap.newKeySet<String>()
-    private val pendingPositions = ConcurrentHashMap<String, String>()
     private val interactionCooldowns = mutableMapOf<String, Long>()
     private val pestEntities = mutableMapOf<String, MutableSet<UUID>>()
     private val pestNestEntities = mutableMapOf<PestNestKey, MutableSet<UUID>>()
@@ -343,7 +278,26 @@ class ArcFarmsService(
     private val careSequenceKey = NamespacedKey(plugin, "farm_care_sequence")
     private val careTargetKey = NamespacedKey(plugin, "farm_care_target")
     private val careRoleKey = NamespacedKey(plugin, "farm_care_role")
-    private val taskSupervisor = FarmTaskSupervisor()
+    private val taskSupervisor = RuntimeTaskSupervisor()
+    private val worksitePort = PaperWorksiteRuntimePort(
+        plugin = plugin,
+        locale = locale,
+        settings = { settings },
+        debug = debug,
+        network = network,
+        stats = stats,
+        supervisor = taskSupervisor,
+        operational = ::isOperational,
+        access = ::hasAccess,
+        interaction = ::allowInteraction,
+        adminEditing = ::isAdminEditing,
+        persist = ::persistAsync,
+        guard = ::runGuarded,
+    )
+    private val lumbermillController = LumbermillController(regionGateway, locale, worksitePort, clock)
+    private val mineController = MineController(regionGateway, locale, mineJournal, worksitePort, clock, random)
+    private val auxiliaryWorksites = WorksiteModuleRegistry(listOf(lumbermillController, mineController))
+    private val runtimeValidator = ArcFarmsRuntimeValidator(regionGateway, { economy.available }, fixedCropJournal, mineJournal)
     @Volatile
     private var started = false
     @Volatile
@@ -366,12 +320,12 @@ class ArcFarmsService(
 
     private fun startActivatedRuntime() {
         farmLocations = farmLocationRepository.load()
-        validateRuntime(settings)
-        validateLocationOverrides(settings)
+        runtimeValidator.validateRuntime(settings)
+        runtimeValidator.validateLocations(settings, farmLocations)
         val loaded = stateRepository.load()
-        val persisted = reconcileFarmOrderProgress(settings, loaded)
-        validatePersistedState(settings, persisted)
-        validateMineJournalMaterials()
+        val persisted = runtimeValidator.reconcileOrderProgress(settings, loaded)
+        runtimeValidator.validatePersisted(settings, persisted)
+        MineController.validateJournalMaterials(mineJournal)
         stats.replace(persisted.stats)
         rewardLedger.replace(persisted.pendingFarmRewards, persisted.claimedFarmRewardSequences)
         adminPausedFarmZones.clear()
@@ -384,7 +338,6 @@ class ArcFarmsService(
         farms.forEach(::ensureFarmSupplies)
         farms.forEach(::ensureFarmContractScene)
         farms.forEach(::ensureFarmSpecialIncident)
-        mineJournal.records().forEach { pendingPositions[it.positionKey] = it.id }
         startTasks()
         stateSafeToPersist = true
         started = true
@@ -393,8 +346,8 @@ class ArcFarmsService(
             if (isOperational()) deliverPendingFarmRewards(Bukkit.getOnlinePlayers())
         }
         plugin.logger.info(
-            "ArcFarms ready: ${farms.size} farm, ${lumbermills.size} lumbermill, ${mines.size} mine zones; " +
-                "${pendingPositions.size} pending mine blocks",
+            "ArcFarms ready: ${farms.size} farm, ${lumbermillController.zoneCount} lumbermill, ${mineController.zoneCount} mine zones; " +
+                "${mineController.pendingBlockCount} pending mine blocks",
         )
     }
 
@@ -402,10 +355,10 @@ class ArcFarmsService(
         check(started) { "ArcFarms service is not started" }
         require(!farmBackupAdmin.busy()) { "ArcFarms cannot reload while a farm backup operation is active" }
         val snapshot = snapshotState()
-        val reconciledSnapshot = reconcileFarmOrderProgress(candidate, snapshot)
-        validateReload(candidate, reconciledSnapshot)
-        validateRuntime(candidate)
-        validateLocationOverrides(candidate)
+        val reconciledSnapshot = runtimeValidator.reconcileOrderProgress(candidate, snapshot)
+        runtimeValidator.validateReload(candidate, reconciledSnapshot)
+        runtimeValidator.validateRuntime(candidate)
+        runtimeValidator.validateLocations(candidate, farmLocations)
         persistBlocking()
         val previous = settings
         persistenceSuspended = true
@@ -436,7 +389,9 @@ class ArcFarmsService(
             persistenceRequestedWhileSuspended = false
             persistAsync()
         }
-        plugin.logger.info("ArcFarms reloaded with ${farms.size + lumbermills.size + mines.size} zones")
+        plugin.logger.info(
+            "ArcFarms reloaded with ${farms.size + lumbermillController.zoneCount + mineController.zoneCount} zones",
+        )
     }
 
     fun isOperational(): Boolean = started && !closed
@@ -579,28 +534,17 @@ class ArcFarmsService(
             if (farmAt(event.block.location) != null) event.isCancelled = false
             return
         }
-        mineAt(event.block.location)?.let { runtime ->
-            traceBlockBreak(event, ActivityKind.MINE, runtime.settings.id)
-            handleMineBreak(event, runtime)
-            return
-        }
+        if (auxiliaryWorksites.onBreakHigh(ActivityKind.MINE, event)) return
         farmAt(event.block.location)?.let { runtime ->
             traceBlockBreak(event, ActivityKind.FARM, runtime.settings.id)
             handleFarmBreakHigh(event, runtime)
             return
         }
-        lumberAt(event.block.location)?.let { runtime ->
-            traceBlockBreak(event, ActivityKind.LUMBER, runtime.settings.id)
-            handleLumberBreakHigh(event, runtime)
-        }
+        auxiliaryWorksites.onBreakHigh(ActivityKind.LUMBER, event)
     }
 
     fun onBreakMonitor(event: BlockBreakEvent) {
-        if (event.isCancelled) return
-        lumberAt(event.block.location)?.let { runtime ->
-            val species = MaterialRules.speciesOf(event.block.type) ?: return@let
-            handleLumberFell(runtime, event.player, species)
-        }
+        auxiliaryWorksites.onBreakMonitor(event)
     }
 
     fun onBlockDrop(event: BlockDropItemEvent) {
@@ -701,47 +645,7 @@ class ArcFarmsService(
             sendFarmCurrentTaskHint(player, runtime, "service_item_wrong_phase")
             return
         }
-        lumbermills.firstOrNull { it.station.contains(clicked.location) }?.let { runtime ->
-            if (clicked.type !in runtime.stationMaterials) return@let
-            event.isCancelled = true
-            debug.event(
-                "player_interact",
-                "player" to player.name,
-                "activity" to ActivityKind.LUMBER,
-                "zone" to runtime.settings.id,
-                "action" to "use_station",
-                "block" to clicked.type,
-            )
-            if (!hasAccess(player, runtime.settings.permission)) {
-                event.isCancelled = true
-                sendChat(player, MessageKey.ZONE_LOCKED)
-                return
-            }
-            if (!allowInteraction("lumber:${runtime.settings.id}:${player.uniqueId}", 900)) return
-            handleLumberProcessing(runtime, player)
-            return
-        }
-
-        val runtime = mineAt(clicked.location) ?: return
-        if (runtime.state.phase != MinePhase.HAZARD || !player.isSneaking ||
-            !MaterialRules.isPickaxe(player.inventory.itemInMainHand) || !clicked.type.isSolid
-        ) return
-        debug.event(
-            "player_interact",
-            "player" to player.name,
-            "activity" to ActivityKind.MINE,
-            "zone" to runtime.settings.id,
-            "action" to "install_support",
-            "block" to clicked.type,
-        )
-        event.isCancelled = true
-        if (!hasAccess(player, runtime.settings.permission)) {
-            sendChat(player, MessageKey.ZONE_LOCKED)
-            return
-        }
-        if (!allowInteraction("mine:${runtime.settings.id}:${player.uniqueId}", 750)) return
-        val result = MineShiftEngine.stabilize(runtime.state, runtime.rules, player.uniqueId, clock())
-        applyMineResult(runtime, result, player)
+        auxiliaryWorksites.onInteract(event, clicked, player)
     }
 
     fun onBlockFromTo(event: org.bukkit.event.block.BlockFromToEvent) {
@@ -798,28 +702,14 @@ class ArcFarmsService(
             }
         }
         if (event is PlayerTeleportEvent) return
-        mines.firstOrNull { runtime ->
-            runtime.state.phase == MinePhase.EXTRACTION &&
-                runtime.region.contains(event.from) && !runtime.region.contains(destination)
-        }?.let { runtime ->
-            debug.event(
-                "player_move",
-                "player" to player.name,
-                "activity" to ActivityKind.MINE,
-                "zone" to runtime.settings.id,
-                "action" to "leave_for_extraction",
-            )
-            val result = MineShiftEngine.extract(runtime.state, runtime.rules, player.uniqueId, clock())
-            applyMineResult(runtime, result, player)
-        }
+        auxiliaryWorksites.onMove(event.from, destination, player)
     }
 
     fun onQuit(player: Player) {
         stopFarmMusic(player, "player_quit")
         nightShift.clear(player)
         farmScoreboards.remove(player, "player_quit")
-        val keys = activeBars.keys.filter { it.playerId == player.uniqueId }
-        keys.forEach { key -> activeBars.remove(key)?.let(player::hideBossBar) }
+        worksitePort.removePlayerBars(player)
         deliveryCarriers.filterValues { it == player.uniqueId }.keys.toList().forEach { key ->
             farms.firstOrNull { it.settings.id == key.zoneId }?.let { runtime ->
                 returnDelivery(runtime, key, player, "player_quit", notify = false)
@@ -1459,7 +1349,7 @@ class ArcFarmsService(
         val updatedPoints = farmLocations.zones[zoneId].orEmpty() + (kind to position)
         farmLocations = farmLocations.copy(zones = farmLocations.zones + (zoneId to updatedPoints))
         try {
-            validateLocationOverrides()
+            runtimeValidator.validateLocations(settings, farmLocations)
             farmLocationRepository.saveBlocking(farmLocations)
         } catch (failure: Exception) {
             farmLocations = previous
@@ -1506,7 +1396,7 @@ class ArcFarmsService(
         }
         farmLocations = updated
         try {
-            validateLocationOverrides()
+            runtimeValidator.validateLocations(settings, farmLocations)
             farmLocationRepository.saveBlocking(farmLocations)
         } catch (failure: Exception) {
             farmLocations = previous
@@ -2250,17 +2140,7 @@ class ArcFarmsService(
             }
             add(ActivityStatus(ActivityKind.FARM, runtime.settings.id, "phase.farm.${runtime.state.phase.name.lowercase()}", progress))
         }
-        lumbermills.forEach { runtime ->
-            val progress = if (runtime.state.phase == LumberPhase.PROCESSING) {
-                "${runtime.state.processed}/${runtime.rules.processingQuota}"
-            } else {
-                "${runtime.state.felled}/${runtime.rules.fellingQuota}"
-            }
-            add(ActivityStatus(ActivityKind.LUMBER, runtime.settings.id, "phase.lumber.${runtime.state.phase.name.lowercase()}", progress))
-        }
-        mines.forEach { runtime ->
-            add(ActivityStatus(ActivityKind.MINE, runtime.settings.id, "phase.mine.${runtime.state.phase.name.lowercase()}", "${runtime.state.cart}/${runtime.rules.cartQuota}"))
-        }
+        addAll(auxiliaryWorksites.statuses())
     }
 
     fun playerStats(playerId: UUID): PlayerActivityStats = stats.player(playerId)
@@ -2569,16 +2449,14 @@ class ArcFarmsService(
 
     fun isAvailable(kind: ActivityKind): Boolean = when (kind) {
         ActivityKind.FARM -> farms.isNotEmpty()
-        ActivityKind.LUMBER -> lumbermills.isNotEmpty()
-        ActivityKind.MINE -> mines.isNotEmpty()
+        ActivityKind.LUMBER, ActivityKind.MINE -> auxiliaryWorksites.isAvailable(kind)
     }
 
     fun canAccess(player: Player, kind: ActivityKind): Boolean = if (!isAvailable(kind)) {
         settings.network.enabled
     } else when (kind) {
         ActivityKind.FARM -> farms.any { hasAccess(player, it.settings.permission) }
-        ActivityKind.LUMBER -> lumbermills.any { hasAccess(player, it.settings.permission) }
-        ActivityKind.MINE -> mines.any { hasAccess(player, it.settings.permission) }
+        ActivityKind.LUMBER, ActivityKind.MINE -> auxiliaryWorksites.canAccess(player, kind)
     }
 
     private fun teleportLocal(player: Player, kind: ActivityKind) {
@@ -2622,361 +2500,18 @@ class ArcFarmsService(
     }
 
     private fun rebuild(persisted: ArcFarmsState) {
-        farms = settings.farms.map { configured ->
-            val region = requireNotNull(regionGateway.resolve(configured.reference)) {
-                "Farm zone ${configured.id} cannot resolve ${configured.reference}"
-            }
-            val orders = configured.orders.map { order ->
-                FarmOrder(
-                    id = order.id,
-                    required = order.required,
-                    rarity = order.rarity,
-                    careTypes = order.careTypes,
-                    incidentTypes = order.incidentTypes,
-                    customerType = order.customerType,
-                    cartLoadMaterial = order.cartLoadMaterial,
-                    cartLoadCustomModelData = order.cartLoadCustomModelData,
-                )
-            }
-            val orderMap = orders.associateBy(FarmOrder::id)
-            val restored = persisted.farms[configured.id]?.let { state ->
-                if (state.phase == FarmPhase.PREPARATION && state.preparationPatch.isEmpty()) {
-                    state.copy(
-                        phase = FarmPhase.HARVESTING,
-                        preparationCrop = null,
-                        preparationProgress = 0,
-                        plantingProgress = 0,
-                        preparationRequired = 0,
-                        tilledPlots = emptySet(),
-                        plantedPlots = emptySet(),
-                    )
-                } else {
-                    state
-                }
-            } ?: FarmShiftState()
-            FarmRuntime(
-                configured,
-                region,
-                orderMap,
-                orders,
-                FarmRules(
-                    incidentTriggerPercents = configured.incidentTriggerPercents,
-                    incidentQuota = configured.incidentQuota,
-                    cooldownMillis = settings.completedCooldownSeconds * 1000L,
-                    droughtQuota = configured.droughtTargetBeds(configured.preparationPatchSize),
-                    incidentCountMin = configured.incidentCountMin,
-                    incidentCountMax = configured.incidentCountMax,
-                ),
-                restored,
-            )
-        }
+        farms = FarmRuntimeFactory.build(settings, persisted.farms, regionGateway)
         adminPausedFarmZones.retainAll(farms.mapTo(mutableSetOf()) { it.settings.id })
-        lumbermills = settings.lumbermills.map { configured ->
-            val region = requireNotNull(regionGateway.resolve(configured.reference)) {
-                "Lumber zone ${configured.id} cannot resolve ${configured.reference}"
-            }
-            val station = requireNotNull(regionGateway.resolve(configured.station)) {
-                "Lumber station ${configured.id} cannot resolve ${configured.station}"
-            }
-            val restored = persisted.lumbermills[configured.id] ?: LumberShiftState()
-            LumberRuntime(
-                configured,
-                region,
-                station,
-                LumberRules(
-                    configured.fellingQuota,
-                    configured.processingQuota,
-                    configured.processingPerUse,
-                    settings.completedCooldownSeconds * 1000L,
-                ),
-                configured.stationMaterials.mapTo(mutableSetOf(), MaterialRules::material),
-                restored,
-            )
-        }
-        mines = settings.mines.map { configured ->
-            val region = requireNotNull(regionGateway.resolve(configured.reference)) {
-                "Mine zone ${configured.id} cannot resolve ${configured.reference}"
-            }
-            val restored = persisted.mines[configured.id] ?: MineShiftState()
-            MineRuntime(
-                configured,
-                region,
-                MineRules(
-                    configured.cartQuota,
-                    configured.hazardTrigger,
-                    configured.supportsRequired,
-                    settings.completedCooldownSeconds * 1000L,
-                ),
-                MaterialRules.material(configured.temporaryMaterial),
-                MaterialRules.material(configured.baseMaterial),
-                LinkedHashMap(configured.materialWeights.mapKeys { MaterialRules.material(it.key) }),
-                restored,
-            )
-        }
-    }
-
-    private fun validatePersistedState(candidate: ArcFarmsConfig, persisted: ArcFarmsState) {
-        persisted.pendingFarmRewards.forEach { reward ->
-            reward.items.forEach { item -> MaterialRules.material(item.material) }
-            require(reward.moneyCents == 0L || economy.available) {
-                "Pending farm money reward ${reward.id} requires Vault and an economy provider"
-            }
-        }
-        val farmZones = candidate.farms.associateBy(FarmZoneSettings::id)
-        persisted.farms.forEach { (id, state) ->
-            if (state.phase == FarmPhase.IDLE) return@forEach
-            val zone = farmZones[id]
-            if (
-                zone == null && state.phase == FarmPhase.COOLDOWN && state.preparationPatch.isEmpty() &&
-                !FarmIncidentRecovery.pending(state)
-            ) return@forEach
-            requireNotNull(zone) { "Persisted active farm zone $id is missing from config" }
-            if (state.phase != FarmPhase.COOLDOWN) {
-                val order = zone.orders.firstOrNull { it.id == state.orderId }
-                require(order != null) { "Persisted active farm order $id/${state.orderId} is missing from config" }
-                require(state.progress.keys == order.required.keys) { "Persisted farm order $id changed its crop set" }
-                require(state.progress.all { (crop, amount) -> amount <= order.required.getValue(crop) }) {
-                    "Persisted farm progress exceeds the configured order in $id"
-                }
-                require(state.preparationCrop == null || state.preparationCrop in order.required) {
-                    "Persisted farm preparation crop ${state.preparationCrop} is missing from $id"
-                }
-                require(state.incidentCrop == null || state.incidentCrop in order.required) {
-                    "Persisted farm incident crop ${state.incidentCrop} is missing from $id"
-                }
-            }
-            val region = requireNotNull(regionGateway.resolve(zone.reference)) { "Persisted farm region $id cannot be resolved" }
-            val managedPlots = buildList {
-                addAll(state.preparationPatch)
-                addAll(state.droughtPlots)
-                addAll(state.droughtDamagedPlots)
-                state.pestNests.mapTo(this) { it.position }
-                state.pestDamagedCrops.mapTo(this) { it.position }
-            }
-            require(managedPlots.all { position ->
-                position.world == region.world.name && position.location()?.let(region::contains) == true
-            }) { "Persisted farm-managed block escaped region $id" }
-            require(state.careTargets.all { target ->
-                val position = target.position
-                val location = Location(region.world, position.x, position.y, position.z)
-                position.world == region.world.name && region.contains(location)
-            }) { "Persisted farm care target escaped region $id" }
-            require(state.pestDamagedCrops.all { it.crop in zone.crops }) {
-                "Persisted farm pest damage contains an unknown crop in $id"
-            }
-            state.deliveryPosition?.let { position ->
-                val location = Location(region.world, position.x, position.y, position.z)
-                require(position.world == region.world.name && region.contains(location)) {
-                    "Persisted farm delivery escaped region $id"
-                }
-            }
-        }
-
-        val lumberZones = candidate.lumbermills.associateBy(LumberZoneSettings::id)
-        persisted.lumbermills.forEach { (id, state) ->
-            if (state.phase in setOf(LumberPhase.IDLE, LumberPhase.COOLDOWN)) return@forEach
-            val zone = requireNotNull(lumberZones[id]) { "Persisted active lumber zone $id is missing from config" }
-            require(state.species in zone.species) { "Persisted lumber species ${state.species} is missing from $id" }
-        }
-
-        val mineIds = candidate.mines.mapTo(mutableSetOf(), MineZoneSettings::id)
-        persisted.mines.filterValues { it.phase !in setOf(MinePhase.IDLE, MinePhase.COOLDOWN) }.keys.forEach { id ->
-            require(id in mineIds) { "Persisted active mine zone $id is missing from config" }
-        }
-    }
-
-    private fun reconcileFarmOrderProgress(candidate: ArcFarmsConfig, persisted: ArcFarmsState): ArcFarmsState {
-        val zones = candidate.farms.associateBy(FarmZoneSettings::id)
-        var changed = false
-        val farms = persisted.farms.mapValues { (zoneId, state) ->
-            val order = zones[zoneId]?.orders?.firstOrNull { it.id == state.orderId } ?: return@mapValues state
-            val result = FarmOrderProgressReconciler.reconcile(state, order.required)
-            changed = changed || result.changed
-            result.state
-        }
-        return if (changed) persisted.copy(farms = farms) else persisted
-    }
-
-    private fun validateMineJournalMaterials() {
-        mineJournal.records().forEach { record ->
-            MaterialRules.material(record.originalMaterial)
-            MaterialRules.material(record.temporaryMaterial)
-            MaterialRules.material(record.nextMaterial)
-        }
-    }
-
-    private fun validateReload(candidate: ArcFarmsConfig, snapshot: ArcFarmsState) {
-        validatePersistedState(candidate, snapshot)
-        val farmZones = candidate.farms.associateBy(FarmZoneSettings::id)
-        snapshot.farms.filterValues {
-            it.phase !in setOf(FarmPhase.IDLE, FarmPhase.COOLDOWN) || it.preparationPatch.isNotEmpty() ||
-                FarmIncidentRecovery.pending(it)
-        }.forEach { (id, state) ->
-            val zone = requireNotNull(farmZones[id]) { "Cannot remove farm zone $id with pending world recovery" }
-            if (state.phase != FarmPhase.COOLDOWN) {
-                val order = zone.orders.firstOrNull { it.id == state.orderId }
-                require(order != null) { "Cannot remove active farm order $id/${state.orderId} during reload" }
-                require(state.preparationCrop == null || state.preparationCrop in order.required) {
-                    "Cannot remove active farm preparation crop ${state.preparationCrop} from $id"
-                }
-            }
-            if (state.preparationPatch.isNotEmpty()) {
-                val region = requireNotNull(regionGateway.resolve(zone.reference)) {
-                    "Cannot resolve active farm patch region $id during reload"
-                }
-                require(state.preparationPatch.all { position ->
-                    position.world == region.world.name && region.contains(requireNotNull(position.location()))
-                }) { "Cannot move or shrink active farm patch region $id during reload" }
-            }
-        }
-        snapshot.lumbermills.filterValues { it.phase !in setOf(LumberPhase.IDLE, LumberPhase.COOLDOWN) }.forEach { (id, state) ->
-            require(candidate.lumbermills.any { it.id == id && state.species in it.species }) {
-                "Cannot remove active lumber zone/species $id during reload"
-            }
-        }
-        val candidateMineIds = candidate.mines.mapTo(mutableSetOf(), MineZoneSettings::id)
-        snapshot.mines.filterValues { it.phase !in setOf(MinePhase.IDLE, MinePhase.COOLDOWN) }.keys.forEach { id ->
-            require(id in candidateMineIds) { "Cannot remove active mine $id during reload" }
-        }
-        mineJournal.records().forEach { record ->
-            require(record.zoneId in candidateMineIds) { "Cannot remove mine ${record.zoneId} with pending block recovery" }
-        }
-    }
-
-    private fun validateRuntime(candidate: ArcFarmsConfig) {
-        if (candidate.menuBackground.enabled) MaterialRules.material(candidate.menuBackground.material)
-        candidate.destinations.values.filter { it.server == candidate.serverId }.forEach { destination ->
-            requireNotNull(Bukkit.getWorld(destination.world)) {
-                "Destination world ${destination.world} is not loaded on ${candidate.serverId}"
-            }
-        }
-        candidate.farms.forEach { zone ->
-            require(!zone.rewards.requiresEconomy || economy.available) {
-                "Farm zone ${zone.id} money reward requires Vault and an economy provider"
-            }
-            zone.rewards.items.forEach { reward ->
-                val material = MaterialRules.material(reward.material)
-                require(material.isItem) { "Farm zone ${zone.id} reward ${reward.id} must use an item material" }
-            }
-            require(zone.rewards.items.sumOf { reward ->
-                val stackSize = MaterialRules.material(reward.material).maxStackSize
-                (reward.amount + stackSize - 1) / stackSize
-            } <= 54) { "Farm zone ${zone.id} fixed item rewards exceed 54 inventory stacks" }
-            zone.rewards.randomBundles.entries.forEach { bundle ->
-                bundle.items.forEach { reward ->
-                    val material = MaterialRules.material(reward.material)
-                    require(material.isItem) { "Farm zone ${zone.id} reward bundle ${bundle.id} must use item materials" }
-                }
-                require(bundle.items.sumOf { reward ->
-                    val stackSize = MaterialRules.material(reward.material).maxStackSize
-                    (reward.amount + stackSize - 1) / stackSize
-                } <= 27) { "Farm zone ${zone.id} reward bundle ${bundle.id} exceeds 27 inventory stacks" }
-            }
-            val region = requireNotNull(regionGateway.resolve(zone.reference)) {
-                "Farm zone ${zone.id} cannot resolve ${zone.reference}"
-            }
-            val deliveryWorld = requireNotNull(Bukkit.getWorld(zone.delivery.world)) {
-                "Farm zone ${zone.id} delivery world ${zone.delivery.world} is not loaded"
-            }
-            val delivery = Location(deliveryWorld, zone.delivery.x, zone.delivery.y, zone.delivery.z)
-            require(region.contains(delivery)) { "Farm zone ${zone.id} delivery point is outside ${region.label}" }
-            listOf(zone.supplies.tool, zone.supplies.seeds, zone.supplies.water, zone.delivery.pickup).forEach { point ->
-                val supplyWorld = requireNotNull(Bukkit.getWorld(point.world)) {
-                    "Farm zone ${zone.id} supply world ${point.world} is not loaded"
-                }
-                require(region.contains(Location(supplyWorld, point.x, point.y, point.z))) {
-                    "Farm zone ${zone.id} supply point is outside ${region.label}"
-                }
-            }
-            require(MaterialRules.isHoe(ItemStack(MaterialRules.material(zone.supplies.toolMaterial)))) {
-                "Farm zone ${zone.id} supplies.tool-material must be a hoe"
-            }
-            zone.careVisuals.values.forEach { MaterialRules.material(it.material) }
-            zone.orders.forEach { order ->
-                val load = MaterialRules.material(order.cartLoadMaterial)
-                require(load.isItem) { "Farm order ${zone.id}/${order.id} cart load must use an item material" }
-            }
-            zone.careAnimalEntities.forEach { entityName ->
-                val entityType = EntityType.valueOf(entityName)
-                require(entityType.entityClass?.let(Mob::class.java::isAssignableFrom) == true) {
-                    "Farm zone ${zone.id} care-animal-entities must contain mobs"
-                }
-            }
-            MaterialRules.material(zone.delivery.itemMaterial)
-            zone.crops.forEach { cropName ->
-                val crop = MaterialRules.material(cropName)
-                require(MaterialRules.isPlantableCrop(crop) || MaterialRules.isFixedBlockCrop(crop)) {
-                    "Farm zone ${zone.id} crop $cropName is neither plantable nor a managed block crop"
-                }
-                require(MaterialRules.harvestItemForCrop(crop).isItem) {
-                    "Farm zone ${zone.id} crop $cropName has no inventory-safe harvest item"
-                }
-            }
-            zone.orders.forEach { order ->
-                require(order.required.keys.any { MaterialRules.isPlantableCrop(MaterialRules.material(it)) }) {
-                    "Farm order ${zone.id}/${order.id} needs at least one plantable crop for preparation"
-                }
-            }
-            val pestType = EntityType.valueOf(zone.pestEntity)
-            require(pestType.entityClass?.let(LivingEntity::class.java::isAssignableFrom) == true) {
-                "Farm zone ${zone.id} pest-entity must be a living entity"
-            }
-            val patrolType = EntityType.valueOf(zone.specialIncidents.nightPatrolEntity)
-            require(patrolType.entityClass?.let(Monster::class.java::isAssignableFrom) == true) {
-                "Farm zone ${zone.id} night-shift patrol entity must be a monster"
-            }
-            val patrolItem = MaterialRules.material(zone.specialIncidents.nightPatrolHeldItem)
-            require(patrolItem.isItem) { "Farm zone ${zone.id} night-shift patrol held-item must be an item" }
-        }
-        fixedCropJournal.records().forEach { pending ->
-            val zone = candidate.farms.firstOrNull { it.id == pending.zoneId }
-                ?: error("Pending fixed crop references missing farm zone ${pending.zoneId}")
-            val material = Bukkit.createBlockData(pending.originalBlockData).material
-            require(MaterialRules.isFixedBlockCrop(material) && material.name in zone.crops) {
-                "Pending fixed crop ${pending.positionKey} is no longer configured in ${pending.zoneId}"
-            }
-        }
-        candidate.lumbermills.forEach { zone ->
-            requireNotNull(regionGateway.resolve(zone.reference)) { "Lumber zone ${zone.id} cannot resolve ${zone.reference}" }
-            requireNotNull(regionGateway.resolve(zone.station)) { "Lumber station ${zone.id} cannot resolve ${zone.station}" }
-            zone.stationMaterials.forEach(MaterialRules::material)
-            zone.species.forEach { species ->
-                require(
-                    listOf("${species}_LOG", "${species}_WOOD", "${species}_STEM", "${species}_HYPHAE")
-                        .any { Material.matchMaterial(it) != null },
-                ) { "Unknown lumber species in ${zone.id}: $species" }
-            }
-        }
-        candidate.mines.forEach { zone ->
-            requireNotNull(regionGateway.resolve(zone.reference)) { "Mine zone ${zone.id} cannot resolve ${zone.reference}" }
-            MaterialRules.material(zone.temporaryMaterial)
-            MaterialRules.material(zone.baseMaterial)
-            zone.materialWeights.keys.forEach(MaterialRules::material)
-        }
-    }
-
-    private fun validateLocationOverrides(candidate: ArcFarmsConfig = settings) {
-        farmLocations.zones.forEach { (zoneId, points) ->
-            val configured = candidate.farms.firstOrNull { it.id == zoneId }
-                ?: error("Farm location override references unknown zone $zoneId")
-            val region = requireNotNull(regionGateway.resolve(configured.reference)) {
-                "Farm location override cannot resolve zone $zoneId"
-            }
-            points.forEach { (kind, point) ->
-                val world = requireNotNull(Bukkit.getWorld(point.world)) {
-                    "Farm point $zoneId/$kind world ${point.world} is not loaded"
-                }
-                if (kind == FarmPointKind.TRAVEL) {
-                    require(candidate.destinations.getValue(ActivityKind.FARM.configKey).server == candidate.serverId) {
-                        "Farm travel point can only be overridden on its destination server"
-                    }
-                } else {
-                    require(region.contains(Location(world, point.x, point.y, point.z))) {
-                        "Farm point $zoneId/$kind is outside ${region.label}"
-                    }
-                }
-            }
-        }
+        lumbermillController.rebuild(
+            settings.lumbermills,
+            persisted.lumbermills,
+            settings.completedCooldownSeconds * 1000L,
+        )
+        mineController.rebuild(
+            settings.mines,
+            persisted.mines,
+            settings.completedCooldownSeconds * 1000L,
+        )
     }
 
     private fun tryStartFarmShift(
@@ -4262,154 +3797,6 @@ class ArcFarmsService(
         return plan.getOrElse(runtime.state.incidentsResolved) { plan.last() }
     }
 
-    private fun handleLumberBreakHigh(event: BlockBreakEvent, runtime: LumberRuntime) {
-        if (!hasAccess(event.player, runtime.settings.permission)) {
-            event.isCancelled = true
-            sendChat(event.player, MessageKey.ZONE_LOCKED)
-            return
-        }
-        event.isCancelled = !MaterialRules.isLumberBreakable(event.block.type)
-    }
-
-    private fun handleLumberFell(runtime: LumberRuntime, player: Player, species: String) {
-        val now = clock()
-        if (runtime.state.phase == LumberPhase.COOLDOWN) {
-            sendActionBar(
-                player,
-                MessageKey.COOLDOWN,
-                mapOf("seconds" to locale.text(remainingSeconds(runtime.state.cooldownEndsAt, now))),
-            )
-            return
-        }
-        if (runtime.state.phase == LumberPhase.IDLE) {
-            val target = runtime.settings.species[(runtime.state.sequence % runtime.settings.species.size).toInt()]
-            applyLumberResult(runtime, LumberShiftEngine.start(runtime.state, target, runtime.rules, now), player)
-        }
-        val result = LumberShiftEngine.fell(runtime.state, runtime.rules, species, player.uniqueId, now)
-        applyLumberResult(runtime, result, player)
-        if (!result.accepted && runtime.state.phase == LumberPhase.FELLING) {
-            val target = MaterialRules.woodComponent(requireNotNull(runtime.state.species))
-            sendActionBar(player, MessageKey.LUMBER_WRONG_SPECIES, mapOf("wood" to target))
-        }
-    }
-
-    private fun handleLumberProcessing(runtime: LumberRuntime, player: Player): Boolean {
-        if (runtime.state.phase != LumberPhase.PROCESSING) {
-            sendActionBar(player, MessageKey.LUMBER_STATION_REQUIRED)
-            return false
-        }
-        val result = LumberShiftEngine.process(runtime.state, runtime.rules, player.uniqueId, clock())
-        applyLumberResult(runtime, result, player)
-        return result.accepted
-    }
-
-    private fun handleMineBreak(event: BlockBreakEvent, runtime: MineRuntime) {
-        val experience = event.expToDrop
-        event.isCancelled = true
-        val player = event.player
-        if (!hasAccess(player, runtime.settings.permission)) {
-            sendChat(player, MessageKey.ZONE_LOCKED)
-            return
-        }
-        val toolSlot = player.inventory.heldItemSlot
-        val toolSnapshot = player.inventory.getItem(toolSlot)?.clone()
-        if (toolSnapshot == null || !MaterialRules.isPickaxe(toolSnapshot)) {
-            sendActionBar(player, MessageKey.MINE_PICKAXE_REQUIRED)
-            return
-        }
-        val block = event.block
-        if (block.type !in runtime.materialWeights) return
-        when (runtime.state.phase) {
-            MinePhase.HAZARD -> {
-                sendActionBar(player, MessageKey.MINE_HAZARD_HELP)
-                return
-            }
-            MinePhase.EXTRACTION -> {
-                sendActionBar(player, MessageKey.MINE_EXTRACTION_REQUIRED)
-                return
-            }
-            MinePhase.COOLDOWN -> {
-                sendActionBar(
-                    player,
-                    MessageKey.COOLDOWN,
-                    mapOf("seconds" to locale.text(remainingSeconds(runtime.state.cooldownEndsAt, clock()))),
-                )
-                return
-            }
-            else -> Unit
-        }
-        val positionKey = positionKey(block.location)
-        if (pendingPositions.containsKey(positionKey) || !mineReservations.add(positionKey)) {
-            sendActionBar(player, MessageKey.MINE_REGENERATING)
-            return
-        }
-        val now = clock()
-        val nextMaterial = MaterialRules.weightedMaterial(runtime.materialWeights, random)
-        val record = PendingMineBlock(
-            id = "${runtime.settings.id}:${UUID.randomUUID()}",
-            zoneId = runtime.settings.id,
-            world = block.world.name,
-            x = block.x,
-            y = block.y,
-            z = block.z,
-            originalMaterial = block.type.name,
-            temporaryMaterial = runtime.temporaryMaterial.name,
-            nextMaterial = nextMaterial.name,
-            restoreAt = now + runtime.settings.restoreSeconds * 1000L,
-        )
-        val originalMaterial = block.type
-        val drops = block.getDrops(toolSnapshot, player).map { it.clone() }
-        mineJournal.prepare(record).whenComplete { _, failure ->
-            if (!isOperational()) {
-                mineReservations.remove(positionKey)
-                return@whenComplete
-            }
-            taskSupervisor.runSync {
-                if (failure != null) {
-                    mineReservations.remove(positionKey)
-                    if (player.isOnline) sendChat(player, MessageKey.MINE_JOURNAL_FAILED)
-                    plugin.logger.log(Level.SEVERE, "Could not journal mine block ${record.id}", failure)
-                    return@runSync
-                }
-                if (!isOperational() || mines.none { it === runtime }) {
-                    mineReservations.remove(positionKey)
-                    mineJournal.remove(record.id).whenComplete { _, retireFailure ->
-                        if (retireFailure != null) {
-                            plugin.logger.log(Level.SEVERE, "Could not retire stale mine journal record ${record.id}", retireFailure)
-                        }
-                    }
-                    return@runSync
-                }
-                if (block.type != originalMaterial) {
-                    mineReservations.remove(positionKey)
-                    mineJournal.remove(record.id)
-                    return@runSync
-                }
-                block.setType(runtime.temporaryMaterial, false)
-                pendingPositions[positionKey] = record.id
-                mineReservations.remove(positionKey)
-                drops.forEach { block.world.dropItemNaturally(block.location.toCenterLocation(), it) }
-                if (experience > 0 && player.isOnline) player.giveExp(experience)
-                if (player.isOnline && player.gameMode != GameMode.CREATIVE) {
-                    val currentTool = player.inventory.getItem(toolSlot)
-                    if (currentTool != null && currentTool.isSimilar(toolSnapshot)) {
-                        player.inventory.setItem(toolSlot, player.damageItemStack(currentTool, 1))
-                    }
-                }
-                val actionNow = clock()
-                if (runtime.state.phase == MinePhase.IDLE) {
-                    applyMineResult(runtime, MineShiftEngine.start(runtime.state, runtime.rules, actionNow), player)
-                }
-                val points = if (originalMaterial == runtime.baseMaterial) 1 else 2
-                applyMineResult(
-                    runtime,
-                    MineShiftEngine.mine(runtime.state, runtime.rules, points, player.uniqueId, actionNow),
-                    player,
-                )
-            }
-        }
-    }
-
     private fun applyFarmResult(runtime: FarmRuntime, result: EngineResult<FarmShiftState>, actor: Player?) {
         val incidentType = result.state.incidentType ?: runtime.state.incidentType ?: FarmIncidentType.PESTS
         val careType = result.state.careType ?: runtime.state.careType
@@ -4840,152 +4227,6 @@ class ArcFarmsService(
         ensureFarmContractScene(runtime)
     }
 
-    private fun applyLumberResult(runtime: LumberRuntime, result: EngineResult<LumberShiftState>, actor: Player?) {
-        runtime.state = result.state
-        traceResult(
-            activity = ActivityKind.LUMBER,
-            zone = runtime.settings.id,
-            actor = actor,
-            phase = runtime.state.phase,
-            progress = "${runtime.state.felled}/${runtime.rules.fellingQuota}:${runtime.state.processed}/${runtime.rules.processingQuota}",
-            result = result,
-        )
-        if (actor != null && result.contribution > 0) recordContribution(actor.uniqueId, ActivityKind.LUMBER, result.contribution)
-        result.events.forEach { event ->
-            when (event) {
-                ShiftEvent.STARTED -> broadcast(
-                    runtime.region,
-                    MessageKey.LUMBER_STARTED,
-                    mapOf("wood" to MaterialRules.woodComponent(requireNotNull(runtime.state.species))),
-                    Sound.BLOCK_WOOD_PLACE,
-                )
-                ShiftEvent.PHASE_CHANGED -> {
-                    broadcast(
-                        runtime.region,
-                        MessageKey.LUMBER_PROCESSING,
-                        sound = Sound.BLOCK_PISTON_EXTEND,
-                        title = true,
-                    )
-                    successBurst(runtime.region)
-                    network.signal(
-                        NetworkSignal.LUMBER_PROCESSING,
-                        ActivityKind.LUMBER,
-                        actor?.name,
-                        listOf(runtime.region, runtime.station).flatMap(::players).mapTo(mutableSetOf(), Player::getUniqueId),
-                    )
-                }
-                ShiftEvent.COMPLETED -> {
-                    recordCompletion(ActivityKind.LUMBER, runtime.state.contributors)
-                    broadcast(
-                        listOf(runtime.region, runtime.station),
-                        MessageKey.LUMBER_COMPLETED,
-                        mapOf("players" to locale.text(runtime.state.contributors.size)),
-                        Sound.UI_TOAST_CHALLENGE_COMPLETE,
-                        title = true,
-                    )
-                    announceWinner(listOf(runtime.region, runtime.station), runtime.state.contributors)
-                    celebration(listOf(runtime.region, runtime.station))
-                    network.complete(
-                        ActivityKind.LUMBER,
-                        actor?.name,
-                        listOf(runtime.region, runtime.station).flatMap(::players).mapTo(mutableSetOf(), Player::getUniqueId),
-                    )
-                    persistAsync()
-                }
-                else -> Unit
-            }
-        }
-    }
-
-    private fun applyMineResult(runtime: MineRuntime, result: EngineResult<MineShiftState>, actor: Player?) {
-        runtime.state = result.state
-        traceResult(
-            activity = ActivityKind.MINE,
-            zone = runtime.settings.id,
-            actor = actor,
-            phase = runtime.state.phase,
-            progress = "${runtime.state.cart}/${runtime.rules.cartQuota}",
-            result = result,
-        )
-        if (actor != null && result.contribution > 0) recordContribution(actor.uniqueId, ActivityKind.MINE, result.contribution)
-        result.events.forEach { event ->
-            when (event) {
-                ShiftEvent.STARTED -> broadcast(
-                    runtime.region,
-                    MessageKey.MINE_STARTED,
-                    sound = Sound.BLOCK_IRON_DOOR_OPEN,
-                    valuesForPlayer = { player ->
-                        mapOf("route" to locale.renderPath("route.mine.${runtime.settings.id}", player))
-                    },
-                )
-                ShiftEvent.HAZARD_STARTED -> {
-                    broadcast(runtime.region, MessageKey.MINE_HAZARD_STARTED, sound = Sound.ENTITY_GENERIC_EXPLODE, title = true)
-                    broadcast(runtime.region, MessageKey.MINE_HAZARD_HELP)
-                    warningBurst(runtime.region)
-                    network.signal(
-                        NetworkSignal.MINE_HAZARD,
-                        ActivityKind.MINE,
-                        actor?.name,
-                        players(runtime.region).mapTo(mutableSetOf(), Player::getUniqueId),
-                    )
-                    persistAsync()
-                }
-                ShiftEvent.HAZARD_RESOLVED -> {
-                    broadcast(
-                        runtime.region,
-                        MessageKey.MINE_HAZARD_RESOLVED,
-                        sound = Sound.BLOCK_ANVIL_USE,
-                        title = true,
-                    )
-                    successBurst(runtime.region)
-                    network.signal(
-                        NetworkSignal.MINE_STABLE,
-                        ActivityKind.MINE,
-                        actor?.name,
-                        players(runtime.region).mapTo(mutableSetOf(), Player::getUniqueId),
-                    )
-                }
-                ShiftEvent.EXTRACTION_STARTED -> {
-                    broadcast(
-                        runtime.region,
-                        MessageKey.MINE_EXTRACTION_STARTED,
-                        sound = Sound.BLOCK_BELL_RESONATE,
-                        title = true,
-                    )
-                    network.signal(
-                        NetworkSignal.MINE_EXTRACTION,
-                        ActivityKind.MINE,
-                        actor?.name,
-                        players(runtime.region).mapTo(mutableSetOf(), Player::getUniqueId),
-                    )
-                }
-                ShiftEvent.COMPLETED -> {
-                    recordCompletion(ActivityKind.MINE, runtime.state.contributors)
-                    broadcast(runtime.region, MessageKey.MINE_COMPLETED, sound = Sound.UI_TOAST_CHALLENGE_COMPLETE, title = true)
-                    announceWinner(runtime.region, runtime.state.contributors)
-                    celebration(runtime.region)
-                    network.complete(
-                        ActivityKind.MINE,
-                        actor?.name,
-                        players(runtime.region).mapTo(mutableSetOf(), Player::getUniqueId),
-                    )
-                    persistAsync()
-                }
-                ShiftEvent.PROGRESS -> if (runtime.state.phase == MinePhase.HAZARD && actor != null) {
-                    sendActionBar(
-                        actor,
-                        MessageKey.MINE_HAZARD_PROGRESS,
-                        mapOf(
-                            "done" to locale.text(runtime.state.supports),
-                            "total" to locale.text(runtime.rules.supportsRequired),
-                        ),
-                    )
-                }
-                else -> Unit
-            }
-        }
-    }
-
     private fun startTasks() {
         taskSupervisor.runTimer(1L, 1L) { runGuarded("farm_block_restores", ::processFarmBlockRestores) }
         taskSupervisor.runTimer(1L, 1L) {
@@ -5061,19 +4302,7 @@ class ArcFarmsService(
                 maintainWetFarmBeds(runtime)
             }
         }
-        lumbermills.forEach { runtime ->
-            runGuarded("lumber:${runtime.settings.id}") {
-                val result = LumberShiftEngine.tick(runtime.state, runtime.rules, now)
-                if (result.events.isNotEmpty()) applyLumberResult(runtime, result, null)
-            }
-        }
-        mines.forEach { runtime ->
-            runGuarded("mine:${runtime.settings.id}") {
-                val result = MineShiftEngine.tick(runtime.state, runtime.rules, now)
-                if (result.events.isNotEmpty()) applyMineResult(runtime, result, null)
-            }
-        }
-        runGuarded("mine_recovery") { restoreMineBlocks(now) }
+        auxiliaryWorksites.tick(now)
         runGuarded("player_guidance", ::updatePlayerGuidance)
     }
 
@@ -5087,29 +4316,8 @@ class ArcFarmsService(
         }
     }
 
-    private fun restoreMineBlocks(now: Long) {
-        mineJournal.records().filter { it.restoreAt <= now }.forEach { record ->
-            val world = Bukkit.getWorld(record.world) ?: return@forEach
-            if (!world.isChunkLoaded(record.x shr 4, record.z shr 4)) return@forEach
-            val block = world.getBlockAt(record.x, record.y, record.z)
-            val temporary = runCatching { MaterialRules.material(record.temporaryMaterial) }.getOrNull()
-            val next = runCatching { MaterialRules.material(record.nextMaterial) }.getOrNull()
-            if (temporary == null || next == null) {
-                if (allowInteraction("mine-journal-material:${record.id}", TimeUnit.MINUTES.toMillis(5))) {
-                    plugin.logger.severe("Mine journal record ${record.id} contains an unknown material and was retained for recovery")
-                }
-                return@forEach
-            }
-            if (block.type == temporary) block.setType(next, false)
-            mineJournal.remove(record.id).whenComplete { _, failure ->
-                if (failure == null) pendingPositions.remove(record.positionKey, record.id)
-                else plugin.logger.log(Level.SEVERE, "Could not retire mine journal record ${record.id}", failure)
-            }
-        }
-    }
-
     private fun updatePlayerGuidance() {
-        val expectedBars = mutableSetOf<BarKey>()
+        val expectedBars = mutableSetOf<ActivityBarKey>()
         val expectedScoreboards = mutableSetOf<UUID>()
         farms.forEach { runtime ->
             if (
@@ -5258,74 +4466,9 @@ class ArcFarmsService(
             }
         }
         reconcileFarmScoreboards(expectedScoreboards)
-        lumbermills.forEach { runtime ->
-            if (runtime.state.phase !in setOf(LumberPhase.FELLING, LumberPhase.PROCESSING)) return@forEach
-            val region = if (runtime.state.phase == LumberPhase.PROCESSING) runtime.station else runtime.region
-            players(region).forEach { player ->
-                val processing = runtime.state.phase == LumberPhase.PROCESSING
-                val done = if (processing) runtime.state.processed else runtime.state.felled
-                val total = if (processing) runtime.rules.processingQuota else runtime.rules.fellingQuota
-                val key = if (processing) MessageKey.LUMBER_ACTIONBAR_PROCESSING else MessageKey.LUMBER_ACTIONBAR_FELLING
-                val component = locale.render(
-                    key,
-                    player,
-                    mapOf(
-                        "wood" to MaterialRules.woodComponent(requireNotNull(runtime.state.species)),
-                        "done" to locale.text(done),
-                        "total" to locale.text(total),
-                    ),
-                )
-                sendActionBar(player, key, mapOf(
-                    "wood" to MaterialRules.woodComponent(requireNotNull(runtime.state.species)),
-                    "done" to locale.text(done),
-                    "total" to locale.text(total),
-                ))
-                updateBar(player, "lumber:${runtime.settings.id}", component, done.toFloat() / total, BossBar.Color.YELLOW, expectedBars)
-            }
-        }
-        mines.forEach { runtime ->
-            if (runtime.state.phase !in setOf(MinePhase.MINING, MinePhase.HAZARD, MinePhase.EXTRACTION)) return@forEach
-            players(runtime.region).filter { mineAt(it.location) === runtime }.forEach { player ->
-                val component = locale.render(
-                    MessageKey.MINE_ACTIONBAR,
-                    player,
-                    mapOf(
-                        "route" to locale.renderPath("route.mine.${runtime.settings.id}", player),
-                        "done" to locale.text(runtime.state.cart),
-                        "total" to locale.text(runtime.rules.cartQuota),
-                        "phase" to locale.renderPath("phase.mine.${runtime.state.phase.name.lowercase()}", player),
-                    ),
-                )
-                sendActionBar(
-                    player,
-                    MessageKey.MINE_ACTIONBAR,
-                    mapOf(
-                        "route" to locale.renderPath("route.mine.${runtime.settings.id}", player),
-                        "done" to locale.text(runtime.state.cart),
-                        "total" to locale.text(runtime.rules.cartQuota),
-                        "phase" to locale.renderPath("phase.mine.${runtime.state.phase.name.lowercase()}", player),
-                    ),
-                )
-                val color = when (runtime.state.phase) {
-                    MinePhase.HAZARD -> BossBar.Color.RED
-                    MinePhase.EXTRACTION -> BossBar.Color.YELLOW
-                    else -> BossBar.Color.BLUE
-                }
-                updateBar(
-                    player,
-                    "mine:${runtime.settings.id}",
-                    component,
-                    runtime.state.cart.toFloat() / runtime.rules.cartQuota,
-                    color,
-                    expectedBars,
-                )
-            }
-        }
-        val stale = activeBars.keys - expectedBars
-        stale.forEach { key ->
-            val bar = activeBars.remove(key) ?: return@forEach
-            Bukkit.getPlayer(key.playerId)?.hideBossBar(bar)
-        }
+        lumbermillController.updateGuidance(expectedBars)
+        mineController.updateGuidance(expectedBars)
+        worksitePort.reconcileBars(expectedBars)
     }
 
     private fun reconcileFarmPatches() {
@@ -8044,27 +7187,8 @@ class ArcFarmsService(
         name: Component,
         progress: Float,
         color: BossBar.Color,
-        expected: MutableSet<BarKey>,
-    ) {
-        if (!settings.bossbars) return
-        val key = BarKey(player.uniqueId, runtimeKey)
-        expected += key
-        val existing = activeBars[key]
-        val bar = existing ?: BossBar.bossBar(
-            name,
-            progress.coerceIn(0f, 1f),
-            color,
-            BossBar.Overlay.PROGRESS,
-        ).also {
-            activeBars[key] = it
-            player.showBossBar(it)
-            debug.message("bossbar", "local", runtimeKey, player, name)
-        }
-        if (existing != null && existing.name() != name) debug.message("bossbar", "local", runtimeKey, player, name)
-        bar.name(name)
-        bar.progress(progress.coerceIn(0f, 1f))
-        bar.color(color)
-    }
+        expected: MutableSet<ActivityBarKey>,
+    ) = worksitePort.updateBar(player, runtimeKey, name, progress, color, expected)
 
     private fun emitGuidanceParticles() {
         if (!settings.particles) return
@@ -8168,24 +7292,12 @@ class ArcFarmsService(
                 crateTargets.forEach { location -> spawnMissingPlotMarker(player, location, FARM_AMBER_COLOR) }
             }
         }
-        lumbermills.filter { it.state.phase == LumberPhase.FELLING }.forEach { runtime ->
-            val species = runtime.state.species ?: return@forEach
-            players(runtime.region).filterNot(::isAdminEditing).forEach { player ->
-                nearbyBlocks(player.location, runtime.region, 6, 5, 8) { MaterialRules.speciesOf(it.type) == species }.forEach { block ->
-                    spawnGuidanceDust(player, block.location.toCenterLocation().add(0.0, 0.8, 0.0), FARM_AMBER_COLOR)
-                }
-            }
-        }
-        mines.filter { it.state.phase == MinePhase.HAZARD }.forEach { runtime ->
-            players(runtime.region).filter { mineAt(it.location) === runtime }.forEach { player ->
-                spawnGuidanceDust(player, player.location.clone().add(0.0, 1.2, 0.0), FARM_DANGER_COLOR)
-            }
-        }
+        lumbermillController.emitGuidance()
+        mineController.emitGuidance()
     }
 
-    private fun spawnGuidanceDust(player: Player, location: Location, color: Color, size: Float = 1.1f) {
-        player.spawnParticle(Particle.DUST, location, 1, 0.0, 0.0, 0.0, 0.0, Particle.DustOptions(color, size))
-    }
+    private fun spawnGuidanceDust(player: Player, location: Location, color: Color, size: Float = 1.1f) =
+        worksitePort.spawnGuidanceDust(player, location, color, size)
 
     private fun emitFarmSpecialGuidance(runtime: FarmRuntime) {
         val special = runtime.state.specialIncident ?: return
@@ -8589,19 +7701,8 @@ class ArcFarmsService(
         }
     }
 
-    private fun traceBlockBreak(event: BlockBreakEvent, activity: ActivityKind, zone: String) {
-        debug.event(
-            "player_block_break",
-            "player" to event.player.name,
-            "activity" to activity,
-            "zone" to zone,
-            "block" to event.block.type,
-            "world" to event.block.world.name,
-            "x" to event.block.x,
-            "y" to event.block.y,
-            "z" to event.block.z,
-        )
-    }
+    private fun traceBlockBreak(event: BlockBreakEvent, activity: ActivityKind, zone: String) =
+        worksitePort.traceBlockBreak(event, activity, zone)
 
     private fun traceResult(
         activity: ActivityKind,
@@ -8610,19 +7711,7 @@ class ArcFarmsService(
         phase: Any,
         progress: String?,
         result: EngineResult<*>,
-    ) {
-        if (!result.accepted && result.events.isEmpty()) return
-        debug.event(
-            "activity_result",
-            "activity" to activity,
-            "zone" to zone,
-            "player" to actor?.name,
-            "phase" to phase,
-            "progress" to progress,
-            "contribution" to result.contribution,
-            "events" to result.events.joinToString(","),
-        )
-    }
+    ) = worksitePort.traceResult(activity, zone, actor, phase, progress, result)
 
     private fun remainingCrops(runtime: FarmRuntime, order: FarmOrder): Component = Component.join(
         JoinConfiguration.commas(true),
@@ -8643,10 +7732,6 @@ class ArcFarmsService(
     )
 
     private fun farmAt(location: Location): FarmRuntime? = farms.firstOrNull { it.region.contains(location) }
-
-    private fun lumberAt(location: Location): LumberRuntime? = lumbermills.firstOrNull { it.region.contains(location) }
-
-    private fun mineAt(location: Location): MineRuntime? = mines.firstOrNull { it.region.contains(location) }
 
     private fun hasAccess(player: Player, permission: String): Boolean =
         player.hasPermission(permission) || player.hasPermission("arcfarms.admin")
@@ -8688,7 +7773,7 @@ class ArcFarmsService(
         sound: Sound? = null,
         title: Boolean = false,
         valuesForPlayer: ((Player) -> Map<String, Component>)? = null,
-    ) = broadcast(listOf(region), key, values, sound, title, valuesForPlayer)
+    ) = worksitePort.broadcast(listOf(region), key, values, sound, title, valuesForPlayer)
 
     private fun broadcast(
         regions: Collection<ActivityRegion>,
@@ -8697,55 +7782,23 @@ class ArcFarmsService(
         sound: Sound? = null,
         title: Boolean = false,
         valuesForPlayer: ((Player) -> Map<String, Component>)? = null,
-    ) {
-        regions.flatMap(::players).distinctBy(Player::getUniqueId).forEach { player ->
-            val playerValues = valuesForPlayer?.invoke(player) ?: values
-            if (title) {
-                showScreenTitle(player, key, playerValues, "local")
-            } else {
-                val message = locale.render(key, player, playerValues)
-                player.sendActionBar(message)
-                debug.message("actionbar", "local", key.path, player, message)
-            }
-            if (sound != null && settings.sounds) player.playSound(player.location, sound, 0.8f, 1.0f)
-        }
-    }
+    ) = worksitePort.broadcast(regions, key, values, sound, title, valuesForPlayer)
 
-    private fun sendChat(player: Player, key: MessageKey, values: Map<String, Component> = emptyMap()) {
-        val message = locale.render(key, player, values)
-        player.sendMessage(message)
-        debug.message("chat", "player", key.path, player, message)
-    }
+    private fun sendChat(player: Player, key: MessageKey, values: Map<String, Component> = emptyMap()) =
+        worksitePort.sendChat(player, key, values)
 
-    private fun sendActionBar(player: Player, key: MessageKey, values: Map<String, Component> = emptyMap()) {
-        val message = locale.render(key, player, values)
-        player.sendActionBar(message)
-        debug.message("actionbar", "player", key.path, player, message)
-    }
+    private fun sendActionBar(player: Player, key: MessageKey, values: Map<String, Component> = emptyMap()) =
+        worksitePort.sendActionBar(player, key, values)
 
     private fun showScreenTitle(
         player: Player,
         key: MessageKey,
         values: Map<String, Component> = emptyMap(),
         scope: String = "player",
-    ) {
-        val title = locale.render(key, player, values)
-        val subtitleKey = TITLE_SUBTITLES[key]
-        val subtitle = subtitleKey?.let { locale.render(it, player, values) } ?: Component.empty()
-        showScreenTitle(player, title, subtitle)
-        debug.message("title", scope, key.path, player, title)
-        if (subtitleKey != null) debug.message("subtitle", scope, subtitleKey.path, player, subtitle)
-    }
+    ) = worksitePort.showScreenTitle(player, key, values, scope)
 
-    private fun showScreenTitle(player: Player, title: Component, subtitle: Component) {
-        player.showTitle(
-            Title.title(
-                title,
-                subtitle,
-                Title.Times.times(Duration.ofMillis(300), Duration.ofSeconds(settings.titleStaySeconds.toLong()), Duration.ofMillis(700)),
-            ),
-        )
-    }
+    private fun showScreenTitle(player: Player, title: Component, subtitle: Component) =
+        worksitePort.showScreenTitle(player, title, subtitle)
 
     private fun broadcastStoryTitle(
         runtime: FarmRuntime,
@@ -8870,21 +7923,7 @@ class ArcFarmsService(
         1.0f,
     )
 
-    private fun warningBurst(region: ActivityRegion) {
-        if (!settings.particles) return
-        players(region).forEach { player ->
-            player.spawnParticle(
-                Particle.DUST,
-                player.location.clone().add(0.0, 1.15, 0.0),
-                5,
-                0.55,
-                0.4,
-                0.55,
-                0.0,
-                Particle.DustOptions(FARM_DANGER_COLOR, 1.1f),
-            )
-        }
-    }
+    private fun warningBurst(region: ActivityRegion) = worksitePort.warningBurst(region)
 
     private fun playFarmMilestone(runtime: FarmRuntime, sound: Sound, pitch: Float = 1.0f) {
         if (!settings.sounds) return
@@ -8911,70 +7950,24 @@ class ArcFarmsService(
         }
     }
 
-    private fun successBurst(region: ActivityRegion) {
-        if (!settings.particles) return
-        players(region).forEach { player ->
-            player.spawnParticle(
-                Particle.DUST,
-                player.location.clone().add(0.0, 1.0, 0.0),
-                6,
-                0.55,
-                0.45,
-                0.55,
-                0.0,
-                Particle.DustOptions(FARM_SUCCESS_COLOR, 1.15f),
-            )
-        }
-    }
+    private fun successBurst(region: ActivityRegion) = worksitePort.successBurst(region)
 
     private fun celebration(region: ActivityRegion) = celebration(listOf(region))
 
-    private fun celebration(regions: Collection<ActivityRegion>) {
-        val recipients = regions.flatMap(::players).distinctBy(Player::getUniqueId)
-        recipients.forEach { player ->
-            if (settings.particles) {
-                player.spawnParticle(Particle.FIREWORK, player.location.add(0.0, 1.2, 0.0), 8, 0.7, 0.55, 0.7, 0.025)
-            }
-            if (settings.sounds) player.playSound(player.location, Sound.ENTITY_FIREWORK_ROCKET_LAUNCH, 0.7f, 1.15f)
-        }
-        if (recipients.isEmpty()) return
-        taskSupervisor.runLater(8L) {
-            recipients.filter(Player::isOnline).forEach { player ->
-                if (settings.particles) {
-                    player.spawnParticle(Particle.FIREWORK, player.location.add(0.0, 1.8, 0.0), 10, 0.9, 0.7, 0.9, 0.04)
-                }
-                if (settings.sounds) {
-                    player.playSound(player.location, Sound.ENTITY_FIREWORK_ROCKET_BLAST, 0.9f, 1.0f)
-                    player.playSound(player.location, Sound.ENTITY_FIREWORK_ROCKET_TWINKLE, 0.65f, 1.2f)
-                }
-            }
-        }
-    }
+    private fun celebration(regions: Collection<ActivityRegion>) = worksitePort.celebration(regions)
 
     private fun announceWinner(region: ActivityRegion, contributors: Map<UUID, Int>) {
         announceWinner(listOf(region), contributors)
     }
 
-    private fun announceWinner(regions: Collection<ActivityRegion>, contributors: Map<UUID, Int>) {
-        val winnerId = winner(contributors) ?: return
-        val winnerName = Bukkit.getPlayer(winnerId)?.name ?: winnerId.toString().take(8)
-        broadcast(
-            regions,
-            MessageKey.SHIFT_WINNER,
-            mapOf(
-                "player" to Component.text(winnerName),
-                "amount" to locale.text(contributors.getValue(winnerId)),
-            ),
-        )
-    }
+    private fun announceWinner(regions: Collection<ActivityRegion>, contributors: Map<UUID, Int>) =
+        worksitePort.announceWinner(regions, contributors)
 
-    private fun recordContribution(playerId: UUID, kind: ActivityKind, amount: Int) {
-        stats.contribute(playerId, kind, amount)
-    }
+    private fun recordContribution(playerId: UUID, kind: ActivityKind, amount: Int) =
+        worksitePort.recordContribution(playerId, kind, amount)
 
-    private fun recordCompletion(kind: ActivityKind, contributors: Map<UUID, Int>) {
-        contributors.keys.forEach { playerId -> stats.complete(playerId, kind) }
-    }
+    private fun recordCompletion(kind: ActivityKind, contributors: Map<UUID, Int>) =
+        worksitePort.recordCompletion(kind, contributors)
 
     private fun queueFarmCompletionRewards(runtime: FarmRuntime, contributors: Map<UUID, Int>) {
         val ranked = contributors.entries.sortedWith(
@@ -9272,8 +8265,8 @@ class ArcFarmsService(
         return ArcFarmsState(
             farms = farms.associate { it.settings.id to it.state },
             pausedFarmZones = adminPausedFarmZones.toSet(),
-            lumbermills = lumbermills.associate { it.settings.id to it.state },
-            mines = mines.associate { it.settings.id to it.state },
+            lumbermills = lumbermillController.states(),
+            mines = mineController.states(),
             stats = stats.snapshot(),
             pendingFarmRewards = rewards.pending,
             claimedFarmRewardSequences = rewards.claimed,
@@ -9298,10 +8291,7 @@ class ArcFarmsService(
 
     private fun persistBlocking() = stateRepository.saveBlocking(snapshotState())
 
-    private fun hideAllBars() {
-        activeBars.forEach { (key, bar) -> Bukkit.getPlayer(key.playerId)?.hideBossBar(bar) }
-        activeBars.clear()
-    }
+    private fun hideAllBars() = worksitePort.hideAllBars()
 
     override fun close() {
         if (closed) return
@@ -9347,32 +8337,5 @@ class ArcFarmsService(
         private const val SUPPLY_LABEL_Y_OFFSET = 1.15
         private const val SUPPLY_INTERACTION_Y_OFFSET = 0.25
         private const val SUPPLY_ITEM_SCALE = 1.35f
-        private val TITLE_SUBTITLES = mapOf(
-            MessageKey.FARM_ENTRY_TITLE to MessageKey.FARM_ENTRY_SUBTITLE,
-            MessageKey.FARM_PLANTING_STARTED to MessageKey.FARM_PLANTING_STARTED_SUBTITLE,
-            MessageKey.FARM_PREPARATION_COMPLETED to MessageKey.FARM_PREPARATION_COMPLETED_SUBTITLE,
-            MessageKey.FARM_CARE_RESOLVED to MessageKey.FARM_CARE_RESOLVED_SUBTITLE,
-            MessageKey.FARM_CARE_SEEDER_RESOLVED to MessageKey.FARM_CARE_SEEDER_RESOLVED_SUBTITLE,
-            MessageKey.FARM_INCIDENT_STARTED to MessageKey.FARM_INCIDENT_STARTED_SUBTITLE,
-            MessageKey.FARM_INCIDENT_RESOLVED to MessageKey.FARM_INCIDENT_RESOLVED_SUBTITLE,
-            MessageKey.FARM_DROUGHT_STARTED to MessageKey.FARM_DROUGHT_STARTED_SUBTITLE,
-            MessageKey.FARM_SPECIAL_RESOLVED to MessageKey.FARM_SPECIAL_RESOLVED_SUBTITLE,
-            MessageKey.FARM_GIANT_CROP_STARTED to MessageKey.FARM_GIANT_CROP_STARTED_SUBTITLE,
-            MessageKey.FARM_CHANNELS_STARTED to MessageKey.FARM_CHANNELS_STARTED_SUBTITLE,
-            MessageKey.FARM_NIGHT_SHIFT_STARTED to MessageKey.FARM_NIGHT_SHIFT_STARTED_SUBTITLE,
-            MessageKey.FARM_MARKET_EXPIRED to MessageKey.FARM_MARKET_EXPIRED_SUBTITLE,
-            MessageKey.FARM_MARKET_STARTED to MessageKey.FARM_MARKET_STARTED_SUBTITLE,
-            MessageKey.FARM_MARKET_ACCEPTED to MessageKey.FARM_MARKET_ACCEPTED_SUBTITLE,
-            MessageKey.FARM_DELIVERY_STARTED to MessageKey.FARM_DELIVERY_STARTED_SUBTITLE,
-            MessageKey.FARM_DELIVERY_PICKED_UP to MessageKey.FARM_DELIVERY_PICKED_UP_SUBTITLE,
-            MessageKey.FARM_CROP_COMPLETED to MessageKey.FARM_CROP_COMPLETED_SUBTITLE,
-            MessageKey.FARM_COMPLETED to MessageKey.FARM_COMPLETED_SUBTITLE,
-            MessageKey.LUMBER_PROCESSING to MessageKey.LUMBER_PROCESSING_SUBTITLE,
-            MessageKey.LUMBER_COMPLETED to MessageKey.LUMBER_COMPLETED_SUBTITLE,
-            MessageKey.MINE_HAZARD_STARTED to MessageKey.MINE_HAZARD_STARTED_SUBTITLE,
-            MessageKey.MINE_HAZARD_RESOLVED to MessageKey.MINE_HAZARD_RESOLVED_SUBTITLE,
-            MessageKey.MINE_EXTRACTION_STARTED to MessageKey.MINE_EXTRACTION_STARTED_SUBTITLE,
-            MessageKey.MINE_COMPLETED to MessageKey.MINE_COMPLETED_SUBTITLE,
-        )
     }
 }

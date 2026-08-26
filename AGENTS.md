@@ -11,16 +11,27 @@ activities: farm, lumbermill, and mine.
   ARC configuration or add ARC API/path compatibility.
 - Keep shift state machines and persistence DTOs independent of Bukkit.
 - Use `Tasks.scheduler`; never schedule gameplay directly through Bukkit.
-  `ArcFarmsService` callbacks additionally belong to `FarmTaskSupervisor`:
+  `ArcFarmsService` callbacks additionally belong to `RuntimeTaskSupervisor`:
   activate its epoch before startup/reload reconciliation, invalidate it before
   replacing runtime state, and capture its token before every asynchronous
   completion that later re-enters the Paper thread. Direct `Tasks.scheduler`
   calls in the service are forbidden.
 - `ArcFarmsService.kt` is an orchestration boundary under active decomposition,
-  not a home for new cohesive subsystems. Keep it at or below 9,400 lines and
+  not a home for new cohesive subsystems. Keep it at or below 8,400 lines and
   reduce that ceiling as code moves out; new stateful features, codecs,
   transactions, entity lifecycles, and recovery queues need a focused owner
   with unit tests instead of more service-local maps and helpers.
+- New worksite types implement `WorksiteModule`, use `WorksiteRuntimePort`, and
+  register through `WorksiteModuleRegistry`. A controller owns all runtime
+  state, validation, event routing, guidance, recovery, and phase application
+  for its activity; `ArcFarmsService` must not mirror those collections.
+- Paper-only operations that a test double cannot model belong behind a narrow
+  injectable seam such as `MineBlockEffects`. Keep the production adapter and
+  test fixture behavior separate instead of weakening world logic for a mock.
+- `RuntimeTaskSupervisor` is activity-neutral. Capture its token before every
+  journal/database future and reject stale completions after reload. Durable
+  recovery intent is written before the world mutation, and a rejected stale
+  callback retires intent only when it has not mutated the world.
 - Farm, lumbermill, and mine must have different player verbs and phase flows.
 - A farm shift has one foreground objective. Resolving an incident resumes the
   ordinary crop order directly; do not insert harvest multipliers or parallel

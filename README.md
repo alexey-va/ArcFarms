@@ -363,7 +363,7 @@ button.
 ## Reliability boundaries
 
 `ArcFarmsService` now orchestrates several focused lifecycle owners instead of
-keeping every mutable concern in one collection. `FarmTaskSupervisor` assigns
+keeping every mutable concern in one collection. `RuntimeTaskSupervisor` assigns
 each startup or reload a fresh epoch, tracks both repeating and one-shot work,
 and rejects an asynchronous completion from an old runtime. Pollination charges
 are scoped to an exact farm and shift. `FarmRewardLedger` owns deduplication and
@@ -377,13 +377,33 @@ monolith while decomposition continues. New stateful gameplay subsystems must be
 introduced as focused owners with their own invariant tests rather than adding
 more service-local maps.
 
+The reusable worksite layer is split by ownership:
+
+- `WorksiteModule` is the lifecycle contract for one activity type;
+- `WorksiteModuleRegistry` aggregates availability, access, status, ticks, and
+  optional block/interact/movement event capabilities;
+- `PaperWorksiteRuntimePort` owns shared messages, title/subtitle rendering,
+  boss bars, effects, contribution statistics, Redis signals, and lifecycle
+  scheduling;
+- `LumbermillController` owns every lumber zone and its two-stage state machine;
+- `MineController` owns every mine zone, reservations, journal reconciliation,
+  extraction, and block recovery;
+- `FarmRuntimeFactory` and `ArcFarmsRuntimeValidator` centralize multi-zone farm
+  construction and fail-closed reload/world validation.
+
+Add another activity by implementing a controller behind `WorksiteModule`; do
+not add its runtime list or state machine branches back to `ArcFarmsService`.
+Paper-only behavior that MockBukkit cannot emulate stays behind an injectable
+adapter. Controller integration tests use MockBukkit 4.110.0, whose artifact
+manifest targets Paper 1.21.11.
+
 ## Build
 
 ```bash
 ../arc-core/gradlew clean check shadowJar
 ```
 
-The deployable artifact is `build/libs/ArcFarms-0.19.1.jar`.
+The deployable artifact is `build/libs/ArcFarms-0.20.0.jar`.
 
 ## Isolated gameplay QA
 
