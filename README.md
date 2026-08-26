@@ -66,6 +66,9 @@ center:
 - moles surface as glowing earth mounds. A hoe strike keeps the target's
   persisted hit progress but moves it to a distant part of the same patch until
   the mole is finally caught.
+- orchard care hangs a large randomized set of apples across every loaded,
+  reindexed open tree canopy, while the player may collect any smaller
+  configured quota. Apple display creation is spread across updates.
 
 The current instruction and exact progress remain in the boss bar. The next
 useful target has one restrained long-range particle column, while nearby
@@ -137,7 +140,9 @@ giant crop is one large physical target hit with a hoe; irrigation channels
 form a gate puzzle whose visible water advances only through the correct
 prefix; night shift uses per-player night without changing the world clock,
 spreads highlighted mature crops across the farm, and releases bounded,
-non-persistent torch patrols that players must avoid; and the living market
+non-persistent torch patrols across the full indexed field. Each patrol carries
+an actual temporary `LIGHT` block with chunk-PDC recovery instead of pretending
+that particles emit light; and the living market
 offers an optional timed rush order through the existing customer for a
 configured final money bonus. Declining or timing out the market has no penalty
 and never resets the main order. Market deadlines and every target or decision
@@ -289,7 +294,7 @@ are available through commands such as `/arcfarms admin point <zone> help`,
 Farm counts, manual and mechanized patch sizes, machinery radius, spacing,
 spawn/search radii, incident ranges/checkpoints, special-event quotas, display
 scales, personal night time, crop/patrol spacing, patrol entity and movement,
-market timer and bonus, apple count/spacing,
+market timer and bonus, apple completion/placement counts and spawn batching,
 block-reindex and backup batch/size limits, display
 scale/offset/view range, care timings, drought/pest tuning, UI toggles, sounds,
 particles, rewards, fixed-crop respawn delay, restoration batch size, and
@@ -360,7 +365,7 @@ The deployable artifact is `build/libs/ArcFarms-0.18.4.jar`.
 
 `scripts/lab/plugin-configs/ArcFarms/config.yml` defines three small cuboid
 fixtures. The player-bot session exposes only the fixed `arcfarms` operations
-`fixture-setup`, `reload`, `travel`, `debug-controls`, `scoreboard`, `market-flow`, `night-shift`, `care-stories`, `drought-flow`,
+`fixture-setup`, `reload`, `travel`, `debug-controls`, `scoreboard`, `market-flow`, `night-shift`, `orchard-flow`, `care-stories`, `drought-flow`,
 `pest-stability`, `farm`, `lumber`, `mine`, `status`, and `fixture-cleanup` on
 the lab port and documented OP QA identities; it accepts no command or target
 arguments. Always clean the scene after a smoke run.

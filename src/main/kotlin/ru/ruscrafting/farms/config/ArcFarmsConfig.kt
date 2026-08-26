@@ -85,6 +85,8 @@ data class FarmZoneSettings(
     val careTypes: List<FarmCareType>,
     val careTargetCount: Int,
     val appleTargetCount: Int,
+    val applePlacementCount: Int,
+    val appleSpawnsPerUpdate: Int,
     val appleMinSpacing: Double,
     val appleDisplayScale: Float,
     val appleLeafIndexLimit: Int,
@@ -171,6 +173,7 @@ data class FarmSpecialIncidentSettings(
     val nightPatrolFollowRange: Double,
     val nightPatrolAttackDamage: Double,
     val nightPatrolHeldItem: String,
+    val nightPatrolLightLevel: Int,
     val marketCropCount: Int,
     val marketMoneyBonusPercent: Int,
     val marketBaseSeconds: Int,
@@ -648,6 +651,8 @@ class ArcFarmsConfig private constructor(
                     nightPatrolHeldItem = materialName(
                         section.string("special-incidents.night-shift.patrols.held-item", "TORCH"),
                     ),
+                    nightPatrolLightLevel = section.int("special-incidents.night-shift.patrols.light-level", 15)
+                        .checked("special-incidents.night-shift.patrols.light-level", 0, 15),
                     marketCropCount = section.int("special-incidents.market.crops", 32)
                         .checked("special-incidents.market.crops", 8, 64),
                     marketMoneyBonusPercent = section.int("special-incidents.market.money-bonus-percent", 25)
@@ -691,7 +696,11 @@ class ArcFarmsConfig private constructor(
                     careRadius = section.int("care-radius", 10).checked("care-radius", 3, 24),
                     careTypes = careTypes,
                     careTargetCount = section.int("care-targets", 4).checked("care-targets", 2, 8),
-                    appleTargetCount = section.int("apple-targets", 8).checked("apple-targets", 3, 16),
+                    appleTargetCount = section.int("apple-targets", 10).checked("apple-targets", 3, 256),
+                    applePlacementCount = section.int("apple-placement-count", 40)
+                        .checked("apple-placement-count", 3, 512),
+                    appleSpawnsPerUpdate = section.int("apple-spawns-per-update", 20)
+                        .checked("apple-spawns-per-update", 1, 64),
                     appleMinSpacing = section.finiteDouble("apple-min-spacing", 4.0, 0.0, 24.0),
                     appleDisplayScale = section.finiteFloat("apple-display-scale", 1.35f, 0.5f, 3.0f),
                     appleLeafIndexLimit = section.int("apple-leaf-index-limit", 8_192)
@@ -777,7 +786,11 @@ class ArcFarmsConfig private constructor(
                     crops = crops,
                     rareOrderChancePercent = rareOrderChancePercent,
                     orders = orders,
-                )
+                ).also { farm ->
+                    require(farm.applePlacementCount >= farm.appleTargetCount) {
+                        "farm-zones.$id apple-placement-count must be at least apple-targets"
+                    }
+                }
             }
 
             val lumbermills = config.keys("lumber-zones").sorted().mapNotNull { id ->

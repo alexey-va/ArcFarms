@@ -2,10 +2,15 @@ package ru.ruscrafting.farms.paper
 
 import net.kyori.adventure.util.TriState
 import org.bukkit.Bukkit
+import org.bukkit.Chunk
 import org.bukkit.Location
+import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.Particle
 import org.bukkit.attribute.Attribute
+import org.bukkit.block.Block
+import org.bukkit.block.BlockFace
+import org.bukkit.block.data.type.Light
 import org.bukkit.entity.Entity
 import org.bukkit.entity.EntityType
 import org.bukkit.entity.Monster
@@ -26,12 +31,16 @@ internal data class FarmNightShiftSyncResult(
 /** Owns participant time and every ephemeral patrol entity for a night shift. */
 internal class FarmNightShiftController(plugin: Plugin) {
     private data class PatrolKey(val zoneId: String, val index: Int)
+    private data class LightCell(val world: String, val x: Int, val y: Int, val z: Int)
 
     private val playerZones = mutableMapOf<String, MutableSet<UUID>>()
     private val patrols = mutableMapOf<PatrolKey, UUID>()
+    private val patrolLights = mutableMapOf<PatrolKey, LightCell>()
+    private val lightOwners = mutableMapOf<LightCell, MutableSet<PatrolKey>>()
     private val zoneKey = NamespacedKey(plugin, "farm_night_patrol_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_night_patrol_sequence")
     private val indexKey = NamespacedKey(plugin, "farm_night_patrol_index")
+    private val lightRecoveryKey = NamespacedKey(plugin, "farm_night_lights_v1")
 
     fun sync(
         zoneId: String,
@@ -51,6 +60,7 @@ internal class FarmNightShiftController(plugin: Plugin) {
         val desired = anchors.take(settings.nightPatrolCount)
         var removed = 0
         patrols.keys.filter { it.zoneId == zoneId && it.index !in desired.indices }.forEach { key ->
+            releaseLight(key)
             patrols.remove(key)?.let(Bukkit::getEntity)?.remove()
             removed++
         }
@@ -61,6 +71,7 @@ internal class FarmNightShiftController(plugin: Plugin) {
             val anchor = Location(region.world, point.x, point.y, point.z)
             var patrol = patrols[key]?.let(Bukkit::getEntity) as? Monster
             if (patrol != null && (!patrol.isValid || patrol.isDead || patrolSequence(patrol) != sequence)) {
+                releaseLight(key)
                 patrol.remove()
                 patrols.remove(key)
                 patrol = null
@@ -80,6 +91,7 @@ internal class FarmNightShiftController(plugin: Plugin) {
                 patrol.target = null
             }
             patrol.fireTicks = 0
+            updateLight(key, patrol, region, settings.nightPatrolLightLevel)
             if (particles) {
                 players.filter { it.world == patrol.world }.forEach { player ->
                     player.spawnParticle(
@@ -96,6 +108,29 @@ internal class FarmNightShiftController(plugin: Plugin) {
             active++
         }
         return FarmNightShiftSyncResult(active, spawned, removed)
+    }
+
+    /** Refreshes actual LIGHT blocks more often than the one-second incident reconciliation. */
+    fun updateLights(zoneId: String, region: ActivityRegion, level: Int) {
+        patrols.filterKeys { it.zoneId == zoneId }.forEach { (key, id) ->
+            val patrol = Bukkit.getEntity(id) as? Monster
+            if (patrol == null || !patrol.isValid || patrol.isDead) releaseLight(key)
+            else updateLight(key, patrol, region, level)
+        }
+    }
+
+    /** Removes crash-left light before the active incident is reconciled again. */
+    fun onChunkLoad(chunk: Chunk) {
+        val recorded = recordedLights(chunk)
+        if (recorded.isEmpty()) return
+        val retained = recorded.filterTo(linkedSetOf()) { cell ->
+            if (lightOwners[cell].isNullOrEmpty()) {
+                val block = chunk.world.getBlockAt(cell.x, cell.y, cell.z)
+                if (block.type == Material.LIGHT) block.setType(Material.AIR, false)
+                false
+            } else true
+        }
+        writeRecordedLights(chunk, retained)
     }
 
     fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING)
@@ -115,8 +150,10 @@ internal class FarmNightShiftController(plugin: Plugin) {
         val activePlayers = playerZones.values.flatten().toSet()
         players.filter { it.uniqueId in activePlayers }.forEach(Player::resetPlayerTime)
         playerZones.clear()
+        patrolLights.keys.toList().forEach(::releaseLight)
         Bukkit.getWorlds().asSequence().flatMap { it.entities.asSequence() }.filter(::owns).forEach(Entity::remove)
         patrols.clear()
+        Bukkit.getWorlds().forEach { world -> world.loadedChunks.forEach(::onChunkLoad) }
     }
 
     private fun syncPlayerTime(zoneId: String, players: Collection<Player>, playerTime: Long) {
@@ -166,6 +203,7 @@ internal class FarmNightShiftController(plugin: Plugin) {
     private fun clearPatrols(zoneId: String): Int {
         var removed = 0
         patrols.keys.filter { it.zoneId == zoneId }.forEach { key ->
+            releaseLight(key)
             patrols.remove(key)?.let(Bukkit::getEntity)?.remove()
             removed++
         }
@@ -177,6 +215,101 @@ internal class FarmNightShiftController(plugin: Plugin) {
         }
         return removed
     }
+
+    private fun updateLight(key: PatrolKey, patrol: Monster, region: ActivityRegion, level: Int) {
+        if (level <= 0) {
+            releaseLight(key)
+            return
+        }
+        val desired = findLightBlock(patrol.location.block, region)?.let { block ->
+            LightCell(block.world.name, block.x, block.y, block.z)
+        }
+        if (desired == patrolLights[key]) {
+            desired?.block()?.let { setLight(it, level) }
+            return
+        }
+        releaseLight(key)
+        desired ?: return
+        val block = desired.block() ?: return
+        if (block.type != Material.AIR && block.type != Material.CAVE_AIR && block.type != Material.VOID_AIR && block.type != Material.LIGHT) return
+        val owners = lightOwners.getOrPut(desired, ::linkedSetOf)
+        owners += key
+        patrolLights[key] = desired
+        rememberLight(desired)
+        setLight(block, level)
+    }
+
+    private fun findLightBlock(origin: Block, region: ActivityRegion): Block? = listOf(
+        origin.getRelative(BlockFace.UP),
+        origin.getRelative(BlockFace.UP, 2),
+        origin.getRelative(BlockFace.NORTH).getRelative(BlockFace.UP),
+        origin.getRelative(BlockFace.SOUTH).getRelative(BlockFace.UP),
+        origin.getRelative(BlockFace.EAST).getRelative(BlockFace.UP),
+        origin.getRelative(BlockFace.WEST).getRelative(BlockFace.UP),
+    ).firstOrNull { block ->
+        region.contains(block.location) && block.world.isChunkLoaded(block.x shr 4, block.z shr 4) &&
+            block.type in setOf(Material.AIR, Material.CAVE_AIR, Material.VOID_AIR, Material.LIGHT)
+    }
+
+    private fun setLight(block: Block, level: Int) {
+        val data = (block.blockData as? Light) ?: (Material.LIGHT.createBlockData() as Light)
+        if (block.type != Material.LIGHT || data.level != level) {
+            data.level = level
+            block.setBlockData(data, false)
+        }
+    }
+
+    private fun releaseLight(key: PatrolKey) {
+        val cell = patrolLights.remove(key) ?: return
+        val owners = lightOwners[cell] ?: return
+        owners.remove(key)
+        if (owners.isNotEmpty()) return
+        lightOwners.remove(cell)
+        cell.block()?.takeIf { it.type == Material.LIGHT }?.setType(Material.AIR, false)
+        forgetLight(cell)
+    }
+
+    private fun rememberLight(cell: LightCell) {
+        val chunk = cell.chunk() ?: return
+        writeRecordedLights(chunk, recordedLights(chunk) + cell)
+    }
+
+    private fun forgetLight(cell: LightCell) {
+        val chunk = cell.chunk() ?: return
+        writeRecordedLights(chunk, recordedLights(chunk) - cell)
+    }
+
+    private fun recordedLights(chunk: Chunk): Set<LightCell> {
+        val raw = chunk.persistentDataContainer.get(lightRecoveryKey, PersistentDataType.STRING) ?: return emptySet()
+        if (raw.length > 4_096) return emptySet()
+        return raw.split(';').asSequence().take(32).mapNotNull { entry ->
+            val parts = entry.split(',')
+            if (parts.size != 3) return@mapNotNull null
+            val x = parts[0].toIntOrNull() ?: return@mapNotNull null
+            val y = parts[1].toIntOrNull() ?: return@mapNotNull null
+            val z = parts[2].toIntOrNull() ?: return@mapNotNull null
+            if (x shr 4 != chunk.x || z shr 4 != chunk.z || y !in chunk.world.minHeight until chunk.world.maxHeight) return@mapNotNull null
+            LightCell(chunk.world.name, x, y, z)
+        }.toCollection(linkedSetOf())
+    }
+
+    private fun writeRecordedLights(chunk: Chunk, cells: Collection<LightCell>) {
+        if (cells.isEmpty()) chunk.persistentDataContainer.remove(lightRecoveryKey)
+        else chunk.persistentDataContainer.set(
+            lightRecoveryKey,
+            PersistentDataType.STRING,
+            cells.take(32).joinToString(";") { "${it.x},${it.y},${it.z}" },
+        )
+    }
+
+    private fun LightCell.block(): Block? {
+        val loadedWorld = Bukkit.getWorld(world) ?: return null
+        if (!loadedWorld.isChunkLoaded(x shr 4, z shr 4)) return null
+        return loadedWorld.getBlockAt(x, y, z)
+    }
+
+    private fun LightCell.chunk(): Chunk? = Bukkit.getWorld(world)?.takeIf { it.isChunkLoaded(x shr 4, z shr 4) }
+        ?.getChunkAt(x shr 4, z shr 4)
 
     private fun patrolSequence(entity: Entity): Long? =
         entity.persistentDataContainer.get(sequenceKey, PersistentDataType.LONG)

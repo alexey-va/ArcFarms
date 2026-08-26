@@ -15,6 +15,7 @@ object FarmSpecialIncidentPlanner {
         type: FarmIncidentType,
         sequence: Long,
         matureCrops: Collection<FarmMatureCrop>,
+        nightPatrolPlots: Collection<FarmPlotPosition> = matureCrops.map(FarmMatureCrop::plot),
         fallbackPlot: FarmPlotPosition?,
         irrigationSource: FarmPointPosition?,
         giantHits: Int,
@@ -65,12 +66,14 @@ object FarmSpecialIncidentPlanner {
             }
             FarmIncidentType.NIGHT_SHIFT -> selectSpaced(candidates, nightCrops, nightCropMinSpacing)
                 .takeIf(List<FarmMatureCrop>::isNotEmpty)?.let { chosen ->
-                    val selectedPlots = chosen.mapTo(hashSetOf(), FarmMatureCrop::plot)
-                    val patrolCandidates = candidates.filterNot { it.plot in selectedPlots }.let { unmarked ->
-                        if (unmarked.size >= nightPatrols) unmarked else unmarked + candidates.filter { it.plot in selectedPlots }
-                    }
+                    val patrolCandidates = rotate(
+                        nightPatrolPlots.distinct().sortedWith(
+                            compareBy<FarmPlotPosition> { it.x }.thenBy { it.z }.thenBy { it.y },
+                        ).map { FarmMatureCrop(it, "") },
+                        sequence + 911L,
+                    )
                     val patrols = selectSpaced(
-                        rotate(patrolCandidates, sequence + 911L),
+                        patrolCandidates,
                         nightPatrols,
                         nightPatrolMinSpacing,
                     ).map { candidate ->

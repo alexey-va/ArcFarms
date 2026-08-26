@@ -555,8 +555,8 @@ care:
     entry: '<color:#f2fff7>Ищите светящиеся холмики: после удара крот уходит в другое место</color>'
   apple_harvest:
     name: '<color:#ff5f6d>Яблоки в саду</color>'
-    instruction: '<color:#f2fff7>Соберите светящиеся яблоки под кронами деревьев</color>'
-    entry: '<color:#f2fff7>Найдите яблоки в листве и соберите каждое нажатием ПКМ</color>'
+    instruction: '<color:#f2fff7>Соберите любые <total> яблок по всему саду</color>'
+    entry: '<color:#f2fff7>Ищите яблоки по всей листве — достаточно собрать любые <total></color>'
 network:
   actor-fallback: '<gray>бригада</gray>'
   farm-incident: '<prefix> <color:#ff5f6d>На ферме бедствие:</color> <color:#f2fff7>полям нужна помощь.</color>'

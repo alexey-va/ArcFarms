@@ -174,6 +174,35 @@ class FarmSpecialIncidentEngineTest : FunSpec({
         (minimumPointDistance(plan.state.points) >= 10.0) shouldBe true
     }
 
+    test("night patrols use the full indexed field even when mature crops are clustered") {
+        val mature = (0 until 12).map { x ->
+            FarmMatureCrop(FarmPlotPosition("world", x, 64, 0), "WHEAT")
+        }
+        val wholeFarm = (0 until 10).flatMap { x ->
+            (0 until 10).map { z -> FarmPlotPosition("world", x * 10, 64, z * 10) }
+        }
+
+        val plan = FarmSpecialIncidentPlanner.plan(
+            FarmIncidentType.NIGHT_SHIFT,
+            sequence = 41,
+            matureCrops = mature,
+            nightPatrolPlots = wholeFarm,
+            fallbackPlot = mature.first().plot,
+            irrigationSource = null,
+            giantHits = 16,
+            channelGates = 4,
+            nightCrops = 6,
+            nightCropMinSpacing = 2.0,
+            nightPatrols = 3,
+            nightPatrolMinSpacing = 30.0,
+            marketCrops = 8,
+        ) ?: error("Night shift plan is missing")
+
+        plan.state.points.size shouldBe 3
+        (plan.state.points.maxOf { it.z } - plan.state.points.minOf { it.z } >= 30.0) shouldBe true
+        (minimumPointDistance(plan.state.points) >= 30.0) shouldBe true
+    }
+
     test("night shift keeps the configured patrol count when few unmarked beds remain") {
         val mature = (0 until 7).map { x ->
             FarmMatureCrop(FarmPlotPosition("world", x * 2, 64, 0), "WHEAT")

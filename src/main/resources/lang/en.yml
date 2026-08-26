@@ -555,8 +555,8 @@ care:
     entry: '<color:#f2fff7>Find the glowing mounds: each hit drives the mole elsewhere</color>'
   apple_harvest:
     name: '<color:#ff5f6d>Orchard apples</color>'
-    instruction: '<color:#f2fff7>Collect the glowing apples beneath the tree canopies</color>'
-    entry: '<color:#f2fff7>Find the apples hanging from leaves and right-click each one</color>'
+    instruction: '<color:#f2fff7>Collect any <total> apples from across the orchard</color>'
+    entry: '<color:#f2fff7>Search the entire canopy — any <total> apples will complete the task</color>'
 network:
   actor-fallback: '<gray>the crew</gray>'
   farm-incident: '<prefix> <color:#ff5f6d>Farm emergency:</color> <color:#f2fff7>the fields need help.</color>'

@@ -52,6 +52,10 @@ object FarmAdminEdit {
         val tilled = state.tilledPlots - plots
         val planted = state.plantedPlots - plots
         val careTargets = state.careTargets.filterNot { it.id in targetIds }
+        val careAvailable = careTargets.sumOf(FarmCareTarget::required)
+        val careGoal = state.careGoal?.coerceAtMost(careAvailable)?.takeIf { it > 0 }
+        val careComplete = careTargets.isEmpty() ||
+            careTargets.sumOf(FarmCareTarget::progress) >= (careGoal ?: careAvailable)
         val specialPlots = state.specialIncident?.plots.orEmpty().filterNot(plots::contains)
         val specialDamage = state.specialDamagedCrops.filterNot { it.position in plots }
         val specialRequired = if (
@@ -66,7 +70,7 @@ object FarmAdminEdit {
             state.phase == FarmPhase.CARE && state.careType == FarmCareType.SEEDER &&
                 planted.containsAll(patch) && (careTargets.isEmpty() || careTargets.all(FarmCareTarget::complete)) -> FarmPhase.HARVESTING
             state.phase == FarmPhase.CARE && state.careType != FarmCareType.SEEDER &&
-                (careTargets.isEmpty() || careTargets.all(FarmCareTarget::complete)) -> FarmPhase.HARVESTING
+                careComplete -> FarmPhase.HARVESTING
             state.phase in setOf(FarmPhase.PREPARATION, FarmPhase.PLANTING) && patch.isNotEmpty() && planted.size >= patch.size ->
                 FarmPhase.HARVESTING
             state.phase == FarmPhase.PREPARATION && patch.isNotEmpty() && tilled.size >= patch.size -> FarmPhase.PLANTING
@@ -82,6 +86,7 @@ object FarmAdminEdit {
                 plantingProgress = planted.size,
                 preparationRequired = patch.size,
                 careTargets = careTargets,
+                careGoal = careGoal,
                 droughtPlots = state.droughtPlots - plots,
                 droughtDamagedPlots = state.droughtDamagedPlots - plots,
                 pestNests = state.pestNests.filterNot { it.position in plots },

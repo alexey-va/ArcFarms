@@ -92,7 +92,7 @@ data class FarmCareTarget(
     val required: Int = 1,
 ) {
     init {
-        require(id in 0..63) { "Farm care target id is invalid" }
+        require(id in 0..511) { "Farm care target id is invalid" }
         require(progress in 0..required) { "Farm care target progress is invalid" }
         require(required in 1..8) { "Farm care target requirement is invalid" }
     }
@@ -237,6 +237,7 @@ data class FarmShiftState(
     val careType: FarmCareType? = null,
     val seederStage: FarmSeederStage? = null,
     val careTargets: List<FarmCareTarget> = emptyList(),
+    val careGoal: Int? = null,
     val incidentCrop: String? = null,
     val incidentType: FarmIncidentType? = null,
     val incidentProgress: Int = 0,
@@ -265,9 +266,9 @@ data class FarmShiftState(
 
     fun progressRatio(order: FarmOrder): Double = completed(order).toDouble() / order.totalRequired.toDouble()
 
-    fun careProgress(): Int = careTargets.sumOf(FarmCareTarget::progress)
+    fun careProgress(): Int = careTargets.sumOf(FarmCareTarget::progress).coerceAtMost(careRequired())
 
-    fun careRequired(): Int = careTargets.sumOf(FarmCareTarget::required)
+    fun careRequired(): Int = careGoal ?: careTargets.sumOf(FarmCareTarget::required)
 }
 
 fun FarmShiftState.seederStage(): FarmSeederStage? {
@@ -458,6 +459,7 @@ object FarmShiftEngine {
         current: FarmShiftState,
         type: FarmCareType,
         targets: List<FarmCareTarget>,
+        goal: Int = targets.sumOf(FarmCareTarget::required),
     ): EngineResult<FarmShiftState> {
         val validSource = if (type == FarmCareType.SEEDER) {
             current.phase == FarmPhase.PREPARATION && current.preparationProgress == 0 && current.plantingProgress == 0
@@ -467,9 +469,12 @@ object FarmShiftEngine {
         if (!validSource || current.careType != null) {
             return EngineResult(current, false)
         }
-        require(targets.isNotEmpty() && targets.size <= 64) { "Farm care scene must contain 1..64 targets" }
+        require(targets.isNotEmpty() && targets.size <= 512) { "Farm care scene must contain 1..512 targets" }
         require(targets.map(FarmCareTarget::id).distinct().size == targets.size) { "Farm care scene contains duplicate target ids" }
         require(targets.map { it.position.world }.distinct().size == 1) { "Farm care scene crosses worlds" }
+        require(goal in 1..targets.sumOf(FarmCareTarget::required)) {
+            "Farm care goal must fit the available target progress"
+        }
         if (type == FarmCareType.SEEDER) {
             require(targets.count { it.role == FarmCareRole.SEEDER_HORSE } == 1) { "Seeder scene must contain one horse" }
         }
@@ -479,6 +484,7 @@ object FarmShiftEngine {
                 careType = type,
                 seederStage = if (type == FarmCareType.SEEDER) FarmSeederStage.TILLING else null,
                 careTargets = targets,
+                careGoal = goal,
             ),
             true,
             events = listOf(ShiftEvent.CARE_STARTED),
@@ -578,7 +584,7 @@ object FarmShiftEngine {
         val targets = current.careTargets.map { candidate ->
             if (candidate.id == targetId) candidate.copy(progress = candidate.progress + 1) else candidate
         }
-        val complete = targets.all(FarmCareTarget::complete)
+        val complete = targets.sumOf(FarmCareTarget::progress) >= current.careRequired()
         return EngineResult(
             current.copy(
                 phase = if (complete) FarmPhase.HARVESTING else FarmPhase.CARE,

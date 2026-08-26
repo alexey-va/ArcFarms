@@ -64,7 +64,11 @@ farm-zones:
     care-radius: 10
     care-types: [WEEDS, IRRIGATION, POLLINATION, APPLE_HARVEST, STORM_COVERS, SCARECROWS, ANIMAL_RESCUE, DISEASE, MOLES]
     care-targets: 4
-    apple-targets: 8
+    # Hang many apples over the orchard, but complete the activity after this many arbitrary picks.
+    apple-targets: 10
+    apple-placement-count: 40
+    # Bound entity creation so a large orchard never spikes one server tick.
+    apple-spawns-per-update: 20
     apple-min-spacing: 4.0
     apple-display-scale: 1.35
     apple-leaf-index-limit: 8192
@@ -159,6 +163,8 @@ farm-zones:
           follow-range: 8.0
           attack-damage: 2.0
           held-item: TORCH
+          # Real invisible light blocks follow patrols; particles alone do not emit light.
+          light-level: 15
       market:
         crops: 32
         money-bonus-percent: 25

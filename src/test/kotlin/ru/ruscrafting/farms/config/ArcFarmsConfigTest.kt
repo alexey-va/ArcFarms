@@ -145,7 +145,9 @@ class ArcFarmsConfigTest : FunSpec({
             setOf("WHEAT", "CARROTS", "POTATOES", "BEETROOTS", "SWEET_BERRY_BUSH", "MELON", "PUMPKIN")
         settings.farms.single().careTypes shouldContainExactly FarmCareType.entries.filterNot { it == FarmCareType.SEEDER }
         settings.farms.single().careTargetCount shouldBe 4
-        settings.farms.single().appleTargetCount shouldBe 8
+        settings.farms.single().appleTargetCount shouldBe 10
+        settings.farms.single().applePlacementCount shouldBe 40
+        settings.farms.single().appleSpawnsPerUpdate shouldBe 20
         settings.farms.single().appleMinSpacing shouldBe 4.0
         settings.farms.single().appleDisplayScale shouldBe 1.35f
         settings.farms.single().appleLeafIndexLimit shouldBe 8_192
@@ -193,6 +195,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().specialIncidents.nightPatrolFollowRange shouldBe 8.0
         settings.farms.single().specialIncidents.nightPatrolAttackDamage shouldBe 2.0
         settings.farms.single().specialIncidents.nightPatrolHeldItem shouldBe "TORCH"
+        settings.farms.single().specialIncidents.nightPatrolLightLevel shouldBe 15
         settings.farms.single().specialIncidents.marketMoneyBonusPercent shouldBe 25
         settings.farms.single().specialIncidents.marketBaseSeconds shouldBe 45
         settings.farms.single().specialIncidents.marketSecondsPerCrop shouldBe 3.0

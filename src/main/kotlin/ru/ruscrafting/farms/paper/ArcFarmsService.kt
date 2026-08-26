@@ -84,6 +84,7 @@ import ru.ruscrafting.farms.domain.FarmOrchardPlanner
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareTarget
 import ru.ruscrafting.farms.domain.FarmCareType
+import ru.ruscrafting.farms.domain.FarmBedCandidatePool
 import ru.ruscrafting.farms.domain.FarmCropDamage
 import ru.ruscrafting.farms.domain.FarmSpecialCropPolicy
 import ru.ruscrafting.farms.domain.FarmDeliveryPlanner
@@ -1569,7 +1570,7 @@ class ArcFarmsService(
         if (!ensureAdminFarmShift(runtime, player)) return false
         clearTemporaryFarmWater("admin_stage")
         clearFarmCare(runtime, "admin_stage")
-        runtime.state = runtime.state.copy(careType = null, seederStage = null, careTargets = emptyList())
+        runtime.state = runtime.state.copy(careType = null, seederStage = null, careTargets = emptyList(), careGoal = null)
         removePests(runtime, activePests(runtime), "admin_stage")
         removePestNestEntities(runtime, "admin_stage")
         specialIncidentScene.clearZone(runtime.settings.id, "admin_stage")
@@ -1608,6 +1609,7 @@ class ArcFarmsService(
                 plantingProgress = if (seeder) 0 else runtime.state.preparationRequired,
                 careType = null,
                 careTargets = emptyList(),
+                careGoal = null,
                 incidentType = null,
             )
             if (!initializeFarmCare(runtime, player, careType)) {
@@ -1632,6 +1634,7 @@ class ArcFarmsService(
                     plantingProgress = 0,
                     careType = null,
                     careTargets = emptyList(),
+                    careGoal = null,
                     incidentType = null,
                     pestNestsInitialized = false,
                     pestNests = emptyList(),
@@ -1652,6 +1655,7 @@ class ArcFarmsService(
                     plantingProgress = runtime.state.preparationRequired,
                     careType = null,
                     careTargets = emptyList(),
+                    careGoal = null,
                     incidentCrop = null,
                     incidentType = null,
                     incidentProgress = 0,
@@ -2224,6 +2228,7 @@ class ArcFarmsService(
     fun onChunkLoad(chunk: org.bukkit.Chunk) {
         contractScene.onChunkLoad(chunk)
         specialIncidentScene.onChunkLoad(chunk)
+        nightShift.onChunkLoad(chunk)
         farms.asSequence().filter { it.region.world == chunk.world }.forEach { runtime ->
             farmBlockRegistry.reconcileChunk(farmBlockIndexDefinition(runtime), chunk)
         }
@@ -3003,7 +3008,7 @@ class ArcFarmsService(
 
     private fun discoverFarmBeds(runtime: FarmRuntime, anchor: Location): Set<FarmPlotPosition> {
         val radius = runtime.settings.preparationSearchRadius
-        val candidates = linkedSetOf<FarmPlotPosition>()
+        val discovered = linkedSetOf<FarmPlotPosition>()
         val world = runtime.region.world
         for (x in anchor.blockX - radius..anchor.blockX + radius) {
             for (z in anchor.blockZ - radius..anchor.blockZ + radius) {
@@ -3014,14 +3019,27 @@ class ArcFarmsService(
                     if (isNearFarmOperationPoint(runtime, block.location)) continue
                     val above = block.getRelative(org.bukkit.block.BlockFace.UP).type
                     if (!FarmBlockPolicy.isSelectableBed(block.type, above, runtime.settings.crops)) continue
-                    candidates += block.toFarmPlotPosition()
+                    discovered += block.toFarmPlotPosition()
                 }
             }
         }
-        farmBlockRegistry.addBeds(runtime.settings.id, candidates)
+        farmBlockRegistry.addBeds(runtime.settings.id, discovered)
+        val indexed = farmBlockRegistry.beds(runtime.settings.id)
+        val candidates = FarmBedCandidatePool.merge(indexed, discovered) { position ->
+            val soil = position.block() ?: return@merge false
+            if (!world.isChunkLoaded(position.x shr 4, position.z shr 4)) return@merge false
+            if (!runtime.region.contains(soil.location) || isNearFarmOperationPoint(runtime, soil.location)) return@merge false
+            FarmBlockPolicy.isSelectableBed(
+                soil.type,
+                soil.getRelative(org.bukkit.block.BlockFace.UP).type,
+                runtime.settings.crops,
+            )
+        }
         debug.event(
             "farm_beds_discovered",
             "zone" to runtime.settings.id,
+            "indexed" to indexed.size,
+            "locally_discovered" to discovered.size,
             "candidates" to candidates.size,
             "search_radius" to radius,
         )
@@ -3031,33 +3049,23 @@ class ArcFarmsService(
     private fun discoverIncidentBeds(runtime: FarmRuntime): Set<FarmPlotPosition> {
         val patch = runtime.state.preparationPatch
         if (patch.isEmpty()) return emptySet()
-        val levels = patch.map(FarmPlotPosition::y).distinct()
-        val centerX = patch.sumOf(FarmPlotPosition::x) / patch.size
-        val centerZ = patch.sumOf(FarmPlotPosition::z) / patch.size
-        val radius = runtime.settings.preparationSearchRadius
-        val knownBeds = farmBlockRegistry.beds(runtime.settings.id) + patch
-        val candidates = linkedSetOf<FarmPlotPosition>()
-        for (x in centerX - radius..centerX + radius) {
-            for (z in centerZ - radius..centerZ + radius) {
-                if (!runtime.region.world.isChunkLoaded(x shr 4, z shr 4)) continue
-                levels.forEach { y ->
-                    val soil = runtime.region.world.getBlockAt(x, y, z)
-                    val position = soil.toFarmPlotPosition()
-                    if (position !in knownBeds) return@forEach
-                    if (!runtime.region.contains(soil.location) || soil.type !in FARM_SOIL_TYPES) return@forEach
-                    if (isNearFarmOperationPoint(runtime, soil.location)) return@forEach
-                    val above = soil.getRelative(org.bukkit.block.BlockFace.UP).type
-                    if (FarmBlockPolicy.isOpenBedContent(above, runtime.settings.crops)) candidates += position
-                }
-            }
+        val indexed = farmBlockRegistry.beds(runtime.settings.id)
+        val candidates = FarmBedCandidatePool.merge(indexed, patch) { position ->
+            val world = runtime.region.world
+            if (!world.isChunkLoaded(position.x shr 4, position.z shr 4)) return@merge false
+            val soil = position.block() ?: return@merge false
+            if (!runtime.region.contains(soil.location) || soil.type !in FARM_SOIL_TYPES) return@merge false
+            if (isNearFarmOperationPoint(runtime, soil.location)) return@merge false
+            FarmBlockPolicy.isOpenBedContent(
+                soil.getRelative(org.bukkit.block.BlockFace.UP).type,
+                runtime.settings.crops,
+            )
         }
-        farmBlockRegistry.addBeds(runtime.settings.id, candidates)
         debug.event(
             "farm_incident_beds_discovered",
             "zone" to runtime.settings.id,
+            "indexed" to indexed.size,
             "candidates" to candidates.size,
-            "levels" to levels.joinToString(","),
-            "radius" to radius,
         )
         return candidates
     }
@@ -3137,7 +3145,12 @@ class ArcFarmsService(
             )
             return false
         }
-        val result = FarmShiftEngine.startCare(runtime.state, selected.first, selected.second)
+        val goal = if (selected.first == FarmCareType.APPLE_HARVEST) {
+            runtime.settings.appleTargetCount.coerceAtMost(selected.second.size)
+        } else {
+            selected.second.sumOf(FarmCareTarget::required)
+        }
+        val result = FarmShiftEngine.startCare(runtime.state, selected.first, selected.second, goal)
         applyFarmResult(runtime, result, actor)
         if (selected.first == FarmCareType.DISEASE) {
             diseaseNextSpreadAt[runtime.settings.id] = clock() + runtime.settings.diseaseSpreadSeconds * 1_000L
@@ -3253,7 +3266,7 @@ class ArcFarmsService(
                 }
                 FarmOrchardPlanner.select(
                     candidates = leaves,
-                    targetCount = runtime.settings.appleTargetCount,
+                    placementCount = runtime.settings.applePlacementCount,
                     minimumSpacing = runtime.settings.appleMinSpacing,
                     selectionIndex = salt,
                 ).mapIndexed { index, leaf ->
@@ -4372,7 +4385,11 @@ class ArcFarmsService(
                         } else {
                             "care.${type.name.lowercase()}.instruction"
                         }
-                        val subtitle = locale.renderPath(instructionPath, player)
+                        val subtitle = locale.renderPath(
+                            instructionPath,
+                            player,
+                            mapOf("total" to locale.text(runtime.state.careRequired())),
+                        )
                         showScreenTitle(
                             player,
                             title,
@@ -4463,8 +4480,13 @@ class ArcFarmsService(
                 ShiftEvent.CARE_RESOLVED -> {
                     clearFarmCare(runtime, "care_resolved")
                     diseaseNextSpreadAt.remove(runtime.settings.id)
+                    runtime.state = runtime.state.copy(
+                        careType = null,
+                        seederStage = null,
+                        careTargets = emptyList(),
+                        careGoal = null,
+                    )
                     if (careType == FarmCareType.SEEDER) {
-                        runtime.state = runtime.state.copy(careType = null, seederStage = null, careTargets = emptyList())
                         broadcast(
                             runtime.region,
                             MessageKey.FARM_CARE_SEEDER_RESOLVED,
@@ -4842,6 +4864,13 @@ class ArcFarmsService(
                     if (!isAdminEditingFarm(runtime)) {
                         updateFarmCareAnimals(runtime)
                         updateFarmSeeder(runtime)
+                        if (runtime.state.phase == FarmPhase.INCIDENT && runtime.state.incidentType == FarmIncidentType.NIGHT_SHIFT) {
+                            nightShift.updateLights(
+                                runtime.settings.id,
+                                runtime.region,
+                                runtime.settings.specialIncidents.nightPatrolLightLevel,
+                            )
+                        }
                     }
                 }
             }
@@ -5048,7 +5077,7 @@ class ArcFarmsService(
                                 seederInstructionPath(runtime.state)
                             } else {
                                 "care.${type.name.lowercase()}.instruction"
-                            }, player)
+                            }, player, mapOf("total" to locale.text(runtime.state.careRequired())))
                         } ?: Component.empty()),
                         "nests" to locale.text(runtime.state.pestNests.size),
                         "pests" to locale.text(runtime.state.pestAlive),
@@ -5276,6 +5305,7 @@ class ArcFarmsService(
         val activeIds = runtime.state.careTargets.mapTo(mutableSetOf(), FarmCareTarget::id)
         careEntities.keys.filter { it.zoneId == runtime.settings.id && it.targetId >= 0 && it.targetId !in activeIds }
             .forEach { removeFarmCareEntities(it, "stale_target") }
+        var appleSpawnBudget = runtime.settings.appleSpawnsPerUpdate
         runtime.state.careTargets.forEach { target ->
             if (target.role == FarmCareRole.SEEDER_HORSE) return@forEach
             if (target.role == FarmCareRole.SEEDER_WAYPOINT) {
@@ -5285,6 +5315,12 @@ class ArcFarmsService(
             if (target.complete && target.role !in setOf(FarmCareRole.HIVE, FarmCareRole.VALVE)) {
                 removeFarmCareEntities(CareEntityKey(runtime.settings.id, target.id), "target_complete")
                 return@forEach
+            }
+            if (target.role == FarmCareRole.APPLE) {
+                val alreadyActive = careEntities[CareEntityKey(runtime.settings.id, target.id)].orEmpty()
+                    .any { id -> Bukkit.getEntity(id)?.isValid == true }
+                if (!alreadyActive && appleSpawnBudget <= 0) return@forEach
+                if (!alreadyActive) appleSpawnBudget--
             }
             ensureFarmCareTarget(runtime, target)
         }
@@ -5387,7 +5423,9 @@ class ArcFarmsService(
         if (target.role == FarmCareRole.APPLE) {
             val leaf = location.block
             if (!FarmBlockPolicy.isOrchardLeaf(leaf.type, leaf.getRelative(org.bukkit.block.BlockFace.DOWN).type)) {
-                plugin.logger.warning("Farm apple target ${runtime.settings.id}/${target.id} no longer has an open leaf anchor")
+                if (allowInteraction("farm-apple-anchor-missing:${runtime.settings.id}", TimeUnit.MINUTES.toMillis(5))) {
+                    plugin.logger.warning("Farm apple targets in ${runtime.settings.id} include an unavailable leaf anchor")
+                }
                 return
             }
         }
@@ -5999,7 +6037,8 @@ class ArcFarmsService(
 
     private fun initializeFarmSpecialIncident(runtime: FarmRuntime, type: FarmIncidentType) {
         if (type !in SPECIAL_FARM_INCIDENT_TYPES || runtime.state.specialIncident != null) return
-        val mature = discoverIncidentBeds(runtime).mapNotNull { plot ->
+        val incidentBeds = discoverIncidentBeds(runtime)
+        val mature = incidentBeds.mapNotNull { plot ->
             val soil = plot.block() ?: return@mapNotNull null
             val crop = soil.getRelative(org.bukkit.block.BlockFace.UP)
             val age = crop.blockData as? Ageable ?: return@mapNotNull null
@@ -6011,6 +6050,7 @@ class ArcFarmsService(
             type = type,
             sequence = runtime.state.sequence,
             matureCrops = mature,
+            nightPatrolPlots = incidentBeds,
             fallbackPlot = farmAreaCenter(runtime.state.preparationPatch),
             irrigationSource = point(runtime, FarmPointKind.IRRIGATION),
             giantHits = settings.giantCropHits,
@@ -8466,7 +8506,11 @@ class ArcFarmsService(
         val action = if (actionKey == null) {
             when (runtime.state.phase) {
                 FarmPhase.CARE -> runtime.state.careType?.let {
-                    locale.renderPath("care.${it.name.lowercase()}.entry", player)
+                    locale.renderPath(
+                        "care.${it.name.lowercase()}.entry",
+                        player,
+                        mapOf("total" to locale.text(runtime.state.careRequired())),
+                    )
                 } ?: Component.empty()
                 FarmPhase.INCIDENT -> runtime.state.incidentType?.takeIf { it in SPECIAL_FARM_INCIDENT_TYPES }?.let { type ->
                     if (type == FarmIncidentType.MARKET) {
@@ -8909,7 +8953,7 @@ class ArcFarmsService(
                             seederInstructionPath(runtime.state)
                         } else {
                             "care.${type.name.lowercase()}.instruction"
-                        }, player)
+                        }, player, mapOf("total" to locale.text(runtime.state.careRequired())))
                     } ?: Component.empty()),
                 ),
             )

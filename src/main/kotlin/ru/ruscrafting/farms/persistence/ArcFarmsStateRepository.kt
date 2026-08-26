@@ -151,19 +151,23 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 require(farm.plantingProgress == farm.plantedPlots.size) { "Farm planting progress drifted from its plots" }
             }
 
-            require(farm.careTargets.size <= 64 && farm.careTargets.map { it.id }.distinct().size == farm.careTargets.size) {
+            require(farm.careTargets.size <= 512 && farm.careTargets.map { it.id }.distinct().size == farm.careTargets.size) {
                 "Farm care state is invalid"
             }
             farm.careTargets.forEach { target ->
-                require(target.id in 0..63 && target.required in 1..8 && target.progress in 0..target.required) {
+                require(target.id in 0..511 && target.required in 1..8 && target.progress in 0..target.required) {
                     "Farm care target progress is invalid"
                 }
                 validatePoint(target.position)
             }
+            require(
+                farm.careGoal == null ||
+                    (farm.careTargets.isNotEmpty() && farm.careGoal in 1..farm.careTargets.sumOf { it.required }),
+            ) { "Farm care goal is invalid" }
             if (farm.phase == FarmPhase.CARE) {
                 require(
                     farm.careType != null && farm.careTargets.isNotEmpty() &&
-                        (farm.careType == FarmCareType.SEEDER || farm.careTargets.any { !it.complete }),
+                        (farm.careType == FarmCareType.SEEDER || farm.careProgress() < farm.careRequired()),
                 ) {
                     "Active farm care state is incomplete"
                 }

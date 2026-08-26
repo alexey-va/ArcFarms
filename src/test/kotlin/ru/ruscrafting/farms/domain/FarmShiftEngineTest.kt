@@ -203,6 +203,32 @@ class FarmShiftEngineTest : FunSpec({
         resolved.state.contributors[player] shouldBe 8
     }
 
+    test("apple care exposes many targets but resolves after any configured quota") {
+        val targets = (0 until 200).map { index ->
+            FarmCareTarget(
+                index,
+                FarmCareRole.APPLE,
+                FarmPointPosition("world", index.toDouble(), 72.0, 0.0),
+            )
+        }
+        var state = FarmShiftEngine.startCare(
+            preparedState(order, rules, player),
+            FarmCareType.APPLE_HARVEST,
+            targets,
+            goal = 50,
+        ).state
+
+        targets.take(49).forEach { target -> state = FarmShiftEngine.advanceCare(state, target.id, player).state }
+        state.phase shouldBe FarmPhase.CARE
+        state.careProgress() shouldBe 49
+        state.careRequired() shouldBe 50
+
+        val resolved = FarmShiftEngine.advanceCare(state, targets[149].id, player)
+        resolved.state.phase shouldBe FarmPhase.HARVESTING
+        resolved.state.careProgress() shouldBe 50
+        resolved.events shouldContainExactly listOf(ShiftEvent.CARE_PROGRESS, ShiftEvent.CARE_RESOLVED)
+    }
+
     test("field machinery tills and plants by proximity without checkpoints") {
         val machinePatch = buildList {
             (1..6).forEach { x -> add(FarmPlotPosition("world", x, 64, 1)) }
