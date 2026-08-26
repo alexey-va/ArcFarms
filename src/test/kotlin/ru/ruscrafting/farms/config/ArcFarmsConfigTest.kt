@@ -259,7 +259,7 @@ class ArcFarmsConfigTest : FunSpec({
         classicSettings.farms.single().delivery.displayYOffset shouldBe 0.55
         classicSettings.farms.single().delivery.carriedScale shouldBe 1.4f
         classicSettings.farms.single().careVisuals.getValue(FarmCareRole.VALVE).customModelData shouldBe 11_859
-        classicSettings.farms.single().careVisuals.getValue(FarmCareRole.SCARECROW).customModelData shouldBe 12_160
+        classicSettings.farms.single().careVisuals.getValue(FarmCareRole.SCARECROW).customModelData shouldBe 11_874
         classicSettings.farms.single().careVisuals.getValue(FarmCareRole.PEN).customModelData shouldBe 11_864
         classicSettings.farms.single().music.enabled shouldBe true
         classicSettings.farms.single().music.sound shouldBe "arc:farm_valley_comes_alive"
