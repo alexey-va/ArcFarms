@@ -17,15 +17,11 @@ internal class FarmMachineBlockProcessor(
         zoneId: String,
         plots: Collection<FarmPlotPosition>,
         limit: Int,
-    ): FarmMachineBlockResult = process(plots, limit) { position ->
-        val soil = position.loadedBlock() ?: return@process false
-        val above = soil.getRelative(org.bukkit.block.BlockFace.UP)
-        if (!above.type.isAir) {
-            return@process false
-        }
-        ledger.capture(soil, zoneId)
-        setWetFarmland(soil)
-        true
+    ): FarmMachineBlockResult {
+        val selected = select(plots, limit) { soil -> soil.getRelative(org.bukkit.block.BlockFace.UP).type.isAir }
+        ledger.captureAll(selected.map { it.second }, zoneId)
+        selected.forEach { (_, soil) -> setWetFarmland(soil) }
+        return FarmMachineBlockResult(selected.mapTo(linkedSetOf()) { it.first })
     }
 
     fun plant(
@@ -33,31 +29,34 @@ internal class FarmMachineBlockProcessor(
         crop: Material,
         plots: Collection<FarmPlotPosition>,
         limit: Int,
-    ): FarmMachineBlockResult = process(plots, limit) { position ->
-        val soil = position.loadedBlock() ?: return@process false
-        val above = soil.getRelative(org.bukkit.block.BlockFace.UP)
-        if (!above.type.isAir && above.type != crop) {
-            return@process false
+    ): FarmMachineBlockResult {
+        val selected = select(plots, limit) { soil ->
+            val above = soil.getRelative(org.bukkit.block.BlockFace.UP)
+            above.type.isAir || above.type == crop
         }
-        ledger.capture(soil, zoneId)
-        setWetFarmland(soil)
-        above.setBlockData(crop.createBlockData(), false)
-        ledger.captureActiveCrop(soil, zoneId)
-        true
+        val soils = selected.map { it.second }
+        ledger.captureAll(soils, zoneId)
+        soils.forEach { soil ->
+            setWetFarmland(soil)
+            soil.getRelative(org.bukkit.block.BlockFace.UP).setBlockData(crop.createBlockData(), false)
+        }
+        ledger.updateActiveCrops(soils)
+        return FarmMachineBlockResult(selected.mapTo(linkedSetOf()) { it.first })
     }
 
-    private fun process(
+    private fun select(
         plots: Collection<FarmPlotPosition>,
         limit: Int,
-        mutation: (FarmPlotPosition) -> Boolean,
-    ): FarmMachineBlockResult {
+        eligible: (org.bukkit.block.Block) -> Boolean,
+    ): List<Pair<FarmPlotPosition, org.bukkit.block.Block>> {
         require(limit in 1..256) { "Farm machine mutation limit must be in 1..256" }
-        val processed = linkedSetOf<FarmPlotPosition>()
+        val selected = mutableListOf<Pair<FarmPlotPosition, org.bukkit.block.Block>>()
         for (position in plots.distinct()) {
-            if (processed.size >= limit) break
-            if (mutation(position)) processed += position
+            if (selected.size >= limit) break
+            val soil = position.loadedBlock() ?: continue
+            if (eligible(soil)) selected += position to soil
         }
-        return FarmMachineBlockResult(processed)
+        return selected
     }
 
     private fun FarmPlotPosition.loadedBlock() = Bukkit.getWorld(world)?.let { loadedWorld ->

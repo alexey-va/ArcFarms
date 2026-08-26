@@ -13,6 +13,7 @@ import org.bukkit.inventory.ItemStack
 import org.bukkit.Material
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
+import org.bukkit.util.Vector
 import ru.ruscrafting.farms.domain.FarmMachinePosition
 import ru.ruscrafting.farms.domain.FarmSeederFormation
 
@@ -94,8 +95,8 @@ internal class FarmSeederRigManager(plugin: Plugin) {
                 entity.backgroundColor = org.bukkit.Color.fromARGB(128, 16, 16, 16)
                 entity.isShadowed = true
                 entity.viewRange = labelViewRange
-                entity.teleportDuration = 2
-                entity.interpolationDuration = 2
+                entity.teleportDuration = 1
+                entity.interpolationDuration = 1
                 entity.isPersistent = false
                 mark(entity)
             }.also(spawned::add)
@@ -138,12 +139,11 @@ internal class FarmSeederRigManager(plugin: Plugin) {
         leadDistance: Double,
         spacing: Double,
         catchupDistance: Double,
-        movePigs: Boolean,
+        pigSpeed: Double,
         validPosition: (Location) -> Boolean,
     ): List<FarmMachinePosition> {
         rig.label.teleport(rig.horse.location.clone().add(0.0, 2.25, 0.0))
         rig.horse.isAware = true
-        if (!movePigs) return currentPositions(rig)
         val desired = positions(rig.horse, pigCount, leadDistance, spacing)
         val catchupSquared = catchupDistance * catchupDistance
         rig.pigs.zip(desired).forEach { (pig, position) ->
@@ -151,11 +151,18 @@ internal class FarmSeederRigManager(plugin: Plugin) {
             if (!pig.isLeashed || runCatching { pig.leashHolder }.getOrNull() != rig.horse) {
                 pig.setLeashHolder(rig.horse)
             }
-            pig.isAware = true
+            pig.isAware = false
             if (pig.world != target.world || pig.location.distanceSquared(target) > catchupSquared) {
                 if (validPosition(target)) pig.teleport(target)
             } else if (pig.location.distanceSquared(target) > MIN_MOVE_DISTANCE_SQUARED) {
-                pig.pathfinder.moveTo(target, PIG_PATH_SPEED)
+                pig.velocity = smoothSeederVelocity(
+                    current = pig.velocity,
+                    offset = target.toVector().subtract(pig.location.toVector()),
+                    maxSpeed = pigSpeed,
+                )
+            } else {
+                val current = pig.velocity
+                pig.velocity = Vector(current.x * 0.35, current.y, current.z * 0.35)
             }
         }
         return currentPositions(rig)
@@ -196,7 +203,24 @@ internal class FarmSeederRigManager(plugin: Plugin) {
 
     private companion object {
         const val FIXED_ENTITY_COUNT = 2
-        const val PIG_PATH_SPEED = 1.8
         const val MIN_MOVE_DISTANCE_SQUARED = 0.16
     }
+}
+
+internal fun smoothSeederVelocity(current: Vector, offset: Vector, maxSpeed: Double): Vector {
+    require(maxSpeed.isFinite() && maxSpeed > 0.0) { "Seeder pig speed must be positive and finite" }
+    val horizontalDistance = kotlin.math.hypot(offset.x, offset.z)
+    if (horizontalDistance <= 1.0e-6) return Vector(current.x * 0.35, current.y, current.z * 0.35)
+    val speed = (maxSpeed * 0.45 + horizontalDistance * 0.055).coerceAtMost(maxSpeed)
+    val desiredX = offset.x / horizontalDistance * speed
+    val desiredZ = offset.z / horizontalDistance * speed
+    val blendedX = current.x * 0.2 + desiredX * 0.8
+    val blendedZ = current.z * 0.2 + desiredZ * 0.8
+    val blendedSpeed = kotlin.math.hypot(blendedX, blendedZ)
+    val speedScale = if (blendedSpeed > maxSpeed) maxSpeed / blendedSpeed else 1.0
+    return Vector(
+        blendedX * speedScale,
+        current.y + offset.y.coerceIn(-0.18, 0.28) * 0.35,
+        blendedZ * speedScale,
+    )
 }

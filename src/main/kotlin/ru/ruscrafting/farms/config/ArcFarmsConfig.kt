@@ -165,7 +165,8 @@ data class FarmSpecialIncidentSettings(
     val channelGateCount: Int,
     val channelDisplayScale: Float,
     val channelDisplayYOffset: Double,
-    val nightCropCount: Int,
+    val nightCropPlacementCount: Int,
+    val nightCropTargetCount: Int,
     val nightCropMinSpacing: Double,
     val nightPlayerTime: Long,
     val nightPatrolMinCount: Int,
@@ -189,6 +190,9 @@ data class FarmSpecialIncidentSettings(
     val marketMaximumSeconds: Int,
 ) {
     init {
+        require(nightCropTargetCount <= nightCropPlacementCount) {
+            "night-shift crop target must not exceed its placement count"
+        }
         require(nightPatrolMinCount <= nightPatrolMaxCount) {
             "night-shift patrol minimum must not exceed its maximum"
         }
@@ -561,7 +565,7 @@ class ArcFarmsConfig private constructor(
                     .checked("seeder-pig-count", 1, 5)
                 val seederPigLeadDistance = section.finiteDouble("seeder-pig-lead-distance", 2.5, 1.0, 6.0)
                 val seederPigSpacing = section.finiteDouble("seeder-pig-spacing", 1.4, 0.6, 3.0)
-                val seederPigCatchupDistance = section.finiteDouble("seeder-pig-catchup-distance", 7.0, 3.0, 16.0)
+                val seederPigCatchupDistance = section.finiteDouble("seeder-pig-catchup-distance", 12.0, 3.0, 16.0)
                 require(seederPigCatchupDistance > seederPigLeadDistance) {
                     "Farm zone $id seeder-pig-catchup-distance must exceed seeder-pig-lead-distance"
                 }
@@ -622,8 +626,10 @@ class ArcFarmsConfig private constructor(
                         0.0,
                         2.0,
                     ),
-                    nightCropCount = section.int("special-incidents.night-shift.crops", 24)
-                        .checked("special-incidents.night-shift.crops", 6, 64),
+                    nightCropPlacementCount = section.int("special-incidents.night-shift.placement-count", 90)
+                        .checked("special-incidents.night-shift.placement-count", 6, 128),
+                    nightCropTargetCount = section.int("special-incidents.night-shift.target-count", 24)
+                        .checked("special-incidents.night-shift.target-count", 1, 128),
                     nightCropMinSpacing = section.finiteDouble(
                         "special-incidents.night-shift.crop-min-spacing",
                         6.0,
@@ -664,7 +670,7 @@ class ArcFarmsConfig private constructor(
                     ),
                     nightPatrolMovementSpeed = section.finiteDouble(
                         "special-incidents.night-shift.patrols.movement-speed",
-                        0.30,
+                        0.27,
                         0.05,
                         0.5,
                     ),

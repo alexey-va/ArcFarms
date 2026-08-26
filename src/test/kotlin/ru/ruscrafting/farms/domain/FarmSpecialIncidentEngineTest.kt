@@ -123,7 +123,8 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             fallbackPlot = null,
             irrigationSource = null,
             channelGates = 4,
-            nightCrops = 8,
+            nightCropPlacements = 8,
+            nightCropTarget = 4,
             nightCropMinSpacing = 4.0,
             nightPatrols = 0,
             nightPatrolMinSpacing = 4.0,
@@ -186,7 +187,8 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             fallbackPlot = cropPlots.first(),
             irrigationSource = FarmPointPosition("world", -2.0, 65.0, 0.0),
             channelGates = 4,
-            nightCrops = 4,
+            nightCropPlacements = 4,
+            nightCropTarget = 2,
             nightCropMinSpacing = 4.0,
             nightPatrols = 2,
             nightPatrolMinSpacing = 4.0,
@@ -199,7 +201,8 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             fallbackPlot = cropPlots.first(),
             irrigationSource = FarmPointPosition("world", -2.0, 65.0, 0.0),
             channelGates = 4,
-            nightCrops = 4,
+            nightCropPlacements = 4,
+            nightCropTarget = 2,
             nightCropMinSpacing = 4.0,
             nightPatrols = 2,
             nightPatrolMinSpacing = 4.0,
@@ -224,14 +227,15 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             fallbackPlot = mature.first().plot,
             irrigationSource = FarmPointPosition("world", -2.0, 65.0, 0.0),
             channelGates = 4,
-            nightCrops = 12,
+            nightCropPlacements = 12,
+            nightCropTarget = 8,
             nightCropMinSpacing = 6.0,
             nightPatrols = 3,
             nightPatrolMinSpacing = 10.0,
             marketCrops = 3,
         ) ?: error("Night shift plan is missing")
 
-        plan.required shouldBe 12
+        plan.required shouldBe 8
         plan.state.plots.size shouldBe 12
         plan.state.points.size shouldBe 3
         (minimumPlotDistance(plan.state.plots) >= 5.5) shouldBe true
@@ -256,7 +260,8 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             fallbackPlot = mature.first().plot,
             irrigationSource = null,
             channelGates = 4,
-            nightCrops = 6,
+            nightCropPlacements = 6,
+            nightCropTarget = 4,
             nightCropMinSpacing = 2.0,
             nightPatrols = 3,
             nightPatrolMinSpacing = 30.0,
@@ -279,7 +284,8 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             fallbackPlot = mature.first().plot,
             irrigationSource = FarmPointPosition("world", -2.0, 65.0, 0.0),
             channelGates = 4,
-            nightCrops = 6,
+            nightCropPlacements = 6,
+            nightCropTarget = 4,
             nightCropMinSpacing = 3.0,
             nightPatrols = 2,
             nightPatrolMinSpacing = 6.0,

@@ -645,8 +645,9 @@ internal class FarmCareController(
         }
     }
 
-    fun updateSeeder(runtime: FarmRuntime, movePigs: Boolean, processField: Boolean) {
+    fun updateSeeder(runtime: FarmRuntime, processField: Boolean) {
         if (runtime.state.phase != FarmPhase.CARE || runtime.state.careType != FarmCareType.SEEDER) return
+        if (!runtime.state.preparationReleased) return
         val horseTarget = runtime.state.careTargets.firstOrNull { it.role == FarmCareRole.SEEDER_HORSE } ?: return
         val key = FarmCareEntityKey(runtime.settings.id, horseTarget.id)
         val rig = seederRig.resolve(
@@ -673,7 +674,7 @@ internal class FarmCareController(
             leadDistance = runtime.settings.seederPigLeadDistance,
             spacing = runtime.settings.seederPigSpacing,
             catchupDistance = runtime.settings.seederPigCatchupDistance,
-            movePigs = movePigs,
+            pigSpeed = runtime.settings.seederPigSpeed,
             validPosition = runtime.region::contains,
         ).filter { position ->
             runtime.region.contains(Location(runtime.region.world, position.x, position.y, position.z))

@@ -91,7 +91,7 @@ farm-zones:
     seeder-pig-count: 3
     seeder-pig-lead-distance: 2.5
     seeder-pig-spacing: 1.4
-    seeder-pig-catchup-distance: 7.0
+    seeder-pig-catchup-distance: 12.0
     seeder-horse-speed: 0.24
     seeder-pig-speed: 0.46
     # Every indexed bed inside this radius around any working pig is processed.
@@ -153,7 +153,8 @@ farm-zones:
     special-incidents:
       channels: {gates: 4, display-scale: 1.35, y-offset: 0.8}
       night-shift:
-        crops: 24
+        placement-count: 90
+        target-count: 24
         crop-min-spacing: 6.0
         player-time: 18000
         patrols:
@@ -165,7 +166,7 @@ farm-zones:
           roam-radius: 14.0
           path-refresh-seconds: 5
           spawn-min-player-distance: 8.0
-          movement-speed: 0.30
+          movement-speed: 0.27
           follow-range: 8.0
           attack-damage: 2.0
           held-item: TORCH

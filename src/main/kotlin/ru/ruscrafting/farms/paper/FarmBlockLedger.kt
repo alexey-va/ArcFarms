@@ -54,19 +54,27 @@ internal class FarmBlockLedger(plugin: Plugin) {
     fun capture(soil: Block, zoneId: String): ManagedFarmBlockRecord {
         val existing = record(soil)
         if (existing != null) return existing
-        val crop = soil.getRelative(org.bukkit.block.BlockFace.UP)
-        val cropData = crop.blockData.takeUnless { crop.type.isAir }?.asString
-        val created = ManagedFarmBlockRecord(
-            zoneId = zoneId,
-            x = soil.x,
-            y = soil.y,
-            z = soil.z,
-            originalSoilData = soil.blockData.asString,
-            originalCropData = cropData,
-            activeCropData = cropData,
-        )
+        val created = createRecord(soil, zoneId)
         update(soil, created)
         return created
+    }
+
+    /** Captures a world-mutation batch with one PDC decode/write per affected chunk. */
+    fun captureAll(soils: Collection<Block>, zoneId: String) {
+        if (soils.isEmpty()) return
+        soils.groupBy(Block::getChunk).forEach { (chunk, blocks) ->
+            val records = blockRecords(chunk).toMutableList()
+            val coordinates = records.mapTo(hashSetOf()) { Triple(it.x, it.y, it.z) }
+            var changed = false
+            blocks.forEach { soil ->
+                require(soil.chunk == chunk) { "Farm capture batch crossed chunks" }
+                if (coordinates.add(Triple(soil.x, soil.y, soil.z))) {
+                    records += createRecord(soil, zoneId)
+                    changed = true
+                }
+            }
+            if (changed) write(chunk, records)
+        }
     }
 
     fun captureActiveCrop(soil: Block, zoneId: String): ManagedFarmBlockRecord {
@@ -74,6 +82,30 @@ internal class FarmBlockLedger(plugin: Plugin) {
         val crop = soil.getRelative(org.bukkit.block.BlockFace.UP)
         val cropData = crop.blockData.takeUnless { crop.type.isAir || crop.type == Material.WATER }?.asString
         return current.copy(activeCropData = cropData).also { update(soil, it) }
+    }
+
+    /** Updates active crop snapshots with one PDC decode/write per affected chunk. Blocks must be captured first. */
+    fun updateActiveCrops(soils: Collection<Block>) {
+        if (soils.isEmpty()) return
+        soils.groupBy(Block::getChunk).forEach { (chunk, rawBlocks) ->
+            val blocks = rawBlocks.distinctBy { Triple(it.x, it.y, it.z) }
+            val records = blockRecords(chunk).toMutableList()
+            val indices = records.withIndex().associate { Triple(it.value.x, it.value.y, it.value.z) to it.index }
+            var changed = false
+            blocks.forEach { soil ->
+                require(soil.chunk == chunk) { "Farm active-crop batch crossed chunks" }
+                val index = requireNotNull(indices[Triple(soil.x, soil.y, soil.z)]) {
+                    "Farm active-crop batch contains an uncaptured block"
+                }
+                val crop = soil.getRelative(org.bukkit.block.BlockFace.UP)
+                val cropData = crop.blockData.takeUnless { crop.type.isAir || crop.type == Material.WATER }?.asString
+                if (records[index].activeCropData != cropData) {
+                    records[index] = records[index].copy(activeCropData = cropData)
+                    changed = true
+                }
+            }
+            if (changed) write(chunk, records)
+        }
     }
 
     fun captureActiveCropIfPresent(soil: Block, zoneId: String): ManagedFarmBlockRecord {
@@ -312,6 +344,20 @@ internal class FarmBlockLedger(plugin: Plugin) {
         records.removeIf { it.x == soil.x && it.y == soil.y && it.z == soil.z }
         records += record
         write(soil.chunk, records)
+    }
+
+    private fun createRecord(soil: Block, zoneId: String): ManagedFarmBlockRecord {
+        val crop = soil.getRelative(org.bukkit.block.BlockFace.UP)
+        val cropData = crop.blockData.takeUnless { crop.type.isAir }?.asString
+        return ManagedFarmBlockRecord(
+            zoneId = zoneId,
+            x = soil.x,
+            y = soil.y,
+            z = soil.z,
+            originalSoilData = soil.blockData.asString,
+            originalCropData = cropData,
+            activeCropData = cropData,
+        )
     }
 
     private fun updateFixedCrop(block: Block, record: ManagedFarmFixedCropRecord) {

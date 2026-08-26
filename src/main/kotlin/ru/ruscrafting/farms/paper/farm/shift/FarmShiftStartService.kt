@@ -2,7 +2,6 @@ package ru.ruscrafting.farms.paper.farm.shift
 
 import org.bukkit.entity.Player
 import ru.ruscrafting.farms.config.MessageKey
-import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmContractPlanner
 import ru.ruscrafting.farms.domain.FarmOrder
 import ru.ruscrafting.farms.domain.FarmPhase
@@ -15,7 +14,6 @@ import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.admin.FarmWorldAdminService
-import ru.ruscrafting.farms.paper.farm.care.FarmCareController
 import ru.ruscrafting.farms.paper.farm.care.FarmCarePlanService
 import ru.ruscrafting.farms.paper.farm.field.FarmFieldController
 import java.util.random.RandomGenerator
@@ -30,7 +28,6 @@ internal class FarmShiftStartService(
     private val registry: FarmBlockRegistry,
     private val field: FarmFieldController,
     private val carePlans: FarmCarePlanService,
-    private val care: FarmCareController,
     private val transitions: FarmTransitionSink,
     private val persistBlocking: () -> Unit,
     private val random: RandomGenerator,
@@ -75,12 +72,6 @@ internal class FarmShiftStartService(
             port.sendChat(player, MessageKey.GENERIC_ERROR)
             return false
         }
-        if (field.release(runtime)) {
-            runtime.state = runtime.state.copy(preparationReleased = true)
-            runCatching(persistBlocking).onFailure { failure ->
-                port.log(Level.SEVERE, "Could not confirm released farm patch ${runtime.settings.id}; recovery remains idempotent", failure)
-            }
-        }
         registry.addBeds(runtime.settings.id, patch)
         if (patch.size < targetSize) debug.event(
             "farm_patch_limited", "zone" to runtime.settings.id, "wanted" to targetSize,
@@ -95,7 +86,6 @@ internal class FarmShiftStartService(
             "mechanized" to seederShift,
         )
         transitions.apply(runtime, started.copy(state = runtime.state), player)
-        if (seederShift) care.initialize(runtime, player, FarmCareType.SEEDER)
         return true
     }
 }

@@ -120,7 +120,17 @@ internal class FarmModule(
         registry.snapshot().forEach { runtime ->
             if (isAdminEditing(runtime)) return@forEach
             var remaining = runtime.settings.restoreBlocksPerTick
-            if (runtime.state.phase != FarmPhase.INCIDENT && incidentRecovery.pending(runtime)) {
+            if (runtime.state.preparationPatch.isNotEmpty() && !runtime.state.preparationReleased) {
+                val release = field.release(runtime, remaining)
+                remaining -= release.processed
+                if (release.complete) {
+                    runtime.state = runtime.state.copy(preparationReleased = true)
+                    port.persistAsync()
+                }
+                if (!release.complete || remaining <= 0) return@forEach
+            }
+            if (remaining > 0) remaining -= field.finishAutomaticQuota(runtime, remaining)
+            if (remaining > 0 && runtime.state.phase != FarmPhase.INCIDENT && incidentRecovery.pending(runtime)) {
                 remaining -= incidentRecovery.restore(runtime, remaining, drought.hasActiveWater(runtime.settings.id))
             }
             if (remaining > 0 && runtime.state.phase == FarmPhase.COOLDOWN &&
@@ -135,7 +145,7 @@ internal class FarmModule(
 
     fun updateSeeder(tick: Long) = registry.snapshot().forEach { runtime ->
         port.guarded("farm_seeder:${runtime.settings.id}") {
-            if (!isAdminEditing(runtime)) care.updateSeeder(runtime, movePigs = tick % 2L == 0L, processField = tick % 5L == 0L)
+            if (!isAdminEditing(runtime)) care.updateSeeder(runtime, processField = tick % 5L == 0L)
         }
     }
 
@@ -164,7 +174,10 @@ internal class FarmModule(
                 if (runtime.state.phase == FarmPhase.IDLE) {
                     port.players(runtime.region).firstOrNull()?.let { shiftStart.start(runtime, it, now) }
                 }
-                if (runtime.state.phase == FarmPhase.PREPARATION && carePlans.shouldUseSeeder(runtime)) {
+                if (
+                    runtime.state.phase == FarmPhase.PREPARATION && runtime.state.preparationReleased &&
+                    carePlans.shouldUseSeeder(runtime)
+                ) {
                     care.initialize(runtime, port.players(runtime.region).firstOrNull(), FarmCareType.SEEDER)
                 }
                 drought.ensure(runtime)

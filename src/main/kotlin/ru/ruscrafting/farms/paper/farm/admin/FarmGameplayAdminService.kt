@@ -284,15 +284,11 @@ internal class FarmGameplayAdminService(
             port.sendChat(player, MessageKey.FARM_PATCH_UNAVAILABLE)
             return false
         }
-        if (seeder && !field.release(runtime)) {
-            port.sendChat(player, MessageKey.FARM_PATCH_UNAVAILABLE)
-            return false
-        }
         if (!seeder) preparePatch(runtime, plant = true, mature = true)
         val prepared = if (seeder) runtime.state else FarmAdminStageProgress.completed(runtime.state, planted = true)
         runtime.state = prepared.copy(
             phase = if (seeder) FarmPhase.PREPARATION else FarmPhase.HARVESTING,
-            preparationReleased = true,
+            preparationReleased = !seeder,
             tilledPlots = if (seeder) emptySet() else prepared.tilledPlots,
             plantedPlots = if (seeder) emptySet() else prepared.plantedPlots,
             preparationProgress = if (seeder) 0 else prepared.preparationProgress,

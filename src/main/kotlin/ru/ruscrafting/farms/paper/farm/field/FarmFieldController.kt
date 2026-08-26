@@ -12,14 +12,12 @@ import org.bukkit.entity.Player
 import org.bukkit.event.player.PlayerInteractEvent
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.MessageKey
-import ru.ruscrafting.farms.domain.FarmBedCandidatePool
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmFieldQuota
 import ru.ruscrafting.farms.domain.FarmPatchPlanner
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPlotPosition
-import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmSeederStage
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.domain.FarmShiftState
@@ -39,6 +37,18 @@ import ru.ruscrafting.farms.paper.toFarmPlotPosition
 import java.util.concurrent.TimeUnit
 import java.util.logging.Level
 
+internal val FARM_SOIL_TYPES = setOf(
+    Material.DIRT, Material.FARMLAND, Material.GRASS_BLOCK, Material.DIRT_PATH, Material.COARSE_DIRT,
+    Material.ROOTED_DIRT, Material.PODZOL, Material.MYCELIUM,
+)
+
+internal data class FarmPatchReleaseResult(
+    val processed: Int,
+    val complete: Boolean,
+)
+
+private data class FarmPatchReleaseKey(val zoneId: String, val sequence: Long)
+
 /** Owns managed bed discovery, patch lifecycle, manual tilling/planting and bounded recovery. */
 internal class FarmFieldController(
     private val settings: () -> ArcFarmsConfig,
@@ -46,13 +56,20 @@ internal class FarmFieldController(
     private val port: WorksiteRuntimePort,
     private val ledger: FarmBlockLedger,
     private val registry: FarmBlockRegistry,
-    private val points: FarmPointProvider,
+    points: FarmPointProvider,
     private val transitions: FarmTransitionSink,
     private val persistBlocking: () -> Unit,
 ) {
+    private val patchReleaseProgress = mutableMapOf<FarmPatchReleaseKey, MutableSet<FarmPlotPosition>>()
     private val patchRestoreProgress = mutableMapOf<String, MutableSet<FarmPlotPosition>>()
+    private val beds = FarmBedDiscovery(debug, registry, points)
+    private val autoFinisher = FarmPatchAutoFinisher(ledger, debug)
 
-    fun clearCaches() = patchRestoreProgress.clear()
+    fun clearCaches() {
+        patchReleaseProgress.clear()
+        patchRestoreProgress.clear()
+        autoFinisher.clear()
+    }
 
     fun selectPatch(
         runtime: FarmRuntime,
@@ -60,138 +77,53 @@ internal class FarmFieldController(
         mechanized: Boolean,
         selectionIndex: Long,
         additionalCandidates: Collection<FarmPlotPosition> = emptyList(),
-    ): List<FarmPlotPosition> {
-        val candidates = discoverBeds(runtime, anchor) + additionalCandidates
-        val anchorPlot = anchor.toFarmPlotPosition()
-        return if (mechanized) {
-            FarmPatchPlanner.selectMechanized(
-                candidates = candidates,
-                anchor = anchorPlot,
-                targetSize = runtime.settings.seederPatchSize,
-                maxSize = runtime.settings.seederPatchMaxSize,
-                componentGap = runtime.settings.seederComponentGap,
-                maxComponents = runtime.settings.seederComponentLimit,
-                selectionIndex = selectionIndex,
-            )
-        } else {
-            FarmPatchPlanner.select(
-                candidates = candidates,
-                anchor = anchorPlot,
-                targetSize = runtime.settings.preparationPatchSize,
-                maxSize = runtime.settings.preparationPatchMaxSize,
-                selectionIndex = selectionIndex,
-            )
-        }
-    }
+    ): List<FarmPlotPosition> = beds.selectPatch(runtime, anchor, mechanized, selectionIndex, additionalCandidates)
 
-    fun discoverBeds(runtime: FarmRuntime, anchor: Location): Set<FarmPlotPosition> {
-        val radius = runtime.settings.preparationSearchRadius
-        val discovered = linkedSetOf<FarmPlotPosition>()
-        val world = runtime.region.world
-        for (x in anchor.blockX - radius..anchor.blockX + radius) {
-            for (z in anchor.blockZ - radius..anchor.blockZ + radius) {
-                if (!world.isChunkLoaded(x shr 4, z shr 4)) continue
-                for (y in anchor.blockY - 5..anchor.blockY + 3) {
-                    val block = world.getBlockAt(x, y, z)
-                    if (!runtime.region.contains(block.location)) continue
-                    if (isNearFarmOperationPoint(runtime, block.location)) continue
-                    val above = block.getRelative(org.bukkit.block.BlockFace.UP).type
-                    if (!FarmBlockPolicy.isSelectableBed(block.type, above, runtime.settings.crops)) continue
-                    discovered += block.toFarmPlotPosition()
-                }
-            }
-        }
-        registry.addBeds(runtime.settings.id, discovered)
-        val indexed = registry.beds(runtime.settings.id)
-        val candidates = FarmBedCandidatePool.merge(indexed, discovered) { position ->
-            val soil = position.block() ?: return@merge false
-            if (!world.isChunkLoaded(position.x shr 4, position.z shr 4)) return@merge false
-            if (!runtime.region.contains(soil.location) || isNearFarmOperationPoint(runtime, soil.location)) return@merge false
-            FarmBlockPolicy.isSelectableBed(
-                soil.type,
-                soil.getRelative(org.bukkit.block.BlockFace.UP).type,
-                runtime.settings.crops,
-            )
-        }
-        debug.event(
-            "farm_beds_discovered",
-            "zone" to runtime.settings.id,
-            "indexed" to indexed.size,
-            "locally_discovered" to discovered.size,
-            "candidates" to candidates.size,
-            "search_radius" to radius,
-        )
-        return candidates
-    }
+    fun incidentBeds(runtime: FarmRuntime): Set<FarmPlotPosition> = beds.incident(runtime)
 
-    fun incidentBeds(runtime: FarmRuntime): Set<FarmPlotPosition> {
-        val patch = runtime.state.preparationPatch
-        if (patch.isEmpty()) return emptySet()
-        val indexed = registry.beds(runtime.settings.id)
-        val candidates = FarmBedCandidatePool.merge(indexed, patch) { position ->
-            val world = runtime.region.world
-            if (!world.isChunkLoaded(position.x shr 4, position.z shr 4)) return@merge false
-            val soil = position.block() ?: return@merge false
-            if (!runtime.region.contains(soil.location) || soil.type !in SOIL_TYPES) return@merge false
-            if (isNearFarmOperationPoint(runtime, soil.location)) return@merge false
-            FarmBlockPolicy.isOpenBedContent(
-                soil.getRelative(org.bukkit.block.BlockFace.UP).type,
-                runtime.settings.crops,
-            )
+    fun finishAutomaticQuota(runtime: FarmRuntime, limit: Int): Int = autoFinisher.process(runtime, limit)
+
+    fun release(runtime: FarmRuntime, limit: Int): FarmPatchReleaseResult {
+        require(limit >= 1) { "Farm patch release limit must be positive" }
+        val key = FarmPatchReleaseKey(runtime.settings.id, runtime.state.sequence)
+        patchReleaseProgress.keys.removeIf { it.zoneId == runtime.settings.id && it != key }
+        val released = patchReleaseProgress.getOrPut(key, ::linkedSetOf)
+        val batch = mutableListOf<Pair<FarmPlotPosition, Block>>()
+        for (position in runtime.state.preparationPatch) {
+            if (batch.size >= limit) break
+            if (position in released) continue
+            val soil = position.block() ?: continue
+            batch += position to soil
         }
-        debug.event(
-            "farm_incident_beds_discovered",
-            "zone" to runtime.settings.id,
-            "indexed" to indexed.size,
-            "candidates" to candidates.size,
-        )
-        return candidates
-    }
-
-    private fun isNearFarmOperationPoint(runtime: FarmRuntime, location: Location): Boolean = listOf(
-        FarmPointKind.TOOL,
-        FarmPointKind.SEEDS,
-        FarmPointKind.WATER,
-        FarmPointKind.CRATES,
-        FarmPointKind.RECEIVING,
-        FarmPointKind.CART,
-        FarmPointKind.CUSTOMER,
-    ).any { kind ->
-        val point = points.resolve(runtime, kind)
-        point.world == location.world.name && kotlin.math.abs(point.y - location.y) <= 3.0 &&
-            (point.x - location.x) * (point.x - location.x) + (point.z - location.z) * (point.z - location.z) <= 9.0
-    }
-
-    fun release(runtime: FarmRuntime): Boolean {
-        var complete = true
-        runtime.state.preparationPatch.forEach { position ->
-            val soil = position.block()
-            if (soil == null) {
-                complete = false
-                return@forEach
-            }
-            ledger.capture(soil, runtime.settings.id)
+        ledger.captureAll(batch.map { it.second }, runtime.settings.id)
+        batch.forEach { (position, soil) ->
             val above = soil.getRelative(org.bukkit.block.BlockFace.UP)
             if (above.type.name in runtime.settings.crops && !MaterialRules.isFixedBlockCrop(above.type)) {
                 above.setType(Material.AIR, false)
             }
             soil.setType(Material.DIRT, false)
+            released += position
         }
+        val processed = batch.size
+        val complete = released.containsAll(runtime.state.preparationPatch)
+        if (complete) patchReleaseProgress.remove(key)
         debug.event(
-            "farm_patch_released",
+            if (complete) "farm_patch_released" else "farm_patch_release_progress",
             "zone" to runtime.settings.id,
             "sequence" to runtime.state.sequence,
             "plots" to runtime.state.preparationPatch.size,
+            "processed" to processed,
+            "released" to released.size,
             "crop" to runtime.state.preparationCrop,
             "complete" to complete,
         )
-        return complete
+        return FarmPatchReleaseResult(processed, complete)
     }
 
     fun handleInteraction(event: PlayerInteractEvent, runtime: FarmRuntime, clicked: Block, player: Player): Boolean {
         val soil = when {
-            clicked.type in SOIL_TYPES -> clicked
-            clicked.getRelative(org.bukkit.block.BlockFace.DOWN).type in SOIL_TYPES ->
+            clicked.type in FARM_SOIL_TYPES -> clicked
+            clicked.getRelative(org.bukkit.block.BlockFace.DOWN).type in FARM_SOIL_TYPES ->
                 clicked.getRelative(org.bukkit.block.BlockFace.DOWN)
             else -> return false
         }
@@ -378,13 +310,17 @@ internal class FarmFieldController(
                             ),
                             maxSize = runtime.settings.seederPatchMaxSize,
                         )
-                    } else {
-                        FarmPatchPlanner.expand(
-                            candidates = discoverBeds(runtime, anchor) + originalPatch,
-                            currentPatch = originalPatch,
-                            maxSize = runtime.settings.preparationPatchMaxSize,
-                        )
-                    }
+                    } else FarmPatchPlanner.retainCurrent(
+                        currentPatch = originalPatch,
+                        selectedPatch = selectPatch(
+                            runtime = runtime,
+                            anchor = anchor,
+                            mechanized = false,
+                            selectionIndex = runtime.state.sequence,
+                            additionalCandidates = originalPatch,
+                        ),
+                        maxSize = runtime.settings.preparationPatchMaxSize,
+                    )
                     if (expanded.size > originalPatch.size) {
                         runtime.state = runtime.state.copy(
                             preparationPatch = expanded,
@@ -407,14 +343,8 @@ internal class FarmFieldController(
             }
             val patch = runtime.state.preparationPatch
             registry.addBeds(runtime.settings.id, patch)
-            patch.forEach { position -> position.block()?.let { ledger.capture(it, runtime.settings.id) } }
             if (!runtime.state.preparationReleased) {
-                if (release(runtime)) {
-                    runtime.state = runtime.state.copy(preparationReleased = true)
-                    changed = true
-                } else {
-                    return@forEach
-                }
+                return@forEach
             }
             val crop = runtime.state.preparationCrop?.let(MaterialRules::material) ?: return@forEach
             val tilled = runtime.state.tilledPlots.toMutableSet()
@@ -495,6 +425,7 @@ internal class FarmFieldController(
         val complete = restored.containsAll(runtime.state.preparationPatch)
         if (!complete) return false
         patchRestoreProgress.remove(runtime.settings.id)
+        patchReleaseProgress.keys.removeIf { it.zoneId == runtime.settings.id }
         debug.event(
             "farm_patch_restored",
             "zone" to runtime.settings.id,
@@ -543,10 +474,6 @@ internal class FarmFieldController(
 
     fun maintain(runtime: FarmRuntime, activeWater: Boolean) {
         if (runtime.state.preparationPatch.isNotEmpty() && !runtime.state.preparationReleased) {
-            if (release(runtime)) {
-                runtime.state = runtime.state.copy(preparationReleased = true)
-                port.persistAsync()
-            }
             return
         }
         val positions = linkedSetOf<FarmPlotPosition>().apply {
@@ -625,9 +552,5 @@ internal class FarmFieldController(
         const val PATCH_PERSIST_INTERVAL = 10
         val TILL_COLOR: Color = Color.fromRGB(255, 173, 66)
         val PLANT_COLOR: Color = Color.fromRGB(199, 120, 255)
-        val SOIL_TYPES = setOf(
-            Material.DIRT, Material.FARMLAND, Material.GRASS_BLOCK, Material.DIRT_PATH, Material.COARSE_DIRT,
-            Material.ROOTED_DIRT, Material.PODZOL, Material.MYCELIUM,
-        )
     }
 }

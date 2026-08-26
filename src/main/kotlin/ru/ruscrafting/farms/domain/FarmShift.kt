@@ -318,10 +318,11 @@ object FarmShiftEngine {
         }
         val progress = current.preparationProgress + 1
         val completed = progress >= current.preparationRequired
+        val tilled = if (completed) current.preparationPatch.toSet() else current.tilledPlots + plot
         val state = current.copy(
             phase = if (completed) FarmPhase.PLANTING else FarmPhase.PREPARATION,
-            tilledPlots = current.tilledPlots + plot,
-            preparationProgress = progress,
+            tilledPlots = tilled,
+            preparationProgress = tilled.size,
             contributors = incrementContribution(current.contributors, playerId, 1),
         )
         return EngineResult(
@@ -350,10 +351,14 @@ object FarmShiftEngine {
         }
         val progress = current.plantingProgress + 1
         val completed = progress >= current.preparationRequired
+        val tilled = if (completed) current.preparationPatch.toSet() else current.tilledPlots
+        val planted = if (completed) tilled else current.plantedPlots + plot
         val state = current.copy(
             phase = if (completed) FarmPhase.HARVESTING else FarmPhase.PLANTING,
-            plantedPlots = current.plantedPlots + plot,
-            plantingProgress = progress,
+            tilledPlots = tilled,
+            plantedPlots = planted,
+            preparationProgress = tilled.size,
+            plantingProgress = planted.size,
             contributors = incrementContribution(current.contributors, playerId, 1),
         )
         return EngineResult(
@@ -525,12 +530,13 @@ object FarmShiftEngine {
                 val remaining = (current.preparationRequired - current.tilledPlots.size).coerceAtLeast(0)
                 val added = (processed - current.tilledPlots).sortedWith(FARM_PLOT_ORDER).take(remaining).toSet()
                 if (added.isEmpty()) return EngineResult(current, false)
-                val tilled = current.tilledPlots + added
-                val complete = tilled.size >= current.preparationRequired
+                val worked = current.tilledPlots + added
+                val complete = worked.size >= current.preparationRequired
+                val tilled = if (complete) current.preparationPatch.toSet() else worked
                 EngineResult(
                     current.copy(
                         tilledPlots = tilled,
-                        preparationProgress = tilled.size.coerceAtMost(current.preparationRequired),
+                        preparationProgress = tilled.size,
                         seederStage = if (complete) FarmSeederStage.PLANTING else FarmSeederStage.TILLING,
                         careTargets = if (complete) {
                             current.careTargets.filter { it.role == FarmCareRole.SEEDER_HORSE }
@@ -553,13 +559,14 @@ object FarmShiftEngine {
                 val remaining = (current.preparationRequired - current.plantedPlots.size).coerceAtLeast(0)
                 val added = (processed - current.plantedPlots).sortedWith(FARM_PLOT_ORDER).take(remaining).toSet()
                 if (added.isEmpty()) return EngineResult(current, false)
-                val planted = current.plantedPlots + added
-                val complete = planted.size >= current.preparationRequired
+                val worked = current.plantedPlots + added
+                val complete = worked.size >= current.preparationRequired
+                val planted = if (complete) current.preparationPatch.toSet() else worked
                 EngineResult(
                     current.copy(
                         phase = if (complete) FarmPhase.HARVESTING else FarmPhase.CARE,
                         plantedPlots = planted,
-                        plantingProgress = planted.size.coerceAtMost(current.preparationRequired),
+                        plantingProgress = planted.size,
                         seederStage = if (complete) null else FarmSeederStage.PLANTING,
                         careTargets = if (complete) emptyList() else current.careTargets,
                         contributors = incrementContribution(current.contributors, playerId, added.size),

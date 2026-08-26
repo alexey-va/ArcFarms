@@ -263,7 +263,6 @@ internal class FarmComponentGraph(
         registry = blockRegistry,
         field = field,
         carePlans = carePlans,
-        care = care,
         transitions = transitions,
         persistBlocking = persistBlocking,
         random = random,

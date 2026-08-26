@@ -136,6 +136,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().seederWorkingRadius shouldBe 8.0
         settings.farms.single().seederBlocksPerUpdate shouldBe 128
         settings.farms.single().seederPigSpeed shouldBe 0.46
+        settings.farms.single().seederPigCatchupDistance shouldBe 12.0
         settings.farms.single().preparationSearchRadius shouldBe 64
         settings.farms.single().fixedCropRespawnSeconds shouldBe 20
         settings.farms.single().restoreBlocksPerTick shouldBe 24
@@ -188,7 +189,8 @@ class ArcFarmsConfigTest : FunSpec({
         )
         settings.farms.single().specialIncidents.channelGateCount shouldBe 4
         settings.farms.single().specialIncidents.channelDisplayYOffset shouldBe 0.8
-        settings.farms.single().specialIncidents.nightCropCount shouldBe 24
+        settings.farms.single().specialIncidents.nightCropPlacementCount shouldBe 90
+        settings.farms.single().specialIncidents.nightCropTargetCount shouldBe 24
         settings.farms.single().specialIncidents.nightCropMinSpacing shouldBe 6.0
         settings.farms.single().specialIncidents.nightPatrolMinCount shouldBe 3
         settings.farms.single().specialIncidents.nightPatrolMaxCount shouldBe 10
@@ -202,7 +204,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().specialIncidents.nightPatrolRoamRadius shouldBe 14.0
         settings.farms.single().specialIncidents.nightPatrolPathRefreshSeconds shouldBe 5
         settings.farms.single().specialIncidents.nightPatrolSpawnMinPlayerDistance shouldBe 8.0
-        settings.farms.single().specialIncidents.nightPatrolMovementSpeed shouldBe 0.30
+        settings.farms.single().specialIncidents.nightPatrolMovementSpeed shouldBe 0.27
         settings.farms.single().specialIncidents.nightPatrolFollowRange shouldBe 8.0
         settings.farms.single().specialIncidents.nightPatrolAttackDamage shouldBe 2.0
         settings.farms.single().specialIncidents.nightPatrolHeldItem shouldBe "TORCH"
@@ -428,6 +430,17 @@ class ArcFarmsConfigTest : FunSpec({
             .message shouldContain "preparation-patch-max-size"
     }
 
+    test("night shift completion target cannot exceed its visible crop count") {
+        val root = resourceTree()
+        val configPath = root.resolve("config.yml")
+        configPath.writeText(
+            Files.readString(configPath).replace("target-count: 24", "target-count: 100"),
+        )
+
+        shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(root) }
+            .message shouldContain "crop target"
+    }
+
     test("mechanized fieldwork explains mounted pig-team control without checkpoints") {
         val repositoryRoot = Path.of(System.getProperty("arcfarms.repositoryRoot"))
         val root = repositoryRoot.resolve("ArcFarms/src/main/resources")
@@ -463,7 +476,7 @@ class ArcFarmsConfigTest : FunSpec({
         val catchupRoot = resourceTree()
         val catchupConfig = catchupRoot.resolve("config.yml")
         catchupConfig.writeText(
-            Files.readString(catchupConfig).replace("seeder-pig-catchup-distance: 7.0", "seeder-pig-catchup-distance: 2.5"),
+            Files.readString(catchupConfig).replace("seeder-pig-catchup-distance: 12.0", "seeder-pig-catchup-distance: 2.5"),
         )
         shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(catchupRoot) }
             .message shouldContain "seeder-pig-catchup-distance"
@@ -692,6 +705,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().seederPatchSize shouldBe 24
         settings.farms.single().seederPatchMaxSize shouldBe 48
         settings.farms.single().seederWorkingRadius shouldBe 4.0
+        settings.farms.single().seederPigCatchupDistance shouldBe 12.0
         settings.farms.single().preparationSearchRadius shouldBe 4
         settings.farms.single().careTargetCount shouldBe 3
         settings.farms.single().animalRescueTargetCount shouldBe 4

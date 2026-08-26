@@ -25,14 +25,16 @@ object FarmSpecialIncidentPlanner {
         fallbackPlot: FarmPlotPosition?,
         irrigationSource: FarmPointPosition?,
         channelGates: Int,
-        nightCrops: Int,
+        nightCropPlacements: Int,
+        nightCropTarget: Int,
         nightCropMinSpacing: Double,
         nightPatrols: Int,
         nightPatrolMinSpacing: Double,
         marketCrops: Int,
     ): FarmSpecialIncidentPlan? {
         require(channelGates in 1..16)
-        require(nightCrops in 1..128)
+        require(nightCropPlacements in 1..128)
+        require(nightCropTarget in 1..nightCropPlacements)
         require(nightCropMinSpacing.isFinite() && nightCropMinSpacing in 0.0..64.0)
         require(nightPatrols in 0..16)
         require(nightPatrolMinSpacing.isFinite() && nightPatrolMinSpacing in 0.0..64.0)
@@ -82,7 +84,7 @@ object FarmSpecialIncidentPlanner {
                     gates.size,
                 )
             }
-            FarmIncidentType.NIGHT_SHIFT -> selectSpaced(candidates, nightCrops, nightCropMinSpacing)
+            FarmIncidentType.NIGHT_SHIFT -> selectSpaced(candidates, nightCropPlacements, nightCropMinSpacing)
                 .takeIf(List<FarmMatureCrop>::isNotEmpty)?.let { chosen ->
                     val patrolCandidates = rotate(
                         nightPatrolPlots.distinct().sortedWith(
@@ -107,7 +109,7 @@ object FarmSpecialIncidentPlanner {
                             points = patrols,
                             plots = chosen.map(FarmMatureCrop::plot),
                         ),
-                        chosen.size,
+                        minOf(nightCropTarget, chosen.size),
                     )
                 }
             FarmIncidentType.MARKET -> candidates.groupBy(FarmMatureCrop::crop).entries
