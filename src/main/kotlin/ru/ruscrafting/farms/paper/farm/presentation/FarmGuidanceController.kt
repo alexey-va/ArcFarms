@@ -168,8 +168,8 @@ internal class FarmGuidanceController(
                     (listOf(source) + special.points.take(visibleFlow)).zipWithNext()
                         .forEach { (from, to) -> spawnWaterTrail(player, from, to) }
                 }
-                FarmIncidentType.NIGHT_SHIFT -> remaining.forEachIndexed { index, plot ->
-                    if (index % 3 == 0) plot.location()?.let { location ->
+                FarmIncidentType.NIGHT_SHIFT -> remaining.forEach { plot ->
+                    plot.location()?.let { location ->
                         player.spawnParticle(Particle.END_ROD, location.add(0.5, 1.65, 0.5), 1, 0.08, 0.12, 0.08, 0.0)
                     }
                 }

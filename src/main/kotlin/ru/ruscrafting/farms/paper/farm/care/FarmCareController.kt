@@ -53,6 +53,7 @@ import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
+import ru.ruscrafting.farms.paper.farm.placement.FarmOpenSkyPolicy
 import ru.ruscrafting.farms.paper.farm.field.FarmFieldController
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -517,6 +518,12 @@ internal class FarmCareController(
             }
         }
         if (target.role == FarmCareRole.ANIMAL) {
+            if (!FarmOpenSkyPolicy.isOpen(location)) {
+                if (port.allowInteraction("farm-animal-covered:${runtime.settings.id}:${target.id}", TimeUnit.MINUTES.toMillis(5))) {
+                    port.log(Level.WARNING, "Skipped covered farm animal target ${runtime.settings.id}/${target.id}")
+                }
+                return
+            }
             val typeName = runtime.settings.careAnimalEntities[
                 java.lang.Math.floorMod(runtime.state.sequence.toInt() + target.id, runtime.settings.careAnimalEntities.size)
             ]

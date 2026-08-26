@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper.farm.placement
 
 import org.bukkit.Location
+import org.bukkit.HeightMap
 import org.bukkit.entity.Player
 import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.domain.FarmDeliveryPlanner
@@ -12,6 +13,14 @@ import ru.ruscrafting.farms.paper.FarmBlockRegistry
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import java.util.random.RandomGenerator
+
+internal object FarmOpenSkyPolicy {
+    fun isOpen(location: Location): Boolean {
+        val world = location.world ?: return false
+        if (!world.isChunkLoaded(location.blockX shr 4, location.blockZ shr 4)) return false
+        return world.getHighestBlockYAt(location.blockX, location.blockZ, HeightMap.MOTION_BLOCKING) < location.blockY
+    }
+}
 
 /** Shared, bounded placement policy for farm objectives and temporary objects. */
 internal class FarmPlacementService(
@@ -101,7 +110,23 @@ internal class FarmPlacementService(
     }
 
     fun safeGroundCandidates(runtime: FarmRuntime, sources: Collection<Location>, radius: Int): List<FarmDeliveryPosition> =
-        sources.asSequence().take(MAX_SOURCES).flatMap { source -> safeGroundCandidates(runtime, source, radius).asSequence() }
+        groundCandidates(runtime, sources, radius, requireOpenSky = false)
+
+    /** Safe ground with no motion-blocking block above the entity's feet. */
+    fun openSkyGroundCandidates(runtime: FarmRuntime, sources: Collection<Location>, radius: Int): List<FarmDeliveryPosition> =
+        groundCandidates(runtime, sources, radius, requireOpenSky = true)
+
+    fun isOpenToSky(location: Location): Boolean = FarmOpenSkyPolicy.isOpen(location)
+
+    private fun groundCandidates(
+        runtime: FarmRuntime,
+        sources: Collection<Location>,
+        radius: Int,
+        requireOpenSky: Boolean,
+    ): List<FarmDeliveryPosition> =
+        sources.asSequence().take(MAX_SOURCES).flatMap { source ->
+            safeGroundCandidates(runtime, source, radius, requireOpenSky).asSequence()
+        }
             .distinct().toList()
 
     fun bedCandidates(runtime: FarmRuntime, sources: Collection<Location>, radius: Int): List<FarmDeliveryPosition> {
@@ -135,6 +160,7 @@ internal class FarmPlacementService(
         runtime: FarmRuntime,
         source: Location,
         radius: Int,
+        requireOpenSky: Boolean,
     ): List<FarmDeliveryPosition> {
         val world = runtime.region.world
         if (source.world != world) return emptyList()
@@ -161,6 +187,9 @@ internal class FarmPlacementService(
                     val feet = world.getBlockAt(x, feetY, z)
                     val head = world.getBlockAt(x, feetY + 1, z)
                     if (!floor.type.isSolid || !feet.type.isAir || !head.type.isAir) return@firstNotNullOfOrNull null
+                    if (requireOpenSky &&
+                        world.getHighestBlockYAt(x, z, HeightMap.MOTION_BLOCKING) >= feetY
+                    ) return@firstNotNullOfOrNull null
                     FarmDeliveryPosition(world.name, location.x, location.y, location.z)
                 }?.let(candidates::add)
             }

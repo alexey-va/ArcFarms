@@ -114,7 +114,7 @@ internal class FarmCarePlanService(
                 val pen = fixturePoint(runtime, FarmPointKind.PEN) ?: return null
                 val sources = placement.sources(runtime, actor?.location)
                 val safePoints = FarmDeliveryPlanner.selectTargets(
-                    placement.safeGroundCandidates(runtime, sources, runtime.settings.placementSearchRadius),
+                    placement.openSkyGroundCandidates(runtime, sources, runtime.settings.placementSearchRadius),
                     pen.x,
                     pen.z,
                     sources.map { it.x to it.z },
