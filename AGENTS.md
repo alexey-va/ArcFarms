@@ -11,6 +11,16 @@ activities: farm, lumbermill, and mine.
   ARC configuration or add ARC API/path compatibility.
 - Keep shift state machines and persistence DTOs independent of Bukkit.
 - Use `Tasks.scheduler`; never schedule gameplay directly through Bukkit.
+  `ArcFarmsService` callbacks additionally belong to `FarmTaskSupervisor`:
+  activate its epoch before startup/reload reconciliation, invalidate it before
+  replacing runtime state, and capture its token before every asynchronous
+  completion that later re-enters the Paper thread. Direct `Tasks.scheduler`
+  calls in the service are forbidden.
+- `ArcFarmsService.kt` is an orchestration boundary under active decomposition,
+  not a home for new cohesive subsystems. Keep it at or below 9,400 lines and
+  reduce that ceiling as code moves out; new stateful features, codecs,
+  transactions, entity lifecycles, and recovery queues need a focused owner
+  with unit tests instead of more service-local maps and helpers.
 - Farm, lumbermill, and mine must have different player verbs and phase flows.
 - A farm shift has one foreground objective. Resolving an incident resumes the
   ordinary crop order directly; do not insert harvest multipliers or parallel
@@ -32,6 +42,9 @@ activities: farm, lumbermill, and mine.
   effects so a relog or restart cannot reroll or duplicate it. Farm crops
   accepted by an order are consumed by that order and never drop; lumber and
   mine resources keep their existing material outcomes.
+- Reward pending/claimed state belongs to `FarmRewardLedger`. Its claim mutation
+  and persistence callback are one rollback-safe operation; never mutate the
+  persisted reward collections directly in the service.
 - Mine block replacement is journaled before mutation and must converge after
   restart without duplicate drops or permanent temporary blocks.
 - All player text belongs in `lang/ru.yml` and `lang/en.yml`; keys stay equal
@@ -50,6 +63,9 @@ activities: farm, lumbermill, and mine.
 - Clear farm recovery entries only after the corresponding world repair was
   confirmed. Patch restoration keeps its block ledger until the cleared state
   is durably saved; unloaded or failed plots remain pending for a later retry.
+- Chunk-PDC recovery codecs must reject oversized, trailing, duplicate, or
+  structurally invalid records. A world-repair journal is removed only for the
+  exact records whose original `BlockData` was decoded and restored successfully.
 - Persistent farm topology is owned by the chunk-PDC block index, not by a
   service-local cache. Rebuild it only through the bounded two-phase admin
   reindex: load chunks asynchronously, hold and release exact plugin tickets,

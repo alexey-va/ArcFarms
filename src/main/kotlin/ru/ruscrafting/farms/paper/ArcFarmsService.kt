@@ -61,8 +61,6 @@ import org.bukkit.plugin.Plugin
 import org.bukkit.util.Transformation
 import org.joml.AxisAngle4f
 import org.joml.Vector3f
-import ru.arc.core.ScheduledTask
-import ru.arc.core.Tasks
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.FarmZoneSettings
@@ -78,6 +76,7 @@ import ru.ruscrafting.farms.domain.ArcFarmsState
 import ru.ruscrafting.farms.domain.EngineResult
 import ru.ruscrafting.farms.domain.FarmOrder
 import ru.ruscrafting.farms.domain.FarmOrderProgressReconciler
+import ru.ruscrafting.farms.domain.FarmPollenCharges
 import ru.ruscrafting.farms.domain.FarmContractPlanner
 import ru.ruscrafting.farms.domain.FarmCarePlanner
 import ru.ruscrafting.farms.domain.FarmOrchardPlanner
@@ -112,6 +111,7 @@ import ru.ruscrafting.farms.domain.FarmSeederStage
 import ru.ruscrafting.farms.domain.FarmRewardPlanner
 import ru.ruscrafting.farms.domain.FarmRewardRecipient
 import ru.ruscrafting.farms.domain.FarmRewardItem
+import ru.ruscrafting.farms.domain.FarmRewardLedger
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.domain.FarmSpecialIncidentEngine
@@ -272,8 +272,7 @@ class ArcFarmsService(
     private var lumbermills: List<LumberRuntime> = emptyList()
     private var mines: List<MineRuntime> = emptyList()
     private val stats = ActivityStatsIndex(currentWeekStartEpochDay = { farmWeekStartEpochDay(clock()) })
-    private val pendingFarmRewards = mutableListOf<PendingFarmReward>()
-    private val claimedFarmRewardSequences = mutableMapOf<String, Long>()
+    private val rewardLedger = FarmRewardLedger()
     private val activeBars = mutableMapOf<BarKey, BossBar>()
     private val farmScoreboards = FarmScoreboardController(FarmScoreboardRenderer(locale), { settings.farmScoreboard }, debug)
     private val contractScene = FarmContractSceneManager(plugin, debug)
@@ -297,7 +296,7 @@ class ArcFarmsService(
     private val diseaseNextSpreadAt = mutableMapOf<String, Long>()
     private val careNextReconcileAt = mutableMapOf<String, Long>()
     private val farmMusic = FarmMusicLoop()
-    private val pollenCharges = mutableMapOf<UUID, Int>()
+    private val pollenCharges = FarmPollenCharges()
     private val waterFlows = mutableMapOf<String, FarmWaterFlowTracker>()
     private val droughtGrowth = mutableMapOf<String, DroughtGrowthRuntime>()
     private val pendingIncidentRestore = mutableSetOf<String>()
@@ -344,7 +343,7 @@ class ArcFarmsService(
     private val careSequenceKey = NamespacedKey(plugin, "farm_care_sequence")
     private val careTargetKey = NamespacedKey(plugin, "farm_care_target")
     private val careRoleKey = NamespacedKey(plugin, "farm_care_role")
-    private val tasks = mutableListOf<ScheduledTask>()
+    private val taskSupervisor = FarmTaskSupervisor()
     @Volatile
     private var started = false
     @Volatile
@@ -356,6 +355,16 @@ class ArcFarmsService(
 
     fun start() {
         check(!started && !closed) { "ArcFarms service cannot be started in its current lifecycle state" }
+        taskSupervisor.activate()
+        try {
+            startActivatedRuntime()
+        } catch (failure: Throwable) {
+            runCatching(taskSupervisor::cancelAll).exceptionOrNull()?.let(failure::addSuppressed)
+            throw failure
+        }
+    }
+
+    private fun startActivatedRuntime() {
         farmLocations = farmLocationRepository.load()
         validateRuntime(settings)
         validateLocationOverrides(settings)
@@ -364,10 +373,7 @@ class ArcFarmsService(
         validatePersistedState(settings, persisted)
         validateMineJournalMaterials()
         stats.replace(persisted.stats)
-        pendingFarmRewards.clear()
-        pendingFarmRewards += persisted.pendingFarmRewards
-        claimedFarmRewardSequences.clear()
-        claimedFarmRewardSequences += persisted.claimedFarmRewardSequences
+        rewardLedger.replace(persisted.pendingFarmRewards, persisted.claimedFarmRewardSequences)
         adminPausedFarmZones.clear()
         adminPausedFarmZones += persisted.pausedFarmZones.orEmpty()
         rebuild(persisted)
@@ -383,7 +389,7 @@ class ArcFarmsService(
         stateSafeToPersist = true
         started = true
         if (persisted != loaded) persistAsync()
-        Tasks.scheduler.runLater(1L) {
+        taskSupervisor.runLater(1L) {
             if (isOperational()) deliverPendingFarmRewards(Bukkit.getOnlinePlayers())
         }
         plugin.logger.info(
@@ -436,6 +442,7 @@ class ArcFarmsService(
     fun isOperational(): Boolean = started && !closed
 
     private fun replaceRuntime(candidate: ArcFarmsConfig, snapshot: ArcFarmsState, reason: String) {
+        taskSupervisor.activate()
         stopAllFarmMusic(reason)
         clearTemporaryFarmWater(reason)
         droughtGrowth.clear()
@@ -778,6 +785,7 @@ class ArcFarmsService(
         val toFarm = farmAt(destination)
         if (fromFarm != null && fromFarm !== toFarm) {
             removeFarmServiceItems(player, fromFarm.settings.id, "left_zone")
+            pollenCharges.remove(player.uniqueId)
             farmScoreboards.remove(player, "left_zone")
         }
         if (toFarm != null && fromFarm !== toFarm) {
@@ -2471,7 +2479,7 @@ class ArcFarmsService(
         fixedCropJournal.remove(positionKey).whenComplete { _, failure ->
             if (failure != null) {
                 plugin.logger.log(Level.SEVERE, "Could not retire fixed crop journal at $positionKey", failure)
-                Tasks.scheduler.runSync {
+                taskSupervisor.runSync {
                     fixedCropJournal.record(positionKey)?.let { pending ->
                         fixedCropRestoreQueue.schedule(
                             FarmFixedCropRestore(
@@ -2508,9 +2516,10 @@ class ArcFarmsService(
             return
         }
         sendActionBar(player, MessageKey.TRAVEL_PREPARING)
+        val lifecycle = taskSupervisor.token()
         network.createTravelTicket(player.uniqueId, kind, destination.server).whenComplete { created, failure ->
             if (!isOperational()) return@whenComplete
-            Tasks.scheduler.runSync {
+            taskSupervisor.runSync(lifecycle) {
                 if (!isOperational()) return@runSync
                 if (!player.isOnline) return@runSync
                 if (failure != null || created != true || !transfer.connect(player, destination.server)) {
@@ -2531,16 +2540,17 @@ class ArcFarmsService(
 
     fun onJoin(player: Player) {
         removeFarmServiceItems(player, reason = "player_join")
-        Tasks.scheduler.runLater(1L) {
+        taskSupervisor.runLater(1L) {
             if (isOperational() && player.isOnline) {
                 deliverPendingFarmRewards(player)
                 syncFarmMusic(player, farmAt(player.location), clock())
             }
         }
         if (!settings.network.enabled) return
+        val lifecycle = taskSupervisor.token()
         network.claimTravelTicket(player.uniqueId, settings.serverId).whenComplete { ticket, failure ->
             if (!isOperational()) return@whenComplete
-            Tasks.scheduler.runLater(1L) {
+            taskSupervisor.runLater(lifecycle, 1L) {
                 if (!isOperational()) return@runLater
                 if (!player.isOnline) return@runLater
                 if (failure != null) {
@@ -2580,9 +2590,10 @@ class ArcFarmsService(
             return
         }
         val location = Location(world, destination.x, destination.y, destination.z, destination.yaw, destination.pitch)
+        val lifecycle = taskSupervisor.token()
         player.teleportAsync(location).whenComplete { success, failure ->
             if (!isOperational()) return@whenComplete
-            Tasks.scheduler.runSync {
+            taskSupervisor.runSync(lifecycle) {
                 if (!isOperational()) return@runSync
                 if (!player.isOnline) return@runSync
                 if (failure != null || success != true) {
@@ -3420,17 +3431,15 @@ class ArcFarmsService(
                 }
             }
             FarmCareRole.HIVE -> {
-                pollenCharges[player.uniqueId] = 2
+                pollenCharges.grant(player.uniqueId, runtime.settings.id, runtime.state.sequence, 2)
                 sendActionBar(player, MessageKey.FARM_CARE_POLLEN_TAKEN)
                 if (target.complete) return
             }
             FarmCareRole.FLOWER_PATCH -> {
-                val charges = pollenCharges[player.uniqueId] ?: 0
-                if (charges <= 0) {
+                if (!pollenCharges.consume(player.uniqueId, runtime.settings.id, runtime.state.sequence)) {
                     sendActionBar(player, MessageKey.FARM_CARE_POLLEN_REQUIRED)
                     return
                 }
-                pollenCharges[player.uniqueId] = charges - 1
             }
             FarmCareRole.ANIMAL -> {
                 val key = CareEntityKey(zoneId, targetId)
@@ -4081,7 +4090,7 @@ class ArcFarmsService(
         debug.event("farm_crop_committed", "player" to player.name, "zone" to runtime.settings.id, "crop" to crop, "drops" to "consumed_by_order")
         val zoneId = runtime.settings.id
         val sequence = runtime.state.sequence
-        Tasks.scheduler.runLater(1L) {
+        taskSupervisor.runLater(1L) {
             val currentRuntime = farms.firstOrNull { it.settings.id == zoneId && it.state.sequence == sequence }
                 ?.takeIf { it.state.phase == FarmPhase.HARVESTING }
                 ?: return@runLater
@@ -4093,7 +4102,7 @@ class ArcFarmsService(
             }
             removeNewFarmDrops(block.location, 2.0, existingItems)
             removeFarmDropInventoryGains(player, inventoryBefore, currentRuntime.settings.id)
-            Tasks.scheduler.runLater(2L) {
+            taskSupervisor.runLater(2L) {
                 removeNewFarmDrops(block.location, 2.0, existingItems)
                 removeFarmDropInventoryGains(player, inventoryBefore, currentRuntime.settings.id)
             }
@@ -4151,7 +4160,7 @@ class ArcFarmsService(
                 )
             }
         }
-        Tasks.scheduler.runLater(1L) {
+        taskSupervisor.runLater(1L) {
             if (!isOperational()) return@runLater
             if (!block.type.isAir) {
                 farmBlockLedger.reconcileFixedCrop(
@@ -4238,7 +4247,7 @@ class ArcFarmsService(
                         )
                     }
                 }
-                if (ShiftEvent.INCIDENT_STARTED in result.events) Tasks.scheduler.runLater(settings.titleStaySeconds * 20L + 10L, announce)
+                if (ShiftEvent.INCIDENT_STARTED in result.events) taskSupervisor.runLater(settings.titleStaySeconds * 20L + 10L, announce)
                 else announce()
             }
         }
@@ -4355,7 +4364,7 @@ class ArcFarmsService(
                 mineReservations.remove(positionKey)
                 return@whenComplete
             }
-            Tasks.scheduler.runSync {
+            taskSupervisor.runSync {
                 if (failure != null) {
                     mineReservations.remove(positionKey)
                     if (player.isOnline) sendChat(player, MessageKey.MINE_JOURNAL_FAILED)
@@ -4978,8 +4987,8 @@ class ArcFarmsService(
     }
 
     private fun startTasks() {
-        tasks += Tasks.scheduler.runTimer(1L, 1L) { runGuarded("farm_block_restores", ::processFarmBlockRestores) }
-        tasks += Tasks.scheduler.runTimer(1L, 1L) {
+        taskSupervisor.runTimer(1L, 1L) { runGuarded("farm_block_restores", ::processFarmBlockRestores) }
+        taskSupervisor.runTimer(1L, 1L) {
             val tick = ++seederVisualTick
             farms.forEach { runtime ->
                 runGuarded("farm_seeder:${runtime.settings.id}") {
@@ -4989,9 +4998,9 @@ class ArcFarmsService(
                 }
             }
         }
-        tasks += Tasks.scheduler.runTimer(20L, 20L) { runGuarded("tick", ::tick) }
-        tasks += Tasks.scheduler.runTimer(10L, 10L) { runGuarded("guidance_particles", ::emitGuidanceParticles) }
-        tasks += Tasks.scheduler.runTimer(5L, 5L) {
+        taskSupervisor.runTimer(20L, 20L) { runGuarded("tick", ::tick) }
+        taskSupervisor.runTimer(10L, 10L) { runGuarded("guidance_particles", ::emitGuidanceParticles) }
+        taskSupervisor.runTimer(5L, 5L) {
             farms.forEach { runtime ->
                 runGuarded("farm_animals:${runtime.settings.id}") {
                     if (!isAdminEditingFarm(runtime)) {
@@ -5007,16 +5016,15 @@ class ArcFarmsService(
                 }
             }
         }
-        tasks += Tasks.scheduler.runTimer(1L, 1L) { runGuarded("carried_displays", ::updateCarriedDisplays) }
-        tasks += Tasks.scheduler.runTimer(
+        taskSupervisor.runTimer(1L, 1L) { runGuarded("carried_displays", ::updateCarriedDisplays) }
+        taskSupervisor.runTimer(
             settings.saveSeconds * 20L,
             settings.saveSeconds * 20L,
         ) { runGuarded("periodic_save", ::persistAsync) }
     }
 
     private fun stopTasks() {
-        tasks.forEach(ScheduledTask::cancel)
-        tasks.clear()
+        taskSupervisor.cancelAll()
     }
 
     private fun tick() {
@@ -5980,7 +5988,7 @@ class ArcFarmsService(
 
     private fun clearFarmCare(runtime: FarmRuntime, reason: String) {
         careEntities.keys.filter { it.zoneId == runtime.settings.id }.toList().forEach { removeFarmCareEntities(it, reason) }
-        players(runtime.region).forEach { pollenCharges.remove(it.uniqueId) }
+        pollenCharges.clear(runtime.settings.id, runtime.state.sequence)
         diseaseNextSpreadAt.remove(runtime.settings.id)
         careNextReconcileAt.remove(runtime.settings.id)
     }
@@ -6803,7 +6811,7 @@ class ArcFarmsService(
             )
         }
         for (delay in 1L..19L step 2L) {
-            Tasks.scheduler.runLater(delay) {
+            taskSupervisor.runLater(delay) {
                 if (tracker.isActive(flowId)) observeWaterAndDrops()
             }
         }
@@ -6820,7 +6828,7 @@ class ArcFarmsService(
             "z" to source.z,
             "watered_plots" to reachedImmediately.size,
         )
-        Tasks.scheduler.runLater(21L) {
+        taskSupervisor.runLater(21L) {
             if (!tracker.isActive(flowId)) return@runLater
             observeWaterAndDrops()
             val trackedWater = tracker.positions(flowId)
@@ -7978,7 +7986,7 @@ class ArcFarmsService(
         animalFollowers.clear()
         diseaseNextSpreadAt.clear()
         careNextReconcileAt.clear()
-        pollenCharges.clear()
+        pollenCharges.clearAll()
         pendingIncidentRestore.clear()
         patchRestoreProgress.clear()
         fixedCropRestoreQueue.clear()
@@ -8104,7 +8112,9 @@ class ArcFarmsService(
                     FarmCareType.SEEDER -> incomplete.firstOrNull { it.role == FarmCareRole.SEEDER_HORSE }
                         ?.let(::listOf).orEmpty()
                     FarmCareType.IRRIGATION -> incomplete.minByOrNull(FarmCareTarget::id)?.let(::listOf).orEmpty()
-                    FarmCareType.POLLINATION -> if ((pollenCharges[player.uniqueId] ?: 0) > 0) {
+                    FarmCareType.POLLINATION -> if (
+                        pollenCharges.remaining(player.uniqueId, runtime.settings.id, runtime.state.sequence) > 0
+                    ) {
                         incomplete.filter { it.role == FarmCareRole.FLOWER_PATCH }
                     } else {
                         listOfNotNull(hive)
@@ -8328,7 +8338,7 @@ class ArcFarmsService(
             if (player.world == world) spawnGuidanceColumn(player, Location(world, point.x, point.y, point.z), color)
         }
         if (remainingBursts > 1) {
-            Tasks.scheduler.runLater(10L) { showDebugFarmGuidance(playerId, zoneId, remainingBursts - 1) }
+            taskSupervisor.runLater(10L) { showDebugFarmGuidance(playerId, zoneId, remainingBursts - 1) }
         }
     }
 
@@ -8889,12 +8899,12 @@ class ArcFarmsService(
         recipients.mapNotNull(Bukkit::getPlayer).forEach { player ->
             player.playSound(player.location, Sound.BLOCK_NOTE_BLOCK_CHIME, 0.65f, basePitch)
         }
-        Tasks.scheduler.runLater(4L) {
+        taskSupervisor.runLater(4L) {
             recipients.mapNotNull(Bukkit::getPlayer).filter { runtime.region.contains(it.location) }.forEach { player ->
                 player.playSound(player.location, Sound.BLOCK_AMETHYST_BLOCK_CHIME, 0.6f, basePitch + 0.18f)
             }
         }
-        Tasks.scheduler.runLater(8L) {
+        taskSupervisor.runLater(8L) {
             recipients.mapNotNull(Bukkit::getPlayer).filter { runtime.region.contains(it.location) }.forEach { player ->
                 player.playSound(player.location, Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.55f, basePitch + 0.32f)
             }
@@ -8928,7 +8938,7 @@ class ArcFarmsService(
             if (settings.sounds) player.playSound(player.location, Sound.ENTITY_FIREWORK_ROCKET_LAUNCH, 0.7f, 1.15f)
         }
         if (recipients.isEmpty()) return
-        Tasks.scheduler.runLater(8L) {
+        taskSupervisor.runLater(8L) {
             recipients.filter(Player::isOnline).forEach { player ->
                 if (settings.particles) {
                     player.spawnParticle(Particle.FIREWORK, player.location.add(0.0, 1.8, 0.0), 10, 0.9, 0.7, 0.9, 0.04)
@@ -8972,7 +8982,7 @@ class ArcFarmsService(
         )
         val planned = ranked.mapIndexedNotNull { index, (playerId, contribution) ->
             val claimKey = "${runtime.settings.id}:$playerId"
-            if ((claimedFarmRewardSequences[claimKey] ?: -1L) >= runtime.state.sequence) return@mapIndexedNotNull null
+            if (rewardLedger.isClaimed(claimKey, runtime.state.sequence)) return@mapIndexedNotNull null
             FarmRewardPlanner.plan(
                 settings = runtime.settings.rewards,
                 zoneId = runtime.settings.id,
@@ -8984,14 +8994,14 @@ class ArcFarmsService(
                     rank = index + 1,
                 ),
                 moneyMultiplierPercent = 100 + runtime.state.rewardMoneyBonusPercent,
-            ).takeUnless { grant -> pendingFarmRewards.any { it.id == grant.id } }
+            ).takeUnless { grant -> rewardLedger.contains(grant.id) }
         }
-        if (planned.isEmpty()) return
-        pendingFarmRewards += planned
+        val accepted = rewardLedger.enqueue(planned)
+        if (accepted.isEmpty()) return
         val saved = runCatching(::persistBlocking).onFailure { failure ->
             plugin.logger.log(Level.SEVERE, "Could not persist resolved farm completion rewards", failure)
         }.isSuccess
-        planned.forEach { reward ->
+        accepted.forEach { reward ->
             debug.event(
                 "farm_reward_planned",
                 "zone" to reward.zoneId,
@@ -9007,13 +9017,13 @@ class ArcFarmsService(
         }
         if (saved) {
             deliverPendingFarmRewards(
-                planned.mapNotNull { Bukkit.getPlayer(it.playerId) }.filter(Player::isOnline).distinctBy(Player::getUniqueId),
+                accepted.mapNotNull { Bukkit.getPlayer(it.playerId) }.filter(Player::isOnline).distinctBy(Player::getUniqueId),
             )
         } else {
-            Tasks.scheduler.runLater(20L) {
+            taskSupervisor.runLater(20L) {
                 if (isOperational()) {
                     deliverPendingFarmRewards(
-                        planned.mapNotNull { Bukkit.getPlayer(it.playerId) }.filter(Player::isOnline)
+                        accepted.mapNotNull { Bukkit.getPlayer(it.playerId) }.filter(Player::isOnline)
                             .distinctBy(Player::getUniqueId),
                     )
                 }
@@ -9026,31 +9036,19 @@ class ArcFarmsService(
     private fun deliverPendingFarmRewards(players: Collection<Player>) {
         val online = players.filter(Player::isOnline).distinctBy(Player::getUniqueId).associateBy(Player::getUniqueId)
         if (online.isEmpty()) return
-        val candidates = pendingFarmRewards.filter { it.playerId in online }
-        if (candidates.isEmpty()) return
-        val deliverable = candidates.filter { reward ->
-            (claimedFarmRewardSequences[reward.claimKey] ?: -1L) < reward.sequence
-        }.sortedWith(compareBy(PendingFarmReward::sequence, PendingFarmReward::id))
-        val beforePending = pendingFarmRewards.toList()
-        val beforeClaims = claimedFarmRewardSequences.toMap()
-        pendingFarmRewards.removeAll(candidates.toSet())
-        deliverable.groupBy(PendingFarmReward::claimKey).forEach { (claimKey, rewards) ->
-            claimedFarmRewardSequences[claimKey] = rewards.maxOf(PendingFarmReward::sequence)
-        }
-        try {
-            persistBlocking()
-        } catch (failure: Exception) {
-            pendingFarmRewards.clear()
-            pendingFarmRewards += beforePending
-            claimedFarmRewardSequences.clear()
-            claimedFarmRewardSequences += beforeClaims
-            plugin.logger.log(Level.SEVERE, "Could not claim ${deliverable.size} farm reward(s); delivery was not attempted", failure)
-            deliverable.forEach { reward ->
+        val claim = rewardLedger.claim(online.keys, ::persistBlocking)
+        claim.failure?.let { failure ->
+            plugin.logger.log(
+                Level.SEVERE,
+                "Could not claim ${claim.rewards.size} farm reward(s); delivery was not attempted",
+                failure,
+            )
+            claim.rewards.forEach { reward ->
                 debug.event("farm_reward_claim_failed", "grant" to reward.id, "player" to reward.playerId)
             }
             return
         }
-        deliverable.forEach { reward -> online[reward.playerId]?.let { player -> deliverClaimedFarmReward(player, reward) } }
+        claim.rewards.forEach { reward -> online[reward.playerId]?.let { player -> deliverClaimedFarmReward(player, reward) } }
     }
 
     private fun deliverClaimedFarmReward(player: Player, reward: PendingFarmReward) {
@@ -9269,15 +9267,18 @@ class ArcFarmsService(
     private fun positionKey(location: Location): String =
         "${location.world.name}:${location.blockX}:${location.blockY}:${location.blockZ}"
 
-    private fun snapshotState(): ArcFarmsState = ArcFarmsState(
-        farms = farms.associate { it.settings.id to it.state },
-        pausedFarmZones = adminPausedFarmZones.toSet(),
-        lumbermills = lumbermills.associate { it.settings.id to it.state },
-        mines = mines.associate { it.settings.id to it.state },
-        stats = stats.snapshot(),
-        pendingFarmRewards = pendingFarmRewards.toList(),
-        claimedFarmRewardSequences = claimedFarmRewardSequences.toMap(),
-    )
+    private fun snapshotState(): ArcFarmsState {
+        val rewards = rewardLedger.snapshot()
+        return ArcFarmsState(
+            farms = farms.associate { it.settings.id to it.state },
+            pausedFarmZones = adminPausedFarmZones.toSet(),
+            lumbermills = lumbermills.associate { it.settings.id to it.state },
+            mines = mines.associate { it.settings.id to it.state },
+            stats = stats.snapshot(),
+            pendingFarmRewards = rewards.pending,
+            claimedFarmRewardSequences = rewards.claimed,
+        )
+    }
 
     private fun persistAsync() {
         if (persistenceSuspended) {

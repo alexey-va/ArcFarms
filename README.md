@@ -360,19 +360,36 @@ button.
 - WorldGuard is required only on a gameplay node that names WorldGuard regions.
   Empty relay nodes and explicit-cuboid lab profiles load without it.
 
+## Reliability boundaries
+
+`ArcFarmsService` now orchestrates several focused lifecycle owners instead of
+keeping every mutable concern in one collection. `FarmTaskSupervisor` assigns
+each startup or reload a fresh epoch, tracks both repeating and one-shot work,
+and rejects an asynchronous completion from an old runtime. Pollination charges
+are scoped to an exact farm and shift. `FarmRewardLedger` owns deduplication and
+the persist-before-delivery claim transaction with exact rollback on storage
+failure. Giant-crop recovery has a bounded, strictly validated chunk-PDC codec;
+a journal entry remains durable until its original block data was actually
+decoded and restored.
+
+Architecture tests forbid scheduler bypasses in the service and cap the existing
+monolith while decomposition continues. New stateful gameplay subsystems must be
+introduced as focused owners with their own invariant tests rather than adding
+more service-local maps.
+
 ## Build
 
 ```bash
 ../arc-core/gradlew clean check shadowJar
 ```
 
-The deployable artifact is `build/libs/ArcFarms-0.18.6.jar`.
+The deployable artifact is `build/libs/ArcFarms-0.19.1.jar`.
 
 ## Isolated gameplay QA
 
 `scripts/lab/plugin-configs/ArcFarms/config.yml` defines three small cuboid
 fixtures. The player-bot session exposes only the fixed `arcfarms` operations
-`fixture-setup`, `reload`, `travel`, `debug-controls`, `scoreboard`, `market-flow`, `night-shift`, `orchard-flow`, `care-stories`, `drought-flow`,
+`fixture-setup`, `reload`, `travel`, `debug-controls`, `scoreboard`, `market-flow`, `night-shift`, `channels-flow`, `giant-crop`, `orchard-flow`, `care-stories`, `seeder-rig`, `drought-flow`,
 `pest-stability`, `farm`, `lumber`, `mine`, `status`, and `fixture-cleanup` on
 the lab port and documented OP QA identities; it accepts no command or target
 arguments. Always clean the scene after a smoke run.
