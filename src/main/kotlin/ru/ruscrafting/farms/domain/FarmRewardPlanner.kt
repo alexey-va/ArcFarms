@@ -48,7 +48,19 @@ object FarmRewardPlanner {
 
         val commands = settings.commands.filter { reward ->
             passes(grantId, "command:${reward.id}", reward.chancePercent)
-        }.map { reward -> expandCommand(reward.command, grantId, zoneId, sequence, recipient) }
+        }.map { reward ->
+            TrustedFarmCommandTemplate.parse(reward.command).resolve(
+                FarmRewardCommandContext(
+                    playerName = recipient.playerName,
+                    playerId = recipient.playerId,
+                    zoneId = zoneId,
+                    sequence = sequence,
+                    contribution = recipient.contribution,
+                    rank = recipient.rank,
+                    grantId = grantId,
+                ),
+            ).value
+        }
 
         return PendingFarmReward(
             id = grantId,
@@ -68,21 +80,6 @@ object FarmRewardPlanner {
             bundleIds = bundleIds,
         )
     }
-
-    private fun expandCommand(
-        template: String,
-        grantId: String,
-        zoneId: String,
-        sequence: Long,
-        recipient: FarmRewardRecipient,
-    ): String = template
-        .replace("%player%", recipient.playerName)
-        .replace("%uuid%", recipient.playerId.toString())
-        .replace("%zone%", zoneId)
-        .replace("%sequence%", sequence.toString())
-        .replace("%contribution%", recipient.contribution.toString())
-        .replace("%rank%", recipient.rank.toString())
-        .replace("%grant_id%", grantId)
 
     private fun passes(grantId: String, key: String, chancePercent: Int): Boolean = when (chancePercent) {
         0 -> false

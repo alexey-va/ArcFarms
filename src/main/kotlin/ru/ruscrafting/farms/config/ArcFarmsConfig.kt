@@ -10,6 +10,7 @@ import ru.ruscrafting.farms.domain.FarmCustomerType
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.MAX_FARM_PATCH_PLOTS
+import ru.ruscrafting.farms.domain.TrustedFarmCommandTemplate
 import java.nio.file.Path
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -1099,18 +1100,7 @@ class ArcFarmsConfig private constructor(
             val commands = section.keys("rewards.commands").sorted().map { rewardId ->
                 validateId(rewardId, "farm command reward")
                 val path = "rewards.commands.$rewardId"
-                val command = section.string("$path.command").trim().removePrefix("/").also {
-                    require(it.length in 1..512 && '\n' !in it && '\r' !in it) {
-                        "Farm zone $zoneId command reward $rewardId is empty or too long"
-                    }
-                    val placeholders = COMMAND_PLACEHOLDER.findAll(it).map { match -> match.value }.toSet()
-                    require(placeholders.all(ALLOWED_COMMAND_PLACEHOLDERS::contains)) {
-                        "Farm zone $zoneId command reward $rewardId uses an unknown placeholder"
-                    }
-                    require('%' !in COMMAND_PLACEHOLDER.replace(it, "")) {
-                        "Farm zone $zoneId command reward $rewardId contains an incomplete placeholder"
-                    }
-                }
+                val command = TrustedFarmCommandTemplate.parse(section.string("$path.command")).value
                 FarmCommandRewardSettings(rewardId, command, chance("$path.chance-percent"))
             }
             require(commands.size <= 32) { "Farm zone $zoneId has too many command rewards" }
@@ -1227,16 +1217,6 @@ class ArcFarmsConfig private constructor(
             require(it in minimum..maximum) { "$label must be in $minimum..$maximum" }
         }
 
-        private val COMMAND_PLACEHOLDER = Regex("%[a-z_]+%")
-        private val ALLOWED_COMMAND_PLACEHOLDERS = setOf(
-            "%player%",
-            "%uuid%",
-            "%zone%",
-            "%sequence%",
-            "%contribution%",
-            "%rank%",
-            "%grant_id%",
-        )
     }
 }
 
