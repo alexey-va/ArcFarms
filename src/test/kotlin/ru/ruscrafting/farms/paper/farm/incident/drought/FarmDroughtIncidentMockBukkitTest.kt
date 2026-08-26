@@ -11,7 +11,6 @@ import org.bukkit.event.block.Action
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
-import org.mockbukkit.mockbukkit.MockBukkit
 import org.mockbukkit.mockbukkit.ServerMock
 import org.mockbukkit.mockbukkit.world.WorldMock
 import ru.ruscrafting.farms.config.ArcFarmsConfig
@@ -29,20 +28,22 @@ import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
+import ru.arc.paper.testing.MockBukkitTestRuntime
 
 class FarmDroughtIncidentMockBukkitTest : FunSpec({
     lateinit var server: ServerMock
     lateinit var world: WorldMock
+    lateinit var paper: MockBukkitTestRuntime
 
     beforeEach {
-        if (MockBukkit.isMocked()) MockBukkit.unmock()
-        server = MockBukkit.mock()
+        paper = MockBukkitTestRuntime.open()
+        server = paper.server
         world = server.addSimpleWorld("farm")
         world.getChunkAt(0, 0).load()
     }
 
     afterEach {
-        if (MockBukkit.isMocked()) MockBukkit.unmock()
+        paper.close()
     }
 
     test("invalid infinite bucket placement is consumed and explains the drought target") {

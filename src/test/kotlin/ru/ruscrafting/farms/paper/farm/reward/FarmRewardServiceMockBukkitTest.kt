@@ -7,9 +7,10 @@ import io.mockk.every
 import io.mockk.mockk
 import net.kyori.adventure.text.Component
 import org.bukkit.Material
-import org.mockbukkit.mockbukkit.MockBukkit
+import org.bukkit.plugin.Plugin
 import org.mockbukkit.mockbukkit.entity.PlayerMock
 import ru.arc.core.TestTaskScheduler
+import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.FarmRewardItem
@@ -21,18 +22,21 @@ import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 
 class FarmRewardServiceMockBukkitTest : FunSpec({
     lateinit var player: PlayerMock
+    lateinit var paper: MockBukkitTestRuntime
+    lateinit var plugin: Plugin
 
     beforeEach {
-        if (MockBukkit.isMocked()) MockBukkit.unmock()
-        player = MockBukkit.mock().addPlayer("Worker")
+        paper = MockBukkitTestRuntime.open()
+        plugin = paper.createSimplePlugin("FarmRewardTest")
+        player = paper.addPlayer("Worker")
     }
 
     afterEach {
-        if (MockBukkit.isMocked()) MockBukkit.unmock()
+        paper.close()
     }
 
     test("failed durable claim does not deliver or lose the pending reward") {
-        val fixture = rewardFixture(player, persist = { error("disk unavailable") })
+        val fixture = rewardFixture(player, plugin, persist = { error("disk unavailable") })
 
         fixture.service.deliverPending(player)
 
@@ -44,7 +48,7 @@ class FarmRewardServiceMockBukkitTest : FunSpec({
 
     test("successful durable claim delivers exactly once") {
         var saves = 0
-        val fixture = rewardFixture(player, persist = { saves++ })
+        val fixture = rewardFixture(player, plugin, persist = { saves++ })
 
         fixture.service.deliverPending(player)
         fixture.service.deliverPending(player)
@@ -59,7 +63,7 @@ class FarmRewardServiceMockBukkitTest : FunSpec({
 
 private data class RewardFixture(val service: FarmRewardService)
 
-private fun rewardFixture(player: PlayerMock, persist: () -> Unit): RewardFixture {
+private fun rewardFixture(player: PlayerMock, plugin: Plugin, persist: () -> Unit): RewardFixture {
     val supervisor = RuntimeTaskSupervisor(TestTaskScheduler()).apply(RuntimeTaskSupervisor::activate)
     val locale = mockk<ArcFarmsLocale>(relaxed = true) {
         every { text(any()) } answers { Component.text(firstArg<Any?>()?.toString().orEmpty()) }
@@ -71,7 +75,7 @@ private fun rewardFixture(player: PlayerMock, persist: () -> Unit): RewardFixtur
         every { deposit(any(), any()) } returns true
     }
     val service = FarmRewardService(
-        plugin = MockBukkit.createMockPlugin("FarmRewardTest"),
+        plugin = plugin,
         locale = locale,
         economy = economy,
         debug = ArcFarmsDebug({ false }) {},

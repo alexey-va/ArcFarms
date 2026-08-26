@@ -6,7 +6,7 @@ import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import net.kyori.adventure.text.Component
-import org.mockbukkit.mockbukkit.MockBukkit
+import org.bukkit.plugin.Plugin
 import org.mockbukkit.mockbukkit.ServerMock
 import org.mockbukkit.mockbukkit.world.WorldMock
 import ru.ruscrafting.farms.config.ArcFarmsConfig
@@ -27,25 +27,29 @@ import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
+import ru.arc.paper.testing.MockBukkitTestRuntime
 import java.util.Random
 
 class FarmPestIncidentMockBukkitTest : FunSpec({
     lateinit var server: ServerMock
     lateinit var world: WorldMock
+    lateinit var paper: MockBukkitTestRuntime
+    lateinit var plugin: Plugin
 
     beforeEach {
-        if (MockBukkit.isMocked()) MockBukkit.unmock()
-        server = MockBukkit.mock()
+        paper = MockBukkitTestRuntime.open()
+        server = paper.server
+        plugin = paper.createSimplePlugin("FarmPestTest")
         world = server.addSimpleWorld("farm")
         world.getChunkAt(0, 0).load()
     }
 
     afterEach {
-        if (MockBukkit.isMocked()) MockBukkit.unmock()
+        paper.close()
     }
 
     test("nest scene converges after controller restart without duplication") {
-        val fixture = pestFixture(world)
+        val fixture = pestFixture(world, plugin)
         fixture.controller.ensure(fixture.runtime)
         world.entities.filter(fixture.controller::ownsNest) shouldHaveSize 4
 
@@ -57,7 +61,7 @@ class FarmPestIncidentMockBukkitTest : FunSpec({
     }
 
     test("sequence change replaces stale nest entities instead of retaining orphans") {
-        val fixture = pestFixture(world)
+        val fixture = pestFixture(world, plugin)
         fixture.controller.ensure(fixture.runtime)
         val originalIds = world.entities.filter(fixture.controller::ownsNest).mapTo(mutableSetOf()) { it.uniqueId }
         fixture.runtime.state = fixture.runtime.state.copy(sequence = fixture.runtime.state.sequence + 1)
@@ -70,7 +74,7 @@ class FarmPestIncidentMockBukkitTest : FunSpec({
     }
 
     test("cleanup removes every loaded pest-owned entity") {
-        val fixture = pestFixture(world)
+        val fixture = pestFixture(world, plugin)
         fixture.controller.ensure(fixture.runtime)
         world.entities.count(fixture.controller::ownsNest) shouldBe 4
 
@@ -86,8 +90,7 @@ private data class PestFixture(
     val newController: () -> FarmPestIncident,
 )
 
-private fun pestFixture(world: WorldMock): PestFixture {
-    val plugin = MockBukkit.createMockPlugin("FarmPestTest")
+private fun pestFixture(world: WorldMock, plugin: Plugin): PestFixture {
     val config = mockk<ArcFarmsConfig> {
         every { sounds } returns false
         every { particles } returns false

@@ -7,7 +7,7 @@ import io.mockk.every
 import io.mockk.mockk
 import org.bukkit.Location
 import org.bukkit.entity.Interaction
-import org.mockbukkit.mockbukkit.MockBukkit
+import org.bukkit.plugin.Plugin
 import org.mockbukkit.mockbukkit.ServerMock
 import org.mockbukkit.mockbukkit.entity.PlayerMock
 import org.mockbukkit.mockbukkit.world.WorldMock
@@ -30,15 +30,19 @@ import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
+import ru.arc.paper.testing.MockBukkitTestRuntime
 
 class FarmDeliveryControllerMockBukkitTest : FunSpec({
     lateinit var server: ServerMock
     lateinit var world: WorldMock
     lateinit var player: PlayerMock
+    lateinit var paper: MockBukkitTestRuntime
+    lateinit var plugin: Plugin
 
     beforeEach {
-        if (MockBukkit.isMocked()) MockBukkit.unmock()
-        server = MockBukkit.mock()
+        paper = MockBukkitTestRuntime.open()
+        server = paper.server
+        plugin = paper.createSimplePlugin("FarmDeliveryTest")
         world = server.addSimpleWorld("farm")
         world.getChunkAt(0, 0).load()
         player = server.addPlayer("Courier")
@@ -46,11 +50,11 @@ class FarmDeliveryControllerMockBukkitTest : FunSpec({
     }
 
     afterEach {
-        if (MockBukkit.isMocked()) MockBukkit.unmock()
+        paper.close()
     }
 
     test("ground crates reconcile after controller restart without duplication") {
-        val fixture = deliveryFixture(world, crates = 2)
+        val fixture = deliveryFixture(world, plugin, crates = 2)
         fixture.controller.ensure(fixture.runtime)
         world.entities.filter(fixture.controller::owns) shouldHaveSize 4
 
@@ -62,7 +66,7 @@ class FarmDeliveryControllerMockBukkitTest : FunSpec({
     }
 
     test("a crate carried during a hard restart returns to the ground") {
-        val fixture = deliveryFixture(world, crates = 2)
+        val fixture = deliveryFixture(world, plugin, crates = 2)
         fixture.controller.ensure(fixture.runtime)
         val crate = world.entities.filterIsInstance<Interaction>()
             .first { fixture.controller.identity(it)?.index == 0 }
@@ -77,7 +81,7 @@ class FarmDeliveryControllerMockBukkitTest : FunSpec({
     }
 
     test("delivery movement applies the domain transition once") {
-        val fixture = deliveryFixture(world, crates = 1)
+        val fixture = deliveryFixture(world, plugin, crates = 1)
         fixture.controller.ensure(fixture.runtime)
         val crate = world.entities.filterIsInstance<Interaction>()
             .single { fixture.controller.isGroundInteraction(it) }
@@ -98,8 +102,7 @@ private data class DeliveryFixture(
     val newController: () -> FarmDeliveryController,
 )
 
-private fun deliveryFixture(world: WorldMock, crates: Int): DeliveryFixture {
-    val plugin = MockBukkit.createMockPlugin("FarmDeliveryTest")
+private fun deliveryFixture(world: WorldMock, plugin: Plugin, crates: Int): DeliveryFixture {
     val delivery = FarmDeliverySettings(
         world = world.name,
         x = 12.5,

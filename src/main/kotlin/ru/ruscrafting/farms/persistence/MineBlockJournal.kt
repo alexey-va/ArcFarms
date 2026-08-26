@@ -27,6 +27,8 @@ class MineBlockJournal(dataRoot: Path) : MineRecoveryJournal, AutoCloseable {
 
     override fun records(): List<PendingMineBlock> = synchronized(lock) { records.values.toList() }
 
+    fun pendingRecordCount(): Int = synchronized(lock) { records.size }
+
     override fun containsPosition(positionKey: String): Boolean = synchronized(lock) {
         records.values.any { it.positionKey == positionKey }
     }
@@ -61,7 +63,7 @@ class MineBlockJournal(dataRoot: Path) : MineRecoveryJournal, AutoCloseable {
 
     private companion object {
         fun validateState(state: MineBlockJournalState) {
-            require(state.schemaVersion == 1) { "Unsupported mine journal schema" }
+            require(state.schemaVersion == MineBlockJournalState.SCHEMA_VERSION) { "Unsupported mine journal schema" }
             require(state.records.size <= 100_000) { "Mine journal is unbounded" }
             require(state.records.entries.all { (id, record) -> id == record.id }) { "Mine journal key mismatch" }
             require(state.records.values.map(PendingMineBlock::positionKey).toSet().size == state.records.size) {

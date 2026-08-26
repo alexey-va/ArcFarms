@@ -7,12 +7,19 @@ import org.slf4j.LoggerFactory
 import ru.arc.config.ConfigManager
 import ru.arc.core.PaperArcRuntime
 import ru.arc.core.Tasks
+import ru.arc.observability.RuntimeHealthContribution
+import ru.arc.observability.RuntimeHealthState
+import ru.arc.paper.runtime.PaperPluginRuntime
 import ru.arc.redis.RedisManager
 import ru.arc.redis.ServerIdentity
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.ArcFarmsRedisBootstrap
 import ru.ruscrafting.farms.config.FarmScoreboardProvider
+import ru.ruscrafting.farms.domain.ArcFarmsState
+import ru.ruscrafting.farms.domain.FarmLocationOverrides
+import ru.ruscrafting.farms.domain.FixedFarmCropJournalState
+import ru.ruscrafting.farms.domain.MineBlockJournalState
 import ru.ruscrafting.farms.network.ArcFarmsNetworkRepository
 import ru.ruscrafting.farms.network.NoOpActivityNetworkGateway
 import ru.ruscrafting.farms.persistence.ArcFarmsStateRepository
@@ -35,6 +42,7 @@ class ArcFarmsPlugin : JavaPlugin() {
     private var network: ArcFarmsNetworkService? = null
     private var transfer: BungeeBackendTransfer? = null
     private var placeholderExpansion: ArcFarmsPlaceholderExpansion? = null
+    private var pluginRuntime: PaperPluginRuntime? = null
 
     override fun onEnable() {
         saveDefaultConfig()
@@ -42,6 +50,10 @@ class ArcFarmsPlugin : JavaPlugin() {
         saveResourceIfMissing("lang/en.yml")
         saveResourceIfMissing("modules/redis.yml")
         PaperArcRuntime.installScheduling(this)
+        val lifecycle = PaperPluginRuntime(this, "arc-farms").also {
+            pluginRuntime = it
+            it.start("version" to pluginMeta.version)
+        }
         try {
             val dataRoot = dataFolder.toPath()
             settings = ArcFarmsConfig.load(dataRoot)
@@ -56,26 +68,28 @@ class ArcFarmsPlugin : JavaPlugin() {
                     ServerIdentity { settings.serverId },
                     LoggerFactory.getLogger("ArcFarms.Redis"),
                 )
+                lifecycle.own(manager)
                 redis = manager
-                ArcFarmsNetworkService(
+                val networkService = ArcFarmsNetworkService(
                     plugin = this,
                     settings = { settings },
                     locale = locale,
                     repository = ArcFarmsNetworkRepository(manager, Gson()),
                     redis = manager,
                     debug = debug,
-                ).also {
-                    it.start()
-                    network = it
-                    manager.init()
-                }
+                )
+                lifecycle.own(networkService)
+                networkService.start()
+                network = networkService
+                manager.init()
+                networkService
             } else {
                 NoOpActivityNetworkGateway
             }
-            stateRepository = ArcFarmsStateRepository(dataRoot)
-            mineJournal = MineBlockJournal(dataRoot)
-            fixedCropJournal = FixedFarmCropJournal(dataRoot)
-            farmLocationRepository = FarmLocationRepository(dataRoot)
+            val stateStore = lifecycle.own(ArcFarmsStateRepository(dataRoot)).also { stateRepository = it }
+            val mineStore = lifecycle.own(MineBlockJournal(dataRoot)).also { mineJournal = it }
+            val fixedCropStore = lifecycle.own(FixedFarmCropJournal(dataRoot)).also { fixedCropJournal = it }
+            val locationStore = lifecycle.own(FarmLocationRepository(dataRoot)).also { farmLocationRepository = it }
             val regionGateway = if (settings.requiresWorldGuard) {
                 require(server.pluginManager.isPluginEnabled("WorldGuard")) {
                     "WorldGuard is required because this node configures named regions"
@@ -88,27 +102,29 @@ class ArcFarmsPlugin : JavaPlugin() {
                 !settings.farmScoreboard.enabled || settings.farmScoreboard.provider != FarmScoreboardProvider.TAB ||
                     server.pluginManager.isPluginEnabled("PlaceholderAPI"),
             ) { "PlaceholderAPI is required when ui.farm-scoreboard.provider is TAB" }
-            val activeService = ArcFarmsService(
+            val backendTransfer = lifecycle.own(BungeeBackendTransfer(this) { failure ->
+                logger.log(Level.WARNING, "ArcFarms backend transfer send failed", failure)
+            }).also { transfer = it }
+            val activeService = lifecycle.own(ArcFarmsService(
                 plugin = this,
                 initialSettings = settings,
                 locale = locale,
-                stateRepository = requireNotNull(stateRepository),
-                mineJournal = requireNotNull(mineJournal),
-                fixedCropJournal = requireNotNull(fixedCropJournal),
-                farmLocationRepository = requireNotNull(farmLocationRepository),
+                stateRepository = stateStore,
+                mineJournal = mineStore,
+                fixedCropJournal = fixedCropStore,
+                farmLocationRepository = locationStore,
                 network = networkGateway,
-                transfer = BungeeBackendTransfer(this) { failure ->
-                    logger.log(Level.WARNING, "ArcFarms backend transfer send failed", failure)
-                }.also { transfer = it },
+                transfer = backendTransfer,
                 debug = debug,
                 regionGateway = regionGateway,
                 economy = resolveEconomy(settings),
-            )
+            ))
             service = activeService
             activeService.start()
             if (server.pluginManager.isPluginEnabled("PlaceholderAPI")) {
                 placeholderExpansion = ArcFarmsPlaceholderExpansion(pluginMeta.version, activeService).also {
                     require(it.register()) { "Could not register the PlaceholderAPI expansion" }
+                    lifecycle.own(AutoCloseable { it.unregister() })
                 }
             } else {
                 logger.warning("PlaceholderAPI is unavailable; ArcFarms leaderboard placeholders are disabled")
@@ -120,32 +136,54 @@ class ArcFarmsPlugin : JavaPlugin() {
                 tabCompleter = command
             }
             server.pluginManager.registerEvents(ArcFarmsListener(activeService, menu), this)
+            lifecycle.registerHealth("runtime") {
+                val serviceReady = activeService.isOperational()
+                val redisReady = !settings.network.enabled || redis?.isConnected() == true
+                RuntimeHealthContribution(
+                    state = when {
+                        !serviceReady -> RuntimeHealthState.DOWN
+                        !redisReady -> RuntimeHealthState.DEGRADED
+                        else -> RuntimeHealthState.UP
+                    },
+                    recoveryBacklog = mineStore.pendingRecordCount() + fixedCropStore.pendingRecordCount(),
+                    schemas = mapOf(
+                        "state" to ArcFarmsState.SCHEMA_VERSION,
+                        "mine_journal" to MineBlockJournalState.SCHEMA_VERSION,
+                        "fixed_crop_journal" to FixedFarmCropJournalState.SCHEMA_VERSION,
+                        "farm_locations" to FarmLocationOverrides.SCHEMA_VERSION,
+                    ),
+                    dependencies = mapOf("redis" to redisReady, "service" to serviceReady),
+                )
+            }
+            lifecycle.ready(
+                "server" to settings.serverId,
+                "network" to settings.network.enabled,
+                "redis" to (redis?.isConnected() ?: false),
+            )
+            lifecycle.reportHealthEvery(HEALTH_REPORT_TICKS)
             logger.info(
                 "ArcFarms enabled on ${settings.serverId}; network=${settings.network.enabled}; " +
                     "redisConnected=${redis?.isConnected() ?: false}",
             )
         } catch (failure: Throwable) {
+            runCatching { lifecycle.health.markDown(); lifecycle.emitHealth() }
             logger.log(Level.SEVERE, "ArcFarms failed closed during startup", failure)
             server.pluginManager.disablePlugin(this)
         }
     }
 
     override fun onDisable() {
-        runCatching { placeholderExpansion?.unregister() }
+        runCatching { pluginRuntime?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close ArcFarms runtime", it) }
+        pluginRuntime = null
         placeholderExpansion = null
-        runCatching { service?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close ArcFarms service", it) }
-        runCatching { transfer?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close ArcFarms transfer", it) }
+        service = null
         transfer = null
-        runCatching { network?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close ArcFarms network", it) }
-        runCatching { redis?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close ArcFarms Redis", it) }
-        runCatching { mineJournal?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close mine journal", it) }
-        runCatching { fixedCropJournal?.close() }.onFailure {
-            logger.log(Level.SEVERE, "Could not close fixed crop journal", it)
-        }
-        runCatching { farmLocationRepository?.close() }.onFailure {
-            logger.log(Level.SEVERE, "Could not close farm location repository", it)
-        }
-        runCatching { stateRepository?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close state repository", it) }
+        network = null
+        redis = null
+        mineJournal = null
+        fixedCropJournal = null
+        farmLocationRepository = null
+        stateRepository = null
         Tasks.reset()
     }
 
@@ -183,5 +221,9 @@ class ArcFarmsPlugin : JavaPlugin() {
 
     private fun saveResourceIfMissing(path: String) {
         if (!Files.isRegularFile(dataFolder.toPath().resolve(path))) saveResource(path, false)
+    }
+
+    private companion object {
+        const val HEALTH_REPORT_TICKS = 1_200L
     }
 }

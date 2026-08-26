@@ -9,7 +9,7 @@ import io.mockk.mockk
 import net.kyori.adventure.text.Component
 import org.bukkit.Material
 import org.bukkit.entity.Player
-import org.mockbukkit.mockbukkit.MockBukkit
+import org.bukkit.plugin.Plugin
 import org.mockbukkit.mockbukkit.ServerMock
 import org.mockbukkit.mockbukkit.entity.PlayerMock
 import org.mockbukkit.mockbukkit.world.WorldMock
@@ -24,15 +24,19 @@ import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.CuboidActivityRegion
 import ru.ruscrafting.farms.paper.FarmRuntime
+import ru.arc.paper.testing.MockBukkitTestRuntime
 
 class FarmSupplyControllerMockBukkitTest : FunSpec({
     lateinit var server: ServerMock
     lateinit var world: WorldMock
     lateinit var player: PlayerMock
+    lateinit var paper: MockBukkitTestRuntime
+    lateinit var plugin: Plugin
 
     beforeEach {
-        if (MockBukkit.isMocked()) MockBukkit.unmock()
-        server = MockBukkit.mock()
+        paper = MockBukkitTestRuntime.open()
+        server = paper.server
+        plugin = paper.createSimplePlugin("FarmSupplyTest")
         world = server.addSimpleWorld("farm")
         world.getChunkAt(0, 0).load()
         player = server.addPlayer("Worker")
@@ -40,11 +44,11 @@ class FarmSupplyControllerMockBukkitTest : FunSpec({
     }
 
     afterEach {
-        if (MockBukkit.isMocked()) MockBukkit.unmock()
+        paper.close()
     }
 
     test("service item is replaced instead of duplicated and is removed at the farm boundary") {
-        val controller = controller()
+        val controller = controller(plugin)
         val runtime = runtime(world)
 
         controller.give(runtime, FarmSupplyKind.TOOL, player) shouldBe true
@@ -58,14 +62,14 @@ class FarmSupplyControllerMockBukkitTest : FunSpec({
     test("loaded supply scene converges after controller restart without duplicate entities") {
         val runtime = runtime(world)
         val points = supplyPoints(world)
-        val first = controller()
+        val first = controller(plugin)
 
         first.ensure(runtime, points::getValue)
         val firstOwned = world.entities.filter(first::owns)
         firstOwned shouldHaveSize 9
         firstOwned.map { it.uniqueId }.distinct() shouldHaveSize 9
 
-        val afterRestart = controller()
+        val afterRestart = controller(plugin)
         afterRestart.ensure(runtime, points::getValue)
         val reconciled = world.entities.filter(afterRestart::owns)
         reconciled shouldHaveSize 9
@@ -74,7 +78,7 @@ class FarmSupplyControllerMockBukkitTest : FunSpec({
     }
 
     test("cleanup removes every loaded supply entity and every online tagged item") {
-        val controller = controller()
+        val controller = controller(plugin)
         val runtime = runtime(world)
         controller.ensure(runtime, supplyPoints(world)::getValue)
         controller.give(runtime, FarmSupplyKind.WATER, player)
@@ -87,13 +91,13 @@ class FarmSupplyControllerMockBukkitTest : FunSpec({
     }
 })
 
-private fun controller(): FarmSupplyController {
+private fun controller(plugin: Plugin): FarmSupplyController {
     val config = mockk<ArcFarmsConfig> { every { sounds } returns false }
     val locale = mockk<ArcFarmsLocale>(relaxed = true) {
         every { render(any(), any(), any()) } answers { Component.text(firstArg<MessageKey>().path) }
     }
     return FarmSupplyController(
-        plugin = MockBukkit.createMockPlugin("FarmSupplyTest"),
+        plugin = plugin,
         locale = locale,
         debug = ArcFarmsDebug({ false }) {},
         settings = { config },

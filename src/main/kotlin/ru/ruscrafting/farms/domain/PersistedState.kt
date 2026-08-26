@@ -111,12 +111,16 @@ data class PendingMineBlock(
 }
 
 data class MineBlockJournalState(
-    val schemaVersion: Int = 1,
+    val schemaVersion: Int = SCHEMA_VERSION,
     val records: Map<String, PendingMineBlock> = emptyMap(),
 ) {
     init {
-        require(schemaVersion == 1) { "Unsupported mine journal schema: $schemaVersion" }
+        require(schemaVersion == SCHEMA_VERSION) { "Unsupported mine journal schema: $schemaVersion" }
         require(records.size <= 100_000) { "Mine journal is unbounded" }
+    }
+
+    companion object {
+        const val SCHEMA_VERSION = 1
     }
 }
 
@@ -144,6 +148,10 @@ data class PendingFixedFarmCrop(
 }
 
 data class FixedFarmCropJournalState(
-    val schemaVersion: Int = 1,
+    val schemaVersion: Int = SCHEMA_VERSION,
     val records: Map<String, PendingFixedFarmCrop> = emptyMap(),
-)
+) {
+    companion object {
+        const val SCHEMA_VERSION = 1
+    }
+}

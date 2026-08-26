@@ -21,6 +21,8 @@ class FixedFarmCropJournal(dataRoot: Path) : AutoCloseable {
 
     fun records(): List<PendingFixedFarmCrop> = synchronized(lock) { records.values.toList() }
 
+    fun pendingRecordCount(): Int = synchronized(lock) { records.size }
+
     fun record(positionKey: String): PendingFixedFarmCrop? = synchronized(lock) { records[positionKey] }
 
     fun contains(positionKey: String): Boolean = synchronized(lock) { positionKey in records }
@@ -52,7 +54,9 @@ class FixedFarmCropJournal(dataRoot: Path) : AutoCloseable {
 
     private companion object {
         fun validateState(state: FixedFarmCropJournalState) {
-            require(state.schemaVersion == 1) { "Unsupported fixed crop journal schema" }
+            require(state.schemaVersion == FixedFarmCropJournalState.SCHEMA_VERSION) {
+                "Unsupported fixed crop journal schema"
+            }
             require(state.records.size <= 100_000) { "Fixed crop journal is unbounded" }
             require(state.records.entries.all { (key, record) -> key == record.positionKey }) {
                 "Fixed crop journal key mismatch"
