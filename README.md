@@ -394,7 +394,8 @@ The reusable worksite layer is split by ownership:
 Add another activity by implementing a controller behind `WorksiteModule`; do
 not add its runtime list or state machine branches back to `ArcFarmsService`.
 Paper-only behavior that MockBukkit cannot emulate stays behind an injectable
-adapter. Controller integration tests use MockBukkit 4.110.0, whose artifact
+adapter. Controller integration tests use `arc-core-paper-testing`, which pins
+MockBukkit 4.110.0 and Paper 1.21.11; the resolved MockBukkit artifact
 manifest targets Paper 1.21.11.
 
 ## Build

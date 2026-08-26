@@ -15,13 +15,32 @@ class ArcFarmsNetworkRepositoryTest : StringSpec({
         val redis = InMemoryRedis(ServerIdentity { "spawn" })
         val repository = ArcFarmsNetworkRepository(redis)
         val received = mutableListOf<Pair<NetworkEvent, String>>()
-        repository.registerEvents { event, origin -> received += event to origin }
+        val bus = repository.registerEvents(originAllowed = { it == "spawn" }) { event, origin -> received += event to origin }
 
         val event = NetworkEvent.create(NetworkSignal.MINE_HAZARD, ActivityKind.MINE, "Alexey23", nowMs = 10)
         repository.publish(event)
 
         received shouldContainExactly listOf(event to "spawn")
         redis.getPublishedMessages().single().channel shouldBe ArcFarmsNetworkRepository.EVENT_CHANNEL
+        bus.close()
+    }
+
+    "network boundary rejects untrusted origins, malformed payloads, and replay" {
+        val redis = InMemoryRedis(ServerIdentity { "spawn" })
+        val repository = ArcFarmsNetworkRepository(redis)
+        val received = mutableListOf<Pair<NetworkEvent, String>>()
+        val bus = repository.registerEvents(originAllowed = { it == "survival" }) { event, origin -> received += event to origin }
+        val event = NetworkEvent.create(NetworkSignal.MINE_HAZARD, ActivityKind.MINE, "Alexey23", nowMs = 10)
+
+        repository.publish(event)
+        val raw = redis.getPublishedMessages().single().message
+        redis.simulateExternalMessage(ArcFarmsNetworkRepository.EVENT_CHANNEL, raw, "evil")
+        redis.simulateExternalMessage(ArcFarmsNetworkRepository.EVENT_CHANNEL, "{not-json", "survival")
+        redis.simulateExternalMessage(ArcFarmsNetworkRepository.EVENT_CHANNEL, raw, "survival")
+        redis.simulateExternalMessage(ArcFarmsNetworkRepository.EVENT_CHANNEL, raw, "survival")
+
+        received shouldContainExactly listOf(event to "survival")
+        bus.close()
     }
 
     "workday seals persist without a deadline and advance only after all crafts" {

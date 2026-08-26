@@ -2,12 +2,12 @@ package ru.ruscrafting.farms.config
 
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.minimessage.MiniMessage
-import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder
-import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver
 import org.bukkit.command.CommandSender
 import org.bukkit.entity.Player
 import ru.arc.config.Config
 import ru.arc.config.ConfigManager
+import ru.arc.text.ConfigLocaleCatalog
+import ru.arc.text.LocalizedMiniMessage
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmCareType
 import java.nio.file.Path
@@ -349,7 +349,10 @@ class ArcFarmsLocale(
 ) {
     private val russian: Config = ConfigManager.of(dataRoot, "lang/ru.yml")
     private val english: Config = ConfigManager.of(dataRoot, "lang/en.yml")
-    private val mini = MiniMessage.miniMessage()
+    private val renderer = LocalizedMiniMessage(
+        catalogs = mapOf("ru" to ConfigLocaleCatalog(russian), "en" to ConfigLocaleCatalog(english)),
+        defaultLocale = { settings().defaultLocale },
+    )
 
     fun render(
         key: MessageKey,
@@ -362,27 +365,14 @@ class ArcFarmsLocale(
         audience: CommandSender? = null,
         values: Map<String, Component> = emptyMap(),
     ): Component {
-        val config = select(audience)
-        val fallback = if (settings().defaultLocale == "en") english else russian
-        val raw = config.stringOrNull(path)?.takeIf(String::isNotBlank)
-            ?: fallback.stringOrNull(path)?.takeIf(String::isNotBlank)
-            ?: path
-        val prefixRaw = config.stringOrNull(MessageKey.PREFIX.path)?.takeIf(String::isNotBlank)
-            ?: fallback.string(
-                MessageKey.PREFIX.path,
-                "<color:#92bed8>Смена</color> <color:#666666>•</color>",
-            )
-        val builder = TagResolver.builder().resolver(Placeholder.component("prefix", mini.deserialize(prefixRaw)))
-        values.forEach { (name, value) -> builder.resolver(Placeholder.component(name, value)) }
-        return mini.deserialize(raw, builder.build())
+        return renderer.render(path, localeTag(audience), values)
     }
 
-    fun text(value: Any?): Component = Component.text(value?.toString().orEmpty())
+    fun text(value: Any?): Component = renderer.literal(value)
 
-    private fun select(audience: CommandSender?): Config {
-        if (!settings().useClientLocale || audience !is Player) return if (settings().defaultLocale == "en") english else russian
-        return if (audience.locale().language.equals("ru", ignoreCase = true)) russian else english
-    }
+    private fun localeTag(audience: CommandSender?): String =
+        if (settings().useClientLocale && audience is Player) audience.locale().toLanguageTag()
+        else settings().defaultLocale
 
     companion object {
         fun requiredPaths(settings: ArcFarmsConfig): Set<String> = buildSet {

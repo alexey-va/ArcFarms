@@ -1,5 +1,6 @@
 package ru.ruscrafting.farms.persistence
 
+import ru.arc.persistence.CoalescingAsyncWriter
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.ArcFarmsState
 import ru.ruscrafting.farms.domain.FarmCropDamage
@@ -70,7 +71,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
     }
 
     override fun close() {
-        writer.close().get(SAVE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        writer.closeAsync().get(SAVE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         store.close()
     }
 

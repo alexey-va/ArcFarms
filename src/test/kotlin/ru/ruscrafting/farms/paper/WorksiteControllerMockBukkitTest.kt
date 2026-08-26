@@ -15,11 +15,11 @@ import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
-import org.mockbukkit.mockbukkit.MockBukkit
 import org.mockbukkit.mockbukkit.ServerMock
 import org.mockbukkit.mockbukkit.entity.PlayerMock
 import org.mockbukkit.mockbukkit.world.WorldMock
 import ru.arc.core.TestTaskScheduler
+import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.CuboidBounds
 import ru.ruscrafting.farms.config.LumberZoneSettings
@@ -39,21 +39,20 @@ import java.util.UUID
 import java.util.concurrent.CompletableFuture
 
 class WorksiteControllerMockBukkitTest : FunSpec({
+    lateinit var paper: MockBukkitTestRuntime
     lateinit var server: ServerMock
     lateinit var world: WorldMock
     lateinit var player: PlayerMock
 
     beforeEach {
-        if (MockBukkit.isMocked()) MockBukkit.unmock()
-        server = MockBukkit.mock()
+        paper = MockBukkitTestRuntime.open()
+        server = paper.server
         world = server.addSimpleWorld("worksites")
         player = server.addPlayer("Worker")
         player.teleport(world.spawnLocation)
     }
 
-    afterEach {
-        if (MockBukkit.isMocked()) MockBukkit.unmock()
-    }
+    afterEach { paper.close() }
 
     test("lumbermill completes a full felling and processing lifecycle on Bukkit events") {
         var now = 1_000L

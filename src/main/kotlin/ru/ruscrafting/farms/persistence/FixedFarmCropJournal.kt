@@ -1,5 +1,6 @@
 package ru.ruscrafting.farms.persistence
 
+import ru.arc.persistence.CoalescingAsyncWriter
 import ru.ruscrafting.farms.domain.FixedFarmCropJournalState
 import ru.ruscrafting.farms.domain.PendingFixedFarmCrop
 import java.nio.file.Path
@@ -45,7 +46,7 @@ class FixedFarmCropJournal(dataRoot: Path) : AutoCloseable {
     }
 
     override fun close() {
-        writer.close().get(15, TimeUnit.SECONDS)
+        writer.closeAsync().get(15, TimeUnit.SECONDS)
         store.close()
     }
 

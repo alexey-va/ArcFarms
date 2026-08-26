@@ -33,6 +33,7 @@ class ArcFarmsPlugin : JavaPlugin() {
     private var farmLocationRepository: FarmLocationRepository? = null
     private var redis: RedisManager? = null
     private var network: ArcFarmsNetworkService? = null
+    private var transfer: BungeeBackendTransfer? = null
     private var placeholderExpansion: ArcFarmsPlaceholderExpansion? = null
 
     override fun onEnable() {
@@ -48,7 +49,6 @@ class ArcFarmsPlugin : JavaPlugin() {
             require(settings.enabled) { "ArcFarms is disabled in config.yml" }
             locale = ArcFarmsLocale(dataRoot) { settings }
             val debug = ArcFarmsDebug({ settings.debug.enabled }, logger::info)
-            server.messenger.registerOutgoingPluginChannel(this, BungeeBackendTransfer.CHANNEL)
             val networkGateway = if (settings.network.enabled) {
                 val redisConfig = ArcFarmsRedisBootstrap.load(dataRoot, settings)
                 val manager = RedisManager(
@@ -97,7 +97,9 @@ class ArcFarmsPlugin : JavaPlugin() {
                 fixedCropJournal = requireNotNull(fixedCropJournal),
                 farmLocationRepository = requireNotNull(farmLocationRepository),
                 network = networkGateway,
-                transfer = BungeeBackendTransfer(this),
+                transfer = BungeeBackendTransfer(this) { failure ->
+                    logger.log(Level.WARNING, "ArcFarms backend transfer send failed", failure)
+                }.also { transfer = it },
                 debug = debug,
                 regionGateway = regionGateway,
                 economy = resolveEconomy(settings),
@@ -132,6 +134,8 @@ class ArcFarmsPlugin : JavaPlugin() {
         runCatching { placeholderExpansion?.unregister() }
         placeholderExpansion = null
         runCatching { service?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close ArcFarms service", it) }
+        runCatching { transfer?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close ArcFarms transfer", it) }
+        transfer = null
         runCatching { network?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close ArcFarms network", it) }
         runCatching { redis?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close ArcFarms Redis", it) }
         runCatching { mineJournal?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close mine journal", it) }
@@ -142,7 +146,6 @@ class ArcFarmsPlugin : JavaPlugin() {
             logger.log(Level.SEVERE, "Could not close farm location repository", it)
         }
         runCatching { stateRepository?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close state repository", it) }
-        server.messenger.unregisterOutgoingPluginChannel(this, BungeeBackendTransfer.CHANNEL)
         Tasks.reset()
     }
 

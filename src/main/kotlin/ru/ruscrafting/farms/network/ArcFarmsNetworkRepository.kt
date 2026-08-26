@@ -1,11 +1,18 @@
 package ru.ruscrafting.farms.network
 
 import com.google.gson.Gson
-import com.google.gson.JsonObject
-import com.google.gson.JsonParseException
-import com.google.gson.JsonParser
-import ru.arc.redis.ChannelListener
+import ru.arc.network.BackendServerId
+import ru.arc.network.NetworkPlayerName
 import ru.arc.redis.RedisOperations
+import ru.arc.redis.safety.BoundedJsonCodec
+import ru.arc.redis.safety.JsonObjectContract
+import ru.arc.redis.safety.JsonResourceBounds
+import ru.arc.redis.safety.OriginBoundRedisBus
+import ru.arc.redis.safety.RecentMessageDeduplicator
+import ru.arc.redis.safety.RedisHashConsumeResult
+import ru.arc.redis.safety.RedisHashDecision
+import ru.arc.redis.safety.RedisHashUpdateResult
+import ru.arc.redis.safety.RedisHashUpdater
 import ru.ruscrafting.farms.domain.ActivityKind
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
@@ -35,11 +42,13 @@ data class NetworkEvent(
     val completed: Set<ActivityKind> = emptySet(),
     val replyTo: String? = null,
     val occurredAtMs: Long,
+    val protocolVersion: Int = PROTOCOL_VERSION,
 ) {
     fun validated(): NetworkEvent = apply {
+        require(protocolVersion == PROTOCOL_VERSION) { "Unsupported network event protocol" }
         require(eventId.isCanonicalUuid()) { "Invalid network event id" }
         require(occurredAtMs > 0) { "Invalid network event timestamp" }
-        actorName?.let { require(it.matches(PLAYER_NAME_PATTERN)) { "Invalid network actor name" } }
+        actorName?.let(NetworkPlayerName::of)
         cycle?.let { require(it > 0) { "Invalid workday cycle" } }
         require(completed.size <= ActivityKind.entries.size) { "Too many completed activities" }
         replyTo?.let { require(it.isCanonicalUuid()) { "Invalid reply event id" } }
@@ -68,8 +77,6 @@ data class NetworkEvent(
     }
 
     companion object {
-        private val PLAYER_NAME_PATTERN = Regex("[A-Za-z0-9_]{1,16}")
-
         private fun String.isCanonicalUuid(): Boolean = runCatching { UUID.fromString(this).toString() == this }.getOrDefault(false)
 
         fun create(
@@ -97,8 +104,10 @@ data class WorkdayState(
     val cycle: Long = 1,
     val revision: Long = 0,
     val completed: Set<ActivityKind> = emptySet(),
+    val protocolVersion: Int = PROTOCOL_VERSION,
 ) {
     fun validated(): WorkdayState = apply {
+        require(protocolVersion == PROTOCOL_VERSION) { "Unsupported workday protocol" }
         require(cycle > 0) { "Workday cycle must be positive" }
         require(revision >= 0) { "Workday revision cannot be negative" }
         require(completed.size <= ActivityKind.entries.size) { "Workday contains too many seals" }
@@ -112,9 +121,11 @@ data class TravelTicket(
     val destinationServer: String,
     val createdAtMs: Long,
     val expiresAtMs: Long,
+    val protocolVersion: Int = PROTOCOL_VERSION,
 ) {
     fun validated(): TravelTicket = apply {
-        require(destinationServer.matches(SERVER_ID_PATTERN)) { "Invalid travel destination server" }
+        require(protocolVersion == PROTOCOL_VERSION) { "Unsupported travel protocol" }
+        BackendServerId.of(destinationServer)
         require(createdAtMs > 0 && expiresAtMs > createdAtMs) { "Invalid travel ticket lifetime" }
         require(expiresAtMs - createdAtMs <= MAX_TRAVEL_TICKET_MS) { "Travel ticket lifetime is too long" }
     }
@@ -141,28 +152,84 @@ sealed interface WorkdayUpdate {
 
 class ArcFarmsNetworkRepository(
     private val redis: RedisOperations,
-    private val gson: Gson = Gson(),
+    gson: Gson = Gson(),
 ) {
-    fun registerEvents(listener: (NetworkEvent, String) -> Unit): ChannelListener {
-        val channelListener = ChannelListener { _, raw, origin ->
-            decodeEvent(raw)?.let { listener(it, origin) }
-        }
-        redis.registerChannelUnique(EVENT_CHANNEL, channelListener)
-        return channelListener
-    }
+    private val eventCodec = codec(
+        gson,
+        NetworkEvent::class.java,
+        EVENT_FIELDS,
+        EVENT_REQUIRED_FIELDS,
+        MAX_EVENT_CHARS,
+        NetworkEvent::validated,
+    )
+    private val workdayCodec = codec(
+        gson,
+        WorkdayState::class.java,
+        WORKDAY_FIELDS,
+        WORKDAY_FIELDS,
+        MAX_WORKDAY_CHARS,
+        WorkdayState::validated,
+    )
+    private val travelCodec = codec(
+        gson,
+        TravelTicket::class.java,
+        TRAVEL_FIELDS,
+        TRAVEL_FIELDS,
+        MAX_TRAVEL_CHARS,
+        TravelTicket::validated,
+    )
+    private val workday = RedisHashUpdater(redis, WORKDAY_KEY, workdayCodec, MAX_CAS_ATTEMPTS)
+    private val travel = RedisHashUpdater(redis, TRAVEL_KEY, travelCodec, MAX_CAS_ATTEMPTS)
 
-    fun unregisterEvents(listener: ChannelListener) = redis.unregisterChannel(EVENT_CHANNEL, listener)
+    fun registerEvents(
+        originAllowed: (String) -> Boolean,
+        listener: (NetworkEvent, String) -> Unit,
+    ): OriginBoundRedisBus<NetworkEvent> = OriginBoundRedisBus(
+        redis = redis,
+        channel = EVENT_CHANNEL,
+        codec = eventCodec,
+        originAllowed = originAllowed,
+        messageId = NetworkEvent::eventId,
+        deduplicator = RecentMessageDeduplicator(EVENT_DEDUPLICATION_MS, MAX_SEEN_EVENTS),
+        onMessage = listener,
+    ).also(OriginBoundRedisBus<NetworkEvent>::register)
 
     fun publish(event: NetworkEvent) {
-        redis.publish(EVENT_CHANNEL, encodeEvent(event))
+        redis.publish(EVENT_CHANNEL, eventCodec.encode(event.validated()))
     }
 
     fun loadWorkday(): CompletableFuture<WorkdayState> =
         redis.loadMapEntries(WORKDAY_KEY, WORKDAY_FIELD).thenApply { values ->
-            values.firstOrNull()?.let(::decodeWorkday) ?: WorkdayState()
+            values.firstOrNull()?.let(workdayCodec::decode) ?: WorkdayState()
         }
 
-    fun markCompleted(activity: ActivityKind): CompletableFuture<WorkdayUpdate> = markAttempt(activity, 0)
+    fun markCompleted(activity: ActivityKind): CompletableFuture<WorkdayUpdate> = workday.update(WORKDAY_FIELD) { current ->
+        val before = current ?: WorkdayState()
+        if (activity in before.completed) {
+            RedisHashDecision.Write(before)
+        } else {
+            val completed = before.completed + activity
+            val finished = completed.size == ActivityKind.entries.size
+            RedisHashDecision.Write(
+                if (finished) WorkdayState(cycle = before.cycle + 1, revision = before.revision + 1)
+                else before.copy(revision = before.revision + 1, completed = completed),
+            )
+        }
+    }.thenCompose { result ->
+        when (result) {
+            is RedisHashUpdateResult.Changed -> {
+                val before = result.before ?: WorkdayState()
+                val after = requireNotNull(result.after)
+                CompletableFuture.completedFuture(
+                    if (after.cycle > before.cycle) WorkdayUpdate.Completed(after, before.cycle, activity)
+                    else WorkdayUpdate.Stamped(after, activity),
+                )
+            }
+            is RedisHashUpdateResult.Unchanged -> CompletableFuture.completedFuture(WorkdayUpdate.AlreadyStamped(result.current))
+            is RedisHashUpdateResult.Rejected -> error("Workday update was unexpectedly rejected")
+            is RedisHashUpdateResult.Contended -> loadWorkday().thenApply(WorkdayUpdate::Contended)
+        }
+    }
 
     fun createTravelTicket(
         playerId: UUID,
@@ -171,166 +238,85 @@ class ArcFarmsNetworkRepository(
         nowMs: Long,
         lifetimeMs: Long,
     ): CompletableFuture<Boolean> {
-        val ticket = TravelTicket(activity, destinationServer, nowMs, nowMs + lifetimeMs).validated()
+        val ticket = TravelTicket(activity = activity, destinationServer = destinationServer, createdAtMs = nowMs, expiresAtMs = nowMs + lifetimeMs).validated()
         return redis.loadMap(TRAVEL_KEY).thenCompose { current ->
             if (current.size >= MAX_TRAVEL_TICKETS && playerId.toString() !in current) {
                 CompletableFuture.completedFuture(false)
             } else {
-                redis.saveMapEntries(TRAVEL_KEY, playerId.toString(), encodeTravelTicket(ticket)).thenApply { true }
+                travel.update(playerId.toString()) { RedisHashDecision.Write(ticket) }.thenApply { result ->
+                    result is RedisHashUpdateResult.Changed || result is RedisHashUpdateResult.Unchanged
+                }
             }
         }
     }
 
     fun claimTravelTicket(playerId: UUID, currentServer: String, nowMs: Long): CompletableFuture<TravelTicket?> {
-        require(currentServer.matches(SERVER_ID_PATTERN)) { "Invalid current server id" }
+        BackendServerId.of(currentServer)
         val field = playerId.toString()
-        return redis.loadMapEntries(TRAVEL_KEY, field).thenCompose { values ->
-            val raw = values.firstOrNull() ?: return@thenCompose CompletableFuture.completedFuture(null)
-            val ticket = runCatching { decodeTravelTicket(raw) }.getOrNull()
-            if (ticket == null || ticket.expiresAtMs < nowMs) {
-                return@thenCompose redis.compareAndSetMapEntry(TRAVEL_KEY, field, raw, null).thenApply { null }
+        return travel.update(field) { ticket ->
+            when {
+                ticket == null -> RedisHashDecision.Reject
+                ticket.expiresAtMs < nowMs -> RedisHashDecision.Delete
+                ticket.destinationServer != currentServer -> RedisHashDecision.Reject
+                else -> RedisHashDecision.Delete
             }
-            if (ticket.destinationServer != currentServer) return@thenCompose CompletableFuture.completedFuture(null)
-            redis.compareAndSetMapEntry(TRAVEL_KEY, field, raw, null).thenApply { claimed -> ticket.takeIf { claimed } }
+        }.thenApply { result ->
+            val consumed = (result as? RedisHashUpdateResult.Changed)?.before
+            consumed?.takeIf { it.expiresAtMs >= nowMs && it.destinationServer == currentServer }
         }
     }
 
     fun cleanupExpiredTravelTickets(nowMs: Long): CompletableFuture<Int> = redis.loadMap(TRAVEL_KEY).thenCompose { entries ->
-        val expired = entries.entries.filter { (_, raw) ->
-            val ticket = runCatching { decodeTravelTicket(raw) }.getOrNull()
-            ticket == null || ticket.expiresAtMs < nowMs
+        val expired = entries.entries.mapNotNull { (field, raw) ->
+            field.takeIf { travelCodec.decode(raw).expiresAtMs < nowMs }
         }.take(MAX_TRAVEL_CLEANUP)
-        CompletableFuture.allOf(
-            *expired.map { (field, raw) -> redis.compareAndSetMapEntry(TRAVEL_KEY, field, raw, null) }.toTypedArray(),
-        ).thenApply { expired.size }
-    }
-
-    private fun markAttempt(activity: ActivityKind, attempt: Int): CompletableFuture<WorkdayUpdate> {
-        if (attempt >= MAX_CAS_ATTEMPTS) {
-            return loadWorkday().thenApply { WorkdayUpdate.Contended(it) }
-        }
-        return redis.loadMapEntries(WORKDAY_KEY, WORKDAY_FIELD).thenCompose { values ->
-            val beforeRaw = values.firstOrNull()
-            val before = beforeRaw?.let(::decodeWorkday) ?: WorkdayState()
-            if (activity in before.completed) {
-                return@thenCompose CompletableFuture.completedFuture(WorkdayUpdate.AlreadyStamped(before))
-            }
-            val completed = before.completed + activity
-            val finished = completed.size == ActivityKind.entries.size
-            val after = if (finished) {
-                WorkdayState(cycle = before.cycle + 1, revision = before.revision + 1)
-            } else {
-                before.copy(revision = before.revision + 1, completed = completed)
-            }.validated()
-            val afterRaw = encodeWorkday(after)
-            redis.compareAndSetMapEntry(WORKDAY_KEY, WORKDAY_FIELD, beforeRaw, afterRaw).thenCompose { changed ->
-                if (!changed) return@thenCompose markAttempt(activity, attempt + 1)
-                CompletableFuture.completedFuture(
-                    if (finished) WorkdayUpdate.Completed(after, before.cycle, activity)
-                    else WorkdayUpdate.Stamped(after, activity),
-                )
-            }
+        val removals = expired.map { field -> travel.consume(field) { it.expiresAtMs < nowMs } }
+        CompletableFuture.allOf(*removals.toTypedArray()).thenApply {
+            removals.count { it.join() is RedisHashConsumeResult.Consumed }
         }
     }
-
-    private fun encodeEvent(event: NetworkEvent): String = event.validated().let { validated ->
-        JsonObject().apply {
-            addProperty("protocolVersion", PROTOCOL_VERSION)
-            addProperty("eventId", validated.eventId)
-            addProperty("signal", validated.signal.name)
-            validated.activity?.let { addProperty("activity", it.name) }
-            validated.actorName?.let { addProperty("actorName", it) }
-            validated.cycle?.let { addProperty("cycle", it) }
-            add("completed", gson.toJsonTree(validated.completed.map(ActivityKind::name).sorted()))
-            validated.replyTo?.let { addProperty("replyTo", it) }
-            addProperty("occurredAtMs", validated.occurredAtMs)
-        }.toString().also { require(it.length <= MAX_EVENT_CHARS) { "Network event is too large" } }
-    }
-
-    private fun decodeEvent(raw: String): NetworkEvent? = runCatching {
-        if (raw.length > MAX_EVENT_CHARS) return null
-        val root = JsonParser.parseString(raw).asJsonObject
-        if (root.int("protocolVersion") != PROTOCOL_VERSION) return null
-        NetworkEvent(
-            eventId = root.string("eventId"),
-            signal = NetworkSignal.valueOf(root.string("signal")),
-            activity = root.optionalString("activity")?.let(ActivityKind::valueOf),
-            actorName = root.optionalString("actorName"),
-            cycle = root.optionalLong("cycle"),
-            completed = root.getAsJsonArray("completed")?.map { ActivityKind.valueOf(it.asString) }?.toSet().orEmpty(),
-            replyTo = root.optionalString("replyTo"),
-            occurredAtMs = root.long("occurredAtMs"),
-        ).validated()
-    }.getOrNull()
-
-    private fun encodeWorkday(state: WorkdayState): String = state.validated().let { validated ->
-        JsonObject().apply {
-            addProperty("protocolVersion", PROTOCOL_VERSION)
-            addProperty("cycle", validated.cycle)
-            addProperty("revision", validated.revision)
-            add("completed", gson.toJsonTree(validated.completed.map(ActivityKind::name).sorted()))
-        }.toString().also { require(it.length <= MAX_WORKDAY_CHARS) { "Workday state is too large" } }
-    }
-
-    private fun decodeWorkday(raw: String): WorkdayState {
-        if (raw.length > MAX_WORKDAY_CHARS) throw JsonParseException("Workday state is too large")
-        val root = JsonParser.parseString(raw).asJsonObject
-        if (root.int("protocolVersion") != PROTOCOL_VERSION) throw JsonParseException("Unsupported workday protocol")
-        return WorkdayState(
-            cycle = root.long("cycle"),
-            revision = root.long("revision"),
-            completed = root.getAsJsonArray("completed")?.map { ActivityKind.valueOf(it.asString) }?.toSet().orEmpty(),
-        ).validated()
-    }
-
-    private fun encodeTravelTicket(ticket: TravelTicket): String = ticket.validated().let { validated ->
-        JsonObject().apply {
-            addProperty("protocolVersion", PROTOCOL_VERSION)
-            addProperty("activity", validated.activity.name)
-            addProperty("destinationServer", validated.destinationServer)
-            addProperty("createdAtMs", validated.createdAtMs)
-            addProperty("expiresAtMs", validated.expiresAtMs)
-        }.toString().also { require(it.length <= MAX_TRAVEL_CHARS) { "Travel ticket is too large" } }
-    }
-
-    private fun decodeTravelTicket(raw: String): TravelTicket {
-        if (raw.length > MAX_TRAVEL_CHARS) throw JsonParseException("Travel ticket is too large")
-        val root = JsonParser.parseString(raw).asJsonObject
-        if (root.int("protocolVersion") != PROTOCOL_VERSION) throw JsonParseException("Unsupported travel protocol")
-        return TravelTicket(
-            activity = ActivityKind.valueOf(root.string("activity")),
-            destinationServer = root.string("destinationServer"),
-            createdAtMs = root.long("createdAtMs"),
-            expiresAtMs = root.long("expiresAtMs"),
-        ).validated()
-    }
-
-    private fun JsonObject.string(name: String): String = get(name)?.takeUnless { it.isJsonNull }?.asString
-        ?: throw JsonParseException("Missing $name")
-
-    private fun JsonObject.optionalString(name: String): String? = get(name)?.takeUnless { it.isJsonNull }?.asString
-
-    private fun JsonObject.int(name: String): Int = get(name)?.takeUnless { it.isJsonNull }?.asInt
-        ?: throw JsonParseException("Missing $name")
-
-    private fun JsonObject.long(name: String): Long = get(name)?.takeUnless { it.isJsonNull }?.asLong
-        ?: throw JsonParseException("Missing $name")
-
-    private fun JsonObject.optionalLong(name: String): Long? = get(name)?.takeUnless { it.isJsonNull }?.asLong
 
     companion object {
         const val EVENT_CHANNEL = "arc:farms:v1:events"
         const val WORKDAY_KEY = "arc:farms:v1:workday"
         const val WORKDAY_FIELD = "state"
         const val TRAVEL_KEY = "arc:farms:v1:travel"
-        private const val PROTOCOL_VERSION = 1
+        private const val EVENT_DEDUPLICATION_MS = 15 * 60 * 1000L
         private const val MAX_EVENT_CHARS = 2_048
         private const val MAX_WORKDAY_CHARS = 1_024
         private const val MAX_TRAVEL_CHARS = 512
         private const val MAX_TRAVEL_TICKETS = 10_000
         private const val MAX_TRAVEL_CLEANUP = 512
         private const val MAX_CAS_ATTEMPTS = 12
+        private const val MAX_SEEN_EVENTS = 4_096
+        private val EVENT_FIELDS = setOf(
+            "protocolVersion", "eventId", "signal", "activity", "actorName", "cycle", "completed", "replyTo", "occurredAtMs",
+        )
+        private val EVENT_REQUIRED_FIELDS = EVENT_FIELDS - setOf("activity", "actorName", "cycle", "replyTo")
+        private val WORKDAY_FIELDS = setOf("protocolVersion", "cycle", "revision", "completed")
+        private val TRAVEL_FIELDS = setOf("protocolVersion", "activity", "destinationServer", "createdAtMs", "expiresAtMs")
+
+        private fun <T : Any> codec(
+            gson: Gson,
+            type: Class<T>,
+            allowedFields: Set<String>,
+            requiredFields: Set<String>,
+            maxCharacters: Int,
+            validate: (T) -> T,
+        ): BoundedJsonCodec<T> = BoundedJsonCodec(
+            gson = gson,
+            type = type,
+            rootContract = JsonObjectContract(allowedFields, requiredFields),
+            bounds = JsonResourceBounds(
+                maxCharacters = maxCharacters,
+                maxDepth = 6,
+                maxContainerEntries = 16,
+                maxTotalNodes = 48,
+                maxStringCharacters = 64,
+            ),
+            validate = { value -> validate(value) },
+        )
     }
 }
 
-private val SERVER_ID_PATTERN = Regex("[a-z0-9_-]{1,32}")
+private const val PROTOCOL_VERSION = 1

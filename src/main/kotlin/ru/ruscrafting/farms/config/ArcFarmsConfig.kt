@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.config
 
 import ru.arc.config.Config
 import ru.arc.config.ConfigManager
+import ru.arc.network.BackendServerId
 import ru.arc.redis.RedisModuleConfig
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmContractRarity
@@ -1198,7 +1199,8 @@ class ArcFarmsConfig private constructor(
         }
 
         private fun serverId(value: String, label: String): String = value.trim().lowercase().also {
-            require(it.matches(Regex("[a-z0-9_-]{1,32}"))) { "$label must use lowercase letters, digits, _ or -" }
+            runCatching { BackendServerId.of(it) }
+                .getOrElse { failure -> throw IllegalArgumentException("$label must use lowercase letters, digits, _ or -", failure) }
         }
 
         private fun materialName(value: String): String = value.trim().uppercase().also {

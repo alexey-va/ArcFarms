@@ -11,8 +11,8 @@ import org.bukkit.entity.Player
 import org.bukkit.plugin.Plugin
 import ru.arc.core.ScheduledTask
 import ru.arc.core.Tasks
-import ru.arc.redis.ChannelListener
 import ru.arc.redis.RedisManager
+import ru.arc.redis.safety.OriginBoundRedisBus
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
@@ -40,8 +40,7 @@ class ArcFarmsNetworkService(
 ) : ActivityNetworkGateway, AutoCloseable {
     @Volatile
     private var currentWorkday: WorkdayState? = null
-    private var listener: ChannelListener? = null
-    private val seenEvents = ConcurrentHashMap<String, Long>()
+    private var eventBus: OriginBoundRedisBus<NetworkEvent>? = null
     private val pendingProbes = ConcurrentHashMap<String, Long>()
     private val tasks = mutableListOf<ScheduledTask>()
     private var lastProbeAtMs = 0L
@@ -50,7 +49,13 @@ class ArcFarmsNetworkService(
 
     fun start() {
         check(!started) { "ArcFarms network service is already started" }
-        listener = repository.registerEvents(::receive)
+        eventBus = repository.registerEvents(
+            originAllowed = { origin ->
+                val current = settings()
+                current.network.enabled && origin != current.serverId && origin in current.network.allowedOrigins
+            },
+            listener = ::receive,
+        )
         started = true
         try {
             refreshWorkday()
@@ -172,14 +177,6 @@ class ArcFarmsNetworkService(
             debug.event("network_receive_skipped", "signal" to event.signal, "origin" to origin, "reason" to "timestamp")
             return
         }
-        if (seenEvents.size >= MAX_SEEN_EVENTS) {
-            debug.event("network_receive_skipped", "signal" to event.signal, "origin" to origin, "reason" to "capacity")
-            return
-        }
-        if (seenEvents.putIfAbsent(event.eventId, now) != null) {
-            debug.event("network_receive_skipped", "signal" to event.signal, "origin" to origin, "reason" to "duplicate")
-            return
-        }
         debug.event("network_received", "signal" to event.signal, "origin" to origin, "event_id" to event.eventId)
         Tasks.scheduler.runSync {
             if (!started) return@runSync
@@ -196,7 +193,6 @@ class ArcFarmsNetworkService(
 
     private fun emit(event: NetworkEvent, excludedPlayers: Set<UUID>) {
         debug.event("network_emitted", "signal" to event.signal, "event_id" to event.eventId, "excluded" to excludedPlayers.size)
-        seenEvents[event.eventId] = clock()
         when (event.signal) {
             NetworkSignal.NODE_PROBE, NetworkSignal.NODE_ACK -> Unit
             else -> deliver(event, excludedPlayers)
@@ -354,7 +350,6 @@ class ArcFarmsNetworkService(
         if (!settings().network.enabled || !settings().network.nodeProbeEnabled) return
         val event = NetworkEvent.create(NetworkSignal.NODE_PROBE)
         pendingProbes[event.eventId] = clock()
-        seenEvents[event.eventId] = clock()
         lastProbeAtMs = clock()
         repository.publish(event)
         plugin.logger.info("ArcFarms xserver probe sent node=${settings().serverId} event=${event.eventId}")
@@ -362,7 +357,6 @@ class ArcFarmsNetworkService(
 
     private fun maintain() {
         val cutoff = clock() - EVENT_MAX_AGE_MS
-        seenEvents.entries.removeIf { it.value < cutoff }
         pendingProbes.entries.removeIf { it.value < cutoff }
         repository.cleanupExpiredTravelTickets(clock())
         if (!redis.isSubscriptionActive()) redis.init()
@@ -413,9 +407,8 @@ class ArcFarmsNetworkService(
         started = false
         tasks.forEach(ScheduledTask::cancel)
         tasks.clear()
-        listener?.let(repository::unregisterEvents)
-        listener = null
-        seenEvents.clear()
+        eventBus?.close()
+        eventBus = null
         pendingProbes.clear()
     }
 
@@ -437,6 +430,5 @@ class ArcFarmsNetworkService(
         private const val EVENT_MAX_AGE_MS = 15 * 60 * 1000L
         private const val EVENT_FUTURE_SKEW_MS = 60 * 1000L
         private const val PROBE_INTERVAL_MS = 5 * 60 * 1000L
-        private const val MAX_SEEN_EVENTS = 4_096
     }
 }

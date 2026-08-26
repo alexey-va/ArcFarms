@@ -5,14 +5,16 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import java.io.ByteArrayInputStream
 import java.io.DataInputStream
+import ru.arc.network.BackendServerId
+import ru.arc.paper.network.BungeeConnectPayload
 
 class BackendTransferTest : StringSpec({
     "BungeeCord connect payload contains only the bounded destination server" {
-        DataInputStream(ByteArrayInputStream(BungeeBackendTransfer.encodeConnectMessage("spawn"))).use { input ->
+        DataInputStream(ByteArrayInputStream(BungeeConnectPayload.encode(BackendServerId.of("spawn")))).use { input ->
             input.readUTF() shouldBe "Connect"
             input.readUTF() shouldBe "spawn"
             input.available() shouldBe 0
         }
-        shouldThrow<IllegalArgumentException> { BungeeBackendTransfer.encodeConnectMessage("spawn;op") }
+        shouldThrow<IllegalArgumentException> { BackendServerId.of("spawn;op") }
     }
 })
