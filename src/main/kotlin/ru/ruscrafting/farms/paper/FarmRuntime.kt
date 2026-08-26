@@ -14,3 +14,13 @@ internal data class FarmRuntime(
     val rules: FarmRules,
     var state: FarmShiftState,
 )
+
+/** Canonical block-index bounds for this farm; shared by lifecycle and admin recovery. */
+internal fun FarmRuntime.blockIndexDefinition(): FarmBlockIndexDefinition = FarmBlockIndexDefinition(
+    zoneId = settings.id,
+    region = region,
+    crops = settings.crops,
+    blocksPerTick = settings.blockReindexBlocksPerTick,
+    maxBlocks = settings.blockReindexMaxBlocks,
+    maxOrchardLeaves = settings.appleLeafIndexLimit,
+)

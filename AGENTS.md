@@ -16,11 +16,21 @@ activities: farm, lumbermill, and mine.
   replacing runtime state, and capture its token before every asynchronous
   completion that later re-enters the Paper thread. Direct `Tasks.scheduler`
   calls in the service are forbidden.
-- `ArcFarmsService.kt` is an orchestration boundary under active decomposition,
-  not a home for new cohesive subsystems. Keep it at or below 8,400 lines and
-  reduce that ceiling as code moves out; new stateful features, codecs,
-  transactions, entity lifecycles, and recovery queues need a focused owner
-  with unit tests instead of more service-local maps and helpers.
+- `ArcFarmsService.kt` is a thin compatibility/application facade, not a home
+  for cohesive subsystems. Follow `docs/architecture.md`. Keep it at or below
+  the 600-line ceiling enforced by `ArcFarmsArchitectureContractTest` with no gameplay
+  collection, PDC key, spawned entity, recovery queue, or state-machine call.
+  A slice is extracted only when its state, event routing, tick/reconcile,
+  cleanup and restart tests move together; moving methods into another large
+  class does not count.
+- `FarmComponentGraph` is composition-only. Never add listeners, tick logic,
+  state-machine calls, entity spawning, or world mutation to it, and never pass
+  the graph into gameplay owners as a service locator.
+- Optimize ownership and layout for agents as well as humans: a player-facing
+  concept must have one named feature package, one entry owner, and a mirrored
+  test. Production gameplay files target 600 lines, require review at 800, and
+  must never exceed 1,000. Do not create god contexts, callback bags, `Utils`
+  dumping grounds, or a second monolithic `FarmController`.
 - New worksite types implement `WorksiteModule`, use `WorksiteRuntimePort`, and
   register through `WorksiteModuleRegistry`. A controller owns all runtime
   state, validation, event routing, guidance, recovery, and phase application

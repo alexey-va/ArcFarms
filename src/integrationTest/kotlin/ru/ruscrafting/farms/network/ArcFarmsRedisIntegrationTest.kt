@@ -41,11 +41,11 @@ class ArcFarmsRedisIntegrationTest : StringSpec({
             val survivalRepository = ArcFarmsNetworkRepository(survival)
             val latch = CountDownLatch(1)
             var received: Pair<NetworkEvent, String>? = null
-            survivalRepository.registerEvents { event, origin ->
+            survivalRepository.registerEvents(originAllowed = { it == "spawn" }) { event, origin ->
                 received = event to origin
                 latch.countDown()
             }
-            spawnRepository.registerEvents { _, _ -> }
+            spawnRepository.registerEvents(originAllowed = { it == "survival" }) { _, _ -> }
             spawn.init()
             survival.init()
             waitUntil(10_000) { spawn.isSubscriptionActive() && survival.isSubscriptionActive() }

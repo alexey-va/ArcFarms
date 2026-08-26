@@ -53,11 +53,20 @@ internal interface WorksiteRuntimePort {
     fun isOperational(): Boolean
     fun hasAccess(player: Player, permission: String): Boolean
     fun allowInteraction(key: String, cooldownMillis: Long): Boolean
+    fun resetInteraction(key: String)
+    fun resetInteractionsContaining(fragment: String)
     fun players(region: ActivityRegion): List<Player>
     fun isAdminEditing(player: Player): Boolean
 
     fun sendChat(player: Player, key: MessageKey, values: Map<String, Component> = emptyMap())
     fun sendActionBar(player: Player, key: MessageKey, values: Map<String, Component> = emptyMap())
+    fun showScreenTitle(
+        player: Player,
+        key: MessageKey,
+        values: Map<String, Component> = emptyMap(),
+        scope: String = "player",
+    )
+    fun showScreenTitle(player: Player, title: Component, subtitle: Component)
     fun broadcast(
         regions: Collection<ActivityRegion>,
         key: MessageKey,
@@ -75,6 +84,9 @@ internal interface WorksiteRuntimePort {
         color: BossBar.Color,
         expected: MutableSet<ActivityBarKey>,
     )
+    fun reconcileBars(expected: Set<ActivityBarKey>)
+    fun removePlayerBars(player: Player)
+    fun hideAllBars()
 
     fun spawnGuidanceDust(player: Player, location: Location, color: Color, size: Float = 1.1f)
     fun successBurst(region: ActivityRegion)
@@ -108,6 +120,8 @@ internal interface WorksiteRuntimePort {
 
     fun lifecycleToken(): RuntimeTaskSupervisor.Token
     fun runSync(token: RuntimeTaskSupervisor.Token, task: () -> Unit): Boolean
+    fun runLater(delayTicks: Long, task: () -> Unit): Boolean
+    fun runLater(token: RuntimeTaskSupervisor.Token, delayTicks: Long, task: () -> Unit): Boolean
     fun log(level: Level, message: String, failure: Throwable? = null)
 }
 

@@ -36,6 +36,8 @@ internal class PaperWorksiteRuntimePort(
     private val operational: () -> Boolean,
     private val access: (Player, String) -> Boolean,
     private val interaction: (String, Long) -> Boolean,
+    private val interactionReset: (String) -> Unit,
+    private val interactionResetMatching: (String) -> Unit,
     private val adminEditing: (Player) -> Boolean,
     private val persist: () -> Unit,
     private val guard: (String, () -> Unit) -> Unit,
@@ -45,6 +47,8 @@ internal class PaperWorksiteRuntimePort(
     override fun isOperational(): Boolean = operational()
     override fun hasAccess(player: Player, permission: String): Boolean = access(player, permission)
     override fun allowInteraction(key: String, cooldownMillis: Long): Boolean = interaction(key, cooldownMillis)
+    override fun resetInteraction(key: String) = interactionReset(key)
+    override fun resetInteractionsContaining(fragment: String) = interactionResetMatching(fragment)
     override fun players(region: ActivityRegion): List<Player> = region.world.players.filter { region.contains(it.location) }
     override fun isAdminEditing(player: Player): Boolean = adminEditing(player)
 
@@ -81,11 +85,11 @@ internal class PaperWorksiteRuntimePort(
         }
     }
 
-    fun showScreenTitle(
+    override fun showScreenTitle(
         player: Player,
         key: MessageKey,
-        values: Map<String, Component> = emptyMap(),
-        scope: String = "player",
+        values: Map<String, Component>,
+        scope: String,
     ) {
         val title = locale.render(key, player, values)
         val subtitleKey = TITLE_SUBTITLES[key]
@@ -95,7 +99,7 @@ internal class PaperWorksiteRuntimePort(
         if (subtitleKey != null) debug.message("subtitle", scope, subtitleKey.path, player, subtitle)
     }
 
-    fun showScreenTitle(player: Player, title: Component, subtitle: Component) {
+    override fun showScreenTitle(player: Player, title: Component, subtitle: Component) {
         player.showTitle(
             Title.title(
                 title,
@@ -139,20 +143,20 @@ internal class PaperWorksiteRuntimePort(
         bar.color(color)
     }
 
-    fun reconcileBars(expected: Set<ActivityBarKey>) {
+    override fun reconcileBars(expected: Set<ActivityBarKey>) {
         (activeBars.keys - expected).forEach { key ->
             val bar = activeBars.remove(key) ?: return@forEach
             Bukkit.getPlayer(key.playerId)?.hideBossBar(bar)
         }
     }
 
-    fun removePlayerBars(player: Player) {
+    override fun removePlayerBars(player: Player) {
         activeBars.keys.filter { it.playerId == player.uniqueId }.forEach { key ->
             activeBars.remove(key)?.let(player::hideBossBar)
         }
     }
 
-    fun hideAllBars() {
+    override fun hideAllBars() {
         activeBars.forEach { (key, bar) -> Bukkit.getPlayer(key.playerId)?.hideBossBar(bar) }
         activeBars.clear()
     }
@@ -296,6 +300,9 @@ internal class PaperWorksiteRuntimePort(
     override fun guarded(scope: String, task: () -> Unit) = guard(scope, task)
     override fun lifecycleToken(): RuntimeTaskSupervisor.Token = supervisor.token()
     override fun runSync(token: RuntimeTaskSupervisor.Token, task: () -> Unit): Boolean = supervisor.runSync(token, task) != null
+    override fun runLater(delayTicks: Long, task: () -> Unit): Boolean = supervisor.runLater(supervisor.token(), delayTicks, task) != null
+    override fun runLater(token: RuntimeTaskSupervisor.Token, delayTicks: Long, task: () -> Unit): Boolean =
+        supervisor.runLater(token, delayTicks, task) != null
 
     override fun log(level: Level, message: String, failure: Throwable?) {
         if (failure == null) plugin.logger.log(level, message) else plugin.logger.log(level, message, failure)

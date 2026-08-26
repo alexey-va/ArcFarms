@@ -11,20 +11,24 @@ class ArcFarmsArchitectureContractTest : FunSpec({
     val servicePath = repositoryRoot.resolve(
         "ArcFarms/src/main/kotlin/ru/ruscrafting/farms/paper/ArcFarmsService.kt",
     )
+    val farmRoot = repositoryRoot.resolve(
+        "ArcFarms/src/main/kotlin/ru/ruscrafting/farms/paper/farm",
+    )
+    val farmModulePath = farmRoot.resolve("FarmModule.kt")
+    val farmRegistryPath = farmRoot.resolve("FarmRuntimeRegistry.kt")
 
     test("service callbacks cannot bypass the reload-aware task supervisor") {
         val source = Files.readString(servicePath)
 
         source.contains("Tasks.scheduler") shouldBe false
         source.contains("private val taskSupervisor = RuntimeTaskSupervisor()") shouldBe true
-        source.contains("taskSupervisor.runSync(lifecycle)") shouldBe true
-        source.contains("taskSupervisor.runLater(lifecycle, 1L)") shouldBe true
+        source.contains("private val worksitePort = PaperWorksiteRuntimePort") shouldBe true
     }
 
-    test("monolithic service cannot silently grow while extraction is in progress") {
+    test("application facade stays below its final size ceiling") {
         val lines = Files.readAllLines(servicePath).size
 
-        lines.shouldBeLessThanOrEqual(8_400)
+        lines.shouldBeLessThanOrEqual(600)
     }
 
     test("service does not reclaim lumber or mine state machines") {
@@ -47,5 +51,68 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         source.contains("mineController.onBreak") shouldBe false
         source.contains("mineController.onInteract") shouldBe false
         source.contains("mineController.onMove") shouldBe false
+    }
+
+    test("extracted farm features own their state and entity identities") {
+        val service = Files.readString(servicePath)
+        val featurePaths = Files.walk(farmRoot).use { paths ->
+            paths.filter { Files.isRegularFile(it) && it.toString().endsWith(".kt") }.toList()
+        }
+
+        listOf(
+            "FarmRewardLedger()",
+            "farm_supply_zone",
+            "farm_supply_kind",
+            "farm_service_item",
+            "supplyEntities",
+            "supplyVisualMaterials",
+            "farm_delivery_zone",
+            "deliveryEntities",
+            "deliveryCarriers",
+            "carriedDisplays",
+            "farm_pest_zone",
+            "farm_pest_nest_zone",
+            "pestEntities",
+            "pestNestEntities",
+            "waterFlows",
+            "droughtGrowth",
+            "pendingIncidentRestore",
+            "specialIncidentScene",
+            "nightShift",
+            "marketMenu",
+            "NamespacedKey",
+            "PersistentDataType",
+            "FarmShiftEngine.",
+            "private var farms",
+            "fixedCropRestoreQueue",
+            "adminPausedFarmZones",
+        ).forEach { forbidden -> service.contains(forbidden) shouldBe false }
+        featurePaths.isNotEmpty() shouldBe true
+        featurePaths.forEach { path ->
+            Files.exists(path) shouldBe true
+            Files.readAllLines(path).size.shouldBeLessThanOrEqual(800)
+        }
+    }
+
+    test("composition graph stays behavior-free") {
+        val graph = Files.readString(farmRoot.resolve("FarmComponentGraph.kt"))
+
+        listOf(
+            "fun tick(",
+            "fun onBreak",
+            "fun onInteract",
+            "FarmShiftEngine.",
+            ".spawn(",
+            ".setType(",
+        ).forEach { forbidden -> graph.contains(forbidden) shouldBe false }
+    }
+
+    test("farm follows the shared worksite contract and has one runtime collection owner") {
+        val module = Files.readString(farmModulePath)
+        val registry = Files.readString(farmRegistryPath)
+
+        module.contains(": WorksiteModule<FarmShiftState>") shouldBe true
+        module.contains("private var runtimes") shouldBe false
+        registry.contains("private var runtimes: List<FarmRuntime>") shouldBe true
     }
 })
