@@ -71,9 +71,7 @@ internal class FarmHarvestController(
             event.isDropItems = false
             event.expToDrop = 0
             if (commit.fixedCrop) {
-                if (fixedCrops.prepareHarvest(runtime, event.player, event.block, commit.now, ::progress)) {
-                    event.isCancelled = false
-                }
+                fixedCrops.prepareHarvest(runtime, event.player, event.block, commit.now, ::progress)
                 return@validate
             }
             event.isCancelled = false

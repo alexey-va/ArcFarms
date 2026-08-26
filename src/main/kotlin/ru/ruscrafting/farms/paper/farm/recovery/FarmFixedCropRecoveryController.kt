@@ -132,40 +132,47 @@ internal class FarmFixedCropRecoveryController(
         )
         val crop = block.type
         val sequence = runtime.state.sequence
-        runCatching { journal.prepare(pending) }.getOrElse { failure ->
+        val lifecycle = port.lifecycleToken()
+        val preparation = runCatching { journal.prepare(pending) }.getOrElse { failure ->
             port.log(Level.SEVERE, "Could not prepare fixed crop journal at $positionKey", failure)
             ledger.reconcileFixedCrop(block, runtime.settings.id, scheduledRecord.originalBlockData, null)
             port.sendChat(player, MessageKey.GENERIC_ERROR)
             return false
-        }.whenComplete { _, failure ->
-            if (failure != null) {
-                port.log(Level.SEVERE, "Could not persist fixed crop journal at $positionKey; chunk PDC remains authoritative", failure)
-            }
         }
-        port.runLater(1L) {
-            if (!port.isOperational()) return@runLater
-            if (!block.type.isAir) {
-                ledger.reconcileFixedCrop(block, pending.zoneId, pending.originalBlockData, null)
-                journal.remove(positionKey).whenComplete { _, failure ->
-                    if (failure != null) port.log(Level.SEVERE, "Could not roll back fixed crop journal at $positionKey", failure)
+
+        preparation.whenComplete { _, failure ->
+            if (!port.isOperational()) return@whenComplete
+            port.runSync(lifecycle) {
+                if (failure != null) {
+                    port.log(Level.SEVERE, "Could not persist fixed crop journal at $positionKey", failure)
+                    ledger.reconcileFixedCrop(block, pending.zoneId, pending.originalBlockData, null)
+                    if (player.isOnline) port.sendChat(player, MessageKey.GENERIC_ERROR)
+                    return@runSync
                 }
-                return@runLater
+                val currentRuntime = runtimes().firstOrNull {
+                    it.settings.id == pending.zoneId && it.state.sequence == sequence && it.state.phase == FarmPhase.HARVESTING
+                }
+                if (currentRuntime == null || block.type != crop) {
+                    if (block.type == crop) {
+                        ledger.reconcileFixedCrop(block, pending.zoneId, pending.originalBlockData, null)
+                    }
+                    retire(positionKey, "harvest_stale")
+                    return@runSync
+                }
+                block.setType(Material.AIR, false)
+                queue.schedule(FarmFixedCropRestore(scheduledRecord.position(block.world.name), restoreAt))
+                debug.event(
+                    "farm_fixed_crop_committed",
+                    "player" to player.name,
+                    "zone" to currentRuntime.settings.id,
+                    "crop" to crop,
+                    "restore_at" to restoreAt,
+                    "x" to block.x,
+                    "y" to block.y,
+                    "z" to block.z,
+                )
+                onCommitted(currentRuntime, player, crop.name)
             }
-            queue.schedule(FarmFixedCropRestore(scheduledRecord.position(block.world.name), restoreAt))
-            val currentRuntime = runtimes().firstOrNull {
-                it.settings.id == pending.zoneId && it.state.sequence == sequence && it.state.phase == FarmPhase.HARVESTING
-            } ?: return@runLater
-            debug.event(
-                "farm_fixed_crop_committed",
-                "player" to player.name,
-                "zone" to currentRuntime.settings.id,
-                "crop" to crop,
-                "restore_at" to restoreAt,
-                "x" to block.x,
-                "y" to block.y,
-                "z" to block.z,
-            )
-            onCommitted(currentRuntime, player, crop.name)
         }
         return true
     }

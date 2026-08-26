@@ -243,6 +243,20 @@ internal class FarmDroughtIncident(
         growth.clear()
     }
 
+    fun clearZone(zoneId: String, reason: String) {
+        val positions = flows.remove(zoneId)?.clear().orEmpty()
+        positions.forEach { position -> positionBlock(position)?.takeIf { it.type == Material.WATER }?.setType(Material.AIR, false) }
+        growth.remove(zoneId)
+        if (positions.isNotEmpty()) {
+            debug.event(
+                "farm_water_removed",
+                "zone" to zoneId,
+                "count" to positions.size,
+                "reason" to reason,
+            )
+        }
+    }
+
     private fun findSource(runtime: FarmRuntime, clicked: Block, face: org.bukkit.block.BlockFace): Block? = listOf(
         clicked,
         clicked.getRelative(face),

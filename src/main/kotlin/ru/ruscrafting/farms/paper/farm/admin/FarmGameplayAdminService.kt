@@ -262,7 +262,7 @@ internal class FarmGameplayAdminService(
     }
 
     private fun clearActiveObjective(runtime: FarmRuntime, player: Player): Boolean {
-        drought.clear("admin_stage")
+        drought.clearZone(runtime.settings.id, "admin_stage")
         care.clear(runtime, "admin_stage")
         runtime.state = runtime.state.copy(careType = null, seederStage = null, careTargets = emptyList(), careGoal = null)
         pests.clear(runtime, "admin_stage")
@@ -378,10 +378,11 @@ internal class FarmGameplayAdminService(
     }
 
     private fun reset(runtime: FarmRuntime): Boolean {
-        drought.clear("admin_reset")
+        drought.clearZone(runtime.settings.id, "admin_reset")
         care.clear(runtime, "admin_reset")
         pests.clear(runtime, "admin_reset")
         restoreGiantCrop(runtime, "admin_reset")
+        special.clearZone(runtime, "admin_reset")
         delivery.clear(runtime, "admin_reset")
         scene.clear(runtime, "admin_reset")
         incidentRecovery.restore(runtime)
