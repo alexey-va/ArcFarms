@@ -16,7 +16,7 @@ import org.joml.Vector3f
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.floor
 
-internal enum class FarmSpecialSceneRole { GIANT_CROP, GIANT_HITBOX, CHANNEL_GATE, CHANNEL_HITBOX }
+internal enum class FarmSpecialSceneRole { CHANNEL_GATE, CHANNEL_HITBOX }
 
 internal data class FarmSpecialSceneIdentity(
     val zoneId: String,
@@ -129,10 +129,8 @@ internal class FarmSpecialIncidentSceneManager(
     ): Entity {
         val world = requireNotNull(target.location.world)
         val entity = when (target.role) {
-            FarmSpecialSceneRole.GIANT_CROP, FarmSpecialSceneRole.CHANNEL_GATE ->
-                world.spawn(target.location, ItemDisplay::class.java)
-            FarmSpecialSceneRole.GIANT_HITBOX, FarmSpecialSceneRole.CHANNEL_HITBOX ->
-                world.spawn(target.location, Interaction::class.java)
+            FarmSpecialSceneRole.CHANNEL_GATE -> world.spawn(target.location, ItemDisplay::class.java)
+            FarmSpecialSceneRole.CHANNEL_HITBOX -> world.spawn(target.location, Interaction::class.java)
         }
         normalize(entity, spec, target, identity)
         debug.event(
@@ -175,17 +173,16 @@ internal class FarmSpecialIncidentSceneManager(
                 entity.isGlowing = target.active
             }
             is Interaction -> {
-                val giant = target.role == FarmSpecialSceneRole.GIANT_HITBOX
-                entity.interactionWidth = if (giant) maxOf(2.5f, target.scale) else 1.25f
-                entity.interactionHeight = if (giant) maxOf(2.5f, target.scale) else 1.45f
+                entity.interactionWidth = 1.25f
+                entity.interactionHeight = 1.45f
                 entity.isResponsive = true
             }
         }
     }
 
     private fun entityMatchesRole(entity: Entity, role: FarmSpecialSceneRole): Boolean = when (role) {
-        FarmSpecialSceneRole.GIANT_CROP, FarmSpecialSceneRole.CHANNEL_GATE -> entity is ItemDisplay
-        FarmSpecialSceneRole.GIANT_HITBOX, FarmSpecialSceneRole.CHANNEL_HITBOX -> entity is Interaction
+        FarmSpecialSceneRole.CHANNEL_GATE -> entity is ItemDisplay
+        FarmSpecialSceneRole.CHANNEL_HITBOX -> entity is Interaction
     }
 
     private fun decode(entity: Entity): FarmSpecialSceneIdentity? {

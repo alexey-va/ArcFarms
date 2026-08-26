@@ -212,6 +212,7 @@ enum class MessageKey(val path: String) {
     FARM_GIANT_CROP_TOOL("farm.giant-crop-tool"),
     FARM_CHANNELS_STARTED("farm.channels-started"),
     FARM_CHANNELS_STARTED_SUBTITLE("farm.channels-started-subtitle"),
+    FARM_CHANNELS_PROGRESS("farm.channels-progress"),
     FARM_NIGHT_SHIFT_STARTED("farm.night-shift-started"),
     FARM_NIGHT_SHIFT_STARTED_SUBTITLE("farm.night-shift-started-subtitle"),
     FARM_NIGHT_PATROL_AVOID("farm.night-patrol-avoid"),
@@ -417,7 +418,7 @@ class ArcFarmsLocale(
             add("admin.backup-reason.pre_restore")
             listOf(
                 "managed", "patch", "drought", "drought-damaged", "pest-nest", "pest-damaged",
-                "special-target", "special-damaged", "orchard",
+                "special-target", "special-damaged", "giant-crop", "orchard",
             )
                 .mapTo(this) { "admin-inspect.tracking-kind.$it" }
             val adminStages = listOf(
@@ -435,7 +436,8 @@ class ArcFarmsLocale(
                 add("scoreboard.objective.$incident")
                 add("scoreboard.hint.$incident")
             }
-            add("scoreboard.hint-detail.night-shift")
+            listOf("preparation", "planting", "seeder-tilling", "seeder-planting", "channels", "night-shift", "market-pending")
+                .mapTo(this) { "scoreboard.hint-detail.$it" }
             FarmCareType.entries.forEach { type ->
                 add("care.${type.name.lowercase()}.name")
                 add("care.${type.name.lowercase()}.instruction")

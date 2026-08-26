@@ -22,6 +22,35 @@ class FarmSpecialIncidentEngineTest : FunSpec({
         state.contributors[player] shouldBe 4
     }
 
+    test("giant crop adopts the durable physical block count after an upgrade or restart") {
+        val initial = incident(FarmIncidentType.GIANT_CROP).copy(
+            specialIncident = FarmSpecialIncidentState(points = listOf(FarmPointPosition("world", 0.5, 65.0, 0.5))),
+            incidentRequired = 16,
+            incidentProgress = 2,
+        )
+
+        val reconciled = FarmSpecialIncidentEngine.reconcileGiantCrop(initial, totalBlocks = 41, brokenBlocks = 7)
+
+        reconciled.accepted shouldBe true
+        reconciled.state.incidentRequired shouldBe 41
+        reconciled.state.incidentProgress shouldBe 7
+        reconciled.state.phase shouldBe FarmPhase.INCIDENT
+    }
+
+    test("an unavailable special incident can be retargeted or safely skipped before it starts") {
+        val initial = incident(FarmIncidentType.GIANT_CROP)
+
+        val retargeted = FarmSpecialIncidentEngine.retargetUninitialized(initial, FarmIncidentType.CHANNELS)
+        retargeted.accepted shouldBe true
+        retargeted.state.incidentType shouldBe FarmIncidentType.CHANNELS
+
+        val skipped = FarmSpecialIncidentEngine.skipUnavailable(initial)
+        skipped.accepted shouldBe true
+        skipped.events shouldBe emptyList()
+        skipped.state.phase shouldBe FarmPhase.HARVESTING
+        skipped.state.incidentsResolved shouldBe 1
+    }
+
     test("channel water progress is the correctly configured prefix and supports backtracking") {
         var state = incident(FarmIncidentType.CHANNELS).copy(
             specialIncident = FarmSpecialIncidentState(
@@ -63,7 +92,47 @@ class FarmSpecialIncidentEngineTest : FunSpec({
         }
         accepted.phase shouldBe FarmPhase.HARVESTING
         accepted.rewardMoneyBonusPercent shouldBe 25
-        accepted.specialDamagedCrops.size shouldBe 4
+        accepted.specialDamagedCrops.size shouldBe 0
+    }
+
+    test("rush delivery can count a regrown crop at the same managed bed") {
+        var state = incident(FarmIncidentType.MARKET).copy(
+            specialIncident = FarmSpecialIncidentState(plots = listOf(cropPlots.first()), crop = "WHEAT"),
+            incidentRequired = 3,
+        )
+        state = FarmSpecialIncidentEngine.acceptMarket(state, now = 100, durationMillis = 120_000).state
+        repeat(3) {
+            state = FarmSpecialIncidentEngine.harvestSpecialCrop(
+                state,
+                FarmIncidentType.MARKET,
+                FarmCropDamage(cropPlots.first(), "WHEAT"),
+                player,
+            ).state
+        }
+        state.phase shouldBe FarmPhase.HARVESTING
+        state.specialDamagedCrops shouldBe emptyList()
+    }
+
+    test("giant crop planner uses a matching field block and physical blueprint quota") {
+        val candidate = FarmGiantCropCandidate(FarmPlotPosition("world", 12, 65, 8), "MELON")
+        val plan = FarmSpecialIncidentPlanner.plan(
+            type = FarmIncidentType.GIANT_CROP,
+            sequence = 9,
+            matureCrops = emptyList(),
+            giantCandidates = listOf(candidate),
+            fallbackPlot = null,
+            irrigationSource = null,
+            channelGates = 4,
+            nightCrops = 8,
+            nightCropMinSpacing = 4.0,
+            nightPatrols = 0,
+            nightPatrolMinSpacing = 4.0,
+            marketCrops = 32,
+        ) ?: error("Giant crop plan is missing")
+
+        plan.state.crop shouldBe "MELON"
+        plan.state.points.single() shouldBe FarmPointPosition("world", 12.5, 65.0, 8.5)
+        plan.required shouldBe FarmGiantCropBlueprint.voxels("MELON").size
     }
 
     test("accepted market expires at its persisted deadline without granting the money bonus") {
@@ -116,7 +185,6 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             matureCrops = mature,
             fallbackPlot = cropPlots.first(),
             irrigationSource = FarmPointPosition("world", -2.0, 65.0, 0.0),
-            giantHits = 16,
             channelGates = 4,
             nightCrops = 4,
             nightCropMinSpacing = 4.0,
@@ -130,7 +198,6 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             matureCrops = mature,
             fallbackPlot = cropPlots.first(),
             irrigationSource = FarmPointPosition("world", -2.0, 65.0, 0.0),
-            giantHits = 16,
             channelGates = 4,
             nightCrops = 4,
             nightCropMinSpacing = 4.0,
@@ -156,7 +223,6 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             matureCrops = mature,
             fallbackPlot = mature.first().plot,
             irrigationSource = FarmPointPosition("world", -2.0, 65.0, 0.0),
-            giantHits = 16,
             channelGates = 4,
             nightCrops = 12,
             nightCropMinSpacing = 6.0,
@@ -189,7 +255,6 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             nightPatrolPlots = wholeFarm,
             fallbackPlot = mature.first().plot,
             irrigationSource = null,
-            giantHits = 16,
             channelGates = 4,
             nightCrops = 6,
             nightCropMinSpacing = 2.0,
@@ -213,7 +278,6 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             matureCrops = mature,
             fallbackPlot = mature.first().plot,
             irrigationSource = FarmPointPosition("world", -2.0, 65.0, 0.0),
-            giantHits = 16,
             channelGates = 4,
             nightCrops = 6,
             nightCropMinSpacing = 3.0,

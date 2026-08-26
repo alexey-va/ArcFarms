@@ -74,6 +74,7 @@ data class FarmZoneSettings(
     val permission: String,
     val preparationPatchSize: Int,
     val preparationPatchMaxSize: Int,
+    val fieldCompletionPercent: Int,
     val preparationSearchRadius: Int,
     val fixedCropRespawnSeconds: Int,
     val restoreBlocksPerTick: Int,
@@ -159,10 +160,9 @@ data class FarmZoneSettings(
 }
 
 data class FarmSpecialIncidentSettings(
-    val giantCropHits: Int,
-    val giantCropScale: Float,
     val channelGateCount: Int,
     val channelDisplayScale: Float,
+    val channelDisplayYOffset: Double,
     val nightCropCount: Int,
     val nightCropMinSpacing: Double,
     val nightPlayerTime: Long,
@@ -611,12 +611,15 @@ class ArcFarmsConfig private constructor(
                     }
                 }
                 val specialIncidents = FarmSpecialIncidentSettings(
-                    giantCropHits = section.int("special-incidents.giant-crop.hits", 16)
-                        .checked("special-incidents.giant-crop.hits", 4, 64),
-                    giantCropScale = section.finiteFloat("special-incidents.giant-crop.scale", 3.2f, 1.5f, 6.0f),
                     channelGateCount = section.int("special-incidents.channels.gates", 4)
                         .checked("special-incidents.channels.gates", 3, 8),
                     channelDisplayScale = section.finiteFloat("special-incidents.channels.display-scale", 1.35f, 0.5f, 3.0f),
+                    channelDisplayYOffset = section.finiteDouble(
+                        "special-incidents.channels.y-offset",
+                        0.8,
+                        0.0,
+                        2.0,
+                    ),
                     nightCropCount = section.int("special-incidents.night-shift.crops", 24)
                         .checked("special-incidents.night-shift.crops", 6, 64),
                     nightCropMinSpacing = section.finiteDouble(
@@ -659,7 +662,7 @@ class ArcFarmsConfig private constructor(
                     ),
                     nightPatrolMovementSpeed = section.finiteDouble(
                         "special-incidents.night-shift.patrols.movement-speed",
-                        0.18,
+                        0.30,
                         0.05,
                         0.5,
                     ),
@@ -680,21 +683,21 @@ class ArcFarmsConfig private constructor(
                     ),
                     nightPatrolLightLevel = section.int("special-incidents.night-shift.patrols.light-level", 15)
                         .checked("special-incidents.night-shift.patrols.light-level", 0, 15),
-                    marketCropCount = section.int("special-incidents.market.crops", 32)
-                        .checked("special-incidents.market.crops", 8, 64),
+                    marketCropCount = section.int("special-incidents.market.crops", 256)
+                        .checked("special-incidents.market.crops", 8, 512),
                     marketMoneyBonusPercent = section.int("special-incidents.market.money-bonus-percent", 25)
                         .checked("special-incidents.market.money-bonus-percent", 0, 200),
-                    marketBaseSeconds = section.int("special-incidents.market.timer.base-seconds", 45)
+                    marketBaseSeconds = section.int("special-incidents.market.timer.base-seconds", 30)
                         .checked("special-incidents.market.timer.base-seconds", 0, 600),
                     marketSecondsPerCrop = section.finiteDouble(
                         "special-incidents.market.timer.seconds-per-crop",
-                        3.0,
+                        0.3,
                         0.0,
                         30.0,
                     ),
-                    marketMinimumSeconds = section.int("special-incidents.market.timer.minimum-seconds", 120)
+                    marketMinimumSeconds = section.int("special-incidents.market.timer.minimum-seconds", 90)
                         .checked("special-incidents.market.timer.minimum-seconds", 10, 3_600),
-                    marketMaximumSeconds = section.int("special-incidents.market.timer.maximum-seconds", 300)
+                    marketMaximumSeconds = section.int("special-incidents.market.timer.maximum-seconds", 180)
                         .checked("special-incidents.market.timer.maximum-seconds", 10, 3_600),
                 )
                 require(specialIncidents.marketMinimumSeconds <= specialIncidents.marketMaximumSeconds) {
@@ -706,6 +709,8 @@ class ArcFarmsConfig private constructor(
                     permission = permission(section.string("permission", "arcfarms.farm")),
                     preparationPatchSize = preparationPatchSize,
                     preparationPatchMaxSize = preparationPatchMaxSize,
+                    fieldCompletionPercent = section.int("field-completion-percent", 90)
+                        .checked("field-completion-percent", 50, 100),
                     preparationSearchRadius = section.int("preparation-search-radius", 48)
                         .checked("preparation-search-radius", 4, 64),
                     fixedCropRespawnSeconds = section.int("fixed-crop-respawn-seconds", 20)
@@ -754,7 +759,7 @@ class ArcFarmsConfig private constructor(
                     seederPigSpacing = seederPigSpacing,
                     seederPigCatchupDistance = seederPigCatchupDistance,
                     seederHorseSpeed = section.finiteDouble("seeder-horse-speed", 0.24, 0.1, 0.6),
-                    seederPigSpeed = section.finiteDouble("seeder-pig-speed", 0.38, 0.1, 0.8),
+                    seederPigSpeed = section.finiteDouble("seeder-pig-speed", 0.46, 0.1, 0.8),
                     seederWorkingRadius = section.finiteDouble("seeder-working-radius", 8.0, 1.0, 16.0),
                     seederBlocksPerUpdate = section.int("seeder-blocks-per-update", 128)
                         .checked("seeder-blocks-per-update", 8, 256),

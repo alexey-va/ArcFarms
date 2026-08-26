@@ -58,11 +58,14 @@ internal class FarmBlockRegistry(
     private val clock: () -> Long = System::currentTimeMillis,
 ) : AutoCloseable {
     private val bedsByZone = mutableMapOf<String, MutableSet<FarmPlotPosition>>()
+    private val fixedCropsByZone = mutableMapOf<String, MutableSet<FarmPlotPosition>>()
     private val orchardLeavesByZone = mutableMapOf<String, MutableSet<FarmPlotPosition>>()
     private val jobs = mutableMapOf<String, ReindexJob>()
     private var closed = false
 
     fun beds(zoneId: String): Set<FarmPlotPosition> = bedsByZone[zoneId].orEmpty()
+
+    fun fixedCrops(zoneId: String): Set<FarmPlotPosition> = fixedCropsByZone[zoneId].orEmpty()
 
     fun orchardLeaves(zoneId: String): Set<FarmPlotPosition> = orchardLeavesByZone[zoneId].orEmpty()
 
@@ -103,6 +106,16 @@ internal class FarmBlockRegistry(
             }.toSet()
         replaceChunkPositions(bedsByZone, definition.zoneId, chunk, chunkBeds)
 
+        val fixedCrops = ledger.fixedCropRecords(chunk).asSequence()
+            .filter { it.zoneId == definition.zoneId && it.restoreAt == null }
+            .map { FarmPlotPosition(chunk.world.name, it.x, it.y, it.z) }
+            .filter { position ->
+                val block = chunk.world.getBlockAt(position.x, position.y, position.z)
+                definition.region.contains(block.location) && MaterialRules.isFixedBlockCrop(block.type) &&
+                    block.type.name in definition.crops
+            }.toSet()
+        replaceChunkPositions(fixedCropsByZone, definition.zoneId, chunk, fixedCrops)
+
         val leaves = ledger.orchardLeafRecords(chunk).asSequence()
             .filter { it.zoneId == definition.zoneId }
             .map { FarmPlotPosition(chunk.world.name, it.x, it.y, it.z) }
@@ -142,6 +155,7 @@ internal class FarmBlockRegistry(
         jobs.values.toList().forEach { it.cancel() }
         jobs.clear()
         bedsByZone.clear()
+        fixedCropsByZone.clear()
         orchardLeavesByZone.clear()
     }
 
@@ -175,6 +189,7 @@ internal class FarmBlockRegistry(
         private val fixedCrops = mutableMapOf<Long, MutableSet<FarmPlotPosition>>()
         private val orchardSampler = BoundedOrchardSampler(definition.maxOrchardLeaves)
         private val appliedBeds = linkedSetOf<FarmPlotPosition>()
+        private val appliedFixedCropPositions = linkedSetOf<FarmPlotPosition>()
         private val appliedLeaves = linkedSetOf<FarmPlotPosition>()
         private var appliedFixedCrops = 0
         private var phase = FarmBlockReindexPhase.SCANNING
@@ -334,6 +349,7 @@ internal class FarmBlockRegistry(
                 ledger.replaceZoneIndex(chunk, definition.zoneId, validBeds, validFixed, validLeaves)
             }.onFailure { return fail(it) }
             validBeds.mapTo(appliedBeds) { it.toPosition() }
+            validFixed.mapTo(appliedFixedCropPositions) { it.toPosition() }
             validLeaves.mapTo(appliedLeaves) { it.toPosition() }
             appliedFixedCrops += validFixed.size
             appliedChunks++
@@ -347,6 +363,7 @@ internal class FarmBlockRegistry(
             if (finished) return
             finished = true
             bedsByZone[definition.zoneId] = appliedBeds
+            fixedCropsByZone[definition.zoneId] = appliedFixedCropPositions
             orchardLeavesByZone[definition.zoneId] = appliedLeaves
             jobs.remove(definition.zoneId)
             onComplete(FarmBlockReindexResult(status(), (clock() - startedAt).coerceAtLeast(0L)))

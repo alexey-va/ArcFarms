@@ -49,6 +49,8 @@ farm-zones:
     permission: arcfarms.farm
     preparation-patch-size: 100
     preparation-patch-max-size: 256
+    # Finish at this share so one hidden or unreachable bed never blocks the stage.
+    field-completion-percent: 90
     preparation-search-radius: 64
     # Full-block crops are restored at their recorded coordinates after this delay.
     fixed-crop-respawn-seconds: 20
@@ -91,7 +93,7 @@ farm-zones:
     seeder-pig-spacing: 1.4
     seeder-pig-catchup-distance: 7.0
     seeder-horse-speed: 0.24
-    seeder-pig-speed: 0.38
+    seeder-pig-speed: 0.46
     # Every indexed bed inside this radius around any working pig is processed.
     seeder-working-radius: 8.0
     # Bounds tilling/planting mutations per machinery update (every 5 ticks).
@@ -149,8 +151,7 @@ farm-zones:
     # одно обычное полевое происшествие (вредители или засуха).
     incident-types: [GIANT_CROP, CHANNELS, NIGHT_SHIFT, MARKET, PESTS, DROUGHT]
     special-incidents:
-      giant-crop: {hits: 16, scale: 3.2}
-      channels: {gates: 4, display-scale: 1.35}
+      channels: {gates: 4, display-scale: 1.35, y-offset: 0.8}
       night-shift:
         crops: 24
         crop-min-spacing: 6.0
@@ -164,16 +165,16 @@ farm-zones:
           roam-radius: 14.0
           path-refresh-seconds: 5
           spawn-min-player-distance: 8.0
-          movement-speed: 0.18
+          movement-speed: 0.30
           follow-range: 8.0
           attack-damage: 2.0
           held-item: TORCH
           # Real invisible light blocks follow patrols; particles alone do not emit light.
           light-level: 15
       market:
-        crops: 32
+        crops: 256
         money-bonus-percent: 25
-        timer: {base-seconds: 45, seconds-per-crop: 3.0, minimum-seconds: 120, maximum-seconds: 300}
+        timer: {base-seconds: 30, seconds-per-crop: 0.3, minimum-seconds: 90, maximum-seconds: 180}
     pest-entity: SILVERFISH
     pest-spawn-radius: 6
     pest-nests: 3

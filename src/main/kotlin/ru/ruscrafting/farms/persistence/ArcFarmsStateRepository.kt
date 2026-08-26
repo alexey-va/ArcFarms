@@ -146,7 +146,9 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 ) { "Empty farm preparation patch contains progress" }
             } else {
                 require(farm.preparationCrop != null) { "Farm preparation patch has no crop" }
-                require(farm.preparationRequired == farm.preparationPatch.size) { "Farm preparation quota drifted from its patch" }
+                require(farm.preparationRequired in 1..farm.preparationPatch.size) {
+                    "Farm preparation quota escaped its patch"
+                }
                 require(farm.preparationProgress == farm.tilledPlots.size) { "Farm tilling progress drifted from its plots" }
                 require(farm.plantingProgress == farm.plantedPlots.size) { "Farm planting progress drifted from its plots" }
             }

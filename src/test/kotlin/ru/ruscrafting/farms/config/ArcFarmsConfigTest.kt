@@ -128,12 +128,14 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().droughtTargetBeds(20) shouldBe 20
         settings.farms.single().preparationPatchSize shouldBe 100
         settings.farms.single().preparationPatchMaxSize shouldBe 256
+        settings.farms.single().fieldCompletionPercent shouldBe 90
         settings.farms.single().seederPatchSize shouldBe 1_280
         settings.farms.single().seederPatchMaxSize shouldBe 2_048
         settings.farms.single().seederComponentGap shouldBe 16
         settings.farms.single().seederComponentLimit shouldBe 8
         settings.farms.single().seederWorkingRadius shouldBe 8.0
         settings.farms.single().seederBlocksPerUpdate shouldBe 128
+        settings.farms.single().seederPigSpeed shouldBe 0.46
         settings.farms.single().preparationSearchRadius shouldBe 64
         settings.farms.single().fixedCropRespawnSeconds shouldBe 20
         settings.farms.single().restoreBlocksPerTick shouldBe 24
@@ -184,8 +186,8 @@ class ArcFarmsConfigTest : FunSpec({
             FarmIncidentType.PESTS,
             FarmIncidentType.DROUGHT,
         )
-        settings.farms.single().specialIncidents.giantCropHits shouldBe 16
         settings.farms.single().specialIncidents.channelGateCount shouldBe 4
+        settings.farms.single().specialIncidents.channelDisplayYOffset shouldBe 0.8
         settings.farms.single().specialIncidents.nightCropCount shouldBe 24
         settings.farms.single().specialIncidents.nightCropMinSpacing shouldBe 6.0
         settings.farms.single().specialIncidents.nightPatrolMinCount shouldBe 3
@@ -200,16 +202,17 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().specialIncidents.nightPatrolRoamRadius shouldBe 14.0
         settings.farms.single().specialIncidents.nightPatrolPathRefreshSeconds shouldBe 5
         settings.farms.single().specialIncidents.nightPatrolSpawnMinPlayerDistance shouldBe 8.0
-        settings.farms.single().specialIncidents.nightPatrolMovementSpeed shouldBe 0.18
+        settings.farms.single().specialIncidents.nightPatrolMovementSpeed shouldBe 0.30
         settings.farms.single().specialIncidents.nightPatrolFollowRange shouldBe 8.0
         settings.farms.single().specialIncidents.nightPatrolAttackDamage shouldBe 2.0
         settings.farms.single().specialIncidents.nightPatrolHeldItem shouldBe "TORCH"
         settings.farms.single().specialIncidents.nightPatrolLightLevel shouldBe 15
         settings.farms.single().specialIncidents.marketMoneyBonusPercent shouldBe 25
-        settings.farms.single().specialIncidents.marketBaseSeconds shouldBe 45
-        settings.farms.single().specialIncidents.marketSecondsPerCrop shouldBe 3.0
-        settings.farms.single().specialIncidents.marketMinimumSeconds shouldBe 120
-        settings.farms.single().specialIncidents.marketMaximumSeconds shouldBe 300
+        settings.farms.single().specialIncidents.marketCropCount shouldBe 256
+        settings.farms.single().specialIncidents.marketBaseSeconds shouldBe 30
+        settings.farms.single().specialIncidents.marketSecondsPerCrop shouldBe 0.3
+        settings.farms.single().specialIncidents.marketMinimumSeconds shouldBe 90
+        settings.farms.single().specialIncidents.marketMaximumSeconds shouldBe 180
         settings.farms.single().pestNestCount shouldBe 3
         settings.farms.single().pestNestHealth shouldBe 3
         settings.farms.single().pestSpawnsPerNest shouldBe 3
@@ -773,8 +776,8 @@ class ArcFarmsConfigTest : FunSpec({
         )
         val scenarios = listOf(
             base.copy(phase = FarmPhase.IDLE) to "Заказ появится автоматически",
-            base to "Найдите метку и вспашите землю",
-            base.copy(phase = FarmPhase.PLANTING) to "Найдите метку и засейте грядки",
+            base to "Найдите поле под столбом",
+            base.copy(phase = FarmPhase.PLANTING) to "Найдите поле под столбом",
             base.copy(phase = FarmPhase.CARE, careType = null) to "Следуйте к ближайшей метке",
             base.copy(phase = FarmPhase.HARVESTING) to "Собирайте культуры из списка",
             base.copy(phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.PESTS) to
@@ -785,7 +788,7 @@ class ArcFarmsConfigTest : FunSpec({
                 phase = FarmPhase.INCIDENT,
                 incidentType = FarmIncidentType.MARKET,
                 incidentCrop = "WHEAT",
-            ) to "Найдите светящегося покупателя и нажмите ПКМ",
+            ) to "Найдите светящегося покупателя",
             base.copy(
                 phase = FarmPhase.INCIDENT,
                 incidentType = FarmIncidentType.MARKET,
@@ -799,12 +802,12 @@ class ArcFarmsConfigTest : FunSpec({
                 phase = FarmPhase.CARE,
                 careType = FarmCareType.SEEDER,
                 seederStage = FarmSeederStage.TILLING,
-            ) to "Проезжайте так, чтобы свиньи прошли над невспаханными грядками",
+            ) to "Ведите свиней над грядками",
             base.copy(
                 phase = FarmPhase.CARE,
                 careType = FarmCareType.SEEDER,
                 seederStage = FarmSeederStage.PLANTING,
-            ) to "Проведите свиней над оставшимися незасеянными грядками",
+            ) to "Ведите свиней над грядками",
         ) + mapOf(
             FarmCareType.WEEDS to "Ищите подсвеченные корни",
             FarmCareType.IRRIGATION to "Открывайте вентили по порядку",
@@ -819,9 +822,34 @@ class ArcFarmsConfigTest : FunSpec({
 
         scenarios.forEach { (view, expectedHint) ->
             val rows = renderer.rows(view, null)
-            rows.size shouldBe 10
+            (rows.size in 10..11) shouldBe true
             PlainTextComponentSerializer.plainText().serialize(rows[6]) shouldBe "| $expectedHint"
         }
+    }
+
+    test("long field and channel instructions use separate compact scoreboard rows") {
+        val root = resourceTree()
+        val settings = ArcFarmsConfig.inspect(root)
+        val renderer = FarmScoreboardRenderer(ArcFarmsLocale(root) { settings })
+        val base = FarmScoreboardView(
+            orderId = "miners_rations",
+            phase = FarmPhase.PREPARATION,
+            done = 0,
+            total = 90,
+            required = linkedMapOf("WHEAT" to 640),
+            cropProgress = emptyMap(),
+        )
+        val preparation = renderer.rows(base, null).map(PlainTextComponentSerializer.plainText()::serialize)
+        preparation[6] shouldBe "| Найдите поле под столбом"
+        preparation[7] shouldBe "| Вспашите большую часть поля мотыгой"
+
+        val channels = renderer.rows(
+            base.copy(phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.CHANNELS, done = 1, total = 4),
+            null,
+        ).map(PlainTextComponentSerializer.plainText()::serialize)
+        channels[6] shouldBe "| Идите от источника к полю"
+        channels[7] shouldBe "| Золотой шлюз переключите; зелёный готов"
+        (channels.size <= FarmScoreboardRenderer.MAX_ROWS) shouldBe true
     }
 
     test("night shift scoreboard keeps patrol guidance on its own row") {

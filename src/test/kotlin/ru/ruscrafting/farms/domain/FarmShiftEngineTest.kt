@@ -323,6 +323,40 @@ class FarmShiftEngineTest : FunSpec({
         state.contributors[player] shouldBe 200
     }
 
+    test("manual and mechanized field work complete at the configured tolerant quota") {
+        val largePatch = (0 until 100).map { FarmPlotPosition("world", it, 64, 0) }
+        var manual = FarmShiftEngine.start(
+            FarmShiftState(),
+            order,
+            largePatch,
+            "WHEAT",
+            1_000,
+            completionPercent = 90,
+        ).state
+        largePatch.take(90).forEach { manual = FarmShiftEngine.till(manual, it, player).state }
+        manual.phase shouldBe FarmPhase.PLANTING
+        manual.preparationRequired shouldBe 90
+
+        val horse = FarmCareTarget(0, FarmCareRole.SEEDER_HORSE, FarmPointPosition("world", 0.5, 65.0, 0.5))
+        var machine = FarmShiftEngine.startCare(
+            FarmShiftEngine.start(
+                FarmShiftState(),
+                order,
+                largePatch,
+                "WHEAT",
+                1_000,
+                completionPercent = 90,
+            ).state,
+            FarmCareType.SEEDER,
+            listOf(horse),
+        ).state
+        machine = FarmShiftEngine.startSeeder(machine, horse.id).state
+        machine = FarmShiftEngine.workSeeder(machine, largePatch.take(90).toSet(), player).state
+        val planted = FarmShiftEngine.workSeeder(machine, largePatch.take(90).toSet(), player)
+        planted.state.phase shouldBe FarmPhase.HARVESTING
+        planted.state.plantedPlots.size shouldBe 90
+    }
+
     test("planting progress waits indefinitely when every player leaves") {
         var state = FarmShiftEngine.start(FarmShiftState(), order, patch, "WHEAT", 1_000).state
         patch.forEach { state = FarmShiftEngine.till(state, it, player).state }

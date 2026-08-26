@@ -10,10 +10,17 @@ data class FarmAdminPlotRemoval(
 )
 
 object FarmAdminEdit {
-    fun removePlot(state: FarmShiftState, plot: FarmPlotPosition): FarmAdminPlotRemoval =
-        removePlots(state, setOf(plot))
+    fun removePlot(
+        state: FarmShiftState,
+        plot: FarmPlotPosition,
+        completionPercent: Int = 100,
+    ): FarmAdminPlotRemoval = removePlots(state, setOf(plot), completionPercent)
 
-    fun removePlots(state: FarmShiftState, plots: Set<FarmPlotPosition>): FarmAdminPlotRemoval {
+    fun removePlots(
+        state: FarmShiftState,
+        plots: Set<FarmPlotPosition>,
+        completionPercent: Int = 100,
+    ): FarmAdminPlotRemoval {
         if (plots.isEmpty()) return FarmAdminPlotRemoval(state, emptySet(), pestNestRemoved = false)
         val targetIds = if (state.careType == FarmCareType.SEEDER) {
             emptySet()
@@ -65,15 +72,20 @@ object FarmAdminEdit {
             state.incidentProgress + specialPlots.count { plot -> specialDamage.none { it.position == plot } }
         } else state.incidentRequired
         val specialResolved = state.phase == FarmPhase.INCIDENT && specialRequired <= state.incidentProgress
+        val fieldRequired = patch.takeIf { it.isNotEmpty() }
+            ?.let { FarmFieldQuota.required(it.size, completionPercent) }
+            ?: 0
         val phase = when {
             specialResolved -> FarmPhase.HARVESTING
             state.phase == FarmPhase.CARE && state.careType == FarmCareType.SEEDER &&
-                planted.containsAll(patch) && (careTargets.isEmpty() || careTargets.all(FarmCareTarget::complete)) -> FarmPhase.HARVESTING
+                planted.size >= fieldRequired && (careTargets.isEmpty() || careTargets.all(FarmCareTarget::complete)) ->
+                FarmPhase.HARVESTING
             state.phase == FarmPhase.CARE && state.careType != FarmCareType.SEEDER &&
                 careComplete -> FarmPhase.HARVESTING
-            state.phase in setOf(FarmPhase.PREPARATION, FarmPhase.PLANTING) && patch.isNotEmpty() && planted.size >= patch.size ->
+            state.phase in setOf(FarmPhase.PREPARATION, FarmPhase.PLANTING) && patch.isNotEmpty() &&
+                planted.size >= fieldRequired ->
                 FarmPhase.HARVESTING
-            state.phase == FarmPhase.PREPARATION && patch.isNotEmpty() && tilled.size >= patch.size -> FarmPhase.PLANTING
+            state.phase == FarmPhase.PREPARATION && patch.isNotEmpty() && tilled.size >= fieldRequired -> FarmPhase.PLANTING
             else -> state.phase
         }
         return FarmAdminPlotRemoval(
@@ -84,7 +96,7 @@ object FarmAdminEdit {
                 plantedPlots = planted,
                 preparationProgress = tilled.size,
                 plantingProgress = planted.size,
-                preparationRequired = patch.size,
+                preparationRequired = fieldRequired,
                 careTargets = careTargets,
                 careGoal = careGoal,
                 droughtPlots = state.droughtPlots - plots,

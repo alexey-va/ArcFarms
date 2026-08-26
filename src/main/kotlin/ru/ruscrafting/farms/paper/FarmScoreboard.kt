@@ -28,50 +28,53 @@ internal class FarmScoreboardRenderer(
 ) {
     fun title(audience: CommandSender?): Component = locale.renderPath("scoreboard.title", audience)
 
-    fun rows(view: FarmScoreboardView, audience: CommandSender?): List<Component> = buildList {
-        add(locale.renderPath("scoreboard.section.order", audience))
-        add(locale.renderPath(
-            "scoreboard.order",
-            audience,
-            mapOf("order" to locale.renderPath("order.farm.${view.orderId}", audience)),
-        ))
-        add(Component.empty())
-        add(locale.renderPath("scoreboard.section.current", audience))
-        add(locale.renderPath("scoreboard.objective-line", audience, mapOf("objective" to objective(view, audience))))
-        if (view.phase == FarmPhase.INCIDENT && view.incidentType == FarmIncidentType.MARKET && !view.marketAccepted) {
-            add(locale.renderPath("scoreboard.market-pending", audience))
-        } else {
+    fun rows(view: FarmScoreboardView, audience: CommandSender?): List<Component> {
+        val rows = buildList {
+            add(locale.renderPath("scoreboard.section.order", audience))
             add(locale.renderPath(
-                "scoreboard.progress",
+                "scoreboard.order",
                 audience,
-                mapOf(
-                    "done" to locale.text(view.done.coerceAtLeast(0)),
-                    "total" to locale.text(view.total.coerceAtLeast(1)),
-                ),
+                mapOf("order" to locale.renderPath("order.farm.${view.orderId}", audience)),
             ))
-        }
-        add(locale.renderPath("scoreboard.hint-line", audience, mapOf("hint" to hint(view, audience))))
-        hintDetail(view, audience)?.let { detail ->
-            add(locale.renderPath("scoreboard.hint-line", audience, mapOf("hint" to detail)))
-        }
-        add(Component.empty())
-        add(locale.renderPath("scoreboard.section.crops", audience))
-        view.required.entries.take(MAX_CROP_ROWS).forEach { (cropName, required) ->
-            add(locale.renderPath(
-                "scoreboard.crop",
-                audience,
-                mapOf(
-                    "crop" to locale.renderPath(
-                        "crop.${MaterialRules.material(cropName).name.lowercase()}",
-                        audience,
+            add(Component.empty())
+            add(locale.renderPath("scoreboard.section.current", audience))
+            add(locale.renderPath("scoreboard.objective-line", audience, mapOf("objective" to objective(view, audience))))
+            if (view.phase == FarmPhase.INCIDENT && view.incidentType == FarmIncidentType.MARKET && !view.marketAccepted) {
+                add(locale.renderPath("scoreboard.market-pending", audience))
+            } else {
+                add(locale.renderPath(
+                    "scoreboard.progress",
+                    audience,
+                    mapOf(
+                        "done" to locale.text(view.done.coerceAtLeast(0)),
+                        "total" to locale.text(view.total.coerceAtLeast(1)),
                     ),
-                    "done" to locale.text(view.cropProgress[cropName].orZero().coerceAtMost(required)),
-                    "total" to locale.text(required),
-                ),
-            ))
+                ))
+            }
+            add(locale.renderPath("scoreboard.hint-line", audience, mapOf("hint" to hint(view, audience))))
+            hintDetails(view, audience).forEach { detail ->
+                add(locale.renderPath("scoreboard.hint-line", audience, mapOf("hint" to detail)))
+            }
+            add(Component.empty())
+            add(locale.renderPath("scoreboard.section.crops", audience))
+            val cropRows = (MAX_ROWS - size).coerceIn(0, MAX_CROP_ROWS)
+            view.required.entries.take(cropRows).forEach { (cropName, required) ->
+                add(locale.renderPath(
+                    "scoreboard.crop",
+                    audience,
+                    mapOf(
+                        "crop" to locale.renderPath(
+                            "crop.${MaterialRules.material(cropName).name.lowercase()}",
+                            audience,
+                        ),
+                        "done" to locale.text(view.cropProgress[cropName].orZero().coerceAtMost(required)),
+                        "total" to locale.text(required),
+                    ),
+                ))
+            }
         }
-    }.also { rows ->
         require(rows.size <= MAX_ROWS) { "Farm scoreboard exceeds $MAX_ROWS rows" }
+        return rows
     }
 
     private fun objective(view: FarmScoreboardView, audience: CommandSender?): Component {
@@ -138,12 +141,20 @@ internal class FarmScoreboardRenderer(
         return locale.renderPath(path, audience, values)
     }
 
-    private fun hintDetail(view: FarmScoreboardView, audience: CommandSender?): Component? =
-        if (view.phase == FarmPhase.INCIDENT && view.incidentType == FarmIncidentType.NIGHT_SHIFT) {
-            locale.renderPath("scoreboard.hint-detail.night-shift", audience)
-        } else {
-            null
-        }
+    private fun hintDetails(view: FarmScoreboardView, audience: CommandSender?): List<Component> {
+        val id = when {
+            view.phase == FarmPhase.PREPARATION -> "preparation"
+            view.phase == FarmPhase.PLANTING -> "planting"
+            view.phase == FarmPhase.CARE && view.seederStage == FarmSeederStage.TILLING -> "seeder-tilling"
+            view.phase == FarmPhase.CARE && view.seederStage == FarmSeederStage.PLANTING -> "seeder-planting"
+            view.phase == FarmPhase.INCIDENT && view.incidentType == FarmIncidentType.CHANNELS -> "channels"
+            view.phase == FarmPhase.INCIDENT && view.incidentType == FarmIncidentType.NIGHT_SHIFT -> "night-shift"
+            view.phase == FarmPhase.INCIDENT && view.incidentType == FarmIncidentType.MARKET && !view.marketAccepted ->
+                "market-pending"
+            else -> null
+        } ?: return emptyList()
+        return listOf(locale.renderPath("scoreboard.hint-detail.$id", audience))
+    }
 
     private fun Int?.orZero(): Int = this ?: 0
 

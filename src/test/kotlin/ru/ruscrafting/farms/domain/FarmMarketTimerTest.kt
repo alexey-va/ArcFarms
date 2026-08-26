@@ -8,6 +8,7 @@ class FarmMarketTimerTest : FunSpec({
         FarmMarketTimer.durationMillis(8, 45, 3.0, 120, 300) shouldBe 120_000
         FarmMarketTimer.durationMillis(32, 45, 3.0, 120, 300) shouldBe 141_000
         FarmMarketTimer.durationMillis(128, 45, 3.0, 120, 300) shouldBe 300_000
+        FarmMarketTimer.durationMillis(256, 30, 0.3, 90, 180) shouldBe 107_000
     }
 
     test("remaining seconds rounds up so the display never reaches zero early") {

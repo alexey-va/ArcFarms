@@ -283,6 +283,7 @@ object FarmShiftEngine {
         patch: List<FarmPlotPosition>,
         preparationCrop: String,
         now: Long,
+        completionPercent: Int = 100,
     ): EngineResult<FarmShiftState> {
         if (current.phase != FarmPhase.IDLE) return EngineResult(current, false)
         require(patch.isNotEmpty() && patch.size <= MAX_FARM_PATCH_PLOTS) {
@@ -298,7 +299,7 @@ object FarmShiftEngine {
             progress = order.required.keys.associateWith { 0 },
             preparationPatch = patch,
             preparationCrop = preparationCrop,
-            preparationRequired = patch.size,
+            preparationRequired = FarmFieldQuota.required(patch.size, completionPercent),
             startedAt = now,
         )
         return EngineResult(next, true, events = listOf(ShiftEvent.STARTED))
@@ -521,10 +522,11 @@ object FarmShiftEngine {
         require(processed.all(current.preparationPatch::contains)) { "Seeder processed outside the preparation patch" }
         return when (requireNotNull(current.seederStage())) {
             FarmSeederStage.TILLING -> {
-                val added = processed - current.tilledPlots
+                val remaining = (current.preparationRequired - current.tilledPlots.size).coerceAtLeast(0)
+                val added = (processed - current.tilledPlots).sortedWith(FARM_PLOT_ORDER).take(remaining).toSet()
                 if (added.isEmpty()) return EngineResult(current, false)
                 val tilled = current.tilledPlots + added
-                val complete = tilled.containsAll(current.preparationPatch)
+                val complete = tilled.size >= current.preparationRequired
                 EngineResult(
                     current.copy(
                         tilledPlots = tilled,
@@ -548,10 +550,11 @@ object FarmShiftEngine {
             }
             FarmSeederStage.PLANTING -> {
                 require(processed.all(current.tilledPlots::contains)) { "Seeder planted an untilled plot" }
-                val added = processed - current.plantedPlots
+                val remaining = (current.preparationRequired - current.plantedPlots.size).coerceAtLeast(0)
+                val added = (processed - current.plantedPlots).sortedWith(FARM_PLOT_ORDER).take(remaining).toSet()
                 if (added.isEmpty()) return EngineResult(current, false)
                 val planted = current.plantedPlots + added
-                val complete = planted.containsAll(current.preparationPatch)
+                val complete = planted.size >= current.preparationRequired
                 EngineResult(
                     current.copy(
                         phase = if (complete) FarmPhase.HARVESTING else FarmPhase.CARE,
@@ -572,6 +575,10 @@ object FarmShiftEngine {
             }
         }
     }
+
+    private val FARM_PLOT_ORDER = compareBy<FarmPlotPosition> { it.x }
+        .thenBy { it.z }
+        .thenBy { it.y }
 
     fun advanceCare(
         current: FarmShiftState,

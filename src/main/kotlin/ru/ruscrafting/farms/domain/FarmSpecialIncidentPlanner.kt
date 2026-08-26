@@ -5,6 +5,11 @@ data class FarmMatureCrop(
     val crop: String,
 )
 
+data class FarmGiantCropCandidate(
+    val block: FarmPlotPosition,
+    val crop: String,
+)
+
 data class FarmSpecialIncidentPlan(
     val state: FarmSpecialIncidentState,
     val required: Int,
@@ -15,10 +20,10 @@ object FarmSpecialIncidentPlanner {
         type: FarmIncidentType,
         sequence: Long,
         matureCrops: Collection<FarmMatureCrop>,
+        giantCandidates: Collection<FarmGiantCropCandidate> = emptyList(),
         nightPatrolPlots: Collection<FarmPlotPosition> = matureCrops.map(FarmMatureCrop::plot),
         fallbackPlot: FarmPlotPosition?,
         irrigationSource: FarmPointPosition?,
-        giantHits: Int,
         channelGates: Int,
         nightCrops: Int,
         nightCropMinSpacing: Double,
@@ -26,13 +31,12 @@ object FarmSpecialIncidentPlanner {
         nightPatrolMinSpacing: Double,
         marketCrops: Int,
     ): FarmSpecialIncidentPlan? {
-        require(giantHits in 1..1_024)
         require(channelGates in 1..16)
         require(nightCrops in 1..128)
         require(nightCropMinSpacing.isFinite() && nightCropMinSpacing in 0.0..64.0)
         require(nightPatrols in 0..16)
         require(nightPatrolMinSpacing.isFinite() && nightPatrolMinSpacing in 0.0..64.0)
-        require(marketCrops in 1..128)
+        require(marketCrops in 1..512)
         val candidates = rotate(
             matureCrops.distinctBy(FarmMatureCrop::plot).sortedWith(
                 compareBy<FarmMatureCrop> { it.plot.x }.thenBy { it.plot.z }.thenBy { it.plot.y }.thenBy { it.crop },
@@ -41,14 +45,28 @@ object FarmSpecialIncidentPlanner {
         )
         return when (type) {
             FarmIncidentType.GIANT_CROP -> {
-                val anchor = candidates.firstOrNull()?.plot ?: fallbackPlot ?: return null
-                val crop = candidates.firstOrNull()?.crop?.takeIf { it == "PUMPKIN" || it == "MELON" } ?: "PUMPKIN"
+                val chosen = rotate(
+                    giantCandidates.filter { FarmGiantCropBlueprint.supports(it.crop) }
+                        .distinctBy(FarmGiantCropCandidate::block)
+                        .sortedWith(compareBy<FarmGiantCropCandidate> { it.block.x }
+                            .thenBy { it.block.z }
+                            .thenBy { it.block.y }
+                            .thenBy { it.crop }),
+                    sequence + 173L,
+                ).firstOrNull() ?: return null
                 FarmSpecialIncidentPlan(
                     FarmSpecialIncidentState(
-                        points = listOf(FarmPointPosition(anchor.world, anchor.x + 0.5, anchor.y + 1.45, anchor.z + 0.5)),
-                        crop = crop,
+                        points = listOf(
+                            FarmPointPosition(
+                                chosen.block.world,
+                                chosen.block.x + 0.5,
+                                chosen.block.y.toDouble(),
+                                chosen.block.z + 0.5,
+                            ),
+                        ),
+                        crop = chosen.crop,
                     ),
-                    giantHits,
+                    FarmGiantCropBlueprint.voxels(chosen.crop).size,
                 )
             }
             FarmIncidentType.CHANNELS -> {
@@ -95,10 +113,10 @@ object FarmSpecialIncidentPlanner {
             FarmIncidentType.MARKET -> candidates.groupBy(FarmMatureCrop::crop).entries
                 .maxWithOrNull(compareBy<Map.Entry<String, List<FarmMatureCrop>>> { it.value.size }.thenBy { it.key })
                 ?.let { (crop, entries) ->
-                    val chosen = entries.take(marketCrops)
+                    val chosen = entries.take(minOf(marketCrops, 128))
                     FarmSpecialIncidentPlan(
                         FarmSpecialIncidentState(plots = chosen.map(FarmMatureCrop::plot), crop = crop),
-                        chosen.size,
+                        marketCrops,
                     )
                 }
             FarmIncidentType.PESTS, FarmIncidentType.DROUGHT -> null

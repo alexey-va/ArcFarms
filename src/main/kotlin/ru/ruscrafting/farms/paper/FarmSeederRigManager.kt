@@ -94,6 +94,8 @@ internal class FarmSeederRigManager(plugin: Plugin) {
                 entity.backgroundColor = org.bukkit.Color.fromARGB(128, 16, 16, 16)
                 entity.isShadowed = true
                 entity.viewRange = labelViewRange
+                entity.teleportDuration = 2
+                entity.interpolationDuration = 2
                 entity.isPersistent = false
                 mark(entity)
             }.also(spawned::add)
@@ -136,10 +138,12 @@ internal class FarmSeederRigManager(plugin: Plugin) {
         leadDistance: Double,
         spacing: Double,
         catchupDistance: Double,
+        movePigs: Boolean,
         validPosition: (Location) -> Boolean,
     ): List<FarmMachinePosition> {
         rig.label.teleport(rig.horse.location.clone().add(0.0, 2.25, 0.0))
         rig.horse.isAware = true
+        if (!movePigs) return currentPositions(rig)
         val desired = positions(rig.horse, pigCount, leadDistance, spacing)
         val catchupSquared = catchupDistance * catchupDistance
         rig.pigs.zip(desired).forEach { (pig, position) ->
@@ -154,11 +158,13 @@ internal class FarmSeederRigManager(plugin: Plugin) {
                 pig.pathfinder.moveTo(target, PIG_PATH_SPEED)
             }
         }
-        return rig.pigs.asSequence()
+        return currentPositions(rig)
+    }
+
+    private fun currentPositions(rig: FarmSeederRig): List<FarmMachinePosition> = rig.pigs.asSequence()
             .filter(Entity::isValid)
             .map { pig -> FarmMachinePosition(pig.world.name, pig.location.x, pig.location.y, pig.location.z) }
             .toList()
-    }
 
     fun release(rig: FarmSeederRig) {
         rig.horse.eject()
@@ -190,7 +196,7 @@ internal class FarmSeederRigManager(plugin: Plugin) {
 
     private companion object {
         const val FIXED_ENTITY_COUNT = 2
-        const val PIG_PATH_SPEED = 1.45
-        const val MIN_MOVE_DISTANCE_SQUARED = 0.36
+        const val PIG_PATH_SPEED = 1.8
+        const val MIN_MOVE_DISTANCE_SQUARED = 0.16
     }
 }

@@ -10,6 +10,27 @@ private val SPECIAL_INCIDENT_TYPES = setOf(
 )
 
 object FarmSpecialIncidentEngine {
+    fun retargetUninitialized(
+        current: FarmShiftState,
+        replacement: FarmIncidentType,
+    ): EngineResult<FarmShiftState> {
+        require(replacement in SPECIAL_INCIDENT_TYPES) { "$replacement is not a special farm incident" }
+        if (
+            current.phase != FarmPhase.INCIDENT || current.incidentType !in SPECIAL_INCIDENT_TYPES ||
+            current.specialIncident != null || current.incidentProgress != 0
+        ) return EngineResult(current, false)
+        if (current.incidentType == replacement) return EngineResult(current, false)
+        return EngineResult(current.copy(incidentType = replacement), true)
+    }
+
+    fun skipUnavailable(current: FarmShiftState): EngineResult<FarmShiftState> {
+        if (
+            current.phase != FarmPhase.INCIDENT || current.incidentType !in SPECIAL_INCIDENT_TYPES ||
+            current.specialIncident != null || current.incidentProgress != 0
+        ) return EngineResult(current, false)
+        return complete(current, playerId = null, contribution = 0).copy(events = emptyList())
+    }
+
     fun initialize(
         current: FarmShiftState,
         type: FarmIncidentType,
@@ -34,6 +55,25 @@ object FarmSpecialIncidentEngine {
 
     fun damageGiantCrop(current: FarmShiftState, playerId: UUID): EngineResult<FarmShiftState> =
         advance(current, FarmIncidentType.GIANT_CROP, playerId)
+
+    fun reconcileGiantCrop(
+        current: FarmShiftState,
+        totalBlocks: Int,
+        brokenBlocks: Int,
+    ): EngineResult<FarmShiftState> {
+        require(totalBlocks in 1..1_024 && brokenBlocks in 0..totalBlocks) { "Invalid giant crop block state" }
+        if (
+            current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.GIANT_CROP ||
+            current.specialIncident == null ||
+            (totalBlocks == current.incidentRequired && brokenBlocks <= current.incidentProgress)
+        ) return EngineResult(current, false)
+        val reconciled = current.copy(incidentRequired = totalBlocks, incidentProgress = brokenBlocks)
+        return if (brokenBlocks >= totalBlocks) {
+            complete(reconciled, playerId = null, contribution = 0)
+        } else {
+            EngineResult(reconciled, true)
+        }
+    }
 
     fun toggleChannelGate(
         current: FarmShiftState,
@@ -121,9 +161,14 @@ object FarmSpecialIncidentEngine {
         }
         val special = current.specialIncident ?: return EngineResult(current, false)
         if (type == FarmIncidentType.MARKET && !special.marketAccepted) return EngineResult(current, false)
-        if (current.specialDamagedCrops.any { it.position == damage.position }) return EngineResult(current, false)
-        val damaged = current.specialDamagedCrops + damage
-        val advanced = current.copy(specialDamagedCrops = damaged)
+        if (type == FarmIncidentType.NIGHT_SHIFT && current.specialDamagedCrops.any { it.position == damage.position }) {
+            return EngineResult(current, false)
+        }
+        val advanced = if (type == FarmIncidentType.NIGHT_SHIFT) {
+            current.copy(specialDamagedCrops = current.specialDamagedCrops + damage)
+        } else {
+            current
+        }
         return advance(
             advanced,
             type,
