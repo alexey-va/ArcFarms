@@ -116,6 +116,7 @@ data class FarmZoneSettings(
     val diseaseInitialSpots: Int,
     val diseaseMaxSpots: Int,
     val diseaseSpreadSeconds: Int,
+    val moleBurrow: FarmMoleBurrowSettings,
     val careAnimalEntities: List<String>,
     val proceduralCareFixtures: Boolean,
     val careVisuals: Map<FarmCareRole, FarmCareVisualSettings>,
@@ -308,6 +309,19 @@ data class FarmCareVisualSettings(
     val displayTransform: FarmItemDisplayTransform,
     val displayScale: Float,
     val displayYOffset: Double,
+)
+
+data class FarmMoleBurrowSettings(
+    val cells: Int,
+    val minDepth: Int,
+    val maxDepth: Int,
+    val tunnelHeight: Int,
+    val blocksPerTick: Int,
+    val candidateAttempts: Int,
+    val lightSpacing: Int,
+    val lightLevel: Int,
+    val replaceableMaterials: Set<String>,
+    val lairVisual: FarmCareVisualSettings,
 )
 
 data class FarmSupplyPointSettings(
@@ -704,6 +718,50 @@ class ArcFarmsConfig private constructor(
                 require(diseaseInitialSpots <= diseaseMaxSpots) {
                     "Farm zone $id disease-initial-spots must not exceed disease-max-spots"
                 }
+                val moleBurrowMinDepth = section.int("mole-burrow.min-depth", 10)
+                    .checked("mole-burrow.min-depth", 4, 64)
+                val moleBurrowMaxDepth = section.int("mole-burrow.max-depth", 18)
+                    .checked("mole-burrow.max-depth", 4, 64)
+                require(moleBurrowMinDepth <= moleBurrowMaxDepth) {
+                    "farm-zones.$id mole-burrow.min-depth must not exceed max-depth"
+                }
+                val moleLairPath = "mole-burrow.lair-visual"
+                val moleBurrow = FarmMoleBurrowSettings(
+                    cells = section.int("mole-burrow.cells", 7).checked("mole-burrow.cells", 3, 11),
+                    minDepth = moleBurrowMinDepth,
+                    maxDepth = moleBurrowMaxDepth,
+                    tunnelHeight = section.int("mole-burrow.tunnel-height", 3)
+                        .checked("mole-burrow.tunnel-height", 2, 4),
+                    blocksPerTick = section.int("mole-burrow.blocks-per-tick", 48)
+                        .checked("mole-burrow.blocks-per-tick", 8, 256),
+                    candidateAttempts = section.int("mole-burrow.candidate-attempts", 12)
+                        .checked("mole-burrow.candidate-attempts", 1, 32),
+                    lightSpacing = section.int("mole-burrow.light-spacing", 5)
+                        .checked("mole-burrow.light-spacing", 2, 16),
+                    lightLevel = section.int("mole-burrow.light-level", 11)
+                        .checked("mole-burrow.light-level", 1, 15),
+                    replaceableMaterials = section.stringList("mole-burrow.replaceable-materials")
+                        .ifEmpty {
+                            listOf(
+                                "STONE", "DEEPSLATE", "DIRT", "COARSE_DIRT", "ANDESITE", "DIORITE", "GRANITE",
+                                "TUFF", "CALCITE", "DRIPSTONE_BLOCK", "CLAY", "MUD", "PACKED_MUD",
+                            )
+                        }
+                        .map(::materialName)
+                        .toSet(),
+                    lairVisual = FarmCareVisualSettings(
+                        material = materialName(section.string("$moleLairPath.material", "RABBIT_HIDE")),
+                        customModelData = section.int("$moleLairPath.custom-model-data", 0)
+                            .checked("$moleLairPath.custom-model-data", 0, 2_000_000),
+                        displayTransform = section.string("$moleLairPath.display-transform", "FIXED")
+                            .trim().uppercase().let { raw ->
+                                FarmItemDisplayTransform.entries.firstOrNull { it.name == raw }
+                                    ?: error("$moleLairPath.display-transform must be GROUND, FIXED, or HEAD")
+                            },
+                        displayScale = section.finiteFloat("$moleLairPath.display-scale", 1.6f, 0.05f, 8.0f),
+                        displayYOffset = section.finiteDouble("$moleLairPath.display-y-offset", 0.6, -4.0, 4.0),
+                    ),
+                )
                 val incidentTriggerPercents = section.stringList("incident-trigger-percents")
                     .ifEmpty { listOf("15", "32", "50", "68", "85") }
                     .map { value ->
@@ -920,6 +978,7 @@ class ArcFarmsConfig private constructor(
                     diseaseMaxSpots = diseaseMaxSpots,
                     diseaseSpreadSeconds = section.int("disease-spread-seconds", 12)
                         .checked("disease-spread-seconds", 3, 300),
+                    moleBurrow = moleBurrow,
                     careAnimalEntities = section.stringList("care-animal-entities")
                         .ifEmpty { listOf("CHICKEN", "SHEEP") }
                         .map(::entityName)

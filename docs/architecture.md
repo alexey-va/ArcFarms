@@ -120,6 +120,7 @@ owns the zone collection; the module delegates to the following vertical owners.
 | `farm.recovery/FarmFixedCropRecoveryController` and `FarmIncidentRecoveryController` | fixed-crop and incident restore queues with per-tick budgets | restart, unloaded chunk, partial restore, stale callback |
 | `farm.harvest/FarmHarvestController` | accepted crop validation, drop suppression, fixed fruit intent and respawn | wrong phase/crop, no drops, journal-before-mutation |
 | `farm.care/FarmCareController`, `FarmDiseaseController`, `FarmCarePresentation` | routes care, owns shared entities and seeder/animal lifecycles, disease timing and shared feedback | cleanup and activity scenarios |
+| `farm.care.mole/FarmMoleBurrowController`, `FarmMoleBurrowWorld` | underground expedition, nonpersistent entrance/lair scene, durable player return, chunk-PDC tunnel journal and bounded build/restore | deterministic maze, codec corruption, restart return, non-mutating preview |
 | `farm.shift/FarmShiftCoordinator` | transition dispatch and configured incident schedule | configured count/range and non-repeat rules |
 | `farm.incident/drought`, `pest`, `special` | drought, pests, giant crop, channels, night shift, market; each owns entities/blocks/maps/recovery | restart/dedup/cleanup plus story flow |
 | `farm.delivery/FarmDeliveryController` | crate placement, carrier state, display following, receiving and return | two players, quit/leave/reload, no duplicate crate |
@@ -151,6 +152,7 @@ Each mutable collection has exactly one owner. In particular:
 - pest and nest entities -> pest incident;
 - drought flows/growth -> drought incident;
 - care entities/followers/disease timers -> the relevant care activity;
+- mole tunnel blocks, scene entities and active explorers -> mole burrow owner;
 - supply displays/item tags -> supply controller;
 - scoreboard sessions/music -> presentation;
 - restore queues -> recovery controller;

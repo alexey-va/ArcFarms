@@ -32,7 +32,6 @@ import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmMachinePlanner
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPointKind
-import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmPollenCharges
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmSeederStage
@@ -53,6 +52,7 @@ import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
+import ru.ruscrafting.farms.paper.farm.care.mole.FarmMoleBurrowController
 import ru.ruscrafting.farms.paper.farm.placement.FarmOpenSkyPolicy
 import ru.ruscrafting.farms.paper.farm.field.FarmFieldController
 import java.util.UUID
@@ -77,6 +77,7 @@ internal class FarmCareController(
     private val registry: FarmBlockRegistry,
     private val field: FarmFieldController,
     private val plans: FarmCarePlanService,
+    private val moles: FarmMoleBurrowController,
     private val transitions: FarmTransitionSink,
     private val runtimes: () -> Collection<FarmRuntime>,
     private val clock: () -> Long,
@@ -101,7 +102,7 @@ internal class FarmCareController(
     private val targetKey = NamespacedKey(plugin, "farm_care_target")
     private val roleKey = NamespacedKey(plugin, "farm_care_role")
 
-    fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING)
+    fun owns(entity: Entity): Boolean = moles.owns(entity) || entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING)
     fun identity(entity: Entity): FarmCareEntityIdentity? {
         val data = entity.persistentDataContainer
         val zoneId = data.get(zoneKey, PersistentDataType.STRING) ?: return null
@@ -117,6 +118,7 @@ internal class FarmCareController(
         removeEntities(FarmCareEntityKey(zoneId, targetId), reason)
 
     fun releasePlayer(player: Player, reason: String) {
+        moles.releasePlayer(player, reason)
         animalFollowers.filterValues { it == player.uniqueId }.keys.toList().forEach { key ->
             val mob = entities[key].orEmpty().asSequence().mapNotNull(Bukkit::getEntity).filterIsInstance<Mob>().firstOrNull()
             releaseFollower(key, mob, reason)
@@ -147,6 +149,7 @@ internal class FarmCareController(
     }
 
     fun onDamage(event: EntityDamageEvent): Boolean {
+        if (moles.onDamage(event)) return true
         val identity = identity(event.entity) ?: return false
         event.isCancelled = true
         val player = (event as? EntityDamageByEntityEvent)?.let { damage ->
@@ -161,6 +164,7 @@ internal class FarmCareController(
     }
 
     fun interact(player: Player, entity: Entity) {
+        if (moles.interact(player, entity)) return
         val identity = identity(entity) ?: return
         interact(player, entity, identity.zoneId)
     }
@@ -173,6 +177,7 @@ internal class FarmCareController(
         pollenCharges.remaining(player.uniqueId, runtime.settings.id, runtime.state.sequence) > 0
 
     fun cleanup(reason: String) {
+        moles.cleanup(reason)
         entityLookup.inAllWorlds().asSequence().filter(::owns).forEach(Entity::remove)
         entities.clear()
         animalFollowers.clear()
@@ -249,7 +254,7 @@ internal class FarmCareController(
             return
         }
         when (role) {
-            FarmCareRole.WEED_ROOT, FarmCareRole.DISEASED_CROP, FarmCareRole.MOLE_MOUND -> if (!MaterialRules.isHoe(player.inventory.itemInMainHand)) {
+            FarmCareRole.WEED_ROOT, FarmCareRole.DISEASED_CROP -> if (!MaterialRules.isHoe(player.inventory.itemInMainHand)) {
                 port.sendActionBar(player, MessageKey.FARM_CARE_TOOL)
                 return
             }
@@ -284,45 +289,13 @@ internal class FarmCareController(
                 return
             }
             FarmCareRole.COVER_ANCHOR, FarmCareRole.SCARECROW, FarmCareRole.SEEDER_WAYPOINT, FarmCareRole.APPLE -> Unit
+            FarmCareRole.MOLE_MOUND -> return
             FarmCareRole.SEEDER_HORSE -> return
             FarmCareRole.PEN -> return
         }
-        var result = FarmShiftEngine.advanceCare(runtime.state, target.id, player.uniqueId)
+        val result = FarmShiftEngine.advanceCare(runtime.state, target.id, player.uniqueId)
         if (!result.accepted) return
         val completed = result.state.careTargets.firstOrNull { it.id == target.id }?.complete != false
-        if (role == FarmCareRole.MOLE_MOUND && !completed) {
-            val relocated = FarmCarePlanner.relocate(
-                runtime.state.preparationPatch,
-                result.state.careTargets.map(FarmCareTarget::position) + target.position,
-                runtime.state.sequence * 131L + target.id * 17L + target.progress,
-            )
-            if (relocated != null) {
-                val nextPosition = FarmPointPosition(
-                    relocated.world,
-                    relocated.x + 0.5,
-                    relocated.y + 1.05,
-                    relocated.z + 0.5,
-                )
-                result = result.copy(
-                    state = result.state.copy(
-                        careTargets = result.state.careTargets.map { candidate ->
-                            if (candidate.id == target.id) candidate.copy(position = nextPosition) else candidate
-                        },
-                    ),
-                )
-                removeEntities(FarmCareEntityKey(zoneId, target.id), "mole_relocated")
-                presentation.moleTrail(player, target.position, nextPosition)
-                debug.event(
-                    "farm_mole_relocated",
-                    "zone" to zoneId,
-                    "target" to target.id,
-                    "progress" to (target.progress + 1),
-                    "x" to nextPosition.x,
-                    "y" to nextPosition.y,
-                    "z" to nextPosition.z,
-                )
-            }
-        }
         if (role == FarmCareRole.VALVE) {
             showIrrigationFlow(runtime, result.state, target, player)
             removeEntities(FarmCareEntityKey(zoneId, target.id), "irrigation_valve_opened")
@@ -385,6 +358,11 @@ internal class FarmCareController(
             disease.clear(runtime.settings.id)
             return
         }
+        if (runtime.state.careType == FarmCareType.MOLES) {
+            entities.keys.filter { it.zoneId == runtime.settings.id }.toList().forEach { removeEntities(it, "mole_expedition") }
+            moles.ensure(runtime)
+            return
+        }
         val activeIds = runtime.state.careTargets.mapTo(mutableSetOf(), FarmCareTarget::id)
         entities.keys.filter { it.zoneId == runtime.settings.id && it.targetId >= 0 && it.targetId !in activeIds }
             .forEach { removeEntities(it, "stale_target") }
@@ -413,6 +391,7 @@ internal class FarmCareController(
 
     fun reconcile(runtime: FarmRuntime) {
         val zoneId = runtime.settings.id
+        if (runtime.state.phase == FarmPhase.CARE && runtime.state.careType == FarmCareType.MOLES) return
         if (runtime.state.phase != FarmPhase.CARE && entities.keys.none { it.zoneId == zoneId }) return
         if (reconciledSequences[zoneId] == runtime.state.sequence) return
         val targets = runtime.state.careTargets.associateBy(FarmCareTarget::id)
@@ -724,6 +703,10 @@ internal class FarmCareController(
 
     fun updateDisease(runtime: FarmRuntime, now: Long) = disease.update(runtime, now)
 
+    fun onMove(event: org.bukkit.event.player.PlayerMoveEvent) = moles.onMove(event)
+
+    fun onPlayerDeath(player: Player) = moles.onPlayerDeath(player)
+
     private fun pullFarmAnimalTowardHolder(mob: Mob, holder: Player) {
         if (!mob.isOnGround || mob.world != holder.world) return
         val delta = holder.location.toVector().subtract(mob.location.toVector()).setY(0.0)
@@ -780,6 +763,7 @@ internal class FarmCareController(
     }
 
     fun clear(runtime: FarmRuntime, reason: String) {
+        if (runtime.state.careType == FarmCareType.MOLES) moles.clear(runtime, reason)
         entities.keys.filter { it.zoneId == runtime.settings.id }.toList().forEach { removeEntities(it, reason) }
         pollenCharges.clear(runtime.settings.id, runtime.state.sequence)
         disease.clear(runtime.settings.id)

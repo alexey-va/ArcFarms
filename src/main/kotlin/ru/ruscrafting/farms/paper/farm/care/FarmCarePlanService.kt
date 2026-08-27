@@ -21,6 +21,7 @@ import ru.ruscrafting.farms.paper.FarmBlockRegistry
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
+import ru.ruscrafting.farms.paper.farm.care.mole.FarmMoleBurrowWorld
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
 import ru.ruscrafting.farms.paper.location
 import java.util.random.RandomGenerator
@@ -39,6 +40,7 @@ internal class FarmCarePlanService(
     private val points: FarmPointProvider,
     private val overrides: () -> FarmLocationOverrides,
     private val random: RandomGenerator,
+    private val moleBurrow: FarmMoleBurrowWorld,
 ) {
     fun select(runtime: FarmRuntime, preferredType: FarmCareType?, actor: Player?): FarmCarePlan? {
         val configured = runtime.state.orderId?.let(runtime.orders::get)?.careTypes ?: return null
@@ -132,7 +134,25 @@ internal class FarmCarePlanService(
                 runtime.settings.diseaseInitialSpots.coerceAtMost(patch.size),
                 required = 2,
             )
-            FarmCareType.MOLES -> bedTargets(FarmCareRole.MOLE_MOUND, count, required = 3)
+            FarmCareType.MOLES -> {
+                val sources = placement.sources(runtime, actor?.location)
+                val receiving = points.resolve(runtime, FarmPointKind.RECEIVING)
+                val candidates = FarmDeliveryPlanner.selectTargets(
+                    candidates = placement.safeGroundCandidates(runtime, sources, runtime.settings.careRadius),
+                    objectiveX = receiving.x,
+                    objectiveZ = receiving.z,
+                    participants = sources.map { it.x to it.z },
+                    minimumObjectiveDistance = 3.0,
+                    maximumParticipantDistance = runtime.settings.careRadius.toDouble(),
+                    targetCount = runtime.settings.moleBurrow.candidateAttempts,
+                    selectionIndex = salt,
+                    minimumTargetDistance = 2.0,
+                )
+                candidates.asSequence().map { FarmPointPosition(it.world, it.x, it.y, it.z) }
+                    .firstOrNull { moleBurrow.preview(runtime, it) != null }
+                    ?.let { listOf(FarmCareTarget(0, FarmCareRole.MOLE_MOUND, it)) }
+                    ?: return null
+            }
             FarmCareType.APPLE_HARVEST -> {
                 val leaves = registry.orchardLeaves(runtime.settings.id).filter { position ->
                     val leaf = position.block() ?: return@filter false

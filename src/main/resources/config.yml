@@ -101,6 +101,23 @@ farm-zones:
     disease-initial-spots: 2
     disease-max-spots: 6
     disease-spread-seconds: 12
+    # Temporary, crash-safe maze carved below the farm for the mole expedition.
+    mole-burrow:
+      cells: 7
+      min-depth: 10
+      max-depth: 18
+      tunnel-height: 3
+      blocks-per-tick: 48
+      candidate-attempts: 12
+      light-spacing: 5
+      light-level: 11
+      replaceable-materials: [STONE, DEEPSLATE, DIRT, COARSE_DIRT, ANDESITE, DIORITE, GRANITE, TUFF, CALCITE, DRIPSTONE_BLOCK, CLAY, MUD, PACKED_MUD]
+      lair-visual:
+        material: RABBIT_HIDE
+        custom-model-data: 0
+        display-transform: FIXED
+        display-scale: 1.6
+        display-y-offset: 0.6
     care-animal-entities: [CHICKEN, SHEEP]
     procedural-care-fixtures: true
     placement-min-objective-distance: 10

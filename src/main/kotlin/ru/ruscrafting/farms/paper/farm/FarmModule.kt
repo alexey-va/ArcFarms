@@ -26,6 +26,7 @@ import ru.ruscrafting.farms.paper.blockIndexDefinition
 import ru.ruscrafting.farms.paper.farm.admin.FarmWorldAdminService
 import ru.ruscrafting.farms.paper.farm.care.FarmCareController
 import ru.ruscrafting.farms.paper.farm.care.FarmCarePlanService
+import ru.ruscrafting.farms.paper.farm.care.mole.FarmMoleBurrowController
 import ru.ruscrafting.farms.paper.farm.delivery.FarmDeliveryController
 import ru.ruscrafting.farms.paper.farm.field.FarmFieldController
 import ru.ruscrafting.farms.paper.farm.incident.drought.FarmDroughtIncident
@@ -63,6 +64,7 @@ internal class FarmModule(
     private val incidentRecovery: FarmIncidentRecoveryController,
     private val carePlans: FarmCarePlanService,
     private val care: FarmCareController,
+    private val moles: FarmMoleBurrowController,
     private val drought: FarmDroughtIncident,
     private val pests: FarmPestIncident,
     private val birds: FarmBirdIncident,
@@ -87,6 +89,8 @@ internal class FarmModule(
     }
 
     fun activateLoadedState() {
+        moles.reconcileLoaded()
+        org.bukkit.Bukkit.getOnlinePlayers().forEach(moles::recoverPlayer)
         field.reconcile(registry.snapshot())
         reconcileLoadedBlockIndexes()
         fixedCrops.reconcileLoaded()
@@ -97,6 +101,7 @@ internal class FarmModule(
     }
 
     fun onChunkLoad(chunk: Chunk) {
+        moles.onChunkLoad(chunk)
         scene.onChunkLoad(chunk)
         special.onChunkLoad(chunk)
         registry.snapshot().asSequence().filter { it.region.world == chunk.world }.forEach { runtime ->
@@ -119,6 +124,8 @@ internal class FarmModule(
 
     fun processRestores() {
         val runtimes = registry.snapshot()
+        val moleBlockBudget = runtimes.maxOfOrNull { it.settings.moleBurrow.blocksPerTick } ?: 8
+        moles.processBlocks(moleBlockBudget)
         val limit = runtimes.maxOfOrNull { it.settings.restoreBlocksPerTick } ?: 1
         special.processRestores(limit).forEach { chunk ->
             runtimes.filter { it.region.world === chunk.world }.forEach { runtime ->

@@ -17,6 +17,8 @@ import ru.ruscrafting.farms.paper.farm.admin.FarmRouteAdminService
 import ru.ruscrafting.farms.paper.farm.admin.FarmWorldAdminService
 import ru.ruscrafting.farms.paper.farm.care.FarmCareController
 import ru.ruscrafting.farms.paper.farm.care.FarmCarePlanService
+import ru.ruscrafting.farms.paper.farm.care.mole.FarmMoleBurrowController
+import ru.ruscrafting.farms.paper.farm.care.mole.FarmMoleBurrowWorld
 import ru.ruscrafting.farms.paper.farm.delivery.FarmDeliveryController
 import ru.ruscrafting.farms.paper.farm.field.FarmFieldController
 import ru.ruscrafting.farms.paper.farm.harvest.FarmHarvestController
@@ -75,6 +77,7 @@ internal class FarmComponentGraph(
     val routeAdmin = FarmRouteAdminService(farmRouteRepository, debug, port, runtimes::snapshot)
     private val basePoints = FarmPointProvider(pointService::resolveBase)
     private val placement = FarmPlacementService(plugin, blockRegistry, basePoints, debug, random)
+    private val moleBurrowWorld = FarmMoleBurrowWorld(plugin, debug)
     private val carePlans = FarmCarePlanService(
         debug = debug,
         registry = blockRegistry,
@@ -82,6 +85,7 @@ internal class FarmComponentGraph(
         points = basePoints,
         overrides = pointService::snapshot,
         random = random,
+        moleBurrow = moleBurrowWorld,
     )
     private val points = FarmPointProvider { runtime, kind ->
         carePlans.fixturePoint(runtime, kind) ?: pointService.resolveBase(runtime, kind)
@@ -108,6 +112,17 @@ internal class FarmComponentGraph(
         transitions = transitions,
         persistBlocking = persistBlocking,
     )
+    val moles = FarmMoleBurrowController(
+        plugin = plugin,
+        settings = settings,
+        locale = locale,
+        debug = debug,
+        port = port,
+        world = moleBurrowWorld,
+        transitions = transitions,
+        runtimes = runtimes::snapshot,
+        clock = clock,
+    )
     private val care = FarmCareController(
         plugin = plugin,
         settings = settings,
@@ -118,6 +133,7 @@ internal class FarmComponentGraph(
         registry = blockRegistry,
         field = field,
         plans = carePlans,
+        moles = moles,
         transitions = transitions,
         runtimes = runtimes::snapshot,
         clock = clock,
@@ -330,6 +346,7 @@ internal class FarmComponentGraph(
         incidentRecovery = recovery,
         carePlans = carePlans,
         care = care,
+        moles = moles,
         drought = drought,
         pests = pests,
         birds = birds,

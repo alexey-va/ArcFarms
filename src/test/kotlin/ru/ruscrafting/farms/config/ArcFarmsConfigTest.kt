@@ -165,6 +165,11 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().diseaseInitialSpots shouldBe 2
         settings.farms.single().diseaseMaxSpots shouldBe 6
         settings.farms.single().diseaseSpreadSeconds shouldBe 12
+        settings.farms.single().moleBurrow.cells shouldBe 7
+        settings.farms.single().moleBurrow.minDepth shouldBe 10
+        settings.farms.single().moleBurrow.maxDepth shouldBe 18
+        settings.farms.single().moleBurrow.blocksPerTick shouldBe 48
+        settings.farms.single().moleBurrow.lairVisual.material shouldBe "RABBIT_HIDE"
         settings.farms.single().proceduralCareFixtures shouldBe true
         settings.farms.single().careAnimalEntities shouldContainExactly listOf("CHICKEN", "SHEEP")
         settings.farms.single().music.enabled shouldBe false
@@ -281,6 +286,8 @@ class ArcFarmsConfigTest : FunSpec({
             scarecrow.displayYOffset shouldBe 0.0
         }
         classicSettings.farms.single().careVisuals.getValue(FarmCareRole.PEN).customModelData shouldBe 11_864
+        classicSettings.farms.single().moleBurrow.lairVisual.material shouldBe "STICK"
+        classicSettings.farms.single().moleBurrow.lairVisual.customModelData shouldBe 10_053
         classicSettings.farms.single().music.enabled shouldBe true
         classicSettings.farms.single().music.sound shouldBe "arc:farm_valley_comes_alive"
         classicSettings.farms.single().music.durationSeconds shouldBe 262
@@ -851,7 +858,7 @@ class ArcFarmsConfigTest : FunSpec({
             FarmCareType.SCARECROWS to "Дважды почините каждое пугало",
             FarmCareType.ANIMAL_RESCUE to "Ведите животных к зелёной метке",
             FarmCareType.DISEASE to "Обработайте каждый очаг дважды",
-            FarmCareType.MOLES to "Бейте свежие холмики мотыгой",
+            FarmCareType.MOLES to "Найдите коричневую метку, спуститесь в нору и отыщите логово",
             FarmCareType.APPLE_HARVEST to "Ищите светящиеся яблоки под кронами",
         ).map { (type, hint) -> base.copy(phase = FarmPhase.CARE, careType = type) to hint }
 

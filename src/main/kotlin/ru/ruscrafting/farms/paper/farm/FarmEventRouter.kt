@@ -210,6 +210,7 @@ internal class FarmEventRouter(
 
     fun onMove(event: PlayerMoveEvent) {
         routeAdmin.onMove(event)
+        care.onMove(event)
         val destination = event.to
         if (event.from.world == destination.world && event.from.blockX == destination.blockX &&
             event.from.blockY == destination.blockY && event.from.blockZ == destination.blockZ
@@ -344,6 +345,7 @@ internal class FarmEventRouter(
     }
 
     fun onDeath(event: PlayerDeathEvent) {
+        care.onPlayerDeath(event.entity)
         event.drops.removeIf(supplies::isServiceItem)
         supplies.removeServiceItems(event.entity, reason = "player_death")
     }

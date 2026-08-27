@@ -2,7 +2,6 @@ package ru.ruscrafting.farms.paper.farm.care
 
 import org.bukkit.Color
 import org.bukkit.Location
-import org.bukkit.Material
 import org.bukkit.Particle
 import org.bukkit.Sound
 import org.bukkit.entity.ItemDisplay
@@ -14,7 +13,6 @@ import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmPlotPosition
-import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmSeederStage
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.block
@@ -32,19 +30,6 @@ internal class FarmCarePresentation(private val settings: () -> ArcFarmsConfig) 
             )
         }
         if (settings().sounds) player.playSound(location, feedbackSound(role), 0.7f, if (completed) 1.2f else 0.95f)
-    }
-
-    fun moleTrail(player: Player, from: FarmPointPosition, to: FarmPointPosition) {
-        if (!settings().particles || from.world != to.world || player.world.name != from.world) return
-        val start = Location(player.world, from.x, from.y, from.z)
-        val delta = Location(player.world, to.x, to.y, to.z).toVector().subtract(start.toVector())
-        repeat(10) { index ->
-            player.spawnParticle(
-                Particle.BLOCK,
-                start.clone().add(delta.clone().multiply((index + 1) / 10.0)).add(0.0, -0.55, 0.0),
-                2, 0.12, 0.04, 0.12, 0.01, Material.DIRT.createBlockData(),
-            )
-        }
     }
 
     fun machineSwath(runtime: FarmRuntime, plots: Collection<FarmPlotPosition>, stage: FarmSeederStage) {

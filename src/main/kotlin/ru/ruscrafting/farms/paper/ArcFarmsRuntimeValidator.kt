@@ -271,6 +271,15 @@ internal class ArcFarmsRuntimeValidator(
             "Farm zone ${zone.id} supplies.tool-material must be a hoe"
         }
         zone.careVisuals.values.forEach { MaterialRules.material(it.material) }
+        require(MaterialRules.material(zone.moleBurrow.lairVisual.material).isItem) {
+            "Farm zone ${zone.id} mole-burrow lair visual must use an item material"
+        }
+        zone.moleBurrow.replaceableMaterials.forEach { materialName ->
+            val material = MaterialRules.material(materialName)
+            require(material.isSolid && !material.hasGravity()) {
+                "Farm zone ${zone.id} mole-burrow replacement $materialName must be a solid non-falling block"
+            }
+        }
         zone.orders.forEach { order ->
             require(MaterialRules.material(order.cartLoadMaterial).isItem) {
                 "Farm order ${zone.id}/${order.id} cart load must use an item material"
