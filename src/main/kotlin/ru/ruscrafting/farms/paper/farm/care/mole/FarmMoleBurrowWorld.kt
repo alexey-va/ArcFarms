@@ -254,28 +254,10 @@ internal class FarmMoleBurrowWorld(
         if (blocks.isEmpty()) return false
         val chunks = blocks.map(Block::getChunk).distinctBy { it.x to it.z }
         if (chunks.any { !it.world.isChunkLoaded(it.x, it.z) || read(it)?.isNotEmpty() != false }) return false
-        if (!blocks.all { block ->
+        return blocks.all { block ->
             runtime.region.contains(block.location) &&
                 replaceableForBurrow(runtime, block, shaftPositions, surfaceBlockY, replaceable) &&
                 block.y > block.world.minHeight + 1 && block.y < block.world.maxHeight - 1
-        }) return false
-        val tunnel = blocks.mapTo(hashSetOf()) { Triple(it.x, it.y, it.z) }
-        return blocks.all { block ->
-            val position = Triple(block.x, block.y, block.z)
-            if (position in shaftPositions && block.y >= surfaceBlockY - 1) return@all true
-            SHELL_OFFSETS.all { (dx, dy, dz) ->
-                val x = block.x + dx
-                val y = block.y + dy
-                val z = block.z + dz
-                if (Triple(x, y, z) in tunnel) {
-                    true
-                } else if (!block.world.isChunkLoaded(x shr 4, z shr 4)) {
-                    false
-                } else {
-                    val adjacent = block.world.getBlockAt(x, y, z)
-                    runtime.region.contains(adjacent.location) && adjacent.type.isSolid && !adjacent.type.hasGravity()
-                }
-            }
         }
     }
 
@@ -286,7 +268,7 @@ internal class FarmMoleBurrowWorld(
         surfaceBlockY: Int,
         replaceable: Set<String>,
     ): Boolean {
-        if (block.type.name in replaceable) return true
+        if (block.type.isAir || block.type.name in replaceable) return true
         val position = Triple(block.x, block.y, block.z)
         if (position !in shaftPositions || block.y !in surfaceBlockY - 1..surfaceBlockY) return false
         if (block.y == surfaceBlockY) {
@@ -502,9 +484,5 @@ internal class FarmMoleBurrowWorld(
         const val DEPTH_PROBE_STEP = 5
         val AIR_DATA: String = Material.AIR.createBlockData().asString
         val BARRIER_DATA: String = Material.BARRIER.createBlockData().asString
-        val SHELL_OFFSETS = listOf(
-            Triple(1, 0, 0), Triple(-1, 0, 0), Triple(0, 0, 1), Triple(0, 0, -1),
-            Triple(0, 1, 0), Triple(0, -1, 0),
-        )
     }
 }

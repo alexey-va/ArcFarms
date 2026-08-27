@@ -1,8 +1,8 @@
 package ru.ruscrafting.farms.paper.farm.care.mole
 
 import io.kotest.core.spec.style.FunSpec
-import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.nulls.shouldBeNull
 import io.mockk.every
 import io.mockk.mockk
 import org.bukkit.Material
@@ -125,8 +125,8 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         crop.blockData.asString shouldBe originalCrop
     }
 
-    test("preview rejects tunnels with an unsupported floor") {
-        for (x in -16..16) for (z in -16..16) for (y in 52..54) {
+    test("preview accepts natural cavities intersecting the tunnel") {
+        for (x in -16..16) for (z in -16..16) for (y in 50..60) {
             world.getBlockAt(x, y, z).type = Material.AIR
         }
         val burrow = FarmMoleBurrowSettings(
@@ -155,6 +155,42 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         )
         val controller = FarmMoleBurrowWorld(
             paper.createSimplePlugin("FarmMoleBurrowFloorTest"),
+            ArcFarmsDebug({ false }) {},
+        )
+
+        controller.preview(runtime, FarmPointPosition(world.name, 0.5, 65.0, 0.5))?.records?.isNotEmpty() shouldBe true
+    }
+
+    test("preview does not carve through unconfigured building materials") {
+        for (x in -16..16) for (z in -16..16) for (y in 45..64) {
+            world.getBlockAt(x, y, z).type = Material.OAK_PLANKS
+        }
+        val burrow = FarmMoleBurrowSettings(
+            cells = 7,
+            minDepth = 10,
+            maxDepth = 12,
+            tunnelHeight = 3,
+            blocksPerTick = 48,
+            candidateAttempts = 4,
+            lightSpacing = 5,
+            lightLevel = 11,
+            replaceableMaterials = setOf("STONE"),
+            lairVisual = FarmCareVisualSettings("RABBIT_HIDE", 0, FarmItemDisplayTransform.FIXED, 1.6f, 0.6),
+        )
+        val settings = mockk<FarmZoneSettings> {
+            every { id } returns "communal_farm"
+            every { moleBurrow } returns burrow
+        }
+        val runtime = FarmRuntime(
+            settings = settings,
+            region = CuboidActivityRegion(world, "farm", CuboidBounds(-16, 0, -16, 16, 128, 16)),
+            orders = emptyMap(),
+            orderList = emptyList(),
+            rules = FarmRules(listOf(50), 1, 1_000),
+            state = FarmShiftState(phase = FarmPhase.CARE, sequence = 5),
+        )
+        val controller = FarmMoleBurrowWorld(
+            paper.createSimplePlugin("FarmMoleBurrowBuildingTest"),
             ArcFarmsDebug({ false }) {},
         )
 

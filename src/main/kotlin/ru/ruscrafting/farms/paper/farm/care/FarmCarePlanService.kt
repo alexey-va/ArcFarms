@@ -149,36 +149,27 @@ internal class FarmCarePlanService(
                 required = 2,
             )
             FarmCareType.MOLES -> {
-                val sources = placement.sources(runtime, actor?.location)
-                val receiving = points.resolve(runtime, FarmPointKind.RECEIVING)
-                val searchRadius = maxOf(runtime.settings.careRadius, runtime.settings.placementSearchRadius)
-                val groundCandidates = FarmDeliveryPlanner.selectTargets(
-                    candidates = placement.safeGroundCandidates(runtime, sources, searchRadius),
-                    objectiveX = receiving.x,
-                    objectiveZ = receiving.z,
-                    participants = sources.map { it.x to it.z },
-                    minimumObjectiveDistance = 3.0,
-                    maximumParticipantDistance = runtime.settings.placementMaxPlayerDistance.toDouble(),
-                    targetCount = runtime.settings.moleBurrow.candidateAttempts,
-                    selectionIndex = salt,
-                    minimumTargetDistance = 2.0,
-                )
                 val bedCandidates = FarmCarePlanner.spread(
                     patch,
                     runtime.settings.moleBurrow.candidateAttempts.coerceAtMost(patch.size),
                     salt xor 0x4D4F4C45L,
                 ).map { plot -> FarmPointPosition(plot.world, plot.x + 0.5, plot.y + 1.05, plot.z + 0.5) }
-                val candidates = groundCandidates.map { FarmPointPosition(it.world, it.x, it.y, it.z) } + bedCandidates
+                val startedAt = System.nanoTime()
+                var tested = 0
+                val selected = bedCandidates.asSequence().distinct()
+                    .firstOrNull { candidate ->
+                        tested += 1
+                        moleBurrow.preview(runtime, candidate) != null
+                    }
                 debug.event(
                     "farm_mole_entrance_candidates",
                     "zone" to runtime.settings.id,
-                    "ground" to groundCandidates.size,
                     "beds" to bedCandidates.size,
-                    "radius" to searchRadius,
+                    "tested" to tested,
+                    "selected" to (selected != null),
+                    "elapsed_ms" to ((System.nanoTime() - startedAt) / 1_000_000L),
                 )
-                candidates.asSequence().distinct()
-                    .firstOrNull { moleBurrow.preview(runtime, it) != null }
-                    ?.let { listOf(FarmCareTarget(0, FarmCareRole.MOLE_MOUND, it)) }
+                selected?.let { listOf(FarmCareTarget(0, FarmCareRole.MOLE_MOUND, it)) }
                     ?: return null
             }
             FarmCareType.APPLE_HARVEST -> {
