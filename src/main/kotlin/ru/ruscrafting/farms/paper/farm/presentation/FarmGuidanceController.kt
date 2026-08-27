@@ -255,6 +255,9 @@ internal class FarmGuidanceController(
         }.orEmpty()
         FarmIncidentType.NIGHT_SHIFT -> runtime.state.specialIncident?.plots.orEmpty().mapNotNull(FarmPlotPosition::location)
             .map { it to NIGHT_COLOR }
+        FarmIncidentType.BIRDS -> runtime.state.specialIncident?.plots.orEmpty().mapNotNull(FarmPlotPosition::location)
+            .map { it to DANGER_COLOR }
+        FarmIncidentType.FOOD_DELIVERY -> emptyList()
         FarmIncidentType.MARKET -> points.resolve(runtime, FarmPointKind.CUSTOMER).let { point ->
             listOf(Location(runtime.region.world, point.x, point.y, point.z) to AMBER_COLOR)
         }

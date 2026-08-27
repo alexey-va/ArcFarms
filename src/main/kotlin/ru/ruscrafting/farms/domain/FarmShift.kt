@@ -45,6 +45,8 @@ data class FarmPlotPosition(
 enum class FarmIncidentType {
     PESTS,
     DROUGHT,
+    BIRDS,
+    FOOD_DELIVERY,
     GIANT_CROP,
     CHANNELS,
     NIGHT_SHIFT,
@@ -778,6 +780,92 @@ object FarmShiftEngine {
             true,
             contribution = 1,
             events = listOf(if (completed) ShiftEvent.COMPLETED else ShiftEvent.DELIVERY_PROGRESS),
+        )
+    }
+
+    fun defeatBird(
+        current: FarmShiftState,
+        playerId: UUID,
+        contribution: Int,
+    ): EngineResult<FarmShiftState> {
+        require(contribution in 1..8) { "Farm bird contribution is invalid" }
+        if (current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.BIRDS) {
+            return EngineResult(current, false)
+        }
+        val progress = (current.incidentProgress + 1).coerceAtMost(current.incidentRequired)
+        val state = current.copy(
+            incidentProgress = progress,
+            contributors = incrementContribution(current.contributors, playerId, contribution),
+        )
+        if (progress >= current.incidentRequired) return completeIncident(state, contribution)
+        return EngineResult(state, true, contribution, listOf(ShiftEvent.INCIDENT_PROGRESS))
+    }
+
+    fun initializeFoodDelivery(current: FarmShiftState, checkpoints: Int): EngineResult<FarmShiftState> {
+        require(checkpoints in 2..512) { "Farm food delivery route must contain 2..512 checkpoints" }
+        if (current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.FOOD_DELIVERY ||
+            current.specialIncident != null
+        ) return EngineResult(current, false)
+        return EngineResult(
+            current.copy(
+                incidentProgress = 1,
+                incidentRequired = checkpoints,
+                specialIncident = FarmSpecialIncidentState(),
+            ),
+            true,
+        )
+    }
+
+    fun advanceFoodDelivery(
+        current: FarmShiftState,
+        reachedCheckpoint: Int,
+        playerId: UUID,
+        completionContribution: Int,
+    ): EngineResult<FarmShiftState> {
+        require(completionContribution in 1..64) { "Farm food delivery contribution is invalid" }
+        if (current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.FOOD_DELIVERY ||
+            current.specialIncident == null || reachedCheckpoint <= current.incidentProgress ||
+            reachedCheckpoint > current.incidentRequired
+        ) return EngineResult(current, false)
+        val progressed = current.copy(incidentProgress = reachedCheckpoint)
+        if (reachedCheckpoint >= current.incidentRequired) {
+            val credited = progressed.copy(
+                contributors = incrementContribution(progressed.contributors, playerId, completionContribution),
+            )
+            return completeIncident(credited, completionContribution)
+        }
+        return EngineResult(progressed, true, events = listOf(ShiftEvent.INCIDENT_PROGRESS))
+    }
+
+    fun skipUnavailableIncident(
+        current: FarmShiftState,
+        expectedType: FarmIncidentType,
+    ): EngineResult<FarmShiftState> {
+        if (current.phase != FarmPhase.INCIDENT || current.incidentType != expectedType) {
+            return EngineResult(current, false)
+        }
+        return completeIncident(current, contribution = 0).copy(events = emptyList())
+    }
+
+    /** Completes a delivery for administration/QA without fabricating player contribution. */
+    fun completeDeliveryAsAdmin(
+        current: FarmShiftState,
+        rules: FarmRules,
+        requiredCrates: Int,
+        now: Long,
+    ): EngineResult<FarmShiftState> {
+        require(requiredCrates in 1..8) { "Farm delivery must require 1..8 crates" }
+        if (current.phase != FarmPhase.DELIVERY) return EngineResult(current, false)
+        return EngineResult(
+            current.copy(
+                phase = FarmPhase.COOLDOWN,
+                cooldownEndsAt = now + rules.cooldownMillis,
+                deliveryPosition = null,
+                deliveredCrates = (0 until requiredCrates).toSet(),
+                outcome = ShiftOutcome.COMPLETED,
+            ),
+            true,
+            events = listOf(ShiftEvent.COMPLETED),
         )
     }
 

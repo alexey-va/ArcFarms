@@ -12,7 +12,10 @@ object FarmIncidentPlanner {
         val special = rotate(unique.filter(SPECIAL_TYPES::contains), selectionIndex)
         val field = rotate(unique.filterNot(SPECIAL_TYPES::contains), selectionIndex xor 0x51A7L)
         val selected = mutableListOf<FarmIncidentType>()
-        selected += special.take(minOf(count, special.size))
+        // Long orders must still contain one field incident even when the special
+        // catalogue grows beyond the configured incident count.
+        val specialLimit = if (count >= 5 && field.isNotEmpty()) count - 1 else count
+        selected += special.take(minOf(specialLimit, special.size))
         if (selected.size < count) selected += field.take(1)
         if (selected.size < count) {
             selected += rotate(unique.filterNot(selected::contains), selectionIndex xor 0x2D35L)
@@ -143,5 +146,7 @@ object FarmIncidentPlanner {
         FarmIncidentType.CHANNELS,
         FarmIncidentType.NIGHT_SHIFT,
         FarmIncidentType.MARKET,
+        FarmIncidentType.BIRDS,
+        FarmIncidentType.FOOD_DELIVERY,
     )
 }

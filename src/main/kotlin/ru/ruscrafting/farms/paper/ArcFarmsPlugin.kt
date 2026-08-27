@@ -18,12 +18,14 @@ import ru.ruscrafting.farms.config.ArcFarmsRedisBootstrap
 import ru.ruscrafting.farms.config.FarmScoreboardProvider
 import ru.ruscrafting.farms.domain.ArcFarmsState
 import ru.ruscrafting.farms.domain.FarmLocationOverrides
+import ru.ruscrafting.farms.domain.FarmRouteState
 import ru.ruscrafting.farms.domain.FixedFarmCropJournalState
 import ru.ruscrafting.farms.domain.MineBlockJournalState
 import ru.ruscrafting.farms.network.ArcFarmsNetworkRepository
 import ru.ruscrafting.farms.network.NoOpActivityNetworkGateway
 import ru.ruscrafting.farms.persistence.ArcFarmsStateRepository
 import ru.ruscrafting.farms.persistence.FarmLocationRepository
+import ru.ruscrafting.farms.persistence.FarmRouteRepository
 import ru.ruscrafting.farms.persistence.FixedFarmCropJournal
 import ru.ruscrafting.farms.persistence.MineBlockJournal
 import java.nio.file.Files
@@ -38,6 +40,7 @@ class ArcFarmsPlugin : JavaPlugin() {
     private var mineJournal: MineBlockJournal? = null
     private var fixedCropJournal: FixedFarmCropJournal? = null
     private var farmLocationRepository: FarmLocationRepository? = null
+    private var farmRouteRepository: FarmRouteRepository? = null
     private var redis: RedisManager? = null
     private var network: ArcFarmsNetworkService? = null
     private var transfer: BungeeBackendTransfer? = null
@@ -90,6 +93,7 @@ class ArcFarmsPlugin : JavaPlugin() {
             val mineStore = lifecycle.own(MineBlockJournal(dataRoot)).also { mineJournal = it }
             val fixedCropStore = lifecycle.own(FixedFarmCropJournal(dataRoot)).also { fixedCropJournal = it }
             val locationStore = lifecycle.own(FarmLocationRepository(dataRoot)).also { farmLocationRepository = it }
+            val routeStore = lifecycle.own(FarmRouteRepository(dataRoot)).also { farmRouteRepository = it }
             val regionGateway = if (settings.requiresWorldGuard) {
                 require(server.pluginManager.isPluginEnabled("WorldGuard")) {
                     "WorldGuard is required because this node configures named regions"
@@ -113,6 +117,7 @@ class ArcFarmsPlugin : JavaPlugin() {
                 mineJournal = mineStore,
                 fixedCropJournal = fixedCropStore,
                 farmLocationRepository = locationStore,
+                farmRouteRepository = routeStore,
                 network = networkGateway,
                 transfer = backendTransfer,
                 debug = debug,
@@ -151,6 +156,7 @@ class ArcFarmsPlugin : JavaPlugin() {
                         "mine_journal" to MineBlockJournalState.SCHEMA_VERSION,
                         "fixed_crop_journal" to FixedFarmCropJournalState.SCHEMA_VERSION,
                         "farm_locations" to FarmLocationOverrides.SCHEMA_VERSION,
+                        "farm_routes" to FarmRouteState.SCHEMA_VERSION,
                     ),
                     dependencies = mapOf("redis" to redisReady, "service" to serviceReady),
                 )
@@ -183,6 +189,7 @@ class ArcFarmsPlugin : JavaPlugin() {
         mineJournal = null
         fixedCropJournal = null
         farmLocationRepository = null
+        farmRouteRepository = null
         stateRepository = null
         Tasks.reset()
     }

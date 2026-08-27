@@ -58,10 +58,14 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
             }
         }
         val pausedFarmZones = state.pausedFarmZones.orEmpty()
-        return if (stats == state.stats && farms == state.farms && pausedFarmZones == state.pausedFarmZones) {
+        val farmPerks = state.farmPerks.orEmpty()
+        return if (
+            stats == state.stats && farms == state.farms && pausedFarmZones == state.pausedFarmZones &&
+            farmPerks == state.farmPerks
+        ) {
             state
         } else {
-            state.copy(farms = farms, pausedFarmZones = pausedFarmZones, stats = stats)
+            state.copy(farms = farms, pausedFarmZones = pausedFarmZones, stats = stats, farmPerks = farmPerks)
         }
     }
 
@@ -98,6 +102,16 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
             state.lumbermills.values.forEach(::validateLumber)
             state.mines.values.forEach(::validateMine)
             state.stats.values.forEach(::validateStats)
+            require(state.farmPerks.orEmpty().size <= 1_000_000) { "Farm perk ledgers are unbounded" }
+            state.farmPerks.orEmpty().values.forEach { perks ->
+                require(perks.weekStartEpochDay >= 0 && perks.spentPoints >= 0) { "Farm perk ledger is invalid" }
+                require(perks.activeUntil.size <= ru.ruscrafting.farms.domain.FarmPerkType.entries.size) {
+                    "Farm perk ledger contains too many active perks"
+                }
+                require(perks.activeUntil.values.all { it in 0 until Long.MAX_VALUE }) {
+                    "Farm perk expiry is invalid"
+                }
+            }
             require(state.pendingFarmRewards.size <= 10_000) { "Pending farm rewards are unbounded" }
             require(state.pendingFarmRewards.map(PendingFarmReward::id).distinct().size == state.pendingFarmRewards.size) {
                 "Pending farm rewards contain duplicate ids"
@@ -217,6 +231,8 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                         FarmIncidentType.CHANNELS,
                         FarmIncidentType.NIGHT_SHIFT,
                         FarmIncidentType.MARKET,
+                        FarmIncidentType.BIRDS,
+                        FarmIncidentType.FOOD_DELIVERY,
                     ),
                 ) { "Farm special incident state escaped its active incident" }
                 require(special.points.size <= 16 && special.plots.size <= 128) {
@@ -241,6 +257,12 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                     FarmIncidentType.MARKET -> require(special.plots.isNotEmpty() && special.crop != null) {
                         "Farm market state is incomplete"
                     }
+                    FarmIncidentType.BIRDS -> require(special.plots.isNotEmpty()) {
+                        "Farm bird state is incomplete"
+                    }
+                    FarmIncidentType.FOOD_DELIVERY -> require(
+                        special.points.isEmpty() && special.plots.isEmpty() && farm.incidentRequired in 2..512,
+                    ) { "Farm food delivery state is incomplete" }
                     else -> error("Farm special incident state has an invalid type")
                 }
                 if (farm.incidentType != FarmIncidentType.MARKET) {

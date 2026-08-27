@@ -23,6 +23,7 @@ import ru.ruscrafting.farms.domain.FarmIncidentPlanner
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmOrder
 import ru.ruscrafting.farms.domain.FarmPhase
+import ru.ruscrafting.farms.domain.FarmPerkType
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.domain.ShiftEvent
@@ -64,6 +65,7 @@ internal class FarmHarvestController(
     private val taskHints: FarmTaskHintSink,
     private val runtimes: () -> Collection<FarmRuntime>,
     private val clock: () -> Long,
+    private val perkActive: (UUID, FarmPerkType, Long) -> Boolean = { _, _, _ -> false },
 ) {
     fun onBreak(event: BlockBreakEvent, runtime: FarmRuntime) {
         event.isCancelled = true
@@ -75,7 +77,10 @@ internal class FarmHarvestController(
                 return@validate
             }
             event.isCancelled = false
-            commitBrokenCrop(runtime, event.player, event.block, commit.crop, requireNotNull(commit.replantData))
+            val areaHarvest = perkActive(event.player.uniqueId, FarmPerkType.HARVEST_AREA, commit.now)
+            commitBrokenCrop(runtime, event.player, event.block, commit.crop, requireNotNull(commit.replantData)) {
+                if (areaHarvest) commitHarvestArea(runtime, event.player, event.block)
+            }
         }
     }
 
@@ -100,6 +105,9 @@ internal class FarmHarvestController(
                 event.player.playSound(clicked.location, Sound.BLOCK_SWEET_BERRY_BUSH_PICK_BERRIES, 0.7f, 1.05f)
             }
             progress(runtime, event.player, commit.crop.name)
+            if (perkActive(event.player.uniqueId, FarmPerkType.HARVEST_AREA, commit.now)) {
+                commitHarvestArea(runtime, event.player, clicked)
+            }
         }
         return true
     }
@@ -212,7 +220,14 @@ internal class FarmHarvestController(
         commit(HarvestCommit(crop, replantData, fixedCrop, now))
     }
 
-    private fun commitBrokenCrop(runtime: FarmRuntime, player: Player, block: Block, crop: Material, replantData: Ageable) {
+    private fun commitBrokenCrop(
+        runtime: FarmRuntime,
+        player: Player,
+        block: Block,
+        crop: Material,
+        replantData: Ageable,
+        after: () -> Unit = {},
+    ) {
         val existingItems = nearbyDropIds(block.location, 2.0)
         val inventoryBefore = dropInventory(player)
         debug.event("farm_crop_committed", "player" to player.name, "zone" to runtime.settings.id, "crop" to crop, "drops" to "consumed_by_order")
@@ -220,7 +235,6 @@ internal class FarmHarvestController(
         val sequence = runtime.state.sequence
         port.runLater(1L) {
             val currentRuntime = runtimes().firstOrNull { it.settings.id == zoneId && it.state.sequence == sequence }
-                ?.takeIf { it.state.phase == FarmPhase.HARVESTING }
                 ?: return@runLater
             if (!port.isOperational() || !block.type.isAir) return@runLater
             block.setBlockData(replantData, false)
@@ -233,7 +247,33 @@ internal class FarmHarvestController(
                 removeNewDrops(block.location, 2.0, existingItems)
                 removeInventoryGains(player, inventoryBefore, currentRuntime.settings.id)
             }
-            progress(currentRuntime, player, crop.name)
+            if (currentRuntime.state.phase == FarmPhase.HARVESTING) {
+                progress(currentRuntime, player, crop.name)
+                if (currentRuntime.state.phase == FarmPhase.HARVESTING) after()
+            }
+        }
+    }
+
+    private fun commitHarvestArea(runtime: FarmRuntime, player: Player, origin: Block) {
+        for (dx in -1..1) for (dz in -1..1) {
+            if (dx == 0 && dz == 0) continue
+            val crop = origin.getRelative(dx, 0, dz)
+            val soil = crop.getRelative(org.bukkit.block.BlockFace.DOWN)
+            if (ledger.record(soil)?.zoneId != runtime.settings.id) continue
+            validate(runtime, player, crop) { commit ->
+                if (commit.fixedCrop || commit.replantData == null) return@validate
+                crop.setBlockData(commit.replantData, false)
+                ledger.captureActiveCrop(soil, runtime.settings.id)
+                debug.event(
+                    "farm_crop_committed",
+                    "player" to player.name,
+                    "zone" to runtime.settings.id,
+                    "crop" to commit.crop,
+                    "input" to "harvest_area",
+                    "drops" to "consumed_by_order",
+                )
+                progress(runtime, player, commit.crop.name)
+            }
         }
     }
 

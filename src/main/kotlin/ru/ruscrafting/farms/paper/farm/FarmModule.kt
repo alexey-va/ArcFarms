@@ -29,10 +29,13 @@ import ru.ruscrafting.farms.paper.farm.care.FarmCarePlanService
 import ru.ruscrafting.farms.paper.farm.delivery.FarmDeliveryController
 import ru.ruscrafting.farms.paper.farm.field.FarmFieldController
 import ru.ruscrafting.farms.paper.farm.incident.drought.FarmDroughtIncident
+import ru.ruscrafting.farms.paper.farm.incident.bird.FarmBirdIncident
 import ru.ruscrafting.farms.paper.farm.incident.pest.FarmPestIncident
 import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentController
+import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
 import ru.ruscrafting.farms.paper.farm.point.FarmPointService
+import ru.ruscrafting.farms.paper.farm.perk.FarmPerkController
 import ru.ruscrafting.farms.paper.farm.presentation.FarmGuidanceController
 import ru.ruscrafting.farms.paper.farm.presentation.FarmHudController
 import ru.ruscrafting.farms.paper.farm.recovery.FarmFixedCropRecoveryController
@@ -62,6 +65,9 @@ internal class FarmModule(
     private val care: FarmCareController,
     private val drought: FarmDroughtIncident,
     private val pests: FarmPestIncident,
+    private val birds: FarmBirdIncident,
+    private val foodDelivery: FarmFoodDeliveryIncident,
+    private val perks: FarmPerkController,
     private val special: FarmSpecialIncidentController,
     private val delivery: FarmDeliveryController,
     private val scene: FarmContractSceneController,
@@ -86,6 +92,7 @@ internal class FarmModule(
         fixedCrops.reconcileLoaded()
         registry.snapshot().forEach(::ensureSupplies)
         registry.snapshot().forEach(scene::ensure)
+        registry.snapshot().forEach(perks::ensure)
         registry.snapshot().forEach(special::ensure)
     }
 
@@ -98,7 +105,8 @@ internal class FarmModule(
         fixedCrops.reconcileChunk(chunk)
         var removed = 0
         chunk.entities.filter { entity ->
-            pests.ownsPest(entity) || pests.ownsNest(entity) || delivery.owns(entity) || supplies.owns(entity) || care.owns(entity)
+            pests.ownsPest(entity) || pests.ownsNest(entity) || birds.owns(entity) || foodDelivery.owns(entity) ||
+                delivery.owns(entity) || supplies.owns(entity) || care.owns(entity) || perks.owns(entity)
         }.forEach { entity ->
             entity.remove()
             removed++
@@ -166,10 +174,18 @@ internal class FarmModule(
         port.guarded("farm_night_time") { special.updatePlayerTimes() }
     }
 
-    fun updateCarriedDisplays() = delivery.updateCarriedDisplays(registry.snapshot())
+    fun updateCarriedDisplays() {
+        val runtimes = registry.snapshot()
+        delivery.updateCarriedDisplays(runtimes)
+        foodDelivery.updateVisuals(runtimes)
+    }
 
     override fun tick(now: Long) {
-        registry.snapshot().forEach { runtime ->
+        val runtimes = registry.snapshot()
+        runtimes.forEach { runtime ->
+            port.guarded("farm_perks:${runtime.settings.id}") { perks.tick(runtime) }
+        }
+        runtimes.forEach { runtime ->
             port.guarded("farm:${runtime.settings.id}") {
                 if (isAdminEditing(runtime)) return@guarded
                 if (runtime.state.phase != FarmPhase.INCIDENT && incidentRecovery.pending(runtime)) return@guarded
@@ -188,8 +204,11 @@ internal class FarmModule(
                 }
                 drought.ensure(runtime)
                 pests.ensure(runtime)
+                birds.ensure(runtime)
+                foodDelivery.ensure(runtime, now)
                 special.ensure(runtime)
                 pests.eatCrops(runtime)
+                birds.eatCrops(runtime)
                 care.updateDisease(runtime, now)
                 care.reconcile(runtime)
                 care.ensure(runtime)
@@ -230,11 +249,12 @@ internal class FarmModule(
 
     fun refreshPoint(runtime: FarmRuntime, kind: FarmPointKind, actor: Player, reason: String) {
         when (kind) {
-            FarmPointKind.TOOL, FarmPointKind.SEEDS, FarmPointKind.WATER -> {
+            FarmPointKind.TOOL, FarmPointKind.SEEDS, FarmPointKind.WATER, FarmPointKind.ARCHERY -> {
                 val supply = when (kind) {
                     FarmPointKind.TOOL -> FarmSupplyKind.TOOL
                     FarmPointKind.SEEDS -> FarmSupplyKind.SEEDS
-                    else -> FarmSupplyKind.WATER
+                    FarmPointKind.WATER -> FarmSupplyKind.WATER
+                    else -> FarmSupplyKind.ARCHERY
                 }
                 supplies.refresh(runtime, supply, { supplyPoint(runtime, it) }, reason)
             }
@@ -255,6 +275,7 @@ internal class FarmModule(
             FarmPointKind.RECEIVING -> care.refreshPoint(runtime, FarmPointKind.PEN, reason)
             FarmPointKind.HIVE, FarmPointKind.IRRIGATION, FarmPointKind.COVERS,
             FarmPointKind.SCARECROWS, FarmPointKind.PEN -> care.refreshPoint(runtime, kind, reason)
+            FarmPointKind.PERK_VENDOR -> perks.refresh(runtime, reason)
             FarmPointKind.TRAVEL -> Unit
         }
     }
@@ -265,6 +286,9 @@ internal class FarmModule(
         supplies.cleanup(reason)
         delivery.cleanup(reason)
         pests.cleanup(reason)
+        birds.cleanup(reason)
+        foodDelivery.cleanup(reason)
+        perks.cleanup(reason)
         care.cleanup(reason)
         blockRegistry.clear()
         field.clearCaches()
@@ -291,6 +315,7 @@ internal class FarmModule(
             FarmSupplyKind.TOOL -> FarmPointKind.TOOL
             FarmSupplyKind.SEEDS -> FarmPointKind.SEEDS
             FarmSupplyKind.WATER -> FarmPointKind.WATER
+            FarmSupplyKind.ARCHERY -> FarmPointKind.ARCHERY
         },
     )
 

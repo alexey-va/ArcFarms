@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.domain
 
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import ru.ruscrafting.farms.config.FarmBundleItemSettings
@@ -15,6 +16,23 @@ import java.util.UUID
 
 class FarmRewardPlannerTest : FunSpec({
     val recipient = FarmRewardRecipient(UUID(0, 42), "Farmer", contribution = 321, rank = 2)
+
+    test("a player with no recorded work cannot receive a completion reward") {
+        shouldThrow<IllegalArgumentException> {
+            FarmRewardPlanner.plan(
+                settings = FarmRewardSettings(
+                    experience = FarmExperienceRewardSettings(0, 0),
+                    money = FarmMoneyRewardSettings(0, 0),
+                    items = emptyList(),
+                    commands = emptyList(),
+                    randomBundles = FarmRandomBundleSettings(0, 0, emptyList()),
+                ),
+                zoneId = "communal_farm",
+                sequence = 1,
+                recipient = FarmRewardRecipient(UUID(0, 99), "Idle", contribution = 0, rank = 1),
+            )
+        }
+    }
 
     test("resolved reward is deterministic and expands bounded command placeholders") {
         val settings = FarmRewardSettings(

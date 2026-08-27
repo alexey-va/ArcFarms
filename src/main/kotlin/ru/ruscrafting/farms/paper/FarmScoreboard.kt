@@ -161,6 +161,8 @@ internal class FarmScoreboardRenderer(
     private fun FarmIncidentType?.scoreboardId(): String = when (this) {
         null, FarmIncidentType.PESTS -> "pests"
         FarmIncidentType.DROUGHT -> "drought"
+        FarmIncidentType.BIRDS -> "birds"
+        FarmIncidentType.FOOD_DELIVERY -> "food-delivery"
         FarmIncidentType.GIANT_CROP -> "giant-crop"
         FarmIncidentType.CHANNELS -> "channels"
         FarmIncidentType.NIGHT_SHIFT -> "night-shift"

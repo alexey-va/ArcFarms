@@ -185,6 +185,8 @@ class ArcFarmsConfigTest : FunSpec({
             FarmIncidentType.CHANNELS,
             FarmIncidentType.NIGHT_SHIFT,
             FarmIncidentType.MARKET,
+            FarmIncidentType.BIRDS,
+            FarmIncidentType.FOOD_DELIVERY,
             FarmIncidentType.PESTS,
             FarmIncidentType.DROUGHT,
         )
@@ -196,6 +198,9 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().specialIncidents.nightCropMinSpacing shouldBe 6.0
         settings.farms.single().specialIncidents.nightTimeTransitionSeconds shouldBe 6
         settings.farms.single().specialIncidents.giantCropParticleStride shouldBe 4
+        settings.farms.single().specialIncidents.birdMinCount shouldBe 6
+        settings.farms.single().specialIncidents.birdMaxCount shouldBe 14
+        settings.farms.single().specialIncidents.birdCount(1_000) shouldBe 6
         settings.farms.single().specialIncidents.nightPatrolMinCount shouldBe 3
         settings.farms.single().specialIncidents.nightPatrolMaxCount shouldBe 10
         settings.farms.single().specialIncidents.nightPatrolBedsPerPatrol shouldBe 250
@@ -238,10 +243,17 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().delivery.carriedScale shouldBe 1.5f
         settings.farms.single().delivery.carriedYOffset shouldBe 0.65
         settings.farms.single().delivery.displayViewRange shouldBe 2.0f
+        settings.farms.single().routeDelivery.corridorRadius shouldBe 5.0
+        settings.farms.single().routeDelivery.hardResetDistance shouldBe 9.0
+        settings.farms.single().routeDelivery.cartLoadCount shouldBe 4
+        settings.farms.single().perks.harvestArea.price shouldBe 250L
+        settings.farms.single().perks.rewardBoost.durationHours shouldBe 72
+        settings.farms.single().perks.rewardBonusPercent shouldBe 25
         settings.farms.single().supplies.tool.x shouldBe 212.5
         settings.farms.single().supplies.tool.z shouldBe 448.5
         settings.farms.single().supplies.seeds.z shouldBe 453.5
         settings.farms.single().supplies.water.z shouldBe 458.5
+        settings.farms.single().supplies.archery.z shouldBe 468.5
         settings.farms.single().rewards.experience.amount shouldBe 75
         settings.farms.single().rewards.experience.chancePercent shouldBe 100
         settings.farms.single().rewards.money.amountCents shouldBe 0

@@ -168,6 +168,7 @@ class ArcFarmsCommand(
                 "next" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_NEXT, sender))
                 "finish" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_FINISH, sender))
                 "event" -> sendEventHelp(sender, zone)
+                "route" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_ROUTE, sender))
                 in ADMIN_SHORTCUTS -> sendShortcutHelp(sender, action)
                 else -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
             }
@@ -264,6 +265,22 @@ class ArcFarmsCommand(
                 }
                 service.adminSetFarmStage(player, zone, requireNotNull(event))
             }
+            "route" -> {
+                val zone = args.getOrNull(1)
+                val operation = args.getOrNull(2)?.lowercase()
+                if (zone == null || operation == null) {
+                    sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_ROUTE, sender))
+                    return
+                }
+                when (operation) {
+                    "start" -> service.adminStartFarmRoute(player, zone)
+                    "finish", "save" -> service.adminFinishFarmRoute(player)
+                    "cancel" -> service.adminCancelFarmRoute(player)
+                    "status" -> service.adminFarmRouteStatus(player, zone)
+                    "clear", "remove" -> service.adminClearFarmRoute(player, zone)
+                    else -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_ROUTE, sender))
+                }
+            }
             "reset-farm" -> args.getOrNull(1)?.let { service.adminSetFarmStage(player, it, "reset") }
                 ?: sendShortcutHelp(sender, action)
             "stop-order-cycle" -> args.getOrNull(1)?.let { service.adminStopFarmOrderCycle(player, it) }
@@ -334,7 +351,7 @@ class ArcFarmsCommand(
             }
             "give" -> {
                 val kind = args.getOrNull(2)?.lowercase()
-                if (kind !in setOf("tool", "seeds", "water")) {
+                if (kind !in setOf("tool", "seeds", "water", "archery")) {
                     sender.sendMessage(locale.render(MessageKey.ADMIN_DEBUG_HELP, sender))
                 } else {
                     service.adminGiveFarmSupply(player, zone, requireNotNull(kind))
@@ -484,7 +501,7 @@ class ArcFarmsCommand(
                 args[0].equals("top", true) || args[0].equals("travel", true) ->
                     listOf("farm", "lumber", "mine").filter { it.startsWith(args[1], true) }
                 args[0].equals("admin", true) && sender.hasPermission("arcfarms.admin") ->
-                    (listOf("help", "edit", "inspect", "point", "points", "unmanage", "blockreset", "backup", "stage", "next", "finish", "event") + ADMIN_SHORTCUTS)
+                    (listOf("help", "edit", "inspect", "point", "points", "unmanage", "blockreset", "backup", "stage", "next", "finish", "event", "route") + ADMIN_SHORTCUTS)
                         .filter { it.startsWith(args[1], true) }
                 args[0].equals("debug", true) && sender.hasPermission("arcfarms.admin") ->
                     service.farmZoneIds().filter { it.startsWith(args[1], true) }
@@ -494,7 +511,7 @@ class ArcFarmsCommand(
                 args[0].equals("admin", true) && args[1].lowercase() in setOf("edit", "inspect") ->
                     listOf("help").filter { it.startsWith(args[2], true) }
                 args[0].equals("admin", true) && args[1].lowercase() in
-                    setOf("point", "points", "unmanage", "blockreset", "backup", "stage", "next", "finish", "event") ->
+                    setOf("point", "points", "unmanage", "blockreset", "backup", "stage", "next", "finish", "event", "route") ->
                     (service.farmZoneIds() + "help").filter { it.startsWith(args[2], true) }
                 args[0].equals("admin", true) && args[1].lowercase() in ADMIN_SHORTCUTS ->
                     (service.farmZoneIds() + "help").filter { it.startsWith(args[2], true) }
@@ -512,6 +529,8 @@ class ArcFarmsCommand(
                         .filter { it.startsWith(args[3], true) }
                 args[0].equals("admin", true) && args[1].equals("event", true) ->
                     (EVENT_STAGES + "help").filter { it.startsWith(args[3], true) }
+                args[0].equals("admin", true) && args[1].equals("route", true) ->
+                    listOf("start", "finish", "cancel", "status", "clear", "help").filter { it.startsWith(args[3], true) }
                 args[0].equals("admin", true) && args[1].equals("blockreset", true) ->
                     listOf("status", "help").filter { it.startsWith(args[3], true) }
                 args[0].equals("admin", true) && args[1].equals("backup", true) ->
@@ -528,7 +547,7 @@ class ArcFarmsCommand(
                 args[0].equals("debug", true) && args[2].equals("event", true) ->
                     EVENT_STAGES.filter { it.startsWith(args[3], true) }
                 args[0].equals("debug", true) && args[2].equals("give", true) ->
-                    listOf("tool", "seeds", "water").filter { it.startsWith(args[3], true) }
+                    listOf("tool", "seeds", "water", "archery").filter { it.startsWith(args[3], true) }
                 args[0].equals("debug", true) && args[2].equals("contract", true) ->
                     service.farmOrderIds(args[1]).filter { it.startsWith(args[3], true) }
                 else -> emptyList()
@@ -548,6 +567,7 @@ class ArcFarmsCommand(
         "tool" -> FarmPointKind.TOOL
         "seeds" -> FarmPointKind.SEEDS
         "water" -> FarmPointKind.WATER
+        "archery", "bow" -> FarmPointKind.ARCHERY
         "crates" -> FarmPointKind.CRATES
         "receiving" -> FarmPointKind.RECEIVING
         "cart" -> FarmPointKind.CART
@@ -558,6 +578,7 @@ class ArcFarmsCommand(
         "covers" -> FarmPointKind.COVERS
         "scarecrows" -> FarmPointKind.SCARECROWS
         "barn", "pen" -> FarmPointKind.PEN
+        "perk-vendor", "vendor" -> FarmPointKind.PERK_VENDOR
         else -> null
     }
 
@@ -595,12 +616,13 @@ class ArcFarmsCommand(
             "apples" to FarmCareType.APPLE_HARVEST,
         )
         private val CARE_STAGES = CARE_EVENT_TYPES.keys.toList()
-        private val EVENT_STAGES = CARE_STAGES + listOf("pests", "drought", "giant-crop", "channels", "night-shift", "market")
+        private val EVENT_STAGES = CARE_STAGES +
+            listOf("pests", "drought", "birds", "giant-crop", "channels", "night-shift", "market", "food-delivery")
         private val STAGE_STAGES = listOf("preparation", "planting", "harvesting") +
             EVENT_STAGES + listOf("delivery", "complete", "reset")
         private val POINT_ARGUMENTS = listOf(
             "tool", "seeds", "water", "crates", "receiving", "cart", "customer", "travel", "hive", "irrigation",
-            "covers", "scarecrows", "barn",
+            "covers", "scarecrows", "barn", "archery", "perk-vendor",
         )
         private val ADMIN_SHORTCUTS = listOf(
             "reset-farm",

@@ -129,7 +129,7 @@ object FarmSpecialIncidentPlanner {
                         marketCrops,
                     )
                 }
-            FarmIncidentType.PESTS, FarmIncidentType.DROUGHT -> null
+            FarmIncidentType.PESTS, FarmIncidentType.DROUGHT, FarmIncidentType.BIRDS, FarmIncidentType.FOOD_DELIVERY -> null
         }
     }
 

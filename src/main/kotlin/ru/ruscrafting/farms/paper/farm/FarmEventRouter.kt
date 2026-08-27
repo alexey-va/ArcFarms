@@ -47,14 +47,18 @@ import ru.ruscrafting.farms.paper.WorksiteModuleRegistry
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.WorldEditToolGuard
 import ru.ruscrafting.farms.paper.farm.admin.FarmWorldAdminService
+import ru.ruscrafting.farms.paper.farm.admin.FarmRouteAdminService
 import ru.ruscrafting.farms.paper.farm.care.FarmCareController
 import ru.ruscrafting.farms.paper.farm.delivery.FarmDeliveryController
 import ru.ruscrafting.farms.paper.farm.field.FarmFieldController
 import ru.ruscrafting.farms.paper.farm.harvest.FarmHarvestController
 import ru.ruscrafting.farms.paper.farm.incident.drought.FarmDroughtIncident
+import ru.ruscrafting.farms.paper.farm.incident.bird.FarmBirdIncident
 import ru.ruscrafting.farms.paper.farm.incident.pest.FarmPestIncident
 import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentController
+import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
 import ru.ruscrafting.farms.paper.farm.presentation.FarmHudController
+import ru.ruscrafting.farms.paper.farm.perk.FarmPerkController
 import ru.ruscrafting.farms.paper.farm.recovery.FarmFixedCropRecoveryController
 import ru.ruscrafting.farms.paper.farm.scene.FarmContractSceneController
 import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyController
@@ -75,6 +79,10 @@ internal class FarmEventRouter(
     private val care: FarmCareController,
     private val drought: FarmDroughtIncident,
     private val pests: FarmPestIncident,
+    private val birds: FarmBirdIncident,
+    private val foodDelivery: FarmFoodDeliveryIncident,
+    private val routeAdmin: FarmRouteAdminService,
+    private val perks: FarmPerkController,
     private val special: FarmSpecialIncidentController,
     private val delivery: FarmDeliveryController,
     private val supplies: FarmSupplyController,
@@ -201,6 +209,7 @@ internal class FarmEventRouter(
     }
 
     fun onMove(event: PlayerMoveEvent) {
+        routeAdmin.onMove(event)
         val destination = event.to
         if (event.from.world == destination.world && event.from.blockX == destination.blockX &&
             event.from.blockY == destination.blockY && event.from.blockZ == destination.blockZ
@@ -220,6 +229,8 @@ internal class FarmEventRouter(
     }
 
     fun onQuit(player: Player) {
+        routeAdmin.release(player)
+        foodDelivery.onQuit(player)
         hud.stopMusic(player, "player_quit")
         special.onQuit(player)
         hud.removePlayer(player, "player_quit")
@@ -237,6 +248,7 @@ internal class FarmEventRouter(
         }
         if (worldAdmin.isEditing(event.player)) return
         if (care.owns(event.rightClicked) || supplies.owns(event.rightClicked) || delivery.owns(event.rightClicked) ||
+            foodDelivery.owns(event.rightClicked) || perks.owns(event.rightClicked) ||
             scene.owns(event.rightClicked) || special.ownsScene(event.rightClicked)
         ) event.isCancelled = true
     }
@@ -247,6 +259,8 @@ internal class FarmEventRouter(
             return
         }
         if (worldAdmin.isEditing(event.player) || event.hand != EquipmentSlot.HAND) return
+        if (perks.interact(event)) return
+        if (foodDelivery.interact(event, runtimes())) return
         if (special.ownsScene(event.rightClicked)) {
             event.isCancelled = true
             special.interactScene(event.player, event.rightClicked)
@@ -296,6 +310,12 @@ internal class FarmEventRouter(
             return
         }
         if (special.handleNightDamage(event)) return
+        if (perks.owns(event.entity)) {
+            event.isCancelled = true
+            return
+        }
+        if (foodDelivery.onDamage(event)) return
+        if (birds.onDamage(event, runtimes())) return
         if (scene.owns(event.entity) || special.ownsScene(event.entity)) {
             event.isCancelled = true
             return
@@ -330,6 +350,7 @@ internal class FarmEventRouter(
 
     fun onInventoryClick(event: InventoryClickEvent) {
         val player = event.whoClicked as? Player ?: return
+        if (perks.handleClick(event)) return
         if (special.handleInventoryClick(event)) return
         val hotbar = if (event.click == ClickType.SWAP_OFFHAND) player.inventory.itemInOffHand
         else event.hotbarButton.takeIf { it >= 0 }?.let(player.inventory::getItem)
@@ -346,6 +367,7 @@ internal class FarmEventRouter(
     }
 
     fun onInventoryDrag(event: InventoryDragEvent) {
+        if (perks.handleDrag(event)) return
         if (special.handleInventoryDrag(event)) return
         if (FarmServiceInventoryPolicy.cancelDrag(supplies.isServiceItem(event.oldCursor), event.rawSlots, event.view.topInventory.size)) {
             event.isCancelled = true
@@ -353,11 +375,13 @@ internal class FarmEventRouter(
     }
 
     fun onEntityDeath(event: EntityDeathEvent) {
-        if (!care.onDeath(event)) pests.onDeath(event, runtimes())
+        if (!foodDelivery.onDeath(event) && !care.onDeath(event) && !birds.onDeath(event, runtimes())) {
+            pests.onDeath(event, runtimes())
+        }
     }
 
     fun onEntityChangeBlock(event: EntityChangeBlockEvent) {
-        if (pests.ownsPest(event.entity) || care.owns(event.entity) || special.ownsNightEntity(event.entity)) {
+        if (pests.ownsPest(event.entity) || birds.owns(event.entity) || care.owns(event.entity) || special.ownsNightEntity(event.entity)) {
             event.isCancelled = true
             return
         }

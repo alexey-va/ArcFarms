@@ -402,6 +402,67 @@ class FarmShiftEngineTest : FunSpec({
         completed.events shouldContainExactly listOf(ShiftEvent.COMPLETED)
     }
 
+    test("admin delivery completion never invents contributor credit") {
+        val contributor = UUID.randomUUID()
+        val packed = FarmShiftState(
+            phase = FarmPhase.DELIVERY,
+            contributors = mapOf(contributor to 7),
+            deliveredCrates = setOf(0),
+        )
+
+        val completed = FarmShiftEngine.completeDeliveryAsAdmin(packed, rules, 3, 1_300)
+
+        completed.accepted shouldBe true
+        completed.contribution shouldBe 0
+        completed.state.phase shouldBe FarmPhase.COOLDOWN
+        completed.state.deliveredCrates shouldBe setOf(0, 1, 2)
+        completed.state.contributors shouldBe mapOf(contributor to 7)
+        completed.events shouldContainExactly listOf(ShiftEvent.COMPLETED)
+    }
+
+    test("food delivery credits only the rider who reaches the final checkpoint") {
+        val waiting = FarmShiftState(
+            phase = FarmPhase.INCIDENT,
+            incidentType = FarmIncidentType.FOOD_DELIVERY,
+            incidentCrop = "WHEAT",
+            incidentRequired = 1,
+        )
+        val initialized = FarmShiftEngine.initializeFoodDelivery(waiting, checkpoints = 4)
+        initialized.accepted shouldBe true
+        initialized.state.incidentProgress shouldBe 1
+
+        val partial = FarmShiftEngine.advanceFoodDelivery(initialized.state, 3, player, completionContribution = 12)
+        partial.accepted shouldBe true
+        partial.contribution shouldBe 0
+        partial.state.contributors shouldBe emptyMap()
+        partial.state.phase shouldBe FarmPhase.INCIDENT
+
+        val completed = FarmShiftEngine.advanceFoodDelivery(partial.state, 4, player, completionContribution = 12)
+        completed.state.phase shouldBe FarmPhase.HARVESTING
+        completed.state.contributors shouldBe mapOf(player to 12)
+        completed.contribution shouldBe 12
+        completed.events shouldContainExactly listOf(ShiftEvent.INCIDENT_RESOLVED)
+    }
+
+    test("only the expected unavailable incident can be skipped without contribution") {
+        val waiting = FarmShiftState(
+            phase = FarmPhase.INCIDENT,
+            incidentType = FarmIncidentType.FOOD_DELIVERY,
+            incidentCrop = "WHEAT",
+            incidentRequired = 3,
+            incidentProgress = 1,
+            specialIncident = FarmSpecialIncidentState(),
+        )
+
+        FarmShiftEngine.skipUnavailableIncident(waiting, FarmIncidentType.BIRDS).accepted shouldBe false
+        val skipped = FarmShiftEngine.skipUnavailableIncident(waiting, FarmIncidentType.FOOD_DELIVERY)
+        skipped.accepted shouldBe true
+        skipped.contribution shouldBe 0
+        skipped.events shouldContainExactly emptyList()
+        skipped.state.phase shouldBe FarmPhase.HARVESTING
+        skipped.state.contributors shouldBe emptyMap()
+    }
+
     test("pest incident waits for every nest and every live pest") {
         var state = preparedState(order, rules, player)
         state = FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 2_000).state

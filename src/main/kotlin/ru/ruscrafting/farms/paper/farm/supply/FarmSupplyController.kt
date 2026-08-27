@@ -30,7 +30,7 @@ import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
 import java.util.UUID
 
-internal enum class FarmSupplyKind { TOOL, SEEDS, WATER }
+internal enum class FarmSupplyKind { TOOL, SEEDS, WATER, ARCHERY }
 
 internal data class FarmSupplyInteraction(val zoneId: String, val kind: FarmSupplyKind)
 
@@ -128,22 +128,16 @@ internal class FarmSupplyController(
 
     fun give(runtime: FarmRuntime, kind: FarmSupplyKind, player: Player): Boolean {
         removeServiceItems(player, runtime.settings.id, "replace_supply", kind)
-        val material = material(runtime, kind)
-        val amount = if (kind == FarmSupplyKind.SEEDS) runtime.settings.supplies.seedAmount else 1
-        val item = ItemStack(material, amount)
-        val meta = item.itemMeta
-        meta.persistentDataContainer.set(serviceItemKey, PersistentDataType.STRING, "${runtime.settings.id}:${kind.name}")
-        if (kind == FarmSupplyKind.TOOL) meta.isUnbreakable = true
-        item.itemMeta = meta
-        if (player.inventory.firstEmpty() < 0) return false
-        player.inventory.addItem(item)
+        val items = items(runtime, kind)
+        if (player.inventory.storageContents.count { it == null } < items.size) return false
+        items.forEach { item -> player.inventory.addItem(item) }
         if (settings().sounds) player.playSound(player.location, Sound.ENTITY_ITEM_PICKUP, 0.7f, 1.2f)
         debug.event(
             "farm_supply_given",
             "zone" to runtime.settings.id,
             "kind" to kind,
             "player" to player.name,
-            "material" to material,
+            "material" to items.joinToString(",") { it.type.name },
         )
         return true
     }
@@ -233,6 +227,7 @@ internal class FarmSupplyController(
     private fun material(runtime: FarmRuntime, kind: FarmSupplyKind): Material = when (kind) {
         FarmSupplyKind.TOOL -> MaterialRules.material(runtime.settings.supplies.toolMaterial)
         FarmSupplyKind.WATER -> Material.WATER_BUCKET
+        FarmSupplyKind.ARCHERY -> MaterialRules.material(runtime.settings.supplies.bowMaterial)
         FarmSupplyKind.SEEDS -> runtime.state.preparationCrop
             ?.let(MaterialRules::material)
             ?.let(MaterialRules::seedForCrop)
@@ -249,6 +244,31 @@ internal class FarmSupplyController(
             values = mapOf("seed" to MaterialRules.itemComponent(material)),
         )
         FarmSupplyKind.WATER -> locale.render(MessageKey.FARM_SUPPLY_WATER)
+        FarmSupplyKind.ARCHERY -> locale.render(MessageKey.FARM_SUPPLY_ARCHERY)
+    }
+
+    private fun items(runtime: FarmRuntime, kind: FarmSupplyKind): List<ItemStack> {
+        val supplies = runtime.settings.supplies
+        val raw = when (kind) {
+            FarmSupplyKind.ARCHERY -> listOf(
+                ItemStack(MaterialRules.material(supplies.bowMaterial)),
+                ItemStack(MaterialRules.material(supplies.arrowMaterial), supplies.arrowAmount),
+            )
+            FarmSupplyKind.SEEDS -> listOf(ItemStack(material(runtime, kind), supplies.seedAmount))
+            else -> listOf(ItemStack(material(runtime, kind)))
+        }
+        return raw.onEach { item ->
+            item.editMeta { meta ->
+                meta.persistentDataContainer.set(
+                    serviceItemKey,
+                    PersistentDataType.STRING,
+                    "${runtime.settings.id}:${kind.name}",
+                )
+                if (kind == FarmSupplyKind.TOOL || (kind == FarmSupplyKind.ARCHERY && item.type.name.endsWith("BOW"))) {
+                    meta.isUnbreakable = true
+                }
+            }
+        }
     }
 
     private fun mark(entity: Entity, zoneId: String, kind: FarmSupplyKind) {

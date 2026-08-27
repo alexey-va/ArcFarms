@@ -149,9 +149,10 @@ farm-zones:
     drought-growth-seconds: 3
     # В одном заказе планировщик не повторяет события и допускает максимум
     # одно обычное полевое происшествие (вредители или засуха).
-    incident-types: [GIANT_CROP, CHANNELS, NIGHT_SHIFT, MARKET, PESTS, DROUGHT]
+    incident-types: [GIANT_CROP, CHANNELS, NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, PESTS, DROUGHT]
     special-incidents:
       giant-crop: {block-particle-stride: 4}
+      birds: {min-count: 6, max-count: 14, beds-per-bird: 180, spawn-height: 4.0, health: 4.0, eat-radius: 5.0, eat-interval-seconds: 3, ranged-contribution: 2, melee-contribution: 1}
       channels:
         blockages: 5
         blockage: {material: MANGROVE_ROOTS, custom-model-data: 0, display-scale: 1.6, y-offset: 0.8}
@@ -180,6 +181,17 @@ farm-zones:
         crops: 256
         money-bonus-percent: 25
         timer: {base-seconds: 30, seconds-per-crop: 0.3, minimum-seconds: 90, maximum-seconds: 180}
+    route-delivery:
+      sample-distance: 2.5
+      corridor-radius: 5.0
+      hard-reset-distance: 9.0
+      checkpoint-radius: 3.5
+      horse-speed: 0.26
+      completion-contribution: 12
+      cart-scale: 4.4
+      cart-y-offset: 0.0
+      cart-load-count: 4
+      monsters: {min-count: 2, max-count: 5, interval-seconds: 10, max-alive: 4, spawn-distance: 10.0}
     pest-entity: SILVERFISH
     pest-spawn-radius: 6
     pest-nests: 3
@@ -194,8 +206,12 @@ farm-zones:
       tool: {x: 212.5, y: 49.0, z: 448.5}
       seeds: {x: 212.5, y: 49.0, z: 453.5}
       water: {x: 212.5, y: 49.0, z: 458.5}
+      archery: {x: 212.5, y: 49.0, z: 468.5}
       tool-material: IRON_HOE
       seed-amount: 16
+      bow-material: BOW
+      arrow-material: ARROW
+      arrow-amount: 32
     delivery:
       x: 201.65
       y: 49.0
@@ -212,6 +228,11 @@ farm-zones:
       carried-scale: 1.5
       carried-y-offset: 0.65
       display-view-range: 2.0
+    perks:
+      harvest-area: {price: 250, duration-hours: 72}
+      speed: {price: 180, duration-hours: 72}
+      sustenance: {price: 150, duration-hours: 72, interval-seconds: 5}
+      reward-boost: {price: 400, duration-hours: 72, bonus-percent: 25}
     rewards:
       # Every reward rolls independently. Commands run as console after the grant is durably claimed.
       # Supported command placeholders: %player%, %uuid%, %zone%, %sequence%, %contribution%, %rank%, %grant_id%.
@@ -239,42 +260,42 @@ farm-zones:
         rarity: COMMON
         crops: [WHEAT:640, CARROTS:320, POTATOES:320]
         care-types: [MOLES, IRRIGATION, ANIMAL_RESCUE, WEEDS]
-        incident-types: [GIANT_CROP, CHANNELS, NIGHT_SHIFT, MARKET, DROUGHT, PESTS]
+        incident-types: [GIANT_CROP, CHANNELS, NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, DROUGHT, PESTS]
         customer: MINE_SUPPLIER
         cart-load: {material: POTATO, custom-model-data: 0}
       bakery_supply:
         rarity: COMMON
         crops: [WHEAT:960, BEETROOTS:320]
         care-types: [POLLINATION, APPLE_HARVEST, DISEASE, IRRIGATION, SCARECROWS, MOLES]
-        incident-types: [CHANNELS, NIGHT_SHIFT, MARKET, GIANT_CROP, PESTS, DROUGHT]
+        incident-types: [CHANNELS, NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, GIANT_CROP, PESTS, DROUGHT]
         customer: BAKER
         cart-load: {material: WHEAT, custom-model-data: 0}
       market_crates:
         rarity: COMMON
         crops: [CARROTS:320, POTATOES:320, BEETROOTS:320, SWEET_BERRY_BUSH:320, MELON:48, PUMPKIN:48]
         care-types: [WEEDS, APPLE_HARVEST, SCARECROWS, ANIMAL_RESCUE, STORM_COVERS]
-        incident-types: [MARKET, GIANT_CROP, NIGHT_SHIFT, CHANNELS, PESTS, DROUGHT]
+        incident-types: [MARKET, GIANT_CROP, NIGHT_SHIFT, BIRDS, FOOD_DELIVERY, CHANNELS, PESTS, DROUGHT]
         customer: MARKET_TRADER
         cart-load: {material: CARROT, custom-model-data: 0}
       harvest_festival:
         rarity: RARE
         crops: [WHEAT:800, CARROTS:480, POTATOES:480, BEETROOTS:320, MELON:64, PUMPKIN:64]
         care-types: [POLLINATION, APPLE_HARVEST, STORM_COVERS, SCARECROWS]
-        incident-types: [GIANT_CROP, MARKET, CHANNELS, NIGHT_SHIFT, DROUGHT, PESTS]
+        incident-types: [GIANT_CROP, MARKET, BIRDS, FOOD_DELIVERY, CHANNELS, NIGHT_SHIFT, DROUGHT, PESTS]
         customer: MARKET_TRADER
         cart-load: {material: HAY_BLOCK, custom-model-data: 0}
       deep_mine_relief:
         rarity: RARE
         crops: [WHEAT:800, CARROTS:480, POTATOES:640]
         care-types: [MOLES, IRRIGATION, DISEASE]
-        incident-types: [CHANNELS, GIANT_CROP, NIGHT_SHIFT, MARKET, DROUGHT, PESTS]
+        incident-types: [CHANNELS, GIANT_CROP, BIRDS, FOOD_DELIVERY, NIGHT_SHIFT, MARKET, DROUGHT, PESTS]
         customer: MINE_SUPPLIER
         cart-load: {material: BAKED_POTATO, custom-model-data: 0}
       master_baker_request:
         rarity: RARE
         crops: [WHEAT:1440, BEETROOTS:480]
         care-types: [POLLINATION, APPLE_HARVEST, DISEASE, STORM_COVERS]
-        incident-types: [NIGHT_SHIFT, MARKET, GIANT_CROP, CHANNELS, PESTS, DROUGHT]
+        incident-types: [NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, GIANT_CROP, CHANNELS, PESTS, DROUGHT]
         customer: BAKER
         cart-load: {material: BREAD, custom-model-data: 0}
 

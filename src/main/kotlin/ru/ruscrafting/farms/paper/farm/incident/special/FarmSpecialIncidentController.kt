@@ -771,5 +771,7 @@ internal class FarmSpecialIncidentController(
         FarmIncidentType.MARKET -> "market"
         FarmIncidentType.PESTS -> "pests"
         FarmIncidentType.DROUGHT -> "drought"
+        FarmIncidentType.BIRDS -> "birds"
+        FarmIncidentType.FOOD_DELIVERY -> "food-delivery"
     }
 }

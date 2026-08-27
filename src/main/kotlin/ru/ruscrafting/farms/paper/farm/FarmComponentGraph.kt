@@ -13,6 +13,7 @@ import ru.ruscrafting.farms.paper.WorksiteModuleRegistry
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.admin.FarmGameplayAdminService
 import ru.ruscrafting.farms.paper.farm.admin.FarmPointAdminService
+import ru.ruscrafting.farms.paper.farm.admin.FarmRouteAdminService
 import ru.ruscrafting.farms.paper.farm.admin.FarmWorldAdminService
 import ru.ruscrafting.farms.paper.farm.care.FarmCareController
 import ru.ruscrafting.farms.paper.farm.care.FarmCarePlanService
@@ -20,10 +21,13 @@ import ru.ruscrafting.farms.paper.farm.delivery.FarmDeliveryController
 import ru.ruscrafting.farms.paper.farm.field.FarmFieldController
 import ru.ruscrafting.farms.paper.farm.harvest.FarmHarvestController
 import ru.ruscrafting.farms.paper.farm.incident.drought.FarmDroughtIncident
+import ru.ruscrafting.farms.paper.farm.incident.bird.FarmBirdIncident
 import ru.ruscrafting.farms.paper.farm.incident.pest.FarmPestIncident
 import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentController
+import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
 import ru.ruscrafting.farms.paper.farm.point.FarmPointService
+import ru.ruscrafting.farms.paper.farm.perk.FarmPerkController
 import ru.ruscrafting.farms.paper.farm.presentation.FarmGuidanceController
 import ru.ruscrafting.farms.paper.farm.presentation.FarmHudController
 import ru.ruscrafting.farms.paper.farm.recovery.FarmFixedCropRecoveryController
@@ -35,8 +39,10 @@ import ru.ruscrafting.farms.paper.farm.shift.FarmShiftCoordinator
 import ru.ruscrafting.farms.paper.farm.shift.FarmShiftStartService
 import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyController
 import ru.ruscrafting.farms.persistence.FarmLocationRepository
+import ru.ruscrafting.farms.persistence.FarmRouteRepository
 import ru.ruscrafting.farms.persistence.FixedFarmCropJournal
 import java.util.random.RandomGenerator
+import java.util.UUID
 
 /**
  * Composition-only graph for the farm vertical slices. It contains no listener,
@@ -48,6 +54,7 @@ internal class FarmComponentGraph(
     locale: ArcFarmsLocale,
     fixedCropJournal: FixedFarmCropJournal,
     farmLocationRepository: FarmLocationRepository,
+    farmRouteRepository: FarmRouteRepository,
     debug: ArcFarmsDebug,
     economy: FarmEconomyGateway,
     runtimeValidator: ArcFarmsRuntimeValidator,
@@ -57,12 +64,15 @@ internal class FarmComponentGraph(
     auxiliary: WorksiteModuleRegistry,
     clock: () -> Long,
     random: RandomGenerator,
+    weeklyContribution: (UUID) -> Long,
+    currentWeekStart: () -> Long,
     persistBlocking: () -> Unit,
 ) {
     val runtimes = FarmRuntimeRegistry()
     private val ledger = FarmBlockLedger(plugin)
     val blockRegistry = FarmBlockRegistry(plugin, ledger, clock)
     val pointService = FarmPointService(settings, farmLocationRepository)
+    val routeAdmin = FarmRouteAdminService(farmRouteRepository, debug, port, runtimes::snapshot)
     private val basePoints = FarmPointProvider(pointService::resolveBase)
     private val placement = FarmPlacementService(plugin, blockRegistry, basePoints, debug, random)
     private val carePlans = FarmCarePlanService(
@@ -113,6 +123,37 @@ internal class FarmComponentGraph(
         clock = clock,
     )
     private val incidentBeds = FarmIncidentBedProvider(field::incidentBeds)
+    private val birds = FarmBirdIncident(
+        plugin = plugin,
+        settings = settings,
+        locale = locale,
+        debug = debug,
+        port = port,
+        ledger = ledger,
+        beds = incidentBeds,
+        transitions = transitions,
+    )
+    private val foodDelivery = FarmFoodDeliveryIncident(
+        plugin = plugin,
+        settings = settings,
+        debug = debug,
+        port = port,
+        routes = routeAdmin,
+        transitions = transitions,
+        random = random,
+    )
+    val perks = FarmPerkController(
+        plugin = plugin,
+        locale = locale,
+        debug = debug,
+        port = port,
+        points = points,
+        runtimes = runtimes::snapshot,
+        weeklyContribution = weeklyContribution,
+        currentWeekStart = currentWeekStart,
+        clock = clock,
+        persistBlocking = persistBlocking,
+    )
     val rewards = FarmRewardService(
         plugin = plugin,
         locale = locale,
@@ -122,6 +163,9 @@ internal class FarmComponentGraph(
         supervisor = taskSupervisor,
         persistBlocking = persistBlocking,
         operational = port::isOperational,
+        playerMultiplier = { playerId, runtime ->
+            perks.rewardMultiplier(playerId, runtime.settings.perks.rewardBonusPercent)
+        },
     )
     val supplies = FarmSupplyController(plugin, locale, debug, settings)
     private val delivery = FarmDeliveryController(
@@ -160,6 +204,7 @@ internal class FarmComponentGraph(
         taskHints = taskHints,
         runtimes = runtimes::snapshot,
         clock = clock,
+        perkActive = perks::active,
     )
     private val special = FarmSpecialIncidentController(
         plugin = plugin,
@@ -225,6 +270,8 @@ internal class FarmComponentGraph(
         care = care,
         drought = drought,
         pests = pests,
+        birds = birds,
+        foodDelivery = foodDelivery,
         special = special,
         delivery = delivery,
         scene = scene,
@@ -285,6 +332,9 @@ internal class FarmComponentGraph(
         care = care,
         drought = drought,
         pests = pests,
+        birds = birds,
+        foodDelivery = foodDelivery,
+        perks = perks,
         special = special,
         delivery = delivery,
         scene = scene,
@@ -318,6 +368,8 @@ internal class FarmComponentGraph(
         care = care,
         drought = drought,
         pests = pests,
+        birds = birds,
+        foodDelivery = foodDelivery,
         special = special,
         incidentRecovery = recovery,
         delivery = delivery,
@@ -346,6 +398,10 @@ internal class FarmComponentGraph(
         care = care,
         drought = drought,
         pests = pests,
+        birds = birds,
+        foodDelivery = foodDelivery,
+        routeAdmin = routeAdmin,
+        perks = perks,
         special = special,
         delivery = delivery,
         supplies = supplies,

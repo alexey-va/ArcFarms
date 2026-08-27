@@ -34,6 +34,7 @@ import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.PlayerActivityStats
 import ru.ruscrafting.farms.persistence.ArcFarmsStateRepository
 import ru.ruscrafting.farms.persistence.FarmLocationRepository
+import ru.ruscrafting.farms.persistence.FarmRouteRepository
 import ru.ruscrafting.farms.persistence.FixedFarmCropJournal
 import ru.ruscrafting.farms.persistence.MineBlockJournal
 import ru.ruscrafting.farms.network.ActivityNetworkGateway
@@ -61,6 +62,7 @@ class ArcFarmsService(
     private val mineJournal: MineBlockJournal,
     private val fixedCropJournal: FixedFarmCropJournal,
     private val farmLocationRepository: FarmLocationRepository,
+    private val farmRouteRepository: FarmRouteRepository,
     private val network: ActivityNetworkGateway = NoOpActivityNetworkGateway,
     private val transfer: BackendTransfer = BackendTransfer { _, _ -> false },
     private val debug: ArcFarmsDebug = ArcFarmsDebug({ false }) {},
@@ -101,6 +103,7 @@ class ArcFarmsService(
         locale = locale,
         fixedCropJournal = fixedCropJournal,
         farmLocationRepository = farmLocationRepository,
+        farmRouteRepository = farmRouteRepository,
         debug = debug,
         economy = economy,
         runtimeValidator = runtimeValidator,
@@ -110,6 +113,8 @@ class ArcFarmsService(
         auxiliary = auxiliaryWorksites,
         clock = clock,
         random = random,
+        weeklyContribution = { playerId -> stats.weeklyContribution(playerId, ActivityKind.FARM) },
+        currentWeekStart = { farmWeekStartEpochDay(clock()) },
         persistBlocking = ::persistBlocking,
     )
     private val travelService = ActivityTravelService(
@@ -151,6 +156,7 @@ class ArcFarmsService(
         MineController.validateJournalMaterials(mineJournal)
         stats.replace(persisted.stats)
         farm.rewards.replace(persisted.pendingFarmRewards, persisted.claimedFarmRewardSequences)
+        farm.perks.replace(persisted.farmPerks.orEmpty())
         farm.orderCycle.replace(persisted.pausedFarmZones.orEmpty())
         rebuild(persisted)
         farm.module.cleanup("service_start")
@@ -247,6 +253,16 @@ class ArcFarmsService(
 
     fun adminStartFarmBlockReset(player: Player, zoneId: String): Boolean =
         farm.worldAdmin.startBlockReset(player, zoneId)
+
+    fun adminStartFarmRoute(player: Player, zoneId: String): Boolean = farm.routeAdmin.start(player, zoneId)
+
+    fun adminFinishFarmRoute(player: Player): Boolean = farm.routeAdmin.finish(player)
+
+    fun adminCancelFarmRoute(player: Player): Boolean = farm.routeAdmin.cancel(player)
+
+    fun adminClearFarmRoute(player: Player, zoneId: String): Boolean = farm.routeAdmin.clear(player, zoneId)
+
+    fun adminFarmRouteStatus(player: Player, zoneId: String): Boolean = farm.routeAdmin.status(player, zoneId)
 
     fun adminFarmBlockResetStatus(player: Player, zoneId: String): Boolean =
         farm.worldAdmin.blockResetStatus(player, zoneId)
@@ -466,6 +482,7 @@ class ArcFarmsService(
             stats = stats.snapshot(),
             pendingFarmRewards = rewards.pending,
             claimedFarmRewardSequences = rewards.claimed,
+            farmPerks = farm.perks.snapshot(),
         )
     }
 

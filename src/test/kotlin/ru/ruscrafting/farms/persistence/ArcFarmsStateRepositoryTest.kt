@@ -14,6 +14,8 @@ import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmPlotPosition
+import ru.ruscrafting.farms.domain.FarmPerkType
+import ru.ruscrafting.farms.domain.FarmPlayerPerks
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.domain.FarmSpecialIncidentState
 import ru.ruscrafting.farms.domain.FarmSeederStage
@@ -30,6 +32,69 @@ import java.util.UUID
 import java.util.concurrent.ExecutionException
 
 class ArcFarmsStateRepositoryTest : FunSpec({
+    test("legacy state loads with an empty temporary perk ledger") {
+        val root = Files.createTempDirectory("arcfarms-state-perks-legacy-test")
+        val data = root.resolve("data")
+        Files.createDirectories(data)
+        Files.writeString(
+            data.resolve("state.json"),
+            """{"schemaVersion":1,"farms":{},"lumbermills":{},"mines":{},"stats":{}}""",
+        )
+
+        ArcFarmsStateRepository(root).use(ArcFarmsStateRepository::load).farmPerks shouldBe emptyMap()
+    }
+
+    test("temporary perk purchase survives an atomic state round trip") {
+        val root = Files.createTempDirectory("arcfarms-state-perks-roundtrip-test")
+        val playerId = UUID(0, 44)
+        val expected = ArcFarmsState(
+            farmPerks = mapOf(
+                playerId to FarmPlayerPerks(
+                    weekStartEpochDay = 20_690,
+                    spentPoints = 120,
+                    activeUntil = mapOf(FarmPerkType.HARVEST_AREA to 1_800_000_000_000L),
+                ),
+            ),
+        )
+
+        ArcFarmsStateRepository(root).use { it.saveBlocking(expected) }
+        ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
+    }
+
+    test("bird and food delivery incidents survive an atomic state round trip") {
+        val root = Files.createTempDirectory("arcfarms-state-new-incidents-roundtrip-test")
+        val expected = ArcFarmsState(
+            farms = mapOf(
+                "bird_farm" to FarmShiftState(
+                    phase = FarmPhase.INCIDENT,
+                    sequence = 3,
+                    orderId = "farm_order",
+                    startedAt = 1,
+                    incidentType = FarmIncidentType.BIRDS,
+                    incidentCrop = "WHEAT",
+                    incidentRequired = 1,
+                    specialIncident = FarmSpecialIncidentState(
+                        plots = listOf(FarmPlotPosition("sp11", 10, 64, 10)),
+                    ),
+                ),
+                "route_farm" to FarmShiftState(
+                    phase = FarmPhase.INCIDENT,
+                    sequence = 4,
+                    orderId = "farm_order",
+                    startedAt = 1,
+                    incidentType = FarmIncidentType.FOOD_DELIVERY,
+                    incidentCrop = "WHEAT",
+                    incidentProgress = 1,
+                    incidentRequired = 3,
+                    specialIncident = FarmSpecialIncidentState(),
+                ),
+            ),
+        )
+
+        ArcFarmsStateRepository(root).use { it.saveBlocking(expected) }
+        ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
+    }
+
     test("legacy state loads with no paused farm order cycles") {
         val root = Files.createTempDirectory("arcfarms-state-paused-legacy-test")
         val data = root.resolve("data")

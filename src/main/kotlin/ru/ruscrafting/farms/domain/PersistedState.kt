@@ -57,6 +57,8 @@ data class ArcFarmsState(
     val stats: Map<UUID, PlayerActivityStats> = emptyMap(),
     val pendingFarmRewards: List<PendingFarmReward> = emptyList(),
     val claimedFarmRewardSequences: Map<String, Long> = emptyMap(),
+    // Nullable so Gson can read state files written before temporary farm perks existed.
+    val farmPerks: Map<UUID, FarmPlayerPerks>? = emptyMap(),
 ) {
     init {
         require(schemaVersion == SCHEMA_VERSION) { "Unsupported ArcFarms state schema: $schemaVersion" }

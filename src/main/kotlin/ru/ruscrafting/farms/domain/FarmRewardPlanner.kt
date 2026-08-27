@@ -22,6 +22,8 @@ object FarmRewardPlanner {
         moneyMultiplierPercent: Int = 100,
     ): PendingFarmReward {
         require(moneyMultiplierPercent in 100..300) { "Farm money reward multiplier is invalid" }
+        require(recipient.contribution > 0) { "Farm rewards require positive player contribution" }
+        require(recipient.rank > 0) { "Farm reward rank must be positive" }
         val grantId = "$zoneId:$sequence:${recipient.playerId}"
         val items = mutableListOf<FarmRewardItem>()
         val bundleIds = mutableListOf<String>()

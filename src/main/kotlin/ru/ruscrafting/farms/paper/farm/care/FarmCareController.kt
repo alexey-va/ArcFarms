@@ -60,14 +60,12 @@ import java.util.concurrent.TimeUnit
 import java.util.logging.Level
 
 internal data class FarmCareEntityKey(val zoneId: String, val targetId: Int)
-
 internal data class FarmCareEntityIdentity(
     val zoneId: String,
     val sequence: Long,
     val targetId: Int,
     val role: FarmCareRole,
 )
-
 /** Sole owner of care state, PDC entities, animal followers, seeder rig and disease timing. */
 internal class FarmCareController(
     plugin: Plugin,
@@ -104,7 +102,6 @@ internal class FarmCareController(
     private val roleKey = NamespacedKey(plugin, "farm_care_role")
 
     fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING)
-
     fun identity(entity: Entity): FarmCareEntityIdentity? {
         val data = entity.persistentDataContainer
         val zoneId = data.get(zoneKey, PersistentDataType.STRING) ?: return null
@@ -116,7 +113,6 @@ internal class FarmCareController(
     }
 
     fun count(zoneId: String): Int = entities.keys.count { it.zoneId == zoneId }
-
     fun removeTarget(zoneId: String, targetId: Int, reason: String) =
         removeEntities(FarmCareEntityKey(zoneId, targetId), reason)
 

@@ -17,6 +17,8 @@ import ru.ruscrafting.farms.domain.FarmOrder
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmSeederStage
 import ru.ruscrafting.farms.domain.FarmShiftState
+import ru.ruscrafting.farms.domain.FarmShiftEngine
+import ru.ruscrafting.farms.domain.FarmSpecialIncidentEngine
 import ru.ruscrafting.farms.domain.ShiftEvent
 import ru.ruscrafting.farms.domain.seederStage
 import ru.ruscrafting.farms.network.NetworkSignal
@@ -29,8 +31,10 @@ import ru.ruscrafting.farms.paper.farm.care.FarmCareController
 import ru.ruscrafting.farms.paper.farm.care.FarmCarePlanService
 import ru.ruscrafting.farms.paper.farm.delivery.FarmDeliveryController
 import ru.ruscrafting.farms.paper.farm.incident.drought.FarmDroughtIncident
+import ru.ruscrafting.farms.paper.farm.incident.bird.FarmBirdIncident
 import ru.ruscrafting.farms.paper.farm.incident.pest.FarmPestIncident
 import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentController
+import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
 import ru.ruscrafting.farms.paper.farm.incident.special.SPECIAL_FARM_INCIDENT_TYPES
 import ru.ruscrafting.farms.paper.farm.presentation.FarmHudController
 import ru.ruscrafting.farms.paper.farm.reward.FarmRewardService
@@ -47,6 +51,8 @@ internal class FarmShiftCoordinator(
     private val care: FarmCareController,
     private val drought: FarmDroughtIncident,
     private val pests: FarmPestIncident,
+    private val birds: FarmBirdIncident,
+    private val foodDelivery: FarmFoodDeliveryIncident,
     private val special: FarmSpecialIncidentController,
     private val delivery: FarmDeliveryController,
     private val scene: FarmContractSceneController,
@@ -328,6 +334,33 @@ internal class FarmShiftCoordinator(
                     )
                 }
             }
+            FarmIncidentType.BIRDS -> {
+                if (!birds.initialize(runtime)) {
+                    apply(runtime, FarmShiftEngine.skipUnavailableIncident(runtime.state, FarmIncidentType.BIRDS), null)
+                    return
+                }
+                birds.ensure(runtime)
+                port.broadcast(
+                    listOf(runtime.region),
+                    MessageKey.FARM_BIRDS_STARTED,
+                    mapOf("total" to locale.text(runtime.state.incidentRequired)),
+                    Sound.ENTITY_PARROT_IMITATE_PHANTOM,
+                    title = true,
+                )
+            }
+            FarmIncidentType.FOOD_DELIVERY -> {
+                if (!foodDelivery.initialize(runtime)) {
+                    apply(runtime, FarmShiftEngine.skipUnavailableIncident(runtime.state, FarmIncidentType.FOOD_DELIVERY), null)
+                    return
+                }
+                foodDelivery.ensure(runtime, System.currentTimeMillis())
+                port.broadcast(
+                    listOf(runtime.region),
+                    MessageKey.FARM_ROUTE_STARTED,
+                    sound = Sound.ENTITY_HORSE_AMBIENT,
+                    title = true,
+                )
+            }
             else -> {
                 val activeType = special.initialize(runtime, type) ?: return
                 special.announce(runtime, activeType)
@@ -349,6 +382,8 @@ internal class FarmShiftCoordinator(
         val key = when (type) {
             FarmIncidentType.DROUGHT -> MessageKey.FARM_DROUGHT_PROGRESS
             FarmIncidentType.PESTS -> MessageKey.FARM_INCIDENT_PROGRESS
+            FarmIncidentType.BIRDS -> MessageKey.FARM_BIRDS_PROGRESS
+            FarmIncidentType.FOOD_DELIVERY -> MessageKey.FARM_ROUTE_PROGRESS
             FarmIncidentType.MARKET -> MessageKey.FARM_MARKET_PROGRESS
             FarmIncidentType.CHANNELS -> MessageKey.FARM_CHANNELS_PROGRESS
             else -> MessageKey.FARM_SPECIAL_PROGRESS
@@ -367,6 +402,8 @@ internal class FarmShiftCoordinator(
     private fun incidentResolved(runtime: FarmRuntime, type: FarmIncidentType, actor: Player?) {
         drought.resetGrowth(runtime.settings.id)
         pests.clear(runtime, "incident_resolved")
+        birds.clear(runtime.settings.id, "incident_resolved")
+        foodDelivery.clear(runtime.settings.id, "incident_resolved")
         if (type == FarmIncidentType.GIANT_CROP) special.beginRestore(runtime)
         special.clearZone(runtime, "incident_resolved")
         port.broadcast(

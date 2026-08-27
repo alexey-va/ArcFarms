@@ -128,6 +128,8 @@ internal class FarmHudController(
             FarmPhase.INCIDENT -> when (runtime.state.incidentType ?: FarmIncidentType.PESTS) {
                 FarmIncidentType.DROUGHT -> MessageKey.FARM_ENTRY_DROUGHT
                 FarmIncidentType.PESTS -> MessageKey.FARM_ENTRY_PESTS
+                FarmIncidentType.BIRDS -> MessageKey.FARM_ENTRY_BIRDS
+                FarmIncidentType.FOOD_DELIVERY -> MessageKey.FARM_ENTRY_ROUTE
                 else -> null
             }
             FarmPhase.DELIVERY -> MessageKey.FARM_ENTRY_DELIVERY
@@ -334,6 +336,8 @@ internal class FarmHudController(
         FarmPhase.INCIDENT -> when (runtime.state.incidentType ?: FarmIncidentType.PESTS) {
             FarmIncidentType.DROUGHT -> MessageKey.FARM_DROUGHT_BOSSBAR
             FarmIncidentType.PESTS -> MessageKey.FARM_INCIDENT_BOSSBAR
+            FarmIncidentType.BIRDS -> MessageKey.FARM_BIRDS_BOSSBAR
+            FarmIncidentType.FOOD_DELIVERY -> MessageKey.FARM_ROUTE_BOSSBAR
             FarmIncidentType.MARKET -> if (runtime.state.specialIncident?.marketAccepted == true) {
                 MessageKey.FARM_MARKET_ACTIVE_BOSSBAR
             } else MessageKey.FARM_MARKET_PENDING_BOSSBAR
@@ -392,6 +396,8 @@ internal class FarmHudController(
     private fun incidentHint(player: Player, runtime: FarmRuntime) {
         when (runtime.state.incidentType) {
             FarmIncidentType.DROUGHT -> port.sendActionBar(player, MessageKey.FARM_DROUGHT_REQUIRED)
+            FarmIncidentType.BIRDS -> port.sendActionBar(player, MessageKey.FARM_BIRDS_REQUIRED)
+            FarmIncidentType.FOOD_DELIVERY -> port.sendActionBar(player, MessageKey.FARM_ROUTE_REQUIRED)
             FarmIncidentType.MARKET -> {
                 val incident = runtime.state.specialIncident ?: return
                 port.sendActionBar(

@@ -88,6 +88,7 @@ internal class FarmPointService(
             FarmPointKind.TOOL -> zone.supplies.tool.toPoint()
             FarmPointKind.SEEDS -> zone.supplies.seeds.toPoint()
             FarmPointKind.WATER -> zone.supplies.water.toPoint()
+            FarmPointKind.ARCHERY -> zone.supplies.archery.toPoint()
             FarmPointKind.CRATES -> zone.delivery.pickup.toPoint()
             FarmPointKind.RECEIVING -> FarmPointPosition(zone.delivery.world, zone.delivery.x, zone.delivery.y, zone.delivery.z)
             FarmPointKind.CART -> resolveBase(runtime, FarmPointKind.CRATES)
@@ -110,7 +111,24 @@ internal class FarmPointService(
             -> FarmPlotGeometry.center(runtime.state.preparationPatch)?.let { plot ->
                 FarmPointPosition(plot.world, plot.x + 0.5, plot.y + 1.0, plot.z + 0.5)
             } ?: zone.supplies.tool.toPoint()
+            FarmPointKind.PERK_VENDOR -> perkVendorPoint(runtime)
         }
+    }
+
+    private fun perkVendorPoint(runtime: FarmRuntime): FarmPointPosition {
+        val tool = runtime.settings.supplies.tool.toPoint()
+        val radians = Math.toRadians(tool.yaw.toDouble())
+        val candidates = listOf(2.75, -2.75).map { side ->
+            tool.copy(
+                x = tool.x + cos(radians) * side,
+                z = tool.z + sin(radians) * side,
+                yaw = tool.yaw + if (side > 0) -90f else 90f,
+                pitch = 0f,
+            )
+        }
+        return candidates.firstOrNull { point ->
+            runtime.region.contains(Location(runtime.region.world, point.x, point.y, point.z))
+        } ?: tool
     }
 
     private fun customerPoint(runtime: FarmRuntime): FarmPointPosition {

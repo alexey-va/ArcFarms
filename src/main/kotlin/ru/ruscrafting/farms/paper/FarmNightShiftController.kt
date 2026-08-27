@@ -70,10 +70,10 @@ internal class FarmNightShiftController(
         particles: Boolean,
     ): FarmNightShiftSyncResult {
         reconcileLifecycle(zoneId, sequence, region)
-        syncPlayerTime(zoneId, players, playerTime, settings.nightTimeTransitionSeconds)
         if (players.isEmpty() || anchors.isEmpty()) {
             return FarmNightShiftSyncResult(0, 0, clearPatrols(zoneId))
         }
+        syncPlayerTime(zoneId, players, playerTime, settings.nightTimeTransitionSeconds)
 
         val desired = anchors.toList()
         var removed = 0

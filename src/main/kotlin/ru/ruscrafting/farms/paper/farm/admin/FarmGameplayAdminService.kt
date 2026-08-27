@@ -34,8 +34,10 @@ import ru.ruscrafting.farms.paper.farm.delivery.FarmDeliveryController
 import ru.ruscrafting.farms.paper.farm.field.FarmFieldController
 import ru.ruscrafting.farms.paper.farm.harvest.FarmHarvestController
 import ru.ruscrafting.farms.paper.farm.incident.drought.FarmDroughtIncident
+import ru.ruscrafting.farms.paper.farm.incident.bird.FarmBirdIncident
 import ru.ruscrafting.farms.paper.farm.incident.pest.FarmPestIncident
 import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentController
+import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
 import ru.ruscrafting.farms.paper.farm.presentation.FarmGuidanceController
 import ru.ruscrafting.farms.paper.farm.recovery.FarmIncidentRecoveryController
@@ -59,6 +61,8 @@ internal class FarmGameplayAdminService(
     private val care: FarmCareController,
     private val drought: FarmDroughtIncident,
     private val pests: FarmPestIncident,
+    private val birds: FarmBirdIncident,
+    private val foodDelivery: FarmFoodDeliveryIncident,
     private val special: FarmSpecialIncidentController,
     private val incidentRecovery: FarmIncidentRecoveryController,
     private val delivery: FarmDeliveryController,
@@ -95,7 +99,7 @@ internal class FarmGameplayAdminService(
         runtime.state = when (normalized) {
             "planting" -> plantingState(runtime, events)
             "harvesting" -> harvestingState(runtime)
-            "pests", "drought", "giant-crop", "channels", "night-shift", "market" ->
+            "pests", "drought", "birds", "giant-crop", "channels", "night-shift", "market" ->
                 incidentState(runtime, normalized, nextCrop, events)
             "delivery", "complete" -> deliveryState(runtime, order, player, events)
             else -> return false
@@ -266,6 +270,8 @@ internal class FarmGameplayAdminService(
         care.clear(runtime, "admin_stage")
         runtime.state = runtime.state.copy(careType = null, seederStage = null, careTargets = emptyList(), careGoal = null)
         pests.clear(runtime, "admin_stage")
+        birds.clear(runtime.settings.id, "admin_stage")
+        foodDelivery.clear(runtime.settings.id, "admin_stage")
         restoreGiantCrop(runtime, "admin_stage")
         special.clearZone(runtime, "admin_stage")
         incidentRecovery.restore(runtime, runtime.settings.restoreBlocksPerTick)
@@ -364,19 +370,21 @@ internal class FarmGameplayAdminService(
     }
 
     private fun completeDelivery(runtime: FarmRuntime, player: Player) {
-        var state = runtime.state
-        var result: EngineResult<FarmShiftState>? = null
-        repeat(runtime.settings.delivery.crates) { index ->
-            result = FarmShiftEngine.deliver(state, runtime.rules, index, runtime.settings.delivery.crates, player.uniqueId, clock())
-            state = requireNotNull(result).state
-        }
-        transitions.apply(runtime, requireNotNull(result), player)
+        val result = FarmShiftEngine.completeDeliveryAsAdmin(
+            runtime.state,
+            runtime.rules,
+            runtime.settings.delivery.crates,
+            clock(),
+        )
+        transitions.apply(runtime, result, player)
     }
 
     private fun reset(runtime: FarmRuntime): Boolean {
         drought.clearZone(runtime.settings.id, "admin_reset")
         care.clear(runtime, "admin_reset")
         pests.clear(runtime, "admin_reset")
+        birds.clear(runtime.settings.id, "admin_reset")
+        foodDelivery.clear(runtime.settings.id, "admin_reset")
         restoreGiantCrop(runtime, "admin_reset")
         special.clearZone(runtime, "admin_reset")
         delivery.clear(runtime, "admin_reset")
@@ -460,6 +468,8 @@ internal class FarmGameplayAdminService(
         )
         val INCIDENT_STAGES = mapOf(
             "pests" to FarmIncidentType.PESTS, "drought" to FarmIncidentType.DROUGHT,
+            "birds" to FarmIncidentType.BIRDS,
+            "food-delivery" to FarmIncidentType.FOOD_DELIVERY,
             "giant-crop" to FarmIncidentType.GIANT_CROP, "channels" to FarmIncidentType.CHANNELS,
             "night-shift" to FarmIncidentType.NIGHT_SHIFT, "market" to FarmIncidentType.MARKET,
         )

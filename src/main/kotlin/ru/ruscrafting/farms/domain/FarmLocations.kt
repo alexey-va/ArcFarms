@@ -4,6 +4,7 @@ enum class FarmPointKind {
     TOOL,
     SEEDS,
     WATER,
+    ARCHERY,
     CRATES,
     RECEIVING,
     CART,
@@ -14,6 +15,7 @@ enum class FarmPointKind {
     COVERS,
     SCARECROWS,
     PEN,
+    PERK_VENDOR,
 }
 
 data class FarmPointPosition(

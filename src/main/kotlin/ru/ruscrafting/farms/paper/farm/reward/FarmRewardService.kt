@@ -34,6 +34,7 @@ internal class FarmRewardService(
     private val supervisor: RuntimeTaskSupervisor,
     private val persistBlocking: () -> Unit,
     private val operational: () -> Boolean,
+    private val playerMultiplier: (UUID, FarmRuntime) -> Int = { _, _ -> 100 },
 ) {
     private val ledger = FarmRewardLedger()
 
@@ -42,7 +43,7 @@ internal class FarmRewardService(
     fun snapshot(): FarmRewardLedgerSnapshot = ledger.snapshot()
 
     fun queueCompletion(runtime: FarmRuntime, contributors: Map<UUID, Int>) {
-        val ranked = contributors.entries.sortedWith(
+        val ranked = contributors.entries.filter { it.value > 0 }.sortedWith(
             compareByDescending<Map.Entry<UUID, Int>> { it.value }.thenBy { it.key.toString() },
         )
         val planned = ranked.mapIndexedNotNull { index, (playerId, contribution) ->
@@ -58,7 +59,8 @@ internal class FarmRewardService(
                     contribution = contribution,
                     rank = index + 1,
                 ),
-                moneyMultiplierPercent = 100 + runtime.state.rewardMoneyBonusPercent,
+                moneyMultiplierPercent = (playerMultiplier(playerId, runtime) + runtime.state.rewardMoneyBonusPercent)
+                    .coerceIn(100, 300),
             ).takeUnless { grant -> ledger.contains(grant.id) }
         }
         val accepted = ledger.enqueue(planned)
