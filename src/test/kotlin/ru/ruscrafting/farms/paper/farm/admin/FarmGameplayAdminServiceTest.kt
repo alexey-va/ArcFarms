@@ -33,6 +33,7 @@ import ru.ruscrafting.farms.paper.farm.recovery.FarmIncidentRecoveryController
 import ru.ruscrafting.farms.paper.farm.scene.FarmContractSceneController
 import ru.ruscrafting.farms.paper.farm.shift.FarmOrderCycleController
 import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyController
+import java.util.concurrent.CompletableFuture
 
 class FarmGameplayAdminServiceTest : FunSpec({
     test("admin stage cleanup restores the complete incident journal instead of one tick budget") {
@@ -76,7 +77,7 @@ class FarmGameplayAdminServiceTest : FunSpec({
             registry = mockk<FarmBlockRegistry>(relaxed = true),
             transitions = mockk<FarmTransitionSink>(relaxed = true),
             shiftLauncher = mockk<FarmShiftLauncher>(relaxed = true),
-            persistBlocking = {},
+            persistAsync = { CompletableFuture.completedFuture(Unit) },
             clock = { 0L },
         )
         val method = FarmGameplayAdminService::class.java.getDeclaredMethod(

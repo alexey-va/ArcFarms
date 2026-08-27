@@ -22,6 +22,7 @@ import ru.ruscrafting.farms.network.ActivityNetworkGateway
 import ru.ruscrafting.farms.network.NetworkSignal
 import java.time.Duration
 import java.util.UUID
+import java.util.concurrent.CompletableFuture
 import java.util.logging.Level
 
 /** Shared Paper presentation and infrastructure adapter for every worksite type. */
@@ -39,7 +40,7 @@ internal class PaperWorksiteRuntimePort(
     private val interactionReset: (String) -> Unit,
     private val interactionResetMatching: (String) -> Unit,
     private val adminEditing: (Player) -> Boolean,
-    private val persist: () -> Unit,
+    private val persist: () -> CompletableFuture<Unit>,
     private val guard: (String, () -> Unit) -> Unit,
 ) : WorksiteRuntimePort {
     private val activeBars = mutableMapOf<ActivityBarKey, BossBar>()
@@ -296,10 +297,11 @@ internal class PaperWorksiteRuntimePort(
     override fun complete(activity: ActivityKind, actorName: String?, excludedPlayers: Set<UUID>) =
         network.complete(activity, actorName, excludedPlayers)
 
-    override fun persistAsync() = persist()
+    override fun persistAsync(): CompletableFuture<Unit> = persist()
     override fun guarded(scope: String, task: () -> Unit) = guard(scope, task)
     override fun lifecycleToken(): RuntimeTaskSupervisor.Token = supervisor.token()
     override fun runSync(token: RuntimeTaskSupervisor.Token, task: () -> Unit): Boolean = supervisor.runSync(token, task) != null
+    override fun runAsync(token: RuntimeTaskSupervisor.Token, task: () -> Unit): Boolean = supervisor.runAsync(token, task) != null
     override fun runLater(delayTicks: Long, task: () -> Unit): Boolean = supervisor.runLater(supervisor.token(), delayTicks, task) != null
     override fun runLater(token: RuntimeTaskSupervisor.Token, delayTicks: Long, task: () -> Unit): Boolean =
         supervisor.runLater(token, delayTicks, task) != null

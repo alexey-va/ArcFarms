@@ -98,8 +98,8 @@ The current broad `WorksiteRuntimePort` is split while migration proceeds:
 - `PlayerAudiencePort`: localized chat, action bar, title, boss bar, particles,
   sound;
 - `WorksiteAccessPort`: permission and region access;
-- `WorksiteStatePort`: async/blocking persistence requests and immutable
-  snapshot contribution;
+- `WorksiteStatePort`: asynchronous gameplay persistence requests, lifecycle-only
+  blocking flushes and immutable snapshot contribution;
 - `WorksiteNetworkPort`: bounded cross-server signals;
 - `RuntimeTasks`: epoch/token-aware sync scheduling;
 - `ActivityStatsPort`: contributions and completion.
@@ -197,8 +197,20 @@ uses the outdoor policy.
 
 - Bukkit world, entity and inventory APIs run only on the Paper thread.
 - File, Redis, database and expensive scans do not block the Paper thread.
+- State snapshots are submitted through `CoalescingAsyncWriter`; gameplay,
+  clicks and admin event routes never wait for the file writer. Reload and
+  shutdown are the only blocking full-state flush boundaries.
+- Reward-ledger mutations are serialized. Enqueue and claim effects wait for a
+  successful durability future; a lifecycle boundary restores an in-flight
+  claim to pending before its final flush.
 - Every async callback captures a `RuntimeTasks` epoch and is rejected after
   reload/close.
+- Periodic entity updates use feature-owned bounded UUID indexes. Full-world
+  scans are lifecycle reconciliation or cleanup operations only.
+- Procedural placement reports bounded rejection counters when an activity
+  cannot start. Mole layouts treat the region as a horizontal farm footprint
+  while preserving material, height, loaded-chunk and journal safety checks;
+  animal rescue selects only indexed outdoor beds, never generic roof surfaces.
 - Reload is transactional: validate candidate config, invalidate old epoch,
   cleanup old features, replace runtime, reconcile loaded state, then activate
   tasks. A failed candidate leaves the old runtime usable.

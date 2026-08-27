@@ -37,7 +37,7 @@ import ru.ruscrafting.farms.paper.blockIndexDefinition
 import ru.ruscrafting.farms.persistence.FixedFarmCropJournal
 import java.nio.file.Path
 import java.util.UUID
-import java.util.logging.Level
+import java.util.concurrent.CompletableFuture
 import kotlin.math.ceil
 
 /** Owns admin edit/inspect sessions and bulk world maintenance operations. */
@@ -59,7 +59,7 @@ internal class FarmWorldAdminService(
     private val runtimes: () -> Collection<FarmRuntime>,
     private val paused: (String) -> Boolean,
     private val setPaused: (String, Boolean) -> Boolean,
-    private val persistBlocking: () -> Unit,
+    private val persistAsync: () -> CompletableFuture<Unit>,
     private val clock: () -> Long,
 ) {
     private val editing = mutableSetOf<UUID>()
@@ -313,14 +313,7 @@ internal class FarmWorldAdminService(
         val previous = runtime.state
         val removal = FarmAdminEdit.removePlots(previous, selected, runtime.settings.fieldCompletionPercent)
         runtime.state = removal.state
-        try {
-            persistBlocking()
-        } catch (failure: Exception) {
-            runtime.state = previous
-            port.log(Level.SEVERE, "Could not persist WorldEdit farm unmanage for ${runtime.settings.id}", failure)
-            port.sendChat(player, MessageKey.GENERIC_ERROR)
-            return false
-        }
+        persistAsync()
         var removedRecords = 0
         selected.forEach { position ->
             val world = Bukkit.getWorld(position.world) ?: return@forEach

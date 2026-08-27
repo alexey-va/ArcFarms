@@ -136,6 +136,7 @@ internal class FarmModule(
         }
         fixedCrops.processDue(limit)
         runtimes.forEach { runtime ->
+            if (shiftStart.isPending(runtime.settings.id)) return@forEach
             if (!hasRestoreWork(runtime)) return@forEach
             if (hasEditor && isAdminEditing(runtime)) return@forEach
             var remaining = runtime.settings.restoreBlocksPerTick
@@ -157,7 +158,6 @@ internal class FarmModule(
                 field.restoreOriginal(runtime, remaining)
             ) {
                 field.clearState(runtime)
-                port.persistAsync()
             }
         }
     }
@@ -196,13 +196,16 @@ internal class FarmModule(
         runtimes.forEach { runtime ->
             port.guarded("farm:${runtime.settings.id}") {
                 if (isAdminEditing(runtime)) return@guarded
+                if (shiftStart.isPending(runtime.settings.id)) return@guarded
                 if (runtime.state.phase != FarmPhase.INCIDENT && incidentRecovery.pending(runtime)) return@guarded
                 if (runtime.state.phase == FarmPhase.COOLDOWN && runtime.state.preparationPatch.isNotEmpty()) return@guarded
                 if (special.expireMarket(runtime, now)) return@guarded
                 val result = FarmShiftEngine.tick(runtime.state, currentOrder(runtime), now)
                 if (result.events.isNotEmpty()) transitions.apply(runtime, result, null)
                 if (runtime.state.phase == FarmPhase.IDLE) {
-                    port.players(runtime.region).firstOrNull()?.let { shiftStart.start(runtime, it, now) }
+                    val player = port.players(runtime.region).firstOrNull() ?: return@guarded
+                    shiftStart.start(runtime, player, now)
+                    return@guarded
                 }
                 if (
                     runtime.state.phase == FarmPhase.PREPARATION && runtime.state.preparationReleased &&
@@ -293,6 +296,8 @@ internal class FarmModule(
     }
 
     fun cleanup(reason: String) {
+        shiftStart.clearPending()
+        orderCycle.clearPending()
         scene.cleanup(reason)
         special.cleanup(reason)
         supplies.cleanup(reason)

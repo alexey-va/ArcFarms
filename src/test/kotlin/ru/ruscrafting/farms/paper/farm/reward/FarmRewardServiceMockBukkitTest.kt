@@ -19,6 +19,7 @@ import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmEconomyGateway
 import ru.ruscrafting.farms.paper.RuntimeTaskSupervisor
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import java.util.concurrent.CompletableFuture
 
 class FarmRewardServiceMockBukkitTest : FunSpec({
     lateinit var player: PlayerMock
@@ -36,9 +37,13 @@ class FarmRewardServiceMockBukkitTest : FunSpec({
     }
 
     test("failed durable claim does not deliver or lose the pending reward") {
-        val fixture = rewardFixture(player, plugin, persist = { error("disk unavailable") })
+        val fixture = rewardFixture(player, plugin) {
+            CompletableFuture.failedFuture(IllegalStateException("disk unavailable"))
+        }
 
         fixture.service.deliverPending(player)
+        fixture.scheduler.executeImmediate()
+        fixture.service.prepareForLifecycleBoundary()
 
         player.totalExperience shouldBe 0
         player.inventory.contains(Material.BREAD) shouldBe false
@@ -48,10 +53,15 @@ class FarmRewardServiceMockBukkitTest : FunSpec({
 
     test("successful durable claim delivers exactly once") {
         var saves = 0
-        val fixture = rewardFixture(player, plugin, persist = { saves++ })
+        val fixture = rewardFixture(player, plugin) {
+            saves++
+            CompletableFuture.completedFuture(Unit)
+        }
 
         fixture.service.deliverPending(player)
+        fixture.scheduler.executeImmediate()
         fixture.service.deliverPending(player)
+        fixture.scheduler.executeImmediate()
 
         saves shouldBe 1
         player.totalExperience shouldBe 12
@@ -59,12 +69,34 @@ class FarmRewardServiceMockBukkitTest : FunSpec({
         fixture.service.snapshot().pending shouldBe emptyList()
         fixture.service.snapshot().claimed["communal_farm:${player.uniqueId}"] shouldBe 7L
     }
+
+    test("reward side effects wait for asynchronous durability confirmation") {
+        val gate = CompletableFuture<Unit>()
+        val fixture = rewardFixture(player, plugin) { gate }
+
+        fixture.service.deliverPending(player)
+        fixture.scheduler.executeImmediate()
+
+        player.totalExperience shouldBe 0
+        player.inventory.contains(Material.BREAD) shouldBe false
+
+        gate.complete(Unit)
+        fixture.scheduler.executeImmediate()
+
+        player.totalExperience shouldBe 12
+        player.inventory.all(Material.BREAD).values.sumOf { it.amount } shouldBe 3
+    }
 })
 
-private data class RewardFixture(val service: FarmRewardService)
+private data class RewardFixture(val service: FarmRewardService, val scheduler: TestTaskScheduler)
 
-private fun rewardFixture(player: PlayerMock, plugin: Plugin, persist: () -> Unit): RewardFixture {
-    val supervisor = RuntimeTaskSupervisor(TestTaskScheduler()).apply(RuntimeTaskSupervisor::activate)
+private fun rewardFixture(
+    player: PlayerMock,
+    plugin: Plugin,
+    persist: () -> CompletableFuture<Unit>,
+): RewardFixture {
+    val scheduler = TestTaskScheduler()
+    val supervisor = RuntimeTaskSupervisor(scheduler).apply(RuntimeTaskSupervisor::activate)
     val locale = mockk<ArcFarmsLocale>(relaxed = true) {
         every { text(any()) } answers { Component.text(firstArg<Any?>()?.toString().orEmpty()) }
         every { render(any(), any(), any()) } answers { Component.text(firstArg<MessageKey>().path) }
@@ -81,7 +113,7 @@ private fun rewardFixture(player: PlayerMock, plugin: Plugin, persist: () -> Uni
         debug = ArcFarmsDebug({ false }) {},
         port = mockk<WorksiteRuntimePort>(relaxed = true),
         supervisor = supervisor,
-        persistBlocking = persist,
+        persistAsync = persist,
         operational = { true },
     )
     service.replace(
@@ -99,5 +131,5 @@ private fun rewardFixture(player: PlayerMock, plugin: Plugin, persist: () -> Uni
         ),
         claimed = emptyMap(),
     )
-    return RewardFixture(service)
+    return RewardFixture(service, scheduler)
 }

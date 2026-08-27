@@ -30,6 +30,7 @@ import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import java.nio.file.Files
+import java.util.concurrent.CompletableFuture
 
 class FarmPerkControllerMockBukkitTest : FunSpec({
     lateinit var paper: MockBukkitTestRuntime
@@ -75,18 +76,25 @@ class FarmPerkControllerMockBukkitTest : FunSpec({
             rules = FarmRules(listOf(50), 1, 1_000),
             state = FarmShiftState(),
         )
+        val plugin = paper.createSimplePlugin("FarmPerkMenuTest")
+        val port = mockk<WorksiteRuntimePort>(relaxed = true) {
+            every { runLater(any(), any()) } answers {
+                server.scheduler.runTaskLater(plugin, secondArg<() -> Unit>(), firstArg())
+                true
+            }
+        }
         val controller = FarmPerkController(
-            plugin = paper.createSimplePlugin("FarmPerkMenuTest"),
+            plugin = plugin,
             settings = { config },
             locale = locale,
             debug = ArcFarmsDebug({ false }) {},
-            port = mockk<WorksiteRuntimePort>(relaxed = true),
+            port = port,
             points = FarmPointProvider { _, _ -> FarmPointPosition(world.name, 1.5, 65.0, 1.5) },
             runtimes = { listOf(runtime) },
             weeklyContribution = { 2_000 },
             currentWeekStart = { 107 },
             clock = { now },
-            persistBlocking = {},
+            persistAsync = { CompletableFuture.completedFuture(Unit) },
         )
         controller.replace(mapOf(
             player.uniqueId to FarmPlayerPerks(

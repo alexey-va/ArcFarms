@@ -44,6 +44,7 @@ import ru.ruscrafting.farms.network.WorkdayState
 import ru.ruscrafting.farms.paper.farm.FarmComponentGraph
 import ru.ruscrafting.farms.paper.navigation.ActivityTravelService
 import java.util.UUID
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import java.util.random.RandomGenerator
 import java.util.logging.Level
@@ -116,7 +117,7 @@ class ArcFarmsService(
         random = random,
         weeklyContribution = { playerId -> stats.weeklyContribution(playerId, ActivityKind.FARM) },
         currentWeekStart = { farmWeekStartEpochDay(clock()) },
-        persistBlocking = ::persistBlocking,
+        persistAsync = ::persistAsync,
     )
     private val travelService = ActivityTravelService(
         settings = { settings },
@@ -178,11 +179,13 @@ class ArcFarmsService(
     fun reload(candidate: ArcFarmsConfig, publishSettings: (ArcFarmsConfig) -> Unit) {
         check(started) { "ArcFarms service is not started" }
         require(!farm.worldAdmin.backupBusy()) { "ArcFarms cannot reload while a farm backup operation is active" }
-        val snapshot = snapshotState()
-        val reconciledSnapshot = runtimeValidator.reconcileOrderProgress(candidate, snapshot)
-        runtimeValidator.validateReload(candidate, reconciledSnapshot)
+        val validationSnapshot = runtimeValidator.reconcileOrderProgress(candidate, snapshotState())
+        runtimeValidator.validateReload(candidate, validationSnapshot)
         runtimeValidator.validateRuntime(candidate)
         runtimeValidator.validateLocations(candidate, farm.pointService.snapshot())
+        farm.rewards.prepareForLifecycleBoundary()
+        val snapshot = snapshotState()
+        val reconciledSnapshot = runtimeValidator.reconcileOrderProgress(candidate, snapshot)
         persistBlocking()
         val previous = settings
         persistenceSuspended = true
@@ -416,7 +419,7 @@ class ArcFarmsService(
         taskSupervisor.runTimer(
             settings.saveSeconds * 20L,
             settings.saveSeconds * 20L,
-        ) { runGuarded("periodic_save", ::persistAsync) }
+        ) { runGuarded("periodic_save") { persistAsync() } }
     }
 
     private fun stopTasks() {
@@ -494,19 +497,33 @@ class ArcFarmsService(
         )
     }
 
-    private fun persistAsync() {
+    private fun persistAsync(): CompletableFuture<Unit> {
         if (persistenceSuspended) {
             persistenceRequestedWhileSuspended = true
-            return
+            return CompletableFuture.failedFuture(IllegalStateException("ArcFarms persistence is suspended during reload"))
         }
-        runCatching { stateRepository.saveAsync(snapshotState()) }
+        val startedAt = System.nanoTime()
+        return runCatching { stateRepository.saveAsync(snapshotState()) }
             .onSuccess { operation ->
                 operation.whenComplete { _, failure ->
                     if (failure != null) plugin.logger.log(Level.SEVERE, "Could not persist ArcFarms state", failure)
+                    val elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt)
+                    if (failure != null || elapsedMillis >= SLOW_PERSISTENCE_MILLIS) {
+                        val health = stateRepository.health()
+                        debug.event(
+                            "state_persist",
+                            "outcome" to if (failure == null) "slow" else "failed",
+                            "elapsed_ms" to elapsedMillis,
+                            "pending" to health.pendingRequests,
+                            "max_ms" to health.maxDurationMillis,
+                            "failures" to health.failedRequests,
+                        )
+                    }
                 }
             }
-            .onFailure { failure ->
+            .getOrElse { failure ->
                 plugin.logger.log(Level.SEVERE, "Could not schedule ArcFarms state persistence", failure)
+                CompletableFuture.failedFuture(failure)
             }
     }
 
@@ -517,6 +534,7 @@ class ArcFarmsService(
         closed = true
         started = false
         val failures = mutableListOf<Throwable>()
+        runCatching(farm.rewards::prepareForLifecycleBoundary).exceptionOrNull()?.let(failures::add)
         runCatching(::stopTasks).exceptionOrNull()?.let(failures::add)
         runCatching { farm.hud.stopAllMusic("plugin_close") }.exceptionOrNull()?.let(failures::add)
         runCatching { farm.drought.clear("plugin_close") }.exceptionOrNull()?.let(failures::add)
@@ -535,5 +553,6 @@ class ArcFarmsService(
 
     companion object {
         private const val MAX_INTERACTION_COOLDOWNS = 10_000
+        private const val SLOW_PERSISTENCE_MILLIS = 50L
     }
 }

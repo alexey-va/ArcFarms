@@ -49,6 +49,7 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         )
         val settings = mockk<FarmZoneSettings> {
             every { id } returns "communal_farm"
+            every { crops } returns setOf("WHEAT")
             every { moleBurrow } returns burrow
         }
         val runtime = FarmRuntime(
@@ -143,6 +144,7 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         )
         val settings = mockk<FarmZoneSettings> {
             every { id } returns "communal_farm"
+            every { crops } returns setOf("WHEAT")
             every { moleBurrow } returns burrow
         }
         val runtime = FarmRuntime(
@@ -155,6 +157,39 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         )
         val controller = FarmMoleBurrowWorld(
             paper.createSimplePlugin("FarmMoleBurrowFloorTest"),
+            ArcFarmsDebug({ false }) {},
+        )
+
+        controller.preview(runtime, FarmPointPosition(world.name, 0.5, 65.0, 0.5))?.records?.isNotEmpty() shouldBe true
+    }
+
+    test("preview treats the configured farm as a horizontal footprint below its vertical region") {
+        val burrow = FarmMoleBurrowSettings(
+            cells = 7,
+            minDepth = 10,
+            maxDepth = 12,
+            tunnelHeight = 3,
+            blocksPerTick = 48,
+            candidateAttempts = 4,
+            lightSpacing = 5,
+            lightLevel = 11,
+            replaceableMaterials = setOf("STONE"),
+            lairVisual = FarmCareVisualSettings("RABBIT_HIDE", 0, FarmItemDisplayTransform.FIXED, 1.6f, 0.6),
+        )
+        val settings = mockk<FarmZoneSettings> {
+            every { id } returns "communal_farm"
+            every { moleBurrow } returns burrow
+        }
+        val runtime = FarmRuntime(
+            settings = settings,
+            region = CuboidActivityRegion(world, "surface-only-farm", CuboidBounds(-16, 63, -16, 16, 66, 16)),
+            orders = emptyMap(),
+            orderList = emptyList(),
+            rules = FarmRules(listOf(50), 1, 1_000),
+            state = FarmShiftState(phase = FarmPhase.CARE, sequence = 9),
+        )
+        val controller = FarmMoleBurrowWorld(
+            paper.createSimplePlugin("FarmMoleVerticalRegionTest"),
             ArcFarmsDebug({ false }) {},
         )
 
@@ -179,6 +214,7 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         )
         val settings = mockk<FarmZoneSettings> {
             every { id } returns "communal_farm"
+            every { crops } returns setOf("WHEAT")
             every { moleBurrow } returns burrow
         }
         val runtime = FarmRuntime(
@@ -194,6 +230,8 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
             ArcFarmsDebug({ false }) {},
         )
 
-        controller.preview(runtime, FarmPointPosition(world.name, 0.5, 65.0, 0.5)).shouldBeNull()
+        val preview = controller.previewDetailed(runtime, FarmPointPosition(world.name, 0.5, 65.0, 0.5))
+        preview.scene.shouldBeNull()
+        preview.rejections.keys.any { it == "material:OAK_PLANKS" } shouldBe true
     }
 })

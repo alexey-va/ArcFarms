@@ -34,6 +34,7 @@ import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.location
 import ru.ruscrafting.farms.paper.toFarmPlotPosition
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import java.util.logging.Level
 
@@ -58,16 +59,18 @@ internal class FarmFieldController(
     private val registry: FarmBlockRegistry,
     points: FarmPointProvider,
     private val transitions: FarmTransitionSink,
-    private val persistBlocking: () -> Unit,
+    private val persistAsync: () -> CompletableFuture<Unit>,
 ) {
     private val patchReleaseProgress = mutableMapOf<FarmPatchReleaseKey, MutableSet<FarmPlotPosition>>()
     private val patchRestoreProgress = mutableMapOf<String, MutableSet<FarmPlotPosition>>()
+    private val pendingRecoveryCommits = mutableSetOf<String>()
     private val beds = FarmBedDiscovery(debug, registry, points)
     private val autoFinisher = FarmPatchAutoFinisher(ledger, debug)
 
     fun clearCaches() {
         patchReleaseProgress.clear()
         patchRestoreProgress.clear()
+        pendingRecoveryCommits.clear()
         autoFinisher.clear()
     }
 
@@ -401,7 +404,7 @@ internal class FarmFieldController(
             }
             maintain(runtime, false)
         }
-        if (changed) persistBlocking()
+        if (changed) persistAsync()
     }
 
     fun restoreOriginal(runtime: FarmRuntime, limit: Int = Int.MAX_VALUE): Boolean {
@@ -455,23 +458,29 @@ internal class FarmFieldController(
     }
 
     fun commitAfterRecovery(runtime: FarmRuntime, next: FarmShiftState) {
+        if (!pendingRecoveryCommits.add(runtime.settings.id)) return
         val previous = runtime.state
         val recoveredPatch = previous.preparationPatch
         runtime.state = next
-        try {
-            persistBlocking()
-        } catch (failure: Exception) {
-            runtime.state = previous
-            throw failure
-        }
-        recoveredPatch.forEach { position ->
-            val soil = position.block() ?: return@forEach
-            runCatching { ledger.removeTransient(soil) }
-                .onFailure { failure ->
-                    port.log(Level.WARNING, "Could not clear recovered farm ledger at $position", failure)
+        val token = port.lifecycleToken()
+        runCatching(persistAsync).getOrElse { CompletableFuture.failedFuture(it) }.whenComplete { _, failure ->
+            port.runSync(token) {
+                pendingRecoveryCommits.remove(runtime.settings.id)
+                if (failure != null) {
+                    if (runtime.state == next) runtime.state = previous else port.persistAsync()
+                    port.log(Level.SEVERE, "Could not persist recovered farm patch ${runtime.settings.id}", failure)
+                    return@runSync
                 }
+                recoveredPatch.forEach { position ->
+                    val soil = position.block() ?: return@forEach
+                    runCatching { ledger.removeTransient(soil) }
+                        .onFailure { ledgerFailure ->
+                            port.log(Level.WARNING, "Could not clear recovered farm ledger at $position", ledgerFailure)
+                        }
+                }
+                patchRestoreProgress.remove(runtime.settings.id)
+            }
         }
-        patchRestoreProgress.remove(runtime.settings.id)
     }
 
     fun maintain(

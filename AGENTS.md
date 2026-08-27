@@ -17,6 +17,11 @@ activities: farm, lumbermill, and mine.
   replacing runtime state, and capture its token before every asynchronous
   completion that later re-enters the Paper thread. Direct `Tasks.scheduler`
   calls in the service are forbidden.
+- Gameplay and admin event handlers never wait on `ArcFarmsStateRepository`.
+  They submit immutable snapshots asynchronously; blocking state flushes are
+  reserved for validated reload and shutdown boundaries. Durable reward-ledger
+  operations are serialized and may perform side effects only after their
+  persistence future succeeds.
 - `ArcFarmsService.kt` is a thin compatibility/application facade, not a home
   for cohesive subsystems. Follow `docs/architecture.md`. Keep it at or below
   the 600-line ceiling enforced by `ArcFarmsArchitectureContractTest` with no gameplay
@@ -67,6 +72,19 @@ activities: farm, lumbermill, and mine.
 - Reward pending/claimed state belongs to `FarmRewardLedger`. Its claim mutation
   and persistence callback are one rollback-safe operation; never mutate the
   persisted reward collections directly in the service.
+- Hot gameplay ticks track their owned entities by bounded UUID sets. A full
+  `World#getEntities` scan is permitted only in explicit reconcile/cleanup
+  paths, never in a periodic objective update.
+- Procedural activity placement failures must emit one bounded warning with the
+  zone, sequence, attempted activity, candidate counts, and rejection reasons.
+  Do not leave an operator with only a generic player-facing failure message.
+- Mole tunnels use the configured farm region as a horizontal footprint; the
+  region does not need to extend down through the generated tunnel depth.
+  Unconfigured building materials, world-height limits, occupied journals, and
+  unloaded chunks remain hard rejections and must be reported separately.
+- Animal-rescue targets come only from indexed, validated outdoor crop beds.
+  Never use a generic highest-surface search: roofs inside the region are not
+  farm spawn points.
 - Mine block replacement is journaled before mutation and must converge after
   restart without duplicate drops or permanent temporary blocks.
 - All player text belongs in `lang/ru.yml` and `lang/en.yml`; keys stay equal

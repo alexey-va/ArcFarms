@@ -125,11 +125,11 @@ internal class FarmMoleBurrowController(
 
     fun recoverPlayer(player: Player) {
         val lifecycleToken = port.lifecycleToken()
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, Runnable {
+        port.runAsync(lifecycleToken) {
             val record = runCatching { returns.load(player.uniqueId) }.getOrElse { failure ->
                 port.log(Level.SEVERE, "Could not read mole burrow return for ${player.uniqueId}", failure)
-                return@Runnable
-            } ?: return@Runnable
+                return@runAsync
+            } ?: return@runAsync
             port.runSync(lifecycleToken) {
                 if (!player.isOnline) return@runSync
                 val destination = returnLocation(record) ?: run {
@@ -146,7 +146,7 @@ internal class FarmMoleBurrowController(
                     debug.event("farm_mole_burrow_player_recovered", "zone" to record.zoneId, "player" to player.name)
                 }
             }
-        })
+        }
     }
 
     fun releasePlayer(player: Player, reason: String) {
@@ -227,7 +227,7 @@ internal class FarmMoleBurrowController(
             clock(),
         )
         val lifecycleToken = port.lifecycleToken()
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, Runnable {
+        port.runAsync(lifecycleToken) {
             val committed = runCatching { returns.commit(record) }.getOrElse { failure ->
                 port.log(Level.SEVERE, "Could not commit mole burrow return for ${player.uniqueId}", failure)
                 null
@@ -261,7 +261,7 @@ internal class FarmMoleBurrowController(
                 }
                 debug.event("farm_mole_burrow_entered", "zone" to runtime.settings.id, "player" to player.name)
             }
-        })
+        }
     }
 
     private fun finish(player: Player, runtime: FarmRuntime, scene: FarmMoleBurrowScene) {
@@ -394,11 +394,12 @@ internal class FarmMoleBurrowController(
 
     private fun acknowledgeAsync(record: FarmBurrowReturn) {
         if (!plugin.isEnabled) return
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, Runnable {
+        val lifecycleToken = runCatching(port::lifecycleToken).getOrNull() ?: return
+        port.runAsync(lifecycleToken) {
             runCatching { returns.acknowledge(record) }.onFailure { failure ->
                 port.log(Level.SEVERE, "Could not acknowledge mole burrow return for ${record.playerId}", failure)
             }
-        })
+        }
     }
 
     private fun returnLocation(record: FarmBurrowReturn): Location? {

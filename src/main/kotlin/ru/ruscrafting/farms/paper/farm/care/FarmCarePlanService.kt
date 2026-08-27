@@ -26,6 +26,7 @@ import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
 import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
 import ru.ruscrafting.farms.paper.location
 import java.util.random.RandomGenerator
+import java.util.logging.Level
 
 internal data class FarmCarePlan(
     val type: FarmCareType,
@@ -53,9 +54,17 @@ internal class FarmCarePlanService(
     private val overrides: () -> FarmLocationOverrides,
     private val random: RandomGenerator,
     private val moleBurrow: FarmMoleBurrowWorld,
+    private val log: (Level, String) -> Unit,
 ) {
     fun select(runtime: FarmRuntime, preferredType: FarmCareType?, actor: Player?): FarmCarePlan? {
-        val configured = runtime.state.orderId?.let(runtime.orders::get)?.careTypes ?: return null
+        val configured = runtime.state.orderId?.let(runtime.orders::get)?.careTypes ?: run {
+            log(
+                Level.WARNING,
+                "Could not plan farm care activity: zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
+                    "reason=order_missing order=${runtime.state.orderId}",
+            )
+            return null
+        }
         val start = if (preferredType == null) {
             Math.floorMod(runtime.state.sequence.toInt() * 17 + random.nextInt(configured.size), configured.size)
         } else configured.indexOf(preferredType).takeIf { it >= 0 } ?: 0
@@ -64,6 +73,15 @@ internal class FarmCarePlanService(
         }
         val selected = candidates.firstNotNullOfOrNull { type -> targets(runtime, type, actor)?.let { type to it } }
         if (selected == null) {
+            log(
+                Level.WARNING,
+                "Could not plan farm care activity: zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
+                    "requested=${preferredType ?: "automatic"} attempted=${candidates.joinToString(",")} " +
+                    "phase=${runtime.state.phase} patch=${runtime.state.preparationPatch.size} " +
+                    "indexed_beds=${registry.beds(runtime.settings.id).size} " +
+                    "orchard_leaves=${registry.orchardLeaves(runtime.settings.id).size} " +
+                    "procedural=${runtime.settings.proceduralCareFixtures} actor=${actor?.name ?: "none"}",
+            )
             debug.event(
                 "farm_care_unavailable",
                 "zone" to runtime.settings.id,
@@ -129,8 +147,9 @@ internal class FarmCarePlanService(
             FarmCareType.ANIMAL_RESCUE -> {
                 val pen = fixturePoint(runtime, FarmPointKind.PEN) ?: return null
                 val sources = placement.sources(runtime, actor?.location)
+                val bedCandidates = placement.bedCandidates(runtime, sources, runtime.settings.placementSearchRadius)
                 val safePoints = FarmDeliveryPlanner.selectTargets(
-                    placement.openSkyGroundCandidates(runtime, sources, runtime.settings.placementSearchRadius),
+                    bedCandidates,
                     pen.x,
                     pen.z,
                     sources.map { it.x to it.z },
@@ -140,7 +159,16 @@ internal class FarmCarePlanService(
                     salt,
                     runtime.settings.animalRescueMinSpacing,
                 ).map { FarmPointPosition(it.world, it.x, it.y, it.z) }
-                if (safePoints.isEmpty()) return null
+                if (safePoints.isEmpty()) {
+                    log(
+                        Level.WARNING,
+                        "Could not plan farm animal rescue: zone=${runtime.settings.id} " +
+                            "sequence=${runtime.state.sequence} reason=no_open_sky_beds " +
+                            "indexed_beds=${registry.beds(runtime.settings.id).size} candidates=${bedCandidates.size} " +
+                            "requested=${runtime.settings.animalRescueTargetCount}",
+                    )
+                    return null
+                }
                 safePoints.mapIndexed { index, position -> FarmCareTarget(index, FarmCareRole.ANIMAL, position) }
             }
             FarmCareType.DISEASE -> bedTargets(
@@ -156,18 +184,36 @@ internal class FarmCarePlanService(
                 ).map { plot -> FarmPointPosition(plot.world, plot.x + 0.5, plot.y + 1.05, plot.z + 0.5) }
                 val startedAt = System.nanoTime()
                 var tested = 0
+                var layoutProbes = 0
+                val rejections = linkedMapOf<String, Int>()
                 val selected = bedCandidates.asSequence().distinct()
                     .firstOrNull { candidate ->
                         tested += 1
-                        moleBurrow.preview(runtime, candidate) != null
+                        val preview = moleBurrow.previewDetailed(runtime, candidate)
+                        layoutProbes += preview.layoutAttempts
+                        preview.rejections.forEach { (reason, count) ->
+                            rejections[reason] = rejections.getOrDefault(reason, 0) + count
+                        }
+                        preview.scene != null
                     }
+                val rejectionSummary = rejections.entries.sortedByDescending(Map.Entry<String, Int>::value)
+                    .joinToString(",") { (reason, amount) -> "$reason:$amount" }.ifEmpty { "none" }
                 debug.event(
                     "farm_mole_entrance_candidates",
                     "zone" to runtime.settings.id,
                     "beds" to bedCandidates.size,
                     "tested" to tested,
+                    "layout_probes" to layoutProbes,
                     "selected" to (selected != null),
+                    "rejections" to rejectionSummary,
                     "elapsed_ms" to ((System.nanoTime() - startedAt) / 1_000_000L),
+                )
+                if (selected == null) log(
+                    Level.WARNING,
+                    "Could not plan mole burrow: zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
+                        "beds=${bedCandidates.size} tested=$tested layout_probes=$layoutProbes " +
+                        "depth=${runtime.settings.moleBurrow.minDepth}-${runtime.settings.moleBurrow.maxDepth} " +
+                        "rejections=$rejectionSummary",
                 )
                 selected?.let { listOf(FarmCareTarget(0, FarmCareRole.MOLE_MOUND, it)) }
                     ?: return null

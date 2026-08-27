@@ -48,6 +48,17 @@ internal enum class FarmMoleBurrowEnsureResult {
     UNAVAILABLE,
 }
 
+internal data class FarmMoleBurrowPreview(
+    val scene: FarmMoleBurrowScene?,
+    val layoutAttempts: Int,
+    val rejections: Map<String, Int>,
+) {
+    fun rejectionSummary(): String = rejections.entries
+        .sortedByDescending(Map.Entry<String, Int>::value)
+        .joinToString(",") { (reason, count) -> "$reason:$count" }
+        .ifEmpty { "none" }
+}
+
 /** Owns crash-safe tunnel mutation and bounded build/restore queues. */
 internal class FarmMoleBurrowWorld(
     private val plugin: Plugin,
@@ -65,10 +76,18 @@ internal class FarmMoleBurrowWorld(
     private val ticketedChunks = linkedSetOf<Triple<String, Int, Int>>()
     private val scenes = mutableMapOf<SceneKey, FarmMoleBurrowScene>()
 
-    fun preview(runtime: FarmRuntime, surface: FarmPointPosition): FarmMoleBurrowScene? {
+    fun preview(runtime: FarmRuntime, surface: FarmPointPosition): FarmMoleBurrowScene? =
+        previewDetailed(runtime, surface).scene
+
+    fun previewDetailed(runtime: FarmRuntime, surface: FarmPointPosition): FarmMoleBurrowPreview {
         val world = runtime.region.world
-        if (surface.world != world.name) return null
+        if (surface.world != world.name) return FarmMoleBurrowPreview(null, 0, mapOf("wrong_world" to 1))
         val settings = runtime.settings.moleBurrow
+        val rejections = linkedMapOf<String, Int>()
+        var layoutAttempts = 0
+        fun reject(reason: String, count: Int = 1) {
+            rejections[reason] = rejections.getOrDefault(reason, 0) + count
+        }
         val layoutSeed = seed(runtime.state.sequence, floor(surface.x).toInt(), floor(surface.z).toInt())
         val raw = FarmMoleBurrowPlanner.plan(
             settings.cells,
@@ -80,6 +99,7 @@ internal class FarmMoleBurrowWorld(
         val firstDepth = Math.floorMod(layoutSeed.toInt(), depthSpan)
         val surfaceLocation = Location(world, surface.x, surface.y, surface.z)
         layoutProbe@ for (attempt in 0 until minOf(MAX_LAYOUT_PROBES, depthSpan * 4)) {
+            layoutAttempts++
             val layout = FarmMoleBurrowPlanner.rotate(raw, firstRotation + attempt)
             val depth = settings.minDepth + Math.floorMod(firstDepth + attempt * DEPTH_PROBE_STEP, depthSpan)
             val startX = floor(surface.x).toInt()
@@ -121,10 +141,36 @@ internal class FarmMoleBurrowWorld(
                 val marker = planned[position]?.second ?: FarmMoleBurrowMarker.NONE
                 planned[position] = lightData to marker
             }
-            if (planned.size > FarmMoleBurrowJournalCodec.MAX_SCENE_RECORDS) continue@layoutProbe
-            if (planned.keys.any { (x, _, z) -> !world.isChunkLoaded(x shr 4, z shr 4) }) continue@layoutProbe
+            if (planned.size > FarmMoleBurrowJournalCodec.MAX_SCENE_RECORDS) {
+                reject("scene_too_large")
+                continue@layoutProbe
+            }
+            val chunks = planned.keys.map { (x, _, z) -> (x shr 4) to (z shr 4) }.distinct()
+            if (chunks.any { (x, z) -> !world.isChunkLoaded(x, z) }) {
+                reject("unloaded_chunk")
+                continue@layoutProbe
+            }
+            val journals = chunks.map { (x, z) -> read(world.getChunkAt(x, z)) }
+            if (journals.any { it == null }) {
+                reject("journal_unreadable")
+                continue@layoutProbe
+            }
+            if (journals.any { it.orEmpty().isNotEmpty() }) {
+                reject("journal_occupied")
+                continue@layoutProbe
+            }
             val blocks = planned.keys.map { (x, y, z) -> world.getBlockAt(x, y, z) }
-            if (!viable(runtime, blocks, shaftPositions, surfaceBlockY, settings.replaceableMaterials)) continue@layoutProbe
+            val failures = viabilityFailures(
+                runtime,
+                blocks,
+                shaftPositions,
+                surfaceBlockY,
+                settings.replaceableMaterials,
+            )
+            if (failures.isNotEmpty()) {
+                failures.forEach { (reason, count) -> reject(reason, count) }
+                continue@layoutProbe
+            }
             val total = planned.size
             val records = planned.map { (position, active) ->
                 val block = world.getBlockAt(position.first, position.second, position.third)
@@ -141,7 +187,7 @@ internal class FarmMoleBurrowWorld(
                     totalRecords = total,
                 )
             }
-            return FarmMoleBurrowScene(
+            return FarmMoleBurrowPreview(FarmMoleBurrowScene(
                 world = world,
                 zoneId = runtime.settings.id,
                 sequence = runtime.state.sequence,
@@ -149,9 +195,9 @@ internal class FarmMoleBurrowWorld(
                 start = Location(world, startX + 0.5, feetY.toDouble(), startZ + 0.5),
                 lair = Location(world, lairX + 0.5, feetY.toDouble(), lairZ + 0.5),
                 records = records,
-            )
+            ), layoutAttempts, rejections)
         }
-        return null
+        return FarmMoleBurrowPreview(null, layoutAttempts, rejections)
     }
 
     fun ensure(runtime: FarmRuntime, surface: FarmPointPosition): Pair<FarmMoleBurrowEnsureResult, FarmMoleBurrowScene?> {
@@ -171,7 +217,20 @@ internal class FarmMoleBurrowWorld(
             beginRestore(runtime.region.world, runtime.settings.id, runtime.state.sequence)
             return FarmMoleBurrowEnsureResult.BUILDING to null
         }
-        val plan = preview(runtime, surface) ?: return FarmMoleBurrowEnsureResult.UNAVAILABLE to null
+        val preview = previewDetailed(runtime, surface)
+        val plan = preview.scene ?: run {
+            logger.warning(
+                "Could not build mole burrow: zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
+                    "surface=${surface.x},${surface.y},${surface.z} probes=${preview.layoutAttempts} " +
+                    "rejections=${preview.rejectionSummary()}",
+            )
+            debug.event(
+                "farm_mole_burrow_unavailable", "zone" to runtime.settings.id,
+                "sequence" to runtime.state.sequence, "probes" to preview.layoutAttempts,
+                "rejections" to preview.rejectionSummary(),
+            )
+            return FarmMoleBurrowEnsureResult.UNAVAILABLE to null
+        }
         if (!commit(plan)) return FarmMoleBurrowEnsureResult.UNAVAILABLE to null
         scenes[SceneKey(plan.world.name, plan.zoneId, plan.sequence)] = plan
         ticket(plan)
@@ -244,21 +303,28 @@ internal class FarmMoleBurrowWorld(
         ticketedChunks.clear()
     }
 
-    private fun viable(
+    private fun viabilityFailures(
         runtime: FarmRuntime,
         blocks: List<Block>,
         shaftPositions: Set<Triple<Int, Int, Int>>,
         surfaceBlockY: Int,
         replaceable: Set<String>,
-    ): Boolean {
-        if (blocks.isEmpty()) return false
-        val chunks = blocks.map(Block::getChunk).distinctBy { it.x to it.z }
-        if (chunks.any { !it.world.isChunkLoaded(it.x, it.z) || read(it)?.isNotEmpty() != false }) return false
-        return blocks.all { block ->
-            runtime.region.contains(block.location) &&
-                replaceableForBurrow(runtime, block, shaftPositions, surfaceBlockY, replaceable) &&
-                block.y > block.world.minHeight + 1 && block.y < block.world.maxHeight - 1
+    ): Map<String, Int> {
+        if (blocks.isEmpty()) return mapOf("empty_plan" to 1)
+        val failures = linkedMapOf<String, Int>()
+        fun reject(reason: String) {
+            failures[reason] = failures.getOrDefault(reason, 0) + 1
         }
+        val footprintY = surfaceBlockY.coerceIn(runtime.region.bounds.minY, runtime.region.bounds.maxY)
+        blocks.forEach { block ->
+            val footprintProbe = Location(block.world, block.x + 0.5, footprintY.toDouble(), block.z + 0.5)
+            if (!runtime.region.contains(footprintProbe)) reject("outside_farm_footprint")
+            if (!replaceableForBurrow(runtime, block, shaftPositions, surfaceBlockY, replaceable)) {
+                reject("material:${block.type.name}")
+            }
+            if (block.y <= block.world.minHeight + 1 || block.y >= block.world.maxHeight - 1) reject("world_height")
+        }
+        return failures
     }
 
     private fun replaceableForBurrow(

@@ -18,7 +18,6 @@ import org.bukkit.inventory.InventoryHolder
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
-import org.bukkit.scheduler.BukkitTask
 import org.bukkit.potion.PotionEffect
 import org.bukkit.potion.PotionEffectType
 import ru.ruscrafting.farms.config.ArcFarmsConfig
@@ -37,7 +36,9 @@ import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import java.util.UUID
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
+import java.util.logging.Level
 import kotlin.math.floor
 
 /** Durable weekly-point ledger and farm-only perk NPC/UI. */
@@ -52,7 +53,7 @@ internal class FarmPerkController(
     private val weeklyContribution: (UUID) -> Long,
     private val currentWeekStart: () -> Long,
     private val clock: () -> Long,
-    private val persistBlocking: () -> Unit,
+    private val persistAsync: () -> CompletableFuture<Unit>,
 ) {
     private class PerkHolder(val zoneId: String) : InventoryHolder {
         lateinit var value: Inventory
@@ -62,10 +63,15 @@ internal class FarmPerkController(
     private val zoneKey = NamespacedKey(plugin, "farm_perk_vendor_zone")
     private val offerKey = NamespacedKey(plugin, "farm_perk_offer")
     private val vendorIds = mutableMapOf<String, UUID>()
-    private val feedbackTasks = mutableMapOf<UUID, BukkitTask>()
+    private val feedbackTasks = mutableMapOf<UUID, Long>()
+    private val pendingPurchases = mutableMapOf<UUID, FarmPlayerPerks>()
+    private var feedbackSequence = 0L
+    private var persistenceGeneration = 0L
     private var ledger = FarmPerkLedgerState()
 
     fun replace(values: Map<UUID, FarmPlayerPerks>) {
+        persistenceGeneration++
+        pendingPurchases.clear()
         ledger = FarmPerkLedgerState(values)
     }
 
@@ -142,7 +148,7 @@ internal class FarmPerkController(
             ?: return true
         val runtime = runtimes().firstOrNull { it.settings.id == holder.zoneId } ?: return true
         when (val result = purchase(player, runtime, type)) {
-            FarmPerkPurchaseUiResult.PURCHASED -> open(player, runtime)
+            FarmPerkPurchaseUiResult.PENDING -> Unit
             is FarmPerkPurchaseUiResult.REJECTED -> showRejectedOffer(
                 player,
                 event.view.topInventory,
@@ -190,15 +196,16 @@ internal class FarmPerkController(
     }
 
     fun cleanup(reason: String) {
+        persistenceGeneration++
+        pendingPurchases.clear()
         Bukkit.getWorlds().asSequence().flatMap { it.entities.asSequence() }.filter(::owns).forEach(Entity::remove)
         vendorIds.clear()
-        feedbackTasks.values.forEach(BukkitTask::cancel)
         feedbackTasks.clear()
         debug.event("farm_perk_vendor_cleanup", "reason" to reason)
     }
 
     internal fun open(player: Player, runtime: FarmRuntime) {
-        feedbackTasks.remove(player.uniqueId)?.cancel()
+        feedbackTasks.remove(player.uniqueId)
         val holder = PerkHolder(runtime.settings.id)
         val inventory = Bukkit.createInventory(holder, 27, locale.render(MessageKey.FARM_PERK_MENU_TITLE, player))
         holder.value = inventory
@@ -256,6 +263,12 @@ internal class FarmPerkController(
     }
 
     private fun purchase(player: Player, runtime: FarmRuntime, type: FarmPerkType): FarmPerkPurchaseUiResult {
+        if (player.uniqueId in pendingPurchases) {
+            return FarmPerkPurchaseUiResult.REJECTED(
+                locale.render(MessageKey.FARM_PERK_SAVE_FAILED_TITLE, player),
+                listOf(locale.render(MessageKey.FARM_PERK_SAVE_FAILED, player)),
+            )
+        }
         val config = offer(runtime, type)
         val before = normalized(player.uniqueId)
         val now = clock()
@@ -293,18 +306,40 @@ internal class FarmPerkController(
         }
         val purchased = decision as FarmPerkPurchaseResult.Purchased
         ledger = FarmPerkLedgerState(ledger.values + (player.uniqueId to purchased.state))
-        val saved = runCatching(persistBlocking).isSuccess
-        if (!saved) {
-            ledger = FarmPerkLedgerState(ledger.values + (player.uniqueId to before))
-            return FarmPerkPurchaseUiResult.REJECTED(
-                locale.render(MessageKey.FARM_PERK_SAVE_FAILED_TITLE, player),
-                listOf(locale.render(MessageKey.FARM_PERK_SAVE_FAILED, player)),
-            )
+        pendingPurchases[player.uniqueId] = purchased.state
+        val generation = persistenceGeneration
+        val token = port.lifecycleToken()
+        runCatching(persistAsync).getOrElse { CompletableFuture.failedFuture(it) }.whenComplete { _, failure ->
+            port.runSync(token) {
+                if (generation != persistenceGeneration || pendingPurchases[player.uniqueId] != purchased.state) return@runSync
+                pendingPurchases.remove(player.uniqueId)
+                if (failure != null) {
+                    if (ledger.values[player.uniqueId] == purchased.state) {
+                        ledger = FarmPerkLedgerState(ledger.values + (player.uniqueId to before))
+                    }
+                    port.log(Level.SEVERE, "Could not persist farm perk purchase for ${player.uniqueId}", failure)
+                    if (player.isOnline) {
+                        port.sendChat(player, MessageKey.FARM_PERK_SAVE_FAILED)
+                        open(player, runtime)
+                    }
+                    return@runSync
+                }
+                if (player.isOnline) {
+                    port.sendChat(
+                        player,
+                        MessageKey.FARM_PERK_PURCHASED,
+                        mapOf("perk" to locale.renderPath("perk.${type.name.lowercase()}.name", player)),
+                    )
+                    player.playSound(player.location, Sound.ENTITY_PLAYER_LEVELUP, 0.8f, 1.15f)
+                    open(player, runtime)
+                }
+                debug.event(
+                    "farm_perk_purchased", "zone" to runtime.settings.id, "player" to player.name,
+                    "perk" to type, "price" to config.price,
+                )
+            }
         }
-        port.sendChat(player, MessageKey.FARM_PERK_PURCHASED, mapOf("perk" to locale.renderPath("perk.${type.name.lowercase()}.name", player)))
-        player.playSound(player.location, Sound.ENTITY_PLAYER_LEVELUP, 0.8f, 1.15f)
-        debug.event("farm_perk_purchased", "zone" to runtime.settings.id, "player" to player.name, "perk" to type, "price" to config.price)
-        return FarmPerkPurchaseUiResult.PURCHASED
+        return FarmPerkPurchaseUiResult.PENDING
     }
 
     private fun showRejectedOffer(
@@ -321,19 +356,20 @@ internal class FarmPerkController(
             item.editMeta { it.persistentDataContainer.set(offerKey, PersistentDataType.STRING, type.name) }
         }
         inventory.setItem(slot, error)
-        feedbackTasks.remove(player.uniqueId)?.cancel()
-        feedbackTasks[player.uniqueId] = Bukkit.getScheduler().runTaskLater(plugin, Runnable {
-            feedbackTasks.remove(player.uniqueId)
-            if (!player.isOnline) return@Runnable
+        val feedbackId = ++feedbackSequence
+        feedbackTasks[player.uniqueId] = feedbackId
+        port.runLater(FEEDBACK_TICKS) {
+            if (!feedbackTasks.remove(player.uniqueId, feedbackId)) return@runLater
+            if (!player.isOnline) return@runLater
             val current = player.openInventory
-            val holder = current.topInventory.holder as? PerkHolder ?: return@Runnable
-            if (holder.zoneId != runtime.settings.id || current.topInventory !== inventory) return@Runnable
-            val liveRuntime = runtimes().firstOrNull { it.settings.id == holder.zoneId } ?: return@Runnable
+            val holder = current.topInventory.holder as? PerkHolder ?: return@runLater
+            if (holder.zoneId != runtime.settings.id || current.topInventory !== inventory) return@runLater
+            val liveRuntime = runtimes().firstOrNull { it.settings.id == holder.zoneId } ?: return@runLater
             val currentType = current.topInventory.getItem(slot)?.itemMeta?.persistentDataContainer
                 ?.get(offerKey, PersistentDataType.STRING)
-            if (currentType != type.name) return@Runnable
+            if (currentType != type.name) return@runLater
             current.topInventory.setItem(slot, offerItem(player, liveRuntime, type, material))
-        }, FEEDBACK_TICKS)
+        }
     }
 
     private fun available(playerId: UUID): Long = (weeklyContribution(playerId) - normalized(playerId).spentPoints).coerceAtLeast(0)
@@ -374,7 +410,7 @@ internal class FarmPerkController(
     }
 
     private sealed interface FarmPerkPurchaseUiResult {
-        data object PURCHASED : FarmPerkPurchaseUiResult
+        data object PENDING : FarmPerkPurchaseUiResult
         data class REJECTED(val name: Component, val lore: List<Component>) : FarmPerkPurchaseUiResult
     }
 

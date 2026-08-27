@@ -26,6 +26,7 @@ import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
+import java.util.concurrent.CompletableFuture
 
 class FarmFieldControllerMockBukkitTest : FunSpec({
     lateinit var paper: MockBukkitTestRuntime
@@ -70,7 +71,7 @@ class FarmFieldControllerMockBukkitTest : FunSpec({
             registry = mockk<FarmBlockRegistry>(relaxed = true),
             points = FarmPointProvider { _, _ -> error("release does not resolve operation points") },
             transitions = FarmTransitionSink { _, _, _ -> },
-            persistBlocking = {},
+            persistAsync = { CompletableFuture.completedFuture(Unit) },
         )
 
         controller.release(runtime, 2) shouldBe FarmPatchReleaseResult(processed = 2, complete = false)
@@ -139,7 +140,7 @@ class FarmFieldControllerMockBukkitTest : FunSpec({
             registry = registry,
             points = FarmPointProvider { _, _ -> error("maintenance does not resolve operation points") },
             transitions = FarmTransitionSink { _, _, _ -> },
-            persistBlocking = {},
+            persistAsync = { CompletableFuture.completedFuture(Unit) },
         )
 
         controller.maintain(runtime, activeWater = false, irrigationDryPlots = setOf(position))
@@ -189,7 +190,7 @@ class FarmFieldControllerMockBukkitTest : FunSpec({
             registry = registry,
             points = FarmPointProvider { _, _ -> error("maintenance does not resolve operation points") },
             transitions = FarmTransitionSink { _, _, _ -> },
-            persistBlocking = {},
+            persistAsync = { CompletableFuture.completedFuture(Unit) },
         )
 
         controller.maintain(runtime, activeWater = false)

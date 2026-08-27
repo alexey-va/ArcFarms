@@ -26,6 +26,10 @@ internal class RuntimeTaskSupervisor(
 
     fun runSync(token: Token, task: () -> Unit): ScheduledTask? = delegate.runSync(token.delegate, task)
 
+    fun runAsync(task: () -> Unit): ScheduledTask? = delegate.runAsync(task)
+
+    fun runAsync(token: Token, task: () -> Unit): ScheduledTask? = delegate.runAsync(token.delegate, task)
+
     fun runLater(delayTicks: Long, task: () -> Unit): ScheduledTask? = delegate.runLater(delayTicks, task)
 
     fun runLater(token: Token, delayTicks: Long, task: () -> Unit): ScheduledTask? =

@@ -15,6 +15,7 @@ import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.EngineResult
 import ru.ruscrafting.farms.network.NetworkSignal
 import java.util.UUID
+import java.util.concurrent.CompletableFuture
 import java.util.logging.Level
 
 /** Common orchestration boundary for independently-owned worksite lifecycles. */
@@ -115,11 +116,12 @@ internal interface WorksiteRuntimePort {
     fun recordCompletion(kind: ActivityKind, contributors: Map<UUID, Int>)
     fun signal(signal: NetworkSignal, activity: ActivityKind, actorName: String?, excludedPlayers: Set<UUID>)
     fun complete(activity: ActivityKind, actorName: String?, excludedPlayers: Set<UUID>)
-    fun persistAsync()
+    fun persistAsync(): CompletableFuture<Unit>
     fun guarded(scope: String, task: () -> Unit)
 
     fun lifecycleToken(): RuntimeTaskSupervisor.Token
     fun runSync(token: RuntimeTaskSupervisor.Token, task: () -> Unit): Boolean
+    fun runAsync(token: RuntimeTaskSupervisor.Token, task: () -> Unit): Boolean
     fun runLater(delayTicks: Long, task: () -> Unit): Boolean
     fun runLater(token: RuntimeTaskSupervisor.Token, delayTicks: Long, task: () -> Unit): Boolean
     fun log(level: Level, message: String, failure: Throwable? = null)

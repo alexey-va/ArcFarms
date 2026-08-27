@@ -45,6 +45,7 @@ import ru.ruscrafting.farms.paper.farm.scene.FarmContractSceneController
 import ru.ruscrafting.farms.paper.farm.shift.FarmOrderCycleController
 import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyController
 import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyKind
+import java.util.concurrent.CompletableFuture
 
 /**
  * Operator-facing farm scenarios. This class orchestrates feature APIs but owns
@@ -75,7 +76,7 @@ internal class FarmGameplayAdminService(
     private val registry: FarmBlockRegistry,
     private val transitions: FarmTransitionSink,
     private val shiftLauncher: FarmShiftLauncher,
-    private val persistBlocking: () -> Unit,
+    private val persistAsync: () -> CompletableFuture<Unit>,
     private val clock: () -> Long,
 ) {
     fun setStage(player: Player, zoneId: String, stage: String): Boolean {
@@ -106,7 +107,7 @@ internal class FarmGameplayAdminService(
         }
         transitions.apply(runtime, EngineResult(runtime.state, true, events = events), player)
         if (normalized == "complete") completeDelivery(runtime, player)
-        persistBlocking()
+        persistAsync()
         port.sendChat(player, MessageKey.ADMIN_STAGE_SET, mapOf("stage" to locale.renderPath("admin.stage.$normalized", player)))
         return true
     }
@@ -312,7 +313,7 @@ internal class FarmGameplayAdminService(
             )
             return false
         }
-        persistBlocking()
+        persistAsync()
         port.sendChat(player, MessageKey.ADMIN_STAGE_SET, mapOf("stage" to locale.renderPath("admin.stage.$stage", player)))
         return true
     }

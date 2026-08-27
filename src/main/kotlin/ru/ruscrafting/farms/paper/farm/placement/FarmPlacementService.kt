@@ -139,10 +139,6 @@ internal class FarmPlacementService(
     fun safeGroundCandidates(runtime: FarmRuntime, sources: Collection<Location>, radius: Int): List<FarmDeliveryPosition> =
         groundCandidates(runtime, sources, radius)
 
-    /** Safe ground with no motion-blocking block above the entity's feet. */
-    fun openSkyGroundCandidates(runtime: FarmRuntime, sources: Collection<Location>, radius: Int): List<FarmDeliveryPosition> =
-        groundCandidates(runtime, sources, radius)
-
     fun isOpenToSky(location: Location): Boolean = FarmSurfacePolicy.isSurfaceSpawn(location)
 
     private fun groundCandidates(

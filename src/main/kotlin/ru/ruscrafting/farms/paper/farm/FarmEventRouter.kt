@@ -64,7 +64,7 @@ import ru.ruscrafting.farms.paper.farm.recovery.FarmFixedCropRecoveryController
 import ru.ruscrafting.farms.paper.farm.scene.FarmContractSceneController
 import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyController
 import ru.ruscrafting.farms.paper.toFarmPlotPosition
-import java.util.logging.Level
+import java.util.concurrent.CompletableFuture
 
 /** Thin, capability-oriented Paper listener router for farm-owned interactions. */
 internal class FarmEventRouter(
@@ -92,7 +92,8 @@ internal class FarmEventRouter(
     private val hud: FarmHudController,
     private val auxiliary: WorksiteModuleRegistry,
     private val transitions: FarmTransitionSink,
-    private val persistBlocking: () -> Unit,
+    private val shiftStartPending: (String) -> Boolean,
+    private val persistAsync: () -> CompletableFuture<Unit>,
     private val clock: () -> Long,
 ) {
     fun onBreakLowest(event: BlockBreakEvent) {
@@ -124,6 +125,10 @@ internal class FarmEventRouter(
         }
         if (auxiliary.onBreakHigh(ActivityKind.MINE, event)) return
         farmAt(event.block.location)?.let { runtime ->
+            if (shiftStartPending(runtime.settings.id)) {
+                event.isCancelled = true
+                return
+            }
             port.traceBlockBreak(event, ActivityKind.FARM, runtime.settings.id)
             event.isCancelled = true
             if (!special.handleCropBreak(runtime, event.player, event.block)) harvest.onBreak(event, runtime)
@@ -135,7 +140,8 @@ internal class FarmEventRouter(
     fun onBreakMonitor(event: BlockBreakEvent) = auxiliary.onBreakMonitor(event)
 
     fun onBlockDrop(event: BlockDropItemEvent) {
-        farmAt(event.blockState.location)?.let { harvest.onBlockDrop(event, it) }
+        farmAt(event.blockState.location)?.takeUnless { shiftStartPending(it.settings.id) }
+            ?.let { harvest.onBlockDrop(event, it) }
     }
 
     fun onInteractLowest(event: PlayerInteractEvent) {
@@ -151,6 +157,10 @@ internal class FarmEventRouter(
         if (worldAdmin.isEditing(event.player)) return
         val clicked = event.clickedBlock ?: return
         val runtime = farmAt(clicked.location) ?: return
+        if (shiftStartPending(runtime.settings.id)) {
+            deny(event)
+            return
+        }
         if (event.action == Action.PHYSICAL && clicked.type == Material.FARMLAND) {
             deny(event)
             return
@@ -188,6 +198,10 @@ internal class FarmEventRouter(
         val clicked = event.clickedBlock ?: return
         val player = event.player
         farmAt(clicked.location)?.let { runtime ->
+            if (shiftStartPending(runtime.settings.id)) {
+                deny(event)
+                return
+            }
             if (drought.handleInteraction(event, runtime) || field.handleInteraction(event, runtime, clicked, player)) return
         }
         farmAt(clicked.location)?.takeIf {
@@ -471,14 +485,7 @@ internal class FarmEventRouter(
         val previous = runtime.state
         val removal = FarmAdminEdit.removePlot(previous, position, runtime.settings.fieldCompletionPercent)
         runtime.state = removal.state
-        try {
-            persistBlocking()
-        } catch (failure: Exception) {
-            runtime.state = previous
-            port.log(Level.SEVERE, "Could not persist admin removal of managed farm plot $position", failure)
-            port.sendChat(event.player, MessageKey.GENERIC_ERROR)
-            return
-        }
+        persistAsync()
         val type = event.block.type
         val removed = ledger.remove(soil)
         registry.removeBeds(runtime.settings.id, listOf(position))

@@ -23,6 +23,16 @@ import ru.ruscrafting.farms.domain.ShiftOutcome
 import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
+
+data class ArcFarmsPersistenceHealth(
+    val pendingRequests: Int,
+    val completedRequests: Long,
+    val failedRequests: Long,
+    val lastDurationMillis: Long,
+    val maxDurationMillis: Long,
+)
 
 class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
     private val store = AtomicJsonStore(
@@ -32,6 +42,11 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
         validate = ::validateState,
     )
     private val writer = CoalescingAsyncWriter(store::saveAsync)
+    private val pendingRequests = AtomicInteger()
+    private val completedRequests = AtomicLong()
+    private val failedRequests = AtomicLong()
+    private val lastDurationMillis = AtomicLong()
+    private val maxDurationMillis = AtomicLong()
 
     fun load(): ArcFarmsState {
         val state = store.load()
@@ -69,7 +84,25 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
         }
     }
 
-    fun saveAsync(state: ArcFarmsState): CompletableFuture<Unit> = writer.submit(state)
+    fun saveAsync(state: ArcFarmsState): CompletableFuture<Unit> {
+        val started = System.nanoTime()
+        pendingRequests.incrementAndGet()
+        return writer.submit(state).whenComplete { _, failure ->
+            pendingRequests.decrementAndGet()
+            val elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
+            lastDurationMillis.set(elapsed)
+            maxDurationMillis.accumulateAndGet(elapsed, ::maxOf)
+            if (failure == null) completedRequests.incrementAndGet() else failedRequests.incrementAndGet()
+        }
+    }
+
+    fun health(): ArcFarmsPersistenceHealth = ArcFarmsPersistenceHealth(
+        pendingRequests = pendingRequests.get(),
+        completedRequests = completedRequests.get(),
+        failedRequests = failedRequests.get(),
+        lastDurationMillis = lastDurationMillis.get(),
+        maxDurationMillis = maxDurationMillis.get(),
+    )
 
     fun saveBlocking(state: ArcFarmsState) {
         saveAsync(state).get(SAVE_TIMEOUT_SECONDS, TimeUnit.SECONDS)

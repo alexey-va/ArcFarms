@@ -40,6 +40,7 @@ import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
 import java.util.UUID
+import java.util.logging.Level
 
 /** Bounded, non-persistent flock whose crop damage is restored by the shared incident journal. */
 internal class FarmBirdIncident(
@@ -68,7 +69,18 @@ internal class FarmBirdIncident(
         val available = beds.discover(runtime)
         val total = runtime.settings.specialIncidents.birdCount(available.size)
         val anchors = FarmBirdPlanner.select(available, total, runtime.state.sequence)
-        if (anchors.isEmpty()) return false
+        if (anchors.isEmpty()) {
+            port.log(
+                Level.WARNING,
+                "Could not start farm bird incident: zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
+                    "reason=no_bird_anchors discovered_beds=${available.size} requested=$total",
+            )
+            debug.event(
+                "farm_birds_unavailable", "zone" to runtime.settings.id, "sequence" to runtime.state.sequence,
+                "reason" to "no_bird_anchors", "beds" to available.size, "requested" to total,
+            )
+            return false
+        }
         runtime.state = runtime.state.copy(
             incidentRequired = anchors.size,
             specialIncident = FarmSpecialIncidentState(plots = anchors),

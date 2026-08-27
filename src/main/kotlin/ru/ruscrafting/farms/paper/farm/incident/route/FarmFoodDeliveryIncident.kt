@@ -41,6 +41,7 @@ import ru.ruscrafting.farms.paper.farm.admin.FarmRouteAdminService
 import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
 import java.util.UUID
 import java.util.random.RandomGenerator
+import java.util.logging.Level
 import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.sin
@@ -63,6 +64,7 @@ internal class FarmFoodDeliveryIncident(
         val loadIds: MutableList<UUID> = mutableListOf(),
         var riderId: UUID? = null,
         var spawnedMonsters: Int = 0,
+        val monsterIds: MutableSet<UUID> = linkedSetOf(),
         val monsterGoal: Int,
         var lastWaveAt: Long = 0,
     )
@@ -76,8 +78,27 @@ internal class FarmFoodDeliveryIncident(
 
     fun initialize(runtime: FarmRuntime): Boolean {
         if (!active(runtime)) return false
-        val selected = selectedRoute(runtime) ?: return false
-        if (selected.route.points.first().world != runtime.region.world.name) return false
+        val selected = selectedRoute(runtime) ?: run {
+            port.log(
+                Level.WARNING,
+                "Could not start farm food delivery: zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
+                    "reason=no_eligible_route",
+            )
+            debug.event(
+                "farm_food_delivery_unavailable", "zone" to runtime.settings.id,
+                "sequence" to runtime.state.sequence, "reason" to "no_eligible_route",
+            )
+            return false
+        }
+        if (selected.route.points.first().world != runtime.region.world.name) {
+            port.log(
+                Level.WARNING,
+                "Could not start farm food delivery: zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
+                    "reason=route_world_mismatch route=${selected.name} route_world=${selected.route.points.first().world} " +
+                    "farm_world=${runtime.region.world.name}",
+            )
+            return false
+        }
         if (runtime.state.specialIncident == null) {
             transitions.apply(
                 runtime,
@@ -200,6 +221,8 @@ internal class FarmFoodDeliveryIncident(
 
     fun onDeath(event: EntityDeathEvent): Boolean {
         if (!owns(event.entity) || role(event.entity) != ROLE_MONSTER) return false
+        val zoneId = event.entity.persistentDataContainer.get(zoneKey, PersistentDataType.STRING)
+        zoneId?.let(sessions::get)?.monsterIds?.remove(event.entity.uniqueId)
         event.drops.clear()
         event.droppedExp = 0
         return true
@@ -304,7 +327,11 @@ internal class FarmFoodDeliveryIncident(
         val rider = horse.passengers.filterIsInstance<Player>().firstOrNull() ?: return
         val config = runtime.settings.routeDelivery
         if (session.spawnedMonsters >= session.monsterGoal || config.monsterMaxAlive == 0) return
-        val alive = horse.world.entities.count { owns(it) && role(it) == ROLE_MONSTER && it.isValid }
+        session.monsterIds.removeIf { entityId ->
+            val entity = Bukkit.getEntity(entityId)
+            entity == null || !entity.isValid || entity.isDead
+        }
+        val alive = session.monsterIds.size
         if (alive >= config.monsterMaxAlive || now - session.lastWaveAt < config.monsterIntervalSeconds * 1_000L) return
         val ahead = (runtime.state.incidentProgress + 3).coerceAtMost(points.lastIndex)
         val anchor = location(points[ahead])
@@ -316,6 +343,7 @@ internal class FarmFoodDeliveryIncident(
         monster.removeWhenFarAway = true
         monster.target = rider
         mark(monster, runtime, ROLE_MONSTER)
+        session.monsterIds += monster.uniqueId
         session.spawnedMonsters++
         session.lastWaveAt = now
         rider.playSound(rider.location, Sound.ENTITY_HUSK_AMBIENT, 0.8f, 0.75f)

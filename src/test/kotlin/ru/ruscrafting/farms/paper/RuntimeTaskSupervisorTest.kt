@@ -61,6 +61,20 @@ class RuntimeTaskSupervisorTest : FunSpec({
         tasks.trackedCount() shouldBe 0
     }
 
+    test("async work is owned by the current runtime epoch") {
+        val scheduler = TestTaskScheduler()
+        val tasks = RuntimeTaskSupervisor(scheduler)
+        var executions = 0
+        tasks.activate()
+
+        tasks.runAsync(tasks.token()) { executions++ }
+        tasks.cancelAll()
+        scheduler.executeImmediate()
+
+        executions shouldBe 0
+        tasks.trackedCount() shouldBe 0
+    }
+
     test("shutdown cancels repeating work") {
         val scheduler = TestTaskScheduler()
         val tasks = RuntimeTaskSupervisor(scheduler)

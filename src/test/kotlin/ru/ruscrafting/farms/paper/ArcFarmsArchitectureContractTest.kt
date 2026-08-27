@@ -25,6 +25,44 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         source.contains("private val worksitePort = PaperWorksiteRuntimePort") shouldBe true
     }
 
+    test("gameplay code cannot schedule directly through Bukkit") {
+        val productionRoot = repositoryRoot.resolve("src/main/kotlin")
+        val offenders = Files.walk(productionRoot).use { paths ->
+            paths.filter { Files.isRegularFile(it) && it.toString().endsWith(".kt") }
+                .filter { Files.readString(it).contains("Bukkit.getScheduler()") }
+                .map(productionRoot::relativize)
+                .toList()
+        }
+
+        offenders shouldBe emptyList()
+    }
+
+    test("food delivery hot path does not scan every entity in the world") {
+        val source = Files.readString(
+            farmRoot.resolve("incident/route/FarmFoodDeliveryIncident.kt"),
+        )
+
+        source.contains("horse.world.entities") shouldBe false
+    }
+
+    test("animal rescue is planned only from indexed outdoor beds") {
+        val source = Files.readString(farmRoot.resolve("care/FarmCarePlanService.kt"))
+
+        source.contains("placement.bedCandidates(runtime, sources") shouldBe true
+        source.contains("placement.openSkyGroundCandidates(runtime, sources") shouldBe false
+    }
+
+    test("gameplay owners cannot block the server thread on the state store") {
+        val offenders = Files.walk(farmRoot).use { paths ->
+            paths.filter { Files.isRegularFile(it) && it.toString().endsWith(".kt") }
+                .filter { Files.readString(it).contains("persistBlocking") }
+                .map(farmRoot::relativize)
+                .toList()
+        }
+
+        offenders shouldBe emptyList()
+    }
+
     test("application facade stays below its final size ceiling") {
         val lines = Files.readAllLines(servicePath).size
 

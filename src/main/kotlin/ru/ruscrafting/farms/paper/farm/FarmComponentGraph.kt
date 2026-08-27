@@ -45,6 +45,7 @@ import ru.ruscrafting.farms.persistence.FarmRouteRepository
 import ru.ruscrafting.farms.persistence.FixedFarmCropJournal
 import java.util.random.RandomGenerator
 import java.util.UUID
+import java.util.concurrent.CompletableFuture
 
 /**
  * Composition-only graph for the farm vertical slices. It contains no listener,
@@ -68,7 +69,7 @@ internal class FarmComponentGraph(
     random: RandomGenerator,
     weeklyContribution: (UUID) -> Long,
     currentWeekStart: () -> Long,
-    persistBlocking: () -> Unit,
+    persistAsync: () -> CompletableFuture<Unit>,
 ) {
     val runtimes = FarmRuntimeRegistry()
     private val ledger = FarmBlockLedger(plugin)
@@ -86,6 +87,7 @@ internal class FarmComponentGraph(
         overrides = pointService::snapshot,
         random = random,
         moleBurrow = moleBurrowWorld,
+        log = port::log,
     )
     private val points = FarmPointProvider { runtime, kind ->
         carePlans.fixturePoint(runtime, kind) ?: pointService.resolveBase(runtime, kind)
@@ -110,7 +112,7 @@ internal class FarmComponentGraph(
         registry = blockRegistry,
         points = points,
         transitions = transitions,
-        persistBlocking = persistBlocking,
+        persistAsync = persistAsync,
     )
     val moles = FarmMoleBurrowController(
         plugin = plugin,
@@ -168,7 +170,7 @@ internal class FarmComponentGraph(
         weeklyContribution = weeklyContribution,
         currentWeekStart = currentWeekStart,
         clock = clock,
-        persistBlocking = persistBlocking,
+        persistAsync = persistAsync,
     )
     val rewards = FarmRewardService(
         plugin = plugin,
@@ -177,7 +179,7 @@ internal class FarmComponentGraph(
         debug = debug,
         port = port,
         supervisor = taskSupervisor,
-        persistBlocking = persistBlocking,
+        persistAsync = persistAsync,
         operational = port::isOperational,
         playerMultiplier = { playerId, runtime ->
             perks.rewardMultiplier(playerId, runtime.settings.perks.rewardBonusPercent)
@@ -296,7 +298,7 @@ internal class FarmComponentGraph(
         hud = hud,
         points = points,
     )
-    val orderCycle = FarmOrderCycleController(port, persistBlocking)
+    val orderCycle = FarmOrderCycleController(port, persistAsync)
     val worldAdmin = FarmWorldAdminService(
         plugin = plugin,
         dataFolder = plugin.dataFolder.toPath(),
@@ -315,7 +317,7 @@ internal class FarmComponentGraph(
         runtimes = runtimes::snapshot,
         paused = orderCycle::isPaused,
         setPaused = orderCycle::set,
-        persistBlocking = persistBlocking,
+        persistAsync = persistAsync,
         clock = clock,
     )
     private val shiftStart = FarmShiftStartService(
@@ -327,7 +329,7 @@ internal class FarmComponentGraph(
         field = field,
         carePlans = carePlans,
         transitions = transitions,
-        persistBlocking = persistBlocking,
+        persistAsync = persistAsync,
         random = random,
     )
     val module = FarmModule(
@@ -399,7 +401,7 @@ internal class FarmComponentGraph(
         registry = blockRegistry,
         transitions = transitions,
         shiftLauncher = launches,
-        persistBlocking = persistBlocking,
+        persistAsync = persistAsync,
         clock = clock,
     )
     val events = FarmEventRouter(
@@ -427,7 +429,8 @@ internal class FarmComponentGraph(
         hud = hud,
         auxiliary = auxiliary,
         transitions = transitions,
-        persistBlocking = persistBlocking,
+        shiftStartPending = shiftStart::isPending,
+        persistAsync = persistAsync,
         clock = clock,
     )
 

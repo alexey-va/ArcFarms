@@ -32,6 +32,19 @@ import java.util.UUID
 import java.util.concurrent.ExecutionException
 
 class ArcFarmsStateRepositoryTest : FunSpec({
+    test("persistence health tracks completed asynchronous requests without retaining backlog") {
+        val root = Files.createTempDirectory("arcfarms-state-health-test")
+        ArcFarmsStateRepository(root).use { repository ->
+            repository.saveAsync(ArcFarmsState()).get()
+
+            repository.health().also { health ->
+                health.pendingRequests shouldBe 0
+                health.completedRequests shouldBe 1
+                health.failedRequests shouldBe 0
+            }
+        }
+    }
+
     test("legacy state loads with an empty temporary perk ledger") {
         val root = Files.createTempDirectory("arcfarms-state-perks-legacy-test")
         val data = root.resolve("data")
