@@ -4,7 +4,6 @@ import org.bukkit.Bukkit
 import org.bukkit.Color
 import org.bukkit.Location
 import org.bukkit.NamespacedKey
-import org.bukkit.Particle
 import org.bukkit.Sound
 import org.bukkit.entity.Entity
 import org.bukkit.entity.EntityType
@@ -25,7 +24,6 @@ import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.FarmCarePlanner
-import ru.ruscrafting.farms.domain.FarmCarePlotAssignment
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareTarget
 import ru.ruscrafting.farms.domain.FarmCareType
@@ -36,7 +34,6 @@ import ru.ruscrafting.farms.domain.FarmPollenCharges
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmSeederStage
 import ru.ruscrafting.farms.domain.FarmShiftEngine
-import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.domain.seederStage
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.BukkitFarmEntityLookup
@@ -52,9 +49,9 @@ import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
+import ru.ruscrafting.farms.paper.farm.care.irrigation.FarmIrrigationController
 import ru.ruscrafting.farms.paper.farm.care.mole.FarmMoleBurrowController
 import ru.ruscrafting.farms.paper.farm.placement.FarmOpenSkyPolicy
-import ru.ruscrafting.farms.paper.farm.field.FarmFieldController
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.logging.Level
@@ -75,7 +72,6 @@ internal class FarmCareController(
     private val port: WorksiteRuntimePort,
     ledger: FarmBlockLedger,
     private val registry: FarmBlockRegistry,
-    private val field: FarmFieldController,
     private val plans: FarmCarePlanService,
     private val moles: FarmMoleBurrowController,
     private val transitions: FarmTransitionSink,
@@ -91,6 +87,7 @@ internal class FarmCareController(
         transitions = transitions,
         targets = FarmCareTargetSpawner(::ensureFarmCareTarget),
     )
+    private val irrigation = FarmIrrigationController(settings, debug, port, transitions)
     private val seederRig = FarmSeederRigManager(plugin)
     private val machineBlocks = FarmMachineBlockProcessor(ledger)
     private val entities = mutableMapOf<FarmCareEntityKey, MutableSet<UUID>>()
@@ -182,6 +179,7 @@ internal class FarmCareController(
         entities.clear()
         animalFollowers.clear()
         disease.clearAll()
+        irrigation.clearAll()
         reconciledSequences.clear()
         pollenCharges.clearAll()
         debug.event("farm_care_cleanup", "reason" to reason)
@@ -293,63 +291,17 @@ internal class FarmCareController(
             FarmCareRole.SEEDER_HORSE -> return
             FarmCareRole.PEN -> return
         }
+        if (role == FarmCareRole.VALVE) {
+            if (irrigation.start(runtime, target, player)) {
+                presentation.feedback(player, entity.location, role, false)
+            }
+            return
+        }
         val result = FarmShiftEngine.advanceCare(runtime.state, target.id, player.uniqueId)
         if (!result.accepted) return
         val completed = result.state.careTargets.firstOrNull { it.id == target.id }?.complete != false
-        if (role == FarmCareRole.VALVE) {
-            showIrrigationFlow(runtime, result.state, target, player)
-            removeEntities(FarmCareEntityKey(zoneId, target.id), "irrigation_valve_opened")
-        }
         presentation.feedback(player, entity.location, role, completed)
         transitions.apply(runtime, result, player)
-    }
-
-    private fun showIrrigationFlow(
-        runtime: FarmRuntime,
-        state: FarmShiftState,
-        target: FarmCareTarget,
-        player: Player,
-    ) {
-        val watered = FarmCarePlotAssignment.assignedTo(
-            runtime.state.preparationPatch,
-            runtime.state.careTargets.filter { it.role == FarmCareRole.VALVE },
-            target.id,
-        )
-        watered.forEach { position ->
-            position.block()?.let(field::wet)
-        }
-        debug.event(
-            "farm_irrigation_valve_opened",
-            "zone" to runtime.settings.id,
-            "target" to target.id,
-            "beds" to watered.size,
-            "player" to player.name,
-        )
-        if (settings().particles) {
-            val previous = state.careTargets
-                .filter { it.role == FarmCareRole.VALVE && it.id < target.id }
-                .maxByOrNull(FarmCareTarget::id)
-                ?.position
-                ?: target.position
-            if (previous.world == target.position.world && player.world.name == previous.world) {
-                val start = Location(player.world, previous.x, previous.y + 0.15, previous.z)
-                val end = Location(player.world, target.position.x, target.position.y + 0.15, target.position.z)
-                val delta = end.toVector().subtract(start.toVector())
-                repeat(14) { index ->
-                    player.spawnParticle(
-                        Particle.DUST,
-                        start.clone().add(delta.clone().multiply(index / 13.0)),
-                        1,
-                        0.0,
-                        0.0,
-                        0.0,
-                        0.0,
-                        Particle.DustOptions(Color.fromRGB(69, 200, 245), 1.15f),
-                    )
-                }
-            }
-        }
-        if (settings().sounds) player.playSound(target.position.let { Location(player.world, it.x, it.y, it.z) }, Sound.BLOCK_WATER_AMBIENT, 0.65f, 1.2f)
     }
 
     fun ensure(runtime: FarmRuntime) {
@@ -373,7 +325,7 @@ internal class FarmCareController(
                 removeEntities(FarmCareEntityKey(runtime.settings.id, target.id), "seeder_route_removed")
                 return@forEach
             }
-            if (target.complete && target.role !in setOf(FarmCareRole.HIVE, FarmCareRole.VALVE)) {
+            if (target.complete && target.role != FarmCareRole.HIVE) {
                 removeEntities(FarmCareEntityKey(runtime.settings.id, target.id), "target_complete")
                 return@forEach
             }
@@ -703,6 +655,13 @@ internal class FarmCareController(
 
     fun updateDisease(runtime: FarmRuntime, now: Long) = disease.update(runtime, now)
 
+    fun processIrrigation() = irrigation.process(runtimes())
+
+    fun irrigationDryPlots(runtime: FarmRuntime): Set<FarmPlotPosition> = irrigation.dryPlots(runtime)
+
+    fun onMoistureChange(event: org.bukkit.event.block.MoistureChangeEvent, runtime: FarmRuntime): Boolean =
+        irrigation.onMoistureChange(event, runtime)
+
     fun onMove(event: org.bukkit.event.player.PlayerMoveEvent) = moles.onMove(event)
 
     fun onPlayerDeath(player: Player) = moles.onPlayerDeath(player)
@@ -767,6 +726,7 @@ internal class FarmCareController(
         entities.keys.filter { it.zoneId == runtime.settings.id }.toList().forEach { removeEntities(it, reason) }
         pollenCharges.clear(runtime.settings.id, runtime.state.sequence)
         disease.clear(runtime.settings.id)
+        irrigation.clear(runtime)
         reconciledSequences.remove(runtime.settings.id)
     }
 

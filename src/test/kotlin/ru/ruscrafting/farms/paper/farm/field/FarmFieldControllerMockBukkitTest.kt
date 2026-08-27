@@ -5,6 +5,7 @@ import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import org.bukkit.Material
+import org.bukkit.block.data.type.Farmland
 import org.mockbukkit.mockbukkit.world.WorldMock
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.config.ArcFarmsConfig
@@ -100,6 +101,50 @@ class FarmFieldControllerMockBukkitTest : FunSpec({
         controller.finishAutomaticQuota(runtime, 3) shouldBe 3
         plots.all { world.getBlockAt(it.x, it.y + 1, it.z).type == Material.WHEAT } shouldBe true
         ledger.blockRecords(world.getChunkAt(0, 0)).all { it.activeCropData?.startsWith("minecraft:wheat") == true } shouldBe true
+    }
+
+    test("ordinary maintenance does not hydrate soil owned by an irrigation wave") {
+        val position = FarmPlotPosition(world.name, 2, 64, 2)
+        val soil = world.getBlockAt(position.x, position.y, position.z).apply {
+            type = Material.FARMLAND
+            blockData = (blockData as Farmland).also { it.moisture = 0 }
+        }
+        val zone = mockk<FarmZoneSettings>(relaxed = true) {
+            every { id } returns "farm"
+            every { crops } returns setOf("WHEAT")
+        }
+        val runtime = FarmRuntime(
+            settings = zone,
+            region = CuboidActivityRegion(world, "farm", CuboidBounds(0, 0, 0, 15, 128, 15)),
+            orders = emptyMap(),
+            orderList = emptyList(),
+            rules = mockk(relaxed = true),
+            state = FarmShiftState(
+                phase = FarmPhase.CARE,
+                careType = FarmCareType.IRRIGATION,
+                preparationPatch = listOf(position),
+                preparationReleased = true,
+            ),
+        )
+        val registry = mockk<FarmBlockRegistry>(relaxed = true) {
+            every { beds("farm") } returns setOf(position)
+        }
+        val controller = FarmFieldController(
+            settings = { mockk<ArcFarmsConfig>(relaxed = true) },
+            debug = ArcFarmsDebug({ false }) {},
+            port = mockk<WorksiteRuntimePort>(relaxed = true),
+            ledger = FarmBlockLedger(paper.createSimplePlugin("FarmIrrigationMaintenanceTest")),
+            registry = registry,
+            points = FarmPointProvider { _, _ -> error("maintenance does not resolve operation points") },
+            transitions = FarmTransitionSink { _, _, _ -> },
+            persistBlocking = {},
+        )
+
+        controller.maintain(runtime, activeWater = false, irrigationDryPlots = setOf(position))
+        (soil.blockData as Farmland).moisture shouldBe 0
+
+        controller.maintain(runtime, activeWater = false)
+        (soil.blockData as Farmland).moisture shouldBe (soil.blockData as Farmland).maximumMoisture
     }
 
     test("patch selection uses a sufficient durable index without a local world scan") {

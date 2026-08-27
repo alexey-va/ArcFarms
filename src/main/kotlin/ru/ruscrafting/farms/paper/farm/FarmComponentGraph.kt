@@ -131,7 +131,6 @@ internal class FarmComponentGraph(
         port = port,
         ledger = ledger,
         registry = blockRegistry,
-        field = field,
         plans = carePlans,
         moles = moles,
         transitions = transitions,

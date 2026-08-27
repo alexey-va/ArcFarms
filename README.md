@@ -53,8 +53,10 @@ Every story is spread across the active bed instead of clustering around its
 center:
 
 - weeds place several stubborn glowing roots that need two hoe strikes each;
-- irrigation exposes a chain of valves that must be opened in order; each
-  opened valve stays green, wets its linked beds, and extends the visible flow;
+- irrigation first dries the selected farmland, then exposes a chain of valves
+  that must be opened in order. Each valve sends a bounded circular particle
+  front across its assigned beds; the soil hydrates behind the front and the
+  target counts only after the wave has actually completed;
 - pollination asks the player to collect two charges from a hive and carry them
   to distant flower patches, returning to the hive as needed;
 - storm preparation distributes cover anchors around the actual field corners;

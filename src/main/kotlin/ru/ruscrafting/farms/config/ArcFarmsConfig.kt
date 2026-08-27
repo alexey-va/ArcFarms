@@ -87,6 +87,7 @@ data class FarmZoneSettings(
     val careRadius: Int,
     val careTypes: List<FarmCareType>,
     val careTargetCount: Int,
+    val irrigation: FarmIrrigationSettings,
     val appleTargetCount: Int,
     val applePlacementCount: Int,
     val appleSpawnsPerUpdate: Int,
@@ -322,6 +323,15 @@ data class FarmMoleBurrowSettings(
     val lightLevel: Int,
     val replaceableMaterials: Set<String>,
     val lairVisual: FarmCareVisualSettings,
+)
+
+data class FarmIrrigationSettings(
+    val dryBlocksPerTick: Int,
+    val waveBlocksPerTick: Int,
+    val waveStartDelayTicks: Int,
+    val ringIntervalTicks: Int,
+    val ringWidth: Double,
+    val particleSpacing: Double,
 )
 
 data class FarmSupplyPointSettings(
@@ -939,6 +949,18 @@ class ArcFarmsConfig private constructor(
                     careRadius = section.int("care-radius", 10).checked("care-radius", 3, 24),
                     careTypes = careTypes,
                     careTargetCount = section.int("care-targets", 4).checked("care-targets", 2, 8),
+                    irrigation = FarmIrrigationSettings(
+                        dryBlocksPerTick = section.int("irrigation.dry-blocks-per-tick", 24)
+                            .checked("irrigation.dry-blocks-per-tick", 1, 128),
+                        waveBlocksPerTick = section.int("irrigation.wave-blocks-per-tick", 24)
+                            .checked("irrigation.wave-blocks-per-tick", 1, 128),
+                        waveStartDelayTicks = section.int("irrigation.wave-start-delay-ticks", 4)
+                            .checked("irrigation.wave-start-delay-ticks", 0, 40),
+                        ringIntervalTicks = section.int("irrigation.ring-interval-ticks", 2)
+                            .checked("irrigation.ring-interval-ticks", 1, 20),
+                        ringWidth = section.finiteDouble("irrigation.ring-width", 1.25, 0.5, 4.0),
+                        particleSpacing = section.finiteDouble("irrigation.particle-spacing", 1.25, 0.5, 4.0),
+                    ),
                     appleTargetCount = section.int("apple-targets", 10).checked("apple-targets", 3, 256),
                     applePlacementCount = section.int("apple-placement-count", 40)
                         .checked("apple-placement-count", 3, 512),

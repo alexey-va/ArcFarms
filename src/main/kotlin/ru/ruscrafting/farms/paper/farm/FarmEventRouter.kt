@@ -337,7 +337,9 @@ internal class FarmEventRouter(
     }
 
     fun onMoistureChange(event: MoistureChangeEvent) {
-        farmAt(event.block.location)?.let { drought.onMoistureChange(event, it) }
+        farmAt(event.block.location)?.let { runtime ->
+            if (!care.onMoistureChange(event, runtime)) drought.onMoistureChange(event, runtime)
+        }
     }
 
     fun onDrop(event: PlayerDropItemEvent) {

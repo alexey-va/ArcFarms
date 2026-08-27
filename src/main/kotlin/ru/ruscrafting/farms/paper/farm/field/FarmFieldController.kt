@@ -474,7 +474,11 @@ internal class FarmFieldController(
         patchRestoreProgress.remove(runtime.settings.id)
     }
 
-    fun maintain(runtime: FarmRuntime, activeWater: Boolean) {
+    fun maintain(
+        runtime: FarmRuntime,
+        activeWater: Boolean,
+        irrigationDryPlots: Set<FarmPlotPosition> = emptySet(),
+    ) {
         if (runtime.state.preparationPatch.isNotEmpty() && !runtime.state.preparationReleased) {
             return
         }
@@ -508,6 +512,11 @@ internal class FarmFieldController(
                 if (!above.type.isAir && (above.type != Material.WATER || !activeWater)) {
                     above.setType(Material.AIR, false)
                 }
+                return@forEach
+            }
+            if (position in irrigationDryPlots) {
+                // The irrigation owner changes moisture in bounded radial slices.
+                // Do not let ordinary field maintenance hydrate the dry front early.
                 return@forEach
             }
             val awaitingMachine = runtime.state.phase == FarmPhase.CARE && runtime.state.careType == FarmCareType.SEEDER

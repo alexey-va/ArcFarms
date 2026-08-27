@@ -148,6 +148,12 @@ class ArcFarmsConfigTest : FunSpec({
             setOf("WHEAT", "CARROTS", "POTATOES", "BEETROOTS", "SWEET_BERRY_BUSH", "MELON", "PUMPKIN")
         settings.farms.single().careTypes shouldContainExactly FarmCareType.entries.filterNot { it == FarmCareType.SEEDER }
         settings.farms.single().careTargetCount shouldBe 4
+        settings.farms.single().irrigation.dryBlocksPerTick shouldBe 24
+        settings.farms.single().irrigation.waveBlocksPerTick shouldBe 24
+        settings.farms.single().irrigation.waveStartDelayTicks shouldBe 4
+        settings.farms.single().irrigation.ringIntervalTicks shouldBe 2
+        settings.farms.single().irrigation.ringWidth shouldBe 1.25
+        settings.farms.single().irrigation.particleSpacing shouldBe 1.25
         settings.farms.single().appleTargetCount shouldBe 10
         settings.farms.single().applePlacementCount shouldBe 40
         settings.farms.single().appleSpawnsPerUpdate shouldBe 20

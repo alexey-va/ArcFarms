@@ -25,6 +25,17 @@ class FarmCarePlotAssignmentTest : FunSpec({
         FarmCarePlotAssignment.assignedTo(listOf(middle), listOf(higherId, lowerId), higherId.id)
             .shouldContainExactlyInAnyOrder()
     }
+
+    test("builds all target assignments in one deterministic pass") {
+        val left = target(10, 0.5)
+        val right = target(20, 4.5)
+        val patch = (0..4).map { FarmPlotPosition("world", it, 64, 0) }
+
+        val assignments = FarmCarePlotAssignment.assignments(patch, listOf(right, left))
+
+        assignments.getValue(left.id).shouldContainExactlyInAnyOrder(patch.take(3))
+        assignments.getValue(right.id).shouldContainExactlyInAnyOrder(patch.takeLast(2))
+    }
 })
 
 private fun target(id: Int, x: Double) = FarmCareTarget(

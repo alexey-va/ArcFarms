@@ -124,6 +124,8 @@ internal class FarmModule(
 
     fun processRestores() {
         val runtimes = registry.snapshot()
+        val hasEditor = worldAdmin.anyEditing()
+        if (!hasEditor) care.processIrrigation()
         val moleBlockBudget = runtimes.maxOfOrNull { it.settings.moleBurrow.blocksPerTick } ?: 8
         moles.processBlocks(moleBlockBudget)
         val limit = runtimes.maxOfOrNull { it.settings.restoreBlocksPerTick } ?: 1
@@ -133,7 +135,6 @@ internal class FarmModule(
             }
         }
         fixedCrops.processDue(limit)
-        val hasEditor = worldAdmin.anyEditing()
         runtimes.forEach { runtime ->
             if (!hasRestoreWork(runtime)) return@forEach
             if (hasEditor && isAdminEditing(runtime)) return@forEach
@@ -222,7 +223,11 @@ internal class FarmModule(
                 delivery.ensure(runtime)
                 scene.ensure(runtime)
                 ensureSupplies(runtime)
-                field.maintain(runtime, drought.hasActiveWater(runtime.settings.id))
+                field.maintain(
+                    runtime,
+                    drought.hasActiveWater(runtime.settings.id),
+                    care.irrigationDryPlots(runtime),
+                )
             }
         }
     }

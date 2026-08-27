@@ -66,6 +66,14 @@ farm-zones:
     care-radius: 10
     care-types: [WEEDS, IRRIGATION, POLLINATION, APPLE_HARVEST, STORM_COVERS, SCARECROWS, ANIMAL_RESCUE, DISEASE, MOLES]
     care-targets: 4
+    # Irrigation dries the managed field gradually, then hydrates it in circular waves from each valve.
+    irrigation:
+      dry-blocks-per-tick: 24
+      wave-blocks-per-tick: 24
+      wave-start-delay-ticks: 4
+      ring-interval-ticks: 2
+      ring-width: 1.25
+      particle-spacing: 1.25
     # Hang many apples over the orchard, but complete the activity after this many arbitrary picks.
     apple-targets: 10
     apple-placement-count: 40
