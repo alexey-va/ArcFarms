@@ -151,18 +151,32 @@ internal class FarmCarePlanService(
             FarmCareType.MOLES -> {
                 val sources = placement.sources(runtime, actor?.location)
                 val receiving = points.resolve(runtime, FarmPointKind.RECEIVING)
-                val candidates = FarmDeliveryPlanner.selectTargets(
-                    candidates = placement.safeGroundCandidates(runtime, sources, runtime.settings.careRadius),
+                val searchRadius = maxOf(runtime.settings.careRadius, runtime.settings.placementSearchRadius)
+                val groundCandidates = FarmDeliveryPlanner.selectTargets(
+                    candidates = placement.safeGroundCandidates(runtime, sources, searchRadius),
                     objectiveX = receiving.x,
                     objectiveZ = receiving.z,
                     participants = sources.map { it.x to it.z },
                     minimumObjectiveDistance = 3.0,
-                    maximumParticipantDistance = runtime.settings.careRadius.toDouble(),
+                    maximumParticipantDistance = runtime.settings.placementMaxPlayerDistance.toDouble(),
                     targetCount = runtime.settings.moleBurrow.candidateAttempts,
                     selectionIndex = salt,
                     minimumTargetDistance = 2.0,
                 )
-                candidates.asSequence().map { FarmPointPosition(it.world, it.x, it.y, it.z) }
+                val bedCandidates = FarmCarePlanner.spread(
+                    patch,
+                    runtime.settings.moleBurrow.candidateAttempts.coerceAtMost(patch.size),
+                    salt xor 0x4D4F4C45L,
+                ).map { plot -> FarmPointPosition(plot.world, plot.x + 0.5, plot.y + 1.05, plot.z + 0.5) }
+                val candidates = groundCandidates.map { FarmPointPosition(it.world, it.x, it.y, it.z) } + bedCandidates
+                debug.event(
+                    "farm_mole_entrance_candidates",
+                    "zone" to runtime.settings.id,
+                    "ground" to groundCandidates.size,
+                    "beds" to bedCandidates.size,
+                    "radius" to searchRadius,
+                )
+                candidates.asSequence().distinct()
                     .firstOrNull { moleBurrow.preview(runtime, it) != null }
                     ?.let { listOf(FarmCareTarget(0, FarmCareRole.MOLE_MOUND, it)) }
                     ?: return null

@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper.farm.perk
 
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
@@ -17,17 +18,22 @@ import org.bukkit.inventory.InventoryHolder
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
+import org.bukkit.scheduler.BukkitTask
 import org.bukkit.potion.PotionEffect
 import org.bukkit.potion.PotionEffectType
+import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.FarmPerkOfferSettings
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.FarmPerkLedgerState
+import ru.ruscrafting.farms.domain.FarmPerkPurchaseResult
 import ru.ruscrafting.farms.domain.FarmPerkType
 import ru.ruscrafting.farms.domain.FarmPlayerPerks
 import ru.ruscrafting.farms.domain.FarmPointKind
+import ru.ruscrafting.farms.domain.purchasePerk
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmRuntime
+import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import java.util.UUID
@@ -36,7 +42,8 @@ import kotlin.math.floor
 
 /** Durable weekly-point ledger and farm-only perk NPC/UI. */
 internal class FarmPerkController(
-    plugin: Plugin,
+    private val plugin: Plugin,
+    private val settings: () -> ArcFarmsConfig,
     private val locale: ArcFarmsLocale,
     private val debug: ArcFarmsDebug,
     private val port: WorksiteRuntimePort,
@@ -55,6 +62,7 @@ internal class FarmPerkController(
     private val zoneKey = NamespacedKey(plugin, "farm_perk_vendor_zone")
     private val offerKey = NamespacedKey(plugin, "farm_perk_offer")
     private val vendorIds = mutableMapOf<String, UUID>()
+    private val feedbackTasks = mutableMapOf<UUID, BukkitTask>()
     private var ledger = FarmPerkLedgerState()
 
     fun replace(values: Map<UUID, FarmPlayerPerks>) {
@@ -133,8 +141,18 @@ internal class FarmPerkController(
             ?.let { runCatching { FarmPerkType.valueOf(it) }.getOrNull() }
             ?: return true
         val runtime = runtimes().firstOrNull { it.settings.id == holder.zoneId } ?: return true
-        purchase(player, runtime, type)
-        open(player, runtime)
+        when (val result = purchase(player, runtime, type)) {
+            FarmPerkPurchaseUiResult.PURCHASED -> open(player, runtime)
+            is FarmPerkPurchaseUiResult.REJECTED -> showRejectedOffer(
+                player,
+                event.view.topInventory,
+                event.rawSlot,
+                runtime,
+                type,
+                result.name,
+                result.lore,
+            )
+        }
         return true
     }
 
@@ -174,13 +192,19 @@ internal class FarmPerkController(
     fun cleanup(reason: String) {
         Bukkit.getWorlds().asSequence().flatMap { it.entities.asSequence() }.filter(::owns).forEach(Entity::remove)
         vendorIds.clear()
+        feedbackTasks.values.forEach(BukkitTask::cancel)
+        feedbackTasks.clear()
         debug.event("farm_perk_vendor_cleanup", "reason" to reason)
     }
 
-    private fun open(player: Player, runtime: FarmRuntime) {
+    internal fun open(player: Player, runtime: FarmRuntime) {
+        feedbackTasks.remove(player.uniqueId)?.cancel()
         val holder = PerkHolder(runtime.settings.id)
         val inventory = Bukkit.createInventory(holder, 27, locale.render(MessageKey.FARM_PERK_MENU_TITLE, player))
         holder.value = inventory
+        backgroundItem()?.let { background ->
+            repeat(inventory.size) { slot -> inventory.setItem(slot, background.clone()) }
+        }
         val available = available(player.uniqueId)
         inventory.setItem(4, named(Material.SUNFLOWER, locale.render(
             MessageKey.FARM_PERK_BALANCE, player, mapOf("points" to locale.text(available)),
@@ -200,9 +224,18 @@ internal class FarmPerkController(
         type: FarmPerkType,
         material: Material,
     ) {
+        inventory.setItem(slot, offerItem(player, runtime, type, material))
+    }
+
+    private fun offerItem(
+        player: Player,
+        runtime: FarmRuntime,
+        type: FarmPerkType,
+        material: Material,
+    ): ItemStack {
         val config = offer(runtime, type)
         val until = normalized(player.uniqueId).activeUntil[type]?.takeIf { it > clock() }
-        val item = named(
+        return named(
             material,
             locale.renderPath("perk.${type.name.lowercase()}.name", player),
             listOf(
@@ -215,42 +248,98 @@ internal class FarmPerkController(
             ) + if (until != null) listOf(locale.render(
                 MessageKey.FARM_PERK_ACTIVE,
                 player,
-                mapOf("hours" to locale.text(((until - clock()) / 3_600_000L).coerceAtLeast(1))),
+                mapOf("hours" to locale.text(remainingHours(until, clock()))),
             )) else emptyList(),
-        )
-        item.editMeta { it.persistentDataContainer.set(offerKey, PersistentDataType.STRING, type.name) }
-        inventory.setItem(slot, item)
+        ).also { item ->
+            item.editMeta { it.persistentDataContainer.set(offerKey, PersistentDataType.STRING, type.name) }
+        }
     }
 
-    private fun purchase(player: Player, runtime: FarmRuntime, type: FarmPerkType) {
+    private fun purchase(player: Player, runtime: FarmRuntime, type: FarmPerkType): FarmPerkPurchaseUiResult {
         val config = offer(runtime, type)
         val before = normalized(player.uniqueId)
-        if (available(player.uniqueId) < config.price) {
-            port.sendChat(player, MessageKey.FARM_PERK_NOT_ENOUGH, mapOf("price" to locale.text(config.price)))
-            player.playSound(player.location, Sound.ENTITY_VILLAGER_NO, 0.8f, 1.0f)
-            return
-        }
         val now = clock()
-        val base = maxOf(now, before.activeUntil[type] ?: 0L)
-        val until = (base + TimeUnit.HOURS.toMillis(config.durationHours.toLong()))
-            .coerceAtMost(now + TimeUnit.DAYS.toMillis(30))
-        val after = before.copy(
-            spentPoints = before.spentPoints + config.price,
-            activeUntil = before.activeUntil + (type to until),
+        val decision = before.purchasePerk(
+            type = type,
+            price = config.price,
+            durationMillis = TimeUnit.HOURS.toMillis(config.durationHours.toLong()),
+            weeklyContribution = weeklyContribution(player.uniqueId),
+            now = now,
         )
-        ledger = FarmPerkLedgerState(ledger.values + (player.uniqueId to after))
+        if (decision is FarmPerkPurchaseResult.AlreadyActive) {
+            player.playSound(player.location, Sound.ENTITY_VILLAGER_NO, 0.8f, 1.0f)
+            return FarmPerkPurchaseUiResult.REJECTED(
+                locale.render(MessageKey.FARM_PERK_ALREADY_ACTIVE_TITLE, player),
+                listOf(
+                    locale.render(
+                        MessageKey.FARM_PERK_ALREADY_ACTIVE,
+                        player,
+                        mapOf("hours" to locale.text(remainingHours(decision.activeUntil, now))),
+                    ),
+                    locale.render(MessageKey.FARM_PERK_ALREADY_ACTIVE_HINT, player),
+                ),
+            )
+        }
+        if (decision is FarmPerkPurchaseResult.InsufficientPoints) {
+            player.playSound(player.location, Sound.ENTITY_VILLAGER_NO, 0.8f, 1.0f)
+            return FarmPerkPurchaseUiResult.REJECTED(
+                locale.render(MessageKey.FARM_PERK_NOT_ENOUGH_TITLE, player),
+                listOf(locale.render(
+                    MessageKey.FARM_PERK_NOT_ENOUGH,
+                    player,
+                    mapOf("price" to locale.text(decision.required)),
+                )),
+            )
+        }
+        val purchased = decision as FarmPerkPurchaseResult.Purchased
+        ledger = FarmPerkLedgerState(ledger.values + (player.uniqueId to purchased.state))
         val saved = runCatching(persistBlocking).isSuccess
         if (!saved) {
             ledger = FarmPerkLedgerState(ledger.values + (player.uniqueId to before))
-            port.sendChat(player, MessageKey.GENERIC_ERROR)
-            return
+            return FarmPerkPurchaseUiResult.REJECTED(
+                locale.render(MessageKey.FARM_PERK_SAVE_FAILED_TITLE, player),
+                listOf(locale.render(MessageKey.FARM_PERK_SAVE_FAILED, player)),
+            )
         }
         port.sendChat(player, MessageKey.FARM_PERK_PURCHASED, mapOf("perk" to locale.renderPath("perk.${type.name.lowercase()}.name", player)))
         player.playSound(player.location, Sound.ENTITY_PLAYER_LEVELUP, 0.8f, 1.15f)
         debug.event("farm_perk_purchased", "zone" to runtime.settings.id, "player" to player.name, "perk" to type, "price" to config.price)
+        return FarmPerkPurchaseUiResult.PURCHASED
+    }
+
+    private fun showRejectedOffer(
+        player: Player,
+        inventory: Inventory,
+        slot: Int,
+        runtime: FarmRuntime,
+        type: FarmPerkType,
+        name: Component,
+        lore: List<Component>,
+    ) {
+        val material = inventory.getItem(slot)?.type ?: return
+        val error = named(material, name, lore).also { item ->
+            item.editMeta { it.persistentDataContainer.set(offerKey, PersistentDataType.STRING, type.name) }
+        }
+        inventory.setItem(slot, error)
+        feedbackTasks.remove(player.uniqueId)?.cancel()
+        feedbackTasks[player.uniqueId] = Bukkit.getScheduler().runTaskLater(plugin, Runnable {
+            feedbackTasks.remove(player.uniqueId)
+            if (!player.isOnline) return@Runnable
+            val current = player.openInventory
+            val holder = current.topInventory.holder as? PerkHolder ?: return@Runnable
+            if (holder.zoneId != runtime.settings.id || current.topInventory !== inventory) return@Runnable
+            val liveRuntime = runtimes().firstOrNull { it.settings.id == holder.zoneId } ?: return@Runnable
+            val currentType = current.topInventory.getItem(slot)?.itemMeta?.persistentDataContainer
+                ?.get(offerKey, PersistentDataType.STRING)
+            if (currentType != type.name) return@Runnable
+            current.topInventory.setItem(slot, offerItem(player, liveRuntime, type, material))
+        }, FEEDBACK_TICKS)
     }
 
     private fun available(playerId: UUID): Long = (weeklyContribution(playerId) - normalized(playerId).spentPoints).coerceAtLeast(0)
+
+    private fun remainingHours(until: Long, now: Long): Long =
+        if (until <= now) 1 else ((until - now - 1) / TimeUnit.HOURS.toMillis(1)) + 1
 
     private fun normalized(playerId: UUID): FarmPlayerPerks {
         val week = currentWeekStart()
@@ -265,7 +354,31 @@ internal class FarmPerkController(
         FarmPerkType.REWARD_BOOST -> runtime.settings.perks.rewardBoost
     }
 
+    @Suppress("DEPRECATION")
+    private fun backgroundItem(): ItemStack? {
+        val background = settings().menuBackground
+        if (!background.enabled) return null
+        return ItemStack(MaterialRules.material(background.material)).apply {
+            editMeta { meta ->
+                if (background.customModelData > 0) meta.setCustomModelData(background.customModelData)
+                meta.setHideTooltip(true)
+            }
+        }
+    }
+
     private fun named(material: Material, name: Component, lore: List<Component> = emptyList()): ItemStack = ItemStack(material).apply {
-        editMeta { meta -> meta.displayName(name); meta.lore(lore) }
+        editMeta { meta ->
+            meta.displayName(name.decoration(TextDecoration.ITALIC, false))
+            meta.lore(lore.map { it.decoration(TextDecoration.ITALIC, false) })
+        }
+    }
+
+    private sealed interface FarmPerkPurchaseUiResult {
+        data object PURCHASED : FarmPerkPurchaseUiResult
+        data class REJECTED(val name: Component, val lore: List<Component>) : FarmPerkPurchaseUiResult
+    }
+
+    private companion object {
+        const val FEEDBACK_TICKS = 40L
     }
 }

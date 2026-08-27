@@ -159,6 +159,7 @@ internal class FarmComponentGraph(
     )
     val perks = FarmPerkController(
         plugin = plugin,
+        settings = settings,
         locale = locale,
         debug = debug,
         port = port,

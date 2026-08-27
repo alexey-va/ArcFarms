@@ -306,7 +306,10 @@ internal class FarmGameplayAdminService(
             careType = null, careTargets = emptyList(), careGoal = null, incidentType = null,
         )
         if (!care.initialize(runtime, player, type)) {
-            port.sendChat(player, MessageKey.ADMIN_CARE_UNAVAILABLE)
+            port.sendChat(
+                player,
+                if (type == FarmCareType.MOLES) MessageKey.ADMIN_MOLES_UNAVAILABLE else MessageKey.ADMIN_CARE_UNAVAILABLE,
+            )
             return false
         }
         persistBlocking()

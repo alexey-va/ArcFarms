@@ -10,6 +10,8 @@ import org.bukkit.Location
 import org.bukkit.NamespacedKey
 import org.bukkit.entity.AbstractArrow
 import org.bukkit.entity.EntityType
+import org.bukkit.event.entity.EntityDamageByEntityEvent
+import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.ProjectileHitEvent
 import org.bukkit.persistence.PersistentDataType
 import org.mockbukkit.mockbukkit.ServerMock
@@ -107,11 +109,68 @@ class FarmBirdIncidentMockBukkitTest : FunSpec({
         val event = ProjectileHitEvent(arrow, bird)
 
         controller.onProjectileHit(event, listOf(runtime)) shouldBe true
+        controller.onProjectileHit(ProjectileHitEvent(arrow, bird), listOf(runtime)) shouldBe true
         event.isCancelled shouldBe true
         runtime.state.phase shouldBe FarmPhase.HARVESTING
         runtime.state.incidentResolved shouldBe true
         runtime.state.contributors[player.uniqueId] shouldBe 2
         verify(exactly = 1) { arrow.remove() }
         bird.isValid shouldBe false
+    }
+
+    test("a WorldGuard-cancelled arrow damage event is resolved directly and only once") {
+        val player = server.addPlayer("ProtectedArcher")
+        val special = mockk<FarmSpecialIncidentSettings>(relaxed = true) {
+            every { birdRangedContribution } returns 3
+            every { birdMeleeContribution } returns 1
+        }
+        val zone = mockk<FarmZoneSettings>(relaxed = true) {
+            every { id } returns "communal_farm"
+            every { permission } returns "arcfarms.farm"
+            every { crops } returns setOf("WHEAT")
+            every { specialIncidents } returns special
+        }
+        val runtime = FarmRuntime(
+            settings = zone,
+            region = CuboidActivityRegion(world, "farm", CuboidBounds(0, 0, 0, 31, 128, 31)),
+            orders = emptyMap(),
+            orderList = emptyList(),
+            rules = mockk(relaxed = true),
+            state = FarmShiftState(
+                phase = FarmPhase.INCIDENT,
+                incidentType = FarmIncidentType.BIRDS,
+                incidentRequired = 2,
+                sequence = 9,
+            ),
+        )
+        val port = mockk<WorksiteRuntimePort>(relaxed = true) {
+            every { hasAccess(player, "arcfarms.farm") } returns true
+        }
+        val plugin = paper.createSimplePlugin("CancelledBirdDamageTest")
+        val controller = FarmBirdIncident(
+            plugin = plugin,
+            settings = { mockk<ArcFarmsConfig>(relaxed = true) },
+            locale = mockk(relaxed = true),
+            debug = ArcFarmsDebug({ false }) {},
+            port = port,
+            ledger = mockk(relaxed = true),
+            beds = FarmIncidentBedProvider { emptySet() },
+            transitions = FarmTransitionSink { target, result, _ -> target.state = result.state },
+        )
+        val bird = world.spawnEntity(Location(world, 5.5, 65.0, 5.5), EntityType.ARMOR_STAND)
+        bird.persistentDataContainer.set(NamespacedKey(plugin, "farm_bird_zone"), PersistentDataType.STRING, "communal_farm")
+        bird.persistentDataContainer.set(NamespacedKey(plugin, "farm_bird_sequence"), PersistentDataType.LONG, 9L)
+        val arrow = mockk<AbstractArrow>(relaxed = true) { every { shooter } returns player }
+        val damage = EntityDamageByEntityEvent(arrow, bird, EntityDamageEvent.DamageCause.PROJECTILE, 1.0).apply {
+            isCancelled = true
+        }
+
+        controller.onDamage(damage, listOf(runtime)) shouldBe true
+        controller.onDamage(damage, listOf(runtime)) shouldBe true
+
+        damage.isCancelled shouldBe true
+        runtime.state.incidentProgress shouldBe 1
+        runtime.state.contributors[player.uniqueId] shouldBe 3
+        verify(exactly = 1) { arrow.remove() }
     }
 })

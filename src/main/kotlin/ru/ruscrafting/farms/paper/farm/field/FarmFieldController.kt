@@ -488,6 +488,18 @@ internal class FarmFieldController(
         }
         val crop = runtime.state.preparationCrop?.let(MaterialRules::material)
         val incidentActive = runtime.state.phase == FarmPhase.INCIDENT
+        val moleEntrancePlots = if (runtime.state.phase == FarmPhase.CARE && runtime.state.careType == FarmCareType.MOLES) {
+            runtime.state.careTargets.asSequence()
+                .filter { it.role == FarmCareRole.MOLE_MOUND }
+                .map { target ->
+                    FarmPlotPosition(
+                        target.position.world,
+                        kotlin.math.floor(target.position.x).toInt(),
+                        kotlin.math.floor(target.position.y).toInt() - 1,
+                        kotlin.math.floor(target.position.z).toInt(),
+                    )
+                }.toSet()
+        } else emptySet()
         val temporarilyControlledPositions = buildSet {
             addAll(runtime.state.preparationPatch)
             addAll(runtime.state.droughtPlots)
@@ -496,6 +508,9 @@ internal class FarmFieldController(
         }
         positions.forEach { position ->
             val soil = position.block() ?: return@forEach
+            // The mole journal owns both the crop and soil at a bed entrance.
+            // Ordinary hydration/crop maintenance must not immediately close it.
+            if (position in moleEntrancePlots) return@forEach
             if (
                 position !in temporarilyControlledPositions && !FarmBlockPolicy.isSelectableBed(
                     soil.type,

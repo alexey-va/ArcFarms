@@ -13,6 +13,7 @@ import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.domain.FarmMoleBurrowPlanner
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
+import ru.ruscrafting.farms.paper.FarmBlockPolicy
 import ru.ruscrafting.farms.paper.FarmRuntime
 import java.util.ArrayDeque
 import java.util.logging.Level
@@ -102,6 +103,18 @@ internal class FarmMoleBurrowWorld(
             val lairPosition = Triple(lairX, feetY, lairZ)
             planned[startPosition] = AIR_DATA to FarmMoleBurrowMarker.START
             planned[lairPosition] = AIR_DATA to FarmMoleBurrowMarker.LAIR
+            // The entrance is a real, journalled shaft. Its top two blocks may be
+            // the crop and farmland of a managed bed; both are restored byte-for-
+            // byte with the rest of the burrow after the expedition.
+            val surfaceBlockY = floor(surface.y).toInt()
+            val shaftPositions = (feetY..surfaceBlockY).mapTo(linkedSetOf()) { y ->
+                Triple(startX, y, startZ).also { position ->
+                    val marker = planned[position]?.second ?: FarmMoleBurrowMarker.NONE
+                    // Keep an invisible safety floor below the click target. Players
+                    // enter only after their crash-safe return point is committed.
+                    planned[position] = (if (y == surfaceBlockY - 1) BARRIER_DATA else AIR_DATA) to marker
+                }
+            }
             val lightData = lightData(settings.lightLevel)
             layout.lights.forEach { passage ->
                 val position = Triple(originX + passage.x, feetY + settings.tunnelHeight - 1, originZ + passage.z)
@@ -111,7 +124,7 @@ internal class FarmMoleBurrowWorld(
             if (planned.size > FarmMoleBurrowJournalCodec.MAX_SCENE_RECORDS) continue@layoutProbe
             if (planned.keys.any { (x, _, z) -> !world.isChunkLoaded(x shr 4, z shr 4) }) continue@layoutProbe
             val blocks = planned.keys.map { (x, y, z) -> world.getBlockAt(x, y, z) }
-            if (!viable(runtime, blocks, settings.replaceableMaterials)) continue@layoutProbe
+            if (!viable(runtime, blocks, shaftPositions, surfaceBlockY, settings.replaceableMaterials)) continue@layoutProbe
             val total = planned.size
             val records = planned.map { (position, active) ->
                 val block = world.getBlockAt(position.first, position.second, position.third)
@@ -190,7 +203,10 @@ internal class FarmMoleBurrowWorld(
             .filter { it.zoneId == zoneId && it.sequence == sequence }
             .toList()
         cancelBuild(records)
-        enqueueRestore(records)
+        // Restore the visible entrance first. This prevents ordinary field
+        // maintenance from briefly rebuilding a generic bed before the exact
+        // journalled crop age and farmland moisture are applied.
+        enqueueRestore(records.sortedByDescending(FarmMoleBurrowJournalRecord::y))
     }
 
     fun process(limit: Int, allowed: (FarmMoleBurrowJournalRecord) -> Boolean): Int {
@@ -206,7 +222,10 @@ internal class FarmMoleBurrowWorld(
     fun onChunkLoad(chunk: Chunk, active: (String, Long) -> Boolean) {
         val records = read(chunk) ?: return
         enqueueBuild(records.filter { active(it.zoneId, it.sequence) })
-        enqueueRestore(records.filterNot { active(it.zoneId, it.sequence) })
+        enqueueRestore(
+            records.filterNot { active(it.zoneId, it.sequence) }
+                .sortedByDescending(FarmMoleBurrowJournalRecord::y),
+        )
     }
 
     fun reconcileLoaded(active: (String, Long) -> Boolean) {
@@ -225,16 +244,25 @@ internal class FarmMoleBurrowWorld(
         ticketedChunks.clear()
     }
 
-    private fun viable(runtime: FarmRuntime, blocks: List<Block>, replaceable: Set<String>): Boolean {
+    private fun viable(
+        runtime: FarmRuntime,
+        blocks: List<Block>,
+        shaftPositions: Set<Triple<Int, Int, Int>>,
+        surfaceBlockY: Int,
+        replaceable: Set<String>,
+    ): Boolean {
         if (blocks.isEmpty()) return false
         val chunks = blocks.map(Block::getChunk).distinctBy { it.x to it.z }
         if (chunks.any { !it.world.isChunkLoaded(it.x, it.z) || read(it)?.isNotEmpty() != false }) return false
         if (!blocks.all { block ->
-            runtime.region.contains(block.location) && block.type.name in replaceable &&
+            runtime.region.contains(block.location) &&
+                replaceableForBurrow(runtime, block, shaftPositions, surfaceBlockY, replaceable) &&
                 block.y > block.world.minHeight + 1 && block.y < block.world.maxHeight - 1
         }) return false
         val tunnel = blocks.mapTo(hashSetOf()) { Triple(it.x, it.y, it.z) }
         return blocks.all { block ->
+            val position = Triple(block.x, block.y, block.z)
+            if (position in shaftPositions && block.y >= surfaceBlockY - 1) return@all true
             SHELL_OFFSETS.all { (dx, dy, dz) ->
                 val x = block.x + dx
                 val y = block.y + dy
@@ -249,6 +277,23 @@ internal class FarmMoleBurrowWorld(
                 }
             }
         }
+    }
+
+    private fun replaceableForBurrow(
+        runtime: FarmRuntime,
+        block: Block,
+        shaftPositions: Set<Triple<Int, Int, Int>>,
+        surfaceBlockY: Int,
+        replaceable: Set<String>,
+    ): Boolean {
+        if (block.type.name in replaceable) return true
+        val position = Triple(block.x, block.y, block.z)
+        if (position !in shaftPositions || block.y !in surfaceBlockY - 1..surfaceBlockY) return false
+        if (block.y == surfaceBlockY) {
+            return block.type.isAir || FarmBlockPolicy.isOpenBedContent(block.type, runtime.settings.crops)
+        }
+        val above = block.getRelative(org.bukkit.block.BlockFace.UP)
+        return FarmBlockPolicy.isSelectableBed(block.type, above.type, runtime.settings.crops)
     }
 
     private fun commit(scene: FarmMoleBurrowScene): Boolean {
@@ -456,6 +501,7 @@ internal class FarmMoleBurrowWorld(
         const val MAX_LAYOUT_PROBES = 4
         const val DEPTH_PROBE_STEP = 5
         val AIR_DATA: String = Material.AIR.createBlockData().asString
+        val BARRIER_DATA: String = Material.BARRIER.createBlockData().asString
         val SHELL_OFFSETS = listOf(
             Triple(1, 0, 0), Triple(-1, 0, 0), Triple(0, 0, 1), Triple(0, 0, -1),
             Triple(0, 1, 0), Triple(0, -1, 0),

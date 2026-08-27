@@ -56,6 +56,7 @@ internal class FarmBirdIncident(
     private val zoneKey = NamespacedKey(plugin, "farm_bird_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_bird_sequence")
     private val indexKey = NamespacedKey(plugin, "farm_bird_index")
+    private val defeatedKey = NamespacedKey(plugin, "farm_bird_defeated")
     private val ids = mutableMapOf<String, MutableSet<UUID>>()
     private val reconciledSequences = mutableMapOf<String, Long>()
 
@@ -149,16 +150,29 @@ internal class FarmBirdIncident(
 
     fun onDamage(event: EntityDamageEvent, runtimes: Collection<FarmRuntime>): Boolean {
         if (!owns(event.entity)) return false
+        val cancelledBeforeResolution = event.isCancelled
         event.isCancelled = true
         val damage = event as? EntityDamageByEntityEvent ?: return true
+        val ranged = damage.damager is Projectile
         val player = when (val damager = damage.damager) {
             is Player -> damager
             is Projectile -> damager.shooter as? Player
             else -> null
         } ?: return true
         val runtime = runtime(event.entity, runtimes) ?: return true
-        if (active(runtime) && port.hasAccess(player, runtime.settings.permission) && runtime.region.contains(event.entity.location)) {
-            event.isCancelled = false
+        val allowed = active(runtime) && port.hasAccess(player, runtime.settings.permission) &&
+            runtime.region.contains(event.entity.location)
+        debug.event(
+            "farm_bird_damage_hit",
+            "zone" to runtime.settings.id,
+            "player" to player.name,
+            "allowed" to allowed,
+            "ranged" to ranged,
+            "cancelled_before_resolution" to cancelledBeforeResolution,
+        )
+        if (!allowed) return true
+        if (defeat(event.entity, runtime, player, ranged)) {
+            (damage.damager as? AbstractArrow)?.remove()
         }
         return true
     }
@@ -187,10 +201,7 @@ internal class FarmBirdIncident(
             "projectile" to arrow.type.name,
         )
         if (!allowed) return true
-        arrow.remove()
-        ids[runtime.settings.id]?.remove(bird.uniqueId)
-        bird.remove()
-        recordDefeat(runtime, player, ranged = true)
+        if (defeat(bird, runtime, player, ranged = true)) arrow.remove()
         return true
     }
 
@@ -198,6 +209,7 @@ internal class FarmBirdIncident(
         if (!owns(event.entity)) return false
         event.drops.clear()
         event.droppedExp = 0
+        if (event.entity.persistentDataContainer.has(defeatedKey, PersistentDataType.BYTE)) return true
         val zoneId = event.entity.persistentDataContainer.get(zoneKey, PersistentDataType.STRING) ?: return true
         ids[zoneId]?.remove(event.entity.uniqueId)
         val runtime = runtime(event.entity, runtimes) ?: return true
@@ -208,6 +220,7 @@ internal class FarmBirdIncident(
             else -> null
         } ?: return true
         if (!active(runtime) || !port.hasAccess(player, runtime.settings.permission)) return true
+        event.entity.persistentDataContainer.set(defeatedKey, PersistentDataType.BYTE, 1)
         recordDefeat(runtime, player, ranged = damage?.damager is Projectile)
         return true
     }
@@ -252,7 +265,9 @@ internal class FarmBirdIncident(
         val bird = runtime.region.world.spawn(location, Parrot::class.java) { entity ->
             entity.isPersistent = false
             entity.removeWhenFarAway = false
-            entity.isCollidable = false
+            // Projectile collision is part of this objective. A non-collidable parrot can
+            // be rendered normally while arrows pass through it on Paper/Purpur.
+            entity.isCollidable = true
             entity.isGlowing = true
             entity.customName(locale.render(MessageKey.FARM_BIRD_NAME))
             entity.isCustomNameVisible = false
@@ -264,6 +279,17 @@ internal class FarmBirdIncident(
             entity.persistentDataContainer.set(indexKey, PersistentDataType.INTEGER, index)
         }
         return bird
+    }
+
+    /** Resolve the objective ourselves so a later protection listener cannot undo it. */
+    private fun defeat(bird: Entity, runtime: FarmRuntime, player: Player, ranged: Boolean): Boolean {
+        val data = bird.persistentDataContainer
+        if (data.has(defeatedKey, PersistentDataType.BYTE)) return false
+        data.set(defeatedKey, PersistentDataType.BYTE, 1)
+        ids[runtime.settings.id]?.remove(bird.uniqueId)
+        bird.remove()
+        recordDefeat(runtime, player, ranged)
+        return true
     }
 
     private fun recordDefeat(runtime: FarmRuntime, player: Player, ranged: Boolean) {
