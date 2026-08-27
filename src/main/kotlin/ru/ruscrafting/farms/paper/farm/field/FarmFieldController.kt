@@ -491,9 +491,12 @@ internal class FarmFieldController(
         if (runtime.state.preparationPatch.isNotEmpty() && !runtime.state.preparationReleased) {
             return
         }
+        val preparationPatch = runtime.state.preparationPatch.toHashSet()
+        val diseaseDamagedPositions = runtime.state.diseaseDamagedCrops.orEmpty()
+            .mapTo(hashSetOf()) { it.position }
         val positions = linkedSetOf<FarmPlotPosition>().apply {
             addAll(registry.beds(runtime.settings.id))
-            addAll(runtime.state.preparationPatch)
+            addAll(preparationPatch)
         }
         val crop = runtime.state.preparationCrop?.let(MaterialRules::material)
         val incidentActive = runtime.state.phase == FarmPhase.INCIDENT
@@ -510,11 +513,11 @@ internal class FarmFieldController(
                 }.toSet()
         } else emptySet()
         val temporarilyControlledPositions = buildSet {
-            addAll(runtime.state.preparationPatch)
+            addAll(preparationPatch)
             addAll(runtime.state.droughtPlots)
             addAll(runtime.state.droughtDamagedPlots)
             runtime.state.pestDamagedCrops.mapTo(this) { it.position }
-            runtime.state.diseaseDamagedCrops.orEmpty().mapTo(this) { it.position }
+            addAll(diseaseDamagedPositions)
         }
         positions.forEach { position ->
             val soil = position.block() ?: return@forEach
@@ -544,7 +547,7 @@ internal class FarmFieldController(
                 // Do not let ordinary field maintenance hydrate the dry front early.
                 return@forEach
             }
-            if (runtime.state.diseaseDamagedCrops.orEmpty().any { it.position == position }) {
+            if (position in diseaseDamagedPositions) {
                 // Disease owns this missing crop until care is resolved; bounded recovery
                 // restores every killed plant afterwards.
                 return@forEach
@@ -552,7 +555,7 @@ internal class FarmFieldController(
             val awaitingMachine = runtime.state.phase == FarmPhase.CARE && runtime.state.careType == FarmCareType.SEEDER
             if (
                 (runtime.state.phase == FarmPhase.PREPARATION || awaitingMachine) &&
-                position in runtime.state.preparationPatch &&
+                position in preparationPatch &&
                 position !in runtime.state.tilledPlots &&
                 soil.type != Material.DIRT
             ) {
