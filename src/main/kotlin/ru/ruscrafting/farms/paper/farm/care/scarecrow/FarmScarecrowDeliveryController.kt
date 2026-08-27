@@ -129,11 +129,12 @@ internal class FarmScarecrowDeliveryController(
     }
 
     fun updateCarriedDisplays() {
-        carriers.forEach { (key, playerId) ->
+        carriers.toList().forEach { (key, playerId) ->
             val runtime = runtimes().firstOrNull { it.settings.id == key.zoneId } ?: return@forEach
             val player = Bukkit.getPlayer(playerId)?.takeIf(Player::isOnline) ?: return@forEach
             val display = carriedDisplays[key]?.let(Bukkit::getEntity) as? ItemDisplay ?: return@forEach
             if (display.world == player.world) display.teleport(carriedLocation(runtime, player))
+            move(runtime, key, player, player.location)
         }
     }
 
@@ -174,22 +175,47 @@ internal class FarmScarecrowDeliveryController(
             returnScarecrow(key, player, "left_zone")
             return
         }
-        val target = runtime.state.careTargets.firstOrNull {
-            it.id == key.targetId && it.role == FarmCareRole.SCARECROW && !it.complete
-        } ?: run {
+        val radius = runtime.settings.scarecrowDeliveryRadius
+        val target = runtime.state.careTargets.asSequence()
+            .filter { it.role == FarmCareRole.SCARECROW && !it.complete && it.position.world == destination.world.name }
+            .filter { candidate ->
+                val candidateKey = ScarecrowKey(key.zoneId, candidate.id)
+                candidateKey == key || candidateKey !in carriers
+            }
+            .map { candidate ->
+                candidate to destination.distanceSquared(
+                    Location(destination.world, candidate.position.x, candidate.position.y, candidate.position.z),
+                )
+            }
+            .filter { (_, distanceSquared) -> distanceSquared <= radius * radius }
+            .minWithOrNull(compareBy<Pair<FarmCareTarget, Double>> { it.second }.thenBy { it.first.id })
+            ?.first ?: return
+        val activeKey = if (target.id == key.targetId) key else reassign(key, target.id) ?: run {
             returnScarecrow(key, player, "target_unavailable", notify = false)
             return
         }
-        if (destination.world.name != target.position.world) return
         val targetLocation = Location(destination.world, target.position.x, target.position.y, target.position.z)
-        val radius = runtime.settings.scarecrowDeliveryRadius
-        if (destination.distanceSquared(targetLocation) > radius * radius) return
-        carriers.remove(key)
-        removeCarried(key)
+        carriers.remove(activeKey)
+        removeCarried(activeKey)
         if (settings().sounds) player.playSound(player.location, Sound.BLOCK_WOOD_PLACE, 0.9f, 1.1f)
         if (settings().particles) player.spawnParticle(Particle.HAPPY_VILLAGER, targetLocation, 14, 0.55, 0.8, 0.55, 0.02)
-        debug.event("farm_scarecrow_placed", "zone" to key.zoneId, "target" to key.targetId, "player" to player.name)
-        transitions.apply(runtime, FarmShiftEngine.advanceCare(runtime.state, key.targetId, player.uniqueId), player)
+        debug.event("farm_scarecrow_placed", "zone" to activeKey.zoneId, "target" to target.id, "player" to player.name)
+        transitions.apply(runtime, FarmShiftEngine.advanceCare(runtime.state, target.id, player.uniqueId), player)
+    }
+
+    private fun reassign(previous: ScarecrowKey, targetId: Int): ScarecrowKey? {
+        val playerId = carriers.remove(previous) ?: return null
+        val next = ScarecrowKey(previous.zoneId, targetId)
+        if (next in carriers) {
+            carriers[previous] = playerId
+            return null
+        }
+        carriers[next] = playerId
+        carriedDisplays.remove(previous)?.let { displayId ->
+            carriedDisplays[next] = displayId
+            Bukkit.getEntity(displayId)?.persistentDataContainer?.set(targetKey, PersistentDataType.INTEGER, targetId)
+        }
+        return next
     }
 
     private fun ensureSupply(runtime: FarmRuntime) {

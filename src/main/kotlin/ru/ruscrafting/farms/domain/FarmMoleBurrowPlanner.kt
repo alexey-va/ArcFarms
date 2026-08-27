@@ -12,15 +12,17 @@ data class FarmMoleBurrowLayout(
     val passages: Set<FarmMolePassage>,
     val start: FarmMolePassage,
     val lair: FarmMolePassage,
+    val chambers: Set<FarmMolePassage>,
     val lights: Set<FarmMolePassage>,
     val sideLength: Int,
 )
 
 /** Pure, deterministic perfect-maze planner used by the temporary mole burrow. */
 object FarmMoleBurrowPlanner {
-    fun plan(cells: Int, seed: Long, lightSpacing: Int): FarmMoleBurrowLayout {
+    fun plan(cells: Int, seed: Long, lightSpacing: Int, chamberCount: Int = 3): FarmMoleBurrowLayout {
         require(cells in 3..11) { "Mole burrow cell count must be in 3..11" }
         require(lightSpacing in 2..16) { "Mole burrow light spacing must be in 2..16" }
+        require(chamberCount in 0..8) { "Mole burrow chamber count must be in 0..8" }
         val side = cells * 2 - 1
         val start = FarmMolePassage(0, (cells / 2) * 2)
         val random = Random(seed)
@@ -47,16 +49,29 @@ object FarmMoleBurrowPlanner {
         }
 
         val distances = distances(passages, start)
-        val lair = visited.maxWithOrNull(
+        val physicallyDistant = visited.filter { manhattan(start, it) >= side / 2 }.ifEmpty { visited.toList() }
+        val lair = physicallyDistant.maxWithOrNull(
             compareBy<FarmMolePassage> { distances[it] ?: -1 }
                 .thenBy(FarmMolePassage::x)
                 .thenBy(FarmMolePassage::z),
         ) ?: start
+        val chamberCandidates = visited.asSequence()
+            .filter { it != start && it != lair }
+            .filter { manhattan(start, it) >= 4 && manhattan(lair, it) >= 4 }
+            .toMutableList()
+            .also { java.util.Collections.shuffle(it, random) }
+        val chambers = linkedSetOf<FarmMolePassage>()
+        chamberCandidates.forEach { candidate ->
+            if (chambers.size < chamberCount && chambers.all { manhattan(it, candidate) >= 4 }) chambers += candidate
+        }
+        if (chambers.size < chamberCount) {
+            chamberCandidates.forEach { candidate -> if (chambers.size < chamberCount) chambers += candidate }
+        }
         val lights = distances.entries.asSequence()
             .filter { (passage, distance) -> passage == start || passage == lair || distance % lightSpacing == 0 }
             .map(Map.Entry<FarmMolePassage, Int>::key)
             .toCollection(linkedSetOf())
-        return FarmMoleBurrowLayout(passages, start, lair, lights, side)
+        return FarmMoleBurrowLayout(passages, start, lair, chambers, lights, side)
     }
 
     fun rotate(layout: FarmMoleBurrowLayout, quarterTurns: Int): FarmMoleBurrowLayout {
@@ -75,6 +90,7 @@ object FarmMoleBurrowPlanner {
             passages = layout.passages.mapTo(linkedSetOf(), ::rotate),
             start = rotate(layout.start),
             lair = rotate(layout.lair),
+            chambers = layout.chambers.mapTo(linkedSetOf(), ::rotate),
             lights = layout.lights.mapTo(linkedSetOf(), ::rotate),
             sideLength = layout.sideLength,
         )
@@ -98,6 +114,9 @@ object FarmMoleBurrowPlanner {
         }
         return result
     }
+
+    private fun manhattan(first: FarmMolePassage, second: FarmMolePassage): Int =
+        kotlin.math.abs(first.x - second.x) + kotlin.math.abs(first.z - second.z)
 
     private val CELL_STEPS = listOf(2 to 0, -2 to 0, 0 to 2, 0 to -2)
     private val CARDINAL_STEPS = listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1)

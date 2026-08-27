@@ -140,6 +140,7 @@ internal class FarmCareController(
     }
 
     fun onDeath(event: EntityDeathEvent): Boolean {
+        if (moles.onDeath(event)) return true
         val identity = identity(event.entity) ?: return false
         event.drops.clear()
         event.droppedExp = 0
@@ -151,7 +152,12 @@ internal class FarmCareController(
         val player = event.entered as? Player ?: return
         val identity = identity(event.vehicle) ?: return
         val runtime = runtimes().firstOrNull { it.settings.id == identity.zoneId } ?: return
-        val validRig = event.vehicle is Horse && identity.role == FarmCareRole.SEEDER_HORSE &&
+        val vehicleSupportsRider = when (event.vehicle) {
+            is Horse -> true
+            is org.bukkit.entity.Pig -> event.vehicle.passengers.none { it is Player }
+            else -> false
+        }
+        val validRig = vehicleSupportsRider && identity.role == FarmCareRole.SEEDER_HORSE &&
             runtime.state.phase == FarmPhase.CARE && runtime.state.careType == FarmCareType.SEEDER &&
             runtime.state.sequence == identity.sequence &&
             runtime.state.careTargets.any { it.id == identity.targetId && it.role == FarmCareRole.SEEDER_HORSE } &&
@@ -278,15 +284,14 @@ internal class FarmCareController(
                 port.sendActionBar(player, MessageKey.FARM_CARE_TOOL)
                 return
             }
-            FarmCareRole.VALVE -> {
-                val next = runtime.state.careTargets.filterNot(FarmCareTarget::complete).minByOrNull(FarmCareTarget::id)
-                if (next?.id != target.id) {
-                    port.sendActionBar(player, MessageKey.FARM_CARE_ORDER)
-                    return
-                }
-            }
+            FarmCareRole.VALVE -> Unit
             FarmCareRole.HIVE -> {
-                pollenCharges.grant(player.uniqueId, runtime.settings.id, runtime.state.sequence, 2)
+                pollenCharges.grant(
+                    player.uniqueId,
+                    runtime.settings.id,
+                    runtime.state.sequence,
+                    runtime.settings.pollinationCharges,
+                )
                 port.sendActionBar(player, MessageKey.FARM_CARE_POLLEN_TAKEN)
                 if (target.complete) return
             }
@@ -671,6 +676,10 @@ internal class FarmCareController(
             runtime.region.contains(Location(runtime.region.world, position.x, position.y, position.z))
         }
         if (workingAnimals.isEmpty() || !processField) return
+        val participants = seederRig.riders(rig).filterTo(linkedSetOf()) { player ->
+            player.isOnline && port.hasAccess(player, runtime.settings.permission) && runtime.region.contains(player.location)
+        }
+        if (participants.isEmpty()) return
         val stage = requireNotNull(runtime.state.seederStage())
         val candidates = when (stage) {
             FarmSeederStage.TILLING -> runtime.state.preparationPatch.filterNot(runtime.state.tilledPlots::contains)
@@ -696,7 +705,11 @@ internal class FarmCareController(
         }
         if (mutation.processed.isNotEmpty()) {
             presentation.machineSwath(runtime, mutation.processed, stage)
-            transitions.apply(runtime, FarmShiftEngine.workSeeder(runtime.state, mutation.processed, actor.uniqueId), actor)
+            transitions.apply(
+                runtime,
+                FarmShiftEngine.workSeeder(runtime.state, mutation.processed, participants.mapTo(linkedSetOf(), Player::getUniqueId)),
+                actor,
+            )
         }
         if (runtime.state.phase != FarmPhase.CARE || runtime.state.careType != FarmCareType.SEEDER || !horse.isValid) return
     }
@@ -718,17 +731,6 @@ internal class FarmCareController(
     fun updateCarriedDisplays() = scarecrows.updateCarriedDisplays()
 
     fun onPlayerDeath(player: Player) = moles.onPlayerDeath(player)
-
-    private fun pullFarmAnimalTowardHolder(mob: Mob, holder: Player) {
-        if (!mob.isOnGround || mob.world != holder.world) return
-        val delta = holder.location.toVector().subtract(mob.location.toVector()).setY(0.0)
-        val distance = delta.length()
-        if (distance <= 2.0) return
-        val speed = (0.16 + distance * 0.025).coerceAtMost(0.42)
-        val current = mob.velocity
-        val pull = delta.normalize().multiply(speed)
-        mob.velocity = current.multiply(0.25).setX(pull.x).setZ(pull.z)
-    }
 
     fun refreshPoint(runtime: FarmRuntime, kind: FarmPointKind, reason: String) {
         if (runtime.state.phase != FarmPhase.CARE) return

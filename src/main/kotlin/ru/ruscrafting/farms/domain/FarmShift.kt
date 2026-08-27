@@ -2,7 +2,7 @@ package ru.ruscrafting.farms.domain
 
 import java.util.UUID
 
-const val MAX_FARM_PATCH_PLOTS = 2_048
+const val MAX_FARM_PATCH_PLOTS = 6_144
 const val MAX_FARM_INCIDENTS = 8
 
 enum class FarmPhase {
@@ -526,10 +526,17 @@ object FarmShiftEngine {
         current: FarmShiftState,
         processed: Set<FarmPlotPosition>,
         playerId: UUID,
+    ): EngineResult<FarmShiftState> = workSeeder(current, processed, setOf(playerId))
+
+    fun workSeeder(
+        current: FarmShiftState,
+        processed: Set<FarmPlotPosition>,
+        playerIds: Set<UUID>,
     ): EngineResult<FarmShiftState> {
         if (current.phase != FarmPhase.CARE || current.careType != FarmCareType.SEEDER) {
             return EngineResult(current, false)
         }
+        require(playerIds.isNotEmpty()) { "Seeder work must have at least one mounted participant" }
         require(processed.all(current.preparationPatch::contains)) { "Seeder processed outside the preparation patch" }
         return when (requireNotNull(current.seederStage())) {
             FarmSeederStage.TILLING -> {
@@ -549,7 +556,7 @@ object FarmShiftEngine {
                         } else {
                             current.careTargets
                         },
-                        contributors = incrementContribution(current.contributors, playerId, added.size),
+                        contributors = incrementContributions(current.contributors, playerIds, added.size),
                     ),
                     true,
                     contribution = added.size,
@@ -558,6 +565,7 @@ object FarmShiftEngine {
                     } else {
                         listOf(ShiftEvent.SEEDER_PROGRESS)
                     },
+                    contributionCredits = playerIds.associateWith { added.size },
                 )
             }
             FarmSeederStage.PLANTING -> {
@@ -575,7 +583,7 @@ object FarmShiftEngine {
                         plantingProgress = planted.size,
                         seederStage = if (complete) null else FarmSeederStage.PLANTING,
                         careTargets = if (complete) emptyList() else current.careTargets,
-                        contributors = incrementContribution(current.contributors, playerId, added.size),
+                        contributors = incrementContributions(current.contributors, playerIds, added.size),
                     ),
                     true,
                     contribution = added.size,
@@ -584,6 +592,7 @@ object FarmShiftEngine {
                     } else {
                         listOf(ShiftEvent.SEEDER_PROGRESS)
                     },
+                    contributionCredits = playerIds.associateWith { added.size },
                 )
             }
         }
@@ -642,6 +651,36 @@ object FarmShiftEngine {
                 careGoal = current.careRequired() + target.required,
             ),
             true,
+        )
+    }
+
+    fun expireDisease(
+        current: FarmShiftState,
+        targetId: Int,
+        replacement: FarmCareTarget?,
+    ): EngineResult<FarmShiftState> {
+        if (current.phase != FarmPhase.CARE || current.careType != FarmCareType.DISEASE) {
+            return EngineResult(current, false)
+        }
+        val expired = current.careTargets.firstOrNull {
+            it.id == targetId && it.role == FarmCareRole.DISEASED_CROP && !it.complete
+        } ?: return EngineResult(current, false)
+        if (replacement != null) {
+            require(replacement.role == FarmCareRole.DISEASED_CROP) { "Disease replacement has the wrong role" }
+            require(current.careTargets.none { it.id == replacement.id }) { "Disease replacement id is already in use" }
+            require(replacement.position.world == expired.position.world) { "Disease replacement crosses worlds" }
+        }
+        val targets = current.careTargets.filterNot { it.id == targetId } + listOfNotNull(replacement)
+        val goal = current.careRequired() - expired.required + (replacement?.required ?: 0)
+        val complete = targets.isEmpty() || targets.sumOf(FarmCareTarget::progress) >= goal
+        return EngineResult(
+            current.copy(
+                phase = if (complete) FarmPhase.HARVESTING else FarmPhase.CARE,
+                careTargets = targets,
+                careGoal = goal.takeIf { it > 0 },
+            ),
+            true,
+            events = if (complete) listOf(ShiftEvent.CARE_RESOLVED) else emptyList(),
         )
     }
 
@@ -947,4 +986,12 @@ object FarmShiftEngine {
                 .thenByDescending { it.key },
         )
         ?.key
+}
+
+private fun incrementContributions(
+    current: Map<UUID, Int>,
+    playerIds: Set<UUID>,
+    delta: Int,
+): Map<UUID, Int> = playerIds.fold(current) { contributions, playerId ->
+    incrementContribution(contributions, playerId, delta)
 }

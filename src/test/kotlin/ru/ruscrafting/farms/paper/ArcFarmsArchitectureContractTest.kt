@@ -53,6 +53,16 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         source.contains("diseaseDamagedCrops.orEmpty().any { it.position == position }") shouldBe false
     }
 
+    test("moisture events use the cached irrigation plot index") {
+        val source = Files.readString(
+            farmRoot.resolve("care/irrigation/FarmIrrigationController.kt"),
+        )
+        val handler = source.substringAfter("fun onMoistureChange").substringBefore("fun clear(")
+
+        handler.contains("plotAssignments(runtime)[plot]") shouldBe true
+        handler.contains("dryPlots(runtime)") shouldBe false
+    }
+
     test("animal rescue is planned only from indexed outdoor beds") {
         val source = Files.readString(farmRoot.resolve("care/FarmCarePlanService.kt"))
 

@@ -6,15 +6,18 @@ import org.bukkit.Color
 import org.bukkit.Location
 import org.bukkit.NamespacedKey
 import org.bukkit.Sound
+import org.bukkit.attribute.Attribute
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Display
 import org.bukkit.entity.Interaction
 import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Player
 import org.bukkit.entity.Projectile
+import org.bukkit.entity.Rabbit
 import org.bukkit.entity.TextDisplay
 import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.entity.EntityDamageEvent
+import org.bukkit.event.entity.EntityDeathEvent
 import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.event.player.PlayerTeleportEvent
 import org.bukkit.inventory.ItemStack
@@ -40,6 +43,7 @@ import ru.ruscrafting.farms.persistence.FarmBurrowReturnRepository
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.logging.Level
+import kotlin.random.Random
 
 /** Interactive shell around the crash-safe temporary mole tunnel. */
 internal class FarmMoleBurrowController(
@@ -53,7 +57,7 @@ internal class FarmMoleBurrowController(
     private val runtimes: () -> Collection<FarmRuntime>,
     private val clock: () -> Long,
 ) {
-    private enum class Role { ENTRANCE, LAIR, EXIT }
+    private enum class Role { ENTRANCE, LAIR, EXIT, MOLE }
     private data class SceneKey(val zoneId: String, val sequence: Long)
 
     private val presentation = FarmCarePresentation(settings)
@@ -62,6 +66,7 @@ internal class FarmMoleBurrowController(
     }
     private val teleports = ScopedTeleportAuthorizer()
     private val entities = mutableMapOf<SceneKey, MutableSet<UUID>>()
+    private val molesInitialized = mutableSetOf<SceneKey>()
     private val sessions = ConcurrentHashMap<UUID, FarmBurrowReturn>()
     private val pendingEntries = ConcurrentHashMap.newKeySet<UUID>()
     private val zoneKey = NamespacedKey(plugin, "farm_mole_zone")
@@ -90,21 +95,36 @@ internal class FarmMoleBurrowController(
             Role.ENTRANCE -> enter(player, runtime, scene)
             Role.LAIR -> finish(player, runtime, scene)
             Role.EXIT -> leave(player, scene, MessageKey.FARM_MOLE_LEFT)
+            Role.MOLE -> Unit
         }
         return true
     }
 
     fun onDamage(event: EntityDamageEvent): Boolean {
-        if (!owns(event.entity)) return false
-        event.isCancelled = true
+        val identity = identity(event.entity) ?: return false
         val player = (event as? EntityDamageByEntityEvent)?.let { damage ->
             when (val damager = damage.damager) {
                 is Player -> damager
                 is Projectile -> damager.shooter as? Player
                 else -> null
             }
-        } ?: return true
+        }
+        if (identity.third == Role.MOLE) {
+            event.isCancelled = player == null
+            return true
+        }
+        event.isCancelled = true
+        player ?: return true
         interact(player, event.entity)
+        return true
+    }
+
+    fun onDeath(event: EntityDeathEvent): Boolean {
+        val identity = identity(event.entity) ?: return false
+        if (identity.third != Role.MOLE) return false
+        event.drops.clear()
+        event.droppedExp = 0
+        entities[SceneKey(identity.first, identity.second)]?.remove(event.entity.uniqueId)
         return true
     }
 
@@ -188,6 +208,7 @@ internal class FarmMoleBurrowController(
         }
         Bukkit.getWorlds().asSequence().flatMap { it.entities.asSequence() }.filter(::owns).forEach(Entity::remove)
         entities.clear()
+        molesInitialized.clear()
         sessions.clear()
         pendingEntries.clear()
         world.clearQueues()
@@ -299,8 +320,16 @@ internal class FarmMoleBurrowController(
     private fun ensureScene(runtime: FarmRuntime, scene: FarmMoleBurrowScene) {
         val key = SceneKey(runtime.settings.id, runtime.state.sequence)
         val active = entities[key].orEmpty().mapNotNull(Bukkit::getEntity).filter(Entity::isValid)
-        if (active.size == EXPECTED_ENTITIES && active.all { identity(it)?.let { id -> id.first == key.zoneId && id.second == key.sequence } == true }) {
+        val structural = active.filter { identity(it)?.third != Role.MOLE }
+        if (structural.size == EXPECTED_STRUCTURAL_ENTITIES && structural.all {
+                identity(it)?.let { id -> id.first == key.zoneId && id.second == key.sequence } == true
+            }
+        ) {
             entities[key] = active.mapTo(mutableSetOf(), Entity::getUniqueId)
+            if (key !in molesInitialized) {
+                spawnMoles(runtime, scene).mapTo(entities.getValue(key), Entity::getUniqueId)
+                molesInitialized += key
+            }
             return
         }
         removeEntities(key)
@@ -310,8 +339,37 @@ internal class FarmMoleBurrowController(
         spawnMarker(runtime, scene.lair, Role.LAIR, runtime.settings.moleBurrow.lairVisual, "care.moles.lair-label", false)
             .mapTo(spawned, Entity::getUniqueId)
         spawnExit(runtime, scene.start).mapTo(spawned, Entity::getUniqueId)
+        spawnMoles(runtime, scene).mapTo(spawned, Entity::getUniqueId)
         entities[key] = spawned
+        molesInitialized += key
         debug.event("farm_mole_burrow_scene_spawned", "zone" to key.zoneId, "sequence" to key.sequence)
+    }
+
+    private fun spawnMoles(runtime: FarmRuntime, scene: FarmMoleBurrowScene): List<Rabbit> {
+        val floorY = scene.start.blockY
+        val candidates = scene.records.asSequence()
+            .filter { it.y == floorY && it.burrowData == "minecraft:air" }
+            .map { Location(scene.world, it.x + 0.5, it.y.toDouble(), it.z + 0.5) }
+            .filter { it.distanceSquared(scene.start) >= 16.0 && it.distanceSquared(scene.lair) >= 9.0 }
+            .filter { it.block.getRelative(org.bukkit.block.BlockFace.DOWN).type.isSolid }
+            .distinctBy { it.blockX to it.blockZ }
+            .toMutableList()
+        candidates.shuffle(Random(runtime.state.sequence xor 0x4d4f4c45L))
+        return candidates.take(runtime.settings.moleBurrow.moleCount).map { location ->
+            scene.world.spawn(location, Rabbit::class.java) { mole ->
+                mole.setAdult()
+                mole.rabbitType = Rabbit.Type.BROWN
+                mole.isPersistent = false
+                mole.removeWhenFarAway = false
+                mole.isCollidable = true
+                mole.getAttribute(Attribute.MAX_HEALTH)?.baseValue = 1.0
+                mole.getAttribute(Attribute.MOVEMENT_SPEED)?.baseValue = 0.28
+                mole.health = 1.0
+                mole.customName(locale.renderPath("care.moles.mob-name"))
+                mole.isCustomNameVisible = true
+                mark(mole, runtime, Role.MOLE)
+            }
+        }
     }
 
     private fun spawnMarker(
@@ -390,6 +448,7 @@ internal class FarmMoleBurrowController(
 
     private fun removeEntities(key: SceneKey) {
         entities.remove(key).orEmpty().forEach { Bukkit.getEntity(it)?.remove() }
+        molesInitialized.remove(key)
     }
 
     private fun acknowledgeAsync(record: FarmBurrowReturn) {
@@ -417,6 +476,6 @@ internal class FarmMoleBurrowController(
     }
 
     private companion object {
-        const val EXPECTED_ENTITIES = 8
+        const val EXPECTED_STRUCTURAL_ENTITIES = 8
     }
 }

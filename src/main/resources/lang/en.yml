@@ -651,6 +651,7 @@ care:
     instruction: '<color:#f2fff7>Prune each purple outbreak with one hoe strike before crops die</color>'
     entry: '<color:#f2fff7>Prune infected crops with a hoe before the disease spreads</color>'
   moles:
+    mob-name: '<color:#a9825a>Mole</color>'
     name: '<color:#976948>Mole burrow</color>'
     instruction: '<color:#f2fff7>Go underground and find the den in the tunnel maze</color>'
     entry: '<color:#f2fff7>Find the brown column above the entrance, then explore the tunnels</color>'

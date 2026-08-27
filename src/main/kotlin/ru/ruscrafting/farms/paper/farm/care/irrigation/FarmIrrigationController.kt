@@ -54,6 +54,7 @@ internal class FarmIrrigationController(
     private val transitions: FarmTransitionSink,
 ) {
     private val assignments = mutableMapOf<FarmIrrigationScope, Map<Int, Set<FarmPlotPosition>>>()
+    private val plotAssignments = mutableMapOf<FarmIrrigationScope, Map<FarmPlotPosition, Int>>()
     private val activeWaves = mutableMapOf<FarmIrrigationWaveKey, ActiveIrrigationWave>()
     private val dryCursors = mutableMapOf<FarmIrrigationScope, Int>()
     private var currentTick = 0L
@@ -61,7 +62,7 @@ internal class FarmIrrigationController(
     fun start(runtime: FarmRuntime, target: FarmCareTarget, player: Player): Boolean {
         if (!isIrrigation(runtime) || target.role != FarmCareRole.VALVE || target.complete) return false
         val scope = scope(runtime)
-        if (activeWaves.keys.any { it.scope == scope }) return false
+        if (FarmIrrigationWaveKey(scope, target.id) in activeWaves) return false
         val plots = assignments(runtime)[target.id].orEmpty()
         if (plots.isEmpty()) return false
         val irrigation = runtime.settings.irrigation
@@ -112,7 +113,15 @@ internal class FarmIrrigationController(
     }
 
     fun onMoistureChange(event: MoistureChangeEvent, runtime: FarmRuntime): Boolean {
-        if (event.block.toFarmPlotPosition() !in dryPlots(runtime)) return false
+        if (!isIrrigation(runtime)) return false
+        val scope = scope(runtime)
+        val plot = event.block.toFarmPlotPosition()
+        val targetId = plotAssignments(runtime)[plot] ?: return false
+        val target = runtime.state.careTargets.firstOrNull {
+            it.id == targetId && it.role == FarmCareRole.VALVE && !it.complete
+        } ?: return false
+        val wave = activeWaves[FarmIrrigationWaveKey(scope, target.id)]
+        if (wave != null && plot in wave.watered) return false
         event.isCancelled = true
         return true
     }
@@ -120,12 +129,14 @@ internal class FarmIrrigationController(
     fun clear(runtime: FarmRuntime) {
         val zoneId = runtime.settings.id
         assignments.keys.removeIf { it.zoneId == zoneId }
+        plotAssignments.keys.removeIf { it.zoneId == zoneId }
         activeWaves.keys.removeIf { it.scope.zoneId == zoneId }
         dryCursors.keys.removeIf { it.zoneId == zoneId }
     }
 
     fun clearAll() {
         assignments.clear()
+        plotAssignments.clear()
         activeWaves.clear()
         dryCursors.clear()
     }
@@ -237,7 +248,17 @@ internal class FarmIrrigationController(
         FarmCarePlotAssignment.assignments(
             runtime.state.preparationPatch,
             runtime.state.careTargets.filter { it.role == FarmCareRole.VALVE },
-        )
+        ).also { planned ->
+            plotAssignments[scope(runtime)] = buildMap {
+                planned.forEach { (targetId, plots) -> plots.forEach { plot -> put(plot, targetId) } }
+            }
+        }
+    }
+
+    private fun plotAssignments(runtime: FarmRuntime): Map<FarmPlotPosition, Int> {
+        val scope = scope(runtime)
+        assignments(runtime)
+        return plotAssignments[scope].orEmpty()
     }
 
     private fun isIrrigation(runtime: FarmRuntime): Boolean =

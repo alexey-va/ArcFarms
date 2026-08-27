@@ -76,22 +76,30 @@ internal class FarmDiseaseController(
     private fun spread(runtime: FarmRuntime, now: Long) {
         val current = runtime.state.careTargets.filter { it.role == FarmCareRole.DISEASED_CROP }
         if (current.size >= runtime.settings.diseaseMaxSpots) return
+        val target = nextTarget(runtime, current.map(FarmCareTarget::position), current.size * 19L) ?: return
+        val result = FarmShiftEngine.spreadDisease(runtime.state, target, runtime.settings.diseaseMaxSpots)
+        if (!result.accepted) return
+        transitions.apply(runtime, result, null)
+        registerSpread(runtime, target, now, current.size + 1)
+    }
+
+    private fun nextTarget(runtime: FarmRuntime, sources: List<FarmPointPosition>, salt: Long): FarmCareTarget? {
         val candidate = FarmCarePlanner.diseaseFrontier(
             runtime.state.preparationPatch.filter { plot ->
                 plot.block()?.let(FarmSurfacePolicy::isOutdoorBed) == true
             },
-            current.filterNot(FarmCareTarget::complete).ifEmpty { current }.map(FarmCareTarget::position),
+            sources,
             runtime.settings.diseaseSpreadRadius,
-            runtime.state.sequence * 173L + current.size * 19L,
-        ) ?: return
-        val target = FarmCareTarget(
+            runtime.state.sequence * 173L + salt,
+        ) ?: return null
+        return FarmCareTarget(
             id = (runtime.state.careTargets.maxOfOrNull(FarmCareTarget::id) ?: -1) + 1,
             role = FarmCareRole.DISEASED_CROP,
             position = FarmPointPosition(candidate.world, candidate.x + 0.5, candidate.y + 1.05, candidate.z + 0.5),
         )
-        val result = FarmShiftEngine.spreadDisease(runtime.state, target, runtime.settings.diseaseMaxSpots)
-        if (!result.accepted) return
-        transitions.apply(runtime, result, null)
+    }
+
+    private fun registerSpread(runtime: FarmRuntime, target: FarmCareTarget, now: Long, total: Int) {
         killAt.getOrPut(runtime.settings.id, ::mutableMapOf)[target.id] =
             now + runtime.settings.diseaseKillSeconds * 1_000L
         targets.ensure(runtime, target)
@@ -99,7 +107,7 @@ internal class FarmDiseaseController(
             port.sendActionBar(player, MessageKey.FARM_CARE_DISEASE_SPREAD)
             if (settings().sounds) player.playSound(player.location, Sound.BLOCK_SCULK_SPREAD, 0.55f, 1.45f)
         }
-        debug.event("farm_disease_spread", "zone" to runtime.settings.id, "target" to target.id, "total" to current.size + 1)
+        debug.event("farm_disease_spread", "zone" to runtime.settings.id, "target" to target.id, "total" to total)
         port.persistAsync()
     }
 
@@ -126,24 +134,24 @@ internal class FarmDiseaseController(
         runtime.state.careTargets.asSequence()
             .filter { it.role == FarmCareRole.DISEASED_CROP && !it.complete }
             .filter { deadlines.getOrDefault(it.id, Long.MAX_VALUE) <= now }
-            .forEach { target ->
+            .toList().forEach { target ->
                 deadlines.remove(target.id)
-                killCrop(runtime, target)
+                if (killCrop(runtime, target)) expireKilledTarget(runtime, target, now)
             }
     }
 
-    private fun killCrop(runtime: FarmRuntime, target: FarmCareTarget) {
-        val world = Bukkit.getWorld(target.position.world) ?: return
+    private fun killCrop(runtime: FarmRuntime, target: FarmCareTarget): Boolean {
+        val world = Bukkit.getWorld(target.position.world) ?: return false
         val crop = world.getBlockAt(
             kotlin.math.floor(target.position.x).toInt(),
             kotlin.math.floor(target.position.y).toInt(),
             kotlin.math.floor(target.position.z).toInt(),
         )
-        if (crop.type.name !in runtime.settings.crops) return
+        if (crop.type.name !in runtime.settings.crops) return false
         val soil = crop.getRelative(BlockFace.DOWN)
-        if (!FarmSurfacePolicy.isOutdoorBed(soil)) return
+        if (!FarmSurfacePolicy.isOutdoorBed(soil)) return false
         val plot = FarmPlotPosition(soil.world.name, soil.x, soil.y, soil.z)
-        if (runtime.state.diseaseDamagedCrops.orEmpty().any { it.position == plot }) return
+        if (runtime.state.diseaseDamagedCrops.orEmpty().any { it.position == plot }) return false
         ledger.captureActiveCrop(soil, runtime.settings.id)
         runtime.state = runtime.state.copy(
             diseaseDamagedCrops = runtime.state.diseaseDamagedCrops.orEmpty() + FarmCropDamage(plot, crop.type.name),
@@ -154,6 +162,24 @@ internal class FarmDiseaseController(
         }
         debug.event("farm_disease_crop_killed", "zone" to runtime.settings.id, "target" to target.id, "plot" to plot)
         port.persistAsync()
+        return true
+    }
+
+    private fun expireKilledTarget(runtime: FarmRuntime, expired: FarmCareTarget, now: Long) {
+        val sources = runtime.state.careTargets.asSequence()
+            .filter { it.role == FarmCareRole.DISEASED_CROP && !it.complete }
+            .map(FarmCareTarget::position)
+            .toList()
+        val replacement = nextTarget(runtime, sources, expired.id * 37L + now / 1_000L)
+        val result = FarmShiftEngine.expireDisease(runtime.state, expired.id, replacement)
+        if (!result.accepted) return
+        transitions.apply(runtime, result, null)
+        if (replacement != null && active(runtime)) {
+            registerSpread(runtime, replacement, now, result.state.careTargets.count { it.role == FarmCareRole.DISEASED_CROP })
+        } else {
+            debug.event("farm_disease_target_expired", "zone" to runtime.settings.id, "target" to expired.id)
+            port.persistAsync()
+        }
     }
 
     fun clear(zoneId: String) {

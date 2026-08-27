@@ -75,6 +75,7 @@ internal class FarmSeederRigManager(plugin: Plugin) {
                 val target = position.location(world).takeIf(validPosition) ?: location
                 world.spawn(target, Pig::class.java) { entity ->
                     entity.setAdult()
+                    entity.setSaddle(true)
                     entity.isPersistent = false
                     entity.removeWhenFarAway = false
                     entity.isInvulnerable = true
@@ -121,6 +122,11 @@ internal class FarmSeederRigManager(plugin: Plugin) {
     }
 
     fun rider(rig: FarmSeederRig): Player? = rig.horse.passengers.filterIsInstance<Player>().singleOrNull()
+
+    fun riders(rig: FarmSeederRig): Set<Player> = buildSet {
+        rig.horse.passengers.filterIsInstance<Player>().forEach(::add)
+        rig.pigs.forEach { pig -> pig.passengers.filterIsInstance<Player>().forEach(::add) }
+    }
 
     fun park(rig: FarmSeederRig) {
         rig.horse.isAware = false
@@ -175,6 +181,7 @@ internal class FarmSeederRigManager(plugin: Plugin) {
 
     fun release(rig: FarmSeederRig) {
         rig.horse.eject()
+        rig.pigs.forEach(Pig::eject)
         park(rig)
     }
 

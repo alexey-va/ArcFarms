@@ -89,6 +89,8 @@ data class FarmZoneSettings(
     val careTargetsPerPlayer: Int,
     val careTargetsMax: Int,
     val careSpawnsPerUpdate: Int,
+    val scarecrowTargetCount: Int,
+    val pollinationCharges: Int,
     val irrigation: FarmIrrigationSettings,
     val appleTargetCount: Int,
     val applePlacementCount: Int,
@@ -337,6 +339,8 @@ data class FarmMoleBurrowSettings(
     val lightLevel: Int,
     val replaceableMaterials: Set<String>,
     val lairVisual: FarmCareVisualSettings,
+    val chamberCount: Int = 3,
+    val moleCount: Int = 8,
 )
 
 data class FarmIrrigationSettings(
@@ -718,9 +722,9 @@ class ArcFarmsConfig private constructor(
                 require(preparationPatchMaxSize >= preparationPatchSize) {
                     "Farm zone $id preparation-patch-max-size must be at least preparation-patch-size"
                 }
-                val seederPatchSize = section.int("seeder-patch-size", 1_280)
+                val seederPatchSize = section.int("seeder-patch-size", 3_840)
                     .checked("seeder-patch-size", 1, MAX_FARM_PATCH_PLOTS)
-                val seederPatchMaxSize = section.int("seeder-patch-max-size", 2_048)
+                val seederPatchMaxSize = section.int("seeder-patch-max-size", 6_144)
                     .checked("seeder-patch-max-size", 1, MAX_FARM_PATCH_PLOTS)
                 require(seederPatchMaxSize >= seederPatchSize) {
                     "Farm zone $id seeder-patch-max-size must be at least seeder-patch-size"
@@ -795,6 +799,10 @@ class ArcFarmsConfig private constructor(
                         displayScale = section.finiteFloat("$moleLairPath.display-scale", 1.6f, 0.05f, 8.0f),
                         displayYOffset = section.finiteDouble("$moleLairPath.display-y-offset", 0.6, -4.0, 4.0),
                     ),
+                    chamberCount = section.int("mole-burrow.chambers", 3)
+                        .checked("mole-burrow.chambers", 0, 8),
+                    moleCount = section.int("mole-burrow.moles", 8)
+                        .checked("mole-burrow.moles", 1, 24),
                 )
                 val incidentTriggerPercents = section.stringList("incident-trigger-percents")
                     .ifEmpty { listOf("15", "32", "50", "68", "85") }
@@ -981,6 +989,10 @@ class ArcFarmsConfig private constructor(
                         .checked("care-targets-max", 1, 64),
                     careSpawnsPerUpdate = section.int("care-spawns-per-update", 10)
                         .checked("care-spawns-per-update", 1, 32),
+                    scarecrowTargetCount = section.int("scarecrow-target-count", 5)
+                        .checked("scarecrow-target-count", 1, 45),
+                    pollinationCharges = section.int("pollination-charges", 5)
+                        .checked("pollination-charges", 1, 32),
                     irrigation = FarmIrrigationSettings(
                         dryBlocksPerTick = section.int("irrigation.dry-blocks-per-tick", 24)
                             .checked("irrigation.dry-blocks-per-tick", 1, 128),
@@ -1034,8 +1046,8 @@ class ArcFarmsConfig private constructor(
                         .checked("seeder-blocks-per-update", 8, 256),
                     diseaseInitialSpots = diseaseInitialSpots,
                     diseaseMaxSpots = diseaseMaxSpots,
-                    diseaseSpreadSeconds = section.int("disease-spread-seconds", 5)
-                        .checked("disease-spread-seconds", 3, 300),
+                    diseaseSpreadSeconds = section.int("disease-spread-seconds", 3)
+                        .checked("disease-spread-seconds", 1, 300),
                     diseaseSpreadRadius = section.finiteDouble("disease-spread-radius", 4.0, 1.0, 12.0),
                     diseaseKillSeconds = section.int("disease-kill-seconds", 16)
                         .checked("disease-kill-seconds", 3, 300),

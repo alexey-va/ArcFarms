@@ -279,6 +279,43 @@ class FarmShiftEngineTest : FunSpec({
         completedResult.events shouldContainExactly listOf(ShiftEvent.CARE_RESOLVED)
     }
 
+    test("field machinery credits the driver and every pig passenger equally") {
+        val patch = (1..4).map { FarmPlotPosition("world", it, 64, 1) }
+        val driver = UUID(0, 41)
+        val passengerA = UUID(0, 42)
+        val passengerB = UUID(0, 43)
+        val preparation = FarmShiftState(
+            phase = FarmPhase.PREPARATION,
+            orderId = order.id,
+            preparationPatch = patch,
+            preparationCrop = "WHEAT",
+            preparationReleased = true,
+            preparationRequired = patch.size,
+        )
+        val target = FarmCareTarget(
+            0,
+            FarmCareRole.SEEDER_HORSE,
+            FarmPointPosition("world", 1.5, 65.0, 1.5),
+        )
+        val started = FarmShiftEngine.startCare(preparation, FarmCareType.SEEDER, listOf(target)).state
+        val mounted = FarmShiftEngine.startSeeder(started, target.id).state
+
+        val result = FarmShiftEngine.workSeeder(
+            mounted,
+            patch.toSet(),
+            linkedSetOf(driver, passengerA, passengerB),
+        )
+
+        result.state.contributors[driver] shouldBe patch.size
+        result.state.contributors[passengerA] shouldBe patch.size
+        result.state.contributors[passengerB] shouldBe patch.size
+        result.contributionCredits shouldBe mapOf(
+            driver to patch.size,
+            passengerA to patch.size,
+            passengerB to patch.size,
+        )
+    }
+
     test("crop disease adds bounded spots without resetting treated progress") {
         val first = FarmCareTarget(
             0,
@@ -301,6 +338,24 @@ class FarmShiftEngineTest : FunSpec({
         state.careTargets.first().progress shouldBe 1
         FarmShiftEngine.spreadDisease(spread.state, second.copy(id = 2), maxSpots = 2).accepted shouldBe false
         FarmShiftEngine.tick(state, order, 2_592_002_000).state shouldBe state
+    }
+
+    test("a dead diseased crop is replaced without growing or stalling the care goal") {
+        val dead = FarmCareTarget(0, FarmCareRole.DISEASED_CROP, FarmPointPosition("world", 1.5, 65.0, 1.5))
+        val living = FarmCareTarget(1, FarmCareRole.DISEASED_CROP, FarmPointPosition("world", 2.5, 65.0, 1.5))
+        val replacement = FarmCareTarget(2, FarmCareRole.DISEASED_CROP, FarmPointPosition("world", 3.5, 65.0, 1.5))
+        val state = FarmShiftEngine.startCare(
+            preparedState(order, rules, player),
+            FarmCareType.DISEASE,
+            listOf(dead, living),
+        ).state
+
+        val result = FarmShiftEngine.expireDisease(state, dead.id, replacement)
+
+        result.accepted shouldBe true
+        result.state.phase shouldBe FarmPhase.CARE
+        result.state.careGoal shouldBe 2
+        result.state.careTargets shouldBe listOf(living, replacement)
     }
 
     test("legacy two-click disease targets migrate to one physical treatment") {

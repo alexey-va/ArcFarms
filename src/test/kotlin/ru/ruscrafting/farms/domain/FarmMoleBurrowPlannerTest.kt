@@ -13,7 +13,9 @@ class FarmMoleBurrowPlannerTest : FunSpec({
         first shouldBe second
         first.passages.size shouldBe 97
         reachable(first.passages, first.start) shouldBe first.passages
-        farthest(first.passages, first.start) shouldBe first.lair
+        (manhattan(first.start, first.lair) >= first.sideLength / 2) shouldBe true
+        first.chambers.size shouldBe 3
+        first.chambers.none { manhattan(first.start, it) < 4 || manhattan(first.lair, it) < 4 } shouldBe true
         first.lights shouldContain first.start
         first.lights shouldContain first.lair
     }
@@ -25,12 +27,16 @@ class FarmMoleBurrowPlannerTest : FunSpec({
             val rotated = FarmMoleBurrowPlanner.rotate(layout, turns)
             rotated.passages.size shouldBe layout.passages.size
             reachable(rotated.passages, rotated.start) shouldBe rotated.passages
+            rotated.chambers.size shouldBe layout.chambers.size
             val last = rotated.sideLength - 1
             (rotated.start.x == 0 || rotated.start.x == last || rotated.start.z == 0 || rotated.start.z == last) shouldBe true
         }
         FarmMoleBurrowPlanner.rotate(layout, 4) shouldBe layout
     }
 })
+
+private fun manhattan(first: FarmMolePassage, second: FarmMolePassage): Int =
+    kotlin.math.abs(first.x - second.x) + kotlin.math.abs(first.z - second.z)
 
 private fun reachable(passages: Set<FarmMolePassage>, start: FarmMolePassage): Set<FarmMolePassage> {
     val found = linkedSetOf(start)
@@ -43,20 +49,4 @@ private fun reachable(passages: Set<FarmMolePassage>, start: FarmMolePassage): S
         }
     }
     return found
-}
-
-private fun farthest(passages: Set<FarmMolePassage>, start: FarmMolePassage): FarmMolePassage {
-    val distances = linkedMapOf(start to 0)
-    val queue = ArrayDeque<FarmMolePassage>().also { it.add(start) }
-    while (queue.isNotEmpty()) {
-        val current = queue.removeFirst()
-        listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1).forEach { (dx, dz) ->
-            val next = FarmMolePassage(current.x + dx, current.z + dz)
-            if (next in passages && next !in distances) {
-                distances[next] = distances.getValue(current) + 1
-                queue.addLast(next)
-            }
-        }
-    }
-    return distances.keys.maxWith(compareBy<FarmMolePassage> { distances.getValue(it) }.thenBy { it.x }.thenBy { it.z })
 }

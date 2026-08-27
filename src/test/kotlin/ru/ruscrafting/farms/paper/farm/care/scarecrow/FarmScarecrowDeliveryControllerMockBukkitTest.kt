@@ -95,21 +95,22 @@ class FarmScarecrowDeliveryControllerMockBukkitTest : FunSpec({
         controller.interact(player, supply) shouldBe true
         world.entities.filterIsInstance<ItemDisplay>().count { controller.owns(it) } shouldBe 2
 
+        // Pickup reserves target 0 internally, but any free nearby marker must accept the carried scarecrow.
         controller.onMove(
-            PlayerMoveEvent(player, Location(world, 2.5, 65.0, 2.5), Location(world, 10.5, 65.0, 10.5)),
+            PlayerMoveEvent(player, Location(world, 2.5, 65.0, 2.5), Location(world, 14.5, 65.0, 10.5)),
         )
         runtime.state.phase shouldBe FarmPhase.CARE
-        runtime.state.careTargets.single { it.id == 0 }.complete shouldBe true
+        runtime.state.careTargets.single { it.id == 1 }.complete shouldBe true
 
         controller.ensure(runtime)
         world.entities.filterIsInstance<ItemDisplay>().any { display ->
-            controller.owns(display) && display.location.distanceSquared(Location(world, 10.5, 65.0, 10.5)) < 0.1
+            controller.owns(display) && display.location.distanceSquared(Location(world, 14.5, 65.0, 10.5)) < 0.1
         } shouldBe true
 
         val replenished = world.entities.filterIsInstance<Interaction>().single { controller.owns(it) }
         controller.interact(player, replenished) shouldBe true
         controller.onMove(
-            PlayerMoveEvent(player, Location(world, 10.5, 65.0, 10.5), Location(world, 14.5, 65.0, 10.5)),
+            PlayerMoveEvent(player, Location(world, 14.5, 65.0, 10.5), Location(world, 10.5, 65.0, 10.5)),
         )
         runtime.state.phase shouldBe FarmPhase.HARVESTING
 

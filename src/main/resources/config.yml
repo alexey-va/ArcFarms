@@ -69,7 +69,11 @@ farm-zones:
     care-targets-per-player: 15
     care-targets-max: 45
     care-spawns-per-update: 10
-    # Irrigation dries the managed field gradually, then hydrates it in circular waves from each valve.
+    # Delivery-style care uses a compact fixed scene instead of the general per-player target count.
+    scarecrow-target-count: 5
+    # One hive pickup supports this many flower patches.
+    pollination-charges: 5
+    # Irrigation dries the managed field gradually; valves may be opened in any order and hydrate it in circular waves.
     irrigation:
       dry-blocks-per-tick: 24
       wave-blocks-per-tick: 24
@@ -97,8 +101,8 @@ farm-zones:
     display-view-range: 2.0
     seeder-every-shifts: 2
     # Machinery may combine this many nearby same-height beds into one field.
-    seeder-patch-size: 1280
-    seeder-patch-max-size: 2048
+    seeder-patch-size: 3840
+    seeder-patch-max-size: 6144
     seeder-component-gap: 16
     seeder-component-limit: 8
     # The player rides the horse; this many leashed pigs work in a row ahead of it.
@@ -114,7 +118,7 @@ farm-zones:
     seeder-blocks-per-update: 128
     disease-initial-spots: 2
     disease-max-spots: 10
-    disease-spread-seconds: 5
+    disease-spread-seconds: 3
     disease-spread-radius: 4.0
     disease-kill-seconds: 16
     scarecrow-delivery-radius: 2.5
@@ -129,6 +133,8 @@ farm-zones:
       candidate-attempts: 12
       light-spacing: 5
       light-level: 11
+      chambers: 3
+      moles: 8
       replaceable-materials: [STONE, DEEPSLATE, DIRT, COARSE_DIRT, ANDESITE, DIORITE, GRANITE, TUFF, CALCITE, DRIPSTONE_BLOCK, CLAY, MUD, PACKED_MUD]
       lair-visual:
         material: RABBIT_HIDE

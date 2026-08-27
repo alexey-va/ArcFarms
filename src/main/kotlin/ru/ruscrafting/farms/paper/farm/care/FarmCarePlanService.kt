@@ -145,7 +145,7 @@ internal class FarmCarePlanService(
                 explicit(FarmPointKind.COVERS),
             )
             FarmCareType.SCARECROWS -> FarmCarePlanner.orient(
-                bedTargets(FarmCareRole.SCARECROW, count),
+                bedTargets(FarmCareRole.SCARECROW, runtime.settings.scarecrowTargetCount),
                 explicit(FarmPointKind.SCARECROWS),
             )
             FarmCareType.ANIMAL_RESCUE -> {

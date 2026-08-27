@@ -47,6 +47,7 @@ data class EngineResult<T>(
     val accepted: Boolean,
     val contribution: Int = 0,
     val events: List<ShiftEvent> = emptyList(),
+    val contributionCredits: Map<UUID, Int> = emptyMap(),
 )
 
 internal fun incrementContribution(

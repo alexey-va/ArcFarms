@@ -651,9 +651,10 @@ care:
     instruction: '<color:#f2fff7>Одним ударом мотыги срезайте фиолетовые очаги до гибели растений</color>'
     entry: '<color:#f2fff7>Обрежьте мотыгой заражённые растения, пока болезнь не разрослась</color>'
   moles:
-    name: '<color:#976948>Кроты</color>'
-    instruction: '<color:#f2fff7>Настигайте свежие холмики и бейте по ним мотыгой</color>'
-    entry: '<color:#f2fff7>Ищите светящиеся холмики: после удара крот уходит в другое место</color>'
+    mob-name: '<color:#a9825a>Крот</color>'
+    name: '<color:#976948>Подземная охота</color>'
+    instruction: '<color:#f2fff7>Спуститесь в нору и найдите логово в сети туннелей</color>'
+    entry: '<color:#f2fff7>Найдите отмеченный вход, спуститесь и исследуйте подземные пещеры</color>'
     entrance-label: '<color:#d8a56d>Спуститься в нору</color><newline><color:#b8c8c0>Нажмите ПКМ</color>'
     lair-label: '<color:#ffc857>Логово кротов</color><newline><color:#b8c8c0>Нажмите ПКМ</color>'
     exit-label: '<color:#b8c8c0>Вернуться на поверхность</color>'

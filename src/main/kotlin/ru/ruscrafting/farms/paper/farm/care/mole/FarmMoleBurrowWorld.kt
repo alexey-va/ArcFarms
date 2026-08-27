@@ -93,6 +93,7 @@ internal class FarmMoleBurrowWorld(
             settings.cells,
             layoutSeed,
             settings.lightSpacing,
+            settings.chamberCount,
         )
         val firstRotation = Math.floorMod((runtime.state.sequence xor surface.x.toLong() xor surface.z.toLong()).toInt(), 4)
         val depthSpan = settings.maxDepth - settings.minDepth + 1
@@ -118,6 +119,13 @@ internal class FarmMoleBurrowWorld(
             val lairZ = originZ + layout.lair.z
             for (dx in -1..1) for (dz in -1..1) repeat(settings.tunnelHeight) { dy ->
                 planned[Triple(lairX + dx, feetY + dy, lairZ + dz)] = AIR_DATA to FarmMoleBurrowMarker.NONE
+            }
+            layout.chambers.forEach { chamber ->
+                val chamberX = originX + chamber.x
+                val chamberZ = originZ + chamber.z
+                for (dx in -1..1) for (dz in -1..1) repeat(settings.tunnelHeight) { dy ->
+                    planned[Triple(chamberX + dx, feetY + dy, chamberZ + dz)] = AIR_DATA to FarmMoleBurrowMarker.NONE
+                }
             }
             val startPosition = Triple(startX, feetY, startZ)
             val lairPosition = Triple(lairX, feetY, lairZ)

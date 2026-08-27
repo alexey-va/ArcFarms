@@ -151,6 +151,8 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().careTargetsPerPlayer shouldBe 15
         settings.farms.single().careTargetsMax shouldBe 45
         settings.farms.single().careSpawnsPerUpdate shouldBe 10
+        settings.farms.single().scarecrowTargetCount shouldBe 5
+        settings.farms.single().pollinationCharges shouldBe 5
         settings.farms.single().irrigation.dryBlocksPerTick shouldBe 24
         settings.farms.single().irrigation.waveBlocksPerTick shouldBe 24
         settings.farms.single().irrigation.waveStartDelayTicks shouldBe 4
@@ -176,13 +178,15 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().seederEveryShifts shouldBe 2
         settings.farms.single().diseaseInitialSpots shouldBe 2
         settings.farms.single().diseaseMaxSpots shouldBe 10
-        settings.farms.single().diseaseSpreadSeconds shouldBe 5
+        settings.farms.single().diseaseSpreadSeconds shouldBe 3
         settings.farms.single().diseaseSpreadRadius shouldBe 4.0
         settings.farms.single().diseaseKillSeconds shouldBe 16
         settings.farms.single().moleBurrow.cells shouldBe 7
         settings.farms.single().moleBurrow.minDepth shouldBe 10
         settings.farms.single().moleBurrow.maxDepth shouldBe 18
         settings.farms.single().moleBurrow.blocksPerTick shouldBe 48
+        settings.farms.single().moleBurrow.chamberCount shouldBe 3
+        settings.farms.single().moleBurrow.moleCount shouldBe 8
         settings.farms.single().moleBurrow.lairVisual.material shouldBe "RABBIT_HIDE"
         settings.farms.single().proceduralCareFixtures shouldBe true
         settings.farms.single().careAnimalEntities shouldContainExactly listOf("CHICKEN", "SHEEP")
@@ -504,7 +508,7 @@ class ArcFarmsConfigTest : FunSpec({
         val root = resourceTree()
         val configPath = root.resolve("config.yml")
         configPath.writeText(
-            Files.readString(configPath).replace("seeder-patch-max-size: 2048", "seeder-patch-max-size: 2049"),
+            Files.readString(configPath).replace("seeder-patch-max-size: 6144", "seeder-patch-max-size: 6145"),
         )
 
         shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(root) }

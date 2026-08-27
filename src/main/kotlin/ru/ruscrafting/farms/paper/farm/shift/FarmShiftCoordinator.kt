@@ -74,7 +74,11 @@ internal class FarmShiftCoordinator(
             order?.let { "${runtime.state.completed(it)}/${it.totalRequired}" },
             result,
         )
-        if (actor != null && result.contribution > 0) {
+        if (result.contributionCredits.isNotEmpty()) {
+            result.contributionCredits.forEach { (playerId, contribution) ->
+                if (contribution > 0) port.recordContribution(playerId, ActivityKind.FARM, contribution)
+            }
+        } else if (actor != null && result.contribution > 0) {
             port.recordContribution(actor.uniqueId, ActivityKind.FARM, result.contribution)
         }
         result.events.forEach { event ->

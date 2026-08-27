@@ -47,6 +47,8 @@ player calls the glowing horse, keeps its visible leash, and leads it through
 the field without checkpoints or a prescribed route. Every managed bed inside
 `seeder-working-radius` is processed where the horse physically travels; the
 story cannot finish until the whole persisted field is tilled and then planted.
+The three saddled worker pigs also accept passengers; every mounted passenger
+receives the same processed-block contribution as the driver.
 After either planting path, the boss bar switches to one
 randomly selected field-care story before harvesting begins.
 Every story is spread across the active bed instead of clustering around its
@@ -54,16 +56,17 @@ center:
 
 - weeds place a configurable number of physical glowing roots; one root is one
   hoe action, so the displayed progress is the number of weeds removed;
-- irrigation first dries the selected farmland, then exposes a chain of valves
-  that must be opened in order. Each valve sends a bounded circular particle
+- irrigation first dries the selected farmland, then exposes several valves
+  that may be opened in any order. Each valve sends a bounded circular particle
   front across its assigned beds; the soil hydrates behind the front and the
   target counts only after the wave has actually completed;
-- pollination asks the player to collect two charges from a hive and carry them
+- pollination asks the player to collect five configurable charges from a hive and carry them
   to distant flower patches, returning to the hive as needed;
 - storm preparation distributes a configurable set of cover anchors across the
   actual field;
-- scarecrow duty stocks one decoy stand at receiving. Workers carry individual
-  scarecrows to marked beds; leaving the farm returns an unfinished decoy;
+- scarecrow duty stocks one decoy stand at receiving. Workers carry five
+  configurable scarecrows to any free marked bed; approaching a marker places
+  the carried scarecrow automatically, while leaving the farm returns it;
 - animal rescue spawns glowing tagged farm animals, attaches a visible leash
   when a player calls one, and leads them to the highlighted barn;
 - crop disease begins with a few purple outbreaks. It grows locally around the
@@ -71,9 +74,11 @@ center:
   configured deadline, and stops at `disease-max-spots`. One outbreak is one
   hoe action; killed crops are journaled and restored in bounded slices only
   after the activity ends;
-- moles surface as glowing earth mounds. A hoe strike keeps the target's
-  persisted hit progress but moves it to a distant part of the same patch until
-  the mole is finally caught.
+- a mole expedition temporarily replaces one bed with an entrance into a
+  journaled underground maze. Its lair is deliberately separated from the
+  entrance, side chambers break up the corridors, and weak one-hit moles roam
+  underground until workers find the lair; the complete scene is restored in
+  bounded slices afterwards.
 - orchard care hangs a large randomized set of apples across every loaded,
   reindexed open tree canopy, while the player may collect any smaller
   configured quota. Apple display creation is spread across updates, and its
