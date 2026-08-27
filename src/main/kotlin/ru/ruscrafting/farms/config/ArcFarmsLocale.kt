@@ -103,6 +103,7 @@ enum class MessageKey(val path: String) {
     ADMIN_ROUTE_TOO_SHORT("admin.route-too-short"),
     ADMIN_ROUTE_LIMIT("admin.route-limit"),
     ADMIN_ROUTE_INVALID("admin.route-invalid"),
+    ADMIN_ROUTE_INVALID_NAME("admin.route-invalid-name"),
     ADMIN_CARE_UNAVAILABLE("admin.care-unavailable"),
     ADMIN_INCIDENT_RECOVERY_PENDING("admin.incident-recovery-pending"),
     ADMIN_DEBUG_HELP("admin.debug.help"),

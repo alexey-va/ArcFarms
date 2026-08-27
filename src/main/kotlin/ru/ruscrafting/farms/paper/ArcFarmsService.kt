@@ -7,6 +7,7 @@ import org.bukkit.event.entity.EntityDeathEvent
 import org.bukkit.event.entity.EntityChangeBlockEvent
 import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.PlayerDeathEvent
+import org.bukkit.event.entity.ProjectileHitEvent
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.block.BlockDropItemEvent
 import org.bukkit.event.block.BlockFadeEvent
@@ -245,6 +246,7 @@ class ArcFarmsService(
     fun onInteractEntity(event: PlayerInteractEntityEvent) = farm.events.onInteractEntity(event)
     fun onVehicleEnter(event: VehicleEnterEvent) = farm.events.onVehicleEnter(event)
     fun onEntityDamage(event: EntityDamageEvent) = farm.events.onEntityDamage(event)
+    fun onProjectileHit(event: ProjectileHitEvent) = farm.events.onProjectileHit(event)
     fun onMoistureChange(event: MoistureChangeEvent) = farm.events.onMoistureChange(event)
 
     fun toggleAdminEdit(player: Player): Boolean? = farm.worldAdmin.toggleEdit(player)
@@ -254,15 +256,20 @@ class ArcFarmsService(
     fun adminStartFarmBlockReset(player: Player, zoneId: String): Boolean =
         farm.worldAdmin.startBlockReset(player, zoneId)
 
-    fun adminStartFarmRoute(player: Player, zoneId: String): Boolean = farm.routeAdmin.start(player, zoneId)
+    fun adminStartFarmRoute(player: Player, zoneId: String, routeName: String = "main"): Boolean =
+        farm.routeAdmin.start(player, zoneId, routeName)
 
     fun adminFinishFarmRoute(player: Player): Boolean = farm.routeAdmin.finish(player)
 
     fun adminCancelFarmRoute(player: Player): Boolean = farm.routeAdmin.cancel(player)
 
-    fun adminClearFarmRoute(player: Player, zoneId: String): Boolean = farm.routeAdmin.clear(player, zoneId)
+    fun adminClearFarmRoute(player: Player, zoneId: String, routeName: String = "main"): Boolean =
+        farm.routeAdmin.clear(player, zoneId, routeName)
 
-    fun adminFarmRouteStatus(player: Player, zoneId: String): Boolean = farm.routeAdmin.status(player, zoneId)
+    fun adminFarmRouteStatus(player: Player, zoneId: String, routeName: String = "main"): Boolean =
+        farm.routeAdmin.status(player, zoneId, routeName)
+
+    fun adminFarmRouteNames(zoneId: String): List<String> = farm.routeAdmin.names(zoneId)
 
     fun adminFarmBlockResetStatus(player: Player, zoneId: String): Boolean =
         farm.worldAdmin.blockResetStatus(player, zoneId)

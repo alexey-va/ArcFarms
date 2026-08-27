@@ -139,6 +139,7 @@ data class FarmSpecialIncidentState(
     val points: List<FarmPointPosition> = emptyList(),
     val plots: List<FarmPlotPosition> = emptyList(),
     val crop: String? = null,
+    val routeName: String? = null,
     val solution: Set<Int> = emptySet(),
     val active: Set<Int> = emptySet(),
     val marketAccepted: Boolean = false,
@@ -150,6 +151,7 @@ data class FarmSpecialIncidentState(
             "Farm special incident has invalid plots"
         }
         crop?.let { require(DomainIdentifiers.isContent(it)) { "Invalid special incident crop: $it" } }
+        routeName?.let { require(DomainIdentifiers.isOrder(it)) { "Invalid special incident route: $it" } }
         require(marketDeadlineAt >= 0) { "Farm market deadline is invalid" }
         val gateRange = points.indices
         require(solution.all(gateRange::contains) && active.all(gateRange::contains)) {
@@ -801,8 +803,9 @@ object FarmShiftEngine {
         return EngineResult(state, true, contribution, listOf(ShiftEvent.INCIDENT_PROGRESS))
     }
 
-    fun initializeFoodDelivery(current: FarmShiftState, checkpoints: Int): EngineResult<FarmShiftState> {
+    fun initializeFoodDelivery(current: FarmShiftState, checkpoints: Int, routeName: String = FarmRouteKeys.DEFAULT_NAME): EngineResult<FarmShiftState> {
         require(checkpoints in 2..512) { "Farm food delivery route must contain 2..512 checkpoints" }
+        require(DomainIdentifiers.isOrder(routeName)) { "Farm food delivery route name is invalid" }
         if (current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.FOOD_DELIVERY ||
             current.specialIncident != null
         ) return EngineResult(current, false)
@@ -810,7 +813,7 @@ object FarmShiftEngine {
             current.copy(
                 incidentProgress = 1,
                 incidentRequired = checkpoints,
-                specialIncident = FarmSpecialIncidentState(),
+                specialIncident = FarmSpecialIncidentState(routeName = routeName),
             ),
             true,
         )

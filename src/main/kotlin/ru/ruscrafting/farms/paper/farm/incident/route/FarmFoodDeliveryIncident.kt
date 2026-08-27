@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper.farm.incident.route
 
 import org.bukkit.Bukkit
+import org.bukkit.Color
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
@@ -30,6 +31,7 @@ import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmShiftEngine
+import ru.ruscrafting.farms.domain.NamedFarmDeliveryRoute
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
@@ -55,6 +57,7 @@ internal class FarmFoodDeliveryIncident(
 ) {
     private data class Session(
         val sequence: Long,
+        val routeName: String,
         var horseId: UUID? = null,
         var cartId: UUID? = null,
         val loadIds: MutableList<UUID> = mutableListOf(),
@@ -73,10 +76,14 @@ internal class FarmFoodDeliveryIncident(
 
     fun initialize(runtime: FarmRuntime): Boolean {
         if (!active(runtime)) return false
-        val route = routes.route(runtime.settings.id) ?: return false
-        if (route.points.first().world != runtime.region.world.name) return false
+        val selected = selectedRoute(runtime) ?: return false
+        if (selected.route.points.first().world != runtime.region.world.name) return false
         if (runtime.state.specialIncident == null) {
-            transitions.apply(runtime, FarmShiftEngine.initializeFoodDelivery(runtime.state, route.points.size), null)
+            transitions.apply(
+                runtime,
+                FarmShiftEngine.initializeFoodDelivery(runtime.state, selected.route.points.size, selected.name),
+                null,
+            )
         }
         return runtime.state.specialIncident != null
     }
@@ -95,10 +102,14 @@ internal class FarmFoodDeliveryIncident(
             )
             return
         }
-        val route = routes.route(runtime.settings.id) ?: return
-        val session = sessions[runtime.settings.id]?.takeIf { it.sequence == runtime.state.sequence }
+        val selected = selectedRoute(runtime) ?: return
+        val route = selected.route
+        val session = sessions[runtime.settings.id]?.takeIf {
+            it.sequence == runtime.state.sequence && it.routeName == selected.name
+        }
             ?: Session(
                 sequence = runtime.state.sequence,
+                routeName = selected.name,
                 monsterGoal = random.nextInt(
                     runtime.settings.routeDelivery.monsterMinCount,
                     runtime.settings.routeDelivery.monsterMaxCount + 1,
@@ -134,12 +145,19 @@ internal class FarmFoodDeliveryIncident(
                 ?.takeIf(::active) ?: return@forEach
             val horse = session.horseId?.let(Bukkit::getEntity) as? Horse ?: return@forEach
             val cart = session.cartId?.let(Bukkit::getEntity) as? ItemDisplay ?: return@forEach
+            val route = selectedRoute(runtime)?.takeIf { it.name == session.routeName }?.route ?: return@forEach
             val yaw = Math.toRadians(horse.location.yaw.toDouble())
             val behind = horse.location.clone().add(sin(yaw) * 2.15, runtime.settings.routeDelivery.cartYOffset, -cos(yaw) * 2.15)
             behind.yaw = horse.location.yaw
             cart.teleportAsync(behind)
             session.loadIds.forEachIndexed { slot, id ->
                 (Bukkit.getEntity(id) as? ItemDisplay)?.teleportAsync(loadLocation(behind, slot, runtime.settings.contractCartVisual.loadYOffset))
+            }
+            if (settings().particles && horse.world.gameTime % TRAIL_INTERVAL_TICKS == 0L) {
+                val rider = horse.passengers.filterIsInstance<Player>().firstOrNull()
+                val viewers = rider?.let(::listOf) ?: port.players(runtime.region)
+                viewers.filter { it.world == horse.world && !port.isAdminEditing(it) }
+                    .forEach { viewer -> renderTrail(runtime, viewer, route.points) }
             }
         }
     }
@@ -247,6 +265,32 @@ internal class FarmFoodDeliveryIncident(
         transitions.apply(runtime, result, rider)
         if (result.accepted && settings().particles) {
             horse.world.spawnParticle(Particle.HAPPY_VILLAGER, horse.location.add(0.0, 1.0, 0.0), 8, 0.5, 0.4, 0.5, 0.0)
+        }
+    }
+
+    private fun renderTrail(runtime: FarmRuntime, rider: Player, points: List<FarmPointPosition>) {
+        val config = runtime.settings.routeDelivery
+        val current = runtime.state.incidentProgress.coerceIn(1, points.size)
+        val start = (current - 1).coerceAtLeast(0)
+        val endExclusive = (start + config.trailLookaheadPoints).coerceAtMost(points.size)
+        val dust = Particle.DustOptions(TRAIL_COLOR, config.trailParticleSize)
+        points.subList(start, endExclusive).forEachIndexed { offset, point ->
+            val marker = location(point).add(0.0, config.trailHeight, 0.0)
+            rider.spawnParticle(Particle.DUST, marker, 1, 0.04, 0.03, 0.04, 0.0, dust)
+            if (offset == 1) {
+                repeat(4) { layer ->
+                    rider.spawnParticle(
+                        Particle.DUST,
+                        marker.clone().add(0.0, 0.55 + layer * 0.55, 0.0),
+                        1,
+                        0.04,
+                        0.04,
+                        0.04,
+                        0.0,
+                        Particle.DustOptions(NEXT_CHECKPOINT_COLOR, config.trailParticleSize + 0.2f),
+                    )
+                }
+            }
         }
     }
 
@@ -365,6 +409,14 @@ internal class FarmFoodDeliveryIncident(
 
     private fun role(entity: Entity): String? = entity.persistentDataContainer.get(roleKey, PersistentDataType.STRING)
 
+    private fun selectedRoute(runtime: FarmRuntime): NamedFarmDeliveryRoute? {
+        val persistedName = runtime.state.specialIncident?.routeName
+        if (persistedName != null) {
+            return routes.route(runtime.settings.id, persistedName)?.let { NamedFarmDeliveryRoute(persistedName, it) }
+        }
+        return routes.select(runtime.settings.id, runtime.state.sequence)
+    }
+
     private fun active(runtime: FarmRuntime) =
         runtime.state.phase == FarmPhase.INCIDENT && runtime.state.incidentType == FarmIncidentType.FOOD_DELIVERY
 
@@ -404,6 +456,9 @@ internal class FarmFoodDeliveryIncident(
     }
 
     private companion object {
+        const val TRAIL_INTERVAL_TICKS = 10L
+        val TRAIL_COLOR: Color = Color.fromRGB(69, 200, 245)
+        val NEXT_CHECKPOINT_COLOR: Color = Color.fromRGB(255, 200, 87)
         const val ROLE_HORSE = "horse"
         const val ROLE_CART = "cart"
         const val ROLE_LOAD = "load"

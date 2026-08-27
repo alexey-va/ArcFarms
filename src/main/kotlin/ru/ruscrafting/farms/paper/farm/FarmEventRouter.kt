@@ -17,6 +17,7 @@ import org.bukkit.event.entity.EntityChangeBlockEvent
 import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.EntityDeathEvent
+import org.bukkit.event.entity.ProjectileHitEvent
 import org.bukkit.event.entity.PlayerDeathEvent
 import org.bukkit.event.inventory.ClickType
 import org.bukkit.event.inventory.InventoryClickEvent
@@ -334,6 +335,10 @@ internal class FarmEventRouter(
             return
         }
         pests.handlePestDamage(event, runtimes())
+    }
+
+    fun onProjectileHit(event: ProjectileHitEvent) {
+        birds.onProjectileHit(event, runtimes())
     }
 
     fun onMoistureChange(event: MoistureChangeEvent) {

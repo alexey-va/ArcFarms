@@ -177,7 +177,7 @@ farm-zones:
     incident-types: [GIANT_CROP, CHANNELS, NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, PESTS, DROUGHT]
     special-incidents:
       giant-crop: {block-particle-stride: 4}
-      birds: {min-count: 6, max-count: 14, beds-per-bird: 180, spawn-height: 4.0, health: 4.0, eat-radius: 5.0, eat-interval-seconds: 3, ranged-contribution: 2, melee-contribution: 1}
+      birds: {min-count: 6, max-count: 14, beds-per-bird: 180, spawn-height: 4.0, flying-speed: 0.65, health: 4.0, eat-radius: 5.0, eat-interval-seconds: 3, ranged-contribution: 2, melee-contribution: 1}
       channels:
         blockages: 5
         blockage: {material: MANGROVE_ROOTS, custom-model-data: 0, display-scale: 1.6, y-offset: 0.8}
@@ -212,6 +212,7 @@ farm-zones:
       hard-reset-distance: 9.0
       checkpoint-radius: 3.5
       horse-speed: 0.26
+      trail: {lookahead-points: 28, height: 0.35, particle-size: 1.15}
       completion-contribution: 12
       cart-scale: 4.4
       cart-y-offset: 0.0

@@ -44,7 +44,7 @@ admin:
     unmanage: '<prefix> <white>/arcfarms admin unmanage \<zone></white> <gray>— removes ArcFarms management and recovery records from all known beds in the current WorldEdit selection.</gray>'
     next: '<prefix> <white>/arcfarms admin next \<zone></white> <gray>— moves a test order to its next meaningful stage.</gray>'
     finish: '<prefix> <white>/arcfarms admin finish \<zone></white> <gray>— completes the order through its normal delivery, field recovery, and reward flow.</gray>'
-    route: '<prefix> <white>/arcfarms admin route \<zone> start</white> <gray>— start recording on foot.</gray><newline><white>/arcfarms admin route \<zone> finish</white> <gray>— save it; status, cancel, and clear are also available.</gray>'
+    route: '<prefix> <gray>Named delivery routes:</gray><newline><white>/arcfarms admin route \<zone> start \<name></white><newline><dark_gray>•</dark_gray> <gray>Starts recording on foot; the name is optional.</gray><newline><white>/arcfarms admin route \<zone> finish</white><newline><dark_gray>•</dark_gray> <gray>Saves the current recording.</gray><newline><white>/arcfarms admin route \<zone> status \<name></white><newline><dark_gray>•</dark_gray> <gray>Inspects a route; cancel and clear are also available.</gray>'
     shortcut: '<prefix> <white>/arcfarms admin <command> <arguments></white> <gray>— <description></gray>'
   point-help-header: '<prefix> <gold>/arcfarms admin point <zone> \<point></gold> <gray>saves your current position and facing direction:</gray>'
   point-help-entry: '  <dark_gray>•</dark_gray> <white><id></white> <dark_gray>—</dark_gray> <point><gray>: </gray><description>'
@@ -126,6 +126,7 @@ admin:
   route-too-short: '<prefix> <color:#ffad42>Walk at least a few blocks before saving.</color>'
   route-limit: '<prefix> <color:#ffad42>The route reached its length limit. Finish recording.</color>'
   route-invalid: '<prefix> <color:#ff5f6d>The route contains a large gap. Record it again without teleporting.</color>'
+  route-invalid-name: '<prefix> <color:#ff5f6d>Route names may contain lowercase Latin letters, digits, _ and -.</color>'
   order-cycle-stopped: '<prefix> <color:#ff9f0f>Order cycle stopped.</color> <gray>The current order was not cancelled.</gray>'
   order-cycle-started: '<prefix> <color:#2bba43>Order cycle started.</color> <gray>A new order will appear when a player enters the farm.</gray>'
   shortcut-description:

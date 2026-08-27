@@ -44,7 +44,7 @@ admin:
     unmanage: '<prefix> <white>/arcfarms admin unmanage \<зона></white> <gray>— снимает управление ArcFarms со всех известных грядок в текущем выделении WorldEdit и удаляет их записи восстановления.</gray>'
     next: '<prefix> <white>/arcfarms admin next \<зона></white> <gray>— переводит тестовый заказ на следующий осмысленный этап.</gray>'
     finish: '<prefix> <white>/arcfarms admin finish \<зона></white> <gray>— завершает заказ через обычную доставку, восстановление поля и выдачу наград.</gray>'
-    route: '<prefix> <white>/arcfarms admin route \<зона> start</white> <gray>— начните запись пешком.</gray><newline><white>/arcfarms admin route \<зона> finish</white> <gray>— сохраните маршрут; также доступны status, cancel и clear.</gray>'
+    route: '<prefix> <gray>Именованные маршруты доставки:</gray><newline><white>/arcfarms admin route \<зона> start \<имя></white><newline><dark_gray>•</dark_gray> <gray>Начинает запись пешком; имя можно не указывать.</gray><newline><white>/arcfarms admin route \<зона> finish</white><newline><dark_gray>•</dark_gray> <gray>Сохраняет текущую запись.</gray><newline><white>/arcfarms admin route \<зона> status \<имя></white><newline><dark_gray>•</dark_gray> <gray>Проверяет маршрут; также доступны cancel и clear.</gray>'
     shortcut: '<prefix> <white>/arcfarms admin <command> <arguments></white> <gray>— <description></gray>'
   point-help-header: '<prefix> <gold>/arcfarms admin point <zone> \<точка></gold> <gray>сохраняет ваше текущее положение и направление взгляда:</gray>'
   point-help-entry: '  <dark_gray>•</dark_gray> <white><id></white> <dark_gray>—</dark_gray> <point><gray>: </gray><description>'
@@ -126,6 +126,7 @@ admin:
   route-too-short: '<prefix> <color:#ffad42>Пройдите хотя бы несколько блоков перед сохранением.</color>'
   route-limit: '<prefix> <color:#ffad42>Достигнут предел длины маршрута. Завершите запись.</color>'
   route-invalid: '<prefix> <color:#ff5f6d>Маршрут содержит слишком резкий разрыв. Пройдите его заново без телепортов.</color>'
+  route-invalid-name: '<prefix> <color:#ff5f6d>Имя маршрута может содержать строчные латинские буквы, цифры, _ и -.</color>'
   order-cycle-stopped: '<prefix> <color:#ff9f0f>Цикл заказов остановлен.</color> <gray>Текущий заказ не сброшен.</gray>'
   order-cycle-started: '<prefix> <color:#2bba43>Цикл заказов запущен.</color> <gray>Новый заказ появится при входе на ферму.</gray>'
   shortcut-description:

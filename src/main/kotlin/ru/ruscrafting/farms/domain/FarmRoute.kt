@@ -17,6 +17,40 @@ data class FarmDeliveryRoute(
     }
 }
 
+data class NamedFarmDeliveryRoute(
+    val name: String,
+    val route: FarmDeliveryRoute,
+) {
+    init {
+        require(DomainIdentifiers.isOrder(name)) { "Invalid farm delivery route name: $name" }
+    }
+}
+
+/**
+ * Stable encoding for multiple named routes without rewriting the existing route
+ * store. The historical zone-only key remains the canonical `main` route.
+ */
+internal object FarmRouteKeys {
+    const val DEFAULT_NAME = "main"
+    private const val SEPARATOR = "~"
+
+    fun encode(zoneId: String, routeName: String): String {
+        require(DomainIdentifiers.isOrder(zoneId)) { "Invalid farm route zone: $zoneId" }
+        require(DomainIdentifiers.isOrder(routeName)) { "Invalid farm route name: $routeName" }
+        return if (routeName == DEFAULT_NAME) zoneId else "$zoneId$SEPARATOR$routeName"
+    }
+
+    fun decode(storageKey: String): Pair<String, String>? {
+        val separator = storageKey.indexOf(SEPARATOR)
+        val zoneId = if (separator < 0) storageKey else storageKey.substring(0, separator)
+        val routeName = if (separator < 0) DEFAULT_NAME else storageKey.substring(separator + SEPARATOR.length)
+        return (zoneId to routeName).takeIf {
+            DomainIdentifiers.isOrder(zoneId) && DomainIdentifiers.isOrder(routeName) &&
+                (separator < 0 || SEPARATOR !in routeName)
+        }
+    }
+}
+
 data class FarmRouteState(
     val schemaVersion: Int = SCHEMA_VERSION,
     val routes: Map<String, FarmDeliveryRoute> = emptyMap(),

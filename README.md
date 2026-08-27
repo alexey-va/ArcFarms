@@ -157,7 +157,11 @@ offers an optional timed rush order through the existing customer for a
 configured final money bonus. Declining or timing out the market has no penalty
 and never resets the main order. Market deadlines and every target or decision
 are persisted; all non-timed goals still wait indefinitely when zero players
-are present. A pest outbreak
+are present. Birds fly over the indexed field, eat crops and can be defeated
+reliably with the service bow even inside a protected WorldGuard region. Food
+delivery chooses one of the farm's named routes deterministically, persists
+that choice across restarts and shows its riders a bounded personal particle
+trail with a distinct next-checkpoint marker. A pest outbreak
 places several breakable nests across distant parts of the field. Each nest can
 spawn only a configured number of glowing silverfish, with a separate cap on
 simultaneously living pests. The pests eat any configured crops around them to
@@ -293,12 +297,15 @@ are available through commands such as `/arcfarms admin point <zone> help`,
   original coordinates in bounded tick slices. ArcFarms first saves the exact
   target bounds as a `pre_restore` safety backup, then rebuilds the farm block
   index; a failed restore leaves the farm paused.
-- `/arcfarms admin stage <zone> <preparation|planting|harvesting|seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought|giant-crop|channels|night-shift|market|delivery|complete|reset>` —
+- `/arcfarms admin route <zone> start [name]` — record a named food-delivery
+  route on foot. Omit the name for the backward-compatible `main` route; use
+  `finish`, `status [name]`, `clear [name]`, or `cancel` to manage recordings.
+- `/arcfarms admin stage <zone> <preparation|planting|harvesting|seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought|birds|giant-crop|channels|night-shift|market|food-delivery|delivery|complete|reset>` —
   switch the current farm to an exact QA stage while preserving normal recovery.
 - `/arcfarms admin next <zone>` — advance to the next useful QA stage.
 - `/arcfarms admin finish <zone>` — finish the current order through its normal
   completion and reward path.
-- `/arcfarms admin event <zone> <seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought|giant-crop|channels|night-shift|market>` —
+- `/arcfarms admin event <zone> <seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought|birds|giant-crop|channels|night-shift|market|food-delivery>` —
   start any exact farm story or harvest incident.
 
 Farm counts, manual and mechanized patch sizes, machinery radius, spacing,

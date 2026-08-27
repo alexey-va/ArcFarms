@@ -7,6 +7,7 @@ import org.bukkit.event.EventPriority
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.block.BlockSpreadEvent
 import org.bukkit.event.block.BlockGrowEvent
+import org.bukkit.event.entity.ProjectileHitEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerPortalEvent
 import org.bukkit.event.player.PlayerTeleportEvent
@@ -34,6 +35,10 @@ class ArcFarmsListenerContractTest : FunSpec({
 
     test("contract scene reconciliation runs as soon as a chunk becomes available") {
         handler("onChunkLoad", ChunkLoadEvent::class.java).priority shouldBe EventPriority.LOWEST
+    }
+
+    test("bird projectile collisions are resolved before vanilla damage protection") {
+        handler("onProjectileHit", ProjectileHitEvent::class.java).priority shouldBe EventPriority.HIGHEST
     }
 
     test("teleports and portals cannot bypass farm exit cleanup") {

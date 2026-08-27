@@ -86,7 +86,7 @@ class ArcFarmsStateRepositoryTest : FunSpec({
                     incidentCrop = "WHEAT",
                     incidentProgress = 1,
                     incidentRequired = 3,
-                    specialIncident = FarmSpecialIncidentState(),
+                    specialIncident = FarmSpecialIncidentState(routeName = "orchard"),
                 ),
             ),
         )

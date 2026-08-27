@@ -4,6 +4,9 @@ import org.bukkit.entity.Player
 import org.bukkit.event.player.PlayerMoveEvent
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.FarmDeliveryRoute
+import ru.ruscrafting.farms.domain.DomainIdentifiers
+import ru.ruscrafting.farms.domain.FarmRouteKeys
+import ru.ruscrafting.farms.domain.NamedFarmDeliveryRoute
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmRouteState
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
@@ -19,15 +22,39 @@ internal class FarmRouteAdminService(
     private val port: WorksiteRuntimePort,
     private val runtimes: () -> Collection<FarmRuntime>,
 ) {
-    private data class Recording(val zoneId: String, val points: MutableList<FarmPointPosition>)
+    private data class Recording(
+        val zoneId: String,
+        val routeName: String,
+        val points: MutableList<FarmPointPosition>,
+    )
 
     private var state = repository.load()
     private val recordings = mutableMapOf<UUID, Recording>()
 
-    fun route(zoneId: String): FarmDeliveryRoute? = state.routes[zoneId]
+    fun route(zoneId: String, routeName: String = FarmRouteKeys.DEFAULT_NAME): FarmDeliveryRoute? =
+        state.routes[FarmRouteKeys.encode(zoneId, routeName)]
 
-    fun start(player: Player, zoneId: String): Boolean {
+    fun routes(zoneId: String): Map<String, FarmDeliveryRoute> = state.routes.mapNotNull { (key, route) ->
+        val (storedZone, routeName) = FarmRouteKeys.decode(key) ?: return@mapNotNull null
+        (routeName to route).takeIf { storedZone == zoneId }
+    }.toMap()
+
+    fun names(zoneId: String): List<String> = routes(zoneId).keys.sorted()
+
+    fun select(zoneId: String, sequence: Long): NamedFarmDeliveryRoute? {
+        val available = routes(zoneId).toSortedMap()
+        if (available.isEmpty()) return null
+        val index = Math.floorMod(sequence, available.size.toLong()).toInt()
+        val (name, route) = available.entries.elementAt(index)
+        return NamedFarmDeliveryRoute(name, route)
+    }
+
+    fun start(player: Player, zoneId: String, routeName: String = FarmRouteKeys.DEFAULT_NAME): Boolean {
         val runtime = runtime(player, zoneId) ?: return false
+        if (!DomainIdentifiers.isOrder(routeName)) {
+            port.sendChat(player, MessageKey.ADMIN_ROUTE_INVALID_NAME)
+            return false
+        }
         if (player.world != runtime.region.world) {
             port.sendChat(player, MessageKey.ADMIN_ROUTE_WRONG_WORLD)
             return false
@@ -36,9 +63,9 @@ internal class FarmRouteAdminService(
             port.sendChat(player, MessageKey.ADMIN_ROUTE_START_OUTSIDE)
             return false
         }
-        recordings[player.uniqueId] = Recording(zoneId, mutableListOf(player.location.point()))
-        port.sendChat(player, MessageKey.ADMIN_ROUTE_STARTED, mapOf("zone" to portText(zoneId)))
-        debug.event("farm_route_recording_started", "zone" to zoneId, "player" to player.name)
+        recordings[player.uniqueId] = Recording(zoneId, routeName, mutableListOf(player.location.point()))
+        port.sendChat(player, MessageKey.ADMIN_ROUTE_STARTED, mapOf("zone" to portText(label(zoneId, routeName))))
+        debug.event("farm_route_recording_started", "zone" to zoneId, "route" to routeName, "player" to player.name)
         return true
     }
 
@@ -84,7 +111,8 @@ internal class FarmRouteAdminService(
             port.sendChat(player, MessageKey.ADMIN_ROUTE_INVALID)
             return false
         }
-        val candidate = state.copy(routes = state.routes + (recording.zoneId to route))
+        val storageKey = FarmRouteKeys.encode(recording.zoneId, recording.routeName)
+        val candidate = state.copy(routes = state.routes + (storageKey to route))
         return runCatching { repository.saveBlocking(candidate) }.fold(
             onSuccess = {
                 state = candidate
@@ -92,9 +120,12 @@ internal class FarmRouteAdminService(
                 port.sendChat(
                     player,
                     MessageKey.ADMIN_ROUTE_SAVED,
-                    mapOf("zone" to portText(recording.zoneId), "points" to portText(route.points.size)),
+                    mapOf("zone" to portText(label(recording.zoneId, recording.routeName)), "points" to portText(route.points.size)),
                 )
-                debug.event("farm_route_saved", "zone" to recording.zoneId, "player" to player.name, "points" to route.points.size)
+                debug.event(
+                    "farm_route_saved", "zone" to recording.zoneId, "route" to recording.routeName,
+                    "player" to player.name, "points" to route.points.size,
+                )
                 true
             },
             onFailure = {
@@ -110,34 +141,46 @@ internal class FarmRouteAdminService(
             return false
         }
         port.sendChat(player, MessageKey.ADMIN_ROUTE_CANCELLED)
-        debug.event("farm_route_recording_cancelled", "zone" to removed.zoneId, "player" to player.name, "reason" to reason)
+        debug.event(
+            "farm_route_recording_cancelled", "zone" to removed.zoneId, "route" to removed.routeName,
+            "player" to player.name, "reason" to reason,
+        )
         return true
     }
 
-    fun clear(player: Player, zoneId: String): Boolean {
+    fun clear(player: Player, zoneId: String, routeName: String = FarmRouteKeys.DEFAULT_NAME): Boolean {
         runtime(player, zoneId) ?: return false
-        if (zoneId !in state.routes) {
-            port.sendChat(player, MessageKey.ADMIN_ROUTE_MISSING, mapOf("zone" to portText(zoneId)))
+        if (!DomainIdentifiers.isOrder(routeName)) {
+            port.sendChat(player, MessageKey.ADMIN_ROUTE_INVALID_NAME)
             return false
         }
-        val candidate = state.copy(routes = state.routes - zoneId)
+        val storageKey = FarmRouteKeys.encode(zoneId, routeName)
+        if (storageKey !in state.routes) {
+            port.sendChat(player, MessageKey.ADMIN_ROUTE_MISSING, mapOf("zone" to portText(label(zoneId, routeName))))
+            return false
+        }
+        val candidate = state.copy(routes = state.routes - storageKey)
         return runCatching { repository.saveBlocking(candidate) }.fold(
             onSuccess = {
                 state = candidate
-                port.sendChat(player, MessageKey.ADMIN_ROUTE_CLEARED, mapOf("zone" to portText(zoneId)))
+                port.sendChat(player, MessageKey.ADMIN_ROUTE_CLEARED, mapOf("zone" to portText(label(zoneId, routeName))))
                 true
             },
             onFailure = { port.sendChat(player, MessageKey.GENERIC_ERROR); false },
         )
     }
 
-    fun status(player: Player, zoneId: String): Boolean {
+    fun status(player: Player, zoneId: String, routeName: String = FarmRouteKeys.DEFAULT_NAME): Boolean {
         runtime(player, zoneId) ?: return false
-        val route = state.routes[zoneId]
+        if (!DomainIdentifiers.isOrder(routeName)) {
+            port.sendChat(player, MessageKey.ADMIN_ROUTE_INVALID_NAME)
+            return false
+        }
+        val route = route(zoneId, routeName)
         port.sendChat(
             player,
             if (route == null) MessageKey.ADMIN_ROUTE_MISSING else MessageKey.ADMIN_ROUTE_STATUS,
-            mapOf("zone" to portText(zoneId), "points" to portText(route?.points?.size ?: 0)),
+            mapOf("zone" to portText(label(zoneId, routeName)), "points" to portText(route?.points?.size ?: 0)),
         )
         return route != null
     }
@@ -160,6 +203,8 @@ internal class FarmRouteAdminService(
         val dz = left.z - right.z
         return sqrt(dx * dx + dy * dy + dz * dz)
     }
+
+    private fun label(zoneId: String, routeName: String): String = "$zoneId/$routeName"
 
     private fun portText(value: Any) = net.kyori.adventure.text.Component.text(value.toString())
 }

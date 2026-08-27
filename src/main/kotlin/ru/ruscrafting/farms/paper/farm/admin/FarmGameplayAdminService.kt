@@ -274,7 +274,11 @@ internal class FarmGameplayAdminService(
         foodDelivery.clear(runtime.settings.id, "admin_stage")
         restoreGiantCrop(runtime, "admin_stage")
         special.clearZone(runtime, "admin_stage")
-        incidentRecovery.restore(runtime, runtime.settings.restoreBlocksPerTick)
+        // An explicit admin transition must leave no incident journal behind. A bounded
+        // restore here used to deadlock bird incidents: processRestores deliberately
+        // pauses while the runtime is still in INCIDENT, so the remaining crop entries
+        // could never make progress and every subsequent /admin event was rejected.
+        incidentRecovery.restore(runtime)
         if (incidentRecovery.pending(runtime)) {
             port.sendChat(player, MessageKey.ADMIN_INCIDENT_RECOVERY_PENDING, mapOf("count" to locale.text(incidentRecovery.remaining(runtime))))
             return false

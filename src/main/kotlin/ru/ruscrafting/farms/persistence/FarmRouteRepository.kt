@@ -1,7 +1,7 @@
 package ru.ruscrafting.farms.persistence
 
-import ru.ruscrafting.farms.domain.DomainIdentifiers
 import ru.ruscrafting.farms.domain.FarmRouteState
+import ru.ruscrafting.farms.domain.FarmRouteKeys
 import java.nio.file.Path
 
 class FarmRouteRepository(dataRoot: Path) : AutoCloseable {
@@ -20,22 +20,22 @@ class FarmRouteRepository(dataRoot: Path) : AutoCloseable {
 
     private fun validate(value: FarmRouteState) {
         require(value.schemaVersion == FarmRouteState.SCHEMA_VERSION) { "Unsupported farm route schema" }
-        require(value.routes.size <= 256) { "Farm route store contains too many zones" }
-        value.routes.forEach { (zoneId, route) ->
-            require(DomainIdentifiers.isOrder(zoneId)) { "Invalid farm route zone: $zoneId" }
-            require(route.points.size in 2..512) { "Farm route $zoneId has an invalid point count" }
+        require(value.routes.size <= 256) { "Farm route store contains too many routes" }
+        value.routes.forEach { (storageKey, route) ->
+            requireNotNull(FarmRouteKeys.decode(storageKey)) { "Invalid farm route key: $storageKey" }
+            require(route.points.size in 2..512) { "Farm route $storageKey has an invalid point count" }
             require(route.points.all { point ->
                 point.world.isNotBlank() &&
                     point.x.isFinite() && point.y.isFinite() && point.z.isFinite() &&
                     point.yaw.isFinite() && point.pitch.isFinite()
-            }) { "Farm route $zoneId contains invalid coordinates" }
-            require(route.points.map { it.world }.distinct().size == 1) { "Farm route $zoneId crosses worlds" }
+            }) { "Farm route $storageKey contains invalid coordinates" }
+            require(route.points.map { it.world }.distinct().size == 1) { "Farm route $storageKey crosses worlds" }
             require(route.points.zipWithNext().all { (from, to) ->
                 val dx = from.x - to.x
                 val dy = from.y - to.y
                 val dz = from.z - to.z
                 dx * dx + dy * dy + dz * dz <= 100.0
-            }) { "Farm route $zoneId contains a gap above 10 blocks" }
+            }) { "Farm route $storageKey contains a gap above 10 blocks" }
         }
     }
 }

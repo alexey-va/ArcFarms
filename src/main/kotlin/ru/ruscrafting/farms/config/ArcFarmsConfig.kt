@@ -181,6 +181,7 @@ data class FarmSpecialIncidentSettings(
     val birdMaxCount: Int,
     val birdBedsPerBird: Int,
     val birdSpawnHeight: Double,
+    val birdFlyingSpeed: Double,
     val birdHealth: Double,
     val birdEatRadius: Double,
     val birdEatIntervalSeconds: Int,
@@ -379,6 +380,9 @@ data class FarmRouteDeliverySettings(
     val hardResetDistance: Double,
     val checkpointRadius: Double,
     val horseSpeed: Double,
+    val trailLookaheadPoints: Int,
+    val trailHeight: Double,
+    val trailParticleSize: Float,
     val completionContribution: Int,
     val monsterMinCount: Int,
     val monsterMaxCount: Int,
@@ -625,6 +629,10 @@ class ArcFarmsConfig private constructor(
                     hardResetDistance = section.finiteDouble("route-delivery.hard-reset-distance", 9.0, 3.0, 32.0),
                     checkpointRadius = section.finiteDouble("route-delivery.checkpoint-radius", 3.5, 1.0, 8.0),
                     horseSpeed = section.finiteDouble("route-delivery.horse-speed", 0.26, 0.1, 0.6),
+                    trailLookaheadPoints = section.int("route-delivery.trail.lookahead-points", 28)
+                        .checked("route-delivery.trail.lookahead-points", 4, 96),
+                    trailHeight = section.finiteDouble("route-delivery.trail.height", 0.35, 0.05, 2.0),
+                    trailParticleSize = section.finiteFloat("route-delivery.trail.particle-size", 1.15f, 0.5f, 3.0f),
                     completionContribution = section.int("route-delivery.completion-contribution", 12)
                         .checked("route-delivery.completion-contribution", 1, 64),
                     monsterMinCount = section.int("route-delivery.monsters.min-count", 2)
@@ -844,6 +852,7 @@ class ArcFarmsConfig private constructor(
                     birdBedsPerBird = section.int("special-incidents.birds.beds-per-bird", 180)
                         .checked("special-incidents.birds.beds-per-bird", 16, 4_096),
                     birdSpawnHeight = section.finiteDouble("special-incidents.birds.spawn-height", 4.0, 1.5, 12.0),
+                    birdFlyingSpeed = section.finiteDouble("special-incidents.birds.flying-speed", 0.65, 0.1, 1.5),
                     birdHealth = section.finiteDouble("special-incidents.birds.health", 4.0, 1.0, 40.0),
                     birdEatRadius = section.finiteDouble("special-incidents.birds.eat-radius", 5.0, 1.0, 16.0),
                     birdEatIntervalSeconds = section.int("special-incidents.birds.eat-interval-seconds", 3)

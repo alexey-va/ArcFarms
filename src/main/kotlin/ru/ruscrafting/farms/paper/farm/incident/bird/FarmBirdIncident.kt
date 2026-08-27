@@ -6,6 +6,7 @@ import org.bukkit.NamespacedKey
 import org.bukkit.Particle
 import org.bukkit.Sound
 import org.bukkit.attribute.Attribute
+import org.bukkit.entity.AbstractArrow
 import org.bukkit.entity.Entity
 import org.bukkit.entity.LivingEntity
 import org.bukkit.entity.Mob
@@ -15,6 +16,7 @@ import org.bukkit.entity.Projectile
 import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.EntityDeathEvent
+import org.bukkit.event.entity.ProjectileHitEvent
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.config.ArcFarmsConfig
@@ -161,6 +163,37 @@ internal class FarmBirdIncident(
         return true
     }
 
+    /**
+     * Resolve ranged hits at the projectile collision boundary instead of relying on
+     * the later damage event. Protected farm regions may cancel entity damage after
+     * the projectile has visibly hit, which previously made the flock impossible to
+     * shoot down. Cancelling the vanilla hit also prevents a second contribution from
+     * a subsequent death event.
+     */
+    fun onProjectileHit(event: ProjectileHitEvent, runtimes: Collection<FarmRuntime>): Boolean {
+        val bird = event.hitEntity ?: return false
+        if (!owns(bird)) return false
+        event.isCancelled = true
+        val arrow = event.entity as? AbstractArrow ?: return true
+        val player = arrow.shooter as? Player ?: return true
+        val runtime = runtime(bird, runtimes) ?: return true
+        val allowed = active(runtime) && port.hasAccess(player, runtime.settings.permission) &&
+            runtime.region.contains(bird.location)
+        debug.event(
+            "farm_bird_projectile_hit",
+            "zone" to runtime.settings.id,
+            "player" to player.name,
+            "allowed" to allowed,
+            "projectile" to arrow.type.name,
+        )
+        if (!allowed) return true
+        arrow.remove()
+        ids[runtime.settings.id]?.remove(bird.uniqueId)
+        bird.remove()
+        recordDefeat(runtime, player, ranged = true)
+        return true
+    }
+
     fun onDeath(event: EntityDeathEvent, runtimes: Collection<FarmRuntime>): Boolean {
         if (!owns(event.entity)) return false
         event.drops.clear()
@@ -175,18 +208,7 @@ internal class FarmBirdIncident(
             else -> null
         } ?: return true
         if (!active(runtime) || !port.hasAccess(player, runtime.settings.permission)) return true
-        val ranged = damage?.damager is Projectile
-        val contribution = if (ranged) runtime.settings.specialIncidents.birdRangedContribution
-        else runtime.settings.specialIncidents.birdMeleeContribution
-        transitions.apply(runtime, FarmShiftEngine.defeatBird(runtime.state, player.uniqueId, contribution), player)
-        if (settings().sounds) player.playSound(player.location, Sound.ENTITY_PARROT_DEATH, 0.75f, if (ranged) 1.25f else 0.9f)
-        debug.event(
-            "farm_bird_defeated",
-            "zone" to runtime.settings.id,
-            "player" to player.name,
-            "ranged" to ranged,
-            "contribution" to contribution,
-        )
+        recordDefeat(runtime, player, ranged = damage?.damager is Projectile)
         return true
     }
 
@@ -235,12 +257,29 @@ internal class FarmBirdIncident(
             entity.customName(locale.render(MessageKey.FARM_BIRD_NAME))
             entity.isCustomNameVisible = false
             entity.getAttribute(Attribute.MAX_HEALTH)?.baseValue = runtime.settings.specialIncidents.birdHealth
+            entity.getAttribute(Attribute.FLYING_SPEED)?.baseValue = runtime.settings.specialIncidents.birdFlyingSpeed
             entity.health = runtime.settings.specialIncidents.birdHealth
             entity.persistentDataContainer.set(zoneKey, PersistentDataType.STRING, runtime.settings.id)
             entity.persistentDataContainer.set(sequenceKey, PersistentDataType.LONG, runtime.state.sequence)
             entity.persistentDataContainer.set(indexKey, PersistentDataType.INTEGER, index)
         }
         return bird
+    }
+
+    private fun recordDefeat(runtime: FarmRuntime, player: Player, ranged: Boolean) {
+        val contribution = if (ranged) runtime.settings.specialIncidents.birdRangedContribution
+        else runtime.settings.specialIncidents.birdMeleeContribution
+        transitions.apply(runtime, FarmShiftEngine.defeatBird(runtime.state, player.uniqueId, contribution), player)
+        if (settings().sounds) {
+            player.playSound(player.location, Sound.ENTITY_PARROT_DEATH, 0.75f, if (ranged) 1.25f else 0.9f)
+        }
+        debug.event(
+            "farm_bird_defeated",
+            "zone" to runtime.settings.id,
+            "player" to player.name,
+            "ranged" to ranged,
+            "contribution" to contribution,
+        )
     }
 
     private fun active(runtime: FarmRuntime): Boolean =

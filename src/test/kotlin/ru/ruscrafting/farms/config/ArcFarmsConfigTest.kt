@@ -212,6 +212,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().specialIncidents.giantCropParticleStride shouldBe 4
         settings.farms.single().specialIncidents.birdMinCount shouldBe 6
         settings.farms.single().specialIncidents.birdMaxCount shouldBe 14
+        settings.farms.single().specialIncidents.birdFlyingSpeed shouldBe 0.65
         settings.farms.single().specialIncidents.birdCount(1_000) shouldBe 6
         settings.farms.single().specialIncidents.nightPatrolMinCount shouldBe 3
         settings.farms.single().specialIncidents.nightPatrolMaxCount shouldBe 10
@@ -257,6 +258,9 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().delivery.displayViewRange shouldBe 2.0f
         settings.farms.single().routeDelivery.corridorRadius shouldBe 5.0
         settings.farms.single().routeDelivery.hardResetDistance shouldBe 9.0
+        settings.farms.single().routeDelivery.trailLookaheadPoints shouldBe 28
+        settings.farms.single().routeDelivery.trailHeight shouldBe 0.35
+        settings.farms.single().routeDelivery.trailParticleSize shouldBe 1.15f
         settings.farms.single().routeDelivery.cartLoadCount shouldBe 4
         settings.farms.single().perks.harvestArea.price shouldBe 250L
         settings.farms.single().perks.rewardBoost.durationHours shouldBe 72

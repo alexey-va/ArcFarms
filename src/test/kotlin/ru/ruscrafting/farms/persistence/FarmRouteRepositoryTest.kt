@@ -20,6 +20,12 @@ class FarmRouteRepositoryTest : FunSpec({
                         FarmPointPosition("sp11", 208.5, 50.0, 454.5),
                     ),
                 ),
+                "communal_farm~orchard" to FarmDeliveryRoute(
+                    listOf(
+                        FarmPointPosition("sp11", 210.5, 50.0, 460.5),
+                        FarmPointPosition("sp11", 214.5, 50.0, 462.5),
+                    ),
+                ),
             ),
         )
 

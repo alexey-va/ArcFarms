@@ -427,9 +427,10 @@ class FarmShiftEngineTest : FunSpec({
             incidentCrop = "WHEAT",
             incidentRequired = 1,
         )
-        val initialized = FarmShiftEngine.initializeFoodDelivery(waiting, checkpoints = 4)
+        val initialized = FarmShiftEngine.initializeFoodDelivery(waiting, checkpoints = 4, routeName = "orchard")
         initialized.accepted shouldBe true
         initialized.state.incidentProgress shouldBe 1
+        initialized.state.specialIncident?.routeName shouldBe "orchard"
 
         val partial = FarmShiftEngine.advanceFoodDelivery(initialized.state, 3, player, completionContribution = 12)
         partial.accepted shouldBe true

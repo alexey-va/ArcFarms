@@ -268,16 +268,17 @@ class ArcFarmsCommand(
             "route" -> {
                 val zone = args.getOrNull(1)
                 val operation = args.getOrNull(2)?.lowercase()
+                val routeName = args.getOrNull(3)?.lowercase() ?: "main"
                 if (zone == null || operation == null) {
                     sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_ROUTE, sender))
                     return
                 }
                 when (operation) {
-                    "start" -> service.adminStartFarmRoute(player, zone)
+                    "start" -> service.adminStartFarmRoute(player, zone, routeName)
                     "finish", "save" -> service.adminFinishFarmRoute(player)
                     "cancel" -> service.adminCancelFarmRoute(player)
-                    "status" -> service.adminFarmRouteStatus(player, zone)
-                    "clear", "remove" -> service.adminClearFarmRoute(player, zone)
+                    "status" -> service.adminFarmRouteStatus(player, zone, routeName)
+                    "clear", "remove" -> service.adminClearFarmRoute(player, zone, routeName)
                     else -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_ROUTE, sender))
                 }
             }
@@ -553,6 +554,11 @@ class ArcFarmsCommand(
                 else -> emptyList()
             }
             5 -> when {
+                args[0].equals("admin", true) && args[1].equals("route", true) &&
+                    args[3].lowercase() in setOf("start", "status", "clear", "remove") ->
+                    (service.adminFarmRouteNames(args[2]) + "main")
+                        .distinct()
+                        .filter { it.startsWith(args[4], true) }
                 args[0].equals("admin", true) && args[1].equals("point", true) ->
                     listOf("clear", "remove", "help").filter { it.startsWith(args[4], true) }
                 args[0].equals("admin", true) && args[1].equals("backup", true) && args[3].equals("restore", true) ->
