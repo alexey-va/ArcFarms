@@ -43,6 +43,7 @@ import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
+import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
 import ru.ruscrafting.farms.paper.location
 import ru.ruscrafting.farms.paper.toFarmPlotPosition
 import java.util.UUID
@@ -436,6 +437,11 @@ internal class FarmPestIncident(
         }
         runtime.state.pestNests.forEach { nest ->
             val key = PestNestKey(runtime.settings.id, nest.position)
+            val soil = nest.position.block()
+            if (soil == null || !FarmSurfacePolicy.isOutdoorBed(soil)) {
+                removeNest(key, "covered_or_missing_surface")
+                return@forEach
+            }
             val expected = Triple(runtime.settings.id, nest.position, runtime.state.sequence)
             val activeEntities = nestEntities[key].orEmpty().mapNotNull(Bukkit::getEntity)
                 .distinctBy(Entity::getUniqueId)

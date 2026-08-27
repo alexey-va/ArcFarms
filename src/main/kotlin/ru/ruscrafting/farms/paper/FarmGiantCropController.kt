@@ -9,6 +9,7 @@ import org.bukkit.block.data.type.Leaves
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.domain.FarmGiantCropBlueprint
+import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
 import java.util.ArrayDeque
 import java.util.logging.Level
 
@@ -46,6 +47,10 @@ internal class FarmGiantCropController(private val plugin: Plugin) {
         val targets = targetBlocks(anchor, crop)
         if (targets.any { !it.world.isChunkLoaded(it.x shr 4, it.z shr 4) }) return "unloaded_chunk"
         if (targets.any { !region.contains(it.location) }) return "outside_region"
+        val covered = targets.groupBy { it.x to it.z }.values.any { column ->
+            !FarmSurfacePolicy.isOpenAbove(column.maxBy(Block::getY))
+        }
+        if (covered) return "covered_target"
         if (targets.map(Block::getChunk).distinctBy { it.x to it.z }.any { read(it)?.isNotEmpty() != false }) {
             return "existing_journal"
         }

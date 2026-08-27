@@ -56,6 +56,7 @@ import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
+import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
 import ru.ruscrafting.farms.paper.toFarmPlotPosition
 import java.util.Locale
 import java.util.logging.Level
@@ -532,6 +533,7 @@ internal class FarmSpecialIncidentController(
             maxChecks = MAX_GIANT_CROP_PLACEMENT_CHECKS,
         ) { candidate ->
             val anchor = candidate.block.block() ?: return@select "missing_block"
+            if (!FarmSurfacePolicy.isOpenAbove(anchor)) return@select "covered_anchor"
             giantCrop.placementIssue(runtime.region, anchor, candidate.crop, runtime.settings.crops)
         }.also { selection ->
             debug.event(
@@ -578,7 +580,7 @@ internal class FarmSpecialIncidentController(
                 soil.type,
                 soil.getRelative(org.bukkit.block.BlockFace.UP).type,
                 runtime.settings.crops,
-            )
+            ) && FarmSurfacePolicy.isOutdoorBed(soil)
         }
         val surfacePoints = FarmSpecialIncidentPlanner.projectChannelGates(special.points, surfacePlots)
         if (surfacePoints.size != special.points.size) {

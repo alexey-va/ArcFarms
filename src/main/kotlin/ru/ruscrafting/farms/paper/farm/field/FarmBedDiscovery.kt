@@ -12,6 +12,7 @@ import ru.ruscrafting.farms.paper.FarmBlockRegistry
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
+import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
 import ru.ruscrafting.farms.paper.toFarmPlotPosition
 
 /** Selects indexed farm beds and performs the expensive local scan only when the durable index is insufficient. */
@@ -87,6 +88,7 @@ internal class FarmBedDiscovery(
                 if (isNearOperationPoint(block.location, operationPoints)) continue
                 val above = block.getRelative(org.bukkit.block.BlockFace.UP).type
                 if (!FarmBlockPolicy.isSelectableBed(block.type, above, runtime.settings.crops)) continue
+                if (!FarmSurfacePolicy.isOutdoorBed(block)) continue
                 discovered += block.toFarmPlotPosition()
             }
         }
@@ -115,6 +117,7 @@ internal class FarmBedDiscovery(
             val soil = position.block() ?: return@merge false
             if (!runtime.region.contains(soil.location) || soil.type !in FARM_SOIL_TYPES) return@merge false
             if (isNearOperationPoint(soil.location, operationPoints)) return@merge false
+            if (!FarmSurfacePolicy.isOutdoorBed(soil)) return@merge false
             FarmBlockPolicy.isOpenBedContent(
                 soil.getRelative(org.bukkit.block.BlockFace.UP).type,
                 runtime.settings.crops,
@@ -139,6 +142,7 @@ internal class FarmBedDiscovery(
             if (!runtime.region.contains(soil.location) || isNearOperationPoint(soil.location, operationPoints)) {
                 return@merge false
             }
+            if (!FarmSurfacePolicy.isOutdoorBed(soil)) return@merge false
             FarmBlockPolicy.isSelectableBed(
                 soil.type,
                 soil.getRelative(org.bukkit.block.BlockFace.UP).type,

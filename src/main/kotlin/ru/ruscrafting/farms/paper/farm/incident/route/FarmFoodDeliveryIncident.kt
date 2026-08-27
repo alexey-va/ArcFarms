@@ -36,6 +36,7 @@ import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.admin.FarmRouteAdminService
+import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
 import java.util.UUID
 import java.util.random.RandomGenerator
 import kotlin.math.cos
@@ -107,8 +108,9 @@ internal class FarmFoodDeliveryIncident(
         val resumePoint = route.points[(runtime.state.incidentProgress - 1).coerceIn(0, route.points.lastIndex)]
         val resumeWorld = Bukkit.getWorld(resumePoint.world) ?: return
         if (horse == null && !resumeWorld.isChunkLoaded(floor(resumePoint.x).toInt() shr 4, floor(resumePoint.z).toInt() shr 4)) return
-        val activeHorse = horse?.takeIf { it.isValid && !it.isDead } ?: spawnHorse(runtime, resumePoint).also {
-            session.horseId = it.uniqueId
+        val activeHorse = horse?.takeIf { it.isValid && !it.isDead } ?: run {
+            val resumeLocation = safeSurface(location(resumePoint)) ?: return
+            spawnHorse(runtime, resumeLocation).also { session.horseId = it.uniqueId }
         }
         val cart = session.cartId?.let(Bukkit::getEntity) as? ItemDisplay
         if (cart == null || !cart.isValid) session.cartId = spawnCart(runtime, activeHorse.location).uniqueId
@@ -276,8 +278,8 @@ internal class FarmFoodDeliveryIncident(
         port.sendActionBar(rider, MessageKey.FARM_ROUTE_ATTACK)
     }
 
-    private fun spawnHorse(runtime: FarmRuntime, point: FarmPointPosition): Horse =
-        runtime.region.world.spawn(location(point), Horse::class.java) { horse ->
+    private fun spawnHorse(runtime: FarmRuntime, location: Location): Horse =
+        runtime.region.world.spawn(location, Horse::class.java) { horse ->
             horse.isPersistent = false
             horse.removeWhenFarAway = false
             horse.isTamed = true
@@ -382,14 +384,19 @@ internal class FarmFoodDeliveryIncident(
 
     private fun safeSurface(near: Location): Location? {
         val world = near.world
+        if (!world.isChunkLoaded(near.blockX shr 4, near.blockZ shr 4)) return null
         val baseY = near.blockY
         for (offset in 0..4) {
             for (y in listOf(baseY + offset, baseY - offset).distinct()) {
                 if (y !in world.minHeight + 1 until world.maxHeight - 1) continue
                 val feet = world.getBlockAt(near.blockX, y, near.blockZ)
                 val head = feet.getRelative(0, 1, 0)
-                if (feet.isPassable && head.isPassable && feet.getRelative(0, -1, 0).type.isSolid) {
-                    return Location(world, near.blockX + 0.5, y.toDouble(), near.blockZ + 0.5)
+                val candidate = Location(world, near.blockX + 0.5, y.toDouble(), near.blockZ + 0.5)
+                if (
+                    feet.isPassable && head.isPassable && feet.getRelative(0, -1, 0).type.isSolid &&
+                    FarmSurfacePolicy.isSurfaceSpawn(candidate)
+                ) {
+                    return candidate
                 }
             }
         }

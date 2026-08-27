@@ -20,11 +20,14 @@ import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmSpecialIncidentEngine
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.care.FarmCareController
 import ru.ruscrafting.farms.paper.farm.care.FarmCarePlanService
+import ru.ruscrafting.farms.paper.farm.care.FARM_OUTDOOR_CARE_ROLES
 import ru.ruscrafting.farms.paper.farm.delivery.FarmDeliveryController
 import ru.ruscrafting.farms.paper.farm.incident.special.SPECIAL_FARM_INCIDENT_TYPES
+import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
 import ru.ruscrafting.farms.paper.location
 import java.util.UUID
 import kotlin.math.PI
@@ -46,12 +49,14 @@ internal class FarmGuidanceController(
         if (!settings().particles) return
         val farms = runtimes()
         farms.filter { it.state.phase == FarmPhase.PREPARATION }.forEach { runtime ->
-            val marker = FarmPlotGeometry.center(runtime.state.preparationPatch.filterNot(runtime.state.tilledPlots::contains))?.location()
+            val marker = FarmPlotGeometry.center(
+                runtime.state.preparationPatch.filterNot(runtime.state.tilledPlots::contains).filter(::isOutdoorPlot),
+            )?.location()
                 ?: return@forEach
             players(runtime).filterNot(port::isAdminEditing).forEach { spawnColumn(it, marker, TILL_COLOR) }
         }
         farms.filter { it.state.phase == FarmPhase.PLANTING }.forEach { runtime ->
-            val remaining = runtime.state.tilledPlots.filterNot(runtime.state.plantedPlots::contains)
+            val remaining = runtime.state.tilledPlots.filterNot(runtime.state.plantedPlots::contains).filter(::isOutdoorPlot)
             val individual = FarmGuidancePlanner.individualMissingPlots(
                 remaining,
                 settings().missingBedHighlightThreshold,
@@ -64,7 +69,10 @@ internal class FarmGuidanceController(
         }
         farms.filter { it.state.phase == FarmPhase.INCIDENT && it.state.incidentType == FarmIncidentType.DROUGHT }
             .forEach { runtime ->
-                val markers = cluster(runtime.state.droughtPlots, runtime.settings.droughtPatches)
+                val markers = cluster(
+                    runtime.state.droughtPlots.filterTo(linkedSetOf(), ::isOutdoorPlot),
+                    runtime.settings.droughtPatches,
+                )
                     .mapNotNull(FarmPlotGeometry::center)
                     .mapNotNull(FarmPlotPosition::location)
                 players(runtime).filterNot(port::isAdminEditing).forEach { player ->
@@ -103,7 +111,7 @@ internal class FarmGuidanceController(
                 } else listOfNotNull(hive)
                 else -> incomplete
             }
-            visible.filter { it.role != FarmCareRole.ANIMAL }.forEach { target ->
+            visible.filter { it.role != FarmCareRole.ANIMAL && isVisibleCareTarget(it) }.forEach { target ->
                 val world = Bukkit.getWorld(target.position.world) ?: return@forEach
                 if (player.world == world) {
                     spawnPlotMarker(
@@ -119,7 +127,7 @@ internal class FarmGuidanceController(
                     if (player.world == world) spawnColumn(player, Location(world, pen.x, pen.y, pen.z), SUCCESS_COLOR)
                 }
             } else {
-                visible.filter { Bukkit.getWorld(it.position.world) == player.world }
+                visible.filter { Bukkit.getWorld(it.position.world) == player.world && isVisibleCareTarget(it) }
                     .minByOrNull { target ->
                         val dx = target.position.x - player.location.x
                         val dz = target.position.z - player.location.z
@@ -154,15 +162,18 @@ internal class FarmGuidanceController(
             when (runtime.state.incidentType) {
                 FarmIncidentType.GIANT_CROP -> special.points.firstOrNull()?.let { point ->
                     val anchor = Location(player.world, point.x, point.y, point.z)
+                    if (!isVisibleGiantCrop(player.world, point, special.crop)) return@let
                     spawnColumn(player, anchor, AMBER_COLOR)
                     spawnRing(player, anchor.clone().add(0.0, -1.0, 0.0), 2.3, AMBER_COLOR)
                     emitGiantCropBlocks(player, point, special.crop, runtime.settings.specialIncidents.giantCropParticleStride)
                 }
                 FarmIncidentType.CHANNELS -> special.points.forEachIndexed { index, point ->
                     if (index in special.active) return@forEachIndexed
+                    val location = Location(player.world, point.x, point.y, point.z)
+                    if (!FarmSurfacePolicy.isSurfaceSpawn(location)) return@forEachIndexed
                     spawnSlimColumn(
                         player,
-                        Location(player.world, point.x, point.y, point.z),
+                        location,
                         WATER_COLOR,
                     )
                 }.also {
@@ -172,7 +183,7 @@ internal class FarmGuidanceController(
                     (listOf(source) + special.points.take(visibleFlow)).zipWithNext()
                         .forEach { (from, to) -> spawnWaterTrail(player, from, to) }
                 }
-                FarmIncidentType.NIGHT_SHIFT -> remaining.forEach { plot ->
+                FarmIncidentType.NIGHT_SHIFT -> remaining.filter(::isOutdoorPlot).forEach { plot ->
                     plot.location()?.let { location ->
                         player.spawnParticle(Particle.END_ROD, location.add(0.5, 1.65, 0.5), 1, 0.08, 0.12, 0.08, 0.0)
                     }
@@ -217,19 +228,27 @@ internal class FarmGuidanceController(
     private fun emitActiveTarget(player: Player, runtime: FarmRuntime) {
         val markers = when (runtime.state.phase) {
             FarmPhase.PREPARATION -> listOfNotNull(
-                FarmPlotGeometry.center(runtime.state.preparationPatch.filterNot(runtime.state.tilledPlots::contains))?.location()
+                FarmPlotGeometry.center(
+                    runtime.state.preparationPatch.filterNot(runtime.state.tilledPlots::contains).filter(::isOutdoorPlot),
+                )?.location()
                     ?.let { it to TILL_COLOR },
             )
             FarmPhase.PLANTING -> listOfNotNull(
-                FarmPlotGeometry.center(runtime.state.tilledPlots.filterNot(runtime.state.plantedPlots::contains))?.location()
+                FarmPlotGeometry.center(
+                    runtime.state.tilledPlots.filterNot(runtime.state.plantedPlots::contains).filter(::isOutdoorPlot),
+                )?.location()
                     ?.let { it to PLANT_COLOR },
             )
-            FarmPhase.CARE -> runtime.state.careTargets.filterNot(FarmCareTarget::complete).mapNotNull { target ->
+            FarmPhase.CARE -> runtime.state.careTargets.filterNot(FarmCareTarget::complete)
+                .filter(::isVisibleCareTarget).mapNotNull { target ->
                 Bukkit.getWorld(target.position.world)?.let { world ->
                     Location(world, target.position.x, target.position.y, target.position.z) to care.color(target.role)
                 }
             }
-            FarmPhase.HARVESTING -> listOfNotNull(FarmPlotGeometry.center(runtime.state.preparationPatch)?.location()?.let { it to AMBER_COLOR })
+            FarmPhase.HARVESTING -> listOfNotNull(
+                FarmPlotGeometry.center(runtime.state.preparationPatch.filter(::isOutdoorPlot))?.location()
+                    ?.let { it to AMBER_COLOR },
+            )
             FarmPhase.INCIDENT -> incidentMarkers(runtime)
             FarmPhase.DELIVERY -> points.resolve(runtime, FarmPointKind.RECEIVING).let { point ->
                 Bukkit.getWorld(point.world)?.let { listOf(Location(it, point.x, point.y, point.z) to DELIVERY_COLOR) }.orEmpty()
@@ -240,22 +259,31 @@ internal class FarmGuidanceController(
     }
 
     private fun incidentMarkers(runtime: FarmRuntime): List<Pair<Location, Color>> = when (runtime.state.incidentType) {
-        FarmIncidentType.DROUGHT -> cluster(runtime.state.droughtPlots, runtime.settings.droughtPatches)
+        FarmIncidentType.DROUGHT -> cluster(
+            runtime.state.droughtPlots.filterTo(linkedSetOf(), ::isOutdoorPlot),
+            runtime.settings.droughtPatches,
+        )
             .mapNotNull(FarmPlotGeometry::center).mapNotNull(FarmPlotPosition::location).map { it to DROUGHT_COLOR }
-        FarmIncidentType.PESTS -> runtime.state.pestNests.mapNotNull { it.position.location() }.map { it to DANGER_COLOR }
+        FarmIncidentType.PESTS -> runtime.state.pestNests.map { it.position }.filter(::isOutdoorPlot)
+            .mapNotNull(FarmPlotPosition::location).map { it to DANGER_COLOR }
         FarmIncidentType.GIANT_CROP -> runtime.state.specialIncident?.points.orEmpty().mapNotNull { point ->
-            Bukkit.getWorld(point.world)?.let { Location(it, point.x, point.y, point.z) to AMBER_COLOR }
+            Bukkit.getWorld(point.world)?.takeIf { world ->
+                isVisibleGiantCrop(world, point, runtime.state.specialIncident?.crop)
+            }?.let { world -> Location(world, point.x, point.y, point.z) to AMBER_COLOR }
         }
         FarmIncidentType.CHANNELS -> runtime.state.specialIncident?.let { special ->
             special.points.mapIndexedNotNull { index, point ->
                 if (index in special.active) null else {
-                    Bukkit.getWorld(point.world)?.let { Location(it, point.x, point.y, point.z) to WATER_COLOR }
+                    Bukkit.getWorld(point.world)?.let { world -> Location(world, point.x, point.y, point.z) }
+                        ?.takeIf(FarmSurfacePolicy::isSurfaceSpawn)?.let { it to WATER_COLOR }
                 }
             }
         }.orEmpty()
-        FarmIncidentType.NIGHT_SHIFT -> runtime.state.specialIncident?.plots.orEmpty().mapNotNull(FarmPlotPosition::location)
+        FarmIncidentType.NIGHT_SHIFT -> runtime.state.specialIncident?.plots.orEmpty().filter(::isOutdoorPlot)
+            .mapNotNull(FarmPlotPosition::location)
             .map { it to NIGHT_COLOR }
-        FarmIncidentType.BIRDS -> runtime.state.specialIncident?.plots.orEmpty().mapNotNull(FarmPlotPosition::location)
+        FarmIncidentType.BIRDS -> runtime.state.specialIncident?.plots.orEmpty().filter(::isOutdoorPlot)
+            .mapNotNull(FarmPlotPosition::location)
             .map { it to DANGER_COLOR }
         FarmIncidentType.FOOD_DELIVERY -> emptyList()
         FarmIncidentType.MARKET -> points.resolve(runtime, FarmPointKind.CUSTOMER).let { point ->
@@ -271,14 +299,45 @@ internal class FarmGuidanceController(
         val steps = (sqrt(dx * dx + dy * dy + dz * dz) * 2.0).toInt().coerceIn(1, 48)
         repeat(steps) { step ->
             val ratio = (step + 1).toDouble() / steps
+            val location = Location(
+                player.world,
+                from.x + dx * ratio,
+                from.y + dy * ratio + 0.2,
+                from.z + dz * ratio,
+            )
+            if (!FarmSurfacePolicy.isAtOrAboveSurface(location)) return@repeat
             player.spawnParticle(
                 Particle.SPLASH,
-                Location(player.world, from.x + dx * ratio, from.y + dy * ratio + 0.2, from.z + dz * ratio),
+                location,
                 1,
                 0.04,
                 0.02,
                 0.04,
                 0.0,
+            )
+        }
+    }
+
+    private fun isOutdoorPlot(plot: FarmPlotPosition): Boolean =
+        plot.block()?.let(FarmSurfacePolicy::isOutdoorBed) == true
+
+    private fun isVisibleCareTarget(target: FarmCareTarget): Boolean {
+        if (target.role !in FARM_OUTDOOR_CARE_ROLES) return true
+        val world = Bukkit.getWorld(target.position.world) ?: return false
+        return FarmSurfacePolicy.isSurfaceSpawn(
+            Location(world, target.position.x, target.position.y, target.position.z),
+        )
+    }
+
+    private fun isVisibleGiantCrop(world: org.bukkit.World, anchor: FarmPointPosition, crop: String?): Boolean {
+        if (crop == null || !FarmGiantCropBlueprint.supports(crop)) return false
+        val baseX = kotlin.math.floor(anchor.x).toInt()
+        val baseY = kotlin.math.floor(anchor.y).toInt()
+        val baseZ = kotlin.math.floor(anchor.z).toInt()
+        return FarmGiantCropBlueprint.voxels(crop).groupBy { it.dx to it.dz }.values.all { column ->
+            val top = column.maxBy { it.dy }
+            FarmSurfacePolicy.isAtOrAboveSurface(
+                Location(world, baseX + top.dx + 0.5, (baseY + top.dy).toDouble(), baseZ + top.dz + 0.5),
             )
         }
     }

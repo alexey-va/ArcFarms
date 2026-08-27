@@ -23,6 +23,7 @@ import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.care.mole.FarmMoleBurrowWorld
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
+import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
 import ru.ruscrafting.farms.paper.location
 import java.util.random.RandomGenerator
 
@@ -30,6 +31,17 @@ internal data class FarmCarePlan(
     val type: FarmCareType,
     val targets: List<FarmCareTarget>,
     val goal: Int,
+)
+
+internal val FARM_OUTDOOR_CARE_ROLES = setOf(
+    FarmCareRole.SEEDER_HORSE,
+    FarmCareRole.WEED_ROOT,
+    FarmCareRole.VALVE,
+    FarmCareRole.FLOWER_PATCH,
+    FarmCareRole.COVER_ANCHOR,
+    FarmCareRole.SCARECROW,
+    FarmCareRole.ANIMAL,
+    FarmCareRole.DISEASED_CROP,
 )
 
 /** Deterministic planner for care activities. It never mutates runtime or Bukkit state. */
@@ -68,7 +80,9 @@ internal class FarmCarePlanService(
     }
 
     fun targets(runtime: FarmRuntime, type: FarmCareType, actor: Player?): List<FarmCareTarget>? {
-        val patch = runtime.state.preparationPatch
+        val patch = runtime.state.preparationPatch.filter { plot ->
+            plot.block()?.let(FarmSurfacePolicy::isOutdoorBed) == true
+        }
         if (patch.isEmpty()) return null
         val count = runtime.settings.careTargetCount
         val salt = runtime.state.sequence * 101L + type.ordinal * 17L

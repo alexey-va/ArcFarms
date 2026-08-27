@@ -117,6 +117,7 @@ owns the zone collection; the module delegates to the following vertical owners.
 |---|---|---|
 | `farm.shift/FarmShiftCoordinator` | start, transition application, completion, persistence request, network/stats/reward handoff | complete phase flow and rejected transition |
 | `farm.field/FarmFieldController` | bed discovery, patch selection, till/plant, wet soil, managed block index | field selection, 90% quota, covered bed exclusion |
+| `farm.placement/FarmPlacementService`, `FarmSurfacePolicy` | bounded outdoor placement, loaded-column surface checks, delivery layouts | roof/cave rejection and no chunk loads |
 | `farm.recovery/FarmFixedCropRecoveryController` and `FarmIncidentRecoveryController` | fixed-crop and incident restore queues with per-tick budgets | restart, unloaded chunk, partial restore, stale callback |
 | `farm.harvest/FarmHarvestController` | accepted crop validation, drop suppression, fixed fruit intent and respawn | wrong phase/crop, no drops, journal-before-mutation |
 | `farm.care/FarmCareController`, `FarmDiseaseController`, `FarmCarePresentation` | routes care, owns shared entities and seeder/animal lifecycles, disease timing and shared feedback | cleanup and activity scenarios |
@@ -183,6 +184,14 @@ Every entity-owning feature must implement the same convergence rules:
 World mutation uses durable intent before the mutation where recovery matters.
 Large repair/create/delete work is budgeted across ticks and never performed in
 one unbounded loop.
+
+Procedural outdoor objectives share `FarmSurfacePolicy`. A loaded column is
+eligible only when the entity feet are walkable at the terrain height, or when
+an indexed crop bed has no motion-blocking terrain above its crop layer.
+Persisted coordinates are checked again before an entity or guidance marker is
+created. Explicit indoor service points remain administrator-owned; the mole
+burrow is the only intentionally underground activity, and its entrance still
+uses the outdoor policy.
 
 ## Threading and failure model
 

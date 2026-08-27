@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.paper.farm.placement
 
 import org.bukkit.Location
 import org.bukkit.HeightMap
+import org.bukkit.block.Block
 import org.bukkit.entity.Player
 import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.domain.FarmDeliveryPlanner
@@ -14,11 +15,37 @@ import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import java.util.random.RandomGenerator
 
-internal object FarmOpenSkyPolicy {
-    fun isOpen(location: Location): Boolean {
+/** Loaded-column guard shared by every procedurally placed outdoor farm scene. */
+internal object FarmSurfacePolicy {
+    fun isSurfaceSpawn(location: Location): Boolean {
         val world = location.world ?: return false
         if (!world.isChunkLoaded(location.blockX shr 4, location.blockZ shr 4)) return false
-        return world.getHighestBlockYAt(location.blockX, location.blockZ, HeightMap.MOTION_BLOCKING) < location.blockY
+        if (location.blockY !in world.minHeight + 1 until world.maxHeight - 1) return false
+        val feet = location.block
+        val head = feet.getRelative(org.bukkit.block.BlockFace.UP)
+        val floor = feet.getRelative(org.bukkit.block.BlockFace.DOWN)
+        if (!feet.isPassable || !head.isPassable || !floor.type.isSolid) return false
+        return isAtOrAboveSurface(location)
+    }
+
+    fun isAtOrAboveSurface(location: Location): Boolean {
+        val world = location.world ?: return false
+        if (!world.isChunkLoaded(location.blockX shr 4, location.blockZ shr 4)) return false
+        return world.getHighestBlockYAt(location.blockX, location.blockZ, HeightMap.MOTION_BLOCKING) <= location.blockY
+    }
+
+    /** A crop may occupy soil + 1, but no motion-blocking terrain may cover the bed. */
+    fun isOutdoorBed(soil: Block): Boolean {
+        val world = soil.world
+        if (!world.isChunkLoaded(soil.x shr 4, soil.z shr 4)) return false
+        return world.getHighestBlockYAt(soil.x, soil.z, HeightMap.MOTION_BLOCKING) <= soil.y + 1
+    }
+
+    /** Allows the anchor block itself while rejecting a roof or terrain above it. */
+    fun isOpenAbove(anchor: Block): Boolean {
+        val world = anchor.world
+        if (!world.isChunkLoaded(anchor.x shr 4, anchor.z shr 4)) return false
+        return world.getHighestBlockYAt(anchor.x, anchor.z, HeightMap.MOTION_BLOCKING) <= anchor.y
     }
 }
 
@@ -110,22 +137,21 @@ internal class FarmPlacementService(
     }
 
     fun safeGroundCandidates(runtime: FarmRuntime, sources: Collection<Location>, radius: Int): List<FarmDeliveryPosition> =
-        groundCandidates(runtime, sources, radius, requireOpenSky = false)
+        groundCandidates(runtime, sources, radius)
 
     /** Safe ground with no motion-blocking block above the entity's feet. */
     fun openSkyGroundCandidates(runtime: FarmRuntime, sources: Collection<Location>, radius: Int): List<FarmDeliveryPosition> =
-        groundCandidates(runtime, sources, radius, requireOpenSky = true)
+        groundCandidates(runtime, sources, radius)
 
-    fun isOpenToSky(location: Location): Boolean = FarmOpenSkyPolicy.isOpen(location)
+    fun isOpenToSky(location: Location): Boolean = FarmSurfacePolicy.isSurfaceSpawn(location)
 
     private fun groundCandidates(
         runtime: FarmRuntime,
         sources: Collection<Location>,
         radius: Int,
-        requireOpenSky: Boolean,
     ): List<FarmDeliveryPosition> =
         sources.asSequence().take(MAX_SOURCES).flatMap { source ->
-            safeGroundCandidates(runtime, source, radius, requireOpenSky).asSequence()
+            safeGroundCandidates(runtime, source, radius).asSequence()
         }
             .distinct().toList()
 
@@ -150,6 +176,7 @@ internal class FarmPlacementService(
                 if (!FarmBlockPolicy.isSelectableBed(soil.type, crop.type, runtime.settings.crops)) return@mapNotNull null
                 if (crop.type.name !in runtime.settings.crops) return@mapNotNull null
                 if (!overhead.type.isAir || !runtime.region.contains(crop.location)) return@mapNotNull null
+                if (!FarmSurfacePolicy.isOutdoorBed(soil)) return@mapNotNull null
                 FarmDeliveryPosition(world.name, bed.x + 0.5, bed.y + 1.05, bed.z + 0.5)
             }
             .distinct()
@@ -160,7 +187,6 @@ internal class FarmPlacementService(
         runtime: FarmRuntime,
         source: Location,
         radius: Int,
-        requireOpenSky: Boolean,
     ): List<FarmDeliveryPosition> {
         val world = runtime.region.world
         if (source.world != world) return emptyList()
@@ -187,9 +213,7 @@ internal class FarmPlacementService(
                     val feet = world.getBlockAt(x, feetY, z)
                     val head = world.getBlockAt(x, feetY + 1, z)
                     if (!floor.type.isSolid || !feet.type.isAir || !head.type.isAir) return@firstNotNullOfOrNull null
-                    if (requireOpenSky &&
-                        world.getHighestBlockYAt(x, z, HeightMap.MOTION_BLOCKING) >= feetY
-                    ) return@firstNotNullOfOrNull null
+                    if (!FarmSurfacePolicy.isSurfaceSpawn(location)) return@firstNotNullOfOrNull null
                     FarmDeliveryPosition(world.name, location.x, location.y, location.z)
                 }?.let(candidates::add)
             }

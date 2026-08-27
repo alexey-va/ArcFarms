@@ -14,6 +14,8 @@ import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
+import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
+import ru.ruscrafting.farms.paper.block
 
 internal fun interface FarmCareTargetSpawner {
     fun ensure(runtime: FarmRuntime, target: FarmCareTarget)
@@ -52,6 +54,8 @@ internal class FarmDiseaseController(
         val occupied = current.map(FarmCareTarget::position)
         val candidate = FarmCarePlanner.relocate(
             runtime.state.preparationPatch.filter { plot ->
+                val soil = plot.block() ?: return@filter false
+                if (!FarmSurfacePolicy.isOutdoorBed(soil)) return@filter false
                 occupied.all { point ->
                     val dx = plot.x + 0.5 - point.x
                     val dz = plot.z + 0.5 - point.z

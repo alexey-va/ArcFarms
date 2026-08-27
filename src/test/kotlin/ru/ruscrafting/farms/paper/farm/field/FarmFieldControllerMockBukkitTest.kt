@@ -222,4 +222,38 @@ class FarmFieldControllerMockBukkitTest : FunSpec({
         discovery.selectPatch(runtime, world.getBlockAt(4, 64, 4).location, false, 0) shouldBe nearby
         debugLines.single { "event=farm_beds_discovered" in it }.contains("scanned_blocks=32768") shouldBe false
     }
+
+    test("patch selection excludes indexed farmland hidden below terrain") {
+        val open = FarmPlotPosition(world.name, 1, 64, 1)
+        val covered = FarmPlotPosition(world.name, 3, 64, 1)
+        listOf(open, covered).forEach { plot ->
+            world.getBlockAt(plot.x, plot.y, plot.z).type = Material.FARMLAND
+            world.getBlockAt(plot.x, plot.y + 1, plot.z).type = Material.WHEAT
+        }
+        world.getBlockAt(covered.x, 70, covered.z).type = Material.STONE
+        val settings = mockk<FarmZoneSettings>(relaxed = true) {
+            every { id } returns "farm"
+            every { crops } returns setOf("WHEAT")
+            every { preparationPatchSize } returns 1
+            every { preparationPatchMaxSize } returns 1
+            every { preparationSearchRadius } returns 8
+        }
+        val runtime = FarmRuntime(
+            settings = settings,
+            region = CuboidActivityRegion(world, "farm", CuboidBounds(0, 0, 0, 15, 128, 15)),
+            orders = emptyMap(),
+            orderList = emptyList(),
+            rules = mockk(relaxed = true),
+            state = FarmShiftState(),
+        )
+        val discovery = FarmBedDiscovery(
+            debug = ArcFarmsDebug({ false }) {},
+            registry = mockk<FarmBlockRegistry>(relaxed = true) {
+                every { beds("farm") } returns setOf(covered, open)
+            },
+            points = FarmPointProvider { _, _ -> FarmPointPosition(world.name, 100.0, 64.0, 100.0) },
+        )
+
+        discovery.selectPatch(runtime, world.getBlockAt(3, 64, 1).location, false, 0) shouldBe listOf(open)
+    }
 })

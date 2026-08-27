@@ -36,6 +36,7 @@ import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
+import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
 import java.util.UUID
 
 /** Bounded, non-persistent flock whose crop damage is restored by the shared incident journal. */
@@ -222,6 +223,7 @@ internal class FarmBirdIncident(
 
     private fun spawn(runtime: FarmRuntime, index: Int, plot: FarmPlotPosition): LivingEntity? {
         val soil = plot.block() ?: return null
+        if (!FarmSurfacePolicy.isOutdoorBed(soil)) return null
         val base = soil.location.add(0.5, runtime.settings.specialIncidents.birdSpawnHeight, 0.5)
         val location = (0..8).asSequence().map { base.clone().add(0.0, it.toDouble(), 0.0) }
             .firstOrNull { it.block.isPassable && it.clone().add(0.0, 1.0, 0.0).block.isPassable } ?: return null

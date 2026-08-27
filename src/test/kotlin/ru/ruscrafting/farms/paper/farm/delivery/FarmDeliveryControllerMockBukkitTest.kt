@@ -172,6 +172,7 @@ private fun deliveryFixture(world: WorldMock, plugin: Plugin, crates: Int): Deli
             Location(world, 4.5 + thirdArg<Int>() * 4.0, 65.0, 4.5)
         }
         every { selectDeliveryAnchor(any(), any()) } returns FarmDeliveryPosition(world.name, 4.5, 65.0, 4.5)
+        every { isOpenToSky(any()) } returns true
     }
     val sink = FarmTransitionSink { target, result, _ -> if (result.accepted) target.state = result.state }
     fun create() = FarmDeliveryController(

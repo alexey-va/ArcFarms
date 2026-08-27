@@ -30,6 +30,7 @@ import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
+import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
 import ru.ruscrafting.farms.paper.toFarmPlotPosition
 import java.util.UUID
 
@@ -74,7 +75,20 @@ internal class FarmDroughtIncident(
         }
         val remaining = (runtime.state.incidentRequired - runtime.state.incidentProgress).coerceAtLeast(0)
         if (remaining == 0) return
-        runtime.state.droughtPlots.forEach { position ->
+        val previousPlots = runtime.state.droughtPlots
+        val validPlots = previousPlots.filterTo(linkedSetOf()) { position ->
+            positionBlock(position)?.let(FarmSurfacePolicy::isOutdoorBed) == true
+        }
+        if (validPlots != previousPlots) {
+            runtime.state = runtime.state.copy(droughtPlots = validPlots)
+            port.persistAsync()
+            debug.event(
+                "farm_drought_covered_plots_removed",
+                "zone" to runtime.settings.id,
+                "removed" to previousPlots.size - validPlots.size,
+            )
+        }
+        validPlots.forEach { position ->
             positionBlock(position)?.let { soil ->
                 dry(soil)
                 soil.getRelative(org.bukkit.block.BlockFace.UP).setType(Material.AIR, false)
@@ -95,7 +109,7 @@ internal class FarmDroughtIncident(
         )
         val requested = (spawnLimit - runtimeGrowth.spawned).coerceAtLeast(0).coerceAtMost(remaining)
         if (requested == 0) return
-        val existing = runtime.state.droughtPlots
+        val existing = validPlots
         val candidates = beds.discover(runtime).filter { position ->
             val soil = positionBlock(position) ?: return@filter false
             soil.type in FARM_SOIL_TYPES && (position !in runtime.state.droughtDamagedPlots || position in existing)

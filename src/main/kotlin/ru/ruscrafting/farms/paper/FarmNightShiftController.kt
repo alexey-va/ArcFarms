@@ -21,6 +21,7 @@ import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.config.FarmSpecialIncidentSettings
 import ru.ruscrafting.farms.domain.FarmPlayerTimeTransition
 import ru.ruscrafting.farms.domain.FarmPointPosition
+import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
 import java.util.UUID
 import kotlin.math.cos
 import kotlin.math.sin
@@ -75,7 +76,9 @@ internal class FarmNightShiftController(
         }
         syncPlayerTime(zoneId, players, playerTime, settings.nightTimeTransitionSeconds)
 
-        val desired = anchors.toList()
+        val desired = anchors.filter { point ->
+            FarmSurfacePolicy.isSurfaceSpawn(Location(region.world, point.x, point.y, point.z))
+        }
         var removed = 0
         patrols.keys.filter { it.zoneId == zoneId && it.index !in desired.indices }.forEach { key ->
             releaseLight(key)
@@ -242,6 +245,7 @@ internal class FarmNightShiftController(
 
     private fun canSpawn(anchor: Location, players: Collection<Player>, minimumPlayerDistance: Double): Boolean {
         if (!anchor.world.isChunkLoaded(anchor.blockX shr 4, anchor.blockZ shr 4)) return false
+        if (!FarmSurfacePolicy.isSurfaceSpawn(anchor)) return false
         val minimumSquared = minimumPlayerDistance * minimumPlayerDistance
         return players.none { player -> player.world == anchor.world && player.location.distanceSquared(anchor) < minimumSquared }
     }
@@ -344,7 +348,10 @@ internal class FarmNightShiftController(
                 val floor = anchor.world.getBlockAt(x, floorY, z)
                 val feet = floor.getRelative(BlockFace.UP)
                 val head = feet.getRelative(BlockFace.UP)
-                if (!floor.isPassable && feet.isPassable && head.isPassable && region.contains(feet.location)) {
+                if (
+                    !floor.isPassable && feet.isPassable && head.isPassable && region.contains(feet.location) &&
+                    FarmSurfacePolicy.isSurfaceSpawn(feet.location)
+                ) {
                     return feet.location.add(0.5, 0.0, 0.5)
                 }
             }

@@ -41,4 +41,14 @@ class FarmPlacementServiceMockBukkitTest : FunSpec({
         world.getBlockAt(0, 70, 0).type = Material.OAK_PLANKS
         placement.isOpenToSky(spawn) shouldBe false
     }
+
+    test("outdoor bed accepts its crop but rejects terrain above it") {
+        val soil = world.getBlockAt(0, 64, 0).apply { type = Material.FARMLAND }
+        world.getBlockAt(0, 65, 0).type = Material.WHEAT
+
+        FarmSurfacePolicy.isOutdoorBed(soil) shouldBe true
+
+        world.getBlockAt(0, 70, 0).type = Material.STONE
+        FarmSurfacePolicy.isOutdoorBed(soil) shouldBe false
+    }
 })

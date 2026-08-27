@@ -251,6 +251,12 @@ internal class FarmDeliveryController(
             )
             return
         }
+        if (!placement.isOpenToSky(location)) {
+            plugin.logger.warning(
+                "Farm delivery position is covered for ${runtime.settings.id}; crate ${key.index} was not spawned",
+            )
+            return
+        }
         val display = location.world.spawn(
             location.clone().add(0.0, runtime.settings.delivery.displayYOffset, 0.0),
             ItemDisplay::class.java,

@@ -51,7 +51,7 @@ import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.care.irrigation.FarmIrrigationController
 import ru.ruscrafting.farms.paper.farm.care.mole.FarmMoleBurrowController
-import ru.ruscrafting.farms.paper.farm.placement.FarmOpenSkyPolicy
+import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.logging.Level
@@ -392,6 +392,10 @@ internal class FarmCareController(
         val world = Bukkit.getWorld(target.position.world) ?: return
         val location = Location(world, target.position.x, target.position.y, target.position.z)
         if (!runtime.region.contains(location) || !world.isChunkLoaded(location.blockX shr 4, location.blockZ shr 4)) return
+        if (!FarmSurfacePolicy.isSurfaceSpawn(location)) {
+            port.log(Level.WARNING, "Skipped covered farm seeder target ${runtime.settings.id}/${target.id}")
+            return
+        }
         val rig = seederRig.spawn(
             location = location,
             pigCount = runtime.settings.seederPigCount,
@@ -438,6 +442,12 @@ internal class FarmCareController(
             port.log(Level.WARNING, "Farm care target ${runtime.settings.id}/${target.id} is outside ${runtime.region.label}")
             return
         }
+        if (target.role in FARM_OUTDOOR_CARE_ROLES && !FarmSurfacePolicy.isSurfaceSpawn(location)) {
+            if (port.allowInteraction("farm-care-covered:${runtime.settings.id}:${target.id}", TimeUnit.MINUTES.toMillis(5))) {
+                port.log(Level.WARNING, "Skipped covered farm care target ${runtime.settings.id}/${target.id} (${target.role})")
+            }
+            return
+        }
         if (target.role == FarmCareRole.APPLE) {
             val leaf = location.block
             if (!FarmBlockPolicy.isOrchardLeaf(leaf.type, leaf.getRelative(org.bukkit.block.BlockFace.DOWN).type)) {
@@ -448,7 +458,7 @@ internal class FarmCareController(
             }
         }
         if (target.role == FarmCareRole.ANIMAL) {
-            if (!FarmOpenSkyPolicy.isOpen(location)) {
+            if (!FarmSurfacePolicy.isSurfaceSpawn(location)) {
                 if (port.allowInteraction("farm-animal-covered:${runtime.settings.id}:${target.id}", TimeUnit.MINUTES.toMillis(5))) {
                     port.log(Level.WARNING, "Skipped covered farm animal target ${runtime.settings.id}/${target.id}")
                 }

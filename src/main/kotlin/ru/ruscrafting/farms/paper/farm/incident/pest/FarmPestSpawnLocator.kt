@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.paper.farm.incident.pest
 
 import org.bukkit.Location
 import ru.ruscrafting.farms.paper.ActivityRegion
+import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
 import java.util.random.RandomGenerator
 
 /** Finds a loaded, walkable pest spawn without loading chunks or leaving the farm region. */
@@ -19,7 +20,10 @@ internal class FarmPestSpawnLocator(
                 val head = region.world.getBlockAt(x, y + 1, z)
                 val floor = region.world.getBlockAt(x, y - 1, z)
                 val candidate = Location(region.world, x + 0.5, y.toDouble(), z + 0.5)
-                if (region.contains(candidate) && feet.isPassable && head.isPassable && floor.type.isSolid) return candidate
+                if (
+                    region.contains(candidate) && feet.isPassable && head.isPassable && floor.type.isSolid &&
+                    FarmSurfacePolicy.isSurfaceSpawn(candidate)
+                ) return candidate
             }
         }
         return null
