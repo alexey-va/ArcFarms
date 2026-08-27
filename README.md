@@ -52,21 +52,25 @@ randomly selected field-care story before harvesting begins.
 Every story is spread across the active bed instead of clustering around its
 center:
 
-- weeds place several stubborn glowing roots that need two hoe strikes each;
+- weeds place a configurable number of physical glowing roots; one root is one
+  hoe action, so the displayed progress is the number of weeds removed;
 - irrigation first dries the selected farmland, then exposes a chain of valves
   that must be opened in order. Each valve sends a bounded circular particle
   front across its assigned beds; the soil hydrates behind the front and the
   target counts only after the wave has actually completed;
 - pollination asks the player to collect two charges from a hive and carry them
   to distant flower patches, returning to the hive as needed;
-- storm preparation distributes cover anchors around the actual field corners;
-- scarecrow duty asks the player to assemble several decoys in separate parts
-  of the field;
+- storm preparation distributes a configurable set of cover anchors across the
+  actual field;
+- scarecrow duty stocks one decoy stand at receiving. Workers carry individual
+  scarecrows to marked beds; leaving the farm returns an unfinished decoy;
 - animal rescue spawns glowing tagged farm animals, attaches a visible leash
   when a player calls one, and leads them to the highlighted barn;
-- crop disease begins with a few purple outbreaks. It spreads at a bounded
-  interval only while someone is present, never resets treated progress, and
-  stops at `disease-max-spots`; each outbreak needs two hoe treatments;
+- crop disease begins with a few purple outbreaks. It grows locally around the
+  live frontier only while someone is present, kills an untreated crop after a
+  configured deadline, and stops at `disease-max-spots`. One outbreak is one
+  hoe action; killed crops are journaled and restored in bounded slices only
+  after the activity ends;
 - moles surface as glowing earth mounds. A hoe strike keeps the target's
   persisted hit progress but moves it to a distant part of the same patch until
   the mole is finally caught.
@@ -116,6 +120,16 @@ until an administrator saves its own override. Any override can be removed with
 Their entities are
 removed when the story ends and are reconstructed from persisted state after a
 restart.
+
+Physical care density is controlled by `care-targets-per-player` and
+`care-targets-max`; the portable defaults produce 15 objects for one worker and
+cap the shared objective at 45. Disease timing and shape use
+`disease-spread-seconds`, `disease-spread-radius`, and `disease-kill-seconds`.
+Scarecrow delivery radius and carry height are configurable independently.
+Bird incidents keep their defeat quota separate from the visible flock through
+`special-incidents.birds.spawn-multiplier` (default `2`). Irrigation wave
+height, spread, density, and ring pacing are runtime config, as are drought
+growth speed and the smooth per-player night transition duration.
 
 Dynamic animals and delivery crates prefer safe ground away from their
 destination while staying within reach of a current participant. The general

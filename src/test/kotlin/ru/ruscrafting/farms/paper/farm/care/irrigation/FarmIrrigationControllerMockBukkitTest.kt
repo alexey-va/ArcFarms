@@ -56,6 +56,9 @@ class FarmIrrigationControllerMockBukkitTest : FunSpec({
             ringIntervalTicks = 1,
             ringWidth = 1.0,
             particleSpacing = 1.0,
+            particleHeight = 2.0,
+            particleSpread = 0.4,
+            particleCount = 3,
         )
         val zone = mockk<FarmZoneSettings>(relaxed = true) {
             every { id } returns "farm"

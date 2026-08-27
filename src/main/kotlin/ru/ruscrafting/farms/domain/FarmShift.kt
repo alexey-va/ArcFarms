@@ -255,6 +255,7 @@ data class FarmShiftState(
     val pestNests: List<FarmPestNest> = emptyList(),
     val pestAlive: Int = 0,
     val pestDamagedCrops: List<FarmCropDamage> = emptyList(),
+    val diseaseDamagedCrops: List<FarmCropDamage>? = emptyList(),
     val specialIncident: FarmSpecialIncidentState? = null,
     val specialDamagedCrops: List<FarmCropDamage> = emptyList(),
     val rewardMoneyBonusPercent: Int = 0,
@@ -635,7 +636,36 @@ object FarmShiftEngine {
         if (current.careTargets.firstOrNull()?.position?.world != target.position.world) {
             return EngineResult(current, false)
         }
-        return EngineResult(current.copy(careTargets = current.careTargets + target), true)
+        return EngineResult(
+            current.copy(
+                careTargets = current.careTargets + target,
+                careGoal = current.careRequired() + target.required,
+            ),
+            true,
+        )
+    }
+
+    fun normalizeDisease(current: FarmShiftState): EngineResult<FarmShiftState> {
+        if (current.phase != FarmPhase.CARE || current.careType != FarmCareType.DISEASE) {
+            return EngineResult(current, false)
+        }
+        if (current.careTargets.all { it.required == 1 && it.progress <= 1 }) return EngineResult(current, false)
+        val targets = current.careTargets.map { target ->
+            if (target.role == FarmCareRole.DISEASED_CROP) {
+                target.copy(required = 1, progress = target.progress.coerceAtMost(1))
+            } else target
+        }
+        val goal = targets.sumOf(FarmCareTarget::required)
+        val complete = targets.sumOf(FarmCareTarget::progress) >= goal
+        return EngineResult(
+            current.copy(
+                phase = if (complete) FarmPhase.HARVESTING else FarmPhase.CARE,
+                careTargets = targets,
+                careGoal = goal,
+            ),
+            true,
+            events = if (complete) listOf(ShiftEvent.CARE_RESOLVED) else emptyList(),
+        )
     }
 
     fun defeatPest(

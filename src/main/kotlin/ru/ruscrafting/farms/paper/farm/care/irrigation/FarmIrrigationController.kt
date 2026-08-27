@@ -196,9 +196,10 @@ internal class FarmIrrigationController(
         if (!settings().particles || ring.plots.isEmpty()) return
         val world = runtime.region.world
         if (world.name != target.position.world) return
-        val y = ring.plots.map { it.y }.average() + 1.18
+        val irrigation = runtime.settings.irrigation
+        val y = ring.plots.map { it.y }.average() + irrigation.particleHeight
         val radius = ring.radius.coerceAtLeast(0.55)
-        val points = ceil(2.0 * PI * radius / runtime.settings.irrigation.particleSpacing).toInt().coerceIn(8, 48)
+        val points = ceil(2.0 * PI * radius / irrigation.particleSpacing).toInt().coerceIn(8, 64)
         val viewers = port.players(runtime.region).filter { it.world === world }
         repeat(points) { index ->
             val angle = 2.0 * PI * index / points
@@ -212,14 +213,22 @@ internal class FarmIrrigationController(
                 player.spawnParticle(
                     Particle.DUST,
                     location,
-                    1,
-                    0.0,
-                    0.025,
-                    0.0,
+                    irrigation.particleCount,
+                    irrigation.particleSpread,
+                    irrigation.particleSpread * 0.45,
+                    irrigation.particleSpread,
                     0.0,
                     WATER_DUST,
                 )
-                if (index % 3 == 0) player.spawnParticle(Particle.SPLASH, location, 2, 0.08, 0.03, 0.08, 0.02)
+                if (index % 2 == 0) player.spawnParticle(
+                    Particle.SPLASH,
+                    location,
+                    irrigation.particleCount * 2,
+                    irrigation.particleSpread,
+                    irrigation.particleSpread * 0.65,
+                    irrigation.particleSpread,
+                    0.04,
+                )
             }
         }
     }

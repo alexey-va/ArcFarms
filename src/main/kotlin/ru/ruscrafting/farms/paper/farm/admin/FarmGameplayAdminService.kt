@@ -169,7 +169,10 @@ internal class FarmGameplayAdminService(
             "size" to locale.text(state.preparationRequired),
             "tilled" to locale.text(state.preparationProgress),
             "planted" to locale.text(state.plantingProgress),
-            "damaged" to locale.text(state.droughtDamagedPlots.size + state.pestDamagedCrops.size),
+            "damaged" to locale.text(
+                state.droughtDamagedPlots.size + state.pestDamagedCrops.size +
+                    state.diseaseDamagedCrops.orEmpty().size,
+            ),
         ))
         port.sendChat(player, MessageKey.ADMIN_DEBUG_INCIDENT, mapOf(
             "incident" to incident,
@@ -358,7 +361,8 @@ internal class FarmGameplayAdminService(
             incidentProgress = 0, incidentRequired = quota, incidentResolved = false,
             droughtPlots = emptySet(), droughtDamagedPlots = emptySet(),
             pestNestsInitialized = false, pestNests = emptyList(), pestAlive = 0,
-            pestDamagedCrops = emptyList(), specialIncident = null, specialDamagedCrops = emptyList(),
+            pestDamagedCrops = emptyList(), diseaseDamagedCrops = emptyList(),
+            specialIncident = null, specialDamagedCrops = emptyList(),
         )
     }
 

@@ -48,9 +48,11 @@ import ru.ruscrafting.farms.paper.FarmSeederRigManager
 import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.block
+import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.care.irrigation.FarmIrrigationController
 import ru.ruscrafting.farms.paper.farm.care.mole.FarmMoleBurrowController
+import ru.ruscrafting.farms.paper.farm.care.scarecrow.FarmScarecrowDeliveryController
 import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -73,6 +75,7 @@ internal class FarmCareController(
     ledger: FarmBlockLedger,
     private val registry: FarmBlockRegistry,
     private val plans: FarmCarePlanService,
+    points: FarmPointProvider,
     private val moles: FarmMoleBurrowController,
     private val transitions: FarmTransitionSink,
     private val runtimes: () -> Collection<FarmRuntime>,
@@ -84,8 +87,19 @@ internal class FarmCareController(
         settings = settings,
         debug = debug,
         port = port,
+        ledger = ledger,
         transitions = transitions,
         targets = FarmCareTargetSpawner(::ensureFarmCareTarget),
+    )
+    private val scarecrows = FarmScarecrowDeliveryController(
+        plugin = plugin,
+        settings = settings,
+        locale = locale,
+        debug = debug,
+        port = port,
+        points = points,
+        transitions = transitions,
+        runtimes = runtimes,
     )
     private val irrigation = FarmIrrigationController(settings, debug, port, transitions)
     private val seederRig = FarmSeederRigManager(plugin)
@@ -99,7 +113,8 @@ internal class FarmCareController(
     private val targetKey = NamespacedKey(plugin, "farm_care_target")
     private val roleKey = NamespacedKey(plugin, "farm_care_role")
 
-    fun owns(entity: Entity): Boolean = moles.owns(entity) || entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING)
+    fun owns(entity: Entity): Boolean = moles.owns(entity) || scarecrows.owns(entity) ||
+        entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING)
     fun identity(entity: Entity): FarmCareEntityIdentity? {
         val data = entity.persistentDataContainer
         val zoneId = data.get(zoneKey, PersistentDataType.STRING) ?: return null
@@ -116,6 +131,7 @@ internal class FarmCareController(
 
     fun releasePlayer(player: Player, reason: String) {
         moles.releasePlayer(player, reason)
+        scarecrows.releasePlayer(player, reason)
         animalFollowers.filterValues { it == player.uniqueId }.keys.toList().forEach { key ->
             val mob = entities[key].orEmpty().asSequence().mapNotNull(Bukkit::getEntity).filterIsInstance<Mob>().firstOrNull()
             releaseFollower(key, mob, reason)
@@ -146,6 +162,10 @@ internal class FarmCareController(
     }
 
     fun onDamage(event: EntityDamageEvent): Boolean {
+        if (scarecrows.owns(event.entity)) {
+            event.isCancelled = true
+            return true
+        }
         if (moles.onDamage(event)) return true
         val identity = identity(event.entity) ?: return false
         event.isCancelled = true
@@ -161,6 +181,7 @@ internal class FarmCareController(
     }
 
     fun interact(player: Player, entity: Entity) {
+        if (scarecrows.interact(player, entity)) return
         if (moles.interact(player, entity)) return
         val identity = identity(entity) ?: return
         interact(player, entity, identity.zoneId)
@@ -175,6 +196,7 @@ internal class FarmCareController(
 
     fun cleanup(reason: String) {
         moles.cleanup(reason)
+        scarecrows.cleanup(reason)
         entityLookup.inAllWorlds().asSequence().filter(::owns).forEach(Entity::remove)
         entities.clear()
         animalFollowers.clear()
@@ -286,7 +308,8 @@ internal class FarmCareController(
                 debug.event("farm_care_animal_following", "zone" to zoneId, "target" to targetId, "player" to player.name)
                 return
             }
-            FarmCareRole.COVER_ANCHOR, FarmCareRole.SCARECROW, FarmCareRole.SEEDER_WAYPOINT, FarmCareRole.APPLE -> Unit
+            FarmCareRole.COVER_ANCHOR, FarmCareRole.SEEDER_WAYPOINT, FarmCareRole.APPLE -> Unit
+            FarmCareRole.SCARECROW -> return
             FarmCareRole.MOLE_MOUND -> return
             FarmCareRole.SEEDER_HORSE -> return
             FarmCareRole.PEN -> return
@@ -306,20 +329,29 @@ internal class FarmCareController(
 
     fun ensure(runtime: FarmRuntime) {
         if (runtime.state.phase != FarmPhase.CARE) {
+            scarecrows.ensure(runtime)
             if (entities.keys.any { it.zoneId == runtime.settings.id }) clear(runtime, "phase_inactive")
             disease.clear(runtime.settings.id)
             return
         }
+        scarecrows.ensure(runtime)
         if (runtime.state.careType == FarmCareType.MOLES) {
             entities.keys.filter { it.zoneId == runtime.settings.id }.toList().forEach { removeEntities(it, "mole_expedition") }
             moles.ensure(runtime)
             return
         }
         val activeIds = runtime.state.careTargets.mapTo(mutableSetOf(), FarmCareTarget::id)
+        val scarecrowIds = runtime.state.careTargets.asSequence()
+            .filter { it.role == FarmCareRole.SCARECROW }
+            .mapTo(hashSetOf(), FarmCareTarget::id)
+        entities.keys.filter { it.zoneId == runtime.settings.id && it.targetId in scarecrowIds }
+            .toList().forEach { removeEntities(it, "scarecrow_delivery") }
         entities.keys.filter { it.zoneId == runtime.settings.id && it.targetId >= 0 && it.targetId !in activeIds }
             .forEach { removeEntities(it, "stale_target") }
         var appleSpawnBudget = runtime.settings.appleSpawnsPerUpdate
+        var targetSpawnBudget = runtime.settings.careSpawnsPerUpdate
         runtime.state.careTargets.forEach { target ->
+            if (target.role == FarmCareRole.SCARECROW) return@forEach
             if (target.role == FarmCareRole.SEEDER_HORSE) return@forEach
             if (target.role == FarmCareRole.SEEDER_WAYPOINT) {
                 removeEntities(FarmCareEntityKey(runtime.settings.id, target.id), "seeder_route_removed")
@@ -334,6 +366,11 @@ internal class FarmCareController(
                     .any { id -> Bukkit.getEntity(id)?.isValid == true }
                 if (!alreadyActive && appleSpawnBudget <= 0) return@forEach
                 if (!alreadyActive) appleSpawnBudget--
+            } else {
+                val alreadyActive = entities[FarmCareEntityKey(runtime.settings.id, target.id)].orEmpty()
+                    .any { id -> Bukkit.getEntity(id)?.isValid == true }
+                if (!alreadyActive && targetSpawnBudget <= 0) return@forEach
+                if (!alreadyActive) targetSpawnBudget--
             }
             ensureFarmCareTarget(runtime, target)
         }
@@ -354,7 +391,8 @@ internal class FarmCareController(
             val targetId = entity.persistentDataContainer.get(targetKey, PersistentDataType.INTEGER)
             val role = entity.persistentDataContainer.get(roleKey, PersistentDataType.STRING)
             val ordinaryTarget = targetId?.let(targets::get)
-            val currentTarget = ordinaryTarget != null && ordinaryTarget.role.name == role
+            val currentTarget = ordinaryTarget != null && ordinaryTarget.role != FarmCareRole.SCARECROW &&
+                ordinaryTarget.role.name == role
             val currentPen = targetId == -1 && role == FarmCareRole.PEN.name &&
                 runtime.state.careType == FarmCareType.ANIMAL_RESCUE
             val valid = runtime.state.phase == FarmPhase.CARE && runtime.state.sequence == sequence &&
@@ -672,7 +710,12 @@ internal class FarmCareController(
     fun onMoistureChange(event: org.bukkit.event.block.MoistureChangeEvent, runtime: FarmRuntime): Boolean =
         irrigation.onMoistureChange(event, runtime)
 
-    fun onMove(event: org.bukkit.event.player.PlayerMoveEvent) = moles.onMove(event)
+    fun onMove(event: org.bukkit.event.player.PlayerMoveEvent) {
+        moles.onMove(event)
+        scarecrows.onMove(event)
+    }
+
+    fun updateCarriedDisplays() = scarecrows.updateCarriedDisplays()
 
     fun onPlayerDeath(player: Player) = moles.onPlayerDeath(player)
 
@@ -733,6 +776,7 @@ internal class FarmCareController(
 
     fun clear(runtime: FarmRuntime, reason: String) {
         if (runtime.state.careType == FarmCareType.MOLES) moles.clear(runtime, reason)
+        scarecrows.clear(runtime, reason)
         entities.keys.filter { it.zoneId == runtime.settings.id }.toList().forEach { removeEntities(it, reason) }
         pollenCharges.clear(runtime.settings.id, runtime.state.sequence)
         disease.clear(runtime.settings.id)

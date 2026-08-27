@@ -117,6 +117,16 @@ activities: farm, lumbermill, and mine.
   from the smaller any-target completion quota, batch entity creation, and keep
   spacing, display scale, independent display/hitbox Y offsets, and leaf-index
   bounds configurable. Degrade safely when an orchard has fewer valid anchors.
+- Target-based care counts physical objects, not repeated clicks. Scale weeds,
+  cover anchors and carried scarecrows from active participants through bounded
+  config; one completed object contributes one progress unit. Scarecrows are
+  collected only at receiving and carried to field targets.
+- Disease expands only from its current local frontier. Pause spread and crop
+  death with zero participants, journal every killed crop before mutation, and
+  restore it in bounded recovery only after care resolves.
+- Keep bird defeat quota separate from visible flock size. Extra birds may be
+  spawned for reachability, but completion and contributions remain bounded by
+  the persisted quota.
 - Durable reindex data is the authoritative candidate pool for preparation and
   incidents. A bounded scan around the current player may supplement and
   revalidate that pool, but must never replace the full loaded index with its
@@ -144,6 +154,9 @@ activities: farm, lumbermill, and mine.
   Redis owns the short-lived handoff ticket; Paper uses the BungeeCord plugin
   messaging channel only for the backend switch.
 - Player-facing network announcements are disabled by default.
-- Build and test with `./gradlew clean check shadowJar`. Set
+- On a developer workstation run `./gradlew test shadowJar`; never run
+  `check`, containerized integration tests, or Testcontainers there. Platform
+  and integration acceptance belongs to the leased `./scripts/mc lab`
+  workflow. Set
   `RUSCRAFTING_OPS_ROOT=/absolute/path/to/ruscrafting-ops` to include tests
   that verify tracked runtime profiles.

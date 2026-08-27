@@ -148,13 +148,18 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().crops shouldBe
             setOf("WHEAT", "CARROTS", "POTATOES", "BEETROOTS", "SWEET_BERRY_BUSH", "MELON", "PUMPKIN")
         settings.farms.single().careTypes shouldContainExactly FarmCareType.entries.filterNot { it == FarmCareType.SEEDER }
-        settings.farms.single().careTargetCount shouldBe 4
+        settings.farms.single().careTargetsPerPlayer shouldBe 15
+        settings.farms.single().careTargetsMax shouldBe 45
+        settings.farms.single().careSpawnsPerUpdate shouldBe 10
         settings.farms.single().irrigation.dryBlocksPerTick shouldBe 24
         settings.farms.single().irrigation.waveBlocksPerTick shouldBe 24
         settings.farms.single().irrigation.waveStartDelayTicks shouldBe 4
         settings.farms.single().irrigation.ringIntervalTicks shouldBe 2
         settings.farms.single().irrigation.ringWidth shouldBe 1.25
         settings.farms.single().irrigation.particleSpacing shouldBe 1.25
+        settings.farms.single().irrigation.particleHeight shouldBe 2.0
+        settings.farms.single().irrigation.particleSpread shouldBe 0.38
+        settings.farms.single().irrigation.particleCount shouldBe 3
         settings.farms.single().appleTargetCount shouldBe 10
         settings.farms.single().applePlacementCount shouldBe 40
         settings.farms.single().appleSpawnsPerUpdate shouldBe 20
@@ -170,8 +175,10 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().displayViewRange shouldBe 2.0f
         settings.farms.single().seederEveryShifts shouldBe 2
         settings.farms.single().diseaseInitialSpots shouldBe 2
-        settings.farms.single().diseaseMaxSpots shouldBe 6
-        settings.farms.single().diseaseSpreadSeconds shouldBe 12
+        settings.farms.single().diseaseMaxSpots shouldBe 10
+        settings.farms.single().diseaseSpreadSeconds shouldBe 5
+        settings.farms.single().diseaseSpreadRadius shouldBe 4.0
+        settings.farms.single().diseaseKillSeconds shouldBe 16
         settings.farms.single().moleBurrow.cells shouldBe 7
         settings.farms.single().moleBurrow.minDepth shouldBe 10
         settings.farms.single().moleBurrow.maxDepth shouldBe 18
@@ -208,10 +215,11 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().specialIncidents.nightCropPlacementCount shouldBe 90
         settings.farms.single().specialIncidents.nightCropTargetCount shouldBe 24
         settings.farms.single().specialIncidents.nightCropMinSpacing shouldBe 6.0
-        settings.farms.single().specialIncidents.nightTimeTransitionSeconds shouldBe 6
+        settings.farms.single().specialIncidents.nightTimeTransitionSeconds shouldBe 12
         settings.farms.single().specialIncidents.giantCropParticleStride shouldBe 4
         settings.farms.single().specialIncidents.birdMinCount shouldBe 6
         settings.farms.single().specialIncidents.birdMaxCount shouldBe 14
+        settings.farms.single().specialIncidents.birdSpawnMultiplier shouldBe 2
         settings.farms.single().specialIncidents.birdFlyingSpeed shouldBe 0.65
         settings.farms.single().specialIncidents.birdCount(1_000) shouldBe 6
         settings.farms.single().specialIncidents.nightPatrolMinCount shouldBe 3
@@ -695,6 +703,7 @@ class ArcFarmsConfigTest : FunSpec({
             MessageKey.FARM_PLANTING_STARTED to MessageKey.FARM_PLANTING_STARTED_SUBTITLE,
             MessageKey.FARM_PREPARATION_COMPLETED to MessageKey.FARM_PREPARATION_COMPLETED_SUBTITLE,
             MessageKey.FARM_CARE_RESOLVED to MessageKey.FARM_CARE_RESOLVED_SUBTITLE,
+            MessageKey.FARM_CARE_SCARECROW_PICKED_UP to MessageKey.FARM_CARE_SCARECROW_PICKED_UP_SUBTITLE,
             MessageKey.FARM_INCIDENT_STARTED to MessageKey.FARM_INCIDENT_STARTED_SUBTITLE,
             MessageKey.FARM_INCIDENT_RESOLVED to MessageKey.FARM_INCIDENT_RESOLVED_SUBTITLE,
             MessageKey.FARM_DROUGHT_STARTED to MessageKey.FARM_DROUGHT_STARTED_SUBTITLE,
@@ -746,7 +755,8 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().seederWorkingRadius shouldBe 4.0
         settings.farms.single().seederPigCatchupDistance shouldBe 12.0
         settings.farms.single().preparationSearchRadius shouldBe 4
-        settings.farms.single().careTargetCount shouldBe 3
+        settings.farms.single().careTargetsPerPlayer shouldBe 15
+        settings.farms.single().careTargetsMax shouldBe 45
         settings.farms.single().animalRescueTargetCount shouldBe 4
         settings.farms.single().animalRescueMinSpacing shouldBe 2.0
         settings.farms.single().incidentCountMin shouldBe 2
@@ -865,10 +875,10 @@ class ArcFarmsConfigTest : FunSpec({
             FarmCareType.WEEDS to "Ищите подсвеченные корни",
             FarmCareType.IRRIGATION to "Открывайте вентили по порядку",
             FarmCareType.POLLINATION to "Пыльцу из улья несите к цветам",
-            FarmCareType.STORM_COVERS to "Закрепите отмеченные углы",
-            FarmCareType.SCARECROWS to "Дважды почините каждое пугало",
+            FarmCareType.STORM_COVERS to "Закрепите укрытие во всех метках",
+            FarmCareType.SCARECROWS to "Несите пугала от приёмки к меткам",
             FarmCareType.ANIMAL_RESCUE to "Ведите животных к зелёной метке",
-            FarmCareType.DISEASE to "Обработайте каждый очаг дважды",
+            FarmCareType.DISEASE to "Срезайте очаги мотыгой вовремя",
             FarmCareType.MOLES to "Бейте свежие холмики мотыгой",
             FarmCareType.APPLE_HARVEST to "Ищите светящиеся яблоки под кронами",
         ).map { (type, hint) -> base.copy(phase = FarmPhase.CARE, careType = type) to hint }

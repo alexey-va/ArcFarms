@@ -3,6 +3,14 @@ package ru.ruscrafting.farms.domain
 import java.lang.Math.floorMod
 
 object FarmCarePlanner {
+    fun targetCount(activePlayers: Int, perPlayer: Int, maximum: Int, available: Int): Int {
+        require(activePlayers >= 0 && perPlayer in 1..64 && maximum in 1..64 && available >= 0) {
+            "Farm care target scaling is invalid"
+        }
+        return (activePlayers.coerceAtLeast(1).toLong() * perPlayer)
+            .coerceAtMost(maximum.toLong()).coerceAtMost(available.toLong()).toInt()
+    }
+
     fun orient(
         targets: List<FarmCareTarget>,
         anchor: FarmPointPosition?,
@@ -102,6 +110,27 @@ object FarmCarePlanner {
         )
     }
 
+    fun diseaseFrontier(
+        candidates: Collection<FarmPlotPosition>,
+        sources: Collection<FarmPointPosition>,
+        radius: Double,
+        selectionIndex: Long,
+    ): FarmPlotPosition? {
+        require(radius in 1.0..32.0) { "Farm disease spread radius is invalid" }
+        if (sources.isEmpty()) return null
+        val occupied = sources.mapTo(hashSetOf()) { source ->
+            Triple(kotlin.math.floor(source.x).toInt(), kotlin.math.floor(source.y).toInt() - 1, kotlin.math.floor(source.z).toInt())
+        }
+        val radiusSquared = radius * radius
+        val frontier = candidates.distinct().filter { candidate ->
+            Triple(candidate.x, candidate.y, candidate.z) !in occupied && sources.any { source ->
+                source.world == candidate.world && horizontalDistanceSquared(candidate, source) <= radiusSquared
+            }
+        }.sortedWith(compareBy(FarmPlotPosition::world, FarmPlotPosition::y, FarmPlotPosition::x, FarmPlotPosition::z))
+        if (frontier.isEmpty()) return null
+        return frontier[floorMod(selectionIndex, frontier.size.toLong()).toInt()]
+    }
+
     private fun horizontalDistanceSquared(first: FarmPlotPosition, second: FarmPlotPosition): Int {
         val dx = first.x - second.x
         val dz = first.z - second.z
@@ -112,6 +141,13 @@ object FarmCarePlanner {
         if (first.world != second.world) return Double.POSITIVE_INFINITY
         val dx = first.x - second.x
         val dz = first.z - second.z
+        return dx * dx + dz * dz
+    }
+
+    private fun horizontalDistanceSquared(first: FarmPlotPosition, second: FarmPointPosition): Double {
+        if (first.world != second.world) return Double.POSITIVE_INFINITY
+        val dx = first.x + 0.5 - second.x
+        val dz = first.z + 0.5 - second.z
         return dx * dx + dz * dz
     }
 }

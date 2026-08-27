@@ -224,7 +224,7 @@ internal class FarmNightShiftController(
         playerTimes.filterValues { it.zoneId == zoneId }.filterKeys { it !in expected }.values.forEach {
             it.returning = true
         }
-        val maximumStep = FarmPlayerTimeTransition.maximumStep(transitionSeconds)
+        val maximumStep = FarmPlayerTimeTransition.maximumStep(transitionSeconds, updatesPerSecond = 20)
         players.forEach { player ->
             val existing = playerTimes[player.uniqueId]
             if (existing == null) {

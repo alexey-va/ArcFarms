@@ -65,7 +65,10 @@ farm-zones:
     backup-max-blocks: 4000000
     care-radius: 10
     care-types: [WEEDS, IRRIGATION, POLLINATION, APPLE_HARVEST, STORM_COVERS, SCARECROWS, ANIMAL_RESCUE, DISEASE, MOLES]
-    care-targets: 4
+    # Physical care objects scale with active workers, but remain bounded.
+    care-targets-per-player: 15
+    care-targets-max: 45
+    care-spawns-per-update: 10
     # Irrigation dries the managed field gradually, then hydrates it in circular waves from each valve.
     irrigation:
       dry-blocks-per-tick: 24
@@ -74,6 +77,9 @@ farm-zones:
       ring-interval-ticks: 2
       ring-width: 1.25
       particle-spacing: 1.25
+      particle-height: 2.0
+      particle-spread: 0.38
+      particle-count: 3
     # Hang many apples over the orchard, but complete the activity after this many arbitrary picks.
     apple-targets: 10
     apple-placement-count: 40
@@ -107,8 +113,12 @@ farm-zones:
     # Bounds tilling/planting mutations per machinery update (every 5 ticks).
     seeder-blocks-per-update: 128
     disease-initial-spots: 2
-    disease-max-spots: 6
-    disease-spread-seconds: 12
+    disease-max-spots: 10
+    disease-spread-seconds: 5
+    disease-spread-radius: 4.0
+    disease-kill-seconds: 16
+    scarecrow-delivery-radius: 2.5
+    scarecrow-carried-y-offset: 1.15
     # Temporary, crash-safe maze carved below the farm for the mole expedition.
     mole-burrow:
       cells: 7
@@ -170,14 +180,14 @@ farm-zones:
     drought-min-beds: 30
     drought-max-beds: 40
     drought-initial-beds: 10
-    drought-growth-beds: 5
-    drought-growth-seconds: 3
+    drought-growth-beds: 8
+    drought-growth-seconds: 2
     # В одном заказе планировщик не повторяет события и допускает максимум
     # одно обычное полевое происшествие (вредители или засуха).
     incident-types: [GIANT_CROP, CHANNELS, NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, PESTS, DROUGHT]
     special-incidents:
       giant-crop: {block-particle-stride: 4}
-      birds: {min-count: 6, max-count: 14, beds-per-bird: 180, spawn-height: 4.0, flying-speed: 0.65, health: 4.0, eat-radius: 5.0, eat-interval-seconds: 3, ranged-contribution: 2, melee-contribution: 1}
+      birds: {min-count: 6, max-count: 14, beds-per-bird: 180, spawn-multiplier: 2, spawn-height: 4.0, flying-speed: 0.65, health: 4.0, eat-radius: 5.0, eat-interval-seconds: 3, ranged-contribution: 2, melee-contribution: 1}
       channels:
         blockages: 5
         blockage: {material: MANGROVE_ROOTS, custom-model-data: 0, display-scale: 1.6, y-offset: 0.8}
@@ -186,7 +196,7 @@ farm-zones:
         target-count: 24
         crop-min-spacing: 6.0
         player-time: 18000
-        transition-seconds: 6
+        transition-seconds: 12
         patrols:
           min-count: 3
           max-count: 10

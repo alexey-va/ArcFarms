@@ -86,7 +86,9 @@ data class FarmZoneSettings(
     val backupMaxBlocks: Int,
     val careRadius: Int,
     val careTypes: List<FarmCareType>,
-    val careTargetCount: Int,
+    val careTargetsPerPlayer: Int,
+    val careTargetsMax: Int,
+    val careSpawnsPerUpdate: Int,
     val irrigation: FarmIrrigationSettings,
     val appleTargetCount: Int,
     val applePlacementCount: Int,
@@ -117,6 +119,10 @@ data class FarmZoneSettings(
     val diseaseInitialSpots: Int,
     val diseaseMaxSpots: Int,
     val diseaseSpreadSeconds: Int,
+    val diseaseSpreadRadius: Double,
+    val diseaseKillSeconds: Int,
+    val scarecrowDeliveryRadius: Double,
+    val scarecrowCarriedYOffset: Double,
     val moleBurrow: FarmMoleBurrowSettings,
     val careAnimalEntities: List<String>,
     val proceduralCareFixtures: Boolean,
@@ -158,6 +164,12 @@ data class FarmZoneSettings(
     val rareOrderChancePercent: Int,
     val orders: List<FarmOrderSettings>,
 ) {
+    init {
+        require(careTargetsPerPlayer <= careTargetsMax) {
+            "Farm care target count per player must not exceed its maximum"
+        }
+    }
+
     fun droughtTargetBeds(gardenBeds: Int): Int {
         if (gardenBeds <= 0) return 0
         val proportional = ceil(gardenBeds * droughtCoveragePercent / 100.0).toInt()
@@ -180,6 +192,7 @@ data class FarmSpecialIncidentSettings(
     val birdMinCount: Int,
     val birdMaxCount: Int,
     val birdBedsPerBird: Int,
+    val birdSpawnMultiplier: Int,
     val birdSpawnHeight: Double,
     val birdFlyingSpeed: Double,
     val birdHealth: Double,
@@ -333,6 +346,9 @@ data class FarmIrrigationSettings(
     val ringIntervalTicks: Int,
     val ringWidth: Double,
     val particleSpacing: Double,
+    val particleHeight: Double,
+    val particleSpread: Double,
+    val particleCount: Int,
 )
 
 data class FarmSupplyPointSettings(
@@ -731,7 +747,7 @@ class ArcFarmsConfig private constructor(
                 }
                 val diseaseInitialSpots = section.int("disease-initial-spots", 2)
                     .checked("disease-initial-spots", 1, 16)
-                val diseaseMaxSpots = section.int("disease-max-spots", 6)
+                val diseaseMaxSpots = section.int("disease-max-spots", 10)
                     .checked("disease-max-spots", 1, 32)
                 require(diseaseInitialSpots <= diseaseMaxSpots) {
                     "Farm zone $id disease-initial-spots must not exceed disease-max-spots"
@@ -841,7 +857,7 @@ class ArcFarmsConfig private constructor(
                     nightPlayerTime = section.string("special-incidents.night-shift.player-time", "18000")
                         .toLongOrNull()?.also { require(it in 0..24_000) { "night-shift.player-time must be in 0..24000" } }
                         ?: error("night-shift.player-time must be an integer"),
-                    nightTimeTransitionSeconds = section.int("special-incidents.night-shift.transition-seconds", 6)
+                    nightTimeTransitionSeconds = section.int("special-incidents.night-shift.transition-seconds", 12)
                         .checked("special-incidents.night-shift.transition-seconds", 1, 30),
                     giantCropParticleStride = section.int("special-incidents.giant-crop.block-particle-stride", 4)
                         .checked("special-incidents.giant-crop.block-particle-stride", 1, 16),
@@ -851,6 +867,8 @@ class ArcFarmsConfig private constructor(
                         .checked("special-incidents.birds.max-count", 1, 32),
                     birdBedsPerBird = section.int("special-incidents.birds.beds-per-bird", 180)
                         .checked("special-incidents.birds.beds-per-bird", 16, 4_096),
+                    birdSpawnMultiplier = section.int("special-incidents.birds.spawn-multiplier", 2)
+                        .checked("special-incidents.birds.spawn-multiplier", 1, 4),
                     birdSpawnHeight = section.finiteDouble("special-incidents.birds.spawn-height", 4.0, 1.5, 12.0),
                     birdFlyingSpeed = section.finiteDouble("special-incidents.birds.flying-speed", 0.65, 0.1, 1.5),
                     birdHealth = section.finiteDouble("special-incidents.birds.health", 4.0, 1.0, 40.0),
@@ -957,7 +975,12 @@ class ArcFarmsConfig private constructor(
                         .checked("backup-max-blocks", 10_000, 20_000_000),
                     careRadius = section.int("care-radius", 10).checked("care-radius", 3, 24),
                     careTypes = careTypes,
-                    careTargetCount = section.int("care-targets", 4).checked("care-targets", 2, 8),
+                    careTargetsPerPlayer = section.int("care-targets-per-player", 15)
+                        .checked("care-targets-per-player", 1, 64),
+                    careTargetsMax = section.int("care-targets-max", 45)
+                        .checked("care-targets-max", 1, 64),
+                    careSpawnsPerUpdate = section.int("care-spawns-per-update", 10)
+                        .checked("care-spawns-per-update", 1, 32),
                     irrigation = FarmIrrigationSettings(
                         dryBlocksPerTick = section.int("irrigation.dry-blocks-per-tick", 24)
                             .checked("irrigation.dry-blocks-per-tick", 1, 128),
@@ -969,6 +992,10 @@ class ArcFarmsConfig private constructor(
                             .checked("irrigation.ring-interval-ticks", 1, 20),
                         ringWidth = section.finiteDouble("irrigation.ring-width", 1.25, 0.5, 4.0),
                         particleSpacing = section.finiteDouble("irrigation.particle-spacing", 1.25, 0.5, 4.0),
+                        particleHeight = section.finiteDouble("irrigation.particle-height", 2.0, 0.5, 4.0),
+                        particleSpread = section.finiteDouble("irrigation.particle-spread", 0.38, 0.0, 1.5),
+                        particleCount = section.int("irrigation.particle-count", 3)
+                            .checked("irrigation.particle-count", 1, 12),
                     ),
                     appleTargetCount = section.int("apple-targets", 10).checked("apple-targets", 3, 256),
                     applePlacementCount = section.int("apple-placement-count", 40)
@@ -1007,8 +1034,13 @@ class ArcFarmsConfig private constructor(
                         .checked("seeder-blocks-per-update", 8, 256),
                     diseaseInitialSpots = diseaseInitialSpots,
                     diseaseMaxSpots = diseaseMaxSpots,
-                    diseaseSpreadSeconds = section.int("disease-spread-seconds", 12)
+                    diseaseSpreadSeconds = section.int("disease-spread-seconds", 5)
                         .checked("disease-spread-seconds", 3, 300),
+                    diseaseSpreadRadius = section.finiteDouble("disease-spread-radius", 4.0, 1.0, 12.0),
+                    diseaseKillSeconds = section.int("disease-kill-seconds", 16)
+                        .checked("disease-kill-seconds", 3, 300),
+                    scarecrowDeliveryRadius = section.finiteDouble("scarecrow-delivery-radius", 2.5, 1.0, 6.0),
+                    scarecrowCarriedYOffset = section.finiteDouble("scarecrow-carried-y-offset", 1.15, 0.0, 3.0),
                     moleBurrow = moleBurrow,
                     careAnimalEntities = section.stringList("care-animal-entities")
                         .ifEmpty { listOf("CHICKEN", "SHEEP") }
@@ -1039,9 +1071,9 @@ class ArcFarmsConfig private constructor(
                     droughtMinBeds = droughtMinBeds,
                     droughtMaxBeds = droughtMaxBeds,
                     droughtInitialBeds = droughtInitialBeds,
-                    droughtGrowthBeds = section.int("drought-growth-beds", 5)
+                    droughtGrowthBeds = section.int("drought-growth-beds", 8)
                         .checked("drought-growth-beds", 1, 64),
-                    droughtGrowthSeconds = section.int("drought-growth-seconds", 3)
+                    droughtGrowthSeconds = section.int("drought-growth-seconds", 2)
                         .checked("drought-growth-seconds", 1, 300),
                     incidentTypes = incidentTypes,
                     specialIncidents = specialIncidents,

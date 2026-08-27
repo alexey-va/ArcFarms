@@ -33,8 +33,11 @@ object FarmAdminEdit {
         if (state.preparationPatch.isNotEmpty() && patch.isEmpty()) {
             val droughtDamage = state.droughtDamagedPlots - plots
             val pestDamage = state.pestDamagedCrops.filterNot { it.position in plots }
+            val diseaseDamage = state.diseaseDamagedCrops.orEmpty().filterNot { it.position in plots }
             val specialDamage = state.specialDamagedCrops.filterNot { it.position in plots }
-            val retiredState = if (droughtDamage.isEmpty() && pestDamage.isEmpty() && specialDamage.isEmpty()) {
+            val retiredState = if (
+                droughtDamage.isEmpty() && pestDamage.isEmpty() && diseaseDamage.isEmpty() && specialDamage.isEmpty()
+            ) {
                 FarmShiftState(sequence = state.sequence)
             } else {
                 FarmShiftState(
@@ -43,6 +46,7 @@ object FarmAdminEdit {
                     orderId = state.orderId,
                     droughtDamagedPlots = droughtDamage,
                     pestDamagedCrops = pestDamage,
+                    diseaseDamagedCrops = diseaseDamage,
                     specialDamagedCrops = specialDamage,
                     cooldownEndsAt = 1,
                     outcome = ShiftOutcome.COMPLETED,
@@ -65,6 +69,7 @@ object FarmAdminEdit {
             careTargets.sumOf(FarmCareTarget::progress) >= (careGoal ?: careAvailable)
         val specialPlots = state.specialIncident?.plots.orEmpty().filterNot(plots::contains)
         val specialDamage = state.specialDamagedCrops.filterNot { it.position in plots }
+        val diseaseDamage = state.diseaseDamagedCrops.orEmpty().filterNot { it.position in plots }
         val specialRequired = if (
             state.phase == FarmPhase.INCIDENT &&
             state.incidentType in setOf(FarmIncidentType.NIGHT_SHIFT, FarmIncidentType.MARKET)
@@ -103,6 +108,7 @@ object FarmAdminEdit {
                 droughtDamagedPlots = state.droughtDamagedPlots - plots,
                 pestNests = state.pestNests.filterNot { it.position in plots },
                 pestDamagedCrops = state.pestDamagedCrops.filterNot { it.position in plots },
+                diseaseDamagedCrops = diseaseDamage,
                 specialIncident = if (specialResolved) null else state.specialIncident?.copy(plots = specialPlots),
                 specialDamagedCrops = specialDamage,
                 incidentCrop = if (specialResolved) null else state.incidentCrop,

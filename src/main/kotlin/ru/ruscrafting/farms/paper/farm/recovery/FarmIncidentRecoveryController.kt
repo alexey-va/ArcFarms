@@ -22,7 +22,8 @@ internal class FarmIncidentRecoveryController(
     fun pending(runtime: FarmRuntime): Boolean = FarmIncidentRecovery.pending(runtime.state)
 
     fun remaining(runtime: FarmRuntime): Int = runtime.state.droughtDamagedPlots.size +
-        runtime.state.pestDamagedCrops.size + runtime.state.specialDamagedCrops.size
+        runtime.state.pestDamagedCrops.size + runtime.state.diseaseDamagedCrops.orEmpty().size +
+        runtime.state.specialDamagedCrops.size
 
     fun restore(runtime: FarmRuntime, limit: Int = Int.MAX_VALUE, waterActive: Boolean = false): Int {
         if (waterActive) return 0
@@ -32,6 +33,7 @@ internal class FarmIncidentRecoveryController(
             before,
             restoreDrought = { position -> restoreDrought(runtime, position) },
             restorePest = { damage -> restoreCrop(runtime, damage) },
+            restoreDisease = { damage -> restoreCrop(runtime, damage) },
             restoreSpecial = { damage -> restoreCrop(runtime, damage) },
             limit = limit,
         )

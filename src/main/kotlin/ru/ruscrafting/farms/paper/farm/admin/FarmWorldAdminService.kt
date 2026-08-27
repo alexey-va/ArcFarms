@@ -176,6 +176,7 @@ internal class FarmWorldAdminService(
             if (state != null && state.pestDamagedCrops.any { it.position == position }) add("pest-damaged")
             if (state != null && position in state.specialIncident?.plots.orEmpty()) add("special-target")
             if (state != null && state.specialDamagedCrops.any { it.position == position }) add("special-damaged")
+            if (state != null && state.diseaseDamagedCrops.orEmpty().any { it.position == position }) add("disease-damaged")
             if (runtime != null && special.ownsGiantBlock(runtime, block)) add("giant-crop")
             if (orchardRecord != null) add("orchard")
         }
@@ -291,6 +292,7 @@ internal class FarmWorldAdminService(
             addAll(runtime.state.droughtDamagedPlots)
             runtime.state.pestNests.mapTo(this) { it.position }
             runtime.state.pestDamagedCrops.mapTo(this) { it.position }
+            runtime.state.diseaseDamagedCrops.orEmpty().mapTo(this) { it.position }
             runtime.state.specialIncident?.plots?.let(::addAll)
             runtime.state.specialDamagedCrops.mapTo(this) { it.position }
         }

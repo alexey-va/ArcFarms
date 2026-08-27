@@ -514,6 +514,7 @@ internal class FarmFieldController(
             addAll(runtime.state.droughtPlots)
             addAll(runtime.state.droughtDamagedPlots)
             runtime.state.pestDamagedCrops.mapTo(this) { it.position }
+            runtime.state.diseaseDamagedCrops.orEmpty().mapTo(this) { it.position }
         }
         positions.forEach { position ->
             val soil = position.block() ?: return@forEach
@@ -541,6 +542,11 @@ internal class FarmFieldController(
             if (position in irrigationDryPlots) {
                 // The irrigation owner changes moisture in bounded radial slices.
                 // Do not let ordinary field maintenance hydrate the dry front early.
+                return@forEach
+            }
+            if (runtime.state.diseaseDamagedCrops.orEmpty().any { it.position == position }) {
+                // Disease owns this missing crop until care is resolved; bounded recovery
+                // restores every killed plant afterwards.
                 return@forEach
             }
             val awaitingMachine = runtime.state.phase == FarmPhase.CARE && runtime.state.careType == FarmCareType.SEEDER

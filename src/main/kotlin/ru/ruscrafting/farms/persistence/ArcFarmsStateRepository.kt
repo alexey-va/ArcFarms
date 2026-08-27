@@ -51,17 +51,20 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
     fun load(): ArcFarmsState {
         val state = store.load()
         val farms = state.farms.mapValues { (_, farm) ->
-            val resolved = maxOf(farm.incidentsResolved, if (farm.incidentResolved) 1 else 0)
-            val completedLegacyIncident = farm.phase == FarmPhase.HARVESTING &&
-                farm.incidentResolved && farm.incidentType == null && farm.incidentCrop != null
-            if (resolved == farm.incidentsResolved && !completedLegacyIncident) {
-                farm
+            val normalized = if (farm.diseaseDamagedCrops == null) {
+                farm.copy(diseaseDamagedCrops = emptyList())
+            } else farm
+            val resolved = maxOf(normalized.incidentsResolved, if (normalized.incidentResolved) 1 else 0)
+            val completedLegacyIncident = normalized.phase == FarmPhase.HARVESTING &&
+                normalized.incidentResolved && normalized.incidentType == null && normalized.incidentCrop != null
+            if (resolved == normalized.incidentsResolved && !completedLegacyIncident) {
+                normalized
             } else {
-                farm.copy(
+                normalized.copy(
                     incidentsResolved = resolved,
-                    incidentCrop = if (completedLegacyIncident) null else farm.incidentCrop,
-                    incidentProgress = if (completedLegacyIncident) 0 else farm.incidentProgress,
-                    incidentRequired = if (completedLegacyIncident) 0 else farm.incidentRequired,
+                    incidentCrop = if (completedLegacyIncident) null else normalized.incidentCrop,
+                    incidentProgress = if (completedLegacyIncident) 0 else normalized.incidentProgress,
+                    incidentRequired = if (completedLegacyIncident) 0 else normalized.incidentRequired,
                 )
             }
         }
@@ -257,6 +260,15 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 validatePlot(damage.position)
                 require(CONTENT_ID.matches(damage.crop)) { "Farm pest crop damage has an invalid crop" }
             }
+            require(farm.diseaseDamagedCrops.orEmpty().size <= 4_096) { "Farm disease crop damage is unbounded" }
+            require(
+                farm.diseaseDamagedCrops.orEmpty().distinctBy(FarmCropDamage::position).size ==
+                    farm.diseaseDamagedCrops.orEmpty().size,
+            ) { "Farm disease crop damage contains duplicate plots" }
+            farm.diseaseDamagedCrops.orEmpty().forEach { damage ->
+                validatePlot(damage.position)
+                require(CONTENT_ID.matches(damage.crop)) { "Farm disease crop damage has an invalid crop" }
+            }
             farm.specialIncident?.let { special ->
                 require(
                     farm.phase == FarmPhase.INCIDENT && farm.incidentType in setOf(
@@ -334,6 +346,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 farm.droughtDamagedPlots.mapTo(this, FarmPlotPosition::world)
                 farm.pestNests.mapTo(this) { it.position.world }
                 farm.pestDamagedCrops.mapTo(this) { it.position.world }
+                farm.diseaseDamagedCrops.orEmpty().mapTo(this) { it.position.world }
                 farm.specialIncident?.points?.mapTo(this) { it.world }
                 farm.specialIncident?.plots?.mapTo(this, FarmPlotPosition::world)
                 farm.specialDamagedCrops.mapTo(this) { it.position.world }
@@ -350,6 +363,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                         farm.droughtPlots.isEmpty() && farm.droughtDamagedPlots.isEmpty() &&
                         !farm.pestNestsInitialized && farm.pestNests.isEmpty() && farm.pestAlive == 0 &&
                         farm.pestDamagedCrops.isEmpty() && farm.specialIncident == null &&
+                        farm.diseaseDamagedCrops.orEmpty().isEmpty() &&
                         farm.specialDamagedCrops.isEmpty() && farm.rewardMoneyBonusPercent == 0 &&
                         farm.deliveryPosition == null && farm.deliveredCrates.isEmpty() &&
                         farm.startedAt == 0L && farm.cooldownEndsAt == 0L && farm.contributors.isEmpty() &&

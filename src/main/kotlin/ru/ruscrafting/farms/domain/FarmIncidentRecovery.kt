@@ -3,13 +3,14 @@ package ru.ruscrafting.farms.domain
 object FarmIncidentRecovery {
     fun pending(state: FarmShiftState): Boolean =
         state.droughtDamagedPlots.isNotEmpty() || state.pestDamagedCrops.isNotEmpty() ||
-            state.specialDamagedCrops.isNotEmpty()
+            state.diseaseDamagedCrops.orEmpty().isNotEmpty() || state.specialDamagedCrops.isNotEmpty()
 
     /** Removes only entries whose world repair was actually confirmed. */
     fun recover(
         state: FarmShiftState,
         restoreDrought: (FarmPlotPosition) -> Boolean,
         restorePest: (FarmCropDamage) -> Boolean,
+        restoreDisease: (FarmCropDamage) -> Boolean = restorePest,
         restoreSpecial: (FarmCropDamage) -> Boolean = restorePest,
         limit: Int = Int.MAX_VALUE,
     ): FarmShiftState {
@@ -25,6 +26,11 @@ object FarmIncidentRecovery {
             attempts++
             restorePest(damage)
         }
+        val disease = state.diseaseDamagedCrops.orEmpty().filterNot { damage ->
+            if (attempts >= limit) return@filterNot false
+            attempts++
+            restoreDisease(damage)
+        }
         val special = state.specialDamagedCrops.filterNot { damage ->
             if (attempts >= limit) return@filterNot false
             attempts++
@@ -33,6 +39,7 @@ object FarmIncidentRecovery {
         return state.copy(
             droughtDamagedPlots = drought,
             pestDamagedCrops = pests,
+            diseaseDamagedCrops = disease,
             specialDamagedCrops = special,
         )
     }

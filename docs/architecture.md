@@ -120,7 +120,8 @@ owns the zone collection; the module delegates to the following vertical owners.
 | `farm.placement/FarmPlacementService`, `FarmSurfacePolicy` | bounded outdoor placement, loaded-column surface checks, delivery layouts | roof/cave rejection and no chunk loads |
 | `farm.recovery/FarmFixedCropRecoveryController` and `FarmIncidentRecoveryController` | fixed-crop and incident restore queues with per-tick budgets | restart, unloaded chunk, partial restore, stale callback |
 | `farm.harvest/FarmHarvestController` | accepted crop validation, drop suppression, fixed fruit intent and respawn | wrong phase/crop, no drops, journal-before-mutation |
-| `farm.care/FarmCareController`, `FarmDiseaseController`, `FarmCarePresentation` | routes care, owns shared entities and seeder/animal lifecycles, disease timing and shared feedback | cleanup and activity scenarios |
+| `farm.care/FarmCareController`, `FarmDiseaseController`, `FarmCarePresentation` | routes care, owns shared entities and seeder/animal lifecycles, local disease frontier/death journal and shared feedback | cleanup and activity scenarios |
+| `farm.care.scarecrow/FarmScarecrowDeliveryController` | receiving stock, one-player carriers, moving displays and placed scarecrow convergence | pickup, carry, leave/reload and completion |
 | `farm.care.mole/FarmMoleBurrowController`, `FarmMoleBurrowWorld` | underground expedition, nonpersistent entrance/lair scene, durable player return, chunk-PDC tunnel journal and bounded build/restore | deterministic maze, codec corruption, restart return, non-mutating preview |
 | `farm.shift/FarmShiftCoordinator` | transition dispatch and configured incident schedule | configured count/range and non-repeat rules |
 | `farm.incident/drought`, `pest`, `special` | drought, pests, giant crop, channels, night shift, market; each owns entities/blocks/maps/recovery | restart/dedup/cleanup plus story flow |
@@ -152,7 +153,9 @@ Each mutable collection has exactly one owner. In particular:
 - delivery carriers/displays -> delivery controller;
 - pest and nest entities -> pest incident;
 - drought flows/growth -> drought incident;
-- care entities/followers/disease timers -> the relevant care activity;
+- care entities/followers -> care controller;
+- disease frontier/death timers -> disease controller; killed crop intent -> incident recovery journal;
+- scarecrow supply/carriers/placed displays -> scarecrow delivery controller;
 - mole tunnel blocks, scene entities and active explorers -> mole burrow owner;
 - supply displays/item tags -> supply controller;
 - scoreboard sessions/music -> presentation;
@@ -280,8 +283,10 @@ together.
 9. Keep `FarmRuntimeRegistry` as the sole zone-list owner, `FarmModule` as the
    lifecycle coordinator, and `ArcFarmsService` as the thin application facade.
 10. Split the oversized config and test fixtures by the same feature map.
-11. Run unit, architecture and MockBukkit lifecycle suites, full `clean check
-    shadowJar`, security review of the exact diff, then deploy and verify.
+11. Run local unit, architecture and MockBukkit lifecycle suites with `test`,
+    build `shadowJar`, then run platform/integration acceptance through the
+    leased lab workflow before deployment. Do not run containerized integration
+    suites directly on the developer workstation.
 
 No migration step is complete when it only reduces a line count. It is complete
 when the old owner has no state or lifecycle branch for that feature and the new

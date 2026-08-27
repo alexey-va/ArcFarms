@@ -54,6 +54,7 @@ internal class FarmCarePlanService(
     private val overrides: () -> FarmLocationOverrides,
     private val random: RandomGenerator,
     private val moleBurrow: FarmMoleBurrowWorld,
+    private val participantCount: (ActivityRegion) -> Int,
     private val log: (Level, String) -> Unit,
 ) {
     fun select(runtime: FarmRuntime, preferredType: FarmCareType?, actor: Player?): FarmCarePlan? {
@@ -102,7 +103,12 @@ internal class FarmCarePlanService(
             plot.block()?.let(FarmSurfacePolicy::isOutdoorBed) == true
         }
         if (patch.isEmpty()) return null
-        val count = runtime.settings.careTargetCount
+        val count = FarmCarePlanner.targetCount(
+            participantCount(runtime.region),
+            runtime.settings.careTargetsPerPlayer,
+            runtime.settings.careTargetsMax,
+            patch.size,
+        )
         val salt = runtime.state.sequence * 101L + type.ordinal * 17L
         fun bedTargets(role: FarmCareRole, amount: Int, required: Int = 1): List<FarmCareTarget> =
             FarmCarePlanner.spread(patch, amount.coerceAtMost(patch.size), salt).mapIndexed { index, plot ->
@@ -127,7 +133,7 @@ internal class FarmCarePlanService(
                 ) ?: return null
                 listOf(FarmCareTarget(0, FarmCareRole.SEEDER_HORSE, FarmPointPosition(start.world, start.x + 0.5, start.y + 1.05, start.z + 0.5)))
             }
-            FarmCareType.WEEDS -> bedTargets(FarmCareRole.WEED_ROOT, count + 1, required = 2)
+            FarmCareType.WEEDS -> bedTargets(FarmCareRole.WEED_ROOT, count)
             FarmCareType.IRRIGATION -> FarmCarePlanner.orient(bedTargets(FarmCareRole.VALVE, count), explicit(FarmPointKind.IRRIGATION))
             FarmCareType.POLLINATION -> {
                 val hive = fixturePoint(runtime, FarmPointKind.HIVE) ?: return null
@@ -135,13 +141,11 @@ internal class FarmCarePlanService(
                     bedTargets(FarmCareRole.FLOWER_PATCH, count).mapIndexed { index, target -> target.copy(id = index + 1) }
             }
             FarmCareType.STORM_COVERS -> FarmCarePlanner.orient(
-                FarmCarePlanner.corners(patch).mapIndexed { index, plot ->
-                    FarmCareTarget(index, FarmCareRole.COVER_ANCHOR, FarmPointPosition(plot.world, plot.x + 0.5, plot.y + 1.05, plot.z + 0.5))
-                },
+                bedTargets(FarmCareRole.COVER_ANCHOR, count),
                 explicit(FarmPointKind.COVERS),
             )
             FarmCareType.SCARECROWS -> FarmCarePlanner.orient(
-                bedTargets(FarmCareRole.SCARECROW, minOf(3, count), required = 2),
+                bedTargets(FarmCareRole.SCARECROW, count),
                 explicit(FarmPointKind.SCARECROWS),
             )
             FarmCareType.ANIMAL_RESCUE -> {
@@ -174,7 +178,6 @@ internal class FarmCarePlanService(
             FarmCareType.DISEASE -> bedTargets(
                 FarmCareRole.DISEASED_CROP,
                 runtime.settings.diseaseInitialSpots.coerceAtMost(patch.size),
-                required = 2,
             )
             FarmCareType.MOLES -> {
                 val bedCandidates = FarmCarePlanner.spread(

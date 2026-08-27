@@ -415,6 +415,7 @@ class ArcFarmsService(
         taskSupervisor.runTimer(5L, 5L) {
             farm.module.updateAmbient()
         }
+        taskSupervisor.runTimer(1L, 1L) { farm.module.updatePlayerTimes() }
         taskSupervisor.runTimer(1L, 1L) { runGuarded("carried_displays", farm.module::updateCarriedDisplays) }
         taskSupervisor.runTimer(
             settings.saveSeconds * 20L,

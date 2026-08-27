@@ -7,7 +7,7 @@ object FarmBirdPlanner {
         count: Int,
         sequence: Long,
     ): List<FarmPlotPosition> {
-        require(count in 0..32) { "Farm bird count is invalid" }
+        require(count in 0..64) { "Farm bird count is invalid" }
         val available = beds.distinct().sortedWith(
             compareBy<FarmPlotPosition> { it.world }.thenBy { it.x }.thenBy { it.z }.thenBy { it.y },
         ).toMutableList()

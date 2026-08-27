@@ -17,4 +17,8 @@ class FarmPlayerTimeTransitionTest : FunSpec({
     test("six second transition is bounded for the four updates per second ambient loop") {
         FarmPlayerTimeTransition.maximumStep(6) shouldBe 500
     }
+
+    test("twelve second transition is smooth at the per-tick update rate") {
+        FarmPlayerTimeTransition.maximumStep(12, updatesPerSecond = 20) shouldBe 50
+    }
 })

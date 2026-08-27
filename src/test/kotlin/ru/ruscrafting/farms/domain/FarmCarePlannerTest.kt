@@ -20,6 +20,13 @@ class FarmCarePlannerTest : FunSpec({
         (spanZ >= 7) shouldBe true
     }
 
+    test("physical care objects scale by workers and stop at the configured cap") {
+        FarmCarePlanner.targetCount(0, 15, 45, 200) shouldBe 15
+        FarmCarePlanner.targetCount(2, 15, 45, 200) shouldBe 30
+        FarmCarePlanner.targetCount(8, 15, 45, 200) shouldBe 45
+        FarmCarePlanner.targetCount(8, 15, 45, 12) shouldBe 12
+    }
+
     test("storm cover anchors follow the actual field corners even on an uneven patch") {
         val uneven = field.filterNot { it.x > 8 && it.z > 7 }
         val corners = FarmCarePlanner.corners(uneven)
@@ -44,6 +51,17 @@ class FarmCarePlannerTest : FunSpec({
 
         (relocated.x >= 10) shouldBe true
         (relocated.z >= 8) shouldBe true
+    }
+
+    test("disease frontier grows only around an existing outbreak") {
+        val source = FarmPointPosition("world", 5.5, 65.0, 5.5)
+        val selected = requireNotNull(FarmCarePlanner.diseaseFrontier(field, listOf(source), 2.0, 3))
+
+        val dx = selected.x + 0.5 - source.x
+        val dz = selected.z + 0.5 - source.z
+        (dx * dx + dz * dz <= 4.0) shouldBe true
+        selected shouldBe field.first { it == selected }
+        selected shouldBe FarmCarePlanner.diseaseFrontier(field, listOf(source), 2.0, 3)
     }
 
     test("scene anchor changes traversal order without moving field targets") {

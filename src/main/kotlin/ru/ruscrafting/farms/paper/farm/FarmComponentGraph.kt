@@ -87,6 +87,7 @@ internal class FarmComponentGraph(
         overrides = pointService::snapshot,
         random = random,
         moleBurrow = moleBurrowWorld,
+        participantCount = { region -> port.players(region).size },
         log = port::log,
     )
     private val points = FarmPointProvider { runtime, kind ->
@@ -134,6 +135,7 @@ internal class FarmComponentGraph(
         ledger = ledger,
         registry = blockRegistry,
         plans = carePlans,
+        points = points,
         moles = moles,
         transitions = transitions,
         runtimes = runtimes::snapshot,

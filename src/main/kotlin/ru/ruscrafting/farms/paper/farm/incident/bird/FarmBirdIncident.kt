@@ -67,22 +67,23 @@ internal class FarmBirdIncident(
         if (!active(runtime)) return false
         if (runtime.state.specialIncident != null && runtime.state.incidentRequired > 0) return true
         val available = beds.discover(runtime)
-        val total = runtime.settings.specialIncidents.birdCount(available.size)
-        val anchors = FarmBirdPlanner.select(available, total, runtime.state.sequence)
+        val required = runtime.settings.specialIncidents.birdCount(available.size)
+        val requested = (required * runtime.settings.specialIncidents.birdSpawnMultiplier).coerceAtMost(64)
+        val anchors = FarmBirdPlanner.select(available, requested, runtime.state.sequence)
         if (anchors.isEmpty()) {
             port.log(
                 Level.WARNING,
                 "Could not start farm bird incident: zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
-                    "reason=no_bird_anchors discovered_beds=${available.size} requested=$total",
+                    "reason=no_bird_anchors discovered_beds=${available.size} requested=$requested",
             )
             debug.event(
                 "farm_birds_unavailable", "zone" to runtime.settings.id, "sequence" to runtime.state.sequence,
-                "reason" to "no_bird_anchors", "beds" to available.size, "requested" to total,
+                "reason" to "no_bird_anchors", "beds" to available.size, "requested" to requested,
             )
             return false
         }
         runtime.state = runtime.state.copy(
-            incidentRequired = anchors.size,
+            incidentRequired = required.coerceAtMost(anchors.size),
             specialIncident = FarmSpecialIncidentState(plots = anchors),
         )
         port.persistAsync()
@@ -91,6 +92,7 @@ internal class FarmBirdIncident(
             "zone" to runtime.settings.id,
             "sequence" to runtime.state.sequence,
             "birds" to anchors.size,
+            "required" to required.coerceAtMost(anchors.size),
             "beds" to available.size,
         )
         return true
@@ -116,10 +118,10 @@ internal class FarmBirdIncident(
             return
         }
         active.filterIsInstance<Mob>().forEach { it.isAware = true }
-        val desired = (runtime.state.incidentRequired - runtime.state.incidentProgress).coerceAtLeast(0)
+        val desired = (runtime.state.specialIncident?.plots.orEmpty().size - runtime.state.incidentProgress).coerceAtLeast(0)
         val used = active.mapNotNullTo(mutableSetOf()) { index(it) }
         val anchors = runtime.state.specialIncident?.plots.orEmpty()
-        for (index in 0 until runtime.state.incidentRequired) {
+        for (index in anchors.indices) {
             if (active.size >= desired) break
             if (index in used) continue
             val anchor = anchors.getOrNull(index) ?: continue

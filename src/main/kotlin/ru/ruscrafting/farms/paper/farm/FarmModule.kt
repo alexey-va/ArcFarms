@@ -150,7 +150,10 @@ internal class FarmModule(
                 if (!release.complete || remaining <= 0) return@forEach
             }
             if (remaining > 0) remaining -= field.finishAutomaticQuota(runtime, remaining)
-            if (remaining > 0 && runtime.state.phase != FarmPhase.INCIDENT && incidentRecovery.pending(runtime)) {
+            if (
+                remaining > 0 && runtime.state.phase !in setOf(FarmPhase.INCIDENT, FarmPhase.CARE) &&
+                incidentRecovery.pending(runtime)
+            ) {
                 remaining -= incidentRecovery.restore(runtime, remaining, drought.hasActiveWater(runtime.settings.id))
             }
             if (remaining > 0 && runtime.state.phase == FarmPhase.COOLDOWN &&
@@ -179,13 +182,15 @@ internal class FarmModule(
                 }
             }
         }
-        port.guarded("farm_night_time") { special.updatePlayerTimes() }
     }
+
+    fun updatePlayerTimes() = port.guarded("farm_night_time") { special.updatePlayerTimes() }
 
     fun updateCarriedDisplays() {
         val runtimes = registry.snapshot()
         delivery.updateCarriedDisplays(runtimes)
         foodDelivery.updateVisuals(runtimes)
+        care.updateCarriedDisplays()
     }
 
     override fun tick(now: Long) {
@@ -197,7 +202,10 @@ internal class FarmModule(
             port.guarded("farm:${runtime.settings.id}") {
                 if (isAdminEditing(runtime)) return@guarded
                 if (shiftStart.isPending(runtime.settings.id)) return@guarded
-                if (runtime.state.phase != FarmPhase.INCIDENT && incidentRecovery.pending(runtime)) return@guarded
+                if (
+                    runtime.state.phase !in setOf(FarmPhase.INCIDENT, FarmPhase.CARE) &&
+                    incidentRecovery.pending(runtime)
+                ) return@guarded
                 if (runtime.state.phase == FarmPhase.COOLDOWN && runtime.state.preparationPatch.isNotEmpty()) return@guarded
                 if (special.expireMarket(runtime, now)) return@guarded
                 val result = FarmShiftEngine.tick(runtime.state, currentOrder(runtime), now)

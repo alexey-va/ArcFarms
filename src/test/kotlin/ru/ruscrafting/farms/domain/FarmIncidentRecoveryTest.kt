@@ -64,4 +64,18 @@ class FarmIncidentRecoveryTest : FunSpec({
         recovered.specialDamagedCrops shouldBe listOf(pending)
         FarmIncidentRecovery.pending(recovered) shouldBe true
     }
+
+    test("disease-killed crops use the same bounded durable recovery") {
+        val restored = FarmCropDamage(FarmPlotPosition("world", 8, 63, 1), "WHEAT")
+        val pending = FarmCropDamage(FarmPlotPosition("world", 9, 63, 1), "POTATOES")
+        val recovered = FarmIncidentRecovery.recover(
+            FarmShiftState(diseaseDamagedCrops = listOf(restored, pending)),
+            restoreDrought = { true },
+            restorePest = { true },
+            restoreDisease = { it == restored },
+        )
+
+        recovered.diseaseDamagedCrops shouldBe listOf(pending)
+        FarmIncidentRecovery.pending(recovered) shouldBe true
+    }
 })

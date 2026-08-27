@@ -25,6 +25,7 @@ import ru.ruscrafting.farms.config.FarmZoneSettings
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
+import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.CuboidActivityRegion
@@ -116,6 +117,40 @@ class FarmBirdIncidentMockBukkitTest : FunSpec({
         runtime.state.contributors[player.uniqueId] shouldBe 2
         verify(exactly = 1) { arrow.remove() }
         bird.isValid shouldBe false
+    }
+
+    test("bird incident places twice the visible flock while keeping the configured defeat quota") {
+        val available = (0 until 10).mapTo(linkedSetOf()) { x -> FarmPlotPosition(world.name, x, 64, 0) }
+        val special = mockk<FarmSpecialIncidentSettings>(relaxed = true) {
+            every { birdCount(available.size) } returns 3
+            every { birdSpawnMultiplier } returns 2
+        }
+        val zone = mockk<FarmZoneSettings>(relaxed = true) {
+            every { id } returns "communal_farm"
+            every { specialIncidents } returns special
+        }
+        val runtime = FarmRuntime(
+            zone,
+            CuboidActivityRegion(world, "farm", CuboidBounds(0, 0, 0, 31, 128, 31)),
+            emptyMap(),
+            emptyList(),
+            mockk(relaxed = true),
+            FarmShiftState(phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.BIRDS, sequence = 4),
+        )
+        val controller = FarmBirdIncident(
+            plugin = paper.createSimplePlugin("BirdPlanningTest"),
+            settings = { mockk(relaxed = true) },
+            locale = mockk(relaxed = true),
+            debug = ArcFarmsDebug({ false }) {},
+            port = mockk(relaxed = true),
+            ledger = mockk(relaxed = true),
+            beds = FarmIncidentBedProvider { available },
+            transitions = FarmTransitionSink { target, result, _ -> target.state = result.state },
+        )
+
+        controller.initialize(runtime) shouldBe true
+        runtime.state.incidentRequired shouldBe 3
+        runtime.state.specialIncident?.plots?.size shouldBe 6
     }
 
     test("a WorldGuard-cancelled arrow damage event is resolved directly and only once") {

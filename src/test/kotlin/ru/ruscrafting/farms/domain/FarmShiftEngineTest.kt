@@ -181,26 +181,23 @@ class FarmShiftEngineTest : FunSpec({
     test("field care keeps every target and waits indefinitely for one player") {
         val ready = preparedState(order, rules, player)
         val targets = listOf(
-            FarmCareTarget(0, FarmCareRole.WEED_ROOT, FarmPointPosition("world", 1.5, 65.0, 1.5), required = 2),
-            FarmCareTarget(1, FarmCareRole.WEED_ROOT, FarmPointPosition("world", 2.5, 65.0, 1.5), required = 2),
+            FarmCareTarget(0, FarmCareRole.WEED_ROOT, FarmPointPosition("world", 1.5, 65.0, 1.5)),
+            FarmCareTarget(1, FarmCareRole.WEED_ROOT, FarmPointPosition("world", 2.5, 65.0, 1.5)),
         )
         var state = FarmShiftEngine.startCare(ready, FarmCareType.WEEDS, targets).state
 
         state.phase shouldBe FarmPhase.CARE
         FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 2_000).accepted shouldBe false
-        repeat(3) { index ->
-            val target = if (index < 2) 0 else 1
-            state = FarmShiftEngine.advanceCare(state, target, player).state
-        }
+        state = FarmShiftEngine.advanceCare(state, 0, player).state
         state.phase shouldBe FarmPhase.CARE
-        state.careProgress() shouldBe 3
+        state.careProgress() shouldBe 1
         FarmShiftEngine.tick(state, order, 2_592_002_000).state shouldBe state
 
         val resolved = FarmShiftEngine.advanceCare(state, 1, player)
         resolved.state.phase shouldBe FarmPhase.HARVESTING
-        resolved.state.careProgress() shouldBe 4
+        resolved.state.careProgress() shouldBe 2
         resolved.events shouldContainExactly listOf(ShiftEvent.CARE_PROGRESS, ShiftEvent.CARE_RESOLVED)
-        resolved.state.contributors[player] shouldBe 8
+        resolved.state.contributors[player] shouldBe 6
     }
 
     test("apple care exposes many targets but resolves after any configured quota") {
@@ -287,23 +284,45 @@ class FarmShiftEngineTest : FunSpec({
             0,
             FarmCareRole.DISEASED_CROP,
             FarmPointPosition("world", 1.5, 65.0, 1.5),
-            required = 2,
         )
         var state = FarmShiftEngine.startCare(preparedState(order, rules, player), FarmCareType.DISEASE, listOf(first)).state
-        state = FarmShiftEngine.advanceCare(state, first.id, player).state
         val second = FarmCareTarget(
             1,
             FarmCareRole.DISEASED_CROP,
             FarmPointPosition("world", 2.5, 65.0, 1.5),
-            required = 2,
         )
 
         val spread = FarmShiftEngine.spreadDisease(state, second, maxSpots = 2)
         spread.accepted shouldBe true
-        spread.state.careTargets.first().progress shouldBe 1
+        spread.state.careGoal shouldBe 2
         spread.state.careTargets.size shouldBe 2
+        state = FarmShiftEngine.advanceCare(spread.state, first.id, player).state
+        state.phase shouldBe FarmPhase.CARE
+        state.careTargets.first().progress shouldBe 1
         FarmShiftEngine.spreadDisease(spread.state, second.copy(id = 2), maxSpots = 2).accepted shouldBe false
-        FarmShiftEngine.tick(spread.state, order, 2_592_002_000).state shouldBe spread.state
+        FarmShiftEngine.tick(state, order, 2_592_002_000).state shouldBe state
+    }
+
+    test("legacy two-click disease targets migrate to one physical treatment") {
+        val target = FarmCareTarget(
+            0,
+            FarmCareRole.DISEASED_CROP,
+            FarmPointPosition("world", 1.5, 65.0, 1.5),
+            required = 2,
+            progress = 1,
+        )
+        val state = FarmShiftEngine.startCare(
+            preparedState(order, rules, player),
+            FarmCareType.DISEASE,
+            listOf(target),
+        ).state
+
+        val normalized = FarmShiftEngine.normalizeDisease(state)
+
+        normalized.accepted shouldBe true
+        normalized.state.phase shouldBe FarmPhase.HARVESTING
+        normalized.state.careTargets.single().required shouldBe 1
+        normalized.events shouldContainExactly listOf(ShiftEvent.CARE_RESOLVED)
     }
 
     test("one player can prepare a one hundred plot patch without duplicate progress") {
