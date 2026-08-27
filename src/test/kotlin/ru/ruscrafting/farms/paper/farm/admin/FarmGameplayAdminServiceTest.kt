@@ -5,13 +5,21 @@ import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import org.bukkit.Material
 import org.bukkit.entity.Player
+import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.config.ArcFarmsLocale
+import ru.ruscrafting.farms.config.CuboidBounds
 import ru.ruscrafting.farms.config.FarmZoneSettings
+import ru.ruscrafting.farms.domain.FarmIncidentType
+import ru.ruscrafting.farms.domain.FarmOrder
+import ru.ruscrafting.farms.domain.FarmPhase
+import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmRules
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.paper.ActivityRegion
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
+import ru.ruscrafting.farms.paper.CuboidActivityRegion
 import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmBlockRegistry
 import ru.ruscrafting.farms.paper.FarmRuntime
@@ -36,6 +44,79 @@ import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyController
 import java.util.concurrent.CompletableFuture
 
 class FarmGameplayAdminServiceTest : FunSpec({
+    test("admin can start the configured food delivery incident") {
+        val paper = MockBukkitTestRuntime.open()
+        try {
+            val world = paper.server.addSimpleWorld("sp11")
+            world.getChunkAt(0, 0).load()
+            val player = paper.addPlayer("Operator")
+            player.teleport(world.spawnLocation)
+            val plot = FarmPlotPosition(world.name, 4, 64, 4)
+            world.getBlockAt(plot.x, plot.y, plot.z).type = Material.FARMLAND
+            val order = FarmOrder("test_order", mapOf(Material.WHEAT.name to 64))
+            val runtime = FarmRuntime(
+                settings = mockk<FarmZoneSettings>(relaxed = true) {
+                    every { id } returns "communal_farm"
+                },
+                region = CuboidActivityRegion(world, "farm", CuboidBounds(0, 0, 0, 15, 128, 15)),
+                orders = mapOf(order.id to order),
+                orderList = listOf(order),
+                rules = FarmRules(listOf(50), 8, 1_000L),
+                state = FarmShiftState(
+                    phase = FarmPhase.HARVESTING,
+                    sequence = 7L,
+                    orderId = order.id,
+                    preparationCrop = Material.WHEAT.name,
+                    preparationPatch = listOf(plot),
+                    preparationRequired = 1,
+                    preparationProgress = 1,
+                    plantingProgress = 1,
+                ),
+            )
+            val recovery = mockk<FarmIncidentRecoveryController>(relaxed = true) {
+                every { pending(runtime) } returns false
+            }
+            val transitions = mockk<FarmTransitionSink>(relaxed = true)
+            val harvest = mockk<FarmHarvestController>(relaxed = true) {
+                every { nextRequiredCrop(any(), order) } returns null
+            }
+            val service = FarmGameplayAdminService(
+                locale = mockk<ArcFarmsLocale>(relaxed = true),
+                debug = ArcFarmsDebug({ false }) {},
+                port = mockk<WorksiteRuntimePort>(relaxed = true),
+                runtimes = { listOf(runtime) },
+                orderCycle = mockk<FarmOrderCycleController>(relaxed = true),
+                worldAdmin = mockk<FarmWorldAdminService>(relaxed = true),
+                field = mockk<FarmFieldController>(relaxed = true),
+                care = mockk<FarmCareController>(relaxed = true),
+                drought = mockk<FarmDroughtIncident>(relaxed = true),
+                pests = mockk<FarmPestIncident>(relaxed = true),
+                birds = mockk<FarmBirdIncident>(relaxed = true),
+                foodDelivery = mockk<FarmFoodDeliveryIncident>(relaxed = true),
+                special = mockk<FarmSpecialIncidentController>(relaxed = true),
+                incidentRecovery = recovery,
+                delivery = mockk<FarmDeliveryController>(relaxed = true),
+                scene = mockk<FarmContractSceneController>(relaxed = true),
+                supplies = mockk<FarmSupplyController>(relaxed = true),
+                harvest = harvest,
+                placement = mockk<FarmPlacementService>(relaxed = true),
+                guidance = mockk<FarmGuidanceController>(relaxed = true),
+                ledger = mockk<FarmBlockLedger>(relaxed = true),
+                registry = mockk<FarmBlockRegistry>(relaxed = true),
+                transitions = transitions,
+                shiftLauncher = mockk<FarmShiftLauncher>(relaxed = true),
+                persistAsync = { CompletableFuture.completedFuture(Unit) },
+                clock = { 0L },
+            )
+
+            service.setStage(player, runtime.settings.id, "food-delivery") shouldBe true
+            runtime.state.incidentType shouldBe FarmIncidentType.FOOD_DELIVERY
+            verify(exactly = 1) { transitions.apply(runtime, match { it.state.incidentType == FarmIncidentType.FOOD_DELIVERY }, player) }
+        } finally {
+            paper.close()
+        }
+    }
+
     test("admin stage cleanup restores the complete incident journal instead of one tick budget") {
         val runtime = FarmRuntime(
             settings = mockk<FarmZoneSettings>(relaxed = true) {

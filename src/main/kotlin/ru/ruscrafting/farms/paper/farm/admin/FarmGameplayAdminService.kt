@@ -100,7 +100,7 @@ internal class FarmGameplayAdminService(
         runtime.state = when (normalized) {
             "planting" -> plantingState(runtime, events)
             "harvesting" -> harvestingState(runtime)
-            "pests", "drought", "birds", "giant-crop", "channels", "night-shift", "market" ->
+            in INCIDENT_STAGES.keys ->
                 incidentState(runtime, normalized, nextCrop, events)
             "delivery", "complete" -> deliveryState(runtime, order, player, events)
             else -> return false
