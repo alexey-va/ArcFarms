@@ -405,7 +405,7 @@ manifest targets Paper 1.21.11.
 ## Build
 
 ```bash
-../arc-core/gradlew clean check shadowJar
+./gradlew clean check shadowJar
 ```
 
 The deployable artifact is `build/libs/ArcFarms-0.21.0.jar`.

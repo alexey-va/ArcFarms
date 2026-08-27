@@ -7,8 +7,8 @@ import java.nio.file.Path
 
 class ArcFarmsEntityLifecycleContractTest : FunSpec({
     test("reconstructible activity entities are never saved into world chunks") {
-        val sourceRoot = Path.of(requireNotNull(System.getProperty("arcfarms.repositoryRoot")))
-            .resolve("ArcFarms/src/main/kotlin")
+        val sourceRoot = Path.of(requireNotNull(System.getProperty("arcfarms.projectDir")))
+            .resolve("src/main/kotlin")
         val offenders = Files.walk(sourceRoot).use { paths ->
             paths.filter { path -> path.toString().endsWith(".kt") }
                 .filter { path -> "isPersistent = true" in Files.readString(path) }
@@ -20,9 +20,9 @@ class ArcFarmsEntityLifecycleContractTest : FunSpec({
     }
 
     test("farm contract cart is display-only and cannot reintroduce minecart collision ticks") {
-        val repositoryRoot = Path.of(requireNotNull(System.getProperty("arcfarms.repositoryRoot")))
+        val repositoryRoot = Path.of(requireNotNull(System.getProperty("arcfarms.projectDir")))
         val source = Files.readString(
-            repositoryRoot.resolve("ArcFarms/src/main/kotlin/ru/ruscrafting/farms/paper/FarmContractSceneManager.kt"),
+            repositoryRoot.resolve("src/main/kotlin/ru/ruscrafting/farms/paper/FarmContractSceneManager.kt"),
         )
 
         source.contains("org.bukkit.entity.Minecart") shouldBe false

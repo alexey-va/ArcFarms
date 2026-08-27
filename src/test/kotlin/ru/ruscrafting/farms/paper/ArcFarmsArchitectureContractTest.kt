@@ -7,12 +7,12 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 class ArcFarmsArchitectureContractTest : FunSpec({
-    val repositoryRoot = Path.of(requireNotNull(System.getProperty("arcfarms.repositoryRoot")))
+    val repositoryRoot = Path.of(requireNotNull(System.getProperty("arcfarms.projectDir")))
     val servicePath = repositoryRoot.resolve(
-        "ArcFarms/src/main/kotlin/ru/ruscrafting/farms/paper/ArcFarmsService.kt",
+        "src/main/kotlin/ru/ruscrafting/farms/paper/ArcFarmsService.kt",
     )
     val farmRoot = repositoryRoot.resolve(
-        "ArcFarms/src/main/kotlin/ru/ruscrafting/farms/paper/farm",
+        "src/main/kotlin/ru/ruscrafting/farms/paper/farm",
     )
     val farmModulePath = farmRoot.resolve("FarmModule.kt")
     val farmRegistryPath = farmRoot.resolve("FarmRuntimeRegistry.kt")

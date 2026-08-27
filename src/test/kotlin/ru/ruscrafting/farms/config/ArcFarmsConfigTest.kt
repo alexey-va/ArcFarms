@@ -9,6 +9,7 @@ import io.kotest.matchers.string.shouldStartWith
 import io.kotest.assertions.throwables.shouldThrow
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
+import org.opentest4j.TestAbortedException
 import ru.arc.config.Config
 import ru.arc.redis.RedisModuleConfig
 import ru.ruscrafting.farms.domain.FarmIncidentType
@@ -28,7 +29,7 @@ class ArcFarmsConfigTest : FunSpec({
     test("bundled production config owns all three activities without ARC compatibility") {
         val root = resourceTree()
         val settings = ArcFarmsConfig.inspect(root)
-        val repositoryRoot = Path.of(System.getProperty("arcfarms.repositoryRoot"))
+        val repositoryRoot = opsRoot()
 
         settings.farms.map { it.id } shouldContainExactly listOf("communal_farm")
         settings.lumbermills.map { it.id } shouldContainExactly listOf("communal_lumbermill")
@@ -340,7 +341,7 @@ class ArcFarmsConfigTest : FunSpec({
     }
 
     test("survival and parkour profiles are standalone network relays") {
-        val repositoryRoot = Path.of(System.getProperty("arcfarms.repositoryRoot"))
+        val repositoryRoot = opsRoot()
         mapOf(
             "classic" to "spawn",
             "classic_survival" to "survival",
@@ -378,7 +379,7 @@ class ArcFarmsConfigTest : FunSpec({
     }
 
     test("farm delivery point outside an explicit farm cuboid is rejected") {
-        val repositoryRoot = Path.of(System.getProperty("arcfarms.repositoryRoot"))
+        val repositoryRoot = opsRoot()
         val root = resourceTree(repositoryRoot.resolve("scripts/lab/plugin-configs/ArcFarms/config.yml"))
         val configPath = root.resolve("config.yml")
         configPath.writeText(
@@ -476,8 +477,8 @@ class ArcFarmsConfigTest : FunSpec({
     }
 
     test("mechanized fieldwork explains mounted pig-team control without checkpoints") {
-        val repositoryRoot = Path.of(System.getProperty("arcfarms.repositoryRoot"))
-        val root = repositoryRoot.resolve("ArcFarms/src/main/resources")
+        val repositoryRoot = Path.of(requireNotNull(System.getProperty("arcfarms.projectDir")))
+        val root = repositoryRoot.resolve("src/main/resources")
         val ru = Config(root, "lang/ru.yml")
         val en = Config(root, "lang/en.yml")
 
@@ -715,7 +716,7 @@ class ArcFarmsConfigTest : FunSpec({
     }
 
     test("isolated lab profile is bounded and locale-complete") {
-        val repositoryRoot = Path.of(System.getProperty("arcfarms.repositoryRoot"))
+        val repositoryRoot = opsRoot()
         val root = resourceTree(repositoryRoot.resolve("scripts/lab/plugin-configs/ArcFarms/config.yml"))
         val settings = ArcFarmsConfig.inspect(root)
 
@@ -941,6 +942,9 @@ class ArcFarmsConfigTest : FunSpec({
     }
 }) {
     companion object {
+        private fun opsRoot(): Path = System.getProperty("ruscrafting.opsRoot")?.let(Path::of)
+            ?: throw TestAbortedException("RusCrafting ops checkout is not configured")
+
         private fun resourceTree(configSource: Path? = null): Path {
             val root = Files.createTempDirectory("arcfarms-config-test")
             Files.createDirectories(root.resolve("lang"))

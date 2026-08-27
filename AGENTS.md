@@ -126,4 +126,6 @@ activities: farm, lumbermill, and mine.
   Redis owns the short-lived handoff ticket; Paper uses the BungeeCord plugin
   messaging channel only for the backend switch.
 - Player-facing network announcements are disabled by default.
-- Build and test with `../arc-core/gradlew -p . clean check shadowJar`.
+- Build and test with `./gradlew clean check shadowJar`. Set
+  `RUSCRAFTING_OPS_ROOT=/absolute/path/to/ruscrafting-ops` to include tests
+  that verify tracked runtime profiles.
