@@ -38,6 +38,7 @@ import ru.ruscrafting.farms.domain.FarmSpecialIncidentPlanner
 import ru.ruscrafting.farms.domain.FarmSpecialIncidentState
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockLedger
+import ru.ruscrafting.farms.paper.FarmBlockPolicy
 import ru.ruscrafting.farms.paper.FarmBlockRegistry
 import ru.ruscrafting.farms.paper.FarmGiantCropController
 import ru.ruscrafting.farms.paper.FarmMarketClick
@@ -456,6 +457,8 @@ internal class FarmSpecialIncidentController(
         runtime.settings.specialIncidents.nightPatrolLightLevel,
     )
 
+    fun updatePlayerTimes() = nightShift.updatePlayerTimes()
+
     fun onChunkLoad(chunk: Chunk) {
         scene.onChunkLoad(chunk)
         nightShift.onChunkLoad(chunk)
@@ -566,7 +569,35 @@ internal class FarmSpecialIncidentController(
     }
 
     private fun ensureChannels(runtime: FarmRuntime, special: FarmSpecialIncidentState) {
-        val normalized = normalizeChannels(runtime, special)
+        val surfacePlots = (registry.beds(runtime.settings.id) + runtime.state.preparationPatch).filter { position ->
+            if (position.world != runtime.region.world.name ||
+                !runtime.region.world.isChunkLoaded(position.x shr 4, position.z shr 4)
+            ) return@filter false
+            val soil = position.block() ?: return@filter false
+            runtime.region.contains(soil.location) && FarmBlockPolicy.isSelectableBed(
+                soil.type,
+                soil.getRelative(org.bukkit.block.BlockFace.UP).type,
+                runtime.settings.crops,
+            )
+        }
+        val surfacePoints = FarmSpecialIncidentPlanner.projectChannelGates(special.points, surfacePlots)
+        if (surfacePoints.size != special.points.size) {
+            scene.clearZone(runtime.settings.id, "channel_surface_unavailable")
+            return
+        }
+        val projectedSpecial = if (surfacePoints != special.points) {
+            special.copy(points = surfacePoints).also { projected ->
+                runtime.state = runtime.state.copy(specialIncident = projected)
+                debug.event(
+                    "farm_channels_projected_to_surface",
+                    "zone" to runtime.settings.id,
+                    "sequence" to runtime.state.sequence,
+                    "gates" to projected.points.size,
+                )
+                port.persistAsync()
+            }
+        } else special
+        val normalized = normalizeChannels(runtime, projectedSpecial)
         val channel = runtime.settings.specialIncidents
         val item = ItemStack(MaterialRules.material(channel.channelBlockageMaterial)).apply {
             if (channel.channelBlockageCustomModelData > 0) editMeta {

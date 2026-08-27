@@ -174,6 +174,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().contractCartVisual.scale shouldBe 1.0f
         settings.farms.single().contractCartVisual.yOffset shouldBe 0.15
         settings.farms.single().contractCartVisual.viewRange shouldBe 2.0f
+        settings.titleStaySeconds shouldBe 6
         settings.farms.single().placementMinObjectiveDistance shouldBe 10
         settings.farms.single().placementMaxPlayerDistance shouldBe 28
         settings.farms.single().placementSearchRadius shouldBe 32
@@ -193,6 +194,8 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().specialIncidents.nightCropPlacementCount shouldBe 90
         settings.farms.single().specialIncidents.nightCropTargetCount shouldBe 24
         settings.farms.single().specialIncidents.nightCropMinSpacing shouldBe 6.0
+        settings.farms.single().specialIncidents.nightTimeTransitionSeconds shouldBe 6
+        settings.farms.single().specialIncidents.giantCropParticleStride shouldBe 4
         settings.farms.single().specialIncidents.nightPatrolMinCount shouldBe 3
         settings.farms.single().specialIncidents.nightPatrolMaxCount shouldBe 10
         settings.farms.single().specialIncidents.nightPatrolBedsPerPatrol shouldBe 250
@@ -259,7 +262,12 @@ class ArcFarmsConfigTest : FunSpec({
         classicSettings.farms.single().delivery.displayYOffset shouldBe 0.55
         classicSettings.farms.single().delivery.carriedScale shouldBe 1.4f
         classicSettings.farms.single().careVisuals.getValue(FarmCareRole.VALVE).customModelData shouldBe 11_859
-        classicSettings.farms.single().careVisuals.getValue(FarmCareRole.SCARECROW).customModelData shouldBe 11_874
+        classicSettings.farms.single().careVisuals.getValue(FarmCareRole.SCARECROW).let { scarecrow ->
+            scarecrow.customModelData shouldBe 11_874
+            scarecrow.displayTransform shouldBe FarmItemDisplayTransform.GROUND
+            scarecrow.displayScale shouldBe 2.0f
+            scarecrow.displayYOffset shouldBe 0.0
+        }
         classicSettings.farms.single().careVisuals.getValue(FarmCareRole.PEN).customModelData shouldBe 11_864
         classicSettings.farms.single().music.enabled shouldBe true
         classicSettings.farms.single().music.sound shouldBe "arc:farm_valley_comes_alive"

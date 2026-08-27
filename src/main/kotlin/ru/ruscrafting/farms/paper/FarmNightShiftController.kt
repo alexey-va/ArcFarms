@@ -19,6 +19,7 @@ import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.config.FarmSpecialIncidentSettings
+import ru.ruscrafting.farms.domain.FarmPlayerTimeTransition
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import java.util.UUID
 import kotlin.math.cos
@@ -38,8 +39,15 @@ internal class FarmNightShiftController(
 ) {
     private data class PatrolKey(val zoneId: String, val index: Int)
     private data class LightCell(val world: String, val x: Int, val y: Int, val z: Int)
+    private data class PlayerTimeState(
+        var zoneId: String,
+        var current: Long,
+        var target: Long,
+        var maximumStep: Long,
+        var returning: Boolean = false,
+    )
 
-    private val playerZones = mutableMapOf<String, MutableSet<UUID>>()
+    private val playerTimes = mutableMapOf<UUID, PlayerTimeState>()
     private val patrols = mutableMapOf<PatrolKey, UUID>()
     private val patrolRouteSteps = mutableMapOf<PatrolKey, Int>()
     private val patrolNextRouteAt = mutableMapOf<PatrolKey, Long>()
@@ -62,7 +70,7 @@ internal class FarmNightShiftController(
         particles: Boolean,
     ): FarmNightShiftSyncResult {
         reconcileLifecycle(zoneId, sequence, region)
-        syncPlayerTime(zoneId, players, playerTime)
+        syncPlayerTime(zoneId, players, playerTime, settings.nightTimeTransitionSeconds)
         if (players.isEmpty() || anchors.isEmpty()) {
             return FarmNightShiftSyncResult(0, 0, clearPatrols(zoneId))
         }
@@ -162,24 +170,18 @@ internal class FarmNightShiftController(
     fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING)
 
     fun clear(player: Player) {
-        val changed = playerZones.values.any { it.remove(player.uniqueId) }
-        playerZones.entries.removeIf { it.value.isEmpty() }
-        if (changed) player.resetPlayerTime()
+        playerTimes[player.uniqueId]?.returning = true
     }
 
     fun clearZone(zoneId: String) {
-        val hasState = zoneId in playerZones || zoneId in reconciledSequences ||
-            patrols.keys.any { it.zoneId == zoneId } || patrolLights.keys.any { it.zoneId == zoneId }
-        if (!hasState) return
-        playerZones.remove(zoneId).orEmpty().forEach { id -> Bukkit.getPlayer(id)?.resetPlayerTime() }
+        playerTimes.values.filter { it.zoneId == zoneId }.forEach { it.returning = true }
         clearPatrols(zoneId)
         reconciledSequences.remove(zoneId)
     }
 
     fun clearAll(players: Collection<Player>) {
-        val activePlayers = playerZones.values.flatten().toSet()
-        players.filter { it.uniqueId in activePlayers }.forEach(Player::resetPlayerTime)
-        playerZones.clear()
+        players.filter { it.uniqueId in playerTimes }.forEach(Player::resetPlayerTime)
+        playerTimes.clear()
         patrolLights.keys.toList().forEach(::releaseLight)
         entityLookup.inAllWorlds().asSequence().filter(::owns).forEach(Entity::remove)
         patrols.clear()
@@ -189,15 +191,53 @@ internal class FarmNightShiftController(
         Bukkit.getWorlds().forEach { world -> world.loadedChunks.forEach(::onChunkLoad) }
     }
 
-    private fun syncPlayerTime(zoneId: String, players: Collection<Player>, playerTime: Long) {
-        val active = playerZones.getOrPut(zoneId, ::mutableSetOf)
-        val expected = players.mapTo(hashSetOf(), Player::getUniqueId)
-        (active - expected).forEach { id -> Bukkit.getPlayer(id)?.resetPlayerTime() }
-        players.forEach { player ->
-            if (active.add(player.uniqueId)) player.setPlayerTime(playerTime, false)
+    fun updatePlayerTimes() {
+        val iterator = playerTimes.iterator()
+        while (iterator.hasNext()) {
+            val (playerId, state) = iterator.next()
+            val player = Bukkit.getPlayer(playerId)
+            if (player == null || !player.isOnline) {
+                iterator.remove()
+                continue
+            }
+            val target = if (state.returning) player.world.time else state.target
+            val step = FarmPlayerTimeTransition.step(state.current, target, state.maximumStep)
+            state.current = step.time
+            player.setPlayerTime(step.time, false)
+            if (state.returning && step.reachedTarget) {
+                player.resetPlayerTime()
+                iterator.remove()
+            }
         }
-        active.retainAll(expected)
-        if (active.isEmpty()) playerZones.remove(zoneId)
+    }
+
+    private fun syncPlayerTime(
+        zoneId: String,
+        players: Collection<Player>,
+        playerTime: Long,
+        transitionSeconds: Int,
+    ) {
+        val expected = players.mapTo(hashSetOf(), Player::getUniqueId)
+        playerTimes.filterValues { it.zoneId == zoneId }.filterKeys { it !in expected }.values.forEach {
+            it.returning = true
+        }
+        val maximumStep = FarmPlayerTimeTransition.maximumStep(transitionSeconds)
+        players.forEach { player ->
+            val existing = playerTimes[player.uniqueId]
+            if (existing == null) {
+                playerTimes[player.uniqueId] = PlayerTimeState(
+                    zoneId = zoneId,
+                    current = FarmPlayerTimeTransition.normalize(player.playerTime),
+                    target = FarmPlayerTimeTransition.normalize(playerTime),
+                    maximumStep = maximumStep,
+                )
+            } else {
+                existing.zoneId = zoneId
+                existing.target = FarmPlayerTimeTransition.normalize(playerTime)
+                existing.maximumStep = maximumStep
+                existing.returning = false
+            }
+        }
     }
 
     private fun canSpawn(anchor: Location, players: Collection<Player>, minimumPlayerDistance: Double): Boolean {

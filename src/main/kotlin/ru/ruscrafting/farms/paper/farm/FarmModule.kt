@@ -152,15 +152,18 @@ internal class FarmModule(
         }
     }
 
-    fun updateAmbient() = registry.snapshot().forEach { runtime ->
-        port.guarded("farm_animals:${runtime.settings.id}") {
-            if (!isAdminEditing(runtime)) {
-                care.updateAnimals(runtime)
-                if (runtime.state.phase == FarmPhase.INCIDENT && runtime.state.incidentType == FarmIncidentType.NIGHT_SHIFT) {
-                    special.updateLights(runtime)
+    fun updateAmbient() {
+        registry.snapshot().forEach { runtime ->
+            port.guarded("farm_animals:${runtime.settings.id}") {
+                if (!isAdminEditing(runtime)) {
+                    care.updateAnimals(runtime)
+                    if (runtime.state.phase == FarmPhase.INCIDENT && runtime.state.incidentType == FarmIncidentType.NIGHT_SHIFT) {
+                        special.updateLights(runtime)
+                    }
                 }
             }
         }
+        port.guarded("farm_night_time") { special.updatePlayerTimes() }
     }
 
     fun updateCarriedDisplays() = delivery.updateCarriedDisplays(registry.snapshot())

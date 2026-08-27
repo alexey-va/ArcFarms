@@ -17,7 +17,7 @@ ui:
   bossbars: true
   particles: true
   sounds: true
-  title-stay-seconds: 4
+  title-stay-seconds: 6
   marker-height: 12
   missing-bed-highlight-threshold: 10
   farm-scoreboard:
@@ -151,6 +151,7 @@ farm-zones:
     # одно обычное полевое происшествие (вредители или засуха).
     incident-types: [GIANT_CROP, CHANNELS, NIGHT_SHIFT, MARKET, PESTS, DROUGHT]
     special-incidents:
+      giant-crop: {block-particle-stride: 4}
       channels:
         blockages: 5
         blockage: {material: MANGROVE_ROOTS, custom-model-data: 0, display-scale: 1.6, y-offset: 0.8}
@@ -159,6 +160,7 @@ farm-zones:
         target-count: 24
         crop-min-spacing: 6.0
         player-time: 18000
+        transition-seconds: 6
         patrols:
           min-count: 3
           max-count: 10

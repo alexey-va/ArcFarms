@@ -93,6 +93,7 @@ object FarmPatchPlanner {
         val seed = nearbySeeds[Math.floorMod(selectionIndex, nearbySeeds.size.toLong()).toInt()]
         val selectedComponents = mutableListOf(seed)
         val remaining = allComponents.filterNot(seed::equals).toMutableList()
+        val envelopes = allComponents.associateWith(::envelope)
         var selectedSize = seed.size
         while (selectedComponents.size < maxComponents && selectedSize < maxSize) {
             val selectedIndex = ComponentSpatialIndex(selectedComponents.flatten())
@@ -102,7 +103,12 @@ object FarmPatchPlanner {
                     selectedIndex.gapWithin(candidate, componentGap)?.let { gap -> candidate to gap }
                 }
                 .minWithOrNull(
-                    compareBy<Pair<Set<FarmPlotPosition>, Int>> { it.second }
+                    compareBy<Pair<Set<FarmPlotPosition>, Int>> { (candidate) ->
+                        val candidateEnvelope = envelopes.getValue(candidate)
+                        selectedComponents.maxOf { chosen ->
+                            envelopes.getValue(chosen).gapTo(candidateEnvelope)
+                        }
+                    }.thenBy { it.second }
                         .thenByDescending { it.first.size }
                         .thenBy { it.first.minWith(POSITION_ORDER).coordinateKey() },
                 )?.first ?: break
@@ -261,6 +267,26 @@ object FarmPatchPlanner {
         }
         return ordered
     }
+
+    private data class ComponentEnvelope(
+        val minX: Int,
+        val maxX: Int,
+        val minZ: Int,
+        val maxZ: Int,
+    ) {
+        fun gapTo(other: ComponentEnvelope): Int {
+            val xGap = maxOf(minX - other.maxX - 1, other.minX - maxX - 1, 0)
+            val zGap = maxOf(minZ - other.maxZ - 1, other.minZ - maxZ - 1, 0)
+            return maxOf(xGap, zGap)
+        }
+    }
+
+    private fun envelope(component: Set<FarmPlotPosition>) = ComponentEnvelope(
+        minX = component.minOf(FarmPlotPosition::x),
+        maxX = component.maxOf(FarmPlotPosition::x),
+        minZ = component.minOf(FarmPlotPosition::z),
+        maxZ = component.maxOf(FarmPlotPosition::z),
+    )
 
     private fun dispersedStarts(
         component: Set<FarmPlotPosition>,

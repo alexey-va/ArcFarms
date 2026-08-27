@@ -10,6 +10,7 @@ import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareTarget
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmGuidancePlanner
+import ru.ruscrafting.farms.domain.FarmGiantCropBlueprint
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPlotGeometry
@@ -152,9 +153,10 @@ internal class FarmGuidanceController(
         players(runtime).filterNot(port::isAdminEditing).forEach { player ->
             when (runtime.state.incidentType) {
                 FarmIncidentType.GIANT_CROP -> special.points.firstOrNull()?.let { point ->
-                    val base = Location(player.world, point.x, point.y - 1.0, point.z)
-                    spawnRing(player, base, 2.3, AMBER_COLOR)
-                    spawnColumn(player, base, AMBER_COLOR)
+                    val anchor = Location(player.world, point.x, point.y, point.z)
+                    spawnColumn(player, anchor, AMBER_COLOR)
+                    spawnRing(player, anchor.clone().add(0.0, -1.0, 0.0), 2.3, AMBER_COLOR)
+                    emitGiantCropBlocks(player, point, special.crop, runtime.settings.specialIncidents.giantCropParticleStride)
                 }
                 FarmIncidentType.CHANNELS -> special.points.forEachIndexed { index, point ->
                     if (index in special.active) return@forEachIndexed
@@ -181,6 +183,34 @@ internal class FarmGuidanceController(
                 }
                 else -> Unit
             }
+        }
+    }
+
+    private fun emitGiantCropBlocks(
+        player: Player,
+        anchor: FarmPointPosition,
+        crop: String?,
+        stride: Int,
+    ) {
+        if (crop == null || !FarmGiantCropBlueprint.supports(crop)) return
+        val baseX = kotlin.math.floor(anchor.x).toInt()
+        val baseY = kotlin.math.floor(anchor.y).toInt()
+        val baseZ = kotlin.math.floor(anchor.z).toInt()
+        val phase = java.lang.Math.floorMod((player.world.gameTime / 10L).toInt(), stride)
+        FarmGiantCropBlueprint.voxels(crop).forEachIndexed { index, voxel ->
+            if (index % stride != phase) return@forEachIndexed
+            val block = player.world.getBlockAt(baseX + voxel.dx, baseY + voxel.dy, baseZ + voxel.dz)
+            if (block.type.name != voxel.material) return@forEachIndexed
+            player.spawnParticle(
+                Particle.DUST,
+                block.location.add(0.5, 0.55, 0.5),
+                1,
+                0.22,
+                0.22,
+                0.22,
+                0.0,
+                Particle.DustOptions(AMBER_COLOR, 1.25f),
+            )
         }
     }
 

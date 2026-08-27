@@ -166,6 +166,27 @@ class FarmPatchPlannerTest : FunSpec({
         selected.shouldContainExactlyInAnyOrder(local)
     }
 
+    test("mechanized planner prefers a compact cluster over chaining equally close beds away from the seed") {
+        fun bed(startX: Int, startZ: Int) = (0 until 4).map { offset ->
+            FarmPlotPosition("world", startX + offset, 64, startZ)
+        }
+        val seed = bed(0, 0)
+        val west = bed(-10, 0)
+        val fartherWest = bed(-17, 0)
+        val north = bed(0, 10)
+
+        val selected = FarmPatchPlanner.selectMechanized(
+            candidates = seed + west + fartherWest + north,
+            anchor = seed.first(),
+            targetSize = 12,
+            maxSize = 12,
+            componentGap = 9,
+            maxComponents = 3,
+        )
+
+        selected.shouldContainExactlyInAnyOrder(seed + west + north)
+    }
+
     test("planner rotates bounded patches across one huge connected field") {
         val hugeField = (0 until 50).flatMap { x ->
             (0 until 20).map { z -> FarmPlotPosition("world", x, 64, z) }

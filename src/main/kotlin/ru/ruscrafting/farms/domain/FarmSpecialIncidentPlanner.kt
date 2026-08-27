@@ -49,10 +49,11 @@ object FarmSpecialIncidentPlanner {
         }
         return when (type) {
             FarmIncidentType.GIANT_CROP -> {
+                val supportedCandidates = giantCandidates.filter { FarmGiantCropBlueprint.supports(it.crop) }
                 val chosen = FarmGiantCropCandidateSelector.select(
-                    giantCandidates,
+                    supportedCandidates,
                     sequence,
-                    maxChecks = giantCandidates.size.coerceAtLeast(1),
+                    maxChecks = supportedCandidates.size.coerceAtLeast(1),
                 ) { null }.candidate ?: return null
                 FarmSpecialIncidentPlan(
                     FarmSpecialIncidentState(
@@ -73,7 +74,11 @@ object FarmSpecialIncidentPlanner {
                 val source = irrigationSource ?: return null
                 val anchor = candidates.firstOrNull()?.plot ?: fallbackPlot ?: return null
                 val target = FarmPointPosition(anchor.world, anchor.x + 0.5, anchor.y + 1.05, anchor.z + 0.5)
-                val blockages = interpolate(source, target, channelBlockages)
+                val blockages = projectChannelGates(
+                    interpolate(source, target, channelBlockages),
+                    nightPatrolPlots.ifEmpty { listOf(anchor) },
+                )
+                if (blockages.isEmpty()) return null
                 FarmSpecialIncidentPlan(
                     FarmSpecialIncidentState(
                         points = blockages,
@@ -125,6 +130,27 @@ object FarmSpecialIncidentPlanner {
                     )
                 }
             FarmIncidentType.PESTS, FarmIncidentType.DROUGHT -> null
+        }
+    }
+
+    /** Projects every gate onto a distinct indexed bed so persisted or configured underground points stay visible. */
+    fun projectChannelGates(
+        points: Collection<FarmPointPosition>,
+        surfacePlots: Collection<FarmPlotPosition>,
+    ): List<FarmPointPosition> {
+        val available = surfacePlots.distinct().toMutableSet()
+        return points.mapNotNull { point ->
+            val selected = available.asSequence()
+                .filter { it.world == point.world }
+                .minWithOrNull(
+                    compareBy<FarmPlotPosition> { plot ->
+                        val dx = plot.x + 0.5 - point.x
+                        val dz = plot.z + 0.5 - point.z
+                        dx * dx + dz * dz
+                    }.thenBy { it.x }.thenBy { it.z }.thenBy { it.y },
+                ) ?: return@mapNotNull null
+            available.remove(selected)
+            FarmPointPosition(selected.world, selected.x + 0.5, selected.y + 1.05, selected.z + 0.5)
         }
     }
 

@@ -171,6 +171,8 @@ data class FarmSpecialIncidentSettings(
     val nightCropTargetCount: Int,
     val nightCropMinSpacing: Double,
     val nightPlayerTime: Long,
+    val nightTimeTransitionSeconds: Int,
+    val giantCropParticleStride: Int,
     val nightPatrolMinCount: Int,
     val nightPatrolMaxCount: Int,
     val nightPatrolBedsPerPatrol: Int,
@@ -283,6 +285,9 @@ data class FarmContractCartVisualSettings(
 data class FarmCareVisualSettings(
     val material: String,
     val customModelData: Int,
+    val displayTransform: FarmItemDisplayTransform,
+    val displayScale: Float,
+    val displayYOffset: Double,
 )
 
 data class FarmSupplyPointSettings(
@@ -503,6 +508,15 @@ class ArcFarmsConfig private constructor(
                         material = materialName(section.string("$path.material", defaultMaterial)),
                         customModelData = section.int("$path.custom-model-data", 0)
                             .checked("$path.custom-model-data", 0, 2_000_000),
+                        displayTransform = section.string("$path.display-transform", "FIXED")
+                            .trim()
+                            .uppercase()
+                            .let { raw ->
+                                FarmItemDisplayTransform.entries.firstOrNull { it.name == raw }
+                                    ?: error("$path.display-transform must be GROUND, FIXED, or HEAD")
+                            },
+                        displayScale = section.finiteFloat("$path.display-scale", 1.0f, 0.05f, 8.0f),
+                        displayYOffset = section.finiteDouble("$path.display-y-offset", 0.45, -4.0, 4.0),
                     )
                 }
                 val contractCartPath = "contract-scene.cart"
@@ -651,6 +665,10 @@ class ArcFarmsConfig private constructor(
                     nightPlayerTime = section.string("special-incidents.night-shift.player-time", "18000")
                         .toLongOrNull()?.also { require(it in 0..24_000) { "night-shift.player-time must be in 0..24000" } }
                         ?: error("night-shift.player-time must be an integer"),
+                    nightTimeTransitionSeconds = section.int("special-incidents.night-shift.transition-seconds", 6)
+                        .checked("special-incidents.night-shift.transition-seconds", 1, 30),
+                    giantCropParticleStride = section.int("special-incidents.giant-crop.block-particle-stride", 4)
+                        .checked("special-incidents.giant-crop.block-particle-stride", 1, 16),
                     nightPatrolMinCount = section.int("special-incidents.night-shift.patrols.min-count", 3)
                         .checked("special-incidents.night-shift.patrols.min-count", 0, 16),
                     nightPatrolMaxCount = section.int("special-incidents.night-shift.patrols.max-count", 10)
@@ -921,7 +939,7 @@ class ArcFarmsConfig private constructor(
                 bossbars = config.boolean("ui.bossbars", true),
                 particles = config.boolean("ui.particles", true),
                 sounds = config.boolean("ui.sounds", true),
-                titleStaySeconds = config.int("ui.title-stay-seconds", 4).checked("ui.title-stay-seconds", 2, 10),
+                titleStaySeconds = config.int("ui.title-stay-seconds", 6).checked("ui.title-stay-seconds", 2, 10),
                 markerHeight = config.int("ui.marker-height", 12).checked("ui.marker-height", 6, 24),
                 missingBedHighlightThreshold = config.int("ui.missing-bed-highlight-threshold", 10)
                     .checked("ui.missing-bed-highlight-threshold", 1, 32),

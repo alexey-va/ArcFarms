@@ -484,6 +484,7 @@ internal class FarmCareController(
     private fun ensureFarmCareTarget(runtime: FarmRuntime, target: FarmCareTarget) {
         val key = FarmCareEntityKey(runtime.settings.id, target.id)
         val expected = if (target.role == FarmCareRole.ANIMAL) 1 else 2
+        val visual = runtime.settings.careVisuals.getValue(target.role)
         val active = entities[key].orEmpty().mapNotNull(Bukkit::getEntity).filter { entity ->
                 entity.isValid &&
                 entity.persistentDataContainer.get(zoneKey, PersistentDataType.STRING) == runtime.settings.id &&
@@ -491,7 +492,9 @@ internal class FarmCareController(
                 entity.persistentDataContainer.get(targetKey, PersistentDataType.INTEGER) == target.id &&
                 entity.persistentDataContainer.get(roleKey, PersistentDataType.STRING) == target.role.name
         }
-        if (active.size == expected) {
+        val displayMatches = target.role == FarmCareRole.ANIMAL ||
+            active.filterIsInstance<ItemDisplay>().singleOrNull()?.let(visual::matches) == true
+        if (active.size == expected && displayMatches) {
             if (target.role == FarmCareRole.ANIMAL) {
                 (active.singleOrNull() as? Mob)?.let { mob ->
                     mob.isGlowing = true
@@ -538,19 +541,21 @@ internal class FarmCareController(
             debug.event("farm_care_animal_spawned", "zone" to runtime.settings.id, "target" to target.id, "entity" to typeName)
             return
         }
-        val visual = runtime.settings.careVisuals.getValue(target.role)
         val stack = ItemStack(MaterialRules.material(visual.material))
         if (visual.customModelData > 0) {
             val meta = stack.itemMeta
             meta.setCustomModelData(visual.customModelData)
             stack.itemMeta = meta
         }
-        val displayOffset = if (target.role == FarmCareRole.APPLE) runtime.settings.appleDisplayYOffset else 0.45
+        val displayOffset = if (target.role == FarmCareRole.APPLE) runtime.settings.appleDisplayYOffset else visual.displayYOffset
         val interactionOffset = if (target.role == FarmCareRole.APPLE) runtime.settings.appleInteractionYOffset else 0.05
         val display = world.spawn(location.clone().add(0.0, displayOffset, 0.0), ItemDisplay::class.java) { entity ->
             entity.setItemStack(stack)
-            entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
-            if (target.role == FarmCareRole.APPLE) presentation.scale(entity, runtime.settings.appleDisplayScale)
+            entity.itemDisplayTransform = visual.displayTransform.bukkit
+            presentation.scale(
+                entity,
+                if (target.role == FarmCareRole.APPLE) runtime.settings.appleDisplayScale else visual.displayScale,
+            )
             entity.viewRange = runtime.settings.displayViewRange
             entity.isGlowing = true
             entity.glowColorOverride = if (target.complete) FarmCarePresentation.SUCCESS_COLOR else presentation.color(target.role)

@@ -83,6 +83,7 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             type = FarmIncidentType.CHANNELS,
             sequence = 8,
             matureCrops = listOf(target),
+            nightPatrolPlots = (1..5).map { step -> FarmPlotPosition("world", step * 5, 64, 0) },
             fallbackPlot = target.plot,
             irrigationSource = source,
             channelBlockages = 5,
@@ -98,6 +99,47 @@ class FarmSpecialIncidentEngineTest : FunSpec({
         plan.state.points.size shouldBe 5
         plan.state.solution shouldBe setOf(0, 1, 2, 3, 4)
         plan.state.active shouldBe emptySet()
+    }
+
+    test("channel blockages are projected onto indexed surface beds instead of interpolating underground y") {
+        val beds = (0 until 8).map { x -> FarmPlotPosition("world", x, 72, 0) }
+        val plan = FarmSpecialIncidentPlanner.plan(
+            type = FarmIncidentType.CHANNELS,
+            sequence = 4,
+            matureCrops = beds.map { FarmMatureCrop(it, "WHEAT") },
+            nightPatrolPlots = beds,
+            fallbackPlot = beds.first(),
+            irrigationSource = FarmPointPosition("world", -10.0, 25.0, 0.0),
+            channelBlockages = 4,
+            nightCropPlacements = 6,
+            nightCropTarget = 4,
+            nightCropMinSpacing = 4.0,
+            nightPatrols = 0,
+            nightPatrolMinSpacing = 4.0,
+            marketCrops = 32,
+        ) ?: error("Channel plan is missing")
+
+        plan.state.points.size shouldBe 4
+        plan.state.points.all { it.y == 73.05 } shouldBe true
+        plan.state.points.map { it.x to it.z }.distinct().size shouldBe 4
+    }
+
+    test("legacy channel points can be reprojected to distinct current surface beds") {
+        val projected = FarmSpecialIncidentPlanner.projectChannelGates(
+            points = listOf(
+                FarmPointPosition("world", 2.0, 15.0, 2.0),
+                FarmPointPosition("world", 3.0, 16.0, 2.0),
+            ),
+            surfacePlots = listOf(
+                FarmPlotPosition("world", 2, 64, 2),
+                FarmPlotPosition("world", 3, 65, 2),
+            ),
+        )
+
+        projected shouldBe listOf(
+            FarmPointPosition("world", 2.5, 65.05, 2.5),
+            FarmPointPosition("world", 3.5, 66.05, 2.5),
+        )
     }
 
     test("market can be declined without a penalty or accepted for a persisted money bonus") {
@@ -162,6 +204,25 @@ class FarmSpecialIncidentEngineTest : FunSpec({
         plan.state.crop shouldBe "MELON"
         plan.state.points.single() shouldBe FarmPointPosition("world", 12.5, 65.0, 8.5)
         plan.required shouldBe FarmGiantCropBlueprint.voxels("MELON").size
+    }
+
+    test("sweet berry bushes are never selected for a giant crop") {
+        FarmGiantCropBlueprint.supports("SWEET_BERRY_BUSH") shouldBe false
+        FarmSpecialIncidentPlanner.plan(
+            type = FarmIncidentType.GIANT_CROP,
+            sequence = 9,
+            matureCrops = emptyList(),
+            giantCandidates = listOf(FarmGiantCropCandidate(cropPlots.first(), "SWEET_BERRY_BUSH")),
+            fallbackPlot = null,
+            irrigationSource = null,
+            channelBlockages = 4,
+            nightCropPlacements = 8,
+            nightCropTarget = 4,
+            nightCropMinSpacing = 4.0,
+            nightPatrols = 0,
+            nightPatrolMinSpacing = 4.0,
+            marketCrops = 32,
+        ) shouldBe null
     }
 
     test("accepted market expires at its persisted deadline without granting the money bonus") {
