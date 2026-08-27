@@ -25,17 +25,23 @@ class ArcFarmsRedisIntegrationTest : StringSpec({
                 val survivalRepository = ArcFarmsNetworkRepository(survival)
                 val latch = CountDownLatch(1)
                 var received: Pair<NetworkEvent, String>? = null
-                survivalRepository.registerEvents(originAllowed = { it == "spawn" }) { event, origin ->
+                val survivalEvents = survivalRepository.openEvents(
+                    originAllowed = { it == "spawn" },
+                    replyAllowed = { _, _, _ -> true },
+                ) { event, origin ->
                     received = event to origin
                     latch.countDown()
                 }
-                spawnRepository.registerEvents(originAllowed = { it == "survival" }) { _, _ -> }
+                val spawnEvents = spawnRepository.openEvents(
+                    originAllowed = { it == "survival" },
+                    replyAllowed = { _, _, _ -> true },
+                ) { _, _ -> }
                 spawn.init()
                 survival.init()
                 waitUntil(10_000) { spawn.isSubscriptionActive() && survival.isSubscriptionActive() }
 
                 val event = NetworkEvent.create(NetworkSignal.FARM_INCIDENT, ActivityKind.FARM, "SoloPlayer")
-                spawnRepository.publish(event)
+                spawnEvents.publish(event)
                 latch.await(5, TimeUnit.SECONDS) shouldBe true
                 received shouldBe (event to "spawn")
 
@@ -63,6 +69,8 @@ class ArcFarmsRedisIntegrationTest : StringSpec({
                     31_000,
                 )
                 spawnRepository.claimTravelTicket(traveler, "spawn", 2_001).join() shouldBe null
+                spawnEvents.close()
+                survivalEvents.close()
             } finally {
                 spawn?.close()
                 survival?.close()

@@ -869,7 +869,7 @@ class ArcFarmsConfigTest : FunSpec({
             FarmCareType.SCARECROWS to "Дважды почините каждое пугало",
             FarmCareType.ANIMAL_RESCUE to "Ведите животных к зелёной метке",
             FarmCareType.DISEASE to "Обработайте каждый очаг дважды",
-            FarmCareType.MOLES to "Найдите коричневую метку, спуститесь в нору и отыщите логово",
+            FarmCareType.MOLES to "Бейте свежие холмики мотыгой",
             FarmCareType.APPLE_HARVEST to "Ищите светящиеся яблоки под кронами",
         ).map { (type, hint) -> base.copy(phase = FarmPhase.CARE, careType = type) to hint }
 
@@ -900,8 +900,8 @@ class ArcFarmsConfigTest : FunSpec({
             base.copy(phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.CHANNELS, done = 1, total = 4),
             null,
         ).map(PlainTextComponentSerializer.plainText()::serialize)
-        channels[6] shouldBe "| Идите вдоль синего потока"
-        channels[7] shouldBe "| Нажимайте ПКМ по завалам"
+        channels[6] shouldBe "| Идите от источника к полю"
+        channels[7] shouldBe "| Золотой шлюз переключите; зелёный готов"
         (channels.size <= FarmScoreboardRenderer.MAX_ROWS) shouldBe true
     }
 

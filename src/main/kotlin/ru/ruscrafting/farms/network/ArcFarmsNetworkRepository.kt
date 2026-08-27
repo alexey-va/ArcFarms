@@ -4,11 +4,12 @@ import com.google.gson.Gson
 import ru.arc.network.BackendServerId
 import ru.arc.network.NetworkPlayerName
 import ru.arc.redis.RedisOperations
+import ru.arc.redis.network.RedisReplayPolicy
+import ru.arc.redis.network.RedisReplyRejection
+import ru.arc.redis.network.RedisRequestReplyChannel
 import ru.arc.redis.safety.BoundedJsonCodec
 import ru.arc.redis.safety.JsonObjectContract
 import ru.arc.redis.safety.JsonResourceBounds
-import ru.arc.redis.safety.OriginBoundRedisBus
-import ru.arc.redis.safety.RecentMessageDeduplicator
 import ru.arc.redis.safety.RedisHashConsumeResult
 import ru.arc.redis.safety.RedisHashDecision
 import ru.arc.redis.safety.RedisHashUpdateResult
@@ -181,22 +182,25 @@ class ArcFarmsNetworkRepository(
     private val workday = RedisHashUpdater(redis, WORKDAY_KEY, workdayCodec, MAX_CAS_ATTEMPTS)
     private val travel = RedisHashUpdater(redis, TRAVEL_KEY, travelCodec, MAX_CAS_ATTEMPTS)
 
-    fun registerEvents(
+    fun openEvents(
         originAllowed: (String) -> Boolean,
+        replyAllowed: (request: NetworkEvent, reply: NetworkEvent, origin: String) -> Boolean,
+        onReplyRejected: (RedisReplyRejection) -> Unit = {},
         listener: (NetworkEvent, String) -> Unit,
-    ): OriginBoundRedisBus<NetworkEvent> = OriginBoundRedisBus(
+    ): RedisRequestReplyChannel<NetworkEvent> = RedisRequestReplyChannel(
         redis = redis,
         channel = EVENT_CHANNEL,
         codec = eventCodec,
         originAllowed = originAllowed,
-        messageId = NetworkEvent::eventId,
-        deduplicator = RecentMessageDeduplicator(EVENT_DEDUPLICATION_MS, MAX_SEEN_EVENTS),
+        requestId = NetworkEvent::eventId,
+        replyTo = NetworkEvent::replyTo,
+        replyAllowed = replyAllowed,
+        timeoutMillis = NODE_REPLY_TIMEOUT_MS,
+        maxPending = MAX_PENDING_PROBES,
+        replay = RedisReplayPolicy(NetworkEvent::eventId, EVENT_DEDUPLICATION_MS, MAX_SEEN_EVENTS),
         onMessage = listener,
-    ).also(OriginBoundRedisBus<NetworkEvent>::register)
-
-    fun publish(event: NetworkEvent) {
-        redis.publish(EVENT_CHANNEL, eventCodec.encode(event.validated()))
-    }
+        onReplyRejected = onReplyRejected,
+    )
 
     fun loadWorkday(): CompletableFuture<WorkdayState> =
         redis.loadMapEntries(WORKDAY_KEY, WORKDAY_FIELD).thenApply { values ->
@@ -282,6 +286,7 @@ class ArcFarmsNetworkRepository(
         const val WORKDAY_FIELD = "state"
         const val TRAVEL_KEY = "arc:farms:v1:travel"
         private const val EVENT_DEDUPLICATION_MS = 15 * 60 * 1000L
+        private const val NODE_REPLY_TIMEOUT_MS = 30 * 1000L
         private const val MAX_EVENT_CHARS = 2_048
         private const val MAX_WORKDAY_CHARS = 1_024
         private const val MAX_TRAVEL_CHARS = 512
@@ -289,6 +294,7 @@ class ArcFarmsNetworkRepository(
         private const val MAX_TRAVEL_CLEANUP = 512
         private const val MAX_CAS_ATTEMPTS = 12
         private const val MAX_SEEN_EVENTS = 4_096
+        private const val MAX_PENDING_PROBES = 8
         private val EVENT_FIELDS = setOf(
             "protocolVersion", "eventId", "signal", "activity", "actorName", "cycle", "completed", "replyTo", "occurredAtMs",
         )

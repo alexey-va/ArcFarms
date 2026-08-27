@@ -15,10 +15,13 @@ class ArcFarmsNetworkRepositoryTest : StringSpec({
         val redis = InMemoryRedis(ServerIdentity { "spawn" })
         val repository = ArcFarmsNetworkRepository(redis)
         val received = mutableListOf<Pair<NetworkEvent, String>>()
-        val bus = repository.registerEvents(originAllowed = { it == "spawn" }) { event, origin -> received += event to origin }
+        val bus = repository.openEvents(
+            originAllowed = { it == "spawn" },
+            replyAllowed = { _, _, _ -> true },
+        ) { event, origin -> received += event to origin }
 
         val event = NetworkEvent.create(NetworkSignal.MINE_HAZARD, ActivityKind.MINE, "Alexey23", nowMs = 10)
-        repository.publish(event)
+        bus.publish(event)
 
         received shouldContainExactly listOf(event to "spawn")
         redis.getPublishedMessages().single().channel shouldBe ArcFarmsNetworkRepository.EVENT_CHANNEL
@@ -29,10 +32,13 @@ class ArcFarmsNetworkRepositoryTest : StringSpec({
         val redis = InMemoryRedis(ServerIdentity { "spawn" })
         val repository = ArcFarmsNetworkRepository(redis)
         val received = mutableListOf<Pair<NetworkEvent, String>>()
-        val bus = repository.registerEvents(originAllowed = { it == "survival" }) { event, origin -> received += event to origin }
+        val bus = repository.openEvents(
+            originAllowed = { it == "survival" },
+            replyAllowed = { _, _, _ -> true },
+        ) { event, origin -> received += event to origin }
         val event = NetworkEvent.create(NetworkSignal.MINE_HAZARD, ActivityKind.MINE, "Alexey23", nowMs = 10)
 
-        repository.publish(event)
+        bus.publish(event)
         val raw = redis.getPublishedMessages().single().message
         redis.simulateExternalMessage(ArcFarmsNetworkRepository.EVENT_CHANNEL, raw, "evil")
         redis.simulateExternalMessage(ArcFarmsNetworkRepository.EVENT_CHANNEL, "{not-json", "survival")

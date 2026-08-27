@@ -12,7 +12,8 @@ import org.bukkit.plugin.Plugin
 import ru.arc.core.ScheduledTask
 import ru.arc.core.Tasks
 import ru.arc.redis.RedisManager
-import ru.arc.redis.safety.OriginBoundRedisBus
+import ru.arc.redis.network.RedisRequestReplyChannel
+import ru.arc.redis.network.RedisRequestResult
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
@@ -26,7 +27,6 @@ import ru.ruscrafting.farms.network.WorkdayUpdate
 import ru.ruscrafting.farms.network.TravelTicket
 import java.time.Duration
 import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
 import java.util.logging.Level
 
 class ArcFarmsNetworkService(
@@ -40,8 +40,7 @@ class ArcFarmsNetworkService(
 ) : ActivityNetworkGateway, AutoCloseable {
     @Volatile
     private var currentWorkday: WorkdayState? = null
-    private var eventBus: OriginBoundRedisBus<NetworkEvent>? = null
-    private val pendingProbes = ConcurrentHashMap<String, Long>()
+    private var eventChannel: RedisRequestReplyChannel<NetworkEvent>? = null
     private val tasks = mutableListOf<ScheduledTask>()
     private var lastProbeAtMs = 0L
     @Volatile
@@ -49,12 +48,20 @@ class ArcFarmsNetworkService(
 
     fun start() {
         check(!started) { "ArcFarms network service is already started" }
-        eventBus = repository.registerEvents(
+        eventChannel = repository.openEvents(
             originAllowed = { origin ->
                 val current = settings()
                 current.network.enabled && origin != current.serverId && origin in current.network.allowedOrigins
             },
+            replyAllowed = { _, reply, origin ->
+                val current = settings()
+                reply.signal == NetworkSignal.NODE_ACK &&
+                    origin != current.serverId &&
+                    origin in current.network.allowedOrigins &&
+                    isCurrent(reply)
+            },
             listener = ::receive,
+            onReplyRejected = { reason -> debug.event("network_reply_rejected", "reason" to reason) },
         )
         started = true
         try {
@@ -182,7 +189,7 @@ class ArcFarmsNetworkService(
             if (!started) return@runSync
             when (event.signal) {
                 NetworkSignal.NODE_PROBE -> acknowledge(event, origin)
-                NetworkSignal.NODE_ACK -> acceptAcknowledgement(event, origin)
+                NetworkSignal.NODE_ACK -> Unit
                 else -> {
                     applyWorkdayEvent(event)
                     deliver(event, emptySet())
@@ -197,7 +204,7 @@ class ArcFarmsNetworkService(
             NetworkSignal.NODE_PROBE, NetworkSignal.NODE_ACK -> Unit
             else -> deliver(event, excludedPlayers)
         }
-        repository.publish(event)
+        requireNotNull(eventChannel) { "ArcFarms network service is not started" }.publish(event)
     }
 
     private fun deliver(event: NetworkEvent, excludedPlayers: Set<UUID>) {
@@ -336,28 +343,26 @@ class ArcFarmsNetworkService(
 
     private fun acknowledge(event: NetworkEvent, origin: String) {
         plugin.logger.info("ArcFarms xserver probe received from node=$origin event=${event.eventId}")
-        repository.publish(NetworkEvent.create(NetworkSignal.NODE_ACK, replyTo = event.eventId))
-    }
-
-    private fun acceptAcknowledgement(event: NetworkEvent, origin: String) {
-        val replyTo = requireNotNull(event.replyTo)
-        if (pendingProbes.remove(replyTo) != null) {
-            plugin.logger.info("ArcFarms xserver peer acknowledged node=$origin reply=$replyTo")
-        }
+        requireNotNull(eventChannel).publish(NetworkEvent.create(NetworkSignal.NODE_ACK, replyTo = event.eventId))
     }
 
     private fun probe() {
         if (!settings().network.enabled || !settings().network.nodeProbeEnabled) return
         val event = NetworkEvent.create(NetworkSignal.NODE_PROBE)
-        pendingProbes[event.eventId] = clock()
         lastProbeAtMs = clock()
-        repository.publish(event)
+        requireNotNull(eventChannel).request(event).thenAccept { result ->
+            when (result) {
+                is RedisRequestResult.Reply -> plugin.logger.info(
+                    "ArcFarms xserver peer acknowledged node=${result.originServer} reply=${event.eventId}",
+                )
+                RedisRequestResult.TimedOut -> debug.event("network_probe_timeout", "event_id" to event.eventId)
+                else -> debug.event("network_probe_failed", "event_id" to event.eventId, "result" to result::class.simpleName)
+            }
+        }
         plugin.logger.info("ArcFarms xserver probe sent node=${settings().serverId} event=${event.eventId}")
     }
 
     private fun maintain() {
-        val cutoff = clock() - EVENT_MAX_AGE_MS
-        pendingProbes.entries.removeIf { it.value < cutoff }
         repository.cleanupExpiredTravelTickets(clock())
         if (!redis.isSubscriptionActive()) redis.init()
         refreshWorkday()
@@ -407,9 +412,8 @@ class ArcFarmsNetworkService(
         started = false
         tasks.forEach(ScheduledTask::cancel)
         tasks.clear()
-        eventBus?.close()
-        eventBus = null
-        pendingProbes.clear()
+        eventChannel?.close()
+        eventChannel = null
     }
 
     private val ActivityKind.configKey: String
@@ -430,5 +434,10 @@ class ArcFarmsNetworkService(
         private const val EVENT_MAX_AGE_MS = 15 * 60 * 1000L
         private const val EVENT_FUTURE_SKEW_MS = 60 * 1000L
         private const val PROBE_INTERVAL_MS = 5 * 60 * 1000L
+    }
+
+    private fun isCurrent(event: NetworkEvent): Boolean {
+        val now = clock()
+        return event.occurredAtMs >= now - EVENT_MAX_AGE_MS && event.occurredAtMs <= now + EVENT_FUTURE_SKEW_MS
     }
 }
