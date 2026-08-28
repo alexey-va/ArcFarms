@@ -31,7 +31,8 @@ import ru.ruscrafting.farms.persistence.MineBlockJournal
 import java.nio.file.Files
 import java.util.logging.Level
 
-class ArcFarmsPlugin : JavaPlugin() {
+/** Open so the pinned MockBukkit runtime can create its isolated lifecycle-test subclass. */
+open class ArcFarmsPlugin : JavaPlugin() {
     @Volatile
     private lateinit var settings: ArcFarmsConfig
     private lateinit var locale: ArcFarmsLocale

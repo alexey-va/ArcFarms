@@ -29,7 +29,7 @@ import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 
 class FarmBarnFireIncidentMockBukkitTest : FunSpec({
-    test("barn fire uses displays instead of fire blocks and resolves through the water jet") {
+    test("barn fire uses real protected fire blocks and resolves through the water jet") {
         val paper = MockBukkitTestRuntime.open()
         try {
             val world = paper.server.addSimpleWorld("farm")

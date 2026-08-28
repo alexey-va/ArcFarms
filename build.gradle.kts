@@ -47,6 +47,10 @@ dependencies {
     testImplementation("io.kotest:kotest-assertions-core:6.0.7")
     testImplementation("io.mockk:mockk:1.14.7")
     testImplementation("ru.ruscrafting.arc:arc-core-paper-testing:$arcCoreVersion")
+    testRuntimeOnly("me.clip:placeholderapi:2.12.3")
+    testRuntimeOnly("com.github.MilkBowl:VaultAPI:1.7") {
+        exclude(group = "org.bukkit", module = "bukkit")
+    }
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     "integrationTestImplementation"(sourceSets.test.get().output)
     "integrationTestImplementation"("ru.ruscrafting.arc:arc-core-integration-testing:$arcCoreVersion")
