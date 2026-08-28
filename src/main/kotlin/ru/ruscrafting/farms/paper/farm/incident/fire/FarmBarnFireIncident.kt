@@ -23,7 +23,10 @@ import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.sin
 
 private data class FireKey(val zoneId: String, val index: Int)
 
@@ -229,11 +232,27 @@ internal class FarmBarnFireIncident(
 
     private fun renderJet(start: Location, direction: Vector, range: Double, step: Double) {
         if (!settings().particles) return
+        val forward = direction.clone().normalize()
+        val reference = if (abs(forward.y) < 0.92) Vector(0.0, 1.0, 0.0) else Vector(1.0, 0.0, 0.0)
+        val right = forward.clone().crossProduct(reference).normalize()
+        val up = right.clone().crossProduct(forward).normalize()
         var distance = 0.0
+        var sample = 0
         while (distance <= range) {
-            val point = start.clone().add(direction.clone().multiply(distance))
-            point.world.spawnParticle(Particle.SPLASH, point, 2, 0.07, 0.07, 0.07, 0.025)
+            val center = start.clone().add(forward.clone().multiply(distance))
+            center.world.spawnParticle(Particle.SPLASH, center, 1, 0.06, 0.06, 0.06, 0.02)
+            if (sample % 2 == 0) {
+                val coneRadius = 0.12 + (distance / range).coerceIn(0.0, 1.0) * 0.82
+                repeat(WATER_SIDE_STREAMS) { stream ->
+                    val angle = (stream.toDouble() / WATER_SIDE_STREAMS * PI * 2.0) + sample * 0.47
+                    val spray = center.clone()
+                        .add(right.clone().multiply(cos(angle) * coneRadius))
+                        .add(up.clone().multiply(sin(angle) * coneRadius))
+                    spray.world.spawnParticle(Particle.SPLASH, spray, 2, 0.1, 0.1, 0.1, 0.045)
+                }
+            }
             distance += step
+            sample++
         }
     }
 
@@ -274,4 +293,8 @@ internal class FarmBarnFireIncident(
 
     private fun active(runtime: FarmRuntime): Boolean = runtime.state.phase == FarmPhase.INCIDENT &&
         runtime.state.incidentType == FarmIncidentType.BARN_FIRE
+
+    private companion object {
+        const val WATER_SIDE_STREAMS = 4
+    }
 }

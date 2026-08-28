@@ -181,7 +181,8 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().diseaseSpreadSeconds shouldBe 3
         settings.farms.single().diseaseSpreadRadius shouldBe 4.0
         settings.farms.single().diseaseKillSeconds shouldBe 16
-        settings.farms.single().moleBurrow.cells shouldBe 7
+        settings.farms.single().moleBurrow.cells shouldBe 8
+        settings.farms.single().moleBurrow.maxBurrows shouldBe 3
         settings.farms.single().moleBurrow.minDepth shouldBe 10
         settings.farms.single().moleBurrow.maxDepth shouldBe 18
         settings.farms.single().moleBurrow.blocksPerTick shouldBe 48

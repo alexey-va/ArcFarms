@@ -60,7 +60,8 @@ internal class FarmMoleBurrowController(
     private val clock: () -> Long,
 ) {
     private enum class Role { ENTRANCE, LAIR, EXIT, MOLE }
-    private data class SceneKey(val zoneId: String, val sequence: Long)
+    private data class SceneKey(val zoneId: String, val sequence: Long, val burrowId: Int)
+    private data class Identity(val zoneId: String, val sequence: Long, val burrowId: Int, val role: Role)
 
     private val presentation = FarmCarePresentation(settings)
     private val returns by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
@@ -74,27 +75,35 @@ internal class FarmMoleBurrowController(
     private val zoneKey = NamespacedKey(plugin, "farm_mole_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_mole_sequence")
     private val roleKey = NamespacedKey(plugin, "farm_mole_role")
+    private val burrowKey = NamespacedKey(plugin, "farm_mole_burrow")
     private var guidanceTick = 0L
 
     fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING)
 
     fun ensure(runtime: FarmRuntime) {
         if (!active(runtime)) return
-        val target = runtime.state.careTargets.singleOrNull { it.role == FarmCareRole.MOLE_MOUND } ?: return
-        val (result, scene) = world.ensure(runtime, target.position)
-        if (result == FarmMoleBurrowEnsureResult.READY && scene != null) ensureScene(runtime, scene)
+        runtime.state.careTargets.filter { it.role == FarmCareRole.MOLE_MOUND && !it.complete }.forEach { target ->
+            val (result, scene) = world.ensure(runtime, target.position, target.id)
+            if (result == FarmMoleBurrowEnsureResult.READY && scene != null) ensureScene(runtime, scene)
+        }
     }
+
+    fun prepare(runtime: FarmRuntime, targets: List<ru.ruscrafting.farms.domain.FarmCareTarget>, placementSequence: Long): Boolean =
+        world.prepare(runtime, targets, placementSequence)
+
+    fun discardPrepared(runtime: FarmRuntime) =
+        world.beginRestore(runtime.region.world, runtime.settings.id, runtime.state.sequence)
 
     fun interact(player: Player, entity: Entity): Boolean {
         val identity = identity(entity) ?: return false
-        val runtime = runtimes().firstOrNull { it.settings.id == identity.first } ?: return true
-        if (!active(runtime) || runtime.state.sequence != identity.second || !port.hasAccess(player, runtime.settings.permission)) {
+        val runtime = runtimes().firstOrNull { it.settings.id == identity.zoneId } ?: return true
+        if (!active(runtime) || runtime.state.sequence != identity.sequence || !port.hasAccess(player, runtime.settings.permission)) {
             if (!port.hasAccess(player, runtime.settings.permission)) port.sendChat(player, MessageKey.ZONE_LOCKED)
             return true
         }
-        if (!port.allowInteraction("farm-mole:${runtime.settings.id}:${identity.third}:${player.uniqueId}", 500)) return true
-        val scene = world.scene(runtime) ?: return true
-        when (identity.third) {
+        if (!port.allowInteraction("farm-mole:${runtime.settings.id}:${identity.burrowId}:${identity.role}:${player.uniqueId}", 500)) return true
+        val scene = world.scene(runtime, identity.burrowId) ?: return true
+        when (identity.role) {
             Role.ENTRANCE -> enter(player, runtime, scene)
             Role.LAIR -> finish(player, runtime, scene)
             Role.EXIT -> leave(player, scene, MessageKey.FARM_MOLE_LEFT)
@@ -112,7 +121,7 @@ internal class FarmMoleBurrowController(
                 else -> null
             }
         }
-        if (identity.third == Role.MOLE) {
+        if (identity.role == Role.MOLE) {
             event.isCancelled = player == null
             return true
         }
@@ -124,10 +133,10 @@ internal class FarmMoleBurrowController(
 
     fun onDeath(event: EntityDeathEvent): Boolean {
         val identity = identity(event.entity) ?: return false
-        if (identity.third != Role.MOLE) return false
+        if (identity.role != Role.MOLE) return false
         event.drops.clear()
         event.droppedExp = 0
-        entities[SceneKey(identity.first, identity.second)]?.remove(event.entity.uniqueId)
+        entities[SceneKey(identity.zoneId, identity.sequence, identity.burrowId)]?.remove(event.entity.uniqueId)
         return true
     }
 
@@ -138,7 +147,9 @@ internal class FarmMoleBurrowController(
         val runtime = runtimes().firstOrNull {
             it.settings.id == record.zoneId && it.state.sequence == record.sequence && active(it)
         }
-        val scene = runtime?.let(world::scene)
+        val scene = runtime?.let { activeRuntime ->
+            world.scenes(activeRuntime).firstOrNull { it.contains(destination) }
+        }
         if (scene == null || !scene.contains(destination)) {
             sessions.remove(event.player.uniqueId, record)
             acknowledgeAsync(record)
@@ -181,15 +192,15 @@ internal class FarmMoleBurrowController(
     fun onPlayerDeath(player: Player) = releasePlayer(player, "player_death")
 
     fun clear(runtime: FarmRuntime, reason: String) {
-        val key = SceneKey(runtime.settings.id, runtime.state.sequence)
-        val scene = world.scene(runtime)
-        removeEntities(key)
-        sessions.values.filter { it.zoneId == key.zoneId && it.sequence == key.sequence }.forEach { record ->
+        val keys = entities.keys.filter { it.zoneId == runtime.settings.id && it.sequence == runtime.state.sequence }
+        keys.toList().forEach(::removeEntities)
+        val scenes = world.scenes(runtime)
+        sessions.values.filter { it.zoneId == runtime.settings.id && it.sequence == runtime.state.sequence }.forEach { record ->
             val player = Bukkit.getPlayer(record.playerId)
             if (player != null && player.isOnline) leave(player, record, null)
             else sessions.remove(record.playerId, record)
         }
-        scene?.let { activeScene ->
+        scenes.forEach { activeScene ->
             activeScene.world.players.filter { activeScene.contains(it.location) }.forEach { player ->
                 val destination = activeScene.surface.clone().apply {
                     yaw = player.location.yaw
@@ -201,8 +212,8 @@ internal class FarmMoleBurrowController(
                 recoverPlayer(player)
             }
         }
-        world.beginRestore(runtime.region.world, key.zoneId, key.sequence)
-        debug.event("farm_mole_burrow_cleared", "zone" to key.zoneId, "sequence" to key.sequence, "reason" to reason)
+        world.beginRestore(runtime.region.world, runtime.settings.id, runtime.state.sequence)
+        debug.event("farm_mole_burrow_cleared", "zone" to runtime.settings.id, "sequence" to runtime.state.sequence, "reason" to reason)
     }
 
     fun cleanup(reason: String) {
@@ -224,8 +235,7 @@ internal class FarmMoleBurrowController(
         val byZone = runtimes().associateBy { it.settings.id }
         return world.process(limit) { record ->
             val runtime = byZone[record.zoneId] ?: return@process false
-            runtime.region.world.name == record.world &&
-                runtime.region.contains(Location(runtime.region.world, record.x.toDouble(), record.y.toDouble(), record.z.toDouble()))
+            runtime.ownsMoleBurrowRecord(record)
         }
     }
 
@@ -237,7 +247,7 @@ internal class FarmMoleBurrowController(
             } ?: return@forEach
             if (guidanceTick % runtime.settings.moleBurrow.guidanceIntervalTicks != 0L) return@forEach
             val player = Bukkit.getPlayer(record.playerId)?.takeIf(Player::isOnline) ?: return@forEach
-            val scene = world.scene(runtime) ?: return@forEach
+            val scene = world.scenes(runtime).firstOrNull { it.contains(player.location) } ?: return@forEach
             val distance = scene.pathDistanceToLair(player.location) ?: return@forEach
             val key = when (FarmMoleGuidance.proximity(
                 distance,
@@ -313,7 +323,9 @@ internal class FarmMoleBurrowController(
 
     private fun finish(player: Player, runtime: FarmRuntime, scene: FarmMoleBurrowScene) {
         if (!scene.contains(player.location)) return
-        val target = runtime.state.careTargets.singleOrNull { it.role == FarmCareRole.MOLE_MOUND && !it.complete } ?: return
+        val target = runtime.state.careTargets.firstOrNull {
+            it.id == scene.burrowId && it.role == FarmCareRole.MOLE_MOUND && !it.complete
+        } ?: return
         val result = FarmShiftEngine.advanceCare(runtime.state, target.id, player.uniqueId)
         if (!result.accepted) return
         if (settings().sounds) {
@@ -344,11 +356,13 @@ internal class FarmMoleBurrowController(
     }
 
     private fun ensureScene(runtime: FarmRuntime, scene: FarmMoleBurrowScene) {
-        val key = SceneKey(runtime.settings.id, runtime.state.sequence)
+        val key = SceneKey(runtime.settings.id, runtime.state.sequence, scene.burrowId)
         val active = entities[key].orEmpty().mapNotNull(Bukkit::getEntity).filter(Entity::isValid)
-        val structural = active.filter { identity(it)?.third != Role.MOLE }
+        val structural = active.filter { identity(it)?.role != Role.MOLE }
         if (structural.size == expectedStructuralEntities(runtime) && structural.all {
-                identity(it)?.let { id -> id.first == key.zoneId && id.second == key.sequence } == true
+                identity(it)?.let { id ->
+                    id.zoneId == key.zoneId && id.sequence == key.sequence && id.burrowId == key.burrowId
+                } == true
             }
         ) {
             entities[key] = active.mapTo(mutableSetOf(), Entity::getUniqueId)
@@ -360,11 +374,11 @@ internal class FarmMoleBurrowController(
         }
         removeEntities(key)
         val spawned = linkedSetOf<UUID>()
-        spawnMarker(runtime, scene.surface, Role.ENTRANCE, runtime.settings.careVisuals.getValue(FarmCareRole.MOLE_MOUND), "care.moles.entrance-label", true)
+        spawnMarker(runtime, scene, scene.surface, Role.ENTRANCE, runtime.settings.careVisuals.getValue(FarmCareRole.MOLE_MOUND), "care.moles.entrance-label", true)
             .mapTo(spawned, Entity::getUniqueId)
-        spawnMarker(runtime, scene.lair, Role.LAIR, runtime.settings.moleBurrow.lairVisual, "care.moles.lair-label", false)
+        spawnMarker(runtime, scene, scene.lair, Role.LAIR, runtime.settings.moleBurrow.lairVisual, "care.moles.lair-label", false)
             .mapTo(spawned, Entity::getUniqueId)
-        spawnExit(runtime, scene.start).mapTo(spawned, Entity::getUniqueId)
+        spawnExit(runtime, scene, scene.start).mapTo(spawned, Entity::getUniqueId)
         spawnMoles(runtime, scene).mapTo(spawned, Entity::getUniqueId)
         entities[key] = spawned
         molesInitialized += key
@@ -393,13 +407,14 @@ internal class FarmMoleBurrowController(
                 mole.health = 1.0
                 mole.customName(locale.render(MessageKey.FARM_MOLE_NAME))
                 mole.isCustomNameVisible = true
-                mark(mole, runtime, Role.MOLE)
+                mark(mole, runtime, scene.burrowId, Role.MOLE)
             }
         }
     }
 
     private fun spawnMarker(
         runtime: FarmRuntime,
+        scene: FarmMoleBurrowScene,
         location: Location,
         role: Role,
         visual: ru.ruscrafting.farms.config.FarmCareVisualSettings,
@@ -419,36 +434,36 @@ internal class FarmMoleBurrowController(
                 entity.viewRange = runtime.settings.displayViewRange
                 entity.isGlowing = glowing
                 entity.isPersistent = false
-                mark(entity, runtime, role)
+                mark(entity, runtime, scene.burrowId, role)
             }
         }
         val label = location.world.spawn(location.clone().add(0.0, 1.85, 0.0), TextDisplay::class.java) { entity ->
             configureLabel(entity, locale.renderPath(labelPath))
-            mark(entity, runtime, role)
+            mark(entity, runtime, scene.burrowId, role)
         }
         val hitbox = location.world.spawn(location.clone().add(0.0, 0.55, 0.0), Interaction::class.java) { entity ->
             entity.interactionWidth = 1.45f
             entity.interactionHeight = 1.7f
             entity.isResponsive = true
             entity.isPersistent = false
-            mark(entity, runtime, role)
+            mark(entity, runtime, scene.burrowId, role)
         }
         result += label
         result += hitbox
         return result
     }
 
-    private fun spawnExit(runtime: FarmRuntime, location: Location): List<Entity> {
+    private fun spawnExit(runtime: FarmRuntime, scene: FarmMoleBurrowScene, location: Location): List<Entity> {
         val label = location.world.spawn(location.clone().add(0.0, 1.65, 0.0), TextDisplay::class.java) { entity ->
             configureLabel(entity, locale.renderPath("care.moles.exit-label"))
-            mark(entity, runtime, Role.EXIT)
+            mark(entity, runtime, scene.burrowId, Role.EXIT)
         }
         val hitbox = location.world.spawn(location.clone().add(0.0, 0.55, 0.0), Interaction::class.java) { entity ->
             entity.interactionWidth = 1.3f
             entity.interactionHeight = 1.7f
             entity.isResponsive = true
             entity.isPersistent = false
-            mark(entity, runtime, Role.EXIT)
+            mark(entity, runtime, scene.burrowId, Role.EXIT)
         }
         return listOf(label, hitbox)
     }
@@ -464,18 +479,20 @@ internal class FarmMoleBurrowController(
         entity.isPersistent = false
     }
 
-    private fun mark(entity: Entity, runtime: FarmRuntime, role: Role) {
+    private fun mark(entity: Entity, runtime: FarmRuntime, burrowId: Int, role: Role) {
         entity.persistentDataContainer.set(zoneKey, PersistentDataType.STRING, runtime.settings.id)
         entity.persistentDataContainer.set(sequenceKey, PersistentDataType.LONG, runtime.state.sequence)
         entity.persistentDataContainer.set(roleKey, PersistentDataType.STRING, role.name)
+        entity.persistentDataContainer.set(burrowKey, PersistentDataType.INTEGER, burrowId)
     }
 
-    private fun identity(entity: Entity): Triple<String, Long, Role>? {
+    private fun identity(entity: Entity): Identity? {
         val data = entity.persistentDataContainer
         val zone = data.get(zoneKey, PersistentDataType.STRING) ?: return null
         val sequence = data.get(sequenceKey, PersistentDataType.LONG) ?: return null
         val role = data.get(roleKey, PersistentDataType.STRING)?.let { runCatching { Role.valueOf(it) }.getOrNull() } ?: return null
-        return Triple(zone, sequence, role)
+        val burrowId = data.get(burrowKey, PersistentDataType.INTEGER) ?: 0
+        return Identity(zone, sequence, burrowId, role)
     }
 
     private fun removeEntities(key: SceneKey) {

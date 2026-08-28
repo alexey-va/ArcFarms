@@ -14,6 +14,8 @@ import ru.ruscrafting.farms.config.FarmItemDisplayTransform
 import ru.ruscrafting.farms.config.FarmMoleBurrowSettings
 import ru.ruscrafting.farms.config.FarmZoneSettings
 import ru.ruscrafting.farms.domain.FarmPhase
+import ru.ruscrafting.farms.domain.FarmCareRole
+import ru.ruscrafting.farms.domain.FarmCareTarget
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmRules
 import ru.ruscrafting.farms.domain.FarmShiftState
@@ -193,7 +195,68 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
             ArcFarmsDebug({ false }) {},
         )
 
-        controller.preview(runtime, FarmPointPosition(world.name, 0.5, 65.0, 0.5))?.records?.isNotEmpty() shouldBe true
+        val surface = FarmPointPosition(world.name, 0.5, 65.0, 0.5)
+        val (_, scene) = controller.ensure(runtime, surface)
+        val records = requireNotNull(scene).records
+
+        controller.process(records.size) { runtime.ownsMoleBurrowRecord(it) } shouldBe records.size
+        scene.ready shouldBe true
+    }
+
+    test("prepares and builds two independent crash-safe burrows") {
+        for (chunkX in -3..3) for (chunkZ in -2..2) world.getChunkAt(chunkX, chunkZ).load()
+        for (x in -40..40) for (z in -32..32) for (y in 42..64) {
+            world.getBlockAt(x, y, z).type = Material.STONE
+        }
+        val burrow = FarmMoleBurrowSettings(
+            cells = 5,
+            maxBurrows = 3,
+            minDepth = 10,
+            maxDepth = 12,
+            tunnelHeight = 3,
+            blocksPerTick = 256,
+            candidateAttempts = 8,
+            lightSpacing = 5,
+            lightLevel = 11,
+            replaceableMaterials = setOf("STONE"),
+            lairVisual = FarmCareVisualSettings("RABBIT_HIDE", 0, FarmItemDisplayTransform.FIXED, 1.6f, 0.6),
+        )
+        val settings = mockk<FarmZoneSettings> {
+            every { id } returns "communal_farm"
+            every { crops } returns setOf("WHEAT")
+            every { moleBurrow } returns burrow
+        }
+        val targets = listOf(
+            FarmCareTarget(0, FarmCareRole.MOLE_MOUND, FarmPointPosition(world.name, -18.5, 65.0, 0.5)),
+            FarmCareTarget(1, FarmCareRole.MOLE_MOUND, FarmPointPosition(world.name, 18.5, 65.0, 0.5)),
+        )
+        val runtime = FarmRuntime(
+            settings = settings,
+            region = CuboidActivityRegion(world, "surface-only-farm", CuboidBounds(-40, 63, -32, 40, 66, 32)),
+            orders = emptyMap(),
+            orderList = emptyList(),
+            rules = FarmRules(listOf(50), 1, 1_000),
+            state = FarmShiftState(
+                phase = FarmPhase.CARE,
+                sequence = 12,
+                placementSequence = 4,
+                careType = ru.ruscrafting.farms.domain.FarmCareType.MOLES,
+                careTargets = targets,
+                careGoal = 2,
+            ),
+        )
+        val controller = FarmMoleBurrowWorld(
+            paper.createSimplePlugin("FarmMultiMoleBurrowTest"),
+            ArcFarmsDebug({ false }) {},
+        )
+
+        controller.prepare(runtime, targets, runtime.state.placementSequence) shouldBe true
+        val scenes = controller.scenes(runtime)
+        scenes.size shouldBe 2
+        scenes.map { it.burrowId }.toSet() shouldBe setOf(0, 1)
+        val total = scenes.sumOf { it.records.size }
+        controller.process(total) { runtime.ownsMoleBurrowRecord(it) } shouldBe total
+        scenes.all(FarmMoleBurrowScene::ready) shouldBe true
     }
 
     test("preview does not carve through unconfigured building materials") {

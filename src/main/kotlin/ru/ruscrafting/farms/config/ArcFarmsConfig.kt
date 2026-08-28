@@ -386,6 +386,7 @@ data class FarmCareVisualSettings(
 
 data class FarmMoleBurrowSettings(
     val cells: Int,
+    val maxBurrows: Int = 3,
     val minDepth: Int,
     val maxDepth: Int,
     val tunnelHeight: Int,
@@ -476,6 +477,7 @@ data class FarmRouteDeliverySettings(
     val trailHeight: Double,
     val trailParticleSize: Float,
     val completionContribution: Int,
+    val returnDelaySeconds: Int,
     val monsterMinCount: Int,
     val monsterMaxCount: Int,
     val monsterIntervalSeconds: Int,
@@ -806,6 +808,8 @@ class ArcFarmsConfig private constructor(
                     trailParticleSize = section.finiteFloat("route-delivery.trail.particle-size", 1.15f, 0.5f, 3.0f),
                     completionContribution = section.int("route-delivery.completion-contribution", 12)
                         .checked("route-delivery.completion-contribution", 1, 64),
+                    returnDelaySeconds = section.int("route-delivery.return-delay-seconds", 3)
+                        .checked("route-delivery.return-delay-seconds", 1, 15),
                     monsterMinCount = section.int("route-delivery.monsters.min-count", 2)
                         .checked("route-delivery.monsters.min-count", 0, 16),
                     monsterMaxCount = section.int("route-delivery.monsters.max-count", 5)
@@ -957,7 +961,9 @@ class ArcFarmsConfig private constructor(
                 }
                 val moleLairPath = "mole-burrow.lair-visual"
                 val moleBurrow = FarmMoleBurrowSettings(
-                    cells = section.int("mole-burrow.cells", 7).checked("mole-burrow.cells", 3, 11),
+                    cells = section.int("mole-burrow.cells", 8).checked("mole-burrow.cells", 3, 11),
+                    maxBurrows = section.int("mole-burrow.max-burrows", 3)
+                        .checked("mole-burrow.max-burrows", 1, 3),
                     minDepth = moleBurrowMinDepth,
                     maxDepth = moleBurrowMaxDepth,
                     tunnelHeight = section.int("mole-burrow.tunnel-height", 3)

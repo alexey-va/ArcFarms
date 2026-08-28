@@ -49,12 +49,15 @@ internal class FarmFoodDeliveryAmbush(
         }
         if (session.brokenDown) {
             if (session.monsterIds.isNotEmpty()) return
-            session.brokenDown = false
+            if (!session.finishWaveIfCleared(now)) return
             players(session).forEach { player ->
                 port.sendActionBar(player, MessageKey.FARM_ROUTE_REPAIRED)
                 player.playSound(player.location, Sound.BLOCK_ANVIL_USE, 0.65f, 1.35f)
             }
             debug.event("farm_food_cart_repaired", "zone" to runtime.settings.id, "sequence" to session.sequence)
+            // The interval is a respite after clearing a wave, not a timer that
+            // expires while players are still fighting the previous one.
+            return
         }
         val rider = horse.passengers.filterIsInstance<Player>().firstOrNull() ?: return
         session.riderId = rider.uniqueId
@@ -75,6 +78,7 @@ internal class FarmFoodDeliveryAmbush(
             val monster = spawn.world.spawnEntity(spawn, type) as Mob
             monster.isPersistent = false
             monster.removeWhenFarAway = true
+            monster.isGlowing = true
             monster.target = rider
             monster.getAttribute(Attribute.MOVEMENT_SPEED)?.baseValue = config.monsterMovementSpeed
             if (monster is Phantom) {
@@ -111,10 +115,18 @@ internal class FarmFoodDeliveryAmbush(
     }
 
     fun updateLights(zoneId: String, session: FarmFoodDeliverySession, level: Int) {
+        val defenders = players(session).filter { it.isOnline }
         session.monsterIds.forEach { id ->
             val monster = Bukkit.getEntity(id) as? Mob
             if (monster == null || !monster.isValid || monster.isDead) releaseLight(zoneId, id)
-            else night.updateExternalLight(lightOwner(zoneId, id), monster, level)
+            else {
+                monster.isGlowing = true
+                defenders.asSequence()
+                    .filter { it.world === monster.world && !it.isDead }
+                    .minByOrNull { it.location.distanceSquared(monster.location) }
+                    ?.let { defender -> monster.target = defender }
+                night.updateExternalLight(lightOwner(zoneId, id), monster, level)
+            }
         }
     }
 

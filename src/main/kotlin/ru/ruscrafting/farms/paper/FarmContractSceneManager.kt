@@ -106,6 +106,7 @@ internal data class FarmContractSceneSpec(
     val viewRange: Float,
     val customerName: Component? = null,
     val customerGlowing: Boolean = false,
+    val hiddenRoles: Set<FarmContractSceneRole> = emptySet(),
 ) {
     init {
         require(loadCount in 0..8) { "Farm contract cart load count must be between 0 and 8" }
@@ -296,10 +297,18 @@ internal class FarmContractSceneManager(
     }
 
     private fun targets(spec: FarmContractSceneSpec): List<FarmContractSceneTarget> = buildList {
-        add(target(spec, FarmContractSceneRole.CUSTOMER, 0, spec.customerLocation))
-        add(target(spec, FarmContractSceneRole.CART, 0, spec.cartLocation))
-        add(target(spec, FarmContractSceneRole.CART_INTERACTION, 0, spec.cartLocation))
-        repeat(spec.loadCount) { slot -> add(target(spec, FarmContractSceneRole.CART_LOAD, slot, cartLoadLocation(spec, slot))) }
+        if (FarmContractSceneRole.CUSTOMER !in spec.hiddenRoles) {
+            add(target(spec, FarmContractSceneRole.CUSTOMER, 0, spec.customerLocation))
+        }
+        if (FarmContractSceneRole.CART !in spec.hiddenRoles) {
+            add(target(spec, FarmContractSceneRole.CART, 0, spec.cartLocation))
+        }
+        if (FarmContractSceneRole.CART_INTERACTION !in spec.hiddenRoles) {
+            add(target(spec, FarmContractSceneRole.CART_INTERACTION, 0, spec.cartLocation))
+        }
+        if (FarmContractSceneRole.CART_LOAD !in spec.hiddenRoles) {
+            repeat(spec.loadCount) { slot -> add(target(spec, FarmContractSceneRole.CART_LOAD, slot, cartLoadLocation(spec, slot))) }
+        }
     }
 
     private fun target(

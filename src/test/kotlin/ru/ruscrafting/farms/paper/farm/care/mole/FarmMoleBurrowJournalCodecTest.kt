@@ -3,6 +3,8 @@ package ru.ruscrafting.farms.paper.farm.care.mole
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
 
 class FarmMoleBurrowJournalCodecTest : FunSpec({
     val record = FarmMoleBurrowJournalRecord(
@@ -42,5 +44,26 @@ class FarmMoleBurrowJournalCodecTest : FunSpec({
         shouldThrow<IllegalArgumentException> {
             FarmMoleBurrowJournalCodec.decode(encoded + byteArrayOf(1), "sp11", 12, 28, -64, 320)
         }
+    }
+
+    test("version one journals remain readable as burrow zero") {
+        val encoded = ByteArrayOutputStream().use { bytes ->
+            DataOutputStream(bytes).use { output ->
+                output.writeInt(1)
+                output.writeInt(1)
+                output.writeUTF(record.zoneId)
+                output.writeLong(record.sequence)
+                output.writeInt(record.x)
+                output.writeInt(record.y)
+                output.writeInt(record.z)
+                output.writeUTF(record.originalData)
+                output.writeUTF(record.burrowData)
+                output.writeByte(record.marker.ordinal)
+                output.writeInt(record.totalRecords)
+            }
+            bytes.toByteArray()
+        }
+
+        FarmMoleBurrowJournalCodec.decode(encoded, "sp11", 12, 28, -64, 320).single().burrowId shouldBe 0
     }
 })

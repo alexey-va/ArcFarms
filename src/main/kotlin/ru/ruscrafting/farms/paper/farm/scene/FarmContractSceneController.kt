@@ -95,6 +95,16 @@ internal class FarmContractSceneController(
                 viewRange = visual.viewRange,
                 customerName = market?.let { locale.renderPath("farm.market-buyer-name", null) },
                 customerGlowing = market?.marketAccepted == false,
+                hiddenRoles = if (
+                    runtime.state.phase == FarmPhase.INCIDENT &&
+                    runtime.state.incidentType == FarmIncidentType.FOOD_DELIVERY
+                ) {
+                    setOf(
+                        FarmContractSceneRole.CART,
+                        FarmContractSceneRole.CART_INTERACTION,
+                        FarmContractSceneRole.CART_LOAD,
+                    )
+                } else emptySet(),
             ),
         )
     }

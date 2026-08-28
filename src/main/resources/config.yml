@@ -125,7 +125,9 @@ farm-zones:
     scarecrow-carried-y-offset: 1.15
     # Temporary, crash-safe maze carved below the farm for the mole expedition.
     mole-burrow:
-      cells: 7
+      cells: 8
+      # One independent maze per active participant, capped to avoid excessive block work.
+      max-burrows: 3
       min-depth: 10
       max-depth: 18
       tunnel-height: 3
@@ -265,6 +267,8 @@ farm-zones:
       transition-seconds: 18
       trail: {lookahead-points: 28, height: 0.35, particle-size: 1.15}
       completion-contribution: 12
+      # Riders are dismounted at the destination, then returned to the farm after this pause.
+      return-delay-seconds: 3
       cart-scale: 4.4
       cart-y-offset: 0.35
       cart-load-count: 4

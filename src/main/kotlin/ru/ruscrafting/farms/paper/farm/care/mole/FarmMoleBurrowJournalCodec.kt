@@ -15,6 +15,7 @@ internal data class FarmMoleBurrowJournalRecord(
     val world: String,
     val zoneId: String,
     val sequence: Long,
+    val burrowId: Int = 0,
     val x: Int,
     val y: Int,
     val z: Int,
@@ -26,7 +27,8 @@ internal data class FarmMoleBurrowJournalRecord(
 
 /** Exact, bounded chunk-PDC codec for crash-safe temporary mole tunnels. */
 internal object FarmMoleBurrowJournalCodec {
-    private const val VERSION = 1
+    private const val VERSION = 2
+    private const val LEGACY_VERSION = 1
     private const val MAX_RECORDS_PER_CHUNK = 512
     private const val MAX_BLOCK_DATA_LENGTH = 512
     const val MAX_SCENE_RECORDS = 1_024
@@ -52,6 +54,7 @@ internal object FarmMoleBurrowJournalCodec {
                 records.forEach { record ->
                     output.writeUTF(record.zoneId)
                     output.writeLong(record.sequence)
+                    output.writeByte(record.burrowId)
                     output.writeInt(record.x)
                     output.writeInt(record.y)
                     output.writeInt(record.z)
@@ -78,7 +81,8 @@ internal object FarmMoleBurrowJournalCodec {
         validateBounds(minHeight, maxHeight)
         require(raw.size <= MAX_JOURNAL_BYTES) { "Oversized mole burrow journal" }
         return DataInputStream(ByteArrayInputStream(raw)).use { input ->
-            require(input.readInt() == VERSION) { "Unsupported mole burrow journal version" }
+            val version = input.readInt()
+            require(version == VERSION || version == LEGACY_VERSION) { "Unsupported mole burrow journal version" }
             val count = input.readInt()
             require(count in 0..MAX_RECORDS_PER_CHUNK) { "Invalid mole burrow record count" }
             val records = List(count) {
@@ -86,6 +90,7 @@ internal object FarmMoleBurrowJournalCodec {
                     world = world,
                     zoneId = input.readUTF(),
                     sequence = input.readLong(),
+                    burrowId = if (version >= VERSION) input.readUnsignedByte() else 0,
                     x = input.readInt(),
                     y = input.readInt(),
                     z = input.readInt(),
@@ -113,6 +118,7 @@ internal object FarmMoleBurrowJournalCodec {
         require(record.world == world) { "Mole burrow record belongs to another world" }
         require(record.zoneId.matches(ZONE_ID)) { "Invalid mole burrow zone id" }
         require(record.sequence >= 0) { "Invalid mole burrow sequence" }
+        require(record.burrowId in 0..15) { "Invalid mole burrow id" }
         require(record.x shr 4 == chunkX && record.z shr 4 == chunkZ) { "Mole burrow record belongs to another chunk" }
         require(record.y in minHeight until maxHeight) { "Mole burrow record height is outside the world" }
         require(record.originalData.length in 1..MAX_BLOCK_DATA_LENGTH) { "Invalid original mole burrow BlockData" }

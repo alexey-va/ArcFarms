@@ -17,6 +17,7 @@ import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.entity.EntityDeathEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
+import org.bukkit.event.player.PlayerTeleportEvent
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.meta.ItemMeta
 import org.bukkit.persistence.PersistentDataType
@@ -343,6 +344,9 @@ internal class FarmFoodDeliveryIncident(
             rider.uniqueId,
             config.completionContribution,
         )
+        if (result.accepted && result.state.phase != FarmPhase.INCIDENT) {
+            scheduleFarmReturn(runtime, horse, session, points.first(), config.returnDelaySeconds)
+        }
         transitions.apply(runtime, result, rider)
         if (result.accepted && settings().particles) {
             horse.world.spawnParticle(Particle.HAPPY_VILLAGER, horse.location.add(0.0, 1.0, 0.0), 8, 0.5, 0.4, 0.5, 0.0)
@@ -372,6 +376,44 @@ internal class FarmFoodDeliveryIncident(
                     )
                 }
             }
+        }
+    }
+
+    private fun scheduleFarmReturn(
+        runtime: FarmRuntime,
+        horse: Horse,
+        session: FarmFoodDeliverySession,
+        routeStart: FarmPointPosition,
+        delaySeconds: Int,
+    ) {
+        val participants = listOfNotNull(
+            horse.passengers.filterIsInstance<Player>().firstOrNull(),
+            session.gunnerId?.let(Bukkit::getPlayer),
+        ).distinctBy(Player::getUniqueId)
+        horse.eject()
+        (session.gunnerSeatId?.let(Bukkit::getEntity) as? Interaction)?.eject()
+        val destination = safeSurface(location(routeStart)) ?: location(routeStart)
+        participants.forEach { player ->
+            player.fallDistance = 0f
+            player.playSound(player.location, Sound.ENTITY_HORSE_STEP_WOOD, 0.75f, 0.9f)
+        }
+        port.runLater(delaySeconds * 20L) {
+            participants.filter(Player::isOnline).forEach { player ->
+                val target = destination.clone().apply {
+                    yaw = player.location.yaw
+                    pitch = player.location.pitch
+                }
+                if (player.teleport(target, PlayerTeleportEvent.TeleportCause.PLUGIN)) {
+                    player.fallDistance = 0f
+                    player.playSound(target, Sound.ENTITY_ENDERMAN_TELEPORT, 0.55f, 1.25f)
+                }
+            }
+            debug.event(
+                "farm_food_route_players_returned",
+                "zone" to runtime.settings.id,
+                "sequence" to session.sequence,
+                "players" to participants.size,
+            )
         }
     }
 

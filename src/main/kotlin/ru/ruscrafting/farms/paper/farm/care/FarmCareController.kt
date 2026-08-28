@@ -58,13 +58,6 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.logging.Level
 
-internal data class FarmCareEntityKey(val zoneId: String, val targetId: Int)
-internal data class FarmCareEntityIdentity(
-    val zoneId: String,
-    val sequence: Long,
-    val targetId: Int,
-    val role: FarmCareRole,
-)
 /** Sole owner of care state, PDC entities, animal followers, seeder rig and disease timing. */
 internal class FarmCareController(
     plugin: Plugin,
@@ -109,6 +102,7 @@ internal class FarmCareController(
     private val animalFollowers = mutableMapOf<FarmCareEntityKey, UUID>()
     private val reconciledSequences = mutableMapOf<String, Long>()
     private val pollenCharges = FarmPollenCharges()
+    private val starts = FarmCareStartService(port, moles)
     private val zoneKey = NamespacedKey(plugin, "farm_care_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_care_sequence")
     private val targetKey = NamespacedKey(plugin, "farm_care_target")
@@ -226,7 +220,12 @@ internal class FarmCareController(
         }
         if (!sourceReady || runtime.state.careType != null) return false
         val selected = plans.select(runtime, preferredType, actor) ?: return false
+        if (!starts.prepare(runtime, selected)) return false
         val result = FarmShiftEngine.startCare(runtime.state, selected.type, selected.targets, selected.goal)
+        if (!result.accepted) {
+            starts.rollback(runtime, selected)
+            return false
+        }
         transitions.apply(runtime, result, actor)
         if (selected.type == FarmCareType.DISEASE) disease.start(runtime, clock())
         ensure(runtime)

@@ -20,4 +20,12 @@ internal data class FarmFoodDeliverySession(
     val monsterGoal: Int,
     var lastWaveAt: Long = 0,
     val gunnerTrail: ArrayDeque<Location> = ArrayDeque(),
-)
+) {
+    /** Opens a real respite window after the last attacker of a wave is defeated. */
+    fun finishWaveIfCleared(now: Long): Boolean {
+        if (!brokenDown || monsterIds.isNotEmpty()) return false
+        brokenDown = false
+        lastWaveAt = now
+        return true
+    }
+}

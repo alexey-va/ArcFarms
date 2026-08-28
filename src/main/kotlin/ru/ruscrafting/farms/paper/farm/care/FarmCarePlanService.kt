@@ -105,6 +105,9 @@ internal class FarmCarePlanService(
             plot.block()?.let(FarmSurfacePolicy::isOutdoorBed) == true
         }
         if (patch.isEmpty()) return null
+        val farmBeds = registry.beds(runtime.settings.id).filter { plot ->
+            plot.block()?.let(FarmSurfacePolicy::isOutdoorBed) == true
+        }.ifEmpty { patch }
         val count = FarmCarePlanner.targetCount(
             participantCount(runtime.region),
             runtime.settings.careTargetsPerPlayer,
@@ -116,8 +119,13 @@ internal class FarmCarePlanService(
         // scenarios, which used to place every target on the same beds.
         val placementSequence = runtime.state.nextPlacementSequence()
         val salt = FarmSpatialSeed.mix(placementSequence, type.ordinal * 17L + 101L)
-        fun bedTargets(role: FarmCareRole, amount: Int, required: Int = 1): List<FarmCareTarget> =
-            FarmCarePlanner.spread(patch, amount.coerceAtMost(patch.size), salt).mapIndexed { index, plot ->
+        fun bedTargets(
+            role: FarmCareRole,
+            amount: Int,
+            required: Int = 1,
+            candidates: List<FarmPlotPosition> = patch,
+        ): List<FarmCareTarget> =
+            FarmCarePlanner.spread(candidates, amount.coerceAtMost(candidates.size), salt).mapIndexed { index, plot ->
                 FarmCareTarget(
                     id = index,
                     role = role,
@@ -151,7 +159,10 @@ internal class FarmCarePlanService(
                 explicit(FarmPointKind.COVERS),
             )
             FarmCareType.SCARECROWS -> FarmCarePlanner.orient(
-                bedTargets(FarmCareRole.SCARECROW, runtime.settings.scarecrowTargetCount),
+                // Scarecrows protect the whole farm, not only the currently harvested patch.
+                // Using the durable bed index also keeps forced admin events independent from
+                // the actor's position and distributes delivery objectives across the field.
+                bedTargets(FarmCareRole.SCARECROW, runtime.settings.scarecrowTargetCount, candidates = farmBeds),
                 explicit(FarmPointKind.SCARECROWS),
             )
             FarmCareType.ANIMAL_RESCUE -> {
@@ -187,24 +198,36 @@ internal class FarmCarePlanService(
             )
             FarmCareType.MOLES -> {
                 val bedCandidates = FarmCarePlanner.spread(
-                    patch,
-                    runtime.settings.moleBurrow.candidateAttempts.coerceAtMost(patch.size),
+                    farmBeds,
+                    runtime.settings.moleBurrow.candidateAttempts.coerceAtMost(farmBeds.size),
                     salt xor 0x4D4F4C45L,
                 ).map { plot -> FarmPointPosition(plot.world, plot.x + 0.5, plot.y + 1.05, plot.z + 0.5) }
+                val requested = participantCount(runtime.region).coerceAtLeast(1)
+                    .coerceAtMost(runtime.settings.moleBurrow.maxBurrows)
                 val startedAt = System.nanoTime()
                 var tested = 0
                 var layoutProbes = 0
                 val rejections = linkedMapOf<String, Int>()
-                val selected = bedCandidates.asSequence().distinct()
-                    .firstOrNull { candidate ->
-                        tested += 1
-                        val preview = moleBurrow.previewDetailed(runtime, candidate, placementSequence)
-                        layoutProbes += preview.layoutAttempts
-                        preview.rejections.forEach { (reason, count) ->
-                            rejections[reason] = rejections.getOrDefault(reason, 0) + count
-                        }
-                        preview.scene != null
+                val occupied = hashSetOf<Triple<Int, Int, Int>>()
+                val selected = mutableListOf<FarmCareTarget>()
+                bedCandidates.asSequence().distinct().forEach { candidate ->
+                    if (selected.size >= requested) return@forEach
+                    tested += 1
+                    val burrowId = selected.size
+                    val preview = moleBurrow.previewDetailed(runtime, candidate, placementSequence, burrowId)
+                    layoutProbes += preview.layoutAttempts
+                    preview.rejections.forEach { (reason, amount) ->
+                        rejections[reason] = rejections.getOrDefault(reason, 0) + amount
                     }
+                    val scene = preview.scene ?: return@forEach
+                    val positions = scene.records.map { Triple(it.x, it.y, it.z) }
+                    if (positions.any { it in occupied }) {
+                        rejections["overlap"] = rejections.getOrDefault("overlap", 0) + 1
+                        return@forEach
+                    }
+                    occupied += positions
+                    selected += FarmCareTarget(burrowId, FarmCareRole.MOLE_MOUND, candidate)
+                }
                 val rejectionSummary = rejections.entries.sortedByDescending(Map.Entry<String, Int>::value)
                     .joinToString(",") { (reason, amount) -> "$reason:$amount" }.ifEmpty { "none" }
                 debug.event(
@@ -213,19 +236,20 @@ internal class FarmCarePlanService(
                     "beds" to bedCandidates.size,
                     "tested" to tested,
                     "layout_probes" to layoutProbes,
-                    "selected" to (selected != null),
+                    "requested" to requested,
+                    "selected" to selected.size,
                     "rejections" to rejectionSummary,
                     "elapsed_ms" to ((System.nanoTime() - startedAt) / 1_000_000L),
                 )
-                if (selected == null) log(
+                if (selected.size < requested) log(
                     Level.WARNING,
                     "Could not plan mole burrow: zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
-                        "beds=${bedCandidates.size} tested=$tested layout_probes=$layoutProbes " +
+                        "beds=${bedCandidates.size} requested=$requested selected=${selected.size} " +
+                        "tested=$tested layout_probes=$layoutProbes " +
                         "depth=${runtime.settings.moleBurrow.minDepth}-${runtime.settings.moleBurrow.maxDepth} " +
                         "rejections=$rejectionSummary",
                 )
-                selected?.let { listOf(FarmCareTarget(0, FarmCareRole.MOLE_MOUND, it)) }
-                    ?: return null
+                selected.takeIf { it.size == requested } ?: return null
             }
             FarmCareType.APPLE_HARVEST -> {
                 val leaves = registry.orchardLeaves(runtime.settings.id).filter { position ->
