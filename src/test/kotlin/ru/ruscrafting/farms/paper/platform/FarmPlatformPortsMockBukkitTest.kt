@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper.platform
 
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import net.kyori.adventure.text.Component
 import org.bukkit.Location
@@ -8,9 +9,11 @@ import org.bukkit.Material
 import org.bukkit.entity.Horse
 import org.bukkit.entity.TextDisplay
 import ru.arc.paper.testing.MockBukkitTestRuntime
-import ru.ruscrafting.farms.paper.fixtures.MockBukkitFarmBlockPlatform
-import ru.ruscrafting.farms.paper.fixtures.MockBukkitFarmChunkLeaseManager
-import ru.ruscrafting.farms.paper.fixtures.MockBukkitFarmEntityPlatform
+import ru.ruscrafting.farms.paper.fixtures.MockBukkitFarmBlockDataDecoder
+import ru.ruscrafting.farms.paper.fixtures.MockBukkitFarmBlockPassability
+import ru.ruscrafting.farms.paper.fixtures.MockBukkitFarmTextDisplays
+import ru.ruscrafting.farms.paper.fixtures.MockBukkitFarmVehiclePassengers
+import ru.ruscrafting.farms.paper.fixtures.MockBukkitMoleBurrowChunkRetention
 
 class FarmPlatformPortsMockBukkitTest : FunSpec({
     test("test entity adapter preserves passenger and display semantics") {
@@ -20,12 +23,12 @@ class FarmPlatformPortsMockBukkitTest : FunSpec({
             val horse = world.spawn(Location(world, 2.5, 65.0, 2.5), Horse::class.java)
             horse.addPassenger(player) shouldBe true
 
-            MockBukkitFarmEntityPlatform.ejectPassengers(horse) shouldBe true
+            MockBukkitFarmVehiclePassengers.ejectAll(horse) shouldBe true
             horse.passengers shouldBe emptyList()
             player.vehicle shouldBe null
 
             val display = world.spawn(Location(world, 3.5, 66.0, 3.5), TextDisplay::class.java)
-            MockBukkitFarmEntityPlatform.configureTextDisplay(
+            MockBukkitFarmTextDisplays.render(
                 display,
                 Component.text("test"),
                 FarmTextDisplayStyle(viewRange = 1.25f),
@@ -41,16 +44,32 @@ class FarmPlatformPortsMockBukkitTest : FunSpec({
             val world = paper.server.addSimpleWorld("farm")
             val air = world.getBlockAt(0, 65, 0)
             val stone = world.getBlockAt(0, 64, 0).apply { type = Material.STONE }
-            MockBukkitFarmBlockPlatform.isPassable(air) shouldBe true
-            MockBukkitFarmBlockPlatform.isPassable(stone) shouldBe false
-            MockBukkitFarmBlockPlatform.createBlockData("minecraft:wheat[age=3]").material shouldBe Material.WHEAT
+            val water = world.getBlockAt(1, 65, 0).apply { type = Material.WATER }
+            MockBukkitFarmBlockPassability.isPassable(air) shouldBe true
+            MockBukkitFarmBlockPassability.isPassable(stone) shouldBe false
+            MockBukkitFarmBlockPassability.isPassable(water) shouldBe true
+            MockBukkitFarmBlockDataDecoder.decode("minecraft:wheat[age=3]").asString shouldBe
+                "minecraft:wheat[age=3]"
+            val pointedDripstone = Material.POINTED_DRIPSTONE.createBlockData().asString
+            MockBukkitFarmBlockDataDecoder.decode(pointedDripstone).material shouldBe Material.POINTED_DRIPSTONE
+            shouldThrow<IllegalArgumentException> {
+                MockBukkitFarmBlockDataDecoder.decode("minecraft:wheat[not_a_property=3]")
+            }
+            shouldThrow<IllegalArgumentException> {
+                MockBukkitFarmBlockDataDecoder.decode("minecraft:pointed_dripstone[thickness=impossible]")
+            }
+            shouldThrow<IllegalArgumentException> {
+                MockBukkitFarmBlockDataDecoder.decode(
+                    "minecraft:pointed_dripstone[thickness=impossible,thickness=tip]",
+                )
+            }
 
-            val leases = MockBukkitFarmChunkLeaseManager()
+            val leases = MockBukkitMoleBurrowChunkRetention()
             val chunk = world.getChunkAt(0, 0)
-            leases.retain(chunk) shouldBe true
-            leases.retain(chunk) shouldBe false
+            val lease = leases.retain(chunk)
             leases.retainedCount() shouldBe 1
-            leases.release(chunk) shouldBe true
+            lease.close()
+            lease.close()
             leases.retainedCount() shouldBe 0
         }
     }

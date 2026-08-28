@@ -17,8 +17,7 @@ import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockPolicy
 import ru.ruscrafting.farms.paper.FarmRuntime
-import ru.ruscrafting.farms.paper.platform.FarmBlockPlatform
-import ru.ruscrafting.farms.paper.platform.FarmChunkLeaseManager
+import ru.ruscrafting.farms.paper.platform.FarmBlockDataDecoder
 import java.util.ArrayDeque
 import java.util.logging.Level
 import kotlin.math.floor
@@ -111,8 +110,8 @@ internal fun FarmRuntime.ownsMoleBurrowRecord(record: FarmMoleBurrowJournalRecor
 internal class FarmMoleBurrowWorld(
     private val plugin: Plugin,
     private val debug: ArcFarmsDebug,
-    private val chunkLeases: FarmChunkLeaseManager,
-    private val blocks: FarmBlockPlatform,
+    private val chunkRetention: MoleBurrowChunkRetention,
+    private val blockDataDecoder: FarmBlockDataDecoder,
 ) {
     private data class SceneKey(val world: String, val zoneId: String, val sequence: Long, val burrowId: Int)
     private data class RecordKey(val world: String, val x: Int, val y: Int, val z: Int)
@@ -123,7 +122,7 @@ internal class FarmMoleBurrowWorld(
     private val restoreQueue = ArrayDeque<FarmMoleBurrowJournalRecord>()
     private val queuedBuilds = linkedSetOf<RecordKey>()
     private val queuedRestores = linkedSetOf<RecordKey>()
-    private val ticketedChunks = linkedSetOf<Triple<String, Int, Int>>()
+    private val ticketedChunks = linkedMapOf<Triple<String, Int, Int>, MoleBurrowChunkLease>()
     private val scenes = mutableMapOf<SceneKey, FarmMoleBurrowScene>()
 
     fun preview(runtime: FarmRuntime, surface: FarmPointPosition): FarmMoleBurrowScene? =
@@ -434,12 +433,7 @@ internal class FarmMoleBurrowWorld(
         queuedBuilds.clear()
         queuedRestores.clear()
         scenes.clear()
-        ticketedChunks.toList().forEach { (worldName, x, z) ->
-            Bukkit.getWorld(worldName)?.takeIf { it.isChunkLoaded(x, z) }?.getChunkAt(x, z)?.let { chunk ->
-                chunkLeases.release(chunk)
-            }
-        }
-        ticketedChunks.clear()
+        ticketedChunks.entries.toList().forEach { (key, lease) -> releaseTicket(key, lease) }
     }
 
     private fun viabilityFailures(
@@ -538,10 +532,22 @@ internal class FarmMoleBurrowWorld(
         }
         var processed = 0
         selected.groupBy { Triple(it.world, it.x shr 4, it.z shr 4) }.forEach { (chunkKey, pending) ->
-            val world = Bukkit.getWorld(chunkKey.first) ?: return@forEach
-            if (!world.isChunkLoaded(chunkKey.second, chunkKey.third)) return@forEach
+            val world = Bukkit.getWorld(chunkKey.first) ?: run {
+                enqueue(pending, queue, queued)
+                return@forEach
+            }
+            if (!world.isChunkLoaded(chunkKey.second, chunkKey.third)) {
+                // Chunk availability is transient. Dropping these entries used to leave a
+                // committed scene permanently half-built (or half-restored) after one
+                // unlucky unload between selection and mutation.
+                enqueue(pending, queue, queued)
+                return@forEach
+            }
             val chunk = world.getChunkAt(chunkKey.second, chunkKey.third)
-            val current = read(chunk) ?: return@forEach
+            val current = read(chunk) ?: run {
+                enqueue(pending, queue, queued)
+                return@forEach
+            }
             val pendingKeys = pending.mapTo(hashSetOf()) { it.key() }
             val owned = current.filter { it.key() in pendingKeys }
             val (accepted, rejected) = owned.partition(allowed)
@@ -570,7 +576,7 @@ internal class FarmMoleBurrowWorld(
     private fun apply(record: FarmMoleBurrowJournalRecord, raw: String): Boolean {
         val world = Bukkit.getWorld(record.world) ?: return false
         if (!world.isChunkLoaded(record.x shr 4, record.z shr 4)) return false
-        val data = runCatching { blocks.createBlockData(raw) }.getOrElse { failure ->
+        val data = runCatching { blockDataDecoder.decode(raw) }.getOrElse { failure ->
             logger.log(Level.SEVERE, "Could not decode mole burrow BlockData at ${record.world}:${record.x},${record.y},${record.z}", failure)
             return false
         }
@@ -639,9 +645,9 @@ internal class FarmMoleBurrowWorld(
 
     private fun ticket(world: World, records: Collection<FarmMoleBurrowJournalRecord>) {
         records.map { Triple(it.world, it.x shr 4, it.z shr 4) }.distinct().forEach { key ->
-            if (key !in ticketedChunks && world.isChunkLoaded(key.second, key.third) &&
-                chunkLeases.retain(world.getChunkAt(key.second, key.third))
-            ) ticketedChunks += key
+            if (key !in ticketedChunks && world.isChunkLoaded(key.second, key.third)) {
+                ticketedChunks[key] = chunkRetention.retain(world.getChunkAt(key.second, key.third))
+            }
         }
     }
 
@@ -659,7 +665,22 @@ internal class FarmMoleBurrowWorld(
 
     private fun releaseTicket(chunk: Chunk) {
         val key = Triple(chunk.world.name, chunk.x, chunk.z)
-        if (ticketedChunks.remove(key)) chunkLeases.release(chunk)
+        ticketedChunks[key]?.let { lease -> releaseTicket(key, lease) }
+    }
+
+    private fun releaseTicket(
+        key: Triple<String, Int, Int>,
+        lease: MoleBurrowChunkLease,
+    ) {
+        runCatching(lease::close)
+            .onSuccess { ticketedChunks.remove(key, lease) }
+            .onFailure { failure ->
+                logger.log(
+                    Level.WARNING,
+                    "Could not release mole burrow chunk lease ${key.first}:${key.second},${key.third}; will retry",
+                    failure,
+                )
+            }
     }
 
     private fun enqueue(

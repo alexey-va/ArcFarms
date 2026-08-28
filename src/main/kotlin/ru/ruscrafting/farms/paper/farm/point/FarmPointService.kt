@@ -117,7 +117,11 @@ internal class FarmPointService(
             FarmPointKind.PROCESSING -> resolveBase(runtime, FarmPointKind.RECEIVING)
             FarmPointKind.PROCESSING_INPUT -> FarmProcessingLayout.create(
                 resolveBase(runtime, FarmPointKind.PROCESSING),
-            ).inputRack
+            ).inputRacks.single()
+            FarmPointKind.PROCESSING_INPUT_2,
+            FarmPointKind.PROCESSING_INPUT_3,
+            FarmPointKind.PROCESSING_INPUT_4,
+            -> resolveBase(runtime, FarmPointKind.PROCESSING_INPUT)
             FarmPointKind.PROCESSING_OUTPUT -> FarmProcessingLayout.create(
                 resolveBase(runtime, FarmPointKind.PROCESSING),
             ).outputPallet

@@ -163,7 +163,7 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         ).forEach { forbidden -> graph.contains(forbidden) shouldBe false }
     }
 
-    test("MockBukkit gaps use named platform ports instead of gameplay constructor lambdas") {
+    test("MockBukkit gaps use one-purpose ports instead of callbacks or platform grab-bags") {
         val forbidden = listOf(
             "blockPassable:",
             "surfacePassable:",
@@ -184,14 +184,26 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         }
 
         offenders shouldBe emptyList()
+        listOf("FarmBlockPlatform", "FarmEntityPlatform", "FarmChunkLeaseManager").forEach { forbiddenType ->
+            Files.walk(repositoryRoot.resolve("src/main/kotlin")).use { paths ->
+                paths.filter { Files.isRegularFile(it) && it.toString().endsWith(".kt") }
+                    .noneMatch { Files.readString(it).contains(forbiddenType) } shouldBe true
+            }
+        }
+        listOf(
+            "FarmBlockPassability.kt",
+            "FarmBlockDataDecoder.kt",
+            "FarmTextDisplayRenderer.kt",
+            "FarmMobDespawnPolicy.kt",
+            "FarmVehiclePassengerControl.kt",
+        ).forEach { filename ->
+            Files.exists(repositoryRoot.resolve("src/main/kotlin/ru/ruscrafting/farms/paper/platform/$filename")) shouldBe true
+        }
         Files.exists(repositoryRoot.resolve(
-            "src/main/kotlin/ru/ruscrafting/farms/paper/platform/FarmBlockPlatform.kt",
+            "src/main/kotlin/ru/ruscrafting/farms/paper/farm/care/mole/MoleBurrowChunkRetention.kt",
         )) shouldBe true
         Files.exists(repositoryRoot.resolve(
-            "src/main/kotlin/ru/ruscrafting/farms/paper/platform/FarmEntityPlatform.kt",
-        )) shouldBe true
-        Files.exists(repositoryRoot.resolve(
-            "src/test/kotlin/ru/ruscrafting/farms/paper/fixtures/MockBukkitFarmPlatforms.kt",
+            "src/test/kotlin/ru/ruscrafting/farms/paper/fixtures/MockBukkitFarmPaperPorts.kt",
         )) shouldBe true
     }
 

@@ -11,11 +11,10 @@ import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 /** Player-only placement preview; it never creates an entity or changes the world. */
 internal class FarmProcessingAdminPreview(private val port: WorksiteRuntimePort) {
     fun show(runtime: FarmRuntime, layout: FarmProcessingLayout, player: Player) {
-        listOf(
-            layout.inputRack to Color.fromRGB(91, 184, 255),
+        (layout.inputRacks.map { it to Color.fromRGB(91, 184, 255) } + listOf(
             layout.machine to Color.fromRGB(255, 178, 36),
             layout.outputPallet to Color.fromRGB(92, 214, 116),
-        ).forEach { (point, color) ->
+        )).forEach { (point, color) ->
             var height = 0.3
             while (height <= 2.7) {
                 port.spawnGuidanceDust(player, point.location(runtime).add(0.0, height, 0.0), color, 1.15f)

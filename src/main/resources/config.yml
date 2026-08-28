@@ -60,6 +60,19 @@ farm-zones:
     block-reindex-blocks-per-tick: 4096
     # Refuse accidentally huge WorldGuard bounds instead of freezing the server.
     block-reindex-max-blocks: 20000000
+    # An explicit reindex rebuilds ordinary crop beds as coherent single-crop components.
+    # Melon/pumpkin blocks and their stems remain manually authored and are never replanted here.
+    crop-layout:
+      enabled: true
+      weights:
+        WHEAT: 30
+        CARROTS: 25
+        POTATOES: 25
+        BEETROOTS: 15
+        SWEET_BERRY_BUSH: 5
+      # Tiny nearby islands visually inherit the crop of a larger bed instead of creating stripes.
+      small-component-max-size: 16
+      small-component-merge-distance: 10
     # Farm backups capture the configured region and process it in bounded main-thread slices.
     backup-blocks-per-tick: 2048
     backup-max-blocks: 4000000
@@ -295,16 +308,18 @@ farm-zones:
         light-level: 15
       gunner:
         # The invisible interaction covers the cart, so either the cart or horse is easy to click.
-        seat-y-offset: 0.225
+        # A shallow seat keeps the passenger on the rear bench instead of above the driver's camera.
+        seat-y-offset: -0.15
+        seat-back-offset: 0.65
         interaction-width: 2.8
-        interaction-height: 2.2
+        interaction-height: 0.7
         # voxelspawns_megaflintlocks:vs_rifle_double from the live ItemsAdder pack.
         material: CROSSBOW
         custom-model-data: 2100103
         item-model: ''
         damage: 7.0
         range: 42.0
-        cooldown-ticks: 12
+        cooldown-ticks: 6
         trail-length: 10
     pest-entity: SILVERFISH
     pest-spawn-radius: 6

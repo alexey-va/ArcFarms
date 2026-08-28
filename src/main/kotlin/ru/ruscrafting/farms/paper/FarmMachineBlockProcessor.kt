@@ -24,23 +24,22 @@ internal class FarmMachineBlockProcessor(
         return FarmMachineBlockResult(selected.mapTo(linkedSetOf()) { it.first })
     }
 
-    fun plant(
+    fun restoreRecordedCrops(
         zoneId: String,
-        crop: Material,
         plots: Collection<FarmPlotPosition>,
         limit: Int,
     ): FarmMachineBlockResult {
         val selected = select(plots, limit) { soil ->
             val above = soil.getRelative(org.bukkit.block.BlockFace.UP)
-            above.type.isAir || above.type == crop
+            val record = ledger.record(soil)
+            record?.activeCropData != null && (above.type.isAir || above.blockData.asString == record.activeCropData)
         }
         val soils = selected.map { it.second }
         ledger.captureAll(soils, zoneId)
         soils.forEach { soil ->
             setWetFarmland(soil)
-            soil.getRelative(org.bukkit.block.BlockFace.UP).setBlockData(crop.createBlockData(), false)
+            ledger.restoreActiveCrop(soil)
         }
-        ledger.updateActiveCrops(soils)
         return FarmMachineBlockResult(selected.mapTo(linkedSetOf()) { it.first })
     }
 

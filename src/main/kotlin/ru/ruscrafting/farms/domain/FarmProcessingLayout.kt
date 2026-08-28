@@ -7,11 +7,13 @@ data class FarmProcessingLayout(
     val anchor: FarmPointPosition,
     val machine: FarmPointPosition,
     val wheel: FarmPointPosition,
-    val inputRack: FarmPointPosition,
+    val inputRacks: List<FarmPointPosition>,
     val inputDrop: FarmPointPosition,
     val outputChute: FarmPointPosition,
     val outputPallet: FarmPointPosition,
-    val labels: List<FarmPointPosition>,
+    val inputLabels: List<FarmPointPosition>,
+    val machineLabel: FarmPointPosition,
+    val outputLabel: FarmPointPosition,
     val footprint: List<FarmPointPosition>,
 ) {
     companion object {
@@ -20,12 +22,12 @@ data class FarmProcessingLayout(
 
         fun create(
             anchor: FarmPointPosition,
-            inputRackOverride: FarmPointPosition? = null,
+            inputRackOverrides: List<FarmPointPosition> = emptyList(),
             outputPalletOverride: FarmPointPosition? = null,
         ): FarmProcessingLayout {
             val machine = offset(anchor, 0.0, 0.0, 0.0)
             val wheel = offset(anchor, 0.0, 0.55, 1.15)
-            val inputRack = inputRackOverride ?: offset(anchor, -3.0, 0.0, 0.35)
+            val inputRacks = inputRackOverrides.ifEmpty { listOf(offset(anchor, -3.0, 0.0, 0.35)) }
             val inputDrop = offset(anchor, -1.15, 0.45, 0.7)
             val outputChute = offset(anchor, 1.35, 0.25, 0.7)
             val outputPallet = outputPalletOverride ?: offset(anchor, 3.0, 0.0, 0.25)
@@ -33,19 +35,26 @@ data class FarmProcessingLayout(
                 anchor = anchor,
                 machine = machine,
                 wheel = wheel,
-                inputRack = inputRack,
+                inputRacks = inputRacks,
                 inputDrop = inputDrop,
                 outputChute = outputChute,
                 outputPallet = outputPallet,
-                labels = listOf(
-                    offset(inputRack, 0.0, 0.0, 1.85),
-                    offset(machine, 0.0, 0.0, 2.35),
-                    offset(outputPallet, 0.0, 0.0, 1.85),
-                ),
+                inputLabels = inputRacks.map { offset(it, 0.0, 0.0, 1.85) },
+                machineLabel = offset(machine, 0.0, 0.0, 2.35),
+                outputLabel = offset(outputPallet, 0.0, 0.0, 1.85),
                 footprint = (-4..4).flatMap { right ->
                     (-2..2).map { forward -> offset(anchor, right.toDouble(), forward.toDouble(), 0.0) }
                 },
             )
+        }
+
+        fun packagePosition(
+            bases: List<FarmPointPosition>,
+            index: Int,
+            delivered: Boolean = false,
+        ): FarmPointPosition {
+            require(bases.isNotEmpty()) { "Processing package bases are empty" }
+            return packagePosition(bases[index % bases.size], index / bases.size, delivered)
         }
 
         fun packagePosition(base: FarmPointPosition, index: Int, delivered: Boolean = false): FarmPointPosition {

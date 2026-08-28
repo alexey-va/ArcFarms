@@ -23,8 +23,8 @@ import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.CuboidActivityRegion
 import ru.ruscrafting.farms.paper.FarmRuntime
-import ru.ruscrafting.farms.paper.fixtures.MockBukkitFarmBlockPlatform
-import ru.ruscrafting.farms.paper.fixtures.MockBukkitFarmChunkLeaseManager
+import ru.ruscrafting.farms.paper.fixtures.MockBukkitFarmBlockDataDecoder
+import ru.ruscrafting.farms.paper.fixtures.MockBukkitMoleBurrowChunkRetention
 
 class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
     lateinit var paper: MockBukkitTestRuntime
@@ -68,8 +68,8 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         val controller = FarmMoleBurrowWorld(
             paper.createSimplePlugin("FarmMoleBurrowWorldTest"),
             ArcFarmsDebug({ false }) {},
-            MockBukkitFarmChunkLeaseManager(),
-            MockBukkitFarmBlockPlatform,
+            MockBukkitMoleBurrowChunkRetention(),
+            MockBukkitFarmBlockDataDecoder,
         )
 
         val scene = controller.preview(runtime, FarmPointPosition(world.name, 0.5, 65.0, 0.5))
@@ -115,11 +115,12 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
             rules = FarmRules(listOf(50), 1, 1_000),
             state = FarmShiftState(phase = FarmPhase.CARE, sequence = 8),
         )
+        val retention = MockBukkitMoleBurrowChunkRetention()
         val controller = FarmMoleBurrowWorld(
             paper.createSimplePlugin("FarmMoleBedEntranceTest"),
             ArcFarmsDebug({ false }) {},
-            MockBukkitFarmChunkLeaseManager(),
-            MockBukkitFarmBlockPlatform,
+            retention,
+            MockBukkitFarmBlockDataDecoder,
         )
         val surface = FarmPointPosition(world.name, 0.5, 65.05, 0.5)
 
@@ -129,6 +130,12 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         controller.process(records.size) { true } shouldBe records.size
         soil.type shouldBe Material.BARRIER
         crop.type shouldBe Material.AIR
+
+        retention.failNextCloseAttempts(1)
+        controller.clearQueues()
+        retention.retainedCount() shouldBe 1
+        controller.clearQueues()
+        retention.retainedCount() shouldBe 0
 
         controller.beginRestore(world, runtime.settings.id, runtime.state.sequence)
         controller.process(records.size) { true } shouldBe records.size
@@ -168,8 +175,8 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         val controller = FarmMoleBurrowWorld(
             paper.createSimplePlugin("FarmMoleBurrowFloorTest"),
             ArcFarmsDebug({ false }) {},
-            MockBukkitFarmChunkLeaseManager(),
-            MockBukkitFarmBlockPlatform,
+            MockBukkitMoleBurrowChunkRetention(),
+            MockBukkitFarmBlockDataDecoder,
         )
 
         controller.preview(runtime, FarmPointPosition(world.name, 0.5, 65.0, 0.5))?.records?.isNotEmpty() shouldBe true
@@ -203,8 +210,8 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         val controller = FarmMoleBurrowWorld(
             paper.createSimplePlugin("FarmMoleVerticalRegionTest"),
             ArcFarmsDebug({ false }) {},
-            MockBukkitFarmChunkLeaseManager(),
-            MockBukkitFarmBlockPlatform,
+            MockBukkitMoleBurrowChunkRetention(),
+            MockBukkitFarmBlockDataDecoder,
         )
 
         val surface = FarmPointPosition(world.name, 0.5, 65.0, 0.5)
@@ -260,8 +267,8 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         val controller = FarmMoleBurrowWorld(
             paper.createSimplePlugin("FarmMultiMoleBurrowTest"),
             ArcFarmsDebug({ false }) {},
-            MockBukkitFarmChunkLeaseManager(),
-            MockBukkitFarmBlockPlatform,
+            MockBukkitMoleBurrowChunkRetention(),
+            MockBukkitFarmBlockDataDecoder,
         )
 
         controller.prepare(runtime, targets, runtime.state.placementSequence) shouldBe true
@@ -305,8 +312,8 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         val controller = FarmMoleBurrowWorld(
             paper.createSimplePlugin("FarmMoleBurrowBuildingTest"),
             ArcFarmsDebug({ false }) {},
-            MockBukkitFarmChunkLeaseManager(),
-            MockBukkitFarmBlockPlatform,
+            MockBukkitMoleBurrowChunkRetention(),
+            MockBukkitFarmBlockDataDecoder,
         )
 
         val preview = controller.previewDetailed(runtime, FarmPointPosition(world.name, 0.5, 65.0, 0.5))

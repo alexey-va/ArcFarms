@@ -263,6 +263,8 @@ data class FarmShiftState(
     val progress: Map<String, Int> = emptyMap(),
     val preparationPatch: List<FarmPlotPosition> = emptyList(),
     val preparationCrop: String? = null,
+    /** True when the current patch must be restored from its per-bed crop snapshots instead of one order crop. */
+    val mechanizedPreparation: Boolean = false,
     val preparationReleased: Boolean = false,
     val tilledPlots: Set<FarmPlotPosition> = emptySet(),
     val plantedPlots: Set<FarmPlotPosition> = emptySet(),
@@ -539,6 +541,7 @@ object FarmShiftEngine {
                 phase = FarmPhase.CARE,
                 placementSequence = current.nextPlacementSequence(),
                 careType = type,
+                mechanizedPreparation = type == FarmCareType.SEEDER || current.mechanizedPreparation,
                 seederStage = if (type == FarmCareType.SEEDER) FarmSeederStage.TILLING else null,
                 careTargets = targets,
                 careGoal = goal,

@@ -41,19 +41,20 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
             runtime.state.incidentProgress shouldBe 1
             runtime.state.incidentRequired shouldBe route.size
             requireNotNull(runtime.state.specialIncident).routeName shouldBe "main"
-            fixture.world.entities.filter(delivery::owns) shouldHaveSize 7
+            fixture.world.entities.filter(delivery::owns) shouldHaveSize 9
 
             delivery.cleanup("simulated_restart")
             runtime = fixture.persistAndReload(runtime)
             delivery = fixture.foodDelivery(runtime, route)
             delivery.ensure(runtime, 2_000L)
             val restartedIds = fixture.world.entities.filter(delivery::owns).mapTo(linkedSetOf()) { it.uniqueId }
-            restartedIds shouldHaveSize 7
+            restartedIds shouldHaveSize 9
             repeat(4) { delivery.ensure(runtime, 2_000L + it) }
             fixture.world.entities.filter(delivery::owns).mapTo(linkedSetOf()) { it.uniqueId } shouldBe restartedIds
 
             var horse = fixture.world.entities.filterIsInstance<Horse>().single(delivery::owns)
-            var seat = fixture.world.entities.filterIsInstance<Interaction>().single(delivery::owns)
+            var seat = fixture.world.entities.filterIsInstance<Interaction>().filter(delivery::owns)
+                .minBy { it.location.distanceSquared(horse.location) }
             // Either clickable entity fills the first free crew seat: driver first, then gunner.
             delivery.interact(PlayerInteractEntityEvent(driver, seat, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
             delivery.interact(PlayerInteractEntityEvent(gunner, horse, EquipmentSlot.HAND), listOf(runtime)) shouldBe true

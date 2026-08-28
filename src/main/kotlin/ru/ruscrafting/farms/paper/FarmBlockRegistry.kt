@@ -1,11 +1,14 @@
 package ru.ruscrafting.farms.paper
 
 import org.bukkit.Chunk
+import org.bukkit.Material
 import org.bukkit.World
 import org.bukkit.block.Block
+import org.bukkit.block.data.Ageable
 import org.bukkit.plugin.Plugin
 import ru.arc.core.ScheduledTask
 import ru.arc.core.Tasks
+import ru.ruscrafting.farms.config.FarmCropLayoutSettings
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import java.util.PriorityQueue
 
@@ -16,6 +19,7 @@ internal data class FarmBlockIndexDefinition(
     val blocksPerTick: Int,
     val maxBlocks: Int,
     val maxOrchardLeaves: Int,
+    val cropLayout: FarmCropLayoutSettings,
 ) {
     init {
         require(zoneId.matches(Regex("[a-z0-9_-]{1,48}"))) { "Invalid farm block index zone id" }
@@ -23,6 +27,9 @@ internal data class FarmBlockIndexDefinition(
         require(blocksPerTick in 1..65_536) { "Farm block index tick budget is invalid" }
         require(maxBlocks >= blocksPerTick) { "Farm block index size limit is invalid" }
         require(maxOrchardLeaves in 1..65_536) { "Farm orchard index limit is invalid" }
+        require(cropLayout.weights.keys.all(crops::contains)) {
+            "Farm crop layout contains a crop outside the farm crop set"
+        }
     }
 }
 
@@ -204,6 +211,7 @@ internal class FarmBlockRegistry(
         private var nextTask: ScheduledTask? = null
         private var finished = false
         private var orchardByChunk: Map<Long, Set<FarmPlotPosition>> = emptyMap()
+        private var cropLayoutByBed: Map<FarmPlotPosition, String> = emptyMap()
 
         fun status(): FarmBlockReindexStatus = FarmBlockReindexStatus(
             zoneId = definition.zoneId,
@@ -305,6 +313,7 @@ internal class FarmBlockRegistry(
         private fun beginApply() {
             phase = FarmBlockReindexPhase.APPLYING
             chunkIndex = 0
+            cropLayoutByBed = FarmCropLayoutPlanner.plan(beds.values.flatten(), definition.cropLayout)
             orchardByChunk = orchardSampler.values().groupByTo(linkedMapOf()) { position ->
                 chunkKey(position.x shr 4, position.z shr 4)
             }.mapValues { (_, positions) ->
@@ -331,6 +340,10 @@ internal class FarmBlockRegistry(
                 }
             }
             validBeds.forEach(FarmBlockPolicy::makeWet)
+            validBeds.forEach { soil ->
+                val cropName = cropLayoutByBed[soil.toPosition()] ?: return@forEach
+                plantMature(soil.getRelative(org.bukkit.block.BlockFace.UP), Material.valueOf(cropName))
+            }
             val validFixed = fixedCrops[key].orEmpty().mapNotNull { position ->
                 chunk.world.getBlockAt(position.x, position.y, position.z).takeIf {
                     definition.region.contains(it.location) && MaterialRules.isFixedBlockCrop(it.type) &&
@@ -402,6 +415,12 @@ internal class FarmBlockRegistry(
             require(currentSize < limit) { "Farm reindex found too many $label" }
             target.getOrPut(chunkKey, ::linkedSetOf) += position
             return true
+        }
+
+        private fun plantMature(block: Block, material: Material) {
+            val data = material.createBlockData()
+            if (data is Ageable) data.age = data.maximumAge
+            block.setBlockData(data, false)
         }
     }
 

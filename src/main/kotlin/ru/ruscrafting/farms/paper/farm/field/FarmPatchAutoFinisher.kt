@@ -38,11 +38,11 @@ internal class FarmPatchAutoFinisher(
         for (position in runtime.state.preparationPatch) {
             if (selected.size >= limit) break
             val soil = position.block() ?: continue
-            if (action.needsMutation(soil, crop)) selected += soil
+            if (action.needsMutation(soil, crop, ledger.record(soil))) selected += soil
         }
         if (selected.isNotEmpty()) {
             ledger.captureAll(selected, runtime.settings.id)
-            selected.forEach { soil -> action.mutate(soil, crop) }
+            selected.forEach { soil -> action.mutate(soil, crop, ledger) }
             if (action == Action.PLANT) ledger.updateActiveCrops(selected)
         }
         val complete = selected.size < limit
@@ -64,6 +64,8 @@ internal class FarmPatchAutoFinisher(
         runtime.state.phase == FarmPhase.PLANTING -> Action.TILL
         runtime.state.phase == FarmPhase.CARE && runtime.state.careType == FarmCareType.SEEDER &&
             runtime.state.seederStage == FarmSeederStage.PLANTING -> Action.TILL
+        runtime.state.mechanizedPreparation &&
+            runtime.state.plantedPlots.containsAll(runtime.state.preparationPatch) -> Action.RESTORE_RECORDED_CROP
         (runtime.state.phase == FarmPhase.HARVESTING || runtime.state.phase == FarmPhase.CARE) &&
             runtime.state.plantedPlots.containsAll(runtime.state.preparationPatch) -> Action.PLANT
         else -> null
@@ -71,22 +73,32 @@ internal class FarmPatchAutoFinisher(
 
     private enum class Action {
         TILL,
-        PLANT;
+        PLANT,
+        RESTORE_RECORDED_CROP;
 
-        fun needsMutation(soil: Block, crop: Material?): Boolean = when (this) {
+        fun needsMutation(
+            soil: Block,
+            crop: Material?,
+            record: ru.ruscrafting.farms.paper.ManagedFarmBlockRecord?,
+        ): Boolean = when (this) {
             TILL -> soil.type != Material.FARMLAND
             PLANT -> crop != null && soil.getRelative(org.bukkit.block.BlockFace.UP).let { above ->
                 (above.type.isAir || above.type == crop) && (soil.type != Material.FARMLAND || above.type != crop)
             }
+            RESTORE_RECORDED_CROP -> record?.activeCropData != null &&
+                (soil.type != Material.FARMLAND || soil.getRelative(org.bukkit.block.BlockFace.UP).blockData.asString != record.activeCropData)
         }
 
-        fun mutate(soil: Block, crop: Material?) {
+        fun mutate(soil: Block, crop: Material?, ledger: FarmBlockLedger) {
             if (soil.type != Material.FARMLAND) soil.setType(Material.FARMLAND, false)
             val farmland = (soil.blockData as? Farmland) ?: (Material.FARMLAND.createBlockData() as Farmland)
             farmland.moisture = farmland.maximumMoisture
             soil.setBlockData(farmland, false)
-            if (this == PLANT) {
-                soil.getRelative(org.bukkit.block.BlockFace.UP).setBlockData(requireNotNull(crop).createBlockData(), false)
+            when (this) {
+                PLANT -> soil.getRelative(org.bukkit.block.BlockFace.UP)
+                    .setBlockData(requireNotNull(crop).createBlockData(), false)
+                RESTORE_RECORDED_CROP -> ledger.restoreActiveCrop(soil)
+                TILL -> Unit
             }
         }
     }

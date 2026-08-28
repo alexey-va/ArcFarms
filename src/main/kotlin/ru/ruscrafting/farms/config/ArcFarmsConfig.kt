@@ -72,6 +72,20 @@ data class ZoneReference(
     }
 }
 
+data class FarmCropLayoutSettings(
+    val enabled: Boolean,
+    val weights: Map<String, Int>,
+    val smallComponentMaxSize: Int,
+    val smallComponentMergeDistance: Int,
+) {
+    init {
+        require(weights.isNotEmpty()) { "Farm crop layout has no crop weights" }
+        require(weights.values.all { it in 1..10_000 }) { "Farm crop layout weights must be in 1..10000" }
+        require(smallComponentMaxSize in 0..256) { "Farm crop layout small-component size is invalid" }
+        require(smallComponentMergeDistance in 0..64) { "Farm crop layout merge distance is invalid" }
+    }
+}
+
 data class FarmZoneSettings(
     val id: String,
     val reference: ZoneReference,
@@ -84,6 +98,7 @@ data class FarmZoneSettings(
     val restoreBlocksPerTick: Int,
     val blockReindexBlocksPerTick: Int,
     val blockReindexMaxBlocks: Int,
+    val cropLayout: FarmCropLayoutSettings,
     val backupBlocksPerTick: Int,
     val backupMaxBlocks: Int,
     val careRadius: Int,
@@ -497,6 +512,7 @@ data class FarmRouteDeliverySettings(
     val cartYOffset: Double,
     val cartLoadCount: Int,
     val gunnerSeatYOffset: Double,
+    val gunnerSeatBackOffset: Double,
     val gunnerInteractionWidth: Float,
     val gunnerInteractionHeight: Float,
     val rifleMaterial: String,
@@ -618,6 +634,36 @@ class ArcFarmsConfig private constructor(
                 validateId(id, "farm zone")
                 val crops = section.stringList("crops").map(::materialName).toSet()
                 require(crops.isNotEmpty()) { "Farm zone $id has no crops" }
+                val cropLayoutWeights = section.keys("crop-layout.weights").sorted().associate { rawCrop ->
+                    val crop = materialName(rawCrop)
+                    crop to section.int("crop-layout.weights.$rawCrop", 0)
+                        .checked("crop-layout.weights.$rawCrop", 1, 10_000)
+                }.ifEmpty {
+                    linkedMapOf(
+                        "WHEAT" to 30,
+                        "CARROTS" to 25,
+                        "POTATOES" to 25,
+                        "BEETROOTS" to 15,
+                        "SWEET_BERRY_BUSH" to 5,
+                    ).filterKeys(crops::contains)
+                }
+                require(cropLayoutWeights.isNotEmpty()) {
+                    "Farm zone $id crop-layout.weights has no configured ordinary crop"
+                }
+                require(cropLayoutWeights.keys.all(crops::contains)) {
+                    "Farm zone $id crop-layout.weights contains a crop outside farm-zones.$id.crops"
+                }
+                require(cropLayoutWeights.keys.none { it == "MELON" || it == "PUMPKIN" }) {
+                    "Farm zone $id crop layout must not manage fixed melon or pumpkin blocks"
+                }
+                val cropLayout = FarmCropLayoutSettings(
+                    enabled = section.boolean("crop-layout.enabled", true),
+                    weights = cropLayoutWeights,
+                    smallComponentMaxSize = section.int("crop-layout.small-component-max-size", 16)
+                        .checked("crop-layout.small-component-max-size", 0, 256),
+                    smallComponentMergeDistance = section.int("crop-layout.small-component-merge-distance", 10)
+                        .checked("crop-layout.small-component-merge-distance", 0, 64),
+                )
                 val reference = parseReference(section, "", id)
                 val incidentTypes = section.stringList("incident-types")
                     .ifEmpty { listOf(FarmIncidentType.PESTS.name, FarmIncidentType.DROUGHT.name) }
@@ -866,12 +912,15 @@ class ArcFarmsConfig private constructor(
                     cartYOffset = section.finiteDouble("route-delivery.cart-y-offset", 0.875, -2.0, 2.0),
                     cartLoadCount = section.int("route-delivery.cart-load-count", 4)
                         .checked("route-delivery.cart-load-count", 1, 8),
-                    gunnerSeatYOffset = section.finiteDouble("route-delivery.gunner.seat-y-offset", 0.225, -1.0, 3.0),
+                    gunnerSeatYOffset = section.finiteDouble("route-delivery.gunner.seat-y-offset", -0.15, -2.0, 3.0),
+                    gunnerSeatBackOffset = section.finiteDouble(
+                        "route-delivery.gunner.seat-back-offset", 0.65, 0.0, 2.0,
+                    ),
                     gunnerInteractionWidth = section.finiteFloat(
                         "route-delivery.gunner.interaction-width", 2.8f, 0.5f, 6.0f,
                     ),
                     gunnerInteractionHeight = section.finiteFloat(
-                        "route-delivery.gunner.interaction-height", 2.2f, 0.5f, 4.0f,
+                        "route-delivery.gunner.interaction-height", 0.7f, 0.4f, 4.0f,
                     ),
                     rifleMaterial = materialName(section.string("route-delivery.gunner.material", "CROSSBOW")),
                     rifleCustomModelData = section.int("route-delivery.gunner.custom-model-data", 2_100_103)
@@ -884,7 +933,7 @@ class ArcFarmsConfig private constructor(
                         },
                     rifleDamage = section.finiteDouble("route-delivery.gunner.damage", 7.0, 1.0, 40.0),
                     rifleRange = section.finiteDouble("route-delivery.gunner.range", 42.0, 8.0, 96.0),
-                    rifleCooldownTicks = section.int("route-delivery.gunner.cooldown-ticks", 12)
+                    rifleCooldownTicks = section.int("route-delivery.gunner.cooldown-ticks", 6)
                         .checked("route-delivery.gunner.cooldown-ticks", 2, 100),
                     gunnerTrailLength = section.int("route-delivery.gunner.trail-length", 10)
                         .checked("route-delivery.gunner.trail-length", 0, 32),
@@ -1217,6 +1266,7 @@ class ArcFarmsConfig private constructor(
                         .checked("block-reindex-blocks-per-tick", 256, 16_384),
                     blockReindexMaxBlocks = section.int("block-reindex-max-blocks", 20_000_000)
                         .checked("block-reindex-max-blocks", 100_000, 50_000_000),
+                    cropLayout = cropLayout,
                     backupBlocksPerTick = section.int("backup-blocks-per-tick", 2_048)
                         .checked("backup-blocks-per-tick", 128, 8_192),
                     backupMaxBlocks = section.int("backup-max-blocks", 4_000_000)

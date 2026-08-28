@@ -116,13 +116,17 @@ plugin chunk tickets, display billboards and mob despawn policy are absent,
 while passenger ejection has weaker bookkeeping than Paper. A missing mock API
 must not change the production gameplay contract.
 
-ArcFarms isolates only proven gaps behind cohesive ports in `paper/platform`:
+ArcFarms isolates only proven gaps behind one-purpose ports:
 
-- `FarmBlockPlatform` owns exact block-state calls used by placement and
-  recovery;
-- `FarmEntityPlatform` owns complete display setup, despawn policy and
-  passenger ejection;
-- `FarmChunkLeaseManager` owns plugin-ticket retain/release symmetry.
+- `FarmBlockPassability` answers only the exact Paper passability query;
+- `FarmBlockDataDecoder` decodes journalled block state without a permissive
+  fallback that could discard properties;
+- `FarmTextDisplayRenderer` applies the complete visual contract of one text
+  display;
+- `FarmMobDespawnPolicy` owns only distance-despawn configuration;
+- `FarmVehiclePassengerControl` owns only passenger unlinking;
+- `MoleBurrowChunkRetention` returns an idempotent lease owned by the mole
+  tunnel lifecycle instead of exposing a caller-paired retain/release protocol.
 
 `FarmComponentGraph` wires the Paper adapters. MockBukkit scenario fixtures wire
 their explicit test adapters from `src/test`; those adapters may approximate an
@@ -132,6 +136,8 @@ the pinned limitation. Gameplay constructors never accept raw callbacks such as
 Do not add a test-mode branch, catch `UnimplementedOperationException` in
 production, or collect unrelated ports into a service locator. A new port is
 justified only by a verified external boundary, not merely to make mocking easy.
+Do not merge ports merely because their parameters are Bukkit entities or
+blocks; that recreates a service locator under a narrower name.
 
 ## Farm module
 

@@ -119,8 +119,8 @@ internal class FarmIncidentScenarioFixture private constructor(
             if (zoneId == zone.id && kind == FarmPointKind.PROCESSING) processingPoint else null
         },
         transitions = transitionSink,
-        blocks = MockBukkitFarmBlockPlatform,
-        entityPlatform = MockBukkitFarmEntityPlatform,
+        blockPassability = MockBukkitFarmBlockPassability,
+        textDisplays = MockBukkitFarmTextDisplays,
     )
 
     fun barnFire(): FarmBarnFireIncident = FarmBarnFireIncident(
@@ -133,7 +133,7 @@ internal class FarmIncidentScenarioFixture private constructor(
             barnPoint
         },
         transitions = transitionSink,
-        blockPlatform = MockBukkitFarmBlockPlatform,
+        blockPassability = MockBukkitFarmBlockPassability,
     )
 
     fun foodDelivery(runtime: FarmRuntime, points: List<FarmPointPosition>): FarmFoodDeliveryIncident {
@@ -155,11 +155,17 @@ internal class FarmIncidentScenarioFixture private constructor(
             debug = ArcFarmsDebug({ false }) {},
             port = port,
             routes = routes,
+            points = FarmPointProvider { _, kind ->
+                check(kind == FarmPointKind.RECEIVING)
+                FarmPointPosition(world.name, 12.5, 65.0, 12.5)
+            },
             transitions = transitionSink,
             random = java.util.Random(7),
             night = FarmNightShiftController(plugin),
-            blocks = MockBukkitFarmBlockPlatform,
-            entityPlatform = MockBukkitFarmEntityPlatform,
+            blockPassability = MockBukkitFarmBlockPassability,
+            mobDespawns = MockBukkitFarmMobDespawns,
+            vehiclePassengers = MockBukkitFarmVehiclePassengers,
+            textDisplays = MockBukkitFarmTextDisplays,
         )
     }
 

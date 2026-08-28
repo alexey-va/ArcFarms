@@ -252,6 +252,7 @@ class FarmShiftEngineTest : FunSpec({
         var state = FarmShiftEngine.startCare(preparation, FarmCareType.SEEDER, targets).state
 
         state.phase shouldBe FarmPhase.CARE
+        state.mechanizedPreparation shouldBe true
         state = FarmShiftEngine.startSeeder(state, 0).state
         val firstHalf = machinePatch.take(6).toSet()
         val partial = FarmShiftEngine.workSeeder(state, firstHalf, player)

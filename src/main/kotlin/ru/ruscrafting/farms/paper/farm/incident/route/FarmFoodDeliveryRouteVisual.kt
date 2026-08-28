@@ -24,11 +24,24 @@ internal object FarmFoodDeliveryRouteVisual {
         val start = (current - 1).coerceAtLeast(0)
         val endExclusive = (start + config.trailLookaheadPoints).coerceAtMost(points.size)
         val dust = Particle.DustOptions(trailColor, config.trailParticleSize)
-        points.subList(start, endExclusive).forEachIndexed { offset, point ->
-            val marker = location(rider, point).add(0.0, config.trailHeight, 0.0)
-            rider.spawnParticle(Particle.DUST, marker, 1, 0.04, 0.03, 0.04, 0.0, dust)
-            if (offset == 1) renderColumn(rider, marker, nextColor, 4, config.trailParticleSize + 0.2f)
+        var emitted = 0
+        points.subList(start, endExclusive).zipWithNext().forEach { (from, to) ->
+            if (emitted >= MAX_TRAIL_PARTICLES || from.world != rider.world.name || to.world != rider.world.name) return@forEach
+            val origin = location(rider, from).add(0.0, config.trailHeight, 0.0)
+            val end = location(rider, to).add(0.0, config.trailHeight, 0.0)
+            val delta = end.toVector().subtract(origin.toVector())
+            val distance = delta.length()
+            if (distance <= 0.01) return@forEach
+            val step = delta.normalize().multiply(TRAIL_SPACING)
+            val cursor = origin.clone()
+            repeat(ceil(distance / TRAIL_SPACING).toInt()) {
+                if (emitted++ >= MAX_TRAIL_PARTICLES) return@repeat
+                rider.spawnParticle(Particle.DUST, cursor, 1, 0.035, 0.025, 0.035, 0.0, dust)
+                cursor.add(step)
+            }
         }
+        val next = points[(start + NEXT_MARKER_OFFSET).coerceAtMost(points.lastIndex)]
+        renderColumn(rider, location(rider, next).add(0.0, config.trailHeight, 0.0), nextColor, 7, config.trailParticleSize + 0.2f)
         renderDestination(runtime, rider, points.last())
     }
 
@@ -78,4 +91,8 @@ internal object FarmFoodDeliveryRouteVisual {
 
     private fun location(rider: Player, point: FarmPointPosition): Location =
         Location(rider.world, point.x, point.y, point.z, point.yaw, point.pitch)
+
+    private const val TRAIL_SPACING = 0.7
+    private const val MAX_TRAIL_PARTICLES = 128
+    private const val NEXT_MARKER_OFFSET = 5
 }

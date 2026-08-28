@@ -37,7 +37,8 @@ import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.care.FarmCarePresentation
 import ru.ruscrafting.farms.paper.farm.care.bukkit
-import ru.ruscrafting.farms.paper.platform.FarmEntityPlatform
+import ru.ruscrafting.farms.paper.platform.FarmMobDespawnPolicy
+import ru.ruscrafting.farms.paper.platform.FarmTextDisplayRenderer
 import ru.ruscrafting.farms.paper.platform.FarmTextDisplayStyle
 import ru.ruscrafting.farms.persistence.FarmBurrowReturn
 import ru.ruscrafting.farms.persistence.FarmBurrowReturnRepository
@@ -59,7 +60,8 @@ internal class FarmMoleBurrowController(
     private val transitions: FarmTransitionSink,
     private val runtimes: () -> Collection<FarmRuntime>,
     private val clock: () -> Long,
-    private val entityPlatform: FarmEntityPlatform,
+    private val textDisplays: FarmTextDisplayRenderer,
+    private val mobDespawns: FarmMobDespawnPolicy,
 ) {
     private enum class Role { ENTRANCE, LAIR, EXIT, MOLE }
     private data class SceneKey(val zoneId: String, val sequence: Long, val burrowId: Int)
@@ -86,7 +88,16 @@ internal class FarmMoleBurrowController(
         if (!active(runtime)) return
         runtime.state.careTargets.filter { it.role == FarmCareRole.MOLE_MOUND && !it.complete }.forEach { target ->
             val (result, scene) = world.ensure(runtime, target.position, target.id)
-            if (result == FarmMoleBurrowEnsureResult.READY && scene != null) ensureScene(runtime, scene)
+            when {
+                result == FarmMoleBurrowEnsureResult.READY && scene != null -> ensureScene(runtime, scene)
+                result == FarmMoleBurrowEnsureResult.BUILDING && scene != null -> ensureBuildingEntrance(runtime, scene)
+                result == FarmMoleBurrowEnsureResult.UNAVAILABLE -> debug.event(
+                    "farm_mole_burrow_target_unavailable",
+                    "zone" to runtime.settings.id,
+                    "sequence" to runtime.state.sequence,
+                    "burrow" to target.id,
+                )
+            }
         }
     }
 
@@ -407,6 +418,36 @@ internal class FarmMoleBurrowController(
         debug.event("farm_mole_burrow_scene_spawned", "zone" to key.zoneId, "sequence" to key.sequence)
     }
 
+    /**
+     * Surface feedback is available while the bounded block queue builds the
+     * underground scene. The entrance stays non-usable until [scene.ready], so
+     * players never enter a half-built or failed maze.
+     */
+    private fun ensureBuildingEntrance(runtime: FarmRuntime, scene: FarmMoleBurrowScene) {
+        val key = SceneKey(runtime.settings.id, runtime.state.sequence, scene.burrowId)
+        val active = entities[key].orEmpty().mapNotNull(Bukkit::getEntity).filter(Entity::isValid)
+        if (active.isNotEmpty() && active.all { identity(it)?.role == Role.ENTRANCE }) {
+            entities[key] = active.mapTo(mutableSetOf(), Entity::getUniqueId)
+            return
+        }
+        removeEntities(key)
+        entities[key] = spawnMarker(
+            runtime,
+            scene,
+            scene.surface,
+            Role.ENTRANCE,
+            runtime.settings.careVisuals.getValue(FarmCareRole.MOLE_MOUND),
+            "care.moles.entrance-label",
+            true,
+        ).mapTo(mutableSetOf(), Entity::getUniqueId)
+        debug.event(
+            "farm_mole_burrow_entrance_building",
+            "zone" to key.zoneId,
+            "sequence" to key.sequence,
+            "burrow" to key.burrowId,
+        )
+    }
+
     private fun spawnMoles(runtime: FarmRuntime, scene: FarmMoleBurrowScene): List<Rabbit> {
         val floorY = scene.start.blockY
         val candidates = scene.records.asSequence()
@@ -422,7 +463,7 @@ internal class FarmMoleBurrowController(
                 mole.setAdult()
                 mole.rabbitType = Rabbit.Type.BROWN
                 mole.isPersistent = false
-                entityPlatform.setRemoveWhenFarAway(mole, false)
+                mobDespawns.setRemoveWhenFarAway(mole, false)
                 mole.isCollidable = true
                 mole.getAttribute(Attribute.MAX_HEALTH)?.baseValue = 1.0
                 mole.getAttribute(Attribute.MOVEMENT_SPEED)?.baseValue = 0.28
@@ -460,7 +501,7 @@ internal class FarmMoleBurrowController(
             }
         }
         val label = location.world.spawn(location.clone().add(0.0, 1.85, 0.0), TextDisplay::class.java) { entity ->
-            entityPlatform.configureTextDisplay(entity, locale.renderPath(labelPath), MOLE_LABEL_STYLE)
+            textDisplays.render(entity, locale.renderPath(labelPath), MOLE_LABEL_STYLE)
             mark(entity, runtime, scene.burrowId, role)
         }
         val hitbox = location.world.spawn(location.clone().add(0.0, 0.55, 0.0), Interaction::class.java) { entity ->
@@ -477,7 +518,7 @@ internal class FarmMoleBurrowController(
 
     private fun spawnExit(runtime: FarmRuntime, scene: FarmMoleBurrowScene, location: Location): List<Entity> {
         val label = location.world.spawn(location.clone().add(0.0, 1.65, 0.0), TextDisplay::class.java) { entity ->
-            entityPlatform.configureTextDisplay(entity, locale.renderPath("care.moles.exit-label"), MOLE_LABEL_STYLE)
+            textDisplays.render(entity, locale.renderPath("care.moles.exit-label"), MOLE_LABEL_STYLE)
             mark(entity, runtime, scene.burrowId, Role.EXIT)
         }
         val hitbox = location.world.spawn(location.clone().add(0.0, 0.55, 0.0), Interaction::class.java) { entity ->

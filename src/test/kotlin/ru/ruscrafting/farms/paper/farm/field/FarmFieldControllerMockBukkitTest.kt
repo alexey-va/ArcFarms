@@ -5,6 +5,7 @@ import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import org.bukkit.Material
+import org.bukkit.block.data.Ageable
 import org.bukkit.block.data.type.Farmland
 import org.mockbukkit.mockbukkit.world.WorldMock
 import ru.arc.paper.testing.MockBukkitTestRuntime
@@ -104,6 +105,68 @@ class FarmFieldControllerMockBukkitTest : FunSpec({
         controller.finishAutomaticQuota(runtime, 3) shouldBe 3
         plots.all { world.getBlockAt(it.x, it.y + 1, it.z).type == Material.WHEAT } shouldBe true
         ledger.blockRecords(world.getChunkAt(0, 0)).all { it.activeCropData?.startsWith("minecraft:wheat") == true } shouldBe true
+    }
+
+    test("mechanized preparation restores the crop recorded for every individual bed") {
+        val plots = (0 until 4).map { x ->
+            world.getBlockAt(x, 64, 0).type = Material.FARMLAND
+            world.getBlockAt(x, 65, 0).type = if (x % 2 == 0) Material.WHEAT else Material.CARROTS
+            FarmPlotPosition(world.name, x, 64, 0)
+        }
+        val zone = mockk<FarmZoneSettings>(relaxed = true) {
+            every { id } returns "farm"
+            every { crops } returns setOf("WHEAT", "CARROTS")
+        }
+        val runtime = FarmRuntime(
+            settings = zone,
+            region = CuboidActivityRegion(world, "farm", CuboidBounds(0, 0, 0, 15, 128, 15)),
+            orders = emptyMap(),
+            orderList = emptyList(),
+            rules = mockk(relaxed = true),
+            state = FarmShiftState(
+                phase = FarmPhase.CARE,
+                careType = FarmCareType.SEEDER,
+                mechanizedPreparation = true,
+                preparationPatch = plots,
+                preparationCrop = "WHEAT",
+                preparationRequired = 3,
+            ),
+        )
+        val ledger = FarmBlockLedger(paper.createSimplePlugin("FarmMixedSeederRestoreTest"))
+        val controller = FarmFieldController(
+            settings = { mockk<ArcFarmsConfig>(relaxed = true) },
+            debug = ArcFarmsDebug({ false }) {},
+            port = mockk<WorksiteRuntimePort>(relaxed = true),
+            ledger = ledger,
+            registry = mockk<FarmBlockRegistry>(relaxed = true) {
+                every { beds("farm") } returns plots.toSet()
+            },
+            points = FarmPointProvider { _, _ -> error("release does not resolve operation points") },
+            transitions = FarmTransitionSink { _, _, _ -> },
+            persistAsync = { CompletableFuture.completedFuture(Unit) },
+        )
+
+        controller.release(runtime, plots.size) shouldBe FarmPatchReleaseResult(plots.size, true)
+        plots.forEach { world.getBlockAt(it.x, it.y, it.z).type = Material.FARMLAND }
+        runtime.state = runtime.state.copy(
+            phase = FarmPhase.HARVESTING,
+            careType = null,
+            preparationReleased = true,
+            tilledPlots = plots.toSet(),
+            plantedPlots = plots.toSet(),
+            preparationProgress = plots.size,
+            plantingProgress = plots.size,
+        )
+
+        controller.finishAutomaticQuota(runtime, 2) shouldBe 2
+        controller.finishAutomaticQuota(runtime, 2) shouldBe 2
+        plots.map { world.getBlockAt(it.x, it.y + 1, it.z).type } shouldBe
+            listOf(Material.WHEAT, Material.CARROTS, Material.WHEAT, Material.CARROTS)
+
+        val growingCarrot = world.getBlockAt(1, 65, 0)
+        growingCarrot.blockData = (growingCarrot.blockData as Ageable).also { it.age = 3 }
+        controller.maintain(runtime, activeWater = false)
+        (growingCarrot.blockData as Ageable).age shouldBe 3
     }
 
     test("ordinary maintenance does not hydrate soil owned by an irrigation wave") {

@@ -38,9 +38,14 @@ internal class FarmPointAdminService(
             val resolved = configured ?: when (kind) {
                 FarmPointKind.PROCESSING -> null
                 FarmPointKind.PROCESSING_INPUT,
+                FarmPointKind.PROCESSING_INPUT_2,
+                FarmPointKind.PROCESSING_INPUT_3,
+                FarmPointKind.PROCESSING_INPUT_4,
                 FarmPointKind.PROCESSING_OUTPUT,
-                -> pointService.configured(runtime.settings.id, FarmPointKind.PROCESSING)
-                    ?.let { points.resolve(runtime, kind) }
+                -> if (kind == FarmPointKind.PROCESSING_INPUT || kind == FarmPointKind.PROCESSING_OUTPUT) {
+                    pointService.configured(runtime.settings.id, FarmPointKind.PROCESSING)
+                        ?.let { points.resolve(runtime, kind) }
+                } else null
                 FarmPointKind.HIVE,
                 FarmPointKind.IRRIGATION,
                 FarmPointKind.COVERS,
@@ -167,6 +172,9 @@ internal class FarmPointAdminService(
         val PROCESSING_POINTS = setOf(
             FarmPointKind.PROCESSING,
             FarmPointKind.PROCESSING_INPUT,
+            FarmPointKind.PROCESSING_INPUT_2,
+            FarmPointKind.PROCESSING_INPUT_3,
+            FarmPointKind.PROCESSING_INPUT_4,
             FarmPointKind.PROCESSING_OUTPUT,
         )
     }

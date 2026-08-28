@@ -586,7 +586,10 @@ class ArcFarmsCommand(
         "barn", "pen" -> FarmPointKind.PEN
         "perk-vendor", "vendor" -> FarmPointKind.PERK_VENDOR
         "processing", "processing-machine", "workshop" -> FarmPointKind.PROCESSING
-        "processing-input", "processing-raw" -> FarmPointKind.PROCESSING_INPUT
+        "processing-input", "processing-input-1", "processing-raw" -> FarmPointKind.PROCESSING_INPUT
+        "processing-input-2" -> FarmPointKind.PROCESSING_INPUT_2
+        "processing-input-3" -> FarmPointKind.PROCESSING_INPUT_3
+        "processing-input-4" -> FarmPointKind.PROCESSING_INPUT_4
         "processing-output", "processing-product" -> FarmPointKind.PROCESSING_OUTPUT
         "fire-equipment", "fire-hose", "extinguisher" -> FarmPointKind.FIRE_EQUIPMENT
         else -> null
@@ -597,6 +600,9 @@ class ArcFarmsCommand(
         FarmPointKind.PERK_VENDOR -> "perk-vendor"
         FarmPointKind.FIRE_EQUIPMENT -> "fire-equipment"
         FarmPointKind.PROCESSING_INPUT -> "processing-input"
+        FarmPointKind.PROCESSING_INPUT_2 -> "processing-input-2"
+        FarmPointKind.PROCESSING_INPUT_3 -> "processing-input-3"
+        FarmPointKind.PROCESSING_INPUT_4 -> "processing-input-4"
         FarmPointKind.PROCESSING_OUTPUT -> "processing-output"
         else -> kind.name.lowercase()
     }
@@ -640,7 +646,7 @@ class ArcFarmsCommand(
         private val POINT_ARGUMENTS = listOf(
             "tool", "seeds", "water", "crates", "receiving", "cart", "customer", "travel", "hive", "irrigation",
             "covers", "scarecrows", "barn", "archery", "perk-vendor", "processing", "processing-input",
-            "processing-output", "fire-equipment",
+            "processing-input-2", "processing-input-3", "processing-input-4", "processing-output", "fire-equipment",
         )
         private val ADMIN_SHORTCUTS = listOf(
             "reset-farm",

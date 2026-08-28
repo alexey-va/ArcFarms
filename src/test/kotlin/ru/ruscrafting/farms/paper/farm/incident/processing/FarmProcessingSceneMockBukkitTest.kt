@@ -9,7 +9,7 @@ import org.mockbukkit.mockbukkit.world.WorldMock
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.CountingFarmEntityLookup
-import ru.ruscrafting.farms.paper.fixtures.MockBukkitFarmEntityPlatform
+import ru.ruscrafting.farms.paper.fixtures.MockBukkitFarmTextDisplays
 
 class FarmProcessingSceneMockBukkitTest : FunSpec({
     lateinit var paper: MockBukkitTestRuntime
@@ -29,7 +29,7 @@ class FarmProcessingSceneMockBukkitTest : FunSpec({
         val first = FarmProcessingScene(
             plugin,
             ArcFarmsDebug({ false }) {},
-            MockBukkitFarmEntityPlatform,
+            MockBukkitFarmTextDisplays,
             firstLookup,
         )
         val objects = (0 until 5).map { index ->
@@ -55,7 +55,7 @@ class FarmProcessingSceneMockBukkitTest : FunSpec({
         val restarted = FarmProcessingScene(
             plugin,
             ArcFarmsDebug({ false }) {},
-            MockBukkitFarmEntityPlatform,
+            MockBukkitFarmTextDisplays,
             secondLookup,
         )
         restarted.ensure(spec)

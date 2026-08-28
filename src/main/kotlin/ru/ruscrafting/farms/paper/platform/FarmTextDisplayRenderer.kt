@@ -3,8 +3,6 @@ package ru.ruscrafting.farms.paper.platform
 import net.kyori.adventure.text.Component
 import org.bukkit.Color
 import org.bukkit.entity.Display
-import org.bukkit.entity.Entity
-import org.bukkit.entity.LivingEntity
 import org.bukkit.entity.TextDisplay
 
 internal data class FarmTextDisplayStyle(
@@ -17,17 +15,13 @@ internal data class FarmTextDisplayStyle(
     val persistent: Boolean = false,
 )
 
-/** Entity mutations whose complete Paper behavior is outside gameplay ownership. */
-internal interface FarmEntityPlatform {
-    fun configureTextDisplay(entity: TextDisplay, text: Component, style: FarmTextDisplayStyle)
-
-    fun setRemoveWhenFarAway(entity: LivingEntity, value: Boolean)
-
-    fun ejectPassengers(entity: Entity): Boolean
+/** Applies the complete visual contract of one farm TextDisplay. */
+internal fun interface FarmTextDisplayRenderer {
+    fun render(entity: TextDisplay, text: Component, style: FarmTextDisplayStyle)
 }
 
-internal object PaperFarmEntityPlatform : FarmEntityPlatform {
-    override fun configureTextDisplay(entity: TextDisplay, text: Component, style: FarmTextDisplayStyle) {
+internal object PaperFarmTextDisplayRenderer : FarmTextDisplayRenderer {
+    override fun render(entity: TextDisplay, text: Component, style: FarmTextDisplayStyle) {
         entity.text(text)
         entity.billboard = style.billboard
         entity.alignment = style.alignment
@@ -37,10 +31,4 @@ internal object PaperFarmEntityPlatform : FarmEntityPlatform {
         entity.viewRange = style.viewRange
         entity.isPersistent = style.persistent
     }
-
-    override fun setRemoveWhenFarAway(entity: LivingEntity, value: Boolean) {
-        entity.removeWhenFarAway = value
-    }
-
-    override fun ejectPassengers(entity: Entity): Boolean = entity.eject()
 }

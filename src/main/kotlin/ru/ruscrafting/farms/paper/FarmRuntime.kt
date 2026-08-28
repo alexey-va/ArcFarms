@@ -23,4 +23,5 @@ internal fun FarmRuntime.blockIndexDefinition(): FarmBlockIndexDefinition = Farm
     blocksPerTick = settings.blockReindexBlocksPerTick,
     maxBlocks = settings.blockReindexMaxBlocks,
     maxOrchardLeaves = settings.appleLeafIndexLimit,
+    cropLayout = settings.cropLayout,
 )

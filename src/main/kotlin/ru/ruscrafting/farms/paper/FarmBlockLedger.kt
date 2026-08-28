@@ -152,15 +152,48 @@ internal class FarmBlockLedger(plugin: Plugin) {
         else crop.setBlockData(Bukkit.createBlockData(data), false)
     }
 
-    fun restoreOriginal(soil: Block, clear: Boolean = true): Boolean {
-        val record = record(soil) ?: return false
-        soil.setBlockData(Bukkit.createBlockData(record.originalSoilData), false)
-        val crop = soil.getRelative(org.bukkit.block.BlockFace.UP)
-        val cropData = record.originalCropData
-        if (cropData == null) crop.setType(Material.AIR, false)
-        else crop.setBlockData(Bukkit.createBlockData(cropData), false)
-        if (clear) remove(soil)
-        return true
+    fun restoreOriginal(soil: Block, clear: Boolean = true): Boolean =
+        restoreOriginals(listOf(soil), clear).contains(soil)
+
+    /**
+     * Restores a bounded batch with one ledger write per affected chunk. Rewriting
+     * the complete chunk JSON once per block caused visible end-of-event spikes on
+     * large mechanized fields.
+     */
+    fun restoreOriginals(soils: Collection<Block>, clear: Boolean = true): Set<Block> = buildSet {
+        soils.distinctBy { FarmPlotPosition(it.world.name, it.x, it.y, it.z) }
+            .groupBy(Block::getChunk)
+            .forEach { (chunk, chunkSoils) ->
+                val records = blockRecords(chunk).toMutableList()
+                val indices = records.withIndex().associate { Triple(it.value.x, it.value.y, it.value.z) to it.index }
+                val removals = hashSetOf<Int>()
+                var ledgerChanged = false
+                chunkSoils.forEach { soil ->
+                    require(soil.chunk == chunk) { "Farm restore batch crossed chunks" }
+                    val index = indices[Triple(soil.x, soil.y, soil.z)] ?: return@forEach
+                    val record = records[index]
+                    soil.setBlockData(Bukkit.createBlockData(record.originalSoilData), false)
+                    val crop = soil.getRelative(org.bukkit.block.BlockFace.UP)
+                    val cropData = record.originalCropData
+                    if (cropData == null) crop.setType(Material.AIR, false)
+                    else crop.setBlockData(Bukkit.createBlockData(cropData), false)
+                    add(soil)
+                    if (clear) {
+                        removals += index
+                        ledgerChanged = true
+                    } else if (record.activeCropData != record.originalCropData) {
+                        // Indexed beds survive an order and are maintained from activeCropData.
+                        // Leaving a temporary preparation crop here would make the maintenance
+                        // pass overwrite the restored farm layout one second later.
+                        records[index] = record.copy(activeCropData = record.originalCropData)
+                        ledgerChanged = true
+                    }
+                }
+                if (removals.isNotEmpty()) {
+                    removals.sortedDescending().forEach(records::removeAt)
+                }
+                if (ledgerChanged) write(chunk, records)
+            }
     }
 
     fun remove(soil: Block): Boolean {

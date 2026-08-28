@@ -18,7 +18,8 @@ import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmNightShiftController
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
-import ru.ruscrafting.farms.paper.platform.FarmEntityPlatform
+import ru.ruscrafting.farms.paper.platform.FarmMobDespawnPolicy
+import ru.ruscrafting.farms.paper.platform.FarmVehiclePassengerControl
 import java.util.UUID
 import java.util.random.RandomGenerator
 import kotlin.math.cos
@@ -30,7 +31,8 @@ internal class FarmFoodDeliveryAmbush(
     private val night: FarmNightShiftController,
     private val port: WorksiteRuntimePort,
     private val debug: ArcFarmsDebug,
-    private val entities: FarmEntityPlatform,
+    private val mobDespawns: FarmMobDespawnPolicy,
+    private val vehiclePassengers: FarmVehiclePassengerControl,
 ) {
     fun update(
         runtime: FarmRuntime,
@@ -82,7 +84,7 @@ internal class FarmFoodDeliveryAmbush(
             val spawn = if (type == EntityType.PHANTOM) ground.clone().add(0.0, PHANTOM_SPAWN_HEIGHT, 0.0) else ground
             val monster = spawn.world.spawnEntity(spawn, type) as Mob
             monster.isPersistent = false
-            entities.setRemoveWhenFarAway(monster, true)
+            mobDespawns.setRemoveWhenFarAway(monster, true)
             monster.isGlowing = true
             monster.target = rider
             monster.getAttribute(Attribute.MOVEMENT_SPEED)?.baseValue = config.monsterMovementSpeed
@@ -106,7 +108,8 @@ internal class FarmFoodDeliveryAmbush(
         if (spawned == 0) return
         session.pendingAmbushCheckpoints.removeFirst()
         session.brokenDown = true
-        entities.ejectPassengers(horse)
+        setOfNotNull(session.riderId, session.gunnerId).forEach(session.ambushCrewIds::add)
+        vehiclePassengers.ejectAll(horse)
         horse.setAI(false)
         horse.velocity = Vector()
         players(session).forEach { player ->
@@ -140,10 +143,12 @@ internal class FarmFoodDeliveryAmbush(
 
     fun clear(zoneId: String) = night.releaseExternalLights("food:$zoneId:")
 
-    private fun players(session: FarmFoodDeliverySession): List<Player> = listOfNotNull(
-        session.riderId?.let(Bukkit::getPlayer),
-        session.gunnerId?.let(Bukkit::getPlayer),
-    ).distinctBy(Player::getUniqueId)
+    private fun players(session: FarmFoodDeliverySession): List<Player> = buildList {
+        session.riderId?.let(Bukkit::getPlayer)?.let(::add)
+        session.gunnerId?.let(Bukkit::getPlayer)?.let(::add)
+        session.escortIds.mapNotNullTo(this, Bukkit::getPlayer)
+        session.ambushCrewIds.mapNotNullTo(this, Bukkit::getPlayer)
+    }.distinctBy(Player::getUniqueId)
 
     private fun lightOwner(zoneId: String, id: UUID): String = "food:$zoneId:$id"
 

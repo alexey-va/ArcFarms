@@ -197,9 +197,23 @@ internal class FarmCarePlanService(
                 runtime.settings.diseaseInitialSpots.coerceAtMost(patch.size),
             )
             FarmCareType.MOLES -> {
+                // Entrances at the very edge are technically viable when the generated
+                // maze happens to rotate inward, but are hard to discover and look like
+                // a placement bug. Prefer the central 70% of the indexed beds while
+                // retaining a fallback for unusually narrow or irregular farms.
+                val minX = farmBeds.minOf(FarmPlotPosition::x)
+                val maxX = farmBeds.maxOf(FarmPlotPosition::x)
+                val minZ = farmBeds.minOf(FarmPlotPosition::z)
+                val maxZ = farmBeds.maxOf(FarmPlotPosition::z)
+                val marginX = ((maxX - minX) * 0.15).toInt()
+                val marginZ = ((maxZ - minZ) * 0.15).toInt()
+                val centralBeds = farmBeds.filter { plot ->
+                    plot.x in (minX + marginX)..(maxX - marginX) &&
+                        plot.z in (minZ + marginZ)..(maxZ - marginZ)
+                }.ifEmpty { farmBeds }
                 val bedCandidates = FarmCarePlanner.spread(
-                    farmBeds,
-                    runtime.settings.moleBurrow.candidateAttempts.coerceAtMost(farmBeds.size),
+                    centralBeds,
+                    runtime.settings.moleBurrow.candidateAttempts.coerceAtMost(centralBeds.size),
                     salt xor 0x4D4F4C45L,
                 ).map { plot -> FarmPointPosition(plot.world, plot.x + 0.5, plot.y + 1.05, plot.z + 0.5) }
                 val requested = participantCount(runtime.region).coerceAtLeast(1)
@@ -233,7 +247,9 @@ internal class FarmCarePlanService(
                 debug.event(
                     "farm_mole_entrance_candidates",
                     "zone" to runtime.settings.id,
-                    "beds" to bedCandidates.size,
+                    "beds" to farmBeds.size,
+                    "central_beds" to centralBeds.size,
+                    "candidates" to bedCandidates.size,
                     "tested" to tested,
                     "layout_probes" to layoutProbes,
                     "requested" to requested,
@@ -244,7 +260,8 @@ internal class FarmCarePlanService(
                 if (selected.size < requested) log(
                     Level.WARNING,
                     "Could not plan mole burrow: zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
-                        "beds=${bedCandidates.size} requested=$requested selected=${selected.size} " +
+                        "beds=${farmBeds.size} central_beds=${centralBeds.size} candidates=${bedCandidates.size} " +
+                        "requested=$requested selected=${selected.size} " +
                         "tested=$tested layout_probes=$layoutProbes " +
                         "depth=${runtime.settings.moleBurrow.minDepth}-${runtime.settings.moleBurrow.maxDepth} " +
                         "rejections=$rejectionSummary",

@@ -321,6 +321,8 @@ internal class FarmModule(
             FarmPointKind.SCARECROWS, FarmPointKind.PEN -> care.refreshPoint(runtime, kind, reason)
             FarmPointKind.PERK_VENDOR -> perks.refresh(runtime, reason)
             FarmPointKind.PROCESSING, FarmPointKind.PROCESSING_INPUT,
+            FarmPointKind.PROCESSING_INPUT_2, FarmPointKind.PROCESSING_INPUT_3,
+            FarmPointKind.PROCESSING_INPUT_4,
             FarmPointKind.PROCESSING_OUTPUT,
             -> processing.refresh(runtime, reason)
             FarmPointKind.TRAVEL -> Unit

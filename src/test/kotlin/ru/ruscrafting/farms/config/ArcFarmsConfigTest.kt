@@ -143,6 +143,16 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().restoreBlocksPerTick shouldBe 24
         settings.farms.single().blockReindexBlocksPerTick shouldBe 4_096
         settings.farms.single().blockReindexMaxBlocks shouldBe 20_000_000
+        settings.farms.single().cropLayout.enabled shouldBe true
+        settings.farms.single().cropLayout.weights shouldBe mapOf(
+            "WHEAT" to 30,
+            "CARROTS" to 25,
+            "POTATOES" to 25,
+            "BEETROOTS" to 15,
+            "SWEET_BERRY_BUSH" to 5,
+        )
+        settings.farms.single().cropLayout.smallComponentMaxSize shouldBe 16
+        settings.farms.single().cropLayout.smallComponentMergeDistance shouldBe 10
         settings.farms.single().backupBlocksPerTick shouldBe 2_048
         settings.farms.single().backupMaxBlocks shouldBe 4_000_000
         settings.farms.single().crops shouldBe
@@ -298,9 +308,10 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().routeDelivery.trailParticleSize shouldBe 1.15f
         settings.farms.single().routeDelivery.horseSpeed shouldBe 0.17
         settings.farms.single().routeDelivery.cartYOffset shouldBe 0.875
-        settings.farms.single().routeDelivery.gunnerSeatYOffset shouldBe 0.225
+        settings.farms.single().routeDelivery.gunnerSeatYOffset shouldBe -0.15
+        settings.farms.single().routeDelivery.gunnerSeatBackOffset shouldBe 0.65
         settings.farms.single().routeDelivery.gunnerInteractionWidth shouldBe 2.8f
-        settings.farms.single().routeDelivery.gunnerInteractionHeight shouldBe 2.2f
+        settings.farms.single().routeDelivery.gunnerInteractionHeight shouldBe 0.7f
         settings.farms.single().routeDelivery.cartLoadCount shouldBe 4
         settings.farms.single().routeDelivery.ambushDistance shouldBe 120.0
         settings.farms.single().routeDelivery.ambushMaxCount shouldBe 3
@@ -316,6 +327,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().routeDelivery.rifleItemModel shouldBe null
         settings.farms.single().routeDelivery.rifleDamage shouldBe 7.0
         settings.farms.single().routeDelivery.rifleRange shouldBe 42.0
+        settings.farms.single().routeDelivery.rifleCooldownTicks shouldBe 6
         settings.farms.single().routeDelivery.playerTime shouldBe 18_000L
         settings.farms.single().routeDelivery.timeTransitionSeconds shouldBe 18
         settings.farms.single().damageSafety.maximumPercent shouldBe 18

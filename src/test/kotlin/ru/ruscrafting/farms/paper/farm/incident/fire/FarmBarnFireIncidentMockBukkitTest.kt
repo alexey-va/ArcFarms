@@ -25,12 +25,12 @@ import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.CuboidActivityRegion
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
-import ru.ruscrafting.farms.paper.fixtures.MockBukkitFarmBlockPlatform
+import ru.ruscrafting.farms.paper.fixtures.MockBukkitFarmBlockPassability
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 
 class FarmBarnFireIncidentMockBukkitTest : FunSpec({
-    test("barn fire uses real protected fire blocks and resolves through the water jet") {
+    test("barn fire uses real protected fire blocks and the water cone extinguishes nearby hotspots") {
         val paper = MockBukkitTestRuntime.open()
         try {
             val world = paper.server.addSimpleWorld("farm")
@@ -38,17 +38,17 @@ class FarmBarnFireIncidentMockBukkitTest : FunSpec({
             for (x in 1..15) for (z in 1..15) world.getBlockAt(x, 64, z).type = Material.STONE
             val anchor = FarmPointPosition(world.name, 8.5, 65.0, 8.5)
             val fire = FarmBarnFireSettings(
-                hotspotCount = 1,
-                spawnPerTick = 1,
-                placementRadius = 4,
-                minSpacing = 2.0,
+                hotspotCount = 3,
+                spawnPerTick = 3,
+                placementRadius = 2,
+                minSpacing = 1.0,
                 verticalSearch = 2,
                 sprayRange = 18.0,
-                sprayHitRadius = 1.25,
+                sprayHitRadius = 4.0,
                 sprayCooldownTicks = 1,
                 particleStep = 0.5,
                 flameParticleIntervalTicks = 5,
-                particleHotspotLimit = 1,
+                particleHotspotLimit = 3,
             )
             val zone = mockk<FarmZoneSettings> {
                 every { id } returns "communal_farm"
@@ -87,22 +87,24 @@ class FarmBarnFireIncidentMockBukkitTest : FunSpec({
                     anchor
                 },
                 transitions = FarmTransitionSink { target, result, _ -> target.state = result.state },
-                blockPlatform = MockBukkitFarmBlockPlatform,
+                blockPassability = MockBukkitFarmBlockPassability,
             )
 
             controller.initialize(runtime) shouldBe true
             controller.ensure(runtime)
             world.entities.size shouldBe 0
-            val hotspot = runtime.state.specialIncident!!.points.single().location(world)
-            hotspot.block.type shouldBe Material.FIRE
-            controller.protects(hotspot) shouldBe true
+            val hotspots = runtime.state.specialIncident!!.points.map { it.location(world) }
+            hotspots.size shouldBe 3
+            hotspots.forEach { hotspot ->
+                hotspot.block.type shouldBe Material.FIRE
+                controller.protects(hotspot) shouldBe true
+            }
 
-            val target = runtime.state.specialIncident!!.points.single()
             val player = paper.addPlayer("Firefighter")
             player.inventory.setItemInMainHand(ItemStack(Material.SPYGLASS))
             player.teleport(Location(world, 8.5, 65.0, 2.5))
             val aimed = player.location.clone().setDirection(
-                target.location(world).toVector().subtract(player.eyeLocation.toVector()).normalize(),
+                anchor.location(world).toVector().subtract(player.eyeLocation.toVector()).normalize(),
             )
             player.teleport(aimed)
             val event = PlayerInteractEvent(
@@ -117,8 +119,10 @@ class FarmBarnFireIncidentMockBukkitTest : FunSpec({
             controller.spray(event, runtime) shouldBe true
             event.isCancelled shouldBe true
             runtime.state.phase shouldBe FarmPhase.HARVESTING
-            world.getBlockAt(target.x.toInt(), target.y.toInt(), target.z.toInt()).type shouldBe Material.AIR
-            controller.protects(hotspot) shouldBe false
+            hotspots.forEach { hotspot ->
+                hotspot.block.type shouldBe Material.AIR
+                controller.protects(hotspot) shouldBe false
+            }
         } finally {
             paper.close()
         }

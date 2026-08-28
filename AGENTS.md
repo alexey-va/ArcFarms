@@ -42,11 +42,12 @@ activities: farm, lumbermill, and mine.
   state, validation, event routing, guidance, recovery, and phase application
   for its activity; `ArcFarmsService` must not mirror those collections.
 - Paper-only operations that a pinned test double cannot model belong behind a
-  cohesive named port in `paper/platform`, never behind raw function-valued
-  constructor parameters. Keep the exact Paper adapter in `src/main` and the
-  documented MockBukkit approximation in `src/test`; inject both from their
-  composition roots instead of weakening world logic or adding test branches.
-  Do not aggregate unrelated gaps into a platform context or callback bag.
+  one-purpose named port such as `FarmBlockPassability`, never behind raw
+  function-valued constructor parameters. Keep the exact Paper adapter in
+  `src/main` and the documented MockBukkit approximation in `src/test`; inject
+  both from their composition roots instead of weakening world logic or adding
+  test branches. Never group unrelated display, mob, vehicle, block and chunk
+  operations into one platform context or callback bag.
 - `RuntimeTaskSupervisor` is activity-neutral. Capture its token before every
   journal/database future and reject stale completions after reload. Durable
   recovery intent is written before the world mutation, and a rejected stale

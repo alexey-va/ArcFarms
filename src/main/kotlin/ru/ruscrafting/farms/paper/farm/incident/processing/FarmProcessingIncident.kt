@@ -34,8 +34,8 @@ import ru.ruscrafting.farms.paper.FarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
-import ru.ruscrafting.farms.paper.platform.FarmBlockPlatform
-import ru.ruscrafting.farms.paper.platform.FarmEntityPlatform
+import ru.ruscrafting.farms.paper.platform.FarmBlockPassability
+import ru.ruscrafting.farms.paper.platform.FarmTextDisplayRenderer
 import java.util.UUID
 import java.util.logging.Level
 import kotlin.math.PI
@@ -63,11 +63,11 @@ internal class FarmProcessingIncident(
     private val port: WorksiteRuntimePort,
     private val configuredPoint: (String, FarmPointKind) -> FarmPointPosition?,
     private val transitions: FarmTransitionSink,
-    private val blocks: FarmBlockPlatform,
-    entityPlatform: FarmEntityPlatform,
+    private val blockPassability: FarmBlockPassability,
+    textDisplays: FarmTextDisplayRenderer,
     private val entityLookup: FarmEntityLookup = BukkitFarmEntityLookup,
 ) {
-    private val scene = FarmProcessingScene(plugin, debug, entityPlatform, entityLookup)
+    private val scene = FarmProcessingScene(plugin, debug, textDisplays, entityLookup)
     private val carriedZoneKey = NamespacedKey(plugin, "farm_processing_carried_zone")
     private val carriedSequenceKey = NamespacedKey(plugin, "farm_processing_carried_sequence")
     private val carriedCargoKey = NamespacedKey(plugin, "farm_processing_carried_cargo")
@@ -365,7 +365,7 @@ internal class FarmProcessingIncident(
         val machine = configuredPoint(runtime.settings.id, FarmPointKind.PROCESSING) ?: return null
         return FarmProcessingLayout.create(
             machine,
-            configuredPoint(runtime.settings.id, FarmPointKind.PROCESSING_INPUT),
+            PROCESSING_INPUT_POINTS.mapNotNull { configuredPoint(runtime.settings.id, it) },
             configuredPoint(runtime.settings.id, FarmPointKind.PROCESSING_OUTPUT),
         )
     }
@@ -375,7 +375,7 @@ internal class FarmProcessingIncident(
         layout: FarmProcessingLayout,
     ): FarmProcessingPlacementFailure? = validateStations(
         runtime,
-        listOf(layout.inputRack, layout.machine, layout.outputPallet),
+        layout.inputRacks + layout.machine + layout.outputPallet,
     )
 
     private fun validateStations(
@@ -396,7 +396,7 @@ internal class FarmProcessingIncident(
             return FarmProcessingPlacementFailure.UNSUPPORTED_FLOOR
         }
         if (locations.any { station ->
-                (0..2).any { up -> !blocks.isPassable(station.block.getRelative(org.bukkit.block.BlockFace.UP, up)) }
+                (0..2).any { up -> !blockPassability.isPassable(station.block.getRelative(org.bukkit.block.BlockFace.UP, up)) }
             }
         ) return FarmProcessingPlacementFailure.BLOCKED_CLEARANCE
         return null
@@ -412,24 +412,23 @@ internal class FarmProcessingIncident(
             0,
             layout.machine,
             FarmProcessingVisualRole.MACHINE,
-            exactPoint = true,
         )
         objects += display(runtime, FarmProcessingSceneRole.WHEEL, 0, layout.wheel, FarmProcessingVisualRole.WHEEL, state.stage == FarmProcessingStage.OPERATING)
-        objects += display(
-            runtime,
-            FarmProcessingSceneRole.INPUT_RACK,
-            0,
-            layout.inputRack,
-            FarmProcessingVisualRole.INPUT_RACK,
-            exactPoint = configuredPoint(runtime.settings.id, FarmPointKind.PROCESSING_INPUT) != null,
-        )
+        layout.inputRacks.forEachIndexed { index, inputRack ->
+            objects += display(
+                runtime,
+                FarmProcessingSceneRole.INPUT_RACK,
+                index,
+                inputRack,
+                FarmProcessingVisualRole.INPUT_RACK,
+            )
+        }
         objects += display(
             runtime,
             FarmProcessingSceneRole.OUTPUT_PALLET,
             0,
             layout.outputPallet,
             FarmProcessingVisualRole.OUTPUT_PALLET,
-            exactPoint = configuredPoint(runtime.settings.id, FarmPointKind.PROCESSING_OUTPUT) != null,
         )
         objects += FarmProcessingSceneObject(
             FarmProcessingSceneRole.MACHINE_INTERACTION,
@@ -437,28 +436,38 @@ internal class FarmProcessingIncident(
             FarmProcessingLayout.offset(layout.machine, 0.0, 0.25, 0.8).location(runtime),
             interactionWidth = 2.1f, interactionHeight = 2.1f,
         )
-        val labelKeys = listOf(
-            MessageKey.FARM_PROCESSING_INPUT_LABEL,
-            when (state.stage) {
-                FarmProcessingStage.LOADING -> MessageKey.FARM_PROCESSING_MACHINE_WAITING_LABEL
-                FarmProcessingStage.OPERATING -> MessageKey.FARM_PROCESSING_MACHINE_ACTIVE_LABEL
-                FarmProcessingStage.PACKING -> MessageKey.FARM_PROCESSING_MACHINE_DONE_LABEL
-            },
-            MessageKey.FARM_PROCESSING_OUTPUT_LABEL,
-        )
-        layout.labels.forEachIndexed { index, point ->
+        layout.inputLabels.forEachIndexed { index, point ->
             objects += FarmProcessingSceneObject(
                 FarmProcessingSceneRole.LABEL,
                 index,
                 point.location(runtime),
-                text = locale.render(labelKeys[index], null),
+                text = locale.render(MessageKey.FARM_PROCESSING_INPUT_LABEL, null),
             )
         }
+        objects += FarmProcessingSceneObject(
+            FarmProcessingSceneRole.LABEL,
+            100,
+            layout.machineLabel.location(runtime),
+            text = locale.render(
+                when (state.stage) {
+                    FarmProcessingStage.LOADING -> MessageKey.FARM_PROCESSING_MACHINE_WAITING_LABEL
+                    FarmProcessingStage.OPERATING -> MessageKey.FARM_PROCESSING_MACHINE_ACTIVE_LABEL
+                    FarmProcessingStage.PACKING -> MessageKey.FARM_PROCESSING_MACHINE_DONE_LABEL
+                },
+                null,
+            ),
+        )
+        objects += FarmProcessingSceneObject(
+            FarmProcessingSceneRole.LABEL,
+            101,
+            layout.outputLabel.location(runtime),
+            text = locale.render(MessageKey.FARM_PROCESSING_OUTPUT_LABEL, null),
+        )
         if (state.stage == FarmProcessingStage.LOADING) {
             (0 until state.inputRequired - state.inputLoaded).filterNot { index ->
                 ProcessingCargoKey(runtime.settings.id, ProcessingCargo.RAW, index) in carriers
             }.forEach { index ->
-                val point = FarmProcessingLayout.packagePosition(layout.inputRack, index)
+                val point = FarmProcessingLayout.packagePosition(layout.inputRacks, index)
                 objects += display(runtime, FarmProcessingSceneRole.RAW_PACKAGE, index, point, FarmProcessingVisualRole.RAW_PACKAGE, true)
                 objects += FarmProcessingSceneObject(
                     FarmProcessingSceneRole.RAW_INTERACTION, index, point.location(runtime),
@@ -503,7 +512,6 @@ internal class FarmProcessingIncident(
         point: FarmPointPosition,
         visualRole: FarmProcessingVisualRole,
         glowing: Boolean = false,
-        exactPoint: Boolean = false,
     ): FarmProcessingSceneObject {
         val visual = FarmProcessingItems.visual(runtime.settings.processing, visualRole)
         val item = when (visualRole) {
@@ -514,7 +522,7 @@ internal class FarmProcessingIncident(
         return FarmProcessingSceneObject(
             role = role,
             index = index,
-            location = point.location(runtime).add(0.0, if (exactPoint) 0.0 else visual.yOffset, 0.0),
+            location = point.location(runtime).add(0.0, visual.yOffset, 0.0),
             item = item,
             transform = visual.displayTransform,
             scale = visual.scale,
@@ -591,6 +599,12 @@ internal class FarmProcessingIncident(
         val GOLD = Particle.DustOptions(Color.fromRGB(255, 178, 36), 1.25f)
         val GREEN = Particle.DustOptions(Color.fromRGB(92, 214, 116), 1.0f)
         val RED = Particle.DustOptions(Color.fromRGB(229, 75, 66), 1.05f)
+        val PROCESSING_INPUT_POINTS = listOf(
+            FarmPointKind.PROCESSING_INPUT,
+            FarmPointKind.PROCESSING_INPUT_2,
+            FarmPointKind.PROCESSING_INPUT_3,
+            FarmPointKind.PROCESSING_INPUT_4,
+        )
 
     }
 }

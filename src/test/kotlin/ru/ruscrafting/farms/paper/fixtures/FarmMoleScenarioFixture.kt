@@ -146,7 +146,8 @@ internal class FarmMoleScenarioFixture private constructor(
         },
         runtimes = { listOf(runtime) },
         clock = { 1_000L },
-        entityPlatform = MockBukkitFarmEntityPlatform,
+        textDisplays = MockBukkitFarmTextDisplays,
+        mobDespawns = MockBukkitFarmMobDespawns,
     )
 
     private fun drainBlockQueue(): Int {
@@ -223,8 +224,8 @@ internal class FarmMoleScenarioFixture private constructor(
             val burrowWorld = FarmMoleBurrowWorld(
                 plugin,
                 ArcFarmsDebug({ false }) {},
-                MockBukkitFarmChunkLeaseManager(),
-                MockBukkitFarmBlockPlatform,
+                MockBukkitMoleBurrowChunkRetention(),
+                MockBukkitFarmBlockDataDecoder,
             )
 
             return FarmMoleScenarioFixture(

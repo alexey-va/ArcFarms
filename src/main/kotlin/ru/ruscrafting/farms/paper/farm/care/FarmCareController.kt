@@ -696,9 +696,8 @@ internal class FarmCareController(
                 reachable,
                 runtime.settings.seederBlocksPerUpdate,
             )
-            FarmSeederStage.PLANTING -> machineBlocks.plant(
+            FarmSeederStage.PLANTING -> machineBlocks.restoreRecordedCrops(
                 runtime.settings.id,
-                MaterialRules.material(requireNotNull(runtime.state.preparationCrop)),
                 reachable,
                 runtime.settings.seederBlocksPerUpdate,
             )

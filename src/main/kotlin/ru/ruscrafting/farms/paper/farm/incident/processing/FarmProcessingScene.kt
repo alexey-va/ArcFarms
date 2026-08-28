@@ -19,7 +19,7 @@ import ru.ruscrafting.farms.config.FarmItemDisplayTransform
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.BukkitFarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmEntityLookup
-import ru.ruscrafting.farms.paper.platform.FarmEntityPlatform
+import ru.ruscrafting.farms.paper.platform.FarmTextDisplayRenderer
 import ru.ruscrafting.farms.paper.platform.FarmTextDisplayStyle
 import java.util.UUID
 
@@ -70,7 +70,7 @@ internal data class FarmProcessingSceneSpec(
 internal class FarmProcessingScene(
     plugin: Plugin,
     private val debug: ArcFarmsDebug,
-    private val entityPlatform: FarmEntityPlatform,
+    private val textDisplays: FarmTextDisplayRenderer,
     private val entityLookup: FarmEntityLookup = BukkitFarmEntityLookup,
 ) {
     private val zoneKey = NamespacedKey(plugin, "farm_processing_zone")
@@ -223,7 +223,7 @@ internal class FarmProcessingScene(
                 entity.isResponsive = true
             }
             is TextDisplay -> {
-                entityPlatform.configureTextDisplay(
+                textDisplays.render(
                     entity,
                     requireNotNull(target.text),
                     FarmTextDisplayStyle(viewRange = spec.viewRange),

@@ -23,7 +23,7 @@ import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
-import ru.ruscrafting.farms.paper.platform.FarmBlockPlatform
+import ru.ruscrafting.farms.paper.platform.FarmBlockPassability
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -38,7 +38,7 @@ internal class FarmBarnFireIncident(
     private val port: WorksiteRuntimePort,
     private val points: FarmPointProvider,
     private val transitions: FarmTransitionSink,
-    private val blockPlatform: FarmBlockPlatform,
+    private val blockPassability: FarmBlockPassability,
 ) {
     private val blocks = mutableMapOf<FireKey, FarmPointPosition>()
     private val unavailableSequences = mutableMapOf<String, Long>()
@@ -136,28 +136,29 @@ internal class FarmBarnFireIncident(
         val start = player.eyeLocation.clone().add(player.eyeLocation.direction.normalize().multiply(0.45))
         val direction = player.eyeLocation.direction.normalize()
         renderJet(start, direction, config.sprayRange, config.particleStep)
-        val hit = closestHit(runtime, start, direction, config.sprayRange, config.sprayHitRadius)
-        if (hit == null) {
+        val hits = hitsInSpray(runtime, start, direction, config.sprayRange, config.sprayHitRadius)
+        if (hits.isEmpty()) {
             port.sendActionBar(player, MessageKey.FARM_BARN_FIRE_AIM_HINT)
             if (settings().sounds) player.playSound(player.location, Sound.ITEM_BUCKET_EMPTY, 0.35f, 1.35f)
             return true
         }
-        val location = runtime.state.specialIncident?.points?.getOrNull(hit)?.location() ?: return true
-        remove(FireKey(runtime.settings.id, hit), "sprayed")
-        if (settings().particles) {
-            location.world.spawnParticle(Particle.SPLASH, location.clone().add(0.0, 0.65, 0.0), 26, 0.45, 0.55, 0.45, 0.12)
-            location.world.spawnParticle(Particle.CLOUD, location.clone().add(0.0, 0.45, 0.0), 10, 0.35, 0.25, 0.35, 0.035)
+        hits.forEach { hit ->
+            val location = runtime.state.specialIncident?.points?.getOrNull(hit)?.location() ?: return@forEach
+            remove(FireKey(runtime.settings.id, hit), "sprayed")
+            if (settings().particles) {
+                location.world.spawnParticle(Particle.SPLASH, location.clone().add(0.0, 0.65, 0.0), 26, 0.45, 0.55, 0.45, 0.12)
+                location.world.spawnParticle(Particle.CLOUD, location.clone().add(0.0, 0.45, 0.0), 10, 0.35, 0.25, 0.35, 0.035)
+            }
+            if (settings().sounds) location.world.playSound(location, Sound.BLOCK_FIRE_EXTINGUISH, 1.1f, 0.9f)
+            transitions.apply(runtime, FarmShiftEngine.extinguishBarnFire(runtime.state, hit, player.uniqueId), player)
         }
-        if (settings().sounds) {
-            location.world.playSound(location, Sound.BLOCK_FIRE_EXTINGUISH, 1.1f, 0.9f)
-            player.playSound(player.location, Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.55f, 1.35f)
-        }
-        transitions.apply(runtime, FarmShiftEngine.extinguishBarnFire(runtime.state, hit, player.uniqueId), player)
+        if (settings().sounds) player.playSound(player.location, Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.55f, 1.35f)
         debug.event(
             "farm_barn_fire_extinguished",
             "zone" to runtime.settings.id,
             "sequence" to runtime.state.sequence,
-            "hotspot" to hit,
+            "hotspots" to hits.joinToString(","),
+            "count" to hits.size,
             "player" to player.name,
         )
         return true
@@ -218,17 +219,17 @@ internal class FarmBarnFireIncident(
             val floor = world.getBlockAt(x, centerY + offset - 1, z)
             val feet = floor.getRelative(BlockFace.UP)
             val head = feet.getRelative(BlockFace.UP)
-            if (floor.type.isSolid && feet.type.isAir && blockPlatform.isPassable(head) && runtime.region.contains(feet.location)) floor.y else null
+            if (floor.type.isSolid && feet.type.isAir && blockPassability.isPassable(head) && runtime.region.contains(feet.location)) floor.y else null
         }
     }
 
-    private fun closestHit(
+    private fun hitsInSpray(
         runtime: FarmRuntime,
         start: Location,
         direction: Vector,
         range: Double,
         radius: Double,
-    ): Int? = runtime.state.specialIncident?.let { incident ->
+    ): List<Int> = runtime.state.specialIncident?.let { incident ->
         incident.active.mapNotNull { index ->
             if (FireKey(runtime.settings.id, index) !in blocks) return@mapNotNull null
             val point = incident.points.getOrNull(index)?.location() ?: return@mapNotNull null
@@ -239,8 +240,9 @@ internal class FarmBarnFireIncident(
             val closest = start.toVector().add(direction.clone().multiply(along))
             val distanceSquared = point.toVector().distanceSquared(closest)
             if (distanceSquared > radius * radius) null else Triple(index, along, distanceSquared)
-        }.minWithOrNull(compareBy<Triple<Int, Double, Double>> { it.second }.thenBy { it.third })?.first
-    }
+        }.sortedWith(compareBy<Triple<Int, Double, Double>> { it.second }.thenBy { it.third })
+            .map { it.first }
+    }.orEmpty()
 
     private fun particleHotspots(runtime: FarmRuntime, tick: Long): List<Int> {
         val limit = runtime.settings.barnFire.particleHotspotLimit

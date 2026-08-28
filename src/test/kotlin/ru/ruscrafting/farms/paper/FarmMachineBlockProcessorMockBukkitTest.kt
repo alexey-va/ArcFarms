@@ -31,11 +31,16 @@ class FarmMachineBlockProcessorMockBukkitTest : FunSpec({
         plots.count { world.getBlockAt(it.x, it.y, it.z).type == Material.FARMLAND } shouldBe 5
         ledger.blockRecords(world.getChunkAt(0, 0)).size shouldBe 5
 
-        processor.plant("farm", Material.WHEAT, plots.take(5), 5).processed.size shouldBe 5
-        plots.take(5).all { world.getBlockAt(it.x, it.y + 1, it.z).type == Material.WHEAT } shouldBe true
-        ledger.blockRecords(world.getChunkAt(0, 0)).all {
-            it.activeCropData?.startsWith("minecraft:wheat") == true
-        } shouldBe true
+        plots.take(5).forEachIndexed { index, plot ->
+            val soil = world.getBlockAt(plot.x, plot.y, plot.z)
+            soil.getRelative(org.bukkit.block.BlockFace.UP).type = if (index % 2 == 0) Material.WHEAT else Material.CARROTS
+            ledger.captureActiveCrop(soil, "farm")
+            soil.getRelative(org.bukkit.block.BlockFace.UP).type = Material.AIR
+        }
+
+        processor.restoreRecordedCrops("farm", plots.take(5), 5).processed.size shouldBe 5
+        plots.take(5).map { world.getBlockAt(it.x, it.y + 1, it.z).type } shouldBe
+            listOf(Material.WHEAT, Material.CARROTS, Material.WHEAT, Material.CARROTS, Material.WHEAT)
     }
 
     test("active crop snapshots are captured as a multi-chunk batch") {
@@ -55,5 +60,62 @@ class FarmMachineBlockProcessorMockBukkitTest : FunSpec({
         } shouldBe true
         ledger.blockRecords(world.getChunkAt(0, 0)).size shouldBe 2
         ledger.blockRecords(world.getChunkAt(1, 0)).size shouldBe 2
+    }
+
+    test("restoring an indexed bed also resets the maintained crop snapshot") {
+        val soil = world.getBlockAt(4, 64, 4).also { block ->
+            block.type = Material.FARMLAND
+            block.getRelative(org.bukkit.block.BlockFace.UP).type = Material.BEETROOTS
+        }
+        val ledger = FarmBlockLedger(paper.createSimplePlugin("FarmIndexedCropRestoreTest"))
+        ledger.replaceZoneIndex(
+            chunk = soil.chunk,
+            zoneId = "farm",
+            beds = listOf(soil),
+            fixedCrops = emptyList(),
+            orchardLeaves = emptyList(),
+        )
+
+        soil.getRelative(org.bukkit.block.BlockFace.UP).type = Material.WHEAT
+        ledger.captureActiveCrop(soil, "farm")
+        ledger.restoreOriginal(soil, clear = false) shouldBe true
+
+        soil.getRelative(org.bukkit.block.BlockFace.UP).type shouldBe Material.BEETROOTS
+        ledger.record(soil)?.activeCropData?.startsWith("minecraft:beetroots") shouldBe true
+
+        soil.getRelative(org.bukkit.block.BlockFace.UP).type = Material.AIR
+        ledger.restoreActiveCrop(soil) shouldBe true
+        soil.getRelative(org.bukkit.block.BlockFace.UP).type shouldBe Material.BEETROOTS
+    }
+
+    test("indexed field restoration batches mixed crops per chunk") {
+        val soils = (0 until 6).map { x ->
+            world.getBlockAt(x, 64, 6).also { soil ->
+                soil.type = Material.FARMLAND
+                soil.getRelative(org.bukkit.block.BlockFace.UP).type =
+                    if (x % 2 == 0) Material.WHEAT else Material.CARROTS
+            }
+        }
+        val ledger = FarmBlockLedger(paper.createSimplePlugin("FarmIndexedBatchRestoreTest"))
+        ledger.replaceZoneIndex(
+            chunk = world.getChunkAt(0, 0),
+            zoneId = "farm",
+            beds = soils,
+            fixedCrops = emptyList(),
+            orchardLeaves = emptyList(),
+        )
+        soils.forEach { soil ->
+            soil.getRelative(org.bukkit.block.BlockFace.UP).type = Material.POTATOES
+        }
+        ledger.updateActiveCrops(soils)
+
+        ledger.restoreOriginals(soils, clear = false).size shouldBe soils.size
+        soils.map { it.getRelative(org.bukkit.block.BlockFace.UP).type } shouldBe
+            listOf(Material.WHEAT, Material.CARROTS, Material.WHEAT, Material.CARROTS, Material.WHEAT, Material.CARROTS)
+        soils.map { ledger.record(it)?.activeCropData?.substringBefore('[') } shouldBe
+            listOf(
+                "minecraft:wheat", "minecraft:carrots", "minecraft:wheat",
+                "minecraft:carrots", "minecraft:wheat", "minecraft:carrots",
+            )
     }
 })

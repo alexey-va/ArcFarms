@@ -100,7 +100,15 @@ internal class FarmFieldController(
             val soil = position.block() ?: continue
             batch += position to soil
         }
-        ledger.captureAll(batch.map { it.second }, runtime.settings.id)
+        val soils = batch.map { it.second }
+        if (runtime.state.mechanizedPreparation) {
+            // The seeder temporarily clears a mixed field. Refresh every bed snapshot from
+            // the live farm immediately before that mutation so it can restore the exact
+            // crop (and growth state) which occupied this coordinate.
+            ledger.captureActiveCrops(soils, runtime.settings.id)
+        } else {
+            ledger.captureAll(soils, runtime.settings.id)
+        }
         batch.forEach { (position, soil) ->
             val above = soil.getRelative(org.bukkit.block.BlockFace.UP)
             if (above.type.name in runtime.settings.crops && !MaterialRules.isFixedBlockCrop(above.type)) {
@@ -354,10 +362,17 @@ internal class FarmFieldController(
             val crop = runtime.state.preparationCrop?.let(MaterialRules::material) ?: return@forEach
             val tilled = runtime.state.tilledPlots.toMutableSet()
             val planted = runtime.state.plantedPlots.toMutableSet()
+            val loadedSoils = patch.mapNotNull(FarmPlotPosition::block)
+            val records = ledger.records(loadedSoils)
             patch.forEach plot@{ position ->
                 val soil = position.block() ?: return@plot
                 val above = soil.getRelative(org.bukkit.block.BlockFace.UP)
-                if (above.type == crop) {
+                val expectedCrop = if (runtime.state.mechanizedPreparation) {
+                    records[position]?.activeCropData?.let { data ->
+                        runCatching { org.bukkit.Bukkit.createBlockData(data).material }.getOrNull()
+                    }
+                } else crop
+                if (expectedCrop != null && above.type == expectedCrop) {
                     tilled += position
                     planted += position
                 } else if (soil.type == Material.FARMLAND) {
@@ -410,23 +425,29 @@ internal class FarmFieldController(
     fun restoreOriginal(runtime: FarmRuntime, limit: Int = Int.MAX_VALUE): Boolean {
         require(limit >= 1) { "Farm patch restore limit must be positive" }
         val restored = patchRestoreProgress.getOrPut(runtime.settings.id, ::linkedSetOf)
-        runtime.state.preparationPatch.asSequence().filterNot(restored::contains).take(limit).forEach { position ->
-            val soil = position.block()
-            if (soil == null) {
-                return@forEach
-            }
-            runCatching {
-                if (!ledger.restoreOriginal(soil, clear = false)) {
-                    if (port.allowInteraction("farm-ledger-missing:${runtime.settings.id}:$position", TimeUnit.MINUTES.toMillis(5))) {
+        val pending = runtime.state.preparationPatch.asSequence().filterNot(restored::contains).take(limit).toList()
+        val loaded = pending.mapNotNull { position -> position.block()?.let { position to it } }
+        runCatching { ledger.restoreOriginals(loaded.map { it.second }, clear = false) }
+            .onSuccess { restoredBlocks ->
+                loaded.forEach { (position, soil) ->
+                    if (soil in restoredBlocks) {
+                        restored += position
+                    } else if (port.allowInteraction(
+                            "farm-ledger-missing:${runtime.settings.id}:$position",
+                            TimeUnit.MINUTES.toMillis(5),
+                        )
+                    ) {
                         port.log(Level.SEVERE, "Managed farm plot $position has no recovery ledger and was retained for repair")
                     }
-                } else {
-                    restored += position
                 }
-            }.onFailure { failure ->
-                port.log(Level.SEVERE, "Could not restore managed farm plot $position", failure)
             }
-        }
+            .onFailure { failure ->
+                port.log(
+                    Level.SEVERE,
+                    "Could not restore ${loaded.size} managed farm plots for ${runtime.settings.id}",
+                    failure,
+                )
+            }
         val complete = restored.containsAll(runtime.state.preparationPatch)
         if (!complete) return false
         patchRestoreProgress.remove(runtime.settings.id)
@@ -444,6 +465,7 @@ internal class FarmFieldController(
         commitAfterRecovery(runtime, runtime.state.copy(
             preparationPatch = emptyList(),
             preparationCrop = null,
+            mechanizedPreparation = false,
             preparationReleased = false,
             tilledPlots = emptySet(),
             plantedPlots = emptySet(),
@@ -583,11 +605,14 @@ internal class FarmFieldController(
                 if (above.type == Material.WATER && !activeWater) above.setType(Material.AIR, false)
                 return@forEach
             }
-            if (crop != null && position in runtime.state.plantedPlots) {
+            if (position in runtime.state.plantedPlots) {
                 val above = soil.getRelative(org.bukkit.block.BlockFace.UP)
                 if (above.type == Material.WATER && !activeWater) above.setType(Material.AIR, false)
-                if ((above.type.isAir || above.type != crop) && !ledger.restoreActiveCrop(soil)) {
-                    above.setBlockData(crop.createBlockData(), false)
+                val expected = record?.activeCropData?.let { data ->
+                    runCatching { org.bukkit.Bukkit.createBlockData(data).material }.getOrNull()
+                } ?: crop
+                if (expected != null && (above.type.isAir || above.type != expected) && !ledger.restoreActiveCrop(soil)) {
+                    above.setBlockData(expected.createBlockData(), false)
                 }
             }
         }

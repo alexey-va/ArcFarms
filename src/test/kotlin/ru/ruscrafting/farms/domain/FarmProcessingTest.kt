@@ -63,10 +63,21 @@ class FarmProcessingTest : FunSpec({
         val east = FarmProcessingLayout.create(FarmPointPosition("world", 100.0, 65.0, 200.0, 90f))
 
         north.footprint.size shouldBe 45
-        north.inputRack.x shouldBe (97.0 plusOrMinus 0.0001)
+        north.inputRacks.single().x shouldBe (97.0 plusOrMinus 0.0001)
         north.outputPallet.x shouldBe (103.0 plusOrMinus 0.0001)
-        east.inputRack.z shouldBe (197.0 plusOrMinus 0.0001)
+        east.inputRacks.single().z shouldBe (197.0 plusOrMinus 0.0001)
         east.outputPallet.z shouldBe (203.0 plusOrMinus 0.0001)
-        north.labels.size shouldBe 3
+        north.inputLabels.size shouldBe 1
+
+        val custom = FarmProcessingLayout.create(
+            FarmPointPosition("world", 100.0, 65.0, 200.0),
+            inputRackOverrides = listOf(
+                FarmPointPosition("world", 90.0, 65.0, 200.0),
+                FarmPointPosition("world", 92.0, 65.0, 200.0),
+            ),
+        )
+        custom.inputRacks.size shouldBe 2
+        FarmProcessingLayout.packagePosition(custom.inputRacks, 0).x shouldBe (89.57 plusOrMinus 0.0001)
+        FarmProcessingLayout.packagePosition(custom.inputRacks, 1).x shouldBe (91.57 plusOrMinus 0.0001)
     }
 })

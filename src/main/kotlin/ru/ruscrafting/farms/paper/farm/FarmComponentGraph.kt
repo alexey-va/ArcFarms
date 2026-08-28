@@ -20,6 +20,7 @@ import ru.ruscrafting.farms.paper.farm.care.FarmCareController
 import ru.ruscrafting.farms.paper.farm.care.FarmCarePlanService
 import ru.ruscrafting.farms.paper.farm.care.mole.FarmMoleBurrowController
 import ru.ruscrafting.farms.paper.farm.care.mole.FarmMoleBurrowWorld
+import ru.ruscrafting.farms.paper.farm.care.mole.PaperMoleBurrowChunkRetention
 import ru.ruscrafting.farms.paper.farm.delivery.FarmDeliveryController
 import ru.ruscrafting.farms.paper.farm.field.FarmFieldController
 import ru.ruscrafting.farms.paper.farm.harvest.FarmHarvestController
@@ -43,9 +44,11 @@ import ru.ruscrafting.farms.paper.farm.shift.FarmOrderCycleController
 import ru.ruscrafting.farms.paper.farm.shift.FarmShiftCoordinator
 import ru.ruscrafting.farms.paper.farm.shift.FarmShiftStartService
 import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyController
-import ru.ruscrafting.farms.paper.platform.PaperFarmBlockPlatform
-import ru.ruscrafting.farms.paper.platform.PaperFarmChunkLeaseManager
-import ru.ruscrafting.farms.paper.platform.PaperFarmEntityPlatform
+import ru.ruscrafting.farms.paper.platform.PaperFarmBlockDataDecoder
+import ru.ruscrafting.farms.paper.platform.PaperFarmBlockPassability
+import ru.ruscrafting.farms.paper.platform.PaperFarmMobDespawnPolicy
+import ru.ruscrafting.farms.paper.platform.PaperFarmTextDisplayRenderer
+import ru.ruscrafting.farms.paper.platform.PaperFarmVehiclePassengerControl
 import ru.ruscrafting.farms.persistence.FarmLocationRepository
 import ru.ruscrafting.farms.persistence.FarmRouteRepository
 import ru.ruscrafting.farms.persistence.FixedFarmCropJournal
@@ -78,16 +81,19 @@ internal class FarmComponentGraph(
     persistAsync: () -> CompletableFuture<Unit>,
 ) {
     val runtimes = FarmRuntimeRegistry()
-    private val blockPlatform = PaperFarmBlockPlatform
-    private val entityPlatform = PaperFarmEntityPlatform
-    private val chunkLeases = PaperFarmChunkLeaseManager(plugin)
+    private val blockPassability = PaperFarmBlockPassability
+    private val blockDataDecoder = PaperFarmBlockDataDecoder
+    private val textDisplays = PaperFarmTextDisplayRenderer
+    private val mobDespawns = PaperFarmMobDespawnPolicy
+    private val vehiclePassengers = PaperFarmVehiclePassengerControl
+    private val moleChunkRetention = PaperMoleBurrowChunkRetention(plugin)
     private val ledger = FarmBlockLedger(plugin)
     val blockRegistry = FarmBlockRegistry(plugin, ledger, clock)
     val pointService = FarmPointService(settings, farmLocationRepository)
     val routeAdmin = FarmRouteAdminService(farmRouteRepository, debug, port, runtimes::snapshot)
     private val basePoints = FarmPointProvider(pointService::resolveBase)
     private val placement = FarmPlacementService(plugin, blockRegistry, basePoints, debug, random)
-    private val moleBurrowWorld = FarmMoleBurrowWorld(plugin, debug, chunkLeases, blockPlatform)
+    private val moleBurrowWorld = FarmMoleBurrowWorld(plugin, debug, moleChunkRetention, blockDataDecoder)
     private val carePlans = FarmCarePlanService(
         debug = debug,
         registry = blockRegistry,
@@ -134,7 +140,8 @@ internal class FarmComponentGraph(
         transitions = transitions,
         runtimes = runtimes::snapshot,
         clock = clock,
-        entityPlatform = entityPlatform,
+        textDisplays = textDisplays,
+        mobDespawns = mobDespawns,
     )
     private val care = FarmCareController(
         plugin = plugin,
@@ -170,11 +177,14 @@ internal class FarmComponentGraph(
         debug = debug,
         port = port,
         routes = routeAdmin,
+        points = points,
         transitions = transitions,
         random = random,
         night = nightShift,
-        blocks = blockPlatform,
-        entityPlatform = entityPlatform,
+        blockPassability = blockPassability,
+        mobDespawns = mobDespawns,
+        vehiclePassengers = vehiclePassengers,
+        textDisplays = textDisplays,
     )
     val perks = FarmPerkController(
         plugin = plugin,
@@ -264,8 +274,8 @@ internal class FarmComponentGraph(
         port = port,
         configuredPoint = pointService::configured,
         transitions = transitions,
-        blocks = blockPlatform,
-        entityPlatform = entityPlatform,
+        blockPassability = blockPassability,
+        textDisplays = textDisplays,
     )
     private val barnFire = FarmBarnFireIncident(
         settings = settings,
@@ -273,7 +283,7 @@ internal class FarmComponentGraph(
         port = port,
         points = points,
         transitions = transitions,
-        blockPlatform = blockPlatform,
+        blockPassability = blockPassability,
     )
     private val scene = FarmContractSceneController(
         plugin = plugin,
