@@ -108,6 +108,31 @@ A feature constructor should normally depend on no more than five typed ports.
 Clock and random sources are injectable values, not service callbacks. Do not
 replace the god class with a god context or dozens of lambdas.
 
+## Platform testability boundary
+
+MockBukkit is a partial Paper implementation, not a server emulator. In the
+pinned 4.110.0 artifact, APIs used by ArcFarms such as block passability,
+plugin chunk tickets, display billboards and mob despawn policy are absent,
+while passenger ejection has weaker bookkeeping than Paper. A missing mock API
+must not change the production gameplay contract.
+
+ArcFarms isolates only proven gaps behind cohesive ports in `paper/platform`:
+
+- `FarmBlockPlatform` owns exact block-state calls used by placement and
+  recovery;
+- `FarmEntityPlatform` owns complete display setup, despawn policy and
+  passenger ejection;
+- `FarmChunkLeaseManager` owns plugin-ticket retain/release symmetry.
+
+`FarmComponentGraph` wires the Paper adapters. MockBukkit scenario fixtures wire
+their explicit test adapters from `src/test`; those adapters may approximate an
+unsupported API, but must preserve the gameplay-observable contract and state
+the pinned limitation. Gameplay constructors never accept raw callbacks such as
+`blockPassable`, `configureDisplay`, `setRemoveWhenFarAway` or `ejectPassengers`.
+Do not add a test-mode branch, catch `UnimplementedOperationException` in
+production, or collect unrelated ports into a service locator. A new port is
+justified only by a verified external boundary, not merely to make mocking easy.
+
 ## Farm module
 
 `FarmModule` is a coordinator, not another god class. `FarmRuntimeRegistry`
@@ -134,6 +159,7 @@ owns the zone collection; the module delegates to the following vertical owners.
 | `farm.admin/FarmGameplayAdminService`, `FarmPointAdminService`, `FarmWorldAdminService` | typed admin operations through feature APIs | invalid stage/point/selection, active event edit |
 | `farm/FarmEventRouter` | Paper event classification and delegation only | listener routing and cancelled-event policy |
 | `navigation/ActivityTravelService` | local/cross-server travel and ticket claims | stale callback and failed transfer |
+| `paper/platform` | exact Paper adapters for proven test-double gaps | gameplay decisions or test approximations |
 
 Care and incident dispatch remains bounded inside the corresponding feature
 package. Adding a type requires a domain enum, one focused handler,

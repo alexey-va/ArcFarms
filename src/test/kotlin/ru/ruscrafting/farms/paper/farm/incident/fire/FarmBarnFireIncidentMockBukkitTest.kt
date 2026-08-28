@@ -25,6 +25,7 @@ import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.CuboidActivityRegion
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.fixtures.MockBukkitFarmBlockPlatform
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 
@@ -86,6 +87,7 @@ class FarmBarnFireIncidentMockBukkitTest : FunSpec({
                     anchor
                 },
                 transitions = FarmTransitionSink { target, result, _ -> target.state = result.state },
+                blockPlatform = MockBukkitFarmBlockPlatform,
             )
 
             controller.initialize(runtime) shouldBe true

@@ -7,12 +7,10 @@ import org.bukkit.NamespacedKey
 import org.bukkit.Particle
 import org.bukkit.Sound
 import org.bukkit.attribute.Attribute
-import org.bukkit.block.Block
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Horse
 import org.bukkit.entity.Interaction
 import org.bukkit.entity.ItemDisplay
-import org.bukkit.entity.LivingEntity
 import org.bukkit.entity.Player
 import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.EntityDamageByEntityEvent
@@ -43,6 +41,8 @@ import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.admin.FarmRouteAdminService
 import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
+import ru.ruscrafting.farms.paper.platform.FarmBlockPlatform
+import ru.ruscrafting.farms.paper.platform.FarmEntityPlatform
 import java.util.random.RandomGenerator
 import java.util.logging.Level
 import kotlin.math.cos
@@ -60,20 +60,14 @@ internal class FarmFoodDeliveryIncident(
     private val transitions: FarmTransitionSink,
     private val random: RandomGenerator,
     private val night: FarmNightShiftController,
-    private val surfacePassable: (Block) -> Boolean = { it.isPassable },
-    private val surfaceSpawn: (Location) -> Boolean = FarmSurfacePolicy::isSurfaceSpawn,
-    private val setRemoveWhenFarAway: (LivingEntity, Boolean) -> Unit = { entity, value ->
-        entity.removeWhenFarAway = value
-    },
-    private val ejectPassengers: (Entity) -> Boolean = { it.eject() },
+    private val blocks: FarmBlockPlatform,
+    private val entityPlatform: FarmEntityPlatform,
 ) {
     private val zoneKey = NamespacedKey(plugin, "farm_food_route_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_food_route_sequence")
     private val roleKey = NamespacedKey(plugin, "farm_food_route_role")
     private val gunner = FarmFoodDeliveryGunner(plugin, locale, settings, debug, port)
-    private val ambush = FarmFoodDeliveryAmbush(
-        random, night, port, debug, setRemoveWhenFarAway,
-    ) { horse -> ejectPassengers(horse) }
+    private val ambush = FarmFoodDeliveryAmbush(random, night, port, debug, entityPlatform)
     private val sessions = mutableMapOf<String, FarmFoodDeliverySession>()
     private val lastRouteNames = mutableMapOf<String, String>()
 
@@ -428,8 +422,8 @@ internal class FarmFoodDeliveryIncident(
             horse.passengers.filterIsInstance<Player>().firstOrNull(),
             session.gunnerId?.let(Bukkit::getPlayer),
         ).distinctBy(Player::getUniqueId)
-        ejectPassengers(horse)
-        (session.gunnerSeatId?.let(Bukkit::getEntity) as? Interaction)?.let(ejectPassengers)
+        entityPlatform.ejectPassengers(horse)
+        (session.gunnerSeatId?.let(Bukkit::getEntity) as? Interaction)?.let(entityPlatform::ejectPassengers)
         val destination = safeSurface(location(routeStart)) ?: location(routeStart)
         participants.forEach { player ->
             player.fallDistance = 0f
@@ -475,7 +469,7 @@ internal class FarmFoodDeliveryIncident(
     private fun spawnHorse(runtime: FarmRuntime, location: Location): Horse =
         runtime.region.world.spawn(location, Horse::class.java) { horse ->
             horse.isPersistent = false
-            setRemoveWhenFarAway(horse, false)
+            entityPlatform.setRemoveWhenFarAway(horse, false)
             horse.isTamed = true
             horse.owner = null
             horse.inventory.saddle = ItemStack(Material.SADDLE)
@@ -625,8 +619,8 @@ internal class FarmFoodDeliveryIncident(
                 val head = feet.getRelative(0, 1, 0)
                 val candidate = Location(world, near.blockX + 0.5, y.toDouble(), near.blockZ + 0.5)
                 if (
-                    surfacePassable(feet) && surfacePassable(head) && feet.getRelative(0, -1, 0).type.isSolid &&
-                    surfaceSpawn(candidate)
+                    blocks.isPassable(feet) && blocks.isPassable(head) && feet.getRelative(0, -1, 0).type.isSolid &&
+                    FarmSurfacePolicy.isSurfaceSpawn(candidate, blocks)
                 ) {
                     return candidate
                 }

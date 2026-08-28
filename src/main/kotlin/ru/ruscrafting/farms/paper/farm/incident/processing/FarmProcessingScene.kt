@@ -3,10 +3,8 @@ package ru.ruscrafting.farms.paper.farm.incident.processing
 import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
 import org.bukkit.Chunk
-import org.bukkit.Color
 import org.bukkit.Location
 import org.bukkit.NamespacedKey
-import org.bukkit.entity.Display
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Interaction
 import org.bukkit.entity.ItemDisplay
@@ -21,6 +19,8 @@ import ru.ruscrafting.farms.config.FarmItemDisplayTransform
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.BukkitFarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmEntityLookup
+import ru.ruscrafting.farms.paper.platform.FarmEntityPlatform
+import ru.ruscrafting.farms.paper.platform.FarmTextDisplayStyle
 import java.util.UUID
 
 internal enum class FarmProcessingSceneRole {
@@ -66,22 +66,12 @@ internal data class FarmProcessingSceneSpec(
     val objects: List<FarmProcessingSceneObject>,
 )
 
-internal fun configureProcessingTextDisplay(entity: TextDisplay, text: Component, viewRange: Float) {
-    entity.text(text)
-    entity.billboard = Display.Billboard.VERTICAL
-    entity.alignment = TextDisplay.TextAlignment.CENTER
-    entity.isShadowed = true
-    entity.backgroundColor = Color.fromARGB(0, 0, 0, 0)
-    entity.lineWidth = 180
-    entity.viewRange = viewRange
-}
-
 /** Reconstructible, non-persistent display scene with bounded creation per tick. */
 internal class FarmProcessingScene(
     plugin: Plugin,
     private val debug: ArcFarmsDebug,
+    private val entityPlatform: FarmEntityPlatform,
     private val entityLookup: FarmEntityLookup = BukkitFarmEntityLookup,
-    private val configureTextDisplay: (TextDisplay, Component, Float) -> Unit = ::configureProcessingTextDisplay,
 ) {
     private val zoneKey = NamespacedKey(plugin, "farm_processing_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_processing_sequence")
@@ -233,7 +223,11 @@ internal class FarmProcessingScene(
                 entity.isResponsive = true
             }
             is TextDisplay -> {
-                configureTextDisplay(entity, requireNotNull(target.text), spec.viewRange)
+                entityPlatform.configureTextDisplay(
+                    entity,
+                    requireNotNull(target.text),
+                    FarmTextDisplayStyle(viewRange = spec.viewRange),
+                )
             }
         }
     }

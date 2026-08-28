@@ -23,6 +23,8 @@ import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.CuboidActivityRegion
 import ru.ruscrafting.farms.paper.FarmRuntime
+import ru.ruscrafting.farms.paper.fixtures.MockBukkitFarmBlockPlatform
+import ru.ruscrafting.farms.paper.fixtures.MockBukkitFarmChunkLeaseManager
 
 class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
     lateinit var paper: MockBukkitTestRuntime
@@ -66,6 +68,8 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         val controller = FarmMoleBurrowWorld(
             paper.createSimplePlugin("FarmMoleBurrowWorldTest"),
             ArcFarmsDebug({ false }) {},
+            MockBukkitFarmChunkLeaseManager(),
+            MockBukkitFarmBlockPlatform,
         )
 
         val scene = controller.preview(runtime, FarmPointPosition(world.name, 0.5, 65.0, 0.5))
@@ -114,6 +118,8 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         val controller = FarmMoleBurrowWorld(
             paper.createSimplePlugin("FarmMoleBedEntranceTest"),
             ArcFarmsDebug({ false }) {},
+            MockBukkitFarmChunkLeaseManager(),
+            MockBukkitFarmBlockPlatform,
         )
         val surface = FarmPointPosition(world.name, 0.5, 65.05, 0.5)
 
@@ -162,6 +168,8 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         val controller = FarmMoleBurrowWorld(
             paper.createSimplePlugin("FarmMoleBurrowFloorTest"),
             ArcFarmsDebug({ false }) {},
+            MockBukkitFarmChunkLeaseManager(),
+            MockBukkitFarmBlockPlatform,
         )
 
         controller.preview(runtime, FarmPointPosition(world.name, 0.5, 65.0, 0.5))?.records?.isNotEmpty() shouldBe true
@@ -195,6 +203,8 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         val controller = FarmMoleBurrowWorld(
             paper.createSimplePlugin("FarmMoleVerticalRegionTest"),
             ArcFarmsDebug({ false }) {},
+            MockBukkitFarmChunkLeaseManager(),
+            MockBukkitFarmBlockPlatform,
         )
 
         val surface = FarmPointPosition(world.name, 0.5, 65.0, 0.5)
@@ -250,6 +260,8 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         val controller = FarmMoleBurrowWorld(
             paper.createSimplePlugin("FarmMultiMoleBurrowTest"),
             ArcFarmsDebug({ false }) {},
+            MockBukkitFarmChunkLeaseManager(),
+            MockBukkitFarmBlockPlatform,
         )
 
         controller.prepare(runtime, targets, runtime.state.placementSequence) shouldBe true
@@ -293,6 +305,8 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         val controller = FarmMoleBurrowWorld(
             paper.createSimplePlugin("FarmMoleBurrowBuildingTest"),
             ArcFarmsDebug({ false }) {},
+            MockBukkitFarmChunkLeaseManager(),
+            MockBukkitFarmBlockPlatform,
         )
 
         val preview = controller.previewDetailed(runtime, FarmPointPosition(world.name, 0.5, 65.0, 0.5))

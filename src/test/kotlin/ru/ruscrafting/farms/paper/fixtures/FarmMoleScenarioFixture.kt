@@ -146,11 +146,7 @@ internal class FarmMoleScenarioFixture private constructor(
         },
         runtimes = { listOf(runtime) },
         clock = { 1_000L },
-        configureLabel = { entity, text ->
-            entity.text(text)
-            entity.isPersistent = false
-        },
-        setRemoveWhenFarAway = { _, _ -> },
+        entityPlatform = MockBukkitFarmEntityPlatform,
     )
 
     private fun drainBlockQueue(): Int {
@@ -227,13 +223,8 @@ internal class FarmMoleScenarioFixture private constructor(
             val burrowWorld = FarmMoleBurrowWorld(
                 plugin,
                 ArcFarmsDebug({ false }) {},
-                addChunkTicket = { _, _ -> true },
-                removeChunkTicket = { _, _ -> true },
-                createBlockData = { raw ->
-                    runCatching { org.bukkit.Bukkit.createBlockData(raw) }.getOrElse {
-                        requireNotNull(org.bukkit.Material.matchMaterial(raw.substringBefore('['))).createBlockData()
-                    }
-                },
+                MockBukkitFarmChunkLeaseManager(),
+                MockBukkitFarmBlockPlatform,
             )
 
             return FarmMoleScenarioFixture(

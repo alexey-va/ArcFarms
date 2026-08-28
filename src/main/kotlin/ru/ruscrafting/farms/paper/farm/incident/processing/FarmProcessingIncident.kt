@@ -8,11 +8,9 @@ import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.Particle
 import org.bukkit.Sound
-import org.bukkit.block.Block
 import org.bukkit.entity.Entity
 import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Player
-import org.bukkit.entity.TextDisplay
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
@@ -36,6 +34,8 @@ import ru.ruscrafting.farms.paper.FarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
+import ru.ruscrafting.farms.paper.platform.FarmBlockPlatform
+import ru.ruscrafting.farms.paper.platform.FarmEntityPlatform
 import java.util.UUID
 import java.util.logging.Level
 import kotlin.math.PI
@@ -63,11 +63,11 @@ internal class FarmProcessingIncident(
     private val port: WorksiteRuntimePort,
     private val configuredPoint: (String, FarmPointKind) -> FarmPointPosition?,
     private val transitions: FarmTransitionSink,
+    private val blocks: FarmBlockPlatform,
+    entityPlatform: FarmEntityPlatform,
     private val entityLookup: FarmEntityLookup = BukkitFarmEntityLookup,
-    private val blockPassable: (Block) -> Boolean = Block::isPassable,
-    configureTextDisplay: (TextDisplay, net.kyori.adventure.text.Component, Float) -> Unit = ::configureProcessingTextDisplay,
 ) {
-    private val scene = FarmProcessingScene(plugin, debug, entityLookup, configureTextDisplay)
+    private val scene = FarmProcessingScene(plugin, debug, entityPlatform, entityLookup)
     private val carriedZoneKey = NamespacedKey(plugin, "farm_processing_carried_zone")
     private val carriedSequenceKey = NamespacedKey(plugin, "farm_processing_carried_sequence")
     private val carriedCargoKey = NamespacedKey(plugin, "farm_processing_carried_cargo")
@@ -396,7 +396,7 @@ internal class FarmProcessingIncident(
             return FarmProcessingPlacementFailure.UNSUPPORTED_FLOOR
         }
         if (locations.any { station ->
-                (0..2).any { up -> !blockPassable(station.block.getRelative(org.bukkit.block.BlockFace.UP, up)) }
+                (0..2).any { up -> !blocks.isPassable(station.block.getRelative(org.bukkit.block.BlockFace.UP, up)) }
             }
         ) return FarmProcessingPlacementFailure.BLOCKED_CLEARANCE
         return null

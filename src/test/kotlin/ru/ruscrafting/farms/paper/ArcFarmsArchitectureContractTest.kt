@@ -163,6 +163,38 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         ).forEach { forbidden -> graph.contains(forbidden) shouldBe false }
     }
 
+    test("MockBukkit gaps use named platform ports instead of gameplay constructor lambdas") {
+        val forbidden = listOf(
+            "blockPassable:",
+            "surfacePassable:",
+            "surfaceSpawn:",
+            "setRemoveWhenFarAway:",
+            "ejectPassengers:",
+            "configureTextDisplay:",
+            "configureLabel:",
+            "addChunkTicket:",
+            "removeChunkTicket:",
+            "createBlockData:",
+        )
+        val offenders = Files.walk(farmRoot).use { paths ->
+            paths.filter { Files.isRegularFile(it) && it.toString().endsWith(".kt") }
+                .filter { path -> forbidden.any(Files.readString(path)::contains) }
+                .map(farmRoot::relativize)
+                .toList()
+        }
+
+        offenders shouldBe emptyList()
+        Files.exists(repositoryRoot.resolve(
+            "src/main/kotlin/ru/ruscrafting/farms/paper/platform/FarmBlockPlatform.kt",
+        )) shouldBe true
+        Files.exists(repositoryRoot.resolve(
+            "src/main/kotlin/ru/ruscrafting/farms/paper/platform/FarmEntityPlatform.kt",
+        )) shouldBe true
+        Files.exists(repositoryRoot.resolve(
+            "src/test/kotlin/ru/ruscrafting/farms/paper/fixtures/MockBukkitFarmPlatforms.kt",
+        )) shouldBe true
+    }
+
     test("farm follows the shared worksite contract and has one runtime collection owner") {
         val module = Files.readString(farmModulePath)
         val registry = Files.readString(farmRegistryPath)

@@ -1,14 +1,11 @@
 package ru.ruscrafting.farms.paper.farm.care.mole
 
-import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
-import org.bukkit.Color
 import org.bukkit.Location
 import org.bukkit.NamespacedKey
 import org.bukkit.Sound
 import org.bukkit.attribute.Attribute
 import org.bukkit.entity.Entity
-import org.bukkit.entity.Display
 import org.bukkit.entity.Interaction
 import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Player
@@ -40,12 +37,16 @@ import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.care.FarmCarePresentation
 import ru.ruscrafting.farms.paper.farm.care.bukkit
+import ru.ruscrafting.farms.paper.platform.FarmEntityPlatform
+import ru.ruscrafting.farms.paper.platform.FarmTextDisplayStyle
 import ru.ruscrafting.farms.persistence.FarmBurrowReturn
 import ru.ruscrafting.farms.persistence.FarmBurrowReturnRepository
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.logging.Level
 import kotlin.random.Random
+
+private val MOLE_LABEL_STYLE = FarmTextDisplayStyle(viewRange = 0.8f)
 
 /** Interactive shell around the crash-safe temporary mole tunnel. */
 internal class FarmMoleBurrowController(
@@ -58,17 +59,7 @@ internal class FarmMoleBurrowController(
     private val transitions: FarmTransitionSink,
     private val runtimes: () -> Collection<FarmRuntime>,
     private val clock: () -> Long,
-    private val configureLabel: (TextDisplay, Component) -> Unit = { entity, text ->
-        entity.text(text)
-        entity.billboard = Display.Billboard.VERTICAL
-        entity.alignment = TextDisplay.TextAlignment.CENTER
-        entity.lineWidth = 180
-        entity.backgroundColor = Color.fromARGB(0, 0, 0, 0)
-        entity.isShadowed = true
-        entity.viewRange = 0.8f
-        entity.isPersistent = false
-    },
-    private val setRemoveWhenFarAway: (Rabbit, Boolean) -> Unit = Rabbit::setRemoveWhenFarAway,
+    private val entityPlatform: FarmEntityPlatform,
 ) {
     private enum class Role { ENTRANCE, LAIR, EXIT, MOLE }
     private data class SceneKey(val zoneId: String, val sequence: Long, val burrowId: Int)
@@ -431,7 +422,7 @@ internal class FarmMoleBurrowController(
                 mole.setAdult()
                 mole.rabbitType = Rabbit.Type.BROWN
                 mole.isPersistent = false
-                setRemoveWhenFarAway(mole, false)
+                entityPlatform.setRemoveWhenFarAway(mole, false)
                 mole.isCollidable = true
                 mole.getAttribute(Attribute.MAX_HEALTH)?.baseValue = 1.0
                 mole.getAttribute(Attribute.MOVEMENT_SPEED)?.baseValue = 0.28
@@ -469,7 +460,7 @@ internal class FarmMoleBurrowController(
             }
         }
         val label = location.world.spawn(location.clone().add(0.0, 1.85, 0.0), TextDisplay::class.java) { entity ->
-            configureLabel(entity, locale.renderPath(labelPath))
+            entityPlatform.configureTextDisplay(entity, locale.renderPath(labelPath), MOLE_LABEL_STYLE)
             mark(entity, runtime, scene.burrowId, role)
         }
         val hitbox = location.world.spawn(location.clone().add(0.0, 0.55, 0.0), Interaction::class.java) { entity ->
@@ -486,7 +477,7 @@ internal class FarmMoleBurrowController(
 
     private fun spawnExit(runtime: FarmRuntime, scene: FarmMoleBurrowScene, location: Location): List<Entity> {
         val label = location.world.spawn(location.clone().add(0.0, 1.65, 0.0), TextDisplay::class.java) { entity ->
-            configureLabel(entity, locale.renderPath("care.moles.exit-label"))
+            entityPlatform.configureTextDisplay(entity, locale.renderPath("care.moles.exit-label"), MOLE_LABEL_STYLE)
             mark(entity, runtime, scene.burrowId, Role.EXIT)
         }
         val hitbox = location.world.spawn(location.clone().add(0.0, 0.55, 0.0), Interaction::class.java) { entity ->

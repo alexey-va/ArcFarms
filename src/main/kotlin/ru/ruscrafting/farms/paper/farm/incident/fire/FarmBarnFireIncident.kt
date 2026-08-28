@@ -5,7 +5,6 @@ import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.Particle
 import org.bukkit.Sound
-import org.bukkit.block.Block
 import org.bukkit.block.BlockFace
 import org.bukkit.entity.Player
 import org.bukkit.event.block.Action
@@ -24,6 +23,7 @@ import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
+import ru.ruscrafting.farms.paper.platform.FarmBlockPlatform
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -38,7 +38,7 @@ internal class FarmBarnFireIncident(
     private val port: WorksiteRuntimePort,
     private val points: FarmPointProvider,
     private val transitions: FarmTransitionSink,
-    private val blockPassable: (Block) -> Boolean = Block::isPassable,
+    private val blockPlatform: FarmBlockPlatform,
 ) {
     private val blocks = mutableMapOf<FireKey, FarmPointPosition>()
     private val unavailableSequences = mutableMapOf<String, Long>()
@@ -218,7 +218,7 @@ internal class FarmBarnFireIncident(
             val floor = world.getBlockAt(x, centerY + offset - 1, z)
             val feet = floor.getRelative(BlockFace.UP)
             val head = feet.getRelative(BlockFace.UP)
-            if (floor.type.isSolid && feet.type.isAir && blockPassable(head) && runtime.region.contains(feet.location)) floor.y else null
+            if (floor.type.isSolid && feet.type.isAir && blockPlatform.isPassable(head) && runtime.region.contains(feet.location)) floor.y else null
         }
     }
 

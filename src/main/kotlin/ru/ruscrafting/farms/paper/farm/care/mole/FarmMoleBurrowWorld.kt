@@ -7,7 +7,6 @@ import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.World
 import org.bukkit.block.Block
-import org.bukkit.block.data.BlockData
 import org.bukkit.block.data.Levelled
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
@@ -18,6 +17,8 @@ import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockPolicy
 import ru.ruscrafting.farms.paper.FarmRuntime
+import ru.ruscrafting.farms.paper.platform.FarmBlockPlatform
+import ru.ruscrafting.farms.paper.platform.FarmChunkLeaseManager
 import java.util.ArrayDeque
 import java.util.logging.Level
 import kotlin.math.floor
@@ -110,13 +111,8 @@ internal fun FarmRuntime.ownsMoleBurrowRecord(record: FarmMoleBurrowJournalRecor
 internal class FarmMoleBurrowWorld(
     private val plugin: Plugin,
     private val debug: ArcFarmsDebug,
-    private val addChunkTicket: (Chunk, Plugin) -> Boolean = { chunk, owner ->
-        chunk.addPluginChunkTicket(owner)
-    },
-    private val removeChunkTicket: (Chunk, Plugin) -> Boolean = { chunk, owner ->
-        chunk.removePluginChunkTicket(owner)
-    },
-    private val createBlockData: (String) -> BlockData = Bukkit::createBlockData,
+    private val chunkLeases: FarmChunkLeaseManager,
+    private val blocks: FarmBlockPlatform,
 ) {
     private data class SceneKey(val world: String, val zoneId: String, val sequence: Long, val burrowId: Int)
     private data class RecordKey(val world: String, val x: Int, val y: Int, val z: Int)
@@ -316,6 +312,7 @@ internal class FarmMoleBurrowWorld(
         plans.forEach { plan ->
             scenes[SceneKey(plan.world.name, plan.zoneId, plan.sequence, plan.burrowId)] = plan
             ticket(plan)
+            enqueueBuild(plan.records)
         }
         debug.event(
             "farm_mole_burrows_prepared",
@@ -439,7 +436,7 @@ internal class FarmMoleBurrowWorld(
         scenes.clear()
         ticketedChunks.toList().forEach { (worldName, x, z) ->
             Bukkit.getWorld(worldName)?.takeIf { it.isChunkLoaded(x, z) }?.getChunkAt(x, z)?.let { chunk ->
-                removeChunkTicket(chunk, plugin)
+                chunkLeases.release(chunk)
             }
         }
         ticketedChunks.clear()
@@ -573,7 +570,7 @@ internal class FarmMoleBurrowWorld(
     private fun apply(record: FarmMoleBurrowJournalRecord, raw: String): Boolean {
         val world = Bukkit.getWorld(record.world) ?: return false
         if (!world.isChunkLoaded(record.x shr 4, record.z shr 4)) return false
-        val data = runCatching { createBlockData(raw) }.getOrElse { failure ->
+        val data = runCatching { blocks.createBlockData(raw) }.getOrElse { failure ->
             logger.log(Level.SEVERE, "Could not decode mole burrow BlockData at ${record.world}:${record.x},${record.y},${record.z}", failure)
             return false
         }
@@ -643,7 +640,7 @@ internal class FarmMoleBurrowWorld(
     private fun ticket(world: World, records: Collection<FarmMoleBurrowJournalRecord>) {
         records.map { Triple(it.world, it.x shr 4, it.z shr 4) }.distinct().forEach { key ->
             if (key !in ticketedChunks && world.isChunkLoaded(key.second, key.third) &&
-                addChunkTicket(world.getChunkAt(key.second, key.third), plugin)
+                chunkLeases.retain(world.getChunkAt(key.second, key.third))
             ) ticketedChunks += key
         }
     }
@@ -662,7 +659,7 @@ internal class FarmMoleBurrowWorld(
 
     private fun releaseTicket(chunk: Chunk) {
         val key = Triple(chunk.world.name, chunk.x, chunk.z)
-        if (ticketedChunks.remove(key)) removeChunkTicket(chunk, plugin)
+        if (ticketedChunks.remove(key)) chunkLeases.release(chunk)
     }
 
     private fun enqueue(

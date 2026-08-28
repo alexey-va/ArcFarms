@@ -7,7 +7,6 @@ import org.bukkit.Sound
 import org.bukkit.attribute.Attribute
 import org.bukkit.entity.EntityType
 import org.bukkit.entity.Horse
-import org.bukkit.entity.LivingEntity
 import org.bukkit.entity.Mob
 import org.bukkit.entity.Phantom
 import org.bukkit.entity.Player
@@ -19,6 +18,7 @@ import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmNightShiftController
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.platform.FarmEntityPlatform
 import java.util.UUID
 import java.util.random.RandomGenerator
 import kotlin.math.cos
@@ -30,8 +30,7 @@ internal class FarmFoodDeliveryAmbush(
     private val night: FarmNightShiftController,
     private val port: WorksiteRuntimePort,
     private val debug: ArcFarmsDebug,
-    private val setRemoveWhenFarAway: (LivingEntity, Boolean) -> Unit,
-    private val ejectPassengers: (Horse) -> Boolean,
+    private val entities: FarmEntityPlatform,
 ) {
     fun update(
         runtime: FarmRuntime,
@@ -83,7 +82,7 @@ internal class FarmFoodDeliveryAmbush(
             val spawn = if (type == EntityType.PHANTOM) ground.clone().add(0.0, PHANTOM_SPAWN_HEIGHT, 0.0) else ground
             val monster = spawn.world.spawnEntity(spawn, type) as Mob
             monster.isPersistent = false
-            setRemoveWhenFarAway(monster, true)
+            entities.setRemoveWhenFarAway(monster, true)
             monster.isGlowing = true
             monster.target = rider
             monster.getAttribute(Attribute.MOVEMENT_SPEED)?.baseValue = config.monsterMovementSpeed
@@ -107,7 +106,7 @@ internal class FarmFoodDeliveryAmbush(
         if (spawned == 0) return
         session.pendingAmbushCheckpoints.removeFirst()
         session.brokenDown = true
-        ejectPassengers(horse)
+        entities.ejectPassengers(horse)
         horse.setAI(false)
         horse.velocity = Vector()
         players(session).forEach { player ->

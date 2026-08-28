@@ -119,11 +119,8 @@ internal class FarmIncidentScenarioFixture private constructor(
             if (zoneId == zone.id && kind == FarmPointKind.PROCESSING) processingPoint else null
         },
         transitions = transitionSink,
-        blockPassable = { it.type.isAir },
-        configureTextDisplay = { entity, text, viewRange ->
-            entity.text(text)
-            entity.viewRange = viewRange
-        },
+        blocks = MockBukkitFarmBlockPlatform,
+        entityPlatform = MockBukkitFarmEntityPlatform,
     )
 
     fun barnFire(): FarmBarnFireIncident = FarmBarnFireIncident(
@@ -136,7 +133,7 @@ internal class FarmIncidentScenarioFixture private constructor(
             barnPoint
         },
         transitions = transitionSink,
-        blockPassable = { it.type.isAir },
+        blockPlatform = MockBukkitFarmBlockPlatform,
     )
 
     fun foodDelivery(runtime: FarmRuntime, points: List<FarmPointPosition>): FarmFoodDeliveryIncident {
@@ -161,16 +158,8 @@ internal class FarmIncidentScenarioFixture private constructor(
             transitions = transitionSink,
             random = java.util.Random(7),
             night = FarmNightShiftController(plugin),
-            surfacePassable = { it.type.isAir },
-            surfaceSpawn = { location ->
-                location.world.getHighestBlockYAt(location.blockX, location.blockZ) <= location.blockY
-            },
-            setRemoveWhenFarAway = { _, _ -> },
-            ejectPassengers = { entity ->
-                val passengers = entity.passengers.toList()
-                passengers.forEach { it.leaveVehicle() }
-                passengers.isNotEmpty()
-            },
+            blocks = MockBukkitFarmBlockPlatform,
+            entityPlatform = MockBukkitFarmEntityPlatform,
         )
     }
 

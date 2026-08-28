@@ -43,6 +43,9 @@ import ru.ruscrafting.farms.paper.farm.shift.FarmOrderCycleController
 import ru.ruscrafting.farms.paper.farm.shift.FarmShiftCoordinator
 import ru.ruscrafting.farms.paper.farm.shift.FarmShiftStartService
 import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyController
+import ru.ruscrafting.farms.paper.platform.PaperFarmBlockPlatform
+import ru.ruscrafting.farms.paper.platform.PaperFarmChunkLeaseManager
+import ru.ruscrafting.farms.paper.platform.PaperFarmEntityPlatform
 import ru.ruscrafting.farms.persistence.FarmLocationRepository
 import ru.ruscrafting.farms.persistence.FarmRouteRepository
 import ru.ruscrafting.farms.persistence.FixedFarmCropJournal
@@ -75,13 +78,16 @@ internal class FarmComponentGraph(
     persistAsync: () -> CompletableFuture<Unit>,
 ) {
     val runtimes = FarmRuntimeRegistry()
+    private val blockPlatform = PaperFarmBlockPlatform
+    private val entityPlatform = PaperFarmEntityPlatform
+    private val chunkLeases = PaperFarmChunkLeaseManager(plugin)
     private val ledger = FarmBlockLedger(plugin)
     val blockRegistry = FarmBlockRegistry(plugin, ledger, clock)
     val pointService = FarmPointService(settings, farmLocationRepository)
     val routeAdmin = FarmRouteAdminService(farmRouteRepository, debug, port, runtimes::snapshot)
     private val basePoints = FarmPointProvider(pointService::resolveBase)
     private val placement = FarmPlacementService(plugin, blockRegistry, basePoints, debug, random)
-    private val moleBurrowWorld = FarmMoleBurrowWorld(plugin, debug)
+    private val moleBurrowWorld = FarmMoleBurrowWorld(plugin, debug, chunkLeases, blockPlatform)
     private val carePlans = FarmCarePlanService(
         debug = debug,
         registry = blockRegistry,
@@ -128,6 +134,7 @@ internal class FarmComponentGraph(
         transitions = transitions,
         runtimes = runtimes::snapshot,
         clock = clock,
+        entityPlatform = entityPlatform,
     )
     private val care = FarmCareController(
         plugin = plugin,
@@ -166,6 +173,8 @@ internal class FarmComponentGraph(
         transitions = transitions,
         random = random,
         night = nightShift,
+        blocks = blockPlatform,
+        entityPlatform = entityPlatform,
     )
     val perks = FarmPerkController(
         plugin = plugin,
@@ -255,6 +264,8 @@ internal class FarmComponentGraph(
         port = port,
         configuredPoint = pointService::configured,
         transitions = transitions,
+        blocks = blockPlatform,
+        entityPlatform = entityPlatform,
     )
     private val barnFire = FarmBarnFireIncident(
         settings = settings,
@@ -262,6 +273,7 @@ internal class FarmComponentGraph(
         port = port,
         points = points,
         transitions = transitions,
+        blockPlatform = blockPlatform,
     )
     private val scene = FarmContractSceneController(
         plugin = plugin,

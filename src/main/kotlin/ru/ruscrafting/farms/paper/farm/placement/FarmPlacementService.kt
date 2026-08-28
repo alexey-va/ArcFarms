@@ -13,18 +13,23 @@ import ru.ruscrafting.farms.paper.FarmBlockPolicy
 import ru.ruscrafting.farms.paper.FarmBlockRegistry
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
+import ru.ruscrafting.farms.paper.platform.FarmBlockPlatform
+import ru.ruscrafting.farms.paper.platform.PaperFarmBlockPlatform
 import java.util.random.RandomGenerator
 
 /** Loaded-column guard shared by every procedurally placed outdoor farm scene. */
 internal object FarmSurfacePolicy {
-    fun isSurfaceSpawn(location: Location): Boolean {
+    fun isSurfaceSpawn(
+        location: Location,
+        blocks: FarmBlockPlatform = PaperFarmBlockPlatform,
+    ): Boolean {
         val world = location.world ?: return false
         if (!world.isChunkLoaded(location.blockX shr 4, location.blockZ shr 4)) return false
         if (location.blockY !in world.minHeight + 1 until world.maxHeight - 1) return false
         val feet = location.block
         val head = feet.getRelative(org.bukkit.block.BlockFace.UP)
         val floor = feet.getRelative(org.bukkit.block.BlockFace.DOWN)
-        if (!feet.isPassable || !head.isPassable || !floor.type.isSolid) return false
+        if (!blocks.isPassable(feet) || !blocks.isPassable(head) || !floor.type.isSolid) return false
         return isAtOrAboveSurface(location)
     }
 
