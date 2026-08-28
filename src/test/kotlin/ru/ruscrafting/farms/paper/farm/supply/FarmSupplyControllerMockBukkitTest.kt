@@ -90,6 +90,20 @@ class FarmSupplyControllerMockBukkitTest : FunSpec({
         controller.isServiceItem(equipment, "another_farm", FarmSupplyKind.FIRE) shouldBe false
     }
 
+    test("dropping fire equipment consumes it instead of leaving a pickup") {
+        val controller = controller(plugin)
+        val runtime = runtime(world)
+        controller.give(runtime, FarmSupplyKind.FIRE, player) shouldBe true
+        val equipment = player.inventory.storageContents.filterNotNull().single(controller::isServiceItem)
+        player.inventory.removeItem(equipment)
+        val dropped = world.dropItem(player.location, equipment)
+
+        controller.discardDroppedFireEquipment(player, dropped) shouldBe true
+
+        dropped.isValid shouldBe false
+        player.inventory.storageContents.filterNotNull().none(controller::isServiceItem) shouldBe true
+    }
+
     test("cleanup removes every loaded supply entity and every online tagged item") {
         val controller = controller(plugin)
         val runtime = runtime(world)

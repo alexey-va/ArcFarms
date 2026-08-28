@@ -11,6 +11,7 @@ import org.bukkit.Sound
 import org.bukkit.entity.Display
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Interaction
+import org.bukkit.entity.Item
 import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Player
 import org.bukkit.entity.TextDisplay
@@ -151,6 +152,27 @@ internal class FarmSupplyController(
 
     fun isServiceItem(item: ItemStack?, zoneId: String, kind: FarmSupplyKind): Boolean =
         taggedValue(item)?.let { matches(it, zoneId, kind) } == true
+
+    /**
+     * Q is an explicit disposal action for the temporary fire hose. The item has
+     * already left the inventory when this event is observed, so removing its
+     * entity consumes it without leaving a pickup or returning it to the slot.
+     */
+    fun discardDroppedFireEquipment(player: Player, dropped: Item): Boolean {
+        val value = taggedValue(dropped.itemStack) ?: return false
+        if (value.substringAfter(':') != FarmSupplyKind.FIRE.name) return false
+        val amount = dropped.itemStack.amount
+        dropped.remove()
+        debug.event(
+            "farm_supply_discarded",
+            "player" to player.name,
+            "zone" to value.substringBefore(':'),
+            "kind" to FarmSupplyKind.FIRE,
+            "count" to amount,
+            "reason" to "player_drop",
+        )
+        return true
+    }
 
     fun removeServiceItems(
         player: Player,

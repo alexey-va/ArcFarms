@@ -394,6 +394,7 @@ internal class FarmEventRouter(
     }
 
     fun onDrop(event: PlayerDropItemEvent) {
+        if (supplies.discardDroppedFireEquipment(event.player, event.itemDrop)) return
         if (supplies.isServiceItem(event.itemDrop.itemStack) || foodDelivery.ownsServiceItem(event.itemDrop.itemStack)) {
             event.isCancelled = true
         }
