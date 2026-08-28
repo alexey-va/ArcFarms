@@ -45,6 +45,24 @@ class ArcFarmsStateRepositoryTest : FunSpec({
         }
     }
 
+    test("identical durable state does not rewrite the atomic file") {
+        val root = Files.createTempDirectory("arcfarms-state-distinct-write-test")
+        val expected = ArcFarmsState(
+            stats = mapOf(UUID(0, 1) to PlayerActivityStats(contributions = mapOf(ActivityKind.FARM to 42L))),
+        )
+
+        ArcFarmsStateRepository(root).use { repository ->
+            repository.saveBlocking(expected)
+            val stateFile = root.resolve("data/state.json")
+            val firstModified = Files.getLastModifiedTime(stateFile)
+
+            Thread.sleep(100)
+            repository.saveBlocking(expected.copy())
+
+            Files.getLastModifiedTime(stateFile) shouldBe firstModified
+        }
+    }
+
     test("legacy state loads with an empty temporary perk ledger") {
         val root = Files.createTempDirectory("arcfarms-state-perks-legacy-test")
         val data = root.resolve("data")

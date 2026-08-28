@@ -20,6 +20,7 @@ import ru.ruscrafting.farms.domain.MAX_FARM_PATCH_PLOTS
 import ru.ruscrafting.farms.domain.MAX_FARM_INCIDENTS
 import ru.ruscrafting.farms.domain.PlayerActivityStats
 import ru.ruscrafting.farms.domain.ShiftOutcome
+import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
@@ -35,13 +36,27 @@ data class ArcFarmsPersistenceHealth(
 )
 
 class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
+    private val statePath = dataRoot.resolve("data/state.json")
     private val store = AtomicJsonStore(
-        path = dataRoot.resolve("data/state.json"),
+        path = statePath,
         type = ArcFarmsState::class.java,
         emptyValue = ::ArcFarmsState,
         validate = ::validateState,
     )
-    private val writer = CoalescingAsyncWriter(store::saveAsync)
+    private val persistedStateLock = Any()
+    private var lastPersistedState: ArcFarmsState? = null
+    private var hasPersistedState = false
+    private var latestPendingState: ArcFarmsState? = null
+    private var latestPendingWrite: CompletableFuture<Unit>? = null
+    private val writer =
+        CoalescingAsyncWriter<ArcFarmsState> { state ->
+            store.saveAsync(state).thenApply {
+                synchronized(persistedStateLock) {
+                    lastPersistedState = state
+                    hasPersistedState = true
+                }
+            }
+        }
     private val pendingRequests = AtomicInteger()
     private val completedRequests = AtomicLong()
     private val failedRequests = AtomicLong()
@@ -49,7 +64,14 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
     private val maxDurationMillis = AtomicLong()
 
     fun load(): ArcFarmsState {
+        val existed = Files.isRegularFile(statePath)
         val state = store.load()
+        if (existed) {
+            synchronized(persistedStateLock) {
+                lastPersistedState = state
+                hasPersistedState = true
+            }
+        }
         val farms = state.farms.mapValues { (_, farm) ->
             val normalized = if (farm.diseaseDamagedCrops == null) {
                 farm.copy(diseaseDamagedCrops = emptyList())
@@ -90,7 +112,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
     fun saveAsync(state: ArcFarmsState): CompletableFuture<Unit> {
         val started = System.nanoTime()
         pendingRequests.incrementAndGet()
-        return writer.submit(state).whenComplete { _, failure ->
+        return submitDistinct(state).whenComplete { _, failure ->
             pendingRequests.decrementAndGet()
             val elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
             lastDurationMillis.set(elapsed)
@@ -106,6 +128,35 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
         lastDurationMillis = lastDurationMillis.get(),
         maxDurationMillis = maxDurationMillis.get(),
     )
+
+    private fun submitDistinct(state: ArcFarmsState): CompletableFuture<Unit> {
+        return synchronized(persistedStateLock) {
+            val pendingWrite = latestPendingWrite
+            if (pendingWrite?.isDone == true) {
+                latestPendingState = null
+                latestPendingWrite = null
+            } else if (pendingWrite != null && latestPendingState == state) {
+                return pendingWrite
+            }
+
+            if (latestPendingWrite == null && hasPersistedState && lastPersistedState == state) {
+                return CompletableFuture.completedFuture(Unit)
+            }
+
+            val submitted = writer.submit(state)
+            latestPendingState = state
+            latestPendingWrite = submitted
+            submitted.whenComplete { _, _ ->
+                synchronized(persistedStateLock) {
+                    if (latestPendingWrite === submitted) {
+                        latestPendingState = null
+                        latestPendingWrite = null
+                    }
+                }
+            }
+            submitted
+        }
+    }
 
     fun saveBlocking(state: ArcFarmsState) {
         saveAsync(state).get(SAVE_TIMEOUT_SECONDS, TimeUnit.SECONDS)

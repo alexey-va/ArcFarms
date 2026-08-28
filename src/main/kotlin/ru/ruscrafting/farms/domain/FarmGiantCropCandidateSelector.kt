@@ -24,7 +24,7 @@ internal object FarmGiantCropCandidateSelector {
             .distinctBy(FarmGiantCropCandidate::block)
             .groupBy(FarmGiantCropCandidate::crop)
             .toSortedMap()
-        val cropOrder = grouped.keys.toList().rotate(sequence + 173L)
+        val cropOrder = grouped.keys.toList().rotateSequentially(sequence + 173L)
         val queues = cropOrder.map { crop ->
             grouped.getValue(crop).sortedWith(CANDIDATE_ORDER).rotate(sequence * 31L + stableHash(crop))
         }
@@ -46,6 +46,12 @@ internal object FarmGiantCropCandidateSelector {
         if (isEmpty()) return this
         val mixed = FarmSpatialSeed.mix(salt, 0x4749414e54L)
         val offset = java.lang.Math.floorMod((mixed xor (mixed ushr 32)).toInt(), size)
+        return drop(offset) + take(offset)
+    }
+
+    private fun <T> List<T>.rotateSequentially(sequence: Long): List<T> {
+        if (isEmpty()) return this
+        val offset = java.lang.Math.floorMod(sequence, size.toLong()).toInt()
         return drop(offset) + take(offset)
     }
 

@@ -9,6 +9,7 @@ import org.mockbukkit.mockbukkit.world.WorldMock
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.CuboidBounds
+import ru.ruscrafting.farms.config.FarmDamageSafetySettings
 import ru.ruscrafting.farms.config.FarmZoneSettings
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareTarget
@@ -53,6 +54,13 @@ class FarmDiseaseControllerMockBukkitTest : FunSpec({
             every { diseaseMaxSpots } returns 10
             every { diseaseSpreadRadius } returns 4.0
             every { diseaseKillSeconds } returns 1
+            every { damageSafety } returns FarmDamageSafetySettings(
+                maximumPercent = 100,
+                minimumRemaining = 0,
+                birdMaximum = 10,
+                pestMaximum = 10,
+                diseaseMaximum = 10,
+            )
         }
         val runtime = FarmRuntime(
             zone,
