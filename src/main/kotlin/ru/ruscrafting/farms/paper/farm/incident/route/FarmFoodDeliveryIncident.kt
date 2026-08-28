@@ -76,6 +76,7 @@ internal class FarmFoodDeliveryIncident(
         random, night, port, debug, setRemoveWhenFarAway,
     ) { horse -> ejectPassengers(horse) }
     private val sessions = mutableMapOf<String, FarmFoodDeliverySession>()
+    private val lastRouteNames = mutableMapOf<String, String>()
 
     fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING)
 
@@ -177,8 +178,7 @@ internal class FarmFoodDeliveryIncident(
         while (session.loadIds.size < runtime.settings.routeDelivery.cartLoadCount) {
             session.loadIds += spawnLoad(runtime, activeHorse.location, order.cartLoadMaterial, order.cartLoadCustomModelData).uniqueId
         }
-        activeHorse.passengers.filterIsInstance<Player>().firstOrNull()?.let { session.riderId = it.uniqueId }
-        gunner.reconcile(runtime, session)
+        gunner.reconcile(runtime, session, activeHorse)
         val participants = (
             port.players(runtime.region) + activeHorse.passengers.filterIsInstance<Player>() +
                 session.gunnerId?.let(Bukkit::getPlayer).let(::listOfNotNull)
@@ -227,7 +227,7 @@ internal class FarmFoodDeliveryIncident(
     fun interact(event: PlayerInteractEntityEvent, runtimes: Collection<FarmRuntime>): Boolean {
         if (!owns(event.rightClicked)) return false
         val entityRole = role(event.rightClicked)
-        if (entityRole != ROLE_HORSE && entityRole != ROLE_GUNNER_SEAT) return false
+        if (entityRole !in setOf(ROLE_HORSE, ROLE_CART, ROLE_GUNNER_SEAT)) return false
         event.isCancelled = true
         val runtime = runtime(event.rightClicked, runtimes) ?: return true
         if (!port.hasAccess(event.player, runtime.settings.permission)) {
@@ -235,32 +235,42 @@ internal class FarmFoodDeliveryIncident(
             return true
         }
         val session = sessions[runtime.settings.id] ?: return true
-        if (entityRole == ROLE_GUNNER_SEAT) {
-            val horse = session.horseId?.let(Bukkit::getEntity) as? Horse ?: return true
-            return gunner.mount(event.player, runtime, session, event.rightClicked as Interaction, horse)
-        }
-        val horse = event.rightClicked as? Horse ?: return true
+        val horse = session.horseId?.let(Bukkit::getEntity) as? Horse ?: return true
+        return mountAvailableSeat(event.player, runtime, session, horse)
+    }
+
+    private fun mountAvailableSeat(
+        player: Player,
+        runtime: FarmRuntime,
+        session: FarmFoodDeliverySession,
+        horse: Horse,
+    ): Boolean {
         if (session.brokenDown) {
-            port.sendActionBar(event.player, MessageKey.FARM_ROUTE_BROKEN)
+            port.sendActionBar(player, MessageKey.FARM_ROUTE_BROKEN)
             return true
         }
         val existing = horse.passengers.filterIsInstance<Player>().firstOrNull()
-        if (existing != null && existing.uniqueId != event.player.uniqueId) {
-            port.sendActionBar(event.player, MessageKey.FARM_ROUTE_OCCUPIED)
-            return true
+        if (existing != null && existing.uniqueId != player.uniqueId) {
+            val seat = session.gunnerSeatId?.let(Bukkit::getEntity) as? Interaction ?: return true
+            return gunner.mount(player, runtime, session, seat, horse)
         }
-        if (existing == null && !horse.addPassenger(event.player)) return true
+        if (existing == null && !horse.addPassenger(player)) return true
         horse.setAI(true)
-        sessions[runtime.settings.id]?.riderId = event.player.uniqueId
-        port.showScreenTitle(event.player, MessageKey.FARM_ROUTE_MOUNTED)
-        event.player.playSound(event.player.location, Sound.ENTITY_HORSE_SADDLE, 0.8f, 1.05f)
+        session.riderId = player.uniqueId
+        gunner.armDriver(player, runtime, session)
+        port.showScreenTitle(player, MessageKey.FARM_ROUTE_MOUNTED)
+        player.playSound(player.location, Sound.ENTITY_HORSE_SADDLE, 0.8f, 1.05f)
+        debug.event(
+            "farm_food_driver_mounted", "zone" to runtime.settings.id,
+            "sequence" to session.sequence, "player" to player.name,
+        )
         return true
     }
 
     fun onInteract(event: org.bukkit.event.player.PlayerInteractEvent, runtimes: Collection<FarmRuntime>): Boolean {
         val runtime = runtimes.firstOrNull { candidate ->
             val session = sessions[candidate.settings.id] ?: return@firstOrNull false
-            session.gunnerId == event.player.uniqueId && active(candidate)
+            (session.riderId == event.player.uniqueId || session.gunnerId == event.player.uniqueId) && active(candidate)
         }
         return gunner.interact(event, runtime, runtime?.let { sessions[it.settings.id] })
     }
@@ -300,10 +310,11 @@ internal class FarmFoodDeliveryIncident(
 
     fun onQuit(player: Player) {
         sessions.forEach { (zoneId, session) ->
-            if (session.gunnerId == player.uniqueId) {
+            val wasRider = session.riderId == player.uniqueId
+            if (wasRider || session.gunnerId == player.uniqueId) {
                 gunner.release(player, zoneId, session, "player_quit")
             }
-            if (session.riderId != player.uniqueId) return@forEach
+            if (!wasRider) return@forEach
             (session.horseId?.let(Bukkit::getEntity) as? Horse)?.let { horse ->
                 horse.setAI(false)
                 horse.velocity = Vector()
@@ -474,8 +485,8 @@ internal class FarmFoodDeliveryIncident(
 
     private fun spawnGunnerSeat(runtime: FarmRuntime, at: Location): Interaction =
         runtime.region.world.spawn(at, Interaction::class.java) { seat ->
-            seat.interactionWidth = 1.5f
-            seat.interactionHeight = 1.4f
+            seat.interactionWidth = runtime.settings.routeDelivery.gunnerInteractionWidth
+            seat.interactionHeight = runtime.settings.routeDelivery.gunnerInteractionHeight
             seat.isResponsive = true
             seat.isPersistent = false
             mark(seat, runtime, ROLE_GUNNER_SEAT)
@@ -569,9 +580,21 @@ internal class FarmFoodDeliveryIncident(
     private fun selectedRoute(runtime: FarmRuntime): NamedFarmDeliveryRoute? {
         val persistedName = runtime.state.specialIncident?.routeName
         if (persistedName != null) {
-            return routes.route(runtime.settings.id, persistedName)?.let { NamedFarmDeliveryRoute(persistedName, it) }
+            return routes.route(runtime.settings.id, persistedName)?.let {
+                lastRouteNames[runtime.settings.id] = persistedName
+                NamedFarmDeliveryRoute(persistedName, it)
+            }
         }
-        return routes.select(runtime.settings.id, runtime.state.placementSequence)
+        val previous = lastRouteNames[runtime.settings.id]
+        val selected = routes.select(runtime.settings.id, random, previous) ?: return null
+        val name = selected.name
+        lastRouteNames[runtime.settings.id] = name
+        debug.event(
+            "farm_food_route_selected", "zone" to runtime.settings.id,
+            "sequence" to runtime.state.sequence, "route" to name,
+            "available_routes" to routes.names(runtime.settings.id).size, "previous_route" to previous,
+        )
+        return selected
     }
 
     private fun active(runtime: FarmRuntime) =

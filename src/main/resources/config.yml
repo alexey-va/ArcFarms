@@ -270,7 +270,9 @@ farm-zones:
       # Riders are dismounted at the destination, then returned to the farm after this pause.
       return-delay-seconds: 3
       cart-scale: 4.4
-      cart-y-offset: 0.35
+      # cart_2 reaches -0.825 blocks at scale 4.4 after its JSON GROUND transform;
+      # the remaining 0.05 keeps its wheels visible above uneven terrain.
+      cart-y-offset: 0.875
       cart-load-count: 4
       monsters:
         # Ambushes are planned from route length, not a timer while the cart is moving.
@@ -287,7 +289,10 @@ farm-zones:
         movement-speed: 0.25
         light-level: 15
       gunner:
-        seat-y-offset: 0.75
+        # The invisible interaction covers the cart, so either the cart or horse is easy to click.
+        seat-y-offset: 0.225
+        interaction-width: 2.8
+        interaction-height: 2.2
         # voxelspawns_megaflintlocks:vs_rifle_double from the live ItemsAdder pack.
         material: CROSSBOW
         custom-model-data: 2100103

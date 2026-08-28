@@ -54,10 +54,12 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
 
             var horse = fixture.world.entities.filterIsInstance<Horse>().single(delivery::owns)
             var seat = fixture.world.entities.filterIsInstance<Interaction>().single(delivery::owns)
-            delivery.interact(PlayerInteractEntityEvent(driver, horse, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
-            delivery.interact(PlayerInteractEntityEvent(gunner, seat, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
+            // Either clickable entity fills the first free crew seat: driver first, then gunner.
+            delivery.interact(PlayerInteractEntityEvent(driver, seat, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
+            delivery.interact(PlayerInteractEntityEvent(gunner, horse, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
             horse.passengers.single() shouldBe driver
             seat.passengers.single() shouldBe gunner
+            driver.inventory.contents.filterNotNull().any(delivery::ownsServiceItem) shouldBe true
             gunner.inventory.contents.filterNotNull().any(delivery::ownsServiceItem) shouldBe true
 
             delivery.updateVisuals(listOf(runtime))

@@ -12,7 +12,7 @@ import ru.ruscrafting.farms.persistence.FarmRouteRepository
 import java.nio.file.Files
 
 class FarmRouteAdminServiceTest : FunSpec({
-    test("named routes are selected deterministically while the legacy route remains main") {
+    test("named routes are random and avoid the previous route when alternatives exist") {
         val root = Files.createTempDirectory("arcfarms-named-route-test")
         val main = route(0.0)
         val orchard = route(20.0)
@@ -33,9 +33,9 @@ class FarmRouteAdminServiceTest : FunSpec({
             )
 
             service.names("communal_farm") shouldBe listOf("main", "orchard")
-            service.select("communal_farm", 0)?.name shouldBe "main"
-            service.select("communal_farm", 1)?.name shouldBe "orchard"
-            service.select("communal_farm", 2)?.name shouldBe "main"
+            service.select("communal_farm", java.util.Random(0))?.name shouldBe "orchard"
+            service.select("communal_farm", java.util.Random(0), excludedName = "orchard")?.name shouldBe "main"
+            service.select("communal_farm", java.util.Random(0), excludedName = "main")?.name shouldBe "orchard"
         }
     }
 })

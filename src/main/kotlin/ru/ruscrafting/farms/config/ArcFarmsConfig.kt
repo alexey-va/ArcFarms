@@ -495,6 +495,8 @@ data class FarmRouteDeliverySettings(
     val cartYOffset: Double,
     val cartLoadCount: Int,
     val gunnerSeatYOffset: Double,
+    val gunnerInteractionWidth: Float,
+    val gunnerInteractionHeight: Float,
     val rifleMaterial: String,
     val rifleCustomModelData: Int,
     val rifleItemModel: String?,
@@ -855,10 +857,16 @@ class ArcFarmsConfig private constructor(
                     timeTransitionSeconds = section.int("route-delivery.transition-seconds", 18)
                         .checked("route-delivery.transition-seconds", 1, 60),
                     cartScale = section.finiteFloat("route-delivery.cart-scale", 4.4f, 0.5f, 8.0f),
-                    cartYOffset = section.finiteDouble("route-delivery.cart-y-offset", 0.0, -2.0, 2.0),
+                    cartYOffset = section.finiteDouble("route-delivery.cart-y-offset", 0.875, -2.0, 2.0),
                     cartLoadCount = section.int("route-delivery.cart-load-count", 4)
                         .checked("route-delivery.cart-load-count", 1, 8),
-                    gunnerSeatYOffset = section.finiteDouble("route-delivery.gunner.seat-y-offset", 0.75, -1.0, 3.0),
+                    gunnerSeatYOffset = section.finiteDouble("route-delivery.gunner.seat-y-offset", 0.225, -1.0, 3.0),
+                    gunnerInteractionWidth = section.finiteFloat(
+                        "route-delivery.gunner.interaction-width", 2.8f, 0.5f, 6.0f,
+                    ),
+                    gunnerInteractionHeight = section.finiteFloat(
+                        "route-delivery.gunner.interaction-height", 2.2f, 0.5f, 4.0f,
+                    ),
                     rifleMaterial = materialName(section.string("route-delivery.gunner.material", "CROSSBOW")),
                     rifleCustomModelData = section.int("route-delivery.gunner.custom-model-data", 2_100_103)
                         .checked("route-delivery.gunner.custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),

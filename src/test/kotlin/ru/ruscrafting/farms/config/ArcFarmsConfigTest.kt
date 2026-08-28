@@ -295,7 +295,10 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().routeDelivery.trailHeight shouldBe 0.35
         settings.farms.single().routeDelivery.trailParticleSize shouldBe 1.15f
         settings.farms.single().routeDelivery.horseSpeed shouldBe 0.17
-        settings.farms.single().routeDelivery.cartYOffset shouldBe 0.35
+        settings.farms.single().routeDelivery.cartYOffset shouldBe 0.875
+        settings.farms.single().routeDelivery.gunnerSeatYOffset shouldBe 0.225
+        settings.farms.single().routeDelivery.gunnerInteractionWidth shouldBe 2.8f
+        settings.farms.single().routeDelivery.gunnerInteractionHeight shouldBe 2.2f
         settings.farms.single().routeDelivery.cartLoadCount shouldBe 4
         settings.farms.single().routeDelivery.ambushDistance shouldBe 120.0
         settings.farms.single().routeDelivery.ambushMaxCount shouldBe 3
@@ -353,7 +356,7 @@ class ArcFarmsConfigTest : FunSpec({
         classicSettings.farms.single().moleBurrow.lairVisual.material shouldBe "PAPER"
         classicSettings.farms.single().moleBurrow.lairVisual.customModelData shouldBe 11_875
         classicSettings.farms.single().routeDelivery.horseSpeed shouldBe 0.17
-        classicSettings.farms.single().routeDelivery.cartYOffset shouldBe 0.35
+        classicSettings.farms.single().routeDelivery.cartYOffset shouldBe 0.875
         classicSettings.farms.single().routeDelivery.monsterWaveMin shouldBe 3
         classicSettings.farms.single().routeDelivery.monsterWaveMax shouldBe 5
         classicSettings.farms.single().damageSafety.minimumRemaining shouldBe 128

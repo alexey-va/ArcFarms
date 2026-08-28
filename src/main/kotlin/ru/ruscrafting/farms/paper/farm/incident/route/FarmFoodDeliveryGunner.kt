@@ -11,6 +11,7 @@ import org.bukkit.entity.Mob
 import org.bukkit.entity.Player
 import org.bukkit.event.block.Action
 import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.event.player.PlayerTeleportEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
 import org.bukkit.plugin.Plugin
@@ -32,10 +33,16 @@ internal class FarmFoodDeliveryGunner(
 ) {
     private val gear = FarmFoodDeliveryGear(plugin, locale, debug)
     private val shotAt = mutableMapOf<UUID, Long>()
+    private val inventoryWarnings = mutableSetOf<UUID>()
+    private val pendingRemounts = mutableSetOf<UUID>()
 
     fun owns(item: ItemStack?): Boolean = gear.owns(item)
 
     fun remove(player: Player, reason: String) = gear.remove(player, reason = reason)
+
+    fun armDriver(player: Player, runtime: FarmRuntime, session: FarmFoodDeliverySession) {
+        equip(player, runtime, session)
+    }
 
     fun mount(
         player: Player,
@@ -55,11 +62,7 @@ internal class FarmFoodDeliveryGunner(
             port.sendActionBar(player, MessageKey.FARM_ROUTE_GUNNER_OCCUPIED)
             return true
         }
-        val config = runtime.settings.routeDelivery
-        if (!gear.give(player, runtime.settings.id, session.sequence, config)) {
-            port.sendActionBar(player, MessageKey.FARM_ROUTE_GUNNER_INVENTORY_FULL)
-            return true
-        }
+        if (!equip(player, runtime, session)) return true
         if (current == null && !seat.addPassenger(player)) {
             gear.remove(player, runtime.settings.id, session.sequence, "mount_failed")
             return true
@@ -74,25 +77,26 @@ internal class FarmFoodDeliveryGunner(
         return true
     }
 
-    fun reconcile(runtime: FarmRuntime, session: FarmFoodDeliverySession) {
+    fun reconcile(runtime: FarmRuntime, session: FarmFoodDeliverySession, horse: Horse) {
         val seat = session.gunnerSeatId?.let(Bukkit::getEntity) as? Interaction
-        val mounted = seat?.passengers?.filterIsInstance<Player>()?.firstOrNull()
-        val previous = session.gunnerId
-        if (previous != null && previous != mounted?.uniqueId) {
-            Bukkit.getPlayer(previous)?.let { gear.remove(it, runtime.settings.id, session.sequence, "gunner_dismounted") }
-            shotAt.remove(previous)
+        val mountedDriver = horse.passengers.filterIsInstance<Player>().firstOrNull()
+        val mountedGunner = seat?.passengers?.filterIsInstance<Player>()?.firstOrNull()
+        val previous = setOfNotNull(session.riderId, session.gunnerId)
+        val current = setOfNotNull(mountedDriver?.uniqueId, mountedGunner?.uniqueId)
+        (previous - current).forEach { playerId ->
+            Bukkit.getPlayer(playerId)?.let {
+                gear.remove(it, runtime.settings.id, session.sequence, "crew_dismounted")
+            }
+            shotAt.remove(playerId)
+            inventoryWarnings.remove(playerId)
+            pendingRemounts.remove(playerId)
         }
-        session.gunnerId = mounted?.uniqueId
-        if (mounted != null && !gear.give(
-                mounted,
-                runtime.settings.id,
-                session.sequence,
-                runtime.settings.routeDelivery,
-            )
-        ) {
+        session.riderId = mountedDriver?.uniqueId
+        session.gunnerId = mountedGunner?.uniqueId
+        mountedDriver?.let { equip(it, runtime, session) }
+        if (mountedGunner != null && !equip(mountedGunner, runtime, session)) {
             seat.eject()
             session.gunnerId = null
-            port.sendActionBar(mounted, MessageKey.FARM_ROUTE_GUNNER_INVENTORY_FULL)
         }
     }
 
@@ -101,7 +105,8 @@ internal class FarmFoodDeliveryGunner(
         val player = event.player
         if (!gear.owns(player.inventory.itemInMainHand)) return false
         event.isCancelled = true
-        if (runtime == null || session == null || session.gunnerId != player.uniqueId || !gear.owns(
+        if (runtime == null || session == null ||
+            (session.riderId != player.uniqueId && session.gunnerId != player.uniqueId) || !gear.owns(
                 player.inventory.itemInMainHand,
                 runtime.settings.id,
                 session.sequence,
@@ -111,10 +116,17 @@ internal class FarmFoodDeliveryGunner(
             gear.remove(player, reason = "orphaned_rifle")
             return true
         }
-        val seat = session.gunnerSeatId?.let(Bukkit::getEntity) as? Interaction
-        if (seat?.passengers?.filterIsInstance<Player>()?.none { it.uniqueId == player.uniqueId } != false) {
-            gear.remove(player, runtime.settings.id, session.sequence, "gunner_dismounted")
-            session.gunnerId = null
+        val mounted = when (player.uniqueId) {
+            session.riderId -> (session.horseId?.let(Bukkit::getEntity) as? Horse)
+                ?.passengers?.filterIsInstance<Player>()?.any { it.uniqueId == player.uniqueId } == true
+            session.gunnerId -> (session.gunnerSeatId?.let(Bukkit::getEntity) as? Interaction)
+                ?.passengers?.filterIsInstance<Player>()?.any { it.uniqueId == player.uniqueId } == true
+            else -> false
+        }
+        if (!mounted) {
+            gear.remove(player, runtime.settings.id, session.sequence, "crew_dismounted")
+            if (session.riderId == player.uniqueId) session.riderId = null
+            if (session.gunnerId == player.uniqueId) session.gunnerId = null
             return true
         }
         fire(player, runtime, session)
@@ -164,26 +176,47 @@ internal class FarmFoodDeliveryGunner(
         destination: Location,
     ) {
         val passenger = seat.passengers.filterIsInstance<Player>().firstOrNull()
-        if (!seat.teleport(destination) || passenger == null || passenger.vehicle === seat) return
-        if (!passenger.isOnline || !seat.addPassenger(passenger)) {
-            debug.event(
-                "farm_food_gunner_remount_failed", "zone" to runtime.settings.id,
-                "sequence" to session.sequence, "player" to passenger.name,
-            )
+        // Paper 1.21.10+ retains passengers by default. Verify the relationship
+        // because a client dismount racing this synthetic seat can still desync.
+        val moved = seat.teleport(destination, PlayerTeleportEvent.TeleportCause.PLUGIN)
+        if (!moved || passenger == null || passenger.vehicle === seat) return
+        if (!passenger.isOnline) return
+        if (seat.addPassenger(passenger)) return
+        if (!pendingRemounts.add(passenger.uniqueId)) return
+        port.runLater(1L) {
+            try {
+                if (!seat.isValid || !passenger.isOnline || session.gunnerId != passenger.uniqueId) return@runLater
+                if (passenger.vehicle === seat || (passenger.vehicle == null && seat.addPassenger(passenger))) return@runLater
+                debug.event(
+                    "farm_food_gunner_remount_failed", "zone" to runtime.settings.id,
+                    "sequence" to session.sequence, "player" to passenger.name,
+                )
+            } finally {
+                pendingRemounts.remove(passenger.uniqueId)
+            }
         }
     }
 
     fun release(player: Player, zoneId: String, session: FarmFoodDeliverySession, reason: String) {
-        if (session.gunnerId == player.uniqueId) {
-            session.gunnerId = null
+        val wasCrew = session.riderId == player.uniqueId || session.gunnerId == player.uniqueId
+        if (session.riderId == player.uniqueId) session.riderId = null
+        if (session.gunnerId == player.uniqueId) session.gunnerId = null
+        if (wasCrew) {
             gear.remove(player, zoneId, session.sequence, reason)
         }
         shotAt.remove(player.uniqueId)
+        inventoryWarnings.remove(player.uniqueId)
+        pendingRemounts.remove(player.uniqueId)
     }
 
     fun clear(zoneId: String, session: FarmFoodDeliverySession, reason: String) {
-        session.gunnerId?.let(Bukkit::getPlayer)?.let { gear.remove(it, zoneId, session.sequence, reason) }
-        session.gunnerId?.let(shotAt::remove)
+        setOfNotNull(session.riderId, session.gunnerId).forEach { playerId ->
+            Bukkit.getPlayer(playerId)?.let { gear.remove(it, zoneId, session.sequence, reason) }
+            shotAt.remove(playerId)
+            inventoryWarnings.remove(playerId)
+            pendingRemounts.remove(playerId)
+        }
+        session.riderId = null
         session.gunnerId = null
         session.gunnerTrail.clear()
     }
@@ -191,6 +224,19 @@ internal class FarmFoodDeliveryGunner(
     fun cleanup(reason: String) {
         Bukkit.getOnlinePlayers().forEach { gear.remove(it, reason = reason) }
         shotAt.clear()
+        inventoryWarnings.clear()
+        pendingRemounts.clear()
+    }
+
+    private fun equip(player: Player, runtime: FarmRuntime, session: FarmFoodDeliverySession): Boolean {
+        if (gear.give(player, runtime.settings.id, session.sequence, runtime.settings.routeDelivery)) {
+            inventoryWarnings.remove(player.uniqueId)
+            return true
+        }
+        if (inventoryWarnings.add(player.uniqueId)) {
+            port.sendActionBar(player, MessageKey.FARM_ROUTE_GUNNER_INVENTORY_FULL)
+        }
+        return false
     }
 
     private fun fire(player: Player, runtime: FarmRuntime, session: FarmFoodDeliverySession) {

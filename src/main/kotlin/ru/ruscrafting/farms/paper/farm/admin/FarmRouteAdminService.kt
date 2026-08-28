@@ -14,6 +14,7 @@ import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.persistence.FarmRouteRepository
 import java.util.UUID
+import java.util.random.RandomGenerator
 import kotlin.math.sqrt
 
 internal class FarmRouteAdminService(
@@ -41,11 +42,11 @@ internal class FarmRouteAdminService(
 
     fun names(zoneId: String): List<String> = routes(zoneId).keys.sorted()
 
-    fun select(zoneId: String, sequence: Long): NamedFarmDeliveryRoute? {
-        val available = routes(zoneId).toSortedMap()
+    fun select(zoneId: String, random: RandomGenerator, excludedName: String? = null): NamedFarmDeliveryRoute? {
+        val available = routes(zoneId).toSortedMap().entries.toList()
         if (available.isEmpty()) return null
-        val index = Math.floorMod(sequence, available.size.toLong()).toInt()
-        val (name, route) = available.entries.elementAt(index)
+        val candidates = available.filterNot { available.size > 1 && it.key == excludedName }
+        val (name, route) = candidates[random.nextInt(candidates.size)]
         return NamedFarmDeliveryRoute(name, route)
     }
 
