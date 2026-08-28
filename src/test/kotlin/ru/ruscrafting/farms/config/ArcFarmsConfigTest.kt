@@ -450,6 +450,19 @@ class ArcFarmsConfigTest : FunSpec({
         shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(root) }
     }
 
+    test("ItemsAdder custom model data may use the full positive integer range") {
+        val root = resourceTree()
+        val configPath = root.resolve("config.yml")
+        configPath.writeText(
+            Files.readString(configPath).replace(
+                "fire-equipment-custom-model-data: 0",
+                "fire-equipment-custom-model-data: 2100104",
+            ),
+        )
+
+        ArcFarmsConfig.inspect(root).farms.single().supplies.fireEquipmentCustomModelData shouldBe 2_100_104
+    }
+
     test("farm patch size is bounded before runtime scanning") {
         val root = resourceTree()
         val configPath = root.resolve("config.yml")

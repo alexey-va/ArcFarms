@@ -595,6 +595,8 @@ class ArcFarmsConfig private constructor(
     }.any { it.region != null }
 
     companion object {
+        private const val MAX_CUSTOM_MODEL_DATA = Int.MAX_VALUE
+
         fun load(dataRoot: Path): ArcFarmsConfig = parse(ConfigManager.of(dataRoot, "config.yml"))
 
         fun inspect(dataRoot: Path): ArcFarmsConfig = parse(Config(dataRoot, "config.yml"))
@@ -669,7 +671,7 @@ class ArcFarmsConfig private constructor(
                         }.getOrElse { error("Farm order $orderId has unknown customer") },
                         cartLoadMaterial = materialName(section.string("$path.cart-load.material")),
                         cartLoadCustomModelData = section.int("$path.cart-load.custom-model-data", 0)
-                            .checked("$path.cart-load.custom-model-data", 0, 2_000_000),
+                            .checked("$path.cart-load.custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
                     )
                 }
                 require(orders.isNotEmpty()) { "Farm zone $id has no orders" }
@@ -697,7 +699,7 @@ class ArcFarmsConfig private constructor(
                     FarmCareVisualSettings(
                         material = materialName(section.string("$path.material", defaultMaterial)),
                         customModelData = section.int("$path.custom-model-data", 0)
-                            .checked("$path.custom-model-data", 0, 2_000_000),
+                            .checked("$path.custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
                         displayTransform = section.string("$path.display-transform", "FIXED")
                             .trim()
                             .uppercase()
@@ -713,7 +715,7 @@ class ArcFarmsConfig private constructor(
                 val contractCartVisual = FarmContractCartVisualSettings(
                     material = materialName(section.string("$contractCartPath.material", "MINECART")),
                     customModelData = section.int("$contractCartPath.custom-model-data", 0)
-                        .checked("$contractCartPath.custom-model-data", 0, 2_000_000),
+                        .checked("$contractCartPath.custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
                     displayTransform = section.string("$contractCartPath.display-transform", "GROUND")
                         .trim()
                         .uppercase()
@@ -766,7 +768,7 @@ class ArcFarmsConfig private constructor(
                         FarmProcessingVisualSettings(
                             material = materialName(section.string("$path.material", defaultMaterial)),
                             customModelData = section.int("$path.custom-model-data", 0)
-                                .checked("$path.custom-model-data", 0, 2_000_000),
+                                .checked("$path.custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
                             itemModel = itemModel,
                             displayTransform = section.string("$path.display-transform", "FIXED")
                                 .trim().uppercase().let { raw ->
@@ -988,7 +990,7 @@ class ArcFarmsConfig private constructor(
                     lairVisual = FarmCareVisualSettings(
                         material = materialName(section.string("$moleLairPath.material", "RABBIT_HIDE")),
                         customModelData = section.int("$moleLairPath.custom-model-data", 0)
-                            .checked("$moleLairPath.custom-model-data", 0, 2_000_000),
+                            .checked("$moleLairPath.custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
                         displayTransform = section.string("$moleLairPath.display-transform", "FIXED")
                             .trim().uppercase().let { raw ->
                                 FarmItemDisplayTransform.entries.firstOrNull { it.name == raw }
@@ -1049,7 +1051,7 @@ class ArcFarmsConfig private constructor(
                         section.string("special-incidents.channels.blockage.material", "MANGROVE_ROOTS"),
                     ),
                     channelBlockageCustomModelData = section.int("special-incidents.channels.blockage.custom-model-data", 0)
-                        .checked("special-incidents.channels.blockage.custom-model-data", 0, 2_000_000),
+                        .checked("special-incidents.channels.blockage.custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
                     channelBlockageDisplayScale = section.finiteFloat(
                         "special-incidents.channels.blockage.display-scale",
                         1.6f,
@@ -1436,7 +1438,7 @@ class ArcFarmsConfig private constructor(
                     enabled = config.boolean("ui.menu-background.enabled", false),
                     material = materialName(config.string("ui.menu-background.material", "GRAY_STAINED_GLASS_PANE")),
                     customModelData = config.int("ui.menu-background.custom-model-data", 0)
-                        .checked("ui.menu-background.custom-model-data", 0, 2_000_000),
+                        .checked("ui.menu-background.custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
                 ),
                 saveSeconds = config.int("state.save-seconds", 10).checked("state.save-seconds", 1, 300),
                 completedCooldownSeconds = config.int("state.completed-cooldown-seconds", 180).checked("completed cooldown", 0, 3600),
@@ -1550,7 +1552,7 @@ class ArcFarmsConfig private constructor(
                 ),
                 itemMaterial = materialName(section.string("delivery.item.material", "BARREL")),
                 itemCustomModelData = section.int("delivery.item.custom-model-data", 0)
-                    .checked("delivery.item.custom-model-data", 0, 2_000_000),
+                    .checked("delivery.item.custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
                 displayTransform = section.string("delivery.display-transform", "GROUND")
                     .trim()
                     .uppercase()
@@ -1608,7 +1610,7 @@ class ArcFarmsConfig private constructor(
                 arrowAmount = section.int("supplies.arrow-amount", 32).checked("supplies.arrow-amount", 1, 64),
                 fireEquipmentMaterial = materialName(section.string("supplies.fire-equipment-material", "SPYGLASS")),
                 fireEquipmentCustomModelData = section.int("supplies.fire-equipment-custom-model-data", 0)
-                    .checked("supplies.fire-equipment-custom-model-data", 0, 2_000_000),
+                    .checked("supplies.fire-equipment-custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
                 fireEquipmentItemModel = fireEquipmentItemModel,
             )
         }
