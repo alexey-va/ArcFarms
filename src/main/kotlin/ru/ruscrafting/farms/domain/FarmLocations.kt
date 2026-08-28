@@ -16,6 +16,7 @@ enum class FarmPointKind {
     SCARECROWS,
     PEN,
     PERK_VENDOR,
+    PROCESSING,
 }
 
 data class FarmPointPosition(

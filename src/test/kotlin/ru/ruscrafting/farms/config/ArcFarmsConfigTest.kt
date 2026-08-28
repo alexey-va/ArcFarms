@@ -209,6 +209,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().careVisuals.getValue(FarmCareRole.APPLE).material shouldBe "APPLE"
         settings.farms.single().incidentTypes shouldContainExactly listOf(
             FarmIncidentType.GIANT_CROP,
+            FarmIncidentType.PROCESSING,
             FarmIncidentType.CHANNELS,
             FarmIncidentType.NIGHT_SHIFT,
             FarmIncidentType.MARKET,
@@ -217,6 +218,14 @@ class ArcFarmsConfigTest : FunSpec({
             FarmIncidentType.PESTS,
             FarmIncidentType.DROUGHT,
         )
+        settings.farms.single().processing.inputPackages shouldBe 4
+        settings.farms.single().processing.machineCycles shouldBe 6
+        settings.farms.single().processing.outputPackages shouldBe 4
+        settings.farms.single().processing.dialPeriodTicks shouldBe 60
+        settings.farms.single().processing.dialWindowTicks shouldBe 10
+        settings.farms.single().processing.spawnPerTick shouldBe 4
+        settings.farms.single().processing.visuals.getValue(FarmProcessingVisualRole.MACHINE).material shouldBe
+            "CRAFTING_TABLE"
         settings.farms.single().specialIncidents.channelBlockageCount shouldBe 5
         settings.farms.single().specialIncidents.channelBlockageMaterial shouldBe "MANGROVE_ROOTS"
         settings.farms.single().specialIncidents.channelBlockageDisplayYOffset shouldBe 0.8

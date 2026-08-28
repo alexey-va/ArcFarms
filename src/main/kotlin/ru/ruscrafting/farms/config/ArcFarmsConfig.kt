@@ -149,6 +149,7 @@ data class FarmZoneSettings(
     val droughtGrowthSeconds: Int,
     val incidentTypes: List<FarmIncidentType>,
     val specialIncidents: FarmSpecialIncidentSettings,
+    val processing: FarmProcessingSettings,
     val pestEntity: String,
     val pestSpawnRadius: Int,
     val pestNestCount: Int,
@@ -250,6 +251,44 @@ data class FarmSpecialIncidentSettings(
             .toInt()
             .coerceIn(birdMinCount, birdMaxCount)
             .coerceAtMost(availableBeds)
+    }
+}
+
+enum class FarmProcessingVisualRole {
+    MACHINE,
+    WHEEL,
+    INPUT_RACK,
+    OUTPUT_PALLET,
+    RAW_PACKAGE,
+    PRODUCT_PACKAGE,
+}
+
+data class FarmProcessingVisualSettings(
+    val material: String,
+    val customModelData: Int,
+    val itemModel: String?,
+    val displayTransform: FarmItemDisplayTransform,
+    val scale: Float,
+    val yOffset: Double,
+    val yawOffset: Float,
+)
+
+data class FarmProcessingSettings(
+    val inputPackages: Int,
+    val machineCycles: Int,
+    val outputPackages: Int,
+    val dialPeriodTicks: Int,
+    val dialWindowTicks: Int,
+    val interactionRadius: Double,
+    val deliveryRadius: Double,
+    val carriedYOffset: Double,
+    val spawnPerTick: Int,
+    val displayViewRange: Float,
+    val particleColumnHeight: Double,
+    val visuals: Map<FarmProcessingVisualRole, FarmProcessingVisualSettings>,
+) {
+    init {
+        require(dialWindowTicks < dialPeriodTicks / 2) { "processing dial window must be below half a period" }
     }
 }
 
@@ -671,6 +710,56 @@ class ArcFarmsConfig private constructor(
                     viewRange = section.finiteFloat("$contractCartPath.view-range", 2.0f, 0.25f, 8.0f),
                 )
                 val delivery = parseFarmDelivery(section, reference.world, id)
+                val processingVisualDefaults = mapOf(
+                    FarmProcessingVisualRole.MACHINE to "CRAFTING_TABLE",
+                    FarmProcessingVisualRole.WHEEL to "GRINDSTONE",
+                    FarmProcessingVisualRole.INPUT_RACK to "BARREL",
+                    FarmProcessingVisualRole.OUTPUT_PALLET to "OAK_SLAB",
+                    FarmProcessingVisualRole.RAW_PACKAGE to "WHEAT",
+                    FarmProcessingVisualRole.PRODUCT_PACKAGE to "BREAD",
+                )
+                val processing = FarmProcessingSettings(
+                    inputPackages = section.int("processing.input-packages", 4)
+                        .checked("processing.input-packages", 1, 16),
+                    machineCycles = section.int("processing.machine-cycles", 6)
+                        .checked("processing.machine-cycles", 1, 32),
+                    outputPackages = section.int("processing.output-packages", 4)
+                        .checked("processing.output-packages", 1, 16),
+                    dialPeriodTicks = section.int("processing.dial.period-ticks", 60)
+                        .checked("processing.dial.period-ticks", 20, 200),
+                    dialWindowTicks = section.int("processing.dial.success-window-ticks", 10)
+                        .checked("processing.dial.success-window-ticks", 2, 40),
+                    interactionRadius = section.finiteDouble("processing.interaction-radius", 2.2, 1.0, 5.0),
+                    deliveryRadius = section.finiteDouble("processing.delivery-radius", 2.4, 1.0, 5.0),
+                    carriedYOffset = section.finiteDouble("processing.carried-y-offset", 0.95, 0.0, 3.0),
+                    spawnPerTick = section.int("processing.spawn-per-tick", 4)
+                        .checked("processing.spawn-per-tick", 1, 16),
+                    displayViewRange = section.finiteFloat("processing.display-view-range", 3.0f, 0.25f, 8.0f),
+                    particleColumnHeight = section.finiteDouble("processing.particle-column-height", 7.0, 2.0, 16.0),
+                    visuals = processingVisualDefaults.mapValues { (role, defaultMaterial) ->
+                        val path = "processing.visuals.${role.name.lowercase().replace('_', '-')}"
+                        val itemModel = section.string("$path.item-model", "").trim().ifEmpty { null }
+                        itemModel?.let { model ->
+                            require(model.matches(Regex("[a-z0-9._-]+:[a-z0-9/._-]+"))) {
+                                "$path.item-model must be a namespaced item model"
+                            }
+                        }
+                        FarmProcessingVisualSettings(
+                            material = materialName(section.string("$path.material", defaultMaterial)),
+                            customModelData = section.int("$path.custom-model-data", 0)
+                                .checked("$path.custom-model-data", 0, 2_000_000),
+                            itemModel = itemModel,
+                            displayTransform = section.string("$path.display-transform", "FIXED")
+                                .trim().uppercase().let { raw ->
+                                    FarmItemDisplayTransform.entries.firstOrNull { it.name == raw }
+                                        ?: error("$path.display-transform must be GROUND, FIXED, or HEAD")
+                                },
+                            scale = section.finiteFloat("$path.scale", 1.0f, 0.05f, 8.0f),
+                            yOffset = section.finiteDouble("$path.y-offset", 0.0, -4.0, 4.0),
+                            yawOffset = section.finiteFloat("$path.yaw-offset", 0.0f, -360.0f, 360.0f),
+                        )
+                    },
+                )
                 val supplies = parseFarmSupplies(section, reference.world, id)
                 val routeDelivery = FarmRouteDeliverySettings(
                     sampleDistance = section.finiteDouble("route-delivery.sample-distance", 2.5, 1.0, 8.0),
@@ -1177,6 +1266,7 @@ class ArcFarmsConfig private constructor(
                         .checked("drought-growth-seconds", 1, 300),
                     incidentTypes = incidentTypes,
                     specialIncidents = specialIncidents,
+                    processing = processing,
                     pestEntity = entityName(section.string("pest-entity", "SILVERFISH")),
                     pestSpawnRadius = section.int("pest-spawn-radius", 6).checked("pest-spawn-radius", 2, 16),
                     pestNestCount = section.int("pest-nests", 3).checked("pest-nests", 1, 8),

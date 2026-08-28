@@ -16,6 +16,7 @@ import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmOrder
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmSeederStage
+import ru.ruscrafting.farms.domain.FarmProcessingStage
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.domain.FarmSpecialIncidentEngine
@@ -35,6 +36,7 @@ import ru.ruscrafting.farms.paper.farm.incident.bird.FarmBirdIncident
 import ru.ruscrafting.farms.paper.farm.incident.pest.FarmPestIncident
 import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentController
 import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
+import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingIncident
 import ru.ruscrafting.farms.paper.farm.incident.special.SPECIAL_FARM_INCIDENT_TYPES
 import ru.ruscrafting.farms.paper.farm.presentation.FarmHudController
 import ru.ruscrafting.farms.paper.farm.reward.FarmRewardService
@@ -54,6 +56,7 @@ internal class FarmShiftCoordinator(
     private val birds: FarmBirdIncident,
     private val foodDelivery: FarmFoodDeliveryIncident,
     private val special: FarmSpecialIncidentController,
+    private val processing: FarmProcessingIncident,
     private val delivery: FarmDeliveryController,
     private val scene: FarmContractSceneController,
     private val supplies: FarmSupplyController,
@@ -97,6 +100,7 @@ internal class FarmShiftCoordinator(
                 ShiftEvent.HARVEST_MILESTONE -> harvestMilestone(runtime)
                 ShiftEvent.INCIDENT_STARTED -> incidentStarted(runtime, incidentType, actor)
                 ShiftEvent.INCIDENT_PROGRESS -> incidentProgress(runtime, incidentType, actor)
+                ShiftEvent.PROCESSING_STAGE_CHANGED -> processingStageChanged(runtime)
                 ShiftEvent.INCIDENT_RESOLVED -> incidentResolved(runtime, incidentType, actor)
                 ShiftEvent.MARKET_EXPIRED -> marketExpired(runtime)
                 ShiftEvent.DELIVERY_STARTED -> deliveryStarted(runtime)
@@ -365,6 +369,28 @@ internal class FarmShiftCoordinator(
                     title = true,
                 )
             }
+            FarmIncidentType.PROCESSING -> {
+                if (!processing.initialize(runtime)) {
+                    actor?.takeIf {
+                        it.hasPermission("arcfarms.admin") && !processing.hasConfiguredPoint(runtime.settings.id)
+                    }?.let { player ->
+                        port.sendChat(
+                            player,
+                            MessageKey.ADMIN_PROCESSING_POINT_REQUIRED,
+                            mapOf("zone" to locale.text(runtime.settings.id)),
+                        )
+                    }
+                    apply(runtime, FarmShiftEngine.skipUnavailableIncident(runtime.state, FarmIncidentType.PROCESSING), null)
+                    return
+                }
+                processing.ensure(runtime)
+                port.broadcast(
+                    listOf(runtime.region),
+                    MessageKey.FARM_PROCESSING_STARTED,
+                    sound = Sound.BLOCK_GRINDSTONE_USE,
+                    title = true,
+                )
+            }
             else -> {
                 val activeType = special.initialize(runtime, type) ?: return
                 special.announce(runtime, activeType)
@@ -388,6 +414,7 @@ internal class FarmShiftCoordinator(
             FarmIncidentType.PESTS -> MessageKey.FARM_INCIDENT_PROGRESS
             FarmIncidentType.BIRDS -> MessageKey.FARM_BIRDS_PROGRESS
             FarmIncidentType.FOOD_DELIVERY -> MessageKey.FARM_ROUTE_PROGRESS
+            FarmIncidentType.PROCESSING -> MessageKey.FARM_PROCESSING_BOSSBAR
             FarmIncidentType.MARKET -> MessageKey.FARM_MARKET_PROGRESS
             FarmIncidentType.CHANNELS -> MessageKey.FARM_CHANNELS_PROGRESS
             else -> MessageKey.FARM_SPECIAL_PROGRESS
@@ -396,6 +423,7 @@ internal class FarmShiftCoordinator(
             put("done", locale.text(runtime.state.incidentProgress))
             put("total", locale.text(runtime.state.incidentRequired))
             if (type in SPECIAL_FARM_INCIDENT_TYPES) put("event", special.name(type, actor))
+            if (type == FarmIncidentType.PROCESSING) put("instruction", locale.render(processingHint(runtime), actor))
             if (type == FarmIncidentType.MARKET) runtime.state.specialIncident?.let { incident ->
                 incident.crop?.let { put("crop", MaterialRules.cropComponent(MaterialRules.material(it))) }
                 put("time", locale.text(special.marketTime(runtime, incident)))
@@ -408,11 +436,14 @@ internal class FarmShiftCoordinator(
         pests.clear(runtime, "incident_resolved")
         birds.clear(runtime.settings.id, "incident_resolved")
         foodDelivery.clear(runtime.settings.id, "incident_resolved")
+        processing.clear(runtime.settings.id, "incident_resolved")
         if (type == FarmIncidentType.GIANT_CROP) special.beginRestore(runtime)
         special.clearZone(runtime, "incident_resolved")
         port.broadcast(
             listOf(runtime.region),
-            if (type in SPECIAL_FARM_INCIDENT_TYPES) MessageKey.FARM_SPECIAL_RESOLVED else MessageKey.FARM_INCIDENT_RESOLVED,
+            if (type in SPECIAL_FARM_INCIDENT_TYPES || type == FarmIncidentType.PROCESSING) {
+                MessageKey.FARM_SPECIAL_RESOLVED
+            } else MessageKey.FARM_INCIDENT_RESOLVED,
             sound = Sound.ENTITY_VILLAGER_YES,
             title = true,
         )
@@ -425,6 +456,43 @@ internal class FarmShiftCoordinator(
             players(runtime).mapTo(mutableSetOf(), Player::getUniqueId),
         )
         port.persistAsync()
+    }
+
+    private fun processingStageChanged(runtime: FarmRuntime) {
+        val (title, subtitle, pitch) = when (runtime.state.processing?.stage) {
+            FarmProcessingStage.OPERATING -> Triple(
+                MessageKey.FARM_PROCESSING_OPERATING_TITLE,
+                MessageKey.FARM_PROCESSING_OPERATING_SUBTITLE,
+                1.0f,
+            )
+            FarmProcessingStage.PACKING -> Triple(
+                MessageKey.FARM_PROCESSING_PACKING_TITLE,
+                MessageKey.FARM_PROCESSING_PACKING_SUBTITLE,
+                1.2f,
+            )
+            FarmProcessingStage.LOADING, null -> Triple(
+                MessageKey.FARM_PROCESSING_LOADING_TITLE,
+                MessageKey.FARM_PROCESSING_LOADING_SUBTITLE,
+                0.9f,
+            )
+        }
+        players(runtime).forEach { player ->
+            port.showScreenTitle(player, locale.render(title, player), locale.render(subtitle, player))
+            if (settings().sounds) {
+                player.playSound(player.location, Sound.BLOCK_NOTE_BLOCK_CHIME, 0.8f, pitch)
+                player.playSound(player.location, Sound.BLOCK_AMETHYST_BLOCK_CHIME, 0.65f, pitch + 0.15f)
+            }
+        }
+        port.successBurst(runtime.region)
+        processing.ensure(runtime)
+        port.persistAsync()
+    }
+
+    private fun processingHint(runtime: FarmRuntime): MessageKey = when (runtime.state.processing?.stage) {
+        FarmProcessingStage.LOADING -> MessageKey.FARM_PROCESSING_LOADING_HINT
+        FarmProcessingStage.OPERATING -> MessageKey.FARM_PROCESSING_OPERATING_HINT
+        FarmProcessingStage.PACKING -> MessageKey.FARM_PROCESSING_PACKING_HINT
+        null -> MessageKey.FARM_PROCESSING_LOADING_HINT
     }
 
     private fun marketExpired(runtime: FarmRuntime) {

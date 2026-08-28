@@ -585,6 +585,7 @@ class ArcFarmsCommand(
         "scarecrows" -> FarmPointKind.SCARECROWS
         "barn", "pen" -> FarmPointKind.PEN
         "perk-vendor", "vendor" -> FarmPointKind.PERK_VENDOR
+        "processing", "workshop" -> FarmPointKind.PROCESSING
         else -> null
     }
 
@@ -623,12 +624,12 @@ class ArcFarmsCommand(
         )
         private val CARE_STAGES = CARE_EVENT_TYPES.keys.toList()
         private val EVENT_STAGES = CARE_STAGES +
-            listOf("pests", "drought", "birds", "giant-crop", "channels", "night-shift", "market", "food-delivery")
+            listOf("pests", "drought", "birds", "giant-crop", "channels", "night-shift", "market", "food-delivery", "processing")
         private val STAGE_STAGES = listOf("preparation", "planting", "harvesting") +
             EVENT_STAGES + listOf("delivery", "complete", "reset")
         private val POINT_ARGUMENTS = listOf(
             "tool", "seeds", "water", "crates", "receiving", "cart", "customer", "travel", "hive", "irrigation",
-            "covers", "scarecrows", "barn", "archery", "perk-vendor",
+            "covers", "scarecrows", "barn", "archery", "perk-vendor", "processing",
         )
         private val ADMIN_SHORTCUTS = listOf(
             "reset-farm",

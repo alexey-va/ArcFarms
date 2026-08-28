@@ -51,6 +51,35 @@ enum class FarmIncidentType {
     CHANNELS,
     NIGHT_SHIFT,
     MARKET,
+    PROCESSING,
+}
+
+enum class FarmProcessingStage {
+    LOADING,
+    OPERATING,
+    PACKING,
+}
+
+/** Durable progress only. Carriers and display UUIDs deliberately remain runtime-owned. */
+data class FarmProcessingState(
+    val crop: String,
+    val stage: FarmProcessingStage = FarmProcessingStage.LOADING,
+    val inputLoaded: Int = 0,
+    val inputRequired: Int,
+    val cyclesCompleted: Int = 0,
+    val cyclesRequired: Int,
+    val outputDelivered: Int = 0,
+    val outputRequired: Int,
+) {
+    init {
+        require(DomainIdentifiers.isContent(crop)) { "Invalid processing crop: $crop" }
+        require(inputRequired in 1..16 && inputLoaded in 0..inputRequired) { "Invalid processing input progress" }
+        require(cyclesRequired in 1..32 && cyclesCompleted in 0..cyclesRequired) { "Invalid processing cycle progress" }
+        require(outputRequired in 1..16 && outputDelivered in 0..outputRequired) { "Invalid processing output progress" }
+    }
+
+    val completed: Int get() = inputLoaded + cyclesCompleted + outputDelivered
+    val required: Int get() = inputRequired + cyclesRequired + outputRequired
 }
 
 enum class FarmCareType {
@@ -259,6 +288,7 @@ data class FarmShiftState(
     val pestDamagedCrops: List<FarmCropDamage> = emptyList(),
     val diseaseDamagedCrops: List<FarmCropDamage>? = emptyList(),
     val specialIncident: FarmSpecialIncidentState? = null,
+    val processing: FarmProcessingState? = null,
     val specialDamagedCrops: List<FarmCropDamage> = emptyList(),
     val rewardMoneyBonusPercent: Int = 0,
     val startedAt: Long = 0,
@@ -442,6 +472,7 @@ object FarmShiftEngine {
                 pestAlive = 0,
                 pestDamagedCrops = emptyList(),
                 specialIncident = null,
+                processing = null,
                 specialDamagedCrops = emptyList(),
                 deliveryPosition = null,
                 deliveredCrates = emptySet(),
@@ -470,6 +501,7 @@ object FarmShiftEngine {
                     pestAlive = 0,
                     pestDamagedCrops = emptyList(),
                     specialIncident = null,
+                    processing = null,
                     specialDamagedCrops = emptyList(),
                 )
                 events += ShiftEvent.INCIDENT_STARTED
@@ -833,6 +865,7 @@ object FarmShiftEngine {
             pestNestsInitialized = false,
             pestAlive = 0,
             specialIncident = null,
+            processing = null,
         )
         return EngineResult(state, true, contribution, listOf(ShiftEvent.INCIDENT_RESOLVED))
     }
@@ -882,6 +915,77 @@ object FarmShiftEngine {
         )
         if (progress >= current.incidentRequired) return completeIncident(state, contribution)
         return EngineResult(state, true, contribution, listOf(ShiftEvent.INCIDENT_PROGRESS))
+    }
+
+    fun initializeProcessing(
+        current: FarmShiftState,
+        crop: String,
+        inputRequired: Int,
+        cyclesRequired: Int,
+        outputRequired: Int,
+    ): EngineResult<FarmShiftState> {
+        if (
+            current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.PROCESSING ||
+            current.processing != null
+        ) return EngineResult(current, false)
+        val processing = FarmProcessingState(
+            crop = crop,
+            inputRequired = inputRequired,
+            cyclesRequired = cyclesRequired,
+            outputRequired = outputRequired,
+        )
+        return EngineResult(
+            current.copy(
+                incidentProgress = 0,
+                incidentRequired = processing.required,
+                processing = processing,
+            ),
+            true,
+        )
+    }
+
+    fun advanceProcessing(
+        current: FarmShiftState,
+        playerId: UUID,
+        expectedStage: FarmProcessingStage,
+    ): EngineResult<FarmShiftState> {
+        val processing = current.processing
+        if (
+            current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.PROCESSING ||
+            processing == null || processing.stage != expectedStage
+        ) return EngineResult(current, false)
+
+        val advanced = when (expectedStage) {
+            FarmProcessingStage.LOADING -> processing.copy(inputLoaded = (processing.inputLoaded + 1).coerceAtMost(processing.inputRequired))
+            FarmProcessingStage.OPERATING -> processing.copy(
+                cyclesCompleted = (processing.cyclesCompleted + 1).coerceAtMost(processing.cyclesRequired),
+            )
+            FarmProcessingStage.PACKING -> processing.copy(
+                outputDelivered = (processing.outputDelivered + 1).coerceAtMost(processing.outputRequired),
+            )
+        }
+        val nextStage = when {
+            advanced.stage == FarmProcessingStage.LOADING && advanced.inputLoaded >= advanced.inputRequired ->
+                FarmProcessingStage.OPERATING
+            advanced.stage == FarmProcessingStage.OPERATING && advanced.cyclesCompleted >= advanced.cyclesRequired ->
+                FarmProcessingStage.PACKING
+            else -> advanced.stage
+        }
+        val nextProcessing = advanced.copy(stage = nextStage)
+        val state = current.copy(
+            processing = nextProcessing,
+            incidentProgress = nextProcessing.completed.coerceAtMost(nextProcessing.required),
+            contributors = incrementContribution(current.contributors, playerId, 1),
+        )
+        if (nextProcessing.outputDelivered >= nextProcessing.outputRequired) {
+            val completed = completeIncident(state, contribution = 1)
+            return completed.copy(events = listOf(ShiftEvent.INCIDENT_PROGRESS) + completed.events)
+        }
+        val events = buildList {
+            add(ShiftEvent.INCIDENT_PROGRESS)
+            if (nextStage != processing.stage) add(ShiftEvent.PROCESSING_STAGE_CHANGED)
+        }
+        return EngineResult(state, true, contribution = 1, events = events)
     }
 
     fun initializeFoodDelivery(current: FarmShiftState, checkpoints: Int, routeName: String = FarmRouteKeys.DEFAULT_NAME): EngineResult<FarmShiftState> {
@@ -1000,6 +1104,7 @@ object FarmShiftEngine {
                     pestAlive = 0,
                     pestDamagedCrops = emptyList(),
                     specialIncident = null,
+                    processing = null,
                     specialDamagedCrops = emptyList(),
                     deliveryPosition = null,
                     deliveredCrates = emptySet(),

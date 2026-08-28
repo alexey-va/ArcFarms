@@ -17,6 +17,7 @@ import ru.ruscrafting.farms.domain.FarmMusicLoop
 import ru.ruscrafting.farms.domain.FarmOrder
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmSeederStage
+import ru.ruscrafting.farms.domain.FarmProcessingStage
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.domain.seederStage
 import ru.ruscrafting.farms.paper.ActivityBarKey
@@ -130,6 +131,7 @@ internal class FarmHudController(
                 FarmIncidentType.PESTS -> MessageKey.FARM_ENTRY_PESTS
                 FarmIncidentType.BIRDS -> MessageKey.FARM_ENTRY_BIRDS
                 FarmIncidentType.FOOD_DELIVERY -> MessageKey.FARM_ENTRY_ROUTE
+                FarmIncidentType.PROCESSING -> MessageKey.FARM_ENTRY_PROCESSING
                 else -> null
             }
             FarmPhase.DELIVERY -> MessageKey.FARM_ENTRY_DELIVERY
@@ -303,7 +305,8 @@ internal class FarmHudController(
                 careType = runtime.state.careType,
                 seederStage = runtime.state.seederStage(),
                 incidentType = runtime.state.incidentType,
-                incidentCrop = runtime.state.specialIncident?.crop,
+                processingStage = runtime.state.processing?.stage,
+                incidentCrop = runtime.state.processing?.crop ?: runtime.state.specialIncident?.crop,
                 marketAccepted = runtime.state.specialIncident?.marketAccepted == true,
                 carrying = carrying,
             ),
@@ -338,6 +341,7 @@ internal class FarmHudController(
             FarmIncidentType.PESTS -> MessageKey.FARM_INCIDENT_BOSSBAR
             FarmIncidentType.BIRDS -> MessageKey.FARM_BIRDS_BOSSBAR
             FarmIncidentType.FOOD_DELIVERY -> MessageKey.FARM_ROUTE_BOSSBAR
+            FarmIncidentType.PROCESSING -> MessageKey.FARM_PROCESSING_BOSSBAR
             FarmIncidentType.MARKET -> if (runtime.state.specialIncident?.marketAccepted == true) {
                 MessageKey.FARM_MARKET_ACTIVE_BOSSBAR
             } else MessageKey.FARM_MARKET_PENDING_BOSSBAR
@@ -358,18 +362,31 @@ internal class FarmHudController(
 
     private fun activeCrop(runtime: FarmRuntime, order: FarmOrder): String? = when {
         runtime.state.phase == FarmPhase.PLANTING -> runtime.state.preparationCrop
+        runtime.state.phase == FarmPhase.INCIDENT && runtime.state.incidentType == FarmIncidentType.PROCESSING ->
+            runtime.state.processing?.crop ?: order.required.keys.firstOrNull()
         runtime.state.phase == FarmPhase.INCIDENT && runtime.state.incidentType == FarmIncidentType.MARKET ->
             runtime.state.specialIncident?.crop ?: order.required.keys.firstOrNull()
         else -> order.required.keys.firstOrNull()
     }
 
-    private fun instruction(runtime: FarmRuntime, player: Player): Component = runtime.state.careType?.let { type ->
-        locale.renderPath(
-            if (type == FarmCareType.SEEDER) seederInstructionPath(runtime.state) else "care.${type.name.lowercase()}.instruction",
-            player,
-            mapOf("total" to locale.text(runtime.state.careRequired())),
-        )
-    } ?: Component.empty()
+    private fun instruction(runtime: FarmRuntime, player: Player): Component {
+        if (runtime.state.incidentType == FarmIncidentType.PROCESSING) {
+            val key = when (runtime.state.processing?.stage) {
+                FarmProcessingStage.LOADING -> MessageKey.FARM_PROCESSING_LOADING_HINT
+                FarmProcessingStage.OPERATING -> MessageKey.FARM_PROCESSING_OPERATING_HINT
+                FarmProcessingStage.PACKING -> MessageKey.FARM_PROCESSING_PACKING_HINT
+                null -> MessageKey.FARM_PROCESSING_LOADING_HINT
+            }
+            return locale.render(key, player)
+        }
+        return runtime.state.careType?.let { type ->
+            locale.renderPath(
+                if (type == FarmCareType.SEEDER) seederInstructionPath(runtime.state) else "care.${type.name.lowercase()}.instruction",
+                player,
+                mapOf("total" to locale.text(runtime.state.careRequired())),
+            )
+        } ?: Component.empty()
+    }
 
     private fun dynamicEntry(runtime: FarmRuntime, player: Player): Component = when (runtime.state.phase) {
         FarmPhase.CARE -> runtime.state.careType?.let {
@@ -398,6 +415,15 @@ internal class FarmHudController(
             FarmIncidentType.DROUGHT -> port.sendActionBar(player, MessageKey.FARM_DROUGHT_REQUIRED)
             FarmIncidentType.BIRDS -> port.sendActionBar(player, MessageKey.FARM_BIRDS_REQUIRED)
             FarmIncidentType.FOOD_DELIVERY -> port.sendActionBar(player, MessageKey.FARM_ROUTE_REQUIRED)
+            FarmIncidentType.PROCESSING -> port.sendActionBar(
+                player,
+                when (runtime.state.processing?.stage) {
+                    FarmProcessingStage.LOADING -> MessageKey.FARM_PROCESSING_LOADING_HINT
+                    FarmProcessingStage.OPERATING -> MessageKey.FARM_PROCESSING_OPERATING_HINT
+                    FarmProcessingStage.PACKING -> MessageKey.FARM_PROCESSING_PACKING_HINT
+                    null -> MessageKey.FARM_PROCESSING_LOADING_HINT
+                },
+            )
             FarmIncidentType.MARKET -> {
                 val incident = runtime.state.specialIncident ?: return
                 port.sendActionBar(

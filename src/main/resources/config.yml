@@ -193,7 +193,7 @@ farm-zones:
     drought-growth-seconds: 2
     # В одном заказе планировщик не повторяет события и допускает максимум
     # одно обычное полевое происшествие (вредители или засуха).
-    incident-types: [GIANT_CROP, CHANNELS, NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, PESTS, DROUGHT]
+    incident-types: [GIANT_CROP, PROCESSING, CHANNELS, NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, PESTS, DROUGHT]
     special-incidents:
       giant-crop: {block-particle-stride: 4}
       birds: {min-count: 6, max-count: 14, beds-per-bird: 180, spawn-multiplier: 2, spawn-height: 4.0, flying-speed: 0.65, health: 4.0, eat-radius: 5.0, eat-interval-seconds: 3, ranged-contribution: 2, melee-contribution: 1}
@@ -227,6 +227,26 @@ farm-zones:
         crops: 256
         money-bonus-percent: 25
         timer: {base-seconds: 30, seconds-per-crop: 0.3, minimum-seconds: 90, maximum-seconds: 180}
+    # A single admin anchor (including yaw) defines the whole temporary 9x5 workshop.
+    # Bundled visuals stay vanilla; a live server may override them with ItemsAdder item models.
+    processing:
+      input-packages: 4
+      machine-cycles: 6
+      output-packages: 4
+      dial: {period-ticks: 60, success-window-ticks: 10}
+      interaction-radius: 2.2
+      delivery-radius: 2.4
+      carried-y-offset: 0.95
+      spawn-per-tick: 4
+      display-view-range: 3.0
+      particle-column-height: 7.0
+      visuals:
+        machine: {material: CRAFTING_TABLE, custom-model-data: 0, display-transform: FIXED, scale: 1.6, y-offset: 0.45, yaw-offset: 0.0}
+        wheel: {material: GRINDSTONE, custom-model-data: 0, display-transform: FIXED, scale: 1.1, y-offset: 1.1, yaw-offset: 0.0}
+        input-rack: {material: BARREL, custom-model-data: 0, display-transform: FIXED, scale: 1.3, y-offset: 0.4, yaw-offset: 0.0}
+        output-pallet: {material: OAK_SLAB, custom-model-data: 0, display-transform: FIXED, scale: 1.5, y-offset: 0.15, yaw-offset: 0.0}
+        raw-package: {material: WHEAT, custom-model-data: 0, display-transform: FIXED, scale: 1.0, y-offset: 0.65, yaw-offset: 0.0}
+        product-package: {material: BREAD, custom-model-data: 0, display-transform: FIXED, scale: 1.0, y-offset: 0.65, yaw-offset: 0.0}
     route-delivery:
       sample-distance: 2.5
       corridor-radius: 5.0
@@ -328,42 +348,42 @@ farm-zones:
         rarity: COMMON
         crops: [WHEAT:640, CARROTS:320, POTATOES:320]
         care-types: [MOLES, IRRIGATION, ANIMAL_RESCUE, WEEDS]
-        incident-types: [GIANT_CROP, CHANNELS, NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, DROUGHT, PESTS]
+        incident-types: [GIANT_CROP, PROCESSING, CHANNELS, NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, DROUGHT, PESTS]
         customer: MINE_SUPPLIER
         cart-load: {material: POTATO, custom-model-data: 0}
       bakery_supply:
         rarity: COMMON
         crops: [WHEAT:960, BEETROOTS:320]
         care-types: [POLLINATION, APPLE_HARVEST, DISEASE, IRRIGATION, SCARECROWS, MOLES]
-        incident-types: [CHANNELS, NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, GIANT_CROP, PESTS, DROUGHT]
+        incident-types: [CHANNELS, PROCESSING, NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, GIANT_CROP, PESTS, DROUGHT]
         customer: BAKER
         cart-load: {material: WHEAT, custom-model-data: 0}
       market_crates:
         rarity: COMMON
         crops: [CARROTS:320, POTATOES:320, BEETROOTS:320, SWEET_BERRY_BUSH:320, MELON:48, PUMPKIN:48]
         care-types: [WEEDS, APPLE_HARVEST, SCARECROWS, ANIMAL_RESCUE, STORM_COVERS]
-        incident-types: [MARKET, GIANT_CROP, NIGHT_SHIFT, BIRDS, FOOD_DELIVERY, CHANNELS, PESTS, DROUGHT]
+        incident-types: [MARKET, PROCESSING, GIANT_CROP, NIGHT_SHIFT, BIRDS, FOOD_DELIVERY, CHANNELS, PESTS, DROUGHT]
         customer: MARKET_TRADER
         cart-load: {material: CARROT, custom-model-data: 0}
       harvest_festival:
         rarity: RARE
         crops: [WHEAT:800, CARROTS:480, POTATOES:480, BEETROOTS:320, MELON:64, PUMPKIN:64]
         care-types: [POLLINATION, APPLE_HARVEST, STORM_COVERS, SCARECROWS]
-        incident-types: [GIANT_CROP, MARKET, BIRDS, FOOD_DELIVERY, CHANNELS, NIGHT_SHIFT, DROUGHT, PESTS]
+        incident-types: [GIANT_CROP, PROCESSING, MARKET, BIRDS, FOOD_DELIVERY, CHANNELS, NIGHT_SHIFT, DROUGHT, PESTS]
         customer: MARKET_TRADER
         cart-load: {material: HAY_BLOCK, custom-model-data: 0}
       deep_mine_relief:
         rarity: RARE
         crops: [WHEAT:800, CARROTS:480, POTATOES:640]
         care-types: [MOLES, IRRIGATION, DISEASE]
-        incident-types: [CHANNELS, GIANT_CROP, BIRDS, FOOD_DELIVERY, NIGHT_SHIFT, MARKET, DROUGHT, PESTS]
+        incident-types: [CHANNELS, PROCESSING, GIANT_CROP, BIRDS, FOOD_DELIVERY, NIGHT_SHIFT, MARKET, DROUGHT, PESTS]
         customer: MINE_SUPPLIER
         cart-load: {material: BAKED_POTATO, custom-model-data: 0}
       master_baker_request:
         rarity: RARE
         crops: [WHEAT:1440, BEETROOTS:480]
         care-types: [POLLINATION, APPLE_HARVEST, DISEASE, STORM_COVERS]
-        incident-types: [NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, GIANT_CROP, CHANNELS, PESTS, DROUGHT]
+        incident-types: [NIGHT_SHIFT, PROCESSING, MARKET, BIRDS, FOOD_DELIVERY, GIANT_CROP, CHANNELS, PESTS, DROUGHT]
         customer: BAKER
         cart-load: {material: BREAD, custom-model-data: 0}
 

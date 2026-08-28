@@ -41,6 +41,7 @@ import ru.ruscrafting.farms.paper.farm.incident.bird.FarmBirdIncident
 import ru.ruscrafting.farms.paper.farm.incident.pest.FarmPestIncident
 import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentController
 import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
+import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingIncident
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
 import ru.ruscrafting.farms.paper.farm.presentation.FarmGuidanceController
 import ru.ruscrafting.farms.paper.farm.recovery.FarmIncidentRecoveryController
@@ -68,6 +69,7 @@ internal class FarmGameplayAdminService(
     private val birds: FarmBirdIncident,
     private val foodDelivery: FarmFoodDeliveryIncident,
     private val special: FarmSpecialIncidentController,
+    private val processing: FarmProcessingIncident,
     private val incidentRecovery: FarmIncidentRecoveryController,
     private val delivery: FarmDeliveryController,
     private val scene: FarmContractSceneController,
@@ -184,7 +186,10 @@ internal class FarmGameplayAdminService(
         val state = runtime.state
         val order = currentOrder(runtime)
         val water = drought.flowStats(zoneId)
-        val incident = state.incidentType?.let { locale.renderPath("admin.stage.${special.id(it)}", player) } ?: locale.text("—")
+        val incident = state.incidentType?.let {
+            val id = if (it == FarmIncidentType.PROCESSING) "processing" else special.id(it)
+            locale.renderPath("admin.stage.$id", player)
+        } ?: locale.text("—")
         port.sendChat(player, MessageKey.ADMIN_DEBUG_HEADER, mapOf("zone" to locale.text(zoneId)))
         port.sendChat(player, MessageKey.ADMIN_DEBUG_SHIFT, mapOf(
             "phase" to locale.renderPath("phase.farm.${state.phase.name.lowercase()}", player),
@@ -307,6 +312,7 @@ internal class FarmGameplayAdminService(
         pests.clear(runtime, "admin_stage")
         birds.clear(runtime.settings.id, "admin_stage")
         foodDelivery.clear(runtime.settings.id, "admin_stage")
+        processing.clear(runtime.settings.id, "admin_stage")
         restoreGiantCrop(runtime, "admin_stage")
         special.clearZone(runtime, "admin_stage")
         // An explicit admin transition must leave no incident journal behind. A bounded
@@ -318,7 +324,7 @@ internal class FarmGameplayAdminService(
             port.sendChat(player, MessageKey.ADMIN_INCIDENT_RECOVERY_PENDING, mapOf("count" to locale.text(incidentRecovery.remaining(runtime))))
             return false
         }
-        runtime.state = runtime.state.copy(specialIncident = null, specialDamagedCrops = emptyList())
+        runtime.state = runtime.state.copy(specialIncident = null, processing = null, specialDamagedCrops = emptyList())
         delivery.clear(runtime, "admin_stage")
         return true
     }
@@ -398,6 +404,7 @@ internal class FarmGameplayAdminService(
             pestNestsInitialized = false, pestNests = emptyList(), pestAlive = 0,
             pestDamagedCrops = emptyList(), diseaseDamagedCrops = emptyList(),
             specialIncident = null, specialDamagedCrops = emptyList(),
+            processing = null,
         )
     }
 
@@ -432,6 +439,7 @@ internal class FarmGameplayAdminService(
         pests.clear(runtime, "admin_reset")
         birds.clear(runtime.settings.id, "admin_reset")
         foodDelivery.clear(runtime.settings.id, "admin_reset")
+        processing.clear(runtime.settings.id, "admin_reset")
         restoreGiantCrop(runtime, "admin_reset")
         special.clearZone(runtime, "admin_reset")
         delivery.clear(runtime, "admin_reset")
@@ -566,6 +574,7 @@ internal class FarmGameplayAdminService(
             "food-delivery" to FarmIncidentType.FOOD_DELIVERY,
             "giant-crop" to FarmIncidentType.GIANT_CROP, "channels" to FarmIncidentType.CHANNELS,
             "night-shift" to FarmIncidentType.NIGHT_SHIFT, "market" to FarmIncidentType.MARKET,
+            "processing" to FarmIncidentType.PROCESSING,
         )
         val STANDARD_STAGES = setOf("preparation", "planting", "harvesting", "delivery", "complete", "reset") + INCIDENT_STAGES.keys
         val BED_PATCH_CARE_TYPES = setOf(FarmCareType.SEEDER, FarmCareType.WEEDS, FarmCareType.DISEASE, FarmCareType.MOLES)

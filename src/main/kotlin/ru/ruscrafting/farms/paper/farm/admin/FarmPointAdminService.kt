@@ -14,6 +14,7 @@ import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.care.FarmCarePlanService
 import ru.ruscrafting.farms.paper.farm.point.FarmPointService
+import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingIncident
 import java.util.logging.Level
 
 /** Typed admin facade for viewing and mutating farm point overrides. */
@@ -26,6 +27,7 @@ internal class FarmPointAdminService(
     private val points: FarmPointProvider,
     private val carePlans: FarmCarePlanService,
     private val validator: ArcFarmsRuntimeValidator,
+    private val processing: FarmProcessingIncident,
     private val runtimes: () -> Collection<FarmRuntime>,
     private val refresh: (FarmRuntime, FarmPointKind, Player, String) -> Unit,
 ) {
@@ -34,6 +36,7 @@ internal class FarmPointAdminService(
         return FarmPointKind.entries.mapNotNull { kind ->
             val configured = pointService.configured(runtime.settings.id, kind)
             val resolved = configured ?: when (kind) {
+                FarmPointKind.PROCESSING -> null
                 FarmPointKind.HIVE,
                 FarmPointKind.IRRIGATION,
                 FarmPointKind.COVERS,
@@ -72,6 +75,21 @@ internal class FarmPointAdminService(
             player.location.yaw,
             player.location.pitch,
         )
+        if (kind == FarmPointKind.PROCESSING) {
+            processing.validate(runtime, position)?.let { failure ->
+                port.sendChat(
+                    player,
+                    MessageKey.ADMIN_POINT_PROCESSING_INVALID,
+                    mapOf(
+                        "reason" to locale.renderPath(
+                            "admin.processing-placement.${failure.name.lowercase()}",
+                            player,
+                        ),
+                    ),
+                )
+                return false
+            }
+        }
         try {
             pointService.save(zoneId, kind, position) { candidate -> validator.validateLocations(settings(), candidate) }
         } catch (failure: Exception) {
@@ -88,6 +106,10 @@ internal class FarmPointAdminService(
                 "zone" to locale.text(zoneId),
             ),
         )
+        if (kind == FarmPointKind.PROCESSING) {
+            processing.preview(runtime, player)
+            port.sendChat(player, MessageKey.ADMIN_POINT_PROCESSING_SAVED)
+        }
         debug.event(
             "farm_admin_point_saved",
             "player" to player.name,

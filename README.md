@@ -176,7 +176,16 @@ offers an optional timed rush order through the existing customer for a
 configured final money bonus. Declining or timing out the market has no penalty
 and never resets the main order. Market deadlines and every target or decision
 are persisted; all non-timed goals still wait indefinitely when zero players
-are present. Birds fly over the indexed field, eat crops and can be defeated
+are present. Crop processing builds one temporary 9×5 workshop from a single
+administrator anchor and its yaw. Workers carry raw crop packages from the
+left rack into the central mechanism, cooperatively click while its moving
+marker crosses a visible green timing sector, then carry finished packages to
+the right pallet. The complete three-stage progress is durable, while the
+bounded ItemDisplay, Interaction, and TextDisplay scene is non-persistent,
+deduplicated on reconciliation, and recreated gradually after a reload. The
+event has no failure timer and does not consume inventory items. Its one
+long-range gold particle column, transparent labels, boss bar, scoreboard, and
+stage titles all point at the same next action. Birds fly over the indexed field, eat crops and can be defeated
 reliably with the service bow even inside a protected WorldGuard region. Food
 delivery chooses one of the farm's named routes deterministically, persists
 that choice across restarts and shows its riders a bounded personal particle
@@ -294,9 +303,12 @@ are available through commands such as `/arcfarms admin point <zone> help`,
 - `/arcfarms admin inspect` — toggle read-only block inspection. Clicking a
   block prints its BlockData, fixed-crop or bed ledger entry, pending restore,
   and current patch/incident ownership.
-- `/arcfarms admin point <zone> <tool|seeds|water|crates|receiving|cart|customer|travel|hive|irrigation|covers|scarecrows|barn>` —
+- `/arcfarms admin point <zone> <tool|seeds|water|crates|receiving|cart|customer|travel|hive|irrigation|covers|scarecrows|barn|archery|perk-vendor|processing>` —
   save the administrator's current world, coordinates, yaw, and pitch for a farm
   operation point. Non-travel points must be inside the farm and off crop beds.
+  `processing` is the centre of the whole workshop: stand on a clear 9×5
+  platform and face its front. ArcFarms validates the footprint and shows its
+  outline plus the input, mechanism, and output columns immediately.
 - `/arcfarms admin point <zone> <point> clear` — remove an administrator point
   override and return to the configured or procedural placement.
 - `/arcfarms admin points <zone>` — list the effective configured and overridden
@@ -319,12 +331,12 @@ are available through commands such as `/arcfarms admin point <zone> help`,
 - `/arcfarms admin route <zone> start [name]` — record a named food-delivery
   route on foot. Omit the name for the backward-compatible `main` route; use
   `finish`, `status [name]`, `clear [name]`, or `cancel` to manage recordings.
-- `/arcfarms admin stage <zone> <preparation|planting|harvesting|seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought|birds|giant-crop|channels|night-shift|market|food-delivery|delivery|complete|reset>` —
+- `/arcfarms admin stage <zone> <preparation|planting|harvesting|seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought|birds|giant-crop|channels|night-shift|market|food-delivery|processing|delivery|complete|reset>` —
   switch the current farm to an exact QA stage while preserving normal recovery.
 - `/arcfarms admin next <zone>` — advance to the next useful QA stage.
 - `/arcfarms admin finish <zone>` — finish the current order through its normal
   completion and reward path.
-- `/arcfarms admin event <zone> <seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought|birds|giant-crop|channels|night-shift|market|food-delivery>` —
+- `/arcfarms admin event <zone> <seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought|birds|giant-crop|channels|night-shift|market|food-delivery|processing>` —
   start any exact farm story or harvest incident.
 
 Farm counts, manual and mechanized patch sizes, machinery radius, spacing,
@@ -434,7 +446,7 @@ manifest targets Paper 1.21.11.
 ./gradlew clean check shadowJar
 ```
 
-The deployable artifact is `build/libs/ArcFarms-0.24.1.jar`.
+The deployable artifact is `build/libs/ArcFarms-0.25.0.jar`.
 
 ## Isolated gameplay QA
 

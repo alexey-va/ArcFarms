@@ -125,6 +125,7 @@ owns the zone collection; the module delegates to the following vertical owners.
 | `farm.care.mole/FarmMoleBurrowController`, `FarmMoleBurrowWorld` | underground expedition, nonpersistent entrance/lair scene, durable player return, chunk-PDC tunnel journal and bounded build/restore | deterministic maze, codec corruption, restart return, non-mutating preview |
 | `farm.shift/FarmShiftCoordinator` | transition dispatch and configured incident schedule | configured count/range and non-repeat rules |
 | `farm.incident/drought`, `pest`, `special` | drought, pests, giant crop, channels, night shift, market; each owns entities/blocks/maps/recovery | restart/dedup/cleanup plus story flow |
+| `farm.incident.processing/FarmProcessingIncident`, `FarmProcessingScene` | durable load/operate/pack flow from one oriented anchor; bounded transient workshop, cargo carriers, interactions and timing visual | three-stage domain flow, persistence invariants, bounded spawn/restart reconciliation/cleanup |
 | `farm.delivery/FarmDeliveryController` | crate placement, carrier state, display following, receiving and return | two players, quit/leave/reload, no duplicate crate |
 | `farm.scene/FarmContractSceneController` | cart/customer/cargo scene reconciliation | unloaded chunk and dedup |
 | `farm.supply/FarmSupplyController` | supply displays, tagged service items, inventory boundary cleanup | issue/replace/leave/death/reload |
@@ -157,6 +158,7 @@ Each mutable collection has exactly one owner. In particular:
 - disease frontier/death timers -> disease controller; killed crop intent -> incident recovery journal;
 - scarecrow supply/carriers/placed displays -> scarecrow delivery controller;
 - mole tunnel blocks, scene entities and active explorers -> mole burrow owner;
+- processing workshop scene, cargo carriers and timing cycles -> processing incident owner;
 - supply displays/item tags -> supply controller;
 - scoreboard sessions/music -> presentation;
 - restore queues -> recovery controller;

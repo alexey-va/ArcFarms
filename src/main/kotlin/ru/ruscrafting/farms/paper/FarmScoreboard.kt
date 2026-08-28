@@ -7,6 +7,7 @@ import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmSeederStage
+import ru.ruscrafting.farms.domain.FarmProcessingStage
 
 internal data class FarmScoreboardView(
     val orderId: String,
@@ -18,6 +19,7 @@ internal data class FarmScoreboardView(
     val careType: FarmCareType? = null,
     val seederStage: FarmSeederStage? = null,
     val incidentType: FarmIncidentType? = null,
+    val processingStage: FarmProcessingStage? = null,
     val incidentCrop: String? = null,
     val marketAccepted: Boolean = false,
     val carrying: Boolean = false,
@@ -88,7 +90,9 @@ internal class FarmScoreboardRenderer(
                 null -> "scoreboard.objective.care"
             }
             FarmPhase.HARVESTING -> "scoreboard.objective.harvesting"
-            FarmPhase.INCIDENT -> if (view.incidentType == FarmIncidentType.MARKET) {
+            FarmPhase.INCIDENT -> if (view.incidentType == FarmIncidentType.PROCESSING) {
+                "scoreboard.objective.processing-${view.processingStage?.name?.lowercase() ?: "loading"}"
+            } else if (view.incidentType == FarmIncidentType.MARKET) {
                 if (view.marketAccepted) "scoreboard.objective.market-active" else "scoreboard.objective.market-pending"
             } else {
                 "scoreboard.objective.${view.incidentType.scoreboardId()}"
@@ -123,7 +127,9 @@ internal class FarmScoreboardRenderer(
                     ?: "scoreboard.hint.care.generic"
             }
             FarmPhase.HARVESTING -> "scoreboard.hint.harvesting"
-            FarmPhase.INCIDENT -> if (view.incidentType == FarmIncidentType.MARKET) {
+            FarmPhase.INCIDENT -> if (view.incidentType == FarmIncidentType.PROCESSING) {
+                "scoreboard.hint.processing-${view.processingStage?.name?.lowercase() ?: "loading"}"
+            } else if (view.incidentType == FarmIncidentType.MARKET) {
                 if (view.marketAccepted) "scoreboard.hint.market-active" else "scoreboard.hint.market-pending"
             } else {
                 "scoreboard.hint.${view.incidentType.scoreboardId()}"
@@ -151,6 +157,7 @@ internal class FarmScoreboardRenderer(
             view.phase == FarmPhase.INCIDENT && view.incidentType == FarmIncidentType.NIGHT_SHIFT -> "night-shift"
             view.phase == FarmPhase.INCIDENT && view.incidentType == FarmIncidentType.MARKET && !view.marketAccepted ->
                 "market-pending"
+            view.phase == FarmPhase.INCIDENT && view.incidentType == FarmIncidentType.PROCESSING -> "processing"
             else -> null
         } ?: return emptyList()
         return listOf(locale.renderPath("scoreboard.hint-detail.$id", audience))
@@ -167,6 +174,7 @@ internal class FarmScoreboardRenderer(
         FarmIncidentType.CHANNELS -> "channels"
         FarmIncidentType.NIGHT_SHIFT -> "night-shift"
         FarmIncidentType.MARKET -> "market"
+        FarmIncidentType.PROCESSING -> "processing"
     }
 
     companion object {

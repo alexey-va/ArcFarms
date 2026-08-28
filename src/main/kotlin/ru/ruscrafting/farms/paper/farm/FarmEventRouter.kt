@@ -58,6 +58,7 @@ import ru.ruscrafting.farms.paper.farm.incident.bird.FarmBirdIncident
 import ru.ruscrafting.farms.paper.farm.incident.pest.FarmPestIncident
 import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentController
 import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
+import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingIncident
 import ru.ruscrafting.farms.paper.farm.presentation.FarmHudController
 import ru.ruscrafting.farms.paper.farm.perk.FarmPerkController
 import ru.ruscrafting.farms.paper.farm.recovery.FarmFixedCropRecoveryController
@@ -85,6 +86,7 @@ internal class FarmEventRouter(
     private val routeAdmin: FarmRouteAdminService,
     private val perks: FarmPerkController,
     private val special: FarmSpecialIncidentController,
+    private val processing: FarmProcessingIncident,
     private val delivery: FarmDeliveryController,
     private val supplies: FarmSupplyController,
     private val scene: FarmContractSceneController,
@@ -253,6 +255,7 @@ internal class FarmEventRouter(
         special.onQuit(player)
         hud.removePlayer(player, "player_quit")
         delivery.releasePlayer(runtimes(), player, "player_quit")
+        processing.releasePlayer(runtimes(), player, "player_quit")
         supplies.removeServiceItems(player, reason = "player_quit")
         care.releasePlayer(player, "player_quit")
         port.resetInteractionsContaining(player.uniqueId.toString())
@@ -272,6 +275,7 @@ internal class FarmEventRouter(
         if (care.owns(event.rightClicked) || supplies.owns(event.rightClicked) || delivery.owns(event.rightClicked) ||
             foodDelivery.owns(event.rightClicked) || perks.owns(event.rightClicked) ||
             scene.owns(event.rightClicked) || special.ownsScene(event.rightClicked)
+            || processing.owns(event.rightClicked)
         ) event.isCancelled = true
     }
 
@@ -283,6 +287,7 @@ internal class FarmEventRouter(
         if (worldAdmin.isEditing(event.player) || event.hand != EquipmentSlot.HAND) return
         if (perks.interact(event)) return
         if (foodDelivery.interact(event, runtimes())) return
+        if (processing.interact(event, runtimes())) return
         if (special.ownsScene(event.rightClicked)) {
             event.isCancelled = true
             special.interactScene(event.player, event.rightClicked)
@@ -339,6 +344,10 @@ internal class FarmEventRouter(
         if (foodDelivery.onDamage(event)) return
         if (birds.onDamage(event, runtimes())) return
         if (scene.owns(event.entity) || special.ownsScene(event.entity)) {
+            event.isCancelled = true
+            return
+        }
+        if (processing.owns(event.entity)) {
             event.isCancelled = true
             return
         }

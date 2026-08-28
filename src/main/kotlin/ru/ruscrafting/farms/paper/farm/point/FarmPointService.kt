@@ -112,6 +112,7 @@ internal class FarmPointService(
                 FarmPointPosition(plot.world, plot.x + 0.5, plot.y + 1.0, plot.z + 0.5)
             } ?: zone.supplies.tool.toPoint()
             FarmPointKind.PERK_VENDOR -> perkVendorPoint(runtime)
+            FarmPointKind.PROCESSING -> resolveBase(runtime, FarmPointKind.RECEIVING)
         }
     }
 

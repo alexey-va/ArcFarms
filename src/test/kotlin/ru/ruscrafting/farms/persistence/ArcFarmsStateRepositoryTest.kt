@@ -14,6 +14,8 @@ import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmPlotPosition
+import ru.ruscrafting.farms.domain.FarmProcessingStage
+import ru.ruscrafting.farms.domain.FarmProcessingState
 import ru.ruscrafting.farms.domain.FarmPerkType
 import ru.ruscrafting.farms.domain.FarmPlayerPerks
 import ru.ruscrafting.farms.domain.FarmShiftState
@@ -138,6 +140,68 @@ class ArcFarmsStateRepositoryTest : FunSpec({
 
         ArcFarmsStateRepository(root).use { it.saveBlocking(expected) }
         ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
+    }
+
+    test("processing incident survives an atomic state round trip") {
+        val root = Files.createTempDirectory("arcfarms-state-processing-roundtrip-test")
+        val processing = FarmProcessingState(
+            crop = "WHEAT",
+            stage = FarmProcessingStage.OPERATING,
+            inputLoaded = 4,
+            inputRequired = 4,
+            cyclesCompleted = 2,
+            cyclesRequired = 6,
+            outputRequired = 4,
+        )
+        val expected = ArcFarmsState(
+            farms = mapOf(
+                "farm" to FarmShiftState(
+                    phase = FarmPhase.INCIDENT,
+                    sequence = 8,
+                    orderId = "farm_order",
+                    startedAt = 1,
+                    incidentType = FarmIncidentType.PROCESSING,
+                    incidentCrop = "WHEAT",
+                    incidentProgress = processing.completed,
+                    incidentRequired = processing.required,
+                    processing = processing,
+                ),
+            ),
+        )
+
+        ArcFarmsStateRepository(root).use { it.saveBlocking(expected) }
+        ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
+    }
+
+    test("state persistence rejects processing progress inconsistent with its stage") {
+        val root = Files.createTempDirectory("arcfarms-state-processing-stage-test")
+        val processing = FarmProcessingState(
+            crop = "WHEAT",
+            stage = FarmProcessingStage.PACKING,
+            inputRequired = 4,
+            cyclesRequired = 6,
+            outputRequired = 4,
+        )
+        val invalid = ArcFarmsState(
+            farms = mapOf(
+                "farm" to FarmShiftState(
+                    phase = FarmPhase.INCIDENT,
+                    sequence = 8,
+                    orderId = "farm_order",
+                    startedAt = 1,
+                    incidentType = FarmIncidentType.PROCESSING,
+                    incidentCrop = "WHEAT",
+                    incidentProgress = processing.completed,
+                    incidentRequired = processing.required,
+                    processing = processing,
+                ),
+            ),
+        )
+
+        ArcFarmsStateRepository(root).use { repository ->
+            val failure = shouldThrow<ExecutionException> { repository.saveBlocking(invalid) }
+            (failure.cause is IllegalArgumentException) shouldBe true
+        }
     }
 
     test("legacy state loads with no paused farm order cycles") {

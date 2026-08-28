@@ -28,6 +28,7 @@ import ru.ruscrafting.farms.paper.farm.incident.bird.FarmBirdIncident
 import ru.ruscrafting.farms.paper.farm.incident.pest.FarmPestIncident
 import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentController
 import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
+import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingIncident
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
 import ru.ruscrafting.farms.paper.farm.point.FarmPointService
 import ru.ruscrafting.farms.paper.farm.perk.FarmPerkController
@@ -245,6 +246,15 @@ internal class FarmComponentGraph(
         clock = clock,
         nightShift = nightShift,
     )
+    private val processing = FarmProcessingIncident(
+        plugin = plugin,
+        settings = settings,
+        locale = locale,
+        debug = debug,
+        port = port,
+        configuredPoint = pointService::configured,
+        transitions = transitions,
+    )
     private val scene = FarmContractSceneController(
         plugin = plugin,
         settings = settings,
@@ -298,6 +308,7 @@ internal class FarmComponentGraph(
         birds = birds,
         foodDelivery = foodDelivery,
         special = special,
+        processing = processing,
         delivery = delivery,
         scene = scene,
         supplies = supplies,
@@ -362,6 +373,7 @@ internal class FarmComponentGraph(
         foodDelivery = foodDelivery,
         perks = perks,
         special = special,
+        processing = processing,
         delivery = delivery,
         scene = scene,
         supplies = supplies,
@@ -380,6 +392,7 @@ internal class FarmComponentGraph(
         points = points,
         carePlans = carePlans,
         validator = runtimeValidator,
+        processing = processing,
         runtimes = runtimes::snapshot,
         refresh = module::refreshPoint,
     )
@@ -397,6 +410,7 @@ internal class FarmComponentGraph(
         birds = birds,
         foodDelivery = foodDelivery,
         special = special,
+        processing = processing,
         incidentRecovery = recovery,
         delivery = delivery,
         scene = scene,
@@ -429,6 +443,7 @@ internal class FarmComponentGraph(
         routeAdmin = routeAdmin,
         perks = perks,
         special = special,
+        processing = processing,
         delivery = delivery,
         supplies = supplies,
         scene = scene,

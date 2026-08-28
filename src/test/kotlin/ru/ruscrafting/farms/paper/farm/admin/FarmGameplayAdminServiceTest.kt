@@ -34,6 +34,7 @@ import ru.ruscrafting.farms.paper.farm.incident.bird.FarmBirdIncident
 import ru.ruscrafting.farms.paper.farm.incident.drought.FarmDroughtIncident
 import ru.ruscrafting.farms.paper.farm.incident.pest.FarmPestIncident
 import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
+import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingIncident
 import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentController
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
 import ru.ruscrafting.farms.paper.farm.presentation.FarmGuidanceController
@@ -94,6 +95,7 @@ class FarmGameplayAdminServiceTest : FunSpec({
                 birds = mockk<FarmBirdIncident>(relaxed = true),
                 foodDelivery = mockk<FarmFoodDeliveryIncident>(relaxed = true),
                 special = mockk<FarmSpecialIncidentController>(relaxed = true),
+                processing = mockk<FarmProcessingIncident>(relaxed = true),
                 incidentRecovery = recovery,
                 delivery = mockk<FarmDeliveryController>(relaxed = true),
                 scene = mockk<FarmContractSceneController>(relaxed = true),
@@ -147,6 +149,7 @@ class FarmGameplayAdminServiceTest : FunSpec({
             birds = mockk<FarmBirdIncident>(relaxed = true),
             foodDelivery = mockk<FarmFoodDeliveryIncident>(relaxed = true),
             special = mockk<FarmSpecialIncidentController>(relaxed = true),
+            processing = mockk<FarmProcessingIncident>(relaxed = true),
             incidentRecovery = recovery,
             delivery = mockk<FarmDeliveryController>(relaxed = true),
             scene = mockk<FarmContractSceneController>(relaxed = true),

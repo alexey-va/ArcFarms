@@ -286,6 +286,9 @@ internal class FarmGuidanceController(
             .mapNotNull(FarmPlotPosition::location)
             .map { it to DANGER_COLOR }
         FarmIncidentType.FOOD_DELIVERY -> emptyList()
+        FarmIncidentType.PROCESSING -> points.resolve(runtime, FarmPointKind.PROCESSING).let { point ->
+            listOf(Location(runtime.region.world, point.x, point.y, point.z) to AMBER_COLOR)
+        }
         FarmIncidentType.MARKET -> points.resolve(runtime, FarmPointKind.CUSTOMER).let { point ->
             listOf(Location(runtime.region.world, point.x, point.y, point.z) to AMBER_COLOR)
         }
@@ -441,6 +444,7 @@ internal class FarmGuidanceController(
             FarmPointKind.TOOL to TILL_COLOR,
             FarmPointKind.SEEDS to PLANT_COLOR,
             FarmPointKind.WATER to WATER_COLOR,
+            FarmPointKind.ARCHERY to DANGER_COLOR,
             FarmPointKind.CRATES to AMBER_COLOR,
             FarmPointKind.RECEIVING to DELIVERY_COLOR,
             FarmPointKind.CART to AMBER_COLOR,
@@ -451,6 +455,8 @@ internal class FarmGuidanceController(
             FarmPointKind.COVERS to Color.fromRGB(154, 140, 255),
             FarmPointKind.SCARECROWS to DANGER_COLOR,
             FarmPointKind.PEN to SUCCESS_COLOR,
+            FarmPointKind.PERK_VENDOR to AMBER_COLOR,
+            FarmPointKind.PROCESSING to AMBER_COLOR,
         )
     }
 }

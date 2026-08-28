@@ -1,5 +1,6 @@
 package ru.ruscrafting.farms.paper.farm
 
+import org.bukkit.Bukkit
 import org.bukkit.Chunk
 import org.bukkit.entity.Player
 import ru.ruscrafting.farms.config.ArcFarmsConfig
@@ -34,6 +35,7 @@ import ru.ruscrafting.farms.paper.farm.incident.bird.FarmBirdIncident
 import ru.ruscrafting.farms.paper.farm.incident.pest.FarmPestIncident
 import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentController
 import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
+import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingIncident
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
 import ru.ruscrafting.farms.paper.farm.point.FarmPointService
 import ru.ruscrafting.farms.paper.farm.perk.FarmPerkController
@@ -71,6 +73,7 @@ internal class FarmModule(
     private val foodDelivery: FarmFoodDeliveryIncident,
     private val perks: FarmPerkController,
     private val special: FarmSpecialIncidentController,
+    private val processing: FarmProcessingIncident,
     private val delivery: FarmDeliveryController,
     private val scene: FarmContractSceneController,
     private val supplies: FarmSupplyController,
@@ -98,12 +101,14 @@ internal class FarmModule(
         registry.snapshot().forEach(scene::ensure)
         registry.snapshot().forEach(perks::ensure)
         registry.snapshot().forEach(special::ensure)
+        registry.snapshot().forEach(processing::ensure)
     }
 
     fun onChunkLoad(chunk: Chunk) {
         moles.onChunkLoad(chunk)
         scene.onChunkLoad(chunk)
         special.onChunkLoad(chunk)
+        processing.onChunkLoad(chunk)
         registry.snapshot().asSequence().filter { it.region.world == chunk.world }.forEach { runtime ->
             blockRegistry.reconcileChunk(runtime.blockIndexDefinition(), chunk)
         }
@@ -111,7 +116,7 @@ internal class FarmModule(
         var removed = 0
         chunk.entities.filter { entity ->
             pests.ownsPest(entity) || pests.ownsNest(entity) || birds.owns(entity) || foodDelivery.owns(entity) ||
-                delivery.owns(entity) || supplies.owns(entity) || care.owns(entity) || perks.owns(entity)
+                processing.owns(entity) || delivery.owns(entity) || supplies.owns(entity) || care.owns(entity) || perks.owns(entity)
         }.forEach { entity ->
             entity.remove()
             removed++
@@ -193,6 +198,7 @@ internal class FarmModule(
         delivery.updateCarriedDisplays(runtimes)
         foodDelivery.updateVisuals(runtimes)
         care.updateCarriedDisplays()
+        processing.update(runtimes, Bukkit.getCurrentTick().toLong())
     }
 
     override fun tick(now: Long) {
@@ -228,6 +234,7 @@ internal class FarmModule(
                 birds.ensure(runtime)
                 foodDelivery.ensure(runtime, now)
                 special.ensure(runtime)
+                processing.ensure(runtime)
                 pests.eatCrops(runtime)
                 birds.eatCrops(runtime)
                 care.updateDisease(runtime, now)
@@ -301,6 +308,7 @@ internal class FarmModule(
             FarmPointKind.HIVE, FarmPointKind.IRRIGATION, FarmPointKind.COVERS,
             FarmPointKind.SCARECROWS, FarmPointKind.PEN -> care.refreshPoint(runtime, kind, reason)
             FarmPointKind.PERK_VENDOR -> perks.refresh(runtime, reason)
+            FarmPointKind.PROCESSING -> processing.refresh(runtime, reason)
             FarmPointKind.TRAVEL -> Unit
         }
     }
@@ -310,6 +318,7 @@ internal class FarmModule(
         orderCycle.clearPending()
         scene.cleanup(reason)
         special.cleanup(reason)
+        processing.cleanup(reason)
         supplies.cleanup(reason)
         delivery.cleanup(reason)
         pests.cleanup(reason)

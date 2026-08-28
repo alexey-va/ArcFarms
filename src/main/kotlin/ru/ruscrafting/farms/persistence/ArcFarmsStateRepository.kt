@@ -10,6 +10,7 @@ import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmPointPosition
+import ru.ruscrafting.farms.domain.FarmProcessingStage
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.domain.PendingFarmReward
 import ru.ruscrafting.farms.domain.LumberPhase
@@ -369,6 +370,45 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 } else if (!special.marketAccepted) {
                     require(special.marketDeadlineAt == 0L) { "Pending farm market has a deadline" }
                 }
+            }
+            farm.processing?.let { processing ->
+                require(farm.phase == FarmPhase.INCIDENT && farm.incidentType == FarmIncidentType.PROCESSING) {
+                    "Farm processing state escaped its active incident"
+                }
+                require(CONTENT_ID.matches(processing.crop)) { "Farm processing crop is invalid" }
+                require(processing.crop == farm.incidentCrop) { "Farm processing crop does not match its incident" }
+                require(processing.inputRequired in 1..16 && processing.inputLoaded in 0..processing.inputRequired) {
+                    "Farm processing input progress is invalid"
+                }
+                require(processing.cyclesRequired in 1..32 && processing.cyclesCompleted in 0..processing.cyclesRequired) {
+                    "Farm processing cycle progress is invalid"
+                }
+                require(processing.outputRequired in 1..16 && processing.outputDelivered in 0..processing.outputRequired) {
+                    "Farm processing output progress is invalid"
+                }
+                require(processing.completed == farm.incidentProgress && processing.required == farm.incidentRequired) {
+                    "Farm processing totals do not match incident progress"
+                }
+                when (processing.stage) {
+                    FarmProcessingStage.LOADING -> require(
+                        processing.inputLoaded < processing.inputRequired &&
+                            processing.cyclesCompleted == 0 && processing.outputDelivered == 0,
+                    ) { "Farm processing loading stage is inconsistent" }
+                    FarmProcessingStage.OPERATING -> require(
+                        processing.inputLoaded == processing.inputRequired &&
+                            processing.cyclesCompleted < processing.cyclesRequired && processing.outputDelivered == 0,
+                    ) { "Farm processing operating stage is inconsistent" }
+                    FarmProcessingStage.PACKING -> require(
+                        processing.inputLoaded == processing.inputRequired &&
+                            processing.cyclesCompleted == processing.cyclesRequired &&
+                            processing.outputDelivered < processing.outputRequired,
+                    ) { "Farm processing packing stage is inconsistent" }
+                }
+            }
+            if (farm.incidentType == FarmIncidentType.PROCESSING && farm.phase == FarmPhase.INCIDENT) {
+                require(farm.processing != null) { "Active farm processing state is incomplete" }
+            } else {
+                require(farm.processing == null) { "Inactive farm contains processing state" }
             }
             require(farm.specialDamagedCrops.size <= 4_096) { "Farm special crop damage is unbounded" }
             require(farm.specialDamagedCrops.distinctBy(FarmCropDamage::position).size == farm.specialDamagedCrops.size) {
