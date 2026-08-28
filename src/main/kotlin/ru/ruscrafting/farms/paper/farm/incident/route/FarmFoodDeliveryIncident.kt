@@ -491,7 +491,7 @@ internal class FarmFoodDeliveryIncident(
         if (persistedName != null) {
             return routes.route(runtime.settings.id, persistedName)?.let { NamedFarmDeliveryRoute(persistedName, it) }
         }
-        return routes.select(runtime.settings.id, runtime.state.sequence)
+        return routes.select(runtime.settings.id, runtime.state.placementSequence)
     }
 
     private fun active(runtime: FarmRuntime) =

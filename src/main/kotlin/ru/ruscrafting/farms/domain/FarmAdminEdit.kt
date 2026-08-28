@@ -38,11 +38,12 @@ object FarmAdminEdit {
             val retiredState = if (
                 droughtDamage.isEmpty() && pestDamage.isEmpty() && diseaseDamage.isEmpty() && specialDamage.isEmpty()
             ) {
-                FarmShiftState(sequence = state.sequence)
+                FarmShiftState(sequence = state.sequence, placementSequence = state.placementSequence)
             } else {
                 FarmShiftState(
                     phase = FarmPhase.COOLDOWN,
                     sequence = state.sequence,
+                    placementSequence = state.placementSequence,
                     orderId = state.orderId,
                     droughtDamagedPlots = droughtDamage,
                     pestDamagedCrops = pestDamage,

@@ -52,6 +52,7 @@ class FarmShiftEngineTest : FunSpec({
 
         incident.state.phase shouldBe FarmPhase.INCIDENT
         incident.state.incidentCrop shouldBe "CARROTS"
+        incident.state.placementSequence shouldBe 1
         incident.events.last() shouldBe ShiftEvent.INCIDENT_STARTED
 
         val blockedHarvest = FarmShiftEngine.harvest(incident.state, order, rules, "CARROTS", player, 3_500)
@@ -187,6 +188,7 @@ class FarmShiftEngineTest : FunSpec({
         var state = FarmShiftEngine.startCare(ready, FarmCareType.WEEDS, targets).state
 
         state.phase shouldBe FarmPhase.CARE
+        state.placementSequence shouldBe ready.placementSequence + 1
         FarmShiftEngine.harvest(state, order, rules, "WHEAT", player, 2_000).accepted shouldBe false
         state = FarmShiftEngine.advanceCare(state, 0, player).state
         state.phase shouldBe FarmPhase.CARE

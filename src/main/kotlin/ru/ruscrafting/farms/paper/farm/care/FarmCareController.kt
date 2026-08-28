@@ -100,6 +100,7 @@ internal class FarmCareController(
         points = points,
         transitions = transitions,
         runtimes = runtimes,
+        supplyPoint = { runtime -> plans.fixturePoint(runtime, FarmPointKind.PEN) },
     )
     private val irrigation = FarmIrrigationController(settings, debug, port, transitions)
     private val seederRig = FarmSeederRigManager(plugin)

@@ -211,6 +211,7 @@ data class FarmSpecialIncidentSettings(
     val nightPatrolRoamRadius: Double,
     val nightPatrolPathRefreshSeconds: Int,
     val nightPatrolSpawnMinPlayerDistance: Double,
+    val nightPatrolReceivingSafeRadius: Double,
     val nightPatrolMovementSpeed: Double,
     val nightPatrolFollowRange: Double,
     val nightPatrolAttackDamage: Double,
@@ -962,6 +963,12 @@ class ArcFarmsConfig private constructor(
                         8.0,
                         0.0,
                         32.0,
+                    ),
+                    nightPatrolReceivingSafeRadius = section.finiteDouble(
+                        "special-incidents.night-shift.patrols.receiving-safe-radius",
+                        15.0,
+                        0.0,
+                        64.0,
                     ),
                     nightPatrolMovementSpeed = section.finiteDouble(
                         "special-incidents.night-shift.patrols.movement-speed",

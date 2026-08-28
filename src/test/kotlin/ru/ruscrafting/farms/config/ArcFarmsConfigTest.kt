@@ -191,7 +191,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().moleBurrow.guidanceFarDistance shouldBe 14
         settings.farms.single().moleBurrow.guidanceIntervalTicks shouldBe 20
         settings.farms.single().moleBurrow.decorationPercent shouldBe 18
-        settings.farms.single().moleBurrow.lairVisual.material shouldBe "AIR"
+        settings.farms.single().moleBurrow.lairVisual.material shouldBe "MUD"
         settings.farms.single().proceduralCareFixtures shouldBe true
         settings.farms.single().careAnimalEntities shouldContainExactly listOf("CHICKEN", "SHEEP")
         settings.farms.single().music.enabled shouldBe false
@@ -242,6 +242,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().specialIncidents.nightPatrolRoamRadius shouldBe 14.0
         settings.farms.single().specialIncidents.nightPatrolPathRefreshSeconds shouldBe 5
         settings.farms.single().specialIncidents.nightPatrolSpawnMinPlayerDistance shouldBe 8.0
+        settings.farms.single().specialIncidents.nightPatrolReceivingSafeRadius shouldBe 15.0
         settings.farms.single().specialIncidents.nightPatrolMovementSpeed shouldBe 0.27
         settings.farms.single().specialIncidents.nightPatrolFollowRange shouldBe 8.0
         settings.farms.single().specialIncidents.nightPatrolAttackDamage shouldBe 2.0
@@ -325,8 +326,8 @@ class ArcFarmsConfigTest : FunSpec({
             scarecrow.displayYOffset shouldBe 0.0
         }
         classicSettings.farms.single().careVisuals.getValue(FarmCareRole.PEN).customModelData shouldBe 11_864
-        classicSettings.farms.single().moleBurrow.lairVisual.material shouldBe "AIR"
-        classicSettings.farms.single().moleBurrow.lairVisual.customModelData shouldBe 0
+        classicSettings.farms.single().moleBurrow.lairVisual.material shouldBe "PAPER"
+        classicSettings.farms.single().moleBurrow.lairVisual.customModelData shouldBe 11_875
         classicSettings.farms.single().routeDelivery.horseSpeed shouldBe 0.21
         classicSettings.farms.single().routeDelivery.cartYOffset shouldBe 0.35
         classicSettings.farms.single().routeDelivery.monsterWaveMin shouldBe 3
@@ -901,7 +902,7 @@ class ArcFarmsConfigTest : FunSpec({
             FarmCareType.IRRIGATION to "Открывайте вентили по порядку",
             FarmCareType.POLLINATION to "Пыльцу из улья несите к цветам",
             FarmCareType.STORM_COVERS to "Закрепите укрытие во всех метках",
-            FarmCareType.SCARECROWS to "Несите пугала от приёмки к меткам",
+            FarmCareType.SCARECROWS to "Берите пугала в хлеву и несите к меткам",
             FarmCareType.ANIMAL_RESCUE to "Ведите животных к зелёной метке",
             FarmCareType.DISEASE to "Срезайте очаги мотыгой вовремя",
             FarmCareType.MOLES to "Бейте свежие холмики мотыгой",

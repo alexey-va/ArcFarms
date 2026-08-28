@@ -24,6 +24,7 @@ import ru.ruscrafting.farms.domain.FarmCareTarget
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPointKind
+import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.BukkitFarmEntityLookup
@@ -39,7 +40,7 @@ import java.util.UUID
 private data class ScarecrowKey(val zoneId: String, val targetId: Int)
 private enum class ScarecrowEntityRole { SUPPLY_DISPLAY, SUPPLY_INTERACTION, CARRIED_DISPLAY, PLACED_DISPLAY }
 
-/** One receiving-point stock, ephemeral carriers, and placed scarecrow visuals. */
+/** One barn stock, ephemeral carriers, and placed scarecrow visuals. */
 internal class FarmScarecrowDeliveryController(
     plugin: Plugin,
     private val settings: () -> ArcFarmsConfig,
@@ -50,6 +51,7 @@ internal class FarmScarecrowDeliveryController(
     private val transitions: FarmTransitionSink,
     private val runtimes: () -> Collection<FarmRuntime>,
     private val entityLookup: FarmEntityLookup = BukkitFarmEntityLookup,
+    private val supplyPoint: ((FarmRuntime) -> FarmPointPosition?)? = null,
 ) {
     private val zoneKey = NamespacedKey(plugin, "farm_scarecrow_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_scarecrow_sequence")
@@ -227,7 +229,7 @@ internal class FarmScarecrowDeliveryController(
             return
         }
         removeSupply(runtime.settings.id)
-        val point = points.resolve(runtime, FarmPointKind.RECEIVING)
+        val point = supplyPoint?.invoke(runtime) ?: points.resolve(runtime, FarmPointKind.PEN)
         val world = Bukkit.getWorld(point.world) ?: return
         if (!world.isChunkLoaded(point.x.toInt() shr 4, point.z.toInt() shr 4)) return
         val location = Location(world, point.x, point.y, point.z)

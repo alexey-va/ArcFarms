@@ -33,6 +33,7 @@ class FarmAdminStageProgressTest : FunSpec({
         )
         val current = FarmShiftState(
             sequence = 7,
+            placementSequence = 12,
             preparationPatch = patch,
             incidentsResolved = MAX_FARM_INCIDENTS,
         )
@@ -40,6 +41,7 @@ class FarmAdminStageProgressTest : FunSpec({
         val forced = FarmAdminStageProgress.forcedIncident(current, rules)
 
         forced.incidentsResolved shouldBe rules.incidentTargetCount(current.sequence) - 1
+        forced.placementSequence shouldBe 13
         val skipped = FarmSpecialIncidentEngine.skipUnavailable(
             forced.copy(
                 phase = FarmPhase.INCIDENT,

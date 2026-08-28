@@ -143,7 +143,7 @@ internal class FarmSpecialIncidentController(
             } else emptyList()
             FarmSpecialIncidentPlanner.plan(
                 type = candidateType,
-                sequence = runtime.state.sequence,
+                sequence = runtime.state.placementSequence,
                 matureCrops = mature,
                 giantCandidates = giantCandidates,
                 nightPatrolPlots = incidentBeds,
@@ -437,6 +437,7 @@ internal class FarmSpecialIncidentController(
     fun ownsNightEntity(entity: Entity): Boolean = nightShift.owns(entity)
 
     fun handleNightDamage(event: EntityDamageEvent): Boolean {
+        if (event is EntityDamageByEntityEvent && nightShift.protectReceiving(event)) return true
         if (!nightShift.owns(event.entity)) return false
         event.isCancelled = true
         val attacker = (event as? EntityDamageByEntityEvent)?.let { damage ->
@@ -499,6 +500,7 @@ internal class FarmSpecialIncidentController(
             port.players(runtime.region),
             runtime.settings.specialIncidents.nightPlayerTime,
             special.points,
+            points.resolve(runtime, FarmPointKind.RECEIVING),
             runtime.settings.specialIncidents,
             settings().particles,
         )
@@ -550,7 +552,7 @@ internal class FarmSpecialIncidentController(
 
     private fun nextGiantSelectionKey(runtime: FarmRuntime): Long {
         val attempt = giantSelectionAttempts.merge(runtime.settings.id, 1L, Long::plus) ?: 1L
-        return runtime.state.sequence * 1_000_003L + runtime.state.incidentsResolved * 101L + attempt - 1L
+        return runtime.state.placementSequence * 1_000_003L + runtime.state.incidentsResolved * 101L + attempt - 1L
     }
 
     private fun ensureGiantCrop(runtime: FarmRuntime, special: FarmSpecialIncidentState) {

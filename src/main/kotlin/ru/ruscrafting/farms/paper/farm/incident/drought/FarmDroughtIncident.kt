@@ -121,7 +121,7 @@ internal class FarmDroughtIncident(
             existing = existing,
             targetSize = desiredActive,
             patchCount = runtime.settings.droughtPatches,
-            selectionIndex = runtime.state.sequence * 37L,
+            selectionIndex = runtime.state.placementSequence * 37L,
         )
         val targets = selected - existing
         val targetSoils = targets.mapNotNull(::positionBlock)

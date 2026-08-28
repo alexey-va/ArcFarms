@@ -15,6 +15,7 @@ import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmSpatialSeed
+import ru.ruscrafting.farms.domain.nextPlacementSequence
 import ru.ruscrafting.farms.paper.ActivityRegion
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockPolicy
@@ -110,7 +111,11 @@ internal class FarmCarePlanService(
             runtime.settings.careTargetsMax,
             patch.size,
         )
-        val salt = FarmSpatialSeed.mix(runtime.state.sequence, type.ordinal * 17L + 101L)
+        // Planning happens before FarmShiftEngine.startCare advances the durable nonce.
+        // A shift sequence alone is constant while an administrator repeatedly forces
+        // scenarios, which used to place every target on the same beds.
+        val placementSequence = runtime.state.nextPlacementSequence()
+        val salt = FarmSpatialSeed.mix(placementSequence, type.ordinal * 17L + 101L)
         fun bedTargets(role: FarmCareRole, amount: Int, required: Int = 1): List<FarmCareTarget> =
             FarmCarePlanner.spread(patch, amount.coerceAtMost(patch.size), salt).mapIndexed { index, plot ->
                 FarmCareTarget(
@@ -137,7 +142,7 @@ internal class FarmCarePlanService(
             FarmCareType.WEEDS -> bedTargets(FarmCareRole.WEED_ROOT, count)
             FarmCareType.IRRIGATION -> FarmCarePlanner.orient(bedTargets(FarmCareRole.VALVE, count), explicit(FarmPointKind.IRRIGATION))
             FarmCareType.POLLINATION -> {
-                val hive = fixturePoint(runtime, FarmPointKind.HIVE) ?: return null
+                val hive = fixturePoint(runtime, FarmPointKind.HIVE, placementSequence) ?: return null
                 listOf(FarmCareTarget(0, FarmCareRole.HIVE, hive)) +
                     bedTargets(FarmCareRole.FLOWER_PATCH, count).mapIndexed { index, target -> target.copy(id = index + 1) }
             }
@@ -150,7 +155,7 @@ internal class FarmCarePlanService(
                 explicit(FarmPointKind.SCARECROWS),
             )
             FarmCareType.ANIMAL_RESCUE -> {
-                val pen = fixturePoint(runtime, FarmPointKind.PEN) ?: return null
+                val pen = fixturePoint(runtime, FarmPointKind.PEN, placementSequence) ?: return null
                 val sources = placement.sources(runtime, actor?.location)
                 val bedCandidates = placement.bedCandidates(runtime, sources, runtime.settings.placementSearchRadius)
                 val safePoints = FarmDeliveryPlanner.selectTargets(
@@ -193,7 +198,7 @@ internal class FarmCarePlanService(
                 val selected = bedCandidates.asSequence().distinct()
                     .firstOrNull { candidate ->
                         tested += 1
-                        val preview = moleBurrow.previewDetailed(runtime, candidate)
+                        val preview = moleBurrow.previewDetailed(runtime, candidate, placementSequence)
                         layoutProbes += preview.layoutAttempts
                         preview.rejections.forEach { (reason, count) ->
                             rejections[reason] = rejections.getOrDefault(reason, 0) + count
@@ -248,7 +253,11 @@ internal class FarmCarePlanService(
         return every > 0 && Math.floorMod(sequence - 1L, every.toLong()) == 0L
     }
 
-    fun fixturePoint(runtime: FarmRuntime, kind: FarmPointKind): FarmPointPosition? {
+    fun fixturePoint(
+        runtime: FarmRuntime,
+        kind: FarmPointKind,
+        placementSequence: Long = runtime.state.placementSequence,
+    ): FarmPointPosition? {
         overrides().zones[runtime.settings.id]?.get(kind)?.let { return it }
         if (kind == FarmPointKind.PEN) return points.resolve(runtime, FarmPointKind.RECEIVING)
         val patch = runtime.state.preparationPatch
@@ -265,12 +274,12 @@ internal class FarmCarePlanService(
         val center = areaCenter(patch)?.location() ?: return null
         val candidates = placement.safeGroundCandidates(runtime, listOf(center), runtime.settings.careRadius)
         if (candidates.isNotEmpty()) {
-            val selection = FarmSpatialSeed.mix(runtime.state.sequence, kind.ordinal * 31L)
+            val selection = FarmSpatialSeed.mix(placementSequence, kind.ordinal * 31L)
             val chosen = candidates[Math.floorMod(selection, candidates.size.toLong()).toInt()]
             return FarmPointPosition(chosen.world, chosen.x, chosen.y, chosen.z)
         }
         val fallback = FarmCarePlanner.spread(
-            patch, 1, FarmSpatialSeed.mix(runtime.state.sequence, kind.ordinal.toLong()),
+            patch, 1, FarmSpatialSeed.mix(placementSequence, kind.ordinal.toLong()),
         ).firstOrNull() ?: return null
         return FarmPointPosition(fallback.world, fallback.x + 0.5, fallback.y + 1.0, fallback.z + 0.5)
     }

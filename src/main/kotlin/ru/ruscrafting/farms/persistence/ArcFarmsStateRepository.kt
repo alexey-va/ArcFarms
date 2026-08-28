@@ -164,6 +164,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
 
         private fun validateFarm(farm: FarmShiftState) {
             validateSequenceAndTimes(farm.sequence, farm.startedAt, farm.cooldownEndsAt)
+            require(farm.placementSequence in 0 until Long.MAX_VALUE) { "Farm placement sequence is invalid" }
             farm.orderId?.let { require(ZONE_ID.matches(it)) { "Farm order id is invalid" } }
             require(farm.progress.size <= 12 && farm.progress.keys.all(CONTENT_ID::matches)) {
                 "Farm crop progress is invalid"

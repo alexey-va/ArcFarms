@@ -408,7 +408,7 @@ internal class FarmPestIncident(
         val centers = if (safeNestCount == 0) emptyList() else FarmIncidentPlanner.dispersedCenters(
             candidates,
             safeNestCount,
-            runtime.state.sequence * 53L + 11L,
+            runtime.state.placementSequence * 53L + 11L,
         )
         val damages = runtime.state.pestDamagedCrops.toMutableList()
         val nestBlocks = centers.mapNotNull { position ->

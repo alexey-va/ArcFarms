@@ -15,6 +15,7 @@ import org.bukkit.entity.Entity
 import org.bukkit.entity.EntityType
 import org.bukkit.entity.Monster
 import org.bukkit.entity.Player
+import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
@@ -42,6 +43,14 @@ internal class FarmNightShiftController(
 ) {
     private data class PatrolKey(val zoneId: String, val index: Int)
     private data class LightCell(val world: String, val x: Int, val y: Int, val z: Int)
+    private data class ReceivingSafeZone(val world: String, val x: Double, val z: Double, val radiusSquared: Double) {
+        fun contains(location: Location): Boolean {
+            if (location.world.name != world) return false
+            val dx = location.x - x
+            val dz = location.z - z
+            return dx * dx + dz * dz <= radiusSquared
+        }
+    }
     private data class PlayerTimeState(
         var zoneId: String,
         var current: Long,
@@ -58,6 +67,7 @@ internal class FarmNightShiftController(
     private val externalLights = mutableMapOf<String, LightCell>()
     private val lightOwners = mutableMapOf<LightCell, MutableSet<String>>()
     private val reconciledSequences = mutableMapOf<String, Long>()
+    private val receivingSafeZones = mutableMapOf<String, ReceivingSafeZone>()
     private val zoneKey = NamespacedKey(plugin, "farm_night_patrol_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_night_patrol_sequence")
     private val indexKey = NamespacedKey(plugin, "farm_night_patrol_index")
@@ -70,6 +80,7 @@ internal class FarmNightShiftController(
         players: Collection<Player>,
         playerTime: Long,
         anchors: Collection<FarmPointPosition>,
+        receiving: FarmPointPosition,
         settings: FarmSpecialIncidentSettings,
         particles: Boolean,
     ): FarmNightShiftSyncResult {
@@ -78,9 +89,17 @@ internal class FarmNightShiftController(
             return FarmNightShiftSyncResult(0, 0, clearPatrols(zoneId))
         }
         syncPlayerTime(zoneId, players, playerTime, settings.nightTimeTransitionSeconds)
+        val safeZone = ReceivingSafeZone(
+            receiving.world,
+            receiving.x,
+            receiving.z,
+            settings.nightPatrolReceivingSafeRadius * settings.nightPatrolReceivingSafeRadius,
+        )
+        receivingSafeZones[zoneId] = safeZone
 
         val desired = anchors.filter { point ->
-            FarmSurfacePolicy.isSurfaceSpawn(Location(region.world, point.x, point.y, point.z))
+            val location = Location(region.world, point.x, point.y, point.z)
+            FarmSurfacePolicy.isSurfaceSpawn(location) && !safeZone.contains(location)
         }
         var removed = 0
         patrols.keys.filter { it.zoneId == zoneId && it.index !in desired.indices }.forEach { key ->
@@ -120,7 +139,9 @@ internal class FarmNightShiftController(
                 removed++
                 return@forEachIndexed
             }
-            val outsidePatrolArea = !region.contains(patrol.location) || patrol.location.distanceSquared(anchor) > roamSquared
+            if ((patrol.target as? Player)?.location?.let(safeZone::contains) == true) patrol.target = null
+            val outsidePatrolArea = !region.contains(patrol.location) || safeZone.contains(patrol.location) ||
+                patrol.location.distanceSquared(anchor) > roamSquared
             if (outsidePatrolArea) {
                 patrol.target = null
                 patrol.pathfinder.findPath(anchor)?.let { path -> patrol.pathfinder.moveTo(path, 1.0) }
@@ -128,7 +149,7 @@ internal class FarmNightShiftController(
             } else if (patrol.target == null &&
                 (System.currentTimeMillis() >= patrolNextRouteAt.getOrDefault(key, 0L) || !patrol.pathfinder.hasPath())
             ) {
-                routePatrol(key, patrol, anchor, region, sequence, settings)
+                routePatrol(key, patrol, anchor, region, sequence, settings, safeZone)
             }
             patrol.fireTicks = 0
             updateLight(key, patrol, region, settings.nightPatrolLightLevel)
@@ -174,6 +195,19 @@ internal class FarmNightShiftController(
     }
 
     fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING)
+
+    /** Cancels attacks by an owned patrol after a player reaches the receiving sanctuary. */
+    fun protectReceiving(event: EntityDamageByEntityEvent): Boolean {
+        val patrol = event.damager as? Monster ?: return false
+        if (!owns(patrol) || event.entity !is Player) return false
+        val zoneId = patrol.persistentDataContainer.get(zoneKey, PersistentDataType.STRING) ?: return false
+        val safeZone = receivingSafeZones[zoneId] ?: return false
+        if (!safeZone.contains(event.entity.location)) return false
+        event.isCancelled = true
+        patrol.target = null
+        patrol.pathfinder.stopPathfinding()
+        return true
+    }
 
     fun clear(player: Player) {
         playerTimes[player.uniqueId]?.returning = true
@@ -222,6 +256,7 @@ internal class FarmNightShiftController(
         playerTimes.values.filter { it.zoneId == zoneId }.forEach { it.returning = true }
         clearPatrols(zoneId)
         reconciledSequences.remove(zoneId)
+        receivingSafeZones.remove(zoneId)
     }
 
     fun clearAll(players: Collection<Player>) {
@@ -234,6 +269,7 @@ internal class FarmNightShiftController(
         patrolRouteSteps.clear()
         patrolNextRouteAt.clear()
         reconciledSequences.clear()
+        receivingSafeZones.clear()
         Bukkit.getWorlds().forEach { world -> world.loadedChunks.forEach(::onChunkLoad) }
     }
 
@@ -361,9 +397,18 @@ internal class FarmNightShiftController(
         region: ActivityRegion,
         sequence: Long,
         settings: FarmSpecialIncidentSettings,
+        safeZone: ReceivingSafeZone,
     ) {
         val step = patrolRouteSteps.getOrDefault(key, 0)
-        val destination = findPatrolDestination(anchor, region, sequence, key.index, step, settings.nightPatrolRoamRadius)
+        val destination = findPatrolDestination(
+            anchor,
+            region,
+            sequence,
+            key.index,
+            step,
+            settings.nightPatrolRoamRadius,
+            safeZone,
+        )
         val moved = destination?.let { point ->
             patrol.pathfinder.findPath(point)?.let { path -> patrol.pathfinder.moveTo(path, 1.0) }
         } == true
@@ -379,6 +424,7 @@ internal class FarmNightShiftController(
         patrolIndex: Int,
         step: Int,
         roamRadius: Double,
+        safeZone: ReceivingSafeZone,
     ): Location? {
         val random = Random(sequence xor (patrolIndex.toLong() shl 32) xor step.toLong())
         repeat(16) {
@@ -393,7 +439,7 @@ internal class FarmNightShiftController(
                 val head = feet.getRelative(BlockFace.UP)
                 if (
                     !floor.isPassable && feet.isPassable && head.isPassable && region.contains(feet.location) &&
-                    FarmSurfacePolicy.isSurfaceSpawn(feet.location)
+                    FarmSurfacePolicy.isSurfaceSpawn(feet.location) && !safeZone.contains(feet.location)
                 ) {
                     return feet.location.add(0.5, 0.0, 0.5)
                 }

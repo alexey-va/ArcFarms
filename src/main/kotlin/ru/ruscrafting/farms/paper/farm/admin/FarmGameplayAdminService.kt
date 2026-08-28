@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.paper.farm.admin
 
 import org.bukkit.Material
 import org.bukkit.block.data.Ageable
+import org.bukkit.block.data.type.Farmland
 import org.bukkit.entity.Player
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
@@ -19,6 +20,7 @@ import ru.ruscrafting.farms.domain.FarmSeederStage
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.domain.ShiftEvent
+import ru.ruscrafting.farms.domain.nextPlacementSequence
 import ru.ruscrafting.farms.domain.seederStage
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockLedger
@@ -81,6 +83,34 @@ internal class FarmGameplayAdminService(
     private val clock: () -> Long,
 ) {
     fun setStage(player: Player, zoneId: String, stage: String): Boolean {
+        val startedAt = System.nanoTime()
+        var succeeded = false
+        return try {
+            setStageNow(player, zoneId, stage).also { succeeded = it }
+        } finally {
+            val elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000L
+            val patchSize = runtimes().firstOrNull { it.settings.id == zoneId }
+                ?.state?.preparationPatch?.size ?: 0
+            debug.event(
+                "farm_admin_stage_timing",
+                "player" to player.name,
+                "zone" to zoneId,
+                "stage" to stage,
+                "success" to succeeded,
+                "elapsed_ms" to elapsedMillis,
+                "patch" to patchSize,
+            )
+            if (elapsedMillis >= SLOW_ADMIN_STAGE_MILLIS) {
+                port.log(
+                    java.util.logging.Level.WARNING,
+                    "ArcFarms admin stage was slow: zone=$zoneId stage=$stage " +
+                        "success=$succeeded elapsed=${elapsedMillis}ms patch=$patchSize",
+                )
+            }
+        }
+    }
+
+    private fun setStageNow(player: Player, zoneId: String, stage: String): Boolean {
         val runtime = runtime(zoneId, player) ?: return false
         val normalized = stage.lowercase()
         if (normalized !in STANDARD_STAGES && normalized !in CARE_STAGES) {
@@ -311,6 +341,10 @@ internal class FarmGameplayAdminService(
             careType = null, careTargets = emptyList(), careGoal = null, incidentType = null,
         )
         if (!care.initialize(runtime, player, type)) {
+            // Consume the failed spatial attempt as well. Otherwise an administrator
+            // retrying an unavailable scene would probe the exact same locations forever.
+            runtime.state = runtime.state.copy(placementSequence = runtime.state.nextPlacementSequence())
+            persistAsync()
             port.sendChat(
                 player,
                 if (type == FarmCareType.MOLES) MessageKey.ADMIN_MOLES_UNAVAILABLE else MessageKey.ADMIN_CARE_UNAVAILABLE,
@@ -405,7 +439,13 @@ internal class FarmGameplayAdminService(
         incidentRecovery.restore(runtime)
         if (incidentRecovery.pending(runtime)) return false
         if (runtime.state.preparationPatch.isNotEmpty() && !field.restoreOriginal(runtime)) return false
-        field.commitAfterRecovery(runtime, FarmShiftState(sequence = runtime.state.sequence))
+        field.commitAfterRecovery(
+            runtime,
+            FarmShiftState(
+                sequence = runtime.state.sequence,
+                placementSequence = runtime.state.placementSequence,
+            ),
+        )
         drought.resetGrowth(runtime.settings.id)
         port.players(runtime.region).forEach { supplies.removeServiceItems(it, runtime.settings.id, "admin_reset") }
         return true
@@ -422,24 +462,65 @@ internal class FarmGameplayAdminService(
     private fun preparePatch(runtime: FarmRuntime, plant: Boolean, mature: Boolean) {
         val crop = MaterialRules.material(requireNotNull(runtime.state.preparationCrop))
         val soils = runtime.state.preparationPatch.mapNotNull(FarmPlotPosition::block)
-        ledger.captureAll(soils, runtime.settings.id)
-        soils.forEach { soil ->
+        val desiredCrop = crop.createBlockData().also { data ->
+            if (mature && data is Ageable) data.age = data.maximumAge
+        }
+        fun needsCropChange(above: org.bukkit.block.Block): Boolean {
+            if (!plant) return !above.type.isAir
+            if (above.type != crop) return true
+            val current = above.blockData
+            return if (current is Ageable && desiredCrop is Ageable) {
+                current.age != desiredCrop.age
+            } else current.asString != desiredCrop.asString
+        }
+        val changed = soils.filter { soil ->
+            val farmland = soil.blockData as? Farmland
+            val needsWater = soil.type != Material.FARMLAND ||
+                farmland == null || farmland.moisture != farmland.maximumMoisture
+            val above = soil.getRelative(org.bukkit.block.BlockFace.UP)
+            needsWater || needsCropChange(above)
+        }
+        if (changed.isEmpty()) {
+            debug.event(
+                "farm_admin_patch_ready",
+                "zone" to runtime.settings.id,
+                "plots" to soils.size,
+                "changed" to 0,
+                "plant" to plant,
+            )
+            return
+        }
+        ledger.captureAll(changed, runtime.settings.id)
+        changed.forEach { soil ->
             field.wet(soil)
             val above = soil.getRelative(org.bukkit.block.BlockFace.UP)
             if (!plant) {
-                above.setType(Material.AIR, false)
+                if (!above.type.isAir) above.setType(Material.AIR, false)
                 return@forEach
             }
-            val data = crop.createBlockData()
-            if (mature && data is Ageable) data.age = data.maximumAge
-            above.setBlockData(data, false)
+            if (needsCropChange(above)) {
+                above.setBlockData(desiredCrop.clone(), false)
+            }
         }
-        if (plant) ledger.updateActiveCrops(soils)
+        if (plant) ledger.updateActiveCrops(changed)
+        debug.event(
+            "farm_admin_patch_ready",
+            "zone" to runtime.settings.id,
+            "plots" to soils.size,
+            "changed" to changed.size,
+            "plant" to plant,
+        )
     }
 
     private fun reselectPatch(runtime: FarmRuntime, player: Player, mechanized: Boolean): Boolean {
         val previous = runtime.state.preparationPatch
-        val selected = field.selectPatch(runtime, player.location, mechanized, runtime.state.sequence, previous)
+        val selected = field.selectPatch(
+            runtime,
+            player.location,
+            mechanized,
+            runtime.state.nextPlacementSequence(),
+            previous,
+        )
         if (selected.isEmpty()) return false
         val maxSize = if (mechanized) runtime.settings.seederPatchMaxSize else runtime.settings.preparationPatchMaxSize
         val replacement = FarmPatchPlanner.retainCurrent(previous, selected, maxSize)
@@ -488,5 +569,6 @@ internal class FarmGameplayAdminService(
         )
         val STANDARD_STAGES = setOf("preparation", "planting", "harvesting", "delivery", "complete", "reset") + INCIDENT_STAGES.keys
         val BED_PATCH_CARE_TYPES = setOf(FarmCareType.SEEDER, FarmCareType.WEEDS, FarmCareType.DISEASE, FarmCareType.MOLES)
+        const val SLOW_ADMIN_STAGE_MILLIS = 50L
     }
 }

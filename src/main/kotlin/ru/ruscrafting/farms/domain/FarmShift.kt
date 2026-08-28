@@ -227,6 +227,8 @@ data class FarmRules(
 data class FarmShiftState(
     val phase: FarmPhase = FarmPhase.IDLE,
     val sequence: Long = 0,
+    /** Monotonic objective nonce. Unlike [sequence], it advances for forced admin events inside one shift. */
+    val placementSequence: Long = 0,
     val orderId: String? = null,
     val progress: Map<String, Int> = emptyMap(),
     val preparationPatch: List<FarmPlotPosition> = emptyList(),
@@ -266,6 +268,10 @@ data class FarmShiftState(
     val outcome: ShiftOutcome = ShiftOutcome.NONE,
     val contributors: Map<UUID, Int> = emptyMap(),
 ) {
+    init {
+        require(placementSequence in 0 until Long.MAX_VALUE) { "Farm placement sequence is invalid" }
+    }
+
     fun completed(order: FarmOrder): Int = order.required.entries.sumOf { (crop, amount) ->
         (progress[crop] ?: 0).coerceAtMost(amount)
     }
@@ -281,6 +287,9 @@ fun FarmShiftState.seederStage(): FarmSeederStage? {
     if (phase != FarmPhase.CARE || careType != FarmCareType.SEEDER) return null
     return seederStage ?: if (plantedPlots.isNotEmpty()) FarmSeederStage.PLANTING else FarmSeederStage.TILLING
 }
+
+/** Advances the durable spatial nonce without allowing a corrupt negative wraparound. */
+fun FarmShiftState.nextPlacementSequence(): Long = if (placementSequence == Long.MAX_VALUE) 1L else placementSequence + 1L
 
 object FarmShiftEngine {
     fun start(
@@ -301,6 +310,7 @@ object FarmShiftEngine {
         val next = FarmShiftState(
             phase = FarmPhase.PREPARATION,
             sequence = current.sequence + 1,
+            placementSequence = current.placementSequence,
             orderId = order.id,
             progress = order.required.keys.associateWith { 0 },
             preparationPatch = patch,
@@ -447,6 +457,7 @@ object FarmShiftEngine {
             if (incidentCrop != null) {
                 state = state.copy(
                     phase = FarmPhase.INCIDENT,
+                    placementSequence = state.nextPlacementSequence(),
                     incidentCrop = incidentCrop,
                     incidentType = incidentType,
                     incidentProgress = 0,
@@ -493,6 +504,7 @@ object FarmShiftEngine {
         return EngineResult(
             current.copy(
                 phase = FarmPhase.CARE,
+                placementSequence = current.nextPlacementSequence(),
                 careType = type,
                 seederStage = if (type == FarmCareType.SEEDER) FarmSeederStage.TILLING else null,
                 careTargets = targets,
@@ -949,7 +961,11 @@ object FarmShiftEngine {
         val state = current
         if (state.phase == FarmPhase.IDLE) return EngineResult(state, false)
         if (state.phase == FarmPhase.COOLDOWN && now >= state.cooldownEndsAt) {
-            return EngineResult(FarmShiftState(sequence = state.sequence), true, events = listOf(ShiftEvent.RESET))
+            return EngineResult(
+                FarmShiftState(sequence = state.sequence, placementSequence = state.placementSequence),
+                true,
+                events = listOf(ShiftEvent.RESET),
+            )
         }
         if (state.phase == FarmPhase.COOLDOWN) return EngineResult(state, false)
         if (state.phase == FarmPhase.DELIVERY) return EngineResult(state, false)

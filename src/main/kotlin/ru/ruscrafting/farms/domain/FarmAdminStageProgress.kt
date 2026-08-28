@@ -17,6 +17,7 @@ object FarmAdminStageProgress {
     fun forcedIncident(current: FarmShiftState, rules: FarmRules): FarmShiftState {
         val lastCompletedBeforeForced = (rules.incidentTargetCount(current.sequence) - 1).coerceAtLeast(0)
         return completed(current, planted = true).copy(
+            placementSequence = current.nextPlacementSequence(),
             incidentsResolved = current.incidentsResolved.coerceIn(0, lastCompletedBeforeForced),
         )
     }

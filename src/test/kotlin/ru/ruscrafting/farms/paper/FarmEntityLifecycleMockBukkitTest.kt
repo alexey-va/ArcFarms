@@ -9,6 +9,7 @@ import org.bukkit.inventory.ItemStack
 import org.mockbukkit.mockbukkit.world.WorldMock
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.config.CuboidBounds
+import ru.ruscrafting.farms.domain.FarmPointPosition
 
 class FarmEntityLifecycleMockBukkitTest : FunSpec({
     lateinit var paper: MockBukkitTestRuntime
@@ -28,7 +29,17 @@ class FarmEntityLifecycleMockBukkitTest : FunSpec({
         val region = CuboidActivityRegion(world, "farm", CuboidBounds(0, 0, 0, 31, 128, 31))
 
         repeat(20) {
-            controller.sync("farm", 7L, region, emptyList(), 13_000L, emptyList(), mockk(relaxed = true), false)
+            controller.sync(
+                "farm",
+                7L,
+                region,
+                emptyList(),
+                13_000L,
+                emptyList(),
+                FarmPointPosition("farm", 15.5, 64.0, 15.5),
+                mockk(relaxed = true),
+                false,
+            )
         }
 
         lookup.worldScans shouldBe 1

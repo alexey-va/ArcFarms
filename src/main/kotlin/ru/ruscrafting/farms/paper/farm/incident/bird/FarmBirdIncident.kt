@@ -73,7 +73,7 @@ internal class FarmBirdIncident(
         val available = beds.discover(runtime)
         val required = runtime.settings.specialIncidents.birdCount(available.size)
         val requested = (required * runtime.settings.specialIncidents.birdSpawnMultiplier).coerceAtMost(64)
-        val anchors = FarmBirdPlanner.select(available, requested, runtime.state.sequence)
+        val anchors = FarmBirdPlanner.select(available, requested, runtime.state.placementSequence)
         if (anchors.isEmpty()) {
             port.log(
                 Level.WARNING,

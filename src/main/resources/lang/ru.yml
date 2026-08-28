@@ -346,7 +346,7 @@ farm:
   care-scarecrow-picked-up-subtitle: '<color:#f2fff7>Отнесите его к отмеченной грядке</color>'
   care-scarecrow-already-carrying: '<color:#ffad42>Вы уже несёте пугало</color>'
   care-scarecrow-all-assigned: '<color:#b8c8c0>Все оставшиеся пугала уже несут другие работники</color>'
-  care-scarecrow-returned: '<color:#b8c8c0>Пугало возвращено к приёмке</color>'
+  care-scarecrow-returned: '<color:#b8c8c0>Пугало возвращено в хлев</color>'
   mole-building: '<color:#ffad42>Нора ещё прокладывается. Подождите несколько секунд.</color>'
   mole-entered: '<color:#976948><bold>Под землёй</bold></color>'
   mole-entered-subtitle: '<color:#f2fff7>Исследуйте тоннели и найдите логово</color>'
@@ -571,7 +571,7 @@ scoreboard:
       irrigation: '<color:#b8c8c0>Открывайте вентили по порядку</color>'
       pollination: '<color:#b8c8c0>Пыльцу из улья несите к цветам</color>'
       storm_covers: '<color:#b8c8c0>Закрепите укрытие во всех метках</color>'
-      scarecrows: '<color:#b8c8c0>Несите пугала от приёмки к меткам</color>'
+      scarecrows: '<color:#b8c8c0>Берите пугала в хлеву и несите к меткам</color>'
       animal_rescue: '<color:#b8c8c0>Ведите животных к </color><color:#55d98b>зелёной метке</color>'
       disease: '<color:#b8c8c0>Срезайте очаги мотыгой вовремя</color>'
       moles: '<color:#b8c8c0>Бейте свежие холмики мотыгой</color>'
@@ -641,8 +641,8 @@ care:
     entry: '<color:#f2fff7>Закрепите укрытие в отмеченных точках поля</color>'
   scarecrows:
     name: '<color:#ffad42>Пугала</color>'
-    instruction: '<color:#f2fff7>Берите пугала у приёмки и несите к отмеченным грядкам</color>'
-    entry: '<color:#f2fff7>Возьмите пугало у приёмки и установите на отмеченной грядке</color>'
+    instruction: '<color:#f2fff7>Берите пугала в хлеву и несите к отмеченным грядкам</color>'
+    entry: '<color:#f2fff7>Возьмите пугало в хлеву и установите на отмеченной грядке</color>'
   animal_rescue:
     name: '<color:#55d98b>Сбежавшие животные</color>'
     instruction: '<color:#f2fff7>Позовите животных и приведите их к подсвеченному хлеву</color>'

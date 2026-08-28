@@ -346,7 +346,7 @@ farm:
   care-scarecrow-picked-up-subtitle: '<color:#f2fff7>Carry it to a marked bed</color>'
   care-scarecrow-already-carrying: '<color:#ffad42>You are already carrying a scarecrow</color>'
   care-scarecrow-all-assigned: '<color:#b8c8c0>Other workers are carrying all remaining scarecrows</color>'
-  care-scarecrow-returned: '<color:#b8c8c0>The scarecrow was returned to receiving</color>'
+  care-scarecrow-returned: '<color:#b8c8c0>The scarecrow was returned to the barn</color>'
   mole-building: '<color:#ffad42>The burrow is still opening. Wait a few seconds.</color>'
   mole-entered: '<color:#976948><bold>Underground</bold></color>'
   mole-entered-subtitle: '<color:#f2fff7>Explore the tunnels and find the den</color>'
@@ -571,7 +571,7 @@ scoreboard:
       irrigation: '<color:#b8c8c0>Open the valves in order</color>'
       pollination: '<color:#b8c8c0>Take pollen, then go to the flowers</color>'
       storm_covers: '<color:#b8c8c0>Secure the cover at every marker</color>'
-      scarecrows: '<color:#b8c8c0>Carry scarecrows from receiving to markers</color>'
+      scarecrows: '<color:#b8c8c0>Take scarecrows from the barn to the markers</color>'
       animal_rescue: '<color:#b8c8c0>Lead animals to the </color><color:#55d98b>green marker</color>'
       disease: '<color:#b8c8c0>Prune outbreaks before crops die</color>'
       moles: '<color:#b8c8c0>Find the brown marker, enter the burrow, and locate the den</color>'
@@ -641,8 +641,8 @@ care:
     entry: '<color:#f2fff7>Fasten the cover at the marked field points</color>'
   scarecrows:
     name: '<color:#ffad42>Scarecrows</color>'
-    instruction: '<color:#f2fff7>Carry scarecrows from receiving to the marked beds</color>'
-    entry: '<color:#f2fff7>Take a scarecrow at receiving and place it on a marked bed</color>'
+    instruction: '<color:#f2fff7>Carry scarecrows from the barn to the marked beds</color>'
+    entry: '<color:#f2fff7>Take a scarecrow from the barn and place it on a marked bed</color>'
   animal_rescue:
     name: '<color:#55d98b>Escaped animals</color>'
     instruction: '<color:#f2fff7>Call the animals and lead them to the highlighted barn</color>'

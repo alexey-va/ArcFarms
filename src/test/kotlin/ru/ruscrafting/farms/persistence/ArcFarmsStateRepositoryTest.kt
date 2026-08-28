@@ -57,6 +57,20 @@ class ArcFarmsStateRepositoryTest : FunSpec({
         ArcFarmsStateRepository(root).use(ArcFarmsStateRepository::load).farmPerks shouldBe emptyMap()
     }
 
+    test("state persistence rejects a negative placement sequence from stored json") {
+        val root = Files.createTempDirectory("arcfarms-state-placement-sequence-test")
+        val data = root.resolve("data")
+        Files.createDirectories(data)
+        Files.writeString(
+            data.resolve("state.json"),
+            """{"schemaVersion":1,"farms":{"farm":{"placementSequence":-1}},"lumbermills":{},"mines":{},"stats":{}}""",
+        )
+
+        shouldThrow<IllegalArgumentException> {
+            ArcFarmsStateRepository(root).use(ArcFarmsStateRepository::load)
+        }
+    }
+
     test("temporary perk purchase survives an atomic state round trip") {
         val root = Files.createTempDirectory("arcfarms-state-perks-roundtrip-test")
         val playerId = UUID(0, 44)
@@ -335,6 +349,7 @@ class ArcFarmsStateRepositoryTest : FunSpec({
                 "delivery_farm" to FarmShiftState(
                     phase = FarmPhase.DELIVERY,
                     sequence = 8,
+                    placementSequence = 27,
                     orderId = "current_order",
                     progress = mapOf("WHEAT" to 4),
                     harvestMilestone = 4,

@@ -380,7 +380,7 @@ internal class FarmMoleBurrowController(
             .filter { it.block.getRelative(org.bukkit.block.BlockFace.DOWN).type.isSolid }
             .distinctBy { it.blockX to it.blockZ }
             .toMutableList()
-        candidates.shuffle(Random(runtime.state.sequence xor 0x4d4f4c45L))
+        candidates.shuffle(Random(runtime.state.placementSequence xor 0x4d4f4c45L))
         return candidates.take(runtime.settings.moleBurrow.moleCount).map { location ->
             scene.world.spawn(location, Rabbit::class.java) { mole ->
                 mole.setAdult()

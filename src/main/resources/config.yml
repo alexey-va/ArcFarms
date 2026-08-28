@@ -139,12 +139,12 @@ farm-zones:
       guidance: {close-distance: 6, far-distance: 14, interval-ticks: 20}
       replaceable-materials: [STONE, DEEPSLATE, DIRT, COARSE_DIRT, ANDESITE, DIORITE, GRANITE, TUFF, CALCITE, DRIPSTONE_BLOCK, CLAY, MUD, PACKED_MUD]
       lair-visual:
-        # The den is a journalled cave scene; AIR disables the obsolete floating item marker.
-        material: AIR
+        # Portable fallback; the live server may replace this with a fitted ItemsAdder cave prop.
+        material: MUD
         custom-model-data: 0
-        display-transform: FIXED
-        display-scale: 1.6
-        display-y-offset: 0.6
+        display-transform: GROUND
+        display-scale: 1.4
+        display-y-offset: 0.05
     care-animal-entities: [CHICKEN, SHEEP]
     procedural-care-fixtures: true
     placement-min-objective-distance: 10
@@ -215,6 +215,8 @@ farm-zones:
           roam-radius: 14.0
           path-refresh-seconds: 5
           spawn-min-player-distance: 8.0
+          # Patrols neither enter nor damage players inside this radius around receiving.
+          receiving-safe-radius: 15.0
           movement-speed: 0.27
           follow-range: 8.0
           attack-damage: 2.0

@@ -112,9 +112,13 @@ internal class FarmMoleBurrowWorld(
     private val scenes = mutableMapOf<SceneKey, FarmMoleBurrowScene>()
 
     fun preview(runtime: FarmRuntime, surface: FarmPointPosition): FarmMoleBurrowScene? =
-        previewDetailed(runtime, surface).scene
+        previewDetailed(runtime, surface, runtime.state.placementSequence).scene
 
-    fun previewDetailed(runtime: FarmRuntime, surface: FarmPointPosition): FarmMoleBurrowPreview {
+    fun previewDetailed(
+        runtime: FarmRuntime,
+        surface: FarmPointPosition,
+        placementSequence: Long = runtime.state.placementSequence,
+    ): FarmMoleBurrowPreview {
         val world = runtime.region.world
         if (surface.world != world.name) return FarmMoleBurrowPreview(null, 0, mapOf("wrong_world" to 1))
         val settings = runtime.settings.moleBurrow
@@ -123,14 +127,14 @@ internal class FarmMoleBurrowWorld(
         fun reject(reason: String, count: Int = 1) {
             rejections[reason] = rejections.getOrDefault(reason, 0) + count
         }
-        val layoutSeed = seed(runtime.state.sequence, floor(surface.x).toInt(), floor(surface.z).toInt())
+        val layoutSeed = seed(placementSequence, floor(surface.x).toInt(), floor(surface.z).toInt())
         val raw = FarmMoleBurrowPlanner.plan(
             settings.cells,
             layoutSeed,
             settings.lightSpacing,
             settings.chamberCount,
         )
-        val firstRotation = Math.floorMod((runtime.state.sequence xor surface.x.toLong() xor surface.z.toLong()).toInt(), 4)
+        val firstRotation = Math.floorMod((placementSequence xor surface.x.toLong() xor surface.z.toLong()).toInt(), 4)
         val depthSpan = settings.maxDepth - settings.minDepth + 1
         val firstDepth = Math.floorMod(layoutSeed.toInt(), depthSpan)
         val surfaceLocation = Location(world, surface.x, surface.y, surface.z)
