@@ -176,6 +176,7 @@ admin:
     pen: '<white>хлев</white>'
     perk_vendor: '<white>фермер-лавочник</white>'
     processing: '<white>переработка урожая</white>'
+    fire_equipment: '<white>пожарный водомёт</white>'
   point-description:
     tool: '<gray>место голограммы, где игроки берут служебную мотыгу</gray>'
     seeds: '<gray>место выдачи семян культуры текущего заказа</gray>'
@@ -193,6 +194,7 @@ admin:
     pen: '<gray>хлев для животных; если не задан, используется приёмка</gray>'
     perk_vendor: '<gray>фермер, у которого тратятся недельные очки на временные усиления</gray>'
     processing: '<gray>центр временного цеха 9×5; встаньте в центре и смотрите в сторону его фасада</gray>'
+    fire_equipment: '<gray>стойка выдачи пожарного водомёта рядом с амбаром</gray>'
   processing-placement:
     wrong_world: '<gray>точка находится в другом мире</gray>'
     outside_region: '<gray>часть площадки выходит за регион фермы</gray>'
@@ -223,6 +225,7 @@ admin:
     night-shift: '<white>ночная смена</white>'
     market: '<white>срочная поставка</white>'
     processing: '<white>переработка урожая</white>'
+    barn-fire: '<white>пожар в амбаре</white>'
     delivery: '<white>доставка</white>'
     complete: '<white>завершение</white>'
     reset: '<white>сброс</white>'
@@ -249,6 +252,7 @@ admin:
     night-shift: '<gray>разносит подсвеченные культуры по ферме и выпускает ночной дозор с факелами</gray>'
     market: '<gray>привозит покупателя со срочной поставкой на время и денежной надбавкой</gray>'
     processing: '<gray>загружает сырьё, запускает механизм и складывает готовую продукцию</gray>'
+    barn-fire: '<gray>разжигает настоящие очаги у амбара, но блокирует распространение огня и урон постройке</gray>'
     delivery: '<gray>закрывает сбор культур и создаёт ящики для доставки</gray>'
     complete: '<gray>мгновенно проводит доставку, восстановление и награды</gray>'
     reset: '<gray>убирает текущую сцену, восстанавливает поле и останавливает автозапуск</gray>'
@@ -262,6 +266,7 @@ admin:
     night-shift: '<gray>ищите подсвеченный урожай по всей ферме и обходите дозор с факелами</gray>'
     market: '<gray>решите, взяться ли за срочную поставку на время ради денежной надбавки</gray>'
     processing: '<gray>развернёт временный цех у настроенной точки: сырьё, механизм и готовые ящики</gray>'
+    barn-fire: '<gray>разожжёт защищённые очаги у амбара; возьмите водомёт и погасите их</gray>'
 generic-error: '<prefix> <red>Действие не удалось. Подробности записаны в журнал.</red>'
 zone-unavailable: '<prefix> <red>Эта рабочая зона сейчас недоступна.</red>'
 zone-locked: '<prefix> <red>У вас пока нет доступа к этой рабочей зоне.</red>'
@@ -320,6 +325,7 @@ farm:
   entry-market-pending: '<color:#f2fff7>Найдите светящегося покупателя у телеги и нажмите ПКМ</color>'
   entry-market-active: '<color:#f2fff7><crop> <done>/<total> — осталось <time></color>'
   entry-processing: '<color:#f2fff7>Идите к золотому столбу у перерабатывающего цеха</color>'
+  entry-barn-fire: '<color:#f2fff7>Возьмите водомёт у амбара и погасите все очаги</color>'
   entry-delivery: '<color:#f2fff7>Перенесите ящики к приёмке</color>'
   started: '<color:#55d98b>Новый заказ</color> <color:#707a76>•</color> <order> <color:#707a76>•</color> <color:#f2fff7>вспашите участок: <total> грядок</color>'
   patch-unavailable: '<color:#ffad42>Рядом нет свободного участка для новой смены.</color>'
@@ -442,6 +448,12 @@ farm:
     machine-done-label: '<color:#55d98b>Партия готова</color>'
     output-label: '<color:#55d98b>Готовая продукция</color><newline><color:#f2fff7>Сложите её сюда</color>'
     bossbar: '<color:#ffc857>Переработка <done>/<total></color> <color:#707a76>—</color> <instruction>'
+  barn-fire:
+    started: '<color:#ff7a45><bold>Пожар в амбаре</bold></color>'
+    started-subtitle: '<color:#f2fff7>Возьмите водомёт у амбара и погасите <total> очагов</color>'
+    progress: '<color:#45c8f5>Пожар</color> <color:#707a76>•</color> <color:#f2fff7>погашено <done>/<total></color>'
+    aim-hint: '<color:#ffad42>Направьте струю на видимый очаг огня.</color>'
+    bossbar: '<color:#ff7a45>Пожар в амбаре</color> <color:#707a76>•</color> <color:#45c8f5>погашено <done>/<total></color>'
   perk-vendor-name: '<color:#ffc857>Агроном</color> <color:#707a76>•</color> <color:#f2fff7>усиления</color>'
   perk-menu:
     title: '<dark_gray>Усиления фермы</dark_gray>'
@@ -515,6 +527,9 @@ farm:
   supply-seeds: '<color:#f2fff7>Взять <seed></color>'
   supply-water: '<color:#f2fff7>Взять ведро воды</color>'
   supply-archery: '<color:#f2fff7>Взять лук и стрелы</color>'
+  supply-fire: '<color:#f2fff7>Взять пожарный водомёт</color>'
+  supply-fire-item-name: '<color:#45c8f5>Пожарный водомёт</color>'
+  supply-fire-item-lore: '<color:#b8c8c0>ПКМ — направленная струя воды</color>'
   cooldown-bossbar: '<color:#f2fff7>Новый заказ через </color><color:#ffc857><seconds> сек.</color>'
   preparation-bossbar: '<color:#55d98b>Вспашка <done>/<total></color> <color:#707a76>•</color> <color:#f2fff7>ПКМ мотыгой</color>'
   planting-bossbar: '<color:#55d98b>Посев <crop> <done>/<total></color> <color:#707a76>•</color> <color:#f2fff7>ПКМ семенами</color>'
@@ -545,6 +560,8 @@ incident:
     name: '<color:#ffc857>Срочная поставка</color>'
   processing:
     name: '<color:#ffc857>Переработка урожая</color>'
+  barn-fire:
+    name: '<color:#ff7a45>Пожар в амбаре</color>'
   birds:
     name: '<color:#ff7a45>Стая птиц</color>'
   food-delivery:
@@ -597,6 +614,7 @@ scoreboard:
     processing-loading: '<color:#ffc857>Загрузка сырья</color>'
     processing-operating: '<color:#45c8f5>Работа механизма</color>'
     processing-packing: '<color:#55d98b>Укладка продукции</color>'
+    barn-fire: '<color:#ff7a45>Пожар в амбаре</color>'
     delivery: '<color:#f2fff7>Доставка ящиков</color>'
     delivery-carrying: '<color:#ffc857>Ящик в руках</color>'
     cooldown: '<color:#55d98b>Смена завершена</color>'
@@ -619,6 +637,7 @@ scoreboard:
     processing-loading: '<color:#b8c8c0>Несите сырьё слева к станку</color>'
     processing-operating: '<color:#b8c8c0>ПКМ, когда метка в зелёной зоне</color>'
     processing-packing: '<color:#b8c8c0>Несите упаковки на правый поддон</color>'
+    barn-fire: '<color:#b8c8c0>Возьмите водомёт и гасите видимые очаги</color>'
     delivery: '<color:#b8c8c0>Берите ящики у телеги</color>'
     delivery-carrying: '<color:#b8c8c0>Несите ящик к </color><color:#c778ff>фиолетовой метке</color>'
     cooldown: '<color:#b8c8c0>Новый заказ появится позже</color>'
@@ -645,6 +664,7 @@ scoreboard:
     night-shift: '<color:#b8c8c0>Обходите дозор с факелами</color>'
     market-pending: '<color:#b8c8c0>Нажмите ПКМ у телеги</color>'
     processing: '<color:#b8c8c0>Сырьё слева, станок в центре, готовая продукция справа</color>'
+    barn-fire: '<color:#b8c8c0>Цельтесь в огонь и нажимайте ПКМ</color>'
 lumber:
   started: '<color:#ffc857>Заказ лесопилки</color> <color:#707a76>•</color> <wood>'
   wrong-species: '<gray>Этот заказ принимает только <wood>.</gray>'

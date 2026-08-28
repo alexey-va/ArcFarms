@@ -52,6 +52,7 @@ enum class FarmIncidentType {
     NIGHT_SHIFT,
     MARKET,
     PROCESSING,
+    BARN_FIRE,
 }
 
 enum class FarmProcessingStage {
@@ -986,6 +987,53 @@ object FarmShiftEngine {
             if (nextStage != processing.stage) add(ShiftEvent.PROCESSING_STAGE_CHANGED)
         }
         return EngineResult(state, true, contribution = 1, events = events)
+    }
+
+    fun initializeBarnFire(
+        current: FarmShiftState,
+        hotspots: List<FarmPointPosition>,
+    ): EngineResult<FarmShiftState> {
+        require(hotspots.size in 1..16) { "Farm barn fire must contain 1..16 hotspots" }
+        require(hotspots.distinct().size == hotspots.size) { "Farm barn fire contains duplicate hotspots" }
+        require(hotspots.map(FarmPointPosition::world).distinct().size == 1) { "Farm barn fire crosses worlds" }
+        if (
+            current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.BARN_FIRE ||
+            current.specialIncident != null
+        ) return EngineResult(current, false)
+        return EngineResult(
+            current.copy(
+                incidentProgress = 0,
+                incidentRequired = hotspots.size,
+                specialIncident = FarmSpecialIncidentState(
+                    points = hotspots,
+                    active = hotspots.indices.toSet(),
+                ),
+            ),
+            true,
+        )
+    }
+
+    fun extinguishBarnFire(
+        current: FarmShiftState,
+        hotspotIndex: Int,
+        playerId: UUID,
+    ): EngineResult<FarmShiftState> {
+        val incident = current.specialIncident
+        if (
+            current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.BARN_FIRE ||
+            incident == null || hotspotIndex !in incident.active
+        ) return EngineResult(current, false)
+        val active = incident.active - hotspotIndex
+        val progressed = current.copy(
+            incidentProgress = (current.incidentProgress + 1).coerceAtMost(current.incidentRequired),
+            specialIncident = incident.copy(active = active),
+            contributors = incrementContribution(current.contributors, playerId, 1),
+        )
+        if (active.isEmpty()) {
+            val completed = completeIncident(progressed, contribution = 1)
+            return completed.copy(events = listOf(ShiftEvent.INCIDENT_PROGRESS) + completed.events)
+        }
+        return EngineResult(progressed, true, contribution = 1, events = listOf(ShiftEvent.INCIDENT_PROGRESS))
     }
 
     fun initializeFoodDelivery(current: FarmShiftState, checkpoints: Int, routeName: String = FarmRouteKeys.DEFAULT_NAME): EngineResult<FarmShiftState> {

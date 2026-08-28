@@ -36,6 +36,7 @@ import ru.ruscrafting.farms.paper.farm.incident.pest.FarmPestIncident
 import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentController
 import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
 import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingIncident
+import ru.ruscrafting.farms.paper.farm.incident.fire.FarmBarnFireIncident
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
 import ru.ruscrafting.farms.paper.farm.point.FarmPointService
 import ru.ruscrafting.farms.paper.farm.perk.FarmPerkController
@@ -74,6 +75,7 @@ internal class FarmModule(
     private val perks: FarmPerkController,
     private val special: FarmSpecialIncidentController,
     private val processing: FarmProcessingIncident,
+    private val barnFire: FarmBarnFireIncident,
     private val delivery: FarmDeliveryController,
     private val scene: FarmContractSceneController,
     private val supplies: FarmSupplyController,
@@ -102,6 +104,7 @@ internal class FarmModule(
         registry.snapshot().forEach(perks::ensure)
         registry.snapshot().forEach(special::ensure)
         registry.snapshot().forEach(processing::ensure)
+        registry.snapshot().forEach(barnFire::ensure)
     }
 
     fun onChunkLoad(chunk: Chunk) {
@@ -116,7 +119,8 @@ internal class FarmModule(
         var removed = 0
         chunk.entities.filter { entity ->
             pests.ownsPest(entity) || pests.ownsNest(entity) || birds.owns(entity) || foodDelivery.owns(entity) ||
-                processing.owns(entity) || delivery.owns(entity) || supplies.owns(entity) || care.owns(entity) || perks.owns(entity)
+                processing.owns(entity) || delivery.owns(entity) || supplies.owns(entity) ||
+                care.owns(entity) || perks.owns(entity)
         }.forEach { entity ->
             entity.remove()
             removed++
@@ -199,6 +203,7 @@ internal class FarmModule(
         foodDelivery.updateVisuals(runtimes)
         care.updateCarriedDisplays()
         processing.update(runtimes, Bukkit.getCurrentTick().toLong())
+        barnFire.update(runtimes, Bukkit.getCurrentTick().toLong())
     }
 
     override fun tick(now: Long) {
@@ -235,6 +240,7 @@ internal class FarmModule(
                 foodDelivery.ensure(runtime, now)
                 special.ensure(runtime)
                 processing.ensure(runtime)
+                barnFire.ensure(runtime)
                 pests.eatCrops(runtime)
                 birds.eatCrops(runtime)
                 care.updateDisease(runtime, now)
@@ -281,12 +287,15 @@ internal class FarmModule(
 
     fun refreshPoint(runtime: FarmRuntime, kind: FarmPointKind, actor: Player, reason: String) {
         when (kind) {
-            FarmPointKind.TOOL, FarmPointKind.SEEDS, FarmPointKind.WATER, FarmPointKind.ARCHERY -> {
+            FarmPointKind.TOOL, FarmPointKind.SEEDS, FarmPointKind.WATER, FarmPointKind.ARCHERY,
+            FarmPointKind.FIRE_EQUIPMENT,
+            -> {
                 val supply = when (kind) {
                     FarmPointKind.TOOL -> FarmSupplyKind.TOOL
                     FarmPointKind.SEEDS -> FarmSupplyKind.SEEDS
                     FarmPointKind.WATER -> FarmSupplyKind.WATER
-                    else -> FarmSupplyKind.ARCHERY
+                    FarmPointKind.ARCHERY -> FarmSupplyKind.ARCHERY
+                    else -> FarmSupplyKind.FIRE
                 }
                 supplies.refresh(runtime, supply, { supplyPoint(runtime, it) }, reason)
             }
@@ -319,6 +328,7 @@ internal class FarmModule(
         scene.cleanup(reason)
         special.cleanup(reason)
         processing.cleanup(reason)
+        barnFire.cleanup(reason)
         supplies.cleanup(reason)
         delivery.cleanup(reason)
         pests.cleanup(reason)
@@ -352,6 +362,7 @@ internal class FarmModule(
             FarmSupplyKind.SEEDS -> FarmPointKind.SEEDS
             FarmSupplyKind.WATER -> FarmPointKind.WATER
             FarmSupplyKind.ARCHERY -> FarmPointKind.ARCHERY
+            FarmSupplyKind.FIRE -> FarmPointKind.FIRE_EQUIPMENT
         },
     )
 

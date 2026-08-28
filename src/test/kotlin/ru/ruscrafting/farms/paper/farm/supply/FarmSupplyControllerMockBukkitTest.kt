@@ -67,15 +67,27 @@ class FarmSupplyControllerMockBukkitTest : FunSpec({
 
         first.ensure(runtime, points::getValue)
         val firstOwned = world.entities.filter(first::owns)
-        firstOwned shouldHaveSize 9
-        firstOwned.map { it.uniqueId }.distinct() shouldHaveSize 9
+        firstOwned shouldHaveSize 15
+        firstOwned.map { it.uniqueId }.distinct() shouldHaveSize 15
 
         val afterRestart = controller(plugin)
         afterRestart.ensure(runtime, points::getValue)
         val reconciled = world.entities.filter(afterRestart::owns)
-        reconciled shouldHaveSize 9
-        reconciled.map { it.uniqueId }.distinct() shouldHaveSize 9
-        reconciled.count { afterRestart.interaction(it)?.zoneId == runtime.settings.id } shouldBe 9
+        reconciled shouldHaveSize 15
+        reconciled.map { it.uniqueId }.distinct() shouldHaveSize 15
+        reconciled.count { afterRestart.interaction(it)?.zoneId == runtime.settings.id } shouldBe 15
+    }
+
+    test("fire equipment is bound to the farm that issued it") {
+        val controller = controller(plugin)
+        val runtime = runtime(world)
+
+        controller.give(runtime, FarmSupplyKind.FIRE, player) shouldBe true
+        val equipment = player.inventory.storageContents.filterNotNull().single(controller::isServiceItem)
+
+        controller.isServiceItem(equipment, FarmSupplyKind.FIRE) shouldBe true
+        controller.isServiceItem(equipment, runtime.settings.id, FarmSupplyKind.FIRE) shouldBe true
+        controller.isServiceItem(equipment, "another_farm", FarmSupplyKind.FIRE) shouldBe false
     }
 
     test("cleanup removes every loaded supply entity and every online tagged item") {
@@ -121,6 +133,12 @@ private fun runtime(world: WorldMock): FarmRuntime {
     val supplies = mockk<FarmSupplySettings> {
         every { toolMaterial } returns "IRON_HOE"
         every { seedAmount } returns 16
+        every { bowMaterial } returns "BOW"
+        every { arrowMaterial } returns "ARROW"
+        every { arrowAmount } returns 32
+        every { fireEquipmentMaterial } returns "SPYGLASS"
+        every { fireEquipmentCustomModelData } returns 0
+        every { fireEquipmentItemModel } returns null
     }
     val settings = mockk<FarmZoneSettings> {
         every { id } returns "communal_farm"
@@ -141,4 +159,6 @@ private fun supplyPoints(world: WorldMock): Map<FarmSupplyKind, FarmPointPositio
     FarmSupplyKind.TOOL to FarmPointPosition(world.name, 1.5, 65.0, 1.5),
     FarmSupplyKind.SEEDS to FarmPointPosition(world.name, 4.5, 65.0, 1.5),
     FarmSupplyKind.WATER to FarmPointPosition(world.name, 7.5, 65.0, 1.5),
+    FarmSupplyKind.ARCHERY to FarmPointPosition(world.name, 10.5, 65.0, 1.5),
+    FarmSupplyKind.FIRE to FarmPointPosition(world.name, 13.5, 65.0, 1.5),
 )

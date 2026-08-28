@@ -42,6 +42,7 @@ import ru.ruscrafting.farms.paper.farm.incident.pest.FarmPestIncident
 import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentController
 import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
 import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingIncident
+import ru.ruscrafting.farms.paper.farm.incident.fire.FarmBarnFireIncident
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
 import ru.ruscrafting.farms.paper.farm.presentation.FarmGuidanceController
 import ru.ruscrafting.farms.paper.farm.recovery.FarmIncidentRecoveryController
@@ -70,6 +71,7 @@ internal class FarmGameplayAdminService(
     private val foodDelivery: FarmFoodDeliveryIncident,
     private val special: FarmSpecialIncidentController,
     private val processing: FarmProcessingIncident,
+    private val barnFire: FarmBarnFireIncident,
     private val incidentRecovery: FarmIncidentRecoveryController,
     private val delivery: FarmDeliveryController,
     private val scene: FarmContractSceneController,
@@ -313,6 +315,7 @@ internal class FarmGameplayAdminService(
         birds.clear(runtime.settings.id, "admin_stage")
         foodDelivery.clear(runtime.settings.id, "admin_stage")
         processing.clear(runtime.settings.id, "admin_stage")
+        barnFire.clear(runtime.settings.id, "admin_stage")
         restoreGiantCrop(runtime, "admin_stage")
         special.clearZone(runtime, "admin_stage")
         // An explicit admin transition must leave no incident journal behind. A bounded
@@ -440,6 +443,7 @@ internal class FarmGameplayAdminService(
         birds.clear(runtime.settings.id, "admin_reset")
         foodDelivery.clear(runtime.settings.id, "admin_reset")
         processing.clear(runtime.settings.id, "admin_reset")
+        barnFire.clear(runtime.settings.id, "admin_reset")
         restoreGiantCrop(runtime, "admin_reset")
         special.clearZone(runtime, "admin_reset")
         delivery.clear(runtime, "admin_reset")
@@ -575,6 +579,7 @@ internal class FarmGameplayAdminService(
             "giant-crop" to FarmIncidentType.GIANT_CROP, "channels" to FarmIncidentType.CHANNELS,
             "night-shift" to FarmIncidentType.NIGHT_SHIFT, "market" to FarmIncidentType.MARKET,
             "processing" to FarmIncidentType.PROCESSING,
+            "barn-fire" to FarmIncidentType.BARN_FIRE,
         )
         val STANDARD_STAGES = setOf("preparation", "planting", "harvesting", "delivery", "complete", "reset") + INCIDENT_STAGES.keys
         val BED_PATCH_CARE_TYPES = setOf(FarmCareType.SEEDER, FarmCareType.WEEDS, FarmCareType.DISEASE, FarmCareType.MOLES)

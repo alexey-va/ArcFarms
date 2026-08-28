@@ -176,6 +176,7 @@ admin:
     pen: '<white>barn</white>'
     perk_vendor: '<white>farm perk vendor</white>'
     processing: '<white>crop processing</white>'
+    fire_equipment: '<white>fire hose</white>'
   point-description:
     tool: '<gray>service hoe pickup hologram</gray>'
     seeds: '<gray>seed pickup for the current order crop</gray>'
@@ -193,6 +194,7 @@ admin:
     pen: '<gray>animal barn; receiving is used when this override is unset</gray>'
     perk_vendor: '<gray>farmer who exchanges weekly contribution points for temporary perks</gray>'
     processing: '<gray>center of the temporary 9×5 workshop; stand in its center and face the front</gray>'
+    fire_equipment: '<gray>fire-hose pickup beside the barn</gray>'
   processing-placement:
     wrong_world: '<gray>the point is in another world</gray>'
     outside_region: '<gray>part of the footprint leaves the farm region</gray>'
@@ -223,6 +225,7 @@ admin:
     night-shift: '<white>night shift</white>'
     market: '<white>rush delivery</white>'
     processing: '<white>crop processing</white>'
+    barn-fire: '<white>barn fire</white>'
     delivery: '<white>delivery</white>'
     complete: '<white>completion</white>'
     reset: '<white>reset</white>'
@@ -249,6 +252,7 @@ admin:
     night-shift: '<gray>spreads highlighted crops across the farm and releases torch patrols</gray>'
     market: '<gray>brings a buyer with a timed rush delivery and a money bonus</gray>'
     processing: '<gray>loads raw crops, runs a mechanism, and stacks finished goods</gray>'
+    barn-fire: '<gray>lights real hotspots around the barn while suppressing spread and block damage</gray>'
     delivery: '<gray>closes harvesting and creates crates for delivery</gray>'
     complete: '<gray>runs delivery, field recovery, and rewards immediately</gray>'
     reset: '<gray>removes the current scene, restores the field, and stops automatic starts</gray>'
@@ -262,6 +266,7 @@ admin:
     night-shift: '<gray>find highlighted crops across the farm and avoid the torch patrols</gray>'
     market: '<gray>choose whether to take the timed rush delivery for a money bonus</gray>'
     processing: '<gray>builds a temporary workshop at its configured anchor</gray>'
+    barn-fire: '<gray>lights protected hotspots around the barn; take the hose and extinguish them</gray>'
 generic-error: '<prefix> <red>The action failed. Details were written to the server log.</red>'
 zone-unavailable: '<prefix> <red>This worksite is currently unavailable.</red>'
 zone-locked: '<prefix> <red>You do not have access to this worksite yet.</red>'
@@ -320,6 +325,7 @@ farm:
   entry-market-pending: '<color:#f2fff7>Find the glowing buyer by the cart and right-click</color>'
   entry-market-active: '<color:#f2fff7><crop> <done>/<total> — <time> remaining</color>'
   entry-processing: '<color:#f2fff7>Go to the processing workshop under the golden column</color>'
+  entry-barn-fire: '<color:#f2fff7>Take the fire hose by the barn and extinguish every hotspot</color>'
   entry-delivery: '<color:#f2fff7>Carry the crates to receiving</color>'
   started: '<color:#55d98b>New order</color> <color:#707a76>•</color> <order> <color:#707a76>•</color> <color:#f2fff7>till a patch of <total> beds</color>'
   patch-unavailable: '<color:#ffad42>There is no free farm patch nearby for a new shift.</color>'
@@ -442,6 +448,12 @@ farm:
     machine-done-label: '<color:#55d98b>The batch is ready</color>'
     output-label: '<color:#55d98b>Finished goods</color><newline><color:#f2fff7>Stack them here</color>'
     bossbar: '<color:#ffc857>Processing <done>/<total></color> <color:#707a76>—</color> <instruction>'
+  barn-fire:
+    started: '<color:#ff7a45><bold>Barn fire</bold></color>'
+    started-subtitle: '<color:#f2fff7>Take the hose by the barn and extinguish <total> hotspots</color>'
+    progress: '<color:#45c8f5>Fire</color> <color:#707a76>•</color> <color:#f2fff7>extinguished <done>/<total></color>'
+    aim-hint: '<color:#ffad42>Aim the water stream at a visible fire hotspot.</color>'
+    bossbar: '<color:#ff7a45>Barn fire</color> <color:#707a76>•</color> <color:#45c8f5>extinguished <done>/<total></color>'
   perk-vendor-name: '<color:#ffc857>Agronomist</color> <color:#707a76>•</color> <color:#f2fff7>perks</color>'
   perk-menu:
     title: '<dark_gray>Farm perks</dark_gray>'
@@ -515,6 +527,9 @@ farm:
   supply-seeds: '<color:#f2fff7>Take <seed></color>'
   supply-water: '<color:#f2fff7>Take a water bucket</color>'
   supply-archery: '<color:#f2fff7>Take a bow and arrows</color>'
+  supply-fire: '<color:#f2fff7>Take the fire hose</color>'
+  supply-fire-item-name: '<color:#45c8f5>Fire hose</color>'
+  supply-fire-item-lore: '<color:#b8c8c0>Right-click — directed water stream</color>'
   cooldown-bossbar: '<color:#f2fff7>New order in </color><color:#ffc857><seconds> sec.</color>'
   preparation-bossbar: '<color:#55d98b>Tilling <done>/<total></color> <color:#707a76>•</color> <color:#f2fff7>right-click with a hoe</color>'
   planting-bossbar: '<color:#55d98b>Plant <crop> <done>/<total></color> <color:#707a76>•</color> <color:#f2fff7>right-click with seeds</color>'
@@ -545,6 +560,8 @@ incident:
     name: '<color:#ffc857>Rush delivery</color>'
   processing:
     name: '<color:#ffc857>Crop processing</color>'
+  barn-fire:
+    name: '<color:#ff7a45>Barn fire</color>'
   birds:
     name: '<color:#ff7a45>Bird flock</color>'
   food-delivery:
@@ -597,6 +614,7 @@ scoreboard:
     processing-loading: '<color:#ffc857>Loading raw crop</color>'
     processing-operating: '<color:#45c8f5>Running the mechanism</color>'
     processing-packing: '<color:#55d98b>Stacking finished goods</color>'
+    barn-fire: '<color:#ff7a45>Barn fire</color>'
     delivery: '<color:#f2fff7>Crate delivery</color>'
     delivery-carrying: '<color:#ffc857>Crate in hand</color>'
     cooldown: '<color:#55d98b>Shift complete</color>'
@@ -619,6 +637,7 @@ scoreboard:
     processing-loading: '<color:#b8c8c0>Carry raw cargo from the left to the machine</color>'
     processing-operating: '<color:#b8c8c0>Right-click while the marker is green</color>'
     processing-packing: '<color:#b8c8c0>Carry packages to the right pallet</color>'
+    barn-fire: '<color:#b8c8c0>Take the hose and extinguish visible hotspots</color>'
     delivery: '<color:#b8c8c0>Pick up crates at the cart</color>'
     delivery-carrying: '<color:#b8c8c0>Carry the crate to the </color><color:#c778ff>marker</color>'
     cooldown: '<color:#b8c8c0>A new order will appear later</color>'
@@ -645,6 +664,7 @@ scoreboard:
     night-shift: '<color:#b8c8c0>Avoid the torch patrols</color>'
     market-pending: '<color:#b8c8c0>Right-click by the cart</color>'
     processing: '<color:#b8c8c0>Raw crop left, machine center, finished goods right</color>'
+    barn-fire: '<color:#b8c8c0>Aim at the fire and right-click</color>'
 lumber:
   started: '<color:#ffc857>Lumbermill order</color> <color:#707a76>•</color> <wood>'
   wrong-species: '<gray>This order only accepts <wood>.</gray>'

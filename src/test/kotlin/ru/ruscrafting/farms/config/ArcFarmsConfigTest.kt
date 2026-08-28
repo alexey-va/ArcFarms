@@ -210,6 +210,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().incidentTypes shouldContainExactly listOf(
             FarmIncidentType.GIANT_CROP,
             FarmIncidentType.PROCESSING,
+            FarmIncidentType.BARN_FIRE,
             FarmIncidentType.CHANNELS,
             FarmIncidentType.NIGHT_SHIFT,
             FarmIncidentType.MARKET,
@@ -226,6 +227,11 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().processing.spawnPerTick shouldBe 4
         settings.farms.single().processing.visuals.getValue(FarmProcessingVisualRole.MACHINE).material shouldBe
             "CRAFTING_TABLE"
+        settings.farms.single().barnFire.hotspotCount shouldBe 8
+        settings.farms.single().barnFire.placementRadius shouldBe 7
+        settings.farms.single().barnFire.sprayRange shouldBe 18.0
+        settings.farms.single().barnFire.sprayHitRadius shouldBe 1.6
+        settings.farms.single().supplies.fireEquipmentMaterial shouldBe "SPYGLASS"
         settings.farms.single().specialIncidents.channelBlockageCount shouldBe 5
         settings.farms.single().specialIncidents.channelBlockageMaterial shouldBe "MANGROVE_ROOTS"
         settings.farms.single().specialIncidents.channelBlockageDisplayYOffset shouldBe 0.8

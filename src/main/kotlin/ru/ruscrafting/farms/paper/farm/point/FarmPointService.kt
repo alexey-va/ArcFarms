@@ -89,6 +89,7 @@ internal class FarmPointService(
             FarmPointKind.SEEDS -> zone.supplies.seeds.toPoint()
             FarmPointKind.WATER -> zone.supplies.water.toPoint()
             FarmPointKind.ARCHERY -> zone.supplies.archery.toPoint()
+            FarmPointKind.FIRE_EQUIPMENT -> zone.supplies.fireEquipment.toPoint()
             FarmPointKind.CRATES -> zone.delivery.pickup.toPoint()
             FarmPointKind.RECEIVING -> FarmPointPosition(zone.delivery.world, zone.delivery.x, zone.delivery.y, zone.delivery.z)
             FarmPointKind.CART -> resolveBase(runtime, FarmPointKind.CRATES)

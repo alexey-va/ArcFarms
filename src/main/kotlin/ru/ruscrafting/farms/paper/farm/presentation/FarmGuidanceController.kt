@@ -289,6 +289,9 @@ internal class FarmGuidanceController(
         FarmIncidentType.PROCESSING -> points.resolve(runtime, FarmPointKind.PROCESSING).let { point ->
             listOf(Location(runtime.region.world, point.x, point.y, point.z) to AMBER_COLOR)
         }
+        FarmIncidentType.BARN_FIRE -> points.resolve(runtime, FarmPointKind.PEN).let { point ->
+            listOf(Location(runtime.region.world, point.x, point.y, point.z) to DANGER_COLOR)
+        }
         FarmIncidentType.MARKET -> points.resolve(runtime, FarmPointKind.CUSTOMER).let { point ->
             listOf(Location(runtime.region.world, point.x, point.y, point.z) to AMBER_COLOR)
         }
@@ -457,6 +460,7 @@ internal class FarmGuidanceController(
             FarmPointKind.PEN to SUCCESS_COLOR,
             FarmPointKind.PERK_VENDOR to AMBER_COLOR,
             FarmPointKind.PROCESSING to AMBER_COLOR,
+            FarmPointKind.FIRE_EQUIPMENT to WATER_COLOR,
         )
     }
 }

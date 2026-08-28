@@ -1,0 +1,277 @@
+package ru.ruscrafting.farms.paper.farm.incident.fire
+
+import org.bukkit.Bukkit
+import org.bukkit.Location
+import org.bukkit.Material
+import org.bukkit.Particle
+import org.bukkit.Sound
+import org.bukkit.block.BlockFace
+import org.bukkit.entity.Player
+import org.bukkit.event.block.Action
+import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.inventory.EquipmentSlot
+import org.bukkit.util.Vector
+import ru.ruscrafting.farms.config.ArcFarmsConfig
+import ru.ruscrafting.farms.config.MessageKey
+import ru.ruscrafting.farms.domain.FarmIncidentType
+import ru.ruscrafting.farms.domain.FarmPhase
+import ru.ruscrafting.farms.domain.FarmPointKind
+import ru.ruscrafting.farms.domain.FarmPointPosition
+import ru.ruscrafting.farms.domain.FarmShiftEngine
+import ru.ruscrafting.farms.paper.ArcFarmsDebug
+import ru.ruscrafting.farms.paper.FarmRuntime
+import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.farm.FarmPointProvider
+import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
+import kotlin.math.abs
+
+private data class FireKey(val zoneId: String, val index: Int)
+
+/** Real fire hotspots whose spread and block damage are suppressed by [FarmEventRouter]. */
+internal class FarmBarnFireIncident(
+    private val settings: () -> ArcFarmsConfig,
+    private val debug: ArcFarmsDebug,
+    private val port: WorksiteRuntimePort,
+    private val points: FarmPointProvider,
+    private val transitions: FarmTransitionSink,
+) {
+    private val blocks = mutableMapOf<FireKey, FarmPointPosition>()
+    private val unavailableSequences = mutableMapOf<String, Long>()
+
+    fun initialize(runtime: FarmRuntime): Boolean {
+        if (!active(runtime)) return false
+        if (runtime.state.specialIncident != null) return true
+        val anchor = points.resolve(runtime, FarmPointKind.PEN)
+        val hotspots = planHotspots(runtime, anchor)
+        if (hotspots.isEmpty()) {
+            logUnavailable(runtime, anchor, "no_supported_surface")
+            return false
+        }
+        val result = FarmShiftEngine.initializeBarnFire(runtime.state, hotspots)
+        if (!result.accepted) return false
+        runtime.state = result.state
+        port.persistAsync()
+        debug.event(
+            "farm_barn_fire_initialized",
+            "zone" to runtime.settings.id,
+            "sequence" to runtime.state.sequence,
+            "hotspots" to hotspots.size,
+            "anchor" to "${anchor.x},${anchor.y},${anchor.z}",
+        )
+        return true
+    }
+
+    fun ensure(runtime: FarmRuntime) {
+        if (!active(runtime)) {
+            clear(runtime.settings.id, "inactive")
+            return
+        }
+        if (!initialize(runtime)) return
+        val incident = runtime.state.specialIncident ?: return
+        blocks.keys.filter { it.zoneId == runtime.settings.id && it.index !in incident.active }
+            .toList().forEach { remove(it, "extinguished") }
+        incident.active.sorted().forEach { index ->
+            val point = incident.points.getOrNull(index) ?: return@forEach
+            val key = FireKey(runtime.settings.id, index)
+            val location = point.location() ?: return@forEach
+            if (!location.world.isChunkLoaded(location.blockX shr 4, location.blockZ shr 4)) return@forEach
+            val block = location.block
+            if (block.type == Material.AIR) {
+                block.setType(Material.FIRE, false)
+            }
+            if (block.type == Material.FIRE) blocks[key] = point
+            else debug.event(
+                "farm_barn_fire_hotspot_blocked",
+                "zone" to runtime.settings.id,
+                "hotspot" to index,
+                "block" to block.type.name,
+            )
+        }
+    }
+
+    fun update(runtimes: Collection<FarmRuntime>, tick: Long) {
+        runtimes.forEach { runtime ->
+            if (!active(runtime)) return@forEach
+            if (tick % 10L == 0L) ensure(runtime)
+            if (!settings().particles || tick % runtime.settings.barnFire.flameParticleIntervalTicks != 0L) return@forEach
+            runtime.state.specialIncident?.active.orEmpty().forEach { index ->
+                val location = runtime.state.specialIncident?.points?.getOrNull(index)?.location() ?: return@forEach
+                if (!location.world.isChunkLoaded(location.blockX shr 4, location.blockZ shr 4)) return@forEach
+                location.world.spawnParticle(Particle.FLAME, location.clone().add(0.0, 0.65, 0.0), 2, 0.32, 0.45, 0.32, 0.012)
+                location.world.spawnParticle(Particle.LARGE_SMOKE, location.clone().add(0.0, 1.05, 0.0), 1, 0.2, 0.25, 0.2, 0.015)
+            }
+        }
+    }
+
+    fun spray(event: PlayerInteractEvent, runtime: FarmRuntime): Boolean {
+        if (!active(runtime) || event.hand != EquipmentSlot.HAND ||
+            event.action !in setOf(Action.RIGHT_CLICK_AIR, Action.RIGHT_CLICK_BLOCK)
+        ) return false
+        event.isCancelled = true
+        val player = event.player
+        if (!port.hasAccess(player, runtime.settings.permission)) {
+            port.sendChat(player, MessageKey.ZONE_LOCKED)
+            return true
+        }
+        val config = runtime.settings.barnFire
+        if (!port.allowInteraction(
+                "farm-barn-fire:${runtime.settings.id}:${player.uniqueId}",
+                config.sprayCooldownTicks * 50L,
+            )
+        ) return true
+        val start = player.eyeLocation.clone().add(player.eyeLocation.direction.normalize().multiply(0.45))
+        val direction = player.eyeLocation.direction.normalize()
+        renderJet(start, direction, config.sprayRange, config.particleStep)
+        val hit = closestHit(runtime, start, direction, config.sprayRange, config.sprayHitRadius)
+        if (hit == null) {
+            port.sendActionBar(player, MessageKey.FARM_BARN_FIRE_AIM_HINT)
+            if (settings().sounds) player.playSound(player.location, Sound.ITEM_BUCKET_EMPTY, 0.35f, 1.35f)
+            return true
+        }
+        val location = runtime.state.specialIncident?.points?.getOrNull(hit)?.location() ?: return true
+        remove(FireKey(runtime.settings.id, hit), "sprayed")
+        if (settings().particles) {
+            location.world.spawnParticle(Particle.SPLASH, location.clone().add(0.0, 0.65, 0.0), 26, 0.45, 0.55, 0.45, 0.12)
+            location.world.spawnParticle(Particle.CLOUD, location.clone().add(0.0, 0.45, 0.0), 10, 0.35, 0.25, 0.35, 0.035)
+        }
+        if (settings().sounds) {
+            location.world.playSound(location, Sound.BLOCK_FIRE_EXTINGUISH, 1.1f, 0.9f)
+            player.playSound(player.location, Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.55f, 1.35f)
+        }
+        transitions.apply(runtime, FarmShiftEngine.extinguishBarnFire(runtime.state, hit, player.uniqueId), player)
+        debug.event(
+            "farm_barn_fire_extinguished",
+            "zone" to runtime.settings.id,
+            "sequence" to runtime.state.sequence,
+            "hotspot" to hit,
+            "player" to player.name,
+        )
+        return true
+    }
+
+    fun anchor(runtime: FarmRuntime): Location? = points.resolve(runtime, FarmPointKind.PEN).location()
+
+    fun clear(zoneId: String, reason: String) {
+        blocks.keys.filter { it.zoneId == zoneId }.toList().forEach { remove(it, reason) }
+    }
+
+    fun cleanup(reason: String) {
+        val removed = blocks.keys.toList().count { key -> remove(key, reason) }
+        unavailableSequences.clear()
+        if (removed > 0) debug.event("farm_barn_fire_cleanup", "reason" to reason, "removed" to removed)
+    }
+
+    fun protects(location: Location): Boolean = blocks.values.any { point ->
+        point.world == location.world.name && point.x.toIntFloor() == location.blockX &&
+            point.y.toIntFloor() == location.blockY && point.z.toIntFloor() == location.blockZ
+    }
+
+    private fun planHotspots(runtime: FarmRuntime, anchor: FarmPointPosition): List<FarmPointPosition> {
+        val config = runtime.settings.barnFire
+        val world = runtime.region.world
+        if (anchor.world != world.name) return emptyList()
+        val candidates = buildList {
+            for (x in -config.placementRadius..config.placementRadius) {
+                for (z in -config.placementRadius..config.placementRadius) {
+                    if (x * x + z * z <= config.placementRadius * config.placementRadius) add(x to z)
+                }
+            }
+        }.sortedBy { (x, z) -> mix(runtime.state.placementSequence, x, z) }
+        val chosen = mutableListOf<FarmPointPosition>()
+        candidates.forEach { (offsetX, offsetZ) ->
+            if (chosen.size >= config.hotspotCount) return@forEach
+            val x = anchor.x.toIntFloor() + offsetX
+            val z = anchor.z.toIntFloor() + offsetZ
+            if (!world.isChunkLoaded(x shr 4, z shr 4)) return@forEach
+            val y = surfaceY(runtime, x, anchor.y.toIntFloor(), z, config.verticalSearch) ?: return@forEach
+            val point = FarmPointPosition(world.name, x + 0.5, y + 1.02, z + 0.5)
+            if (chosen.any { horizontalDistanceSquared(it, point) < config.minSpacing * config.minSpacing }) return@forEach
+            chosen += point
+        }
+        return chosen
+    }
+
+    private fun surfaceY(runtime: FarmRuntime, x: Int, centerY: Int, z: Int, verticalSearch: Int): Int? {
+        val world = runtime.region.world
+        val offsets = buildList {
+            add(0)
+            for (step in 1..verticalSearch) {
+                add(step)
+                add(-step)
+            }
+        }
+        return offsets.firstNotNullOfOrNull { offset ->
+            val floor = world.getBlockAt(x, centerY + offset - 1, z)
+            val feet = floor.getRelative(BlockFace.UP)
+            val head = feet.getRelative(BlockFace.UP)
+            if (floor.type.isSolid && feet.type.isAir && head.isPassable && runtime.region.contains(feet.location)) floor.y else null
+        }
+    }
+
+    private fun closestHit(
+        runtime: FarmRuntime,
+        start: Location,
+        direction: Vector,
+        range: Double,
+        radius: Double,
+    ): Int? = runtime.state.specialIncident?.let { incident ->
+        incident.active.mapNotNull { index ->
+            val point = incident.points.getOrNull(index)?.location() ?: return@mapNotNull null
+            if (point.world !== start.world) return@mapNotNull null
+            val relative = point.toVector().subtract(start.toVector())
+            val along = relative.dot(direction)
+            if (along !in 0.0..range) return@mapNotNull null
+            val closest = start.toVector().add(direction.clone().multiply(along))
+            val distanceSquared = point.toVector().distanceSquared(closest)
+            if (distanceSquared > radius * radius) null else Triple(index, along, distanceSquared)
+        }.minWithOrNull(compareBy<Triple<Int, Double, Double>> { it.second }.thenBy { it.third })?.first
+    }
+
+    private fun renderJet(start: Location, direction: Vector, range: Double, step: Double) {
+        if (!settings().particles) return
+        var distance = 0.0
+        while (distance <= range) {
+            val point = start.clone().add(direction.clone().multiply(distance))
+            point.world.spawnParticle(Particle.SPLASH, point, 2, 0.07, 0.07, 0.07, 0.025)
+            distance += step
+        }
+    }
+
+    private fun remove(key: FireKey, reason: String): Boolean {
+        val point = blocks.remove(key) ?: return false
+        val location = point.location()
+        if (location?.block?.type == Material.FIRE) location.block.setType(Material.AIR, false)
+        debug.event("farm_barn_fire_removed", "zone" to key.zoneId, "hotspot" to key.index, "reason" to reason)
+        return true
+    }
+
+    private fun logUnavailable(runtime: FarmRuntime, anchor: FarmPointPosition, reason: String) {
+        if (unavailableSequences.put(runtime.settings.id, runtime.state.placementSequence) == runtime.state.placementSequence) return
+        port.log(
+            java.util.logging.Level.WARNING,
+            "ArcFarms barn fire could not start: zone=${runtime.settings.id} sequence=${runtime.state.placementSequence} " +
+                "reason=$reason anchor=${anchor.world}:${anchor.x},${anchor.y},${anchor.z}",
+        )
+        debug.event("farm_barn_fire_unavailable", "zone" to runtime.settings.id, "sequence" to runtime.state.placementSequence, "reason" to reason)
+    }
+
+    private fun FarmPointPosition.location(): Location? = Bukkit.getWorld(world)?.let { Location(it, x, y, z, yaw, pitch) }
+
+    private fun Double.toIntFloor(): Int = kotlin.math.floor(this).toInt()
+
+    private fun horizontalDistanceSquared(first: FarmPointPosition, second: FarmPointPosition): Double {
+        val dx = first.x - second.x
+        val dz = first.z - second.z
+        return dx * dx + dz * dz
+    }
+
+    private fun mix(sequence: Long, x: Int, z: Int): Long {
+        var value = sequence xor (x.toLong() shl 32) xor z.toLong()
+        value = (value xor (value ushr 30)) * -4658895280553007687L
+        value = (value xor (value ushr 27)) * -7723592293110705685L
+        return value xor (value ushr 31)
+    }
+
+    private fun active(runtime: FarmRuntime): Boolean = runtime.state.phase == FarmPhase.INCIDENT &&
+        runtime.state.incidentType == FarmIncidentType.BARN_FIRE
+}

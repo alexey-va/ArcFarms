@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper.farm.supply
 
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.Bukkit
 import org.bukkit.Color
 import org.bukkit.Location
@@ -30,7 +31,7 @@ import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
 import java.util.UUID
 
-internal enum class FarmSupplyKind { TOOL, SEEDS, WATER, ARCHERY }
+internal enum class FarmSupplyKind { TOOL, SEEDS, WATER, ARCHERY, FIRE }
 
 internal data class FarmSupplyInteraction(val zoneId: String, val kind: FarmSupplyKind)
 
@@ -91,7 +92,7 @@ internal class FarmSupplyController(
             }
             removeEntities(key, "refresh")
             val item = world.spawn(location.clone().add(0.0, ITEM_Y_OFFSET, 0.0), ItemDisplay::class.java) { entity ->
-                entity.setItemStack(ItemStack(visual))
+                entity.setItemStack(serviceItem(runtime, kind))
                 entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
                 entity.uniformScale(ITEM_SCALE)
                 entity.viewRange = runtime.settings.displayViewRange
@@ -144,6 +145,12 @@ internal class FarmSupplyController(
 
     fun isServiceItem(item: ItemStack?): Boolean = item?.itemMeta?.persistentDataContainer
         ?.has(serviceItemKey, PersistentDataType.STRING) == true
+
+    fun isServiceItem(item: ItemStack?, kind: FarmSupplyKind): Boolean =
+        taggedValue(item)?.substringAfter(':') == kind.name
+
+    fun isServiceItem(item: ItemStack?, zoneId: String, kind: FarmSupplyKind): Boolean =
+        taggedValue(item)?.let { matches(it, zoneId, kind) } == true
 
     fun removeServiceItems(
         player: Player,
@@ -228,6 +235,7 @@ internal class FarmSupplyController(
         FarmSupplyKind.TOOL -> MaterialRules.material(runtime.settings.supplies.toolMaterial)
         FarmSupplyKind.WATER -> Material.WATER_BUCKET
         FarmSupplyKind.ARCHERY -> MaterialRules.material(runtime.settings.supplies.bowMaterial)
+        FarmSupplyKind.FIRE -> MaterialRules.material(runtime.settings.supplies.fireEquipmentMaterial)
         FarmSupplyKind.SEEDS -> runtime.state.preparationCrop
             ?.let(MaterialRules::material)
             ?.let(MaterialRules::seedForCrop)
@@ -245,6 +253,7 @@ internal class FarmSupplyController(
         )
         FarmSupplyKind.WATER -> locale.render(MessageKey.FARM_SUPPLY_WATER)
         FarmSupplyKind.ARCHERY -> locale.render(MessageKey.FARM_SUPPLY_ARCHERY)
+        FarmSupplyKind.FIRE -> locale.render(MessageKey.FARM_SUPPLY_FIRE)
     }
 
     private fun items(runtime: FarmRuntime, kind: FarmSupplyKind): List<ItemStack> {
@@ -255,7 +264,7 @@ internal class FarmSupplyController(
                 ItemStack(MaterialRules.material(supplies.arrowMaterial), supplies.arrowAmount),
             )
             FarmSupplyKind.SEEDS -> listOf(ItemStack(material(runtime, kind), supplies.seedAmount))
-            else -> listOf(ItemStack(material(runtime, kind)))
+            else -> listOf(serviceItem(runtime, kind))
         }
         return raw.onEach { item ->
             item.editMeta { meta ->
@@ -264,10 +273,27 @@ internal class FarmSupplyController(
                     PersistentDataType.STRING,
                     "${runtime.settings.id}:${kind.name}",
                 )
-                if (kind == FarmSupplyKind.TOOL || (kind == FarmSupplyKind.ARCHERY && item.type.name.endsWith("BOW"))) {
+                if (kind == FarmSupplyKind.TOOL || kind == FarmSupplyKind.FIRE ||
+                    (kind == FarmSupplyKind.ARCHERY && item.type.name.endsWith("BOW"))
+                ) {
                     meta.isUnbreakable = true
                 }
             }
+        }
+    }
+
+    private fun serviceItem(runtime: FarmRuntime, kind: FarmSupplyKind): ItemStack = ItemStack(material(runtime, kind)).also { item ->
+        if (kind != FarmSupplyKind.FIRE) return@also
+        val supplies = runtime.settings.supplies
+        item.editMeta { meta ->
+            if (supplies.fireEquipmentCustomModelData > 0) {
+                meta.setCustomModelData(supplies.fireEquipmentCustomModelData)
+            }
+            supplies.fireEquipmentItemModel?.let { model ->
+                meta.setItemModel(requireNotNull(NamespacedKey.fromString(model)))
+            }
+            meta.displayName(locale.render(MessageKey.FARM_SUPPLY_FIRE_ITEM_NAME).decoration(TextDecoration.ITALIC, false))
+            meta.lore(listOf(locale.render(MessageKey.FARM_SUPPLY_FIRE_ITEM_LORE).decoration(TextDecoration.ITALIC, false)))
         }
     }
 

@@ -158,6 +158,7 @@ internal class FarmScoreboardRenderer(
             view.phase == FarmPhase.INCIDENT && view.incidentType == FarmIncidentType.MARKET && !view.marketAccepted ->
                 "market-pending"
             view.phase == FarmPhase.INCIDENT && view.incidentType == FarmIncidentType.PROCESSING -> "processing"
+            view.phase == FarmPhase.INCIDENT && view.incidentType == FarmIncidentType.BARN_FIRE -> "barn-fire"
             else -> null
         } ?: return emptyList()
         return listOf(locale.renderPath("scoreboard.hint-detail.$id", audience))
@@ -175,6 +176,7 @@ internal class FarmScoreboardRenderer(
         FarmIncidentType.NIGHT_SHIFT -> "night-shift"
         FarmIncidentType.MARKET -> "market"
         FarmIncidentType.PROCESSING -> "processing"
+        FarmIncidentType.BARN_FIRE -> "barn-fire"
     }
 
     companion object {

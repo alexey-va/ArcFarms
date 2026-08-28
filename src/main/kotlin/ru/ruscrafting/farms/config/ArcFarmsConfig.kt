@@ -150,6 +150,7 @@ data class FarmZoneSettings(
     val incidentTypes: List<FarmIncidentType>,
     val specialIncidents: FarmSpecialIncidentSettings,
     val processing: FarmProcessingSettings,
+    val barnFire: FarmBarnFireSettings,
     val pestEntity: String,
     val pestSpawnRadius: Int,
     val pestNestCount: Int,
@@ -292,6 +293,18 @@ data class FarmProcessingSettings(
     }
 }
 
+data class FarmBarnFireSettings(
+    val hotspotCount: Int,
+    val placementRadius: Int,
+    val minSpacing: Double,
+    val verticalSearch: Int,
+    val sprayRange: Double,
+    val sprayHitRadius: Double,
+    val sprayCooldownTicks: Int,
+    val particleStep: Double,
+    val flameParticleIntervalTicks: Int,
+)
+
 data class FarmRewardSettings(
     val experience: FarmExperienceRewardSettings,
     val money: FarmMoneyRewardSettings,
@@ -422,11 +435,15 @@ data class FarmSupplySettings(
     val seeds: FarmSupplyPointSettings,
     val water: FarmSupplyPointSettings,
     val archery: FarmSupplyPointSettings,
+    val fireEquipment: FarmSupplyPointSettings,
     val toolMaterial: String,
     val seedAmount: Int,
     val bowMaterial: String,
     val arrowMaterial: String,
     val arrowAmount: Int,
+    val fireEquipmentMaterial: String,
+    val fireEquipmentCustomModelData: Int,
+    val fireEquipmentItemModel: String?,
 )
 
 data class FarmDeliverySettings(
@@ -759,6 +776,22 @@ class ArcFarmsConfig private constructor(
                             yawOffset = section.finiteFloat("$path.yaw-offset", 0.0f, -360.0f, 360.0f),
                         )
                     },
+                )
+                val barnFire = FarmBarnFireSettings(
+                    hotspotCount = section.int("barn-fire.hotspots", 8)
+                        .checked("barn-fire.hotspots", 1, 16),
+                    placementRadius = section.int("barn-fire.placement-radius", 7)
+                        .checked("barn-fire.placement-radius", 2, 16),
+                    minSpacing = section.finiteDouble("barn-fire.min-spacing", 2.5, 1.0, 8.0),
+                    verticalSearch = section.int("barn-fire.vertical-search", 5)
+                        .checked("barn-fire.vertical-search", 1, 12),
+                    sprayRange = section.finiteDouble("barn-fire.spray.range", 18.0, 4.0, 32.0),
+                    sprayHitRadius = section.finiteDouble("barn-fire.spray.hit-radius", 1.6, 0.5, 4.0),
+                    sprayCooldownTicks = section.int("barn-fire.spray.cooldown-ticks", 5)
+                        .checked("barn-fire.spray.cooldown-ticks", 1, 40),
+                    particleStep = section.finiteDouble("barn-fire.spray.particle-step", 0.55, 0.2, 2.0),
+                    flameParticleIntervalTicks = section.int("barn-fire.flame-particle-interval-ticks", 5)
+                        .checked("barn-fire.flame-particle-interval-ticks", 1, 40),
                 )
                 val supplies = parseFarmSupplies(section, reference.world, id)
                 val routeDelivery = FarmRouteDeliverySettings(
@@ -1267,6 +1300,7 @@ class ArcFarmsConfig private constructor(
                     incidentTypes = incidentTypes,
                     specialIncidents = specialIncidents,
                     processing = processing,
+                    barnFire = barnFire,
                     pestEntity = entityName(section.string("pest-entity", "SILVERFISH")),
                     pestSpawnRadius = section.int("pest-spawn-radius", 6).checked("pest-spawn-radius", 2, 16),
                     pestNestCount = section.int("pest-nests", 3).checked("pest-nests", 1, 8),
@@ -1545,16 +1579,31 @@ class ArcFarmsConfig private constructor(
                     z = coordinate("z", -30_000_000.0, 30_000_000.0),
                 )
             }
+            val archery = point("archery")
+            val fireEquipment = if (section.stringOrNull("supplies.fire-equipment.x") != null) {
+                point("fire-equipment")
+            } else archery
+            val fireEquipmentItemModel = section.string("supplies.fire-equipment-item-model", "").trim().ifEmpty { null }
+            fireEquipmentItemModel?.let { model ->
+                require(model.matches(Regex("[a-z0-9._-]+:[a-z0-9/._-]+"))) {
+                    "farm-zones.$zoneId.supplies.fire-equipment-item-model must be a namespaced item model"
+                }
+            }
             return FarmSupplySettings(
                 tool = point("tool"),
                 seeds = point("seeds"),
                 water = point("water"),
-                archery = point("archery"),
+                archery = archery,
+                fireEquipment = fireEquipment,
                 toolMaterial = materialName(section.string("supplies.tool-material", "IRON_HOE")),
                 seedAmount = section.int("supplies.seed-amount", 16).checked("supplies.seed-amount", 1, 64),
                 bowMaterial = materialName(section.string("supplies.bow-material", "BOW")),
                 arrowMaterial = materialName(section.string("supplies.arrow-material", "ARROW")),
                 arrowAmount = section.int("supplies.arrow-amount", 32).checked("supplies.arrow-amount", 1, 64),
+                fireEquipmentMaterial = materialName(section.string("supplies.fire-equipment-material", "SPYGLASS")),
+                fireEquipmentCustomModelData = section.int("supplies.fire-equipment-custom-model-data", 0)
+                    .checked("supplies.fire-equipment-custom-model-data", 0, 2_000_000),
+                fireEquipmentItemModel = fireEquipmentItemModel,
             )
         }
 

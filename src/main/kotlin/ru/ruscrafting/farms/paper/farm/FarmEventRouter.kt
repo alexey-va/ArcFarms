@@ -7,6 +7,8 @@ import org.bukkit.event.Event
 import org.bukkit.event.block.Action
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.block.BlockDropItemEvent
+import org.bukkit.event.block.BlockBurnEvent
+import org.bukkit.event.block.BlockIgniteEvent
 import org.bukkit.event.block.BlockFadeEvent
 import org.bukkit.event.block.BlockFromToEvent
 import org.bukkit.event.block.BlockGrowEvent
@@ -59,11 +61,13 @@ import ru.ruscrafting.farms.paper.farm.incident.pest.FarmPestIncident
 import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentController
 import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
 import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingIncident
+import ru.ruscrafting.farms.paper.farm.incident.fire.FarmBarnFireIncident
 import ru.ruscrafting.farms.paper.farm.presentation.FarmHudController
 import ru.ruscrafting.farms.paper.farm.perk.FarmPerkController
 import ru.ruscrafting.farms.paper.farm.recovery.FarmFixedCropRecoveryController
 import ru.ruscrafting.farms.paper.farm.scene.FarmContractSceneController
 import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyController
+import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyKind
 import ru.ruscrafting.farms.paper.toFarmPlotPosition
 import java.util.concurrent.CompletableFuture
 
@@ -87,6 +91,7 @@ internal class FarmEventRouter(
     private val perks: FarmPerkController,
     private val special: FarmSpecialIncidentController,
     private val processing: FarmProcessingIncident,
+    private val barnFire: FarmBarnFireIncident,
     private val delivery: FarmDeliveryController,
     private val supplies: FarmSupplyController,
     private val scene: FarmContractSceneController,
@@ -193,6 +198,18 @@ internal class FarmEventRouter(
             return
         }
         if (foodDelivery.onInteract(event, runtimes())) return
+        if (supplies.isServiceItem(event.player.inventory.itemInMainHand, FarmSupplyKind.FIRE)) {
+            val runtime = farmAt(event.player.location)
+            if (runtime != null && supplies.isServiceItem(
+                    event.player.inventory.itemInMainHand,
+                    runtime.settings.id,
+                    FarmSupplyKind.FIRE,
+                ) && barnFire.spray(event, runtime)
+            ) return
+            event.isCancelled = true
+            runtime?.let { hud.taskHint(event.player, it, "service_item_wrong_phase") }
+            return
+        }
         if (event.action == Action.PHYSICAL) {
             val clicked = event.clickedBlock ?: return
             if (clicked.type == Material.FARMLAND && farmAt(clicked.location) != null) event.isCancelled = true
@@ -274,8 +291,7 @@ internal class FarmEventRouter(
         if (worldAdmin.isEditing(event.player)) return
         if (care.owns(event.rightClicked) || supplies.owns(event.rightClicked) || delivery.owns(event.rightClicked) ||
             foodDelivery.owns(event.rightClicked) || perks.owns(event.rightClicked) ||
-            scene.owns(event.rightClicked) || special.ownsScene(event.rightClicked)
-            || processing.owns(event.rightClicked)
+            scene.owns(event.rightClicked) || special.ownsScene(event.rightClicked) || processing.owns(event.rightClicked)
         ) event.isCancelled = true
     }
 
@@ -435,10 +451,31 @@ internal class FarmEventRouter(
     }
 
     fun onBlockFade(event: BlockFadeEvent) {
-        if (event.block.type == Material.FARMLAND && farmAt(event.block.location) != null) event.isCancelled = true
+        if (
+            (event.block.type == Material.FARMLAND && farmAt(event.block.location) != null) ||
+            (event.block.type == Material.FIRE && barnFire.protects(event.block.location))
+        ) event.isCancelled = true
+    }
+
+    fun onBlockBurn(event: BlockBurnEvent) {
+        if (farmAt(event.block.location) == null) return
+        event.isCancelled = true
+        debug.event("farm_block_burn_cancelled", "world" to event.block.world.name, "x" to event.block.x, "y" to event.block.y, "z" to event.block.z)
+    }
+
+    fun onBlockIgnite(event: BlockIgniteEvent) {
+        if (farmAt(event.block.location) == null && event.ignitingBlock?.location?.let(::farmAt) == null) return
+        event.isCancelled = true
+        debug.event("farm_block_ignite_cancelled", "cause" to event.cause, "world" to event.block.world.name, "x" to event.block.x, "y" to event.block.y, "z" to event.block.z)
     }
 
     fun onBlockSpread(event: BlockSpreadEvent) {
+        if (event.source.type == Material.FIRE &&
+            (farmAt(event.block.location) != null || farmAt(event.source.location) != null)
+        ) {
+            event.isCancelled = true
+            return
+        }
         if (!FarmGroundSpreadPolicy.blocks(farmAt(event.block.location) != null, event.source.type, event.newState.type)) return
         event.isCancelled = true
         debug.event(

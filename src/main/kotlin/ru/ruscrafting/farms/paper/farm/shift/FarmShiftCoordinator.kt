@@ -37,6 +37,7 @@ import ru.ruscrafting.farms.paper.farm.incident.pest.FarmPestIncident
 import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentController
 import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
 import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingIncident
+import ru.ruscrafting.farms.paper.farm.incident.fire.FarmBarnFireIncident
 import ru.ruscrafting.farms.paper.farm.incident.special.SPECIAL_FARM_INCIDENT_TYPES
 import ru.ruscrafting.farms.paper.farm.presentation.FarmHudController
 import ru.ruscrafting.farms.paper.farm.reward.FarmRewardService
@@ -57,6 +58,7 @@ internal class FarmShiftCoordinator(
     private val foodDelivery: FarmFoodDeliveryIncident,
     private val special: FarmSpecialIncidentController,
     private val processing: FarmProcessingIncident,
+    private val barnFire: FarmBarnFireIncident,
     private val delivery: FarmDeliveryController,
     private val scene: FarmContractSceneController,
     private val supplies: FarmSupplyController,
@@ -391,6 +393,20 @@ internal class FarmShiftCoordinator(
                     title = true,
                 )
             }
+            FarmIncidentType.BARN_FIRE -> {
+                if (!barnFire.initialize(runtime)) {
+                    apply(runtime, FarmShiftEngine.skipUnavailableIncident(runtime.state, FarmIncidentType.BARN_FIRE), null)
+                    return
+                }
+                barnFire.ensure(runtime)
+                port.broadcast(
+                    listOf(runtime.region),
+                    MessageKey.FARM_BARN_FIRE_STARTED,
+                    values = mapOf("total" to locale.text(runtime.state.incidentRequired)),
+                    sound = Sound.ITEM_FIRECHARGE_USE,
+                    title = true,
+                )
+            }
             else -> {
                 val activeType = special.initialize(runtime, type) ?: return
                 special.announce(runtime, activeType)
@@ -415,6 +431,7 @@ internal class FarmShiftCoordinator(
             FarmIncidentType.BIRDS -> MessageKey.FARM_BIRDS_PROGRESS
             FarmIncidentType.FOOD_DELIVERY -> MessageKey.FARM_ROUTE_PROGRESS
             FarmIncidentType.PROCESSING -> MessageKey.FARM_PROCESSING_BOSSBAR
+            FarmIncidentType.BARN_FIRE -> MessageKey.FARM_BARN_FIRE_PROGRESS
             FarmIncidentType.MARKET -> MessageKey.FARM_MARKET_PROGRESS
             FarmIncidentType.CHANNELS -> MessageKey.FARM_CHANNELS_PROGRESS
             else -> MessageKey.FARM_SPECIAL_PROGRESS
@@ -437,11 +454,12 @@ internal class FarmShiftCoordinator(
         birds.clear(runtime.settings.id, "incident_resolved")
         foodDelivery.clear(runtime.settings.id, "incident_resolved")
         processing.clear(runtime.settings.id, "incident_resolved")
+        barnFire.clear(runtime.settings.id, "incident_resolved")
         if (type == FarmIncidentType.GIANT_CROP) special.beginRestore(runtime)
         special.clearZone(runtime, "incident_resolved")
         port.broadcast(
             listOf(runtime.region),
-            if (type in SPECIAL_FARM_INCIDENT_TYPES || type == FarmIncidentType.PROCESSING) {
+            if (type in SPECIAL_FARM_INCIDENT_TYPES || type in setOf(FarmIncidentType.PROCESSING, FarmIncidentType.BARN_FIRE)) {
                 MessageKey.FARM_SPECIAL_RESOLVED
             } else MessageKey.FARM_INCIDENT_RESOLVED,
             sound = Sound.ENTITY_VILLAGER_YES,

@@ -11,6 +11,8 @@ import org.bukkit.event.entity.ProjectileHitEvent
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.block.BlockDropItemEvent
 import org.bukkit.event.block.BlockFadeEvent
+import org.bukkit.event.block.BlockBurnEvent
+import org.bukkit.event.block.BlockIgniteEvent
 import org.bukkit.event.block.BlockGrowEvent
 import org.bukkit.event.block.BlockPlaceEvent
 import org.bukkit.event.block.BlockSpreadEvent
@@ -340,6 +342,8 @@ class ArcFarmsService(
     fun onEntityDeath(event: EntityDeathEvent) = farm.events.onEntityDeath(event)
     fun onEntityChangeBlock(event: EntityChangeBlockEvent) = farm.events.onEntityChangeBlock(event)
     fun onBlockFade(event: BlockFadeEvent) = farm.events.onBlockFade(event)
+    fun onBlockBurn(event: BlockBurnEvent) = farm.events.onBlockBurn(event)
+    fun onBlockIgnite(event: BlockIgniteEvent) = farm.events.onBlockIgnite(event)
     fun onBlockSpread(event: BlockSpreadEvent) = farm.events.onBlockSpread(event)
     fun onBlockGrow(event: BlockGrowEvent) = farm.events.onBlockGrow(event)
     fun onBlockPlace(event: BlockPlaceEvent) = farm.events.onBlockPlace(event)
