@@ -24,4 +24,12 @@ class FarmBlockPolicyTest : FunSpec({
         FarmBlockPolicy.isOrchardLeaf(Material.OAK_LEAVES, Material.OAK_LOG) shouldBe false
         FarmBlockPolicy.isOrchardLeaf(Material.OAK_LOG, Material.AIR) shouldBe false
     }
+
+    test("indexed beds survive temporary soil conversion but not player construction") {
+        FarmBlockPolicy.isRecoverableIndexedBed(Material.DIRT, Material.AIR, crops) shouldBe true
+        FarmBlockPolicy.isRecoverableIndexedBed(Material.GRASS_BLOCK, Material.WHEAT, crops) shouldBe true
+        FarmBlockPolicy.isRecoverableIndexedBed(Material.PODZOL, Material.AIR, crops) shouldBe true
+        FarmBlockPolicy.isRecoverableIndexedBed(Material.STONE, Material.AIR, crops) shouldBe false
+        FarmBlockPolicy.isRecoverableIndexedBed(Material.DIRT, Material.OAK_PLANKS, crops) shouldBe false
+    }
 })

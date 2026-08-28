@@ -10,6 +10,10 @@ internal object FarmBlockPolicy {
         return isOpenBedContent(above, configuredCrops)
     }
 
+    /** Indexed beds survive temporary dirt/grass conversion and missing crops, but not a solid build above them. */
+    fun isRecoverableIndexedBed(soil: Material, above: Material, configuredCrops: Set<String>): Boolean =
+        soil in RECOVERABLE_SOILS && isOpenBedContent(above, configuredCrops)
+
     fun isOpenBedContent(above: Material, configuredCrops: Set<String>): Boolean =
         above in AIR_BLOCKS || (above.name in configuredCrops && MaterialRules.isPlantableCrop(above))
 
@@ -25,4 +29,14 @@ internal object FarmBlockPolicy {
     }
 
     private val AIR_BLOCKS = setOf(Material.AIR, Material.CAVE_AIR, Material.VOID_AIR)
+    private val RECOVERABLE_SOILS = setOf(
+        Material.FARMLAND,
+        Material.DIRT,
+        Material.GRASS_BLOCK,
+        Material.DIRT_PATH,
+        Material.COARSE_DIRT,
+        Material.ROOTED_DIRT,
+        Material.PODZOL,
+        Material.MYCELIUM,
+    )
 }

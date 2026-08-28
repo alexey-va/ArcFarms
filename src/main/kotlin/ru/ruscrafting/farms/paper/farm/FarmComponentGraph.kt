@@ -8,6 +8,7 @@ import ru.ruscrafting.farms.paper.ArcFarmsRuntimeValidator
 import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmBlockRegistry
 import ru.ruscrafting.farms.paper.FarmEconomyGateway
+import ru.ruscrafting.farms.paper.FarmNightShiftController
 import ru.ruscrafting.farms.paper.RegionGateway
 import ru.ruscrafting.farms.paper.WorksiteModuleRegistry
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
@@ -142,6 +143,7 @@ internal class FarmComponentGraph(
         clock = clock,
     )
     private val incidentBeds = FarmIncidentBedProvider(field::incidentBeds)
+    private val nightShift = FarmNightShiftController(plugin)
     private val birds = FarmBirdIncident(
         plugin = plugin,
         settings = settings,
@@ -160,6 +162,7 @@ internal class FarmComponentGraph(
         routes = routeAdmin,
         transitions = transitions,
         random = random,
+        night = nightShift,
     )
     val perks = FarmPerkController(
         plugin = plugin,
@@ -239,6 +242,7 @@ internal class FarmComponentGraph(
         transitions = transitions,
         runtimes = runtimes::snapshot,
         clock = clock,
+        nightShift = nightShift,
     )
     private val scene = FarmContractSceneController(
         plugin = plugin,

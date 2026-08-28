@@ -12,7 +12,8 @@ object FarmBirdPlanner {
             compareBy<FarmPlotPosition> { it.world }.thenBy { it.x }.thenBy { it.z }.thenBy { it.y },
         ).toMutableList()
         if (available.isEmpty() || count == 0) return emptyList()
-        val first = java.lang.Math.floorMod((sequence xor (sequence ushr 32)).toInt(), available.size)
+        val mixed = FarmSpatialSeed.mix(sequence, 0x42495244L)
+        val first = java.lang.Math.floorMod((mixed xor (mixed ushr 32)).toInt(), available.size)
         val selected = mutableListOf(available.removeAt(first))
         while (selected.size < count && available.isNotEmpty()) {
             val next = available.maxWithOrNull(

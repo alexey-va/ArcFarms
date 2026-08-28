@@ -85,10 +85,10 @@ internal class FarmSpecialIncidentController(
     private val transitions: FarmTransitionSink,
     private val runtimes: () -> Collection<FarmRuntime>,
     private val clock: () -> Long,
+    private val nightShift: FarmNightShiftController,
 ) {
     private val scene = FarmSpecialIncidentSceneManager(plugin, debug)
     private val giantCrop = FarmGiantCropController(plugin)
-    private val nightShift = FarmNightShiftController(plugin)
     private val marketMenu = FarmMarketMenu(locale, settings)
     private val giantSelectionAttempts = mutableMapOf<String, Long>()
 

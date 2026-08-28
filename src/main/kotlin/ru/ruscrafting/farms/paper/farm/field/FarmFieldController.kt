@@ -498,6 +498,8 @@ internal class FarmFieldController(
             addAll(registry.beds(runtime.settings.id))
             addAll(preparationPatch)
         }
+        val loadedSoils = positions.mapNotNull(FarmPlotPosition::block)
+        val records = ledger.records(loadedSoils)
         val crop = runtime.state.preparationCrop?.let(MaterialRules::material)
         val incidentActive = runtime.state.phase == FarmPhase.INCIDENT
         val moleEntrancePlots = if (runtime.state.phase == FarmPhase.CARE && runtime.state.careType == FarmCareType.MOLES) {
@@ -521,11 +523,12 @@ internal class FarmFieldController(
         }
         positions.forEach { position ->
             val soil = position.block() ?: return@forEach
+            val record = records[position]
             // The mole journal owns both the crop and soil at a bed entrance.
             // Ordinary hydration/crop maintenance must not immediately close it.
             if (position in moleEntrancePlots) return@forEach
             if (
-                position !in temporarilyControlledPositions && !FarmBlockPolicy.isSelectableBed(
+                position !in temporarilyControlledPositions && !FarmBlockPolicy.isRecoverableIndexedBed(
                     soil.type,
                     soil.getRelative(org.bukkit.block.BlockFace.UP).type,
                     runtime.settings.crops,
@@ -552,6 +555,18 @@ internal class FarmFieldController(
                 // restores every killed plant afterwards.
                 return@forEach
             }
+            if (record?.indexed == true && position !in temporarilyControlledPositions) {
+                wet(soil)
+                val above = soil.getRelative(org.bukkit.block.BlockFace.UP)
+                val expected = record.activeCropData?.let { data ->
+                    runCatching { org.bukkit.Bukkit.createBlockData(data).material }.getOrNull()
+                }
+                if (
+                    expected != null &&
+                    (above.type.isAir || above.type == Material.WATER ||
+                        (above.type.name in runtime.settings.crops && above.type != expected))
+                ) ledger.restoreActiveCrop(soil, record)
+            }
             val awaitingMachine = runtime.state.phase == FarmPhase.CARE && runtime.state.careType == FarmCareType.SEEDER
             if (
                 (runtime.state.phase == FarmPhase.PREPARATION || awaitingMachine) &&
@@ -571,7 +586,7 @@ internal class FarmFieldController(
             if (crop != null && position in runtime.state.plantedPlots) {
                 val above = soil.getRelative(org.bukkit.block.BlockFace.UP)
                 if (above.type == Material.WATER && !activeWater) above.setType(Material.AIR, false)
-                if (above.type.isAir && !ledger.restoreActiveCrop(soil)) {
+                if ((above.type.isAir || above.type != crop) && !ledger.restoreActiveCrop(soil)) {
                     above.setBlockData(crop.createBlockData(), false)
                 }
             }

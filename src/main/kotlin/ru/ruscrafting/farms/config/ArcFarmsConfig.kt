@@ -157,6 +157,7 @@ data class FarmZoneSettings(
     val pestSpawnChancePercent: Int,
     val pestEatRadius: Int,
     val pestEatPerPulse: Int,
+    val damageSafety: FarmDamageSafetySettings,
     val supplies: FarmSupplySettings,
     val delivery: FarmDeliverySettings,
     val routeDelivery: FarmRouteDeliverySettings,
@@ -341,6 +342,18 @@ data class FarmMoleBurrowSettings(
     val lairVisual: FarmCareVisualSettings,
     val chamberCount: Int = 3,
     val moleCount: Int = 8,
+    val guidanceCloseDistance: Int = 6,
+    val guidanceFarDistance: Int = 14,
+    val guidanceIntervalTicks: Int = 20,
+    val decorationPercent: Int = 18,
+)
+
+data class FarmDamageSafetySettings(
+    val maximumPercent: Int,
+    val minimumRemaining: Int,
+    val birdMaximum: Int,
+    val pestMaximum: Int,
+    val diseaseMaximum: Int,
 )
 
 data class FarmIrrigationSettings(
@@ -409,6 +422,12 @@ data class FarmRouteDeliverySettings(
     val monsterIntervalSeconds: Int,
     val monsterMaxAlive: Int,
     val monsterSpawnDistance: Double,
+    val monsterWaveMin: Int,
+    val monsterWaveMax: Int,
+    val monsterMovementSpeed: Double,
+    val monsterLightLevel: Int,
+    val playerTime: Long,
+    val timeTransitionSeconds: Int,
     val cartScale: Float,
     val cartYOffset: Double,
     val cartLoadCount: Int,
@@ -664,6 +683,21 @@ class ArcFarmsConfig private constructor(
                     monsterMaxAlive = section.int("route-delivery.monsters.max-alive", 4)
                         .checked("route-delivery.monsters.max-alive", 0, 16),
                     monsterSpawnDistance = section.finiteDouble("route-delivery.monsters.spawn-distance", 10.0, 4.0, 24.0),
+                    monsterWaveMin = section.int("route-delivery.monsters.wave-min", 3)
+                        .checked("route-delivery.monsters.wave-min", 1, 12),
+                    monsterWaveMax = section.int("route-delivery.monsters.wave-max", 5)
+                        .checked("route-delivery.monsters.wave-max", 1, 16),
+                    monsterMovementSpeed = section.finiteDouble(
+                        "route-delivery.monsters.movement-speed", 0.25, 0.1, 0.5,
+                    ),
+                    monsterLightLevel = section.int("route-delivery.monsters.light-level", 15)
+                        .checked("route-delivery.monsters.light-level", 0, 15),
+                    playerTime = section.string("route-delivery.player-time", "18000")
+                        .toLongOrNull()?.also {
+                            require(it in 0..24_000) { "route-delivery.player-time must be in 0..24000" }
+                        } ?: error("route-delivery.player-time must be an integer"),
+                    timeTransitionSeconds = section.int("route-delivery.transition-seconds", 18)
+                        .checked("route-delivery.transition-seconds", 1, 60),
                     cartScale = section.finiteFloat("route-delivery.cart-scale", 4.4f, 0.5f, 8.0f),
                     cartYOffset = section.finiteDouble("route-delivery.cart-y-offset", 0.0, -2.0, 2.0),
                     cartLoadCount = section.int("route-delivery.cart-load-count", 4)
@@ -673,6 +707,7 @@ class ArcFarmsConfig private constructor(
                         "farm-zones.$id route hard-reset-distance must exceed corridor-radius"
                     }
                     require(it.monsterMinCount <= it.monsterMaxCount)
+                    require(it.monsterWaveMin <= it.monsterWaveMax)
                     require(it.monsterMaxAlive == 0 || it.monsterMaxCount > 0)
                 }
                 fun perk(path: String, price: Long, hours: Int) = FarmPerkOfferSettings(
@@ -803,7 +838,19 @@ class ArcFarmsConfig private constructor(
                         .checked("mole-burrow.chambers", 0, 8),
                     moleCount = section.int("mole-burrow.moles", 8)
                         .checked("mole-burrow.moles", 1, 24),
-                )
+                    guidanceCloseDistance = section.int("mole-burrow.guidance.close-distance", 6)
+                        .checked("mole-burrow.guidance.close-distance", 1, 32),
+                    guidanceFarDistance = section.int("mole-burrow.guidance.far-distance", 14)
+                        .checked("mole-burrow.guidance.far-distance", 2, 64),
+                    guidanceIntervalTicks = section.int("mole-burrow.guidance.interval-ticks", 20)
+                        .checked("mole-burrow.guidance.interval-ticks", 5, 100),
+                    decorationPercent = section.int("mole-burrow.decoration-percent", 18)
+                        .checked("mole-burrow.decoration-percent", 0, 60),
+                ).also {
+                    require(it.guidanceFarDistance > it.guidanceCloseDistance) {
+                        "farm-zones.$id mole guidance far-distance must exceed close-distance"
+                    }
+                }
                 val incidentTriggerPercents = section.stringList("incident-trigger-percents")
                     .ifEmpty { listOf("15", "32", "50", "68", "85") }
                     .map { value ->
@@ -1101,6 +1148,18 @@ class ArcFarmsConfig private constructor(
                         .checked("pest-spawn-chance-percent", 1, 100),
                     pestEatRadius = section.int("pest-eat-radius", 3).checked("pest-eat-radius", 1, 8),
                     pestEatPerPulse = section.int("pest-eat-per-pulse", 8).checked("pest-eat-per-pulse", 1, 32),
+                    damageSafety = FarmDamageSafetySettings(
+                        maximumPercent = section.int("damage-safety.maximum-percent", 18)
+                            .checked("damage-safety.maximum-percent", 0, 80),
+                        minimumRemaining = section.int("damage-safety.minimum-remaining", 128)
+                            .checked("damage-safety.minimum-remaining", 0, 65_536),
+                        birdMaximum = section.int("damage-safety.birds-maximum", 96)
+                            .checked("damage-safety.birds-maximum", 0, 4_096),
+                        pestMaximum = section.int("damage-safety.pests-maximum", 128)
+                            .checked("damage-safety.pests-maximum", 0, 4_096),
+                        diseaseMaximum = section.int("damage-safety.disease-maximum", 96)
+                            .checked("damage-safety.disease-maximum", 0, 4_096),
+                    ),
                     supplies = supplies,
                     delivery = delivery,
                     routeDelivery = routeDelivery,

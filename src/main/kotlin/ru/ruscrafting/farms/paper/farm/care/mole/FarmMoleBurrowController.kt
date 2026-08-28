@@ -30,6 +30,8 @@ import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmPhase
+import ru.ruscrafting.farms.domain.FarmMoleGuidance
+import ru.ruscrafting.farms.domain.FarmMoleProximity
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmRuntime
@@ -72,6 +74,7 @@ internal class FarmMoleBurrowController(
     private val zoneKey = NamespacedKey(plugin, "farm_mole_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_mole_sequence")
     private val roleKey = NamespacedKey(plugin, "farm_mole_role")
+    private var guidanceTick = 0L
 
     fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING)
 
@@ -226,6 +229,29 @@ internal class FarmMoleBurrowController(
         }
     }
 
+    fun updateGuidance() {
+        guidanceTick++
+        sessions.values.forEach { record ->
+            val runtime = runtimes().firstOrNull {
+                it.settings.id == record.zoneId && it.state.sequence == record.sequence && active(it)
+            } ?: return@forEach
+            if (guidanceTick % runtime.settings.moleBurrow.guidanceIntervalTicks != 0L) return@forEach
+            val player = Bukkit.getPlayer(record.playerId)?.takeIf(Player::isOnline) ?: return@forEach
+            val scene = world.scene(runtime) ?: return@forEach
+            val distance = scene.pathDistanceToLair(player.location) ?: return@forEach
+            val key = when (FarmMoleGuidance.proximity(
+                distance,
+                runtime.settings.moleBurrow.guidanceCloseDistance,
+                runtime.settings.moleBurrow.guidanceFarDistance,
+            )) {
+                FarmMoleProximity.FAR -> MessageKey.FARM_MOLE_DISTANCE_FAR
+                FarmMoleProximity.CLOSER -> MessageKey.FARM_MOLE_DISTANCE_CLOSER
+                FarmMoleProximity.VERY_CLOSE -> MessageKey.FARM_MOLE_DISTANCE_VERY_CLOSE
+            }
+            port.sendActionBar(player, key)
+        }
+    }
+
     private fun enter(player: Player, runtime: FarmRuntime, scene: FarmMoleBurrowScene) {
         if (!scene.ready || !pendingEntries.add(player.uniqueId)) {
             if (!scene.ready) port.sendActionBar(player, MessageKey.FARM_MOLE_BUILDING)
@@ -321,7 +347,7 @@ internal class FarmMoleBurrowController(
         val key = SceneKey(runtime.settings.id, runtime.state.sequence)
         val active = entities[key].orEmpty().mapNotNull(Bukkit::getEntity).filter(Entity::isValid)
         val structural = active.filter { identity(it)?.third != Role.MOLE }
-        if (structural.size == EXPECTED_STRUCTURAL_ENTITIES && structural.all {
+        if (structural.size == expectedStructuralEntities(runtime) && structural.all {
                 identity(it)?.let { id -> id.first == key.zoneId && id.second == key.sequence } == true
             }
         ) {
@@ -365,7 +391,7 @@ internal class FarmMoleBurrowController(
                 mole.getAttribute(Attribute.MAX_HEALTH)?.baseValue = 1.0
                 mole.getAttribute(Attribute.MOVEMENT_SPEED)?.baseValue = 0.28
                 mole.health = 1.0
-                mole.customName(locale.renderPath("care.moles.mob-name"))
+                mole.customName(locale.render(MessageKey.FARM_MOLE_NAME))
                 mole.isCustomNameVisible = true
                 mark(mole, runtime, Role.MOLE)
             }
@@ -380,17 +406,21 @@ internal class FarmMoleBurrowController(
         labelPath: String,
         glowing: Boolean,
     ): List<Entity> {
-        val stack = ItemStack(MaterialRules.material(visual.material)).also { item ->
-            if (visual.customModelData > 0) item.itemMeta = item.itemMeta.also { it.setCustomModelData(visual.customModelData) }
-        }
-        val display = location.world.spawn(location.clone().add(0.0, visual.displayYOffset, 0.0), ItemDisplay::class.java) { entity ->
-            entity.setItemStack(stack)
-            entity.itemDisplayTransform = visual.displayTransform.bukkit
-            presentation.scale(entity, visual.displayScale)
-            entity.viewRange = runtime.settings.displayViewRange
-            entity.isGlowing = glowing
-            entity.isPersistent = false
-            mark(entity, runtime, role)
+        val result = mutableListOf<Entity>()
+        val material = MaterialRules.material(visual.material)
+        if (material != org.bukkit.Material.AIR) {
+            val stack = ItemStack(material).also { item ->
+                if (visual.customModelData > 0) item.itemMeta = item.itemMeta.also { it.setCustomModelData(visual.customModelData) }
+            }
+            result += location.world.spawn(location.clone().add(0.0, visual.displayYOffset, 0.0), ItemDisplay::class.java) { entity ->
+                entity.setItemStack(stack)
+                entity.itemDisplayTransform = visual.displayTransform.bukkit
+                presentation.scale(entity, visual.displayScale)
+                entity.viewRange = runtime.settings.displayViewRange
+                entity.isGlowing = glowing
+                entity.isPersistent = false
+                mark(entity, runtime, role)
+            }
         }
         val label = location.world.spawn(location.clone().add(0.0, 1.85, 0.0), TextDisplay::class.java) { entity ->
             configureLabel(entity, locale.renderPath(labelPath))
@@ -403,7 +433,9 @@ internal class FarmMoleBurrowController(
             entity.isPersistent = false
             mark(entity, runtime, role)
         }
-        return listOf(display, label, hitbox)
+        result += label
+        result += hitbox
+        return result
     }
 
     private fun spawnExit(runtime: FarmRuntime, location: Location): List<Entity> {
@@ -475,7 +507,6 @@ internal class FarmMoleBurrowController(
         it.settings.id == zoneId && it.state.sequence == sequence && active(it)
     }
 
-    private companion object {
-        const val EXPECTED_STRUCTURAL_ENTITIES = 8
-    }
+    private fun expectedStructuralEntities(runtime: FarmRuntime): Int =
+        7 + if (MaterialRules.material(runtime.settings.moleBurrow.lairVisual.material) == org.bukkit.Material.AIR) 0 else 1
 }

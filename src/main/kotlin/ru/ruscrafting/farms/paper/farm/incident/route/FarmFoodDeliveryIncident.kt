@@ -30,11 +30,13 @@ import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPointPosition
+import ru.ruscrafting.farms.domain.FarmRouteGeometry
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.domain.NamedFarmDeliveryRoute
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
+import ru.ruscrafting.farms.paper.FarmNightShiftController
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.admin.FarmRouteAdminService
@@ -55,6 +57,7 @@ internal class FarmFoodDeliveryIncident(
     private val routes: FarmRouteAdminService,
     private val transitions: FarmTransitionSink,
     private val random: RandomGenerator,
+    private val night: FarmNightShiftController,
 ) {
     private data class Session(
         val sequence: Long,
@@ -155,6 +158,13 @@ internal class FarmFoodDeliveryIncident(
             session.loadIds += spawnLoad(runtime, activeHorse.location, order.cartLoadMaterial, order.cartLoadCustomModelData).uniqueId
         }
         session.riderId = activeHorse.passengers.filterIsInstance<Player>().firstOrNull()?.uniqueId
+        val participants = (port.players(runtime.region) + activeHorse.passengers.filterIsInstance<Player>()).distinctBy(Player::getUniqueId)
+        night.syncAmbientTime(
+            nightOwner(runtime.settings.id),
+            participants,
+            runtime.settings.routeDelivery.playerTime,
+            runtime.settings.routeDelivery.timeTransitionSeconds,
+        )
         updateProgress(runtime, activeHorse, session, route.points)
         if (!active(runtime)) return
         updateMonsters(runtime, activeHorse, session, route.points, now)
@@ -167,15 +177,27 @@ internal class FarmFoodDeliveryIncident(
             val horse = session.horseId?.let(Bukkit::getEntity) as? Horse ?: return@forEach
             val cart = session.cartId?.let(Bukkit::getEntity) as? ItemDisplay ?: return@forEach
             val route = selectedRoute(runtime)?.takeIf { it.name == session.routeName }?.route ?: return@forEach
+            val rider = horse.passengers.filterIsInstance<Player>().firstOrNull()
+            horse.setAI(rider != null)
+            if (rider == null) horse.velocity = Vector()
             val yaw = Math.toRadians(horse.location.yaw.toDouble())
             val behind = horse.location.clone().add(sin(yaw) * 2.15, runtime.settings.routeDelivery.cartYOffset, -cos(yaw) * 2.15)
             behind.yaw = horse.location.yaw
-            cart.teleportAsync(behind)
+            cart.teleport(behind)
             session.loadIds.forEachIndexed { slot, id ->
-                (Bukkit.getEntity(id) as? ItemDisplay)?.teleportAsync(loadLocation(behind, slot, runtime.settings.contractCartVisual.loadYOffset))
+                (Bukkit.getEntity(id) as? ItemDisplay)?.teleport(loadLocation(behind, slot, runtime.settings.contractCartVisual.loadYOffset))
+            }
+            session.monsterIds.toList().forEach { id ->
+                val monster = Bukkit.getEntity(id) as? Mob
+                if (monster == null || !monster.isValid || monster.isDead) {
+                    night.releaseExternalLight(monsterLightOwner(zoneId, id))
+                } else {
+                    night.updateExternalLight(
+                        monsterLightOwner(zoneId, id), monster, runtime.settings.routeDelivery.monsterLightLevel,
+                    )
+                }
             }
             if (settings().particles && horse.world.gameTime % TRAIL_INTERVAL_TICKS == 0L) {
-                val rider = horse.passengers.filterIsInstance<Player>().firstOrNull()
                 val viewers = rider?.let(::listOf) ?: port.players(runtime.region)
                 viewers.filter { it.world == horse.world && !port.isAdminEditing(it) }
                     .forEach { viewer -> renderTrail(runtime, viewer, route.points) }
@@ -198,6 +220,7 @@ internal class FarmFoodDeliveryIncident(
             return true
         }
         if (existing == null) horse.addPassenger(event.player)
+        horse.setAI(true)
         sessions[runtime.settings.id]?.riderId = event.player.uniqueId
         port.showScreenTitle(event.player, MessageKey.FARM_ROUTE_MOUNTED)
         event.player.playSound(event.player.location, Sound.ENTITY_HORSE_SADDLE, 0.8f, 1.05f)
@@ -223,26 +246,34 @@ internal class FarmFoodDeliveryIncident(
         if (!owns(event.entity) || role(event.entity) != ROLE_MONSTER) return false
         val zoneId = event.entity.persistentDataContainer.get(zoneKey, PersistentDataType.STRING)
         zoneId?.let(sessions::get)?.monsterIds?.remove(event.entity.uniqueId)
+        if (zoneId != null) night.releaseExternalLight(monsterLightOwner(zoneId, event.entity.uniqueId))
         event.drops.clear()
         event.droppedExp = 0
         return true
     }
 
     fun onQuit(player: Player) {
-        sessions.values.filter { it.riderId == player.uniqueId }.forEach { it.riderId = null }
+        sessions.values.filter { it.riderId == player.uniqueId }.forEach { session ->
+            session.riderId = null
+            (session.horseId?.let(Bukkit::getEntity) as? Horse)?.let { horse ->
+                horse.setAI(false)
+                horse.velocity = Vector()
+            }
+        }
     }
 
     fun clear(zoneId: String, reason: String) {
-        Bukkit.getWorlds().asSequence().flatMap { it.entities.asSequence() }.filter { entity ->
-            entity.persistentDataContainer.get(zoneKey, PersistentDataType.STRING) == zoneId
-        }.forEach(Entity::remove)
-        sessions.remove(zoneId)
+        sessions.remove(zoneId)?.let(::removeSessionEntities)
+        night.clearAmbientTime(nightOwner(zoneId))
+        night.releaseExternalLights("food:$zoneId:")
         debug.event("farm_food_route_cleared", "zone" to zoneId, "reason" to reason)
     }
 
     fun cleanup(reason: String) {
         Bukkit.getWorlds().asSequence().flatMap { it.entities.asSequence() }.filter(::owns).forEach(Entity::remove)
+        sessions.keys.forEach { night.clearAmbientTime(nightOwner(it)) }
         sessions.clear()
+        night.releaseExternalLights("food:")
         debug.event("farm_food_route_cleanup", "reason" to reason)
     }
 
@@ -256,28 +287,24 @@ internal class FarmFoodDeliveryIncident(
         if (session.riderId != null && session.riderId != rider.uniqueId) return
         session.riderId = rider.uniqueId
         val currentIndex = runtime.state.incidentProgress.coerceIn(1, points.size)
-        val segmentStart = points[(currentIndex - 1).coerceAtLeast(0)]
-        val segmentEnd = points[currentIndex.coerceAtMost(points.lastIndex)]
-        val projection = closestPoint(horse.location, segmentStart, segmentEnd)
-        val distance = horse.location.distance(projection)
+        val projection = FarmRouteGeometry.closest(
+            horse.world.name, horse.location.x, horse.location.y, horse.location.z,
+            points, (currentIndex - 1).coerceAtLeast(0),
+        ) ?: return
+        val projectionLocation = Location(horse.world, projection.x, projection.y, projection.z, horse.location.yaw, 0f)
+        val distance = projection.distance
         val config = runtime.settings.routeDelivery
         if (distance > config.hardResetDistance) {
-            horse.eject()
-            horse.teleportAsync(location(segmentStart))
-            horse.velocity = Vector()
+            correctTowardRoute(horse, projectionLocation, 0.42)
             port.sendActionBar(rider, MessageKey.FARM_ROUTE_RETURNED)
             return
         }
         if (distance > config.corridorRadius) {
-            horse.teleportAsync(projection.apply { yaw = horse.location.yaw })
-            horse.velocity = Vector()
+            correctTowardRoute(horse, projectionLocation, 0.24)
             port.sendActionBar(rider, MessageKey.FARM_ROUTE_CORRIDOR)
             return
         }
-        var reached = currentIndex
-        while (reached < points.size && horse.location.distanceSquared(location(points[reached])) <= config.checkpointRadius * config.checkpointRadius) {
-            reached++
-        }
+        val reached = maxOf(currentIndex, FarmRouteGeometry.reachedPoint(projection, points.size))
         if (reached <= currentIndex) return
         val result = FarmShiftEngine.advanceFoodDelivery(
             runtime.state,
@@ -329,22 +356,35 @@ internal class FarmFoodDeliveryIncident(
         if (session.spawnedMonsters >= session.monsterGoal || config.monsterMaxAlive == 0) return
         session.monsterIds.removeIf { entityId ->
             val entity = Bukkit.getEntity(entityId)
-            entity == null || !entity.isValid || entity.isDead
+            val gone = entity == null || !entity.isValid || entity.isDead
+            if (gone) night.releaseExternalLight(monsterLightOwner(runtime.settings.id, entityId))
+            gone
         }
         val alive = session.monsterIds.size
         if (alive >= config.monsterMaxAlive || now - session.lastWaveAt < config.monsterIntervalSeconds * 1_000L) return
         val ahead = (runtime.state.incidentProgress + 3).coerceAtMost(points.lastIndex)
         val anchor = location(points[ahead])
-        val angle = random.nextDouble() * Math.PI * 2
-        val spawn = anchor.add(cos(angle) * config.monsterSpawnDistance, 0.0, sin(angle) * config.monsterSpawnDistance)
-        val ground = safeSurface(spawn) ?: return
-        val monster = spawn.world.spawnEntity(ground, EntityType.HUSK) as Mob
-        monster.isPersistent = false
-        monster.removeWhenFarAway = true
-        monster.target = rider
-        mark(monster, runtime, ROLE_MONSTER)
-        session.monsterIds += monster.uniqueId
-        session.spawnedMonsters++
+        val waveSize = random.nextInt(config.monsterWaveMin, config.monsterWaveMax + 1).coerceAtMost(
+            minOf(session.monsterGoal - session.spawnedMonsters, config.monsterMaxAlive - alive),
+        )
+        repeat(waveSize) { index ->
+            val angle = random.nextDouble() * Math.PI * 2 + index * (Math.PI * 2 / waveSize.coerceAtLeast(1))
+            val distance = config.monsterSpawnDistance * random.nextDouble(0.8, 1.15)
+            val spawn = anchor.clone().add(cos(angle) * distance, 0.0, sin(angle) * distance)
+            val ground = safeSurface(spawn) ?: return@repeat
+            val monster = spawn.world.spawnEntity(ground, EntityType.HUSK) as Mob
+            monster.isPersistent = false
+            monster.removeWhenFarAway = true
+            monster.target = rider
+            monster.getAttribute(Attribute.MOVEMENT_SPEED)?.baseValue = config.monsterMovementSpeed
+            monster.equipment.setItemInMainHand(ItemStack(Material.TORCH), true)
+            monster.equipment.itemInMainHandDropChance = 0.0f
+            mark(monster, runtime, ROLE_MONSTER)
+            session.monsterIds += monster.uniqueId
+            session.spawnedMonsters++
+            night.updateExternalLight(monsterLightOwner(runtime.settings.id, monster.uniqueId), monster, config.monsterLightLevel)
+        }
+        if (waveSize == 0) return
         session.lastWaveAt = now
         rider.playSound(rider.location, Sound.ENTITY_HUSK_AMBIENT, 0.8f, 0.75f)
         port.sendActionBar(rider, MessageKey.FARM_ROUTE_ATTACK)
@@ -429,6 +469,15 @@ internal class FarmFoodDeliveryIncident(
         entity.persistentDataContainer.set(roleKey, PersistentDataType.STRING, role)
     }
 
+    private fun removeSessionEntities(session: Session) {
+        buildList {
+            session.horseId?.let(::add)
+            session.cartId?.let(::add)
+            addAll(session.loadIds)
+            addAll(session.monsterIds)
+        }.forEach { id -> Bukkit.getEntity(id)?.remove() }
+    }
+
     private fun runtime(entity: Entity, runtimes: Collection<FarmRuntime>): FarmRuntime? {
         val zone = entity.persistentDataContainer.get(zoneKey, PersistentDataType.STRING) ?: return null
         val sequence = entity.persistentDataContainer.get(sequenceKey, PersistentDataType.LONG) ?: return null
@@ -452,14 +501,13 @@ internal class FarmFoodDeliveryIncident(
         requireNotNull(Bukkit.getWorld(point.world)), point.x, point.y, point.z, point.yaw, point.pitch,
     )
 
-    private fun closestPoint(location: Location, from: FarmPointPosition, to: FarmPointPosition): Location {
-        val start = Vector(from.x, from.y, from.z)
-        val end = Vector(to.x, to.y, to.z)
-        val delta = end.clone().subtract(start)
-        val lengthSquared = delta.lengthSquared()
-        val t = if (lengthSquared == 0.0) 0.0 else location.toVector().subtract(start).dot(delta) / lengthSquared
-        val point = start.add(delta.multiply(t.coerceIn(0.0, 1.0)))
-        return Location(location.world, point.x, point.y, point.z)
+    private fun correctTowardRoute(horse: Horse, target: Location, strength: Double) {
+        val correction = target.toVector().subtract(horse.location.toVector()).apply { y = 0.0 }
+        if (correction.lengthSquared() <= 0.0001) {
+            horse.velocity = Vector()
+            return
+        }
+        horse.velocity = correction.normalize().multiply(strength)
     }
 
     private fun safeSurface(near: Location): Location? {
@@ -492,4 +540,8 @@ internal class FarmFoodDeliveryIncident(
         const val ROLE_LOAD = "load"
         const val ROLE_MONSTER = "monster"
     }
+
+    private fun nightOwner(zoneId: String): String = "food:$zoneId"
+
+    private fun monsterLightOwner(zoneId: String, id: UUID): String = "food:$zoneId:$id"
 }

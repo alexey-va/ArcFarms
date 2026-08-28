@@ -29,16 +29,51 @@ internal data class FarmMoleBurrowScene(
     val records: List<FarmMoleBurrowJournalRecord>,
 ) {
     private val tunnelPositions = records.mapTo(hashSetOf()) { Triple(it.x, it.y, it.z) }
+    private val pathDistanceToLair: Map<Pair<Int, Int>, Int> = buildPathDistances()
+    private var verifiedReady = false
 
-    val ready: Boolean get() = records.all { record ->
-        if (!world.isChunkLoaded(record.x shr 4, record.z shr 4)) return@all false
-        val block = world.getBlockAt(record.x, record.y, record.z)
-        block.blockData.asString == record.burrowData
+    val ready: Boolean get() {
+        if (verifiedReady) return true
+        verifiedReady = records.all { record ->
+            if (!world.isChunkLoaded(record.x shr 4, record.z shr 4)) return@all false
+            val block = world.getBlockAt(record.x, record.y, record.z)
+            block.blockData.asString == record.burrowData
+        }
+        return verifiedReady
     }
 
     fun contains(location: Location): Boolean {
         if (location.world !== world || records.isEmpty()) return false
         return Triple(location.blockX, location.blockY, location.blockZ) in tunnelPositions
+    }
+
+    fun pathDistanceToLair(location: Location): Int? {
+        if (location.world !== world || location.blockY != start.blockY) return null
+        return pathDistanceToLair[location.blockX to location.blockZ]
+    }
+
+    private fun buildPathDistances(): Map<Pair<Int, Int>, Int> {
+        val floorY = start.blockY
+        val walkable = records.asSequence()
+            .filter { it.y == floorY && (it.burrowData == MOLE_AIR_DATA || it.burrowData.startsWith("minecraft:light")) }
+            .mapTo(hashSetOf()) { it.x to it.z }
+        val origin = lair.blockX to lair.blockZ
+        if (origin !in walkable) return emptyMap()
+        val distances = mutableMapOf(origin to 0)
+        val queue = ArrayDeque<Pair<Int, Int>>().apply { add(origin) }
+        while (queue.isNotEmpty()) {
+            val current = queue.removeFirst()
+            val nextDistance = distances.getValue(current) + 1
+            listOf(
+                current.first + 1 to current.second,
+                current.first - 1 to current.second,
+                current.first to current.second + 1,
+                current.first to current.second - 1,
+            ).forEach { next ->
+                if (next in walkable && distances.putIfAbsent(next, nextDistance) == null) queue.add(next)
+            }
+        }
+        return distances
     }
 }
 
@@ -117,7 +152,7 @@ internal class FarmMoleBurrowWorld(
             }
             val lairX = originX + layout.lair.x
             val lairZ = originZ + layout.lair.z
-            for (dx in -1..1) for (dz in -1..1) repeat(settings.tunnelHeight) { dy ->
+            for (dx in -2..2) for (dz in -2..2) repeat(settings.tunnelHeight) { dy ->
                 planned[Triple(lairX + dx, feetY + dy, lairZ + dz)] = AIR_DATA to FarmMoleBurrowMarker.NONE
             }
             layout.chambers.forEach { chamber ->
@@ -149,6 +184,7 @@ internal class FarmMoleBurrowWorld(
                 val marker = planned[position]?.second ?: FarmMoleBurrowMarker.NONE
                 planned[position] = lightData to marker
             }
+            decorate(plan = planned, feetY = feetY, lairX = lairX, lairZ = lairZ, seed = layoutSeed, percent = settings.decorationPercent)
             if (planned.size > FarmMoleBurrowJournalCodec.MAX_SCENE_RECORDS) {
                 reject("scene_too_large")
                 continue@layoutProbe
@@ -550,6 +586,54 @@ internal class FarmMoleBurrowWorld(
         (data as Levelled).level = level
     }.asString
 
+    private fun decorate(
+        plan: MutableMap<Triple<Int, Int, Int>, Pair<String, FarmMoleBurrowMarker>>,
+        feetY: Int,
+        lairX: Int,
+        lairZ: Int,
+        seed: Long,
+        percent: Int,
+    ) {
+        val openFloor = plan.keys.filterTo(hashSetOf()) { it.second == feetY }
+        val palette = listOf(Material.ROOTED_DIRT, Material.COARSE_DIRT, Material.MUD, Material.MOSS_BLOCK, Material.TUFF)
+            .map { it.createBlockData().asString }
+        openFloor.forEach { position ->
+            val mixed = mix(seed, position.first, position.second, position.third)
+            if (Math.floorMod(mixed, 100L) >= percent) return@forEach
+            val below = Triple(position.first, feetY - 1, position.third)
+            if (below !in plan) {
+                plan[below] = palette[Math.floorMod(mixed ushr 8, palette.size.toLong()).toInt()] to FarmMoleBurrowMarker.NONE
+            }
+            val face = when (Math.floorMod(mixed ushr 16, 4L).toInt()) {
+                0 -> 1 to 0
+                1 -> -1 to 0
+                2 -> 0 to 1
+                else -> 0 to -1
+            }
+            val wall = Triple(position.first + face.first, feetY + 1, position.third + face.second)
+            if (wall !in plan && Triple(wall.first, feetY, wall.third) !in openFloor) {
+                plan[wall] = palette[Math.floorMod(mixed ushr 24, palette.size.toLong()).toInt()] to FarmMoleBurrowMarker.NONE
+            }
+        }
+        // A physical earthen den replaces the old floating item model.
+        for (dx in -2..2) for (dz in -2..2) {
+            val below = Triple(lairX + dx, feetY - 1, lairZ + dz)
+            val material = when {
+                dx == 0 && dz == 0 -> Material.MUD
+                kotlin.math.abs(dx) + kotlin.math.abs(dz) <= 2 -> Material.ROOTED_DIRT
+                else -> Material.MOSS_BLOCK
+            }
+            plan[below] = material.createBlockData().asString to FarmMoleBurrowMarker.NONE
+        }
+    }
+
+    private fun mix(seed: Long, x: Int, y: Int, z: Int): Long {
+        var value = seed xor (x.toLong() * -7046029254386353131L) xor
+            (y.toLong() * -4658895280553007687L) xor (z.toLong() * -7723592293110705685L)
+        value = (value xor (value ushr 30)) * -4658895280553007687L
+        return value xor (value ushr 27)
+    }
+
     private fun seed(sequence: Long, x: Int, z: Int): Long = sequence * 0x9E3779B97F4A7C15UL.toLong() xor
         x.toLong() * 0xBF58476D1CE4E5B9UL.toLong() xor z.toLong() * 0x94D049BB133111EBUL.toLong()
 
@@ -560,3 +644,5 @@ internal class FarmMoleBurrowWorld(
         val BARRIER_DATA: String = Material.BARRIER.createBlockData().asString
     }
 }
+
+private val MOLE_AIR_DATA: String = Material.AIR.createBlockData().asString

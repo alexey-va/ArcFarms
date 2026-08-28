@@ -135,9 +135,12 @@ farm-zones:
       light-level: 11
       chambers: 3
       moles: 8
+      decoration-percent: 18
+      guidance: {close-distance: 6, far-distance: 14, interval-ticks: 20}
       replaceable-materials: [STONE, DEEPSLATE, DIRT, COARSE_DIRT, ANDESITE, DIORITE, GRANITE, TUFF, CALCITE, DRIPSTONE_BLOCK, CLAY, MUD, PACKED_MUD]
       lair-visual:
-        material: RABBIT_HIDE
+        # The den is a journalled cave scene; AIR disables the obsolete floating item marker.
+        material: AIR
         custom-model-data: 0
         display-transform: FIXED
         display-scale: 1.6
@@ -227,13 +230,15 @@ farm-zones:
       corridor-radius: 5.0
       hard-reset-distance: 9.0
       checkpoint-radius: 3.5
-      horse-speed: 0.26
+      horse-speed: 0.21
+      player-time: 18000
+      transition-seconds: 18
       trail: {lookahead-points: 28, height: 0.35, particle-size: 1.15}
       completion-contribution: 12
       cart-scale: 4.4
-      cart-y-offset: 0.0
+      cart-y-offset: 0.35
       cart-load-count: 4
-      monsters: {min-count: 2, max-count: 5, interval-seconds: 10, max-alive: 4, spawn-distance: 10.0}
+      monsters: {min-count: 8, max-count: 14, interval-seconds: 12, max-alive: 8, spawn-distance: 10.0, wave-min: 3, wave-max: 5, movement-speed: 0.25, light-level: 15}
     pest-entity: SILVERFISH
     pest-spawn-radius: 6
     pest-nests: 3
@@ -244,6 +249,8 @@ farm-zones:
     pest-spawn-chance-percent: 45
     pest-eat-radius: 3
     pest-eat-per-pulse: 8
+    # Incidents may damage crops temporarily, but never consume the entire indexed field.
+    damage-safety: {maximum-percent: 18, minimum-remaining: 128, birds-maximum: 96, pests-maximum: 128, disease-maximum: 96}
     supplies:
       tool: {x: 212.5, y: 49.0, z: 448.5}
       seeds: {x: 212.5, y: 49.0, z: 453.5}

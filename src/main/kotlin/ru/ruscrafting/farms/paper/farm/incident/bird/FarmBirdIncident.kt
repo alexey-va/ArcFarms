@@ -23,7 +23,9 @@ import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.FarmBirdPlanner
+import ru.ruscrafting.farms.domain.FarmAsyncPlanGate
 import ru.ruscrafting.farms.domain.FarmCropDamage
+import ru.ruscrafting.farms.domain.FarmDamageBudget
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPlotPosition
@@ -36,6 +38,7 @@ import ru.ruscrafting.farms.paper.FarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.block
+import ru.ruscrafting.farms.paper.toFarmPlotPosition
 import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
@@ -60,6 +63,7 @@ internal class FarmBirdIncident(
     private val defeatedKey = NamespacedKey(plugin, "farm_bird_defeated")
     private val ids = mutableMapOf<String, MutableSet<UUID>>()
     private val reconciledSequences = mutableMapOf<String, Long>()
+    private val pendingDamagePlans = FarmAsyncPlanGate()
 
     fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING)
 
@@ -138,28 +142,60 @@ internal class FarmBirdIncident(
                 runtime.settings.specialIncidents.birdEatIntervalSeconds * 1_000L,
             )
         ) return
+        val sequence = runtime.state.sequence
+        val zoneId = runtime.settings.id
+        if (!pendingDamagePlans.acquire(zoneId, sequence)) return
         val already = runtime.state.specialDamagedCrops.mapTo(hashSetOf()) { it.position }
-        val available = beds.discover(runtime).filterNot(already::contains).toMutableSet()
-        val damage = mutableListOf<FarmCropDamage>()
-        activeBirds(runtime).forEach { bird ->
-            val radius = runtime.settings.specialIncidents.birdEatRadius
-            val plot = available.minByOrNull { candidate -> horizontalDistanceSquared(bird.location, candidate) }
-                ?.takeIf { horizontalDistanceSquared(bird.location, it) <= radius * radius }
-                ?: return@forEach
-            val soil = plot.block() ?: return@forEach
-            val crop = soil.getRelative(org.bukkit.block.BlockFace.UP)
-            if (crop.type.name !in runtime.settings.crops) return@forEach
-            ledger.captureActiveCrop(soil, runtime.settings.id)
-            damage += FarmCropDamage(plot, crop.type.name)
-            available.remove(plot)
-            crop.setType(org.bukkit.Material.AIR, false)
-            if (settings().particles) crop.world.spawnParticle(Particle.CLOUD, crop.location.add(0.5, 0.6, 0.5), 3, 0.2, 0.15, 0.2, 0.01)
+        val allBeds = beds.discover(runtime)
+        val safety = runtime.settings.damageSafety
+        val remaining = FarmDamageBudget.remaining(
+            allBeds.size, already.size, safety.maximumPercent, safety.minimumRemaining, safety.birdMaximum,
+        )
+        if (remaining == 0) {
+            pendingDamagePlans.release(zoneId, sequence)
+            return
         }
-        if (damage.isNotEmpty()) {
-            runtime.state = runtime.state.copy(specialDamagedCrops = runtime.state.specialDamagedCrops + damage)
-            port.persistAsync()
-            debug.event("farm_birds_ate_crops", "zone" to runtime.settings.id, "count" to damage.size)
+        val radiusSquared = runtime.settings.specialIncidents.birdEatRadius.let { it * it }
+        val birdLocations = activeBirds(runtime).map { Triple(it.location.x, it.location.y, it.location.z) }
+        val candidates = allBeds.filterNot(already::contains)
+        val token = port.lifecycleToken()
+        val scheduled = port.runAsync(token) {
+            val selected = runCatching {
+                val available = candidates.toMutableSet()
+                birdLocations.mapNotNull { location ->
+                    available.minByOrNull { plot -> horizontalDistanceSquared(location.first, location.third, plot) }
+                        ?.takeIf { horizontalDistanceSquared(location.first, location.third, it) <= radiusSquared }
+                        ?.also(available::remove)
+                }.take(remaining)
+            }.getOrElse { failure ->
+                pendingDamagePlans.release(zoneId, sequence)
+                port.log(Level.SEVERE, "Could not plan farm bird crop damage for $zoneId", failure)
+                return@runAsync
+            }
+            val returned = port.runSync(token) {
+                pendingDamagePlans.release(zoneId, sequence)
+                if (!active(runtime) || runtime.state.sequence != sequence) return@runSync
+                val soils = selected.mapNotNull(FarmPlotPosition::block)
+                ledger.captureActiveCrops(soils, runtime.settings.id)
+                val damage = soils.mapNotNull { soil ->
+                    val crop = soil.getRelative(org.bukkit.block.BlockFace.UP)
+                    if (crop.type.name !in runtime.settings.crops) return@mapNotNull null
+                    val entry = FarmCropDamage(soil.toFarmPlotPosition(), crop.type.name)
+                    crop.setType(org.bukkit.Material.AIR, false)
+                    if (settings().particles) crop.world.spawnParticle(
+                        Particle.CLOUD, crop.location.add(0.5, 0.6, 0.5), 3, 0.2, 0.15, 0.2, 0.01,
+                    )
+                    entry
+                }
+                if (damage.isNotEmpty()) {
+                    runtime.state = runtime.state.copy(specialDamagedCrops = runtime.state.specialDamagedCrops + damage)
+                    port.persistAsync()
+                    debug.event("farm_birds_ate_crops", "zone" to runtime.settings.id, "count" to damage.size)
+                }
+            }
+            if (!returned) pendingDamagePlans.release(zoneId, sequence)
         }
+        if (!scheduled) pendingDamagePlans.release(zoneId, sequence)
     }
 
     fun onDamage(event: EntityDamageEvent, runtimes: Collection<FarmRuntime>): Boolean {
@@ -240,11 +276,9 @@ internal class FarmBirdIncident(
     }
 
     fun clear(zoneId: String, reason: String) {
-        entityLookup.inAllWorlds().filter { entity ->
-            entity.persistentDataContainer.get(zoneKey, PersistentDataType.STRING) == zoneId
-        }.forEach(Entity::remove)
-        ids.remove(zoneId)
+        ids.remove(zoneId).orEmpty().forEach { id -> Bukkit.getEntity(id)?.remove() }
         reconciledSequences.remove(zoneId)
+        pendingDamagePlans.clearZone(zoneId)
         debug.event("farm_birds_cleared", "zone" to zoneId, "reason" to reason)
     }
 
@@ -252,6 +286,7 @@ internal class FarmBirdIncident(
         entityLookup.inAllWorlds().filter(::owns).forEach(Entity::remove)
         ids.clear()
         reconciledSequences.clear()
+        pendingDamagePlans.clear()
         debug.event("farm_birds_cleanup", "reason" to reason)
     }
 
@@ -301,6 +336,11 @@ internal class FarmBirdIncident(
         if (data.has(defeatedKey, PersistentDataType.BYTE)) return false
         data.set(defeatedKey, PersistentDataType.BYTE, 1)
         ids[runtime.settings.id]?.remove(bird.uniqueId)
+        if (settings().particles) {
+            bird.world.spawnParticle(Particle.CRIT, bird.location.add(0.0, 0.35, 0.0), 12, 0.25, 0.2, 0.25, 0.08)
+            bird.world.spawnParticle(Particle.CLOUD, bird.location, 5, 0.2, 0.15, 0.2, 0.03)
+        }
+        if (settings().sounds) player.playSound(bird.location, Sound.ENTITY_ARROW_HIT_PLAYER, 0.75f, 1.35f)
         bird.remove()
         recordDefeat(runtime, player, ranged)
         return true
@@ -343,6 +383,12 @@ internal class FarmBirdIncident(
         if (location.world?.name != plot.world) return Double.POSITIVE_INFINITY
         val dx = location.x - (plot.x + 0.5)
         val dz = location.z - (plot.z + 0.5)
+        return dx * dx + dz * dz
+    }
+
+    private fun horizontalDistanceSquared(x: Double, z: Double, plot: FarmPlotPosition): Double {
+        val dx = x - (plot.x + 0.5)
+        val dz = z - (plot.z + 0.5)
         return dx * dx + dz * dz
     }
 }

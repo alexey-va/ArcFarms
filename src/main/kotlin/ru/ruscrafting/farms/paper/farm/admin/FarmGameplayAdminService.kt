@@ -14,6 +14,7 @@ import ru.ruscrafting.farms.domain.FarmOrder
 import ru.ruscrafting.farms.domain.FarmPatchPlanner
 import ru.ruscrafting.farms.domain.FarmPestNest
 import ru.ruscrafting.farms.domain.FarmPhase
+import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmSeederStage
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.domain.FarmShiftState
@@ -420,9 +421,9 @@ internal class FarmGameplayAdminService(
 
     private fun preparePatch(runtime: FarmRuntime, plant: Boolean, mature: Boolean) {
         val crop = MaterialRules.material(requireNotNull(runtime.state.preparationCrop))
-        runtime.state.preparationPatch.forEach { position ->
-            val soil = position.block() ?: return@forEach
-            ledger.capture(soil, runtime.settings.id)
+        val soils = runtime.state.preparationPatch.mapNotNull(FarmPlotPosition::block)
+        ledger.captureAll(soils, runtime.settings.id)
+        soils.forEach { soil ->
             field.wet(soil)
             val above = soil.getRelative(org.bukkit.block.BlockFace.UP)
             if (!plant) {
@@ -432,8 +433,8 @@ internal class FarmGameplayAdminService(
             val data = crop.createBlockData()
             if (mature && data is Ageable) data.age = data.maximumAge
             above.setBlockData(data, false)
-            ledger.captureActiveCrop(soil, runtime.settings.id)
         }
+        if (plant) ledger.updateActiveCrops(soils)
     }
 
     private fun reselectPatch(runtime: FarmRuntime, player: Player, mechanized: Boolean): Boolean {

@@ -12,6 +12,7 @@ import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareTarget
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmCropDamage
+import ru.ruscrafting.farms.domain.FarmDamageBudget
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmPointPosition
@@ -74,6 +75,15 @@ internal class FarmDiseaseController(
     }
 
     private fun spread(runtime: FarmRuntime, now: Long) {
+        val safety = runtime.settings.damageSafety
+        if (FarmDamageBudget.remaining(
+                runtime.state.preparationPatch.size,
+                runtime.state.diseaseDamagedCrops.orEmpty().size,
+                safety.maximumPercent,
+                safety.minimumRemaining,
+                safety.diseaseMaximum,
+            ) == 0
+        ) return
         val current = runtime.state.careTargets.filter { it.role == FarmCareRole.DISEASED_CROP }
         if (current.size >= runtime.settings.diseaseMaxSpots) return
         val target = nextTarget(runtime, current.map(FarmCareTarget::position), current.size * 19L) ?: return
@@ -141,6 +151,15 @@ internal class FarmDiseaseController(
     }
 
     private fun killCrop(runtime: FarmRuntime, target: FarmCareTarget): Boolean {
+        val safety = runtime.settings.damageSafety
+        if (FarmDamageBudget.remaining(
+                runtime.state.preparationPatch.size,
+                runtime.state.diseaseDamagedCrops.orEmpty().size,
+                safety.maximumPercent,
+                safety.minimumRemaining,
+                safety.diseaseMaximum,
+            ) == 0
+        ) return false
         val world = Bukkit.getWorld(target.position.world) ?: return false
         val crop = world.getBlockAt(
             kotlin.math.floor(target.position.x).toInt(),

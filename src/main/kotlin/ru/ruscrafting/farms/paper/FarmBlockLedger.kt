@@ -10,6 +10,7 @@ import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import java.util.logging.Level
+import java.util.LinkedHashMap
 
 internal data class ManagedFarmBlockRecord(
     val zoneId: String,
@@ -50,6 +51,9 @@ internal class FarmBlockLedger(plugin: Plugin) {
     private val fixedCropKey = NamespacedKey(plugin, "farm_fixed_crops_v1")
     private val orchardLeafKey = NamespacedKey(plugin, "farm_orchard_leaves_v1")
     private val logger = plugin.logger
+    private val blockCache = boundedChunkCache<ManagedFarmBlockRecord>()
+    private val fixedCropCache = boundedChunkCache<ManagedFarmFixedCropRecord>()
+    private val orchardCache = boundedChunkCache<ManagedFarmOrchardLeafRecord>()
 
     fun capture(soil: Block, zoneId: String): ManagedFarmBlockRecord {
         val existing = record(soil)
@@ -125,13 +129,27 @@ internal class FarmBlockLedger(plugin: Plugin) {
         it.x == soil.x && it.y == soil.y && it.z == soil.z
     }
 
+    /** Reads each affected chunk payload once for a maintenance pass. */
+    fun records(soils: Collection<Block>): Map<FarmPlotPosition, ManagedFarmBlockRecord> = buildMap {
+        soils.groupBy(Block::getChunk).forEach { (chunk, blocks) ->
+            val requested = blocks.mapTo(hashSetOf()) { Triple(it.x, it.y, it.z) }
+            blockRecords(chunk).filter { Triple(it.x, it.y, it.z) in requested }.forEach { record ->
+                put(FarmPlotPosition(chunk.world.name, record.x, record.y, record.z), record)
+            }
+        }
+    }
+
     fun restoreActiveCrop(soil: Block): Boolean {
         val record = record(soil) ?: return false
+        restoreActiveCrop(soil, record)
+        return true
+    }
+
+    fun restoreActiveCrop(soil: Block, record: ManagedFarmBlockRecord) {
         val crop = soil.getRelative(org.bukkit.block.BlockFace.UP)
         val data = record.activeCropData
         if (data == null) crop.setType(Material.AIR, false)
         else crop.setBlockData(Bukkit.createBlockData(data), false)
-        return true
     }
 
     fun restoreOriginal(soil: Block, clear: Boolean = true): Boolean {
@@ -207,6 +225,8 @@ internal class FarmBlockLedger(plugin: Plugin) {
     }
 
     fun fixedCropRecords(chunk: Chunk): List<ManagedFarmFixedCropRecord> {
+        val cacheKey = chunk.cacheKey()
+        fixedCropCache[cacheKey]?.let { return it }
         val raw = chunk.persistentDataContainer.get(fixedCropKey, PersistentDataType.STRING) ?: return emptyList()
         return runCatching {
             require(raw.length <= 2_000_000) { "Fixed farm crop payload is unbounded" }
@@ -222,7 +242,7 @@ internal class FarmBlockLedger(plugin: Plugin) {
                         record.originalBlockData.length in 1..512 &&
                         (record.restoreAt == null || record.restoreAt >= 0L)
                 }) { "Fixed farm crop record is invalid" }
-            }
+            }.also { fixedCropCache[cacheKey] = it }
         }.getOrElse { failure ->
             logger.log(
                 Level.SEVERE,
@@ -241,6 +261,8 @@ internal class FarmBlockLedger(plugin: Plugin) {
     }
 
     fun orchardLeafRecords(chunk: Chunk): List<ManagedFarmOrchardLeafRecord> {
+        val cacheKey = chunk.cacheKey()
+        orchardCache[cacheKey]?.let { return it }
         val raw = chunk.persistentDataContainer.get(orchardLeafKey, PersistentDataType.STRING) ?: return emptyList()
         return runCatching {
             require(raw.length <= 2_000_000) { "Farm orchard leaf payload is unbounded" }
@@ -254,7 +276,7 @@ internal class FarmBlockLedger(plugin: Plugin) {
                         (record.x shr 4) == chunk.x && (record.z shr 4) == chunk.z &&
                         record.y in chunk.world.minHeight until chunk.world.maxHeight
                 }) { "Farm orchard leaf record is invalid" }
-            }
+            }.also { orchardCache[cacheKey] = it }
         }.getOrElse { failure ->
             logger.log(
                 Level.SEVERE,
@@ -375,6 +397,8 @@ internal class FarmBlockLedger(plugin: Plugin) {
     }
 
     fun blockRecords(chunk: Chunk): List<ManagedFarmBlockRecord> {
+        val cacheKey = chunk.cacheKey()
+        blockCache[cacheKey]?.let { return it }
         val raw = chunk.persistentDataContainer.get(key, PersistentDataType.STRING) ?: return emptyList()
         return runCatching {
             require(raw.length <= 2_000_000) { "Managed farm block payload is unbounded" }
@@ -391,7 +415,7 @@ internal class FarmBlockLedger(plugin: Plugin) {
                         (record.originalCropData?.length ?: 0) <= 512 &&
                         (record.activeCropData?.length ?: 0) <= 512
                 }) { "Managed farm block record is invalid" }
-            }
+            }.also { blockCache[cacheKey] = it }
         }.getOrElse { failure ->
             logger.log(
                 Level.SEVERE,
@@ -407,6 +431,7 @@ internal class FarmBlockLedger(plugin: Plugin) {
         val container = chunk.persistentDataContainer
         if (records.isEmpty()) container.remove(key)
         else container.set(key, PersistentDataType.STRING, gson.toJson(records))
+        blockCache[chunk.cacheKey()] = records.toList()
     }
 
     private fun writeFixedCrops(chunk: Chunk, records: List<ManagedFarmFixedCropRecord>) {
@@ -414,6 +439,7 @@ internal class FarmBlockLedger(plugin: Plugin) {
         val container = chunk.persistentDataContainer
         if (records.isEmpty()) container.remove(fixedCropKey)
         else container.set(fixedCropKey, PersistentDataType.STRING, gson.toJson(records))
+        fixedCropCache[chunk.cacheKey()] = records.toList()
     }
 
     private fun writeOrchardLeaves(chunk: Chunk, records: List<ManagedFarmOrchardLeafRecord>) {
@@ -421,7 +447,15 @@ internal class FarmBlockLedger(plugin: Plugin) {
         val container = chunk.persistentDataContainer
         if (records.isEmpty()) container.remove(orchardLeafKey)
         else container.set(orchardLeafKey, PersistentDataType.STRING, gson.toJson(records))
+        orchardCache[chunk.cacheKey()] = records.toList()
     }
+
+    private fun Chunk.cacheKey(): String = "${world.uid}:$x:$z"
+
+    private fun <T> boundedChunkCache(): MutableMap<String, List<T>> =
+        object : LinkedHashMap<String, List<T>>(128, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<T>>?): Boolean = size > 512
+        }
 
     private companion object {
         const val MAX_RECORDS_PER_CHUNK = 4_096

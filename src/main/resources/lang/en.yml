@@ -19,6 +19,7 @@ admin-inspect:
   plot: '<dark_gray>Bed</dark_gray> <gray>Zone:</gray> <white><zone></white><newline><dark_gray>Soil:</dark_gray> <gray><soil></gray><newline><dark_gray>Original crop:</dark_gray> <gray><original></gray><newline><dark_gray>Active crop:</dark_gray> <gray><active></gray>'
   tracking: '<dark_gray>Tracking:</dark_gray><newline><tracking>'
   none: '<dark_gray>ArcFarms does not manage this block.</dark_gray>'
+  legend: '<color:#55d98b>Index</color> <dark_gray>·</dark_gray> <color:#ffad42>order field</color> <dark_gray>·</dark_gray> <color:#ff5f6d>damage</color> <dark_gray>·</dark_gray> <color:#9a8cff>special target</color>'
   restore:
     ready: '<green>fruit is present</green>'
     pending: '<gold>in <seconds> sec.</gold>'
@@ -37,7 +38,7 @@ admin:
   help: '<prefix> <gray>Farm controls</gray><newline>  <dark_gray>•</dark_gray> <white>reset-farm communal_farm</white> <gray>— clear the farm and stop new orders</gray><newline>  <dark_gray>•</dark_gray> <white>stop-order-cycle</white><gray> / </gray><white>start-order-cycle communal_farm</white> <gray>— stop or start the cycle</gray><newline>  <dark_gray>•</dark_gray> <white>save-farm-backup communal_farm</white> <gray>— save the entire farm region</gray><newline>  <dark_gray>•</dark_gray> <white>reindex-farm communal_farm</white> <gray>— rescan beds, fruit, and leaves</gray><newline>  <dark_gray>•</dark_gray> <white>event</white><gray>, </gray><white>next</white><gray>, </gray><white>finish</white><gray>, </gray><white>edit</white><gray>, </gray><white>inspect</white><gray>, </gray><white>point</white><gray>, </gray><white>backup</white><gray>, </gray><white>blockreset</white><newline>  <dark_gray>•</dark_gray> <gray>append </gray><white>help</white> <gray>to any command to see its syntax</gray>'
   command-help:
     edit: '<prefix> <white>/arcfarms admin edit</white> <gray>— enables rebuild mode: managed beds may be broken during an order and ArcFarms removes their recovery records.</gray>'
-    inspect: '<prefix> <white>/arcfarms admin inspect</white> <gray>— enables safe inspection: click a block to see its BlockData, recovery records, and current ArcFarms tracking.</gray>'
+    inspect: '<prefix> <white>/arcfarms admin inspect</white> <gray>— enables the particle metadata map; click a block to see its BlockData, recovery records, and current ArcFarms tracking.</gray>'
     blockreset: '<prefix> <white>/arcfarms admin blockreset \<zone></white> <gray>— while the farm is idle, discards its old block map and rebuilds a bounded index of usable beds, melons, pumpkins, and leaves. Status: </gray><white>/arcfarms admin blockreset \<zone> status</white>'
     backup: '<prefix> <white>/arcfarms admin backup zone save</white> <gray>— save the entire configured farm region without a WorldEdit selection.</gray><newline><white>/arcfarms admin backup zone list</white> <gray>— list backups; </gray><white>status</white> <gray>— progress.</gray><newline><white>/arcfarms admin backup zone restore id</white> <gray>— restore a backup. A safety backup of the current blocks is always created first.</gray>'
     points: '<prefix> <white>/arcfarms admin points \<zone></white> <gray>— lists the effective coordinates of every farm point, including configuration values and admin overrides.</gray>'
@@ -658,6 +659,10 @@ care:
     entrance-label: '<color:#d8a56d>Enter the burrow</color><newline><color:#b8c8c0>Right-click</color>'
     lair-label: '<color:#ffc857>Mole den</color><newline><color:#b8c8c0>Right-click</color>'
     exit-label: '<color:#b8c8c0>Return to the surface</color>'
+    distance:
+      far: '<color:#b8c8c0>The den is far away</color>'
+      closer: '<color:#d8a56d>The den is getting closer</color>'
+      very-close: '<color:#ffc857>The den is very close</color>'
   apple_harvest:
     name: '<color:#ff5f6d>Orchard apples</color>'
     instruction: '<color:#f2fff7>Collect any <total> apples from across the orchard</color>'

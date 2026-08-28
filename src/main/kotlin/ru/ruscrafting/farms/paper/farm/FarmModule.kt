@@ -172,6 +172,8 @@ internal class FarmModule(
     }
 
     fun updateAmbient() {
+        worldAdmin.renderInspectViews()
+        moles.updateGuidance()
         registry.snapshot().forEach { runtime ->
             port.guarded("farm_animals:${runtime.settings.id}") {
                 if (!isAdminEditing(runtime)) {

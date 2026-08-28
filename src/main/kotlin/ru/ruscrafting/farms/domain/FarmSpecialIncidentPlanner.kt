@@ -156,7 +156,8 @@ object FarmSpecialIncidentPlanner {
 
     private fun <T> rotate(values: List<T>, salt: Long): List<T> {
         if (values.isEmpty()) return values
-        val offset = java.lang.Math.floorMod((salt xor (salt ushr 32)).toInt(), values.size)
+        val mixed = FarmSpatialSeed.mix(salt, 0x5350454349414cL)
+        val offset = java.lang.Math.floorMod((mixed xor (mixed ushr 32)).toInt(), values.size)
         return values.drop(offset) + values.take(offset)
     }
 

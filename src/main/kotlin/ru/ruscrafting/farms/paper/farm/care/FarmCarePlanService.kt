@@ -14,6 +14,7 @@ import ru.ruscrafting.farms.domain.FarmOrchardPlanner
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
+import ru.ruscrafting.farms.domain.FarmSpatialSeed
 import ru.ruscrafting.farms.paper.ActivityRegion
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockPolicy
@@ -109,7 +110,7 @@ internal class FarmCarePlanService(
             runtime.settings.careTargetsMax,
             patch.size,
         )
-        val salt = runtime.state.sequence * 101L + type.ordinal * 17L
+        val salt = FarmSpatialSeed.mix(runtime.state.sequence, type.ordinal * 17L + 101L)
         fun bedTargets(role: FarmCareRole, amount: Int, required: Int = 1): List<FarmCareTarget> =
             FarmCarePlanner.spread(patch, amount.coerceAtMost(patch.size), salt).mapIndexed { index, plot ->
                 FarmCareTarget(
@@ -264,10 +265,13 @@ internal class FarmCarePlanService(
         val center = areaCenter(patch)?.location() ?: return null
         val candidates = placement.safeGroundCandidates(runtime, listOf(center), runtime.settings.careRadius)
         if (candidates.isNotEmpty()) {
-            val chosen = candidates[Math.floorMod(kind.ordinal * 31 + runtime.state.sequence.toInt(), candidates.size)]
+            val selection = FarmSpatialSeed.mix(runtime.state.sequence, kind.ordinal * 31L)
+            val chosen = candidates[Math.floorMod(selection, candidates.size.toLong()).toInt()]
             return FarmPointPosition(chosen.world, chosen.x, chosen.y, chosen.z)
         }
-        val fallback = FarmCarePlanner.spread(patch, 1, runtime.state.sequence + kind.ordinal).firstOrNull() ?: return null
+        val fallback = FarmCarePlanner.spread(
+            patch, 1, FarmSpatialSeed.mix(runtime.state.sequence, kind.ordinal.toLong()),
+        ).firstOrNull() ?: return null
         return FarmPointPosition(fallback.world, fallback.x + 0.5, fallback.y + 1.0, fallback.z + 0.5)
     }
 

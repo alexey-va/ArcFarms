@@ -434,7 +434,7 @@ manifest targets Paper 1.21.11.
 ./gradlew clean check shadowJar
 ```
 
-The deployable artifact is `build/libs/ArcFarms-0.21.0.jar`.
+The deployable artifact is `build/libs/ArcFarms-0.24.0.jar`.
 
 ## Isolated gameplay QA
 

@@ -44,7 +44,8 @@ internal object FarmGiantCropCandidateSelector {
 
     private fun <T> List<T>.rotate(salt: Long): List<T> {
         if (isEmpty()) return this
-        val offset = java.lang.Math.floorMod((salt xor (salt ushr 32)).toInt(), size)
+        val mixed = FarmSpatialSeed.mix(salt, 0x4749414e54L)
+        val offset = java.lang.Math.floorMod((mixed xor (mixed ushr 32)).toInt(), size)
         return drop(offset) + take(offset)
     }
 

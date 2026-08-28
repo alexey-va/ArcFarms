@@ -3,6 +3,8 @@ package ru.ruscrafting.farms.paper.farm.admin
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.JoinConfiguration
 import org.bukkit.Bukkit
+import org.bukkit.Color
+import org.bukkit.Particle
 import org.bukkit.block.Block
 import org.bukkit.entity.Player
 import org.bukkit.plugin.Plugin
@@ -64,6 +66,7 @@ internal class FarmWorldAdminService(
 ) {
     private val editing = mutableSetOf<UUID>()
     private val inspecting = mutableSetOf<UUID>()
+    private var inspectRenderTick = 0
     private val blockAdmin = FarmBlockAdminController(plugin, registry, fixedCropJournal, locale, debug, port::sendChat)
     private val backupAdmin = FarmBackupAdminController(
         plugin,
@@ -116,6 +119,51 @@ internal class FarmWorldAdminService(
         debug.event("farm_admin_inspect", "player" to player.name, "enabled" to true)
         port.sendActionBar(player, MessageKey.ADMIN_INSPECT_ENABLED)
         return true
+    }
+
+    fun renderInspectViews() {
+        inspectRenderTick++
+        if (inspectRenderTick % 4 != 0) return
+        inspecting.mapNotNull(Bukkit::getPlayer).filter(Player::isOnline).forEach { player ->
+            val runtime = runtimes().firstOrNull { it.region.contains(player.location) } ?: return@forEach
+            val state = runtime.state
+            val damaged = buildSet {
+                addAll(state.droughtPlots)
+                addAll(state.droughtDamagedPlots)
+                state.pestDamagedCrops.mapTo(this) { it.position }
+                state.diseaseDamagedCrops.orEmpty().mapTo(this) { it.position }
+                state.specialDamagedCrops.mapTo(this) { it.position }
+            }
+            val special = state.specialIncident?.plots.orEmpty().toSet()
+            val radiusSquared = INSPECT_RADIUS * INSPECT_RADIUS
+            registry.beds(runtime.settings.id).asSequence()
+                .filter { plot ->
+                    val dx = plot.x + 0.5 - player.location.x
+                    val dz = plot.z + 0.5 - player.location.z
+                    dx * dx + dz * dz <= radiusSquared
+                }
+                .sortedBy { plot ->
+                    val dx = plot.x + 0.5 - player.location.x
+                    val dz = plot.z + 0.5 - player.location.z
+                    dx * dx + dz * dz
+                }
+                .take(MAX_INSPECT_PARTICLES)
+                .forEach { plot ->
+                    val color = when (plot) {
+                        in damaged -> DAMAGE_COLOR
+                        in special -> SPECIAL_COLOR
+                        in state.preparationPatch -> PATCH_COLOR
+                        else -> INDEX_COLOR
+                    }
+                    player.spawnParticle(
+                        Particle.DUST,
+                        org.bukkit.Location(player.world, plot.x + 0.5, plot.y + 1.35, plot.z + 0.5),
+                        1, 0.0, 0.0, 0.0, 0.0,
+                        Particle.DustOptions(color, 0.75f),
+                    )
+                }
+            port.sendActionBar(player, MessageKey.ADMIN_INSPECT_LEGEND)
+        }
     }
 
     fun startBlockReset(player: Player, zoneId: String): Boolean {
@@ -400,4 +448,13 @@ internal class FarmWorldAdminService(
 
     private fun remainingSeconds(deadline: Long, now: Long): Long =
         ceil((deadline - now).coerceAtLeast(0) / 1_000.0).toLong()
+
+    private companion object {
+        const val INSPECT_RADIUS = 28.0
+        const val MAX_INSPECT_PARTICLES = 320
+        val INDEX_COLOR: Color = Color.fromRGB(85, 217, 139)
+        val PATCH_COLOR: Color = Color.fromRGB(255, 173, 66)
+        val DAMAGE_COLOR: Color = Color.fromRGB(255, 95, 109)
+        val SPECIAL_COLOR: Color = Color.fromRGB(154, 140, 255)
+    }
 }

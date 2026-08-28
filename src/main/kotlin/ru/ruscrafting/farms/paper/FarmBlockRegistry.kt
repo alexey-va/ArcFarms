@@ -98,7 +98,7 @@ internal class FarmBlockRegistry(
             .map { FarmPlotPosition(chunk.world.name, it.x, it.y, it.z) }
             .filter { position ->
                 val block = chunk.world.getBlockAt(position.x, position.y, position.z)
-                definition.region.contains(block.location) && FarmBlockPolicy.isSelectableBed(
+                definition.region.contains(block.location) && FarmBlockPolicy.isRecoverableIndexedBed(
                     block.type,
                     block.getRelative(org.bukkit.block.BlockFace.UP).type,
                     definition.crops,

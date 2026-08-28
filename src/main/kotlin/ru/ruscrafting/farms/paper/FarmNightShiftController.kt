@@ -33,6 +33,8 @@ internal data class FarmNightShiftSyncResult(
     val removedPatrols: Int,
 )
 
+private val FARM_LIGHT_REPLACEABLE = setOf(Material.AIR, Material.CAVE_AIR, Material.VOID_AIR, Material.LIGHT)
+
 /** Owns participant time and every ephemeral patrol entity for a night shift. */
 internal class FarmNightShiftController(
     plugin: Plugin,
@@ -53,7 +55,8 @@ internal class FarmNightShiftController(
     private val patrolRouteSteps = mutableMapOf<PatrolKey, Int>()
     private val patrolNextRouteAt = mutableMapOf<PatrolKey, Long>()
     private val patrolLights = mutableMapOf<PatrolKey, LightCell>()
-    private val lightOwners = mutableMapOf<LightCell, MutableSet<PatrolKey>>()
+    private val externalLights = mutableMapOf<String, LightCell>()
+    private val lightOwners = mutableMapOf<LightCell, MutableSet<String>>()
     private val reconciledSequences = mutableMapOf<String, Long>()
     private val zoneKey = NamespacedKey(plugin, "farm_night_patrol_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_night_patrol_sequence")
@@ -176,6 +179,45 @@ internal class FarmNightShiftController(
         playerTimes[player.uniqueId]?.returning = true
     }
 
+    fun syncAmbientTime(
+        ownerId: String,
+        players: Collection<Player>,
+        playerTime: Long,
+        transitionSeconds: Int,
+    ) = syncPlayerTime(ownerId, players, playerTime, transitionSeconds)
+
+    fun clearAmbientTime(ownerId: String) {
+        playerTimes.values.filter { it.zoneId == ownerId }.forEach { it.returning = true }
+    }
+
+    fun updateExternalLight(ownerId: String, entity: Entity, level: Int) {
+        if (!entity.isValid || level <= 0) {
+            releaseExternalLight(ownerId)
+            return
+        }
+        val desired = findLightBlock(entity.location.block) { true }?.let { block ->
+            LightCell(block.world.name, block.x, block.y, block.z)
+        }
+        if (desired == externalLights[ownerId]) {
+            desired?.block()?.let { setLight(it, level) }
+            return
+        }
+        releaseExternalLight(ownerId)
+        desired ?: return
+        val block = desired.block() ?: return
+        val owners = lightOwners.getOrPut(desired, ::linkedSetOf)
+        owners += externalOwner(ownerId)
+        externalLights[ownerId] = desired
+        rememberLight(desired)
+        setLight(block, level)
+    }
+
+    fun releaseExternalLight(ownerId: String) = releaseOwned(externalOwner(ownerId), externalLights.remove(ownerId))
+
+    fun releaseExternalLights(prefix: String) {
+        externalLights.keys.filter { it.startsWith(prefix) }.toList().forEach(::releaseExternalLight)
+    }
+
     fun clearZone(zoneId: String) {
         playerTimes.values.filter { it.zoneId == zoneId }.forEach { it.returning = true }
         clearPatrols(zoneId)
@@ -186,6 +228,7 @@ internal class FarmNightShiftController(
         players.filter { it.uniqueId in playerTimes }.forEach(Player::resetPlayerTime)
         playerTimes.clear()
         patrolLights.keys.toList().forEach(::releaseLight)
+        externalLights.keys.toList().forEach(::releaseExternalLight)
         entityLookup.inAllWorlds().asSequence().filter(::owns).forEach(Entity::remove)
         patrols.clear()
         patrolRouteSteps.clear()
@@ -369,7 +412,7 @@ internal class FarmNightShiftController(
             releaseLight(key)
             return
         }
-        val desired = findLightBlock(patrol.location.block, region)?.let { block ->
+        val desired = findLightBlock(patrol.location.block) { block -> region.contains(block.location) }?.let { block ->
             LightCell(block.world.name, block.x, block.y, block.z)
         }
         if (desired == patrolLights[key]) {
@@ -379,15 +422,15 @@ internal class FarmNightShiftController(
         releaseLight(key)
         desired ?: return
         val block = desired.block() ?: return
-        if (block.type != Material.AIR && block.type != Material.CAVE_AIR && block.type != Material.VOID_AIR && block.type != Material.LIGHT) return
+        if (block.type !in FARM_LIGHT_REPLACEABLE) return
         val owners = lightOwners.getOrPut(desired, ::linkedSetOf)
-        owners += key
+        owners += patrolOwner(key)
         patrolLights[key] = desired
         rememberLight(desired)
         setLight(block, level)
     }
 
-    private fun findLightBlock(origin: Block, region: ActivityRegion): Block? = listOf(
+    private fun findLightBlock(origin: Block, allowed: (Block) -> Boolean): Block? = listOf(
         origin.getRelative(BlockFace.UP),
         origin.getRelative(BlockFace.UP, 2),
         origin.getRelative(BlockFace.NORTH).getRelative(BlockFace.UP),
@@ -395,8 +438,8 @@ internal class FarmNightShiftController(
         origin.getRelative(BlockFace.EAST).getRelative(BlockFace.UP),
         origin.getRelative(BlockFace.WEST).getRelative(BlockFace.UP),
     ).firstOrNull { block ->
-        region.contains(block.location) && block.world.isChunkLoaded(block.x shr 4, block.z shr 4) &&
-            block.type in setOf(Material.AIR, Material.CAVE_AIR, Material.VOID_AIR, Material.LIGHT)
+        allowed(block) && block.world.isChunkLoaded(block.x shr 4, block.z shr 4) &&
+            block.type in FARM_LIGHT_REPLACEABLE
     }
 
     private fun setLight(block: Block, level: Int) {
@@ -408,14 +451,22 @@ internal class FarmNightShiftController(
     }
 
     private fun releaseLight(key: PatrolKey) {
-        val cell = patrolLights.remove(key) ?: return
+        releaseOwned(patrolOwner(key), patrolLights.remove(key))
+    }
+
+    private fun releaseOwned(owner: String, cell: LightCell?) {
+        cell ?: return
         val owners = lightOwners[cell] ?: return
-        owners.remove(key)
+        owners.remove(owner)
         if (owners.isNotEmpty()) return
         lightOwners.remove(cell)
         cell.block()?.takeIf { it.type == Material.LIGHT }?.setType(Material.AIR, false)
         forgetLight(cell)
     }
+
+    private fun patrolOwner(key: PatrolKey): String = "patrol:${key.zoneId}:${key.index}"
+
+    private fun externalOwner(ownerId: String): String = "external:$ownerId"
 
     private fun rememberLight(cell: LightCell) {
         val chunk = cell.chunk() ?: return

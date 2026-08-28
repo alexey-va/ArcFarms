@@ -19,6 +19,7 @@ admin-inspect:
   plot: '<dark_gray>Грядка</dark_gray> <gray>Зона:</gray> <white><zone></white><newline><dark_gray>Почва:</dark_gray> <gray><soil></gray><newline><dark_gray>Исходная культура:</dark_gray> <gray><original></gray><newline><dark_gray>Активная культура:</dark_gray> <gray><active></gray>'
   tracking: '<dark_gray>Контроль:</dark_gray><newline><tracking>'
   none: '<dark_gray>ArcFarms не управляет этим блоком.</dark_gray>'
+  legend: '<color:#55d98b>Индекс</color> <dark_gray>·</dark_gray> <color:#ffad42>поле заказа</color> <dark_gray>·</dark_gray> <color:#ff5f6d>повреждение</color> <dark_gray>·</dark_gray> <color:#9a8cff>особая цель</color>'
   restore:
     ready: '<green>плод на месте</green>'
     pending: '<gold>через <seconds> сек.</gold>'
@@ -37,7 +38,7 @@ admin:
   help: '<prefix> <gray>Управление фермой</gray><newline>  <dark_gray>•</dark_gray> <white>reset-farm communal_farm</white> <gray>— очистить ферму и остановить новые заказы</gray><newline>  <dark_gray>•</dark_gray> <white>stop-order-cycle</white><gray> / </gray><white>start-order-cycle communal_farm</white> <gray>— остановить или запустить цикл</gray><newline>  <dark_gray>•</dark_gray> <white>save-farm-backup communal_farm</white> <gray>— сохранить весь регион фермы</gray><newline>  <dark_gray>•</dark_gray> <white>reindex-farm communal_farm</white> <gray>— заново найти грядки, плоды и листву</gray><newline>  <dark_gray>•</dark_gray> <white>event</white><gray>, </gray><white>next</white><gray>, </gray><white>finish</white><gray>, </gray><white>edit</white><gray>, </gray><white>inspect</white><gray>, </gray><white>point</white><gray>, </gray><white>backup</white><gray>, </gray><white>blockreset</white><newline>  <dark_gray>•</dark_gray> <gray>добавьте </gray><white>help</white> <gray>после любой команды, чтобы увидеть синтаксис</gray>'
   command-help:
     edit: '<prefix> <white>/arcfarms admin edit</white> <gray>— включает режим перестройки: можно ломать управляемые грядки во время заказа, а ArcFarms удалит их записи восстановления.</gray>'
-    inspect: '<prefix> <white>/arcfarms admin inspect</white> <gray>— включает безопасную инспекцию: нажмите на блок, чтобы увидеть BlockData, записи восстановления и текущий контроль ArcFarms.</gray>'
+    inspect: '<prefix> <white>/arcfarms admin inspect</white> <gray>— включает карту метаданных частицами; нажмите на блок, чтобы увидеть BlockData, записи восстановления и текущий контроль ArcFarms.</gray>'
     blockreset: '<prefix> <white>/arcfarms admin blockreset \<зона></white> <gray>— в свободной ферме забывает прежнюю карту блоков и порциями заново индексирует доступные грядки, арбузы, тыквы и листву. Состояние: </gray><white>/arcfarms admin blockreset \<зона> status</white>'
     backup: '<prefix> <white>/arcfarms admin backup zone save</white> <gray>— сохранить весь привязанный регион фермы без WorldEdit-выделения.</gray><newline><white>/arcfarms admin backup zone list</white> <gray>— список копий; </gray><white>status</white> <gray>— прогресс.</gray><newline><white>/arcfarms admin backup zone restore id</white> <gray>— восстановить копию. Перед восстановлением автоматически создаётся страховочная копия текущих блоков.</gray>'
     points: '<prefix> <white>/arcfarms admin points \<зона></white> <gray>— показывает действующие координаты всех точек фермы, включая значения из конфига и админские переопределения.</gray>'
@@ -658,6 +659,10 @@ care:
     entrance-label: '<color:#d8a56d>Спуститься в нору</color><newline><color:#b8c8c0>Нажмите ПКМ</color>'
     lair-label: '<color:#ffc857>Логово кротов</color><newline><color:#b8c8c0>Нажмите ПКМ</color>'
     exit-label: '<color:#b8c8c0>Вернуться на поверхность</color>'
+    distance:
+      far: '<color:#b8c8c0>Логово далеко</color>'
+      closer: '<color:#d8a56d>Логово уже ближе</color>'
+      very-close: '<color:#ffc857>Логово совсем рядом</color>'
   apple_harvest:
     name: '<color:#ff5f6d>Яблоки в саду</color>'
     instruction: '<color:#f2fff7>Соберите любые <total> яблок по всему саду</color>'

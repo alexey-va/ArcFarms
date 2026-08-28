@@ -130,8 +130,8 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().preparationPatchSize shouldBe 100
         settings.farms.single().preparationPatchMaxSize shouldBe 256
         settings.farms.single().fieldCompletionPercent shouldBe 90
-        settings.farms.single().seederPatchSize shouldBe 1_280
-        settings.farms.single().seederPatchMaxSize shouldBe 2_048
+        settings.farms.single().seederPatchSize shouldBe 3_840
+        settings.farms.single().seederPatchMaxSize shouldBe 6_144
         settings.farms.single().seederComponentGap shouldBe 16
         settings.farms.single().seederComponentLimit shouldBe 8
         settings.farms.single().seederWorkingRadius shouldBe 8.0
@@ -187,7 +187,11 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().moleBurrow.blocksPerTick shouldBe 48
         settings.farms.single().moleBurrow.chamberCount shouldBe 3
         settings.farms.single().moleBurrow.moleCount shouldBe 8
-        settings.farms.single().moleBurrow.lairVisual.material shouldBe "RABBIT_HIDE"
+        settings.farms.single().moleBurrow.guidanceCloseDistance shouldBe 6
+        settings.farms.single().moleBurrow.guidanceFarDistance shouldBe 14
+        settings.farms.single().moleBurrow.guidanceIntervalTicks shouldBe 20
+        settings.farms.single().moleBurrow.decorationPercent shouldBe 18
+        settings.farms.single().moleBurrow.lairVisual.material shouldBe "AIR"
         settings.farms.single().proceduralCareFixtures shouldBe true
         settings.farms.single().careAnimalEntities shouldContainExactly listOf("CHICKEN", "SHEEP")
         settings.farms.single().music.enabled shouldBe false
@@ -273,7 +277,19 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().routeDelivery.trailLookaheadPoints shouldBe 28
         settings.farms.single().routeDelivery.trailHeight shouldBe 0.35
         settings.farms.single().routeDelivery.trailParticleSize shouldBe 1.15f
+        settings.farms.single().routeDelivery.horseSpeed shouldBe 0.21
+        settings.farms.single().routeDelivery.cartYOffset shouldBe 0.35
         settings.farms.single().routeDelivery.cartLoadCount shouldBe 4
+        settings.farms.single().routeDelivery.monsterMinCount shouldBe 8
+        settings.farms.single().routeDelivery.monsterMaxCount shouldBe 14
+        settings.farms.single().routeDelivery.monsterWaveMin shouldBe 3
+        settings.farms.single().routeDelivery.monsterWaveMax shouldBe 5
+        settings.farms.single().routeDelivery.monsterMaxAlive shouldBe 8
+        settings.farms.single().routeDelivery.monsterLightLevel shouldBe 15
+        settings.farms.single().routeDelivery.playerTime shouldBe 18_000L
+        settings.farms.single().routeDelivery.timeTransitionSeconds shouldBe 18
+        settings.farms.single().damageSafety.maximumPercent shouldBe 18
+        settings.farms.single().damageSafety.minimumRemaining shouldBe 128
         settings.farms.single().perks.harvestArea.price shouldBe 250L
         settings.farms.single().perks.rewardBoost.durationHours shouldBe 72
         settings.farms.single().perks.rewardBonusPercent shouldBe 25
@@ -309,8 +325,13 @@ class ArcFarmsConfigTest : FunSpec({
             scarecrow.displayYOffset shouldBe 0.0
         }
         classicSettings.farms.single().careVisuals.getValue(FarmCareRole.PEN).customModelData shouldBe 11_864
-        classicSettings.farms.single().moleBurrow.lairVisual.material shouldBe "STICK"
-        classicSettings.farms.single().moleBurrow.lairVisual.customModelData shouldBe 10_053
+        classicSettings.farms.single().moleBurrow.lairVisual.material shouldBe "AIR"
+        classicSettings.farms.single().moleBurrow.lairVisual.customModelData shouldBe 0
+        classicSettings.farms.single().routeDelivery.horseSpeed shouldBe 0.21
+        classicSettings.farms.single().routeDelivery.cartYOffset shouldBe 0.35
+        classicSettings.farms.single().routeDelivery.monsterWaveMin shouldBe 3
+        classicSettings.farms.single().routeDelivery.monsterWaveMax shouldBe 5
+        classicSettings.farms.single().damageSafety.minimumRemaining shouldBe 128
         classicSettings.farms.single().music.enabled shouldBe true
         classicSettings.farms.single().music.sound shouldBe "arc:farm_valley_comes_alive"
         classicSettings.farms.single().music.durationSeconds shouldBe 262
