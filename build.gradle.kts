@@ -4,7 +4,7 @@ plugins {
     jacoco
 }
 group = "ru.ruscrafting"
-version = "0.26.2"
+version = "0.26.3"
 description = "Shared farm, lumbermill, and mine activities for RusCrafting"
 
 val integrationTestSourceSet = sourceSets.create("integrationTest") {
@@ -59,6 +59,11 @@ dependencies {
 }
 
 tasks {
+    withType<Test>().configureEach {
+        // MockK/ByteBuddy must attach inside the forked JVM on JDK 25. Without this,
+        // the external helper can hang and leave an orphan Gradle Test Executor.
+        jvmArgs("-Djdk.attach.allowAttachSelf=true")
+    }
     processResources {
         inputs.property("pluginVersion", project.version)
         filesMatching("plugin.yml") { expand("version" to project.version) }

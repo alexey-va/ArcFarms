@@ -17,15 +17,12 @@ internal data class FarmFoodDeliverySession(
     var brokenDown: Boolean = false,
     var spawnedMonsters: Int = 0,
     val monsterIds: MutableSet<UUID> = linkedSetOf(),
-    val monsterGoal: Int,
-    var lastWaveAt: Long = 0,
+    val pendingAmbushCheckpoints: ArrayDeque<Int> = ArrayDeque(),
     val gunnerTrail: ArrayDeque<Location> = ArrayDeque(),
 ) {
-    /** Opens a real respite window after the last attacker of a wave is defeated. */
-    fun finishWaveIfCleared(now: Long): Boolean {
+    fun finishWaveIfCleared(): Boolean {
         if (!brokenDown || monsterIds.isNotEmpty()) return false
         brokenDown = false
-        lastWaveAt = now
         return true
     }
 }

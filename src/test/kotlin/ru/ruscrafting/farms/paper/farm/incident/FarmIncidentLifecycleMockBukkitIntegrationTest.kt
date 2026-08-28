@@ -38,11 +38,12 @@ import ru.ruscrafting.farms.paper.farm.recovery.FarmFixedCropRecoveryController
 import ru.ruscrafting.farms.paper.farm.scene.FarmContractSceneController
 import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyController
 import ru.ruscrafting.farms.paper.fixtures.FarmIncidentScenarioFixture
+import ru.ruscrafting.farms.paper.fixtures.requiredMockBukkitScenario
 import java.util.concurrent.CompletableFuture
 
 class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
     test("two workers complete crop processing across a persisted controller restart") {
-        FarmIncidentScenarioFixture.open().use { fixture ->
+        requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
             var runtime = fixture.runtime(
                 FarmShiftState(
                     phase = FarmPhase.INCIDENT,
@@ -112,11 +113,11 @@ class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
             runtime.state.contributors.getValue(workers[0].uniqueId) shouldBeGreaterThan 0
             runtime.state.contributors.getValue(workers[1].uniqueId) shouldBeGreaterThan 0
             fixture.world.entities.filter(processing::owns) shouldHaveSize 0
-        }
+        } }
     }
 
     test("real barn fire survives persistence, remains protected, and completes cooperatively") {
-        FarmIncidentScenarioFixture.open().use { fixture ->
+        requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
             var runtime = fixture.runtime(
                 FarmShiftState(
                     phase = FarmPhase.INCIDENT,
@@ -124,6 +125,7 @@ class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
                     placementSequence = 19,
                     orderId = "harvest_festival",
                     incidentType = FarmIncidentType.BARN_FIRE,
+                    incidentCrop = "WHEAT",
                 ),
             )
             var fire = fixture.barnFire()
@@ -179,7 +181,7 @@ class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
             runtime.state.contributors.values.sum() shouldBe allPoints.size
             runtime.state.contributors.getValue(workers[0].uniqueId) shouldBeGreaterThan 0
             runtime.state.contributors.getValue(workers[1].uniqueId) shouldBeGreaterThan 0
-        }
+        } }
     }
 })
 

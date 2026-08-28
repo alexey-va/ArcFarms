@@ -29,9 +29,12 @@ internal data class FarmMoleBurrowJournalRecord(
 internal object FarmMoleBurrowJournalCodec {
     private const val VERSION = 2
     private const val LEGACY_VERSION = 1
-    private const val MAX_RECORDS_PER_CHUNK = 512
+    // A decorated 8-cell production maze legitimately exceeds the old 1,024-record
+    // scene cap. Keep both limits bounded, but size them for the configured 3-D
+    // floor/wall/ceiling envelope rather than the earlier bare-tunnel prototype.
+    private const val MAX_RECORDS_PER_CHUNK = 2_048
     private const val MAX_BLOCK_DATA_LENGTH = 512
-    const val MAX_SCENE_RECORDS = 1_024
+    const val MAX_SCENE_RECORDS = 4_096
     const val MAX_JOURNAL_BYTES = 524_288
     private val ZONE_ID = Regex("[a-z0-9_-]{1,48}")
 

@@ -478,9 +478,10 @@ data class FarmRouteDeliverySettings(
     val trailParticleSize: Float,
     val completionContribution: Int,
     val returnDelaySeconds: Int,
-    val monsterMinCount: Int,
-    val monsterMaxCount: Int,
-    val monsterIntervalSeconds: Int,
+    val ambushDistance: Double,
+    val ambushMaxCount: Int,
+    val ambushAfterFarmDistance: Double,
+    val ambushEndSafeDistance: Double,
     val monsterMaxAlive: Int,
     val monsterSpawnDistance: Double,
     val monsterWaveMin: Int,
@@ -494,7 +495,9 @@ data class FarmRouteDeliverySettings(
     val cartYOffset: Double,
     val cartLoadCount: Int,
     val gunnerSeatYOffset: Double,
-    val rifleItemModel: String,
+    val rifleMaterial: String,
+    val rifleCustomModelData: Int,
+    val rifleItemModel: String?,
     val rifleDamage: Double,
     val rifleRange: Double,
     val rifleCooldownTicks: Int,
@@ -812,12 +815,17 @@ class ArcFarmsConfig private constructor(
                         .checked("route-delivery.completion-contribution", 1, 64),
                     returnDelaySeconds = section.int("route-delivery.return-delay-seconds", 3)
                         .checked("route-delivery.return-delay-seconds", 1, 15),
-                    monsterMinCount = section.int("route-delivery.monsters.min-count", 2)
-                        .checked("route-delivery.monsters.min-count", 0, 16),
-                    monsterMaxCount = section.int("route-delivery.monsters.max-count", 5)
-                        .checked("route-delivery.monsters.max-count", 0, 16),
-                    monsterIntervalSeconds = section.int("route-delivery.monsters.interval-seconds", 10)
-                        .checked("route-delivery.monsters.interval-seconds", 3, 120),
+                    ambushDistance = section.finiteDouble(
+                        "route-delivery.monsters.distance-per-ambush", 120.0, 32.0, 512.0,
+                    ),
+                    ambushMaxCount = section.int("route-delivery.monsters.max-ambushes", 3)
+                        .checked("route-delivery.monsters.max-ambushes", 0, 8),
+                    ambushAfterFarmDistance = section.finiteDouble(
+                        "route-delivery.monsters.after-farm-distance", 20.0, 0.0, 128.0,
+                    ),
+                    ambushEndSafeDistance = section.finiteDouble(
+                        "route-delivery.monsters.end-safe-distance", 20.0, 0.0, 128.0,
+                    ),
                     monsterMaxAlive = section.int("route-delivery.monsters.max-alive", 4)
                         .checked("route-delivery.monsters.max-alive", 0, 16),
                     monsterSpawnDistance = section.finiteDouble("route-delivery.monsters.spawn-distance", 10.0, 4.0, 24.0),
@@ -851,14 +859,15 @@ class ArcFarmsConfig private constructor(
                     cartLoadCount = section.int("route-delivery.cart-load-count", 4)
                         .checked("route-delivery.cart-load-count", 1, 8),
                     gunnerSeatYOffset = section.finiteDouble("route-delivery.gunner.seat-y-offset", 0.75, -1.0, 3.0),
-                    rifleItemModel = section.string(
-                        "route-delivery.gunner.rifle-item-model",
-                        "voxelspawns_megaflintlocks:vs_rifle",
-                    ).trim().also { model ->
-                        require(model.matches(Regex("[a-z0-9._-]+:[a-z0-9/._-]+"))) {
-                            "route-delivery.gunner.rifle-item-model must be a namespaced item model"
-                        }
-                    },
+                    rifleMaterial = materialName(section.string("route-delivery.gunner.material", "CROSSBOW")),
+                    rifleCustomModelData = section.int("route-delivery.gunner.custom-model-data", 2_100_103)
+                        .checked("route-delivery.gunner.custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
+                    rifleItemModel = section.string("route-delivery.gunner.item-model", "").trim().ifEmpty { null }
+                        ?.also { model ->
+                            require(model.matches(Regex("[a-z0-9._-]+:[a-z0-9/._-]+"))) {
+                                "route-delivery.gunner.item-model must be a namespaced item model"
+                            }
+                        },
                     rifleDamage = section.finiteDouble("route-delivery.gunner.damage", 7.0, 1.0, 40.0),
                     rifleRange = section.finiteDouble("route-delivery.gunner.range", 42.0, 8.0, 96.0),
                     rifleCooldownTicks = section.int("route-delivery.gunner.cooldown-ticks", 12)
@@ -869,9 +878,8 @@ class ArcFarmsConfig private constructor(
                     require(it.hardResetDistance > it.corridorRadius) {
                         "farm-zones.$id route hard-reset-distance must exceed corridor-radius"
                     }
-                    require(it.monsterMinCount <= it.monsterMaxCount)
                     require(it.monsterWaveMin <= it.monsterWaveMax)
-                    require(it.monsterMaxAlive == 0 || it.monsterMaxCount > 0)
+                    require(it.monsterMaxAlive == 0 || it.ambushMaxCount > 0)
                 }
                 fun perk(path: String, price: Long, hours: Int) = FarmPerkOfferSettings(
                     price = section.string("perks.$path.price", price.toString()).toLongOrNull()

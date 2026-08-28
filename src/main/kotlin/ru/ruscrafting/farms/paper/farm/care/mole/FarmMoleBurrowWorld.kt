@@ -7,6 +7,7 @@ import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.World
 import org.bukkit.block.Block
+import org.bukkit.block.data.BlockData
 import org.bukkit.block.data.Levelled
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
@@ -109,6 +110,13 @@ internal fun FarmRuntime.ownsMoleBurrowRecord(record: FarmMoleBurrowJournalRecor
 internal class FarmMoleBurrowWorld(
     private val plugin: Plugin,
     private val debug: ArcFarmsDebug,
+    private val addChunkTicket: (Chunk, Plugin) -> Boolean = { chunk, owner ->
+        chunk.addPluginChunkTicket(owner)
+    },
+    private val removeChunkTicket: (Chunk, Plugin) -> Boolean = { chunk, owner ->
+        chunk.removePluginChunkTicket(owner)
+    },
+    private val createBlockData: (String) -> BlockData = Bukkit::createBlockData,
 ) {
     private data class SceneKey(val world: String, val zoneId: String, val sequence: Long, val burrowId: Int)
     private data class RecordKey(val world: String, val x: Int, val y: Int, val z: Int)
@@ -430,7 +438,9 @@ internal class FarmMoleBurrowWorld(
         queuedRestores.clear()
         scenes.clear()
         ticketedChunks.toList().forEach { (worldName, x, z) ->
-            Bukkit.getWorld(worldName)?.takeIf { it.isChunkLoaded(x, z) }?.getChunkAt(x, z)?.removePluginChunkTicket(plugin)
+            Bukkit.getWorld(worldName)?.takeIf { it.isChunkLoaded(x, z) }?.getChunkAt(x, z)?.let { chunk ->
+                removeChunkTicket(chunk, plugin)
+            }
         }
         ticketedChunks.clear()
     }
@@ -563,7 +573,7 @@ internal class FarmMoleBurrowWorld(
     private fun apply(record: FarmMoleBurrowJournalRecord, raw: String): Boolean {
         val world = Bukkit.getWorld(record.world) ?: return false
         if (!world.isChunkLoaded(record.x shr 4, record.z shr 4)) return false
-        val data = runCatching { Bukkit.createBlockData(raw) }.getOrElse { failure ->
+        val data = runCatching { createBlockData(raw) }.getOrElse { failure ->
             logger.log(Level.SEVERE, "Could not decode mole burrow BlockData at ${record.world}:${record.x},${record.y},${record.z}", failure)
             return false
         }
@@ -633,7 +643,7 @@ internal class FarmMoleBurrowWorld(
     private fun ticket(world: World, records: Collection<FarmMoleBurrowJournalRecord>) {
         records.map { Triple(it.world, it.x shr 4, it.z shr 4) }.distinct().forEach { key ->
             if (key !in ticketedChunks && world.isChunkLoaded(key.second, key.third) &&
-                world.getChunkAt(key.second, key.third).addPluginChunkTicket(plugin)
+                addChunkTicket(world.getChunkAt(key.second, key.third), plugin)
             ) ticketedChunks += key
         }
     }
@@ -652,7 +662,7 @@ internal class FarmMoleBurrowWorld(
 
     private fun releaseTicket(chunk: Chunk) {
         val key = Triple(chunk.world.name, chunk.x, chunk.z)
-        if (ticketedChunks.remove(key)) chunk.removePluginChunkTicket(plugin)
+        if (ticketedChunks.remove(key)) removeChunkTicket(chunk, plugin)
     }
 
     private fun enqueue(

@@ -7,6 +7,7 @@ import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.config.ArcFarmsLocale
+import ru.ruscrafting.farms.config.FarmRouteDeliverySettings
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import java.util.UUID
@@ -19,7 +20,7 @@ internal class FarmFoodDeliveryGear(
 ) {
     private val ownerKey = NamespacedKey(plugin, "farm_food_rifle_owner")
 
-    fun give(player: Player, zoneId: String, sequence: Long, itemModel: String): Boolean {
+    fun give(player: Player, zoneId: String, sequence: Long, settings: FarmRouteDeliverySettings): Boolean {
         val owner = Owner(zoneId, sequence, player.uniqueId)
         find(player, owner)?.let { slot ->
             if (slot in HOTBAR) player.inventory.heldItemSlot = slot
@@ -28,19 +29,26 @@ internal class FarmFoodDeliveryGear(
         val slot = HOTBAR.firstOrNull { player.inventory.getItem(it).isEmpty() }
             ?: STORAGE.firstOrNull { player.inventory.getItem(it).isEmpty() }
             ?: return false
-        val rifle = ItemStack(Material.CROSSBOW)
+        val rifle = ItemStack(requireNotNull(Material.matchMaterial(settings.rifleMaterial)))
         rifle.editMeta { meta ->
             meta.displayName(locale.render(MessageKey.FARM_ROUTE_RIFLE_NAME, player))
             meta.lore(listOf(locale.render(MessageKey.FARM_ROUTE_RIFLE_LORE, player)))
             meta.isUnbreakable = true
-            meta.setItemModel(requireNotNull(NamespacedKey.fromString(itemModel)))
+            if (settings.rifleCustomModelData > 0) {
+                @Suppress("DEPRECATION")
+                meta.setCustomModelData(settings.rifleCustomModelData)
+            }
+            settings.rifleItemModel?.let { itemModel ->
+                meta.setItemModel(requireNotNull(NamespacedKey.fromString(itemModel)))
+            }
             meta.persistentDataContainer.set(ownerKey, PersistentDataType.STRING, owner.encoded())
         }
         player.inventory.setItem(slot, rifle)
         if (slot in HOTBAR) player.inventory.heldItemSlot = slot
         debug.event(
             "farm_food_rifle_given", "zone" to zoneId, "sequence" to sequence,
-            "player" to player.name, "slot" to slot, "item_model" to itemModel,
+            "player" to player.name, "slot" to slot, "material" to settings.rifleMaterial,
+            "custom_model_data" to settings.rifleCustomModelData, "item_model" to settings.rifleItemModel,
         )
         return true
     }

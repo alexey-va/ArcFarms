@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper.farm.care.mole
 
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.nulls.shouldBeNull
 import io.mockk.every
@@ -38,7 +39,7 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
 
     test("preview finds a bounded underground maze without mutating the world") {
         val burrow = FarmMoleBurrowSettings(
-            cells = 7,
+            cells = 8,
             minDepth = 10,
             maxDepth = 12,
             tunnelHeight = 3,
@@ -86,7 +87,7 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         val originalSoil = soil.blockData.asString
         val originalCrop = crop.blockData.asString
         val burrow = FarmMoleBurrowSettings(
-            cells = 7,
+            cells = 8,
             minDepth = 10,
             maxDepth = 12,
             tunnelHeight = 3,
@@ -118,6 +119,7 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
 
         val (_, scene) = controller.ensure(runtime, surface)
         val records = requireNotNull(scene).records
+        records.size shouldBeGreaterThan 1_024
         controller.process(records.size) { true } shouldBe records.size
         soil.type shouldBe Material.BARRIER
         crop.type shouldBe Material.AIR
@@ -209,7 +211,7 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
             world.getBlockAt(x, y, z).type = Material.STONE
         }
         val burrow = FarmMoleBurrowSettings(
-            cells = 5,
+            cells = 8,
             maxBurrows = 3,
             minDepth = 10,
             maxDepth = 12,

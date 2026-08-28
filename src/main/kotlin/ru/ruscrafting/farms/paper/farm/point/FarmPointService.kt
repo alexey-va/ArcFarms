@@ -8,6 +8,7 @@ import ru.ruscrafting.farms.domain.FarmLocationOverrides
 import ru.ruscrafting.farms.domain.FarmPlotGeometry
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
+import ru.ruscrafting.farms.domain.FarmProcessingLayout
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.persistence.FarmLocationRepository
 import kotlin.math.cos
@@ -114,6 +115,12 @@ internal class FarmPointService(
             } ?: zone.supplies.tool.toPoint()
             FarmPointKind.PERK_VENDOR -> perkVendorPoint(runtime)
             FarmPointKind.PROCESSING -> resolveBase(runtime, FarmPointKind.RECEIVING)
+            FarmPointKind.PROCESSING_INPUT -> FarmProcessingLayout.create(
+                resolveBase(runtime, FarmPointKind.PROCESSING),
+            ).inputRack
+            FarmPointKind.PROCESSING_OUTPUT -> FarmProcessingLayout.create(
+                resolveBase(runtime, FarmPointKind.PROCESSING),
+            ).outputPallet
         }
     }
 

@@ -18,13 +18,17 @@ data class FarmProcessingLayout(
         const val WIDTH = 9
         const val DEPTH = 5
 
-        fun create(anchor: FarmPointPosition): FarmProcessingLayout {
+        fun create(
+            anchor: FarmPointPosition,
+            inputRackOverride: FarmPointPosition? = null,
+            outputPalletOverride: FarmPointPosition? = null,
+        ): FarmProcessingLayout {
             val machine = offset(anchor, 0.0, 0.0, 0.0)
             val wheel = offset(anchor, 0.0, 0.55, 1.15)
-            val inputRack = offset(anchor, -3.0, 0.0, 0.35)
+            val inputRack = inputRackOverride ?: offset(anchor, -3.0, 0.0, 0.35)
             val inputDrop = offset(anchor, -1.15, 0.45, 0.7)
             val outputChute = offset(anchor, 1.35, 0.25, 0.7)
-            val outputPallet = offset(anchor, 3.0, 0.0, 0.25)
+            val outputPallet = outputPalletOverride ?: offset(anchor, 3.0, 0.0, 0.25)
             return FarmProcessingLayout(
                 anchor = anchor,
                 machine = machine,

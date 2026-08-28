@@ -24,21 +24,29 @@ import ru.ruscrafting.farms.config.CuboidBounds
 import ru.ruscrafting.farms.config.FarmZoneSettings
 import ru.ruscrafting.farms.domain.ArcFarmsState
 import ru.ruscrafting.farms.domain.EngineResult
+import ru.ruscrafting.farms.domain.FarmDeliveryRoute
+import ru.ruscrafting.farms.domain.FarmOrder
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmProcessingLayout
+import ru.ruscrafting.farms.domain.FarmRouteKeys
+import ru.ruscrafting.farms.domain.FarmRouteState
 import ru.ruscrafting.farms.domain.FarmRules
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.CuboidActivityRegion
+import ru.ruscrafting.farms.paper.FarmNightShiftController
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
+import ru.ruscrafting.farms.paper.farm.admin.FarmRouteAdminService
 import ru.ruscrafting.farms.paper.farm.incident.fire.FarmBarnFireIncident
 import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingIncident
 import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingSceneRole
+import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
 import ru.ruscrafting.farms.persistence.ArcFarmsStateRepository
+import ru.ruscrafting.farms.persistence.FarmRouteRepository
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
@@ -56,10 +64,17 @@ internal class FarmIncidentScenarioFixture private constructor(
     val barnPoint: FarmPointPosition,
     private val fixtureRoot: Path,
     private val stateRoot: Path,
+    private val routeRepository: FarmRouteRepository,
+    private val delayedTasks: MutableList<DelayedTask>,
 ) : AutoCloseable {
     data class AppliedTransition(
         val actor: Player?,
         val result: EngineResult<FarmShiftState>,
+    )
+
+    data class DelayedTask(
+        val delayTicks: Long,
+        val task: () -> Unit,
     )
 
     val transitions = mutableListOf<AppliedTransition>()
@@ -71,14 +86,28 @@ internal class FarmIncidentScenarioFixture private constructor(
         if (result.accepted) runtime.state = result.state
     }
 
-    fun runtime(state: FarmShiftState): FarmRuntime = FarmRuntime(
-        settings = zone,
-        region = CuboidActivityRegion(world, "scenario_farm", CuboidBounds(0, 0, 0, 63, 128, 63)),
-        orders = emptyMap(),
-        orderList = emptyList(),
-        rules = FarmRules(listOf(50), 1, 1_000L),
-        state = state,
-    )
+    fun runtime(state: FarmShiftState): FarmRuntime {
+        val orders = zone.orders.map { configured ->
+            FarmOrder(
+                id = configured.id,
+                required = configured.required,
+                rarity = configured.rarity,
+                careTypes = configured.careTypes,
+                incidentTypes = configured.incidentTypes,
+                customerType = configured.customerType,
+                cartLoadMaterial = configured.cartLoadMaterial,
+                cartLoadCustomModelData = configured.cartLoadCustomModelData,
+            )
+        }
+        return FarmRuntime(
+            settings = zone,
+            region = CuboidActivityRegion(world, "scenario_farm", CuboidBounds(0, 0, 0, 63, 128, 63)),
+            orders = orders.associateBy(FarmOrder::id),
+            orderList = orders,
+            rules = FarmRules(listOf(50), 1, 1_000L),
+            state = state,
+        )
+    }
 
     fun processing(): FarmProcessingIncident = FarmProcessingIncident(
         plugin = plugin,
@@ -90,6 +119,11 @@ internal class FarmIncidentScenarioFixture private constructor(
             if (zoneId == zone.id && kind == FarmPointKind.PROCESSING) processingPoint else null
         },
         transitions = transitionSink,
+        blockPassable = { it.type.isAir },
+        configureTextDisplay = { entity, text, viewRange ->
+            entity.text(text)
+            entity.viewRange = viewRange
+        },
     )
 
     fun barnFire(): FarmBarnFireIncident = FarmBarnFireIncident(
@@ -102,7 +136,48 @@ internal class FarmIncidentScenarioFixture private constructor(
             barnPoint
         },
         transitions = transitionSink,
+        blockPassable = { it.type.isAir },
     )
+
+    fun foodDelivery(runtime: FarmRuntime, points: List<FarmPointPosition>): FarmFoodDeliveryIncident {
+        routeRepository.saveBlocking(
+            FarmRouteState(
+                routes = mapOf(FarmRouteKeys.encode(zone.id, FarmRouteKeys.DEFAULT_NAME) to FarmDeliveryRoute(points)),
+            ),
+        )
+        val routes = FarmRouteAdminService(
+            repository = routeRepository,
+            debug = ArcFarmsDebug({ false }) {},
+            port = port,
+            runtimes = { listOf(runtime) },
+        )
+        return FarmFoodDeliveryIncident(
+            plugin = plugin,
+            settings = { settings },
+            locale = locale,
+            debug = ArcFarmsDebug({ false }) {},
+            port = port,
+            routes = routes,
+            transitions = transitionSink,
+            random = java.util.Random(7),
+            night = FarmNightShiftController(plugin),
+            surfacePassable = { it.type.isAir },
+            surfaceSpawn = { location ->
+                location.world.getHighestBlockYAt(location.blockX, location.blockZ) <= location.blockY
+            },
+            setRemoveWhenFarAway = { _, _ -> },
+            ejectPassengers = { entity ->
+                val passengers = entity.passengers.toList()
+                passengers.forEach { it.leaveVehicle() }
+                passengers.isNotEmpty()
+            },
+        )
+    }
+
+    fun runDelayedTasks(): List<Long> = delayedTasks.toList().also {
+        delayedTasks.clear()
+        it.forEach { delayed -> delayed.task() }
+    }.map(DelayedTask::delayTicks)
 
     fun persistAndReload(runtime: FarmRuntime): FarmRuntime {
         ArcFarmsStateRepository(stateRoot).use { repository ->
@@ -181,9 +256,13 @@ internal class FarmIncidentScenarioFixture private constructor(
 
     override fun close() {
         try {
-            paper.close()
+            routeRepository.close()
         } finally {
-            fixtureRoot.toFile().deleteRecursively()
+            try {
+                paper.close()
+            } finally {
+                fixtureRoot.toFile().deleteRecursively()
+            }
         }
     }
 
@@ -207,9 +286,18 @@ internal class FarmIncidentScenarioFixture private constructor(
             val settings = ArcFarmsConfig.inspect(resourceRoot)
             val zone = settings.farms.single { it.id == "communal_farm" }
             val port = mockk<WorksiteRuntimePort>(relaxed = true)
+            val delayedTasks = mutableListOf<DelayedTask>()
             every { port.hasAccess(any(), any()) } returns true
             every { port.allowInteraction(any(), any()) } returns true
+            every { port.players(any()) } answers { paper.server.onlinePlayers.toList() }
+            every { port.isAdminEditing(any()) } returns false
             every { port.persistAsync() } returns CompletableFuture.completedFuture(Unit)
+            every { port.runLater(any(), any()) } answers {
+                delayedTasks += DelayedTask(firstArg(), secondArg())
+                true
+            }
+
+            val routeRepository = FarmRouteRepository(fixtureRoot.resolve("routes"))
 
             return FarmIncidentScenarioFixture(
                 paper = paper,
@@ -223,6 +311,8 @@ internal class FarmIncidentScenarioFixture private constructor(
                 barnPoint = FarmPointPosition(world.name, 46.5, 65.0, 46.5, 0f, 0f),
                 fixtureRoot = fixtureRoot,
                 stateRoot = fixtureRoot.resolve("state"),
+                routeRepository = routeRepository,
+                delayedTasks = delayedTasks,
             )
         }
 

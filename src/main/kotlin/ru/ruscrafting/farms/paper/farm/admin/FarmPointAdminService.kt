@@ -37,6 +37,10 @@ internal class FarmPointAdminService(
             val configured = pointService.configured(runtime.settings.id, kind)
             val resolved = configured ?: when (kind) {
                 FarmPointKind.PROCESSING -> null
+                FarmPointKind.PROCESSING_INPUT,
+                FarmPointKind.PROCESSING_OUTPUT,
+                -> pointService.configured(runtime.settings.id, FarmPointKind.PROCESSING)
+                    ?.let { points.resolve(runtime, kind) }
                 FarmPointKind.HIVE,
                 FarmPointKind.IRRIGATION,
                 FarmPointKind.COVERS,
@@ -75,7 +79,7 @@ internal class FarmPointAdminService(
             player.location.yaw,
             player.location.pitch,
         )
-        if (kind == FarmPointKind.PROCESSING) {
+        if (kind in PROCESSING_POINTS) {
             processing.validate(runtime, position)?.let { failure ->
                 port.sendChat(
                     player,
@@ -106,7 +110,7 @@ internal class FarmPointAdminService(
                 "zone" to locale.text(zoneId),
             ),
         )
-        if (kind == FarmPointKind.PROCESSING) {
+        if (kind in PROCESSING_POINTS) {
             processing.preview(runtime, player)
             port.sendChat(player, MessageKey.ADMIN_POINT_PROCESSING_SAVED)
         }
@@ -158,4 +162,12 @@ internal class FarmPointAdminService(
             port.sendChat(player, MessageKey.ADMIN_ZONE_UNKNOWN, mapOf("zone" to locale.text(zoneId)))
             null
         }
+
+    private companion object {
+        val PROCESSING_POINTS = setOf(
+            FarmPointKind.PROCESSING,
+            FarmPointKind.PROCESSING_INPUT,
+            FarmPointKind.PROCESSING_OUTPUT,
+        )
+    }
 }

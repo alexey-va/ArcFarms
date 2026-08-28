@@ -66,11 +66,22 @@ internal data class FarmProcessingSceneSpec(
     val objects: List<FarmProcessingSceneObject>,
 )
 
+internal fun configureProcessingTextDisplay(entity: TextDisplay, text: Component, viewRange: Float) {
+    entity.text(text)
+    entity.billboard = Display.Billboard.VERTICAL
+    entity.alignment = TextDisplay.TextAlignment.CENTER
+    entity.isShadowed = true
+    entity.backgroundColor = Color.fromARGB(0, 0, 0, 0)
+    entity.lineWidth = 180
+    entity.viewRange = viewRange
+}
+
 /** Reconstructible, non-persistent display scene with bounded creation per tick. */
 internal class FarmProcessingScene(
     plugin: Plugin,
     private val debug: ArcFarmsDebug,
     private val entityLookup: FarmEntityLookup = BukkitFarmEntityLookup,
+    private val configureTextDisplay: (TextDisplay, Component, Float) -> Unit = ::configureProcessingTextDisplay,
 ) {
     private val zoneKey = NamespacedKey(plugin, "farm_processing_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_processing_sequence")
@@ -222,13 +233,7 @@ internal class FarmProcessingScene(
                 entity.isResponsive = true
             }
             is TextDisplay -> {
-                entity.text(requireNotNull(target.text))
-                entity.billboard = Display.Billboard.VERTICAL
-                entity.alignment = TextDisplay.TextAlignment.CENTER
-                entity.isShadowed = true
-                entity.backgroundColor = Color.fromARGB(0, 0, 0, 0)
-                entity.lineWidth = 180
-                entity.viewRange = spec.viewRange
+                configureTextDisplay(entity, requireNotNull(target.text), spec.viewRange)
             }
         }
     }

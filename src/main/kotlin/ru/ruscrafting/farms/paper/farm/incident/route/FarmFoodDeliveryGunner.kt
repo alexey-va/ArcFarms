@@ -56,7 +56,7 @@ internal class FarmFoodDeliveryGunner(
             return true
         }
         val config = runtime.settings.routeDelivery
-        if (!gear.give(player, runtime.settings.id, session.sequence, config.rifleItemModel)) {
+        if (!gear.give(player, runtime.settings.id, session.sequence, config)) {
             port.sendActionBar(player, MessageKey.FARM_ROUTE_GUNNER_INVENTORY_FULL)
             return true
         }
@@ -87,7 +87,7 @@ internal class FarmFoodDeliveryGunner(
                 mounted,
                 runtime.settings.id,
                 session.sequence,
-                runtime.settings.routeDelivery.rifleItemModel,
+                runtime.settings.routeDelivery,
             )
         ) {
             seat.eject()
@@ -152,6 +152,23 @@ internal class FarmFoodDeliveryGunner(
                     ),
                     0.8f,
                 ),
+            )
+        }
+    }
+
+    /** Keeps the gunner mounted while the synthetic cart seat follows the moving horse. */
+    fun moveSeat(
+        runtime: FarmRuntime,
+        session: FarmFoodDeliverySession,
+        seat: Interaction,
+        destination: Location,
+    ) {
+        val passenger = seat.passengers.filterIsInstance<Player>().firstOrNull()
+        if (!seat.teleport(destination) || passenger == null || passenger.vehicle === seat) return
+        if (!passenger.isOnline || !seat.addPassenger(passenger)) {
+            debug.event(
+                "farm_food_gunner_remount_failed", "zone" to runtime.settings.id,
+                "sequence" to session.sequence, "player" to passenger.name,
             )
         }
     }

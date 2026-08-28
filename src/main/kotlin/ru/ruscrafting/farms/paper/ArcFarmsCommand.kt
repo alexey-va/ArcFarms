@@ -585,12 +585,21 @@ class ArcFarmsCommand(
         "scarecrows" -> FarmPointKind.SCARECROWS
         "barn", "pen" -> FarmPointKind.PEN
         "perk-vendor", "vendor" -> FarmPointKind.PERK_VENDOR
-        "processing", "workshop" -> FarmPointKind.PROCESSING
+        "processing", "processing-machine", "workshop" -> FarmPointKind.PROCESSING
+        "processing-input", "processing-raw" -> FarmPointKind.PROCESSING_INPUT
+        "processing-output", "processing-product" -> FarmPointKind.PROCESSING_OUTPUT
         "fire-equipment", "fire-hose", "extinguisher" -> FarmPointKind.FIRE_EQUIPMENT
         else -> null
     }
 
-    private fun pointArgument(kind: FarmPointKind): String = if (kind == FarmPointKind.PEN) "barn" else kind.name.lowercase()
+    private fun pointArgument(kind: FarmPointKind): String = when (kind) {
+        FarmPointKind.PEN -> "barn"
+        FarmPointKind.PERK_VENDOR -> "perk-vendor"
+        FarmPointKind.FIRE_EQUIPMENT -> "fire-equipment"
+        FarmPointKind.PROCESSING_INPUT -> "processing-input"
+        FarmPointKind.PROCESSING_OUTPUT -> "processing-output"
+        else -> kind.name.lowercase()
+    }
 
     private fun List<String>.requestsHelp(): Boolean = drop(1).any { it.equals("help", ignoreCase = true) }
 
@@ -630,7 +639,8 @@ class ArcFarmsCommand(
             EVENT_STAGES + listOf("delivery", "complete", "reset")
         private val POINT_ARGUMENTS = listOf(
             "tool", "seeds", "water", "crates", "receiving", "cart", "customer", "travel", "hive", "irrigation",
-            "covers", "scarecrows", "barn", "archery", "perk-vendor", "processing", "fire-equipment",
+            "covers", "scarecrows", "barn", "archery", "perk-vendor", "processing", "processing-input",
+            "processing-output", "fire-equipment",
         )
         private val ADMIN_SHORTCUTS = listOf(
             "reset-farm",

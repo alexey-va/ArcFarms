@@ -317,7 +317,9 @@ internal class FarmModule(
             FarmPointKind.HIVE, FarmPointKind.IRRIGATION, FarmPointKind.COVERS,
             FarmPointKind.SCARECROWS, FarmPointKind.PEN -> care.refreshPoint(runtime, kind, reason)
             FarmPointKind.PERK_VENDOR -> perks.refresh(runtime, reason)
-            FarmPointKind.PROCESSING -> processing.refresh(runtime, reason)
+            FarmPointKind.PROCESSING, FarmPointKind.PROCESSING_INPUT,
+            FarmPointKind.PROCESSING_OUTPUT,
+            -> processing.refresh(runtime, reason)
             FarmPointKind.TRAVEL -> Unit
         }
     }

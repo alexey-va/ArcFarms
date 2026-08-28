@@ -297,14 +297,18 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().routeDelivery.horseSpeed shouldBe 0.17
         settings.farms.single().routeDelivery.cartYOffset shouldBe 0.35
         settings.farms.single().routeDelivery.cartLoadCount shouldBe 4
-        settings.farms.single().routeDelivery.monsterMinCount shouldBe 8
-        settings.farms.single().routeDelivery.monsterMaxCount shouldBe 14
+        settings.farms.single().routeDelivery.ambushDistance shouldBe 120.0
+        settings.farms.single().routeDelivery.ambushMaxCount shouldBe 3
+        settings.farms.single().routeDelivery.ambushAfterFarmDistance shouldBe 20.0
+        settings.farms.single().routeDelivery.ambushEndSafeDistance shouldBe 20.0
         settings.farms.single().routeDelivery.monsterWaveMin shouldBe 3
         settings.farms.single().routeDelivery.monsterWaveMax shouldBe 5
         settings.farms.single().routeDelivery.monsterMaxAlive shouldBe 8
         settings.farms.single().routeDelivery.monsterTypes shouldBe listOf("HUSK", "ZOMBIE", "SKELETON", "SPIDER", "PHANTOM")
         settings.farms.single().routeDelivery.monsterLightLevel shouldBe 15
-        settings.farms.single().routeDelivery.rifleItemModel shouldBe "voxelspawns_megaflintlocks:vs_rifle"
+        settings.farms.single().routeDelivery.rifleMaterial shouldBe "CROSSBOW"
+        settings.farms.single().routeDelivery.rifleCustomModelData shouldBe 2_100_103
+        settings.farms.single().routeDelivery.rifleItemModel shouldBe null
         settings.farms.single().routeDelivery.rifleDamage shouldBe 7.0
         settings.farms.single().routeDelivery.rifleRange shouldBe 42.0
         settings.farms.single().routeDelivery.playerTime shouldBe 18_000L

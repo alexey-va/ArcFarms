@@ -273,9 +273,12 @@ farm-zones:
       cart-y-offset: 0.35
       cart-load-count: 4
       monsters:
-        min-count: 8
-        max-count: 14
-        interval-seconds: 12
+        # Ambushes are planned from route length, not a timer while the cart is moving.
+        distance-per-ambush: 120.0
+        max-ambushes: 3
+        # Never attack inside the farm; leave this much road after its boundary too.
+        after-farm-distance: 20.0
+        end-safe-distance: 20.0
         max-alive: 8
         spawn-distance: 10.0
         wave-min: 3
@@ -285,7 +288,10 @@ farm-zones:
         light-level: 15
       gunner:
         seat-y-offset: 0.75
-        rifle-item-model: voxelspawns_megaflintlocks:vs_rifle
+        # voxelspawns_megaflintlocks:vs_rifle_double from the live ItemsAdder pack.
+        material: CROSSBOW
+        custom-model-data: 2100103
+        item-model: ''
         damage: 7.0
         range: 42.0
         cooldown-ticks: 12

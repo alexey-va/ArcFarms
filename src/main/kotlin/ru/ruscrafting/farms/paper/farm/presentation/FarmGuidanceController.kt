@@ -460,6 +460,8 @@ internal class FarmGuidanceController(
             FarmPointKind.PEN to SUCCESS_COLOR,
             FarmPointKind.PERK_VENDOR to AMBER_COLOR,
             FarmPointKind.PROCESSING to AMBER_COLOR,
+            FarmPointKind.PROCESSING_INPUT to Color.fromRGB(91, 184, 255),
+            FarmPointKind.PROCESSING_OUTPUT to SUCCESS_COLOR,
             FarmPointKind.FIRE_EQUIPMENT to WATER_COLOR,
         )
     }

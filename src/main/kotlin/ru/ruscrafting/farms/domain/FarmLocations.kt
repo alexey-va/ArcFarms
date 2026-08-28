@@ -17,6 +17,8 @@ enum class FarmPointKind {
     PEN,
     PERK_VENDOR,
     PROCESSING,
+    PROCESSING_INPUT,
+    PROCESSING_OUTPUT,
     FIRE_EQUIPMENT,
 }
 

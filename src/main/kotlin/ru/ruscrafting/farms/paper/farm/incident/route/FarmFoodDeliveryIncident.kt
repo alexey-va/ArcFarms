@@ -8,10 +8,12 @@ import org.bukkit.NamespacedKey
 import org.bukkit.Particle
 import org.bukkit.Sound
 import org.bukkit.attribute.Attribute
+import org.bukkit.block.Block
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Horse
 import org.bukkit.entity.Interaction
 import org.bukkit.entity.ItemDisplay
+import org.bukkit.entity.LivingEntity
 import org.bukkit.entity.Player
 import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.EntityDamageByEntityEvent
@@ -59,12 +61,20 @@ internal class FarmFoodDeliveryIncident(
     private val transitions: FarmTransitionSink,
     private val random: RandomGenerator,
     private val night: FarmNightShiftController,
+    private val surfacePassable: (Block) -> Boolean = { it.isPassable },
+    private val surfaceSpawn: (Location) -> Boolean = FarmSurfacePolicy::isSurfaceSpawn,
+    private val setRemoveWhenFarAway: (LivingEntity, Boolean) -> Unit = { entity, value ->
+        entity.removeWhenFarAway = value
+    },
+    private val ejectPassengers: (Entity) -> Boolean = { it.eject() },
 ) {
     private val zoneKey = NamespacedKey(plugin, "farm_food_route_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_food_route_sequence")
     private val roleKey = NamespacedKey(plugin, "farm_food_route_role")
     private val gunner = FarmFoodDeliveryGunner(plugin, locale, settings, debug, port)
-    private val ambush = FarmFoodDeliveryAmbush(random, night, port, debug)
+    private val ambush = FarmFoodDeliveryAmbush(
+        random, night, port, debug, setRemoveWhenFarAway,
+    ) { horse -> ejectPassengers(horse) }
     private val sessions = mutableMapOf<String, FarmFoodDeliverySession>()
 
     fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING)
@@ -106,7 +116,7 @@ internal class FarmFoodDeliveryIncident(
         return runtime.state.specialIncident != null
     }
 
-    fun ensure(runtime: FarmRuntime, now: Long) {
+    fun ensure(runtime: FarmRuntime, @Suppress("UNUSED_PARAMETER") now: Long) {
         if (!active(runtime)) {
             if (runtime.settings.id in sessions) clear(runtime.settings.id, "inactive")
             return
@@ -128,9 +138,20 @@ internal class FarmFoodDeliveryIncident(
             ?: FarmFoodDeliverySession(
                 sequence = runtime.state.sequence,
                 routeName = selected.name,
-                monsterGoal = random.nextInt(
-                    runtime.settings.routeDelivery.monsterMinCount,
-                    runtime.settings.routeDelivery.monsterMaxCount + 1,
+                pendingAmbushCheckpoints = java.util.ArrayDeque(
+                    route.points.indexOfFirst { point -> !runtime.region.contains(location(point)) }
+                        .takeIf { it >= 0 }
+                        ?.let { farmExitIndex ->
+                            FarmFoodDeliveryAmbushPlanner.checkpoints(
+                                route.points,
+                                runtime.settings.routeDelivery.ambushDistance,
+                                runtime.settings.routeDelivery.ambushMaxCount,
+                                FarmFoodDeliveryAmbushPlanner.distanceAt(route.points, farmExitIndex) +
+                                    runtime.settings.routeDelivery.ambushAfterFarmDistance,
+                                runtime.settings.routeDelivery.ambushEndSafeDistance,
+                            )
+                        }.orEmpty()
+                        .filter { checkpoint -> checkpoint > runtime.state.incidentProgress },
                 ),
             ).also { sessions[runtime.settings.id] = it }
         val horse = session.horseId?.let(Bukkit::getEntity) as? Horse
@@ -170,7 +191,7 @@ internal class FarmFoodDeliveryIncident(
         )
         updateProgress(runtime, activeHorse, session, route.points)
         if (!active(runtime)) return
-        updateMonsters(runtime, activeHorse, session, route.points, now)
+        updateMonsters(runtime, activeHorse, session, route.points)
     }
 
     fun updateVisuals(runtimes: Collection<FarmRuntime>) {
@@ -189,7 +210,7 @@ internal class FarmFoodDeliveryIncident(
             behind.yaw = horse.location.yaw
             cart.teleport(behind)
             val seatLocation = behind.clone().add(0.0, runtime.settings.routeDelivery.gunnerSeatYOffset, 0.0)
-            gunnerSeat.teleport(seatLocation)
+            gunner.moveSeat(runtime, session, gunnerSeat, seatLocation)
             session.loadIds.forEachIndexed { slot, id ->
                 (Bukkit.getEntity(id) as? ItemDisplay)?.teleport(loadLocation(behind, slot, runtime.settings.contractCartVisual.loadYOffset))
             }
@@ -336,7 +357,12 @@ internal class FarmFoodDeliveryIncident(
             port.sendActionBar(rider, MessageKey.FARM_ROUTE_CORRIDOR)
             return
         }
-        val reached = maxOf(currentIndex, FarmRouteGeometry.reachedPoint(projection, points.size))
+        val projected = maxOf(currentIndex, FarmRouteGeometry.reachedPoint(projection, points.size))
+        // A fast cart may cross several sampled points between updates. Never let
+        // it skip a planned roadside ambush or finish the route past one.
+        val reached = session.pendingAmbushCheckpoints.firstOrNull()
+            ?.let { checkpoint -> minOf(projected, checkpoint) }
+            ?: projected
         if (reached <= currentIndex) return
         val result = FarmShiftEngine.advanceFoodDelivery(
             runtime.state,
@@ -390,8 +416,8 @@ internal class FarmFoodDeliveryIncident(
             horse.passengers.filterIsInstance<Player>().firstOrNull(),
             session.gunnerId?.let(Bukkit::getPlayer),
         ).distinctBy(Player::getUniqueId)
-        horse.eject()
-        (session.gunnerSeatId?.let(Bukkit::getEntity) as? Interaction)?.eject()
+        ejectPassengers(horse)
+        (session.gunnerSeatId?.let(Bukkit::getEntity) as? Interaction)?.let(ejectPassengers)
         val destination = safeSurface(location(routeStart)) ?: location(routeStart)
         participants.forEach { player ->
             player.fallDistance = 0f
@@ -422,14 +448,12 @@ internal class FarmFoodDeliveryIncident(
         horse: Horse,
         session: FarmFoodDeliverySession,
         points: List<FarmPointPosition>,
-        now: Long,
     ) {
         ambush.update(
             runtime = runtime,
             horse = horse,
             session = session,
             points = points,
-            now = now,
             location = ::location,
             safeSurface = ::safeSurface,
             mark = { monster -> mark(monster, runtime, ROLE_MONSTER) },
@@ -439,7 +463,7 @@ internal class FarmFoodDeliveryIncident(
     private fun spawnHorse(runtime: FarmRuntime, location: Location): Horse =
         runtime.region.world.spawn(location, Horse::class.java) { horse ->
             horse.isPersistent = false
-            horse.removeWhenFarAway = false
+            setRemoveWhenFarAway(horse, false)
             horse.isTamed = true
             horse.owner = null
             horse.inventory.saddle = ItemStack(Material.SADDLE)
@@ -577,8 +601,8 @@ internal class FarmFoodDeliveryIncident(
                 val head = feet.getRelative(0, 1, 0)
                 val candidate = Location(world, near.blockX + 0.5, y.toDouble(), near.blockZ + 0.5)
                 if (
-                    feet.isPassable && head.isPassable && feet.getRelative(0, -1, 0).type.isSolid &&
-                    FarmSurfacePolicy.isSurfaceSpawn(candidate)
+                    surfacePassable(feet) && surfacePassable(head) && feet.getRelative(0, -1, 0).type.isSolid &&
+                    surfaceSpawn(candidate)
                 ) {
                     return candidate
                 }

@@ -7,6 +7,7 @@ import org.bukkit.Sound
 import org.bukkit.attribute.Attribute
 import org.bukkit.entity.EntityType
 import org.bukkit.entity.Horse
+import org.bukkit.entity.LivingEntity
 import org.bukkit.entity.Mob
 import org.bukkit.entity.Phantom
 import org.bukkit.entity.Player
@@ -29,13 +30,14 @@ internal class FarmFoodDeliveryAmbush(
     private val night: FarmNightShiftController,
     private val port: WorksiteRuntimePort,
     private val debug: ArcFarmsDebug,
+    private val setRemoveWhenFarAway: (LivingEntity, Boolean) -> Unit,
+    private val ejectPassengers: (Horse) -> Boolean,
 ) {
     fun update(
         runtime: FarmRuntime,
         horse: Horse,
         session: FarmFoodDeliverySession,
         points: List<FarmPointPosition>,
-        now: Long,
         location: (FarmPointPosition) -> Location,
         safeSurface: (Location) -> Location?,
         mark: (Mob) -> Unit,
@@ -49,35 +51,39 @@ internal class FarmFoodDeliveryAmbush(
         }
         if (session.brokenDown) {
             if (session.monsterIds.isNotEmpty()) return
-            if (!session.finishWaveIfCleared(now)) return
+            if (!session.finishWaveIfCleared()) return
             players(session).forEach { player ->
                 port.sendActionBar(player, MessageKey.FARM_ROUTE_REPAIRED)
                 player.playSound(player.location, Sound.BLOCK_ANVIL_USE, 0.65f, 1.35f)
             }
             debug.event("farm_food_cart_repaired", "zone" to runtime.settings.id, "sequence" to session.sequence)
-            // The interval is a respite after clearing a wave, not a timer that
-            // expires while players are still fighting the previous one.
             return
         }
         val rider = horse.passengers.filterIsInstance<Player>().firstOrNull() ?: return
         session.riderId = rider.uniqueId
-        if (session.spawnedMonsters >= session.monsterGoal || config.monsterMaxAlive == 0) return
+        if (config.monsterMaxAlive == 0) return
+        val checkpoint = session.pendingAmbushCheckpoints.firstOrNull() ?: return
+        if (runtime.state.incidentProgress < checkpoint) return
+        // The recorded route may start deep inside a large farm. The farm itself
+        // is always a safe zone even if configuration or sparse samples drift.
+        if (runtime.region.contains(horse.location)) return
         val alive = session.monsterIds.size
-        if (alive >= config.monsterMaxAlive || now - session.lastWaveAt < config.monsterIntervalSeconds * 1_000L) return
-        val anchor = location(points[(runtime.state.incidentProgress + 3).coerceAtMost(points.lastIndex)])
+        if (alive >= config.monsterMaxAlive) return
+        val anchor = location(points[(checkpoint + 2).coerceAtMost(points.lastIndex)])
         val requested = random.nextInt(config.monsterWaveMin, config.monsterWaveMax + 1).coerceAtMost(
-            minOf(session.monsterGoal - session.spawnedMonsters, config.monsterMaxAlive - alive),
+            config.monsterMaxAlive - alive,
         )
         var spawned = 0
         repeat(requested) { index ->
             val angle = random.nextDouble() * Math.PI * 2 + index * (Math.PI * 2 / requested.coerceAtLeast(1))
             val distance = config.monsterSpawnDistance * random.nextDouble(0.8, 1.15)
             val ground = safeSurface(anchor.clone().add(cos(angle) * distance, 0.0, sin(angle) * distance)) ?: return@repeat
+            if (runtime.region.contains(ground)) return@repeat
             val type = EntityType.valueOf(config.monsterTypes[random.nextInt(config.monsterTypes.size)])
             val spawn = if (type == EntityType.PHANTOM) ground.clone().add(0.0, PHANTOM_SPAWN_HEIGHT, 0.0) else ground
             val monster = spawn.world.spawnEntity(spawn, type) as Mob
             monster.isPersistent = false
-            monster.removeWhenFarAway = true
+            setRemoveWhenFarAway(monster, true)
             monster.isGlowing = true
             monster.target = rider
             monster.getAttribute(Attribute.MOVEMENT_SPEED)?.baseValue = config.monsterMovementSpeed
@@ -99,9 +105,9 @@ internal class FarmFoodDeliveryAmbush(
             night.updateExternalLight(lightOwner(runtime.settings.id, monster.uniqueId), monster, config.monsterLightLevel)
         }
         if (spawned == 0) return
-        session.lastWaveAt = now
+        session.pendingAmbushCheckpoints.removeFirst()
         session.brokenDown = true
-        horse.eject()
+        ejectPassengers(horse)
         horse.setAI(false)
         horse.velocity = Vector()
         players(session).forEach { player ->
@@ -111,6 +117,7 @@ internal class FarmFoodDeliveryAmbush(
         debug.event(
             "farm_food_cart_broken", "zone" to runtime.settings.id, "sequence" to session.sequence,
             "wave" to spawned, "alive" to session.monsterIds.size,
+            "route_checkpoint" to checkpoint, "ambushes_remaining" to session.pendingAmbushCheckpoints.size,
         )
     }
 

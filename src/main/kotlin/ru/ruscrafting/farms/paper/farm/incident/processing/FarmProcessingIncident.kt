@@ -8,9 +8,11 @@ import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.Particle
 import org.bukkit.Sound
+import org.bukkit.block.Block
 import org.bukkit.entity.Entity
 import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Player
+import org.bukkit.entity.TextDisplay
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
@@ -62,8 +64,10 @@ internal class FarmProcessingIncident(
     private val configuredPoint: (String, FarmPointKind) -> FarmPointPosition?,
     private val transitions: FarmTransitionSink,
     private val entityLookup: FarmEntityLookup = BukkitFarmEntityLookup,
+    private val blockPassable: (Block) -> Boolean = Block::isPassable,
+    configureTextDisplay: (TextDisplay, net.kyori.adventure.text.Component, Float) -> Unit = ::configureProcessingTextDisplay,
 ) {
-    private val scene = FarmProcessingScene(plugin, debug, entityLookup)
+    private val scene = FarmProcessingScene(plugin, debug, entityLookup, configureTextDisplay)
     private val carriedZoneKey = NamespacedKey(plugin, "farm_processing_carried_zone")
     private val carriedSequenceKey = NamespacedKey(plugin, "farm_processing_carried_sequence")
     private val carriedCargoKey = NamespacedKey(plugin, "farm_processing_carried_cargo")
@@ -82,10 +86,10 @@ internal class FarmProcessingIncident(
     fun initialize(runtime: FarmRuntime): Boolean {
         if (!active(runtime)) return false
         if (runtime.state.processing != null) return true
-        val anchor = configuredPoint(runtime.settings.id, FarmPointKind.PROCESSING)
-        val failure = anchor?.let { validate(runtime, it) }
-        if (anchor == null || failure != null) {
-            logUnavailable(runtime, if (anchor == null) "point_missing" else failure!!.name.lowercase())
+        val layout = layout(runtime)
+        val failure = layout?.let { validateLayout(runtime, it) }
+        if (layout == null || failure != null) {
+            logUnavailable(runtime, if (layout == null) "point_missing" else failure!!.name.lowercase())
             return false
         }
         val crop = runtime.state.incidentCrop ?: return false.also { logUnavailable(runtime, "crop_missing") }
@@ -118,8 +122,8 @@ internal class FarmProcessingIncident(
             return
         }
         if (!initialize(runtime)) return
-        val anchor = configuredPoint(runtime.settings.id, FarmPointKind.PROCESSING) ?: return
-        scene.ensure(sceneSpec(runtime, FarmProcessingLayout.create(anchor)))
+        val layout = layout(runtime) ?: return
+        scene.ensure(sceneSpec(runtime, layout))
     }
 
     fun interact(event: PlayerInteractEntityEvent, runtimes: Collection<FarmRuntime>): Boolean {
@@ -163,26 +167,7 @@ internal class FarmProcessingIncident(
 
     fun validate(runtime: FarmRuntime, anchor: FarmPointPosition): FarmProcessingPlacementFailure? {
         if (anchor.world != runtime.region.world.name) return FarmProcessingPlacementFailure.WRONG_WORLD
-        val layout = FarmProcessingLayout.create(anchor)
-        val locations = layout.footprint.map { it.location(runtime) }
-        if (locations.any { !runtime.region.contains(it) }) return FarmProcessingPlacementFailure.OUTSIDE_REGION
-        if (locations.any { !it.world.isChunkLoaded(it.blockX shr 4, it.blockZ shr 4) }) {
-            return FarmProcessingPlacementFailure.CHUNK_UNLOADED
-        }
-        if (locations.any { location ->
-                location.block.type.name in runtime.settings.crops ||
-                    location.block.getRelative(org.bukkit.block.BlockFace.DOWN).type == Material.FARMLAND
-            }
-        ) return FarmProcessingPlacementFailure.FARM_BLOCKS
-        val supported = locations.count { it.block.getRelative(org.bukkit.block.BlockFace.DOWN).type.isSolid }
-        if (supported < (locations.size * 4) / 5) return FarmProcessingPlacementFailure.UNSUPPORTED_FLOOR
-        val stations = listOf(layout.inputRack, layout.machine, layout.outputPallet).map { it.location(runtime) }
-        if (stations.any { station ->
-                !station.block.getRelative(org.bukkit.block.BlockFace.DOWN).type.isSolid ||
-                    (0..2).any { up -> !station.block.getRelative(org.bukkit.block.BlockFace.UP, up).isPassable }
-            }
-        ) return FarmProcessingPlacementFailure.BLOCKED_CLEARANCE
-        return null
+        return validateStations(runtime, listOf(anchor))
     }
 
     fun onChunkLoad(chunk: Chunk) = scene.onChunkLoad(chunk)
@@ -193,8 +178,7 @@ internal class FarmProcessingIncident(
     }
 
     fun preview(runtime: FarmRuntime, player: Player) {
-        val anchor = configuredPoint(runtime.settings.id, FarmPointKind.PROCESSING) ?: return
-        adminPreview.show(runtime, anchor, player)
+        adminPreview.show(runtime, layout(runtime) ?: return, player)
     }
 
     fun clear(zoneId: String, reason: String) {
@@ -313,8 +297,7 @@ internal class FarmProcessingIncident(
                 return@forEach
             }
             display.teleport(carriedLocation(runtime, player))
-            val anchor = configuredPoint(runtime.settings.id, FarmPointKind.PROCESSING) ?: return@forEach
-            val layout = FarmProcessingLayout.create(anchor)
+            val layout = layout(runtime) ?: return@forEach
             val target = if (key.cargo == ProcessingCargo.RAW) layout.inputDrop else layout.outputPallet
             val targetLocation = target.location(runtime)
             if (player.world !== targetLocation.world || player.location.distanceSquared(targetLocation) >
@@ -331,8 +314,7 @@ internal class FarmProcessingIncident(
 
     private fun renderMechanism(runtime: FarmRuntime, tick: Long) {
         val state = runtime.state.processing ?: return
-        val anchor = configuredPoint(runtime.settings.id, FarmPointKind.PROCESSING) ?: return
-        val layout = FarmProcessingLayout.create(anchor)
+        val layout = layout(runtime) ?: return
         val configured = runtime.settings.processing
         if (settings().particles && tick % 10L == 0L) {
             val base = layout.machine.location(runtime).add(0.0, 0.35, 0.0)
@@ -379,14 +361,76 @@ internal class FarmProcessingIncident(
         }
     }
 
+    private fun layout(runtime: FarmRuntime): FarmProcessingLayout? {
+        val machine = configuredPoint(runtime.settings.id, FarmPointKind.PROCESSING) ?: return null
+        return FarmProcessingLayout.create(
+            machine,
+            configuredPoint(runtime.settings.id, FarmPointKind.PROCESSING_INPUT),
+            configuredPoint(runtime.settings.id, FarmPointKind.PROCESSING_OUTPUT),
+        )
+    }
+
+    private fun validateLayout(
+        runtime: FarmRuntime,
+        layout: FarmProcessingLayout,
+    ): FarmProcessingPlacementFailure? = validateStations(
+        runtime,
+        listOf(layout.inputRack, layout.machine, layout.outputPallet),
+    )
+
+    private fun validateStations(
+        runtime: FarmRuntime,
+        stations: List<FarmPointPosition>,
+    ): FarmProcessingPlacementFailure? {
+        val locations = stations.map { point -> point.location(runtime) }
+        if (locations.any { !runtime.region.contains(it) }) return FarmProcessingPlacementFailure.OUTSIDE_REGION
+        if (locations.any { !it.world.isChunkLoaded(it.blockX shr 4, it.blockZ shr 4) }) {
+            return FarmProcessingPlacementFailure.CHUNK_UNLOADED
+        }
+        if (locations.any { location ->
+                location.block.type.name in runtime.settings.crops ||
+                    location.block.getRelative(org.bukkit.block.BlockFace.DOWN).type == Material.FARMLAND
+            }
+        ) return FarmProcessingPlacementFailure.FARM_BLOCKS
+        if (locations.any { !it.block.getRelative(org.bukkit.block.BlockFace.DOWN).type.isSolid }) {
+            return FarmProcessingPlacementFailure.UNSUPPORTED_FLOOR
+        }
+        if (locations.any { station ->
+                (0..2).any { up -> !blockPassable(station.block.getRelative(org.bukkit.block.BlockFace.UP, up)) }
+            }
+        ) return FarmProcessingPlacementFailure.BLOCKED_CLEARANCE
+        return null
+    }
+
     private fun sceneSpec(runtime: FarmRuntime, layout: FarmProcessingLayout): FarmProcessingSceneSpec {
         val state = requireNotNull(runtime.state.processing)
         val processing = runtime.settings.processing
         val objects = mutableListOf<FarmProcessingSceneObject>()
-        objects += display(runtime, FarmProcessingSceneRole.MACHINE, 0, layout.machine, FarmProcessingVisualRole.MACHINE)
+        objects += display(
+            runtime,
+            FarmProcessingSceneRole.MACHINE,
+            0,
+            layout.machine,
+            FarmProcessingVisualRole.MACHINE,
+            exactPoint = true,
+        )
         objects += display(runtime, FarmProcessingSceneRole.WHEEL, 0, layout.wheel, FarmProcessingVisualRole.WHEEL, state.stage == FarmProcessingStage.OPERATING)
-        objects += display(runtime, FarmProcessingSceneRole.INPUT_RACK, 0, layout.inputRack, FarmProcessingVisualRole.INPUT_RACK)
-        objects += display(runtime, FarmProcessingSceneRole.OUTPUT_PALLET, 0, layout.outputPallet, FarmProcessingVisualRole.OUTPUT_PALLET)
+        objects += display(
+            runtime,
+            FarmProcessingSceneRole.INPUT_RACK,
+            0,
+            layout.inputRack,
+            FarmProcessingVisualRole.INPUT_RACK,
+            exactPoint = configuredPoint(runtime.settings.id, FarmPointKind.PROCESSING_INPUT) != null,
+        )
+        objects += display(
+            runtime,
+            FarmProcessingSceneRole.OUTPUT_PALLET,
+            0,
+            layout.outputPallet,
+            FarmProcessingVisualRole.OUTPUT_PALLET,
+            exactPoint = configuredPoint(runtime.settings.id, FarmPointKind.PROCESSING_OUTPUT) != null,
+        )
         objects += FarmProcessingSceneObject(
             FarmProcessingSceneRole.MACHINE_INTERACTION,
             0,
@@ -459,6 +503,7 @@ internal class FarmProcessingIncident(
         point: FarmPointPosition,
         visualRole: FarmProcessingVisualRole,
         glowing: Boolean = false,
+        exactPoint: Boolean = false,
     ): FarmProcessingSceneObject {
         val visual = FarmProcessingItems.visual(runtime.settings.processing, visualRole)
         val item = when (visualRole) {
@@ -469,7 +514,7 @@ internal class FarmProcessingIncident(
         return FarmProcessingSceneObject(
             role = role,
             index = index,
-            location = point.location(runtime).add(0.0, visual.yOffset, 0.0),
+            location = point.location(runtime).add(0.0, if (exactPoint) 0.0 else visual.yOffset, 0.0),
             item = item,
             transform = visual.displayTransform,
             scale = visual.scale,

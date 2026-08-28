@@ -58,6 +58,17 @@ internal class FarmMoleBurrowController(
     private val transitions: FarmTransitionSink,
     private val runtimes: () -> Collection<FarmRuntime>,
     private val clock: () -> Long,
+    private val configureLabel: (TextDisplay, Component) -> Unit = { entity, text ->
+        entity.text(text)
+        entity.billboard = Display.Billboard.VERTICAL
+        entity.alignment = TextDisplay.TextAlignment.CENTER
+        entity.lineWidth = 180
+        entity.backgroundColor = Color.fromARGB(0, 0, 0, 0)
+        entity.isShadowed = true
+        entity.viewRange = 0.8f
+        entity.isPersistent = false
+    },
+    private val setRemoveWhenFarAway: (Rabbit, Boolean) -> Unit = Rabbit::setRemoveWhenFarAway,
 ) {
     private enum class Role { ENTRANCE, LAIR, EXIT, MOLE }
     private data class SceneKey(val zoneId: String, val sequence: Long, val burrowId: Int)
@@ -400,7 +411,7 @@ internal class FarmMoleBurrowController(
                 mole.setAdult()
                 mole.rabbitType = Rabbit.Type.BROWN
                 mole.isPersistent = false
-                mole.removeWhenFarAway = false
+                setRemoveWhenFarAway(mole, false)
                 mole.isCollidable = true
                 mole.getAttribute(Attribute.MAX_HEALTH)?.baseValue = 1.0
                 mole.getAttribute(Attribute.MOVEMENT_SPEED)?.baseValue = 0.28
@@ -466,17 +477,6 @@ internal class FarmMoleBurrowController(
             mark(entity, runtime, scene.burrowId, Role.EXIT)
         }
         return listOf(label, hitbox)
-    }
-
-    private fun configureLabel(entity: TextDisplay, text: Component) {
-        entity.text(text)
-        entity.billboard = Display.Billboard.VERTICAL
-        entity.alignment = TextDisplay.TextAlignment.CENTER
-        entity.lineWidth = 180
-        entity.backgroundColor = Color.fromARGB(0, 0, 0, 0)
-        entity.isShadowed = true
-        entity.viewRange = 0.8f
-        entity.isPersistent = false
     }
 
     private fun mark(entity: Entity, runtime: FarmRuntime, burrowId: Int, role: Role) {
