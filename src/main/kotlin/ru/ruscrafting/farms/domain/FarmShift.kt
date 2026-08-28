@@ -176,7 +176,7 @@ data class FarmSpecialIncidentState(
     val marketDeadlineAt: Long = 0,
 ) {
     init {
-        require(points.size <= 16) { "Farm special incident has too many points" }
+        require(points.size <= 256) { "Farm special incident has too many points" }
         require(plots.size <= 128 && plots.distinct().size == plots.size) {
             "Farm special incident has invalid plots"
         }
@@ -993,7 +993,7 @@ object FarmShiftEngine {
         current: FarmShiftState,
         hotspots: List<FarmPointPosition>,
     ): EngineResult<FarmShiftState> {
-        require(hotspots.size in 1..16) { "Farm barn fire must contain 1..16 hotspots" }
+        require(hotspots.size in 1..256) { "Farm barn fire must contain 1..256 hotspots" }
         require(hotspots.distinct().size == hotspots.size) { "Farm barn fire contains duplicate hotspots" }
         require(hotspots.map(FarmPointPosition::world).distinct().size == 1) { "Farm barn fire crosses worlds" }
         if (

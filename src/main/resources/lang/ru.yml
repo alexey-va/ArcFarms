@@ -132,7 +132,7 @@ admin:
   route-invalid: '<prefix> <color:#ff5f6d>Маршрут содержит слишком резкий разрыв. Пройдите его заново без телепортов.</color>'
   route-invalid-name: '<prefix> <color:#ff5f6d>Имя маршрута может содержать строчные латинские буквы, цифры, _ и -.</color>'
   order-cycle-stopped: '<prefix> <color:#ff9f0f>Цикл заказов остановлен.</color> <gray>Текущий заказ не сброшен.</gray>'
-  order-cycle-started: '<prefix> <color:#2bba43>Цикл заказов запущен.</color> <gray>Новый заказ появится при входе на ферму.</gray>'
+  order-cycle-started: '<prefix> <color:#2bba43>Цикл заказов запущен.</color>'
   shortcut-description:
     reset-farm: '<gray>восстановить ферму, отменить текущий заказ и остановить цикл</gray>'
     stop-order-cycle: '<gray>запретить автоматический запуск новых заказов, не отменяя текущий</gray>'

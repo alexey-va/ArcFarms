@@ -228,8 +228,10 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().processing.spawnPerTick shouldBe 4
         settings.farms.single().processing.visuals.getValue(FarmProcessingVisualRole.MACHINE).material shouldBe
             "CRAFTING_TABLE"
-        settings.farms.single().barnFire.hotspotCount shouldBe 8
-        settings.farms.single().barnFire.placementRadius shouldBe 7
+        settings.farms.single().barnFire.hotspotCount shouldBe 100
+        settings.farms.single().barnFire.spawnPerTick shouldBe 8
+        settings.farms.single().barnFire.placementRadius shouldBe 16
+        settings.farms.single().barnFire.particleHotspotLimit shouldBe 24
         settings.farms.single().barnFire.sprayRange shouldBe 18.0
         settings.farms.single().barnFire.sprayHitRadius shouldBe 1.6
         settings.farms.single().supplies.fireEquipmentMaterial shouldBe "SPYGLASS"

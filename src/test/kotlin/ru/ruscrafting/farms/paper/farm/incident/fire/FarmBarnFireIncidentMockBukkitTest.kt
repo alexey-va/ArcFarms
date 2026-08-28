@@ -38,6 +38,7 @@ class FarmBarnFireIncidentMockBukkitTest : FunSpec({
             val anchor = FarmPointPosition(world.name, 8.5, 65.0, 8.5)
             val fire = FarmBarnFireSettings(
                 hotspotCount = 1,
+                spawnPerTick = 1,
                 placementRadius = 4,
                 minSpacing = 2.0,
                 verticalSearch = 2,
@@ -46,6 +47,7 @@ class FarmBarnFireIncidentMockBukkitTest : FunSpec({
                 sprayCooldownTicks = 1,
                 particleStep = 0.5,
                 flameParticleIntervalTicks = 5,
+                particleHotspotLimit = 1,
             )
             val zone = mockk<FarmZoneSettings> {
                 every { id } returns "communal_farm"

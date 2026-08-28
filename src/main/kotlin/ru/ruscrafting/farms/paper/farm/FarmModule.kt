@@ -260,6 +260,9 @@ internal class FarmModule(
 
     fun updateHud(): MutableSet<ActivityBarKey> = hud.update(registry.snapshot())
 
+    fun hudRuntime(player: Player): FarmRuntime? =
+        registry.at(player.location) ?: foodDelivery.participantRuntime(player, registry.snapshot())
+
     override fun states(): Map<String, FarmShiftState> =
         registry.snapshot().associate { it.settings.id to it.state }
 

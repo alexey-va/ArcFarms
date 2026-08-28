@@ -1,7 +1,6 @@
 package ru.ruscrafting.farms.paper.farm.incident.route
 
 import org.bukkit.Bukkit
-import org.bukkit.Color
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
@@ -83,6 +82,22 @@ internal class FarmFoodDeliveryIncident(
     fun ownsServiceItem(item: ItemStack?): Boolean = gunner.owns(item)
 
     fun removeServiceItems(player: Player, reason: String) = gunner.remove(player, reason)
+
+    fun participants(runtime: FarmRuntime): List<Player> {
+        if (!active(runtime)) return emptyList()
+        val session = sessions[runtime.settings.id]?.takeIf { it.sequence == runtime.state.sequence } ?: return emptyList()
+        val horse = session.horseId?.let(Bukkit::getEntity) as? Horse
+        val seat = session.gunnerSeatId?.let(Bukkit::getEntity) as? Interaction
+        return buildList {
+            session.riderId?.let(Bukkit::getPlayer)?.let(::add)
+            session.gunnerId?.let(Bukkit::getPlayer)?.let(::add)
+            horse?.passengers?.filterIsInstanceTo(this)
+            seat?.passengers?.filterIsInstanceTo(this)
+        }.filter(Player::isOnline).distinctBy(Player::getUniqueId)
+    }
+
+    fun participantRuntime(player: Player, runtimes: Collection<FarmRuntime>): FarmRuntime? =
+        runtimes.firstOrNull { runtime -> participants(runtime).any { it.uniqueId == player.uniqueId } }
 
     fun initialize(runtime: FarmRuntime): Boolean {
         if (!active(runtime)) return false
@@ -219,7 +234,7 @@ internal class FarmFoodDeliveryIncident(
             if (settings().particles && horse.world.gameTime % TRAIL_INTERVAL_TICKS == 0L) {
                 val viewers = rider?.let(::listOf) ?: port.players(runtime.region)
                 viewers.filter { it.world == horse.world && !port.isAdminEditing(it) }
-                    .forEach { viewer -> renderTrail(runtime, viewer, route.points) }
+                    .forEach { viewer -> FarmFoodDeliveryRouteVisual.render(runtime, viewer, route.points) }
             }
         }
     }
@@ -368,7 +383,19 @@ internal class FarmFoodDeliveryIncident(
             port.sendActionBar(rider, MessageKey.FARM_ROUTE_CORRIDOR)
             return
         }
-        val projected = maxOf(currentIndex, FarmRouteGeometry.reachedPoint(projection, points.size))
+        val reachedByProjection = FarmRouteGeometry.reachedPoint(projection, points.size)
+        val atDestination = FarmRouteGeometry.atDestination(
+            horse.world.name,
+            horse.location.x,
+            horse.location.y,
+            horse.location.z,
+            points.last(),
+            config.checkpointRadius,
+        )
+        val projected = maxOf(
+            currentIndex,
+            if (reachedByProjection == points.size && !atDestination) points.lastIndex else reachedByProjection,
+        )
         // A fast cart may cross several sampled points between updates. Never let
         // it skip a planned roadside ambush or finish the route past one.
         val reached = session.pendingAmbushCheckpoints.firstOrNull()
@@ -387,32 +414,6 @@ internal class FarmFoodDeliveryIncident(
         transitions.apply(runtime, result, rider)
         if (result.accepted && settings().particles) {
             horse.world.spawnParticle(Particle.HAPPY_VILLAGER, horse.location.add(0.0, 1.0, 0.0), 8, 0.5, 0.4, 0.5, 0.0)
-        }
-    }
-
-    private fun renderTrail(runtime: FarmRuntime, rider: Player, points: List<FarmPointPosition>) {
-        val config = runtime.settings.routeDelivery
-        val current = runtime.state.incidentProgress.coerceIn(1, points.size)
-        val start = (current - 1).coerceAtLeast(0)
-        val endExclusive = (start + config.trailLookaheadPoints).coerceAtMost(points.size)
-        val dust = Particle.DustOptions(TRAIL_COLOR, config.trailParticleSize)
-        points.subList(start, endExclusive).forEachIndexed { offset, point ->
-            val marker = location(point).add(0.0, config.trailHeight, 0.0)
-            rider.spawnParticle(Particle.DUST, marker, 1, 0.04, 0.03, 0.04, 0.0, dust)
-            if (offset == 1) {
-                repeat(4) { layer ->
-                    rider.spawnParticle(
-                        Particle.DUST,
-                        marker.clone().add(0.0, 0.55 + layer * 0.55, 0.0),
-                        1,
-                        0.04,
-                        0.04,
-                        0.04,
-                        0.0,
-                        Particle.DustOptions(NEXT_CHECKPOINT_COLOR, config.trailParticleSize + 0.2f),
-                    )
-                }
-            }
         }
     }
 
@@ -636,8 +637,6 @@ internal class FarmFoodDeliveryIncident(
 
     private companion object {
         const val TRAIL_INTERVAL_TICKS = 10L
-        val TRAIL_COLOR: Color = Color.fromRGB(69, 200, 245)
-        val NEXT_CHECKPOINT_COLOR: Color = Color.fromRGB(255, 200, 87)
         const val ROLE_HORSE = "horse"
         const val ROLE_CART = "cart"
         const val ROLE_GUNNER_SEAT = "gunner_seat"

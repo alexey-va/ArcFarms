@@ -59,6 +59,10 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
             delivery.interact(PlayerInteractEntityEvent(gunner, horse, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
             horse.passengers.single() shouldBe driver
             seat.passengers.single() shouldBe gunner
+            delivery.participants(runtime).map { it.uniqueId }.toSet() shouldBe
+                setOf(driver.uniqueId, gunner.uniqueId)
+            delivery.participantRuntime(driver, listOf(runtime)) shouldBe runtime
+            delivery.participantRuntime(gunner, listOf(runtime)) shouldBe runtime
             driver.inventory.contents.filterNotNull().any(delivery::ownsServiceItem) shouldBe true
             gunner.inventory.contents.filterNotNull().any(delivery::ownsServiceItem) shouldBe true
 
@@ -78,7 +82,21 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
                     runtime.settings.routeDelivery.ambushAfterFarmDistance,
                 runtime.settings.routeDelivery.ambushEndSafeDistance,
             ).first()
-            horse.teleport(fixture.location(route[firstAmbush - 1])) shouldBe true
+            val ambushLocation = fixture.location(route[firstAmbush - 1])
+            val ambushAnchor = fixture.location(route[(firstAmbush + 2).coerceAtMost(route.lastIndex)])
+            for (x in ambushAnchor.blockX - 20..ambushAnchor.blockX + 20) {
+                for (z in ambushAnchor.blockZ - 20..ambushAnchor.blockZ + 20) {
+                    fixture.world.getBlockAt(x, 64, z).type = org.bukkit.Material.STONE
+                }
+            }
+            for (chunkX in (ambushAnchor.blockX shr 4) - 2..(ambushAnchor.blockX shr 4) + 2) {
+                for (chunkZ in (ambushAnchor.blockZ shr 4) - 2..(ambushAnchor.blockZ shr 4) + 2) {
+                    fixture.world.getChunkAt(chunkX, chunkZ).load()
+                }
+            }
+            driver.leaveVehicle() shouldBe true
+            horse.teleport(ambushLocation) shouldBe true
+            delivery.interact(PlayerInteractEntityEvent(driver, horse, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
             delivery.ensure(runtime, 13_000L)
             val firstWave = fixture.world.entities.filterIsInstance<Mob>()
                 .filter { delivery.owns(it) && it !is Horse }
@@ -99,7 +117,9 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
 
             horse.passengers.single() shouldBe driver
             driver.leaveVehicle() shouldBe true
-            horse.teleport(fixture.location(route.last())) shouldBe true
+            val destination = fixture.location(route.last())
+            destination.chunk.load()
+            horse.teleport(destination) shouldBe true
             delivery.interact(PlayerInteractEntityEvent(driver, horse, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
             delivery.ensure(runtime, 13_003L)
 
@@ -111,6 +131,7 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
             runtime.state.contributors.getValue(driver.uniqueId) shouldBe fixture.zone.routeDelivery.completionContribution
             driver.vehicle shouldBe null
             gunner.vehicle shouldBe null
+            delivery.participants(runtime) shouldBe emptyList()
 
             fixture.runDelayedTasks().shouldContainExactly(fixture.zone.routeDelivery.returnDelaySeconds * 20L)
             driver.location.distanceSquared(fixture.location(route.first())) shouldBe 0.0

@@ -158,12 +158,26 @@ internal class FarmGameplayAdminService(
     fun startCycle(player: Player, zoneId: String): Boolean {
         val runtime = runtime(zoneId, player) ?: return false
         if (!orderCycle.set(zoneId, paused = false)) return genericError(player)
+        var startedNow = false
+        if (runtime.region.contains(player.location) && runtime.state.phase == FarmPhase.COOLDOWN) {
+            runtime.state = runtime.state.copy(cooldownEndsAt = clock())
+            persistAsync()
+            debug.event("farm_admin_order_cycle_cooldown_released", "player" to player.name, "zone" to zoneId)
+        }
         if (runtime.state.phase == FarmPhase.IDLE && runtime.region.contains(player.location)) {
             resetPatchScan(runtime)
-            shiftLauncher.start(runtime, player, clock(), null)
+            startedNow = shiftLauncher.start(runtime, player, clock(), null)
         }
         port.sendChat(player, MessageKey.ADMIN_ORDER_CYCLE_STARTED)
-        debug.event("farm_admin_order_cycle", "player" to player.name, "zone" to zoneId, "paused" to false)
+        debug.event(
+            "farm_admin_order_cycle",
+            "player" to player.name,
+            "zone" to zoneId,
+            "paused" to false,
+            "started_now" to startedNow,
+            "phase" to runtime.state.phase,
+            "inside" to runtime.region.contains(player.location),
+        )
         return true
     }
 

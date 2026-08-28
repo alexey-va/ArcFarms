@@ -291,6 +291,7 @@ internal class FarmComponentGraph(
         debug = debug,
         port = port,
         delivery = delivery,
+        foodDelivery = foodDelivery,
         special = special,
         harvest = harvest,
         clock = clock,

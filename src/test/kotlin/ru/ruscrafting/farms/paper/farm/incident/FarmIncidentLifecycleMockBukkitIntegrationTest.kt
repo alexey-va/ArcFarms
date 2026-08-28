@@ -135,6 +135,12 @@ class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
             fire.ensure(runtime)
             val allPoints = requireNotNull(runtime.state.specialIncident).points
             allPoints shouldHaveSize fixture.zone.barnFire.hotspotCount
+            allPoints.count { fixture.location(it).block.type == Material.FIRE } shouldBe
+                fixture.zone.barnFire.spawnPerTick
+            repeat(64) {
+                if (allPoints.all { fixture.location(it).block.type == Material.FIRE }) return@repeat
+                fire.ensure(runtime)
+            }
             allPoints.count { fixture.location(it).block.type == Material.FIRE } shouldBe allPoints.size
 
             val router = fireSafetyRouter(fixture, runtime, fire)

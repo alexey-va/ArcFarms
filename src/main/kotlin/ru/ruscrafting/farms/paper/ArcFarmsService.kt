@@ -383,7 +383,7 @@ class ArcFarmsService(
         taskSupervisor.runLater(1L) {
             if (isOperational() && player.isOnline) {
                 farm.rewards.deliverPending(player)
-                farm.hud.syncMusic(player, farmAt(player.location), clock())
+                farm.hud.syncMusic(player, farm.module.hudRuntime(player), clock())
             }
         }
         travelService.claimJoin(player)
@@ -434,7 +434,7 @@ class ArcFarmsService(
 
     private fun tick() {
         val now = clock()
-        Bukkit.getOnlinePlayers().forEach { player -> farm.hud.syncMusic(player, farmAt(player.location), now) }
+        Bukkit.getOnlinePlayers().forEach { player -> farm.hud.syncMusic(player, farm.module.hudRuntime(player), now) }
         farm.module.tick(now)
         auxiliaryWorksites.tick(now)
         runGuarded("player_guidance", ::updatePlayerGuidance)

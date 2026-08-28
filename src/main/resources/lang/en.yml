@@ -132,7 +132,7 @@ admin:
   route-invalid: '<prefix> <color:#ff5f6d>The route contains a large gap. Record it again without teleporting.</color>'
   route-invalid-name: '<prefix> <color:#ff5f6d>Route names may contain lowercase Latin letters, digits, _ and -.</color>'
   order-cycle-stopped: '<prefix> <color:#ff9f0f>Order cycle stopped.</color> <gray>The current order was not cancelled.</gray>'
-  order-cycle-started: '<prefix> <color:#2bba43>Order cycle started.</color> <gray>A new order will appear when a player enters the farm.</gray>'
+  order-cycle-started: '<prefix> <color:#2bba43>Order cycle started.</color>'
   shortcut-description:
     reset-farm: '<gray>restore the farm, cancel the current order, and stop the cycle</gray>'
     stop-order-cycle: '<gray>prevent automatic new orders without cancelling the current one</gray>'

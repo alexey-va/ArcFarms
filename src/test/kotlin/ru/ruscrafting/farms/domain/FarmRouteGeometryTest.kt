@@ -41,4 +41,13 @@ class FarmRouteGeometryTest : FunSpec({
             0,
         ).shouldBeNull()
     }
+
+    test("requires the cart to enter the configured three-dimensional destination radius") {
+        val destination = FarmPointPosition("world", 100.0, 70.0, -20.0)
+
+        FarmRouteGeometry.atDestination("world", 107.9, 70.0, -20.0, destination, 8.0) shouldBe true
+        FarmRouteGeometry.atDestination("world", 108.1, 70.0, -20.0, destination, 8.0) shouldBe false
+        FarmRouteGeometry.atDestination("world", 100.0, 79.0, -20.0, destination, 8.0) shouldBe false
+        FarmRouteGeometry.atDestination("nether", 100.0, 70.0, -20.0, destination, 8.0) shouldBe false
+    }
 })

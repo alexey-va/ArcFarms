@@ -46,6 +46,44 @@ import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyController
 import java.util.concurrent.CompletableFuture
 
 class FarmGameplayAdminServiceTest : FunSpec({
+    test("starting an order cycle while the operator is already inside launches a shift immediately") {
+        val paper = MockBukkitTestRuntime.open()
+        try {
+            val world = paper.server.addSimpleWorld("sp11")
+            world.getChunkAt(0, 0).load()
+            val player = paper.addPlayer("CycleOperator")
+            player.teleport(org.bukkit.Location(world, 8.5, 65.0, 8.5))
+            val runtime = FarmRuntime(
+                settings = mockk<FarmZoneSettings>(relaxed = true) { every { id } returns "communal_farm" },
+                region = CuboidActivityRegion(world, "farm", CuboidBounds(0, 0, 0, 15, 128, 15)),
+                orders = emptyMap(),
+                orderList = emptyList(),
+                rules = mockk(relaxed = true),
+                state = FarmShiftState(phase = FarmPhase.IDLE, sequence = 12),
+            )
+            val zoneId = runtime.settings.id
+            val port = mockk<WorksiteRuntimePort>(relaxed = true)
+            val cycle = mockk<FarmOrderCycleController>(relaxed = true) {
+                every { set(any(), any()) } returns true
+            }
+            var launchCalls = 0
+            val launcher = FarmShiftLauncher { active, actor, _, order ->
+                active shouldBe runtime
+                actor shouldBe player
+                order shouldBe null
+                launchCalls++
+                true
+            }
+            val service = cycleService(runtime, port, cycle, launcher)
+
+            service.startCycle(player, zoneId) shouldBe true
+
+            launchCalls shouldBe 1
+        } finally {
+            paper.close()
+        }
+    }
+
     test("admin can start the configured food delivery incident") {
         val paper = MockBukkitTestRuntime.open()
         try {
@@ -178,3 +216,39 @@ class FarmGameplayAdminServiceTest : FunSpec({
         verify(exactly = 0) { recovery.restore(runtime, 24, any()) }
     }
 })
+
+private fun cycleService(
+    runtime: FarmRuntime,
+    port: WorksiteRuntimePort,
+    cycle: FarmOrderCycleController,
+    launcher: FarmShiftLauncher,
+): FarmGameplayAdminService = FarmGameplayAdminService(
+    locale = mockk<ArcFarmsLocale>(relaxed = true),
+    debug = ArcFarmsDebug({ false }) {},
+    port = port,
+    runtimes = { listOf(runtime) },
+    orderCycle = cycle,
+    worldAdmin = mockk<FarmWorldAdminService>(relaxed = true),
+    field = mockk<FarmFieldController>(relaxed = true),
+    care = mockk<FarmCareController>(relaxed = true),
+    drought = mockk<FarmDroughtIncident>(relaxed = true),
+    pests = mockk<FarmPestIncident>(relaxed = true),
+    birds = mockk<FarmBirdIncident>(relaxed = true),
+    foodDelivery = mockk<FarmFoodDeliveryIncident>(relaxed = true),
+    special = mockk<FarmSpecialIncidentController>(relaxed = true),
+    processing = mockk<FarmProcessingIncident>(relaxed = true),
+    barnFire = mockk<FarmBarnFireIncident>(relaxed = true),
+    incidentRecovery = mockk<FarmIncidentRecoveryController>(relaxed = true),
+    delivery = mockk<FarmDeliveryController>(relaxed = true),
+    scene = mockk<FarmContractSceneController>(relaxed = true),
+    supplies = mockk<FarmSupplyController>(relaxed = true),
+    harvest = mockk<FarmHarvestController>(relaxed = true),
+    placement = mockk<FarmPlacementService>(relaxed = true),
+    guidance = mockk<FarmGuidanceController>(relaxed = true),
+    ledger = mockk<FarmBlockLedger>(relaxed = true),
+    registry = mockk<FarmBlockRegistry>(relaxed = true),
+    transitions = mockk<FarmTransitionSink>(relaxed = true),
+    shiftLauncher = launcher,
+    persistAsync = { CompletableFuture.completedFuture(Unit) },
+    clock = { 5_000L },
+)

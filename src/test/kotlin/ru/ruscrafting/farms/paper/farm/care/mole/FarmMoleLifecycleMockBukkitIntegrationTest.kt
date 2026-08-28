@@ -41,6 +41,8 @@ class FarmMoleLifecycleMockBukkitIntegrationTest : FunSpec({
 
             workers.zip(scenes).forEachIndexed { index, (worker, scene) ->
                 fixture.finish(worker, scene)
+                worker.location.distanceSquared(scene.surface) shouldBe 0.0
+                fixture.pendingReturn(worker) shouldBe false
                 fixture.runtime.state.careTargets.count { it.complete } shouldBe index + 1
                 fixture.runtime.state.phase shouldBe if (index == scenes.lastIndex) FarmPhase.HARVESTING else FarmPhase.CARE
             }
@@ -57,6 +59,38 @@ class FarmMoleLifecycleMockBukkitIntegrationTest : FunSpec({
                 fixture.currentBlockData(position) shouldBe blockData
             }
             fixture.world.entities.none(fixture.controller::owns) shouldBe true
+        } }
+    }
+
+    test("finishing one lair immediately returns every explorer in that burrow while another stays active") {
+        requiredMockBukkitScenario { FarmMoleScenarioFixture.open(burrowCount = 2).use { fixture ->
+            val scenes = fixture.prepareAndBuild().sortedBy(FarmMoleBurrowScene::burrowId)
+            val first = fixture.paper.addPlayer("MolePairOne")
+            val second = fixture.paper.addPlayer("MolePairTwo")
+
+            fixture.enter(first, scenes[0])
+            fixture.enter(second, scenes[0])
+            fixture.pendingReturn(first) shouldBe true
+            fixture.pendingReturn(second) shouldBe true
+
+            fixture.finish(first, scenes[0])
+
+            first.location.distanceSquared(scenes[0].surface) shouldBe 0.0
+            second.location.distanceSquared(scenes[0].surface) shouldBe 0.0
+            fixture.pendingReturn(first) shouldBe false
+            fixture.pendingReturn(second) shouldBe false
+            fixture.runtime.state.phase shouldBe FarmPhase.CARE
+            fixture.runtime.state.careTargets.count { it.complete } shouldBe 1
+            runCatching { fixture.interaction("ENTRANCE", scenes[0].burrowId) }.isFailure shouldBe true
+
+            fixture.enter(second, scenes[1])
+            fixture.finish(second, scenes[1])
+
+            second.location.distanceSquared(scenes[1].surface) shouldBe 0.0
+            fixture.pendingReturn(second) shouldBe false
+            fixture.runtime.state.phase shouldBe FarmPhase.HARVESTING
+            fixture.runtime.state.careTargets.all { it.complete } shouldBe true
+            fixture.restoreWorld()
         } }
     }
 

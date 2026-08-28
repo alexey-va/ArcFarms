@@ -295,6 +295,7 @@ data class FarmProcessingSettings(
 
 data class FarmBarnFireSettings(
     val hotspotCount: Int,
+    val spawnPerTick: Int,
     val placementRadius: Int,
     val minSpacing: Double,
     val verticalSearch: Int,
@@ -303,6 +304,7 @@ data class FarmBarnFireSettings(
     val sprayCooldownTicks: Int,
     val particleStep: Double,
     val flameParticleIntervalTicks: Int,
+    val particleHotspotLimit: Int,
 )
 
 data class FarmRewardSettings(
@@ -787,11 +789,13 @@ class ArcFarmsConfig private constructor(
                     },
                 )
                 val barnFire = FarmBarnFireSettings(
-                    hotspotCount = section.int("barn-fire.hotspots", 8)
-                        .checked("barn-fire.hotspots", 1, 16),
-                    placementRadius = section.int("barn-fire.placement-radius", 7)
-                        .checked("barn-fire.placement-radius", 2, 16),
-                    minSpacing = section.finiteDouble("barn-fire.min-spacing", 2.5, 1.0, 8.0),
+                    hotspotCount = section.int("barn-fire.hotspots", 100)
+                        .checked("barn-fire.hotspots", 1, 256),
+                    spawnPerTick = section.int("barn-fire.spawn-per-tick", 8)
+                        .checked("barn-fire.spawn-per-tick", 1, 32),
+                    placementRadius = section.int("barn-fire.placement-radius", 16)
+                        .checked("barn-fire.placement-radius", 2, 32),
+                    minSpacing = section.finiteDouble("barn-fire.min-spacing", 1.4, 1.0, 8.0),
                     verticalSearch = section.int("barn-fire.vertical-search", 5)
                         .checked("barn-fire.vertical-search", 1, 12),
                     sprayRange = section.finiteDouble("barn-fire.spray.range", 18.0, 4.0, 32.0),
@@ -801,13 +805,15 @@ class ArcFarmsConfig private constructor(
                     particleStep = section.finiteDouble("barn-fire.spray.particle-step", 0.55, 0.2, 2.0),
                     flameParticleIntervalTicks = section.int("barn-fire.flame-particle-interval-ticks", 5)
                         .checked("barn-fire.flame-particle-interval-ticks", 1, 40),
+                    particleHotspotLimit = section.int("barn-fire.particle-hotspot-limit", 24)
+                        .checked("barn-fire.particle-hotspot-limit", 0, 64),
                 )
                 val supplies = parseFarmSupplies(section, reference.world, id)
                 val routeDelivery = FarmRouteDeliverySettings(
                     sampleDistance = section.finiteDouble("route-delivery.sample-distance", 2.5, 1.0, 8.0),
                     corridorRadius = section.finiteDouble("route-delivery.corridor-radius", 5.0, 2.0, 16.0),
                     hardResetDistance = section.finiteDouble("route-delivery.hard-reset-distance", 9.0, 3.0, 32.0),
-                    checkpointRadius = section.finiteDouble("route-delivery.checkpoint-radius", 3.5, 1.0, 8.0),
+                    checkpointRadius = section.finiteDouble("route-delivery.checkpoint-radius", 8.0, 2.0, 16.0),
                     horseSpeed = section.finiteDouble("route-delivery.horse-speed", 0.26, 0.1, 0.6),
                     trailLookaheadPoints = section.int("route-delivery.trail.lookahead-points", 28)
                         .checked("route-delivery.trail.lookahead-points", 4, 96),

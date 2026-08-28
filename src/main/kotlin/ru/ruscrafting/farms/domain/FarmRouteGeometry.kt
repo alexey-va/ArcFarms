@@ -13,6 +13,21 @@ data class FarmRouteProjection(
 
 /** Projects a cart onto the whole remaining polyline, not merely one sparse checkpoint segment. */
 object FarmRouteGeometry {
+    fun atDestination(
+        world: String,
+        x: Double,
+        y: Double,
+        z: Double,
+        destination: FarmPointPosition,
+        radius: Double,
+    ): Boolean {
+        if (destination.world != world || !radius.isFinite() || radius <= 0.0) return false
+        val dx = x - destination.x
+        val dy = y - destination.y
+        val dz = z - destination.z
+        return dx * dx + dy * dy + dz * dz <= radius * radius
+    }
+
     fun closest(
         world: String,
         x: Double,

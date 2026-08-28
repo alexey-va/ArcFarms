@@ -343,7 +343,27 @@ internal class FarmMoleBurrowController(
             player.playSound(scene.lair, Sound.ENTITY_PLAYER_LEVELUP, 0.9f, 1.15f)
         }
         transitions.apply(runtime, result, player)
+        releaseScenePlayers(scene)
+        removeEntities(SceneKey(runtime.settings.id, runtime.state.sequence, scene.burrowId))
         debug.event("farm_mole_burrow_lair_found", "zone" to runtime.settings.id, "player" to player.name)
+    }
+
+    /**
+     * A completed lair is an exit boundary for that burrow, not for the whole
+     * multi-burrow event. Return every explorer currently inside this scene so
+     * a group can immediately continue with the remaining entrances.
+     */
+    private fun releaseScenePlayers(scene: FarmMoleBurrowScene) {
+        scene.world.players.filter { scene.contains(it.location) }.forEach { explorer ->
+            leave(explorer, scene, null)
+            debug.event(
+                "farm_mole_burrow_player_released",
+                "zone" to scene.zoneId,
+                "sequence" to scene.sequence,
+                "burrow" to scene.burrowId,
+                "player" to explorer.name,
+            )
+        }
     }
 
     private fun leave(player: Player, scene: FarmMoleBurrowScene, message: MessageKey?) {

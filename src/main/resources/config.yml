@@ -251,17 +251,22 @@ farm-zones:
         product-package: {material: BREAD, custom-model-data: 0, display-transform: FIXED, scale: 1.0, y-offset: 0.65, yaw-offset: 0.0}
     # The barn/pen point anchors real fire whose spread and block damage are suppressed by the plugin.
     barn-fire:
-      hotspots: 8
-      placement-radius: 7
-      min-spacing: 2.5
+      hotspots: 100
+      # Real fire blocks are materialized in bounded batches to avoid a start-tick spike.
+      spawn-per-tick: 8
+      placement-radius: 16
+      min-spacing: 1.4
       vertical-search: 5
       spray: {range: 18.0, hit-radius: 1.6, cooldown-ticks: 5, particle-step: 0.55}
       flame-particle-interval-ticks: 5
+      # Real flames remain visible; only this many receive extra smoke/particle decoration per pulse.
+      particle-hotspot-limit: 24
     route-delivery:
       sample-distance: 2.5
       corridor-radius: 5.0
       hard-reset-distance: 9.0
-      checkpoint-radius: 3.5
+      # Wide final arrival zone, rendered as a bright particle ring and column.
+      checkpoint-radius: 8.0
       horse-speed: 0.17
       player-time: 18000
       transition-seconds: 18

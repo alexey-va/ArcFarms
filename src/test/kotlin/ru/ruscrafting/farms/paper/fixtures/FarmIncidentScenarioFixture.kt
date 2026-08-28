@@ -234,7 +234,9 @@ internal class FarmIncidentScenarioFixture private constructor(
         val point = requireNotNull(runtime.state.specialIncident).points[index]
         val target = location(point)
         player.inventory.setItemInMainHand(ItemStack(Material.SPYGLASS))
-        val origin = target.clone().add(0.0, 0.0, -4.0)
+        // Approach a dense hotspot from directly above so the water cone cannot
+        // accidentally select a neighbouring flame first.
+        val origin = target.clone().add(0.0, 3.0, 0.0)
         origin.direction = target.toVector().subtract(origin.clone().add(0.0, player.eyeHeight, 0.0).toVector()).normalize()
         player.teleport(origin)
         val aimed = player.location.clone().setDirection(target.toVector().subtract(player.eyeLocation.toVector()).normalize())

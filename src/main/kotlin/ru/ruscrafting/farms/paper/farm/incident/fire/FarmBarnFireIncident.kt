@@ -75,14 +75,21 @@ internal class FarmBarnFireIncident(
         val incident = runtime.state.specialIncident ?: return
         blocks.keys.filter { it.zoneId == runtime.settings.id && it.index !in incident.active }
             .toList().forEach { remove(it, "extinguished") }
+        var spawnBudget = runtime.settings.barnFire.spawnPerTick
         incident.active.sorted().forEach { index ->
             val point = incident.points.getOrNull(index) ?: return@forEach
             val key = FireKey(runtime.settings.id, index)
             val location = point.location() ?: return@forEach
             if (!location.world.isChunkLoaded(location.blockX shr 4, location.blockZ shr 4)) return@forEach
             val block = location.block
-            if (block.type == Material.AIR) {
+            if (block.type == Material.FIRE) {
+                blocks[key] = point
+                return@forEach
+            }
+            blocks.remove(key)
+            if (block.type == Material.AIR && spawnBudget > 0) {
                 block.setType(Material.FIRE, false)
+                spawnBudget--
             }
             if (block.type == Material.FIRE) blocks[key] = point
             else debug.event(
@@ -97,9 +104,11 @@ internal class FarmBarnFireIncident(
     fun update(runtimes: Collection<FarmRuntime>, tick: Long) {
         runtimes.forEach { runtime ->
             if (!active(runtime)) return@forEach
-            if (tick % 10L == 0L) ensure(runtime)
+            val activeCount = runtime.state.specialIncident?.active?.size ?: 0
+            val materializedCount = blocks.keys.count { it.zoneId == runtime.settings.id }
+            if (materializedCount < activeCount || tick % 10L == 0L) ensure(runtime)
             if (!settings().particles || tick % runtime.settings.barnFire.flameParticleIntervalTicks != 0L) return@forEach
-            runtime.state.specialIncident?.active.orEmpty().forEach { index ->
+            particleHotspots(runtime, tick).forEach { index ->
                 val location = runtime.state.specialIncident?.points?.getOrNull(index)?.location() ?: return@forEach
                 if (!location.world.isChunkLoaded(location.blockX shr 4, location.blockZ shr 4)) return@forEach
                 location.world.spawnParticle(Particle.FLAME, location.clone().add(0.0, 0.65, 0.0), 2, 0.32, 0.45, 0.32, 0.012)
@@ -221,6 +230,7 @@ internal class FarmBarnFireIncident(
         radius: Double,
     ): Int? = runtime.state.specialIncident?.let { incident ->
         incident.active.mapNotNull { index ->
+            if (FireKey(runtime.settings.id, index) !in blocks) return@mapNotNull null
             val point = incident.points.getOrNull(index)?.location() ?: return@mapNotNull null
             if (point.world !== start.world) return@mapNotNull null
             val relative = point.toVector().subtract(start.toVector())
@@ -230,6 +240,21 @@ internal class FarmBarnFireIncident(
             val distanceSquared = point.toVector().distanceSquared(closest)
             if (distanceSquared > radius * radius) null else Triple(index, along, distanceSquared)
         }.minWithOrNull(compareBy<Triple<Int, Double, Double>> { it.second }.thenBy { it.third })?.first
+    }
+
+    private fun particleHotspots(runtime: FarmRuntime, tick: Long): List<Int> {
+        val limit = runtime.settings.barnFire.particleHotspotLimit
+        if (limit <= 0) return emptyList()
+        val active = runtime.state.specialIncident?.active.orEmpty().asSequence()
+            .filter { FireKey(runtime.settings.id, it) in blocks }
+            .sorted()
+            .toList()
+        if (active.size <= limit) return active
+        val start = Math.floorMod(
+            tick / runtime.settings.barnFire.flameParticleIntervalTicks,
+            active.size.toLong(),
+        ).toInt()
+        return List(limit) { offset -> active[(start + offset) % active.size] }
     }
 
     private fun renderJet(start: Location, direction: Vector, range: Double, step: Double) {

@@ -164,7 +164,8 @@ internal class FarmMoleScenarioFixture private constructor(
     }
 
     companion object {
-        fun open(): FarmMoleScenarioFixture {
+        fun open(burrowCount: Int = 3): FarmMoleScenarioFixture {
+            require(burrowCount in 1..3) { "Fixture supports one to three burrows" }
             val paper = MockBukkitTestRuntime.open()
             val world = paper.server.addSimpleWorld("sp11")
             for (chunkX in -3..2) for (chunkZ in -2..1) world.getChunkAt(chunkX, chunkZ).load()
@@ -186,7 +187,7 @@ internal class FarmMoleScenarioFixture private constructor(
                     moleCount = 4,
                 ),
             )
-            val targets = listOf(-30.5, 0.5, 30.5).mapIndexed { id, x ->
+            val targets = listOf(-30.5, 0.5, 30.5).take(burrowCount).mapIndexed { id, x ->
                 val blockX = kotlin.math.floor(x).toInt()
                 world.getBlockAt(blockX, 64, 0).type = org.bukkit.Material.FARMLAND
                 world.getBlockAt(blockX, 65, 0).type = org.bukkit.Material.WHEAT

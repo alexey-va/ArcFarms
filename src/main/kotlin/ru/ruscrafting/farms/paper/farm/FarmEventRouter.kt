@@ -254,13 +254,14 @@ internal class FarmEventRouter(
         val player = event.player
         val from = farmAt(event.from)
         val to = farmAt(destination)
+        val routeRuntime = foodDelivery.participantRuntime(player, runtimes())
         if (from != null && from !== to) {
             supplies.removeServiceItems(player, from.settings.id, "left_zone")
             care.releasePlayer(player, "left_zone")
-            hud.removePlayer(player, "left_zone")
+            if (routeRuntime == null) hud.removePlayer(player, "left_zone")
         }
         if (to != null && from !== to) hud.enter(player, to)
-        if (from !== to) hud.syncMusic(player, to, clock())
+        if (from !== to) hud.syncMusic(player, to ?: routeRuntime, clock())
         delivery.moveCarried(runtimes(), player, destination)
         if (event !is PlayerTeleportEvent) auxiliary.onMove(event.from, destination, player)
     }

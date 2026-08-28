@@ -30,6 +30,7 @@ import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.delivery.FarmDeliveryController
 import ru.ruscrafting.farms.paper.farm.harvest.FarmHarvestController
+import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
 import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentController
 import ru.ruscrafting.farms.paper.farm.incident.special.SPECIAL_FARM_INCIDENT_TYPES
 import java.util.UUID
@@ -43,6 +44,7 @@ internal class FarmHudController(
     private val debug: ArcFarmsDebug,
     private val port: WorksiteRuntimePort,
     private val delivery: FarmDeliveryController,
+    private val foodDelivery: FarmFoodDeliveryIncident,
     private val special: FarmSpecialIncidentController,
     private val harvest: FarmHarvestController,
     private val clock: () -> Long,
@@ -466,7 +468,8 @@ internal class FarmHudController(
     }
 
     private fun currentOrder(runtime: FarmRuntime): FarmOrder? = runtime.state.orderId?.let(runtime.orders::get)
-    private fun players(runtime: FarmRuntime): List<Player> = port.players(runtime.region)
+    private fun players(runtime: FarmRuntime): List<Player> =
+        (port.players(runtime.region) + foodDelivery.participants(runtime)).distinctBy(Player::getUniqueId)
     private fun remainingSeconds(deadline: Long, now: Long): Long = ceil((deadline - now).coerceAtLeast(0) / 1_000.0).toLong()
     private fun musicSound(sound: String, volume: Float): AdventureSound = AdventureSound.sound(
         Key.key(sound),
