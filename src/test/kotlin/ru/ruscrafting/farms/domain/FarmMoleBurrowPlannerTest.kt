@@ -33,6 +33,33 @@ class FarmMoleBurrowPlannerTest : FunSpec({
         }
         FarmMoleBurrowPlanner.rotate(layout, 4) shouldBe layout
     }
+
+    test("designer decoration layers the cave without blocking entrance or lair") {
+        val layout = FarmMoleBurrowPlanner.plan(cells = 7, seed = 91L, lightSpacing = 5)
+        val open = buildSet {
+            addAll(layout.passages)
+            layout.chambers.forEach { center ->
+                for (dx in -1..1) for (dz in -1..1) add(FarmMolePassage(center.x + dx, center.z + dz))
+            }
+            for (dx in -2..2) for (dz in -2..2) add(FarmMolePassage(layout.lair.x + dx, layout.lair.z + dz))
+        }
+        val first = FarmMoleBurrowDecorationPlanner.plan(
+            open, layout.start, layout.lair, layout.chambers, tunnelHeight = 3, seed = 91L, accentPercent = 35,
+        )
+        val second = FarmMoleBurrowDecorationPlanner.plan(
+            open, layout.start, layout.lair, layout.chambers, tunnelHeight = 3, seed = 91L, accentPercent = 35,
+        )
+
+        first shouldBe second
+        open.forEach { point ->
+            first.any { it.position == point && it.yOffset == -1 } shouldBe true
+            first.any { it.position == point && it.yOffset == 3 } shouldBe true
+        }
+        first.none { it.yOffset == 0 && (it.position == layout.start || it.position == layout.lair) } shouldBe true
+        first.count { it.material == "SPORE_BLOSSOM" } shouldBe layout.chambers.size
+        first.any { it.material == "AMETHYST_BLOCK" || it.material == "CALCITE" } shouldBe true
+        (first.size < 2_500) shouldBe true
+    }
 })
 
 private fun manhattan(first: FarmMolePassage, second: FarmMolePassage): Int =

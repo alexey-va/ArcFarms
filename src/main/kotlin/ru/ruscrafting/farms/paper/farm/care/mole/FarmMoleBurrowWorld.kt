@@ -10,7 +10,9 @@ import org.bukkit.block.Block
 import org.bukkit.block.data.Levelled
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
+import ru.ruscrafting.farms.domain.FarmMoleBurrowDecorationPlanner
 import ru.ruscrafting.farms.domain.FarmMoleBurrowPlanner
+import ru.ruscrafting.farms.domain.FarmMolePassage
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockPolicy
@@ -182,13 +184,26 @@ internal class FarmMoleBurrowWorld(
                     planned[position] = (if (y == surfaceBlockY - 1) BARRIER_DATA else AIR_DATA) to marker
                 }
             }
+            decorate(
+                plan = planned,
+                feetY = feetY,
+                startX = startX,
+                startZ = startZ,
+                lairX = lairX,
+                lairZ = lairZ,
+                chamberCenters = layout.chambers.mapTo(linkedSetOf()) { chamber ->
+                    FarmMolePassage(originX + chamber.x, originZ + chamber.z)
+                },
+                tunnelHeight = settings.tunnelHeight,
+                seed = layoutSeed,
+                percent = settings.decorationPercent,
+            )
             val lightData = lightData(settings.lightLevel)
             layout.lights.forEach { passage ->
                 val position = Triple(originX + passage.x, feetY + settings.tunnelHeight - 1, originZ + passage.z)
                 val marker = planned[position]?.second ?: FarmMoleBurrowMarker.NONE
                 planned[position] = lightData to marker
             }
-            decorate(plan = planned, feetY = feetY, lairX = lairX, lairZ = lairZ, seed = layoutSeed, percent = settings.decorationPercent)
             if (planned.size > FarmMoleBurrowJournalCodec.MAX_SCENE_RECORDS) {
                 reject("scene_too_large")
                 continue@layoutProbe
@@ -593,49 +608,37 @@ internal class FarmMoleBurrowWorld(
     private fun decorate(
         plan: MutableMap<Triple<Int, Int, Int>, Pair<String, FarmMoleBurrowMarker>>,
         feetY: Int,
+        startX: Int,
+        startZ: Int,
         lairX: Int,
         lairZ: Int,
+        chamberCenters: Set<FarmMolePassage>,
+        tunnelHeight: Int,
         seed: Long,
         percent: Int,
     ) {
-        val openFloor = plan.keys.filterTo(hashSetOf()) { it.second == feetY }
-        val palette = listOf(Material.ROOTED_DIRT, Material.COARSE_DIRT, Material.MUD, Material.MOSS_BLOCK, Material.TUFF)
-            .map { it.createBlockData().asString }
-        openFloor.forEach { position ->
-            val mixed = mix(seed, position.first, position.second, position.third)
-            if (Math.floorMod(mixed, 100L) >= percent) return@forEach
-            val below = Triple(position.first, feetY - 1, position.third)
-            if (below !in plan) {
-                plan[below] = palette[Math.floorMod(mixed ushr 8, palette.size.toLong()).toInt()] to FarmMoleBurrowMarker.NONE
-            }
-            val face = when (Math.floorMod(mixed ushr 16, 4L).toInt()) {
-                0 -> 1 to 0
-                1 -> -1 to 0
-                2 -> 0 to 1
-                else -> 0 to -1
-            }
-            val wall = Triple(position.first + face.first, feetY + 1, position.third + face.second)
-            if (wall !in plan && Triple(wall.first, feetY, wall.third) !in openFloor) {
-                plan[wall] = palette[Math.floorMod(mixed ushr 24, palette.size.toLong()).toInt()] to FarmMoleBurrowMarker.NONE
-            }
+        val openFloor = plan.keys.asSequence()
+            .filter { it.second == feetY }
+            .mapTo(linkedSetOf()) { FarmMolePassage(it.first, it.third) }
+        FarmMoleBurrowDecorationPlanner.plan(
+            openFloor = openFloor,
+            start = FarmMolePassage(startX, startZ),
+            lair = FarmMolePassage(lairX, lairZ),
+            chambers = chamberCenters,
+            tunnelHeight = tunnelHeight,
+            seed = seed,
+            accentPercent = percent,
+        ).forEach { decoration ->
+            val position = Triple(decoration.position.x, feetY + decoration.yOffset, decoration.position.z)
+            val previous = plan[position]
+            if (decoration.yOffset == 0 && previous?.second in setOf(
+                    FarmMoleBurrowMarker.START,
+                    FarmMoleBurrowMarker.LAIR,
+                )
+            ) return@forEach
+            val marker = previous?.second ?: FarmMoleBurrowMarker.NONE
+            plan[position] = Material.valueOf(decoration.material).createBlockData().asString to marker
         }
-        // A physical earthen den replaces the old floating item model.
-        for (dx in -2..2) for (dz in -2..2) {
-            val below = Triple(lairX + dx, feetY - 1, lairZ + dz)
-            val material = when {
-                dx == 0 && dz == 0 -> Material.MUD
-                kotlin.math.abs(dx) + kotlin.math.abs(dz) <= 2 -> Material.ROOTED_DIRT
-                else -> Material.MOSS_BLOCK
-            }
-            plan[below] = material.createBlockData().asString to FarmMoleBurrowMarker.NONE
-        }
-    }
-
-    private fun mix(seed: Long, x: Int, y: Int, z: Int): Long {
-        var value = seed xor (x.toLong() * -7046029254386353131L) xor
-            (y.toLong() * -4658895280553007687L) xor (z.toLong() * -7723592293110705685L)
-        value = (value xor (value ushr 30)) * -4658895280553007687L
-        return value xor (value ushr 27)
     }
 
     private fun seed(sequence: Long, x: Int, z: Int): Long = sequence * 0x9E3779B97F4A7C15UL.toLong() xor

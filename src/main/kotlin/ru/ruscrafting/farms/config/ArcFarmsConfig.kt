@@ -17,6 +17,8 @@ import java.math.RoundingMode
 import kotlin.math.ceil
 import kotlin.math.floor
 
+private val ROUTE_MONSTER_TYPES = setOf("HUSK", "ZOMBIE", "SKELETON", "SPIDER", "PHANTOM")
+
 data class NetworkSettings(
     val enabled: Boolean,
     val allowedOrigins: Set<String>,
@@ -425,6 +427,7 @@ data class FarmRouteDeliverySettings(
     val monsterSpawnDistance: Double,
     val monsterWaveMin: Int,
     val monsterWaveMax: Int,
+    val monsterTypes: List<String>,
     val monsterMovementSpeed: Double,
     val monsterLightLevel: Int,
     val playerTime: Long,
@@ -432,6 +435,12 @@ data class FarmRouteDeliverySettings(
     val cartScale: Float,
     val cartYOffset: Double,
     val cartLoadCount: Int,
+    val gunnerSeatYOffset: Double,
+    val rifleItemModel: String,
+    val rifleDamage: Double,
+    val rifleRange: Double,
+    val rifleCooldownTicks: Int,
+    val gunnerTrailLength: Int,
 )
 
 data class FarmPerkOfferSettings(
@@ -688,6 +697,16 @@ class ArcFarmsConfig private constructor(
                         .checked("route-delivery.monsters.wave-min", 1, 12),
                     monsterWaveMax = section.int("route-delivery.monsters.wave-max", 5)
                         .checked("route-delivery.monsters.wave-max", 1, 16),
+                    monsterTypes = section.stringList("route-delivery.monsters.types")
+                        .ifEmpty { listOf("HUSK", "ZOMBIE", "SKELETON", "SPIDER", "PHANTOM") }
+                        .map(String::trim)
+                        .map(String::uppercase)
+                        .distinct()
+                        .also { types ->
+                            require(types.isNotEmpty() && types.all { it in ROUTE_MONSTER_TYPES }) {
+                                "route-delivery.monsters.types contains an unsupported entity"
+                            }
+                        },
                     monsterMovementSpeed = section.finiteDouble(
                         "route-delivery.monsters.movement-speed", 0.25, 0.1, 0.5,
                     ),
@@ -703,6 +722,21 @@ class ArcFarmsConfig private constructor(
                     cartYOffset = section.finiteDouble("route-delivery.cart-y-offset", 0.0, -2.0, 2.0),
                     cartLoadCount = section.int("route-delivery.cart-load-count", 4)
                         .checked("route-delivery.cart-load-count", 1, 8),
+                    gunnerSeatYOffset = section.finiteDouble("route-delivery.gunner.seat-y-offset", 0.75, -1.0, 3.0),
+                    rifleItemModel = section.string(
+                        "route-delivery.gunner.rifle-item-model",
+                        "voxelspawns_megaflintlocks:vs_rifle",
+                    ).trim().also { model ->
+                        require(model.matches(Regex("[a-z0-9._-]+:[a-z0-9/._-]+"))) {
+                            "route-delivery.gunner.rifle-item-model must be a namespaced item model"
+                        }
+                    },
+                    rifleDamage = section.finiteDouble("route-delivery.gunner.damage", 7.0, 1.0, 40.0),
+                    rifleRange = section.finiteDouble("route-delivery.gunner.range", 42.0, 8.0, 96.0),
+                    rifleCooldownTicks = section.int("route-delivery.gunner.cooldown-ticks", 12)
+                        .checked("route-delivery.gunner.cooldown-ticks", 2, 100),
+                    gunnerTrailLength = section.int("route-delivery.gunner.trail-length", 10)
+                        .checked("route-delivery.gunner.trail-length", 0, 32),
                 ).also {
                     require(it.hardResetDistance > it.corridorRadius) {
                         "farm-zones.$id route hard-reset-distance must exceed corridor-radius"

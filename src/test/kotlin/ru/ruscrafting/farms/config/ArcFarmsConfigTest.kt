@@ -190,7 +190,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().moleBurrow.guidanceCloseDistance shouldBe 6
         settings.farms.single().moleBurrow.guidanceFarDistance shouldBe 14
         settings.farms.single().moleBurrow.guidanceIntervalTicks shouldBe 20
-        settings.farms.single().moleBurrow.decorationPercent shouldBe 18
+        settings.farms.single().moleBurrow.decorationPercent shouldBe 28
         settings.farms.single().moleBurrow.lairVisual.material shouldBe "MUD"
         settings.farms.single().proceduralCareFixtures shouldBe true
         settings.farms.single().careAnimalEntities shouldContainExactly listOf("CHICKEN", "SHEEP")
@@ -278,7 +278,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().routeDelivery.trailLookaheadPoints shouldBe 28
         settings.farms.single().routeDelivery.trailHeight shouldBe 0.35
         settings.farms.single().routeDelivery.trailParticleSize shouldBe 1.15f
-        settings.farms.single().routeDelivery.horseSpeed shouldBe 0.21
+        settings.farms.single().routeDelivery.horseSpeed shouldBe 0.17
         settings.farms.single().routeDelivery.cartYOffset shouldBe 0.35
         settings.farms.single().routeDelivery.cartLoadCount shouldBe 4
         settings.farms.single().routeDelivery.monsterMinCount shouldBe 8
@@ -286,7 +286,11 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().routeDelivery.monsterWaveMin shouldBe 3
         settings.farms.single().routeDelivery.monsterWaveMax shouldBe 5
         settings.farms.single().routeDelivery.monsterMaxAlive shouldBe 8
+        settings.farms.single().routeDelivery.monsterTypes shouldBe listOf("HUSK", "ZOMBIE", "SKELETON", "SPIDER", "PHANTOM")
         settings.farms.single().routeDelivery.monsterLightLevel shouldBe 15
+        settings.farms.single().routeDelivery.rifleItemModel shouldBe "voxelspawns_megaflintlocks:vs_rifle"
+        settings.farms.single().routeDelivery.rifleDamage shouldBe 7.0
+        settings.farms.single().routeDelivery.rifleRange shouldBe 42.0
         settings.farms.single().routeDelivery.playerTime shouldBe 18_000L
         settings.farms.single().routeDelivery.timeTransitionSeconds shouldBe 18
         settings.farms.single().damageSafety.maximumPercent shouldBe 18
@@ -328,7 +332,7 @@ class ArcFarmsConfigTest : FunSpec({
         classicSettings.farms.single().careVisuals.getValue(FarmCareRole.PEN).customModelData shouldBe 11_864
         classicSettings.farms.single().moleBurrow.lairVisual.material shouldBe "PAPER"
         classicSettings.farms.single().moleBurrow.lairVisual.customModelData shouldBe 11_875
-        classicSettings.farms.single().routeDelivery.horseSpeed shouldBe 0.21
+        classicSettings.farms.single().routeDelivery.horseSpeed shouldBe 0.17
         classicSettings.farms.single().routeDelivery.cartYOffset shouldBe 0.35
         classicSettings.farms.single().routeDelivery.monsterWaveMin shouldBe 3
         classicSettings.farms.single().routeDelivery.monsterWaveMax shouldBe 5

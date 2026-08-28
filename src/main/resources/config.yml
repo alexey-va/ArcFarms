@@ -135,7 +135,7 @@ farm-zones:
       light-level: 11
       chambers: 3
       moles: 8
-      decoration-percent: 18
+      decoration-percent: 28
       guidance: {close-distance: 6, far-distance: 14, interval-ticks: 20}
       replaceable-materials: [STONE, DEEPSLATE, DIRT, COARSE_DIRT, ANDESITE, DIORITE, GRANITE, TUFF, CALCITE, DRIPSTONE_BLOCK, CLAY, MUD, PACKED_MUD]
       lair-visual:
@@ -232,7 +232,7 @@ farm-zones:
       corridor-radius: 5.0
       hard-reset-distance: 9.0
       checkpoint-radius: 3.5
-      horse-speed: 0.21
+      horse-speed: 0.17
       player-time: 18000
       transition-seconds: 18
       trail: {lookahead-points: 28, height: 0.35, particle-size: 1.15}
@@ -240,7 +240,24 @@ farm-zones:
       cart-scale: 4.4
       cart-y-offset: 0.35
       cart-load-count: 4
-      monsters: {min-count: 8, max-count: 14, interval-seconds: 12, max-alive: 8, spawn-distance: 10.0, wave-min: 3, wave-max: 5, movement-speed: 0.25, light-level: 15}
+      monsters:
+        min-count: 8
+        max-count: 14
+        interval-seconds: 12
+        max-alive: 8
+        spawn-distance: 10.0
+        wave-min: 3
+        wave-max: 5
+        types: [HUSK, ZOMBIE, SKELETON, SPIDER, PHANTOM]
+        movement-speed: 0.25
+        light-level: 15
+      gunner:
+        seat-y-offset: 0.75
+        rifle-item-model: voxelspawns_megaflintlocks:vs_rifle
+        damage: 7.0
+        range: 42.0
+        cooldown-ticks: 12
+        trail-length: 10
     pest-entity: SILVERFISH
     pest-spawn-radius: 6
     pest-nests: 3

@@ -157,6 +157,7 @@ internal class FarmComponentGraph(
     private val foodDelivery = FarmFoodDeliveryIncident(
         plugin = plugin,
         settings = settings,
+        locale = locale,
         debug = debug,
         port = port,
         routes = routeAdmin,

@@ -374,6 +374,7 @@ class ArcFarmsService(
 
     fun onJoin(player: Player) {
         farm.moles.recoverPlayer(player)
+        farm.events.onJoin(player)
         farm.supplies.removeServiceItems(player, reason = "player_join")
         taskSupervisor.runLater(1L) {
             if (isOperational() && player.isOnline) {

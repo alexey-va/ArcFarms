@@ -921,6 +921,22 @@ object FarmShiftEngine {
         return EngineResult(progressed, true, events = listOf(ShiftEvent.INCIDENT_PROGRESS))
     }
 
+    fun defendFoodDelivery(
+        current: FarmShiftState,
+        playerId: UUID,
+        contribution: Int = 1,
+    ): EngineResult<FarmShiftState> {
+        require(contribution in 1..8) { "Farm food delivery defense contribution is invalid" }
+        if (current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.FOOD_DELIVERY ||
+            current.specialIncident == null
+        ) return EngineResult(current, false)
+        return EngineResult(
+            current.copy(contributors = incrementContribution(current.contributors, playerId, contribution)),
+            accepted = true,
+            contribution = contribution,
+        )
+    }
+
     fun skipUnavailableIncident(
         current: FarmShiftState,
         expectedType: FarmIncidentType,

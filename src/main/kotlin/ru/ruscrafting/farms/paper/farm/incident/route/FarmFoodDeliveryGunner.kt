@@ -1,0 +1,218 @@
+package ru.ruscrafting.farms.paper.farm.incident.route
+
+import org.bukkit.Bukkit
+import org.bukkit.Color
+import org.bukkit.Location
+import org.bukkit.Particle
+import org.bukkit.Sound
+import org.bukkit.entity.Horse
+import org.bukkit.entity.Interaction
+import org.bukkit.entity.Mob
+import org.bukkit.entity.Player
+import org.bukkit.event.block.Action
+import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.inventory.EquipmentSlot
+import org.bukkit.inventory.ItemStack
+import org.bukkit.plugin.Plugin
+import ru.ruscrafting.farms.config.ArcFarmsConfig
+import ru.ruscrafting.farms.config.ArcFarmsLocale
+import ru.ruscrafting.farms.config.MessageKey
+import ru.ruscrafting.farms.paper.ArcFarmsDebug
+import ru.ruscrafting.farms.paper.FarmRuntime
+import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import java.util.UUID
+
+/** Cooperative cart seat, temporary rifle and bounded hitscan visuals. */
+internal class FarmFoodDeliveryGunner(
+    plugin: Plugin,
+    locale: ArcFarmsLocale,
+    private val settings: () -> ArcFarmsConfig,
+    private val debug: ArcFarmsDebug,
+    private val port: WorksiteRuntimePort,
+) {
+    private val gear = FarmFoodDeliveryGear(plugin, locale, debug)
+    private val shotAt = mutableMapOf<UUID, Long>()
+
+    fun owns(item: ItemStack?): Boolean = gear.owns(item)
+
+    fun remove(player: Player, reason: String) = gear.remove(player, reason = reason)
+
+    fun mount(
+        player: Player,
+        runtime: FarmRuntime,
+        session: FarmFoodDeliverySession,
+        seat: Interaction,
+        horse: Horse,
+    ): Boolean {
+        val driver = horse.passengers.filterIsInstance<Player>().firstOrNull()
+        if (driver == null || session.brokenDown) {
+            port.sendActionBar(player, if (session.brokenDown) MessageKey.FARM_ROUTE_BROKEN else MessageKey.FARM_ROUTE_GUNNER_NEEDS_DRIVER)
+            return true
+        }
+        if (driver.uniqueId == player.uniqueId) return true
+        val current = seat.passengers.filterIsInstance<Player>().firstOrNull()
+        if (current != null && current.uniqueId != player.uniqueId) {
+            port.sendActionBar(player, MessageKey.FARM_ROUTE_GUNNER_OCCUPIED)
+            return true
+        }
+        val config = runtime.settings.routeDelivery
+        if (!gear.give(player, runtime.settings.id, session.sequence, config.rifleItemModel)) {
+            port.sendActionBar(player, MessageKey.FARM_ROUTE_GUNNER_INVENTORY_FULL)
+            return true
+        }
+        if (current == null && !seat.addPassenger(player)) {
+            gear.remove(player, runtime.settings.id, session.sequence, "mount_failed")
+            return true
+        }
+        session.gunnerId = player.uniqueId
+        port.sendActionBar(player, MessageKey.FARM_ROUTE_GUNNER_MOUNTED)
+        player.playSound(player.location, Sound.ITEM_ARMOR_EQUIP_LEATHER, 0.75f, 1.15f)
+        debug.event(
+            "farm_food_gunner_mounted", "zone" to runtime.settings.id,
+            "sequence" to session.sequence, "player" to player.name,
+        )
+        return true
+    }
+
+    fun reconcile(runtime: FarmRuntime, session: FarmFoodDeliverySession) {
+        val seat = session.gunnerSeatId?.let(Bukkit::getEntity) as? Interaction
+        val mounted = seat?.passengers?.filterIsInstance<Player>()?.firstOrNull()
+        val previous = session.gunnerId
+        if (previous != null && previous != mounted?.uniqueId) {
+            Bukkit.getPlayer(previous)?.let { gear.remove(it, runtime.settings.id, session.sequence, "gunner_dismounted") }
+            shotAt.remove(previous)
+        }
+        session.gunnerId = mounted?.uniqueId
+        if (mounted != null && !gear.give(
+                mounted,
+                runtime.settings.id,
+                session.sequence,
+                runtime.settings.routeDelivery.rifleItemModel,
+            )
+        ) {
+            seat.eject()
+            session.gunnerId = null
+            port.sendActionBar(mounted, MessageKey.FARM_ROUTE_GUNNER_INVENTORY_FULL)
+        }
+    }
+
+    fun interact(event: PlayerInteractEvent, runtime: FarmRuntime?, session: FarmFoodDeliverySession?): Boolean {
+        if (event.hand != EquipmentSlot.HAND || event.action !in setOf(Action.RIGHT_CLICK_AIR, Action.RIGHT_CLICK_BLOCK)) return false
+        val player = event.player
+        if (!gear.owns(player.inventory.itemInMainHand)) return false
+        event.isCancelled = true
+        if (runtime == null || session == null || session.gunnerId != player.uniqueId || !gear.owns(
+                player.inventory.itemInMainHand,
+                runtime.settings.id,
+                session.sequence,
+                player.uniqueId,
+            )
+        ) {
+            gear.remove(player, reason = "orphaned_rifle")
+            return true
+        }
+        val seat = session.gunnerSeatId?.let(Bukkit::getEntity) as? Interaction
+        if (seat?.passengers?.filterIsInstance<Player>()?.none { it.uniqueId == player.uniqueId } != false) {
+            gear.remove(player, runtime.settings.id, session.sequence, "gunner_dismounted")
+            session.gunnerId = null
+            return true
+        }
+        fire(player, runtime, session)
+        return true
+    }
+
+    fun render(runtime: FarmRuntime, session: FarmFoodDeliverySession, cart: Location) {
+        if (!settings().particles || cart.world.gameTime % TRAIL_INTERVAL_TICKS != 0L) return
+        val gunner = session.gunnerId?.let(Bukkit::getPlayer)
+        if (gunner == null || !gear.isHolding(gunner, runtime.settings.id, session.sequence)) {
+            session.gunnerTrail.clear()
+            return
+        }
+        val limit = runtime.settings.routeDelivery.gunnerTrailLength
+        if (limit <= 0) return
+        if (session.gunnerTrail.peekLast()?.distanceSquared(cart) ?: Double.MAX_VALUE >= TRAIL_POINT_DISTANCE_SQUARED) {
+            session.gunnerTrail.addLast(cart.clone().add(0.0, 0.35, 0.0))
+        }
+        while (session.gunnerTrail.size > limit) session.gunnerTrail.removeFirst()
+        session.gunnerTrail.forEachIndexed { index, point ->
+            val alpha = (index + 1).toDouble() / session.gunnerTrail.size.coerceAtLeast(1)
+            point.world.spawnParticle(
+                Particle.DUST,
+                point,
+                1,
+                0.02,
+                0.02,
+                0.02,
+                0.0,
+                Particle.DustOptions(
+                    Color.fromRGB(
+                        (130 + 80 * alpha).toInt(),
+                        (80 + 80 * alpha).toInt(),
+                        (45 + 35 * alpha).toInt(),
+                    ),
+                    0.8f,
+                ),
+            )
+        }
+    }
+
+    fun release(player: Player, zoneId: String, session: FarmFoodDeliverySession, reason: String) {
+        if (session.gunnerId == player.uniqueId) {
+            session.gunnerId = null
+            gear.remove(player, zoneId, session.sequence, reason)
+        }
+        shotAt.remove(player.uniqueId)
+    }
+
+    fun clear(zoneId: String, session: FarmFoodDeliverySession, reason: String) {
+        session.gunnerId?.let(Bukkit::getPlayer)?.let { gear.remove(it, zoneId, session.sequence, reason) }
+        session.gunnerId?.let(shotAt::remove)
+        session.gunnerId = null
+        session.gunnerTrail.clear()
+    }
+
+    fun cleanup(reason: String) {
+        Bukkit.getOnlinePlayers().forEach { gear.remove(it, reason = reason) }
+        shotAt.clear()
+    }
+
+    private fun fire(player: Player, runtime: FarmRuntime, session: FarmFoodDeliverySession) {
+        val config = runtime.settings.routeDelivery
+        val nowTick = player.world.gameTime
+        val previous = shotAt[player.uniqueId] ?: Long.MIN_VALUE / 2
+        if (nowTick - previous < config.rifleCooldownTicks) return
+        shotAt[player.uniqueId] = nowTick
+        val start = player.eyeLocation.clone().add(player.eyeLocation.direction.multiply(0.55))
+        val direction = player.eyeLocation.direction.normalize()
+        val hit = player.world.rayTraceEntities(start, direction, config.rifleRange, RAY_SIZE) { entity ->
+            entity.uniqueId in session.monsterIds && entity.isValid && !entity.isDead
+        }
+        val end = hit?.hitPosition?.toLocation(player.world) ?: start.clone().add(direction.clone().multiply(config.rifleRange))
+        renderShot(start, end)
+        player.world.playSound(start, Sound.ENTITY_FIREWORK_ROCKET_BLAST, 0.85f, 0.65f)
+        val target = hit?.hitEntity as? Mob ?: return
+        target.damage(config.rifleDamage, player)
+        target.world.spawnParticle(Particle.CRIT, target.location.add(0.0, target.height * 0.55, 0.0), 12, 0.25, 0.25, 0.25, 0.08)
+        player.playSound(player.location, Sound.ENTITY_ARROW_HIT_PLAYER, 0.75f, 1.25f)
+    }
+
+    private fun renderShot(start: Location, end: Location) {
+        val delta = end.toVector().subtract(start.toVector())
+        val length = delta.length()
+        if (length <= 0.01) return
+        val step = delta.normalize().multiply(PARTICLE_SPACING)
+        val cursor = start.clone()
+        repeat((length / PARTICLE_SPACING).toInt().coerceAtMost(MAX_PARTICLES)) {
+            cursor.world.spawnParticle(Particle.ELECTRIC_SPARK, cursor, 1, 0.0, 0.0, 0.0, 0.0)
+            cursor.add(step)
+        }
+    }
+
+    private companion object {
+        const val RAY_SIZE = 0.65
+        const val PARTICLE_SPACING = 1.2
+        const val MAX_PARTICLES = 72
+        const val TRAIL_POINT_DISTANCE_SQUARED = 0.16
+        const val TRAIL_INTERVAL_TICKS = 2L
+    }
+}

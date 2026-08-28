@@ -521,6 +521,24 @@ class FarmShiftEngineTest : FunSpec({
         completed.events shouldContainExactly listOf(ShiftEvent.INCIDENT_RESOLVED)
     }
 
+    test("food delivery defenders earn contribution without advancing the route") {
+        val defender = UUID.randomUUID()
+        val waiting = FarmShiftState(
+            phase = FarmPhase.INCIDENT,
+            incidentType = FarmIncidentType.FOOD_DELIVERY,
+            incidentCrop = "WHEAT",
+            incidentRequired = 1,
+        )
+        val initialized = FarmShiftEngine.initializeFoodDelivery(waiting, checkpoints = 20, routeName = "orchard").state
+
+        val defended = FarmShiftEngine.defendFoodDelivery(initialized, defender)
+
+        defended.accepted shouldBe true
+        defended.contribution shouldBe 1
+        defended.state.incidentProgress shouldBe initialized.incidentProgress
+        defended.state.contributors[defender] shouldBe 1
+    }
+
     test("only the expected unavailable incident can be skipped without contribution") {
         val waiting = FarmShiftState(
             phase = FarmPhase.INCIDENT,

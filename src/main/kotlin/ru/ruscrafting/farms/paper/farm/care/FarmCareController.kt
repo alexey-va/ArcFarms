@@ -797,5 +797,4 @@ internal class FarmCareController(
     }
 
     fun startSound(type: FarmCareType): Sound = presentation.startSound(type)
-
 }

@@ -169,6 +169,7 @@ internal class FarmEventRouter(
         val item = event.player.inventory.itemInMainHand
         val owned = (clicked.type == Material.SWEET_BERRY_BUSH && clicked.type.name in runtime.settings.crops) ||
             supplies.isServiceItem(item) ||
+            foodDelivery.ownsServiceItem(item) ||
             (runtime.state.phase == FarmPhase.PREPARATION && MaterialRules.isHoe(item)) ||
             (runtime.state.phase == FarmPhase.PLANTING && MaterialRules.cropForSeed(item) != null) ||
             drought.ownsInteraction(runtime, item.type)
@@ -189,6 +190,7 @@ internal class FarmEventRouter(
             }
             return
         }
+        if (foodDelivery.onInteract(event, runtimes())) return
         if (event.action == Action.PHYSICAL) {
             val clicked = event.clickedBlock ?: return
             if (clicked.type == Material.FARMLAND && farmAt(clicked.location) != null) event.isCancelled = true
@@ -255,6 +257,10 @@ internal class FarmEventRouter(
         care.releasePlayer(player, "player_quit")
         port.resetInteractionsContaining(player.uniqueId.toString())
         worldAdmin.release(player)
+    }
+
+    fun onJoin(player: Player) {
+        foodDelivery.removeServiceItems(player, "player_join")
     }
 
     fun onInteractEntityLowest(event: PlayerInteractEntityEvent) {
@@ -362,12 +368,15 @@ internal class FarmEventRouter(
     }
 
     fun onDrop(event: PlayerDropItemEvent) {
-        if (supplies.isServiceItem(event.itemDrop.itemStack)) event.isCancelled = true
+        if (supplies.isServiceItem(event.itemDrop.itemStack) || foodDelivery.ownsServiceItem(event.itemDrop.itemStack)) {
+            event.isCancelled = true
+        }
     }
 
     fun onDeath(event: PlayerDeathEvent) {
         care.onPlayerDeath(event.entity)
-        event.drops.removeIf(supplies::isServiceItem)
+        event.drops.removeIf { supplies.isServiceItem(it) || foodDelivery.ownsServiceItem(it) }
+        foodDelivery.removeServiceItems(event.entity, "player_death")
         supplies.removeServiceItems(event.entity, reason = "player_death")
     }
 
@@ -382,9 +391,9 @@ internal class FarmEventRouter(
                 rawSlot = event.rawSlot,
                 topSize = event.view.topInventory.size,
                 shiftClick = event.isShiftClick,
-                currentTagged = supplies.isServiceItem(event.currentItem),
-                cursorTagged = supplies.isServiceItem(event.cursor),
-                hotbarTagged = supplies.isServiceItem(hotbar),
+                currentTagged = supplies.isServiceItem(event.currentItem) || foodDelivery.ownsServiceItem(event.currentItem),
+                cursorTagged = supplies.isServiceItem(event.cursor) || foodDelivery.ownsServiceItem(event.cursor),
+                hotbarTagged = supplies.isServiceItem(hotbar) || foodDelivery.ownsServiceItem(hotbar),
             )
         ) event.isCancelled = true
     }
@@ -392,13 +401,18 @@ internal class FarmEventRouter(
     fun onInventoryDrag(event: InventoryDragEvent) {
         if (perks.handleDrag(event)) return
         if (special.handleInventoryDrag(event)) return
-        if (FarmServiceInventoryPolicy.cancelDrag(supplies.isServiceItem(event.oldCursor), event.rawSlots, event.view.topInventory.size)) {
+        if (FarmServiceInventoryPolicy.cancelDrag(
+                supplies.isServiceItem(event.oldCursor) || foodDelivery.ownsServiceItem(event.oldCursor),
+                event.rawSlots,
+                event.view.topInventory.size,
+            )
+        ) {
             event.isCancelled = true
         }
     }
 
     fun onEntityDeath(event: EntityDeathEvent) {
-        if (!foodDelivery.onDeath(event) && !care.onDeath(event) && !birds.onDeath(event, runtimes())) {
+        if (!foodDelivery.onDeath(event, runtimes()) && !care.onDeath(event) && !birds.onDeath(event, runtimes())) {
             pests.onDeath(event, runtimes())
         }
     }

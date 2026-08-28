@@ -9,10 +9,9 @@ import org.bukkit.Particle
 import org.bukkit.Sound
 import org.bukkit.attribute.Attribute
 import org.bukkit.entity.Entity
-import org.bukkit.entity.EntityType
 import org.bukkit.entity.Horse
+import org.bukkit.entity.Interaction
 import org.bukkit.entity.ItemDisplay
-import org.bukkit.entity.Mob
 import org.bukkit.entity.Player
 import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.EntityDamageByEntityEvent
@@ -26,6 +25,7 @@ import org.bukkit.util.Transformation
 import org.bukkit.util.Vector
 import org.joml.Vector3f
 import ru.ruscrafting.farms.config.ArcFarmsConfig
+import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
@@ -41,7 +41,6 @@ import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.admin.FarmRouteAdminService
 import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
-import java.util.UUID
 import java.util.random.RandomGenerator
 import java.util.logging.Level
 import kotlin.math.cos
@@ -52,6 +51,7 @@ import kotlin.math.sin
 internal class FarmFoodDeliveryIncident(
     plugin: Plugin,
     private val settings: () -> ArcFarmsConfig,
+    locale: ArcFarmsLocale,
     private val debug: ArcFarmsDebug,
     private val port: WorksiteRuntimePort,
     private val routes: FarmRouteAdminService,
@@ -59,25 +59,18 @@ internal class FarmFoodDeliveryIncident(
     private val random: RandomGenerator,
     private val night: FarmNightShiftController,
 ) {
-    private data class Session(
-        val sequence: Long,
-        val routeName: String,
-        var horseId: UUID? = null,
-        var cartId: UUID? = null,
-        val loadIds: MutableList<UUID> = mutableListOf(),
-        var riderId: UUID? = null,
-        var spawnedMonsters: Int = 0,
-        val monsterIds: MutableSet<UUID> = linkedSetOf(),
-        val monsterGoal: Int,
-        var lastWaveAt: Long = 0,
-    )
-
     private val zoneKey = NamespacedKey(plugin, "farm_food_route_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_food_route_sequence")
     private val roleKey = NamespacedKey(plugin, "farm_food_route_role")
-    private val sessions = mutableMapOf<String, Session>()
+    private val gunner = FarmFoodDeliveryGunner(plugin, locale, settings, debug, port)
+    private val ambush = FarmFoodDeliveryAmbush(random, night, port, debug)
+    private val sessions = mutableMapOf<String, FarmFoodDeliverySession>()
 
     fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING)
+
+    fun ownsServiceItem(item: ItemStack?): Boolean = gunner.owns(item)
+
+    fun removeServiceItems(player: Player, reason: String) = gunner.remove(player, reason)
 
     fun initialize(runtime: FarmRuntime): Boolean {
         if (!active(runtime)) return false
@@ -131,7 +124,7 @@ internal class FarmFoodDeliveryIncident(
         val session = sessions[runtime.settings.id]?.takeIf {
             it.sequence == runtime.state.sequence && it.routeName == selected.name
         }
-            ?: Session(
+            ?: FarmFoodDeliverySession(
                 sequence = runtime.state.sequence,
                 routeName = selected.name,
                 monsterGoal = random.nextInt(
@@ -147,8 +140,13 @@ internal class FarmFoodDeliveryIncident(
             val resumeLocation = safeSurface(location(resumePoint)) ?: return
             spawnHorse(runtime, resumeLocation).also { session.horseId = it.uniqueId }
         }
+        activeHorse.getAttribute(Attribute.MOVEMENT_SPEED)?.baseValue = runtime.settings.routeDelivery.horseSpeed
         val cart = session.cartId?.let(Bukkit::getEntity) as? ItemDisplay
         if (cart == null || !cart.isValid) session.cartId = spawnCart(runtime, activeHorse.location).uniqueId
+        val gunnerSeat = session.gunnerSeatId?.let(Bukkit::getEntity) as? Interaction
+        if (gunnerSeat == null || !gunnerSeat.isValid) {
+            session.gunnerSeatId = spawnGunnerSeat(runtime, activeHorse.location).uniqueId
+        }
         val order = runtime.state.orderId?.let(runtime.orders::get) ?: return
         session.loadIds.removeIf { id -> (Bukkit.getEntity(id) as? ItemDisplay)?.isValid != true }
         while (session.loadIds.size > runtime.settings.routeDelivery.cartLoadCount) {
@@ -157,8 +155,12 @@ internal class FarmFoodDeliveryIncident(
         while (session.loadIds.size < runtime.settings.routeDelivery.cartLoadCount) {
             session.loadIds += spawnLoad(runtime, activeHorse.location, order.cartLoadMaterial, order.cartLoadCustomModelData).uniqueId
         }
-        session.riderId = activeHorse.passengers.filterIsInstance<Player>().firstOrNull()?.uniqueId
-        val participants = (port.players(runtime.region) + activeHorse.passengers.filterIsInstance<Player>()).distinctBy(Player::getUniqueId)
+        activeHorse.passengers.filterIsInstance<Player>().firstOrNull()?.let { session.riderId = it.uniqueId }
+        gunner.reconcile(runtime, session)
+        val participants = (
+            port.players(runtime.region) + activeHorse.passengers.filterIsInstance<Player>() +
+                session.gunnerId?.let(Bukkit::getPlayer).let(::listOfNotNull)
+            ).distinctBy(Player::getUniqueId)
         night.syncAmbientTime(
             nightOwner(runtime.settings.id),
             participants,
@@ -176,27 +178,22 @@ internal class FarmFoodDeliveryIncident(
                 ?.takeIf(::active) ?: return@forEach
             val horse = session.horseId?.let(Bukkit::getEntity) as? Horse ?: return@forEach
             val cart = session.cartId?.let(Bukkit::getEntity) as? ItemDisplay ?: return@forEach
+            val gunnerSeat = session.gunnerSeatId?.let(Bukkit::getEntity) as? Interaction ?: return@forEach
             val route = selectedRoute(runtime)?.takeIf { it.name == session.routeName }?.route ?: return@forEach
             val rider = horse.passengers.filterIsInstance<Player>().firstOrNull()
-            horse.setAI(rider != null)
-            if (rider == null) horse.velocity = Vector()
+            horse.setAI(rider != null && !session.brokenDown)
+            if (rider == null || session.brokenDown) horse.velocity = Vector()
             val yaw = Math.toRadians(horse.location.yaw.toDouble())
             val behind = horse.location.clone().add(sin(yaw) * 2.15, runtime.settings.routeDelivery.cartYOffset, -cos(yaw) * 2.15)
             behind.yaw = horse.location.yaw
             cart.teleport(behind)
+            val seatLocation = behind.clone().add(0.0, runtime.settings.routeDelivery.gunnerSeatYOffset, 0.0)
+            gunnerSeat.teleport(seatLocation)
             session.loadIds.forEachIndexed { slot, id ->
                 (Bukkit.getEntity(id) as? ItemDisplay)?.teleport(loadLocation(behind, slot, runtime.settings.contractCartVisual.loadYOffset))
             }
-            session.monsterIds.toList().forEach { id ->
-                val monster = Bukkit.getEntity(id) as? Mob
-                if (monster == null || !monster.isValid || monster.isDead) {
-                    night.releaseExternalLight(monsterLightOwner(zoneId, id))
-                } else {
-                    night.updateExternalLight(
-                        monsterLightOwner(zoneId, id), monster, runtime.settings.routeDelivery.monsterLightLevel,
-                    )
-                }
-            }
+            ambush.updateLights(zoneId, session, runtime.settings.routeDelivery.monsterLightLevel)
+            gunner.render(runtime, session, behind)
             if (settings().particles && horse.world.gameTime % TRAIL_INTERVAL_TICKS == 0L) {
                 val viewers = rider?.let(::listOf) ?: port.players(runtime.region)
                 viewers.filter { it.world == horse.world && !port.isAdminEditing(it) }
@@ -206,25 +203,44 @@ internal class FarmFoodDeliveryIncident(
     }
 
     fun interact(event: PlayerInteractEntityEvent, runtimes: Collection<FarmRuntime>): Boolean {
-        if (!owns(event.rightClicked) || role(event.rightClicked) != ROLE_HORSE) return false
+        if (!owns(event.rightClicked)) return false
+        val entityRole = role(event.rightClicked)
+        if (entityRole != ROLE_HORSE && entityRole != ROLE_GUNNER_SEAT) return false
         event.isCancelled = true
         val runtime = runtime(event.rightClicked, runtimes) ?: return true
         if (!port.hasAccess(event.player, runtime.settings.permission)) {
             port.sendChat(event.player, MessageKey.ZONE_LOCKED)
             return true
         }
+        val session = sessions[runtime.settings.id] ?: return true
+        if (entityRole == ROLE_GUNNER_SEAT) {
+            val horse = session.horseId?.let(Bukkit::getEntity) as? Horse ?: return true
+            return gunner.mount(event.player, runtime, session, event.rightClicked as Interaction, horse)
+        }
         val horse = event.rightClicked as? Horse ?: return true
+        if (session.brokenDown) {
+            port.sendActionBar(event.player, MessageKey.FARM_ROUTE_BROKEN)
+            return true
+        }
         val existing = horse.passengers.filterIsInstance<Player>().firstOrNull()
         if (existing != null && existing.uniqueId != event.player.uniqueId) {
             port.sendActionBar(event.player, MessageKey.FARM_ROUTE_OCCUPIED)
             return true
         }
-        if (existing == null) horse.addPassenger(event.player)
+        if (existing == null && !horse.addPassenger(event.player)) return true
         horse.setAI(true)
         sessions[runtime.settings.id]?.riderId = event.player.uniqueId
         port.showScreenTitle(event.player, MessageKey.FARM_ROUTE_MOUNTED)
         event.player.playSound(event.player.location, Sound.ENTITY_HORSE_SADDLE, 0.8f, 1.05f)
         return true
+    }
+
+    fun onInteract(event: org.bukkit.event.player.PlayerInteractEvent, runtimes: Collection<FarmRuntime>): Boolean {
+        val runtime = runtimes.firstOrNull { candidate ->
+            val session = sessions[candidate.settings.id] ?: return@firstOrNull false
+            session.gunnerId == event.player.uniqueId && active(candidate)
+        }
+        return gunner.interact(event, runtime, runtime?.let { sessions[it.settings.id] })
     }
 
     fun onDamage(event: EntityDamageEvent): Boolean {
@@ -233,7 +249,7 @@ internal class FarmFoodDeliveryIncident(
         if (player != null && owns(incoming.damager) && role(incoming.damager) == ROLE_MONSTER) {
             val zone = incoming.damager.persistentDataContainer.get(zoneKey, PersistentDataType.STRING)
             val session = zone?.let(sessions::get)
-            event.isCancelled = session?.riderId != player.uniqueId
+            event.isCancelled = player.uniqueId != session?.riderId && player.uniqueId != session?.gunnerId
             return true
         }
         if (!owns(event.entity)) return false
@@ -242,19 +258,30 @@ internal class FarmFoodDeliveryIncident(
         return true
     }
 
-    fun onDeath(event: EntityDeathEvent): Boolean {
+    fun onDeath(event: EntityDeathEvent, runtimes: Collection<FarmRuntime>): Boolean {
         if (!owns(event.entity) || role(event.entity) != ROLE_MONSTER) return false
         val zoneId = event.entity.persistentDataContainer.get(zoneKey, PersistentDataType.STRING)
-        zoneId?.let(sessions::get)?.monsterIds?.remove(event.entity.uniqueId)
-        if (zoneId != null) night.releaseExternalLight(monsterLightOwner(zoneId, event.entity.uniqueId))
+        val session = zoneId?.let(sessions::get)
+        session?.monsterIds?.remove(event.entity.uniqueId)
+        if (zoneId != null) ambush.releaseLight(zoneId, event.entity.uniqueId)
+        val killer = event.entity.killer
+        if (zoneId != null && session != null && killer != null) {
+            // State ownership is validated by the sequence tag before crediting the defender.
+            runtimes.firstOrNull { it.settings.id == zoneId && it.state.sequence == session.sequence && active(it) }?.let { runtime ->
+                transitions.apply(runtime, FarmShiftEngine.defendFoodDelivery(runtime.state, killer.uniqueId), killer)
+            }
+        }
         event.drops.clear()
         event.droppedExp = 0
         return true
     }
 
     fun onQuit(player: Player) {
-        sessions.values.filter { it.riderId == player.uniqueId }.forEach { session ->
-            session.riderId = null
+        sessions.forEach { (zoneId, session) ->
+            if (session.gunnerId == player.uniqueId) {
+                gunner.release(player, zoneId, session, "player_quit")
+            }
+            if (session.riderId != player.uniqueId) return@forEach
             (session.horseId?.let(Bukkit::getEntity) as? Horse)?.let { horse ->
                 horse.setAI(false)
                 horse.velocity = Vector()
@@ -263,9 +290,12 @@ internal class FarmFoodDeliveryIncident(
     }
 
     fun clear(zoneId: String, reason: String) {
-        sessions.remove(zoneId)?.let(::removeSessionEntities)
+        sessions.remove(zoneId)?.let { session ->
+            removeSessionEntities(session)
+            gunner.clear(zoneId, session, reason)
+        }
         night.clearAmbientTime(nightOwner(zoneId))
-        night.releaseExternalLights("food:$zoneId:")
+        ambush.clear(zoneId)
         debug.event("farm_food_route_cleared", "zone" to zoneId, "reason" to reason)
     }
 
@@ -273,6 +303,7 @@ internal class FarmFoodDeliveryIncident(
         Bukkit.getWorlds().asSequence().flatMap { it.entities.asSequence() }.filter(::owns).forEach(Entity::remove)
         sessions.keys.forEach { night.clearAmbientTime(nightOwner(it)) }
         sessions.clear()
+        gunner.cleanup(reason)
         night.releaseExternalLights("food:")
         debug.event("farm_food_route_cleanup", "reason" to reason)
     }
@@ -280,7 +311,7 @@ internal class FarmFoodDeliveryIncident(
     private fun updateProgress(
         runtime: FarmRuntime,
         horse: Horse,
-        session: Session,
+        session: FarmFoodDeliverySession,
         points: List<FarmPointPosition>,
     ) {
         val rider = horse.passengers.filterIsInstance<Player>().firstOrNull() ?: return
@@ -347,47 +378,20 @@ internal class FarmFoodDeliveryIncident(
     private fun updateMonsters(
         runtime: FarmRuntime,
         horse: Horse,
-        session: Session,
+        session: FarmFoodDeliverySession,
         points: List<FarmPointPosition>,
         now: Long,
     ) {
-        val rider = horse.passengers.filterIsInstance<Player>().firstOrNull() ?: return
-        val config = runtime.settings.routeDelivery
-        if (session.spawnedMonsters >= session.monsterGoal || config.monsterMaxAlive == 0) return
-        session.monsterIds.removeIf { entityId ->
-            val entity = Bukkit.getEntity(entityId)
-            val gone = entity == null || !entity.isValid || entity.isDead
-            if (gone) night.releaseExternalLight(monsterLightOwner(runtime.settings.id, entityId))
-            gone
-        }
-        val alive = session.monsterIds.size
-        if (alive >= config.monsterMaxAlive || now - session.lastWaveAt < config.monsterIntervalSeconds * 1_000L) return
-        val ahead = (runtime.state.incidentProgress + 3).coerceAtMost(points.lastIndex)
-        val anchor = location(points[ahead])
-        val waveSize = random.nextInt(config.monsterWaveMin, config.monsterWaveMax + 1).coerceAtMost(
-            minOf(session.monsterGoal - session.spawnedMonsters, config.monsterMaxAlive - alive),
+        ambush.update(
+            runtime = runtime,
+            horse = horse,
+            session = session,
+            points = points,
+            now = now,
+            location = ::location,
+            safeSurface = ::safeSurface,
+            mark = { monster -> mark(monster, runtime, ROLE_MONSTER) },
         )
-        repeat(waveSize) { index ->
-            val angle = random.nextDouble() * Math.PI * 2 + index * (Math.PI * 2 / waveSize.coerceAtLeast(1))
-            val distance = config.monsterSpawnDistance * random.nextDouble(0.8, 1.15)
-            val spawn = anchor.clone().add(cos(angle) * distance, 0.0, sin(angle) * distance)
-            val ground = safeSurface(spawn) ?: return@repeat
-            val monster = spawn.world.spawnEntity(ground, EntityType.HUSK) as Mob
-            monster.isPersistent = false
-            monster.removeWhenFarAway = true
-            monster.target = rider
-            monster.getAttribute(Attribute.MOVEMENT_SPEED)?.baseValue = config.monsterMovementSpeed
-            monster.equipment.setItemInMainHand(ItemStack(Material.TORCH), true)
-            monster.equipment.itemInMainHandDropChance = 0.0f
-            mark(monster, runtime, ROLE_MONSTER)
-            session.monsterIds += monster.uniqueId
-            session.spawnedMonsters++
-            night.updateExternalLight(monsterLightOwner(runtime.settings.id, monster.uniqueId), monster, config.monsterLightLevel)
-        }
-        if (waveSize == 0) return
-        session.lastWaveAt = now
-        rider.playSound(rider.location, Sound.ENTITY_HUSK_AMBIENT, 0.8f, 0.75f)
-        port.sendActionBar(rider, MessageKey.FARM_ROUTE_ATTACK)
     }
 
     private fun spawnHorse(runtime: FarmRuntime, location: Location): Horse =
@@ -400,6 +404,15 @@ internal class FarmFoodDeliveryIncident(
             horse.getAttribute(Attribute.MOVEMENT_SPEED)?.baseValue = runtime.settings.routeDelivery.horseSpeed
             horse.getAttribute(Attribute.JUMP_STRENGTH)?.baseValue = 0.45
             mark(horse, runtime, ROLE_HORSE)
+        }
+
+    private fun spawnGunnerSeat(runtime: FarmRuntime, at: Location): Interaction =
+        runtime.region.world.spawn(at, Interaction::class.java) { seat ->
+            seat.interactionWidth = 1.5f
+            seat.interactionHeight = 1.4f
+            seat.isResponsive = true
+            seat.isPersistent = false
+            mark(seat, runtime, ROLE_GUNNER_SEAT)
         }
 
     private fun spawnCart(runtime: FarmRuntime, at: Location): ItemDisplay =
@@ -469,10 +482,11 @@ internal class FarmFoodDeliveryIncident(
         entity.persistentDataContainer.set(roleKey, PersistentDataType.STRING, role)
     }
 
-    private fun removeSessionEntities(session: Session) {
+    private fun removeSessionEntities(session: FarmFoodDeliverySession) {
         buildList {
             session.horseId?.let(::add)
             session.cartId?.let(::add)
+            session.gunnerSeatId?.let(::add)
             addAll(session.loadIds)
             addAll(session.monsterIds)
         }.forEach { id -> Bukkit.getEntity(id)?.remove() }
@@ -537,11 +551,10 @@ internal class FarmFoodDeliveryIncident(
         val NEXT_CHECKPOINT_COLOR: Color = Color.fromRGB(255, 200, 87)
         const val ROLE_HORSE = "horse"
         const val ROLE_CART = "cart"
+        const val ROLE_GUNNER_SEAT = "gunner_seat"
         const val ROLE_LOAD = "load"
         const val ROLE_MONSTER = "monster"
     }
 
     private fun nightOwner(zoneId: String): String = "food:$zoneId"
-
-    private fun monsterLightOwner(zoneId: String, id: UUID): String = "food:$zoneId:$id"
 }
