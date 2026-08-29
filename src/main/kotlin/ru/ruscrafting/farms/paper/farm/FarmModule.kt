@@ -182,7 +182,6 @@ internal class FarmModule(
 
     fun updateAmbient() {
         worldAdmin.renderInspectViews()
-        moles.updateGuidance()
         registry.snapshot().forEach { runtime ->
             port.guarded("farm_animals:${runtime.settings.id}") {
                 if (!isAdminEditing(runtime)) {
@@ -258,7 +257,7 @@ internal class FarmModule(
         }
     }
 
-    fun updateHud(): MutableSet<ActivityBarKey> = hud.update(registry.snapshot())
+    fun updateHud(): MutableSet<ActivityBarKey> = hud.update(registry.snapshot()).also(moles::updateGuidance)
 
     fun hudRuntime(player: Player): FarmRuntime? =
         registry.at(player.location) ?: foodDelivery.participantRuntime(player, registry.snapshot())

@@ -458,7 +458,6 @@ farm:
     already-carrying: '<color:#ffad42>Вы уже несёте упаковку или её взял другой фермер.</color>'
     returned: '<color:#ffad42>Упаковка вернулась на стойку.</color>'
     returned-subtitle: '<color:#f2fff7>Возьмите её снова, когда будете готовы отнести</color>'
-    input-label: '<color:#ffc857>Сырьё</color><newline><color:#f2fff7>Подойдите и несите к станку</color>'
     machine-waiting-label: '<color:#b8c8c0>Механизм ждёт загрузки</color>'
     machine-active-label: '<color:#45c8f5>Жернов</color><newline><color:#f2fff7>Идите вокруг него по кругу</color>'
     machine-done-label: '<color:#55d98b>Партия готова</color>'
@@ -760,6 +759,7 @@ care:
       far: '<color:#b8c8c0>Логово далеко</color>'
       closer: '<color:#d8a56d>Логово уже ближе</color>'
       very-close: '<color:#ffc857>Логово совсем рядом</color>'
+    distance-bossbar: '<color:#d8a56d>До логова:</color> <color:#ffc857><distance> блоков</color>'
   apple_harvest:
     name: '<color:#ff5f6d>Яблоки в саду</color>'
     instruction: '<color:#f2fff7>Соберите любые <total> яблок по всему саду</color>'

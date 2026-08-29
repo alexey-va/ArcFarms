@@ -199,7 +199,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().moleBurrow.candidateAttempts shouldBe 96
         settings.farms.single().moleBurrow.tunnelWidth shouldBe 2
         settings.farms.single().moleBurrow.entranceMinBoundaryDistance shouldBe 10
-        settings.farms.single().moleBurrow.blocksPerTick shouldBe 48
+        settings.farms.single().moleBurrow.blocksPerTick shouldBe 256
         settings.farms.single().moleBurrow.chamberCount shouldBe 3
         settings.farms.single().moleBurrow.moleCount shouldBe 8
         settings.farms.single().moleBurrow.guidanceCloseDistance shouldBe 6
@@ -238,8 +238,8 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().processing.machineCycles shouldBe 3
         settings.farms.single().processing.outputPackages shouldBe 4
         settings.farms.single().processing.proximityPickupRadius shouldBe 1.75
-        settings.farms.single().processing.crankInnerRadius shouldBe 1.4
-        settings.farms.single().processing.crankOuterRadius shouldBe 3.0
+        settings.farms.single().processing.crankInnerRadius shouldBe 2.4
+        settings.farms.single().processing.crankOuterRadius shouldBe 4.0
         settings.farms.single().processing.crankMaxStepDistance shouldBe 1.2
         settings.farms.single().processing.crankTitleReminderSeconds shouldBe 8
         settings.farms.single().processing.spawnPerTick shouldBe 4

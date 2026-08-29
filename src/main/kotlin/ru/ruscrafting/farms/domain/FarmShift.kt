@@ -72,18 +72,34 @@ data class FarmProcessingState(
     val stage: FarmProcessingStage = FarmProcessingStage.LOADING,
     val inputLoaded: Int = 0,
     val inputRequired: Int,
+    val loadedInputSlots: Set<Int>? = emptySet(),
     val cyclesCompleted: Int = 0,
     val cyclesRequired: Int,
     val outputDelivered: Int = 0,
     val outputRequired: Int,
+    val deliveredOutputSlots: Set<Int>? = emptySet(),
 ) {
     init {
         require(DomainIdentifiers.isContent(crop)) { "Invalid processing crop: $crop" }
         require(inputRequired in 1..16 && inputLoaded in 0..inputRequired) { "Invalid processing input progress" }
         require(cyclesRequired in 1..32 && cyclesCompleted in 0..cyclesRequired) { "Invalid processing cycle progress" }
         require(outputRequired in 1..16 && outputDelivered in 0..outputRequired) { "Invalid processing output progress" }
+        require(loadedInputSlots.orEmpty().all { it in 0 until inputRequired }) { "Invalid processing input slots" }
+        require(deliveredOutputSlots.orEmpty().all { it in 0 until outputRequired }) { "Invalid processing output slots" }
+        require(loadedInputSlots.isNullOrEmpty() || loadedInputSlots.size == inputLoaded) {
+            "Processing input slots disagree with progress"
+        }
+        require(deliveredOutputSlots.isNullOrEmpty() || deliveredOutputSlots.size == outputDelivered) {
+            "Processing output slots disagree with progress"
+        }
     }
 
+    val occupiedInputSlots: Set<Int>
+        get() = loadedInputSlots.orEmpty().takeIf { it.size == inputLoaded } ?: (0 until inputLoaded).toSet()
+    val occupiedOutputSlots: Set<Int>
+        get() = deliveredOutputSlots.orEmpty().takeIf { it.size == outputDelivered } ?: (0 until outputDelivered).toSet()
+    val remainingInputSlots: List<Int> get() = (0 until inputRequired).filterNot(occupiedInputSlots::contains)
+    val remainingOutputSlots: List<Int> get() = (0 until outputRequired).filterNot(occupiedOutputSlots::contains)
     val completed: Int get() = inputLoaded + cyclesCompleted + outputDelivered
     val required: Int get() = inputRequired + cyclesRequired + outputRequired
 }
@@ -964,6 +980,7 @@ object FarmShiftEngine {
         current: FarmShiftState,
         playerId: UUID,
         expectedStage: FarmProcessingStage,
+        slotIndex: Int? = null,
     ): EngineResult<FarmShiftState> {
         val processing = current.processing
         if (
@@ -972,13 +989,25 @@ object FarmShiftEngine {
         ) return EngineResult(current, false)
 
         val advanced = when (expectedStage) {
-            FarmProcessingStage.LOADING -> processing.copy(inputLoaded = (processing.inputLoaded + 1).coerceAtMost(processing.inputRequired))
+            FarmProcessingStage.LOADING -> {
+                val selected = slotIndex ?: processing.remainingInputSlots.firstOrNull()
+                if (selected == null || selected !in processing.remainingInputSlots) return EngineResult(current, false)
+                processing.copy(
+                    inputLoaded = processing.inputLoaded + 1,
+                    loadedInputSlots = processing.occupiedInputSlots + selected,
+                )
+            }
             FarmProcessingStage.OPERATING -> processing.copy(
                 cyclesCompleted = (processing.cyclesCompleted + 1).coerceAtMost(processing.cyclesRequired),
             )
-            FarmProcessingStage.PACKING -> processing.copy(
-                outputDelivered = (processing.outputDelivered + 1).coerceAtMost(processing.outputRequired),
-            )
+            FarmProcessingStage.PACKING -> {
+                val selected = slotIndex ?: processing.remainingOutputSlots.firstOrNull()
+                if (selected == null || selected !in processing.remainingOutputSlots) return EngineResult(current, false)
+                processing.copy(
+                    outputDelivered = processing.outputDelivered + 1,
+                    deliveredOutputSlots = processing.occupiedOutputSlots + selected,
+                )
+            }
         }
         val nextStage = when {
             advanced.stage == FarmProcessingStage.LOADING && advanced.inputLoaded >= advanced.inputRequired ->

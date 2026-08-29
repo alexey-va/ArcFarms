@@ -61,6 +61,34 @@ class FarmProcessingTest : FunSpec({
         FarmShiftEngine.tick(partial, null, Long.MAX_VALUE / 2).state shouldBe partial
     }
 
+    test("processing preserves the exact consumed slot instead of compacting remaining inputs") {
+        val initialized = FarmShiftEngine.initializeProcessing(incident(), "WHEAT", 4, 2, 4).state
+        val consumed = FarmShiftEngine.advanceProcessing(
+            initialized,
+            first,
+            FarmProcessingStage.LOADING,
+            slotIndex = 1,
+        )
+
+        consumed.accepted shouldBe true
+        requireNotNull(consumed.state.processing).remainingInputSlots shouldContainExactly listOf(0, 2, 3)
+        FarmShiftEngine.advanceProcessing(
+            consumed.state,
+            second,
+            FarmProcessingStage.LOADING,
+            slotIndex = 1,
+        ).accepted shouldBe false
+
+        val legacy = FarmProcessingState(
+            crop = "WHEAT",
+            inputLoaded = 2,
+            inputRequired = 4,
+            cyclesRequired = 2,
+            outputRequired = 4,
+        )
+        legacy.remainingInputSlots shouldContainExactly listOf(2, 3)
+    }
+
     test("single anchor rotates the entire nine by five workshop") {
         val north = FarmProcessingLayout.create(FarmPointPosition("world", 100.0, 65.0, 200.0, 0f))
         val east = FarmProcessingLayout.create(FarmPointPosition("world", 100.0, 65.0, 200.0, 90f))
@@ -70,7 +98,10 @@ class FarmProcessingTest : FunSpec({
         north.outputPallet.x shouldBe (103.0 plusOrMinus 0.0001)
         east.inputRacks.single().z shouldBe (197.0 plusOrMinus 0.0001)
         east.outputPallet.z shouldBe (203.0 plusOrMinus 0.0001)
-        north.inputLabels.size shouldBe 1
+        north.outputLabel.x shouldBe (north.outputPallet.x plusOrMinus 0.0001)
+        north.outputLabel.y shouldBe (north.outputPallet.y + 1.25 plusOrMinus 0.0001)
+        north.outputLabel.z shouldBe (north.outputPallet.z plusOrMinus 0.0001)
+        north.outputLabel.pitch shouldBe 0f
 
         val custom = FarmProcessingLayout.create(
             FarmPointPosition("world", 100.0, 65.0, 200.0),
@@ -111,12 +142,12 @@ class FarmProcessingTest : FunSpec({
                 val angle = direction * 2.0 * PI * step / 48.0
                 val sample = FarmProcessingCrankTracker.sample(
                     previous = state,
-                    x = 100.0 + 2.2 * cos(angle),
-                    z = 200.0 + 2.2 * sin(angle),
+                    x = 100.0 + 3.2 * cos(angle),
+                    z = 200.0 + 3.2 * sin(angle),
                     centerX = 100.0,
                     centerZ = 200.0,
-                    innerRadius = 1.4,
-                    outerRadius = 3.0,
+                    innerRadius = 2.4,
+                    outerRadius = 4.0,
                     maxStepDistance = 1.2,
                 )
                 state = sample.state
@@ -131,15 +162,15 @@ class FarmProcessingTest : FunSpec({
 
     test("reversing and teleporting do not manufacture millstone progress") {
         var state: FarmProcessingCrankState? = null
-        fun sample(angle: Double, radius: Double = 2.2): FarmProcessingCrankSample {
+        fun sample(angle: Double, radius: Double = 3.2): FarmProcessingCrankSample {
             val result = FarmProcessingCrankTracker.sample(
                 previous = state,
                 x = radius * cos(angle),
                 z = radius * sin(angle),
                 centerX = 0.0,
                 centerZ = 0.0,
-                innerRadius = 1.4,
-                outerRadius = 3.0,
+                innerRadius = 2.4,
+                outerRadius = 4.0,
                 maxStepDistance = 1.2,
             )
             state = result.state
@@ -152,6 +183,6 @@ class FarmProcessingTest : FunSpec({
         sample(0.2).status shouldBe FarmProcessingCrankSampleStatus.REVERSED
         sample(PI).status shouldBe FarmProcessingCrankSampleStatus.TELEPORTED
         sample(PI).acceptedRadians shouldBe 0.0
-        sample(PI, radius = 3.5).status shouldBe FarmProcessingCrankSampleStatus.OUTSIDE
+        sample(PI, radius = 4.5).status shouldBe FarmProcessingCrankSampleStatus.OUTSIDE
     }
 })

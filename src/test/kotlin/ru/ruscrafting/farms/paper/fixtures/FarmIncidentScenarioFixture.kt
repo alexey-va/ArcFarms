@@ -209,6 +209,10 @@ internal class FarmIncidentScenarioFixture private constructor(
             entity.persistentDataContainer.get(processingRoleKey, PersistentDataType.STRING) == role
         }.toList()
 
+    fun processingTextDisplay(index: Int): TextDisplay = processingTextDisplays(FarmProcessingSceneRole.LABEL.name).single { entity ->
+        entity.persistentDataContainer.get(processingIndexKey, PersistentDataType.INTEGER) == index
+    }
+
     fun clickProcessing(
         controller: FarmProcessingIncident,
         runtime: FarmRuntime,

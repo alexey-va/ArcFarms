@@ -12,4 +12,11 @@ object FarmMoleGuidance {
             else -> FarmMoleProximity.FAR
         }
     }
+
+    fun progress(pathDistance: Int, maxPathDistance: Int): Float {
+        require(pathDistance >= 0)
+        require(maxPathDistance >= 0)
+        if (maxPathDistance == 0) return 1f
+        return (1.0 - pathDistance.toDouble() / maxPathDistance).coerceIn(0.0, 1.0).toFloat()
+    }
 }

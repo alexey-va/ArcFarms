@@ -35,6 +35,7 @@ internal data class FarmMoleBurrowScene(
 ) {
     private val tunnelPositions = records.mapTo(hashSetOf()) { Triple(it.x, it.y, it.z) }
     private val pathDistanceToLair: Map<Pair<Int, Int>, Int> = buildPathDistances()
+    val maxPathDistance: Int = pathDistanceToLair.values.maxOrNull() ?: 0
     private var verifiedReady = false
 
     val ready: Boolean get() {

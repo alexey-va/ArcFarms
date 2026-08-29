@@ -458,7 +458,6 @@ farm:
     already-carrying: '<color:#ffad42>You are already carrying a package, or another farmer took it.</color>'
     returned: '<color:#ffad42>The package returned to its rack.</color>'
     returned-subtitle: '<color:#f2fff7>Pick it up again when you are ready to deliver it</color>'
-    input-label: '<color:#ffc857>Raw crop</color><newline><color:#f2fff7>Approach it, then carry it to the machine</color>'
     machine-waiting-label: '<color:#b8c8c0>The mechanism is waiting</color>'
     machine-active-label: '<color:#45c8f5>Millstone</color><newline><color:#f2fff7>Walk around it in a circle</color>'
     machine-done-label: '<color:#55d98b>The batch is ready</color>'
@@ -760,6 +759,7 @@ care:
       far: '<color:#b8c8c0>The den is far away</color>'
       closer: '<color:#d8a56d>The den is getting closer</color>'
       very-close: '<color:#ffc857>The den is very close</color>'
+    distance-bossbar: '<color:#d8a56d>Den distance:</color> <color:#ffc857><distance> blocks</color>'
   apple_harvest:
     name: '<color:#ff5f6d>Orchard apples</color>'
     instruction: '<color:#f2fff7>Collect any <total> apples from across the orchard</color>'

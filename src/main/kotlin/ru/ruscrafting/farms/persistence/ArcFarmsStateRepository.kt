@@ -392,6 +392,12 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 require(processing.outputRequired in 1..16 && processing.outputDelivered in 0..processing.outputRequired) {
                     "Farm processing output progress is invalid"
                 }
+                require(processing.occupiedInputSlots.size == processing.inputLoaded) {
+                    "Farm processing input slot progress is invalid"
+                }
+                require(processing.occupiedOutputSlots.size == processing.outputDelivered) {
+                    "Farm processing output slot progress is invalid"
+                }
                 require(processing.completed == farm.incidentProgress && processing.required == farm.incidentRequired) {
                     "Farm processing totals do not match incident progress"
                 }

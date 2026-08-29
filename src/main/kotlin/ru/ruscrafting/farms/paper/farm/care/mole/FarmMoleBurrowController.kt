@@ -4,6 +4,7 @@ import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.NamespacedKey
 import org.bukkit.Sound
+import net.kyori.adventure.bossbar.BossBar
 import org.bukkit.attribute.Attribute
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Interaction
@@ -28,9 +29,9 @@ import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmMoleGuidance
-import ru.ruscrafting.farms.domain.FarmMoleProximity
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
+import ru.ruscrafting.farms.paper.ActivityBarKey
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
@@ -80,7 +81,6 @@ internal class FarmMoleBurrowController(
     private val sequenceKey = NamespacedKey(plugin, "farm_mole_sequence")
     private val roleKey = NamespacedKey(plugin, "farm_mole_role")
     private val burrowKey = NamespacedKey(plugin, "farm_mole_burrow")
-    private var guidanceTick = 0L
 
     fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING)
 
@@ -252,26 +252,26 @@ internal class FarmMoleBurrowController(
         }
     }
 
-    fun updateGuidance() {
-        guidanceTick++
+    fun updateGuidance(expectedBars: MutableSet<ActivityBarKey>) {
         sessions.values.forEach { record ->
             val runtime = runtimes().firstOrNull {
                 it.settings.id == record.zoneId && it.state.sequence == record.sequence && active(it)
             } ?: return@forEach
-            if (guidanceTick % runtime.settings.moleBurrow.guidanceIntervalTicks != 0L) return@forEach
             val player = Bukkit.getPlayer(record.playerId)?.takeIf(Player::isOnline) ?: return@forEach
             val scene = world.scenes(runtime).firstOrNull { it.contains(player.location) } ?: return@forEach
             val distance = scene.pathDistanceToLair(player.location) ?: return@forEach
-            val key = when (FarmMoleGuidance.proximity(
-                distance,
-                runtime.settings.moleBurrow.guidanceCloseDistance,
-                runtime.settings.moleBurrow.guidanceFarDistance,
-            )) {
-                FarmMoleProximity.FAR -> MessageKey.FARM_MOLE_DISTANCE_FAR
-                FarmMoleProximity.CLOSER -> MessageKey.FARM_MOLE_DISTANCE_CLOSER
-                FarmMoleProximity.VERY_CLOSE -> MessageKey.FARM_MOLE_DISTANCE_VERY_CLOSE
-            }
-            port.sendActionBar(player, key)
+            port.updateBar(
+                player,
+                "farm:${runtime.settings.id}",
+                locale.render(
+                    MessageKey.FARM_MOLE_DISTANCE_BOSSBAR,
+                    player,
+                    mapOf("distance" to locale.text(distance)),
+                ),
+                FarmMoleGuidance.progress(distance, scene.maxPathDistance),
+                BossBar.Color.YELLOW,
+                expectedBars,
+            )
         }
     }
 

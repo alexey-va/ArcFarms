@@ -234,14 +234,13 @@ internal class FarmProcessingIncident(
             showStageHint(runtime, player)
             return
         }
-        val remaining = if (cargo == ProcessingCargo.RAW) {
-            state.inputRequired - state.inputLoaded
+        val remainingSlots = if (cargo == ProcessingCargo.RAW) {
+            state.remainingInputSlots
         } else {
-            state.outputRequired - state.outputDelivered
+            state.remainingOutputSlots
         }
-        val range = 0 until remaining
         val key = ProcessingCargoKey(runtime.settings.id, cargo, index)
-        if (index !in range || key in carriers || carriers.values.any { it.playerId == player.uniqueId }) {
+        if (index !in remainingSlots || key in carriers || carriers.values.any { it.playerId == player.uniqueId }) {
             port.sendActionBar(player, MessageKey.FARM_PROCESSING_ALREADY_CARRYING)
             return
         }
@@ -304,7 +303,12 @@ internal class FarmProcessingIncident(
         removeCarried(entry.key)
         transitions.apply(
             runtime,
-            FarmShiftEngine.advanceProcessing(runtime.state, player.uniqueId, FarmProcessingStage.LOADING),
+            FarmShiftEngine.advanceProcessing(
+                runtime.state,
+                player.uniqueId,
+                FarmProcessingStage.LOADING,
+                entry.key.index,
+            ),
             player,
         )
         if (settings().sounds) player.playSound(player.location, Sound.BLOCK_BARREL_CLOSE, 0.9f, 0.9f)
@@ -356,7 +360,11 @@ internal class FarmProcessingIncident(
             carriers.remove(key)
             removeCarried(key)
             val stage = if (key.cargo == ProcessingCargo.RAW) FarmProcessingStage.LOADING else FarmProcessingStage.PACKING
-            transitions.apply(runtime, FarmShiftEngine.advanceProcessing(runtime.state, player.uniqueId, stage), player)
+            transitions.apply(
+                runtime,
+                FarmShiftEngine.advanceProcessing(runtime.state, player.uniqueId, stage, key.index),
+                player,
+            )
             if (settings().sounds) {
                 val pitch = if (key.cargo == ProcessingCargo.RAW) 0.9f else 1.2f
                 player.playSound(player.location, Sound.BLOCK_BARREL_CLOSE, 0.9f, pitch)
@@ -372,12 +380,12 @@ internal class FarmProcessingIncident(
             FarmProcessingStage.PACKING -> ProcessingCargo.PRODUCT
             FarmProcessingStage.OPERATING -> return
         }
-        val remaining = if (cargo == ProcessingCargo.RAW) {
-            state.inputRequired - state.inputLoaded
+        val remainingSlots = if (cargo == ProcessingCargo.RAW) {
+            state.remainingInputSlots
         } else {
-            state.outputRequired - state.outputDelivered
+            state.remainingOutputSlots
         }
-        if (remaining <= 0) return
+        if (remainingSlots.isEmpty()) return
         val layout = layout(runtime) ?: return
         val radiusSquared = runtime.settings.processing.proximityPickupRadius.let { it * it }
         port.players(runtime.region)
@@ -386,7 +394,7 @@ internal class FarmProcessingIncident(
             .filter { player -> port.hasAccess(player, runtime.settings.permission) }
             .filterNot { player -> carriers.values.any { lease -> lease.playerId == player.uniqueId } }
             .forEach { player ->
-                val candidate = (0 until remaining)
+                val candidate = remainingSlots
                     .asSequence()
                     .filterNot { index -> ProcessingCargoKey(runtime.settings.id, cargo, index) in carriers }
                     .map { index ->
@@ -472,14 +480,6 @@ internal class FarmProcessingIncident(
             FarmProcessingLayout.offset(layout.machine, 0.0, 0.25, 0.8).location(runtime),
             interactionWidth = 2.1f, interactionHeight = 2.1f,
         )
-        layout.inputLabels.forEachIndexed { index, point ->
-            objects += FarmProcessingSceneObject(
-                FarmProcessingSceneRole.LABEL,
-                index,
-                point.location(runtime),
-                text = locale.render(MessageKey.FARM_PROCESSING_INPUT_LABEL, null),
-            )
-        }
         objects += FarmProcessingSceneObject(
             FarmProcessingSceneRole.LABEL,
             100,
@@ -519,7 +519,7 @@ internal class FarmProcessingIncident(
             }
         }
         if (state.stage == FarmProcessingStage.LOADING) {
-            (0 until state.inputRequired - state.inputLoaded).filterNot { index ->
+            state.remainingInputSlots.filterNot { index ->
                 ProcessingCargoKey(runtime.settings.id, ProcessingCargo.RAW, index) in carriers
             }.forEach { index ->
                 val point = FarmProcessingLayout.packagePosition(layout.inputRacks, index)
@@ -531,7 +531,7 @@ internal class FarmProcessingIncident(
             }
         }
         if (state.stage == FarmProcessingStage.PACKING) {
-            (0 until state.outputRequired - state.outputDelivered).filterNot { index ->
+            state.remainingOutputSlots.filterNot { index ->
                 ProcessingCargoKey(runtime.settings.id, ProcessingCargo.PRODUCT, index) in carriers
             }.forEach { index ->
                 val point = FarmProcessingLayout.floorPackagePosition(layout.outputChute, index)
@@ -541,7 +541,7 @@ internal class FarmProcessingIncident(
                     interactionWidth = 1.8f, interactionHeight = 1.8f,
                 )
             }
-            repeat(state.outputDelivered) { index ->
+            state.occupiedOutputSlots.sorted().forEach { index ->
                 objects += display(
                     runtime,
                     FarmProcessingSceneRole.DELIVERED_PACKAGE,

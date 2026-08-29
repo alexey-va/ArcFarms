@@ -11,7 +11,6 @@ data class FarmProcessingLayout(
     val inputDrop: FarmPointPosition,
     val outputChute: FarmPointPosition,
     val outputPallet: FarmPointPosition,
-    val inputLabels: List<FarmPointPosition>,
     val machineLabel: FarmPointPosition,
     val outputLabel: FarmPointPosition,
     val footprint: List<FarmPointPosition>,
@@ -41,9 +40,10 @@ data class FarmProcessingLayout(
                 inputDrop = inputDrop,
                 outputChute = outputChute,
                 outputPallet = outputPallet,
-                inputLabels = inputRacks.map { offset(it, 0.0, 0.0, 1.85) },
                 machineLabel = offset(machine, 0.0, 0.0, 2.35),
-                outputLabel = offset(outputPallet, 0.0, 0.0, 1.85),
+                // The grounded barrel stack reaches 0.93 blocks above its saved point.
+                // Keep the label centered on that point with a small readable gap.
+                outputLabel = outputPallet.copy(y = outputPallet.y + 1.25, pitch = 0f),
                 footprint = (-4..4).flatMap { right ->
                     (-2..2).map { forward -> offset(anchor, right.toDouble(), forward.toDouble(), 0.0) }
                 },

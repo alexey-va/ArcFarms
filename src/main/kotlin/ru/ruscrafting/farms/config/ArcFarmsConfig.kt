@@ -819,8 +819,8 @@ class ArcFarmsConfig private constructor(
                     interactionRadius = section.finiteDouble("processing.interaction-radius", 2.2, 1.0, 5.0),
                     proximityPickupRadius = section.finiteDouble("processing.proximity-pickup-radius", 1.75, 0.5, 4.0),
                     deliveryRadius = section.finiteDouble("processing.delivery-radius", 2.4, 1.0, 5.0),
-                    crankInnerRadius = section.finiteDouble("processing.crank.inner-radius", 1.4, 0.5, 4.0),
-                    crankOuterRadius = section.finiteDouble("processing.crank.outer-radius", 3.0, 1.0, 6.0),
+                    crankInnerRadius = section.finiteDouble("processing.crank.inner-radius", 2.4, 0.5, 4.0),
+                    crankOuterRadius = section.finiteDouble("processing.crank.outer-radius", 4.0, 1.0, 6.0),
                     crankMaxStepDistance = section.finiteDouble("processing.crank.max-step-distance", 1.2, 0.25, 4.0),
                     crankTitleReminderSeconds = section.int("processing.crank.title-reminder-seconds", 8)
                         .checked("processing.crank.title-reminder-seconds", 3, 30),
@@ -1084,7 +1084,7 @@ class ArcFarmsConfig private constructor(
                     maxDepth = moleBurrowMaxDepth,
                     tunnelHeight = section.int("mole-burrow.tunnel-height", 3)
                         .checked("mole-burrow.tunnel-height", 2, 4),
-                    blocksPerTick = section.int("mole-burrow.blocks-per-tick", 48)
+                    blocksPerTick = section.int("mole-burrow.blocks-per-tick", 256)
                         .checked("mole-burrow.blocks-per-tick", 8, 256),
                     candidateAttempts = section.int("mole-burrow.candidate-attempts", 12)
                         .checked("mole-burrow.candidate-attempts", 1, FarmCarePlanner.MAX_SPREAD_TARGETS),

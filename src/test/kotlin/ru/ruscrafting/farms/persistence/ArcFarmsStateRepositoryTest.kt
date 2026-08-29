@@ -146,10 +146,10 @@ class ArcFarmsStateRepositoryTest : FunSpec({
         val root = Files.createTempDirectory("arcfarms-state-processing-roundtrip-test")
         val processing = FarmProcessingState(
             crop = "WHEAT",
-            stage = FarmProcessingStage.OPERATING,
-            inputLoaded = 4,
+            stage = FarmProcessingStage.LOADING,
+            inputLoaded = 2,
             inputRequired = 4,
-            cyclesCompleted = 2,
+            loadedInputSlots = setOf(0, 2),
             cyclesRequired = 6,
             outputRequired = 4,
         )
