@@ -49,7 +49,6 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
             candidateAttempts = 4,
             lightSpacing = 5,
             lightLevel = 11,
-            replaceableMaterials = setOf("STONE"),
             lairVisual = FarmCareVisualSettings("RABBIT_HIDE", 0, FarmItemDisplayTransform.FIXED, 1.6f, 0.6),
         )
         val settings = mockk<FarmZoneSettings> {
@@ -121,7 +120,6 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
             candidateAttempts = 4,
             lightSpacing = 5,
             lightLevel = 11,
-            replaceableMaterials = setOf("STONE"),
             lairVisual = FarmCareVisualSettings("RABBIT_HIDE", 0, FarmItemDisplayTransform.FIXED, 1.6f, 0.6),
         )
         val settings = mockk<FarmZoneSettings> {
@@ -178,7 +176,6 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
             candidateAttempts = 4,
             lightSpacing = 5,
             lightLevel = 11,
-            replaceableMaterials = setOf("STONE"),
             lairVisual = FarmCareVisualSettings("RABBIT_HIDE", 0, FarmItemDisplayTransform.FIXED, 1.6f, 0.6),
         )
         val settings = mockk<FarmZoneSettings> {
@@ -214,7 +211,6 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
             candidateAttempts = 4,
             lightSpacing = 5,
             lightLevel = 11,
-            replaceableMaterials = setOf("STONE"),
             lairVisual = FarmCareVisualSettings("RABBIT_HIDE", 0, FarmItemDisplayTransform.FIXED, 1.6f, 0.6),
         )
         val settings = mockk<FarmZoneSettings> {
@@ -259,7 +255,6 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
             candidateAttempts = 8,
             lightSpacing = 5,
             lightLevel = 11,
-            replaceableMaterials = setOf("STONE"),
             lairVisual = FarmCareVisualSettings("RABBIT_HIDE", 0, FarmItemDisplayTransform.FIXED, 1.6f, 0.6),
         )
         val settings = mockk<FarmZoneSettings> {
@@ -302,7 +297,7 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         scenes.all(FarmMoleBurrowScene::ready) shouldBe true
     }
 
-    test("preview does not carve through unconfigured building materials") {
+    test("preview accepts any ordinary underground block and rejects only liquids and falling blocks") {
         for (x in -16..16) for (z in -16..16) for (y in 45..64) {
             world.getBlockAt(x, y, z).type = Material.OAK_PLANKS
         }
@@ -315,7 +310,6 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
             candidateAttempts = 4,
             lightSpacing = 5,
             lightLevel = 11,
-            replaceableMaterials = setOf("STONE"),
             lairVisual = FarmCareVisualSettings("RABBIT_HIDE", 0, FarmItemDisplayTransform.FIXED, 1.6f, 0.6),
         )
         val settings = mockk<FarmZoneSettings> {
@@ -325,7 +319,7 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         }
         val runtime = FarmRuntime(
             settings = settings,
-            region = CuboidActivityRegion(world, "farm", CuboidBounds(-16, 0, -16, 16, 128, 16)),
+            region = CuboidActivityRegion(world, "farm", CuboidBounds(-48, 0, -48, 48, 128, 48)),
             orders = emptyMap(),
             orderList = emptyList(),
             rules = FarmRules(listOf(50), 1, 1_000),
@@ -338,9 +332,17 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
             MockBukkitFarmBlockDataDecoder,
         )
 
-        val preview = controller.previewDetailed(runtime, FarmPointPosition(world.name, 0.5, 65.0, 0.5))
-        preview.scene.shouldBeNull()
-        preview.rejections.keys.any { it == "material:OAK_PLANKS" } shouldBe true
+        val ordinary = controller.previewDetailed(runtime, FarmPointPosition(world.name, 0.5, 65.0, 0.5))
+        requireNotNull(ordinary.scene) { ordinary.rejections.toString() }.records.isNotEmpty() shouldBe true
+
+        listOf(Material.WATER, Material.SAND).forEach { forbidden ->
+            for (x in -16..16) for (z in -16..16) for (y in 45..64) {
+                world.getBlockAt(x, y, z).type = forbidden
+            }
+            val rejected = controller.previewDetailed(runtime, FarmPointPosition(world.name, 0.5, 65.0, 0.5))
+            rejected.scene.shouldBeNull()
+            rejected.rejections.keys.any { it == "material:${forbidden.name}" } shouldBe true
+        }
     }
 
 })

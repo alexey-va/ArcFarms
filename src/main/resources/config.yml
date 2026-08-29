@@ -142,7 +142,7 @@ farm-zones:
       # One independent maze per active participant, capped to avoid excessive block work.
       max-burrows: 3
       min-depth: 10
-      max-depth: 40
+      max-depth: 56
       tunnel-height: 3
       # Logical maze corridors are expanded to this many blocks in both horizontal axes.
       tunnel-width: 2
@@ -156,9 +156,8 @@ farm-zones:
       moles: 8
       decoration-percent: 28
       guidance: {close-distance: 6, far-distance: 14, interval-ticks: 20}
-      # Stable natural blocks may be journaled and restored. Water and falling
-      # blocks remain forbidden so a larger search cannot create unsafe caves.
-      replaceable-materials: [STONE, DEEPSLATE, DIRT, COARSE_DIRT, GRASS_BLOCK, PODZOL, ROOTED_DIRT, ANDESITE, DIORITE, GRANITE, TUFF, CALCITE, DRIPSTONE_BLOCK, CLAY, MUD, PACKED_MUD, BLACKSTONE, COBBLED_DEEPSLATE, BROWN_MUSHROOM_BLOCK, COAL_ORE, DEEPSLATE_COAL_ORE, IRON_ORE, DEEPSLATE_IRON_ORE, COPPER_ORE, DEEPSLATE_COPPER_ORE, GOLD_ORE, DEEPSLATE_GOLD_ORE, REDSTONE_ORE, DEEPSLATE_REDSTONE_ORE, LAPIS_ORE, DEEPSLATE_LAPIS_ORE, DIAMOND_ORE, DEEPSLATE_DIAMOND_ORE, EMERALD_ORE, DEEPSLATE_EMERALD_ORE]
+      # Search through ordinary blocks and existing caves alike. Only liquids and
+      # gravity blocks are skipped so the active tunnel is not flooded or collapsed.
       lair-visual:
         # Portable fallback; the live server may replace this with a fitted ItemsAdder cave prop.
         material: MUD

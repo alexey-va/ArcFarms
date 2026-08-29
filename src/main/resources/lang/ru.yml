@@ -144,7 +144,7 @@ admin:
     reindex-farm: '<gray>заново найти управляемые грядки, плоды и листву</gray>'
     farm-reindex-status: '<gray>показать прогресс переиндексации фермы</gray>'
   care-unavailable: '<prefix> <red>Этот сюжет нельзя разместить на текущем поле.</red> <gray>Задайте нужную точку или включите процедурные объекты.</gray>'
-  moles-unavailable: '<prefix> <red>Под фермой не нашлось безопасного места для норы.</red> <gray>Точки задавать не нужно: вход, шахта и тоннели строятся автоматически.</gray>'
+  moles-unavailable: '<prefix> <red>Под фермой не нашлось места для норы даже на большой глубине.</red> <gray>Вход, шахта и тоннели строятся автоматически.</gray>'
   incident-recovery-pending: '<prefix> <color:#ffad42>Поле ещё восстанавливается:</color> <white><count></white> <gray>блоков. Повторите команду через мгновение.</gray>'
   debug:
     help: '<prefix> <gray>Тест фермы:</gray> <white>/arcfarms debug \<зона> status</white> <dark_gray>•</dark_gray> <gray>действия:</gray> <white>contract, stage, next, finish, event, give, show, points, reset</white>'

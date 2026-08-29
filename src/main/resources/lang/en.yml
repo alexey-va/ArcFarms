@@ -144,7 +144,7 @@ admin:
     reindex-farm: '<gray>rescan managed beds, fruit blocks, and leaves</gray>'
     farm-reindex-status: '<gray>show farm reindex progress</gray>'
   care-unavailable: '<prefix> <red>This care story cannot fit on the current field.</red> <gray>Set its point or enable procedural fixtures.</gray>'
-  moles-unavailable: '<prefix> <red>No safe burrow volume was found below the farm.</red> <gray>No point is required: the entrance, shaft, and tunnels are built automatically.</gray>'
+  moles-unavailable: '<prefix> <red>No burrow volume was found below the farm even at the extended depth.</red> <gray>The entrance, shaft, and tunnels are built automatically.</gray>'
   incident-recovery-pending: '<prefix> <color:#ffad42>The field is still recovering:</color> <white><count></white> <gray>blocks. Try the command again in a moment.</gray>'
   debug:
     help: '<prefix> <gray>Farm test:</gray> <white>/arcfarms debug \<zone> status</white> <dark_gray>•</dark_gray> <gray>actions:</gray> <white>contract, stage, next, finish, event, give, show, points, reset</white>'

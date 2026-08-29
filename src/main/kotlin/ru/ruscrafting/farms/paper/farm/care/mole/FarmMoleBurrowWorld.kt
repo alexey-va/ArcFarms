@@ -245,7 +245,6 @@ internal class FarmMoleBurrowWorld(
                 blocks,
                 shaftPositions,
                 surfaceBlockY,
-                settings.replaceableMaterials,
             )
             if (failures.isNotEmpty()) {
                 failures.forEach { (reason, count) -> reject(reason, count) }
@@ -445,7 +444,6 @@ internal class FarmMoleBurrowWorld(
         blocks: List<Block>,
         shaftPositions: Set<Triple<Int, Int, Int>>,
         surfaceBlockY: Int,
-        replaceable: Set<String>,
     ): Map<String, Int> {
         if (blocks.isEmpty()) return mapOf("empty_plan" to 1)
         val failures = linkedMapOf<String, Int>()
@@ -456,7 +454,7 @@ internal class FarmMoleBurrowWorld(
         blocks.forEach { block ->
             val footprintProbe = Location(block.world, block.x + 0.5, footprintY.toDouble(), block.z + 0.5)
             if (!runtime.region.contains(footprintProbe)) reject("outside_farm_footprint")
-            if (!replaceableForBurrow(runtime, block, shaftPositions, surfaceBlockY, replaceable)) {
+            if (!replaceableForBurrow(runtime, block, shaftPositions, surfaceBlockY)) {
                 reject("material:${block.type.name}")
             }
             if (block.y <= block.world.minHeight + 1 || block.y >= block.world.maxHeight - 1) reject("world_height")
@@ -469,9 +467,12 @@ internal class FarmMoleBurrowWorld(
         block: Block,
         shaftPositions: Set<Triple<Int, Int, Int>>,
         surfaceBlockY: Int,
-        replaceable: Set<String>,
     ): Boolean {
-        if (block.type.isAir || block.type.name in replaceable) return true
+        // The burrow is journalled and restored byte-for-byte, so an allow-list of
+        // underground "safe" rock only creates false negatives. Any ordinary block
+        // or existing cave is valid. Liquids and gravity blocks are the only hard
+        // exclusions because opening them can flood or collapse the active tunnel.
+        if (!block.isLiquid && !block.type.hasGravity()) return true
         val position = Triple(block.x, block.y, block.z)
         if (position !in shaftPositions || block.y !in surfaceBlockY - 1..surfaceBlockY) return false
         if (block.y == surfaceBlockY) {

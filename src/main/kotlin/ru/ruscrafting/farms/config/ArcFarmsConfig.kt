@@ -421,7 +421,6 @@ data class FarmMoleBurrowSettings(
     val candidateAttempts: Int,
     val lightSpacing: Int,
     val lightLevel: Int,
-    val replaceableMaterials: Set<String>,
     val lairVisual: FarmCareVisualSettings,
     val chamberCount: Int = 3,
     val moleCount: Int = 8,
@@ -1100,15 +1099,6 @@ class ArcFarmsConfig private constructor(
                         .checked("mole-burrow.light-spacing", 2, 16),
                     lightLevel = section.int("mole-burrow.light-level", 11)
                         .checked("mole-burrow.light-level", 1, 15),
-                    replaceableMaterials = section.stringList("mole-burrow.replaceable-materials")
-                        .ifEmpty {
-                            listOf(
-                                "STONE", "DEEPSLATE", "DIRT", "COARSE_DIRT", "ANDESITE", "DIORITE", "GRANITE",
-                                "TUFF", "CALCITE", "DRIPSTONE_BLOCK", "CLAY", "MUD", "PACKED_MUD",
-                            )
-                        }
-                        .map(::materialName)
-                        .toSet(),
                     lairVisual = FarmCareVisualSettings(
                         material = materialName(section.string("$moleLairPath.material", "RABBIT_HIDE")),
                         customModelData = section.int("$moleLairPath.custom-model-data", 0)
