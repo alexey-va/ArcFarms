@@ -96,6 +96,13 @@ class FarmProcessingTest : FunSpec({
         }
     }
 
+    test("processing points ignore view pitch and snap arbitrary yaw to a world axis") {
+        val point = FarmPointPosition("world", 10.0, 65.0, 20.0, yaw = -173.26517f, pitch = 47f)
+
+        FarmProcessingPointOrientation.normalize(point) shouldBe point.copy(yaw = -180f, pitch = 0f)
+        FarmProcessingPointOrientation.normalize(point.copy(yaw = 52f)).yaw shouldBe 90f
+    }
+
     test("walking a full circle accumulates one lap in either direction") {
         fun walk(direction: Int): Double {
             var state: FarmProcessingCrankState? = null

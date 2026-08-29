@@ -45,6 +45,18 @@ data class FarmPointPosition(
     }
 }
 
+object FarmProcessingPointOrientation {
+    fun normalize(position: FarmPointPosition): FarmPointPosition {
+        val snapped = kotlin.math.round(position.yaw / 90f) * 90f
+        val normalizedYaw = when {
+            snapped >= 180f -> snapped - 360f
+            snapped < -180f -> snapped + 360f
+            else -> snapped
+        }
+        return position.copy(yaw = normalizedYaw, pitch = 0f)
+    }
+}
+
 data class FarmLocationOverrides(
     val schemaVersion: Int = SCHEMA_VERSION,
     val zones: Map<String, Map<FarmPointKind, FarmPointPosition>> = emptyMap(),

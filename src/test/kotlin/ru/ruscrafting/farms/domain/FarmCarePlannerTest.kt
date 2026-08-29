@@ -45,6 +45,14 @@ class FarmCarePlannerTest : FunSpec({
         FarmCarePlanner.corners(tiny) shouldBe tiny
     }
 
+    test("mole candidate search accepts the configured ninety six probes") {
+        val largeField = (0 until 20).flatMap { x ->
+            (0 until 20).map { z -> FarmPlotPosition("world", x, 64, z) }
+        }
+
+        FarmCarePlanner.spread(largeField, 96, selectionIndex = 17).size shouldBe 96
+    }
+
     test("moving underground target chooses space away from occupied mounds") {
         val occupied = listOf(FarmPointPosition("world", 0.5, 65.0, 0.5))
         val relocated = requireNotNull(FarmCarePlanner.relocate(field, occupied, selectionIndex = 3))

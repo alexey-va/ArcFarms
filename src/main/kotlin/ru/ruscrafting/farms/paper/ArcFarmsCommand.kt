@@ -20,6 +20,15 @@ class ArcFarmsCommand(
     private val reload: () -> Result<Unit>,
 ) : CommandExecutor, TabCompleter {
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
+        return try {
+            execute(sender, args)
+        } catch (failure: Exception) {
+            service.reportCommandFailure(sender, label, failure)
+            true
+        }
+    }
+
+    private fun execute(sender: CommandSender, args: Array<out String>): Boolean {
         if (args.isEmpty()) {
             val player = sender as? Player
             if (player == null) sender.sendMessage(locale.render(MessageKey.HELP, sender)) else menu.open(player)

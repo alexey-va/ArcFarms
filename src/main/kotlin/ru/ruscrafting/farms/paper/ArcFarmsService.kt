@@ -27,6 +27,7 @@ import org.bukkit.event.vehicle.VehicleEnterEvent
 import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
+import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.ActivityStatsIndex
 import ru.ruscrafting.farms.domain.farmWeekStartEpochDay
@@ -78,6 +79,11 @@ class ArcFarmsService(
     @Volatile
     private var settings: ArcFarmsConfig = initialSettings
     private val stats = ActivityStatsIndex(currentWeekStartEpochDay = { farmWeekStartEpochDay(clock()) })
+
+    fun reportCommandFailure(sender: org.bukkit.command.CommandSender, label: String, failure: Exception) {
+        plugin.logger.log(Level.SEVERE, "ArcFarms command failed: /$label", failure)
+        sender.sendMessage(locale.render(MessageKey.GENERIC_ERROR, sender))
+    }
     private val interactionCooldowns = mutableMapOf<String, Long>()
     private val taskSupervisor = RuntimeTaskSupervisor()
     private val worksitePort = PaperWorksiteRuntimePort(

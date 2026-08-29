@@ -3,6 +3,8 @@ package ru.ruscrafting.farms.domain
 import java.lang.Math.floorMod
 
 object FarmCarePlanner {
+    const val MAX_SPREAD_TARGETS = 256
+
     fun targetCount(activePlayers: Int, perPlayer: Int, maximum: Int, available: Int): Int {
         require(activePlayers >= 0 && perPlayer in 1..64 && maximum in 1..64 && available >= 0) {
             "Farm care target scaling is invalid"
@@ -49,7 +51,7 @@ object FarmCarePlanner {
         targetCount: Int,
         selectionIndex: Long,
     ): List<FarmPlotPosition> {
-        require(targetCount in 1..64) { "Farm care target count is invalid" }
+        require(targetCount in 1..MAX_SPREAD_TARGETS) { "Farm care target count is invalid" }
         val unique = candidates.distinct().sortedWith(
             compareBy(FarmPlotPosition::world, FarmPlotPosition::y, FarmPlotPosition::x, FarmPlotPosition::z),
         )

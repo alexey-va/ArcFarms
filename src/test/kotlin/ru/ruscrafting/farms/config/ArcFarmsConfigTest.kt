@@ -609,6 +609,27 @@ class ArcFarmsConfigTest : FunSpec({
         en.string("scoreboard.hint.care.seeder-planting") shouldNotContain "marker"
     }
 
+    test("movable processing points are never described by left or right directions") {
+        val repositoryRoot = Path.of(requireNotNull(System.getProperty("arcfarms.projectDir")))
+        val root = repositoryRoot.resolve("src/main/resources")
+        val keys = listOf(
+            "farm.processing.loading-subtitle",
+            "farm.processing.packing-subtitle",
+            "farm.processing.loading-hint",
+            "farm.processing.packing-hint",
+            "farm.processing.product-picked-up-subtitle",
+            "scoreboard.hint.processing-loading",
+            "scoreboard.hint.processing-packing",
+        )
+        val ru = Config(root, "lang/ru.yml")
+        val en = Config(root, "lang/en.yml")
+
+        val russianGuidance = keys.joinToString(" ") { ru.string(it).lowercase() }
+        listOf("слева", "справа", "левый", "правый").forEach(russianGuidance::shouldNotContain)
+        val englishGuidance = keys.joinToString(" ") { en.string(it).lowercase() }
+        listOf("left", "right").forEach(englishGuidance::shouldNotContain)
+    }
+
     test("mechanized patch remains bounded before runtime scanning") {
         val root = resourceTree()
         val configPath = root.resolve("config.yml")

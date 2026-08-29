@@ -8,6 +8,7 @@ import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmContractRarity
 import ru.ruscrafting.farms.domain.FarmCustomerType
 import ru.ruscrafting.farms.domain.FarmCareRole
+import ru.ruscrafting.farms.domain.FarmCarePlanner
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.MAX_FARM_PATCH_PLOTS
 import ru.ruscrafting.farms.domain.TrustedFarmCommandTemplate
@@ -1086,7 +1087,7 @@ class ArcFarmsConfig private constructor(
                     blocksPerTick = section.int("mole-burrow.blocks-per-tick", 48)
                         .checked("mole-burrow.blocks-per-tick", 8, 256),
                     candidateAttempts = section.int("mole-burrow.candidate-attempts", 12)
-                        .checked("mole-burrow.candidate-attempts", 1, 256),
+                        .checked("mole-burrow.candidate-attempts", 1, FarmCarePlanner.MAX_SPREAD_TARGETS),
                     lightSpacing = section.int("mole-burrow.light-spacing", 5)
                         .checked("mole-burrow.light-spacing", 2, 16),
                     lightLevel = section.int("mole-burrow.light-level", 11)

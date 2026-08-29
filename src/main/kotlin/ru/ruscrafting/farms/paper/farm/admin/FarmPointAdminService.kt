@@ -7,6 +7,7 @@ import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
+import ru.ruscrafting.farms.domain.FarmProcessingPointOrientation
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.ArcFarmsRuntimeValidator
 import ru.ruscrafting.farms.paper.FarmRuntime
@@ -76,7 +77,7 @@ internal class FarmPointAdminService(
                 return false
             }
         }
-        val position = FarmPointPosition(
+        val captured = FarmPointPosition(
             player.world.name,
             player.location.x,
             player.location.y,
@@ -84,6 +85,7 @@ internal class FarmPointAdminService(
             player.location.yaw,
             player.location.pitch,
         )
+        val position = if (kind in PROCESSING_POINTS) FarmProcessingPointOrientation.normalize(captured) else captured
         if (kind in PROCESSING_POINTS) {
             processing.validate(runtime, position)?.let { failure ->
                 port.sendChat(
