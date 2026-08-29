@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper.farm.incident.route
 
 import org.bukkit.Location
+import ru.ruscrafting.farms.domain.FarmStallWatchdogState
 import java.util.ArrayDeque
 import java.util.UUID
 
@@ -23,6 +24,9 @@ internal data class FarmFoodDeliverySession(
     val monsterIds: MutableSet<UUID> = linkedSetOf(),
     val pendingAmbushCheckpoints: ArrayDeque<Int> = ArrayDeque(),
     val gunnerTrail: ArrayDeque<Location> = ArrayDeque(),
+    var stallWatchdog: FarmStallWatchdogState? = null,
+    var stallAnchor: Location? = null,
+    var stallRouteProgress: Int = 0,
 ) {
     fun finishWaveIfCleared(): Boolean {
         if (!brokenDown || monsterIds.isNotEmpty()) return false

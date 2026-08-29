@@ -57,6 +57,7 @@ internal class FarmNightShiftController(
         var target: Long,
         var maximumStep: Long,
         var returning: Boolean = false,
+        var fixed: Boolean = false,
     )
 
     private val playerTimes = mutableMapOf<UUID, PlayerTimeState>()
@@ -220,6 +221,14 @@ internal class FarmNightShiftController(
         transitionSeconds: Int,
     ) = syncPlayerTime(ownerId, players, playerTime, transitionSeconds)
 
+    /** Keeps delivery participants at one exact client-side time until the owner is cleared. */
+    fun syncFixedAmbientTime(
+        ownerId: String,
+        players: Collection<Player>,
+        playerTime: Long,
+        returnTransitionSeconds: Int,
+    ) = syncPlayerTime(ownerId, players, playerTime, returnTransitionSeconds, fixed = true)
+
     fun clearAmbientTime(ownerId: String) {
         playerTimes.values.filter { it.zoneId == ownerId }.forEach { it.returning = true }
     }
@@ -282,6 +291,11 @@ internal class FarmNightShiftController(
                 iterator.remove()
                 continue
             }
+            if (state.fixed && !state.returning) {
+                state.current = state.target
+                player.setPlayerTime(state.target, false)
+                continue
+            }
             val target = if (state.returning) player.world.time else state.target
             val step = FarmPlayerTimeTransition.step(state.current, target, state.maximumStep)
             state.current = step.time
@@ -298,6 +312,7 @@ internal class FarmNightShiftController(
         players: Collection<Player>,
         playerTime: Long,
         transitionSeconds: Int,
+        fixed: Boolean = false,
     ) {
         val expected = players.mapTo(hashSetOf(), Player::getUniqueId)
         playerTimes.filterValues { it.zoneId == zoneId }.filterKeys { it !in expected }.values.forEach {
@@ -307,17 +322,25 @@ internal class FarmNightShiftController(
         players.forEach { player ->
             val existing = playerTimes[player.uniqueId]
             if (existing == null) {
+                val target = FarmPlayerTimeTransition.normalize(playerTime)
                 playerTimes[player.uniqueId] = PlayerTimeState(
                     zoneId = zoneId,
-                    current = FarmPlayerTimeTransition.normalize(player.playerTime),
-                    target = FarmPlayerTimeTransition.normalize(playerTime),
+                    current = if (fixed) target else FarmPlayerTimeTransition.normalize(player.playerTime),
+                    target = target,
                     maximumStep = maximumStep,
+                    fixed = fixed,
                 )
+                if (fixed) player.setPlayerTime(target, false)
             } else {
                 existing.zoneId = zoneId
                 existing.target = FarmPlayerTimeTransition.normalize(playerTime)
                 existing.maximumStep = maximumStep
                 existing.returning = false
+                existing.fixed = fixed
+                if (fixed) {
+                    existing.current = existing.target
+                    player.setPlayerTime(existing.target, false)
+                }
             }
         }
     }

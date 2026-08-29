@@ -29,6 +29,9 @@ import ru.ruscrafting.farms.domain.FarmProcessingLayout
 import ru.ruscrafting.farms.domain.FarmProcessingDialPlanner
 import ru.ruscrafting.farms.domain.FarmProcessingStage
 import ru.ruscrafting.farms.domain.FarmShiftEngine
+import ru.ruscrafting.farms.domain.FarmStallAction
+import ru.ruscrafting.farms.domain.FarmStallWatchdog
+import ru.ruscrafting.farms.domain.FarmStallWatchdogState
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.BukkitFarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmEntityLookup
@@ -52,6 +55,12 @@ internal enum class FarmProcessingPlacementFailure {
 
 private data class ProcessingCargoKey(val zoneId: String, val cargo: ProcessingCargo, val index: Int)
 
+private data class ProcessingCarrierLease(
+    val playerId: UUID,
+    var watchdog: FarmStallWatchdogState,
+    var bestDistance: Double = Double.POSITIVE_INFINITY,
+)
+
 /** Crop processing incident: load raw packages, time the mechanism, deliver finished goods. */
 internal class FarmProcessingIncident(
     plugin: Plugin,
@@ -70,7 +79,7 @@ internal class FarmProcessingIncident(
     private val carriedSequenceKey = NamespacedKey(plugin, "farm_processing_carried_sequence")
     private val carriedCargoKey = NamespacedKey(plugin, "farm_processing_carried_cargo")
     private val carriedIndexKey = NamespacedKey(plugin, "farm_processing_carried_index")
-    private val carriers = mutableMapOf<ProcessingCargoKey, UUID>()
+    private val carriers = mutableMapOf<ProcessingCargoKey, ProcessingCarrierLease>()
     private val carriedDisplays = mutableMapOf<ProcessingCargoKey, UUID>()
     private val successfulCycles = mutableMapOf<Pair<String, UUID>, Long>()
     private val lastUnavailableSequence = mutableMapOf<String, Long>()
@@ -143,7 +152,7 @@ internal class FarmProcessingIncident(
             FarmProcessingSceneRole.RAW_INTERACTION -> pickup(runtime, player, ProcessingCargo.RAW, identity.index)
             FarmProcessingSceneRole.PRODUCT_INTERACTION -> pickup(runtime, player, ProcessingCargo.PRODUCT, identity.index)
             FarmProcessingSceneRole.MACHINE_INTERACTION -> useMachine(runtime, player)
-            else -> port.sendActionBar(player, stageHint(runtime))
+            else -> showStageHint(runtime, player)
         }
         return true
     }
@@ -152,13 +161,13 @@ internal class FarmProcessingIncident(
         runtimes.forEach { runtime ->
             if (!active(runtime)) return@forEach
             if (tick % 5L == 0L) ensure(runtime)
-            updateCarriers(runtime)
+            updateCarriers(runtime, tick)
             renderMechanism(runtime, tick)
         }
     }
 
     fun releasePlayer(runtimes: Collection<FarmRuntime>, player: Player, reason: String) {
-        carriers.filterValues { it == player.uniqueId }.keys.toList().forEach { key ->
+        carriers.filterValues { it.playerId == player.uniqueId }.keys.toList().forEach { key ->
             runtimes.firstOrNull { it.settings.id == key.zoneId }?.let { returnCargo(it, key, player, reason) }
         }
     }
@@ -203,7 +212,7 @@ internal class FarmProcessingIncident(
         val state = runtime.state.processing ?: return
         val expectedStage = if (cargo == ProcessingCargo.RAW) FarmProcessingStage.LOADING else FarmProcessingStage.PACKING
         if (state.stage != expectedStage) {
-            port.sendActionBar(player, stageHint(runtime))
+            showStageHint(runtime, player)
             return
         }
         val remaining = if (cargo == ProcessingCargo.RAW) {
@@ -213,11 +222,14 @@ internal class FarmProcessingIncident(
         }
         val range = 0 until remaining
         val key = ProcessingCargoKey(runtime.settings.id, cargo, index)
-        if (index !in range || key in carriers || player.uniqueId in carriers.values) {
+        if (index !in range || key in carriers || carriers.values.any { it.playerId == player.uniqueId }) {
             port.sendActionBar(player, MessageKey.FARM_PROCESSING_ALREADY_CARRYING)
             return
         }
-        carriers[key] = player.uniqueId
+        carriers[key] = ProcessingCarrierLease(
+            playerId = player.uniqueId,
+            watchdog = FarmStallWatchdogState(Bukkit.getCurrentTick().toLong()),
+        )
         val display = player.world.spawn(carriedLocation(runtime, player), ItemDisplay::class.java) { entity ->
             entity.setItemStack(FarmProcessingItems.packageItem(runtime, cargo))
             entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
@@ -252,7 +264,7 @@ internal class FarmProcessingIncident(
     private fun operate(runtime: FarmRuntime, player: Player) {
         val state = runtime.state.processing ?: return
         if (state.stage != FarmProcessingStage.OPERATING) {
-            port.sendActionBar(player, stageHint(runtime))
+            showStageHint(runtime, player)
             return
         }
         val configured = runtime.settings.processing
@@ -286,16 +298,16 @@ internal class FarmProcessingIncident(
         when (runtime.state.processing?.stage) {
             FarmProcessingStage.LOADING -> loadCarriedRaw(runtime, player)
             FarmProcessingStage.OPERATING -> operate(runtime, player)
-            FarmProcessingStage.PACKING, null -> port.sendActionBar(player, stageHint(runtime))
+            FarmProcessingStage.PACKING, null -> showStageHint(runtime, player)
         }
     }
 
     private fun loadCarriedRaw(runtime: FarmRuntime, player: Player) {
-        val entry = carriers.entries.firstOrNull { (key, playerId) ->
-            key.zoneId == runtime.settings.id && key.cargo == ProcessingCargo.RAW && playerId == player.uniqueId
+        val entry = carriers.entries.firstOrNull { (key, lease) ->
+            key.zoneId == runtime.settings.id && key.cargo == ProcessingCargo.RAW && lease.playerId == player.uniqueId
         }
         if (entry == null) {
-            port.sendActionBar(player, stageHint(runtime))
+            showStageHint(runtime, player)
             return
         }
         carriers.remove(entry.key)
@@ -312,9 +324,9 @@ internal class FarmProcessingIncident(
         }
     }
 
-    private fun updateCarriers(runtime: FarmRuntime) {
-        carriers.filterKeys { it.zoneId == runtime.settings.id }.toMap().forEach { (key, playerId) ->
-            val player = Bukkit.getPlayer(playerId)
+    private fun updateCarriers(runtime: FarmRuntime, tick: Long) {
+        carriers.filterKeys { it.zoneId == runtime.settings.id }.toMap().forEach { (key, lease) ->
+            val player = Bukkit.getPlayer(lease.playerId)
             if (player == null || !player.isOnline || !runtime.region.contains(player.location)) {
                 returnCargo(runtime, key, player, "carrier_unavailable")
                 return@forEach
@@ -328,9 +340,29 @@ internal class FarmProcessingIncident(
             val layout = layout(runtime) ?: return@forEach
             val target = if (key.cargo == ProcessingCargo.RAW) layout.inputDrop else layout.outputPallet
             val targetLocation = target.location(runtime)
-            if (player.world !== targetLocation.world || player.location.distanceSquared(targetLocation) >
-                runtime.settings.processing.deliveryRadius * runtime.settings.processing.deliveryRadius
-            ) return@forEach
+            if (player.world !== targetLocation.world) {
+                returnCargo(runtime, key, player, "wrong_world")
+                return@forEach
+            }
+            val distance = player.location.distance(targetLocation)
+            if (distance > runtime.settings.processing.deliveryRadius) {
+                val progressed = distance <= lease.bestDistance - CARGO_PROGRESS_DISTANCE
+                if (progressed || !lease.bestDistance.isFinite()) lease.bestDistance = distance
+                val result = FarmStallWatchdog.observe(
+                    lease.watchdog,
+                    tick,
+                    progressed,
+                    runtime.settings.processing.cargoReminderSeconds * 20L,
+                    runtime.settings.processing.cargoReturnSeconds * 20L,
+                )
+                lease.watchdog = result.state
+                when (result.action) {
+                    FarmStallAction.NONE -> Unit
+                    FarmStallAction.REMIND -> port.showScreenTitle(player, pickupTitle(key.cargo), scope = "cargo_watchdog")
+                    FarmStallAction.RELEASE -> returnCargo(runtime, key, player, "cargo_stalled")
+                }
+                return@forEach
+            }
             carriers.remove(key)
             removeCarried(key)
             val stage = if (key.cargo == ProcessingCargo.RAW) FarmProcessingStage.LOADING else FarmProcessingStage.PACKING
@@ -567,7 +599,10 @@ internal class FarmProcessingIncident(
     private fun returnCargo(runtime: FarmRuntime, key: ProcessingCargoKey, player: Player?, reason: String) {
         carriers.remove(key)
         removeCarried(key)
-        player?.takeIf(Player::isOnline)?.let { port.sendActionBar(it, MessageKey.FARM_PROCESSING_RETURNED) }
+        player?.takeIf(Player::isOnline)?.let {
+            port.sendActionBar(it, MessageKey.FARM_PROCESSING_RETURNED)
+            port.showScreenTitle(it, MessageKey.FARM_PROCESSING_RETURNED, scope = "cargo_watchdog")
+        }
         debug.event(
             "farm_processing_returned",
             "zone" to key.zoneId,
@@ -603,6 +638,21 @@ internal class FarmProcessingIncident(
         null -> MessageKey.FARM_PROCESSING_LOADING_HINT
     }
 
+    private fun showStageHint(runtime: FarmRuntime, player: Player) {
+        port.sendActionBar(player, stageHint(runtime))
+        if (!port.allowInteraction("farm-processing-title:${runtime.settings.id}:${player.uniqueId}", 8_000)) return
+        val title = when (runtime.state.processing?.stage) {
+            FarmProcessingStage.LOADING, null -> MessageKey.FARM_PROCESSING_LOADING_TITLE
+            FarmProcessingStage.OPERATING -> MessageKey.FARM_PROCESSING_OPERATING_TITLE
+            FarmProcessingStage.PACKING -> MessageKey.FARM_PROCESSING_PACKING_TITLE
+        }
+        port.showScreenTitle(player, title, scope = "processing_hint")
+    }
+
+    private fun pickupTitle(cargo: ProcessingCargo): MessageKey =
+        if (cargo == ProcessingCargo.RAW) MessageKey.FARM_PROCESSING_RAW_PICKED_UP
+        else MessageKey.FARM_PROCESSING_PRODUCT_PICKED_UP
+
     private fun active(runtime: FarmRuntime): Boolean =
         runtime.state.phase == FarmPhase.INCIDENT && runtime.state.incidentType == FarmIncidentType.PROCESSING
 
@@ -629,6 +679,7 @@ internal class FarmProcessingIncident(
         Location(runtime.region.world, x, y, z, yaw, pitch)
 
     private companion object {
+        const val CARGO_PROGRESS_DISTANCE = 1.0
         val GOLD = Particle.DustOptions(Color.fromRGB(255, 178, 36), 1.25f)
         val GREEN = Particle.DustOptions(Color.fromRGB(92, 214, 116), 1.0f)
         val RED = Particle.DustOptions(Color.fromRGB(229, 75, 66), 1.05f)

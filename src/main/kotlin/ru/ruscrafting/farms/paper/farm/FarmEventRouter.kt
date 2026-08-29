@@ -358,7 +358,7 @@ internal class FarmEventRouter(
             event.isCancelled = true
             return
         }
-        if (foodDelivery.onDamage(event)) return
+        if (foodDelivery.onDamage(event, runtimes())) return
         if (birds.onDamage(event, runtimes())) return
         if (scene.owns(event.entity) || special.ownsScene(event.entity)) {
             event.isCancelled = true

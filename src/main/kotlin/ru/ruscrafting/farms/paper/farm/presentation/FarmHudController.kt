@@ -185,6 +185,9 @@ internal class FarmHudController(
             "phase" to runtime.state.phase,
             "reason" to reason,
         )
+        if (port.allowInteraction("farm-task-title:${runtime.settings.id}:${player.uniqueId}", 8_000)) {
+            enter(player, runtime)
+        }
     }
 
     fun storyTitle(

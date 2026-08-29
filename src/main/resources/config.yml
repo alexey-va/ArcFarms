@@ -17,7 +17,7 @@ ui:
   bossbars: true
   particles: true
   sounds: true
-  title-stay-seconds: 6
+  title-stay-seconds: 12
   marker-height: 12
   missing-bed-highlight-threshold: 10
   farm-scoreboard:
@@ -142,21 +142,23 @@ farm-zones:
       # One independent maze per active participant, capped to avoid excessive block work.
       max-burrows: 3
       min-depth: 10
-      max-depth: 18
+      max-depth: 40
       tunnel-height: 3
       # Logical maze corridors are expanded to this many blocks in both horizontal axes.
       tunnel-width: 2
       # Do not put entrances on the outermost beds when the farm has enough interior space.
       entrance-min-boundary-distance: 10
       blocks-per-tick: 48
-      candidate-attempts: 12
+      candidate-attempts: 96
       light-spacing: 5
       light-level: 11
       chambers: 3
       moles: 8
       decoration-percent: 28
       guidance: {close-distance: 6, far-distance: 14, interval-ticks: 20}
-      replaceable-materials: [STONE, DEEPSLATE, DIRT, COARSE_DIRT, ANDESITE, DIORITE, GRANITE, TUFF, CALCITE, DRIPSTONE_BLOCK, CLAY, MUD, PACKED_MUD]
+      # Stable natural blocks may be journaled and restored. Water and falling
+      # blocks remain forbidden so a larger search cannot create unsafe caves.
+      replaceable-materials: [STONE, DEEPSLATE, DIRT, COARSE_DIRT, GRASS_BLOCK, PODZOL, ROOTED_DIRT, ANDESITE, DIORITE, GRANITE, TUFF, CALCITE, DRIPSTONE_BLOCK, CLAY, MUD, PACKED_MUD, BLACKSTONE, COBBLED_DEEPSLATE, BROWN_MUSHROOM_BLOCK, COAL_ORE, DEEPSLATE_COAL_ORE, IRON_ORE, DEEPSLATE_IRON_ORE, COPPER_ORE, DEEPSLATE_COPPER_ORE, GOLD_ORE, DEEPSLATE_GOLD_ORE, REDSTONE_ORE, DEEPSLATE_REDSTONE_ORE, LAPIS_ORE, DEEPSLATE_LAPIS_ORE, DIAMOND_ORE, DEEPSLATE_DIAMOND_ORE, EMERALD_ORE, DEEPSLATE_EMERALD_ORE]
       lair-visual:
         # Portable fallback; the live server may replace this with a fitted ItemsAdder cave prop.
         material: MUD
@@ -257,6 +259,7 @@ farm-zones:
       interaction-radius: 2.2
       delivery-radius: 2.4
       carried-y-offset: 0.95
+      cargo-watchdog: {reminder-seconds: 12, return-seconds: 30}
       spawn-per-tick: 4
       display-view-range: 3.0
       particle-column-height: 2.0
@@ -288,6 +291,9 @@ farm-zones:
       horse-speed: 0.17
       player-time: 18000
       transition-seconds: 18
+      # Geometry is intentionally ignored: ordinary stairs, slabs and turns
+      # cannot trigger recovery. Only prolonged lack of movement/progress can.
+      inactivity: {reminder-seconds: 20, reset-seconds: 45, movement-distance: 2.0}
       trail: {lookahead-points: 28, height: 0.35, particle-size: 1.15}
       completion-contribution: 12
       # Riders are dismounted at the destination, then returned to the farm after this pause.

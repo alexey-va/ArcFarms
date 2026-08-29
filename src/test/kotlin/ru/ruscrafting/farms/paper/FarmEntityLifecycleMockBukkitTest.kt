@@ -46,6 +46,20 @@ class FarmEntityLifecycleMockBukkitTest : FunSpec({
         lookup.globalScans shouldBe 0
     }
 
+    test("food delivery ambient time remains fixed while the world clock changes") {
+        val controller = FarmNightShiftController(paper.createSimplePlugin("FixedDeliveryTimeTest"))
+        val player = paper.addPlayer("Driver")
+        player.teleport(Location(world, 8.5, 65.0, 8.5))
+        world.time = 6_000L
+
+        controller.syncFixedAmbientTime("food:farm", listOf(player), 18_000L, 18)
+        player.playerTime shouldBe 18_000L
+
+        world.time = 12_000L
+        repeat(40) { controller.updatePlayerTimes() }
+        player.playerTime shouldBe 18_000L
+    }
+
     test("special scene keeps one tracked display and inactive clears stay scan free") {
         val lookup = CountingFarmEntityLookup()
         val plugin = paper.createSimplePlugin("SpecialSceneLifecycleTest")

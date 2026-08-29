@@ -767,7 +767,7 @@ internal class FarmMoleBurrowWorld(
         x.toLong() * 0xBF58476D1CE4E5B9UL.toLong() xor z.toLong() * 0x94D049BB133111EBUL.toLong()
 
     private companion object {
-        const val MAX_LAYOUT_PROBES = 4
+        const val MAX_LAYOUT_PROBES = 64
         const val DEPTH_PROBE_STEP = 5
         val AIR_DATA: String = Material.AIR.createBlockData().asString
         val BARRIER_DATA: String = Material.BARRIER.createBlockData().asString

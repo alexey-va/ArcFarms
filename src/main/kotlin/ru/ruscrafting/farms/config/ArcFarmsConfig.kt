@@ -303,6 +303,8 @@ data class FarmProcessingSettings(
     val interactionRadius: Double,
     val deliveryRadius: Double,
     val carriedYOffset: Double,
+    val cargoReminderSeconds: Int,
+    val cargoReturnSeconds: Int,
     val spawnPerTick: Int,
     val displayViewRange: Float,
     val particleColumnHeight: Double,
@@ -310,6 +312,9 @@ data class FarmProcessingSettings(
 ) {
     init {
         require(dialWindowTicks < dialPeriodTicks / 2) { "processing dial window must be below half a period" }
+        require(cargoReminderSeconds < cargoReturnSeconds) {
+            "processing cargo reminder must happen before automatic return"
+        }
     }
 }
 
@@ -520,6 +525,9 @@ data class FarmRouteDeliverySettings(
     val monsterLightLevel: Int,
     val playerTime: Long,
     val timeTransitionSeconds: Int,
+    val inactivityReminderSeconds: Int,
+    val inactivityResetSeconds: Int,
+    val inactivityMovementDistance: Double,
     val cartScale: Float,
     val cartYOffset: Double,
     val cartLoadCount: Int,
@@ -824,6 +832,10 @@ class ArcFarmsConfig private constructor(
                     interactionRadius = section.finiteDouble("processing.interaction-radius", 2.2, 1.0, 5.0),
                     deliveryRadius = section.finiteDouble("processing.delivery-radius", 2.4, 1.0, 5.0),
                     carriedYOffset = section.finiteDouble("processing.carried-y-offset", 0.95, 0.0, 3.0),
+                    cargoReminderSeconds = section.int("processing.cargo-watchdog.reminder-seconds", 12)
+                        .checked("processing.cargo-watchdog.reminder-seconds", 5, 60),
+                    cargoReturnSeconds = section.int("processing.cargo-watchdog.return-seconds", 30)
+                        .checked("processing.cargo-watchdog.return-seconds", 10, 180),
                     spawnPerTick = section.int("processing.spawn-per-tick", 4)
                         .checked("processing.spawn-per-tick", 1, 16),
                     displayViewRange = section.finiteFloat("processing.display-view-range", 3.0f, 0.25f, 8.0f),
@@ -937,6 +949,13 @@ class ArcFarmsConfig private constructor(
                         } ?: error("route-delivery.player-time must be an integer"),
                     timeTransitionSeconds = section.int("route-delivery.transition-seconds", 18)
                         .checked("route-delivery.transition-seconds", 1, 60),
+                    inactivityReminderSeconds = section.int("route-delivery.inactivity.reminder-seconds", 20)
+                        .checked("route-delivery.inactivity.reminder-seconds", 5, 120),
+                    inactivityResetSeconds = section.int("route-delivery.inactivity.reset-seconds", 45)
+                        .checked("route-delivery.inactivity.reset-seconds", 15, 300),
+                    inactivityMovementDistance = section.finiteDouble(
+                        "route-delivery.inactivity.movement-distance", 2.0, 1.0, 8.0,
+                    ),
                     cartScale = section.finiteFloat("route-delivery.cart-scale", 4.4f, 0.5f, 8.0f),
                     cartYOffset = section.finiteDouble("route-delivery.cart-y-offset", 0.875, -2.0, 2.0),
                     cartLoadCount = section.int("route-delivery.cart-load-count", 4)
@@ -972,6 +991,9 @@ class ArcFarmsConfig private constructor(
                     }
                     require(it.monsterWaveMin <= it.monsterWaveMax)
                     require(it.monsterMaxAlive == 0 || it.ambushMaxCount > 0)
+                    require(it.inactivityReminderSeconds < it.inactivityResetSeconds) {
+                        "farm-zones.$id route inactivity reminder must happen before reset"
+                    }
                 }
                 fun perk(path: String, price: Long, hours: Int) = FarmPerkOfferSettings(
                     price = section.string("perks.$path.price", price.toString()).toLongOrNull()
@@ -1073,7 +1095,7 @@ class ArcFarmsConfig private constructor(
                     blocksPerTick = section.int("mole-burrow.blocks-per-tick", 48)
                         .checked("mole-burrow.blocks-per-tick", 8, 256),
                     candidateAttempts = section.int("mole-burrow.candidate-attempts", 12)
-                        .checked("mole-burrow.candidate-attempts", 1, 32),
+                        .checked("mole-burrow.candidate-attempts", 1, 256),
                     lightSpacing = section.int("mole-burrow.light-spacing", 5)
                         .checked("mole-burrow.light-spacing", 2, 16),
                     lightLevel = section.int("mole-burrow.light-level", 11)
@@ -1530,7 +1552,7 @@ class ArcFarmsConfig private constructor(
                 bossbars = config.boolean("ui.bossbars", true),
                 particles = config.boolean("ui.particles", true),
                 sounds = config.boolean("ui.sounds", true),
-                titleStaySeconds = config.int("ui.title-stay-seconds", 6).checked("ui.title-stay-seconds", 2, 10),
+                titleStaySeconds = config.int("ui.title-stay-seconds", 6).checked("ui.title-stay-seconds", 2, 20),
                 markerHeight = config.int("ui.marker-height", 12).checked("ui.marker-height", 6, 24),
                 missingBedHighlightThreshold = config.int("ui.missing-bed-highlight-threshold", 10)
                     .checked("ui.missing-bed-highlight-threshold", 1, 32),

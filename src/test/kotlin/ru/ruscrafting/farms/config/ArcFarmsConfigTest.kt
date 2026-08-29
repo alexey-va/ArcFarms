@@ -195,7 +195,8 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().moleBurrow.cells shouldBe 8
         settings.farms.single().moleBurrow.maxBurrows shouldBe 3
         settings.farms.single().moleBurrow.minDepth shouldBe 10
-        settings.farms.single().moleBurrow.maxDepth shouldBe 18
+        settings.farms.single().moleBurrow.maxDepth shouldBe 40
+        settings.farms.single().moleBurrow.candidateAttempts shouldBe 96
         settings.farms.single().moleBurrow.tunnelWidth shouldBe 2
         settings.farms.single().moleBurrow.entranceMinBoundaryDistance shouldBe 10
         settings.farms.single().moleBurrow.blocksPerTick shouldBe 48
@@ -215,7 +216,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().contractCartVisual.scale shouldBe 1.0f
         settings.farms.single().contractCartVisual.yOffset shouldBe 0.15
         settings.farms.single().contractCartVisual.viewRange shouldBe 2.0f
-        settings.titleStaySeconds shouldBe 6
+        settings.titleStaySeconds shouldBe 12
         settings.farms.single().placementMinObjectiveDistance shouldBe 10
         settings.farms.single().placementMaxPlayerDistance shouldBe 28
         settings.farms.single().placementSearchRadius shouldBe 32
@@ -244,6 +245,8 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().processing.dialRadius shouldBe 0.8
         settings.farms.single().processing.dialPointCount shouldBe 32
         settings.farms.single().processing.spawnPerTick shouldBe 4
+        settings.farms.single().processing.cargoReminderSeconds shouldBe 12
+        settings.farms.single().processing.cargoReturnSeconds shouldBe 30
         settings.farms.single().processing.visuals.getValue(FarmProcessingVisualRole.MACHINE).material shouldBe
             "CRAFTING_TABLE"
         settings.farms.single().processing.visuals.getValue(FarmProcessingVisualRole.OUTPUT_PALLET).material shouldBe
@@ -345,6 +348,9 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().routeDelivery.rifleCooldownTicks shouldBe 6
         settings.farms.single().routeDelivery.playerTime shouldBe 18_000L
         settings.farms.single().routeDelivery.timeTransitionSeconds shouldBe 18
+        settings.farms.single().routeDelivery.inactivityReminderSeconds shouldBe 20
+        settings.farms.single().routeDelivery.inactivityResetSeconds shouldBe 45
+        settings.farms.single().routeDelivery.inactivityMovementDistance shouldBe 2.0
         settings.farms.single().damageSafety.maximumPercent shouldBe 18
         settings.farms.single().damageSafety.minimumRemaining shouldBe 128
         settings.farms.single().perks.harvestArea.price shouldBe 250L

@@ -77,6 +77,7 @@ internal class FarmFoodDeliveryIncident(
     private val sequenceKey = NamespacedKey(plugin, "farm_food_route_sequence")
     private val roleKey = NamespacedKey(plugin, "farm_food_route_role")
     private val gunner = FarmFoodDeliveryGunner(plugin, locale, settings, debug, port)
+    private val safety = FarmFoodDeliverySafety(port, debug, routes, vehiclePassengers, gunner)
     private val ambush = FarmFoodDeliveryAmbush(random, night, port, debug, mobDespawns, vehiclePassengers)
     private val sessions = mutableMapOf<String, FarmFoodDeliverySession>()
     private val lastRouteNames = mutableMapOf<String, String>()
@@ -204,7 +205,7 @@ internal class FarmFoodDeliveryIncident(
         val participants = (
             port.players(runtime.region) + participants(runtime)
             ).distinctBy(Player::getUniqueId)
-        night.syncAmbientTime(
+        night.syncFixedAmbientTime(
             nightOwner(runtime.settings.id),
             participants,
             runtime.settings.routeDelivery.playerTime,
@@ -283,6 +284,7 @@ internal class FarmFoodDeliveryIncident(
         if (existing == null && !horse.addPassenger(player)) return true
         horse.setAI(true)
         session.riderId = player.uniqueId
+        safety.reset(session, horse.location, runtime.state.incidentProgress, Bukkit.getCurrentTick().toLong())
         session.ambushCrewIds.remove(player.uniqueId)
         session.escortIds.remove(player.uniqueId)
         gunner.armDriver(player, runtime, session)
@@ -304,7 +306,8 @@ internal class FarmFoodDeliveryIncident(
         return gunner.interact(event, runtime, runtime?.let { sessions[it.settings.id] })
     }
 
-    fun onDamage(event: EntityDamageEvent): Boolean {
+    fun onDamage(event: EntityDamageEvent, runtimes: Collection<FarmRuntime>): Boolean {
+        if (safety.rescueSuffocatingGunner(event, runtimes, sessions, ::safeSurface)) return true
         val incoming = event as? EntityDamageByEntityEvent
         val player = incoming?.entity as? Player
         if (player != null && owns(incoming.damager) && role(incoming.damager) == ROLE_MONSTER) {
@@ -388,6 +391,7 @@ internal class FarmFoodDeliveryIncident(
         if (session.riderId != null && session.riderId != rider.uniqueId) return
         session.riderId = rider.uniqueId
         val currentIndex = runtime.state.incidentProgress.coerceIn(1, points.size)
+        if (safety.update(runtime, horse, session, rider, points, currentIndex, ::safeSurface)) return
         val projection = FarmRouteGeometry.closest(
             horse.world.name, horse.location.x, horse.location.y, horse.location.z,
             points, (currentIndex - 1).coerceAtLeast(0),
@@ -747,11 +751,9 @@ internal class FarmFoodDeliveryIncident(
 
     private fun active(runtime: FarmRuntime) =
         runtime.state.phase == FarmPhase.INCIDENT && runtime.state.incidentType == FarmIncidentType.FOOD_DELIVERY
-
     private fun location(point: FarmPointPosition): Location = Location(
         requireNotNull(Bukkit.getWorld(point.world)), point.x, point.y, point.z, point.yaw, point.pitch,
     )
-
     private fun correctTowardRoute(horse: Horse, target: Location, strength: Double) {
         val correction = target.toVector().subtract(horse.location.toVector()).apply { y = 0.0 }
         if (correction.lengthSquared() <= 0.0001) {
@@ -782,7 +784,6 @@ internal class FarmFoodDeliveryIncident(
         }
         return null
     }
-
     private companion object {
         const val TRAIL_INTERVAL_TICKS = 10L
         const val ROUTE_SOUND_INTERVAL = 8
@@ -795,6 +796,5 @@ internal class FarmFoodDeliveryIncident(
         const val ROLE_PORTAL = "portal"
         const val ROLE_PORTAL_LABEL = "portal_label"
     }
-
     private fun nightOwner(zoneId: String): String = "food:$zoneId"
 }
