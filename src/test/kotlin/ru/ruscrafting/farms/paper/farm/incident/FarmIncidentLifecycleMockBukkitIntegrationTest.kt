@@ -88,6 +88,9 @@ class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
                 processing.update(listOf(runtime), 100L + step)
             }
             requireNotNull(runtime.state.processing).cyclesCompleted shouldBeGreaterThan 0
+            verify(atLeast = 40) {
+                fixture.port.spawnGuidanceDust(worker, any(), any(), any())
+            }
             // MockBukkit does not emulate the client leash flags, but it does prove
             // that the owned anchor mob is created and participates in cleanup.
             fixture.world.entities.filterIsInstance<Mob>().single(processing::owns)
@@ -143,12 +146,11 @@ class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
             fixture.processingDisplays(FarmProcessingSceneRole.WHEEL).size shouldBe 0
             fixture.processingDisplays(FarmProcessingSceneRole.INPUT_RACK).size shouldBe 0
             val machine = fixture.processingDisplays(FarmProcessingSceneRole.MACHINE).single()
-            fixture.world.clearSpawnedParticles()
             walkMillstone(fixture, processing, runtime, workers[0], 100L)
             machine.isGlowing shouldBe true
-            fixture.world.spawnedParticles.count { particle ->
-                particle.y() >= fixture.processingPoint.y && particle.y() <= fixture.processingPoint.y + 0.2
-            } shouldBeGreaterThan 39
+            verify(atLeast = 40) {
+                fixture.port.spawnGuidanceDust(workers[0], any(), any(), any())
+            }
 
             walkMillstone(fixture, processing, runtime, workers[1], 200L)
             runtime.state.processing?.cyclesCompleted shouldBe 2

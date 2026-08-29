@@ -76,7 +76,7 @@ internal class FarmProcessingCrankController(
             if (runtime.state.processing?.stage != FarmProcessingStage.OPERATING) return@forEach
             sample(runtime, player, machine, tick)
         }
-        render(runtime, tick, machine, machineDisplay)
+        render(runtime, tick, machine, machineDisplay, players.values)
     }
 
     fun clear(zoneId: String, reason: String) {
@@ -249,24 +249,24 @@ internal class FarmProcessingCrankController(
         debug.event("farm_processing_crank_left", "zone" to key.first, "player" to key.second, "reason" to reason)
     }
 
-    private fun render(runtime: FarmRuntime, tick: Long, machine: Location, machineDisplay: ItemDisplay?) {
+    private fun render(
+        runtime: FarmRuntime,
+        tick: Long,
+        machine: Location,
+        machineDisplay: ItemDisplay?,
+        viewers: Collection<Player>,
+    ) {
         val activePlayers = participantCount(runtime.settings.id)
         machineDisplay?.isGlowing = activePlayers > 0
         if (!settings().particles || tick % 5L != 0L) return
         val configured = runtime.settings.processing
         val radius = (configured.crankInnerRadius + configured.crankOuterRadius) / 2.0
+        val color = if (activePlayers > 0) GREEN else TRACK
+        val size = if (activePlayers > 0) GREEN_SIZE else TRACK_SIZE
         repeat(RING_POINTS) { index ->
             val angle = 2.0 * PI * index / RING_POINTS
-            machine.world.spawnParticle(
-                Particle.DUST,
-                machine.clone().add(radius * cos(angle), RING_Y_OFFSET, radius * sin(angle)),
-                1,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                if (activePlayers > 0) GREEN else TRACK,
-            )
+            val point = machine.clone().add(radius * cos(angle), RING_Y_OFFSET, radius * sin(angle))
+            viewers.forEach { viewer -> port.spawnGuidanceDust(viewer, point, color, size) }
         }
     }
 
@@ -276,7 +276,9 @@ internal class FarmProcessingCrankController(
         const val RING_Y_OFFSET = 0.08
         const val RING_POINTS = 40
         const val LAP_EPSILON = 0.0001
-        val GREEN = Particle.DustOptions(Color.fromRGB(92, 214, 116), 1.0f)
-        val TRACK = Particle.DustOptions(Color.fromRGB(69, 200, 245), 0.9f)
+        const val GREEN_SIZE = 1.0f
+        const val TRACK_SIZE = 0.9f
+        val GREEN: Color = Color.fromRGB(92, 214, 116)
+        val TRACK: Color = Color.fromRGB(69, 200, 245)
     }
 }
