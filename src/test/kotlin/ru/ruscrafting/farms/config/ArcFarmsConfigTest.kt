@@ -373,8 +373,8 @@ class ArcFarmsConfigTest : FunSpec({
             scarecrow.displayYOffset shouldBe 0.0
         }
         classicSettings.farms.single().careVisuals.getValue(FarmCareRole.PEN).customModelData shouldBe 11_864
-        classicSettings.farms.single().moleBurrow.lairVisual.material shouldBe "STICK"
-        classicSettings.farms.single().moleBurrow.lairVisual.customModelData shouldBe 10_053
+        classicSettings.farms.single().moleBurrow.lairVisual.material shouldBe "PAPER"
+        classicSettings.farms.single().moleBurrow.lairVisual.customModelData shouldBe 11_875
         classicSettings.farms.single().routeDelivery.horseSpeed shouldBe 0.26
         classicSettings.farms.single().routeDelivery.cartYOffset shouldBe 0.875
         classicSettings.farms.single().routeDelivery.monsterWaveMin shouldBe 5
