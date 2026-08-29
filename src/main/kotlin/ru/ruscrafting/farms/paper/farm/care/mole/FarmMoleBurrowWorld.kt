@@ -10,6 +10,7 @@ import org.bukkit.block.Block
 import org.bukkit.block.data.Levelled
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
+import ru.ruscrafting.farms.config.FarmMoleBurrowSettings
 import ru.ruscrafting.farms.domain.FarmMoleBurrowDecorationPlanner
 import ru.ruscrafting.farms.domain.FarmMoleBurrowPlanner
 import ru.ruscrafting.farms.domain.FarmMolePassage
@@ -155,7 +156,10 @@ internal class FarmMoleBurrowWorld(
         val surfaceLocation = Location(world, surface.x, surface.y, surface.z)
         layoutProbe@ for (attempt in 0 until minOf(MAX_LAYOUT_PROBES, depthSpan * 4)) {
             layoutAttempts++
-            val layout = FarmMoleBurrowPlanner.rotate(raw, firstRotation + attempt)
+            val layout = FarmMoleBurrowPlanner.widen(
+                FarmMoleBurrowPlanner.rotate(raw, firstRotation + attempt),
+                settings.tunnelWidth,
+            )
             val depth = settings.minDepth + Math.floorMod(firstDepth + attempt * DEPTH_PROBE_STEP, depthSpan)
             val startX = floor(surface.x).toInt()
             val startZ = floor(surface.z).toInt()
@@ -334,7 +338,7 @@ internal class FarmMoleBurrowWorld(
             runtime.state.sequence,
             burrowId,
             surface,
-            runtime.settings.moleBurrow.cells * 2 + 1,
+            recoveryRadius(runtime.settings.moleBurrow),
         )
         if (stored != null) {
             ticket(stored)
@@ -382,7 +386,7 @@ internal class FarmMoleBurrowWorld(
             runtime.state.sequence,
             burrowId,
             surface,
-            runtime.settings.moleBurrow.cells * 2 + 1,
+            recoveryRadius(runtime.settings.moleBurrow),
         )
     }
 
@@ -746,10 +750,18 @@ internal class FarmMoleBurrowWorld(
                     FarmMoleBurrowMarker.LAIR,
                 )
             ) return@forEach
+            val material = Material.valueOf(decoration.material)
+            // Domain planning already keeps solid accents on room walls. This is a
+            // second boundary guard against any future decoration replacing walkable
+            // feet/head air and recreating an impassable tunnel.
+            if (decoration.yOffset in 0..1 && decoration.position in openFloor && material.isSolid) return@forEach
             val marker = previous?.second ?: FarmMoleBurrowMarker.NONE
-            plan[position] = Material.valueOf(decoration.material).createBlockData().asString to marker
+            plan[position] = material.createBlockData().asString to marker
         }
     }
+
+    private fun recoveryRadius(settings: FarmMoleBurrowSettings): Int =
+        settings.cells * 2 * settings.tunnelWidth + 2
 
     private fun seed(sequence: Long, x: Int, z: Int): Long = sequence * 0x9E3779B97F4A7C15UL.toLong() xor
         x.toLong() * 0xBF58476D1CE4E5B9UL.toLong() xor z.toLong() * 0x94D049BB133111EBUL.toLong()

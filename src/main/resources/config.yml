@@ -144,6 +144,10 @@ farm-zones:
       min-depth: 10
       max-depth: 18
       tunnel-height: 3
+      # Logical maze corridors are expanded to this many blocks in both horizontal axes.
+      tunnel-width: 2
+      # Do not put entrances on the outermost beds when the farm has enough interior space.
+      entrance-min-boundary-distance: 10
       blocks-per-tick: 48
       candidate-attempts: 12
       light-spacing: 5

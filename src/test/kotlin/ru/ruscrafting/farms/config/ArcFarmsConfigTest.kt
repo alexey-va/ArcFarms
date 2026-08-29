@@ -195,6 +195,8 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().moleBurrow.maxBurrows shouldBe 3
         settings.farms.single().moleBurrow.minDepth shouldBe 10
         settings.farms.single().moleBurrow.maxDepth shouldBe 18
+        settings.farms.single().moleBurrow.tunnelWidth shouldBe 2
+        settings.farms.single().moleBurrow.entranceMinBoundaryDistance shouldBe 10
         settings.farms.single().moleBurrow.blocksPerTick shouldBe 48
         settings.farms.single().moleBurrow.chamberCount shouldBe 3
         settings.farms.single().moleBurrow.moleCount shouldBe 8
@@ -489,6 +491,16 @@ class ArcFarmsConfigTest : FunSpec({
         val configPath = root.resolve("config.yml")
         configPath.writeText(
             Files.readString(configPath).replace("preparation-patch-size: 100", "preparation-patch-size: 513"),
+        )
+
+        shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(root) }
+    }
+
+    test("mole maze dimensions are bounded before journal planning") {
+        val root = resourceTree()
+        val configPath = root.resolve("config.yml")
+        configPath.writeText(
+            Files.readString(configPath).replace("      cells: 8", "      cells: 11"),
         )
 
         shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(root) }

@@ -96,6 +96,36 @@ object FarmMoleBurrowPlanner {
         )
     }
 
+    /**
+     * Expands every logical maze tile into a square corridor while preserving
+     * the walls between unrelated branches. Expanding around the old coordinates
+     * without scaling them first would merge parallel corridors through their wall.
+     */
+    fun widen(layout: FarmMoleBurrowLayout, width: Int): FarmMoleBurrowLayout {
+        require(width in 1..3) { "Mole burrow tunnel width must be in 1..3" }
+        if (width == 1) return layout
+        val anchorOffset = width / 2
+        fun anchor(point: FarmMolePassage): FarmMolePassage = FarmMolePassage(
+            point.x * width + anchorOffset,
+            point.z * width + anchorOffset,
+        )
+        val passages = layout.passages.flatMapTo(linkedSetOf()) { point ->
+            buildList(width * width) {
+                repeat(width) { dx ->
+                    repeat(width) { dz -> add(FarmMolePassage(point.x * width + dx, point.z * width + dz)) }
+                }
+            }
+        }
+        return FarmMoleBurrowLayout(
+            passages = passages,
+            start = anchor(layout.start),
+            lair = anchor(layout.lair),
+            chambers = layout.chambers.mapTo(linkedSetOf(), ::anchor),
+            lights = layout.lights.mapTo(linkedSetOf(), ::anchor),
+            sideLength = layout.sideLength * width,
+        )
+    }
+
     private fun distances(
         passages: Set<FarmMolePassage>,
         start: FarmMolePassage,

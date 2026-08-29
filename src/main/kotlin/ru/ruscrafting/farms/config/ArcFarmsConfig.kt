@@ -419,6 +419,8 @@ data class FarmMoleBurrowSettings(
     val guidanceFarDistance: Int = 14,
     val guidanceIntervalTicks: Int = 20,
     val decorationPercent: Int = 18,
+    val tunnelWidth: Int = 2,
+    val entranceMinBoundaryDistance: Int = 10,
 )
 
 data class FarmDamageSafetySettings(
@@ -1082,9 +1084,16 @@ class ArcFarmsConfig private constructor(
                         .checked("mole-burrow.guidance.interval-ticks", 5, 100),
                     decorationPercent = section.int("mole-burrow.decoration-percent", 18)
                         .checked("mole-burrow.decoration-percent", 0, 60),
+                    tunnelWidth = section.int("mole-burrow.tunnel-width", 2)
+                        .checked("mole-burrow.tunnel-width", 1, 3),
+                    entranceMinBoundaryDistance = section.int("mole-burrow.entrance-min-boundary-distance", 10)
+                        .checked("mole-burrow.entrance-min-boundary-distance", 0, 64),
                 ).also {
                     require(it.guidanceFarDistance > it.guidanceCloseDistance) {
                         "farm-zones.$id mole guidance far-distance must exceed close-distance"
+                    }
+                    require(it.cells * it.tunnelWidth <= 16) {
+                        "farm-zones.$id mole-burrow cells multiplied by tunnel-width must not exceed 16"
                     }
                 }
                 val incidentTriggerPercents = section.stringList("incident-trigger-percents")

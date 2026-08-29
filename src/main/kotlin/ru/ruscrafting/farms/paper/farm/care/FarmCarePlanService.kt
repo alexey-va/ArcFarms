@@ -10,6 +10,7 @@ import ru.ruscrafting.farms.domain.FarmCareTarget
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmDeliveryPlanner
 import ru.ruscrafting.farms.domain.FarmLocationOverrides
+import ru.ruscrafting.farms.domain.FarmMoleEntrancePlanner
 import ru.ruscrafting.farms.domain.FarmOrchardPlanner
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmPointKind
@@ -197,20 +198,16 @@ internal class FarmCarePlanService(
                 runtime.settings.diseaseInitialSpots.coerceAtMost(patch.size),
             )
             FarmCareType.MOLES -> {
-                // Entrances at the very edge are technically viable when the generated
-                // maze happens to rotate inward, but are hard to discover and look like
-                // a placement bug. Prefer the central 70% of the indexed beds while
-                // retaining a fallback for unusually narrow or irregular farms.
-                val minX = farmBeds.minOf(FarmPlotPosition::x)
-                val maxX = farmBeds.maxOf(FarmPlotPosition::x)
-                val minZ = farmBeds.minOf(FarmPlotPosition::z)
-                val maxZ = farmBeds.maxOf(FarmPlotPosition::z)
-                val marginX = ((maxX - minX) * 0.15).toInt()
-                val marginZ = ((maxZ - minZ) * 0.15).toInt()
-                val centralBeds = farmBeds.filter { plot ->
-                    plot.x in (minX + marginX)..(maxX - marginX) &&
-                        plot.z in (minZ + marginZ)..(maxZ - marginZ)
-                }.ifEmpty { farmBeds }
+                // Keep discoverable entrances away from both the indexed field edge and
+                // concave WorldGuard boundaries. For a narrow farm the pure planner
+                // automatically reduces only the margin of the narrow axis.
+                val indexedInterior = FarmMoleEntrancePlanner.preferredBeds(
+                    farmBeds,
+                    runtime.settings.moleBurrow.entranceMinBoundaryDistance,
+                )
+                val centralBeds = indexedInterior.filter { plot ->
+                    hasRegionClearance(runtime.region, plot, runtime.settings.moleBurrow.entranceMinBoundaryDistance)
+                }.ifEmpty { indexedInterior }
                 val bedCandidates = FarmCarePlanner.spread(
                     centralBeds,
                     runtime.settings.moleBurrow.candidateAttempts.coerceAtMost(centralBeds.size),
@@ -284,6 +281,27 @@ internal class FarmCarePlanService(
                 }.takeIf { it.size >= minOf(3, runtime.settings.appleTargetCount) } ?: return null
             }
         }.takeIf { it.isNotEmpty() }
+    }
+
+    private fun hasRegionClearance(
+        region: ActivityRegion,
+        plot: FarmPlotPosition,
+        requestedDistance: Int,
+    ): Boolean {
+        if (requestedDistance <= 0) return true
+        val distanceX = requestedDistance.coerceAtMost((region.bounds.maxX - region.bounds.minX) / 2)
+        val distanceZ = requestedDistance.coerceAtMost((region.bounds.maxZ - region.bounds.minZ) / 2)
+        val y = plot.y.coerceIn(region.bounds.minY, region.bounds.maxY).toDouble()
+        return listOf(
+            plot.x - distanceX to plot.z,
+            plot.x + distanceX to plot.z,
+            plot.x to plot.z - distanceZ,
+            plot.x to plot.z + distanceZ,
+            plot.x - distanceX to plot.z - distanceZ,
+            plot.x - distanceX to plot.z + distanceZ,
+            plot.x + distanceX to plot.z - distanceZ,
+            plot.x + distanceX to plot.z + distanceZ,
+        ).all { (x, z) -> region.contains(Location(region.world, x + 0.5, y, z + 0.5)) }
     }
 
     fun shouldUseSeeder(runtime: FarmRuntime): Boolean = runtime.state.preparationProgress == 0 &&

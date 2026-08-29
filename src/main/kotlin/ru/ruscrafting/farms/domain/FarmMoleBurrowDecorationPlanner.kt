@@ -53,11 +53,23 @@ object FarmMoleBurrowDecorationPlanner {
 
         chambers.sortedWith(compareBy(FarmMolePassage::x, FarmMolePassage::z)).forEachIndexed { index, center ->
             val roomSeed = mix(seed xor index.toLong(), center.x, center.z)
-            val corner = ROOM_CORNERS[Math.floorMod(roomSeed, ROOM_CORNERS.size.toLong()).toInt()]
-            place(FarmMolePassage(center.x + corner.first, center.z + corner.second), 0, ROOM_ACCENTS[index % ROOM_ACCENTS.size])
+            val boundary = ROOM_BOUNDARY_OFFSETS
+                .drop(Math.floorMod(roomSeed, ROOM_BOUNDARY_OFFSETS.size.toLong()).toInt()) +
+                ROOM_BOUNDARY_OFFSETS.take(Math.floorMod(roomSeed, ROOM_BOUNDARY_OFFSETS.size.toLong()).toInt())
+            val wallPositions = boundary.asSequence()
+                .map { (dx, dz) -> FarmMolePassage(center.x + dx, center.z + dz) }
+                .filterNot(openFloor::contains)
+                .take(2)
+                .toList()
+            wallPositions.getOrNull(0)?.let { place(it, 0, ROOM_ACCENTS[index % ROOM_ACCENTS.size]) }
             if (tunnelHeight >= 3) place(center, tunnelHeight - 1, "SPORE_BLOSSOM")
-            val crystalWall = FarmMolePassage(center.x + corner.first * 2, center.z + corner.second * 2)
-            place(crystalWall, 1.coerceAtMost(tunnelHeight - 1), if (index % 2 == 0) "AMETHYST_BLOCK" else "CALCITE")
+            wallPositions.getOrNull(1)?.let { crystalWall ->
+                place(
+                    crystalWall,
+                    1.coerceAtMost(tunnelHeight - 1),
+                    if (index % 2 == 0) "AMETHYST_BLOCK" else "CALCITE",
+                )
+            }
         }
 
         LAIR_CORNERS.forEachIndexed { index, (dx, dz) ->
@@ -77,7 +89,12 @@ object FarmMoleBurrowDecorationPlanner {
     }
 
     private val CARDINALS = listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1)
-    private val ROOM_CORNERS = listOf(-1 to -1, 1 to -1, 1 to 1, -1 to 1)
+    private val ROOM_BOUNDARY_OFFSETS = listOf(
+        -2 to -1, -2 to 0, -2 to 1,
+        -1 to -2, 0 to -2, 1 to -2,
+        2 to -1, 2 to 0, 2 to 1,
+        -1 to 2, 0 to 2, 1 to 2,
+    )
     private val LAIR_CORNERS = listOf(-2 to -2, 2 to -2, 2 to 2, -2 to 2)
     private val ENTRANCE_FLOOR = listOf("ROOTED_DIRT", "COARSE_DIRT", "PACKED_MUD")
     private val PASSAGE_FLOOR = listOf("COARSE_DIRT", "ROOTED_DIRT", "MUD", "PACKED_MUD", "TUFF")

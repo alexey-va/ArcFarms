@@ -33,8 +33,8 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
     beforeEach {
         paper = MockBukkitTestRuntime.open()
         world = paper.server.addSimpleWorld("sp11")
-        for (chunkX in -1..1) for (chunkZ in -1..1) world.getChunkAt(chunkX, chunkZ).load()
-        for (x in -16..16) for (z in -16..16) for (y in 45..64) world.getBlockAt(x, y, z).type = Material.STONE
+        for (chunkX in -3..3) for (chunkZ in -3..3) world.getChunkAt(chunkX, chunkZ).load()
+        for (x in -48..48) for (z in -48..48) for (y in 45..64) world.getBlockAt(x, y, z).type = Material.STONE
     }
 
     afterEach { paper.close() }
@@ -59,7 +59,7 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         }
         val runtime = FarmRuntime(
             settings = settings,
-            region = CuboidActivityRegion(world, "farm", CuboidBounds(-16, 0, -16, 16, 128, 16)),
+            region = CuboidActivityRegion(world, "farm", CuboidBounds(-48, 0, -48, 48, 128, 48)),
             orders = emptyMap(),
             orderList = emptyList(),
             rules = FarmRules(listOf(50), 1, 1_000),
@@ -77,6 +77,28 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         scene?.records?.isNotEmpty() shouldBe true
         scene?.records?.all { record ->
             world.getBlockAt(record.x, record.y, record.z).blockData.asString == record.originalData
+        } shouldBe true
+        val built = requireNotNull(scene)
+        val feetY = built.start.blockY
+        val startX = built.start.blockX
+        val startZ = built.start.blockZ
+        val byPosition = built.records.associateBy { Triple(it.x, it.y, it.z) }
+        // The configured two-block corridor contains a full 2x2 walkable tile at
+        // the entrance, and neither feet nor head space can be replaced by decor.
+        for (x in startX - 1..startX) for (z in startZ - 1..startZ) for (y in feetY..feetY + 1) {
+            val record = requireNotNull(byPosition[Triple(x, y, z)])
+            requireNotNull(Material.matchMaterial(record.burrowData.substringBefore('['))).isSolid shouldBe false
+        }
+        val walkableColumns = built.records.asSequence()
+            .filter { record ->
+                record.y == feetY && requireNotNull(Material.matchMaterial(record.burrowData.substringBefore('['))) in
+                    setOf(Material.AIR, Material.LIGHT)
+            }
+            .map { it.x to it.z }
+            .toSet()
+        built.records.none { record ->
+            (record.x to record.z) in walkableColumns && record.y in feetY..feetY + 1 &&
+                requireNotNull(Material.matchMaterial(record.burrowData.substringBefore('['))).isSolid
         } shouldBe true
     }
 
@@ -109,7 +131,7 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         }
         val runtime = FarmRuntime(
             settings = settings,
-            region = CuboidActivityRegion(world, "farm", CuboidBounds(-16, 0, -16, 16, 128, 16)),
+            region = CuboidActivityRegion(world, "farm", CuboidBounds(-48, 0, -48, 48, 128, 48)),
             orders = emptyMap(),
             orderList = emptyList(),
             rules = FarmRules(listOf(50), 1, 1_000),
@@ -166,7 +188,7 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         }
         val runtime = FarmRuntime(
             settings = settings,
-            region = CuboidActivityRegion(world, "farm", CuboidBounds(-16, 0, -16, 16, 128, 16)),
+            region = CuboidActivityRegion(world, "farm", CuboidBounds(-48, 0, -48, 48, 128, 48)),
             orders = emptyMap(),
             orderList = emptyList(),
             rules = FarmRules(listOf(50), 1, 1_000),
@@ -201,7 +223,7 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         }
         val runtime = FarmRuntime(
             settings = settings,
-            region = CuboidActivityRegion(world, "surface-only-farm", CuboidBounds(-16, 63, -16, 16, 66, 16)),
+            region = CuboidActivityRegion(world, "surface-only-farm", CuboidBounds(-48, 63, -48, 48, 66, 48)),
             orders = emptyMap(),
             orderList = emptyList(),
             rules = FarmRules(listOf(50), 1, 1_000),
@@ -223,8 +245,8 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
     }
 
     test("prepares and builds two independent crash-safe burrows") {
-        for (chunkX in -3..3) for (chunkZ in -2..2) world.getChunkAt(chunkX, chunkZ).load()
-        for (x in -40..40) for (z in -32..32) for (y in 42..64) {
+        for (chunkX in -5..5) for (chunkZ in -5..5) world.getChunkAt(chunkX, chunkZ).load()
+        for (x in -72..72) for (z in -64..64) for (y in 42..64) {
             world.getBlockAt(x, y, z).type = Material.STONE
         }
         val burrow = FarmMoleBurrowSettings(
@@ -246,12 +268,12 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
             every { moleBurrow } returns burrow
         }
         val targets = listOf(
-            FarmCareTarget(0, FarmCareRole.MOLE_MOUND, FarmPointPosition(world.name, -18.5, 65.0, 0.5)),
-            FarmCareTarget(1, FarmCareRole.MOLE_MOUND, FarmPointPosition(world.name, 18.5, 65.0, 0.5)),
+            FarmCareTarget(0, FarmCareRole.MOLE_MOUND, FarmPointPosition(world.name, -40.5, 65.0, 0.5)),
+            FarmCareTarget(1, FarmCareRole.MOLE_MOUND, FarmPointPosition(world.name, 40.5, 65.0, 0.5)),
         )
         val runtime = FarmRuntime(
             settings = settings,
-            region = CuboidActivityRegion(world, "surface-only-farm", CuboidBounds(-40, 63, -32, 40, 66, 32)),
+            region = CuboidActivityRegion(world, "surface-only-farm", CuboidBounds(-72, 63, -64, 72, 66, 64)),
             orders = emptyMap(),
             orderList = emptyList(),
             rules = FarmRules(listOf(50), 1, 1_000),
@@ -320,4 +342,5 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         preview.scene.shouldBeNull()
         preview.rejections.keys.any { it == "material:OAK_PLANKS" } shouldBe true
     }
+
 })
