@@ -42,6 +42,7 @@ internal class FarmGuidanceController(
     private val care: FarmCareController,
     private val carePlans: FarmCarePlanService,
     private val delivery: FarmDeliveryController,
+    private val harvest: FarmHarvestGuidance,
     private val points: FarmPointProvider,
     private val runtimes: () -> Collection<FarmRuntime>,
 ) {
@@ -65,6 +66,13 @@ internal class FarmGuidanceController(
             players(runtime).filterNot(port::isAdminEditing).forEach { player ->
                 if (individual.isNotEmpty()) individual.forEach { spawnPlotMarker(player, it, PLANT_COLOR) }
                 else if (marker != null) spawnColumn(player, marker, PLANT_COLOR)
+            }
+        }
+        farms.filter { it.state.phase == FarmPhase.HARVESTING }.forEach { runtime ->
+            players(runtime).filterNot(port::isAdminEditing).forEach { player ->
+                harvest.targets(runtime, player.location).forEach { target ->
+                    target.position.location()?.let { spawnColumn(player, it, target.color) }
+                }
             }
         }
         farms.filter { it.state.phase == FarmPhase.INCIDENT && it.state.incidentType == FarmIncidentType.DROUGHT }
@@ -245,10 +253,9 @@ internal class FarmGuidanceController(
                     Location(world, target.position.x, target.position.y, target.position.z) to care.color(target.role)
                 }
             }
-            FarmPhase.HARVESTING -> listOfNotNull(
-                FarmPlotGeometry.center(runtime.state.preparationPatch.filter(::isOutdoorPlot))?.location()
-                    ?.let { it to AMBER_COLOR },
-            )
+            FarmPhase.HARVESTING -> harvest.targets(runtime, player.location).mapNotNull { target ->
+                target.position.location()?.let { it to target.color }
+            }
             FarmPhase.INCIDENT -> incidentMarkers(runtime)
             FarmPhase.DELIVERY -> points.resolve(runtime, FarmPointKind.RECEIVING).let { point ->
                 Bukkit.getWorld(point.world)?.let { listOf(Location(it, point.x, point.y, point.z) to DELIVERY_COLOR) }.orEmpty()

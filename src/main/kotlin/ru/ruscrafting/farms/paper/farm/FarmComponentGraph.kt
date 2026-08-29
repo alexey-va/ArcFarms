@@ -35,6 +35,7 @@ import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
 import ru.ruscrafting.farms.paper.farm.point.FarmPointService
 import ru.ruscrafting.farms.paper.farm.perk.FarmPerkController
 import ru.ruscrafting.farms.paper.farm.presentation.FarmGuidanceController
+import ru.ruscrafting.farms.paper.farm.presentation.FarmHarvestGuidance
 import ru.ruscrafting.farms.paper.farm.presentation.FarmHudController
 import ru.ruscrafting.farms.paper.farm.recovery.FarmFixedCropRecoveryController
 import ru.ruscrafting.farms.paper.farm.recovery.FarmIncidentRecoveryController
@@ -324,6 +325,7 @@ internal class FarmComponentGraph(
         care = care,
         carePlans = carePlans,
         delivery = delivery,
+        harvest = FarmHarvestGuidance(blockRegistry),
         points = points,
         runtimes = runtimes::snapshot,
     )

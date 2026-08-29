@@ -64,14 +64,17 @@ internal class FarmPerkController(
     private val offerKey = NamespacedKey(plugin, "farm_perk_offer")
     private val vendorIds = mutableMapOf<String, UUID>()
     private val feedbackTasks = mutableMapOf<UUID, Long>()
+    private val menuRefreshTasks = mutableMapOf<UUID, Long>()
     private val pendingPurchases = mutableMapOf<UUID, FarmPlayerPerks>()
     private var feedbackSequence = 0L
+    private var menuRefreshSequence = 0L
     private var persistenceGeneration = 0L
     private var ledger = FarmPerkLedgerState()
 
     fun replace(values: Map<UUID, FarmPlayerPerks>) {
         persistenceGeneration++
         pendingPurchases.clear()
+        menuRefreshTasks.clear()
         ledger = FarmPerkLedgerState(values)
     }
 
@@ -201,11 +204,13 @@ internal class FarmPerkController(
         Bukkit.getWorlds().asSequence().flatMap { it.entities.asSequence() }.filter(::owns).forEach(Entity::remove)
         vendorIds.clear()
         feedbackTasks.clear()
+        menuRefreshTasks.clear()
         debug.event("farm_perk_vendor_cleanup", "reason" to reason)
     }
 
     internal fun open(player: Player, runtime: FarmRuntime) {
         feedbackTasks.remove(player.uniqueId)
+        menuRefreshTasks.remove(player.uniqueId)
         val holder = PerkHolder(runtime.settings.id)
         val inventory = Bukkit.createInventory(holder, 27, locale.render(MessageKey.FARM_PERK_MENU_TITLE, player))
         holder.value = inventory
@@ -221,6 +226,35 @@ internal class FarmPerkController(
         offer(inventory, 14, player, runtime, FarmPerkType.SUSTENANCE, Material.GOLDEN_CARROT)
         offer(inventory, 16, player, runtime, FarmPerkType.REWARD_BOOST, Material.EMERALD)
         player.openInventory(inventory)
+        scheduleMenuRefresh(player, runtime, inventory)
+    }
+
+    private fun scheduleMenuRefresh(player: Player, runtime: FarmRuntime, inventory: Inventory) {
+        val now = clock()
+        val until = normalized(player.uniqueId).activeUntil.values.filter { it > now }.minOrNull()
+        if (until == null) {
+            menuRefreshTasks.remove(player.uniqueId)
+            return
+        }
+        val refreshId = ++menuRefreshSequence
+        menuRefreshTasks[player.uniqueId] = refreshId
+        val delayTicks = ((until - now - 1L) / MILLIS_PER_TICK) + 2L
+        if (!port.runLater(delayTicks) {
+                if (!menuRefreshTasks.remove(player.uniqueId, refreshId)) return@runLater
+                if (!player.isOnline) return@runLater
+                val current = player.openInventory
+                val holder = current.topInventory.holder as? PerkHolder ?: return@runLater
+                if (holder.zoneId != runtime.settings.id || current.topInventory !== inventory) return@runLater
+                val liveRuntime = runtimes().firstOrNull { it.settings.id == holder.zoneId } ?: return@runLater
+                offer(inventory, 10, player, liveRuntime, FarmPerkType.HARVEST_AREA, Material.DIAMOND_HOE)
+                offer(inventory, 12, player, liveRuntime, FarmPerkType.SPEED, Material.RABBIT_FOOT)
+                offer(inventory, 14, player, liveRuntime, FarmPerkType.SUSTENANCE, Material.GOLDEN_CARROT)
+                offer(inventory, 16, player, liveRuntime, FarmPerkType.REWARD_BOOST, Material.EMERALD)
+                scheduleMenuRefresh(player, liveRuntime, inventory)
+            }
+        ) {
+            menuRefreshTasks.remove(player.uniqueId, refreshId)
+        }
     }
 
     private fun offer(
@@ -241,7 +275,8 @@ internal class FarmPerkController(
         material: Material,
     ): ItemStack {
         val config = offer(runtime, type)
-        val until = normalized(player.uniqueId).activeUntil[type]?.takeIf { it > clock() }
+        val now = clock()
+        val until = normalized(player.uniqueId).activeUntil[type]?.takeIf { it > now }
         return named(
             material,
             locale.renderPath("perk.${type.name.lowercase()}.name", player),
@@ -255,10 +290,13 @@ internal class FarmPerkController(
             ) + if (until != null) listOf(locale.render(
                 MessageKey.FARM_PERK_ACTIVE,
                 player,
-                mapOf("hours" to locale.text(remainingHours(until, clock()))),
+                mapOf("hours" to locale.text(remainingHours(until, now))),
             )) else emptyList(),
         ).also { item ->
-            item.editMeta { it.persistentDataContainer.set(offerKey, PersistentDataType.STRING, type.name) }
+            item.editMeta { meta ->
+                meta.persistentDataContainer.set(offerKey, PersistentDataType.STRING, type.name)
+                meta.setEnchantmentGlintOverride(until != null)
+            }
         }
     }
 
@@ -416,5 +454,6 @@ internal class FarmPerkController(
 
     private companion object {
         const val FEEDBACK_TICKS = 40L
+        const val MILLIS_PER_TICK = 50L
     }
 }

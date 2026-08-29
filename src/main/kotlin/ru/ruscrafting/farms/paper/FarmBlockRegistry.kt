@@ -59,22 +59,27 @@ internal sealed interface FarmBlockReindexStart {
 }
 
 /** Owns the durable farm topology index and its bounded whole-region rebuild lifecycle. */
+internal interface FarmHarvestCropIndex {
+    fun beds(zoneId: String): Set<FarmPlotPosition>
+    fun fixedCrops(zoneId: String): Set<FarmPlotPosition>
+}
+
 internal class FarmBlockRegistry(
     private val plugin: Plugin,
     private val ledger: FarmBlockLedger,
     private val clock: () -> Long = System::currentTimeMillis,
     private val addChunkTicket: (Chunk) -> Boolean = { chunk -> chunk.addPluginChunkTicket(plugin) },
     private val removeChunkTicket: (Chunk) -> Unit = { chunk -> chunk.removePluginChunkTicket(plugin) },
-) : AutoCloseable {
+) : FarmHarvestCropIndex, AutoCloseable {
     private val bedsByZone = mutableMapOf<String, MutableSet<FarmPlotPosition>>()
     private val fixedCropsByZone = mutableMapOf<String, MutableSet<FarmPlotPosition>>()
     private val orchardLeavesByZone = mutableMapOf<String, MutableSet<FarmPlotPosition>>()
     private val jobs = mutableMapOf<String, ReindexJob>()
     private var closed = false
 
-    fun beds(zoneId: String): Set<FarmPlotPosition> = bedsByZone[zoneId].orEmpty()
+    override fun beds(zoneId: String): Set<FarmPlotPosition> = bedsByZone[zoneId].orEmpty()
 
-    fun fixedCrops(zoneId: String): Set<FarmPlotPosition> = fixedCropsByZone[zoneId].orEmpty()
+    override fun fixedCrops(zoneId: String): Set<FarmPlotPosition> = fixedCropsByZone[zoneId].orEmpty()
 
     fun orchardLeaves(zoneId: String): Set<FarmPlotPosition> = orchardLeavesByZone[zoneId].orEmpty()
 

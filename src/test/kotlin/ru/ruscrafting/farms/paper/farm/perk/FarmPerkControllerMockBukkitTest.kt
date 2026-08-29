@@ -6,6 +6,7 @@ import io.mockk.every
 import io.mockk.mockk
 import net.kyori.adventure.text.format.TextDecoration
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
+import org.bukkit.Material
 import org.bukkit.event.inventory.ClickType
 import org.bukkit.event.inventory.InventoryAction
 import org.bukkit.event.inventory.InventoryClickEvent
@@ -108,8 +109,13 @@ class FarmPerkControllerMockBukkitTest : FunSpec({
         val inventory = player.openInventory.topInventory
         inventory.getItem(0)?.itemMeta?.customModelData shouldBe 11_000
         val offer = requireNotNull(inventory.getItem(10))
+        offer.type shouldBe Material.DIAMOND_HOE
+        offer.itemMeta.enchantmentGlintOverride shouldBe true
         offer.itemMeta.displayName()?.decoration(TextDecoration.ITALIC) shouldBe TextDecoration.State.FALSE
         offer.itemMeta.lore()?.all { it.decoration(TextDecoration.ITALIC) == TextDecoration.State.FALSE } shouldBe true
+        offer.itemMeta.lore()?.joinToString(" ") {
+            PlainTextComponentSerializer.plainText().serialize(it)
+        }?.contains("Активно ещё около 2 ч.") shouldBe true
         val click = InventoryClickEvent(
             player.openInventory,
             InventoryType.SlotType.CONTAINER,
@@ -132,6 +138,8 @@ class FarmPerkControllerMockBukkitTest : FunSpec({
         inventory.getItem(10)?.itemMeta?.lore()?.joinToString(" ") {
             PlainTextComponentSerializer.plainText().serialize(it)
         }?.contains("Активно") shouldBe false
+        inventory.getItem(10)?.type shouldBe Material.DIAMOND_HOE
+        inventory.getItem(10)?.itemMeta?.enchantmentGlintOverride shouldBe false
 
         controller.replace(mapOf(
             player.uniqueId to FarmPlayerPerks(
@@ -152,6 +160,79 @@ class FarmPerkControllerMockBukkitTest : FunSpec({
         server.scheduler.performTicks(40)
         PlainTextComponentSerializer.plainText().serialize(requireNotNull(reopened.getItem(10)?.itemMeta?.displayName())) shouldBe
             "Широкий взмах"
+    }
+
+    test("an open perk menu removes the active mark and glint when the perk expires") {
+        val world = server.addSimpleWorld("farm")
+        world.getChunkAt(0, 0).load()
+        val player = server.addPlayer("ExpiringPerkFarmer")
+        var now = 10_000L
+        val activeUntil = now + 50L
+        val config = mockk<ArcFarmsConfig> {
+            every { defaultLocale } returns "ru"
+            every { useClientLocale } returns false
+            every { menuBackground } returns MenuBackgroundSettings(false, "AIR", 0)
+        }
+        val locale = ArcFarmsLocale(localeRoot()) { config }
+        val offers = FarmPerkSettings(
+            harvestArea = FarmPerkOfferSettings(250, 72),
+            speed = FarmPerkOfferSettings(180, 72),
+            sustenance = FarmPerkOfferSettings(150, 72),
+            rewardBoost = FarmPerkOfferSettings(400, 72),
+            rewardBonusPercent = 25,
+            sustainIntervalSeconds = 5,
+        )
+        val zone = mockk<FarmZoneSettings>(relaxed = true) {
+            every { id } returns "communal_farm"
+            every { permission } returns "arcfarms.farm"
+            every { perks } returns offers
+        }
+        val runtime = FarmRuntime(
+            settings = zone,
+            region = CuboidActivityRegion(world, "farm", CuboidBounds(0, 0, 0, 31, 128, 31)),
+            orders = emptyMap(),
+            orderList = emptyList(),
+            rules = FarmRules(listOf(50), 1, 1_000),
+            state = FarmShiftState(),
+        )
+        val plugin = paper.createSimplePlugin("FarmPerkExpiryTest")
+        val port = mockk<WorksiteRuntimePort>(relaxed = true) {
+            every { runLater(any(), any()) } answers {
+                server.scheduler.runTaskLater(plugin, secondArg<() -> Unit>(), firstArg())
+                true
+            }
+        }
+        val controller = FarmPerkController(
+            plugin = plugin,
+            settings = { config },
+            locale = locale,
+            debug = ArcFarmsDebug({ false }) {},
+            port = port,
+            points = FarmPointProvider { _, _ -> FarmPointPosition(world.name, 1.5, 65.0, 1.5) },
+            runtimes = { listOf(runtime) },
+            weeklyContribution = { 2_000 },
+            currentWeekStart = { 107 },
+            clock = { now },
+            persistAsync = { CompletableFuture.completedFuture(Unit) },
+        )
+        controller.replace(mapOf(
+            player.uniqueId to FarmPlayerPerks(
+                weekStartEpochDay = 107,
+                activeUntil = mapOf(FarmPerkType.HARVEST_AREA to activeUntil),
+            ),
+        ))
+        controller.open(player, runtime)
+
+        player.openInventory.topInventory.getItem(10)?.itemMeta?.enchantmentGlintOverride shouldBe true
+        now = activeUntil + 1L
+        server.scheduler.performTicks(2L)
+
+        val expired = requireNotNull(player.openInventory.topInventory.getItem(10))
+        expired.type shouldBe Material.DIAMOND_HOE
+        expired.itemMeta.enchantmentGlintOverride shouldBe false
+        expired.itemMeta.lore()?.joinToString(" ") {
+            PlainTextComponentSerializer.plainText().serialize(it)
+        }?.contains("Активно") shouldBe false
     }
 }) {
     companion object {
