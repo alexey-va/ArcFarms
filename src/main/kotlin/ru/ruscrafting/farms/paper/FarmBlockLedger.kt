@@ -9,8 +9,8 @@ import org.bukkit.block.Block
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.domain.FarmPlotPosition
-import java.util.logging.Level
 import java.util.LinkedHashMap
+import java.util.logging.Level
 
 internal data class ManagedFarmBlockRecord(
     val zoneId: String,
@@ -41,6 +41,33 @@ internal data class ManagedFarmOrchardLeafRecord(
     val z: Int,
 )
 
+private class ManagedFarmBlockSnapshot(source: List<ManagedFarmBlockRecord>) {
+    val records: List<ManagedFarmBlockRecord> = source.toList()
+    private val sortedRecords = records.sortedBy { coordinateKey(it.x, it.y, it.z) }
+
+    fun record(x: Int, y: Int, z: Int): ManagedFarmBlockRecord? {
+        val expected = coordinateKey(x, y, z)
+        var low = 0
+        var high = sortedRecords.lastIndex
+        while (low <= high) {
+            val middle = (low + high).ushr(1)
+            val candidate = sortedRecords[middle]
+            val comparison = coordinateKey(candidate.x, candidate.y, candidate.z).compareTo(expected)
+            when {
+                comparison < 0 -> low = middle + 1
+                comparison > 0 -> high = middle - 1
+                else -> return candidate
+            }
+        }
+        return null
+    }
+
+    companion object {
+        fun coordinateKey(x: Int, y: Int, z: Int): Long =
+            (y.toLong() shl 8) or ((x and 15).toLong() shl 4) or (z and 15).toLong()
+    }
+}
+
 /**
  * Ordinary blocks cannot carry PDC. Paper chunks can, so every entry is keyed by
  * exact block coordinates inside the owning chunk and survives an abrupt stop.
@@ -51,9 +78,38 @@ internal class FarmBlockLedger(plugin: Plugin) {
     private val fixedCropKey = NamespacedKey(plugin, "farm_fixed_crops_v1")
     private val orchardLeafKey = NamespacedKey(plugin, "farm_orchard_leaves_v1")
     private val logger = plugin.logger
-    private val blockCache = boundedChunkCache<ManagedFarmBlockRecord>()
+    private val blockCache = boundedBlockChunkCache()
     private val fixedCropCache = boundedChunkCache<ManagedFarmFixedCropRecord>()
     private val orchardCache = boundedChunkCache<ManagedFarmOrchardLeafRecord>()
+    /** Main-thread scratch retained across the compatibility bulk lookup. */
+    private val lookupSnapshots = HashMap<Chunk, ManagedFarmBlockSnapshot>()
+
+    internal inner class RecordLookup {
+        private var world: org.bukkit.World? = null
+        private var chunkX = 0
+        private var chunkZ = 0
+        private var snapshot: ManagedFarmBlockSnapshot? = null
+
+        fun reset() {
+            world = null
+            snapshot = null
+        }
+
+        fun record(position: FarmPlotPosition, soil: Block): ManagedFarmBlockRecord? {
+            val currentWorld = soil.world
+            val currentChunkX = position.x shr 4
+            val currentChunkZ = position.z shr 4
+            if (world !== currentWorld || chunkX != currentChunkX || chunkZ != currentChunkZ) {
+                world = currentWorld
+                chunkX = currentChunkX
+                chunkZ = currentChunkZ
+                snapshot = blockSnapshot(soil.chunk)
+            }
+            return snapshot?.record(position.x, position.y, position.z)
+        }
+    }
+
+    fun recordLookup(): RecordLookup = RecordLookup()
 
     fun capture(soil: Block, zoneId: String): ManagedFarmBlockRecord {
         val existing = record(soil)
@@ -125,18 +181,21 @@ internal class FarmBlockLedger(plugin: Plugin) {
         return captureActiveCrop(soil, zoneId)
     }
 
-    fun record(soil: Block): ManagedFarmBlockRecord? = blockRecords(soil.chunk).firstOrNull {
-        it.x == soil.x && it.y == soil.y && it.z == soil.z
-    }
+    fun record(soil: Block): ManagedFarmBlockRecord? = blockSnapshot(soil.chunk).record(soil.x, soil.y, soil.z)
 
     /** Reads each affected chunk payload once for a maintenance pass. */
-    fun records(soils: Collection<Block>): Map<FarmPlotPosition, ManagedFarmBlockRecord> = buildMap {
-        soils.groupBy(Block::getChunk).forEach { (chunk, blocks) ->
-            val requested = blocks.mapTo(hashSetOf()) { Triple(it.x, it.y, it.z) }
-            blockRecords(chunk).filter { Triple(it.x, it.y, it.z) in requested }.forEach { record ->
-                put(FarmPlotPosition(chunk.world.name, record.x, record.y, record.z), record)
+    fun records(soils: Collection<Block>): Map<FarmPlotPosition, ManagedFarmBlockRecord> {
+        if (soils.isEmpty()) return emptyMap()
+        lookupSnapshots.clear()
+        val result = HashMap<FarmPlotPosition, ManagedFarmBlockRecord>(soils.size)
+        soils.forEach { soil ->
+            val chunk = soil.chunk
+            val snapshot = lookupSnapshots.getOrPut(chunk) { blockSnapshot(chunk) }
+            snapshot.record(soil.x, soil.y, soil.z)?.let { record ->
+                result[FarmPlotPosition(soil.world.name, soil.x, soil.y, soil.z)] = record
             }
         }
+        return result
     }
 
     fun restoreActiveCrop(soil: Block): Boolean {
@@ -430,9 +489,13 @@ internal class FarmBlockLedger(plugin: Plugin) {
     }
 
     fun blockRecords(chunk: Chunk): List<ManagedFarmBlockRecord> {
+        return blockSnapshot(chunk).records
+    }
+
+    private fun blockSnapshot(chunk: Chunk): ManagedFarmBlockSnapshot {
         val cacheKey = chunk.cacheKey()
         blockCache[cacheKey]?.let { return it }
-        val raw = chunk.persistentDataContainer.get(key, PersistentDataType.STRING) ?: return emptyList()
+        val raw = chunk.persistentDataContainer.get(key, PersistentDataType.STRING) ?: return EMPTY_BLOCK_SNAPSHOT
         return runCatching {
             require(raw.length <= 2_000_000) { "Managed farm block payload is unbounded" }
             gson.fromJson(raw, Array<ManagedFarmBlockRecord>::class.java)?.toList().orEmpty().also { records ->
@@ -448,14 +511,14 @@ internal class FarmBlockLedger(plugin: Plugin) {
                         (record.originalCropData?.length ?: 0) <= 512 &&
                         (record.activeCropData?.length ?: 0) <= 512
                 }) { "Managed farm block record is invalid" }
-            }.also { blockCache[cacheKey] = it }
+            }.let(::ManagedFarmBlockSnapshot).also { blockCache[cacheKey] = it }
         }.getOrElse { failure ->
             logger.log(
                 Level.SEVERE,
                 "Could not decode managed farm blocks in ${chunk.world.name}:${chunk.x},${chunk.z}",
                 failure,
             )
-            emptyList()
+            EMPTY_BLOCK_SNAPSHOT
         }
     }
 
@@ -464,7 +527,7 @@ internal class FarmBlockLedger(plugin: Plugin) {
         val container = chunk.persistentDataContainer
         if (records.isEmpty()) container.remove(key)
         else container.set(key, PersistentDataType.STRING, gson.toJson(records))
-        blockCache[chunk.cacheKey()] = records.toList()
+        blockCache[chunk.cacheKey()] = ManagedFarmBlockSnapshot(records)
     }
 
     private fun writeFixedCrops(chunk: Chunk, records: List<ManagedFarmFixedCropRecord>) {
@@ -485,6 +548,13 @@ internal class FarmBlockLedger(plugin: Plugin) {
 
     private fun Chunk.cacheKey(): String = "${world.uid}:$x:$z"
 
+    private fun boundedBlockChunkCache(): MutableMap<String, ManagedFarmBlockSnapshot> =
+        object : LinkedHashMap<String, ManagedFarmBlockSnapshot>(128, 0.75f, true) {
+            override fun removeEldestEntry(
+                eldest: MutableMap.MutableEntry<String, ManagedFarmBlockSnapshot>?,
+            ): Boolean = size > 512
+        }
+
     private fun <T> boundedChunkCache(): MutableMap<String, List<T>> =
         object : LinkedHashMap<String, List<T>>(128, 0.75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<T>>?): Boolean = size > 512
@@ -492,5 +562,6 @@ internal class FarmBlockLedger(plugin: Plugin) {
 
     private companion object {
         const val MAX_RECORDS_PER_CHUNK = 4_096
+        val EMPTY_BLOCK_SNAPSHOT = ManagedFarmBlockSnapshot(emptyList())
     }
 }

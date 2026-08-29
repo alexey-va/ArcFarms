@@ -262,6 +262,44 @@ class FarmFieldControllerMockBukkitTest : FunSpec({
         crop.type shouldBe Material.AIR
     }
 
+    test("maintenance retires every invalid indexed bed after the pass") {
+        val plugin = paper.createSimplePlugin("FarmInvalidBedMaintenanceTest")
+        val ledger = FarmBlockLedger(plugin)
+        val registry = FarmBlockRegistry(plugin, ledger)
+        val positions = setOf(
+            FarmPlotPosition(world.name, 2, 64, 2),
+            FarmPlotPosition(world.name, 3, 64, 2),
+        )
+        positions.forEach { position -> world.getBlockAt(position.x, position.y, position.z).type = Material.STONE }
+        registry.addBeds("farm", positions)
+        val zone = mockk<FarmZoneSettings>(relaxed = true) {
+            every { id } returns "farm"
+            every { crops } returns setOf("WHEAT")
+        }
+        val runtime = FarmRuntime(
+            settings = zone,
+            region = CuboidActivityRegion(world, "farm", CuboidBounds(0, 0, 0, 15, 128, 15)),
+            orders = emptyMap(),
+            orderList = emptyList(),
+            rules = mockk(relaxed = true),
+            state = FarmShiftState(),
+        )
+        val controller = FarmFieldController(
+            settings = { mockk<ArcFarmsConfig>(relaxed = true) },
+            debug = ArcFarmsDebug({ false }) {},
+            port = mockk<WorksiteRuntimePort>(relaxed = true),
+            ledger = ledger,
+            registry = registry,
+            points = FarmPointProvider { _, _ -> error("maintenance does not resolve operation points") },
+            transitions = FarmTransitionSink { _, _, _ -> },
+            persistAsync = { CompletableFuture.completedFuture(Unit) },
+        )
+
+        controller.maintain(runtime, activeWater = false)
+
+        registry.beds("farm") shouldBe emptySet()
+    }
+
     test("patch selection uses a sufficient durable index without a local world scan") {
         val indexed = (0 until 5).map { x ->
             world.getBlockAt(x, 64, 0).apply { type = Material.FARMLAND }

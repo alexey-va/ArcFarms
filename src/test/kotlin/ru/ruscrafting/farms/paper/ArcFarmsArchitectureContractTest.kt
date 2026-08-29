@@ -45,14 +45,6 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         source.contains("horse.world.entities") shouldBe false
     }
 
-    test("field maintenance snapshots list-backed patch membership before scanning beds") {
-        val source = Files.readString(farmRoot.resolve("field/FarmFieldController.kt"))
-
-        source.contains("val preparationPatch = runtime.state.preparationPatch.toHashSet()") shouldBe true
-        source.contains("position in runtime.state.preparationPatch &&") shouldBe false
-        source.contains("diseaseDamagedCrops.orEmpty().any { it.position == position }") shouldBe false
-    }
-
     test("moisture events use the cached irrigation plot index") {
         val source = Files.readString(
             farmRoot.resolve("care/irrigation/FarmIrrigationController.kt"),

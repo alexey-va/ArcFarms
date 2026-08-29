@@ -50,6 +50,11 @@ internal data class FarmPatchReleaseResult(
 
 private data class FarmPatchReleaseKey(val zoneId: String, val sequence: Long)
 
+private class MaintenancePositionCache(
+    var source: Any? = null,
+    val positions: MutableSet<FarmPlotPosition> = hashSetOf(),
+)
+
 /** Owns managed bed discovery, patch lifecycle, manual tilling/planting and bounded recovery. */
 internal class FarmFieldController(
     private val settings: () -> ArcFarmsConfig,
@@ -66,12 +71,24 @@ internal class FarmFieldController(
     private val pendingRecoveryCommits = mutableSetOf<String>()
     private val beds = FarmBedDiscovery(debug, registry, points)
     private val autoFinisher = FarmPatchAutoFinisher(ledger, debug)
+    private val maintenancePreparationByZone = mutableMapOf<String, MaintenancePositionCache>()
+    private val maintenanceDiseaseByZone = mutableMapOf<String, MaintenancePositionCache>()
+    private val maintenancePestDamageByZone = mutableMapOf<String, MaintenancePositionCache>()
+    private val maintenanceRecords = ledger.recordLookup()
+    private val maintenanceMoleEntrances = hashSetOf<FarmPlotPosition>()
+    private val maintenanceRemovedBeds = arrayListOf<FarmPlotPosition>()
 
     fun clearCaches() {
         patchReleaseProgress.clear()
         patchRestoreProgress.clear()
         pendingRecoveryCommits.clear()
         autoFinisher.clear()
+        maintenancePreparationByZone.clear()
+        maintenanceDiseaseByZone.clear()
+        maintenancePestDamageByZone.clear()
+        maintenanceRecords.reset()
+        maintenanceMoleEntrances.clear()
+        maintenanceRemovedBeds.clear()
     }
 
     fun selectPatch(
@@ -513,51 +530,69 @@ internal class FarmFieldController(
         if (runtime.state.preparationPatch.isNotEmpty() && !runtime.state.preparationReleased) {
             return
         }
-        val preparationPatch = runtime.state.preparationPatch.toHashSet()
-        val diseaseDamagedPositions = runtime.state.diseaseDamagedCrops.orEmpty()
-            .mapTo(hashSetOf()) { it.position }
-        val positions = linkedSetOf<FarmPlotPosition>().apply {
-            addAll(registry.beds(runtime.settings.id))
-            addAll(preparationPatch)
+        val zoneId = runtime.settings.id
+        val preparationSource = runtime.state.preparationPatch
+        val preparationCache = maintenancePreparationByZone.getOrPut(zoneId, ::MaintenancePositionCache)
+        if (preparationCache.source !== preparationSource) {
+            preparationCache.positions.clear()
+            preparationCache.positions.addAll(preparationSource)
+            preparationCache.source = preparationSource
         }
-        val loadedSoils = positions.mapNotNull(FarmPlotPosition::block)
-        val records = ledger.records(loadedSoils)
+        val diseaseSource = runtime.state.diseaseDamagedCrops.orEmpty()
+        val diseaseCache = maintenanceDiseaseByZone.getOrPut(zoneId, ::MaintenancePositionCache)
+        if (diseaseCache.source !== diseaseSource) {
+            diseaseCache.positions.clear()
+            diseaseSource.mapTo(diseaseCache.positions) { it.position }
+            diseaseCache.source = diseaseSource
+        }
+        val pestDamageSource = runtime.state.pestDamagedCrops
+        val pestDamageCache = maintenancePestDamageByZone.getOrPut(zoneId, ::MaintenancePositionCache)
+        if (pestDamageCache.source !== pestDamageSource) {
+            pestDamageCache.positions.clear()
+            pestDamageSource.mapTo(pestDamageCache.positions) { it.position }
+            pestDamageCache.source = pestDamageSource
+        }
+        val indexedBeds = registry.beds(zoneId)
+        maintenanceRecords.reset()
         val crop = runtime.state.preparationCrop?.let(MaterialRules::material)
         val incidentActive = runtime.state.phase == FarmPhase.INCIDENT
-        val moleEntrancePlots = if (runtime.state.phase == FarmPhase.CARE && runtime.state.careType == FarmCareType.MOLES) {
+        maintenanceMoleEntrances.clear()
+        if (runtime.state.phase == FarmPhase.CARE && runtime.state.careType == FarmCareType.MOLES) {
             runtime.state.careTargets.asSequence()
                 .filter { it.role == FarmCareRole.MOLE_MOUND }
-                .map { target ->
+                .mapTo(maintenanceMoleEntrances) { target ->
                     FarmPlotPosition(
                         target.position.world,
                         kotlin.math.floor(target.position.x).toInt(),
                         kotlin.math.floor(target.position.y).toInt() - 1,
                         kotlin.math.floor(target.position.z).toInt(),
                     )
-                }.toSet()
-        } else emptySet()
-        val temporarilyControlledPositions = buildSet {
-            addAll(preparationPatch)
-            addAll(runtime.state.droughtPlots)
-            addAll(runtime.state.droughtDamagedPlots)
-            runtime.state.pestDamagedCrops.mapTo(this) { it.position }
-            addAll(diseaseDamagedPositions)
+                }
         }
-        positions.forEach { position ->
-            val soil = position.block() ?: return@forEach
-            val record = records[position]
+        fun temporarilyControlled(position: FarmPlotPosition): Boolean {
+            return position in preparationCache.positions ||
+                position in runtime.state.droughtPlots ||
+                position in runtime.state.droughtDamagedPlots ||
+                position in pestDamageCache.positions ||
+                position in diseaseCache.positions
+        }
+
+        maintenanceRemovedBeds.clear()
+        fun maintainPosition(position: FarmPlotPosition) {
+            val soil = position.block() ?: return
+            val record = maintenanceRecords.record(position, soil)
             // The mole journal owns both the crop and soil at a bed entrance.
             // Ordinary hydration/crop maintenance must not immediately close it.
-            if (position in moleEntrancePlots) return@forEach
+            if (position in maintenanceMoleEntrances) return
             if (
-                position !in temporarilyControlledPositions && !FarmBlockPolicy.isRecoverableIndexedBed(
+                !temporarilyControlled(position) && !FarmBlockPolicy.isRecoverableIndexedBed(
                     soil.type,
                     soil.getRelative(org.bukkit.block.BlockFace.UP).type,
                     runtime.settings.crops,
                 )
             ) {
-                registry.removeBeds(runtime.settings.id, listOf(position))
-                return@forEach
+                maintenanceRemovedBeds += position
+                return
             }
             if (position in runtime.state.droughtPlots) {
                 dry(soil)
@@ -565,19 +600,19 @@ internal class FarmFieldController(
                 if (!above.type.isAir && (above.type != Material.WATER || !activeWater)) {
                     above.setType(Material.AIR, false)
                 }
-                return@forEach
+                return
             }
             if (position in irrigationDryPlots) {
                 // The irrigation owner changes moisture in bounded radial slices.
                 // Do not let ordinary field maintenance hydrate the dry front early.
-                return@forEach
+                return
             }
-            if (position in diseaseDamagedPositions) {
+            if (position in diseaseCache.positions) {
                 // Disease owns this missing crop until care is resolved; bounded recovery
                 // restores every killed plant afterwards.
-                return@forEach
+                return
             }
-            if (record?.indexed == true && position !in temporarilyControlledPositions) {
+            if (record?.indexed == true && !temporarilyControlled(position)) {
                 wet(soil)
                 val above = soil.getRelative(org.bukkit.block.BlockFace.UP)
                 val expected = record.activeCropData?.let { data ->
@@ -592,7 +627,7 @@ internal class FarmFieldController(
             val awaitingMachine = runtime.state.phase == FarmPhase.CARE && runtime.state.careType == FarmCareType.SEEDER
             if (
                 (runtime.state.phase == FarmPhase.PREPARATION || awaitingMachine) &&
-                position in preparationPatch &&
+                position in preparationCache.positions &&
                 position !in runtime.state.tilledPlots &&
                 soil.type != Material.DIRT
             ) {
@@ -603,7 +638,7 @@ internal class FarmFieldController(
             if (incidentActive) {
                 val above = soil.getRelative(org.bukkit.block.BlockFace.UP)
                 if (above.type == Material.WATER && !activeWater) above.setType(Material.AIR, false)
-                return@forEach
+                return
             }
             if (position in runtime.state.plantedPlots) {
                 val above = soil.getRelative(org.bukkit.block.BlockFace.UP)
@@ -616,6 +651,11 @@ internal class FarmFieldController(
                 }
             }
         }
+        indexedBeds.forEach(::maintainPosition)
+        preparationSource.forEach { position ->
+            if (position !in indexedBeds) maintainPosition(position)
+        }
+        if (maintenanceRemovedBeds.isNotEmpty()) registry.removeBeds(zoneId, maintenanceRemovedBeds)
     }
 
     fun wet(block: Block) {
