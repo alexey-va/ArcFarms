@@ -67,6 +67,17 @@ activities: farm, lumbermill, and mine.
   decoration. Keep portable vanilla defaults in the bundled config and apply
   the verified ItemsAdder material/custom-model-data override only in the
   owning runtime config.
+- Before placing, moving, scaling, rotating, or changing the Y offset of an
+  ItemsAdder/custom-model `ItemDisplay`, use the user-owned
+  `itemsadder-item-display-grounding` skill. Resolve the current model, display
+  context and complete entity transform; obtain the exact collision support
+  surface; and retain its grounding report. Placement is allowed only when the
+  report is `grounded`, its post-adjustment residual is at most `1e-4` block,
+  and model identity is unambiguous. Re-run the analysis whenever the model
+  hash, display context, scale, rotation, yaw, entity translation, or support
+  surface changes. Never tune an ItemsAdder display Y offset by eye or place an
+  `ambiguous`, `intersecting`, or `terrain_mismatch` result without an explicit
+  owner decision for that exact placement.
 - Farm completion rewards may use independently-chanced experience, Vault
   money, ordinary items, weighted item bundles, and bounded console commands.
   Persist each resolved grant before delivery and claim it durably before side
