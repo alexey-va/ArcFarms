@@ -129,6 +129,18 @@ class FarmMoleBurrowPlannerTest : FunSpec({
         interior.isNotEmpty() shouldBe true
         interior.none { plot -> plot.x in 18..22 || plot.z in 18..22 } shouldBe true
     }
+
+    test("mole entrance planning never rejects a non-empty irregular field") {
+        val lShapedField = buildList {
+            for (x in 0..40) add(FarmPlotPosition("sp11", x, 64, 0))
+            for (z in 1..40) add(FarmPlotPosition("sp11", 0, 64, z))
+        }
+
+        val preferred = FarmMoleEntrancePlanner.preferredBeds(lShapedField, minimumBoundaryDistance = 10)
+
+        preferred.isNotEmpty() shouldBe true
+        preferred.all { it in lShapedField } shouldBe true
+    }
 })
 
 private fun manhattan(first: FarmMolePassage, second: FarmMolePassage): Int =

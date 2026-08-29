@@ -5,6 +5,9 @@ import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.shouldBe
 import java.util.UUID
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 class FarmProcessingTest : FunSpec({
     val first = UUID.fromString("00000000-0000-0000-0000-000000000001")
@@ -93,26 +96,55 @@ class FarmProcessingTest : FunSpec({
         }
     }
 
-    test("timing dial stays beside the grounded millstone at eye level and exposes a green success sector") {
-        val plan = FarmProcessingDialPlanner.plan(
-            machine = FarmPointPosition("world", 100.0, 65.0, 200.0, 0f),
-            phase = 30,
-            periodTicks = 60,
-            successWindowTicks = 10,
-            centerYOffset = 1.45,
-            rightOffset = 1.45,
-            forwardOffset = 0.8,
-            radius = 0.8,
-            pointCount = 32,
-        )
+    test("walking a full circle accumulates one lap in either direction") {
+        fun walk(direction: Int): Double {
+            var state: FarmProcessingCrankState? = null
+            var progress = 0.0
+            repeat(49) { step ->
+                val angle = direction * 2.0 * PI * step / 48.0
+                val sample = FarmProcessingCrankTracker.sample(
+                    previous = state,
+                    x = 100.0 + 2.2 * cos(angle),
+                    z = 200.0 + 2.2 * sin(angle),
+                    centerX = 100.0,
+                    centerZ = 200.0,
+                    innerRadius = 1.4,
+                    outerRadius = 3.0,
+                    maxStepDistance = 1.2,
+                )
+                state = sample.state
+                progress += sample.acceptedRadians
+            }
+            return progress
+        }
 
-        plan.ring.size shouldBe 32
-        plan.ring.minOf { it.position.y } shouldBe (65.65 plusOrMinus 0.0001)
-        plan.ring.maxOf { it.position.y } shouldBe (67.25 plusOrMinus 0.0001)
-        plan.ring.map { it.position.x }.average() shouldBe (101.45 plusOrMinus 0.0001)
-        plan.marker.position.y shouldBe (67.25 plusOrMinus 0.0001)
-        plan.marker.inSuccessWindow shouldBe true
-        plan.ring.any(FarmProcessingDialPoint::inSuccessWindow) shouldBe true
-        plan.ring.any { !it.inSuccessWindow } shouldBe true
+        walk(1) shouldBe (FarmProcessingCrankTracker.FULL_LAP_RADIANS plusOrMinus 0.0001)
+        walk(-1) shouldBe (FarmProcessingCrankTracker.FULL_LAP_RADIANS plusOrMinus 0.0001)
+    }
+
+    test("reversing and teleporting do not manufacture millstone progress") {
+        var state: FarmProcessingCrankState? = null
+        fun sample(angle: Double, radius: Double = 2.2): FarmProcessingCrankSample {
+            val result = FarmProcessingCrankTracker.sample(
+                previous = state,
+                x = radius * cos(angle),
+                z = radius * sin(angle),
+                centerX = 0.0,
+                centerZ = 0.0,
+                innerRadius = 1.4,
+                outerRadius = 3.0,
+                maxStepDistance = 1.2,
+            )
+            state = result.state
+            return result
+        }
+
+        sample(0.0).status shouldBe FarmProcessingCrankSampleStatus.ENTERED
+        sample(0.2).acceptedRadians shouldBe (0.2 plusOrMinus 0.0001)
+        sample(0.0).status shouldBe FarmProcessingCrankSampleStatus.REVERSED
+        sample(0.2).status shouldBe FarmProcessingCrankSampleStatus.REVERSED
+        sample(PI).status shouldBe FarmProcessingCrankSampleStatus.TELEPORTED
+        sample(PI).acceptedRadians shouldBe 0.0
+        sample(PI, radius = 3.5).status shouldBe FarmProcessingCrankSampleStatus.OUTSIDE
     }
 })

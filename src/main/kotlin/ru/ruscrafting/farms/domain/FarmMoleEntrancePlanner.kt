@@ -20,8 +20,7 @@ object FarmMoleEntrancePlanner {
         val boundarySafe = beds.filter { plot ->
             plot.x - minX >= requiredX && maxX - plot.x >= requiredX &&
                 plot.z - minZ >= requiredZ && maxZ - plot.z >= requiredZ
-        }
-        if (boundarySafe.isEmpty()) return boundarySafe
+        }.ifEmpty { beds }
         val safeMinX = boundarySafe.minOf(FarmPlotPosition::x)
         val safeMaxX = boundarySafe.maxOf(FarmPlotPosition::x)
         val safeMinZ = boundarySafe.minOf(FarmPlotPosition::z)

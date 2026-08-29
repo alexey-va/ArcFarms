@@ -252,16 +252,16 @@ farm-zones:
     # and their exact grounding y-offsets.
     processing:
       input-packages: 4
-      machine-cycles: 6
+      machine-cycles: 3
       output-packages: 4
-      dial: {period-ticks: 60, success-window-ticks: 10, center-y-offset: 1.45, right-offset: 1.45, forward-offset: 0.8, radius: 0.8, points: 32}
       interaction-radius: 2.2
+      proximity-pickup-radius: 1.75
       delivery-radius: 2.4
+      crank: {inner-radius: 1.4, outer-radius: 3.0, max-step-distance: 1.2, title-reminder-seconds: 8}
       carried-y-offset: 0.95
       cargo-watchdog: {reminder-seconds: 12, return-seconds: 30}
       spawn-per-tick: 4
       display-view-range: 3.0
-      particle-column-height: 2.0
       visuals:
         machine: {material: CRAFTING_TABLE, custom-model-data: 0, display-transform: FIXED, scale: 1.6, y-offset: 0.45, yaw-offset: 0.0}
         wheel: {material: GRINDSTONE, custom-model-data: 0, display-transform: FIXED, scale: 1.1, y-offset: 1.1, yaw-offset: 0.0}

@@ -291,8 +291,6 @@ enum class MessageKey(val path: String) {
     FARM_PROCESSING_ALREADY_CARRYING("farm.processing.already-carrying"),
     FARM_PROCESSING_RETURNED("farm.processing.returned"),
     FARM_PROCESSING_RETURNED_SUBTITLE("farm.processing.returned-subtitle"),
-    FARM_PROCESSING_TIMING_MISSED("farm.processing.timing-missed"),
-    FARM_PROCESSING_CYCLE_ALREADY_COUNTED("farm.processing.cycle-already-counted"),
     FARM_PROCESSING_INPUT_LABEL("farm.processing.input-label"),
     FARM_PROCESSING_MACHINE_WAITING_LABEL("farm.processing.machine-waiting-label"),
     FARM_PROCESSING_MACHINE_ACTIVE_LABEL("farm.processing.machine-active-label"),

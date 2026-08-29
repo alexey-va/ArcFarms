@@ -235,15 +235,13 @@ class ArcFarmsConfigTest : FunSpec({
             FarmIncidentType.DROUGHT,
         )
         settings.farms.single().processing.inputPackages shouldBe 4
-        settings.farms.single().processing.machineCycles shouldBe 6
+        settings.farms.single().processing.machineCycles shouldBe 3
         settings.farms.single().processing.outputPackages shouldBe 4
-        settings.farms.single().processing.dialPeriodTicks shouldBe 60
-        settings.farms.single().processing.dialWindowTicks shouldBe 10
-        settings.farms.single().processing.dialCenterYOffset shouldBe 1.45
-        settings.farms.single().processing.dialRightOffset shouldBe 1.45
-        settings.farms.single().processing.dialForwardOffset shouldBe 0.8
-        settings.farms.single().processing.dialRadius shouldBe 0.8
-        settings.farms.single().processing.dialPointCount shouldBe 32
+        settings.farms.single().processing.proximityPickupRadius shouldBe 1.75
+        settings.farms.single().processing.crankInnerRadius shouldBe 1.4
+        settings.farms.single().processing.crankOuterRadius shouldBe 3.0
+        settings.farms.single().processing.crankMaxStepDistance shouldBe 1.2
+        settings.farms.single().processing.crankTitleReminderSeconds shouldBe 8
         settings.farms.single().processing.spawnPerTick shouldBe 4
         settings.farms.single().processing.cargoReminderSeconds shouldBe 12
         settings.farms.single().processing.cargoReturnSeconds shouldBe 30

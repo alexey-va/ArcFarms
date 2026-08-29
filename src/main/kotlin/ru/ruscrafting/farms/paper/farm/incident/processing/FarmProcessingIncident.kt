@@ -2,7 +2,6 @@ package ru.ruscrafting.farms.paper.farm.incident.processing
 
 import org.bukkit.Bukkit
 import org.bukkit.Chunk
-import org.bukkit.Color
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
@@ -26,7 +25,6 @@ import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmProcessingLayout
-import ru.ruscrafting.farms.domain.FarmProcessingDialPlanner
 import ru.ruscrafting.farms.domain.FarmProcessingStage
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.domain.FarmStallAction
@@ -42,7 +40,6 @@ import ru.ruscrafting.farms.paper.platform.FarmBlockPassability
 import ru.ruscrafting.farms.paper.platform.FarmTextDisplayRenderer
 import java.util.UUID
 import java.util.logging.Level
-import kotlin.math.abs
 
 internal enum class FarmProcessingPlacementFailure {
     WRONG_WORLD,
@@ -61,7 +58,7 @@ private data class ProcessingCarrierLease(
     var bestDistance: Double = Double.POSITIVE_INFINITY,
 )
 
-/** Crop processing incident: load raw packages, time the mechanism, deliver finished goods. */
+/** Crop processing incident: load raw packages, walk the millstone ring, deliver finished goods. */
 internal class FarmProcessingIncident(
     plugin: Plugin,
     private val settings: () -> ArcFarmsConfig,
@@ -75,20 +72,27 @@ internal class FarmProcessingIncident(
     private val entityLookup: FarmEntityLookup = BukkitFarmEntityLookup,
 ) {
     private val scene = FarmProcessingScene(plugin, debug, textDisplays, entityLookup)
+    private val crank = FarmProcessingCrankController(plugin, settings, debug, port, transitions, entityLookup)
     private val carriedZoneKey = NamespacedKey(plugin, "farm_processing_carried_zone")
     private val carriedSequenceKey = NamespacedKey(plugin, "farm_processing_carried_sequence")
     private val carriedCargoKey = NamespacedKey(plugin, "farm_processing_carried_cargo")
     private val carriedIndexKey = NamespacedKey(plugin, "farm_processing_carried_index")
     private val carriers = mutableMapOf<ProcessingCargoKey, ProcessingCarrierLease>()
     private val carriedDisplays = mutableMapOf<ProcessingCargoKey, UUID>()
-    private val successfulCycles = mutableMapOf<Pair<String, UUID>, Long>()
     private val lastUnavailableSequence = mutableMapOf<String, Long>()
     private val adminPreview = FarmProcessingAdminPreview(port)
 
     fun owns(entity: Entity): Boolean = scene.owns(entity) ||
-        entity.persistentDataContainer.has(carriedZoneKey, PersistentDataType.STRING)
+        entity.persistentDataContainer.has(carriedZoneKey, PersistentDataType.STRING) ||
+        crank.owns(entity)
 
     fun hasConfiguredPoint(zoneId: String): Boolean = configuredPoint(zoneId, FarmPointKind.PROCESSING) != null
+
+    fun carrierCount(zoneId: String): Int = carriers.keys.count { it.zoneId == zoneId }
+
+    fun crankParticipantCount(zoneId: String): Int = crank.participantCount(zoneId)
+
+    fun crankProgressDegrees(zoneId: String): Int = crank.progressDegrees(zoneId)
 
     fun initialize(runtime: FarmRuntime): Boolean {
         if (!active(runtime)) return false
@@ -161,8 +165,19 @@ internal class FarmProcessingIncident(
         runtimes.forEach { runtime ->
             if (!active(runtime)) return@forEach
             if (tick % 5L == 0L) ensure(runtime)
+            updateProximityPickup(runtime)
             updateCarriers(runtime, tick)
-            renderMechanism(runtime, tick)
+            val layout = layout(runtime)
+            if (layout == null) {
+                crank.clear(runtime.settings.id, "layout_missing")
+            } else {
+                crank.update(
+                    runtime,
+                    tick,
+                    layout.machine.location(runtime),
+                    scene.item(runtime.settings.id, FarmProcessingSceneRole.MACHINE),
+                )
+            }
         }
     }
 
@@ -170,6 +185,7 @@ internal class FarmProcessingIncident(
         carriers.filterValues { it.playerId == player.uniqueId }.keys.toList().forEach { key ->
             runtimes.firstOrNull { it.settings.id == key.zoneId }?.let { returnCargo(it, key, player, reason) }
         }
+        crank.releasePlayer(player, reason)
     }
 
     fun validate(runtime: FarmRuntime, anchor: FarmPointPosition): FarmProcessingPlacementFailure? {
@@ -194,7 +210,7 @@ internal class FarmProcessingIncident(
             carriers.remove(key)
             removeCarried(key)
         }
-        successfulCycles.keys.removeIf { it.first == zoneId }
+        crank.clear(zoneId, reason)
     }
 
     fun cleanup(reason: String) {
@@ -204,7 +220,7 @@ internal class FarmProcessingIncident(
         }.forEach(Entity::remove)
         carriers.clear()
         carriedDisplays.clear()
-        successfulCycles.clear()
+        crank.cleanup(reason)
         lastUnavailableSequence.clear()
     }
 
@@ -262,36 +278,7 @@ internal class FarmProcessingIncident(
     }
 
     private fun operate(runtime: FarmRuntime, player: Player) {
-        val state = runtime.state.processing ?: return
-        if (state.stage != FarmProcessingStage.OPERATING) {
-            showStageHint(runtime, player)
-            return
-        }
-        val configured = runtime.settings.processing
-        val tick = Bukkit.getCurrentTick().toLong()
-        val shifted = tick + runtime.state.placementSequence * 17L
-        val phase = Math.floorMod(shifted, configured.dialPeriodTicks.toLong()).toInt()
-        val center = configured.dialPeriodTicks / 2
-        val success = abs(phase - center) <= configured.dialWindowTicks / 2
-        val cycle = Math.floorDiv(shifted, configured.dialPeriodTicks.toLong())
-        val cycleKey = runtime.settings.id to player.uniqueId
-        if (!success) {
-            port.sendActionBar(player, MessageKey.FARM_PROCESSING_TIMING_MISSED)
-            if (settings().sounds) player.playSound(player.location, Sound.BLOCK_NOTE_BLOCK_BASS, 0.65f, 0.75f)
-            if (settings().particles) player.spawnParticle(Particle.DUST, player.eyeLocation, 5, 0.25, 0.25, 0.25, 0.0, RED)
-            return
-        }
-        if (successfulCycles[cycleKey] == cycle) {
-            port.sendActionBar(player, MessageKey.FARM_PROCESSING_CYCLE_ALREADY_COUNTED)
-            return
-        }
-        successfulCycles[cycleKey] = cycle
-        transitions.apply(runtime, FarmShiftEngine.advanceProcessing(runtime.state, player.uniqueId, state.stage), player)
-        if (settings().sounds) {
-            player.playSound(player.location, Sound.BLOCK_PISTON_EXTEND, 0.85f, 1.1f)
-            player.playSound(player.location, Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.65f, 1.35f)
-        }
-        if (settings().particles) player.spawnParticle(Particle.COMPOSTER, player.location.clone().add(0.0, 1.0, 0.0), 7, 0.45, 0.4, 0.45, 0.04)
+        showStageHint(runtime, player)
     }
 
     private fun useMachine(runtime: FarmRuntime, player: Player) {
@@ -375,66 +362,47 @@ internal class FarmProcessingIncident(
         }
     }
 
-    private fun renderMechanism(runtime: FarmRuntime, tick: Long) {
+    private fun updateProximityPickup(runtime: FarmRuntime) {
         val state = runtime.state.processing ?: return
+        val cargo = when (state.stage) {
+            FarmProcessingStage.LOADING -> ProcessingCargo.RAW
+            FarmProcessingStage.PACKING -> ProcessingCargo.PRODUCT
+            FarmProcessingStage.OPERATING -> return
+        }
+        val remaining = if (cargo == ProcessingCargo.RAW) {
+            state.inputRequired - state.inputLoaded
+        } else {
+            state.outputRequired - state.outputDelivered
+        }
+        if (remaining <= 0) return
         val layout = layout(runtime) ?: return
-        val configured = runtime.settings.processing
-        if (settings().particles && tick % 10L == 0L) {
-            val base = layout.machine.location(runtime).add(0.0, 0.35, 0.0)
-            var height = 0.0
-            while (height <= configured.particleColumnHeight) {
-                base.world.spawnParticle(Particle.DUST, base.clone().add(0.0, height, 0.0), 1, 0.0, 0.0, 0.0, 0.0, GOLD)
-                height += 1.15
+        val radiusSquared = runtime.settings.processing.proximityPickupRadius.let { it * it }
+        port.players(runtime.region)
+            .asSequence()
+            .filterNot(port::isAdminEditing)
+            .filter { player -> port.hasAccess(player, runtime.settings.permission) }
+            .filterNot { player -> carriers.values.any { lease -> lease.playerId == player.uniqueId } }
+            .forEach { player ->
+                val candidate = (0 until remaining)
+                    .asSequence()
+                    .filterNot { index -> ProcessingCargoKey(runtime.settings.id, cargo, index) in carriers }
+                    .map { index ->
+                        val point = if (cargo == ProcessingCargo.RAW) {
+                            FarmProcessingLayout.packagePosition(layout.inputRacks, index)
+                        } else {
+                            FarmProcessingLayout.floorPackagePosition(layout.outputChute, index)
+                        }
+                        index to point.location(runtime)
+                    }
+                    .filter { (_, location) -> location.world === player.world }
+                    .minByOrNull { (_, location) -> player.location.distanceSquared(location) }
+                    ?: return@forEach
+                if (player.location.distanceSquared(candidate.second) <= radiusSquared) {
+                    pickup(runtime, player, cargo, candidate.first)
+                }
             }
-        }
-        val machine = scene.item(runtime.settings.id, FarmProcessingSceneRole.MACHINE)
-        if (state.stage != FarmProcessingStage.OPERATING) {
-            machine?.isGlowing = false
-            return
-        }
-        val shifted = tick + runtime.state.placementSequence * 17L
-        val phase = Math.floorMod(shifted, configured.dialPeriodTicks.toLong()).toInt()
-        val center = configured.dialPeriodTicks / 2
-        val inSuccessWindow = abs(phase - center) <= configured.dialWindowTicks / 2
-        machine?.isGlowing = inSuccessWindow
-        if (settings().particles && tick % 3L == 0L) {
-            val dial = FarmProcessingDialPlanner.plan(
-                machine = layout.machine,
-                phase = phase,
-                periodTicks = configured.dialPeriodTicks,
-                successWindowTicks = configured.dialWindowTicks,
-                centerYOffset = configured.dialCenterYOffset,
-                rightOffset = configured.dialRightOffset,
-                forwardOffset = configured.dialForwardOffset,
-                radius = configured.dialRadius,
-                pointCount = configured.dialPointCount,
-            )
-            dial.ring.forEach { point ->
-                val location = point.position.location(runtime)
-                location.world.spawnParticle(
-                    Particle.DUST,
-                    location,
-                    1,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    if (point.inSuccessWindow) GREEN else DIAL_TRACK,
-                )
-            }
-            val marker = dial.marker.position.location(runtime)
-            marker.world.spawnParticle(
-                Particle.DUST,
-                marker,
-                if (dial.marker.inSuccessWindow) 4 else 2,
-                0.035,
-                0.035,
-                0.035,
-                0.0,
-                if (dial.marker.inSuccessWindow) GREEN_MARKER else GOLD_MARKER,
-            )
-        }
     }
+
 
     private fun layout(runtime: FarmRuntime): FarmProcessingLayout? {
         val machine = configuredPoint(runtime.settings.id, FarmPointKind.PROCESSING) ?: return null
@@ -536,7 +504,7 @@ internal class FarmProcessingIncident(
                 objects += display(runtime, FarmProcessingSceneRole.RAW_PACKAGE, index, point, FarmProcessingVisualRole.RAW_PACKAGE, true)
                 objects += FarmProcessingSceneObject(
                     FarmProcessingSceneRole.RAW_INTERACTION, index, point.location(runtime),
-                    interactionWidth = 1.05f, interactionHeight = 1.25f,
+                    interactionWidth = 1.8f, interactionHeight = 1.8f,
                 )
             }
         }
@@ -548,7 +516,7 @@ internal class FarmProcessingIncident(
                 objects += display(runtime, FarmProcessingSceneRole.PRODUCT_PACKAGE, index, point, FarmProcessingVisualRole.PRODUCT_PACKAGE, true)
                 objects += FarmProcessingSceneObject(
                     FarmProcessingSceneRole.PRODUCT_INTERACTION, index, point.location(runtime),
-                    interactionWidth = 1.05f, interactionHeight = 1.25f,
+                    interactionWidth = 1.8f, interactionHeight = 1.8f,
                 )
             }
             repeat(state.outputDelivered) { index ->
@@ -640,7 +608,8 @@ internal class FarmProcessingIncident(
 
     private fun showStageHint(runtime: FarmRuntime, player: Player) {
         port.sendActionBar(player, stageHint(runtime))
-        if (!port.allowInteraction("farm-processing-title:${runtime.settings.id}:${player.uniqueId}", 8_000)) return
+        val cooldownMillis = runtime.settings.processing.crankTitleReminderSeconds * 1_000L
+        if (!port.allowInteraction("farm-processing-title:${runtime.settings.id}:${player.uniqueId}", cooldownMillis)) return
         val title = when (runtime.state.processing?.stage) {
             FarmProcessingStage.LOADING, null -> MessageKey.FARM_PROCESSING_LOADING_TITLE
             FarmProcessingStage.OPERATING -> MessageKey.FARM_PROCESSING_OPERATING_TITLE
@@ -656,7 +625,9 @@ internal class FarmProcessingIncident(
     private fun active(runtime: FarmRuntime): Boolean =
         runtime.state.phase == FarmPhase.INCIDENT && runtime.state.incidentType == FarmIncidentType.PROCESSING
 
-    private fun tracked(zoneId: String): Boolean = scene.hasZone(zoneId) || carriers.keys.any { it.zoneId == zoneId }
+    private fun tracked(zoneId: String): Boolean = scene.hasZone(zoneId) ||
+        carriers.keys.any { it.zoneId == zoneId } ||
+        crank.hasZone(zoneId)
 
     private fun logUnavailable(runtime: FarmRuntime, reason: String) {
         if (lastUnavailableSequence[runtime.settings.id] == runtime.state.placementSequence) return
@@ -680,12 +651,6 @@ internal class FarmProcessingIncident(
 
     private companion object {
         const val CARGO_PROGRESS_DISTANCE = 1.0
-        val GOLD = Particle.DustOptions(Color.fromRGB(255, 178, 36), 1.25f)
-        val GREEN = Particle.DustOptions(Color.fromRGB(92, 214, 116), 1.0f)
-        val RED = Particle.DustOptions(Color.fromRGB(229, 75, 66), 1.05f)
-        val DIAL_TRACK = Particle.DustOptions(Color.fromRGB(101, 116, 120), 0.65f)
-        val GOLD_MARKER = Particle.DustOptions(Color.fromRGB(255, 196, 67), 1.45f)
-        val GREEN_MARKER = Particle.DustOptions(Color.fromRGB(109, 255, 139), 1.5f)
         val PROCESSING_INPUT_POINTS = listOf(
             FarmPointKind.PROCESSING_INPUT,
             FarmPointKind.PROCESSING_INPUT_2,

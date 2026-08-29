@@ -257,6 +257,13 @@ internal class FarmGameplayAdminService(
             "patch" to state.preparationRequired, "drought" to state.droughtPlots.size,
             "nests" to state.pestNests.size, "pests" to state.pestAlive,
             "crates" to "${state.deliveredCrates.size}/${runtime.settings.delivery.crates}",
+            "processing_stage" to state.processing?.stage,
+            "processing_input" to state.processing?.let { "${it.inputLoaded}/${it.inputRequired}" },
+            "processing_cycles" to state.processing?.let { "${it.cyclesCompleted}/${it.cyclesRequired}" },
+            "processing_output" to state.processing?.let { "${it.outputDelivered}/${it.outputRequired}" },
+            "processing_carriers" to processing.carrierCount(zoneId),
+            "processing_crank_players" to processing.crankParticipantCount(zoneId),
+            "processing_crank_degrees" to processing.crankProgressDegrees(zoneId),
         )
         return true
     }

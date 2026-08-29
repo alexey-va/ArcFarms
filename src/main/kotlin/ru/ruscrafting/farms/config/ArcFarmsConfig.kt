@@ -293,25 +293,22 @@ data class FarmProcessingSettings(
     val inputPackages: Int,
     val machineCycles: Int,
     val outputPackages: Int,
-    val dialPeriodTicks: Int,
-    val dialWindowTicks: Int,
-    val dialCenterYOffset: Double,
-    val dialRightOffset: Double,
-    val dialForwardOffset: Double,
-    val dialRadius: Double,
-    val dialPointCount: Int,
     val interactionRadius: Double,
+    val proximityPickupRadius: Double,
     val deliveryRadius: Double,
+    val crankInnerRadius: Double,
+    val crankOuterRadius: Double,
+    val crankMaxStepDistance: Double,
+    val crankTitleReminderSeconds: Int,
     val carriedYOffset: Double,
     val cargoReminderSeconds: Int,
     val cargoReturnSeconds: Int,
     val spawnPerTick: Int,
     val displayViewRange: Float,
-    val particleColumnHeight: Double,
     val visuals: Map<FarmProcessingVisualRole, FarmProcessingVisualSettings>,
 ) {
     init {
-        require(dialWindowTicks < dialPeriodTicks / 2) { "processing dial window must be below half a period" }
+        require(crankInnerRadius < crankOuterRadius) { "processing crank inner radius must be below outer radius" }
         require(cargoReminderSeconds < cargoReturnSeconds) {
             "processing cargo reminder must happen before automatic return"
         }
@@ -818,18 +815,14 @@ class ArcFarmsConfig private constructor(
                         .checked("processing.machine-cycles", 1, 32),
                     outputPackages = section.int("processing.output-packages", 4)
                         .checked("processing.output-packages", 1, 16),
-                    dialPeriodTicks = section.int("processing.dial.period-ticks", 60)
-                        .checked("processing.dial.period-ticks", 20, 200),
-                    dialWindowTicks = section.int("processing.dial.success-window-ticks", 10)
-                        .checked("processing.dial.success-window-ticks", 2, 40),
-                    dialCenterYOffset = section.finiteDouble("processing.dial.center-y-offset", 1.45, 0.5, 4.0),
-                    dialRightOffset = section.finiteDouble("processing.dial.right-offset", 1.45, -4.0, 4.0),
-                    dialForwardOffset = section.finiteDouble("processing.dial.forward-offset", 0.8, 0.0, 4.0),
-                    dialRadius = section.finiteDouble("processing.dial.radius", 0.8, 0.2, 1.5),
-                    dialPointCount = section.int("processing.dial.points", 32)
-                        .checked("processing.dial.points", 12, 64),
                     interactionRadius = section.finiteDouble("processing.interaction-radius", 2.2, 1.0, 5.0),
+                    proximityPickupRadius = section.finiteDouble("processing.proximity-pickup-radius", 1.75, 0.5, 4.0),
                     deliveryRadius = section.finiteDouble("processing.delivery-radius", 2.4, 1.0, 5.0),
+                    crankInnerRadius = section.finiteDouble("processing.crank.inner-radius", 1.4, 0.5, 4.0),
+                    crankOuterRadius = section.finiteDouble("processing.crank.outer-radius", 3.0, 1.0, 6.0),
+                    crankMaxStepDistance = section.finiteDouble("processing.crank.max-step-distance", 1.2, 0.25, 4.0),
+                    crankTitleReminderSeconds = section.int("processing.crank.title-reminder-seconds", 8)
+                        .checked("processing.crank.title-reminder-seconds", 3, 30),
                     carriedYOffset = section.finiteDouble("processing.carried-y-offset", 0.95, 0.0, 3.0),
                     cargoReminderSeconds = section.int("processing.cargo-watchdog.reminder-seconds", 12)
                         .checked("processing.cargo-watchdog.reminder-seconds", 5, 60),
@@ -838,7 +831,6 @@ class ArcFarmsConfig private constructor(
                     spawnPerTick = section.int("processing.spawn-per-tick", 4)
                         .checked("processing.spawn-per-tick", 1, 16),
                     displayViewRange = section.finiteFloat("processing.display-view-range", 3.0f, 0.25f, 8.0f),
-                    particleColumnHeight = section.finiteDouble("processing.particle-column-height", 7.0, 2.0, 16.0),
                     visuals = processingVisualDefaults.mapValues { (role, defaultMaterial) ->
                         val path = "processing.visuals.${role.name.lowercase().replace('_', '-')}"
                         val itemModel = section.string("$path.item-model", "").trim().ifEmpty { null }

@@ -2,11 +2,13 @@ package ru.ruscrafting.farms.paper.farm.incident
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.floats.shouldBeGreaterThanOrEqual
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 import io.mockk.mockk
-import org.bukkit.Bukkit
+import io.mockk.verify
 import org.bukkit.Material
+import org.bukkit.entity.Mob
 import org.bukkit.event.block.BlockBurnEvent
 import org.bukkit.event.block.BlockFadeEvent
 import org.bukkit.event.block.BlockIgniteEvent
@@ -15,6 +17,7 @@ import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmProcessingStage
 import ru.ruscrafting.farms.domain.FarmShiftState
+import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmBlockRegistry
@@ -40,8 +43,65 @@ import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyController
 import ru.ruscrafting.farms.paper.fixtures.FarmIncidentScenarioFixture
 import ru.ruscrafting.farms.paper.fixtures.requiredMockBukkitScenario
 import java.util.concurrent.CompletableFuture
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
+    test("processing cargo is easy to acquire and a physical lap turns the millstone") {
+        requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
+            val runtime = fixture.runtime(
+                FarmShiftState(
+                    phase = FarmPhase.INCIDENT,
+                    sequence = 40,
+                    placementSequence = 12,
+                    orderId = "bakery_supply",
+                    incidentType = FarmIncidentType.PROCESSING,
+                    incidentCrop = "WHEAT",
+                ),
+            )
+            val processing = fixture.processing()
+            val worker = fixture.paper.addPlayer("MillWalker")
+
+            processing.initialize(runtime) shouldBe true
+            repeat(12) { processing.ensure(runtime) }
+            fixture.processingInteraction(processing, runtime, FarmProcessingSceneRole.RAW_INTERACTION, 0)
+                .interactionWidth.shouldBeGreaterThanOrEqual(1.75f)
+
+            val layout = ru.ruscrafting.farms.domain.FarmProcessingLayout.create(fixture.processingPoint)
+            repeat(fixture.zone.processing.inputPackages) { index ->
+                val packagePoint = ru.ruscrafting.farms.domain.FarmProcessingLayout.packagePosition(layout.inputRacks, 0)
+                worker.teleport(fixture.location(packagePoint))
+                processing.update(listOf(runtime), index * 10L + 1L)
+                worker.teleport(fixture.location(layout.inputDrop))
+                processing.update(listOf(runtime), index * 10L + 2L)
+                processing.ensure(runtime)
+            }
+            runtime.state.processing?.stage shouldBe FarmProcessingStage.OPERATING
+
+            val radius = 2.2
+            repeat(49) { step ->
+                val angle = 2.0 * PI * step / 48.0
+                worker.teleport(
+                    fixture.location(fixture.processingPoint).clone().add(radius * cos(angle), 0.0, radius * sin(angle)),
+                )
+                processing.update(listOf(runtime), 100L + step)
+            }
+            requireNotNull(runtime.state.processing).cyclesCompleted shouldBeGreaterThan 0
+            // MockBukkit does not emulate the client leash flags, but it does prove
+            // that the owned anchor mob is created and participates in cleanup.
+            fixture.world.entities.filterIsInstance<Mob>().single(processing::owns)
+            verify(atLeast = 1) {
+                fixture.port.showScreenTitle(
+                    worker,
+                    MessageKey.FARM_PROCESSING_OPERATING_TITLE,
+                    any(),
+                    "processing_hint",
+                )
+            }
+        } }
+    }
+
     test("two workers complete crop processing across a persisted controller restart") {
         requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
             var runtime = fixture.runtime(
@@ -83,32 +143,14 @@ class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
             fixture.processingDisplays(FarmProcessingSceneRole.WHEEL).size shouldBe 0
             fixture.processingDisplays(FarmProcessingSceneRole.INPUT_RACK).size shouldBe 0
             val machine = fixture.processingDisplays(FarmProcessingSceneRole.MACHINE).single()
-            val periodTicks = fixture.zone.processing.dialPeriodTicks
-            val pulseCenter = (0 until periodTicks * 3).first { tick ->
-                val phase = Math.floorMod(tick + runtime.state.placementSequence * 17L, periodTicks.toLong())
-                tick % 3 == 0 && kotlin.math.abs(phase - periodTicks / 2L) <= fixture.zone.processing.dialWindowTicks / 2L
-            }
             fixture.world.clearSpawnedParticles()
-            processing.update(listOf(runtime), pulseCenter.toLong())
+            walkMillstone(fixture, processing, runtime, workers[0], 100L)
             machine.isGlowing shouldBe true
             fixture.world.spawnedParticles.count { particle ->
-                particle.y() >= fixture.processingPoint.y +
-                    fixture.zone.processing.dialCenterYOffset - fixture.zone.processing.dialRadius - 0.0001
-            } shouldBeGreaterThan fixture.zone.processing.dialPointCount - 1
-            processing.update(listOf(runtime), 0L)
-            machine.isGlowing shouldBe false
+                particle.y() >= fixture.processingPoint.y && particle.y() <= fixture.processingPoint.y + 0.2
+            } shouldBeGreaterThan 39
 
-            val period = fixture.zone.processing.dialPeriodTicks.toLong()
-            repeat(2) { index ->
-                advanceToDialCenter(fixture, runtime.state.placementSequence, period)
-                fixture.clickProcessing(
-                    processing,
-                    runtime,
-                    workers[index % workers.size],
-                    FarmProcessingSceneRole.MACHINE_INTERACTION,
-                )
-                fixture.paper.performTicks(period)
-            }
+            walkMillstone(fixture, processing, runtime, workers[1], 200L)
             runtime.state.processing?.cyclesCompleted shouldBe 2
 
             processing.cleanup("simulated_restart")
@@ -118,21 +160,18 @@ class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
             runtime.state.processing?.cyclesCompleted shouldBe 2
 
             repeat(fixture.zone.processing.machineCycles - 2) { index ->
-                advanceToDialCenter(fixture, runtime.state.placementSequence, period)
-                fixture.clickProcessing(
-                    processing,
-                    runtime,
-                    workers[index % workers.size],
-                    FarmProcessingSceneRole.MACHINE_INTERACTION,
-                )
-                fixture.paper.performTicks(period)
+                walkMillstone(fixture, processing, runtime, workers[index % workers.size], 300L + index * 100L)
             }
             runtime.state.processing?.stage shouldBe FarmProcessingStage.PACKING
+            workers.forEachIndexed { index, worker ->
+                worker.teleport(fixture.location(fixture.processingPoint).clone().add(0.0, 0.0, 8.0 + index))
+            }
 
             repeat(fixture.zone.processing.outputPackages) { index ->
                 val worker = workers[(index + 1) % workers.size]
                 fixture.clickProcessing(processing, runtime, worker, FarmProcessingSceneRole.PRODUCT_INTERACTION, 0)
                 fixture.deliverProcessingCargo(processing, runtime, worker, raw = false, tick = 100L + index * 5L)
+                worker.teleport(fixture.location(fixture.processingPoint).clone().add(0.0, 0.0, 8.0 + index))
             }
             processing.ensure(runtime)
 
@@ -224,15 +263,20 @@ class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
     }
 })
 
-private fun advanceToDialCenter(
+private fun walkMillstone(
     fixture: FarmIncidentScenarioFixture,
-    placementSequence: Long,
-    period: Long,
+    processing: ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingIncident,
+    runtime: ru.ruscrafting.farms.paper.FarmRuntime,
+    player: org.mockbukkit.mockbukkit.entity.PlayerMock,
+    firstTick: Long,
 ) {
-    val shifted = Bukkit.getCurrentTick().toLong() + placementSequence * 17L
-    val center = period / 2L
-    val advance = Math.floorMod(center - Math.floorMod(shifted, period), period)
-    if (advance > 0L) fixture.paper.performTicks(advance)
+    val center = fixture.location(fixture.processingPoint)
+    val radius = (fixture.zone.processing.crankInnerRadius + fixture.zone.processing.crankOuterRadius) / 2.0
+    repeat(49) { step ->
+        val angle = 2.0 * PI * step / 48.0
+        player.teleport(center.clone().add(radius * cos(angle), 0.0, radius * sin(angle)))
+        processing.update(listOf(runtime), firstTick + step)
+    }
 }
 
 private fun fireSafetyRouter(
