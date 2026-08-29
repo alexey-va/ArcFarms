@@ -257,7 +257,9 @@ farm-zones:
       interaction-radius: 2.2
       proximity-pickup-radius: 1.75
       delivery-radius: 2.4
-      crank: {inner-radius: 2.4, outer-radius: 4.0, max-step-distance: 1.2, title-reminder-seconds: 8}
+      # The visible line remains at radius 3.2; one block of radial tolerance lets
+      # players walk imperfect circles without losing angular progress.
+      crank: {inner-radius: 2.4, outer-radius: 4.0, radius-tolerance: 1.0, max-step-distance: 1.2, title-reminder-seconds: 8}
       carried-y-offset: 0.95
       cargo-watchdog: {reminder-seconds: 12, return-seconds: 30}
       spawn-per-tick: 4

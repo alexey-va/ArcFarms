@@ -134,6 +134,8 @@ class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
             val workers = listOf(fixture.paper.addPlayer("Miller"), fixture.paper.addPlayer("Packer"))
 
             processing.initialize(runtime) shouldBe true
+            processing.ensure(runtime)
+            fixture.processingDisplays(FarmProcessingSceneRole.OUTPUT_PALLET).single().isGlowing shouldBe false
             fixture.processingDisplays(FarmProcessingSceneRole.RAW_PACKAGE)
                 .all { display -> display.itemStack.type == Material.WHEAT } shouldBe true
             repeat(fixture.zone.processing.inputPackages) { index ->
@@ -178,6 +180,8 @@ class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
                 walkMillstone(fixture, processing, runtime, workers[index % workers.size], 300L + index * 100L)
             }
             runtime.state.processing?.stage shouldBe FarmProcessingStage.PACKING
+            processing.ensure(runtime)
+            fixture.processingDisplays(FarmProcessingSceneRole.OUTPUT_PALLET).single().isGlowing shouldBe true
             workers.forEachIndexed { index, worker ->
                 worker.teleport(fixture.location(fixture.processingPoint).clone().add(0.0, 0.0, 8.0 + index))
             }

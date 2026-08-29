@@ -334,7 +334,7 @@ farm:
   entry-market: '<color:#f2fff7>Найдите светящегося покупателя у телеги и нажмите ПКМ</color>'
   entry-market-pending: '<color:#f2fff7>Найдите светящегося покупателя у телеги и нажмите ПКМ</color>'
   entry-market-active: '<color:#f2fff7><crop> <done>/<total> — осталось <time></color>'
-  entry-processing: '<color:#f2fff7>Идите к золотому столбу у перерабатывающего цеха</color>'
+  entry-processing: '<color:#f2fff7>Идите в мельницу и найдите перерабатывающий цех</color>'
   entry-barn-fire: '<color:#f2fff7>Возьмите водомёт у амбара и погасите все очаги</color>'
   entry-delivery: '<color:#f2fff7>Перенесите ящики к приёмке</color>'
   started: '<color:#55d98b>Новый заказ</color> <color:#707a76>•</color> <order> <color:#707a76>•</color> <color:#f2fff7>вспашите участок: <total> грядок</color>'

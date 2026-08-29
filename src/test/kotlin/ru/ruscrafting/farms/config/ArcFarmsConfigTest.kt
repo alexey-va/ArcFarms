@@ -240,6 +240,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().processing.proximityPickupRadius shouldBe 1.75
         settings.farms.single().processing.crankInnerRadius shouldBe 2.4
         settings.farms.single().processing.crankOuterRadius shouldBe 4.0
+        settings.farms.single().processing.crankRadiusTolerance shouldBe 1.0
         settings.farms.single().processing.crankMaxStepDistance shouldBe 1.2
         settings.farms.single().processing.crankTitleReminderSeconds shouldBe 8
         settings.farms.single().processing.spawnPerTick shouldBe 4

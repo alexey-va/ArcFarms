@@ -299,6 +299,7 @@ data class FarmProcessingSettings(
     val deliveryRadius: Double,
     val crankInnerRadius: Double,
     val crankOuterRadius: Double,
+    val crankRadiusTolerance: Double,
     val crankMaxStepDistance: Double,
     val crankTitleReminderSeconds: Int,
     val carriedYOffset: Double,
@@ -821,6 +822,7 @@ class ArcFarmsConfig private constructor(
                     deliveryRadius = section.finiteDouble("processing.delivery-radius", 2.4, 1.0, 5.0),
                     crankInnerRadius = section.finiteDouble("processing.crank.inner-radius", 2.4, 0.5, 4.0),
                     crankOuterRadius = section.finiteDouble("processing.crank.outer-radius", 4.0, 1.0, 6.0),
+                    crankRadiusTolerance = section.finiteDouble("processing.crank.radius-tolerance", 1.0, 0.0, 2.0),
                     crankMaxStepDistance = section.finiteDouble("processing.crank.max-step-distance", 1.2, 0.25, 4.0),
                     crankTitleReminderSeconds = section.int("processing.crank.title-reminder-seconds", 8)
                         .checked("processing.crank.title-reminder-seconds", 3, 30),

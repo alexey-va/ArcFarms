@@ -111,6 +111,7 @@ internal class FarmProcessingCrankController(
             centerZ = machine.z,
             innerRadius = configured.crankInnerRadius,
             outerRadius = configured.crankOuterRadius,
+            radiusTolerance = configured.crankRadiusTolerance,
             maxStepDistance = configured.crankMaxStepDistance,
         )
         if (sample.state == null) {

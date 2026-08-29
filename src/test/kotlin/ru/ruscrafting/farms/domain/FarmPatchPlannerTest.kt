@@ -166,6 +166,26 @@ class FarmPatchPlannerTest : FunSpec({
         selected.shouldContainExactlyInAnyOrder(local)
     }
 
+    test("mechanized planner chooses the largest field instead of a nearby fragment") {
+        val nearbyFragment = (0 until 83).map { x ->
+            FarmPlotPosition("world", x, 64, 0)
+        }
+        val largeField = (200 until 220).flatMap { x ->
+            (0 until 20).map { z -> FarmPlotPosition("world", x, 64, z) }
+        }
+
+        val selected = FarmPatchPlanner.selectMechanized(
+            candidates = nearbyFragment + largeField,
+            anchor = nearbyFragment.first(),
+            targetSize = 320,
+            maxSize = 512,
+            componentGap = 4,
+            maxComponents = 4,
+        )
+
+        selected.shouldContainExactlyInAnyOrder(largeField)
+    }
+
     test("mechanized planner prefers a compact cluster over chaining equally close beds away from the seed") {
         fun bed(startX: Int, startZ: Int) = (0 until 4).map { offset ->
             FarmPlotPosition("world", startX + offset, 64, startZ)

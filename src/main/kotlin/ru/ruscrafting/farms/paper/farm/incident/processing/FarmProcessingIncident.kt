@@ -22,12 +22,14 @@ import org.joml.Vector3f
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.FarmProcessingVisualRole
+import ru.ruscrafting.farms.config.FarmProcessingSettings
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmProcessingLayout
+import ru.ruscrafting.farms.domain.FarmProcessingState
 import ru.ruscrafting.farms.domain.FarmProcessingStage
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.domain.FarmStallAction
@@ -61,6 +63,13 @@ private data class ProcessingCarrierLease(
     var bestDistance: Double = Double.POSITIVE_INFINITY,
 )
 
+private data class ProcessingSceneRevision(
+    val sequence: Long,
+    val state: FarmProcessingState,
+    val settings: FarmProcessingSettings,
+    val layout: FarmProcessingLayout,
+)
+
 /** Crop processing incident: load raw packages, walk the millstone ring, deliver finished goods. */
 internal class FarmProcessingIncident(
     plugin: Plugin,
@@ -82,6 +91,8 @@ internal class FarmProcessingIncident(
     private val carriedIndexKey = NamespacedKey(plugin, "farm_processing_carried_index")
     private val carriers = mutableMapOf<ProcessingCargoKey, ProcessingCarrierLease>()
     private val carriedDisplays = mutableMapOf<ProcessingCargoKey, UUID>()
+    private val layouts = mutableMapOf<String, FarmProcessingLayout>()
+    private val sceneSpecs = FarmProcessingSceneSpecCache<ProcessingSceneRevision>()
     private val lastUnavailableSequence = mutableMapOf<String, Long>()
     private val adminPreview = FarmProcessingAdminPreview(port)
 
@@ -137,7 +148,14 @@ internal class FarmProcessingIncident(
         }
         if (!initialize(runtime)) return
         val layout = layout(runtime) ?: return
-        scene.ensure(sceneSpec(runtime, layout))
+        val state = requireNotNull(runtime.state.processing)
+        val revision = ProcessingSceneRevision(
+            sequence = runtime.state.sequence,
+            state = state,
+            settings = runtime.settings.processing,
+            layout = layout,
+        )
+        scene.ensure(sceneSpecs.resolve(runtime.settings.id, revision) { sceneSpec(runtime, layout) })
     }
 
     fun interact(event: PlayerInteractEntityEvent, runtimes: Collection<FarmRuntime>): Boolean {
@@ -209,6 +227,8 @@ internal class FarmProcessingIncident(
 
     fun clear(zoneId: String, reason: String) {
         scene.clear(zoneId, reason)
+        sceneSpecs.invalidate(zoneId)
+        layouts.remove(zoneId)
         carriers.keys.filter { it.zoneId == zoneId }.toList().forEach { key ->
             carriers.remove(key)
             removeCarried(key)
@@ -223,6 +243,8 @@ internal class FarmProcessingIncident(
         }.forEach(Entity::remove)
         carriers.clear()
         carriedDisplays.clear()
+        layouts.clear()
+        sceneSpecs.clear()
         crank.cleanup(reason)
         lastUnavailableSequence.clear()
     }
@@ -244,10 +266,10 @@ internal class FarmProcessingIncident(
             port.sendActionBar(player, MessageKey.FARM_PROCESSING_ALREADY_CARRYING)
             return
         }
-        carriers[key] = ProcessingCarrierLease(
+        trackCarrier(key, ProcessingCarrierLease(
             playerId = player.uniqueId,
             watchdog = FarmStallWatchdogState(Bukkit.getCurrentTick().toLong()),
-        )
+        ))
         val display = player.world.spawn(carriedLocation(runtime, player), ItemDisplay::class.java) { entity ->
             entity.setItemStack(FarmProcessingItems.packageItem(runtime, cargo))
             entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
@@ -299,7 +321,7 @@ internal class FarmProcessingIncident(
             showStageHint(runtime, player)
             return
         }
-        carriers.remove(entry.key)
+        removeCarrier(entry.key)
         removeCarried(entry.key)
         transitions.apply(
             runtime,
@@ -327,7 +349,7 @@ internal class FarmProcessingIncident(
             }
             val display = carriedDisplays[key]?.let(Bukkit::getEntity) as? ItemDisplay
             if (display == null || !display.isValid) {
-                carriers.remove(key)
+                removeCarrier(key)
                 return@forEach
             }
             display.teleport(carriedLocation(runtime, player))
@@ -357,7 +379,7 @@ internal class FarmProcessingIncident(
                 }
                 return@forEach
             }
-            carriers.remove(key)
+            removeCarrier(key)
             removeCarried(key)
             val stage = if (key.cargo == ProcessingCargo.RAW) FarmProcessingStage.LOADING else FarmProcessingStage.PACKING
             transitions.apply(
@@ -416,12 +438,14 @@ internal class FarmProcessingIncident(
 
 
     private fun layout(runtime: FarmRuntime): FarmProcessingLayout? {
-        val machine = configuredPoint(runtime.settings.id, FarmPointKind.PROCESSING) ?: return null
+        val zoneId = runtime.settings.id
+        layouts[zoneId]?.let { return it }
+        val machine = configuredPoint(zoneId, FarmPointKind.PROCESSING) ?: return null
         return FarmProcessingLayout.create(
             machine,
-            PROCESSING_INPUT_POINTS.mapNotNull { configuredPoint(runtime.settings.id, it) },
-            configuredPoint(runtime.settings.id, FarmPointKind.PROCESSING_OUTPUT),
-        )
+            PROCESSING_INPUT_POINTS.mapNotNull { configuredPoint(zoneId, it) },
+            configuredPoint(zoneId, FarmPointKind.PROCESSING_OUTPUT),
+        ).also { layouts[zoneId] = it }
     }
 
     private fun validateLayout(
@@ -473,6 +497,7 @@ internal class FarmProcessingIncident(
             0,
             layout.outputPallet,
             FarmProcessingVisualRole.OUTPUT_PALLET,
+            glowing = state.stage == FarmProcessingStage.PACKING,
         )
         objects += FarmProcessingSceneObject(
             FarmProcessingSceneRole.MACHINE_INTERACTION,
@@ -587,7 +612,7 @@ internal class FarmProcessingIncident(
     }
 
     private fun returnCargo(runtime: FarmRuntime, key: ProcessingCargoKey, player: Player?, reason: String) {
-        carriers.remove(key)
+        removeCarrier(key)
         removeCarried(key)
         player?.takeIf(Player::isOnline)?.let {
             port.sendActionBar(it, MessageKey.FARM_PROCESSING_RETURNED)
@@ -603,6 +628,14 @@ internal class FarmProcessingIncident(
             "reason" to reason,
         )
     }
+
+    private fun trackCarrier(key: ProcessingCargoKey, lease: ProcessingCarrierLease) {
+        carriers[key] = lease
+        sceneSpecs.invalidate(key.zoneId)
+    }
+
+    private fun removeCarrier(key: ProcessingCargoKey): ProcessingCarrierLease? =
+        carriers.remove(key)?.also { sceneSpecs.invalidate(key.zoneId) }
 
     private fun removeCarried(key: ProcessingCargoKey) {
         carriedDisplays.remove(key)?.let(Bukkit::getEntity)?.remove()

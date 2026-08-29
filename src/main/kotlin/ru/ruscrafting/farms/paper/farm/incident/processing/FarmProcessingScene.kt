@@ -70,6 +70,32 @@ internal data class FarmProcessingSceneSpec(
     val objects: List<FarmProcessingSceneObject>,
 )
 
+internal class FarmProcessingSceneSpecCache<R> {
+    private data class Entry<R>(
+        val revision: R,
+        val spec: FarmProcessingSceneSpec,
+    )
+
+    private val entries = mutableMapOf<String, Entry<R>>()
+
+    fun resolve(
+        zoneId: String,
+        revision: R,
+        create: () -> FarmProcessingSceneSpec,
+    ): FarmProcessingSceneSpec {
+        entries[zoneId]?.takeIf { it.revision == revision }?.let { return it.spec }
+        return create().also { spec -> entries[zoneId] = Entry(revision, spec) }
+    }
+
+    fun invalidate(zoneId: String) {
+        entries.remove(zoneId)
+    }
+
+    fun clear() {
+        entries.clear()
+    }
+}
+
 /** Reconstructible, non-persistent display scene with bounded creation per tick. */
 internal class FarmProcessingScene(
     plugin: Plugin,
@@ -82,6 +108,7 @@ internal class FarmProcessingScene(
     private val roleKey = NamespacedKey(plugin, "farm_processing_role")
     private val indexKey = NamespacedKey(plugin, "farm_processing_index")
     private val desired = mutableMapOf<String, FarmProcessingSceneSpec>()
+    private val desiredTargets = mutableMapOf<String, Map<FarmProcessingSceneIdentity, FarmProcessingSceneObject>>()
     private val tracked = mutableMapOf<FarmProcessingSceneIdentity, UUID>()
     private val reconciled = mutableMapOf<String, Long>()
 
@@ -92,21 +119,31 @@ internal class FarmProcessingScene(
     fun hasZone(zoneId: String): Boolean = desired.containsKey(zoneId) || tracked.keys.any { it.zoneId == zoneId }
 
     fun ensure(spec: FarmProcessingSceneSpec) {
-        val changed = desired.put(spec.zoneId, spec) != spec
-        reconcileSequence(spec)
-        val targets = spec.objects.associateBy { target -> identity(spec, target) }
-        tracked.keys.filter { it.zoneId == spec.zoneId && it !in targets }.toList().forEach(::remove)
+        val previous = desired[spec.zoneId]
+        val changed = previous != spec
+        val activeSpec = if (changed) spec else requireNotNull(previous)
+        val targets = if (changed) {
+            desired[spec.zoneId] = spec
+            spec.objects.associateBy { target -> identity(spec, target) }
+                .also { desiredTargets[spec.zoneId] = it }
+        } else {
+            requireNotNull(desiredTargets[spec.zoneId])
+        }
+        reconcileSequence(activeSpec)
+        if (changed) {
+            tracked.keys.filter { it.zoneId == spec.zoneId && it !in targets }.toList().forEach(::remove)
+        }
 
         var spawned = 0
         targets.forEach { (identity, target) ->
             val existing = tracked[identity]?.let(Bukkit::getEntity)
             if (existing != null && existing.isValid && matches(existing, identity.role)) {
-                if (changed) normalize(existing, spec, target, identity)
+                if (changed) normalize(existing, activeSpec, target, identity)
                 return@forEach
             }
             tracked.remove(identity)
-            if (spawned >= spec.spawnPerTick || !chunkLoaded(target.location)) return@forEach
-            tracked[identity] = spawn(spec, target, identity).uniqueId
+            if (spawned >= activeSpec.spawnPerTick || !chunkLoaded(target.location)) return@forEach
+            tracked[identity] = spawn(activeSpec, target, identity).uniqueId
             spawned++
         }
     }
@@ -124,6 +161,7 @@ internal class FarmProcessingScene(
 
     fun clear(zoneId: String, reason: String) {
         desired.remove(zoneId)
+        desiredTargets.remove(zoneId)
         reconciled.remove(zoneId)
         val identities = tracked.keys.filter { it.zoneId == zoneId }.toList()
         identities.forEach(::remove)
@@ -136,6 +174,7 @@ internal class FarmProcessingScene(
         val entities = entityLookup.inAllWorlds().filter(::owns)
         entities.forEach(Entity::remove)
         desired.clear()
+        desiredTargets.clear()
         tracked.clear()
         reconciled.clear()
         if (entities.isNotEmpty()) debug.event("farm_processing_scene_cleanup", "count" to entities.size, "reason" to reason)

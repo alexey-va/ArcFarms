@@ -45,10 +45,13 @@ object FarmProcessingCrankTracker {
         centerZ: Double,
         innerRadius: Double,
         outerRadius: Double,
+        radiusTolerance: Double = 0.0,
         maxStepDistance: Double,
     ): FarmProcessingCrankSample {
         val centerDistance = hypot(x - centerX, z - centerZ)
-        if (centerDistance !in innerRadius..outerRadius) {
+        val acceptedInnerRadius = (innerRadius - radiusTolerance).coerceAtLeast(MIN_CENTER_DISTANCE)
+        val acceptedOuterRadius = outerRadius + radiusTolerance
+        if (centerDistance !in acceptedInnerRadius..acceptedOuterRadius) {
             return FarmProcessingCrankSample(null, 0.0, FarmProcessingCrankSampleStatus.OUTSIDE)
         }
         val angle = atan2(z - centerZ, x - centerX)
@@ -97,4 +100,5 @@ object FarmProcessingCrankTracker {
     }
 
     private const val MIN_ANGULAR_STEP = 0.004
+    private const val MIN_CENTER_DISTANCE = 0.5
 }

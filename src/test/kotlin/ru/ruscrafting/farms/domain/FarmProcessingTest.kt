@@ -185,4 +185,28 @@ class FarmProcessingTest : FunSpec({
         sample(PI).acceptedRadians shouldBe 0.0
         sample(PI, radius = 4.5).status shouldBe FarmProcessingCrankSampleStatus.OUTSIDE
     }
+
+    test("a crooked lap keeps progress through small radial excursions") {
+        var state: FarmProcessingCrankState? = null
+        var progress = 0.0
+        repeat(97) { step ->
+            val angle = 2.0 * PI * step / 96.0
+            val radius = 3.2 + sin(angle * 3.0)
+            val sample = FarmProcessingCrankTracker.sample(
+                previous = state,
+                x = radius * cos(angle),
+                z = radius * sin(angle),
+                centerX = 0.0,
+                centerZ = 0.0,
+                innerRadius = 2.4,
+                outerRadius = 4.0,
+                radiusTolerance = 1.0,
+                maxStepDistance = 1.2,
+            )
+            state = sample.state
+            progress += sample.acceptedRadians
+        }
+
+        progress shouldBe (FarmProcessingCrankTracker.FULL_LAP_RADIANS plusOrMinus 0.0001)
+    }
 })

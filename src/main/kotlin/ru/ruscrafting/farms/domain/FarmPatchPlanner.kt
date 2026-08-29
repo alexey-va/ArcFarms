@@ -53,9 +53,10 @@ object FarmPatchPlanner {
 
     /**
      * Selects a large machine-friendly field without pretending that paths and
-     * irrigation channels are beds. Nearby same-height components may be
-     * combined, while the configured component and plot caps keep the route
-     * bounded.
+     * irrigation channels are beds. The largest connected field is always the
+     * seed; distance to the player only breaks ties between equally large
+     * fields. Nearby same-height components may then be combined, while the
+     * configured component and plot caps keep the route bounded.
      */
     fun selectMechanized(
         candidates: Collection<FarmPlotPosition>,
@@ -81,16 +82,14 @@ object FarmPatchPlanner {
         if (available.isEmpty()) return emptyList()
 
         val allComponents = components(available)
-        val seedCandidates = allComponents.sortedWith(
-            compareBy<Set<FarmPlotPosition>> { component -> component.minOf { distanceSquared(it, anchor) } }
-                .thenByDescending(Set<FarmPlotPosition>::size)
-                .thenBy { component -> component.minWith(POSITION_ORDER).coordinateKey() },
-        )
-        val nearestDistance = seedCandidates.minOf { component -> component.minOf { distanceSquared(it, anchor) } }
-        val nearbySeeds = seedCandidates.filter { component ->
-            component.minOf { distanceSquared(it, anchor) } <= nearestDistance + MECHANIZED_SEED_DISTANCE_SLACK_SQUARED
-        }
-        val seed = nearbySeeds[Math.floorMod(selectionIndex, nearbySeeds.size.toLong()).toInt()]
+        val largestComponentSize = allComponents.maxOf(Set<FarmPlotPosition>::size)
+        val seedCandidates = allComponents.asSequence()
+            .filter { component -> component.size == largestComponentSize }
+            .sortedWith(
+                compareBy<Set<FarmPlotPosition>> { component -> component.minOf { distanceSquared(it, anchor) } }
+                    .thenBy { component -> component.minWith(POSITION_ORDER).coordinateKey() },
+            ).toList()
+        val seed = seedCandidates[Math.floorMod(selectionIndex, seedCandidates.size.toLong()).toInt()]
         val selectedComponents = mutableListOf(seed)
         val remaining = allComponents.filterNot(seed::equals).toMutableList()
         val envelopes = allComponents.associateWith(::envelope)
@@ -333,8 +332,6 @@ object FarmPatchPlanner {
     )
 
     private fun FarmPlotPosition.coordinateKey(): String = "$world:$y:$x:$z"
-
-    private const val MECHANIZED_SEED_DISTANCE_SLACK_SQUARED = 12L * 12L
 }
 
 object FarmDroughtPlanner {

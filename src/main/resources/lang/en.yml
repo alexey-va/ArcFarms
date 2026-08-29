@@ -334,7 +334,7 @@ farm:
   entry-market: '<color:#f2fff7>Find the glowing buyer by the cart and right-click</color>'
   entry-market-pending: '<color:#f2fff7>Find the glowing buyer by the cart and right-click</color>'
   entry-market-active: '<color:#f2fff7><crop> <done>/<total> — <time> remaining</color>'
-  entry-processing: '<color:#f2fff7>Go to the processing workshop under the golden column</color>'
+  entry-processing: '<color:#f2fff7>Go inside the mill and find the processing workshop</color>'
   entry-barn-fire: '<color:#f2fff7>Take the fire hose by the barn and extinguish every hotspot</color>'
   entry-delivery: '<color:#f2fff7>Carry the crates to receiving</color>'
   started: '<color:#55d98b>New order</color> <color:#707a76>•</color> <order> <color:#707a76>•</color> <color:#f2fff7>till a patch of <total> beds</color>'
