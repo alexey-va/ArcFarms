@@ -141,6 +141,19 @@ class FarmMoleBurrowPlannerTest : FunSpec({
         preferred.isNotEmpty() shouldBe true
         preferred.all { it in lShapedField } shouldBe true
     }
+
+    test("mole entrance density thresholds cannot cancel each other on a ragged field") {
+        val coordinates = listOf(
+            0 to 2, 0 to 3, 0 to 4, 1 to 1, 1 to 2, 1 to 7, 2 to 2, 2 to 3, 2 to 6, 3 to 3,
+            3 to 6, 3 to 7, 4 to 1, 4 to 2, 4 to 7, 5 to 0, 5 to 1, 5 to 2, 5 to 4, 6 to 0,
+            6 to 5, 6 to 7, 7 to 3, 7 to 7, 7 to 8, 8 to 1, 8 to 2, 8 to 5, 8 to 6, 8 to 8,
+        )
+        val raggedField = coordinates.map { (x, z) -> FarmPlotPosition("sp11", x, 64, z) }
+
+        val preferred = FarmMoleEntrancePlanner.preferredBeds(raggedField, minimumBoundaryDistance = 2)
+
+        preferred shouldBe listOf(FarmPlotPosition("sp11", 5, 64, 4))
+    }
 })
 
 private fun manhattan(first: FarmMolePassage, second: FarmMolePassage): Int =

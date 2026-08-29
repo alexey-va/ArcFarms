@@ -34,12 +34,15 @@ object FarmMoleEntrancePlanner {
         val bedSet = beds.toHashSet()
         val scores = centralBeds.associateWith { plot -> surroundingScore(plot, bedSet) }
         val weakestSideBest = scores.values.maxOf(FarmSurroundingScore::weakestSide)
-        val totalBest = scores.values.maxOf(FarmSurroundingScore::total)
         val weakestSideRequired = retainThreshold(weakestSideBest)
+        val balancedBeds = centralBeds.filter { plot ->
+            scores.getValue(plot).weakestSide >= weakestSideRequired
+        }
+        val totalBest = balancedBeds.maxOf { plot -> scores.getValue(plot).total }
         val totalRequired = retainThreshold(totalBest)
-        return centralBeds.filter { plot ->
+        return balancedBeds.filter { plot ->
             val score = scores.getValue(plot)
-            score.weakestSide >= weakestSideRequired && score.total >= totalRequired
+            score.total >= totalRequired
         }
     }
 
