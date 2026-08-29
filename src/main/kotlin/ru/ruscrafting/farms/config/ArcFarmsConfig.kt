@@ -296,6 +296,7 @@ data class FarmProcessingSettings(
     val dialPeriodTicks: Int,
     val dialWindowTicks: Int,
     val dialCenterYOffset: Double,
+    val dialRightOffset: Double,
     val dialForwardOffset: Double,
     val dialRadius: Double,
     val dialPointCount: Int,
@@ -814,10 +815,11 @@ class ArcFarmsConfig private constructor(
                         .checked("processing.dial.period-ticks", 20, 200),
                     dialWindowTicks = section.int("processing.dial.success-window-ticks", 10)
                         .checked("processing.dial.success-window-ticks", 2, 40),
-                    dialCenterYOffset = section.finiteDouble("processing.dial.center-y-offset", 3.3, 1.0, 8.0),
-                    dialForwardOffset = section.finiteDouble("processing.dial.forward-offset", 1.15, 0.0, 4.0),
-                    dialRadius = section.finiteDouble("processing.dial.radius", 0.55, 0.2, 1.5),
-                    dialPointCount = section.int("processing.dial.points", 24)
+                    dialCenterYOffset = section.finiteDouble("processing.dial.center-y-offset", 1.45, 0.5, 4.0),
+                    dialRightOffset = section.finiteDouble("processing.dial.right-offset", 1.45, -4.0, 4.0),
+                    dialForwardOffset = section.finiteDouble("processing.dial.forward-offset", 0.8, 0.0, 4.0),
+                    dialRadius = section.finiteDouble("processing.dial.radius", 0.8, 0.2, 1.5),
+                    dialPointCount = section.int("processing.dial.points", 32)
                         .checked("processing.dial.points", 12, 64),
                     interactionRadius = section.finiteDouble("processing.interaction-radius", 2.2, 1.0, 5.0),
                     deliveryRadius = section.finiteDouble("processing.delivery-radius", 2.4, 1.0, 5.0),

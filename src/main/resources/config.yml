@@ -253,13 +253,13 @@ farm-zones:
       input-packages: 4
       machine-cycles: 6
       output-packages: 4
-      dial: {period-ticks: 60, success-window-ticks: 10, center-y-offset: 3.3, forward-offset: 1.15, radius: 0.55, points: 24}
+      dial: {period-ticks: 60, success-window-ticks: 10, center-y-offset: 1.45, right-offset: 1.45, forward-offset: 0.8, radius: 0.8, points: 32}
       interaction-radius: 2.2
       delivery-radius: 2.4
       carried-y-offset: 0.95
       spawn-per-tick: 4
       display-view-range: 3.0
-      particle-column-height: 7.0
+      particle-column-height: 2.0
       visuals:
         machine: {material: CRAFTING_TABLE, custom-model-data: 0, display-transform: FIXED, scale: 1.6, y-offset: 0.45, yaw-offset: 0.0}
         wheel: {material: GRINDSTONE, custom-model-data: 0, display-transform: FIXED, scale: 1.1, y-offset: 1.1, yaw-offset: 0.0}

@@ -29,7 +29,9 @@ data class FarmProcessingLayout(
             val wheel = offset(anchor, 0.0, 0.55, 1.15)
             val inputRacks = inputRackOverrides.ifEmpty { listOf(offset(anchor, -3.0, 0.0, 0.35)) }
             val inputDrop = offset(anchor, -1.15, 0.45, 0.7)
-            val outputChute = offset(anchor, 1.35, 0.25, 0.7)
+            // Finished packages are staged on the floor beside the machine instead of
+            // inheriting the old raised chute position inside the model volume.
+            val outputChute = offset(anchor, 1.65, -1.1, 0.0)
             val outputPallet = outputPalletOverride ?: offset(anchor, 3.0, 0.0, 0.25)
             return FarmProcessingLayout(
                 anchor = anchor,
@@ -65,6 +67,13 @@ data class FarmProcessingLayout(
             val right = (column - 0.5) * if (delivered) 0.72 else 0.86
             val forward = (row - 0.5) * if (delivered) 0.58 else 0.74
             return offset(base, right, forward, layer * 0.52)
+        }
+
+        fun floorPackagePosition(base: FarmPointPosition, index: Int): FarmPointPosition {
+            require(index in 0..15) { "Processing floor package index is invalid" }
+            val column = index % 2
+            val row = index / 2
+            return offset(base, (column - 0.5) * 1.05, (row - 0.5) * 0.95, 0.0)
         }
 
         /** `right` is local east-west; `forward` follows the anchor yaw. */

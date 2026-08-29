@@ -238,10 +238,11 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().processing.outputPackages shouldBe 4
         settings.farms.single().processing.dialPeriodTicks shouldBe 60
         settings.farms.single().processing.dialWindowTicks shouldBe 10
-        settings.farms.single().processing.dialCenterYOffset shouldBe 3.3
-        settings.farms.single().processing.dialForwardOffset shouldBe 1.15
-        settings.farms.single().processing.dialRadius shouldBe 0.55
-        settings.farms.single().processing.dialPointCount shouldBe 24
+        settings.farms.single().processing.dialCenterYOffset shouldBe 1.45
+        settings.farms.single().processing.dialRightOffset shouldBe 1.45
+        settings.farms.single().processing.dialForwardOffset shouldBe 0.8
+        settings.farms.single().processing.dialRadius shouldBe 0.8
+        settings.farms.single().processing.dialPointCount shouldBe 32
         settings.farms.single().processing.spawnPerTick shouldBe 4
         settings.farms.single().processing.visuals.getValue(FarmProcessingVisualRole.MACHINE).material shouldBe
             "CRAFTING_TABLE"

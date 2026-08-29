@@ -25,16 +25,19 @@ object FarmProcessingDialPlanner {
         periodTicks: Int,
         successWindowTicks: Int,
         centerYOffset: Double,
+        rightOffset: Double,
         forwardOffset: Double,
         radius: Double,
         pointCount: Int,
     ): FarmProcessingDialPlan {
         require(phase in 0 until periodTicks) { "Processing dial phase is outside its period" }
         require(successWindowTicks in 1 until periodTicks / 2) { "Processing dial success window is invalid" }
-        require(centerYOffset.isFinite() && forwardOffset.isFinite()) { "Processing dial offset must be finite" }
+        require(centerYOffset.isFinite() && rightOffset.isFinite() && forwardOffset.isFinite()) {
+            "Processing dial offset must be finite"
+        }
         require(radius.isFinite() && radius > 0.0) { "Processing dial radius must be positive" }
         require(pointCount in 12..64) { "Processing dial point count must be in 12..64" }
-        val center = FarmProcessingLayout.offset(machine, 0.0, forwardOffset, centerYOffset)
+        val center = FarmProcessingLayout.offset(machine, rightOffset, forwardOffset, centerYOffset)
         val successCenter = periodTicks / 2
         fun point(pointPhase: Int): FarmProcessingDialPoint {
             val normalized = Math.floorMod(pointPhase, periodTicks)

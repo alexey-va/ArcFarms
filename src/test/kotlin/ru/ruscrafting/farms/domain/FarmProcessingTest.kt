@@ -79,23 +79,38 @@ class FarmProcessingTest : FunSpec({
         custom.inputRacks.size shouldBe 2
         FarmProcessingLayout.packagePosition(custom.inputRacks, 0).x shouldBe (89.57 plusOrMinus 0.0001)
         FarmProcessingLayout.packagePosition(custom.inputRacks, 1).x shouldBe (91.57 plusOrMinus 0.0001)
+
+        north.outputChute.y shouldBe 65.0
+        north.outputChute.x shouldBe (101.65 plusOrMinus 0.0001)
+        north.outputChute.z shouldBe (198.9 plusOrMinus 0.0001)
+        val floorPackages = (0 until 4).map { FarmProcessingLayout.floorPackagePosition(north.outputChute, it) }
+        floorPackages.map { it.y }.distinct() shouldContainExactly listOf(65.0)
+        floorPackages.map { it.x }.distinct().sorted().zip(listOf(101.125, 102.175)).forEach { (actual, expected) ->
+            actual shouldBe (expected plusOrMinus 0.0001)
+        }
+        floorPackages.map { it.z }.distinct().sorted().zip(listOf(198.425, 199.375)).forEach { (actual, expected) ->
+            actual shouldBe (expected plusOrMinus 0.0001)
+        }
     }
 
-    test("timing dial stays above the grounded millstone and exposes a green success sector") {
+    test("timing dial stays beside the grounded millstone at eye level and exposes a green success sector") {
         val plan = FarmProcessingDialPlanner.plan(
             machine = FarmPointPosition("world", 100.0, 65.0, 200.0, 0f),
             phase = 30,
             periodTicks = 60,
             successWindowTicks = 10,
-            centerYOffset = 3.3,
-            forwardOffset = 1.15,
-            radius = 0.55,
-            pointCount = 24,
+            centerYOffset = 1.45,
+            rightOffset = 1.45,
+            forwardOffset = 0.8,
+            radius = 0.8,
+            pointCount = 32,
         )
 
-        plan.ring.size shouldBe 24
-        plan.ring.minOf { it.position.y } shouldBe (67.75 plusOrMinus 0.0001)
-        plan.marker.position.y shouldBe (68.85 plusOrMinus 0.0001)
+        plan.ring.size shouldBe 32
+        plan.ring.minOf { it.position.y } shouldBe (65.65 plusOrMinus 0.0001)
+        plan.ring.maxOf { it.position.y } shouldBe (67.25 plusOrMinus 0.0001)
+        plan.ring.map { it.position.x }.average() shouldBe (101.45 plusOrMinus 0.0001)
+        plan.marker.position.y shouldBe (67.25 plusOrMinus 0.0001)
         plan.marker.inSuccessWindow shouldBe true
         plan.ring.any(FarmProcessingDialPoint::inSuccessWindow) shouldBe true
         plan.ring.any { !it.inSuccessWindow } shouldBe true

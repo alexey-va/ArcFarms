@@ -372,6 +372,7 @@ internal class FarmProcessingIncident(
                 periodTicks = configured.dialPeriodTicks,
                 successWindowTicks = configured.dialWindowTicks,
                 centerYOffset = configured.dialCenterYOffset,
+                rightOffset = configured.dialRightOffset,
                 forwardOffset = configured.dialForwardOffset,
                 radius = configured.dialRadius,
                 pointCount = configured.dialPointCount,
@@ -511,7 +512,7 @@ internal class FarmProcessingIncident(
             (0 until state.outputRequired - state.outputDelivered).filterNot { index ->
                 ProcessingCargoKey(runtime.settings.id, ProcessingCargo.PRODUCT, index) in carriers
             }.forEach { index ->
-                val point = FarmProcessingLayout.packagePosition(layout.outputChute, index)
+                val point = FarmProcessingLayout.floorPackagePosition(layout.outputChute, index)
                 objects += display(runtime, FarmProcessingSceneRole.PRODUCT_PACKAGE, index, point, FarmProcessingVisualRole.PRODUCT_PACKAGE, true)
                 objects += FarmProcessingSceneObject(
                     FarmProcessingSceneRole.PRODUCT_INTERACTION, index, point.location(runtime),
