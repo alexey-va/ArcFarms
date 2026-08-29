@@ -97,17 +97,17 @@ class FarmMoleBurrowPlannerTest : FunSpec({
         }
         val interior = FarmMoleEntrancePlanner.preferredBeds(square, minimumBoundaryDistance = 10)
 
-        interior.minOf(FarmPlotPosition::x) shouldBe 10
-        interior.maxOf(FarmPlotPosition::x) shouldBe 30
-        interior.minOf(FarmPlotPosition::z) shouldBe 10
-        interior.maxOf(FarmPlotPosition::z) shouldBe 30
+        interior.minOf(FarmPlotPosition::x) shouldBe 15
+        interior.maxOf(FarmPlotPosition::x) shouldBe 25
+        interior.minOf(FarmPlotPosition::z) shouldBe 15
+        interior.maxOf(FarmPlotPosition::z) shouldBe 25
 
         val narrow = buildList {
             for (x in 0..40) for (z in 0..6) add(FarmPlotPosition("sp11", x, 64, z))
         }
         val narrowInterior = FarmMoleEntrancePlanner.preferredBeds(narrow, minimumBoundaryDistance = 10)
-        narrowInterior.minOf(FarmPlotPosition::x) shouldBe 10
-        narrowInterior.maxOf(FarmPlotPosition::x) shouldBe 30
+        narrowInterior.minOf(FarmPlotPosition::x) shouldBe 15
+        narrowInterior.maxOf(FarmPlotPosition::x) shouldBe 25
         narrowInterior.map(FarmPlotPosition::z).toSet() shouldBe setOf(3)
 
         val forcedAdminStarts = (1L..8L).map { placementSequence ->

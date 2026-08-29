@@ -295,6 +295,10 @@ data class FarmProcessingSettings(
     val outputPackages: Int,
     val dialPeriodTicks: Int,
     val dialWindowTicks: Int,
+    val dialCenterYOffset: Double,
+    val dialForwardOffset: Double,
+    val dialRadius: Double,
+    val dialPointCount: Int,
     val interactionRadius: Double,
     val deliveryRadius: Double,
     val carriedYOffset: Double,
@@ -795,7 +799,7 @@ class ArcFarmsConfig private constructor(
                     FarmProcessingVisualRole.MACHINE to "CRAFTING_TABLE",
                     FarmProcessingVisualRole.WHEEL to "GRINDSTONE",
                     FarmProcessingVisualRole.INPUT_RACK to "BARREL",
-                    FarmProcessingVisualRole.OUTPUT_PALLET to "OAK_SLAB",
+                    FarmProcessingVisualRole.OUTPUT_PALLET to "BARREL",
                     FarmProcessingVisualRole.RAW_PACKAGE to "WHEAT",
                     FarmProcessingVisualRole.PRODUCT_PACKAGE to "BREAD",
                 )
@@ -810,6 +814,11 @@ class ArcFarmsConfig private constructor(
                         .checked("processing.dial.period-ticks", 20, 200),
                     dialWindowTicks = section.int("processing.dial.success-window-ticks", 10)
                         .checked("processing.dial.success-window-ticks", 2, 40),
+                    dialCenterYOffset = section.finiteDouble("processing.dial.center-y-offset", 3.3, 1.0, 8.0),
+                    dialForwardOffset = section.finiteDouble("processing.dial.forward-offset", 1.15, 0.0, 4.0),
+                    dialRadius = section.finiteDouble("processing.dial.radius", 0.55, 0.2, 1.5),
+                    dialPointCount = section.int("processing.dial.points", 24)
+                        .checked("processing.dial.points", 12, 64),
                     interactionRadius = section.finiteDouble("processing.interaction-radius", 2.2, 1.0, 5.0),
                     deliveryRadius = section.finiteDouble("processing.delivery-radius", 2.4, 1.0, 5.0),
                     carriedYOffset = section.finiteDouble("processing.carried-y-offset", 0.95, 0.0, 3.0),

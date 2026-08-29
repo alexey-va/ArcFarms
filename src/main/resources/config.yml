@@ -253,7 +253,7 @@ farm-zones:
       input-packages: 4
       machine-cycles: 6
       output-packages: 4
-      dial: {period-ticks: 60, success-window-ticks: 10}
+      dial: {period-ticks: 60, success-window-ticks: 10, center-y-offset: 3.3, forward-offset: 1.15, radius: 0.55, points: 24}
       interaction-radius: 2.2
       delivery-radius: 2.4
       carried-y-offset: 0.95
@@ -264,7 +264,7 @@ farm-zones:
         machine: {material: CRAFTING_TABLE, custom-model-data: 0, display-transform: FIXED, scale: 1.6, y-offset: 0.45, yaw-offset: 0.0}
         wheel: {material: GRINDSTONE, custom-model-data: 0, display-transform: FIXED, scale: 1.1, y-offset: 1.1, yaw-offset: 0.0}
         input-rack: {material: BARREL, custom-model-data: 0, display-transform: FIXED, scale: 1.3, y-offset: 0.4, yaw-offset: 0.0}
-        output-pallet: {material: OAK_SLAB, custom-model-data: 0, display-transform: FIXED, scale: 1.5, y-offset: 0.15, yaw-offset: 0.0}
+        output-pallet: {material: BARREL, custom-model-data: 0, display-transform: FIXED, scale: 1.0, y-offset: 0.25, yaw-offset: 0.0}
         raw-package: {material: WHEAT, custom-model-data: 0, display-transform: FIXED, scale: 1.0, y-offset: 0.65, yaw-offset: 0.0}
         product-package: {material: BREAD, custom-model-data: 0, display-transform: FIXED, scale: 1.0, y-offset: 0.65, yaw-offset: 0.0}
     # The barn/pen point anchors real fire whose spread and block damage are suppressed by the plugin.

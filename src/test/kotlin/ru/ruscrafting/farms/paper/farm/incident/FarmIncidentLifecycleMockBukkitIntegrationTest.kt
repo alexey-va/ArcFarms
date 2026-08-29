@@ -58,10 +58,23 @@ class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
             val workers = listOf(fixture.paper.addPlayer("Miller"), fixture.paper.addPlayer("Packer"))
 
             processing.initialize(runtime) shouldBe true
+            fixture.processingDisplays(FarmProcessingSceneRole.RAW_PACKAGE)
+                .all { display -> display.itemStack.type == Material.WHEAT } shouldBe true
             repeat(fixture.zone.processing.inputPackages) { index ->
                 val worker = workers[index % workers.size]
                 fixture.clickProcessing(processing, runtime, worker, FarmProcessingSceneRole.RAW_INTERACTION, 0)
-                fixture.deliverProcessingCargo(processing, runtime, worker, raw = true, tick = index * 5L)
+                val loadedBefore = requireNotNull(runtime.state.processing).inputLoaded
+                if (index % 2 == 0) {
+                    fixture.deliverProcessingCargo(processing, runtime, worker, raw = true, tick = index * 5L)
+                } else {
+                    fixture.clickProcessing(
+                        processing,
+                        runtime,
+                        worker,
+                        FarmProcessingSceneRole.MACHINE_INTERACTION,
+                    )
+                }
+                requireNotNull(runtime.state.processing).inputLoaded shouldBe loadedBefore + 1
             }
             runtime.state.processing?.stage shouldBe FarmProcessingStage.OPERATING
 
@@ -70,9 +83,18 @@ class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
             fixture.processingDisplays(FarmProcessingSceneRole.WHEEL).size shouldBe 0
             fixture.processingDisplays(FarmProcessingSceneRole.INPUT_RACK).size shouldBe 0
             val machine = fixture.processingDisplays(FarmProcessingSceneRole.MACHINE).single()
-            val pulseCenter = fixture.zone.processing.dialPeriodTicks / 2 - runtime.state.placementSequence * 17L
-            processing.update(listOf(runtime), Math.floorMod(pulseCenter, fixture.zone.processing.dialPeriodTicks.toLong()))
+            val periodTicks = fixture.zone.processing.dialPeriodTicks
+            val pulseCenter = (0 until periodTicks * 3).first { tick ->
+                val phase = Math.floorMod(tick + runtime.state.placementSequence * 17L, periodTicks.toLong())
+                tick % 3 == 0 && kotlin.math.abs(phase - periodTicks / 2L) <= fixture.zone.processing.dialWindowTicks / 2L
+            }
+            fixture.world.clearSpawnedParticles()
+            processing.update(listOf(runtime), pulseCenter.toLong())
             machine.isGlowing shouldBe true
+            fixture.world.spawnedParticles.count { particle ->
+                particle.y() >= fixture.processingPoint.y +
+                    fixture.zone.processing.dialCenterYOffset - fixture.zone.processing.dialRadius - 0.0001
+            } shouldBeGreaterThan fixture.zone.processing.dialPointCount - 1
             processing.update(listOf(runtime), 0L)
             machine.isGlowing shouldBe false
 

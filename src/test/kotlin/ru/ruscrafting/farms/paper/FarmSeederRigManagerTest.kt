@@ -3,7 +3,11 @@ package ru.ruscrafting.farms.paper
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.shouldBe
+import net.kyori.adventure.text.Component
+import org.bukkit.Location
+import org.bukkit.Material
 import org.bukkit.util.Vector
+import ru.arc.paper.testing.MockBukkitTestRuntime
 import kotlin.math.hypot
 
 class FarmSeederRigManagerTest : FunSpec({
@@ -39,5 +43,36 @@ class FarmSeederRigManagerTest : FunSpec({
         )
 
         (hypot(velocity.x, velocity.z) <= 0.46 + 1.0e-9) shouldBe true
+    }
+
+    test("seeder rig waits until the field release batch is complete") {
+        shouldSpawnSeederRig(preparationReleased = false) shouldBe false
+        shouldSpawnSeederRig(preparationReleased = true) shouldBe true
+    }
+
+    test("clicking a saddled seeder pig mounts that pig instead of redirecting to the horse") {
+        MockBukkitTestRuntime.open().use { paper ->
+            val world = paper.server.addSimpleWorld("farm")
+            world.getBlockAt(4, 64, 4).type = Material.STONE
+            val plugin = paper.createSimplePlugin("SeederRigTest")
+            val manager = FarmSeederRigManager(plugin)
+            val rig = manager.spawn(
+                location = Location(world, 4.5, 65.0, 4.5),
+                pigCount = 2,
+                leadDistance = 1.6,
+                spacing = 1.1,
+                horseSpeed = 0.2,
+                pigSpeed = 0.3,
+                labelText = Component.text("Seeder"),
+                labelViewRange = 1f,
+                mark = {},
+                validPosition = { true },
+            )
+            val passenger = paper.addPlayer("Passenger")
+
+            manager.mount(rig, rig.pigs.first(), passenger) shouldBe FarmSeederMountResult.MOUNTED
+            rig.pigs.first().passengers.single() shouldBe passenger
+            rig.horse.passengers shouldBe emptyList()
+        }
     }
 })

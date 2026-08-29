@@ -45,6 +45,7 @@ import ru.ruscrafting.farms.paper.FarmMachineBlockProcessor
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.FarmSeederMountResult
 import ru.ruscrafting.farms.paper.FarmSeederRigManager
+import ru.ruscrafting.farms.paper.shouldSpawnSeederRig
 import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.block
@@ -256,7 +257,7 @@ internal class FarmCareController(
                 entities[key].orEmpty().mapNotNull(Bukkit::getEntity),
                 runtime.settings.seederPigCount,
             ) ?: return
-            when (seederRig.mount(rig, player)) {
+            when (seederRig.mount(rig, entity, player)) {
                 FarmSeederMountResult.OCCUPIED -> {
                     port.sendActionBar(player, MessageKey.FARM_CARE_SEEDER_OCCUPIED)
                     return
@@ -420,6 +421,7 @@ internal class FarmCareController(
     private fun ensureFarmSeeder(runtime: FarmRuntime) {
         val target = runtime.state.careTargets.firstOrNull { it.role == FarmCareRole.SEEDER_HORSE } ?: return
         val key = FarmCareEntityKey(runtime.settings.id, target.id)
+        if (!shouldSpawnSeederRig(runtime.state.preparationReleased)) return removeEntities(key, "field_release_pending")
         val active = entities[key].orEmpty().mapNotNull(Bukkit::getEntity).filter { entity ->
             entity.isValid &&
                 entity.persistentDataContainer.get(zoneKey, PersistentDataType.STRING) == runtime.settings.id &&

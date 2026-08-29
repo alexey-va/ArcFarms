@@ -80,4 +80,24 @@ class FarmProcessingTest : FunSpec({
         FarmProcessingLayout.packagePosition(custom.inputRacks, 0).x shouldBe (89.57 plusOrMinus 0.0001)
         FarmProcessingLayout.packagePosition(custom.inputRacks, 1).x shouldBe (91.57 plusOrMinus 0.0001)
     }
+
+    test("timing dial stays above the grounded millstone and exposes a green success sector") {
+        val plan = FarmProcessingDialPlanner.plan(
+            machine = FarmPointPosition("world", 100.0, 65.0, 200.0, 0f),
+            phase = 30,
+            periodTicks = 60,
+            successWindowTicks = 10,
+            centerYOffset = 3.3,
+            forwardOffset = 1.15,
+            radius = 0.55,
+            pointCount = 24,
+        )
+
+        plan.ring.size shouldBe 24
+        plan.ring.minOf { it.position.y } shouldBe (67.75 plusOrMinus 0.0001)
+        plan.marker.position.y shouldBe (68.85 plusOrMinus 0.0001)
+        plan.marker.inSuccessWindow shouldBe true
+        plan.ring.any(FarmProcessingDialPoint::inSuccessWindow) shouldBe true
+        plan.ring.any { !it.inSuccessWindow } shouldBe true
+    }
 })

@@ -17,9 +17,20 @@ object FarmMoleEntrancePlanner {
         val maxZ = beds.maxOf(FarmPlotPosition::z)
         val requiredX = minimumBoundaryDistance.coerceAtMost((maxX - minX) / 2)
         val requiredZ = minimumBoundaryDistance.coerceAtMost((maxZ - minZ) / 2)
-        return beds.filter { plot ->
+        val boundarySafe = beds.filter { plot ->
             plot.x - minX >= requiredX && maxX - plot.x >= requiredX &&
                 plot.z - minZ >= requiredZ && maxZ - plot.z >= requiredZ
         }
+        if (boundarySafe.isEmpty()) return boundarySafe
+        val safeMinX = boundarySafe.minOf(FarmPlotPosition::x)
+        val safeMaxX = boundarySafe.maxOf(FarmPlotPosition::x)
+        val safeMinZ = boundarySafe.minOf(FarmPlotPosition::z)
+        val safeMaxZ = boundarySafe.maxOf(FarmPlotPosition::z)
+        val centralMarginX = (safeMaxX - safeMinX) / 4
+        val centralMarginZ = (safeMaxZ - safeMinZ) / 4
+        return boundarySafe.filter { plot ->
+            plot.x - safeMinX >= centralMarginX && safeMaxX - plot.x >= centralMarginX &&
+                plot.z - safeMinZ >= centralMarginZ && safeMaxZ - plot.z >= centralMarginZ
+        }.ifEmpty { boundarySafe }
     }
 }

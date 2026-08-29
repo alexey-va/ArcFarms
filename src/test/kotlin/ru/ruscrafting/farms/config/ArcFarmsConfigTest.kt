@@ -238,9 +238,17 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().processing.outputPackages shouldBe 4
         settings.farms.single().processing.dialPeriodTicks shouldBe 60
         settings.farms.single().processing.dialWindowTicks shouldBe 10
+        settings.farms.single().processing.dialCenterYOffset shouldBe 3.3
+        settings.farms.single().processing.dialForwardOffset shouldBe 1.15
+        settings.farms.single().processing.dialRadius shouldBe 0.55
+        settings.farms.single().processing.dialPointCount shouldBe 24
         settings.farms.single().processing.spawnPerTick shouldBe 4
         settings.farms.single().processing.visuals.getValue(FarmProcessingVisualRole.MACHINE).material shouldBe
             "CRAFTING_TABLE"
+        settings.farms.single().processing.visuals.getValue(FarmProcessingVisualRole.OUTPUT_PALLET).material shouldBe
+            "BARREL"
+        settings.farms.single().processing.visuals.getValue(FarmProcessingVisualRole.RAW_PACKAGE).material shouldBe
+            "WHEAT"
         settings.farms.single().routeDelivery.portalRightOffset shouldBe 4.0
         settings.farms.single().routeDelivery.portalWidth shouldBe 3.6f
         settings.farms.single().routeDelivery.portalLabelScale shouldBe 1.8f

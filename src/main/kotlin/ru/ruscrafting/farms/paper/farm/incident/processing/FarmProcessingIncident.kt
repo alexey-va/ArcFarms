@@ -26,6 +26,7 @@ import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmProcessingLayout
+import ru.ruscrafting.farms.domain.FarmProcessingDialPlanner
 import ru.ruscrafting.farms.domain.FarmProcessingStage
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
@@ -141,7 +142,7 @@ internal class FarmProcessingIncident(
         when (identity.role) {
             FarmProcessingSceneRole.RAW_INTERACTION -> pickup(runtime, player, ProcessingCargo.RAW, identity.index)
             FarmProcessingSceneRole.PRODUCT_INTERACTION -> pickup(runtime, player, ProcessingCargo.PRODUCT, identity.index)
-            FarmProcessingSceneRole.MACHINE_INTERACTION -> operate(runtime, player)
+            FarmProcessingSceneRole.MACHINE_INTERACTION -> useMachine(runtime, player)
             else -> port.sendActionBar(player, stageHint(runtime))
         }
         return true
@@ -281,6 +282,36 @@ internal class FarmProcessingIncident(
         if (settings().particles) player.spawnParticle(Particle.COMPOSTER, player.location.clone().add(0.0, 1.0, 0.0), 7, 0.45, 0.4, 0.45, 0.04)
     }
 
+    private fun useMachine(runtime: FarmRuntime, player: Player) {
+        when (runtime.state.processing?.stage) {
+            FarmProcessingStage.LOADING -> loadCarriedRaw(runtime, player)
+            FarmProcessingStage.OPERATING -> operate(runtime, player)
+            FarmProcessingStage.PACKING, null -> port.sendActionBar(player, stageHint(runtime))
+        }
+    }
+
+    private fun loadCarriedRaw(runtime: FarmRuntime, player: Player) {
+        val entry = carriers.entries.firstOrNull { (key, playerId) ->
+            key.zoneId == runtime.settings.id && key.cargo == ProcessingCargo.RAW && playerId == player.uniqueId
+        }
+        if (entry == null) {
+            port.sendActionBar(player, stageHint(runtime))
+            return
+        }
+        carriers.remove(entry.key)
+        removeCarried(entry.key)
+        transitions.apply(
+            runtime,
+            FarmShiftEngine.advanceProcessing(runtime.state, player.uniqueId, FarmProcessingStage.LOADING),
+            player,
+        )
+        if (settings().sounds) player.playSound(player.location, Sound.BLOCK_BARREL_CLOSE, 0.9f, 0.9f)
+        if (settings().particles) {
+            val target = layout(runtime)?.inputDrop?.location(runtime) ?: player.location
+            target.world.spawnParticle(Particle.COMPOSTER, target.clone().add(0.0, 1.0, 0.0), 10, 0.5, 0.5, 0.5, 0.04)
+        }
+    }
+
     private fun updateCarriers(runtime: FarmRuntime) {
         carriers.filterKeys { it.zoneId == runtime.settings.id }.toMap().forEach { (key, playerId) ->
             val player = Bukkit.getPlayer(playerId)
@@ -304,7 +335,10 @@ internal class FarmProcessingIncident(
             removeCarried(key)
             val stage = if (key.cargo == ProcessingCargo.RAW) FarmProcessingStage.LOADING else FarmProcessingStage.PACKING
             transitions.apply(runtime, FarmShiftEngine.advanceProcessing(runtime.state, player.uniqueId, stage), player)
-            if (settings().sounds) player.playSound(player.location, Sound.BLOCK_BARREL_CLOSE, 0.9f, if (key.cargo == ProcessingCargo.RAW) 0.9f else 1.2f)
+            if (settings().sounds) {
+                val pitch = if (key.cargo == ProcessingCargo.RAW) 0.9f else 1.2f
+                player.playSound(player.location, Sound.BLOCK_BARREL_CLOSE, 0.9f, pitch)
+            }
             if (settings().particles) targetLocation.world.spawnParticle(Particle.COMPOSTER, targetLocation.clone().add(0.0, 1.0, 0.0), 10, 0.5, 0.5, 0.5, 0.04)
         }
     }
@@ -332,16 +366,39 @@ internal class FarmProcessingIncident(
         val inSuccessWindow = abs(phase - center) <= configured.dialWindowTicks / 2
         machine?.isGlowing = inSuccessWindow
         if (settings().particles && tick % 3L == 0L) {
-            val pulse = layout.machine.location(runtime).add(0.0, 1.35, 0.0)
-            pulse.world.spawnParticle(
+            val dial = FarmProcessingDialPlanner.plan(
+                machine = layout.machine,
+                phase = phase,
+                periodTicks = configured.dialPeriodTicks,
+                successWindowTicks = configured.dialWindowTicks,
+                centerYOffset = configured.dialCenterYOffset,
+                forwardOffset = configured.dialForwardOffset,
+                radius = configured.dialRadius,
+                pointCount = configured.dialPointCount,
+            )
+            dial.ring.forEach { point ->
+                val location = point.position.location(runtime)
+                location.world.spawnParticle(
+                    Particle.DUST,
+                    location,
+                    1,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    if (point.inSuccessWindow) GREEN else DIAL_TRACK,
+                )
+            }
+            val marker = dial.marker.position.location(runtime)
+            marker.world.spawnParticle(
                 Particle.DUST,
-                pulse,
-                if (inSuccessWindow) 3 else 1,
-                0.12,
-                0.12,
-                0.12,
+                marker,
+                if (dial.marker.inSuccessWindow) 4 else 2,
+                0.035,
+                0.035,
+                0.035,
                 0.0,
-                if (inSuccessWindow) GREEN else GOLD,
+                if (dial.marker.inSuccessWindow) GREEN_MARKER else GOLD_MARKER,
             )
         }
     }
@@ -574,6 +631,9 @@ internal class FarmProcessingIncident(
         val GOLD = Particle.DustOptions(Color.fromRGB(255, 178, 36), 1.25f)
         val GREEN = Particle.DustOptions(Color.fromRGB(92, 214, 116), 1.0f)
         val RED = Particle.DustOptions(Color.fromRGB(229, 75, 66), 1.05f)
+        val DIAL_TRACK = Particle.DustOptions(Color.fromRGB(101, 116, 120), 0.65f)
+        val GOLD_MARKER = Particle.DustOptions(Color.fromRGB(255, 196, 67), 1.45f)
+        val GREEN_MARKER = Particle.DustOptions(Color.fromRGB(109, 255, 139), 1.5f)
         val PROCESSING_INPUT_POINTS = listOf(
             FarmPointKind.PROCESSING_INPUT,
             FarmPointKind.PROCESSING_INPUT_2,

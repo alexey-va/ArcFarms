@@ -108,16 +108,22 @@ internal class FarmSeederRigManager(plugin: Plugin) {
         }
     }
 
-    fun mount(rig: FarmSeederRig, player: Player): FarmSeederMountResult {
-        val rider = rig.horse.passengers.filterIsInstance<Player>().firstOrNull()
+    fun mount(rig: FarmSeederRig, clicked: Entity, player: Player): FarmSeederMountResult {
+        val seat = when (clicked.uniqueId) {
+            rig.horse.uniqueId -> rig.horse
+            else -> rig.pigs.firstOrNull { it.uniqueId == clicked.uniqueId } ?: return FarmSeederMountResult.FAILED
+        }
+        val rider = seat.passengers.filterIsInstance<Player>().firstOrNull()
         if (rider != null && rider.uniqueId != player.uniqueId) return FarmSeederMountResult.OCCUPIED
-        if (player.isInsideVehicle && player.vehicle?.uniqueId != rig.horse.uniqueId) {
+        if (player.isInsideVehicle && player.vehicle?.uniqueId != seat.uniqueId) {
             return FarmSeederMountResult.RIDER_BUSY
         }
-        rig.horse.isTamed = true
-        rig.horse.owner = player
-        rig.horse.isAware = true
-        if (rider?.uniqueId == player.uniqueId || rig.horse.addPassenger(player)) return FarmSeederMountResult.MOUNTED
+        if (seat is Horse) {
+            seat.isTamed = true
+            seat.owner = player
+            seat.isAware = true
+        }
+        if (rider?.uniqueId == player.uniqueId || seat.addPassenger(player)) return FarmSeederMountResult.MOUNTED
         return FarmSeederMountResult.FAILED
     }
 
@@ -213,6 +219,8 @@ internal class FarmSeederRigManager(plugin: Plugin) {
         const val MIN_MOVE_DISTANCE_SQUARED = 0.16
     }
 }
+
+internal fun shouldSpawnSeederRig(preparationReleased: Boolean): Boolean = preparationReleased
 
 internal fun smoothSeederVelocity(current: Vector, offset: Vector, maxSpeed: Double): Vector {
     require(maxSpeed.isFinite() && maxSpeed > 0.0) { "Seeder pig speed must be positive and finite" }
