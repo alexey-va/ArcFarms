@@ -4,12 +4,16 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.ints.shouldBeGreaterThanOrEqual
+import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.shouldBe
+import org.bukkit.NamespacedKey
 import org.bukkit.entity.Horse
 import org.bukkit.entity.Interaction
 import org.bukkit.entity.Mob
+import org.bukkit.entity.TextDisplay
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.inventory.EquipmentSlot
+import org.bukkit.persistence.PersistentDataType
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPointPosition
@@ -53,6 +57,21 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
             fixture.world.entities.filter(delivery::owns).mapTo(linkedSetOf()) { it.uniqueId } shouldBe restartedIds
 
             var horse = fixture.world.entities.filterIsInstance<Horse>().single(delivery::owns)
+            val routeRole = NamespacedKey(fixture.plugin, "farm_food_route_role")
+            val portal = fixture.world.entities.filterIsInstance<Interaction>().single { entity ->
+                entity.persistentDataContainer.get(routeRole, PersistentDataType.STRING) == "portal"
+            }
+            val portalLabel = fixture.world.entities.filterIsInstance<TextDisplay>().single { entity ->
+                entity.persistentDataContainer.get(routeRole, PersistentDataType.STRING) == "portal_label"
+            }
+            portal.location.x shouldBe (16.5 plusOrMinus 0.0001)
+            portal.location.z shouldBe (12.5 plusOrMinus 0.0001)
+            portal.interactionWidth shouldBe fixture.zone.routeDelivery.portalWidth
+            portalLabel.location.pitch shouldBe 0f
+            portalLabel.transformation.scale.x shouldBe fixture.zone.routeDelivery.portalLabelScale
+            delivery.interact(PlayerInteractEntityEvent(gunner, portal, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
+            gunner.location.distanceSquared(horse.location) shouldBe (9.0 plusOrMinus 1.0)
+
             var seat = fixture.world.entities.filterIsInstance<Interaction>().filter(delivery::owns)
                 .minBy { it.location.distanceSquared(horse.location) }
             // Either clickable entity fills the first free crew seat: driver first, then gunner.
@@ -118,7 +137,10 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
 
             horse.passengers.single() shouldBe driver
             driver.leaveVehicle() shouldBe true
-            val destination = fixture.location(route.last())
+            // The visible arrival ring is wider than the route corridor. Entering
+            // its edge must finish immediately, even from the previous checkpoint.
+            runtime.state = runtime.state.copy(incidentProgress = route.lastIndex)
+            val destination = fixture.location(route.last()).add(0.0, 0.0, 6.5)
             destination.chunk.load()
             horse.teleport(destination) shouldBe true
             delivery.interact(PlayerInteractEntityEvent(driver, horse, EquipmentSlot.HAND), listOf(runtime)) shouldBe true

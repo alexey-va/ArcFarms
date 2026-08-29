@@ -7,7 +7,9 @@ object FarmIncidentPlanner {
         selectionIndex: Long,
     ): List<FarmIncidentType> {
         require(count in 1..8) { "Farm incident sequence count must be in 1..8" }
-        val unique = configured.distinct()
+        // Food delivery is the closing leg after the harvest, not a random
+        // interruption while players are still gathering the order.
+        val unique = configured.distinct().filterNot { it == FarmIncidentType.FOOD_DELIVERY }
         require(unique.isNotEmpty()) { "Farm incident sequence has no configured types" }
         val special = rotate(unique.filter(SPECIAL_TYPES::contains), selectionIndex)
         val field = rotate(unique.filterNot(SPECIAL_TYPES::contains), selectionIndex xor 0x51A7L)

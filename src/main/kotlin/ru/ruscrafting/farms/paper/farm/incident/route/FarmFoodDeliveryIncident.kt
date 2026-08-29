@@ -29,6 +29,7 @@ import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.FarmIncidentType
+import ru.ruscrafting.farms.domain.FarmFoodDeliveryCompletion
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
@@ -137,7 +138,7 @@ internal class FarmFoodDeliveryIncident(
         return runtime.state.specialIncident != null
     }
 
-    fun ensure(runtime: FarmRuntime, @Suppress("UNUSED_PARAMETER") now: Long) {
+    fun ensure(runtime: FarmRuntime, now: Long) {
         if (!active(runtime)) {
             if (runtime.settings.id in sessions) clear(runtime.settings.id, "inactive")
             return
@@ -209,7 +210,7 @@ internal class FarmFoodDeliveryIncident(
             runtime.settings.routeDelivery.playerTime,
             runtime.settings.routeDelivery.timeTransitionSeconds,
         )
-        updateProgress(runtime, activeHorse, session, route.points)
+        updateProgress(runtime, activeHorse, session, route.points, now)
         if (!active(runtime)) return
         updateMonsters(runtime, activeHorse, session, route.points)
     }
@@ -381,6 +382,7 @@ internal class FarmFoodDeliveryIncident(
         horse: Horse,
         session: FarmFoodDeliverySession,
         points: List<FarmPointPosition>,
+        now: Long,
     ) {
         val rider = horse.passengers.filterIsInstance<Player>().firstOrNull() ?: return
         if (session.riderId != null && session.riderId != rider.uniqueId) return
@@ -393,17 +395,6 @@ internal class FarmFoodDeliveryIncident(
         val projectionLocation = Location(horse.world, projection.x, projection.y, projection.z, horse.location.yaw, 0f)
         val distance = projection.distance
         val config = runtime.settings.routeDelivery
-        if (distance > config.hardResetDistance) {
-            correctTowardRoute(horse, projectionLocation, 0.42)
-            port.sendActionBar(rider, MessageKey.FARM_ROUTE_RETURNED)
-            return
-        }
-        if (distance > config.corridorRadius) {
-            correctTowardRoute(horse, projectionLocation, 0.24)
-            port.sendActionBar(rider, MessageKey.FARM_ROUTE_CORRIDOR)
-            return
-        }
-        val reachedByProjection = FarmRouteGeometry.reachedPoint(projection, points.size)
         val atDestination = FarmRouteGeometry.atDestination(
             horse.world.name,
             horse.location.x,
@@ -412,9 +403,24 @@ internal class FarmFoodDeliveryIncident(
             points.last(),
             config.checkpointRadius,
         )
+        if (!atDestination && distance > config.hardResetDistance) {
+            correctTowardRoute(horse, projectionLocation, 0.42)
+            port.sendActionBar(rider, MessageKey.FARM_ROUTE_RETURNED)
+            return
+        }
+        if (!atDestination && distance > config.corridorRadius) {
+            correctTowardRoute(horse, projectionLocation, 0.24)
+            port.sendActionBar(rider, MessageKey.FARM_ROUTE_CORRIDOR)
+            return
+        }
+        val reachedByProjection = FarmRouteGeometry.reachedPoint(projection, points.size)
         val projected = maxOf(
             currentIndex,
-            if (reachedByProjection == points.size && !atDestination) points.lastIndex else reachedByProjection,
+            when {
+                atDestination -> points.size
+                reachedByProjection == points.size -> points.lastIndex
+                else -> reachedByProjection
+            },
         )
         // A fast cart may cross several sampled points between updates. Never let
         // it skip a planned roadside ambush or finish the route past one.
@@ -422,11 +428,16 @@ internal class FarmFoodDeliveryIncident(
             ?.let { checkpoint -> minOf(projected, checkpoint) }
             ?: projected
         if (reached <= currentIndex) return
+        val order = runtime.state.orderId?.let(runtime.orders::get)
+        val closesOrder = order != null && runtime.state.completed(order) >= order.totalRequired
         val result = FarmShiftEngine.advanceFoodDelivery(
             runtime.state,
             reached,
             rider.uniqueId,
             config.completionContribution,
+            completion = if (closesOrder) FarmFoodDeliveryCompletion.SHIFT else FarmFoodDeliveryCompletion.INCIDENT,
+            rules = runtime.rules,
+            now = now,
         )
         val progressListeners = participants(runtime)
         if (result.accepted && result.state.phase != FarmPhase.INCIDENT) {
@@ -524,31 +535,47 @@ internal class FarmFoodDeliveryIncident(
     private fun ensurePortal(runtime: FarmRuntime, session: FarmFoodDeliverySession) {
         val point = points.resolve(runtime, FarmPointKind.RECEIVING)
         val world = Bukkit.getWorld(point.world) ?: return
-        val blockX = floor(point.x).toInt()
-        val blockZ = floor(point.z).toInt()
+        val configured = runtime.settings.routeDelivery
+        val yaw = Math.toRadians(point.yaw.toDouble())
+        val at = Location(
+            world,
+            point.x + cos(yaw) * configured.portalRightOffset,
+            point.y,
+            point.z + sin(yaw) * configured.portalRightOffset,
+            0f,
+            0f,
+        )
+        val blockX = floor(at.x).toInt()
+        val blockZ = floor(at.z).toInt()
         if (!world.isChunkLoaded(blockX shr 4, blockZ shr 4)) return
-        val at = Location(world, point.x, point.y, point.z, point.yaw, point.pitch)
-        val portal = session.portalId?.let(Bukkit::getEntity) as? Interaction
-        if (portal == null || !portal.isValid) {
-            session.portalId = world.spawn(at, Interaction::class.java) { interaction ->
-                interaction.interactionWidth = PORTAL_WIDTH
-                interaction.interactionHeight = PORTAL_HEIGHT
-                interaction.isResponsive = true
-                interaction.isPersistent = false
-                mark(interaction, runtime, ROLE_PORTAL)
-            }.uniqueId
+        val portal = (session.portalId?.let(Bukkit::getEntity) as? Interaction)?.takeIf(Entity::isValid)
+            ?: world.spawn(at, Interaction::class.java).also { session.portalId = it.uniqueId }
+        portal.teleport(at)
+        portal.interactionWidth = configured.portalWidth
+        portal.interactionHeight = configured.portalHeight
+        portal.isResponsive = true
+        portal.isPersistent = false
+        mark(portal, runtime, ROLE_PORTAL)
+
+        val labelAt = at.clone().add(0.0, configured.portalLabelHeight, 0.0).apply {
+            this.yaw = 0f
+            this.pitch = 0f
         }
-        val label = session.portalLabelId?.let(Bukkit::getEntity) as? TextDisplay
-        if (label == null || !label.isValid) {
-            session.portalLabelId = world.spawn(at.clone().add(0.0, PORTAL_LABEL_HEIGHT, 0.0), TextDisplay::class.java) { display ->
-                textDisplays.render(
-                    display,
-                    locale.render(MessageKey.FARM_ROUTE_PORTAL_LABEL, Bukkit.getConsoleSender()),
-                    FarmTextDisplayStyle(viewRange = runtime.settings.displayViewRange),
-                )
-                mark(display, runtime, ROLE_PORTAL_LABEL)
-            }.uniqueId
-        }
+        val label = (session.portalLabelId?.let(Bukkit::getEntity) as? TextDisplay)?.takeIf(Entity::isValid)
+            ?: world.spawn(labelAt, TextDisplay::class.java).also { session.portalLabelId = it.uniqueId }
+        label.teleport(labelAt)
+        textDisplays.render(
+            label,
+            locale.render(MessageKey.FARM_ROUTE_PORTAL_LABEL, Bukkit.getConsoleSender()),
+            FarmTextDisplayStyle(viewRange = runtime.settings.displayViewRange),
+        )
+        label.transformation = Transformation(
+            Vector3f(),
+            label.transformation.leftRotation,
+            Vector3f(configured.portalLabelScale, configured.portalLabelScale, configured.portalLabelScale),
+            label.transformation.rightRotation,
+        )
+        mark(label, runtime, ROLE_PORTAL_LABEL)
     }
 
     private fun renderPortal(runtime: FarmRuntime, session: FarmFoodDeliverySession) {
@@ -759,9 +786,6 @@ internal class FarmFoodDeliveryIncident(
     private companion object {
         const val TRAIL_INTERVAL_TICKS = 10L
         const val ROUTE_SOUND_INTERVAL = 8
-        const val PORTAL_WIDTH = 2.4f
-        const val PORTAL_HEIGHT = 2.8f
-        const val PORTAL_LABEL_HEIGHT = 2.65
         const val PORTAL_ARRIVAL_SIDE = 3.0
         const val ROLE_HORSE = "horse"
         const val ROLE_CART = "cart"

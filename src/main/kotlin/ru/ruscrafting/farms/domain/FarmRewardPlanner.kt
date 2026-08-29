@@ -19,8 +19,10 @@ object FarmRewardPlanner {
         zoneId: String,
         sequence: Long,
         recipient: FarmRewardRecipient,
+        rewardMultiplierPercent: Int = 100,
         moneyMultiplierPercent: Int = 100,
     ): PendingFarmReward {
+        require(rewardMultiplierPercent in 100..300) { "Farm reward multiplier is invalid" }
         require(moneyMultiplierPercent in 100..300) { "Farm money reward multiplier is invalid" }
         require(recipient.contribution > 0) { "Farm rewards require positive player contribution" }
         require(recipient.rank > 0) { "Farm reward rank must be positive" }
@@ -31,8 +33,9 @@ object FarmRewardPlanner {
 
         settings.items.forEach { reward ->
             if (passes(grantId, "item:${reward.id}", reward.chancePercent)) {
-                items += FarmRewardItem(reward.material, reward.amount)
-                fixedItemUnits += reward.amount
+                val amount = scaledInt(reward.amount, rewardMultiplierPercent)
+                items += FarmRewardItem(reward.material, amount)
+                fixedItemUnits += amount
             }
         }
 
@@ -44,7 +47,9 @@ object FarmRewardPlanner {
                 }
                 val bundle = pool.entries[selected]
                 bundleIds += bundle.id
-                bundle.items.mapTo(items) { item -> FarmRewardItem(item.material, item.amount) }
+                bundle.items.mapTo(items) { item ->
+                    FarmRewardItem(item.material, scaledInt(item.amount, rewardMultiplierPercent))
+                }
             }
         }
 
@@ -70,10 +75,13 @@ object FarmRewardPlanner {
             sequence = sequence,
             playerId = recipient.playerId,
             contribution = recipient.contribution,
-            experience = settings.experience.amount.takeIf {
+            experience = scaledInt(settings.experience.amount, rewardMultiplierPercent).takeIf {
                 passes(grantId, "experience", settings.experience.chancePercent)
             } ?: 0,
-            moneyCents = scaledMoney(settings.money.amountCents, moneyMultiplierPercent).takeIf {
+            moneyCents = scaledMoney(
+                scaledMoney(settings.money.amountCents, rewardMultiplierPercent),
+                moneyMultiplierPercent,
+            ).takeIf {
                 passes(grantId, "money", settings.money.chancePercent)
             } ?: 0,
             items = items,
@@ -110,4 +118,7 @@ object FarmRewardPlanner {
 
     private fun scaledMoney(amountCents: Long, multiplierPercent: Int): Long =
         Math.multiplyExact(amountCents, multiplierPercent.toLong()) / 100L
+
+    private fun scaledInt(amount: Int, multiplierPercent: Int): Int =
+        (Math.multiplyExact(amount.toLong(), multiplierPercent.toLong()) / 100L).toInt()
 }

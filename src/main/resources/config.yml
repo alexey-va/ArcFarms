@@ -69,7 +69,7 @@ farm-zones:
         CARROTS: 25
         POTATOES: 25
         BEETROOTS: 15
-        SWEET_BERRY_BUSH: 5
+        SWEET_BERRY_BUSH: 1
       # Tiny nearby islands visually inherit the crop of a larger bed instead of creating stripes.
       small-component-max-size: 16
       small-component-merge-distance: 10
@@ -246,8 +246,9 @@ farm-zones:
         crops: 256
         money-bonus-percent: 25
         timer: {base-seconds: 30, seconds-per-crop: 0.3, minimum-seconds: 90, maximum-seconds: 180}
-    # A single admin anchor (including yaw) defines the whole temporary 9x5 workshop.
-    # Bundled visuals stay vanilla; a live server may override them with ItemsAdder item models.
+    # Admin points are contact surfaces: stand on the floor/shelf and save the point.
+    # Runtime profiles may replace these portable vanilla visuals with verified IA models
+    # and their exact grounding y-offsets.
     processing:
       input-packages: 4
       machine-cycles: 6
@@ -291,6 +292,8 @@ farm-zones:
       completion-contribution: 12
       # Riders are dismounted at the destination, then returned to the farm after this pause.
       return-delay-seconds: 3
+      # Keep the join portal beside receiving, away from the cart/customer hitboxes.
+      portal: {right-offset: 4.0, width: 3.6, height: 3.2, label-height: 3.35, label-scale: 1.8}
       cart-scale: 4.4
       # cart_2 reaches -0.825 blocks at scale 4.4 after its JSON GROUND transform;
       # the remaining 0.05 keeps its wheels visible above uneven terrain.
@@ -303,10 +306,10 @@ farm-zones:
         # Never attack inside the farm; leave this much road after its boundary too.
         after-farm-distance: 20.0
         end-safe-distance: 20.0
-        max-alive: 8
+        max-alive: 12
         spawn-distance: 10.0
-        wave-min: 3
-        wave-max: 5
+        wave-min: 5
+        wave-max: 8
         types: [HUSK, ZOMBIE, SKELETON, SPIDER, PHANTOM]
         movement-speed: 0.25
         light-level: 15
@@ -377,7 +380,7 @@ farm-zones:
       # Every reward rolls independently. Commands run as console after the grant is durably claimed.
       # Supported command placeholders: %player%, %uuid%, %zone%, %sequence%, %contribution%, %rank%, %grant_id%.
       experience:
-        amount: 75
+        amount: 100
         chance-percent: 100
       money:
         amount: 0
@@ -412,7 +415,7 @@ farm-zones:
         cart-load: {material: WHEAT, custom-model-data: 0}
       market_crates:
         rarity: COMMON
-        crops: [CARROTS:320, POTATOES:320, BEETROOTS:320, SWEET_BERRY_BUSH:320, MELON:48, PUMPKIN:48]
+        crops: [CARROTS:320, POTATOES:320, BEETROOTS:320, SWEET_BERRY_BUSH:50, MELON:48, PUMPKIN:48]
         care-types: [WEEDS, APPLE_HARVEST, SCARECROWS, ANIMAL_RESCUE, STORM_COVERS]
         incident-types: [MARKET, PROCESSING, BARN_FIRE, GIANT_CROP, NIGHT_SHIFT, BIRDS, FOOD_DELIVERY, CHANNELS, PESTS, DROUGHT]
         customer: MARKET_TRADER

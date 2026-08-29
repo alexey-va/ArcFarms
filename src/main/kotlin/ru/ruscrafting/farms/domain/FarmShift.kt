@@ -61,6 +61,11 @@ enum class FarmProcessingStage {
     PACKING,
 }
 
+enum class FarmFoodDeliveryCompletion {
+    INCIDENT,
+    SHIFT,
+}
+
 /** Durable progress only. Carriers and display UUIDs deliberately remain runtime-owned. */
 data class FarmProcessingState(
     val crop: String,
@@ -195,7 +200,9 @@ data class FarmOrder(
     val required: Map<String, Int>,
     val rarity: FarmContractRarity = FarmContractRarity.COMMON,
     val careTypes: List<FarmCareType> = FarmCareType.entries.filterNot { it == FarmCareType.SEEDER },
-    val incidentTypes: List<FarmIncidentType> = FarmIncidentType.entries,
+    val incidentTypes: List<FarmIncidentType> = FarmIncidentType.entries.filterNot {
+        it == FarmIncidentType.FOOD_DELIVERY
+    },
     val customerType: FarmCustomerType = FarmCustomerType.MARKET_TRADER,
     val cartLoadMaterial: String = required.keys.first(),
     val cartLoadCustomModelData: Int = 0,
@@ -464,10 +471,15 @@ object FarmShiftEngine {
         }
 
         if (state.completed(order) >= order.totalRequired && state.phase != FarmPhase.INCIDENT) {
+            val routeClosesOrder = FarmIncidentType.FOOD_DELIVERY in order.incidentTypes
             state = state.copy(
-                phase = FarmPhase.DELIVERY,
+                phase = if (routeClosesOrder) FarmPhase.INCIDENT else FarmPhase.DELIVERY,
+                placementSequence = if (routeClosesOrder) state.nextPlacementSequence() else state.placementSequence,
                 incidentCrop = null,
-                incidentType = null,
+                incidentType = FarmIncidentType.FOOD_DELIVERY.takeIf { routeClosesOrder },
+                incidentProgress = 0,
+                incidentRequired = 0,
+                incidentResolved = false,
                 droughtPlots = emptySet(),
                 droughtDamagedPlots = emptySet(),
                 pestNests = emptyList(),
@@ -480,7 +492,7 @@ object FarmShiftEngine {
                 deliveryPosition = null,
                 deliveredCrates = emptySet(),
             )
-            events += ShiftEvent.DELIVERY_STARTED
+            events += if (routeClosesOrder) ShiftEvent.INCIDENT_STARTED else ShiftEvent.DELIVERY_STARTED
             return EngineResult(state, true, contribution, events)
         }
 
@@ -1060,6 +1072,9 @@ object FarmShiftEngine {
         reachedCheckpoint: Int,
         playerId: UUID,
         completionContribution: Int,
+        completion: FarmFoodDeliveryCompletion = FarmFoodDeliveryCompletion.INCIDENT,
+        rules: FarmRules? = null,
+        now: Long = 0,
     ): EngineResult<FarmShiftState> {
         require(completionContribution in 1..64) { "Farm food delivery contribution is invalid" }
         if (current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.FOOD_DELIVERY ||
@@ -1071,6 +1086,27 @@ object FarmShiftEngine {
             val credited = progressed.copy(
                 contributors = incrementContribution(progressed.contributors, playerId, completionContribution),
             )
+            if (completion == FarmFoodDeliveryCompletion.SHIFT) {
+                val completionRules = requireNotNull(rules) { "Final farm food delivery requires farm rules" }
+                require(now >= 0) { "Final farm food delivery time is invalid" }
+                return EngineResult(
+                    credited.copy(
+                        phase = FarmPhase.COOLDOWN,
+                        incidentResolved = true,
+                        incidentsResolved = (credited.incidentsResolved + 1).coerceAtMost(MAX_FARM_INCIDENTS),
+                        incidentCrop = null,
+                        incidentType = null,
+                        incidentProgress = 0,
+                        incidentRequired = 0,
+                        specialIncident = null,
+                        cooldownEndsAt = now + completionRules.cooldownMillis,
+                        outcome = ShiftOutcome.COMPLETED,
+                    ),
+                    true,
+                    completionContribution,
+                    listOf(ShiftEvent.COMPLETED),
+                )
+            }
             return completeIncident(credited, completionContribution)
         }
         return EngineResult(progressed, true, events = listOf(ShiftEvent.INCIDENT_PROGRESS))

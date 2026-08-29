@@ -105,4 +105,31 @@ class FarmRewardPlannerTest : FunSpec({
         reward.moneyCents shouldBe 62_500
         reward.experience shouldBe 75
     }
+
+    test("order difficulty multiplier scales every tangible reward quantity") {
+        val settings = FarmRewardSettings(
+            experience = FarmExperienceRewardSettings(75, 100),
+            money = FarmMoneyRewardSettings(50_000, 100),
+            items = listOf(FarmItemRewardSettings("apple", "APPLE", 3, 100)),
+            commands = emptyList(),
+            randomBundles = FarmRandomBundleSettings(
+                1,
+                100,
+                listOf(FarmRewardBundleSettings("lunch", 1, listOf(FarmBundleItemSettings("BREAD", 8)))),
+            ),
+        )
+
+        val reward = FarmRewardPlanner.plan(
+            settings,
+            "communal_farm",
+            10,
+            recipient,
+            rewardMultiplierPercent = 160,
+        )
+
+        reward.experience shouldBe 120
+        reward.moneyCents shouldBe 80_000
+        reward.items shouldContainExactly listOf(FarmRewardItem("APPLE", 4), FarmRewardItem("BREAD", 12))
+        reward.fixedItemUnits shouldBe 4
+    }
 })

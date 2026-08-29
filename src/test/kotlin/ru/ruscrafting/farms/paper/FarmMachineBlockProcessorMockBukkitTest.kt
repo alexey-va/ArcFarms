@@ -3,6 +3,7 @@ package ru.ruscrafting.farms.paper
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import org.bukkit.Material
+import org.bukkit.block.data.Ageable
 import org.mockbukkit.mockbukkit.world.WorldMock
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.domain.FarmPlotPosition
@@ -60,6 +61,41 @@ class FarmMachineBlockProcessorMockBukkitTest : FunSpec({
         } shouldBe true
         ledger.blockRecords(world.getChunkAt(0, 0)).size shouldBe 2
         ledger.blockRecords(world.getChunkAt(1, 0)).size shouldBe 2
+    }
+
+    test("seeder plants recorded crop types at age zero and remains retryable") {
+        val crops = listOf(
+            Material.WHEAT,
+            Material.CARROTS,
+            Material.POTATOES,
+            Material.BEETROOTS,
+            Material.SWEET_BERRY_BUSH,
+        )
+        val plots = crops.mapIndexed { x, material ->
+            val soil = world.getBlockAt(x, 64, 3).also { it.type = Material.FARMLAND }
+            val mature = material.createBlockData() as Ageable
+            mature.age = mature.maximumAge
+            soil.getRelative(org.bukkit.block.BlockFace.UP).setBlockData(mature, false)
+            FarmPlotPosition(world.name, x, 64, 3)
+        }
+        val ledger = FarmBlockLedger(paper.createSimplePlugin("FarmSeededGrowthStageTest"))
+        val processor = FarmMachineBlockProcessor(ledger)
+        plots.forEach { plot ->
+            val soil = world.getBlockAt(plot.x, plot.y, plot.z)
+            ledger.captureActiveCrop(soil, "farm")
+            soil.getRelative(org.bukkit.block.BlockFace.UP).type = Material.AIR
+        }
+
+        processor.restoreRecordedCrops("farm", plots, plots.size).processed shouldBe plots.toSet()
+        plots.map { plot ->
+            val planted = world.getBlockAt(plot.x, plot.y + 1, plot.z).blockData as Ageable
+            planted.material to planted.age
+        } shouldBe crops.map { it to 0 }
+
+        processor.restoreRecordedCrops("farm", plots, plots.size).processed shouldBe plots.toSet()
+        plots.map { plot ->
+            (world.getBlockAt(plot.x, plot.y + 1, plot.z).blockData as Ageable).age
+        } shouldBe List(crops.size) { 0 }
     }
 
     test("restoring an indexed bed also resets the maintained crop snapshot") {

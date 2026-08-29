@@ -107,8 +107,8 @@ internal class FarmProcessingScene(
         }
     }
 
-    fun wheel(zoneId: String): ItemDisplay? = tracked.entries.firstOrNull { (identity, _) ->
-        identity.zoneId == zoneId && identity.role == FarmProcessingSceneRole.WHEEL
+    fun item(zoneId: String, role: FarmProcessingSceneRole): ItemDisplay? = tracked.entries.firstOrNull { (identity, _) ->
+        identity.zoneId == zoneId && identity.role == role
     }?.value?.let(Bukkit::getEntity) as? ItemDisplay
 
     fun onChunkLoad(chunk: Chunk) {

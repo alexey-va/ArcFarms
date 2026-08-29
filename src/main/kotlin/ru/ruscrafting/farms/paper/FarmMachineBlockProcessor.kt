@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.paper
 
 import org.bukkit.Bukkit
 import org.bukkit.Material
+import org.bukkit.block.data.Ageable
 import org.bukkit.block.data.type.Farmland
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 
@@ -32,13 +33,17 @@ internal class FarmMachineBlockProcessor(
         val selected = select(plots, limit) { soil ->
             val above = soil.getRelative(org.bukkit.block.BlockFace.UP)
             val record = ledger.record(soil)
-            record?.activeCropData != null && (above.type.isAir || above.blockData.asString == record.activeCropData)
+            val recorded = record?.activeCropData?.let(Bukkit::createBlockData)
+            recorded != null && (above.type.isAir || above.type == recorded.material)
         }
         val soils = selected.map { it.second }
         ledger.captureAll(soils, zoneId)
         soils.forEach { soil ->
             setWetFarmland(soil)
-            ledger.restoreActiveCrop(soil)
+            val record = requireNotNull(ledger.record(soil))
+            val planted = Bukkit.createBlockData(requireNotNull(record.activeCropData))
+            if (planted is Ageable) planted.age = 0
+            soil.getRelative(org.bukkit.block.BlockFace.UP).setBlockData(planted, false)
         }
         return FarmMachineBlockResult(selected.mapTo(linkedSetOf()) { it.first })
     }

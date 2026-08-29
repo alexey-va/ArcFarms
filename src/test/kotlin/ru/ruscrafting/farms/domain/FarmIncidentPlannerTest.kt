@@ -50,6 +50,7 @@ class FarmIncidentPlannerTest : FunSpec({
             plan.size shouldBe count
             plan.distinct().size shouldBe count
             plan.count { it == FarmIncidentType.PESTS || it == FarmIncidentType.DROUGHT } shouldBe if (count == 5) 1 else 0
+            (FarmIncidentType.FOOD_DELIVERY in plan) shouldBe false
         }
     }
 })

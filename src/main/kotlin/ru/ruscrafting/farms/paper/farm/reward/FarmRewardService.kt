@@ -9,6 +9,7 @@ import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.FarmRewardItem
+import ru.ruscrafting.farms.domain.FarmRewardDifficulty
 import ru.ruscrafting.farms.domain.FarmRewardLedger
 import ru.ruscrafting.farms.domain.FarmRewardLedgerSnapshot
 import ru.ruscrafting.farms.domain.FarmRewardPlanner
@@ -65,6 +66,10 @@ internal class FarmRewardService(
     fun snapshot(): FarmRewardLedgerSnapshot = ledger.snapshot()
 
     fun queueCompletion(runtime: FarmRuntime, contributors: Map<UUID, Int>) {
+        val order = runtime.state.orderId?.let(runtime.orders::get)
+        val difficultyMultiplier = order?.let {
+            FarmRewardDifficulty.multiplierPercent(it, runtime.rules, runtime.state.sequence)
+        } ?: 125
         val ranked = contributors.entries.filter { it.value > 0 }.sortedWith(
             compareByDescending<Map.Entry<UUID, Int>> { it.value }.thenBy { it.key.toString() },
         )
@@ -81,6 +86,7 @@ internal class FarmRewardService(
                     contribution = contribution,
                     rank = index + 1,
                 ),
+                rewardMultiplierPercent = difficultyMultiplier,
                 moneyMultiplierPercent = (playerMultiplier(playerId, runtime) + runtime.state.rewardMoneyBonusPercent)
                     .coerceIn(100, 300),
             ).takeUnless { grant -> ledger.contains(grant.id) }

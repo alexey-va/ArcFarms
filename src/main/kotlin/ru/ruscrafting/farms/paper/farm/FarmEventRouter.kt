@@ -505,13 +505,11 @@ internal class FarmEventRouter(
             }
             return
         }
-        val soil = event.blockPlaced.getRelative(org.bukkit.block.BlockFace.DOWN)
-        val runtime = farmAt(soil.location) ?: return
-        if (soil.toFarmPlotPosition() !in runtime.state.preparationPatch) return
+        val runtime = farmAt(event.blockPlaced.location) ?: return
         event.isCancelled = true
         port.sendActionBar(event.player, MessageKey.FARM_PATCH_PROTECTED)
         debug.event(
-            "farm_patch_place_rejected", "player" to event.player.name, "zone" to runtime.settings.id,
+            "farm_block_place_rejected", "player" to event.player.name, "zone" to runtime.settings.id,
             "block" to event.blockPlaced.type, "x" to event.blockPlaced.x, "y" to event.blockPlaced.y, "z" to event.blockPlaced.z,
         )
     }

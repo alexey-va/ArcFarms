@@ -370,7 +370,7 @@ farm:
   care-seeder-outside: '<color:#ff5f6d>Упряжка вернулась на поле. Снова садитесь на коня.</color>'
   care-seeder-progress: '<stage> <color:#707a76>•</color> <color:#f2fff7><done>/<total></color>'
   care-seeder-planting-started: '<color:#55d98b><bold>Поле вспахано</bold></color>'
-  care-seeder-planting-started-subtitle: '<color:#f2fff7>Проведите упряжку снова — она вернёт прежние культуры</color>'
+  care-seeder-planting-started-subtitle: '<color:#f2fff7>Прокатитесь по этим полям и посадите семена</color>'
   care-seeder-resolved: '<color:#55d98b><bold>Поле обработано</bold></color>'
   care-seeder-resolved-subtitle: '<color:#f2fff7>Земля вспахана и засеяна</color>'
   care-disease-spread: '<color:#bd52d6>Болезнь перекинулась на соседний участок.</color>'
@@ -467,7 +467,7 @@ farm:
     progress: '<color:#45c8f5>Пожар</color> <color:#707a76>•</color> <color:#f2fff7>погашено <done>/<total></color>'
     aim-hint: '<color:#ffad42>Направьте струю на видимый очаг огня.</color>'
     bossbar: '<color:#ff7a45>Пожар в амбаре</color> <color:#707a76>•</color> <color:#45c8f5>погашено <done>/<total></color>'
-  perk-vendor-name: '<color:#ffc857>Агроном</color> <color:#707a76>•</color> <color:#f2fff7>усиления</color>'
+  perk-vendor-name: '<color:#ffc857>Улучшения фермы</color>'
   perk-menu:
     title: '<dark_gray>Усиления фермы</dark_gray>'
     balance: '<color:#ffc857>Недельные очки:</color> <white><points></white>'
@@ -712,7 +712,7 @@ care:
     name: '<color:#c778ff>Полевая упряжка</color>'
     instruction: '<color:#f2fff7>Сядьте на коня и проведите упряжку свиней по большому полю</color>'
     tilling-instruction: '<color:#f2fff7>Проезжайте так, чтобы свиньи вспахивали грядки перед конём</color>'
-    planting-instruction: '<color:#f2fff7>Снова проведите упряжку по полю — свиньи вернут прежние культуры</color>'
+    planting-instruction: '<color:#f2fff7>Прокатитесь по этим полям и посадите семена</color>'
     stage:
       tilling: '<color:#ffad42>Вспашка</color>'
       planting: '<color:#55d98b>Посев</color>'

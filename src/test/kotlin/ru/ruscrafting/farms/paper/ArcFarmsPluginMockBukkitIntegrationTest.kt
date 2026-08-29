@@ -5,7 +5,11 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.configuration.file.YamlConfiguration
+import org.bukkit.Material
 import org.bukkit.entity.Player
+import org.bukkit.event.block.BlockPlaceEvent
+import org.bukkit.inventory.EquipmentSlot
+import org.bukkit.inventory.ItemStack
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import java.io.InputStreamReader
 import java.nio.file.Files
@@ -28,6 +32,20 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
             operator.performCommand("arcfarms status") shouldBe true
             PlainTextComponentSerializer.plainText().serialize(requireNotNull(operator.nextComponentMessage())) shouldContain
                 "Current work shifts"
+
+            val inside = world.getBlockAt(200, 65, 450)
+            inside.type = Material.SHULKER_BOX
+            val place = BlockPlaceEvent(
+                inside,
+                inside.state,
+                world.getBlockAt(200, 64, 450),
+                ItemStack(Material.SHULKER_BOX),
+                operator,
+                true,
+                EquipmentSlot.HAND,
+            )
+            paper.server.pluginManager.callEvent(place)
+            place.isCancelled shouldBe true
 
             paper.performTicks(25)
             val settledEntityCount = world.entities.size

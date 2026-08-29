@@ -38,10 +38,7 @@ import ru.ruscrafting.farms.paper.platform.FarmBlockPassability
 import ru.ruscrafting.farms.paper.platform.FarmTextDisplayRenderer
 import java.util.UUID
 import java.util.logging.Level
-import kotlin.math.PI
 import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.sin
 
 internal enum class FarmProcessingPlacementFailure {
     WRONG_WORLD,
@@ -324,40 +321,28 @@ internal class FarmProcessingIncident(
                 height += 1.15
             }
         }
-        if (state.stage != FarmProcessingStage.OPERATING) return
-        val shifted = tick + runtime.state.placementSequence * 17L
-        val phase = Math.floorMod(shifted, configured.dialPeriodTicks.toLong()).toDouble() / configured.dialPeriodTicks
-        val angle = phase * PI * 2.0
-        val center = layout.wheel.location(runtime)
-        if (settings().particles) {
-            val markerPoint = FarmProcessingLayout.offset(layout.wheel, cos(angle) * 0.72, 0.0, sin(angle) * 0.72)
-            val marker = markerPoint.location(runtime)
-            center.world.spawnParticle(Particle.DUST, marker, 2, 0.04, 0.04, 0.04, 0.0, GOLD)
-            listOf(-0.12, 0.0, 0.12).forEach { offset ->
-                val greenAngle = PI + offset
-                val green = FarmProcessingLayout.offset(
-                    layout.wheel,
-                    cos(greenAngle) * 0.72,
-                    0.0,
-                    sin(greenAngle) * 0.72,
-                ).location(runtime)
-                center.world.spawnParticle(
-                    Particle.DUST,
-                    green,
-                    1, 0.0, 0.0, 0.0, 0.0, GREEN,
-                )
-            }
+        val machine = scene.item(runtime.settings.id, FarmProcessingSceneRole.MACHINE)
+        if (state.stage != FarmProcessingStage.OPERATING) {
+            machine?.isGlowing = false
+            return
         }
-        scene.wheel(runtime.settings.id)?.let { wheel ->
-            val visual = FarmProcessingItems.visual(configured, FarmProcessingVisualRole.WHEEL)
-            wheel.transformation = Transformation(
-                Vector3f(),
-                AxisAngle4f(angle.toFloat(), 0f, 0f, 1f),
-                Vector3f(visual.scale, visual.scale, visual.scale),
-                AxisAngle4f(),
+        val shifted = tick + runtime.state.placementSequence * 17L
+        val phase = Math.floorMod(shifted, configured.dialPeriodTicks.toLong()).toInt()
+        val center = configured.dialPeriodTicks / 2
+        val inSuccessWindow = abs(phase - center) <= configured.dialWindowTicks / 2
+        machine?.isGlowing = inSuccessWindow
+        if (settings().particles && tick % 3L == 0L) {
+            val pulse = layout.machine.location(runtime).add(0.0, 1.35, 0.0)
+            pulse.world.spawnParticle(
+                Particle.DUST,
+                pulse,
+                if (inSuccessWindow) 3 else 1,
+                0.12,
+                0.12,
+                0.12,
+                0.0,
+                if (inSuccessWindow) GREEN else GOLD,
             )
-            wheel.interpolationDuration = 2
-            wheel.interpolationDelay = 0
         }
     }
 
@@ -413,16 +398,6 @@ internal class FarmProcessingIncident(
             layout.machine,
             FarmProcessingVisualRole.MACHINE,
         )
-        objects += display(runtime, FarmProcessingSceneRole.WHEEL, 0, layout.wheel, FarmProcessingVisualRole.WHEEL, state.stage == FarmProcessingStage.OPERATING)
-        layout.inputRacks.forEachIndexed { index, inputRack ->
-            objects += display(
-                runtime,
-                FarmProcessingSceneRole.INPUT_RACK,
-                index,
-                inputRack,
-                FarmProcessingVisualRole.INPUT_RACK,
-            )
-        }
         objects += display(
             runtime,
             FarmProcessingSceneRole.OUTPUT_PALLET,

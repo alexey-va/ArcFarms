@@ -497,6 +497,11 @@ data class FarmRouteDeliverySettings(
     val trailParticleSize: Float,
     val completionContribution: Int,
     val returnDelaySeconds: Int,
+    val portalRightOffset: Double,
+    val portalWidth: Float,
+    val portalHeight: Float,
+    val portalLabelHeight: Double,
+    val portalLabelScale: Float,
     val ambushDistance: Double,
     val ambushMaxCount: Int,
     val ambushAfterFarmDistance: Double,
@@ -646,7 +651,7 @@ class ArcFarmsConfig private constructor(
                         "CARROTS" to 25,
                         "POTATOES" to 25,
                         "BEETROOTS" to 15,
-                        "SWEET_BERRY_BUSH" to 5,
+                        "SWEET_BERRY_BUSH" to 1,
                     ).filterKeys(crops::contains)
                 }
                 require(cropLayoutWeights.isNotEmpty()) {
@@ -871,6 +876,17 @@ class ArcFarmsConfig private constructor(
                         .checked("route-delivery.completion-contribution", 1, 64),
                     returnDelaySeconds = section.int("route-delivery.return-delay-seconds", 3)
                         .checked("route-delivery.return-delay-seconds", 1, 15),
+                    portalRightOffset = section.finiteDouble(
+                        "route-delivery.portal.right-offset", 4.0, -12.0, 12.0,
+                    ),
+                    portalWidth = section.finiteFloat("route-delivery.portal.width", 3.6f, 1.0f, 8.0f),
+                    portalHeight = section.finiteFloat("route-delivery.portal.height", 3.2f, 1.0f, 8.0f),
+                    portalLabelHeight = section.finiteDouble(
+                        "route-delivery.portal.label-height", 3.35, 1.0, 8.0,
+                    ),
+                    portalLabelScale = section.finiteFloat(
+                        "route-delivery.portal.label-scale", 1.8f, 0.5f, 4.0f,
+                    ),
                     ambushDistance = section.finiteDouble(
                         "route-delivery.monsters.distance-per-ambush", 120.0, 32.0, 512.0,
                     ),

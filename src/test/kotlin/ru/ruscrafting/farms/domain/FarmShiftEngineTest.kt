@@ -133,6 +133,58 @@ class FarmShiftEngineTest : FunSpec({
         state.incidentsResolved shouldBe 3
     }
 
+    test("food delivery starts only after the order is fully harvested and completes the shift") {
+        val deliveryOrder = FarmOrder(
+            "delivery_order",
+            linkedMapOf("WHEAT" to 2),
+            incidentTypes = listOf(FarmIncidentType.PESTS, FarmIncidentType.FOOD_DELIVERY),
+        )
+        val deliveryRules = FarmRules(
+            incidentTriggerPercents = listOf(50),
+            incidentQuota = 1,
+            cooldownMillis = 5_000,
+        )
+        var state = FarmShiftState(
+            phase = FarmPhase.HARVESTING,
+            orderId = deliveryOrder.id,
+            progress = mapOf("WHEAT" to 1),
+        )
+
+        val harvested = FarmShiftEngine.harvest(
+            state,
+            deliveryOrder,
+            deliveryRules,
+            "WHEAT",
+            player,
+            2_000,
+            FarmIncidentType.PESTS,
+        )
+
+        harvested.state.phase shouldBe FarmPhase.INCIDENT
+        harvested.state.incidentType shouldBe FarmIncidentType.FOOD_DELIVERY
+        harvested.events shouldContainExactly listOf(
+            ShiftEvent.PROGRESS,
+            ShiftEvent.HARVEST_MILESTONE,
+            ShiftEvent.INCIDENT_STARTED,
+        )
+
+        state = FarmShiftEngine.initializeFoodDelivery(harvested.state, checkpoints = 4).state
+        val completed = FarmShiftEngine.advanceFoodDelivery(
+            state,
+            reachedCheckpoint = 4,
+            playerId = player,
+            completionContribution = 12,
+            completion = FarmFoodDeliveryCompletion.SHIFT,
+            rules = deliveryRules,
+            now = 3_000,
+        )
+
+        completed.state.phase shouldBe FarmPhase.COOLDOWN
+        completed.state.outcome shouldBe ShiftOutcome.COMPLETED
+        completed.state.cooldownEndsAt shouldBe 8_000
+        completed.events shouldContainExactly listOf(ShiftEvent.COMPLETED)
+    }
+
     test("incident count varies deterministically inside the configured range") {
         val rangedRules = FarmRules(
             incidentTriggerPercents = listOf(15, 32, 50, 68, 85),

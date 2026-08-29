@@ -370,7 +370,7 @@ farm:
   care-seeder-outside: '<color:#ff5f6d>The team returned to the field. Mount the horse again.</color>'
   care-seeder-progress: '<stage> <color:#707a76>•</color> <color:#f2fff7><done>/<total></color>'
   care-seeder-planting-started: '<color:#55d98b><bold>Field tilled</bold></color>'
-  care-seeder-planting-started-subtitle: '<color:#f2fff7>Drive the rig across it again to restore the previous crops</color>'
+  care-seeder-planting-started-subtitle: '<color:#f2fff7>Ride across these fields and plant the seeds</color>'
   care-seeder-resolved: '<color:#55d98b><bold>Fieldwork complete</bold></color>'
   care-seeder-resolved-subtitle: '<color:#f2fff7>The soil is tilled and planted</color>'
   care-disease-spread: '<color:#bd52d6>The disease spread to a nearby patch.</color>'
@@ -467,7 +467,7 @@ farm:
     progress: '<color:#45c8f5>Fire</color> <color:#707a76>•</color> <color:#f2fff7>extinguished <done>/<total></color>'
     aim-hint: '<color:#ffad42>Aim the water stream at a visible fire hotspot.</color>'
     bossbar: '<color:#ff7a45>Barn fire</color> <color:#707a76>•</color> <color:#45c8f5>extinguished <done>/<total></color>'
-  perk-vendor-name: '<color:#ffc857>Agronomist</color> <color:#707a76>•</color> <color:#f2fff7>perks</color>'
+  perk-vendor-name: '<color:#ffc857>Farm upgrades</color>'
   perk-menu:
     title: '<dark_gray>Farm perks</dark_gray>'
     balance: '<color:#ffc857>Weekly points:</color> <white><points></white>'
@@ -712,7 +712,7 @@ care:
     name: '<color:#c778ff>Field team</color>'
     instruction: '<color:#f2fff7>Mount the horse and drive the leashed pigs across the large field</color>'
     tilling-instruction: '<color:#f2fff7>Ride so the pigs till the beds ahead of the horse</color>'
-    planting-instruction: '<color:#f2fff7>Drive the team across the field again to restore its crops</color>'
+    planting-instruction: '<color:#f2fff7>Ride across these fields and plant the seeds</color>'
     stage:
       tilling: '<color:#ffad42>Tilling</color>'
       planting: '<color:#55d98b>Planting</color>'

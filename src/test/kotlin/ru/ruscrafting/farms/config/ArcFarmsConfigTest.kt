@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.config
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
@@ -45,7 +46,7 @@ class ArcFarmsConfigTest : FunSpec({
                 "CARROTS" to 320,
                 "POTATOES" to 320,
                 "BEETROOTS" to 320,
-                "SWEET_BERRY_BUSH" to 320,
+                "SWEET_BERRY_BUSH" to 50,
                 "MELON" to 48,
                 "PUMPKIN" to 48,
             ),
@@ -149,7 +150,7 @@ class ArcFarmsConfigTest : FunSpec({
             "CARROTS" to 25,
             "POTATOES" to 25,
             "BEETROOTS" to 15,
-            "SWEET_BERRY_BUSH" to 5,
+            "SWEET_BERRY_BUSH" to 1,
         )
         settings.farms.single().cropLayout.smallComponentMaxSize shouldBe 16
         settings.farms.single().cropLayout.smallComponentMergeDistance shouldBe 10
@@ -240,6 +241,9 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().processing.spawnPerTick shouldBe 4
         settings.farms.single().processing.visuals.getValue(FarmProcessingVisualRole.MACHINE).material shouldBe
             "CRAFTING_TABLE"
+        settings.farms.single().routeDelivery.portalRightOffset shouldBe 4.0
+        settings.farms.single().routeDelivery.portalWidth shouldBe 3.6f
+        settings.farms.single().routeDelivery.portalLabelScale shouldBe 1.8f
         settings.farms.single().barnFire.hotspotCount shouldBe 100
         settings.farms.single().barnFire.spawnPerTick shouldBe 8
         settings.farms.single().barnFire.placementRadius shouldBe 16
@@ -319,9 +323,9 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().routeDelivery.ambushMaxCount shouldBe 3
         settings.farms.single().routeDelivery.ambushAfterFarmDistance shouldBe 20.0
         settings.farms.single().routeDelivery.ambushEndSafeDistance shouldBe 20.0
-        settings.farms.single().routeDelivery.monsterWaveMin shouldBe 3
-        settings.farms.single().routeDelivery.monsterWaveMax shouldBe 5
-        settings.farms.single().routeDelivery.monsterMaxAlive shouldBe 8
+        settings.farms.single().routeDelivery.monsterWaveMin shouldBe 5
+        settings.farms.single().routeDelivery.monsterWaveMax shouldBe 8
+        settings.farms.single().routeDelivery.monsterMaxAlive shouldBe 12
         settings.farms.single().routeDelivery.monsterTypes shouldBe listOf("HUSK", "ZOMBIE", "SKELETON", "SPIDER", "PHANTOM")
         settings.farms.single().routeDelivery.monsterLightLevel shouldBe 15
         settings.farms.single().routeDelivery.rifleMaterial shouldBe "CROSSBOW"
@@ -342,7 +346,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().supplies.seeds.z shouldBe 453.5
         settings.farms.single().supplies.water.z shouldBe 458.5
         settings.farms.single().supplies.archery.z shouldBe 468.5
-        settings.farms.single().rewards.experience.amount shouldBe 75
+        settings.farms.single().rewards.experience.amount shouldBe 100
         settings.farms.single().rewards.experience.chancePercent shouldBe 100
         settings.farms.single().rewards.money.amountCents shouldBe 0
         settings.lumbermills.single().fellingQuota shouldBe 16
@@ -373,8 +377,8 @@ class ArcFarmsConfigTest : FunSpec({
         classicSettings.farms.single().moleBurrow.lairVisual.customModelData shouldBe 11_875
         classicSettings.farms.single().routeDelivery.horseSpeed shouldBe 0.17
         classicSettings.farms.single().routeDelivery.cartYOffset shouldBe 0.875
-        classicSettings.farms.single().routeDelivery.monsterWaveMin shouldBe 3
-        classicSettings.farms.single().routeDelivery.monsterWaveMax shouldBe 5
+        classicSettings.farms.single().routeDelivery.monsterWaveMin shouldBe 5
+        classicSettings.farms.single().routeDelivery.monsterWaveMax shouldBe 8
         classicSettings.farms.single().damageSafety.minimumRemaining shouldBe 128
         classicSettings.farms.single().music.enabled shouldBe true
         classicSettings.farms.single().music.sound shouldBe "arc:farm_valley_comes_alive"

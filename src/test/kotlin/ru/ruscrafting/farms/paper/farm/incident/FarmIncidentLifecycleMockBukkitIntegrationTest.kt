@@ -65,6 +65,17 @@ class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
             }
             runtime.state.processing?.stage shouldBe FarmProcessingStage.OPERATING
 
+            processing.ensure(runtime)
+            fixture.processingDisplays(FarmProcessingSceneRole.MACHINE).size shouldBe 1
+            fixture.processingDisplays(FarmProcessingSceneRole.WHEEL).size shouldBe 0
+            fixture.processingDisplays(FarmProcessingSceneRole.INPUT_RACK).size shouldBe 0
+            val machine = fixture.processingDisplays(FarmProcessingSceneRole.MACHINE).single()
+            val pulseCenter = fixture.zone.processing.dialPeriodTicks / 2 - runtime.state.placementSequence * 17L
+            processing.update(listOf(runtime), Math.floorMod(pulseCenter, fixture.zone.processing.dialPeriodTicks.toLong()))
+            machine.isGlowing shouldBe true
+            processing.update(listOf(runtime), 0L)
+            machine.isGlowing shouldBe false
+
             val period = fixture.zone.processing.dialPeriodTicks.toLong()
             repeat(2) { index ->
                 advanceToDialCenter(fixture, runtime.state.placementSequence, period)
