@@ -8,6 +8,7 @@ import org.bukkit.NamespacedKey
 import org.bukkit.block.BlockFace
 import org.bukkit.entity.Interaction
 import org.bukkit.entity.ItemDisplay
+import org.bukkit.entity.TextDisplay
 import org.bukkit.entity.Player
 import org.bukkit.event.block.Action
 import org.bukkit.event.player.PlayerInteractEntityEvent
@@ -201,6 +202,11 @@ internal class FarmIncidentScenarioFixture private constructor(
     fun processingDisplays(role: FarmProcessingSceneRole): List<ItemDisplay> =
         world.entities.asSequence().filterIsInstance<ItemDisplay>().filter { entity ->
             entity.persistentDataContainer.get(processingRoleKey, PersistentDataType.STRING) == role.name
+        }.toList()
+
+    fun processingTextDisplays(role: String): List<TextDisplay> =
+        world.entities.asSequence().filterIsInstance<TextDisplay>().filter { entity ->
+            entity.persistentDataContainer.get(processingRoleKey, PersistentDataType.STRING) == role
         }.toList()
 
     fun clickProcessing(

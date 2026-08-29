@@ -79,6 +79,9 @@ class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
             }
             runtime.state.processing?.stage shouldBe FarmProcessingStage.OPERATING
 
+            repeat(8) { processing.ensure(runtime) }
+            fixture.processingTextDisplays("CRANK_TRACK").size shouldBe 24
+
             val radius = 2.2
             repeat(49) { step ->
                 val angle = 2.0 * PI * step / 48.0

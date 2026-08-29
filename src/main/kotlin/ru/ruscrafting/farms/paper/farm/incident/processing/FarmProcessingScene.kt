@@ -5,6 +5,7 @@ import org.bukkit.Bukkit
 import org.bukkit.Chunk
 import org.bukkit.Location
 import org.bukkit.NamespacedKey
+import org.bukkit.entity.Display
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Interaction
 import org.bukkit.entity.ItemDisplay
@@ -35,6 +36,7 @@ internal enum class FarmProcessingSceneRole {
     DELIVERED_PACKAGE,
     MACHINE_INTERACTION,
     LABEL,
+    CRANK_TRACK,
 }
 
 internal data class FarmProcessingSceneIdentity(
@@ -56,6 +58,8 @@ internal data class FarmProcessingSceneObject(
     val glowing: Boolean = false,
     val interactionWidth: Float = 1.1f,
     val interactionHeight: Float = 1.2f,
+    val billboard: Display.Billboard = Display.Billboard.VERTICAL,
+    val pitchOffset: Float = 0f,
 )
 
 internal data class FarmProcessingSceneSpec(
@@ -173,7 +177,9 @@ internal class FarmProcessingScene(
             FarmProcessingSceneRole.PRODUCT_INTERACTION,
             FarmProcessingSceneRole.MACHINE_INTERACTION,
             -> world.spawn(target.location, Interaction::class.java)
-            FarmProcessingSceneRole.LABEL -> world.spawn(target.location, TextDisplay::class.java)
+            FarmProcessingSceneRole.LABEL,
+            FarmProcessingSceneRole.CRANK_TRACK,
+            -> world.spawn(target.location, TextDisplay::class.java)
             else -> world.spawn(target.location, ItemDisplay::class.java)
         }
         normalize(entity, spec, target, identity)
@@ -226,7 +232,13 @@ internal class FarmProcessingScene(
                 textDisplays.render(
                     entity,
                     requireNotNull(target.text),
-                    FarmTextDisplayStyle(viewRange = spec.viewRange),
+                    FarmTextDisplayStyle(billboard = target.billboard, viewRange = spec.viewRange),
+                )
+                entity.transformation = Transformation(
+                    Vector3f(),
+                    AxisAngle4f(Math.toRadians(target.pitchOffset.toDouble()).toFloat(), 1f, 0f, 0f),
+                    Vector3f(target.scale, target.scale, target.scale),
+                    AxisAngle4f(),
                 )
             }
         }
@@ -261,7 +273,9 @@ internal class FarmProcessingScene(
         FarmProcessingSceneRole.PRODUCT_INTERACTION,
         FarmProcessingSceneRole.MACHINE_INTERACTION,
         -> entity is Interaction
-        FarmProcessingSceneRole.LABEL -> entity is TextDisplay
+        FarmProcessingSceneRole.LABEL,
+        FarmProcessingSceneRole.CRANK_TRACK,
+        -> entity is TextDisplay
         else -> entity is ItemDisplay
     }
 

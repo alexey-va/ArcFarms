@@ -1,5 +1,7 @@
 package ru.ruscrafting.farms.paper.farm.incident.processing
 
+import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Bukkit
 import org.bukkit.Chunk
 import org.bukkit.Location
@@ -7,6 +9,7 @@ import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.Particle
 import org.bukkit.Sound
+import org.bukkit.entity.Display
 import org.bukkit.entity.Entity
 import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Player
@@ -496,6 +499,25 @@ internal class FarmProcessingIncident(
             layout.outputLabel.location(runtime),
             text = locale.render(MessageKey.FARM_PROCESSING_OUTPUT_LABEL, null),
         )
+        if (state.stage == FarmProcessingStage.OPERATING) {
+            val radius = (processing.crankInnerRadius + processing.crankOuterRadius) / 2.0
+            repeat(CRANK_TRACK_POINTS) { index ->
+                val angle = 2.0 * kotlin.math.PI * index / CRANK_TRACK_POINTS
+                objects += FarmProcessingSceneObject(
+                    role = FarmProcessingSceneRole.CRANK_TRACK,
+                    index = index,
+                    location = layout.machine.location(runtime).add(
+                        radius * kotlin.math.cos(angle),
+                        CRANK_TRACK_Y_OFFSET,
+                        radius * kotlin.math.sin(angle),
+                    ),
+                    text = Component.text("◆", NamedTextColor.AQUA),
+                    scale = CRANK_TRACK_SCALE,
+                    billboard = Display.Billboard.FIXED,
+                    pitchOffset = 90f,
+                )
+            }
+        }
         if (state.stage == FarmProcessingStage.LOADING) {
             (0 until state.inputRequired - state.inputLoaded).filterNot { index ->
                 ProcessingCargoKey(runtime.settings.id, ProcessingCargo.RAW, index) in carriers
@@ -651,6 +673,9 @@ internal class FarmProcessingIncident(
 
     private companion object {
         const val CARGO_PROGRESS_DISTANCE = 1.0
+        const val CRANK_TRACK_POINTS = 24
+        const val CRANK_TRACK_Y_OFFSET = 0.035
+        const val CRANK_TRACK_SCALE = 0.42f
         val PROCESSING_INPUT_POINTS = listOf(
             FarmPointKind.PROCESSING_INPUT,
             FarmPointKind.PROCESSING_INPUT_2,
