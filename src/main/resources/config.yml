@@ -57,7 +57,7 @@ farm-zones:
     # Recovery after incidents and completed orders is spread across server ticks.
     restore-blocks-per-tick: 24
     # A full farm block reindex scans and applies this many blocks per server tick.
-    block-reindex-blocks-per-tick: 4096
+    block-reindex-blocks-per-tick: 131072
     # Refuse accidentally huge WorldGuard bounds instead of freezing the server.
     block-reindex-max-blocks: 20000000
     # An explicit reindex rebuilds ordinary crop beds as coherent single-crop components.

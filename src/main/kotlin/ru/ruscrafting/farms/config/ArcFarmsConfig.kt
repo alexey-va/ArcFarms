@@ -1287,8 +1287,8 @@ class ArcFarmsConfig private constructor(
                         .checked("fixed-crop-respawn-seconds", 1, 3_600),
                     restoreBlocksPerTick = section.int("restore-blocks-per-tick", 24)
                         .checked("restore-blocks-per-tick", 1, 128),
-                    blockReindexBlocksPerTick = section.int("block-reindex-blocks-per-tick", 4_096)
-                        .checked("block-reindex-blocks-per-tick", 256, 16_384),
+                    blockReindexBlocksPerTick = section.int("block-reindex-blocks-per-tick", 131_072)
+                        .checked("block-reindex-blocks-per-tick", 256, 262_144),
                     blockReindexMaxBlocks = section.int("block-reindex-max-blocks", 20_000_000)
                         .checked("block-reindex-max-blocks", 100_000, 50_000_000),
                     cropLayout = cropLayout,

@@ -142,7 +142,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().preparationSearchRadius shouldBe 64
         settings.farms.single().fixedCropRespawnSeconds shouldBe 20
         settings.farms.single().restoreBlocksPerTick shouldBe 24
-        settings.farms.single().blockReindexBlocksPerTick shouldBe 4_096
+        settings.farms.single().blockReindexBlocksPerTick shouldBe 131_072
         settings.farms.single().blockReindexMaxBlocks shouldBe 20_000_000
         settings.farms.single().cropLayout.enabled shouldBe true
         settings.farms.single().cropLayout.weights shouldBe mapOf(
@@ -373,9 +373,9 @@ class ArcFarmsConfigTest : FunSpec({
             scarecrow.displayYOffset shouldBe 0.0
         }
         classicSettings.farms.single().careVisuals.getValue(FarmCareRole.PEN).customModelData shouldBe 11_864
-        classicSettings.farms.single().moleBurrow.lairVisual.material shouldBe "PAPER"
-        classicSettings.farms.single().moleBurrow.lairVisual.customModelData shouldBe 11_875
-        classicSettings.farms.single().routeDelivery.horseSpeed shouldBe 0.17
+        classicSettings.farms.single().moleBurrow.lairVisual.material shouldBe "STICK"
+        classicSettings.farms.single().moleBurrow.lairVisual.customModelData shouldBe 10_053
+        classicSettings.farms.single().routeDelivery.horseSpeed shouldBe 0.26
         classicSettings.farms.single().routeDelivery.cartYOffset shouldBe 0.875
         classicSettings.farms.single().routeDelivery.monsterWaveMin shouldBe 5
         classicSettings.farms.single().routeDelivery.monsterWaveMax shouldBe 8

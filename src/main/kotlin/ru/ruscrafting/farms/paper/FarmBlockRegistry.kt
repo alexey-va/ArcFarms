@@ -24,7 +24,7 @@ internal data class FarmBlockIndexDefinition(
     init {
         require(zoneId.matches(Regex("[a-z0-9_-]{1,48}"))) { "Invalid farm block index zone id" }
         require(crops.isNotEmpty()) { "Farm block index crop set is empty" }
-        require(blocksPerTick in 1..65_536) { "Farm block index tick budget is invalid" }
+        require(blocksPerTick in 1..262_144) { "Farm block index tick budget is invalid" }
         require(maxBlocks >= blocksPerTick) { "Farm block index size limit is invalid" }
         require(maxOrchardLeaves in 1..65_536) { "Farm orchard index limit is invalid" }
         require(cropLayout.weights.keys.all(crops::contains)) {
@@ -63,6 +63,8 @@ internal class FarmBlockRegistry(
     private val plugin: Plugin,
     private val ledger: FarmBlockLedger,
     private val clock: () -> Long = System::currentTimeMillis,
+    private val addChunkTicket: (Chunk) -> Boolean = { chunk -> chunk.addPluginChunkTicket(plugin) },
+    private val removeChunkTicket: (Chunk) -> Unit = { chunk -> chunk.removePluginChunkTicket(plugin) },
 ) : AutoCloseable {
     private val bedsByZone = mutableMapOf<String, MutableSet<FarmPlotPosition>>()
     private val fixedCropsByZone = mutableMapOf<String, MutableSet<FarmPlotPosition>>()
@@ -234,13 +236,21 @@ internal class FarmBlockRegistry(
             releaseCurrentChunk()
         }
 
-        private fun requestChunk() {
+        private fun requestChunk(
+            scanBudget: Int = definition.blocksPerTick,
+            applyBudget: Int = MAX_APPLY_CHUNKS_PER_TICK,
+        ) {
             if (finished || closed) return
             if (chunkIndex >= geometry.chunks.size) {
                 if (phase == FarmBlockReindexPhase.SCANNING) beginApply() else complete()
                 return
             }
             val coordinates = geometry.chunks[chunkIndex]
+            if (definition.region.world.isChunkLoaded(coordinates.x, coordinates.z)) {
+                prepareCurrentChunk(definition.region.world.getChunkAt(coordinates.x, coordinates.z))
+                if (phase == FarmBlockReindexPhase.SCANNING) scanStep(scanBudget) else applyChunk(applyBudget)
+                return
+            }
             definition.region.world.getChunkAtAsync(coordinates.x, coordinates.z, false).whenComplete { chunk, failure ->
                 runCatching {
                     Tasks.scheduler.runSync {
@@ -249,17 +259,22 @@ internal class FarmBlockRegistry(
                             fail(failure ?: IllegalStateException("Chunk ${coordinates.x},${coordinates.z} did not load"))
                             return@runSync
                         }
-                        currentChunk = chunk
-                        currentTicketAdded = chunk.addPluginChunkTicket(plugin)
-                        currentCursor = 0L
+                        prepareCurrentChunk(chunk)
                         if (phase == FarmBlockReindexPhase.SCANNING) scanStep() else applyChunk()
                     }
                 }.onFailure(::fail)
             }
         }
 
-        private fun scanStep() {
+        private fun prepareCurrentChunk(chunk: Chunk) {
+            currentChunk = chunk
+            currentTicketAdded = addChunkTicket(chunk)
+            currentCursor = 0L
+        }
+
+        private fun scanStep(remainingBudget: Int = definition.blocksPerTick) {
             if (finished) return
+            require(remainingBudget > 0) { "Farm reindex scan budget must be positive" }
             val chunk = currentChunk ?: return fail(IllegalStateException("Farm reindex lost its current chunk"))
             if (currentCursor == 0L && ledger.fixedCropRecords(chunk).any {
                     it.zoneId == definition.zoneId && it.restoreAt != null
@@ -268,7 +283,8 @@ internal class FarmBlockRegistry(
                 return fail(IllegalStateException("Farm ${definition.zoneId} still has pending fixed crop restoration"))
             }
             val slice = geometry.slice(chunk.x, chunk.z)
-            val end = minOf(slice.volume, currentCursor + definition.blocksPerTick)
+            val startedAtCursor = currentCursor
+            val end = minOf(slice.volume, currentCursor + remainingBudget)
             while (currentCursor < end) {
                 val block = slice.blockAt(chunk.world, currentCursor++)
                 scannedBlocks++
@@ -304,10 +320,20 @@ internal class FarmBlockRegistry(
                 nextTask = Tasks.scheduler.runLater(1L, ::scanStep)
                 return
             }
+            val consumed = (currentCursor - startedAtCursor).toInt()
             finishCurrentChunk()
             onProgress(status())
             chunkIndex++
-            requestChunk()
+            if (chunkIndex >= geometry.chunks.size) {
+                beginApply()
+                return
+            }
+            val nextBudget = remainingBudget - consumed
+            if (nextBudget > 0) {
+                requestChunk(scanBudget = nextBudget)
+            } else {
+                nextTask = Tasks.scheduler.runLater(1L) { requestChunk() }
+            }
         }
 
         private fun beginApply() {
@@ -325,8 +351,9 @@ internal class FarmBlockRegistry(
             requestChunk()
         }
 
-        private fun applyChunk() {
+        private fun applyChunk(remainingChunks: Int = MAX_APPLY_CHUNKS_PER_TICK) {
             if (finished) return
+            require(remainingChunks > 0) { "Farm reindex apply budget must be positive" }
             val chunk = currentChunk ?: return fail(IllegalStateException("Farm reindex lost its apply chunk"))
             val key = chunk.chunkKey
             val validBeds = beds[key].orEmpty().mapNotNull { position ->
@@ -369,7 +396,13 @@ internal class FarmBlockRegistry(
             finishCurrentChunk()
             onProgress(status())
             chunkIndex++
-            nextTask = Tasks.scheduler.runLater(1L, ::requestChunk)
+            if (chunkIndex >= geometry.chunks.size) {
+                complete()
+            } else if (remainingChunks > 1) {
+                requestChunk(applyBudget = remainingChunks - 1)
+            } else {
+                nextTask = Tasks.scheduler.runLater(1L) { requestChunk() }
+            }
         }
 
         private fun complete() {
@@ -398,7 +431,7 @@ internal class FarmBlockRegistry(
 
         private fun releaseCurrentChunk() {
             val chunk = currentChunk
-            if (chunk != null && currentTicketAdded) runCatching { chunk.removePluginChunkTicket(plugin) }
+            if (chunk != null && currentTicketAdded) runCatching { removeChunkTicket(chunk) }
             currentChunk = null
             currentTicketAdded = false
         }
@@ -550,6 +583,7 @@ internal class FarmBlockRegistry(
 
     private companion object {
         const val MAX_REINDEX_CHUNKS = 4_096L
+        const val MAX_APPLY_CHUNKS_PER_TICK = 64
         const val MAX_INDEXED_BEDS = 100_000
         const val MAX_INDEXED_FIXED_CROPS = 100_000
         const val MAX_INDEXED_ORCHARD_LEAVES_PER_CHUNK = 1_024
