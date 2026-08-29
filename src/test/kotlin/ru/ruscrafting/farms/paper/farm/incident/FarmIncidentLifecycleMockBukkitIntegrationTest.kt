@@ -80,7 +80,11 @@ class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
             runtime.state.processing?.stage shouldBe FarmProcessingStage.OPERATING
 
             repeat(8) { processing.ensure(runtime) }
-            fixture.processingTextDisplays("CRANK_TRACK").size shouldBe 24
+            val crankTrack = fixture.processingTextDisplays("CRANK_TRACK")
+            crankTrack.size shouldBe 24
+            crankTrack.forEach { marker ->
+                marker.transformation.scale.x.shouldBeGreaterThanOrEqual(1.5f)
+            }
 
             val radius = 2.2
             repeat(49) { step ->

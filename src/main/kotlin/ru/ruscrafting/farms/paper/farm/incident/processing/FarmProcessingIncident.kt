@@ -675,7 +675,7 @@ internal class FarmProcessingIncident(
         const val CARGO_PROGRESS_DISTANCE = 1.0
         const val CRANK_TRACK_POINTS = 24
         const val CRANK_TRACK_Y_OFFSET = 0.035
-        const val CRANK_TRACK_SCALE = 0.42f
+        const val CRANK_TRACK_SCALE = 1.75f
         val PROCESSING_INPUT_POINTS = listOf(
             FarmPointKind.PROCESSING_INPUT,
             FarmPointKind.PROCESSING_INPUT_2,
