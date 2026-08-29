@@ -116,6 +116,19 @@ class FarmMoleBurrowPlannerTest : FunSpec({
         }
         forcedAdminStarts.distinct().size shouldBeGreaterThan 1
     }
+
+    test("mole entrances prefer crop-dense pockets with farm beds on every side") {
+        val beds = buildList {
+            for (x in 0..40) for (z in 0..40) {
+                if (x != 20 && z != 20) add(FarmPlotPosition("sp11", x, 64, z))
+            }
+        }
+
+        val interior = FarmMoleEntrancePlanner.preferredBeds(beds, minimumBoundaryDistance = 10)
+
+        interior.isNotEmpty() shouldBe true
+        interior.none { plot -> plot.x in 18..22 || plot.z in 18..22 } shouldBe true
+    }
 })
 
 private fun manhattan(first: FarmMolePassage, second: FarmMolePassage): Int =
