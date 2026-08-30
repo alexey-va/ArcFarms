@@ -36,6 +36,12 @@ import ru.ruscrafting.farms.paper.mine.incident.gas.MineGasLeakIncident
 import ru.ruscrafting.farms.paper.mine.incident.crystal.MineCrystalResonanceIncident
 import ru.ruscrafting.farms.paper.mine.incident.flood.MineFloodingIncident
 import ru.ruscrafting.farms.paper.mine.incident.power.MinePowerFailureIncident
+import ru.ruscrafting.farms.paper.mine.incident.creature.MineCreatureNestIncident
+import ru.ruscrafting.farms.paper.mine.incident.rescue.MineLostMinerIncident
+import ru.ruscrafting.farms.paper.WorksiteEntityInteractHandler
+import ru.ruscrafting.farms.paper.WorksiteEntityDeathHandler
+import org.bukkit.event.entity.EntityDeathEvent
+import org.bukkit.event.player.PlayerInteractEntityEvent
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
 import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantOwner
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
@@ -60,8 +66,11 @@ internal class MineModule(
     private val crystalResonance: MineCrystalResonanceIncident,
     private val flooding: MineFloodingIncident,
     private val powerFailure: MinePowerFailureIncident,
+    private val creatureNest: MineCreatureNestIncident,
+    private val lostMiner: MineLostMinerIncident,
 ) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler,
-    WorksiteMoveHandler, WorksiteFastVisualHandler, WorksiteParticipantOwner, WorksiteServiceItemOwner {
+    WorksiteMoveHandler, WorksiteEntityInteractHandler, WorksiteEntityDeathHandler, WorksiteFastVisualHandler,
+    WorksiteParticipantOwner, WorksiteServiceItemOwner {
     private val transitions = MineTransitionCoordinator(port)
     override val kind: ActivityKind = ActivityKind.MINE
     override val zoneCount: Int get() = registry.size
@@ -106,7 +115,11 @@ internal class MineModule(
             loading.onInteract(event) || prospecting.onInteract(event)
 
     override fun onMove(from: Location, to: Location, player: Player): Boolean =
-        loading.onMove(to, player) || extraction.onMove(from, to, player)
+        lostMiner.onMove(to, player) || loading.onMove(to, player) || extraction.onMove(from, to, player)
+
+    override fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean = lostMiner.onInteractEntity(event)
+
+    override fun onEntityDeath(event: EntityDeathEvent): Boolean = creatureNest.onDeath(event)
 
     override fun updateVisuals() = Unit
 
@@ -115,6 +128,7 @@ internal class MineModule(
         caveIn.releasePlayer(player.uniqueId)
         trackDamage.releasePlayer(player.uniqueId)
         flooding.releasePlayer(player.uniqueId)
+        lostMiner.releasePlayer(player.uniqueId)
     }
 
     override fun isActive(identity: ServiceItemIdentity): Boolean =
@@ -140,6 +154,10 @@ internal class MineModule(
         }
         recovery.reconcileChunk(chunk)
         cartScene.reconcileChunk(chunk)
+        registry.snapshot().filter { it.region.world === chunk.world }.forEach { runtime ->
+            creatureNest.reconcileChunk(runtime, chunk)
+            lostMiner.reconcileChunk(runtime, chunk)
+        }
     }
 
     override fun cleanup(reason: String) {
@@ -153,6 +171,10 @@ internal class MineModule(
             }
         }
         extraction.cleanup()
+        registry.snapshot().forEach { runtime ->
+            creatureNest.cleanup(runtime)
+            lostMiner.cleanup(runtime)
+        }
         index.clear()
     }
 

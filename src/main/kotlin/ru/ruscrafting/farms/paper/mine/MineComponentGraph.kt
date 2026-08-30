@@ -23,6 +23,10 @@ import ru.ruscrafting.farms.paper.mine.incident.gas.MineGasLeakIncident
 import ru.ruscrafting.farms.paper.mine.incident.crystal.MineCrystalResonanceIncident
 import ru.ruscrafting.farms.paper.mine.incident.flood.MineFloodingIncident
 import ru.ruscrafting.farms.paper.mine.incident.power.MinePowerFailureIncident
+import ru.ruscrafting.farms.paper.mine.incident.creature.MineCreatureNestIncident
+import ru.ruscrafting.farms.paper.mine.incident.rescue.MineLostMinerIncident
+import ru.ruscrafting.farms.paper.mine.incident.entity.MineIncidentEntityEffects
+import ru.ruscrafting.farms.paper.mine.incident.entity.PaperMineIncidentEntityEffects
 import ru.ruscrafting.farms.paper.mine.recovery.MineIncidentBlockJournal
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems
 import ru.ruscrafting.farms.config.ArcFarmsLocale
@@ -40,6 +44,7 @@ internal class MineComponentGraph(
     serviceItems: WorksiteServiceItems? = null,
     locale: ArcFarmsLocale? = null,
     cartEffects: MineCartEffects = PaperMineCartEffects(plugin),
+    incidentEntityEffects: MineIncidentEntityEffects = PaperMineIncidentEntityEffects(plugin),
 ) {
     internal val registry = MineRuntimeRegistry()
     val recovery = MineBlockRecoveryController(journal, port, clock)
@@ -56,6 +61,8 @@ internal class MineComponentGraph(
     val cartScene = MineCartScene(cartEffects)
     val extraction = MineExtractionController(registry, index, cartScene, transitions, port, clock)
     val loading = MineLoadingController(registry, index, extraction, transitions, serviceItems, locale, port, clock)
+    val creatureNest = MineCreatureNestIncident(registry, index, incidents, incidentEntityEffects)
+    val lostMiner = MineLostMinerIncident(registry, index, incidents, incidentEntityEffects, extraction::deliveryPoint)
     val prospecting = MineProspectingController(registry, index, recovery, transitions, port, clock, loading::canStage)
     val mining = MineMiningController(
         registry, index, recovery, transitions, port, clock, random, blockEffects, loading::begin,
@@ -68,7 +75,7 @@ internal class MineComponentGraph(
     }
     val module = MineModule(
         regions, port, registry, recovery, index, tickets, prospecting, mining, loading, extraction, cartScene,
-        caveIn, trackDamage, gasLeak, crystalResonance, flooding, powerFailure,
+        caveIn, trackDamage, gasLeak, crystalResonance, flooding, powerFailure, creatureNest, lostMiner,
     )
 
     internal val mutableRuntimeCollectionCount: Int = 1

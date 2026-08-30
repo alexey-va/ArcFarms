@@ -7,6 +7,7 @@ import org.bukkit.entity.Player
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.event.entity.EntityDeathEvent
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.paper.worksite.RuntimeComponent
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
@@ -49,6 +50,10 @@ internal interface WorksiteMoveHandler {
 
 internal interface WorksiteEntityInteractHandler {
     fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean
+}
+
+internal interface WorksiteEntityDeathHandler {
+    fun onEntityDeath(event: EntityDeathEvent): Boolean
 }
 
 /** One-tick visual work only; gameplay state still advances through [WorksiteModule.tick]. */
@@ -126,6 +131,9 @@ internal class WorksiteModuleRegistry(
 
     fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean =
         modulesInOrder.filterIsInstance<WorksiteEntityInteractHandler>().any { it.onInteractEntity(event) }
+
+    fun onEntityDeath(event: EntityDeathEvent): Boolean =
+        modulesInOrder.filterIsInstance<WorksiteEntityDeathHandler>().any { it.onEntityDeath(event) }
 
     fun updateVisuals() = modulesInOrder.filterIsInstance<WorksiteFastVisualHandler>().forEach { it.updateVisuals() }
 

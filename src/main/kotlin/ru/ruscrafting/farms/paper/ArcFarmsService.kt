@@ -385,7 +385,7 @@ class ArcFarmsService(
         worksiteEvents.onInventoryDrag(event)
         farm.events.onInventoryDrag(event)
     }
-    fun onEntityDeath(event: EntityDeathEvent) = farm.events.onEntityDeath(event)
+    fun onEntityDeath(event: EntityDeathEvent) = worksiteEvents.onEntityDeath(event) { farm.events.onEntityDeath(event) }
     fun onEntityChangeBlock(event: EntityChangeBlockEvent) = farm.events.onEntityChangeBlock(event)
     fun onBlockFade(event: BlockFadeEvent) = farm.events.onBlockFade(event)
     fun onBlockBurn(event: BlockBurnEvent) = farm.events.onBlockBurn(event)

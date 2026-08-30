@@ -23,6 +23,10 @@ import ru.ruscrafting.farms.paper.WorksiteMoveHandler
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.persistence.MineRecoveryJournal
 import ru.ruscrafting.farms.paper.WorksiteFastVisualHandler
+import ru.ruscrafting.farms.paper.WorksiteEntityInteractHandler
+import ru.ruscrafting.farms.paper.WorksiteEntityDeathHandler
+import org.bukkit.event.entity.EntityDeathEvent
+import org.bukkit.event.player.PlayerInteractEntityEvent
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
 import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantOwner
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
@@ -44,7 +48,7 @@ internal class MineVersionedModule(
     serviceItems: WorksiteServiceItems? = null,
 ) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler,
     WorksiteMoveHandler, WorksiteGuidanceHandler, WorksiteFastVisualHandler, WorksiteServiceItemOwner,
-    WorksiteParticipantOwner {
+    WorksiteParticipantOwner, WorksiteEntityInteractHandler, WorksiteEntityDeathHandler {
     private val engineVersion = initial.firstOrNull()?.engineVersion ?: 1
     private val delegate: WorksiteModule<MineShiftState> = if (engineVersion == 2) {
         MineComponentGraph(plugin, regions, port, clock, journal, random, serviceItems = serviceItems, locale = locale).module
@@ -93,6 +97,12 @@ internal class MineVersionedModule(
 
     override fun onMove(from: Location, to: Location, player: Player): Boolean =
         (delegate as? WorksiteMoveHandler)?.onMove(from, to, player) == true
+
+    override fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean =
+        (delegate as? WorksiteEntityInteractHandler)?.onInteractEntity(event) == true
+
+    override fun onEntityDeath(event: EntityDeathEvent): Boolean =
+        (delegate as? WorksiteEntityDeathHandler)?.onEntityDeath(event) == true
 
     override fun updateGuidance(expectedBars: MutableSet<ActivityBarKey>) {
         (delegate as? WorksiteGuidanceHandler)?.updateGuidance(expectedBars)
