@@ -19,11 +19,30 @@ class ArcFarmsArchitectureContractTest : FunSpec({
     )
     val farmModulePath = farmRoot.resolve("FarmModule.kt")
     val farmRegistryPath = farmRoot.resolve("FarmRuntimeRegistry.kt")
+    val worksiteModulePath = repositoryRoot.resolve(
+        "src/main/kotlin/ru/ruscrafting/farms/paper/WorksiteModule.kt",
+    )
+    val worksitePortsPath = repositoryRoot.resolve(
+        "src/main/kotlin/ru/ruscrafting/farms/paper/worksite/WorksitePorts.kt",
+    )
 
     test("shift engines do not share one global event enum") {
         val source = Files.readString(domainPath)
 
         source.contains("enum class ShiftEvent") shouldBe false
+    }
+
+    test("worksite modules expose complete lifecycle through narrow runtime ports") {
+        val module = Files.readString(worksiteModulePath)
+        val farm = Files.readString(farmModulePath)
+
+        Files.exists(worksitePortsPath) shouldBe true
+        module.contains("interface WorksiteModule<S> : RuntimeComponent") shouldBe true
+        listOf(
+            "override fun activateLoadedState()",
+            "override fun reconcileChunk(chunk: Chunk)",
+            "override fun cleanup(reason: String)",
+        ).forEach { contract -> farm.contains(contract) shouldBe true }
     }
 
     test("service callbacks cannot bypass the reload-aware task supervisor") {

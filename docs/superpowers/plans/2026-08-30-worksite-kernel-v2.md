@@ -161,7 +161,7 @@ git commit -m "feat: add resilient worksite objective pools"
 - Produces: `RuntimeComponent`, `WorksiteAudiencePort`, `WorksiteAccessPort`, `WorksiteStatePort`, `WorksiteTaskPort`, `WorksiteStatsPort`, `WorksiteNetworkPort` and compatibility composite `WorksiteRuntimePort`.
 - Consumers: all modules; V2 feature owners depend on the smallest relevant port.
 
-- [ ] **Step 1: Write failing lifecycle tests**
+- [x] **Step 1: Write failing lifecycle tests**
 
 ```kotlin
 test("registry activates reconciles and cleans every module exactly once") {
@@ -177,23 +177,23 @@ test("registry activates reconciles and cleans every module exactly once") {
 }
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Run: `./gradlew test --tests '*WorksiteModuleRegistryTest' --tests '*WorksiteLifecycleContractTest'`
 
 Expected: lifecycle methods are unresolved on the current module and registry contracts.
 
-- [ ] **Step 3: Add lifecycle and split ports without changing farm behavior**
+- [x] **Step 3: Add lifecycle and split ports without changing farm behavior**
 
 Make `WorksiteRuntimePort` extend all narrow ports so existing farm constructors compile. Implement registry fan-out in stable `ActivityKind` order. Move `FarmModule.activateLoadedState`, chunk reconciliation and cleanup behind `RuntimeComponent` overrides.
 
-- [ ] **Step 4: Run lifecycle, farm architecture and farm scenario tests**
+- [x] **Step 4: Run lifecycle, farm architecture and farm scenario tests**
 
 Run: `./gradlew test --tests '*Worksite*Test' --tests '*ArcFarmsArchitectureContractTest' --tests '*FarmIncidentLifecycle*'`
 
 Expected: PASS; farm callbacks are invoked once through the registry.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/kotlin/ru/ruscrafting/farms/paper src/test/kotlin/ru/ruscrafting/farms/paper

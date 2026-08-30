@@ -93,7 +93,7 @@ internal class FarmModule(
         orderCycle.retain(registry.snapshot().mapTo(mutableSetOf()) { it.settings.id })
     }
 
-    fun activateLoadedState() {
+    override fun activateLoadedState() {
         moles.reconcileLoaded()
         org.bukkit.Bukkit.getOnlinePlayers().forEach(moles::recoverPlayer)
         field.reconcile(registry.snapshot())
@@ -107,7 +107,7 @@ internal class FarmModule(
         registry.snapshot().forEach(barnFire::ensure)
     }
 
-    fun onChunkLoad(chunk: Chunk) {
+    override fun reconcileChunk(chunk: Chunk) {
         moles.onChunkLoad(chunk)
         scene.onChunkLoad(chunk)
         special.onChunkLoad(chunk)
@@ -328,7 +328,7 @@ internal class FarmModule(
         }
     }
 
-    fun cleanup(reason: String) {
+    override fun cleanup(reason: String) {
         shiftStart.clearPending()
         orderCycle.clearPending()
         scene.cleanup(reason)
