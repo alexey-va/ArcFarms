@@ -50,6 +50,7 @@ import ru.ruscrafting.farms.network.WorkdayState
 import ru.ruscrafting.farms.paper.farm.FarmComponentGraph
 import ru.ruscrafting.farms.paper.navigation.ActivityTravelService
 import ru.ruscrafting.farms.paper.lumber.LumbermillVersionedModule
+import ru.ruscrafting.farms.paper.mine.MineVersionedModule
 import ru.ruscrafting.farms.paper.worksite.WorksiteEventRouter
 import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantSafety
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
@@ -116,7 +117,7 @@ class ArcFarmsService(
     private val lumbermillModule = LumbermillVersionedModule(
         plugin, initialSettings.lumbermills, regionGateway, locale, worksitePort, clock, lumberJournal, worksiteServiceItems,
     )
-    private val mineController = MineController(regionGateway, locale, mineJournal, worksitePort, clock, random)
+    private val mineModule = MineVersionedModule(initialSettings.mines, regionGateway, locale, mineJournal, worksitePort, clock, random)
     private val runtimeValidator = ArcFarmsRuntimeValidator(regionGateway, { economy.available }, fixedCropJournal, mineJournal)
     private val farm = FarmComponentGraph(
         plugin = plugin,
@@ -137,7 +138,7 @@ class ArcFarmsService(
         currentWeekStart = { farmWeekStartEpochDay(clock()) },
         persistAsync = ::persistAsync,
     )
-    private val worksites = WorksiteModuleRegistry(listOf(farm.module, lumbermillModule, mineController))
+    private val worksites = WorksiteModuleRegistry(listOf(farm.module, lumbermillModule, mineModule))
     private val serviceItems = WorksiteServiceItemController(plugin, worksites).also(worksiteServiceItems::bind)
     private val participantSafety = WorksiteParticipantSafety(serviceItems, listOf(worksites))
     private val worksiteEvents = WorksiteEventRouter(worksites, serviceItems, participantSafety)
@@ -193,8 +194,8 @@ class ArcFarmsService(
             if (isOperational()) farm.rewards.deliverPending(Bukkit.getOnlinePlayers())
         }
         plugin.logger.info(
-            "ArcFarms ready: ${farm.runtimes.size} farm, ${lumbermillModule.zoneCount} lumbermill, ${mineController.zoneCount} mine zones; " +
-                "${mineController.pendingBlockCount} pending mine blocks",
+            "ArcFarms ready: ${farm.runtimes.size} farm, ${lumbermillModule.zoneCount} lumbermill, ${mineModule.zoneCount} mine zones; " +
+                "${mineModule.pendingBlockCount} pending mine blocks",
         )
     }
 
@@ -242,7 +243,7 @@ class ArcFarmsService(
             persistAsync()
         }
         plugin.logger.info(
-            "ArcFarms reloaded with ${farm.runtimes.size + lumbermillModule.zoneCount + mineController.zoneCount} zones",
+            "ArcFarms reloaded with ${farm.runtimes.size + lumbermillModule.zoneCount + mineModule.zoneCount} zones",
         )
     }
 
@@ -445,7 +446,7 @@ class ArcFarmsService(
         lumbermillModule.rebuild(
             settings.lumbermills, persisted.lumbermills, settings.completedCooldownSeconds * 1000L,
         )
-        mineController.rebuild(
+        mineModule.rebuild(
             settings.mines,
             persisted.mines,
             settings.completedCooldownSeconds * 1000L,
@@ -499,7 +500,6 @@ class ArcFarmsService(
     private fun emitGuidanceParticles() {
         worksites.emitGuidance()
     }
-
     private fun farmAt(location: Location): FarmRuntime? = farm.runtimes.at(location)
 
     private fun hasAccess(player: Player, permission: String): Boolean =
@@ -531,7 +531,7 @@ class ArcFarmsService(
             farms = farm.runtimes.snapshot().associate { it.settings.id to it.state },
             pausedFarmZones = farm.orderCycle.snapshot(),
             lumbermills = lumbermillModule.states(),
-            mines = mineController.states(),
+            mines = mineModule.states(),
             stats = stats.snapshot(),
             pendingFarmRewards = rewards.pending,
             claimedFarmRewardSequences = rewards.claimed,

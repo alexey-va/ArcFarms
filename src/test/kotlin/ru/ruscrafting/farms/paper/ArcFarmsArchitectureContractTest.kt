@@ -126,14 +126,14 @@ class ArcFarmsArchitectureContractTest : FunSpec({
             "pendingPositions",
             "restoreMineBlocks",
         ).forEach { forbidden -> source.contains(forbidden) shouldBe false }
-        source.contains("private val worksites = WorksiteModuleRegistry(listOf(farm.module, lumbermillModule, mineController))") shouldBe true
+        source.contains("private val worksites = WorksiteModuleRegistry(listOf(farm.module, lumbermillModule, mineModule))") shouldBe true
         source.contains("private val runtimeValidator = ArcFarmsRuntimeValidator") shouldBe true
         source.contains("private val worksitePort = PaperWorksiteRuntimePort") shouldBe true
         source.contains("lumbermillController.onBreak") shouldBe false
         source.contains("lumbermillController.onInteract") shouldBe false
-        source.contains("mineController.onBreak") shouldBe false
-        source.contains("mineController.onInteract") shouldBe false
-        source.contains("mineController.onMove") shouldBe false
+        source.contains("mineModule.onBreak") shouldBe false
+        source.contains("mineModule.onInteract") shouldBe false
+        source.contains("mineModule.onMove") shouldBe false
     }
 
     test("lumber V2 cannot enter the legacy runtime") {
