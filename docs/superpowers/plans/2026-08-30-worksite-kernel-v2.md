@@ -211,7 +211,7 @@ git commit -m "refactor: complete worksite lifecycle contract"
 - Produces: `WorksiteGuidanceView`, `WorksiteGuidanceTarget`, `WorksiteGuidanceSource`, `WorksiteGuidancePresenter.updateHud`, `.emitParticles`, `.recordProgress`, `.releasePlayer`.
 - Consumes: narrow audience/task/access ports and module-local localized views.
 
-- [ ] **Step 1: Write failing guidance tests**
+- [x] **Step 1: Write failing guidance tests**
 
 ```kotlin
 test("a stalled participant receives a title and only personal nearest targets") {
@@ -225,23 +225,23 @@ test("a stalled participant receives a title and only personal nearest targets")
 }
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Run: `./gradlew test --tests '*WorksiteGuidancePresenterMockBukkitTest'`
 
 Expected: guidance types do not exist.
 
-- [ ] **Step 3: Implement bounded per-player sessions**
+- [x] **Step 3: Implement bounded per-player sessions**
 
 Store only player UUID, runtime key, observed progress version and last reminder time. Render boss bars every HUD cadence, titles only after 12 seconds without progress, and one nearest loaded target per required role. Remove sessions on player release and objective/version change.
 
-- [ ] **Step 4: Run focused tests**
+- [x] **Step 4: Run focused tests**
 
 Run: `./gradlew test --tests '*WorksiteGuidancePresenterMockBukkitTest' --tests '*FarmHarvestGuidance*'`
 
 Expected: PASS and existing farm particle behavior remains unchanged.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/kotlin/ru/ruscrafting/farms/paper/worksite src/test/kotlin/ru/ruscrafting/farms/paper/worksite
