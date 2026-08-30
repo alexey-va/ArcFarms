@@ -20,6 +20,8 @@ import ru.ruscrafting.farms.paper.lumber.dispatch.LumberDispatchController
 import ru.ruscrafting.farms.paper.lumber.incident.LumberIncidentCoordinator
 import ru.ruscrafting.farms.paper.lumber.incident.windthrow.LumberWindthrowIncident
 import ru.ruscrafting.farms.paper.lumber.incident.beetle.LumberBarkBeetleIncident
+import ru.ruscrafting.farms.paper.lumber.incident.jam.LumberSawJamIncident
+import ru.ruscrafting.farms.paper.lumber.incident.warped.LumberWarpedBatchIncident
 import ru.ruscrafting.farms.persistence.LumberRecoveryJournal
 
 /** Composition-only graph; the registry is the sole mutable runtime collection owner. */
@@ -53,6 +55,8 @@ internal class LumbermillComponentGraph(
     val dispatch = LumberDispatchController(registry, transitions, port, clock)
     val windthrow = LumberWindthrowIncident(registry, index, recovery, incidents, port)
     val beetles = LumberBarkBeetleIncident(registry, index, incidents, port)
+    val sawJam = LumberSawJamIncident(registry, incidents, port)
+    val warped = LumberWarpedBatchIncident(incidents)
     val felling = LumberFellingController(
         registry,
         index,
@@ -72,7 +76,7 @@ internal class LumbermillComponentGraph(
     }
     val module = LumbermillModule(
         regions, port, registry, index, recovery, tickets, felling, skidding, bundleScene,
-        sawing, stacking, stackingScene, dispatch, windthrow, beetles,
+        sawing, stacking, stackingScene, dispatch, windthrow, beetles, sawJam,
     )
 
     internal val mutableRuntimeCollectionCount: Int = 1

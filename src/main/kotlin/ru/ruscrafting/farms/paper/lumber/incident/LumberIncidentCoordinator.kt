@@ -66,6 +66,25 @@ internal class LumberIncidentCoordinator(
         return result
     }
 
+    fun work(runtime: LumberRuntime, player: Player, amount: Int = 1): EngineResult<LumberShiftState, LumberShiftEvent> {
+        val worked = LumberShiftEngine.workIncident(runtime.state, player.uniqueId, amount)
+        if (!worked.accepted) return worked
+        val incident = worked.state.incident
+        val result = if (incident != null && incident.progress >= incident.required) {
+            val resolved = LumberShiftEngine.resolveIncident(worked.state)
+            EngineResult(
+                resolved.state,
+                accepted = resolved.accepted,
+                contribution = worked.contribution,
+                events = worked.events + resolved.events,
+            )
+        } else {
+            worked
+        }
+        transitions.apply(runtime, result, player)
+        return result
+    }
+
     fun invalidate(
         runtime: LumberRuntime,
         targetId: String,

@@ -35,6 +35,7 @@ import ru.ruscrafting.farms.paper.lumber.stacking.LumberStackingScene
 import ru.ruscrafting.farms.paper.lumber.dispatch.LumberDispatchController
 import ru.ruscrafting.farms.paper.lumber.incident.windthrow.LumberWindthrowIncident
 import ru.ruscrafting.farms.paper.lumber.incident.beetle.LumberBarkBeetleIncident
+import ru.ruscrafting.farms.paper.lumber.incident.jam.LumberSawJamIncident
 import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantOwner
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 
@@ -54,6 +55,7 @@ internal class LumbermillModule(
     private val dispatch: LumberDispatchController,
     private val windthrow: LumberWindthrowIncident,
     private val beetles: LumberBarkBeetleIncident,
+    private val sawJam: LumberSawJamIncident,
 ) : WorksiteModule<LumberShiftState>, WorksiteBlockBreakHandler, WorksiteEntityInteractHandler,
     WorksiteBlockInteractHandler, WorksiteMoveHandler, WorksiteFastVisualHandler, WorksiteParticipantOwner {
     override val kind: ActivityKind = ActivityKind.LUMBER
@@ -96,7 +98,8 @@ internal class LumbermillModule(
         windthrow.onBreak(event) || felling.onBreakHigh(event)
 
     override fun onInteract(event: PlayerInteractEvent, clicked: Block, player: Player): Boolean =
-        beetles.onInteract(event, clicked, player) || sawing.onInteract(event, clicked, player) ||
+        beetles.onInteract(event, clicked, player) || sawJam.onInteract(event, clicked, player) ||
+            sawing.onInteract(event, clicked, player) ||
             stacking.onInteract(event, clicked, player) ||
             dispatch.onInteract(event, clicked, player)
 

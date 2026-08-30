@@ -354,7 +354,7 @@ git commit -m "feat: add lumber forest incidents"
 **Interfaces:**
 - Produces: ordered safety-switch/jam flow and two-role plank sorting.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```kotlin
 test("wrong switch and wrong pallet never erase accepted incident progress") {
@@ -369,7 +369,7 @@ test("wrong switch and wrong pallet never erase accepted incident progress") {
 }
 ```
 
-- [ ] **Step 2: Run RED, implement separate owners, run GREEN**
+- [x] **Step 2: Run RED, implement separate owners, run GREEN**
 
 Run RED: `./gradlew test --tests '*LumberWorkshopIncidentsMockBukkitTest'`
 
@@ -377,7 +377,7 @@ Implement stable role colors, personal nearest target views and non-resetting se
 
 Run GREEN: `./gradlew test --tests '*LumberWorkshopIncidentsMockBukkitTest' --tests '*WorksiteGuidance*'`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/main/kotlin/ru/ruscrafting/farms/paper/lumber/incident src/test/kotlin/ru/ruscrafting/farms/paper/lumber/incident

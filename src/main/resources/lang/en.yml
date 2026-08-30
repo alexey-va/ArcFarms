@@ -689,6 +689,7 @@ lumber:
   saw-right: '<yellow>Use the right saw control next.</yellow>'
   plank-unavailable: '<gray>No additional plank bundle is available right now.</gray>'
   plank-returned: '<gray>The plank bundle was returned to the workshop.</gray>'
+  jam-sequence: '<yellow>Release the safety controls in the shown order.</yellow>'
   processing: '<gold>The timber quota is ready</gold>'
   processing-subtitle: '<gray>Go to the workshop and use a machine</gray>'
   station-required: '<gray>Processing happens at a machine inside the lumber workshop.</gray>'

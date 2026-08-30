@@ -689,6 +689,7 @@ lumber:
   saw-right: '<yellow>Теперь нажмите правый рычаг пилы.</yellow>'
   plank-unavailable: '<gray>Сейчас нельзя взять ещё одну пачку досок.</gray>'
   plank-returned: '<gray>Пачка досок возвращена в цех.</gray>'
+  jam-sequence: '<yellow>Переключайте защитные рычаги по порядку.</yellow>'
   processing: '<gold>Древесина собрана</gold>'
   processing-subtitle: '<gray>Идите в цех и используйте станок</gray>'
   station-required: '<gray>Обработка идёт на станке внутри лесопильного цеха.</gray>'

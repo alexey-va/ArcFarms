@@ -423,6 +423,7 @@ enum class MessageKey(val path: String) {
     LUMBER_SAW_RIGHT("lumber.saw-right"),
     LUMBER_PLANK_UNAVAILABLE("lumber.plank-unavailable"),
     LUMBER_PLANK_RETURNED("lumber.plank-returned"),
+    LUMBER_JAM_SEQUENCE("lumber.jam-sequence"),
     LUMBER_PROCESSING("lumber.processing"),
     LUMBER_PROCESSING_SUBTITLE("lumber.processing-subtitle"),
     LUMBER_STATION_REQUIRED("lumber.station-required"),
