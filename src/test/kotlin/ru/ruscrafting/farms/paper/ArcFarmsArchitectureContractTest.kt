@@ -32,6 +32,12 @@ class ArcFarmsArchitectureContractTest : FunSpec({
     val lumberFactoryPath = repositoryRoot.resolve(
         "src/main/kotlin/ru/ruscrafting/farms/paper/lumber/LumberRuntimeFactory.kt",
     )
+    val mineVersionedPath = repositoryRoot.resolve(
+        "src/main/kotlin/ru/ruscrafting/farms/paper/mine/MineVersionedModule.kt",
+    )
+    val mineFactoryPath = repositoryRoot.resolve(
+        "src/main/kotlin/ru/ruscrafting/farms/paper/mine/MineRuntimeFactory.kt",
+    )
 
     test("shift engines do not share one global event enum") {
         val source = Files.readString(domainPath)
@@ -141,7 +147,19 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         val factory = Files.readString(lumberFactoryPath)
 
         versioned.contains("if (engineVersion == 2)") shouldBe true
-        versioned.contains("LumbermillComponentGraph(plugin, regions, port, clock, journal, serviceItems, locale = locale).module") shouldBe true
+        versioned.contains("LumbermillComponentGraph(") shouldBe true
+        versioned.contains("rewardGrants = rewardGrants") shouldBe true
+        versioned.contains(").module") shouldBe true
+        factory.contains("require(settings.engineVersion == 2)") shouldBe true
+    }
+
+    test("mine V2 cannot enter the legacy runtime") {
+        val versioned = Files.readString(mineVersionedPath)
+        val factory = Files.readString(mineFactoryPath)
+
+        versioned.contains("if (engineVersion == 2)") shouldBe true
+        versioned.contains("MineComponentGraph(") shouldBe true
+        versioned.contains("rewardGrants = rewardGrants") shouldBe true
         factory.contains("require(settings.engineVersion == 2)") shouldBe true
     }
 

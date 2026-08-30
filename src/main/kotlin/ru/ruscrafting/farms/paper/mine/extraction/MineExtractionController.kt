@@ -12,6 +12,8 @@ import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.mine.MineTransitionCoordinator
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
+import ru.ruscrafting.farms.domain.ActivityKind
+import ru.ruscrafting.farms.paper.worksite.WorksiteRewardGrantService
 
 internal class MineExtractionController(
     private val registry: MineRuntimeRegistry,
@@ -20,6 +22,7 @@ internal class MineExtractionController(
     private val transitions: MineTransitionCoordinator,
     private val port: WorksiteRuntimePort,
     private val clock: () -> Long,
+    private val rewards: WorksiteRewardGrantService? = null,
 ) {
     private val routes = mutableMapOf<String, MineExtractionRoute>()
 
@@ -46,7 +49,20 @@ internal class MineExtractionController(
         val advanced = MineShiftEngine.advanceRoute(runtime.state, route.finalIndex, player.uniqueId)
         transitions.apply(runtime, advanced, player)
         if (runtime.state.routeIndex >= route.finalIndex) {
-            transitions.apply(runtime, MineShiftEngine.extract(runtime.state, runtime.rules(), player.uniqueId, clock()), player)
+            val result = MineShiftEngine.extract(runtime.state, runtime.rules(), player.uniqueId, clock())
+            transitions.apply(runtime, result, player)
+            if (result.accepted) {
+                port.recordCompletion(ActivityKind.MINE, result.state.contributors)
+                rewards?.queueCompletion(
+                    ActivityKind.MINE, runtime.settings.rewards, runtime.settings.id, result.state.sequence,
+                    result.state.contributors,
+                    runtime.rules().let { it.prospectingQuota + it.miningQuota + it.loadingQuota + route.finalIndex },
+                    result.state.incidentSchedule.size,
+                )
+                port.complete(ActivityKind.MINE, player.name, emptySet())
+                port.announceWinner(listOf(runtime.region), result.state.contributors)
+                port.celebration(listOf(runtime.region))
+            }
             scene.cleanup(runtime.settings.id)
         } else {
             scene.reconcile(runtime, route)
@@ -56,6 +72,9 @@ internal class MineExtractionController(
 
     fun reconcile(runtime: MineRuntime) = scene.reconcile(runtime, route(runtime))
     fun routeFor(runtime: MineRuntime): MineExtractionRoute? = route(runtime)
+    fun guidanceTarget(runtime: MineRuntime): WorksitePosition? = route(runtime)?.let { route ->
+        route.sample((runtime.state.routeIndex + 1).coerceAtMost(route.finalIndex))
+    }
 
     fun cleanup() {
         registry.snapshot().forEach { scene.cleanup(it.settings.id) }

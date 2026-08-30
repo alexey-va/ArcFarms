@@ -343,6 +343,14 @@ data class FarmRewardSettings(
     val requiresEconomy: Boolean get() = money.amountCents > 0
 }
 
+internal fun defaultWorksiteRewards(experience: Int = 100): FarmRewardSettings = FarmRewardSettings(
+    FarmExperienceRewardSettings(experience, 100),
+    FarmMoneyRewardSettings(0L, 100),
+    emptyList(),
+    emptyList(),
+    FarmRandomBundleSettings(0, 100, emptyList()),
+)
+
 data class FarmExperienceRewardSettings(
     val amount: Int,
     val chancePercent: Int,
@@ -586,6 +594,7 @@ data class MineZoneSettings(
     val targetMultiplier: Int = 2,
     val incidentCountMin: Int = 3,
     val incidentCountMax: Int = 5,
+    val rewards: FarmRewardSettings = defaultWorksiteRewards(125),
 ) {
     init {
         require(engineVersion in 1..2) { "Mine zone $id engine-version must be 1 or 2" }
@@ -1459,7 +1468,7 @@ class ArcFarmsConfig private constructor(
                     delivery = delivery,
                     routeDelivery = routeDelivery,
                     perks = perks,
-                    rewards = parseFarmRewards(section, id),
+                    rewards = parseRewards(section, id, "farm-zones", 75),
                     crops = crops,
                     rareOrderChancePercent = rareOrderChancePercent,
                     orders = orders,
@@ -1524,6 +1533,7 @@ class ArcFarmsConfig private constructor(
                     incidentCountMin = incidentCountMin,
                     incidentCountMax = incidentCountMax,
                     recoverySeconds = section.int("recovery-seconds", 90).checked("lumber recovery-seconds", 5, 3_600),
+                    rewards = parseRewards(section, id, "lumber-zones", 110),
                 ).also {
                     require(it.processingPerUse <= it.processingQuota) { "processing-per-use exceeds processing-quota in $id" }
                 }
@@ -1577,6 +1587,7 @@ class ArcFarmsConfig private constructor(
                     targetMultiplier = section.int("target-multiplier", 2).checked("mine target-multiplier", 2, 4),
                     incidentCountMin = incidentCountMin,
                     incidentCountMax = incidentCountMax,
+                    rewards = parseRewards(section, id, "mine-zones", 125),
                 ).also {
                     require(it.hazardTrigger < it.cartQuota) { "Mine $id hazard-trigger must be below cart-quota" }
                     require(it.temporaryMaterial !in it.materialWeights) { "Mine $id temp-material must not be a generated material" }
@@ -1803,17 +1814,19 @@ class ArcFarmsConfig private constructor(
             )
         }
 
-        private fun parseFarmRewards(
+        private fun parseRewards(
             section: ru.arc.config.ConfigSection,
             zoneId: String,
+            root: String,
+            defaultExperience: Int,
         ): FarmRewardSettings {
             fun chance(path: String, default: Int = 100): Int =
-                section.int(path, default).checked("farm-zones.$zoneId.$path", 0, 100)
+                section.int(path, default).checked("$root.$zoneId.$path", 0, 100)
 
             fun item(path: String, id: String): FarmItemRewardSettings = FarmItemRewardSettings(
                 id = id,
                 material = materialName(section.string("$path.material")),
-                amount = section.int("$path.amount").checked("farm-zones.$zoneId.$path.amount", 1, 2_304),
+                amount = section.int("$path.amount").checked("$root.$zoneId.$path.amount", 1, 2_304),
                 chancePercent = chance("$path.chance-percent"),
             )
 
@@ -1839,7 +1852,7 @@ class ArcFarmsConfig private constructor(
                     FarmBundleItemSettings(
                         material = materialName(section.string("$path.items.$itemId.material")),
                         amount = section.int("$path.items.$itemId.amount")
-                            .checked("farm-zones.$zoneId.$path.items.$itemId.amount", 1, 2_304),
+                            .checked("$root.$zoneId.$path.items.$itemId.amount", 1, 2_304),
                     )
                 }
                 require(bundleItems.isNotEmpty() && bundleItems.size <= 27) {
@@ -1856,15 +1869,15 @@ class ArcFarmsConfig private constructor(
                 "Farm zone $zoneId random reward bundle weight is unbounded"
             }
             val bundleRolls = section.int("rewards.random-bundles.rolls", 0)
-                .checked("farm-zones.$zoneId.rewards.random-bundles.rolls", 0, 4)
+                .checked("$root.$zoneId.rewards.random-bundles.rolls", 0, 4)
             require(bundleRolls == 0 || bundleEntries.isNotEmpty()) {
                 "Farm zone $zoneId enables random bundle rolls without bundle entries"
             }
 
             return FarmRewardSettings(
                 experience = FarmExperienceRewardSettings(
-                    amount = section.int("rewards.experience.amount", 75)
-                        .checked("farm-zones.$zoneId.rewards.experience.amount", 0, 10_000),
+                    amount = section.int("rewards.experience.amount", defaultExperience)
+                        .checked("$root.$zoneId.rewards.experience.amount", 0, 10_000),
                     chancePercent = chance("rewards.experience.chance-percent"),
                 ),
                 money = FarmMoneyRewardSettings(

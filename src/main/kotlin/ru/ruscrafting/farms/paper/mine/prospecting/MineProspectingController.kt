@@ -71,6 +71,8 @@ internal class MineProspectingController(
         return true
     }
 
+    fun adminStart(runtime: MineRuntime, player: org.bukkit.entity.Player): Boolean = ensureStarted(runtime, player)
+
     private fun ensureStarted(runtime: MineRuntime, player: org.bukkit.entity.Player): Boolean {
         if (runtime.state.phase == MinePhase.COOLDOWN) return false.also { remind(player, MessageKey.COOLDOWN) }
         if (runtime.state.phase != MinePhase.IDLE) return true

@@ -55,6 +55,8 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteEventRouter
 import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantSafety
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItemController
+import ru.ruscrafting.farms.paper.worksite.WorksiteRewardGrantService
+import ru.ruscrafting.farms.paper.worksite.WorksiteAdminRegistry
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
@@ -114,12 +116,6 @@ class ArcFarmsService(
         guard = ::runGuarded,
     )
     private val worksiteServiceItems = ru.ruscrafting.farms.paper.worksite.LateBoundWorksiteServiceItems()
-    private val lumbermillModule = LumbermillVersionedModule(
-        plugin, initialSettings.lumbermills, regionGateway, locale, worksitePort, clock, lumberJournal, worksiteServiceItems,
-    )
-    private val mineModule = MineVersionedModule(
-        plugin, initialSettings.mines, regionGateway, locale, mineJournal, worksitePort, clock, random, worksiteServiceItems,
-    )
     private val runtimeValidator = ArcFarmsRuntimeValidator(regionGateway, { economy.available }, fixedCropJournal, mineJournal)
     private val farm = FarmComponentGraph(
         plugin = plugin,
@@ -140,6 +136,10 @@ class ArcFarmsService(
         currentWeekStart = { farmWeekStartEpochDay(clock()) },
         persistAsync = ::persistAsync,
     )
+    private val worksiteRewards = WorksiteRewardGrantService(farm.rewards)
+    private val lumbermillModule = LumbermillVersionedModule(plugin, initialSettings.lumbermills, regionGateway, locale, worksitePort, clock, lumberJournal, worksiteServiceItems, worksiteRewards)
+    private val mineModule = MineVersionedModule(plugin, initialSettings.mines, regionGateway, locale, mineJournal, worksitePort, clock, random, worksiteServiceItems, worksiteRewards)
+    internal val worksiteAdmins = WorksiteAdminRegistry(listOf(lumbermillModule, mineModule))
     private val worksites = WorksiteModuleRegistry(listOf(farm.module, lumbermillModule, mineModule))
     private val serviceItems = WorksiteServiceItemController(plugin, worksites).also(worksiteServiceItems::bind)
     private val participantSafety = WorksiteParticipantSafety(serviceItems, listOf(worksites))

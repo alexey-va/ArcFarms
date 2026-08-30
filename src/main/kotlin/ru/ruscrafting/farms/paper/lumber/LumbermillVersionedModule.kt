@@ -28,6 +28,10 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantOwner
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItemOwner
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems
+import ru.ruscrafting.farms.paper.worksite.WorksiteRewardGrantService
+import ru.ruscrafting.farms.paper.worksite.WorksiteAdminHandler
+import ru.ruscrafting.farms.paper.worksite.WorksiteAdminReindexTick
+import ru.ruscrafting.farms.paper.worksite.WorksiteAdminStatus
 import ru.ruscrafting.farms.persistence.LumberRecoveryJournal
 import java.util.UUID
 
@@ -41,12 +45,15 @@ internal class LumbermillVersionedModule(
     clock: () -> Long,
     journal: LumberRecoveryJournal,
     serviceItems: WorksiteServiceItems? = null,
+    rewardGrants: WorksiteRewardGrantService? = null,
 ) : WorksiteModule<LumberShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler,
     WorksiteMoveHandler, WorksiteEntityInteractHandler, WorksiteFastVisualHandler, WorksiteGuidanceHandler,
-    WorksiteServiceItemOwner, WorksiteParticipantOwner {
+    WorksiteServiceItemOwner, WorksiteParticipantOwner, WorksiteAdminHandler {
     private val engineVersion = initial.firstOrNull()?.engineVersion ?: 1
     private val delegate: WorksiteModule<LumberShiftState> = if (engineVersion == 2) {
-        LumbermillComponentGraph(plugin, regions, port, clock, journal, serviceItems, locale = locale).module
+        LumbermillComponentGraph(
+            plugin, regions, port, clock, journal, serviceItems, locale = locale, rewardGrants = rewardGrants,
+        ).module
     } else {
         LumbermillController(regions, locale, port, clock)
     }
@@ -64,6 +71,17 @@ internal class LumbermillVersionedModule(
             else -> error("Unsupported lumber module: ${target::class.qualifiedName}")
         }
     }
+
+    override fun zoneIds(): List<String> = (delegate as? LumbermillModule)?.admin?.zoneIds().orEmpty()
+    override fun incidentIds(): List<String> = (delegate as? LumbermillModule)?.admin?.incidentIds().orEmpty()
+    override fun status(zoneId: String): WorksiteAdminStatus? = (delegate as? LumbermillModule)?.admin?.status(zoneId)
+    override fun start(zoneId: String, player: Player): Boolean = (delegate as? LumbermillModule)?.admin?.start(zoneId, player) == true
+    override fun forceIncident(zoneId: String, incidentId: String, now: Long): Boolean =
+        (delegate as? LumbermillModule)?.admin?.forceIncident(zoneId, incidentId, now) == true
+    override fun startReindex(zoneId: String): Boolean = (delegate as? LumbermillModule)?.admin?.startReindex(zoneId) == true
+    override fun tickReindex(zoneId: String, budget: Int): WorksiteAdminReindexTick? =
+        (delegate as? LumbermillModule)?.admin?.tickReindex(zoneId, budget)
+    override fun cancelReindex(zoneId: String): Boolean = (delegate as? LumbermillModule)?.admin?.cancelReindex(zoneId) == true
 
     override fun states(): Map<String, LumberShiftState> = delegate.states()
     override fun statuses(): List<ActivityStatus> = delegate.statuses()

@@ -14,12 +14,14 @@ import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.lumber.LumberRuntime
 import ru.ruscrafting.farms.paper.lumber.LumberRuntimeRegistry
 import ru.ruscrafting.farms.paper.lumber.LumberTransitionCoordinator
+import ru.ruscrafting.farms.paper.worksite.WorksiteRewardGrantService
 
 internal class LumberDispatchController(
     private val registry: LumberRuntimeRegistry,
     private val transitions: LumberTransitionCoordinator,
     private val port: WorksiteRuntimePort,
     private val clock: () -> Long,
+    private val rewards: WorksiteRewardGrantService? = null,
 ) {
     fun onInteract(event: PlayerInteractEvent, clicked: Block, player: Player): Boolean {
         val runtime = registry.snapshot().firstOrNull { it.station.contains(clicked.location) } ?: return false
@@ -43,6 +45,12 @@ internal class LumberDispatchController(
         if (!result.accepted) return result
         transitions.apply(runtime, result, player)
         port.recordCompletion(ActivityKind.LUMBER, result.state.contributors)
+        rewards?.queueCompletion(
+            ActivityKind.LUMBER, runtime.settings.rewards, runtime.settings.id, result.state.sequence,
+            result.state.contributors,
+            runtime.rules().let { it.fellingQuota + it.skiddingQuota + it.sawingQuota + it.stackingQuota },
+            result.state.incidentSchedule.size,
+        )
         port.complete(ActivityKind.LUMBER, player.name, emptySet())
         port.announceWinner(listOf(runtime.region, runtime.station), result.state.contributors)
         port.celebration(listOf(runtime.region, runtime.station))

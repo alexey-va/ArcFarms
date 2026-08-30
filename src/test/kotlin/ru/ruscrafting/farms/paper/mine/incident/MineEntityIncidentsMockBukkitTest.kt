@@ -76,6 +76,10 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         restarted.lostMiner.reconcileChunk(restartedRuntime, world.getChunkAt(0, 0)) shouldBe 1
         effects.count(MineIncidentEntityKind.MINER) shouldBe 1
 
+        effects.remove(effects.singleId(MineIncidentEntityKind.MINER))
+        restarted.lostMiner.reconcileMissing(restartedRuntime) shouldBe 1
+        effects.count(MineIncidentEntityKind.MINER) shouldBe 1
+
         restarted.lostMiner.beginEscort(restartedRuntime, player) shouldBe true
         val entrance = requireNotNull(restarted.extraction.deliveryPoint(restartedRuntime))
         restarted.lostMiner.onMove(Location(world, entrance.x + 0.5, entrance.y + 1.0, entrance.z + 0.5), player) shouldBe true
@@ -143,6 +147,7 @@ private class RecordingIncidentEntities : MineIncidentEntityEffects {
     }
 
     fun count(kind: MineIncidentEntityKind): Int = identities.values.count { it.kind == kind }
+    fun singleId(kind: MineIncidentEntityKind): UUID = identities.filterValues { it.kind == kind }.keys.single()
 }
 
 private fun org.bukkit.block.Block.position() = WorksitePosition(world.name, x, y, z)

@@ -36,6 +36,18 @@ admin-inspect:
     orchard: '<gray>точка для яблок</gray>'
 admin:
   help: '<prefix> <gray>Управление фермой</gray><newline>  <dark_gray>•</dark_gray> <white>reset-farm communal_farm</white> <gray>— очистить ферму и остановить новые заказы</gray><newline>  <dark_gray>•</dark_gray> <white>stop-order-cycle</white><gray> / </gray><white>start-order-cycle communal_farm</white> <gray>— остановить или запустить цикл</gray><newline>  <dark_gray>•</dark_gray> <white>save-farm-backup communal_farm</white> <gray>— сохранить весь регион фермы</gray><newline>  <dark_gray>•</dark_gray> <white>reindex-farm communal_farm</white> <gray>— заново найти грядки, плоды и листву</gray><newline>  <dark_gray>•</dark_gray> <white>event</white><gray>, </gray><white>next</white><gray>, </gray><white>finish</white><gray>, </gray><white>edit</white><gray>, </gray><white>inspect</white><gray>, </gray><white>point</white><gray>, </gray><white>backup</white><gray>, </gray><white>blockreset</white><newline>  <dark_gray>•</dark_gray> <gray>добавьте </gray><white>help</white> <gray>после любой команды, чтобы увидеть синтаксис</gray>'
+  worksite:
+    help: '<prefix> <gray>Лесопилка и шахта:</gray><newline><white>/arcfarms admin worksite \<lumber|mine> \<зона> status</white><newline><white>… start</white> <gray>— начать смену</gray><newline><white>… incident \<тип></white> <gray>— запустить происшествие</gray><newline><white>… reindex \<start|tick|cancel></white> <gray>— обновить индекс блоков</gray>'
+    unknown: '<prefix> <red>Площадка <activity>:<zone> не найдена.</red>'
+    status: '<prefix> <gold><activity>:<zone></gold> <dark_gray>│</dark_gray> <gray>этап:</gray> <white><phase></white> <dark_gray>│</dark_gray> <gray>смена:</gray> <white><sequence></white><newline><gray>Происшествие:</gray> <white><incident></white> <dark_gray>│</dark_gray> <gray>цель:</gray> <white><progress></white>'
+    started: '<prefix> <green>Смена на площадке <activity>:<zone> запущена.</green>'
+    rejected: '<prefix> <gold>Смену начать нельзя:</gold> <gray>площадка занята, восстанавливается или индекс ещё не готов.</gray>'
+    incident-started: '<prefix> <green>Происшествие <incident> запущено на <activity>:<zone>.</green>'
+    incident-rejected: '<prefix> <gold>Происшествие <incident> сейчас запустить нельзя:</gold> <gray>неподходящий этап или не хватает доступных индексированных целей.</gray>'
+    reindex-started: '<prefix> <green>Обновление индекса <activity>:<zone> начато.</green>'
+    reindex-rejected: '<prefix> <gold>Обновление индекса не запущено:</gold> <gray>неизвестная площадка или операция уже выполняется.</gray>'
+    reindex-progress: '<prefix> <gray>Индекс <activity>:<zone>:</gray> <white><blocks></white> <gray>блоков,</gray> <white><targets></white> <gray>целей.</gray>'
+    reindex-cancelled: '<prefix> <gold>Обновление индекса <activity>:<zone> отменено.</gold>'
   command-help:
     edit: '<prefix> <white>/arcfarms admin edit</white> <gray>— включает режим перестройки: можно ломать управляемые грядки во время заказа, а ArcFarms удалит их записи восстановления.</gray>'
     inspect: '<prefix> <white>/arcfarms admin inspect</white> <gray>— включает карту метаданных частицами; нажмите на блок, чтобы увидеть BlockData, записи восстановления и текущий контроль ArcFarms.</gray>'
@@ -739,6 +751,24 @@ mine:
   index-shortage: '<red>В шахте недостаточно доступных индексированных целей. Попросите администратора переиндексировать её.</red>'
   ore-crate: '<gold>Ящик с рудой</gold>'
   loading-required: '<yellow>Возьмите отмеченный ящик с рудой и отнесите его к вывозной телеге.</yellow>'
+  guidance:
+    title: '<color:#45c8f5><bold>Работа в шахте</bold></color>'
+    bar: '<action> <dark_gray>•</dark_gray> <aqua><done></aqua><gray>/</gray><gold><total></gold>'
+    prospecting: '<color:#f2fff7>Осмотрите подсвеченные участки породы правой кнопкой</color>'
+    mining: '<color:#f2fff7>Добывайте подсвеченные блоки найденной жилы</color>'
+    loading: '<color:#f2fff7>Берите ящики с рудой и относите их к вывозной телеге</color>'
+    extraction: '<color:#f2fff7>Толкайте телегу по подсвеченному безопасному пути к выходу</color>'
+    incident: '<color:#f2fff7>Устраните аварию и продолжайте экспедицию</color>'
+    cooldown: '<color:#b8c8c0>Дождитесь следующей экспедиции</color>'
+    hazard: '<color:#f2fff7>Укрепите нестабильный забой</color>'
+    cave_in: '<color:#f2fff7>Возьмите набор подпорок и укрепите отмеченные места</color>'
+    gas_leak: '<color:#f2fff7>Открывайте подсвеченные вентиляционные решётки по порядку</color>'
+    flooding: '<color:#f2fff7>Возьмите насос и осушите отмеченные затопленные участки</color>'
+    track_damage: '<color:#f2fff7>Возьмите рельсовый набор и почините отмеченные участки пути</color>'
+    crystal_resonance: '<color:#f2fff7>Активируйте подсвеченные кристаллы по порядку</color>'
+    creature_nest: '<color:#f2fff7>Уничтожьте существ у отмеченного гнезда</color>'
+    power_failure: '<color:#f2fff7>Включайте подсвеченные узлы питания по порядку</color>'
+    lost_miner: '<color:#f2fff7>Найдите шахтёра, нажмите на него и проводите к выходу</color>'
 shift:
   winner: '<color:#ffc857>Лучший вклад</color> <color:#707a76>•</color> <white><player></white> <color:#f2fff7>— <amount></color>'
 care:

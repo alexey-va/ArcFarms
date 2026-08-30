@@ -53,7 +53,7 @@ internal class LumberFellingController(
             remind(event.player, MessageKey.LUMBER_TARGET_REQUIRED)
             return true
         }
-        if (!ensureStarted(runtime, brokenSpecies, event)) return true
+        if (runtime.state.phase == LumberPhase.IDLE && !ensureStarted(runtime, brokenSpecies, event.player)) return true
         val species = runtime.state.species
         if (runtime.state.phase != LumberPhase.FELLING || brokenSpecies != species) {
             remind(
@@ -114,17 +114,24 @@ internal class LumberFellingController(
         return true
     }
 
-    private fun ensureStarted(runtime: LumberRuntime, brokenSpecies: String, event: BlockBreakEvent): Boolean {
+    fun adminStart(runtime: LumberRuntime, player: org.bukkit.entity.Player): Boolean =
+        ensureStarted(runtime, requiredSpecies = null, player)
+
+    private fun ensureStarted(
+        runtime: LumberRuntime,
+        requiredSpecies: String?,
+        player: org.bukkit.entity.Player,
+    ): Boolean {
         if (runtime.state.phase == LumberPhase.COOLDOWN) {
-            remind(event.player, MessageKey.COOLDOWN)
+            remind(player, MessageKey.COOLDOWN)
             return false
         }
-        if (runtime.state.phase != LumberPhase.IDLE) return true
+        if (runtime.state.phase != LumberPhase.IDLE) return false
         val started = LumberShiftEngine.start(runtime.state, runtime.nextOrder().domain(), runtime.rules(runtime.nextOrder()), clock())
         val expectedSpecies = requireNotNull(started.state.species)
-        if (brokenSpecies != expectedSpecies) {
+        if (requiredSpecies != null && requiredSpecies != expectedSpecies) {
             remind(
-                event.player,
+                player,
                 MessageKey.LUMBER_WRONG_SPECIES,
                 mapOf("wood" to MaterialRules.woodComponent(expectedSpecies)),
             )
@@ -133,7 +140,7 @@ internal class LumberFellingController(
         val rules = runtime.rules(runtime.nextOrder())
         val candidates = candidates(runtime, expectedSpecies)
         if (candidates.size < rules.fellingQuota) {
-            remind(event.player, MessageKey.ZONE_UNAVAILABLE)
+            remind(player, MessageKey.ZONE_UNAVAILABLE)
             return false
         }
         val objective = ObjectiveTargetPool.plan(
@@ -142,10 +149,10 @@ internal class LumberFellingController(
             candidates,
         )
         if (!canStartSkidding(runtime, objective)) {
-            remind(event.player, MessageKey.ZONE_UNAVAILABLE)
+            remind(player, MessageKey.ZONE_UNAVAILABLE)
             return false
         }
-        transitions.apply(runtime, started.copy(state = started.state.copy(objective = objective)), event.player)
+        transitions.apply(runtime, started.copy(state = started.state.copy(objective = objective)), player)
         port.broadcast(
             listOf(runtime.region),
             MessageKey.LUMBER_STARTED,

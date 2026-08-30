@@ -87,6 +87,17 @@ internal class MineLostMinerIncident(
 
     fun canonicalCount(runtime: MineRuntime): Int = if (miners[key(runtime)]?.let(effects::entity) != null) 1 else 0
 
+    /** Reconstructs only a missing canonical miner and never scans beyond its loaded objective chunk. */
+    fun reconcileMissing(runtime: MineRuntime): Int {
+        if (!active(runtime) || canonicalCount(runtime) == 1) return canonicalCount(runtime)
+        val position = runtime.state.objective?.targets?.firstOrNull()?.position ?: return 0
+        val world = runtime.region.world
+        val chunkX = position.x shr 4
+        val chunkZ = position.z shr 4
+        if (world.isChunkLoaded(chunkX, chunkZ)) reconcileChunk(runtime, world.getChunkAt(chunkX, chunkZ))
+        return canonicalCount(runtime)
+    }
+
     fun cleanup(runtime: MineRuntime) {
         miners.remove(key(runtime))?.let(effects::remove)
         escorts.entries.removeIf { it.value == key(runtime) }

@@ -32,8 +32,13 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantOwner
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItemOwner
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems
+import ru.ruscrafting.farms.paper.worksite.WorksiteRewardGrantService
+import ru.ruscrafting.farms.paper.worksite.WorksiteAdminHandler
+import ru.ruscrafting.farms.paper.worksite.WorksiteAdminReindexTick
+import ru.ruscrafting.farms.paper.worksite.WorksiteAdminStatus
 import java.util.UUID
 import java.util.random.RandomGenerator
+import ru.ruscrafting.farms.domain.MineIncidentType
 
 /** Stable boundary that constructs exactly one mine engine generation for the process lifetime. */
 internal class MineVersionedModule(
@@ -46,12 +51,16 @@ internal class MineVersionedModule(
     clock: () -> Long,
     random: RandomGenerator,
     serviceItems: WorksiteServiceItems? = null,
+    rewardGrants: WorksiteRewardGrantService? = null,
 ) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler,
     WorksiteMoveHandler, WorksiteGuidanceHandler, WorksiteFastVisualHandler, WorksiteServiceItemOwner,
-    WorksiteParticipantOwner, WorksiteEntityInteractHandler, WorksiteEntityDeathHandler {
+    WorksiteParticipantOwner, WorksiteEntityInteractHandler, WorksiteEntityDeathHandler, WorksiteAdminHandler {
     private val engineVersion = initial.firstOrNull()?.engineVersion ?: 1
     private val delegate: WorksiteModule<MineShiftState> = if (engineVersion == 2) {
-        MineComponentGraph(plugin, regions, port, clock, journal, random, serviceItems = serviceItems, locale = locale).module
+        MineComponentGraph(
+            plugin, regions, port, clock, journal, random, serviceItems = serviceItems, locale = locale,
+            rewardGrants = rewardGrants,
+        ).module
     } else {
         MineController(regions, locale, journal, port, clock, random)
     }
@@ -75,6 +84,22 @@ internal class MineVersionedModule(
             else -> error("Unsupported mine module: ${target::class.qualifiedName}")
         }
     }
+
+    override fun zoneIds(): List<String> = (delegate as? MineModule)?.admin?.zoneIds().orEmpty()
+    override fun incidentIds(): List<String> = (delegate as? MineModule)?.admin?.incidentIds().orEmpty()
+    override fun status(zoneId: String): WorksiteAdminStatus? = (delegate as? MineModule)?.adminStatus(zoneId)
+    override fun start(zoneId: String, player: Player): Boolean = (delegate as? MineModule)?.adminStart(zoneId, player) == true
+    override fun forceIncident(zoneId: String, incidentId: String, now: Long): Boolean =
+        (delegate as? MineModule)?.admin?.forceIncident(zoneId, incidentId, now) == true
+    override fun startReindex(zoneId: String): Boolean = (delegate as? MineModule)?.adminStartReindex(zoneId) == true
+    override fun tickReindex(zoneId: String, budget: Int): WorksiteAdminReindexTick? =
+        (delegate as? MineModule)?.adminTickReindex(zoneId, budget)
+    override fun cancelReindex(zoneId: String): Boolean = (delegate as? MineModule)?.adminCancelReindex(zoneId) == true
+
+    fun adminStatus(zoneId: String): WorksiteAdminStatus? = status(zoneId)
+    fun adminStart(zoneId: String, player: Player): Boolean = start(zoneId, player)
+    fun adminForceIncident(zoneId: String, type: MineIncidentType, now: Long): Boolean =
+        (delegate as? MineModule)?.adminForceIncident(zoneId, type, now) == true
 
     override fun states(): Map<String, MineShiftState> = delegate.states()
     override fun statuses(): List<ActivityStatus> = delegate.statuses()

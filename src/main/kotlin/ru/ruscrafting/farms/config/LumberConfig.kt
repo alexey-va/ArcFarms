@@ -42,6 +42,7 @@ data class LumberZoneSettings(
     val incidentCountMin: Int = 3,
     val incidentCountMax: Int = 5,
     val recoverySeconds: Int = 90,
+    val rewards: FarmRewardSettings = defaultWorksiteRewards(110),
 ) {
     init {
         require(engineVersion in 1..2) { "Lumber zone $id engine-version must be 1 or 2" }

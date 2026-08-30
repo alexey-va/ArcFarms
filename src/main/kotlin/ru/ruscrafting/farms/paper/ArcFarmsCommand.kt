@@ -178,6 +178,7 @@ class ArcFarmsCommand(
                 "finish" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_FINISH, sender))
                 "event" -> sendEventHelp(sender, zone)
                 "route" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_ROUTE, sender))
+                "worksite" -> sendWorksiteAdminHelp(sender)
                 in ADMIN_SHORTCUTS -> sendShortcutHelp(sender, action)
                 else -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
             }
@@ -291,6 +292,7 @@ class ArcFarmsCommand(
                     else -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_ROUTE, sender))
                 }
             }
+            "worksite" -> worksiteAdmin(player, args.drop(1))
             "reset-farm" -> args.getOrNull(1)?.let { service.adminSetFarmStage(player, it, "reset") }
                 ?: sendShortcutHelp(sender, action)
             "stop-order-cycle" -> args.getOrNull(1)?.let { service.adminStopFarmOrderCycle(player, it) }
@@ -487,6 +489,75 @@ class ArcFarmsCommand(
         )
     }
 
+    private fun worksiteAdmin(player: Player, args: List<String>) {
+        val kind = parseKind(args.getOrNull(0))?.takeIf { it != ActivityKind.FARM }
+        val admin = kind?.let(service.worksiteAdmins::handler)
+        val zone = args.getOrNull(1)
+        val operation = args.getOrNull(2)?.lowercase()
+        if (admin == null || zone == null || operation == null) {
+            sendWorksiteAdminHelp(player)
+            return
+        }
+        val values = mutableMapOf("activity" to locale.text(kind.name.lowercase()), "zone" to locale.text(zone))
+        when (operation) {
+            "status" -> {
+                val status = admin.status(zone)
+                if (status == null) {
+                    player.sendMessage(locale.renderPath("admin.worksite.unknown", player, values))
+                } else {
+                    values += mapOf(
+                        "phase" to locale.text(status.phase.lowercase()),
+                        "sequence" to locale.text(status.sequence),
+                        "incident" to locale.text(status.incident?.lowercase() ?: "—"),
+                        "progress" to locale.text(status.objective?.let { "${it.completed}/${it.required}" } ?: "—"),
+                    )
+                    player.sendMessage(locale.renderPath("admin.worksite.status", player, values))
+                }
+            }
+            "start" -> player.sendMessage(
+                locale.renderPath(if (admin.start(zone, player)) "admin.worksite.started" else "admin.worksite.rejected", player, values),
+            )
+            "incident" -> {
+                val incident = args.getOrNull(3)
+                values["incident"] = locale.text(incident?.lowercase() ?: "—")
+                val accepted = incident != null && admin.forceIncident(zone, incident, System.currentTimeMillis())
+                player.sendMessage(
+                    locale.renderPath(if (accepted) "admin.worksite.incident-started" else "admin.worksite.incident-rejected", player, values),
+                )
+            }
+            "reindex" -> when (args.getOrNull(3)?.lowercase() ?: "start") {
+                "start" -> player.sendMessage(
+                    locale.renderPath(
+                        if (admin.startReindex(zone)) "admin.worksite.reindex-started" else "admin.worksite.reindex-rejected",
+                        player,
+                        values,
+                    ),
+                )
+                "tick" -> {
+                    val tick = admin.tickReindex(zone, 262_144)
+                    values += mapOf(
+                        "blocks" to locale.text(tick?.scannedBlocks ?: 0),
+                        "targets" to locale.text(tick?.indexedTargets ?: 0),
+                    )
+                    player.sendMessage(locale.renderPath("admin.worksite.reindex-progress", player, values))
+                }
+                "cancel" -> player.sendMessage(
+                    locale.renderPath(
+                        if (admin.cancelReindex(zone)) "admin.worksite.reindex-cancelled" else "admin.worksite.reindex-rejected",
+                        player,
+                        values,
+                    ),
+                )
+                else -> sendWorksiteAdminHelp(player)
+            }
+            else -> sendWorksiteAdminHelp(player)
+        }
+    }
+
+    private fun sendWorksiteAdminHelp(sender: CommandSender) {
+        sender.sendMessage(locale.renderPath("admin.worksite.help", sender))
+    }
+
     override fun onTabComplete(
         sender: CommandSender,
         command: Command,
@@ -511,13 +582,15 @@ class ArcFarmsCommand(
                 args[0].equals("top", true) || args[0].equals("travel", true) ->
                     listOf("farm", "lumber", "mine").filter { it.startsWith(args[1], true) }
                 args[0].equals("admin", true) && sender.hasPermission("arcfarms.admin") ->
-                    (listOf("help", "edit", "inspect", "point", "points", "unmanage", "blockreset", "backup", "stage", "next", "finish", "event", "route") + ADMIN_SHORTCUTS)
+                    (listOf("help", "edit", "inspect", "point", "points", "unmanage", "blockreset", "backup", "stage", "next", "finish", "event", "route", "worksite") + ADMIN_SHORTCUTS)
                         .filter { it.startsWith(args[1], true) }
                 args[0].equals("debug", true) && sender.hasPermission("arcfarms.admin") ->
                     service.farmZoneIds().filter { it.startsWith(args[1], true) }
                 else -> emptyList()
             }
             3 -> when {
+                args[0].equals("admin", true) && args[1].equals("worksite", true) ->
+                    listOf("lumber", "mine", "help").filter { it.startsWith(args[2], true) }
                 args[0].equals("admin", true) && args[1].lowercase() in setOf("edit", "inspect") ->
                     listOf("help").filter { it.startsWith(args[2], true) }
                 args[0].equals("admin", true) && args[1].lowercase() in
@@ -531,6 +604,10 @@ class ArcFarmsCommand(
                 else -> emptyList()
             }
             4 -> when {
+                args[0].equals("admin", true) && args[1].equals("worksite", true) -> {
+                    val kind = parseKind(args[2])
+                    (kind?.let(service.worksiteAdmins::zoneIds).orEmpty() + "help").filter { it.startsWith(args[3], true) }
+                }
                 args[0].equals("admin", true) && args[1].equals("point", true) ->
                     (POINT_ARGUMENTS + "help")
                         .filter { it.startsWith(args[3], true) }
@@ -563,6 +640,8 @@ class ArcFarmsCommand(
                 else -> emptyList()
             }
             5 -> when {
+                args[0].equals("admin", true) && args[1].equals("worksite", true) ->
+                    listOf("status", "start", "incident", "reindex", "help").filter { it.startsWith(args[4], true) }
                 args[0].equals("admin", true) && args[1].equals("route", true) &&
                     args[3].lowercase() in setOf("start", "status", "clear", "remove") ->
                     (service.adminFarmRouteNames(args[2]) + "main")
@@ -572,6 +651,15 @@ class ArcFarmsCommand(
                     listOf("clear", "remove", "help").filter { it.startsWith(args[4], true) }
                 args[0].equals("admin", true) && args[1].equals("backup", true) && args[3].equals("restore", true) ->
                     listOf("help").filter { it.startsWith(args[4], true) }
+                else -> emptyList()
+            }
+            6 -> when {
+                args[0].equals("admin", true) && args[1].equals("worksite", true) && args[4].equals("incident", true) -> {
+                    val kind = parseKind(args[2])
+                    kind?.let(service.worksiteAdmins::handler)?.incidentIds().orEmpty().filter { it.startsWith(args[5], true) }
+                }
+                args[0].equals("admin", true) && args[1].equals("worksite", true) && args[4].equals("reindex", true) ->
+                    listOf("start", "tick", "cancel").filter { it.startsWith(args[5], true) }
                 else -> emptyList()
             }
             else -> emptyList()

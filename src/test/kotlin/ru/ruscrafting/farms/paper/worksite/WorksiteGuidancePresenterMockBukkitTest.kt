@@ -23,7 +23,7 @@ class WorksiteGuidancePresenterMockBukkitTest : FunSpec({
     every { player.world } returns world
     every { player.location } returns Location(world, 0.0, 64.0, 0.0)
 
-    test("a stalled participant receives one title and only nearest loaded target per role") {
+    test("a participant receives an immediate title plus a stalled reminder and only nearest loaded target per role") {
         val audience = mockk<WorksiteAudiencePort>(relaxed = true)
         val access = mockk<WorksiteAccessPort>()
         every { access.isAdminEditing(player) } returns false
@@ -52,7 +52,7 @@ class WorksiteGuidancePresenterMockBukkitTest : FunSpec({
         presenter.updateHud(now = 1_000L)
         presenter.updateHud(now = 13_001L)
 
-        verify(exactly = 1) { audience.showScreenTitle(player, view.title, view.subtitle) }
+        verify(exactly = 2) { audience.showScreenTitle(player, view.title, view.subtitle) }
         verify(exactly = 2) {
             audience.updateBar(player, view.runtimeKey, view.barName, view.barProgress, view.barColor, any())
         }
@@ -70,7 +70,7 @@ class WorksiteGuidancePresenterMockBukkitTest : FunSpec({
         }
     }
 
-    test("accepted progress restarts the stall timer without repeating early titles") {
+    test("accepted progress produces a fresh title and restarts the reminder timer") {
         val audience = mockk<WorksiteAudiencePort>(relaxed = true)
         val access = mockk<WorksiteAccessPort>()
         every { access.isAdminEditing(player) } returns false
@@ -86,7 +86,7 @@ class WorksiteGuidancePresenterMockBukkitTest : FunSpec({
         presenter.updateHud(13_001L)
         presenter.updateHud(25_002L)
 
-        verify(exactly = 1) { audience.showScreenTitle(player, view.title, view.subtitle) }
+        verify(exactly = 3) { audience.showScreenTitle(player, view.title, view.subtitle) }
     }
 
     test("release forgets the session and removes every player worksite bar") {

@@ -40,6 +40,14 @@ import ru.ruscrafting.farms.paper.mine.incident.creature.MineCreatureNestInciden
 import ru.ruscrafting.farms.paper.mine.incident.rescue.MineLostMinerIncident
 import ru.ruscrafting.farms.paper.WorksiteEntityInteractHandler
 import ru.ruscrafting.farms.paper.WorksiteEntityDeathHandler
+import ru.ruscrafting.farms.paper.WorksiteGuidanceHandler
+import ru.ruscrafting.farms.paper.ActivityBarKey
+import ru.ruscrafting.farms.paper.mine.incident.MineIncidentScheduler
+import ru.ruscrafting.farms.paper.worksite.WorksiteGuidancePresenter
+import ru.ruscrafting.farms.paper.mine.admin.MineAdminService
+import ru.ruscrafting.farms.domain.MineIncidentType
+import ru.ruscrafting.farms.paper.mine.admin.MineAdminStatus
+import ru.ruscrafting.farms.paper.worksite.WorksiteAdminReindexTick
 import org.bukkit.event.entity.EntityDeathEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
@@ -68,9 +76,13 @@ internal class MineModule(
     private val powerFailure: MinePowerFailureIncident,
     private val creatureNest: MineCreatureNestIncident,
     private val lostMiner: MineLostMinerIncident,
+    private val incidentScheduler: MineIncidentScheduler,
+    private val guidance: WorksiteGuidancePresenter,
+    internal val admin: MineAdminService,
+    private val clock: () -> Long,
 ) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler,
     WorksiteMoveHandler, WorksiteEntityInteractHandler, WorksiteEntityDeathHandler, WorksiteFastVisualHandler,
-    WorksiteParticipantOwner, WorksiteServiceItemOwner {
+    WorksiteParticipantOwner, WorksiteServiceItemOwner, WorksiteGuidanceHandler {
     private val transitions = MineTransitionCoordinator(port)
     override val kind: ActivityKind = ActivityKind.MINE
     override val zoneCount: Int get() = registry.size
@@ -94,14 +106,18 @@ internal class MineModule(
         registry.snapshot().forEach { runtime ->
             port.guarded("mine_v2:${runtime.settings.id}") {
                 transitions.apply(runtime, MineShiftEngine.tick(runtime.state, runtime.rules(), now), null)
+                incidentScheduler.tick(runtime, now, port.players(runtime.region).size)
                 caveIn.reconcile(runtime)
                 trackDamage.reconcile(runtime)
                 flooding.reconcile(runtime)
                 powerFailure.reconcile(runtime)
+                creatureNest.reconcileMissing(runtime)
+                lostMiner.reconcileMissing(runtime)
                 extraction.reconcile(runtime)
             }
         }
         port.guarded("mine_v2_recovery") { recovery.processDue(now) }
+        port.guarded("mine_v2_reindex") { admin.tickReindexes(REINDEX_BLOCKS_PER_TICK) }
     }
 
     override fun canAccess(player: Player): Boolean =
@@ -123,12 +139,17 @@ internal class MineModule(
 
     override fun updateVisuals() = Unit
 
+    override fun updateGuidance(expectedBars: MutableSet<ActivityBarKey>) = guidance.updateHud(clock(), expectedBars)
+
+    override fun emitGuidance() = guidance.emitParticles()
+
     override fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
         loading.releasePlayer(player, reason)
         caveIn.releasePlayer(player.uniqueId)
         trackDamage.releasePlayer(player.uniqueId)
         flooding.releasePlayer(player.uniqueId)
         lostMiner.releasePlayer(player.uniqueId)
+        guidance.releasePlayer(player)
     }
 
     override fun isActive(identity: ServiceItemIdentity): Boolean =
@@ -143,7 +164,12 @@ internal class MineModule(
 
     override fun activateLoadedState() {
         registry.snapshot().forEach { runtime ->
-            runtime.region.world.loadedChunks.forEach { chunk -> index.reconcileChunk(runtime.indexDefinition(), chunk) }
+            runtime.region.world.loadedChunks.forEach { chunk ->
+                index.reconcileChunk(runtime.indexDefinition(), chunk)
+                creatureNest.reconcileChunk(runtime, chunk)
+                lostMiner.reconcileChunk(runtime, chunk)
+            }
+            extraction.reconcile(runtime)
         }
         recovery.activateLoadedState()
     }
@@ -171,6 +197,8 @@ internal class MineModule(
             }
         }
         extraction.cleanup()
+        incidentScheduler.cleanup()
+        admin.cleanup()
         registry.snapshot().forEach { runtime ->
             creatureNest.cleanup(runtime)
             lostMiner.cleanup(runtime)
@@ -181,6 +209,14 @@ internal class MineModule(
     fun reindex(zoneId: String): MineReindexJob? = registry.byId(zoneId)?.let { runtime ->
         MineReindexJob(runtime.indexDefinition(), index, tickets)
     }
+
+    fun adminStatus(zoneId: String): MineAdminStatus? = admin.status(zoneId)
+    fun adminStart(zoneId: String, player: Player): Boolean = admin.start(zoneId, player)
+    fun adminForceIncident(zoneId: String, type: MineIncidentType, now: Long): Boolean =
+        admin.forceIncident(zoneId, type, now)
+    fun adminStartReindex(zoneId: String): Boolean = admin.startReindex(zoneId)
+    fun adminTickReindex(zoneId: String, budget: Int): WorksiteAdminReindexTick? = admin.tickReindex(zoneId, budget)
+    fun adminCancelReindex(zoneId: String): Boolean = admin.cancelReindex(zoneId)
 
     private fun progress(runtime: MineRuntime): Pair<Int, Int> = when (runtime.state.phase) {
         MinePhase.PROSPECTING -> runtime.state.prospected to runtime.rules().prospectingQuota
@@ -196,4 +232,8 @@ internal class MineModule(
         region,
         settings.materialWeights.keys.mapTo(linkedSetOf(), MaterialRules::material),
     )
+
+    private companion object {
+        const val REINDEX_BLOCKS_PER_TICK = 131_072
+    }
 }

@@ -49,6 +49,7 @@ import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItemOwner
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
 import ru.ruscrafting.farms.paper.worksite.WorksiteGuidancePresenter
+import ru.ruscrafting.farms.paper.lumber.admin.LumberAdminService
 import java.util.UUID
 
 internal class LumbermillModule(
@@ -75,6 +76,7 @@ internal class LumbermillModule(
     private val warped: LumberWarpedBatchIncident,
     private val incidentScheduler: LumberIncidentScheduler,
     private val guidance: WorksiteGuidancePresenter,
+    internal val admin: LumberAdminService,
     private val clock: () -> Long,
 ) : WorksiteModule<LumberShiftState>, WorksiteBlockBreakHandler, WorksiteEntityInteractHandler,
     WorksiteBlockInteractHandler, WorksiteMoveHandler, WorksiteFastVisualHandler, WorksiteParticipantOwner,
@@ -117,7 +119,10 @@ internal class LumbermillModule(
             rush.tick(runtime, now)
             incidentScheduler.tick(runtime, now, participants)
         }
-    }.also { recovery.processDue(now) }
+    }.also {
+        port.guarded("lumber_v2_reindex") { admin.tickReindexes(REINDEX_BLOCKS_PER_TICK) }
+        recovery.processDue(now)
+    }
 
     override fun canAccess(player: Player): Boolean =
         registry.snapshot().any { port.hasAccess(player, it.settings.permission) }
@@ -189,6 +194,7 @@ internal class LumbermillModule(
         stacking.cleanup()
         lostLoad.cleanup()
         incidentScheduler.cleanup()
+        admin.cleanup()
         recovery.cleanup(reason)
         index.clear()
     }
@@ -212,4 +218,8 @@ internal class LumbermillModule(
         region,
         settings.species.toSet(),
     )
+
+    private companion object {
+        const val REINDEX_BLOCKS_PER_TICK = 131_072
+    }
 }

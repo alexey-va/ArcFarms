@@ -466,6 +466,10 @@ lumber-zones:
     incident-count-min: 3
     incident-count-max: 5
     recovery-seconds: 90
+    rewards:
+      experience: {amount: 180, chance-percent: 100}
+      items:
+        timber: {material: OAK_LOG, amount: 6, chance-percent: 100}
     orders:
       forest_supply:
         species: [OAK, SPRUCE, BIRCH, JUNGLE]
@@ -487,6 +491,7 @@ lumber-zones:
 mine-zones:
   old_shafts:
     enabled: true
+    engine-version: 2
     priority: 1
     world: sp11
     region: mine1
@@ -498,8 +503,20 @@ mine-zones:
     temp-material: COBBLESTONE
     base-material: STONE
     materials: [STONE:240, COAL_ORE:45, IRON_ORE:45, COPPER_ORE:15, LAPIS_ORE:3, DIAMOND_ORE:3, EMERALD_ORE:6, REDSTONE_ORE:15, AMETHYST_BLOCK:5, GLOWSTONE:5]
+    target-multiplier: 2
+    incident-count-min: 3
+    incident-count-max: 5
+    rewards:
+      experience: {amount: 220, chance-percent: 100}
+      items:
+        iron: {material: IRON_INGOT, amount: 4, chance-percent: 100}
+    orders:
+      deep_ore:
+        phases: {prospecting-required: 3, mining-required: 16, loading-required: 4}
+        incidents: [CAVE_IN, GAS_LEAK, FLOODING, TRACK_DAMAGE, LOST_MINER]
   sand_quarry:
     enabled: true
+    engine-version: 2
     priority: 2
     world: sp11
     region: mine2
@@ -511,8 +528,16 @@ mine-zones:
     temp-material: BLACK_CONCRETE
     base-material: SANDSTONE
     materials: [SANDSTONE:250, SMOOTH_SANDSTONE:250, COAL_ORE:45, IRON_ORE:45, COPPER_ORE:15, LAPIS_ORE:3, DIAMOND_ORE:3, EMERALD_ORE:6, REDSTONE_ORE:15]
+    target-multiplier: 2
+    incident-count-min: 3
+    incident-count-max: 5
+    orders:
+      quarry_run:
+        phases: {prospecting-required: 3, mining-required: 16, loading-required: 4}
+        incidents: [CAVE_IN, TRACK_DAMAGE, CREATURE_NEST, POWER_FAILURE, LOST_MINER]
   infernal_working:
     enabled: true
+    engine-version: 2
     priority: 2
     world: sp11
     region: minehell
@@ -524,8 +549,16 @@ mine-zones:
     temp-material: BLACK_CONCRETE
     base-material: NETHERRACK
     materials: [NETHERRACK:400, RED_NETHER_BRICKS:30, NETHER_BRICKS:30, CRACKED_NETHER_BRICKS:30, SOUL_SAND:30, MAGMA_BLOCK:30, CRIMSON_NYLIUM:30, NETHER_QUARTZ_ORE:75, ANCIENT_DEBRIS:1, GLOWSTONE:50]
+    target-multiplier: 2
+    incident-count-min: 3
+    incident-count-max: 5
+    orders:
+      infernal_ore:
+        phases: {prospecting-required: 3, mining-required: 16, loading-required: 4}
+        incidents: [CAVE_IN, GAS_LEAK, CRYSTAL_RESONANCE, CREATURE_NEST, POWER_FAILURE]
   lush_depths:
     enabled: true
+    engine-version: 2
     priority: 2
     world: sp11
     region: minelush
@@ -537,3 +570,10 @@ mine-zones:
     temp-material: COBBLESTONE
     base-material: STONE
     materials: [STONE:100, COAL_ORE:45, IRON_ORE:45, COPPER_ORE:15, LAPIS_ORE:3, DIAMOND_ORE:3, EMERALD_ORE:6, REDSTONE_ORE:15, AMETHYST_BLOCK:5, GLOWSTONE:5, CLAY:10]
+    target-multiplier: 2
+    incident-count-min: 3
+    incident-count-max: 5
+    orders:
+      lush_vein:
+        phases: {prospecting-required: 3, mining-required: 16, loading-required: 4}
+        incidents: [FLOODING, TRACK_DAMAGE, CRYSTAL_RESONANCE, CREATURE_NEST, LOST_MINER]

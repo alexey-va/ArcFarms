@@ -457,7 +457,7 @@ Implement durable fire intent before mutation, bounded spread/restore, service w
 
 Run GREEN: `./gradlew test --tests '*LumberTimedIncidentsMockBukkitTest' --tests '*LumberBlockRecovery*'`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/main/kotlin/ru/ruscrafting/farms/paper/lumber/incident src/test/kotlin/ru/ruscrafting/farms/paper/lumber/incident
@@ -480,7 +480,7 @@ git commit -m "feat: add lumber timed incidents"
 **Interfaces:**
 - Produces: per-stage views, force-stage/incident/reindex/objective commands and exact-once lumber rewards.
 
-- [ ] **Step 1: Write failing UI/reward tests**
+- [x] **Step 1: Write failing UI/reward tests**
 
 ```kotlin
 test("every lumber phase and incident exposes a localized next action") {
@@ -502,7 +502,7 @@ test("dispatch persists and claims one reward") {
 }
 ```
 
-- [ ] **Step 2: Run RED, implement, run GREEN**
+- [x] **Step 2: Run RED, implement, run GREEN**
 
 Run RED: `./gradlew test --tests '*LumberGuidanceAdminReward*' --tests '*LocaleParityTest'`
 
@@ -510,7 +510,7 @@ Extract the activity-neutral grant transaction without changing farm payload sem
 
 Run GREEN: `./gradlew test --tests '*LumberGuidanceAdminReward*' --tests '*FarmReward*' --tests '*LocaleParityTest' --tests '*ArcFarmsConfigTest'`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/main/kotlin src/main/resources src/test/kotlin
@@ -543,7 +543,7 @@ Run: `./gradlew test --tests '*Lumber*' --tests '*Farm*' --tests '*Worksite*' --
 
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/main/kotlin src/test/kotlin

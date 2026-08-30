@@ -32,6 +32,8 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.paper.lumber.presentation.LumberGuidanceSource
 import ru.ruscrafting.farms.paper.worksite.WorksiteGuidancePresenter
+import ru.ruscrafting.farms.paper.worksite.WorksiteRewardGrantService
+import ru.ruscrafting.farms.paper.lumber.admin.LumberAdminService
 
 /** Composition-only graph; the registry is the sole mutable runtime collection owner. */
 internal class LumbermillComponentGraph(
@@ -45,6 +47,7 @@ internal class LumbermillComponentGraph(
     stackingEffects: LumberStackingEffects = PaperLumberStackingEffects(plugin),
     lostLoadEffects: LumberBundleEffects = PaperLumberBundleEffects(plugin, "lumber_lost"),
     locale: ArcFarmsLocale? = null,
+    rewardGrants: WorksiteRewardGrantService? = null,
 ) {
     internal val registry = LumberRuntimeRegistry()
     internal val clock = clock
@@ -64,7 +67,7 @@ internal class LumbermillComponentGraph(
         stackingScene::begin,
         stackingScene::reconcile,
     )
-    val dispatch = LumberDispatchController(registry, transitions, port, clock)
+    val dispatch = LumberDispatchController(registry, transitions, port, clock, rewardGrants)
     val windthrow = LumberWindthrowIncident(registry, index, recovery, incidents, port)
     val beetles = LumberBarkBeetleIncident(registry, index, incidents, port)
     val sawJam = LumberSawJamIncident(registry, incidents, port)
@@ -95,10 +98,11 @@ internal class LumbermillComponentGraph(
             chunk.removePluginChunkTicket(plugin)
         }
     }
+    val admin = LumberAdminService(registry, index, tickets, felling, incidentScheduler)
     val module = LumbermillModule(
         regions, port, registry, index, recovery, tickets, felling, skidding, bundleScene,
         sawing, stacking, stackingScene, dispatch, windthrow, beetles, sawJam, conveyor, lostLoad, fire, rush,
-        warped, incidentScheduler, guidancePresenter, clock,
+        warped, incidentScheduler, guidancePresenter, admin, clock,
     )
 
     internal val mutableRuntimeCollectionCount: Int = 1

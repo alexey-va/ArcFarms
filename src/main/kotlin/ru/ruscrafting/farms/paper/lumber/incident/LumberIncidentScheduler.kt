@@ -33,7 +33,14 @@ internal class LumberIncidentScheduler(
         if (!eligible(type, runtime.state.phase)) return false
         val retryKey = "${runtime.settings.id}:${runtime.state.sequence}:${runtime.state.incidentCursor}"
         if (now < (retryAfter[retryKey] ?: 0L)) return false
-        val started = when (type) {
+        val started = force(runtime, type, now)
+        if (started) retryAfter.remove(retryKey) else retryAfter[retryKey] = now + RETRY_MILLIS
+        return started
+    }
+
+    fun force(runtime: LumberRuntime, type: LumberIncidentType, now: Long): Boolean {
+        if (runtime.state.phase == LumberPhase.INCIDENT || !eligible(type, runtime.state.phase)) return false
+        return when (type) {
             LumberIncidentType.WINDTHROW -> windthrow.start(runtime, required(runtime, type), now)
             LumberIncidentType.BARK_BEETLES -> beetles.start(runtime, required(runtime, type), now)
             LumberIncidentType.SAW_JAM -> sawJam.start(runtime, required(runtime, type), now)
@@ -48,8 +55,6 @@ internal class LumberIncidentScheduler(
                 }
             }
         }
-        if (started) retryAfter.remove(retryKey) else retryAfter[retryKey] = now + RETRY_MILLIS
-        return started
     }
 
     fun cleanup() = retryAfter.clear()

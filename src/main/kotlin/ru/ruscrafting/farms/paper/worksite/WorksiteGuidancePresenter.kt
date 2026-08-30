@@ -32,6 +32,8 @@ internal class WorksiteGuidancePresenter(
                 releasePlayer(player)
                 return@forEach
             }
+            val previous = sessions[player.uniqueId]
+            val changed = previous == null || previous.runtimeKey != view.runtimeKey || previous.progressVersion != view.progressVersion
             var session = sessionFor(player.uniqueId, view, now)
             audience.updateBar(
                 player,
@@ -41,7 +43,9 @@ internal class WorksiteGuidancePresenter(
                 view.barColor,
                 expected,
             )
-            if (elapsed(now, session.lastProgressAt) >= stallMillis && elapsed(now, session.lastReminderAt) >= stallMillis) {
+            if (changed) {
+                audience.showScreenTitle(player, view.title, view.subtitle)
+            } else if (elapsed(now, session.lastProgressAt) >= stallMillis && elapsed(now, session.lastReminderAt) >= stallMillis) {
                 audience.showScreenTitle(player, view.title, view.subtitle)
                 session = session.copy(lastReminderAt = now)
             }

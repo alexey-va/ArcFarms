@@ -66,6 +66,22 @@ internal class MineCreatureNestIncident(
 
     fun spawnedCount(runtime: MineRuntime): Int = entities[key(runtime)]?.size ?: 0
 
+    /** Hot-tick safety net: only missing tracked UUIDs cause an exact loaded objective chunk reconcile. */
+    fun reconcileMissing(runtime: MineRuntime): Int {
+        if (!active(runtime)) return 0
+        val tracked = entities[key(runtime)]
+        val missing = runtime.state.objective?.targets.orEmpty().filter { target ->
+            target.status != ObjectiveTargetStatus.COMPLETED && tracked?.get(target.id)?.let(effects::entity) == null
+        }
+        missing.map { it.position }.distinctBy { (it.x shr 4) to (it.z shr 4) }.forEach { position ->
+            val world = runtime.region.world
+            val chunkX = position.x shr 4
+            val chunkZ = position.z shr 4
+            if (world.isChunkLoaded(chunkX, chunkZ)) reconcileChunk(runtime, world.getChunkAt(chunkX, chunkZ))
+        }
+        return spawnedCount(runtime)
+    }
+
     fun cleanup(runtime: MineRuntime) {
         entities.remove(key(runtime))?.values?.forEach(effects::remove)
         effects.cleanup(runtime, MineIncidentEntityKind.CREATURE)

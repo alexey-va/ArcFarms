@@ -26,6 +26,7 @@ import java.util.ArrayDeque
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.logging.Level
+import ru.ruscrafting.farms.paper.worksite.WorksiteRewardLedger
 
 /** Owns durable reward planning, claim-before-delivery and every reward side effect. */
 internal class FarmRewardService(
@@ -38,7 +39,7 @@ internal class FarmRewardService(
     private val persistAsync: () -> CompletableFuture<Unit>,
     private val operational: () -> Boolean,
     private val playerMultiplier: (UUID, FarmRuntime) -> Int = { _, _ -> 100 },
-) {
+) : WorksiteRewardLedger {
     private sealed interface LedgerOperation {
         data class Enqueue(val rewards: List<PendingFarmReward>) : LedgerOperation
         data class Claim(val players: Map<UUID, Player>) : LedgerOperation
@@ -63,7 +64,9 @@ internal class FarmRewardService(
         ledger.replace(pending, claimed)
     }
 
-    fun snapshot(): FarmRewardLedgerSnapshot = ledger.snapshot()
+    override fun snapshot(): FarmRewardLedgerSnapshot = ledger.snapshot()
+
+    override fun enqueueRewards(rewards: List<PendingFarmReward>) = enqueue(LedgerOperation.Enqueue(rewards))
 
     fun queueCompletion(runtime: FarmRuntime, contributors: Map<UUID, Int>) {
         val order = runtime.state.orderId?.let(runtime.orders::get)

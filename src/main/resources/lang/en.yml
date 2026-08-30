@@ -36,6 +36,18 @@ admin-inspect:
     orchard: '<gray>apple anchor</gray>'
 admin:
   help: '<prefix> <gray>Farm controls</gray><newline>  <dark_gray>•</dark_gray> <white>reset-farm communal_farm</white> <gray>— clear the farm and stop new orders</gray><newline>  <dark_gray>•</dark_gray> <white>stop-order-cycle</white><gray> / </gray><white>start-order-cycle communal_farm</white> <gray>— stop or start the cycle</gray><newline>  <dark_gray>•</dark_gray> <white>save-farm-backup communal_farm</white> <gray>— save the entire farm region</gray><newline>  <dark_gray>•</dark_gray> <white>reindex-farm communal_farm</white> <gray>— rescan beds, fruit, and leaves</gray><newline>  <dark_gray>•</dark_gray> <white>event</white><gray>, </gray><white>next</white><gray>, </gray><white>finish</white><gray>, </gray><white>edit</white><gray>, </gray><white>inspect</white><gray>, </gray><white>point</white><gray>, </gray><white>backup</white><gray>, </gray><white>blockreset</white><newline>  <dark_gray>•</dark_gray> <gray>append </gray><white>help</white> <gray>to any command to see its syntax</gray>'
+  worksite:
+    help: '<prefix> <gray>Lumbermill and mine:</gray><newline><white>/arcfarms admin worksite \<lumber|mine> \<zone> status</white><newline><white>… start</white> <gray>— start a shift</gray><newline><white>… incident \<type></white> <gray>— force an incident</gray><newline><white>… reindex \<start|tick|cancel></white> <gray>— rebuild the block index</gray>'
+    unknown: '<prefix> <red>Worksite <activity>:<zone> was not found.</red>'
+    status: '<prefix> <gold><activity>:<zone></gold> <dark_gray>│</dark_gray> <gray>phase:</gray> <white><phase></white> <dark_gray>│</dark_gray> <gray>shift:</gray> <white><sequence></white><newline><gray>Incident:</gray> <white><incident></white> <dark_gray>│</dark_gray> <gray>objective:</gray> <white><progress></white>'
+    started: '<prefix> <green>The <activity>:<zone> shift has started.</green>'
+    rejected: '<prefix> <gold>The shift cannot start:</gold> <gray>the worksite is busy, recovering, or its index is not ready.</gray>'
+    incident-started: '<prefix> <green>Incident <incident> started at <activity>:<zone>.</green>'
+    incident-rejected: '<prefix> <gold>Incident <incident> cannot start now:</gold> <gray>the phase is incompatible or there are not enough indexed targets.</gray>'
+    reindex-started: '<prefix> <green>Index rebuild started for <activity>:<zone>.</green>'
+    reindex-rejected: '<prefix> <gold>Index rebuild was not started:</gold> <gray>the worksite is unknown or a rebuild is already active.</gray>'
+    reindex-progress: '<prefix> <gray>Index <activity>:<zone>:</gray> <white><blocks></white> <gray>blocks,</gray> <white><targets></white> <gray>targets.</gray>'
+    reindex-cancelled: '<prefix> <gold>Index rebuild cancelled for <activity>:<zone>.</gold>'
   command-help:
     edit: '<prefix> <white>/arcfarms admin edit</white> <gray>— enables rebuild mode: managed beds may be broken during an order and ArcFarms removes their recovery records.</gray>'
     inspect: '<prefix> <white>/arcfarms admin inspect</white> <gray>— enables the particle metadata map; click a block to see its BlockData, recovery records, and current ArcFarms tracking.</gray>'
@@ -739,6 +751,24 @@ mine:
   index-shortage: '<red>This mine does not have enough reachable indexed targets. Ask an administrator to reindex it.</red>'
   ore-crate: '<gold>Ore crate</gold>'
   loading-required: '<yellow>Pick up a highlighted ore crate and carry it to the extraction cart.</yellow>'
+  guidance:
+    title: '<color:#45c8f5><bold>Mine task</bold></color>'
+    bar: '<action> <dark_gray>•</dark_gray> <aqua><done></aqua><gray>/</gray><gold><total></gold>'
+    prospecting: '<color:#f2fff7>Right-click the highlighted rock faces to inspect them</color>'
+    mining: '<color:#f2fff7>Mine the highlighted blocks in the revealed vein</color>'
+    loading: '<color:#f2fff7>Carry ore crates to the extraction cart</color>'
+    extraction: '<color:#f2fff7>Push the cart along the highlighted safe route to the exit</color>'
+    incident: '<color:#f2fff7>Resolve the incident, then continue the expedition</color>'
+    cooldown: '<color:#b8c8c0>Wait for the next expedition</color>'
+    hazard: '<color:#f2fff7>Stabilize the unsafe mine face</color>'
+    cave_in: '<color:#f2fff7>Take a support kit and reinforce the marked positions</color>'
+    gas_leak: '<color:#f2fff7>Open the highlighted ventilation grates in order</color>'
+    flooding: '<color:#f2fff7>Take a pump and drain the highlighted flooded sections</color>'
+    track_damage: '<color:#f2fff7>Take a rail kit and repair the marked track sections</color>'
+    crystal_resonance: '<color:#f2fff7>Activate the highlighted crystals in order</color>'
+    creature_nest: '<color:#f2fff7>Defeat the creatures around the marked nest</color>'
+    power_failure: '<color:#f2fff7>Activate the highlighted power nodes in order</color>'
+    lost_miner: '<color:#f2fff7>Find the miner, click them, and escort them to the exit</color>'
 shift:
   winner: '<color:#ffc857>Top contribution</color> <color:#707a76>•</color> <white><player></white> <color:#f2fff7>— <amount></color>'
 care:
