@@ -42,7 +42,9 @@ class ArcFarmsListener(
     fun onBreakLowest(event: BlockBreakEvent) = service.onBreakLowest(event)
 
     @EventHandler(priority = EventPriority.HIGHEST)
-    fun onBreakHigh(event: BlockBreakEvent) = service.onBreakHigh(event)
+    fun onBreakHigh(event: BlockBreakEvent) {
+        service.onBreakHigh(event)
+    }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onBreakMonitor(event: BlockBreakEvent) = service.onBreakMonitor(event)
@@ -72,7 +74,9 @@ class ArcFarmsListener(
     fun onInteractLowest(event: PlayerInteractEvent) = service.onInteractLowest(event)
 
     @EventHandler(priority = EventPriority.HIGHEST)
-    fun onInteract(event: PlayerInteractEvent) = service.onInteract(event)
+    fun onInteract(event: PlayerInteractEvent) {
+        service.onInteract(event)
+    }
 
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onMoistureChange(event: MoistureChangeEvent) = service.onMoistureChange(event)
