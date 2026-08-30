@@ -259,7 +259,6 @@ internal class FarmComponentGraph(
         points = points,
         placement = placement,
         transitions = transitions,
-        clock = clock,
     )
     val drought = FarmDroughtIncident(
         settings = settings,

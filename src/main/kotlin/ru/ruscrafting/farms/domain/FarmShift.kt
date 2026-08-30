@@ -538,12 +538,10 @@ object FarmShiftEngine {
         }
 
         if (state.completed(order) >= order.totalRequired && state.phase != FarmPhase.INCIDENT) {
-            val routeClosesOrder = FarmIncidentType.FOOD_DELIVERY in order.incidentTypes
             state = state.copy(
-                phase = if (routeClosesOrder) FarmPhase.INCIDENT else FarmPhase.DELIVERY,
-                placementSequence = if (routeClosesOrder) state.nextPlacementSequence() else state.placementSequence,
+                phase = FarmPhase.DELIVERY,
                 incidentCrop = null,
-                incidentType = FarmIncidentType.FOOD_DELIVERY.takeIf { routeClosesOrder },
+                incidentType = null,
                 incidentProgress = 0,
                 incidentRequired = 0,
                 incidentResolved = false,
@@ -560,7 +558,7 @@ object FarmShiftEngine {
                 deliveryPosition = null,
                 deliveredCrates = emptySet(),
             )
-            events += if (routeClosesOrder) FarmShiftEvent.INCIDENT_STARTED else FarmShiftEvent.DELIVERY_STARTED
+            events += FarmShiftEvent.DELIVERY_STARTED
             return EngineResult(state, true, contribution, events)
         }
 
@@ -958,11 +956,9 @@ object FarmShiftEngine {
 
     fun deliver(
         current: FarmShiftState,
-        rules: FarmRules,
         crateIndex: Int,
         requiredCrates: Int,
         playerId: UUID,
-        now: Long,
     ): EngineResult<FarmShiftState, FarmShiftEvent> {
         require(requiredCrates in 1..8) { "Farm delivery must require 1..8 crates" }
         if (current.phase != FarmPhase.DELIVERY || crateIndex !in 0 until requiredCrates || crateIndex in current.deliveredCrates) {
@@ -970,18 +966,15 @@ object FarmShiftEngine {
         }
         val delivered = current.deliveredCrates + crateIndex
         val completed = delivered.size >= requiredCrates
+        val contributors = incrementContribution(current.contributors, playerId, 1)
         return EngineResult(
-            current.copy(
-                phase = if (completed) FarmPhase.COOLDOWN else FarmPhase.DELIVERY,
-                cooldownEndsAt = if (completed) now + rules.cooldownMillis else current.cooldownEndsAt,
-                deliveryPosition = if (completed) null else current.deliveryPosition,
+            if (completed) FarmTerminalDelivery.start(current, delivered, contributors) else current.copy(
                 deliveredCrates = delivered,
-                outcome = if (completed) ShiftOutcome.COMPLETED else current.outcome,
-                contributors = incrementContribution(current.contributors, playerId, 1),
+                contributors = contributors,
             ),
             true,
             contribution = 1,
-            events = listOf(if (completed) FarmShiftEvent.COMPLETED else FarmShiftEvent.DELIVERY_PROGRESS),
+            events = listOf(if (completed) FarmShiftEvent.INCIDENT_STARTED else FarmShiftEvent.DELIVERY_PROGRESS),
         )
     }
 
@@ -1199,23 +1192,7 @@ object FarmShiftEngine {
             if (completion == FarmFoodDeliveryCompletion.SHIFT) {
                 val completionRules = requireNotNull(rules) { "Final farm food delivery requires farm rules" }
                 require(now >= 0) { "Final farm food delivery time is invalid" }
-                return EngineResult(
-                    credited.copy(
-                        phase = FarmPhase.COOLDOWN,
-                        incidentResolved = true,
-                        incidentsResolved = (credited.incidentsResolved + 1).coerceAtMost(MAX_FARM_INCIDENTS),
-                        incidentCrop = null,
-                        incidentType = null,
-                        incidentProgress = 0,
-                        incidentRequired = 0,
-                        specialIncident = null,
-                        cooldownEndsAt = now + completionRules.cooldownMillis,
-                        outcome = ShiftOutcome.COMPLETED,
-                    ),
-                    true,
-                    completionContribution,
-                    listOf(FarmShiftEvent.COMPLETED),
-                )
+                return FarmTerminalDelivery.complete(credited, completionRules, now, completionContribution)
             }
             return completeIncident(credited, completionContribution)
         }
@@ -1248,26 +1225,52 @@ object FarmShiftEngine {
         return completeIncident(current, contribution = 0).copy(events = emptyList())
     }
 
+    fun skipUnavailableFoodDelivery(
+        current: FarmShiftState,
+        completion: FarmFoodDeliveryCompletion,
+        rules: FarmRules? = null,
+        now: Long = 0,
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
+        if (current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.FOOD_DELIVERY) {
+            return EngineResult(current, false)
+        }
+        if (completion == FarmFoodDeliveryCompletion.INCIDENT) {
+            return skipUnavailableIncident(current, FarmIncidentType.FOOD_DELIVERY)
+        }
+        val completionRules = requireNotNull(rules) { "Final farm food delivery requires farm rules" }
+        require(now >= 0) { "Final farm food delivery time is invalid" }
+        return FarmTerminalDelivery.complete(current, completionRules, now, contribution = 0)
+    }
+
     /** Completes a delivery for administration/QA without fabricating player contribution. */
     fun completeDeliveryAsAdmin(
         current: FarmShiftState,
-        rules: FarmRules,
         requiredCrates: Int,
-        now: Long,
     ): EngineResult<FarmShiftState, FarmShiftEvent> {
         require(requiredCrates in 1..8) { "Farm delivery must require 1..8 crates" }
         if (current.phase != FarmPhase.DELIVERY) return EngineResult(current, false)
         return EngineResult(
-            current.copy(
-                phase = FarmPhase.COOLDOWN,
-                cooldownEndsAt = now + rules.cooldownMillis,
-                deliveryPosition = null,
+            FarmTerminalDelivery.start(
+                current,
                 deliveredCrates = (0 until requiredCrates).toSet(),
-                outcome = ShiftOutcome.COMPLETED,
+                contributors = current.contributors,
             ),
             true,
-            events = listOf(FarmShiftEvent.COMPLETED),
+            events = listOf(FarmShiftEvent.INCIDENT_STARTED),
         )
+    }
+
+    /** Completes the fixed terminal route for administration/QA without fabricating player contribution. */
+    fun completeFoodDeliveryAsAdmin(
+        current: FarmShiftState,
+        rules: FarmRules,
+        now: Long,
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
+        require(now >= 0) { "Final farm food delivery time is invalid" }
+        if (current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.FOOD_DELIVERY) {
+            return EngineResult(current, false)
+        }
+        return FarmTerminalDelivery.complete(current, rules, now, contribution = 0)
     }
 
     fun tick(

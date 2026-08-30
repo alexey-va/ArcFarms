@@ -143,12 +143,8 @@ internal class FarmFoodDeliveryAmbush(
 
     fun clear(zoneId: String) = night.releaseExternalLights("food:$zoneId:")
 
-    private fun players(session: FarmFoodDeliverySession): List<Player> = buildList {
-        session.riderId?.let(Bukkit::getPlayer)?.let(::add)
-        session.gunnerId?.let(Bukkit::getPlayer)?.let(::add)
-        session.escortIds.mapNotNullTo(this, Bukkit::getPlayer)
-        session.ambushCrewIds.mapNotNullTo(this, Bukkit::getPlayer)
-    }.distinctBy(Player::getUniqueId)
+    private fun players(session: FarmFoodDeliverySession): List<Player> =
+        session.participantIds().mapNotNull(Bukkit::getPlayer)
 
     private fun lightOwner(zoneId: String, id: UUID): String = "food:$zoneId:$id"
 

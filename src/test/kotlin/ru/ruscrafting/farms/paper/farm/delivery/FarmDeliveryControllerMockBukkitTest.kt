@@ -19,6 +19,7 @@ import ru.ruscrafting.farms.config.FarmItemDisplayTransform
 import ru.ruscrafting.farms.config.FarmSupplyPointSettings
 import ru.ruscrafting.farms.config.FarmZoneSettings
 import ru.ruscrafting.farms.domain.FarmDeliveryPosition
+import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
@@ -92,7 +93,8 @@ class FarmDeliveryControllerMockBukkitTest : FunSpec({
         val receiving = Location(world, 12.5, 65.0, 12.5)
         fixture.controller.moveCarried(listOf(fixture.runtime), player, receiving)
 
-        fixture.runtime.state.phase shouldBe FarmPhase.COOLDOWN
+        fixture.runtime.state.phase shouldBe FarmPhase.INCIDENT
+        fixture.runtime.state.incidentType shouldBe FarmIncidentType.FOOD_DELIVERY
         fixture.runtime.state.deliveredCrates shouldBe setOf(0)
         fixture.controller.carrierCount(fixture.runtime.settings.id) shouldBe 0
     }
@@ -183,7 +185,6 @@ private fun deliveryFixture(world: WorldMock, plugin: Plugin, crates: Int): Deli
         points = points,
         placement = placement,
         transitions = sink,
-        clock = { 10_000L },
         entityLookup = entityLookup,
     )
     return DeliveryFixture(runtime, create(), ::create, entityLookup, placement)

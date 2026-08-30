@@ -76,11 +76,12 @@ class FarmShiftEngineTest : FunSpec({
         packed.state.phase shouldBe FarmPhase.DELIVERY
         packed.events.last() shouldBe FarmShiftEvent.DELIVERY_STARTED
 
-        val completed = FarmShiftEngine.deliver(packed.state, rules, 0, 1, player, 6_000)
-        completed.state.phase shouldBe FarmPhase.COOLDOWN
-        completed.state.outcome shouldBe ShiftOutcome.COMPLETED
-        completed.state.contributors[player] shouldBe 10
-        completed.events shouldContainExactly listOf(FarmShiftEvent.COMPLETED)
+        val routeStarted = FarmShiftEngine.deliver(packed.state, 0, 1, player)
+        routeStarted.state.phase shouldBe FarmPhase.INCIDENT
+        routeStarted.state.incidentType shouldBe FarmIncidentType.FOOD_DELIVERY
+        routeStarted.state.outcome shouldBe ShiftOutcome.NONE
+        routeStarted.state.contributors[player] shouldBe 10
+        routeStarted.events shouldContainExactly listOf(FarmShiftEvent.INCIDENT_STARTED)
     }
 
     test("drought is a distinct incident action and pest kills cannot bypass it") {
@@ -133,11 +134,11 @@ class FarmShiftEngineTest : FunSpec({
         state.incidentsResolved shouldBe 3
     }
 
-    test("food delivery starts only after the order is fully harvested and completes the shift") {
+    test("every order ends with crate delivery followed by food delivery") {
         val deliveryOrder = FarmOrder(
             "delivery_order",
             linkedMapOf("WHEAT" to 2),
-            incidentTypes = listOf(FarmIncidentType.PESTS, FarmIncidentType.FOOD_DELIVERY),
+            incidentTypes = listOf(FarmIncidentType.PESTS),
         )
         val deliveryRules = FarmRules(
             incidentTriggerPercents = listOf(50),
@@ -160,15 +161,25 @@ class FarmShiftEngineTest : FunSpec({
             FarmIncidentType.PESTS,
         )
 
-        harvested.state.phase shouldBe FarmPhase.INCIDENT
-        harvested.state.incidentType shouldBe FarmIncidentType.FOOD_DELIVERY
+        harvested.state.phase shouldBe FarmPhase.DELIVERY
+        harvested.state.incidentType shouldBe null
         harvested.events shouldContainExactly listOf(
             FarmShiftEvent.PROGRESS,
             FarmShiftEvent.HARVEST_MILESTONE,
-            FarmShiftEvent.INCIDENT_STARTED,
+            FarmShiftEvent.DELIVERY_STARTED,
         )
 
-        state = FarmShiftEngine.initializeFoodDelivery(harvested.state, checkpoints = 4).state
+        val routeStarted = FarmShiftEngine.deliver(
+            harvested.state,
+            crateIndex = 0,
+            requiredCrates = 1,
+            playerId = player,
+        )
+        routeStarted.state.phase shouldBe FarmPhase.INCIDENT
+        routeStarted.state.incidentType shouldBe FarmIncidentType.FOOD_DELIVERY
+        routeStarted.events shouldContainExactly listOf(FarmShiftEvent.INCIDENT_STARTED)
+
+        state = FarmShiftEngine.initializeFoodDelivery(routeStarted.state, checkpoints = 4).state
         val completed = FarmShiftEngine.advanceFoodDelivery(
             state,
             reachedCheckpoint = 4,
@@ -209,7 +220,17 @@ class FarmShiftEngineTest : FunSpec({
         state = FarmShiftEngine.defeatPest(activePestEncounter(state), player).state
         state = FarmShiftEngine.harvest(state, order, rules, "CARROTS", player, 5_000).state
         val packed = FarmShiftEngine.harvest(state, order, rules, "CARROTS", player, 5_050)
-        val completed = FarmShiftEngine.deliver(packed.state, rules, 0, 1, player, 5_100)
+        val routeStarted = FarmShiftEngine.deliver(packed.state, 0, 1, player)
+        val initialized = FarmShiftEngine.initializeFoodDelivery(routeStarted.state, checkpoints = 4).state
+        val completed = FarmShiftEngine.advanceFoodDelivery(
+            initialized,
+            reachedCheckpoint = 4,
+            playerId = player,
+            completionContribution = 12,
+            completion = FarmFoodDeliveryCompletion.SHIFT,
+            rules = rules,
+            now = 5_200,
+        )
 
         completed.events.last() shouldBe FarmShiftEvent.COMPLETED
         (5_200L..10_000L step 100).forEach { now ->
@@ -517,18 +538,19 @@ class FarmShiftEngineTest : FunSpec({
 
     test("every configured harvest crate must be delivered exactly once") {
         val packed = FarmShiftState(phase = FarmPhase.DELIVERY)
-        val first = FarmShiftEngine.deliver(packed, rules, 0, 3, player, 1_000)
+        val first = FarmShiftEngine.deliver(packed, 0, 3, player)
         first.state.phase shouldBe FarmPhase.DELIVERY
         first.state.deliveredCrates shouldBe setOf(0)
         first.events shouldContainExactly listOf(FarmShiftEvent.DELIVERY_PROGRESS)
 
-        FarmShiftEngine.deliver(first.state, rules, 0, 3, player, 1_100).accepted shouldBe false
-        val second = FarmShiftEngine.deliver(first.state, rules, 2, 3, player, 1_200)
+        FarmShiftEngine.deliver(first.state, 0, 3, player).accepted shouldBe false
+        val second = FarmShiftEngine.deliver(first.state, 2, 3, player)
         second.state.phase shouldBe FarmPhase.DELIVERY
-        val completed = FarmShiftEngine.deliver(second.state, rules, 1, 3, player, 1_300)
-        completed.state.phase shouldBe FarmPhase.COOLDOWN
+        val completed = FarmShiftEngine.deliver(second.state, 1, 3, player)
+        completed.state.phase shouldBe FarmPhase.INCIDENT
+        completed.state.incidentType shouldBe FarmIncidentType.FOOD_DELIVERY
         completed.state.deliveredCrates shouldBe setOf(0, 2, 1)
-        completed.events shouldContainExactly listOf(FarmShiftEvent.COMPLETED)
+        completed.events shouldContainExactly listOf(FarmShiftEvent.INCIDENT_STARTED)
     }
 
     test("admin delivery completion never invents contributor credit") {
@@ -539,12 +561,31 @@ class FarmShiftEngineTest : FunSpec({
             deliveredCrates = setOf(0),
         )
 
-        val completed = FarmShiftEngine.completeDeliveryAsAdmin(packed, rules, 3, 1_300)
+        val completed = FarmShiftEngine.completeDeliveryAsAdmin(packed, 3)
+
+        completed.accepted shouldBe true
+        completed.contribution shouldBe 0
+        completed.state.phase shouldBe FarmPhase.INCIDENT
+        completed.state.incidentType shouldBe FarmIncidentType.FOOD_DELIVERY
+        completed.state.deliveredCrates shouldBe setOf(0, 1, 2)
+        completed.state.contributors shouldBe mapOf(contributor to 7)
+        completed.events shouldContainExactly listOf(FarmShiftEvent.INCIDENT_STARTED)
+    }
+
+    test("admin terminal route completion ends the shift without inventing contributor credit") {
+        val contributor = UUID.randomUUID()
+        val route = FarmShiftState(
+            phase = FarmPhase.INCIDENT,
+            incidentType = FarmIncidentType.FOOD_DELIVERY,
+            contributors = mapOf(contributor to 7),
+        )
+
+        val completed = FarmShiftEngine.completeFoodDeliveryAsAdmin(route, rules, now = 8_000)
 
         completed.accepted shouldBe true
         completed.contribution shouldBe 0
         completed.state.phase shouldBe FarmPhase.COOLDOWN
-        completed.state.deliveredCrates shouldBe setOf(0, 1, 2)
+        completed.state.outcome shouldBe ShiftOutcome.COMPLETED
         completed.state.contributors shouldBe mapOf(contributor to 7)
         completed.events shouldContainExactly listOf(FarmShiftEvent.COMPLETED)
     }
@@ -609,6 +650,29 @@ class FarmShiftEngineTest : FunSpec({
         skipped.events shouldContainExactly emptyList()
         skipped.state.phase shouldBe FarmPhase.HARVESTING
         skipped.state.contributors shouldBe emptyMap()
+    }
+
+    test("an unavailable terminal food route completes instead of looping back to crates") {
+        val waiting = FarmShiftState(
+            phase = FarmPhase.INCIDENT,
+            orderId = order.id,
+            progress = order.required,
+            incidentType = FarmIncidentType.FOOD_DELIVERY,
+            deliveredCrates = setOf(0, 1, 2),
+        )
+
+        val skipped = FarmShiftEngine.skipUnavailableFoodDelivery(
+            waiting,
+            completion = FarmFoodDeliveryCompletion.SHIFT,
+            rules = rules,
+            now = 4_000,
+        )
+
+        skipped.accepted shouldBe true
+        skipped.state.phase shouldBe FarmPhase.COOLDOWN
+        skipped.state.outcome shouldBe ShiftOutcome.COMPLETED
+        skipped.state.cooldownEndsAt shouldBe 9_000
+        skipped.events shouldContainExactly listOf(FarmShiftEvent.COMPLETED)
     }
 
     test("pest incident waits for every nest and every live pest") {

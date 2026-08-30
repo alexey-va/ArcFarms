@@ -6,6 +6,7 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.ints.shouldBeGreaterThanOrEqual
 import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.shouldBe
+import io.mockk.every
 import org.bukkit.NamespacedKey
 import org.bukkit.block.BlockFace
 import org.bukkit.damage.DamageSource
@@ -15,8 +16,10 @@ import org.bukkit.entity.Interaction
 import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Mob
 import org.bukkit.entity.TextDisplay
+import org.bukkit.entity.Zombie
 import org.bukkit.event.Event
 import org.bukkit.event.block.Action
+import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerInteractEvent
@@ -98,14 +101,49 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
             driver.inventory.contents.filterNotNull().any(delivery::ownsServiceItem) shouldBe true
             gunner.inventory.contents.filterNotNull().any(delivery::ownsServiceItem) shouldBe true
 
+            fixture.world.time = 6_000L
+            driver.resetPlayerTime()
+            delivery.ensure(runtime, 2_004L)
+            repeat(400) { fixture.night.updatePlayerTimes() }
+            driver.playerTime shouldBe runtime.settings.routeDelivery.playerTime
+
             delivery.updateVisuals(listOf(runtime))
             seat.passengers.single() shouldBe gunner
             driver.leaveVehicle() shouldBe true
             delivery.updateVisuals(listOf(runtime))
             seat.passengers.single() shouldBe gunner
+            every { fixture.port.players(any()) } returns listOf(gunner)
             delivery.ensure(runtime, 2_005L)
-            driver.inventory.contents.filterNotNull().none(delivery::ownsServiceItem) shouldBe true
+            driver.inventory.contents.filterNotNull().any(delivery::ownsServiceItem) shouldBe true
             gunner.inventory.contents.filterNotNull().any(delivery::ownsServiceItem) shouldBe true
+            delivery.participants(runtime).map { it.uniqueId }.toSet() shouldBe
+                setOf(driver.uniqueId, gunner.uniqueId)
+            fixture.world.time = 12_000L
+            repeat(40) { fixture.night.updatePlayerTimes() }
+            driver.playerTime shouldBe runtime.settings.routeDelivery.playerTime
+
+            val attacker = fixture.world.spawn(driver.location, Zombie::class.java)
+            attacker.persistentDataContainer.set(
+                NamespacedKey(fixture.plugin, "farm_food_route_zone"),
+                PersistentDataType.STRING,
+                runtime.settings.id,
+            )
+            attacker.persistentDataContainer.set(
+                NamespacedKey(fixture.plugin, "farm_food_route_sequence"),
+                PersistentDataType.LONG,
+                runtime.state.sequence,
+            )
+            attacker.persistentDataContainer.set(routeRole, PersistentDataType.STRING, "monster")
+            val attack = EntityDamageByEntityEvent(
+                attacker,
+                driver,
+                EntityDamageEvent.DamageCause.ENTITY_ATTACK,
+                1.0,
+            )
+            delivery.onDamage(attack, listOf(runtime)) shouldBe true
+            attack.isCancelled shouldBe false
+            attacker.remove()
+
             delivery.interact(PlayerInteractEntityEvent(driver, horse, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
             driver.inventory.contents.filterNotNull().any(delivery::ownsServiceItem) shouldBe true
 

@@ -3,6 +3,7 @@ package ru.ruscrafting.farms.domain
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.ints.shouldBeGreaterThanOrEqual
+import io.kotest.matchers.shouldBe
 
 class FarmRewardDifficultyTest : FunSpec({
     val common = FarmOrder(
@@ -34,5 +35,14 @@ class FarmRewardDifficultyTest : FunSpec({
 
         longer shouldBeGreaterThan shorter
         rareLonger shouldBeGreaterThan longer
+    }
+
+    test("terminal food delivery is rewarded even when it is absent from the random incident pool") {
+        val withoutLegacyToggle = common.copy(
+            incidentTypes = FarmIncidentType.entries.filterNot { it == FarmIncidentType.FOOD_DELIVERY },
+        )
+
+        FarmRewardDifficulty.multiplierPercent(withoutLegacyToggle, rules, sequence = 1) shouldBe
+            FarmRewardDifficulty.multiplierPercent(common, rules, sequence = 1)
     }
 })

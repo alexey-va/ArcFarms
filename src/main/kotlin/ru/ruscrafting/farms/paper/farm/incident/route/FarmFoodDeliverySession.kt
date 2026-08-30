@@ -28,6 +28,32 @@ internal data class FarmFoodDeliverySession(
     var stallAnchor: Location? = null,
     var stallRouteProgress: Int = 0,
 ) {
+    fun participantIds(): Set<UUID> = buildSet {
+        riderId?.let(::add)
+        gunnerId?.let(::add)
+        addAll(escortIds)
+        addAll(ambushCrewIds)
+    }
+
+    fun isParticipant(playerId: UUID): Boolean = riderId == playerId || gunnerId == playerId ||
+        playerId in escortIds || playerId in ambushCrewIds
+
+    fun transitionToEscort(playerId: UUID) {
+        if (riderId == playerId) riderId = null
+        if (gunnerId == playerId) gunnerId = null
+        ambushCrewIds.remove(playerId)
+        escortIds += playerId
+    }
+
+    fun releaseParticipant(playerId: UUID): Boolean {
+        val wasParticipant = isParticipant(playerId)
+        if (riderId == playerId) riderId = null
+        if (gunnerId == playerId) gunnerId = null
+        escortIds.remove(playerId)
+        ambushCrewIds.remove(playerId)
+        return wasParticipant
+    }
+
     fun finishWaveIfCleared(): Boolean {
         if (!brokenDown || monsterIds.isNotEmpty()) return false
         brokenDown = false

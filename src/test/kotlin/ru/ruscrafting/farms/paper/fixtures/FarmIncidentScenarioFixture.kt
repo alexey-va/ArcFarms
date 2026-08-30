@@ -63,6 +63,7 @@ internal class FarmIncidentScenarioFixture private constructor(
     val locale: ArcFarmsLocale,
     val zone: FarmZoneSettings,
     val port: WorksiteRuntimePort,
+    val night: FarmNightShiftController,
     val processingPoint: FarmPointPosition,
     val barnPoint: FarmPointPosition,
     private val fixtureRoot: Path,
@@ -171,7 +172,7 @@ internal class FarmIncidentScenarioFixture private constructor(
             },
             transitions = transitionSink,
             random = java.util.Random(7),
-            night = FarmNightShiftController(plugin),
+            night = night,
             entityRayTrace = MockBukkitFarmEntityRayTrace,
             blockPassability = MockBukkitFarmBlockPassability,
             mobDespawns = MockBukkitFarmMobDespawns,
@@ -304,6 +305,7 @@ internal class FarmIncidentScenarioFixture private constructor(
             for (x in 0..63) for (z in 0..63) world.getBlockAt(x, 64, z).type = Material.STONE
 
             val plugin = paper.createSimplePlugin("FarmIncidentScenario")
+            val night = FarmNightShiftController(plugin)
             val fixtureRoot = Files.createTempDirectory("arcfarms-incident-scenario")
             val resourceRoot = copyResources(fixtureRoot.resolve("config"))
             val settings = ArcFarmsConfig.inspect(resourceRoot)
@@ -330,6 +332,7 @@ internal class FarmIncidentScenarioFixture private constructor(
                 locale = ArcFarmsLocale(resourceRoot) { settings },
                 zone = zone,
                 port = port,
+                night = night,
                 processingPoint = FarmPointPosition(world.name, 18.5, 65.0, 18.5, 0f, 0f),
                 barnPoint = FarmPointPosition(world.name, 46.5, 65.0, 46.5, 0f, 0f),
                 fixtureRoot = fixtureRoot,

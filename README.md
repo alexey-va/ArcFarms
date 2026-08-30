@@ -215,14 +215,17 @@ persisted shift state after reload or restart. Clicking the cart reports its
 fill percentage; clicking the baker, mine supplier, or market trader repeats
 the current order. The customer waits beside receiving by default, while both
 `cart` and `customer` support administrator point overrides. When the crop
-quota is ready, a configured set of interactive harvest crates appears
-at the last crop. Players
+quota is ready, every order enters the same two-step finale. A configured set
+of interactive harvest crates first appears at the last crop. Players
 carry their visual displays to the configured receiving point; leaving the farm
 returns only the carried crate, while the shared delivery objective remains
-available indefinitely. Delivering every crate completes the order, restores
-the selected beds to their captured pre-shift state, awards configured
-experience to online contributors, and triggers participant and top-contributor
-recognition.
+available indefinitely. Delivering every crate then starts the named food route;
+only finishing that route completes the order, restores the selected beds to
+their captured pre-shift state, awards configured experience to online
+contributors, and triggers participant and top-contributor recognition. Route
+participants keep their temporary rifle, HUD, boss bar, damage eligibility and
+night-time view while mounted or walking; those resources are released only
+when they leave or the route itself ends.
 
 Every modified bed is recorded before mutation in the owning chunk's Paper PDC
 with its exact coordinates, original soil and crop block data, and current

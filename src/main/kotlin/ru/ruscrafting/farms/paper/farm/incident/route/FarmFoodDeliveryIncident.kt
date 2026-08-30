@@ -88,14 +88,11 @@ internal class FarmFoodDeliveryIncident(
         val session = sessions[runtime.settings.id]?.takeIf { it.sequence == runtime.state.sequence } ?: return emptyList()
         val horse = session.horseId?.let(Bukkit::getEntity) as? Horse
         val seat = session.gunnerSeatId?.let(Bukkit::getEntity) as? Interaction
-        return buildList {
-            session.riderId?.let(Bukkit::getPlayer)?.let(::add)
-            session.gunnerId?.let(Bukkit::getPlayer)?.let(::add)
-            session.escortIds.mapNotNullTo(this, Bukkit::getPlayer)
-            session.ambushCrewIds.mapNotNullTo(this, Bukkit::getPlayer)
-            horse?.passengers?.filterIsInstanceTo(this)
-            seat?.passengers?.filterIsInstanceTo(this)
-        }.filter(Player::isOnline).distinctBy(Player::getUniqueId)
+        return (session.participantIds().mapNotNull(Bukkit::getPlayer) +
+            horse?.passengers.orEmpty().filterIsInstance<Player>() +
+            seat?.passengers.orEmpty().filterIsInstance<Player>())
+            .filter(Player::isOnline)
+            .distinctBy(Player::getUniqueId)
     }
 
     fun participantRuntime(player: Player, runtimes: Collection<FarmRuntime>): FarmRuntime? =
@@ -143,7 +140,7 @@ internal class FarmFoodDeliveryIncident(
             clear(runtime.settings.id, "route_unavailable")
             transitions.apply(
                 runtime,
-                FarmShiftEngine.skipUnavailableIncident(runtime.state, FarmIncidentType.FOOD_DELIVERY),
+                skipUnavailable(runtime, now),
                 null,
             )
             return
@@ -308,12 +305,7 @@ internal class FarmFoodDeliveryIncident(
         if (player != null && owns(incoming.damager) && role(incoming.damager) == ROLE_MONSTER) {
             val zone = incoming.damager.persistentDataContainer.get(zoneKey, PersistentDataType.STRING)
             val session = zone?.let(sessions::get)
-            event.isCancelled = session == null || player.uniqueId !in buildSet {
-                session.riderId?.let(::add)
-                session.gunnerId?.let(::add)
-                addAll(session.escortIds)
-                addAll(session.ambushCrewIds)
-            }
+            event.isCancelled = session?.isParticipant(player.uniqueId) != true
             return true
         }
         if (!owns(event.entity)) return false
@@ -427,14 +419,12 @@ internal class FarmFoodDeliveryIncident(
             ?.let { checkpoint -> minOf(projected, checkpoint) }
             ?: projected
         if (reached <= currentIndex) return
-        val order = runtime.state.orderId?.let(runtime.orders::get)
-        val closesOrder = order != null && runtime.state.completed(order) >= order.totalRequired
         val result = FarmShiftEngine.advanceFoodDelivery(
             runtime.state,
             reached,
             rider.uniqueId,
             config.completionContribution,
-            completion = if (closesOrder) FarmFoodDeliveryCompletion.SHIFT else FarmFoodDeliveryCompletion.INCIDENT,
+            completion = completion(runtime),
             rules = runtime.rules,
             now = now,
         )
@@ -719,12 +709,22 @@ internal class FarmFoodDeliveryIncident(
 
     private fun role(entity: Entity): String? = entity.persistentDataContainer.get(roleKey, PersistentDataType.STRING)
 
-    private fun sessionPlayers(session: FarmFoodDeliverySession): List<Player> = buildList {
-        session.riderId?.let(Bukkit::getPlayer)?.let(::add)
-        session.gunnerId?.let(Bukkit::getPlayer)?.let(::add)
-        session.escortIds.mapNotNullTo(this, Bukkit::getPlayer)
-        session.ambushCrewIds.mapNotNullTo(this, Bukkit::getPlayer)
-    }.filter(Player::isOnline).distinctBy(Player::getUniqueId)
+    private fun sessionPlayers(session: FarmFoodDeliverySession): List<Player> =
+        session.participantIds().mapNotNull(Bukkit::getPlayer).filter(Player::isOnline)
+
+    fun skipUnavailable(runtime: FarmRuntime, now: Long) = FarmShiftEngine.skipUnavailableFoodDelivery(
+        runtime.state,
+        completion(runtime),
+        rules = runtime.rules,
+        now = now,
+    )
+
+    private fun completion(runtime: FarmRuntime): FarmFoodDeliveryCompletion {
+        val order = runtime.state.orderId?.let(runtime.orders::get)
+        return if (order != null && runtime.state.completed(order) >= order.totalRequired) {
+            FarmFoodDeliveryCompletion.SHIFT
+        } else FarmFoodDeliveryCompletion.INCIDENT
+    }
 
     private fun selectedRoute(runtime: FarmRuntime): NamedFarmDeliveryRoute? {
         val persistedName = runtime.state.specialIncident?.routeName

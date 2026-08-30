@@ -55,7 +55,6 @@ internal class FarmDeliveryController(
     private val points: FarmPointProvider,
     private val placement: FarmPlacementService,
     private val transitions: FarmTransitionSink,
-    private val clock: () -> Long,
     private val entityLookup: FarmEntityLookup = BukkitFarmEntityLookup,
 ) {
     private val zoneKey = NamespacedKey(plugin, "farm_delivery_zone")
@@ -317,11 +316,9 @@ internal class FarmDeliveryController(
             runtime,
             FarmShiftEngine.deliver(
                 runtime.state,
-                runtime.rules,
                 key.index,
                 runtime.settings.delivery.crates,
                 player.uniqueId,
-                clock(),
             ),
             player,
         )

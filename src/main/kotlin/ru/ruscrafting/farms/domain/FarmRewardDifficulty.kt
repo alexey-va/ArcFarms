@@ -5,7 +5,7 @@ object FarmRewardDifficulty {
     fun multiplierPercent(order: FarmOrder, rules: FarmRules, sequence: Long): Int {
         val incidentCount = rules.incidentTargetCount(sequence)
         val incidents = FarmIncidentPlanner.sequence(order.incidentTypes, incidentCount, sequence) +
-            listOfNotNull(FarmIncidentType.FOOD_DELIVERY.takeIf { it in order.incidentTypes })
+            FarmIncidentType.FOOD_DELIVERY
         val volumeBonus = (order.totalRequired / 320).coerceIn(0, 20)
         val rarityBonus = if (order.rarity == FarmContractRarity.RARE) 15 else 0
         val incidentBonus = incidents.sumOf(::incidentWeight)

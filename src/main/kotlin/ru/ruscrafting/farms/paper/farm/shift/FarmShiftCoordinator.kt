@@ -368,7 +368,7 @@ internal class FarmShiftCoordinator(
             }
             FarmIncidentType.FOOD_DELIVERY -> {
                 if (!foodDelivery.initialize(runtime)) {
-                    apply(runtime, FarmShiftEngine.skipUnavailableIncident(runtime.state, FarmIncidentType.FOOD_DELIVERY), null)
+                    apply(runtime, foodDelivery.skipUnavailable(runtime, System.currentTimeMillis()), null)
                     return
                 }
                 foodDelivery.ensure(runtime, System.currentTimeMillis())
@@ -582,6 +582,7 @@ internal class FarmShiftCoordinator(
     private fun completed(runtime: FarmRuntime, actor: Player?) {
         players(runtime).forEach { supplies.removeServiceItems(it, runtime.settings.id, "shift_completed") }
         delivery.clear(runtime, "completed")
+        foodDelivery.clear(runtime.settings.id, "shift_completed")
         val contributors = runtime.state.contributors
         stats.recordCompletion(ActivityKind.FARM, contributors)
         rewards.queueCompletion(runtime, contributors)

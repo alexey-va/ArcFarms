@@ -137,17 +137,32 @@ internal class FarmGameplayAdminService(
         CARE_STAGES[normalized]?.let { careType ->
             return careStage(player, runtime, normalized, careType)
         }
+        if (normalized == "complete") {
+            val ignoredEvents = mutableListOf<FarmShiftEvent>()
+            runtime.state = deliveryState(runtime, order, player, ignoredEvents)
+            runtime.state = FarmShiftEngine.completeDeliveryAsAdmin(
+                runtime.state,
+                runtime.settings.delivery.crates,
+            ).state
+            transitions.apply(
+                runtime,
+                FarmShiftEngine.completeFoodDeliveryAsAdmin(runtime.state, runtime.rules, clock()),
+                player,
+            )
+            persistAsync()
+            port.sendChat(player, MessageKey.ADMIN_STAGE_SET, mapOf("stage" to locale.renderPath("admin.stage.$normalized", player)))
+            return true
+        }
         val events = mutableListOf<FarmShiftEvent>()
         runtime.state = when (normalized) {
             "planting" -> plantingState(runtime, events)
             "harvesting" -> harvestingState(runtime)
             in INCIDENT_STAGES.keys ->
                 incidentState(runtime, normalized, nextCrop, events)
-            "delivery", "complete" -> deliveryState(runtime, order, player, events)
+            "delivery" -> deliveryState(runtime, order, player, events)
             else -> return false
         }
         transitions.apply(runtime, EngineResult(runtime.state, true, events = events), player)
-        if (normalized == "complete") completeDelivery(runtime, player)
         persistAsync()
         port.sendChat(player, MessageKey.ADMIN_STAGE_SET, mapOf("stage" to locale.renderPath("admin.stage.$normalized", player)))
         return true
@@ -197,8 +212,8 @@ internal class FarmGameplayAdminService(
             } ?: "harvesting"
             FarmPhase.CARE -> "harvesting"
             FarmPhase.HARVESTING -> currentOrder(runtime)?.let { special.id(harvest.plannedIncident(runtime, it)) } ?: "pests"
-            FarmPhase.INCIDENT -> "harvesting"
-            FarmPhase.DELIVERY -> "complete"
+            FarmPhase.INCIDENT -> if (runtime.state.incidentType == FarmIncidentType.FOOD_DELIVERY) "complete" else "harvesting"
+            FarmPhase.DELIVERY -> "food-delivery"
         }
         return setStage(player, zoneId, next)
     }
@@ -452,16 +467,6 @@ internal class FarmGameplayAdminService(
             pestNestsInitialized = false, pestNests = emptyList(), pestAlive = 0,
             deliveryPosition = placement.selectDeliveryAnchor(runtime, player.location), deliveredCrates = emptySet(),
         )
-    }
-
-    private fun completeDelivery(runtime: FarmRuntime, player: Player) {
-        val result = FarmShiftEngine.completeDeliveryAsAdmin(
-            runtime.state,
-            runtime.rules,
-            runtime.settings.delivery.crates,
-            clock(),
-        )
-        transitions.apply(runtime, result, player)
     }
 
     private fun reset(runtime: FarmRuntime): Boolean {
