@@ -261,8 +261,8 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().barnFire.spawnPerTick shouldBe 8
         settings.farms.single().barnFire.placementRadius shouldBe 16
         settings.farms.single().barnFire.particleHotspotLimit shouldBe 24
-        settings.farms.single().barnFire.sprayRange shouldBe 18.0
-        settings.farms.single().barnFire.sprayHitRadius shouldBe 1.6
+        settings.farms.single().barnFire.sprayRange shouldBe 32.0
+        settings.farms.single().barnFire.sprayHitRadius shouldBe 3.2
         settings.farms.single().supplies.fireEquipmentMaterial shouldBe "SPYGLASS"
         settings.farms.single().specialIncidents.channelBlockageCount shouldBe 5
         settings.farms.single().specialIncidents.channelBlockageMaterial shouldBe "MANGROVE_ROOTS"

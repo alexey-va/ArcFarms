@@ -1,6 +1,9 @@
 package ru.ruscrafting.farms.domain
 
 import java.lang.Math.floorMod
+import ru.ruscrafting.farms.domain.placement.WorksitePlacementPlanner
+import ru.ruscrafting.farms.domain.placement.WorksitePlacementProfiles
+import ru.ruscrafting.farms.domain.placement.WorksitePlacementRequest
 
 object FarmCarePlanner {
     const val MAX_SPREAD_TARGETS = 256
@@ -52,21 +55,12 @@ object FarmCarePlanner {
         selectionIndex: Long,
     ): List<FarmPlotPosition> {
         require(targetCount in 1..MAX_SPREAD_TARGETS) { "Farm care target count is invalid" }
-        val unique = candidates.distinct().sortedWith(
-            compareBy(FarmPlotPosition::world, FarmPlotPosition::y, FarmPlotPosition::x, FarmPlotPosition::z),
+        return WorksitePlacementPlanner.select(
+            candidates,
+            WorksitePlacementRequest(targetCount, selectionIndex),
+            WorksitePlacementProfiles.evenSpread(),
+            FarmPlotPosition::toWorksitePlacementPoint,
         )
-        if (unique.size <= targetCount) return unique
-        val selected = mutableListOf(unique[floorMod(selectionIndex, unique.size.toLong()).toInt()])
-        while (selected.size < targetCount) {
-            val next = unique.asSequence().filterNot(selected::contains).maxWithOrNull(
-                compareBy<FarmPlotPosition> { candidate ->
-                    selected.minOf { existing -> horizontalDistanceSquared(candidate, existing) }
-                }.thenByDescending(FarmPlotPosition::x)
-                    .thenByDescending(FarmPlotPosition::z),
-            ) ?: break
-            selected += next
-        }
-        return selected
     }
 
     fun centralSpread(
@@ -76,7 +70,12 @@ object FarmCarePlanner {
         selectionIndex: Long,
     ): List<FarmPlotPosition> {
         require(targetCount in 1..MAX_SPREAD_TARGETS) { "Farm care target count is invalid" }
-        return FarmCentralPlotSelector.select(candidates, targetCount, minimumSpacing, selectionIndex)
+        return WorksitePlacementPlanner.select(
+            candidates,
+            WorksitePlacementRequest(targetCount, selectionIndex),
+            WorksitePlacementProfiles.balancedRing(minimumSpacing),
+            FarmPlotPosition::toWorksitePlacementPoint,
+        )
     }
 
     fun corners(candidates: Collection<FarmPlotPosition>): List<FarmPlotPosition> {

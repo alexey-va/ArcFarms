@@ -291,7 +291,7 @@ farm-zones:
       placement-radius: 16
       min-spacing: 1.4
       vertical-search: 5
-      spray: {range: 18.0, hit-radius: 1.6, cooldown-ticks: 5, particle-step: 0.55}
+      spray: {range: 32.0, hit-radius: 3.2, cooldown-ticks: 5, particle-step: 0.55}
       flame-particle-interval-ticks: 5
       # Real flames remain visible; only this many receive extra smoke/particle decoration per pulse.
       particle-hotspot-limit: 24

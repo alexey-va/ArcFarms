@@ -154,6 +154,7 @@ owns the zone collection; the module delegates to the following vertical owners.
 | `farm.shift/FarmShiftCoordinator` | start, transition application, completion, persistence request, network/stats/reward handoff | complete phase flow and rejected transition |
 | `farm.field/FarmFieldController` | bed discovery, patch selection, till/plant, wet soil, managed block index | field selection, 90% quota, covered bed exclusion |
 | `farm.placement/FarmPlacementService`, `FarmSurfacePolicy` | bounded outdoor placement, loaded-column surface checks, delivery layouts | roof/cave rejection and no chunk loads |
+| `domain.placement/WorksitePlacementPlanner` and strategies | platform-neutral candidate distribution profiles shared by any worksite event | Bukkit validation, entity spawning, event-specific state |
 | `farm.recovery/FarmFixedCropRecoveryController` and `FarmIncidentRecoveryController` | fixed-crop and incident restore queues with per-tick budgets | restart, unloaded chunk, partial restore, stale callback |
 | `farm.harvest/FarmHarvestController` | accepted crop validation, drop suppression, fixed fruit intent and respawn | wrong phase/crop, no drops, journal-before-mutation |
 | `farm.care/FarmCareController`, `FarmDiseaseController`, `FarmCarePresentation` | routes care, owns shared entities and seeder/animal lifecycles, local disease frontier/death journal and shared feedback | cleanup and activity scenarios |
@@ -176,6 +177,14 @@ Care and incident dispatch remains bounded inside the corresponding feature
 package. Adding a type requires a domain enum, one focused handler,
 config/locale wiring and its tests; it must not require editing the application
 facade or another worksite.
+
+Spatial preference is selected rather than reimplemented. An event maps its
+own candidate type to `WorksitePlacementPoint`, supplies a deterministic seed,
+and chooses a `WorksitePlacementProfile`. `BalancedRingPlacementStrategy`
+prefers the varied middle ellipse while retaining broad/full-field and spacing
+fallbacks; `FarthestPointPlacementStrategy` distributes targets across the
+whole candidate pool. A new layout policy implements `WorksitePlacementStrategy`
+and receives contract tests independent of farm, lumbermill or mine types.
 
 ## State ownership
 

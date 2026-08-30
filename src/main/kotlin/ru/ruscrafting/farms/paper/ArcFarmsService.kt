@@ -1,5 +1,6 @@
 package ru.ruscrafting.farms.paper
 
+import io.papermc.paper.event.entity.EntityLoadCrossbowEvent
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.entity.Player
@@ -8,6 +9,7 @@ import org.bukkit.event.entity.EntityChangeBlockEvent
 import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.PlayerDeathEvent
 import org.bukkit.event.entity.ProjectileHitEvent
+import org.bukkit.event.entity.EntityShootBowEvent
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.block.BlockDropItemEvent
 import org.bukkit.event.block.BlockFadeEvent
@@ -288,20 +290,16 @@ class ArcFarmsService(
     fun onVehicleEnter(event: VehicleEnterEvent) = farm.events.onVehicleEnter(event)
     fun onEntityDamage(event: EntityDamageEvent) = farm.events.onEntityDamage(event)
     fun onProjectileHit(event: ProjectileHitEvent) = farm.events.onProjectileHit(event)
+    fun onLoadCrossbow(event: EntityLoadCrossbowEvent) = farm.events.onLoadCrossbow(event)
+    fun onShootBow(event: EntityShootBowEvent) = farm.events.onShootBow(event)
     fun onMoistureChange(event: MoistureChangeEvent) = farm.events.onMoistureChange(event)
-
     fun toggleAdminEdit(player: Player): Boolean? = farm.worldAdmin.toggleEdit(player)
-
     fun toggleAdminInspect(player: Player): Boolean = farm.worldAdmin.toggleInspect(player)
-
     fun adminStartFarmBlockReset(player: Player, zoneId: String): Boolean =
         farm.worldAdmin.startBlockReset(player, zoneId)
-
     fun adminStartFarmRoute(player: Player, zoneId: String, routeName: String = "main"): Boolean =
         farm.routeAdmin.start(player, zoneId, routeName)
-
     fun adminFinishFarmRoute(player: Player): Boolean = farm.routeAdmin.finish(player)
-
     fun adminCancelFarmRoute(player: Player): Boolean = farm.routeAdmin.cancel(player)
 
     fun adminClearFarmRoute(player: Player, zoneId: String, routeName: String = "main"): Boolean =

@@ -1,5 +1,6 @@
 package ru.ruscrafting.farms.paper.farm.incident.fire
 
+import io.papermc.paper.event.entity.EntityLoadCrossbowEvent
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.Material
@@ -7,7 +8,9 @@ import org.bukkit.Particle
 import org.bukkit.Sound
 import org.bukkit.block.BlockFace
 import org.bukkit.entity.Player
+import org.bukkit.event.Event
 import org.bukkit.event.block.Action
+import org.bukkit.event.entity.EntityShootBowEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.util.Vector
@@ -125,8 +128,30 @@ internal class FarmBarnFireIncident(
         if (!active(runtime) || event.hand != EquipmentSlot.HAND ||
             event.action !in setOf(Action.RIGHT_CLICK_AIR, Action.RIGHT_CLICK_BLOCK)
         ) return false
+        event.setUseInteractedBlock(Event.Result.DENY)
+        event.setUseItemInHand(Event.Result.DENY)
         event.isCancelled = true
-        val player = event.player
+        return spray(event.player, runtime)
+    }
+
+    /** Paper fires this path when the modeled CROSSBOW starts charging in air. */
+    fun spray(event: EntityLoadCrossbowEvent, runtime: FarmRuntime): Boolean {
+        val player = event.entity as? Player ?: return false
+        if (!active(runtime)) return false
+        event.isCancelled = true
+        event.setConsumeItem(false)
+        return spray(player, runtime)
+    }
+
+    /** A previously charged service item still cannot release a vanilla projectile. */
+    fun spray(event: EntityShootBowEvent, runtime: FarmRuntime): Boolean {
+        val player = event.entity as? Player ?: return false
+        if (!active(runtime)) return false
+        event.isCancelled = true
+        return spray(player, runtime)
+    }
+
+    private fun spray(player: Player, runtime: FarmRuntime): Boolean {
         if (!access.hasAccess(player, runtime.settings.permission)) {
             audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return true

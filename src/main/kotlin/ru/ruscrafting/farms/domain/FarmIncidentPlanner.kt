@@ -1,5 +1,9 @@
 package ru.ruscrafting.farms.domain
 
+import ru.ruscrafting.farms.domain.placement.WorksitePlacementPlanner
+import ru.ruscrafting.farms.domain.placement.WorksitePlacementProfiles
+import ru.ruscrafting.farms.domain.placement.WorksitePlacementRequest
+
 object FarmIncidentPlanner {
     fun sequence(
         configured: Collection<FarmIncidentType>,
@@ -32,19 +36,12 @@ object FarmIncidentPlanner {
         selectionIndex: Long,
     ): List<FarmPlotPosition> {
         require(count in 1..16) { "Farm incident center count must be in 1..16" }
-        val available = candidates.distinct().sortedWith(POSITION_ORDER)
-        if (available.isEmpty()) return emptyList()
-        val firstIndex = Math.floorMod(mix(selectionIndex), available.size.toLong()).toInt()
-        val centers = mutableListOf(available[firstIndex])
-        while (centers.size < minOf(count, available.size)) {
-            val next = available.asSequence().filterNot(centers::contains).maxWithOrNull(
-                compareBy<FarmPlotPosition> { candidate ->
-                    centers.minOf { center -> horizontalDistanceSquared(candidate, center) }
-                }.then(POSITION_ORDER),
-            ) ?: break
-            centers += next
-        }
-        return centers
+        return WorksitePlacementPlanner.select(
+            candidates,
+            WorksitePlacementRequest(count, mix(selectionIndex)),
+            WorksitePlacementProfiles.evenSpread(),
+            FarmPlotPosition::toWorksitePlacementPoint,
+        )
     }
 
     fun centralDispersedCenters(
@@ -54,7 +51,12 @@ object FarmIncidentPlanner {
         selectionIndex: Long,
     ): List<FarmPlotPosition> {
         require(count in 1..16) { "Farm incident center count must be in 1..16" }
-        return FarmCentralPlotSelector.select(candidates, count, minimumSpacing, selectionIndex)
+        return WorksitePlacementPlanner.select(
+            candidates,
+            WorksitePlacementRequest(count, selectionIndex),
+            WorksitePlacementProfiles.balancedRing(minimumSpacing),
+            FarmPlotPosition::toWorksitePlacementPoint,
+        )
     }
 
     fun droughtPatches(

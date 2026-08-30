@@ -4,6 +4,7 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import io.papermc.paper.event.entity.EntityLoadCrossbowEvent
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.block.BlockFace
@@ -125,6 +126,88 @@ class FarmBarnFireIncidentMockBukkitTest : FunSpec({
                 hotspot.block.type shouldBe Material.AIR
                 controller.protects(hotspot) shouldBe false
             }
+        } finally {
+            paper.close()
+        }
+    }
+
+    test("loading the modeled crossbow is intercepted and fires the water jet at range") {
+        val paper = MockBukkitTestRuntime.open()
+        try {
+            val world = paper.server.addSimpleWorld("farm")
+            for (chunkX in -2..1) for (chunkZ in -2..1) world.getChunkAt(chunkX, chunkZ).load()
+            for (x in -32..31) for (z in -32..31) world.getBlockAt(x, 64, z).type = Material.STONE
+            val anchor = FarmPointPosition(world.name, 8.5, 65.0, 8.5)
+            val fire = FarmBarnFireSettings(
+                hotspotCount = 1,
+                spawnPerTick = 1,
+                placementRadius = 1,
+                minSpacing = 1.0,
+                verticalSearch = 2,
+                sprayRange = 32.0,
+                sprayHitRadius = 3.2,
+                sprayCooldownTicks = 1,
+                particleStep = 0.5,
+                flameParticleIntervalTicks = 5,
+                particleHotspotLimit = 1,
+            )
+            val zone = mockk<FarmZoneSettings> {
+                every { id } returns "communal_farm"
+                every { permission } returns "arcfarms.farm"
+                every { barnFire } returns fire
+            }
+            val runtime = FarmRuntime(
+                settings = zone,
+                region = CuboidActivityRegion(world, "farm", CuboidBounds(-64, 0, -64, 64, 128, 64)),
+                orders = emptyMap(),
+                orderList = emptyList(),
+                rules = mockk(relaxed = true),
+                state = FarmShiftState(
+                    phase = FarmPhase.INCIDENT,
+                    sequence = 3,
+                    placementSequence = 9,
+                    orderId = "test_order",
+                    incidentType = FarmIncidentType.BARN_FIRE,
+                ),
+            )
+            val port = mockk<WorksiteRuntimePort>(relaxed = true) {
+                every { hasAccess(any(), any()) } returns true
+                every { allowInteraction(any(), any()) } returns true
+            }
+            val controller = FarmBarnFireIncident(
+                settings = {
+                    mockk<ArcFarmsConfig> {
+                        every { particles } returns false
+                        every { sounds } returns false
+                    }
+                },
+                debug = ArcFarmsDebug({ false }) {},
+                access = port,
+                audience = port,
+                state = port,
+                points = FarmPointProvider { _, kind ->
+                    kind shouldBe FarmPointKind.PEN
+                    anchor
+                },
+                transitions = FarmTransitionSink { target, result, _ -> target.state = result.state },
+                blockPassability = MockBukkitFarmBlockPassability,
+            )
+            controller.initialize(runtime) shouldBe true
+            controller.ensure(runtime)
+            val hotspot = runtime.state.specialIncident!!.points.single().location(world)
+
+            val player = paper.addPlayer("Firefighter")
+            val crossbow = ItemStack(Material.CROSSBOW)
+            player.inventory.setItemInMainHand(crossbow)
+            val origin = hotspot.clone().subtract(0.0, 0.0, 25.0)
+            player.teleport(origin.setDirection(hotspot.toVector().subtract(origin.toVector()).normalize()))
+            val event = EntityLoadCrossbowEvent(player, crossbow, EquipmentSlot.HAND)
+
+            controller.spray(event, runtime) shouldBe true
+            event.isCancelled shouldBe true
+            event.shouldConsumeItem() shouldBe false
+            runtime.state.phase shouldBe FarmPhase.HARVESTING
+            hotspot.block.type shouldBe Material.AIR
         } finally {
             paper.close()
         }

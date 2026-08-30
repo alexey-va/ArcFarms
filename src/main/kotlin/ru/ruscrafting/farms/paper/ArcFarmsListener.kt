@@ -1,5 +1,6 @@
 package ru.ruscrafting.farms.paper
 
+import io.papermc.paper.event.entity.EntityLoadCrossbowEvent
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
@@ -20,6 +21,7 @@ import org.bukkit.event.entity.EntityChangeBlockEvent
 import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.PlayerDeathEvent
 import org.bukkit.event.entity.ProjectileHitEvent
+import org.bukkit.event.entity.EntityShootBowEvent
 import org.bukkit.event.player.PlayerDropItemEvent
 import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
@@ -123,6 +125,16 @@ class ArcFarmsListener(
 
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onProjectileHit(event: ProjectileHitEvent) = service.onProjectileHit(event)
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    fun onLoadCrossbow(event: EntityLoadCrossbowEvent) {
+        service.onLoadCrossbow(event)
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    fun onShootBow(event: EntityShootBowEvent) {
+        service.onShootBow(event)
+    }
 
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onDrop(event: PlayerDropItemEvent) = service.onDrop(event)

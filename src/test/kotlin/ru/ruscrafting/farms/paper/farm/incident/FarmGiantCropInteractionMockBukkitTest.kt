@@ -1,5 +1,6 @@
 package ru.ruscrafting.farms.paper.farm.incident
 
+import io.papermc.paper.event.entity.EntityLoadCrossbowEvent
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
@@ -78,6 +79,38 @@ class FarmGiantCropInteractionMockBukkitTest : FunSpec({
         } }
     }
 
+    listOf(Material.MELON, Material.PUMPKIN).forEach { material ->
+        test("one left click instantly routes an ordinary ${material.name.lowercase()} harvest") {
+            requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
+                val runtime = fixture.runtime(
+                    FarmShiftState(
+                        phase = FarmPhase.HARVESTING,
+                        sequence = 75,
+                        orderId = "harvest_festival",
+                    ),
+                )
+                val player = fixture.paper.addPlayer("FruitHarvester")
+                val block = fixture.world.getBlockAt(9, 64, 9).also { it.type = material }
+                val harvest = mockk<FarmHarvestController>(relaxed = true)
+                every { harvest.onFixedCropHit(runtime, player, block) } returns true
+                val router = farmEventRouter(fixture, runtime, harvest = harvest)
+                val event = PlayerInteractEvent(
+                    player,
+                    Action.LEFT_CLICK_BLOCK,
+                    ItemStack(Material.AIR),
+                    block,
+                    BlockFace.UP,
+                    EquipmentSlot.HAND,
+                )
+
+                router.onInteract(event) shouldBe true
+
+                event.isCancelled shouldBe true
+                verify(exactly = 1) { harvest.onFixedCropHit(runtime, player, block) }
+            } }
+        }
+    }
+
     test("fire hose routes right click air by its tagged farm from fifteen blocks away") {
         requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
             val runtime = fixture.runtime(
@@ -101,7 +134,7 @@ class FarmGiantCropInteractionMockBukkitTest : FunSpec({
             supplies.give(runtime, FarmSupplyKind.FIRE, player) shouldBe true
             player.teleport(fixture.location(fixture.barnPoint).add(0.0, 0.0, 15.0))
             val barnFire = mockk<FarmBarnFireIncident>(relaxed = true)
-            every { barnFire.spray(any(), runtime) } returns true
+            every { barnFire.spray(any<PlayerInteractEvent>(), runtime) } returns true
             val router = farmEventRouter(fixture, runtime, supplies = supplies, barnFire = barnFire)
             val event = PlayerInteractEvent(
                 player,
@@ -117,6 +150,39 @@ class FarmGiantCropInteractionMockBukkitTest : FunSpec({
             verify(exactly = 1) { barnFire.spray(event, runtime) }
         } }
     }
+
+    test("tagged fire hose crossbow loading is cancelled and routed to water spray") {
+        requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
+            val runtime = fixture.runtime(
+                FarmShiftState(
+                    phase = FarmPhase.INCIDENT,
+                    sequence = 76,
+                    placementSequence = 26,
+                    orderId = "harvest_festival",
+                    incidentType = FarmIncidentType.BARN_FIRE,
+                ),
+            )
+            val player = fixture.paper.addPlayer("CrossbowFirefighter")
+            val supplies = FarmSupplyController(
+                fixture.plugin,
+                fixture.locale,
+                ArcFarmsDebug({ false }) {},
+                { fixture.settings },
+            )
+            supplies.give(runtime, FarmSupplyKind.FIRE, player) shouldBe true
+            val equipment = player.inventory.itemInMainHand
+            val barnFire = mockk<FarmBarnFireIncident>(relaxed = true)
+            every { barnFire.spray(any<EntityLoadCrossbowEvent>(), runtime) } returns true
+            val router = farmEventRouter(fixture, runtime, supplies = supplies, barnFire = barnFire)
+            val event = EntityLoadCrossbowEvent(player, equipment, EquipmentSlot.HAND)
+
+            router.onLoadCrossbow(event) shouldBe true
+
+            event.isCancelled shouldBe true
+            event.shouldConsumeItem() shouldBe false
+            verify(exactly = 1) { barnFire.spray(event, runtime) }
+        } }
+    }
 })
 
 internal fun farmEventRouter(
@@ -125,6 +191,7 @@ internal fun farmEventRouter(
     special: FarmSpecialIncidentController = mockk(relaxed = true),
     supplies: FarmSupplyController = mockk(relaxed = true),
     barnFire: FarmBarnFireIncident = mockk(relaxed = true),
+    harvest: FarmHarvestController = mockk(relaxed = true),
 ): FarmEventRouter = FarmEventRouter(
     locale = fixture.locale,
     debug = ArcFarmsDebug({ false }) {},
@@ -151,7 +218,7 @@ internal fun farmEventRouter(
     delivery = mockk<FarmDeliveryController>(relaxed = true),
     supplies = supplies,
     scene = mockk<FarmContractSceneController>(relaxed = true),
-    harvest = mockk<FarmHarvestController>(relaxed = true),
+    harvest = harvest,
     hud = mockk<FarmHudController>(relaxed = true),
     transitions = mockk(relaxed = true),
     shiftStartPending = { false },

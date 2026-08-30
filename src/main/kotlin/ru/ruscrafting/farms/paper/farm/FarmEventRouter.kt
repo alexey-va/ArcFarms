@@ -1,5 +1,6 @@
 package ru.ruscrafting.farms.paper.farm
 
+import io.papermc.paper.event.entity.EntityLoadCrossbowEvent
 import org.bukkit.Material
 import org.bukkit.entity.Player
 import org.bukkit.entity.Projectile
@@ -19,6 +20,7 @@ import org.bukkit.event.entity.EntityChangeBlockEvent
 import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.EntityDeathEvent
+import org.bukkit.event.entity.EntityShootBowEvent
 import org.bukkit.event.entity.ProjectileHitEvent
 import org.bukkit.event.entity.PlayerDeathEvent
 import org.bukkit.event.inventory.ClickType
@@ -208,6 +210,10 @@ internal class FarmEventRouter(
                 return true
             }
             if (special.handleGiantCropHit(runtime, event.player, clicked)) {
+                deny(event)
+                return true
+            }
+            if (harvest.onFixedCropHit(runtime, event.player, clicked)) {
                 deny(event)
                 return true
             }
@@ -412,6 +418,27 @@ internal class FarmEventRouter(
 
     fun onProjectileHit(event: ProjectileHitEvent) {
         birds.onProjectileHit(event, runtimes())
+    }
+
+    fun onLoadCrossbow(event: EntityLoadCrossbowEvent): Boolean {
+        val player = event.entity as? Player ?: return false
+        val zoneId = supplies.serviceItemZone(event.crossbow, FarmSupplyKind.FIRE) ?: return false
+        event.isCancelled = true
+        event.setConsumeItem(false)
+        val runtime = runtimes().firstOrNull { it.settings.id == zoneId }
+        if (runtime != null && barnFire.spray(event, runtime)) return true
+        runtime?.let { hud.taskHint(player, it, "service_item_wrong_phase") }
+        return true
+    }
+
+    fun onShootBow(event: EntityShootBowEvent): Boolean {
+        val player = event.entity as? Player ?: return false
+        val zoneId = supplies.serviceItemZone(event.bow, FarmSupplyKind.FIRE) ?: return false
+        event.isCancelled = true
+        val runtime = runtimes().firstOrNull { it.settings.id == zoneId }
+        if (runtime != null && barnFire.spray(event, runtime)) return true
+        runtime?.let { hud.taskHint(player, it, "service_item_wrong_phase") }
+        return true
     }
 
     fun onMoistureChange(event: MoistureChangeEvent) {

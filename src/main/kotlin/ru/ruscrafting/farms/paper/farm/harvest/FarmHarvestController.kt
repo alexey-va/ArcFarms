@@ -77,12 +77,7 @@ internal class FarmHarvestController(
             event.isDropItems = false
             event.expToDrop = 0
             if (commit.fixedCrop) {
-                val block = event.block
-                fixedCrops.prepareHarvest(runtime, event.player, block, commit.now) { currentRuntime, player, crop ->
-                    val material = MaterialRules.material(crop)
-                    FarmCropBreakEffects.emitHarvest(block, material, settings().particles, settings().sounds)
-                    progress(currentRuntime, player, crop)
-                }
+                commitFixedCrop(runtime, event.player, event.block, commit.now)
                 return@validate
             }
             event.isCancelled = false
@@ -91,6 +86,21 @@ internal class FarmHarvestController(
                 if (areaHarvest) commitHarvestArea(runtime, event.player, event.block)
             }
         }
+    }
+
+    /**
+     * Melons and pumpkins are punch-to-harvest objectives: the first left-click
+     * starts the durable fixed-crop commit instead of waiting for vanilla block
+     * damage to finish. The block disappears only after its recovery intent is
+     * persisted, then the burst and order progress happen in the same callback.
+     */
+    fun onFixedCropHit(runtime: FarmRuntime, player: Player, block: Block): Boolean {
+        if (!MaterialRules.isFixedBlockCrop(block.type)) return false
+        validate(runtime, player, block) { commit ->
+            check(commit.fixedCrop) { "Fixed crop hit produced a non-fixed harvest" }
+            commitFixedCrop(runtime, player, block, commit.now)
+        }
+        return true
     }
 
     fun onInteract(event: PlayerInteractEvent, runtime: FarmRuntime, clicked: Block): Boolean {
@@ -260,6 +270,14 @@ internal class FarmHarvestController(
                 progress(currentRuntime, player, crop.name)
                 if (currentRuntime.state.phase == FarmPhase.HARVESTING) after()
             }
+        }
+    }
+
+    private fun commitFixedCrop(runtime: FarmRuntime, player: Player, block: Block, now: Long) {
+        fixedCrops.prepareHarvest(runtime, player, block, now) { currentRuntime, committedPlayer, crop ->
+            val material = MaterialRules.material(crop)
+            FarmCropBreakEffects.emitHarvest(block, material, settings().particles, settings().sounds)
+            progress(currentRuntime, committedPlayer, crop)
         }
     }
 

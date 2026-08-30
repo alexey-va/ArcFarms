@@ -47,7 +47,7 @@ class FarmHarvestControllerMockBukkitTest : FunSpec({
         paper.close()
     }
 
-    test("fixed crop break stays cancelled while durable recovery accepts the harvest") {
+    test("first fixed crop hit commits durable recovery without waiting for block break") {
         val plugin = paper.createSimplePlugin("FarmHarvestTest")
         val player = paper.addPlayer("Worker")
         val block = world.getBlockAt(5, 64, 5).apply { type = Material.MELON }
@@ -97,13 +97,8 @@ class FarmHarvestControllerMockBukkitTest : FunSpec({
             runtimes = { listOf(runtime) },
             clock = { 1_000L },
         )
-        val event = BlockBreakEvent(block, player).apply { expToDrop = 5 }
+        controller.onFixedCropHit(runtime, player, block) shouldBe true
 
-        controller.onBreak(event, runtime)
-
-        event.isCancelled shouldBe true
-        event.isDropItems shouldBe false
-        event.expToDrop shouldBe 0
         block.type shouldBe Material.MELON
         verify(exactly = 1) { fixedCrops.prepareHarvest(runtime, player, block, 1_000L, any()) }
 
