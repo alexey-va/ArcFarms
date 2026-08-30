@@ -30,6 +30,8 @@ internal class MineMiningController(
     private val clock: () -> Long,
     private val random: RandomGenerator,
     private val effects: MineBlockEffects,
+    private val startLoading: (ru.ruscrafting.farms.paper.mine.MineRuntime, ru.ruscrafting.farms.domain.MineShiftState) ->
+        ru.ruscrafting.farms.domain.MineShiftState,
 ) {
     fun onBreakHigh(event: BlockBreakEvent): Boolean {
         val runtime = registry.at(event.block.location) ?: return false
@@ -100,7 +102,12 @@ internal class MineMiningController(
             val advanced = MineShiftEngine.mineTarget(
                 runtime.state.copy(objective = completed.state), runtime.rules(), event.player.uniqueId,
             )
-            transitions.apply(runtime, advanced, event.player)
+            val finalState = if (advanced.state.phase == MinePhase.LOADING) {
+                startLoading(runtime, advanced.state)
+            } else {
+                advanced.state.copy(objective = completed.state)
+            }
+            transitions.apply(runtime, advanced.copy(state = finalState), event.player)
             effects.deliverRewards(event.player, event.block, drops, experience, toolSlot, tool)
         }.whenComplete { accepted, failure ->
             if (failure != null) {

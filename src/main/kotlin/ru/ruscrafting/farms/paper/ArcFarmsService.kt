@@ -117,7 +117,9 @@ class ArcFarmsService(
     private val lumbermillModule = LumbermillVersionedModule(
         plugin, initialSettings.lumbermills, regionGateway, locale, worksitePort, clock, lumberJournal, worksiteServiceItems,
     )
-    private val mineModule = MineVersionedModule(plugin, initialSettings.mines, regionGateway, locale, mineJournal, worksitePort, clock, random)
+    private val mineModule = MineVersionedModule(
+        plugin, initialSettings.mines, regionGateway, locale, mineJournal, worksitePort, clock, random, worksiteServiceItems,
+    )
     private val runtimeValidator = ArcFarmsRuntimeValidator(regionGateway, { economy.available }, fixedCropJournal, mineJournal)
     private val farm = FarmComponentGraph(
         plugin = plugin,
@@ -152,10 +154,8 @@ class ArcFarmsService(
         farms = farm.runtimes,
         auxiliary = worksites,
     )
-    @Volatile
-    private var started = false
-    @Volatile
-    private var closed = false
+    @Volatile private var started = false
+    @Volatile private var closed = false
     private var stateSafeToPersist = false
     private var persistenceSuspended = false
     private var persistenceRequestedWhileSuspended = false

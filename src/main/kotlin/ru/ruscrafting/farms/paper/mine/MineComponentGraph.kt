@@ -11,6 +11,13 @@ import ru.ruscrafting.farms.paper.MineBlockEffects
 import ru.ruscrafting.farms.paper.PaperMineBlockEffects
 import ru.ruscrafting.farms.paper.mine.prospecting.MineProspectingController
 import ru.ruscrafting.farms.paper.mine.mining.MineMiningController
+import ru.ruscrafting.farms.paper.mine.loading.MineLoadingController
+import ru.ruscrafting.farms.paper.mine.extraction.MineCartEffects
+import ru.ruscrafting.farms.paper.mine.extraction.MineCartScene
+import ru.ruscrafting.farms.paper.mine.extraction.MineExtractionController
+import ru.ruscrafting.farms.paper.mine.extraction.PaperMineCartEffects
+import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems
+import ru.ruscrafting.farms.config.ArcFarmsLocale
 import java.util.random.RandomGenerator
 
 /** Composition-only graph; the registry remains the sole V2 runtime collection owner. */
@@ -22,20 +29,30 @@ internal class MineComponentGraph(
     journal: MineRecoveryJournal,
     random: RandomGenerator = RandomGenerator.getDefault(),
     blockEffects: MineBlockEffects = PaperMineBlockEffects,
+    serviceItems: WorksiteServiceItems? = null,
+    locale: ArcFarmsLocale? = null,
+    cartEffects: MineCartEffects = PaperMineCartEffects(plugin),
 ) {
     internal val registry = MineRuntimeRegistry()
     val recovery = MineBlockRecoveryController(journal, port, clock)
     val index = MineBlockIndex(plugin)
     private val transitions = MineTransitionCoordinator(port)
-    val prospecting = MineProspectingController(registry, index, recovery, transitions, port, clock)
-    val mining = MineMiningController(registry, index, recovery, transitions, port, clock, random, blockEffects)
+    val cartScene = MineCartScene(cartEffects)
+    val extraction = MineExtractionController(registry, index, cartScene, transitions, port, clock)
+    val loading = MineLoadingController(registry, index, extraction, transitions, serviceItems, locale, port, clock)
+    val prospecting = MineProspectingController(registry, index, recovery, transitions, port, clock, loading::canStage)
+    val mining = MineMiningController(
+        registry, index, recovery, transitions, port, clock, random, blockEffects, loading::begin,
+    )
     private val tickets = object : MineChunkTicket {
         override fun retain(chunk: org.bukkit.Chunk): Boolean = chunk.addPluginChunkTicket(plugin)
         override fun release(chunk: org.bukkit.Chunk) {
             chunk.removePluginChunkTicket(plugin)
         }
     }
-    val module = MineModule(regions, port, registry, recovery, index, tickets, prospecting, mining)
+    val module = MineModule(
+        regions, port, registry, recovery, index, tickets, prospecting, mining, loading, extraction, cartScene,
+    )
 
     internal val mutableRuntimeCollectionCount: Int = 1
 }

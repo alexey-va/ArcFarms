@@ -737,6 +737,8 @@ mine:
   target-required: '<yellow>Добывайте отмеченные блоки найденной жилы.</yellow>'
   recovery-pending: '<gray>Эта штольня ещё восстанавливается после прошлой экспедиции.</gray>'
   index-shortage: '<red>В шахте недостаточно доступных индексированных целей. Попросите администратора переиндексировать её.</red>'
+  ore-crate: '<gold>Ящик с рудой</gold>'
+  loading-required: '<yellow>Возьмите отмеченный ящик с рудой и отнесите его к вывозной телеге.</yellow>'
 shift:
   winner: '<color:#ffc857>Лучший вклад</color> <color:#707a76>•</color> <white><player></white> <color:#f2fff7>— <amount></color>'
 care:

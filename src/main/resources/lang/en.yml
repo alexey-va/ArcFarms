@@ -737,6 +737,8 @@ mine:
   target-required: '<yellow>Mine one of the highlighted vein blocks.</yellow>'
   recovery-pending: '<gray>This tunnel is still restoring its previous expedition.</gray>'
   index-shortage: '<red>This mine does not have enough reachable indexed targets. Ask an administrator to reindex it.</red>'
+  ore-crate: '<gold>Ore crate</gold>'
+  loading-required: '<yellow>Pick up a highlighted ore crate and carry it to the extraction cart.</yellow>'
 shift:
   winner: '<color:#ffc857>Top contribution</color> <color:#707a76>•</color> <white><player></white> <color:#f2fff7>— <amount></color>'
 care:

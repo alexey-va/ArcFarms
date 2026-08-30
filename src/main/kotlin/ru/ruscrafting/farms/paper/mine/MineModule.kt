@@ -5,6 +5,7 @@ import org.bukkit.entity.Player
 import org.bukkit.block.Block
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.Location
 import ru.ruscrafting.farms.config.MineZoneSettings
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.MinePhase
@@ -15,6 +16,8 @@ import ru.ruscrafting.farms.paper.RegionGateway
 import ru.ruscrafting.farms.paper.WorksiteModule
 import ru.ruscrafting.farms.paper.WorksiteBlockBreakHandler
 import ru.ruscrafting.farms.paper.WorksiteBlockInteractHandler
+import ru.ruscrafting.farms.paper.WorksiteMoveHandler
+import ru.ruscrafting.farms.paper.WorksiteFastVisualHandler
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
@@ -24,6 +27,14 @@ import ru.ruscrafting.farms.paper.mine.index.MineReindexJob
 import ru.ruscrafting.farms.paper.mine.recovery.MineBlockRecoveryController
 import ru.ruscrafting.farms.paper.mine.prospecting.MineProspectingController
 import ru.ruscrafting.farms.paper.mine.mining.MineMiningController
+import ru.ruscrafting.farms.paper.mine.loading.MineLoadingController
+import ru.ruscrafting.farms.paper.mine.extraction.MineCartScene
+import ru.ruscrafting.farms.paper.mine.extraction.MineExtractionController
+import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
+import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantOwner
+import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
+import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItemOwner
+import java.util.UUID
 
 internal class MineModule(
     private val regions: RegionGateway,
@@ -34,7 +45,11 @@ internal class MineModule(
     internal val tickets: MineChunkTicket,
     private val prospecting: MineProspectingController,
     private val mining: MineMiningController,
-) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler {
+    private val loading: MineLoadingController,
+    private val extraction: MineExtractionController,
+    private val cartScene: MineCartScene,
+) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler,
+    WorksiteMoveHandler, WorksiteFastVisualHandler, WorksiteParticipantOwner, WorksiteServiceItemOwner {
     private val transitions = MineTransitionCoordinator(port)
     override val kind: ActivityKind = ActivityKind.MINE
     override val zoneCount: Int get() = registry.size
@@ -58,6 +73,7 @@ internal class MineModule(
         registry.snapshot().forEach { runtime ->
             port.guarded("mine_v2:${runtime.settings.id}") {
                 transitions.apply(runtime, MineShiftEngine.tick(runtime.state, runtime.rules(), now), null)
+                extraction.reconcile(runtime)
             }
         }
         port.guarded("mine_v2_recovery") { recovery.processDue(now) }
@@ -69,7 +85,22 @@ internal class MineModule(
     override fun onBreakHigh(event: BlockBreakEvent): Boolean = mining.onBreakHigh(event)
 
     override fun onInteract(event: PlayerInteractEvent, clicked: Block, player: Player): Boolean =
-        prospecting.onInteract(event)
+        loading.onInteract(event) || prospecting.onInteract(event)
+
+    override fun onMove(from: Location, to: Location, player: Player): Boolean =
+        loading.onMove(to, player) || extraction.onMove(from, to, player)
+
+    override fun updateVisuals() = Unit
+
+    override fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
+        loading.releasePlayer(player, reason)
+    }
+
+    override fun isActive(identity: ServiceItemIdentity): Boolean = loading.isActive(identity)
+
+    override fun release(playerId: UUID, identity: ServiceItemIdentity, reason: WorksitePlayerReleaseReason) {
+        loading.release(playerId, identity, reason)
+    }
 
     override fun activateLoadedState() {
         registry.snapshot().forEach { runtime ->
@@ -83,10 +114,13 @@ internal class MineModule(
             index.reconcileChunk(runtime.indexDefinition(), chunk)
         }
         recovery.reconcileChunk(chunk)
+        cartScene.reconcileChunk(chunk)
     }
 
     override fun cleanup(reason: String) {
         recovery.cleanup(reason)
+        loading.cleanup()
+        extraction.cleanup()
         index.clear()
     }
 

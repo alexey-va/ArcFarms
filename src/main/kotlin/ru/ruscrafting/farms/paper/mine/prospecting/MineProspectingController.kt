@@ -31,6 +31,7 @@ internal class MineProspectingController(
     private val transitions: MineTransitionCoordinator,
     private val port: WorksiteRuntimePort,
     private val clock: () -> Long,
+    private val canStartLoading: (MineRuntime) -> Boolean,
 ) {
     fun onInteract(event: PlayerInteractEvent): Boolean {
         val clicked = event.clickedBlock ?: return false
@@ -77,7 +78,7 @@ internal class MineProspectingController(
         val order = runtime.nextOrder()
         val rules = runtime.rules(order)
         if (!hasCapacity(runtime, MineAnchorRole.PROSPECT, rules.prospectingQuota) ||
-            !hasCapacity(runtime, MineAnchorRole.MINEABLE, rules.miningQuota)) {
+            !hasCapacity(runtime, MineAnchorRole.MINEABLE, rules.miningQuota) || !canStartLoading(runtime)) {
             remind(player, MessageKey.MINE_INDEX_SHORTAGE)
             return false
         }

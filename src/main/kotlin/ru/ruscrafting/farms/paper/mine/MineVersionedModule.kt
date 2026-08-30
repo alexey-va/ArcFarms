@@ -22,6 +22,13 @@ import ru.ruscrafting.farms.paper.WorksiteModule
 import ru.ruscrafting.farms.paper.WorksiteMoveHandler
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.persistence.MineRecoveryJournal
+import ru.ruscrafting.farms.paper.WorksiteFastVisualHandler
+import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
+import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantOwner
+import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
+import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItemOwner
+import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems
+import java.util.UUID
 import java.util.random.RandomGenerator
 
 /** Stable boundary that constructs exactly one mine engine generation for the process lifetime. */
@@ -34,11 +41,13 @@ internal class MineVersionedModule(
     port: WorksiteRuntimePort,
     clock: () -> Long,
     random: RandomGenerator,
+    serviceItems: WorksiteServiceItems? = null,
 ) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler,
-    WorksiteMoveHandler, WorksiteGuidanceHandler {
+    WorksiteMoveHandler, WorksiteGuidanceHandler, WorksiteFastVisualHandler, WorksiteServiceItemOwner,
+    WorksiteParticipantOwner {
     private val engineVersion = initial.firstOrNull()?.engineVersion ?: 1
     private val delegate: WorksiteModule<MineShiftState> = if (engineVersion == 2) {
-        MineComponentGraph(plugin, regions, port, clock, journal, random).module
+        MineComponentGraph(plugin, regions, port, clock, journal, random, serviceItems = serviceItems, locale = locale).module
     } else {
         MineController(regions, locale, journal, port, clock, random)
     }
@@ -91,5 +100,20 @@ internal class MineVersionedModule(
 
     override fun emitGuidance() {
         (delegate as? WorksiteGuidanceHandler)?.emitGuidance()
+    }
+
+    override fun updateVisuals() {
+        (delegate as? WorksiteFastVisualHandler)?.updateVisuals()
+    }
+
+    override fun isActive(identity: ServiceItemIdentity): Boolean =
+        (delegate as? WorksiteServiceItemOwner)?.isActive(identity) == true
+
+    override fun release(playerId: UUID, identity: ServiceItemIdentity, reason: WorksitePlayerReleaseReason) {
+        (delegate as? WorksiteServiceItemOwner)?.release(playerId, identity, reason)
+    }
+
+    override fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
+        (delegate as? WorksiteParticipantOwner)?.releasePlayer(player, reason)
     }
 }

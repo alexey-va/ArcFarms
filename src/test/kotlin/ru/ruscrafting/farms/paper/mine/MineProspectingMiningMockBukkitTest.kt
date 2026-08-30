@@ -40,6 +40,7 @@ class MineProspectingMiningMockBukkitTest : FunSpec({
         }
         val prospects = listOf(world.getBlockAt(1, 64, 1), world.getBlockAt(2, 64, 1)).onEach { it.type = Material.STONE }
         val vein = (3..6).map { x -> world.getBlockAt(x, 64, 1).also { it.type = Material.IRON_ORE } }
+        val route = (1..4).map { x -> world.getBlockAt(x, 63, 3).also { it.type = Material.STONE } }
         val unindexed = world.getBlockAt(7, 64, 1).also { it.type = Material.IRON_ORE }
         val journal = DeferredMineJournal()
         val effects = RecordingMineEffects()
@@ -63,7 +64,8 @@ class MineProspectingMiningMockBukkitTest : FunSpec({
             definition,
             listOf(world.getChunkAt(0, 0)),
             prospects.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.PROSPECT)) } +
-                vein.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.MINEABLE)) },
+                vein.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.MINEABLE)) } +
+                route.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.RAIL)) },
         )
 
         val inspect = PlayerInteractEvent(
@@ -91,7 +93,7 @@ class MineProspectingMiningMockBukkitTest : FunSpec({
     }
 })
 
-private fun immediateMinePort(): WorksiteRuntimePort {
+internal fun immediateMinePort(): WorksiteRuntimePort {
     val token = mockk<RuntimeTaskSupervisor.Token>()
     return mockk(relaxed = true) {
         every { isOperational() } returns true

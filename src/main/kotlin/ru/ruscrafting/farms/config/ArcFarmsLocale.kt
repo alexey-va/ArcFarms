@@ -451,6 +451,8 @@ enum class MessageKey(val path: String) {
     MINE_TARGET_REQUIRED("mine.target-required"),
     MINE_RECOVERY_PENDING("mine.recovery-pending"),
     MINE_INDEX_SHORTAGE("mine.index-shortage"),
+    MINE_ORE_CRATE("mine.ore-crate"),
+    MINE_LOADING_REQUIRED("mine.loading-required"),
     SHIFT_WINNER("shift.winner"),
     NETWORK_ACTOR_FALLBACK("network.actor-fallback"),
     NETWORK_FARM_INCIDENT("network.farm-incident"),
