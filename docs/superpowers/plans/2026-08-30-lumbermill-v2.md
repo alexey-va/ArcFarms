@@ -36,7 +36,7 @@
 - Produces: `LumberOrderSettings`, `LumberPhase`, `LumberIncidentType`, `LumberIncidentState`, `LumberShiftState`, `LumberRules`, `LumberShiftEngine`.
 - Consumers: all lumber Paper owners and state persistence.
 
-- [ ] **Step 1: Write failing config and phase tests**
+- [x] **Step 1: Write failing config and phase tests**
 
 ```kotlin
 test("lumber shift keeps foreground progress across a distinct incident schedule") {
@@ -55,13 +55,13 @@ test("legacy active state resets once while a cooldown sequence is retained") {
 }
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Run: `./gradlew test --tests '*LumberConfigTest' --tests '*LumberShiftV2Test'`
 
 Expected: V2 phases, order settings and incident state are unresolved.
 
-- [ ] **Step 3: Implement parser, state and pure transitions**
+- [x] **Step 3: Implement parser, state and pure transitions**
 
 Parse `engine-version`, orders, phase quotas, incident count/range, target multiplier and rewards in `LumberConfigParser`. Validate three to five distinct incidents per order and all bounded quotas. Implement transitions:
 
@@ -72,13 +72,13 @@ foreground -> INCIDENT -> exact foreground phase
 
 Persist objective state and incident schedule; do not persist entity UUIDs.
 
-- [ ] **Step 4: Run focused tests**
+- [x] **Step 4: Run focused tests**
 
 Run: `./gradlew test --tests '*Lumber*Test' --tests '*ArcFarmsConfigTest' --tests '*Persistence*Test'`
 
 Expected: PASS including legacy payload deserialization.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/kotlin/ru/ruscrafting/farms/config src/main/kotlin/ru/ruscrafting/farms/domain src/test/kotlin/ru/ruscrafting/farms

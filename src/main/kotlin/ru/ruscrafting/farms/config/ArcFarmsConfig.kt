@@ -10,6 +10,7 @@ import ru.ruscrafting.farms.domain.FarmCustomerType
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCarePlanner
 import ru.ruscrafting.farms.domain.FarmCareType
+import ru.ruscrafting.farms.domain.LumberIncidentType
 import ru.ruscrafting.farms.domain.MAX_FARM_PATCH_PLOTS
 import ru.ruscrafting.farms.domain.TrustedFarmCommandTemplate
 import java.nio.file.Path
@@ -565,18 +566,6 @@ data class FarmOrderSettings(
     val customerType: FarmCustomerType,
     val cartLoadMaterial: String,
     val cartLoadCustomModelData: Int,
-)
-
-data class LumberZoneSettings(
-    val id: String,
-    val reference: ZoneReference,
-    val station: ZoneReference,
-    val permission: String,
-    val fellingQuota: Int,
-    val processingQuota: Int,
-    val processingPerUse: Int,
-    val species: List<String>,
-    val stationMaterials: Set<String>,
 )
 
 data class MineZoneSettings(
@@ -1469,20 +1458,54 @@ class ArcFarmsConfig private constructor(
                 validateId(id, "lumber zone")
                 val reference = parseReference(section, "", id)
                 val station = parseReference(section, "station-", "$id station", reference.world)
+                val fellingQuota = section.int("felling-quota", 16).checked("felling-quota", 1, 100_000)
+                val processingQuota = section.int("processing-quota", 6).checked("processing-quota", 1, 100_000)
+                val processingPerUse = section.int("processing-per-use", 2).checked("processing-per-use", 1, 100_000)
+                val species = section.stringList("species").map(::speciesName).distinct().also {
+                    require(it.isNotEmpty()) { "Lumber zone $id has no species" }
+                }
+                val engineVersion = section.int("engine-version", 1).checked("lumber engine-version", 1, 2)
+                val incidentCountMin = section.int("incident-count-min", 3).checked("lumber incident-count-min", 3, 5)
+                val incidentCountMax = section.int("incident-count-max", 5).checked("lumber incident-count-max", 3, 5)
+                val orders = section.keys("orders").sorted().map { orderId ->
+                    validateId(orderId, "lumber order")
+                    val order = section.section("orders.$orderId")
+                    LumberOrderSettings(
+                        id = orderId,
+                        species = order.stringList("species").ifEmpty { species }.map(::speciesName).distinct(),
+                        fellingRequired = order.int("phases.felling-required", fellingQuota)
+                            .checked("lumber order felling-required", 1, 100_000),
+                        skiddingRequired = order.int("phases.skidding-required", processingQuota)
+                            .checked("lumber order skidding-required", 1, 100_000),
+                        sawingRequired = order.int("phases.sawing-required", processingQuota)
+                            .checked("lumber order sawing-required", 1, 100_000),
+                        stackingRequired = order.int("phases.stacking-required", processingQuota)
+                            .checked("lumber order stacking-required", 1, 100_000),
+                        incidentTypes = order.stringList("incidents").map { raw ->
+                            runCatching { LumberIncidentType.valueOf(raw.trim().uppercase()) }.getOrElse {
+                                throw IllegalArgumentException("Unknown lumber incident '$raw' in $id/$orderId")
+                            }
+                        },
+                    )
+                }
                 LumberZoneSettings(
                     id = id,
                     reference = reference,
                     station = station,
                     permission = permission(section.string("permission", "arcfarms.lumber")),
-                    fellingQuota = section.int("felling-quota", 16).checked("felling-quota", 1, 100_000),
-                    processingQuota = section.int("processing-quota", 6).checked("processing-quota", 1, 100_000),
-                    processingPerUse = section.int("processing-per-use", 2).checked("processing-per-use", 1, 100_000),
-                    species = section.stringList("species").map(::speciesName).distinct().also {
-                        require(it.isNotEmpty()) { "Lumber zone $id has no species" }
-                    },
+                    fellingQuota = fellingQuota,
+                    processingQuota = processingQuota,
+                    processingPerUse = processingPerUse,
+                    species = species,
                     stationMaterials = section.stringList("station-materials").map(::materialName).toSet().also {
                         require(it.isNotEmpty()) { "Lumber zone $id has no station materials" }
                     },
+                    engineVersion = engineVersion,
+                    orders = orders,
+                    targetMultiplier = section.int("target-multiplier", 2).checked("lumber target-multiplier", 2, 4),
+                    incidentCountMin = incidentCountMin,
+                    incidentCountMax = incidentCountMax,
+                    recoverySeconds = section.int("recovery-seconds", 90).checked("lumber recovery-seconds", 5, 3_600),
                 ).also {
                     require(it.processingPerUse <= it.processingQuota) { "processing-per-use exceeds processing-quota in $id" }
                 }
