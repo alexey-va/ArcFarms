@@ -46,6 +46,13 @@ internal class MineBlockIndex(private val plugin: Plugin) {
         return targetsByZone[zoneId].orEmpty().any { it.position == position && role in it.roles }
     }
 
+    fun isLiveTarget(zoneId: String, position: WorksitePosition, role: MineAnchorRole): Boolean {
+        val world = Bukkit.getWorld(position.world) ?: return false
+        if (!world.isChunkLoaded(position.x shr 4, position.z shr 4)) return false
+        val block = world.getBlockAt(position.x, position.y, position.z)
+        return contains(zoneId, block, role) && role in MineAnchorClassifier.classify(block, emptySet())
+    }
+
     fun reconcileChunk(definition: MineIndexDefinition, chunk: Chunk) {
         if (chunk.world !== definition.region.world) return
         val decoded = decode(chunk.world.name, chunk.persistentDataContainer.get(key(definition.zoneId), PersistentDataType.STRING))

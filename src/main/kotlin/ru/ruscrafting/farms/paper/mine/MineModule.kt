@@ -30,6 +30,8 @@ import ru.ruscrafting.farms.paper.mine.mining.MineMiningController
 import ru.ruscrafting.farms.paper.mine.loading.MineLoadingController
 import ru.ruscrafting.farms.paper.mine.extraction.MineCartScene
 import ru.ruscrafting.farms.paper.mine.extraction.MineExtractionController
+import ru.ruscrafting.farms.paper.mine.incident.cavein.MineCaveInIncident
+import ru.ruscrafting.farms.paper.mine.incident.track.MineTrackDamageIncident
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
 import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantOwner
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
@@ -48,6 +50,8 @@ internal class MineModule(
     private val loading: MineLoadingController,
     private val extraction: MineExtractionController,
     private val cartScene: MineCartScene,
+    private val caveIn: MineCaveInIncident,
+    private val trackDamage: MineTrackDamageIncident,
 ) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler,
     WorksiteMoveHandler, WorksiteFastVisualHandler, WorksiteParticipantOwner, WorksiteServiceItemOwner {
     private val transitions = MineTransitionCoordinator(port)
@@ -73,6 +77,8 @@ internal class MineModule(
         registry.snapshot().forEach { runtime ->
             port.guarded("mine_v2:${runtime.settings.id}") {
                 transitions.apply(runtime, MineShiftEngine.tick(runtime.state, runtime.rules(), now), null)
+                caveIn.reconcile(runtime)
+                trackDamage.reconcile(runtime)
                 extraction.reconcile(runtime)
             }
         }
@@ -85,7 +91,7 @@ internal class MineModule(
     override fun onBreakHigh(event: BlockBreakEvent): Boolean = mining.onBreakHigh(event)
 
     override fun onInteract(event: PlayerInteractEvent, clicked: Block, player: Player): Boolean =
-        loading.onInteract(event) || prospecting.onInteract(event)
+        caveIn.onInteract(event) || trackDamage.onInteract(event) || loading.onInteract(event) || prospecting.onInteract(event)
 
     override fun onMove(from: Location, to: Location, player: Player): Boolean =
         loading.onMove(to, player) || extraction.onMove(from, to, player)
@@ -94,12 +100,17 @@ internal class MineModule(
 
     override fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
         loading.releasePlayer(player, reason)
+        caveIn.releasePlayer(player.uniqueId)
+        trackDamage.releasePlayer(player.uniqueId)
     }
 
-    override fun isActive(identity: ServiceItemIdentity): Boolean = loading.isActive(identity)
+    override fun isActive(identity: ServiceItemIdentity): Boolean =
+        loading.isActive(identity) || caveIn.isActive(identity) || trackDamage.isActive(identity)
 
     override fun release(playerId: UUID, identity: ServiceItemIdentity, reason: WorksitePlayerReleaseReason) {
         loading.release(playerId, identity, reason)
+        caveIn.release(playerId, identity, reason)
+        trackDamage.release(playerId, identity, reason)
     }
 
     override fun activateLoadedState() {
@@ -120,6 +131,12 @@ internal class MineModule(
     override fun cleanup(reason: String) {
         recovery.cleanup(reason)
         loading.cleanup()
+        registry.snapshot().forEach { runtime ->
+            runtime.state.incident?.serviceLeases?.values?.toSet().orEmpty().forEach { playerId ->
+                caveIn.releasePlayer(playerId)
+                trackDamage.releasePlayer(playerId)
+            }
+        }
         extraction.cleanup()
         index.clear()
     }
