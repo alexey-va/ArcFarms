@@ -19,6 +19,8 @@ import ru.ruscrafting.farms.paper.mine.extraction.PaperMineCartEffects
 import ru.ruscrafting.farms.paper.mine.incident.MineIncidentCoordinator
 import ru.ruscrafting.farms.paper.mine.incident.cavein.MineCaveInIncident
 import ru.ruscrafting.farms.paper.mine.incident.track.MineTrackDamageIncident
+import ru.ruscrafting.farms.paper.mine.incident.gas.MineGasLeakIncident
+import ru.ruscrafting.farms.paper.mine.incident.crystal.MineCrystalResonanceIncident
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import java.util.random.RandomGenerator
@@ -43,6 +45,8 @@ internal class MineComponentGraph(
     private val incidents = MineIncidentCoordinator(transitions, port)
     val caveIn = MineCaveInIncident(registry, index, incidents, serviceItems, port)
     val trackDamage = MineTrackDamageIncident(registry, index, incidents, serviceItems, port)
+    val gasLeak = MineGasLeakIncident(registry, index, incidents)
+    val crystalResonance = MineCrystalResonanceIncident(registry, index, incidents)
     val cartScene = MineCartScene(cartEffects)
     val extraction = MineExtractionController(registry, index, cartScene, transitions, port, clock)
     val loading = MineLoadingController(registry, index, extraction, transitions, serviceItems, locale, port, clock)
@@ -58,7 +62,7 @@ internal class MineComponentGraph(
     }
     val module = MineModule(
         regions, port, registry, recovery, index, tickets, prospecting, mining, loading, extraction, cartScene,
-        caveIn, trackDamage,
+        caveIn, trackDamage, gasLeak, crystalResonance,
     )
 
     internal val mutableRuntimeCollectionCount: Int = 1

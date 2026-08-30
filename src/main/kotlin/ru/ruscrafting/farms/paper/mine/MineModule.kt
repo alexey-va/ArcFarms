@@ -32,6 +32,8 @@ import ru.ruscrafting.farms.paper.mine.extraction.MineCartScene
 import ru.ruscrafting.farms.paper.mine.extraction.MineExtractionController
 import ru.ruscrafting.farms.paper.mine.incident.cavein.MineCaveInIncident
 import ru.ruscrafting.farms.paper.mine.incident.track.MineTrackDamageIncident
+import ru.ruscrafting.farms.paper.mine.incident.gas.MineGasLeakIncident
+import ru.ruscrafting.farms.paper.mine.incident.crystal.MineCrystalResonanceIncident
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
 import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantOwner
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
@@ -52,6 +54,8 @@ internal class MineModule(
     private val cartScene: MineCartScene,
     private val caveIn: MineCaveInIncident,
     private val trackDamage: MineTrackDamageIncident,
+    private val gasLeak: MineGasLeakIncident,
+    private val crystalResonance: MineCrystalResonanceIncident,
 ) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler,
     WorksiteMoveHandler, WorksiteFastVisualHandler, WorksiteParticipantOwner, WorksiteServiceItemOwner {
     private val transitions = MineTransitionCoordinator(port)
@@ -91,7 +95,8 @@ internal class MineModule(
     override fun onBreakHigh(event: BlockBreakEvent): Boolean = mining.onBreakHigh(event)
 
     override fun onInteract(event: PlayerInteractEvent, clicked: Block, player: Player): Boolean =
-        caveIn.onInteract(event) || trackDamage.onInteract(event) || loading.onInteract(event) || prospecting.onInteract(event)
+        caveIn.onInteract(event) || trackDamage.onInteract(event) || gasLeak.onInteract(event) ||
+            crystalResonance.onInteract(event) || loading.onInteract(event) || prospecting.onInteract(event)
 
     override fun onMove(from: Location, to: Location, player: Player): Boolean =
         loading.onMove(to, player) || extraction.onMove(from, to, player)
