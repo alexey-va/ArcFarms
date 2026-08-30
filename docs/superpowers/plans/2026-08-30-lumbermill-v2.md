@@ -99,7 +99,7 @@ git commit -m "feat: define lumbermill v2 orders and phases"
 - Produces: `LumbermillModule : WorksiteModule<LumberShiftState>` and one authoritative runtime registry.
 - Consumes: common registry/lifecycle and V2 config/state.
 
-- [ ] **Step 1: Write failing lifecycle scenario**
+- [x] **Step 1: Write failing lifecycle scenario**
 
 ```kotlin
 test("v2 module rebuilds activates and cleans without a second runtime collection") {
@@ -112,23 +112,23 @@ test("v2 module rebuilds activates and cleans without a second runtime collectio
 }
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Run: `./gradlew test --tests '*LumbermillModuleLifecycleMockBukkitTest'`
 
 Expected: V2 graph/module classes are absent.
 
-- [ ] **Step 3: Implement composition-only graph and module coordinator**
+- [x] **Step 3: Implement composition-only graph and module coordinator**
 
 `LumberRuntimeRegistry` alone owns runtime instances and lookup by location/id. `LumbermillModule` coordinates feature owners and contains no Paper entity maps. `ArcFarmsService` selects V2 for `engine-version: 2` while retaining the legacy controller only as a migration fallback.
 
-- [ ] **Step 4: Run lifecycle/architecture tests**
+- [x] **Step 4: Run lifecycle/architecture tests**
 
 Run: `./gradlew test --tests '*LumbermillModuleLifecycle*' --tests '*WorksiteLifecycle*' --tests '*ArcFarmsArchitectureContractTest'`
 
 Expected: PASS and `ArcFarmsService.kt` remains at most 600 lines.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/kotlin/ru/ruscrafting/farms/paper/lumber src/main/kotlin/ru/ruscrafting/farms/paper/ArcFarmsService.kt src/test/kotlin/ru/ruscrafting/farms/paper

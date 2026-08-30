@@ -1510,6 +1510,9 @@ class ArcFarmsConfig private constructor(
                     require(it.processingPerUse <= it.processingQuota) { "processing-per-use exceeds processing-quota in $id" }
                 }
             }
+            require(lumbermills.map(LumberZoneSettings::engineVersion).distinct().size <= 1) {
+                "All lumber zones must use the same engine-version"
+            }
 
             val mines = config.keys("mine-zones").sorted().mapNotNull { id ->
                 val section = config.section("mine-zones.$id")

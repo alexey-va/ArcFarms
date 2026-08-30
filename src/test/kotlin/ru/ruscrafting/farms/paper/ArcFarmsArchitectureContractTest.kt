@@ -120,7 +120,7 @@ class ArcFarmsArchitectureContractTest : FunSpec({
             "pendingPositions",
             "restoreMineBlocks",
         ).forEach { forbidden -> source.contains(forbidden) shouldBe false }
-        source.contains("private val worksites = WorksiteModuleRegistry(listOf(farm.module, lumbermillController, mineController))") shouldBe true
+        source.contains("private val worksites = WorksiteModuleRegistry(listOf(farm.module, lumbermillModule, mineController))") shouldBe true
         source.contains("private val runtimeValidator = ArcFarmsRuntimeValidator") shouldBe true
         source.contains("private val worksitePort = PaperWorksiteRuntimePort") shouldBe true
         source.contains("lumbermillController.onBreak") shouldBe false
