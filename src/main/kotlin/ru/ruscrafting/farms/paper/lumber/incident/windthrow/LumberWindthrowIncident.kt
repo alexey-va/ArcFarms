@@ -62,7 +62,11 @@ internal class LumberWindthrowIncident(
 
     private fun candidates(runtime: LumberRuntime): List<ObjectiveTargetCandidate> {
         val species = requireNotNull(runtime.state.species)
-        return index.loadedLogs(runtime.settings.id, species).mapIndexed { index, position ->
+        return index.loadedLogs(runtime.settings.id, species).filter { position ->
+            val world = org.bukkit.Bukkit.getWorld(position.world) ?: return@filter false
+            world.isChunkLoaded(position.x shr 4, position.z shr 4) &&
+                index.contains(runtime.settings.id, world.getBlockAt(position.x, position.y, position.z), species)
+        }.mapIndexed { index, position ->
             ObjectiveTargetCandidate(
                 "windthrow_${index + 1}",
                 position,

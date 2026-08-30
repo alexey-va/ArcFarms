@@ -18,6 +18,7 @@ import ru.ruscrafting.farms.paper.lumber.stacking.LumberStackingScene
 import ru.ruscrafting.farms.paper.lumber.stacking.PaperLumberStackingEffects
 import ru.ruscrafting.farms.paper.lumber.dispatch.LumberDispatchController
 import ru.ruscrafting.farms.paper.lumber.incident.LumberIncidentCoordinator
+import ru.ruscrafting.farms.paper.lumber.incident.LumberIncidentScheduler
 import ru.ruscrafting.farms.paper.lumber.incident.windthrow.LumberWindthrowIncident
 import ru.ruscrafting.farms.paper.lumber.incident.beetle.LumberBarkBeetleIncident
 import ru.ruscrafting.farms.paper.lumber.incident.jam.LumberSawJamIncident
@@ -28,6 +29,9 @@ import ru.ruscrafting.farms.paper.lumber.incident.fire.LumberForestFireIncident
 import ru.ruscrafting.farms.paper.lumber.incident.rush.LumberRushOrderIncident
 import ru.ruscrafting.farms.persistence.LumberRecoveryJournal
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems
+import ru.ruscrafting.farms.config.ArcFarmsLocale
+import ru.ruscrafting.farms.paper.lumber.presentation.LumberGuidanceSource
+import ru.ruscrafting.farms.paper.worksite.WorksiteGuidancePresenter
 
 /** Composition-only graph; the registry is the sole mutable runtime collection owner. */
 internal class LumbermillComponentGraph(
@@ -40,6 +44,7 @@ internal class LumbermillComponentGraph(
     bundleEffects: LumberBundleEffects = PaperLumberBundleEffects(plugin),
     stackingEffects: LumberStackingEffects = PaperLumberStackingEffects(plugin),
     lostLoadEffects: LumberBundleEffects = PaperLumberBundleEffects(plugin, "lumber_lost"),
+    locale: ArcFarmsLocale? = null,
 ) {
     internal val registry = LumberRuntimeRegistry()
     internal val clock = clock
@@ -63,11 +68,16 @@ internal class LumbermillComponentGraph(
     val windthrow = LumberWindthrowIncident(registry, index, recovery, incidents, port)
     val beetles = LumberBarkBeetleIncident(registry, index, incidents, port)
     val sawJam = LumberSawJamIncident(registry, incidents, port)
-    val warped = LumberWarpedBatchIncident(incidents)
+    val warped = LumberWarpedBatchIncident(registry, incidents, port)
     val conveyor = LumberConveyorIncident(registry, incidents, serviceItems, port)
     val lostLoad = LumberLostLoadIncident(registry, incidents, lostLoadEffects, port, clock)
     val fire = LumberForestFireIncident(registry, incidents, recovery, serviceItems, port)
     val rush = LumberRushOrderIncident(port)
+    val guidance = LumberGuidanceSource(registry, port, locale)
+    private val guidancePresenter = WorksiteGuidancePresenter(port, port, guidance)
+    val incidentScheduler = LumberIncidentScheduler(
+        windthrow, beetles, sawJam, conveyor, fire, lostLoad, warped, rush, port,
+    )
     val felling = LumberFellingController(
         registry,
         index,
@@ -88,6 +98,7 @@ internal class LumbermillComponentGraph(
     val module = LumbermillModule(
         regions, port, registry, index, recovery, tickets, felling, skidding, bundleScene,
         sawing, stacking, stackingScene, dispatch, windthrow, beetles, sawJam, conveyor, lostLoad, fire, rush,
+        warped, incidentScheduler, guidancePresenter, clock,
     )
 
     internal val mutableRuntimeCollectionCount: Int = 1

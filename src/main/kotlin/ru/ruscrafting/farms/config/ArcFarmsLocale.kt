@@ -564,6 +564,13 @@ class ArcFarmsLocale(
             enumValues<ru.ruscrafting.farms.domain.FarmPhase>().mapTo(this) { "phase.farm.${it.name.lowercase()}" }
             enumValues<ru.ruscrafting.farms.domain.LumberPhase>().mapTo(this) { "phase.lumber.${it.name.lowercase()}" }
             enumValues<ru.ruscrafting.farms.domain.MinePhase>().mapTo(this) { "phase.mine.${it.name.lowercase()}" }
+            add("lumber.guidance.title")
+            add("lumber.guidance.bar")
+            enumValues<ru.ruscrafting.farms.domain.LumberPhase>()
+                .filterNot { it == ru.ruscrafting.farms.domain.LumberPhase.IDLE }
+                .mapTo(this) { "lumber.guidance.${it.name.lowercase()}" }
+            enumValues<ru.ruscrafting.farms.domain.LumberIncidentType>()
+                .mapTo(this) { "lumber.guidance.${it.name.lowercase()}" }
         }
 
         fun validateFiles(dataRoot: Path, settings: ArcFarmsConfig) {

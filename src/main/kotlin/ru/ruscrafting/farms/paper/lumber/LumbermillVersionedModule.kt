@@ -46,7 +46,7 @@ internal class LumbermillVersionedModule(
     WorksiteServiceItemOwner, WorksiteParticipantOwner {
     private val engineVersion = initial.firstOrNull()?.engineVersion ?: 1
     private val delegate: WorksiteModule<LumberShiftState> = if (engineVersion == 2) {
-        LumbermillComponentGraph(plugin, regions, port, clock, journal, serviceItems).module
+        LumbermillComponentGraph(plugin, regions, port, clock, journal, serviceItems, locale = locale).module
     } else {
         LumbermillController(regions, locale, port, clock)
     }

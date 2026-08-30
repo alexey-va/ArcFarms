@@ -3,6 +3,8 @@ package ru.ruscrafting.farms.paper.lumber.incident.conveyor
 import net.kyori.adventure.text.Component
 import org.bukkit.Material
 import org.bukkit.entity.Player
+import org.bukkit.block.Block
+import org.bukkit.event.player.PlayerInteractEvent
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.LumberIncidentType
 import ru.ruscrafting.farms.domain.LumberPhase
@@ -62,6 +64,21 @@ internal class LumberConveyorIncident(
     fun availableKits(runtime: LumberRuntime): Int = runtime.state.incident?.let { incident ->
         if (incident.type == LumberIncidentType.CONVEYOR_BREAKDOWN) incident.required - incident.serviceLeases.size else 0
     } ?: 0
+
+    fun onInteract(event: PlayerInteractEvent, clicked: Block, player: Player): Boolean {
+        val runtime = registry.snapshot().firstOrNull { it.station.contains(clicked.location) } ?: return false
+        if (runtime.state.phase != LumberPhase.INCIDENT ||
+            runtime.state.incident?.type != LumberIncidentType.CONVEYOR_BREAKDOWN
+        ) return false
+        val position = WorksitePosition(clicked.world.name, clicked.x, clicked.y + 1, clicked.z)
+        val target = runtime.state.objective?.targets?.firstOrNull { it.position == position } ?: return false
+        event.isCancelled = true
+        if (runtime.state.incident?.serviceLeases?.values?.contains(player.uniqueId) != true && !pickupKit(runtime, player)) {
+            return true
+        }
+        deliver(runtime, target.id, player)
+        return true
+    }
 
     fun isActive(identity: ServiceItemIdentity): Boolean {
         if (identity.activity != ActivityKind.LUMBER || identity.role.value != "repair_kit") return false

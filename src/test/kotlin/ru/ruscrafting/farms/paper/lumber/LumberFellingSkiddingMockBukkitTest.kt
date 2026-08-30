@@ -123,7 +123,7 @@ class LumberFellingSkiddingMockBukkitTest : FunSpec({
     }
 })
 
-internal fun lumberTestPort(): WorksiteRuntimePort {
+internal fun lumberTestPort(players: List<Player> = emptyList()): WorksiteRuntimePort {
     val token = mockk<RuntimeTaskSupervisor.Token>()
     return mockk(relaxed = true) {
         every { isOperational() } returns true
@@ -134,6 +134,7 @@ internal fun lumberTestPort(): WorksiteRuntimePort {
             true
         }
         every { persistAsync() } returns CompletableFuture.completedFuture(Unit)
+        every { players(any()) } returns players
     }
 }
 

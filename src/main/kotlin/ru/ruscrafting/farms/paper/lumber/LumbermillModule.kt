@@ -18,6 +18,8 @@ import ru.ruscrafting.farms.paper.WorksiteModule
 import ru.ruscrafting.farms.paper.WorksiteBlockBreakHandler
 import ru.ruscrafting.farms.paper.WorksiteEntityInteractHandler
 import ru.ruscrafting.farms.paper.WorksiteFastVisualHandler
+import ru.ruscrafting.farms.paper.WorksiteGuidanceHandler
+import ru.ruscrafting.farms.paper.ActivityBarKey
 import ru.ruscrafting.farms.paper.WorksiteMoveHandler
 import ru.ruscrafting.farms.paper.WorksiteBlockInteractHandler
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
@@ -40,10 +42,13 @@ import ru.ruscrafting.farms.paper.lumber.incident.conveyor.LumberConveyorInciden
 import ru.ruscrafting.farms.paper.lumber.incident.load.LumberLostLoadIncident
 import ru.ruscrafting.farms.paper.lumber.incident.fire.LumberForestFireIncident
 import ru.ruscrafting.farms.paper.lumber.incident.rush.LumberRushOrderIncident
+import ru.ruscrafting.farms.paper.lumber.incident.warped.LumberWarpedBatchIncident
+import ru.ruscrafting.farms.paper.lumber.incident.LumberIncidentScheduler
 import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantOwner
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItemOwner
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
+import ru.ruscrafting.farms.paper.worksite.WorksiteGuidancePresenter
 import java.util.UUID
 
 internal class LumbermillModule(
@@ -67,9 +72,13 @@ internal class LumbermillModule(
     private val lostLoad: LumberLostLoadIncident,
     private val fire: LumberForestFireIncident,
     private val rush: LumberRushOrderIncident,
+    private val warped: LumberWarpedBatchIncident,
+    private val incidentScheduler: LumberIncidentScheduler,
+    private val guidance: WorksiteGuidancePresenter,
+    private val clock: () -> Long,
 ) : WorksiteModule<LumberShiftState>, WorksiteBlockBreakHandler, WorksiteEntityInteractHandler,
     WorksiteBlockInteractHandler, WorksiteMoveHandler, WorksiteFastVisualHandler, WorksiteParticipantOwner,
-    WorksiteServiceItemOwner {
+    WorksiteServiceItemOwner, WorksiteGuidanceHandler {
     override val kind: ActivityKind = ActivityKind.LUMBER
     override val zoneCount: Int get() = registry.size
 
@@ -101,8 +110,12 @@ internal class LumbermillModule(
             stackingScene.reconcile(runtime)
             beetles.reconcile(runtime)
             lostLoad.reconcile(runtime)
-            fire.tick(runtime, runtime.region.world.players.count { runtime.region.contains(it.location) }, now)
+            val participants = runtime.region.world.players.count {
+                runtime.region.contains(it.location) || runtime.station.contains(it.location)
+            }
+            fire.tick(runtime, participants, now)
             rush.tick(runtime, now)
+            incidentScheduler.tick(runtime, now, participants)
         }
     }.also { recovery.processDue(now) }
 
@@ -113,7 +126,8 @@ internal class LumbermillModule(
         windthrow.onBreak(event) || felling.onBreakHigh(event)
 
     override fun onInteract(event: PlayerInteractEvent, clicked: Block, player: Player): Boolean =
-        fire.onInteract(event, clicked, player) || beetles.onInteract(event, clicked, player) ||
+        fire.onInteract(event, clicked, player) || conveyor.onInteract(event, clicked, player) ||
+            warped.onInteract(event, clicked, player) || beetles.onInteract(event, clicked, player) ||
             sawJam.onInteract(event, clicked, player) ||
             sawing.onInteract(event, clicked, player) ||
             stacking.onInteract(event, clicked, player) ||
@@ -134,10 +148,15 @@ internal class LumbermillModule(
         lostLoad.updateCarried()
     }
 
+    override fun updateGuidance(expectedBars: MutableSet<ActivityBarKey>) = guidance.updateHud(clock(), expectedBars)
+
+    override fun emitGuidance() = guidance.emitParticles()
+
     override fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
         skidding.releasePlayer(player, reason)
         stacking.releasePlayer(player, reason)
         lostLoad.releasePlayer(player.uniqueId)
+        guidance.releasePlayer(player)
     }
 
     override fun isActive(identity: ServiceItemIdentity): Boolean = conveyor.isActive(identity) || fire.isActive(identity)
@@ -169,6 +188,7 @@ internal class LumbermillModule(
         skidding.cleanup()
         stacking.cleanup()
         lostLoad.cleanup()
+        incidentScheduler.cleanup()
         recovery.cleanup(reason)
         index.clear()
     }

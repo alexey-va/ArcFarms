@@ -452,6 +452,7 @@ farm-zones:
 lumber-zones:
   communal_lumbermill:
     enabled: true
+    engine-version: 2
     world: world
     region: spawn_lumbermill
     station-region: spawn_lumberhouse
@@ -461,6 +462,27 @@ lumber-zones:
     processing-per-use: 2
     species: [OAK, SPRUCE, BIRCH, JUNGLE, ACACIA, DARK_OAK, MANGROVE, CHERRY]
     station-materials: [STONECUTTER, GRINDSTONE, SMITHING_TABLE, LOOM]
+    target-multiplier: 2
+    incident-count-min: 3
+    incident-count-max: 5
+    recovery-seconds: 90
+    orders:
+      forest_supply:
+        species: [OAK, SPRUCE, BIRCH, JUNGLE]
+        phases:
+          felling-required: 16
+          skidding-required: 6
+          sawing-required: 8
+          stacking-required: 6
+        incidents: [WINDTHROW, BARK_BEETLES, FOREST_FIRE, LOST_LOAD, RUSH_ORDER]
+      workshop_contract:
+        species: [ACACIA, DARK_OAK, MANGROVE, CHERRY]
+        phases:
+          felling-required: 16
+          skidding-required: 6
+          sawing-required: 8
+          stacking-required: 6
+        incidents: [SAW_JAM, CONVEYOR_BREAKDOWN, WARPED_BATCH, RUSH_ORDER, LOST_LOAD]
 
 mine-zones:
   old_shafts:

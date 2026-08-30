@@ -19,9 +19,9 @@ internal class WorksiteGuidancePresenter(
 
     val sessionCount: Int get() = sessions.size
 
-    fun updateHud(now: Long) {
+    fun updateHud(now: Long, sharedExpected: MutableSet<ru.ruscrafting.farms.paper.ActivityBarKey>? = null) {
         require(now >= 0) { "Worksite guidance time cannot be negative" }
-        val expected = mutableSetOf<ActivityBarKey>()
+        val expected = sharedExpected ?: mutableSetOf()
         source.participants().distinctBy(Player::getUniqueId).forEach { player ->
             if (!player.isOnline || access.isAdminEditing(player)) {
                 releasePlayer(player)
@@ -47,7 +47,7 @@ internal class WorksiteGuidancePresenter(
             }
             sessions[player.uniqueId] = session
         }
-        audience.reconcileBars(expected)
+        if (sharedExpected == null) audience.reconcileBars(expected)
     }
 
     fun emitParticles() {

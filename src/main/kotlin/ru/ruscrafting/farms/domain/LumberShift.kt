@@ -187,6 +187,7 @@ object LumberShiftEngine {
         val schedule = order.incidents.indices
             .map { order.incidents[(offset + it) % order.incidents.size] }
             .take(incidentCount)
+            .sortedWith(compareBy<LumberIncidentType>({ INCIDENT_PHASE_ORDER.getValue(it) }, { it.ordinal }))
         return EngineResult(
             LumberShiftState(
                 phase = LumberPhase.FELLING,
@@ -394,5 +395,16 @@ object LumberShiftEngine {
         LumberPhase.SAWING,
         LumberPhase.STACKING,
         LumberPhase.DISPATCH,
+    )
+
+    private val INCIDENT_PHASE_ORDER = mapOf(
+        LumberIncidentType.WINDTHROW to 0,
+        LumberIncidentType.BARK_BEETLES to 0,
+        LumberIncidentType.FOREST_FIRE to 0,
+        LumberIncidentType.LOST_LOAD to 1,
+        LumberIncidentType.SAW_JAM to 2,
+        LumberIncidentType.CONVEYOR_BREAKDOWN to 2,
+        LumberIncidentType.WARPED_BATCH to 3,
+        LumberIncidentType.RUSH_ORDER to 4,
     )
 }

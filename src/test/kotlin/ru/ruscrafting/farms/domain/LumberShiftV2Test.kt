@@ -37,6 +37,9 @@ class LumberShiftV2Test : FunSpec({
         started.phase shouldBe LumberPhase.FELLING
         started.incidentSchedule.distinct().size shouldBe started.incidentSchedule.size
         started.incidentSchedule.size shouldBe 4
+        started.incidentSchedule.zipWithNext().all { (left, right) ->
+            incidentPhase(left) <= incidentPhase(right)
+        } shouldBe true
         val interrupted = LumberShiftEngine.startIncident(
             started.copy(felled = 1),
             LumberIncidentType.WINDTHROW,
@@ -112,3 +115,11 @@ class LumberShiftV2Test : FunSpec({
         resumed.objective shouldBe objective
     }
 })
+
+private fun incidentPhase(type: LumberIncidentType): Int = when (type) {
+    LumberIncidentType.WINDTHROW, LumberIncidentType.BARK_BEETLES, LumberIncidentType.FOREST_FIRE -> 0
+    LumberIncidentType.LOST_LOAD -> 1
+    LumberIncidentType.SAW_JAM, LumberIncidentType.CONVEYOR_BREAKDOWN -> 2
+    LumberIncidentType.WARPED_BATCH -> 3
+    LumberIncidentType.RUSH_ORDER -> 4
+}
