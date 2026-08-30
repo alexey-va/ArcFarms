@@ -1,5 +1,6 @@
 package ru.ruscrafting.farms.paper.mine
 
+import net.kyori.adventure.text.Component
 import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.paper.RegionGateway
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
@@ -76,7 +77,11 @@ internal class MineComponentGraph(
         registry, port, locale, extraction::guidanceTarget, { extraction.routeFor(it)?.finalIndex ?: 1 },
     )
     private val guidancePresenter = WorksiteGuidancePresenter(port, port, guidance)
-    val prospecting = MineProspectingController(registry, index, recovery, transitions, port, clock, loading::canStage)
+    val prospecting = MineProspectingController(
+        registry, index, recovery, transitions, port, clock, loading::canStage,
+    ) { runtime, player ->
+        locale?.renderPath("route.mine.${runtime.settings.id}", player) ?: Component.text(runtime.settings.id)
+    }
     val mining = MineMiningController(
         registry, index, recovery, transitions, port, clock, random, blockEffects, loading::begin,
     )

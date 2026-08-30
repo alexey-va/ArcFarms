@@ -32,6 +32,9 @@ internal class MineProspectingController(
     private val port: WorksiteRuntimePort,
     private val clock: () -> Long,
     private val canStartLoading: (MineRuntime) -> Boolean,
+    private val routeName: (MineRuntime, org.bukkit.entity.Player) -> Component = { runtime, _ ->
+        Component.text(runtime.settings.id)
+    },
 ) {
     fun onInteract(event: PlayerInteractEvent): Boolean {
         val clicked = event.clickedBlock ?: return false
@@ -87,7 +90,13 @@ internal class MineProspectingController(
         val started = MineShiftEngine.start(runtime.state, order.domain(), rules, clock())
         val objective = plan(runtime, MineAnchorRole.PROSPECT, "prospecting", rules.prospectingQuota, started.state.sequence)
         transitions.apply(runtime, started.copy(state = started.state.copy(objective = objective)), player)
-        port.broadcast(listOf(runtime.region), MessageKey.MINE_STARTED, sound = Sound.BLOCK_IRON_DOOR_OPEN, title = true)
+        port.broadcast(
+            listOf(runtime.region),
+            MessageKey.MINE_STARTED,
+            sound = Sound.BLOCK_IRON_DOOR_OPEN,
+            title = true,
+            valuesForPlayer = { viewer -> mapOf("route" to routeName(runtime, viewer)) },
+        )
         return true
     }
 

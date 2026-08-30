@@ -4,8 +4,13 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
+import io.mockk.Runs
+import io.mockk.slot
+import net.kyori.adventure.text.Component
 import org.bukkit.Material
+import org.bukkit.Sound
 import org.bukkit.block.BlockFace
 import org.bukkit.entity.Player
 import org.bukkit.event.block.Action
@@ -16,6 +21,7 @@ import org.bukkit.inventory.ItemStack
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.PendingMineBlock
+import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.CuboidRegionGateway
 import ru.ruscrafting.farms.paper.MineBlockEffects
@@ -44,10 +50,17 @@ class MineProspectingMiningMockBukkitTest : FunSpec({
         val unindexed = world.getBlockAt(7, 64, 1).also { it.type = Material.IRON_ORE }
         val journal = DeferredMineJournal()
         val effects = RecordingMineEffects()
+        val port = immediateMinePort()
+        val startValues = slot<(Player) -> Map<String, Component>>()
+        every {
+            port.broadcast(
+                any(), MessageKey.MINE_STARTED, any(), Sound.BLOCK_IRON_DOOR_OPEN, true, capture(startValues),
+            )
+        } just Runs
         val graph = MineComponentGraph(
             paper.createSimplePlugin("MineVerticalSliceTest"),
             CuboidRegionGateway(),
-            immediateMinePort(),
+            port,
             clock = { 1_000L },
             journal = journal,
             random = java.util.Random(7),
@@ -74,6 +87,8 @@ class MineProspectingMiningMockBukkitTest : FunSpec({
         )
         graph.module.onInteract(inspect, prospects.first(), player) shouldBe true
 
+        startValues.isCaptured shouldBe true
+        startValues.captured(player)["route"] shouldBe Component.text("old_shafts")
         runtime.state.phase shouldBe MinePhase.MINING
         runtime.state.objective!!.targets shouldHaveSize 4
 
