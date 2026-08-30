@@ -24,4 +24,7 @@ python3 -B /Users/alexey23/.codex/skills/itemsadder-item-display-grounding/scrip
 - Exact generated/client-pack textures resolved and embedded into the retained HTML render.
 - Analyzer warning retained: it cannot independently prove that this cached pack is the pack currently selected by every production client.
 
-The full numeric and textured-face evidence is in `mine-cart-grounding.json`.
+The full numeric and textured-face evidence is generated locally as
+`mine-cart-grounding.json` by the command above. The generated 17k-line JSON is
+intentionally ignored; this document retains the reviewed placement inputs and
+result needed to reproduce it.
