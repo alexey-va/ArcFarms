@@ -261,7 +261,7 @@ git commit -m "feat: share worksite guidance and reminders"
 - Produces: `ServiceItemIdentity`, `WorksiteServiceItemOwner`, `WorksiteServiceItemController.issue`, `.consume`, `.guardInventory`, `.cleanupPlayer`; `WorksiteParticipantSafety.release`.
 - Consumers: lumber/mine carry objectives and the top-level event router.
 
-- [ ] **Step 1: Write failing inventory/lifecycle tests**
+- [x] **Step 1: Write failing inventory/lifecycle tests**
 
 ```kotlin
 test("service items cannot leave personal storage and release their lease on exit") {
@@ -282,23 +282,23 @@ test("stale sequence items are removed on join without progress") {
 }
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Run: `./gradlew test --tests '*WorksiteServiceItemControllerMockBukkitTest' --tests '*WorksiteParticipantSafetyTest'`
 
 Expected: service-item/safety classes are missing.
 
-- [ ] **Step 3: Implement strict PDC identity and cleanup**
+- [x] **Step 3: Implement strict PDC identity and cleanup**
 
 Use one `NamespacedKey` per bounded field, reject malformed identifiers, permit moves only between the player's normal storage slots, and notify the owning module on every removal reason. Release is idempotent by `(player, objective, itemId)`.
 
-- [ ] **Step 4: Run focused safety and existing farm supply tests**
+- [x] **Step 4: Run focused safety and existing farm supply tests**
 
 Run: `./gradlew test --tests '*WorksiteServiceItem*' --tests '*WorksiteParticipantSafety*' --tests '*FarmSupply*' --tests '*ScarecrowDelivery*'`
 
 Expected: PASS; the common guard does not weaken farm-specific restrictions.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/kotlin/ru/ruscrafting/farms/paper/worksite src/test/kotlin/ru/ruscrafting/farms/paper/worksite
