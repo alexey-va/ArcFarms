@@ -140,7 +140,11 @@ internal class FarmHudController(
                 FarmIncidentType.PROCESSING -> MessageKey.FARM_ENTRY_PROCESSING
                 FarmIncidentType.BARN_FIRE -> MessageKey.FARM_ENTRY_BARN_FIRE
                 FarmIncidentType.FROST -> MessageKey.FARM_ENTRY_FROST
-                else -> null
+                FarmIncidentType.GIANT_CROP,
+                FarmIncidentType.CHANNELS,
+                FarmIncidentType.NIGHT_SHIFT,
+                FarmIncidentType.MARKET,
+                -> null
             }
             FarmPhase.DELIVERY -> MessageKey.FARM_ENTRY_DELIVERY
         }
@@ -358,7 +362,10 @@ internal class FarmHudController(
             FarmIncidentType.MARKET -> if (runtime.state.specialIncident?.marketAccepted == true) {
                 MessageKey.FARM_MARKET_ACTIVE_BOSSBAR
             } else MessageKey.FARM_MARKET_PENDING_BOSSBAR
-            else -> MessageKey.FARM_SPECIAL_BOSSBAR
+            FarmIncidentType.GIANT_CROP,
+            FarmIncidentType.CHANNELS,
+            FarmIncidentType.NIGHT_SHIFT,
+            -> MessageKey.FARM_SPECIAL_BOSSBAR
         }
         FarmPhase.DELIVERY -> if (carrying) MessageKey.FARM_DELIVERY_CARRYING_BOSSBAR else MessageKey.FARM_DELIVERY_BOSSBAR
         else -> MessageKey.FARM_BOSSBAR
@@ -424,40 +431,21 @@ internal class FarmHudController(
     }
 
     private fun incidentHint(player: Player, runtime: FarmRuntime) {
-        when (runtime.state.incidentType) {
-            FarmIncidentType.DROUGHT -> audience.sendActionBar(player, MessageKey.FARM_DROUGHT_REQUIRED)
-            FarmIncidentType.BIRDS -> audience.sendActionBar(player, MessageKey.FARM_BIRDS_REQUIRED)
-            FarmIncidentType.FOOD_DELIVERY -> audience.sendActionBar(player, MessageKey.FARM_ROUTE_REQUIRED)
-            FarmIncidentType.PROCESSING -> audience.sendActionBar(
-                player,
-                when (runtime.state.processing?.stage) {
-                    FarmProcessingStage.LOADING -> MessageKey.FARM_PROCESSING_LOADING_HINT
-                    FarmProcessingStage.OPERATING -> MessageKey.FARM_PROCESSING_OPERATING_HINT
-                    FarmProcessingStage.PACKING -> MessageKey.FARM_PROCESSING_PACKING_HINT
-                    null -> MessageKey.FARM_PROCESSING_LOADING_HINT
-                },
-            )
-            FarmIncidentType.BARN_FIRE -> audience.sendActionBar(player, MessageKey.FARM_BARN_FIRE_AIM_HINT)
-            FarmIncidentType.FROST -> audience.sendActionBar(player, MessageKey.FARM_FROST_REQUIRED)
-            FarmIncidentType.MARKET -> {
-                val incident = runtime.state.specialIncident ?: return
-                audience.sendActionBar(
-                    player,
-                    if (incident.marketAccepted) MessageKey.FARM_MARKET_ACTIVE else MessageKey.FARM_MARKET_REQUIRED,
-                    special.marketValues(runtime, incident, player),
-                )
-            }
-            FarmIncidentType.NIGHT_SHIFT -> audience.sendActionBar(
-                player,
-                MessageKey.FARM_SPECIAL_PROGRESS,
-                mapOf(
-                    "event" to special.name(FarmIncidentType.NIGHT_SHIFT, player),
-                    "done" to locale.text(runtime.state.incidentProgress),
-                    "total" to locale.text(runtime.state.incidentRequired),
-                ),
-            )
-            else -> audience.sendActionBar(player, MessageKey.FARM_PESTS_REQUIRED)
-        }
+        val type = runtime.state.incidentType ?: return
+        val incident = runtime.state.specialIncident
+        if (type == FarmIncidentType.MARKET && incident == null) return
+        audience.sendActionBar(
+            player,
+            farmIncidentHintKey(type, runtime.state.processing?.stage, incident?.marketAccepted == true),
+            buildMap {
+                if (type in SPECIAL_FARM_INCIDENT_TYPES) put("event", special.name(type, player))
+                put("done", locale.text(runtime.state.incidentProgress))
+                put("total", locale.text(runtime.state.incidentRequired))
+                if (type == FarmIncidentType.MARKET && incident != null) {
+                    putAll(special.marketValues(runtime, incident, player))
+                }
+            },
+        )
     }
 
     private fun requirements(runtime: FarmRuntime, order: FarmOrder): Component = Component.join(
@@ -499,4 +487,27 @@ internal class FarmHudController(
             FarmPhase.COOLDOWN,
         )
     }
+}
+
+internal fun farmIncidentHintKey(
+    type: FarmIncidentType,
+    processingStage: FarmProcessingStage?,
+    marketAccepted: Boolean,
+): MessageKey = when (type) {
+    FarmIncidentType.PESTS -> MessageKey.FARM_PESTS_REQUIRED
+    FarmIncidentType.DROUGHT -> MessageKey.FARM_DROUGHT_REQUIRED
+    FarmIncidentType.BIRDS -> MessageKey.FARM_BIRDS_REQUIRED
+    FarmIncidentType.FOOD_DELIVERY -> MessageKey.FARM_ROUTE_REQUIRED
+    FarmIncidentType.GIANT_CROP -> MessageKey.FARM_GIANT_CROP_TOOL
+    FarmIncidentType.CHANNELS -> MessageKey.FARM_CHANNELS_PROGRESS
+    FarmIncidentType.NIGHT_SHIFT -> MessageKey.FARM_SPECIAL_PROGRESS
+    FarmIncidentType.MARKET -> if (marketAccepted) MessageKey.FARM_MARKET_ACTIVE else MessageKey.FARM_MARKET_REQUIRED
+    FarmIncidentType.PROCESSING -> when (processingStage) {
+        FarmProcessingStage.LOADING -> MessageKey.FARM_PROCESSING_LOADING_HINT
+        FarmProcessingStage.OPERATING -> MessageKey.FARM_PROCESSING_OPERATING_HINT
+        FarmProcessingStage.PACKING -> MessageKey.FARM_PROCESSING_PACKING_HINT
+        null -> MessageKey.FARM_PROCESSING_LOADING_HINT
+    }
+    FarmIncidentType.BARN_FIRE -> MessageKey.FARM_BARN_FIRE_AIM_HINT
+    FarmIncidentType.FROST -> MessageKey.FARM_FROST_REQUIRED
 }

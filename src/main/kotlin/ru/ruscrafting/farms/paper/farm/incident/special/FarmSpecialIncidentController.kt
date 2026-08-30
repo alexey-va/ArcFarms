@@ -238,7 +238,7 @@ internal class FarmSpecialIncidentController(
     }
 
     fun handleCropBreak(runtime: FarmRuntime, player: Player, block: Block): Boolean {
-        if (handleGiantCropBreak(runtime, player, block)) return true
+        if (handleGiantCropHit(runtime, player, block)) return true
         val type = runtime.state.incidentType ?: return false
         if (runtime.state.phase != FarmPhase.INCIDENT || type !in setOf(FarmIncidentType.NIGHT_SHIFT, FarmIncidentType.MARKET)) {
             return false
@@ -657,7 +657,7 @@ internal class FarmSpecialIncidentController(
         return normalized
     }
 
-    private fun handleGiantCropBreak(runtime: FarmRuntime, player: Player, block: Block): Boolean {
+    fun handleGiantCropHit(runtime: FarmRuntime, player: Player, block: Block): Boolean {
         if (runtime.state.phase != FarmPhase.INCIDENT || runtime.state.incidentType != FarmIncidentType.GIANT_CROP) return false
         if (!giantCrop.owns(block, runtime.settings.id, runtime.state.sequence)) return false
         if (!access.hasAccess(player, runtime.settings.permission)) {
@@ -667,20 +667,22 @@ internal class FarmSpecialIncidentController(
         if (!access.allowInteraction("farm-giant:${runtime.settings.id}:${player.uniqueId}", 90L)) return true
         val result = FarmSpecialIncidentEngine.damageGiantCrop(runtime.state, player.uniqueId)
         if (!result.accepted || !giantCrop.breakBlock(block, runtime.settings.id, runtime.state.sequence)) return true
-        if (settings().particles) block.world.spawnParticle(
-            Particle.BLOCK,
-            block.location.toCenterLocation(),
-            10,
-            0.35,
-            0.35,
-            0.35,
-            MaterialRules.material(runtime.state.specialIncident?.crop ?: "PUMPKIN").createBlockData(),
+        FarmGiantCropHitEffects.emit(
+            block,
+            MaterialRules.material(runtime.state.specialIncident?.crop ?: "PUMPKIN"),
+            result.state.incidentProgress,
+            settings().particles,
+            settings().sounds,
         )
-        if (settings().sounds) player.playSound(
-            block.location,
-            Sound.BLOCK_WOOD_BREAK,
-            0.8f,
-            0.85f + result.state.incidentProgress * 0.006f,
+        debug.event(
+            "farm_giant_crop_hit",
+            "zone" to runtime.settings.id,
+            "player" to player.name,
+            "progress" to result.state.incidentProgress,
+            "required" to result.state.incidentRequired,
+            "x" to block.x,
+            "y" to block.y,
+            "z" to block.z,
         )
         transitions.apply(runtime, result, player)
         return true

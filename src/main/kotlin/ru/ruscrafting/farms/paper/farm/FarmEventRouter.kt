@@ -200,6 +200,18 @@ internal class FarmEventRouter(
             }
             return false
         }
+        if (event.hand == EquipmentSlot.HAND && event.action == Action.LEFT_CLICK_BLOCK) {
+            val clicked = event.clickedBlock ?: return false
+            val runtime = farmAt(clicked.location) ?: return false
+            if (shiftStartPending(runtime.settings.id)) {
+                deny(event)
+                return true
+            }
+            if (special.handleGiantCropHit(runtime, event.player, clicked)) {
+                deny(event)
+                return true
+            }
+        }
         if (foodDelivery.onInteract(event, runtimes())) return true
         if (supplies.isServiceItem(event.player.inventory.itemInMainHand, FarmSupplyKind.FIRE)) {
             val runtime = farmAt(event.player.location)
