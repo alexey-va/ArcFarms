@@ -11,13 +11,19 @@ import ru.ruscrafting.farms.paper.ActivityStatus
 import ru.ruscrafting.farms.paper.RegionGateway
 import ru.ruscrafting.farms.paper.WorksiteModule
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
-import ru.ruscrafting.farms.paper.worksite.RuntimeComponent
+import ru.ruscrafting.farms.paper.lumber.index.LumberBlockIndex
+import ru.ruscrafting.farms.paper.lumber.index.LumberChunkTicket
+import ru.ruscrafting.farms.paper.lumber.index.LumberIndexDefinition
+import ru.ruscrafting.farms.paper.lumber.index.LumberReindexJob
+import ru.ruscrafting.farms.paper.lumber.recovery.LumberBlockRecoveryController
 
 internal class LumbermillModule(
     private val regions: RegionGateway,
     private val port: WorksiteRuntimePort,
     internal val registry: LumberRuntimeRegistry,
-    private val components: List<RuntimeComponent>,
+    internal val index: LumberBlockIndex,
+    internal val recovery: LumberBlockRecoveryController,
+    internal val tickets: LumberChunkTicket,
 ) : WorksiteModule<LumberShiftState> {
     override val kind: ActivityKind = ActivityKind.LUMBER
     override val zoneCount: Int get() = registry.size
@@ -47,18 +53,35 @@ internal class LumbermillModule(
                 port.persistAsync()
             }
         }
-    }
+    }.also { recovery.processDue(now) }
 
     override fun canAccess(player: Player): Boolean =
         registry.snapshot().any { port.hasAccess(player, it.settings.permission) }
 
-    override fun activateLoadedState() = components.forEach(RuntimeComponent::activateLoadedState)
+    override fun activateLoadedState() {
+        registry.snapshot().forEach { runtime ->
+            runtime.region.world.loadedChunks.forEach { chunk -> index.reconcileChunk(runtime.indexDefinition(), chunk) }
+        }
+        recovery.activateLoadedState()
+    }
 
-    override fun reconcileChunk(chunk: Chunk) = components.forEach { it.reconcileChunk(chunk) }
+    override fun reconcileChunk(chunk: Chunk) {
+        registry.snapshot().filter { it.region.world === chunk.world }.forEach { runtime ->
+            index.reconcileChunk(runtime.indexDefinition(), chunk)
+        }
+        recovery.reconcileChunk(chunk)
+    }
 
-    override fun beforeReload(reason: String) = components.forEach { it.beforeReload(reason) }
+    override fun beforeReload(reason: String) = recovery.beforeReload(reason)
 
-    override fun cleanup(reason: String) = components.forEach { it.cleanup(reason) }
+    override fun cleanup(reason: String) {
+        recovery.cleanup(reason)
+        index.clear()
+    }
+
+    fun reindex(zoneId: String): LumberReindexJob? = registry.byId(zoneId)?.let { runtime ->
+        LumberReindexJob(runtime.indexDefinition(), index, tickets)
+    }
 
     private fun progress(runtime: LumberRuntime): Pair<Int, Int> = when (runtime.state.phase) {
         LumberPhase.FELLING -> runtime.state.felled to runtime.rules().fellingQuota
@@ -69,4 +92,10 @@ internal class LumbermillModule(
         LumberPhase.PROCESSING -> runtime.state.processed to runtime.rules().processingQuota
         LumberPhase.IDLE, LumberPhase.COOLDOWN -> 0 to 1
     }
+
+    private fun LumberRuntime.indexDefinition() = LumberIndexDefinition(
+        settings.id,
+        region,
+        settings.species.toSet(),
+    )
 }

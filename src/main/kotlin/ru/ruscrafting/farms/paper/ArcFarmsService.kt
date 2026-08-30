@@ -42,6 +42,7 @@ import ru.ruscrafting.farms.persistence.ArcFarmsStateRepository
 import ru.ruscrafting.farms.persistence.FarmLocationRepository
 import ru.ruscrafting.farms.persistence.FarmRouteRepository
 import ru.ruscrafting.farms.persistence.FixedFarmCropJournal
+import ru.ruscrafting.farms.persistence.LumberBlockJournal
 import ru.ruscrafting.farms.persistence.MineBlockJournal
 import ru.ruscrafting.farms.network.ActivityNetworkGateway
 import ru.ruscrafting.farms.network.NoOpActivityNetworkGateway
@@ -72,6 +73,7 @@ class ArcFarmsService(
     private val locale: ArcFarmsLocale,
     private val stateRepository: ArcFarmsStateRepository,
     private val mineJournal: MineBlockJournal,
+    private val lumberJournal: LumberBlockJournal,
     private val fixedCropJournal: FixedFarmCropJournal,
     private val farmLocationRepository: FarmLocationRepository,
     private val farmRouteRepository: FarmRouteRepository,
@@ -111,7 +113,7 @@ class ArcFarmsService(
         guard = ::runGuarded,
     )
     private val lumbermillModule = LumbermillVersionedModule(
-        initialSettings.lumbermills, regionGateway, locale, worksitePort, clock,
+        plugin, initialSettings.lumbermills, regionGateway, locale, worksitePort, clock, lumberJournal,
     )
     private val mineController = MineController(regionGateway, locale, mineJournal, worksitePort, clock, random)
     private val runtimeValidator = ArcFarmsRuntimeValidator(regionGateway, { economy.available }, fixedCropJournal, mineJournal)
@@ -468,9 +470,7 @@ class ArcFarmsService(
         ) { runGuarded("periodic_save") { persistAsync() } }
     }
 
-    private fun stopTasks() {
-        taskSupervisor.cancelAll()
-    }
+    private fun stopTasks() = taskSupervisor.cancelAll()
 
     private fun tick() {
         val now = clock()

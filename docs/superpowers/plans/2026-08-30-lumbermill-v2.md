@@ -149,7 +149,7 @@ git commit -m "refactor: compose lumbermill v2 module"
 - Produces: indexed log candidates by species, bounded reindex lifecycle and journal-before-mutation recovery API.
 - Consumers: felling and target incidents.
 
-- [ ] **Step 1: Write failing index/recovery tests**
+- [x] **Step 1: Write failing index/recovery tests**
 
 ```kotlin
 test("reindex applies one chunk only after bounded validation") {
@@ -171,23 +171,23 @@ test("log remains intact until journal prepare succeeds and restores once") {
 }
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Run: `./gradlew test --tests '*LumberBlockIndex*' --tests '*LumberBlockRecovery*'`
 
 Expected: index and recovery classes are missing.
 
-- [ ] **Step 3: Implement chunk-PDC index and atomic journal**
+- [x] **Step 3: Implement chunk-PDC index and atomic journal**
 
 Copy only the proven two-phase/ticket/budget shape from `FarmBlockRegistry`; use lumber-specific records and validation. Capture block data and calculated drops before submitting the journal. Mutate with physics disabled only in a lifecycle-valid sync callback. Retire records only after confirmed restoration.
 
-- [ ] **Step 4: Run focused recovery tests**
+- [x] **Step 4: Run focused recovery tests**
 
 Run: `./gradlew test --tests '*LumberBlockIndex*' --tests '*LumberBlockRecovery*' --tests '*RuntimeTaskSupervisor*'`
 
 Expected: PASS for unloaded chunks, stale callback, duplicate preparation and failed retirement.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/kotlin/ru/ruscrafting/farms/persistence src/main/kotlin/ru/ruscrafting/farms/paper/lumber src/test/kotlin/ru/ruscrafting/farms/paper/lumber

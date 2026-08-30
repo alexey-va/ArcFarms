@@ -6,6 +6,7 @@ import org.bukkit.block.Block
 import org.bukkit.entity.Player
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.LumberZoneSettings
 import ru.ruscrafting.farms.domain.ActivityKind
@@ -24,20 +25,23 @@ import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
 import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantOwner
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItemOwner
+import ru.ruscrafting.farms.persistence.LumberRecoveryJournal
 import java.util.UUID
 
 /** Stable application boundary that constructs exactly one lumber engine generation. */
 internal class LumbermillVersionedModule(
+    plugin: Plugin,
     initial: List<LumberZoneSettings>,
     regions: RegionGateway,
     locale: ArcFarmsLocale,
     port: WorksiteRuntimePort,
     clock: () -> Long,
+    journal: LumberRecoveryJournal,
 ) : WorksiteModule<LumberShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler,
     WorksiteMoveHandler, WorksiteGuidanceHandler, WorksiteServiceItemOwner, WorksiteParticipantOwner {
     private val engineVersion = initial.firstOrNull()?.engineVersion ?: 1
     private val delegate: WorksiteModule<LumberShiftState> = if (engineVersion == 2) {
-        LumbermillComponentGraph(regions, port, clock).module
+        LumbermillComponentGraph(plugin, regions, port, clock, journal).module
     } else {
         LumbermillController(regions, locale, port, clock)
     }

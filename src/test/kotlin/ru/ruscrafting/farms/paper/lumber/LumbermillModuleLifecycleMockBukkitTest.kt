@@ -14,6 +14,9 @@ import ru.ruscrafting.farms.domain.LumberPhase
 import ru.ruscrafting.farms.domain.LumberShiftState
 import ru.ruscrafting.farms.paper.CuboidRegionGateway
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.domain.PendingLumberBlock
+import ru.ruscrafting.farms.persistence.LumberRecoveryJournal
+import java.util.concurrent.CompletableFuture
 
 class LumbermillModuleLifecycleMockBukkitTest : FunSpec({
     lateinit var paper: MockBukkitTestRuntime
@@ -24,7 +27,13 @@ class LumbermillModuleLifecycleMockBukkitTest : FunSpec({
     test("v2 module rebuilds activates and cleans without a second runtime collection") {
         paper.server.addSimpleWorld("world")
         val port = mockk<WorksiteRuntimePort>(relaxed = true)
-        val graph = LumbermillComponentGraph(CuboidRegionGateway(), port, clock = { 1_000L })
+        val graph = LumbermillComponentGraph(
+            paper.createSimplePlugin("LumberModuleTest"),
+            CuboidRegionGateway(),
+            port,
+            clock = { 1_000L },
+            journal = EmptyLumberJournal,
+        )
         val persisted = LumberShiftState(phase = LumberPhase.FELLING, sequence = 3, orderId = "oak_contract", species = "OAK")
 
         graph.module.rebuild(listOf(settings()), mapOf("sawmill" to persisted), cooldownMillis = 5_000L)
@@ -37,6 +46,13 @@ class LumbermillModuleLifecycleMockBukkitTest : FunSpec({
         graph.mutableRuntimeCollectionCount shouldBe 1
     }
 })
+
+private object EmptyLumberJournal : LumberRecoveryJournal {
+    override fun records(): List<PendingLumberBlock> = emptyList()
+    override fun containsPosition(positionKey: String): Boolean = false
+    override fun prepare(record: PendingLumberBlock): CompletableFuture<Unit> = CompletableFuture.completedFuture(Unit)
+    override fun remove(recordId: String): CompletableFuture<Unit> = CompletableFuture.completedFuture(Unit)
+}
 
 private fun settings(): LumberZoneSettings {
     val reference = ZoneReference("world", null, CuboidBounds(0, 50, 0, 20, 90, 20))

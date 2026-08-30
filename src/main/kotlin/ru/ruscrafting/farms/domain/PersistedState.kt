@@ -126,6 +126,43 @@ data class MineBlockJournalState(
     }
 }
 
+data class PendingLumberBlock(
+    val id: String,
+    val zoneId: String,
+    val world: String,
+    val x: Int,
+    val y: Int,
+    val z: Int,
+    val originalBlockData: String,
+    val restoreAt: Long,
+) {
+    init {
+        require(id.matches(Regex("[a-zA-Z0-9._:-]{1,160}"))) { "Invalid lumber journal id" }
+        require(zoneId.matches(Regex("[a-z0-9_-]{1,48}"))) { "Invalid lumber journal zone id" }
+        require(world.matches(Regex("[A-Za-z0-9._-]{1,128}"))) { "Invalid lumber journal world" }
+        require(x in -30_000_000..30_000_000 && z in -30_000_000..30_000_000)
+        require(y in -4_096..4_096)
+        require(originalBlockData.length in 1..512) { "Invalid lumber block data" }
+        require(restoreAt > 0L)
+    }
+
+    val positionKey: String get() = "$world:$x:$y:$z"
+}
+
+data class LumberBlockJournalState(
+    val schemaVersion: Int = SCHEMA_VERSION,
+    val records: Map<String, PendingLumberBlock> = emptyMap(),
+) {
+    init {
+        require(schemaVersion == SCHEMA_VERSION) { "Unsupported lumber journal schema: $schemaVersion" }
+        require(records.size <= 100_000) { "Lumber journal is unbounded" }
+    }
+
+    companion object {
+        const val SCHEMA_VERSION = 1
+    }
+}
+
 data class PendingFixedFarmCrop(
     val zoneId: String,
     val world: String,
