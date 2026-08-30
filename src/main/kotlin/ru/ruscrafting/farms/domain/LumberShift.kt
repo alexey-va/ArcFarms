@@ -108,6 +108,8 @@ data class LumberShiftState(
     val processed: Int = 0,
     val skidded: Int = 0,
     val sawCuts: Int = 0,
+    val sawSequence: ru.ruscrafting.farms.domain.lumber.LumberSawSequenceState =
+        ru.ruscrafting.farms.domain.lumber.LumberSawSequenceState(),
     val stacked: Int = 0,
     val dispatched: Boolean = false,
     val startedAt: Long = 0,

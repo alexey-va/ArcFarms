@@ -11,6 +11,12 @@ import ru.ruscrafting.farms.paper.lumber.skidding.LumberBundleEffects
 import ru.ruscrafting.farms.paper.lumber.skidding.LumberBundleScene
 import ru.ruscrafting.farms.paper.lumber.skidding.LumberSkiddingController
 import ru.ruscrafting.farms.paper.lumber.skidding.PaperLumberBundleEffects
+import ru.ruscrafting.farms.paper.lumber.sawing.LumberSawingController
+import ru.ruscrafting.farms.paper.lumber.stacking.LumberStackingController
+import ru.ruscrafting.farms.paper.lumber.stacking.LumberStackingEffects
+import ru.ruscrafting.farms.paper.lumber.stacking.LumberStackingScene
+import ru.ruscrafting.farms.paper.lumber.stacking.PaperLumberStackingEffects
+import ru.ruscrafting.farms.paper.lumber.dispatch.LumberDispatchController
 import ru.ruscrafting.farms.persistence.LumberRecoveryJournal
 
 /** Composition-only graph; the registry is the sole mutable runtime collection owner. */
@@ -21,6 +27,7 @@ internal class LumbermillComponentGraph(
     clock: () -> Long,
     journal: LumberRecoveryJournal,
     bundleEffects: LumberBundleEffects = PaperLumberBundleEffects(plugin),
+    stackingEffects: LumberStackingEffects = PaperLumberStackingEffects(plugin),
 ) {
     internal val registry = LumberRuntimeRegistry()
     internal val clock = clock
@@ -29,6 +36,17 @@ internal class LumbermillComponentGraph(
     private val transitions = LumberTransitionCoordinator(port)
     val bundleScene = LumberBundleScene(registry, bundleEffects, transitions, port, clock)
     val skidding = LumberSkiddingController(registry, bundleScene, port)
+    val stackingScene = LumberStackingScene(registry, stackingEffects, transitions, port)
+    val stacking = LumberStackingController(registry, stackingScene, port)
+    val sawing = LumberSawingController(
+        registry,
+        transitions,
+        port,
+        clock,
+        stackingScene::begin,
+        stackingScene::reconcile,
+    )
+    val dispatch = LumberDispatchController(registry, transitions, port, clock)
     val felling = LumberFellingController(
         registry,
         index,
@@ -46,7 +64,10 @@ internal class LumbermillComponentGraph(
             chunk.removePluginChunkTicket(plugin)
         }
     }
-    val module = LumbermillModule(regions, port, registry, index, recovery, tickets, felling, skidding, bundleScene)
+    val module = LumbermillModule(
+        regions, port, registry, index, recovery, tickets, felling, skidding, bundleScene,
+        sawing, stacking, stackingScene, dispatch,
+    )
 
     internal val mutableRuntimeCollectionCount: Int = 1
 }

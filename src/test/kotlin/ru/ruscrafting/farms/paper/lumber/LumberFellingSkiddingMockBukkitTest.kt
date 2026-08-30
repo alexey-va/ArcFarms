@@ -47,7 +47,7 @@ class LumberFellingSkiddingMockBukkitTest : FunSpec({
         val playerA = paper.server.addPlayer("LoggerA")
         val playerB = paper.server.addPlayer("LoggerB")
         val effects = RecordingBundleEffects()
-        val port = immediatePort()
+        val port = lumberTestPort()
         val graph = LumbermillComponentGraph(
             paper.createSimplePlugin("LumberSliceTest"),
             CuboidRegionGateway(),
@@ -56,7 +56,7 @@ class LumberFellingSkiddingMockBukkitTest : FunSpec({
             journal = ImmediateLumberJournal(),
             bundleEffects = effects,
         )
-        graph.module.rebuild(listOf(settings()), emptyMap(), cooldownMillis = 5_000L)
+        graph.module.rebuild(listOf(lumberSliceSettings()), emptyMap(), cooldownMillis = 5_000L)
         val runtime = graph.registry.byId("sawmill")!!
         val definition = LumberIndexDefinition("sawmill", runtime.region, setOf("OAK"))
         graph.index.replaceZone(
@@ -98,12 +98,12 @@ class LumberFellingSkiddingMockBukkitTest : FunSpec({
         val graph = LumbermillComponentGraph(
             paper.createSimplePlugin("LumberGuardTest"),
             CuboidRegionGateway(),
-            immediatePort(),
+            lumberTestPort(),
             clock = { 1_000L },
             journal = ImmediateLumberJournal(),
             bundleEffects = RecordingBundleEffects(),
         )
-        graph.module.rebuild(listOf(settings()), emptyMap(), cooldownMillis = 5_000L)
+        graph.module.rebuild(listOf(lumberSliceSettings()), emptyMap(), cooldownMillis = 5_000L)
         val runtime = graph.registry.byId("sawmill")!!
         graph.index.replaceZone(
             LumberIndexDefinition("sawmill", runtime.region, setOf("OAK")),
@@ -123,7 +123,7 @@ class LumberFellingSkiddingMockBukkitTest : FunSpec({
     }
 })
 
-private fun immediatePort(): WorksiteRuntimePort {
+internal fun lumberTestPort(): WorksiteRuntimePort {
     val token = mockk<RuntimeTaskSupervisor.Token>()
     return mockk(relaxed = true) {
         every { isOperational() } returns true
@@ -137,7 +137,7 @@ private fun immediatePort(): WorksiteRuntimePort {
     }
 }
 
-private class ImmediateLumberJournal : LumberRecoveryJournal {
+internal class ImmediateLumberJournal : LumberRecoveryJournal {
     private val records = linkedMapOf<String, PendingLumberBlock>()
 
     override fun records(): List<PendingLumberBlock> = records.values.toList()
@@ -152,7 +152,7 @@ private class ImmediateLumberJournal : LumberRecoveryJournal {
     }
 }
 
-private class RecordingBundleEffects : LumberBundleEffects {
+internal class RecordingBundleEffects : LumberBundleEffects {
     val ground = linkedSetOf<String>()
     val carried = linkedSetOf<UUID>()
 
@@ -180,7 +180,7 @@ private class RecordingBundleEffects : LumberBundleEffects {
     }
 }
 
-private fun settings(): LumberZoneSettings = LumberZoneSettings(
+internal fun lumberSliceSettings(): LumberZoneSettings = LumberZoneSettings(
     id = "sawmill",
     reference = ZoneReference("world", null, CuboidBounds(0, 50, 0, 20, 90, 20)),
     station = ZoneReference("world", null, CuboidBounds(8, 64, 8, 10, 68, 10)),

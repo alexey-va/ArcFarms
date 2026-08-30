@@ -258,7 +258,7 @@ git commit -m "feat: add lumber felling and skidding"
 - Produces: forgiving alternating saw controls, two-times pallet slots and exact dispatch completion.
 - Consumes: objective/service item kernel and lumber transitions.
 
-- [ ] **Step 1: Write failing workshop flow test**
+- [x] **Step 1: Write failing workshop flow test**
 
 ```kotlin
 test("mistimed saw use keeps progress and stacked pallets enable dispatch") {
@@ -274,23 +274,23 @@ test("mistimed saw use keeps progress and stacked pallets enable dispatch") {
 }
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Run: `./gradlew test --tests '*LumberWorkshopFlowMockBukkitTest'`
 
 Expected: workshop owners do not exist.
 
-- [ ] **Step 3: Implement workshop phases**
+- [x] **Step 3: Implement workshop phases**
 
 Controls alternate after an accepted input; wrong/late input only re-highlights the required control. Stacking uses bound plank bundles and extra pallet slots. Dispatch is idempotent and invokes contribution/reward completion once.
 
-- [ ] **Step 4: Run focused tests**
+- [x] **Step 4: Run focused tests**
 
 Run: `./gradlew test --tests '*LumberWorkshopFlow*' --tests '*ObjectiveTargetPool*' --tests '*WorksiteServiceItem*'`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/kotlin/ru/ruscrafting/farms/domain/lumber src/main/kotlin/ru/ruscrafting/farms/paper/lumber src/test/kotlin/ru/ruscrafting/farms/paper/lumber
