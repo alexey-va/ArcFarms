@@ -64,6 +64,7 @@ open class ArcFarmsPlugin : JavaPlugin() {
         try {
             val dataRoot = dataFolder.toPath()
             settings = ArcFarmsConfig.load(dataRoot)
+            ArcFarmsLocale.synchronizeFiles(dataRoot)
             ArcFarmsLocale.validateFiles(dataRoot, settings)
             require(settings.enabled) { "ArcFarms is disabled in config.yml" }
             locale = ArcFarmsLocale(dataRoot) { settings }
@@ -204,10 +205,11 @@ open class ArcFarmsPlugin : JavaPlugin() {
 
     private fun reloadPlugin(): Result<Unit> = runCatching {
         val dataRoot = dataFolder.toPath()
-        val candidate = ArcFarmsConfig.inspect(dataRoot)
+        val candidate = ArcFarmsConfig.synchronize(dataRoot)
         require(candidate.enabled) { "ArcFarms cannot be disabled with reload" }
         require(candidate.serverId == settings.serverId) { "server-id requires a restart" }
         require(candidate.network.enabled == settings.network.enabled) { "network.enabled requires a restart" }
+        ArcFarmsLocale.synchronizeFiles(dataRoot)
         ArcFarmsLocale.validateFiles(dataRoot, candidate)
         ConfigManager.reloadAll()
         val previous = settings

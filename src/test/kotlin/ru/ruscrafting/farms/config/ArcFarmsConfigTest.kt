@@ -195,7 +195,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().moleBurrow.cells shouldBe 8
         settings.farms.single().moleBurrow.maxBurrows shouldBe 3
         settings.farms.single().moleBurrow.minDepth shouldBe 10
-        settings.farms.single().moleBurrow.maxDepth shouldBe 40
+        settings.farms.single().moleBurrow.maxDepth shouldBe 56
         settings.farms.single().moleBurrow.candidateAttempts shouldBe 96
         settings.farms.single().moleBurrow.tunnelWidth shouldBe 2
         settings.farms.single().moleBurrow.entranceMinBoundaryDistance shouldBe 10
@@ -226,6 +226,7 @@ class ArcFarmsConfigTest : FunSpec({
             FarmIncidentType.GIANT_CROP,
             FarmIncidentType.PROCESSING,
             FarmIncidentType.BARN_FIRE,
+            FarmIncidentType.FROST,
             FarmIncidentType.CHANNELS,
             FarmIncidentType.NIGHT_SHIFT,
             FarmIncidentType.MARKET,
@@ -459,8 +460,8 @@ class ArcFarmsConfigTest : FunSpec({
                 settings.farms shouldBe emptyList()
                 settings.lumbermills shouldBe emptyList()
                 settings.mines shouldBe emptyList()
-                settings.farmScoreboard.enabled shouldBe false
                 settings.farmScoreboard.provider shouldBe FarmScoreboardProvider.TAB
+                settings.farmScoreboard.enabled shouldBe (runtime == "classic_survival")
                 settings.destinations.values.all { it.server == "spawn" } shouldBe true
             }
             ArcFarmsLocale.validateFiles(root, settings)
@@ -667,6 +668,60 @@ class ArcFarmsConfigTest : FunSpec({
         english.writeText(Files.readString(english).replace("    old_shafts: '<aqua>Old Shafts</aqua>'\n", ""))
 
         shouldThrow<IllegalArgumentException> { ArcFarmsLocale.validateFiles(root, settings) }
+    }
+
+    test("locale synchronization backfills bundled keys without replacing operator translations") {
+        val root = resourceTree()
+        val russian = root.resolve("lang/ru.yml")
+        val english = root.resolve("lang/en.yml")
+        russian.writeText(
+            Files.readString(russian)
+                .replace("prefix: '<color:#55d98b>Ферма</color> <color:#666666>•</color>'", "prefix: '<gold>Моя ферма</gold> '")
+                .replace("  entry-frost: '<color:#f2fff7>Берите поленья в дровнице и разжигайте костры на поле</color>'\n", ""),
+        )
+        english.writeText(
+            Files.readString(english)
+                .replace("  entry-frost: '<color:#f2fff7>Carry logs from the woodpile and light the campfires in the field</color>'\n", ""),
+        )
+
+        ArcFarmsLocale.synchronizeFiles(root)
+        val settings = ArcFarmsConfig.inspect(root)
+        ArcFarmsLocale.validateFiles(root, settings)
+
+        Config(root, "lang/ru.yml").string("prefix") shouldBe "<gold>Моя ферма</gold> "
+        Config(root, "lang/ru.yml").string("farm.entry-frost") shouldContain "поленья"
+        Config(root, "lang/en.yml").string("farm.entry-frost") shouldContain "logs"
+        val synchronized = listOf(russian, english).map(Files::readString)
+        ArcFarmsLocale.synchronizeFiles(root)
+        listOf(russian, english).map(Files::readString) shouldBe synchronized
+    }
+
+    test("config synchronization persists bundled defaults without populating empty activity maps") {
+        val root = resourceTree()
+        val configPath = root.resolve("config.yml")
+        configPath.writeText(
+            Files.readString(configPath)
+                .replace("bossbars: true", "bossbars: false")
+                .replace("  title-stay-seconds: 12\n", ""),
+        )
+
+        val settings = ArcFarmsConfig.load(root)
+
+        settings.bossbars shouldBe false
+        settings.titleStaySeconds shouldBe 12
+        Files.readString(configPath) shouldContain "title-stay-seconds: 12"
+
+        val relayRoot = resourceTree()
+        Config(relayRoot, "config.yml").also { relay ->
+            relay.setStructured("farm-zones", emptyMap<String, Any>())
+            relay.setStructured("lumber-zones", emptyMap<String, Any>())
+            relay.setStructured("mine-zones", emptyMap<String, Any>())
+            relay.saveStrict()
+        }
+        ArcFarmsConfig.load(relayRoot)
+        Files.readString(relayRoot.resolve("config.yml")) shouldContain "farm-zones: {}"
+        Files.readString(relayRoot.resolve("config.yml")) shouldContain "lumber-zones: {}"
+        Files.readString(relayRoot.resolve("config.yml")) shouldContain "mine-zones: {}"
     }
 
     test("hex-colored farm bossbar renders without leaking MiniMessage tags") {
@@ -904,7 +959,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().rewards.randomBundles.entries.single().id shouldBe "lab_snack"
         settings.lumbermills.single().fellingQuota shouldBe 2
         settings.mines.single().cartQuota shouldBe 4
-        settings.farms.single().reference.bounds!!.volume shouldBe 17_334L
+        settings.farms.single().reference.bounds!!.volume shouldBe 34_668L
         ArcFarmsLocale.validateFiles(root, settings)
     }
 

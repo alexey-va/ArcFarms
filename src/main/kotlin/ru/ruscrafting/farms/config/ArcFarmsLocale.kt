@@ -516,6 +516,13 @@ class ArcFarmsLocale(
         else settings().defaultLocale
 
     companion object {
+        fun synchronizeFiles(dataRoot: Path) {
+            listOf("ru", "en").forEach { language ->
+                Config(dataRoot, "lang/$language.yml")
+                    .mergeMissingFromBundled("lang/$language.yml")
+            }
+        }
+
         fun requiredPaths(settings: ArcFarmsConfig): Set<String> = buildSet {
             addAll(MessageKey.entries.map(MessageKey::path))
             settings.farms.flatMapTo(this) { zone -> zone.orders.map { "order.farm.${it.id}" } }

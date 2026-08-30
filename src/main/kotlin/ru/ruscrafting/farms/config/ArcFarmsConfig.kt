@@ -686,10 +686,21 @@ class ArcFarmsConfig private constructor(
 
     companion object {
         private const val MAX_CUSTOM_MODEL_DATA = Int.MAX_VALUE
+        private val ENVIRONMENT_OWNED_ROOT_KEYS = setOf("farm-zones", "lumber-zones", "mine-zones")
 
-        fun load(dataRoot: Path): ArcFarmsConfig = parse(ConfigManager.of(dataRoot, "config.yml"))
+        fun load(dataRoot: Path): ArcFarmsConfig {
+            val config = ConfigManager.of(dataRoot, "config.yml")
+            return synchronizeAndParse(config)
+        }
 
         fun inspect(dataRoot: Path): ArcFarmsConfig = parse(Config(dataRoot, "config.yml"))
+
+        fun synchronize(dataRoot: Path): ArcFarmsConfig = synchronizeAndParse(Config(dataRoot, "config.yml"))
+
+        private fun synchronizeAndParse(config: Config): ArcFarmsConfig {
+            config.mergeMissingFromBundled("config.yml", ENVIRONMENT_OWNED_ROOT_KEYS)
+            return parse(config).also { config.saveStrict() }
+        }
 
         private fun parse(config: Config): ArcFarmsConfig {
             val serverId = serverId(config.string("server-id", "spawn"), "server-id")
@@ -1686,7 +1697,7 @@ class ArcFarmsConfig private constructor(
                 bossbars = config.boolean("ui.bossbars", true),
                 particles = config.boolean("ui.particles", true),
                 sounds = config.boolean("ui.sounds", true),
-                titleStaySeconds = config.int("ui.title-stay-seconds", 6).checked("ui.title-stay-seconds", 2, 20),
+                titleStaySeconds = config.int("ui.title-stay-seconds", 12).checked("ui.title-stay-seconds", 2, 20),
                 markerHeight = config.int("ui.marker-height", 12).checked("ui.marker-height", 6, 24),
                 missingBedHighlightThreshold = config.int("ui.missing-bed-highlight-threshold", 10)
                     .checked("ui.missing-bed-highlight-threshold", 1, 32),
