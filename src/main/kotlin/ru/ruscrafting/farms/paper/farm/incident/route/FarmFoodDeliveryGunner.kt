@@ -21,6 +21,7 @@ import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmRuntime
+import ru.ruscrafting.farms.paper.platform.FarmEntityRayTrace
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import java.util.UUID
@@ -33,6 +34,7 @@ internal class FarmFoodDeliveryGunner(
     private val debug: ArcFarmsDebug,
     private val audience: WorksiteAudiencePort,
     private val tasks: WorksiteTaskPort,
+    private val entityRayTrace: FarmEntityRayTrace,
 ) {
     private val gear = FarmFoodDeliveryGear(plugin, locale, debug)
     private val shotAt = mutableMapOf<UUID, Long>()
@@ -49,6 +51,16 @@ internal class FarmFoodDeliveryGunner(
 
     fun armEscort(player: Player, runtime: FarmRuntime, session: FarmFoodDeliverySession): Boolean =
         equip(player, runtime, session)
+
+    /** Moves forcibly dismounted crew to the walking escort without dropping their temporary rifle. */
+    fun transitionToEscort(player: Player, runtime: FarmRuntime, session: FarmFoodDeliverySession): Boolean {
+        if (session.riderId == player.uniqueId) session.riderId = null
+        if (session.gunnerId == player.uniqueId) session.gunnerId = null
+        session.ambushCrewIds.remove(player.uniqueId)
+        session.escortIds += player.uniqueId
+        pendingRemounts.remove(player.uniqueId)
+        return equip(player, runtime, session)
+    }
 
     fun mount(
         player: Player,
@@ -275,7 +287,7 @@ internal class FarmFoodDeliveryGunner(
         shotAt[player.uniqueId] = nowTick
         val start = player.eyeLocation.clone().add(player.eyeLocation.direction.multiply(0.55))
         val direction = player.eyeLocation.direction.normalize()
-        val hit = player.world.rayTraceEntities(start, direction, config.rifleRange, RAY_SIZE) { entity ->
+        val hit = entityRayTrace.trace(start, direction, config.rifleRange, RAY_SIZE) { entity ->
             entity.uniqueId in session.monsterIds && entity.isValid && !entity.isDead
         }
         val end = hit?.hitPosition?.toLocation(player.world) ?: start.clone().add(direction.clone().multiply(config.rifleRange))

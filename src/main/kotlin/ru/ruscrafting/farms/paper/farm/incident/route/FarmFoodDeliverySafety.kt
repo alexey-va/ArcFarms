@@ -95,8 +95,7 @@ internal class FarmFoodDeliverySafety(
         } ?: return false
         event.isCancelled = true
         (session.gunnerSeatId?.let(Bukkit::getEntity) as? Interaction)?.let(vehiclePassengers::ejectAll)
-        gunner.release(player, zoneId, session, "suffocation_rescue")
-        session.escortIds += player.uniqueId
+        gunner.transitionToEscort(player, runtime, session)
         val route = routes.route(zoneId, session.routeName)
         val point = route?.points?.getOrNull((runtime.state.incidentProgress - 1).coerceAtLeast(0))
         val fallback = session.horseId?.let(Bukkit::getEntity)?.location ?: player.location

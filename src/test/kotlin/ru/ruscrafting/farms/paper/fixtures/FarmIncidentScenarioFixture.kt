@@ -172,6 +172,7 @@ internal class FarmIncidentScenarioFixture private constructor(
             transitions = transitionSink,
             random = java.util.Random(7),
             night = FarmNightShiftController(plugin),
+            entityRayTrace = MockBukkitFarmEntityRayTrace,
             blockPassability = MockBukkitFarmBlockPassability,
             mobDespawns = MockBukkitFarmMobDespawns,
             vehiclePassengers = MockBukkitFarmVehiclePassengers,

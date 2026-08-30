@@ -7,12 +7,19 @@ import io.kotest.matchers.ints.shouldBeGreaterThanOrEqual
 import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.shouldBe
 import org.bukkit.NamespacedKey
+import org.bukkit.block.BlockFace
+import org.bukkit.damage.DamageSource
+import org.bukkit.damage.DamageType
 import org.bukkit.entity.Horse
 import org.bukkit.entity.Interaction
 import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Mob
 import org.bukkit.entity.TextDisplay
+import org.bukkit.event.Event
+import org.bukkit.event.block.Action
+import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
+import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.persistence.PersistentDataType
 import ru.ruscrafting.farms.domain.FarmIncidentType
@@ -96,7 +103,11 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
             driver.leaveVehicle() shouldBe true
             delivery.updateVisuals(listOf(runtime))
             seat.passengers.single() shouldBe gunner
+            delivery.ensure(runtime, 2_005L)
+            driver.inventory.contents.filterNotNull().none(delivery::ownsServiceItem) shouldBe true
+            gunner.inventory.contents.filterNotNull().any(delivery::ownsServiceItem) shouldBe true
             delivery.interact(PlayerInteractEntityEvent(driver, horse, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
+            driver.inventory.contents.filterNotNull().any(delivery::ownsServiceItem) shouldBe true
 
             val farmExitIndex = route.indexOfFirst { point -> !runtime.region.contains(fixture.location(point)) }
             val firstAmbush = FarmFoodDeliveryAmbushPlanner.checkpoints(
@@ -128,6 +139,36 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
             firstWave.size shouldBeGreaterThanOrEqual 3
             firstWave.all { it.isGlowing } shouldBe true
             horse.passengers shouldBe emptyList()
+            driver.inventory.contents.filterNotNull().any(delivery::ownsServiceItem) shouldBe true
+            gunner.inventory.contents.filterNotNull().any(delivery::ownsServiceItem) shouldBe true
+            delivery.ensure(runtime, 13_000L)
+            driver.inventory.contents.filterNotNull().any(delivery::ownsServiceItem) shouldBe true
+            gunner.inventory.contents.filterNotNull().any(delivery::ownsServiceItem) shouldBe true
+
+            val target = firstWave.first()
+            val firingPosition = target.location.clone().subtract(0.0, 0.0, 6.0)
+            driver.teleport(firingPosition) shouldBe true
+            driver.teleport(
+                driver.location.clone().setDirection(
+                    target.location.clone().add(0.0, target.height * 0.5, 0.0).toVector()
+                        .subtract(driver.eyeLocation.toVector())
+                        .normalize(),
+                ),
+            ) shouldBe true
+            val totalHealthBeforeShot = firstWave.sumOf(Mob::getHealth)
+            val shot = PlayerInteractEvent(
+                driver,
+                Action.RIGHT_CLICK_AIR,
+                driver.inventory.itemInMainHand,
+                null,
+                BlockFace.SELF,
+                EquipmentSlot.HAND,
+            )
+            delivery.onInteract(shot, listOf(runtime)) shouldBe true
+            shot.isCancelled shouldBe true
+            shot.useItemInHand() shouldBe Event.Result.DENY
+            (firstWave.any(Mob::isDead) || firstWave.sumOf(Mob::getHealth) < totalHealthBeforeShot) shouldBe true
+            driver.inventory.contents.filterNotNull().any(delivery::ownsServiceItem) shouldBe true
 
             firstWave.forEach { it.remove() }
             delivery.ensure(runtime, 13_001L)
@@ -169,6 +210,55 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
             fixture.world.entities.none(delivery::owns) shouldBe true
             gunner.inventory.contents.filterNotNull().none(delivery::ownsServiceItem) shouldBe true
             fixture.transitions.count { it.result.accepted } shouldBeGreaterThanOrEqual 2
+        } }
+    }
+
+    test("suffocation rescue keeps the rear passenger armed as a walking escort") {
+        requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
+            val route = (0..12).map { index ->
+                FarmPointPosition(fixture.world.name, 8.5 + index * 2.0, 65.0, 32.5, -90f, 0f)
+            }
+            val runtime = fixture.runtime(
+                FarmShiftState(
+                    phase = FarmPhase.INCIDENT,
+                    sequence = 64,
+                    placementSequence = 28,
+                    orderId = "bakery_supply",
+                    incidentType = FarmIncidentType.FOOD_DELIVERY,
+                    incidentCrop = "WHEAT",
+                ),
+            )
+            val delivery = fixture.foodDelivery(runtime, route)
+            val driver = fixture.paper.addPlayer("RescueDriver")
+            val gunner = fixture.paper.addPlayer("RescuedGunner")
+
+            delivery.ensure(runtime, 3_000L)
+            val horse = fixture.world.entities.filterIsInstance<Horse>().single(delivery::owns)
+            val seat = fixture.world.entities.filterIsInstance<Interaction>().filter(delivery::owns)
+                .minBy { it.location.distanceSquared(horse.location) }
+            delivery.interact(PlayerInteractEntityEvent(driver, horse, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
+            delivery.interact(PlayerInteractEntityEvent(gunner, seat, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
+            driver.inventory.contents.filterNotNull().any(delivery::ownsServiceItem) shouldBe true
+            gunner.inventory.contents.filterNotNull().any(delivery::ownsServiceItem) shouldBe true
+
+            val suffocation = EntityDamageEvent(
+                gunner,
+                EntityDamageEvent.DamageCause.SUFFOCATION,
+                DamageSource.builder(DamageType.IN_WALL).build(),
+                1.0,
+            )
+            delivery.onDamage(suffocation, listOf(runtime)) shouldBe true
+
+            suffocation.isCancelled shouldBe true
+            gunner.vehicle shouldBe null
+            delivery.participants(runtime).map { it.uniqueId }.toSet() shouldBe
+                setOf(driver.uniqueId, gunner.uniqueId)
+            driver.inventory.contents.filterNotNull().any(delivery::ownsServiceItem) shouldBe true
+            gunner.inventory.contents.filterNotNull().any(delivery::ownsServiceItem) shouldBe true
+
+            delivery.onQuit(gunner)
+            delivery.participants(runtime).map { it.uniqueId }.toSet() shouldBe setOf(driver.uniqueId)
+            gunner.inventory.contents.filterNotNull().none(delivery::ownsServiceItem) shouldBe true
         } }
     }
 })

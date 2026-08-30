@@ -8,10 +8,13 @@ import org.bukkit.block.data.BlockData
 import org.bukkit.entity.Entity
 import org.bukkit.entity.LivingEntity
 import org.bukkit.entity.TextDisplay
+import org.bukkit.util.RayTraceResult
+import org.bukkit.util.Vector
 import ru.ruscrafting.farms.paper.farm.care.mole.MoleBurrowChunkLease
 import ru.ruscrafting.farms.paper.farm.care.mole.MoleBurrowChunkRetention
 import ru.ruscrafting.farms.paper.platform.FarmBlockDataDecoder
 import ru.ruscrafting.farms.paper.platform.FarmBlockPassability
+import ru.ruscrafting.farms.paper.platform.FarmEntityRayTrace
 import ru.ruscrafting.farms.paper.platform.FarmMobDespawnPolicy
 import ru.ruscrafting.farms.paper.platform.FarmTextDisplayRenderer
 import ru.ruscrafting.farms.paper.platform.FarmTextDisplayStyle
@@ -72,6 +75,29 @@ internal object MockBukkitFarmVehiclePassengers : FarmVehiclePassengerControl {
         val passengers = entity.passengers.toList()
         passengers.forEach(Entity::leaveVehicle)
         return passengers.isNotEmpty()
+    }
+}
+
+internal object MockBukkitFarmEntityRayTrace : FarmEntityRayTrace {
+    override fun trace(
+        start: org.bukkit.Location,
+        direction: Vector,
+        maxDistance: Double,
+        raySize: Double,
+        filter: (Entity) -> Boolean,
+    ): RayTraceResult? {
+        val unit = direction.clone().normalize()
+        val origin = start.toVector()
+        return start.world.entities.asSequence().filter(filter).mapNotNull { entity ->
+            val center = entity.location.toVector().add(Vector(0.0, entity.height * 0.5, 0.0))
+            val offset = center.clone().subtract(origin)
+            val along = offset.dot(unit)
+            if (along !in 0.0..maxDistance) return@mapNotNull null
+            val hitPosition = origin.clone().add(unit.clone().multiply(along))
+            val hitRadius = raySize + entity.width * 0.5
+            if (center.distanceSquared(hitPosition) > hitRadius * hitRadius) return@mapNotNull null
+            along to RayTraceResult(hitPosition, entity)
+        }.minByOrNull(Pair<Double, RayTraceResult>::first)?.second
     }
 }
 

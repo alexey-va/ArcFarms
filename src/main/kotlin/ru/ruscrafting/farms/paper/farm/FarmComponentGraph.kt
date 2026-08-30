@@ -47,6 +47,7 @@ import ru.ruscrafting.farms.paper.farm.shift.FarmShiftStartService
 import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyController
 import ru.ruscrafting.farms.paper.platform.PaperFarmBlockDataDecoder
 import ru.ruscrafting.farms.paper.platform.PaperFarmBlockPassability
+import ru.ruscrafting.farms.paper.platform.PaperFarmEntityRayTrace
 import ru.ruscrafting.farms.paper.platform.PaperFarmMobDespawnPolicy
 import ru.ruscrafting.farms.paper.platform.PaperFarmTextDisplayRenderer
 import ru.ruscrafting.farms.paper.platform.PaperFarmVehiclePassengerControl
@@ -84,6 +85,7 @@ internal class FarmComponentGraph(
     private val blockPassability = PaperFarmBlockPassability
     private val blockDataDecoder = PaperFarmBlockDataDecoder
     private val textDisplays = PaperFarmTextDisplayRenderer
+    private val entityRayTrace = PaperFarmEntityRayTrace
     private val mobDespawns = PaperFarmMobDespawnPolicy
     private val vehiclePassengers = PaperFarmVehiclePassengerControl
     private val moleChunkRetention = PaperMoleBurrowChunkRetention(plugin)
@@ -213,6 +215,7 @@ internal class FarmComponentGraph(
         transitions = transitions,
         random = random,
         night = nightShift,
+        entityRayTrace = entityRayTrace,
         blockPassability = blockPassability,
         mobDespawns = mobDespawns,
         vehiclePassengers = vehiclePassengers,

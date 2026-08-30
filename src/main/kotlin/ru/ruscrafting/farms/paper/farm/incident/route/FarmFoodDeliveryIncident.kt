@@ -45,11 +45,7 @@ import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.admin.FarmRouteAdminService
 import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
-import ru.ruscrafting.farms.paper.platform.FarmBlockPassability
-import ru.ruscrafting.farms.paper.platform.FarmMobDespawnPolicy
-import ru.ruscrafting.farms.paper.platform.FarmVehiclePassengerControl
-import ru.ruscrafting.farms.paper.platform.FarmTextDisplayRenderer
-import ru.ruscrafting.farms.paper.platform.FarmTextDisplayStyle
+import ru.ruscrafting.farms.paper.platform.*
 import java.util.random.RandomGenerator
 import java.util.logging.Level
 import kotlin.math.cos
@@ -68,6 +64,7 @@ internal class FarmFoodDeliveryIncident(
     private val transitions: FarmTransitionSink,
     private val random: RandomGenerator,
     private val night: FarmNightShiftController,
+    entityRayTrace: FarmEntityRayTrace,
     private val blockPassability: FarmBlockPassability,
     private val mobDespawns: FarmMobDespawnPolicy,
     private val vehiclePassengers: FarmVehiclePassengerControl,
@@ -76,7 +73,7 @@ internal class FarmFoodDeliveryIncident(
     private val zoneKey = NamespacedKey(plugin, "farm_food_route_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_food_route_sequence")
     private val roleKey = NamespacedKey(plugin, "farm_food_route_role")
-    private val gunner = FarmFoodDeliveryGunner(plugin, locale, settings, debug, audience, tasks)
+    private val gunner = FarmFoodDeliveryGunner(plugin, locale, settings, debug, audience, tasks, entityRayTrace)
     private val safety = FarmFoodDeliverySafety(audience, debug, routes, vehiclePassengers, gunner)
     private val ambush = FarmFoodDeliveryAmbush(random, night, audience, debug, mobDespawns, vehiclePassengers)
     private val sessions = mutableMapOf<String, FarmFoodDeliverySession>()
