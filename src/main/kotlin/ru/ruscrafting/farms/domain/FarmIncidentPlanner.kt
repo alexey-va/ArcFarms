@@ -47,6 +47,16 @@ object FarmIncidentPlanner {
         return centers
     }
 
+    fun centralDispersedCenters(
+        candidates: Collection<FarmPlotPosition>,
+        count: Int,
+        minimumSpacing: Double,
+        selectionIndex: Long,
+    ): List<FarmPlotPosition> {
+        require(count in 1..16) { "Farm incident center count must be in 1..16" }
+        return FarmCentralPlotSelector.select(candidates, count, minimumSpacing, selectionIndex)
+    }
+
     fun droughtPatches(
         candidates: Collection<FarmPlotPosition>,
         targetSize: Int,

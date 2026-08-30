@@ -538,7 +538,7 @@ internal class FarmCareController(
                 entity,
                 if (target.role == FarmCareRole.APPLE) runtime.settings.appleDisplayScale else visual.displayScale,
             )
-            entity.viewRange = runtime.settings.displayViewRange
+            entity.viewRange = ru.ruscrafting.farms.paper.farm.FarmFieldPoiVisibility.fullField(runtime.settings.displayViewRange)
             entity.isGlowing = true
             entity.glowColorOverride = if (target.complete) FarmCarePresentation.SUCCESS_COLOR else presentation.color(target.role)
             entity.isPersistent = false
@@ -586,7 +586,7 @@ internal class FarmCareController(
         val display = world.spawn(location.clone().add(0.0, 0.55, 0.0), ItemDisplay::class.java) { entity ->
             entity.setItemStack(stack)
             entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
-            entity.viewRange = runtime.settings.displayViewRange
+            entity.viewRange = ru.ruscrafting.farms.paper.farm.FarmFieldPoiVisibility.fullField(runtime.settings.displayViewRange)
             entity.isGlowing = true
             entity.glowColorOverride = FarmCarePresentation.SUCCESS_COLOR
             entity.isPersistent = false

@@ -216,7 +216,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().contractCartVisual.scale shouldBe 1.0f
         settings.farms.single().contractCartVisual.yOffset shouldBe 0.15
         settings.farms.single().contractCartVisual.viewRange shouldBe 2.0f
-        settings.titleStaySeconds shouldBe 12
+        settings.titleStaySeconds shouldBe 4
         settings.farms.single().placementMinObjectiveDistance shouldBe 10
         settings.farms.single().placementMaxPlayerDistance shouldBe 28
         settings.farms.single().placementSearchRadius shouldBe 32
@@ -702,14 +702,14 @@ class ArcFarmsConfigTest : FunSpec({
         configPath.writeText(
             Files.readString(configPath)
                 .replace("bossbars: true", "bossbars: false")
-                .replace("  title-stay-seconds: 12\n", ""),
+                .replace("  title-stay-seconds: 4\n", ""),
         )
 
         val settings = ArcFarmsConfig.load(root)
 
         settings.bossbars shouldBe false
-        settings.titleStaySeconds shouldBe 12
-        Files.readString(configPath) shouldContain "title-stay-seconds: 12"
+        settings.titleStaySeconds shouldBe 4
+        Files.readString(configPath) shouldContain "title-stay-seconds: 4"
 
         val relayRoot = resourceTree()
         Config(relayRoot, "config.yml").also { relay ->

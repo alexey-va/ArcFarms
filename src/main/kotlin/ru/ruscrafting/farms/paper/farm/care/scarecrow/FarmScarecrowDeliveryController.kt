@@ -33,6 +33,7 @@ import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.farm.FarmFieldPoiVisibility
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.care.bukkit
@@ -281,7 +282,9 @@ internal class FarmScarecrowDeliveryController(
                 Vector3f(visual.displayScale, visual.displayScale, visual.displayScale),
                 AxisAngle4f(),
             )
-            entity.viewRange = runtime.settings.displayViewRange
+            entity.viewRange = if (role == ScarecrowEntityRole.PLACED_DISPLAY) {
+                runtime.settings.displayViewRange
+            } else FarmFieldPoiVisibility.fullField(runtime.settings.displayViewRange)
             entity.teleportDuration = 1
             entity.isGlowing = role != ScarecrowEntityRole.PLACED_DISPLAY
             entity.isPersistent = false

@@ -1697,7 +1697,7 @@ class ArcFarmsConfig private constructor(
                 bossbars = config.boolean("ui.bossbars", true),
                 particles = config.boolean("ui.particles", true),
                 sounds = config.boolean("ui.sounds", true),
-                titleStaySeconds = config.int("ui.title-stay-seconds", 12).checked("ui.title-stay-seconds", 2, 20),
+                titleStaySeconds = config.int("ui.title-stay-seconds", 4).checked("ui.title-stay-seconds", 2, 20),
                 markerHeight = config.int("ui.marker-height", 12).checked("ui.marker-height", 6, 24),
                 missingBedHighlightThreshold = config.int("ui.missing-bed-highlight-threshold", 10)
                     .checked("ui.missing-bed-highlight-threshold", 1, 32),

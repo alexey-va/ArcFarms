@@ -69,6 +69,16 @@ object FarmCarePlanner {
         return selected
     }
 
+    fun centralSpread(
+        candidates: Collection<FarmPlotPosition>,
+        targetCount: Int,
+        minimumSpacing: Double,
+        selectionIndex: Long,
+    ): List<FarmPlotPosition> {
+        require(targetCount in 1..MAX_SPREAD_TARGETS) { "Farm care target count is invalid" }
+        return FarmCentralPlotSelector.select(candidates, targetCount, minimumSpacing, selectionIndex)
+    }
+
     fun corners(candidates: Collection<FarmPlotPosition>): List<FarmPlotPosition> {
         val unique = candidates.distinct()
         if (unique.size <= 4) return unique

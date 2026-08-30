@@ -161,9 +161,20 @@ internal class FarmCarePlanService(
             )
             FarmCareType.SCARECROWS -> FarmCarePlanner.orient(
                 // Scarecrows protect the whole farm, not only the currently harvested patch.
-                // Using the durable bed index also keeps forced admin events independent from
-                // the actor's position and distributes delivery objectives across the field.
-                bedTargets(FarmCareRole.SCARECROW, runtime.settings.scarecrowTargetCount, candidates = farmBeds),
+                // Prefer central beds so delivery stays readable and convenient, but retain
+                // the outer field as a fallback when the interior cannot keep targets apart.
+                FarmCarePlanner.centralSpread(
+                    farmBeds,
+                    runtime.settings.scarecrowTargetCount.coerceAtMost(farmBeds.size),
+                    minimumSpacing = SCARECROW_MIN_SPACING,
+                    selectionIndex = salt,
+                ).mapIndexed { index, plot ->
+                    FarmCareTarget(
+                        id = index,
+                        role = FarmCareRole.SCARECROW,
+                        position = FarmPointPosition(plot.world, plot.x + 0.5, plot.y + 1.05, plot.z + 0.5),
+                    )
+                },
                 explicit(FarmPointKind.SCARECROWS),
             )
             FarmCareType.ANIMAL_RESCUE -> {
@@ -373,5 +384,9 @@ internal class FarmCarePlanService(
                 }
             }
         }
+    }
+
+    private companion object {
+        const val SCARECROW_MIN_SPACING = 8.0
     }
 }

@@ -6,6 +6,7 @@ import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import net.kyori.adventure.text.Component
+import org.bukkit.entity.ItemDisplay
 import org.bukkit.plugin.Plugin
 import org.mockbukkit.mockbukkit.ServerMock
 import org.mockbukkit.mockbukkit.world.WorldMock
@@ -59,6 +60,17 @@ class FarmPestIncidentMockBukkitTest : FunSpec({
 
         world.entities.filter(restarted::ownsNest) shouldHaveSize 4
         world.entities.filter(restarted::ownsNest).map { it.uniqueId }.distinct() shouldHaveSize 4
+    }
+
+    test("pest nests are twice normal size and visible across the full field") {
+        val fixture = pestFixture(world, plugin)
+
+        fixture.controller.ensure(fixture.runtime)
+
+        val displays = world.entities.filterIsInstance<ItemDisplay>().filter(fixture.controller::ownsNest)
+        displays shouldHaveSize 2
+        displays.all { it.viewRange == 3.0f } shouldBe true
+        displays.all { it.transformation.scale.x == 2.0f && it.transformation.scale.y == 2.0f && it.transformation.scale.z == 2.0f } shouldBe true
     }
 
     test("sequence change replaces stale nest entities instead of retaining orphans") {

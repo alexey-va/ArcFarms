@@ -38,6 +38,7 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
+import ru.ruscrafting.farms.paper.farm.FarmFieldPoiVisibility
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.care.FarmCarePresentation
 import ru.ruscrafting.farms.paper.farm.care.bukkit
@@ -492,6 +493,9 @@ internal class FarmMoleBurrowController(
     ): List<Entity> {
         val result = mutableListOf<Entity>()
         val material = MaterialRules.material(visual.material)
+        val viewRange = if (role == Role.ENTRANCE) {
+            FarmFieldPoiVisibility.fullField(runtime.settings.displayViewRange)
+        } else runtime.settings.displayViewRange
         if (material != org.bukkit.Material.AIR) {
             val stack = ItemStack(material).also { item ->
                 if (visual.customModelData > 0) item.itemMeta = item.itemMeta.also { it.setCustomModelData(visual.customModelData) }
@@ -500,14 +504,15 @@ internal class FarmMoleBurrowController(
                 entity.setItemStack(stack)
                 entity.itemDisplayTransform = visual.displayTransform.bukkit
                 presentation.scale(entity, visual.displayScale)
-                entity.viewRange = runtime.settings.displayViewRange
+                entity.viewRange = viewRange
                 entity.isGlowing = glowing
                 entity.isPersistent = false
                 mark(entity, runtime, scene.burrowId, role)
             }
         }
         val label = location.world.spawn(location.clone().add(0.0, 1.85, 0.0), TextDisplay::class.java) { entity ->
-            textDisplays.render(entity, locale.renderPath(labelPath), MOLE_LABEL_STYLE)
+            val style = if (role == Role.ENTRANCE) MOLE_LABEL_STYLE.copy(viewRange = viewRange) else MOLE_LABEL_STYLE
+            textDisplays.render(entity, locale.renderPath(labelPath), style)
             mark(entity, runtime, scene.burrowId, role)
         }
         val hitbox = location.world.spawn(location.clone().add(0.0, 0.55, 0.0), Interaction::class.java) { entity ->

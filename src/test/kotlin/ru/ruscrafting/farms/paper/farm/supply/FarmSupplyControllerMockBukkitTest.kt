@@ -8,6 +8,7 @@ import io.mockk.every
 import io.mockk.mockk
 import net.kyori.adventure.text.Component
 import org.bukkit.Material
+import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Player
 import org.bukkit.plugin.Plugin
 import org.mockbukkit.mockbukkit.ServerMock
@@ -20,11 +21,14 @@ import ru.ruscrafting.farms.config.FarmSupplySettings
 import ru.ruscrafting.farms.config.FarmZoneSettings
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.FarmPointPosition
+import ru.ruscrafting.farms.domain.FarmIncidentType
+import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.CuboidActivityRegion
 import ru.ruscrafting.farms.paper.CountingFarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmRuntime
+import ru.ruscrafting.farms.paper.farm.FarmFieldPoiVisibility
 import ru.arc.paper.testing.MockBukkitTestRuntime
 
 class FarmSupplyControllerMockBukkitTest : FunSpec({
@@ -76,6 +80,24 @@ class FarmSupplyControllerMockBukkitTest : FunSpec({
         reconciled shouldHaveSize 15
         reconciled.map { it.uniqueId }.distinct() shouldHaveSize 15
         reconciled.count { afterRestart.interaction(it)?.zoneId == runtime.settings.id } shouldBe 15
+    }
+
+    test("supply scene promotes only the currently required point to full-field visibility") {
+        val controller = controller(plugin)
+        val runtime = runtime(world)
+        controller.ensure(runtime, supplyPoints(world)::getValue)
+
+        fun display(kind: FarmSupplyKind) = world.entities.filterIsInstance<ItemDisplay>()
+            .single { controller.interaction(it)?.kind == kind }
+
+        FarmSupplyKind.entries.forEach { display(it).viewRange shouldBe FarmFieldPoiVisibility.NEARBY_VIEW_RANGE }
+
+        runtime.state = runtime.state.copy(phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.BIRDS)
+        controller.ensure(runtime, supplyPoints(world)::getValue)
+
+        display(FarmSupplyKind.ARCHERY).viewRange shouldBe 3.0f
+        FarmSupplyKind.entries.filterNot { it == FarmSupplyKind.ARCHERY }
+            .forEach { display(it).viewRange shouldBe FarmFieldPoiVisibility.NEARBY_VIEW_RANGE }
     }
 
     test("fire equipment is bound to the farm that issued it") {

@@ -18,6 +18,19 @@ class FarmIncidentPlannerTest : FunSpec({
         (first.minOf { a -> first.filterNot { it == a }.minOf { b -> distance(a, b) } } >= 300L) shouldBe true
     }
 
+    test("central incident centers avoid remote edges without clustering") {
+        val selected = FarmIncidentPlanner.centralDispersedCenters(
+            field,
+            count = 3,
+            minimumSpacing = 10.0,
+            selectionIndex = 17L,
+        )
+
+        selected.size shouldBe 3
+        selected.all { it.x in 15..45 } shouldBe true
+        (selected.minOf { a -> selected.filterNot { it == a }.minOf { b -> distance(a, b) } } >= 100L) shouldBe true
+    }
+
     test("drought planner creates one bounded non-overlapping group per requested patch") {
         val patches = FarmIncidentPlanner.droughtPatches(field, targetSize = 40, patchCount = 3, selectionIndex = 17)
 

@@ -6,12 +6,25 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.ints.shouldBeGreaterThanOrEqual
 import io.kotest.matchers.shouldBe
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
+import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Rabbit
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.paper.fixtures.FarmMoleScenarioFixture
 import ru.ruscrafting.farms.paper.fixtures.requiredMockBukkitScenario
 
 class FarmMoleLifecycleMockBukkitIntegrationTest : FunSpec({
+    test("surface burrow entrances are visible across the full field") {
+        requiredMockBukkitScenario { FarmMoleScenarioFixture.open(burrowCount = 1).use { fixture ->
+            fixture.prepareAndBuild()
+
+            val entrance = fixture.world.entities.filterIsInstance<ItemDisplay>()
+                .single { fixture.role(it) == "ENTRANCE" }
+            entrance.viewRange shouldBe 3.0f
+
+            fixture.restoreWorld()
+        } }
+    }
+
     test("three workers explore independent burrows and exact block recovery closes the event") {
         requiredMockBukkitScenario { FarmMoleScenarioFixture.open().use { fixture ->
             val scenes = fixture.prepareAndBuild().sortedBy(FarmMoleBurrowScene::burrowId)

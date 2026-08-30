@@ -79,6 +79,7 @@ internal class FarmSupplyController(
             val position = point(kind)
             val key = SupplyKey(runtime.settings.id, kind)
             val visual = material(runtime, kind)
+            val viewRange = FarmSupplyVisibilityPolicy.viewRange(runtime.state, kind, runtime.settings.displayViewRange)
             val world = Bukkit.getWorld(position.world) ?: return@forEach
             val location = Location(world, position.x, position.y, position.z)
             if (!runtime.region.contains(location) || !world.isChunkLoaded(location.blockX shr 4, location.blockZ shr 4)) {
@@ -89,6 +90,11 @@ internal class FarmSupplyController(
                 .filter { entity -> entity.isValid && interaction(entity) == FarmSupplyInteraction(runtime.settings.id, kind) }
             entities[key] = active.mapTo(mutableSetOf(), Entity::getUniqueId)
             if (active.size == EXPECTED_ENTITY_COUNT && visualMaterials[key] == visual && matchesLocation(active, location)) {
+                active.filterIsInstance<ItemDisplay>().forEach { entity ->
+                    entity.viewRange = viewRange
+                    entity.isGlowing = true
+                }
+                active.filterIsInstance<TextDisplay>().forEach { entity -> entity.viewRange = viewRange }
                 return@forEach
             }
             removeEntities(key, "refresh")
@@ -96,7 +102,7 @@ internal class FarmSupplyController(
                 entity.setItemStack(serviceItem(runtime, kind))
                 entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
                 entity.uniformScale(ITEM_SCALE)
-                entity.viewRange = runtime.settings.displayViewRange
+                entity.viewRange = viewRange
                 entity.isGlowing = true
                 entity.isPersistent = false
                 mark(entity, runtime.settings.id, kind)
@@ -108,7 +114,7 @@ internal class FarmSupplyController(
                 entity.lineWidth = 180
                 entity.backgroundColor = Color.fromARGB(128, 16, 16, 16)
                 entity.isShadowed = true
-                entity.viewRange = 0.5f
+                entity.viewRange = viewRange
                 entity.isPersistent = false
                 mark(entity, runtime.settings.id, kind)
             }

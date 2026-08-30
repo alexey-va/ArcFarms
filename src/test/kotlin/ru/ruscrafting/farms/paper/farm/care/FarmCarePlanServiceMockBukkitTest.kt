@@ -1,7 +1,6 @@
 package ru.ruscrafting.farms.paper.farm.care
 
 import io.kotest.core.spec.style.FunSpec
-import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
@@ -24,9 +23,10 @@ import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.care.mole.FarmMoleBurrowWorld
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
 import java.util.random.RandomGenerator
+import kotlin.math.abs
 
 class FarmCarePlanServiceMockBukkitTest : FunSpec({
-    test("scarecrow targets span the whole indexed farm instead of the active patch") {
+    test("scarecrow targets prefer central indexed beds and remain spaced") {
         val paper = MockBukkitTestRuntime.open()
         try {
             val world = paper.server.addSimpleWorld("sp11")
@@ -74,7 +74,12 @@ class FarmCarePlanServiceMockBukkitTest : FunSpec({
             targets.size shouldBe 5
             targets.all { it.role == FarmCareRole.SCARECROW } shouldBe true
             val xs = targets.map { it.position.x.toInt() }
-            (xs.max() - xs.min()) shouldBeGreaterThan 70
+            targets.none { target -> beds.take(3).any { it.x == target.position.x.toInt() } } shouldBe true
+            (xs.min() >= 24) shouldBe true
+            (xs.max() <= 72) shouldBe true
+            xs.indices.all { first ->
+                (first + 1 until xs.size).all { second -> abs(xs[first] - xs[second]) >= 8 }
+            } shouldBe true
         } finally {
             paper.close()
         }
