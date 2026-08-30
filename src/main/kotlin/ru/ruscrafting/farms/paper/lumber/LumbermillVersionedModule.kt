@@ -18,6 +18,8 @@ import ru.ruscrafting.farms.paper.RegionGateway
 import ru.ruscrafting.farms.paper.WorksiteBlockBreakHandler
 import ru.ruscrafting.farms.paper.WorksiteBlockInteractHandler
 import ru.ruscrafting.farms.paper.WorksiteGuidanceHandler
+import ru.ruscrafting.farms.paper.WorksiteEntityInteractHandler
+import ru.ruscrafting.farms.paper.WorksiteFastVisualHandler
 import ru.ruscrafting.farms.paper.WorksiteModule
 import ru.ruscrafting.farms.paper.WorksiteMoveHandler
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
@@ -38,7 +40,8 @@ internal class LumbermillVersionedModule(
     clock: () -> Long,
     journal: LumberRecoveryJournal,
 ) : WorksiteModule<LumberShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler,
-    WorksiteMoveHandler, WorksiteGuidanceHandler, WorksiteServiceItemOwner, WorksiteParticipantOwner {
+    WorksiteMoveHandler, WorksiteEntityInteractHandler, WorksiteFastVisualHandler, WorksiteGuidanceHandler,
+    WorksiteServiceItemOwner, WorksiteParticipantOwner {
     private val engineVersion = initial.firstOrNull()?.engineVersion ?: 1
     private val delegate: WorksiteModule<LumberShiftState> = if (engineVersion == 2) {
         LumbermillComponentGraph(plugin, regions, port, clock, journal).module
@@ -81,6 +84,13 @@ internal class LumbermillVersionedModule(
 
     override fun onMove(from: Location, to: Location, player: Player): Boolean =
         (delegate as? WorksiteMoveHandler)?.onMove(from, to, player) == true
+
+    override fun onInteractEntity(event: org.bukkit.event.player.PlayerInteractEntityEvent): Boolean =
+        (delegate as? WorksiteEntityInteractHandler)?.onInteractEntity(event) == true
+
+    override fun updateVisuals() {
+        (delegate as? WorksiteFastVisualHandler)?.updateVisuals()
+    }
 
     override fun updateGuidance(expectedBars: MutableSet<ActivityBarKey>) {
         (delegate as? WorksiteGuidanceHandler)?.updateGuidance(expectedBars)

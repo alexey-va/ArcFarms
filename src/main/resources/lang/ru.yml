@@ -683,6 +683,8 @@ scoreboard:
 lumber:
   started: '<color:#ffc857>Заказ лесопилки</color> <color:#707a76>•</color> <wood>'
   wrong-species: '<gray>Этот заказ принимает только <wood>.</gray>'
+  target-required: '<yellow>Срубите подсвеченное бревно нужной породы.</yellow>'
+  journal-failed: '<red>Бревно не срублено: не удалось сохранить безопасное восстановление.</red>'
   processing: '<gold>Древесина собрана</gold>'
   processing-subtitle: '<gray>Идите в цех и используйте станок</gray>'
   station-required: '<gray>Обработка идёт на станке внутри лесопильного цеха.</gray>'
@@ -866,6 +868,11 @@ phase:
   lumber:
     idle: '<gray>ожидает</gray>'
     felling: '<gold>заготовка</gold>'
+    skidding: '<gold>трелёвка</gold>'
+    sawing: '<yellow>распил</yellow>'
+    stacking: '<yellow>укладка</yellow>'
+    dispatch: '<green>отправка</green>'
+    incident: '<red>авария</red>'
     processing: '<yellow>обработка</yellow>'
     cooldown: '<gray>перерыв</gray>'
   mine:

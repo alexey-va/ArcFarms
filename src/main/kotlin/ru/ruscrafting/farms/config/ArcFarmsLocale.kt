@@ -417,6 +417,8 @@ enum class MessageKey(val path: String) {
     FARM_SCOREBOARD_HINT_COOLDOWN("scoreboard.hint.cooldown"),
     LUMBER_STARTED("lumber.started"),
     LUMBER_WRONG_SPECIES("lumber.wrong-species"),
+    LUMBER_TARGET_REQUIRED("lumber.target-required"),
+    LUMBER_JOURNAL_FAILED("lumber.journal-failed"),
     LUMBER_PROCESSING("lumber.processing"),
     LUMBER_PROCESSING_SUBTITLE("lumber.processing-subtitle"),
     LUMBER_STATION_REQUIRED("lumber.station-required"),

@@ -46,7 +46,14 @@ internal class LumberBlockRecoveryController(
     private val inFlight = mutableSetOf<String>()
     private val nonce = AtomicLong()
 
-    fun prepare(runtime: LumberRuntime, player: Player, block: Block, tool: ItemStack): CompletableFuture<Boolean> {
+    fun prepare(
+        runtime: LumberRuntime,
+        player: Player,
+        block: Block,
+        tool: ItemStack,
+        stillValid: () -> Boolean = { true },
+        afterMutation: () -> Unit = {},
+    ): CompletableFuture<Boolean> {
         val positionKey = positionKey(block)
         if (journal.containsPosition(positionKey) || !inFlight.add(positionKey)) {
             return CompletableFuture.completedFuture(false)
@@ -74,13 +81,14 @@ internal class LumberBlockRecoveryController(
             }
             val scheduled = port.runSync(token) {
                 try {
-                    val valid = runtime.state.sequence == sequence && block.blockData.asString == originalData
+                    val valid = runtime.state.sequence == sequence && block.blockData.asString == originalData && stillValid()
                     if (!valid) {
                         result.complete(false)
                         return@runSync
                     }
                     effects.remove(block)
                     effects.deliver(block, drops)
+                    afterMutation()
                     result.complete(true)
                 } catch (mutationFailure: Throwable) {
                     result.completeExceptionally(mutationFailure)

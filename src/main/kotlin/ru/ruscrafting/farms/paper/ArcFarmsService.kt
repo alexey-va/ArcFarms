@@ -280,7 +280,7 @@ class ArcFarmsService(
         worksiteEvents.release(player, WorksitePlayerReleaseReason.QUIT)
     }
     fun onInteractEntityLowest(event: PlayerInteractEntityEvent) = farm.events.onInteractEntityLowest(event)
-    fun onInteractEntity(event: PlayerInteractEntityEvent) = farm.events.onInteractEntity(event)
+    fun onInteractEntity(event: PlayerInteractEntityEvent) = worksiteEvents.onInteractEntity(event) { farm.events.onInteractEntity(event) }
     fun onVehicleEnter(event: VehicleEnterEvent) = farm.events.onVehicleEnter(event)
     fun onEntityDamage(event: EntityDamageEvent) = farm.events.onEntityDamage(event)
     fun onProjectileHit(event: ProjectileHitEvent) = farm.events.onProjectileHit(event)
@@ -463,7 +463,7 @@ class ArcFarmsService(
             farm.module.updateAmbient()
         }
         taskSupervisor.runTimer(1L, 1L) { farm.module.updatePlayerTimes() }
-        taskSupervisor.runTimer(1L, 1L) { runGuarded("carried_displays", farm.module::updateCarriedDisplays) }
+        taskSupervisor.runTimer(1L, 1L) { runGuarded("carried_displays") { worksiteEvents.updateVisuals(farm.module::updateCarriedDisplays) } }
         taskSupervisor.runTimer(
             settings.saveSeconds * 20L,
             settings.saveSeconds * 20L,

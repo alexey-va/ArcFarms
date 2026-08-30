@@ -206,7 +206,7 @@ git commit -m "feat: index and recover lumber resources"
 - Produces: accepted indexed log breaks, two-times bundle objective and safe carry-to-landing flow.
 - Consumes: lumber index/recovery, objective pool, service items/safety, module transition sink.
 
-- [ ] **Step 1: Write failing full slice scenario**
+- [x] **Step 1: Write failing full slice scenario**
 
 ```kotlin
 test("correct indexed logs start the order and bundles cannot be monopolized") {
@@ -222,23 +222,23 @@ test("correct indexed logs start the order and bundles cannot be monopolized") {
 }
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Run: `./gradlew test --tests '*LumberFellingSkiddingMockBukkitTest'`
 
 Expected: feature owners and V2 transitions are absent.
 
-- [ ] **Step 3: Implement indexed felling and bundle carry scene**
+- [x] **Step 3: Implement indexed felling and bundle carry scene**
 
 Reject unindexed/wrong/completed logs without mutation and show the required species title. Reconcile bundle `ItemDisplay`/`Interaction` pairs by PDC identity. A carried bundle follows the player without collision; quit/exit returns it to its safe origin.
 
-- [ ] **Step 4: Run slice/recovery tests**
+- [x] **Step 4: Run slice/recovery tests**
 
 Run: `./gradlew test --tests '*LumberFellingSkidding*' --tests '*LumberBlockRecovery*' --tests '*WorksiteServiceItem*'`
 
 Expected: PASS with exact progress and cleanup.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/kotlin/ru/ruscrafting/farms/paper/lumber src/test/kotlin/ru/ruscrafting/farms/paper/lumber

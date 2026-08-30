@@ -5,6 +5,7 @@ import org.bukkit.Location
 import org.bukkit.block.Block
 import org.bukkit.entity.Player
 import org.bukkit.event.block.BlockBreakEvent
+import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.paper.worksite.RuntimeComponent
@@ -44,6 +45,15 @@ internal interface WorksiteBlockInteractHandler {
 
 internal interface WorksiteMoveHandler {
     fun onMove(from: Location, to: Location, player: Player): Boolean
+}
+
+internal interface WorksiteEntityInteractHandler {
+    fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean
+}
+
+/** One-tick visual work only; gameplay state still advances through [WorksiteModule.tick]. */
+internal interface WorksiteFastVisualHandler {
+    fun updateVisuals()
 }
 
 internal interface WorksiteGuidanceHandler {
@@ -113,6 +123,11 @@ internal class WorksiteModuleRegistry(
         }
         return handled
     }
+
+    fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean =
+        modulesInOrder.filterIsInstance<WorksiteEntityInteractHandler>().any { it.onInteractEntity(event) }
+
+    fun updateVisuals() = modulesInOrder.filterIsInstance<WorksiteFastVisualHandler>().forEach { it.updateVisuals() }
 
     override fun isActive(identity: ServiceItemIdentity): Boolean =
         (modulesByKind[identity.activity] as? WorksiteServiceItemOwner)?.isActive(identity) == true

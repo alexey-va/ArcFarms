@@ -683,6 +683,8 @@ scoreboard:
 lumber:
   started: '<color:#ffc857>Lumbermill order</color> <color:#707a76>•</color> <wood>'
   wrong-species: '<gray>This order only accepts <wood>.</gray>'
+  target-required: '<yellow>Fell a highlighted log of the required species.</yellow>'
+  journal-failed: '<red>The log was not felled because its recovery record could not be saved safely.</red>'
   processing: '<gold>The timber quota is ready</gold>'
   processing-subtitle: '<gray>Go to the workshop and use a machine</gray>'
   station-required: '<gray>Processing happens at a machine inside the lumber workshop.</gray>'
@@ -866,6 +868,11 @@ phase:
   lumber:
     idle: '<gray>waiting</gray>'
     felling: '<gold>felling</gold>'
+    skidding: '<gold>skidding</gold>'
+    sawing: '<yellow>sawing</yellow>'
+    stacking: '<yellow>stacking</yellow>'
+    dispatch: '<green>dispatch</green>'
+    incident: '<red>incident</red>'
     processing: '<yellow>processing</yellow>'
     cooldown: '<gray>cooldown</gray>'
   mine:

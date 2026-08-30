@@ -6,6 +6,11 @@ import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.lumber.index.LumberBlockIndex
 import ru.ruscrafting.farms.paper.lumber.index.LumberChunkTicket
 import ru.ruscrafting.farms.paper.lumber.recovery.LumberBlockRecoveryController
+import ru.ruscrafting.farms.paper.lumber.felling.LumberFellingController
+import ru.ruscrafting.farms.paper.lumber.skidding.LumberBundleEffects
+import ru.ruscrafting.farms.paper.lumber.skidding.LumberBundleScene
+import ru.ruscrafting.farms.paper.lumber.skidding.LumberSkiddingController
+import ru.ruscrafting.farms.paper.lumber.skidding.PaperLumberBundleEffects
 import ru.ruscrafting.farms.persistence.LumberRecoveryJournal
 
 /** Composition-only graph; the registry is the sole mutable runtime collection owner. */
@@ -15,18 +20,33 @@ internal class LumbermillComponentGraph(
     port: WorksiteRuntimePort,
     clock: () -> Long,
     journal: LumberRecoveryJournal,
+    bundleEffects: LumberBundleEffects = PaperLumberBundleEffects(plugin),
 ) {
-    private val registry = LumberRuntimeRegistry()
+    internal val registry = LumberRuntimeRegistry()
     internal val clock = clock
     val index = LumberBlockIndex(plugin)
     val recovery = LumberBlockRecoveryController(journal, port, clock)
+    private val transitions = LumberTransitionCoordinator(port)
+    val bundleScene = LumberBundleScene(registry, bundleEffects, transitions, port, clock)
+    val skidding = LumberSkiddingController(registry, bundleScene, port)
+    val felling = LumberFellingController(
+        registry,
+        index,
+        recovery,
+        transitions,
+        port,
+        clock,
+        bundleScene::begin,
+        bundleScene::canStage,
+        bundleScene::reconcile,
+    )
     private val tickets = object : LumberChunkTicket {
         override fun retain(chunk: org.bukkit.Chunk): Boolean = chunk.addPluginChunkTicket(plugin)
         override fun release(chunk: org.bukkit.Chunk) {
             chunk.removePluginChunkTicket(plugin)
         }
     }
-    val module = LumbermillModule(regions, port, registry, index, recovery, tickets)
+    val module = LumbermillModule(regions, port, registry, index, recovery, tickets, felling, skidding, bundleScene)
 
     internal val mutableRuntimeCollectionCount: Int = 1
 }

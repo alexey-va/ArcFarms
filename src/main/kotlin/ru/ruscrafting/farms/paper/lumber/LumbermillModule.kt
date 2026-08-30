@@ -2,6 +2,9 @@ package ru.ruscrafting.farms.paper.lumber
 
 import org.bukkit.Chunk
 import org.bukkit.entity.Player
+import org.bukkit.Location
+import org.bukkit.event.block.BlockBreakEvent
+import org.bukkit.event.player.PlayerInteractEntityEvent
 import ru.ruscrafting.farms.config.LumberZoneSettings
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.LumberPhase
@@ -10,12 +13,21 @@ import ru.ruscrafting.farms.domain.LumberShiftState
 import ru.ruscrafting.farms.paper.ActivityStatus
 import ru.ruscrafting.farms.paper.RegionGateway
 import ru.ruscrafting.farms.paper.WorksiteModule
+import ru.ruscrafting.farms.paper.WorksiteBlockBreakHandler
+import ru.ruscrafting.farms.paper.WorksiteEntityInteractHandler
+import ru.ruscrafting.farms.paper.WorksiteFastVisualHandler
+import ru.ruscrafting.farms.paper.WorksiteMoveHandler
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.lumber.index.LumberBlockIndex
 import ru.ruscrafting.farms.paper.lumber.index.LumberChunkTicket
 import ru.ruscrafting.farms.paper.lumber.index.LumberIndexDefinition
 import ru.ruscrafting.farms.paper.lumber.index.LumberReindexJob
 import ru.ruscrafting.farms.paper.lumber.recovery.LumberBlockRecoveryController
+import ru.ruscrafting.farms.paper.lumber.felling.LumberFellingController
+import ru.ruscrafting.farms.paper.lumber.skidding.LumberBundleScene
+import ru.ruscrafting.farms.paper.lumber.skidding.LumberSkiddingController
+import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantOwner
+import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 
 internal class LumbermillModule(
     private val regions: RegionGateway,
@@ -24,7 +36,11 @@ internal class LumbermillModule(
     internal val index: LumberBlockIndex,
     internal val recovery: LumberBlockRecoveryController,
     internal val tickets: LumberChunkTicket,
-) : WorksiteModule<LumberShiftState> {
+    private val felling: LumberFellingController,
+    private val skidding: LumberSkiddingController,
+    private val bundleScene: LumberBundleScene,
+) : WorksiteModule<LumberShiftState>, WorksiteBlockBreakHandler, WorksiteEntityInteractHandler,
+    WorksiteMoveHandler, WorksiteFastVisualHandler, WorksiteParticipantOwner {
     override val kind: ActivityKind = ActivityKind.LUMBER
     override val zoneCount: Int get() = registry.size
 
@@ -52,15 +68,29 @@ internal class LumbermillModule(
                 runtime.state = result.state
                 port.persistAsync()
             }
+            bundleScene.reconcile(runtime)
         }
     }.also { recovery.processDue(now) }
 
     override fun canAccess(player: Player): Boolean =
         registry.snapshot().any { port.hasAccess(player, it.settings.permission) }
 
+    override fun onBreakHigh(event: BlockBreakEvent): Boolean = felling.onBreakHigh(event)
+
+    override fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean = skidding.onInteractEntity(event)
+
+    override fun onMove(from: Location, to: Location, player: Player): Boolean = skidding.onMove(from, to, player)
+
+    override fun updateVisuals() = skidding.updateVisuals()
+
+    override fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
+        skidding.releasePlayer(player, reason)
+    }
+
     override fun activateLoadedState() {
         registry.snapshot().forEach { runtime ->
             runtime.region.world.loadedChunks.forEach { chunk -> index.reconcileChunk(runtime.indexDefinition(), chunk) }
+            bundleScene.reconcile(runtime)
         }
         recovery.activateLoadedState()
     }
@@ -75,6 +105,7 @@ internal class LumbermillModule(
     override fun beforeReload(reason: String) = recovery.beforeReload(reason)
 
     override fun cleanup(reason: String) {
+        skidding.cleanup()
         recovery.cleanup(reason)
         index.clear()
     }

@@ -6,6 +6,7 @@ import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.event.player.PlayerDropItemEvent
 import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerMoveEvent
 import ru.ruscrafting.farms.paper.WorksiteModuleRegistry
 
@@ -32,6 +33,17 @@ internal class WorksiteEventRouter(
             event.from.blockZ == destination.blockZ
         ) return false
         return registry.onMove(event.from, destination, event.player)
+    }
+
+    fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean = registry.onInteractEntity(event)
+
+    fun onInteractEntity(event: PlayerInteractEntityEvent, fallback: () -> Unit) {
+        if (!onInteractEntity(event)) fallback()
+    }
+
+    fun updateVisuals(updateFarm: () -> Unit) {
+        updateFarm()
+        registry.updateVisuals()
     }
 
     fun onDrop(event: PlayerDropItemEvent): Boolean {
