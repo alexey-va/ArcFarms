@@ -64,8 +64,30 @@ class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
 
             processing.initialize(runtime) shouldBe true
             repeat(12) { processing.ensure(runtime) }
-            fixture.processingInteraction(processing, runtime, FarmProcessingSceneRole.RAW_INTERACTION, 0)
-                .interactionWidth.shouldBeGreaterThanOrEqual(1.75f)
+            fixture.processingInteraction(processing, runtime, FarmProcessingSceneRole.RAW_INTERACTION, 0).let { interaction ->
+                interaction.interactionWidth.shouldBeGreaterThanOrEqual(2.4f)
+            }
+            fixture.processingInteraction(processing, runtime, FarmProcessingSceneRole.MACHINE_INTERACTION)
+                .interactionWidth.shouldBeGreaterThanOrEqual(3.0f)
+
+            fixture.clickProcessing(
+                processing,
+                runtime,
+                worker,
+                FarmProcessingSceneRole.RAW_INTERACTION,
+                0,
+                horizontalOffset = 3.0,
+            )
+            processing.carrierCount(runtime.settings.id) shouldBe 1
+            fixture.clickProcessing(
+                processing,
+                runtime,
+                worker,
+                FarmProcessingSceneRole.MACHINE_INTERACTION,
+                horizontalOffset = 3.2,
+            )
+            requireNotNull(runtime.state.processing).inputLoaded shouldBe 1
+            processing.carrierCount(runtime.settings.id) shouldBe 0
 
             val layout = ru.ruscrafting.farms.domain.FarmProcessingLayout.create(fixture.processingPoint)
             fixture.processingTextDisplays(FarmProcessingSceneRole.LABEL.name) shouldHaveSize 2
@@ -74,7 +96,7 @@ class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
                 outputLabel.location.y shouldBe layout.outputPallet.y + 1.25
                 outputLabel.location.z shouldBe layout.outputPallet.z
             }
-            repeat(fixture.zone.processing.inputPackages) { index ->
+            repeat(fixture.zone.processing.inputPackages - 1) { index ->
                 val packagePoint = ru.ruscrafting.farms.domain.FarmProcessingLayout.packagePosition(layout.inputRacks, 0)
                 worker.teleport(fixture.location(packagePoint))
                 processing.update(listOf(runtime), index * 10L + 1L)
@@ -181,6 +203,10 @@ class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
             runtime.state.processing?.stage shouldBe FarmProcessingStage.PACKING
             processing.ensure(runtime)
             fixture.processingDisplays(FarmProcessingSceneRole.OUTPUT_PALLET).single().isGlowing shouldBe true
+            fixture.processingInteraction(processing, runtime, FarmProcessingSceneRole.OUTPUT_INTERACTION).let { interaction ->
+                interaction.interactionWidth.shouldBeGreaterThanOrEqual(3.0f)
+                interaction.interactionHeight.shouldBeGreaterThanOrEqual(2.2f)
+            }
             workers.forEachIndexed { index, worker ->
                 worker.teleport(fixture.location(fixture.processingPoint).clone().add(0.0, 0.0, 8.0 + index))
             }
@@ -188,7 +214,7 @@ class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
             repeat(fixture.zone.processing.outputPackages) { index ->
                 val worker = workers[(index + 1) % workers.size]
                 fixture.clickProcessing(processing, runtime, worker, FarmProcessingSceneRole.PRODUCT_INTERACTION, index)
-                fixture.deliverProcessingCargo(processing, runtime, worker, raw = false, tick = 100L + index * 5L)
+                fixture.clickProcessing(processing, runtime, worker, FarmProcessingSceneRole.OUTPUT_INTERACTION)
                 worker.teleport(fixture.location(fixture.processingPoint).clone().add(0.0, 0.0, 8.0 + index))
             }
             processing.ensure(runtime)

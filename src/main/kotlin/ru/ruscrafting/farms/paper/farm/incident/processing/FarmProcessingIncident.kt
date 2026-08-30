@@ -11,6 +11,7 @@ import org.bukkit.Particle
 import org.bukkit.Sound
 import org.bukkit.entity.Display
 import org.bukkit.entity.Entity
+import org.bukkit.entity.Interaction
 import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Player
 import org.bukkit.event.player.PlayerInteractEntityEvent
@@ -174,13 +175,14 @@ internal class FarmProcessingIncident(
         }
         val maxDistance = runtime.settings.processing.interactionRadius
         if (player.world !== event.rightClicked.world ||
-            player.location.distanceSquared(event.rightClicked.location) > maxDistance * maxDistance
+            !withinInteractionReach(player, event.rightClicked, maxDistance)
         ) return true
         if (!access.allowInteraction("farm-processing:${identity.zoneId}:${player.uniqueId}", 250)) return true
         when (identity.role) {
             FarmProcessingSceneRole.RAW_INTERACTION -> pickup(runtime, player, ProcessingCargo.RAW, identity.index)
             FarmProcessingSceneRole.PRODUCT_INTERACTION -> pickup(runtime, player, ProcessingCargo.PRODUCT, identity.index)
             FarmProcessingSceneRole.MACHINE_INTERACTION -> useMachine(runtime, player)
+            FarmProcessingSceneRole.OUTPUT_INTERACTION -> deliverCarried(runtime, player, ProcessingCargo.PRODUCT)
             else -> showStageHint(runtime, player)
         }
         return true
@@ -318,29 +320,53 @@ internal class FarmProcessingIncident(
     }
 
     private fun loadCarriedRaw(runtime: FarmRuntime, player: Player) {
-        val entry = carriers.entries.firstOrNull { (key, lease) ->
-            key.zoneId == runtime.settings.id && key.cargo == ProcessingCargo.RAW && lease.playerId == player.uniqueId
-        }
-        if (entry == null) {
+        deliverCarried(runtime, player, ProcessingCargo.RAW)
+    }
+
+    private fun deliverCarried(runtime: FarmRuntime, player: Player, cargo: ProcessingCargo) {
+        val key = carriers.entries.firstOrNull { (key, lease) ->
+            key.zoneId == runtime.settings.id && key.cargo == cargo && lease.playerId == player.uniqueId
+        }?.key
+        if (key == null) {
             showStageHint(runtime, player)
             return
         }
-        removeCarrier(entry.key)
-        removeCarried(entry.key)
+        val layout = layout(runtime) ?: run {
+            returnCargo(runtime, key, player, "layout_missing")
+            return
+        }
+        val target = if (cargo == ProcessingCargo.RAW) layout.inputDrop else layout.outputPallet
+        completeCargoDelivery(runtime, key, player, target.location(runtime))
+    }
+
+    private fun completeCargoDelivery(
+        runtime: FarmRuntime,
+        key: ProcessingCargoKey,
+        player: Player,
+        targetLocation: Location,
+    ) {
+        removeCarrier(key)
+        removeCarried(key)
+        val stage = if (key.cargo == ProcessingCargo.RAW) FarmProcessingStage.LOADING else FarmProcessingStage.PACKING
         transitions.apply(
             runtime,
-            FarmShiftEngine.advanceProcessing(
-                runtime.state,
-                player.uniqueId,
-                FarmProcessingStage.LOADING,
-                entry.key.index,
-            ),
+            FarmShiftEngine.advanceProcessing(runtime.state, player.uniqueId, stage, key.index),
             player,
         )
-        if (settings().sounds) player.playSound(player.location, Sound.BLOCK_BARREL_CLOSE, 0.9f, 0.9f)
+        if (settings().sounds) {
+            val pitch = if (key.cargo == ProcessingCargo.RAW) 0.9f else 1.2f
+            player.playSound(player.location, Sound.BLOCK_BARREL_CLOSE, 0.9f, pitch)
+        }
         if (settings().particles) {
-            val target = layout(runtime)?.inputDrop?.location(runtime) ?: player.location
-            target.world.spawnParticle(Particle.COMPOSTER, target.clone().add(0.0, 1.0, 0.0), 10, 0.5, 0.5, 0.5, 0.04)
+            targetLocation.world.spawnParticle(
+                Particle.COMPOSTER,
+                targetLocation.clone().add(0.0, 1.0, 0.0),
+                10,
+                0.5,
+                0.5,
+                0.5,
+                0.04,
+            )
         }
     }
 
@@ -383,19 +409,7 @@ internal class FarmProcessingIncident(
                 }
                 return@forEach
             }
-            removeCarrier(key)
-            removeCarried(key)
-            val stage = if (key.cargo == ProcessingCargo.RAW) FarmProcessingStage.LOADING else FarmProcessingStage.PACKING
-            transitions.apply(
-                runtime,
-                FarmShiftEngine.advanceProcessing(runtime.state, player.uniqueId, stage, key.index),
-                player,
-            )
-            if (settings().sounds) {
-                val pitch = if (key.cargo == ProcessingCargo.RAW) 0.9f else 1.2f
-                player.playSound(player.location, Sound.BLOCK_BARREL_CLOSE, 0.9f, pitch)
-            }
-            if (settings().particles) targetLocation.world.spawnParticle(Particle.COMPOSTER, targetLocation.clone().add(0.0, 1.0, 0.0), 10, 0.5, 0.5, 0.5, 0.04)
+            completeCargoDelivery(runtime, key, player, targetLocation)
         }
     }
 
@@ -507,8 +521,17 @@ internal class FarmProcessingIncident(
             FarmProcessingSceneRole.MACHINE_INTERACTION,
             0,
             FarmProcessingLayout.offset(layout.machine, 0.0, 0.25, 0.8).location(runtime),
-            interactionWidth = 2.1f, interactionHeight = 2.1f,
+            interactionWidth = STATION_HITBOX_WIDTH, interactionHeight = STATION_HITBOX_HEIGHT,
         )
+        if (state.stage == FarmProcessingStage.PACKING) {
+            objects += FarmProcessingSceneObject(
+                FarmProcessingSceneRole.OUTPUT_INTERACTION,
+                0,
+                layout.outputPallet.location(runtime),
+                interactionWidth = STATION_HITBOX_WIDTH,
+                interactionHeight = OUTPUT_HITBOX_HEIGHT,
+            )
+        }
         objects += FarmProcessingSceneObject(
             FarmProcessingSceneRole.LABEL,
             100,
@@ -555,7 +578,7 @@ internal class FarmProcessingIncident(
                 objects += display(runtime, FarmProcessingSceneRole.RAW_PACKAGE, index, point, FarmProcessingVisualRole.RAW_PACKAGE, true)
                 objects += FarmProcessingSceneObject(
                     FarmProcessingSceneRole.RAW_INTERACTION, index, point.location(runtime),
-                    interactionWidth = 1.8f, interactionHeight = 1.8f,
+                    interactionWidth = CARGO_HITBOX_WIDTH, interactionHeight = CARGO_HITBOX_HEIGHT,
                 )
             }
         }
@@ -567,7 +590,7 @@ internal class FarmProcessingIncident(
                 objects += display(runtime, FarmProcessingSceneRole.PRODUCT_PACKAGE, index, point, FarmProcessingVisualRole.PRODUCT_PACKAGE, true)
                 objects += FarmProcessingSceneObject(
                     FarmProcessingSceneRole.PRODUCT_INTERACTION, index, point.location(runtime),
-                    interactionWidth = 1.8f, interactionHeight = 1.8f,
+                    interactionWidth = CARGO_HITBOX_WIDTH, interactionHeight = CARGO_HITBOX_HEIGHT,
                 )
             }
             state.occupiedOutputSlots.sorted().forEach { index ->
@@ -688,6 +711,31 @@ internal class FarmProcessingIncident(
         carriers.keys.any { it.zoneId == zoneId } ||
         crank.hasZone(zoneId)
 
+    private fun withinInteractionReach(player: Player, entity: Entity, maxDistance: Double): Boolean {
+        val eye = player.eyeLocation
+        val location = entity.location
+        val bounds = if (entity is Interaction) {
+            val halfWidth = entity.interactionWidth / 2.0
+            doubleArrayOf(
+                location.x - halfWidth,
+                location.y,
+                location.z - halfWidth,
+                location.x + halfWidth,
+                location.y + entity.interactionHeight,
+                location.z + halfWidth,
+            )
+        } else {
+            entity.boundingBox.let { doubleArrayOf(it.minX, it.minY, it.minZ, it.maxX, it.maxY, it.maxZ) }
+        }
+        val closestX = eye.x.coerceIn(bounds[0], bounds[3])
+        val closestY = eye.y.coerceIn(bounds[1], bounds[4])
+        val closestZ = eye.z.coerceIn(bounds[2], bounds[5])
+        val dx = eye.x - closestX
+        val dy = eye.y - closestY
+        val dz = eye.z - closestZ
+        return dx * dx + dy * dy + dz * dz <= maxDistance * maxDistance
+    }
+
     private fun logUnavailable(runtime: FarmRuntime, reason: String) {
         if (lastUnavailableSequence[runtime.settings.id] == runtime.state.placementSequence) return
         lastUnavailableSequence[runtime.settings.id] = runtime.state.placementSequence
@@ -710,6 +758,11 @@ internal class FarmProcessingIncident(
 
     private companion object {
         const val CARGO_PROGRESS_DISTANCE = 1.0
+        const val CARGO_HITBOX_WIDTH = 2.4f
+        const val CARGO_HITBOX_HEIGHT = 2.2f
+        const val STATION_HITBOX_WIDTH = 3.0f
+        const val STATION_HITBOX_HEIGHT = 2.8f
+        const val OUTPUT_HITBOX_HEIGHT = 2.2f
         const val CRANK_TRACK_POINTS = 24
         const val CRANK_TRACK_Y_OFFSET = 0.035
         const val CRANK_TRACK_SCALE = 1.75f

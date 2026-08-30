@@ -35,6 +35,7 @@ internal enum class FarmProcessingSceneRole {
     PRODUCT_INTERACTION,
     DELIVERED_PACKAGE,
     MACHINE_INTERACTION,
+    OUTPUT_INTERACTION,
     LABEL,
     CRANK_TRACK,
 }
@@ -215,6 +216,7 @@ internal class FarmProcessingScene(
             FarmProcessingSceneRole.RAW_INTERACTION,
             FarmProcessingSceneRole.PRODUCT_INTERACTION,
             FarmProcessingSceneRole.MACHINE_INTERACTION,
+            FarmProcessingSceneRole.OUTPUT_INTERACTION,
             -> world.spawn(target.location, Interaction::class.java)
             FarmProcessingSceneRole.LABEL,
             FarmProcessingSceneRole.CRANK_TRACK,
@@ -311,6 +313,7 @@ internal class FarmProcessingScene(
         FarmProcessingSceneRole.RAW_INTERACTION,
         FarmProcessingSceneRole.PRODUCT_INTERACTION,
         FarmProcessingSceneRole.MACHINE_INTERACTION,
+        FarmProcessingSceneRole.OUTPUT_INTERACTION,
         -> entity is Interaction
         FarmProcessingSceneRole.LABEL,
         FarmProcessingSceneRole.CRANK_TRACK,

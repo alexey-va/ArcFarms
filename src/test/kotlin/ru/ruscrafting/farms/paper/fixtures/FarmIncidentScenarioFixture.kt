@@ -227,9 +227,10 @@ internal class FarmIncidentScenarioFixture private constructor(
         player: PlayerMock,
         role: FarmProcessingSceneRole,
         index: Int? = null,
+        horizontalOffset: Double = 0.0,
     ) {
         val interaction = processingInteraction(controller, runtime, role, index)
-        player.teleport(interaction.location)
+        player.teleport(interaction.location.clone().add(horizontalOffset, 0.0, 0.0))
         val event = PlayerInteractEntityEvent(player, interaction, EquipmentSlot.HAND)
         check(controller.interact(event, listOf(runtime))) { "Processing interaction was not routed" }
         check(event.isCancelled) { "Processing interaction must be cancelled" }
