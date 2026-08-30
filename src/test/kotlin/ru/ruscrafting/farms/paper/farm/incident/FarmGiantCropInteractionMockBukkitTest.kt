@@ -15,6 +15,7 @@ import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
+import ru.ruscrafting.farms.paper.CuboidActivityRegion
 import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmBlockRegistry
 import ru.ruscrafting.farms.paper.FarmRuntime
@@ -38,8 +39,10 @@ import ru.ruscrafting.farms.paper.farm.presentation.FarmHudController
 import ru.ruscrafting.farms.paper.farm.recovery.FarmFixedCropRecoveryController
 import ru.ruscrafting.farms.paper.farm.scene.FarmContractSceneController
 import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyController
+import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyKind
 import ru.ruscrafting.farms.paper.fixtures.FarmIncidentScenarioFixture
 import ru.ruscrafting.farms.paper.fixtures.requiredMockBukkitScenario
+import ru.ruscrafting.farms.config.CuboidBounds
 import java.util.concurrent.CompletableFuture
 
 class FarmGiantCropInteractionMockBukkitTest : FunSpec({
@@ -58,7 +61,7 @@ class FarmGiantCropInteractionMockBukkitTest : FunSpec({
             val block = fixture.world.getBlockAt(8, 64, 8).also { it.type = Material.PUMPKIN }
             val special = mockk<FarmSpecialIncidentController>(relaxed = true)
             every { special.handleGiantCropHit(runtime, player, block) } returns true
-            val router = router(fixture, runtime, special)
+            val router = farmEventRouter(fixture, runtime, special = special)
             val event = PlayerInteractEvent(
                 player,
                 Action.LEFT_CLICK_BLOCK,
@@ -74,12 +77,54 @@ class FarmGiantCropInteractionMockBukkitTest : FunSpec({
             verify(exactly = 1) { special.handleGiantCropHit(runtime, player, block) }
         } }
     }
+
+    test("fire hose routes right click air by its tagged farm from fifteen blocks away") {
+        requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
+            val runtime = fixture.runtime(
+                FarmShiftState(
+                    phase = FarmPhase.INCIDENT,
+                    sequence = 74,
+                    placementSequence = 25,
+                    orderId = "harvest_festival",
+                    incidentType = FarmIncidentType.BARN_FIRE,
+                ),
+            ).copy(
+                region = CuboidActivityRegion(fixture.world, "fire_test", CuboidBounds(40, 0, 40, 52, 128, 52)),
+            )
+            val player = fixture.paper.addPlayer("LongRangeFirefighter")
+            val supplies = FarmSupplyController(
+                fixture.plugin,
+                fixture.locale,
+                ArcFarmsDebug({ false }) {},
+                { fixture.settings },
+            )
+            supplies.give(runtime, FarmSupplyKind.FIRE, player) shouldBe true
+            player.teleport(fixture.location(fixture.barnPoint).add(0.0, 0.0, 15.0))
+            val barnFire = mockk<FarmBarnFireIncident>(relaxed = true)
+            every { barnFire.spray(any(), runtime) } returns true
+            val router = farmEventRouter(fixture, runtime, supplies = supplies, barnFire = barnFire)
+            val event = PlayerInteractEvent(
+                player,
+                Action.RIGHT_CLICK_AIR,
+                player.inventory.itemInMainHand,
+                null,
+                BlockFace.SELF,
+                EquipmentSlot.HAND,
+            )
+
+            router.onInteract(event) shouldBe true
+
+            verify(exactly = 1) { barnFire.spray(event, runtime) }
+        } }
+    }
 })
 
-private fun router(
+internal fun farmEventRouter(
     fixture: FarmIncidentScenarioFixture,
     runtime: FarmRuntime,
-    special: FarmSpecialIncidentController,
+    special: FarmSpecialIncidentController = mockk(relaxed = true),
+    supplies: FarmSupplyController = mockk(relaxed = true),
+    barnFire: FarmBarnFireIncident = mockk(relaxed = true),
 ): FarmEventRouter = FarmEventRouter(
     locale = fixture.locale,
     debug = ArcFarmsDebug({ false }) {},
@@ -101,10 +146,10 @@ private fun router(
     perks = mockk<FarmPerkController>(relaxed = true),
     special = special,
     processing = mockk<FarmProcessingIncident>(relaxed = true),
-    barnFire = mockk<FarmBarnFireIncident>(relaxed = true),
+    barnFire = barnFire,
     frost = mockk<FarmFrostIncident>(relaxed = true),
     delivery = mockk<FarmDeliveryController>(relaxed = true),
-    supplies = mockk<FarmSupplyController>(relaxed = true),
+    supplies = supplies,
     scene = mockk<FarmContractSceneController>(relaxed = true),
     harvest = mockk<FarmHarvestController>(relaxed = true),
     hud = mockk<FarmHudController>(relaxed = true),

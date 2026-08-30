@@ -153,6 +153,11 @@ internal class FarmSupplyController(
     fun isServiceItem(item: ItemStack?, zoneId: String, kind: FarmSupplyKind): Boolean =
         taggedValue(item)?.let { matches(it, zoneId, kind) } == true
 
+    fun serviceItemZone(item: ItemStack?, kind: FarmSupplyKind): String? = taggedValue(item)
+        ?.takeIf { it.substringAfter(':') == kind.name }
+        ?.substringBefore(':')
+        ?.takeIf(String::isNotBlank)
+
     /**
      * Q is an explicit disposal action for the temporary fire hose. The item has
      * already left the inventory when this event is observed, so removing its

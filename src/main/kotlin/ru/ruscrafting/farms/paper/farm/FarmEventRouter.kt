@@ -213,14 +213,9 @@ internal class FarmEventRouter(
             }
         }
         if (foodDelivery.onInteract(event, runtimes())) return true
-        if (supplies.isServiceItem(event.player.inventory.itemInMainHand, FarmSupplyKind.FIRE)) {
-            val runtime = farmAt(event.player.location)
-            if (runtime != null && supplies.isServiceItem(
-                    event.player.inventory.itemInMainHand,
-                    runtime.settings.id,
-                    FarmSupplyKind.FIRE,
-                ) && barnFire.spray(event, runtime)
-            ) return true
+        supplies.serviceItemZone(event.player.inventory.itemInMainHand, FarmSupplyKind.FIRE)?.let { zoneId ->
+            val runtime = runtimes().firstOrNull { it.settings.id == zoneId }
+            if (runtime != null && barnFire.spray(event, runtime)) return true
             event.isCancelled = true
             runtime?.let { hud.taskHint(event.player, it, "service_item_wrong_phase") }
             return true
