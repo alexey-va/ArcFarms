@@ -22,7 +22,7 @@ import ru.ruscrafting.farms.paper.WorksiteEntityInteractHandler
 import ru.ruscrafting.farms.paper.WorksiteFastVisualHandler
 import ru.ruscrafting.farms.paper.WorksiteModule
 import ru.ruscrafting.farms.paper.WorksiteMoveHandler
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksitePorts
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
 import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantOwner
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
@@ -41,7 +41,7 @@ internal class LumbermillVersionedModule(
     initial: List<LumberZoneSettings>,
     regions: RegionGateway,
     locale: ArcFarmsLocale,
-    port: WorksiteRuntimePort,
+    ports: WorksitePorts,
     clock: () -> Long,
     journal: LumberRecoveryJournal,
     serviceItems: WorksiteServiceItems? = null,
@@ -52,10 +52,12 @@ internal class LumbermillVersionedModule(
     private val engineVersion = initial.firstOrNull()?.engineVersion ?: 1
     private val delegate: WorksiteModule<LumberShiftState> = if (engineVersion == 2) {
         LumbermillComponentGraph(
-            plugin, regions, port, clock, journal, serviceItems, locale = locale, rewardGrants = rewardGrants,
+            plugin, regions, ports, clock, journal, serviceItems, locale = locale, rewardGrants = rewardGrants,
         ).module
     } else {
-        LumbermillController(regions, locale, port, clock)
+        LumbermillController(
+            regions, locale, ports.access, ports.audience, ports.state, ports.tasks, ports.stats, ports.network, clock,
+        )
     }
 
     override val kind: ActivityKind get() = delegate.kind

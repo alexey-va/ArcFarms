@@ -9,14 +9,14 @@ import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetCandidate
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetPool
 import ru.ruscrafting.farms.domain.worksite.WorksiteObjectiveKey
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.MineTransitionCoordinator
 
 /** Shared incident state transitions. Individual incidents still own all world semantics. */
 internal class MineIncidentCoordinator(
     private val transitions: MineTransitionCoordinator,
-    private val port: WorksiteRuntimePort,
+    private val state: WorksiteStatePort,
 ) {
     fun start(
         runtime: MineRuntime,
@@ -75,7 +75,7 @@ internal class MineIncidentCoordinator(
         val invalidated = ObjectiveTargetPool.invalidate(objective, targetId, replacement)
         if (!invalidated.accepted) return false
         runtime.state = runtime.state.copy(objective = invalidated.state)
-        port.persistAsync()
+        state.persistAsync()
         return true
     }
 }

@@ -45,7 +45,9 @@ import ru.ruscrafting.farms.paper.FarmGroundSpreadPolicy
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.FarmServiceInventoryPolicy
 import ru.ruscrafting.farms.paper.MaterialRules
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.WorldEditToolGuard
 import ru.ruscrafting.farms.paper.farm.admin.FarmWorldAdminService
 import ru.ruscrafting.farms.paper.farm.admin.FarmRouteAdminService
@@ -60,6 +62,7 @@ import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentContr
 import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
 import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingIncident
 import ru.ruscrafting.farms.paper.farm.incident.fire.FarmBarnFireIncident
+import ru.ruscrafting.farms.paper.farm.incident.frost.FarmFrostIncident
 import ru.ruscrafting.farms.paper.farm.presentation.FarmHudController
 import ru.ruscrafting.farms.paper.farm.perk.FarmPerkController
 import ru.ruscrafting.farms.paper.farm.recovery.FarmFixedCropRecoveryController
@@ -73,7 +76,9 @@ import java.util.concurrent.CompletableFuture
 internal class FarmEventRouter(
     private val locale: ArcFarmsLocale,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
+    private val state: WorksiteStatePort,
     private val runtimes: () -> Collection<FarmRuntime>,
     private val worldAdmin: FarmWorldAdminService,
     private val ledger: FarmBlockLedger,
@@ -90,6 +95,7 @@ internal class FarmEventRouter(
     private val special: FarmSpecialIncidentController,
     private val processing: FarmProcessingIncident,
     private val barnFire: FarmBarnFireIncident,
+    private val frost: FarmFrostIncident,
     private val delivery: FarmDeliveryController,
     private val supplies: FarmSupplyController,
     private val scene: FarmContractSceneController,
@@ -133,7 +139,7 @@ internal class FarmEventRouter(
                 event.isCancelled = true
                 return true
             }
-            port.traceBlockBreak(event, ActivityKind.FARM, runtime.settings.id)
+            state.traceBlockBreak(event, ActivityKind.FARM, runtime.settings.id)
             event.isCancelled = true
             if (!special.handleCropBreak(runtime, event.player, event.block)) harvest.onBreak(event, runtime)
             return true
@@ -172,6 +178,7 @@ internal class FarmEventRouter(
         val owned = (clicked.type == Material.SWEET_BERRY_BUSH && clicked.type.name in runtime.settings.crops) ||
             supplies.isServiceItem(item) ||
             foodDelivery.ownsServiceItem(item) ||
+            frost.isServiceItem(item) || frost.protects(clicked.location) ||
             (runtime.state.phase == FarmPhase.PREPARATION && MaterialRules.isHoe(item)) ||
             (runtime.state.phase == FarmPhase.PLANTING && MaterialRules.cropForSeed(item) != null) ||
             drought.ownsInteraction(runtime, item.type)
@@ -254,12 +261,14 @@ internal class FarmEventRouter(
         val routeRuntime = foodDelivery.participantRuntime(player, runtimes())
         if (from != null && from !== to) {
             supplies.removeServiceItems(player, from.settings.id, "left_zone")
+            frost.clearPlayer(player, "left_zone")
             care.releasePlayer(player, "left_zone")
             if (routeRuntime == null) hud.removePlayer(player, "left_zone")
         }
         if (to != null && from !== to) hud.enter(player, to)
         if (from !== to) hud.syncMusic(player, to ?: routeRuntime, clock())
         delivery.moveCarried(runtimes(), player, destination)
+        frost.onMove(player, to)
         return from != null || to != null || routeRuntime != null
     }
 
@@ -271,14 +280,16 @@ internal class FarmEventRouter(
         hud.removePlayer(player, reason)
         delivery.releasePlayer(runtimes(), player, reason)
         processing.releasePlayer(runtimes(), player, reason)
+        frost.clearPlayer(player, reason)
         supplies.removeServiceItems(player, reason = reason)
         care.releasePlayer(player, reason)
-        port.resetInteractionsContaining(player.uniqueId.toString())
+        access.resetInteractionsContaining(player.uniqueId.toString())
         worldAdmin.release(player)
     }
 
     fun onJoin(player: Player) {
         foodDelivery.removeServiceItems(player, "player_join")
+        frost.clearPlayer(player, "player_join")
     }
 
     fun onInteractEntityLowest(event: PlayerInteractEntityEvent) {
@@ -289,7 +300,8 @@ internal class FarmEventRouter(
         if (worldAdmin.isEditing(event.player)) return
         if (care.owns(event.rightClicked) || supplies.owns(event.rightClicked) || delivery.owns(event.rightClicked) ||
             foodDelivery.owns(event.rightClicked) || perks.owns(event.rightClicked) ||
-            scene.owns(event.rightClicked) || special.ownsScene(event.rightClicked) || processing.owns(event.rightClicked)
+            scene.owns(event.rightClicked) || special.ownsScene(event.rightClicked) || processing.owns(event.rightClicked) ||
+            frost.owns(event.rightClicked)
         ) event.isCancelled = true
     }
 
@@ -320,11 +332,11 @@ internal class FarmEventRouter(
         supplies.interaction(event.rightClicked)?.let { identity ->
             event.isCancelled = true
             val runtime = runtimes().firstOrNull { it.settings.id == identity.zoneId } ?: return
-            if (!port.hasAccess(event.player, runtime.settings.permission)) {
-                port.sendChat(event.player, MessageKey.ZONE_LOCKED)
+            if (!access.hasAccess(event.player, runtime.settings.permission)) {
+                audience.sendChat(event.player, MessageKey.ZONE_LOCKED)
                 return
             }
-            if (port.allowInteraction("farm-supply:${identity.zoneId}:${identity.kind}:${event.player.uniqueId}", 500)) {
+            if (access.allowInteraction("farm-supply:${identity.zoneId}:${identity.kind}:${event.player.uniqueId}", 500)) {
                 supplies.give(runtime, identity.kind, event.player)
             }
             return
@@ -333,11 +345,11 @@ internal class FarmEventRouter(
         if (!delivery.isGroundInteraction(event.rightClicked)) return
         event.isCancelled = true
         val runtime = runtimes().firstOrNull { it.settings.id == identity.zoneId } ?: return
-        if (!port.hasAccess(event.player, runtime.settings.permission)) {
-            port.sendChat(event.player, MessageKey.ZONE_LOCKED)
+        if (!access.hasAccess(event.player, runtime.settings.permission)) {
+            audience.sendChat(event.player, MessageKey.ZONE_LOCKED)
             return
         }
-        if (port.allowInteraction("farm-delivery:${identity.zoneId}:${identity.index}:${event.player.uniqueId}", 500)) {
+        if (access.allowInteraction("farm-delivery:${identity.zoneId}:${identity.index}:${event.player.uniqueId}", 500)) {
             delivery.pickup(runtime, identity, event.player)
         }
     }
@@ -362,6 +374,17 @@ internal class FarmEventRouter(
             return
         }
         if (processing.owns(event.entity)) {
+            event.isCancelled = true
+            return
+        }
+        if (frost.owns(event.entity)) {
+            event.isCancelled = true
+            return
+        }
+        if (event.cause == EntityDamageEvent.DamageCause.FREEZE && event.entity is Player &&
+            runtimes().any { runtime -> runtime.region.contains(event.entity.location) &&
+                runtime.state.phase == FarmPhase.INCIDENT && runtime.state.incidentType == FarmIncidentType.FROST }
+        ) {
             event.isCancelled = true
             return
         }
@@ -392,16 +415,19 @@ internal class FarmEventRouter(
 
     fun onDrop(event: PlayerDropItemEvent) {
         if (supplies.discardDroppedFireEquipment(event.player, event.itemDrop)) return
-        if (supplies.isServiceItem(event.itemDrop.itemStack) || foodDelivery.ownsServiceItem(event.itemDrop.itemStack)) {
+        if (supplies.isServiceItem(event.itemDrop.itemStack) || foodDelivery.ownsServiceItem(event.itemDrop.itemStack) ||
+            frost.isServiceItem(event.itemDrop.itemStack)
+        ) {
             event.isCancelled = true
         }
     }
 
     fun onDeath(event: PlayerDeathEvent) {
         care.onPlayerDeath(event.entity)
-        event.drops.removeIf { supplies.isServiceItem(it) || foodDelivery.ownsServiceItem(it) }
+        event.drops.removeIf { supplies.isServiceItem(it) || foodDelivery.ownsServiceItem(it) || frost.isServiceItem(it) }
         foodDelivery.removeServiceItems(event.entity, "player_death")
         supplies.removeServiceItems(event.entity, reason = "player_death")
+        frost.clearPlayer(event.entity, "player_death")
     }
 
     fun onInventoryClick(event: InventoryClickEvent) {
@@ -415,9 +441,12 @@ internal class FarmEventRouter(
                 rawSlot = event.rawSlot,
                 topSize = event.view.topInventory.size,
                 shiftClick = event.isShiftClick,
-                currentTagged = supplies.isServiceItem(event.currentItem) || foodDelivery.ownsServiceItem(event.currentItem),
-                cursorTagged = supplies.isServiceItem(event.cursor) || foodDelivery.ownsServiceItem(event.cursor),
-                hotbarTagged = supplies.isServiceItem(hotbar) || foodDelivery.ownsServiceItem(hotbar),
+                currentTagged = supplies.isServiceItem(event.currentItem) || foodDelivery.ownsServiceItem(event.currentItem) ||
+                    frost.isServiceItem(event.currentItem),
+                cursorTagged = supplies.isServiceItem(event.cursor) || foodDelivery.ownsServiceItem(event.cursor) ||
+                    frost.isServiceItem(event.cursor),
+                hotbarTagged = supplies.isServiceItem(hotbar) || foodDelivery.ownsServiceItem(hotbar) ||
+                    frost.isServiceItem(hotbar),
             )
         ) event.isCancelled = true
     }
@@ -426,7 +455,8 @@ internal class FarmEventRouter(
         if (perks.handleDrag(event)) return
         if (special.handleInventoryDrag(event)) return
         if (FarmServiceInventoryPolicy.cancelDrag(
-                supplies.isServiceItem(event.oldCursor) || foodDelivery.ownsServiceItem(event.oldCursor),
+                supplies.isServiceItem(event.oldCursor) || foodDelivery.ownsServiceItem(event.oldCursor) ||
+                    frost.isServiceItem(event.oldCursor),
                 event.rawSlots,
                 event.view.topInventory.size,
             )
@@ -452,7 +482,8 @@ internal class FarmEventRouter(
     fun onBlockFade(event: BlockFadeEvent) {
         if (
             (event.block.type == Material.FARMLAND && farmAt(event.block.location) != null) ||
-            (event.block.type == Material.FIRE && barnFire.protects(event.block.location))
+            (event.block.type == Material.FIRE && barnFire.protects(event.block.location)) ||
+            (event.block.type == Material.CAMPFIRE && frost.protects(event.block.location))
         ) event.isCancelled = true
     }
 
@@ -503,8 +534,12 @@ internal class FarmEventRouter(
             return
         }
         val runtime = farmAt(event.blockPlaced.location) ?: return
+        if (frost.isServiceItem(event.itemInHand)) {
+            event.isCancelled = true
+            return
+        }
         event.isCancelled = true
-        port.sendActionBar(event.player, MessageKey.FARM_PATCH_PROTECTED)
+        audience.sendActionBar(event.player, MessageKey.FARM_PATCH_PROTECTED)
         debug.event(
             "farm_block_place_rejected", "player" to event.player.name, "zone" to runtime.settings.id,
             "block" to event.blockPlaced.type, "x" to event.blockPlaced.x, "y" to event.blockPlaced.y, "z" to event.blockPlaced.z,
@@ -523,7 +558,7 @@ internal class FarmEventRouter(
                 "block" to type, "managed_record_removed" to removed,
                 "x" to event.block.x, "y" to event.block.y, "z" to event.block.z,
             )
-            port.sendActionBar(event.player, MessageKey.ADMIN_EDIT_BLOCK_REMOVED)
+            audience.sendActionBar(event.player, MessageKey.ADMIN_EDIT_BLOCK_REMOVED)
             return
         }
         val soil = when {
@@ -565,7 +600,7 @@ internal class FarmEventRouter(
             "block" to type, "managed_record_removed" to removed,
             "x" to event.block.x, "y" to event.block.y, "z" to event.block.z,
         )
-        port.sendActionBar(event.player, MessageKey.ADMIN_EDIT_BLOCK_REMOVED)
+        audience.sendActionBar(event.player, MessageKey.ADMIN_EDIT_BLOCK_REMOVED)
     }
 
     private fun EntityDamageByEntityEvent.playerDamager(): Player? = when (val source = damager) {

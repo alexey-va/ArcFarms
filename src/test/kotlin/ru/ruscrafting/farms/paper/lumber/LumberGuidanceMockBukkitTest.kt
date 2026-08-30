@@ -24,7 +24,7 @@ class LumberGuidanceMockBukkitTest : FunSpec({
         world.getChunkAt(0, 0).load()
         val player = paper.server.addPlayer("GuidedForester")
         player.teleport(org.bukkit.Location(world, 4.5, 64.0, 4.5))
-        val graph = LumbermillComponentGraph(
+        val graph = testLumbermillComponentGraph(
             paper.createSimplePlugin("LumberGuidanceTest"),
             CuboidRegionGateway(),
             lumberTestPort(listOf(player)),

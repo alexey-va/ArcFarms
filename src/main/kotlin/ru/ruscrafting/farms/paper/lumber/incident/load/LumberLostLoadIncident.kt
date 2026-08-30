@@ -11,7 +11,7 @@ import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetPool
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.lumber.LumberRuntime
 import ru.ruscrafting.farms.paper.lumber.LumberRuntimeRegistry
 import ru.ruscrafting.farms.paper.lumber.incident.LumberIncidentCoordinator
@@ -23,7 +23,7 @@ internal class LumberLostLoadIncident(
     private val registry: LumberRuntimeRegistry,
     private val incidents: LumberIncidentCoordinator,
     private val effects: LumberBundleEffects,
-    private val port: WorksiteRuntimePort,
+    private val state: WorksiteStatePort,
     private val clock: () -> Long,
 ) {
     private data class Carry(val zoneId: String, val sequence: Long, val targetId: String)
@@ -50,7 +50,7 @@ internal class LumberLostLoadIncident(
         carried[player.uniqueId] = Carry(runtime.settings.id, runtime.state.sequence, targetId)
         effects.hideGround(runtime, targetId)
         effects.showCarried(runtime, targetId, player)
-        port.persistAsync()
+        state.persistAsync()
         return true
     }
 
@@ -73,7 +73,7 @@ internal class LumberLostLoadIncident(
         if (released.accepted) {
             runtime.state = runtime.state.copy(objective = released.state)
             released.state.target(carry.targetId)?.let { effects.showGround(runtime, it.id, it.position) }
-            port.persistAsync()
+            state.persistAsync()
         }
         return true
     }

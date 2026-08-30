@@ -20,7 +20,9 @@ import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmRuntime
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.platform.FarmBlockPassability
@@ -35,7 +37,9 @@ private data class FireKey(val zoneId: String, val index: Int)
 internal class FarmBarnFireIncident(
     private val settings: () -> ArcFarmsConfig,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
+    private val state: WorksiteStatePort,
     private val points: FarmPointProvider,
     private val transitions: FarmTransitionSink,
     private val blockPassability: FarmBlockPassability,
@@ -55,7 +59,7 @@ internal class FarmBarnFireIncident(
         val result = FarmShiftEngine.initializeBarnFire(runtime.state, hotspots)
         if (!result.accepted) return false
         runtime.state = result.state
-        port.persistAsync()
+        state.persistAsync()
         debug.event(
             "farm_barn_fire_initialized",
             "zone" to runtime.settings.id,
@@ -123,12 +127,12 @@ internal class FarmBarnFireIncident(
         ) return false
         event.isCancelled = true
         val player = event.player
-        if (!port.hasAccess(player, runtime.settings.permission)) {
-            port.sendChat(player, MessageKey.ZONE_LOCKED)
+        if (!access.hasAccess(player, runtime.settings.permission)) {
+            audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return true
         }
         val config = runtime.settings.barnFire
-        if (!port.allowInteraction(
+        if (!access.allowInteraction(
                 "farm-barn-fire:${runtime.settings.id}:${player.uniqueId}",
                 config.sprayCooldownTicks * 50L,
             )
@@ -138,7 +142,7 @@ internal class FarmBarnFireIncident(
         renderJet(start, direction, config.sprayRange, config.particleStep)
         val hits = hitsInSpray(runtime, start, direction, config.sprayRange, config.sprayHitRadius)
         if (hits.isEmpty()) {
-            port.sendActionBar(player, MessageKey.FARM_BARN_FIRE_AIM_HINT)
+            audience.sendActionBar(player, MessageKey.FARM_BARN_FIRE_AIM_HINT)
             if (settings().sounds) player.playSound(player.location, Sound.ITEM_BUCKET_EMPTY, 0.35f, 1.35f)
             return true
         }
@@ -295,7 +299,7 @@ internal class FarmBarnFireIncident(
 
     private fun logUnavailable(runtime: FarmRuntime, anchor: FarmPointPosition, reason: String) {
         if (unavailableSequences.put(runtime.settings.id, runtime.state.placementSequence) == runtime.state.placementSequence) return
-        port.log(
+        state.log(
             java.util.logging.Level.WARNING,
             "ArcFarms barn fire could not start: zone=${runtime.settings.id} sequence=${runtime.state.placementSequence} " +
                 "reason=$reason anchor=${anchor.world}:${anchor.x},${anchor.y},${anchor.z}",

@@ -80,7 +80,10 @@ class FarmDroughtIncidentMockBukkitTest : FunSpec({
         val controller = FarmDroughtIncident(
             settings = { mockk<ArcFarmsConfig>(relaxed = true) },
             debug = ArcFarmsDebug({ false }) {},
-            port = port,
+            access = port,
+            audience = port,
+            state = port,
+            tasks = port,
             blockLedger = mockk<FarmBlockLedger>(relaxed = true),
             blockRegistry = mockk<FarmBlockRegistry>(relaxed = true),
             beds = FarmIncidentBedProvider { emptySet() },

@@ -12,7 +12,7 @@ import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetCandidate
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.mine.incident.MineIncidentCoordinator
@@ -31,7 +31,7 @@ internal class MineFloodingIncident(
     private val incidents: MineIncidentCoordinator,
     private val journal: MineIncidentBlockJournal,
     private val items: WorksiteServiceItems?,
-    private val port: WorksiteRuntimePort,
+    private val state: WorksiteStatePort,
 ) {
     fun start(runtime: MineRuntime, required: Int, now: Long): Boolean {
         val candidates = candidates(runtime)
@@ -56,7 +56,7 @@ internal class MineFloodingIncident(
             )
             return false
         }
-        port.persistAsync()
+        state.persistAsync()
         return true
     }
 
@@ -114,7 +114,7 @@ internal class MineFloodingIncident(
         val incident = runtime.state.incident ?: return
         if (incident.type != MineIncidentType.FLOODING || incident.serviceLeases[identity.itemId] != playerId) return
         runtime.state = runtime.state.copy(incident = incident.copy(serviceLeases = incident.serviceLeases - identity.itemId))
-        port.persistAsync()
+        state.persistAsync()
     }
 
     fun releasePlayer(playerId: UUID): Boolean {

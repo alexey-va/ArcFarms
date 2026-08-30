@@ -63,7 +63,10 @@ class FarmFixedCropRecoveryControllerMockBukkitTest : FunSpec({
             ledger = FarmBlockLedger(plugin),
             locale = mockk<ArcFarmsLocale>(relaxed = true),
             debug = ArcFarmsDebug({ false }) {},
+            access = port,
             port = port,
+            state = port,
+            tasks = port,
             runtimes = { listOf(runtime) },
             clock = { 1_000L },
         )
@@ -106,7 +109,10 @@ class FarmFixedCropRecoveryControllerMockBukkitTest : FunSpec({
             ledger = ledger,
             locale = mockk<ArcFarmsLocale>(relaxed = true),
             debug = ArcFarmsDebug({ false }) {},
+            access = port,
             port = port,
+            state = port,
+            tasks = port,
             runtimes = { listOf(runtime) },
             clock = { 1_000L },
         )

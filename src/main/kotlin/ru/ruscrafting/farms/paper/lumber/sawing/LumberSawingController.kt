@@ -11,7 +11,9 @@ import ru.ruscrafting.farms.domain.LumberShiftEvent
 import ru.ruscrafting.farms.domain.LumberShiftState
 import ru.ruscrafting.farms.domain.lumber.LumberSawSequence
 import ru.ruscrafting.farms.domain.lumber.LumberSawSide
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.lumber.LumberRuntime
 import ru.ruscrafting.farms.paper.lumber.LumberRuntimeRegistry
 import ru.ruscrafting.farms.paper.lumber.LumberTransitionCoordinator
@@ -20,7 +22,9 @@ import java.util.logging.Level
 internal class LumberSawingController(
     private val registry: LumberRuntimeRegistry,
     private val transitions: LumberTransitionCoordinator,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
+    private val state: WorksiteStatePort,
     private val clock: () -> Long,
     private val startStacking: (LumberRuntime, LumberShiftState) -> LumberShiftState,
     private val reconcileStacking: (LumberRuntime) -> Unit,
@@ -30,11 +34,11 @@ internal class LumberSawingController(
         if (runtime.state.phase != LumberPhase.SAWING) return false
         val side = side(runtime, clicked.type.name) ?: return false
         event.isCancelled = true
-        if (!port.hasAccess(player, runtime.settings.permission)) {
-            port.sendChat(player, MessageKey.ZONE_LOCKED)
+        if (!access.hasAccess(player, runtime.settings.permission)) {
+            audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return true
         }
-        if (!port.allowInteraction("lumber-saw:${runtime.settings.id}:${player.uniqueId}", 150L)) return true
+        if (!access.allowInteraction("lumber-saw:${runtime.settings.id}:${player.uniqueId}", 150L)) return true
         use(runtime, side, player, clock())
         return true
     }
@@ -61,7 +65,7 @@ internal class LumberSawingController(
         transitions.apply(runtime, applied, player)
         if (state.phase == LumberPhase.STACKING) {
             runCatching { reconcileStacking(runtime) }.onFailure { failure ->
-                port.log(Level.WARNING, "Could not reconcile lumber pallets for ${runtime.settings.id}", failure)
+                this.state.log(Level.WARNING, "Could not reconcile lumber pallets for ${runtime.settings.id}", failure)
             }
         }
         return applied
@@ -82,7 +86,7 @@ internal class LumberSawingController(
         } else {
             MessageKey.LUMBER_SAW_RIGHT
         }
-        port.sendActionBar(player, key)
-        port.showScreenTitle(player, key, scope = "lumber:saw:${runtime.settings.id}")
+        audience.sendActionBar(player, key)
+        audience.showScreenTitle(player, key, scope = "lumber:saw:${runtime.settings.id}")
     }
 }

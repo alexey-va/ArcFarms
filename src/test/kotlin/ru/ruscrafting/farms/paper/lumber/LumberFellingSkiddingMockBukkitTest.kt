@@ -48,7 +48,7 @@ class LumberFellingSkiddingMockBukkitTest : FunSpec({
         val playerB = paper.server.addPlayer("LoggerB")
         val effects = RecordingBundleEffects()
         val port = lumberTestPort()
-        val graph = LumbermillComponentGraph(
+        val graph = testLumbermillComponentGraph(
             paper.createSimplePlugin("LumberSliceTest"),
             CuboidRegionGateway(),
             port,
@@ -95,7 +95,7 @@ class LumberFellingSkiddingMockBukkitTest : FunSpec({
         val unindexed = world.getBlockAt(6, 64, 2).also { it.type = Material.OAK_LOG }
         val wrong = world.getBlockAt(2, 64, 4).also { it.type = Material.BIRCH_LOG }
         val player = paper.server.addPlayer("CarefulLogger")
-        val graph = LumbermillComponentGraph(
+        val graph = testLumbermillComponentGraph(
             paper.createSimplePlugin("LumberGuardTest"),
             CuboidRegionGateway(),
             lumberTestPort(),

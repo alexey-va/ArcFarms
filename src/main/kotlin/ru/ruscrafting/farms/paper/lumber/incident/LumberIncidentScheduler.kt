@@ -2,7 +2,7 @@ package ru.ruscrafting.farms.paper.lumber.incident
 
 import ru.ruscrafting.farms.domain.LumberIncidentType
 import ru.ruscrafting.farms.domain.LumberPhase
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.lumber.LumberRuntime
 import ru.ruscrafting.farms.paper.lumber.incident.beetle.LumberBarkBeetleIncident
 import ru.ruscrafting.farms.paper.lumber.incident.conveyor.LumberConveyorIncident
@@ -23,7 +23,7 @@ internal class LumberIncidentScheduler(
     private val lostLoad: LumberLostLoadIncident,
     private val warped: LumberWarpedBatchIncident,
     private val rush: LumberRushOrderIncident,
-    private val port: WorksiteRuntimePort,
+    private val state: WorksiteStatePort,
 ) {
     private val retryAfter = mutableMapOf<String, Long>()
 
@@ -51,7 +51,7 @@ internal class LumberIncidentScheduler(
             LumberIncidentType.RUSH_ORDER -> rush.start(runtime, now, RUSH_DURATION_MILLIS).also { accepted ->
                 if (accepted) {
                     runtime.state = runtime.state.copy(incidentCursor = runtime.state.incidentCursor + 1)
-                    port.persistAsync()
+                    state.persistAsync()
                 }
             }
         }

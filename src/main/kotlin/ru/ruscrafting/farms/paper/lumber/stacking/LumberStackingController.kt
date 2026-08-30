@@ -26,7 +26,8 @@ import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus
 import ru.ruscrafting.farms.domain.worksite.WorksiteObjectiveKey
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.lumber.LumberRuntime
 import ru.ruscrafting.farms.paper.lumber.LumberRuntimeRegistry
 import ru.ruscrafting.farms.paper.lumber.LumberTransitionCoordinator
@@ -148,7 +149,7 @@ internal class LumberStackingScene(
     private val registry: LumberRuntimeRegistry,
     private val effects: LumberStackingEffects,
     private val transitions: LumberTransitionCoordinator,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
 ) {
     private data class Carry(val zoneId: String, val sequence: Long)
     private val carried = mutableMapOf<UUID, Carry>()
@@ -179,7 +180,7 @@ internal class LumberStackingScene(
 
     fun pickupPlank(runtime: LumberRuntime, player: Player): Boolean {
         if (runtime.state.phase != LumberPhase.STACKING || player.uniqueId in carried) return false
-        if (!port.hasAccess(player, runtime.settings.permission)) return false
+        if (!access.hasAccess(player, runtime.settings.permission)) return false
         if (carried.values.count { it.zoneId == runtime.settings.id && it.sequence == runtime.state.sequence } >= remaining(runtime)) return false
         carried[player.uniqueId] = Carry(runtime.settings.id, runtime.state.sequence)
         effects.showCarried(runtime, player)
@@ -251,14 +252,15 @@ internal class LumberStackingScene(
 internal class LumberStackingController(
     private val registry: LumberRuntimeRegistry,
     private val scene: LumberStackingScene,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
 ) {
     fun onInteract(event: PlayerInteractEvent, clicked: Block, player: Player): Boolean {
         val runtime = registry.snapshot().firstOrNull { it.station.contains(clicked.location) } ?: return false
         if (runtime.state.phase != LumberPhase.STACKING || clicked.type.name != rackMaterial(runtime)) return false
         event.isCancelled = true
-        if (!port.allowInteraction("lumber-plank:${runtime.settings.id}:${player.uniqueId}", 350L)) return true
-        if (!scene.pickupPlank(runtime, player)) port.sendActionBar(player, MessageKey.LUMBER_PLANK_UNAVAILABLE)
+        if (!access.allowInteraction("lumber-plank:${runtime.settings.id}:${player.uniqueId}", 350L)) return true
+        if (!scene.pickupPlank(runtime, player)) audience.sendActionBar(player, MessageKey.LUMBER_PLANK_UNAVAILABLE)
         return true
     }
 
@@ -275,7 +277,7 @@ internal class LumberStackingController(
         val carry = registry.snapshot().firstOrNull { runtime ->
             runtime.state.phase == LumberPhase.STACKING && !runtime.region.contains(to) && !runtime.station.contains(to)
         } ?: return false
-        return scene.releasePlayer(player.uniqueId).also { if (it) port.sendActionBar(player, MessageKey.LUMBER_PLANK_RETURNED) }
+        return scene.releasePlayer(player.uniqueId).also { if (it) audience.sendActionBar(player, MessageKey.LUMBER_PLANK_RETURNED) }
     }
 
     fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) = scene.releasePlayer(player.uniqueId)

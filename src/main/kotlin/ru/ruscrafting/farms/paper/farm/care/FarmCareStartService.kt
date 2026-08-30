@@ -3,13 +3,13 @@ package ru.ruscrafting.farms.paper.farm.care
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.nextPlacementSequence
 import ru.ruscrafting.farms.paper.FarmRuntime
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.farm.care.mole.FarmMoleBurrowController
 import java.util.logging.Level
 
 /** Prepares and rolls back world-backed care resources around the state transition. */
 internal class FarmCareStartService(
-    private val port: WorksiteRuntimePort,
+    private val port: WorksiteStatePort,
     private val moles: FarmMoleBurrowController,
 ) {
     fun prepare(runtime: FarmRuntime, plan: FarmCarePlan): Boolean {

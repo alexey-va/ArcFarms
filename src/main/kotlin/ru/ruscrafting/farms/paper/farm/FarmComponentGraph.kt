@@ -10,7 +10,7 @@ import ru.ruscrafting.farms.paper.FarmBlockRegistry
 import ru.ruscrafting.farms.paper.FarmEconomyGateway
 import ru.ruscrafting.farms.paper.FarmNightShiftController
 import ru.ruscrafting.farms.paper.RegionGateway
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksitePorts
 import ru.ruscrafting.farms.paper.farm.admin.FarmGameplayAdminService
 import ru.ruscrafting.farms.paper.farm.admin.FarmPointAdminService
 import ru.ruscrafting.farms.paper.farm.admin.FarmRouteAdminService
@@ -30,6 +30,7 @@ import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentContr
 import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
 import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingIncident
 import ru.ruscrafting.farms.paper.farm.incident.fire.FarmBarnFireIncident
+import ru.ruscrafting.farms.paper.farm.incident.frost.FarmFrostIncident
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
 import ru.ruscrafting.farms.paper.farm.point.FarmPointService
 import ru.ruscrafting.farms.paper.farm.perk.FarmPerkController
@@ -71,7 +72,7 @@ internal class FarmComponentGraph(
     economy: FarmEconomyGateway,
     runtimeValidator: ArcFarmsRuntimeValidator,
     regionGateway: RegionGateway,
-    port: WorksiteRuntimePort,
+    ports: WorksitePorts,
     taskSupervisor: ru.ruscrafting.farms.paper.RuntimeTaskSupervisor,
     clock: () -> Long,
     random: RandomGenerator,
@@ -89,7 +90,7 @@ internal class FarmComponentGraph(
     private val ledger = FarmBlockLedger(plugin)
     val blockRegistry = FarmBlockRegistry(plugin, ledger, clock)
     val pointService = FarmPointService(settings, farmLocationRepository)
-    val routeAdmin = FarmRouteAdminService(farmRouteRepository, debug, port, runtimes::snapshot)
+    val routeAdmin = FarmRouteAdminService(farmRouteRepository, debug, ports.audience, runtimes::snapshot)
     private val basePoints = FarmPointProvider(pointService::resolveBase)
     private val placement = FarmPlacementService(plugin, blockRegistry, basePoints, debug, random)
     private val moleBurrowWorld = FarmMoleBurrowWorld(plugin, debug, moleChunkRetention, blockDataDecoder)
@@ -101,8 +102,8 @@ internal class FarmComponentGraph(
         overrides = pointService::snapshot,
         random = random,
         moleBurrow = moleBurrowWorld,
-        participantCount = { region -> port.players(region).size },
-        log = port::log,
+        participantCount = { region -> ports.audience.players(region).size },
+        log = ports.state::log,
     )
     private val points = FarmPointProvider { runtime, kind ->
         carePlans.fixturePoint(runtime, kind) ?: pointService.resolveBase(runtime, kind)
@@ -115,14 +116,20 @@ internal class FarmComponentGraph(
         ledger = ledger,
         locale = locale,
         debug = debug,
-        port = port,
+        access = ports.access,
+        port = ports.audience,
+        state = ports.state,
+        tasks = ports.tasks,
         runtimes = runtimes::snapshot,
         clock = clock,
     )
     private val field = FarmFieldController(
         settings = settings,
         debug = debug,
-        port = port,
+        access = ports.access,
+        audience = ports.audience,
+        state = ports.state,
+        tasks = ports.tasks,
         ledger = ledger,
         registry = blockRegistry,
         points = points,
@@ -134,7 +141,10 @@ internal class FarmComponentGraph(
         settings = settings,
         locale = locale,
         debug = debug,
-        port = port,
+        access = ports.access,
+        audience = ports.audience,
+        state = ports.state,
+        tasks = ports.tasks,
         world = moleBurrowWorld,
         transitions = transitions,
         runtimes = runtimes::snapshot,
@@ -147,7 +157,9 @@ internal class FarmComponentGraph(
         settings = settings,
         locale = locale,
         debug = debug,
-        port = port,
+        access = ports.access,
+        audience = ports.audience,
+        state = ports.state,
         ledger = ledger,
         registry = blockRegistry,
         plans = carePlans,
@@ -158,13 +170,31 @@ internal class FarmComponentGraph(
         clock = clock,
     )
     private val incidentBeds = FarmIncidentBedProvider(field::incidentBeds)
+    private val frost = FarmFrostIncident(
+        plugin = plugin,
+        settings = settings,
+        locale = locale,
+        debug = debug,
+        access = ports.access,
+        audience = ports.audience,
+        state = ports.state,
+        ledger = ledger,
+        beds = incidentBeds,
+        points = points,
+        transitions = transitions,
+        runtimes = runtimes::snapshot,
+        clock = clock,
+    )
     private val nightShift = FarmNightShiftController(plugin)
     private val birds = FarmBirdIncident(
         plugin = plugin,
         settings = settings,
         locale = locale,
         debug = debug,
-        port = port,
+        access = ports.access,
+        audience = ports.audience,
+        state = ports.state,
+        tasks = ports.tasks,
         ledger = ledger,
         beds = incidentBeds,
         transitions = transitions,
@@ -174,7 +204,10 @@ internal class FarmComponentGraph(
         settings = settings,
         locale = locale,
         debug = debug,
-        port = port,
+        access = ports.access,
+        audience = ports.audience,
+        state = ports.state,
+        tasks = ports.tasks,
         routes = routeAdmin,
         points = points,
         transitions = transitions,
@@ -190,7 +223,10 @@ internal class FarmComponentGraph(
         settings = settings,
         locale = locale,
         debug = debug,
-        port = port,
+        access = ports.access,
+        audience = ports.audience,
+        state = ports.state,
+        tasks = ports.tasks,
         points = points,
         runtimes = runtimes::snapshot,
         weeklyContribution = weeklyContribution,
@@ -203,10 +239,10 @@ internal class FarmComponentGraph(
         locale = locale,
         economy = economy,
         debug = debug,
-        port = port,
+        port = ports.audience,
         supervisor = taskSupervisor,
         persistAsync = persistAsync,
-        operational = port::isOperational,
+        operational = ports.access::isOperational,
         playerMultiplier = { playerId, runtime ->
             perks.rewardMultiplier(playerId, runtime.settings.perks.rewardBonusPercent)
         },
@@ -216,7 +252,7 @@ internal class FarmComponentGraph(
         plugin = plugin,
         settings = settings,
         debug = debug,
-        port = port,
+        port = ports.audience,
         points = points,
         placement = placement,
         transitions = transitions,
@@ -225,19 +261,24 @@ internal class FarmComponentGraph(
     val drought = FarmDroughtIncident(
         settings = settings,
         debug = debug,
-        port = port,
+        access = ports.access,
+        audience = ports.audience,
+        state = ports.state,
+        tasks = ports.tasks,
         blockLedger = ledger,
         blockRegistry = blockRegistry,
         beds = incidentBeds,
         transitions = transitions,
         clock = clock,
     )
-    private val recovery = FarmIncidentRecoveryController(ledger, port)
+    private val recovery = FarmIncidentRecoveryController(ledger, ports.access, ports.state)
     private val harvest = FarmHarvestController(
         settings = settings,
         locale = locale,
         debug = debug,
-        port = port,
+        access = ports.access,
+        audience = ports.audience,
+        tasks = ports.tasks,
         ledger = ledger,
         fixedCrops = fixedCrops,
         incidentRecovery = recovery,
@@ -255,7 +296,9 @@ internal class FarmComponentGraph(
         settings = settings,
         locale = locale,
         debug = debug,
-        port = port,
+        access = ports.access,
+        audience = ports.audience,
+        state = ports.state,
         ledger = ledger,
         registry = blockRegistry,
         beds = incidentBeds,
@@ -270,7 +313,9 @@ internal class FarmComponentGraph(
         settings = settings,
         locale = locale,
         debug = debug,
-        port = port,
+        access = ports.access,
+        audience = ports.audience,
+        state = ports.state,
         configuredPoint = pointService::configured,
         transitions = transitions,
         blockPassability = blockPassability,
@@ -279,7 +324,9 @@ internal class FarmComponentGraph(
     private val barnFire = FarmBarnFireIncident(
         settings = settings,
         debug = debug,
-        port = port,
+        access = ports.access,
+        audience = ports.audience,
+        state = ports.state,
         points = points,
         transitions = transitions,
         blockPassability = blockPassability,
@@ -289,7 +336,9 @@ internal class FarmComponentGraph(
         settings = settings,
         locale = locale,
         debug = debug,
-        port = port,
+        access = ports.access,
+        audience = ports.audience,
+        state = ports.state,
         points = points,
         special = special,
         runtimes = runtimes::snapshot,
@@ -299,7 +348,10 @@ internal class FarmComponentGraph(
         settings = settings,
         locale = locale,
         debug = debug,
-        port = port,
+        access = ports.access,
+        audience = ports.audience,
+        state = ports.state,
+        tasks = ports.tasks,
         blockLedger = ledger,
         blockRegistry = blockRegistry,
         beds = incidentBeds,
@@ -310,7 +362,9 @@ internal class FarmComponentGraph(
         settings = settings,
         locale = locale,
         debug = debug,
-        port = port,
+        access = ports.access,
+        audience = ports.audience,
+        tasks = ports.tasks,
         delivery = delivery,
         foodDelivery = foodDelivery,
         special = special,
@@ -319,7 +373,9 @@ internal class FarmComponentGraph(
     )
     private val guidance = FarmGuidanceController(
         settings = settings,
-        port = port,
+        access = ports.access,
+        audience = ports.audience,
+        tasks = ports.tasks,
         care = care,
         carePlans = carePlans,
         delivery = delivery,
@@ -331,7 +387,10 @@ internal class FarmComponentGraph(
         settings = settings,
         locale = locale,
         debug = debug,
-        port = port,
+        port = ports.audience,
+        state = ports.state,
+        stats = ports.stats,
+        network = ports.network,
         carePlans = carePlans,
         care = care,
         drought = drought,
@@ -341,6 +400,7 @@ internal class FarmComponentGraph(
         special = special,
         processing = processing,
         barnFire = barnFire,
+        frost = frost,
         delivery = delivery,
         scene = scene,
         supplies = supplies,
@@ -348,13 +408,14 @@ internal class FarmComponentGraph(
         hud = hud,
         points = points,
     )
-    val orderCycle = FarmOrderCycleController(port, persistAsync)
+    val orderCycle = FarmOrderCycleController(ports.state, ports.tasks, persistAsync)
     val worldAdmin = FarmWorldAdminService(
         plugin = plugin,
         dataFolder = plugin.dataFolder.toPath(),
         locale = locale,
         debug = debug,
-        port = port,
+        access = ports.access,
+        audience = ports.audience,
         ledger = ledger,
         registry = blockRegistry,
         fixedCrops = fixedCrops,
@@ -372,7 +433,10 @@ internal class FarmComponentGraph(
     )
     private val shiftStart = FarmShiftStartService(
         debug = debug,
-        port = port,
+        access = ports.access,
+        audience = ports.audience,
+        state = ports.state,
+        tasks = ports.tasks,
         orderCycle = orderCycle,
         worldAdmin = worldAdmin,
         registry = blockRegistry,
@@ -385,7 +449,9 @@ internal class FarmComponentGraph(
     val events = FarmEventRouter(
         locale = locale,
         debug = debug,
-        port = port,
+        access = ports.access,
+        audience = ports.audience,
+        state = ports.state,
         runtimes = runtimes::snapshot,
         worldAdmin = worldAdmin,
         ledger = ledger,
@@ -402,6 +468,7 @@ internal class FarmComponentGraph(
         special = special,
         processing = processing,
         barnFire = barnFire,
+        frost = frost,
         delivery = delivery,
         supplies = supplies,
         scene = scene,
@@ -415,7 +482,10 @@ internal class FarmComponentGraph(
     val module = FarmModule(
         settings = settings,
         debug = debug,
-        port = port,
+        access = ports.access,
+        audience = ports.audience,
+        state = ports.state,
+        tasks = ports.tasks,
         registry = runtimes,
         regionGateway = regionGateway,
         blockRegistry = blockRegistry,
@@ -437,6 +507,7 @@ internal class FarmComponentGraph(
         special = special,
         processing = processing,
         barnFire = barnFire,
+        frost = frost,
         delivery = delivery,
         scene = scene,
         supplies = supplies,
@@ -451,7 +522,8 @@ internal class FarmComponentGraph(
         settings = settings,
         locale = locale,
         debug = debug,
-        port = port,
+        port = ports.audience,
+        state = ports.state,
         pointService = pointService,
         points = points,
         carePlans = carePlans,
@@ -463,7 +535,9 @@ internal class FarmComponentGraph(
     val gameplayAdmin = FarmGameplayAdminService(
         locale = locale,
         debug = debug,
-        port = port,
+        access = ports.access,
+        port = ports.audience,
+        state = ports.state,
         runtimes = runtimes::snapshot,
         orderCycle = orderCycle,
         worldAdmin = worldAdmin,
@@ -476,6 +550,7 @@ internal class FarmComponentGraph(
         special = special,
         processing = processing,
         barnFire = barnFire,
+        frost = frost,
         incidentRecovery = recovery,
         delivery = delivery,
         scene = scene,

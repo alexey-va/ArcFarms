@@ -6,7 +6,8 @@ import org.bukkit.block.Block
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 import ru.ruscrafting.farms.domain.PendingLumberBlock
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import ru.ruscrafting.farms.paper.lumber.LumberRuntime
 import ru.ruscrafting.farms.paper.worksite.RuntimeComponent
 import ru.ruscrafting.farms.persistence.LumberRecoveryJournal
@@ -40,7 +41,8 @@ internal object PaperLumberBlockEffects : LumberBlockEffects {
 /** Journals original data before any destructive lumber mutation and converges loaded due records. */
 internal class LumberBlockRecoveryController(
     private val journal: LumberRecoveryJournal,
-    private val port: WorksiteRuntimePort,
+    private val state: WorksiteStatePort,
+    private val tasks: WorksiteTaskPort,
     private val clock: () -> Long,
     private val effects: LumberBlockEffects = PaperLumberBlockEffects,
 ) : RuntimeComponent {
@@ -72,7 +74,7 @@ internal class LumberBlockRecoveryController(
             originalBlockData = originalData,
             restoreAt = clock() + runtime.settings.recoverySeconds * 1_000L,
         )
-        val token = port.lifecycleToken()
+        val token = tasks.lifecycleToken()
         val result = CompletableFuture<Boolean>()
         journal.prepare(record).whenComplete { _, failure ->
             if (failure != null) {
@@ -80,7 +82,7 @@ internal class LumberBlockRecoveryController(
                 result.completeExceptionally(failure)
                 return@whenComplete
             }
-            val scheduled = port.runSync(token) {
+            val scheduled = tasks.runSync(token) {
                 try {
                     val valid = runtime.state.sequence == sequence && block.blockData.asString == originalData && stillValid()
                     if (!valid) {
@@ -127,7 +129,7 @@ internal class LumberBlockRecoveryController(
             originalBlockData = originalData,
             restoreAt = clock() + runtime.settings.recoverySeconds * 1_000L,
         )
-        val token = port.lifecycleToken()
+        val token = tasks.lifecycleToken()
         val result = CompletableFuture<Boolean>()
         journal.prepare(record).whenComplete { _, failure ->
             if (failure != null) {
@@ -135,7 +137,7 @@ internal class LumberBlockRecoveryController(
                 result.completeExceptionally(failure)
                 return@whenComplete
             }
-            if (!port.runSync(token) {
+            if (!tasks.runSync(token) {
                     try {
                         if (runtime.state.sequence != sequence || block.blockData.asString != originalData) {
                             result.complete(false)
@@ -160,9 +162,9 @@ internal class LumberBlockRecoveryController(
     fun restoreNow(block: Block): CompletableFuture<Boolean> {
         val record = journal.records().firstOrNull { it.positionKey == positionKey(block) }
             ?: return CompletableFuture.completedFuture(false)
-        val token = port.lifecycleToken()
+        val token = tasks.lifecycleToken()
         val result = CompletableFuture<Boolean>()
-        if (!port.runSync(token) {
+        if (!tasks.runSync(token) {
                 runCatching {
                     effects.restore(block, record.originalBlockData)
                     check(block.blockData.asString == record.originalBlockData)
@@ -186,10 +188,10 @@ internal class LumberBlockRecoveryController(
                 if (block.blockData.asString != record.originalBlockData) effects.restore(block, record.originalBlockData)
                 check(block.blockData.asString == record.originalBlockData) { "Lumber block restoration did not converge" }
                 journal.remove(record.id).whenComplete { _, failure ->
-                    if (failure != null) port.log(Level.WARNING, "Could not retire lumber recovery ${record.id}", failure)
+                    if (failure != null) state.log(Level.WARNING, "Could not retire lumber recovery ${record.id}", failure)
                 }
                 processed++
-            }.onFailure { failure -> port.log(Level.WARNING, "Could not restore lumber block ${record.id}", failure) }
+            }.onFailure { failure -> state.log(Level.WARNING, "Could not restore lumber block ${record.id}", failure) }
         }
         return processed
     }

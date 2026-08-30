@@ -27,7 +27,7 @@ class LumbermillModuleLifecycleMockBukkitTest : FunSpec({
     test("v2 module rebuilds activates and cleans without a second runtime collection") {
         paper.server.addSimpleWorld("world")
         val port = mockk<WorksiteRuntimePort>(relaxed = true)
-        val graph = LumbermillComponentGraph(
+        val graph = testLumbermillComponentGraph(
             paper.createSimplePlugin("LumberModuleTest"),
             CuboidRegionGateway(),
             port,

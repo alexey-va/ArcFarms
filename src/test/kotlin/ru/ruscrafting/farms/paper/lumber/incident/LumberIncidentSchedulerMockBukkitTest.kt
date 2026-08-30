@@ -10,7 +10,7 @@ import ru.ruscrafting.farms.domain.LumberPhase
 import ru.ruscrafting.farms.domain.LumberShiftEngine
 import ru.ruscrafting.farms.paper.CuboidRegionGateway
 import ru.ruscrafting.farms.paper.lumber.ImmediateLumberJournal
-import ru.ruscrafting.farms.paper.lumber.LumbermillComponentGraph
+import ru.ruscrafting.farms.paper.lumber.testLumbermillComponentGraph
 import ru.ruscrafting.farms.paper.lumber.RecordingBundleEffects
 import ru.ruscrafting.farms.paper.lumber.lumberSliceSettings
 import ru.ruscrafting.farms.paper.lumber.lumberTestPort
@@ -26,7 +26,7 @@ class LumberIncidentSchedulerMockBukkitTest : FunSpec({
         for (x in 0..20) for (z in 0..20) world.getBlockAt(x, 63, z).type = Material.STONE
         val player = paper.server.addPlayer("ShiftWorker")
         player.teleport(Location(world, 9.0, 64.0, 9.0))
-        val graph = LumbermillComponentGraph(
+        val graph = testLumbermillComponentGraph(
             paper.createSimplePlugin("LumberSchedulerTest"),
             CuboidRegionGateway(),
             lumberTestPort(listOf(player)),

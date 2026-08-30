@@ -47,7 +47,7 @@ import ru.ruscrafting.farms.paper.FarmSeederMountResult
 import ru.ruscrafting.farms.paper.FarmSeederRigManager
 import ru.ruscrafting.farms.paper.shouldSpawnSeederRig
 import ru.ruscrafting.farms.paper.MaterialRules
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.*
 import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
@@ -65,12 +65,10 @@ internal class FarmCareController(
     private val settings: () -> ArcFarmsConfig,
     private val locale: ArcFarmsLocale,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
-    ledger: FarmBlockLedger,
-    private val registry: FarmBlockRegistry,
-    private val plans: FarmCarePlanService,
-    points: FarmPointProvider,
-    private val moles: FarmMoleBurrowController,
+    private val access: WorksiteAccessPort, private val audience: WorksiteAudiencePort,
+    private val state: WorksiteStatePort, ledger: FarmBlockLedger,
+    private val registry: FarmBlockRegistry, private val plans: FarmCarePlanService,
+    points: FarmPointProvider, private val moles: FarmMoleBurrowController,
     private val transitions: FarmTransitionSink,
     private val runtimes: () -> Collection<FarmRuntime>,
     private val clock: () -> Long,
@@ -80,7 +78,8 @@ internal class FarmCareController(
     private val disease = FarmDiseaseController(
         settings = settings,
         debug = debug,
-        port = port,
+        audience = audience,
+        state = state,
         ledger = ledger,
         transitions = transitions,
         targets = FarmCareTargetSpawner(::ensureFarmCareTarget),
@@ -90,20 +89,21 @@ internal class FarmCareController(
         settings = settings,
         locale = locale,
         debug = debug,
-        port = port,
+        access = access,
+        audience = audience,
         points = points,
         transitions = transitions,
         runtimes = runtimes,
         supplyPoint = { runtime -> plans.fixturePoint(runtime, FarmPointKind.PEN) },
     )
-    private val irrigation = FarmIrrigationController(settings, debug, port, transitions)
+    private val irrigation = FarmIrrigationController(settings, debug, audience, transitions)
     private val seederRig = FarmSeederRigManager(plugin)
     private val machineBlocks = FarmMachineBlockProcessor(ledger)
     private val entities = mutableMapOf<FarmCareEntityKey, MutableSet<UUID>>()
     private val animalFollowers = mutableMapOf<FarmCareEntityKey, UUID>()
     private val reconciledSequences = mutableMapOf<String, Long>()
     private val pollenCharges = FarmPollenCharges()
-    private val starts = FarmCareStartService(port, moles)
+    private val starts = FarmCareStartService(state, moles)
     private val zoneKey = NamespacedKey(plugin, "farm_care_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_care_sequence")
     private val targetKey = NamespacedKey(plugin, "farm_care_target")
@@ -158,7 +158,7 @@ internal class FarmCareController(
             runtime.state.sequence == identity.sequence &&
             runtime.state.careTargets.any { it.id == identity.targetId && it.role == FarmCareRole.SEEDER_HORSE } &&
             runtime.region.contains(event.vehicle.location) && runtime.region.contains(player.location) &&
-            !port.isAdminEditing(player) && port.hasAccess(player, runtime.settings.permission)
+            !access.isAdminEditing(player) && access.hasAccess(player, runtime.settings.permission)
         event.isCancelled = !validRig
         debug.event("farm_seeder_mount", "zone" to identity.zoneId, "player" to player.name, "allowed" to validRig)
     }
@@ -230,7 +230,7 @@ internal class FarmCareController(
         transitions.apply(runtime, result, actor)
         if (selected.type == FarmCareType.DISEASE) disease.start(runtime, clock())
         ensure(runtime)
-        port.persistAsync()
+        state.persistAsync()
         return true
     }
 
@@ -241,13 +241,13 @@ internal class FarmCareController(
         val roleName = entity.persistentDataContainer.get(roleKey, PersistentDataType.STRING) ?: return
         val role = runCatching { FarmCareRole.valueOf(roleName) }.getOrNull() ?: return
         if (runtime.state.phase != FarmPhase.CARE || runtime.state.sequence != sequence || !runtime.region.contains(entity.location)) return
-        if (!port.hasAccess(player, runtime.settings.permission)) {
-            port.sendChat(player, MessageKey.ZONE_LOCKED)
+        if (!access.hasAccess(player, runtime.settings.permission)) {
+            audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return
         }
-        if (!port.allowInteraction("farm-care-target:$zoneId:$targetId:${player.uniqueId}", 250)) return
+        if (!access.allowInteraction("farm-care-target:$zoneId:$targetId:${player.uniqueId}", 250)) return
         if (role == FarmCareRole.PEN) {
-            port.sendActionBar(player, MessageKey.FARM_CARE_ANIMAL_PEN)
+            audience.sendActionBar(player, MessageKey.FARM_CARE_ANIMAL_PEN)
             return
         }
         val target = runtime.state.careTargets.firstOrNull { it.id == targetId && it.role == role } ?: return
@@ -259,11 +259,11 @@ internal class FarmCareController(
             ) ?: return
             when (seederRig.mount(rig, entity, player)) {
                 FarmSeederMountResult.OCCUPIED -> {
-                    port.sendActionBar(player, MessageKey.FARM_CARE_SEEDER_OCCUPIED)
+                    audience.sendActionBar(player, MessageKey.FARM_CARE_SEEDER_OCCUPIED)
                     return
                 }
                 FarmSeederMountResult.RIDER_BUSY, FarmSeederMountResult.FAILED -> {
-                    port.sendActionBar(player, MessageKey.FARM_CARE_SEEDER_MOUNT_FAILED)
+                    audience.sendActionBar(player, MessageKey.FARM_CARE_SEEDER_MOUNT_FAILED)
                     return
                 }
                 FarmSeederMountResult.MOUNTED -> Unit
@@ -276,13 +276,13 @@ internal class FarmCareController(
                     player,
                 )
             }
-            port.sendActionBar(player, MessageKey.FARM_CARE_SEEDER_FOLLOWING)
+            audience.sendActionBar(player, MessageKey.FARM_CARE_SEEDER_FOLLOWING)
             debug.event("farm_seeder_following", "zone" to zoneId, "player" to player.name)
             return
         }
         when (role) {
             FarmCareRole.WEED_ROOT, FarmCareRole.DISEASED_CROP -> if (!MaterialRules.isHoe(player.inventory.itemInMainHand)) {
-                port.sendActionBar(player, MessageKey.FARM_CARE_TOOL)
+                audience.sendActionBar(player, MessageKey.FARM_CARE_TOOL)
                 return
             }
             FarmCareRole.VALVE -> Unit
@@ -293,12 +293,12 @@ internal class FarmCareController(
                     runtime.state.sequence,
                     runtime.settings.pollinationCharges,
                 )
-                port.sendActionBar(player, MessageKey.FARM_CARE_POLLEN_TAKEN)
+                audience.sendActionBar(player, MessageKey.FARM_CARE_POLLEN_TAKEN)
                 if (target.complete) return
             }
             FarmCareRole.FLOWER_PATCH -> {
                 if (!pollenCharges.consume(player.uniqueId, runtime.settings.id, runtime.state.sequence)) {
-                    port.sendActionBar(player, MessageKey.FARM_CARE_POLLEN_REQUIRED)
+                    audience.sendActionBar(player, MessageKey.FARM_CARE_POLLEN_REQUIRED)
                     return
                 }
             }
@@ -310,7 +310,7 @@ internal class FarmCareController(
                     mob.setLeashHolder(player)
                     mob.pathfinder.moveTo(player, 1.15)
                 }
-                port.sendActionBar(player, MessageKey.FARM_CARE_ANIMAL_FOLLOWING)
+                audience.sendActionBar(player, MessageKey.FARM_CARE_ANIMAL_FOLLOWING)
                 debug.event("farm_care_animal_following", "zone" to zoneId, "target" to targetId, "player" to player.name)
                 return
             }
@@ -438,7 +438,7 @@ internal class FarmCareController(
         val location = Location(world, target.position.x, target.position.y, target.position.z)
         if (!runtime.region.contains(location) || !world.isChunkLoaded(location.blockX shr 4, location.blockZ shr 4)) return
         if (!FarmSurfacePolicy.isSurfaceSpawn(location)) {
-            port.log(Level.WARNING, "Skipped covered farm seeder target ${runtime.settings.id}/${target.id}")
+            state.log(Level.WARNING, "Skipped covered farm seeder target ${runtime.settings.id}/${target.id}")
             return
         }
         val rig = seederRig.spawn(
@@ -484,28 +484,28 @@ internal class FarmCareController(
         if (!world.isChunkLoaded(target.position.x.toInt() shr 4, target.position.z.toInt() shr 4)) return
         val location = Location(world, target.position.x, target.position.y, target.position.z)
         if (!runtime.region.contains(location)) {
-            port.log(Level.WARNING, "Farm care target ${runtime.settings.id}/${target.id} is outside ${runtime.region.label}")
+            state.log(Level.WARNING, "Farm care target ${runtime.settings.id}/${target.id} is outside ${runtime.region.label}")
             return
         }
         if (target.role in FARM_OUTDOOR_CARE_ROLES && !FarmSurfacePolicy.isSurfaceSpawn(location)) {
-            if (port.allowInteraction("farm-care-covered:${runtime.settings.id}:${target.id}", TimeUnit.MINUTES.toMillis(5))) {
-                port.log(Level.WARNING, "Skipped covered farm care target ${runtime.settings.id}/${target.id} (${target.role})")
+            if (access.allowInteraction("farm-care-covered:${runtime.settings.id}:${target.id}", TimeUnit.MINUTES.toMillis(5))) {
+                state.log(Level.WARNING, "Skipped covered farm care target ${runtime.settings.id}/${target.id} (${target.role})")
             }
             return
         }
         if (target.role == FarmCareRole.APPLE) {
             val leaf = location.block
             if (!FarmBlockPolicy.isOrchardLeaf(leaf.type, leaf.getRelative(org.bukkit.block.BlockFace.DOWN).type)) {
-                if (port.allowInteraction("farm-apple-anchor-missing:${runtime.settings.id}", TimeUnit.MINUTES.toMillis(5))) {
-                    port.log(Level.WARNING, "Farm apple targets in ${runtime.settings.id} include an unavailable leaf anchor")
+                if (access.allowInteraction("farm-apple-anchor-missing:${runtime.settings.id}", TimeUnit.MINUTES.toMillis(5))) {
+                    state.log(Level.WARNING, "Farm apple targets in ${runtime.settings.id} include an unavailable leaf anchor")
                 }
                 return
             }
         }
         if (target.role == FarmCareRole.ANIMAL) {
             if (!FarmSurfacePolicy.isSurfaceSpawn(location)) {
-                if (port.allowInteraction("farm-animal-covered:${runtime.settings.id}:${target.id}", TimeUnit.MINUTES.toMillis(5))) {
-                    port.log(Level.WARNING, "Skipped covered farm animal target ${runtime.settings.id}/${target.id}")
+                if (access.allowInteraction("farm-animal-covered:${runtime.settings.id}:${target.id}", TimeUnit.MINUTES.toMillis(5))) {
+                    state.log(Level.WARNING, "Skipped covered farm animal target ${runtime.settings.id}/${target.id}")
                 }
                 return
             }
@@ -654,7 +654,7 @@ internal class FarmCareController(
         ) ?: return
         val horse = rig.horse
         val actor = seederRig.rider(rig)?.takeIf { player ->
-            player.isOnline && port.hasAccess(player, runtime.settings.permission) && runtime.region.contains(player.location)
+            player.isOnline && access.hasAccess(player, runtime.settings.permission) && runtime.region.contains(player.location)
         }
         if (actor == null) {
             seederRig.park(rig)
@@ -663,7 +663,7 @@ internal class FarmCareController(
         if (!runtime.region.contains(horse.location)) {
             seederRig.release(rig)
             horse.teleport(Location(horse.world, horseTarget.position.x, horseTarget.position.y, horseTarget.position.z))
-            port.sendActionBar(actor, MessageKey.FARM_CARE_SEEDER_OUTSIDE)
+            audience.sendActionBar(actor, MessageKey.FARM_CARE_SEEDER_OUTSIDE)
             return
         }
         val workingAnimals = seederRig.update(
@@ -679,7 +679,7 @@ internal class FarmCareController(
         }
         if (workingAnimals.isEmpty() || !processField) return
         val participants = seederRig.riders(rig).filterTo(linkedSetOf()) { player ->
-            player.isOnline && port.hasAccess(player, runtime.settings.permission) && runtime.region.contains(player.location)
+            player.isOnline && access.hasAccess(player, runtime.settings.permission) && runtime.region.contains(player.location)
         }
         if (participants.isEmpty()) return
         val stage = requireNotNull(runtime.state.seederStage())
@@ -756,7 +756,7 @@ internal class FarmCareController(
         clear(runtime, reason)
         runtime.state = runtime.state.copy(careTargets = merged)
         ensure(runtime)
-        port.persistAsync()
+        state.persistAsync()
     }
 
     private fun mark(entity: Entity, runtime: FarmRuntime, targetId: Int, role: FarmCareRole) {

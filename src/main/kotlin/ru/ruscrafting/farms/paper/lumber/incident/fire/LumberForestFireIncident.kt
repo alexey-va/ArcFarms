@@ -12,7 +12,8 @@ import ru.ruscrafting.farms.domain.LumberPhase
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetCandidate
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import ru.ruscrafting.farms.paper.lumber.LumberRuntime
 import ru.ruscrafting.farms.paper.lumber.LumberRuntimeRegistry
 import ru.ruscrafting.farms.paper.lumber.incident.LumberIncidentCoordinator
@@ -33,7 +34,8 @@ internal class LumberForestFireIncident(
     private val incidents: LumberIncidentCoordinator,
     private val recovery: LumberBlockRecoveryController,
     private val items: WorksiteServiceItems?,
-    private val port: WorksiteRuntimePort,
+    private val state: WorksiteStatePort,
+    private val tasks: WorksiteTaskPort,
 ) {
     fun start(runtime: LumberRuntime, required: Int, now: Long): Boolean {
         val candidates = candidates(runtime, required * CANDIDATE_MULTIPLIER)
@@ -42,10 +44,10 @@ internal class LumberForestFireIncident(
         candidates.forEach { candidate ->
             val block = candidate.position.block(runtime) ?: return@forEach
             recovery.prepareTemporary(runtime, block, Material.LIGHT).whenComplete { prepared, failure ->
-                if (failure != null) port.log(Level.WARNING, "Could not prepare lumber fire ${candidate.id}", failure)
+                if (failure != null) state.log(Level.WARNING, "Could not prepare lumber fire ${candidate.id}", failure)
                 if (prepared != true) {
-                    val token = port.lifecycleToken()
-                    port.runSync(token) { incidents.invalidate(runtime, candidate.id) }
+                    val token = tasks.lifecycleToken()
+                    tasks.runSync(token) { incidents.invalidate(runtime, candidate.id) }
                 }
             }
         }
@@ -72,7 +74,7 @@ internal class LumberForestFireIncident(
             )
             return false
         }
-        port.persistAsync()
+        state.persistAsync()
         return true
     }
 
@@ -93,8 +95,8 @@ internal class LumberForestFireIncident(
                 if (failure != null) result.completeExceptionally(failure) else result.complete(false)
                 return@whenComplete
             }
-            val token = port.lifecycleToken()
-            if (!port.runSync(token) {
+            val token = tasks.lifecycleToken()
+            if (!tasks.runSync(token) {
                     val completed = incidents.completeTarget(runtime, targetId, player).accepted
                     if (completed && finalTarget) {
                         allPositions.forEach { position -> position.block(runtime)?.let(recovery::restoreNow) }
@@ -139,7 +141,7 @@ internal class LumberForestFireIncident(
         val incident = runtime.state.incident ?: return
         if (incident.type != LumberIncidentType.FOREST_FIRE || incident.serviceLeases[identity.itemId] != playerId) return
         runtime.state = runtime.state.copy(incident = incident.copy(serviceLeases = incident.serviceLeases - identity.itemId))
-        port.persistAsync()
+        state.persistAsync()
     }
 
     private fun active(runtime: LumberRuntime): Boolean =

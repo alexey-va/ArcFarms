@@ -23,6 +23,7 @@ enum class FarmPointKind {
     PROCESSING_INPUT_4,
     PROCESSING_OUTPUT,
     FIRE_EQUIPMENT,
+    FIREWOOD,
 }
 
 data class FarmPointPosition(
@@ -55,6 +56,11 @@ object FarmProcessingPointOrientation {
         }
         return position.copy(yaw = normalizedYaw, pitch = 0f)
     }
+}
+
+/** Ground props keep the operator's facing but never inherit a camera tilt. */
+object FarmGroundDisplayPointOrientation {
+    fun normalize(position: FarmPointPosition): FarmPointPosition = position.copy(pitch = 0f)
 }
 
 data class FarmLocationOverrides(

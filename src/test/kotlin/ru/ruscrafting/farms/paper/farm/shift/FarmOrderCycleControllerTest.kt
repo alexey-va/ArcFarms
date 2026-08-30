@@ -14,7 +14,7 @@ import java.util.concurrent.CompletableFuture
 class FarmOrderCycleControllerTest : FunSpec({
     test("persists a pause mutation and exposes an immutable snapshot") {
         var saves = 0
-        val controller = FarmOrderCycleController(immediatePort()) {
+        val controller = orderCycleController {
             saves++
             CompletableFuture.completedFuture(Unit)
         }
@@ -26,7 +26,7 @@ class FarmOrderCycleControllerTest : FunSpec({
     }
 
     test("rolls the mutation back when durable persistence fails") {
-        val controller = FarmOrderCycleController(immediatePort()) {
+        val controller = orderCycleController {
             CompletableFuture.failedFuture(IllegalStateException("disk unavailable"))
         }
 
@@ -35,7 +35,7 @@ class FarmOrderCycleControllerTest : FunSpec({
     }
 
     test("retains only zones present after configuration reload") {
-        val controller = FarmOrderCycleController(immediatePort()) { CompletableFuture.completedFuture(Unit) }
+        val controller = orderCycleController { CompletableFuture.completedFuture(Unit) }
         controller.replace(listOf("one", "two", "removed"))
 
         controller.retain(setOf("one", "two"))
@@ -50,4 +50,9 @@ private fun immediatePort(): WorksiteRuntimePort = mockk(relaxed = true) {
         secondArg<() -> Unit>().invoke()
         true
     }
+}
+
+private fun orderCycleController(persist: () -> CompletableFuture<Unit>): FarmOrderCycleController {
+    val port = immediatePort()
+    return FarmOrderCycleController(port, port, persist)
 }

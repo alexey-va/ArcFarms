@@ -5,14 +5,18 @@ import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.EngineResult
 import ru.ruscrafting.farms.domain.MineShiftEvent
 import ru.ruscrafting.farms.domain.MineShiftState
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatsPort
 
 /** The only Paper-side writer for V2 mine domain transitions. */
-internal class MineTransitionCoordinator(private val port: WorksiteRuntimePort) {
+internal class MineTransitionCoordinator(
+    private val state: WorksiteStatePort,
+    private val stats: WorksiteStatsPort,
+) {
     fun apply(runtime: MineRuntime, result: EngineResult<MineShiftState, MineShiftEvent>, actor: Player?) {
         if (!result.accepted && result.events.isEmpty()) return
         runtime.state = result.state
-        port.traceResult(
+        state.traceResult(
             ActivityKind.MINE,
             runtime.settings.id,
             actor,
@@ -23,8 +27,8 @@ internal class MineTransitionCoordinator(private val port: WorksiteRuntimePort) 
             result,
         )
         if (actor != null && result.contribution > 0) {
-            port.recordContribution(actor.uniqueId, ActivityKind.MINE, result.contribution)
+            stats.recordContribution(actor.uniqueId, ActivityKind.MINE, result.contribution)
         }
-        port.persistAsync()
+        state.persistAsync()
     }
 }

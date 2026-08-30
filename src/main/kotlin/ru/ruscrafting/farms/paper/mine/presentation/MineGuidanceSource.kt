@@ -11,7 +11,7 @@ import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.worksite.WorksiteGuidanceSource
@@ -22,12 +22,12 @@ import kotlin.math.absoluteValue
 
 internal class MineGuidanceSource(
     private val registry: MineRuntimeRegistry,
-    private val port: WorksiteRuntimePort,
+    private val audience: WorksiteAudiencePort,
     private val locale: ArcFarmsLocale? = null,
     private val routeTarget: (MineRuntime) -> WorksitePosition? = { null },
     private val routeTotal: (MineRuntime) -> Int = { 1 },
 ) : WorksiteGuidanceSource {
-    override fun participants(): Collection<Player> = registry.snapshot().flatMap { port.players(it.region) }
+    override fun participants(): Collection<Player> = registry.snapshot().flatMap { audience.players(it.region) }
         .distinctBy(Player::getUniqueId)
 
     override fun view(playerId: UUID): WorksiteGuidanceView? {

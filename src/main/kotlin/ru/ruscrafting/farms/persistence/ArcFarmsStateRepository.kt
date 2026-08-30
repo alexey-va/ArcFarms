@@ -422,6 +422,26 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
             } else {
                 require(farm.processing == null) { "Inactive farm contains processing state" }
             }
+            farm.frost?.let { frost ->
+                require(farm.phase == FarmPhase.INCIDENT && farm.incidentType == FarmIncidentType.FROST) {
+                    "Farm frost state escaped its active incident"
+                }
+                require(frost.campfires.size in 1..16 && frost.campfires.map { it.position }.distinct().size == frost.campfires.size) {
+                    "Farm frost campfires are invalid"
+                }
+                frost.campfires.forEach { fire ->
+                    validatePlot(fire.position)
+                    require(fire.fuelUntil >= 0) { "Farm frost fuel deadline is invalid" }
+                }
+                require(frost.lastTickAt >= 0 && frost.coolingRemainderMillis >= 0) {
+                    "Farm frost clock is invalid"
+                }
+            }
+            if (farm.incidentType == FarmIncidentType.FROST && farm.phase == FarmPhase.INCIDENT) {
+                require(farm.frost != null) { "Active farm frost state is incomplete" }
+            } else {
+                require(farm.frost == null) { "Inactive farm contains frost state" }
+            }
             require(farm.specialDamagedCrops.size <= 4_096) { "Farm special crop damage is unbounded" }
             require(farm.specialDamagedCrops.distinctBy(FarmCropDamage::position).size == farm.specialDamagedCrops.size) {
                 "Farm special crop damage contains duplicate plots"
@@ -453,6 +473,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 farm.diseaseDamagedCrops.orEmpty().mapTo(this) { it.position.world }
                 farm.specialIncident?.points?.mapTo(this) { it.world }
                 farm.specialIncident?.plots?.mapTo(this, FarmPlotPosition::world)
+                farm.frost?.campfires?.mapTo(this) { it.position.world }
                 farm.specialDamagedCrops.mapTo(this) { it.position.world }
                 farm.deliveryPosition?.world?.let(::add)
             }
@@ -466,7 +487,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                         farm.incidentsResolved == 0 && farm.harvestCheckpoint == 0 && farm.harvestMilestone == 0 &&
                         farm.droughtPlots.isEmpty() && farm.droughtDamagedPlots.isEmpty() &&
                         !farm.pestNestsInitialized && farm.pestNests.isEmpty() && farm.pestAlive == 0 &&
-                        farm.pestDamagedCrops.isEmpty() && farm.specialIncident == null &&
+                        farm.pestDamagedCrops.isEmpty() && farm.specialIncident == null && farm.frost == null &&
                         farm.diseaseDamagedCrops.orEmpty().isEmpty() &&
                         farm.specialDamagedCrops.isEmpty() && farm.rewardMoneyBonusPercent == 0 &&
                         farm.deliveryPosition == null && farm.deliveredCrates.isEmpty() &&

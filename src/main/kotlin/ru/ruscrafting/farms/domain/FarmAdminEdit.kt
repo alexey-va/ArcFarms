@@ -71,6 +71,7 @@ object FarmAdminEdit {
         val specialPlots = state.specialIncident?.plots.orEmpty().filterNot(plots::contains)
         val specialDamage = state.specialDamagedCrops.filterNot { it.position in plots }
         val diseaseDamage = state.diseaseDamagedCrops.orEmpty().filterNot { it.position in plots }
+        val frostCampfires = state.frost?.campfires.orEmpty().filterNot { it.position in plots }
         val specialRequired = if (
             state.phase == FarmPhase.INCIDENT &&
             state.incidentType in setOf(FarmIncidentType.NIGHT_SHIFT, FarmIncidentType.MARKET)
@@ -78,11 +79,14 @@ object FarmAdminEdit {
             state.incidentProgress + specialPlots.count { plot -> specialDamage.none { it.position == plot } }
         } else state.incidentRequired
         val specialResolved = state.phase == FarmPhase.INCIDENT && specialRequired <= state.incidentProgress
+        val frostResolved = state.phase == FarmPhase.INCIDENT && state.incidentType == FarmIncidentType.FROST &&
+            state.frost != null && frostCampfires.isEmpty()
+        val incidentResolved = specialResolved || frostResolved
         val fieldRequired = patch.takeIf { it.isNotEmpty() }
             ?.let { FarmFieldQuota.required(it.size, completionPercent) }
             ?: 0
         val phase = when {
-            specialResolved -> FarmPhase.HARVESTING
+            incidentResolved -> FarmPhase.HARVESTING
             state.phase == FarmPhase.CARE && state.careType == FarmCareType.SEEDER &&
                 planted.size >= fieldRequired && (careTargets.isEmpty() || careTargets.all(FarmCareTarget::complete)) ->
                 FarmPhase.HARVESTING
@@ -110,15 +114,20 @@ object FarmAdminEdit {
                 pestNests = state.pestNests.filterNot { it.position in plots },
                 pestDamagedCrops = state.pestDamagedCrops.filterNot { it.position in plots },
                 diseaseDamagedCrops = diseaseDamage,
-                specialIncident = if (specialResolved) null else state.specialIncident?.copy(plots = specialPlots),
+                specialIncident = if (incidentResolved) null else state.specialIncident?.copy(plots = specialPlots),
+                frost = when {
+                    frostResolved -> null
+                    state.frost != null -> state.frost.copy(campfires = frostCampfires)
+                    else -> null
+                },
                 specialDamagedCrops = specialDamage,
-                incidentCrop = if (specialResolved) null else state.incidentCrop,
-                incidentType = if (specialResolved) null else state.incidentType,
-                incidentProgress = if (specialResolved) 0 else state.incidentProgress,
-                incidentRequired = if (specialResolved) 0 else specialRequired,
-                incidentResolved = state.incidentResolved || specialResolved,
+                incidentCrop = if (incidentResolved) null else state.incidentCrop,
+                incidentType = if (incidentResolved) null else state.incidentType,
+                incidentProgress = if (incidentResolved) 0 else state.incidentProgress,
+                incidentRequired = if (incidentResolved) 0 else specialRequired,
+                incidentResolved = state.incidentResolved || incidentResolved,
                 incidentsResolved = (
-                    state.incidentsResolved + if (specialResolved) 1 else 0
+                    state.incidentsResolved + if (incidentResolved) 1 else 0
                 ).coerceAtMost(MAX_FARM_INCIDENTS),
             ),
             careTargetIds = targetIds,

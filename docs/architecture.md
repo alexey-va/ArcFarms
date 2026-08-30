@@ -93,16 +93,21 @@ Event routing stays capability-based (`BlockBreak`, `BlockInteract`, `Move`,
 not introduce one untyped universal event bus or a `when` over every Bukkit
 event in every module.
 
-The current broad `WorksiteRuntimePort` is split while migration proceeds:
+Worksite infrastructure is split into narrow capability ports:
 
-- `PlayerAudiencePort`: localized chat, action bar, title, boss bar, particles,
+- `WorksiteAudiencePort`: localized chat, action bar, title, boss bar, particles,
   sound;
 - `WorksiteAccessPort`: permission and region access;
 - `WorksiteStatePort`: asynchronous gameplay persistence requests, lifecycle-only
   blocking flushes and immutable snapshot contribution;
 - `WorksiteNetworkPort`: bounded cross-server signals;
-- `RuntimeTasks`: epoch/token-aware sync scheduling;
-- `ActivityStatsPort`: contributions and completion.
+- `WorksiteTaskPort`: epoch/token-aware sync scheduling;
+- `WorksiteStatsPort`: contributions and completion.
+
+`PaperWorksiteAdapter` implements all six capabilities, while the wiring-only
+`WorksitePorts` bundle is restricted to composition roots. Gameplay owners
+receive only the ports they actually call; there is no production compatibility
+composite.
 
 A feature constructor should normally depend on no more than five typed ports.
 Clock and random sources are injectable values, not service callbacks. Do not

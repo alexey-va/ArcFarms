@@ -20,7 +20,8 @@ import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmRuntime
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
@@ -33,7 +34,8 @@ internal fun interface FarmCareTargetSpawner {
 internal class FarmDiseaseController(
     private val settings: () -> ArcFarmsConfig,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val audience: WorksiteAudiencePort,
+    private val state: WorksiteStatePort,
     private val ledger: FarmBlockLedger,
     private val transitions: FarmTransitionSink,
     private val targets: FarmCareTargetSpawner,
@@ -55,10 +57,10 @@ internal class FarmDiseaseController(
         val normalized = FarmShiftEngine.normalizeDisease(runtime.state)
         if (normalized.accepted) {
             transitions.apply(runtime, normalized, null)
-            port.persistAsync()
+            state.persistAsync()
             if (!active(runtime)) return
         }
-        if (port.players(runtime.region).isEmpty()) {
+        if (audience.players(runtime.region).isEmpty()) {
             // Empty farms pause the challenge instead of silently losing crops.
             start(runtime, now)
             return
@@ -113,12 +115,12 @@ internal class FarmDiseaseController(
         killAt.getOrPut(runtime.settings.id, ::mutableMapOf)[target.id] =
             now + runtime.settings.diseaseKillSeconds * 1_000L
         targets.ensure(runtime, target)
-        port.players(runtime.region).forEach { player ->
-            port.sendActionBar(player, MessageKey.FARM_CARE_DISEASE_SPREAD)
+        audience.players(runtime.region).forEach { player ->
+            audience.sendActionBar(player, MessageKey.FARM_CARE_DISEASE_SPREAD)
             if (settings().sounds) player.playSound(player.location, Sound.BLOCK_SCULK_SPREAD, 0.55f, 1.45f)
         }
         debug.event("farm_disease_spread", "zone" to runtime.settings.id, "target" to target.id, "total" to total)
-        port.persistAsync()
+        state.persistAsync()
     }
 
     private fun refreshKillDeadlines(runtime: FarmRuntime, now: Long) {
@@ -180,7 +182,7 @@ internal class FarmDiseaseController(
             crop.world.spawnParticle(Particle.SMOKE, crop.location.add(0.5, 0.8, 0.5), 12, 0.3, 0.35, 0.3, 0.02)
         }
         debug.event("farm_disease_crop_killed", "zone" to runtime.settings.id, "target" to target.id, "plot" to plot)
-        port.persistAsync()
+        state.persistAsync()
         return true
     }
 
@@ -197,7 +199,7 @@ internal class FarmDiseaseController(
             registerSpread(runtime, replacement, now, result.state.careTargets.count { it.role == FarmCareRole.DISEASED_CROP })
         } else {
             debug.event("farm_disease_target_expired", "zone" to runtime.settings.id, "target" to expired.id)
-            port.persistAsync()
+            state.persistAsync()
         }
     }
 

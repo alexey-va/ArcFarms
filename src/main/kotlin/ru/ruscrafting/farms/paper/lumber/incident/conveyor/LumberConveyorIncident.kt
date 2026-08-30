@@ -11,7 +11,7 @@ import ru.ruscrafting.farms.domain.LumberPhase
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetCandidate
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.lumber.LumberRuntime
 import ru.ruscrafting.farms.paper.lumber.LumberRuntimeRegistry
 import ru.ruscrafting.farms.paper.lumber.incident.LumberIncidentCoordinator
@@ -24,7 +24,7 @@ internal class LumberConveyorIncident(
     private val registry: LumberRuntimeRegistry,
     private val incidents: LumberIncidentCoordinator,
     private val items: WorksiteServiceItems?,
-    private val port: WorksiteRuntimePort,
+    private val state: WorksiteStatePort,
 ) {
     fun start(runtime: LumberRuntime, required: Int, now: Long): Boolean = incidents.start(
         runtime,
@@ -48,7 +48,7 @@ internal class LumberConveyorIncident(
             )
             return false
         }
-        port.persistAsync()
+        state.persistAsync()
         return true
     }
 
@@ -94,7 +94,7 @@ internal class LumberConveyorIncident(
         val incident = runtime.state.incident ?: return
         if (incident.type != LumberIncidentType.CONVEYOR_BREAKDOWN || incident.serviceLeases[identity.itemId] != playerId) return
         runtime.state = runtime.state.copy(incident = incident.copy(serviceLeases = incident.serviceLeases - identity.itemId))
-        port.persistAsync()
+        state.persistAsync()
     }
 
     private fun identity(runtime: LumberRuntime, itemId: String): ServiceItemIdentity = ServiceItemIdentity(

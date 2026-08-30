@@ -27,7 +27,9 @@ import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmBlockRegistry
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.blockIndexDefinition
 import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmShiftLauncher
@@ -43,6 +45,7 @@ import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentContr
 import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
 import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingIncident
 import ru.ruscrafting.farms.paper.farm.incident.fire.FarmBarnFireIncident
+import ru.ruscrafting.farms.paper.farm.incident.frost.FarmFrostIncident
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
 import ru.ruscrafting.farms.paper.farm.presentation.FarmGuidanceController
 import ru.ruscrafting.farms.paper.farm.recovery.FarmIncidentRecoveryController
@@ -59,7 +62,9 @@ import java.util.concurrent.CompletableFuture
 internal class FarmGameplayAdminService(
     private val locale: ArcFarmsLocale,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val port: WorksiteAudiencePort,
+    private val state: WorksiteStatePort,
     private val runtimes: () -> Collection<FarmRuntime>,
     private val orderCycle: FarmOrderCycleController,
     private val worldAdmin: FarmWorldAdminService,
@@ -72,6 +77,7 @@ internal class FarmGameplayAdminService(
     private val special: FarmSpecialIncidentController,
     private val processing: FarmProcessingIncident,
     private val barnFire: FarmBarnFireIncident,
+    private val frost: FarmFrostIncident,
     private val incidentRecovery: FarmIncidentRecoveryController,
     private val delivery: FarmDeliveryController,
     private val scene: FarmContractSceneController,
@@ -105,7 +111,7 @@ internal class FarmGameplayAdminService(
                 "patch" to patchSize,
             )
             if (elapsedMillis >= SLOW_ADMIN_STAGE_MILLIS) {
-                port.log(
+                state.log(
                     java.util.logging.Level.WARNING,
                     "ArcFarms admin stage was slow: zone=$zoneId stage=$stage " +
                         "success=$succeeded elapsed=${elapsedMillis}ms patch=$patchSize",
@@ -337,6 +343,7 @@ internal class FarmGameplayAdminService(
         foodDelivery.clear(runtime.settings.id, "admin_stage")
         processing.clear(runtime.settings.id, "admin_stage")
         barnFire.clear(runtime.settings.id, "admin_stage")
+        frost.clear(runtime, "admin_stage")
         restoreGiantCrop(runtime, "admin_stage")
         special.clearZone(runtime, "admin_stage")
         // An explicit admin transition must leave no incident journal behind. A bounded
@@ -348,7 +355,7 @@ internal class FarmGameplayAdminService(
             port.sendChat(player, MessageKey.ADMIN_INCIDENT_RECOVERY_PENDING, mapOf("count" to locale.text(incidentRecovery.remaining(runtime))))
             return false
         }
-        runtime.state = runtime.state.copy(specialIncident = null, processing = null, specialDamagedCrops = emptyList())
+        runtime.state = runtime.state.copy(specialIncident = null, frost = null, processing = null, specialDamagedCrops = emptyList())
         delivery.clear(runtime, "admin_stage")
         return true
     }
@@ -428,7 +435,7 @@ internal class FarmGameplayAdminService(
             pestNestsInitialized = false, pestNests = emptyList(), pestAlive = 0,
             pestDamagedCrops = emptyList(), diseaseDamagedCrops = emptyList(),
             specialIncident = null, specialDamagedCrops = emptyList(),
-            processing = null,
+            frost = null, processing = null,
         )
     }
 
@@ -465,6 +472,7 @@ internal class FarmGameplayAdminService(
         foodDelivery.clear(runtime.settings.id, "admin_reset")
         processing.clear(runtime.settings.id, "admin_reset")
         barnFire.clear(runtime.settings.id, "admin_reset")
+        frost.clear(runtime, "admin_reset")
         restoreGiantCrop(runtime, "admin_reset")
         special.clearZone(runtime, "admin_reset")
         delivery.clear(runtime, "admin_reset")
@@ -570,7 +578,7 @@ internal class FarmGameplayAdminService(
         return true
     }
 
-    private fun resetPatchScan(runtime: FarmRuntime) = port.resetInteraction("farm-patch-scan:${runtime.settings.id}")
+    private fun resetPatchScan(runtime: FarmRuntime) = access.resetInteraction("farm-patch-scan:${runtime.settings.id}")
 
     private fun currentOrder(runtime: FarmRuntime): FarmOrder? = runtime.state.orderId?.let(runtime.orders::get)
 
@@ -601,6 +609,7 @@ internal class FarmGameplayAdminService(
             "night-shift" to FarmIncidentType.NIGHT_SHIFT, "market" to FarmIncidentType.MARKET,
             "processing" to FarmIncidentType.PROCESSING,
             "barn-fire" to FarmIncidentType.BARN_FIRE,
+            "frost" to FarmIncidentType.FROST,
         )
         val STANDARD_STAGES = setOf("preparation", "planting", "harvesting", "delivery", "complete", "reset") + INCIDENT_STAGES.keys
         val BED_PATCH_CARE_TYPES = setOf(FarmCareType.SEEDER, FarmCareType.WEEDS, FarmCareType.DISEASE, FarmCareType.MOLES)

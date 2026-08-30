@@ -28,7 +28,10 @@ import ru.ruscrafting.farms.paper.FarmBlockPolicy
 import ru.ruscrafting.farms.paper.FarmBlockRegistry
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
@@ -59,7 +62,10 @@ private class MaintenancePositionCache(
 internal class FarmFieldController(
     private val settings: () -> ArcFarmsConfig,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
+    private val state: WorksiteStatePort,
+    private val tasks: WorksiteTaskPort,
     private val ledger: FarmBlockLedger,
     private val registry: FarmBlockRegistry,
     points: FarmPointProvider,
@@ -74,6 +80,7 @@ internal class FarmFieldController(
     private val maintenancePreparationByZone = mutableMapOf<String, MaintenancePositionCache>()
     private val maintenanceDiseaseByZone = mutableMapOf<String, MaintenancePositionCache>()
     private val maintenancePestDamageByZone = mutableMapOf<String, MaintenancePositionCache>()
+    private val maintenanceSpecialDamageByZone = mutableMapOf<String, MaintenancePositionCache>()
     private val maintenanceRecords = ledger.recordLookup()
     private val maintenanceMoleEntrances = hashSetOf<FarmPlotPosition>()
     private val maintenanceRemovedBeds = arrayListOf<FarmPlotPosition>()
@@ -86,6 +93,7 @@ internal class FarmFieldController(
         maintenancePreparationByZone.clear()
         maintenanceDiseaseByZone.clear()
         maintenancePestDamageByZone.clear()
+        maintenanceSpecialDamageByZone.clear()
         maintenanceRecords.reset()
         maintenanceMoleEntrances.clear()
         maintenanceRemovedBeds.clear()
@@ -165,8 +173,8 @@ internal class FarmFieldController(
         if (!activeTarget) {
             if (preparation && MaterialRules.isHoe(player.inventory.itemInMainHand)) {
                 event.isCancelled = true
-                if (port.allowInteraction("farm-patch-miss:${runtime.settings.id}:${player.uniqueId}", 500)) {
-                    port.sendActionBar(player, MessageKey.FARM_PREPARATION_REQUIRED)
+                if (access.allowInteraction("farm-patch-miss:${runtime.settings.id}:${player.uniqueId}", 500)) {
+                    audience.sendActionBar(player, MessageKey.FARM_PREPARATION_REQUIRED)
                     debug.event(
                         "farm_till_rejected",
                         "player" to player.name,
@@ -178,8 +186,8 @@ internal class FarmFieldController(
             }
             if (planting && MaterialRules.cropForSeed(player.inventory.itemInMainHand) != null) {
                 event.isCancelled = true
-                if (port.allowInteraction("farm-patch-miss:${runtime.settings.id}:${player.uniqueId}", 500)) {
-                    port.sendActionBar(
+                if (access.allowInteraction("farm-patch-miss:${runtime.settings.id}:${player.uniqueId}", 500)) {
+                    audience.sendActionBar(
                         player,
                         MessageKey.FARM_PLANTING_REQUIRED,
                         mapOf(
@@ -200,15 +208,15 @@ internal class FarmFieldController(
             return false
         }
         event.isCancelled = true
-        if (!port.hasAccess(player, runtime.settings.permission)) {
-            port.sendChat(player, MessageKey.ZONE_LOCKED)
+        if (!access.hasAccess(player, runtime.settings.permission)) {
+            audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return true
         }
-        if (!port.allowInteraction("farm-care:${runtime.settings.id}:${player.uniqueId}", 100)) return true
+        if (!access.allowInteraction("farm-care:${runtime.settings.id}:${player.uniqueId}", 100)) return true
 
         if (preparation) {
             if (!MaterialRules.isHoe(player.inventory.itemInMainHand)) {
-                port.sendActionBar(player, MessageKey.FARM_PREPARATION_TOOL)
+                audience.sendActionBar(player, MessageKey.FARM_PREPARATION_TOOL)
                 debug.event(
                     "farm_care_rejected",
                     "player" to player.name,
@@ -251,7 +259,7 @@ internal class FarmFieldController(
             val expectedSeed = requireNotNull(MaterialRules.seedForCrop(expectedCrop))
             val actualCrop = MaterialRules.cropForSeed(player.inventory.itemInMainHand)
             if (actualCrop != expectedCrop) {
-                port.sendActionBar(
+                audience.sendActionBar(
                     player,
                     MessageKey.FARM_PLANTING_TOOL,
                     mapOf(
@@ -271,7 +279,7 @@ internal class FarmFieldController(
             }
             val above = soil.getRelative(org.bukkit.block.BlockFace.UP)
             if (!above.type.isAir && above.type != expectedCrop) {
-                port.sendActionBar(player, MessageKey.FARM_PLANTING_BLOCKED)
+                audience.sendActionBar(player, MessageKey.FARM_PLANTING_BLOCKED)
                 debug.event(
                     "farm_plant_rejected",
                     "player" to player.name,
@@ -449,17 +457,17 @@ internal class FarmFieldController(
                 loaded.forEach { (position, soil) ->
                     if (soil in restoredBlocks) {
                         restored += position
-                    } else if (port.allowInteraction(
+                    } else if (access.allowInteraction(
                             "farm-ledger-missing:${runtime.settings.id}:$position",
                             TimeUnit.MINUTES.toMillis(5),
                         )
                     ) {
-                        port.log(Level.SEVERE, "Managed farm plot $position has no recovery ledger and was retained for repair")
+                        state.log(Level.SEVERE, "Managed farm plot $position has no recovery ledger and was retained for repair")
                     }
                 }
             }
             .onFailure { failure ->
-                port.log(
+                state.log(
                     Level.SEVERE,
                     "Could not restore ${loaded.size} managed farm plots for ${runtime.settings.id}",
                     failure,
@@ -501,20 +509,20 @@ internal class FarmFieldController(
         val previous = runtime.state
         val recoveredPatch = previous.preparationPatch
         runtime.state = next
-        val token = port.lifecycleToken()
+        val token = tasks.lifecycleToken()
         runCatching(persistAsync).getOrElse { CompletableFuture.failedFuture(it) }.whenComplete { _, failure ->
-            port.runSync(token) {
+            tasks.runSync(token) {
                 pendingRecoveryCommits.remove(runtime.settings.id)
                 if (failure != null) {
-                    if (runtime.state == next) runtime.state = previous else port.persistAsync()
-                    port.log(Level.SEVERE, "Could not persist recovered farm patch ${runtime.settings.id}", failure)
+                    if (runtime.state == next) runtime.state = previous else state.persistAsync()
+                    state.log(Level.SEVERE, "Could not persist recovered farm patch ${runtime.settings.id}", failure)
                     return@runSync
                 }
                 recoveredPatch.forEach { position ->
                     val soil = position.block() ?: return@forEach
                     runCatching { ledger.removeTransient(soil) }
                         .onFailure { ledgerFailure ->
-                            port.log(Level.WARNING, "Could not clear recovered farm ledger at $position", ledgerFailure)
+                            state.log(Level.WARNING, "Could not clear recovered farm ledger at $position", ledgerFailure)
                         }
                 }
                 patchRestoreProgress.remove(runtime.settings.id)
@@ -552,6 +560,13 @@ internal class FarmFieldController(
             pestDamageSource.mapTo(pestDamageCache.positions) { it.position }
             pestDamageCache.source = pestDamageSource
         }
+        val specialDamageSource = runtime.state.specialDamagedCrops
+        val specialDamageCache = maintenanceSpecialDamageByZone.getOrPut(zoneId, ::MaintenancePositionCache)
+        if (specialDamageCache.source !== specialDamageSource) {
+            specialDamageCache.positions.clear()
+            specialDamageSource.mapTo(specialDamageCache.positions) { it.position }
+            specialDamageCache.source = specialDamageSource
+        }
         val indexedBeds = registry.beds(zoneId)
         maintenanceRecords.reset()
         val crop = runtime.state.preparationCrop?.let(MaterialRules::material)
@@ -574,7 +589,8 @@ internal class FarmFieldController(
                 position in runtime.state.droughtPlots ||
                 position in runtime.state.droughtDamagedPlots ||
                 position in pestDamageCache.positions ||
-                position in diseaseCache.positions
+                position in diseaseCache.positions ||
+                position in specialDamageCache.positions
         }
 
         maintenanceRemovedBeds.clear()

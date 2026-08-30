@@ -14,7 +14,9 @@ import ru.ruscrafting.farms.domain.worksite.WorksiteObjectiveKey
 import ru.ruscrafting.farms.domain.worksite.WorksiteObjectiveState
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.MaterialRules
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.lumber.LumberRuntime
 import ru.ruscrafting.farms.paper.lumber.LumberRuntimeRegistry
 import ru.ruscrafting.farms.paper.lumber.LumberTransitionCoordinator
@@ -28,7 +30,9 @@ internal class LumberFellingController(
     private val index: LumberBlockIndex,
     private val recovery: LumberBlockRecoveryController,
     private val transitions: LumberTransitionCoordinator,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
+    private val state: WorksiteStatePort,
     private val clock: () -> Long,
     private val startSkidding: (
         LumberRuntime,
@@ -41,12 +45,12 @@ internal class LumberFellingController(
     fun onBreakHigh(event: BlockBreakEvent): Boolean {
         val runtime = registry.at(event.block.location) ?: return false
         event.isCancelled = true
-        port.traceBlockBreak(event, ru.ruscrafting.farms.domain.ActivityKind.LUMBER, runtime.settings.id)
-        if (!port.hasAccess(event.player, runtime.settings.permission)) {
-            port.sendChat(event.player, MessageKey.ZONE_LOCKED)
+        state.traceBlockBreak(event, ru.ruscrafting.farms.domain.ActivityKind.LUMBER, runtime.settings.id)
+        if (!access.hasAccess(event.player, runtime.settings.permission)) {
+            audience.sendChat(event.player, MessageKey.ZONE_LOCKED)
             return true
         }
-        if (port.isAdminEditing(event.player)) return false.also { event.isCancelled = false }
+        if (access.isAdminEditing(event.player)) return false.also { event.isCancelled = false }
 
         val brokenSpecies = MaterialRules.speciesOf(event.block.type)
         if (brokenSpecies == null || !index.contains(runtime.settings.id, event.block, brokenSpecies)) {
@@ -99,13 +103,13 @@ internal class LumberFellingController(
                 transitions.apply(runtime, felled.copy(state = finalState), event.player)
                 if (finalState.phase == LumberPhase.SKIDDING) {
                     runCatching { reconcileSkidding(runtime) }.onFailure { failure ->
-                        port.log(Level.WARNING, "Could not reconcile lumber bundles for ${runtime.settings.id}", failure)
+                        state.log(Level.WARNING, "Could not reconcile lumber bundles for ${runtime.settings.id}", failure)
                     }
                 }
             },
         ).whenComplete { accepted, failure ->
             if (failure != null) {
-                port.log(Level.WARNING, "Could not prepare lumber block ${runtime.settings.id}:${target.id}", failure)
+                state.log(Level.WARNING, "Could not prepare lumber block ${runtime.settings.id}:${target.id}", failure)
                 remind(event.player, MessageKey.LUMBER_JOURNAL_FAILED)
             } else if (accepted == false) {
                 remind(event.player, MessageKey.LUMBER_TARGET_REQUIRED)
@@ -153,7 +157,7 @@ internal class LumberFellingController(
             return false
         }
         transitions.apply(runtime, started.copy(state = started.state.copy(objective = objective)), player)
-        port.broadcast(
+        audience.broadcast(
             listOf(runtime.region),
             MessageKey.LUMBER_STARTED,
             mapOf("wood" to MaterialRules.woodComponent(expectedSpecies)),
@@ -191,8 +195,8 @@ internal class LumberFellingController(
         key: MessageKey,
         values: Map<String, Component> = emptyMap(),
     ) {
-        port.sendActionBar(player, key, values)
-        port.showScreenTitle(player, key, values, scope = "lumber:${key.path}")
+        audience.sendActionBar(player, key, values)
+        audience.showScreenTitle(player, key, values, scope = "lumber:${key.path}")
     }
 
     private fun org.bukkit.block.Block.position() = WorksitePosition(world.name, x, y, z)

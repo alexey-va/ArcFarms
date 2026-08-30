@@ -40,7 +40,7 @@ import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.FarmNightShiftController
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.*
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.admin.FarmRouteAdminService
@@ -62,9 +62,9 @@ internal class FarmFoodDeliveryIncident(
     private val settings: () -> ArcFarmsConfig,
     private val locale: ArcFarmsLocale,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
-    private val routes: FarmRouteAdminService,
-    private val points: FarmPointProvider,
+    private val access: WorksiteAccessPort, private val audience: WorksiteAudiencePort,
+    private val state: WorksiteStatePort, private val tasks: WorksiteTaskPort,
+    private val routes: FarmRouteAdminService, private val points: FarmPointProvider,
     private val transitions: FarmTransitionSink,
     private val random: RandomGenerator,
     private val night: FarmNightShiftController,
@@ -76,9 +76,9 @@ internal class FarmFoodDeliveryIncident(
     private val zoneKey = NamespacedKey(plugin, "farm_food_route_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_food_route_sequence")
     private val roleKey = NamespacedKey(plugin, "farm_food_route_role")
-    private val gunner = FarmFoodDeliveryGunner(plugin, locale, settings, debug, port)
-    private val safety = FarmFoodDeliverySafety(port, debug, routes, vehiclePassengers, gunner)
-    private val ambush = FarmFoodDeliveryAmbush(random, night, port, debug, mobDespawns, vehiclePassengers)
+    private val gunner = FarmFoodDeliveryGunner(plugin, locale, settings, debug, audience, tasks)
+    private val safety = FarmFoodDeliverySafety(audience, debug, routes, vehiclePassengers, gunner)
+    private val ambush = FarmFoodDeliveryAmbush(random, night, audience, debug, mobDespawns, vehiclePassengers)
     private val sessions = mutableMapOf<String, FarmFoodDeliverySession>()
     private val lastRouteNames = mutableMapOf<String, String>()
 
@@ -109,7 +109,7 @@ internal class FarmFoodDeliveryIncident(
     fun initialize(runtime: FarmRuntime): Boolean {
         if (!active(runtime)) return false
         val selected = selectedRoute(runtime) ?: run {
-            port.log(
+            state.log(
                 Level.WARNING,
                 "Could not start farm food delivery: zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
                     "reason=no_eligible_route",
@@ -121,7 +121,7 @@ internal class FarmFoodDeliveryIncident(
             return false
         }
         if (selected.route.points.first().world != runtime.region.world.name) {
-            port.log(
+            state.log(
                 Level.WARNING,
                 "Could not start farm food delivery: zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
                     "reason=route_world_mismatch route=${selected.name} route_world=${selected.route.points.first().world} " +
@@ -203,7 +203,7 @@ internal class FarmFoodDeliveryIncident(
         ensurePortal(runtime, session)
         gunner.reconcile(runtime, session, activeHorse)
         val participants = (
-            port.players(runtime.region) + participants(runtime)
+            audience.players(runtime.region) + participants(runtime)
             ).distinctBy(Player::getUniqueId)
         night.syncFixedAmbientTime(
             nightOwner(runtime.settings.id),
@@ -243,7 +243,7 @@ internal class FarmFoodDeliveryIncident(
             ambush.updateLights(zoneId, session, runtime.settings.routeDelivery.monsterLightLevel)
             gunner.render(runtime, session, behind)
             if (settings().particles && horse.world.gameTime % TRAIL_INTERVAL_TICKS == 0L) {
-                participants(runtime).filter { it.world == horse.world && !port.isAdminEditing(it) }
+                participants(runtime).filter { it.world == horse.world && !access.isAdminEditing(it) }
                     .forEach { viewer -> FarmFoodDeliveryRouteVisual.render(runtime, viewer, route.points) }
                 renderPortal(runtime, session)
             }
@@ -256,8 +256,8 @@ internal class FarmFoodDeliveryIncident(
         if (entityRole !in setOf(ROLE_HORSE, ROLE_CART, ROLE_GUNNER_SEAT, ROLE_PORTAL)) return false
         event.isCancelled = true
         val runtime = runtime(event.rightClicked, runtimes) ?: return true
-        if (!port.hasAccess(event.player, runtime.settings.permission)) {
-            port.sendChat(event.player, MessageKey.ZONE_LOCKED)
+        if (!access.hasAccess(event.player, runtime.settings.permission)) {
+            audience.sendChat(event.player, MessageKey.ZONE_LOCKED)
             return true
         }
         val session = sessions[runtime.settings.id] ?: return true
@@ -273,7 +273,7 @@ internal class FarmFoodDeliveryIncident(
         horse: Horse,
     ): Boolean {
         if (session.brokenDown) {
-            port.sendActionBar(player, MessageKey.FARM_ROUTE_BROKEN)
+            audience.sendActionBar(player, MessageKey.FARM_ROUTE_BROKEN)
             return true
         }
         val existing = horse.passengers.filterIsInstance<Player>().firstOrNull()
@@ -288,7 +288,7 @@ internal class FarmFoodDeliveryIncident(
         session.ambushCrewIds.remove(player.uniqueId)
         session.escortIds.remove(player.uniqueId)
         gunner.armDriver(player, runtime, session)
-        port.showScreenTitle(player, MessageKey.FARM_ROUTE_MOUNTED)
+        audience.showScreenTitle(player, MessageKey.FARM_ROUTE_MOUNTED)
         player.playSound(player.location, Sound.ENTITY_HORSE_SADDLE, 0.8f, 1.05f)
         debug.event(
             "farm_food_driver_mounted", "zone" to runtime.settings.id,
@@ -409,12 +409,12 @@ internal class FarmFoodDeliveryIncident(
         )
         if (!atDestination && distance > config.hardResetDistance) {
             correctTowardRoute(horse, projectionLocation, 0.42)
-            port.sendActionBar(rider, MessageKey.FARM_ROUTE_RETURNED)
+            audience.sendActionBar(rider, MessageKey.FARM_ROUTE_RETURNED)
             return
         }
         if (!atDestination && distance > config.corridorRadius) {
             correctTowardRoute(horse, projectionLocation, 0.24)
-            port.sendActionBar(rider, MessageKey.FARM_ROUTE_CORRIDOR)
+            audience.sendActionBar(rider, MessageKey.FARM_ROUTE_CORRIDOR)
             return
         }
         val reachedByProjection = FarmRouteGeometry.reachedPoint(projection, points.size)
@@ -478,7 +478,7 @@ internal class FarmFoodDeliveryIncident(
             player.fallDistance = 0f
             player.playSound(player.location, Sound.ENTITY_HORSE_STEP_WOOD, 0.75f, 0.9f)
         }
-        port.runLater(delaySeconds * 20L) {
+        tasks.runLater(delaySeconds * 20L) {
             participants.filter(Player::isOnline).forEach { player ->
                 val target = destination.clone().apply {
                     yaw = player.location.yaw
@@ -584,7 +584,7 @@ internal class FarmFoodDeliveryIncident(
 
     private fun renderPortal(runtime: FarmRuntime, session: FarmFoodDeliverySession) {
         val portal = session.portalId?.let(Bukkit::getEntity) as? Interaction ?: return
-        val viewers = port.players(runtime.region).filter { it.world === portal.world && !port.isAdminEditing(it) }
+        val viewers = audience.players(runtime.region).filter { it.world === portal.world && !access.isAdminEditing(it) }
         val center = portal.location.clone().add(0.0, 0.12, 0.0)
         repeat(18) { index ->
             val angle = Math.PI * 2.0 * index / 18.0
@@ -626,7 +626,7 @@ internal class FarmFoodDeliveryIncident(
             // inventory slot without being stranded outside the farm context.
             return true
         }
-        port.showScreenTitle(player, MessageKey.FARM_ROUTE_PORTAL_JOINED)
+        audience.showScreenTitle(player, MessageKey.FARM_ROUTE_PORTAL_JOINED)
         player.playSound(player.location, Sound.ENTITY_ENDERMAN_TELEPORT, 0.7f, 1.3f)
         debug.event(
             "farm_food_route_escort_joined", "zone" to runtime.settings.id,

@@ -132,6 +132,7 @@ object FarmSpecialIncidentPlanner {
             FarmIncidentType.PESTS, FarmIncidentType.DROUGHT, FarmIncidentType.BIRDS, FarmIncidentType.FOOD_DELIVERY,
             FarmIncidentType.PROCESSING,
             FarmIncidentType.BARN_FIRE,
+            FarmIncidentType.FROST,
             -> null
         }
     }

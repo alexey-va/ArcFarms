@@ -18,7 +18,9 @@ object FarmRewardDifficulty {
         FarmIncidentType.MARKET -> 4
         FarmIncidentType.CHANNELS -> 5
         FarmIncidentType.BIRDS, FarmIncidentType.GIANT_CROP -> 6
-        FarmIncidentType.NIGHT_SHIFT, FarmIncidentType.PROCESSING, FarmIncidentType.BARN_FIRE -> 8
+        FarmIncidentType.NIGHT_SHIFT, FarmIncidentType.PROCESSING, FarmIncidentType.BARN_FIRE,
+        FarmIncidentType.FROST,
+        -> 8
         FarmIncidentType.FOOD_DELIVERY -> 12
     }
 

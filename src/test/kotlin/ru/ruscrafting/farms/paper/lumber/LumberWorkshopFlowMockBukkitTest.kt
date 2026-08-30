@@ -27,7 +27,7 @@ class LumberWorkshopFlowMockBukkitTest : FunSpec({
         val player = paper.server.addPlayer("Sawyer")
         val port = lumberTestPort()
         val effects = RecordingStackingEffects()
-        val graph = LumbermillComponentGraph(
+        val graph = testLumbermillComponentGraph(
             paper.createSimplePlugin("LumberWorkshopTest"),
             CuboidRegionGateway(),
             port,

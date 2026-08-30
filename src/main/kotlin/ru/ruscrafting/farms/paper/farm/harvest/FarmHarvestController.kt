@@ -31,7 +31,9 @@ import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import ru.ruscrafting.farms.paper.farm.FarmShiftStarter
 import ru.ruscrafting.farms.paper.farm.FarmTaskHintSink
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
@@ -54,7 +56,9 @@ internal class FarmHarvestController(
     private val settings: () -> ArcFarmsConfig,
     private val locale: ArcFarmsLocale,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
+    private val tasks: WorksiteTaskPort,
     private val ledger: FarmBlockLedger,
     private val fixedCrops: FarmFixedCropRecoveryController,
     private val incidentRecovery: FarmIncidentRecoveryController,
@@ -137,14 +141,14 @@ internal class FarmHarvestController(
     )
 
     private fun validate(runtime: FarmRuntime, player: Player, block: Block, commit: (HarvestCommit) -> Unit) {
-        if (!port.hasAccess(player, runtime.settings.permission)) {
-            port.sendChat(player, MessageKey.ZONE_LOCKED)
+        if (!access.hasAccess(player, runtime.settings.permission)) {
+            audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return
         }
         if (runtime.state.phase != FarmPhase.INCIDENT && incidentRecovery.pending(runtime)) {
             incidentRecovery.restore(runtime, runtime.settings.restoreBlocksPerTick, drought.hasActiveWater(runtime.settings.id))
             if (incidentRecovery.pending(runtime)) {
-                port.sendActionBar(player, MessageKey.FARM_FIELD_RESTORING)
+                audience.sendActionBar(player, MessageKey.FARM_FIELD_RESTORING)
                 reject(runtime, player, block, "incident_recovery_pending")
                 return
             }
@@ -171,7 +175,7 @@ internal class FarmHarvestController(
         }
         val now = clock()
         if (runtime.state.phase == FarmPhase.COOLDOWN) {
-            port.sendActionBar(
+            audience.sendActionBar(
                 player,
                 MessageKey.COOLDOWN,
                 mapOf("seconds" to locale.text(remainingSeconds(runtime.state.cooldownEndsAt, now))),
@@ -186,13 +190,13 @@ internal class FarmHarvestController(
         }
         val order = currentOrder(runtime) ?: return
         if (crop.name !in order.required) {
-            port.sendActionBar(player, MessageKey.FARM_WRONG_TARGET, mapOf("crops" to remainingCrops(runtime, order)))
+            audience.sendActionBar(player, MessageKey.FARM_WRONG_TARGET, mapOf("crops" to remainingCrops(runtime, order)))
             reject(runtime, player, block, "not_requested")
             return
         }
         if ((runtime.state.progress[crop.name] ?: 0) >= order.required.getValue(crop.name)) {
             val next = nextRequiredCrop(runtime.state, order)
-            port.sendActionBar(
+            audience.sendActionBar(
                 player,
                 MessageKey.FARM_CROP_ALREADY_COMPLETE,
                 mapOf(
@@ -233,17 +237,17 @@ internal class FarmHarvestController(
         debug.event("farm_crop_committed", "player" to player.name, "zone" to runtime.settings.id, "crop" to crop, "drops" to "consumed_by_order")
         val zoneId = runtime.settings.id
         val sequence = runtime.state.sequence
-        port.runLater(1L) {
+        tasks.runLater(1L) {
             val currentRuntime = runtimes().firstOrNull { it.settings.id == zoneId && it.state.sequence == sequence }
                 ?: return@runLater
-            if (!port.isOperational() || !block.type.isAir) return@runLater
+            if (!access.isOperational() || !block.type.isAir) return@runLater
             block.setBlockData(replantData, false)
             block.getRelative(org.bukkit.block.BlockFace.DOWN).takeIf { it.type == Material.FARMLAND }?.let { soil ->
                 ledger.captureActiveCrop(soil, currentRuntime.settings.id)
             }
             removeNewDrops(block.location, 2.0, existingItems)
             removeInventoryGains(player, inventoryBefore, currentRuntime.settings.id)
-            port.runLater(2L) {
+            tasks.runLater(2L) {
                 removeNewDrops(block.location, 2.0, existingItems)
                 removeInventoryGains(player, inventoryBefore, currentRuntime.settings.id)
             }
@@ -280,7 +284,7 @@ internal class FarmHarvestController(
     private fun progress(runtime: FarmRuntime, player: Player, crop: String) {
         val now = clock()
         if (runtime.state.phase == FarmPhase.COOLDOWN) {
-            port.sendActionBar(
+            audience.sendActionBar(
                 player,
                 MessageKey.COOLDOWN,
                 mapOf("seconds" to locale.text(remainingSeconds(runtime.state.cooldownEndsAt, now))),
@@ -317,11 +321,11 @@ internal class FarmHarvestController(
                 val zoneId = runtime.settings.id
                 val sequence = result.state.sequence
                 val announce = {
-                    if (port.isOperational() && player.isOnline && runtimes().any {
+                    if (access.isOperational() && player.isOnline && runtimes().any {
                             it.settings.id == zoneId && it.state.sequence == sequence
                         }
                     ) {
-                        port.showScreenTitle(
+                        audience.showScreenTitle(
                             player,
                             MessageKey.FARM_CROP_COMPLETED,
                             mapOf(
@@ -332,12 +336,12 @@ internal class FarmHarvestController(
                         )
                     }
                 }
-                if (FarmShiftEvent.INCIDENT_STARTED in result.events) port.runLater(settings().titleStaySeconds * 20L + 10L, announce)
+                if (FarmShiftEvent.INCIDENT_STARTED in result.events) tasks.runLater(settings().titleStaySeconds * 20L + 10L, announce)
                 else announce()
             }
         }
         if (!result.accepted && FarmShiftEvent.COMPLETED !in result.events) {
-            port.sendActionBar(player, MessageKey.FARM_WRONG_TARGET, mapOf("crops" to remainingCrops(runtime, order)))
+            audience.sendActionBar(player, MessageKey.FARM_WRONG_TARGET, mapOf("crops" to remainingCrops(runtime, order)))
         }
     }
 

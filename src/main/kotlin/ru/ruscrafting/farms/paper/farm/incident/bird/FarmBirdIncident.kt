@@ -36,7 +36,10 @@ import ru.ruscrafting.farms.paper.BukkitFarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmRuntime
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.toFarmPlotPosition
 import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
@@ -51,7 +54,10 @@ internal class FarmBirdIncident(
     private val settings: () -> ArcFarmsConfig,
     private val locale: ArcFarmsLocale,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
+    private val state: WorksiteStatePort,
+    private val tasks: WorksiteTaskPort,
     private val ledger: FarmBlockLedger,
     private val beds: FarmIncidentBedProvider,
     private val transitions: FarmTransitionSink,
@@ -75,7 +81,7 @@ internal class FarmBirdIncident(
         val requested = (required * runtime.settings.specialIncidents.birdSpawnMultiplier).coerceAtMost(64)
         val anchors = FarmBirdPlanner.select(available, requested, runtime.state.placementSequence)
         if (anchors.isEmpty()) {
-            port.log(
+            state.log(
                 Level.WARNING,
                 "Could not start farm bird incident: zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
                     "reason=no_bird_anchors discovered_beds=${available.size} requested=$requested",
@@ -90,7 +96,7 @@ internal class FarmBirdIncident(
             incidentRequired = required.coerceAtMost(anchors.size),
             specialIncident = FarmSpecialIncidentState(plots = anchors),
         )
-        port.persistAsync()
+        state.persistAsync()
         debug.event(
             "farm_birds_initialized",
             "zone" to runtime.settings.id,
@@ -109,7 +115,7 @@ internal class FarmBirdIncident(
         }
         if (!initialize(runtime)) return
         reconcile(runtime)
-        val players = port.players(runtime.region)
+        val players = audience.players(runtime.region)
         val active = activeBirds(runtime).filter { bird ->
             if (runtime.region.contains(bird.location)) true else {
                 bird.remove()
@@ -137,7 +143,7 @@ internal class FarmBirdIncident(
     }
 
     fun eatCrops(runtime: FarmRuntime) {
-        if (!active(runtime) || !port.allowInteraction(
+        if (!active(runtime) || !access.allowInteraction(
                 "farm-birds-eat:${runtime.settings.id}:${runtime.state.sequence}",
                 runtime.settings.specialIncidents.birdEatIntervalSeconds * 1_000L,
             )
@@ -158,8 +164,8 @@ internal class FarmBirdIncident(
         val radiusSquared = runtime.settings.specialIncidents.birdEatRadius.let { it * it }
         val birdLocations = activeBirds(runtime).map { Triple(it.location.x, it.location.y, it.location.z) }
         val candidates = allBeds.filterNot(already::contains)
-        val token = port.lifecycleToken()
-        val scheduled = port.runAsync(token) {
+        val token = tasks.lifecycleToken()
+        val scheduled = tasks.runAsync(token) {
             val selected = runCatching {
                 val available = candidates.toMutableSet()
                 birdLocations.mapNotNull { location ->
@@ -169,10 +175,10 @@ internal class FarmBirdIncident(
                 }.take(remaining)
             }.getOrElse { failure ->
                 pendingDamagePlans.release(zoneId, sequence)
-                port.log(Level.SEVERE, "Could not plan farm bird crop damage for $zoneId", failure)
+                state.log(Level.SEVERE, "Could not plan farm bird crop damage for $zoneId", failure)
                 return@runAsync
             }
-            val returned = port.runSync(token) {
+            val returned = tasks.runSync(token) {
                 pendingDamagePlans.release(zoneId, sequence)
                 if (!active(runtime) || runtime.state.sequence != sequence) return@runSync
                 val soils = selected.mapNotNull(FarmPlotPosition::block)
@@ -189,7 +195,7 @@ internal class FarmBirdIncident(
                 }
                 if (damage.isNotEmpty()) {
                     runtime.state = runtime.state.copy(specialDamagedCrops = runtime.state.specialDamagedCrops + damage)
-                    port.persistAsync()
+                    state.persistAsync()
                     debug.event("farm_birds_ate_crops", "zone" to runtime.settings.id, "count" to damage.size)
                 }
             }
@@ -210,7 +216,7 @@ internal class FarmBirdIncident(
             else -> null
         } ?: return true
         val runtime = runtime(event.entity, runtimes) ?: return true
-        val allowed = active(runtime) && port.hasAccess(player, runtime.settings.permission) &&
+        val allowed = active(runtime) && access.hasAccess(player, runtime.settings.permission) &&
             runtime.region.contains(event.entity.location)
         debug.event(
             "farm_bird_damage_hit",
@@ -241,7 +247,7 @@ internal class FarmBirdIncident(
         val arrow = event.entity as? AbstractArrow ?: return true
         val player = arrow.shooter as? Player ?: return true
         val runtime = runtime(bird, runtimes) ?: return true
-        val allowed = active(runtime) && port.hasAccess(player, runtime.settings.permission) &&
+        val allowed = active(runtime) && access.hasAccess(player, runtime.settings.permission) &&
             runtime.region.contains(bird.location)
         debug.event(
             "farm_bird_projectile_hit",
@@ -269,7 +275,7 @@ internal class FarmBirdIncident(
             is Projectile -> damager.shooter as? Player
             else -> null
         } ?: return true
-        if (!active(runtime) || !port.hasAccess(player, runtime.settings.permission)) return true
+        if (!active(runtime) || !access.hasAccess(player, runtime.settings.permission)) return true
         event.entity.persistentDataContainer.set(defeatedKey, PersistentDataType.BYTE, 1)
         recordDefeat(runtime, player, ranged = damage?.damager is Projectile)
         return true

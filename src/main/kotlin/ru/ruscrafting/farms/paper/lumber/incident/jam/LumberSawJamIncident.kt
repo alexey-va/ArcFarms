@@ -6,7 +6,7 @@ import org.bukkit.event.player.PlayerInteractEvent
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.LumberIncidentType
 import ru.ruscrafting.farms.domain.LumberPhase
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.lumber.LumberRuntime
 import ru.ruscrafting.farms.paper.lumber.LumberRuntimeRegistry
 import ru.ruscrafting.farms.paper.lumber.incident.LumberIncidentCoordinator
@@ -14,7 +14,7 @@ import ru.ruscrafting.farms.paper.lumber.incident.LumberIncidentCoordinator
 internal class LumberSawJamIncident(
     private val registry: LumberRuntimeRegistry,
     private val incidents: LumberIncidentCoordinator,
-    private val port: WorksiteRuntimePort,
+    private val audience: WorksiteAudiencePort,
 ) {
     fun start(runtime: LumberRuntime, required: Int, now: Long): Boolean =
         incidents.start(runtime, LumberIncidentType.SAW_JAM, required, now)
@@ -23,7 +23,7 @@ internal class LumberSawJamIncident(
         val incident = runtime.state.incident ?: return false
         if (runtime.state.phase != LumberPhase.INCIDENT || incident.type != LumberIncidentType.SAW_JAM) return false
         if (switchIndex != incident.progress) {
-            port.sendActionBar(player, MessageKey.LUMBER_JAM_SEQUENCE)
+            audience.sendActionBar(player, MessageKey.LUMBER_JAM_SEQUENCE)
             return false
         }
         return incidents.work(runtime, player).accepted

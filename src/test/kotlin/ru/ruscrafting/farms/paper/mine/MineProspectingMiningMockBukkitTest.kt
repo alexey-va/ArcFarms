@@ -57,7 +57,7 @@ class MineProspectingMiningMockBukkitTest : FunSpec({
                 any(), MessageKey.MINE_STARTED, any(), Sound.BLOCK_IRON_DOOR_OPEN, true, capture(startValues),
             )
         } just Runs
-        val graph = MineComponentGraph(
+        val graph = testMineComponentGraph(
             paper.createSimplePlugin("MineVerticalSliceTest"),
             CuboidRegionGateway(),
             port,

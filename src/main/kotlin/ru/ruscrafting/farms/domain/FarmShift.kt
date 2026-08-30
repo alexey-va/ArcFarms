@@ -78,6 +78,7 @@ enum class FarmIncidentType {
     MARKET,
     PROCESSING,
     BARN_FIRE,
+    FROST,
 }
 
 enum class FarmProcessingStage {
@@ -236,6 +237,30 @@ data class FarmSpecialIncidentState(
     }
 }
 
+data class FarmFrostCampfire(
+    val position: FarmPlotPosition,
+    val fuelUntil: Long = 0,
+) {
+    init {
+        require(fuelUntil >= 0) { "Farm frost fuel deadline is invalid" }
+    }
+}
+
+data class FarmFrostState(
+    val campfires: List<FarmFrostCampfire>,
+    val lastTickAt: Long,
+    val coolingRemainderMillis: Long = 0,
+) {
+    init {
+        require(campfires.size in 1..16) { "Farm frost must have 1..16 campfires" }
+        require(campfires.map(FarmFrostCampfire::position).distinct().size == campfires.size) {
+            "Farm frost campfires must be unique"
+        }
+        require(lastTickAt >= 0) { "Farm frost tick timestamp is invalid" }
+        require(coolingRemainderMillis >= 0) { "Farm frost cooling remainder is invalid" }
+    }
+}
+
 data class FarmOrder(
     val id: String,
     val required: Map<String, Int>,
@@ -339,6 +364,7 @@ data class FarmShiftState(
     val pestDamagedCrops: List<FarmCropDamage> = emptyList(),
     val diseaseDamagedCrops: List<FarmCropDamage>? = emptyList(),
     val specialIncident: FarmSpecialIncidentState? = null,
+    val frost: FarmFrostState? = null,
     val processing: FarmProcessingState? = null,
     val specialDamagedCrops: List<FarmCropDamage> = emptyList(),
     val rewardMoneyBonusPercent: Int = 0,
@@ -528,6 +554,7 @@ object FarmShiftEngine {
                 pestAlive = 0,
                 pestDamagedCrops = emptyList(),
                 specialIncident = null,
+                frost = null,
                 processing = null,
                 specialDamagedCrops = emptyList(),
                 deliveryPosition = null,
@@ -557,6 +584,7 @@ object FarmShiftEngine {
                     pestAlive = 0,
                     pestDamagedCrops = emptyList(),
                     specialIncident = null,
+                    frost = null,
                     processing = null,
                     specialDamagedCrops = emptyList(),
                 )
@@ -905,7 +933,7 @@ object FarmShiftEngine {
         return EngineResult(state, true, contribution = 1, events = events)
     }
 
-    private fun completeIncident(
+    internal fun completeIncident(
         current: FarmShiftState,
         contribution: Int,
     ): EngineResult<FarmShiftState, FarmShiftEvent> {
@@ -922,6 +950,7 @@ object FarmShiftEngine {
             pestNestsInitialized = false,
             pestAlive = 0,
             specialIncident = null,
+            frost = null,
             processing = null,
         )
         return EngineResult(state, true, contribution, listOf(FarmShiftEvent.INCIDENT_RESOLVED))
@@ -1245,6 +1274,7 @@ object FarmShiftEngine {
                     pestAlive = 0,
                     pestDamagedCrops = emptyList(),
                     specialIncident = null,
+                    frost = null,
                     processing = null,
                     specialDamagedCrops = emptyList(),
                     deliveryPosition = null,

@@ -23,7 +23,9 @@ import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.BukkitFarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmRuntime
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import java.util.UUID
 import java.util.logging.Level
@@ -36,7 +38,9 @@ internal class FarmProcessingCrankController(
     plugin: Plugin,
     private val settings: () -> ArcFarmsConfig,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
+    private val state: WorksiteStatePort,
     private val transitions: FarmTransitionSink,
     private val entityLookup: FarmEntityLookup = BukkitFarmEntityLookup,
 ) {
@@ -65,9 +69,9 @@ internal class FarmProcessingCrankController(
             return
         }
         val configured = runtime.settings.processing
-        val players = port.players(runtime.region)
-            .filterNot(port::isAdminEditing)
-            .filter { player -> port.hasAccess(player, runtime.settings.permission) }
+        val players = audience.players(runtime.region)
+            .filterNot(access::isAdminEditing)
+            .filter { player -> access.hasAccess(player, runtime.settings.permission) }
             .associateBy(Player::getUniqueId)
         states.keys.filter { it.first == runtime.settings.id && it.second !in players }.toList().forEach { key ->
             removeParticipant(key, "player_unavailable")
@@ -132,7 +136,7 @@ internal class FarmProcessingCrankController(
                 )
             }
             FarmProcessingCrankSampleStatus.TELEPORTED -> if (
-                port.allowInteraction("farm-processing-crank-teleport:${runtime.settings.id}:${player.uniqueId}", 5_000)
+                access.allowInteraction("farm-processing-crank-teleport:${runtime.settings.id}:${player.uniqueId}", 5_000)
             ) {
                 debug.event(
                     "farm_processing_crank_step_rejected",
@@ -181,10 +185,10 @@ internal class FarmProcessingCrankController(
     }
 
     private fun showHint(runtime: FarmRuntime, player: Player) {
-        port.sendActionBar(player, ru.ruscrafting.farms.config.MessageKey.FARM_PROCESSING_OPERATING_HINT)
+        audience.sendActionBar(player, ru.ruscrafting.farms.config.MessageKey.FARM_PROCESSING_OPERATING_HINT)
         val cooldown = runtime.settings.processing.crankTitleReminderSeconds * 1_000L
-        if (port.allowInteraction("farm-processing-title:${runtime.settings.id}:${player.uniqueId}", cooldown)) {
-            port.showScreenTitle(
+        if (access.allowInteraction("farm-processing-title:${runtime.settings.id}:${player.uniqueId}", cooldown)) {
+            audience.showScreenTitle(
                 player,
                 ru.ruscrafting.farms.config.MessageKey.FARM_PROCESSING_OPERATING_TITLE,
                 scope = "processing_hint",
@@ -232,8 +236,8 @@ internal class FarmProcessingCrankController(
     }
 
     private fun tetherFailure(runtime: FarmRuntime, player: Player, failure: Throwable, action: String) {
-        if (!port.allowInteraction("farm-processing-crank-tether-failed:${runtime.settings.id}", 30_000)) return
-        port.log(Level.WARNING, "Could not $action processing crank tether for ${runtime.settings.id}: ${failure.message}")
+        if (!access.allowInteraction("farm-processing-crank-tether-failed:${runtime.settings.id}", 30_000)) return
+        state.log(Level.WARNING, "Could not $action processing crank tether for ${runtime.settings.id}: ${failure.message}")
         debug.event(
             "farm_processing_crank_tether_failed",
             "zone" to runtime.settings.id,
@@ -267,7 +271,7 @@ internal class FarmProcessingCrankController(
         repeat(RING_POINTS) { index ->
             val angle = 2.0 * PI * index / RING_POINTS
             val point = machine.clone().add(radius * cos(angle), RING_Y_OFFSET, radius * sin(angle))
-            viewers.forEach { viewer -> port.spawnGuidanceDust(viewer, point, color, size) }
+            viewers.forEach { viewer -> audience.spawnGuidanceDust(viewer, point, color, size) }
         }
     }
 

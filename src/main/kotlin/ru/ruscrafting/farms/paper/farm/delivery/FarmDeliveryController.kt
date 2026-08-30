@@ -28,7 +28,7 @@ import ru.ruscrafting.farms.paper.BukkitFarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
@@ -51,7 +51,7 @@ internal class FarmDeliveryController(
     private val plugin: Plugin,
     private val settings: () -> ArcFarmsConfig,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val port: WorksiteAudiencePort,
     private val points: FarmPointProvider,
     private val placement: FarmPlacementService,
     private val transitions: FarmTransitionSink,

@@ -11,7 +11,9 @@ import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.MineBlockEffects
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.mine.MineTransitionCoordinator
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
@@ -26,7 +28,9 @@ internal class MineMiningController(
     private val index: MineBlockIndex,
     private val recovery: MineBlockRecoveryController,
     private val transitions: MineTransitionCoordinator,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
+    private val state: WorksiteStatePort,
     private val clock: () -> Long,
     private val random: RandomGenerator,
     private val effects: MineBlockEffects,
@@ -36,12 +40,12 @@ internal class MineMiningController(
     fun onBreakHigh(event: BlockBreakEvent): Boolean {
         val runtime = registry.at(event.block.location) ?: return false
         event.isCancelled = true
-        port.traceBlockBreak(event, ru.ruscrafting.farms.domain.ActivityKind.MINE, runtime.settings.id)
-        if (!port.hasAccess(event.player, runtime.settings.permission)) {
-            port.sendChat(event.player, MessageKey.ZONE_LOCKED)
+        state.traceBlockBreak(event, ru.ruscrafting.farms.domain.ActivityKind.MINE, runtime.settings.id)
+        if (!access.hasAccess(event.player, runtime.settings.permission)) {
+            audience.sendChat(event.player, MessageKey.ZONE_LOCKED)
             return true
         }
-        if (port.isAdminEditing(event.player)) return false.also { event.isCancelled = false }
+        if (access.isAdminEditing(event.player)) return false.also { event.isCancelled = false }
         if (runtime.state.phase != MinePhase.MINING) {
             remind(event, MessageKey.MINE_PROSPECT_REQUIRED)
             return true
@@ -65,8 +69,8 @@ internal class MineMiningController(
         val original = event.block.type
         if (original.name !in runtime.settings.materialWeights) return true
         val drops = runCatching { effects.captureDrops(event.block, tool, event.player) }.getOrElse { failure ->
-            port.log(Level.WARNING, "Could not calculate mine drops for ${target.id}", failure)
-            port.sendChat(event.player, MessageKey.GENERIC_ERROR)
+            state.log(Level.WARNING, "Could not calculate mine drops for ${target.id}", failure)
+            audience.sendChat(event.player, MessageKey.GENERIC_ERROR)
             return true
         }
         val next = MaterialRules.weightedMaterial(
@@ -111,7 +115,7 @@ internal class MineMiningController(
             effects.deliverRewards(event.player, event.block, drops, experience, toolSlot, tool)
         }.whenComplete { accepted, failure ->
             if (failure != null) {
-                port.log(Level.WARNING, "Could not journal mine target ${target.id}", failure)
+                state.log(Level.WARNING, "Could not journal mine target ${target.id}", failure)
                 remind(event, MessageKey.MINE_JOURNAL_FAILED)
             } else if (accepted == false) {
                 remind(event, MessageKey.MINE_REGENERATING)
@@ -121,8 +125,8 @@ internal class MineMiningController(
     }
 
     private fun remind(event: BlockBreakEvent, key: MessageKey) {
-        port.sendActionBar(event.player, key)
-        port.showScreenTitle(event.player, key, scope = "mine:${key.path}")
+        audience.sendActionBar(event.player, key)
+        audience.showScreenTitle(event.player, key, scope = "mine:${key.path}")
     }
 
     private fun org.bukkit.block.Block.position() = WorksitePosition(world.name, x, y, z)

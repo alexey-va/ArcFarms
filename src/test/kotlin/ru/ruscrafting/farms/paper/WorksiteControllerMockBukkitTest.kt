@@ -57,7 +57,7 @@ class WorksiteControllerMockBukkitTest : FunSpec({
     test("lumbermill completes a full felling and processing lifecycle on Bukkit events") {
         var now = 1_000L
         val port = testPort()
-        val controller = LumbermillController(CuboidRegionGateway(), testLocale(), port, { now })
+        val controller = lumberController(CuboidRegionGateway(), testLocale(), port, { now })
         controller.rebuild(listOf(lumberSettings()), emptyMap(), cooldownMillis = 30_000L)
 
         listOf(1, 2).forEach { x ->
@@ -95,7 +95,7 @@ class WorksiteControllerMockBukkitTest : FunSpec({
 
     test("lumbermill rejects another species without losing the selected order") {
         val port = testPort()
-        val controller = LumbermillController(CuboidRegionGateway(), testLocale(), port, { 1_000L })
+        val controller = lumberController(CuboidRegionGateway(), testLocale(), port, { 1_000L })
         controller.rebuild(listOf(lumberSettings()), emptyMap(), cooldownMillis = 30_000L)
         val block = world.getBlockAt(1, 64, 1).apply { type = Material.BIRCH_LOG }
 
@@ -113,7 +113,7 @@ class WorksiteControllerMockBukkitTest : FunSpec({
         var now = 5_000L
         val journal = ControlledMineJournal()
         val port = testPort()
-        val controller = MineController(
+        val controller = mineController(
             CuboidRegionGateway(), testLocale(), journal, port, { now }, java.util.Random(7), NoOpMineBlockEffects,
         )
         controller.rebuild(listOf(mineSettings()), emptyMap(), cooldownMillis = 30_000L)
@@ -143,7 +143,7 @@ class WorksiteControllerMockBukkitTest : FunSpec({
         var now = 5_000L
         val journal = ControlledMineJournal(failRemove = true)
         val port = testPort()
-        val controller = MineController(
+        val controller = mineController(
             CuboidRegionGateway(), testLocale(), journal, port, { now }, java.util.Random(7), NoOpMineBlockEffects,
         )
         controller.rebuild(listOf(mineSettings()), emptyMap(), cooldownMillis = 30_000L)
@@ -171,7 +171,7 @@ class WorksiteControllerMockBukkitTest : FunSpec({
     test("a pending mine position cannot be prepared twice") {
         val journal = ControlledMineJournal()
         val port = testPort()
-        val controller = MineController(
+        val controller = mineController(
             CuboidRegionGateway(), testLocale(), journal, port, { 5_000L }, java.util.Random(7), NoOpMineBlockEffects,
         )
         controller.rebuild(listOf(mineSettings()), emptyMap(), cooldownMillis = 30_000L)
@@ -189,7 +189,7 @@ class WorksiteControllerMockBukkitTest : FunSpec({
     test("mine journal failure leaves the world untouched and tells the player") {
         val journal = ControlledMineJournal(failPrepare = true)
         val port = testPort()
-        val controller = MineController(
+        val controller = mineController(
             CuboidRegionGateway(), testLocale(), journal, port, { 5_000L }, java.util.Random(7), NoOpMineBlockEffects,
         )
         controller.rebuild(listOf(mineSettings()), emptyMap(), cooldownMillis = 30_000L)
@@ -207,7 +207,7 @@ class WorksiteControllerMockBukkitTest : FunSpec({
 
     test("mine support interaction resolves the hazard and leaving the zone extracts the cart") {
         val port = testPort()
-        val controller = MineController(
+        val controller = mineController(
             CuboidRegionGateway(), testLocale(), ControlledMineJournal(), port, { 5_000L },
             java.util.Random(7), NoOpMineBlockEffects,
         )
@@ -256,7 +256,7 @@ class WorksiteControllerMockBukkitTest : FunSpec({
     test("mine access is denied before a journal reservation or world mutation") {
         val journal = ControlledMineJournal()
         val port = testPort(accessible = false)
-        val controller = MineController(
+        val controller = mineController(
             CuboidRegionGateway(), testLocale(), journal, port, { 5_000L }, java.util.Random(7), NoOpMineBlockEffects,
         )
         controller.rebuild(listOf(mineSettings()), emptyMap(), cooldownMillis = 30_000L)
@@ -273,7 +273,7 @@ class WorksiteControllerMockBukkitTest : FunSpec({
     test("an async mine prepare completion rejected by a new lifecycle never mutates the block") {
         val journal = ControlledMineJournal(autoCompletePrepare = false)
         val port = testPort(acceptSync = false)
-        val controller = MineController(
+        val controller = mineController(
             CuboidRegionGateway(), testLocale(), journal, port, { 5_000L }, java.util.Random(7), NoOpMineBlockEffects,
         )
         controller.rebuild(listOf(mineSettings()), emptyMap(), cooldownMillis = 30_000L)
@@ -291,7 +291,7 @@ class WorksiteControllerMockBukkitTest : FunSpec({
     test("a prepare that finishes after shutdown is retired without touching the world") {
         val journal = ControlledMineJournal(autoCompletePrepare = false)
         val port = testPort(operational = false)
-        val controller = MineController(
+        val controller = mineController(
             CuboidRegionGateway(), testLocale(), journal, port, { 5_000L }, java.util.Random(7), NoOpMineBlockEffects,
         )
         controller.rebuild(listOf(mineSettings()), emptyMap(), cooldownMillis = 30_000L)
@@ -367,6 +367,23 @@ private fun testPort(
         every { guarded(any(), any()) } answers { secondArg<() -> Unit>().invoke() }
     }
 }
+
+private fun lumberController(
+    regions: RegionGateway,
+    locale: ArcFarmsLocale,
+    port: WorksiteRuntimePort,
+    clock: () -> Long,
+) = LumbermillController(regions, locale, port, port, port, port, port, port, clock)
+
+private fun mineController(
+    regions: RegionGateway,
+    locale: ArcFarmsLocale,
+    journal: MineRecoveryJournal,
+    port: WorksiteRuntimePort,
+    clock: () -> Long,
+    random: java.util.random.RandomGenerator,
+    blockEffects: MineBlockEffects,
+) = MineController(regions, locale, journal, port, port, port, port, port, port, clock, random, blockEffects)
 
 private fun lumberSettings() = LumberZoneSettings(
     id = "sawmill",

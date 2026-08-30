@@ -39,7 +39,9 @@ import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.BukkitFarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmRuntime
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.platform.FarmBlockPassability
 import ru.ruscrafting.farms.paper.platform.FarmTextDisplayRenderer
@@ -76,7 +78,9 @@ internal class FarmProcessingIncident(
     private val settings: () -> ArcFarmsConfig,
     private val locale: ArcFarmsLocale,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
+    private val state: WorksiteStatePort,
     private val configuredPoint: (String, FarmPointKind) -> FarmPointPosition?,
     private val transitions: FarmTransitionSink,
     private val blockPassability: FarmBlockPassability,
@@ -84,7 +88,7 @@ internal class FarmProcessingIncident(
     private val entityLookup: FarmEntityLookup = BukkitFarmEntityLookup,
 ) {
     private val scene = FarmProcessingScene(plugin, debug, textDisplays, entityLookup)
-    private val crank = FarmProcessingCrankController(plugin, settings, debug, port, transitions, entityLookup)
+    private val crank = FarmProcessingCrankController(plugin, settings, debug, access, audience, state, transitions, entityLookup)
     private val carriedZoneKey = NamespacedKey(plugin, "farm_processing_carried_zone")
     private val carriedSequenceKey = NamespacedKey(plugin, "farm_processing_carried_sequence")
     private val carriedCargoKey = NamespacedKey(plugin, "farm_processing_carried_cargo")
@@ -94,7 +98,7 @@ internal class FarmProcessingIncident(
     private val layouts = mutableMapOf<String, FarmProcessingLayout>()
     private val sceneSpecs = FarmProcessingSceneSpecCache<ProcessingSceneRevision>()
     private val lastUnavailableSequence = mutableMapOf<String, Long>()
-    private val adminPreview = FarmProcessingAdminPreview(port)
+    private val adminPreview = FarmProcessingAdminPreview(audience)
 
     fun owns(entity: Entity): Boolean = scene.owns(entity) ||
         entity.persistentDataContainer.has(carriedZoneKey, PersistentDataType.STRING) ||
@@ -128,7 +132,7 @@ internal class FarmProcessingIncident(
         )
         if (!result.accepted) return false
         runtime.state = result.state
-        port.persistAsync()
+        state.persistAsync()
         debug.event(
             "farm_processing_initialized",
             "zone" to runtime.settings.id,
@@ -164,15 +168,15 @@ internal class FarmProcessingIncident(
         val runtime = runtimes.firstOrNull { it.settings.id == identity.zoneId } ?: return true
         if (!active(runtime) || runtime.state.sequence != identity.sequence) return true
         val player = event.player
-        if (!port.hasAccess(player, runtime.settings.permission)) {
-            port.sendChat(player, MessageKey.ZONE_LOCKED)
+        if (!access.hasAccess(player, runtime.settings.permission)) {
+            audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return true
         }
         val maxDistance = runtime.settings.processing.interactionRadius
         if (player.world !== event.rightClicked.world ||
             player.location.distanceSquared(event.rightClicked.location) > maxDistance * maxDistance
         ) return true
-        if (!port.allowInteraction("farm-processing:${identity.zoneId}:${player.uniqueId}", 250)) return true
+        if (!access.allowInteraction("farm-processing:${identity.zoneId}:${player.uniqueId}", 250)) return true
         when (identity.role) {
             FarmProcessingSceneRole.RAW_INTERACTION -> pickup(runtime, player, ProcessingCargo.RAW, identity.index)
             FarmProcessingSceneRole.PRODUCT_INTERACTION -> pickup(runtime, player, ProcessingCargo.PRODUCT, identity.index)
@@ -263,7 +267,7 @@ internal class FarmProcessingIncident(
         }
         val key = ProcessingCargoKey(runtime.settings.id, cargo, index)
         if (index !in remainingSlots || key in carriers || carriers.values.any { it.playerId == player.uniqueId }) {
-            port.sendActionBar(player, MessageKey.FARM_PROCESSING_ALREADY_CARRYING)
+            audience.sendActionBar(player, MessageKey.FARM_PROCESSING_ALREADY_CARRYING)
             return
         }
         trackCarrier(key, ProcessingCarrierLease(
@@ -286,7 +290,7 @@ internal class FarmProcessingIncident(
         }
         carriedDisplays[key] = display.uniqueId
         if (settings().sounds) player.playSound(player.location, Sound.ENTITY_ITEM_PICKUP, 0.8f, if (cargo == ProcessingCargo.RAW) 0.9f else 1.15f)
-        port.showScreenTitle(
+        audience.showScreenTitle(
             player,
             if (cargo == ProcessingCargo.RAW) MessageKey.FARM_PROCESSING_RAW_PICKED_UP else MessageKey.FARM_PROCESSING_PRODUCT_PICKED_UP,
         )
@@ -374,7 +378,7 @@ internal class FarmProcessingIncident(
                 lease.watchdog = result.state
                 when (result.action) {
                     FarmStallAction.NONE -> Unit
-                    FarmStallAction.REMIND -> port.showScreenTitle(player, pickupTitle(key.cargo), scope = "cargo_watchdog")
+                    FarmStallAction.REMIND -> audience.showScreenTitle(player, pickupTitle(key.cargo), scope = "cargo_watchdog")
                     FarmStallAction.RELEASE -> returnCargo(runtime, key, player, "cargo_stalled")
                 }
                 return@forEach
@@ -410,10 +414,10 @@ internal class FarmProcessingIncident(
         if (remainingSlots.isEmpty()) return
         val layout = layout(runtime) ?: return
         val radiusSquared = runtime.settings.processing.proximityPickupRadius.let { it * it }
-        port.players(runtime.region)
+        audience.players(runtime.region)
             .asSequence()
-            .filterNot(port::isAdminEditing)
-            .filter { player -> port.hasAccess(player, runtime.settings.permission) }
+            .filterNot(access::isAdminEditing)
+            .filter { player -> access.hasAccess(player, runtime.settings.permission) }
             .filterNot { player -> carriers.values.any { lease -> lease.playerId == player.uniqueId } }
             .forEach { player ->
                 val candidate = remainingSlots
@@ -615,8 +619,8 @@ internal class FarmProcessingIncident(
         removeCarrier(key)
         removeCarried(key)
         player?.takeIf(Player::isOnline)?.let {
-            port.sendActionBar(it, MessageKey.FARM_PROCESSING_RETURNED)
-            port.showScreenTitle(it, MessageKey.FARM_PROCESSING_RETURNED, scope = "cargo_watchdog")
+            audience.sendActionBar(it, MessageKey.FARM_PROCESSING_RETURNED)
+            audience.showScreenTitle(it, MessageKey.FARM_PROCESSING_RETURNED, scope = "cargo_watchdog")
         }
         debug.event(
             "farm_processing_returned",
@@ -662,15 +666,15 @@ internal class FarmProcessingIncident(
     }
 
     private fun showStageHint(runtime: FarmRuntime, player: Player) {
-        port.sendActionBar(player, stageHint(runtime))
+        audience.sendActionBar(player, stageHint(runtime))
         val cooldownMillis = runtime.settings.processing.crankTitleReminderSeconds * 1_000L
-        if (!port.allowInteraction("farm-processing-title:${runtime.settings.id}:${player.uniqueId}", cooldownMillis)) return
+        if (!access.allowInteraction("farm-processing-title:${runtime.settings.id}:${player.uniqueId}", cooldownMillis)) return
         val title = when (runtime.state.processing?.stage) {
             FarmProcessingStage.LOADING, null -> MessageKey.FARM_PROCESSING_LOADING_TITLE
             FarmProcessingStage.OPERATING -> MessageKey.FARM_PROCESSING_OPERATING_TITLE
             FarmProcessingStage.PACKING -> MessageKey.FARM_PROCESSING_PACKING_TITLE
         }
-        port.showScreenTitle(player, title, scope = "processing_hint")
+        audience.showScreenTitle(player, title, scope = "processing_hint")
     }
 
     private fun pickupTitle(cargo: ProcessingCargo): MessageKey =
@@ -687,7 +691,7 @@ internal class FarmProcessingIncident(
     private fun logUnavailable(runtime: FarmRuntime, reason: String) {
         if (lastUnavailableSequence[runtime.settings.id] == runtime.state.placementSequence) return
         lastUnavailableSequence[runtime.settings.id] = runtime.state.placementSequence
-        port.log(
+        state.log(
             Level.WARNING,
             "Could not start farm processing incident: zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
                 "placement_sequence=${runtime.state.placementSequence} reason=$reason",

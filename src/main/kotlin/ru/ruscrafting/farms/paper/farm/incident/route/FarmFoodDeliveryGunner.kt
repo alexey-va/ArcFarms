@@ -20,7 +20,8 @@ import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmRuntime
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import java.util.UUID
 
 /** Cooperative cart seat, temporary rifle and bounded hitscan visuals. */
@@ -29,7 +30,8 @@ internal class FarmFoodDeliveryGunner(
     locale: ArcFarmsLocale,
     private val settings: () -> ArcFarmsConfig,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val audience: WorksiteAudiencePort,
+    private val tasks: WorksiteTaskPort,
 ) {
     private val gear = FarmFoodDeliveryGear(plugin, locale, debug)
     private val shotAt = mutableMapOf<UUID, Long>()
@@ -56,13 +58,13 @@ internal class FarmFoodDeliveryGunner(
     ): Boolean {
         val driver = horse.passengers.filterIsInstance<Player>().firstOrNull()
         if (driver == null || session.brokenDown) {
-            port.sendActionBar(player, if (session.brokenDown) MessageKey.FARM_ROUTE_BROKEN else MessageKey.FARM_ROUTE_GUNNER_NEEDS_DRIVER)
+            audience.sendActionBar(player, if (session.brokenDown) MessageKey.FARM_ROUTE_BROKEN else MessageKey.FARM_ROUTE_GUNNER_NEEDS_DRIVER)
             return true
         }
         if (driver.uniqueId == player.uniqueId) return true
         val current = seat.passengers.filterIsInstance<Player>().firstOrNull()
         if (current != null && current.uniqueId != player.uniqueId) {
-            port.sendActionBar(player, MessageKey.FARM_ROUTE_GUNNER_OCCUPIED)
+            audience.sendActionBar(player, MessageKey.FARM_ROUTE_GUNNER_OCCUPIED)
             return true
         }
         if (!equip(player, runtime, session)) return true
@@ -72,7 +74,7 @@ internal class FarmFoodDeliveryGunner(
         }
         session.gunnerId = player.uniqueId
         session.ambushCrewIds.remove(player.uniqueId)
-        port.sendActionBar(player, MessageKey.FARM_ROUTE_GUNNER_MOUNTED)
+        audience.sendActionBar(player, MessageKey.FARM_ROUTE_GUNNER_MOUNTED)
         player.playSound(player.location, Sound.ITEM_ARMOR_EQUIP_LEATHER, 0.75f, 1.15f)
         debug.event(
             "farm_food_gunner_mounted", "zone" to runtime.settings.id,
@@ -196,7 +198,7 @@ internal class FarmFoodDeliveryGunner(
         if (!passenger.isOnline) return
         if (seat.addPassenger(passenger)) return
         if (!pendingRemounts.add(passenger.uniqueId)) return
-        port.runLater(1L) {
+        tasks.runLater(1L) {
             try {
                 if (!seat.isValid || !passenger.isOnline || session.gunnerId != passenger.uniqueId) return@runLater
                 if (passenger.vehicle === seat || (passenger.vehicle == null && seat.addPassenger(passenger))) return@runLater
@@ -257,7 +259,7 @@ internal class FarmFoodDeliveryGunner(
             return true
         }
         if (inventoryWarnings.add(player.uniqueId)) {
-            port.sendActionBar(player, MessageKey.FARM_ROUTE_GUNNER_INVENTORY_FULL)
+            audience.sendActionBar(player, MessageKey.FARM_ROUTE_GUNNER_INVENTORY_FULL)
         }
         return false
     }

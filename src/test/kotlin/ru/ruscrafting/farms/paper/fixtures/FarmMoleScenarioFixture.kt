@@ -139,7 +139,10 @@ internal class FarmMoleScenarioFixture private constructor(
         settings = { settings },
         locale = locale,
         debug = ArcFarmsDebug({ false }) {},
-        port = port,
+        access = port,
+        audience = port,
+        state = port,
+        tasks = port,
         world = burrowWorld,
         transitions = FarmTransitionSink { active, result, actor ->
             transitions += AppliedTransition(actor, result)

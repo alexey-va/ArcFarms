@@ -7,7 +7,7 @@ import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetCandidate
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.lumber.LumberRuntime
 import ru.ruscrafting.farms.paper.lumber.LumberRuntimeRegistry
 import ru.ruscrafting.farms.paper.lumber.incident.LumberIncidentCoordinator
@@ -20,7 +20,7 @@ internal class LumberWindthrowIncident(
     private val index: LumberBlockIndex,
     private val recovery: LumberBlockRecoveryController,
     private val incidents: LumberIncidentCoordinator,
-    private val port: WorksiteRuntimePort,
+    private val state: WorksiteStatePort,
 ) {
     fun start(runtime: LumberRuntime, required: Int, now: Long): Boolean = incidents.start(
         runtime,
@@ -55,7 +55,7 @@ internal class LumberWindthrowIncident(
             },
             afterMutation = { complete(runtime, target.id, event.player) },
         ).whenComplete { _, failure ->
-            if (failure != null) port.log(Level.WARNING, "Could not clear windthrow target ${target.id}", failure)
+            if (failure != null) state.log(Level.WARNING, "Could not clear windthrow target ${target.id}", failure)
         }
         return true
     }

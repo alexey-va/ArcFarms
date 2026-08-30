@@ -27,7 +27,10 @@ import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmBlockRegistry
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
@@ -42,7 +45,10 @@ private data class DroughtGrowthRuntime(var startedAt: Long, var spawned: Int)
 internal class FarmDroughtIncident(
     private val settings: () -> ArcFarmsConfig,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
+    private val state: WorksiteStatePort,
+    private val tasks: WorksiteTaskPort,
     private val blockLedger: FarmBlockLedger,
     private val blockRegistry: FarmBlockRegistry,
     private val beds: FarmIncidentBedProvider,
@@ -81,7 +87,7 @@ internal class FarmDroughtIncident(
         }
         if (validPlots != previousPlots) {
             runtime.state = runtime.state.copy(droughtPlots = validPlots)
-            port.persistAsync()
+            state.persistAsync()
             debug.event(
                 "farm_drought_covered_plots_removed",
                 "zone" to runtime.settings.id,
@@ -135,7 +141,7 @@ internal class FarmDroughtIncident(
             droughtDamagedPlots = runtime.state.droughtDamagedPlots + targets,
         )
         runtimeGrowth.spawned += targets.size
-        port.persistAsync()
+        state.persistAsync()
         debug.event(
             "farm_drought_patch_grown",
             "zone" to runtime.settings.id,
@@ -145,7 +151,7 @@ internal class FarmDroughtIncident(
             "spawned" to runtimeGrowth.spawned,
             "limit" to spawnLimit,
         )
-        if (targets.size < requested && port.allowInteraction("farm-care-missing:${runtime.settings.id}", 10_000L)) {
+        if (targets.size < requested && access.allowInteraction("farm-care-missing:${runtime.settings.id}", 10_000L)) {
             debug.event(
                 "farm_care_targets_limited",
                 "zone" to runtime.settings.id,
@@ -172,8 +178,8 @@ internal class FarmDroughtIncident(
         } else null
         if (source != null) {
             event.isCancelled = true
-            if (!port.hasAccess(player, runtime.settings.permission)) {
-                port.sendChat(player, MessageKey.ZONE_LOCKED)
+            if (!access.hasAccess(player, runtime.settings.permission)) {
+                audience.sendChat(player, MessageKey.ZONE_LOCKED)
                 return true
             }
             pour(runtime, source, player)
@@ -181,11 +187,11 @@ internal class FarmDroughtIncident(
         }
         if (player.inventory.itemInMainHand.type == Material.WATER_BUCKET) {
             event.isCancelled = true
-            if (!port.hasAccess(player, runtime.settings.permission)) {
-                port.sendChat(player, MessageKey.ZONE_LOCKED)
+            if (!access.hasAccess(player, runtime.settings.permission)) {
+                audience.sendChat(player, MessageKey.ZONE_LOCKED)
                 return true
             }
-            port.sendActionBar(player, MessageKey.FARM_DROUGHT_REQUIRED)
+            audience.sendActionBar(player, MessageKey.FARM_DROUGHT_REQUIRED)
             debug.event(
                 "farm_water_rejected",
                 "player" to player.name,
@@ -200,12 +206,12 @@ internal class FarmDroughtIncident(
         }
         if (soil?.toFarmPlotPosition() !in runtime.state.droughtPlots) return false
         event.isCancelled = true
-        if (!port.hasAccess(player, runtime.settings.permission)) {
-            port.sendChat(player, MessageKey.ZONE_LOCKED)
+        if (!access.hasAccess(player, runtime.settings.permission)) {
+            audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return true
         }
         if (player.inventory.itemInMainHand.type != Material.WATER_BUCKET) {
-            port.sendActionBar(player, MessageKey.FARM_DROUGHT_TOOL)
+            audience.sendActionBar(player, MessageKey.FARM_DROUGHT_TOOL)
             debug.event(
                 "farm_care_rejected",
                 "player" to player.name,
@@ -235,7 +241,7 @@ internal class FarmDroughtIncident(
                 blockRegistry.addBeds(runtime.settings.id, listOf(position))
                 if (position !in runtime.state.droughtDamagedPlots) {
                     runtime.state = runtime.state.copy(droughtDamagedPlots = runtime.state.droughtDamagedPlots + position)
-                    if (runtime.state.droughtDamagedPlots.size % PERSIST_EVERY_DAMAGED_CROPS == 0) port.persistAsync()
+                    if (runtime.state.droughtDamagedPlots.size % PERSIST_EVERY_DAMAGED_CROPS == 0) state.persistAsync()
                 }
                 target.setType(Material.AIR, false)
             }
@@ -287,7 +293,7 @@ internal class FarmDroughtIncident(
         val tracker = flows.getOrPut(runtime.settings.id, ::FarmWaterFlowTracker)
         val sourcePosition = source.toFarmPlotPosition()
         if (!tracker.tryStart(flowId, sourcePosition, MAX_ACTIVE_WATER_FLOWS)) {
-            port.sendActionBar(player, MessageKey.FARM_DROUGHT_REQUIRED)
+            audience.sendActionBar(player, MessageKey.FARM_DROUGHT_REQUIRED)
             debug.event(
                 "farm_water_rejected",
                 "player" to player.name,
@@ -351,7 +357,7 @@ internal class FarmDroughtIncident(
             transitions.apply(runtime, EngineResult(state, true, contribution, events), player)
         }
         if (completedPatches > 0) {
-            if (settings().sounds) port.players(runtime.region).forEach {
+            if (settings().sounds) audience.players(runtime.region).forEach {
                 it.playSound(source.location, Sound.BLOCK_BEACON_POWER_SELECT, 0.9f, 1.15f)
             }
             debug.event(
@@ -362,7 +368,7 @@ internal class FarmDroughtIncident(
             )
         }
         FarmWaterObservationPlan.delays(WATER_SETTLE_TICKS).forEach { delay ->
-            port.runLater(delay) { if (tracker.isActive(flowId)) observeWaterAndDrops() }
+            tasks.runLater(delay) { if (tracker.isActive(flowId)) observeWaterAndDrops() }
         }
         if (settings().sounds) player.playSound(source.location, Sound.ITEM_BUCKET_EMPTY, 0.8f, 1.05f)
         if (settings().particles) player.spawnParticle(
@@ -377,7 +383,7 @@ internal class FarmDroughtIncident(
             "z" to source.z,
             "watered_plots" to reached.size,
         )
-        port.runLater(WATER_SETTLE_TICKS) {
+        tasks.runLater(WATER_SETTLE_TICKS) {
             if (!tracker.isActive(flowId)) return@runLater
             observeWaterAndDrops()
             val trackedWater = tracker.positions(flowId)
@@ -386,7 +392,7 @@ internal class FarmDroughtIncident(
             }
             if (tracker.isEmpty()) flows.remove(runtime.settings.id)
             ensure(runtime)
-            port.persistAsync()
+            state.persistAsync()
             debug.event(
                 "farm_water_settled",
                 "player" to player.name,

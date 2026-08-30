@@ -34,7 +34,10 @@ import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.ActivityBarKey
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.care.FarmCarePresentation
 import ru.ruscrafting.farms.paper.farm.care.bukkit
@@ -56,7 +59,10 @@ internal class FarmMoleBurrowController(
     private val settings: () -> ArcFarmsConfig,
     private val locale: ArcFarmsLocale,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
+    private val state: WorksiteStatePort,
+    private val tasks: WorksiteTaskPort,
     private val world: FarmMoleBurrowWorld,
     private val transitions: FarmTransitionSink,
     private val runtimes: () -> Collection<FarmRuntime>,
@@ -110,11 +116,11 @@ internal class FarmMoleBurrowController(
     fun interact(player: Player, entity: Entity): Boolean {
         val identity = identity(entity) ?: return false
         val runtime = runtimes().firstOrNull { it.settings.id == identity.zoneId } ?: return true
-        if (!active(runtime) || runtime.state.sequence != identity.sequence || !port.hasAccess(player, runtime.settings.permission)) {
-            if (!port.hasAccess(player, runtime.settings.permission)) port.sendChat(player, MessageKey.ZONE_LOCKED)
+        if (!active(runtime) || runtime.state.sequence != identity.sequence || !access.hasAccess(player, runtime.settings.permission)) {
+            if (!access.hasAccess(player, runtime.settings.permission)) audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return true
         }
-        if (!port.allowInteraction("farm-mole:${runtime.settings.id}:${identity.burrowId}:${identity.role}:${player.uniqueId}", 500)) return true
+        if (!access.allowInteraction("farm-mole:${runtime.settings.id}:${identity.burrowId}:${identity.role}:${player.uniqueId}", 500)) return true
         val scene = world.scene(runtime, identity.burrowId) ?: return true
         when (identity.role) {
             Role.ENTRANCE -> enter(player, runtime, scene)
@@ -171,16 +177,16 @@ internal class FarmMoleBurrowController(
     }
 
     fun recoverPlayer(player: Player) {
-        val lifecycleToken = port.lifecycleToken()
-        port.runAsync(lifecycleToken) {
+        val lifecycleToken = tasks.lifecycleToken()
+        tasks.runAsync(lifecycleToken) {
             val record = runCatching { returns.load(player.uniqueId) }.getOrElse { failure ->
-                port.log(Level.SEVERE, "Could not read mole burrow return for ${player.uniqueId}", failure)
+                state.log(Level.SEVERE, "Could not read mole burrow return for ${player.uniqueId}", failure)
                 return@runAsync
             } ?: return@runAsync
-            port.runSync(lifecycleToken) {
+            tasks.runSync(lifecycleToken) {
                 if (!player.isOnline) return@runSync
                 val destination = returnLocation(record) ?: run {
-                    port.log(Level.SEVERE, "Rejected invalid mole burrow return for ${player.uniqueId}")
+                    state.log(Level.SEVERE, "Rejected invalid mole burrow return for ${player.uniqueId}")
                     return@runSync
                 }
                 val moved = teleports.authorize(player.uniqueId, destination) {
@@ -189,7 +195,7 @@ internal class FarmMoleBurrowController(
                 if (moved) {
                     sessions.remove(player.uniqueId)
                     acknowledgeAsync(record)
-                    port.sendChat(player, MessageKey.FARM_MOLE_RECOVERED)
+                    audience.sendChat(player, MessageKey.FARM_MOLE_RECOVERED)
                     debug.event("farm_mole_burrow_player_recovered", "zone" to record.zoneId, "player" to player.name)
                 }
             }
@@ -260,7 +266,7 @@ internal class FarmMoleBurrowController(
             val player = Bukkit.getPlayer(record.playerId)?.takeIf(Player::isOnline) ?: return@forEach
             val scene = world.scenes(runtime).firstOrNull { it.contains(player.location) } ?: return@forEach
             val distance = scene.pathDistanceToLair(player.location) ?: return@forEach
-            port.updateBar(
+            audience.updateBar(
                 player,
                 "farm:${runtime.settings.id}",
                 locale.render(
@@ -277,7 +283,7 @@ internal class FarmMoleBurrowController(
 
     private fun enter(player: Player, runtime: FarmRuntime, scene: FarmMoleBurrowScene) {
         if (!scene.ready || !pendingEntries.add(player.uniqueId)) {
-            if (!scene.ready) port.sendActionBar(player, MessageKey.FARM_MOLE_BUILDING)
+            if (!scene.ready) audience.sendActionBar(player, MessageKey.FARM_MOLE_BUILDING)
             return
         }
         val surface = scene.surface.clone().apply {
@@ -296,13 +302,13 @@ internal class FarmMoleBurrowController(
             surface.pitch,
             clock(),
         )
-        val lifecycleToken = port.lifecycleToken()
-        port.runAsync(lifecycleToken) {
+        val lifecycleToken = tasks.lifecycleToken()
+        tasks.runAsync(lifecycleToken) {
             val committed = runCatching { returns.commit(record) }.getOrElse { failure ->
-                port.log(Level.SEVERE, "Could not commit mole burrow return for ${player.uniqueId}", failure)
+                state.log(Level.SEVERE, "Could not commit mole burrow return for ${player.uniqueId}", failure)
                 null
             }
-            port.runSync(lifecycleToken) {
+            tasks.runSync(lifecycleToken) {
                 pendingEntries.remove(player.uniqueId)
                 val stillAtEntrance = player.isOnline && player.world === scene.world && runtime.region.contains(player.location) &&
                     player.location.distanceSquared(scene.surface) <= 25.0
@@ -325,7 +331,7 @@ internal class FarmMoleBurrowController(
                 }
                 sessions[player.uniqueId] = committed
                 player.fallDistance = 0f
-                port.showScreenTitle(player, MessageKey.FARM_MOLE_ENTERED)
+                audience.showScreenTitle(player, MessageKey.FARM_MOLE_ENTERED)
                 if (settings().sounds) {
                     player.playSound(destination, Sound.BLOCK_ROOTED_DIRT_BREAK, 0.85f, 0.7f)
                 }
@@ -385,7 +391,7 @@ internal class FarmMoleBurrowController(
         player.fallDistance = 0f
         sessions.remove(player.uniqueId, record)
         acknowledgeAsync(record)
-        if (message != null) port.sendActionBar(player, message)
+        if (message != null) audience.sendActionBar(player, message)
     }
 
     private fun ensureScene(runtime: FarmRuntime, scene: FarmMoleBurrowScene) {
@@ -554,10 +560,10 @@ internal class FarmMoleBurrowController(
 
     private fun acknowledgeAsync(record: FarmBurrowReturn) {
         if (!plugin.isEnabled) return
-        val lifecycleToken = runCatching(port::lifecycleToken).getOrNull() ?: return
-        port.runAsync(lifecycleToken) {
+        val lifecycleToken = runCatching(tasks::lifecycleToken).getOrNull() ?: return
+        tasks.runAsync(lifecycleToken) {
             runCatching { returns.acknowledge(record) }.onFailure { failure ->
-                port.log(Level.SEVERE, "Could not acknowledge mole burrow return for ${record.playerId}", failure)
+                state.log(Level.SEVERE, "Could not acknowledge mole burrow return for ${record.playerId}", failure)
             }
         }
     }

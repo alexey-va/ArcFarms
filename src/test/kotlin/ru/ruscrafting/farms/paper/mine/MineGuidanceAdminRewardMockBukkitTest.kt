@@ -28,7 +28,7 @@ class MineGuidanceAdminRewardMockBukkitTest : FunSpec({
         world.getChunkAt(0, 0).load()
         val player = paper.server.addPlayer("GuidedMiner")
         player.teleport(Location(world, 4.5, 64.0, 4.5))
-        val graph = MineComponentGraph(
+        val graph = testMineComponentGraph(
             paper.createSimplePlugin("MineGuidanceTest"), CuboidRegionGateway(), immediateMinePort(),
             clock = { 1_000L }, journal = ImmediateMineJournal(), random = java.util.Random(4),
         )
@@ -57,7 +57,7 @@ class MineGuidanceAdminRewardMockBukkitTest : FunSpec({
     test("mine admin boundary reports status incidents and bounded reindex without leaking runtimes") {
         val world = paper.server.addSimpleWorld("world")
         world.getBlockAt(1, 64, 1).type = Material.STONE
-        val graph = MineComponentGraph(
+        val graph = testMineComponentGraph(
             paper.createSimplePlugin("MineAdminTest"), CuboidRegionGateway(), immediateMinePort(),
             clock = { 1_000L }, journal = ImmediateMineJournal(), random = java.util.Random(5),
         )

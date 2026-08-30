@@ -27,7 +27,9 @@ import ru.ruscrafting.farms.paper.FarmScoreboardController
 import ru.ruscrafting.farms.paper.FarmScoreboardRenderer
 import ru.ruscrafting.farms.paper.FarmScoreboardView
 import ru.ruscrafting.farms.paper.MaterialRules
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import ru.ruscrafting.farms.paper.farm.delivery.FarmDeliveryController
 import ru.ruscrafting.farms.paper.farm.harvest.FarmHarvestController
 import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
@@ -42,7 +44,9 @@ internal class FarmHudController(
     private val settings: () -> ArcFarmsConfig,
     private val locale: ArcFarmsLocale,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
+    private val tasks: WorksiteTaskPort,
     private val delivery: FarmDeliveryController,
     private val foodDelivery: FarmFoodDeliveryIncident,
     private val special: FarmSpecialIncidentController,
@@ -61,8 +65,8 @@ internal class FarmHudController(
                 val now = clock()
                 val remainingMillis = (runtime.state.cooldownEndsAt - now).coerceAtLeast(0)
                 val cooldownMillis = runtime.rules.cooldownMillis.coerceAtLeast(1)
-                players(runtime).filterNot(port::isAdminEditing).forEach { player ->
-                    port.updateBar(
+                players(runtime).filterNot(access::isAdminEditing).forEach { player ->
+                    audience.updateBar(
                         player,
                         "farm:${runtime.settings.id}",
                         locale.render(
@@ -79,7 +83,7 @@ internal class FarmHudController(
             }
             val order = currentOrder(runtime) ?: return@forEach
             val done = runtime.state.completed(order)
-            players(runtime).filterNot(port::isAdminEditing).forEach { player ->
+            players(runtime).filterNot(access::isAdminEditing).forEach { player ->
                 val carrying = delivery.isCarrying(runtime.settings.id, player.uniqueId)
                 val phaseDone = phaseDone(runtime, done)
                 val phaseTotal = phaseTotal(runtime, order)
@@ -105,7 +109,7 @@ internal class FarmHudController(
                         "total" to locale.text(phaseTotal),
                     ),
                 )
-                port.updateBar(
+                audience.updateBar(
                     player,
                     "farm:${runtime.settings.id}",
                     component,
@@ -121,7 +125,7 @@ internal class FarmHudController(
     }
 
     fun enter(player: Player, runtime: FarmRuntime) {
-        if (port.isAdminEditing(player)) return
+        if (access.isAdminEditing(player)) return
         val actionKey = when (runtime.state.phase) {
             FarmPhase.IDLE, FarmPhase.COOLDOWN -> MessageKey.FARM_ENTRY_IDLE
             FarmPhase.PREPARATION -> MessageKey.FARM_ENTRY_PREPARATION
@@ -135,6 +139,7 @@ internal class FarmHudController(
                 FarmIncidentType.FOOD_DELIVERY -> MessageKey.FARM_ENTRY_ROUTE
                 FarmIncidentType.PROCESSING -> MessageKey.FARM_ENTRY_PROCESSING
                 FarmIncidentType.BARN_FIRE -> MessageKey.FARM_ENTRY_BARN_FIRE
+                FarmIncidentType.FROST -> MessageKey.FARM_ENTRY_FROST
                 else -> null
             }
             FarmPhase.DELIVERY -> MessageKey.FARM_ENTRY_DELIVERY
@@ -149,29 +154,29 @@ internal class FarmHudController(
                     ?: Component.empty()),
             ),
         )
-        port.showScreenTitle(player, MessageKey.FARM_ENTRY_TITLE, mapOf("action" to action), "zone_entry")
+        audience.showScreenTitle(player, MessageKey.FARM_ENTRY_TITLE, mapOf("action" to action), "zone_entry")
     }
 
     fun taskHint(player: Player, runtime: FarmRuntime, reason: String) {
-        if (!port.allowInteraction("farm-task-hint:${runtime.settings.id}:${player.uniqueId}", 900)) return
+        if (!access.allowInteraction("farm-task-hint:${runtime.settings.id}:${player.uniqueId}", 900)) return
         when (runtime.state.phase) {
-            FarmPhase.PREPARATION -> port.sendActionBar(player, MessageKey.FARM_PREPARATION_REQUIRED)
-            FarmPhase.PLANTING -> port.sendActionBar(
+            FarmPhase.PREPARATION -> audience.sendActionBar(player, MessageKey.FARM_PREPARATION_REQUIRED)
+            FarmPhase.PLANTING -> audience.sendActionBar(
                 player,
                 MessageKey.FARM_PLANTING_REQUIRED,
                 mapOf("crop" to MaterialRules.cropComponent(MaterialRules.material(requireNotNull(runtime.state.preparationCrop)))),
             )
-            FarmPhase.CARE -> port.sendActionBar(
+            FarmPhase.CARE -> audience.sendActionBar(
                 player,
                 MessageKey.FARM_CARE_REQUIRED,
                 mapOf("instruction" to instruction(runtime, player)),
             )
             FarmPhase.INCIDENT -> incidentHint(player, runtime)
-            FarmPhase.DELIVERY -> port.sendActionBar(player, MessageKey.FARM_DELIVERY_REQUIRED)
+            FarmPhase.DELIVERY -> audience.sendActionBar(player, MessageKey.FARM_DELIVERY_REQUIRED)
             FarmPhase.HARVESTING -> currentOrder(runtime)?.let { order ->
-                port.sendActionBar(player, MessageKey.FARM_WRONG_TARGET, mapOf("crops" to harvest.remainingCrops(runtime, order)))
+                audience.sendActionBar(player, MessageKey.FARM_WRONG_TARGET, mapOf("crops" to harvest.remainingCrops(runtime, order)))
             }
-            FarmPhase.COOLDOWN -> port.sendActionBar(
+            FarmPhase.COOLDOWN -> audience.sendActionBar(
                 player,
                 MessageKey.COOLDOWN,
                 mapOf("seconds" to locale.text(remainingSeconds(runtime.state.cooldownEndsAt, clock()))),
@@ -185,7 +190,7 @@ internal class FarmHudController(
             "phase" to runtime.state.phase,
             "reason" to reason,
         )
-        if (port.allowInteraction("farm-task-title:${runtime.settings.id}:${player.uniqueId}", 8_000)) {
+        if (access.allowInteraction("farm-task-title:${runtime.settings.id}:${player.uniqueId}", 8_000)) {
             enter(player, runtime)
         }
     }
@@ -200,7 +205,7 @@ internal class FarmHudController(
         players(runtime).forEach { player ->
             val (title, values) = titleAndValues(player)
             val subtitle = locale.renderPath("story.farm.$orderId.$beat", player, values)
-            port.showScreenTitle(player, title, subtitle)
+            audience.showScreenTitle(player, title, subtitle)
             debug.message("title", "local", "story.farm.$orderId.$beat", player, title)
             debug.message("subtitle", "local", "story.farm.$orderId.$beat", player, subtitle)
             if (sound != null && settings().sounds) player.playSound(player.location, sound, 0.8f, 1.0f)
@@ -254,12 +259,12 @@ internal class FarmHudController(
 
     fun removePlayer(player: Player, reason: String) {
         scoreboards.remove(player, reason)
-        port.removePlayerBars(player)
+        audience.removePlayerBars(player)
         stopMusic(player, reason)
     }
 
     fun restoreAll(reason: String) = scoreboards.restoreAll(reason)
-    fun hideBars() = port.hideAllBars()
+    fun hideBars() = audience.hideAllBars()
     fun active(playerId: UUID): Boolean = scoreboards.active(playerId)
     fun title(playerId: UUID): String = scoreboards.tabTitle(playerId)
     fun line(playerId: UUID, line: Int): String = scoreboards.tabLine(playerId, line)
@@ -275,12 +280,12 @@ internal class FarmHudController(
         recipients.mapNotNull(Bukkit::getPlayer).forEach { player ->
             player.playSound(player.location, Sound.BLOCK_NOTE_BLOCK_CHIME, 0.65f, basePitch)
         }
-        port.runLater(4L) {
+        tasks.runLater(4L) {
             recipients.mapNotNull(Bukkit::getPlayer).filter { runtime.region.contains(it.location) }.forEach { player ->
                 player.playSound(player.location, Sound.BLOCK_AMETHYST_BLOCK_CHIME, 0.6f, basePitch + 0.18f)
             }
         }
-        port.runLater(8L) {
+        tasks.runLater(8L) {
             recipients.mapNotNull(Bukkit::getPlayer).filter { runtime.region.contains(it.location) }.forEach { player ->
                 player.playSound(player.location, Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.55f, basePitch + 0.32f)
             }
@@ -349,6 +354,7 @@ internal class FarmHudController(
             FarmIncidentType.FOOD_DELIVERY -> MessageKey.FARM_ROUTE_BOSSBAR
             FarmIncidentType.PROCESSING -> MessageKey.FARM_PROCESSING_BOSSBAR
             FarmIncidentType.BARN_FIRE -> MessageKey.FARM_BARN_FIRE_BOSSBAR
+            FarmIncidentType.FROST -> MessageKey.FARM_FROST_BOSSBAR
             FarmIncidentType.MARKET -> if (runtime.state.specialIncident?.marketAccepted == true) {
                 MessageKey.FARM_MARKET_ACTIVE_BOSSBAR
             } else MessageKey.FARM_MARKET_PENDING_BOSSBAR
@@ -419,10 +425,10 @@ internal class FarmHudController(
 
     private fun incidentHint(player: Player, runtime: FarmRuntime) {
         when (runtime.state.incidentType) {
-            FarmIncidentType.DROUGHT -> port.sendActionBar(player, MessageKey.FARM_DROUGHT_REQUIRED)
-            FarmIncidentType.BIRDS -> port.sendActionBar(player, MessageKey.FARM_BIRDS_REQUIRED)
-            FarmIncidentType.FOOD_DELIVERY -> port.sendActionBar(player, MessageKey.FARM_ROUTE_REQUIRED)
-            FarmIncidentType.PROCESSING -> port.sendActionBar(
+            FarmIncidentType.DROUGHT -> audience.sendActionBar(player, MessageKey.FARM_DROUGHT_REQUIRED)
+            FarmIncidentType.BIRDS -> audience.sendActionBar(player, MessageKey.FARM_BIRDS_REQUIRED)
+            FarmIncidentType.FOOD_DELIVERY -> audience.sendActionBar(player, MessageKey.FARM_ROUTE_REQUIRED)
+            FarmIncidentType.PROCESSING -> audience.sendActionBar(
                 player,
                 when (runtime.state.processing?.stage) {
                     FarmProcessingStage.LOADING -> MessageKey.FARM_PROCESSING_LOADING_HINT
@@ -431,16 +437,17 @@ internal class FarmHudController(
                     null -> MessageKey.FARM_PROCESSING_LOADING_HINT
                 },
             )
-            FarmIncidentType.BARN_FIRE -> port.sendActionBar(player, MessageKey.FARM_BARN_FIRE_AIM_HINT)
+            FarmIncidentType.BARN_FIRE -> audience.sendActionBar(player, MessageKey.FARM_BARN_FIRE_AIM_HINT)
+            FarmIncidentType.FROST -> audience.sendActionBar(player, MessageKey.FARM_FROST_REQUIRED)
             FarmIncidentType.MARKET -> {
                 val incident = runtime.state.specialIncident ?: return
-                port.sendActionBar(
+                audience.sendActionBar(
                     player,
                     if (incident.marketAccepted) MessageKey.FARM_MARKET_ACTIVE else MessageKey.FARM_MARKET_REQUIRED,
                     special.marketValues(runtime, incident, player),
                 )
             }
-            FarmIncidentType.NIGHT_SHIFT -> port.sendActionBar(
+            FarmIncidentType.NIGHT_SHIFT -> audience.sendActionBar(
                 player,
                 MessageKey.FARM_SPECIAL_PROGRESS,
                 mapOf(
@@ -449,7 +456,7 @@ internal class FarmHudController(
                     "total" to locale.text(runtime.state.incidentRequired),
                 ),
             )
-            else -> port.sendActionBar(player, MessageKey.FARM_PESTS_REQUIRED)
+            else -> audience.sendActionBar(player, MessageKey.FARM_PESTS_REQUIRED)
         }
     }
 
@@ -472,7 +479,7 @@ internal class FarmHudController(
 
     private fun currentOrder(runtime: FarmRuntime): FarmOrder? = runtime.state.orderId?.let(runtime.orders::get)
     private fun players(runtime: FarmRuntime): List<Player> =
-        (port.players(runtime.region) + foodDelivery.participants(runtime)).distinctBy(Player::getUniqueId)
+        (audience.players(runtime.region) + foodDelivery.participants(runtime)).distinctBy(Player::getUniqueId)
     private fun remainingSeconds(deadline: Long, now: Long): Long = ceil((deadline - now).coerceAtLeast(0) / 1_000.0).toLong()
     private fun musicSound(sound: String, volume: Float): AdventureSound = AdventureSound.sound(
         Key.key(sound),

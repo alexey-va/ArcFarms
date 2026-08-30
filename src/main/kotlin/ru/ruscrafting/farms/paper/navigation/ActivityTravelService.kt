@@ -10,7 +10,9 @@ import ru.ruscrafting.farms.network.ActivityNetworkGateway
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.BackendTransfer
 import ru.ruscrafting.farms.paper.WorksiteModuleRegistry
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import ru.ruscrafting.farms.paper.farm.FarmRuntimeRegistry
 import ru.ruscrafting.farms.paper.farm.point.FarmPointService
 
@@ -18,7 +20,9 @@ import ru.ruscrafting.farms.paper.farm.point.FarmPointService
 internal class ActivityTravelService(
     private val settings: () -> ArcFarmsConfig,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
+    private val tasks: WorksiteTaskPort,
     private val network: ActivityNetworkGateway,
     private val transfer: BackendTransfer,
     private val points: FarmPointService,
@@ -35,13 +39,13 @@ internal class ActivityTravelService(
     fun canAccess(player: Player, kind: ActivityKind): Boolean = if (!isAvailable(kind)) {
         settings().network.enabled
     } else when (kind) {
-        ActivityKind.FARM -> farms.snapshot().any { port.hasAccess(player, it.settings.permission) }
+        ActivityKind.FARM -> farms.snapshot().any { access.hasAccess(player, it.settings.permission) }
         ActivityKind.LUMBER, ActivityKind.MINE -> auxiliary.canAccess(player, kind)
     }
 
     fun travel(player: Player, kind: ActivityKind) {
         if (!canAccess(player, kind)) {
-            port.sendChat(player, MessageKey.ZONE_LOCKED)
+            audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return
         }
         val destination = points.destination(kind, farms.snapshot())
@@ -53,19 +57,19 @@ internal class ActivityTravelService(
             teleportLocal(player, kind)
             return
         }
-        port.sendActionBar(player, MessageKey.TRAVEL_PREPARING)
-        val lifecycle = port.lifecycleToken()
+        audience.sendActionBar(player, MessageKey.TRAVEL_PREPARING)
+        val lifecycle = tasks.lifecycleToken()
         network.createTravelTicket(player.uniqueId, kind, destination.server).whenComplete { created, failure ->
-            if (!port.isOperational()) return@whenComplete
-            port.runSync(lifecycle) {
-                if (!port.isOperational() || !player.isOnline) return@runSync
+            if (!access.isOperational()) return@whenComplete
+            tasks.runSync(lifecycle) {
+                if (!access.isOperational() || !player.isOnline) return@runSync
                 if (failure != null || created != true || !transfer.connect(player, destination.server)) {
                     debug.event(
                         "travel_transfer_failed", "player" to player.name, "activity" to kind,
                         "destination" to destination.server,
                         "reason" to (failure?.javaClass?.simpleName ?: "transfer_rejected"),
                     )
-                    port.sendChat(player, MessageKey.TRAVEL_FAILED)
+                    audience.sendChat(player, MessageKey.TRAVEL_FAILED)
                     return@runSync
                 }
                 debug.event("travel_transfer_sent", "player" to player.name, "activity" to kind, "destination" to destination.server)
@@ -75,11 +79,11 @@ internal class ActivityTravelService(
 
     fun claimJoin(player: Player) {
         if (!settings().network.enabled) return
-        val lifecycle = port.lifecycleToken()
+        val lifecycle = tasks.lifecycleToken()
         network.claimTravelTicket(player.uniqueId, settings().serverId).whenComplete { ticket, failure ->
-            if (!port.isOperational()) return@whenComplete
-            port.runLater(lifecycle, 1L) {
-                if (!port.isOperational() || !player.isOnline) return@runLater
+            if (!access.isOperational()) return@whenComplete
+            tasks.runLater(lifecycle, 1L) {
+                if (!access.isOperational() || !player.isOnline) return@runLater
                 if (failure != null) {
                     debug.event("travel_claim_failed", "player" to player.name, "reason" to failure.javaClass.simpleName)
                     return@runLater
@@ -97,28 +101,28 @@ internal class ActivityTravelService(
         val world = Bukkit.getWorld(destination.world)
         if (world == null) {
             debug.event("travel_local_failed", "player" to player.name, "activity" to kind, "reason" to "world_unloaded")
-            port.sendChat(player, MessageKey.TRAVEL_FAILED)
+            audience.sendChat(player, MessageKey.TRAVEL_FAILED)
             return
         }
         val location = Location(world, destination.x, destination.y, destination.z, destination.yaw, destination.pitch)
-        val lifecycle = port.lifecycleToken()
+        val lifecycle = tasks.lifecycleToken()
         player.teleportAsync(location).whenComplete { success, failure ->
-            if (!port.isOperational()) return@whenComplete
-            port.runSync(lifecycle) {
-                if (!port.isOperational() || !player.isOnline) return@runSync
+            if (!access.isOperational()) return@whenComplete
+            tasks.runSync(lifecycle) {
+                if (!access.isOperational() || !player.isOnline) return@runSync
                 if (failure != null || success != true) {
                     debug.event(
                         "travel_local_failed", "player" to player.name, "activity" to kind,
                         "reason" to (failure?.javaClass?.simpleName ?: "teleport_rejected"),
                     )
-                    port.sendChat(player, MessageKey.TRAVEL_FAILED)
+                    audience.sendChat(player, MessageKey.TRAVEL_FAILED)
                 } else {
                     debug.event(
                         "travel_arrived", "player" to player.name, "activity" to kind,
                         "server" to destination.server, "world" to destination.world,
                         "x" to destination.x, "y" to destination.y, "z" to destination.z,
                     )
-                    port.sendActionBar(player, MessageKey.TRAVEL_ARRIVED)
+                    audience.sendActionBar(player, MessageKey.TRAVEL_ARRIVED)
                 }
             }
         }

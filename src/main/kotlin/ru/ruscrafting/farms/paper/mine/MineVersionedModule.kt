@@ -20,7 +20,7 @@ import ru.ruscrafting.farms.paper.WorksiteBlockInteractHandler
 import ru.ruscrafting.farms.paper.WorksiteGuidanceHandler
 import ru.ruscrafting.farms.paper.WorksiteModule
 import ru.ruscrafting.farms.paper.WorksiteMoveHandler
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksitePorts
 import ru.ruscrafting.farms.persistence.MineRecoveryJournal
 import ru.ruscrafting.farms.paper.WorksiteFastVisualHandler
 import ru.ruscrafting.farms.paper.WorksiteEntityInteractHandler
@@ -47,7 +47,7 @@ internal class MineVersionedModule(
     regions: RegionGateway,
     locale: ArcFarmsLocale,
     journal: MineRecoveryJournal,
-    port: WorksiteRuntimePort,
+    ports: WorksitePorts,
     clock: () -> Long,
     random: RandomGenerator,
     serviceItems: WorksiteServiceItems? = null,
@@ -58,11 +58,14 @@ internal class MineVersionedModule(
     private val engineVersion = initial.firstOrNull()?.engineVersion ?: 1
     private val delegate: WorksiteModule<MineShiftState> = if (engineVersion == 2) {
         MineComponentGraph(
-            plugin, regions, port, clock, journal, random, serviceItems = serviceItems, locale = locale,
+            plugin, regions, ports, clock, journal, random, serviceItems = serviceItems, locale = locale,
             rewardGrants = rewardGrants,
         ).module
     } else {
-        MineController(regions, locale, journal, port, clock, random)
+        MineController(
+            regions, locale, journal, ports.access, ports.audience, ports.state, ports.tasks, ports.stats, ports.network,
+            clock, random,
+        )
     }
 
     override val kind: ActivityKind get() = delegate.kind

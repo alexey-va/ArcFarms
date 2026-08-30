@@ -6,7 +6,10 @@ import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineShiftEngine
 import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteNetworkPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatsPort
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.mine.MineTransitionCoordinator
@@ -20,7 +23,10 @@ internal class MineExtractionController(
     private val index: MineBlockIndex,
     private val scene: MineCartScene,
     private val transitions: MineTransitionCoordinator,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
+    private val stats: WorksiteStatsPort,
+    private val network: WorksiteNetworkPort,
     private val clock: () -> Long,
     private val rewards: WorksiteRewardGrantService? = null,
 ) {
@@ -41,7 +47,7 @@ internal class MineExtractionController(
     }
 
     fun push(runtime: MineRuntime, player: Player, to: Location): Boolean {
-        if (runtime.state.phase != MinePhase.EXTRACTION || !port.hasAccess(player, runtime.settings.permission)) return false
+        if (runtime.state.phase != MinePhase.EXTRACTION || !access.hasAccess(player, runtime.settings.permission)) return false
         val route = route(runtime) ?: return false
         if (runtime.state.routeIndex >= route.finalIndex) return false
         val next = route.sample(runtime.state.routeIndex + 1)
@@ -52,16 +58,16 @@ internal class MineExtractionController(
             val result = MineShiftEngine.extract(runtime.state, runtime.rules(), player.uniqueId, clock())
             transitions.apply(runtime, result, player)
             if (result.accepted) {
-                port.recordCompletion(ActivityKind.MINE, result.state.contributors)
+                stats.recordCompletion(ActivityKind.MINE, result.state.contributors)
                 rewards?.queueCompletion(
                     ActivityKind.MINE, runtime.settings.rewards, runtime.settings.id, result.state.sequence,
                     result.state.contributors,
                     runtime.rules().let { it.prospectingQuota + it.miningQuota + it.loadingQuota + route.finalIndex },
                     result.state.incidentSchedule.size,
                 )
-                port.complete(ActivityKind.MINE, player.name, emptySet())
-                port.announceWinner(listOf(runtime.region), result.state.contributors)
-                port.celebration(listOf(runtime.region))
+                network.complete(ActivityKind.MINE, player.name, emptySet())
+                audience.announceWinner(listOf(runtime.region), result.state.contributors)
+                audience.celebration(listOf(runtime.region))
             }
             scene.cleanup(runtime.settings.id)
         } else {

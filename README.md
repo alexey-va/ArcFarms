@@ -424,9 +424,8 @@ The reusable worksite layer is split by ownership:
 - `WorksiteModule` is the lifecycle contract for one activity type;
 - `WorksiteModuleRegistry` aggregates availability, access, status, ticks, and
   optional block/interact/movement event capabilities;
-- `PaperWorksiteRuntimePort` owns shared messages, title/subtitle rendering,
-  boss bars, effects, contribution statistics, Redis signals, and lifecycle
-  scheduling;
+- `PaperWorksiteAdapter` implements the narrow access, audience, state, task,
+  statistics, and network ports; `WorksitePorts` groups them only at composition roots;
 - `LumbermillController` owns every lumber zone and its two-stage state machine;
 - `MineController` owns every mine zone, reservations, journal reconciliation,
   extraction, and block recovery;

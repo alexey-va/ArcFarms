@@ -304,7 +304,9 @@ private fun fireSafetyRouter(
 ): FarmEventRouter = FarmEventRouter(
     locale = fixture.locale,
     debug = ArcFarmsDebug({ false }) {},
-    port = fixture.port,
+    access = fixture.port,
+    audience = fixture.port,
+    state = fixture.port,
     runtimes = { listOf(runtime) },
     worldAdmin = mockk<FarmWorldAdminService>(relaxed = true),
     ledger = mockk<FarmBlockLedger>(relaxed = true),
@@ -321,6 +323,7 @@ private fun fireSafetyRouter(
     special = mockk<FarmSpecialIncidentController>(relaxed = true),
     processing = mockk(relaxed = true),
     barnFire = fire,
+    frost = mockk(relaxed = true),
     delivery = mockk<FarmDeliveryController>(relaxed = true),
     supplies = mockk<FarmSupplyController>(relaxed = true),
     scene = mockk<FarmContractSceneController>(relaxed = true),

@@ -194,6 +194,7 @@ admin:
     processing_input_4: '<white>processing input #4</white>'
     processing_output: '<white>finished goods</white>'
     fire_equipment: '<white>fire hose</white>'
+    firewood: '<white>firewood pile</white>'
   point-description:
     tool: '<gray>service hoe pickup hologram</gray>'
     seeds: '<gray>seed pickup for the current order crop</gray>'
@@ -217,6 +218,7 @@ admin:
     processing_input_4: '<gray>fourth raw-material rack</gray>'
     processing_output: '<gray>finished-goods point; packages default beside the machine</gray>'
     fire_equipment: '<gray>fire-hose pickup beside the barn</gray>'
+    firewood: '<gray>frost-incident woodpile; saved as a contact-surface point and always kept upright</gray>'
   processing-placement:
     wrong_world: '<gray>the point is in another world</gray>'
     outside_region: '<gray>the point is outside the farm</gray>'
@@ -348,6 +350,7 @@ farm:
   entry-market-active: '<color:#f2fff7><crop> <done>/<total> — <time> remaining</color>'
   entry-processing: '<color:#f2fff7>Go inside the mill and find the processing workshop</color>'
   entry-barn-fire: '<color:#f2fff7>Take the fire hose by the barn and extinguish every hotspot</color>'
+  entry-frost: '<color:#f2fff7>Carry logs from the woodpile and light the campfires in the field</color>'
   entry-delivery: '<color:#f2fff7>Carry the crates to receiving</color>'
   started: '<color:#55d98b>New order</color> <color:#707a76>•</color> <order> <color:#707a76>•</color> <color:#f2fff7>till a patch of <total> beds</color>'
   patch-unavailable: '<color:#ffad42>There is no free farm patch nearby for a new shift.</color>'
@@ -481,6 +484,18 @@ farm:
     progress: '<color:#45c8f5>Fire</color> <color:#707a76>•</color> <color:#f2fff7>extinguished <done>/<total></color>'
     aim-hint: '<color:#ffad42>Aim the water stream at a visible fire hotspot.</color>'
     bossbar: '<color:#ff7a45>Barn fire</color> <color:#707a76>•</color> <color:#45c8f5>extinguished <done>/<total></color>'
+  frost:
+    started: '<color:#8bd3ff><bold>Frost grips the field</bold></color>'
+    started-subtitle: '<color:#f2fff7>Carry logs from the woodpile and keep the campfires burning</color>'
+    progress: '<color:#8bd3ff>Temperature</color> <color:#707a76>•</color> <color:#f2fff7><done>/<total></color>'
+    required: '<color:#ffad42>Take a log from the woodpile and carry it to any campfire.</color>'
+    bossbar: '<color:#8bd3ff>Field temperature</color> <color:#707a76>•</color> <color:#f2fff7><done>/<total></color>'
+    picked-up: '<color:#ffc857><bold>Log picked up</bold></color>'
+    picked-up-subtitle: '<color:#f2fff7>Carry it to any campfire in the field</color>'
+    fueled: '<color:#ffad42><bold>Campfire lit</bold></color>'
+    fueled-subtitle: '<color:#f2fff7>Keep the other fires burning until the field warms up</color>'
+    inventory-full: '<color:#ff5f6d>Clear an inventory slot for the log.</color>'
+    firewood-item: '<color:#ffc857>Campfire log</color>'
   perk-vendor-name: '<color:#ffc857>Farm upgrades</color>'
   perk-menu:
     title: '<dark_gray>Farm perks</dark_gray>'
@@ -589,6 +604,8 @@ incident:
     name: '<color:#ffc857>Crop processing</color>'
   barn-fire:
     name: '<color:#ff7a45>Barn fire</color>'
+  frost:
+    name: '<color:#8bd3ff>Frost</color>'
   birds:
     name: '<color:#ff7a45>Bird flock</color>'
   food-delivery:
@@ -642,6 +659,7 @@ scoreboard:
     processing-operating: '<color:#45c8f5>Running the mechanism</color>'
     processing-packing: '<color:#55d98b>Stacking finished goods</color>'
     barn-fire: '<color:#ff7a45>Barn fire</color>'
+    frost: '<color:#8bd3ff>Field frost</color>'
     delivery: '<color:#f2fff7>Crate delivery</color>'
     delivery-carrying: '<color:#ffc857>Crate in hand</color>'
     cooldown: '<color:#55d98b>Shift complete</color>'
@@ -665,6 +683,7 @@ scoreboard:
     processing-operating: '<color:#b8c8c0>Walk along the glowing ring around the millstone</color>'
     processing-packing: '<color:#b8c8c0>Carry finished packages to the pallet</color>'
     barn-fire: '<color:#b8c8c0>Take the hose and extinguish visible hotspots</color>'
+    frost: '<color:#b8c8c0>Carry logs from the woodpile to the campfires</color>'
     delivery: '<color:#b8c8c0>Pick up crates at the cart</color>'
     delivery-carrying: '<color:#b8c8c0>Carry the crate to the </color><color:#c778ff>marker</color>'
     cooldown: '<color:#b8c8c0>A new order will appear later</color>'
@@ -692,6 +711,7 @@ scoreboard:
     market-pending: '<color:#b8c8c0>Right-click by the cart</color>'
     processing: '<color:#b8c8c0>Follow the prompt above the required station</color>'
     barn-fire: '<color:#b8c8c0>Aim at the fire and right-click</color>'
+    frost: '<color:#b8c8c0>Blue columns mark fires; the gold one marks the woodpile</color>'
 lumber:
   started: '<color:#ffc857>Lumbermill order</color> <color:#707a76>•</color> <wood>'
   wrong-species: '<gray>This order only accepts <wood>.</gray>'

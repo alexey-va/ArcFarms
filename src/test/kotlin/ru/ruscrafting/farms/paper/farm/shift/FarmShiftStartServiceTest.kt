@@ -110,7 +110,10 @@ private fun fixture(persistence: CompletableFuture<Unit>): ShiftStartFixture {
     }
     val service = FarmShiftStartService(
         debug = ArcFarmsDebug({ false }) {},
-        port = port,
+        access = port,
+        audience = port,
+        state = port,
+        tasks = port,
         orderCycle = orderCycle,
         worldAdmin = worldAdmin,
         registry = registry,

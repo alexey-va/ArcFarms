@@ -25,7 +25,10 @@ import ru.ruscrafting.farms.paper.FarmBlockRegistry
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.FarmRuntimeFactory
 import ru.ruscrafting.farms.paper.RegionGateway
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import ru.ruscrafting.farms.paper.WorksiteModule
 import ru.ruscrafting.farms.paper.WorksiteBlockBreakHandler
 import ru.ruscrafting.farms.paper.WorksiteBlockInteractHandler
@@ -45,6 +48,7 @@ import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentContr
 import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
 import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingIncident
 import ru.ruscrafting.farms.paper.farm.incident.fire.FarmBarnFireIncident
+import ru.ruscrafting.farms.paper.farm.incident.frost.FarmFrostIncident
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
 import ru.ruscrafting.farms.paper.farm.point.FarmPointService
 import ru.ruscrafting.farms.paper.farm.perk.FarmPerkController
@@ -64,7 +68,10 @@ import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 internal class FarmModule(
     private val settings: () -> ArcFarmsConfig,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
+    private val state: WorksiteStatePort,
+    private val tasks: WorksiteTaskPort,
     private val registry: FarmRuntimeRegistry,
     private val regionGateway: RegionGateway,
     private val blockRegistry: FarmBlockRegistry,
@@ -86,6 +93,7 @@ internal class FarmModule(
     private val special: FarmSpecialIncidentController,
     private val processing: FarmProcessingIncident,
     private val barnFire: FarmBarnFireIncident,
+    private val frost: FarmFrostIncident,
     private val delivery: FarmDeliveryController,
     private val scene: FarmContractSceneController,
     private val supplies: FarmSupplyController,
@@ -117,6 +125,7 @@ internal class FarmModule(
         registry.snapshot().forEach(special::ensure)
         registry.snapshot().forEach(processing::ensure)
         registry.snapshot().forEach(barnFire::ensure)
+        registry.snapshot().forEach(frost::ensure)
     }
 
     override fun reconcileChunk(chunk: Chunk) {
@@ -132,7 +141,7 @@ internal class FarmModule(
         chunk.entities.filter { entity ->
             pests.ownsPest(entity) || pests.ownsNest(entity) || birds.owns(entity) || foodDelivery.owns(entity) ||
                 processing.owns(entity) || delivery.owns(entity) || supplies.owns(entity) ||
-                care.owns(entity) || perks.owns(entity)
+                care.owns(entity) || perks.owns(entity) || frost.owns(entity)
         }.forEach { entity ->
             entity.remove()
             removed++
@@ -166,7 +175,7 @@ internal class FarmModule(
                 remaining -= release.processed
                 if (release.complete) {
                     runtime.state = runtime.state.copy(preparationReleased = true)
-                    port.persistAsync()
+                    state.persistAsync()
                 }
                 if (!release.complete || remaining <= 0) return@forEach
             }
@@ -187,7 +196,7 @@ internal class FarmModule(
     }
 
     fun updateSeeder(tick: Long) = registry.snapshot().forEach { runtime ->
-        port.guarded("farm_seeder:${runtime.settings.id}") {
+        tasks.guarded("farm_seeder:${runtime.settings.id}") {
             if (!isAdminEditing(runtime)) care.updateSeeder(runtime, processField = tick % 5L == 0L)
         }
     }
@@ -195,7 +204,7 @@ internal class FarmModule(
     fun updateAmbient() {
         worldAdmin.renderInspectViews()
         registry.snapshot().forEach { runtime ->
-            port.guarded("farm_animals:${runtime.settings.id}") {
+            tasks.guarded("farm_animals:${runtime.settings.id}") {
                 if (!isAdminEditing(runtime)) {
                     care.updateAnimals(runtime)
                     if (runtime.state.phase == FarmPhase.INCIDENT && runtime.state.incidentType == FarmIncidentType.NIGHT_SHIFT) {
@@ -206,7 +215,7 @@ internal class FarmModule(
         }
     }
 
-    fun updatePlayerTimes() = port.guarded("farm_night_time") { special.updatePlayerTimes() }
+    fun updatePlayerTimes() = tasks.guarded("farm_night_time") { special.updatePlayerTimes() }
 
     fun updateCarriedDisplays() {
         val runtimes = registry.snapshot()
@@ -220,10 +229,10 @@ internal class FarmModule(
     override fun tick(now: Long) {
         val runtimes = registry.snapshot()
         runtimes.forEach { runtime ->
-            port.guarded("farm_perks:${runtime.settings.id}") { perks.tick(runtime) }
+            tasks.guarded("farm_perks:${runtime.settings.id}") { perks.tick(runtime) }
         }
         runtimes.forEach { runtime ->
-            port.guarded("farm:${runtime.settings.id}") {
+            tasks.guarded("farm:${runtime.settings.id}") {
                 if (isAdminEditing(runtime)) return@guarded
                 if (shiftStart.isPending(runtime.settings.id)) return@guarded
                 if (
@@ -235,7 +244,7 @@ internal class FarmModule(
                 val result = FarmShiftEngine.tick(runtime.state, currentOrder(runtime), now)
                 if (result.events.isNotEmpty()) transitions.apply(runtime, result, null)
                 if (runtime.state.phase == FarmPhase.IDLE) {
-                    val player = port.players(runtime.region).firstOrNull() ?: return@guarded
+                    val player = audience.players(runtime.region).firstOrNull() ?: return@guarded
                     shiftStart.start(runtime, player, now)
                     return@guarded
                 }
@@ -243,7 +252,7 @@ internal class FarmModule(
                     runtime.state.phase == FarmPhase.PREPARATION && runtime.state.preparationReleased &&
                     carePlans.shouldUseSeeder(runtime)
                 ) {
-                    care.initialize(runtime, port.players(runtime.region).firstOrNull(), FarmCareType.SEEDER)
+                    care.initialize(runtime, audience.players(runtime.region).firstOrNull(), FarmCareType.SEEDER)
                 }
                 drought.ensure(runtime)
                 pests.ensure(runtime)
@@ -252,6 +261,8 @@ internal class FarmModule(
                 special.ensure(runtime)
                 processing.ensure(runtime)
                 barnFire.ensure(runtime)
+                frost.ensure(runtime)
+                frost.update(runtime, now)
                 pests.eatCrops(runtime)
                 birds.eatCrops(runtime)
                 care.updateDisease(runtime, now)
@@ -297,7 +308,7 @@ internal class FarmModule(
     }
 
     override fun canAccess(player: Player): Boolean =
-        registry.snapshot().any { port.hasAccess(player, it.settings.permission) }
+        registry.snapshot().any { access.hasAccess(player, it.settings.permission) }
 
     override fun onBreakHigh(event: BlockBreakEvent): Boolean = events.onBreakHigh(event)
 
@@ -330,6 +341,7 @@ internal class FarmModule(
                 }
                 supplies.refresh(runtime, supply, { supplyPoint(runtime, it) }, reason)
             }
+            FarmPointKind.FIREWOOD -> frost.refresh(runtime, reason)
             FarmPointKind.CRATES -> if (runtime.state.phase == FarmPhase.DELIVERY) {
                 runtime.state = runtime.state.copy(
                     deliveryPosition = pointService.configured(runtime.settings.id, FarmPointKind.CRATES)?.let {
@@ -338,7 +350,7 @@ internal class FarmModule(
                 )
                 delivery.clear(runtime, reason)
                 delivery.ensure(runtime)
-                port.persistAsync()
+                state.persistAsync()
             }
             FarmPointKind.CART, FarmPointKind.CUSTOMER -> {
                 scene.clear(runtime, reason)
@@ -364,6 +376,7 @@ internal class FarmModule(
         special.cleanup(reason)
         processing.cleanup(reason)
         barnFire.cleanup(reason)
+        frost.cleanup(reason)
         supplies.cleanup(reason)
         delivery.cleanup(reason)
         pests.cleanup(reason)
@@ -401,7 +414,7 @@ internal class FarmModule(
         },
     )
 
-    private fun isAdminEditing(runtime: FarmRuntime): Boolean = port.players(runtime.region).any(worldAdmin::isEditing)
+    private fun isAdminEditing(runtime: FarmRuntime): Boolean = audience.players(runtime.region).any(worldAdmin::isEditing)
 
     private fun currentOrder(runtime: FarmRuntime) = runtime.state.orderId?.let(runtime.orders::get)
 }

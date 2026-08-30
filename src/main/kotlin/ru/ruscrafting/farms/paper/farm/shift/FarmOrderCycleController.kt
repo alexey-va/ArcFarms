@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper.farm.shift
 
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import java.util.concurrent.CompletableFuture
 import java.util.logging.Level
 
@@ -11,7 +12,8 @@ import java.util.logging.Level
  * is in flight. A failed write rolls the in-memory value back.
  */
 internal class FarmOrderCycleController(
-    private val port: WorksiteRuntimePort,
+    private val state: WorksiteStatePort,
+    private val tasks: WorksiteTaskPort,
     private val persistAsync: () -> CompletableFuture<Unit>,
 ) {
     private val pausedZones = mutableSetOf<String>()
@@ -40,13 +42,13 @@ internal class FarmOrderCycleController(
         val changed = if (paused) pausedZones.add(zoneId) else pausedZones.remove(zoneId)
         if (!changed) return true
         pendingZones += zoneId
-        val token = port.lifecycleToken()
+        val token = tasks.lifecycleToken()
         runCatching(persistAsync).getOrElse { CompletableFuture.failedFuture(it) }.whenComplete { _, failure ->
-            port.runSync(token) {
+            tasks.runSync(token) {
                 pendingZones.remove(zoneId)
                 if (failure == null) return@runSync
                 if (paused) pausedZones.remove(zoneId) else pausedZones.add(zoneId)
-                port.log(Level.SEVERE, "Could not persist farm order cycle state for $zoneId paused=$paused", failure)
+                state.log(Level.SEVERE, "Could not persist farm order cycle state for $zoneId paused=$paused", failure)
             }
         }
         return true

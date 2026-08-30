@@ -9,7 +9,8 @@ import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.block
 import java.util.concurrent.TimeUnit
 import java.util.logging.Level
@@ -17,7 +18,8 @@ import java.util.logging.Level
 /** Bounded, restart-safe recovery for every incident-owned crop mutation. */
 internal class FarmIncidentRecoveryController(
     private val ledger: FarmBlockLedger,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val state: WorksiteStatePort,
 ) {
     fun pending(runtime: FarmRuntime): Boolean = FarmIncidentRecovery.pending(runtime.state)
 
@@ -37,10 +39,10 @@ internal class FarmIncidentRecoveryController(
             restoreSpecial = { damage -> restoreCrop(runtime, damage) },
             limit = limit,
         )
-        if (runtime.state != before) port.persistAsync()
+        if (runtime.state != before) state.persistAsync()
         val afterCount = remaining(runtime)
-        if (pending(runtime) && port.allowInteraction("farm-incident-recovery:${runtime.settings.id}", TimeUnit.MINUTES.toMillis(1))) {
-            port.log(
+        if (pending(runtime) && access.allowInteraction("farm-incident-recovery:${runtime.settings.id}", TimeUnit.MINUTES.toMillis(1))) {
+            state.log(
                 Level.WARNING,
                 "Farm incident recovery in ${runtime.settings.id} is waiting for $afterCount loaded plot(s)",
             )
@@ -56,7 +58,7 @@ internal class FarmIncidentRecoveryController(
             if (restored && position !in runtime.state.preparationPatch) ledger.removeTransient(soil)
             restored
         }.getOrElse { failure ->
-            port.log(Level.SEVERE, "Could not restore drought-damaged farm plot $position", failure)
+            state.log(Level.SEVERE, "Could not restore drought-damaged farm plot $position", failure)
             false
         }
     }
@@ -69,6 +71,7 @@ internal class FarmIncidentRecoveryController(
             val above = soil.getRelative(org.bukkit.block.BlockFace.UP)
             val restored = when {
                 above.type == crop -> true
+                above.type == Material.CAMPFIRE -> ledger.restoreActiveCrop(soil)
                 above.type.isAir || above.type == Material.WATER -> {
                     above.setBlockData(crop.createBlockData(), false)
                     ledger.captureActiveCrop(soil, runtime.settings.id)
@@ -79,7 +82,7 @@ internal class FarmIncidentRecoveryController(
             if (restored && damage.position !in runtime.state.preparationPatch) ledger.removeTransient(soil)
             restored
         }.getOrElse { failure ->
-            port.log(Level.SEVERE, "Could not restore incident-damaged farm plot ${damage.position}", failure)
+            state.log(Level.SEVERE, "Could not restore incident-damaged farm plot ${damage.position}", failure)
             false
         }
     }

@@ -245,6 +245,7 @@ data class FarmSpecialIncidentSettings(
     val marketSecondsPerCrop: Double,
     val marketMinimumSeconds: Int,
     val marketMaximumSeconds: Int,
+    val frost: FarmFrostSettings,
 ) {
     init {
         require(nightCropTargetCount <= nightCropPlacementCount) {
@@ -269,6 +270,38 @@ data class FarmSpecialIncidentSettings(
         return kotlin.math.ceil(availableBeds.toDouble() / birdBedsPerBird)
             .toInt()
             .coerceIn(birdMinCount, birdMaxCount)
+            .coerceAtMost(availableBeds)
+    }
+}
+
+data class FarmFrostSettings(
+    val campfireMinCount: Int,
+    val campfireMaxCount: Int,
+    val bedsPerCampfire: Int,
+    val targetTemperature: Int,
+    val heatPerSecondPerFire: Int,
+    val coolingSecondsPerDegree: Int,
+    val fuelSeconds: Int,
+    val pickupRadius: Double,
+    val deliveryRadius: Double,
+    val fuelMaterial: String,
+    val woodpileMaterial: String,
+    val woodpileCustomModelData: Int,
+    val woodpileDisplayTransform: String,
+    val woodpileScale: Float,
+    val woodpileYOffset: Double,
+    val woodpileYawOffset: Float,
+    val woodpileViewRange: Float,
+) {
+    init {
+        require(campfireMinCount <= campfireMaxCount) { "frost campfire minimum must not exceed maximum" }
+    }
+
+    fun campfireCount(availableBeds: Int): Int {
+        if (availableBeds <= 0) return 0
+        return kotlin.math.ceil(availableBeds.toDouble() / bedsPerCampfire)
+            .toInt()
+            .coerceIn(campfireMinCount, campfireMaxCount)
             .coerceAtMost(availableBeds)
     }
 }
@@ -1303,6 +1336,38 @@ class ArcFarmsConfig private constructor(
                         .checked("special-incidents.market.timer.minimum-seconds", 10, 3_600),
                     marketMaximumSeconds = section.int("special-incidents.market.timer.maximum-seconds", 180)
                         .checked("special-incidents.market.timer.maximum-seconds", 10, 3_600),
+                    frost = FarmFrostSettings(
+                        campfireMinCount = section.int("special-incidents.frost.campfires.min-count", 4)
+                            .checked("special-incidents.frost.campfires.min-count", 1, 16),
+                        campfireMaxCount = section.int("special-incidents.frost.campfires.max-count", 6)
+                            .checked("special-incidents.frost.campfires.max-count", 1, 16),
+                        bedsPerCampfire = section.int("special-incidents.frost.campfires.beds-per-campfire", 180)
+                            .checked("special-incidents.frost.campfires.beds-per-campfire", 16, 4_096),
+                        targetTemperature = section.int("special-incidents.frost.temperature.target", 100)
+                            .checked("special-incidents.frost.temperature.target", 10, 1_000),
+                        heatPerSecondPerFire = section.int("special-incidents.frost.temperature.heat-per-second-per-fire", 2)
+                            .checked("special-incidents.frost.temperature.heat-per-second-per-fire", 1, 100),
+                        coolingSecondsPerDegree = section.int("special-incidents.frost.temperature.cooling-seconds-per-degree", 10)
+                            .checked("special-incidents.frost.temperature.cooling-seconds-per-degree", 1, 600),
+                        fuelSeconds = section.int("special-incidents.frost.fuel-seconds", 30)
+                            .checked("special-incidents.frost.fuel-seconds", 1, 3_600),
+                        pickupRadius = section.finiteDouble("special-incidents.frost.pickup-radius", 1.75, 0.5, 8.0),
+                        deliveryRadius = section.finiteDouble("special-incidents.frost.delivery-radius", 2.25, 0.5, 8.0),
+                        fuelMaterial = materialName(section.string("special-incidents.frost.fuel-material", "OAK_LOG")),
+                        woodpileMaterial = materialName(section.string("special-incidents.frost.woodpile.material", "OAK_LOG")),
+                        woodpileCustomModelData = section.int("special-incidents.frost.woodpile.custom-model-data", 0)
+                            .checked("special-incidents.frost.woodpile.custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
+                        woodpileDisplayTransform = section.string("special-incidents.frost.woodpile.display-transform", "GROUND")
+                            .uppercase().also { value ->
+                                require(value in setOf("NONE", "GROUND", "FIXED", "HEAD")) {
+                                    "special-incidents.frost.woodpile.display-transform is invalid"
+                                }
+                            },
+                        woodpileScale = section.finiteFloat("special-incidents.frost.woodpile.scale", 1.0f, 0.1f, 8.0f),
+                        woodpileYOffset = section.finiteDouble("special-incidents.frost.woodpile.y-offset", 0.0, -4.0, 4.0),
+                        woodpileYawOffset = section.finiteFloat("special-incidents.frost.woodpile.yaw-offset", 0.0f, -360.0f, 360.0f),
+                        woodpileViewRange = section.finiteFloat("special-incidents.frost.woodpile.view-range", 3.0f, 0.5f, 16.0f),
+                    ),
                 )
                 require(specialIncidents.marketMinimumSeconds <= specialIncidents.marketMaximumSeconds) {
                     "farm-zones.$id market timer minimum-seconds must not exceed maximum-seconds"

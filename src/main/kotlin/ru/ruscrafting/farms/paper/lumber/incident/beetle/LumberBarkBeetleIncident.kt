@@ -11,7 +11,6 @@ import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.MaterialRules
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.lumber.LumberRuntime
 import ru.ruscrafting.farms.paper.lumber.LumberRuntimeRegistry
 import ru.ruscrafting.farms.paper.lumber.incident.LumberIncidentCoordinator
@@ -21,7 +20,6 @@ internal class LumberBarkBeetleIncident(
     private val registry: LumberRuntimeRegistry,
     private val index: LumberBlockIndex,
     private val incidents: LumberIncidentCoordinator,
-    private val port: WorksiteRuntimePort,
 ) {
     fun start(runtime: LumberRuntime, required: Int, now: Long): Boolean = incidents.start(
         runtime,

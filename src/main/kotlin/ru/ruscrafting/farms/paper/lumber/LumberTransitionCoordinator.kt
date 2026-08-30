@@ -5,11 +5,13 @@ import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.EngineResult
 import ru.ruscrafting.farms.domain.LumberShiftEvent
 import ru.ruscrafting.farms.domain.LumberShiftState
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatsPort
 
 /** The only Paper-side writer for V2 lumber domain transitions. */
 internal class LumberTransitionCoordinator(
-    private val port: WorksiteRuntimePort,
+    private val state: WorksiteStatePort,
+    private val stats: WorksiteStatsPort,
 ) {
     fun apply(
         runtime: LumberRuntime,
@@ -17,7 +19,7 @@ internal class LumberTransitionCoordinator(
         actor: Player?,
     ) {
         runtime.state = result.state
-        port.traceResult(
+        state.traceResult(
             ActivityKind.LUMBER,
             runtime.settings.id,
             actor,
@@ -29,8 +31,8 @@ internal class LumberTransitionCoordinator(
             result,
         )
         if (actor != null && result.contribution > 0) {
-            port.recordContribution(actor.uniqueId, ActivityKind.LUMBER, result.contribution)
+            stats.recordContribution(actor.uniqueId, ActivityKind.LUMBER, result.contribution)
         }
-        port.persistAsync()
+        state.persistAsync()
     }
 }

@@ -33,7 +33,10 @@ import ru.ruscrafting.farms.domain.purchasePerk
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
@@ -47,7 +50,10 @@ internal class FarmPerkController(
     private val settings: () -> ArcFarmsConfig,
     private val locale: ArcFarmsLocale,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
+    private val state: WorksiteStatePort,
+    private val tasks: WorksiteTaskPort,
     private val points: FarmPointProvider,
     private val runtimes: () -> Collection<FarmRuntime>,
     private val weeklyContribution: (UUID) -> Long,
@@ -132,8 +138,8 @@ internal class FarmPerkController(
         event.isCancelled = true
         val zoneId = event.rightClicked.persistentDataContainer.get(zoneKey, PersistentDataType.STRING) ?: return true
         val runtime = runtimes().firstOrNull { it.settings.id == zoneId } ?: return true
-        if (!port.hasAccess(event.player, runtime.settings.permission)) {
-            port.sendChat(event.player, MessageKey.ZONE_LOCKED)
+        if (!access.hasAccess(event.player, runtime.settings.permission)) {
+            audience.sendChat(event.player, MessageKey.ZONE_LOCKED)
             return true
         }
         open(event.player, runtime)
@@ -174,7 +180,7 @@ internal class FarmPerkController(
     fun tick(runtime: FarmRuntime) {
         val now = clock()
         ensure(runtime)
-        port.players(runtime.region).forEach { player ->
+        audience.players(runtime.region).forEach { player ->
             if (active(player.uniqueId, FarmPerkType.SPEED, now)) {
                 val current = player.getPotionEffect(PotionEffectType.SPEED)
                 if (current == null || current.amplifier <= 0) {
@@ -182,7 +188,7 @@ internal class FarmPerkController(
                 }
             }
             if (active(player.uniqueId, FarmPerkType.SUSTENANCE, now) &&
-                port.allowInteraction("farm-perk-sustain:${player.uniqueId}", runtime.settings.perks.sustainIntervalSeconds * 1_000L)
+                access.allowInteraction("farm-perk-sustain:${player.uniqueId}", runtime.settings.perks.sustainIntervalSeconds * 1_000L)
             ) {
                 player.foodLevel = (player.foodLevel + 2).coerceAtMost(20)
                 player.saturation = (player.saturation + 1.0f).coerceAtMost(20.0f)
@@ -239,7 +245,7 @@ internal class FarmPerkController(
         val refreshId = ++menuRefreshSequence
         menuRefreshTasks[player.uniqueId] = refreshId
         val delayTicks = ((until - now - 1L) / MILLIS_PER_TICK) + 2L
-        if (!port.runLater(delayTicks) {
+        if (!tasks.runLater(delayTicks) {
                 if (!menuRefreshTasks.remove(player.uniqueId, refreshId)) return@runLater
                 if (!player.isOnline) return@runLater
                 val current = player.openInventory
@@ -346,24 +352,24 @@ internal class FarmPerkController(
         ledger = FarmPerkLedgerState(ledger.values + (player.uniqueId to purchased.state))
         pendingPurchases[player.uniqueId] = purchased.state
         val generation = persistenceGeneration
-        val token = port.lifecycleToken()
+        val token = tasks.lifecycleToken()
         runCatching(persistAsync).getOrElse { CompletableFuture.failedFuture(it) }.whenComplete { _, failure ->
-            port.runSync(token) {
+            tasks.runSync(token) {
                 if (generation != persistenceGeneration || pendingPurchases[player.uniqueId] != purchased.state) return@runSync
                 pendingPurchases.remove(player.uniqueId)
                 if (failure != null) {
                     if (ledger.values[player.uniqueId] == purchased.state) {
                         ledger = FarmPerkLedgerState(ledger.values + (player.uniqueId to before))
                     }
-                    port.log(Level.SEVERE, "Could not persist farm perk purchase for ${player.uniqueId}", failure)
+                    state.log(Level.SEVERE, "Could not persist farm perk purchase for ${player.uniqueId}", failure)
                     if (player.isOnline) {
-                        port.sendChat(player, MessageKey.FARM_PERK_SAVE_FAILED)
+                        audience.sendChat(player, MessageKey.FARM_PERK_SAVE_FAILED)
                         open(player, runtime)
                     }
                     return@runSync
                 }
                 if (player.isOnline) {
-                    port.sendChat(
+                    audience.sendChat(
                         player,
                         MessageKey.FARM_PERK_PURCHASED,
                         mapOf("perk" to locale.renderPath("perk.${type.name.lowercase()}.name", player)),
@@ -396,7 +402,7 @@ internal class FarmPerkController(
         inventory.setItem(slot, error)
         val feedbackId = ++feedbackSequence
         feedbackTasks[player.uniqueId] = feedbackId
-        port.runLater(FEEDBACK_TICKS) {
+        tasks.runLater(FEEDBACK_TICKS) {
             if (!feedbackTasks.remove(player.uniqueId, feedbackId)) return@runLater
             if (!player.isOnline) return@runLater
             val current = player.openInventory

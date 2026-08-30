@@ -11,7 +11,7 @@ import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmRouteState
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmRuntime
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.persistence.FarmRouteRepository
 import java.util.UUID
 import java.util.random.RandomGenerator
@@ -20,7 +20,7 @@ import kotlin.math.sqrt
 internal class FarmRouteAdminService(
     private val repository: FarmRouteRepository,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val port: WorksiteAudiencePort,
     private val runtimes: () -> Collection<FarmRuntime>,
 ) {
     private data class Recording(

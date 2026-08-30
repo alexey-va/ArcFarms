@@ -18,7 +18,9 @@ import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus
 import ru.ruscrafting.farms.domain.worksite.WorksiteObjectiveKey
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.mine.MineTransitionCoordinator
@@ -38,7 +40,9 @@ internal class MineLoadingController(
     private val transitions: MineTransitionCoordinator,
     private val serviceItems: WorksiteServiceItems?,
     private val locale: ArcFarmsLocale?,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
+    private val state: WorksiteStatePort,
     private val clock: () -> Long,
 ) {
     private data class Carry(val zoneId: String, val sequence: Long, val targetId: String, val identity: ServiceItemIdentity)
@@ -69,13 +73,13 @@ internal class MineLoadingController(
         val target = runtime.state.objective?.targets?.firstOrNull { it.position == clicked.position() } ?: return false
         event.isCancelled = true
         return pickup(runtime, target.id, event.player).also { accepted ->
-            if (!accepted) port.sendActionBar(event.player, MessageKey.MINE_LOADING_REQUIRED)
+            if (!accepted) audience.sendActionBar(event.player, MessageKey.MINE_LOADING_REQUIRED)
         }
     }
 
     fun pickup(runtime: MineRuntime, targetId: String, player: Player): Boolean {
         if (runtime.state.phase != MinePhase.LOADING || player.uniqueId in carried) return false
-        if (!port.hasAccess(player, runtime.settings.permission)) return false
+        if (!access.hasAccess(player, runtime.settings.permission)) return false
         val objective = runtime.state.objective ?: return false
         val leased = ObjectiveTargetPool.lease(objective, targetId, player.uniqueId, clock())
         if (!leased.accepted) return false
@@ -96,7 +100,7 @@ internal class MineLoadingController(
             runtime.state = runtime.state.copy(objective = objective)
             return false
         }
-        port.persistAsync()
+        state.persistAsync()
         return issued.amount > 0
     }
 
@@ -147,7 +151,7 @@ internal class MineLoadingController(
         val released = ObjectiveTargetPool.release(objective, playerId)
         if (released.accepted) {
             runtime.state = runtime.state.copy(objective = released.state)
-            port.persistAsync()
+            state.persistAsync()
         }
         return true
     }

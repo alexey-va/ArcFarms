@@ -117,7 +117,9 @@ internal class FarmIncidentScenarioFixture private constructor(
         settings = { settings },
         locale = locale,
         debug = ArcFarmsDebug({ false }) {},
-        port = port,
+        access = port,
+        audience = port,
+        state = port,
         configuredPoint = { zoneId, kind ->
             if (zoneId == zone.id && kind == FarmPointKind.PROCESSING) processingPoint else null
         },
@@ -129,7 +131,9 @@ internal class FarmIncidentScenarioFixture private constructor(
     fun barnFire(): FarmBarnFireIncident = FarmBarnFireIncident(
         settings = { settings },
         debug = ArcFarmsDebug({ false }) {},
-        port = port,
+        access = port,
+        audience = port,
+        state = port,
         points = FarmPointProvider { runtime, kind ->
             check(runtime.settings.id == zone.id)
             check(kind == FarmPointKind.PEN)
@@ -156,7 +160,10 @@ internal class FarmIncidentScenarioFixture private constructor(
             settings = { settings },
             locale = locale,
             debug = ArcFarmsDebug({ false }) {},
-            port = port,
+            access = port,
+            audience = port,
+            state = port,
+            tasks = port,
             routes = routes,
             points = FarmPointProvider { _, kind ->
                 check(kind == FarmPointKind.RECEIVING)

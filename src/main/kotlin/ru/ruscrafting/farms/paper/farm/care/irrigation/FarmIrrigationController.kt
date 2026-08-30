@@ -21,7 +21,7 @@ import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmRuntime
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.field.FARM_SOIL_TYPES
@@ -50,7 +50,7 @@ private data class ActiveIrrigationWave(
 internal class FarmIrrigationController(
     private val settings: () -> ArcFarmsConfig,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val port: WorksiteAudiencePort,
     private val transitions: FarmTransitionSink,
 ) {
     private val assignments = mutableMapOf<FarmIrrigationScope, Map<Int, Set<FarmPlotPosition>>>()

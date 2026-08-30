@@ -13,6 +13,7 @@ import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.CuboidRegionGateway
 import ru.ruscrafting.farms.paper.mine.ImmediateMineJournal
 import ru.ruscrafting.farms.paper.mine.MineComponentGraph
+import ru.ruscrafting.farms.paper.mine.testMineComponentGraph
 import ru.ruscrafting.farms.paper.mine.immediateMinePort
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineIndexDefinition
@@ -79,7 +80,7 @@ private fun worldGraph(
     items: WorldIncidentItems,
     name: String,
     state: MineShiftState = MineShiftState(engineVersion = 2, phase = MinePhase.MINING, sequence = 1, orderId = "ore_run"),
-): MineComponentGraph = MineComponentGraph(
+): MineComponentGraph = testMineComponentGraph(
     paper.createSimplePlugin("MineWorld$name"), CuboidRegionGateway(), immediateMinePort(),
     clock = { 1_000L }, journal = journal, serviceItems = items,
 ).also { it.module.rebuild(listOf(mineV2Settings()), mapOf("old_shafts" to state), 5_000L) }

@@ -20,13 +20,20 @@ import ru.ruscrafting.farms.domain.EngineResult
 import ru.ruscrafting.farms.domain.winner
 import ru.ruscrafting.farms.network.ActivityNetworkGateway
 import ru.ruscrafting.farms.network.NetworkSignal
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteNetworkPort
+import ru.ruscrafting.farms.paper.worksite.WorksitePorts
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatsPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.logging.Level
 
 /** Shared Paper presentation and infrastructure adapter for every worksite type. */
-internal class PaperWorksiteRuntimePort(
+internal class PaperWorksiteAdapter(
     private val plugin: Plugin,
     private val locale: ArcFarmsLocale,
     private val settings: () -> ArcFarmsConfig,
@@ -42,7 +49,14 @@ internal class PaperWorksiteRuntimePort(
     private val adminEditing: (Player) -> Boolean,
     private val persist: () -> CompletableFuture<Unit>,
     private val guard: (String, () -> Unit) -> Unit,
-) : WorksiteRuntimePort {
+) : WorksiteAccessPort,
+    WorksiteAudiencePort,
+    WorksiteStatePort,
+    WorksiteTaskPort,
+    WorksiteStatsPort,
+    WorksiteNetworkPort {
+    fun ports(): WorksitePorts = WorksitePorts(this, this, this, this, this, this)
+
     private val activeBars = mutableMapOf<ActivityBarKey, BossBar>()
 
     override fun isOperational(): Boolean = operational()
@@ -337,6 +351,9 @@ internal class PaperWorksiteRuntimePort(
             MessageKey.FARM_PROCESSING_PRODUCT_PICKED_UP to MessageKey.FARM_PROCESSING_PRODUCT_PICKED_UP_SUBTITLE,
             MessageKey.FARM_PROCESSING_RETURNED to MessageKey.FARM_PROCESSING_RETURNED_SUBTITLE,
             MessageKey.FARM_BARN_FIRE_STARTED to MessageKey.FARM_BARN_FIRE_STARTED_SUBTITLE,
+            MessageKey.FARM_FROST_STARTED to MessageKey.FARM_FROST_STARTED_SUBTITLE,
+            MessageKey.FARM_FROST_PICKED_UP to MessageKey.FARM_FROST_PICKED_UP_SUBTITLE,
+            MessageKey.FARM_FROST_FUELED to MessageKey.FARM_FROST_FUELED_SUBTITLE,
             MessageKey.FARM_SPECIAL_RESOLVED to MessageKey.FARM_SPECIAL_RESOLVED_SUBTITLE,
             MessageKey.FARM_GIANT_CROP_STARTED to MessageKey.FARM_GIANT_CROP_STARTED_SUBTITLE,
             MessageKey.FARM_CHANNELS_STARTED to MessageKey.FARM_CHANNELS_STARTED_SUBTITLE,

@@ -37,7 +37,7 @@ class LumberBlockRecoveryMockBukkitTest : FunSpec({
         val player = paper.server.addPlayer("Logger")
         val journal = ControllableLumberJournal()
         val effects = RecordingLumberEffects()
-        val controller = LumberBlockRecoveryController(journal, immediatePort(), { 1_000L }, effects)
+        val controller = recoveryController(journal, effects)
         val runtime = runtime(world.name)
 
         val prepared = controller.prepare(runtime, player, block, ItemStack(Material.IRON_AXE))
@@ -61,7 +61,7 @@ class LumberBlockRecoveryMockBukkitTest : FunSpec({
         val player = paper.server.addPlayer("Logger")
         val journal = ControllableLumberJournal()
         val effects = RecordingLumberEffects()
-        val controller = LumberBlockRecoveryController(journal, immediatePort(), { 1_000L }, effects)
+        val controller = recoveryController(journal, effects)
         val runtime = runtime(world.name)
 
         val prepared = controller.prepare(runtime, player, block, ItemStack(Material.IRON_AXE))
@@ -85,6 +85,14 @@ private fun immediatePort(): WorksiteRuntimePort {
             true
         }
     }
+}
+
+private fun recoveryController(
+    journal: LumberRecoveryJournal,
+    effects: LumberBlockEffects,
+): LumberBlockRecoveryController {
+    val port = immediatePort()
+    return LumberBlockRecoveryController(journal, port, port, { 1_000L }, effects)
 }
 
 private fun runtime(world: String): LumberRuntime {

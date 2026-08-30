@@ -11,7 +11,10 @@ import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockRegistry
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.admin.FarmWorldAdminService
 import ru.ruscrafting.farms.paper.farm.care.FarmCarePlanService
@@ -23,7 +26,10 @@ import java.util.logging.Level
 /** Selects a contract and field, then durably opens one farm shift. */
 internal class FarmShiftStartService(
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
+    private val state: WorksiteStatePort,
+    private val tasks: WorksiteTaskPort,
     private val orderCycle: FarmOrderCycleController,
     private val worldAdmin: FarmWorldAdminService,
     private val registry: FarmBlockRegistry,
@@ -46,7 +52,7 @@ internal class FarmShiftStartService(
         if (runtime.settings.id in pendingStarts) return false
         if (orderCycle.isPaused(runtime.settings.id) || registry.isReindexing(runtime.settings.id)) return false
         if (worldAdmin.anyEditing()) return false
-        if (!port.allowInteraction("farm-patch-scan:${runtime.settings.id}", 5_000)) return false
+        if (!access.allowInteraction("farm-patch-scan:${runtime.settings.id}", 5_000)) return false
         val order = forcedOrder ?: FarmContractPlanner.select(
             orders = runtime.orderList,
             rareChancePercent = runtime.settings.rareOrderChancePercent,
@@ -57,15 +63,15 @@ internal class FarmShiftStartService(
         val targetSize = if (seederShift) runtime.settings.seederPatchSize else runtime.settings.preparationPatchSize
         val patch = field.selectPatch(runtime, player.location, seederShift, runtime.state.sequence)
         if (patch.isEmpty()) {
-            port.log(
+            state.log(
                 Level.WARNING,
                 "Could not start farm shift: zone=${runtime.settings.id} sequence=${runtime.state.sequence + 1} " +
                     "reason=patch_unavailable player=${player.name} mechanized=$seederShift " +
                     "target=$targetSize search_radius=${runtime.settings.preparationSearchRadius} " +
                     "indexed_beds=${registry.beds(runtime.settings.id).size}",
             )
-            if (port.allowInteraction("farm-patch-empty:${runtime.settings.id}:${player.uniqueId}", 10_000)) {
-                port.sendActionBar(player, MessageKey.FARM_PATCH_UNAVAILABLE)
+            if (access.allowInteraction("farm-patch-empty:${runtime.settings.id}:${player.uniqueId}", 10_000)) {
+                audience.sendActionBar(player, MessageKey.FARM_PATCH_UNAVAILABLE)
                 debug.event(
                     "farm_patch_unavailable", "zone" to runtime.settings.id, "player" to player.name,
                     "search_radius" to runtime.settings.preparationSearchRadius,
@@ -82,23 +88,23 @@ internal class FarmShiftStartService(
         val previous = runtime.state
         runtime.state = started.state
         pendingStarts += runtime.settings.id
-        val token = port.lifecycleToken()
+        val token = tasks.lifecycleToken()
         runCatching(persistAsync).getOrElse { CompletableFuture.failedFuture(it) }.whenComplete { _, failure ->
-            port.runSync(token) {
+            tasks.runSync(token) {
                 pendingStarts.remove(runtime.settings.id)
                 if (failure != null) {
-                    if (runtime.state == started.state) runtime.state = previous else port.persistAsync()
-                    port.log(Level.SEVERE, "Could not durably start farm patch ${runtime.settings.id}", failure)
-                    if (player.isOnline) port.sendChat(player, MessageKey.GENERIC_ERROR)
+                    if (runtime.state == started.state) runtime.state = previous else state.persistAsync()
+                    state.log(Level.SEVERE, "Could not durably start farm patch ${runtime.settings.id}", failure)
+                    if (player.isOnline) audience.sendChat(player, MessageKey.GENERIC_ERROR)
                     return@runSync
                 }
                 if (runtime.state != started.state) {
-                    port.log(
+                    state.log(
                         Level.WARNING,
                         "Farm patch ${runtime.settings.id} changed while its durable start was pending; " +
                             "the current state will be persisted without applying stale transition effects",
                     )
-                    port.persistAsync()
+                    state.persistAsync()
                     return@runSync
                 }
                 registry.addBeds(runtime.settings.id, patch)

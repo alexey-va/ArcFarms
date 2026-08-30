@@ -9,7 +9,7 @@ import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.CuboidRegionGateway
 import ru.ruscrafting.farms.paper.mine.ImmediateMineJournal
-import ru.ruscrafting.farms.paper.mine.MineComponentGraph
+import ru.ruscrafting.farms.paper.mine.testMineComponentGraph
 import ru.ruscrafting.farms.paper.mine.immediateMinePort
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineIndexDefinition
@@ -26,7 +26,7 @@ class MineSequenceIncidentsMockBukkitTest : FunSpec({
         val player = paper.server.addPlayer("Engineer")
         val vents = (1..5).map { x -> world.getBlockAt(x, 64, 2).also { it.type = Material.IRON_BARS } }
         val crystals = (1..5).map { x -> world.getBlockAt(x, 64, 5).also { it.type = Material.AMETHYST_BLOCK } }
-        val graph = MineComponentGraph(
+        val graph = testMineComponentGraph(
             paper.createSimplePlugin("MineSequenceTest"), CuboidRegionGateway(), immediateMinePort(),
             clock = { 1_000L }, journal = ImmediateMineJournal(),
         )

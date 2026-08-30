@@ -19,7 +19,9 @@ import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmSpecialIncidentEngine
 import ru.ruscrafting.farms.paper.FarmRuntime
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.care.FarmCareController
@@ -38,7 +40,9 @@ import kotlin.math.sqrt
 /** Stateless renderer for farm world markers and explicit admin guidance bursts. */
 internal class FarmGuidanceController(
     private val settings: () -> ArcFarmsConfig,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
+    private val tasks: WorksiteTaskPort,
     private val care: FarmCareController,
     private val carePlans: FarmCarePlanService,
     private val delivery: FarmDeliveryController,
@@ -54,7 +58,7 @@ internal class FarmGuidanceController(
                 runtime.state.preparationPatch.filterNot(runtime.state.tilledPlots::contains).filter(::isOutdoorPlot),
             )?.location()
                 ?: return@forEach
-            players(runtime).filterNot(port::isAdminEditing).forEach { spawnColumn(it, marker, TILL_COLOR) }
+            players(runtime).filterNot(access::isAdminEditing).forEach { spawnColumn(it, marker, TILL_COLOR) }
         }
         farms.filter { it.state.phase == FarmPhase.PLANTING }.forEach { runtime ->
             val remaining = runtime.state.tilledPlots.filterNot(runtime.state.plantedPlots::contains).filter(::isOutdoorPlot)
@@ -63,13 +67,13 @@ internal class FarmGuidanceController(
                 settings().missingBedHighlightThreshold,
             ).mapNotNull(FarmPlotPosition::location)
             val marker = if (individual.isEmpty()) FarmPlotGeometry.center(remaining)?.location() else null
-            players(runtime).filterNot(port::isAdminEditing).forEach { player ->
+            players(runtime).filterNot(access::isAdminEditing).forEach { player ->
                 if (individual.isNotEmpty()) individual.forEach { spawnPlotMarker(player, it, PLANT_COLOR) }
                 else if (marker != null) spawnColumn(player, marker, PLANT_COLOR)
             }
         }
         farms.filter { it.state.phase == FarmPhase.HARVESTING }.forEach { runtime ->
-            players(runtime).filterNot(port::isAdminEditing).forEach { player ->
+            players(runtime).filterNot(access::isAdminEditing).forEach { player ->
                 harvest.targets(runtime, player.location).forEach { target ->
                     target.position.location()?.let { spawnColumn(player, it, target.color) }
                 }
@@ -83,7 +87,7 @@ internal class FarmGuidanceController(
                 )
                     .mapNotNull(FarmPlotGeometry::center)
                     .mapNotNull(FarmPlotPosition::location)
-                players(runtime).filterNot(port::isAdminEditing).forEach { player ->
+                players(runtime).filterNot(access::isAdminEditing).forEach { player ->
                     markers.forEach { spawnColumn(player, it, DROUGHT_COLOR) }
                 }
             }
@@ -103,12 +107,12 @@ internal class FarmGuidanceController(
             val world = Bukkit.getWorld(point.world) ?: return@forEach
             if (player.world == world) spawnColumn(player, Location(world, point.x, point.y, point.z), color)
         }
-        if (remainingBursts > 1) port.runLater(10L) { showDebug(playerId, zoneId, remainingBursts - 1) }
+        if (remainingBursts > 1) tasks.runLater(10L) { showDebug(playerId, zoneId, remainingBursts - 1) }
     }
 
     private fun emitCare(runtime: FarmRuntime) {
         val incomplete = runtime.state.careTargets.filterNot(FarmCareTarget::complete)
-        players(runtime).filterNot(port::isAdminEditing).forEach { player ->
+        players(runtime).filterNot(access::isAdminEditing).forEach { player ->
             val hive = runtime.state.careTargets.firstOrNull { it.role == FarmCareRole.HIVE }
             val visible = when (runtime.state.careType) {
                 FarmCareType.SEEDER -> incomplete.firstOrNull { it.role == FarmCareRole.SEEDER_HORSE }
@@ -156,7 +160,7 @@ internal class FarmGuidanceController(
         val world = Bukkit.getWorld(deliveryPoint.world) ?: return
         val target = Location(world, deliveryPoint.x, deliveryPoint.y, deliveryPoint.z)
         val crateTargets = delivery.uncarriedLocations(runtime)
-        players(runtime).filter { it.world == world && !port.isAdminEditing(it) }.forEach { player ->
+        players(runtime).filter { it.world == world && !access.isAdminEditing(it) }.forEach { player ->
             spawnColumn(player, target, DELIVERY_COLOR)
             spawnRing(player, target, runtime.settings.delivery.radius, DELIVERY_COLOR)
             crateTargets.forEach { spawnPlotMarker(player, it, AMBER_COLOR) }
@@ -166,7 +170,7 @@ internal class FarmGuidanceController(
     private fun emitSpecial(runtime: FarmRuntime) {
         val special = runtime.state.specialIncident ?: return
         val remaining = special.plots.filter { plot -> runtime.state.specialDamagedCrops.none { it.position == plot } }
-        players(runtime).filterNot(port::isAdminEditing).forEach { player ->
+        players(runtime).filterNot(access::isAdminEditing).forEach { player ->
             when (runtime.state.incidentType) {
                 FarmIncidentType.GIANT_CROP -> special.points.firstOrNull()?.let { point ->
                     val anchor = Location(player.world, point.x, point.y, point.z)
@@ -298,6 +302,14 @@ internal class FarmGuidanceController(
         }
         FarmIncidentType.BARN_FIRE -> points.resolve(runtime, FarmPointKind.PEN).let { point ->
             listOf(Location(runtime.region.world, point.x, point.y, point.z) to DANGER_COLOR)
+        }
+        FarmIncidentType.FROST -> buildList {
+            runtime.state.frost?.campfires.orEmpty().mapNotNullTo(this) { fire ->
+                fire.position.location()?.let { it to FROST_COLOR }
+            }
+            points.resolve(runtime, FarmPointKind.FIREWOOD).let { point ->
+                Bukkit.getWorld(point.world)?.let { world -> add(Location(world, point.x, point.y, point.z) to AMBER_COLOR) }
+            }
         }
         FarmIncidentType.MARKET -> points.resolve(runtime, FarmPointKind.CUSTOMER).let { point ->
             listOf(Location(runtime.region.world, point.x, point.y, point.z) to AMBER_COLOR)
@@ -438,7 +450,7 @@ internal class FarmGuidanceController(
         return clusters.values.filter { it.isNotEmpty() }
     }
 
-    private fun players(runtime: FarmRuntime): List<Player> = port.players(runtime.region)
+    private fun players(runtime: FarmRuntime): List<Player> = audience.players(runtime.region)
 
     private companion object {
         val TILL_COLOR: Color = Color.fromRGB(255, 173, 66)
@@ -450,6 +462,7 @@ internal class FarmGuidanceController(
         val SUCCESS_COLOR: Color = Color.fromRGB(85, 217, 139)
         val WATER_COLOR: Color = Color.fromRGB(79, 195, 247)
         val NIGHT_COLOR: Color = Color.fromRGB(139, 211, 255)
+        val FROST_COLOR: Color = Color.fromRGB(128, 220, 255)
         val POINT_COLORS = mapOf(
             FarmPointKind.TOOL to TILL_COLOR,
             FarmPointKind.SEEDS to PLANT_COLOR,
@@ -473,6 +486,7 @@ internal class FarmGuidanceController(
             FarmPointKind.PROCESSING_INPUT_4 to Color.fromRGB(91, 184, 255),
             FarmPointKind.PROCESSING_OUTPUT to SUCCESS_COLOR,
             FarmPointKind.FIRE_EQUIPMENT to WATER_COLOR,
+            FarmPointKind.FIREWOOD to FROST_COLOR,
         )
     }
 }

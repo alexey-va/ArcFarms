@@ -25,7 +25,8 @@ import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmBlockRegistry
 import ru.ruscrafting.farms.paper.FarmFixedCropPosition
 import ru.ruscrafting.farms.paper.FarmRuntime
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.WorldEditSelectionReader
 import ru.ruscrafting.farms.paper.WorldEditSelectionResult
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
@@ -48,7 +49,8 @@ internal class FarmWorldAdminService(
     dataFolder: Path,
     private val locale: ArcFarmsLocale,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
     private val ledger: FarmBlockLedger,
     private val registry: FarmBlockRegistry,
     private val fixedCrops: FarmFixedCropRecoveryController,
@@ -64,6 +66,7 @@ internal class FarmWorldAdminService(
     private val persistAsync: () -> CompletableFuture<Unit>,
     private val clock: () -> Long,
 ) {
+    private val port = audience
     private val editing = mutableSetOf<UUID>()
     private val inspecting = mutableSetOf<UUID>()
     private var inspectRenderTick = 0
@@ -91,33 +94,33 @@ internal class FarmWorldAdminService(
 
     fun stopEditing(player: Player): Boolean {
         if (!editing.remove(player.uniqueId)) return false
-        port.sendActionBar(player, MessageKey.ADMIN_EDIT_DISABLED)
+        audience.sendActionBar(player, MessageKey.ADMIN_EDIT_DISABLED)
         return true
     }
 
     fun toggleEdit(player: Player): Boolean? {
         if (editing.remove(player.uniqueId)) {
             debug.event("farm_admin_edit", "player" to player.name, "enabled" to false)
-            port.sendActionBar(player, MessageKey.ADMIN_EDIT_DISABLED)
+            audience.sendActionBar(player, MessageKey.ADMIN_EDIT_DISABLED)
             return false
         }
-        if (inspecting.remove(player.uniqueId)) port.sendActionBar(player, MessageKey.ADMIN_INSPECT_DISABLED)
+        if (inspecting.remove(player.uniqueId)) audience.sendActionBar(player, MessageKey.ADMIN_INSPECT_DISABLED)
         editing += player.uniqueId
         debug.event("farm_admin_edit", "player" to player.name, "enabled" to true)
-        port.sendActionBar(player, MessageKey.ADMIN_EDIT_ENABLED)
+        audience.sendActionBar(player, MessageKey.ADMIN_EDIT_ENABLED)
         return true
     }
 
     fun toggleInspect(player: Player): Boolean {
         if (inspecting.remove(player.uniqueId)) {
             debug.event("farm_admin_inspect", "player" to player.name, "enabled" to false)
-            port.sendActionBar(player, MessageKey.ADMIN_INSPECT_DISABLED)
+            audience.sendActionBar(player, MessageKey.ADMIN_INSPECT_DISABLED)
             return false
         }
-        if (editing.remove(player.uniqueId)) port.sendActionBar(player, MessageKey.ADMIN_EDIT_DISABLED)
+        if (editing.remove(player.uniqueId)) audience.sendActionBar(player, MessageKey.ADMIN_EDIT_DISABLED)
         inspecting += player.uniqueId
         debug.event("farm_admin_inspect", "player" to player.name, "enabled" to true)
-        port.sendActionBar(player, MessageKey.ADMIN_INSPECT_ENABLED)
+        audience.sendActionBar(player, MessageKey.ADMIN_INSPECT_ENABLED)
         return true
     }
 
@@ -162,7 +165,7 @@ internal class FarmWorldAdminService(
                         Particle.DustOptions(color, 0.75f),
                     )
                 }
-            port.sendActionBar(player, MessageKey.ADMIN_INSPECT_LEGEND)
+            audience.sendActionBar(player, MessageKey.ADMIN_INSPECT_LEGEND)
         }
     }
 
@@ -196,7 +199,7 @@ internal class FarmWorldAdminService(
 
     fun inspect(player: Player, block: Block) {
         val cooldown = "farm-admin-inspect:${player.uniqueId}:${block.world.name}:${block.x}:${block.y}:${block.z}"
-        if (!port.allowInteraction(cooldown, 250L)) return
+        if (!access.allowInteraction(cooldown, 250L)) return
         val runtime = farmAt(block)
         val fixedBlock = when {
             ledger.fixedCropRecord(block) != null -> block

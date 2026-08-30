@@ -181,4 +181,30 @@ class FarmAdminEditTest : FunSpec({
         result.state.specialDamagedCrops shouldBe listOf(FarmCropDamage(retained, "WHEAT"))
         result.state.incidentsResolved shouldBe 1
     }
+
+    test("admin removal retires the last frost campfire without leaving an impossible incident") {
+        val campfire = FarmPlotPosition("world", 1, 63, 1)
+        val retained = FarmPlotPosition("world", 2, 63, 1)
+        val result = FarmAdminEdit.removePlot(
+            FarmShiftState(
+                phase = FarmPhase.INCIDENT,
+                sequence = 13,
+                orderId = "order",
+                preparationPatch = listOf(campfire, retained),
+                preparationCrop = "WHEAT",
+                preparationRequired = 2,
+                incidentType = FarmIncidentType.FROST,
+                incidentRequired = 100,
+                frost = FarmFrostState(listOf(FarmFrostCampfire(campfire)), lastTickAt = 1_000),
+                specialDamagedCrops = listOf(FarmCropDamage(campfire, "WHEAT")),
+            ),
+            campfire,
+        )
+
+        result.state.phase shouldBe FarmPhase.HARVESTING
+        result.state.frost shouldBe null
+        result.state.specialDamagedCrops shouldBe emptyList()
+        result.state.incidentType shouldBe null
+        result.state.incidentsResolved shouldBe 1
+    }
 })

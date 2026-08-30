@@ -17,13 +17,13 @@ import ru.ruscrafting.farms.domain.FarmStallWatchdog
 import ru.ruscrafting.farms.domain.FarmStallWatchdogState
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmRuntime
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.farm.admin.FarmRouteAdminService
 import ru.ruscrafting.farms.paper.platform.FarmVehiclePassengerControl
 
 /** Geometry-blind stall recovery plus exact suffocation rescue for the rear passenger. */
 internal class FarmFoodDeliverySafety(
-    private val port: WorksiteRuntimePort,
+    private val port: WorksiteAudiencePort,
     private val debug: ArcFarmsDebug,
     private val routes: FarmRouteAdminService,
     private val vehiclePassengers: FarmVehiclePassengerControl,

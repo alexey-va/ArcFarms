@@ -91,14 +91,13 @@ class ArcFarmsService(
     @Volatile
     private var settings: ArcFarmsConfig = initialSettings
     private val stats = ActivityStatsIndex(currentWeekStartEpochDay = { farmWeekStartEpochDay(clock()) })
-
     fun reportCommandFailure(sender: org.bukkit.command.CommandSender, label: String, failure: Exception) {
         plugin.logger.log(Level.SEVERE, "ArcFarms command failed: /$label", failure)
         sender.sendMessage(locale.render(MessageKey.GENERIC_ERROR, sender))
     }
     private val interactionCooldowns = mutableMapOf<String, Long>()
     private val taskSupervisor = RuntimeTaskSupervisor()
-    private val worksitePort = PaperWorksiteRuntimePort(
+    private val worksiteAdapter = PaperWorksiteAdapter(
         plugin = plugin,
         locale = locale,
         settings = { settings },
@@ -115,6 +114,7 @@ class ArcFarmsService(
         persist = ::persistAsync,
         guard = ::runGuarded,
     )
+    private val worksitePorts = worksiteAdapter.ports()
     private val worksiteServiceItems = ru.ruscrafting.farms.paper.worksite.LateBoundWorksiteServiceItems()
     private val runtimeValidator = ArcFarmsRuntimeValidator(regionGateway, { economy.available }, fixedCropJournal, mineJournal)
     private val farm = FarmComponentGraph(
@@ -128,7 +128,7 @@ class ArcFarmsService(
         economy = economy,
         runtimeValidator = runtimeValidator,
         regionGateway = regionGateway,
-        port = worksitePort,
+        ports = worksitePorts,
         taskSupervisor = taskSupervisor,
         clock = clock,
         random = random,
@@ -137,8 +137,8 @@ class ArcFarmsService(
         persistAsync = ::persistAsync,
     )
     private val worksiteRewards = WorksiteRewardGrantService(farm.rewards)
-    private val lumbermillModule = LumbermillVersionedModule(plugin, initialSettings.lumbermills, regionGateway, locale, worksitePort, clock, lumberJournal, worksiteServiceItems, worksiteRewards)
-    private val mineModule = MineVersionedModule(plugin, initialSettings.mines, regionGateway, locale, mineJournal, worksitePort, clock, random, worksiteServiceItems, worksiteRewards)
+    private val lumbermillModule = LumbermillVersionedModule(plugin, initialSettings.lumbermills, regionGateway, locale, worksitePorts, clock, lumberJournal, worksiteServiceItems, worksiteRewards)
+    private val mineModule = MineVersionedModule(plugin, initialSettings.mines, regionGateway, locale, mineJournal, worksitePorts, clock, random, worksiteServiceItems, worksiteRewards)
     internal val worksiteAdmins = WorksiteAdminRegistry(listOf(lumbermillModule, mineModule))
     private val worksites = WorksiteModuleRegistry(listOf(farm.module, lumbermillModule, mineModule))
     private val serviceItems = WorksiteServiceItemController(plugin, worksites).also(worksiteServiceItems::bind)
@@ -147,7 +147,9 @@ class ArcFarmsService(
     private val travelService = ActivityTravelService(
         settings = { settings },
         debug = debug,
-        port = worksitePort,
+        access = worksitePorts.access,
+        audience = worksitePorts.audience,
+        tasks = worksitePorts.tasks,
         network = network,
         transfer = transfer,
         points = farm.pointService,
@@ -417,7 +419,6 @@ class ArcFarmsService(
 
     fun onChunkLoad(chunk: org.bukkit.Chunk) = worksites.reconcileChunk(chunk)
 
-
     fun canNavigate(kind: ActivityKind): Boolean = travelService.canNavigate(kind)
 
     fun travel(player: Player, kind: ActivityKind) = travelService.travel(player, kind)
@@ -493,9 +494,8 @@ class ArcFarmsService(
 
     private fun updatePlayerGuidance() {
         val expectedBars = worksites.updateGuidance()
-        worksitePort.reconcileBars(expectedBars)
+        worksitePorts.audience.reconcileBars(expectedBars)
     }
-
 
     private fun emitGuidanceParticles() {
         worksites.emitGuidance()

@@ -32,7 +32,7 @@ class LumbermillV2FullFlowMockBukkitIntegrationTest : FunSpec({
         player.inventory.setItemInMainHand(org.bukkit.inventory.ItemStack(Material.IRON_AXE))
         val port = lumberTestPort(listOf(player))
         val bundleEffects = RecordingBundleEffects()
-        val graph = LumbermillComponentGraph(
+        val graph = testLumbermillComponentGraph(
             paper.createSimplePlugin("LumberFullFlowTest"),
             CuboidRegionGateway(),
             port,
@@ -77,7 +77,7 @@ class LumbermillV2FullFlowMockBukkitIntegrationTest : FunSpec({
         val player = paper.server.addPlayer("RestartedCarrier")
         val plugin = paper.createSimplePlugin("LumberRestartTest")
         val effects = RecordingBundleEffects()
-        val first = LumbermillComponentGraph(
+        val first = testLumbermillComponentGraph(
             plugin,
             CuboidRegionGateway(),
             lumberTestPort(listOf(player)),
@@ -111,7 +111,7 @@ class LumbermillV2FullFlowMockBukkitIntegrationTest : FunSpec({
         persisted.objective!!.target("bundle_1")!!.status shouldBe ObjectiveTargetStatus.LEASED
         first.module.cleanup("restart")
 
-        val second = LumbermillComponentGraph(
+        val second = testLumbermillComponentGraph(
             plugin,
             CuboidRegionGateway(),
             lumberTestPort(listOf(player)),

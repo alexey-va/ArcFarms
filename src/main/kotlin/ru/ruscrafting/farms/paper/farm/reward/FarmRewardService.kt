@@ -20,7 +20,7 @@ import ru.ruscrafting.farms.paper.FarmEconomyGateway
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.RuntimeTaskSupervisor
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import java.math.BigDecimal
 import java.util.ArrayDeque
 import java.util.UUID
@@ -34,7 +34,7 @@ internal class FarmRewardService(
     private val locale: ArcFarmsLocale,
     private val economy: FarmEconomyGateway,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val port: WorksiteAudiencePort,
     private val supervisor: RuntimeTaskSupervisor,
     private val persistAsync: () -> CompletableFuture<Unit>,
     private val operational: () -> Boolean,

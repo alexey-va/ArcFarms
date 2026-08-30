@@ -25,7 +25,8 @@ import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus
 import ru.ruscrafting.farms.domain.worksite.WorksiteObjectiveKey
 import ru.ruscrafting.farms.domain.worksite.WorksiteObjectiveState
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.lumber.LumberRuntime
 import ru.ruscrafting.farms.paper.lumber.LumberRuntimeRegistry
 import ru.ruscrafting.farms.paper.lumber.LumberTransitionCoordinator
@@ -182,7 +183,8 @@ internal class LumberBundleScene(
     private val registry: LumberRuntimeRegistry,
     private val effects: LumberBundleEffects,
     private val transitions: LumberTransitionCoordinator,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val state: WorksiteStatePort,
     private val clock: () -> Long,
 ) {
     private data class Carry(val zoneId: String, val sequence: Long, val targetId: String)
@@ -226,7 +228,7 @@ internal class LumberBundleScene(
 
     fun pickup(runtime: LumberRuntime, targetId: String, player: Player): Boolean {
         if (runtime.state.phase != LumberPhase.SKIDDING || player.uniqueId in carried) return false
-        if (!port.hasAccess(player, runtime.settings.permission)) return false
+        if (!access.hasAccess(player, runtime.settings.permission)) return false
         val objective = runtime.state.objective ?: return false
         val leased = ObjectiveTargetPool.lease(objective, targetId, player.uniqueId, clock())
         if (!leased.accepted) return false
@@ -234,7 +236,7 @@ internal class LumberBundleScene(
         carried[player.uniqueId] = Carry(runtime.settings.id, runtime.state.sequence, targetId)
         effects.hideGround(runtime, targetId)
         effects.showCarried(runtime, targetId, player)
-        port.persistAsync()
+        state.persistAsync()
         return true
     }
 
@@ -266,7 +268,7 @@ internal class LumberBundleScene(
         if (released.accepted) {
             runtime.state = runtime.state.copy(objective = released.state)
             released.state.target(carry.targetId)?.let { effects.showGround(runtime, it.id, it.position) }
-            port.persistAsync()
+            state.persistAsync()
         }
         return true
     }
@@ -334,7 +336,7 @@ internal class LumberBundleScene(
             .forEach { playerId -> objective = ObjectiveTargetPool.release(objective, playerId).state }
         if (objective != runtime.state.objective) {
             runtime.state = runtime.state.copy(objective = objective)
-            port.persistAsync()
+            state.persistAsync()
         }
     }
 
@@ -347,7 +349,7 @@ internal class LumberBundleScene(
         val renewed = ObjectiveTargetPool.lease(objective, carry.targetId, playerId, clock())
         if (renewed.accepted) {
             runtime.state = runtime.state.copy(objective = renewed.state)
-            port.persistAsync()
+            state.persistAsync()
         }
     }
 

@@ -22,7 +22,9 @@ import ru.ruscrafting.farms.paper.WorksiteGuidanceHandler
 import ru.ruscrafting.farms.paper.ActivityBarKey
 import ru.ruscrafting.farms.paper.WorksiteMoveHandler
 import ru.ruscrafting.farms.paper.WorksiteBlockInteractHandler
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import ru.ruscrafting.farms.paper.lumber.index.LumberBlockIndex
 import ru.ruscrafting.farms.paper.lumber.index.LumberChunkTicket
 import ru.ruscrafting.farms.paper.lumber.index.LumberIndexDefinition
@@ -35,15 +37,7 @@ import ru.ruscrafting.farms.paper.lumber.sawing.LumberSawingController
 import ru.ruscrafting.farms.paper.lumber.stacking.LumberStackingController
 import ru.ruscrafting.farms.paper.lumber.stacking.LumberStackingScene
 import ru.ruscrafting.farms.paper.lumber.dispatch.LumberDispatchController
-import ru.ruscrafting.farms.paper.lumber.incident.windthrow.LumberWindthrowIncident
-import ru.ruscrafting.farms.paper.lumber.incident.beetle.LumberBarkBeetleIncident
-import ru.ruscrafting.farms.paper.lumber.incident.jam.LumberSawJamIncident
-import ru.ruscrafting.farms.paper.lumber.incident.conveyor.LumberConveyorIncident
-import ru.ruscrafting.farms.paper.lumber.incident.load.LumberLostLoadIncident
-import ru.ruscrafting.farms.paper.lumber.incident.fire.LumberForestFireIncident
-import ru.ruscrafting.farms.paper.lumber.incident.rush.LumberRushOrderIncident
-import ru.ruscrafting.farms.paper.lumber.incident.warped.LumberWarpedBatchIncident
-import ru.ruscrafting.farms.paper.lumber.incident.LumberIncidentScheduler
+import ru.ruscrafting.farms.paper.lumber.incident.LumberIncidentSet
 import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantOwner
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItemOwner
@@ -54,7 +48,9 @@ import java.util.UUID
 
 internal class LumbermillModule(
     private val regions: RegionGateway,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val state: WorksiteStatePort,
+    private val tasks: WorksiteTaskPort,
     internal val registry: LumberRuntimeRegistry,
     internal val index: LumberBlockIndex,
     internal val recovery: LumberBlockRecoveryController,
@@ -66,15 +62,7 @@ internal class LumbermillModule(
     private val stacking: LumberStackingController,
     private val stackingScene: LumberStackingScene,
     private val dispatch: LumberDispatchController,
-    private val windthrow: LumberWindthrowIncident,
-    private val beetles: LumberBarkBeetleIncident,
-    private val sawJam: LumberSawJamIncident,
-    private val conveyor: LumberConveyorIncident,
-    private val lostLoad: LumberLostLoadIncident,
-    private val fire: LumberForestFireIncident,
-    private val rush: LumberRushOrderIncident,
-    private val warped: LumberWarpedBatchIncident,
-    private val incidentScheduler: LumberIncidentScheduler,
+    private val incidents: LumberIncidentSet,
     private val guidance: WorksiteGuidancePresenter,
     internal val admin: LumberAdminService,
     private val clock: () -> Long,
@@ -101,56 +89,50 @@ internal class LumbermillModule(
     }
 
     override fun tick(now: Long) = registry.snapshot().forEach { runtime ->
-        port.guarded("lumber_v2:${runtime.settings.id}") {
+        tasks.guarded("lumber_v2:${runtime.settings.id}") {
             if (runtime.state.phase == LumberPhase.IDLE) return@guarded
             val result = LumberShiftEngine.tick(runtime.state, runtime.rules(), now)
             if (result.accepted) {
                 runtime.state = result.state
-                port.persistAsync()
+                state.persistAsync()
             }
             bundleScene.reconcile(runtime)
             stackingScene.reconcile(runtime)
-            beetles.reconcile(runtime)
-            lostLoad.reconcile(runtime)
             val participants = runtime.region.world.players.count {
                 runtime.region.contains(it.location) || runtime.station.contains(it.location)
             }
-            fire.tick(runtime, participants, now)
-            rush.tick(runtime, now)
-            incidentScheduler.tick(runtime, now, participants)
+            incidents.tick(runtime, participants, now)
         }
     }.also {
-        port.guarded("lumber_v2_reindex") { admin.tickReindexes(REINDEX_BLOCKS_PER_TICK) }
+        tasks.guarded("lumber_v2_reindex") { admin.tickReindexes(REINDEX_BLOCKS_PER_TICK) }
         recovery.processDue(now)
     }
 
     override fun canAccess(player: Player): Boolean =
-        registry.snapshot().any { port.hasAccess(player, it.settings.permission) }
+        registry.snapshot().any { access.hasAccess(player, it.settings.permission) }
 
     override fun onBreakHigh(event: BlockBreakEvent): Boolean =
-        windthrow.onBreak(event) || felling.onBreakHigh(event)
+        incidents.onBreak(event) || felling.onBreakHigh(event)
 
     override fun onInteract(event: PlayerInteractEvent, clicked: Block, player: Player): Boolean =
-        fire.onInteract(event, clicked, player) || conveyor.onInteract(event, clicked, player) ||
-            warped.onInteract(event, clicked, player) || beetles.onInteract(event, clicked, player) ||
-            sawJam.onInteract(event, clicked, player) ||
+        incidents.onInteract(event, clicked, player) ||
             sawing.onInteract(event, clicked, player) ||
             stacking.onInteract(event, clicked, player) ||
             dispatch.onInteract(event, clicked, player)
 
     override fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean =
-        lostLoad.onInteractEntity(event) || skidding.onInteractEntity(event) || stacking.onInteractEntity(event)
+        incidents.onInteractEntity(event) || skidding.onInteractEntity(event) || stacking.onInteractEntity(event)
 
     override fun onMove(from: Location, to: Location, player: Player): Boolean {
         val skiddingHandled = skidding.onMove(from, to, player)
-        val lostLoadHandled = lostLoad.onMove(to, player)
-        return stacking.onMove(to, player) || lostLoadHandled || skiddingHandled
+        val incidentHandled = incidents.onMove(to, player)
+        return stacking.onMove(to, player) || incidentHandled || skiddingHandled
     }
 
     override fun updateVisuals() {
         skidding.updateVisuals()
         stacking.updateVisuals()
-        lostLoad.updateCarried()
+        incidents.updateVisuals()
     }
 
     override fun updateGuidance(expectedBars: MutableSet<ActivityBarKey>) = guidance.updateHud(clock(), expectedBars)
@@ -160,15 +142,14 @@ internal class LumbermillModule(
     override fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
         skidding.releasePlayer(player, reason)
         stacking.releasePlayer(player, reason)
-        lostLoad.releasePlayer(player.uniqueId)
+        incidents.releasePlayer(player.uniqueId)
         guidance.releasePlayer(player)
     }
 
-    override fun isActive(identity: ServiceItemIdentity): Boolean = conveyor.isActive(identity) || fire.isActive(identity)
+    override fun isActive(identity: ServiceItemIdentity): Boolean = incidents.isActive(identity)
 
     override fun release(playerId: UUID, identity: ServiceItemIdentity, reason: WorksitePlayerReleaseReason) {
-        conveyor.release(playerId, identity, reason)
-        fire.release(playerId, identity, reason)
+        incidents.release(playerId, identity, reason)
     }
 
     override fun activateLoadedState() {
@@ -192,8 +173,7 @@ internal class LumbermillModule(
     override fun cleanup(reason: String) {
         skidding.cleanup()
         stacking.cleanup()
-        lostLoad.cleanup()
-        incidentScheduler.cleanup()
+        incidents.cleanup()
         admin.cleanup()
         recovery.cleanup(reason)
         index.clear()

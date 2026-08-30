@@ -8,7 +8,7 @@ import ru.ruscrafting.farms.domain.LumberPhase
 import ru.ruscrafting.farms.domain.LumberShiftEngine
 import ru.ruscrafting.farms.paper.CuboidRegionGateway
 import ru.ruscrafting.farms.paper.lumber.ImmediateLumberJournal
-import ru.ruscrafting.farms.paper.lumber.LumbermillComponentGraph
+import ru.ruscrafting.farms.paper.lumber.testLumbermillComponentGraph
 import ru.ruscrafting.farms.paper.lumber.RecordingBundleEffects
 import ru.ruscrafting.farms.paper.lumber.lumberSliceSettings
 import ru.ruscrafting.farms.paper.lumber.lumberTestPort
@@ -31,7 +31,7 @@ class LumberTimedIncidentsMockBukkitTest : FunSpec({
         val plugin = paper.createSimplePlugin("LumberTimedIncidentTest")
         val journal = ImmediateLumberJournal()
         val lateItems = LateBoundWorksiteServiceItems()
-        val graph = LumbermillComponentGraph(
+        val graph = testLumbermillComponentGraph(
             plugin,
             CuboidRegionGateway(),
             lumberTestPort(),

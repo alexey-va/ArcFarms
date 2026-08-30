@@ -81,7 +81,9 @@ class FarmBarnFireIncidentMockBukkitTest : FunSpec({
                     }
                 },
                 debug = ArcFarmsDebug({ false }) {},
-                port = port,
+                access = port,
+                audience = port,
+                state = port,
                 points = FarmPointProvider { _, kind ->
                     kind shouldBe FarmPointKind.PEN
                     anchor

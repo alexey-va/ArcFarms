@@ -83,7 +83,8 @@ class FarmDiseaseControllerMockBukkitTest : FunSpec({
         val controller = FarmDiseaseController(
             settings = { config },
             debug = ArcFarmsDebug({ false }) {},
-            port = port,
+            audience = port,
+            state = port,
             ledger = FarmBlockLedger(paper.createSimplePlugin("DiseaseLedgerTest")),
             transitions = FarmTransitionSink { targetRuntime, result, _ -> targetRuntime.state = result.state },
             targets = FarmCareTargetSpawner { _, target -> spawned += target.id },

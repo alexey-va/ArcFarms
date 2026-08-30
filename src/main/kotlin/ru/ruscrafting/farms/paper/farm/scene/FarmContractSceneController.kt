@@ -21,7 +21,9 @@ import ru.ruscrafting.farms.paper.FarmContractSceneRole
 import ru.ruscrafting.farms.paper.FarmContractSceneSpec
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentController
 
@@ -31,7 +33,9 @@ internal class FarmContractSceneController(
     private val settings: () -> ArcFarmsConfig,
     private val locale: ArcFarmsLocale,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
+    private val state: WorksiteStatePort,
     private val points: FarmPointProvider,
     private val special: FarmSpecialIncidentController,
     private val runtimes: () -> Collection<FarmRuntime>,
@@ -51,7 +55,7 @@ internal class FarmContractSceneController(
         val recoveredMilestone = FarmContractPlanner.harvestMilestone(runtime.state.completed(order), order.totalRequired)
         if (recoveredMilestone > runtime.state.harvestMilestone) {
             runtime.state = runtime.state.copy(harvestMilestone = recoveredMilestone)
-            port.persistAsync()
+            state.persistAsync()
             debug.event(
                 "farm_contract_scene_milestone_reconciled",
                 "zone" to runtime.settings.id,
@@ -113,11 +117,11 @@ internal class FarmContractSceneController(
         val identity = scene.metadata(entity) ?: return
         val runtime = runtimes().firstOrNull { it.settings.id == identity.zoneId } ?: return
         if (runtime.state.sequence != identity.sequence || !runtime.region.contains(entity.location)) return
-        if (!port.hasAccess(player, runtime.settings.permission)) {
-            port.sendChat(player, MessageKey.ZONE_LOCKED)
+        if (!access.hasAccess(player, runtime.settings.permission)) {
+            audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return
         }
-        if (!port.allowInteraction("farm-contract-scene:${identity.zoneId}:${identity.role}:${player.uniqueId}", 700)) return
+        if (!access.allowInteraction("farm-contract-scene:${identity.zoneId}:${identity.role}:${player.uniqueId}", 700)) return
         val order = currentOrder(runtime) ?: return
         debug.event(
             "farm_contract_scene_interaction",
@@ -134,7 +138,7 @@ internal class FarmContractSceneController(
             FarmContractSceneRole.CART,
             FarmContractSceneRole.CART_INTERACTION,
             FarmContractSceneRole.CART_LOAD,
-            -> port.sendActionBar(
+            -> audience.sendActionBar(
                 player,
                 MessageKey.FARM_CART_PROGRESS,
                 mapOf(
@@ -158,7 +162,7 @@ internal class FarmContractSceneController(
             special.openMarket(player, runtime, market)
             return
         }
-        port.sendActionBar(
+        audience.sendActionBar(
             player,
             MessageKey.FARM_CUSTOMER_REMINDER,
             mapOf(

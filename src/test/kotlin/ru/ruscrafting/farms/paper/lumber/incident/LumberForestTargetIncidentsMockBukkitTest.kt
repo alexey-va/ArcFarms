@@ -15,7 +15,7 @@ import ru.ruscrafting.farms.domain.worksite.WorksiteObjectiveKey
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.CuboidRegionGateway
 import ru.ruscrafting.farms.paper.lumber.ImmediateLumberJournal
-import ru.ruscrafting.farms.paper.lumber.LumbermillComponentGraph
+import ru.ruscrafting.farms.paper.lumber.testLumbermillComponentGraph
 import ru.ruscrafting.farms.paper.lumber.RecordingBundleEffects
 import ru.ruscrafting.farms.paper.lumber.index.LumberIndexDefinition
 import ru.ruscrafting.farms.paper.lumber.index.LumberLogTarget
@@ -37,7 +37,7 @@ class LumberForestTargetIncidentsMockBukkitTest : FunSpec({
             world.getBlockAt(index, 64, 2).also { it.type = Material.OAK_LOG }
         }
         val player = paper.server.addPlayer("Forester")
-        val graph = LumbermillComponentGraph(
+        val graph = testLumbermillComponentGraph(
             paper.createSimplePlugin("LumberIncidentTest"),
             CuboidRegionGateway(),
             lumberTestPort(),

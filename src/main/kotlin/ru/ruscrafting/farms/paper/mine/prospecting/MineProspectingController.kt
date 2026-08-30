@@ -15,7 +15,8 @@ import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus
 import ru.ruscrafting.farms.domain.worksite.WorksiteObjectiveKey
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.mine.MineTransitionCoordinator
@@ -29,7 +30,8 @@ internal class MineProspectingController(
     private val index: MineBlockIndex,
     private val recovery: MineBlockRecoveryController,
     private val transitions: MineTransitionCoordinator,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
     private val clock: () -> Long,
     private val canStartLoading: (MineRuntime) -> Boolean,
     private val routeName: (MineRuntime, org.bukkit.entity.Player) -> Component = { runtime, _ ->
@@ -41,8 +43,8 @@ internal class MineProspectingController(
         val runtime = registry.at(clicked.location) ?: return false
         if (event.action != Action.RIGHT_CLICK_BLOCK) return false
         event.isCancelled = true
-        if (!port.hasAccess(event.player, runtime.settings.permission)) {
-            port.sendChat(event.player, MessageKey.ZONE_LOCKED)
+        if (!access.hasAccess(event.player, runtime.settings.permission)) {
+            audience.sendChat(event.player, MessageKey.ZONE_LOCKED)
             return true
         }
         if (!index.contains(runtime.settings.id, clicked, MineAnchorRole.PROSPECT)) {
@@ -90,7 +92,7 @@ internal class MineProspectingController(
         val started = MineShiftEngine.start(runtime.state, order.domain(), rules, clock())
         val objective = plan(runtime, MineAnchorRole.PROSPECT, "prospecting", rules.prospectingQuota, started.state.sequence)
         transitions.apply(runtime, started.copy(state = started.state.copy(objective = objective)), player)
-        port.broadcast(
+        audience.broadcast(
             listOf(runtime.region),
             MessageKey.MINE_STARTED,
             sound = Sound.BLOCK_IRON_DOOR_OPEN,
@@ -136,8 +138,8 @@ internal class MineProspectingController(
     private fun token(value: Int): String = if (value < 0) "m${value.toLong().absoluteValue}" else value.toString()
 
     private fun remind(player: org.bukkit.entity.Player, key: MessageKey, values: Map<String, Component> = emptyMap()) {
-        port.sendActionBar(player, key, values)
-        port.showScreenTitle(player, key, values, scope = "mine:${key.path}")
+        audience.sendActionBar(player, key, values)
+        audience.showScreenTitle(player, key, values, scope = "mine:${key.path}")
     }
 
     private fun org.bukkit.block.Block.position() = WorksitePosition(world.name, x, y, z)

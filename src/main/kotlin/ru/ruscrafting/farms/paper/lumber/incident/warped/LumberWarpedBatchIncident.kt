@@ -13,12 +13,12 @@ import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.lumber.LumberRuntime
 import ru.ruscrafting.farms.paper.lumber.LumberRuntimeRegistry
 import ru.ruscrafting.farms.paper.lumber.incident.LumberIncidentCoordinator
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 
 internal class LumberWarpedBatchIncident(
     private val registry: LumberRuntimeRegistry,
     private val incidents: LumberIncidentCoordinator,
-    private val port: WorksiteRuntimePort,
+    private val audience: WorksiteAudiencePort,
 ) {
     fun start(runtime: LumberRuntime, required: Int, now: Long): Boolean = incidents.start(
         runtime,
@@ -51,7 +51,7 @@ internal class LumberWarpedBatchIncident(
         val target = runtime.state.objective?.targets?.firstOrNull { it.position == position } ?: return false
         event.isCancelled = true
         val expected = if ((runtime.state.incident?.progress ?: 0) % 2 == 0) LumberBatchRole.ACCEPT else LumberBatchRole.REJECT
-        if (!deliver(runtime, target.id, expected, player)) port.sendActionBar(player, MessageKey.LUMBER_TARGET_REQUIRED)
+        if (!deliver(runtime, target.id, expected, player)) audience.sendActionBar(player, MessageKey.LUMBER_TARGET_REQUIRED)
         return true
     }
 

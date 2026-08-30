@@ -16,7 +16,10 @@ import ru.ruscrafting.farms.paper.FarmFixedCropPosition
 import ru.ruscrafting.farms.paper.FarmFixedCropRestore
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import ru.ruscrafting.farms.persistence.FixedFarmCropJournal
 import java.util.concurrent.TimeUnit
 import java.util.logging.Level
@@ -31,7 +34,10 @@ internal class FarmFixedCropRecoveryController(
     private val ledger: FarmBlockLedger,
     private val locale: ArcFarmsLocale,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val port: WorksiteAudiencePort,
+    private val state: WorksiteStatePort,
+    private val tasks: WorksiteTaskPort,
     private val runtimes: () -> Collection<FarmRuntime>,
     private val clock: () -> Long,
 ) {
@@ -108,7 +114,7 @@ internal class FarmFixedCropRecoveryController(
             return false
         }
         val ledgerRecord = runCatching { ledger.captureFixedCrop(block, runtime.settings.id) }.getOrElse { failure ->
-            port.log(Level.SEVERE, "Could not capture fixed crop metadata at $positionKey", failure)
+            state.log(Level.SEVERE, "Could not capture fixed crop metadata at $positionKey", failure)
             port.sendChat(player, MessageKey.GENERIC_ERROR)
             return false
         }
@@ -117,7 +123,7 @@ internal class FarmFixedCropRecoveryController(
             ledger.scheduleExistingFixedCropRestore(block, restoreAt)
                 ?: error("Fixed crop PDC disappeared before harvest")
         }.getOrElse { failure ->
-            port.log(Level.SEVERE, "Could not schedule fixed crop restore at $positionKey", failure)
+            state.log(Level.SEVERE, "Could not schedule fixed crop restore at $positionKey", failure)
             port.sendChat(player, MessageKey.GENERIC_ERROR)
             return false
         }
@@ -132,19 +138,19 @@ internal class FarmFixedCropRecoveryController(
         )
         val crop = block.type
         val sequence = runtime.state.sequence
-        val lifecycle = port.lifecycleToken()
+        val lifecycle = tasks.lifecycleToken()
         val preparation = runCatching { journal.prepare(pending) }.getOrElse { failure ->
-            port.log(Level.SEVERE, "Could not prepare fixed crop journal at $positionKey", failure)
+            state.log(Level.SEVERE, "Could not prepare fixed crop journal at $positionKey", failure)
             ledger.reconcileFixedCrop(block, runtime.settings.id, scheduledRecord.originalBlockData, null)
             port.sendChat(player, MessageKey.GENERIC_ERROR)
             return false
         }
 
         preparation.whenComplete { _, failure ->
-            if (!port.isOperational()) return@whenComplete
-            port.runSync(lifecycle) {
+            if (!access.isOperational()) return@whenComplete
+            tasks.runSync(lifecycle) {
                 if (failure != null) {
-                    port.log(Level.SEVERE, "Could not persist fixed crop journal at $positionKey", failure)
+                    state.log(Level.SEVERE, "Could not persist fixed crop journal at $positionKey", failure)
                     ledger.reconcileFixedCrop(block, pending.zoneId, pending.originalBlockData, null)
                     if (player.isOnline) port.sendChat(player, MessageKey.GENERIC_ERROR)
                     return@runSync
@@ -201,7 +207,7 @@ internal class FarmFixedCropRecoveryController(
         val originalData = pending?.originalBlockData ?: requireNotNull(record).originalBlockData
         val runtime = runtimes().firstOrNull { it.settings.id == zoneId && it.region.contains(block.location) } ?: return
         val original = runCatching { Bukkit.createBlockData(originalData) }.getOrElse { failure ->
-            port.log(Level.SEVERE, "Could not decode fixed crop at ${entry.position}", failure)
+            state.log(Level.SEVERE, "Could not decode fixed crop at ${entry.position}", failure)
             return
         }
         if (!MaterialRules.isFixedBlockCrop(original.material) || original.material.name !in runtime.settings.crops) return
@@ -225,8 +231,8 @@ internal class FarmFixedCropRecoveryController(
             }
             else -> {
                 queue.schedule(entry.copy(restoreAt = now + 1_000L))
-                if (port.allowInteraction("farm-fixed-crop-obstructed:${entry.position}", TimeUnit.MINUTES.toMillis(5))) {
-                    port.log(Level.WARNING, "Fixed crop recovery at ${entry.position} is obstructed by ${block.type}")
+                if (access.allowInteraction("farm-fixed-crop-obstructed:${entry.position}", TimeUnit.MINUTES.toMillis(5))) {
+                    state.log(Level.WARNING, "Fixed crop recovery at ${entry.position} is obstructed by ${block.type}")
                 }
             }
         }
@@ -235,9 +241,9 @@ internal class FarmFixedCropRecoveryController(
     private fun retire(positionKey: String, reason: String) {
         journal.remove(positionKey).whenComplete { _, failure ->
             if (failure != null) {
-                port.log(Level.SEVERE, "Could not retire fixed crop journal at $positionKey", failure)
-                val token = port.lifecycleToken()
-                port.runSync(token) {
+                state.log(Level.SEVERE, "Could not retire fixed crop journal at $positionKey", failure)
+                val token = tasks.lifecycleToken()
+                tasks.runSync(token) {
                     journal.record(positionKey)?.let { pending ->
                         queue.schedule(
                             FarmFixedCropRestore(

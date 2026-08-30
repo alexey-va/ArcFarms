@@ -46,7 +46,7 @@ class MineV2FullFlowMockBukkitIntegrationTest : FunSpec({
         player.inventory.setItemInMainHand(ItemStack(Material.IRON_PICKAXE))
         val port = immediateMinePort()
         val ledger = FullFlowRewardLedger()
-        val graph = MineComponentGraph(
+        val graph = testMineComponentGraph(
             paper.createSimplePlugin("MineFullFlowTest"), CuboidRegionGateway(), port,
             clock = { 1_000L }, journal = ImmediateMineJournal(), random = java.util.Random(7),
             serviceItems = FullFlowMineItems(), blockEffects = FullFlowMineBlocks,

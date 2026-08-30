@@ -42,7 +42,7 @@ class MineLoadingExtractionMockBukkitTest : FunSpec({
             prospected = 1,
             mined = 2,
         )
-        val graph = MineComponentGraph(
+        val graph = testMineComponentGraph(
             paper.createSimplePlugin("MineLoadingTest"),
             CuboidRegionGateway(),
             immediateMinePort(),

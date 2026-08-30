@@ -6,7 +6,9 @@ import org.bukkit.Material
 import org.bukkit.block.Block
 import ru.ruscrafting.farms.domain.PendingMineBlock
 import ru.ruscrafting.farms.paper.MaterialRules
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import ru.ruscrafting.farms.paper.worksite.RuntimeComponent
 import ru.ruscrafting.farms.persistence.MineRecoveryJournal
 import java.util.concurrent.CompletableFuture
@@ -17,7 +19,9 @@ import java.util.logging.Level
 /** Owns the unchanged V1 journal schema and converges only loaded due records. */
 internal class MineBlockRecoveryController(
     private val journal: MineRecoveryJournal,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val state: WorksiteStatePort,
+    private val tasks: WorksiteTaskPort,
     private val clock: () -> Long,
 ) : RuntimeComponent {
     private val inFlightPositions = ConcurrentHashMap.newKeySet<String>()
@@ -42,7 +46,7 @@ internal class MineBlockRecoveryController(
         if (!inFlightPositions.add(record.positionKey) || journal.containsPosition(record.positionKey)) {
             return CompletableFuture.completedFuture(false)
         }
-        val token = port.lifecycleToken()
+        val token = tasks.lifecycleToken()
         val result = CompletableFuture<Boolean>()
         journal.prepare(record).whenComplete { _, failure ->
             if (failure != null) {
@@ -50,9 +54,9 @@ internal class MineBlockRecoveryController(
                 result.completeExceptionally(failure)
                 return@whenComplete
             }
-            if (!port.runSync(token) {
+            if (!tasks.runSync(token) {
                     try {
-                        if (block.type != expectedOriginal || !port.isOperational() || !stillValid()) {
+                        if (block.type != expectedOriginal || !access.isOperational() || !stillValid()) {
                             retire(record, "stale")
                             result.complete(false)
                         } else {
@@ -88,7 +92,7 @@ internal class MineBlockRecoveryController(
                 retire(record, "restored")
                 processed++
             }.onFailure { failure ->
-                port.log(Level.WARNING, "Could not restore mine block ${record.id}", failure)
+                state.log(Level.WARNING, "Could not restore mine block ${record.id}", failure)
             }
         }
         return processed
@@ -123,14 +127,14 @@ internal class MineBlockRecoveryController(
         if (!retiringRecords.add(record.id)) return
         journal.remove(record.id).whenComplete { _, failure ->
             retiringRecords.remove(record.id)
-            if (failure != null) port.log(Level.SEVERE, "Could not retire $reason mine journal record ${record.id}", failure)
+            if (failure != null) state.log(Level.SEVERE, "Could not retire $reason mine journal record ${record.id}", failure)
         }
     }
 
     private fun material(name: String, record: PendingMineBlock): Material? =
         runCatching { MaterialRules.material(name) }.getOrNull().also { material ->
-            if (material == null && port.allowInteraction("mine-journal-material:${record.id}", TimeUnit.MINUTES.toMillis(5))) {
-                port.log(Level.SEVERE, "Mine journal record ${record.id} contains an unknown material and was retained for recovery")
+            if (material == null && access.allowInteraction("mine-journal-material:${record.id}", TimeUnit.MINUTES.toMillis(5))) {
+                state.log(Level.SEVERE, "Mine journal record ${record.id} contains an unknown material and was retained for recovery")
             }
         }
 }

@@ -13,7 +13,7 @@ import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.CuboidRegionGateway
 import ru.ruscrafting.farms.paper.mine.ImmediateMineJournal
-import ru.ruscrafting.farms.paper.mine.MineComponentGraph
+import ru.ruscrafting.farms.paper.mine.testMineComponentGraph
 import ru.ruscrafting.farms.paper.mine.immediateMinePort
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineIndexDefinition
@@ -34,7 +34,7 @@ class MineConstructionIncidentsMockBukkitTest : FunSpec({
         val player = paper.server.addPlayer("Builder")
         val anchors = (1..8).map { x -> world.getBlockAt(x, 64, 2).also { it.type = Material.STONE } }
         val items = ConstructionItems()
-        val graph = MineComponentGraph(
+        val graph = testMineComponentGraph(
             paper.createSimplePlugin("MineConstructionTest"), CuboidRegionGateway(), immediateMinePort(),
             clock = { 1_000L }, journal = ImmediateMineJournal(), serviceItems = items,
         )

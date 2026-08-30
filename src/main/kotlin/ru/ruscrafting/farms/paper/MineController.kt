@@ -24,6 +24,12 @@ import ru.ruscrafting.farms.domain.PendingMineBlock
 import ru.ruscrafting.farms.domain.MineShiftEvent
 import ru.ruscrafting.farms.network.NetworkSignal
 import ru.ruscrafting.farms.persistence.MineRecoveryJournal
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteNetworkPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatsPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -36,7 +42,12 @@ internal class MineController(
     private val regionGateway: RegionGateway,
     private val locale: ArcFarmsLocale,
     private val journal: MineRecoveryJournal,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
+    private val state: WorksiteStatePort,
+    private val tasks: WorksiteTaskPort,
+    private val stats: WorksiteStatsPort,
+    private val network: WorksiteNetworkPort,
     private val clock: () -> Long,
     private val random: RandomGenerator,
     private val blockEffects: MineBlockEffects = PaperMineBlockEffects,
@@ -92,11 +103,11 @@ internal class MineController(
         )
     }
 
-    override fun canAccess(player: Player): Boolean = runtimes.any { port.hasAccess(player, it.settings.permission) }
+    override fun canAccess(player: Player): Boolean = runtimes.any { access.hasAccess(player, it.settings.permission) }
 
     override fun onBreakHigh(event: BlockBreakEvent): Boolean {
         val runtime = runtimeAt(event.block.location) ?: return false
-        port.traceBlockBreak(event, kind, runtime.settings.id)
+        state.traceBlockBreak(event, kind, runtime.settings.id)
         breakBlock(event, runtime)
         return true
     }
@@ -108,12 +119,12 @@ internal class MineController(
             !MaterialRules.isPickaxe(player.inventory.itemInMainHand) || !clicked.type.isSolid
         ) return false
         event.isCancelled = true
-        port.tracePlayerAction(player, kind, runtime.settings.id, "install_support", clicked.type)
-        if (!port.hasAccess(player, runtime.settings.permission)) {
-            port.sendChat(player, MessageKey.ZONE_LOCKED)
+        state.tracePlayerAction(player, kind, runtime.settings.id, "install_support", clicked.type)
+        if (!access.hasAccess(player, runtime.settings.permission)) {
+            audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return true
         }
-        if (!port.allowInteraction("mine:${runtime.settings.id}:${player.uniqueId}", 750)) return true
+        if (!access.allowInteraction("mine:${runtime.settings.id}:${player.uniqueId}", 750)) return true
         apply(runtime, MineShiftEngine.stabilize(runtime.state, runtime.rules, player.uniqueId, clock()), player)
         return true
     }
@@ -123,25 +134,25 @@ internal class MineController(
             candidate.state.phase == MinePhase.EXTRACTION &&
                 candidate.region.contains(from) && !candidate.region.contains(to)
         } ?: return false
-        port.tracePlayerAction(player, kind, runtime.settings.id, "leave_for_extraction")
+        state.tracePlayerAction(player, kind, runtime.settings.id, "leave_for_extraction")
         apply(runtime, MineShiftEngine.extract(runtime.state, runtime.rules, player.uniqueId, clock()), player)
         return true
     }
 
     override fun tick(now: Long) {
         runtimes.forEach { runtime ->
-            port.guarded("mine:${runtime.settings.id}") {
+            tasks.guarded("mine:${runtime.settings.id}") {
                 val result = MineShiftEngine.tick(runtime.state, runtime.rules, now)
                 if (result.events.isNotEmpty()) apply(runtime, result, null)
             }
         }
-        port.guarded("mine_recovery") { restoreBlocks(now) }
+        tasks.guarded("mine_recovery") { restoreBlocks(now) }
     }
 
     override fun updateGuidance(expectedBars: MutableSet<ActivityBarKey>) {
         runtimes.forEach { runtime ->
             if (runtime.state.phase !in setOf(MinePhase.MINING, MinePhase.HAZARD, MinePhase.EXTRACTION)) return@forEach
-            port.players(runtime.region).filter { runtimeAt(it.location) === runtime }.forEach { player ->
+            audience.players(runtime.region).filter { runtimeAt(it.location) === runtime }.forEach { player ->
                 val values = mapOf(
                     "route" to locale.renderPath("route.mine.${runtime.settings.id}", player),
                     "done" to locale.text(runtime.state.cart),
@@ -149,13 +160,13 @@ internal class MineController(
                     "phase" to locale.renderPath("phase.mine.${runtime.state.phase.name.lowercase()}", player),
                 )
                 val component = locale.render(MessageKey.MINE_ACTIONBAR, player, values)
-                port.sendActionBar(player, MessageKey.MINE_ACTIONBAR, values)
+                audience.sendActionBar(player, MessageKey.MINE_ACTIONBAR, values)
                 val color = when (runtime.state.phase) {
                     MinePhase.HAZARD -> BossBar.Color.RED
                     MinePhase.EXTRACTION -> BossBar.Color.YELLOW
                     else -> BossBar.Color.BLUE
                 }
-                port.updateBar(
+                audience.updateBar(
                     player,
                     "mine:${runtime.settings.id}",
                     component,
@@ -169,8 +180,8 @@ internal class MineController(
 
     override fun emitGuidance() {
         runtimes.filter { it.state.phase == MinePhase.HAZARD }.forEach { runtime ->
-            port.players(runtime.region).filter { runtimeAt(it.location) === runtime }.forEach { player ->
-                port.spawnGuidanceDust(
+            audience.players(runtime.region).filter { runtimeAt(it.location) === runtime }.forEach { player ->
+                audience.spawnGuidanceDust(
                     player,
                     player.location.clone().add(0.0, 1.2, 0.0),
                     HAZARD_COLOR,
@@ -183,29 +194,29 @@ internal class MineController(
         val experience = event.expToDrop
         event.isCancelled = true
         val player = event.player
-        if (!port.hasAccess(player, runtime.settings.permission)) {
-            port.sendChat(player, MessageKey.ZONE_LOCKED)
+        if (!access.hasAccess(player, runtime.settings.permission)) {
+            audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return
         }
         val toolSlot = player.inventory.heldItemSlot
         val toolSnapshot = player.inventory.getItem(toolSlot)?.clone()
         if (toolSnapshot == null || !MaterialRules.isPickaxe(toolSnapshot)) {
-            port.sendActionBar(player, MessageKey.MINE_PICKAXE_REQUIRED)
+            audience.sendActionBar(player, MessageKey.MINE_PICKAXE_REQUIRED)
             return
         }
         val block = event.block
         if (block.type !in runtime.materialWeights) return
         when (runtime.state.phase) {
             MinePhase.HAZARD -> {
-                port.sendActionBar(player, MessageKey.MINE_HAZARD_HELP)
+                audience.sendActionBar(player, MessageKey.MINE_HAZARD_HELP)
                 return
             }
             MinePhase.EXTRACTION -> {
-                port.sendActionBar(player, MessageKey.MINE_EXTRACTION_REQUIRED)
+                audience.sendActionBar(player, MessageKey.MINE_EXTRACTION_REQUIRED)
                 return
             }
             MinePhase.COOLDOWN -> {
-                port.sendActionBar(
+                audience.sendActionBar(
                     player,
                     MessageKey.COOLDOWN,
                     mapOf("seconds" to locale.text(remainingSeconds(runtime.state.cooldownEndsAt, clock()))),
@@ -216,7 +227,7 @@ internal class MineController(
         }
         val positionKey = positionKey(block.location)
         if (pendingPositions.containsKey(positionKey) || !reservations.add(positionKey)) {
-            port.sendActionBar(player, MessageKey.MINE_REGENERATING)
+            audience.sendActionBar(player, MessageKey.MINE_REGENERATING)
             return
         }
         val nextMaterial = MaterialRules.weightedMaterial(runtime.materialWeights, random)
@@ -237,25 +248,25 @@ internal class MineController(
             blockEffects.captureDrops(block, toolSnapshot, player)
         } catch (failure: RuntimeException) {
             reservations.remove(positionKey)
-            port.log(Level.SEVERE, "Could not calculate mine drops at $positionKey", failure)
-            port.sendChat(player, MessageKey.GENERIC_ERROR)
+            state.log(Level.SEVERE, "Could not calculate mine drops at $positionKey", failure)
+            audience.sendChat(player, MessageKey.GENERIC_ERROR)
             return
         }
-        val lifecycle = port.lifecycleToken()
+        val lifecycle = tasks.lifecycleToken()
         journal.prepare(record).whenComplete { _, failure ->
-            if (!port.isOperational()) {
+            if (!access.isOperational()) {
                 reservations.remove(positionKey)
                 if (failure == null) retireRecord(record, "stale")
                 return@whenComplete
             }
-            val accepted = port.runSync(lifecycle) {
+            val accepted = tasks.runSync(lifecycle) {
                 if (failure != null) {
                     reservations.remove(positionKey)
-                    if (player.isOnline) port.sendChat(player, MessageKey.MINE_JOURNAL_FAILED)
-                    port.log(Level.SEVERE, "Could not journal mine block ${record.id}", failure)
+                    if (player.isOnline) audience.sendChat(player, MessageKey.MINE_JOURNAL_FAILED)
+                    state.log(Level.SEVERE, "Could not journal mine block ${record.id}", failure)
                     return@runSync
                 }
-                if (!port.isOperational() || runtimes.none { it === runtime }) {
+                if (!access.isOperational() || runtimes.none { it === runtime }) {
                     reservations.remove(positionKey)
                     retireRecord(record, "stale")
                     return@runSync
@@ -269,14 +280,14 @@ internal class MineController(
                 pendingPositions[positionKey] = record.id
                 reservations.remove(positionKey)
                 val now = clock()
-                port.guarded("mine_progress:${record.id}") {
+                tasks.guarded("mine_progress:${record.id}") {
                     if (runtime.state.phase == MinePhase.IDLE) {
                         apply(runtime, MineShiftEngine.start(runtime.state, runtime.rules, now), player)
                     }
                     val points = if (originalMaterial == runtime.baseMaterial) 1 else 2
                     apply(runtime, MineShiftEngine.mine(runtime.state, runtime.rules, points, player.uniqueId, now), player)
                 }
-                port.guarded("mine_rewards:${record.id}") {
+                tasks.guarded("mine_rewards:${record.id}") {
                     blockEffects.deliverRewards(player, block, drops, experience, toolSlot, toolSnapshot)
                 }
             }
@@ -294,7 +305,7 @@ internal class MineController(
             if (failure == null) {
                 pendingPositions.remove(record.positionKey, record.id)
             } else {
-                port.log(Level.SEVERE, "Could not retire $reason mine journal record ${record.id}", failure)
+                state.log(Level.SEVERE, "Could not retire $reason mine journal record ${record.id}", failure)
             }
         }
     }
@@ -307,8 +318,8 @@ internal class MineController(
             val temporary = runCatching { MaterialRules.material(record.temporaryMaterial) }.getOrNull()
             val next = runCatching { MaterialRules.material(record.nextMaterial) }.getOrNull()
             if (temporary == null || next == null) {
-                if (port.allowInteraction("mine-journal-material:${record.id}", TimeUnit.MINUTES.toMillis(5))) {
-                    port.log(Level.SEVERE, "Mine journal record ${record.id} contains an unknown material and was retained for recovery")
+                if (access.allowInteraction("mine-journal-material:${record.id}", TimeUnit.MINUTES.toMillis(5))) {
+                    state.log(Level.SEVERE, "Mine journal record ${record.id} contains an unknown material and was retained for recovery")
                 }
                 return@forEach
             }
@@ -319,7 +330,7 @@ internal class MineController(
 
     private fun apply(runtime: Runtime, result: EngineResult<MineShiftState, MineShiftEvent>, actor: Player?) {
         runtime.state = result.state
-        port.traceResult(
+        state.traceResult(
             kind,
             runtime.settings.id,
             actor,
@@ -328,11 +339,11 @@ internal class MineController(
             result,
         )
         if (actor != null && result.contribution > 0) {
-            port.recordContribution(actor.uniqueId, kind, result.contribution)
+            stats.recordContribution(actor.uniqueId, kind, result.contribution)
         }
         result.events.forEach { event ->
             when (event) {
-                MineShiftEvent.STARTED -> port.broadcast(
+                MineShiftEvent.STARTED -> audience.broadcast(
                     listOf(runtime.region),
                     MessageKey.MINE_STARTED,
                     sound = Sound.BLOCK_IRON_DOOR_OPEN,
@@ -341,51 +352,51 @@ internal class MineController(
                     },
                 )
                 MineShiftEvent.HAZARD_STARTED -> {
-                    port.broadcast(
+                    audience.broadcast(
                         listOf(runtime.region),
                         MessageKey.MINE_HAZARD_STARTED,
                         sound = Sound.ENTITY_GENERIC_EXPLODE,
                         title = true,
                     )
-                    port.broadcast(listOf(runtime.region), MessageKey.MINE_HAZARD_HELP)
-                    port.warningBurst(runtime.region)
-                    port.signal(NetworkSignal.MINE_HAZARD, kind, actor?.name, recipients(runtime))
-                    port.persistAsync()
+                    audience.broadcast(listOf(runtime.region), MessageKey.MINE_HAZARD_HELP)
+                    audience.warningBurst(runtime.region)
+                    network.signal(NetworkSignal.MINE_HAZARD, kind, actor?.name, recipients(runtime))
+                    state.persistAsync()
                 }
                 MineShiftEvent.HAZARD_RESOLVED -> {
-                    port.broadcast(
+                    audience.broadcast(
                         listOf(runtime.region),
                         MessageKey.MINE_HAZARD_RESOLVED,
                         sound = Sound.BLOCK_ANVIL_USE,
                         title = true,
                     )
-                    port.successBurst(runtime.region)
-                    port.signal(NetworkSignal.MINE_STABLE, kind, actor?.name, recipients(runtime))
+                    audience.successBurst(runtime.region)
+                    network.signal(NetworkSignal.MINE_STABLE, kind, actor?.name, recipients(runtime))
                 }
                 MineShiftEvent.EXTRACTION_STARTED -> {
-                    port.broadcast(
+                    audience.broadcast(
                         listOf(runtime.region),
                         MessageKey.MINE_EXTRACTION_STARTED,
                         sound = Sound.BLOCK_BELL_RESONATE,
                         title = true,
                     )
-                    port.signal(NetworkSignal.MINE_EXTRACTION, kind, actor?.name, recipients(runtime))
+                    network.signal(NetworkSignal.MINE_EXTRACTION, kind, actor?.name, recipients(runtime))
                 }
                 MineShiftEvent.COMPLETED -> {
-                    port.recordCompletion(kind, runtime.state.contributors)
-                    port.broadcast(
+                    stats.recordCompletion(kind, runtime.state.contributors)
+                    audience.broadcast(
                         listOf(runtime.region),
                         MessageKey.MINE_COMPLETED,
                         sound = Sound.UI_TOAST_CHALLENGE_COMPLETE,
                         title = true,
                     )
-                    port.announceWinner(listOf(runtime.region), runtime.state.contributors)
-                    port.celebration(listOf(runtime.region))
-                    port.complete(kind, actor?.name, recipients(runtime))
-                    port.persistAsync()
+                    audience.announceWinner(listOf(runtime.region), runtime.state.contributors)
+                    audience.celebration(listOf(runtime.region))
+                    network.complete(kind, actor?.name, recipients(runtime))
+                    state.persistAsync()
                 }
                 MineShiftEvent.PROGRESS -> if (runtime.state.phase == MinePhase.HAZARD && actor != null) {
-                    port.sendActionBar(
+                    audience.sendActionBar(
                         actor,
                         MessageKey.MINE_HAZARD_PROGRESS,
                         mapOf(
@@ -400,7 +411,7 @@ internal class MineController(
     }
 
     private fun recipients(runtime: Runtime): Set<UUID> =
-        port.players(runtime.region).mapTo(mutableSetOf(), Player::getUniqueId)
+        audience.players(runtime.region).mapTo(mutableSetOf(), Player::getUniqueId)
 
     private fun runtimeAt(location: Location): Runtime? = runtimes.firstOrNull { it.region.contains(location) }
 

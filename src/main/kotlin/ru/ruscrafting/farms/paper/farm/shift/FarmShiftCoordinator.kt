@@ -26,7 +26,10 @@ import ru.ruscrafting.farms.network.NetworkSignal
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteNetworkPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatsPort
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.care.FarmCareController
 import ru.ruscrafting.farms.paper.farm.care.FarmCarePlanService
@@ -38,6 +41,7 @@ import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentContr
 import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
 import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingIncident
 import ru.ruscrafting.farms.paper.farm.incident.fire.FarmBarnFireIncident
+import ru.ruscrafting.farms.paper.farm.incident.frost.FarmFrostIncident
 import ru.ruscrafting.farms.paper.farm.incident.special.SPECIAL_FARM_INCIDENT_TYPES
 import ru.ruscrafting.farms.paper.farm.presentation.FarmHudController
 import ru.ruscrafting.farms.paper.farm.reward.FarmRewardService
@@ -49,7 +53,10 @@ internal class FarmShiftCoordinator(
     private val settings: () -> ArcFarmsConfig,
     private val locale: ArcFarmsLocale,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val port: WorksiteAudiencePort,
+    private val state: WorksiteStatePort,
+    private val stats: WorksiteStatsPort,
+    private val network: WorksiteNetworkPort,
     private val carePlans: FarmCarePlanService,
     private val care: FarmCareController,
     private val drought: FarmDroughtIncident,
@@ -59,6 +66,7 @@ internal class FarmShiftCoordinator(
     private val special: FarmSpecialIncidentController,
     private val processing: FarmProcessingIncident,
     private val barnFire: FarmBarnFireIncident,
+    private val frost: FarmFrostIncident,
     private val delivery: FarmDeliveryController,
     private val scene: FarmContractSceneController,
     private val supplies: FarmSupplyController,
@@ -71,7 +79,7 @@ internal class FarmShiftCoordinator(
         val careType = result.state.careType ?: runtime.state.careType
         runtime.state = result.state
         val order = currentOrder(runtime)
-        port.traceResult(
+        state.traceResult(
             ActivityKind.FARM,
             runtime.settings.id,
             actor,
@@ -81,10 +89,10 @@ internal class FarmShiftCoordinator(
         )
         if (result.contributionCredits.isNotEmpty()) {
             result.contributionCredits.forEach { (playerId, contribution) ->
-                if (contribution > 0) port.recordContribution(playerId, ActivityKind.FARM, contribution)
+                if (contribution > 0) stats.recordContribution(playerId, ActivityKind.FARM, contribution)
             }
         } else if (actor != null && result.contribution > 0) {
-            port.recordContribution(actor.uniqueId, ActivityKind.FARM, result.contribution)
+            stats.recordContribution(actor.uniqueId, ActivityKind.FARM, result.contribution)
         }
         result.events.forEach { event ->
             when (event) {
@@ -145,12 +153,12 @@ internal class FarmShiftCoordinator(
         if (
             runtime.state.preparationProgress < runtime.state.preparationRequired &&
             runtime.state.preparationProgress % PERSIST_INTERVAL == 0
-        ) port.persistAsync()
+        ) state.persistAsync()
     }
 
     private fun plantingStarted(runtime: FarmRuntime, actor: Player?) {
         if (carePlans.shouldUseSeeder(runtime) && care.initialize(runtime, actor, FarmCareType.SEEDER)) {
-            port.persistAsync()
+            state.persistAsync()
             return
         }
         val crop = MaterialRules.material(requireNotNull(runtime.state.preparationCrop))
@@ -162,7 +170,7 @@ internal class FarmShiftCoordinator(
             title = true,
         )
         hud.playStageFanfare(runtime, 0.95f)
-        port.persistAsync()
+        state.persistAsync()
     }
 
     private fun plantingProgress(runtime: FarmRuntime, actor: Player?) {
@@ -179,7 +187,7 @@ internal class FarmShiftCoordinator(
         if (
             runtime.state.plantingProgress < runtime.state.preparationRequired &&
             runtime.state.plantingProgress % PERSIST_INTERVAL == 0
-        ) port.persistAsync()
+        ) state.persistAsync()
     }
 
     private fun preparationCompleted(runtime: FarmRuntime, actor: Player?) {
@@ -193,7 +201,7 @@ internal class FarmShiftCoordinator(
                 title = true,
             )
         }
-        port.persistAsync()
+        state.persistAsync()
     }
 
     private fun careStarted(runtime: FarmRuntime, type: FarmCareType) {
@@ -221,7 +229,7 @@ internal class FarmShiftCoordinator(
             "targets" to runtime.state.careTargets.size,
             "required" to runtime.state.careRequired(),
         )
-        port.persistAsync()
+        state.persistAsync()
     }
 
     private fun careProgress(runtime: FarmRuntime, type: FarmCareType?, actor: Player?) {
@@ -233,7 +241,7 @@ internal class FarmShiftCoordinator(
             )
         }
         care.ensure(runtime)
-        port.persistAsync()
+        state.persistAsync()
     }
 
     private fun seederProgress(runtime: FarmRuntime, actor: Player?) {
@@ -251,7 +259,7 @@ internal class FarmShiftCoordinator(
                 ),
             )
         }
-        port.persistAsync()
+        state.persistAsync()
     }
 
     private fun seederPlantingStarted(runtime: FarmRuntime) {
@@ -275,7 +283,7 @@ internal class FarmShiftCoordinator(
             "sequence" to runtime.state.sequence,
             "plots" to runtime.state.preparationRequired,
         )
-        port.persistAsync()
+        state.persistAsync()
     }
 
     private fun careResolved(runtime: FarmRuntime, type: FarmCareType?, actor: Player?) {
@@ -291,7 +299,7 @@ internal class FarmShiftCoordinator(
         hud.playStageFanfare(runtime, 1.1f)
         debug.event("farm_care_resolved", "zone" to runtime.settings.id, "sequence" to runtime.state.sequence, "type" to type)
         if (type == FarmCareType.SEEDER) care.initialize(runtime, actor)
-        port.persistAsync()
+        state.persistAsync()
     }
 
     private fun harvestCheckpoint(runtime: FarmRuntime, actor: Player?) {
@@ -310,7 +318,7 @@ internal class FarmShiftCoordinator(
             "checkpoint" to checkpoint,
             "percent" to checkpoint * 10,
         )
-        port.persistAsync()
+        state.persistAsync()
     }
 
     private fun harvestMilestone(runtime: FarmRuntime) {
@@ -322,7 +330,7 @@ internal class FarmShiftCoordinator(
             "milestone" to milestone,
             "percent" to milestone * 25,
         )
-        port.persistAsync()
+        state.persistAsync()
     }
 
     private fun incidentStarted(runtime: FarmRuntime, type: FarmIncidentType, actor: Player?) {
@@ -407,6 +415,19 @@ internal class FarmShiftCoordinator(
                     title = true,
                 )
             }
+            FarmIncidentType.FROST -> {
+                if (!frost.initialize(runtime)) {
+                    apply(runtime, FarmShiftEngine.skipUnavailableIncident(runtime.state, FarmIncidentType.FROST), null)
+                    return
+                }
+                frost.ensure(runtime)
+                port.broadcast(
+                    listOf(runtime.region),
+                    MessageKey.FARM_FROST_STARTED,
+                    sound = Sound.BLOCK_GLASS_BREAK,
+                    title = true,
+                )
+            }
             else -> {
                 val activeType = special.initialize(runtime, type) ?: return
                 special.announce(runtime, activeType)
@@ -414,13 +435,13 @@ internal class FarmShiftCoordinator(
             }
         }
         port.warningBurst(runtime.region)
-        port.signal(
+        network.signal(
             NetworkSignal.FARM_INCIDENT,
             ActivityKind.FARM,
             actor?.name,
             players(runtime).mapTo(mutableSetOf(), Player::getUniqueId),
         )
-        port.persistAsync()
+        state.persistAsync()
     }
 
     private fun incidentProgress(runtime: FarmRuntime, type: FarmIncidentType, actor: Player?) {
@@ -432,6 +453,7 @@ internal class FarmShiftCoordinator(
             FarmIncidentType.FOOD_DELIVERY -> MessageKey.FARM_ROUTE_PROGRESS
             FarmIncidentType.PROCESSING -> MessageKey.FARM_PROCESSING_BOSSBAR
             FarmIncidentType.BARN_FIRE -> MessageKey.FARM_BARN_FIRE_PROGRESS
+            FarmIncidentType.FROST -> MessageKey.FARM_FROST_PROGRESS
             FarmIncidentType.MARKET -> MessageKey.FARM_MARKET_PROGRESS
             FarmIncidentType.CHANNELS -> MessageKey.FARM_CHANNELS_PROGRESS
             else -> MessageKey.FARM_SPECIAL_PROGRESS
@@ -455,11 +477,14 @@ internal class FarmShiftCoordinator(
         foodDelivery.clear(runtime.settings.id, "incident_resolved")
         processing.clear(runtime.settings.id, "incident_resolved")
         barnFire.clear(runtime.settings.id, "incident_resolved")
+        frost.clear(runtime, "incident_resolved")
         if (type == FarmIncidentType.GIANT_CROP) special.beginRestore(runtime)
         special.clearZone(runtime, "incident_resolved")
         port.broadcast(
             listOf(runtime.region),
-            if (type in SPECIAL_FARM_INCIDENT_TYPES || type in setOf(FarmIncidentType.PROCESSING, FarmIncidentType.BARN_FIRE)) {
+            if (type in SPECIAL_FARM_INCIDENT_TYPES ||
+                type in setOf(FarmIncidentType.PROCESSING, FarmIncidentType.BARN_FIRE, FarmIncidentType.FROST)
+            ) {
                 MessageKey.FARM_SPECIAL_RESOLVED
             } else MessageKey.FARM_INCIDENT_RESOLVED,
             sound = Sound.ENTITY_VILLAGER_YES,
@@ -467,13 +492,13 @@ internal class FarmShiftCoordinator(
         )
         port.successBurst(runtime.region)
         hud.playStageFanfare(runtime, 1.15f)
-        port.signal(
+        network.signal(
             NetworkSignal.FARM_RESCUED,
             ActivityKind.FARM,
             actor?.name,
             players(runtime).mapTo(mutableSetOf(), Player::getUniqueId),
         )
-        port.persistAsync()
+        state.persistAsync()
     }
 
     private fun processingStageChanged(runtime: FarmRuntime) {
@@ -503,7 +528,7 @@ internal class FarmShiftCoordinator(
         }
         port.successBurst(runtime.region)
         processing.ensure(runtime)
-        port.persistAsync()
+        state.persistAsync()
     }
 
     private fun processingHint(runtime: FarmRuntime): MessageKey = when (runtime.state.processing?.stage) {
@@ -529,7 +554,7 @@ internal class FarmShiftCoordinator(
             "sequence" to runtime.state.sequence,
             "restores" to runtime.state.specialDamagedCrops.size,
         )
-        port.persistAsync()
+        state.persistAsync()
     }
 
     private fun deliveryStarted(runtime: FarmRuntime) {
@@ -538,7 +563,7 @@ internal class FarmShiftCoordinator(
         }
         pests.clear(runtime, "delivery_started")
         delivery.ensure(runtime)
-        port.persistAsync()
+        state.persistAsync()
     }
 
     private fun deliveryProgress(runtime: FarmRuntime, actor: Player?) {
@@ -551,14 +576,14 @@ internal class FarmShiftCoordinator(
             if (settings().particles) world.spawnParticle(Particle.COMPOSTER, location, 10, 0.45, 0.3, 0.45, 0.03)
             if (settings().sounds) players(runtime).forEach { it.playSound(location, Sound.BLOCK_BARREL_CLOSE, 0.75f, 1.1f) }
         }
-        port.persistAsync()
+        state.persistAsync()
     }
 
     private fun completed(runtime: FarmRuntime, actor: Player?) {
         players(runtime).forEach { supplies.removeServiceItems(it, runtime.settings.id, "shift_completed") }
         delivery.clear(runtime, "completed")
         val contributors = runtime.state.contributors
-        port.recordCompletion(ActivityKind.FARM, contributors)
+        stats.recordCompletion(ActivityKind.FARM, contributors)
         rewards.queueCompletion(runtime, contributors)
         port.broadcast(
             listOf(runtime.region),
@@ -569,12 +594,12 @@ internal class FarmShiftCoordinator(
         )
         port.announceWinner(listOf(runtime.region), contributors)
         port.celebration(listOf(runtime.region))
-        port.complete(
+        network.complete(
             ActivityKind.FARM,
             actor?.name,
             players(runtime).mapTo(mutableSetOf(), Player::getUniqueId),
         )
-        port.persistAsync()
+        state.persistAsync()
     }
 
     private fun seederInstructionPath(state: FarmShiftState): String = when (state.seederStage()) {

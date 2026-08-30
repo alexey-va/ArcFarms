@@ -152,5 +152,6 @@ object FarmIncidentPlanner {
         FarmIncidentType.FOOD_DELIVERY,
         FarmIncidentType.PROCESSING,
         FarmIncidentType.BARN_FIRE,
+        FarmIncidentType.FROST,
     )
 }

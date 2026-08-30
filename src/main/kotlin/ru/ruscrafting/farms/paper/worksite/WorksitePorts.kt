@@ -113,3 +113,13 @@ internal interface WorksiteNetworkPort {
     fun signal(signal: NetworkSignal, activity: ActivityKind, actorName: String?, excludedPlayers: Set<UUID>)
     fun complete(activity: ActivityKind, actorName: String?, excludedPlayers: Set<UUID>)
 }
+
+/** Wiring-only bundle. Gameplay owners receive only the capabilities they actually use. */
+internal data class WorksitePorts(
+    val access: WorksiteAccessPort,
+    val audience: WorksiteAudiencePort,
+    val state: WorksiteStatePort,
+    val tasks: WorksiteTaskPort,
+    val stats: WorksiteStatsPort,
+    val network: WorksiteNetworkPort,
+)

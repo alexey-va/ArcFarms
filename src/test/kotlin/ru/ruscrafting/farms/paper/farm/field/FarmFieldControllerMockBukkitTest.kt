@@ -67,7 +67,10 @@ class FarmFieldControllerMockBukkitTest : FunSpec({
         val controller = FarmFieldController(
             settings = { mockk<ArcFarmsConfig>(relaxed = true) },
             debug = ArcFarmsDebug({ false }) {},
-            port = mockk<WorksiteRuntimePort>(relaxed = true),
+            access = mockk<WorksiteRuntimePort>(relaxed = true),
+            audience = mockk<WorksiteRuntimePort>(relaxed = true),
+            state = mockk<WorksiteRuntimePort>(relaxed = true),
+            tasks = mockk<WorksiteRuntimePort>(relaxed = true),
             ledger = ledger,
             registry = mockk<FarmBlockRegistry>(relaxed = true),
             points = FarmPointProvider { _, _ -> error("release does not resolve operation points") },
@@ -136,7 +139,10 @@ class FarmFieldControllerMockBukkitTest : FunSpec({
         val controller = FarmFieldController(
             settings = { mockk<ArcFarmsConfig>(relaxed = true) },
             debug = ArcFarmsDebug({ false }) {},
-            port = mockk<WorksiteRuntimePort>(relaxed = true),
+            access = mockk<WorksiteRuntimePort>(relaxed = true),
+            audience = mockk<WorksiteRuntimePort>(relaxed = true),
+            state = mockk<WorksiteRuntimePort>(relaxed = true),
+            tasks = mockk<WorksiteRuntimePort>(relaxed = true),
             ledger = ledger,
             registry = mockk<FarmBlockRegistry>(relaxed = true) {
                 every { beds("farm") } returns plots.toSet()
@@ -198,7 +204,10 @@ class FarmFieldControllerMockBukkitTest : FunSpec({
         val controller = FarmFieldController(
             settings = { mockk<ArcFarmsConfig>(relaxed = true) },
             debug = ArcFarmsDebug({ false }) {},
-            port = mockk<WorksiteRuntimePort>(relaxed = true),
+            access = mockk<WorksiteRuntimePort>(relaxed = true),
+            audience = mockk<WorksiteRuntimePort>(relaxed = true),
+            state = mockk<WorksiteRuntimePort>(relaxed = true),
+            tasks = mockk<WorksiteRuntimePort>(relaxed = true),
             ledger = FarmBlockLedger(paper.createSimplePlugin("FarmIrrigationMaintenanceTest")),
             registry = registry,
             points = FarmPointProvider { _, _ -> error("maintenance does not resolve operation points") },
@@ -248,7 +257,10 @@ class FarmFieldControllerMockBukkitTest : FunSpec({
         val controller = FarmFieldController(
             settings = { mockk<ArcFarmsConfig>(relaxed = true) },
             debug = ArcFarmsDebug({ false }) {},
-            port = mockk<WorksiteRuntimePort>(relaxed = true),
+            access = mockk<WorksiteRuntimePort>(relaxed = true),
+            audience = mockk<WorksiteRuntimePort>(relaxed = true),
+            state = mockk<WorksiteRuntimePort>(relaxed = true),
+            tasks = mockk<WorksiteRuntimePort>(relaxed = true),
             ledger = FarmBlockLedger(paper.createSimplePlugin("FarmMoleEntranceMaintenanceTest")),
             registry = registry,
             points = FarmPointProvider { _, _ -> error("maintenance does not resolve operation points") },
@@ -287,7 +299,10 @@ class FarmFieldControllerMockBukkitTest : FunSpec({
         val controller = FarmFieldController(
             settings = { mockk<ArcFarmsConfig>(relaxed = true) },
             debug = ArcFarmsDebug({ false }) {},
-            port = mockk<WorksiteRuntimePort>(relaxed = true),
+            access = mockk<WorksiteRuntimePort>(relaxed = true),
+            audience = mockk<WorksiteRuntimePort>(relaxed = true),
+            state = mockk<WorksiteRuntimePort>(relaxed = true),
+            tasks = mockk<WorksiteRuntimePort>(relaxed = true),
             ledger = ledger,
             registry = registry,
             points = FarmPointProvider { _, _ -> error("maintenance does not resolve operation points") },

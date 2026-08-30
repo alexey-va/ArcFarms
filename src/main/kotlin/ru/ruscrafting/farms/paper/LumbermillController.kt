@@ -20,12 +20,23 @@ import ru.ruscrafting.farms.domain.LumberShiftEngine
 import ru.ruscrafting.farms.domain.LumberShiftState
 import ru.ruscrafting.farms.domain.LumberShiftEvent
 import ru.ruscrafting.farms.network.NetworkSignal
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteNetworkPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatsPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import kotlin.math.ceil
 
 internal class LumbermillController(
     private val regionGateway: RegionGateway,
     private val locale: ArcFarmsLocale,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
+    private val state: WorksiteStatePort,
+    private val tasks: WorksiteTaskPort,
+    private val stats: WorksiteStatsPort,
+    private val network: WorksiteNetworkPort,
     private val clock: () -> Long,
 ) : WorksiteModule<LumberShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler, WorksiteGuidanceHandler {
     override val kind: ActivityKind = ActivityKind.LUMBER
@@ -71,14 +82,14 @@ internal class LumbermillController(
         ActivityStatus(kind, runtime.settings.id, "phase.lumber.${runtime.state.phase.name.lowercase()}", progress)
     }
 
-    override fun canAccess(player: Player): Boolean = runtimes.any { port.hasAccess(player, it.settings.permission) }
+    override fun canAccess(player: Player): Boolean = runtimes.any { access.hasAccess(player, it.settings.permission) }
 
     override fun onBreakHigh(event: BlockBreakEvent): Boolean {
         val runtime = runtimeAt(event.block.location) ?: return false
-        port.traceBlockBreak(event, kind, runtime.settings.id)
-        if (!port.hasAccess(event.player, runtime.settings.permission)) {
+        state.traceBlockBreak(event, kind, runtime.settings.id)
+        if (!access.hasAccess(event.player, runtime.settings.permission)) {
             event.isCancelled = true
-            port.sendChat(event.player, MessageKey.ZONE_LOCKED)
+            audience.sendChat(event.player, MessageKey.ZONE_LOCKED)
             return true
         }
         event.isCancelled = !MaterialRules.isLumberBreakable(event.block.type)
@@ -97,19 +108,19 @@ internal class LumbermillController(
         val runtime = runtimes.firstOrNull { it.station.contains(clicked.location) } ?: return false
         if (clicked.type !in runtime.stationMaterials) return false
         event.isCancelled = true
-        port.tracePlayerAction(player, kind, runtime.settings.id, "use_station", clicked.type)
-        if (!port.hasAccess(player, runtime.settings.permission)) {
-            port.sendChat(player, MessageKey.ZONE_LOCKED)
+        state.tracePlayerAction(player, kind, runtime.settings.id, "use_station", clicked.type)
+        if (!access.hasAccess(player, runtime.settings.permission)) {
+            audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return true
         }
-        if (!port.allowInteraction("lumber:${runtime.settings.id}:${player.uniqueId}", 900)) return true
+        if (!access.allowInteraction("lumber:${runtime.settings.id}:${player.uniqueId}", 900)) return true
         process(runtime, player)
         return true
     }
 
     override fun tick(now: Long) {
         runtimes.forEach { runtime ->
-            port.guarded("lumber:${runtime.settings.id}") {
+            tasks.guarded("lumber:${runtime.settings.id}") {
                 val result = LumberShiftEngine.tick(runtime.state, runtime.rules, now)
                 if (result.events.isNotEmpty()) apply(runtime, result, null)
             }
@@ -120,7 +131,7 @@ internal class LumbermillController(
         runtimes.forEach { runtime ->
             if (runtime.state.phase !in setOf(LumberPhase.FELLING, LumberPhase.PROCESSING)) return@forEach
             val region = if (runtime.state.phase == LumberPhase.PROCESSING) runtime.station else runtime.region
-            port.players(region).forEach { player ->
+            audience.players(region).forEach { player ->
                 val processing = runtime.state.phase == LumberPhase.PROCESSING
                 val done = if (processing) runtime.state.processed else runtime.state.felled
                 val total = if (processing) runtime.rules.processingQuota else runtime.rules.fellingQuota
@@ -131,8 +142,8 @@ internal class LumbermillController(
                     "total" to locale.text(total),
                 )
                 val component = locale.render(key, player, values)
-                port.sendActionBar(player, key, values)
-                port.updateBar(
+                audience.sendActionBar(player, key, values)
+                audience.updateBar(
                     player,
                     "lumber:${runtime.settings.id}",
                     component,
@@ -147,10 +158,10 @@ internal class LumbermillController(
     override fun emitGuidance() {
         runtimes.filter { it.state.phase == LumberPhase.FELLING }.forEach { runtime ->
             val species = runtime.state.species ?: return@forEach
-            port.players(runtime.region).filterNot(port::isAdminEditing).forEach { player ->
+            audience.players(runtime.region).filterNot(access::isAdminEditing).forEach { player ->
                 nearbyBlocks(player.location, runtime.region, 6, 5, 8) { MaterialRules.speciesOf(it.type) == species }
                     .forEach { block ->
-                        port.spawnGuidanceDust(
+                        audience.spawnGuidanceDust(
                             player,
                             block.location.toCenterLocation().add(0.0, 0.8, 0.0),
                             GUIDANCE_COLOR,
@@ -163,7 +174,7 @@ internal class LumbermillController(
     private fun fell(runtime: Runtime, player: Player, species: String) {
         val now = clock()
         if (runtime.state.phase == LumberPhase.COOLDOWN) {
-            port.sendActionBar(
+            audience.sendActionBar(
                 player,
                 MessageKey.COOLDOWN,
                 mapOf("seconds" to locale.text(remainingSeconds(runtime.state.cooldownEndsAt, now))),
@@ -177,7 +188,7 @@ internal class LumbermillController(
         val result = LumberShiftEngine.fell(runtime.state, runtime.rules, species, player.uniqueId, now)
         apply(runtime, result, player)
         if (!result.accepted && runtime.state.phase == LumberPhase.FELLING) {
-            port.sendActionBar(
+            audience.sendActionBar(
                 player,
                 MessageKey.LUMBER_WRONG_SPECIES,
                 mapOf("wood" to MaterialRules.woodComponent(requireNotNull(runtime.state.species))),
@@ -187,7 +198,7 @@ internal class LumbermillController(
 
     private fun process(runtime: Runtime, player: Player): Boolean {
         if (runtime.state.phase != LumberPhase.PROCESSING) {
-            port.sendActionBar(player, MessageKey.LUMBER_STATION_REQUIRED)
+            audience.sendActionBar(player, MessageKey.LUMBER_STATION_REQUIRED)
             return false
         }
         val result = LumberShiftEngine.process(runtime.state, runtime.rules, player.uniqueId, clock())
@@ -201,7 +212,7 @@ internal class LumbermillController(
         actor: Player?,
     ) {
         runtime.state = result.state
-        port.traceResult(
+        state.traceResult(
             kind,
             runtime.settings.id,
             actor,
@@ -210,51 +221,51 @@ internal class LumbermillController(
             result,
         )
         if (actor != null && result.contribution > 0) {
-            port.recordContribution(actor.uniqueId, kind, result.contribution)
+            stats.recordContribution(actor.uniqueId, kind, result.contribution)
         }
         result.events.forEach { event ->
             when (event) {
-                LumberShiftEvent.STARTED -> port.broadcast(
+                LumberShiftEvent.STARTED -> audience.broadcast(
                     listOf(runtime.region),
                     MessageKey.LUMBER_STARTED,
                     mapOf("wood" to MaterialRules.woodComponent(requireNotNull(runtime.state.species))),
                     Sound.BLOCK_WOOD_PLACE,
                 )
                 LumberShiftEvent.PHASE_CHANGED -> {
-                    port.broadcast(
+                    audience.broadcast(
                         listOf(runtime.region),
                         MessageKey.LUMBER_PROCESSING,
                         sound = Sound.BLOCK_PISTON_EXTEND,
                         title = true,
                     )
-                    port.successBurst(runtime.region)
-                    port.signal(
+                    audience.successBurst(runtime.region)
+                    network.signal(
                         NetworkSignal.LUMBER_PROCESSING,
                         kind,
                         actor?.name,
                         listOf(runtime.region, runtime.station)
-                            .flatMap(port::players)
+                            .flatMap(audience::players)
                             .mapTo(mutableSetOf(), Player::getUniqueId),
                     )
                 }
                 LumberShiftEvent.COMPLETED -> {
-                    port.recordCompletion(kind, runtime.state.contributors)
+                    stats.recordCompletion(kind, runtime.state.contributors)
                     val regions = listOf(runtime.region, runtime.station)
-                    port.broadcast(
+                    audience.broadcast(
                         regions,
                         MessageKey.LUMBER_COMPLETED,
                         mapOf("players" to locale.text(runtime.state.contributors.size)),
                         Sound.UI_TOAST_CHALLENGE_COMPLETE,
                         title = true,
                     )
-                    port.announceWinner(regions, runtime.state.contributors)
-                    port.celebration(regions)
-                    port.complete(
+                    audience.announceWinner(regions, runtime.state.contributors)
+                    audience.celebration(regions)
+                    network.complete(
                         kind,
                         actor?.name,
-                        regions.flatMap(port::players).mapTo(mutableSetOf(), Player::getUniqueId),
+                        regions.flatMap(audience::players).mapTo(mutableSetOf(), Player::getUniqueId),
                     )
-                    port.persistAsync()
+                    state.persistAsync()
                 }
                 else -> Unit
             }

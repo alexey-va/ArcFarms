@@ -51,7 +51,9 @@ import ru.ruscrafting.farms.paper.FarmSpecialSceneObject
 import ru.ruscrafting.farms.paper.FarmSpecialSceneRole
 import ru.ruscrafting.farms.paper.FarmSpecialSceneSpec
 import ru.ruscrafting.farms.paper.MaterialRules
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
@@ -77,7 +79,9 @@ internal class FarmSpecialIncidentController(
     private val settings: () -> ArcFarmsConfig,
     private val locale: ArcFarmsLocale,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
+    private val state: WorksiteStatePort,
     private val ledger: FarmBlockLedger,
     private val registry: FarmBlockRegistry,
     private val beds: FarmIncidentBedProvider,
@@ -161,7 +165,7 @@ internal class FarmSpecialIncidentController(
         if (selected == null) {
             val skipped = FarmSpecialIncidentEngine.skipUnavailable(runtime.state)
             if (skipped.accepted) runtime.state = skipped.state
-            port.log(Level.WARNING, "Skipped unavailable farm incident $type in ${runtime.settings.id}")
+            state.log(Level.WARNING, "Skipped unavailable farm incident $type in ${runtime.settings.id}")
             debug.event(
                 "farm_special_incident_unavailable",
                 "zone" to runtime.settings.id,
@@ -172,7 +176,7 @@ internal class FarmSpecialIncidentController(
                 "giant_candidates_checked" to giantSelection?.checked,
                 "giant_candidates_rejected" to giantSelection?.rejected,
             )
-            port.persistAsync()
+            state.persistAsync()
             return null
         }
         val (activeType, plan) = selected
@@ -204,7 +208,7 @@ internal class FarmSpecialIncidentController(
             "giant_candidates" to giantSelection?.considered,
             "giant_candidates_checked" to giantSelection?.checked,
         )
-        port.persistAsync()
+        state.persistAsync()
         return activeType
     }
 
@@ -216,7 +220,7 @@ internal class FarmSpecialIncidentController(
             FarmIncidentType.MARKET -> MessageKey.FARM_MARKET_STARTED to Sound.ENTITY_VILLAGER_TRADE
             else -> return
         }
-        port.broadcast(
+        audience.broadcast(
             listOf(runtime.region),
             title,
             mapOf("total" to locale.text(runtime.state.incidentRequired)),
@@ -241,12 +245,12 @@ internal class FarmSpecialIncidentController(
         }
         if (type == FarmIncidentType.MARKET && expireMarket(runtime, clock())) return true
         val special = runtime.state.specialIncident ?: return true
-        if (!port.hasAccess(player, runtime.settings.permission)) {
-            port.sendChat(player, MessageKey.ZONE_LOCKED)
+        if (!access.hasAccess(player, runtime.settings.permission)) {
+            audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return true
         }
         if (type == FarmIncidentType.MARKET && !special.marketAccepted) {
-            port.sendActionBar(player, MessageKey.FARM_MARKET_REQUIRED)
+            audience.sendActionBar(player, MessageKey.FARM_MARKET_REQUIRED)
             return true
         }
         val soil = block.getRelative(org.bukkit.block.BlockFace.DOWN)
@@ -262,7 +266,7 @@ internal class FarmSpecialIncidentController(
             } else beds.discover(runtime),
         ) && data != null && data.age == data.maximumAge && (expected == null || block.type == expected)
         if (!valid) {
-            port.sendActionBar(
+            audience.sendActionBar(
                 player,
                 if (type == FarmIncidentType.MARKET) MessageKey.FARM_MARKET_ACTIVE else MessageKey.FARM_SPECIAL_PROGRESS,
                 buildMap {
@@ -313,7 +317,7 @@ internal class FarmSpecialIncidentController(
     fun interactScene(player: Player, entity: Entity) {
         val identity = scene.metadata(entity) ?: return
         val runtime = runtimes().firstOrNull { it.settings.id == identity.zoneId } ?: return
-        if (!port.hasAccess(player, runtime.settings.permission) || !runtime.region.contains(player.location)) return
+        if (!access.hasAccess(player, runtime.settings.permission) || !runtime.region.contains(player.location)) return
         if (runtime.state.sequence != identity.sequence || runtime.state.phase != FarmPhase.INCIDENT) return
         if (identity.role !in setOf(
                 FarmSpecialSceneRole.CHANNEL_BLOCKAGE,
@@ -321,7 +325,7 @@ internal class FarmSpecialIncidentController(
             )
         ) return
         if (runtime.state.incidentType != FarmIncidentType.CHANNELS) return
-        if (!port.allowInteraction("farm-channel:${identity.zoneId}:${identity.index}:${player.uniqueId}", 250L)) return
+        if (!access.allowInteraction("farm-channel:${identity.zoneId}:${identity.index}:${player.uniqueId}", 250L)) return
         val beforeFlow = runtime.state.specialIncident?.let { incident ->
             FarmSpecialIncidentEngine.channelFlowProgress(incident.active, incident.points.size)
         } ?: 0
@@ -419,7 +423,7 @@ internal class FarmSpecialIncidentController(
                 "sequence" to runtime.state.sequence,
                 "deadline" to deadline,
             )
-            port.persistAsync()
+            state.persistAsync()
             return false
         }
         val result = FarmSpecialIncidentEngine.expireMarket(runtime.state, now)
@@ -447,8 +451,8 @@ internal class FarmSpecialIncidentController(
                 else -> null
             }
         }
-        if (attacker != null && port.allowInteraction("farm-night-patrol:${attacker.uniqueId}", 1_500L)) {
-            port.sendActionBar(attacker, MessageKey.FARM_NIGHT_PATROL_AVOID)
+        if (attacker != null && access.allowInteraction("farm-night-patrol:${attacker.uniqueId}", 1_500L)) {
+            audience.sendActionBar(attacker, MessageKey.FARM_NIGHT_PATROL_AVOID)
         }
         return true
     }
@@ -497,7 +501,7 @@ internal class FarmSpecialIncidentController(
             runtime.settings.id,
             runtime.state.sequence,
             runtime.region,
-            port.players(runtime.region),
+            audience.players(runtime.region),
             runtime.settings.specialIncidents.nightPlayerTime,
             special.points,
             points.resolve(runtime, FarmPointKind.RECEIVING),
@@ -598,7 +602,7 @@ internal class FarmSpecialIncidentController(
                     "sequence" to runtime.state.sequence,
                     "gates" to projected.points.size,
                 )
-                port.persistAsync()
+                state.persistAsync()
             }
         } else special
         val normalized = normalizeChannels(runtime, projectedSpecial)
@@ -649,18 +653,18 @@ internal class FarmSpecialIncidentController(
             "sequence" to runtime.state.sequence,
             "blockages" to special.points.size,
         )
-        port.persistAsync()
+        state.persistAsync()
         return normalized
     }
 
     private fun handleGiantCropBreak(runtime: FarmRuntime, player: Player, block: Block): Boolean {
         if (runtime.state.phase != FarmPhase.INCIDENT || runtime.state.incidentType != FarmIncidentType.GIANT_CROP) return false
         if (!giantCrop.owns(block, runtime.settings.id, runtime.state.sequence)) return false
-        if (!port.hasAccess(player, runtime.settings.permission)) {
-            port.sendChat(player, MessageKey.ZONE_LOCKED)
+        if (!access.hasAccess(player, runtime.settings.permission)) {
+            audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return true
         }
-        if (!port.allowInteraction("farm-giant:${runtime.settings.id}:${player.uniqueId}", 90L)) return true
+        if (!access.allowInteraction("farm-giant:${runtime.settings.id}:${player.uniqueId}", 90L)) return true
         val result = FarmSpecialIncidentEngine.damageGiantCrop(runtime.state, player.uniqueId)
         if (!result.accepted || !giantCrop.breakBlock(block, runtime.settings.id, runtime.state.sequence)) return true
         if (settings().particles) block.world.spawnParticle(
@@ -684,7 +688,7 @@ internal class FarmSpecialIncidentController(
 
     private fun handleMarketDecision(player: Player, click: FarmMarketClick) {
         val runtime = runtimes().firstOrNull { it.settings.id == click.zoneId } ?: return
-        if (!port.hasAccess(player, runtime.settings.permission) || !runtime.region.contains(player.location)) {
+        if (!access.hasAccess(player, runtime.settings.permission) || !runtime.region.contains(player.location)) {
             player.closeInventory()
             return
         }
@@ -698,7 +702,7 @@ internal class FarmSpecialIncidentController(
             runtime.state.incidentType != FarmIncidentType.MARKET
         ) {
             player.closeInventory()
-            port.sendActionBar(player, MessageKey.FARM_MARKET_CHANGED)
+            audience.sendActionBar(player, MessageKey.FARM_MARKET_CHANGED)
             debug.event(
                 "farm_market_stale_decision",
                 "zone" to click.zoneId,
@@ -712,7 +716,7 @@ internal class FarmSpecialIncidentController(
         val special = runtime.state.specialIncident ?: return
         if (special.marketAccepted) {
             openMarket(player, runtime, special)
-            port.sendActionBar(player, MessageKey.FARM_MARKET_ACTIVE, marketValues(runtime, special, player))
+            audience.sendActionBar(player, MessageKey.FARM_MARKET_ACTIVE, marketValues(runtime, special, player))
             return
         }
         val result = when (click.decision) {
@@ -727,16 +731,16 @@ internal class FarmSpecialIncidentController(
         player.closeInventory()
         transitions.apply(runtime, result, player)
         if (click.decision == FarmMarketDecision.ACCEPT) {
-            port.persistAsync()
+            state.persistAsync()
             val accepted = requireNotNull(runtime.state.specialIncident)
-            port.broadcast(
+            audience.broadcast(
                 listOf(runtime.region),
                 MessageKey.FARM_MARKET_ACCEPTED,
                 sound = Sound.ENTITY_VILLAGER_YES,
                 title = true,
                 valuesForPlayer = { audience -> marketValues(runtime, accepted, audience) },
             )
-        } else port.broadcast(listOf(runtime.region), MessageKey.FARM_MARKET_DECLINED, sound = Sound.ENTITY_VILLAGER_NO)
+        } else audience.broadcast(listOf(runtime.region), MessageKey.FARM_MARKET_DECLINED, sound = Sound.ENTITY_VILLAGER_NO)
         debug.event(
             "farm_market_decision",
             "zone" to click.zoneId,
@@ -779,5 +783,6 @@ internal class FarmSpecialIncidentController(
         FarmIncidentType.FOOD_DELIVERY -> "food-delivery"
         FarmIncidentType.PROCESSING -> "processing"
         FarmIncidentType.BARN_FIRE -> "barn-fire"
+        FarmIncidentType.FROST -> "frost"
     }
 }

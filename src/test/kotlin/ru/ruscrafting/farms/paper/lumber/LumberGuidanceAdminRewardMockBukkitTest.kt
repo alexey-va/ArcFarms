@@ -25,7 +25,7 @@ class LumberGuidanceAdminRewardMockBukkitTest : FunSpec({
         for (x in 0..20) for (z in 0..20) world.getBlockAt(x, 63, z).type = Material.STONE
         val logs = listOf(world.getBlockAt(2, 64, 2), world.getBlockAt(4, 64, 2)).onEach { it.type = Material.OAK_LOG }
         val player = paper.server.addPlayer("AdminForester")
-        val graph = LumbermillComponentGraph(
+        val graph = testLumbermillComponentGraph(
             paper.createSimplePlugin("LumberAdminTest"), CuboidRegionGateway(), lumberTestPort(listOf(player)),
             clock = { 1_000L }, journal = ImmediateLumberJournal(), bundleEffects = RecordingBundleEffects(),
         )

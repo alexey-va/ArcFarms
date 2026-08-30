@@ -41,7 +41,10 @@ import ru.ruscrafting.farms.paper.FarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.FarmPestDamagePolicy
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
@@ -62,7 +65,10 @@ internal class FarmPestIncident(
     private val settings: () -> ArcFarmsConfig,
     private val locale: ArcFarmsLocale,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
+    private val state: WorksiteStatePort,
+    private val tasks: WorksiteTaskPort,
     private val blockLedger: FarmBlockLedger,
     private val blockRegistry: FarmBlockRegistry,
     private val beds: FarmIncidentBedProvider,
@@ -106,7 +112,7 @@ internal class FarmPestIncident(
         } ?: return true
         val runtime = runtimes.firstOrNull { it.settings.id == zoneId } ?: return true
         val allowed = FarmPestDamagePolicy.allows(
-            hasAccess = port.hasAccess(attacker, runtime.settings.permission),
+            hasAccess = access.hasAccess(attacker, runtime.settings.permission),
             insideRegion = runtime.region.contains(entity.location),
             pestIncidentActive = active(runtime),
             sequenceMatches = runtime.state.sequence == sequence,
@@ -132,7 +138,7 @@ internal class FarmPestIncident(
         val killer = entity.killer
         if (
             runtime == null || !active(runtime) || runtime.state.sequence != sequence || killer == null ||
-            !port.hasAccess(killer, runtime.settings.permission) || !runtime.region.contains(entity.location)
+            !access.hasAccess(killer, runtime.settings.permission) || !runtime.region.contains(entity.location)
         ) {
             debug.event(
                 "farm_pest_death_ignored",
@@ -158,7 +164,7 @@ internal class FarmPestIncident(
     fun damageNest(runtime: FarmRuntime, entity: Entity, attacker: Player): Boolean {
         val identity = nestIdentity(entity) ?: return false
         if (identity.first != runtime.settings.id || !active(runtime) || !runtime.region.contains(entity.location)) return true
-        if (!port.hasAccess(attacker, runtime.settings.permission) || runtime.state.orderId !in runtime.orders) return true
+        if (!access.hasAccess(attacker, runtime.settings.permission) || runtime.state.orderId !in runtime.orders) return true
         val position = identity.second
         val result = FarmShiftEngine.damagePestNest(runtime.state, position, attacker.uniqueId)
         if (!result.accepted) return true
@@ -181,7 +187,7 @@ internal class FarmPestIncident(
                 Material.MANGROVE_ROOTS.createBlockData(),
             )
         }
-        port.sendActionBar(
+        audience.sendActionBar(
             attacker,
             if (remainingHealth == 0) MessageKey.FARM_PEST_NEST_DESTROYED else MessageKey.FARM_PEST_NEST_DAMAGED,
             mapOf("health" to locale.text(remainingHealth)),
@@ -207,7 +213,7 @@ internal class FarmPestIncident(
         reconcileLifecycle(runtime)
         ensureNests(runtime)
         ensureNestEntities(runtime)
-        val nearbyPlayers = port.players(runtime.region)
+        val nearbyPlayers = audience.players(runtime.region)
         var pests = activePests(runtime).toMutableList()
         if (nearbyPlayers.isEmpty()) {
             pests.filterIsInstance<Mob>().forEach { pest ->
@@ -244,7 +250,7 @@ internal class FarmPestIncident(
             val preferred = nest?.position?.location()?.add(0.5, 1.0, 0.5) ?: nearbyPlayers[index % nearbyPlayers.size].location
             spawnPest(runtime, preferred, nearbyPlayers[index % nearbyPlayers.size])?.let(pests::add)
         }
-        if (!port.allowInteraction("farm-pest-nest-spawn:${runtime.settings.id}", runtime.settings.pestSpawnIntervalSeconds * 1_000L)) {
+        if (!access.allowInteraction("farm-pest-nest-spawn:${runtime.settings.id}", runtime.settings.pestSpawnIntervalSeconds * 1_000L)) {
             return
         }
         if (pests.size >= runtime.settings.pestMaxAlive) return
@@ -288,7 +294,7 @@ internal class FarmPestIncident(
             indexed.size, already.size, safety.maximumPercent, safety.minimumRemaining, safety.pestMaximum,
         )
         val pestSnapshots = activePests(runtime).mapNotNull { pest ->
-            if (!port.allowInteraction("farm-pest-eat:${pest.uniqueId}", PEST_EAT_INTERVAL_MILLIS)) null
+            if (!access.allowInteraction("farm-pest-eat:${pest.uniqueId}", PEST_EAT_INTERVAL_MILLIS)) null
             else Triple(pest.uniqueId, pest.location.blockX, pest.location.blockZ)
         }
         if (remaining == 0 || pestSnapshots.isEmpty()) {
@@ -298,8 +304,8 @@ internal class FarmPestIncident(
         val candidates = indexed.filterNot(already::contains)
         val radius = runtime.settings.pestEatRadius
         val perPest = runtime.settings.pestEatPerPulse
-        val token = port.lifecycleToken()
-        val scheduled = port.runAsync(token) {
+        val token = tasks.lifecycleToken()
+        val scheduled = tasks.runAsync(token) {
             val plan = runCatching {
                 val claimed = hashSetOf<FarmPlotPosition>()
                 pestSnapshots.flatMap { pest ->
@@ -314,10 +320,10 @@ internal class FarmPestIncident(
                 }.take(remaining)
             }.getOrElse { failure ->
                 pendingDamagePlans.release(zoneId, sequence)
-                port.log(Level.SEVERE, "Could not plan farm pest crop damage for $zoneId", failure)
+                state.log(Level.SEVERE, "Could not plan farm pest crop damage for $zoneId", failure)
                 return@runAsync
             }
-            val returned = port.runSync(token) {
+            val returned = tasks.runSync(token) {
                 pendingDamagePlans.release(zoneId, sequence)
                 if (!active(runtime) || runtime.state.sequence != sequence) return@runSync
                 val currentDamages = runtime.state.pestDamagedCrops.toMutableList()
@@ -443,7 +449,7 @@ internal class FarmPestIncident(
             }
             return
         }
-        val players = port.players(runtime.region)
+        val players = audience.players(runtime.region)
         var spawnedState = runtime.state
         nests.take(runtime.settings.pestMaxAlive).forEachIndexed { index, nest ->
             val location = nest.position.location()?.add(0.5, 1.0, 0.5) ?: return@forEachIndexed

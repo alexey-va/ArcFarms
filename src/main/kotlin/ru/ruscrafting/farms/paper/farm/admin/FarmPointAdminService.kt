@@ -8,10 +8,12 @@ import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmProcessingPointOrientation
+import ru.ruscrafting.farms.domain.FarmGroundDisplayPointOrientation
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.ArcFarmsRuntimeValidator
 import ru.ruscrafting.farms.paper.FarmRuntime
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.care.FarmCarePlanService
 import ru.ruscrafting.farms.paper.farm.point.FarmPointService
@@ -23,7 +25,8 @@ internal class FarmPointAdminService(
     private val settings: () -> ArcFarmsConfig,
     private val locale: ArcFarmsLocale,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val port: WorksiteAudiencePort,
+    private val state: WorksiteStatePort,
     private val pointService: FarmPointService,
     private val points: FarmPointProvider,
     private val carePlans: FarmCarePlanService,
@@ -85,7 +88,11 @@ internal class FarmPointAdminService(
             player.location.yaw,
             player.location.pitch,
         )
-        val position = if (kind in PROCESSING_POINTS) FarmProcessingPointOrientation.normalize(captured) else captured
+        val position = when {
+            kind in PROCESSING_POINTS -> FarmProcessingPointOrientation.normalize(captured)
+            kind == FarmPointKind.FIREWOOD -> FarmGroundDisplayPointOrientation.normalize(captured)
+            else -> captured
+        }
         if (kind in PROCESSING_POINTS) {
             processing.validate(runtime, position)?.let { failure ->
                 port.sendChat(
@@ -104,7 +111,7 @@ internal class FarmPointAdminService(
         try {
             pointService.save(zoneId, kind, position) { candidate -> validator.validateLocations(settings(), candidate) }
         } catch (failure: Exception) {
-            port.log(Level.SEVERE, "Could not save farm point $zoneId/$kind", failure)
+            state.log(Level.SEVERE, "Could not save farm point $zoneId/$kind", failure)
             port.sendChat(player, MessageKey.GENERIC_ERROR)
             return false
         }
@@ -147,7 +154,7 @@ internal class FarmPointAdminService(
         try {
             pointService.clear(zoneId, kind) { candidate -> validator.validateLocations(settings(), candidate) }
         } catch (failure: Exception) {
-            port.log(Level.SEVERE, "Could not clear farm point $zoneId/$kind", failure)
+            state.log(Level.SEVERE, "Could not clear farm point $zoneId/$kind", failure)
             port.sendChat(player, MessageKey.GENERIC_ERROR)
             return false
         }

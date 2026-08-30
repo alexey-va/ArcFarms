@@ -10,12 +10,6 @@ import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.entity.EntityDeathEvent
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.paper.worksite.RuntimeComponent
-import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
-import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
-import ru.ruscrafting.farms.paper.worksite.WorksiteNetworkPort
-import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
-import ru.ruscrafting.farms.paper.worksite.WorksiteStatsPort
-import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
 import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantOwner
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
@@ -67,15 +61,6 @@ internal interface WorksiteGuidanceHandler {
 }
 
 internal data class ActivityBarKey(val playerId: UUID, val runtimeKey: String)
-
-/** Compatibility composite; new owners depend on the smallest port they use. */
-internal interface WorksiteRuntimePort :
-    WorksiteAccessPort,
-    WorksiteAudiencePort,
-    WorksiteStatePort,
-    WorksiteTaskPort,
-    WorksiteStatsPort,
-    WorksiteNetworkPort
 
 /** Aggregates independent worksite types without knowing their concrete state machines. */
 internal class WorksiteModuleRegistry(

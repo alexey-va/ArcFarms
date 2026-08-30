@@ -6,10 +6,10 @@ import org.bukkit.entity.Player
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmProcessingLayout
 import ru.ruscrafting.farms.paper.FarmRuntime
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 
 /** Player-only placement preview; it never creates an entity or changes the world. */
-internal class FarmProcessingAdminPreview(private val port: WorksiteRuntimePort) {
+internal class FarmProcessingAdminPreview(private val port: WorksiteAudiencePort) {
     fun show(runtime: FarmRuntime, layout: FarmProcessingLayout, player: Player) {
         (layout.inputRacks.map { it to Color.fromRGB(91, 184, 255) } + listOf(
             layout.machine to Color.fromRGB(255, 178, 36),

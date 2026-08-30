@@ -31,7 +31,8 @@ import ru.ruscrafting.farms.paper.BukkitFarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.care.bukkit
@@ -46,7 +47,8 @@ internal class FarmScarecrowDeliveryController(
     private val settings: () -> ArcFarmsConfig,
     private val locale: ArcFarmsLocale,
     private val debug: ArcFarmsDebug,
-    private val port: WorksiteRuntimePort,
+    private val access: WorksiteAccessPort,
+    private val audience: WorksiteAudiencePort,
     private val points: FarmPointProvider,
     private val transitions: FarmTransitionSink,
     private val runtimes: () -> Collection<FarmRuntime>,
@@ -74,12 +76,12 @@ internal class FarmScarecrowDeliveryController(
         if (!active(runtime) || runtime.state.sequence != entity.persistentDataContainer.get(sequenceKey, PersistentDataType.LONG)) {
             return true
         }
-        if (!port.hasAccess(player, runtime.settings.permission)) {
-            port.sendChat(player, MessageKey.ZONE_LOCKED)
+        if (!access.hasAccess(player, runtime.settings.permission)) {
+            audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return true
         }
         if (carriers.values.any { it == player.uniqueId }) {
-            port.sendActionBar(player, MessageKey.FARM_CARE_SCARECROW_ALREADY_CARRYING)
+            audience.sendActionBar(player, MessageKey.FARM_CARE_SCARECROW_ALREADY_CARRYING)
             return true
         }
         val target = runtime.state.careTargets.asSequence()
@@ -87,7 +89,7 @@ internal class FarmScarecrowDeliveryController(
             .filter { ScarecrowKey(zoneId, it.id) !in carriers }
             .minByOrNull(FarmCareTarget::id)
         if (target == null) {
-            port.sendActionBar(player, MessageKey.FARM_CARE_SCARECROW_ALL_ASSIGNED)
+            audience.sendActionBar(player, MessageKey.FARM_CARE_SCARECROW_ALL_ASSIGNED)
             return true
         }
         val key = ScarecrowKey(zoneId, target.id)
@@ -97,7 +99,7 @@ internal class FarmScarecrowDeliveryController(
             carriers.remove(key)
             return true
         }
-        port.showScreenTitle(
+        audience.showScreenTitle(
             player,
             locale.render(MessageKey.FARM_CARE_SCARECROW_PICKED_UP, player),
             locale.render(MessageKey.FARM_CARE_SCARECROW_PICKED_UP_SUBTITLE, player),
@@ -303,7 +305,7 @@ internal class FarmScarecrowDeliveryController(
     private fun returnScarecrow(key: ScarecrowKey, player: Player?, reason: String, notify: Boolean = true) {
         carriers.remove(key)
         removeCarried(key)
-        if (notify && player?.isOnline == true) port.sendActionBar(player, MessageKey.FARM_CARE_SCARECROW_RETURNED)
+        if (notify && player?.isOnline == true) audience.sendActionBar(player, MessageKey.FARM_CARE_SCARECROW_RETURNED)
         debug.event("farm_scarecrow_returned", "zone" to key.zoneId, "target" to key.targetId, "reason" to reason)
     }
 

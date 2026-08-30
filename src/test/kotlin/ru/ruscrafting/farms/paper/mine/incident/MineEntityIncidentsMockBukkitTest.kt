@@ -14,6 +14,7 @@ import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.CuboidRegionGateway
 import ru.ruscrafting.farms.paper.mine.ImmediateMineJournal
 import ru.ruscrafting.farms.paper.mine.MineComponentGraph
+import ru.ruscrafting.farms.paper.mine.testMineComponentGraph
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.immediateMinePort
 import ru.ruscrafting.farms.paper.mine.incident.entity.MineIncidentEntityEffects
@@ -66,7 +67,7 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         effects.count(MineIncidentEntityKind.MINER) shouldBe 2
 
         val persisted = runtime.state
-        val restarted = MineComponentGraph(
+        val restarted = testMineComponentGraph(
             paper.createSimplePlugin("MineEntityRescueB"), CuboidRegionGateway(), immediateMinePort(),
             clock = { 2_000L }, journal = ImmediateMineJournal(), incidentEntityEffects = effects,
         )
@@ -89,7 +90,7 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
 })
 
 private fun entityGraph(paper: MockBukkitTestRuntime, effects: RecordingIncidentEntities, name: String): MineComponentGraph =
-    MineComponentGraph(
+    testMineComponentGraph(
         paper.createSimplePlugin("MineEntity$name"), CuboidRegionGateway(), immediateMinePort(),
         clock = { 1_000L }, journal = ImmediateMineJournal(), incidentEntityEffects = effects,
     ).also { graph ->

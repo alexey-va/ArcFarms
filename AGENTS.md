@@ -37,8 +37,9 @@ activities: farm, lumbermill, and mine.
   test. Production gameplay files target 600 lines, require review at 800, and
   must never exceed 1,000. Do not create god contexts, callback bags, `Utils`
   dumping grounds, or a second monolithic `FarmController`.
-- New worksite types implement `WorksiteModule`, use `WorksiteRuntimePort`, and
-  register through `WorksiteModuleRegistry`. A controller owns all runtime
+- New worksite types implement `WorksiteModule`, receive only the narrow worksite
+  ports they call, and register through `WorksiteModuleRegistry`. `WorksitePorts`
+  is wiring-only and must never enter gameplay owners. A controller owns all runtime
   state, validation, event routing, guidance, recovery, and phase application
   for its activity; `ArcFarmsService` must not mirror those collections.
 - Paper-only operations that a pinned test double cannot model belong behind a

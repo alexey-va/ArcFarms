@@ -1,8 +1,11 @@
 package ru.ruscrafting.farms.paper
 
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.ints.shouldBeLessThanOrEqual
 import io.kotest.matchers.shouldBe
+import ru.ruscrafting.farms.paper.lumber.LumbermillModule
+import ru.ruscrafting.farms.paper.mine.MineModule
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -58,12 +61,36 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         ).forEach { contract -> farm.contains(contract) shouldBe true }
     }
 
+    test("production components cannot depend on the composite worksite runtime port") {
+        val productionRoot = repositoryRoot.resolve("src/main/kotlin")
+        val offenders = Files.walk(productionRoot).use { paths ->
+            paths.filter { Files.isRegularFile(it) && it.toString().endsWith(".kt") }
+                .filter { Files.readString(it).contains("WorksiteRuntimePort") }
+                .map(productionRoot::relativize)
+                .toList()
+        }
+
+        offenders shouldBe emptyList()
+    }
+
+    test("lumber and mine modules receive one incident set instead of every incident") {
+        val lumberDependencies = LumbermillModule::class.java.declaredConstructors.single().parameterTypes
+            .map(Class<*>::getSimpleName)
+        val mineDependencies = MineModule::class.java.declaredConstructors.single().parameterTypes
+            .map(Class<*>::getSimpleName)
+
+        lumberDependencies shouldContain "LumberIncidentSet"
+        mineDependencies shouldContain "MineIncidentSet"
+        lumberDependencies.none { it.endsWith("Incident") || it == "LumberIncidentScheduler" } shouldBe true
+        mineDependencies.none { it.endsWith("Incident") || it == "MineIncidentScheduler" } shouldBe true
+    }
+
     test("service callbacks cannot bypass the reload-aware task supervisor") {
         val source = Files.readString(servicePath)
 
         source.contains("Tasks.scheduler") shouldBe false
         source.contains("private val taskSupervisor = RuntimeTaskSupervisor()") shouldBe true
-        source.contains("private val worksitePort = PaperWorksiteRuntimePort") shouldBe true
+        source.contains("private val worksiteAdapter = PaperWorksiteAdapter") shouldBe true
     }
 
     test("gameplay code cannot schedule directly through Bukkit") {
@@ -134,7 +161,7 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         ).forEach { forbidden -> source.contains(forbidden) shouldBe false }
         source.contains("private val worksites = WorksiteModuleRegistry(listOf(farm.module, lumbermillModule, mineModule))") shouldBe true
         source.contains("private val runtimeValidator = ArcFarmsRuntimeValidator") shouldBe true
-        source.contains("private val worksitePort = PaperWorksiteRuntimePort") shouldBe true
+        source.contains("private val worksiteAdapter = PaperWorksiteAdapter") shouldBe true
         source.contains("lumbermillController.onBreak") shouldBe false
         source.contains("lumbermillController.onInteract") shouldBe false
         source.contains("mineModule.onBreak") shouldBe false

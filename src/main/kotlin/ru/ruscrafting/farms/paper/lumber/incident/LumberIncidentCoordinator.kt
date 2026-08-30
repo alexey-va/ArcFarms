@@ -9,13 +9,13 @@ import ru.ruscrafting.farms.domain.LumberShiftState
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetCandidate
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetPool
 import ru.ruscrafting.farms.domain.worksite.WorksiteObjectiveKey
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.lumber.LumberRuntime
 import ru.ruscrafting.farms.paper.lumber.LumberTransitionCoordinator
 
 internal class LumberIncidentCoordinator(
     private val transitions: LumberTransitionCoordinator,
-    private val port: WorksiteRuntimePort,
+    private val state: WorksiteStatePort,
 ) {
     fun start(
         runtime: LumberRuntime,
@@ -97,7 +97,7 @@ internal class LumberIncidentCoordinator(
         val result = ObjectiveTargetPool.invalidate(objective, targetId, validReplacement)
         if (!result.accepted) return false
         runtime.state = runtime.state.copy(objective = result.state)
-        port.persistAsync()
+        state.persistAsync()
         return true
     }
 }

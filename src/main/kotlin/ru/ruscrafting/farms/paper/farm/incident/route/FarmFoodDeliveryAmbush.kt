@@ -17,7 +17,7 @@ import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmNightShiftController
 import ru.ruscrafting.farms.paper.FarmRuntime
-import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.platform.FarmMobDespawnPolicy
 import ru.ruscrafting.farms.paper.platform.FarmVehiclePassengerControl
 import java.util.UUID
@@ -29,7 +29,7 @@ import kotlin.math.sin
 internal class FarmFoodDeliveryAmbush(
     private val random: RandomGenerator,
     private val night: FarmNightShiftController,
-    private val port: WorksiteRuntimePort,
+    private val port: WorksiteAudiencePort,
     private val debug: ArcFarmsDebug,
     private val mobDespawns: FarmMobDespawnPolicy,
     private val vehiclePassengers: FarmVehiclePassengerControl,
