@@ -19,6 +19,7 @@ internal interface LumberBlockEffects {
     fun remove(block: Block)
     fun deliver(block: Block, drops: List<ItemStack>)
     fun restore(block: Block, blockData: String)
+    fun placeTemporary(block: Block, material: Material) = block.setType(material, false)
 }
 
 internal object PaperLumberBlockEffects : LumberBlockEffects {
@@ -101,6 +102,76 @@ internal class LumberBlockRecoveryController(
                 result.complete(false)
             }
         }
+        return result
+    }
+
+    fun prepareTemporary(
+        runtime: LumberRuntime,
+        block: Block,
+        material: Material,
+    ): CompletableFuture<Boolean> {
+        require(material.isBlock && !material.isAir)
+        val positionKey = positionKey(block)
+        if (journal.containsPosition(positionKey) || !inFlight.add(positionKey)) {
+            return CompletableFuture.completedFuture(false)
+        }
+        val originalData = block.blockData.asString
+        val sequence = runtime.state.sequence
+        val record = PendingLumberBlock(
+            id = "${runtime.settings.id}:temporary:$sequence:${block.world.name}:${block.x}:${block.y}:${block.z}:${nonce.incrementAndGet()}",
+            zoneId = runtime.settings.id,
+            world = block.world.name,
+            x = block.x,
+            y = block.y,
+            z = block.z,
+            originalBlockData = originalData,
+            restoreAt = clock() + runtime.settings.recoverySeconds * 1_000L,
+        )
+        val token = port.lifecycleToken()
+        val result = CompletableFuture<Boolean>()
+        journal.prepare(record).whenComplete { _, failure ->
+            if (failure != null) {
+                inFlight.remove(positionKey)
+                result.completeExceptionally(failure)
+                return@whenComplete
+            }
+            if (!port.runSync(token) {
+                    try {
+                        if (runtime.state.sequence != sequence || block.blockData.asString != originalData) {
+                            result.complete(false)
+                        } else {
+                            effects.placeTemporary(block, material)
+                            result.complete(true)
+                        }
+                    } catch (mutationFailure: Throwable) {
+                        result.completeExceptionally(mutationFailure)
+                    } finally {
+                        inFlight.remove(positionKey)
+                    }
+                }
+            ) {
+                inFlight.remove(positionKey)
+                result.complete(false)
+            }
+        }
+        return result
+    }
+
+    fun restoreNow(block: Block): CompletableFuture<Boolean> {
+        val record = journal.records().firstOrNull { it.positionKey == positionKey(block) }
+            ?: return CompletableFuture.completedFuture(false)
+        val token = port.lifecycleToken()
+        val result = CompletableFuture<Boolean>()
+        if (!port.runSync(token) {
+                runCatching {
+                    effects.restore(block, record.originalBlockData)
+                    check(block.blockData.asString == record.originalBlockData)
+                    journal.remove(record.id).whenComplete { _, failure ->
+                        if (failure == null) result.complete(true) else result.completeExceptionally(failure)
+                    }
+                }.onFailure(result::completeExceptionally)
+            }
+        ) result.complete(false)
         return result
     }
 

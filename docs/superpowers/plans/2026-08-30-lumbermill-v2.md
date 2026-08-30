@@ -433,7 +433,7 @@ git commit -m "feat: add lumber carry incidents"
 **Interfaces:**
 - Produces: journalled bounded fire with zero-player pause and non-blocking bonus timer.
 
-- [ ] **Step 1: Write failing timer/recovery tests**
+- [x] **Step 1: Write failing timer/recovery tests**
 
 ```kotlin
 test("zero players pauses fire and rush expiry loses only the bonus") {
@@ -449,7 +449,7 @@ test("zero players pauses fire and rush expiry loses only the bonus") {
 }
 ```
 
-- [ ] **Step 2: Run RED, implement, run GREEN**
+- [x] **Step 2: Run RED, implement, run GREEN**
 
 Run RED: `./gradlew test --tests '*LumberTimedIncidentsMockBukkitTest'`
 

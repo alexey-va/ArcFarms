@@ -98,6 +98,18 @@ data class LumberIncidentState(
     }
 }
 
+data class LumberRushOrderState(
+    val startedAt: Long,
+    val deadlineAt: Long,
+    val bonusAvailable: Boolean = true,
+    val bonusEarned: Boolean = false,
+) {
+    init {
+        require(startedAt >= 0L && deadlineAt > startedAt)
+        require(!bonusEarned || bonusAvailable) { "An earned rush bonus cannot be unavailable" }
+    }
+}
+
 data class LumberShiftState(
     val engineVersion: Int = 2,
     val phase: LumberPhase = LumberPhase.IDLE,
@@ -122,6 +134,7 @@ data class LumberShiftState(
     val resumePhase: LumberPhase? = null,
     val resumeObjective: ru.ruscrafting.farms.domain.worksite.WorksiteObjectiveState? = null,
     val incident: LumberIncidentState? = null,
+    val rushOrder: LumberRushOrderState? = null,
     val objective: ru.ruscrafting.farms.domain.worksite.WorksiteObjectiveState? = null,
 )
 

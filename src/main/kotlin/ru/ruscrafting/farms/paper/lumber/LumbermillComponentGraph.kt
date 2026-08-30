@@ -24,6 +24,8 @@ import ru.ruscrafting.farms.paper.lumber.incident.jam.LumberSawJamIncident
 import ru.ruscrafting.farms.paper.lumber.incident.warped.LumberWarpedBatchIncident
 import ru.ruscrafting.farms.paper.lumber.incident.conveyor.LumberConveyorIncident
 import ru.ruscrafting.farms.paper.lumber.incident.load.LumberLostLoadIncident
+import ru.ruscrafting.farms.paper.lumber.incident.fire.LumberForestFireIncident
+import ru.ruscrafting.farms.paper.lumber.incident.rush.LumberRushOrderIncident
 import ru.ruscrafting.farms.persistence.LumberRecoveryJournal
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems
 
@@ -64,6 +66,8 @@ internal class LumbermillComponentGraph(
     val warped = LumberWarpedBatchIncident(incidents)
     val conveyor = LumberConveyorIncident(registry, incidents, serviceItems, port)
     val lostLoad = LumberLostLoadIncident(registry, incidents, lostLoadEffects, port, clock)
+    val fire = LumberForestFireIncident(registry, incidents, recovery, serviceItems, port)
+    val rush = LumberRushOrderIncident(port)
     val felling = LumberFellingController(
         registry,
         index,
@@ -83,7 +87,7 @@ internal class LumbermillComponentGraph(
     }
     val module = LumbermillModule(
         regions, port, registry, index, recovery, tickets, felling, skidding, bundleScene,
-        sawing, stacking, stackingScene, dispatch, windthrow, beetles, sawJam, conveyor, lostLoad,
+        sawing, stacking, stackingScene, dispatch, windthrow, beetles, sawJam, conveyor, lostLoad, fire, rush,
     )
 
     internal val mutableRuntimeCollectionCount: Int = 1

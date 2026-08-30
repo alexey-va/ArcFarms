@@ -38,6 +38,8 @@ import ru.ruscrafting.farms.paper.lumber.incident.beetle.LumberBarkBeetleInciden
 import ru.ruscrafting.farms.paper.lumber.incident.jam.LumberSawJamIncident
 import ru.ruscrafting.farms.paper.lumber.incident.conveyor.LumberConveyorIncident
 import ru.ruscrafting.farms.paper.lumber.incident.load.LumberLostLoadIncident
+import ru.ruscrafting.farms.paper.lumber.incident.fire.LumberForestFireIncident
+import ru.ruscrafting.farms.paper.lumber.incident.rush.LumberRushOrderIncident
 import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantOwner
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItemOwner
@@ -63,6 +65,8 @@ internal class LumbermillModule(
     private val sawJam: LumberSawJamIncident,
     private val conveyor: LumberConveyorIncident,
     private val lostLoad: LumberLostLoadIncident,
+    private val fire: LumberForestFireIncident,
+    private val rush: LumberRushOrderIncident,
 ) : WorksiteModule<LumberShiftState>, WorksiteBlockBreakHandler, WorksiteEntityInteractHandler,
     WorksiteBlockInteractHandler, WorksiteMoveHandler, WorksiteFastVisualHandler, WorksiteParticipantOwner,
     WorksiteServiceItemOwner {
@@ -97,6 +101,8 @@ internal class LumbermillModule(
             stackingScene.reconcile(runtime)
             beetles.reconcile(runtime)
             lostLoad.reconcile(runtime)
+            fire.tick(runtime, runtime.region.world.players.count { runtime.region.contains(it.location) }, now)
+            rush.tick(runtime, now)
         }
     }.also { recovery.processDue(now) }
 
@@ -107,7 +113,8 @@ internal class LumbermillModule(
         windthrow.onBreak(event) || felling.onBreakHigh(event)
 
     override fun onInteract(event: PlayerInteractEvent, clicked: Block, player: Player): Boolean =
-        beetles.onInteract(event, clicked, player) || sawJam.onInteract(event, clicked, player) ||
+        fire.onInteract(event, clicked, player) || beetles.onInteract(event, clicked, player) ||
+            sawJam.onInteract(event, clicked, player) ||
             sawing.onInteract(event, clicked, player) ||
             stacking.onInteract(event, clicked, player) ||
             dispatch.onInteract(event, clicked, player)
@@ -133,10 +140,11 @@ internal class LumbermillModule(
         lostLoad.releasePlayer(player.uniqueId)
     }
 
-    override fun isActive(identity: ServiceItemIdentity): Boolean = conveyor.isActive(identity)
+    override fun isActive(identity: ServiceItemIdentity): Boolean = conveyor.isActive(identity) || fire.isActive(identity)
 
     override fun release(playerId: UUID, identity: ServiceItemIdentity, reason: WorksitePlayerReleaseReason) {
         conveyor.release(playerId, identity, reason)
+        fire.release(playerId, identity, reason)
     }
 
     override fun activateLoadedState() {
