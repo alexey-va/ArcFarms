@@ -185,6 +185,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().animalRescueMinSpacing shouldBe 8.0
         settings.farms.single().animalRescueMaxPlayerDistance shouldBe 28
         settings.farms.single().animalDeliveryRadius shouldBe 3.0
+        settings.farms.single().supplyNearbyViewDistance shouldBe 30.0f
         settings.farms.single().displayViewRange shouldBe 2.0f
         settings.farms.single().seederEveryShifts shouldBe 2
         settings.farms.single().diseaseInitialSpots shouldBe 2
@@ -503,6 +504,19 @@ class ArcFarmsConfigTest : FunSpec({
         )
 
         ArcFarmsConfig.inspect(root).farms.single().supplies.fireEquipmentCustomModelData shouldBe 2_100_104
+    }
+
+    test("supply nearby visibility distance is configurable in blocks") {
+        val root = resourceTree()
+        val configPath = root.resolve("config.yml")
+        configPath.writeText(
+            Files.readString(configPath).replace(
+                "supply-nearby-view-distance: 30.0",
+                "supply-nearby-view-distance: 45.0",
+            ),
+        )
+
+        ArcFarmsConfig.inspect(root).farms.single().supplyNearbyViewDistance shouldBe 45.0f
     }
 
     test("farm patch size is bounded before runtime scanning") {

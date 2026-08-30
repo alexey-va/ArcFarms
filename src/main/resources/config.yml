@@ -111,6 +111,8 @@ farm-zones:
     animal-rescue-min-spacing: 8.0
     animal-rescue-max-player-distance: 28
     animal-delivery-radius: 3.0
+    # Idle supply displays (hoe, seeds, water, bow and fire equipment) are visible within this many blocks.
+    supply-nearby-view-distance: 30.0
     display-view-range: 2.0
     seeder-every-shifts: 2
     # Machinery may combine this many nearby same-height beds into one field.

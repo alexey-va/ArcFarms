@@ -124,6 +124,7 @@ data class FarmZoneSettings(
     val animalRescueMinSpacing: Double,
     val animalRescueMaxPlayerDistance: Int,
     val animalDeliveryRadius: Double,
+    val supplyNearbyViewDistance: Float,
     val displayViewRange: Float,
     val seederEveryShifts: Int,
     val seederPatchSize: Int,
@@ -1451,6 +1452,7 @@ class ArcFarmsConfig private constructor(
                     animalRescueMaxPlayerDistance = section.int("animal-rescue-max-player-distance", placementMaxPlayerDistance)
                         .checked("animal-rescue-max-player-distance", 4, 64),
                     animalDeliveryRadius = section.finiteDouble("animal-delivery-radius", 3.0, 1.0, 8.0),
+                    supplyNearbyViewDistance = section.finiteFloat("supply-nearby-view-distance", 30.0f, 1.0f, 192.0f),
                     displayViewRange = section.finiteFloat("display-view-range", 2.0f, 0.25f, 8.0f),
                     seederEveryShifts = section.int("seeder-every-shifts", 2)
                         .checked("seeder-every-shifts", 0, 16),

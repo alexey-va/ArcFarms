@@ -6,9 +6,14 @@ import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.paper.farm.FarmFieldPoiVisibility
 
 internal object FarmSupplyVisibilityPolicy {
-    fun viewRange(state: FarmShiftState, kind: FarmSupplyKind, configuredFullRange: Float): Float =
+    fun viewRange(
+        state: FarmShiftState,
+        kind: FarmSupplyKind,
+        nearbyDistanceBlocks: Float,
+        configuredFullRange: Float,
+    ): Float =
         if (isNeeded(state, kind)) FarmFieldPoiVisibility.fullField(configuredFullRange)
-        else FarmFieldPoiVisibility.NEARBY_VIEW_RANGE
+        else FarmFieldPoiVisibility.nearby(nearbyDistanceBlocks)
 
     private fun isNeeded(state: FarmShiftState, kind: FarmSupplyKind): Boolean = when (kind) {
         FarmSupplyKind.TOOL -> state.phase == FarmPhase.PREPARATION

@@ -8,10 +8,14 @@ import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.paper.farm.FarmFieldPoiVisibility
 
 class FarmSupplyVisibilityPolicyTest : FunSpec({
-    test("idle supply points glow only in the nearby ten-block range") {
+    test("idle supply points use the configured nearby distance") {
         FarmSupplyKind.entries.forEach { kind ->
-            FarmSupplyVisibilityPolicy.viewRange(FarmShiftState(), kind, configuredFullRange = 2.0f) shouldBe
-                FarmFieldPoiVisibility.NEARBY_VIEW_RANGE
+            FarmSupplyVisibilityPolicy.viewRange(
+                state = FarmShiftState(),
+                kind = kind,
+                nearbyDistanceBlocks = 30.0f,
+                configuredFullRange = 2.0f,
+            ) shouldBe FarmFieldPoiVisibility.nearby(30.0f)
         }
     }
 
@@ -25,10 +29,19 @@ class FarmSupplyVisibilityPolicyTest : FunSpec({
         )
 
         cases.forEach { (state, kind) ->
-            FarmSupplyVisibilityPolicy.viewRange(state, kind, configuredFullRange = 2.0f) shouldBe 3.0f
+            FarmSupplyVisibilityPolicy.viewRange(
+                state,
+                kind,
+                nearbyDistanceBlocks = 30.0f,
+                configuredFullRange = 2.0f,
+            ) shouldBe 3.0f
             FarmSupplyKind.entries.filterNot { it == kind }.forEach { inactive ->
-                FarmSupplyVisibilityPolicy.viewRange(state, inactive, configuredFullRange = 2.0f) shouldBe
-                    FarmFieldPoiVisibility.NEARBY_VIEW_RANGE
+                FarmSupplyVisibilityPolicy.viewRange(
+                    state,
+                    inactive,
+                    nearbyDistanceBlocks = 30.0f,
+                    configuredFullRange = 2.0f,
+                ) shouldBe FarmFieldPoiVisibility.nearby(30.0f)
             }
         }
     }

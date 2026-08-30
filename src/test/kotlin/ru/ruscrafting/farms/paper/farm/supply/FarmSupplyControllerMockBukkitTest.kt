@@ -90,14 +90,14 @@ class FarmSupplyControllerMockBukkitTest : FunSpec({
         fun display(kind: FarmSupplyKind) = world.entities.filterIsInstance<ItemDisplay>()
             .single { controller.interaction(it)?.kind == kind }
 
-        FarmSupplyKind.entries.forEach { display(it).viewRange shouldBe FarmFieldPoiVisibility.NEARBY_VIEW_RANGE }
+        FarmSupplyKind.entries.forEach { display(it).viewRange shouldBe FarmFieldPoiVisibility.nearby(30.0f) }
 
         runtime.state = runtime.state.copy(phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.BIRDS)
         controller.ensure(runtime, supplyPoints(world)::getValue)
 
         display(FarmSupplyKind.ARCHERY).viewRange shouldBe 3.0f
         FarmSupplyKind.entries.filterNot { it == FarmSupplyKind.ARCHERY }
-            .forEach { display(it).viewRange shouldBe FarmFieldPoiVisibility.NEARBY_VIEW_RANGE }
+            .forEach { display(it).viewRange shouldBe FarmFieldPoiVisibility.nearby(30.0f) }
     }
 
     test("fire equipment is bound to the farm that issued it") {
@@ -179,6 +179,7 @@ private fun runtime(world: WorldMock): FarmRuntime {
     val settings = mockk<FarmZoneSettings> {
         every { id } returns "communal_farm"
         every { this@mockk.supplies } returns supplies
+        every { supplyNearbyViewDistance } returns 30.0f
         every { displayViewRange } returns 1.0f
     }
     return FarmRuntime(

@@ -79,7 +79,12 @@ internal class FarmSupplyController(
             val position = point(kind)
             val key = SupplyKey(runtime.settings.id, kind)
             val visual = material(runtime, kind)
-            val viewRange = FarmSupplyVisibilityPolicy.viewRange(runtime.state, kind, runtime.settings.displayViewRange)
+            val viewRange = FarmSupplyVisibilityPolicy.viewRange(
+                state = runtime.state,
+                kind = kind,
+                nearbyDistanceBlocks = runtime.settings.supplyNearbyViewDistance,
+                configuredFullRange = runtime.settings.displayViewRange,
+            )
             val world = Bukkit.getWorld(position.world) ?: return@forEach
             val location = Location(world, position.x, position.y, position.z)
             if (!runtime.region.contains(location) || !world.isChunkLoaded(location.blockX shr 4, location.blockZ shr 4)) {
