@@ -733,6 +733,10 @@ mine:
   completed-subtitle: '<gray>Вагонетка доставлена</gray>'
   actionbar: '<route> <dark_gray>•</dark_gray> <aqua><done></aqua><gray>/</gray><gold><total></gold> <dark_gray>•</dark_gray> <gray><phase></gray>'
   journal-failed: '<red>Блок не был добыт: безопасная запись восстановления не удалась.</red>'
+  prospect-required: '<yellow>Сначала осмотрите отмеченные участки породы правой кнопкой.</yellow>'
+  target-required: '<yellow>Добывайте отмеченные блоки найденной жилы.</yellow>'
+  recovery-pending: '<gray>Эта штольня ещё восстанавливается после прошлой экспедиции.</gray>'
+  index-shortage: '<red>В шахте недостаточно доступных индексированных целей. Попросите администратора переиндексировать её.</red>'
 shift:
   winner: '<color:#ffc857>Лучший вклад</color> <color:#707a76>•</color> <white><player></white> <color:#f2fff7>— <amount></color>'
 care:

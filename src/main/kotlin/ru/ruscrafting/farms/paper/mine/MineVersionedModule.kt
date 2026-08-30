@@ -38,7 +38,7 @@ internal class MineVersionedModule(
     WorksiteMoveHandler, WorksiteGuidanceHandler {
     private val engineVersion = initial.firstOrNull()?.engineVersion ?: 1
     private val delegate: WorksiteModule<MineShiftState> = if (engineVersion == 2) {
-        MineComponentGraph(plugin, regions, port, clock, journal).module
+        MineComponentGraph(plugin, regions, port, clock, journal, random).module
     } else {
         MineController(regions, locale, journal, port, clock, random)
     }

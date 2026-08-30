@@ -733,6 +733,10 @@ mine:
   completed-subtitle: '<gray>The minecart was delivered</gray>'
   actionbar: '<route> <dark_gray>•</dark_gray> <aqua><done></aqua><gray>/</gray><gold><total></gold> <dark_gray>•</dark_gray> <gray><phase></gray>'
   journal-failed: '<red>The block was not mined because its recovery record could not be saved safely.</red>'
+  prospect-required: '<yellow>Inspect the highlighted rock faces with right-click first.</yellow>'
+  target-required: '<yellow>Mine one of the highlighted vein blocks.</yellow>'
+  recovery-pending: '<gray>This tunnel is still restoring its previous expedition.</gray>'
+  index-shortage: '<red>This mine does not have enough reachable indexed targets. Ask an administrator to reindex it.</red>'
 shift:
   winner: '<color:#ffc857>Top contribution</color> <color:#707a76>•</color> <white><player></white> <color:#f2fff7>— <amount></color>'
 care:

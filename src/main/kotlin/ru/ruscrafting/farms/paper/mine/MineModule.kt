@@ -2,6 +2,9 @@ package ru.ruscrafting.farms.paper.mine
 
 import org.bukkit.Chunk
 import org.bukkit.entity.Player
+import org.bukkit.block.Block
+import org.bukkit.event.block.BlockBreakEvent
+import org.bukkit.event.player.PlayerInteractEvent
 import ru.ruscrafting.farms.config.MineZoneSettings
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.MinePhase
@@ -10,6 +13,8 @@ import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.paper.ActivityStatus
 import ru.ruscrafting.farms.paper.RegionGateway
 import ru.ruscrafting.farms.paper.WorksiteModule
+import ru.ruscrafting.farms.paper.WorksiteBlockBreakHandler
+import ru.ruscrafting.farms.paper.WorksiteBlockInteractHandler
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
@@ -17,6 +22,8 @@ import ru.ruscrafting.farms.paper.mine.index.MineChunkTicket
 import ru.ruscrafting.farms.paper.mine.index.MineIndexDefinition
 import ru.ruscrafting.farms.paper.mine.index.MineReindexJob
 import ru.ruscrafting.farms.paper.mine.recovery.MineBlockRecoveryController
+import ru.ruscrafting.farms.paper.mine.prospecting.MineProspectingController
+import ru.ruscrafting.farms.paper.mine.mining.MineMiningController
 
 internal class MineModule(
     private val regions: RegionGateway,
@@ -25,7 +32,9 @@ internal class MineModule(
     internal val recovery: MineBlockRecoveryController,
     internal val index: MineBlockIndex,
     internal val tickets: MineChunkTicket,
-) : WorksiteModule<MineShiftState> {
+    private val prospecting: MineProspectingController,
+    private val mining: MineMiningController,
+) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler {
     private val transitions = MineTransitionCoordinator(port)
     override val kind: ActivityKind = ActivityKind.MINE
     override val zoneCount: Int get() = registry.size
@@ -56,6 +65,11 @@ internal class MineModule(
 
     override fun canAccess(player: Player): Boolean =
         registry.snapshot().any { port.hasAccess(player, it.settings.permission) }
+
+    override fun onBreakHigh(event: BlockBreakEvent): Boolean = mining.onBreakHigh(event)
+
+    override fun onInteract(event: PlayerInteractEvent, clicked: Block, player: Player): Boolean =
+        prospecting.onInteract(event)
 
     override fun activateLoadedState() {
         registry.snapshot().forEach { runtime ->

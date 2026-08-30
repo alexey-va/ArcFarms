@@ -34,6 +34,7 @@ internal class MineBlockRecoveryController(
         record: PendingMineBlock,
         block: Block,
         expectedOriginal: Material,
+        stillValid: () -> Boolean = { true },
         mutation: () -> Unit,
     ): CompletableFuture<Boolean> {
         if (!inFlightPositions.add(record.positionKey) || journal.containsPosition(record.positionKey)) {
@@ -49,7 +50,7 @@ internal class MineBlockRecoveryController(
             }
             if (!port.runSync(token) {
                     try {
-                        if (block.type != expectedOriginal || !port.isOperational()) {
+                        if (block.type != expectedOriginal || !port.isOperational() || !stillValid()) {
                             retire(record, "stale")
                             result.complete(false)
                         } else {
