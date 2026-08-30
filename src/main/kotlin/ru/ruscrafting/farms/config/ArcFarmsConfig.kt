@@ -11,6 +11,7 @@ import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCarePlanner
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.LumberIncidentType
+import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MAX_FARM_PATCH_PLOTS
 import ru.ruscrafting.farms.domain.TrustedFarmCommandTemplate
 import java.nio.file.Path
@@ -580,7 +581,24 @@ data class MineZoneSettings(
     val temporaryMaterial: String,
     val baseMaterial: String,
     val materialWeights: LinkedHashMap<String, Int>,
-)
+    val engineVersion: Int = 1,
+    val orders: List<MineOrderSettings> = emptyList(),
+    val targetMultiplier: Int = 2,
+    val incidentCountMin: Int = 3,
+    val incidentCountMax: Int = 5,
+) {
+    init {
+        require(engineVersion in 1..2) { "Mine zone $id engine-version must be 1 or 2" }
+        require(targetMultiplier in 2..4) { "Mine zone $id target-multiplier must be 2..4" }
+        require(incidentCountMin in 3..5 && incidentCountMax in incidentCountMin..5) {
+            "Mine zone $id incident count range is invalid"
+        }
+        require(engineVersion == 1 || orders.isNotEmpty()) { "Mine V2 zone $id has no orders" }
+        require(orders.all { it.incidentTypes.size >= incidentCountMax }) {
+            "Mine zone $id order has fewer incidents than incident-count-max"
+        }
+    }
+}
 
 data class MenuBackgroundSettings(
     val enabled: Boolean,
@@ -1521,6 +1539,27 @@ class ArcFarmsConfig private constructor(
                 val materialWeights = parseWeightedList(section.stringList("materials"), "mine $id materials")
                 val baseMaterial = materialName(section.string("base-material"))
                 require(baseMaterial in materialWeights) { "Mine $id base-material must be present in materials" }
+                val engineVersion = section.int("engine-version", 1).checked("mine engine-version", 1, 2)
+                val incidentCountMin = section.int("incident-count-min", 3).checked("mine incident-count-min", 3, 5)
+                val incidentCountMax = section.int("incident-count-max", 5).checked("mine incident-count-max", 3, 5)
+                val orders = section.keys("orders").sorted().map { orderId ->
+                    validateId(orderId, "mine order")
+                    val order = section.section("orders.$orderId")
+                    MineOrderSettings(
+                        id = orderId,
+                        prospectingRequired = order.int("phases.prospecting-required", 3)
+                            .checked("mine order prospecting-required", 1, 100_000),
+                        miningRequired = order.int("phases.mining-required", section.int("cart-quota", 16))
+                            .checked("mine order mining-required", 1, 100_000),
+                        loadingRequired = order.int("phases.loading-required", 4)
+                            .checked("mine order loading-required", 1, 100_000),
+                        incidentTypes = order.stringList("incidents").map { raw ->
+                            runCatching { MineIncidentType.valueOf(raw.trim().uppercase()) }.getOrElse {
+                                throw IllegalArgumentException("Unknown mine incident '$raw' in $id/$orderId")
+                            }
+                        },
+                    )
+                }
                 MineZoneSettings(
                     id = id,
                     priority = section.int("priority", 0).checked("mine priority", -1000, 1000),
@@ -1533,10 +1572,18 @@ class ArcFarmsConfig private constructor(
                     temporaryMaterial = materialName(section.string("temp-material")),
                     baseMaterial = baseMaterial,
                     materialWeights = LinkedHashMap(materialWeights),
+                    engineVersion = engineVersion,
+                    orders = orders,
+                    targetMultiplier = section.int("target-multiplier", 2).checked("mine target-multiplier", 2, 4),
+                    incidentCountMin = incidentCountMin,
+                    incidentCountMax = incidentCountMax,
                 ).also {
                     require(it.hazardTrigger < it.cartQuota) { "Mine $id hazard-trigger must be below cart-quota" }
                     require(it.temporaryMaterial !in it.materialWeights) { "Mine $id temp-material must not be a generated material" }
                 }
+            }
+            require(mines.map(MineZoneSettings::engineVersion).distinct().size <= 1) {
+                "All mine zones must use the same engine-version"
             }
 
             val allowedOrigins = config.stringList("network.allowed-origins")

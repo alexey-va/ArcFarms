@@ -901,7 +901,10 @@ phase:
     cooldown: '<gray>перерыв</gray>'
   mine:
     idle: '<gray>ожидает</gray>'
+    prospecting: '<yellow>разведка</yellow>'
     mining: '<aqua>добыча</aqua>'
+    loading: '<green>погрузка</green>'
     hazard: '<red>укрепление забоя</red>'
     extraction: '<gold>эвакуация</gold>'
+    incident: '<red>авария</red>'
     cooldown: '<gray>перерыв</gray>'

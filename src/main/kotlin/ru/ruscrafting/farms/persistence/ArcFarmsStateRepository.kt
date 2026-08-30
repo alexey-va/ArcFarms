@@ -513,18 +513,25 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
 
         private fun validateMine(mine: MineShiftState) {
             validateSequenceAndTimes(mine.sequence, mine.startedAt, mine.cooldownEndsAt)
-            require(mine.cart in 0..100_000 && mine.supports in 0..32) { "Mine progress is invalid" }
+            require(
+                mine.cart in 0..100_000 && mine.supports in 0..32 && mine.prospected in 0..100_000 &&
+                    mine.mined in 0..100_000 && mine.loaded in 0..100_000 && mine.routeIndex in 0..100_000,
+            ) { "Mine progress is invalid" }
             validateContributors(mine.contributors)
             when (mine.phase) {
                 MinePhase.IDLE -> require(
-                    mine.cart == 0 && mine.supports == 0 && !mine.hazardResolved &&
+                    mine.cart == 0 && mine.supports == 0 && mine.prospected == 0 && mine.mined == 0 &&
+                        mine.loaded == 0 && mine.routeIndex == 0 && !mine.hazardResolved &&
                         mine.contributors.isEmpty() && mine.outcome == ShiftOutcome.NONE,
                 ) { "Idle mine state contains an active shift" }
                 MinePhase.HAZARD -> require(!mine.hazardResolved) { "Active mine hazard is already marked resolved" }
-                MinePhase.EXTRACTION, MinePhase.COOLDOWN -> require(mine.hazardResolved) {
-                    "Mine reached extraction before resolving its hazard"
+                MinePhase.EXTRACTION, MinePhase.COOLDOWN -> require(mine.orderId != null || mine.hazardResolved) {
+                    "Legacy mine reached extraction before resolving its hazard"
                 }
-                MinePhase.MINING -> Unit
+                MinePhase.INCIDENT -> require(mine.incident != null && mine.resumePhase != null) {
+                    "Mine incident state is incomplete"
+                }
+                MinePhase.PROSPECTING, MinePhase.MINING, MinePhase.LOADING -> Unit
             }
             if (mine.phase == MinePhase.COOLDOWN) {
                 require(mine.outcome == ShiftOutcome.COMPLETED && mine.cooldownEndsAt > 0) { "Mine cooldown state is incomplete" }

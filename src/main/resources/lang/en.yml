@@ -901,7 +901,10 @@ phase:
     cooldown: '<gray>cooldown</gray>'
   mine:
     idle: '<gray>waiting</gray>'
+    prospecting: '<yellow>prospecting</yellow>'
     mining: '<aqua>mining</aqua>'
+    loading: '<green>loading</green>'
     hazard: '<red>stabilizing</red>'
     extraction: '<gold>extracting</gold>'
+    incident: '<red>incident</red>'
     cooldown: '<gray>cooldown</gray>'
