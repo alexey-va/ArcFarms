@@ -527,17 +527,17 @@ git commit -m "feat: finish lumber guidance rewards and admin"
 **Interfaces:**
 - Produces: one end-to-end V2 acceptance fixture and proof that engine-version 2 cannot execute the legacy controller.
 
-- [ ] **Step 1: Write the failing full-flow and architecture assertions**
+- [x] **Step 1: Write the failing full-flow and architecture assertions**
 
 Run an order through every main phase, force each of the eight incidents in isolated repetitions, restart during a carried bundle and recovery record, and assert final reward/completion once. Assert `LumbermillController` is never constructed for a V2 zone.
 
-- [ ] **Step 2: Run RED and complete missing wiring**
+- [x] **Step 2: Run RED and complete missing wiring**
 
 Run: `./gradlew test --tests '*LumbermillV2FullFlow*' --tests '*ArcFarmsArchitectureContractTest'`
 
 Expected: failures identify unconnected capabilities or lifecycle paths, not changed expectations.
 
-- [ ] **Step 3: Run the entire lumber/farm gate**
+- [x] **Step 3: Run the entire lumber/farm gate**
 
 Run: `./gradlew test --tests '*Lumber*' --tests '*Farm*' --tests '*Worksite*' --tests '*ArcFarmsArchitectureContractTest'`
 

@@ -26,6 +26,12 @@ class ArcFarmsArchitectureContractTest : FunSpec({
     val worksitePortsPath = repositoryRoot.resolve(
         "src/main/kotlin/ru/ruscrafting/farms/paper/worksite/WorksitePorts.kt",
     )
+    val lumberVersionedPath = repositoryRoot.resolve(
+        "src/main/kotlin/ru/ruscrafting/farms/paper/lumber/LumbermillVersionedModule.kt",
+    )
+    val lumberFactoryPath = repositoryRoot.resolve(
+        "src/main/kotlin/ru/ruscrafting/farms/paper/lumber/LumberRuntimeFactory.kt",
+    )
 
     test("shift engines do not share one global event enum") {
         val source = Files.readString(domainPath)
@@ -128,6 +134,15 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         source.contains("mineController.onBreak") shouldBe false
         source.contains("mineController.onInteract") shouldBe false
         source.contains("mineController.onMove") shouldBe false
+    }
+
+    test("lumber V2 cannot enter the legacy runtime") {
+        val versioned = Files.readString(lumberVersionedPath)
+        val factory = Files.readString(lumberFactoryPath)
+
+        versioned.contains("if (engineVersion == 2)") shouldBe true
+        versioned.contains("LumbermillComponentGraph(plugin, regions, port, clock, journal, serviceItems, locale = locale).module") shouldBe true
+        factory.contains("require(settings.engineVersion == 2)") shouldBe true
     }
 
     test("extracted farm features own their state and entity identities") {
