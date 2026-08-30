@@ -112,8 +112,9 @@ class ArcFarmsService(
         persist = ::persistAsync,
         guard = ::runGuarded,
     )
+    private val worksiteServiceItems = ru.ruscrafting.farms.paper.worksite.LateBoundWorksiteServiceItems()
     private val lumbermillModule = LumbermillVersionedModule(
-        plugin, initialSettings.lumbermills, regionGateway, locale, worksitePort, clock, lumberJournal,
+        plugin, initialSettings.lumbermills, regionGateway, locale, worksitePort, clock, lumberJournal, worksiteServiceItems,
     )
     private val mineController = MineController(regionGateway, locale, mineJournal, worksitePort, clock, random)
     private val runtimeValidator = ArcFarmsRuntimeValidator(regionGateway, { economy.available }, fixedCropJournal, mineJournal)
@@ -137,7 +138,7 @@ class ArcFarmsService(
         persistAsync = ::persistAsync,
     )
     private val worksites = WorksiteModuleRegistry(listOf(farm.module, lumbermillModule, mineController))
-    private val serviceItems = WorksiteServiceItemController(plugin, worksites)
+    private val serviceItems = WorksiteServiceItemController(plugin, worksites).also(worksiteServiceItems::bind)
     private val participantSafety = WorksiteParticipantSafety(serviceItems, listOf(worksites))
     private val worksiteEvents = WorksiteEventRouter(worksites, serviceItems, participantSafety)
     private val travelService = ActivityTravelService(

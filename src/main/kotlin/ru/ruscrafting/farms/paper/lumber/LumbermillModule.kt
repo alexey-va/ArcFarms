@@ -36,8 +36,13 @@ import ru.ruscrafting.farms.paper.lumber.dispatch.LumberDispatchController
 import ru.ruscrafting.farms.paper.lumber.incident.windthrow.LumberWindthrowIncident
 import ru.ruscrafting.farms.paper.lumber.incident.beetle.LumberBarkBeetleIncident
 import ru.ruscrafting.farms.paper.lumber.incident.jam.LumberSawJamIncident
+import ru.ruscrafting.farms.paper.lumber.incident.conveyor.LumberConveyorIncident
+import ru.ruscrafting.farms.paper.lumber.incident.load.LumberLostLoadIncident
 import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantOwner
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
+import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItemOwner
+import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
+import java.util.UUID
 
 internal class LumbermillModule(
     private val regions: RegionGateway,
@@ -56,8 +61,11 @@ internal class LumbermillModule(
     private val windthrow: LumberWindthrowIncident,
     private val beetles: LumberBarkBeetleIncident,
     private val sawJam: LumberSawJamIncident,
+    private val conveyor: LumberConveyorIncident,
+    private val lostLoad: LumberLostLoadIncident,
 ) : WorksiteModule<LumberShiftState>, WorksiteBlockBreakHandler, WorksiteEntityInteractHandler,
-    WorksiteBlockInteractHandler, WorksiteMoveHandler, WorksiteFastVisualHandler, WorksiteParticipantOwner {
+    WorksiteBlockInteractHandler, WorksiteMoveHandler, WorksiteFastVisualHandler, WorksiteParticipantOwner,
+    WorksiteServiceItemOwner {
     override val kind: ActivityKind = ActivityKind.LUMBER
     override val zoneCount: Int get() = registry.size
 
@@ -88,6 +96,7 @@ internal class LumbermillModule(
             bundleScene.reconcile(runtime)
             stackingScene.reconcile(runtime)
             beetles.reconcile(runtime)
+            lostLoad.reconcile(runtime)
         }
     }.also { recovery.processDue(now) }
 
@@ -104,21 +113,30 @@ internal class LumbermillModule(
             dispatch.onInteract(event, clicked, player)
 
     override fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean =
-        skidding.onInteractEntity(event) || stacking.onInteractEntity(event)
+        lostLoad.onInteractEntity(event) || skidding.onInteractEntity(event) || stacking.onInteractEntity(event)
 
     override fun onMove(from: Location, to: Location, player: Player): Boolean {
         val skiddingHandled = skidding.onMove(from, to, player)
-        return stacking.onMove(to, player) || skiddingHandled
+        val lostLoadHandled = lostLoad.onMove(to, player)
+        return stacking.onMove(to, player) || lostLoadHandled || skiddingHandled
     }
 
     override fun updateVisuals() {
         skidding.updateVisuals()
         stacking.updateVisuals()
+        lostLoad.updateCarried()
     }
 
     override fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
         skidding.releasePlayer(player, reason)
         stacking.releasePlayer(player, reason)
+        lostLoad.releasePlayer(player.uniqueId)
+    }
+
+    override fun isActive(identity: ServiceItemIdentity): Boolean = conveyor.isActive(identity)
+
+    override fun release(playerId: UUID, identity: ServiceItemIdentity, reason: WorksitePlayerReleaseReason) {
+        conveyor.release(playerId, identity, reason)
     }
 
     override fun activateLoadedState() {
@@ -142,6 +160,7 @@ internal class LumbermillModule(
     override fun cleanup(reason: String) {
         skidding.cleanup()
         stacking.cleanup()
+        lostLoad.cleanup()
         recovery.cleanup(reason)
         index.clear()
     }

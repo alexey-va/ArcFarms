@@ -27,6 +27,7 @@ import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
 import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantOwner
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItemOwner
+import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems
 import ru.ruscrafting.farms.persistence.LumberRecoveryJournal
 import java.util.UUID
 
@@ -39,12 +40,13 @@ internal class LumbermillVersionedModule(
     port: WorksiteRuntimePort,
     clock: () -> Long,
     journal: LumberRecoveryJournal,
+    serviceItems: WorksiteServiceItems? = null,
 ) : WorksiteModule<LumberShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler,
     WorksiteMoveHandler, WorksiteEntityInteractHandler, WorksiteFastVisualHandler, WorksiteGuidanceHandler,
     WorksiteServiceItemOwner, WorksiteParticipantOwner {
     private val engineVersion = initial.firstOrNull()?.engineVersion ?: 1
     private val delegate: WorksiteModule<LumberShiftState> = if (engineVersion == 2) {
-        LumbermillComponentGraph(plugin, regions, port, clock, journal).module
+        LumbermillComponentGraph(plugin, regions, port, clock, journal, serviceItems).module
     } else {
         LumbermillController(regions, locale, port, clock)
     }

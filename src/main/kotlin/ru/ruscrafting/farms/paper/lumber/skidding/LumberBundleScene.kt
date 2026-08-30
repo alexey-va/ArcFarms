@@ -54,6 +54,7 @@ internal interface LumberBundleEffects {
  */
 internal class PaperLumberBundleEffects(
     private val plugin: Plugin,
+    keyPrefix: String = "lumber_bundle",
 ) : LumberBundleEffects {
     private data class Key(val zoneId: String, val sequence: Long, val targetId: String)
 
@@ -61,9 +62,9 @@ internal class PaperLumberBundleEffects(
     private val groundInteractions = mutableMapOf<Key, UUID>()
     private val carriedDisplays = mutableMapOf<UUID, UUID>()
     private val carriedKeys = mutableMapOf<UUID, Key>()
-    private val zoneKey = NamespacedKey(plugin, "lumber_bundle_zone")
-    private val sequenceKey = NamespacedKey(plugin, "lumber_bundle_sequence")
-    private val targetKey = NamespacedKey(plugin, "lumber_bundle_target")
+    private val zoneKey = NamespacedKey(plugin, "${keyPrefix}_zone")
+    private val sequenceKey = NamespacedKey(plugin, "${keyPrefix}_sequence")
+    private val targetKey = NamespacedKey(plugin, "${keyPrefix}_target")
 
     override fun showGround(runtime: LumberRuntime, targetId: String, position: WorksitePosition) {
         val key = Key(runtime.settings.id, runtime.state.sequence, targetId)

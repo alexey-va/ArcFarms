@@ -394,7 +394,7 @@ git commit -m "feat: add lumber workshop incidents"
 **Interfaces:**
 - Produces: bound repair kits and recoverable scattered bundles.
 
-- [ ] **Step 1: Write failing lifecycle tests**
+- [x] **Step 1: Write failing lifecycle tests**
 
 ```kotlin
 test("carried incident objects return after quit death and zone exit") {
@@ -408,7 +408,7 @@ test("carried incident objects return after quit death and zone exit") {
 }
 ```
 
-- [ ] **Step 2: Run RED, implement, run GREEN**
+- [x] **Step 2: Run RED, implement, run GREEN**
 
 Run RED: `./gradlew test --tests '*LumberCarryIncidentsMockBukkitTest'`
 
@@ -416,7 +416,7 @@ Implement service-item identities for belts/gears and PDC-reconciled lost-load d
 
 Run GREEN: `./gradlew test --tests '*LumberCarryIncidentsMockBukkitTest' --tests '*WorksiteServiceItem*'`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/main/kotlin/ru/ruscrafting/farms/paper/lumber/incident src/test/kotlin/ru/ruscrafting/farms/paper/lumber/incident

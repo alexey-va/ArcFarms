@@ -40,10 +40,33 @@ internal interface WorksiteServiceItemOwner {
     fun release(playerId: UUID, identity: ServiceItemIdentity, reason: WorksitePlayerReleaseReason)
 }
 
+internal interface WorksiteServiceItems {
+    fun issue(player: Player, identity: ServiceItemIdentity, material: Material, name: Component): ItemStack?
+    fun consume(player: Player, expected: ServiceItemIdentity): Boolean
+    fun identity(item: ItemStack?): ServiceItemIdentity?
+    fun isServiceItem(item: ItemStack?): Boolean
+}
+
+internal class LateBoundWorksiteServiceItems : WorksiteServiceItems {
+    private var delegate: WorksiteServiceItems? = null
+
+    fun bind(items: WorksiteServiceItems) {
+        check(delegate == null) { "Worksite service items are already bound" }
+        delegate = items
+    }
+
+    override fun issue(player: Player, identity: ServiceItemIdentity, material: Material, name: Component): ItemStack? =
+        delegate?.issue(player, identity, material, name)
+
+    override fun consume(player: Player, expected: ServiceItemIdentity): Boolean = delegate?.consume(player, expected) == true
+    override fun identity(item: ItemStack?): ServiceItemIdentity? = delegate?.identity(item)
+    override fun isServiceItem(item: ItemStack?): Boolean = delegate?.isServiceItem(item) == true
+}
+
 internal class WorksiteServiceItemController(
     plugin: Plugin,
     private val owner: WorksiteServiceItemOwner,
-) {
+) : WorksiteServiceItems {
     private val markerKey = NamespacedKey(plugin, "worksite_service_item")
     private val activityKey = NamespacedKey(plugin, "worksite_activity")
     private val zoneKey = NamespacedKey(plugin, "worksite_zone")
@@ -52,7 +75,7 @@ internal class WorksiteServiceItemController(
     private val roleKey = NamespacedKey(plugin, "worksite_role")
     private val itemKey = NamespacedKey(plugin, "worksite_item_id")
 
-    fun issue(
+    override fun issue(
         player: Player,
         identity: ServiceItemIdentity,
         material: Material,
@@ -75,10 +98,10 @@ internal class WorksiteServiceItemController(
         return item.takeIf { player.inventory.addItem(it).isEmpty() }
     }
 
-    fun isServiceItem(item: ItemStack?): Boolean = item?.itemMeta?.persistentDataContainer
+    override fun isServiceItem(item: ItemStack?): Boolean = item?.itemMeta?.persistentDataContainer
         ?.get(markerKey, PersistentDataType.INTEGER) == MARKER
 
-    fun identity(item: ItemStack?): ServiceItemIdentity? {
+    override fun identity(item: ItemStack?): ServiceItemIdentity? {
         if (!isServiceItem(item)) return null
         val pdc = item?.itemMeta?.persistentDataContainer ?: return null
         return runCatching {
@@ -93,7 +116,7 @@ internal class WorksiteServiceItemController(
         }.getOrNull()
     }
 
-    fun consume(player: Player, expected: ServiceItemIdentity): Boolean {
+    override fun consume(player: Player, expected: ServiceItemIdentity): Boolean {
         player.inventory.storageContents.forEachIndexed { index, item ->
             if (identity(item) == expected) {
                 player.inventory.setItem(index, null)

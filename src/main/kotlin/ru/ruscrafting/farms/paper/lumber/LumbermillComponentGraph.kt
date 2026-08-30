@@ -22,7 +22,10 @@ import ru.ruscrafting.farms.paper.lumber.incident.windthrow.LumberWindthrowIncid
 import ru.ruscrafting.farms.paper.lumber.incident.beetle.LumberBarkBeetleIncident
 import ru.ruscrafting.farms.paper.lumber.incident.jam.LumberSawJamIncident
 import ru.ruscrafting.farms.paper.lumber.incident.warped.LumberWarpedBatchIncident
+import ru.ruscrafting.farms.paper.lumber.incident.conveyor.LumberConveyorIncident
+import ru.ruscrafting.farms.paper.lumber.incident.load.LumberLostLoadIncident
 import ru.ruscrafting.farms.persistence.LumberRecoveryJournal
+import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems
 
 /** Composition-only graph; the registry is the sole mutable runtime collection owner. */
 internal class LumbermillComponentGraph(
@@ -31,8 +34,10 @@ internal class LumbermillComponentGraph(
     port: WorksiteRuntimePort,
     clock: () -> Long,
     journal: LumberRecoveryJournal,
+    serviceItems: WorksiteServiceItems? = null,
     bundleEffects: LumberBundleEffects = PaperLumberBundleEffects(plugin),
     stackingEffects: LumberStackingEffects = PaperLumberStackingEffects(plugin),
+    lostLoadEffects: LumberBundleEffects = PaperLumberBundleEffects(plugin, "lumber_lost"),
 ) {
     internal val registry = LumberRuntimeRegistry()
     internal val clock = clock
@@ -57,6 +62,8 @@ internal class LumbermillComponentGraph(
     val beetles = LumberBarkBeetleIncident(registry, index, incidents, port)
     val sawJam = LumberSawJamIncident(registry, incidents, port)
     val warped = LumberWarpedBatchIncident(incidents)
+    val conveyor = LumberConveyorIncident(registry, incidents, serviceItems, port)
+    val lostLoad = LumberLostLoadIncident(registry, incidents, lostLoadEffects, port, clock)
     val felling = LumberFellingController(
         registry,
         index,
@@ -76,7 +83,7 @@ internal class LumbermillComponentGraph(
     }
     val module = LumbermillModule(
         regions, port, registry, index, recovery, tickets, felling, skidding, bundleScene,
-        sawing, stacking, stackingScene, dispatch, windthrow, beetles, sawJam,
+        sawing, stacking, stackingScene, dispatch, windthrow, beetles, sawJam, conveyor, lostLoad,
     )
 
     internal val mutableRuntimeCollectionCount: Int = 1

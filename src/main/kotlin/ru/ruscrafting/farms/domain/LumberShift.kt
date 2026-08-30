@@ -88,6 +88,7 @@ data class LumberIncidentState(
     val startedAt: Long = 0L,
     val deadlineAt: Long = 0L,
     val bonusAvailable: Boolean = true,
+    val serviceLeases: Map<String, UUID> = emptyMap(),
 ) {
     init {
         require(required in 1..100_000)
