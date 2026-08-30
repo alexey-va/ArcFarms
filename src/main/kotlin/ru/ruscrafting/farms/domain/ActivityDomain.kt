@@ -14,40 +14,11 @@ enum class ShiftOutcome {
     TIMED_OUT,
 }
 
-enum class ShiftEvent {
-    STARTED,
-    PROGRESS,
-    PHASE_CHANGED,
-    PREPARATION_PROGRESS,
-    PLANTING_STARTED,
-    PLANTING_PROGRESS,
-    PREPARATION_COMPLETED,
-    CARE_STARTED,
-    CARE_PROGRESS,
-    SEEDER_PROGRESS,
-    SEEDER_PLANTING_STARTED,
-    CARE_RESOLVED,
-    HARVEST_CHECKPOINT,
-    HARVEST_MILESTONE,
-    INCIDENT_STARTED,
-    INCIDENT_PROGRESS,
-    PROCESSING_STAGE_CHANGED,
-    INCIDENT_RESOLVED,
-    MARKET_EXPIRED,
-    DELIVERY_STARTED,
-    DELIVERY_PROGRESS,
-    HAZARD_STARTED,
-    HAZARD_RESOLVED,
-    EXTRACTION_STARTED,
-    COMPLETED,
-    RESET,
-}
-
-data class EngineResult<T>(
-    val state: T,
+data class EngineResult<S, E>(
+    val state: S,
     val accepted: Boolean,
     val contribution: Int = 0,
-    val events: List<ShiftEvent> = emptyList(),
+    val events: List<E> = emptyList(),
     val contributionCredits: Map<UUID, Int> = emptyMap(),
 )
 

@@ -17,7 +17,7 @@ class LumberAndMineShiftEngineTest : FunSpec({
         state = LumberShiftEngine.fell(state, rules, "OAK", player, 2_000).state
         val processing = LumberShiftEngine.fell(state, rules, "OAK", player, 3_000)
         processing.state.phase shouldBe LumberPhase.PROCESSING
-        processing.events shouldContain ShiftEvent.PHASE_CHANGED
+        processing.events shouldContain LumberShiftEvent.PHASE_CHANGED
 
         state = LumberShiftEngine.process(processing.state, rules, player, 4_000).state
         val completed = LumberShiftEngine.process(state, rules, player, 5_000)
@@ -39,7 +39,7 @@ class LumberAndMineShiftEngineTest : FunSpec({
         var state = MineShiftEngine.start(MineShiftState(), rules, 1_000).state
         val hazard = MineShiftEngine.mine(state, rules, 3, player, 2_000)
         hazard.state.phase shouldBe MinePhase.HAZARD
-        hazard.events shouldContain ShiftEvent.HAZARD_STARTED
+        hazard.events shouldContain MineShiftEvent.HAZARD_STARTED
 
         MineShiftEngine.mine(hazard.state, rules, 1, player, 3_000).accepted shouldBe false
         state = MineShiftEngine.stabilize(hazard.state, rules, player, 3_000).state
@@ -49,7 +49,7 @@ class LumberAndMineShiftEngineTest : FunSpec({
 
         val extraction = MineShiftEngine.mine(stabilized.state, rules, 3, player, 5_000)
         extraction.state.phase shouldBe MinePhase.EXTRACTION
-        extraction.events shouldContain ShiftEvent.EXTRACTION_STARTED
+        extraction.events shouldContain MineShiftEvent.EXTRACTION_STARTED
         val completed = MineShiftEngine.extract(extraction.state, rules, outsider, 6_000)
         completed.accepted shouldBe true
         completed.contribution shouldBe 1
@@ -84,7 +84,7 @@ class LumberAndMineShiftEngineTest : FunSpec({
 
         advanced.state.phase shouldBe MinePhase.HAZARD
         advanced.state.supports shouldBe 0
-        advanced.events shouldContain ShiftEvent.HAZARD_STARTED
+        advanced.events shouldContain MineShiftEvent.HAZARD_STARTED
     }
 
     test("long-lived statistics saturate instead of wrapping negative") {

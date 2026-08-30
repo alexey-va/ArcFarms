@@ -7,6 +7,7 @@ import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmOrder
 import ru.ruscrafting.farms.domain.FarmShiftState
+import ru.ruscrafting.farms.domain.FarmShiftEvent
 import ru.ruscrafting.farms.paper.FarmRuntime
 
 /** Named seam for configured/default farm points while point administration is extracted. */
@@ -16,7 +17,7 @@ internal fun interface FarmPointProvider {
 
 /** Sole application boundary through which a feature may apply a farm state transition. */
 internal fun interface FarmTransitionSink {
-    fun apply(runtime: FarmRuntime, result: EngineResult<FarmShiftState>, actor: Player?)
+    fun apply(runtime: FarmRuntime, result: EngineResult<FarmShiftState, FarmShiftEvent>, actor: Player?)
 }
 
 /** Breaks composition-time cycles while keeping every feature on one typed transition path. */
@@ -28,7 +29,7 @@ internal class FarmTransitionRouter : FarmTransitionSink {
         this.delegate = delegate
     }
 
-    override fun apply(runtime: FarmRuntime, result: EngineResult<FarmShiftState>, actor: Player?) {
+    override fun apply(runtime: FarmRuntime, result: EngineResult<FarmShiftState, FarmShiftEvent>, actor: Player?) {
         requireNotNull(delegate) { "Farm transition router is not bound" }.apply(runtime, result, actor)
     }
 }

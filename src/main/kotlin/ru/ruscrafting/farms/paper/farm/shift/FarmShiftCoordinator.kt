@@ -20,7 +20,7 @@ import ru.ruscrafting.farms.domain.FarmProcessingStage
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.domain.FarmSpecialIncidentEngine
-import ru.ruscrafting.farms.domain.ShiftEvent
+import ru.ruscrafting.farms.domain.FarmShiftEvent
 import ru.ruscrafting.farms.domain.seederStage
 import ru.ruscrafting.farms.network.NetworkSignal
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
@@ -66,7 +66,7 @@ internal class FarmShiftCoordinator(
     private val hud: FarmHudController,
     private val points: FarmPointProvider,
 ) {
-    fun apply(runtime: FarmRuntime, result: EngineResult<FarmShiftState>, actor: Player?) {
+    fun apply(runtime: FarmRuntime, result: EngineResult<FarmShiftState, FarmShiftEvent>, actor: Player?) {
         val incidentType = result.state.incidentType ?: runtime.state.incidentType ?: FarmIncidentType.PESTS
         val careType = result.state.careType ?: runtime.state.careType
         runtime.state = result.state
@@ -88,26 +88,26 @@ internal class FarmShiftCoordinator(
         }
         result.events.forEach { event ->
             when (event) {
-                ShiftEvent.STARTED -> started(runtime)
-                ShiftEvent.PREPARATION_PROGRESS -> preparationProgress(runtime, actor)
-                ShiftEvent.PLANTING_STARTED -> plantingStarted(runtime, actor)
-                ShiftEvent.PLANTING_PROGRESS -> plantingProgress(runtime, actor)
-                ShiftEvent.PREPARATION_COMPLETED -> preparationCompleted(runtime, actor)
-                ShiftEvent.CARE_STARTED -> careStarted(runtime, requireNotNull(careType))
-                ShiftEvent.CARE_PROGRESS -> careProgress(runtime, careType, actor)
-                ShiftEvent.SEEDER_PROGRESS -> seederProgress(runtime, actor)
-                ShiftEvent.SEEDER_PLANTING_STARTED -> seederPlantingStarted(runtime)
-                ShiftEvent.CARE_RESOLVED -> careResolved(runtime, careType, actor)
-                ShiftEvent.HARVEST_CHECKPOINT -> harvestCheckpoint(runtime, actor)
-                ShiftEvent.HARVEST_MILESTONE -> harvestMilestone(runtime)
-                ShiftEvent.INCIDENT_STARTED -> incidentStarted(runtime, incidentType, actor)
-                ShiftEvent.INCIDENT_PROGRESS -> incidentProgress(runtime, incidentType, actor)
-                ShiftEvent.PROCESSING_STAGE_CHANGED -> processingStageChanged(runtime)
-                ShiftEvent.INCIDENT_RESOLVED -> incidentResolved(runtime, incidentType, actor)
-                ShiftEvent.MARKET_EXPIRED -> marketExpired(runtime)
-                ShiftEvent.DELIVERY_STARTED -> deliveryStarted(runtime)
-                ShiftEvent.DELIVERY_PROGRESS -> deliveryProgress(runtime, actor)
-                ShiftEvent.COMPLETED -> completed(runtime, actor)
+                FarmShiftEvent.STARTED -> started(runtime)
+                FarmShiftEvent.PREPARATION_PROGRESS -> preparationProgress(runtime, actor)
+                FarmShiftEvent.PLANTING_STARTED -> plantingStarted(runtime, actor)
+                FarmShiftEvent.PLANTING_PROGRESS -> plantingProgress(runtime, actor)
+                FarmShiftEvent.PREPARATION_COMPLETED -> preparationCompleted(runtime, actor)
+                FarmShiftEvent.CARE_STARTED -> careStarted(runtime, requireNotNull(careType))
+                FarmShiftEvent.CARE_PROGRESS -> careProgress(runtime, careType, actor)
+                FarmShiftEvent.SEEDER_PROGRESS -> seederProgress(runtime, actor)
+                FarmShiftEvent.SEEDER_PLANTING_STARTED -> seederPlantingStarted(runtime)
+                FarmShiftEvent.CARE_RESOLVED -> careResolved(runtime, careType, actor)
+                FarmShiftEvent.HARVEST_CHECKPOINT -> harvestCheckpoint(runtime, actor)
+                FarmShiftEvent.HARVEST_MILESTONE -> harvestMilestone(runtime)
+                FarmShiftEvent.INCIDENT_STARTED -> incidentStarted(runtime, incidentType, actor)
+                FarmShiftEvent.INCIDENT_PROGRESS -> incidentProgress(runtime, incidentType, actor)
+                FarmShiftEvent.PROCESSING_STAGE_CHANGED -> processingStageChanged(runtime)
+                FarmShiftEvent.INCIDENT_RESOLVED -> incidentResolved(runtime, incidentType, actor)
+                FarmShiftEvent.MARKET_EXPIRED -> marketExpired(runtime)
+                FarmShiftEvent.DELIVERY_STARTED -> deliveryStarted(runtime)
+                FarmShiftEvent.DELIVERY_PROGRESS -> deliveryProgress(runtime, actor)
+                FarmShiftEvent.COMPLETED -> completed(runtime, actor)
                 else -> Unit
             }
         }

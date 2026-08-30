@@ -22,7 +22,7 @@ class FarmShiftEngineTest : FunSpec({
         val started = FarmShiftEngine.start(FarmShiftState(), order, patch, "WHEAT", 1_000)
 
         started.accepted shouldBe true
-        started.events shouldContainExactly listOf(ShiftEvent.STARTED)
+        started.events shouldContainExactly listOf(FarmShiftEvent.STARTED)
         started.state.phase shouldBe FarmPhase.PREPARATION
 
         FarmShiftEngine.harvest(started.state, order, rules, "WHEAT", player, 1_500).accepted shouldBe false
@@ -32,7 +32,7 @@ class FarmShiftEngineTest : FunSpec({
         FarmShiftEngine.till(firstBed.state, patch[0], player).accepted shouldBe false
         val tilled = FarmShiftEngine.till(firstBed.state, patch[1], player)
         tilled.state.phase shouldBe FarmPhase.PLANTING
-        tilled.events shouldContainExactly listOf(ShiftEvent.PREPARATION_PROGRESS, ShiftEvent.PLANTING_STARTED)
+        tilled.events shouldContainExactly listOf(FarmShiftEvent.PREPARATION_PROGRESS, FarmShiftEvent.PLANTING_STARTED)
 
         FarmShiftEngine.plant(tilled.state, patch[0], "CARROTS", player).accepted shouldBe false
         val firstSeed = FarmShiftEngine.plant(tilled.state, patch[0], "WHEAT", player)
@@ -40,7 +40,7 @@ class FarmShiftEngineTest : FunSpec({
         FarmShiftEngine.plant(firstSeed.state, patch[0], "WHEAT", player).accepted shouldBe false
         val ready = FarmShiftEngine.plant(firstSeed.state, patch[1], "WHEAT", player)
         ready.state.phase shouldBe FarmPhase.HARVESTING
-        ready.events shouldContainExactly listOf(ShiftEvent.PLANTING_PROGRESS, ShiftEvent.PREPARATION_COMPLETED)
+        ready.events shouldContainExactly listOf(FarmShiftEvent.PLANTING_PROGRESS, FarmShiftEvent.PREPARATION_COMPLETED)
 
         FarmShiftEngine.harvest(ready.state, order, rules, "POTATOES", player, 2_000).accepted shouldBe false
     }
@@ -53,7 +53,7 @@ class FarmShiftEngineTest : FunSpec({
         incident.state.phase shouldBe FarmPhase.INCIDENT
         incident.state.incidentCrop shouldBe "CARROTS"
         incident.state.placementSequence shouldBe 1
-        incident.events.last() shouldBe ShiftEvent.INCIDENT_STARTED
+        incident.events.last() shouldBe FarmShiftEvent.INCIDENT_STARTED
 
         val blockedHarvest = FarmShiftEngine.harvest(incident.state, order, rules, "CARROTS", player, 3_500)
         blockedHarvest.accepted shouldBe false
@@ -64,8 +64,8 @@ class FarmShiftEngineTest : FunSpec({
         rescued.state.incidentResolved shouldBe true
         rescued.state.incidentsResolved shouldBe 1
         rescued.events shouldContainExactly listOf(
-            ShiftEvent.INCIDENT_PROGRESS,
-            ShiftEvent.INCIDENT_RESOLVED,
+            FarmShiftEvent.INCIDENT_PROGRESS,
+            FarmShiftEvent.INCIDENT_RESOLVED,
         )
 
         val firstCarrot = FarmShiftEngine.harvest(rescued.state, order, rules, "CARROTS", player, 5_000)
@@ -74,13 +74,13 @@ class FarmShiftEngineTest : FunSpec({
         val packed = FarmShiftEngine.harvest(firstCarrot.state, order, rules, "CARROTS", player, 5_100)
         packed.contribution shouldBe 1
         packed.state.phase shouldBe FarmPhase.DELIVERY
-        packed.events.last() shouldBe ShiftEvent.DELIVERY_STARTED
+        packed.events.last() shouldBe FarmShiftEvent.DELIVERY_STARTED
 
         val completed = FarmShiftEngine.deliver(packed.state, rules, 0, 1, player, 6_000)
         completed.state.phase shouldBe FarmPhase.COOLDOWN
         completed.state.outcome shouldBe ShiftOutcome.COMPLETED
         completed.state.contributors[player] shouldBe 10
-        completed.events shouldContainExactly listOf(ShiftEvent.COMPLETED)
+        completed.events shouldContainExactly listOf(FarmShiftEvent.COMPLETED)
     }
 
     test("drought is a distinct incident action and pest kills cannot bypass it") {
@@ -125,7 +125,7 @@ class FarmShiftEngineTest : FunSpec({
             }
             val result = FarmShiftEngine.harvest(state, longOrder, longRules, "WHEAT", player, 2_000L + it)
             state = result.state
-            if (ShiftEvent.INCIDENT_STARTED in result.events) incidentStarts += state.completed(longOrder)
+            if (FarmShiftEvent.INCIDENT_STARTED in result.events) incidentStarts += state.completed(longOrder)
         }
 
         incidentStarts shouldContainExactly listOf(5, 10, 15)
@@ -163,9 +163,9 @@ class FarmShiftEngineTest : FunSpec({
         harvested.state.phase shouldBe FarmPhase.INCIDENT
         harvested.state.incidentType shouldBe FarmIncidentType.FOOD_DELIVERY
         harvested.events shouldContainExactly listOf(
-            ShiftEvent.PROGRESS,
-            ShiftEvent.HARVEST_MILESTONE,
-            ShiftEvent.INCIDENT_STARTED,
+            FarmShiftEvent.PROGRESS,
+            FarmShiftEvent.HARVEST_MILESTONE,
+            FarmShiftEvent.INCIDENT_STARTED,
         )
 
         state = FarmShiftEngine.initializeFoodDelivery(harvested.state, checkpoints = 4).state
@@ -182,7 +182,7 @@ class FarmShiftEngineTest : FunSpec({
         completed.state.phase shouldBe FarmPhase.COOLDOWN
         completed.state.outcome shouldBe ShiftOutcome.COMPLETED
         completed.state.cooldownEndsAt shouldBe 8_000
-        completed.events shouldContainExactly listOf(ShiftEvent.COMPLETED)
+        completed.events shouldContainExactly listOf(FarmShiftEvent.COMPLETED)
     }
 
     test("incident count varies deterministically inside the configured range") {
@@ -211,7 +211,7 @@ class FarmShiftEngineTest : FunSpec({
         val packed = FarmShiftEngine.harvest(state, order, rules, "CARROTS", player, 5_050)
         val completed = FarmShiftEngine.deliver(packed.state, rules, 0, 1, player, 5_100)
 
-        completed.events.last() shouldBe ShiftEvent.COMPLETED
+        completed.events.last() shouldBe FarmShiftEvent.COMPLETED
         (5_200L..10_000L step 100).forEach { now ->
             val nextTick = FarmShiftEngine.tick(completed.state, order, now)
             nextTick.accepted shouldBe false
@@ -250,7 +250,7 @@ class FarmShiftEngineTest : FunSpec({
         val resolved = FarmShiftEngine.advanceCare(state, 1, player)
         resolved.state.phase shouldBe FarmPhase.HARVESTING
         resolved.state.careProgress() shouldBe 2
-        resolved.events shouldContainExactly listOf(ShiftEvent.CARE_PROGRESS, ShiftEvent.CARE_RESOLVED)
+        resolved.events shouldContainExactly listOf(FarmShiftEvent.CARE_PROGRESS, FarmShiftEvent.CARE_RESOLVED)
         resolved.state.contributors[player] shouldBe 6
     }
 
@@ -277,7 +277,7 @@ class FarmShiftEngineTest : FunSpec({
         val resolved = FarmShiftEngine.advanceCare(state, targets[149].id, player)
         resolved.state.phase shouldBe FarmPhase.HARVESTING
         resolved.state.careProgress() shouldBe 50
-        resolved.events shouldContainExactly listOf(ShiftEvent.CARE_PROGRESS, ShiftEvent.CARE_RESOLVED)
+        resolved.events shouldContainExactly listOf(FarmShiftEvent.CARE_PROGRESS, FarmShiftEvent.CARE_RESOLVED)
     }
 
     test("field machinery tills and plants by proximity without checkpoints") {
@@ -310,7 +310,7 @@ class FarmShiftEngineTest : FunSpec({
         val partial = FarmShiftEngine.workSeeder(state, firstHalf, player)
         partial.state.phase shouldBe FarmPhase.CARE
         partial.state.seederStage() shouldBe FarmSeederStage.TILLING
-        partial.events shouldContainExactly listOf(ShiftEvent.SEEDER_PROGRESS)
+        partial.events shouldContainExactly listOf(FarmShiftEvent.SEEDER_PROGRESS)
 
         val tillingResult = FarmShiftEngine.workSeeder(partial.state, machinePatch.drop(6).toSet(), player)
         tillingResult.accepted shouldBe true
@@ -319,7 +319,7 @@ class FarmShiftEngineTest : FunSpec({
         tillingResult.state.tilledPlots shouldBe machinePatch.toSet()
         tillingResult.state.plantedPlots shouldBe emptySet()
         tillingResult.state.careTargets shouldBe targets.map { it.copy(progress = 1) }
-        tillingResult.events shouldContainExactly listOf(ShiftEvent.SEEDER_PLANTING_STARTED)
+        tillingResult.events shouldContainExactly listOf(FarmShiftEvent.SEEDER_PLANTING_STARTED)
 
         state = tillingResult.state
         val secondPlayer = UUID(0, 99)
@@ -331,7 +331,7 @@ class FarmShiftEngineTest : FunSpec({
         completedResult.state.plantingProgress shouldBe machinePatch.size
         completedResult.state.contributors[player] shouldBe machinePatch.size
         completedResult.state.contributors[secondPlayer] shouldBe machinePatch.size
-        completedResult.events shouldContainExactly listOf(ShiftEvent.CARE_RESOLVED)
+        completedResult.events shouldContainExactly listOf(FarmShiftEvent.CARE_RESOLVED)
     }
 
     test("field machinery credits the driver and every pig passenger equally") {
@@ -432,7 +432,7 @@ class FarmShiftEngineTest : FunSpec({
         normalized.accepted shouldBe true
         normalized.state.phase shouldBe FarmPhase.HARVESTING
         normalized.state.careTargets.single().required shouldBe 1
-        normalized.events shouldContainExactly listOf(ShiftEvent.CARE_RESOLVED)
+        normalized.events shouldContainExactly listOf(FarmShiftEvent.CARE_RESOLVED)
     }
 
     test("one player can prepare a one hundred plot patch without duplicate progress") {
@@ -520,7 +520,7 @@ class FarmShiftEngineTest : FunSpec({
         val first = FarmShiftEngine.deliver(packed, rules, 0, 3, player, 1_000)
         first.state.phase shouldBe FarmPhase.DELIVERY
         first.state.deliveredCrates shouldBe setOf(0)
-        first.events shouldContainExactly listOf(ShiftEvent.DELIVERY_PROGRESS)
+        first.events shouldContainExactly listOf(FarmShiftEvent.DELIVERY_PROGRESS)
 
         FarmShiftEngine.deliver(first.state, rules, 0, 3, player, 1_100).accepted shouldBe false
         val second = FarmShiftEngine.deliver(first.state, rules, 2, 3, player, 1_200)
@@ -528,7 +528,7 @@ class FarmShiftEngineTest : FunSpec({
         val completed = FarmShiftEngine.deliver(second.state, rules, 1, 3, player, 1_300)
         completed.state.phase shouldBe FarmPhase.COOLDOWN
         completed.state.deliveredCrates shouldBe setOf(0, 2, 1)
-        completed.events shouldContainExactly listOf(ShiftEvent.COMPLETED)
+        completed.events shouldContainExactly listOf(FarmShiftEvent.COMPLETED)
     }
 
     test("admin delivery completion never invents contributor credit") {
@@ -546,7 +546,7 @@ class FarmShiftEngineTest : FunSpec({
         completed.state.phase shouldBe FarmPhase.COOLDOWN
         completed.state.deliveredCrates shouldBe setOf(0, 1, 2)
         completed.state.contributors shouldBe mapOf(contributor to 7)
-        completed.events shouldContainExactly listOf(ShiftEvent.COMPLETED)
+        completed.events shouldContainExactly listOf(FarmShiftEvent.COMPLETED)
     }
 
     test("food delivery credits only the rider who reaches the final checkpoint") {
@@ -571,7 +571,7 @@ class FarmShiftEngineTest : FunSpec({
         completed.state.phase shouldBe FarmPhase.HARVESTING
         completed.state.contributors shouldBe mapOf(player to 12)
         completed.contribution shouldBe 12
-        completed.events shouldContainExactly listOf(ShiftEvent.INCIDENT_RESOLVED)
+        completed.events shouldContainExactly listOf(FarmShiftEvent.INCIDENT_RESOLVED)
     }
 
     test("food delivery defenders earn contribution without advancing the route") {
@@ -633,8 +633,8 @@ class FarmShiftEngineTest : FunSpec({
         destroyed.state.pestNests shouldBe emptyList()
         destroyed.state.phase shouldBe FarmPhase.HARVESTING
         destroyed.events shouldContainExactly listOf(
-            ShiftEvent.INCIDENT_PROGRESS,
-            ShiftEvent.INCIDENT_RESOLVED,
+            FarmShiftEvent.INCIDENT_PROGRESS,
+            FarmShiftEvent.INCIDENT_RESOLVED,
         )
     }
 })

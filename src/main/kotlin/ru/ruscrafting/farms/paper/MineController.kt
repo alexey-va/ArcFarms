@@ -21,7 +21,7 @@ import ru.ruscrafting.farms.domain.MineRules
 import ru.ruscrafting.farms.domain.MineShiftEngine
 import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.domain.PendingMineBlock
-import ru.ruscrafting.farms.domain.ShiftEvent
+import ru.ruscrafting.farms.domain.MineShiftEvent
 import ru.ruscrafting.farms.network.NetworkSignal
 import ru.ruscrafting.farms.persistence.MineRecoveryJournal
 import java.util.UUID
@@ -316,7 +316,7 @@ internal class MineController(
         }
     }
 
-    private fun apply(runtime: Runtime, result: EngineResult<MineShiftState>, actor: Player?) {
+    private fun apply(runtime: Runtime, result: EngineResult<MineShiftState, MineShiftEvent>, actor: Player?) {
         runtime.state = result.state
         port.traceResult(
             kind,
@@ -331,7 +331,7 @@ internal class MineController(
         }
         result.events.forEach { event ->
             when (event) {
-                ShiftEvent.STARTED -> port.broadcast(
+                MineShiftEvent.STARTED -> port.broadcast(
                     listOf(runtime.region),
                     MessageKey.MINE_STARTED,
                     sound = Sound.BLOCK_IRON_DOOR_OPEN,
@@ -339,7 +339,7 @@ internal class MineController(
                         mapOf("route" to locale.renderPath("route.mine.${runtime.settings.id}", player))
                     },
                 )
-                ShiftEvent.HAZARD_STARTED -> {
+                MineShiftEvent.HAZARD_STARTED -> {
                     port.broadcast(
                         listOf(runtime.region),
                         MessageKey.MINE_HAZARD_STARTED,
@@ -351,7 +351,7 @@ internal class MineController(
                     port.signal(NetworkSignal.MINE_HAZARD, kind, actor?.name, recipients(runtime))
                     port.persistAsync()
                 }
-                ShiftEvent.HAZARD_RESOLVED -> {
+                MineShiftEvent.HAZARD_RESOLVED -> {
                     port.broadcast(
                         listOf(runtime.region),
                         MessageKey.MINE_HAZARD_RESOLVED,
@@ -361,7 +361,7 @@ internal class MineController(
                     port.successBurst(runtime.region)
                     port.signal(NetworkSignal.MINE_STABLE, kind, actor?.name, recipients(runtime))
                 }
-                ShiftEvent.EXTRACTION_STARTED -> {
+                MineShiftEvent.EXTRACTION_STARTED -> {
                     port.broadcast(
                         listOf(runtime.region),
                         MessageKey.MINE_EXTRACTION_STARTED,
@@ -370,7 +370,7 @@ internal class MineController(
                     )
                     port.signal(NetworkSignal.MINE_EXTRACTION, kind, actor?.name, recipients(runtime))
                 }
-                ShiftEvent.COMPLETED -> {
+                MineShiftEvent.COMPLETED -> {
                     port.recordCompletion(kind, runtime.state.contributors)
                     port.broadcast(
                         listOf(runtime.region),
@@ -383,7 +383,7 @@ internal class MineController(
                     port.complete(kind, actor?.name, recipients(runtime))
                     port.persistAsync()
                 }
-                ShiftEvent.PROGRESS -> if (runtime.state.phase == MinePhase.HAZARD && actor != null) {
+                MineShiftEvent.PROGRESS -> if (runtime.state.phase == MinePhase.HAZARD && actor != null) {
                     port.sendActionBar(
                         actor,
                         MessageKey.MINE_HAZARD_PROGRESS,

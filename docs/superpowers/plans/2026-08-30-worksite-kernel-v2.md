@@ -37,7 +37,7 @@
 - Produces: `EngineResult<S, E>`, `FarmShiftEvent`, `LumberShiftEvent`, `MineShiftEvent`.
 - Consumers: all domain engines, transition coordinators and module event applicators.
 
-- [ ] **Step 1: Write the failing type and architecture tests**
+- [x] **Step 1: Write the failing type and architecture tests**
 
 ```kotlin
 test("each engine exposes only its own event type") {
@@ -55,13 +55,13 @@ test("each engine exposes only its own event type") {
 
 Add an architecture assertion that `ActivityDomain.kt` no longer declares `enum class ShiftEvent`.
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [x] **Step 2: Run the focused tests and verify RED**
 
 Run: `./gradlew test --tests '*TypedEngineEventTest' --tests '*ArcFarmsArchitectureContractTest'`
 
 Expected: compilation fails because `EngineResult` has one type parameter and module event types do not exist.
 
-- [ ] **Step 3: Introduce typed results and migrate all callers**
+- [x] **Step 3: Introduce typed results and migrate all callers**
 
 ```kotlin
 data class EngineResult<S, E>(
@@ -79,13 +79,13 @@ sealed interface MineShiftEvent
 
 Use module-local enums or data objects implementing the relevant sealed interface. Keep existing event names where their meaning is unchanged, but do not share instances across modules.
 
-- [ ] **Step 4: Run the focused and domain suites**
+- [x] **Step 4: Run the focused and domain suites**
 
 Run: `./gradlew test --tests 'ru.ruscrafting.farms.domain.*' --tests '*ArcFarmsArchitectureContractTest'`
 
 Expected: PASS and no source occurrence of the old global type.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/kotlin src/test/kotlin

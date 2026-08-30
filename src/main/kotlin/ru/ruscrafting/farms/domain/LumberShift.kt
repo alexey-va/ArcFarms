@@ -2,6 +2,14 @@ package ru.ruscrafting.farms.domain
 
 import java.util.UUID
 
+enum class LumberShiftEvent {
+    STARTED,
+    PROGRESS,
+    PHASE_CHANGED,
+    COMPLETED,
+    RESET,
+}
+
 enum class LumberPhase {
     IDLE,
     FELLING,
@@ -40,7 +48,7 @@ object LumberShiftEngine {
         species: String,
         rules: LumberRules,
         now: Long,
-    ): EngineResult<LumberShiftState> {
+    ): EngineResult<LumberShiftState, LumberShiftEvent> {
         if (current.phase != LumberPhase.IDLE) return EngineResult(current, false)
         require(species.matches(Regex("[A-Z0-9_]{2,32}"))) { "Invalid lumber species: $species" }
         return EngineResult(
@@ -51,7 +59,7 @@ object LumberShiftEngine {
                 startedAt = now,
             ),
             true,
-            events = listOf(ShiftEvent.STARTED),
+            events = listOf(LumberShiftEvent.STARTED),
         )
     }
 
@@ -61,7 +69,7 @@ object LumberShiftEngine {
         species: String,
         playerId: UUID,
         now: Long,
-    ): EngineResult<LumberShiftState> {
+    ): EngineResult<LumberShiftState, LumberShiftEvent> {
         val advanced = tick(current, rules, now)
         var state = advanced.state
         val events = advanced.events.toMutableList()
@@ -73,10 +81,10 @@ object LumberShiftEngine {
             felled = nextFelled,
             contributors = incrementContribution(state.contributors, playerId, 1),
         )
-        events += ShiftEvent.PROGRESS
+        events += LumberShiftEvent.PROGRESS
         if (nextFelled >= rules.fellingQuota) {
             state = state.copy(phase = LumberPhase.PROCESSING)
-            events += ShiftEvent.PHASE_CHANGED
+            events += LumberShiftEvent.PHASE_CHANGED
         }
         return EngineResult(state, true, 1, events)
     }
@@ -86,7 +94,7 @@ object LumberShiftEngine {
         rules: LumberRules,
         playerId: UUID,
         now: Long,
-    ): EngineResult<LumberShiftState> {
+    ): EngineResult<LumberShiftState, LumberShiftEvent> {
         val advanced = tick(current, rules, now)
         var state = advanced.state
         val events = advanced.events.toMutableList()
@@ -97,14 +105,14 @@ object LumberShiftEngine {
             processed = nextProcessed,
             contributors = incrementContribution(state.contributors, playerId, delta),
         )
-        events += ShiftEvent.PROGRESS
+        events += LumberShiftEvent.PROGRESS
         if (nextProcessed >= rules.processingQuota) {
             state = state.copy(
                 phase = LumberPhase.COOLDOWN,
                 cooldownEndsAt = now + rules.cooldownMillis,
                 outcome = ShiftOutcome.COMPLETED,
             )
-            events += ShiftEvent.COMPLETED
+            events += LumberShiftEvent.COMPLETED
         }
         return EngineResult(state, true, delta, events)
     }
@@ -113,16 +121,16 @@ object LumberShiftEngine {
         current: LumberShiftState,
         rules: LumberRules,
         now: Long,
-    ): EngineResult<LumberShiftState> {
+    ): EngineResult<LumberShiftState, LumberShiftEvent> {
         if (current.phase == LumberPhase.IDLE) return EngineResult(current, false)
         if (current.phase == LumberPhase.COOLDOWN && now >= current.cooldownEndsAt) {
-            return EngineResult(LumberShiftState(sequence = current.sequence), true, events = listOf(ShiftEvent.RESET))
+            return EngineResult(LumberShiftState(sequence = current.sequence), true, events = listOf(LumberShiftEvent.RESET))
         }
         if (current.phase == LumberPhase.FELLING && current.felled >= rules.fellingQuota) {
             return EngineResult(
                 current.copy(phase = LumberPhase.PROCESSING),
                 true,
-                events = listOf(ShiftEvent.PHASE_CHANGED),
+                events = listOf(LumberShiftEvent.PHASE_CHANGED),
             )
         }
         if (current.phase == LumberPhase.PROCESSING && current.processed >= rules.processingQuota) {
@@ -133,7 +141,7 @@ object LumberShiftEngine {
                     outcome = ShiftOutcome.COMPLETED,
                 ),
                 true,
-                events = listOf(ShiftEvent.COMPLETED),
+                events = listOf(LumberShiftEvent.COMPLETED),
             )
         }
         return EngineResult(current, false)

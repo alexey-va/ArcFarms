@@ -11,11 +11,20 @@ class ArcFarmsArchitectureContractTest : FunSpec({
     val servicePath = repositoryRoot.resolve(
         "src/main/kotlin/ru/ruscrafting/farms/paper/ArcFarmsService.kt",
     )
+    val domainPath = repositoryRoot.resolve(
+        "src/main/kotlin/ru/ruscrafting/farms/domain/ActivityDomain.kt",
+    )
     val farmRoot = repositoryRoot.resolve(
         "src/main/kotlin/ru/ruscrafting/farms/paper/farm",
     )
     val farmModulePath = farmRoot.resolve("FarmModule.kt")
     val farmRegistryPath = farmRoot.resolve("FarmRuntimeRegistry.kt")
+
+    test("shift engines do not share one global event enum") {
+        val source = Files.readString(domainPath)
+
+        source.contains("enum class ShiftEvent") shouldBe false
+    }
 
     test("service callbacks cannot bypass the reload-aware task supervisor") {
         val source = Files.readString(servicePath)

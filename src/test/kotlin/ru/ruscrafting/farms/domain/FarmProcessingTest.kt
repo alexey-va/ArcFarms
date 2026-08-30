@@ -29,24 +29,24 @@ class FarmProcessingTest : FunSpec({
         FarmShiftEngine.advanceProcessing(state, first, FarmProcessingStage.OPERATING).accepted shouldBe false
 
         val firstLoad = FarmShiftEngine.advanceProcessing(state, first, FarmProcessingStage.LOADING)
-        firstLoad.events shouldContainExactly listOf(ShiftEvent.INCIDENT_PROGRESS)
+        firstLoad.events shouldContainExactly listOf(FarmShiftEvent.INCIDENT_PROGRESS)
         state = firstLoad.state
         val loaded = FarmShiftEngine.advanceProcessing(state, second, FarmProcessingStage.LOADING)
-        loaded.events shouldContainExactly listOf(ShiftEvent.INCIDENT_PROGRESS, ShiftEvent.PROCESSING_STAGE_CHANGED)
+        loaded.events shouldContainExactly listOf(FarmShiftEvent.INCIDENT_PROGRESS, FarmShiftEvent.PROCESSING_STAGE_CHANGED)
         state = loaded.state
         state.processing?.stage shouldBe FarmProcessingStage.OPERATING
         state.incidentProgress shouldBe 2
 
         state = FarmShiftEngine.advanceProcessing(state, first, FarmProcessingStage.OPERATING).state
         val operated = FarmShiftEngine.advanceProcessing(state, second, FarmProcessingStage.OPERATING)
-        operated.events shouldContainExactly listOf(ShiftEvent.INCIDENT_PROGRESS, ShiftEvent.PROCESSING_STAGE_CHANGED)
+        operated.events shouldContainExactly listOf(FarmShiftEvent.INCIDENT_PROGRESS, FarmShiftEvent.PROCESSING_STAGE_CHANGED)
         state = operated.state
         state.processing?.stage shouldBe FarmProcessingStage.PACKING
         state.incidentProgress shouldBe 4
 
         state = FarmShiftEngine.advanceProcessing(state, first, FarmProcessingStage.PACKING).state
         val completed = FarmShiftEngine.advanceProcessing(state, second, FarmProcessingStage.PACKING)
-        completed.events shouldContainExactly listOf(ShiftEvent.INCIDENT_PROGRESS, ShiftEvent.INCIDENT_RESOLVED)
+        completed.events shouldContainExactly listOf(FarmShiftEvent.INCIDENT_PROGRESS, FarmShiftEvent.INCIDENT_RESOLVED)
         completed.state.phase shouldBe FarmPhase.HARVESTING
         completed.state.processing shouldBe null
         completed.state.incidentsResolved shouldBe 1

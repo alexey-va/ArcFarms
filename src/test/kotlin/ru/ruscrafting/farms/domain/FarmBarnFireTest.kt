@@ -30,7 +30,7 @@ class FarmBarnFireTest : FunSpec({
         state.specialIncident?.active shouldBe setOf(0, 1, 2)
 
         val firstHit = FarmShiftEngine.extinguishBarnFire(state, 1, first)
-        firstHit.events shouldContainExactly listOf(ShiftEvent.INCIDENT_PROGRESS)
+        firstHit.events shouldContainExactly listOf(FarmShiftEvent.INCIDENT_PROGRESS)
         state = firstHit.state
         state.specialIncident?.active shouldBe setOf(0, 2)
         state.incidentProgress shouldBe 1
@@ -38,7 +38,7 @@ class FarmBarnFireTest : FunSpec({
 
         state = FarmShiftEngine.extinguishBarnFire(state, 0, second).state
         val completed = FarmShiftEngine.extinguishBarnFire(state, 2, first)
-        completed.events shouldContainExactly listOf(ShiftEvent.INCIDENT_PROGRESS, ShiftEvent.INCIDENT_RESOLVED)
+        completed.events shouldContainExactly listOf(FarmShiftEvent.INCIDENT_PROGRESS, FarmShiftEvent.INCIDENT_RESOLVED)
         completed.state.phase shouldBe FarmPhase.HARVESTING
         completed.state.specialIncident shouldBe null
         completed.state.contributors[first] shouldBe 2

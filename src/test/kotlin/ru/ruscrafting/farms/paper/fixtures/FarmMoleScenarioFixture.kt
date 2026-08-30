@@ -16,6 +16,7 @@ import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.CuboidBounds
 import ru.ruscrafting.farms.domain.EngineResult
+import ru.ruscrafting.farms.domain.FarmShiftEvent
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareTarget
 import ru.ruscrafting.farms.domain.FarmCareType
@@ -53,7 +54,7 @@ internal class FarmMoleScenarioFixture private constructor(
 ) : AutoCloseable {
     data class AppliedTransition(
         val actor: Player?,
-        val result: EngineResult<FarmShiftState>,
+        val result: EngineResult<FarmShiftState, FarmShiftEvent>,
     )
 
     val transitions = mutableListOf<AppliedTransition>()

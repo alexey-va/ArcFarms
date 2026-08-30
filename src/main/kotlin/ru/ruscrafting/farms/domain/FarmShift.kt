@@ -2,6 +2,31 @@ package ru.ruscrafting.farms.domain
 
 import java.util.UUID
 
+enum class FarmShiftEvent {
+    STARTED,
+    PROGRESS,
+    PREPARATION_PROGRESS,
+    PLANTING_STARTED,
+    PLANTING_PROGRESS,
+    PREPARATION_COMPLETED,
+    CARE_STARTED,
+    CARE_PROGRESS,
+    SEEDER_PROGRESS,
+    SEEDER_PLANTING_STARTED,
+    CARE_RESOLVED,
+    HARVEST_CHECKPOINT,
+    HARVEST_MILESTONE,
+    INCIDENT_STARTED,
+    INCIDENT_PROGRESS,
+    PROCESSING_STAGE_CHANGED,
+    INCIDENT_RESOLVED,
+    MARKET_EXPIRED,
+    DELIVERY_STARTED,
+    DELIVERY_PROGRESS,
+    COMPLETED,
+    RESET,
+}
+
 const val MAX_FARM_PATCH_PLOTS = 6_144
 const val MAX_FARM_INCIDENTS = 8
 
@@ -355,7 +380,7 @@ object FarmShiftEngine {
         preparationCrop: String,
         now: Long,
         completionPercent: Int = 100,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         if (current.phase != FarmPhase.IDLE) return EngineResult(current, false)
         require(patch.isNotEmpty() && patch.size <= MAX_FARM_PATCH_PLOTS) {
             "Farm preparation patch must contain 1..$MAX_FARM_PATCH_PLOTS plots"
@@ -374,14 +399,14 @@ object FarmShiftEngine {
             preparationRequired = FarmFieldQuota.required(patch.size, completionPercent),
             startedAt = now,
         )
-        return EngineResult(next, true, events = listOf(ShiftEvent.STARTED))
+        return EngineResult(next, true, events = listOf(FarmShiftEvent.STARTED))
     }
 
     fun till(
         current: FarmShiftState,
         plot: FarmPlotPosition,
         playerId: UUID,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         if (
             current.phase != FarmPhase.PREPARATION || plot !in current.preparationPatch ||
             plot in current.tilledPlots || current.preparationProgress >= current.preparationRequired
@@ -402,8 +427,8 @@ object FarmShiftEngine {
             true,
             contribution = 1,
             events = buildList {
-                add(ShiftEvent.PREPARATION_PROGRESS)
-                if (completed) add(ShiftEvent.PLANTING_STARTED)
+                add(FarmShiftEvent.PREPARATION_PROGRESS)
+                if (completed) add(FarmShiftEvent.PLANTING_STARTED)
             },
         )
     }
@@ -413,7 +438,7 @@ object FarmShiftEngine {
         plot: FarmPlotPosition,
         crop: String,
         playerId: UUID,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         if (
             current.phase != FarmPhase.PLANTING || crop != current.preparationCrop ||
             plot !in current.preparationPatch || plot !in current.tilledPlots || plot in current.plantedPlots ||
@@ -438,8 +463,8 @@ object FarmShiftEngine {
             true,
             contribution = 1,
             events = buildList {
-                add(ShiftEvent.PLANTING_PROGRESS)
-                if (completed) add(ShiftEvent.PREPARATION_COMPLETED)
+                add(FarmShiftEvent.PLANTING_PROGRESS)
+                if (completed) add(FarmShiftEvent.PREPARATION_COMPLETED)
             },
         )
     }
@@ -452,7 +477,7 @@ object FarmShiftEngine {
         playerId: UUID,
         now: Long,
         incidentType: FarmIncidentType = FarmIncidentType.PESTS,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         val advanced = tick(current, order, now)
         var state = advanced.state
         val events = advanced.events.toMutableList()
@@ -472,18 +497,18 @@ object FarmShiftEngine {
             progress = state.progress + (crop to after),
             contributors = incrementContribution(state.contributors, playerId, contribution),
         )
-        events += ShiftEvent.PROGRESS
+        events += FarmShiftEvent.PROGRESS
 
         val milestone = FarmContractPlanner.harvestMilestone(state.completed(order), order.totalRequired)
         if (milestone > state.harvestMilestone) {
             state = state.copy(harvestMilestone = milestone)
-            events += ShiftEvent.HARVEST_MILESTONE
+            events += FarmShiftEvent.HARVEST_MILESTONE
         }
 
         val checkpoint = FarmContractPlanner.harvestCheckpoint(state.completed(order), order.totalRequired)
         if (checkpoint > state.harvestCheckpoint) {
             state = state.copy(harvestCheckpoint = checkpoint)
-            if (checkpoint < 10) events += ShiftEvent.HARVEST_CHECKPOINT
+            if (checkpoint < 10) events += FarmShiftEvent.HARVEST_CHECKPOINT
         }
 
         if (state.completed(order) >= order.totalRequired && state.phase != FarmPhase.INCIDENT) {
@@ -508,7 +533,7 @@ object FarmShiftEngine {
                 deliveryPosition = null,
                 deliveredCrates = emptySet(),
             )
-            events += if (routeClosesOrder) ShiftEvent.INCIDENT_STARTED else ShiftEvent.DELIVERY_STARTED
+            events += if (routeClosesOrder) FarmShiftEvent.INCIDENT_STARTED else FarmShiftEvent.DELIVERY_STARTED
             return EngineResult(state, true, contribution, events)
         }
 
@@ -535,7 +560,7 @@ object FarmShiftEngine {
                     processing = null,
                     specialDamagedCrops = emptyList(),
                 )
-                events += ShiftEvent.INCIDENT_STARTED
+                events += FarmShiftEvent.INCIDENT_STARTED
             }
         }
         return EngineResult(state, true, contribution, events)
@@ -546,7 +571,7 @@ object FarmShiftEngine {
         type: FarmCareType,
         targets: List<FarmCareTarget>,
         goal: Int = targets.sumOf(FarmCareTarget::required),
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         val validSource = if (type == FarmCareType.SEEDER) {
             current.phase == FarmPhase.PREPARATION && current.preparationProgress == 0 && current.plantingProgress == 0
         } else {
@@ -575,14 +600,14 @@ object FarmShiftEngine {
                 careGoal = goal,
             ),
             true,
-            events = listOf(ShiftEvent.CARE_STARTED),
+            events = listOf(FarmShiftEvent.CARE_STARTED),
         )
     }
 
     fun startSeeder(
         current: FarmShiftState,
         targetId: Int,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         if (current.phase != FarmPhase.CARE || current.careType != FarmCareType.SEEDER) {
             return EngineResult(current, false)
         }
@@ -594,7 +619,7 @@ object FarmShiftEngine {
         return EngineResult(
             current.copy(careTargets = targets),
             true,
-            events = listOf(ShiftEvent.CARE_PROGRESS),
+            events = listOf(FarmShiftEvent.CARE_PROGRESS),
         )
     }
 
@@ -602,13 +627,13 @@ object FarmShiftEngine {
         current: FarmShiftState,
         processed: Set<FarmPlotPosition>,
         playerId: UUID,
-    ): EngineResult<FarmShiftState> = workSeeder(current, processed, setOf(playerId))
+    ): EngineResult<FarmShiftState, FarmShiftEvent> = workSeeder(current, processed, setOf(playerId))
 
     fun workSeeder(
         current: FarmShiftState,
         processed: Set<FarmPlotPosition>,
         playerIds: Set<UUID>,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         if (current.phase != FarmPhase.CARE || current.careType != FarmCareType.SEEDER) {
             return EngineResult(current, false)
         }
@@ -637,9 +662,9 @@ object FarmShiftEngine {
                     true,
                     contribution = added.size,
                     events = if (complete) {
-                        listOf(ShiftEvent.SEEDER_PLANTING_STARTED)
+                        listOf(FarmShiftEvent.SEEDER_PLANTING_STARTED)
                     } else {
-                        listOf(ShiftEvent.SEEDER_PROGRESS)
+                        listOf(FarmShiftEvent.SEEDER_PROGRESS)
                     },
                     contributionCredits = playerIds.associateWith { added.size },
                 )
@@ -664,9 +689,9 @@ object FarmShiftEngine {
                     true,
                     contribution = added.size,
                     events = if (complete) {
-                        listOf(ShiftEvent.CARE_RESOLVED)
+                        listOf(FarmShiftEvent.CARE_RESOLVED)
                     } else {
-                        listOf(ShiftEvent.SEEDER_PROGRESS)
+                        listOf(FarmShiftEvent.SEEDER_PROGRESS)
                     },
                     contributionCredits = playerIds.associateWith { added.size },
                 )
@@ -682,7 +707,7 @@ object FarmShiftEngine {
         current: FarmShiftState,
         targetId: Int,
         playerId: UUID,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         if (current.phase != FarmPhase.CARE) return EngineResult(current, false)
         val target = current.careTargets.firstOrNull { it.id == targetId } ?: return EngineResult(current, false)
         if (target.complete) return EngineResult(current, false)
@@ -698,7 +723,7 @@ object FarmShiftEngine {
             ),
             true,
             contribution = 1,
-            events = listOf(ShiftEvent.CARE_PROGRESS) + if (complete) listOf(ShiftEvent.CARE_RESOLVED) else emptyList(),
+            events = listOf(FarmShiftEvent.CARE_PROGRESS) + if (complete) listOf(FarmShiftEvent.CARE_RESOLVED) else emptyList(),
         )
     }
 
@@ -706,7 +731,7 @@ object FarmShiftEngine {
         current: FarmShiftState,
         target: FarmCareTarget,
         maxSpots: Int,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         require(maxSpots in 1..32) { "Disease spread cap is invalid" }
         if (current.phase != FarmPhase.CARE || current.careType != FarmCareType.DISEASE) {
             return EngineResult(current, false)
@@ -734,7 +759,7 @@ object FarmShiftEngine {
         current: FarmShiftState,
         targetId: Int,
         replacement: FarmCareTarget?,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         if (current.phase != FarmPhase.CARE || current.careType != FarmCareType.DISEASE) {
             return EngineResult(current, false)
         }
@@ -756,11 +781,11 @@ object FarmShiftEngine {
                 careGoal = goal.takeIf { it > 0 },
             ),
             true,
-            events = if (complete) listOf(ShiftEvent.CARE_RESOLVED) else emptyList(),
+            events = if (complete) listOf(FarmShiftEvent.CARE_RESOLVED) else emptyList(),
         )
     }
 
-    fun normalizeDisease(current: FarmShiftState): EngineResult<FarmShiftState> {
+    fun normalizeDisease(current: FarmShiftState): EngineResult<FarmShiftState, FarmShiftEvent> {
         if (current.phase != FarmPhase.CARE || current.careType != FarmCareType.DISEASE) {
             return EngineResult(current, false)
         }
@@ -779,14 +804,14 @@ object FarmShiftEngine {
                 careGoal = goal,
             ),
             true,
-            events = if (complete) listOf(ShiftEvent.CARE_RESOLVED) else emptyList(),
+            events = if (complete) listOf(FarmShiftEvent.CARE_RESOLVED) else emptyList(),
         )
     }
 
     fun defeatPest(
         current: FarmShiftState,
         playerId: UUID,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         val actualType = current.incidentType ?: FarmIncidentType.PESTS
         if (current.phase != FarmPhase.INCIDENT || actualType != FarmIncidentType.PESTS || current.pestAlive <= 0) {
             return EngineResult(current, false)
@@ -803,7 +828,7 @@ object FarmShiftEngine {
         current: FarmShiftState,
         position: FarmPlotPosition,
         playerId: UUID,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         val actualType = current.incidentType ?: FarmIncidentType.PESTS
         if (current.phase != FarmPhase.INCIDENT || actualType != FarmIncidentType.PESTS) {
             return EngineResult(current, false)
@@ -826,7 +851,7 @@ object FarmShiftEngine {
     fun finishPestIncidentIfClear(
         current: FarmShiftState,
         contribution: Int = 0,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         val actualType = current.incidentType ?: FarmIncidentType.PESTS
         if (
             current.phase != FarmPhase.INCIDENT || actualType != FarmIncidentType.PESTS ||
@@ -836,12 +861,12 @@ object FarmShiftEngine {
                 current,
                 contribution > 0,
                 contribution = contribution,
-                events = if (contribution > 0) listOf(ShiftEvent.INCIDENT_PROGRESS) else emptyList(),
+                events = if (contribution > 0) listOf(FarmShiftEvent.INCIDENT_PROGRESS) else emptyList(),
             )
         }
         val completed = completeIncident(current, contribution)
         return if (contribution > 0) {
-            completed.copy(events = listOf(ShiftEvent.INCIDENT_PROGRESS) + completed.events)
+            completed.copy(events = listOf(FarmShiftEvent.INCIDENT_PROGRESS) + completed.events)
         } else {
             completed
         }
@@ -850,7 +875,7 @@ object FarmShiftEngine {
     fun waterDrySoil(
         current: FarmShiftState,
         playerId: UUID,
-    ): EngineResult<FarmShiftState> = resolveIncident(
+    ): EngineResult<FarmShiftState, FarmShiftEvent> = resolveIncident(
         current,
         FarmIncidentType.DROUGHT,
         playerId,
@@ -860,7 +885,7 @@ object FarmShiftEngine {
         current: FarmShiftState,
         expectedType: FarmIncidentType,
         playerId: UUID,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         val actualType = current.incidentType ?: FarmIncidentType.PESTS
         if (
             current.phase != FarmPhase.INCIDENT || actualType != expectedType ||
@@ -872,10 +897,10 @@ object FarmShiftEngine {
             incidentProgress = current.incidentProgress + 1,
             contributors = incrementContribution(current.contributors, playerId, 1),
         )
-        val events = mutableListOf(ShiftEvent.INCIDENT_PROGRESS)
+        val events = mutableListOf(FarmShiftEvent.INCIDENT_PROGRESS)
         if (state.incidentProgress >= state.incidentRequired) {
             val completed = completeIncident(state, contribution = 1)
-            return completed.copy(events = events + completed.events.filterNot { it == ShiftEvent.INCIDENT_PROGRESS })
+            return completed.copy(events = events + completed.events.filterNot { it == FarmShiftEvent.INCIDENT_PROGRESS })
         }
         return EngineResult(state, true, contribution = 1, events = events)
     }
@@ -883,7 +908,7 @@ object FarmShiftEngine {
     private fun completeIncident(
         current: FarmShiftState,
         contribution: Int,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         val state = current.copy(
             phase = FarmPhase.HARVESTING,
             incidentResolved = true,
@@ -899,7 +924,7 @@ object FarmShiftEngine {
             specialIncident = null,
             processing = null,
         )
-        return EngineResult(state, true, contribution, listOf(ShiftEvent.INCIDENT_RESOLVED))
+        return EngineResult(state, true, contribution, listOf(FarmShiftEvent.INCIDENT_RESOLVED))
     }
 
     fun deliver(
@@ -909,7 +934,7 @@ object FarmShiftEngine {
         requiredCrates: Int,
         playerId: UUID,
         now: Long,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         require(requiredCrates in 1..8) { "Farm delivery must require 1..8 crates" }
         if (current.phase != FarmPhase.DELIVERY || crateIndex !in 0 until requiredCrates || crateIndex in current.deliveredCrates) {
             return EngineResult(current, false)
@@ -927,7 +952,7 @@ object FarmShiftEngine {
             ),
             true,
             contribution = 1,
-            events = listOf(if (completed) ShiftEvent.COMPLETED else ShiftEvent.DELIVERY_PROGRESS),
+            events = listOf(if (completed) FarmShiftEvent.COMPLETED else FarmShiftEvent.DELIVERY_PROGRESS),
         )
     }
 
@@ -935,7 +960,7 @@ object FarmShiftEngine {
         current: FarmShiftState,
         playerId: UUID,
         contribution: Int,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         require(contribution in 1..8) { "Farm bird contribution is invalid" }
         if (current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.BIRDS) {
             return EngineResult(current, false)
@@ -946,7 +971,7 @@ object FarmShiftEngine {
             contributors = incrementContribution(current.contributors, playerId, contribution),
         )
         if (progress >= current.incidentRequired) return completeIncident(state, contribution)
-        return EngineResult(state, true, contribution, listOf(ShiftEvent.INCIDENT_PROGRESS))
+        return EngineResult(state, true, contribution, listOf(FarmShiftEvent.INCIDENT_PROGRESS))
     }
 
     fun initializeProcessing(
@@ -955,7 +980,7 @@ object FarmShiftEngine {
         inputRequired: Int,
         cyclesRequired: Int,
         outputRequired: Int,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         if (
             current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.PROCESSING ||
             current.processing != null
@@ -981,7 +1006,7 @@ object FarmShiftEngine {
         playerId: UUID,
         expectedStage: FarmProcessingStage,
         slotIndex: Int? = null,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         val processing = current.processing
         if (
             current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.PROCESSING ||
@@ -1024,11 +1049,11 @@ object FarmShiftEngine {
         )
         if (nextProcessing.outputDelivered >= nextProcessing.outputRequired) {
             val completed = completeIncident(state, contribution = 1)
-            return completed.copy(events = listOf(ShiftEvent.INCIDENT_PROGRESS) + completed.events)
+            return completed.copy(events = listOf(FarmShiftEvent.INCIDENT_PROGRESS) + completed.events)
         }
         val events = buildList {
-            add(ShiftEvent.INCIDENT_PROGRESS)
-            if (nextStage != processing.stage) add(ShiftEvent.PROCESSING_STAGE_CHANGED)
+            add(FarmShiftEvent.INCIDENT_PROGRESS)
+            if (nextStage != processing.stage) add(FarmShiftEvent.PROCESSING_STAGE_CHANGED)
         }
         return EngineResult(state, true, contribution = 1, events = events)
     }
@@ -1036,7 +1061,7 @@ object FarmShiftEngine {
     fun initializeBarnFire(
         current: FarmShiftState,
         hotspots: List<FarmPointPosition>,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         require(hotspots.size in 1..256) { "Farm barn fire must contain 1..256 hotspots" }
         require(hotspots.distinct().size == hotspots.size) { "Farm barn fire contains duplicate hotspots" }
         require(hotspots.map(FarmPointPosition::world).distinct().size == 1) { "Farm barn fire crosses worlds" }
@@ -1061,7 +1086,7 @@ object FarmShiftEngine {
         current: FarmShiftState,
         hotspotIndex: Int,
         playerId: UUID,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         val incident = current.specialIncident
         if (
             current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.BARN_FIRE ||
@@ -1075,12 +1100,12 @@ object FarmShiftEngine {
         )
         if (active.isEmpty()) {
             val completed = completeIncident(progressed, contribution = 1)
-            return completed.copy(events = listOf(ShiftEvent.INCIDENT_PROGRESS) + completed.events)
+            return completed.copy(events = listOf(FarmShiftEvent.INCIDENT_PROGRESS) + completed.events)
         }
-        return EngineResult(progressed, true, contribution = 1, events = listOf(ShiftEvent.INCIDENT_PROGRESS))
+        return EngineResult(progressed, true, contribution = 1, events = listOf(FarmShiftEvent.INCIDENT_PROGRESS))
     }
 
-    fun initializeFoodDelivery(current: FarmShiftState, checkpoints: Int, routeName: String = FarmRouteKeys.DEFAULT_NAME): EngineResult<FarmShiftState> {
+    fun initializeFoodDelivery(current: FarmShiftState, checkpoints: Int, routeName: String = FarmRouteKeys.DEFAULT_NAME): EngineResult<FarmShiftState, FarmShiftEvent> {
         require(checkpoints in 2..512) { "Farm food delivery route must contain 2..512 checkpoints" }
         require(DomainIdentifiers.isOrder(routeName)) { "Farm food delivery route name is invalid" }
         if (current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.FOOD_DELIVERY ||
@@ -1104,7 +1129,7 @@ object FarmShiftEngine {
         completion: FarmFoodDeliveryCompletion = FarmFoodDeliveryCompletion.INCIDENT,
         rules: FarmRules? = null,
         now: Long = 0,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         require(completionContribution in 1..64) { "Farm food delivery contribution is invalid" }
         if (current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.FOOD_DELIVERY ||
             current.specialIncident == null || reachedCheckpoint <= current.incidentProgress ||
@@ -1133,19 +1158,19 @@ object FarmShiftEngine {
                     ),
                     true,
                     completionContribution,
-                    listOf(ShiftEvent.COMPLETED),
+                    listOf(FarmShiftEvent.COMPLETED),
                 )
             }
             return completeIncident(credited, completionContribution)
         }
-        return EngineResult(progressed, true, events = listOf(ShiftEvent.INCIDENT_PROGRESS))
+        return EngineResult(progressed, true, events = listOf(FarmShiftEvent.INCIDENT_PROGRESS))
     }
 
     fun defendFoodDelivery(
         current: FarmShiftState,
         playerId: UUID,
         contribution: Int = 1,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         require(contribution in 1..8) { "Farm food delivery defense contribution is invalid" }
         if (current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.FOOD_DELIVERY ||
             current.specialIncident == null
@@ -1160,7 +1185,7 @@ object FarmShiftEngine {
     fun skipUnavailableIncident(
         current: FarmShiftState,
         expectedType: FarmIncidentType,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         if (current.phase != FarmPhase.INCIDENT || current.incidentType != expectedType) {
             return EngineResult(current, false)
         }
@@ -1173,7 +1198,7 @@ object FarmShiftEngine {
         rules: FarmRules,
         requiredCrates: Int,
         now: Long,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         require(requiredCrates in 1..8) { "Farm delivery must require 1..8 crates" }
         if (current.phase != FarmPhase.DELIVERY) return EngineResult(current, false)
         return EngineResult(
@@ -1185,7 +1210,7 @@ object FarmShiftEngine {
                 outcome = ShiftOutcome.COMPLETED,
             ),
             true,
-            events = listOf(ShiftEvent.COMPLETED),
+            events = listOf(FarmShiftEvent.COMPLETED),
         )
     }
 
@@ -1193,14 +1218,14 @@ object FarmShiftEngine {
         current: FarmShiftState,
         order: FarmOrder?,
         now: Long,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         val state = current
         if (state.phase == FarmPhase.IDLE) return EngineResult(state, false)
         if (state.phase == FarmPhase.COOLDOWN && now >= state.cooldownEndsAt) {
             return EngineResult(
                 FarmShiftState(sequence = state.sequence, placementSequence = state.placementSequence),
                 true,
-                events = listOf(ShiftEvent.RESET),
+                events = listOf(FarmShiftEvent.RESET),
             )
         }
         if (state.phase == FarmPhase.COOLDOWN) return EngineResult(state, false)
@@ -1226,7 +1251,7 @@ object FarmShiftEngine {
                     deliveredCrates = emptySet(),
                 ),
                 true,
-                events = listOf(ShiftEvent.DELIVERY_STARTED),
+                events = listOf(FarmShiftEvent.DELIVERY_STARTED),
             )
         }
         return EngineResult(state, false)

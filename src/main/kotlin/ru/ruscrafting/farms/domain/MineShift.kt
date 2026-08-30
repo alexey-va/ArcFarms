@@ -2,6 +2,16 @@ package ru.ruscrafting.farms.domain
 
 import java.util.UUID
 
+enum class MineShiftEvent {
+    STARTED,
+    PROGRESS,
+    HAZARD_STARTED,
+    HAZARD_RESOLVED,
+    EXTRACTION_STARTED,
+    COMPLETED,
+    RESET,
+}
+
 enum class MinePhase {
     IDLE,
     MINING,
@@ -40,7 +50,7 @@ object MineShiftEngine {
         current: MineShiftState,
         rules: MineRules,
         now: Long,
-    ): EngineResult<MineShiftState> {
+    ): EngineResult<MineShiftState, MineShiftEvent> {
         if (current.phase != MinePhase.IDLE) return EngineResult(current, false)
         return EngineResult(
             MineShiftState(
@@ -49,7 +59,7 @@ object MineShiftEngine {
                 startedAt = now,
             ),
             true,
-            events = listOf(ShiftEvent.STARTED),
+            events = listOf(MineShiftEvent.STARTED),
         )
     }
 
@@ -59,7 +69,7 @@ object MineShiftEngine {
         points: Int,
         playerId: UUID,
         now: Long,
-    ): EngineResult<MineShiftState> {
+    ): EngineResult<MineShiftState, MineShiftEvent> {
         require(points in 1..32)
         val advanced = tick(current, rules, now)
         var state = advanced.state
@@ -72,13 +82,13 @@ object MineShiftEngine {
             cart = nextCart,
             contributors = incrementContribution(state.contributors, playerId, delta),
         )
-        events += ShiftEvent.PROGRESS
+        events += MineShiftEvent.PROGRESS
         if (!state.hazardResolved && nextCart >= rules.hazardTrigger) {
             state = state.copy(phase = MinePhase.HAZARD, supports = 0)
-            events += ShiftEvent.HAZARD_STARTED
+            events += MineShiftEvent.HAZARD_STARTED
         } else if (nextCart >= rules.cartQuota) {
             state = state.copy(phase = MinePhase.EXTRACTION)
-            events += ShiftEvent.EXTRACTION_STARTED
+            events += MineShiftEvent.EXTRACTION_STARTED
         }
         return EngineResult(state, true, delta, events)
     }
@@ -88,7 +98,7 @@ object MineShiftEngine {
         rules: MineRules,
         playerId: UUID,
         now: Long,
-    ): EngineResult<MineShiftState> {
+    ): EngineResult<MineShiftState, MineShiftEvent> {
         val advanced = tick(current, rules, now)
         var state = advanced.state
         val events = advanced.events.toMutableList()
@@ -98,15 +108,15 @@ object MineShiftEngine {
             supports = nextSupports,
             contributors = incrementContribution(state.contributors, playerId, 1),
         )
-        events += ShiftEvent.PROGRESS
+        events += MineShiftEvent.PROGRESS
         if (nextSupports >= rules.supportsRequired) {
             val nextPhase = if (state.cart >= rules.cartQuota) MinePhase.EXTRACTION else MinePhase.MINING
             state = state.copy(
                 phase = nextPhase,
                 hazardResolved = true,
             )
-            events += ShiftEvent.HAZARD_RESOLVED
-            if (nextPhase == MinePhase.EXTRACTION) events += ShiftEvent.EXTRACTION_STARTED
+            events += MineShiftEvent.HAZARD_RESOLVED
+            if (nextPhase == MinePhase.EXTRACTION) events += MineShiftEvent.EXTRACTION_STARTED
         }
         return EngineResult(state, true, 1, events)
     }
@@ -116,14 +126,14 @@ object MineShiftEngine {
         rules: MineRules,
         playerId: UUID,
         now: Long,
-    ): EngineResult<MineShiftState> {
+    ): EngineResult<MineShiftState, MineShiftEvent> {
         val advanced = tick(current, rules, now)
         val state = advanced.state
         val events = advanced.events.toMutableList()
         if (state.phase != MinePhase.EXTRACTION) {
             return EngineResult(state, false, events = events)
         }
-        events += ShiftEvent.COMPLETED
+        events += MineShiftEvent.COMPLETED
         return EngineResult(
             state.copy(
                 phase = MinePhase.COOLDOWN,
@@ -141,23 +151,23 @@ object MineShiftEngine {
         current: MineShiftState,
         rules: MineRules,
         now: Long,
-    ): EngineResult<MineShiftState> {
+    ): EngineResult<MineShiftState, MineShiftEvent> {
         if (current.phase == MinePhase.IDLE) return EngineResult(current, false)
         if (current.phase == MinePhase.COOLDOWN && now >= current.cooldownEndsAt) {
-            return EngineResult(MineShiftState(sequence = current.sequence), true, events = listOf(ShiftEvent.RESET))
+            return EngineResult(MineShiftState(sequence = current.sequence), true, events = listOf(MineShiftEvent.RESET))
         }
         if (current.phase == MinePhase.MINING && !current.hazardResolved && current.cart >= rules.hazardTrigger) {
             return EngineResult(
                 current.copy(phase = MinePhase.HAZARD, supports = 0),
                 true,
-                events = listOf(ShiftEvent.HAZARD_STARTED),
+                events = listOf(MineShiftEvent.HAZARD_STARTED),
             )
         }
         if (current.phase == MinePhase.MINING && current.hazardResolved && current.cart >= rules.cartQuota) {
             return EngineResult(
                 current.copy(phase = MinePhase.EXTRACTION),
                 true,
-                events = listOf(ShiftEvent.EXTRACTION_STARTED),
+                events = listOf(MineShiftEvent.EXTRACTION_STARTED),
             )
         }
         return EngineResult(current, false)

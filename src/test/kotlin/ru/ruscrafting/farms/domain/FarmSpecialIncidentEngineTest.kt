@@ -235,7 +235,7 @@ class FarmSpecialIncidentEngineTest : FunSpec({
 
         val expired = FarmSpecialIncidentEngine.expireMarket(accepted, 125_000)
         expired.accepted shouldBe true
-        expired.events shouldBe listOf(ShiftEvent.MARKET_EXPIRED)
+        expired.events shouldBe listOf(FarmShiftEvent.MARKET_EXPIRED)
         expired.state.phase shouldBe FarmPhase.HARVESTING
         expired.state.rewardMoneyBonusPercent shouldBe 0
     }

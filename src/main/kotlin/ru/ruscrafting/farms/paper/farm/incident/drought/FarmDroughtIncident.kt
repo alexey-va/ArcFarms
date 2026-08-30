@@ -340,7 +340,7 @@ internal class FarmDroughtIncident(
         if (runtime.state.orderId in runtime.orders && reached.isNotEmpty()) {
             var state = runtime.state
             var contribution = 0
-            val events = mutableListOf<ru.ruscrafting.farms.domain.ShiftEvent>()
+            val events = mutableListOf<ru.ruscrafting.farms.domain.FarmShiftEvent>()
             reached.forEach { position ->
                 state = state.copy(droughtPlots = state.droughtPlots - position)
                 val result = FarmShiftEngine.waterDrySoil(state, player.uniqueId)

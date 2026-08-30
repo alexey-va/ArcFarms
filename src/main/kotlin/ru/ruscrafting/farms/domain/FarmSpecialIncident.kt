@@ -13,7 +13,7 @@ object FarmSpecialIncidentEngine {
     fun retargetUninitialized(
         current: FarmShiftState,
         replacement: FarmIncidentType,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         require(replacement in SPECIAL_INCIDENT_TYPES) { "$replacement is not a special farm incident" }
         if (
             current.phase != FarmPhase.INCIDENT || current.incidentType !in SPECIAL_INCIDENT_TYPES ||
@@ -23,7 +23,7 @@ object FarmSpecialIncidentEngine {
         return EngineResult(current.copy(incidentType = replacement), true)
     }
 
-    fun skipUnavailable(current: FarmShiftState): EngineResult<FarmShiftState> {
+    fun skipUnavailable(current: FarmShiftState): EngineResult<FarmShiftState, FarmShiftEvent> {
         if (
             current.phase != FarmPhase.INCIDENT || current.incidentType !in SPECIAL_INCIDENT_TYPES ||
             current.specialIncident != null || current.incidentProgress != 0
@@ -36,7 +36,7 @@ object FarmSpecialIncidentEngine {
         type: FarmIncidentType,
         state: FarmSpecialIncidentState,
         required: Int,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         require(type in SPECIAL_INCIDENT_TYPES) { "$type is not a special farm incident" }
         require(required in 1..1_024) { "Special farm incident quota is invalid" }
         if (
@@ -53,14 +53,14 @@ object FarmSpecialIncidentEngine {
         )
     }
 
-    fun damageGiantCrop(current: FarmShiftState, playerId: UUID): EngineResult<FarmShiftState> =
+    fun damageGiantCrop(current: FarmShiftState, playerId: UUID): EngineResult<FarmShiftState, FarmShiftEvent> =
         advance(current, FarmIncidentType.GIANT_CROP, playerId)
 
     fun reconcileGiantCrop(
         current: FarmShiftState,
         totalBlocks: Int,
         brokenBlocks: Int,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         require(totalBlocks in 1..1_024 && brokenBlocks in 0..totalBlocks) { "Invalid giant crop block state" }
         if (
             current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.GIANT_CROP ||
@@ -79,7 +79,7 @@ object FarmSpecialIncidentEngine {
         current: FarmShiftState,
         blockageIndex: Int,
         playerId: UUID,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         if (current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.CHANNELS) {
             return EngineResult(current, false)
         }
@@ -100,11 +100,11 @@ object FarmSpecialIncidentEngine {
             updated.copy(contributors = incrementContribution(updated.contributors, playerId, 1)),
             true,
             contribution = 1,
-            events = listOf(ShiftEvent.INCIDENT_PROGRESS),
+            events = listOf(FarmShiftEvent.INCIDENT_PROGRESS),
         )
     }
 
-    fun acceptMarket(current: FarmShiftState, now: Long, durationMillis: Long): EngineResult<FarmShiftState> {
+    fun acceptMarket(current: FarmShiftState, now: Long, durationMillis: Long): EngineResult<FarmShiftState, FarmShiftEvent> {
         require(now >= 0) { "Market clock is invalid" }
         require(durationMillis in 10_000L..3_600_000L) { "Market duration is invalid" }
         if (current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.MARKET) {
@@ -119,7 +119,7 @@ object FarmSpecialIncidentEngine {
         )
     }
 
-    fun expireMarket(current: FarmShiftState, now: Long): EngineResult<FarmShiftState> {
+    fun expireMarket(current: FarmShiftState, now: Long): EngineResult<FarmShiftState, FarmShiftEvent> {
         require(now >= 0) { "Market clock is invalid" }
         if (current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.MARKET) {
             return EngineResult(current, false)
@@ -128,10 +128,10 @@ object FarmSpecialIncidentEngine {
         if (!special.marketAccepted || special.marketDeadlineAt <= 0 || now < special.marketDeadlineAt) {
             return EngineResult(current, false)
         }
-        return complete(current, playerId = null, contribution = 0, event = ShiftEvent.MARKET_EXPIRED)
+        return complete(current, playerId = null, contribution = 0, event = FarmShiftEvent.MARKET_EXPIRED)
     }
 
-    fun declineMarket(current: FarmShiftState): EngineResult<FarmShiftState> {
+    fun declineMarket(current: FarmShiftState): EngineResult<FarmShiftState, FarmShiftEvent> {
         if (current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.MARKET) {
             return EngineResult(current, false)
         }
@@ -146,7 +146,7 @@ object FarmSpecialIncidentEngine {
         damage: FarmCropDamage,
         playerId: UUID,
         marketBonusPercent: Int = 0,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         require(type == FarmIncidentType.NIGHT_SHIFT || type == FarmIncidentType.MARKET) {
             "$type does not harvest special crops"
         }
@@ -185,7 +185,7 @@ object FarmSpecialIncidentEngine {
         type: FarmIncidentType,
         playerId: UUID,
         bonusPercentOnComplete: Int = 0,
-    ): EngineResult<FarmShiftState> {
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         if (
             current.phase != FarmPhase.INCIDENT || current.incidentType != type ||
             current.incidentProgress >= current.incidentRequired || current.specialIncident == null
@@ -201,7 +201,7 @@ object FarmSpecialIncidentEngine {
             progressed.copy(contributors = incrementContribution(progressed.contributors, playerId, 1)),
             true,
             contribution = 1,
-            events = listOf(ShiftEvent.INCIDENT_PROGRESS),
+            events = listOf(FarmShiftEvent.INCIDENT_PROGRESS),
         )
     }
 
@@ -209,8 +209,8 @@ object FarmSpecialIncidentEngine {
         current: FarmShiftState,
         playerId: UUID?,
         contribution: Int,
-        event: ShiftEvent = ShiftEvent.INCIDENT_RESOLVED,
-    ): EngineResult<FarmShiftState> {
+        event: FarmShiftEvent = FarmShiftEvent.INCIDENT_RESOLVED,
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
         val contributors = if (playerId != null && contribution > 0) {
             incrementContribution(current.contributors, playerId, contribution)
         } else current.contributors

@@ -270,7 +270,7 @@ internal class PaperWorksiteRuntimePort(
         actor: Player?,
         phase: Any,
         progress: String?,
-        result: EngineResult<*>,
+        result: EngineResult<*, *>,
     ) {
         if (!result.accepted && result.events.isEmpty()) return
         debug.event(

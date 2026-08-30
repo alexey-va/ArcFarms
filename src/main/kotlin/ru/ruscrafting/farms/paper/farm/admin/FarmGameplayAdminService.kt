@@ -19,7 +19,7 @@ import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmSeederStage
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.domain.FarmShiftState
-import ru.ruscrafting.farms.domain.ShiftEvent
+import ru.ruscrafting.farms.domain.FarmShiftEvent
 import ru.ruscrafting.farms.domain.nextPlacementSequence
 import ru.ruscrafting.farms.domain.seederStage
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
@@ -131,7 +131,7 @@ internal class FarmGameplayAdminService(
         CARE_STAGES[normalized]?.let { careType ->
             return careStage(player, runtime, normalized, careType)
         }
-        val events = mutableListOf<ShiftEvent>()
+        val events = mutableListOf<FarmShiftEvent>()
         runtime.state = when (normalized) {
             "planting" -> plantingState(runtime, events)
             "harvesting" -> harvestingState(runtime)
@@ -386,9 +386,9 @@ internal class FarmGameplayAdminService(
         return true
     }
 
-    private fun plantingState(runtime: FarmRuntime, events: MutableList<ShiftEvent>): FarmShiftState {
+    private fun plantingState(runtime: FarmRuntime, events: MutableList<FarmShiftEvent>): FarmShiftState {
         preparePatch(runtime, plant = false, mature = false)
-        events += ShiftEvent.PLANTING_STARTED
+        events += FarmShiftEvent.PLANTING_STARTED
         return FarmAdminStageProgress.completed(runtime.state, planted = false).copy(
             phase = FarmPhase.PLANTING, preparationReleased = true,
             careType = null, careTargets = emptyList(), careGoal = null, incidentType = null,
@@ -413,14 +413,14 @@ internal class FarmGameplayAdminService(
         runtime: FarmRuntime,
         stage: String,
         crop: String,
-        events: MutableList<ShiftEvent>,
+        events: MutableList<FarmShiftEvent>,
     ): FarmShiftState {
         preparePatch(runtime, plant = true, mature = true)
         val type = INCIDENT_STAGES.getValue(stage)
         val quota = if (type == FarmIncidentType.DROUGHT) {
             runtime.settings.droughtTargetBeds(field.incidentBeds(runtime).size.coerceAtLeast(runtime.state.preparationPatch.size))
         } else runtime.rules.incidentQuota
-        events += ShiftEvent.INCIDENT_STARTED
+        events += FarmShiftEvent.INCIDENT_STARTED
         return FarmAdminStageProgress.forcedIncident(runtime.state, runtime.rules).copy(
             phase = FarmPhase.INCIDENT, incidentCrop = crop, incidentType = type,
             incidentProgress = 0, incidentRequired = quota, incidentResolved = false,
@@ -436,9 +436,9 @@ internal class FarmGameplayAdminService(
         runtime: FarmRuntime,
         order: FarmOrder,
         player: Player,
-        events: MutableList<ShiftEvent>,
+        events: MutableList<FarmShiftEvent>,
     ): FarmShiftState {
-        events += ShiftEvent.DELIVERY_STARTED
+        events += FarmShiftEvent.DELIVERY_STARTED
         return runtime.state.copy(
             phase = FarmPhase.DELIVERY, progress = order.required, harvestCheckpoint = 10, harvestMilestone = 4,
             incidentCrop = null, incidentType = null, incidentProgress = 0, incidentRequired = 0,

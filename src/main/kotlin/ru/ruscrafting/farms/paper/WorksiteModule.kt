@@ -109,7 +109,7 @@ internal interface WorksiteRuntimePort {
         actor: Player?,
         phase: Any,
         progress: String?,
-        result: EngineResult<*>,
+        result: EngineResult<*, *>,
     )
 
     fun recordContribution(playerId: UUID, kind: ActivityKind, amount: Int)

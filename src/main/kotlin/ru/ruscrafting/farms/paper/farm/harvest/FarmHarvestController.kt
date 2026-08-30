@@ -26,7 +26,7 @@ import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPerkType
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.domain.FarmShiftState
-import ru.ruscrafting.farms.domain.ShiftEvent
+import ru.ruscrafting.farms.domain.FarmShiftEvent
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmRuntime
@@ -305,7 +305,7 @@ internal class FarmHarvestController(
             now,
             incidentType,
         )
-        if (ShiftEvent.DELIVERY_STARTED in result.events) {
+        if (FarmShiftEvent.DELIVERY_STARTED in result.events) {
             result = result.copy(
                 state = result.state.copy(deliveryPosition = placement.selectDeliveryAnchor(runtime, player.location)),
             )
@@ -332,11 +332,11 @@ internal class FarmHarvestController(
                         )
                     }
                 }
-                if (ShiftEvent.INCIDENT_STARTED in result.events) port.runLater(settings().titleStaySeconds * 20L + 10L, announce)
+                if (FarmShiftEvent.INCIDENT_STARTED in result.events) port.runLater(settings().titleStaySeconds * 20L + 10L, announce)
                 else announce()
             }
         }
-        if (!result.accepted && ShiftEvent.COMPLETED !in result.events) {
+        if (!result.accepted && FarmShiftEvent.COMPLETED !in result.events) {
             port.sendActionBar(player, MessageKey.FARM_WRONG_TARGET, mapOf("crops" to remainingCrops(runtime, order)))
         }
     }

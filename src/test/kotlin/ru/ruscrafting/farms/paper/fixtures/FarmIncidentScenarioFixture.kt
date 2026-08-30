@@ -26,6 +26,7 @@ import ru.ruscrafting.farms.config.CuboidBounds
 import ru.ruscrafting.farms.config.FarmZoneSettings
 import ru.ruscrafting.farms.domain.ArcFarmsState
 import ru.ruscrafting.farms.domain.EngineResult
+import ru.ruscrafting.farms.domain.FarmShiftEvent
 import ru.ruscrafting.farms.domain.FarmDeliveryRoute
 import ru.ruscrafting.farms.domain.FarmOrder
 import ru.ruscrafting.farms.domain.FarmPointKind
@@ -71,7 +72,7 @@ internal class FarmIncidentScenarioFixture private constructor(
 ) : AutoCloseable {
     data class AppliedTransition(
         val actor: Player?,
-        val result: EngineResult<FarmShiftState>,
+        val result: EngineResult<FarmShiftState, FarmShiftEvent>,
     )
 
     data class DelayedTask(

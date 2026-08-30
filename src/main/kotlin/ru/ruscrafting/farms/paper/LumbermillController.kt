@@ -18,7 +18,7 @@ import ru.ruscrafting.farms.domain.LumberPhase
 import ru.ruscrafting.farms.domain.LumberRules
 import ru.ruscrafting.farms.domain.LumberShiftEngine
 import ru.ruscrafting.farms.domain.LumberShiftState
-import ru.ruscrafting.farms.domain.ShiftEvent
+import ru.ruscrafting.farms.domain.LumberShiftEvent
 import ru.ruscrafting.farms.network.NetworkSignal
 import kotlin.math.ceil
 
@@ -197,7 +197,7 @@ internal class LumbermillController(
 
     private fun apply(
         runtime: Runtime,
-        result: ru.ruscrafting.farms.domain.EngineResult<LumberShiftState>,
+        result: ru.ruscrafting.farms.domain.EngineResult<LumberShiftState, LumberShiftEvent>,
         actor: Player?,
     ) {
         runtime.state = result.state
@@ -214,13 +214,13 @@ internal class LumbermillController(
         }
         result.events.forEach { event ->
             when (event) {
-                ShiftEvent.STARTED -> port.broadcast(
+                LumberShiftEvent.STARTED -> port.broadcast(
                     listOf(runtime.region),
                     MessageKey.LUMBER_STARTED,
                     mapOf("wood" to MaterialRules.woodComponent(requireNotNull(runtime.state.species))),
                     Sound.BLOCK_WOOD_PLACE,
                 )
-                ShiftEvent.PHASE_CHANGED -> {
+                LumberShiftEvent.PHASE_CHANGED -> {
                     port.broadcast(
                         listOf(runtime.region),
                         MessageKey.LUMBER_PROCESSING,
@@ -237,7 +237,7 @@ internal class LumbermillController(
                             .mapTo(mutableSetOf(), Player::getUniqueId),
                     )
                 }
-                ShiftEvent.COMPLETED -> {
+                LumberShiftEvent.COMPLETED -> {
                     port.recordCompletion(kind, runtime.state.contributors)
                     val regions = listOf(runtime.region, runtime.station)
                     port.broadcast(
