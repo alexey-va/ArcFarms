@@ -43,6 +43,7 @@ class MineModuleRecoveryMigrationMockBukkitTest : FunSpec({
         )
         val journal = ImmediateMineJournal(record)
         val graph = MineComponentGraph(
+            paper.createSimplePlugin("MineMigrationTest"),
             CuboidRegionGateway(),
             mockk<WorksiteRuntimePort>(relaxed = true),
             clock = { 1_000L },

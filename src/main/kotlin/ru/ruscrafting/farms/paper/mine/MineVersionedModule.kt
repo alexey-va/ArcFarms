@@ -6,6 +6,7 @@ import org.bukkit.block.Block
 import org.bukkit.entity.Player
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MineZoneSettings
 import ru.ruscrafting.farms.domain.ActivityKind
@@ -25,6 +26,7 @@ import java.util.random.RandomGenerator
 
 /** Stable boundary that constructs exactly one mine engine generation for the process lifetime. */
 internal class MineVersionedModule(
+    plugin: Plugin,
     initial: List<MineZoneSettings>,
     regions: RegionGateway,
     locale: ArcFarmsLocale,
@@ -36,7 +38,7 @@ internal class MineVersionedModule(
     WorksiteMoveHandler, WorksiteGuidanceHandler {
     private val engineVersion = initial.firstOrNull()?.engineVersion ?: 1
     private val delegate: WorksiteModule<MineShiftState> = if (engineVersion == 2) {
-        MineComponentGraph(regions, port, clock, journal).module
+        MineComponentGraph(plugin, regions, port, clock, journal).module
     } else {
         MineController(regions, locale, journal, port, clock, random)
     }

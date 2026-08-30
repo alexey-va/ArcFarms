@@ -117,7 +117,7 @@ class ArcFarmsService(
     private val lumbermillModule = LumbermillVersionedModule(
         plugin, initialSettings.lumbermills, regionGateway, locale, worksitePort, clock, lumberJournal, worksiteServiceItems,
     )
-    private val mineModule = MineVersionedModule(initialSettings.mines, regionGateway, locale, mineJournal, worksitePort, clock, random)
+    private val mineModule = MineVersionedModule(plugin, initialSettings.mines, regionGateway, locale, mineJournal, worksitePort, clock, random)
     private val runtimeValidator = ArcFarmsRuntimeValidator(regionGateway, { economy.available }, fixedCropJournal, mineJournal)
     private val farm = FarmComponentGraph(
         plugin = plugin,
