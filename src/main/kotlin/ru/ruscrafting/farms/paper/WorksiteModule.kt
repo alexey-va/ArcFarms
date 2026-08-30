@@ -14,6 +14,10 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteNetworkPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatsPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
+import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
+import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantOwner
+import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
+import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItemOwner
 import java.util.UUID
 
 /** Common orchestration boundary for independently-owned worksite lifecycles. */
@@ -42,6 +46,11 @@ internal interface WorksiteMoveHandler {
     fun onMove(from: Location, to: Location, player: Player): Boolean
 }
 
+internal interface WorksiteGuidanceHandler {
+    fun updateGuidance(expectedBars: MutableSet<ActivityBarKey>)
+    fun emitGuidance()
+}
+
 internal data class ActivityBarKey(val playerId: UUID, val runtimeKey: String)
 
 /** Compatibility composite; new owners depend on the smallest port they use. */
@@ -56,7 +65,7 @@ internal interface WorksiteRuntimePort :
 /** Aggregates independent worksite types without knowing their concrete state machines. */
 internal class WorksiteModuleRegistry(
     modules: Collection<WorksiteModule<*>>,
-) {
+) : WorksiteServiceItemOwner, WorksiteParticipantOwner {
     private val modulesByKind = modules.associateBy(WorksiteModule<*>::kind).also { indexed ->
         require(indexed.size == modules.size) { "Only one worksite module may own each activity kind" }
     }
@@ -65,6 +74,12 @@ internal class WorksiteModuleRegistry(
     fun statuses(): List<ActivityStatus> = modulesInOrder.flatMap(WorksiteModule<*>::statuses)
 
     fun tick(now: Long) = modulesInOrder.forEach { it.tick(now) }
+
+    fun updateGuidance(): MutableSet<ActivityBarKey> = linkedSetOf<ActivityBarKey>().also { expectedBars ->
+        modulesInOrder.filterIsInstance<WorksiteGuidanceHandler>().forEach { it.updateGuidance(expectedBars) }
+    }
+
+    fun emitGuidance() = modulesInOrder.filterIsInstance<WorksiteGuidanceHandler>().forEach { it.emitGuidance() }
 
     fun activateLoadedState() = modulesInOrder.forEach(WorksiteModule<*>::activateLoadedState)
 
@@ -81,6 +96,9 @@ internal class WorksiteModuleRegistry(
     fun onBreakHigh(kind: ActivityKind, event: BlockBreakEvent): Boolean =
         (modulesByKind[kind] as? WorksiteBlockBreakHandler)?.onBreakHigh(event) == true
 
+    fun onBreakHigh(event: BlockBreakEvent): Boolean =
+        BREAK_ROUTING_ORDER.any { kind -> onBreakHigh(kind, event) }
+
     fun onBreakMonitor(event: BlockBreakEvent) {
         modulesInOrder.filterIsInstance<WorksiteBlockBreakHandler>().forEach { it.onBreakMonitor(event) }
     }
@@ -88,6 +106,36 @@ internal class WorksiteModuleRegistry(
     fun onInteract(event: PlayerInteractEvent, clicked: Block, player: Player): Boolean =
         modulesInOrder.filterIsInstance<WorksiteBlockInteractHandler>().any { it.onInteract(event, clicked, player) }
 
-    fun onMove(from: Location, to: Location, player: Player): Boolean =
-        modulesInOrder.filterIsInstance<WorksiteMoveHandler>().any { it.onMove(from, to, player) }
+    fun onMove(from: Location, to: Location, player: Player): Boolean {
+        var handled = false
+        modulesInOrder.filterIsInstance<WorksiteMoveHandler>().forEach { module ->
+            handled = module.onMove(from, to, player) || handled
+        }
+        return handled
+    }
+
+    override fun isActive(identity: ServiceItemIdentity): Boolean =
+        (modulesByKind[identity.activity] as? WorksiteServiceItemOwner)?.isActive(identity) == true
+
+    override fun release(
+        playerId: UUID,
+        identity: ServiceItemIdentity,
+        reason: WorksitePlayerReleaseReason,
+    ) {
+        (modulesByKind[identity.activity] as? WorksiteServiceItemOwner)?.release(playerId, identity, reason)
+    }
+
+    override fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
+        var firstFailure: Throwable? = null
+        modulesInOrder.filterIsInstance<WorksiteParticipantOwner>().forEach { owner ->
+            runCatching { owner.releasePlayer(player, reason) }.exceptionOrNull()?.let { failure ->
+                if (firstFailure == null) firstFailure = failure else requireNotNull(firstFailure).addSuppressed(failure)
+            }
+        }
+        firstFailure?.let { throw it }
+    }
+
+    private companion object {
+        val BREAK_ROUTING_ORDER = listOf(ActivityKind.MINE, ActivityKind.FARM, ActivityKind.LUMBER)
+    }
 }

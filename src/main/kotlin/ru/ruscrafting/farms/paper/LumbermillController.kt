@@ -27,7 +27,7 @@ internal class LumbermillController(
     private val locale: ArcFarmsLocale,
     private val port: WorksiteRuntimePort,
     private val clock: () -> Long,
-) : WorksiteModule<LumberShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler {
+) : WorksiteModule<LumberShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler, WorksiteGuidanceHandler {
     override val kind: ActivityKind = ActivityKind.LUMBER
     private var runtimes: List<Runtime> = emptyList()
     override val zoneCount: Int get() = runtimes.size
@@ -116,7 +116,7 @@ internal class LumbermillController(
         }
     }
 
-    fun updateGuidance(expectedBars: MutableSet<ActivityBarKey>) {
+    override fun updateGuidance(expectedBars: MutableSet<ActivityBarKey>) {
         runtimes.forEach { runtime ->
             if (runtime.state.phase !in setOf(LumberPhase.FELLING, LumberPhase.PROCESSING)) return@forEach
             val region = if (runtime.state.phase == LumberPhase.PROCESSING) runtime.station else runtime.region
@@ -144,7 +144,7 @@ internal class LumbermillController(
         }
     }
 
-    fun emitGuidance() {
+    override fun emitGuidance() {
         runtimes.filter { it.state.phase == LumberPhase.FELLING }.forEach { runtime ->
             val species = runtime.state.species ?: return@forEach
             port.players(runtime.region).filterNot(port::isAdminEditing).forEach { player ->

@@ -40,7 +40,8 @@ internal class MineController(
     private val clock: () -> Long,
     private val random: RandomGenerator,
     private val blockEffects: MineBlockEffects = PaperMineBlockEffects,
-) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler, WorksiteMoveHandler {
+) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler, WorksiteMoveHandler,
+    WorksiteGuidanceHandler {
     override val kind: ActivityKind = ActivityKind.MINE
     private var runtimes: List<Runtime> = emptyList()
     private val reservations = ConcurrentHashMap.newKeySet<String>()
@@ -137,7 +138,7 @@ internal class MineController(
         port.guarded("mine_recovery") { restoreBlocks(now) }
     }
 
-    fun updateGuidance(expectedBars: MutableSet<ActivityBarKey>) {
+    override fun updateGuidance(expectedBars: MutableSet<ActivityBarKey>) {
         runtimes.forEach { runtime ->
             if (runtime.state.phase !in setOf(MinePhase.MINING, MinePhase.HAZARD, MinePhase.EXTRACTION)) return@forEach
             port.players(runtime.region).filter { runtimeAt(it.location) === runtime }.forEach { player ->
@@ -166,7 +167,7 @@ internal class MineController(
         }
     }
 
-    fun emitGuidance() {
+    override fun emitGuidance() {
         runtimes.filter { it.state.phase == MinePhase.HAZARD }.forEach { runtime ->
             port.players(runtime.region).filter { runtimeAt(it.location) === runtime }.forEach { player ->
                 port.spawnGuidanceDust(

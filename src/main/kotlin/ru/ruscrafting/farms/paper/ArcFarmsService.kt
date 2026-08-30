@@ -23,6 +23,8 @@ import org.bukkit.event.player.PlayerDropItemEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerMoveEvent
+import org.bukkit.event.player.PlayerPortalEvent
+import org.bukkit.event.player.PlayerTeleportEvent
 import org.bukkit.event.vehicle.VehicleEnterEvent
 import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.config.ArcFarmsConfig
@@ -46,6 +48,10 @@ import ru.ruscrafting.farms.network.NoOpActivityNetworkGateway
 import ru.ruscrafting.farms.network.WorkdayState
 import ru.ruscrafting.farms.paper.farm.FarmComponentGraph
 import ru.ruscrafting.farms.paper.navigation.ActivityTravelService
+import ru.ruscrafting.farms.paper.worksite.WorksiteEventRouter
+import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantSafety
+import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
+import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItemController
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
@@ -105,7 +111,6 @@ class ArcFarmsService(
     )
     private val lumbermillController = LumbermillController(regionGateway, locale, worksitePort, clock)
     private val mineController = MineController(regionGateway, locale, mineJournal, worksitePort, clock, random)
-    private val auxiliaryWorksites = WorksiteModuleRegistry(listOf(lumbermillController, mineController))
     private val runtimeValidator = ArcFarmsRuntimeValidator(regionGateway, { economy.available }, fixedCropJournal, mineJournal)
     private val farm = FarmComponentGraph(
         plugin = plugin,
@@ -120,13 +125,16 @@ class ArcFarmsService(
         regionGateway = regionGateway,
         port = worksitePort,
         taskSupervisor = taskSupervisor,
-        auxiliary = auxiliaryWorksites,
         clock = clock,
         random = random,
         weeklyContribution = { playerId -> stats.weeklyContribution(playerId, ActivityKind.FARM) },
         currentWeekStart = { farmWeekStartEpochDay(clock()) },
         persistAsync = ::persistAsync,
     )
+    private val worksites = WorksiteModuleRegistry(listOf(farm.module, lumbermillController, mineController))
+    private val serviceItems = WorksiteServiceItemController(plugin, worksites)
+    private val participantSafety = WorksiteParticipantSafety(serviceItems, listOf(worksites))
+    private val worksiteEvents = WorksiteEventRouter(worksites, serviceItems, participantSafety)
     private val travelService = ActivityTravelService(
         settings = { settings },
         debug = debug,
@@ -135,7 +143,7 @@ class ArcFarmsService(
         transfer = transfer,
         points = farm.pointService,
         farms = farm.runtimes,
-        auxiliary = auxiliaryWorksites,
+        auxiliary = worksites,
     )
     @Volatile
     private var started = false
@@ -169,8 +177,8 @@ class ArcFarmsService(
         farm.perks.replace(persisted.farmPerks.orEmpty())
         farm.orderCycle.replace(persisted.pausedFarmZones.orEmpty())
         rebuild(persisted)
-        farm.module.cleanup("service_start")
-        farm.module.activateLoadedState()
+        worksites.cleanup("service_start")
+        worksites.activateLoadedState()
         startTasks()
         stateSafeToPersist = true
         started = true
@@ -237,22 +245,32 @@ class ArcFarmsService(
         farm.drought.clear(reason)
         farm.hud.hideBars()
         farm.hud.restoreAll(reason)
-        farm.module.cleanup(reason)
+        worksites.cleanup(reason)
         settings = candidate
         rebuild(snapshot)
-        farm.module.activateLoadedState()
+        worksites.activateLoadedState()
         startTasks()
     }
 
     fun onBreakLowest(event: BlockBreakEvent) = farm.events.onBreakLowest(event)
-    fun onBreakHigh(event: BlockBreakEvent) = farm.events.onBreakHigh(event)
-    fun onBreakMonitor(event: BlockBreakEvent) = farm.events.onBreakMonitor(event)
+    fun onBreakHigh(event: BlockBreakEvent) = worksiteEvents.onBreakHigh(event)
+    fun onBreakMonitor(event: BlockBreakEvent) = worksiteEvents.onBreakMonitor(event)
     fun onBlockDrop(event: BlockDropItemEvent) = farm.events.onBlockDrop(event)
     fun onInteractLowest(event: PlayerInteractEvent) = farm.events.onInteractLowest(event)
-    fun onInteract(event: PlayerInteractEvent) = farm.events.onInteract(event)
+    fun onInteract(event: PlayerInteractEvent) = worksiteEvents.onInteract(event)
     fun onBlockFromTo(event: org.bukkit.event.block.BlockFromToEvent) = farm.events.onBlockFromTo(event)
-    fun onMove(event: PlayerMoveEvent) = farm.events.onMove(event)
-    fun onQuit(player: Player) = farm.events.onQuit(player)
+    fun onMove(event: PlayerMoveEvent) = worksiteEvents.onMove(event)
+    fun onTeleport(event: PlayerTeleportEvent) {
+        worksiteEvents.onMove(event)
+        worksiteEvents.release(event.player, WorksitePlayerReleaseReason.TELEPORT_OUT)
+    }
+    fun onPortal(event: PlayerPortalEvent) {
+        worksiteEvents.onMove(event)
+        worksiteEvents.release(event.player, WorksitePlayerReleaseReason.PORTAL_OUT)
+    }
+    fun onQuit(player: Player) {
+        worksiteEvents.release(player, WorksitePlayerReleaseReason.QUIT)
+    }
     fun onInteractEntityLowest(event: PlayerInteractEntityEvent) = farm.events.onInteractEntityLowest(event)
     fun onInteractEntity(event: PlayerInteractEntityEvent) = farm.events.onInteractEntity(event)
     fun onVehicleEnter(event: VehicleEnterEvent) = farm.events.onVehicleEnter(event)
@@ -341,10 +359,22 @@ class ArcFarmsService(
     fun adminShowFarmGuidance(player: Player, zoneId: String): Boolean =
         farm.gameplayAdmin.showGuidance(player, zoneId)
 
-    fun onDrop(event: PlayerDropItemEvent) = farm.events.onDrop(event)
-    fun onDeath(event: PlayerDeathEvent) = farm.events.onDeath(event)
-    fun onInventoryClick(event: InventoryClickEvent) = farm.events.onInventoryClick(event)
-    fun onInventoryDrag(event: InventoryDragEvent) = farm.events.onInventoryDrag(event)
+    fun onDrop(event: PlayerDropItemEvent) {
+        worksiteEvents.onDrop(event)
+        farm.events.onDrop(event)
+    }
+    fun onDeath(event: PlayerDeathEvent) {
+        farm.events.onDeath(event)
+        worksiteEvents.onDeath(event.entity, event.drops)
+    }
+    fun onInventoryClick(event: InventoryClickEvent) {
+        worksiteEvents.onInventoryClick(event)
+        farm.events.onInventoryClick(event)
+    }
+    fun onInventoryDrag(event: InventoryDragEvent) {
+        worksiteEvents.onInventoryDrag(event)
+        farm.events.onInventoryDrag(event)
+    }
     fun onEntityDeath(event: EntityDeathEvent) = farm.events.onEntityDeath(event)
     fun onEntityChangeBlock(event: EntityChangeBlockEvent) = farm.events.onEntityChangeBlock(event)
     fun onBlockFade(event: BlockFadeEvent) = farm.events.onBlockFade(event)
@@ -354,7 +384,7 @@ class ArcFarmsService(
     fun onBlockGrow(event: BlockGrowEvent) = farm.events.onBlockGrow(event)
     fun onBlockPlace(event: BlockPlaceEvent) = farm.events.onBlockPlace(event)
 
-    fun statuses(): List<ActivityStatus> = farm.module.statuses() + auxiliaryWorksites.statuses()
+    fun statuses(): List<ActivityStatus> = worksites.statuses()
 
     fun playerStats(playerId: UUID): PlayerActivityStats = stats.player(playerId)
 
@@ -375,7 +405,7 @@ class ArcFarmsService(
 
     fun farmScoreboardLine(playerId: UUID, line: Int): String = farm.hud.line(playerId, line)
 
-    fun onChunkLoad(chunk: org.bukkit.Chunk) = farm.module.reconcileChunk(chunk)
+    fun onChunkLoad(chunk: org.bukkit.Chunk) = worksites.reconcileChunk(chunk)
 
 
     fun canNavigate(kind: ActivityKind): Boolean = travelService.canNavigate(kind)
@@ -384,7 +414,7 @@ class ArcFarmsService(
 
     fun onJoin(player: Player) {
         farm.moles.recoverPlayer(player)
-        farm.events.onJoin(player)
+        worksiteEvents.onJoin(player)
         farm.supplies.removeServiceItems(player, reason = "player_join")
         taskSupervisor.runLater(1L) {
             if (isOperational() && player.isOnline) {
@@ -441,8 +471,7 @@ class ArcFarmsService(
     private fun tick() {
         val now = clock()
         Bukkit.getOnlinePlayers().forEach { player -> farm.hud.syncMusic(player, farm.module.hudRuntime(player), now) }
-        farm.module.tick(now)
-        auxiliaryWorksites.tick(now)
+        worksites.tick(now)
         runGuarded("player_guidance", ::updatePlayerGuidance)
     }
 
@@ -457,17 +486,13 @@ class ArcFarmsService(
     }
 
     private fun updatePlayerGuidance() {
-        val expectedBars = farm.module.updateHud()
-        lumbermillController.updateGuidance(expectedBars)
-        mineController.updateGuidance(expectedBars)
+        val expectedBars = worksites.updateGuidance()
         worksitePort.reconcileBars(expectedBars)
     }
 
 
     private fun emitGuidanceParticles() {
-        farm.module.emitGuidance()
-        lumbermillController.emitGuidance()
-        mineController.emitGuidance()
+        worksites.emitGuidance()
     }
 
     private fun farmAt(location: Location): FarmRuntime? = farm.runtimes.at(location)
@@ -552,7 +577,7 @@ class ArcFarmsService(
         runCatching { farm.drought.clear("plugin_close") }.exceptionOrNull()?.let(failures::add)
         runCatching(farm.hud::hideBars).exceptionOrNull()?.let(failures::add)
         runCatching { farm.hud.restoreAll("plugin_close") }.exceptionOrNull()?.let(failures::add)
-        runCatching { farm.module.cleanup("plugin_close") }.exceptionOrNull()?.let(failures::add)
+        runCatching { worksites.cleanup("plugin_close") }.exceptionOrNull()?.let(failures::add)
         runCatching(farm.worldAdmin::close).exceptionOrNull()?.let(failures::add)
         runCatching(farm.blockRegistry::close).exceptionOrNull()?.let(failures::add)
         if (stateSafeToPersist) runCatching(::persistBlocking).exceptionOrNull()?.let(failures::add)

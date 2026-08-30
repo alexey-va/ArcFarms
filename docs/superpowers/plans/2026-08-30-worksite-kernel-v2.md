@@ -320,7 +320,7 @@ git commit -m "feat: protect worksite service items and leases"
 - Consumes: registry lifecycle, event capabilities, service item guard and participant safety.
 - Produces: one application-owned `WorksiteEventRouter`; `FarmEventRouter` handles farm only.
 
-- [ ] **Step 1: Write failing routing tests**
+- [x] **Step 1: Write failing routing tests**
 
 ```kotlin
 test("block breaks route once without farm knowing mine or lumber") {
@@ -340,23 +340,23 @@ test("quit teleport portal and death each release service items and module lease
 
 Add architecture assertions forbidding `ActivityKind.MINE`, `ActivityKind.LUMBER` and `WorksiteModuleRegistry` references from `FarmEventRouter.kt`.
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Run: `./gradlew test --tests '*WorksiteEventRouterMockBukkitTest' --tests '*ArcFarmsArchitectureContractTest'`
 
 Expected: router is absent and farm still dispatches auxiliary modules.
 
-- [ ] **Step 3: Move routing and lifecycle composition**
+- [x] **Step 3: Move routing and lifecycle composition**
 
 Construct farm, lumber and mine modules before a registry containing all three. Route listener entry points through the new owner. `ArcFarmsService` delegates lifecycle, HUD and particles through registry capabilities and remains under 600 lines.
 
-- [ ] **Step 4: Run the full kernel/farm regression gate**
+- [x] **Step 4: Run the full kernel/farm regression gate**
 
 Run: `./gradlew test --tests '*Worksite*' --tests '*ArcFarmsArchitectureContractTest' --tests '*Farm*MockBukkit*' --tests '*Farm*IntegrationTest'`
 
 Expected: PASS; current farm full flows and menu/travel tests are unchanged.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/kotlin src/test/kotlin

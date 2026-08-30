@@ -21,7 +21,6 @@ import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmBlockRegistry
-import ru.ruscrafting.farms.paper.WorksiteModuleRegistry
 import ru.ruscrafting.farms.paper.farm.FarmEventRouter
 import ru.ruscrafting.farms.paper.farm.admin.FarmRouteAdminService
 import ru.ruscrafting.farms.paper.farm.admin.FarmWorldAdminService
@@ -327,7 +326,6 @@ private fun fireSafetyRouter(
     scene = mockk<FarmContractSceneController>(relaxed = true),
     harvest = mockk<FarmHarvestController>(relaxed = true),
     hud = mockk<FarmHudController>(relaxed = true),
-    auxiliary = mockk<WorksiteModuleRegistry>(relaxed = true),
     transitions = mockk(relaxed = true),
     shiftStartPending = { false },
     persistAsync = { CompletableFuture.completedFuture(Unit) },

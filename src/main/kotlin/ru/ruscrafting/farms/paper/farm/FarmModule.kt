@@ -2,7 +2,11 @@ package ru.ruscrafting.farms.paper.farm
 
 import org.bukkit.Bukkit
 import org.bukkit.Chunk
+import org.bukkit.Location
 import org.bukkit.entity.Player
+import org.bukkit.event.block.BlockBreakEvent
+import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.event.player.PlayerMoveEvent
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.ArcFarmsState
@@ -23,6 +27,10 @@ import ru.ruscrafting.farms.paper.FarmRuntimeFactory
 import ru.ruscrafting.farms.paper.RegionGateway
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.WorksiteModule
+import ru.ruscrafting.farms.paper.WorksiteBlockBreakHandler
+import ru.ruscrafting.farms.paper.WorksiteBlockInteractHandler
+import ru.ruscrafting.farms.paper.WorksiteMoveHandler
+import ru.ruscrafting.farms.paper.WorksiteGuidanceHandler
 import ru.ruscrafting.farms.paper.blockIndexDefinition
 import ru.ruscrafting.farms.paper.farm.admin.FarmWorldAdminService
 import ru.ruscrafting.farms.paper.farm.care.FarmCareController
@@ -49,6 +57,8 @@ import ru.ruscrafting.farms.paper.farm.shift.FarmOrderCycleController
 import ru.ruscrafting.farms.paper.farm.shift.FarmShiftStartService
 import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyController
 import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyKind
+import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantOwner
+import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 
 /** Coordinates farm-zone lifecycle while feature owners retain their own state. */
 internal class FarmModule(
@@ -84,7 +94,9 @@ internal class FarmModule(
     private val placement: FarmPlacementService,
     private val hud: FarmHudController,
     private val guidance: FarmGuidanceController,
-) : WorksiteModule<FarmShiftState> {
+    private val events: FarmEventRouter,
+) : WorksiteModule<FarmShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler, WorksiteMoveHandler,
+    WorksiteGuidanceHandler, WorksiteParticipantOwner {
     override val kind: ActivityKind = ActivityKind.FARM
     override val zoneCount: Int get() = registry.size
 
@@ -287,6 +299,23 @@ internal class FarmModule(
     override fun canAccess(player: Player): Boolean =
         registry.snapshot().any { port.hasAccess(player, it.settings.permission) }
 
+    override fun onBreakHigh(event: BlockBreakEvent): Boolean = events.onBreakHigh(event)
+
+    override fun onInteract(event: PlayerInteractEvent, clicked: org.bukkit.block.Block, player: Player): Boolean =
+        events.onInteract(event)
+
+    override fun onMove(from: Location, to: Location, player: Player): Boolean =
+        events.onMove(PlayerMoveEvent(player, from, to))
+
+    override fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
+        if (reason == WorksitePlayerReleaseReason.JOIN_STALE) events.onJoin(player)
+        else events.onQuit(player, "worksite_${reason.name.lowercase()}")
+    }
+
+    override fun updateGuidance(expectedBars: MutableSet<ActivityBarKey>) {
+        expectedBars += updateHud()
+    }
+
     fun refreshPoint(runtime: FarmRuntime, kind: FarmPointKind, actor: Player, reason: String) {
         when (kind) {
             FarmPointKind.TOOL, FarmPointKind.SEEDS, FarmPointKind.WATER, FarmPointKind.ARCHERY,
@@ -347,7 +376,7 @@ internal class FarmModule(
         fixedCrops.clearCache()
     }
 
-    fun emitGuidance() = guidance.emit()
+    override fun emitGuidance() = guidance.emit()
 
     private fun reconcileLoadedBlockIndexes() = registry.snapshot().forEach { runtime ->
         runtime.region.world.loadedChunks.forEach { chunk -> blockRegistry.reconcileChunk(runtime.blockIndexDefinition(), chunk) }

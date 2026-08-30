@@ -81,13 +81,17 @@ class ArcFarmsListener(
     fun onBlockFromTo(event: BlockFromToEvent) = service.onBlockFromTo(event)
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    fun onMove(event: PlayerMoveEvent) = service.onMove(event)
+    fun onMove(event: PlayerMoveEvent) {
+        if (event !is PlayerTeleportEvent) service.onMove(event)
+    }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    fun onTeleport(event: PlayerTeleportEvent) = service.onMove(event)
+    fun onTeleport(event: PlayerTeleportEvent) {
+        if (event !is PlayerPortalEvent) service.onTeleport(event)
+    }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    fun onPortal(event: PlayerPortalEvent) = service.onMove(event)
+    fun onPortal(event: PlayerPortalEvent) = service.onPortal(event)
 
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onQuit(event: PlayerQuitEvent) = service.onQuit(event.player)

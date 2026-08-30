@@ -29,7 +29,6 @@ import org.bukkit.event.player.PlayerDropItemEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerMoveEvent
-import org.bukkit.event.player.PlayerTeleportEvent
 import org.bukkit.event.vehicle.VehicleEnterEvent
 import org.bukkit.inventory.EquipmentSlot
 import ru.ruscrafting.farms.config.ArcFarmsLocale
@@ -46,7 +45,6 @@ import ru.ruscrafting.farms.paper.FarmGroundSpreadPolicy
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.FarmServiceInventoryPolicy
 import ru.ruscrafting.farms.paper.MaterialRules
-import ru.ruscrafting.farms.paper.WorksiteModuleRegistry
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.WorldEditToolGuard
 import ru.ruscrafting.farms.paper.farm.admin.FarmWorldAdminService
@@ -97,7 +95,6 @@ internal class FarmEventRouter(
     private val scene: FarmContractSceneController,
     private val harvest: FarmHarvestController,
     private val hud: FarmHudController,
-    private val auxiliary: WorksiteModuleRegistry,
     private val transitions: FarmTransitionSink,
     private val shiftStartPending: (String) -> Boolean,
     private val persistAsync: () -> CompletableFuture<Unit>,
@@ -117,34 +114,32 @@ internal class FarmEventRouter(
         if (farmAt(event.block.location) != null) event.isCancelled = true
     }
 
-    fun onBreakHigh(event: BlockBreakEvent) {
+    fun onBreakHigh(event: BlockBreakEvent): Boolean {
         if (farmAt(event.block.location) != null && WorldEditToolGuard.ownsInteraction(event.player, event.player.inventory.itemInMainHand)) {
             event.isCancelled = true
-            return
+            return true
         }
         if (worldAdmin.isInspecting(event.player)) {
             event.isCancelled = true
-            return
+            return true
         }
         if (worldAdmin.isEditing(event.player)) {
+            if (farmAt(event.block.location) == null) return false
             handleAdminBreak(event)
-            return
+            return true
         }
-        if (auxiliary.onBreakHigh(ActivityKind.MINE, event)) return
         farmAt(event.block.location)?.let { runtime ->
             if (shiftStartPending(runtime.settings.id)) {
                 event.isCancelled = true
-                return
+                return true
             }
             port.traceBlockBreak(event, ActivityKind.FARM, runtime.settings.id)
             event.isCancelled = true
             if (!special.handleCropBreak(runtime, event.player, event.block)) harvest.onBreak(event, runtime)
-            return
+            return true
         }
-        auxiliary.onBreakHigh(ActivityKind.LUMBER, event)
+        return false
     }
-
-    fun onBreakMonitor(event: BlockBreakEvent) = auxiliary.onBreakMonitor(event)
 
     fun onBlockDrop(event: BlockDropItemEvent) {
         farmAt(event.blockState.location)?.takeUnless { shiftStartPending(it.settings.id) }
@@ -183,21 +178,22 @@ internal class FarmEventRouter(
         if (owned) deny(event)
     }
 
-    fun onInteract(event: PlayerInteractEvent) {
-        if (WorldEditToolGuard.ownsInteraction(event.player, event.item)) return
+    fun onInteract(event: PlayerInteractEvent): Boolean {
+        if (WorldEditToolGuard.ownsInteraction(event.player, event.item)) return true
         if (worldAdmin.isInspecting(event.player)) {
             if (event.clickedBlock != null && event.action != Action.PHYSICAL) deny(event)
-            return
+            return true
         }
         if (worldAdmin.isEditing(event.player)) {
             if (event.clickedBlock?.location?.let(::farmAt) != null) {
                 event.setUseInteractedBlock(Event.Result.ALLOW)
                 event.setUseItemInHand(Event.Result.ALLOW)
                 event.isCancelled = false
+                return true
             }
-            return
+            return false
         }
-        if (foodDelivery.onInteract(event, runtimes())) return
+        if (foodDelivery.onInteract(event, runtimes())) return true
         if (supplies.isServiceItem(event.player.inventory.itemInMainHand, FarmSupplyKind.FIRE)) {
             val runtime = farmAt(event.player.location)
             if (runtime != null && supplies.isServiceItem(
@@ -205,52 +201,53 @@ internal class FarmEventRouter(
                     runtime.settings.id,
                     FarmSupplyKind.FIRE,
                 ) && barnFire.spray(event, runtime)
-            ) return
+            ) return true
             event.isCancelled = true
             runtime?.let { hud.taskHint(event.player, it, "service_item_wrong_phase") }
-            return
+            return true
         }
         if (event.action == Action.PHYSICAL) {
-            val clicked = event.clickedBlock ?: return
-            if (clicked.type == Material.FARMLAND && farmAt(clicked.location) != null) event.isCancelled = true
-            return
+            val clicked = event.clickedBlock ?: return false
+            val handled = clicked.type == Material.FARMLAND && farmAt(clicked.location) != null
+            if (handled) event.isCancelled = true
+            return handled
         }
-        if (event.hand != EquipmentSlot.HAND || event.action != Action.RIGHT_CLICK_BLOCK) return
-        val clicked = event.clickedBlock ?: return
+        if (event.hand != EquipmentSlot.HAND || event.action != Action.RIGHT_CLICK_BLOCK) return false
+        val clicked = event.clickedBlock ?: return false
         val player = event.player
         farmAt(clicked.location)?.let { runtime ->
             if (shiftStartPending(runtime.settings.id)) {
                 deny(event)
-                return
+                return true
             }
-            if (drought.handleInteraction(event, runtime) || field.handleInteraction(event, runtime, clicked, player)) return
+            if (drought.handleInteraction(event, runtime) || field.handleInteraction(event, runtime, clicked, player)) return true
         }
         farmAt(clicked.location)?.takeIf {
             clicked.type == Material.SWEET_BERRY_BUSH && clicked.type.name in it.settings.crops
         }?.let { runtime ->
             event.isCancelled = true
             if (!special.handleCropBreak(runtime, player, clicked)) harvest.onInteract(event, runtime, clicked)
-            return
+            return true
         }
         farmAt(clicked.location)?.takeIf { supplies.isServiceItem(player.inventory.itemInMainHand) }?.let { runtime ->
             event.isCancelled = true
             hud.taskHint(player, runtime, "service_item_wrong_phase")
-            return
+            return true
         }
-        auxiliary.onInteract(event, clicked, player)
+        return false
     }
 
     fun onBlockFromTo(event: BlockFromToEvent) {
         farmAt(event.block.location)?.let { drought.onFlow(event, it) }
     }
 
-    fun onMove(event: PlayerMoveEvent) {
+    fun onMove(event: PlayerMoveEvent): Boolean {
         routeAdmin.onMove(event)
         care.onMove(event)
         val destination = event.to
         if (event.from.world == destination.world && event.from.blockX == destination.blockX &&
             event.from.blockY == destination.blockY && event.from.blockZ == destination.blockZ
-        ) return
+        ) return false
         val player = event.player
         val from = farmAt(event.from)
         val to = farmAt(destination)
@@ -263,19 +260,19 @@ internal class FarmEventRouter(
         if (to != null && from !== to) hud.enter(player, to)
         if (from !== to) hud.syncMusic(player, to ?: routeRuntime, clock())
         delivery.moveCarried(runtimes(), player, destination)
-        if (event !is PlayerTeleportEvent) auxiliary.onMove(event.from, destination, player)
+        return from != null || to != null || routeRuntime != null
     }
 
-    fun onQuit(player: Player) {
+    fun onQuit(player: Player, reason: String = "player_quit") {
         routeAdmin.release(player)
         foodDelivery.onQuit(player)
-        hud.stopMusic(player, "player_quit")
+        hud.stopMusic(player, reason)
         special.onQuit(player)
-        hud.removePlayer(player, "player_quit")
-        delivery.releasePlayer(runtimes(), player, "player_quit")
-        processing.releasePlayer(runtimes(), player, "player_quit")
-        supplies.removeServiceItems(player, reason = "player_quit")
-        care.releasePlayer(player, "player_quit")
+        hud.removePlayer(player, reason)
+        delivery.releasePlayer(runtimes(), player, reason)
+        processing.releasePlayer(runtimes(), player, reason)
+        supplies.removeServiceItems(player, reason = reason)
+        care.releasePlayer(player, reason)
         port.resetInteractionsContaining(player.uniqueId.toString())
         worldAdmin.release(player)
     }

@@ -10,7 +10,6 @@ import ru.ruscrafting.farms.paper.FarmBlockRegistry
 import ru.ruscrafting.farms.paper.FarmEconomyGateway
 import ru.ruscrafting.farms.paper.FarmNightShiftController
 import ru.ruscrafting.farms.paper.RegionGateway
-import ru.ruscrafting.farms.paper.WorksiteModuleRegistry
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.admin.FarmGameplayAdminService
 import ru.ruscrafting.farms.paper.farm.admin.FarmPointAdminService
@@ -74,7 +73,6 @@ internal class FarmComponentGraph(
     regionGateway: RegionGateway,
     port: WorksiteRuntimePort,
     taskSupervisor: ru.ruscrafting.farms.paper.RuntimeTaskSupervisor,
-    auxiliary: WorksiteModuleRegistry,
     clock: () -> Long,
     random: RandomGenerator,
     weeklyContribution: (UUID) -> Long,
@@ -384,6 +382,36 @@ internal class FarmComponentGraph(
         persistAsync = persistAsync,
         random = random,
     )
+    val events = FarmEventRouter(
+        locale = locale,
+        debug = debug,
+        port = port,
+        runtimes = runtimes::snapshot,
+        worldAdmin = worldAdmin,
+        ledger = ledger,
+        registry = blockRegistry,
+        fixedCrops = fixedCrops,
+        field = field,
+        care = care,
+        drought = drought,
+        pests = pests,
+        birds = birds,
+        foodDelivery = foodDelivery,
+        routeAdmin = routeAdmin,
+        perks = perks,
+        special = special,
+        processing = processing,
+        barnFire = barnFire,
+        delivery = delivery,
+        supplies = supplies,
+        scene = scene,
+        harvest = harvest,
+        hud = hud,
+        transitions = transitions,
+        shiftStartPending = shiftStart::isPending,
+        persistAsync = persistAsync,
+        clock = clock,
+    )
     val module = FarmModule(
         settings = settings,
         debug = debug,
@@ -417,6 +445,7 @@ internal class FarmComponentGraph(
         placement = placement,
         hud = hud,
         guidance = guidance,
+        events = events,
     )
     val pointAdmin = FarmPointAdminService(
         settings = settings,
@@ -461,38 +490,6 @@ internal class FarmComponentGraph(
         persistAsync = persistAsync,
         clock = clock,
     )
-    val events = FarmEventRouter(
-        locale = locale,
-        debug = debug,
-        port = port,
-        runtimes = runtimes::snapshot,
-        worldAdmin = worldAdmin,
-        ledger = ledger,
-        registry = blockRegistry,
-        fixedCrops = fixedCrops,
-        field = field,
-        care = care,
-        drought = drought,
-        pests = pests,
-        birds = birds,
-        foodDelivery = foodDelivery,
-        routeAdmin = routeAdmin,
-        perks = perks,
-        special = special,
-        processing = processing,
-        barnFire = barnFire,
-        delivery = delivery,
-        supplies = supplies,
-        scene = scene,
-        harvest = harvest,
-        hud = hud,
-        auxiliary = auxiliary,
-        transitions = transitions,
-        shiftStartPending = shiftStart::isPending,
-        persistAsync = persistAsync,
-        clock = clock,
-    )
-
     init {
         transitions.bind(FarmTransitionSink(shifts::apply))
         launches.bind(FarmShiftLauncher(shiftStart::start))

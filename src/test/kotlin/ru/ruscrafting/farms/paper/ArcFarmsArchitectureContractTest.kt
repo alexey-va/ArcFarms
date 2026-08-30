@@ -18,6 +18,7 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         "src/main/kotlin/ru/ruscrafting/farms/paper/farm",
     )
     val farmModulePath = farmRoot.resolve("FarmModule.kt")
+    val farmEventRouterPath = farmRoot.resolve("FarmEventRouter.kt")
     val farmRegistryPath = farmRoot.resolve("FarmRuntimeRegistry.kt")
     val worksiteModulePath = repositoryRoot.resolve(
         "src/main/kotlin/ru/ruscrafting/farms/paper/WorksiteModule.kt",
@@ -119,7 +120,7 @@ class ArcFarmsArchitectureContractTest : FunSpec({
             "pendingPositions",
             "restoreMineBlocks",
         ).forEach { forbidden -> source.contains(forbidden) shouldBe false }
-        source.contains("private val auxiliaryWorksites = WorksiteModuleRegistry") shouldBe true
+        source.contains("private val worksites = WorksiteModuleRegistry(listOf(farm.module, lumbermillController, mineController))") shouldBe true
         source.contains("private val runtimeValidator = ArcFarmsRuntimeValidator") shouldBe true
         source.contains("private val worksitePort = PaperWorksiteRuntimePort") shouldBe true
         source.contains("lumbermillController.onBreak") shouldBe false
@@ -234,5 +235,13 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         module.contains(": WorksiteModule<FarmShiftState>") shouldBe true
         module.contains("private var runtimes") shouldBe false
         registry.contains("private var runtimes: List<FarmRuntime>") shouldBe true
+    }
+
+    test("farm event routing has no knowledge of mine or lumber modules") {
+        val source = Files.readString(farmEventRouterPath)
+
+        source.contains("ActivityKind.MINE") shouldBe false
+        source.contains("ActivityKind.LUMBER") shouldBe false
+        source.contains("WorksiteModuleRegistry") shouldBe false
     }
 })
