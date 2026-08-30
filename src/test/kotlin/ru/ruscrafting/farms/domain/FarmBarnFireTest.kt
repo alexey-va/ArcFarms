@@ -50,4 +50,21 @@ class FarmBarnFireTest : FunSpec({
 
         FarmShiftEngine.tick(state, null, Long.MAX_VALUE / 2).state shouldBe state
     }
+
+    test("barn fire spreads through fresh hotspots only and stops at the planned limit") {
+        var state = FarmShiftEngine.initializeBarnFire(incident(), hotspots, initialHotspotCount = 1).state
+        state.specialIncident?.active shouldBe setOf(0)
+
+        state = FarmShiftEngine.spreadBarnFire(state, hotspotCount = 1).state
+        state.specialIncident?.active shouldBe setOf(0, 1)
+
+        state = FarmShiftEngine.extinguishBarnFire(state, 0, first).state
+        state.specialIncident?.active shouldBe setOf(1)
+        state = FarmShiftEngine.spreadBarnFire(state, hotspotCount = 1).state
+        state.specialIncident?.active shouldBe setOf(1, 2)
+
+        val capped = FarmShiftEngine.spreadBarnFire(state, hotspotCount = 1)
+        capped.accepted shouldBe false
+        capped.state.specialIncident?.active shouldBe setOf(1, 2)
+    }
 })

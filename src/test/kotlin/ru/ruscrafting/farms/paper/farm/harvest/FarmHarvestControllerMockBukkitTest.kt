@@ -109,7 +109,7 @@ class FarmHarvestControllerMockBukkitTest : FunSpec({
             Particle.BLOCK,
             Particle.DUST_COLOR_TRANSITION,
             Particle.COMPOSTER,
-            Particle.EXPLOSION,
+            Particle.POOF,
         )
     }
 })

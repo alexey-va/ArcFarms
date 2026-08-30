@@ -9,6 +9,7 @@ import io.kotest.matchers.shouldBe
 import org.bukkit.NamespacedKey
 import org.bukkit.entity.Horse
 import org.bukkit.entity.Interaction
+import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Mob
 import org.bukkit.entity.TextDisplay
 import org.bukkit.event.player.PlayerInteractEntityEvent
@@ -46,6 +47,11 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
             runtime.state.incidentRequired shouldBe route.size
             requireNotNull(runtime.state.specialIncident).routeName shouldBe "main"
             fixture.world.entities.filter(delivery::owns) shouldHaveSize 9
+            val routeRole = NamespacedKey(fixture.plugin, "farm_food_route_role")
+            val cart = fixture.world.entities.filterIsInstance<ItemDisplay>().single { entity ->
+                entity.persistentDataContainer.get(routeRole, PersistentDataType.STRING) == "cart"
+            }
+            cart.isGlowing shouldBe true
 
             delivery.cleanup("simulated_restart")
             runtime = fixture.persistAndReload(runtime)
@@ -57,7 +63,6 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
             fixture.world.entities.filter(delivery::owns).mapTo(linkedSetOf()) { it.uniqueId } shouldBe restartedIds
 
             var horse = fixture.world.entities.filterIsInstance<Horse>().single(delivery::owns)
-            val routeRole = NamespacedKey(fixture.plugin, "farm_food_route_role")
             val portal = fixture.world.entities.filterIsInstance<Interaction>().single { entity ->
                 entity.persistentDataContainer.get(routeRole, PersistentDataType.STRING) == "portal"
             }

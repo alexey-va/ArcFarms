@@ -9,6 +9,7 @@ import org.bukkit.entity.Horse
 import org.bukkit.entity.Interaction
 import org.bukkit.entity.Mob
 import org.bukkit.entity.Player
+import org.bukkit.event.Event
 import org.bukkit.event.block.Action
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerTeleportEvent
@@ -113,6 +114,8 @@ internal class FarmFoodDeliveryGunner(
         if (event.hand != EquipmentSlot.HAND || event.action !in setOf(Action.RIGHT_CLICK_AIR, Action.RIGHT_CLICK_BLOCK)) return false
         val player = event.player
         if (!gear.owns(player.inventory.itemInMainHand)) return false
+        event.setUseInteractedBlock(Event.Result.DENY)
+        event.setUseItemInHand(Event.Result.DENY)
         event.isCancelled = true
         val participant = session != null && player.uniqueId in buildSet {
             session.riderId?.let(::add)

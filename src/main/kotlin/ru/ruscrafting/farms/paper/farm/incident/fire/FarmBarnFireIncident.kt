@@ -48,6 +48,7 @@ internal class FarmBarnFireIncident(
     private val blockPassability: FarmBlockPassability,
 ) {
     private val blocks = mutableMapOf<FireKey, FarmPointPosition>()
+    private val nextSpreadAt = mutableMapOf<String, Long>()
     private val unavailableSequences = mutableMapOf<String, Long>()
 
     fun initialize(runtime: FarmRuntime): Boolean {
@@ -59,7 +60,11 @@ internal class FarmBarnFireIncident(
             logUnavailable(runtime, anchor, "no_supported_surface")
             return false
         }
-        val result = FarmShiftEngine.initializeBarnFire(runtime.state, hotspots)
+        val result = FarmShiftEngine.initializeBarnFire(
+            runtime.state,
+            hotspots,
+            runtime.settings.barnFire.initialHotspotCount.coerceAtMost(hotspots.size),
+        )
         if (!result.accepted) return false
         runtime.state = result.state
         state.persistAsync()
@@ -68,6 +73,7 @@ internal class FarmBarnFireIncident(
             "zone" to runtime.settings.id,
             "sequence" to runtime.state.sequence,
             "hotspots" to hotspots.size,
+            "initial_hotspots" to runtime.state.specialIncident?.active?.size,
             "anchor" to "${anchor.x},${anchor.y},${anchor.z}",
         )
         return true
@@ -110,7 +116,11 @@ internal class FarmBarnFireIncident(
 
     fun update(runtimes: Collection<FarmRuntime>, tick: Long) {
         runtimes.forEach { runtime ->
-            if (!active(runtime)) return@forEach
+            if (!active(runtime)) {
+                nextSpreadAt.remove(runtime.settings.id)
+                return@forEach
+            }
+            spread(runtime, tick)
             val activeCount = runtime.state.specialIncident?.active?.size ?: 0
             val materializedCount = blocks.keys.count { it.zoneId == runtime.settings.id }
             if (materializedCount < activeCount || tick % 10L == 0L) ensure(runtime)
@@ -134,7 +144,7 @@ internal class FarmBarnFireIncident(
         return spray(event.player, runtime)
     }
 
-    /** Paper fires this path when the modeled CROSSBOW starts charging in air. */
+    /** Late fallback if a modeled CROSSBOW reaches Paper's load event. */
     fun spray(event: EntityLoadCrossbowEvent, runtime: FarmRuntime): Boolean {
         val player = event.entity as? Player ?: return false
         if (!active(runtime)) return false
@@ -197,10 +207,12 @@ internal class FarmBarnFireIncident(
 
     fun clear(zoneId: String, reason: String) {
         blocks.keys.filter { it.zoneId == zoneId }.toList().forEach { remove(it, reason) }
+        nextSpreadAt.remove(zoneId)
     }
 
     fun cleanup(reason: String) {
         val removed = blocks.keys.toList().count { key -> remove(key, reason) }
+        nextSpreadAt.clear()
         unavailableSequences.clear()
         if (removed > 0) debug.event("farm_barn_fire_cleanup", "reason" to reason, "removed" to removed)
     }
@@ -233,6 +245,25 @@ internal class FarmBarnFireIncident(
             chosen += point
         }
         return chosen
+    }
+
+    private fun spread(runtime: FarmRuntime, tick: Long) {
+        val zoneId = runtime.settings.id
+        val config = runtime.settings.barnFire
+        val next = nextSpreadAt.getOrPut(zoneId) { tick + config.spreadIntervalTicks }
+        if (tick < next) return
+        nextSpreadAt[zoneId] = tick + config.spreadIntervalTicks
+        val result = FarmShiftEngine.spreadBarnFire(runtime.state, config.spreadHotspotsPerPulse)
+        if (!result.accepted) return
+        runtime.state = result.state
+        state.persistAsync()
+        debug.event(
+            "farm_barn_fire_spread",
+            "zone" to zoneId,
+            "sequence" to runtime.state.sequence,
+            "active_hotspots" to runtime.state.specialIncident?.active?.size,
+            "hotspot_cap" to runtime.state.incidentRequired,
+        )
     }
 
     private fun surfaceY(runtime: FarmRuntime, x: Int, centerY: Int, z: Int, verticalSearch: Int): Int? {

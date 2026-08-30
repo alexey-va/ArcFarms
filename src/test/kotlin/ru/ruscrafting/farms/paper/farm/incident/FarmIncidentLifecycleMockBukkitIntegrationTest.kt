@@ -252,10 +252,13 @@ class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
             val allPoints = requireNotNull(runtime.state.specialIncident).points
             allPoints shouldHaveSize fixture.zone.barnFire.hotspotCount
             allPoints.count { fixture.location(it).block.type == Material.FIRE } shouldBe
-                fixture.zone.barnFire.spawnPerTick
-            repeat(64) {
-                if (allPoints.all { fixture.location(it).block.type == Material.FIRE }) return@repeat
-                fire.ensure(runtime)
+                minOf(fixture.zone.barnFire.initialHotspotCount, fixture.zone.barnFire.spawnPerTick)
+            fire.update(listOf(runtime), 0L)
+            repeat(fixture.zone.barnFire.hotspotCount) { pulse ->
+                fire.update(
+                    listOf(runtime),
+                    (pulse + 1L) * fixture.zone.barnFire.spreadIntervalTicks,
+                )
             }
             allPoints.count { fixture.location(it).block.type == Material.FIRE } shouldBe allPoints.size
 

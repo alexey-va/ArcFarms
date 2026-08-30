@@ -55,7 +55,7 @@ internal object FarmCropBreakEffects {
                 Particle.DustTransition(palette.primary, palette.accent, 1.15f),
             )
             block.world.spawnParticle(Particle.COMPOSTER, center, 3, 0.32, 0.28, 0.32, 0.025)
-            block.world.spawnParticle(Particle.EXPLOSION, center, 1, 0.0, 0.0, 0.0, 0.0)
+            block.world.spawnParticle(Particle.POOF, center, 5, 0.16, 0.14, 0.16, 0.025)
         }
         if (sounds) {
             block.world.playSound(center, Sound.BLOCK_WOOD_BREAK, 0.9f, breakPitch)

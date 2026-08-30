@@ -38,6 +38,11 @@ internal interface WorksiteBlockInteractHandler {
     fun onInteract(event: PlayerInteractEvent, clicked: Block, player: Player): Boolean
 }
 
+/** Handles player interactions that may not target a block, such as service-item shots. */
+internal interface WorksitePlayerInteractHandler {
+    fun onInteract(event: PlayerInteractEvent, player: Player): Boolean
+}
+
 internal interface WorksiteMoveHandler {
     fun onMove(from: Location, to: Location, player: Player): Boolean
 }
@@ -105,6 +110,9 @@ internal class WorksiteModuleRegistry(
 
     fun onInteract(event: PlayerInteractEvent, clicked: Block, player: Player): Boolean =
         modulesInOrder.filterIsInstance<WorksiteBlockInteractHandler>().any { it.onInteract(event, clicked, player) }
+
+    fun onPlayerInteract(event: PlayerInteractEvent, player: Player): Boolean =
+        modulesInOrder.filterIsInstance<WorksitePlayerInteractHandler>().any { it.onInteract(event, player) }
 
     fun onMove(from: Location, to: Location, player: Player): Boolean {
         var handled = false

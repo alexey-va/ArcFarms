@@ -81,13 +81,11 @@ internal class FarmFoodDeliveryIncident(
     private val ambush = FarmFoodDeliveryAmbush(random, night, audience, debug, mobDespawns, vehiclePassengers)
     private val sessions = mutableMapOf<String, FarmFoodDeliverySession>()
     private val lastRouteNames = mutableMapOf<String, String>()
-
     fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING)
 
     fun ownsServiceItem(item: ItemStack?): Boolean = gunner.owns(item)
 
     fun removeServiceItems(player: Player, reason: String) = gunner.remove(player, reason)
-
     fun participants(runtime: FarmRuntime): List<Player> {
         if (!active(runtime)) return emptyList()
         val session = sessions[runtime.settings.id]?.takeIf { it.sequence == runtime.state.sequence } ?: return emptyList()
@@ -205,7 +203,7 @@ internal class FarmFoodDeliveryIncident(
         val participants = (
             audience.players(runtime.region) + participants(runtime)
             ).distinctBy(Player::getUniqueId)
-        night.syncFixedAmbientTime(
+        night.syncAmbientTime(
             nightOwner(runtime.settings.id),
             participants,
             runtime.settings.routeDelivery.playerTime,
@@ -642,6 +640,8 @@ internal class FarmFoodDeliveryIncident(
             display.interpolationDuration = 2
             display.teleportDuration = 2
             display.viewRange = runtime.settings.contractCartVisual.viewRange
+            display.isGlowing = true
+            display.glowColorOverride = org.bukkit.Color.fromRGB(0x92, 0xbe, 0xd8)
             val item = ItemStack(MaterialRules.material(runtime.settings.contractCartVisual.material))
             if (runtime.settings.contractCartVisual.customModelData > 0) item.editMeta { meta: ItemMeta ->
                 @Suppress("DEPRECATION")

@@ -257,7 +257,10 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().routeDelivery.portalRightOffset shouldBe 4.0
         settings.farms.single().routeDelivery.portalWidth shouldBe 3.6f
         settings.farms.single().routeDelivery.portalLabelScale shouldBe 1.8f
-        settings.farms.single().barnFire.hotspotCount shouldBe 100
+        settings.farms.single().barnFire.hotspotCount shouldBe 24
+        settings.farms.single().barnFire.initialHotspotCount shouldBe 6
+        settings.farms.single().barnFire.spreadIntervalTicks shouldBe 40
+        settings.farms.single().barnFire.spreadHotspotsPerPulse shouldBe 1
         settings.farms.single().barnFire.spawnPerTick shouldBe 8
         settings.farms.single().barnFire.placementRadius shouldBe 16
         settings.farms.single().barnFire.particleHotspotLimit shouldBe 24

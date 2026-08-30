@@ -285,7 +285,11 @@ farm-zones:
         product-package: {material: BREAD, custom-model-data: 0, display-transform: FIXED, scale: 1.0, y-offset: 0.65, yaw-offset: 0.0}
     # The barn/pen point anchors real fire whose spread and block damage are suppressed by the plugin.
     barn-fire:
-      hotspots: 100
+      # The incident starts small and can ignite at most this many unique hotspots.
+      hotspots: 24
+      initial-hotspots: 6
+      # While any flame survives, add one fresh hotspot every two seconds up to the cap.
+      spread: {interval-ticks: 40, hotspots-per-pulse: 1}
       # Real fire blocks are materialized in bounded batches to avoid a start-tick spike.
       spawn-per-tick: 8
       placement-radius: 16

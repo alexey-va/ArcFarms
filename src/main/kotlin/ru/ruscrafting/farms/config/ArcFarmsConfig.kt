@@ -355,6 +355,9 @@ data class FarmProcessingSettings(
 
 data class FarmBarnFireSettings(
     val hotspotCount: Int,
+    val initialHotspotCount: Int,
+    val spreadIntervalTicks: Int,
+    val spreadHotspotsPerPulse: Int,
     val spawnPerTick: Int,
     val placementRadius: Int,
     val minSpacing: Double,
@@ -365,7 +368,13 @@ data class FarmBarnFireSettings(
     val particleStep: Double,
     val flameParticleIntervalTicks: Int,
     val particleHotspotLimit: Int,
-)
+) {
+    init {
+        require(initialHotspotCount <= hotspotCount) {
+            "barn fire initial hotspot count must not exceed its total hotspot cap"
+        }
+    }
+}
 
 data class FarmRewardSettings(
     val experience: FarmExperienceRewardSettings,
@@ -919,9 +928,16 @@ class ArcFarmsConfig private constructor(
                         )
                     },
                 )
+                val barnFireHotspotCount = section.int("barn-fire.hotspots", 24)
+                    .checked("barn-fire.hotspots", 1, 256)
                 val barnFire = FarmBarnFireSettings(
-                    hotspotCount = section.int("barn-fire.hotspots", 100)
-                        .checked("barn-fire.hotspots", 1, 256),
+                    hotspotCount = barnFireHotspotCount,
+                    initialHotspotCount = section.int("barn-fire.initial-hotspots", minOf(6, barnFireHotspotCount))
+                        .checked("barn-fire.initial-hotspots", 1, barnFireHotspotCount),
+                    spreadIntervalTicks = section.int("barn-fire.spread.interval-ticks", 40)
+                        .checked("barn-fire.spread.interval-ticks", 10, 400),
+                    spreadHotspotsPerPulse = section.int("barn-fire.spread.hotspots-per-pulse", 1)
+                        .checked("barn-fire.spread.hotspots-per-pulse", 1, 8),
                     spawnPerTick = section.int("barn-fire.spawn-per-tick", 8)
                         .checked("barn-fire.spawn-per-tick", 1, 32),
                     placementRadius = section.int("barn-fire.placement-radius", 16)

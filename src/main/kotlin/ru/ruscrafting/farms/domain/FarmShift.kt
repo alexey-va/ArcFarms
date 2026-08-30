@@ -1090,8 +1090,12 @@ object FarmShiftEngine {
     fun initializeBarnFire(
         current: FarmShiftState,
         hotspots: List<FarmPointPosition>,
+        initialHotspotCount: Int = hotspots.size,
     ): EngineResult<FarmShiftState, FarmShiftEvent> {
         require(hotspots.size in 1..256) { "Farm barn fire must contain 1..256 hotspots" }
+        require(initialHotspotCount in 1..hotspots.size) {
+            "Farm barn fire initial hotspot count must be within its planned hotspots"
+        }
         require(hotspots.distinct().size == hotspots.size) { "Farm barn fire contains duplicate hotspots" }
         require(hotspots.map(FarmPointPosition::world).distinct().size == 1) { "Farm barn fire crosses worlds" }
         if (
@@ -1104,7 +1108,30 @@ object FarmShiftEngine {
                 incidentRequired = hotspots.size,
                 specialIncident = FarmSpecialIncidentState(
                     points = hotspots,
-                    active = hotspots.indices.toSet(),
+                    active = (0 until initialHotspotCount).toSet(),
+                ),
+            ),
+            true,
+        )
+    }
+
+    fun spreadBarnFire(
+        current: FarmShiftState,
+        hotspotCount: Int,
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
+        require(hotspotCount > 0) { "Farm barn fire spread count must be positive" }
+        val incident = current.specialIncident
+        if (
+            current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.BARN_FIRE ||
+            incident == null || incident.active.isEmpty()
+        ) return EngineResult(current, false)
+        val ignitedCount = (current.incidentProgress + incident.active.size).coerceAtMost(incident.points.size)
+        if (ignitedCount >= incident.points.size) return EngineResult(current, false)
+        val nextLimit = (ignitedCount + hotspotCount).coerceAtMost(incident.points.size)
+        return EngineResult(
+            current.copy(
+                specialIncident = incident.copy(
+                    active = incident.active + (ignitedCount until nextLimit),
                 ),
             ),
             true,

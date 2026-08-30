@@ -3,14 +3,21 @@ package ru.ruscrafting.farms.paper.worksite
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
+import org.bukkit.block.BlockFace
 import org.bukkit.entity.Player
+import org.bukkit.event.block.Action
 import org.bukkit.event.block.BlockBreakEvent
+import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.inventory.EquipmentSlot
+import org.bukkit.inventory.ItemStack
+import org.bukkit.Material
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.paper.ActivityStatus
 import ru.ruscrafting.farms.paper.WorksiteBlockBreakHandler
 import ru.ruscrafting.farms.paper.WorksiteModule
 import ru.ruscrafting.farms.paper.WorksiteModuleRegistry
+import ru.ruscrafting.farms.paper.WorksitePlayerInteractHandler
 
 class WorksiteEventRouterMockBukkitTest : FunSpec({
     lateinit var paper: MockBukkitTestRuntime
@@ -33,6 +40,27 @@ class WorksiteEventRouterMockBukkitTest : FunSpec({
         farm.breakCalls shouldBe 0
         lumber.breakCalls shouldBe 0
         mine.breakCalls shouldBe 1
+    }
+
+    test("right click air reaches the general player interaction handler") {
+        val farm = RoutingModule(ActivityKind.FARM, handlesInteraction = true)
+        val registry = WorksiteModuleRegistry(listOf(farm))
+        val router = router(paper, registry)
+        val player = paper.server.addPlayer("Firefighter")
+        val item = ItemStack(Material.CROSSBOW)
+        player.inventory.setItemInMainHand(item)
+        val event = PlayerInteractEvent(
+            player,
+            Action.RIGHT_CLICK_AIR,
+            item,
+            null,
+            BlockFace.SELF,
+            EquipmentSlot.HAND,
+        )
+
+        router.onInteract(event) shouldBe true
+
+        farm.interactionCalls shouldBe 1
     }
 
     test("quit teleport portal and death each release service items and module leases") {
@@ -69,10 +97,12 @@ private fun router(
 private class RoutingModule(
     override val kind: ActivityKind,
     private val handlesBreak: Boolean = false,
+    private val handlesInteraction: Boolean = false,
     private val release: (WorksitePlayerReleaseReason) -> Unit = {},
-) : WorksiteModule<Any>, WorksiteBlockBreakHandler, WorksiteParticipantOwner {
+) : WorksiteModule<Any>, WorksiteBlockBreakHandler, WorksitePlayerInteractHandler, WorksiteParticipantOwner {
     override val zoneCount: Int = 1
     var breakCalls: Int = 0
+    var interactionCalls: Int = 0
 
     override fun states(): Map<String, Any> = emptyMap()
     override fun statuses(): List<ActivityStatus> = emptyList()
@@ -82,6 +112,11 @@ private class RoutingModule(
     override fun onBreakHigh(event: BlockBreakEvent): Boolean {
         breakCalls++
         return handlesBreak
+    }
+
+    override fun onInteract(event: PlayerInteractEvent, player: Player): Boolean {
+        interactionCalls++
+        return handlesInteraction
     }
 
     override fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) = release(reason)

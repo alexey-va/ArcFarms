@@ -40,6 +40,9 @@ class FarmBarnFireIncidentMockBukkitTest : FunSpec({
             val anchor = FarmPointPosition(world.name, 8.5, 65.0, 8.5)
             val fire = FarmBarnFireSettings(
                 hotspotCount = 3,
+                initialHotspotCount = 3,
+                spreadIntervalTicks = 20,
+                spreadHotspotsPerPulse = 1,
                 spawnPerTick = 3,
                 placementRadius = 2,
                 minSpacing = 1.0,
@@ -140,6 +143,9 @@ class FarmBarnFireIncidentMockBukkitTest : FunSpec({
             val anchor = FarmPointPosition(world.name, 8.5, 65.0, 8.5)
             val fire = FarmBarnFireSettings(
                 hotspotCount = 1,
+                initialHotspotCount = 1,
+                spreadIntervalTicks = 20,
+                spreadHotspotsPerPulse = 1,
                 spawnPerTick = 1,
                 placementRadius = 1,
                 minSpacing = 1.0,
@@ -208,6 +214,86 @@ class FarmBarnFireIncidentMockBukkitTest : FunSpec({
             event.shouldConsumeItem() shouldBe false
             runtime.state.phase shouldBe FarmPhase.HARVESTING
             hotspot.block.type shouldBe Material.AIR
+        } finally {
+            paper.close()
+        }
+    }
+
+
+    test("barn fire grows gradually and never exceeds its configured hotspot cap") {
+        val paper = MockBukkitTestRuntime.open()
+        try {
+            val world = paper.server.addSimpleWorld("farm")
+            world.getChunkAt(0, 0).load()
+            for (x in 1..15) for (z in 1..15) world.getBlockAt(x, 64, z).type = Material.STONE
+            val anchor = FarmPointPosition(world.name, 8.5, 65.0, 8.5)
+            val fire = FarmBarnFireSettings(
+                hotspotCount = 3,
+                initialHotspotCount = 1,
+                spreadIntervalTicks = 20,
+                spreadHotspotsPerPulse = 1,
+                spawnPerTick = 3,
+                placementRadius = 2,
+                minSpacing = 1.0,
+                verticalSearch = 2,
+                sprayRange = 18.0,
+                sprayHitRadius = 4.0,
+                sprayCooldownTicks = 1,
+                particleStep = 0.5,
+                flameParticleIntervalTicks = 5,
+                particleHotspotLimit = 3,
+            )
+            val zone = mockk<FarmZoneSettings> {
+                every { id } returns "communal_farm"
+                every { permission } returns "arcfarms.farm"
+                every { barnFire } returns fire
+            }
+            val runtime = FarmRuntime(
+                settings = zone,
+                region = CuboidActivityRegion(world, "farm", CuboidBounds(0, 0, 0, 31, 128, 31)),
+                orders = emptyMap(),
+                orderList = emptyList(),
+                rules = mockk(relaxed = true),
+                state = FarmShiftState(
+                    phase = FarmPhase.INCIDENT,
+                    sequence = 4,
+                    placementSequence = 10,
+                    orderId = "test_order",
+                    incidentType = FarmIncidentType.BARN_FIRE,
+                ),
+            )
+            val port = mockk<WorksiteRuntimePort>(relaxed = true)
+            val controller = FarmBarnFireIncident(
+                settings = {
+                    mockk<ArcFarmsConfig> {
+                        every { particles } returns false
+                        every { sounds } returns false
+                    }
+                },
+                debug = ArcFarmsDebug({ false }) {},
+                access = port,
+                audience = port,
+                state = port,
+                points = FarmPointProvider { _, _ -> anchor },
+                transitions = FarmTransitionSink { target, result, _ -> target.state = result.state },
+                blockPassability = MockBukkitFarmBlockPassability,
+            )
+
+            controller.initialize(runtime) shouldBe true
+            controller.ensure(runtime)
+            val hotspots = runtime.state.specialIncident!!.points.map { it.location(world) }
+            hotspots.count { it.block.type == Material.FIRE } shouldBe 1
+
+            controller.update(listOf(runtime), 0L)
+            controller.update(listOf(runtime), 19L)
+            hotspots.count { it.block.type == Material.FIRE } shouldBe 1
+            controller.update(listOf(runtime), 20L)
+            hotspots.count { it.block.type == Material.FIRE } shouldBe 2
+            controller.update(listOf(runtime), 40L)
+            hotspots.count { it.block.type == Material.FIRE } shouldBe 3
+            controller.update(listOf(runtime), 60L)
+            hotspots.count { it.block.type == Material.FIRE } shouldBe 3
+            runtime.state.specialIncident!!.active.size shouldBe 3
         } finally {
             paper.close()
         }

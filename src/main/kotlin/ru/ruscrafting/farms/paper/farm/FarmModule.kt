@@ -31,7 +31,7 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import ru.ruscrafting.farms.paper.WorksiteModule
 import ru.ruscrafting.farms.paper.WorksiteBlockBreakHandler
-import ru.ruscrafting.farms.paper.WorksiteBlockInteractHandler
+import ru.ruscrafting.farms.paper.WorksitePlayerInteractHandler
 import ru.ruscrafting.farms.paper.WorksiteMoveHandler
 import ru.ruscrafting.farms.paper.WorksiteGuidanceHandler
 import ru.ruscrafting.farms.paper.blockIndexDefinition
@@ -103,7 +103,7 @@ internal class FarmModule(
     private val hud: FarmHudController,
     private val guidance: FarmGuidanceController,
     private val events: FarmEventRouter,
-) : WorksiteModule<FarmShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler, WorksiteMoveHandler,
+) : WorksiteModule<FarmShiftState>, WorksiteBlockBreakHandler, WorksitePlayerInteractHandler, WorksiteMoveHandler,
     WorksiteGuidanceHandler, WorksiteParticipantOwner {
     override val kind: ActivityKind = ActivityKind.FARM
     override val zoneCount: Int get() = registry.size
@@ -312,7 +312,7 @@ internal class FarmModule(
 
     override fun onBreakHigh(event: BlockBreakEvent): Boolean = events.onBreakHigh(event)
 
-    override fun onInteract(event: PlayerInteractEvent, clicked: org.bukkit.block.Block, player: Player): Boolean =
+    override fun onInteract(event: PlayerInteractEvent, player: Player): Boolean =
         events.onInteract(event)
 
     override fun onMove(from: Location, to: Location, player: Player): Boolean =

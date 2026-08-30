@@ -22,6 +22,7 @@ internal class WorksiteEventRouter(
     fun onBreakMonitor(event: BlockBreakEvent) = registry.onBreakMonitor(event)
 
     fun onInteract(event: PlayerInteractEvent): Boolean {
+        if (registry.onPlayerInteract(event, event.player)) return true
         val clicked = event.clickedBlock ?: return false
         return registry.onInteract(event, clicked, event.player)
     }
