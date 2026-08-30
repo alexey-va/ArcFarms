@@ -77,7 +77,12 @@ internal class FarmHarvestController(
             event.isDropItems = false
             event.expToDrop = 0
             if (commit.fixedCrop) {
-                fixedCrops.prepareHarvest(runtime, event.player, event.block, commit.now, ::progress)
+                val block = event.block
+                fixedCrops.prepareHarvest(runtime, event.player, block, commit.now) { currentRuntime, player, crop ->
+                    val material = MaterialRules.material(crop)
+                    FarmCropBreakEffects.emitHarvest(block, material, settings().particles, settings().sounds)
+                    progress(currentRuntime, player, crop)
+                }
                 return@validate
             }
             event.isCancelled = false

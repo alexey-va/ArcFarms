@@ -387,6 +387,6 @@ internal class FarmCarePlanService(
     }
 
     private companion object {
-        const val SCARECROW_MIN_SPACING = 8.0
+        const val SCARECROW_MIN_SPACING = 12.0
     }
 }

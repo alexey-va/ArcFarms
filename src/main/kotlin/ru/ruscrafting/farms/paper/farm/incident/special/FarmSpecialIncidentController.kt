@@ -58,6 +58,7 @@ import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
+import ru.ruscrafting.farms.paper.farm.harvest.FarmCropBreakEffects
 import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
 import ru.ruscrafting.farms.paper.toFarmPlotPosition
 import java.util.Locale
@@ -667,7 +668,7 @@ internal class FarmSpecialIncidentController(
         if (!access.allowInteraction("farm-giant:${runtime.settings.id}:${player.uniqueId}", 90L)) return true
         val result = FarmSpecialIncidentEngine.damageGiantCrop(runtime.state, player.uniqueId)
         if (!result.accepted || !giantCrop.breakBlock(block, runtime.settings.id, runtime.state.sequence)) return true
-        FarmGiantCropHitEffects.emit(
+        FarmCropBreakEffects.emitGiantHit(
             block,
             MaterialRules.material(runtime.state.specialIncident?.crop ?: "PUMPKIN"),
             result.state.incidentProgress,

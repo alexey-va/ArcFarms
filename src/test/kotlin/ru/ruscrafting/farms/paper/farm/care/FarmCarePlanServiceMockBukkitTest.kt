@@ -26,7 +26,7 @@ import java.util.random.RandomGenerator
 import kotlin.math.abs
 
 class FarmCarePlanServiceMockBukkitTest : FunSpec({
-    test("scarecrow targets prefer central indexed beds and remain spaced") {
+    test("scarecrow targets occupy the middle field ring and remain spaced") {
         val paper = MockBukkitTestRuntime.open()
         try {
             val world = paper.server.addSimpleWorld("sp11")
@@ -74,11 +74,11 @@ class FarmCarePlanServiceMockBukkitTest : FunSpec({
             targets.size shouldBe 5
             targets.all { it.role == FarmCareRole.SCARECROW } shouldBe true
             val xs = targets.map { it.position.x.toInt() }
-            targets.none { target -> beds.take(3).any { it.x == target.position.x.toInt() } } shouldBe true
-            (xs.min() >= 24) shouldBe true
-            (xs.max() <= 72) shouldBe true
+            targets.any { target -> beds.take(3).none { it.x == target.position.x.toInt() } } shouldBe true
+            xs.none { it in 40..56 } shouldBe true
+            (xs.count { it in 8..88 } >= 4) shouldBe true
             xs.indices.all { first ->
-                (first + 1 until xs.size).all { second -> abs(xs[first] - xs[second]) >= 8 }
+                (first + 1 until xs.size).all { second -> abs(xs[first] - xs[second]) >= 12 }
             } shouldBe true
         } finally {
             paper.close()

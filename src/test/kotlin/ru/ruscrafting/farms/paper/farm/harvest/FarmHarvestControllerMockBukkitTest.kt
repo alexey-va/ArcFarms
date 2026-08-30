@@ -4,8 +4,11 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import org.bukkit.Material
+import org.bukkit.Particle
+import org.bukkit.entity.Player
 import org.bukkit.event.block.BlockBreakEvent
 import org.mockbukkit.mockbukkit.world.WorldMock
 import ru.arc.paper.testing.MockBukkitTestRuntime
@@ -64,14 +67,20 @@ class FarmHarvestControllerMockBukkitTest : FunSpec({
         val port = mockk<WorksiteRuntimePort>(relaxed = true) {
             every { hasAccess(player, "arcfarms.farm") } returns true
         }
+        val committed = slot<(FarmRuntime, Player, String) -> Unit>()
         val fixedCrops = mockk<FarmFixedCropRecoveryController>(relaxed = true) {
-            every { prepareHarvest(runtime, player, block, any(), any()) } returns true
+            every { prepareHarvest(runtime, player, block, any(), capture(committed)) } returns true
         }
         val incidentRecovery = mockk<FarmIncidentRecoveryController>(relaxed = true) {
             every { pending(runtime) } returns false
         }
         val controller = FarmHarvestController(
-            settings = { mockk<ArcFarmsConfig>(relaxed = true) },
+            settings = {
+                mockk<ArcFarmsConfig>(relaxed = true) {
+                    every { particles } returns true
+                    every { sounds } returns false
+                }
+            },
             locale = mockk<ArcFarmsLocale>(relaxed = true),
             debug = ArcFarmsDebug({ false }) {},
             access = port,
@@ -97,5 +106,15 @@ class FarmHarvestControllerMockBukkitTest : FunSpec({
         event.expToDrop shouldBe 0
         block.type shouldBe Material.MELON
         verify(exactly = 1) { fixedCrops.prepareHarvest(runtime, player, block, 1_000L, any()) }
+
+        block.type = Material.AIR
+        committed.captured(runtime, player, Material.MELON.name)
+
+        world.spawnedParticles.map { it.particle }.toSet() shouldBe setOf(
+            Particle.BLOCK,
+            Particle.DUST_COLOR_TRANSITION,
+            Particle.COMPOSTER,
+            Particle.EXPLOSION,
+        )
     }
 })

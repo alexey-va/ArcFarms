@@ -643,7 +643,7 @@ internal class FarmPestIncident(
         const val NEST_ENTITY_COUNT = 2
         const val MAX_DAMAGED_CROPS = 4_096
         const val PEST_EAT_INTERVAL_MILLIS = 1_000L
-        const val PEST_NEST_MIN_SPACING = 10.0
+        const val PEST_NEST_MIN_SPACING = 16.0
         const val PEST_NEST_DISPLAY_SCALE = 2.0f
     }
 }

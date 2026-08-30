@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.domain
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import kotlin.math.hypot
 
 class FarmIncidentPlannerTest : FunSpec({
     val field = (0 until 60).flatMap { x ->
@@ -18,17 +19,18 @@ class FarmIncidentPlannerTest : FunSpec({
         (first.minOf { a -> first.filterNot { it == a }.minOf { b -> distance(a, b) } } >= 300L) shouldBe true
     }
 
-    test("central incident centers avoid remote edges without clustering") {
+    test("incident centers use the middle ring without collapsing into the field center") {
         val selected = FarmIncidentPlanner.centralDispersedCenters(
             field,
             count = 3,
-            minimumSpacing = 10.0,
+            minimumSpacing = 16.0,
             selectionIndex = 17L,
         )
 
         selected.size shouldBe 3
-        selected.all { it.x in 15..45 } shouldBe true
-        (selected.minOf { a -> selected.filterNot { it == a }.minOf { b -> distance(a, b) } } >= 100L) shouldBe true
+        selected.none { normalizedRadius(it, field) < 0.30 } shouldBe true
+        selected.count { normalizedRadius(it, field) <= 0.90 } shouldBe 3
+        (selected.minOf { a -> selected.filterNot { it == a }.minOf { b -> distance(a, b) } } >= 256L) shouldBe true
     }
 
     test("drought planner creates one bounded non-overlapping group per requested patch") {
@@ -72,4 +74,12 @@ private fun distance(first: FarmPlotPosition, second: FarmPlotPosition): Long {
     val dx = first.x.toLong() - second.x
     val dz = first.z.toLong() - second.z
     return dx * dx + dz * dz
+}
+
+private fun normalizedRadius(position: FarmPlotPosition, field: Collection<FarmPlotPosition>): Double {
+    val centerX = (field.minOf(FarmPlotPosition::x) + field.maxOf(FarmPlotPosition::x)) / 2.0
+    val centerZ = (field.minOf(FarmPlotPosition::z) + field.maxOf(FarmPlotPosition::z)) / 2.0
+    val halfWidth = ((field.maxOf(FarmPlotPosition::x) - field.minOf(FarmPlotPosition::x)) / 2.0).coerceAtLeast(1.0)
+    val halfDepth = ((field.maxOf(FarmPlotPosition::z) - field.minOf(FarmPlotPosition::z)) / 2.0).coerceAtLeast(1.0)
+    return hypot((position.x - centerX) / halfWidth, (position.z - centerZ) / halfDepth)
 }
