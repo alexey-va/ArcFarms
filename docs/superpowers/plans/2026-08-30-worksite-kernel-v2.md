@@ -372,19 +372,19 @@ git commit -m "refactor: route all worksites through typed capabilities"
 **Interfaces:**
 - Produces: a green kernel baseline consumed by the lumber and mine plans.
 
-- [ ] **Step 1: Run static invariants**
+- [x] **Step 1: Run static invariants**
 
 Run: `git diff --check && ! rg 'enum class ShiftEvent|Bukkit.getScheduler|server.scheduler' src/main/kotlin`
 
 Expected: exit 0.
 
-- [ ] **Step 2: Run the complete workstation gate**
+- [x] **Step 2: Run the complete workstation gate**
 
 Run: `./gradlew clean test shadowJar`
 
 Expected: `BUILD SUCCESSFUL` with a versioned shadow JAR.
 
-- [ ] **Step 3: Record the artifact evidence**
+- [x] **Step 3: Record the artifact evidence**
 
 Run: `shasum -a 256 build/libs/ArcFarms-*.jar && git status --short`
 
