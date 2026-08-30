@@ -25,6 +25,8 @@ internal class MineBlockRecoveryController(
 
     val pendingCount: Int get() = journal.records().size
 
+    fun records(zoneId: String): List<PendingMineBlock> = journal.records().filter { it.zoneId == zoneId }
+
     fun canStart(zoneId: String): Boolean = journal.records().none { it.zoneId == zoneId }
 
     fun containsPosition(positionKey: String): Boolean =
@@ -90,6 +92,18 @@ internal class MineBlockRecoveryController(
             }
         }
         return processed
+    }
+
+    fun restoreNow(block: Block): CompletableFuture<Boolean> {
+        val positionKey = "${block.world.name}:${block.x}:${block.y}:${block.z}"
+        val record = journal.records().firstOrNull { it.positionKey == positionKey }
+            ?: return CompletableFuture.completedFuture(false)
+        val temporary = material(record.temporaryMaterial, record)
+            ?: return CompletableFuture.completedFuture(false)
+        val next = material(record.nextMaterial, record) ?: return CompletableFuture.completedFuture(false)
+        if (block.type == temporary) block.setType(next, false)
+        retire(record, "restored-now")
+        return CompletableFuture.completedFuture(true)
     }
 
     override fun activateLoadedState() {
