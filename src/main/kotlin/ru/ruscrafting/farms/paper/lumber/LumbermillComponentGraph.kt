@@ -17,6 +17,9 @@ import ru.ruscrafting.farms.paper.lumber.stacking.LumberStackingEffects
 import ru.ruscrafting.farms.paper.lumber.stacking.LumberStackingScene
 import ru.ruscrafting.farms.paper.lumber.stacking.PaperLumberStackingEffects
 import ru.ruscrafting.farms.paper.lumber.dispatch.LumberDispatchController
+import ru.ruscrafting.farms.paper.lumber.incident.LumberIncidentCoordinator
+import ru.ruscrafting.farms.paper.lumber.incident.windthrow.LumberWindthrowIncident
+import ru.ruscrafting.farms.paper.lumber.incident.beetle.LumberBarkBeetleIncident
 import ru.ruscrafting.farms.persistence.LumberRecoveryJournal
 
 /** Composition-only graph; the registry is the sole mutable runtime collection owner. */
@@ -34,6 +37,7 @@ internal class LumbermillComponentGraph(
     val index = LumberBlockIndex(plugin)
     val recovery = LumberBlockRecoveryController(journal, port, clock)
     private val transitions = LumberTransitionCoordinator(port)
+    val incidents = LumberIncidentCoordinator(transitions, port)
     val bundleScene = LumberBundleScene(registry, bundleEffects, transitions, port, clock)
     val skidding = LumberSkiddingController(registry, bundleScene, port)
     val stackingScene = LumberStackingScene(registry, stackingEffects, transitions, port)
@@ -47,6 +51,8 @@ internal class LumbermillComponentGraph(
         stackingScene::reconcile,
     )
     val dispatch = LumberDispatchController(registry, transitions, port, clock)
+    val windthrow = LumberWindthrowIncident(registry, index, recovery, incidents, port)
+    val beetles = LumberBarkBeetleIncident(registry, index, incidents, port)
     val felling = LumberFellingController(
         registry,
         index,
@@ -66,7 +72,7 @@ internal class LumbermillComponentGraph(
     }
     val module = LumbermillModule(
         regions, port, registry, index, recovery, tickets, felling, skidding, bundleScene,
-        sawing, stacking, stackingScene, dispatch,
+        sawing, stacking, stackingScene, dispatch, windthrow, beetles,
     )
 
     internal val mutableRuntimeCollectionCount: Int = 1

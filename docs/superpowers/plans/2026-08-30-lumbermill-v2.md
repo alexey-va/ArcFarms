@@ -307,7 +307,7 @@ git commit -m "feat: add lumber workshop and dispatch"
 **Interfaces:**
 - Produces: recoverable two-times obstacle targets and indexed infected-face targets.
 
-- [ ] **Step 1: Write failing incident scenarios**
+- [x] **Step 1: Write failing incident scenarios**
 
 ```kotlin
 test("windthrow and beetles replace invalid targets and resume felling") {
@@ -325,17 +325,17 @@ test("windthrow and beetles replace invalid targets and resume felling") {
 }
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Run: `./gradlew test --tests '*LumberForestTargetIncidentsMockBukkitTest'`
 
 Expected: incident owners are missing.
 
-- [ ] **Step 3: Implement both target incidents with separate owners**
+- [x] **Step 3: Implement both target incidents with separate owners**
 
 Windthrow journals every temporary obstruction. Beetles mutate no world blocks and accept only the current highlighted indexed face with an axe. Both report bounded placement rejection counters.
 
-- [ ] **Step 4: Run tests and commit**
+- [x] **Step 4: Run tests and commit**
 
 Run: `./gradlew test --tests '*LumberForestTargetIncidents*' --tests '*LumberBlockRecovery*'`
 

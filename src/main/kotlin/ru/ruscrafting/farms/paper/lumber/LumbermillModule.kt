@@ -33,6 +33,8 @@ import ru.ruscrafting.farms.paper.lumber.sawing.LumberSawingController
 import ru.ruscrafting.farms.paper.lumber.stacking.LumberStackingController
 import ru.ruscrafting.farms.paper.lumber.stacking.LumberStackingScene
 import ru.ruscrafting.farms.paper.lumber.dispatch.LumberDispatchController
+import ru.ruscrafting.farms.paper.lumber.incident.windthrow.LumberWindthrowIncident
+import ru.ruscrafting.farms.paper.lumber.incident.beetle.LumberBarkBeetleIncident
 import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantOwner
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 
@@ -50,6 +52,8 @@ internal class LumbermillModule(
     private val stacking: LumberStackingController,
     private val stackingScene: LumberStackingScene,
     private val dispatch: LumberDispatchController,
+    private val windthrow: LumberWindthrowIncident,
+    private val beetles: LumberBarkBeetleIncident,
 ) : WorksiteModule<LumberShiftState>, WorksiteBlockBreakHandler, WorksiteEntityInteractHandler,
     WorksiteBlockInteractHandler, WorksiteMoveHandler, WorksiteFastVisualHandler, WorksiteParticipantOwner {
     override val kind: ActivityKind = ActivityKind.LUMBER
@@ -81,16 +85,19 @@ internal class LumbermillModule(
             }
             bundleScene.reconcile(runtime)
             stackingScene.reconcile(runtime)
+            beetles.reconcile(runtime)
         }
     }.also { recovery.processDue(now) }
 
     override fun canAccess(player: Player): Boolean =
         registry.snapshot().any { port.hasAccess(player, it.settings.permission) }
 
-    override fun onBreakHigh(event: BlockBreakEvent): Boolean = felling.onBreakHigh(event)
+    override fun onBreakHigh(event: BlockBreakEvent): Boolean =
+        windthrow.onBreak(event) || felling.onBreakHigh(event)
 
     override fun onInteract(event: PlayerInteractEvent, clicked: Block, player: Player): Boolean =
-        sawing.onInteract(event, clicked, player) || stacking.onInteract(event, clicked, player) ||
+        beetles.onInteract(event, clicked, player) || sawing.onInteract(event, clicked, player) ||
+            stacking.onInteract(event, clicked, player) ||
             dispatch.onInteract(event, clicked, player)
 
     override fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean =

@@ -82,4 +82,33 @@ class LumberShiftV2Test : FunSpec({
         )
         LumberStateMigration.migrate(cooldown) shouldBe cooldown
     }
+
+    test("incident resolution restores the exact foreground objective") {
+        val objective = ru.ruscrafting.farms.domain.worksite.ObjectiveTargetPool.plan(
+            ru.ruscrafting.farms.domain.worksite.WorksiteObjectiveKey("sawmill", "felling", 1),
+            1,
+            listOf(
+                ru.ruscrafting.farms.domain.worksite.ObjectiveTargetCandidate(
+                    "log_1",
+                    ru.ruscrafting.farms.domain.worksite.WorksitePosition("world", 1, 64, 1),
+                    ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole("log"),
+                    0,
+                ),
+            ),
+        )
+        val foreground = LumberShiftState(
+            phase = LumberPhase.FELLING,
+            sequence = 1,
+            orderId = "oak_contract",
+            species = "OAK",
+            objective = objective,
+        )
+
+        val started = LumberShiftEngine.startIncident(foreground, LumberIncidentType.WINDTHROW, required = 1).state
+        val worked = LumberShiftEngine.workIncident(started, java.util.UUID.randomUUID()).state
+        val resumed = LumberShiftEngine.resolveIncident(worked).state
+
+        resumed.phase shouldBe LumberPhase.FELLING
+        resumed.objective shouldBe objective
+    }
 })

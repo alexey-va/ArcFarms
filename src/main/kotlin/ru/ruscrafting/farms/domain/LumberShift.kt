@@ -119,6 +119,7 @@ data class LumberShiftState(
     val incidentSchedule: List<LumberIncidentType> = emptyList(),
     val incidentCursor: Int = 0,
     val resumePhase: LumberPhase? = null,
+    val resumeObjective: ru.ruscrafting.farms.domain.worksite.WorksiteObjectiveState? = null,
     val incident: LumberIncidentState? = null,
     val objective: ru.ruscrafting.farms.domain.worksite.WorksiteObjectiveState? = null,
 )
@@ -274,7 +275,13 @@ object LumberShiftEngine {
             deadlineAt = deadlineAt,
         )
         return EngineResult(
-            current.copy(phase = LumberPhase.INCIDENT, resumePhase = current.phase, incident = incident, objective = null),
+            current.copy(
+                phase = LumberPhase.INCIDENT,
+                resumePhase = current.phase,
+                resumeObjective = current.objective,
+                incident = incident,
+                objective = null,
+            ),
             true,
             events = listOf(LumberShiftEvent.INCIDENT_STARTED),
         )
@@ -303,9 +310,10 @@ object LumberShiftEngine {
             current.copy(
                 phase = resume,
                 resumePhase = null,
+                resumeObjective = null,
                 incident = null,
                 incidentCursor = current.incidentCursor + 1,
-                objective = null,
+                objective = current.resumeObjective,
             ),
             true,
             events = listOf(LumberShiftEvent.INCIDENT_RESOLVED),
