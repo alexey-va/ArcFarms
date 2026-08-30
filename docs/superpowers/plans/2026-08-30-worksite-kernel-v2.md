@@ -103,7 +103,7 @@ git commit -m "refactor: type worksite engine events"
 - Produces: `WorksiteObjectiveKey`, `WorksitePosition`, `ObjectiveTargetRole`, `ObjectiveTargetStatus`, `ObjectiveTargetState`, `WorksiteObjectiveState`, `ObjectiveTargetPool.plan`, `.lease`, `.release`, `.complete`, `.invalidate`.
 - Consumers: lumber and mine objective planners, service-item leases, guidance views.
 
-- [ ] **Step 1: Write failing pool tests**
+- [x] **Step 1: Write failing pool tests**
 
 ```kotlin
 test("generated objectives place twice the quota and cap completion") {
@@ -124,23 +124,23 @@ test("release and invalidation return or replace targets without losing progress
 }
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Run: `./gradlew test --tests '*ObjectiveTargetPoolTest'`
 
 Expected: compilation fails because the objective package is absent.
 
-- [ ] **Step 3: Implement immutable target transitions**
+- [x] **Step 3: Implement immutable target transitions**
 
 `plan` selects deterministic candidates by score/id, requests `required * 2`, rejects fewer than `required`, and returns unused candidates as a bounded reserve. `complete` changes only `AVAILABLE`/matching `LEASED` targets and caps contributions at `required`. `release` changes the player's `LEASED` targets back to `AVAILABLE`. `invalidate` keeps progress and consumes one reserve candidate.
 
-- [ ] **Step 4: Run objective and serialization tests**
+- [x] **Step 4: Run objective and serialization tests**
 
 Run: `./gradlew test --tests '*ObjectiveTargetPoolTest' --tests '*Persistence*Test'`
 
 Expected: PASS with deterministic equality after JSON round trips.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/kotlin/ru/ruscrafting/farms/domain/worksite src/test/kotlin/ru/ruscrafting/farms/domain/worksite
