@@ -2,13 +2,24 @@ package ru.ruscrafting.farms.paper.farm.placement
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import io.mockk.every
 import io.mockk.mockk
 import org.bukkit.Location
 import org.bukkit.Material
 import org.mockbukkit.mockbukkit.world.WorldMock
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
+import ru.ruscrafting.farms.config.CuboidBounds
+import ru.ruscrafting.farms.config.FarmDeliverySettings
+import ru.ruscrafting.farms.config.FarmZoneSettings
+import ru.ruscrafting.farms.domain.FarmDeliveryPosition
+import ru.ruscrafting.farms.domain.FarmPointKind
+import ru.ruscrafting.farms.domain.FarmPointPosition
+import ru.ruscrafting.farms.domain.FarmRules
+import ru.ruscrafting.farms.domain.FarmShiftState
+import ru.ruscrafting.farms.paper.CuboidActivityRegion
 import ru.ruscrafting.farms.paper.FarmBlockRegistry
+import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import java.util.Random
 
@@ -50,5 +61,48 @@ class FarmPlacementServiceMockBukkitTest : FunSpec({
 
         world.getBlockAt(0, 70, 0).type = Material.STONE
         FarmSurfacePolicy.isOutdoorBed(soil) shouldBe false
+    }
+
+    test("delivery crates fall back to safe loaded ground when the bed index is empty") {
+        for (x in 0..15) for (z in 0..15) world.getBlockAt(x, 64, z).type = Material.STONE
+        val delivery = mockk<FarmDeliverySettings> {
+            every { crates } returns 3
+            every { spawnRadius } returns 6
+            every { minCrateSpacing } returns 3.0
+            every { radius } returns 2.0
+        }
+        val zone = mockk<FarmZoneSettings>(relaxed = true) {
+            every { id } returns "communal_farm"
+            every { this@mockk.delivery } returns delivery
+            every { placementSearchRadius } returns 8
+            every { placementReceivingExclusionPadding } returns 1.5
+            every { crops } returns setOf("WHEAT")
+        }
+        val runtime = FarmRuntime(
+            settings = zone,
+            region = CuboidActivityRegion(world, "farm", CuboidBounds(0, 0, 0, 15, 128, 15)),
+            orders = emptyMap(),
+            orderList = emptyList(),
+            rules = FarmRules(listOf(50), 1, 1_000L),
+            state = FarmShiftState(sequence = 9L),
+        )
+        val service = FarmPlacementService(
+            plugin = paper.createSimplePlugin("FarmPlacementFallbackTest"),
+            blockRegistry = mockk(relaxed = true),
+            points = FarmPointProvider { _, kind ->
+                check(kind == FarmPointKind.RECEIVING)
+                FarmPointPosition(world.name, 14.5, 65.0, 14.5)
+            },
+            debug = mockk(relaxed = true),
+            random = Random(1L),
+        )
+
+        val locations = service.deliveryCrateLocations(
+            runtime,
+            FarmDeliveryPosition(world.name, 7.5, 65.0, 7.5),
+        )
+
+        locations.size shouldBe 3
+        locations.all(service::isOpenToSky) shouldBe true
     }
 })

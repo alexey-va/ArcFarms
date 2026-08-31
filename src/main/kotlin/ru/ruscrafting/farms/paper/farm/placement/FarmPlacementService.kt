@@ -100,12 +100,12 @@ internal class FarmPlacementService(
         val world = runtime.region.world.takeIf { it.name == anchor.world } ?: return emptyList()
         val anchorLocation = Location(world, anchor.x, anchor.y, anchor.z)
         val nearby = bedCandidates(runtime, listOf(anchorLocation), runtime.settings.delivery.spawnRadius)
-        val candidates = if (nearby.size >= runtime.settings.delivery.crates) {
-            nearby
-        } else {
-            bedCandidates(runtime, sources(runtime, anchorLocation), runtime.settings.placementSearchRadius)
-        }
-        return FarmDeliveryPlanner.selectTargets(
+        val candidates = if (nearby.size >= runtime.settings.delivery.crates) nearby else buildList {
+            addAll(nearby)
+            addAll(bedCandidates(runtime, sources(runtime, anchorLocation), runtime.settings.placementSearchRadius))
+            addAll(safeGroundCandidates(runtime, listOf(anchorLocation), runtime.settings.delivery.spawnRadius))
+        }.distinct()
+        fun select(minimumSpacing: Double) = FarmDeliveryPlanner.selectTargets(
             candidates = candidates,
             objectiveX = anchor.x,
             objectiveZ = anchor.z,
@@ -114,8 +114,12 @@ internal class FarmPlacementService(
             maximumParticipantDistance = runtime.settings.delivery.spawnRadius.toDouble(),
             targetCount = runtime.settings.delivery.crates,
             selectionIndex = runtime.state.sequence,
-            minimumTargetDistance = runtime.settings.delivery.minCrateSpacing,
-        ).map { selected -> Location(world, selected.x, selected.y, selected.z) }
+            minimumTargetDistance = minimumSpacing,
+        )
+        val selected = select(runtime.settings.delivery.minCrateSpacing).let { spaced ->
+            if (spaced.size >= runtime.settings.delivery.crates) spaced else select(0.0)
+        }
+        return selected.map { target -> Location(world, target.x, target.y, target.z) }
     }
 
     fun deliveryCrateLocation(runtime: FarmRuntime, anchor: FarmDeliveryPosition, index: Int): Location? =

@@ -42,6 +42,7 @@ import ru.ruscrafting.farms.paper.FarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteCarryable
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.platform.FarmBlockPassability
@@ -175,7 +176,7 @@ internal class FarmProcessingIncident(
         }
         val maxDistance = runtime.settings.processing.interactionRadius
         if (player.world !== event.rightClicked.world ||
-            !withinInteractionReach(player, event.rightClicked, maxDistance)
+            !WorksiteCarryable.withinInteractionReach(player, event.rightClicked, maxDistance)
         ) return true
         if (!access.allowInteraction("farm-processing:${identity.zoneId}:${player.uniqueId}", 250)) return true
         when (identity.role) {
@@ -427,15 +428,15 @@ internal class FarmProcessingIncident(
         }
         if (remainingSlots.isEmpty()) return
         val layout = layout(runtime) ?: return
-        val radiusSquared = runtime.settings.processing.proximityPickupRadius.let { it * it }
         audience.players(runtime.region)
             .asSequence()
             .filterNot(access::isAdminEditing)
             .filter { player -> access.hasAccess(player, runtime.settings.permission) }
             .filterNot { player -> carriers.values.any { lease -> lease.playerId == player.uniqueId } }
             .forEach { player ->
-                val candidate = remainingSlots
-                    .asSequence()
+                val candidate = WorksiteCarryable.nearest(
+                    player.location,
+                    remainingSlots.asSequence()
                     .filterNot { index -> ProcessingCargoKey(runtime.settings.id, cargo, index) in carriers }
                     .map { index ->
                         val point = if (cargo == ProcessingCargo.RAW) {
@@ -444,13 +445,10 @@ internal class FarmProcessingIncident(
                             FarmProcessingLayout.floorPackagePosition(layout.outputChute, index)
                         }
                         index to point.location(runtime)
-                    }
-                    .filter { (_, location) -> location.world === player.world }
-                    .minByOrNull { (_, location) -> player.location.distanceSquared(location) }
-                    ?: return@forEach
-                if (player.location.distanceSquared(candidate.second) <= radiusSquared) {
-                    pickup(runtime, player, cargo, candidate.first)
-                }
+                    },
+                    runtime.settings.processing.proximityPickupRadius,
+                ) ?: return@forEach
+                pickup(runtime, player, cargo, candidate)
             }
     }
 
@@ -669,9 +667,11 @@ internal class FarmProcessingIncident(
     }
 
     private fun carriedLocation(runtime: FarmRuntime, player: Player): Location {
-        val behind = player.location.direction.setY(0.0)
-        if (behind.lengthSquared() > 0.001) behind.normalize().multiply(-0.6)
-        return player.location.clone().add(behind).add(0.0, runtime.settings.processing.carriedYOffset, 0.0)
+        return WorksiteCarryable.carriedLocation(
+            player,
+            runtime.settings.processing.carriedForwardOffset,
+            runtime.settings.processing.carriedYOffset,
+        )
     }
 
     private fun markCarried(entity: Entity, runtime: FarmRuntime, key: ProcessingCargoKey) {
@@ -710,31 +710,6 @@ internal class FarmProcessingIncident(
     private fun tracked(zoneId: String): Boolean = scene.hasZone(zoneId) ||
         carriers.keys.any { it.zoneId == zoneId } ||
         crank.hasZone(zoneId)
-
-    private fun withinInteractionReach(player: Player, entity: Entity, maxDistance: Double): Boolean {
-        val eye = player.eyeLocation
-        val location = entity.location
-        val bounds = if (entity is Interaction) {
-            val halfWidth = entity.interactionWidth / 2.0
-            doubleArrayOf(
-                location.x - halfWidth,
-                location.y,
-                location.z - halfWidth,
-                location.x + halfWidth,
-                location.y + entity.interactionHeight,
-                location.z + halfWidth,
-            )
-        } else {
-            entity.boundingBox.let { doubleArrayOf(it.minX, it.minY, it.minZ, it.maxX, it.maxY, it.maxZ) }
-        }
-        val closestX = eye.x.coerceIn(bounds[0], bounds[3])
-        val closestY = eye.y.coerceIn(bounds[1], bounds[4])
-        val closestZ = eye.z.coerceIn(bounds[2], bounds[5])
-        val dx = eye.x - closestX
-        val dy = eye.y - closestY
-        val dz = eye.z - closestZ
-        return dx * dx + dy * dy + dz * dz <= maxDistance * maxDistance
-    }
 
     private fun logUnavailable(runtime: FarmRuntime, reason: String) {
         if (lastUnavailableSequence[runtime.settings.id] == runtime.state.placementSequence) return

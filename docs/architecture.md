@@ -110,6 +110,12 @@ Worksite infrastructure is split into narrow capability ports:
 receive only the ports they actually call; there is no production compatibility
 composite.
 
+`WorksiteCarryable` owns the shared geometry for display-backed portable
+objects: front-of-player positioning, proximity selection and entity hitbox
+reach. Farm crates, scarecrows and processing cargo use it directly, and lumber
+display carriers use the same pose contract. Feature controllers still own
+leases, state transitions, permissions and cleanup.
+
 A feature constructor should normally depend on no more than five typed ports.
 Clock and random sources are injectable values, not service callbacks. Do not
 replace the god class with a god context or dozens of lambdas.

@@ -8,6 +8,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import org.bukkit.Location
 import org.bukkit.entity.Interaction
+import org.bukkit.entity.ItemDisplay
 import org.bukkit.plugin.Plugin
 import org.mockbukkit.mockbukkit.ServerMock
 import org.mockbukkit.mockbukkit.entity.PlayerMock
@@ -108,6 +109,19 @@ class FarmDeliveryControllerMockBukkitTest : FunSpec({
         fixture.entityLookup.globalScans shouldBe 0
         verify(exactly = 1) { fixture.placement.deliveryCrateLocations(fixture.runtime, any()) }
     }
+
+    test("walking onto a crate picks it up and carries it in front of the player") {
+        val fixture = deliveryFixture(world, plugin, crates = 1)
+        fixture.controller.ensure(fixture.runtime)
+        val destination = Location(world, 4.5, 65.0, 4.5, -90f, 0f)
+        player.teleport(destination)
+
+        fixture.controller.moveCarried(listOf(fixture.runtime), player, destination)
+
+        fixture.controller.carrierCount(fixture.runtime.settings.id) shouldBe 1
+        val carried = world.entities.filterIsInstance<ItemDisplay>().single(fixture.controller::owns)
+        (carried.location.x > player.location.x) shouldBe true
+    }
 })
 
 private data class DeliveryFixture(
@@ -138,9 +152,11 @@ private fun deliveryFixture(world: WorldMock, plugin: Plugin, crates: Int): Deli
         carriedScale = 1.2f,
         carriedYOffset = 0.8,
         displayViewRange = 1.0f,
+        proximityPickupRadius = 1.75,
     )
     val zone = mockk<FarmZoneSettings> {
         every { id } returns "communal_farm"
+        every { permission } returns "arcfarms.farm"
         every { this@mockk.delivery } returns delivery
         every { deliveryCarriedForwardOffset } returns 0.65
     }
@@ -161,6 +177,7 @@ private fun deliveryFixture(world: WorldMock, plugin: Plugin, crates: Int): Deli
         every { particles } returns false
     }
     val port = mockk<WorksiteRuntimePort>(relaxed = true)
+    every { port.hasAccess(any(), any()) } returns true
     val points = FarmPointProvider { _, kind ->
         when (kind) {
             FarmPointKind.RECEIVING -> FarmPointPosition(world.name, 12.5, 65.0, 12.5)
@@ -182,6 +199,7 @@ private fun deliveryFixture(world: WorldMock, plugin: Plugin, crates: Int): Deli
         plugin = plugin,
         settings = { config },
         debug = ArcFarmsDebug({ false }) {},
+        access = port,
         port = port,
         points = points,
         placement = placement,

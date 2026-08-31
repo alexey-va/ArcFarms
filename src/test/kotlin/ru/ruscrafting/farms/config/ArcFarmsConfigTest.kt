@@ -491,6 +491,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().processing.machineCycles shouldBe 3
         settings.farms.single().processing.outputPackages shouldBe 4
         settings.farms.single().processing.proximityPickupRadius shouldBe 1.75
+        settings.farms.single().processing.carriedForwardOffset shouldBe 0.6
         settings.farms.single().processing.crankInnerRadius shouldBe 2.4
         settings.farms.single().processing.crankOuterRadius shouldBe 4.0
         settings.farms.single().processing.crankRadiusTolerance shouldBe 1.0
@@ -507,9 +508,10 @@ class ArcFarmsConfigTest : FunSpec({
             "BARREL"
         settings.farms.single().processing.visuals.getValue(FarmProcessingVisualRole.RAW_PACKAGE).material shouldBe
             "WHEAT"
-        settings.farms.single().routeDelivery.portalRightOffset shouldBe 4.0
         settings.farms.single().routeDelivery.portalWidth shouldBe 3.6f
         settings.farms.single().routeDelivery.portalLabelScale shouldBe 1.8f
+        settings.farms.single().delivery.proximityPickupRadius shouldBe 1.75
+        settings.farms.single().scarecrowPickupRadius shouldBe 1.75
         settings.farms.single().barnFire.hotspotCount shouldBe 24
         settings.farms.single().barnFire.initialHotspotCount shouldBe 6
         settings.farms.single().barnFire.spreadIntervalTicks shouldBe 40

@@ -15,6 +15,7 @@ internal data class FarmFoodDeliverySession(
     val loadIds: MutableList<UUID> = mutableListOf(),
     var riderId: UUID? = null,
     var gunnerId: UUID? = null,
+    val crewIds: MutableSet<UUID> = linkedSetOf(),
     val escortIds: MutableSet<UUID> = linkedSetOf(),
     val ambushCrewIds: MutableSet<UUID> = linkedSetOf(),
     var portalId: UUID? = null,
@@ -31,16 +32,22 @@ internal data class FarmFoodDeliverySession(
     var stallRouteProgress: Int = 0,
 ) {
     fun participantIds(): Set<UUID> = buildSet {
+        addAll(crewIds)
         riderId?.let(::add)
         gunnerId?.let(::add)
         addAll(escortIds)
         addAll(ambushCrewIds)
     }
 
-    fun isParticipant(playerId: UUID): Boolean = riderId == playerId || gunnerId == playerId ||
+    fun isParticipant(playerId: UUID): Boolean = playerId in crewIds || riderId == playerId || gunnerId == playerId ||
         playerId in escortIds || playerId in ambushCrewIds
 
+    fun registerParticipant(playerId: UUID) {
+        crewIds += playerId
+    }
+
     fun transitionToEscort(playerId: UUID) {
+        registerParticipant(playerId)
         if (riderId == playerId) riderId = null
         if (gunnerId == playerId) gunnerId = null
         ambushCrewIds.remove(playerId)
@@ -53,6 +60,7 @@ internal data class FarmFoodDeliverySession(
         if (gunnerId == playerId) gunnerId = null
         escortIds.remove(playerId)
         ambushCrewIds.remove(playerId)
+        crewIds.remove(playerId)
         return wasParticipant
     }
 

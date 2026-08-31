@@ -32,6 +32,7 @@ import ru.ruscrafting.farms.paper.lumber.LumberRuntime
 import ru.ruscrafting.farms.paper.lumber.LumberRuntimeRegistry
 import ru.ruscrafting.farms.paper.lumber.LumberTransitionCoordinator
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
+import ru.ruscrafting.farms.paper.worksite.WorksiteCarryable
 import java.util.UUID
 
 internal data class LumberPalletIdentity(val zoneId: String, val sequence: Long, val targetId: String)
@@ -138,7 +139,7 @@ internal class PaperLumberStackingEffects(private val plugin: Plugin) : LumberSt
         entity.persistentDataContainer.set(targetKey, PersistentDataType.STRING, key.targetId)
     }
 
-    private fun carriedLocation(player: Player) = player.location.clone().add(player.location.direction.setY(0).normalize().multiply(0.75)).add(-0.36, 1.0, -0.36)
+    private fun carriedLocation(player: Player) = WorksiteCarryable.carriedLocation(player, 0.75, 1.0, -0.36, -0.36)
 
     private fun remove(entityId: UUID?) {
         entityId?.let(Bukkit::getEntity)?.remove()

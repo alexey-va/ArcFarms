@@ -673,6 +673,8 @@ class ArcFarmsCommand(
         "archery", "bow" -> FarmPointKind.ARCHERY
         "crates" -> FarmPointKind.CRATES
         "receiving" -> FarmPointKind.RECEIVING
+        "food-delivery-portal", "food_delivery_portal", "delivery-portal", "portal" ->
+            FarmPointKind.FOOD_DELIVERY_PORTAL
         "cart" -> FarmPointKind.CART
         "customer" -> FarmPointKind.CUSTOMER
         "travel" -> FarmPointKind.TRAVEL
@@ -696,6 +698,7 @@ class ArcFarmsCommand(
         FarmPointKind.PEN -> "barn"
         FarmPointKind.PERK_VENDOR -> "perk-vendor"
         FarmPointKind.FIRE_EQUIPMENT -> "fire-equipment"
+        FarmPointKind.FOOD_DELIVERY_PORTAL -> "food-delivery-portal"
         FarmPointKind.PROCESSING_INPUT -> "processing-input"
         FarmPointKind.PROCESSING_INPUT_2 -> "processing-input-2"
         FarmPointKind.PROCESSING_INPUT_3 -> "processing-input-3"

@@ -31,6 +31,7 @@ import ru.ruscrafting.farms.paper.lumber.LumberRuntime
 import ru.ruscrafting.farms.paper.lumber.LumberRuntimeRegistry
 import ru.ruscrafting.farms.paper.lumber.LumberTransitionCoordinator
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
+import ru.ruscrafting.farms.paper.worksite.WorksiteCarryable
 import java.util.UUID
 
 internal data class LumberBundleIdentity(
@@ -170,8 +171,7 @@ internal class PaperLumberBundleEffects(
     }
 
     private fun carriedLocation(player: Player): Location {
-        val direction = player.location.direction.setY(0).normalize().multiply(0.85)
-        return player.location.clone().add(direction).add(-0.4, 1.0, -0.225)
+        return WorksiteCarryable.carriedLocation(player, 0.85, 1.0, -0.4, -0.225)
     }
 
     private fun remove(entityId: UUID?) {

@@ -257,6 +257,7 @@ internal class FarmComponentGraph(
         plugin = plugin,
         settings = settings,
         debug = debug,
+        access = ports.access,
         port = ports.audience,
         points = points,
         placement = placement,

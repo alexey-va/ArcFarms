@@ -46,7 +46,6 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
                     placementSequence = 27,
                     orderId = "bakery_supply",
                     incidentType = FarmIncidentType.FOOD_DELIVERY,
-                    incidentCrop = "WHEAT",
                 ),
             )
             var delivery = fixture.foodDelivery(runtime, route)
@@ -80,7 +79,7 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
             val portalLabel = fixture.world.entities.filterIsInstance<TextDisplay>().single { entity ->
                 entity.persistentDataContainer.get(routeRole, PersistentDataType.STRING) == "portal_label"
             }
-            portal.location.x shouldBe (16.5 plusOrMinus 0.0001)
+            portal.location.x shouldBe (12.5 plusOrMinus 0.0001)
             portal.location.z shouldBe (12.5 plusOrMinus 0.0001)
             portal.interactionWidth shouldBe fixture.zone.routeDelivery.portalWidth
             portalLabel.location.pitch shouldBe 0f
@@ -264,7 +263,6 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
                     placementSequence = 280,
                     orderId = "bakery_supply",
                     incidentType = FarmIncidentType.FOOD_DELIVERY,
-                    incidentCrop = "WHEAT",
                 ),
             )
             val delivery = fixture.foodDelivery(runtime, route)
@@ -324,7 +322,6 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
                     placementSequence = 28,
                     orderId = "bakery_supply",
                     incidentType = FarmIncidentType.FOOD_DELIVERY,
-                    incidentCrop = "WHEAT",
                 ),
             )
             val delivery = fixture.foodDelivery(runtime, route)
@@ -361,6 +358,49 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
         } }
     }
 
+    test("stall watchdog ejects inactive crew without remounting or taking the rifle") {
+        requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
+            val route = (0..8).map { index ->
+                FarmPointPosition(fixture.world.name, 8.5 + index * 2.0, 65.0, 32.5, -90f, 0f)
+            }
+            val runtime = fixture.runtime(
+                FarmShiftState(
+                    phase = FarmPhase.INCIDENT,
+                    sequence = 641,
+                    placementSequence = 281,
+                    orderId = "bakery_supply",
+                    incidentType = FarmIncidentType.FOOD_DELIVERY,
+                ),
+            )
+            runtime.settings = runtime.settings.copy(
+                routeDelivery = runtime.settings.routeDelivery.copy(
+                    inactivityReminderSeconds = 1,
+                    inactivityResetSeconds = 2,
+                ),
+            )
+            val delivery = fixture.foodDelivery(runtime, route)
+            val driver = fixture.paper.addPlayer("InactiveDriver")
+
+            delivery.ensure(runtime, 3_000L)
+            val horse = fixture.world.entities.filterIsInstance<Horse>().single(delivery::owns)
+            delivery.interact(PlayerInteractEntityEvent(driver, horse, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
+            driver.vehicle shouldBe horse
+
+            fixture.paper.performTicks(41)
+            delivery.ensure(runtime, 3_001L)
+            delivery.updateVisuals(listOf(runtime))
+
+            driver.vehicle shouldBe null
+            horse.passengers shouldBe emptyList()
+            delivery.participants(runtime).map { it.uniqueId } shouldContainExactly listOf(driver.uniqueId)
+            driver.inventory.contents.filterNotNull().any(delivery::ownsServiceItem) shouldBe true
+
+            delivery.ensure(runtime, 3_002L)
+            driver.vehicle shouldBe null
+            driver.inventory.contents.filterNotNull().any(delivery::ownsServiceItem) shouldBe true
+        } }
+    }
+
     test("route monsters can damage registered escorts but never bystanders") {
         requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
             val route = (0..8).map { index ->
@@ -373,7 +413,6 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
                     placementSequence = 29,
                     orderId = "bakery_supply",
                     incidentType = FarmIncidentType.FOOD_DELIVERY,
-                    incidentCrop = "WHEAT",
                 ),
             )
             val delivery = fixture.foodDelivery(runtime, route)

@@ -129,16 +129,19 @@ internal class FarmFoodDeliverySafety(
         val point = points[(currentIndex - 1).coerceIn(0, points.lastIndex)]
         val destination = safeSurface(location(point)) ?: location(point)
         horse.teleport(destination, PlayerTeleportEvent.TeleportCause.PLUGIN)
+        horse.setAI(false)
+        horse.velocity = org.bukkit.util.Vector()
         rider?.takeIf(Player::isOnline)?.let { player ->
             player.teleport(destination, PlayerTeleportEvent.TeleportCause.PLUGIN)
-            horse.addPassenger(player)
+            gunner.transitionToEscort(player, runtime, session)
             port.sendActionBar(player, MessageKey.FARM_ROUTE_RETURNED)
         }
         seat?.takeIf(Entity::isValid)?.let { gunnerSeat ->
             gunnerSeat.teleport(destination.clone().add(0.0, 0.5, 0.0), PlayerTeleportEvent.TeleportCause.PLUGIN)
             passenger?.takeIf(Player::isOnline)?.let { player ->
                 player.teleport(gunnerSeat.location, PlayerTeleportEvent.TeleportCause.PLUGIN)
-                gunnerSeat.addPassenger(player)
+                gunner.transitionToEscort(player, runtime, session)
+                port.sendActionBar(player, MessageKey.FARM_ROUTE_RETURNED)
             }
         }
         reset(session, destination, currentIndex, tick)

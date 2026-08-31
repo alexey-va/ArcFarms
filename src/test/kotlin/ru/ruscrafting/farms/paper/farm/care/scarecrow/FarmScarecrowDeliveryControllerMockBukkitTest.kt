@@ -53,7 +53,9 @@ class FarmScarecrowDeliveryControllerMockBukkitTest : FunSpec({
             every { careVisuals } returns mapOf(FarmCareRole.SCARECROW to visual)
             every { displayViewRange } returns 2.0f
             every { scarecrowDeliveryRadius } returns 2.5
+            every { scarecrowPickupRadius } returns 1.75
             every { scarecrowCarriedYOffset } returns 1.15
+            every { scarecrowCarriedForwardOffset } returns 0.7
         }
         val targets = listOf(
             FarmCareTarget(0, FarmCareRole.SCARECROW, FarmPointPosition(world.name, 10.5, 65.0, 10.5)),
@@ -93,8 +95,13 @@ class FarmScarecrowDeliveryControllerMockBukkitTest : FunSpec({
 
         controller.ensure(runtime)
         val supply = world.entities.filterIsInstance<Interaction>().single { controller.owns(it) }
-        controller.interact(player, supply) shouldBe true
+        player.teleport(supply.location.clone().apply { yaw = -90f })
+        controller.onMove(
+            PlayerMoveEvent(player, player.location, supply.location.clone().apply { yaw = -90f }),
+        )
         world.entities.filterIsInstance<ItemDisplay>().count { controller.owns(it) } shouldBe 2
+        world.entities.filterIsInstance<ItemDisplay>().filter(controller::owns)
+            .maxBy { it.location.x }.location.x.let { carriedX -> (carriedX > player.location.x) shouldBe true }
 
         // Pickup reserves target 0 internally, but any free nearby marker must accept the carried scarecrow.
         controller.onMove(

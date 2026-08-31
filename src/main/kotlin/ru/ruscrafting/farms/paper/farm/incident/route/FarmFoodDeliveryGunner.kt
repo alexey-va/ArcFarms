@@ -83,6 +83,7 @@ internal class FarmFoodDeliveryGunner(
             return true
         }
         session.gunnerId = player.uniqueId
+        session.registerParticipant(player.uniqueId)
         session.ambushCrewIds.remove(player.uniqueId)
         session.escortIds.remove(player.uniqueId)
         audience.sendActionBar(player, MessageKey.FARM_ROUTE_GUNNER_MOUNTED)
@@ -110,6 +111,7 @@ internal class FarmFoodDeliveryGunner(
             }
         }
         current.forEach { playerId ->
+            session.registerParticipant(playerId)
             session.ambushCrewIds.remove(playerId)
             session.escortIds.remove(playerId)
         }
@@ -234,6 +236,7 @@ internal class FarmFoodDeliveryGunner(
         }
         session.riderId = null
         session.gunnerId = null
+        session.crewIds.clear()
         session.escortIds.clear()
         session.ambushCrewIds.clear()
         session.gunnerTrail.clear()

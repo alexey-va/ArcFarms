@@ -131,6 +131,9 @@ Physical care density is controlled by `care-targets-per-player` and
 cap the shared objective at 45. Disease timing and shape use
 `disease-spread-seconds`, `disease-spread-radius`, and `disease-kill-seconds`.
 Scarecrow delivery radius and carry height are configurable independently.
+Scarecrows and harvest crates can be picked up either by right-clicking their
+interaction or by walking onto them; their carried display stays in front of
+the player. Processing cargo and lumber displays share the same carry geometry.
 Bird incidents keep their defeat quota separate from the visible flock through
 `special-incidents.birds.spawn-multiplier` (default `2`). Irrigation wave
 height, spread, density, and ring pacing are runtime config, as are drought
@@ -214,10 +217,13 @@ stationary order cart. The tagged cart and its customer are reconstructed from
 persisted shift state after reload or restart. Clicking the cart reports its
 fill percentage; clicking the baker, mine supplier, or market trader repeats
 the current order. The customer waits beside receiving by default, while both
-`cart` and `customer` support administrator point overrides. When the crop
+`cart` and `customer` support administrator point overrides. The final route
+portal uses the exact `food-delivery-portal` point and falls back to receiving.
+When the crop
 quota is ready, every order enters the same two-step finale. A configured set
-of interactive harvest crates first appears at the last crop. Players
-carry their visual displays to the configured receiving point; leaving the farm
+of interactive harvest crates first appears at the last crop. Players pick the
+crates up by click or proximity and carry their visual displays to the
+configured receiving point; leaving the farm
 returns only the carried crate, while the shared delivery objective remains
 available indefinitely. Delivering every crate then starts the named food route;
 only finishing that route completes the order, restores the selected beds to
@@ -306,7 +312,7 @@ are available through commands such as `/arcfarms admin point <zone> help`,
 - `/arcfarms admin inspect` — toggle read-only block inspection. Clicking a
   block prints its BlockData, fixed-crop or bed ledger entry, pending restore,
   and current patch/incident ownership.
-- `/arcfarms admin point <zone> <tool|seeds|water|crates|receiving|cart|customer|travel|hive|irrigation|covers|scarecrows|barn|archery|perk-vendor|processing>` —
+- `/arcfarms admin point <zone> <tool|seeds|water|crates|receiving|food-delivery-portal|cart|customer|travel|hive|irrigation|covers|scarecrows|barn|archery|perk-vendor|processing>` —
   save the administrator's current world, coordinates, yaw, and pitch for a farm
   operation point. Non-travel points must be inside the farm and off crop beds.
   `processing` is the centre of the whole workshop: stand on a clear 9×5

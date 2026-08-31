@@ -94,6 +94,7 @@ internal class FarmPointService(
             FarmPointKind.FIREWOOD -> resolveBase(runtime, FarmPointKind.FIRE_EQUIPMENT)
             FarmPointKind.CRATES -> zone.delivery.pickup.toPoint()
             FarmPointKind.RECEIVING -> FarmPointPosition(zone.delivery.world, zone.delivery.x, zone.delivery.y, zone.delivery.z)
+            FarmPointKind.FOOD_DELIVERY_PORTAL -> resolveBase(runtime, FarmPointKind.RECEIVING)
             FarmPointKind.CART -> resolveBase(runtime, FarmPointKind.CRATES)
             FarmPointKind.CUSTOMER -> customerPoint(runtime)
             FarmPointKind.TRAVEL -> settings().destinations.getValue(ActivityKind.FARM.configKey).let { destination ->

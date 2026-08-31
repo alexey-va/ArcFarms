@@ -280,6 +280,7 @@ internal class FarmFoodDeliveryIncident(
         if (existing == null && !horse.addPassenger(player)) return true
         horse.setAI(true)
         session.riderId = player.uniqueId
+        session.registerParticipant(player.uniqueId)
         safety.reset(session, horse.location, runtime.state.incidentProgress, Bukkit.getCurrentTick().toLong())
         session.ambushCrewIds.remove(player.uniqueId)
         session.escortIds.remove(player.uniqueId)
@@ -371,6 +372,22 @@ internal class FarmFoodDeliveryIncident(
         debug.event("farm_food_route_cleanup", "reason" to reason)
     }
 
+    fun refresh(runtime: FarmRuntime, reason: String) {
+        if (!active(runtime)) return
+        val session = sessions[runtime.settings.id] ?: return
+        session.portalId?.let(Bukkit::getEntity)?.remove()
+        session.portalLabelId?.let(Bukkit::getEntity)?.remove()
+        session.portalId = null
+        session.portalLabelId = null
+        ensurePortal(runtime, session)
+        debug.event(
+            "farm_food_route_portal_refreshed",
+            "zone" to runtime.settings.id,
+            "sequence" to session.sequence,
+            "reason" to reason,
+        )
+    }
+
     private fun updateProgress(
         runtime: FarmRuntime,
         horse: Horse,
@@ -381,6 +398,7 @@ internal class FarmFoodDeliveryIncident(
         val rider = horse.passengers.filterIsInstance<Player>().firstOrNull() ?: return
         if (session.riderId != null && session.riderId != rider.uniqueId) return
         session.riderId = rider.uniqueId
+        session.registerParticipant(rider.uniqueId)
         val currentIndex = runtime.state.incidentProgress.coerceIn(1, points.size)
         if (safety.update(runtime, horse, session, rider, points, currentIndex, ::safeSurface)) return
         val projection = FarmRouteGeometry.closest(
@@ -561,18 +579,10 @@ internal class FarmFoodDeliveryIncident(
     }
 
     private fun ensurePortal(runtime: FarmRuntime, session: FarmFoodDeliverySession) {
-        val point = points.resolve(runtime, FarmPointKind.RECEIVING)
+        val point = points.resolve(runtime, FarmPointKind.FOOD_DELIVERY_PORTAL)
         val world = Bukkit.getWorld(point.world) ?: return
         val configured = runtime.settings.routeDelivery
-        val yaw = Math.toRadians(point.yaw.toDouble())
-        val at = Location(
-            world,
-            point.x + cos(yaw) * configured.portalRightOffset,
-            point.y,
-            point.z + sin(yaw) * configured.portalRightOffset,
-            0f,
-            0f,
-        )
+        val at = Location(world, point.x, point.y, point.z, 0f, 0f)
         val blockX = floor(at.x).toInt()
         val blockZ = floor(at.z).toInt()
         if (!world.isChunkLoaded(blockX shr 4, blockZ shr 4)) return
@@ -645,6 +655,7 @@ internal class FarmFoodDeliveryIncident(
         val target = safeSurface(beside) ?: horse.location.clone().add(0.0, 0.25, 0.0)
         if (!player.teleport(target.apply { this.yaw = horse.location.yaw }, PlayerTeleportEvent.TeleportCause.PLUGIN)) return true
         session.escortIds += player.uniqueId
+        session.registerParticipant(player.uniqueId)
         if (!gunner.armEscort(player, runtime, session)) {
             // The portal still joined the player to the activity. Keeping the
             // escort identity preserves route HUD/time and lets them free an

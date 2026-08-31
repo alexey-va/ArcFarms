@@ -167,7 +167,7 @@ internal class FarmIncidentScenarioFixture private constructor(
             tasks = port,
             routes = routes,
             points = FarmPointProvider { _, kind ->
-                check(kind == FarmPointKind.RECEIVING)
+                check(kind == FarmPointKind.FOOD_DELIVERY_PORTAL)
                 FarmPointPosition(world.name, 12.5, 65.0, 12.5)
             },
             transitions = transitionSink,

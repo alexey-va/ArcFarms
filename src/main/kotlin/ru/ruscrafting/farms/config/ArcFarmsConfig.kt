@@ -236,6 +236,7 @@ data class FarmZoneSettings(
     val inputCooldowns: FarmInputCooldownSettings = FarmInputCooldownSettings(),
     val deliveryCarriedForwardOffset: Double = 0.65,
     val scarecrowCarriedForwardOffset: Double = 0.7,
+    val scarecrowPickupRadius: Double = 1.75,
 ) {
     init {
         require(careTargetsPerPlayer <= careTargetsMax) {
@@ -265,6 +266,7 @@ data class FarmZoneSettings(
         require(scarecrowCarriedForwardOffset in 0.0..2.0) {
             "Farm scarecrow carried forward offset must be in 0.0..2.0"
         }
+        require(scarecrowPickupRadius in 0.5..4.0) { "Farm scarecrow pickup radius must be in 0.5..4.0" }
     }
 
     fun droughtTargetBeds(gardenBeds: Int): Int {
@@ -421,6 +423,7 @@ data class FarmProcessingSettings(
     val spawnPerTick: Int,
     val displayViewRange: Float,
     val visuals: Map<FarmProcessingVisualRole, FarmProcessingVisualSettings>,
+    val carriedForwardOffset: Double = 0.6,
 ) {
     init {
         require(crankInnerRadius < crankOuterRadius) { "processing crank inner radius must be below outer radius" }
@@ -429,6 +432,7 @@ data class FarmProcessingSettings(
         }
         require(cargoProgressDistance in 0.25..3.0) { "processing cargo progress distance must be in 0.25..3.0" }
         require(crankVerticalTolerance in 0.5..6.0) { "processing crank vertical tolerance must be in 0.5..6.0" }
+        require(carriedForwardOffset in 0.0..2.0) { "processing carried forward offset must be in 0.0..2.0" }
     }
 }
 
@@ -645,6 +649,7 @@ data class FarmDeliverySettings(
     val carriedScale: Float,
     val carriedYOffset: Double,
     val displayViewRange: Float,
+    val proximityPickupRadius: Double = 1.75,
 )
 
 data class FarmRouteDeliverySettings(
@@ -662,7 +667,6 @@ data class FarmRouteDeliverySettings(
     val trailSpacing: Double,
     val completionContribution: Int,
     val returnDelaySeconds: Int,
-    val portalRightOffset: Double,
     val portalWidth: Float,
     val portalHeight: Float,
     val portalLabelHeight: Double,
@@ -1221,6 +1225,7 @@ class ArcFarmsConfig private constructor(
                     crankTitleReminderSeconds = section.int("processing.crank.title-reminder-seconds", 8)
                         .checked("processing.crank.title-reminder-seconds", 3, 30),
                     carriedYOffset = section.finiteDouble("processing.carried-y-offset", 0.95, 0.0, 3.0),
+                    carriedForwardOffset = section.finiteDouble("processing.carried-forward-offset", 0.6, 0.0, 2.0),
                     cargoReminderSeconds = section.int("processing.cargo-watchdog.reminder-seconds", 12)
                         .checked("processing.cargo-watchdog.reminder-seconds", 5, 60),
                     cargoReturnSeconds = section.int("processing.cargo-watchdog.return-seconds", 30)
@@ -1308,9 +1313,6 @@ class ArcFarmsConfig private constructor(
                         .checked("route-delivery.completion-contribution", 1, 64),
                     returnDelaySeconds = section.int("route-delivery.return-delay-seconds", 3)
                         .checked("route-delivery.return-delay-seconds", 1, 15),
-                    portalRightOffset = section.finiteDouble(
-                        "route-delivery.portal.right-offset", 4.0, -12.0, 12.0,
-                    ),
                     portalWidth = section.finiteFloat("route-delivery.portal.width", 3.6f, 1.0f, 8.0f),
                     portalHeight = section.finiteFloat("route-delivery.portal.height", 3.2f, 1.0f, 8.0f),
                     portalLabelHeight = section.finiteDouble(
@@ -2000,6 +2002,7 @@ class ArcFarmsConfig private constructor(
                     scarecrowCarriedForwardOffset = section.finiteDouble(
                         "scarecrow-carried-forward-offset", 0.7, 0.0, 2.0,
                     ),
+                    scarecrowPickupRadius = section.finiteDouble("scarecrow-pickup-radius", 1.75, 0.5, 4.0),
                 ).also { farm ->
                     require(farm.applePlacementCount >= farm.appleTargetCount) {
                         "farm-zones.$id apple-placement-count must be at least apple-targets"
@@ -2397,6 +2400,7 @@ class ArcFarmsConfig private constructor(
                 carriedScale = section.finiteFloat("delivery.carried-scale", 1.5f, 0.05f, 8.0f),
                 carriedYOffset = section.finiteDouble("delivery.carried-y-offset", 0.65, -1.0, 3.0),
                 displayViewRange = section.finiteFloat("delivery.display-view-range", 2.0f, 0.25f, 8.0f),
+                proximityPickupRadius = section.finiteDouble("delivery.proximity-pickup-radius", 1.75, 0.5, 4.0),
             )
         }
 

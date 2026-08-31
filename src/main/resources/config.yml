@@ -215,6 +215,7 @@ farm-zones:
     disease-spread-radius: 4.0
     disease-kill-seconds: 16
     scarecrow-delivery-radius: 2.5
+    scarecrow-pickup-radius: 1.75
     scarecrow-carried-y-offset: 1.15
     # Temporary, crash-safe maze carved below the farm for the mole expedition.
     mole-burrow:
@@ -364,6 +365,7 @@ farm-zones:
       # players walk imperfect circles without losing angular progress.
       crank: {inner-radius: 2.4, outer-radius: 4.0, radius-tolerance: 1.0, max-step-distance: 1.2, title-reminder-seconds: 8, vertical-tolerance: 2.5}
       carried-y-offset: 0.95
+      carried-forward-offset: 0.6
       cargo-watchdog: {reminder-seconds: 12, return-seconds: 30}
       cargo-progress-distance: 1.0
       spawn-per-tick: 4
@@ -410,8 +412,8 @@ farm-zones:
       completion-contribution: 12
       # Riders are dismounted at the destination, then returned to the farm after this pause.
       return-delay-seconds: 3
-      # Keep the join portal beside receiving, away from the cart/customer hitboxes.
-      portal: {right-offset: 4.0, width: 3.6, height: 3.2, label-height: 3.35, label-scale: 1.8, arrival-side-offset: 3.0}
+      # The admin food-delivery-portal point is exact; receiving is its fallback.
+      portal: {width: 3.6, height: 3.2, label-height: 3.35, label-scale: 1.8, arrival-side-offset: 3.0}
       cart-scale: 4.4
       cart-back-offset: 2.15
       # cart_2 reaches -0.825 blocks at scale 4.4 after its JSON GROUND transform;
@@ -492,6 +494,7 @@ farm-zones:
       z: 453.46
       radius: 2.5
       carried-forward-offset: 0.65
+      proximity-pickup-radius: 1.75
       crates: 3
       spawn-radius: 24
       min-crate-spacing: 5.0

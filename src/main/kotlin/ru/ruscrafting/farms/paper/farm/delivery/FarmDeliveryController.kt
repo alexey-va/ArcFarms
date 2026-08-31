@@ -28,7 +28,9 @@ import ru.ruscrafting.farms.paper.BukkitFarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteCarryable
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
@@ -51,6 +53,7 @@ internal class FarmDeliveryController(
     private val plugin: Plugin,
     private val settings: () -> ArcFarmsConfig,
     private val debug: ArcFarmsDebug,
+    private val access: WorksiteAccessPort,
     private val port: WorksiteAudiencePort,
     private val points: FarmPointProvider,
     private val placement: FarmPlacementService,
@@ -66,6 +69,7 @@ internal class FarmDeliveryController(
     private val carriedDisplays = mutableMapOf<DeliveryKey, UUID>()
     private val reconciledSequences = mutableMapOf<String, Long>()
     private val layouts = mutableMapOf<String, DeliveryLayout>()
+    private val missingLocationWarnings = mutableSetOf<DeliveryKey>()
 
     fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING)
 
@@ -177,6 +181,25 @@ internal class FarmDeliveryController(
     }
 
     fun moveCarried(runtimes: Collection<FarmRuntime>, player: Player, destination: Location) {
+        if (carriers.values.none { it == player.uniqueId }) {
+            runtimes.asSequence()
+                .filter { runtime -> runtime.state.phase == FarmPhase.DELIVERY && runtime.region.contains(destination) }
+                .filter { runtime -> access.hasAccess(player, runtime.settings.permission) && !access.isAdminEditing(player) }
+                .firstNotNullOfOrNull { runtime ->
+                    val anchor = runtime.state.deliveryPosition ?: return@firstNotNullOfOrNull null
+                    val index = WorksiteCarryable.nearest(
+                        destination,
+                        crateLocations(runtime, anchor).asSequence().mapIndexedNotNull { index, location ->
+                            if (location == null || index in runtime.state.deliveredCrates ||
+                                DeliveryKey(runtime.settings.id, index) in carriers
+                            ) null else index to location
+                        },
+                        runtime.settings.delivery.proximityPickupRadius,
+                    ) ?: return@firstNotNullOfOrNull null
+                    pickup(runtime, FarmDeliveryIdentity(runtime.settings.id, runtime.state.sequence, index), player)
+                        .takeIf { it }
+                }
+        }
         carriers.filterValues { it == player.uniqueId }.keys.toList().forEach { key ->
             runtimes.firstOrNull { it.settings.id == key.zoneId }?.let { runtime -> move(runtime, key, player, destination) }
         }
@@ -210,6 +233,7 @@ internal class FarmDeliveryController(
             entityLookup.inWorld(runtime.region.world).filter { entity -> identity(entity)?.zoneId == zoneId }.forEach(Entity::remove)
         }
         layouts.remove(zoneId)
+        missingLocationWarnings.removeIf { it.zoneId == zoneId }
     }
 
     fun cleanup(reason: String) {
@@ -220,6 +244,7 @@ internal class FarmDeliveryController(
         carriedDisplays.clear()
         reconciledSequences.clear()
         layouts.clear()
+        missingLocationWarnings.clear()
         if (owned.isNotEmpty()) debug.event("farm_delivery_cleanup", "count" to owned.size, "reason" to reason)
     }
 
@@ -240,9 +265,15 @@ internal class FarmDeliveryController(
 
     private fun spawnGround(runtime: FarmRuntime, key: DeliveryKey, anchor: FarmDeliveryPosition) {
         val location = crateLocations(runtime, anchor).getOrNull(key.index)?.clone() ?: run {
-            plugin.logger.severe("Farm ${runtime.settings.id} has no indexed bed for delivery crate ${key.index}")
+            if (missingLocationWarnings.add(key)) {
+                plugin.logger.warning(
+                    "Farm ${runtime.settings.id} has no safe loaded position for delivery crate ${key.index}; " +
+                        "the controller will retry without repeating this warning",
+                )
+            }
             return
         }
+        missingLocationWarnings.remove(key)
         if (!location.world.isChunkLoaded(location.blockX shr 4, location.blockZ shr 4)) return
         if (!runtime.region.contains(location)) {
             plugin.logger.severe(
@@ -351,9 +382,11 @@ internal class FarmDeliveryController(
     }
 
     private fun carriedDisplayLocation(runtime: FarmRuntime, player: Player): Location {
-        val direction = player.location.direction.setY(0)
-        if (direction.lengthSquared() > 0.001) direction.normalize().multiply(-runtime.settings.deliveryCarriedForwardOffset)
-        return player.location.clone().add(direction).add(0.0, runtime.settings.delivery.carriedYOffset, 0.0)
+        return WorksiteCarryable.carriedLocation(
+            player,
+            runtime.settings.deliveryCarriedForwardOffset,
+            runtime.settings.delivery.carriedYOffset,
+        )
     }
 
     private fun removeGround(key: DeliveryKey, reason: String) {
@@ -396,6 +429,7 @@ internal class FarmDeliveryController(
         groundEntities.keys.removeIf { it.zoneId == zoneId }
         carriers.keys.removeIf { it.zoneId == zoneId }
         carriedDisplays.keys.removeIf { it.zoneId == zoneId }
+        missingLocationWarnings.removeIf { it.zoneId == zoneId }
         entityLookup.inWorld(runtime.region.world).filter { entity -> identity(entity)?.zoneId == zoneId }.forEach { entity ->
             val identity = identity(entity)
             val entityRole = role(entity)

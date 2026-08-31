@@ -33,6 +33,7 @@ import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteCarryable
 import ru.ruscrafting.farms.paper.farm.FarmFieldPoiVisibility
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
@@ -81,9 +82,15 @@ internal class FarmScarecrowDeliveryController(
             audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return true
         }
+        pickup(runtime, player)
+        return true
+    }
+
+    private fun pickup(runtime: FarmRuntime, player: Player) {
+        val zoneId = runtime.settings.id
         if (carriers.values.any { it == player.uniqueId }) {
             audience.sendActionBar(player, MessageKey.FARM_CARE_SCARECROW_ALREADY_CARRYING)
-            return true
+            return
         }
         val target = runtime.state.careTargets.asSequence()
             .filter { it.role == FarmCareRole.SCARECROW && !it.complete }
@@ -91,14 +98,14 @@ internal class FarmScarecrowDeliveryController(
             .minByOrNull(FarmCareTarget::id)
         if (target == null) {
             audience.sendActionBar(player, MessageKey.FARM_CARE_SCARECROW_ALL_ASSIGNED)
-            return true
+            return
         }
         val key = ScarecrowKey(zoneId, target.id)
         carriers[key] = player.uniqueId
         carriedDisplays[key] = spawnDisplay(runtime, carriedLocation(runtime, player), target.id, ScarecrowEntityRole.CARRIED_DISPLAY)
             ?.uniqueId ?: run {
             carriers.remove(key)
-            return true
+            return
         }
         audience.showScreenTitle(
             player,
@@ -107,7 +114,6 @@ internal class FarmScarecrowDeliveryController(
         )
         if (settings().sounds) player.playSound(player.location, Sound.ENTITY_ITEM_PICKUP, 0.9f, 0.8f)
         debug.event("farm_scarecrow_picked_up", "zone" to zoneId, "target" to target.id, "player" to player.name)
-        return true
     }
 
     fun ensure(runtime: FarmRuntime) {
@@ -127,6 +133,25 @@ internal class FarmScarecrowDeliveryController(
 
     fun onMove(event: PlayerMoveEvent) {
         val destination = event.to
+        if (carriers.values.none { it == event.player.uniqueId }) {
+            runtimes().asSequence()
+                .filter(::active)
+                .filter { runtime -> runtime.region.contains(destination) }
+                .filter { runtime ->
+                    access.hasAccess(event.player, runtime.settings.permission) && !access.isAdminEditing(event.player)
+                }
+                .firstOrNull { runtime ->
+                    WorksiteCarryable.nearest(
+                        destination,
+                        supplyEntities[runtime.settings.id].orEmpty().asSequence()
+                            .mapNotNull(Bukkit::getEntity)
+                            .filter { role(it) == ScarecrowEntityRole.SUPPLY_INTERACTION }
+                            .map { Unit to it.location },
+                        runtime.settings.scarecrowPickupRadius,
+                    ) != null
+                }
+                ?.let { runtime -> pickup(runtime, event.player) }
+        }
         carriers.filterValues { it == event.player.uniqueId }.keys.toList().forEach { key ->
             val runtime = runtimes().firstOrNull { it.settings.id == key.zoneId } ?: return@forEach
             move(runtime, key, event.player, destination)
@@ -325,9 +350,11 @@ internal class FarmScarecrowDeliveryController(
     }
 
     private fun carriedLocation(runtime: FarmRuntime, player: Player): Location {
-        val direction = player.location.direction.setY(0.0)
-        if (direction.lengthSquared() > 0.001) direction.normalize().multiply(-runtime.settings.scarecrowCarriedForwardOffset)
-        return player.location.clone().add(direction).add(0.0, runtime.settings.scarecrowCarriedYOffset, 0.0)
+        return WorksiteCarryable.carriedLocation(
+            player,
+            runtime.settings.scarecrowCarriedForwardOffset,
+            runtime.settings.scarecrowCarriedYOffset,
+        )
     }
 
     private fun role(entity: Entity): ScarecrowEntityRole? = entity.persistentDataContainer

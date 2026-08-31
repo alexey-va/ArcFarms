@@ -373,7 +373,11 @@ internal class FarmModule(
                 scene.clear(runtime, reason)
                 scene.ensure(runtime)
             }
-            FarmPointKind.RECEIVING -> care.refreshPoint(runtime, FarmPointKind.PEN, reason)
+            FarmPointKind.RECEIVING -> {
+                care.refreshPoint(runtime, FarmPointKind.PEN, reason)
+                foodDelivery.refresh(runtime, reason)
+            }
+            FarmPointKind.FOOD_DELIVERY_PORTAL -> foodDelivery.refresh(runtime, reason)
             FarmPointKind.HIVE, FarmPointKind.IRRIGATION, FarmPointKind.COVERS,
             FarmPointKind.SCARECROWS, FarmPointKind.PEN -> care.refreshPoint(runtime, kind, reason)
             FarmPointKind.PERK_VENDOR -> perks.refresh(runtime, reason)

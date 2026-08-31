@@ -7,6 +7,7 @@ enum class FarmPointKind {
     ARCHERY,
     CRATES,
     RECEIVING,
+    FOOD_DELIVERY_PORTAL,
     CART,
     CUSTOMER,
     TRAVEL,

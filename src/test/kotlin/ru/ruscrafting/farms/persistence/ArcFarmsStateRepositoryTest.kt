@@ -200,7 +200,6 @@ class ArcFarmsStateRepositoryTest : FunSpec({
                     orderId = "farm_order",
                     startedAt = 1,
                     incidentType = FarmIncidentType.FOOD_DELIVERY,
-                    incidentCrop = "WHEAT",
                     incidentProgress = 1,
                     incidentRequired = 3,
                     specialIncident = FarmSpecialIncidentState(routeName = "orchard"),

@@ -376,7 +376,8 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                         "Farm bird state is incomplete"
                     }
                     FarmIncidentType.FOOD_DELIVERY -> require(
-                        special.points.isEmpty() && special.plots.isEmpty() && farm.incidentRequired in 2..512,
+                        special.points.isEmpty() && special.plots.isEmpty() && special.routeName != null &&
+                            farm.incidentRequired in 2..512,
                     ) { "Farm food delivery state is incomplete" }
                     FarmIncidentType.BARN_FIRE -> require(
                         special.points.size in 1..256 && special.plots.isEmpty() && special.crop == null &&
@@ -514,8 +515,13 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 require(farm.orderId != null) { "Active farm state has no order" }
             }
             if (farm.phase == FarmPhase.INCIDENT) {
+                val incidentIdentityComplete = if (farm.incidentType == FarmIncidentType.FOOD_DELIVERY) {
+                    farm.specialIncident != null
+                } else {
+                    farm.incidentCrop != null
+                }
                 require(
-                    farm.incidentCrop != null && farm.incidentRequired > 0 &&
+                    incidentIdentityComplete && farm.incidentRequired > 0 &&
                         farm.incidentProgress < farm.incidentRequired && !farm.incidentResolved,
                 ) { "Active farm incident state is incomplete" }
             }
