@@ -133,6 +133,8 @@ object FarmSpecialIncidentPlanner {
             FarmIncidentType.PROCESSING,
             FarmIncidentType.BARN_FIRE,
             FarmIncidentType.FROST,
+            FarmIncidentType.BOAR_BREAKOUT,
+            FarmIncidentType.RIVAL_RAID,
             -> null
         }
     }

@@ -40,7 +40,7 @@ internal class FarmPointAdminService(
         return FarmPointKind.entries.mapNotNull { kind ->
             val configured = pointService.configured(runtime.settings.id, kind)
             val resolved = configured ?: when (kind) {
-                FarmPointKind.PROCESSING, FarmPointKind.FIREWOOD -> null
+                FarmPointKind.PROCESSING, FarmPointKind.FIREWOOD, FarmPointKind.DITCH, FarmPointKind.RIVAL_FARM -> null
                 FarmPointKind.PROCESSING_INPUT,
                 FarmPointKind.PROCESSING_INPUT_2,
                 FarmPointKind.PROCESSING_INPUT_3,
@@ -69,11 +69,28 @@ internal class FarmPointAdminService(
 
     fun set(player: Player, zoneId: String, kind: FarmPointKind): Boolean {
         val runtime = runtime(zoneId, player) ?: return false
-        if (kind != FarmPointKind.TRAVEL && !runtime.region.contains(player.location)) {
+        if (kind !in setOf(FarmPointKind.TRAVEL, FarmPointKind.RIVAL_FARM) && !runtime.region.contains(player.location)) {
             port.sendChat(player, MessageKey.ADMIN_POINT_OUTSIDE)
             return false
         }
-        if (kind != FarmPointKind.TRAVEL) {
+        if (kind == FarmPointKind.RIVAL_FARM) {
+            if (player.world !== runtime.region.world) {
+                port.sendChat(player, MessageKey.ADMIN_POINT_RIVAL_WRONG_WORLD)
+                return false
+            }
+            val receiving = points.resolve(runtime, FarmPointKind.RECEIVING)
+            val dx = player.location.x - receiving.x
+            val dz = player.location.z - receiving.z
+            if (dx * dx + dz * dz > runtime.settings.rivalRaid.maximumDistance * runtime.settings.rivalRaid.maximumDistance) {
+                port.sendChat(
+                    player,
+                    MessageKey.ADMIN_POINT_RIVAL_TOO_FAR,
+                    mapOf("distance" to locale.text(runtime.settings.rivalRaid.maximumDistance.toInt())),
+                )
+                return false
+            }
+        }
+        if (kind !in setOf(FarmPointKind.TRAVEL, FarmPointKind.RIVAL_FARM)) {
             val floor = player.location.block.getRelative(org.bukkit.block.BlockFace.DOWN)
             if (floor.type == Material.FARMLAND || player.location.block.type.name in runtime.settings.crops) {
                 port.sendChat(player, MessageKey.ADMIN_POINT_ON_BED)
@@ -90,7 +107,8 @@ internal class FarmPointAdminService(
         )
         val position = when {
             kind in PROCESSING_POINTS -> FarmProcessingPointOrientation.normalize(captured)
-            kind == FarmPointKind.FIREWOOD -> FarmGroundDisplayPointOrientation.normalize(captured)
+            kind in setOf(FarmPointKind.FIREWOOD, FarmPointKind.DITCH, FarmPointKind.RIVAL_FARM) ->
+                FarmGroundDisplayPointOrientation.normalize(captured)
             else -> captured
         }
         if (kind in PROCESSING_POINTS) {

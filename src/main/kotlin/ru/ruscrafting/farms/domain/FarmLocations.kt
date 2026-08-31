@@ -25,6 +25,8 @@ enum class FarmPointKind {
     PROCESSING_OUTPUT,
     FIRE_EQUIPMENT,
     FIREWOOD,
+    DITCH,
+    RIVAL_FARM,
 }
 
 data class FarmPointPosition(

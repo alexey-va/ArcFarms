@@ -360,6 +360,7 @@ private fun fireSafetyRouter(
     processing = mockk(relaxed = true),
     barnFire = fire,
     frost = mockk(relaxed = true),
+    actionIncidents = mockk(relaxed = true),
     delivery = mockk<FarmDeliveryController>(relaxed = true),
     enterprise = mockk<FarmEnterprisePort>(relaxed = true),
     supplies = mockk<FarmSupplyController>(relaxed = true),

@@ -140,6 +140,7 @@ class FarmGameplayAdminServiceTest : FunSpec({
                 processing = mockk<FarmProcessingIncident>(relaxed = true),
                 barnFire = mockk<FarmBarnFireIncident>(relaxed = true),
                 frost = mockk(relaxed = true),
+                actionIncidents = mockk(relaxed = true),
                 incidentRecovery = recovery,
                 delivery = mockk<FarmDeliveryController>(relaxed = true),
                 enterprise = mockk<FarmEnterprisePort>(relaxed = true),
@@ -163,6 +164,11 @@ class FarmGameplayAdminServiceTest : FunSpec({
             service.setStage(player, runtime.settings.id, "frost") shouldBe true
             runtime.state.incidentType shouldBe FarmIncidentType.FROST
             verify(exactly = 1) { transitions.apply(runtime, match { it.state.incidentType == FarmIncidentType.FROST }, player) }
+
+            service.setStage(player, runtime.settings.id, "boar-breakout") shouldBe true
+            runtime.state.incidentType shouldBe FarmIncidentType.BOAR_BREAKOUT
+            service.setStage(player, runtime.settings.id, "rival-raid") shouldBe true
+            runtime.state.incidentType shouldBe FarmIncidentType.RIVAL_RAID
         } finally {
             paper.close()
         }
@@ -203,6 +209,7 @@ class FarmGameplayAdminServiceTest : FunSpec({
             processing = mockk<FarmProcessingIncident>(relaxed = true),
             barnFire = mockk<FarmBarnFireIncident>(relaxed = true),
             frost = mockk(relaxed = true),
+            actionIncidents = mockk(relaxed = true),
             incidentRecovery = recovery,
             delivery = mockk<FarmDeliveryController>(relaxed = true),
             enterprise = mockk<FarmEnterprisePort>(relaxed = true),
@@ -323,6 +330,7 @@ private fun cycleService(
     processing = mockk<FarmProcessingIncident>(relaxed = true),
     barnFire = mockk<FarmBarnFireIncident>(relaxed = true),
     frost = mockk(relaxed = true),
+    actionIncidents = mockk(relaxed = true),
     incidentRecovery = incidentRecovery,
     delivery = mockk<FarmDeliveryController>(relaxed = true),
     enterprise = enterprise,

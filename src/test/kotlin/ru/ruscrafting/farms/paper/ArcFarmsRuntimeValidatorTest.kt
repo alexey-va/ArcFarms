@@ -3,9 +3,14 @@ package ru.ruscrafting.farms.paper
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.string.shouldContain
+import io.mockk.every
 import io.mockk.mockk
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.config.ArcFarmsConfig
+import ru.ruscrafting.farms.config.CuboidBounds
+import ru.ruscrafting.farms.domain.FarmLocationOverrides
+import ru.ruscrafting.farms.domain.FarmPointKind
+import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.persistence.FixedFarmCropJournal
 import ru.ruscrafting.farms.persistence.MineRecoveryJournal
 import java.nio.file.Files
@@ -32,10 +37,33 @@ class ArcFarmsRuntimeValidatorTest : FunSpec({
                 .message shouldContain "ui.enterprise-menu.items.market.material must be a non-air item material"
         }
     }
+
+    test("rival farm distance is measured from an overridden receiving point") {
+        MockBukkitTestRuntime.open().use { paper ->
+            val world = paper.server.addSimpleWorld("sp11")
+            val gateway = mockk<RegionGateway>()
+            every { gateway.resolve(any()) } returns CuboidActivityRegion(
+                world,
+                "farm",
+                CuboidBounds(900, 50, 900, 1_450, 80, 1_100),
+            )
+            val configured = candidateWith("server-id: spawn", "server-id: spawn")
+            val overrides = FarmLocationOverrides(
+                zones = mapOf(
+                    "communal_farm" to mapOf(
+                        FarmPointKind.RECEIVING to FarmPointPosition("sp11", 1_000.0, 64.0, 1_000.0),
+                        FarmPointKind.RIVAL_FARM to FarmPointPosition("sp11", 1_400.0, 64.0, 1_000.0),
+                    ),
+                ),
+            )
+
+            validator(gateway).validateLocations(configured, overrides)
+        }
+    }
 })
 
-private fun validator(): ArcFarmsRuntimeValidator = ArcFarmsRuntimeValidator(
-    regionGateway = mockk(relaxed = true),
+private fun validator(regionGateway: RegionGateway = mockk(relaxed = true)): ArcFarmsRuntimeValidator = ArcFarmsRuntimeValidator(
+    regionGateway = regionGateway,
     economyAvailable = { true },
     fixedCropJournal = mockk<FixedFarmCropJournal>(relaxed = true),
     mineJournal = mockk<MineRecoveryJournal>(relaxed = true),

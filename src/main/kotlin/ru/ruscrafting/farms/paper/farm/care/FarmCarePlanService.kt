@@ -178,16 +178,17 @@ internal class FarmCarePlanService(
                 explicit(FarmPointKind.SCARECROWS),
             )
             FarmCareType.ANIMAL_RESCUE -> {
-                val pen = fixturePoint(runtime, FarmPointKind.PEN, placementSequence) ?: return null
-                val sources = placement.sources(runtime, actor?.location)
-                val bedCandidates = placement.bedCandidates(runtime, sources, runtime.settings.placementSearchRadius)
+                val ditch = explicit(FarmPointKind.DITCH) ?: return null
+                val ditchLocation = runtime.region.world.takeIf { it.name == ditch.world }
+                    ?.let { Location(it, ditch.x, ditch.y, ditch.z) } ?: return null
+                val bedCandidates = placement.bedCandidates(runtime, listOf(ditchLocation), runtime.settings.careRadius)
                 val safePoints = FarmDeliveryPlanner.selectTargets(
                     bedCandidates,
-                    pen.x,
-                    pen.z,
-                    sources.map { it.x to it.z },
-                    runtime.settings.placementMinObjectiveDistance.toDouble(),
-                    runtime.settings.animalRescueMaxPlayerDistance.toDouble(),
+                    ditch.x,
+                    ditch.z,
+                    listOf(ditch.x to ditch.z),
+                    0.0,
+                    runtime.settings.careRadius.toDouble(),
                     runtime.settings.animalRescueTargetCount,
                     salt,
                     runtime.settings.animalRescueMinSpacing,
@@ -195,8 +196,8 @@ internal class FarmCarePlanService(
                 if (safePoints.isEmpty()) {
                     log(
                         Level.WARNING,
-                        "Could not plan farm animal rescue: zone=${runtime.settings.id} " +
-                            "sequence=${runtime.state.sequence} reason=no_open_sky_beds " +
+                            "Could not plan farm animal rescue: zone=${runtime.settings.id} " +
+                            "sequence=${runtime.state.sequence} reason=no_ditch_spawn_candidates " +
                             "indexed_beds=${registry.beds(runtime.settings.id).size} candidates=${bedCandidates.size} " +
                             "requested=${runtime.settings.animalRescueTargetCount}",
                     )

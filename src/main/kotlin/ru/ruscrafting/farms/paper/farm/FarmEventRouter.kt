@@ -28,6 +28,7 @@ import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.event.inventory.InventoryType
 import org.bukkit.event.player.PlayerDropItemEvent
+import org.bukkit.event.player.PlayerFishEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerMoveEvent
@@ -66,6 +67,7 @@ import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
 import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingIncident
 import ru.ruscrafting.farms.paper.farm.incident.fire.FarmBarnFireIncident
 import ru.ruscrafting.farms.paper.farm.incident.frost.FarmFrostIncident
+import ru.ruscrafting.farms.paper.farm.incident.action.FarmActionIncidentController
 import ru.ruscrafting.farms.paper.farm.presentation.FarmHudController
 import ru.ruscrafting.farms.paper.farm.perk.FarmPerkController
 import ru.ruscrafting.farms.paper.farm.recovery.FarmFixedCropRecoveryController
@@ -99,6 +101,7 @@ internal class FarmEventRouter(
     private val processing: FarmProcessingIncident,
     private val barnFire: FarmBarnFireIncident,
     private val frost: FarmFrostIncident,
+    private val actionIncidents: FarmActionIncidentController,
     private val delivery: FarmDeliveryController,
     private val enterprise: FarmEnterprisePort,
     private val supplies: FarmSupplyController,
@@ -145,7 +148,9 @@ internal class FarmEventRouter(
             }
             state.traceBlockBreak(event, ActivityKind.FARM, runtime.settings.id)
             event.isCancelled = true
-            if (!special.handleCropBreak(runtime, event.player, event.block)) harvest.onBreak(event, runtime)
+            if (!special.handleChannelBreak(runtime, event.player, event.block) &&
+                !special.handleCropBreak(runtime, event.player, event.block)
+            ) harvest.onBreak(event, runtime)
             return true
         }
         return false
@@ -220,6 +225,7 @@ internal class FarmEventRouter(
                 return true
             }
         }
+        if (actionIncidents.interact(event)) return true
         if (foodDelivery.onInteract(event, runtimes())) return true
         supplies.serviceItemZone(event.player.inventory.itemInMainHand, FarmSupplyKind.FIRE)?.let { zoneId ->
             val runtime = runtimes().firstOrNull { it.settings.id == zoneId }
@@ -274,7 +280,7 @@ internal class FarmEventRouter(
         if (!worldAdmin.isEditing(player) && foodDelivery.enterPortal(player, destination, runtimes())) return true
         val from = farmAt(event.from)
         val to = farmAt(destination)
-        val routeRuntime = foodDelivery.participantRuntime(player, runtimes())
+        val routeRuntime = foodDelivery.participantRuntime(player, runtimes()) ?: actionIncidents.participantRuntime(player)
         if (from != null && from !== to) {
             supplies.removeServiceItems(player, from.settings.id, "left_zone")
             frost.clearPlayer(player, "left_zone")
@@ -289,11 +295,12 @@ internal class FarmEventRouter(
     }
 
     fun retainOnTeleport(player: Player): Boolean =
-        foodDelivery.participantRuntime(player, runtimes()) != null
+        foodDelivery.participantRuntime(player, runtimes()) != null || actionIncidents.participantRuntime(player) != null
 
     fun onQuit(player: Player, reason: String = "player_quit") {
         routeAdmin.release(player)
         foodDelivery.onQuit(player)
+        actionIncidents.onQuit(player)
         hud.stopMusic(player, reason)
         special.onQuit(player)
         hud.removePlayer(player, reason)
@@ -320,7 +327,7 @@ internal class FarmEventRouter(
         if (care.owns(event.rightClicked) || supplies.owns(event.rightClicked) || delivery.owns(event.rightClicked) ||
             foodDelivery.owns(event.rightClicked) || perks.owns(event.rightClicked) ||
             scene.owns(event.rightClicked) || special.ownsScene(event.rightClicked) || processing.owns(event.rightClicked) ||
-            frost.owns(event.rightClicked)
+            frost.owns(event.rightClicked) || actionIncidents.owns(event.rightClicked)
         ) event.isCancelled = true
     }
 
@@ -332,6 +339,7 @@ internal class FarmEventRouter(
         if (worldAdmin.isEditing(event.player) || event.hand != EquipmentSlot.HAND) return
         if (perks.interact(event)) return
         if (foodDelivery.interact(event, runtimes())) return
+        if (actionIncidents.interact(event)) return
         if (processing.interact(event, runtimes())) return
         if (special.ownsScene(event.rightClicked)) {
             event.isCancelled = true
@@ -393,6 +401,7 @@ internal class FarmEventRouter(
             return
         }
         if (foodDelivery.onDamage(event, runtimes())) return
+        if (actionIncidents.onDamage(event)) return
         if (birds.onDamage(event, runtimes())) return
         if (scene.owns(event.entity) || special.ownsScene(event.entity)) {
             event.isCancelled = true
@@ -468,6 +477,10 @@ internal class FarmEventRouter(
         }
     }
 
+    fun onFish(event: PlayerFishEvent) {
+        care.onFish(event)
+    }
+
     fun onDeath(event: PlayerDeathEvent) {
         care.onPlayerDeath(event.entity)
         event.drops.removeIf { supplies.isServiceItem(it) || foodDelivery.ownsServiceItem(it) || frost.isServiceItem(it) }
@@ -512,7 +525,9 @@ internal class FarmEventRouter(
     }
 
     fun onEntityDeath(event: EntityDeathEvent) {
-        if (!foodDelivery.onDeath(event, runtimes()) && !care.onDeath(event) && !birds.onDeath(event, runtimes())) {
+        if (!actionIncidents.onDeath(event) && !foodDelivery.onDeath(event, runtimes()) &&
+            !care.onDeath(event) && !birds.onDeath(event, runtimes())
+        ) {
             pests.onDeath(event, runtimes())
         }
     }

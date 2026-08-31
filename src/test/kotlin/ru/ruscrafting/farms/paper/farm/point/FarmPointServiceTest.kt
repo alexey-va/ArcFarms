@@ -58,4 +58,27 @@ class FarmPointServiceTest : FunSpec({
             service.resolveBase(runtime, FarmPointKind.FIREWOOD) shouldBe configured
         }
     }
+
+    test("ditch and rival farm points never fall back to an unrelated farm fixture") {
+        val zone = mockk<FarmZoneSettings> { every { id } returns "communal_farm" }
+        val runtime = mockk<FarmRuntime> { every { settings } returns zone }
+        val root = Files.createTempDirectory("arcfarms-action-point-test")
+
+        FarmLocationRepository(root).use { repository ->
+            val service = FarmPointService({ mockk<ArcFarmsConfig>(relaxed = true) }, repository)
+            service.load()
+
+            listOf(FarmPointKind.DITCH, FarmPointKind.RIVAL_FARM).forEach { kind ->
+                service.configured("communal_farm", kind) shouldBe null
+                shouldThrow<IllegalStateException> { service.resolveBase(runtime, kind) }
+            }
+
+            val ditch = FarmPointPosition("sp11", 186.5, 48.0, 466.5)
+            val rival = FarmPointPosition("sp11", 326.5, 50.0, 512.5)
+            service.save("communal_farm", FarmPointKind.DITCH, ditch) {}
+            service.save("communal_farm", FarmPointKind.RIVAL_FARM, rival) {}
+            service.resolveBase(runtime, FarmPointKind.DITCH) shouldBe ditch
+            service.resolveBase(runtime, FarmPointKind.RIVAL_FARM) shouldBe rival
+        }
+    }
 })

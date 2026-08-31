@@ -92,6 +92,8 @@ internal class FarmPointService(
             FarmPointKind.ARCHERY -> zone.supplies.archery.toPoint()
             FarmPointKind.FIRE_EQUIPMENT -> zone.supplies.fireEquipment.toPoint()
             FarmPointKind.FIREWOOD -> error("Farm firewood point must be explicitly configured for ${zone.id}")
+            FarmPointKind.DITCH -> error("Farm ditch point must be explicitly configured for ${zone.id}")
+            FarmPointKind.RIVAL_FARM -> error("Rival farm point must be explicitly configured for ${zone.id}")
             FarmPointKind.CRATES -> zone.delivery.pickup.toPoint()
             FarmPointKind.RECEIVING -> FarmPointPosition(zone.delivery.world, zone.delivery.x, zone.delivery.y, zone.delivery.z)
             FarmPointKind.FOOD_DELIVERY_PORTAL -> resolveBase(runtime, FarmPointKind.RECEIVING)

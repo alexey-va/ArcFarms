@@ -543,6 +543,13 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().specialIncidents.channelBlockageCount shouldBe 5
         settings.farms.single().specialIncidents.channelBlockageMaterial shouldBe "MANGROVE_ROOTS"
         settings.farms.single().specialIncidents.channelBlockageDisplayYOffset shouldBe 0.8
+        settings.farms.single().boarBreakout.requiredDeflections shouldBe 8
+        settings.farms.single().boarBreakout.activeBoars shouldBe 3
+        settings.farms.single().boarBreakout.shieldMaterial shouldBe "SHIELD"
+        settings.farms.single().rivalRaid.requiredKills shouldBe 14
+        settings.farms.single().rivalRaid.workerEntity shouldBe "HUSK"
+        settings.farms.single().rivalRaid.gunMaterial shouldBe "IRON_HORSE_ARMOR"
+        settings.farms.single().music.rivalRaidSound shouldBe "minecraft:music_disc.pigstep"
         settings.farms.single().specialIncidents.nightCropPlacementCount shouldBe 90
         settings.farms.single().specialIncidents.nightCropTargetCount shouldBe 24
         settings.farms.single().specialIncidents.nightCropMinSpacing shouldBe 6.0
@@ -1576,7 +1583,7 @@ class ArcFarmsConfigTest : FunSpec({
             FarmCareType.POLLINATION to "Пыльцу из улья несите к цветам",
             FarmCareType.STORM_COVERS to "Закрепите укрытие во всех метках",
             FarmCareType.SCARECROWS to "Берите пугала в хлеву и несите к меткам",
-            FarmCareType.ANIMAL_RESCUE to "Ведите животных к зелёной метке",
+            FarmCareType.ANIMAL_RESCUE to "Зацепляйте животных в канаве служебной удочкой",
             FarmCareType.DISEASE to "Срезайте очаги мотыгой вовремя",
             FarmCareType.MOLES to "Бейте свежие холмики мотыгой",
             FarmCareType.APPLE_HARVEST to "Ищите светящиеся яблоки под кронами",
@@ -1609,8 +1616,8 @@ class ArcFarmsConfigTest : FunSpec({
             base.copy(phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.CHANNELS, done = 1, total = 4),
             null,
         ).map(PlainTextComponentSerializer.plainText()::serialize)
-        channels[6] shouldBe "| Идите от источника к полю"
-        channels[7] shouldBe "| Золотой шлюз переключите; зелёный готов"
+        channels[6] shouldBe "| Раскапывайте отмеченные корневые завалы"
+        channels[7] shouldBe "| Лопатой ломайте только отмеченные завалы"
         (channels.size <= FarmScoreboardRenderer.MAX_ROWS) shouldBe true
     }
 

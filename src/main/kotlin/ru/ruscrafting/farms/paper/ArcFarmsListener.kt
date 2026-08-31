@@ -23,6 +23,7 @@ import org.bukkit.event.entity.PlayerDeathEvent
 import org.bukkit.event.entity.ProjectileHitEvent
 import org.bukkit.event.entity.EntityShootBowEvent
 import org.bukkit.event.player.PlayerDropItemEvent
+import org.bukkit.event.player.PlayerFishEvent
 import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerInteractEvent
@@ -138,6 +139,9 @@ class ArcFarmsListener(
 
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onDrop(event: PlayerDropItemEvent) = service.onDrop(event)
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    fun onFish(event: PlayerFishEvent) = service.onFish(event)
 
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onDeath(event: PlayerDeathEvent) = service.onDeath(event)

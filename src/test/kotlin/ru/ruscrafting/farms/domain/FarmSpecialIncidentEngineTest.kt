@@ -75,6 +75,24 @@ class FarmSpecialIncidentEngineTest : FunSpec({
         state.phase shouldBe FarmPhase.HARVESTING
     }
 
+    test("boar defense and rival raid use the same durable cooperative action progress") {
+        listOf(FarmIncidentType.BOAR_BREAKOUT, FarmIncidentType.RIVAL_RAID).forEach { type ->
+            var state = incident(type).copy(
+                specialIncident = FarmSpecialIncidentState(
+                    points = listOf(FarmPointPosition("world", 0.5, 65.0, 0.5)),
+                ),
+                incidentRequired = 2,
+            )
+
+            state = FarmSpecialIncidentEngine.advanceAction(state, type, player).state
+            state.phase shouldBe FarmPhase.INCIDENT
+            state.incidentProgress shouldBe 1
+            state = FarmSpecialIncidentEngine.advanceAction(state, type, player).state
+            state.phase shouldBe FarmPhase.HARVESTING
+            state.contributors[player] shouldBe 2
+        }
+    }
+
     test("channel planner creates a visible blockage route with no hidden switch solution") {
         val source = FarmPointPosition("world", 0.5, 65.0, 0.5)
         val target = FarmMatureCrop(FarmPlotPosition("world", 25, 64, 0), "WHEAT")

@@ -50,6 +50,7 @@ import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
 import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingIncident
 import ru.ruscrafting.farms.paper.farm.incident.fire.FarmBarnFireIncident
 import ru.ruscrafting.farms.paper.farm.incident.frost.FarmFrostIncident
+import ru.ruscrafting.farms.paper.farm.incident.action.FarmActionIncidentController
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
 import ru.ruscrafting.farms.paper.farm.point.FarmPointService
 import ru.ruscrafting.farms.paper.farm.perk.FarmPerkController
@@ -64,6 +65,8 @@ import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyController
 import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyKind
 import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantOwner
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
+import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItemOwner
+import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
 
 /** Coordinates farm-zone lifecycle while feature owners retain their own state. */
 internal class FarmModule(
@@ -90,6 +93,7 @@ internal class FarmModule(
     private val pests: FarmPestIncident,
     private val birds: FarmBirdIncident,
     private val foodDelivery: FarmFoodDeliveryIncident,
+    private val actionIncidents: FarmActionIncidentController,
     private val perks: FarmPerkController,
     private val special: FarmSpecialIncidentController,
     private val processing: FarmProcessingIncident,
@@ -105,7 +109,7 @@ internal class FarmModule(
     private val guidance: FarmGuidanceController,
     private val events: FarmEventRouter,
 ) : WorksiteModule<FarmShiftState>, WorksiteBlockBreakHandler, WorksitePlayerInteractHandler, WorksiteMoveHandler,
-    WorksiteGuidanceHandler, WorksiteParticipantOwner, WorksiteTeleportRetention {
+    WorksiteGuidanceHandler, WorksiteParticipantOwner, WorksiteTeleportRetention, WorksiteServiceItemOwner {
     override val kind: ActivityKind = ActivityKind.FARM
     override val zoneCount: Int get() = registry.size
 
@@ -130,6 +134,7 @@ internal class FarmModule(
         registry.snapshot().forEach(scene::ensure)
         registry.snapshot().forEach(perks::ensure)
         registry.snapshot().forEach(special::ensure)
+        registry.snapshot().forEach(actionIncidents::ensure)
         registry.snapshot().forEach(processing::ensure)
         registry.snapshot().forEach(barnFire::ensure)
         registry.snapshot().forEach(frost::ensure)
@@ -147,6 +152,7 @@ internal class FarmModule(
         var removed = 0
         chunk.entities.filter { entity ->
             pests.ownsPest(entity) || pests.ownsNest(entity) || birds.owns(entity) || foodDelivery.owns(entity) ||
+                actionIncidents.owns(entity) ||
                 processing.owns(entity) || delivery.owns(entity) || supplies.owns(entity) ||
                 care.owns(entity) || perks.owns(entity) || frost.owns(entity)
         }.forEach { entity ->
@@ -225,6 +231,7 @@ internal class FarmModule(
             tasks.guarded("farm_animals:${runtime.settings.id}") {
                 if (!isAdminEditing(runtime)) {
                     care.updateAnimals(runtime)
+                    actionIncidents.update(runtime)
                     if (runtime.state.phase == FarmPhase.INCIDENT && runtime.state.incidentType == FarmIncidentType.NIGHT_SHIFT) {
                         special.updateLights(runtime)
                     }
@@ -276,6 +283,7 @@ internal class FarmModule(
                 pests.ensure(runtime)
                 birds.ensure(runtime)
                 foodDelivery.ensure(runtime, now)
+                actionIncidents.ensure(runtime)
                 special.ensure(runtime)
                 processing.ensure(runtime)
                 barnFire.ensure(runtime)
@@ -302,6 +310,7 @@ internal class FarmModule(
 
     fun hudRuntime(player: Player): FarmRuntime? =
         registry.at(player.location) ?: foodDelivery.participantRuntime(player, registry.snapshot())
+        ?: actionIncidents.participantRuntime(player)
 
     override fun states(): Map<String, FarmShiftState> =
         registry.snapshot().associate { it.settings.id to it.state }
@@ -343,6 +352,15 @@ internal class FarmModule(
         else events.onQuit(player, "worksite_${reason.name.lowercase()}")
     }
 
+    override fun isActive(identity: ServiceItemIdentity): Boolean =
+        care.isServiceItemActive(identity) || special.isServiceItemActive(identity) || actionIncidents.isActive(identity)
+
+    override fun release(playerId: java.util.UUID, identity: ServiceItemIdentity, reason: WorksitePlayerReleaseReason) {
+        care.releaseServiceItem(playerId, identity, reason)
+        special.releaseServiceItem(playerId, identity, reason)
+        actionIncidents.release(playerId, identity, reason)
+    }
+
     override fun updateGuidance(expectedBars: MutableSet<ActivityBarKey>) {
         expectedBars += updateHud()
     }
@@ -382,7 +400,8 @@ internal class FarmModule(
             }
             FarmPointKind.FOOD_DELIVERY_PORTAL -> foodDelivery.refresh(runtime, reason)
             FarmPointKind.HIVE, FarmPointKind.IRRIGATION, FarmPointKind.COVERS,
-            FarmPointKind.SCARECROWS, FarmPointKind.PEN -> care.refreshPoint(runtime, kind, reason)
+            FarmPointKind.SCARECROWS, FarmPointKind.PEN, FarmPointKind.DITCH -> care.refreshPoint(runtime, kind, reason)
+            FarmPointKind.RIVAL_FARM -> actionIncidents.clear(runtime, reason)
             FarmPointKind.PERK_VENDOR -> perks.refresh(runtime, reason)
             FarmPointKind.PROCESSING, FarmPointKind.PROCESSING_INPUT,
             FarmPointKind.PROCESSING_INPUT_2, FarmPointKind.PROCESSING_INPUT_3,
@@ -398,6 +417,7 @@ internal class FarmModule(
         orderCycle.clearPending()
         scene.cleanup(reason)
         special.cleanup(reason)
+        actionIncidents.cleanup(reason)
         processing.cleanup(reason)
         barnFire.cleanup(reason)
         frost.cleanup(reason)

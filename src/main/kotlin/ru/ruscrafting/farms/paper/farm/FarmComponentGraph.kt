@@ -13,6 +13,7 @@ import ru.ruscrafting.farms.paper.FarmNightShiftController
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.RegionGateway
 import ru.ruscrafting.farms.paper.worksite.WorksitePorts
+import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems
 import ru.ruscrafting.farms.paper.farm.admin.FarmGameplayAdminService
 import ru.ruscrafting.farms.paper.farm.admin.FarmPointAdminService
 import ru.ruscrafting.farms.paper.farm.admin.FarmRouteAdminService
@@ -34,6 +35,7 @@ import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
 import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingIncident
 import ru.ruscrafting.farms.paper.farm.incident.fire.FarmBarnFireIncident
 import ru.ruscrafting.farms.paper.farm.incident.frost.FarmFrostIncident
+import ru.ruscrafting.farms.paper.farm.incident.action.FarmActionIncidentController
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
 import ru.ruscrafting.farms.paper.farm.point.FarmPointService
 import ru.ruscrafting.farms.paper.farm.perk.FarmPerkController
@@ -77,6 +79,7 @@ internal class FarmComponentGraph(
     runtimeValidator: ArcFarmsRuntimeValidator,
     regionGateway: RegionGateway,
     ports: WorksitePorts,
+    serviceItems: WorksiteServiceItems,
     taskSupervisor: ru.ruscrafting.farms.paper.RuntimeTaskSupervisor,
     clock: () -> Long,
     random: RandomGenerator,
@@ -170,6 +173,7 @@ internal class FarmComponentGraph(
         access = ports.access,
         audience = ports.audience,
         state = ports.state,
+        serviceItems = serviceItems,
         ledger = ledger,
         registry = blockRegistry,
         plans = carePlans,
@@ -313,6 +317,7 @@ internal class FarmComponentGraph(
         audience = ports.audience,
         state = ports.state,
         tasks = ports.tasks,
+        serviceItems = serviceItems,
         ledger = ledger,
         registry = blockRegistry,
         beds = incidentBeds,
@@ -321,6 +326,22 @@ internal class FarmComponentGraph(
         runtimes = runtimes::snapshot,
         clock = clock,
         nightShift = nightShift,
+    )
+    private val actionIncidents = FarmActionIncidentController(
+        plugin = plugin,
+        settings = settings,
+        locale = locale,
+        debug = debug,
+        access = ports.access,
+        audience = ports.audience,
+        state = ports.state,
+        serviceItems = serviceItems,
+        ledger = ledger,
+        beds = incidentBeds,
+        points = points,
+        transitions = transitions,
+        runtimes = runtimes::snapshot,
+        entityRayTrace = entityRayTrace,
     )
     private val processing = FarmProcessingIncident(
         plugin = plugin,
@@ -381,6 +402,7 @@ internal class FarmComponentGraph(
         tasks = ports.tasks,
         delivery = delivery,
         foodDelivery = foodDelivery,
+        actionIncidents = actionIncidents,
         special = special,
         harvest = harvest,
         clock = clock,
@@ -411,6 +433,7 @@ internal class FarmComponentGraph(
         pests = pests,
         birds = birds,
         foodDelivery = foodDelivery,
+        actionIncidents = actionIncidents,
         special = special,
         processing = processing,
         barnFire = barnFire,
@@ -481,6 +504,7 @@ internal class FarmComponentGraph(
         pests = pests,
         birds = birds,
         foodDelivery = foodDelivery,
+        actionIncidents = actionIncidents,
         routeAdmin = routeAdmin,
         perks = perks,
         special = special,
@@ -522,6 +546,7 @@ internal class FarmComponentGraph(
         pests = pests,
         birds = birds,
         foodDelivery = foodDelivery,
+        actionIncidents = actionIncidents,
         perks = perks,
         special = special,
         processing = processing,
@@ -566,6 +591,7 @@ internal class FarmComponentGraph(
         pests = pests,
         birds = birds,
         foodDelivery = foodDelivery,
+        actionIncidents = actionIncidents,
         special = special,
         processing = processing,
         barnFire = barnFire,

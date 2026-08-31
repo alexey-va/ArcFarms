@@ -216,6 +216,7 @@ internal fun farmEventRouter(
     processing = mockk<FarmProcessingIncident>(relaxed = true),
     barnFire = barnFire,
     frost = mockk<FarmFrostIncident>(relaxed = true),
+    actionIncidents = mockk(relaxed = true),
     delivery = mockk<FarmDeliveryController>(relaxed = true),
     enterprise = mockk<FarmEnterprisePort>(relaxed = true),
     supplies = supplies,

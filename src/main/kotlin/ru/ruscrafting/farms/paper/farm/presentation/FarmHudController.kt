@@ -37,6 +37,8 @@ import ru.ruscrafting.farms.paper.farm.harvest.FarmHarvestController
 import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
 import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentController
 import ru.ruscrafting.farms.paper.farm.incident.special.SPECIAL_FARM_INCIDENT_TYPES
+import ru.ruscrafting.farms.paper.farm.incident.action.ACTION_FARM_INCIDENT_TYPES
+import ru.ruscrafting.farms.paper.farm.incident.action.FarmActionIncidentController
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.math.ceil
@@ -51,6 +53,7 @@ internal class FarmHudController(
     private val tasks: WorksiteTaskPort,
     private val delivery: FarmDeliveryController,
     private val foodDelivery: FarmFoodDeliveryIncident,
+    private val actionIncidents: FarmActionIncidentController,
     private val special: FarmSpecialIncidentController,
     private val harvest: FarmHarvestController,
     private val clock: () -> Long,
@@ -106,7 +109,7 @@ internal class FarmHudController(
                         "instruction" to instruction(runtime, player),
                         "nests" to locale.text(runtime.state.pestNests.size),
                         "pests" to locale.text(runtime.state.pestAlive),
-                        "event" to (runtime.state.incidentType?.takeIf { it in SPECIAL_FARM_INCIDENT_TYPES }
+                        "event" to (runtime.state.incidentType?.takeIf { it in NAMED_INCIDENT_TYPES }
                             ?.let { special.name(it, player) } ?: Component.empty()),
                         "time" to (runtime.state.specialIncident?.takeIf {
                             runtime.state.incidentType == FarmIncidentType.MARKET && it.marketAccepted
@@ -146,6 +149,8 @@ internal class FarmHudController(
                 FarmIncidentType.PROCESSING -> MessageKey.FARM_ENTRY_PROCESSING
                 FarmIncidentType.BARN_FIRE -> MessageKey.FARM_ENTRY_BARN_FIRE
                 FarmIncidentType.FROST -> MessageKey.FARM_ENTRY_FROST
+                FarmIncidentType.BOAR_BREAKOUT -> MessageKey.FARM_ENTRY_BOAR_BREAKOUT
+                FarmIncidentType.RIVAL_RAID -> MessageKey.FARM_ENTRY_RIVAL_RAID
                 FarmIncidentType.GIANT_CROP,
                 FarmIncidentType.CHANNELS,
                 FarmIncidentType.NIGHT_SHIFT,
@@ -235,7 +240,9 @@ internal class FarmHudController(
         } else {
             music.sync(
                 playerId = player.uniqueId,
-                desiredSound = configured.sound,
+                desiredSound = if (runtime.state.phase == FarmPhase.INCIDENT &&
+                    runtime.state.incidentType == FarmIncidentType.RIVAL_RAID
+                ) configured.rivalRaidSound else configured.sound,
                 now = now,
                 durationMillis = TimeUnit.SECONDS.toMillis(configured.durationSeconds.toLong()),
             )
@@ -373,6 +380,8 @@ internal class FarmHudController(
             FarmIncidentType.PROCESSING -> MessageKey.FARM_PROCESSING_BOSSBAR
             FarmIncidentType.BARN_FIRE -> MessageKey.FARM_BARN_FIRE_BOSSBAR
             FarmIncidentType.FROST -> MessageKey.FARM_FROST_BOSSBAR
+            FarmIncidentType.BOAR_BREAKOUT -> MessageKey.FARM_BOAR_BREAKOUT_BOSSBAR
+            FarmIncidentType.RIVAL_RAID -> MessageKey.FARM_RIVAL_RAID_BOSSBAR
             FarmIncidentType.MARKET -> if (runtime.state.specialIncident?.marketAccepted == true) {
                 MessageKey.FARM_MARKET_ACTIVE_BOSSBAR
             } else MessageKey.FARM_MARKET_PENDING_BOSSBAR
@@ -430,7 +439,7 @@ internal class FarmHudController(
                 mapOf("total" to locale.text(runtime.state.careRequired())),
             )
         } ?: Component.empty()
-        FarmPhase.INCIDENT -> runtime.state.incidentType?.takeIf { it in SPECIAL_FARM_INCIDENT_TYPES }?.let { type ->
+        FarmPhase.INCIDENT -> runtime.state.incidentType?.takeIf { it in NAMED_INCIDENT_TYPES }?.let { type ->
             if (type == FarmIncidentType.MARKET) {
                 runtime.state.specialIncident?.let { incident ->
                     locale.renderPath(
@@ -452,7 +461,7 @@ internal class FarmHudController(
             player,
             farmIncidentHintKey(type, runtime.state.processing?.stage, incident?.marketAccepted == true),
             buildMap {
-                if (type in SPECIAL_FARM_INCIDENT_TYPES) put("event", special.name(type, player))
+                if (type in NAMED_INCIDENT_TYPES) put("event", special.name(type, player))
                 put("done", locale.text(runtime.state.incidentProgress))
                 put("total", locale.text(runtime.state.incidentRequired))
                 if (type == FarmIncidentType.MARKET && incident != null) {
@@ -481,7 +490,8 @@ internal class FarmHudController(
 
     private fun currentOrder(runtime: FarmRuntime): FarmOrder? = runtime.state.orderId?.let(runtime.orders::get)
     private fun players(runtime: FarmRuntime): List<Player> =
-        (audience.players(runtime.region) + foodDelivery.participants(runtime)).distinctBy(Player::getUniqueId)
+        (audience.players(runtime.region) + foodDelivery.participants(runtime) + actionIncidents.participants(runtime))
+            .distinctBy(Player::getUniqueId)
     private fun remainingSeconds(deadline: Long, now: Long): Long = ceil((deadline - now).coerceAtLeast(0) / 1_000.0).toLong()
     private fun musicSound(sound: String, volume: Float): AdventureSound = AdventureSound.sound(
         Key.key(sound),
@@ -500,6 +510,7 @@ internal class FarmHudController(
             FarmPhase.DELIVERY,
             FarmPhase.COOLDOWN,
         )
+        val NAMED_INCIDENT_TYPES = SPECIAL_FARM_INCIDENT_TYPES + ACTION_FARM_INCIDENT_TYPES
     }
 }
 
@@ -524,4 +535,6 @@ internal fun farmIncidentHintKey(
     }
     FarmIncidentType.BARN_FIRE -> MessageKey.FARM_BARN_FIRE_AIM_HINT
     FarmIncidentType.FROST -> MessageKey.FARM_FROST_REQUIRED
+    FarmIncidentType.BOAR_BREAKOUT -> MessageKey.FARM_BOAR_BREAKOUT_REQUIRED
+    FarmIncidentType.RIVAL_RAID -> MessageKey.FARM_RIVAL_RAID_REQUIRED
 }

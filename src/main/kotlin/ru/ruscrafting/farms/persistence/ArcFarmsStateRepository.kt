@@ -348,6 +348,8 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                         FarmIncidentType.BIRDS,
                         FarmIncidentType.FOOD_DELIVERY,
                         FarmIncidentType.BARN_FIRE,
+                        FarmIncidentType.BOAR_BREAKOUT,
+                        FarmIncidentType.RIVAL_RAID,
                     ),
                 ) { "Farm special incident state escaped its active incident" }
                 require(special.points.size <= 256 && special.plots.size <= 128) {
@@ -385,6 +387,12 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                             special.active.size + farm.incidentProgress <= farm.incidentRequired &&
                             farm.incidentRequired == special.points.size,
                     ) { "Farm barn fire state is incomplete" }
+                    FarmIncidentType.BOAR_BREAKOUT -> require(
+                        special.points.isNotEmpty() && special.points.size == special.plots.size,
+                    ) { "Farm boar breakout state is incomplete" }
+                    FarmIncidentType.RIVAL_RAID -> require(
+                        special.points.size == 2 && special.plots.isEmpty(),
+                    ) { "Farm rival raid state is incomplete" }
                     else -> error("Farm special incident state has an invalid type")
                 }
                 if (farm.incidentType != FarmIncidentType.MARKET) {

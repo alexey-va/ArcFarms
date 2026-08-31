@@ -10,9 +10,12 @@ import ru.ruscrafting.farms.config.CuboidBounds
 import ru.ruscrafting.farms.config.FarmZoneSettings
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareType
+import ru.ruscrafting.farms.domain.FarmDeliveryPosition
 import ru.ruscrafting.farms.domain.FarmLocationOverrides
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPlotPosition
+import ru.ruscrafting.farms.domain.FarmPointKind
+import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmRules
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
@@ -26,6 +29,72 @@ import java.util.random.RandomGenerator
 import kotlin.math.abs
 
 class FarmCarePlanServiceMockBukkitTest : FunSpec({
+    test("animal rescue is unavailable without an admin ditch and is planned around that point when configured") {
+        val paper = MockBukkitTestRuntime.open()
+        try {
+            val world = paper.server.addSimpleWorld("sp11")
+            world.getChunkAt(0, 0).load()
+            val bed = FarmPlotPosition(world.name, 4, 64, 4)
+            world.getBlockAt(bed.x, bed.y, bed.z).type = Material.FARMLAND
+            val registry = mockk<FarmBlockRegistry> {
+                every { beds("communal_farm") } returns setOf(bed)
+            }
+            val settings = mockk<FarmZoneSettings> {
+                every { id } returns "communal_farm"
+                every { careTargetsPerPlayer } returns 3
+                every { careTargetsMax } returns 6
+                every { careRadius } returns 8
+                every { animalRescueTargetCount } returns 2
+                every { animalRescueMinSpacing } returns 2.0
+            }
+            val runtime = FarmRuntime(
+                settings = settings,
+                region = CuboidActivityRegion(world, "farm", CuboidBounds(0, 60, 0, 16, 72, 16)),
+                orders = emptyMap(),
+                orderList = emptyList(),
+                rules = FarmRules(listOf(50), 1, 1_000),
+                state = FarmShiftState(
+                    phase = FarmPhase.HARVESTING,
+                    sequence = 9,
+                    preparationPatch = listOf(bed),
+                ),
+            )
+            val placement = mockk<FarmPlacementService> {
+                every { bedCandidates(runtime, any(), 8) } returns listOf(
+                    FarmDeliveryPosition(world.name, 7.5, 65.05, 7.5),
+                    FarmDeliveryPosition(world.name, 10.5, 65.05, 7.5),
+                )
+            }
+            var overrides = FarmLocationOverrides()
+            val service = FarmCarePlanService(
+                debug = ArcFarmsDebug({ false }) {},
+                registry = registry,
+                placement = placement,
+                points = FarmPointProvider { _, _ -> error("No derived point expected") },
+                overrides = { overrides },
+                random = mockk<RandomGenerator>(relaxed = true),
+                moleBurrow = mockk<FarmMoleBurrowWorld>(relaxed = true),
+                participantCount = { 1 },
+                log = { _, _ -> },
+            )
+
+            service.targets(runtime, FarmCareType.ANIMAL_RESCUE, null) shouldBe null
+
+            overrides = FarmLocationOverrides(
+                zones = mapOf(
+                    runtime.settings.id to mapOf(
+                        FarmPointKind.DITCH to FarmPointPosition(world.name, 8.0, 64.0, 8.0),
+                    ),
+                ),
+            )
+            val targets = requireNotNull(service.targets(runtime, FarmCareType.ANIMAL_RESCUE, null))
+            targets.size shouldBe 2
+            targets.all { it.role == FarmCareRole.ANIMAL } shouldBe true
+        } finally {
+            paper.close()
+        }
+    }
+
     test("scarecrow targets occupy the middle field ring and remain spaced") {
         val paper = MockBukkitTestRuntime.open()
         try {

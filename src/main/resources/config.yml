@@ -264,6 +264,8 @@ farm-zones:
     music:
       enabled: false
       sound: minecraft:music.overworld.forest
+      # Vanilla, redistributable soundtrack for the rival-farm flight.
+      rival-raid-sound: minecraft:music_disc.pigstep
       duration-seconds: 180
       volume: 0.65
     contract-scene:
@@ -307,13 +309,36 @@ farm-zones:
       water-settle-ticks: 21
     # В одном заказе планировщик не повторяет события и допускает максимум
     # одно обычное полевое происшествие (вредители или засуха).
-    incident-types: [GIANT_CROP, PROCESSING, BARN_FIRE, FROST, CHANNELS, NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, PESTS, DROUGHT]
+    incident-types: [GIANT_CROP, PROCESSING, BARN_FIRE, FROST, BOAR_BREAKOUT, RIVAL_RAID, CHANNELS, NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, PESTS, DROUGHT]
     special-incidents:
       giant-crop: {block-particle-stride: 4, hit-cooldown-millis: 90}
       birds: {min-count: 6, max-count: 14, beds-per-bird: 180, spawn-multiplier: 2, spawn-height: 4.0, flying-speed: 0.65, health: 4.0, eat-radius: 5.0, eat-interval-seconds: 3, ranged-contribution: 2, melee-contribution: 1}
       channels:
         blockages: 5
         blockage: {material: MANGROVE_ROOTS, custom-model-data: 0, display-scale: 1.6, y-offset: 0.8}
+      boar-breakout:
+        required-deflections: 8
+        active-boars: 3
+        movement-speed: 0.34
+        intercept-radius: 2.6
+        facing-dot: 0.25
+        crop-reach-radius: 1.35
+        crop-damage-maximum: 96
+        shield-material: SHIELD
+      rival-raid:
+        required-kills: 14
+        worker-count: 10
+        worker-entity: HUSK
+        worker-health: 12.0
+        worker-radius: 12.0
+        flight-height: 12.0
+        flight-speed: 0.48
+        maximum-distance: 512.0
+        gun-material: IRON_HORSE_ARMOR
+        gun-damage: 6.0
+        gun-range: 56.0
+        gun-cooldown-ticks: 3
+        gun-ray-size: 0.55
       night-shift:
         placement-count: 90
         target-count: 24
@@ -543,42 +568,42 @@ farm-zones:
         rarity: COMMON
         crops: [WHEAT:640, CARROTS:320, POTATOES:320]
         care-types: [MOLES, IRRIGATION, ANIMAL_RESCUE, WEEDS]
-        incident-types: [GIANT_CROP, PROCESSING, BARN_FIRE, FROST, CHANNELS, NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, DROUGHT, PESTS]
+        incident-types: [GIANT_CROP, PROCESSING, BARN_FIRE, FROST, BOAR_BREAKOUT, RIVAL_RAID, CHANNELS, NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, DROUGHT, PESTS]
         customer: MINE_SUPPLIER
         cart-load: {material: POTATO, custom-model-data: 0}
       bakery_supply:
         rarity: COMMON
         crops: [WHEAT:960, BEETROOTS:320]
         care-types: [POLLINATION, APPLE_HARVEST, DISEASE, IRRIGATION, SCARECROWS, MOLES]
-        incident-types: [CHANNELS, PROCESSING, BARN_FIRE, FROST, NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, GIANT_CROP, PESTS, DROUGHT]
+        incident-types: [CHANNELS, PROCESSING, BARN_FIRE, FROST, BOAR_BREAKOUT, RIVAL_RAID, NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, GIANT_CROP, PESTS, DROUGHT]
         customer: BAKER
         cart-load: {material: WHEAT, custom-model-data: 0}
       market_crates:
         rarity: COMMON
         crops: [CARROTS:320, POTATOES:320, BEETROOTS:320, SWEET_BERRY_BUSH:50, MELON:48, PUMPKIN:48]
         care-types: [WEEDS, APPLE_HARVEST, SCARECROWS, ANIMAL_RESCUE, STORM_COVERS]
-        incident-types: [MARKET, PROCESSING, BARN_FIRE, FROST, GIANT_CROP, NIGHT_SHIFT, BIRDS, FOOD_DELIVERY, CHANNELS, PESTS, DROUGHT]
+        incident-types: [MARKET, PROCESSING, BARN_FIRE, FROST, BOAR_BREAKOUT, RIVAL_RAID, GIANT_CROP, NIGHT_SHIFT, BIRDS, FOOD_DELIVERY, CHANNELS, PESTS, DROUGHT]
         customer: MARKET_TRADER
         cart-load: {material: CARROT, custom-model-data: 0}
       harvest_festival:
         rarity: RARE
         crops: [WHEAT:800, CARROTS:480, POTATOES:480, BEETROOTS:320, MELON:64, PUMPKIN:64]
         care-types: [POLLINATION, APPLE_HARVEST, STORM_COVERS, SCARECROWS]
-        incident-types: [GIANT_CROP, PROCESSING, BARN_FIRE, FROST, MARKET, BIRDS, FOOD_DELIVERY, CHANNELS, NIGHT_SHIFT, DROUGHT, PESTS]
+        incident-types: [GIANT_CROP, PROCESSING, BARN_FIRE, FROST, BOAR_BREAKOUT, RIVAL_RAID, MARKET, BIRDS, FOOD_DELIVERY, CHANNELS, NIGHT_SHIFT, DROUGHT, PESTS]
         customer: MARKET_TRADER
         cart-load: {material: HAY_BLOCK, custom-model-data: 0}
       deep_mine_relief:
         rarity: RARE
         crops: [WHEAT:800, CARROTS:480, POTATOES:640]
         care-types: [MOLES, IRRIGATION, DISEASE]
-        incident-types: [CHANNELS, PROCESSING, BARN_FIRE, FROST, GIANT_CROP, BIRDS, FOOD_DELIVERY, NIGHT_SHIFT, MARKET, DROUGHT, PESTS]
+        incident-types: [CHANNELS, PROCESSING, BARN_FIRE, FROST, BOAR_BREAKOUT, RIVAL_RAID, GIANT_CROP, BIRDS, FOOD_DELIVERY, NIGHT_SHIFT, MARKET, DROUGHT, PESTS]
         customer: MINE_SUPPLIER
         cart-load: {material: BAKED_POTATO, custom-model-data: 0}
       master_baker_request:
         rarity: RARE
         crops: [WHEAT:1440, BEETROOTS:480]
         care-types: [POLLINATION, APPLE_HARVEST, DISEASE, STORM_COVERS]
-        incident-types: [NIGHT_SHIFT, PROCESSING, BARN_FIRE, FROST, MARKET, BIRDS, FOOD_DELIVERY, GIANT_CROP, CHANNELS, PESTS, DROUGHT]
+        incident-types: [NIGHT_SHIFT, PROCESSING, BARN_FIRE, FROST, BOAR_BREAKOUT, RIVAL_RAID, MARKET, BIRDS, FOOD_DELIVERY, GIANT_CROP, CHANNELS, PESTS, DROUGHT]
         customer: BAKER
         cart-load: {material: BREAD, custom-model-data: 0}
 

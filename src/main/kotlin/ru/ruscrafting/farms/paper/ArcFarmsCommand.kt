@@ -692,6 +692,8 @@ class ArcFarmsCommand(
         "processing-output", "processing-product" -> FarmPointKind.PROCESSING_OUTPUT
         "fire-equipment", "fire-hose", "extinguisher" -> FarmPointKind.FIRE_EQUIPMENT
         "firewood" -> FarmPointKind.FIREWOOD
+        "ditch" -> FarmPointKind.DITCH
+        "rival-farm", "rival_farm", "neighbor-farm" -> FarmPointKind.RIVAL_FARM
         else -> null
     }
 
@@ -705,6 +707,7 @@ class ArcFarmsCommand(
         FarmPointKind.PROCESSING_INPUT_3 -> "processing-input-3"
         FarmPointKind.PROCESSING_INPUT_4 -> "processing-input-4"
         FarmPointKind.PROCESSING_OUTPUT -> "processing-output"
+        FarmPointKind.RIVAL_FARM -> "rival-farm"
         else -> kind.name.lowercase()
     }
 
@@ -744,6 +747,7 @@ class ArcFarmsCommand(
             listOf(
                 "pests", "drought", "birds", "giant-crop", "channels", "night-shift", "market",
                 "food-delivery", "processing", "barn-fire", "frost",
+                "boar-breakout", "rival-raid",
             )
         private val STAGE_STAGES = listOf("preparation", "planting", "harvesting") +
             EVENT_STAGES + listOf("delivery", "complete", "reset")
@@ -752,6 +756,7 @@ class ArcFarmsCommand(
             "covers", "scarecrows", "barn", "archery", "perk-vendor", "processing", "processing-input",
             "processing-input-2", "processing-input-3", "processing-input-4", "processing-output", "fire-equipment",
             "firewood",
+            "ditch", "rival-farm",
         )
         private val ADMIN_SHORTCUTS = listOf(
             "reset-farm",

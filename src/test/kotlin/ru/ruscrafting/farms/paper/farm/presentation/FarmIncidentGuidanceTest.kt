@@ -23,6 +23,8 @@ class FarmIncidentGuidanceTest : FunSpec({
             FarmIncidentType.PROCESSING to MessageKey.FARM_PROCESSING_LOADING_HINT,
             FarmIncidentType.BARN_FIRE to MessageKey.FARM_BARN_FIRE_AIM_HINT,
             FarmIncidentType.FROST to MessageKey.FARM_FROST_REQUIRED,
+            FarmIncidentType.BOAR_BREAKOUT to MessageKey.FARM_BOAR_BREAKOUT_REQUIRED,
+            FarmIncidentType.RIVAL_RAID to MessageKey.FARM_RIVAL_RAID_REQUIRED,
         )
     }
 

@@ -179,11 +179,11 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         handler.contains("dryPlots(runtime)") shouldBe false
     }
 
-    test("animal rescue is planned only from indexed outdoor beds") {
+    test("animal rescue requires an explicit ditch and bounded indexed beds around it") {
         val source = Files.readString(farmRoot.resolve("care/FarmCarePlanService.kt"))
 
-        source.contains("placement.bedCandidates(runtime, sources") shouldBe true
-        source.contains("placement.openSkyGroundCandidates(runtime, sources") shouldBe false
+        source.contains("explicit(FarmPointKind.DITCH) ?: return null") shouldBe true
+        source.contains("placement.bedCandidates(runtime, listOf(ditchLocation)") shouldBe true
     }
 
     test("gameplay owners cannot block the server thread on the state store") {

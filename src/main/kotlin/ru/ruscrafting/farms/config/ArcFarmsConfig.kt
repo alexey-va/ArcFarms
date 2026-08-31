@@ -26,6 +26,7 @@ import kotlin.math.ceil
 import kotlin.math.floor
 
 private val ROUTE_MONSTER_TYPES = setOf("HUSK", "ZOMBIE", "SKELETON", "SPIDER", "PHANTOM")
+private val RIVAL_WORKER_TYPES = setOf("HUSK", "ZOMBIE", "DROWNED", "PILLAGER")
 
 data class NetworkSettings(
     val enabled: Boolean,
@@ -237,6 +238,8 @@ data class FarmZoneSettings(
     val deliveryCarriedForwardOffset: Double = 0.65,
     val scarecrowCarriedForwardOffset: Double = 0.7,
     val scarecrowPickupRadius: Double = 1.75,
+    val boarBreakout: FarmBoarBreakoutSettings = FarmBoarBreakoutSettings(),
+    val rivalRaid: FarmRivalRaidSettings = FarmRivalRaidSettings(),
 ) {
     init {
         require(careTargetsPerPlayer <= careTargetsMax) {
@@ -349,6 +352,57 @@ data class FarmSpecialIncidentSettings(
             .toInt()
             .coerceIn(birdMinCount, birdMaxCount)
             .coerceAtMost(availableBeds)
+    }
+}
+
+data class FarmBoarBreakoutSettings(
+    val requiredDeflections: Int = 8,
+    val activeBoars: Int = 3,
+    val movementSpeed: Double = 0.34,
+    val interceptRadius: Double = 2.6,
+    val facingDot: Double = 0.25,
+    val cropReachRadius: Double = 1.35,
+    val cropDamageMaximum: Int = 96,
+    val shieldMaterial: String = "SHIELD",
+) {
+    init {
+        require(requiredDeflections in 1..64) { "boar deflection quota must be in 1..64" }
+        require(activeBoars in 1..12) { "active boars must be in 1..12" }
+        require(movementSpeed.isFinite() && movementSpeed in 0.05..1.0) { "boar movement speed is invalid" }
+        require(interceptRadius.isFinite() && interceptRadius in 1.0..8.0) { "boar intercept radius is invalid" }
+        require(facingDot.isFinite() && facingDot in -1.0..1.0) { "boar facing threshold is invalid" }
+        require(cropReachRadius.isFinite() && cropReachRadius in 0.5..4.0) { "boar crop reach is invalid" }
+        require(cropDamageMaximum in 0..4_096) { "boar crop damage maximum is invalid" }
+    }
+}
+
+data class FarmRivalRaidSettings(
+    val requiredKills: Int = 14,
+    val workerCount: Int = 10,
+    val workerEntity: String = "HUSK",
+    val workerHealth: Double = 12.0,
+    val workerRadius: Double = 12.0,
+    val flightHeight: Double = 12.0,
+    val flightSpeed: Double = 0.48,
+    val maximumDistance: Double = 512.0,
+    val gunMaterial: String = "IRON_HORSE_ARMOR",
+    val gunDamage: Double = 6.0,
+    val gunRange: Double = 56.0,
+    val gunCooldownTicks: Int = 3,
+    val gunRaySize: Double = 0.55,
+) {
+    init {
+        require(requiredKills in 1..128) { "rival raid kill quota must be in 1..128" }
+        require(workerCount in 1..32) { "rival raid worker count must be in 1..32" }
+        require(workerHealth.isFinite() && workerHealth in 1.0..100.0) { "rival worker health is invalid" }
+        require(workerRadius.isFinite() && workerRadius in 2.0..48.0) { "rival worker radius is invalid" }
+        require(flightHeight.isFinite() && flightHeight in 3.0..48.0) { "rival raid flight height is invalid" }
+        require(flightSpeed.isFinite() && flightSpeed in 0.1..2.0) { "rival raid flight speed is invalid" }
+        require(maximumDistance.isFinite() && maximumDistance in 32.0..2_048.0) { "rival farm maximum distance is invalid" }
+        require(gunDamage.isFinite() && gunDamage in 0.5..100.0) { "rival raid gun damage is invalid" }
+        require(gunRange.isFinite() && gunRange in 8.0..128.0) { "rival raid gun range is invalid" }
+        require(gunCooldownTicks in 1..20) { "rival raid gun cooldown is invalid" }
+        require(gunRaySize.isFinite() && gunRaySize in 0.1..2.0) { "rival raid gun ray size is invalid" }
     }
 }
 
@@ -553,6 +607,7 @@ data class FarmMusicSettings(
     val sound: String,
     val durationSeconds: Int,
     val volume: Float,
+    val rivalRaidSound: String = sound,
 )
 
 enum class FarmItemDisplayTransform { GROUND, FIXED, HEAD }
@@ -1974,6 +2029,9 @@ class ArcFarmsConfig private constructor(
                         volume = section.string("music.volume", "0.65").toFloatOrNull()?.also {
                             require(it.isFinite() && it in 0.0f..1.0f) { "Farm zone $id music.volume must be in 0.0..1.0" }
                         } ?: error("Farm zone $id music.volume must be a number"),
+                        rivalRaidSound = soundKey(
+                            section.string("music.rival-raid-sound", "minecraft:music_disc.pigstep"),
+                        ),
                     ),
                     placementMinObjectiveDistance = placementMinObjectiveDistance,
                     placementMaxPlayerDistance = placementMaxPlayerDistance,
@@ -2001,6 +2059,67 @@ class ArcFarmsConfig private constructor(
                         .toLong(),
                     incidentTypes = incidentTypes,
                     specialIncidents = specialIncidents,
+                    boarBreakout = FarmBoarBreakoutSettings(
+                        requiredDeflections = section.int("special-incidents.boar-breakout.required-deflections", 8)
+                            .checked("special-incidents.boar-breakout.required-deflections", 1, 64),
+                        activeBoars = section.int("special-incidents.boar-breakout.active-boars", 3)
+                            .checked("special-incidents.boar-breakout.active-boars", 1, 12),
+                        movementSpeed = section.finiteDouble(
+                            "special-incidents.boar-breakout.movement-speed", 0.34, 0.05, 1.0,
+                        ),
+                        interceptRadius = section.finiteDouble(
+                            "special-incidents.boar-breakout.intercept-radius", 2.6, 1.0, 8.0,
+                        ),
+                        facingDot = section.finiteDouble(
+                            "special-incidents.boar-breakout.facing-dot", 0.25, -1.0, 1.0,
+                        ),
+                        cropReachRadius = section.finiteDouble(
+                            "special-incidents.boar-breakout.crop-reach-radius", 1.35, 0.5, 4.0,
+                        ),
+                        cropDamageMaximum = section.int("special-incidents.boar-breakout.crop-damage-maximum", 96)
+                            .checked("special-incidents.boar-breakout.crop-damage-maximum", 0, 4_096),
+                        shieldMaterial = materialName(
+                            section.string("special-incidents.boar-breakout.shield-material", "SHIELD"),
+                        ),
+                    ),
+                    rivalRaid = FarmRivalRaidSettings(
+                        requiredKills = section.int("special-incidents.rival-raid.required-kills", 14)
+                            .checked("special-incidents.rival-raid.required-kills", 1, 128),
+                        workerCount = section.int("special-incidents.rival-raid.worker-count", 10)
+                            .checked("special-incidents.rival-raid.worker-count", 1, 32),
+                        workerEntity = entityName(
+                            section.string("special-incidents.rival-raid.worker-entity", "HUSK"),
+                        ).also { require(it in RIVAL_WORKER_TYPES) { "Unsupported rival raid worker entity: $it" } },
+                        workerHealth = section.finiteDouble(
+                            "special-incidents.rival-raid.worker-health", 12.0, 1.0, 100.0,
+                        ),
+                        workerRadius = section.finiteDouble(
+                            "special-incidents.rival-raid.worker-radius", 12.0, 2.0, 48.0,
+                        ),
+                        flightHeight = section.finiteDouble(
+                            "special-incidents.rival-raid.flight-height", 12.0, 3.0, 48.0,
+                        ),
+                        flightSpeed = section.finiteDouble(
+                            "special-incidents.rival-raid.flight-speed", 0.48, 0.1, 2.0,
+                        ),
+                        maximumDistance = section.finiteDouble(
+                            "special-incidents.rival-raid.maximum-distance", 512.0, 32.0, 2_048.0,
+                        ),
+                        gunMaterial = materialName(
+                            section.string("special-incidents.rival-raid.gun-material", "IRON_HORSE_ARMOR"),
+                        ),
+                        gunDamage = section.finiteDouble(
+                            "special-incidents.rival-raid.gun-damage", 6.0, 0.5, 100.0,
+                        ),
+                        gunRange = section.finiteDouble(
+                            "special-incidents.rival-raid.gun-range", 56.0, 8.0, 128.0,
+                        ),
+                        gunCooldownTicks = section.int("special-incidents.rival-raid.gun-cooldown-ticks", 3)
+                            .checked("special-incidents.rival-raid.gun-cooldown-ticks", 1, 20),
+                        gunRaySize = section.finiteDouble(
+                            "special-incidents.rival-raid.gun-ray-size", 0.55, 0.1, 2.0,
+                        ),
+                    ),
                     processing = processing,
                     barnFire = barnFire,
                     cropEffects = FarmCropBreakEffectsSettings(

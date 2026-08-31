@@ -29,6 +29,7 @@ class FarmHudMusicSafetyTest : FunSpec({
             tasks = mockk<WorksiteTaskPort>(relaxed = true),
             delivery = mockk<FarmDeliveryController>(relaxed = true),
             foodDelivery = mockk<FarmFoodDeliveryIncident>(relaxed = true),
+            actionIncidents = mockk(relaxed = true),
             special = mockk<FarmSpecialIncidentController>(relaxed = true),
             harvest = mockk<FarmHarvestController>(relaxed = true),
             clock = { 0L },

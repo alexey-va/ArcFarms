@@ -218,6 +218,16 @@ internal class ArcFarmsRuntimeValidator(
                     require(candidate.destinations.getValue("farm").server == candidate.serverId) {
                         "Farm travel point can only be overridden on its destination server"
                     }
+                } else if (kind == FarmPointKind.RIVAL_FARM) {
+                    require(world === region.world) { "Rival farm point $zoneId must use ${region.world.name}" }
+                    val receiving = points[FarmPointKind.RECEIVING]
+                    val receivingX = receiving?.x ?: configured.delivery.x
+                    val receivingZ = receiving?.z ?: configured.delivery.z
+                    val dx = point.x - receivingX
+                    val dz = point.z - receivingZ
+                    require(dx * dx + dz * dz <= configured.rivalRaid.maximumDistance * configured.rivalRaid.maximumDistance) {
+                        "Rival farm point $zoneId is farther than ${configured.rivalRaid.maximumDistance} blocks"
+                    }
                 } else {
                     require(region.contains(Location(world, point.x, point.y, point.z))) {
                         "Farm point $zoneId/$kind is outside ${region.label}"

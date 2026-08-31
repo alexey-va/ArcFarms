@@ -179,6 +179,8 @@ internal class FarmScoreboardRenderer(
         FarmIncidentType.PROCESSING -> "processing"
         FarmIncidentType.BARN_FIRE -> "barn-fire"
         FarmIncidentType.FROST -> "frost"
+        FarmIncidentType.BOAR_BREAKOUT -> "boar-breakout"
+        FarmIncidentType.RIVAL_RAID -> "rival-raid"
     }
 
     companion object {

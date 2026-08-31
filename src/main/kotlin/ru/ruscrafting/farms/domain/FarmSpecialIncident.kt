@@ -7,6 +7,8 @@ private val SPECIAL_INCIDENT_TYPES = setOf(
     FarmIncidentType.CHANNELS,
     FarmIncidentType.NIGHT_SHIFT,
     FarmIncidentType.MARKET,
+    FarmIncidentType.BOAR_BREAKOUT,
+    FarmIncidentType.RIVAL_RAID,
 )
 
 object FarmSpecialIncidentEngine {
@@ -55,6 +57,17 @@ object FarmSpecialIncidentEngine {
 
     fun damageGiantCrop(current: FarmShiftState, playerId: UUID): EngineResult<FarmShiftState, FarmShiftEvent> =
         advance(current, FarmIncidentType.GIANT_CROP, playerId)
+
+    fun advanceAction(
+        current: FarmShiftState,
+        type: FarmIncidentType,
+        playerId: UUID,
+    ): EngineResult<FarmShiftState, FarmShiftEvent> {
+        require(type == FarmIncidentType.BOAR_BREAKOUT || type == FarmIncidentType.RIVAL_RAID) {
+            "$type is not an action farm incident"
+        }
+        return advance(current, type, playerId)
+    }
 
     fun reconcileGiantCrop(
         current: FarmShiftState,

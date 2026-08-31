@@ -79,6 +79,8 @@ enum class FarmIncidentType {
     PROCESSING,
     BARN_FIRE,
     FROST,
+    BOAR_BREAKOUT,
+    RIVAL_RAID,
 }
 
 enum class FarmProcessingStage {

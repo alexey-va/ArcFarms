@@ -61,6 +61,7 @@ class FarmHudControllerMockBukkitIntegrationTest : FunSpec({
                 tasks = mockk<WorksiteTaskPort>(relaxed = true),
                 delivery = delivery,
                 foodDelivery = foodDelivery,
+                actionIncidents = mockk(relaxed = true),
                 special = mockk<FarmSpecialIncidentController>(relaxed = true),
                 harvest = mockk<FarmHarvestController>(relaxed = true),
                 clock = { 10_000L },
