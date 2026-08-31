@@ -4,6 +4,7 @@ import ru.arc.config.Config
 import ru.arc.config.ConfigManager
 import ru.arc.network.BackendServerId
 import ru.arc.redis.RedisModuleConfig
+import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmContractRarity
 import ru.ruscrafting.farms.domain.FarmCustomerType
@@ -16,7 +17,11 @@ import ru.ruscrafting.farms.domain.MAX_FARM_PATCH_PLOTS
 import ru.ruscrafting.farms.domain.TrustedFarmCommandTemplate
 import java.nio.file.Path
 import java.math.BigDecimal
+import java.math.BigInteger
 import java.math.RoundingMode
+import java.time.DayOfWeek
+import java.time.LocalTime
+import java.time.ZoneId
 import kotlin.math.ceil
 import kotlin.math.floor
 
@@ -34,6 +39,31 @@ data class NetworkSettings(
 data class DebugSettings(
     val enabled: Boolean,
 )
+
+data class ShiftStartPersistenceSettings(
+    val initialRetrySeconds: Int,
+    val maximumRetrySeconds: Int,
+    val logEveryAttempts: Int,
+) {
+    init {
+        require(initialRetrySeconds in 1..300 && maximumRetrySeconds in 1..300) {
+            "Shift-start persistence retry seconds are invalid"
+        }
+        require(logEveryAttempts in 1..100) { "Shift-start persistence log cadence is invalid" }
+        require(initialRetrySeconds <= maximumRetrySeconds) {
+            "Shift-start persistence initial retry must not exceed its maximum"
+        }
+    }
+
+    fun retryDelayTicks(failedAttempts: Int): Long {
+        require(failedAttempts > 0) { "Shift-start persistence attempt count must be positive" }
+        var seconds = initialRetrySeconds.toLong()
+        repeat((failedAttempts - 1).coerceAtMost(31)) {
+            seconds = (seconds * 2L).coerceAtMost(maximumRetrySeconds.toLong())
+        }
+        return seconds * 20L
+    }
+}
 
 data class TeleportDestination(
     val server: String,
@@ -738,6 +768,91 @@ data class FarmOrderSettings(
     val cartLoadCustomModelData: Int,
 )
 
+enum class WorksiteEnterpriseMode { OFF, SHADOW, LIVE }
+
+data class WorksiteBusinessWeekSettings(
+    val zoneId: ZoneId,
+    val startDay: DayOfWeek,
+    val startTime: LocalTime,
+)
+
+data class WorksiteEnterpriseCapitalSettings(
+    val totalShares: Int,
+    val sharePriceCents: Long,
+    val maxSharesPerOwner: Int,
+    val fundingDurationDays: Int,
+    val licenseBurnPercent: Int,
+    val licenseWeeks: Int,
+    val reserveTargetWeeks: Int,
+    val purchaseOptions: List<Int>,
+) {
+    init {
+        require(totalShares in 1..10_000) { "Enterprise total share count is invalid" }
+        require(sharePriceCents > 0L) { "Enterprise share price must be positive" }
+        require(maxSharesPerOwner in 1..totalShares) { "Enterprise owner share limit is invalid" }
+        require(fundingDurationDays in 1..31) { "Enterprise funding duration is invalid" }
+        require(licenseBurnPercent in 1..99) { "Enterprise license burn percent is invalid" }
+        require(licenseWeeks in 1..52) { "Enterprise license duration is invalid" }
+        require(reserveTargetWeeks in setOf(1, 2, 4)) { "Enterprise reserve target is invalid" }
+        require(purchaseOptions.isNotEmpty() && purchaseOptions.size <= 7 && purchaseOptions == purchaseOptions.distinct()) {
+            "Enterprise purchase options are invalid"
+        }
+        require(purchaseOptions.all { it in 1..maxSharesPerOwner }) { "Enterprise purchase option exceeds owner limit" }
+        Math.multiplyExact(sharePriceCents, totalShares.toLong())
+    }
+}
+
+/** Shared enterprise policy shape; this first slice configures only the farm adapter. */
+data class WorksiteEnterpriseSettings(
+    val activity: ActivityKind,
+    val mode: WorksiteEnterpriseMode,
+    val companyId: String,
+    val worksiteId: String,
+    val licenseGrossEnvelopeCents: Long,
+    val defaultGrossTariffCents: Long,
+    val orderGrossTariffsCents: Map<String, Long>,
+    val operatingCostPercent: Int,
+    val workerBonusPercent: Int,
+    val dividendPercent: Int,
+    val weeklyUpkeepCents: Long,
+    val retainedReportWeeks: Int,
+    val businessWeek: WorksiteBusinessWeekSettings,
+    val capital: WorksiteEnterpriseCapitalSettings = WorksiteEnterpriseCapitalSettings(
+        totalShares = 100,
+        sharePriceCents = 5_000_000,
+        maxSharesPerOwner = 20,
+        fundingDurationDays = 7,
+        licenseBurnPercent = 50,
+        licenseWeeks = 12,
+        reserveTargetWeeks = 1,
+        purchaseOptions = listOf(1, 5, 10, 20),
+    ),
+) {
+    init {
+        require(companyId.matches(Regex("[a-z0-9_-]{1,48}"))) { "Invalid enterprise company id" }
+        require(worksiteId.matches(Regex("[a-z0-9_-]{1,48}"))) { "Invalid enterprise worksite id" }
+        require(licenseGrossEnvelopeCents > 0L && defaultGrossTariffCents > 0L) {
+            "Enterprise envelope and default tariff must be positive"
+        }
+        require(orderGrossTariffsCents.size <= 256) { "Enterprise order tariff map is unbounded" }
+        require(orderGrossTariffsCents.values.all { it > 0L }) { "Enterprise order tariffs must be positive" }
+        require(operatingCostPercent in 0..100) { "Enterprise operating cost percent is invalid" }
+        require(workerBonusPercent in setOf(10, 30, 50)) { "Enterprise worker bonus percent is invalid" }
+        require(dividendPercent in setOf(25, 50, 75)) { "Enterprise dividend percent is invalid" }
+        require(weeklyUpkeepCents >= 0L && retainedReportWeeks in 2..52) { "Enterprise report policy is invalid" }
+        val grossCapital = BigInteger.valueOf(capital.sharePriceCents)
+            .multiply(BigInteger.valueOf(capital.totalShares.toLong()))
+        val licenseBurn = grossCapital.multiply(BigInteger.valueOf(capital.licenseBurnPercent.toLong()))
+            .divide(BigInteger.valueOf(100L))
+        val safeRevenueEnvelope = licenseBurn.multiply(BigInteger.valueOf(80L)).divide(BigInteger.valueOf(100L))
+        require(BigInteger.valueOf(licenseGrossEnvelopeCents) <= safeRevenueEnvelope) {
+            "Enterprise license gross envelope must not exceed 80% of the upfront license burn"
+        }
+    }
+
+    fun grossTariffCents(orderId: String): Long = orderGrossTariffsCents[orderId] ?: defaultGrossTariffCents
+}
+
 data class MineZoneSettings(
     val id: String,
     val priority: Int,
@@ -797,6 +912,39 @@ data class MenuBackgroundSettings(
     val customModelData: Int,
 )
 
+data class MenuItemVisualSettings(
+    val material: String,
+    val customModelData: Int,
+)
+
+data class MainMenuItemVisualSettings(
+    val farm: MenuItemVisualSettings,
+    val lumber: MenuItemVisualSettings,
+    val mine: MenuItemVisualSettings,
+    val workday: MenuItemVisualSettings,
+    val stats: MenuItemVisualSettings,
+)
+
+data class EnterpriseMenuItemVisualSettings(
+    val companies: MenuItemVisualSettings,
+    val overviewFarm: MenuItemVisualSettings,
+    val overviewLumber: MenuItemVisualSettings,
+    val overviewMine: MenuItemVisualSettings,
+    val farmHeader: MenuItemVisualSettings,
+    val report: MenuItemVisualSettings,
+    val workers: MenuItemVisualSettings,
+    val policy: MenuItemVisualSettings,
+    val license: MenuItemVisualSettings,
+    val shares: MenuItemVisualSettings,
+    val market: MenuItemVisualSettings,
+    val shareStatus: MenuItemVisualSettings,
+    val shareHolding: MenuItemVisualSettings,
+    val shareAccount: MenuItemVisualSettings,
+    val shareBuy: MenuItemVisualSettings,
+    val shareConfirm: MenuItemVisualSettings,
+    val shareWithdraw: MenuItemVisualSettings,
+)
+
 data class FarmScoreboardSettings(
     val enabled: Boolean,
     val provider: FarmScoreboardProvider,
@@ -821,10 +969,15 @@ class ArcFarmsConfig private constructor(
     val taskTitleCooldownMillis: Long = 8_000L,
     val farmScoreboard: FarmScoreboardSettings,
     val menuBackground: MenuBackgroundSettings,
+    val menuBack: MenuItemVisualSettings,
+    val mainMenuItems: MainMenuItemVisualSettings,
+    val enterpriseMenuItems: EnterpriseMenuItemVisualSettings,
     val saveSeconds: Int,
     val completedCooldownSeconds: Int,
+    val shiftStartPersistence: ShiftStartPersistenceSettings,
     val debug: DebugSettings,
     val destinations: Map<String, TeleportDestination>,
+    val enterprises: Map<ActivityKind, WorksiteEnterpriseSettings>,
     val farms: List<FarmZoneSettings>,
     val lumbermills: List<LumberZoneSettings>,
     val mines: List<MineZoneSettings>,
@@ -833,6 +986,33 @@ class ArcFarmsConfig private constructor(
         require(taskHintCooldownMillis in 250L..5_000L) { "ui.task-hint-cooldown-millis must be in 250..5000" }
         require(taskTitleCooldownMillis in 1_000L..30_000L) { "ui.task-title-cooldown-millis must be in 1000..30000" }
     }
+
+    val configuredMenuItems: Map<String, MenuItemVisualSettings>
+        get() = linkedMapOf(
+            "ui.menu-back" to menuBack,
+            "ui.main-menu.items.farm" to mainMenuItems.farm,
+            "ui.main-menu.items.lumber" to mainMenuItems.lumber,
+            "ui.main-menu.items.mine" to mainMenuItems.mine,
+            "ui.main-menu.items.workday" to mainMenuItems.workday,
+            "ui.main-menu.items.stats" to mainMenuItems.stats,
+            "ui.enterprise-menu.items.companies" to enterpriseMenuItems.companies,
+            "ui.enterprise-menu.items.overview-farm" to enterpriseMenuItems.overviewFarm,
+            "ui.enterprise-menu.items.overview-lumber" to enterpriseMenuItems.overviewLumber,
+            "ui.enterprise-menu.items.overview-mine" to enterpriseMenuItems.overviewMine,
+            "ui.enterprise-menu.items.farm-header" to enterpriseMenuItems.farmHeader,
+            "ui.enterprise-menu.items.report" to enterpriseMenuItems.report,
+            "ui.enterprise-menu.items.workers" to enterpriseMenuItems.workers,
+            "ui.enterprise-menu.items.policy" to enterpriseMenuItems.policy,
+            "ui.enterprise-menu.items.license" to enterpriseMenuItems.license,
+            "ui.enterprise-menu.items.shares" to enterpriseMenuItems.shares,
+            "ui.enterprise-menu.items.market" to enterpriseMenuItems.market,
+            "ui.enterprise-menu.items.share-status" to enterpriseMenuItems.shareStatus,
+            "ui.enterprise-menu.items.share-holding" to enterpriseMenuItems.shareHolding,
+            "ui.enterprise-menu.items.share-account" to enterpriseMenuItems.shareAccount,
+            "ui.enterprise-menu.items.share-buy" to enterpriseMenuItems.shareBuy,
+            "ui.enterprise-menu.items.share-confirm" to enterpriseMenuItems.shareConfirm,
+            "ui.enterprise-menu.items.share-withdraw" to enterpriseMenuItems.shareWithdraw,
+        )
 
     val requiresWorldGuard: Boolean = buildList {
         addAll(farms.map(FarmZoneSettings::reference))
@@ -2011,6 +2191,14 @@ class ArcFarmsConfig private constructor(
                 nodeProbeEnabled = config.boolean("network.node-probe", true),
                 travelTicketSeconds = config.int("network.travel-ticket-seconds", 30).checked("network.travel-ticket-seconds", 10, 300),
             )
+            val enterprises = mapOf(
+                ActivityKind.FARM to parseEnterprise(
+                    config = config,
+                    path = "enterprises.farm",
+                    activity = ActivityKind.FARM,
+                    ordersByWorksite = farms.associate { farm -> farm.id to farm.orders.mapTo(linkedSetOf(), FarmOrderSettings::id) },
+                ),
+            )
             return ArcFarmsConfig(
                 enabled = config.boolean("enabled", true),
                 serverId = serverId,
@@ -2044,12 +2232,52 @@ class ArcFarmsConfig private constructor(
                     customModelData = config.int("ui.menu-background.custom-model-data", 0)
                         .checked("ui.menu-background.custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
                 ),
+                menuBack = MenuItemVisualSettings(
+                    material = materialName(config.string("ui.menu-back.material", "ARROW")),
+                    customModelData = config.int("ui.menu-back.custom-model-data", 0)
+                        .checked("ui.menu-back.custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
+                ),
+                mainMenuItems = MainMenuItemVisualSettings(
+                    farm = parseMenuItem(config, "ui.main-menu.items.farm", "WHEAT"),
+                    lumber = parseMenuItem(config, "ui.main-menu.items.lumber", "IRON_AXE"),
+                    mine = parseMenuItem(config, "ui.main-menu.items.mine", "MINECART"),
+                    workday = parseMenuItem(config, "ui.main-menu.items.workday", "WRITABLE_BOOK"),
+                    stats = parseMenuItem(config, "ui.main-menu.items.stats", "BOOK"),
+                ),
+                enterpriseMenuItems = EnterpriseMenuItemVisualSettings(
+                    companies = parseMenuItem(config, "ui.enterprise-menu.items.companies", "EMERALD"),
+                    overviewFarm = parseMenuItem(config, "ui.enterprise-menu.items.overview-farm", "WHEAT"),
+                    overviewLumber = parseMenuItem(config, "ui.enterprise-menu.items.overview-lumber", "IRON_AXE"),
+                    overviewMine = parseMenuItem(config, "ui.enterprise-menu.items.overview-mine", "MINECART"),
+                    farmHeader = parseMenuItem(config, "ui.enterprise-menu.items.farm-header", "WHEAT"),
+                    report = parseMenuItem(config, "ui.enterprise-menu.items.report", "PAPER"),
+                    workers = parseMenuItem(config, "ui.enterprise-menu.items.workers", "WHEAT"),
+                    policy = parseMenuItem(config, "ui.enterprise-menu.items.policy", "WRITABLE_BOOK"),
+                    license = parseMenuItem(config, "ui.enterprise-menu.items.license", "BOOK"),
+                    shares = parseMenuItem(config, "ui.enterprise-menu.items.shares", "EMERALD"),
+                    market = parseMenuItem(config, "ui.enterprise-menu.items.market", "GOLD_INGOT"),
+                    shareStatus = parseMenuItem(config, "ui.enterprise-menu.items.share-status", "HONEYCOMB"),
+                    shareHolding = parseMenuItem(config, "ui.enterprise-menu.items.share-holding", "PAPER"),
+                    shareAccount = parseMenuItem(config, "ui.enterprise-menu.items.share-account", "GOLD_INGOT"),
+                    shareBuy = parseMenuItem(config, "ui.enterprise-menu.items.share-buy", "EMERALD"),
+                    shareConfirm = parseMenuItem(config, "ui.enterprise-menu.items.share-confirm", "LIME_DYE"),
+                    shareWithdraw = parseMenuItem(config, "ui.enterprise-menu.items.share-withdraw", "SUNFLOWER"),
+                ),
                 saveSeconds = config.int("state.save-seconds", 10).checked("state.save-seconds", 1, 300),
                 completedCooldownSeconds = config.int("state.completed-cooldown-seconds", 180).checked("completed cooldown", 0, 3600),
+                shiftStartPersistence = ShiftStartPersistenceSettings(
+                    initialRetrySeconds = config.int("state.shift-start-persistence.initial-retry-seconds", 1)
+                        .checked("state.shift-start-persistence.initial-retry-seconds", 1, 300),
+                    maximumRetrySeconds = config.int("state.shift-start-persistence.maximum-retry-seconds", 30)
+                        .checked("state.shift-start-persistence.maximum-retry-seconds", 1, 300),
+                    logEveryAttempts = config.int("state.shift-start-persistence.log-every-attempts", 5)
+                        .checked("state.shift-start-persistence.log-every-attempts", 1, 100),
+                ),
                 debug = DebugSettings(
                     enabled = config.boolean("debug.enabled", false),
                 ),
                 destinations = destinations,
+                enterprises = enterprises,
                 farms = farms,
                 lumbermills = lumbermills,
                 mines = mines.sortedByDescending(MineZoneSettings::priority),
@@ -2300,6 +2528,119 @@ class ArcFarmsConfig private constructor(
             )
         }
 
+        private fun parseEnterprise(
+            config: Config,
+            path: String,
+            activity: ActivityKind,
+            ordersByWorksite: Map<String, Set<String>>,
+        ): WorksiteEnterpriseSettings {
+            val section = config.section(path)
+            val configuredMode = section.string("mode", WorksiteEnterpriseMode.OFF.name).trim().uppercase().let { raw ->
+                WorksiteEnterpriseMode.entries.firstOrNull { it.name == raw }
+                    ?: error("$path.mode must be OFF, SHADOW or LIVE")
+            }
+            val mode = if (ordersByWorksite.isEmpty()) WorksiteEnterpriseMode.OFF else configuredMode
+            val companyId = section.string("company-id", "communal_${activity.name.lowercase()}").trim().lowercase()
+            val worksiteId = section.string("worksite-id", companyId).trim().lowercase()
+            validateId(companyId, "$path company")
+            validateId(worksiteId, "$path worksite")
+            require(mode == WorksiteEnterpriseMode.OFF || worksiteId in ordersByWorksite) {
+                "$path.worksite-id does not select a configured ${activity.name.lowercase()} worksite"
+            }
+            val defaultGross = enterpriseMoneyCents(
+                section.string("default-gross-tariff", "10000.00"),
+                "$path.default-gross-tariff",
+            )
+            require(defaultGross > 0L) { "$path.default-gross-tariff must be positive" }
+            val orderIds = ordersByWorksite[worksiteId].orEmpty()
+            val overrides = section.keys("order-gross-tariffs").sorted().associateWith { orderId ->
+                validateId(orderId, "$path order tariff")
+                require(ordersByWorksite.isEmpty() || orderId in orderIds) {
+                    "$path.order-gross-tariffs contains unknown order $orderId"
+                }
+                enterpriseMoneyCents(
+                    section.string("order-gross-tariffs.$orderId"),
+                    "$path.order-gross-tariffs.$orderId",
+                ).also { require(it > 0L) { "$path order tariff must be positive" } }
+            }
+            val envelope = enterpriseMoneyCents(
+                section.string("license-gross-envelope", "2000000.00"),
+                "$path.license-gross-envelope",
+            )
+            require(envelope >= maxOf(defaultGross, overrides.values.maxOrNull() ?: 0L)) {
+                "$path.license-gross-envelope must cover one complete order tariff"
+            }
+            val workerBonus = section.int("worker-bonus-percent", 30)
+            require(workerBonus in setOf(10, 30, 50)) { "$path.worker-bonus-percent must be 10, 30 or 50" }
+            val dividend = section.int("dividend-percent", 50)
+            require(dividend in setOf(25, 50, 75)) { "$path.dividend-percent must be 25, 50 or 75" }
+            val businessWeekZone = runCatching {
+                ZoneId.of(section.string("business-week.zone", "Europe/Moscow").trim())
+            }.getOrElse { error("$path.business-week.zone must be a valid IANA time zone") }
+            val businessWeekDay = section.string("business-week.day", DayOfWeek.SUNDAY.name)
+                .trim()
+                .uppercase()
+                .let { raw ->
+                    DayOfWeek.entries.firstOrNull { it.name == raw }
+                        ?: error("$path.business-week.day must be a weekday name")
+                }
+            val businessWeekTime = runCatching {
+                LocalTime.parse(section.string("business-week.time", "20:00").trim())
+            }.getOrElse { error("$path.business-week.time must use HH:mm or HH:mm:ss") }
+            val totalShares = section.int("capital.total-shares", 100)
+                .checked("$path.capital.total-shares", 1, 10_000)
+            val maxSharesPerOwner = section.int("capital.max-shares-per-owner", 20)
+                .checked("$path.capital.max-shares-per-owner", 1, totalShares)
+            val purchaseOptions = section.stringList("capital.purchase-options")
+                .ifEmpty { listOf("1", "5", "10", "20") }
+                .map { value ->
+                    value.toIntOrNull()?.checked("$path.capital.purchase-options", 1, maxSharesPerOwner)
+                        ?: error("$path.capital.purchase-options must contain whole share counts")
+                }
+            return WorksiteEnterpriseSettings(
+                activity = activity,
+                mode = mode,
+                companyId = companyId,
+                worksiteId = worksiteId,
+                licenseGrossEnvelopeCents = envelope,
+                defaultGrossTariffCents = defaultGross,
+                orderGrossTariffsCents = overrides,
+                operatingCostPercent = section.int("operating-cost-percent", 20)
+                    .checked("$path.operating-cost-percent", 0, 100),
+                workerBonusPercent = workerBonus,
+                dividendPercent = dividend,
+                weeklyUpkeepCents = enterpriseMoneyCents(
+                    section.string("weekly-upkeep", "25000.00"),
+                    "$path.weekly-upkeep",
+                ),
+                retainedReportWeeks = section.int("retained-report-weeks", 16)
+                    .checked("$path.retained-report-weeks", 2, 52),
+                businessWeek = WorksiteBusinessWeekSettings(
+                    zoneId = businessWeekZone,
+                    startDay = businessWeekDay,
+                    startTime = businessWeekTime,
+                ),
+                capital = WorksiteEnterpriseCapitalSettings(
+                    totalShares = totalShares,
+                    sharePriceCents = enterpriseMoneyCents(
+                        section.string("capital.share-price", "50000.00"),
+                        "$path.capital.share-price",
+                    ),
+                    maxSharesPerOwner = maxSharesPerOwner,
+                    fundingDurationDays = section.int("capital.funding-duration-days", 7)
+                        .checked("$path.capital.funding-duration-days", 1, 31),
+                    licenseBurnPercent = section.int("capital.license-burn-percent", 50)
+                        .checked("$path.capital.license-burn-percent", 1, 99),
+                    licenseWeeks = section.int("capital.license-weeks", 12)
+                        .checked("$path.capital.license-weeks", 1, 52),
+                    reserveTargetWeeks = section.int("capital.reserve-target-weeks", 1).also { value ->
+                        require(value in setOf(1, 2, 4)) { "$path.capital.reserve-target-weeks must be 1, 2 or 4" }
+                    },
+                    purchaseOptions = purchaseOptions,
+                ),
+            )
+        }
+
         private fun moneyCents(value: String, zoneId: String): Long {
             val amount = value.trim().toBigDecimalOrNull()
                 ?: error("Farm zone $zoneId rewards.money.amount must be a number")
@@ -2312,6 +2653,25 @@ class ArcFarmsConfig private constructor(
                 error("Farm zone $zoneId rewards.money.amount supports at most two decimal places")
             }
         }
+
+        private fun enterpriseMoneyCents(value: String, label: String): Long {
+            val amount = value.trim().toBigDecimalOrNull() ?: error("$label must be a number")
+            require(amount.signum() >= 0 && amount <= BigDecimal("10000000000000")) {
+                "$label must be in 0..10000000000000"
+            }
+            return try {
+                amount.setScale(2, RoundingMode.UNNECESSARY).movePointRight(2).longValueExact()
+            } catch (_: ArithmeticException) {
+                error("$label supports at most two decimal places")
+            }
+        }
+
+        private fun parseMenuItem(config: Config, path: String, defaultMaterial: String): MenuItemVisualSettings =
+            MenuItemVisualSettings(
+                material = materialName(config.string("$path.material", defaultMaterial)),
+                customModelData = config.int("$path.custom-model-data", 0)
+                    .checked("$path.custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
+            )
 
         private fun parseWeightedList(values: List<String>, label: String): LinkedHashMap<String, Int> {
             require(values.isNotEmpty()) { "$label must not be empty" }

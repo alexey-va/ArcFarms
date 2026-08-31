@@ -514,7 +514,11 @@ internal class FarmFieldController(
         ))
     }
 
-    fun commitAfterRecovery(runtime: FarmRuntime, next: FarmShiftState) {
+    fun commitAfterRecovery(
+        runtime: FarmRuntime,
+        next: FarmShiftState,
+        afterCommit: () -> Unit = {},
+    ) {
         if (!pendingRecoveryCommits.add(runtime.settings.id)) return
         val previous = runtime.state
         val recoveredPatch = previous.preparationPatch
@@ -536,6 +540,7 @@ internal class FarmFieldController(
                         }
                 }
                 patchRestoreProgress.remove(runtime.settings.id)
+                afterCommit()
             }
         }
     }

@@ -1,5 +1,6 @@
 package ru.ruscrafting.farms.domain
 
+import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseSnapshot
 import java.util.UUID
 
 data class PlayerActivityStats(
@@ -59,6 +60,8 @@ data class ArcFarmsState(
     val claimedFarmRewardSequences: Map<String, Long> = emptyMap(),
     // Nullable so Gson can read state files written before temporary farm perks existed.
     val farmPerks: Map<UUID, FarmPlayerPerks>? = emptyMap(),
+    // Nullable so pre-enterprise state files remain a normal merge-forward upgrade.
+    val worksiteEnterprise: WorksiteEnterpriseSnapshot? = WorksiteEnterpriseSnapshot(),
 ) {
     init {
         require(schemaVersion == SCHEMA_VERSION) { "Unsupported ArcFarms state schema: $schemaVersion" }

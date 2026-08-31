@@ -25,6 +25,7 @@ import ru.ruscrafting.farms.paper.farm.admin.FarmRouteAdminService
 import ru.ruscrafting.farms.paper.farm.admin.FarmWorldAdminService
 import ru.ruscrafting.farms.paper.farm.care.FarmCareController
 import ru.ruscrafting.farms.paper.farm.delivery.FarmDeliveryController
+import ru.ruscrafting.farms.paper.farm.enterprise.FarmEnterprisePort
 import ru.ruscrafting.farms.paper.farm.field.FarmFieldController
 import ru.ruscrafting.farms.paper.farm.harvest.FarmHarvestController
 import ru.ruscrafting.farms.paper.farm.incident.bird.FarmBirdIncident
@@ -216,6 +217,7 @@ internal fun farmEventRouter(
     barnFire = barnFire,
     frost = mockk<FarmFrostIncident>(relaxed = true),
     delivery = mockk<FarmDeliveryController>(relaxed = true),
+    enterprise = mockk<FarmEnterprisePort>(relaxed = true),
     supplies = supplies,
     scene = mockk<FarmContractSceneController>(relaxed = true),
     harvest = harvest,

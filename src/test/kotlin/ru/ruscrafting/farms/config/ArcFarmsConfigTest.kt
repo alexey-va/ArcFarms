@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.config
 
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.shouldBe
@@ -14,6 +15,7 @@ import org.opentest4j.TestAbortedException
 import ru.arc.config.Config
 import ru.arc.redis.RedisModuleConfig
 import ru.ruscrafting.farms.domain.FarmIncidentType
+import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmContractRarity
@@ -24,9 +26,232 @@ import ru.ruscrafting.farms.paper.FarmScoreboardRenderer
 import ru.ruscrafting.farms.paper.FarmScoreboardView
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.DayOfWeek
+import java.time.LocalTime
+import java.time.ZoneId
 import kotlin.io.path.writeText
 
 class ArcFarmsConfigTest : FunSpec({
+    test("bundled menu visuals are typed, complete, and portable") {
+        val settings = ArcFarmsConfig.inspect(resourceTree())
+
+        settings.mainMenuItems.apply {
+            farm.material shouldBe "WHEAT"
+            lumber.material shouldBe "IRON_AXE"
+            mine.material shouldBe "MINECART"
+            workday.material shouldBe "WRITABLE_BOOK"
+            stats.material shouldBe "BOOK"
+        }
+        settings.enterpriseMenuItems.apply {
+            companies.material shouldBe "EMERALD"
+            overviewFarm.material shouldBe "WHEAT"
+            overviewLumber.material shouldBe "IRON_AXE"
+            overviewMine.material shouldBe "MINECART"
+            farmHeader.material shouldBe "WHEAT"
+            report.material shouldBe "PAPER"
+            workers.material shouldBe "WHEAT"
+            policy.material shouldBe "WRITABLE_BOOK"
+            license.material shouldBe "BOOK"
+            shares.material shouldBe "EMERALD"
+            market.material shouldBe "GOLD_INGOT"
+            shareStatus.material shouldBe "HONEYCOMB"
+            shareHolding.material shouldBe "PAPER"
+            shareAccount.material shouldBe "GOLD_INGOT"
+            shareBuy.material shouldBe "EMERALD"
+            shareConfirm.material shouldBe "LIME_DYE"
+            shareWithdraw.material shouldBe "SUNFLOWER"
+        }
+        settings.configuredMenuItems.size shouldBe 23
+        settings.configuredMenuItems.values.all { it.customModelData == 0 } shouldBe true
+    }
+
+    test("shift-start persistence retries use a bounded live policy") {
+        val settings = ArcFarmsConfig.inspect(resourceTree()).shiftStartPersistence
+
+        settings.initialRetrySeconds shouldBe 1
+        settings.maximumRetrySeconds shouldBe 30
+        settings.logEveryAttempts shouldBe 5
+        settings.retryDelayTicks(1) shouldBe 20L
+        settings.retryDelayTicks(5) shouldBe 320L
+        settings.retryDelayTicks(30) shouldBe 600L
+
+        val invalid = resourceTree()
+        invalid.resolve("config.yml").writeText(
+            Files.readString(invalid.resolve("config.yml"))
+                .replace("initial-retry-seconds: 1", "initial-retry-seconds: 60"),
+        )
+        shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(invalid) }
+            .message shouldContain "initial retry must not exceed its maximum"
+    }
+
+    test("bundled and runtime profiles physically declare reloadable visuals, retry policy, and business week") {
+        val repositoryRoot = opsRoot()
+        val profiles = linkedMapOf(
+            "bundled" to resourceTree(),
+            "classic" to repositoryRoot.resolve("classic/plugins/ArcFarms"),
+            "classic_survival" to repositoryRoot.resolve("classic_survival/plugins/ArcFarms"),
+            "parkour" to repositoryRoot.resolve("parkour/plugins/ArcFarms"),
+            "lab" to repositoryRoot.resolve("scripts/lab/plugin-configs/ArcFarms"),
+        )
+        val itemPaths = listOf(
+            "ui.menu-background",
+            "ui.menu-back",
+            "ui.main-menu.items.farm",
+            "ui.main-menu.items.lumber",
+            "ui.main-menu.items.mine",
+            "ui.main-menu.items.workday",
+            "ui.main-menu.items.stats",
+            "ui.enterprise-menu.items.companies",
+            "ui.enterprise-menu.items.overview-farm",
+            "ui.enterprise-menu.items.overview-lumber",
+            "ui.enterprise-menu.items.overview-mine",
+            "ui.enterprise-menu.items.farm-header",
+            "ui.enterprise-menu.items.report",
+            "ui.enterprise-menu.items.workers",
+            "ui.enterprise-menu.items.policy",
+            "ui.enterprise-menu.items.license",
+            "ui.enterprise-menu.items.shares",
+            "ui.enterprise-menu.items.market",
+            "ui.enterprise-menu.items.share-status",
+            "ui.enterprise-menu.items.share-holding",
+            "ui.enterprise-menu.items.share-account",
+            "ui.enterprise-menu.items.share-buy",
+            "ui.enterprise-menu.items.share-confirm",
+            "ui.enterprise-menu.items.share-withdraw",
+        )
+
+        profiles.forEach { (profile, root) ->
+            val config = Config(root, "config.yml")
+            itemPaths.forEach { path ->
+                withClue("$profile:$path") {
+                    config.stringOrNull("$path.material")?.isNotBlank() shouldBe true
+                    (config.intOrNull("$path.custom-model-data") != null) shouldBe true
+                }
+            }
+            withClue("$profile:ui.menu-background.enabled") {
+                (config.booleanOrNull("ui.menu-background.enabled") != null) shouldBe true
+            }
+            config.intOrNull("state.shift-start-persistence.initial-retry-seconds") shouldBe 1
+            config.intOrNull("state.shift-start-persistence.maximum-retry-seconds") shouldBe 30
+            config.intOrNull("state.shift-start-persistence.log-every-attempts") shouldBe 5
+            config.stringOrNull("enterprises.farm.business-week.zone") shouldBe "Europe/Moscow"
+            config.stringOrNull("enterprises.farm.business-week.day") shouldBe "SUNDAY"
+            config.stringOrNull("enterprises.farm.business-week.time") shouldBe "20:00"
+            config.intOrNull("enterprises.farm.capital.total-shares") shouldBe 100
+            config.stringOrNull("enterprises.farm.capital.share-price")?.toDouble() shouldBe 50_000.0
+            config.intOrNull("enterprises.farm.capital.max-shares-per-owner") shouldBe 20
+            config.intOrNull("enterprises.farm.capital.funding-duration-days") shouldBe 7
+            config.intOrNull("enterprises.farm.capital.license-burn-percent") shouldBe 50
+            config.intOrNull("enterprises.farm.capital.license-weeks") shouldBe 12
+            config.intOrNull("enterprises.farm.capital.reserve-target-weeks") shouldBe 1
+        }
+    }
+
+    test("menu visual config rejects custom model data outside the Paper range") {
+        val root = resourceTree()
+        root.resolve("config.yml").writeText(
+            Files.readString(root.resolve("config.yml")).replace(
+                "farm: {material: WHEAT, custom-model-data: 0}",
+                "farm: {material: WHEAT, custom-model-data: -1}",
+            ),
+        )
+
+        shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(root) }
+            .message shouldContain "ui.main-menu.items.farm.custom-model-data"
+    }
+
+    test("bundled farm enterprise is safe by default and keeps complete tariff examples") {
+        val settings = ArcFarmsConfig.inspect(resourceTree()).enterprises.getValue(ActivityKind.FARM)
+
+        settings.mode shouldBe WorksiteEnterpriseMode.OFF
+        settings.companyId shouldBe "communal_farm"
+        settings.worksiteId shouldBe "communal_farm"
+        settings.licenseGrossEnvelopeCents shouldBe 200_000_000L
+        settings.grossTariffCents("bakery_supply") shouldBe 1_000_000L
+        settings.grossTariffCents("harvest_festival") shouldBe 1_800_000L
+        settings.operatingCostPercent shouldBe 20
+        settings.workerBonusPercent shouldBe 30
+        settings.dividendPercent shouldBe 50
+        settings.businessWeek.zoneId shouldBe ZoneId.of("Europe/Moscow")
+        settings.businessWeek.startDay shouldBe DayOfWeek.SUNDAY
+        settings.businessWeek.startTime shouldBe LocalTime.of(20, 0)
+        settings.capital.totalShares shouldBe 100
+        settings.capital.sharePriceCents shouldBe 5_000_000L
+        settings.capital.maxSharesPerOwner shouldBe 20
+        settings.capital.fundingDurationDays shouldBe 7
+        settings.capital.licenseBurnPercent shouldBe 50
+        settings.capital.licenseWeeks shouldBe 12
+        settings.capital.reserveTargetWeeks shouldBe 1
+        settings.capital.purchaseOptions shouldContainExactly listOf(1, 5, 10, 20)
+    }
+
+    test("farm enterprise rejects unsafe modes, policy steps, unknown tariffs, and underfunded licenses") {
+        val invalidMode = resourceTree()
+        invalidMode.resolve("config.yml").writeText(
+            Files.readString(invalidMode.resolve("config.yml")).replace("mode: OFF", "mode: ACTIVE"),
+        )
+        shouldThrow<IllegalStateException> { ArcFarmsConfig.inspect(invalidMode) }
+            .message shouldContain "mode must be OFF, SHADOW or LIVE"
+
+        val invalidPolicy = resourceTree()
+        invalidPolicy.resolve("config.yml").writeText(
+            Files.readString(invalidPolicy.resolve("config.yml"))
+                .replace("worker-bonus-percent: 30", "worker-bonus-percent: 20"),
+        )
+        shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(invalidPolicy) }
+            .message shouldContain "worker-bonus-percent"
+
+        val unknownTariff = resourceTree()
+        unknownTariff.resolve("config.yml").writeText(
+            Files.readString(unknownTariff.resolve("config.yml"))
+                .replace("miners_rations: 10000.00", "unknown_order: 10000.00"),
+        )
+        shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(unknownTariff) }
+            .message shouldContain "unknown order"
+
+        val underfunded = resourceTree()
+        underfunded.resolve("config.yml").writeText(
+            Files.readString(underfunded.resolve("config.yml"))
+                .replace("license-gross-envelope: 2000000.00", "license-gross-envelope: 1000.00"),
+        )
+        shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(underfunded) }
+            .message shouldContain "must cover one complete order tariff"
+
+        val oversizedEnvelope = resourceTree()
+        oversizedEnvelope.resolve("config.yml").writeText(
+            Files.readString(oversizedEnvelope.resolve("config.yml"))
+                .replace("license-gross-envelope: 2000000.00", "license-gross-envelope: 2000001.00"),
+        )
+        shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(oversizedEnvelope) }
+            .message shouldContain "must not exceed 80% of the upfront license burn"
+    }
+
+    test("farm enterprise rejects invalid business-week boundaries") {
+        val invalidZone = resourceTree()
+        invalidZone.resolve("config.yml").writeText(
+            Files.readString(invalidZone.resolve("config.yml"))
+                .replace("zone: Europe/Moscow", "zone: Mars/Olympus"),
+        )
+        shouldThrow<IllegalStateException> { ArcFarmsConfig.inspect(invalidZone) }
+            .message shouldContain "business-week.zone"
+
+        val invalidDay = resourceTree()
+        invalidDay.resolve("config.yml").writeText(
+            Files.readString(invalidDay.resolve("config.yml"))
+                .replace("day: SUNDAY", "day: MARKETDAY"),
+        )
+        shouldThrow<IllegalStateException> { ArcFarmsConfig.inspect(invalidDay) }
+            .message shouldContain "business-week.day"
+
+        val invalidTime = resourceTree()
+        invalidTime.resolve("config.yml").writeText(
+            Files.readString(invalidTime.resolve("config.yml"))
+                .replace("time: '20:00'", "time: eventually"),
+        )
+        shouldThrow<IllegalStateException> { ArcFarmsConfig.inspect(invalidTime) }
+            .message shouldContain "business-week.time"
+    }
+
     test("bundled production config owns all three activities without ARC compatibility") {
         val root = resourceTree()
         val settings = ArcFarmsConfig.inspect(root)
@@ -114,6 +339,19 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farmScoreboard.enabled shouldBe true
         settings.farmScoreboard.replaceExisting shouldBe false
         settings.menuBackground.enabled shouldBe false
+        settings.menuBack.material shouldBe "ARROW"
+        settings.menuBack.customModelData shouldBe 0
+        settings.enterprises.getValue(ActivityKind.FARM).apply {
+            mode shouldBe WorksiteEnterpriseMode.OFF
+            companyId shouldBe "communal_farm"
+            worksiteId shouldBe "communal_farm"
+            licenseGrossEnvelopeCents shouldBe 200_000_000L
+            grossTariffCents("bakery_supply") shouldBe 1_000_000L
+            grossTariffCents("harvest_festival") shouldBe 1_800_000L
+            operatingCostPercent shouldBe 20
+            workerBonusPercent shouldBe 30
+            dividendPercent shouldBe 50
+        }
         settings.destinations.getValue("farm").server shouldBe "spawn"
         settings.destinations.getValue("farm").world shouldBe "sp11"
         settings.requiresWorldGuard shouldBe true
@@ -401,7 +639,10 @@ class ArcFarmsConfigTest : FunSpec({
         ArcFarmsRedisBootstrap.load(root, settings).serverName shouldBe "spawn"
         ArcFarmsLocale.validateFiles(root, settings)
         listOf("lang/ru.yml", "lang/en.yml").forEach { path ->
-            Files.readString(repositoryRoot.resolve("classic/plugins/ArcFarms/$path")) shouldBe Files.readString(root.resolve(path))
+            listOf("classic", "classic_survival", "parkour").forEach { runtime ->
+                Files.readString(repositoryRoot.resolve("$runtime/plugins/ArcFarms/$path")) shouldBe
+                    Files.readString(root.resolve(path))
+            }
         }
         val classicSettings = ArcFarmsConfig.inspect(repositoryRoot.resolve("classic/plugins/ArcFarms"))
         classicSettings.farmScoreboard.provider shouldBe FarmScoreboardProvider.TAB
@@ -453,6 +694,9 @@ class ArcFarmsConfigTest : FunSpec({
         classicSettings.menuBackground.enabled shouldBe true
         classicSettings.menuBackground.material shouldBe "GRAY_STAINED_GLASS_PANE"
         classicSettings.menuBackground.customModelData shouldBe 11_000
+        classicSettings.menuBack.material shouldBe "BLUE_STAINED_GLASS_PANE"
+        classicSettings.menuBack.customModelData shouldBe 11_013
+        classicSettings.enterprises.getValue(ActivityKind.FARM).mode shouldBe WorksiteEnterpriseMode.SHADOW
         classicSettings.farmScoreboard.enabled shouldBe true
         classicSettings.farmScoreboard.replaceExisting shouldBe true
 
@@ -497,6 +741,13 @@ class ArcFarmsConfigTest : FunSpec({
                 settings.destinations.values.all { it.server == "spawn" } shouldBe true
             }
             ArcFarmsLocale.validateFiles(root, settings)
+            settings.menuBackground.enabled shouldBe true
+            settings.menuBackground.material shouldBe "GRAY_STAINED_GLASS_PANE"
+            settings.menuBackground.customModelData shouldBe 11_000
+            settings.menuBack.material shouldBe "BLUE_STAINED_GLASS_PANE"
+            settings.menuBack.customModelData shouldBe 11_013
+            settings.enterprises.getValue(ActivityKind.FARM).mode shouldBe
+                if (runtime == "classic") WorksiteEnterpriseMode.SHADOW else WorksiteEnterpriseMode.OFF
         }
     }
 
@@ -795,6 +1046,48 @@ class ArcFarmsConfigTest : FunSpec({
         shouldThrow<IllegalArgumentException> { ArcFarmsLocale.validateFiles(root, settings) }
     }
 
+    test("locale validation rejects placeholder typos and placeholder closing tags") {
+        val typoRoot = resourceTree()
+        val typoSettings = ArcFarmsConfig.inspect(typoRoot)
+        typoRoot.resolve("lang/en.yml").writeText(
+            Files.readString(typoRoot.resolve("lang/en.yml")).replace(
+                "<color:#707a76>Accrued:</color> <color:#ffc857><amount></color>",
+                "<color:#707a76>Accrued:</color> <color:#ffc857><amout></color>",
+            ),
+        )
+        shouldThrow<IllegalArgumentException> { ArcFarmsLocale.validateFiles(typoRoot, typoSettings) }
+            .message shouldContain "unknown placeholder"
+
+        val closingRoot = resourceTree()
+        val closingSettings = ArcFarmsConfig.inspect(closingRoot)
+        listOf("ru", "en").forEach { language ->
+            val path = closingRoot.resolve("lang/$language.yml")
+            path.writeText(Files.readString(path).replace("<amount></color>", "<amount></amount>"))
+        }
+        shouldThrow<IllegalArgumentException> { ArcFarmsLocale.validateFiles(closingRoot, closingSettings) }
+            .message shouldContain "unsupported closing tag"
+
+        val misspelledClosingRoot = resourceTree()
+        val misspelledClosingSettings = ArcFarmsConfig.inspect(misspelledClosingRoot)
+        listOf("ru", "en").forEach { language ->
+            val path = misspelledClosingRoot.resolve("lang/$language.yml")
+            path.writeText(Files.readString(path).replace("<amount></color>", "<amount></amout>"))
+        }
+        shouldThrow<IllegalArgumentException> {
+            ArcFarmsLocale.validateFiles(misspelledClosingRoot, misspelledClosingSettings)
+        }.message shouldContain "unsupported closing tag"
+
+        val standaloneClosingRoot = resourceTree()
+        val standaloneClosingSettings = ArcFarmsConfig.inspect(standaloneClosingRoot)
+        listOf("ru", "en").forEach { language ->
+            val path = standaloneClosingRoot.resolve("lang/$language.yml")
+            path.writeText(Files.readString(path).replace("reload-ok:", "reload-ok: '</amout>' #"))
+        }
+        shouldThrow<IllegalArgumentException> {
+            ArcFarmsLocale.validateFiles(standaloneClosingRoot, standaloneClosingSettings)
+        }.message shouldContain "unsupported closing tag"
+    }
+
     test("locale synchronization backfills bundled keys without replacing operator translations") {
         val root = resourceTree()
         val russian = root.resolve("lang/ru.yml")
@@ -827,14 +1120,17 @@ class ArcFarmsConfigTest : FunSpec({
         configPath.writeText(
             Files.readString(configPath)
                 .replace("bossbars: true", "bossbars: false")
-                .replace("  title-stay-seconds: 4\n", ""),
+                .replace("  title-stay-seconds: 4\n", "")
+                .replace("    initial-retry-seconds: 1\n", ""),
         )
 
         val settings = ArcFarmsConfig.load(root)
 
         settings.bossbars shouldBe false
         settings.titleStaySeconds shouldBe 4
+        settings.shiftStartPersistence.initialRetrySeconds shouldBe 1
         Files.readString(configPath) shouldContain "title-stay-seconds: 4"
+        Files.readString(configPath) shouldContain "initial-retry-seconds: 1"
 
         val relayRoot = resourceTree()
         Config(relayRoot, "config.yml").also { relay ->
@@ -847,6 +1143,36 @@ class ArcFarmsConfigTest : FunSpec({
         Files.readString(relayRoot.resolve("config.yml")) shouldContain "farm-zones: {}"
         Files.readString(relayRoot.resolve("config.yml")) shouldContain "lumber-zones: {}"
         Files.readString(relayRoot.resolve("config.yml")) shouldContain "mine-zones: {}"
+        ArcFarmsConfig.inspect(relayRoot).enterprises.getValue(ActivityKind.FARM).mode shouldBe WorksiteEnterpriseMode.OFF
+    }
+
+    test("locale reload publishes one validated generation atomically") {
+        val root = resourceTree()
+        val settings = ArcFarmsConfig.inspect(root)
+        val locale = ArcFarmsLocale(root) { settings }
+        val plain = PlainTextComponentSerializer.plainText()
+        val previous = plain.serialize(locale.render(MessageKey.RELOAD_OK))
+
+        Config(root, "lang/ru.yml").also { russian ->
+            russian.setString("reload-ok", "<prefix> <color:#f2fff7>Новая конфигурация</color>")
+            russian.saveStrict()
+        }
+        val prepared = locale.prepareReload(settings)
+        Config(root, "lang/ru.yml").also { russian ->
+            russian.setString("reload-ok", "<prefix> <red>Непроверенная поздняя запись</red>")
+            russian.saveStrict()
+        }
+
+        plain.serialize(locale.render(MessageKey.RELOAD_OK)) shouldBe previous
+        locale.publish(prepared)
+        plain.serialize(locale.render(MessageKey.RELOAD_OK)) shouldBe "Ферма • Новая конфигурация"
+
+        Config(root, "lang/ru.yml").also { russian ->
+            russian.setString("reload-ok", "")
+            russian.saveStrict()
+        }
+        shouldThrow<IllegalArgumentException> { locale.prepareReload(settings) }
+        plain.serialize(locale.render(MessageKey.RELOAD_OK)) shouldBe "Ферма • Новая конфигурация"
     }
 
     test("startup load reads the latest accepted disk config in the same JVM") {
@@ -1094,6 +1420,18 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().rewards.experience.amount shouldBe 10
         settings.farms.single().rewards.money.amountCents shouldBe 1_000
         settings.farms.single().rewards.randomBundles.entries.single().id shouldBe "lab_snack"
+        settings.menuBackground.enabled shouldBe true
+        settings.menuBackground.material shouldBe "GRAY_STAINED_GLASS_PANE"
+        settings.menuBackground.customModelData shouldBe 0
+        settings.menuBack.material shouldBe "ARROW"
+        settings.menuBack.customModelData shouldBe 0
+        settings.enterprises.getValue(ActivityKind.FARM).apply {
+            mode shouldBe WorksiteEnterpriseMode.SHADOW
+            companyId shouldBe "lab_farm_company"
+            worksiteId shouldBe "lab_farm"
+            grossTariffCents("lab_order") shouldBe 1_000_000L
+            grossTariffCents("lab_berry_order") shouldBe 1_200_000L
+        }
         settings.lumbermills.single().fellingQuota shouldBe 2
         settings.mines.single().cartQuota shouldBe 4
         settings.farms.single().reference.bounds!!.volume shouldBe 34_668L

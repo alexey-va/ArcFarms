@@ -137,10 +137,109 @@ enum class MessageKey(val path: String) {
     MENU_STATS_LORE("menu.stats.lore"),
     MENU_CLICK("menu.click"),
     MENU_REMOTE("menu.remote"),
+    MENU_UNAVAILABLE("menu.unavailable"),
+    MENU_LOCKED("menu.locked"),
+    MENU_COMPANIES_NAME("menu.companies.name"),
+    MENU_COMPANIES_LORE("menu.companies.lore"),
+    MENU_COMPANIES_CLICK("menu.companies.click"),
     MENU_WORKDAY_NAME("menu.workday.name"),
     MENU_WORKDAY_LORE("menu.workday.lore"),
     MENU_WORKDAY_LOADING("menu.workday.loading"),
     MENU_WORKDAY_CLICK("menu.workday.click"),
+    COMPANIES_TITLE("companies.title"),
+    COMPANIES_BACK_NAME("companies.back.name"),
+    COMPANIES_BACK_LORE("companies.back.lore"),
+    COMPANIES_BACK_CLICK("companies.back.click"),
+    COMPANIES_FARM_NAME("companies.farm.name"),
+    COMPANIES_FARM_LORE("companies.farm.lore"),
+    COMPANIES_LUMBER_NAME("companies.lumber.name"),
+    COMPANIES_LUMBER_LORE("companies.lumber.lore"),
+    COMPANIES_MINE_NAME("companies.mine.name"),
+    COMPANIES_MINE_LORE("companies.mine.lore"),
+    COMPANIES_ORDERS("companies.card.orders"),
+    COMPANIES_WORKER_BONUS("companies.card.worker-bonus"),
+    COMPANIES_AVAILABLE("companies.card.available"),
+    COMPANIES_PROJECTED("companies.card.projected"),
+    COMPANIES_SHADOW("companies.card.shadow"),
+    COMPANIES_REMOTE("companies.card.remote"),
+    COMPANIES_UNAVAILABLE("companies.card.unavailable"),
+    COMPANIES_OPEN("companies.card.open"),
+    COMPANIES_TRAVEL("companies.card.travel"),
+    COMPANY_FARM_TITLE("companies.farm-detail.title"),
+    COMPANY_FARM_HEADER_NAME("companies.farm-detail.header.name"),
+    COMPANY_FARM_HEADER_LORE("companies.farm-detail.header.lore"),
+    COMPANY_REPORT_NAME("companies.farm-detail.report.name"),
+    COMPANY_REPORT_ORDERS("companies.farm-detail.report.orders"),
+    COMPANY_REPORT_CONTRIBUTORS("companies.farm-detail.report.contributors"),
+    COMPANY_REPORT_GROSS("companies.farm-detail.report.gross"),
+    COMPANY_REPORT_RETAINED("companies.farm-detail.report.retained"),
+    COMPANY_REPORT_PROJECTED("companies.farm-detail.report.projected"),
+    COMPANY_WORKERS_NAME("companies.farm-detail.workers.name"),
+    COMPANY_WORKERS_BONUS("companies.farm-detail.workers.bonus"),
+    COMPANY_WORKERS_ACCRUED("companies.farm-detail.workers.accrued"),
+    COMPANY_POLICY_NAME("companies.farm-detail.policy.name"),
+    COMPANY_POLICY_OPERATING("companies.farm-detail.policy.operating"),
+    COMPANY_POLICY_DIVIDEND("companies.farm-detail.policy.dividend"),
+    COMPANY_POLICY_UPKEEP("companies.farm-detail.policy.upkeep"),
+    COMPANY_LICENSE_NAME("companies.farm-detail.license.name"),
+    COMPANY_LICENSE_ENVELOPE("companies.farm-detail.license.envelope"),
+    COMPANY_LICENSE_SETTLED("companies.farm-detail.license.settled"),
+    COMPANY_LICENSE_RESERVED("companies.farm-detail.license.reserved"),
+    COMPANY_LICENSE_AVAILABLE("companies.farm-detail.license.available"),
+    COMPANY_SHARES_NAME("companies.farm-detail.shares.name"),
+    COMPANY_SHARES_LORE("companies.farm-detail.shares.lore"),
+    COMPANY_MARKET_NAME("companies.farm-detail.market.name"),
+    COMPANY_MARKET_LORE("companies.farm-detail.market.lore"),
+    COMPANY_LIVE_FUNDING("companies.card.live-funding"),
+    COMPANY_LIVE_ACTIVE("companies.card.live-active"),
+    COMPANY_LIVE_CANCELLED("companies.card.live-cancelled"),
+    COMPANY_LIVE_EXPIRED("companies.card.live-expired"),
+    COMPANY_SHARES_LIVE_LORE("companies.farm-detail.shares.live-lore"),
+    COMPANY_SHARES_OPEN("companies.farm-detail.shares.open"),
+    COMPANY_SHARES_TITLE("companies.shares.title"),
+    COMPANY_SHARES_STATUS_NAME("companies.shares.status.name"),
+    COMPANY_SHARES_STATUS_PHASE("companies.shares.status.phase"),
+    COMPANY_SHARES_STATUS_PROGRESS("companies.shares.status.progress"),
+    COMPANY_SHARES_STATUS_PRICE("companies.shares.status.price"),
+    COMPANY_SHARES_STATUS_DEADLINE("companies.shares.status.deadline"),
+    COMPANY_SHARES_HOLDING_NAME("companies.shares.holding.name"),
+    COMPANY_SHARES_HOLDING_AMOUNT("companies.shares.holding.amount"),
+    COMPANY_SHARES_HOLDING_LIMIT("companies.shares.holding.limit"),
+    COMPANY_SHARES_ACCOUNT_NAME("companies.shares.account.name"),
+    COMPANY_SHARES_ACCOUNT_BALANCE("companies.shares.account.balance"),
+    COMPANY_SHARES_ACCOUNT_AVAILABLE("companies.shares.account.available"),
+    COMPANY_SHARES_ACCOUNT_REVIEW("companies.shares.account.review"),
+    COMPANY_SHARES_BUY_NAME("companies.shares.buy.name"),
+    COMPANY_SHARES_BUY_COST("companies.shares.buy.cost"),
+    COMPANY_SHARES_BUY_EFFECT("companies.shares.buy.effect"),
+    COMPANY_SHARES_BUY_CLICK("companies.shares.buy.click"),
+    COMPANY_SHARES_BUY_UNAVAILABLE("companies.shares.buy.unavailable"),
+    COMPANY_SHARES_WITHDRAW_NAME("companies.shares.withdraw.name"),
+    COMPANY_SHARES_WITHDRAW_AMOUNT("companies.shares.withdraw.amount"),
+    COMPANY_SHARES_WITHDRAW_CLICK("companies.shares.withdraw.click"),
+    COMPANY_SHARES_WITHDRAW_EMPTY("companies.shares.withdraw.empty"),
+    COMPANY_SHARES_CONFIRM_TITLE("companies.shares.confirm.title"),
+    COMPANY_SHARES_CONFIRM_NAME("companies.shares.confirm.name"),
+    COMPANY_SHARES_CONFIRM_COST("companies.shares.confirm.cost"),
+    COMPANY_SHARES_CONFIRM_EFFECT("companies.shares.confirm.effect"),
+    COMPANY_SHARES_CONFIRM_WARNING("companies.shares.confirm.warning"),
+    COMPANY_SHARES_CONFIRM_CLICK("companies.shares.confirm.click"),
+    COMPANY_SHARES_PHASE_FUNDING("companies.shares.phase.funding"),
+    COMPANY_SHARES_PHASE_ACTIVE("companies.shares.phase.active"),
+    COMPANY_SHARES_PHASE_CANCELLED("companies.shares.phase.cancelled"),
+    COMPANY_SHARES_PHASE_EXPIRED("companies.shares.phase.expired"),
+    COMPANY_INVESTMENT_STARTED("companies.investment.started"),
+    COMPANY_INVESTMENT_BUY_SUCCESS("companies.investment.buy-success"),
+    COMPANY_INVESTMENT_WITHDRAW_SUCCESS("companies.investment.withdraw-success"),
+    COMPANY_INVESTMENT_PROVIDER_REJECTED("companies.investment.provider-rejected"),
+    COMPANY_INVESTMENT_MANUAL_REVIEW("companies.investment.manual-review"),
+    COMPANY_INVESTMENT_STATE_ERROR("companies.investment.state-error"),
+    COMPANY_INVESTMENT_FUNDING_CLOSED("companies.investment.funding-closed"),
+    COMPANY_INVESTMENT_OWNER_LIMIT("companies.investment.owner-limit"),
+    COMPANY_INVESTMENT_SOLD_OUT("companies.investment.sold-out"),
+    COMPANY_INVESTMENT_PENDING("companies.investment.pending"),
+    COMPANY_INVESTMENT_NO_CREDIT("companies.investment.no-credit"),
+    COMPANY_INVESTMENT_NOT_AVAILABLE("companies.investment.not-available"),
     STATUS_HEADER("status.header"),
     STATUS_ENTRY("status.entry"),
     STATUS_EMPTY("status.empty"),
@@ -318,6 +417,7 @@ enum class MessageKey(val path: String) {
     FARM_PERK_BALANCE("farm.perk-menu.balance"),
     FARM_PERK_PRICE("farm.perk-menu.price"),
     FARM_PERK_ACTIVE("farm.perk-menu.active"),
+    FARM_PERK_BUY("farm.perk-menu.buy"),
     FARM_PERK_ALREADY_ACTIVE_TITLE("farm.perk-menu.already-active-title"),
     FARM_PERK_ALREADY_ACTIVE("farm.perk-menu.already-active"),
     FARM_PERK_ALREADY_ACTIVE_HINT("farm.perk-menu.already-active-hint"),
@@ -359,6 +459,7 @@ enum class MessageKey(val path: String) {
     FARM_MARKET_MENU_TIME_REMAINING("farm.market-menu.time-remaining"),
     FARM_MARKET_MENU_ACCEPT("farm.market-menu.accept"),
     FARM_MARKET_MENU_DECLINE("farm.market-menu.decline"),
+    FARM_MARKET_MENU_CHOOSE("farm.market-menu.choose"),
     FARM_MARKET_MENU_CLOSE("farm.market-menu.close"),
     FARM_COMPLETED("farm.completed"),
     FARM_COMPLETED_SUBTITLE("farm.completed-subtitle"),
@@ -490,12 +591,20 @@ class ArcFarmsLocale(
     internal class CatalogSnapshot internal constructor(internal val renderer: LocalizedMiniMessage)
 
     @Volatile
-    private var renderer = loadRenderer()
+    private var renderer = loadRenderer(loadLocaleConfigs(dataRoot))
 
     internal fun snapshot(): CatalogSnapshot = CatalogSnapshot(renderer)
 
     /** Parses new catalogs without publishing them into the live audience. */
-    internal fun prepareReload(): CatalogSnapshot = CatalogSnapshot(loadRenderer())
+    internal fun prepareReload(): CatalogSnapshot =
+        CatalogSnapshot(loadRenderer(loadLocaleConfigs(dataRoot)))
+
+    /** Parses and fully validates a candidate locale generation before publication. */
+    internal fun prepareReload(candidate: ArcFarmsConfig): CatalogSnapshot {
+        val catalogs = loadLocaleConfigs(dataRoot)
+        validateCatalogs(catalogs, candidate)
+        return CatalogSnapshot(loadRenderer(catalogs))
+    }
 
     internal fun publish(snapshot: CatalogSnapshot) {
         renderer = snapshot.renderer
@@ -512,22 +621,20 @@ class ArcFarmsLocale(
         audience: CommandSender? = null,
         values: Map<String, Component> = emptyMap(),
     ): Component {
-        return renderer.render(path, localeTag(audience), values)
+        val active = renderer
+        return active.render(path, localeTag(audience), values)
     }
 
     fun text(value: Any?): Component = renderer.literal(value)
 
+    private fun loadRenderer(configs: Map<String, Config>): LocalizedMiniMessage = LocalizedMiniMessage(
+        catalogs = configs.mapValues { (_, config) -> ConfigLocaleCatalog(config) },
+        defaultLocale = { settings().defaultLocale },
+    )
+
     private fun localeTag(audience: CommandSender?): String =
         if (settings().useClientLocale && audience is Player) audience.locale().toLanguageTag()
         else settings().defaultLocale
-
-    private fun loadRenderer(): LocalizedMiniMessage = LocalizedMiniMessage(
-        catalogs = mapOf(
-            "ru" to ConfigLocaleCatalog(Config(dataRoot, "lang/ru.yml")),
-            "en" to ConfigLocaleCatalog(Config(dataRoot, "lang/en.yml")),
-        ),
-        defaultLocale = { settings().defaultLocale },
-    )
 
     companion object {
         fun synchronizeFiles(dataRoot: Path) {
@@ -612,16 +719,129 @@ class ArcFarmsLocale(
                 .mapTo(this) { "lumber.guidance.${it.name.lowercase()}" }
         }
 
-        fun validateFiles(dataRoot: Path, settings: ArcFarmsConfig) {
+        fun validateFiles(dataRoot: Path, settings: ArcFarmsConfig) =
+            validateCatalogs(loadLocaleConfigs(dataRoot), settings)
+
+        private fun loadLocaleConfigs(dataRoot: Path): Map<String, Config> =
+            LOCALES.associateWith { Config(dataRoot, "lang/$it.yml") }
+
+        private fun validateCatalogs(configs: Map<String, Config>, settings: ArcFarmsConfig) {
             val mini = MiniMessage.miniMessage()
-            listOf("ru", "en").forEach { language ->
-                val config = Config(dataRoot, "lang/$language.yml")
-                requiredPaths(settings).forEach { path ->
-                    val raw = config.stringOrNull(path)
+            requiredPaths(settings).forEach { path ->
+                val placeholders = LOCALES.associateWith { language ->
+                    val raw = configs.getValue(language).stringOrNull(path)
                     require(!raw.isNullOrBlank()) { "Locale $language is missing $path" }
                     mini.deserialize(raw)
+                    val unknownClosings = CLOSING_TAG.findAll(raw)
+                        .map { it.groupValues[1] }
+                        .filterNot(MINIMESSAGE_CLOSING_TAGS::contains)
+                        .toSet()
+                    require(unknownClosings.isEmpty()) {
+                        "Locale $language has an unsupported closing tag at $path: $unknownClosings"
+                    }
+                    localePlaceholders(raw).also { found ->
+                        require(found.all(ALLOWED_LOCALE_PLACEHOLDERS::contains)) {
+                            "Locale $language has an unknown placeholder at $path: ${found - ALLOWED_LOCALE_PLACEHOLDERS}"
+                        }
+                        val placeholderClosings = CLOSING_TAG.findAll(raw)
+                            .map { it.groupValues[1] }
+                            .filter(found::contains)
+                            .toSet()
+                        require(placeholderClosings.isEmpty()) {
+                            "Locale $language uses a placeholder as a closing tag at $path: $placeholderClosings"
+                        }
+                    }
+                }
+                require(placeholders.values.distinct().size == 1) {
+                    "Locale placeholder mismatch at $path: " +
+                        placeholders.entries.joinToString { (language, found) -> "$language=$found" }
+                }
+                EXPECTED_PLACEHOLDERS[path]?.let { expected ->
+                    require(placeholders.values.first() == expected) {
+                        "Locale placeholders at $path must be $expected, found ${placeholders.values.first()}"
+                    }
                 }
             }
         }
+
+        private fun localePlaceholders(raw: String): Set<String> = PLACEHOLDER_TAG.findAll(raw)
+            .map { it.groupValues[1] }
+            .filterNot(MINIMESSAGE_LITERAL_TAGS::contains)
+            .toSet()
+
+        private val PLACEHOLDER_TAG = Regex("(?<!\\\\)<([a-z][a-z0-9_-]*)>")
+        private val CLOSING_TAG = Regex("</([a-z][a-z0-9_-]*)>")
+        private val MINIMESSAGE_LITERAL_TAGS = setOf(
+            "black", "dark_blue", "dark_green", "dark_aqua", "dark_red", "dark_purple", "gold", "gray",
+            "dark_gray", "blue", "green", "aqua", "red", "light_purple", "yellow", "white", "bold", "b",
+            "italic", "i", "em", "underlined", "u", "strikethrough", "st", "obfuscated", "obf", "reset", "newline", "br",
+        )
+        private val MINIMESSAGE_CLOSING_TAGS = MINIMESSAGE_LITERAL_TAGS + setOf(
+            "color", "click", "hover", "insertion", "font", "keybind", "key", "translatable", "translate", "tr",
+            "selector", "score", "nbt", "data", "block", "entity", "storage", "gradient", "transition", "rainbow",
+            "shadow_color", "shadow", "pride", "sprite", "head", "fallback", "em",
+        )
+        private val LOCALES = listOf("ru", "en")
+        private val ALLOWED_LOCALE_PLACEHOLDERS = setOf(
+            "action", "active", "activity", "actor", "alive", "amount", "arguments", "beds", "blocks", "bonus",
+            "bundle", "care", "carriers", "cart", "chunks", "command", "count", "crop", "crops", "customer",
+            "cycle", "damaged", "data", "description", "distance", "done", "dry", "entities", "event", "expected",
+            "farm", "flows", "health", "hint", "hours", "id", "incident", "instruction", "item", "leaves", "limit",
+            "lumber", "material", "mine", "name", "nests", "next", "objective", "order", "orders", "original",
+            "percent", "perk", "pests", "phase", "place", "planted", "player", "players", "plots", "point", "points",
+            "prefix", "price", "progress", "rarity", "reason", "records", "requirements", "restore", "reward", "route",
+            "seals", "seconds", "seed", "sequence", "size", "soil", "source", "spawned", "stage", "supply", "targets",
+            "reserved", "shares", "issued", "tilled", "time", "tool", "total", "tracking", "type", "water", "wood", "workers", "world", "x", "y", "z",
+            "zone",
+        )
+        private val EXPECTED_PLACEHOLDERS = mapOf(
+            "menu.stats.lore" to setOf("farm", "lumber", "mine"),
+            "menu.workday.lore" to setOf("cycle", "farm", "lumber", "mine"),
+            "menu.workday.click" to setOf("activity"),
+            "companies.card.orders" to setOf("orders"),
+            "companies.card.worker-bonus" to setOf("percent"),
+            "companies.card.available" to setOf("amount"),
+            "companies.card.projected" to setOf("amount"),
+            "companies.farm-detail.report.orders" to setOf("orders"),
+            "companies.farm-detail.report.contributors" to setOf("workers"),
+            "companies.farm-detail.report.gross" to setOf("amount"),
+            "companies.farm-detail.report.retained" to setOf("amount"),
+            "companies.farm-detail.report.projected" to setOf("amount"),
+            "companies.farm-detail.workers.bonus" to setOf("percent"),
+            "companies.farm-detail.workers.accrued" to setOf("amount"),
+            "companies.farm-detail.policy.operating" to setOf("percent"),
+            "companies.farm-detail.policy.dividend" to setOf("percent"),
+            "companies.farm-detail.policy.upkeep" to setOf("amount"),
+            "companies.farm-detail.license.envelope" to setOf("amount"),
+            "companies.farm-detail.license.settled" to setOf("amount"),
+            "companies.farm-detail.license.reserved" to setOf("amount"),
+            "companies.farm-detail.license.available" to setOf("amount"),
+            "companies.card.live-funding" to setOf("issued", "total"),
+            "companies.card.live-active" to setOf("amount"),
+            "companies.shares.status.phase" to setOf("phase"),
+            "companies.shares.status.progress" to setOf("issued", "total", "reserved"),
+            "companies.shares.status.price" to setOf("amount"),
+            "companies.shares.status.deadline" to setOf("hours"),
+            "companies.shares.holding.amount" to setOf("shares", "total"),
+            "companies.shares.holding.limit" to setOf("limit"),
+            "companies.shares.account.balance" to setOf("amount"),
+            "companies.shares.account.available" to setOf("amount"),
+            "companies.shares.account.review" to setOf("count"),
+            "companies.shares.buy.name" to setOf("shares"),
+            "companies.shares.buy.cost" to setOf("amount"),
+            "companies.shares.buy.effect" to setOf("shares", "limit"),
+            "companies.shares.withdraw.amount" to setOf("amount"),
+            "companies.shares.confirm.name" to setOf("shares"),
+            "companies.shares.confirm.cost" to setOf("amount"),
+            "companies.shares.confirm.effect" to setOf("shares", "limit"),
+            "farm.perk-menu.price" to setOf("price", "hours"),
+            "farm.perk-menu.active" to setOf("hours"),
+            "farm.perk-menu.not-enough" to setOf("price"),
+            "farm.market-menu.order" to setOf("crop", "amount"),
+            "farm.market-menu.bonus" to setOf("bonus"),
+            "farm.market-menu.progress" to setOf("done", "total"),
+            "farm.market-menu.time-limit" to setOf("time"),
+            "farm.market-menu.time-remaining" to setOf("time"),
+        )
     }
 }

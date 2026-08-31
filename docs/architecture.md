@@ -19,6 +19,7 @@ ArcFarmsPlugin
   -> ArcFarmsService (thin compatibility/application facade)
       -> FarmComponentGraph (composition only)
       -> FarmModule (farm lifecycle coordinator)
+      -> WorksiteEnterpriseService (one shared enterprise ledger and adapters)
       -> WorksiteModuleRegistry (lumbermill and mine)
       -> ActivityTravelService
       -> state persistence lifecycle
@@ -168,6 +169,10 @@ owns the zone collection; the module delegates to the following vertical owners.
 | `farm.scene/FarmContractSceneController` | cart/customer/cargo scene reconciliation | unloaded chunk and dedup |
 | `farm.supply/FarmSupplyController` | supply displays, tagged service items, inventory boundary cleanup | issue/replace/leave/death/reload |
 | `farm.reward/FarmRewardService` | reward ledger, durable claim, economy/items/commands | persistence failure, exactly-once claim, partial provider failure |
+| `domain.enterprise/WorksiteEnterpriseLedger` | activity-neutral reservation, settlement arithmetic, weekly aggregates and exact-once watermarks | Bukkit, Vault, farm crops or any concrete worksite engine |
+| `domain.enterprise/WorksiteEnterpriseCapitalLedger` | primary funding, ownership, treasury, weekly distributions, player claims and durable money-operation journal | Bukkit/Vault calls, menus or concrete worksite rules |
+| `paper.enterprise/WorksiteEnterpriseService` | the single enterprise state owner, lifecycle-safe persistence-before-Vault orchestration and typed activity adapters | concrete crop/order mechanics or secondary-market matching |
+| `farm.enterprise/FarmEnterpriseAdapter` | translates farm order start/cancellation/completion into the shared enterprise contract | ownership, dividends, auctions or reusable accounting rules |
 | `farm.presentation/FarmHudController` and `FarmGuidanceController` | boss bars, scoreboard, guidance, entry UI, music and stage feedback | join/leave/reload and competing scoreboard |
 | `farm.admin/FarmGameplayAdminService`, `FarmPointAdminService`, `FarmWorldAdminService` | typed admin operations through feature APIs | invalid stage/point/selection, active event edit |
 | `farm/FarmEventRouter` | Paper event classification and delegation only | listener routing and cancelled-event policy |
@@ -210,6 +215,7 @@ Each mutable collection has exactly one owner. In particular:
 - scoreboard sessions/music -> presentation;
 - restore queues -> recovery controller;
 - reward pending/claimed -> reward service.
+- enterprise reservations/reports/capital/claims -> `WorksiteEnterpriseService` and its shared ledgers; farm event translation -> farm enterprise adapter.
 
 Cross-feature effects are typed results such as `FarmTransition`,
 `IncidentResolved`, `DeliveryCompleted`, or a narrow method on the owning
@@ -255,6 +261,11 @@ uses the outdoor policy.
 - Reward-ledger mutations are serialized. Enqueue and claim effects wait for a
   successful durability future; a lifecycle boundary restores an in-flight
   claim to pending before its final flush.
+- Enterprise state shares the atomic ArcFarms snapshot. `SHADOW` performs no
+  provider side effects; single-authority primary funding and player claims use
+  a durable `PREPARED -> provider -> terminal` journal and never retry an
+  ambiguous provider result. Multi-node ownership and secondary-market matching
+  still require a transactional shared store with idempotency constraints.
 - Every async callback captures a `RuntimeTasks` epoch and is rejected after
   reload/close.
 - Periodic entity updates use feature-owned bounded UUID indexes. Full-world
@@ -263,9 +274,15 @@ uses the outdoor policy.
   cannot start. Mole layouts treat the region as a horizontal farm footprint
   while preserving material, height, loaded-chunk and journal safety checks;
   animal rescue selects only indexed outdoor beds, never generic roof surfaces.
-- Reload is transactional: validate candidate config, invalidate old epoch,
-  cleanup old features, replace runtime, reconcile loaded state, then activate
-  tasks. A failed candidate leaves the old runtime usable.
+- Reload publishes one staged config-and-locale generation. Supplier-backed UI,
+  locale, navigation and enterprise policy take a fast path that keeps active
+  worksite objects and tasks alive; open owned menus are redrawn after commit.
+  Structural zone and timer changes validate the candidate, invalidate the old
+  epoch, clean up features, replace runtime, reconcile loaded state, then
+  activate tasks. Validation failures leave the complete old generation usable;
+  failures after mutation trigger snapshot rollback, and a failed rollback disables
+  the plugin instead of exposing a mixed generation. Any unconfirmed live-state
+  write failure likewise fail-stops the plugin without publishing candidate settings.
 - Zero players pauses progress but never resets a goal.
 - Cleanup and reconciliation are safe to repeat after partial failure.
 - Collections, coordinates, entity counts, commands and recovery work are

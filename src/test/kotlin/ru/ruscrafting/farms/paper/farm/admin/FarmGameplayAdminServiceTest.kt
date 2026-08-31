@@ -28,6 +28,7 @@ import ru.ruscrafting.farms.paper.farm.FarmShiftLauncher
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.care.FarmCareController
 import ru.ruscrafting.farms.paper.farm.delivery.FarmDeliveryController
+import ru.ruscrafting.farms.paper.farm.enterprise.FarmEnterprisePort
 import ru.ruscrafting.farms.paper.farm.field.FarmFieldController
 import ru.ruscrafting.farms.paper.farm.harvest.FarmHarvestController
 import ru.ruscrafting.farms.paper.farm.incident.bird.FarmBirdIncident
@@ -141,6 +142,7 @@ class FarmGameplayAdminServiceTest : FunSpec({
                 frost = mockk(relaxed = true),
                 incidentRecovery = recovery,
                 delivery = mockk<FarmDeliveryController>(relaxed = true),
+                enterprise = mockk<FarmEnterprisePort>(relaxed = true),
                 scene = mockk<FarmContractSceneController>(relaxed = true),
                 supplies = mockk<FarmSupplyController>(relaxed = true),
                 harvest = harvest,
@@ -199,6 +201,7 @@ class FarmGameplayAdminServiceTest : FunSpec({
             frost = mockk(relaxed = true),
             incidentRecovery = recovery,
             delivery = mockk<FarmDeliveryController>(relaxed = true),
+            enterprise = mockk<FarmEnterprisePort>(relaxed = true),
             scene = mockk<FarmContractSceneController>(relaxed = true),
             supplies = mockk<FarmSupplyController>(relaxed = true),
             harvest = mockk<FarmHarvestController>(relaxed = true),
@@ -221,6 +224,71 @@ class FarmGameplayAdminServiceTest : FunSpec({
         verify(exactly = 1) { recovery.restore(runtime, Int.MAX_VALUE, false) }
         verify(exactly = 0) { recovery.restore(runtime, 24, any()) }
     }
+
+    test("successful admin reset releases and persists the exact enterprise reservation") {
+        val runtime = FarmRuntime(
+            settings = mockk<FarmZoneSettings>(relaxed = true) { every { id } returns "communal_farm" },
+            region = mockk(relaxed = true),
+            orders = emptyMap(),
+            orderList = emptyList(),
+            rules = mockk(relaxed = true),
+            state = FarmShiftState(phase = FarmPhase.HARVESTING, sequence = 14),
+        )
+        val enterprise = mockk<FarmEnterprisePort> {
+            every { orderCancelled("communal_farm", 14) } returns true
+        }
+        val cycle = mockk<FarmOrderCycleController> {
+            every { set("communal_farm", true) } returns true
+        }
+        val field = mockk<FarmFieldController>(relaxed = true) {
+            every { commitAfterRecovery(runtime, any(), any()) } answers { thirdArg<() -> Unit>().invoke() }
+        }
+        var persisted = 0
+        val service = cycleService(
+            runtime = runtime,
+            port = mockk(relaxed = true),
+            cycle = cycle,
+            launcher = mockk(relaxed = true),
+            enterprise = enterprise,
+            field = field,
+            persistAsync = { persisted++; CompletableFuture.completedFuture(Unit) },
+        )
+
+        service.setStage(mockk(relaxed = true), "communal_farm", "reset") shouldBe true
+
+        verify(exactly = 1) { enterprise.orderCancelled("communal_farm", 14) }
+        persisted shouldBe 1
+    }
+
+    test("failed admin reset keeps the enterprise reservation") {
+        val runtime = FarmRuntime(
+            settings = mockk<FarmZoneSettings>(relaxed = true) { every { id } returns "communal_farm" },
+            region = mockk(relaxed = true),
+            orders = emptyMap(),
+            orderList = emptyList(),
+            rules = mockk(relaxed = true),
+            state = FarmShiftState(phase = FarmPhase.HARVESTING, sequence = 15),
+        )
+        val recovery = mockk<FarmIncidentRecoveryController>(relaxed = true) {
+            every { pending(runtime) } returns true
+        }
+        val enterprise = mockk<FarmEnterprisePort>(relaxed = true)
+        var persisted = 0
+        val service = cycleService(
+            runtime = runtime,
+            port = mockk(relaxed = true),
+            cycle = mockk(relaxed = true),
+            launcher = mockk(relaxed = true),
+            enterprise = enterprise,
+            incidentRecovery = recovery,
+            persistAsync = { persisted++; CompletableFuture.completedFuture(Unit) },
+        )
+
+        service.setStage(mockk(relaxed = true), "communal_farm", "reset") shouldBe false
+
+        verify(exactly = 0) { enterprise.orderCancelled(any(), any()) }
+        persisted shouldBe 0
+    }
 })
 
 private fun cycleService(
@@ -228,6 +296,10 @@ private fun cycleService(
     port: WorksiteRuntimePort,
     cycle: FarmOrderCycleController,
     launcher: FarmShiftLauncher,
+    enterprise: FarmEnterprisePort = mockk(relaxed = true),
+    incidentRecovery: FarmIncidentRecoveryController = mockk(relaxed = true),
+    field: FarmFieldController = mockk(relaxed = true),
+    persistAsync: () -> CompletableFuture<Unit> = { CompletableFuture.completedFuture(Unit) },
 ): FarmGameplayAdminService = FarmGameplayAdminService(
     locale = mockk<ArcFarmsLocale>(relaxed = true),
     debug = ArcFarmsDebug({ false }) {},
@@ -237,7 +309,7 @@ private fun cycleService(
     runtimes = { listOf(runtime) },
     orderCycle = cycle,
     worldAdmin = mockk<FarmWorldAdminService>(relaxed = true),
-    field = mockk<FarmFieldController>(relaxed = true),
+    field = field,
     care = mockk<FarmCareController>(relaxed = true),
     drought = mockk<FarmDroughtIncident>(relaxed = true),
     pests = mockk<FarmPestIncident>(relaxed = true),
@@ -247,8 +319,9 @@ private fun cycleService(
     processing = mockk<FarmProcessingIncident>(relaxed = true),
     barnFire = mockk<FarmBarnFireIncident>(relaxed = true),
     frost = mockk(relaxed = true),
-    incidentRecovery = mockk<FarmIncidentRecoveryController>(relaxed = true),
+    incidentRecovery = incidentRecovery,
     delivery = mockk<FarmDeliveryController>(relaxed = true),
+    enterprise = enterprise,
     scene = mockk<FarmContractSceneController>(relaxed = true),
     supplies = mockk<FarmSupplyController>(relaxed = true),
     harvest = mockk<FarmHarvestController>(relaxed = true),
@@ -258,6 +331,6 @@ private fun cycleService(
     registry = mockk<FarmBlockRegistry>(relaxed = true),
     transitions = mockk<FarmTransitionSink>(relaxed = true),
     shiftLauncher = launcher,
-    persistAsync = { CompletableFuture.completedFuture(Unit) },
+    persistAsync = persistAsync,
     clock = { 5_000L },
 )

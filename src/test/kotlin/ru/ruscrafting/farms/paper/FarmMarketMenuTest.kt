@@ -9,6 +9,6 @@ class FarmMarketMenuTest : FunSpec({
         FarmMarketMenu.decisionFor(FarmMarketMode.PENDING, 15) shouldBe FarmMarketDecision.DECLINE
         FarmMarketMenu.decisionFor(FarmMarketMode.PENDING, 22) shouldBe null
         FarmMarketMenu.decisionFor(FarmMarketMode.ACTIVE, 11) shouldBe null
-        FarmMarketMenu.decisionFor(FarmMarketMode.ACTIVE, 22) shouldBe FarmMarketDecision.CLOSE
+        FarmMarketMenu.decisionFor(FarmMarketMode.ACTIVE, 22) shouldBe null
     }
 })

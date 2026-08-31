@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper
 
 import ru.ruscrafting.farms.config.ArcFarmsConfig
+import ru.ruscrafting.farms.domain.ActivityKind
 
 /** Separates live gameplay tuning from construction-time plugin topology. */
 internal object ArcFarmsHotReloadPolicy {
@@ -26,5 +27,13 @@ internal object ArcFarmsHotReloadPolicy {
             current.mines.associate { it.id to (it.reference to it.engineVersion) } ==
                 candidate.mines.associate { it.id to (it.reference to it.engineVersion) },
         ) { "Changing mine zone topology or engine-version requires a full plugin restart" }
+
+        ActivityKind.entries.forEach { activity ->
+            val currentCompany = current.enterprises[activity]?.companyId ?: return@forEach
+            val candidateCompany = candidate.enterprises[activity]?.companyId ?: return@forEach
+            require(candidateCompany == currentCompany) {
+                "Changing enterprises.${activity.name.lowercase()}.company-id requires an explicit data migration and restart"
+            }
+        }
     }
 }

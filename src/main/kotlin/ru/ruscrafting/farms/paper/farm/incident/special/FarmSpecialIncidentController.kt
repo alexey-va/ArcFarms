@@ -51,9 +51,11 @@ import ru.ruscrafting.farms.paper.FarmSpecialSceneObject
 import ru.ruscrafting.farms.paper.FarmSpecialSceneRole
 import ru.ruscrafting.farms.paper.FarmSpecialSceneSpec
 import ru.ruscrafting.farms.paper.MaterialRules
+import ru.ruscrafting.farms.paper.deferInventoryTransition
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
@@ -65,12 +67,8 @@ import java.util.Locale
 import java.util.logging.Level
 import kotlin.math.floor
 
-internal val SPECIAL_FARM_INCIDENT_TYPES = setOf(
-    FarmIncidentType.GIANT_CROP,
-    FarmIncidentType.CHANNELS,
-    FarmIncidentType.NIGHT_SHIFT,
-    FarmIncidentType.MARKET,
-)
+internal val SPECIAL_FARM_INCIDENT_TYPES =
+    setOf(FarmIncidentType.GIANT_CROP, FarmIncidentType.CHANNELS, FarmIncidentType.NIGHT_SHIFT, FarmIncidentType.MARKET)
 
 private const val MAX_GIANT_CROP_PLACEMENT_CHECKS = 128
 
@@ -83,6 +81,7 @@ internal class FarmSpecialIncidentController(
     private val access: WorksiteAccessPort,
     private val audience: WorksiteAudiencePort,
     private val state: WorksiteStatePort,
+    private val tasks: WorksiteTaskPort,
     private val ledger: FarmBlockLedger,
     private val registry: FarmBlockRegistry,
     private val beds: FarmIncidentBedProvider,
@@ -94,7 +93,7 @@ internal class FarmSpecialIncidentController(
 ) {
     private val scene = FarmSpecialIncidentSceneManager(plugin, debug)
     private val giantCrop = FarmGiantCropController(plugin)
-    private val marketMenu = FarmMarketMenu(locale, settings)
+    private val marketMenu = FarmMarketMenu(locale, settings, ::refreshMarketView)
     private val giantSelectionAttempts = mutableMapOf<String, Long>()
 
     fun ensure(runtime: FarmRuntime) {
@@ -355,7 +354,7 @@ internal class FarmSpecialIncidentController(
     fun handleInventoryClick(event: InventoryClickEvent): Boolean {
         val player = event.whoClicked as? Player ?: return false
         val click = marketMenu.handleClick(event) ?: return false
-        handleMarketDecision(player, click)
+        handleMarketDecision(player, event.view.topInventory, click)
         return true
     }
 
@@ -391,6 +390,19 @@ internal class FarmSpecialIncidentController(
             "progress" to runtime.state.incidentProgress,
             "required" to runtime.state.incidentRequired,
         )
+    }
+
+    private fun refreshMarketView(player: Player, zoneId: String, sequence: Long) {
+        val runtime = runtimes().firstOrNull { it.settings.id == zoneId }
+        val special = runtime?.state?.specialIncident
+        if (
+            runtime == null || runtime.state.sequence != sequence || runtime.state.phase != FarmPhase.INCIDENT ||
+            runtime.state.incidentType != FarmIncidentType.MARKET || special == null
+        ) {
+            player.closeInventory()
+            return
+        }
+        openMarket(player, runtime, special)
     }
 
     fun marketValues(runtime: FarmRuntime, special: FarmSpecialIncidentState, audience: Player?): Map<String, Component> {
@@ -694,22 +706,20 @@ internal class FarmSpecialIncidentController(
         return true
     }
 
-    private fun handleMarketDecision(player: Player, click: FarmMarketClick) {
-        val runtime = runtimes().firstOrNull { it.settings.id == click.zoneId } ?: return
-        if (!access.hasAccess(player, runtime.settings.permission) || !runtime.region.contains(player.location)) {
-            player.closeInventory()
+    private fun handleMarketDecision(player: Player, expectedTop: org.bukkit.inventory.Inventory, click: FarmMarketClick) {
+        val runtime = runtimes().firstOrNull { it.settings.id == click.zoneId } ?: run {
+            tasks.deferInventoryTransition(player, expectedTop, player::closeInventory)
             return
         }
-        if (click.decision == FarmMarketDecision.CLOSE) {
-            player.closeInventory()
-            debug.event("farm_market_menu_closed", "zone" to click.zoneId, "sequence" to click.sequence, "player" to player.name)
+        if (!access.hasAccess(player, runtime.settings.permission) || !runtime.region.contains(player.location)) {
+            tasks.deferInventoryTransition(player, expectedTop, player::closeInventory)
             return
         }
         if (
             runtime.state.sequence != click.sequence || runtime.state.phase != FarmPhase.INCIDENT ||
             runtime.state.incidentType != FarmIncidentType.MARKET
         ) {
-            player.closeInventory()
+            tasks.deferInventoryTransition(player, expectedTop, player::closeInventory)
             audience.sendActionBar(player, MessageKey.FARM_MARKET_CHANGED)
             debug.event(
                 "farm_market_stale_decision",
@@ -723,20 +733,19 @@ internal class FarmSpecialIncidentController(
         }
         val special = runtime.state.specialIncident ?: return
         if (special.marketAccepted) {
-            openMarket(player, runtime, special)
+            tasks.deferInventoryTransition(player, expectedTop) { refreshMarketView(player, click.zoneId, click.sequence) }
             audience.sendActionBar(player, MessageKey.FARM_MARKET_ACTIVE, marketValues(runtime, special, player))
             return
         }
         val result = when (click.decision) {
             FarmMarketDecision.ACCEPT -> FarmSpecialIncidentEngine.acceptMarket(runtime.state, clock(), marketDurationMillis(runtime))
             FarmMarketDecision.DECLINE -> FarmSpecialIncidentEngine.declineMarket(runtime.state)
-            FarmMarketDecision.CLOSE -> return
         }
         if (!result.accepted) {
-            openMarket(player, runtime, requireNotNull(runtime.state.specialIncident))
+            tasks.deferInventoryTransition(player, expectedTop) { refreshMarketView(player, click.zoneId, click.sequence) }
             return
         }
-        player.closeInventory()
+        tasks.deferInventoryTransition(player, expectedTop, player::closeInventory)
         transitions.apply(runtime, result, player)
         if (click.decision == FarmMarketDecision.ACCEPT) {
             state.persistAsync()

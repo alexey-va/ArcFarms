@@ -21,6 +21,7 @@ import ru.ruscrafting.farms.paper.farm.care.mole.FarmMoleBurrowController
 import ru.ruscrafting.farms.paper.farm.care.mole.FarmMoleBurrowWorld
 import ru.ruscrafting.farms.paper.farm.care.mole.PaperMoleBurrowChunkRetention
 import ru.ruscrafting.farms.paper.farm.delivery.FarmDeliveryController
+import ru.ruscrafting.farms.paper.farm.enterprise.FarmEnterprisePort
 import ru.ruscrafting.farms.paper.farm.field.FarmFieldController
 import ru.ruscrafting.farms.paper.farm.harvest.FarmHarvestController
 import ru.ruscrafting.farms.paper.farm.incident.drought.FarmDroughtIncident
@@ -80,6 +81,7 @@ internal class FarmComponentGraph(
     weeklyContribution: (UUID) -> Long,
     currentWeekStart: () -> Long,
     persistAsync: () -> CompletableFuture<Unit>,
+    enterprise: FarmEnterprisePort,
 ) {
     val runtimes = FarmRuntimeRegistry()
     private val blockPassability = PaperFarmBlockPassability
@@ -302,6 +304,7 @@ internal class FarmComponentGraph(
         access = ports.access,
         audience = ports.audience,
         state = ports.state,
+        tasks = ports.tasks,
         ledger = ledger,
         registry = blockRegistry,
         beds = incidentBeds,
@@ -408,6 +411,7 @@ internal class FarmComponentGraph(
         scene = scene,
         supplies = supplies,
         rewards = rewards,
+        enterprise = enterprise,
         hud = hud,
         points = points,
     )
@@ -426,6 +430,7 @@ internal class FarmComponentGraph(
         care = care,
         pests = pests,
         delivery = delivery,
+        enterprise = enterprise,
         special = special,
         transitions = transitions,
         runtimes = runtimes::snapshot,
@@ -445,8 +450,10 @@ internal class FarmComponentGraph(
         registry = blockRegistry,
         field = field,
         carePlans = carePlans,
+        enterprise = enterprise,
         transitions = transitions,
         persistAsync = persistAsync,
+        retrySettings = { settings().shiftStartPersistence },
         random = random,
     )
     val events = FarmEventRouter(
@@ -473,6 +480,7 @@ internal class FarmComponentGraph(
         barnFire = barnFire,
         frost = frost,
         delivery = delivery,
+        enterprise = enterprise,
         supplies = supplies,
         scene = scene,
         harvest = harvest,
@@ -556,6 +564,7 @@ internal class FarmComponentGraph(
         frost = frost,
         incidentRecovery = recovery,
         delivery = delivery,
+        enterprise = enterprise,
         scene = scene,
         supplies = supplies,
         harvest = harvest,

@@ -1,0 +1,200 @@
+schema: 1
+plugin: ArcFarms
+minecraft-version: '1.21.11'
+minecraft-client-sha1: ba2df812c2d12e0219c489c4cd9a5e1f0760f5bd
+gallery-accent: '#55d98b'
+
+resource-pack:
+  url: https://storage.yandexcloud.net/ruscraftinresources/RusCraftingResource.zip
+  sha256-url: https://storage.yandexcloud.net/ruscraftinresources/RusCraftingResource.zip.sha256
+
+custom-items:
+  arc:background:
+    material: GRAY_STAINED_GLASS_PANE
+    model: assets/arc/models/gui/background.json
+  arc:left_gray:
+    material: BLUE_STAINED_GLASS_PANE
+    model: assets/arc/models/gui/left_gray.json
+
+glyphs:
+  - character: '💰'
+    path: '@pack/assets/arc/textures/glyphs/coin.png'
+    height: 9
+    ascent: 8
+
+sources:
+  preview:
+    path: visual-preview-fragments.yml
+    include: [blank]
+  farms:
+    path: src/main/resources/lang/ru.yml
+    prefix-key: prefix
+    exclude: [prefix]
+    include:
+      - menu.*
+      - companies.*
+
+placeholders:
+  'color:#20252b': '<#20252b>'
+  'color:#45c8f5': '<#45c8f5>'
+  'color:#55d98b': '<#55d98b>'
+  'color:#666666': '<#666666>'
+  'color:#707a76': '<#707a76>'
+  'color:#f2fff7': '<#f2fff7>'
+  'color:#ff5f6d': '<#ff5f6d>'
+  'color:#ffad42': '<#ffad42>'
+  'color:#ffc857': '<#ffc857>'
+  cycle: '184'
+  farm: '8 420'
+  lumber: '3 180'
+  mine: '2 640'
+  activity: Урожайная смена
+  orders: '37'
+  workers: '19'
+  percent: '30'
+  amount: '248 750'
+  phase: Сбор капитала
+  issued: '40'
+  total: '100'
+  reserved: '5'
+  hours: '72'
+  shares: '5'
+  limit: '20'
+  count: '1'
+
+surfaces:
+  fragments:
+    - source: preview
+      include: [blank]
+    - source: farms
+      include: [menu.*, companies.*]
+  inventories:
+    - id: work-shifts
+      title: farms:menu.title
+      rows: 3
+      filler: GRAY_STAINED_GLASS_PANE
+      background-item: arc:background
+      items:
+        - {slot: 2, material: WHEAT, name: farms:menu.farm.name, lore: [farms:menu.farm.lore, preview:blank, farms:menu.click]}
+        - {slot: 4, material: IRON_AXE, name: farms:menu.lumber.name, lore: [farms:menu.lumber.lore, preview:blank, farms:menu.remote, preview:blank, farms:menu.click]}
+        - {slot: 6, material: MINECART, name: farms:menu.mine.name, lore: [farms:menu.mine.lore, preview:blank, farms:menu.locked]}
+        - {slot: 19, material: WRITABLE_BOOK, name: farms:menu.workday.name, lore: [farms:menu.workday.lore, preview:blank, farms:menu.workday.click]}
+        - {slot: 22, material: EMERALD, name: farms:menu.companies.name, lore: [farms:menu.companies.lore, preview:blank, farms:menu.companies.click]}
+        - {slot: 25, material: BOOK, name: farms:menu.stats.name, lore: farms:menu.stats.lore}
+
+    - id: work-shifts-loading
+      title: farms:menu.title
+      rows: 3
+      filler: GRAY_STAINED_GLASS_PANE
+      background-item: arc:background
+      items:
+        - {slot: 2, material: WHEAT, name: farms:menu.farm.name, lore: [farms:menu.farm.lore, preview:blank, farms:menu.unavailable]}
+        - {slot: 4, material: IRON_AXE, name: farms:menu.lumber.name, lore: [farms:menu.lumber.lore, preview:blank, farms:menu.remote, preview:blank, farms:menu.click]}
+        - {slot: 6, material: MINECART, name: farms:menu.mine.name, lore: [farms:menu.mine.lore, preview:blank, farms:menu.locked]}
+        - {slot: 19, material: WRITABLE_BOOK, name: farms:menu.workday.name, lore: farms:menu.workday.loading}
+        - {slot: 22, material: EMERALD, name: farms:menu.companies.name, lore: [farms:menu.companies.lore, preview:blank, farms:menu.companies.click]}
+        - {slot: 25, material: BOOK, name: farms:menu.stats.name, lore: farms:menu.stats.lore}
+
+    - &companies_shadow
+      id: companies-shadow
+      title: farms:companies.title
+      rows: 3
+      filler: GRAY_STAINED_GLASS_PANE
+      background-item: arc:background
+      items:
+        - &farm_shadow {slot: 2, material: WHEAT, name: farms:companies.farm.name, lore: [farms:companies.farm.lore, preview:blank, farms:companies.card.orders, farms:companies.card.worker-bonus, farms:companies.card.available, farms:companies.card.projected, preview:blank, farms:companies.card.shadow, preview:blank, farms:companies.card.open]}
+        - &lumber_off {slot: 4, material: IRON_AXE, name: farms:companies.lumber.name, lore: [farms:companies.lumber.lore, preview:blank, farms:companies.card.unavailable]}
+        - &mine_off {slot: 6, material: MINECART, name: farms:companies.mine.name, lore: [farms:companies.mine.lore, preview:blank, farms:companies.card.unavailable]}
+        - &back {slot: 18, material: BLUE_STAINED_GLASS_PANE, itemsadder: 'arc:left_gray', name: farms:companies.back.name, lore: [farms:companies.back.lore, preview:blank, farms:companies.back.click]}
+
+    - id: companies-remote
+      title: farms:companies.title
+      rows: 3
+      filler: GRAY_STAINED_GLASS_PANE
+      background-item: arc:background
+      items:
+        - {slot: 2, material: WHEAT, name: farms:companies.farm.name, lore: [farms:companies.farm.lore, preview:blank, farms:companies.card.remote, preview:blank, farms:companies.card.travel]}
+        - *lumber_off
+        - *mine_off
+        - *back
+
+    - id: companies-off
+      title: farms:companies.title
+      rows: 3
+      filler: GRAY_STAINED_GLASS_PANE
+      background-item: arc:background
+      items:
+        - {slot: 2, material: WHEAT, name: farms:companies.farm.name, lore: [farms:companies.farm.lore, preview:blank, farms:companies.card.unavailable]}
+        - *lumber_off
+        - *mine_off
+        - *back
+
+    - id: farm-company-shadow
+      title: farms:companies.farm-detail.title
+      rows: 5
+      filler: GRAY_STAINED_GLASS_PANE
+      background-item: arc:background
+      items:
+        - {slot: 4, material: WHEAT, name: farms:companies.farm-detail.header.name, lore: [farms:companies.farm-detail.header.lore, preview:blank, farms:companies.card.shadow]}
+        - {slot: 10, material: PAPER, name: farms:companies.farm-detail.report.name, lore: [farms:companies.farm-detail.report.orders, farms:companies.farm-detail.report.contributors, farms:companies.farm-detail.report.gross, farms:companies.farm-detail.report.retained, preview:blank, farms:companies.farm-detail.report.projected]}
+        - {slot: 12, material: WHEAT, name: farms:companies.farm-detail.workers.name, lore: [farms:companies.farm-detail.workers.bonus, farms:companies.farm-detail.workers.accrued]}
+        - {slot: 14, material: WRITABLE_BOOK, name: farms:companies.farm-detail.policy.name, lore: [farms:companies.farm-detail.policy.operating, farms:companies.farm-detail.policy.dividend, farms:companies.farm-detail.policy.upkeep]}
+        - {slot: 16, material: BOOK, name: farms:companies.farm-detail.license.name, lore: [farms:companies.farm-detail.license.envelope, farms:companies.farm-detail.license.settled, farms:companies.farm-detail.license.reserved, farms:companies.farm-detail.license.available]}
+        - {slot: 28, material: EMERALD, name: farms:companies.farm-detail.shares.name, lore: farms:companies.farm-detail.shares.lore}
+        - {slot: 30, material: GOLD_INGOT, name: farms:companies.farm-detail.market.name, lore: farms:companies.farm-detail.market.lore}
+        - {slot: 36, material: BLUE_STAINED_GLASS_PANE, itemsadder: 'arc:left_gray', name: farms:companies.back.name, lore: [farms:companies.back.lore, preview:blank, farms:companies.back.click]}
+
+    - id: farm-company-funding
+      extends: farm-company-shadow
+      items:
+        - {slot: 4, material: WHEAT, name: farms:companies.farm-detail.header.name, lore: [farms:companies.farm-detail.header.lore, preview:blank, farms:companies.card.live-funding]}
+        - {slot: 28, material: EMERALD, name: farms:companies.farm-detail.shares.name, lore: [farms:companies.farm-detail.shares.live-lore, preview:blank, farms:companies.farm-detail.shares.open]}
+
+    - id: farm-shares-funding
+      title: farms:companies.shares.title
+      rows: 5
+      filler: GRAY_STAINED_GLASS_PANE
+      background-item: arc:background
+      items:
+        - {slot: 10, material: HONEYCOMB, name: farms:companies.shares.status.name, lore: [farms:companies.shares.status.phase, farms:companies.shares.status.progress, farms:companies.shares.status.price, farms:companies.shares.status.deadline]}
+        - {slot: 12, material: PAPER, name: farms:companies.shares.holding.name, lore: [farms:companies.shares.holding.amount, farms:companies.shares.holding.limit]}
+        - {slot: 14, material: GOLD_INGOT, name: farms:companies.shares.account.name, lore: [farms:companies.shares.account.balance, farms:companies.shares.account.available, farms:companies.shares.account.review]}
+        - slot: 19
+          material: EMERALD
+          name: farms:companies.shares.buy.name
+          lore: [farms:companies.shares.buy.cost, farms:companies.shares.buy.effect, preview:blank, farms:companies.shares.buy.click]
+          placeholders: {shares: '1', amount: '50 000'}
+        - slot: 20
+          material: EMERALD
+          amount: 5
+          name: farms:companies.shares.buy.name
+          lore: [farms:companies.shares.buy.cost, farms:companies.shares.buy.effect, preview:blank, farms:companies.shares.buy.click]
+          placeholders: {shares: '5', amount: '250 000'}
+        - slot: 21
+          material: EMERALD
+          amount: 10
+          name: farms:companies.shares.buy.name
+          lore: [farms:companies.shares.buy.cost, farms:companies.shares.buy.effect, preview:blank, farms:companies.shares.buy.click]
+          placeholders: {shares: '10', amount: '500 000'}
+        - slot: 22
+          material: EMERALD
+          amount: 20
+          name: farms:companies.shares.buy.name
+          lore: [farms:companies.shares.buy.cost, farms:companies.shares.buy.effect, preview:blank, farms:companies.shares.buy.click]
+          placeholders: {shares: '20', amount: '1 000 000'}
+        - {slot: 32, material: SUNFLOWER, name: farms:companies.shares.withdraw.name, lore: farms:companies.shares.withdraw.empty}
+        - {slot: 36, material: BLUE_STAINED_GLASS_PANE, itemsadder: 'arc:left_gray', name: farms:companies.back.name, lore: [farms:companies.back.lore, preview:blank, farms:companies.back.click]}
+
+    - id: farm-share-confirmation
+      title: farms:companies.shares.confirm.title
+      rows: 3
+      filler: GRAY_STAINED_GLASS_PANE
+      background-item: arc:background
+      items:
+        - slot: 13
+          material: LIME_DYE
+          amount: 5
+          name: farms:companies.shares.confirm.name
+          lore: [farms:companies.shares.confirm.cost, farms:companies.shares.confirm.effect, preview:blank, farms:companies.shares.confirm.warning, preview:blank, farms:companies.shares.confirm.click]
+          placeholders: {shares: '5', amount: '250 000'}
+        - {slot: 18, material: BLUE_STAINED_GLASS_PANE, itemsadder: 'arc:left_gray', name: farms:companies.back.name, lore: [farms:companies.back.lore, preview:blank, farms:companies.back.click]}

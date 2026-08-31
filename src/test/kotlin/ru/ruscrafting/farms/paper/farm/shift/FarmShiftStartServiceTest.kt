@@ -9,6 +9,7 @@ import io.mockk.verify
 import org.bukkit.Location
 import org.bukkit.entity.Player
 import ru.ruscrafting.farms.config.FarmZoneSettings
+import ru.ruscrafting.farms.config.ShiftStartPersistenceSettings
 import ru.ruscrafting.farms.domain.FarmOrder
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPlotPosition
@@ -23,6 +24,7 @@ import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.admin.FarmWorldAdminService
 import ru.ruscrafting.farms.paper.farm.care.FarmCarePlanService
+import ru.ruscrafting.farms.paper.farm.enterprise.FarmEnterprisePort
 import ru.ruscrafting.farms.paper.farm.field.FarmFieldController
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
@@ -37,6 +39,8 @@ class FarmShiftStartServiceTest : FunSpec({
 
         fixture.runtime.state.phase shouldBe FarmPhase.PREPARATION
         fixture.service.isPending("farm").shouldBeTrue()
+        fixture.lifecycle shouldBe listOf("reserve", "persist")
+        verify(exactly = 1) { fixture.enterprise.orderStarted("farm", "wheat", 1, 1_000L) }
         verify(exactly = 0) { fixture.transitions.apply(any(), any(), any()) }
         verify(exactly = 0) { fixture.registry.addBeds(any(), any()) }
 
@@ -47,17 +51,73 @@ class FarmShiftStartServiceTest : FunSpec({
         verify(exactly = 1) { fixture.registry.addBeds("farm", any()) }
     }
 
-    test("rolls a staged shift back when persistence fails") {
-        val persistence = CompletableFuture<Unit>()
-        val fixture = fixture(persistence)
+    test("keeps a staged shift and reservation while an ambiguous persistence outcome retries") {
+        val firstAttempt = CompletableFuture<Unit>()
+        val retryAttempt = CompletableFuture<Unit>()
+        val fixture = fixture(firstAttempt, retryAttempt)
 
         fixture.service.start(fixture.runtime, fixture.player, 1_000L, fixture.order).shouldBeTrue()
-        persistence.completeExceptionally(IllegalStateException("disk unavailable"))
+        firstAttempt.completeExceptionally(IllegalStateException("directory fsync failed after move"))
 
-        fixture.runtime.state.phase shouldBe FarmPhase.IDLE
-        fixture.service.isPending("farm") shouldBe false
+        fixture.runtime.state.phase shouldBe FarmPhase.PREPARATION
+        fixture.service.isPending("farm").shouldBeTrue()
+        fixture.lifecycle shouldBe listOf("reserve", "persist")
+        fixture.retryDelays shouldBe listOf(20L)
+        verify(exactly = 0) { fixture.enterprise.orderCancelled(any(), any()) }
         verify(exactly = 0) { fixture.transitions.apply(any(), any(), any()) }
         verify(exactly = 0) { fixture.registry.addBeds(any(), any()) }
+
+        fixture.runNextRetry()
+        fixture.lifecycle shouldBe listOf("reserve", "persist", "persist")
+        retryAttempt.complete(Unit)
+
+        fixture.service.isPending("farm") shouldBe false
+        verify(exactly = 1) { fixture.transitions.apply(fixture.runtime, any(), fixture.player) }
+        verify(exactly = 1) { fixture.registry.addBeds("farm", any()) }
+    }
+
+    test("durably saves newer runtime state and registers beds without a stale start transition") {
+        val stagedAttempt = CompletableFuture<Unit>()
+        val currentStateAttempt = CompletableFuture<Unit>()
+        val fixture = fixture(stagedAttempt, currentStateAttempt)
+
+        fixture.service.start(fixture.runtime, fixture.player, 1_000L, fixture.order).shouldBeTrue()
+        val edited = fixture.runtime.state.copy(preparationRequired = fixture.runtime.state.preparationRequired + 1)
+        fixture.runtime.state = edited
+        stagedAttempt.complete(Unit)
+
+        fixture.runtime.state shouldBe edited
+        fixture.service.isPending("farm").shouldBeTrue()
+        fixture.lifecycle shouldBe listOf("reserve", "persist", "persist")
+        verify(exactly = 0) { fixture.enterprise.orderCancelled(any(), any()) }
+        verify(exactly = 0) { fixture.transitions.apply(any(), any(), any()) }
+        verify(exactly = 0) { fixture.registry.addBeds(any(), any()) }
+
+        currentStateAttempt.complete(Unit)
+
+        fixture.service.isPending("farm") shouldBe false
+        fixture.runtime.state shouldBe edited
+        verify(exactly = 0) { fixture.transitions.apply(any(), any(), any()) }
+        verify(exactly = 1) { fixture.registry.addBeds("farm", any()) }
+    }
+
+    test("reads the bounded retry policy again after a live configuration change") {
+        val firstAttempt = CompletableFuture<Unit>()
+        val secondAttempt = CompletableFuture<Unit>()
+        val thirdAttempt = CompletableFuture<Unit>()
+        var policy = ShiftStartPersistenceSettings(1, 4, 5)
+        val fixture = fixture(firstAttempt, secondAttempt, thirdAttempt, retrySettings = { policy })
+
+        fixture.service.start(fixture.runtime, fixture.player, 1_000L, fixture.order).shouldBeTrue()
+        firstAttempt.completeExceptionally(IllegalStateException("first"))
+        fixture.retryDelays shouldBe listOf(20L)
+
+        policy = ShiftStartPersistenceSettings(5, 5, 5)
+        fixture.runNextRetry()
+        secondAttempt.completeExceptionally(IllegalStateException("second"))
+
+        fixture.retryDelays shouldBe listOf(20L, 100L)
+        fixture.service.isPending("farm").shouldBeTrue()
     }
 })
 
@@ -67,15 +127,31 @@ private data class ShiftStartFixture(
     val player: Player,
     val order: FarmOrder,
     val registry: FarmBlockRegistry,
+    val enterprise: FarmEnterprisePort,
     val transitions: FarmTransitionSink,
-)
+    val lifecycle: List<String>,
+    val retryDelays: List<Long>,
+    private val retryTasks: MutableList<() -> Unit>,
+) {
+    fun runNextRetry() = retryTasks.removeAt(0).invoke()
+}
 
-private fun fixture(persistence: CompletableFuture<Unit>): ShiftStartFixture {
+private fun fixture(
+    vararg persistenceAttempts: CompletableFuture<Unit>,
+    retrySettings: () -> ShiftStartPersistenceSettings = { ShiftStartPersistenceSettings(1, 4, 5) },
+): ShiftStartFixture {
+    val retryTasks = mutableListOf<() -> Unit>()
+    val retryDelays = mutableListOf<Long>()
     val port = mockk<WorksiteRuntimePort>(relaxed = true) {
         every { allowInteraction(any(), any()) } returns true
         every { lifecycleToken() } returns mockk<RuntimeTaskSupervisor.Token>()
         every { runSync(any(), any()) } answers {
             secondArg<() -> Unit>().invoke()
+            true
+        }
+        every { runLater(any<RuntimeTaskSupervisor.Token>(), any(), any()) } answers {
+            retryDelays += secondArg<Long>()
+            retryTasks += thirdArg<() -> Unit>()
             true
         }
     }
@@ -85,6 +161,18 @@ private fun fixture(persistence: CompletableFuture<Unit>): ShiftStartFixture {
     val patch = listOf(FarmPlotPosition("farm", 1, 64, 1), FarmPlotPosition("farm", 2, 64, 1))
     val field = mockk<FarmFieldController> { every { selectPatch(any(), any(), any(), any()) } returns patch }
     val carePlans = mockk<FarmCarePlanService> { every { isSeederSequence(any(), any()) } returns false }
+    val lifecycle = mutableListOf<String>()
+    val attempts = ArrayDeque(persistenceAttempts.toList())
+    val enterprise = mockk<FarmEnterprisePort>(relaxed = true) {
+        every { orderStarted(any(), any(), any(), any()) } answers {
+            lifecycle += "reserve"
+            true
+        }
+        every { orderCancelled(any(), any()) } answers {
+            lifecycle += "cancel"
+            true
+        }
+    }
     val transitions = mockk<FarmTransitionSink>(relaxed = true)
     val settings = mockk<FarmZoneSettings>(relaxed = true) {
         every { id } returns "farm"
@@ -119,9 +207,25 @@ private fun fixture(persistence: CompletableFuture<Unit>): ShiftStartFixture {
         registry = registry,
         field = field,
         carePlans = carePlans,
+        enterprise = enterprise,
         transitions = transitions,
-        persistAsync = { persistence },
+        persistAsync = {
+            lifecycle += "persist"
+            attempts.removeFirstOrNull() ?: error("Unexpected persistence attempt")
+        },
+        retrySettings = retrySettings,
         random = mockk<RandomGenerator>(relaxed = true),
     )
-    return ShiftStartFixture(service, runtime, player, order, registry, transitions)
+    return ShiftStartFixture(
+        service,
+        runtime,
+        player,
+        order,
+        registry,
+        enterprise,
+        transitions,
+        lifecycle,
+        retryDelays,
+        retryTasks,
+    )
 }

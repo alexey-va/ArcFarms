@@ -10,11 +10,11 @@ import org.bukkit.attribute.Attribute
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Player
 import org.bukkit.entity.Villager
+import org.bukkit.event.inventory.ClickType
 import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.inventory.Inventory
-import org.bukkit.inventory.InventoryHolder
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
@@ -31,6 +31,7 @@ import ru.ruscrafting.farms.domain.FarmPlayerPerks
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.purchasePerk
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
+import ru.ruscrafting.farms.paper.ArcFarmsReloadableInventory
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
@@ -61,9 +62,13 @@ internal class FarmPerkController(
     private val clock: () -> Long,
     private val persistAsync: () -> CompletableFuture<Unit>,
 ) {
-    private class PerkHolder(val zoneId: String) : InventoryHolder {
+    private inner class PerkHolder(val zoneId: String) : ArcFarmsReloadableInventory {
         lateinit var value: Inventory
         override fun getInventory(): Inventory = value
+        override fun refresh(player: Player) {
+            val runtime = runtimes().firstOrNull { it.settings.id == zoneId }
+            if (runtime == null) player.closeInventory() else open(player, runtime)
+        }
     }
 
     private val zoneKey = NamespacedKey(plugin, "farm_perk_vendor_zone")
@@ -150,6 +155,7 @@ internal class FarmPerkController(
         val holder = event.view.topInventory.holder as? PerkHolder ?: return false
         event.isCancelled = true
         val player = event.whoClicked as? Player ?: return true
+        if (event.clickedInventory !== event.view.topInventory || event.click != ClickType.LEFT) return true
         if (event.rawSlot !in 0 until event.view.topInventory.size) return true
         val type = event.currentItem?.itemMeta?.persistentDataContainer
             ?.get(offerKey, PersistentDataType.STRING)
@@ -291,24 +297,43 @@ internal class FarmPerkController(
         val config = offer(runtime, type)
         val now = clock()
         val until = normalized(player.uniqueId).activeUntil[type]?.takeIf { it > now }
+        val canBuy = until == null && available(player.uniqueId) >= config.price
         return named(
             material,
             locale.renderPath("perk.${type.name.lowercase()}.name", player),
-            listOf(
-                locale.renderPath("perk.${type.name.lowercase()}.description", player),
-                locale.render(
-                    MessageKey.FARM_PERK_PRICE,
-                    player,
-                    mapOf("price" to locale.text(config.price), "hours" to locale.text(config.durationHours)),
-                ),
-            ) + if (until != null) listOf(locale.render(
-                MessageKey.FARM_PERK_ACTIVE,
-                player,
-                mapOf("hours" to locale.text(remainingHours(until, now))),
-            )) else emptyList(),
+            buildList {
+                add(locale.renderPath("perk.${type.name.lowercase()}.description", player))
+                add(
+                    locale.render(
+                        MessageKey.FARM_PERK_PRICE,
+                        player,
+                        mapOf("price" to locale.text(config.price), "hours" to locale.text(config.durationHours)),
+                    ),
+                )
+                when {
+                    until != null -> add(
+                        locale.render(
+                            MessageKey.FARM_PERK_ACTIVE,
+                            player,
+                            mapOf("hours" to locale.text(remainingHours(until, now))),
+                        ),
+                    )
+                    !canBuy -> add(
+                        locale.render(
+                            MessageKey.FARM_PERK_NOT_ENOUGH,
+                            player,
+                            mapOf("price" to locale.text(config.price)),
+                        ),
+                    )
+                    else -> {
+                        add(Component.empty())
+                        add(locale.render(MessageKey.FARM_PERK_BUY, player))
+                    }
+                }
+            },
         ).also { item ->
             item.editMeta { meta ->
-                meta.persistentDataContainer.set(offerKey, PersistentDataType.STRING, type.name)
+                if (canBuy) meta.persistentDataContainer.set(offerKey, PersistentDataType.STRING, type.name)
                 meta.setEnchantmentGlintOverride(until != null)
             }
         }

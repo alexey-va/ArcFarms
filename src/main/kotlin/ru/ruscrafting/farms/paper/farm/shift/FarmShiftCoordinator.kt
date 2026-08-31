@@ -34,6 +34,7 @@ import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.care.FarmCareController
 import ru.ruscrafting.farms.paper.farm.care.FarmCarePlanService
 import ru.ruscrafting.farms.paper.farm.delivery.FarmDeliveryController
+import ru.ruscrafting.farms.paper.farm.enterprise.FarmEnterprisePort
 import ru.ruscrafting.farms.paper.farm.incident.drought.FarmDroughtIncident
 import ru.ruscrafting.farms.paper.farm.incident.bird.FarmBirdIncident
 import ru.ruscrafting.farms.paper.farm.incident.pest.FarmPestIncident
@@ -71,6 +72,7 @@ internal class FarmShiftCoordinator(
     private val scene: FarmContractSceneController,
     private val supplies: FarmSupplyController,
     private val rewards: FarmRewardService,
+    private val enterprise: FarmEnterprisePort,
     private val hud: FarmHudController,
     private val points: FarmPointProvider,
 ) {
@@ -115,7 +117,11 @@ internal class FarmShiftCoordinator(
                 FarmShiftEvent.MARKET_EXPIRED -> marketExpired(runtime)
                 FarmShiftEvent.DELIVERY_STARTED -> deliveryStarted(runtime)
                 FarmShiftEvent.DELIVERY_PROGRESS -> deliveryProgress(runtime, actor)
-                FarmShiftEvent.COMPLETED -> completed(runtime, actor)
+                FarmShiftEvent.COMPLETED -> completed(
+                    runtime,
+                    actor,
+                    result.contribution > 0 || result.contributionCredits.values.any { it > 0 },
+                )
                 else -> Unit
             }
         }
@@ -123,6 +129,16 @@ internal class FarmShiftCoordinator(
     }
 
     private fun started(runtime: FarmRuntime) {
+        runtime.state.orderId?.let { orderId ->
+            if (
+                enterprise.orderStarted(
+                    runtime.settings.id,
+                    orderId,
+                    runtime.state.sequence,
+                    runtime.state.startedAt,
+                )
+            ) state.persistAsync()
+        }
         port.broadcast(
             listOf(runtime.region),
             MessageKey.FARM_STARTED,
@@ -579,11 +595,12 @@ internal class FarmShiftCoordinator(
         state.persistAsync()
     }
 
-    private fun completed(runtime: FarmRuntime, actor: Player?) {
+    private fun completed(runtime: FarmRuntime, actor: Player?, commercialEligible: Boolean) {
         players(runtime).forEach { supplies.removeServiceItems(it, runtime.settings.id, "shift_completed") }
         delivery.clear(runtime, "completed")
         foodDelivery.clear(runtime.settings.id, "shift_completed")
         val contributors = runtime.state.contributors
+        enterprise.orderCompleted(runtime.settings.id, runtime.state.sequence, contributors, commercialEligible)
         stats.recordCompletion(ActivityKind.FARM, contributors)
         rewards.queueCompletion(runtime, contributors)
         port.broadcast(

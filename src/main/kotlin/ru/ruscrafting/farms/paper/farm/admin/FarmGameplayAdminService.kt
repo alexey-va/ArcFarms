@@ -36,6 +36,7 @@ import ru.ruscrafting.farms.paper.farm.FarmShiftLauncher
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.care.FarmCareController
 import ru.ruscrafting.farms.paper.farm.delivery.FarmDeliveryController
+import ru.ruscrafting.farms.paper.farm.enterprise.FarmEnterprisePort
 import ru.ruscrafting.farms.paper.farm.field.FarmFieldController
 import ru.ruscrafting.farms.paper.farm.harvest.FarmHarvestController
 import ru.ruscrafting.farms.paper.farm.incident.drought.FarmDroughtIncident
@@ -80,6 +81,7 @@ internal class FarmGameplayAdminService(
     private val frost: FarmFrostIncident,
     private val incidentRecovery: FarmIncidentRecoveryController,
     private val delivery: FarmDeliveryController,
+    private val enterprise: FarmEnterprisePort,
     private val scene: FarmContractSceneController,
     private val supplies: FarmSupplyController,
     private val harvest: FarmHarvestController,
@@ -470,6 +472,7 @@ internal class FarmGameplayAdminService(
     }
 
     private fun reset(runtime: FarmRuntime): Boolean {
+        val retiredSequence = runtime.state.sequence
         drought.clearZone(runtime.settings.id, "admin_reset")
         care.clear(runtime, "admin_reset")
         pests.clear(runtime, "admin_reset")
@@ -491,7 +494,17 @@ internal class FarmGameplayAdminService(
                 sequence = runtime.state.sequence,
                 placementSequence = runtime.state.placementSequence,
             ),
-        )
+        ) {
+            runCatching {
+                if (enterprise.orderCancelled(runtime.settings.id, retiredSequence)) persistAsync()
+            }.onFailure { failure ->
+                state.log(
+                    java.util.logging.Level.SEVERE,
+                    "Could not persist enterprise cancellation for ${runtime.settings.id}",
+                    failure,
+                )
+            }
+        }
         drought.resetGrowth(runtime.settings.id)
         port.players(runtime.region).forEach { supplies.removeServiceItems(it, runtime.settings.id, "admin_reset") }
         return true

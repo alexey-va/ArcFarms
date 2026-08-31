@@ -355,12 +355,24 @@ lumbermill, and mine runtime aggregates: an active incident, its participants,
 vehicles, service items, HUD, personal time and ordinary gameplay delays stay
 active while changed attributes and presentation are reconciled in place.
 
+Supplier-backed presentation, locale, navigation and enterprise policy changes
+apply in the same accepted generation; already open ArcFarms menus are redrawn.
+`state.shift-start-persistence` also reloads live: it controls the initial and
+maximum retry delay plus log cadence for an unconfirmed atomic start write. Such
+a write keeps the accepted shift and enterprise reservation locked and retries
+the current snapshot until durable success; it is never treated as a safe
+rollback.
+
 A full restart remains required only for construction-time topology:
 `enabled`, `server-id`, `network.enabled`, Redis connection/identity settings,
 zone ids and region/bounds references, lumber station references, worksite
 `engine-version`, the plugin JAR itself, and server-wide living-entity tracking
 in `spigot.yml`. The reload command rejects those changes before touching the
-active runtime and reports the restart requirement.
+active runtime and reports the restart requirement. An enterprise `company-id`
+additionally requires an explicit accounting migration; ordinary
+`/arcfarms reload` rejects it. A rare unconfirmed enterprise state-write failure
+stops the plugin, so gameplay never continues on an ambiguous accounting
+generation.
 - `/arcfarms debug <zone> status` — print the exact shift, patch, crop damage,
   order rarity, customer, cart fill, water-flow, care targets, animal followers,
   nest, pest, and delivery state used by the server.

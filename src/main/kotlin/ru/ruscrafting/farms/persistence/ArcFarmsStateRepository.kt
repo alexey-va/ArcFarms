@@ -21,6 +21,10 @@ import ru.ruscrafting.farms.domain.MAX_FARM_PATCH_PLOTS
 import ru.ruscrafting.farms.domain.MAX_FARM_INCIDENTS
 import ru.ruscrafting.farms.domain.PlayerActivityStats
 import ru.ruscrafting.farms.domain.ShiftOutcome
+import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseLedger
+import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseCapitalLedger
+import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseFinancingSnapshot
+import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseSnapshot
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
@@ -100,13 +104,23 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
         }
         val pausedFarmZones = state.pausedFarmZones.orEmpty()
         val farmPerks = state.farmPerks.orEmpty()
+        val loadedEnterprise = state.worksiteEnterprise ?: WorksiteEnterpriseSnapshot()
+        val worksiteEnterprise = if (loadedEnterprise.financing == null) {
+            loadedEnterprise.copy(financing = WorksiteEnterpriseFinancingSnapshot())
+        } else loadedEnterprise
         return if (
             stats == state.stats && farms == state.farms && pausedFarmZones == state.pausedFarmZones &&
-            farmPerks == state.farmPerks
+            farmPerks == state.farmPerks && worksiteEnterprise == state.worksiteEnterprise
         ) {
             state
         } else {
-            state.copy(farms = farms, pausedFarmZones = pausedFarmZones, stats = stats, farmPerks = farmPerks)
+            state.copy(
+                farms = farms,
+                pausedFarmZones = pausedFarmZones,
+                stats = stats,
+                farmPerks = farmPerks,
+                worksiteEnterprise = worksiteEnterprise,
+            )
         }
     }
 
@@ -190,6 +204,8 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
             state.lumbermills.values.forEach(::validateLumber)
             state.mines.values.forEach(::validateMine)
             state.stats.values.forEach(::validateStats)
+            WorksiteEnterpriseLedger().replace(state.worksiteEnterprise ?: WorksiteEnterpriseSnapshot())
+            WorksiteEnterpriseCapitalLedger().replace(state.worksiteEnterprise?.financing)
             require(state.farmPerks.orEmpty().size <= 1_000_000) { "Farm perk ledgers are unbounded" }
             state.farmPerks.orEmpty().values.forEach { perks ->
                 require(perks.weekStartEpochDay >= 0 && perks.spentPoints >= 0) { "Farm perk ledger is invalid" }

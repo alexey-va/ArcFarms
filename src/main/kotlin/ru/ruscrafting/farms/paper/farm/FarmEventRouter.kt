@@ -55,6 +55,7 @@ import ru.ruscrafting.farms.paper.farm.admin.FarmWorldAdminService
 import ru.ruscrafting.farms.paper.farm.admin.FarmRouteAdminService
 import ru.ruscrafting.farms.paper.farm.care.FarmCareController
 import ru.ruscrafting.farms.paper.farm.delivery.FarmDeliveryController
+import ru.ruscrafting.farms.paper.farm.enterprise.FarmEnterprisePort
 import ru.ruscrafting.farms.paper.farm.field.FarmFieldController
 import ru.ruscrafting.farms.paper.farm.harvest.FarmHarvestController
 import ru.ruscrafting.farms.paper.farm.incident.drought.FarmDroughtIncident
@@ -99,6 +100,7 @@ internal class FarmEventRouter(
     private val barnFire: FarmBarnFireIncident,
     private val frost: FarmFrostIncident,
     private val delivery: FarmDeliveryController,
+    private val enterprise: FarmEnterprisePort,
     private val supplies: FarmSupplyController,
     private val scene: FarmContractSceneController,
     private val harvest: FarmHarvestController,
@@ -617,6 +619,7 @@ internal class FarmEventRouter(
         val previous = runtime.state
         val removal = FarmAdminEdit.removePlot(previous, position, runtime.settings.fieldCompletionPercent)
         runtime.state = removal.state
+        if (removal.shiftRetired) enterprise.orderCancelled(runtime.settings.id, previous.sequence)
         persistAsync()
         val type = event.block.type
         val removed = ledger.remove(soil)

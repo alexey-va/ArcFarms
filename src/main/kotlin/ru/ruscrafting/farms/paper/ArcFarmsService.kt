@@ -50,6 +50,8 @@ import ru.ruscrafting.farms.network.ActivityNetworkGateway
 import ru.ruscrafting.farms.network.NoOpActivityNetworkGateway
 import ru.ruscrafting.farms.network.WorkdayState
 import ru.ruscrafting.farms.paper.farm.FarmComponentGraph
+import ru.ruscrafting.farms.paper.enterprise.WorksiteEnterpriseService
+import ru.ruscrafting.farms.paper.enterprise.SupervisedEnterpriseMoneyTasks
 import ru.ruscrafting.farms.paper.navigation.ActivityTravelService
 import ru.ruscrafting.farms.paper.lumber.LumbermillVersionedModule
 import ru.ruscrafting.farms.paper.mine.MineVersionedModule
@@ -118,6 +120,9 @@ class ArcFarmsService(
     private val worksitePorts = worksiteAdapter.ports()
     private val worksiteServiceItems = ru.ruscrafting.farms.paper.worksite.LateBoundWorksiteServiceItems()
     private val runtimeValidator = ArcFarmsRuntimeValidator(regionGateway, { economy.available }, fixedCropJournal, mineJournal)
+    private val enterprise = WorksiteEnterpriseService(
+        { settings }, debug, clock, economy, ::persistAsync, SupervisedEnterpriseMoneyTasks(lifecycleTaskSupervisor),
+    )
     private val farm = FarmComponentGraph(
         plugin = plugin,
         settings = { settings },
@@ -136,6 +141,7 @@ class ArcFarmsService(
         weeklyContribution = { playerId -> stats.weeklyContribution(playerId, ActivityKind.FARM) },
         currentWeekStart = { farmWeekStartEpochDay(clock()) },
         persistAsync = ::persistAsync,
+        enterprise = enterprise.farm,
     )
     private val worksiteRewards = WorksiteRewardGrantService(farm.rewards)
     private val lumbermillModule = LumbermillVersionedModule(plugin, initialSettings.lumbermills, regionGateway, locale, worksitePorts, clock, lumberJournal, worksiteServiceItems, worksiteRewards)
@@ -176,7 +182,6 @@ class ArcFarmsService(
             throw failure
         }
     }
-
     private fun startActivatedRuntime() {
         runtimeValidator.validateRuntime(settings)
         runtimeValidator.validateLocations(settings, farm.pointService.load())
@@ -187,14 +192,16 @@ class ArcFarmsService(
         stats.replace(persisted.stats)
         farm.rewards.replace(persisted.pendingFarmRewards, persisted.claimedFarmRewardSequences)
         farm.perks.replace(persisted.farmPerks.orEmpty())
+        val recoveredEnterpriseMoney = enterprise.replace(persisted.worksiteEnterprise)
         farm.orderCycle.replace(persisted.pausedFarmZones.orEmpty())
         rebuild(persisted)
+        val enterpriseChanged = recoveredEnterpriseMoney || enterprise.reconcileFarms(farm.runtimes.snapshot())
         worksites.cleanup("service_start")
         worksites.activateLoadedState()
         startTasks()
         stateSafeToPersist = true
         started = true
-        if (persisted != loaded) persistAsync()
+        if (persisted != loaded || enterpriseChanged) persistAsync()
         lifecycleTaskSupervisor.runLater(1L) {
             if (isOperational()) farm.rewards.deliverPending(Bukkit.getOnlinePlayers())
         }
@@ -203,7 +210,6 @@ class ArcFarmsService(
                 "${mineModule.pendingBlockCount} pending mine blocks",
         )
     }
-
     fun reload(candidate: ArcFarmsConfig, publishSettings: (ArcFarmsConfig) -> Unit) {
         check(started) { "ArcFarms service is not started" }
         ArcFarmsHotReloadPolicy.validate(settings, candidate)
@@ -223,8 +229,26 @@ class ArcFarmsService(
         try {
             stopTasks()
             lifecycleTaskSupervisor.restart()
-            reconfigureRuntime(candidate, reconciledSnapshot, "reload")
+            val enterpriseChanged = reconfigureRuntime(candidate, reconciledSnapshot, "reload")
+            if (enterpriseChanged) {
+                try {
+                    persistBlocking()
+                    persistenceRequestedWhileSuspended = false
+                } catch (failure: Exception) {
+                    if (failure is InterruptedException || failure.cause is InterruptedException) {
+                        Thread.currentThread().interrupt()
+                    }
+                    throw ArcFarmsAmbiguousLiveReloadException(failure)
+                }
+            }
         } catch (failure: Exception) {
+            if (failure is ArcFarmsAmbiguousLiveReloadException) {
+                stateSafeToPersist = false
+                started = false
+                persistenceRequestedWhileSuspended = false
+                persistenceSuspended = false
+                throw failure
+            }
             plugin.logger.log(Level.SEVERE, "ArcFarms reload failed after runtime mutation; restoring the previous runtime", failure)
             publishSettings(previous)
             val rollback = runCatching {
@@ -260,16 +284,20 @@ class ArcFarmsService(
         farm.module.updatePlayerTimes()
     }
 
-    private fun reconfigureRuntime(candidate: ArcFarmsConfig, snapshot: ArcFarmsState, reason: String) {
+    private fun reconfigureRuntime(candidate: ArcFarmsConfig, snapshot: ArcFarmsState, reason: String): Boolean {
         worksites.beforeReload(reason)
         settings = candidate
+        var enterpriseChanged = enterprise.replace(snapshot.worksiteEnterprise)
         reconfigure(snapshot)
+        enterpriseChanged = enterprise.reconcileFarms(farm.runtimes.snapshot()) || enterpriseChanged
+        if (enterpriseChanged) persistenceRequestedWhileSuspended = true
         worksites.activateLoadedState()
         startTasks()
         refreshPresentation()
         lifecycleTaskSupervisor.runLater(1L) {
             if (isOperational()) farm.rewards.deliverPending(Bukkit.getOnlinePlayers())
         }
+        return enterpriseChanged
     }
 
     fun onBreakLowest(event: BlockBreakEvent) = farm.events.onBreakLowest(event)
@@ -399,32 +427,23 @@ class ArcFarmsService(
     fun onBlockSpread(event: BlockSpreadEvent) = farm.events.onBlockSpread(event)
     fun onBlockGrow(event: BlockGrowEvent) = farm.events.onBlockGrow(event)
     fun onBlockPlace(event: BlockPlaceEvent) = farm.events.onBlockPlace(event)
-
     fun statuses(): List<ActivityStatus> = worksites.statuses()
-
+    fun enterpriseCompany(kind: ActivityKind) = enterprise.companyView(kind)
+    fun enterpriseOwnership(kind: ActivityKind, playerId: UUID) = enterprise.ownershipView(kind, playerId)
+    internal fun buyFarmShares(player: org.bukkit.OfflinePlayer, shares: Int, complete: (ru.ruscrafting.farms.paper.enterprise.EnterpriseInvestmentActionResult) -> Unit) = enterprise.buyShares(player, shares, complete)
+    internal fun withdrawFarmInvestment(player: org.bukkit.OfflinePlayer, complete: (ru.ruscrafting.farms.paper.enterprise.EnterpriseInvestmentActionResult) -> Unit) = enterprise.withdrawAccount(player, complete)
     fun playerStats(playerId: UUID): PlayerActivityStats = stats.player(playerId)
-
     fun leaderboard(kind: ActivityKind, limit: Int = 10): List<Pair<UUID, Long>> = stats.leaderboard(kind, limit)
-
     fun leaderboardRank(playerId: UUID): Int? = stats.farmRank(playerId)
-
     fun weeklyLeaderboard(kind: ActivityKind, limit: Int = 10): List<Pair<UUID, Long>> =
         stats.weeklyLeaderboard(kind, limit)
-
     fun weeklyLeaderboardRank(playerId: UUID): Int? = stats.farmWeeklyRank(playerId)
-
     fun weeklyContribution(playerId: UUID, kind: ActivityKind): Long = stats.weeklyContribution(playerId, kind)
-
     fun farmScoreboardActive(playerId: UUID): Boolean = farm.hud.active(playerId)
-
     fun farmScoreboardTitle(playerId: UUID): String = farm.hud.title(playerId)
-
     fun farmScoreboardLine(playerId: UUID, line: Int): String = farm.hud.line(playerId, line)
-
     fun onChunkLoad(chunk: org.bukkit.Chunk) = worksites.reconcileChunk(chunk)
-
     fun canNavigate(kind: ActivityKind): Boolean = travelService.canNavigate(kind)
-
     fun travel(player: Player, kind: ActivityKind) = travelService.travel(player, kind)
 
     fun onJoin(player: Player) {
@@ -439,12 +458,10 @@ class ArcFarmsService(
         }
         travelService.claimJoin(player)
     }
-
     fun workday(): WorkdayState? = network.workday()
-
     fun isAvailable(kind: ActivityKind): Boolean = travelService.isAvailable(kind)
-
     fun canAccess(player: Player, kind: ActivityKind): Boolean = travelService.canAccess(player, kind)
+    internal fun deferInventoryTransition(player: Player, expectedTop: org.bukkit.inventory.Inventory, transition: () -> Unit): Boolean = worksitePorts.tasks.deferInventoryTransition(player, expectedTop, transition)
 
     private fun rebuild(persisted: ArcFarmsState) {
         farm.module.rebuild(persisted)
@@ -482,6 +499,7 @@ class ArcFarmsService(
 
     private fun tick() {
         val now = clock()
+        if (enterprise.tick()) persistAsync()
         Bukkit.getOnlinePlayers().forEach { player -> farm.hud.syncMusic(player, farm.module.hudRuntime(player), now) }
         worksites.tick(now)
         runGuarded("player_guidance", ::updatePlayerGuidance)
@@ -539,6 +557,7 @@ class ArcFarmsService(
             pendingFarmRewards = rewards.pending,
             claimedFarmRewardSequences = rewards.claimed,
             farmPerks = farm.perks.snapshot(),
+            worksiteEnterprise = enterprise.snapshot(),
         )
     }
 

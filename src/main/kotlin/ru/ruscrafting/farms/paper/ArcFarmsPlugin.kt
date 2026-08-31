@@ -22,6 +22,7 @@ import ru.ruscrafting.farms.domain.FarmRouteState
 import ru.ruscrafting.farms.domain.FixedFarmCropJournalState
 import ru.ruscrafting.farms.domain.MineBlockJournalState
 import ru.ruscrafting.farms.domain.LumberBlockJournalState
+import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseSnapshot
 import ru.ruscrafting.farms.network.ArcFarmsNetworkRepository
 import ru.ruscrafting.farms.network.NoOpActivityNetworkGateway
 import ru.ruscrafting.farms.persistence.ArcFarmsStateRepository
@@ -49,6 +50,7 @@ open class ArcFarmsPlugin : JavaPlugin() {
     private var redisRuntimeSettings: RedisRuntimeSettings? = null
     private var network: ArcFarmsNetworkService? = null
     private var transfer: BungeeBackendTransfer? = null
+    private var menu: ArcFarmsMenu? = null
     private var placeholderExpansion: ArcFarmsPlaceholderExpansion? = null
     private var pluginRuntime: PaperPluginRuntime? = null
 
@@ -143,13 +145,14 @@ open class ArcFarmsPlugin : JavaPlugin() {
             } else {
                 logger.warning("PlaceholderAPI is unavailable; ArcFarms leaderboard placeholders are disabled")
             }
-            val menu = ArcFarmsMenu(activeService, locale) { settings }
-            val command = ArcFarmsCommand(activeService, locale, menu, ::reloadPlugin)
+            val activeMenu = ArcFarmsMenu(activeService, locale) { settings }
+            menu = activeMenu
+            val command = ArcFarmsCommand(activeService, locale, activeMenu, ::reloadPlugin)
             requireNotNull(getCommand("arcfarms")).apply {
                 setExecutor(command)
                 tabCompleter = command
             }
-            server.pluginManager.registerEvents(ArcFarmsListener(activeService, menu), this)
+            server.pluginManager.registerEvents(ArcFarmsListener(activeService, activeMenu), this)
             lifecycle.registerHealth("runtime") {
                 val serviceReady = activeService.isOperational()
                 val redisReady = !settings.network.enabled || redis?.isConnected() == true
@@ -167,6 +170,7 @@ open class ArcFarmsPlugin : JavaPlugin() {
                         "fixed_crop_journal" to FixedFarmCropJournalState.SCHEMA_VERSION,
                         "farm_locations" to FarmLocationOverrides.SCHEMA_VERSION,
                         "farm_routes" to FarmRouteState.SCHEMA_VERSION,
+                        "worksite_enterprise" to WorksiteEnterpriseSnapshot.SCHEMA_VERSION,
                     ),
                     dependencies = mapOf("redis" to redisReady, "service" to serviceReady),
                 )
@@ -191,6 +195,7 @@ open class ArcFarmsPlugin : JavaPlugin() {
     override fun onDisable() {
         runCatching { pluginRuntime?.close() }.onFailure { logger.log(Level.SEVERE, "Could not close ArcFarms runtime", it) }
         pluginRuntime = null
+        menu = null
         placeholderExpansion = null
         service = null
         transfer = null
@@ -215,7 +220,7 @@ open class ArcFarmsPlugin : JavaPlugin() {
                 server.pluginManager.isPluginEnabled("PlaceholderAPI"),
         ) { "PlaceholderAPI is required when ui.farm-scoreboard.provider is TAB" }
         ArcFarmsLocale.synchronizeFiles(dataRoot)
-        ArcFarmsLocale.validateFiles(dataRoot, candidate)
+        val candidateLocale = locale.prepareReload(candidate)
         if (candidate.network.enabled) {
             require(RedisRuntimeSettings.from(ArcFarmsRedisBootstrap.loadFresh(dataRoot, candidate)) == redisRuntimeSettings) {
                 "modules/redis.yml connection settings require a full plugin restart"
@@ -223,7 +228,6 @@ open class ArcFarmsPlugin : JavaPlugin() {
         }
         val previous = settings
         val previousLocale = locale.snapshot()
-        val candidateLocale = locale.prepareReload()
         locale.publish(candidateLocale)
         try {
             requireNotNull(service).reload(candidate) { active -> settings = active }
@@ -233,11 +237,18 @@ open class ArcFarmsPlugin : JavaPlugin() {
             runCatching { service?.refreshPresentation() }
                 .exceptionOrNull()
                 ?.let(failure::addSuppressed)
-            if (service?.isOperational() != true) {
+            if (failure is ArcFarmsAmbiguousLiveReloadException || service?.isOperational() != true) {
                 logger.log(Level.SEVERE, "ArcFarms became inoperable during reload and will be disabled", failure)
                 server.pluginManager.disablePlugin(this)
             }
             throw failure
+        }
+        server.onlinePlayers.forEach { player ->
+            val holder = player.openInventory.topInventory.holder as? ArcFarmsReloadableInventory ?: return@forEach
+            runCatching { holder.refresh(player) }
+                .onFailure { failure ->
+                    logger.log(Level.WARNING, "Could not redraw ArcFarms menu for ${player.name} after reload", failure)
+                }
         }
     }
 
@@ -246,8 +257,11 @@ open class ArcFarmsPlugin : JavaPlugin() {
             server.servicesManager.getRegistration(Economy::class.java)?.provider
         } else null
         if (provider != null) return VaultFarmEconomyGateway(provider)
-        require(settings.farms.none { it.rewards.requiresEconomy }) {
-            "Vault and an economy provider are required because a farm money reward is configured"
+        require(
+            settings.farms.none { it.rewards.requiresEconomy } &&
+                settings.enterprises.values.none { it.mode == ru.ruscrafting.farms.config.WorksiteEnterpriseMode.LIVE },
+        ) {
+            "Vault and an economy provider are required because money rewards or LIVE enterprise funding is configured"
         }
         return NoOpFarmEconomyGateway
     }

@@ -30,10 +30,85 @@ ui:
     enabled: false
     material: GRAY_STAINED_GLASS_PANE
     custom-model-data: 0
+  menu-back:
+    material: ARROW
+    custom-model-data: 0
+  # Menu item visuals are applied to open and newly rendered inventories after /arcfarms reload.
+  # Slots and inventory sizes are intentionally fixed so click ownership cannot drift.
+  main-menu:
+    items:
+      farm: {material: WHEAT, custom-model-data: 0}
+      lumber: {material: IRON_AXE, custom-model-data: 0}
+      mine: {material: MINECART, custom-model-data: 0}
+      workday: {material: WRITABLE_BOOK, custom-model-data: 0}
+      stats: {material: BOOK, custom-model-data: 0}
+  enterprise-menu:
+    items:
+      companies: {material: EMERALD, custom-model-data: 0}
+      overview-farm: {material: WHEAT, custom-model-data: 0}
+      overview-lumber: {material: IRON_AXE, custom-model-data: 0}
+      overview-mine: {material: MINECART, custom-model-data: 0}
+      farm-header: {material: WHEAT, custom-model-data: 0}
+      report: {material: PAPER, custom-model-data: 0}
+      workers: {material: WHEAT, custom-model-data: 0}
+      policy: {material: WRITABLE_BOOK, custom-model-data: 0}
+      license: {material: BOOK, custom-model-data: 0}
+      shares: {material: EMERALD, custom-model-data: 0}
+      market: {material: GOLD_INGOT, custom-model-data: 0}
+      share-status: {material: HONEYCOMB, custom-model-data: 0}
+      share-holding: {material: PAPER, custom-model-data: 0}
+      share-account: {material: GOLD_INGOT, custom-model-data: 0}
+      share-buy: {material: EMERALD, custom-model-data: 0}
+      share-confirm: {material: LIME_DYE, custom-model-data: 0}
+      share-withdraw: {material: SUNFLOWER, custom-model-data: 0}
 
 state:
   save-seconds: 10
   completed-cooldown-seconds: 60
+  # A start reservation is never rolled back after an unknown atomic-write outcome.
+  # These live-reloadable values cap exponential retry delay while the shift stays locked.
+  shift-start-persistence:
+    initial-retry-seconds: 1
+    maximum-retry-seconds: 30
+    log-every-attempts: 5
+
+# OFF disables the company, SHADOW observes without money, LIVE enables durable funding and payouts.
+# Keep LIVE off until the shadow report has been reviewed. The same policy shape fits future worksites.
+enterprises:
+  farm:
+    mode: OFF
+    company-id: communal_farm
+    worksite-id: communal_farm
+    license-gross-envelope: 2000000.00
+    default-gross-tariff: 10000.00
+    order-gross-tariffs:
+      miners_rations: 10000.00
+      bakery_supply: 10000.00
+      market_crates: 12000.00
+      harvest_festival: 18000.00
+      deep_mine_relief: 15000.00
+      master_baker_request: 18000.00
+    operating-cost-percent: 20
+    worker-bonus-percent: 30
+    dividend-percent: 50
+    weekly-upkeep: 25000.00
+    retained-report-weeks: 16
+    # Reloadable for future reservations; already accepted orders keep their recorded week id.
+    business-week:
+      zone: Europe/Moscow
+      day: SUNDAY
+      time: '20:00'
+    # A LIVE company snapshots these terms when its funding window first opens.
+    # Later reloads affect only a future company cycle; existing ownership never changes silently.
+    capital:
+      total-shares: 100
+      share-price: 50000.00
+      max-shares-per-owner: 20
+      funding-duration-days: 7
+      license-burn-percent: 50
+      license-weeks: 12
+      reserve-target-weeks: 1
+      purchase-options: ['1', '5', '10', '20']
 
 debug:
   enabled: false

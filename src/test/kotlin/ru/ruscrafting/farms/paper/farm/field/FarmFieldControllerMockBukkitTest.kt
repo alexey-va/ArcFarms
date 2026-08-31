@@ -274,6 +274,44 @@ class FarmFieldControllerMockBukkitTest : FunSpec({
         crop.type shouldBe Material.AIR
     }
 
+    test("failed recovery persistence rolls state back and does not run post-commit mutations") {
+        val previous = FarmShiftState(phase = FarmPhase.HARVESTING, sequence = 17)
+        val next = FarmShiftState(sequence = previous.sequence)
+        val runtime = FarmRuntime(
+            settings = mockk<FarmZoneSettings>(relaxed = true) { every { id } returns "farm" },
+            region = mockk(relaxed = true),
+            orders = emptyMap(),
+            orderList = emptyList(),
+            rules = mockk(relaxed = true),
+            state = previous,
+        )
+        val tasks = mockk<WorksiteRuntimePort>(relaxed = true) {
+            every { runSync(any(), any()) } answers {
+                secondArg<() -> Unit>().invoke()
+                true
+            }
+        }
+        val controller = FarmFieldController(
+            settings = { mockk<ArcFarmsConfig>(relaxed = true) },
+            debug = ArcFarmsDebug({ false }) {},
+            access = mockk<WorksiteRuntimePort>(relaxed = true),
+            audience = mockk<WorksiteRuntimePort>(relaxed = true),
+            state = mockk<WorksiteRuntimePort>(relaxed = true),
+            tasks = tasks,
+            ledger = FarmBlockLedger(paper.createSimplePlugin("FarmRecoveryFailureTest")),
+            registry = mockk<FarmBlockRegistry>(relaxed = true),
+            points = FarmPointProvider { _, _ -> error("recovery does not resolve operation points") },
+            transitions = FarmTransitionSink { _, _, _ -> },
+            persistAsync = { CompletableFuture.failedFuture(IllegalStateException("disk unavailable")) },
+        )
+        var postCommitRan = false
+
+        controller.commitAfterRecovery(runtime, next) { postCommitRan = true }
+
+        runtime.state shouldBe previous
+        postCommitRan shouldBe false
+    }
+
     test("maintenance retires every invalid indexed bed after the pass") {
         val plugin = paper.createSimplePlugin("FarmInvalidBedMaintenanceTest")
         val ledger = FarmBlockLedger(plugin)

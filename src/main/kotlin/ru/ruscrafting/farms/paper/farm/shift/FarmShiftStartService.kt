@@ -2,15 +2,20 @@ package ru.ruscrafting.farms.paper.farm.shift
 
 import org.bukkit.entity.Player
 import ru.ruscrafting.farms.config.MessageKey
+import ru.ruscrafting.farms.config.ShiftStartPersistenceSettings
+import ru.ruscrafting.farms.domain.EngineResult
 import ru.ruscrafting.farms.domain.FarmContractPlanner
 import ru.ruscrafting.farms.domain.FarmOrder
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmShiftEngine
+import ru.ruscrafting.farms.domain.FarmShiftEvent
+import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockRegistry
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
+import ru.ruscrafting.farms.paper.RuntimeTaskSupervisor
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
@@ -18,6 +23,7 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.admin.FarmWorldAdminService
 import ru.ruscrafting.farms.paper.farm.care.FarmCarePlanService
+import ru.ruscrafting.farms.paper.farm.enterprise.FarmEnterprisePort
 import ru.ruscrafting.farms.paper.farm.field.FarmFieldController
 import java.util.random.RandomGenerator
 import java.util.concurrent.CompletableFuture
@@ -35,11 +41,24 @@ internal class FarmShiftStartService(
     private val registry: FarmBlockRegistry,
     private val field: FarmFieldController,
     private val carePlans: FarmCarePlanService,
+    private val enterprise: FarmEnterprisePort,
     private val transitions: FarmTransitionSink,
     private val persistAsync: () -> CompletableFuture<Unit>,
+    private val retrySettings: () -> ShiftStartPersistenceSettings,
     private val random: RandomGenerator,
 ) {
-    private val pendingStarts = mutableSetOf<String>()
+    private data class PendingStart(
+        val runtime: FarmRuntime,
+        val player: Player,
+        val result: EngineResult<FarmShiftState, FarmShiftEvent>,
+        val order: FarmOrder,
+        val patch: List<FarmPlotPosition>,
+        val targetSize: Int,
+        val seederShift: Boolean,
+        val token: RuntimeTaskSupervisor.Token,
+    )
+
+    private val pendingStarts = mutableMapOf<String, PendingStart>()
 
     fun clearPending() {
         pendingStarts.clear()
@@ -85,44 +104,92 @@ internal class FarmShiftStartService(
         val started = FarmShiftEngine.start(
             runtime.state, order, patch, preparationCrop, now, runtime.settings.fieldCompletionPercent,
         )
-        val previous = runtime.state
         runtime.state = started.state
-        pendingStarts += runtime.settings.id
-        val token = tasks.lifecycleToken()
+        enterprise.orderStarted(
+            runtime.settings.id,
+            order.id,
+            started.state.sequence,
+            started.state.startedAt,
+        )
+        val pending = PendingStart(
+            runtime = runtime,
+            player = player,
+            result = started,
+            order = order,
+            patch = patch,
+            targetSize = targetSize,
+            seederShift = seederShift,
+            token = tasks.lifecycleToken(),
+        )
+        pendingStarts[runtime.settings.id] = pending
+        persistUntilStable(pending, failedAttempts = 0)
+        return true
+    }
+
+    private fun persistUntilStable(pending: PendingStart, failedAttempts: Int) {
+        val zoneId = pending.runtime.settings.id
+        val submittedState = pending.runtime.state
         runCatching(persistAsync).getOrElse { CompletableFuture.failedFuture(it) }.whenComplete { _, failure ->
-            tasks.runSync(token) {
-                pendingStarts.remove(runtime.settings.id)
+            tasks.runSync(pending.token) {
+                if (pendingStarts[zoneId] !== pending) return@runSync
                 if (failure != null) {
-                    if (runtime.state == started.state) runtime.state = previous else state.persistAsync()
-                    state.log(Level.SEVERE, "Could not durably start farm patch ${runtime.settings.id}", failure)
-                    if (player.isOnline) audience.sendChat(player, MessageKey.GENERIC_ERROR)
+                    scheduleRetry(pending, failedAttempts, failure)
                     return@runSync
                 }
-                if (runtime.state != started.state) {
-                    state.log(
-                        Level.WARNING,
-                        "Farm patch ${runtime.settings.id} changed while its durable start was pending; " +
-                            "the current state will be persisted without applying stale transition effects",
-                    )
-                    state.persistAsync()
+                if (pending.runtime.state != submittedState) {
+                    persistUntilStable(pending, failedAttempts = 0)
                     return@runSync
                 }
-                registry.addBeds(runtime.settings.id, patch)
-                if (patch.size < targetSize) debug.event(
-                    "farm_patch_limited", "zone" to runtime.settings.id, "wanted" to targetSize,
-                    "available" to patch.size, "mechanized" to seederShift,
-                )
-                debug.event(
-                    "farm_patch_selected", "zone" to runtime.settings.id, "sequence" to runtime.state.sequence,
-                    "order" to order.id, "rarity" to order.rarity, "plots" to patch.size,
-                    "min_x" to patch.minOf(FarmPlotPosition::x), "max_x" to patch.maxOf(FarmPlotPosition::x),
-                    "y_levels" to patch.map(FarmPlotPosition::y).distinct().sorted(),
-                    "min_z" to patch.minOf(FarmPlotPosition::z), "max_z" to patch.maxOf(FarmPlotPosition::z),
-                    "mechanized" to seederShift,
-                )
-                transitions.apply(runtime, started.copy(state = runtime.state), player)
+                finishDurableStart(pending)
             }
         }
-        return true
+    }
+
+    private fun scheduleRetry(pending: PendingStart, previousFailures: Int, failure: Throwable) {
+        val failedAttempts = if (previousFailures == Int.MAX_VALUE) Int.MAX_VALUE else previousFailures + 1
+        val policy = retrySettings()
+        val delayTicks = policy.retryDelayTicks(failedAttempts)
+        if (failedAttempts == 1 || failedAttempts % policy.logEveryAttempts == 0) {
+            state.log(
+                Level.SEVERE,
+                "Farm start persistence outcome is unknown; retaining shift and reservation " +
+                    "zone=${pending.runtime.settings.id} sequence=${pending.result.state.sequence} " +
+                    "attempt=$failedAttempts retry_ticks=$delayTicks",
+                failure,
+            )
+        }
+        tasks.runLater(pending.token, delayTicks) {
+            persistUntilStable(pending, failedAttempts)
+        }
+    }
+
+    private fun finishDurableStart(pending: PendingStart) {
+        val runtime = pending.runtime
+        val zoneId = runtime.settings.id
+        registry.addBeds(zoneId, pending.patch)
+        pendingStarts.remove(zoneId, pending)
+        if (runtime.state != pending.result.state) {
+            state.log(
+                Level.WARNING,
+                "Farm patch $zoneId changed while its durable start was pending; " +
+                    "the current state was saved without applying stale transition effects",
+            )
+            return
+        }
+        if (pending.patch.size < pending.targetSize) debug.event(
+            "farm_patch_limited", "zone" to zoneId, "wanted" to pending.targetSize,
+            "available" to pending.patch.size, "mechanized" to pending.seederShift,
+        )
+        debug.event(
+            "farm_patch_selected", "zone" to zoneId, "sequence" to runtime.state.sequence,
+            "order" to pending.order.id, "rarity" to pending.order.rarity, "plots" to pending.patch.size,
+            "min_x" to pending.patch.minOf(FarmPlotPosition::x),
+            "max_x" to pending.patch.maxOf(FarmPlotPosition::x),
+            "y_levels" to pending.patch.map(FarmPlotPosition::y).distinct().sorted(),
+            "min_z" to pending.patch.minOf(FarmPlotPosition::z),
+            "max_z" to pending.patch.maxOf(FarmPlotPosition::z),
+            "mechanized" to pending.seederShift,
+        )
+        transitions.apply(runtime, pending.result.copy(state = runtime.state), pending.player)
     }
 }

@@ -32,6 +32,7 @@ import ru.ruscrafting.farms.paper.WorldEditSelectionResult
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.care.FarmCareController
 import ru.ruscrafting.farms.paper.farm.delivery.FarmDeliveryController
+import ru.ruscrafting.farms.paper.farm.enterprise.FarmEnterprisePort
 import ru.ruscrafting.farms.paper.farm.incident.pest.FarmPestIncident
 import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentController
 import ru.ruscrafting.farms.paper.farm.recovery.FarmFixedCropRecoveryController
@@ -58,6 +59,7 @@ internal class FarmWorldAdminService(
     private val care: FarmCareController,
     private val pests: FarmPestIncident,
     private val delivery: FarmDeliveryController,
+    private val enterprise: FarmEnterprisePort,
     private val special: FarmSpecialIncidentController,
     private val transitions: FarmTransitionSink,
     private val runtimes: () -> Collection<FarmRuntime>,
@@ -366,6 +368,7 @@ internal class FarmWorldAdminService(
         val previous = runtime.state
         val removal = FarmAdminEdit.removePlots(previous, selected, runtime.settings.fieldCompletionPercent)
         runtime.state = removal.state
+        if (removal.shiftRetired) enterprise.orderCancelled(runtime.settings.id, previous.sequence)
         persistAsync()
         var removedRecords = 0
         selected.forEach { position ->

@@ -6,11 +6,13 @@ import org.bukkit.OfflinePlayer
 interface FarmEconomyGateway {
     val available: Boolean
     fun deposit(player: OfflinePlayer, amount: Double): Boolean
+    fun withdraw(player: OfflinePlayer, amount: Double): Boolean
 }
 
 object NoOpFarmEconomyGateway : FarmEconomyGateway {
     override val available: Boolean = false
     override fun deposit(player: OfflinePlayer, amount: Double): Boolean = false
+    override fun withdraw(player: OfflinePlayer, amount: Double): Boolean = false
 }
 
 class VaultFarmEconomyGateway(
@@ -20,4 +22,7 @@ class VaultFarmEconomyGateway(
 
     override fun deposit(player: OfflinePlayer, amount: Double): Boolean =
         economy.depositPlayer(player, amount).transactionSuccess()
+
+    override fun withdraw(player: OfflinePlayer, amount: Double): Boolean =
+        economy.withdrawPlayer(player, amount).transactionSuccess()
 }

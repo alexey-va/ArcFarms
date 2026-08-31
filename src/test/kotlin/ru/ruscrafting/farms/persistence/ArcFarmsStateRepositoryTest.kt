@@ -27,6 +27,12 @@ import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.domain.FarmRewardItem
 import ru.ruscrafting.farms.domain.PendingFarmReward
+import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseReservation
+import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseCapitalCompany
+import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseCapitalPhase
+import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseFinancingSnapshot
+import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseSnapshot
+import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseTerms
 import ru.ruscrafting.farms.domain.PlayerActivityStats
 import ru.ruscrafting.farms.domain.WeeklyActivityContribution
 import java.nio.file.Files
@@ -74,7 +80,71 @@ class ArcFarmsStateRepositoryTest : FunSpec({
             """{"schemaVersion":1,"farms":{},"lumbermills":{},"mines":{},"stats":{}}""",
         )
 
-        ArcFarmsStateRepository(root).use(ArcFarmsStateRepository::load).farmPerks shouldBe emptyMap()
+        val loaded = ArcFarmsStateRepository(root).use(ArcFarmsStateRepository::load)
+        loaded.farmPerks shouldBe emptyMap()
+        loaded.worksiteEnterprise shouldBe WorksiteEnterpriseSnapshot()
+    }
+
+    test("worksite enterprise reservation survives an atomic state round trip") {
+        val root = Files.createTempDirectory("arcfarms-state-enterprise-roundtrip-test")
+        val reservation = WorksiteEnterpriseReservation(
+            operationId = "enterprise:farm:communal_farm:8",
+            activity = ActivityKind.FARM,
+            companyId = "communal_farm",
+            worksiteId = "communal_farm",
+            orderId = "bakery_supply",
+            sequence = 8,
+            grossTariffCents = 1_000_000,
+            reservedAt = 1_800_000_000_000,
+            businessWeekStartEpochDay = 20_695,
+            terms = WorksiteEnterpriseTerms(
+                operatingCostPercent = 20,
+                workerBonusPercent = 30,
+                dividendPercent = 50,
+                weeklyUpkeepCents = 100_000,
+            ),
+        )
+        val expected = ArcFarmsState(
+            worksiteEnterprise = WorksiteEnterpriseSnapshot(
+                reservations = mapOf("farm:communal_farm" to reservation),
+            ),
+        )
+
+        ArcFarmsStateRepository(root).use { it.saveBlocking(expected) }
+
+        ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
+    }
+
+    test("enterprise ownership and offline investment credit survive an atomic state round trip") {
+        val root = Files.createTempDirectory("arcfarms-state-enterprise-capital-roundtrip-test")
+        val owner = UUID(0, 71)
+        val company = WorksiteEnterpriseCapitalCompany(
+            activity = ActivityKind.FARM,
+            companyId = "communal_farm",
+            phase = WorksiteEnterpriseCapitalPhase.FUNDING,
+            fundingOpenedAt = 1_000,
+            fundingClosesAt = 2_000,
+            totalShares = 100,
+            sharePriceCents = 5_000_000,
+            maxSharesPerOwner = 20,
+            licenseBurnPercent = 50,
+            licenseWeeks = 12,
+            reserveTargetWeeks = 1,
+            issuedShares = 3,
+            shareholdings = mapOf(owner to 3),
+            escrowCents = 15_000_000,
+        )
+        val expected = ArcFarmsState(
+            worksiteEnterprise = WorksiteEnterpriseSnapshot(
+                financing = WorksiteEnterpriseFinancingSnapshot(
+                    companies = mapOf("farm:communal_farm" to company),
+                    investmentCreditsCents = mapOf(owner to 42_000),
+                ),
+            ),
+        )
+
+        ArcFarmsStateRepository(root).use { it.saveBlocking(expected) }
+        ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
     }
 
     test("state persistence rejects a negative placement sequence from stored json") {

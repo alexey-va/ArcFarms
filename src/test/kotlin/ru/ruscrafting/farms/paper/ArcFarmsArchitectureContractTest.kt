@@ -40,11 +40,38 @@ class ArcFarmsArchitectureContractTest : FunSpec({
     val mineFactoryPath = repositoryRoot.resolve(
         "src/main/kotlin/ru/ruscrafting/farms/paper/mine/MineRuntimeFactory.kt",
     )
+    val enterpriseKernelPath = repositoryRoot.resolve(
+        "src/main/kotlin/ru/ruscrafting/farms/domain/enterprise/WorksiteEnterprise.kt",
+    )
+    val farmEnterpriseAdapterPath = farmRoot.resolve("enterprise/FarmEnterpriseAdapter.kt")
+    val networkServicePath = repositoryRoot.resolve(
+        "src/main/kotlin/ru/ruscrafting/farms/paper/ArcFarmsNetworkService.kt",
+    )
+    val inventoryTransitionPath = repositoryRoot.resolve(
+        "src/main/kotlin/ru/ruscrafting/farms/paper/InventoryViewTransition.kt",
+    )
 
     test("shift engines do not share one global event enum") {
         val source = Files.readString(domainPath)
 
         source.contains("enum class ShiftEvent") shouldBe false
+    }
+
+    test("enterprise accounting is worksite-agnostic and farm owns only an adapter") {
+        val kernel = Files.readString(enterpriseKernelPath)
+        val adapter = Files.readString(farmEnterpriseAdapterPath)
+
+        listOf("org.bukkit", ".paper.", ".config.", "net.milkbowl.vault").forEach { forbidden ->
+            kernel.lineSequence().filter { it.startsWith("import ") }.any { forbidden in it } shouldBe false
+        }
+        listOf("FarmRuntime", "FarmShiftState").forEach { forbidden ->
+            kernel.contains(forbidden) shouldBe false
+        }
+        kernel.contains("val activity: ActivityKind") shouldBe true
+        kernel.contains("class WorksiteEnterpriseLedger") shouldBe true
+        adapter.contains("class FarmEnterpriseAdapter") shouldBe true
+        adapter.contains("ActivityKind.MINE") shouldBe false
+        adapter.contains("ActivityKind.LUMBER") shouldBe false
     }
 
     test("worksite modules expose complete lifecycle through narrow runtime ports") {
@@ -91,6 +118,16 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         source.contains("private val worksiteAdapter = PaperWorksiteAdapter") shouldBe true
     }
 
+    test("reload publishes structural settings only after replacement and queued network events recheck the active generation") {
+        val service = Files.readString(servicePath)
+        val reload = service.substringAfter("fun reload(").substringBefore("fun isOperational()")
+        val network = Files.readString(networkServicePath)
+        val receive = network.substringAfter("private fun receive(").substringBefore("private fun originAllowed(")
+
+        (reload.indexOf("replaceRuntime(candidate") < reload.indexOf("publishSettings(candidate)")) shouldBe true
+        receive.contains("if (!started || !originAllowed(origin))") shouldBe true
+    }
+
     test("gameplay code cannot schedule directly through Bukkit") {
         val productionRoot = repositoryRoot.resolve("src/main/kotlin")
         val offenders = Files.walk(productionRoot).use { paths ->
@@ -101,6 +138,27 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         }
 
         offenders shouldBe emptyList()
+    }
+
+    test("inventory click view changes are deferred and stale-safe") {
+        val transition = Files.readString(inventoryTransitionPath)
+        val rootClick = Files.readString(repositoryRoot.resolve(
+            "src/main/kotlin/ru/ruscrafting/farms/paper/ArcFarmsMenu.kt",
+        )).substringAfter("fun onClick(").substringBefore("fun onDrag(")
+        val enterpriseClick = Files.readString(repositoryRoot.resolve(
+            "src/main/kotlin/ru/ruscrafting/farms/paper/WorksiteEnterpriseMenu.kt",
+        )).substringAfter("fun onClick(").substringBefore("fun onDrag(")
+        val marketDecision = Files.readString(farmRoot.resolve(
+            "incident/special/FarmSpecialIncidentController.kt",
+        )).substringAfter("private fun handleMarketDecision(").substringBefore("private fun marketDurationMillis(")
+
+        transition.contains("runLater(lifecycle, 1L)") shouldBe true
+        transition.contains("player.openInventory.topInventory !== expectedTop") shouldBe true
+        listOf(rootClick, enterpriseClick, marketDecision).forEach { handler ->
+            handler.contains("deferInventoryTransition") shouldBe true
+            handler.contains("player.openInventory(") shouldBe false
+            handler.contains("player.closeInventory()") shouldBe false
+        }
     }
 
     test("food delivery hot path does not scan every entity in the world") {

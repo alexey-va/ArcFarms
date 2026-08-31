@@ -4,10 +4,10 @@ import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.Material
 import org.bukkit.entity.Player
+import org.bukkit.event.inventory.ClickType
 import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.inventory.Inventory
-import org.bukkit.inventory.InventoryHolder
 import org.bukkit.inventory.ItemStack
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
@@ -15,7 +15,7 @@ import ru.ruscrafting.farms.config.MessageKey
 
 internal enum class FarmMarketMode { PENDING, ACTIVE }
 
-internal enum class FarmMarketDecision { ACCEPT, DECLINE, CLOSE }
+internal enum class FarmMarketDecision { ACCEPT, DECLINE }
 
 internal data class FarmMarketClick(
     val zoneId: String,
@@ -27,10 +27,13 @@ internal data class FarmMarketClick(
 internal class FarmMarketMenu(
     private val locale: ArcFarmsLocale,
     private val settings: () -> ArcFarmsConfig,
+    private val refreshView: (Player, String, Long) -> Unit,
 ) {
-    private class Holder(val zoneId: String, val sequence: Long, val mode: FarmMarketMode) : InventoryHolder {
+    private inner class Holder(val zoneId: String, val sequence: Long, val mode: FarmMarketMode) :
+        ArcFarmsReloadableInventory {
         lateinit var backing: Inventory
         override fun getInventory(): Inventory = backing
+        override fun refresh(player: Player) = refreshView(player, zoneId, sequence)
     }
 
     fun openPending(
@@ -106,10 +109,9 @@ internal class FarmMarketMenu(
             ),
         )
         if (mode == FarmMarketMode.PENDING) {
-            inventory.setItem(11, item(Material.EMERALD, locale.render(MessageKey.FARM_MARKET_MENU_ACCEPT, player), emptyList()))
-            inventory.setItem(15, item(Material.BARRIER, locale.render(MessageKey.FARM_MARKET_MENU_DECLINE, player), emptyList()))
-        } else {
-            inventory.setItem(22, item(Material.BARRIER, locale.render(MessageKey.FARM_MARKET_MENU_CLOSE, player), emptyList()))
+            val action = listOf(locale.render(MessageKey.FARM_MARKET_MENU_CHOOSE, player))
+            inventory.setItem(11, item(Material.EMERALD, locale.render(MessageKey.FARM_MARKET_MENU_ACCEPT, player), action))
+            inventory.setItem(15, item(Material.BARRIER, locale.render(MessageKey.FARM_MARKET_MENU_DECLINE, player), action))
         }
         backgroundItem()?.let { background ->
             repeat(inventory.size) { slot -> if (inventory.getItem(slot) == null) inventory.setItem(slot, background) }
@@ -121,6 +123,7 @@ internal class FarmMarketMenu(
         val holder = event.view.topInventory.holder as? Holder ?: return null
         event.isCancelled = true
         if (event.clickedInventory !== event.view.topInventory) return null
+        if (event.click != ClickType.LEFT) return null
         val decision = decisionFor(holder.mode, event.rawSlot) ?: return null
         return FarmMarketClick(holder.zoneId, holder.sequence, holder.mode, decision)
     }
@@ -157,7 +160,7 @@ internal class FarmMarketMenu(
                 15 -> FarmMarketDecision.DECLINE
                 else -> null
             }
-            FarmMarketMode.ACTIVE -> if (slot == 22) FarmMarketDecision.CLOSE else null
+            FarmMarketMode.ACTIVE -> null
         }
     }
 }

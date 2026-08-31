@@ -173,7 +173,18 @@ internal class ArcFarmsRuntimeValidator(
     }
 
     fun validateRuntime(candidate: ArcFarmsConfig) {
-        if (candidate.menuBackground.enabled) MaterialRules.material(candidate.menuBackground.material)
+        require(
+            candidate.enterprises.values.none { it.mode == ru.ruscrafting.farms.config.WorksiteEnterpriseMode.LIVE } ||
+                economyAvailable(),
+        ) { "LIVE enterprise funding requires Vault and an economy provider" }
+        if (candidate.menuBackground.enabled) {
+            val material = MaterialRules.material(candidate.menuBackground.material)
+            require(material.isItem && !material.isAir) { "ui.menu-background.material must be a non-air item material" }
+        }
+        candidate.configuredMenuItems.forEach { (path, visual) ->
+            val material = MaterialRules.material(visual.material)
+            require(material.isItem && !material.isAir) { "$path.material must be a non-air item material" }
+        }
         candidate.destinations.values.filter { it.server == candidate.serverId }.forEach { destination ->
             requireNotNull(Bukkit.getWorld(destination.world)) {
                 "Destination world ${destination.world} is not loaded on ${candidate.serverId}"

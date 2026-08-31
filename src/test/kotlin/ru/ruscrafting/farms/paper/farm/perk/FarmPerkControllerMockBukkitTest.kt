@@ -26,6 +26,7 @@ import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmRules
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
+import ru.ruscrafting.farms.paper.ArcFarmsReloadableInventory
 import ru.ruscrafting.farms.paper.CuboidActivityRegion
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
@@ -44,7 +45,7 @@ class FarmPerkControllerMockBukkitTest : FunSpec({
 
     afterEach { paper.close() }
 
-    test("active perk click shows local non-italic feedback without charging and restores the offer") {
+    test("active perk offer is non-italic and inert until it expires") {
         val world = server.addSimpleWorld("farm")
         world.getChunkAt(0, 0).load()
         val player = server.addPlayer("PerkFarmer")
@@ -131,38 +132,31 @@ class FarmPerkControllerMockBukkitTest : FunSpec({
         controller.handleClick(click) shouldBe true
 
         PlainTextComponentSerializer.plainText().serialize(requireNotNull(inventory.getItem(10)?.itemMeta?.displayName())) shouldBe
-            "Усиление уже действует"
+            "Широкий взмах"
         controller.snapshot().getValue(player.uniqueId).spentPoints shouldBe 250
 
+        val beforeRefresh = player.openInventory.topInventory
         now = activeUntil + 1
-        server.scheduler.performTicks(40)
-        PlainTextComponentSerializer.plainText().serialize(requireNotNull(inventory.getItem(10)?.itemMeta?.displayName())) shouldBe
+        (beforeRefresh.holder as ArcFarmsReloadableInventory).refresh(player)
+        val refreshed = player.openInventory.topInventory
+        (refreshed === beforeRefresh) shouldBe false
+        PlainTextComponentSerializer.plainText().serialize(requireNotNull(refreshed.getItem(10)?.itemMeta?.displayName())) shouldBe
             "Широкий взмах"
-        inventory.getItem(10)?.itemMeta?.lore()?.joinToString(" ") {
+        refreshed.getItem(10)?.itemMeta?.lore()?.joinToString(" ") {
             PlainTextComponentSerializer.plainText().serialize(it)
         }?.contains("Активно") shouldBe false
-        inventory.getItem(10)?.type shouldBe Material.DIAMOND_HOE
-        inventory.getItem(10)?.itemMeta?.enchantmentGlintOverride shouldBe false
-
-        controller.replace(mapOf(
-            player.uniqueId to FarmPlayerPerks(
-                weekStartEpochDay = 107,
-                spentPoints = 250,
-                activeUntil = mapOf(FarmPerkType.HARVEST_AREA to now + 7_200_000),
-            ),
-        ))
+        refreshed.getItem(10)?.type shouldBe Material.DIAMOND_HOE
+        refreshed.getItem(10)?.itemMeta?.enchantmentGlintOverride shouldBe false
+        val beforeRightClick = controller.snapshot()
         controller.handleClick(InventoryClickEvent(
             player.openInventory,
             InventoryType.SlotType.CONTAINER,
             10,
-            ClickType.LEFT,
-            InventoryAction.PICKUP_ALL,
+            ClickType.RIGHT,
+            InventoryAction.PICKUP_HALF,
         )) shouldBe true
-        controller.open(player, runtime)
-        val reopened = player.openInventory.topInventory
-        server.scheduler.performTicks(40)
-        PlainTextComponentSerializer.plainText().serialize(requireNotNull(reopened.getItem(10)?.itemMeta?.displayName())) shouldBe
-            "Широкий взмах"
+        controller.snapshot() shouldBe beforeRightClick
+
     }
 
     test("an open perk menu removes the active mark and glint when the perk expires") {

@@ -49,10 +49,7 @@ class ArcFarmsNetworkService(
     fun start() {
         check(!started) { "ArcFarms network service is already started" }
         eventChannel = repository.openEvents(
-            originAllowed = { origin ->
-                val current = settings()
-                current.network.enabled && origin != current.serverId && origin in current.network.allowedOrigins
-            },
+            originAllowed = ::originAllowed,
             replyAllowed = { _, reply, origin ->
                 val current = settings()
                 reply.signal == NetworkSignal.NODE_ACK &&
@@ -174,8 +171,7 @@ class ArcFarmsNetworkService(
             debug.event("network_receive_skipped", "signal" to event.signal, "origin" to origin, "reason" to "service_stopped")
             return
         }
-        val current = settings()
-        if (!current.network.enabled || origin == current.serverId || origin !in current.network.allowedOrigins) {
+        if (!originAllowed(origin)) {
             debug.event("network_receive_skipped", "signal" to event.signal, "origin" to origin, "reason" to "origin_or_disabled")
             return
         }
@@ -186,7 +182,10 @@ class ArcFarmsNetworkService(
         }
         debug.event("network_received", "signal" to event.signal, "origin" to origin, "event_id" to event.eventId)
         Tasks.scheduler.runSync {
-            if (!started) return@runSync
+            if (!started || !originAllowed(origin)) {
+                debug.event("network_receive_skipped", "signal" to event.signal, "origin" to origin, "reason" to "generation_changed")
+                return@runSync
+            }
             when (event.signal) {
                 NetworkSignal.NODE_PROBE -> acknowledge(event, origin)
                 NetworkSignal.NODE_ACK -> Unit
@@ -196,6 +195,11 @@ class ArcFarmsNetworkService(
                 }
             }
         }
+    }
+
+    private fun originAllowed(origin: String): Boolean {
+        val current = settings()
+        return current.network.enabled && origin != current.serverId && origin in current.network.allowedOrigins
     }
 
     private fun emit(event: NetworkEvent, excludedPlayers: Set<UUID>) {
