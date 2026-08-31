@@ -602,6 +602,8 @@ class ArcFarmsService(
         runCatching(::stopTasks).exceptionOrNull()?.let(failures::add)
         runCatching(lifecycleTaskSupervisor::cancelAll).exceptionOrNull()?.let(failures::add)
         runCatching(gameplayTaskSupervisor::cancelAll).exceptionOrNull()?.let(failures::add)
+        runCatching { worksiteEvents.release(Bukkit.getOnlinePlayers(), WorksitePlayerReleaseReason.SHUTDOWN) }
+            .exceptionOrNull()?.let(failures::add)
         runCatching { farm.hud.stopAllMusic("plugin_close") }.exceptionOrNull()?.let(failures::add)
         runCatching { farm.drought.clear("plugin_close") }.exceptionOrNull()?.let(failures::add)
         runCatching(farm.hud::hideBars).exceptionOrNull()?.let(failures::add)

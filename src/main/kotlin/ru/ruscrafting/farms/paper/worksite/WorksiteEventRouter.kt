@@ -81,4 +81,16 @@ internal class WorksiteEventRouter(
 
     fun release(player: Player, reason: WorksitePlayerReleaseReason): WorksiteReleaseReport =
         participantSafety.release(player, reason)
+
+    fun release(players: Iterable<Player>, reason: WorksitePlayerReleaseReason) {
+        val failures = players.flatMap { player ->
+            runCatching { release(player, reason) }
+                .fold(onSuccess = WorksiteReleaseReport::ownerFailures, onFailure = ::listOf)
+        }
+        if (failures.isNotEmpty()) {
+            throw IllegalStateException("Worksite player release failed for ${failures.size} owner(s)", failures.first()).also {
+                failures.drop(1).forEach(it::addSuppressed)
+            }
+        }
+    }
 }

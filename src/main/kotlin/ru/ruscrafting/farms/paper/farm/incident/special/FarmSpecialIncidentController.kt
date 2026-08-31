@@ -483,6 +483,11 @@ internal class FarmSpecialIncidentController(
 
     fun onQuit(player: Player) = nightShift.clear(player)
 
+    fun leaveZone(player: Player, runtime: FarmRuntime) {
+        val identity = channelToolIdentity(runtime)
+        while (serviceItems.consume(player, identity)) Unit
+    }
+
     fun ownsNightEntity(entity: Entity): Boolean = nightShift.owns(entity)
 
     fun handleNightDamage(event: EntityDamageEvent): Boolean {

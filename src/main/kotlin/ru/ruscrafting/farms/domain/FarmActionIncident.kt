@@ -1,11 +1,13 @@
 package ru.ruscrafting.farms.domain
 
+import java.util.UUID
 import kotlin.math.sqrt
 
 /** Pure shield-facing policy used by the boar breakout incident. */
 object FarmBoarShieldPolicy {
     fun canDeflect(
         blocking: Boolean,
+        serviceShield: Boolean,
         distanceSquared: Double,
         interceptRadius: Double,
         facingDot: Double,
@@ -17,13 +19,32 @@ object FarmBoarShieldPolicy {
         require(distanceSquared >= 0.0)
         require(interceptRadius.isFinite() && interceptRadius > 0.0)
         require(facingDot.isFinite() && facingDot in -1.0..1.0)
-        if (!blocking || distanceSquared > interceptRadius * interceptRadius) return false
+        if (!blocking || !serviceShield || distanceSquared > interceptRadius * interceptRadius) return false
         val viewLength = sqrt(viewX * viewX + viewZ * viewZ)
         val offsetLength = sqrt(boarOffsetX * boarOffsetX + boarOffsetZ * boarOffsetZ)
         if (viewLength <= 1.0e-6 || offsetLength <= 1.0e-6) return false
         val dot = (viewX * boarOffsetX + viewZ * boarOffsetZ) / (viewLength * offsetLength)
         return dot >= facingDot
     }
+}
+
+/** One-shot authorization for damage emitted by the raid gun's synchronous Paper damage call. */
+class FarmRaidDamageGate {
+    private data class Hit(val playerId: UUID, val targetId: UUID)
+
+    private val pending = mutableSetOf<Hit>()
+
+    fun <T> authorize(playerId: UUID, targetId: UUID, damage: () -> T): T {
+        val hit = Hit(playerId, targetId)
+        check(pending.add(hit)) { "Raid damage authorization is already active" }
+        return try {
+            damage()
+        } finally {
+            pending.remove(hit)
+        }
+    }
+
+    fun consume(playerId: UUID, targetId: UUID): Boolean = pending.remove(Hit(playerId, targetId))
 }
 
 /** Deterministic straight-line flight step for the autonomous ghast. */

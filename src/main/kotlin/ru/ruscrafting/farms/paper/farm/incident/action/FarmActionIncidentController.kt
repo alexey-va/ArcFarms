@@ -38,6 +38,7 @@ import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmRaidFlight
+import ru.ruscrafting.farms.domain.FarmRaidDamageGate
 import ru.ruscrafting.farms.domain.FarmSpecialIncidentEngine
 import ru.ruscrafting.farms.domain.FarmSpecialIncidentState
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
@@ -102,6 +103,7 @@ internal class FarmActionIncidentController(
     private val targetKey = NamespacedKey(plugin, "farm_action_target")
     private val boars = mutableMapOf<String, MutableSet<UUID>>()
     private val raids = mutableMapOf<String, RaidSession>()
+    private val raidDamage = FarmRaidDamageGate()
 
     fun initialize(runtime: FarmRuntime, type: FarmIncidentType): FarmIncidentType? {
         if (runtime.state.phase != FarmPhase.INCIDENT || runtime.state.incidentType != type ||
@@ -265,7 +267,9 @@ internal class FarmActionIncidentController(
         val player = damage?.damager as? Player
         val zoneId = event.entity.persistentDataContainer.get(zoneKey, PersistentDataType.STRING)
         val session = zoneId?.let(raids::get)
-        if (player == null || session == null || player.uniqueId !in session.participantIds || !isGun(player, zoneId, session)) {
+        if (player == null || session == null || player.uniqueId !in session.participantIds ||
+            !isGun(player, zoneId, session) || !raidDamage.consume(player.uniqueId, event.entity.uniqueId)
+        ) {
             event.isCancelled = true
         }
         return true
@@ -296,9 +300,16 @@ internal class FarmActionIncidentController(
 
     fun onQuit(player: Player) {
         raids.values.forEach { session ->
-            if (session.participantIds.remove(player.uniqueId)) returnParticipant(session, player)
+            if (player.uniqueId in session.participantIds) returnParticipant(session, player)
+            session.participantIds.remove(player.uniqueId)
             session.shotAt.remove(player.uniqueId)
         }
+    }
+
+    fun leaveZone(player: Player, runtime: FarmRuntime) {
+        if (runtime.state.incidentType != FarmIncidentType.BOAR_BREAKOUT) return
+        val shield = identity(runtime, BOAR_SHIELD_ID)
+        while (serviceItems.consume(player, shield)) Unit
     }
 
     fun isActive(identity: ServiceItemIdentity): Boolean {
@@ -311,9 +322,12 @@ internal class FarmActionIncidentController(
     fun release(playerId: UUID, identity: ServiceItemIdentity, reason: WorksitePlayerReleaseReason) {
         if (identity.activity != ActivityKind.FARM || identity.itemId !in setOf(BOAR_SHIELD_ID, RAID_GUN_ID)) return
         if (identity.itemId == RAID_GUN_ID) raids[identity.zoneId]?.let { session ->
-            if (session.participantIds.remove(playerId) && reason == WorksitePlayerReleaseReason.QUIT) {
+            val wasParticipant = playerId in session.participantIds
+            if ((wasParticipant || reason == WorksitePlayerReleaseReason.JOIN_STALE) && reason.returnsRaidParticipant()) {
+                session.participantIds += playerId
                 Bukkit.getPlayer(playerId)?.let { player -> returnParticipant(session, player) }
             }
+            session.participantIds.remove(playerId)
             session.shotAt.remove(playerId)
         }
         debug.event(
@@ -425,6 +439,7 @@ internal class FarmActionIncidentController(
                 val offsetZ = boar.location.z - player.location.z
                 FarmBoarShieldPolicy.canDeflect(
                     player.isBlocking,
+                    hasShield(player, runtime),
                     player.location.distanceSquared(boar.location),
                     runtime.settings.boarBreakout.interceptRadius,
                     runtime.settings.boarBreakout.facingDot,
@@ -450,7 +465,7 @@ internal class FarmActionIncidentController(
                 damageCrop(runtime, target)
                 val next = nextBoarTarget(runtime, index)
                 boar.persistentDataContainer.set(targetKey, PersistentDataType.INTEGER, next)
-            } else boar.pathfinder.moveTo(targetLocation, runtime.settings.boarBreakout.movementSpeed)
+            } else boar.pathfinder.moveTo(targetLocation, 1.0)
         }
     }
 
@@ -569,7 +584,10 @@ internal class FarmActionIncidentController(
         renderShot(start, end)
         if (settings().sounds) player.world.playSound(start, Sound.ENTITY_FIREWORK_ROCKET_BLAST, 0.8f, 0.72f)
         val target = hit?.hitEntity as? Mob ?: return
-        target.damage(config.gunDamage, player)
+        target.noDamageTicks = 0
+        raidDamage.authorize(player.uniqueId, target.uniqueId) {
+            target.damage(config.gunDamage, player)
+        }
         target.world.spawnParticle(Particle.CRIT, target.location.add(0.0, target.height * 0.55, 0.0), 10, 0.25, 0.25, 0.25, 0.08)
     }
 
@@ -615,9 +633,15 @@ internal class FarmActionIncidentController(
             RAID_GUN_ID,
         )
 
+    private fun hasShield(player: Player, runtime: FarmRuntime): Boolean {
+        val expected = identity(runtime, BOAR_SHIELD_ID)
+        return serviceItems.identity(player.inventory.itemInMainHand) == expected ||
+            serviceItems.identity(player.inventory.itemInOffHand) == expected
+    }
+
     private fun clearZone(zoneId: String, reason: String) {
         boars.remove(zoneId).orEmpty().forEach { Bukkit.getEntity(it)?.remove() }
-        val session = raids.remove(zoneId)
+        val session = raids[zoneId]
         if (session != null) {
             session.participantIds.forEach { playerId ->
                 val player = Bukkit.getPlayer(playerId) ?: return@forEach
@@ -631,6 +655,7 @@ internal class FarmActionIncidentController(
                     ))) Unit
                 returnParticipant(session, player)
             }
+            raids.remove(zoneId, session)
         }
         session?.workerIds.orEmpty().forEach { Bukkit.getEntity(it)?.remove() }
         session?.ghastId?.let(Bukkit::getEntity)?.remove()
@@ -643,8 +668,16 @@ internal class FarmActionIncidentController(
     }
 
     private fun returnParticipant(session: RaidSession, player: Player) {
-        session.returnPoint.location()?.takeIf { player.world === it.world }?.let(player::teleport)
+        session.returnPoint.location()?.let(player::teleport)
     }
+
+    private fun WorksitePlayerReleaseReason.returnsRaidParticipant(): Boolean = this in setOf(
+        WorksitePlayerReleaseReason.QUIT,
+        WorksitePlayerReleaseReason.RELOAD,
+        WorksitePlayerReleaseReason.SHUTDOWN,
+        WorksitePlayerReleaseReason.JOIN_STALE,
+        WorksitePlayerReleaseReason.OBJECTIVE_REPLACED,
+    )
 
     private fun mark(entity: Entity, runtime: FarmRuntime, role: String, target: Int) {
         entity.persistentDataContainer.set(zoneKey, PersistentDataType.STRING, runtime.settings.id)

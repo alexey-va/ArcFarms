@@ -4,11 +4,13 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.shouldBe
+import java.util.UUID
 
 class FarmActionIncidentTest : FunSpec({
     test("boar charge is stopped only by a nearby raised shield facing the attacker") {
         FarmBoarShieldPolicy.canDeflect(
             blocking = true,
+            serviceShield = true,
             distanceSquared = 4.0,
             interceptRadius = 2.5,
             facingDot = 0.25,
@@ -20,6 +22,7 @@ class FarmActionIncidentTest : FunSpec({
 
         FarmBoarShieldPolicy.canDeflect(
             blocking = false,
+            serviceShield = true,
             distanceSquared = 4.0,
             interceptRadius = 2.5,
             facingDot = 0.25,
@@ -31,6 +34,7 @@ class FarmActionIncidentTest : FunSpec({
 
         FarmBoarShieldPolicy.canDeflect(
             blocking = true,
+            serviceShield = true,
             distanceSquared = 4.0,
             interceptRadius = 2.5,
             facingDot = 0.25,
@@ -39,6 +43,43 @@ class FarmActionIncidentTest : FunSpec({
             boarOffsetX = 2.0,
             boarOffsetZ = 0.0,
         ) shouldBe false
+
+        FarmBoarShieldPolicy.canDeflect(
+            blocking = true,
+            serviceShield = false,
+            distanceSquared = 4.0,
+            interceptRadius = 2.5,
+            facingDot = 0.25,
+            viewX = 1.0,
+            viewZ = 0.0,
+            boarOffsetX = 2.0,
+            boarOffsetZ = 0.0,
+        ) shouldBe false
+    }
+
+    test("raid damage authorization is one-shot and cannot leak past the gun call") {
+        val gate = FarmRaidDamageGate()
+        val player = UUID.randomUUID()
+        val worker = UUID.randomUUID()
+
+        gate.consume(player, worker) shouldBe false
+        gate.authorize(player, worker) {
+            gate.consume(player, worker) shouldBe true
+            gate.consume(player, worker) shouldBe false
+        }
+        gate.consume(player, worker) shouldBe false
+    }
+
+    test("raid damage authorization is retired when the platform damage call fails") {
+        val gate = FarmRaidDamageGate()
+        val player = UUID.randomUUID()
+        val worker = UUID.randomUUID()
+
+        shouldThrow<IllegalStateException> {
+            gate.authorize(player, worker) { error("damage failed") }
+        }
+
+        gate.consume(player, worker) shouldBe false
     }
 
     test("autonomous raid flight advances by a bounded straight-line step and stops exactly at target") {

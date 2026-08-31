@@ -83,6 +83,21 @@ class WorksiteEventRouterMockBukkitTest : FunSpec({
         releases shouldContainExactly reasons
     }
 
+    test("shutdown releases every online participant") {
+        val releases = mutableListOf<WorksitePlayerReleaseReason>()
+        val participant = RoutingModule(ActivityKind.FARM, release = releases::add)
+        val router = router(paper, WorksiteModuleRegistry(listOf(participant)))
+        val first = paper.server.addPlayer("FirstWorker")
+        val second = paper.server.addPlayer("SecondWorker")
+
+        router.release(listOf(first, second), WorksitePlayerReleaseReason.SHUTDOWN)
+
+        releases shouldContainExactly listOf(
+            WorksitePlayerReleaseReason.SHUTDOWN,
+            WorksitePlayerReleaseReason.SHUTDOWN,
+        )
+    }
+
     test("horse dismount teleport keeps worksite participation while real teleport releases it") {
         val releases = mutableListOf<WorksitePlayerReleaseReason>()
         val participant = RoutingModule(ActivityKind.FARM, release = releases::add)

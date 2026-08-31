@@ -285,6 +285,8 @@ internal class FarmEventRouter(
             supplies.removeServiceItems(player, from.settings.id, "left_zone")
             frost.clearPlayer(player, "left_zone")
             care.releasePlayer(player, "left_zone")
+            special.leaveZone(player, from)
+            actionIncidents.leaveZone(player, from)
             if (routeRuntime == null) hud.removePlayer(player, "left_zone")
         }
         if (to != null && from !== to) hud.enter(player, to)

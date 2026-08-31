@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.paper
 
 import org.bukkit.Bukkit
 import org.bukkit.Location
+import org.bukkit.Material
 import org.bukkit.entity.EntityType
 import org.bukkit.entity.LivingEntity
 import org.bukkit.entity.Mob
@@ -11,6 +12,7 @@ import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.FarmZoneSettings
 import ru.ruscrafting.farms.domain.ArcFarmsState
 import ru.ruscrafting.farms.domain.FarmIncidentRecovery
+import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmLocationOverrides
 import ru.ruscrafting.farms.domain.FarmOrder
 import ru.ruscrafting.farms.domain.FarmOrderProgressReconciler
@@ -121,10 +123,35 @@ internal class ArcFarmsRuntimeValidator(
                 addAll(state.droughtDamagedPlots)
                 state.pestNests.mapTo(this) { it.position }
                 state.pestDamagedCrops.mapTo(this) { it.position }
+                state.diseaseDamagedCrops.orEmpty().mapTo(this) { it.position }
+                addAll(state.specialIncident?.plots.orEmpty())
+                state.specialDamagedCrops.mapTo(this) { it.position }
             }
             require(managedPlots.all { position ->
                 position.world == region.world.name && position.location()?.let(region::contains) == true
             }) { "Persisted farm-managed block escaped region $id" }
+            state.specialIncident?.let { special ->
+                require(special.crop == null || special.crop in zone.crops) {
+                    "Persisted farm incident contains an unknown crop in $id"
+                }
+                if (state.incidentType == FarmIncidentType.RIVAL_RAID) {
+                    require(special.points.size == 2) { "Persisted rival raid $id must contain departure and rival points" }
+                    val departure = special.points[0]
+                    val rival = special.points[1]
+                    require(departure.world == region.world.name && region.contains(
+                        Location(region.world, departure.x, departure.y, departure.z),
+                    )) { "Persisted rival raid departure escaped region $id" }
+                    val dx = rival.x - departure.x
+                    val dz = rival.z - departure.z
+                    require(rival.world == region.world.name &&
+                        dx * dx + dz * dz <= zone.rivalRaid.maximumDistance * zone.rivalRaid.maximumDistance
+                    ) { "Persisted rival farm point is invalid in $id" }
+                } else {
+                    require(special.points.all { point ->
+                        point.world == region.world.name && region.contains(Location(region.world, point.x, point.y, point.z))
+                    }) { "Persisted farm incident point escaped region $id" }
+                }
+            }
             require(state.careTargets.all { target ->
                 val position = target.position
                 val location = Location(region.world, position.x, position.y, position.z)
@@ -132,6 +159,12 @@ internal class ArcFarmsRuntimeValidator(
             }) { "Persisted farm care target escaped region $id" }
             require(state.pestDamagedCrops.all { it.crop in zone.crops }) {
                 "Persisted farm pest damage contains an unknown crop in $id"
+            }
+            require(state.diseaseDamagedCrops.orEmpty().all { it.crop in zone.crops }) {
+                "Persisted farm disease damage contains an unknown crop in $id"
+            }
+            require(state.specialDamagedCrops.all { it.crop in zone.crops }) {
+                "Persisted farm special damage contains an unknown crop in $id"
             }
             state.deliveryPosition?.let { position ->
                 val location = Location(region.world, position.x, position.y, position.z)
@@ -250,6 +283,17 @@ internal class ArcFarmsRuntimeValidator(
     }
 
     private fun validateFarmZone(zone: FarmZoneSettings) {
+        val channelBlockage = MaterialRules.material(zone.specialIncidents.channelBlockageMaterial)
+        require(channelBlockage.isBlock && !channelBlockage.isAir) {
+            "Farm zone ${zone.id} special-incidents.channels.blockage.material must be a non-air block"
+        }
+        require(MaterialRules.material(zone.boarBreakout.shieldMaterial) == Material.SHIELD) {
+            "Farm zone ${zone.id} special-incidents.boar-breakout.shield-material must be SHIELD"
+        }
+        val raidGun = MaterialRules.material(zone.rivalRaid.gunMaterial)
+        require(raidGun.isItem && !raidGun.isAir) {
+            "Farm zone ${zone.id} special-incidents.rival-raid.gun-material must be a non-air item"
+        }
         require(!zone.rewards.requiresEconomy || economyAvailable()) {
             "Farm zone ${zone.id} money reward requires Vault and an economy provider"
         }
