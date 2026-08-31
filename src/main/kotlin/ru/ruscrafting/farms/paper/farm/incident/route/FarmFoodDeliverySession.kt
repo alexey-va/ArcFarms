@@ -89,4 +89,5 @@ internal data class FarmFoodDeliveryAmbushPlan(
     val maximum: Int,
     val afterFarmDistance: Double,
     val endSafeDistance: Double,
+    val placementSeed: Long,
 )

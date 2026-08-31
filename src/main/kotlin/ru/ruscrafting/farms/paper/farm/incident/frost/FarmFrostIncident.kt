@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper.farm.incident.frost
 
 import org.bukkit.Bukkit
+import org.bukkit.Color
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
@@ -31,6 +32,7 @@ import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockLedger
+import ru.ruscrafting.farms.paper.FarmNightShiftController
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.block
@@ -39,6 +41,7 @@ import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteCarryable
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.toFarmPlotPosition
 import java.util.UUID
@@ -58,12 +61,17 @@ internal class FarmFrostIncident(
     private val transitions: FarmTransitionSink,
     private val runtimes: () -> Collection<FarmRuntime>,
     private val clock: () -> Long,
+    private val night: FarmNightShiftController,
 ) {
+    private data class CarriedWood(val zoneId: String, val sequence: Long, val displayId: UUID)
+
     private val entityZoneKey = NamespacedKey(plugin, "farm_frost_zone")
     private val entityRoleKey = NamespacedKey(plugin, "farm_frost_role")
     private val itemZoneKey = NamespacedKey(plugin, "farm_frost_wood_zone")
     private val itemSequenceKey = NamespacedKey(plugin, "farm_frost_wood_sequence")
     private val sceneIds = mutableMapOf<String, MutableSet<UUID>>()
+    private val campfireMarkerIds = mutableMapOf<String, MutableMap<FarmPlotPosition, UUID>>()
+    private val carriedWood = mutableMapOf<UUID, CarriedWood>()
     private val knownCampfires = mutableMapOf<String, List<FarmPlotPosition>>()
     private val originalFreezeTicks = mutableMapOf<UUID, Int>()
 
@@ -137,20 +145,24 @@ internal class FarmFrostIncident(
 
     fun ensure(runtime: FarmRuntime) {
         if (!active(runtime)) {
-            if (knownCampfires.containsKey(runtime.settings.id) || sceneIds.containsKey(runtime.settings.id)) {
+            if (knownCampfires.containsKey(runtime.settings.id) || sceneIds.containsKey(runtime.settings.id) ||
+                campfireMarkerIds.containsKey(runtime.settings.id) || carriedWood.values.any { it.zoneId == runtime.settings.id }
+            ) {
                 clear(runtime, "inactive")
-            }
+            } else clearAtmosphere(runtime)
             clearFreeze(audience.players(runtime.region))
             return
         }
         if (!initialize(runtime)) return
         materializeCampfires(runtime, clock())
         ensureWoodpile(runtime)
+        syncAtmosphere(runtime)
     }
 
     fun update(runtime: FarmRuntime, now: Long) {
         if (!active(runtime) || !initialize(runtime)) {
             clearFreeze(audience.players(runtime.region))
+            clearAtmosphere(runtime)
             return
         }
         val frostSettings = runtime.settings.specialIncidents.frost
@@ -166,13 +178,20 @@ internal class FarmFrostIncident(
         }
         if (!active(runtime)) return
         materializeCampfires(runtime, now)
-        audience.players(runtime.region).forEach { player -> applyFreeze(player, runtime) }
+        val players = audience.players(runtime.region)
+        syncAtmosphere(runtime, players)
+        players.forEach { player ->
+            applyFreeze(player, runtime)
+            if (isCarrying(player, runtime.settings.id)) updateCarriedDisplay(player, runtime)
+            else removeCarriedDisplay(player.uniqueId, runtime.settings.id)
+        }
         if (settings().particles) emitCold(runtime)
     }
 
     fun onMove(player: Player, runtime: FarmRuntime?): Boolean {
         if (runtime == null || !active(runtime) || !access.hasAccess(player, runtime.settings.permission)) return false
         if (isServiceItem(player.inventory.itemInMainHand, runtime.settings.id) || carryingSlot(player, runtime.settings.id) >= 0) {
+            updateCarriedDisplay(player, runtime)
             val target = nearestCampfire(runtime, player.location) ?: return false
             val result = FarmFrostEngine.fuel(
                 runtime.state,
@@ -183,6 +202,7 @@ internal class FarmFrostIncident(
             )
             if (!result.accepted) return false
             removeOne(player, runtime.settings.id)
+            removeCarriedDisplay(player.uniqueId, runtime.settings.id)
             transitions.apply(runtime, result, player)
             materializeCampfires(runtime, clock())
             audience.showScreenTitle(player, MessageKey.FARM_FROST_FUELED, scope = "frost_fueled")
@@ -210,6 +230,7 @@ internal class FarmFrostIncident(
             audience.sendActionBar(player, MessageKey.FARM_FROST_INVENTORY_FULL)
             return true
         }
+        updateCarriedDisplay(player, runtime)
         audience.showScreenTitle(player, MessageKey.FARM_FROST_PICKED_UP, scope = "frost_pickup")
         if (settings().sounds) player.playSound(player.location, Sound.BLOCK_WOOD_HIT, 0.8f, 1.1f)
         return true
@@ -241,6 +262,7 @@ internal class FarmFrostIncident(
                 removed += item?.amount ?: 0
             }
         }
+        removeCarriedDisplay(player.uniqueId, zoneId)
         if (removed > 0) debug.event(
             "farm_frost_firewood_removed",
             "player" to player.name,
@@ -253,11 +275,16 @@ internal class FarmFrostIncident(
     fun clearPlayer(player: Player, reason: String) {
         removeServiceItems(player, reason = reason)
         clearFreeze(listOf(player))
+        runtimes().forEach { runtime -> night.clearAmbientPlayer(frostOwner(runtime.settings.id), player) }
     }
 
     fun refresh(runtime: FarmRuntime, reason: String) {
         clearScene(runtime.settings.id, reason)
-        if (active(runtime)) ensureWoodpile(runtime)
+        clearCampfireMarkers(runtime.settings.id)
+        if (active(runtime)) {
+            ensureWoodpile(runtime)
+            ensureCampfireMarkers(runtime)
+        }
     }
 
     fun clear(runtime: FarmRuntime, reason: String, retireDamage: Boolean = true) {
@@ -278,10 +305,12 @@ internal class FarmFrostIncident(
             )
         }
         clearScene(runtime.settings.id, reason)
+        clearCampfireMarkers(runtime.settings.id)
         audience.players(runtime.region).forEach { player ->
             removeServiceItems(player, runtime.settings.id, reason)
         }
         clearFreeze(audience.players(runtime.region))
+        clearAtmosphere(runtime)
         debug.event("farm_frost_cleared", "zone" to runtime.settings.id, "reason" to reason, "campfires" to positions.size)
     }
 
@@ -289,6 +318,9 @@ internal class FarmFrostIncident(
         runtimes().forEach { runtime -> clear(runtime, reason, retireDamage = false) }
         originalFreezeTicks.keys.mapNotNull(Bukkit::getPlayer).forEach { clearFreeze(listOf(it)) }
         sceneIds.clear()
+        campfireMarkerIds.clear()
+        carriedWood.values.forEach { carried -> Bukkit.getEntity(carried.displayId)?.remove() }
+        carriedWood.clear()
         knownCampfires.clear()
     }
 
@@ -311,6 +343,35 @@ internal class FarmFrostIncident(
             }
             block.setBlockData(data, false)
         }
+        ensureCampfireMarkers(runtime)
+    }
+
+    private fun ensureCampfireMarkers(runtime: FarmRuntime) {
+        val frost = runtime.state.frost ?: return
+        val visuals = runtime.settings.specialIncidents.frost
+        val expected = frost.campfires.mapTo(linkedSetOf()) { it.position }
+        val tracked = campfireMarkerIds.getOrPut(runtime.settings.id, ::linkedMapOf)
+        tracked.keys.filter { it !in expected }.toList().forEach { position ->
+            tracked.remove(position)?.let(Bukkit::getEntity)?.remove()
+        }
+        expected.forEach { position ->
+            val soil = position.block() ?: return@forEach
+            val at = soil.location.clone().add(0.5, 1.0 + visuals.campfireMarkerYOffset, 0.5)
+            if (!at.world.isChunkLoaded(at.blockX shr 4, at.blockZ shr 4)) return@forEach
+            val display = (tracked[position]?.let(Bukkit::getEntity) as? ItemDisplay)?.takeIf(Entity::isValid)
+                ?: at.world.spawn(at, ItemDisplay::class.java) { entity ->
+                    tag(entity, runtime.settings.id, ROLE_CAMPFIRE_MARKER)
+                    entity.isPersistent = false
+                    entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
+                }.also { tracked[position] = it.uniqueId }
+            display.teleport(at)
+            display.setItemStack(campfireMarkerItem(visuals))
+            display.viewRange = visuals.campfireMarkerViewRange
+            display.isGlowing = true
+            display.glowColorOverride = FROST_MARKER_COLOR
+            display.uniformScale(visuals.campfireMarkerScale)
+        }
+        if (tracked.isEmpty()) campfireMarkerIds.remove(runtime.settings.id)
     }
 
     private fun ensureWoodpile(runtime: FarmRuntime) {
@@ -390,6 +451,52 @@ internal class FarmFrostIncident(
         if (frost.woodpileCustomModelData > 0) item.editMeta { it.setCustomModelData(frost.woodpileCustomModelData) }
     }
 
+    private fun campfireMarkerItem(frost: FarmFrostSettings): ItemStack =
+        ItemStack(MaterialRules.material(frost.campfireMarkerMaterial)).also { item ->
+            if (frost.campfireMarkerCustomModelData > 0) {
+                item.editMeta { it.setCustomModelData(frost.campfireMarkerCustomModelData) }
+            }
+        }
+
+    private fun updateCarriedDisplay(player: Player, runtime: FarmRuntime) {
+        val visuals = runtime.settings.specialIncidents.frost
+        val current = carriedWood[player.uniqueId]
+        var display = current?.takeIf { it.zoneId == runtime.settings.id && it.sequence == runtime.state.sequence }
+            ?.displayId?.let(Bukkit::getEntity) as? ItemDisplay
+        if (display != null && display.world !== player.world) {
+            display.remove()
+            display = null
+        }
+        if (display?.isValid != true) {
+            current?.displayId?.let(Bukkit::getEntity)?.remove()
+            display = player.world.spawn(carriedLocation(player, visuals), ItemDisplay::class.java) { entity ->
+                tag(entity, runtime.settings.id, ROLE_CARRIED_WOOD)
+                entity.isPersistent = false
+                entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
+                entity.teleportDuration = 1
+            }
+            carriedWood[player.uniqueId] = CarriedWood(runtime.settings.id, runtime.state.sequence, display.uniqueId)
+        }
+        display.setItemStack(ItemStack(MaterialRules.material(visuals.fuelMaterial)))
+        display.viewRange = visuals.carriedViewRange
+        display.isGlowing = true
+        display.uniformScale(visuals.carriedScale)
+        if (display.world === player.world) display.teleport(carriedLocation(player, visuals))
+    }
+
+    private fun carriedLocation(player: Player, frost: FarmFrostSettings): Location = WorksiteCarryable.carriedLocation(
+        player,
+        frost.carriedForwardOffset,
+        frost.carriedYOffset,
+    )
+
+    private fun removeCarriedDisplay(playerId: UUID, zoneId: String? = null) {
+        val carried = carriedWood[playerId] ?: return
+        if (zoneId != null && carried.zoneId != zoneId) return
+        carriedWood.remove(playerId)
+        Bukkit.getEntity(carried.displayId)?.remove()
+    }
+
     private fun carryingSlot(player: Player, zoneId: String): Int {
         val sequence = runtimes().firstOrNull { it.settings.id == zoneId }?.state?.sequence ?: return -1
         return player.inventory.contents.indexOfFirst { item ->
@@ -421,11 +528,48 @@ internal class FarmFrostIncident(
 
     private fun emitCold(runtime: FarmRuntime) {
         if (!access.allowInteraction("farm-frost-particles:${runtime.settings.id}", 1_000)) return
+        val frost = runtime.settings.specialIncidents.frost
         runtime.state.frost?.campfires.orEmpty().forEach { fire ->
             val soil = fire.position.block() ?: return@forEach
-            val center = soil.location.add(0.5, 1.35, 0.5)
+            val center = soil.location.clone().add(0.5, 1.35, 0.5)
             soil.world.spawnParticle(Particle.SNOWFLAKE, center, 3, 0.35, 0.2, 0.35, 0.01)
+            var height = 0.45
+            while (height <= frost.campfireMarkerParticleHeight) {
+                soil.world.spawnParticle(
+                    Particle.DUST,
+                    center.clone().add(0.0, height, 0.0),
+                    1,
+                    0.08,
+                    0.08,
+                    0.08,
+                    0.0,
+                    Particle.DustOptions(FROST_MARKER_COLOR, 1.0f),
+                )
+                height += frost.campfireMarkerParticleSpacing
+            }
         }
+        audience.players(runtime.region).forEach { player ->
+            player.spawnParticle(Particle.SNOWFLAKE, player.location.clone().add(0.0, 1.2, 0.0), 5, 2.4, 1.0, 2.4, 0.01)
+        }
+    }
+
+    private fun syncAtmosphere(runtime: FarmRuntime, players: Collection<Player> = audience.players(runtime.region)) {
+        val frost = runtime.settings.specialIncidents.frost
+        val owner = frostOwner(runtime.settings.id)
+        night.syncAmbientTime(owner, players, frost.playerTime, frost.timeTransitionSeconds)
+        night.syncAmbientWeather(owner, players, frost.downfall)
+    }
+
+    private fun clearAtmosphere(runtime: FarmRuntime) {
+        val owner = frostOwner(runtime.settings.id)
+        night.clearAmbientTime(owner)
+        night.clearAmbientWeather(owner)
+    }
+
+    private fun frostOwner(zoneId: String): String = "frost:$zoneId"
+
+    private fun ItemDisplay.uniformScale(scale: Float) {
+        transformation = Transformation(Vector3f(), AxisAngle4f(), Vector3f(scale, scale, scale), AxisAngle4f())
     }
 
     private fun tag(entity: Entity, zoneId: String, role: String) {
@@ -443,11 +587,21 @@ internal class FarmFrostIncident(
         if (removed > 0) debug.event("farm_frost_scene_cleared", "zone" to zoneId, "reason" to reason, "entities" to removed)
     }
 
+    private fun clearCampfireMarkers(zoneId: String) {
+        campfireMarkerIds.remove(zoneId).orEmpty().values.forEach { id -> Bukkit.getEntity(id)?.remove() }
+        carriedWood.filterValues { it.zoneId == zoneId }.keys.toList().forEach { playerId ->
+            removeCarriedDisplay(playerId, zoneId)
+        }
+    }
+
     private fun active(runtime: FarmRuntime): Boolean = runtime.state.phase == FarmPhase.INCIDENT &&
         runtime.state.incidentType == FarmIncidentType.FROST
 
     private companion object {
         const val ROLE_DISPLAY = "WOODPILE_DISPLAY"
         const val ROLE_INTERACTION = "WOODPILE_INTERACTION"
+        const val ROLE_CAMPFIRE_MARKER = "CAMPFIRE_MARKER"
+        const val ROLE_CARRIED_WOOD = "CARRIED_WOOD"
+        val FROST_MARKER_COLOR: Color = Color.fromRGB(0x8b, 0xd3, 0xff)
     }
 }

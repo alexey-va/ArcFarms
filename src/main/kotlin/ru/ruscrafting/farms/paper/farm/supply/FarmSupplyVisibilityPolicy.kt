@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper.farm.supply
 
 import ru.ruscrafting.farms.domain.FarmIncidentType
+import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.paper.farm.FarmFieldPoiVisibility
@@ -16,7 +17,8 @@ internal object FarmSupplyVisibilityPolicy {
         else FarmFieldPoiVisibility.nearby(nearbyDistanceBlocks)
 
     private fun isNeeded(state: FarmShiftState, kind: FarmSupplyKind): Boolean = when (kind) {
-        FarmSupplyKind.TOOL -> state.phase == FarmPhase.PREPARATION
+        FarmSupplyKind.TOOL -> state.phase == FarmPhase.PREPARATION ||
+            (state.phase == FarmPhase.CARE && state.careType in setOf(FarmCareType.WEEDS, FarmCareType.DISEASE))
         FarmSupplyKind.SEEDS -> state.phase == FarmPhase.PLANTING
         FarmSupplyKind.WATER -> state.phase == FarmPhase.INCIDENT && state.incidentType == FarmIncidentType.DROUGHT
         FarmSupplyKind.ARCHERY -> state.phase == FarmPhase.INCIDENT && state.incidentType == FarmIncidentType.BIRDS

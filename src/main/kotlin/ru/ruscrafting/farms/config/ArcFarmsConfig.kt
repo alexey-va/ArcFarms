@@ -370,6 +370,20 @@ data class FarmFrostSettings(
     val woodpileYOffset: Double,
     val woodpileYawOffset: Float,
     val woodpileViewRange: Float,
+    val carriedScale: Float,
+    val carriedYOffset: Double,
+    val carriedForwardOffset: Double,
+    val carriedViewRange: Float,
+    val campfireMarkerMaterial: String,
+    val campfireMarkerCustomModelData: Int,
+    val campfireMarkerScale: Float,
+    val campfireMarkerYOffset: Double,
+    val campfireMarkerViewRange: Float,
+    val campfireMarkerParticleHeight: Double,
+    val campfireMarkerParticleSpacing: Double,
+    val playerTime: Long,
+    val timeTransitionSeconds: Int,
+    val downfall: Boolean,
 ) {
     init {
         require(campfireMinCount <= campfireMaxCount) { "frost campfire minimum must not exceed maximum" }
@@ -673,6 +687,7 @@ data class FarmRouteDeliverySettings(
     val portalLabelHeight: Double,
     val portalLabelScale: Float,
     val portalArrivalSideOffset: Double,
+    val portalActivationSeconds: Int,
     val ambushDistance: Double,
     val ambushMaxCount: Int,
     val ambushAfterFarmDistance: Double,
@@ -1326,6 +1341,8 @@ class ArcFarmsConfig private constructor(
                     portalArrivalSideOffset = section.finiteDouble(
                         "route-delivery.portal.arrival-side-offset", 3.0, 1.0, 6.0,
                     ),
+                    portalActivationSeconds = section.int("route-delivery.portal.activation-seconds", 3)
+                        .checked("route-delivery.portal.activation-seconds", 1, 15),
                     ambushDistance = section.finiteDouble(
                         "route-delivery.monsters.distance-per-ambush", 120.0, 32.0, 512.0,
                     ),
@@ -1771,6 +1788,41 @@ class ArcFarmsConfig private constructor(
                         woodpileYOffset = section.finiteDouble("special-incidents.frost.woodpile.y-offset", 0.0, -4.0, 4.0),
                         woodpileYawOffset = section.finiteFloat("special-incidents.frost.woodpile.yaw-offset", 0.0f, -360.0f, 360.0f),
                         woodpileViewRange = section.finiteFloat("special-incidents.frost.woodpile.view-range", 3.0f, 0.5f, 16.0f),
+                        carriedScale = section.finiteFloat("special-incidents.frost.carried.scale", 1.5f, 0.1f, 8.0f),
+                        carriedYOffset = section.finiteDouble("special-incidents.frost.carried.y-offset", 0.65, -1.0, 3.0),
+                        carriedForwardOffset = section.finiteDouble(
+                            "special-incidents.frost.carried.forward-offset", 0.65, 0.0, 2.0,
+                        ),
+                        carriedViewRange = section.finiteFloat(
+                            "special-incidents.frost.carried.view-range", 2.0f, 0.5f, 16.0f,
+                        ),
+                        campfireMarkerMaterial = materialName(
+                            section.string("special-incidents.frost.campfire-marker.material", "SOUL_LANTERN"),
+                        ),
+                        campfireMarkerCustomModelData = section.int(
+                            "special-incidents.frost.campfire-marker.custom-model-data", 0,
+                        ).checked("special-incidents.frost.campfire-marker.custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
+                        campfireMarkerScale = section.finiteFloat(
+                            "special-incidents.frost.campfire-marker.scale", 0.8f, 0.1f, 8.0f,
+                        ),
+                        campfireMarkerYOffset = section.finiteDouble(
+                            "special-incidents.frost.campfire-marker.y-offset", 2.6, 0.5, 8.0,
+                        ),
+                        campfireMarkerViewRange = section.finiteFloat(
+                            "special-incidents.frost.campfire-marker.view-range", 3.0f, 0.5f, 16.0f,
+                        ),
+                        campfireMarkerParticleHeight = section.finiteDouble(
+                            "special-incidents.frost.campfire-marker.particle-height", 4.0, 0.5, 12.0,
+                        ),
+                        campfireMarkerParticleSpacing = section.finiteDouble(
+                            "special-incidents.frost.campfire-marker.particle-spacing", 0.65, 0.2, 3.0,
+                        ),
+                        playerTime = section.int("special-incidents.frost.atmosphere.player-time", 13_000)
+                            .checked("special-incidents.frost.atmosphere.player-time", 0, 23_999).toLong(),
+                        timeTransitionSeconds = section.int(
+                            "special-incidents.frost.atmosphere.transition-seconds", 12,
+                        ).checked("special-incidents.frost.atmosphere.transition-seconds", 1, 60),
+                        downfall = section.boolean("special-incidents.frost.atmosphere.downfall", true),
                     ),
                 )
                 require(specialIncidents.marketMinimumSeconds <= specialIncidents.marketMaximumSeconds) {
@@ -1845,7 +1897,7 @@ class ArcFarmsConfig private constructor(
                     animalRescueMaxPlayerDistance = section.int("animal-rescue-max-player-distance", placementMaxPlayerDistance)
                         .checked("animal-rescue-max-player-distance", 4, 64),
                     animalDeliveryRadius = section.finiteDouble("animal-delivery-radius", 3.0, 1.0, 8.0),
-                    supplyNearbyViewDistance = section.finiteFloat("supply-nearby-view-distance", 30.0f, 1.0f, 192.0f),
+                    supplyNearbyViewDistance = section.finiteFloat("supply-nearby-view-distance", 15.0f, 1.0f, 192.0f),
                     displayViewRange = section.finiteFloat("display-view-range", 2.0f, 0.25f, 8.0f),
                     seederEveryShifts = section.int("seeder-every-shifts", 2)
                         .checked("seeder-every-shifts", 0, 16),

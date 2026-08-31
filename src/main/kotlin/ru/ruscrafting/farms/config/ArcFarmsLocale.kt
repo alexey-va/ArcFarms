@@ -369,6 +369,7 @@ enum class MessageKey(val path: String) {
     FARM_ROUTE_RIFLE_NAME("farm.route-rifle-name"),
     FARM_ROUTE_RIFLE_LORE("farm.route-rifle-lore"),
     FARM_ROUTE_PORTAL_LABEL("farm.route-portal-label"),
+    FARM_ROUTE_PORTAL_CHARGING("farm.route-portal-charging"),
     FARM_ROUTE_PORTAL_JOINED("farm.route-portal-joined"),
     FARM_ROUTE_PORTAL_JOINED_SUBTITLE("farm.route-portal-joined-subtitle"),
     FARM_ROUTE_REQUIRED("farm.route-required"),
@@ -682,12 +683,15 @@ class ArcFarmsLocale(
                 .mapTo(this) { "admin-inspect.tracking-kind.$it" }
             val adminStages = listOf(
                 "preparation", "planting", "harvesting", "seeder", "weeds", "irrigation", "pollination", "covers", "scarecrows",
-                "animals", "disease", "moles", "apples", "pests", "drought", "giant-crop", "channels", "night-shift", "market",
-                "delivery", "complete", "reset",
+                "animals", "disease", "moles", "apples", "pests", "drought", "birds", "food-delivery", "giant-crop", "channels",
+                "night-shift", "market", "processing", "barn-fire", "frost", "delivery", "complete", "reset",
             )
             adminStages.mapTo(this) { "admin.stage.$it" }
             adminStages.mapTo(this) { "admin.stage-description.$it" }
-            listOf("pests", "drought", "giant-crop", "channels", "night-shift", "market")
+            listOf(
+                "pests", "drought", "birds", "food-delivery", "giant-crop", "channels", "night-shift", "market", "processing",
+                "barn-fire", "frost",
+            )
                 .mapTo(this) { "admin.event-description.$it" }
             listOf("giant-crop", "channels", "night-shift", "market").forEach { incident ->
                 add("incident.$incident.name")

@@ -117,17 +117,27 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
             portal.interactionWidth shouldBe fixture.zone.routeDelivery.portalWidth
             portalLabel.location.pitch shouldBe 0f
             portalLabel.transformation.scale.x shouldBe fixture.zone.routeDelivery.portalLabelScale
-            delivery.interact(PlayerInteractEntityEvent(gunner, portal, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
-            gunner.location.distanceSquared(horse.location) shouldBe (9.0 plusOrMinus 1.0)
-            delivery.enterPortal(driver, portal.location, listOf(runtime)) shouldBe true
-            driver.location.distanceSquared(horse.location) shouldBe (9.0 plusOrMinus 1.0)
+            val passerby = fixture.paper.addPlayer("PortalPasserby")
+            passerby.teleport(portal.location)
+            delivery.enterPortal(passerby, portal.location, listOf(runtime)) shouldBe true
+            val outsidePortal = portal.location.clone().add(portal.interactionWidth.toDouble(), 0.0, 0.0)
+            passerby.teleport(outsidePortal)
+            delivery.enterPortal(passerby, outsidePortal, listOf(runtime)) shouldBe false
+            fixture.runDelayedTasks() shouldContainExactly listOf(60L)
+            horse.passengers shouldBe emptyList()
 
+            driver.teleport(portal.location)
+            delivery.enterPortal(driver, portal.location, listOf(runtime)) shouldBe true
             var seat = fixture.world.entities.filterIsInstance<Interaction>().filter(delivery::owns)
                 .minBy { it.location.distanceSquared(horse.location) }
-            // Either clickable entity fills the first free crew seat: driver first, then gunner.
-            delivery.interact(PlayerInteractEntityEvent(driver, seat, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
-            delivery.interact(PlayerInteractEntityEvent(gunner, horse, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
+            horse.passengers shouldBe emptyList()
+            fixture.runDelayedTasks() shouldContainExactly listOf(60L)
             horse.passengers.single() shouldBe driver
+
+            gunner.teleport(portal.location)
+            delivery.interact(PlayerInteractEntityEvent(gunner, portal, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
+            seat.passengers shouldBe emptyList()
+            fixture.runDelayedTasks() shouldContainExactly listOf(60L)
             seat.passengers.single() shouldBe gunner
             delivery.participants(runtime).map { it.uniqueId }.toSet() shouldBe
                 setOf(driver.uniqueId, gunner.uniqueId)
@@ -190,6 +200,7 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
                 FarmFoodDeliveryAmbushPlanner.distanceAt(route, farmExitIndex) +
                     runtime.settings.routeDelivery.ambushAfterFarmDistance,
                 runtime.settings.routeDelivery.ambushEndSafeDistance,
+                runtime.state.sequence,
             ).first()
             val ambushLocation = fixture.location(route[firstAmbush - 1])
             val ambushAnchor = fixture.location(route[(firstAmbush + 2).coerceAtMost(route.lastIndex)])

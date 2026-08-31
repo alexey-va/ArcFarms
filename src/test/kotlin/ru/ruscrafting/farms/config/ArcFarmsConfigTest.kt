@@ -577,6 +577,12 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().specialIncidents.marketSecondsPerCrop shouldBe 0.3
         settings.farms.single().specialIncidents.marketMinimumSeconds shouldBe 90
         settings.farms.single().specialIncidents.marketMaximumSeconds shouldBe 180
+        settings.farms.single().specialIncidents.frost.carriedForwardOffset shouldBe 0.65
+        settings.farms.single().specialIncidents.frost.campfireMarkerMaterial shouldBe "SOUL_LANTERN"
+        settings.farms.single().specialIncidents.frost.campfireMarkerParticleHeight shouldBe 4.0
+        settings.farms.single().specialIncidents.frost.playerTime shouldBe 13_000L
+        settings.farms.single().specialIncidents.frost.timeTransitionSeconds shouldBe 12
+        settings.farms.single().specialIncidents.frost.downfall shouldBe true
         settings.farms.single().pestNestCount shouldBe 3
         settings.farms.single().pestNestHealth shouldBe 3
         settings.farms.single().pestSpawnsPerNest shouldBe 3
@@ -605,6 +611,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().routeDelivery.horseSpeed shouldBe 0.17
         settings.farms.single().routeDelivery.horseJumpStrength shouldBe 0.45
         settings.farms.single().routeDelivery.portalArrivalSideOffset shouldBe 3.0
+        settings.farms.single().routeDelivery.portalActivationSeconds shouldBe 3
         settings.farms.single().routeDelivery.cartBackOffset shouldBe 2.15
         settings.farms.single().routeDelivery.cartYOffset shouldBe 0.875
         settings.farms.single().routeDelivery.gunnerSeatYOffset shouldBe -0.15
@@ -806,7 +813,7 @@ class ArcFarmsConfigTest : FunSpec({
         val configPath = root.resolve("config.yml")
         configPath.writeText(
             Files.readString(configPath).replace(
-                "supply-nearby-view-distance: 30.0",
+                "supply-nearby-view-distance: 15.0",
                 "supply-nearby-view-distance: 45.0",
             ),
         )

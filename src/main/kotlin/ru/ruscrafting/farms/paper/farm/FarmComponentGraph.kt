@@ -180,6 +180,7 @@ internal class FarmComponentGraph(
         clock = clock,
     )
     private val incidentBeds = FarmIncidentBedProvider(field::incidentBeds)
+    private val nightShift = FarmNightShiftController(plugin)
     private val frost = FarmFrostIncident(
         plugin = plugin,
         settings = settings,
@@ -194,8 +195,8 @@ internal class FarmComponentGraph(
         transitions = transitions,
         runtimes = runtimes::snapshot,
         clock = clock,
+        night = nightShift,
     )
-    private val nightShift = FarmNightShiftController(plugin)
     private val birds = FarmBirdIncident(
         plugin = plugin,
         settings = settings,

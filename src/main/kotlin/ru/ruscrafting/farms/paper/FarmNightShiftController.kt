@@ -7,6 +7,7 @@ import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.Particle
+import org.bukkit.WeatherType
 import org.bukkit.attribute.Attribute
 import org.bukkit.block.Block
 import org.bukkit.block.BlockFace
@@ -61,6 +62,7 @@ internal class FarmNightShiftController(
     )
 
     private val playerTimes = mutableMapOf<UUID, PlayerTimeState>()
+    private val playerWeatherOwners = mutableMapOf<UUID, String>()
     private val patrols = mutableMapOf<PatrolKey, UUID>()
     private val patrolRouteSteps = mutableMapOf<PatrolKey, Int>()
     private val patrolNextRouteAt = mutableMapOf<PatrolKey, Long>()
@@ -212,6 +214,7 @@ internal class FarmNightShiftController(
 
     fun clear(player: Player) {
         playerTimes[player.uniqueId]?.returning = true
+        if (playerWeatherOwners.remove(player.uniqueId) != null) player.resetPlayerWeather()
     }
 
     fun syncAmbientTime(
@@ -231,6 +234,33 @@ internal class FarmNightShiftController(
 
     fun clearAmbientTime(ownerId: String) {
         playerTimes.values.filter { it.zoneId == ownerId }.forEach { it.returning = true }
+    }
+
+    fun syncAmbientWeather(ownerId: String, players: Collection<Player>, downfall: Boolean) {
+        val expected = players.mapTo(hashSetOf(), Player::getUniqueId)
+        playerWeatherOwners.filterValues { it == ownerId }.keys.filter { it !in expected }.forEach { playerId ->
+            Bukkit.getPlayer(playerId)?.resetPlayerWeather()
+            playerWeatherOwners.remove(playerId)
+        }
+        players.forEach { player ->
+            playerWeatherOwners[player.uniqueId] = ownerId
+            if (downfall) player.setPlayerWeather(WeatherType.DOWNFALL) else player.resetPlayerWeather()
+        }
+    }
+
+    fun clearAmbientWeather(ownerId: String) {
+        playerWeatherOwners.filterValues { it == ownerId }.keys.toList().forEach { playerId ->
+            Bukkit.getPlayer(playerId)?.resetPlayerWeather()
+            playerWeatherOwners.remove(playerId)
+        }
+    }
+
+    fun clearAmbientPlayer(ownerId: String, player: Player) {
+        playerTimes[player.uniqueId]?.takeIf { it.zoneId == ownerId }?.returning = true
+        if (playerWeatherOwners[player.uniqueId] == ownerId) {
+            player.resetPlayerWeather()
+            playerWeatherOwners.remove(player.uniqueId)
+        }
     }
 
     fun updateExternalLight(ownerId: String, entity: Entity, level: Int) {
@@ -263,6 +293,7 @@ internal class FarmNightShiftController(
 
     fun clearZone(zoneId: String) {
         playerTimes.values.filter { it.zoneId == zoneId }.forEach { it.returning = true }
+        clearAmbientWeather(zoneId)
         clearPatrols(zoneId)
         reconciledSequences.remove(zoneId)
         receivingSafeZones.remove(zoneId)
@@ -270,7 +301,9 @@ internal class FarmNightShiftController(
 
     fun clearAll(players: Collection<Player>) {
         players.filter { it.uniqueId in playerTimes }.forEach(Player::resetPlayerTime)
+        players.filter { it.uniqueId in playerWeatherOwners }.forEach(Player::resetPlayerWeather)
         playerTimes.clear()
+        playerWeatherOwners.clear()
         patrolLights.keys.toList().forEach(::releaseLight)
         externalLights.keys.toList().forEach(::releaseExternalLight)
         entityLookup.inAllWorlds().asSequence().filter(::owns).forEach(Entity::remove)

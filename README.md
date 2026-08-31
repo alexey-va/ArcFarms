@@ -219,6 +219,11 @@ fill percentage; clicking the baker, mine supplier, or market trader repeats
 the current order. The customer waits beside receiving by default, while both
 `cart` and `customer` support administrator point overrides. The final route
 portal uses the exact `food-delivery-portal` point and falls back to receiving.
+Standing inside it for three seconds joins the active convoy: the first arrival
+takes the driver seat, the second takes the gunner seat, and later arrivals join
+as walking escorts. Ambush checkpoints are stable for one persisted delivery
+but sampled from different route bands on later deliveries, so combat does not
+repeat at the same coordinates every shift.
 When the crop
 quota is ready, every order enters the same two-step finale. A configured set
 of interactive harvest crates first appears at the last crop. Players pick the
@@ -316,7 +321,9 @@ are available through commands such as `/arcfarms admin point <zone> help`,
   save the administrator's current world, coordinates, yaw, and pitch for a farm
   operation point. Non-travel points must be inside the farm and off crop beds.
   `firewood` is required explicitly before frost can start and never inherits
-  `fire-equipment`; `food-delivery-portal` alone defaults to `receiving`.
+  `fire-equipment`; its woodpile, carried log, campfire markers and cold
+  atmosphere update from configuration during reload. `food-delivery-portal`
+  alone defaults to `receiving`.
   `processing` is the centre of the whole workshop: stand on a clear 9×5
   platform and face its front. ArcFarms validates the footprint and shows its
   outline plus the input, mechanism, and output columns immediately.

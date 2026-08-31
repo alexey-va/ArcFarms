@@ -48,6 +48,7 @@ import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
 import ru.ruscrafting.farms.paper.platform.*
 import java.util.random.RandomGenerator
 import java.util.logging.Level
+import java.util.UUID
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.floor
@@ -79,6 +80,7 @@ internal class FarmFoodDeliveryIncident(
     private val ambush = FarmFoodDeliveryAmbush(random, night, audience, debug, mobDespawns, vehiclePassengers)
     private val sessions = mutableMapOf<String, FarmFoodDeliverySession>()
     private val lastRouteNames = mutableMapOf<String, String>()
+    private val portalEntries = mutableMapOf<UUID, PortalEntry>()
     fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING)
 
     fun ownsServiceItem(item: ItemStack?): Boolean = gunner.owns(item)
@@ -260,7 +262,10 @@ internal class FarmFoodDeliveryIncident(
         }
         val session = sessions[runtime.settings.id] ?: return true
         val horse = session.horseId?.let(Bukkit::getEntity) as? Horse ?: return true
-        if (entityRole == ROLE_PORTAL) return joinDelivery(event.player, runtime, session, horse)
+        if (entityRole == ROLE_PORTAL) {
+            enterPortal(event.player, event.player.location, runtimes)
+            return true
+        }
         return mountAvailableSeat(event.player, runtime, session, horse)
     }
 
@@ -268,19 +273,36 @@ internal class FarmFoodDeliveryIncident(
         val runtime = runtimes.firstOrNull { candidate ->
             val session = sessions[candidate.settings.id] ?: return@firstOrNull false
             val portal = session.portalId?.let(Bukkit::getEntity) as? Interaction ?: return@firstOrNull false
-            active(candidate) && portal.isValid && destination.world === portal.world &&
-                abs(destination.x - portal.location.x) <= portal.interactionWidth / 2.0 &&
-                destination.y >= portal.location.y - 0.5 &&
-                destination.y <= portal.location.y + portal.interactionHeight &&
-                abs(destination.z - portal.location.z) <= portal.interactionWidth / 2.0
-        } ?: return false
+            active(candidate) && portal.isValid && contains(portal, destination)
+        } ?: run {
+            portalEntries.remove(player.uniqueId)
+            return false
+        }
         if (!access.hasAccess(player, runtime.settings.permission)) {
+            portalEntries.remove(player.uniqueId)
             audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return true
         }
         val session = sessions.getValue(runtime.settings.id)
-        val horse = session.horseId?.let(Bukkit::getEntity) as? Horse ?: return true
-        return joinDelivery(player, runtime, session, horse)
+        val entry = PortalEntry(runtime.settings.id, session.sequence)
+        if (portalEntries.putIfAbsent(player.uniqueId, entry) != null) return true
+        val seconds = runtime.settings.routeDelivery.portalActivationSeconds
+        audience.sendActionBar(
+            player,
+            MessageKey.FARM_ROUTE_PORTAL_CHARGING,
+            mapOf("seconds" to locale.text(seconds)),
+        )
+        if (!tasks.runLater(seconds * 20L) {
+            if (portalEntries[player.uniqueId] != entry) return@runLater
+            portalEntries.remove(player.uniqueId)
+            val activeSession = sessions[entry.zoneId]?.takeIf { it.sequence == entry.sequence } ?: return@runLater
+            if (!player.isOnline || !active(runtime) || !access.hasAccess(player, runtime.settings.permission)) return@runLater
+            val portal = activeSession.portalId?.let(Bukkit::getEntity) as? Interaction ?: return@runLater
+            if (!portal.isValid || !contains(portal, player.location)) return@runLater
+            val horse = activeSession.horseId?.let(Bukkit::getEntity) as? Horse ?: return@runLater
+            joinDelivery(player, runtime, activeSession, horse)
+        }) portalEntries.remove(player.uniqueId)
+        return true
     }
 
     private fun mountAvailableSeat(
@@ -359,6 +381,7 @@ internal class FarmFoodDeliveryIncident(
     }
 
     fun onQuit(player: Player) {
+        portalEntries.remove(player.uniqueId)
         sessions.forEach { (zoneId, session) ->
             val wasRider = session.riderId == player.uniqueId
             if (wasRider || session.gunnerId == player.uniqueId || player.uniqueId in session.escortIds ||
@@ -375,6 +398,7 @@ internal class FarmFoodDeliveryIncident(
     }
 
     fun clear(zoneId: String, reason: String) {
+        portalEntries.entries.removeIf { it.value.zoneId == zoneId }
         sessions.remove(zoneId)?.let { session ->
             removeSessionEntities(session)
             gunner.clear(zoneId, session, reason)
@@ -388,6 +412,7 @@ internal class FarmFoodDeliveryIncident(
         Bukkit.getWorlds().asSequence().flatMap { it.entities.asSequence() }.filter(::owns).forEach(Entity::remove)
         sessions.keys.forEach { night.clearAmbientTime(nightOwner(it)) }
         sessions.clear()
+        portalEntries.clear()
         gunner.cleanup(reason)
         night.releaseExternalLights("food:")
         debug.event("farm_food_route_cleanup", "reason" to reason)
@@ -400,6 +425,7 @@ internal class FarmFoodDeliveryIncident(
         session.portalLabelId?.let(Bukkit::getEntity)?.remove()
         session.portalId = null
         session.portalLabelId = null
+        portalEntries.entries.removeIf { it.value.zoneId == runtime.settings.id }
         ensurePortal(runtime, session)
         debug.event(
             "farm_food_route_portal_refreshed",
@@ -554,6 +580,7 @@ internal class FarmFoodDeliveryIncident(
             config.ambushMaxCount,
             config.ambushAfterFarmDistance,
             config.ambushEndSafeDistance,
+            runtime.state.sequence,
         )
         if (session.ambushPlan == plan) return
         val farmExitIndex = points.indexOfFirst { point -> !runtime.region.contains(location(point)) }
@@ -564,6 +591,7 @@ internal class FarmFoodDeliveryIncident(
                 plan.maximum,
                 FarmFoodDeliveryAmbushPlanner.distanceAt(points, exitIndex) + plan.afterFarmDistance,
                 plan.endSafeDistance,
+                plan.placementSeed,
             )
         }.orEmpty()
         session.replaceAmbushCheckpoints(candidates, plan.maximum, runtime.state.incidentProgress)
@@ -625,7 +653,11 @@ internal class FarmFoodDeliveryIncident(
         label.teleport(labelAt)
         textDisplays.render(
             label,
-            locale.render(MessageKey.FARM_ROUTE_PORTAL_LABEL, Bukkit.getConsoleSender()),
+            locale.render(
+                MessageKey.FARM_ROUTE_PORTAL_LABEL,
+                Bukkit.getConsoleSender(),
+                mapOf("seconds" to locale.text(configured.portalActivationSeconds)),
+            ),
             FarmTextDisplayStyle(viewRange = runtime.settings.displayViewRange),
         )
         label.transformation = Transformation(
@@ -675,6 +707,10 @@ internal class FarmFoodDeliveryIncident(
         val beside = horse.location.clone().add(cos(yaw) * side, 0.0, sin(yaw) * side)
         val target = safeSurface(beside) ?: horse.location.clone().add(0.0, 0.25, 0.0)
         if (!player.teleport(target.apply { this.yaw = horse.location.yaw }, PlayerTeleportEvent.TeleportCause.PLUGIN)) return true
+        if (!session.brokenDown && hasFreeSeat(session, horse)) {
+            mountAvailableSeat(player, runtime, session, horse)
+            if (session.riderId == player.uniqueId || session.gunnerId == player.uniqueId) return true
+        }
         session.escortIds += player.uniqueId
         session.registerParticipant(player.uniqueId)
         if (!gunner.armEscort(player, runtime, session)) {
@@ -691,6 +727,19 @@ internal class FarmFoodDeliveryIncident(
         )
         return true
     }
+
+    private fun hasFreeSeat(session: FarmFoodDeliverySession, horse: Horse): Boolean {
+        if (horse.passengers.none { it is Player }) return true
+        val seat = session.gunnerSeatId?.let(Bukkit::getEntity) as? Interaction ?: return false
+        return seat.passengers.none { it is Player }
+    }
+
+    private fun contains(portal: Interaction, location: Location): Boolean =
+        location.world === portal.world &&
+            abs(location.x - portal.location.x) <= portal.interactionWidth / 2.0 &&
+            location.y >= portal.location.y - 0.5 &&
+            location.y <= portal.location.y + portal.interactionHeight &&
+            abs(location.z - portal.location.z) <= portal.interactionWidth / 2.0
 
     private fun spawnCart(runtime: FarmRuntime, at: Location): ItemDisplay =
         runtime.region.world.spawn(at, ItemDisplay::class.java) { display ->
@@ -868,6 +917,7 @@ internal class FarmFoodDeliveryIncident(
         return null
     }
     private companion object {
+        data class PortalEntry(val zoneId: String, val sequence: Long)
         const val TRAIL_INTERVAL_TICKS = 10L
         const val ROUTE_SOUND_INTERVAL = 8
         const val ROLE_HORSE = "horse"

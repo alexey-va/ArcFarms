@@ -190,7 +190,7 @@ farm-zones:
     animal-rescue-max-player-distance: 28
     animal-delivery-radius: 3.0
     # Idle supply displays (hoe, seeds, water, bow and fire equipment) are visible within this many blocks.
-    supply-nearby-view-distance: 30.0
+    supply-nearby-view-distance: 15.0
     display-view-range: 2.0
     seeder-every-shifts: 2
     # Machinery may combine this many nearby same-height beds into one field.
@@ -351,6 +351,11 @@ farm-zones:
         # Portable fallback. The server profile replaces this with the verified IA
         # firewood model and its analyzer-proven ground contact offset.
         woodpile: {material: OAK_LOG, custom-model-data: 0, display-transform: GROUND, scale: 1.0, y-offset: 0.0, yaw-offset: 0.0, view-range: 3.0}
+        # Carried logs follow the same shared front-of-player geometry as harvest crates.
+        carried: {scale: 1.5, y-offset: 0.65, forward-offset: 0.65, view-range: 2.0}
+        # The glowing lantern and sparse blue particle column make every field fire readable at distance.
+        campfire-marker: {material: SOUL_LANTERN, custom-model-data: 0, scale: 0.8, y-offset: 2.6, view-range: 3.0, particle-height: 4.0, particle-spacing: 0.65}
+        atmosphere: {player-time: 13000, transition-seconds: 12, downfall: true}
     # Admin points are contact surfaces: stand on the floor/shelf and save the point.
     # Runtime profiles may replace these portable vanilla visuals with verified IA models
     # and their exact grounding y-offsets.
@@ -413,7 +418,7 @@ farm-zones:
       # Riders are dismounted at the destination, then returned to the farm after this pause.
       return-delay-seconds: 3
       # The admin food-delivery-portal point is exact; receiving is its fallback.
-      portal: {width: 3.6, height: 3.2, label-height: 3.35, label-scale: 1.8, arrival-side-offset: 3.0}
+      portal: {width: 3.6, height: 3.2, label-height: 3.35, label-scale: 1.8, arrival-side-offset: 3.0, activation-seconds: 3}
       cart-scale: 4.4
       cart-back-offset: 2.15
       # cart_2 reaches -0.825 blocks at scale 4.4 after its JSON GROUND transform;
