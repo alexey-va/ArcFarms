@@ -185,10 +185,21 @@ class ArcFarmsConfigTest : FunSpec({
         settings.capital.purchaseOptions shouldContainExactly listOf(1, 5, 10, 20)
     }
 
+    test("yaml boolean false remains compatible with the OFF enterprise mode") {
+        val root = resourceTree()
+        Config(root, "config.yml").also { config ->
+            config.setBoolean("enterprises.farm.mode", false)
+            config.saveStrict()
+        }
+
+        ArcFarmsConfig.inspect(root).enterprises.getValue(ActivityKind.FARM).mode shouldBe
+            WorksiteEnterpriseMode.OFF
+    }
+
     test("farm enterprise rejects unsafe modes, policy steps, unknown tariffs, and underfunded licenses") {
         val invalidMode = resourceTree()
         invalidMode.resolve("config.yml").writeText(
-            Files.readString(invalidMode.resolve("config.yml")).replace("mode: OFF", "mode: ACTIVE"),
+            Files.readString(invalidMode.resolve("config.yml")).replace("mode: \"OFF\"", "mode: ACTIVE"),
         )
         shouldThrow<IllegalStateException> { ArcFarmsConfig.inspect(invalidMode) }
             .message shouldContain "mode must be OFF, SHADOW or LIVE"

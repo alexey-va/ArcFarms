@@ -259,7 +259,7 @@ private fun liveConfig(): ArcFarmsConfig {
     val root = Files.createTempDirectory("arcfarms-enterprise-live-")
     val resource = requireNotNull(WorksiteEnterpriseServiceIntegrationTest::class.java.classLoader.getResource("config.yml"))
     val config = root.resolve("config.yml")
-    config.writeText(Files.readString(java.nio.file.Path.of(resource.toURI())).replaceFirst("mode: OFF", "mode: LIVE"))
+    config.writeText(Files.readString(java.nio.file.Path.of(resource.toURI())).replaceFirst("mode: \"OFF\"", "mode: LIVE"))
     return ArcFarmsConfig.inspect(root)
 }
 

@@ -2536,7 +2536,9 @@ class ArcFarmsConfig private constructor(
         ): WorksiteEnterpriseSettings {
             val section = config.section(path)
             val configuredMode = section.string("mode", WorksiteEnterpriseMode.OFF.name).trim().uppercase().let { raw ->
-                WorksiteEnterpriseMode.entries.firstOrNull { it.name == raw }
+                // YAML 1.1 readers (including Bukkit's) may deserialize an unquoted OFF as boolean false.
+                if (raw == "FALSE") WorksiteEnterpriseMode.OFF
+                else WorksiteEnterpriseMode.entries.firstOrNull { it.name == raw }
                     ?: error("$path.mode must be OFF, SHADOW or LIVE")
             }
             val mode = if (ordersByWorksite.isEmpty()) WorksiteEnterpriseMode.OFF else configuredMode

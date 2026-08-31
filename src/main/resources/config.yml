@@ -76,7 +76,7 @@ state:
 # Keep LIVE off until the shadow report has been reviewed. The same policy shape fits future worksites.
 enterprises:
   farm:
-    mode: OFF
+    mode: "OFF"
     company-id: communal_farm
     worksite-id: communal_farm
     license-gross-envelope: 2000000.00
