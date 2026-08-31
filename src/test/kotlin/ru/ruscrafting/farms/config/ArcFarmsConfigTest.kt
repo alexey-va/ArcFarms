@@ -434,7 +434,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().animalRescueMinSpacing shouldBe 8.0
         settings.farms.single().animalRescueMaxPlayerDistance shouldBe 28
         settings.farms.single().animalDeliveryRadius shouldBe 3.0
-        settings.farms.single().supplyNearbyViewDistance shouldBe 30.0f
+        settings.farms.single().supplyNearbyViewDistance shouldBe 15.0f
         settings.farms.single().displayViewRange shouldBe 2.0f
         settings.farms.single().seederEveryShifts shouldBe 2
         settings.farms.single().diseaseInitialSpots shouldBe 2
