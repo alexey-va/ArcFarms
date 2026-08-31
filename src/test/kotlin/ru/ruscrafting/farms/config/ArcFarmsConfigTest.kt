@@ -1159,6 +1159,24 @@ class ArcFarmsConfigTest : FunSpec({
         ArcFarmsConfig.inspect(relayRoot).enterprises.getValue(ActivityKind.FARM).mode shouldBe WorksiteEnterpriseMode.OFF
     }
 
+    test("config synchronization preserves the environment-owned enterprise tariff set") {
+        val root = resourceTree()
+        Config(root, "config.yml").also { config ->
+            config.setStructured(
+                "enterprises.farm.order-gross-tariffs",
+                linkedMapOf("bakery_supply" to "10000.00"),
+            )
+            config.saveStrict()
+        }
+
+        val settings = ArcFarmsConfig.load(root)
+
+        settings.enterprises.getValue(ActivityKind.FARM).orderGrossTariffsCents.keys shouldBe
+            setOf("bakery_supply")
+        Config(root, "config.yml").keys("enterprises.farm.order-gross-tariffs") shouldBe
+            setOf("bakery_supply")
+    }
+
     test("locale reload publishes one validated generation atomically") {
         val root = resourceTree()
         val settings = ArcFarmsConfig.inspect(root)

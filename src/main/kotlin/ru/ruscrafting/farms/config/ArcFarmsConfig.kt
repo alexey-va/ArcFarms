@@ -1026,7 +1026,8 @@ class ArcFarmsConfig private constructor(
 
     companion object {
         private const val MAX_CUSTOM_MODEL_DATA = Int.MAX_VALUE
-        private val ENVIRONMENT_OWNED_ROOT_KEYS = setOf("farm-zones", "lumber-zones", "mine-zones")
+        private val ENVIRONMENT_OWNED_ROOT_KEYS =
+            setOf("enterprises", "farm-zones", "lumber-zones", "mine-zones")
 
         /** Always reads the accepted on-disk snapshot; hot reload must not leave a stale startup cache behind. */
         fun load(dataRoot: Path): ArcFarmsConfig = synchronizeAndParse(Config(dataRoot, "config.yml"))
