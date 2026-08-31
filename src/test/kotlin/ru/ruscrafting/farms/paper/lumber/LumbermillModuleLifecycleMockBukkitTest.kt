@@ -45,6 +45,19 @@ class LumbermillModuleLifecycleMockBukkitTest : FunSpec({
         graph.module.states().getValue("sawmill") shouldBe persisted
         graph.mutableRuntimeCollectionCount shouldBe 1
     }
+
+    test("v2 runtime preserves configured processing-per-use") {
+        paper.server.addSimpleWorld("world")
+
+        val runtime = LumberRuntimeFactory.build(
+            listOf(settings().copy(processingPerUse = 2)),
+            emptyMap(),
+            cooldownMillis = 5_000L,
+            regions = CuboidRegionGateway(),
+        ).single()
+
+        runtime.rules().processingPerUse shouldBe 2
+    }
 })
 
 private object EmptyLumberJournal : LumberRecoveryJournal {

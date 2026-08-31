@@ -292,6 +292,7 @@ internal class FarmComponentGraph(
         runtimes = runtimes::snapshot,
         clock = clock,
         perkActive = perks::active,
+        harvestAreaRadius = { runtime -> runtime.settings.perks.harvestAreaRadius },
     )
     private val special = FarmSpecialIncidentController(
         plugin = plugin,

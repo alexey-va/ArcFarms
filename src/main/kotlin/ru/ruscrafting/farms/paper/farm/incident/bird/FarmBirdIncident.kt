@@ -296,6 +296,8 @@ internal class FarmBirdIncident(
         debug.event("farm_birds_cleanup", "reason" to reason)
     }
 
+    fun beforeReload() = pendingDamagePlans.clear()
+
     private fun reconcile(runtime: FarmRuntime) {
         if (reconciledSequences[runtime.settings.id] == runtime.state.sequence) return
         val retained = mutableSetOf<UUID>()

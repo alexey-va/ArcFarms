@@ -19,6 +19,7 @@ internal data class FarmScoreboardSession(
     val scoreboard: Scoreboard,
     val previous: Scoreboard,
     var view: FarmScoreboardView? = null,
+    var rendered: FarmTabScoreboardSnapshot? = null,
 )
 
 internal data class FarmTabScoreboardSnapshot(
@@ -26,40 +27,51 @@ internal data class FarmTabScoreboardSnapshot(
     val lines: List<String>,
 )
 
+internal interface FarmScoreboardPort {
+    fun update(player: Player, zoneId: String, view: FarmScoreboardView)
+    fun active(playerId: UUID): Boolean
+    fun tabTitle(playerId: UUID): String
+    fun tabLine(playerId: UUID, line: Int): String
+    fun reconcile(expected: Set<UUID>)
+    fun remove(player: Player, reason: String)
+    fun restoreAll(reason: String)
+}
+
 internal class FarmScoreboardController(
     private val renderer: FarmScoreboardRenderer,
     private val settings: () -> FarmScoreboardSettings,
     private val debug: ArcFarmsDebug,
-) {
+) : FarmScoreboardPort {
     private val legacy = LegacyComponentSerializer.legacySection()
     private val sessions = mutableMapOf<UUID, FarmScoreboardSession>()
     private val suppressed = mutableSetOf<UUID>()
     private val tabSnapshots = ConcurrentHashMap<UUID, FarmTabScoreboardSnapshot>()
 
-    fun update(player: Player, zoneId: String, view: FarmScoreboardView) {
+    override fun update(player: Player, zoneId: String, view: FarmScoreboardView) {
         val current = settings()
         if (!current.enabled) {
             remove(player, "disabled")
             return
         }
-        tabSnapshots[player.uniqueId] = FarmTabScoreboardSnapshot(
+        val rendered = FarmTabScoreboardSnapshot(
             title = legacy.serialize(renderer.title(player)),
             lines = renderer.rows(view, player).map(legacy::serialize),
         )
+        tabSnapshots[player.uniqueId] = rendered
         if (current.provider == FarmScoreboardProvider.TAB) {
             restoreBukkit(player, "tab_provider")
             return
         }
-        updateBukkit(player, zoneId, view, current)
+        updateBukkit(player, zoneId, view, rendered, current)
     }
 
-    fun active(playerId: UUID): Boolean = tabSnapshots.containsKey(playerId)
+    override fun active(playerId: UUID): Boolean = tabSnapshots.containsKey(playerId)
 
-    fun tabTitle(playerId: UUID): String = tabSnapshots[playerId]?.title.orEmpty()
+    override fun tabTitle(playerId: UUID): String = tabSnapshots[playerId]?.title.orEmpty()
 
-    fun tabLine(playerId: UUID, line: Int): String = tabSnapshots[playerId]?.lines?.getOrNull(line - 1).orEmpty()
+    override fun tabLine(playerId: UUID, line: Int): String = tabSnapshots[playerId]?.lines?.getOrNull(line - 1).orEmpty()
 
-    fun reconcile(expected: Set<UUID>) {
+    override fun reconcile(expected: Set<UUID>) {
         (tabSnapshots.keys - expected).forEach(tabSnapshots::remove)
         (sessions.keys - expected).toList().forEach { playerId ->
             Bukkit.getPlayer(playerId)?.let { restoreBukkit(it, "not_in_active_farm") }
@@ -68,12 +80,12 @@ internal class FarmScoreboardController(
         suppressed.retainAll(expected)
     }
 
-    fun remove(player: Player, reason: String) {
+    override fun remove(player: Player, reason: String) {
         tabSnapshots.remove(player.uniqueId)
         restoreBukkit(player, reason)
     }
 
-    fun restoreAll(reason: String) {
+    override fun restoreAll(reason: String) {
         tabSnapshots.clear()
         sessions.keys.toList().forEach { playerId ->
             Bukkit.getPlayer(playerId)?.let { restoreBukkit(it, reason) }
@@ -86,11 +98,23 @@ internal class FarmScoreboardController(
         player: Player,
         zoneId: String,
         view: FarmScoreboardView,
+        rendered: FarmTabScoreboardSnapshot,
         current: FarmScoreboardSettings,
     ) {
         val playerId = player.uniqueId
-        if (playerId in suppressed) return
+        if (playerId in suppressed) {
+            if (!current.replaceExisting) return
+            suppressed.remove(playerId)
+        }
         var session = sessions[playerId]
+        if (
+            session != null && !current.replaceExisting &&
+            session.previous.getObjective(DisplaySlot.SIDEBAR) != null
+        ) {
+            restoreBukkit(player, "replace_existing_disabled")
+            suppressed += playerId
+            return
+        }
         if (session != null && session.zoneId != zoneId) {
             restoreBukkit(player, "changed_zone")
             session = null
@@ -115,15 +139,22 @@ internal class FarmScoreboardController(
             }
             session = FarmScoreboardSession(zoneId, scoreboard, previous)
             sessions[playerId] = session
-            renderBukkit(player, session, view)
+            renderBukkit(player, session, view, rendered)
             player.scoreboard = scoreboard
             debug.message("scoreboard", "local", "farm:$zoneId", player, renderer.title(player))
             return
         }
-        if (session.view != view) renderBukkit(player, session, view)
+        if (session.view != view || session.rendered != rendered) {
+            renderBukkit(player, session, view, rendered)
+        }
     }
 
-    private fun renderBukkit(player: Player, session: FarmScoreboardSession, view: FarmScoreboardView) {
+    private fun renderBukkit(
+        player: Player,
+        session: FarmScoreboardSession,
+        view: FarmScoreboardView,
+        rendered: FarmTabScoreboardSnapshot,
+    ) {
         val objective = requireNotNull(session.scoreboard.getObjective(FARM_SCOREBOARD_OBJECTIVE)) {
             "Farm scoreboard objective disappeared for ${player.name}"
         }
@@ -136,6 +167,7 @@ internal class FarmScoreboardController(
             }
         }
         session.view = view
+        session.rendered = rendered
         debug.event(
             "farm_scoreboard_updated",
             "player" to player.name,

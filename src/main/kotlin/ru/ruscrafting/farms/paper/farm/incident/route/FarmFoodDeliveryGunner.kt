@@ -271,7 +271,7 @@ internal class FarmFoodDeliveryGunner(
         shotAt[player.uniqueId] = nowTick
         val start = player.eyeLocation.clone().add(player.eyeLocation.direction.multiply(0.55))
         val direction = player.eyeLocation.direction.normalize()
-        val hit = entityRayTrace.trace(start, direction, config.rifleRange, RAY_SIZE) { entity ->
+        val hit = entityRayTrace.trace(start, direction, config.rifleRange, config.rifleRaySize) { entity ->
             entity.uniqueId in session.monsterIds && entity.isValid && !entity.isDead
         }
         val end = hit?.hitPosition?.toLocation(player.world) ?: start.clone().add(direction.clone().multiply(config.rifleRange))
@@ -296,7 +296,6 @@ internal class FarmFoodDeliveryGunner(
     }
 
     private companion object {
-        const val RAY_SIZE = 0.65
         const val PARTICLE_SPACING = 1.2
         const val MAX_PARTICLES = 72
         const val TRAIL_POINT_DISTANCE_SQUARED = 0.16

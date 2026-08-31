@@ -142,6 +142,7 @@ private fun deliveryFixture(world: WorldMock, plugin: Plugin, crates: Int): Deli
     val zone = mockk<FarmZoneSettings> {
         every { id } returns "communal_farm"
         every { this@mockk.delivery } returns delivery
+        every { deliveryCarriedForwardOffset } returns 0.65
     }
     val runtime = FarmRuntime(
         settings = zone,

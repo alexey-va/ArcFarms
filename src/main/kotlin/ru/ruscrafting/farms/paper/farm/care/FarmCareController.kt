@@ -245,7 +245,9 @@ internal class FarmCareController(
             audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return
         }
-        if (!access.allowInteraction("farm-care-target:$zoneId:$targetId:${player.uniqueId}", 250)) return
+        if (!access.allowInteraction(
+                "farm-care-target:$zoneId:$targetId:${player.uniqueId}", runtime.settings.inputCooldowns.careTargetMillis,
+            )) return
         if (role == FarmCareRole.PEN) {
             audience.sendActionBar(player, MessageKey.FARM_CARE_ANIMAL_PEN)
             return
@@ -308,7 +310,7 @@ internal class FarmCareController(
                 (entity as? Mob)?.let { mob ->
                     mob.isGlowing = true
                     mob.setLeashHolder(player)
-                    mob.pathfinder.moveTo(player, 1.15)
+                    mob.pathfinder.moveTo(player, runtime.settings.careAnimalFollowSpeed)
                 }
                 audience.sendActionBar(player, MessageKey.FARM_CARE_ANIMAL_FOLLOWING)
                 debug.event("farm_care_animal_following", "zone" to zoneId, "target" to targetId, "player" to player.name)
@@ -635,10 +637,22 @@ internal class FarmCareController(
             }
             if (actor == null) {
                 releaseFollower(key, mob, "actor_unavailable")
-            } else if (mob.location.distanceSquared(actor.location) > 2.25) {
+            } else if (
+                mob.location.distanceSquared(actor.location) >
+                    runtime.settings.careAnimalFollowDistance * runtime.settings.careAnimalFollowDistance
+            ) {
                 if (!mob.isLeashed || runCatching { mob.leashHolder }.getOrNull() != actor) mob.setLeashHolder(actor)
-                mob.pathfinder.moveTo(actor, 1.25)
-                pullFarmAnimalTowardHolder(mob, actor)
+                mob.pathfinder.moveTo(actor, runtime.settings.careAnimalFollowSpeed)
+                pullFarmAnimalTowardHolder(
+                    mob = mob,
+                    holder = actor,
+                    followDistance = runtime.settings.careAnimalFollowDistance,
+                    followSpeed = runtime.settings.careAnimalFollowSpeed,
+                    impulseBase = runtime.settings.careAnimalFollowImpulseBase,
+                    impulsePerBlock = runtime.settings.careAnimalFollowImpulsePerBlock,
+                    impulseMax = runtime.settings.careAnimalFollowImpulseMax,
+                    smoothing = runtime.settings.careAnimalFollowImpulseSmoothing,
+                )
             }
         }
     }

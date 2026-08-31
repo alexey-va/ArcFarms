@@ -16,6 +16,13 @@ import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItemOwner
 import java.util.UUID
 
+data class ActivityStatus(
+    val kind: ActivityKind,
+    val id: String,
+    val phasePath: String,
+    val progress: String,
+)
+
 /** Common orchestration boundary for independently-owned worksite lifecycles. */
 internal interface WorksiteModule<S> : RuntimeComponent {
     val kind: ActivityKind

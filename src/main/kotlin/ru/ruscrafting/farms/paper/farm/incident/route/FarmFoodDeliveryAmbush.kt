@@ -77,11 +77,16 @@ internal class FarmFoodDeliveryAmbush(
         var spawned = 0
         repeat(requested) { index ->
             val angle = random.nextDouble() * Math.PI * 2 + index * (Math.PI * 2 / requested.coerceAtLeast(1))
-            val distance = config.monsterSpawnDistance * random.nextDouble(0.8, 1.15)
+            val distance = config.monsterSpawnDistance * random.nextDouble(
+                config.monsterSpawnMinMultiplier,
+                config.monsterSpawnMaxMultiplier,
+            )
             val ground = safeSurface(anchor.clone().add(cos(angle) * distance, 0.0, sin(angle) * distance)) ?: return@repeat
             if (runtime.region.contains(ground)) return@repeat
             val type = EntityType.valueOf(config.monsterTypes[random.nextInt(config.monsterTypes.size)])
-            val spawn = if (type == EntityType.PHANTOM) ground.clone().add(0.0, PHANTOM_SPAWN_HEIGHT, 0.0) else ground
+            val spawn = if (type == EntityType.PHANTOM) {
+                ground.clone().add(0.0, config.phantomSpawnHeight, 0.0)
+            } else ground
             val monster = spawn.world.spawnEntity(spawn, type) as Mob
             monster.isPersistent = false
             mobDespawns.setRemoveWhenFarAway(monster, true)
@@ -107,6 +112,7 @@ internal class FarmFoodDeliveryAmbush(
         }
         if (spawned == 0) return
         session.pendingAmbushCheckpoints.removeFirst()
+        session.ambushesStarted++
         session.brokenDown = true
         setOfNotNull(session.riderId, session.gunnerId).forEach(session.ambushCrewIds::add)
         vehiclePassengers.ejectAll(horse)
@@ -123,13 +129,14 @@ internal class FarmFoodDeliveryAmbush(
         )
     }
 
-    fun updateLights(zoneId: String, session: FarmFoodDeliverySession, level: Int) {
+    fun updateLights(zoneId: String, session: FarmFoodDeliverySession, level: Int, movementSpeed: Double) {
         val defenders = players(session).filter { it.isOnline }
         session.monsterIds.forEach { id ->
             val monster = Bukkit.getEntity(id) as? Mob
             if (monster == null || !monster.isValid || monster.isDead) releaseLight(zoneId, id)
             else {
                 monster.isGlowing = true
+                monster.getAttribute(Attribute.MOVEMENT_SPEED)?.baseValue = movementSpeed
                 defenders.asSequence()
                     .filter { it.world === monster.world && !it.isDead }
                     .minByOrNull { it.location.distanceSquared(monster.location) }
@@ -148,7 +155,4 @@ internal class FarmFoodDeliveryAmbush(
 
     private fun lightOwner(zoneId: String, id: UUID): String = "food:$zoneId:$id"
 
-    private companion object {
-        const val PHANTOM_SPAWN_HEIGHT = 7.0
-    }
 }

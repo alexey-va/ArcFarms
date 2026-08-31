@@ -22,3 +22,27 @@ data class MineOrderSettings(
 
     fun domain(): MineOrder = MineOrder(id, incidentTypes)
 }
+
+data class MineCartVisualSettings(
+    val material: String = "MINECART",
+    val customModelData: Int = 0,
+    val itemModel: String? = null,
+    val displayTransform: FarmItemDisplayTransform = FarmItemDisplayTransform.GROUND,
+    val scale: Float = 1.0f,
+    val yOffset: Double = 0.15,
+    val viewRange: Float = 2.0f,
+    val interactionWidth: Float = 1.5f,
+    val interactionHeight: Float = 1.0f,
+) {
+    init {
+        require(customModelData >= 0) { "Mine cart custom-model-data must not be negative" }
+        require(itemModel == null || itemModel.matches(Regex("[a-z0-9._-]+:[a-z0-9/._-]+"))) {
+            "Mine cart item-model must be a namespaced item model"
+        }
+        require(scale in 0.05f..8.0f) { "Mine cart scale must be in 0.05..8.0" }
+        require(yOffset in -4.0..4.0) { "Mine cart y-offset must be in -4.0..4.0" }
+        require(viewRange in 0.25f..64.0f) { "Mine cart view-range must be in 0.25..64.0" }
+        require(interactionWidth in 0.1f..16.0f) { "Mine cart interaction-width must be in 0.1..16.0" }
+        require(interactionHeight in 0.1f..16.0f) { "Mine cart interaction-height must be in 0.1..16.0" }
+    }
+}

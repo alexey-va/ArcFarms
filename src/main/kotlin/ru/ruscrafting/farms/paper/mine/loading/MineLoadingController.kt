@@ -108,7 +108,7 @@ internal class MineLoadingController(
         val carry = carried[player.uniqueId] ?: return false
         val runtime = registry.byId(carry.zoneId) ?: return releasePlayer(player.uniqueId)
         val point = extraction.deliveryPoint(runtime) ?: return false
-        if (!near(to, point, 2.0)) return false
+        if (!near(to, point, runtime.settings.loadingDeliveryRadius)) return false
         return deliver(runtime, player)
     }
 

@@ -40,7 +40,8 @@ internal class PaperWorksiteAdapter(
     private val debug: ArcFarmsDebug,
     private val network: ActivityNetworkGateway,
     private val stats: ActivityStatsIndex,
-    private val supervisor: RuntimeTaskSupervisor,
+    private val lifecycleSupervisor: RuntimeTaskSupervisor,
+    private val delayedSupervisor: RuntimeTaskSupervisor,
     private val operational: () -> Boolean,
     private val access: (Player, String) -> Boolean,
     private val interaction: (String, Long) -> Boolean,
@@ -221,7 +222,7 @@ internal class PaperWorksiteAdapter(
             if (settings().sounds) player.playSound(player.location, Sound.ENTITY_FIREWORK_ROCKET_LAUNCH, 0.7f, 1.15f)
         }
         if (recipients.isEmpty()) return
-        supervisor.runLater(8L) {
+        delayedSupervisor.runLater(8L) {
             recipients.filter(Player::isOnline).forEach { player ->
                 if (settings().particles) {
                     player.spawnParticle(Particle.FIREWORK, player.location.add(0.0, 1.8, 0.0), 10, 0.9, 0.7, 0.9, 0.04)
@@ -313,12 +314,16 @@ internal class PaperWorksiteAdapter(
 
     override fun persistAsync(): CompletableFuture<Unit> = persist()
     override fun guarded(scope: String, task: () -> Unit) = guard(scope, task)
-    override fun lifecycleToken(): RuntimeTaskSupervisor.Token = supervisor.token()
-    override fun runSync(token: RuntimeTaskSupervisor.Token, task: () -> Unit): Boolean = supervisor.runSync(token, task) != null
-    override fun runAsync(token: RuntimeTaskSupervisor.Token, task: () -> Unit): Boolean = supervisor.runAsync(token, task) != null
-    override fun runLater(delayTicks: Long, task: () -> Unit): Boolean = supervisor.runLater(supervisor.token(), delayTicks, task) != null
+    override fun lifecycleToken(): RuntimeTaskSupervisor.Token = lifecycleSupervisor.token()
+    override fun runSync(token: RuntimeTaskSupervisor.Token, task: () -> Unit): Boolean =
+        lifecycleSupervisor.runSync(token, task) != null
+
+    override fun runAsync(token: RuntimeTaskSupervisor.Token, task: () -> Unit): Boolean =
+        lifecycleSupervisor.runAsync(token, task) != null
+
+    override fun runLater(delayTicks: Long, task: () -> Unit): Boolean = delayedSupervisor.runLater(delayTicks, task) != null
     override fun runLater(token: RuntimeTaskSupervisor.Token, delayTicks: Long, task: () -> Unit): Boolean =
-        supervisor.runLater(token, delayTicks, task) != null
+        lifecycleSupervisor.runLater(token, delayTicks, task) != null
 
     override fun log(level: Level, message: String, failure: Throwable?) {
         if (failure == null) plugin.logger.log(level, message) else plugin.logger.log(level, message, failure)

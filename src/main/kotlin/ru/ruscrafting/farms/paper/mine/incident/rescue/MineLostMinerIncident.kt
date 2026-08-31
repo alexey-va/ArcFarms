@@ -57,10 +57,11 @@ internal class MineLostMinerIncident(
         val runtime = registry.snapshot().firstOrNull { key(it) == runtimeKey } ?: return escorts.remove(player.uniqueId) != null
         if (!active(runtime)) return escorts.remove(player.uniqueId) != null
         val destination = deliveryPoint(runtime) ?: return false
-        if (near(to, destination, 2.5)) return complete(runtime, player)
+        if (near(to, destination, runtime.settings.lostMinerDeliveryRadius)) return complete(runtime, player)
         val miner = miners[key(runtime)]?.let(effects::entity)
-        if (miner != null && miner.world === to.world && miner.location.distanceSquared(to) > 36.0) {
-            miner.teleport(to.clone().add(0.0, 0.0, -1.0))
+        val snapDistance = runtime.settings.lostMinerFollowSnapDistance
+        if (miner != null && miner.world === to.world && miner.location.distanceSquared(to) > snapDistance * snapDistance) {
+            miner.teleport(to.clone().add(0.0, 0.0, runtime.settings.lostMinerFollowOffsetZ))
         }
         return false
     }

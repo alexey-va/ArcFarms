@@ -51,7 +51,7 @@ internal class MineExtractionController(
         val route = route(runtime) ?: return false
         if (runtime.state.routeIndex >= route.finalIndex) return false
         val next = route.sample(runtime.state.routeIndex + 1)
-        if (!near(to, next, 1.6)) return false
+        if (!near(to, next, runtime.settings.extractionCheckpointRadius)) return false
         val advanced = MineShiftEngine.advanceRoute(runtime.state, route.finalIndex, player.uniqueId)
         transitions.apply(runtime, advanced, player)
         if (runtime.state.routeIndex >= route.finalIndex) {

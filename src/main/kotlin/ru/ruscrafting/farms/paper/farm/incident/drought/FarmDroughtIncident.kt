@@ -285,10 +285,14 @@ internal class FarmDroughtIncident(
         clicked.getRelative(face).getRelative(org.bukkit.block.BlockFace.UP),
     ).distinctBy { Triple(it.x, it.y, it.z) }.firstOrNull { source ->
         runtime.region.contains(source.location) && source.isReplaceable && source.type != Material.WATER &&
-            FarmWaterPlanner.canPlace(source.toFarmPlotPosition(), runtime.state.droughtPlots, WATER_RADIUS)
+            FarmWaterPlanner.canPlace(
+                source.toFarmPlotPosition(), runtime.state.droughtPlots, runtime.settings.droughtWaterRadius,
+            )
     }
 
     private fun pour(runtime: FarmRuntime, source: Block, player: Player) {
+        val waterRadius = runtime.settings.droughtWaterRadius
+        val settleTicks = runtime.settings.droughtWaterSettleTicks
         val flowId = nextFlowId++
         val tracker = flows.getOrPut(runtime.settings.id, ::FarmWaterFlowTracker)
         val sourcePosition = source.toFarmPlotPosition()
@@ -305,21 +309,21 @@ internal class FarmDroughtIncident(
         }
         val beforeWater = mutableSetOf<FarmPlotPosition>()
         val existingItems = source.world.getNearbyEntities(
-            source.location.toCenterLocation(), WATER_RADIUS + 2.0, 4.0, WATER_RADIUS + 2.0,
+            source.location.toCenterLocation(), waterRadius + 2.0, 4.0, waterRadius + 2.0,
         ).filterIsInstance<Item>().mapTo(mutableSetOf(), Entity::getUniqueId)
         var removedDrops = 0
-        forBlocksAround(source) { block ->
+        forBlocksAround(source, waterRadius) { block ->
             if (runtime.region.contains(block.location) && block.type == Material.WATER) beforeWater += block.toFarmPlotPosition()
         }
         fun observeWaterAndDrops() {
-            forBlocksAround(source) { block ->
+            forBlocksAround(source, waterRadius) { block ->
                 if (
                     runtime.region.contains(block.location) && block.type == Material.WATER &&
                     block.toFarmPlotPosition() !in beforeWater
                 ) tracker.observe(flowId, block.toFarmPlotPosition())
             }
             source.world.getNearbyEntities(
-                source.location.toCenterLocation(), WATER_RADIUS + 2.0, 4.0, WATER_RADIUS + 2.0,
+                source.location.toCenterLocation(), waterRadius + 2.0, 4.0, waterRadius + 2.0,
             ).filterIsInstance<Item>().filter { item ->
                 item.uniqueId !in existingItems && item.itemStack.type in WATER_DROP_TYPES && runtime.region.contains(item.location)
             }.forEach { item ->
@@ -340,7 +344,7 @@ internal class FarmDroughtIncident(
         }
         source.setType(Material.WATER, true)
         val droughtBefore = runtime.state.droughtPlots
-        val reached = FarmWaterPlanner.reachedPlotsWithinRadius(sourcePosition, droughtBefore, WATER_RADIUS)
+        val reached = FarmWaterPlanner.reachedPlotsWithinRadius(sourcePosition, droughtBefore, waterRadius)
         reached.forEach { position -> positionBlock(position)?.let(::wet) }
         val completedPatches = FarmWaterPlanner.completedPatchCount(droughtBefore, reached)
         if (runtime.state.orderId in runtime.orders && reached.isNotEmpty()) {
@@ -367,7 +371,7 @@ internal class FarmDroughtIncident(
                 "patches" to completedPatches,
             )
         }
-        FarmWaterObservationPlan.delays(WATER_SETTLE_TICKS).forEach { delay ->
+        FarmWaterObservationPlan.delays(settleTicks).forEach { delay ->
             tasks.runLater(delay) { if (tracker.isActive(flowId)) observeWaterAndDrops() }
         }
         if (settings().sounds) player.playSound(source.location, Sound.ITEM_BUCKET_EMPTY, 0.8f, 1.05f)
@@ -383,7 +387,7 @@ internal class FarmDroughtIncident(
             "z" to source.z,
             "watered_plots" to reached.size,
         )
-        tasks.runLater(WATER_SETTLE_TICKS) {
+        tasks.runLater(settleTicks) {
             if (!tracker.isActive(flowId)) return@runLater
             observeWaterAndDrops()
             val trackedWater = tracker.positions(flowId)
@@ -405,10 +409,10 @@ internal class FarmDroughtIncident(
         }
     }
 
-    private inline fun forBlocksAround(source: Block, action: (Block) -> Unit) {
-        for (x in source.x - WATER_RADIUS..source.x + WATER_RADIUS) {
+    private inline fun forBlocksAround(source: Block, radius: Int, action: (Block) -> Unit) {
+        for (x in source.x - radius..source.x + radius) {
             for (y in source.y - 1..source.y + 2) {
-                for (z in source.z - WATER_RADIUS..source.z + WATER_RADIUS) action(source.world.getBlockAt(x, y, z))
+                for (z in source.z - radius..source.z + radius) action(source.world.getBlockAt(x, y, z))
             }
         }
     }
@@ -431,8 +435,6 @@ internal class FarmDroughtIncident(
     }
 
     private companion object {
-        const val WATER_RADIUS = 5
-        const val WATER_SETTLE_TICKS = 21L
         const val MAX_ACTIVE_WATER_FLOWS = 8
         const val MAX_ACTIVE_DROUGHT_BEDS = 64
         const val PERSIST_EVERY_DAMAGED_CROPS = 5

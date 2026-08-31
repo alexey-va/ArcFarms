@@ -7,11 +7,11 @@ import ru.ruscrafting.farms.domain.FarmShiftState
 
 /** Mutable runtime aggregate for one independently configured farm zone. */
 internal data class FarmRuntime(
-    val settings: FarmZoneSettings,
-    val region: ActivityRegion,
-    val orders: Map<String, FarmOrder>,
-    val orderList: List<FarmOrder>,
-    val rules: FarmRules,
+    var settings: FarmZoneSettings,
+    var region: ActivityRegion,
+    var orders: Map<String, FarmOrder>,
+    var orderList: List<FarmOrder>,
+    var rules: FarmRules,
     var state: FarmShiftState,
 )
 

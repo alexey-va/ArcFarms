@@ -38,6 +38,19 @@ class RuntimeTaskSupervisorTest : FunSpec({
         executions shouldBe 0
     }
 
+    test("restart invalidates the old token and opens the replacement epoch atomically") {
+        val scheduler = TestTaskScheduler()
+        val tasks = RuntimeTaskSupervisor(scheduler)
+        tasks.activate()
+        val stale = tasks.token()
+
+        val current = tasks.restart()
+
+        tasks.runSync(stale) { error("stale callback executed") } shouldBe null
+        (tasks.runSync(current) {} == null) shouldBe false
+        scheduler.executeImmediate()
+    }
+
     test("a token from another service instance is never accepted") {
         val scheduler = TestTaskScheduler()
         val first = RuntimeTaskSupervisor(scheduler)

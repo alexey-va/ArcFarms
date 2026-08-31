@@ -166,7 +166,7 @@ internal class FarmCarePlanService(
                 FarmCarePlanner.centralSpread(
                     farmBeds,
                     runtime.settings.scarecrowTargetCount.coerceAtMost(farmBeds.size),
-                    minimumSpacing = SCARECROW_MIN_SPACING,
+                    minimumSpacing = runtime.settings.scarecrowMinSpacing,
                     selectionIndex = salt,
                 ).mapIndexed { index, plot ->
                     FarmCareTarget(
@@ -386,7 +386,4 @@ internal class FarmCarePlanService(
         }
     }
 
-    private companion object {
-        const val SCARECROW_MIN_SPACING = 12.0
-    }
 }

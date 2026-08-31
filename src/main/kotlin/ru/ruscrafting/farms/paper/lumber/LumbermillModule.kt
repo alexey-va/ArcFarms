@@ -80,6 +80,14 @@ internal class LumbermillModule(
         registry.replace(LumberRuntimeFactory.build(configured, persisted, cooldownMillis, regions))
     }
 
+    fun reconfigure(
+        configured: List<LumberZoneSettings>,
+        persisted: Map<String, LumberShiftState>,
+        cooldownMillis: Long,
+    ) {
+        registry.reconfigure(LumberRuntimeFactory.build(configured, persisted, cooldownMillis, regions))
+    }
+
     override fun states(): Map<String, LumberShiftState> =
         registry.snapshot().associate { it.settings.id to it.state }
 
@@ -168,7 +176,10 @@ internal class LumbermillModule(
         recovery.reconcileChunk(chunk)
     }
 
-    override fun beforeReload(reason: String) = recovery.beforeReload(reason)
+    override fun beforeReload(reason: String) {
+        admin.cleanup()
+        recovery.beforeReload(reason)
+    }
 
     override fun cleanup(reason: String) {
         skidding.cleanup()

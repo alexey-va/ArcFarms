@@ -110,6 +110,7 @@ data class FarmZoneSettings(
     val careTargetsMax: Int,
     val careSpawnsPerUpdate: Int,
     val scarecrowTargetCount: Int,
+    val scarecrowMinSpacing: Double,
     val pollinationCharges: Int,
     val irrigation: FarmIrrigationSettings,
     val appleTargetCount: Int,
@@ -170,6 +171,7 @@ data class FarmZoneSettings(
     val specialIncidents: FarmSpecialIncidentSettings,
     val processing: FarmProcessingSettings,
     val barnFire: FarmBarnFireSettings,
+    val cropEffects: FarmCropBreakEffectsSettings,
     val pestEntity: String,
     val pestSpawnRadius: Int,
     val pestNestCount: Int,
@@ -180,6 +182,9 @@ data class FarmZoneSettings(
     val pestSpawnChancePercent: Int,
     val pestEatRadius: Int,
     val pestEatPerPulse: Int,
+    val pestEatIntervalMillis: Long,
+    val pestNestMinSpacing: Double,
+    val pestNestDisplayScale: Float,
     val damageSafety: FarmDamageSafetySettings,
     val supplies: FarmSupplySettings,
     val delivery: FarmDeliverySettings,
@@ -189,10 +194,46 @@ data class FarmZoneSettings(
     val crops: Set<String>,
     val rareOrderChancePercent: Int,
     val orders: List<FarmOrderSettings>,
+    val droughtWaterRadius: Int = 5,
+    val droughtWaterSettleTicks: Long = 21L,
+    val placementReceivingExclusionPadding: Double = 1.5,
+    val careAnimalFollowDistance: Double = 1.5,
+    val careAnimalFollowSpeed: Double = 1.25,
+    val careAnimalFollowImpulseBase: Double = 0.16,
+    val careAnimalFollowImpulsePerBlock: Double = 0.025,
+    val careAnimalFollowImpulseMax: Double = 0.42,
+    val careAnimalFollowImpulseSmoothing: Double = 0.25,
+    val inputCooldowns: FarmInputCooldownSettings = FarmInputCooldownSettings(),
+    val deliveryCarriedForwardOffset: Double = 0.65,
+    val scarecrowCarriedForwardOffset: Double = 0.7,
 ) {
     init {
         require(careTargetsPerPlayer <= careTargetsMax) {
             "Farm care target count per player must not exceed its maximum"
+        }
+        require(droughtWaterRadius in 1..8) { "Farm drought water radius must be in 1..8" }
+        require(droughtWaterSettleTicks in 5L..100L) { "Farm drought water settle ticks must be in 5..100" }
+        require(placementReceivingExclusionPadding in 0.0..4.0) {
+            "Farm placement receiving exclusion padding must be in 0.0..4.0"
+        }
+        require(careAnimalFollowDistance in 0.75..4.0) { "Farm animal follow distance must be in 0.75..4.0" }
+        require(careAnimalFollowSpeed in 0.25..2.5) { "Farm animal follow speed must be in 0.25..2.5" }
+        require(careAnimalFollowImpulseBase in 0.0..1.0) { "Farm animal follow impulse base must be in 0.0..1.0" }
+        require(careAnimalFollowImpulsePerBlock in 0.0..0.2) {
+            "Farm animal follow impulse per block must be in 0.0..0.2"
+        }
+        require(careAnimalFollowImpulseMax in 0.05..1.0) { "Farm animal follow impulse max must be in 0.05..1.0" }
+        require(careAnimalFollowImpulseBase <= careAnimalFollowImpulseMax) {
+            "Farm animal follow impulse base must not exceed max"
+        }
+        require(careAnimalFollowImpulseSmoothing in 0.0..1.0) {
+            "Farm animal follow impulse smoothing must be in 0.0..1.0"
+        }
+        require(deliveryCarriedForwardOffset in 0.0..2.0) {
+            "Farm delivery carried forward offset must be in 0.0..2.0"
+        }
+        require(scarecrowCarriedForwardOffset in 0.0..2.0) {
+            "Farm scarecrow carried forward offset must be in 0.0..2.0"
         }
     }
 
@@ -215,6 +256,7 @@ data class FarmSpecialIncidentSettings(
     val nightPlayerTime: Long,
     val nightTimeTransitionSeconds: Int,
     val giantCropParticleStride: Int,
+    val giantCropHitCooldownMillis: Long = 90L,
     val birdMinCount: Int,
     val birdMaxCount: Int,
     val birdBedsPerBird: Int,
@@ -256,6 +298,9 @@ data class FarmSpecialIncidentSettings(
             "night-shift patrol minimum must not exceed its maximum"
         }
         require(birdMinCount <= birdMaxCount) { "bird minimum must not exceed its maximum" }
+        require(giantCropHitCooldownMillis in 50L..1_000L) {
+            "giant crop hit cooldown must be in 50..1000 milliseconds"
+        }
     }
 
     fun nightPatrolCount(availableBeds: Int): Int {
@@ -341,6 +386,8 @@ data class FarmProcessingSettings(
     val carriedYOffset: Double,
     val cargoReminderSeconds: Int,
     val cargoReturnSeconds: Int,
+    val cargoProgressDistance: Double = 1.0,
+    val crankVerticalTolerance: Double = 2.5,
     val spawnPerTick: Int,
     val displayViewRange: Float,
     val visuals: Map<FarmProcessingVisualRole, FarmProcessingVisualSettings>,
@@ -350,6 +397,8 @@ data class FarmProcessingSettings(
         require(cargoReminderSeconds < cargoReturnSeconds) {
             "processing cargo reminder must happen before automatic return"
         }
+        require(cargoProgressDistance in 0.25..3.0) { "processing cargo progress distance must be in 0.25..3.0" }
+        require(crankVerticalTolerance in 0.5..6.0) { "processing crank vertical tolerance must be in 0.5..6.0" }
     }
 }
 
@@ -368,11 +417,27 @@ data class FarmBarnFireSettings(
     val particleStep: Double,
     val flameParticleIntervalTicks: Int,
     val particleHotspotLimit: Int,
+    val waterSideStreams: Int = 4,
 ) {
     init {
         require(initialHotspotCount <= hotspotCount) {
             "barn fire initial hotspot count must not exceed its total hotspot cap"
         }
+        require(waterSideStreams in 1..8) { "barn fire spray side streams must be in 1..8" }
+    }
+}
+
+data class FarmCropBreakEffectsSettings(
+    val blockParticleCount: Int = 14,
+    val dustParticleCount: Int = 7,
+    val composterParticleCount: Int = 3,
+    val poofParticleCount: Int = 5,
+) {
+    init {
+        require(blockParticleCount in 0..64) { "crop harvest block particle count must be in 0..64" }
+        require(dustParticleCount in 0..64) { "crop harvest dust particle count must be in 0..64" }
+        require(composterParticleCount in 0..32) { "crop harvest composter particle count must be in 0..32" }
+        require(poofParticleCount in 0..32) { "crop harvest poof particle count must be in 0..32" }
     }
 }
 
@@ -525,7 +590,12 @@ data class FarmSupplySettings(
     val fireEquipmentMaterial: String,
     val fireEquipmentCustomModelData: Int,
     val fireEquipmentItemModel: String?,
-)
+    val itemScale: Float = 1.35f,
+) {
+    init {
+        require(itemScale.isFinite() && itemScale in 0.5f..3.0f) { "farm supply item scale must be in 0.5..3.0" }
+    }
+}
 
 data class FarmDeliverySettings(
     val world: String,
@@ -551,11 +621,15 @@ data class FarmRouteDeliverySettings(
     val sampleDistance: Double,
     val corridorRadius: Double,
     val hardResetDistance: Double,
+    val hardCorrectionStrength: Double,
+    val corridorCorrectionStrength: Double,
     val checkpointRadius: Double,
     val horseSpeed: Double,
+    val horseJumpStrength: Double,
     val trailLookaheadPoints: Int,
     val trailHeight: Double,
     val trailParticleSize: Float,
+    val trailSpacing: Double,
     val completionContribution: Int,
     val returnDelaySeconds: Int,
     val portalRightOffset: Double,
@@ -563,6 +637,7 @@ data class FarmRouteDeliverySettings(
     val portalHeight: Float,
     val portalLabelHeight: Double,
     val portalLabelScale: Float,
+    val portalArrivalSideOffset: Double,
     val ambushDistance: Double,
     val ambushMaxCount: Int,
     val ambushAfterFarmDistance: Double,
@@ -571,6 +646,9 @@ data class FarmRouteDeliverySettings(
     val monsterSpawnDistance: Double,
     val monsterWaveMin: Int,
     val monsterWaveMax: Int,
+    val monsterSpawnMinMultiplier: Double,
+    val monsterSpawnMaxMultiplier: Double,
+    val phantomSpawnHeight: Double,
     val monsterTypes: List<String>,
     val monsterMovementSpeed: Double,
     val monsterLightLevel: Int,
@@ -580,8 +658,10 @@ data class FarmRouteDeliverySettings(
     val inactivityResetSeconds: Int,
     val inactivityMovementDistance: Double,
     val cartScale: Float,
+    val cartBackOffset: Double,
     val cartYOffset: Double,
     val cartLoadCount: Int,
+    val cartLoadSpacing: Double,
     val gunnerSeatYOffset: Double,
     val gunnerSeatBackOffset: Double,
     val gunnerInteractionWidth: Float,
@@ -592,6 +672,7 @@ data class FarmRouteDeliverySettings(
     val rifleDamage: Double,
     val rifleRange: Double,
     val rifleCooldownTicks: Int,
+    val rifleRaySize: Double,
     val gunnerTrailLength: Int,
 )
 
@@ -607,7 +688,44 @@ data class FarmPerkSettings(
     val rewardBoost: FarmPerkOfferSettings,
     val rewardBonusPercent: Int,
     val sustainIntervalSeconds: Int,
-)
+    val speedAmplifier: Int = 0,
+    val speedRefreshTicks: Int = 60,
+    val sustenanceFood: Int = 2,
+    val sustenanceSaturation: Float = 1.0f,
+    val sustenanceHealth: Double = 1.0,
+    val harvestAreaRadius: Int = 1,
+) {
+    init {
+        require(speedAmplifier in 0..4) { "Farm speed perk amplifier must be in 0..4" }
+        require(speedRefreshTicks in 20..200) { "Farm speed perk refresh ticks must be in 20..200" }
+        require(sustenanceFood in 0..20) { "Farm sustenance food must be in 0..20" }
+        require(sustenanceSaturation.isFinite() && sustenanceSaturation in 0.0f..20.0f) {
+            "Farm sustenance saturation must be in 0.0..20.0"
+        }
+        require(sustenanceHealth.isFinite() && sustenanceHealth in 0.0..20.0) {
+            "Farm sustenance health must be in 0.0..20.0"
+        }
+        require(harvestAreaRadius in 1..3) { "Farm harvest-area radius must be in 1..3" }
+    }
+}
+
+data class FarmInputCooldownSettings(
+    val supplyMillis: Long = 500L,
+    val deliveryMillis: Long = 500L,
+    val patchMissMillis: Long = 500L,
+    val careMillis: Long = 100L,
+    val careTargetMillis: Long = 250L,
+    val moleMillis: Long = 500L,
+    val frostPickupMillis: Long = 750L,
+    val contractSceneMillis: Long = 700L,
+) {
+    init {
+        require(listOf(
+            supplyMillis, deliveryMillis, patchMissMillis, careMillis,
+            careTargetMillis, moleMillis, frostPickupMillis, contractSceneMillis,
+        ).all { it in 50L..5_000L }) { "Farm input cooldowns must be in 50..5000 milliseconds" }
+    }
+}
 
 data class FarmOrderSettings(
     val id: String,
@@ -638,12 +756,33 @@ data class MineZoneSettings(
     val incidentCountMin: Int = 3,
     val incidentCountMax: Int = 5,
     val rewards: FarmRewardSettings = defaultWorksiteRewards(125),
+    val lostMinerDeliveryRadius: Double = 2.5,
+    val lostMinerFollowSnapDistance: Double = 6.0,
+    val lostMinerFollowOffsetZ: Double = -1.0,
+    val extractionCheckpointRadius: Double = 1.6,
+    val loadingDeliveryRadius: Double = 2.0,
+    val cartVisual: MineCartVisualSettings = MineCartVisualSettings(),
 ) {
     init {
         require(engineVersion in 1..2) { "Mine zone $id engine-version must be 1 or 2" }
         require(targetMultiplier in 2..4) { "Mine zone $id target-multiplier must be 2..4" }
         require(incidentCountMin in 3..5 && incidentCountMax in incidentCountMin..5) {
             "Mine zone $id incident count range is invalid"
+        }
+        require(lostMinerDeliveryRadius in 1.0..6.0) {
+            "Mine zone $id lost-miner delivery-radius is invalid"
+        }
+        require(lostMinerFollowSnapDistance in 2.0..16.0) {
+            "Mine zone $id lost-miner follow-snap-distance is invalid"
+        }
+        require(lostMinerFollowOffsetZ in -3.0..3.0) {
+            "Mine zone $id lost-miner follow-offset-z is invalid"
+        }
+        require(extractionCheckpointRadius in 0.75..4.0) {
+            "Mine zone $id extraction checkpoint-radius is invalid"
+        }
+        require(loadingDeliveryRadius in 1.0..5.0) {
+            "Mine zone $id loading delivery-radius is invalid"
         }
         require(engineVersion == 1 || orders.isNotEmpty()) { "Mine V2 zone $id has no orders" }
         require(orders.all { it.incidentTypes.size >= incidentCountMax }) {
@@ -678,6 +817,8 @@ class ArcFarmsConfig private constructor(
     val titleStaySeconds: Int,
     val markerHeight: Int,
     val missingBedHighlightThreshold: Int,
+    val taskHintCooldownMillis: Long = 900L,
+    val taskTitleCooldownMillis: Long = 8_000L,
     val farmScoreboard: FarmScoreboardSettings,
     val menuBackground: MenuBackgroundSettings,
     val saveSeconds: Int,
@@ -688,6 +829,11 @@ class ArcFarmsConfig private constructor(
     val lumbermills: List<LumberZoneSettings>,
     val mines: List<MineZoneSettings>,
 ) {
+    init {
+        require(taskHintCooldownMillis in 250L..5_000L) { "ui.task-hint-cooldown-millis must be in 250..5000" }
+        require(taskTitleCooldownMillis in 1_000L..30_000L) { "ui.task-title-cooldown-millis must be in 1000..30000" }
+    }
+
     val requiresWorldGuard: Boolean = buildList {
         addAll(farms.map(FarmZoneSettings::reference))
         lumbermills.forEach { add(it.reference); add(it.station) }
@@ -698,10 +844,8 @@ class ArcFarmsConfig private constructor(
         private const val MAX_CUSTOM_MODEL_DATA = Int.MAX_VALUE
         private val ENVIRONMENT_OWNED_ROOT_KEYS = setOf("farm-zones", "lumber-zones", "mine-zones")
 
-        fun load(dataRoot: Path): ArcFarmsConfig {
-            val config = ConfigManager.of(dataRoot, "config.yml")
-            return synchronizeAndParse(config)
-        }
+        /** Always reads the accepted on-disk snapshot; hot reload must not leave a stale startup cache behind. */
+        fun load(dataRoot: Path): ArcFarmsConfig = synchronizeAndParse(Config(dataRoot, "config.yml"))
 
         fun inspect(dataRoot: Path): ArcFarmsConfig = parse(Config(dataRoot, "config.yml"))
 
@@ -901,6 +1045,8 @@ class ArcFarmsConfig private constructor(
                         .checked("processing.cargo-watchdog.reminder-seconds", 5, 60),
                     cargoReturnSeconds = section.int("processing.cargo-watchdog.return-seconds", 30)
                         .checked("processing.cargo-watchdog.return-seconds", 10, 180),
+                    cargoProgressDistance = section.finiteDouble("processing.cargo-progress-distance", 1.0, 0.25, 3.0),
+                    crankVerticalTolerance = section.finiteDouble("processing.crank.vertical-tolerance", 2.5, 0.5, 6.0),
                     spawnPerTick = section.int("processing.spawn-per-tick", 4)
                         .checked("processing.spawn-per-tick", 1, 16),
                     displayViewRange = section.finiteFloat("processing.display-view-range", 3.0f, 0.25f, 8.0f),
@@ -954,18 +1100,30 @@ class ArcFarmsConfig private constructor(
                         .checked("barn-fire.flame-particle-interval-ticks", 1, 40),
                     particleHotspotLimit = section.int("barn-fire.particle-hotspot-limit", 24)
                         .checked("barn-fire.particle-hotspot-limit", 0, 64),
+                    waterSideStreams = section.int("barn-fire.spray.side-streams", 4)
+                        .checked("barn-fire.spray.side-streams", 1, 8),
                 )
                 val supplies = parseFarmSupplies(section, reference.world, id)
                 val routeDelivery = FarmRouteDeliverySettings(
                     sampleDistance = section.finiteDouble("route-delivery.sample-distance", 2.5, 1.0, 8.0),
                     corridorRadius = section.finiteDouble("route-delivery.corridor-radius", 5.0, 2.0, 16.0),
                     hardResetDistance = section.finiteDouble("route-delivery.hard-reset-distance", 9.0, 3.0, 32.0),
+                    hardCorrectionStrength = section.finiteDouble(
+                        "route-delivery.hard-correction-strength", 0.42, 0.0, 1.0,
+                    ),
+                    corridorCorrectionStrength = section.finiteDouble(
+                        "route-delivery.corridor-correction-strength", 0.24, 0.0, 1.0,
+                    ),
                     checkpointRadius = section.finiteDouble("route-delivery.checkpoint-radius", 8.0, 2.0, 16.0),
                     horseSpeed = section.finiteDouble("route-delivery.horse-speed", 0.26, 0.1, 0.6),
+                    horseJumpStrength = section.finiteDouble(
+                        "route-delivery.horse-jump-strength", 0.45, 0.0, 1.0,
+                    ),
                     trailLookaheadPoints = section.int("route-delivery.trail.lookahead-points", 28)
                         .checked("route-delivery.trail.lookahead-points", 4, 96),
                     trailHeight = section.finiteDouble("route-delivery.trail.height", 0.35, 0.05, 2.0),
                     trailParticleSize = section.finiteFloat("route-delivery.trail.particle-size", 1.15f, 0.5f, 3.0f),
+                    trailSpacing = section.finiteDouble("route-delivery.trail.spacing", 0.7, 0.25, 2.0),
                     completionContribution = section.int("route-delivery.completion-contribution", 12)
                         .checked("route-delivery.completion-contribution", 1, 64),
                     returnDelaySeconds = section.int("route-delivery.return-delay-seconds", 3)
@@ -980,6 +1138,9 @@ class ArcFarmsConfig private constructor(
                     ),
                     portalLabelScale = section.finiteFloat(
                         "route-delivery.portal.label-scale", 1.8f, 0.5f, 4.0f,
+                    ),
+                    portalArrivalSideOffset = section.finiteDouble(
+                        "route-delivery.portal.arrival-side-offset", 3.0, 1.0, 6.0,
                     ),
                     ambushDistance = section.finiteDouble(
                         "route-delivery.monsters.distance-per-ambush", 120.0, 32.0, 512.0,
@@ -999,6 +1160,15 @@ class ArcFarmsConfig private constructor(
                         .checked("route-delivery.monsters.wave-min", 1, 12),
                     monsterWaveMax = section.int("route-delivery.monsters.wave-max", 5)
                         .checked("route-delivery.monsters.wave-max", 1, 16),
+                    monsterSpawnMinMultiplier = section.finiteDouble(
+                        "route-delivery.monsters.spawn-min-multiplier", 0.8, 0.1, 2.0,
+                    ),
+                    monsterSpawnMaxMultiplier = section.finiteDouble(
+                        "route-delivery.monsters.spawn-max-multiplier", 1.15, 0.1, 3.0,
+                    ),
+                    phantomSpawnHeight = section.finiteDouble(
+                        "route-delivery.monsters.phantom-spawn-height", 7.0, 1.0, 32.0,
+                    ),
                     monsterTypes = section.stringList("route-delivery.monsters.types")
                         .ifEmpty { listOf("HUSK", "ZOMBIE", "SKELETON", "SPIDER", "PHANTOM") }
                         .map(String::trim)
@@ -1028,9 +1198,11 @@ class ArcFarmsConfig private constructor(
                         "route-delivery.inactivity.movement-distance", 2.0, 1.0, 8.0,
                     ),
                     cartScale = section.finiteFloat("route-delivery.cart-scale", 4.4f, 0.5f, 8.0f),
+                    cartBackOffset = section.finiteDouble("route-delivery.cart-back-offset", 2.15, 1.5, 3.5),
                     cartYOffset = section.finiteDouble("route-delivery.cart-y-offset", 0.875, -2.0, 2.0),
                     cartLoadCount = section.int("route-delivery.cart-load-count", 4)
                         .checked("route-delivery.cart-load-count", 1, 8),
+                    cartLoadSpacing = section.finiteDouble("route-delivery.cart-load-spacing", 0.24, 0.05, 0.75),
                     gunnerSeatYOffset = section.finiteDouble("route-delivery.gunner.seat-y-offset", -0.15, -2.0, 3.0),
                     gunnerSeatBackOffset = section.finiteDouble(
                         "route-delivery.gunner.seat-back-offset", 0.65, 0.0, 2.0,
@@ -1054,11 +1226,18 @@ class ArcFarmsConfig private constructor(
                     rifleRange = section.finiteDouble("route-delivery.gunner.range", 42.0, 8.0, 96.0),
                     rifleCooldownTicks = section.int("route-delivery.gunner.cooldown-ticks", 6)
                         .checked("route-delivery.gunner.cooldown-ticks", 2, 100),
+                    rifleRaySize = section.finiteDouble("route-delivery.gunner.ray-size", 0.65, 0.1, 2.0),
                     gunnerTrailLength = section.int("route-delivery.gunner.trail-length", 10)
                         .checked("route-delivery.gunner.trail-length", 0, 32),
                 ).also {
                     require(it.hardResetDistance > it.corridorRadius) {
                         "farm-zones.$id route hard-reset-distance must exceed corridor-radius"
+                    }
+                    require(it.hardCorrectionStrength >= it.corridorCorrectionStrength) {
+                        "farm-zones.$id route hard correction must be at least corridor correction"
+                    }
+                    require(it.monsterSpawnMinMultiplier <= it.monsterSpawnMaxMultiplier) {
+                        "farm-zones.$id monster spawn multiplier range is invalid"
                     }
                     require(it.monsterWaveMin <= it.monsterWaveMax)
                     require(it.monsterMaxAlive == 0 || it.ambushMaxCount > 0)
@@ -1082,6 +1261,16 @@ class ArcFarmsConfig private constructor(
                         .checked("perks.reward-boost.bonus-percent", 1, 100),
                     sustainIntervalSeconds = section.int("perks.sustenance.interval-seconds", 5)
                         .checked("perks.sustenance.interval-seconds", 1, 60),
+                    speedAmplifier = section.int("perks.speed.amplifier", 0)
+                        .checked("perks.speed.amplifier", 0, 4),
+                    speedRefreshTicks = section.int("perks.speed.refresh-ticks", 60)
+                        .checked("perks.speed.refresh-ticks", 20, 200),
+                    sustenanceFood = section.int("perks.sustenance.food", 2)
+                        .checked("perks.sustenance.food", 0, 20),
+                    sustenanceSaturation = section.finiteFloat("perks.sustenance.saturation", 1.0f, 0.0f, 20.0f),
+                    sustenanceHealth = section.finiteDouble("perks.sustenance.health", 1.0, 0.0, 20.0),
+                    harvestAreaRadius = section.int("perks.harvest-area.radius", 1)
+                        .checked("perks.harvest-area.radius", 1, 3),
                 )
                 reference.bounds?.let { bounds ->
                     require(bounds.contains(floor(delivery.x).toInt(), floor(delivery.y).toInt(), floor(delivery.z).toInt())) {
@@ -1272,6 +1461,9 @@ class ArcFarmsConfig private constructor(
                         .checked("special-incidents.night-shift.transition-seconds", 1, 30),
                     giantCropParticleStride = section.int("special-incidents.giant-crop.block-particle-stride", 4)
                         .checked("special-incidents.giant-crop.block-particle-stride", 1, 16),
+                    giantCropHitCooldownMillis = section.int("special-incidents.giant-crop.hit-cooldown-millis", 90)
+                        .checked("special-incidents.giant-crop.hit-cooldown-millis", 50, 1_000)
+                        .toLong(),
                     birdMinCount = section.int("special-incidents.birds.min-count", 6)
                         .checked("special-incidents.birds.min-count", 1, 32),
                     birdMaxCount = section.int("special-incidents.birds.max-count", 14)
@@ -1433,6 +1625,7 @@ class ArcFarmsConfig private constructor(
                         .checked("care-spawns-per-update", 1, 32),
                     scarecrowTargetCount = section.int("scarecrow-target-count", 5)
                         .checked("scarecrow-target-count", 1, 45),
+                    scarecrowMinSpacing = section.finiteDouble("scarecrow-min-spacing", 12.0, 4.0, 64.0),
                     pollinationCharges = section.int("pollination-charges", 5)
                         .checked("pollination-charges", 1, 32),
                     irrigation = FarmIrrigationSettings(
@@ -1502,6 +1695,38 @@ class ArcFarmsConfig private constructor(
                         .map(::entityName)
                         .distinct()
                         .also { require(it.isNotEmpty()) { "Farm zone $id has no care animal entities" } },
+                    careAnimalFollowDistance = section.finiteDouble("care.animal-follow-distance", 1.5, 0.75, 4.0),
+                    careAnimalFollowSpeed = section.finiteDouble("care.animal-follow-speed", 1.25, 0.25, 2.5),
+                    careAnimalFollowImpulseBase = section.finiteDouble(
+                        "care.animal-follow-impulse-base", 0.16, 0.0, 1.0,
+                    ),
+                    careAnimalFollowImpulsePerBlock = section.finiteDouble(
+                        "care.animal-follow-impulse-per-block", 0.025, 0.0, 0.2,
+                    ),
+                    careAnimalFollowImpulseMax = section.finiteDouble(
+                        "care.animal-follow-impulse-max", 0.42, 0.05, 1.0,
+                    ),
+                    careAnimalFollowImpulseSmoothing = section.finiteDouble(
+                        "care.animal-follow-impulse-smoothing", 0.25, 0.0, 1.0,
+                    ),
+                    inputCooldowns = FarmInputCooldownSettings(
+                        supplyMillis = section.int("input-cooldowns.supply-millis", 500)
+                            .checked("input-cooldowns.supply-millis", 50, 5_000).toLong(),
+                        deliveryMillis = section.int("input-cooldowns.delivery-millis", 500)
+                            .checked("input-cooldowns.delivery-millis", 50, 5_000).toLong(),
+                        patchMissMillis = section.int("input-cooldowns.patch-miss-millis", 500)
+                            .checked("input-cooldowns.patch-miss-millis", 50, 5_000).toLong(),
+                        careMillis = section.int("input-cooldowns.care-millis", 100)
+                            .checked("input-cooldowns.care-millis", 50, 5_000).toLong(),
+                        careTargetMillis = section.int("input-cooldowns.care-target-millis", 250)
+                            .checked("input-cooldowns.care-target-millis", 50, 5_000).toLong(),
+                        moleMillis = section.int("input-cooldowns.mole-millis", 500)
+                            .checked("input-cooldowns.mole-millis", 50, 5_000).toLong(),
+                        frostPickupMillis = section.int("input-cooldowns.frost-pickup-millis", 750)
+                            .checked("input-cooldowns.frost-pickup-millis", 50, 5_000).toLong(),
+                        contractSceneMillis = section.int("input-cooldowns.contract-scene-millis", 700)
+                            .checked("input-cooldowns.contract-scene-millis", 50, 5_000).toLong(),
+                    ),
                     proceduralCareFixtures = section.boolean("procedural-care-fixtures", true),
                     careVisuals = careVisuals,
                     contractCartVisual = contractCartVisual,
@@ -1517,6 +1742,9 @@ class ArcFarmsConfig private constructor(
                     placementMinObjectiveDistance = placementMinObjectiveDistance,
                     placementMaxPlayerDistance = placementMaxPlayerDistance,
                     placementSearchRadius = placementSearchRadius,
+                    placementReceivingExclusionPadding = section.finiteDouble(
+                        "placement.receiving-exclusion-padding", 1.5, 0.0, 4.0,
+                    ),
                     incidentTriggerPercents = incidentTriggerPercents,
                     incidentCountMin = incidentCountMin,
                     incidentCountMax = incidentCountMax,
@@ -1530,10 +1758,25 @@ class ArcFarmsConfig private constructor(
                         .checked("drought-growth-beds", 1, 64),
                     droughtGrowthSeconds = section.int("drought-growth-seconds", 2)
                         .checked("drought-growth-seconds", 1, 300),
+                    droughtWaterRadius = section.int("drought.water-radius", 5)
+                        .checked("drought.water-radius", 1, 8),
+                    droughtWaterSettleTicks = section.int("drought.water-settle-ticks", 21)
+                        .checked("drought.water-settle-ticks", 5, 100)
+                        .toLong(),
                     incidentTypes = incidentTypes,
                     specialIncidents = specialIncidents,
                     processing = processing,
                     barnFire = barnFire,
+                    cropEffects = FarmCropBreakEffectsSettings(
+                        blockParticleCount = section.int("crop-effects.harvest-burst.block-particle-count", 14)
+                            .checked("crop-effects.harvest-burst.block-particle-count", 0, 64),
+                        dustParticleCount = section.int("crop-effects.harvest-burst.dust-particle-count", 7)
+                            .checked("crop-effects.harvest-burst.dust-particle-count", 0, 64),
+                        composterParticleCount = section.int("crop-effects.harvest-burst.composter-particle-count", 3)
+                            .checked("crop-effects.harvest-burst.composter-particle-count", 0, 32),
+                        poofParticleCount = section.int("crop-effects.harvest-burst.poof-particle-count", 5)
+                            .checked("crop-effects.harvest-burst.poof-particle-count", 0, 32),
+                    ),
                     pestEntity = entityName(section.string("pest-entity", "SILVERFISH")),
                     pestSpawnRadius = section.int("pest-spawn-radius", 6).checked("pest-spawn-radius", 2, 16),
                     pestNestCount = section.int("pest-nests", 3).checked("pest-nests", 1, 8),
@@ -1546,6 +1789,11 @@ class ArcFarmsConfig private constructor(
                         .checked("pest-spawn-chance-percent", 1, 100),
                     pestEatRadius = section.int("pest-eat-radius", 3).checked("pest-eat-radius", 1, 8),
                     pestEatPerPulse = section.int("pest-eat-per-pulse", 8).checked("pest-eat-per-pulse", 1, 32),
+                    pestEatIntervalMillis = section.int("pest-eat-interval-millis", 1_000)
+                        .checked("pest-eat-interval-millis", 100, 10_000)
+                        .toLong(),
+                    pestNestMinSpacing = section.finiteDouble("pest-nest-min-spacing", 16.0, 4.0, 64.0),
+                    pestNestDisplayScale = section.finiteFloat("pest-nest-display-scale", 2.0f, 0.25f, 4.0f),
                     damageSafety = FarmDamageSafetySettings(
                         maximumPercent = section.int("damage-safety.maximum-percent", 18)
                             .checked("damage-safety.maximum-percent", 0, 80),
@@ -1566,6 +1814,12 @@ class ArcFarmsConfig private constructor(
                     crops = crops,
                     rareOrderChancePercent = rareOrderChancePercent,
                     orders = orders,
+                    deliveryCarriedForwardOffset = section.finiteDouble(
+                        "delivery.carried-forward-offset", 0.65, 0.0, 2.0,
+                    ),
+                    scarecrowCarriedForwardOffset = section.finiteDouble(
+                        "scarecrow-carried-forward-offset", 0.7, 0.0, 2.0,
+                    ),
                 ).also { farm ->
                     require(farm.applePlacementCount >= farm.appleTargetCount) {
                         "farm-zones.$id apple-placement-count must be at least apple-targets"
@@ -1628,6 +1882,23 @@ class ArcFarmsConfig private constructor(
                     incidentCountMax = incidentCountMax,
                     recoverySeconds = section.int("recovery-seconds", 90).checked("lumber recovery-seconds", 5, 3_600),
                     rewards = parseRewards(section, id, "lumber-zones", 110),
+                    rushOrderDurationMillis = section.int("incidents.rush-order-duration-millis", 75_000)
+                        .checked("lumber incidents.rush-order-duration-millis", 1_000, 3_600_000)
+                        .toLong(),
+                    forestFireCandidateMultiplier = section.int("incidents.forest-fire.candidate-multiplier", 4)
+                        .checked("lumber incidents.forest-fire.candidate-multiplier", 2, 8),
+                    sawInteractionCooldownMillis = section.int("interaction-cooldowns.saw-millis", 150)
+                        .checked("lumber interaction-cooldowns.saw-millis", 50, 2_000)
+                        .toLong(),
+                    bundleInteractionCooldownMillis = section.int("interaction-cooldowns.bundle-millis", 350)
+                        .checked("lumber interaction-cooldowns.bundle-millis", 50, 2_000)
+                        .toLong(),
+                    plankInteractionCooldownMillis = section.int("interaction-cooldowns.plank-millis", 350)
+                        .checked("lumber interaction-cooldowns.plank-millis", 50, 2_000)
+                        .toLong(),
+                    dispatchInteractionCooldownMillis = section.int("interaction-cooldowns.dispatch-millis", 500)
+                        .checked("lumber interaction-cooldowns.dispatch-millis", 50, 2_000)
+                        .toLong(),
                 ).also {
                     require(it.processingPerUse <= it.processingQuota) { "processing-per-use exceeds processing-quota in $id" }
                 }
@@ -1682,6 +1953,40 @@ class ArcFarmsConfig private constructor(
                     incidentCountMin = incidentCountMin,
                     incidentCountMax = incidentCountMax,
                     rewards = parseRewards(section, id, "mine-zones", 125),
+                    lostMinerDeliveryRadius = section.finiteDouble("lost-miner.delivery-radius", 2.5, 1.0, 6.0),
+                    lostMinerFollowSnapDistance = section.finiteDouble(
+                        "lost-miner.follow-snap-distance", 6.0, 2.0, 16.0,
+                    ),
+                    lostMinerFollowOffsetZ = section.finiteDouble("lost-miner.follow-offset-z", -1.0, -3.0, 3.0),
+                    extractionCheckpointRadius = section.finiteDouble(
+                        "extraction.checkpoint-radius", 1.6, 0.75, 4.0,
+                    ),
+                    loadingDeliveryRadius = section.finiteDouble("loading.delivery-radius", 2.0, 1.0, 5.0),
+                    cartVisual = run {
+                        val path = "extraction.cart"
+                        val itemModel = section.string("$path.item-model", "").trim().ifEmpty { null }
+                        itemModel?.let { model ->
+                            require(model.matches(Regex("[a-z0-9._-]+:[a-z0-9/._-]+"))) {
+                                "mine-zones.$id.$path.item-model must be a namespaced item model"
+                            }
+                        }
+                        MineCartVisualSettings(
+                            material = materialName(section.string("$path.material", "MINECART")),
+                            customModelData = section.int("$path.custom-model-data", 0)
+                                .checked("mine $id cart custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
+                            itemModel = itemModel,
+                            displayTransform = section.string("$path.display-transform", "GROUND")
+                                .trim().uppercase().let { raw ->
+                                    FarmItemDisplayTransform.entries.firstOrNull { it.name == raw }
+                                        ?: error("mine-zones.$id.$path.display-transform must be GROUND, FIXED, or HEAD")
+                                },
+                            scale = section.finiteFloat("$path.scale", 1.0f, 0.05f, 8.0f),
+                            yOffset = section.finiteDouble("$path.y-offset", 0.15, -4.0, 4.0),
+                            viewRange = section.finiteFloat("$path.view-range", 2.0f, 0.25f, 64.0f),
+                            interactionWidth = section.finiteFloat("$path.interaction-width", 1.5f, 0.1f, 16.0f),
+                            interactionHeight = section.finiteFloat("$path.interaction-height", 1.0f, 0.1f, 16.0f),
+                        )
+                    },
                 ).also {
                     require(it.hazardTrigger < it.cartQuota) { "Mine $id hazard-trigger must be below cart-quota" }
                     require(it.temporaryMaterial !in it.materialWeights) { "Mine $id temp-material must not be a generated material" }
@@ -1719,6 +2024,12 @@ class ArcFarmsConfig private constructor(
                 markerHeight = config.int("ui.marker-height", 12).checked("ui.marker-height", 6, 24),
                 missingBedHighlightThreshold = config.int("ui.missing-bed-highlight-threshold", 10)
                     .checked("ui.missing-bed-highlight-threshold", 1, 32),
+                taskHintCooldownMillis = config.int("ui.task-hint-cooldown-millis", 900)
+                    .checked("ui.task-hint-cooldown-millis", 250, 5_000)
+                    .toLong(),
+                taskTitleCooldownMillis = config.int("ui.task-title-cooldown-millis", 8_000)
+                    .checked("ui.task-title-cooldown-millis", 1_000, 30_000)
+                    .toLong(),
                 farmScoreboard = FarmScoreboardSettings(
                     enabled = config.boolean("ui.farm-scoreboard.enabled", true),
                     provider = config.string("ui.farm-scoreboard.provider", "BUKKIT").uppercase().let { raw ->
@@ -1905,6 +2216,7 @@ class ArcFarmsConfig private constructor(
                 fireEquipmentCustomModelData = section.int("supplies.fire-equipment-custom-model-data", 0)
                     .checked("supplies.fire-equipment-custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
                 fireEquipmentItemModel = fireEquipmentItemModel,
+                itemScale = section.finiteFloat("supplies.item-scale", 1.35f, 0.5f, 3.0f),
             )
         }
 
@@ -2054,8 +2366,16 @@ class ArcFarmsConfig private constructor(
 }
 
 object ArcFarmsRedisBootstrap {
-    fun load(dataRoot: Path, settings: ArcFarmsConfig): RedisModuleConfig {
-        val redis = RedisModuleConfig.load(dataRoot)
+    fun load(dataRoot: Path, settings: ArcFarmsConfig): RedisModuleConfig =
+        validate(RedisModuleConfig.load(dataRoot), settings)
+
+    /** Reads the file without mutating ConfigManager's active cache, for transactional reload validation. */
+    fun loadFresh(dataRoot: Path, settings: ArcFarmsConfig): RedisModuleConfig = validate(
+        RedisModuleConfig(Config(dataRoot, ConfigManager.moduleYamlRelative(dataRoot, RedisModuleConfig.RESOURCE))),
+        settings,
+    )
+
+    private fun validate(redis: RedisModuleConfig, settings: ArcFarmsConfig): RedisModuleConfig {
         require(!settings.network.enabled || redis.enabled) { "Redis must be enabled when ArcFarms network is enabled" }
         require(redis.serverName == settings.serverId) {
             "modules/redis.yml server-name must match config.yml server-id"

@@ -21,8 +21,10 @@ internal data class FarmFoodDeliverySession(
     var portalLabelId: UUID? = null,
     var brokenDown: Boolean = false,
     var spawnedMonsters: Int = 0,
+    var ambushesStarted: Int = 0,
     val monsterIds: MutableSet<UUID> = linkedSetOf(),
     val pendingAmbushCheckpoints: ArrayDeque<Int> = ArrayDeque(),
+    var ambushPlan: FarmFoodDeliveryAmbushPlan? = null,
     val gunnerTrail: ArrayDeque<Location> = ArrayDeque(),
     var stallWatchdog: FarmStallWatchdogState? = null,
     var stallAnchor: Location? = null,
@@ -59,4 +61,24 @@ internal data class FarmFoodDeliverySession(
         brokenDown = false
         return true
     }
+
+    fun replaceAmbushCheckpoints(candidates: List<Int>, maximum: Int, progress: Int) {
+        val remaining = (maximum - ambushesStarted).coerceAtLeast(0)
+        val due = pendingAmbushCheckpoints.firstOrNull()
+            ?.takeIf { it <= progress && !brokenDown && remaining > 0 }
+        pendingAmbushCheckpoints.clear()
+        due?.let(pendingAmbushCheckpoints::addLast)
+        candidates.asSequence()
+            .filter { it > progress }
+            .distinct()
+            .take(remaining - if (due == null) 0 else 1)
+            .forEach(pendingAmbushCheckpoints::addLast)
+    }
 }
+
+internal data class FarmFoodDeliveryAmbushPlan(
+    val distance: Double,
+    val maximum: Int,
+    val afterFarmDistance: Double,
+    val endSafeDistance: Double,
+)

@@ -43,6 +43,7 @@ class FarmCarePlanServiceMockBukkitTest : FunSpec({
                 every { careTargetsPerPlayer } returns 15
                 every { careTargetsMax } returns 45
                 every { scarecrowTargetCount } returns 5
+                every { scarecrowMinSpacing } returns 12.0
             }
             val runtime = FarmRuntime(
                 settings = settings,

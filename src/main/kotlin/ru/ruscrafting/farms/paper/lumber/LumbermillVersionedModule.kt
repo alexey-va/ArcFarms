@@ -74,6 +74,17 @@ internal class LumbermillVersionedModule(
         }
     }
 
+    fun reconfigure(configured: List<LumberZoneSettings>, persisted: Map<String, LumberShiftState>, cooldownMillis: Long) {
+        require((configured.firstOrNull()?.engineVersion ?: 1) == engineVersion) {
+            "Changing lumber engine-version requires a full plugin restart"
+        }
+        when (val target = delegate) {
+            is LumbermillController -> target.reconfigure(configured, persisted, cooldownMillis)
+            is LumbermillModule -> target.reconfigure(configured, persisted, cooldownMillis)
+            else -> error("Unsupported lumber module: ${target::class.qualifiedName}")
+        }
+    }
+
     override fun zoneIds(): List<String> = (delegate as? LumbermillModule)?.admin?.zoneIds().orEmpty()
     override fun incidentIds(): List<String> = (delegate as? LumbermillModule)?.admin?.incidentIds().orEmpty()
     override fun status(zoneId: String): WorksiteAdminStatus? = (delegate as? LumbermillModule)?.admin?.status(zoneId)

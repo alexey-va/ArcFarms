@@ -665,7 +665,11 @@ internal class FarmSpecialIncidentController(
             audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return true
         }
-        if (!access.allowInteraction("farm-giant:${runtime.settings.id}:${player.uniqueId}", 90L)) return true
+        if (!access.allowInteraction(
+                "farm-giant:${runtime.settings.id}:${player.uniqueId}",
+                runtime.settings.specialIncidents.giantCropHitCooldownMillis,
+            )
+        ) return true
         val result = FarmSpecialIncidentEngine.damageGiantCrop(runtime.state, player.uniqueId)
         if (!result.accepted || !giantCrop.breakBlock(block, runtime.settings.id, runtime.state.sequence)) return true
         FarmCropBreakEffects.emitGiantHit(
@@ -674,6 +678,7 @@ internal class FarmSpecialIncidentController(
             result.state.incidentProgress,
             settings().particles,
             settings().sounds,
+            runtime.settings.cropEffects,
         )
         debug.event(
             "farm_giant_crop_hit",

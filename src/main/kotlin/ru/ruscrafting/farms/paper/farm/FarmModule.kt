@@ -113,6 +113,12 @@ internal class FarmModule(
         orderCycle.retain(registry.snapshot().mapTo(mutableSetOf()) { it.settings.id })
     }
 
+    fun reconfigure(persisted: ArcFarmsState) {
+        registry.reconfigure(FarmRuntimeFactory.build(settings(), persisted.farms, regionGateway))
+        orderCycle.retain(registry.snapshot().mapTo(mutableSetOf()) { it.settings.id })
+        supplies.reconfigurePlayerItems(registry.snapshot())
+    }
+
     override fun activateLoadedState() {
         moles.reconcileLoaded()
         org.bukkit.Bukkit.getOnlinePlayers().forEach(moles::recoverPlayer)
@@ -150,6 +156,17 @@ internal class FarmModule(
             "farm_transient_entities_reconciled", "world" to chunk.world.name,
             "chunk" to "${chunk.x},${chunk.z}", "removed" to removed, "reason" to "chunk_load",
         )
+    }
+
+    override fun beforeReload(reason: String) {
+        blockRegistry.cancelReindexes()
+        shiftStart.clearPending()
+        orderCycle.clearPending()
+        field.beforeReload()
+        perks.beforeReload()
+        moles.beforeReload()
+        pests.beforeReload()
+        birds.beforeReload()
     }
 
     fun processRestores() {

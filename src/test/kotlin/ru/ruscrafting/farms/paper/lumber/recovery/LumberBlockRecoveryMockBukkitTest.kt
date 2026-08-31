@@ -74,6 +74,31 @@ class LumberBlockRecoveryMockBukkitTest : FunSpec({
         controller.processDue(now = 6_001L)
         journal.records() shouldBe emptyList()
     }
+
+    test("reload completes an accepted callback and releases its position lock") {
+        val world = paper.server.addSimpleWorld("world")
+        world.getChunkAt(0, 0).load()
+        val block = world.getBlockAt(2, 64, 3).also { it.type = Material.OAK_LOG }
+        val player = paper.server.addPlayer("Logger")
+        val journal = ControllableLumberJournal()
+        val effects = RecordingLumberEffects()
+        val port = deferredPort()
+        val controller = LumberBlockRecoveryController(journal, port, port, { 1_000L }, effects)
+        val runtime = runtime(world.name)
+
+        val prepared = controller.prepare(runtime, player, block, ItemStack(Material.IRON_AXE))
+        journal.completePrepare()
+        prepared.isDone shouldBe false
+
+        controller.beforeReload("config_reload")
+        prepared.join() shouldBe false
+        controller.processDue(now = 6_001L)
+        journal.records() shouldBe emptyList()
+
+        val retried = controller.prepare(runtime, player, block, ItemStack(Material.IRON_AXE))
+        retried.isDone shouldBe false
+        controller.beforeReload("test_cleanup")
+    }
 })
 
 private fun immediatePort(): WorksiteRuntimePort {
@@ -84,6 +109,14 @@ private fun immediatePort(): WorksiteRuntimePort {
             secondArg<() -> Unit>().invoke()
             true
         }
+    }
+}
+
+private fun deferredPort(): WorksiteRuntimePort {
+    val token = mockk<RuntimeTaskSupervisor.Token>()
+    return mockk(relaxed = true) {
+        every { lifecycleToken() } returns token
+        every { runSync(token, any()) } returns true
     }
 }
 

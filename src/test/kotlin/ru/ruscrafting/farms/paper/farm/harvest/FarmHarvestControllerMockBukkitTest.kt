@@ -15,6 +15,7 @@ import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.CuboidBounds
+import ru.ruscrafting.farms.config.FarmCropBreakEffectsSettings
 import ru.ruscrafting.farms.config.FarmZoneSettings
 import ru.ruscrafting.farms.domain.FarmOrder
 import ru.ruscrafting.farms.domain.FarmPhase
@@ -57,6 +58,7 @@ class FarmHarvestControllerMockBukkitTest : FunSpec({
                 every { id } returns "communal_farm"
                 every { permission } returns "arcfarms.farm"
                 every { crops } returns setOf(Material.MELON.name)
+                every { cropEffects } returns FarmCropBreakEffectsSettings()
             },
             region = CuboidActivityRegion(world, "farm", CuboidBounds(0, 0, 0, 31, 128, 31)),
             orders = mapOf(order.id to order),

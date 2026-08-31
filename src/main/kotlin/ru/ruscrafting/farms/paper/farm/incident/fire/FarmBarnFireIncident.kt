@@ -174,7 +174,7 @@ internal class FarmBarnFireIncident(
         ) return true
         val start = player.eyeLocation.clone().add(player.eyeLocation.direction.normalize().multiply(0.45))
         val direction = player.eyeLocation.direction.normalize()
-        renderJet(start, direction, config.sprayRange, config.particleStep)
+        renderJet(start, direction, config.sprayRange, config.particleStep, config.waterSideStreams)
         val hits = hitsInSpray(runtime, start, direction, config.sprayRange, config.sprayHitRadius)
         if (hits.isEmpty()) {
             audience.sendActionBar(player, MessageKey.FARM_BARN_FIRE_AIM_HINT)
@@ -319,7 +319,7 @@ internal class FarmBarnFireIncident(
         return List(limit) { offset -> active[(start + offset) % active.size] }
     }
 
-    private fun renderJet(start: Location, direction: Vector, range: Double, step: Double) {
+    private fun renderJet(start: Location, direction: Vector, range: Double, step: Double, sideStreams: Int) {
         if (!settings().particles) return
         val forward = direction.clone().normalize()
         val reference = if (abs(forward.y) < 0.92) Vector(0.0, 1.0, 0.0) else Vector(1.0, 0.0, 0.0)
@@ -332,8 +332,8 @@ internal class FarmBarnFireIncident(
             center.world.spawnParticle(Particle.SPLASH, center, 1, 0.06, 0.06, 0.06, 0.02)
             if (sample % 2 == 0) {
                 val coneRadius = 0.12 + (distance / range).coerceIn(0.0, 1.0) * 0.82
-                repeat(WATER_SIDE_STREAMS) { stream ->
-                    val angle = (stream.toDouble() / WATER_SIDE_STREAMS * PI * 2.0) + sample * 0.47
+                repeat(sideStreams) { stream ->
+                    val angle = (stream.toDouble() / sideStreams * PI * 2.0) + sample * 0.47
                     val spray = center.clone()
                         .add(right.clone().multiply(cos(angle) * coneRadius))
                         .add(up.clone().multiply(sin(angle) * coneRadius))
@@ -384,6 +384,5 @@ internal class FarmBarnFireIncident(
         runtime.state.incidentType == FarmIncidentType.BARN_FIRE
 
     private companion object {
-        const val WATER_SIDE_STREAMS = 4
     }
 }

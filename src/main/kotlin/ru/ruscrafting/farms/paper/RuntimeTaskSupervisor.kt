@@ -20,6 +20,8 @@ internal class RuntimeTaskSupervisor(
         delegate.activate()
     }
 
+    fun restart(): Token = Token(delegate.restart())
+
     fun token(): Token = Token(delegate.token())
 
     fun runSync(task: () -> Unit): ScheduledTask? = delegate.runSync(task)

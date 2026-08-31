@@ -5,18 +5,39 @@ import org.bukkit.Material
 import org.bukkit.Particle
 import org.bukkit.Sound
 import org.bukkit.block.Block
+import ru.ruscrafting.farms.config.FarmCropBreakEffectsSettings
 
 internal data class FarmCropBreakEffectPalette(val primary: Color, val accent: Color)
 
 /** Shared crop burst used by both ordinary fixed fruit and the giant-harvest sculpture. */
 internal object FarmCropBreakEffects {
-    fun emitHarvest(block: Block, crop: Material, particles: Boolean, sounds: Boolean) {
+    fun emitHarvest(
+        block: Block,
+        crop: Material,
+        particles: Boolean,
+        sounds: Boolean,
+        effectSettings: FarmCropBreakEffectsSettings = FarmCropBreakEffectsSettings(),
+    ) {
         check(supportsHarvestBurst(crop)) { "Harvest burst is unsupported for $crop" }
-        emit(block, crop, BREAK_PITCH, particles, sounds)
+        emit(block, crop, BREAK_PITCH, particles, sounds, effectSettings)
     }
 
-    fun emitGiantHit(block: Block, crop: Material, progress: Int, particles: Boolean, sounds: Boolean) {
-        emit(block, crop, (GIANT_PITCH_BASE + progress * GIANT_PITCH_STEP).coerceAtMost(GIANT_PITCH_MAX), particles, sounds)
+    fun emitGiantHit(
+        block: Block,
+        crop: Material,
+        progress: Int,
+        particles: Boolean,
+        sounds: Boolean,
+        effectSettings: FarmCropBreakEffectsSettings = FarmCropBreakEffectsSettings(),
+    ) {
+        emit(
+            block,
+            crop,
+            (GIANT_PITCH_BASE + progress * GIANT_PITCH_STEP).coerceAtMost(GIANT_PITCH_MAX),
+            particles,
+            sounds,
+            effectSettings,
+        )
     }
 
     fun supportsHarvestBurst(crop: Material): Boolean = crop == Material.MELON || crop == Material.PUMPKIN
@@ -30,32 +51,63 @@ internal object FarmCropBreakEffects {
         else -> FarmCropBreakEffectPalette(Color.fromRGB(232, 201, 105), Color.fromRGB(165, 123, 61))
     }
 
-    private fun emit(block: Block, crop: Material, breakPitch: Float, particles: Boolean, sounds: Boolean) {
+    private fun emit(
+        block: Block,
+        crop: Material,
+        breakPitch: Float,
+        particles: Boolean,
+        sounds: Boolean,
+        effectSettings: FarmCropBreakEffectsSettings,
+    ) {
         val center = block.location.toCenterLocation()
         if (particles) {
             val palette = palette(crop)
-            block.world.spawnParticle(
-                Particle.BLOCK,
-                center,
-                14,
-                0.4,
-                0.4,
-                0.4,
-                0.065,
-                crop.createBlockData(),
-            )
-            block.world.spawnParticle(
-                Particle.DUST_COLOR_TRANSITION,
-                center,
-                7,
-                0.44,
-                0.34,
-                0.44,
-                0.035,
-                Particle.DustTransition(palette.primary, palette.accent, 1.15f),
-            )
-            block.world.spawnParticle(Particle.COMPOSTER, center, 3, 0.32, 0.28, 0.32, 0.025)
-            block.world.spawnParticle(Particle.POOF, center, 5, 0.16, 0.14, 0.16, 0.025)
+            if (effectSettings.blockParticleCount > 0) {
+                block.world.spawnParticle(
+                    Particle.BLOCK,
+                    center,
+                    effectSettings.blockParticleCount,
+                    0.4,
+                    0.4,
+                    0.4,
+                    0.065,
+                    crop.createBlockData(),
+                )
+            }
+            if (effectSettings.dustParticleCount > 0) {
+                block.world.spawnParticle(
+                    Particle.DUST_COLOR_TRANSITION,
+                    center,
+                    effectSettings.dustParticleCount,
+                    0.44,
+                    0.34,
+                    0.44,
+                    0.035,
+                    Particle.DustTransition(palette.primary, palette.accent, 1.15f),
+                )
+            }
+            if (effectSettings.composterParticleCount > 0) {
+                block.world.spawnParticle(
+                    Particle.COMPOSTER,
+                    center,
+                    effectSettings.composterParticleCount,
+                    0.32,
+                    0.28,
+                    0.32,
+                    0.025,
+                )
+            }
+            if (effectSettings.poofParticleCount > 0) {
+                block.world.spawnParticle(
+                    Particle.POOF,
+                    center,
+                    effectSettings.poofParticleCount,
+                    0.16,
+                    0.14,
+                    0.16,
+                    0.025,
+                )
+            }
         }
         if (sounds) {
             block.world.playSound(center, Sound.BLOCK_WOOD_BREAK, 0.9f, breakPitch)

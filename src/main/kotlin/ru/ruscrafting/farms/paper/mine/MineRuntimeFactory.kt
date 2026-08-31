@@ -10,18 +10,18 @@ import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.RegionGateway
 
 internal data class MineRuntime(
-    val settings: MineZoneSettings,
-    val region: ActivityRegion,
-    val cooldownMillis: Long,
+    var settings: MineZoneSettings,
+    var region: ActivityRegion,
+    var cooldownMillis: Long,
     var state: MineShiftState,
 ) {
-    val orders: Map<String, MineOrderSettings> = settings.orders.associateBy(MineOrderSettings::id)
+    val orders: Map<String, MineOrderSettings> get() = settings.orders.associateBy(MineOrderSettings::id)
 
     fun currentOrder(): MineOrderSettings? = state.orderId?.let(orders::get)
 
     fun nextOrder(): MineOrderSettings = settings.orders[(state.sequence % settings.orders.size).toInt()]
 
-    fun rules(order: MineOrderSettings = currentOrder() ?: nextOrder()): MineRules = MineRules(
+    fun rules(order: MineOrderSettings = defaultOrder()): MineRules = MineRules(
         cartQuota = order.miningRequired,
         hazardTrigger = minOf(settings.hazardTrigger, order.miningRequired - 1).coerceAtLeast(1),
         supportsRequired = settings.supportsRequired,
@@ -33,6 +33,13 @@ internal data class MineRuntime(
         incidentCountMin = settings.incidentCountMin,
         incidentCountMax = settings.incidentCountMax,
     )
+
+    private fun defaultOrder(): MineOrderSettings = currentOrder() ?: run {
+        check(state.phase in setOf(ru.ruscrafting.farms.domain.MinePhase.IDLE, ru.ruscrafting.farms.domain.MinePhase.COOLDOWN)) {
+            "Active mine order ${settings.id}/${state.orderId} is missing from runtime settings"
+        }
+        nextOrder()
+    }
 }
 
 internal object MineRuntimeFactory {
@@ -45,6 +52,7 @@ internal object MineRuntimeFactory {
         require(settings.engineVersion == 2) { "Legacy mine zone ${settings.id} cannot enter the V2 runtime" }
         MaterialRules.material(settings.temporaryMaterial)
         MaterialRules.material(settings.baseMaterial)
+        MaterialRules.material(settings.cartVisual.material)
         settings.materialWeights.keys.forEach(MaterialRules::material)
         MineRuntime(
             settings = settings,

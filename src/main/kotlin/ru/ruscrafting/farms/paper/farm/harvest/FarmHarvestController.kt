@@ -70,6 +70,7 @@ internal class FarmHarvestController(
     private val runtimes: () -> Collection<FarmRuntime>,
     private val clock: () -> Long,
     private val perkActive: (UUID, FarmPerkType, Long) -> Boolean = { _, _, _ -> false },
+    private val harvestAreaRadius: (FarmRuntime) -> Int = { 1 },
 ) {
     fun onBreak(event: BlockBreakEvent, runtime: FarmRuntime) {
         event.isCancelled = true
@@ -276,13 +277,20 @@ internal class FarmHarvestController(
     private fun commitFixedCrop(runtime: FarmRuntime, player: Player, block: Block, now: Long) {
         fixedCrops.prepareHarvest(runtime, player, block, now) { currentRuntime, committedPlayer, crop ->
             val material = MaterialRules.material(crop)
-            FarmCropBreakEffects.emitHarvest(block, material, settings().particles, settings().sounds)
+            FarmCropBreakEffects.emitHarvest(
+                block,
+                material,
+                settings().particles,
+                settings().sounds,
+                currentRuntime.settings.cropEffects,
+            )
             progress(currentRuntime, committedPlayer, crop)
         }
     }
 
     private fun commitHarvestArea(runtime: FarmRuntime, player: Player, origin: Block) {
-        for (dx in -1..1) for (dz in -1..1) {
+        val radius = harvestAreaRadius(runtime)
+        for (dx in -radius..radius) for (dz in -radius..radius) {
             if (dx == 0 && dz == 0) continue
             val crop = origin.getRelative(dx, 0, dz)
             val soil = crop.getRelative(org.bukkit.block.BlockFace.DOWN)

@@ -2,8 +2,15 @@ package ru.ruscrafting.farms.paper.farm.harvest
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import io.mockk.confirmVerified
+import io.mockk.every
+import io.mockk.mockk
 import org.bukkit.Color
+import org.bukkit.Location
 import org.bukkit.Material
+import org.bukkit.World
+import org.bukkit.block.Block
+import ru.ruscrafting.farms.config.FarmCropBreakEffectsSettings
 
 class FarmCropBreakEffectsTest : FunSpec({
     test("pumpkins use a warm rind burst with a leafy accent") {
@@ -25,5 +32,22 @@ class FarmCropBreakEffectsTest : FunSpec({
             Material.MELON,
             Material.PUMPKIN,
         )
+    }
+
+    test("zero particle counts disable every harvest burst layer") {
+        val world = mockk<World>(relaxed = true)
+        val block = mockk<Block> {
+            every { location } returns Location(world, 2.0, 64.0, 2.0)
+        }
+
+        FarmCropBreakEffects.emitHarvest(
+            block = block,
+            crop = Material.MELON,
+            particles = true,
+            sounds = false,
+            effectSettings = FarmCropBreakEffectsSettings(0, 0, 0, 0),
+        )
+
+        confirmVerified(world)
     }
 })

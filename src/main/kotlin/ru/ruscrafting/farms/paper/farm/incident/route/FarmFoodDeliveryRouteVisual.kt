@@ -32,9 +32,9 @@ internal object FarmFoodDeliveryRouteVisual {
             val delta = end.toVector().subtract(origin.toVector())
             val distance = delta.length()
             if (distance <= 0.01) return@forEach
-            val step = delta.normalize().multiply(TRAIL_SPACING)
+            val step = delta.normalize().multiply(config.trailSpacing)
             val cursor = origin.clone()
-            repeat(ceil(distance / TRAIL_SPACING).toInt()) {
+            repeat(ceil(distance / config.trailSpacing).toInt()) {
                 if (emitted++ >= MAX_TRAIL_PARTICLES) return@repeat
                 rider.spawnParticle(Particle.DUST, cursor, 1, 0.035, 0.025, 0.035, 0.0, dust)
                 cursor.add(step)
@@ -92,7 +92,6 @@ internal object FarmFoodDeliveryRouteVisual {
     private fun location(rider: Player, point: FarmPointPosition): Location =
         Location(rider.world, point.x, point.y, point.z, point.yaw, point.pitch)
 
-    private const val TRAIL_SPACING = 0.7
     private const val MAX_TRAIL_PARTICLES = 128
     private const val NEXT_MARKER_OFFSET = 5
 }

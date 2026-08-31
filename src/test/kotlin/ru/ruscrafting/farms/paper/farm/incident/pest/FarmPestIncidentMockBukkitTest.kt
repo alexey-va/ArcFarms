@@ -125,6 +125,7 @@ private fun pestFixture(world: WorldMock, plugin: Plugin): PestFixture {
     val settings = mockk<FarmZoneSettings> {
         every { id } returns "communal_farm"
         every { displayViewRange } returns 1.0f
+        every { pestNestDisplayScale } returns 2.0f
     }
     val nests = listOf(
         FarmPestNest(FarmPlotPosition(world.name, 4, 64, 4), health = 3),

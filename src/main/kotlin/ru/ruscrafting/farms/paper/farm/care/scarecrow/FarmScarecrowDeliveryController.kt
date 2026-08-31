@@ -326,7 +326,7 @@ internal class FarmScarecrowDeliveryController(
 
     private fun carriedLocation(runtime: FarmRuntime, player: Player): Location {
         val direction = player.location.direction.setY(0.0)
-        if (direction.lengthSquared() > 0.001) direction.normalize().multiply(-0.7)
+        if (direction.lengthSquared() > 0.001) direction.normalize().multiply(-runtime.settings.scarecrowCarriedForwardOffset)
         return player.location.clone().add(direction).add(0.0, runtime.settings.scarecrowCarriedYOffset, 0.0)
     }
 

@@ -18,6 +18,8 @@ ui:
   particles: true
   sounds: true
   title-stay-seconds: 4
+  task-hint-cooldown-millis: 900
+  task-title-cooldown-millis: 8000
   marker-height: 12
   missing-bed-highlight-threshold: 10
   farm-scoreboard:
@@ -84,6 +86,7 @@ farm-zones:
     care-spawns-per-update: 10
     # Delivery-style care uses a compact fixed scene instead of the general per-player target count.
     scarecrow-target-count: 5
+    scarecrow-min-spacing: 12.0
     # One hive pickup supports this many flower patches.
     pollination-charges: 5
     # Irrigation dries the managed field gradually; valves may be opened in any order and hydrate it in circular waves.
@@ -168,10 +171,20 @@ farm-zones:
         display-scale: 1.4
         display-y-offset: 0.05
     care-animal-entities: [CHICKEN, SHEEP]
+    care:
+      animal-follow-distance: 1.5
+      animal-follow-speed: 1.25
+      animal-follow-impulse-base: 0.16
+      animal-follow-impulse-per-block: 0.025
+      animal-follow-impulse-max: 0.42
+      animal-follow-impulse-smoothing: 0.25
     procedural-care-fixtures: true
     placement-min-objective-distance: 10
     placement-max-player-distance: 28
     placement-search-radius: 32
+    placement:
+      receiving-exclusion-padding: 1.5
+    input-cooldowns: {supply-millis: 500, delivery-millis: 500, patch-miss-millis: 500, care-millis: 100, care-target-millis: 250, mole-millis: 500, frost-pickup-millis: 750, contract-scene-millis: 700}
     music:
       enabled: false
       sound: minecraft:music.overworld.forest
@@ -213,11 +226,14 @@ farm-zones:
     drought-initial-beds: 10
     drought-growth-beds: 8
     drought-growth-seconds: 2
+    drought:
+      water-radius: 5
+      water-settle-ticks: 21
     # В одном заказе планировщик не повторяет события и допускает максимум
     # одно обычное полевое происшествие (вредители или засуха).
     incident-types: [GIANT_CROP, PROCESSING, BARN_FIRE, FROST, CHANNELS, NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, PESTS, DROUGHT]
     special-incidents:
-      giant-crop: {block-particle-stride: 4}
+      giant-crop: {block-particle-stride: 4, hit-cooldown-millis: 90}
       birds: {min-count: 6, max-count: 14, beds-per-bird: 180, spawn-multiplier: 2, spawn-height: 4.0, flying-speed: 0.65, health: 4.0, eat-radius: 5.0, eat-interval-seconds: 3, ranged-contribution: 2, melee-contribution: 1}
       channels:
         blockages: 5
@@ -271,9 +287,10 @@ farm-zones:
       delivery-radius: 2.4
       # The visible line remains at radius 3.2; one block of radial tolerance lets
       # players walk imperfect circles without losing angular progress.
-      crank: {inner-radius: 2.4, outer-radius: 4.0, radius-tolerance: 1.0, max-step-distance: 1.2, title-reminder-seconds: 8}
+      crank: {inner-radius: 2.4, outer-radius: 4.0, radius-tolerance: 1.0, max-step-distance: 1.2, title-reminder-seconds: 8, vertical-tolerance: 2.5}
       carried-y-offset: 0.95
       cargo-watchdog: {reminder-seconds: 12, return-seconds: 30}
+      cargo-progress-distance: 1.0
       spawn-per-tick: 4
       display-view-range: 3.0
       visuals:
@@ -295,7 +312,7 @@ farm-zones:
       placement-radius: 16
       min-spacing: 1.4
       vertical-search: 5
-      spray: {range: 32.0, hit-radius: 3.2, cooldown-ticks: 5, particle-step: 0.55}
+      spray: {range: 32.0, hit-radius: 3.2, cooldown-ticks: 5, particle-step: 0.55, side-streams: 4}
       flame-particle-interval-ticks: 5
       # Real flames remain visible; only this many receive extra smoke/particle decoration per pulse.
       particle-hotspot-limit: 24
@@ -303,25 +320,30 @@ farm-zones:
       sample-distance: 2.5
       corridor-radius: 5.0
       hard-reset-distance: 9.0
+      hard-correction-strength: 0.42
+      corridor-correction-strength: 0.24
       # Wide final arrival zone, rendered as a bright particle ring and column.
       checkpoint-radius: 8.0
       horse-speed: 0.17
+      horse-jump-strength: 0.45
       player-time: 18000
       transition-seconds: 18
       # Geometry is intentionally ignored: ordinary stairs, slabs and turns
       # cannot trigger recovery. Only prolonged lack of movement/progress can.
       inactivity: {reminder-seconds: 20, reset-seconds: 45, movement-distance: 2.0}
-      trail: {lookahead-points: 28, height: 0.35, particle-size: 1.15}
+      trail: {lookahead-points: 28, height: 0.35, particle-size: 1.15, spacing: 0.7}
       completion-contribution: 12
       # Riders are dismounted at the destination, then returned to the farm after this pause.
       return-delay-seconds: 3
       # Keep the join portal beside receiving, away from the cart/customer hitboxes.
-      portal: {right-offset: 4.0, width: 3.6, height: 3.2, label-height: 3.35, label-scale: 1.8}
+      portal: {right-offset: 4.0, width: 3.6, height: 3.2, label-height: 3.35, label-scale: 1.8, arrival-side-offset: 3.0}
       cart-scale: 4.4
+      cart-back-offset: 2.15
       # cart_2 reaches -0.825 blocks at scale 4.4 after its JSON GROUND transform;
       # the remaining 0.05 keeps its wheels visible above uneven terrain.
       cart-y-offset: 0.875
       cart-load-count: 4
+      cart-load-spacing: 0.24
       monsters:
         # Ambushes are planned from route length, not a timer while the cart is moving.
         distance-per-ambush: 120.0
@@ -333,6 +355,9 @@ farm-zones:
         spawn-distance: 10.0
         wave-min: 5
         wave-max: 8
+        spawn-min-multiplier: 0.8
+        spawn-max-multiplier: 1.15
+        phantom-spawn-height: 7.0
         types: [HUSK, ZOMBIE, SKELETON, SPIDER, PHANTOM]
         movement-speed: 0.25
         light-level: 15
@@ -350,6 +375,7 @@ farm-zones:
         damage: 7.0
         range: 42.0
         cooldown-ticks: 6
+        ray-size: 0.65
         trail-length: 10
     pest-entity: SILVERFISH
     pest-spawn-radius: 6
@@ -361,6 +387,12 @@ farm-zones:
     pest-spawn-chance-percent: 45
     pest-eat-radius: 3
     pest-eat-per-pulse: 8
+    pest-eat-interval-millis: 1000
+    pest-nest-min-spacing: 16.0
+    pest-nest-display-scale: 2.0
+    scarecrow-carried-forward-offset: 0.7
+    crop-effects:
+      harvest-burst: {block-particle-count: 14, dust-particle-count: 7, composter-particle-count: 3, poof-particle-count: 5}
     # Incidents may damage crops temporarily, but never consume the entire indexed field.
     damage-safety: {maximum-percent: 18, minimum-remaining: 128, birds-maximum: 96, pests-maximum: 128, disease-maximum: 96}
     supplies:
@@ -378,11 +410,13 @@ farm-zones:
       fire-equipment-material: SPYGLASS
       fire-equipment-custom-model-data: 0
       fire-equipment-item-model: ''
+      item-scale: 1.35
     delivery:
       x: 201.65
       y: 49.0
       z: 453.46
       radius: 2.5
+      carried-forward-offset: 0.65
       crates: 3
       spawn-radius: 24
       min-crate-spacing: 5.0
@@ -395,9 +429,9 @@ farm-zones:
       carried-y-offset: 0.65
       display-view-range: 2.0
     perks:
-      harvest-area: {price: 250, duration-hours: 72}
-      speed: {price: 180, duration-hours: 72}
-      sustenance: {price: 150, duration-hours: 72, interval-seconds: 5}
+      harvest-area: {price: 250, duration-hours: 72, radius: 1}
+      speed: {price: 180, duration-hours: 72, amplifier: 0, refresh-ticks: 60}
+      sustenance: {price: 150, duration-hours: 72, interval-seconds: 5, food: 2, saturation: 1.0, health: 1.0}
       reward-boost: {price: 400, duration-hours: 72, bonus-percent: 25}
     rewards:
       # Every reward rolls independently. Commands run as console after the grant is durably claimed.
@@ -482,6 +516,15 @@ lumber-zones:
     incident-count-min: 3
     incident-count-max: 5
     recovery-seconds: 90
+    incidents:
+      rush-order-duration-millis: 75000
+      forest-fire:
+        candidate-multiplier: 4
+    interaction-cooldowns:
+      saw-millis: 150
+      bundle-millis: 350
+      plank-millis: 350
+      dispatch-millis: 500
     rewards:
       experience: {amount: 180, chance-percent: 100}
       items:
@@ -516,6 +559,21 @@ mine-zones:
     hazard-trigger: 6
     supports-required: 1
     restore-seconds: 60
+    lost-miner: {delivery-radius: 2.5, follow-snap-distance: 6.0, follow-offset-z: -1.0}
+    extraction:
+      checkpoint-radius: 1.6
+      # Portable default; the owning server profile may select a verified resource-pack model.
+      cart:
+        material: MINECART
+        custom-model-data: 0
+        item-model: ''
+        display-transform: GROUND
+        scale: 1.0
+        y-offset: 0.15
+        view-range: 2.0
+        interaction-width: 1.5
+        interaction-height: 1.0
+    loading: {delivery-radius: 2.0}
     temp-material: COBBLESTONE
     base-material: STONE
     materials: [STONE:240, COAL_ORE:45, IRON_ORE:45, COPPER_ORE:15, LAPIS_ORE:3, DIAMOND_ORE:3, EMERALD_ORE:6, REDSTONE_ORE:15, AMETHYST_BLOCK:5, GLOWSTONE:5]
@@ -541,6 +599,20 @@ mine-zones:
     hazard-trigger: 6
     supports-required: 1
     restore-seconds: 60
+    lost-miner: {delivery-radius: 2.5, follow-snap-distance: 6.0, follow-offset-z: -1.0}
+    extraction:
+      checkpoint-radius: 1.6
+      cart:
+        material: MINECART
+        custom-model-data: 0
+        item-model: ''
+        display-transform: GROUND
+        scale: 1.0
+        y-offset: 0.15
+        view-range: 2.0
+        interaction-width: 1.5
+        interaction-height: 1.0
+    loading: {delivery-radius: 2.0}
     temp-material: BLACK_CONCRETE
     base-material: SANDSTONE
     materials: [SANDSTONE:250, SMOOTH_SANDSTONE:250, COAL_ORE:45, IRON_ORE:45, COPPER_ORE:15, LAPIS_ORE:3, DIAMOND_ORE:3, EMERALD_ORE:6, REDSTONE_ORE:15]
@@ -562,6 +634,20 @@ mine-zones:
     hazard-trigger: 6
     supports-required: 1
     restore-seconds: 75
+    lost-miner: {delivery-radius: 2.5, follow-snap-distance: 6.0, follow-offset-z: -1.0}
+    extraction:
+      checkpoint-radius: 1.6
+      cart:
+        material: MINECART
+        custom-model-data: 0
+        item-model: ''
+        display-transform: GROUND
+        scale: 1.0
+        y-offset: 0.15
+        view-range: 2.0
+        interaction-width: 1.5
+        interaction-height: 1.0
+    loading: {delivery-radius: 2.0}
     temp-material: BLACK_CONCRETE
     base-material: NETHERRACK
     materials: [NETHERRACK:400, RED_NETHER_BRICKS:30, NETHER_BRICKS:30, CRACKED_NETHER_BRICKS:30, SOUL_SAND:30, MAGMA_BLOCK:30, CRIMSON_NYLIUM:30, NETHER_QUARTZ_ORE:75, ANCIENT_DEBRIS:1, GLOWSTONE:50]
@@ -583,6 +669,20 @@ mine-zones:
     hazard-trigger: 6
     supports-required: 1
     restore-seconds: 60
+    lost-miner: {delivery-radius: 2.5, follow-snap-distance: 6.0, follow-offset-z: -1.0}
+    extraction:
+      checkpoint-radius: 1.6
+      cart:
+        material: MINECART
+        custom-model-data: 0
+        item-model: ''
+        display-transform: GROUND
+        scale: 1.0
+        y-offset: 0.15
+        view-range: 2.0
+        interaction-width: 1.5
+        interaction-height: 1.0
+    loading: {delivery-radius: 2.0}
     temp-material: COBBLESTONE
     base-material: STONE
     materials: [STONE:100, COAL_ORE:45, IRON_ORE:45, COPPER_ORE:15, LAPIS_ORE:3, DIAMOND_ORE:3, EMERALD_ORE:6, REDSTONE_ORE:15, AMETHYST_BLOCK:5, GLOWSTONE:5, CLAY:10]

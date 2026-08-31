@@ -350,9 +350,17 @@ counts, spawn batching and display/hitbox height,
 block-reindex and backup batch/size limits, display
 scale/offset/view range, care timings, drought/pest tuning, UI toggles, sounds,
 particles, rewards, fixed-crop respawn delay, restoration batch size, and
-operation points are hot-reloadable. Only
-`server-id`, the Redis network enablement boundary, the plugin JAR itself, and
-server-wide living-entity tracking in `spigot.yml` require a restart.
+operation points are hot-reloadable. Reload mutates the existing farm,
+lumbermill, and mine runtime aggregates: an active incident, its participants,
+vehicles, service items, HUD, personal time and ordinary gameplay delays stay
+active while changed attributes and presentation are reconciled in place.
+
+A full restart remains required only for construction-time topology:
+`enabled`, `server-id`, `network.enabled`, Redis connection/identity settings,
+zone ids and region/bounds references, lumber station references, worksite
+`engine-version`, the plugin JAR itself, and server-wide living-entity tracking
+in `spigot.yml`. The reload command rejects those changes before touching the
+active runtime and reports the restart requirement.
 - `/arcfarms debug <zone> status` — print the exact shift, patch, crop damage,
   order rarity, customer, cart fill, water-flow, care targets, animal followers,
   nest, pest, and delivery state used by the server.
@@ -408,17 +416,17 @@ button.
 ## Reliability boundaries
 
 `ArcFarmsService` now orchestrates several focused lifecycle owners instead of
-keeping every mutable concern in one collection. `RuntimeTaskSupervisor` assigns
-each startup or reload a fresh epoch, tracks both repeating and one-shot work,
-and rejects an asynchronous completion from an old runtime. Pollination charges
+keeping every mutable concern in one collection. Reload uses separate task
+scopes: journal/database callbacks receive a fresh epoch and stale completions
+are rejected; in-progress gameplay delays survive because runtime identities are
+preserved; periodic loops restart so new intervals apply immediately. Pollination charges
 are scoped to an exact farm and shift. `FarmRewardLedger` owns deduplication and
 the persist-before-delivery claim transaction with exact rollback on storage
 failure. Giant-crop recovery has a bounded, strictly validated chunk-PDC codec;
 a journal entry remains durable until its original block data was actually
 decoded and restored.
 
-Architecture tests forbid scheduler bypasses in the service and cap the existing
-monolith while decomposition continues. New stateful gameplay subsystems must be
+Architecture tests forbid scheduler bypasses in the service. New stateful gameplay subsystems must be
 introduced as focused owners with their own invariant tests rather than adding
 more service-local maps.
 

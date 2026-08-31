@@ -24,6 +24,7 @@ import ru.ruscrafting.farms.paper.ActivityBarKey
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.FarmScoreboardController
+import ru.ruscrafting.farms.paper.FarmScoreboardPort
 import ru.ruscrafting.farms.paper.FarmScoreboardRenderer
 import ru.ruscrafting.farms.paper.FarmScoreboardView
 import ru.ruscrafting.farms.paper.MaterialRules
@@ -52,8 +53,12 @@ internal class FarmHudController(
     private val special: FarmSpecialIncidentController,
     private val harvest: FarmHarvestController,
     private val clock: () -> Long,
+    private val scoreboards: FarmScoreboardPort = FarmScoreboardController(
+        FarmScoreboardRenderer(locale),
+        { settings().farmScoreboard },
+        debug,
+    ),
 ) {
-    private val scoreboards = FarmScoreboardController(FarmScoreboardRenderer(locale), { settings().farmScoreboard }, debug)
     private val music = FarmMusicLoop()
 
     fun update(runtimes: Collection<FarmRuntime>): MutableSet<ActivityBarKey> {
@@ -162,7 +167,10 @@ internal class FarmHudController(
     }
 
     fun taskHint(player: Player, runtime: FarmRuntime, reason: String) {
-        if (!access.allowInteraction("farm-task-hint:${runtime.settings.id}:${player.uniqueId}", 900)) return
+        if (!access.allowInteraction(
+                "farm-task-hint:${runtime.settings.id}:${player.uniqueId}", settings().taskHintCooldownMillis,
+            )
+        ) return
         when (runtime.state.phase) {
             FarmPhase.PREPARATION -> audience.sendActionBar(player, MessageKey.FARM_PREPARATION_REQUIRED)
             FarmPhase.PLANTING -> audience.sendActionBar(
@@ -194,7 +202,10 @@ internal class FarmHudController(
             "phase" to runtime.state.phase,
             "reason" to reason,
         )
-        if (access.allowInteraction("farm-task-title:${runtime.settings.id}:${player.uniqueId}", 8_000)) {
+        if (access.allowInteraction(
+                "farm-task-title:${runtime.settings.id}:${player.uniqueId}", settings().taskTitleCooldownMillis,
+            )
+        ) {
             enter(player, runtime)
         }
     }

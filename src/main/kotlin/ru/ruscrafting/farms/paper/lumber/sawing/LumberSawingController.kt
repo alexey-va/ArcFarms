@@ -38,7 +38,10 @@ internal class LumberSawingController(
             audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return true
         }
-        if (!access.allowInteraction("lumber-saw:${runtime.settings.id}:${player.uniqueId}", 150L)) return true
+        if (!access.allowInteraction(
+                "lumber-saw:${runtime.settings.id}:${player.uniqueId}", runtime.settings.sawInteractionCooldownMillis,
+            )
+        ) return true
         use(runtime, side, player, clock())
         return true
     }

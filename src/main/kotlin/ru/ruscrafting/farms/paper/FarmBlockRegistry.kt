@@ -165,9 +165,13 @@ internal class FarmBlockRegistry(
         return FarmBlockReindexStart.Started(job.status())
     }
 
-    fun clear() {
+    fun cancelReindexes() {
         jobs.values.toList().forEach { it.cancel() }
         jobs.clear()
+    }
+
+    fun clear() {
+        cancelReindexes()
         bedsByZone.clear()
         fixedCropsByZone.clear()
         orchardLeavesByZone.clear()

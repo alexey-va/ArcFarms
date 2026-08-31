@@ -25,6 +25,7 @@ internal class MineBlockRecoveryController(
     private val clock: () -> Long,
 ) : RuntimeComponent {
     private val inFlightPositions = ConcurrentHashMap.newKeySet<String>()
+    private val pendingResults = ConcurrentHashMap<String, CompletableFuture<Boolean>>()
     private val retiringRecords = ConcurrentHashMap.newKeySet<String>()
 
     val pendingCount: Int get() = journal.records().size
@@ -48,9 +49,10 @@ internal class MineBlockRecoveryController(
         }
         val token = tasks.lifecycleToken()
         val result = CompletableFuture<Boolean>()
+        pendingResults[record.positionKey] = result
         journal.prepare(record).whenComplete { _, failure ->
             if (failure != null) {
-                inFlightPositions.remove(record.positionKey)
+                release(record.positionKey, result)
                 result.completeExceptionally(failure)
                 return@whenComplete
             }
@@ -66,11 +68,11 @@ internal class MineBlockRecoveryController(
                     } catch (mutationFailure: Throwable) {
                         result.completeExceptionally(mutationFailure)
                     } finally {
-                        inFlightPositions.remove(record.positionKey)
+                        release(record.positionKey, result)
                     }
                 }
             ) {
-                inFlightPositions.remove(record.positionKey)
+                release(record.positionKey, result)
                 retire(record, "stale")
                 result.complete(false)
             }
@@ -118,9 +120,23 @@ internal class MineBlockRecoveryController(
         processDue()
     }
 
+    override fun beforeReload(reason: String) = cancelPending()
+
     override fun cleanup(reason: String) {
-        inFlightPositions.clear()
+        cancelPending()
         processDue(Long.MAX_VALUE, 262_144)
+    }
+
+    private fun cancelPending() {
+        val cancelled = pendingResults.values.toList()
+        pendingResults.clear()
+        inFlightPositions.clear()
+        cancelled.forEach { it.complete(false) }
+    }
+
+    private fun release(positionKey: String, result: CompletableFuture<Boolean>) {
+        pendingResults.remove(positionKey, result)
+        inFlightPositions.remove(positionKey)
     }
 
     private fun retire(record: PendingMineBlock, reason: String) {

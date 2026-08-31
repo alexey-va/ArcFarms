@@ -48,26 +48,28 @@ internal class LumbermillController(
         persisted: Map<String, LumberShiftState>,
         cooldownMillis: Long,
     ) {
+        runtimes = configured.map { settings -> runtime(settings, persisted[settings.id], cooldownMillis) }
+    }
+
+    fun reconfigure(
+        configured: List<LumberZoneSettings>,
+        persisted: Map<String, LumberShiftState>,
+        cooldownMillis: Long,
+    ) {
+        val current = runtimes.associateBy { it.settings.id }
+        require(current.keys == configured.mapTo(linkedSetOf(), LumberZoneSettings::id)) {
+            "Changing lumber zone topology requires a full plugin restart"
+        }
         runtimes = configured.map { settings ->
-            val region = requireNotNull(regionGateway.resolve(settings.reference)) {
-                "Lumber zone ${settings.id} cannot resolve ${settings.reference}"
+            val candidate = runtime(settings, persisted[settings.id], cooldownMillis)
+            requireNotNull(current[settings.id]).apply {
+                this.settings = candidate.settings
+                region = candidate.region
+                station = candidate.station
+                rules = candidate.rules
+                stationMaterials = candidate.stationMaterials
+                state = candidate.state
             }
-            val station = requireNotNull(regionGateway.resolve(settings.station)) {
-                "Lumber station ${settings.id} cannot resolve ${settings.station}"
-            }
-            Runtime(
-                settings = settings,
-                region = region,
-                station = station,
-                rules = LumberRules(
-                    settings.fellingQuota,
-                    settings.processingQuota,
-                    settings.processingPerUse,
-                    cooldownMillis,
-                ),
-                stationMaterials = settings.stationMaterials.mapTo(mutableSetOf(), MaterialRules::material),
-                state = persisted[settings.id] ?: LumberShiftState(),
-            )
         }
     }
 
@@ -298,12 +300,29 @@ internal class LumbermillController(
     private fun remainingSeconds(deadline: Long, now: Long): Long =
         ceil((deadline - now).coerceAtLeast(0) / 1000.0).toLong()
 
+    private fun runtime(settings: LumberZoneSettings, state: LumberShiftState?, cooldownMillis: Long): Runtime {
+        val region = requireNotNull(regionGateway.resolve(settings.reference)) {
+            "Lumber zone ${settings.id} cannot resolve ${settings.reference}"
+        }
+        val station = requireNotNull(regionGateway.resolve(settings.station)) {
+            "Lumber station ${settings.id} cannot resolve ${settings.station}"
+        }
+        return Runtime(
+            settings,
+            region,
+            station,
+            LumberRules(settings.fellingQuota, settings.processingQuota, settings.processingPerUse, cooldownMillis),
+            settings.stationMaterials.mapTo(mutableSetOf(), MaterialRules::material),
+            state ?: LumberShiftState(),
+        )
+    }
+
     private data class Runtime(
-        val settings: LumberZoneSettings,
-        val region: ActivityRegion,
-        val station: ActivityRegion,
-        val rules: LumberRules,
-        val stationMaterials: Set<Material>,
+        var settings: LumberZoneSettings,
+        var region: ActivityRegion,
+        var station: ActivityRegion,
+        var rules: LumberRules,
+        var stationMaterials: Set<Material>,
         var state: LumberShiftState,
     )
 
@@ -330,13 +349,33 @@ internal class LumbermillController(
                 if (state.phase in setOf(LumberPhase.IDLE, LumberPhase.COOLDOWN)) return@forEach
                 val zone = requireNotNull(zones[id]) { "Persisted active lumber zone $id is missing from config" }
                 require(state.species in zone.species) { "Persisted lumber species ${state.species} is missing from $id" }
+                validateActiveOrder(zone, state, reload = false)
             }
         }
 
         fun validateReload(configured: List<LumberZoneSettings>, persisted: Map<String, LumberShiftState>) {
+            val zones = configured.associateBy(LumberZoneSettings::id)
             persisted.filterValues { it.phase !in setOf(LumberPhase.IDLE, LumberPhase.COOLDOWN) }.forEach { (id, state) ->
-                require(configured.any { it.id == id && state.species in it.species }) {
+                val zone = zones[id]
+                require(zone != null && state.species in zone.species) {
                     "Cannot remove active lumber zone/species $id during reload"
+                }
+                validateActiveOrder(zone, state, reload = true)
+            }
+        }
+
+        private fun validateActiveOrder(zone: LumberZoneSettings, state: LumberShiftState, reload: Boolean) {
+            if (zone.engineVersion != 2 || state.engineVersion < 2) return
+            val order = zone.orders.firstOrNull { it.id == state.orderId }
+            require(order != null) {
+                if (reload) "Cannot remove active lumber order ${zone.id}/${state.orderId} during reload"
+                else "Persisted active lumber order ${zone.id}/${state.orderId} is missing from config"
+            }
+            require(state.species in order.species) {
+                if (reload) {
+                    "Cannot remove active lumber order species ${zone.id}/${state.orderId}/${state.species} during reload"
+                } else {
+                    "Persisted active lumber order species ${zone.id}/${state.orderId}/${state.species} is missing from config"
                 }
             }
         }

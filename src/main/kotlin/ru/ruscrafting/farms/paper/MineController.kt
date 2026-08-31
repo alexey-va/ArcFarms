@@ -71,25 +71,36 @@ internal class MineController(
         pendingPositions.clear()
         retiringRecords.clear()
         journal.records().forEach { pendingPositions[it.positionKey] = it.id }
-        runtimes = configured.map { settings ->
-            val region = requireNotNull(regionGateway.resolve(settings.reference)) {
-                "Mine zone ${settings.id} cannot resolve ${settings.reference}"
-            }
-            Runtime(
-                settings = settings,
-                region = region,
-                rules = MineRules(
-                    settings.cartQuota,
-                    settings.hazardTrigger,
-                    settings.supportsRequired,
-                    cooldownMillis,
-                ),
-                temporaryMaterial = MaterialRules.material(settings.temporaryMaterial),
-                baseMaterial = MaterialRules.material(settings.baseMaterial),
-                materialWeights = LinkedHashMap(settings.materialWeights.mapKeys { MaterialRules.material(it.key) }),
-                state = persisted[settings.id] ?: MineShiftState(),
-            )
+        runtimes = configured.map { settings -> runtime(settings, persisted[settings.id], cooldownMillis) }
+    }
+
+    fun reconfigure(
+        configured: List<MineZoneSettings>,
+        persisted: Map<String, MineShiftState>,
+        cooldownMillis: Long,
+    ) {
+        val current = runtimes.associateBy { it.settings.id }
+        require(current.keys == configured.mapTo(linkedSetOf(), MineZoneSettings::id)) {
+            "Changing mine zone topology requires a full plugin restart"
         }
+        runtimes = configured.map { settings ->
+            val candidate = runtime(settings, persisted[settings.id], cooldownMillis)
+            requireNotNull(current[settings.id]).apply {
+                this.settings = candidate.settings
+                region = candidate.region
+                rules = candidate.rules
+                temporaryMaterial = candidate.temporaryMaterial
+                baseMaterial = candidate.baseMaterial
+                materialWeights = candidate.materialWeights
+                state = candidate.state
+            }
+        }
+    }
+
+    override fun beforeReload(reason: String) {
+        reservations.clear()
+        pendingPositions.clear()
+        journal.records().forEach { pendingPositions[it.positionKey] = it.id }
     }
 
     override fun states(): Map<String, MineShiftState> = runtimes.associate { it.settings.id to it.state }
@@ -421,13 +432,28 @@ internal class MineController(
     private fun positionKey(location: Location): String =
         "${location.world.name}:${location.blockX}:${location.blockY}:${location.blockZ}"
 
+    private fun runtime(settings: MineZoneSettings, state: MineShiftState?, cooldownMillis: Long): Runtime {
+        val region = requireNotNull(regionGateway.resolve(settings.reference)) {
+            "Mine zone ${settings.id} cannot resolve ${settings.reference}"
+        }
+        return Runtime(
+            settings,
+            region,
+            MineRules(settings.cartQuota, settings.hazardTrigger, settings.supportsRequired, cooldownMillis),
+            MaterialRules.material(settings.temporaryMaterial),
+            MaterialRules.material(settings.baseMaterial),
+            LinkedHashMap(settings.materialWeights.mapKeys { MaterialRules.material(it.key) }),
+            state ?: MineShiftState(),
+        )
+    }
+
     private data class Runtime(
-        val settings: MineZoneSettings,
-        val region: ActivityRegion,
-        val rules: MineRules,
-        val temporaryMaterial: Material,
-        val baseMaterial: Material,
-        val materialWeights: LinkedHashMap<Material, Int>,
+        var settings: MineZoneSettings,
+        var region: ActivityRegion,
+        var rules: MineRules,
+        var temporaryMaterial: Material,
+        var baseMaterial: Material,
+        var materialWeights: LinkedHashMap<Material, Int>,
         var state: MineShiftState,
     )
 
@@ -452,9 +478,10 @@ internal class MineController(
         }
 
         fun validatePersisted(configured: List<MineZoneSettings>, persisted: Map<String, MineShiftState>) {
-            val ids = configured.mapTo(mutableSetOf(), MineZoneSettings::id)
-            persisted.filterValues { it.phase !in setOf(MinePhase.IDLE, MinePhase.COOLDOWN) }.keys.forEach { id ->
-                require(id in ids) { "Persisted active mine zone $id is missing from config" }
+            val zones = configured.associateBy(MineZoneSettings::id)
+            persisted.filterValues { it.phase !in setOf(MinePhase.IDLE, MinePhase.COOLDOWN) }.forEach { (id, state) ->
+                val zone = requireNotNull(zones[id]) { "Persisted active mine zone $id is missing from config" }
+                validateActiveOrder(zone, state, reload = false)
             }
         }
 
@@ -463,12 +490,21 @@ internal class MineController(
             persisted: Map<String, MineShiftState>,
             journal: MineRecoveryJournal,
         ) {
-            val ids = configured.mapTo(mutableSetOf(), MineZoneSettings::id)
-            persisted.filterValues { it.phase !in setOf(MinePhase.IDLE, MinePhase.COOLDOWN) }.keys.forEach { id ->
-                require(id in ids) { "Cannot remove active mine $id during reload" }
+            val zones = configured.associateBy(MineZoneSettings::id)
+            persisted.filterValues { it.phase !in setOf(MinePhase.IDLE, MinePhase.COOLDOWN) }.forEach { (id, state) ->
+                val zone = requireNotNull(zones[id]) { "Cannot remove active mine $id during reload" }
+                validateActiveOrder(zone, state, reload = true)
             }
             journal.records().forEach { record ->
-                require(record.zoneId in ids) { "Cannot remove mine ${record.zoneId} with pending block recovery" }
+                require(record.zoneId in zones) { "Cannot remove mine ${record.zoneId} with pending block recovery" }
+            }
+        }
+
+        private fun validateActiveOrder(zone: MineZoneSettings, state: MineShiftState, reload: Boolean) {
+            if (zone.engineVersion != 2 || state.engineVersion < 2) return
+            require(zone.orders.any { it.id == state.orderId }) {
+                if (reload) "Cannot remove active mine order ${zone.id}/${state.orderId} during reload"
+                else "Persisted active mine order ${zone.id}/${state.orderId} is missing from config"
             }
         }
     }

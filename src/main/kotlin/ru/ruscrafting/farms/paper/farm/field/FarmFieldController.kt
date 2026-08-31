@@ -99,6 +99,8 @@ internal class FarmFieldController(
         maintenanceRemovedBeds.clear()
     }
 
+    fun beforeReload() = pendingRecoveryCommits.clear()
+
     fun selectPatch(
         runtime: FarmRuntime,
         anchor: Location,
@@ -173,7 +175,10 @@ internal class FarmFieldController(
         if (!activeTarget) {
             if (preparation && MaterialRules.isHoe(player.inventory.itemInMainHand)) {
                 event.isCancelled = true
-                if (access.allowInteraction("farm-patch-miss:${runtime.settings.id}:${player.uniqueId}", 500)) {
+                if (access.allowInteraction(
+                        "farm-patch-miss:${runtime.settings.id}:${player.uniqueId}",
+                        runtime.settings.inputCooldowns.patchMissMillis,
+                    )) {
                     audience.sendActionBar(player, MessageKey.FARM_PREPARATION_REQUIRED)
                     debug.event(
                         "farm_till_rejected",
@@ -186,7 +191,10 @@ internal class FarmFieldController(
             }
             if (planting && MaterialRules.cropForSeed(player.inventory.itemInMainHand) != null) {
                 event.isCancelled = true
-                if (access.allowInteraction("farm-patch-miss:${runtime.settings.id}:${player.uniqueId}", 500)) {
+                if (access.allowInteraction(
+                        "farm-patch-miss:${runtime.settings.id}:${player.uniqueId}",
+                        runtime.settings.inputCooldowns.patchMissMillis,
+                    )) {
                     audience.sendActionBar(
                         player,
                         MessageKey.FARM_PLANTING_REQUIRED,
@@ -212,7 +220,9 @@ internal class FarmFieldController(
             audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return true
         }
-        if (!access.allowInteraction("farm-care:${runtime.settings.id}:${player.uniqueId}", 100)) return true
+        if (!access.allowInteraction(
+                "farm-care:${runtime.settings.id}:${player.uniqueId}", runtime.settings.inputCooldowns.careMillis,
+            )) return true
 
         if (preparation) {
             if (!MaterialRules.isHoe(player.inventory.itemInMainHand)) {

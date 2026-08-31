@@ -5,7 +5,6 @@ import net.kyori.adventure.text.minimessage.MiniMessage
 import org.bukkit.command.CommandSender
 import org.bukkit.entity.Player
 import ru.arc.config.Config
-import ru.arc.config.ConfigManager
 import ru.arc.text.ConfigLocaleCatalog
 import ru.arc.text.LocalizedMiniMessage
 import ru.ruscrafting.farms.domain.FarmPointKind
@@ -485,15 +484,22 @@ enum class MessageKey(val path: String) {
 }
 
 class ArcFarmsLocale(
-    dataRoot: Path,
+    private val dataRoot: Path,
     private val settings: () -> ArcFarmsConfig,
 ) {
-    private val russian: Config = ConfigManager.of(dataRoot, "lang/ru.yml")
-    private val english: Config = ConfigManager.of(dataRoot, "lang/en.yml")
-    private val renderer = LocalizedMiniMessage(
-        catalogs = mapOf("ru" to ConfigLocaleCatalog(russian), "en" to ConfigLocaleCatalog(english)),
-        defaultLocale = { settings().defaultLocale },
-    )
+    internal class CatalogSnapshot internal constructor(internal val renderer: LocalizedMiniMessage)
+
+    @Volatile
+    private var renderer = loadRenderer()
+
+    internal fun snapshot(): CatalogSnapshot = CatalogSnapshot(renderer)
+
+    /** Parses new catalogs without publishing them into the live audience. */
+    internal fun prepareReload(): CatalogSnapshot = CatalogSnapshot(loadRenderer())
+
+    internal fun publish(snapshot: CatalogSnapshot) {
+        renderer = snapshot.renderer
+    }
 
     fun render(
         key: MessageKey,
@@ -514,6 +520,14 @@ class ArcFarmsLocale(
     private fun localeTag(audience: CommandSender?): String =
         if (settings().useClientLocale && audience is Player) audience.locale().toLanguageTag()
         else settings().defaultLocale
+
+    private fun loadRenderer(): LocalizedMiniMessage = LocalizedMiniMessage(
+        catalogs = mapOf(
+            "ru" to ConfigLocaleCatalog(Config(dataRoot, "lang/ru.yml")),
+            "en" to ConfigLocaleCatalog(Config(dataRoot, "lang/en.yml")),
+        ),
+        defaultLocale = { settings().defaultLocale },
+    )
 
     companion object {
         fun synchronizeFiles(dataRoot: Path) {

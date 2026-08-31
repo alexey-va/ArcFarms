@@ -80,6 +80,10 @@ internal class MineModule(
         registry.replace(MineRuntimeFactory.build(configured, persisted, cooldownMillis, regions))
     }
 
+    fun reconfigure(configured: List<MineZoneSettings>, persisted: Map<String, MineShiftState>, cooldownMillis: Long) {
+        registry.reconfigure(MineRuntimeFactory.build(configured, persisted, cooldownMillis, regions))
+    }
+
     fun canStart(zoneId: String): Boolean = recovery.canStart(zoneId)
 
     override fun states(): Map<String, MineShiftState> =
@@ -142,6 +146,7 @@ internal class MineModule(
         registry.snapshot().forEach { runtime ->
             runtime.region.world.loadedChunks.forEach { chunk ->
                 index.reconcileChunk(runtime.indexDefinition(), chunk)
+                cartScene.reconcileChunk(chunk)
                 incidents.reconcileChunk(runtime, chunk)
             }
             extraction.reconcile(runtime)
@@ -158,6 +163,11 @@ internal class MineModule(
         registry.snapshot().filter { it.region.world === chunk.world }.forEach { runtime ->
             incidents.reconcileChunk(runtime, chunk)
         }
+    }
+
+    override fun beforeReload(reason: String) {
+        admin.cleanup()
+        recovery.beforeReload(reason)
     }
 
     override fun cleanup(reason: String) {

@@ -4,13 +4,13 @@ import com.google.gson.Gson
 import net.milkbowl.vault.economy.Economy
 import org.bukkit.plugin.java.JavaPlugin
 import org.slf4j.LoggerFactory
-import ru.arc.config.ConfigManager
 import ru.arc.core.PaperArcRuntime
 import ru.arc.core.Tasks
 import ru.arc.observability.RuntimeHealthContribution
 import ru.arc.observability.RuntimeHealthState
 import ru.arc.paper.runtime.PaperPluginRuntime
 import ru.arc.redis.RedisManager
+import ru.arc.redis.RedisModuleConfig
 import ru.arc.redis.ServerIdentity
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
@@ -46,6 +46,7 @@ open class ArcFarmsPlugin : JavaPlugin() {
     private var farmLocationRepository: FarmLocationRepository? = null
     private var farmRouteRepository: FarmRouteRepository? = null
     private var redis: RedisManager? = null
+    private var redisRuntimeSettings: RedisRuntimeSettings? = null
     private var network: ArcFarmsNetworkService? = null
     private var transfer: BungeeBackendTransfer? = null
     private var placeholderExpansion: ArcFarmsPlaceholderExpansion? = null
@@ -71,6 +72,7 @@ open class ArcFarmsPlugin : JavaPlugin() {
             val debug = ArcFarmsDebug({ settings.debug.enabled }, logger::info)
             val networkGateway = if (settings.network.enabled) {
                 val redisConfig = ArcFarmsRedisBootstrap.load(dataRoot, settings)
+                redisRuntimeSettings = RedisRuntimeSettings.from(redisConfig)
                 val manager = RedisManager(
                     redisConfig.connection(),
                     ServerIdentity { settings.serverId },
@@ -194,6 +196,7 @@ open class ArcFarmsPlugin : JavaPlugin() {
         transfer = null
         network = null
         redis = null
+        redisRuntimeSettings = null
         mineJournal = null
         lumberJournal = null
         fixedCropJournal = null
@@ -206,17 +209,30 @@ open class ArcFarmsPlugin : JavaPlugin() {
     private fun reloadPlugin(): Result<Unit> = runCatching {
         val dataRoot = dataFolder.toPath()
         val candidate = ArcFarmsConfig.synchronize(dataRoot)
-        require(candidate.enabled) { "ArcFarms cannot be disabled with reload" }
-        require(candidate.serverId == settings.serverId) { "server-id requires a restart" }
-        require(candidate.network.enabled == settings.network.enabled) { "network.enabled requires a restart" }
+        ArcFarmsHotReloadPolicy.validate(settings, candidate)
+        require(
+            !candidate.farmScoreboard.enabled || candidate.farmScoreboard.provider != FarmScoreboardProvider.TAB ||
+                server.pluginManager.isPluginEnabled("PlaceholderAPI"),
+        ) { "PlaceholderAPI is required when ui.farm-scoreboard.provider is TAB" }
         ArcFarmsLocale.synchronizeFiles(dataRoot)
         ArcFarmsLocale.validateFiles(dataRoot, candidate)
-        ConfigManager.reloadAll()
+        if (candidate.network.enabled) {
+            require(RedisRuntimeSettings.from(ArcFarmsRedisBootstrap.loadFresh(dataRoot, candidate)) == redisRuntimeSettings) {
+                "modules/redis.yml connection settings require a full plugin restart"
+            }
+        }
         val previous = settings
+        val previousLocale = locale.snapshot()
+        val candidateLocale = locale.prepareReload()
+        locale.publish(candidateLocale)
         try {
             requireNotNull(service).reload(candidate) { active -> settings = active }
         } catch (failure: Exception) {
             settings = previous
+            locale.publish(previousLocale)
+            runCatching { service?.refreshPresentation() }
+                .exceptionOrNull()
+                ?.let(failure::addSuppressed)
             if (service?.isOperational() != true) {
                 logger.log(Level.SEVERE, "ArcFarms became inoperable during reload and will be disabled", failure)
                 server.pluginManager.disablePlugin(this)
@@ -242,5 +258,27 @@ open class ArcFarmsPlugin : JavaPlugin() {
 
     private companion object {
         const val HEALTH_REPORT_TICKS = 1_200L
+    }
+}
+
+private data class RedisRuntimeSettings(
+    val enabled: Boolean,
+    val host: String,
+    val port: Int,
+    val username: String,
+    val password: String,
+    val serverName: String,
+    val mainServer: Boolean,
+) {
+    companion object {
+        fun from(config: RedisModuleConfig) = RedisRuntimeSettings(
+            enabled = config.enabled,
+            host = config.host,
+            port = config.port,
+            username = config.username,
+            password = config.password,
+            serverName = config.serverName,
+            mainServer = config.mainServer,
+        )
     }
 }

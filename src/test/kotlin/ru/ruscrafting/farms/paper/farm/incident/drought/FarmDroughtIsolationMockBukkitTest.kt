@@ -94,6 +94,8 @@ class FarmDroughtIsolationMockBukkitTest : FunSpec({
                     every { droughtGrowthBeds } returns 1
                     every { droughtGrowthSeconds } returns 60
                     every { droughtPatches } returns 1
+                    every { droughtWaterRadius } returns 5
+                    every { droughtWaterSettleTicks } returns 21L
                 },
                 region = CuboidActivityRegion(world, id, CuboidBounds(minX, 0, 0, maxX, 128, 15)),
                 orders = emptyMap(),

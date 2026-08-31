@@ -352,7 +352,7 @@ internal class FarmDeliveryController(
 
     private fun carriedDisplayLocation(runtime: FarmRuntime, player: Player): Location {
         val direction = player.location.direction.setY(0)
-        if (direction.lengthSquared() > 0.001) direction.normalize().multiply(-0.65)
+        if (direction.lengthSquared() > 0.001) direction.normalize().multiply(-runtime.settings.deliveryCarriedForwardOffset)
         return player.location.clone().add(direction).add(0.0, runtime.settings.delivery.carriedYOffset, 0.0)
     }
 

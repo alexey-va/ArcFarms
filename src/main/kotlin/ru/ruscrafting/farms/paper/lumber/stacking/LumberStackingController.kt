@@ -259,7 +259,10 @@ internal class LumberStackingController(
         val runtime = registry.snapshot().firstOrNull { it.station.contains(clicked.location) } ?: return false
         if (runtime.state.phase != LumberPhase.STACKING || clicked.type.name != rackMaterial(runtime)) return false
         event.isCancelled = true
-        if (!access.allowInteraction("lumber-plank:${runtime.settings.id}:${player.uniqueId}", 350L)) return true
+        if (!access.allowInteraction(
+                "lumber-plank:${runtime.settings.id}:${player.uniqueId}", runtime.settings.plankInteractionCooldownMillis,
+            )
+        ) return true
         if (!scene.pickupPlank(runtime, player)) audience.sendActionBar(player, MessageKey.LUMBER_PLANK_UNAVAILABLE)
         return true
     }

@@ -298,7 +298,7 @@ internal class FarmPestIncident(
             indexed.size, already.size, safety.maximumPercent, safety.minimumRemaining, safety.pestMaximum,
         )
         val pestSnapshots = activePests(runtime).mapNotNull { pest ->
-            if (!access.allowInteraction("farm-pest-eat:${pest.uniqueId}", PEST_EAT_INTERVAL_MILLIS)) null
+            if (!access.allowInteraction("farm-pest-eat:${pest.uniqueId}", runtime.settings.pestEatIntervalMillis)) null
             else Triple(pest.uniqueId, pest.location.blockX, pest.location.blockZ)
         }
         if (remaining == 0 || pestSnapshots.isEmpty()) {
@@ -400,6 +400,8 @@ internal class FarmPestIncident(
         if (owned.isNotEmpty()) debug.event("farm_pest_cleanup", "count" to owned.size, "reason" to reason)
     }
 
+    fun beforeReload() = pendingDamagePlans.clear()
+
     private fun ensureNests(runtime: FarmRuntime) {
         if (runtime.state.pestNestsInitialized) return
         val candidates = beds.discover(runtime).filter { position ->
@@ -419,7 +421,7 @@ internal class FarmPestIncident(
         val centers = if (safeNestCount == 0) emptyList() else FarmIncidentPlanner.centralDispersedCenters(
             candidates,
             safeNestCount,
-            minimumSpacing = PEST_NEST_MIN_SPACING,
+            minimumSpacing = runtime.settings.pestNestMinSpacing,
             selectionIndex = runtime.state.placementSequence * 53L + 11L,
         )
         val damages = runtime.state.pestDamagedCrops.toMutableList()
@@ -491,7 +493,20 @@ internal class FarmPestIncident(
             val correct = activeEntities.count { it is ItemDisplay && nestRole(it) == PestNestRole.DISPLAY } == 1 &&
                 activeEntities.count { it is ArmorStand && nestRole(it) == PestNestRole.HITBOX } == 1 &&
                 activeEntities.size == NEST_ENTITY_COUNT
-            if (correct) return@forEach
+            if (correct) {
+                activeEntities.filterIsInstance<ItemDisplay>().single().apply {
+                    val scale = runtime.settings.pestNestDisplayScale
+                    transformation = Transformation(
+                        transformation.translation,
+                        transformation.leftRotation,
+                        Vector3f(scale, scale, scale),
+                        transformation.rightRotation,
+                    )
+                    viewRange = FarmFieldPoiVisibility.fullField(runtime.settings.displayViewRange)
+                    isGlowing = true
+                }
+                return@forEach
+            }
             removeNest(key, "reconcile")
             activeEntities.forEach(Entity::remove)
             val base = nest.position.location()?.add(0.5, 1.0, 0.5) ?: return@forEach
@@ -502,7 +517,11 @@ internal class FarmPestIncident(
                 entity.transformation = Transformation(
                     Vector3f(),
                     AxisAngle4f(),
-                    Vector3f(PEST_NEST_DISPLAY_SCALE, PEST_NEST_DISPLAY_SCALE, PEST_NEST_DISPLAY_SCALE),
+                    Vector3f(
+                        runtime.settings.pestNestDisplayScale,
+                        runtime.settings.pestNestDisplayScale,
+                        runtime.settings.pestNestDisplayScale,
+                    ),
                     AxisAngle4f(),
                 )
                 entity.viewRange = FarmFieldPoiVisibility.fullField(runtime.settings.displayViewRange)
@@ -642,8 +661,5 @@ internal class FarmPestIncident(
     private companion object {
         const val NEST_ENTITY_COUNT = 2
         const val MAX_DAMAGED_CROPS = 4_096
-        const val PEST_EAT_INTERVAL_MILLIS = 1_000L
-        const val PEST_NEST_MIN_SPACING = 16.0
-        const val PEST_NEST_DISPLAY_SCALE = 2.0f
     }
 }

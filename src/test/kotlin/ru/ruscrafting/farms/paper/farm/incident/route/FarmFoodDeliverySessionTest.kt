@@ -1,33 +1,32 @@
 package ru.ruscrafting.farms.paper.farm.incident.route
 
 import io.kotest.core.spec.style.FunSpec
-import io.kotest.matchers.shouldBe
-import java.util.UUID
+import io.kotest.matchers.collections.shouldContainExactly
 
 class FarmFoodDeliverySessionTest : FunSpec({
-    test("clearing a wave reopens the route only after every attacker is gone") {
-        val session = FarmFoodDeliverySession(sequence = 3, routeName = "mill")
-        session.brokenDown = true
-        session.monsterIds += UUID.randomUUID()
+    test("live ambush replan counts waves that already started") {
+        val session = FarmFoodDeliverySession(sequence = 7, routeName = "main", ambushesStarted = 2)
+        session.pendingAmbushCheckpoints.addAll(listOf(8, 12))
 
-        session.finishWaveIfCleared() shouldBe false
-        session.monsterIds.clear()
-        session.finishWaveIfCleared() shouldBe true
+        session.replaceAmbushCheckpoints(
+            candidates = listOf(10, 14, 18, 22),
+            maximum = 3,
+            progress = 9,
+        )
 
-        session.brokenDown shouldBe false
-        session.finishWaveIfCleared() shouldBe false
+        session.pendingAmbushCheckpoints.toList().shouldContainExactly(8)
     }
 
-    test("dismount changes the seat role without ending route participation") {
-        val playerId = UUID.randomUUID()
-        val session = FarmFoodDeliverySession(sequence = 4, routeName = "mill", riderId = playerId)
+    test("lowering the live ambush maximum below consumed waves schedules nothing else") {
+        val session = FarmFoodDeliverySession(sequence = 8, routeName = "main", ambushesStarted = 3)
+        session.pendingAmbushCheckpoints.addAll(listOf(12, 18))
 
-        session.transitionToEscort(playerId)
+        session.replaceAmbushCheckpoints(
+            candidates = listOf(14, 20),
+            maximum = 2,
+            progress = 10,
+        )
 
-        session.riderId shouldBe null
-        session.escortIds shouldBe setOf(playerId)
-        session.isParticipant(playerId) shouldBe true
-        session.releaseParticipant(playerId) shouldBe true
-        session.isParticipant(playerId) shouldBe false
+        session.pendingAmbushCheckpoints.toList().shouldContainExactly()
     }
 })

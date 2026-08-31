@@ -88,6 +88,17 @@ internal class MineVersionedModule(
         }
     }
 
+    fun reconfigure(configured: List<MineZoneSettings>, persisted: Map<String, MineShiftState>, cooldownMillis: Long) {
+        require((configured.firstOrNull()?.engineVersion ?: 1) == engineVersion) {
+            "Changing mine engine-version requires a full plugin restart"
+        }
+        when (val target = delegate) {
+            is MineController -> target.reconfigure(configured, persisted, cooldownMillis)
+            is MineModule -> target.reconfigure(configured, persisted, cooldownMillis)
+            else -> error("Unsupported mine module: ${target::class.qualifiedName}")
+        }
+    }
+
     override fun zoneIds(): List<String> = (delegate as? MineModule)?.admin?.zoneIds().orEmpty()
     override fun incidentIds(): List<String> = (delegate as? MineModule)?.admin?.incidentIds().orEmpty()
     override fun status(zoneId: String): WorksiteAdminStatus? = (delegate as? MineModule)?.adminStatus(zoneId)

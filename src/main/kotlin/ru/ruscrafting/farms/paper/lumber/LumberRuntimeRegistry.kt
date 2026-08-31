@@ -12,6 +12,22 @@ internal class LumberRuntimeRegistry {
         runtimes = next.toList()
     }
 
+    fun reconfigure(next: List<LumberRuntime>) {
+        val current = runtimes.associateBy { it.settings.id }
+        require(current.keys == next.mapTo(linkedSetOf()) { it.settings.id }) {
+            "Changing lumber zone topology requires a full plugin restart"
+        }
+        runtimes = next.map { candidate ->
+            requireNotNull(current[candidate.settings.id]).apply {
+                settings = candidate.settings
+                region = candidate.region
+                station = candidate.station
+                cooldownMillis = candidate.cooldownMillis
+                state = candidate.state
+            }
+        }
+    }
+
     fun snapshot(): List<LumberRuntime> = runtimes.toList()
 
     fun byId(zoneId: String): LumberRuntime? = runtimes.firstOrNull { it.settings.id == zoneId }

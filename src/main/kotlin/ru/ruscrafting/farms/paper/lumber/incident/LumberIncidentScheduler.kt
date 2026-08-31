@@ -48,7 +48,7 @@ internal class LumberIncidentScheduler(
             LumberIncidentType.FOREST_FIRE -> fire.start(runtime, required(runtime, type), now)
             LumberIncidentType.LOST_LOAD -> lostLoad.start(runtime, required(runtime, type), now)
             LumberIncidentType.WARPED_BATCH -> warped.start(runtime, required(runtime, type), now)
-            LumberIncidentType.RUSH_ORDER -> rush.start(runtime, now, RUSH_DURATION_MILLIS).also { accepted ->
+            LumberIncidentType.RUSH_ORDER -> rush.start(runtime, now, runtime.settings.rushOrderDurationMillis).also { accepted ->
                 if (accepted) {
                     runtime.state = runtime.state.copy(incidentCursor = runtime.state.incidentCursor + 1)
                     state.persistAsync()
@@ -78,7 +78,6 @@ internal class LumberIncidentScheduler(
 
     private companion object {
         const val RETRY_MILLIS = 5_000L
-        const val RUSH_DURATION_MILLIS = 75_000L
         val PHASE_RANK = mapOf(
             LumberPhase.FELLING to 0,
             LumberPhase.SKIDDING to 1,

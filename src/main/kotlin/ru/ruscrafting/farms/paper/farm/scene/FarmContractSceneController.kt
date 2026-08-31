@@ -121,7 +121,10 @@ internal class FarmContractSceneController(
             audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return
         }
-        if (!access.allowInteraction("farm-contract-scene:${identity.zoneId}:${identity.role}:${player.uniqueId}", 700)) return
+        if (!access.allowInteraction(
+                "farm-contract-scene:${identity.zoneId}:${identity.role}:${player.uniqueId}",
+                runtime.settings.inputCooldowns.contractSceneMillis,
+            )) return
         val order = currentOrder(runtime) ?: return
         debug.event(
             "farm_contract_scene_interaction",

@@ -42,6 +42,11 @@ class LumberGuidanceAdminRewardMockBukkitTest : FunSpec({
         admin.zoneIds() shouldBe listOf("sawmill")
         admin.incidentIds().shouldContainExactlyInAnyOrder(LumberIncidentType.entries.map(Enum<*>::name))
         admin.status("sawmill")!!.phase shouldBe LumberPhase.IDLE.name
+        admin.startReindex("sawmill") shouldBe true
+        graph.module.beforeReload("config_reload")
+        admin.tickReindex("sawmill", 1) shouldBe null
+        admin.startReindex("sawmill") shouldBe true
+        admin.cancelReindex("sawmill") shouldBe true
         admin.start("sawmill", player) shouldBe true
         admin.status("sawmill")!!.phase shouldBe LumberPhase.FELLING.name
         admin.start("sawmill", player) shouldBe false

@@ -121,7 +121,10 @@ internal class FarmMoleBurrowController(
             if (!access.hasAccess(player, runtime.settings.permission)) audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return true
         }
-        if (!access.allowInteraction("farm-mole:${runtime.settings.id}:${identity.burrowId}:${identity.role}:${player.uniqueId}", 500)) return true
+        if (!access.allowInteraction(
+                "farm-mole:${runtime.settings.id}:${identity.burrowId}:${identity.role}:${player.uniqueId}",
+                runtime.settings.inputCooldowns.moleMillis,
+            )) return true
         val scene = world.scene(runtime, identity.burrowId) ?: return true
         when (identity.role) {
             Role.ENTRANCE -> enter(player, runtime, scene)
@@ -208,6 +211,8 @@ internal class FarmMoleBurrowController(
         val record = sessions.remove(player.uniqueId) ?: return
         if (reason != "player_quit") acknowledgeAsync(record)
     }
+
+    fun beforeReload() = pendingEntries.clear()
 
     fun onPlayerDeath(player: Player) = releasePlayer(player, "player_death")
 

@@ -11,6 +11,25 @@ internal class FarmRuntimeRegistry {
         runtimes = next.toList()
     }
 
+    /** Applies reloadable settings without invalidating references held by an active incident. */
+    fun reconfigure(next: Collection<FarmRuntime>) {
+        val current = runtimes.associateBy { it.settings.id }
+        val candidates = next.toList()
+        require(current.keys == candidates.mapTo(linkedSetOf()) { it.settings.id }) {
+            "Changing farm zone topology requires a full plugin restart"
+        }
+        runtimes = candidates.map { candidate ->
+            requireNotNull(current[candidate.settings.id]).apply {
+                settings = candidate.settings
+                region = candidate.region
+                orders = candidate.orders
+                orderList = candidate.orderList
+                rules = candidate.rules
+                state = candidate.state
+            }
+        }
+    }
+
     fun snapshot(): List<FarmRuntime> = runtimes
 
     fun at(location: Location): FarmRuntime? = runtimes.firstOrNull { it.region.contains(location) }

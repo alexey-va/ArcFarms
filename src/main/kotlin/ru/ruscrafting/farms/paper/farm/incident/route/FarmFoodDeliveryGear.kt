@@ -23,26 +23,14 @@ internal class FarmFoodDeliveryGear(
     fun give(player: Player, zoneId: String, sequence: Long, settings: FarmRouteDeliverySettings): Boolean {
         val owner = Owner(zoneId, sequence, player.uniqueId)
         find(player, owner)?.let { slot ->
+            player.inventory.setItem(slot, rifle(player, owner, settings))
             if (slot in HOTBAR) player.inventory.heldItemSlot = slot
             return true
         }
         val slot = HOTBAR.firstOrNull { player.inventory.getItem(it).isEmpty() }
             ?: STORAGE.firstOrNull { player.inventory.getItem(it).isEmpty() }
             ?: return false
-        val rifle = ItemStack(requireNotNull(Material.matchMaterial(settings.rifleMaterial)))
-        rifle.editMeta { meta ->
-            meta.displayName(locale.render(MessageKey.FARM_ROUTE_RIFLE_NAME, player))
-            meta.lore(listOf(locale.render(MessageKey.FARM_ROUTE_RIFLE_LORE, player)))
-            meta.isUnbreakable = true
-            if (settings.rifleCustomModelData > 0) {
-                @Suppress("DEPRECATION")
-                meta.setCustomModelData(settings.rifleCustomModelData)
-            }
-            settings.rifleItemModel?.let { itemModel ->
-                meta.setItemModel(requireNotNull(NamespacedKey.fromString(itemModel)))
-            }
-            meta.persistentDataContainer.set(ownerKey, PersistentDataType.STRING, owner.encoded())
-        }
+        val rifle = rifle(player, owner, settings)
         player.inventory.setItem(slot, rifle)
         if (slot in HOTBAR) player.inventory.heldItemSlot = slot
         debug.event(
@@ -52,6 +40,23 @@ internal class FarmFoodDeliveryGear(
         )
         return true
     }
+
+    private fun rifle(player: Player, owner: Owner, settings: FarmRouteDeliverySettings): ItemStack =
+        ItemStack(requireNotNull(Material.matchMaterial(settings.rifleMaterial))).also { rifle ->
+            rifle.editMeta { meta ->
+                meta.displayName(locale.render(MessageKey.FARM_ROUTE_RIFLE_NAME, player))
+                meta.lore(listOf(locale.render(MessageKey.FARM_ROUTE_RIFLE_LORE, player)))
+                meta.isUnbreakable = true
+                if (settings.rifleCustomModelData > 0) {
+                    @Suppress("DEPRECATION")
+                    meta.setCustomModelData(settings.rifleCustomModelData)
+                }
+                settings.rifleItemModel?.let { itemModel ->
+                    meta.setItemModel(requireNotNull(NamespacedKey.fromString(itemModel)))
+                }
+                meta.persistentDataContainer.set(ownerKey, PersistentDataType.STRING, owner.encoded())
+            }
+        }
 
     fun owns(item: ItemStack?): Boolean = rawOwner(item) != null
 

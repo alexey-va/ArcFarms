@@ -38,7 +38,7 @@ internal class LumberForestFireIncident(
     private val tasks: WorksiteTaskPort,
 ) {
     fun start(runtime: LumberRuntime, required: Int, now: Long): Boolean {
-        val candidates = candidates(runtime, required * CANDIDATE_MULTIPLIER)
+        val candidates = candidates(runtime, required * runtime.settings.forestFireCandidateMultiplier)
         if (candidates.size < required * 2) return false
         if (!incidents.start(runtime, LumberIncidentType.FOREST_FIRE, required, now, candidates)) return false
         candidates.forEach { candidate ->
@@ -181,7 +181,6 @@ internal class LumberForestFireIncident(
 
     private companion object {
         const val WATER_ROLE = "fire_water"
-        const val CANDIDATE_MULTIPLIER = 4
         const val MAX_SCAN_BLOCKS = 250_000
     }
 }

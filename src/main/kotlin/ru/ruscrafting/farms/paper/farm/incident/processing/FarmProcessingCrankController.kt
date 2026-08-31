@@ -103,7 +103,7 @@ internal class FarmProcessingCrankController(
     private fun sample(runtime: FarmRuntime, player: Player, machine: Location, tick: Long) {
         val configured = runtime.settings.processing
         val key = runtime.settings.id to player.uniqueId
-        if (player.world !== machine.world || kotlin.math.abs(player.location.y - machine.y) > VERTICAL_TOLERANCE) {
+        if (player.world !== machine.world || kotlin.math.abs(player.location.y - machine.y) > configured.crankVerticalTolerance) {
             if (key in states) removeParticipant(key, "wrong_level")
             return
         }
@@ -276,7 +276,6 @@ internal class FarmProcessingCrankController(
     }
 
     private companion object {
-        const val VERTICAL_TOLERANCE = 2.5
         const val TETHER_Y_OFFSET = 0.35
         const val RING_Y_OFFSET = 0.08
         const val RING_POINTS = 40

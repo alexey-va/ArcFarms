@@ -183,17 +183,21 @@ internal class FarmPerkController(
         audience.players(runtime.region).forEach { player ->
             if (active(player.uniqueId, FarmPerkType.SPEED, now)) {
                 val current = player.getPotionEffect(PotionEffectType.SPEED)
-                if (current == null || current.amplifier <= 0) {
-                    player.addPotionEffect(PotionEffect(PotionEffectType.SPEED, 60, 0, true, false, false))
+                val perk = runtime.settings.perks
+                if (current == null || current.amplifier <= perk.speedAmplifier) {
+                    player.addPotionEffect(
+                        PotionEffect(PotionEffectType.SPEED, perk.speedRefreshTicks, perk.speedAmplifier, true, false, false),
+                    )
                 }
             }
             if (active(player.uniqueId, FarmPerkType.SUSTENANCE, now) &&
                 access.allowInteraction("farm-perk-sustain:${player.uniqueId}", runtime.settings.perks.sustainIntervalSeconds * 1_000L)
             ) {
-                player.foodLevel = (player.foodLevel + 2).coerceAtMost(20)
-                player.saturation = (player.saturation + 1.0f).coerceAtMost(20.0f)
+                val perk = runtime.settings.perks
+                player.foodLevel = (player.foodLevel + perk.sustenanceFood).coerceAtMost(20)
+                player.saturation = (player.saturation + perk.sustenanceSaturation).coerceAtMost(20.0f)
                 val maxHealth = player.getAttribute(Attribute.MAX_HEALTH)?.value ?: 20.0
-                if (player.health > 0.0) player.health = (player.health + 1.0).coerceAtMost(maxHealth)
+                if (player.health > 0.0) player.health = (player.health + perk.sustenanceHealth).coerceAtMost(maxHealth)
             }
         }
     }
@@ -204,9 +208,13 @@ internal class FarmPerkController(
         debug.event("farm_perk_vendor_refreshed", "zone" to runtime.settings.id, "reason" to reason)
     }
 
-    fun cleanup(reason: String) {
+    fun beforeReload() {
         persistenceGeneration++
         pendingPurchases.clear()
+    }
+
+    fun cleanup(reason: String) {
+        beforeReload()
         Bukkit.getWorlds().asSequence().flatMap { it.entities.asSequence() }.filter(::owns).forEach(Entity::remove)
         vendorIds.clear()
         feedbackTasks.clear()

@@ -192,7 +192,7 @@ internal class FarmPlacementService(
         val world = runtime.region.world
         if (source.world != world) return emptyList()
         val receiving = points.resolve(runtime, FarmPointKind.RECEIVING)
-        val receivingExclusion = runtime.settings.delivery.radius + 1.5
+        val receivingExclusion = runtime.settings.delivery.radius + runtime.settings.placementReceivingExclusionPadding
         val receivingExclusionSquared = receivingExclusion * receivingExclusion
         val patchColumns = runtime.state.preparationPatch.mapTo(hashSetOf()) { it.x to it.z }
         val candidates = mutableListOf<FarmDeliveryPosition>()

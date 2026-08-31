@@ -4,6 +4,7 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import io.mockk.mockk
+import io.mockk.every
 import org.bukkit.Material
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.config.CuboidBounds
@@ -15,7 +16,9 @@ import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.domain.PendingMineBlock
 import ru.ruscrafting.farms.paper.CuboidRegionGateway
+import ru.ruscrafting.farms.paper.RuntimeTaskSupervisor
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.mine.recovery.MineBlockRecoveryController
 import ru.ruscrafting.farms.persistence.MineRecoveryJournal
 import java.util.concurrent.CompletableFuture
 
@@ -60,6 +63,48 @@ class MineModuleRecoveryMigrationMockBukkitTest : FunSpec({
         block.type shouldBe Material.IRON_ORE
         graph.module.states().keys shouldContainExactly setOf("old_shafts")
         graph.mutableRuntimeCollectionCount shouldBe 1
+    }
+
+    test("reload completes an accepted recovery callback and releases its position lock") {
+        val world = paper.server.addSimpleWorld("world")
+        world.getChunkAt(0, 0).load()
+        val block = world.getBlockAt(2, 64, 2).also { it.type = Material.STONE }
+        val journal = ImmediateMineJournal()
+        val token = mockk<RuntimeTaskSupervisor.Token>()
+        val port = mockk<WorksiteRuntimePort>(relaxed = true) {
+            every { lifecycleToken() } returns token
+            every { runSync(token, any()) } returns true
+            every { isOperational() } returns true
+        }
+        val controller = MineBlockRecoveryController(journal, port, port, port, { 1_000L })
+        fun record(id: String) = PendingMineBlock(
+            id = id,
+            zoneId = "old_shafts",
+            world = world.name,
+            x = block.x,
+            y = block.y,
+            z = block.z,
+            originalMaterial = "STONE",
+            temporaryMaterial = "DEEPSLATE",
+            nextMaterial = "IRON_ORE",
+            restoreAt = 2_000L,
+        )
+
+        val prepared = controller.prepare(record("old_shafts:reload-1"), block, Material.STONE) {
+            block.type = Material.DEEPSLATE
+        }
+        prepared.isDone shouldBe false
+
+        controller.beforeReload("config_reload")
+        prepared.join() shouldBe false
+        controller.processDue(now = 3_000L)
+        journal.records() shouldBe emptyList()
+
+        val retried = controller.prepare(record("old_shafts:reload-2"), block, Material.STONE) {
+            block.type = Material.DEEPSLATE
+        }
+        retried.isDone shouldBe false
+        controller.beforeReload("test_cleanup")
     }
 })
 

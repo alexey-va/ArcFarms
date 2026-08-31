@@ -43,6 +43,12 @@ data class LumberZoneSettings(
     val incidentCountMax: Int = 5,
     val recoverySeconds: Int = 90,
     val rewards: FarmRewardSettings = defaultWorksiteRewards(110),
+    val rushOrderDurationMillis: Long = 75_000L,
+    val forestFireCandidateMultiplier: Int = 4,
+    val sawInteractionCooldownMillis: Long = 150L,
+    val bundleInteractionCooldownMillis: Long = 350L,
+    val plankInteractionCooldownMillis: Long = 350L,
+    val dispatchInteractionCooldownMillis: Long = 500L,
 ) {
     init {
         require(engineVersion in 1..2) { "Lumber zone $id engine-version must be 1 or 2" }
@@ -51,6 +57,20 @@ data class LumberZoneSettings(
             "Lumber zone $id incident count range is invalid"
         }
         require(recoverySeconds in 5..3_600) { "Lumber zone $id recovery-seconds is invalid" }
+        require(rushOrderDurationMillis in 1_000L..3_600_000L) {
+            "Lumber zone $id rush-order-duration-millis is invalid"
+        }
+        require(forestFireCandidateMultiplier in 2..8) {
+            "Lumber zone $id forest-fire candidate-multiplier is invalid"
+        }
+        require(listOf(
+            sawInteractionCooldownMillis,
+            bundleInteractionCooldownMillis,
+            plankInteractionCooldownMillis,
+            dispatchInteractionCooldownMillis,
+        ).all { it in 50L..2_000L }) {
+            "Lumber zone $id interaction cooldown must be in 50..2000 milliseconds"
+        }
         require(engineVersion == 1 || orders.isNotEmpty()) { "Lumber V2 zone $id has no orders" }
         require(orders.all { it.incidentTypes.size >= incidentCountMax }) {
             "Lumber zone $id order has fewer incidents than incident-count-max"

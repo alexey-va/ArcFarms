@@ -9,22 +9,22 @@ import ru.ruscrafting.farms.paper.ActivityRegion
 import ru.ruscrafting.farms.paper.RegionGateway
 
 internal data class LumberRuntime(
-    val settings: LumberZoneSettings,
-    val region: ActivityRegion,
-    val station: ActivityRegion,
-    val cooldownMillis: Long,
+    var settings: LumberZoneSettings,
+    var region: ActivityRegion,
+    var station: ActivityRegion,
+    var cooldownMillis: Long,
     var state: LumberShiftState,
 ) {
-    val orders: Map<String, LumberOrderSettings> = settings.orders.associateBy(LumberOrderSettings::id)
+    val orders: Map<String, LumberOrderSettings> get() = settings.orders.associateBy(LumberOrderSettings::id)
 
     fun currentOrder(): LumberOrderSettings? = state.orderId?.let(orders::get)
 
     fun nextOrder(): LumberOrderSettings = settings.orders[(state.sequence % settings.orders.size).toInt()]
 
-    fun rules(order: LumberOrderSettings = currentOrder() ?: nextOrder()): LumberRules = LumberRules(
+    fun rules(order: LumberOrderSettings = defaultOrder()): LumberRules = LumberRules(
         fellingQuota = order.fellingRequired,
         processingQuota = order.sawingRequired,
-        processingPerUse = 1,
+        processingPerUse = settings.processingPerUse,
         cooldownMillis = cooldownMillis,
         skiddingQuota = order.skiddingRequired,
         sawingQuota = order.sawingRequired,
@@ -33,6 +33,13 @@ internal data class LumberRuntime(
         incidentCountMin = settings.incidentCountMin,
         incidentCountMax = settings.incidentCountMax,
     )
+
+    private fun defaultOrder(): LumberOrderSettings = currentOrder() ?: run {
+        check(state.phase in setOf(ru.ruscrafting.farms.domain.LumberPhase.IDLE, ru.ruscrafting.farms.domain.LumberPhase.COOLDOWN)) {
+            "Active lumber order ${settings.id}/${state.orderId} is missing from runtime settings"
+        }
+        nextOrder()
+    }
 }
 
 internal object LumberRuntimeFactory {

@@ -12,6 +12,7 @@ import ru.ruscrafting.farms.paper.lumber.LumberRuntime
 import ru.ruscrafting.farms.paper.worksite.RuntimeComponent
 import ru.ruscrafting.farms.persistence.LumberRecoveryJournal
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import java.util.logging.Level
 
@@ -46,7 +47,8 @@ internal class LumberBlockRecoveryController(
     private val clock: () -> Long,
     private val effects: LumberBlockEffects = PaperLumberBlockEffects,
 ) : RuntimeComponent {
-    private val inFlight = mutableSetOf<String>()
+    private val inFlight = ConcurrentHashMap.newKeySet<String>()
+    private val pendingResults = ConcurrentHashMap.newKeySet<CompletableFuture<Boolean>>()
     private val nonce = AtomicLong()
 
     fun prepare(
@@ -76,9 +78,10 @@ internal class LumberBlockRecoveryController(
         )
         val token = tasks.lifecycleToken()
         val result = CompletableFuture<Boolean>()
+        pendingResults += result
         journal.prepare(record).whenComplete { _, failure ->
             if (failure != null) {
-                inFlight.remove(positionKey)
+                release(positionKey, result)
                 result.completeExceptionally(failure)
                 return@whenComplete
             }
@@ -96,11 +99,11 @@ internal class LumberBlockRecoveryController(
                 } catch (mutationFailure: Throwable) {
                     result.completeExceptionally(mutationFailure)
                 } finally {
-                    inFlight.remove(positionKey)
+                    release(positionKey, result)
                 }
             }
             if (!scheduled) {
-                inFlight.remove(positionKey)
+                release(positionKey, result)
                 result.complete(false)
             }
         }
@@ -131,9 +134,10 @@ internal class LumberBlockRecoveryController(
         )
         val token = tasks.lifecycleToken()
         val result = CompletableFuture<Boolean>()
+        pendingResults += result
         journal.prepare(record).whenComplete { _, failure ->
             if (failure != null) {
-                inFlight.remove(positionKey)
+                release(positionKey, result)
                 result.completeExceptionally(failure)
                 return@whenComplete
             }
@@ -148,11 +152,11 @@ internal class LumberBlockRecoveryController(
                     } catch (mutationFailure: Throwable) {
                         result.completeExceptionally(mutationFailure)
                     } finally {
-                        inFlight.remove(positionKey)
+                        release(positionKey, result)
                     }
                 }
             ) {
-                inFlight.remove(positionKey)
+                release(positionKey, result)
                 result.complete(false)
             }
         }
@@ -160,20 +164,29 @@ internal class LumberBlockRecoveryController(
     }
 
     fun restoreNow(block: Block): CompletableFuture<Boolean> {
-        val record = journal.records().firstOrNull { it.positionKey == positionKey(block) }
+        val positionKey = positionKey(block)
+        val record = journal.records().firstOrNull { it.positionKey == positionKey }
             ?: return CompletableFuture.completedFuture(false)
         val token = tasks.lifecycleToken()
         val result = CompletableFuture<Boolean>()
+        pendingResults += result
         if (!tasks.runSync(token) {
                 runCatching {
                     effects.restore(block, record.originalBlockData)
                     check(block.blockData.asString == record.originalBlockData)
                     journal.remove(record.id).whenComplete { _, failure ->
+                        release(positionKey, result)
                         if (failure == null) result.complete(true) else result.completeExceptionally(failure)
                     }
-                }.onFailure(result::completeExceptionally)
+                }.onFailure { failure ->
+                    release(positionKey, result)
+                    result.completeExceptionally(failure)
+                }
             }
-        ) result.complete(false)
+        ) {
+            release(positionKey, result)
+            result.complete(false)
+        }
         return result
     }
 
@@ -204,9 +217,23 @@ internal class LumberBlockRecoveryController(
         processDue()
     }
 
+    override fun beforeReload(reason: String) = cancelPending()
+
     override fun cleanup(reason: String) {
-        inFlight.clear()
+        cancelPending()
         processDue(Long.MAX_VALUE, 262_144)
+    }
+
+    private fun cancelPending() {
+        val cancelled = pendingResults.toList()
+        pendingResults.clear()
+        inFlight.clear()
+        cancelled.forEach { it.complete(false) }
+    }
+
+    private fun release(positionKey: String, result: CompletableFuture<Boolean>) {
+        pendingResults.remove(result)
+        inFlight.remove(positionKey)
     }
 
     private fun positionKey(block: Block): String = "${block.world.name}:${block.x}:${block.y}:${block.z}"

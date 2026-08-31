@@ -17,7 +17,10 @@ internal class LumberSkiddingController(
         val runtime = registry.byId(identity.zoneId) ?: return false
         if (runtime.state.sequence != identity.sequence) return false
         event.isCancelled = true
-        if (!access.allowInteraction("lumber-bundle:${identity.zoneId}:${event.player.uniqueId}", 350L)) return true
+        if (!access.allowInteraction(
+                "lumber-bundle:${identity.zoneId}:${event.player.uniqueId}", runtime.settings.bundleInteractionCooldownMillis,
+            )
+        ) return true
         scene.pickup(runtime, identity.targetId, event.player)
         return true
     }

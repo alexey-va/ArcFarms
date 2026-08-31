@@ -65,13 +65,6 @@ import java.util.concurrent.TimeUnit
 import java.util.random.RandomGenerator
 import java.util.logging.Level
 
-data class ActivityStatus(
-    val kind: ActivityKind,
-    val id: String,
-    val phasePath: String,
-    val progress: String,
-)
-
 class ArcFarmsService(
     private val plugin: Plugin,
     initialSettings: ArcFarmsConfig,
@@ -98,7 +91,12 @@ class ArcFarmsService(
         sender.sendMessage(locale.render(MessageKey.GENERIC_ERROR, sender))
     }
     private val interactionCooldowns = mutableMapOf<String, Long>()
-    private val taskSupervisor = RuntimeTaskSupervisor()
+    /** Journal/database callbacks are invalidated at every reload boundary. */
+    private val lifecycleTaskSupervisor = RuntimeTaskSupervisor()
+    /** In-progress gameplay delays keep running because runtime aggregates retain their identity. */
+    private val gameplayTaskSupervisor = RuntimeTaskSupervisor()
+    /** Periodic loops are restarted so interval settings take effect immediately. */
+    private val periodicTaskSupervisor = RuntimeTaskSupervisor()
     private val worksiteAdapter = PaperWorksiteAdapter(
         plugin = plugin,
         locale = locale,
@@ -106,7 +104,8 @@ class ArcFarmsService(
         debug = debug,
         network = network,
         stats = stats,
-        supervisor = taskSupervisor,
+        lifecycleSupervisor = lifecycleTaskSupervisor,
+        delayedSupervisor = gameplayTaskSupervisor,
         operational = ::isOperational,
         access = ::hasAccess,
         interaction = ::allowInteraction,
@@ -131,7 +130,7 @@ class ArcFarmsService(
         runtimeValidator = runtimeValidator,
         regionGateway = regionGateway,
         ports = worksitePorts,
-        taskSupervisor = taskSupervisor,
+        taskSupervisor = lifecycleTaskSupervisor,
         clock = clock,
         random = random,
         weeklyContribution = { playerId -> stats.weeklyContribution(playerId, ActivityKind.FARM) },
@@ -164,14 +163,16 @@ class ArcFarmsService(
     private var persistenceSuspended = false
     private var persistenceRequestedWhileSuspended = false
     private var seederVisualTick = 0L
-
     fun start() {
         check(!started && !closed) { "ArcFarms service cannot be started in its current lifecycle state" }
-        taskSupervisor.activate()
+        lifecycleTaskSupervisor.activate()
+        gameplayTaskSupervisor.activate()
         try {
             startActivatedRuntime()
         } catch (failure: Throwable) {
-            runCatching(taskSupervisor::cancelAll).exceptionOrNull()?.let(failure::addSuppressed)
+            runCatching(lifecycleTaskSupervisor::cancelAll).exceptionOrNull()?.let(failure::addSuppressed)
+            runCatching(gameplayTaskSupervisor::cancelAll).exceptionOrNull()?.let(failure::addSuppressed)
+            runCatching(periodicTaskSupervisor::cancelAll).exceptionOrNull()?.let(failure::addSuppressed)
             throw failure
         }
     }
@@ -194,7 +195,7 @@ class ArcFarmsService(
         stateSafeToPersist = true
         started = true
         if (persisted != loaded) persistAsync()
-        taskSupervisor.runLater(1L) {
+        lifecycleTaskSupervisor.runLater(1L) {
             if (isOperational()) farm.rewards.deliverPending(Bukkit.getOnlinePlayers())
         }
         plugin.logger.info(
@@ -205,9 +206,7 @@ class ArcFarmsService(
 
     fun reload(candidate: ArcFarmsConfig, publishSettings: (ArcFarmsConfig) -> Unit) {
         check(started) { "ArcFarms service is not started" }
-        require(candidate.lumbermills.firstOrNull()?.engineVersion == settings.lumbermills.firstOrNull()?.engineVersion) {
-            "Changing lumber engine-version requires a full plugin restart"
-        }
+        ArcFarmsHotReloadPolicy.validate(settings, candidate)
         require(!farm.worldAdmin.backupBusy()) { "ArcFarms cannot reload while a farm backup operation is active" }
         val validationSnapshot = runtimeValidator.reconcileOrderProgress(candidate, snapshotState())
         runtimeValidator.validateReload(candidate, validationSnapshot)
@@ -223,13 +222,15 @@ class ArcFarmsService(
         publishSettings(candidate)
         try {
             stopTasks()
-            replaceRuntime(candidate, reconciledSnapshot, "reload")
+            lifecycleTaskSupervisor.restart()
+            reconfigureRuntime(candidate, reconciledSnapshot, "reload")
         } catch (failure: Exception) {
             plugin.logger.log(Level.SEVERE, "ArcFarms reload failed after runtime mutation; restoring the previous runtime", failure)
             publishSettings(previous)
             val rollback = runCatching {
                 stopTasks()
-                replaceRuntime(previous, snapshot, "reload_rollback")
+                lifecycleTaskSupervisor.restart()
+                reconfigureRuntime(previous, snapshot, "reload_rollback")
             }
             if (rollback.isFailure) {
                 stateSafeToPersist = false
@@ -253,17 +254,22 @@ class ArcFarmsService(
 
     fun isOperational(): Boolean = started && !closed
 
-    private fun replaceRuntime(candidate: ArcFarmsConfig, snapshot: ArcFarmsState, reason: String) {
-        taskSupervisor.activate()
-        farm.hud.stopAllMusic(reason)
-        farm.drought.clear(reason)
-        farm.hud.hideBars()
-        farm.hud.restoreAll(reason)
-        worksites.cleanup(reason)
+    fun refreshPresentation() {
+        if (!isOperational()) return
+        updatePlayerGuidance()
+        farm.module.updatePlayerTimes()
+    }
+
+    private fun reconfigureRuntime(candidate: ArcFarmsConfig, snapshot: ArcFarmsState, reason: String) {
+        worksites.beforeReload(reason)
         settings = candidate
-        rebuild(snapshot)
+        reconfigure(snapshot)
         worksites.activateLoadedState()
         startTasks()
+        refreshPresentation()
+        lifecycleTaskSupervisor.runLater(1L) {
+            if (isOperational()) farm.rewards.deliverPending(Bukkit.getOnlinePlayers())
+        }
     }
 
     fun onBreakLowest(event: BlockBreakEvent) = farm.events.onBreakLowest(event)
@@ -425,7 +431,7 @@ class ArcFarmsService(
         farm.moles.recoverPlayer(player)
         worksiteEvents.onJoin(player)
         farm.supplies.removeServiceItems(player, reason = "player_join")
-        taskSupervisor.runLater(1L) {
+        lifecycleTaskSupervisor.runLater(1L) {
             if (isOperational() && player.isOnline) {
                 farm.rewards.deliverPending(player)
                 farm.hud.syncMusic(player, farm.module.hudRuntime(player), clock())
@@ -442,36 +448,37 @@ class ArcFarmsService(
 
     private fun rebuild(persisted: ArcFarmsState) {
         farm.module.rebuild(persisted)
-        lumbermillModule.rebuild(
-            settings.lumbermills, persisted.lumbermills, settings.completedCooldownSeconds * 1000L,
-        )
-        mineModule.rebuild(
-            settings.mines,
-            persisted.mines,
-            settings.completedCooldownSeconds * 1000L,
-        )
+        val cooldownMillis = settings.completedCooldownSeconds * 1_000L
+        lumbermillModule.rebuild(settings.lumbermills, persisted.lumbermills, cooldownMillis)
+        mineModule.rebuild(settings.mines, persisted.mines, cooldownMillis)
+    }
+
+    private fun reconfigure(persisted: ArcFarmsState) {
+        farm.module.reconfigure(persisted)
+        val cooldownMillis = settings.completedCooldownSeconds * 1_000L
+        lumbermillModule.reconfigure(settings.lumbermills, persisted.lumbermills, cooldownMillis)
+        mineModule.reconfigure(settings.mines, persisted.mines, cooldownMillis)
     }
 
     private fun startTasks() {
-        taskSupervisor.runTimer(1L, 1L) { runGuarded("farm_block_restores", farm.module::processRestores) }
-        taskSupervisor.runTimer(1L, 1L) {
+        periodicTaskSupervisor.activate()
+        periodicTaskSupervisor.runTimer(1L, 1L) { runGuarded("farm_block_restores", farm.module::processRestores) }
+        periodicTaskSupervisor.runTimer(1L, 1L) {
             val tick = ++seederVisualTick
             farm.module.updateSeeder(tick)
         }
-        taskSupervisor.runTimer(20L, 20L) { runGuarded("tick", ::tick) }
-        taskSupervisor.runTimer(10L, 10L) { runGuarded("guidance_particles", ::emitGuidanceParticles) }
-        taskSupervisor.runTimer(5L, 5L) {
-            farm.module.updateAmbient()
-        }
-        taskSupervisor.runTimer(1L, 1L) { farm.module.updatePlayerTimes() }
-        taskSupervisor.runTimer(1L, 1L) { runGuarded("carried_displays") { worksiteEvents.updateVisuals(farm.module::updateCarriedDisplays) } }
-        taskSupervisor.runTimer(
+        periodicTaskSupervisor.runTimer(20L, 20L) { runGuarded("tick", ::tick) }
+        periodicTaskSupervisor.runTimer(10L, 10L) { runGuarded("guidance_particles", ::emitGuidanceParticles) }
+        periodicTaskSupervisor.runTimer(5L, 5L) { farm.module.updateAmbient() }
+        periodicTaskSupervisor.runTimer(1L, 1L) { farm.module.updatePlayerTimes() }
+        periodicTaskSupervisor.runTimer(1L, 1L) { runGuarded("carried_displays") { worksiteEvents.updateVisuals(farm.module::updateCarriedDisplays) } }
+        periodicTaskSupervisor.runTimer(
             settings.saveSeconds * 20L,
             settings.saveSeconds * 20L,
         ) { runGuarded("periodic_save") { persistAsync() } }
     }
 
-    private fun stopTasks() = taskSupervisor.cancelAll()
+    private fun stopTasks() = periodicTaskSupervisor.cancelAll()
 
     private fun tick() {
         val now = clock()
@@ -495,9 +502,7 @@ class ArcFarmsService(
         worksitePorts.audience.reconcileBars(expectedBars)
     }
 
-    private fun emitGuidanceParticles() {
-        worksites.emitGuidance()
-    }
+    private fun emitGuidanceParticles() = worksites.emitGuidance()
     private fun farmAt(location: Location): FarmRuntime? = farm.runtimes.at(location)
 
     private fun hasAccess(player: Player, permission: String): Boolean =
@@ -576,6 +581,8 @@ class ArcFarmsService(
         val failures = mutableListOf<Throwable>()
         runCatching(farm.rewards::prepareForLifecycleBoundary).exceptionOrNull()?.let(failures::add)
         runCatching(::stopTasks).exceptionOrNull()?.let(failures::add)
+        runCatching(lifecycleTaskSupervisor::cancelAll).exceptionOrNull()?.let(failures::add)
+        runCatching(gameplayTaskSupervisor::cancelAll).exceptionOrNull()?.let(failures::add)
         runCatching { farm.hud.stopAllMusic("plugin_close") }.exceptionOrNull()?.let(failures::add)
         runCatching { farm.drought.clear("plugin_close") }.exceptionOrNull()?.let(failures::add)
         runCatching(farm.hud::hideBars).exceptionOrNull()?.let(failures::add)

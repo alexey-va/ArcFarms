@@ -392,7 +392,7 @@ internal class FarmProcessingIncident(
             }
             val distance = player.location.distance(targetLocation)
             if (distance > runtime.settings.processing.deliveryRadius) {
-                val progressed = distance <= lease.bestDistance - CARGO_PROGRESS_DISTANCE
+            val progressed = distance <= lease.bestDistance - runtime.settings.processing.cargoProgressDistance
                 if (progressed || !lease.bestDistance.isFinite()) lease.bestDistance = distance
                 val result = FarmStallWatchdog.observe(
                     lease.watchdog,
@@ -757,7 +757,6 @@ internal class FarmProcessingIncident(
         Location(runtime.region.world, x, y, z, yaw, pitch)
 
     private companion object {
-        const val CARGO_PROGRESS_DISTANCE = 1.0
         const val CARGO_HITBOX_WIDTH = 2.4f
         const val CARGO_HITBOX_HEIGHT = 2.2f
         const val STATION_HITBOX_WIDTH = 3.0f

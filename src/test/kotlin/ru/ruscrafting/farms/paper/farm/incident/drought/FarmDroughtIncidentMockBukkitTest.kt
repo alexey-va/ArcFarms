@@ -66,6 +66,8 @@ class FarmDroughtIncidentMockBukkitTest : FunSpec({
             settings = mockk<FarmZoneSettings> {
                 every { id } returns "communal_farm"
                 every { permission } returns "arcfarms.farm"
+                every { droughtWaterRadius } returns 5
+                every { droughtWaterSettleTicks } returns 21L
             },
             region = CuboidActivityRegion(world, "farm", CuboidBounds(0, 0, 0, 31, 128, 31)),
             orders = emptyMap(),

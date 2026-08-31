@@ -175,6 +175,7 @@ private fun runtime(world: WorldMock): FarmRuntime {
         every { fireEquipmentMaterial } returns "SPYGLASS"
         every { fireEquipmentCustomModelData } returns 0
         every { fireEquipmentItemModel } returns null
+        every { itemScale } returns 1.35f
     }
     val settings = mockk<FarmZoneSettings> {
         every { id } returns "communal_farm"

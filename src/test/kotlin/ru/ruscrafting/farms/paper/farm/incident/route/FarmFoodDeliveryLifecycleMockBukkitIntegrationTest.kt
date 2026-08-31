@@ -17,6 +17,7 @@ import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Mob
 import org.bukkit.entity.TextDisplay
 import org.bukkit.entity.Zombie
+import org.bukkit.attribute.Attribute
 import org.bukkit.event.Event
 import org.bukkit.event.block.Action
 import org.bukkit.event.entity.EntityDamageByEntityEvent
@@ -251,6 +252,66 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
         } }
     }
 
+    test("live route tuning keeps the mounted delivery session and refreshes its entities and rifle") {
+        requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
+            val route = (0..12).map { index ->
+                FarmPointPosition(fixture.world.name, 8.5 + index * 2.0, 65.0, 32.5, -90f, 0f)
+            }
+            val runtime = fixture.runtime(
+                FarmShiftState(
+                    phase = FarmPhase.INCIDENT,
+                    sequence = 640,
+                    placementSequence = 280,
+                    orderId = "bakery_supply",
+                    incidentType = FarmIncidentType.FOOD_DELIVERY,
+                    incidentCrop = "WHEAT",
+                ),
+            )
+            val delivery = fixture.foodDelivery(runtime, route)
+            val driver = fixture.paper.addPlayer("ReloadDriver")
+
+            delivery.ensure(runtime, 3_000L)
+            val horse = fixture.world.entities.filterIsInstance<Horse>().single(delivery::owns)
+            delivery.interact(PlayerInteractEntityEvent(driver, horse, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
+            val cart = fixture.world.entities.filterIsInstance<ItemDisplay>().single { entity ->
+                entity.persistentDataContainer.get(
+                    NamespacedKey(fixture.plugin, "farm_food_route_role"),
+                    PersistentDataType.STRING,
+                ) == "cart"
+            }
+            val seat = fixture.world.entities.filterIsInstance<Interaction>().filter(delivery::owns)
+                .minBy { it.location.distanceSquared(horse.location) }
+
+            runtime.settings = runtime.settings.copy(
+                routeDelivery = runtime.settings.routeDelivery.copy(
+                    horseSpeed = 0.31,
+                    horseJumpStrength = 0.2,
+                    cartScale = 2.2f,
+                    gunnerInteractionWidth = 1.4f,
+                    rifleCustomModelData = 777,
+                ),
+            )
+            delivery.ensure(runtime, 3_001L)
+            delivery.updateVisuals(listOf(runtime))
+
+            fixture.world.entities.filterIsInstance<Horse>().single(delivery::owns) shouldBe horse
+            fixture.world.entities.filterIsInstance<ItemDisplay>().single { it.uniqueId == cart.uniqueId } shouldBe cart
+            horse.passengers.single() shouldBe driver
+            delivery.participants(runtime).single() shouldBe driver
+            horse.getAttribute(Attribute.MOVEMENT_SPEED)?.baseValue shouldBe (0.31 plusOrMinus 0.0001)
+            // MockBukkit does not expose this horse attribute on every supported API build.
+            horse.getAttribute(Attribute.JUMP_STRENGTH)?.baseValue?.let { jumpStrength ->
+                jumpStrength shouldBe (0.2 plusOrMinus 0.0001)
+            }
+            cart.transformation.scale.x shouldBe 2.2f
+            seat.interactionWidth shouldBe 1.4f
+            @Suppress("DEPRECATION")
+            val rifle = driver.inventory.contents.filterNotNull().single(delivery::ownsServiceItem)
+            @Suppress("DEPRECATION")
+            rifle.itemMeta.customModelData shouldBe 777
+        } }
+    }
+
     test("suffocation rescue keeps the rear passenger armed as a walking escort") {
         requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
             val route = (0..12).map { index ->
@@ -297,6 +358,71 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
             delivery.onQuit(gunner)
             delivery.participants(runtime).map { it.uniqueId }.toSet() shouldBe setOf(driver.uniqueId)
             gunner.inventory.contents.filterNotNull().none(delivery::ownsServiceItem) shouldBe true
+        } }
+    }
+
+    test("route monsters can damage registered escorts but never bystanders") {
+        requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
+            val route = (0..8).map { index ->
+                FarmPointPosition(fixture.world.name, 8.5 + index * 2.0, 65.0, 32.5, -90f, 0f)
+            }
+            val runtime = fixture.runtime(
+                FarmShiftState(
+                    phase = FarmPhase.INCIDENT,
+                    sequence = 65,
+                    placementSequence = 29,
+                    orderId = "bakery_supply",
+                    incidentType = FarmIncidentType.FOOD_DELIVERY,
+                    incidentCrop = "WHEAT",
+                ),
+            )
+            val delivery = fixture.foodDelivery(runtime, route)
+            val escort = fixture.paper.addPlayer("RegisteredEscort")
+            val bystander = fixture.paper.addPlayer("RouteBystander")
+
+            delivery.ensure(runtime, 4_000L)
+            val horse = fixture.world.entities.filterIsInstance<Horse>().single(delivery::owns)
+            delivery.interact(PlayerInteractEntityEvent(escort, horse, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
+            escort.inventory.contents.filterNotNull().any(delivery::ownsServiceItem) shouldBe true
+
+            val monster = fixture.world.spawn(horse.location, Zombie::class.java)
+            monster.persistentDataContainer.set(
+                NamespacedKey(fixture.plugin, "farm_food_route_zone"),
+                PersistentDataType.STRING,
+                runtime.settings.id,
+            )
+            monster.persistentDataContainer.set(
+                NamespacedKey(fixture.plugin, "farm_food_route_sequence"),
+                PersistentDataType.LONG,
+                runtime.state.sequence,
+            )
+            monster.persistentDataContainer.set(
+                NamespacedKey(fixture.plugin, "farm_food_route_role"),
+                PersistentDataType.STRING,
+                "monster",
+            )
+
+            val bystanderAttack = EntityDamageByEntityEvent(
+                monster,
+                bystander,
+                EntityDamageEvent.DamageCause.ENTITY_ATTACK,
+                2.0,
+            )
+            delivery.onDamage(bystanderAttack, listOf(runtime)) shouldBe true
+            bystanderAttack.isCancelled shouldBe true
+
+            val escortAttack = EntityDamageByEntityEvent(
+                monster,
+                escort,
+                EntityDamageEvent.DamageCause.ENTITY_ATTACK,
+                2.0,
+            )
+            delivery.onDamage(escortAttack, listOf(runtime)) shouldBe true
+            escortAttack.isCancelled shouldBe false
+
+            delivery.clear(runtime.settings.id, "test_resolution")
+            escort.inventory.contents.filterNotNull().none(delivery::ownsServiceItem) shouldBe true
+            delivery.participants(runtime) shouldBe emptyList()
         } }
     }
 })

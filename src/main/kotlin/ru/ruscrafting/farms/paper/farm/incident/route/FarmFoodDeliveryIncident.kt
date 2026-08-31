@@ -150,25 +150,9 @@ internal class FarmFoodDeliveryIncident(
         val session = sessions[runtime.settings.id]?.takeIf {
             it.sequence == runtime.state.sequence && it.routeName == selected.name
         }
-            ?: FarmFoodDeliverySession(
-                sequence = runtime.state.sequence,
-                routeName = selected.name,
-                pendingAmbushCheckpoints = java.util.ArrayDeque(
-                    route.points.indexOfFirst { point -> !runtime.region.contains(location(point)) }
-                        .takeIf { it >= 0 }
-                        ?.let { farmExitIndex ->
-                            FarmFoodDeliveryAmbushPlanner.checkpoints(
-                                route.points,
-                                runtime.settings.routeDelivery.ambushDistance,
-                                runtime.settings.routeDelivery.ambushMaxCount,
-                                FarmFoodDeliveryAmbushPlanner.distanceAt(route.points, farmExitIndex) +
-                                    runtime.settings.routeDelivery.ambushAfterFarmDistance,
-                                runtime.settings.routeDelivery.ambushEndSafeDistance,
-                            )
-                        }.orEmpty()
-                        .filter { checkpoint -> checkpoint > runtime.state.incidentProgress },
-                ),
-            ).also { sessions[runtime.settings.id] = it }
+            ?: FarmFoodDeliverySession(runtime.state.sequence, selected.name)
+                .also { sessions[runtime.settings.id] = it }
+        refreshAmbushPlan(runtime, session, route.points)
         val horse = session.horseId?.let(Bukkit::getEntity) as? Horse
         val resumePoint = route.points[(runtime.state.incidentProgress - 1).coerceIn(0, route.points.lastIndex)]
         val resumeWorld = Bukkit.getWorld(resumePoint.world) ?: return
@@ -177,13 +161,13 @@ internal class FarmFoodDeliveryIncident(
             val resumeLocation = safeSurface(location(resumePoint)) ?: return
             spawnHorse(runtime, resumeLocation).also { session.horseId = it.uniqueId }
         }
-        activeHorse.getAttribute(Attribute.MOVEMENT_SPEED)?.baseValue = runtime.settings.routeDelivery.horseSpeed
-        val cart = session.cartId?.let(Bukkit::getEntity) as? ItemDisplay
-        if (cart == null || !cart.isValid) session.cartId = spawnCart(runtime, activeHorse.location).uniqueId
-        val gunnerSeat = session.gunnerSeatId?.let(Bukkit::getEntity) as? Interaction
-        if (gunnerSeat == null || !gunnerSeat.isValid) {
-            session.gunnerSeatId = spawnGunnerSeat(runtime, activeHorse.location).uniqueId
-        }
+        configureHorse(runtime, activeHorse)
+        val cart = (session.cartId?.let(Bukkit::getEntity) as? ItemDisplay)?.takeIf(Entity::isValid)
+            ?: spawnCart(runtime, activeHorse.location).also { session.cartId = it.uniqueId }
+        configureCart(runtime, cart)
+        val gunnerSeat = (session.gunnerSeatId?.let(Bukkit::getEntity) as? Interaction)?.takeIf(Entity::isValid)
+            ?: spawnGunnerSeat(runtime, activeHorse.location).also { session.gunnerSeatId = it.uniqueId }
+        configureGunnerSeat(runtime, gunnerSeat)
         val order = runtime.state.orderId?.let(runtime.orders::get) ?: return
         session.loadIds.removeIf { id -> (Bukkit.getEntity(id) as? ItemDisplay)?.isValid != true }
         while (session.loadIds.size > runtime.settings.routeDelivery.cartLoadCount) {
@@ -191,6 +175,9 @@ internal class FarmFoodDeliveryIncident(
         }
         while (session.loadIds.size < runtime.settings.routeDelivery.cartLoadCount) {
             session.loadIds += spawnLoad(runtime, activeHorse.location, order.cartLoadMaterial, order.cartLoadCustomModelData).uniqueId
+        }
+        session.loadIds.mapNotNull { Bukkit.getEntity(it) as? ItemDisplay }.forEach { display ->
+            configureLoad(runtime, display, order.cartLoadMaterial, order.cartLoadCustomModelData)
         }
         ensurePortal(runtime, session)
         gunner.reconcile(runtime, session, activeHorse)
@@ -220,7 +207,12 @@ internal class FarmFoodDeliveryIncident(
             horse.setAI(rider != null && !session.brokenDown)
             if (rider == null || session.brokenDown) horse.velocity = Vector()
             val yaw = Math.toRadians(horse.location.yaw.toDouble())
-            val behind = horse.location.clone().add(sin(yaw) * 2.15, runtime.settings.routeDelivery.cartYOffset, -cos(yaw) * 2.15)
+            val cartBackOffset = runtime.settings.routeDelivery.cartBackOffset
+            val behind = horse.location.clone().add(
+                sin(yaw) * cartBackOffset,
+                runtime.settings.routeDelivery.cartYOffset,
+                -cos(yaw) * cartBackOffset,
+            )
             behind.yaw = horse.location.yaw
             cart.teleport(behind)
             val seatLocation = behind.clone().add(
@@ -230,9 +222,21 @@ internal class FarmFoodDeliveryIncident(
             )
             gunner.moveSeat(runtime, session, gunnerSeat, seatLocation)
             session.loadIds.forEachIndexed { slot, id ->
-                (Bukkit.getEntity(id) as? ItemDisplay)?.teleport(loadLocation(behind, slot, runtime.settings.contractCartVisual.loadYOffset))
+                (Bukkit.getEntity(id) as? ItemDisplay)?.teleport(
+                    loadLocation(
+                        behind,
+                        slot,
+                        runtime.settings.contractCartVisual.loadYOffset,
+                        runtime.settings.routeDelivery.cartLoadSpacing,
+                    ),
+                )
             }
-            ambush.updateLights(zoneId, session, runtime.settings.routeDelivery.monsterLightLevel)
+            ambush.updateLights(
+                zoneId,
+                session,
+                runtime.settings.routeDelivery.monsterLightLevel,
+                runtime.settings.routeDelivery.monsterMovementSpeed,
+            )
             gunner.render(runtime, session, behind)
             if (settings().particles && horse.world.gameTime % TRAIL_INTERVAL_TICKS == 0L) {
                 participants(runtime).filter { it.world == horse.world && !access.isAdminEditing(it) }
@@ -395,12 +399,12 @@ internal class FarmFoodDeliveryIncident(
             config.checkpointRadius,
         )
         if (!atDestination && distance > config.hardResetDistance) {
-            correctTowardRoute(horse, projectionLocation, 0.42)
+            correctTowardRoute(horse, projectionLocation, config.hardCorrectionStrength)
             audience.sendActionBar(rider, MessageKey.FARM_ROUTE_RETURNED)
             return
         }
         if (!atDestination && distance > config.corridorRadius) {
-            correctTowardRoute(horse, projectionLocation, 0.24)
+            correctTowardRoute(horse, projectionLocation, config.corridorCorrectionStrength)
             audience.sendActionBar(rider, MessageKey.FARM_ROUTE_CORRIDOR)
             return
         }
@@ -500,6 +504,33 @@ internal class FarmFoodDeliveryIncident(
         )
     }
 
+    private fun refreshAmbushPlan(
+        runtime: FarmRuntime,
+        session: FarmFoodDeliverySession,
+        points: List<FarmPointPosition>,
+    ) {
+        val config = runtime.settings.routeDelivery
+        val plan = FarmFoodDeliveryAmbushPlan(
+            config.ambushDistance,
+            config.ambushMaxCount,
+            config.ambushAfterFarmDistance,
+            config.ambushEndSafeDistance,
+        )
+        if (session.ambushPlan == plan) return
+        val farmExitIndex = points.indexOfFirst { point -> !runtime.region.contains(location(point)) }
+        val candidates = farmExitIndex.takeIf { it >= 0 }?.let { exitIndex ->
+            FarmFoodDeliveryAmbushPlanner.checkpoints(
+                points,
+                plan.distance,
+                plan.maximum,
+                FarmFoodDeliveryAmbushPlanner.distanceAt(points, exitIndex) + plan.afterFarmDistance,
+                plan.endSafeDistance,
+            )
+        }.orEmpty()
+        session.replaceAmbushCheckpoints(candidates, plan.maximum, runtime.state.incidentProgress)
+        session.ambushPlan = plan
+    }
+
     private fun spawnHorse(runtime: FarmRuntime, location: Location): Horse =
         runtime.region.world.spawn(location, Horse::class.java) { horse ->
             horse.isPersistent = false
@@ -507,19 +538,27 @@ internal class FarmFoodDeliveryIncident(
             horse.isTamed = true
             horse.owner = null
             horse.inventory.saddle = ItemStack(Material.SADDLE)
-            horse.getAttribute(Attribute.MOVEMENT_SPEED)?.baseValue = runtime.settings.routeDelivery.horseSpeed
-            horse.getAttribute(Attribute.JUMP_STRENGTH)?.baseValue = 0.45
+            configureHorse(runtime, horse)
             mark(horse, runtime, ROLE_HORSE)
         }
 
+    private fun configureHorse(runtime: FarmRuntime, horse: Horse) {
+        horse.getAttribute(Attribute.MOVEMENT_SPEED)?.baseValue = runtime.settings.routeDelivery.horseSpeed
+        horse.getAttribute(Attribute.JUMP_STRENGTH)?.baseValue = runtime.settings.routeDelivery.horseJumpStrength
+    }
+
     private fun spawnGunnerSeat(runtime: FarmRuntime, at: Location): Interaction =
         runtime.region.world.spawn(at, Interaction::class.java) { seat ->
-            seat.interactionWidth = runtime.settings.routeDelivery.gunnerInteractionWidth
-            seat.interactionHeight = runtime.settings.routeDelivery.gunnerInteractionHeight
-            seat.isResponsive = true
-            seat.isPersistent = false
+            configureGunnerSeat(runtime, seat)
             mark(seat, runtime, ROLE_GUNNER_SEAT)
         }
+
+    private fun configureGunnerSeat(runtime: FarmRuntime, seat: Interaction) {
+        seat.interactionWidth = runtime.settings.routeDelivery.gunnerInteractionWidth
+        seat.interactionHeight = runtime.settings.routeDelivery.gunnerInteractionHeight
+        seat.isResponsive = true
+        seat.isPersistent = false
+    }
 
     private fun ensurePortal(runtime: FarmRuntime, session: FarmFoodDeliverySession) {
         val point = points.resolve(runtime, FarmPointKind.RECEIVING)
@@ -601,7 +640,8 @@ internal class FarmFoodDeliveryIncident(
         horse: Horse,
     ): Boolean {
         val yaw = Math.toRadians(horse.location.yaw.toDouble())
-        val beside = horse.location.clone().add(cos(yaw) * PORTAL_ARRIVAL_SIDE, 0.0, sin(yaw) * PORTAL_ARRIVAL_SIDE)
+        val side = runtime.settings.routeDelivery.portalArrivalSideOffset
+        val beside = horse.location.clone().add(cos(yaw) * side, 0.0, sin(yaw) * side)
         val target = safeSurface(beside) ?: horse.location.clone().add(0.0, 0.25, 0.0)
         if (!player.teleport(target.apply { this.yaw = horse.location.yaw }, PlayerTeleportEvent.TeleportCause.PLUGIN)) return true
         session.escortIds += player.uniqueId
@@ -622,29 +662,33 @@ internal class FarmFoodDeliveryIncident(
 
     private fun spawnCart(runtime: FarmRuntime, at: Location): ItemDisplay =
         runtime.region.world.spawn(at, ItemDisplay::class.java) { display ->
-            display.isPersistent = false
-            display.isInvulnerable = true
-            display.interpolationDuration = 2
-            display.teleportDuration = 2
-            display.viewRange = runtime.settings.contractCartVisual.viewRange
-            display.isGlowing = true
-            display.glowColorOverride = org.bukkit.Color.fromRGB(0x92, 0xbe, 0xd8)
-            val item = ItemStack(MaterialRules.material(runtime.settings.contractCartVisual.material))
-            if (runtime.settings.contractCartVisual.customModelData > 0) item.editMeta { meta: ItemMeta ->
-                @Suppress("DEPRECATION")
-                meta.setCustomModelData(runtime.settings.contractCartVisual.customModelData)
-            }
-            display.setItemStack(item)
-            display.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.GROUND
-            val scale = runtime.settings.routeDelivery.cartScale
-            display.transformation = Transformation(
-                display.transformation.translation,
-                display.transformation.leftRotation,
-                Vector3f(scale, scale, scale),
-                display.transformation.rightRotation,
-            )
+            configureCart(runtime, display)
             mark(display, runtime, ROLE_CART)
         }
+
+    private fun configureCart(runtime: FarmRuntime, display: ItemDisplay) {
+        display.isPersistent = false
+        display.isInvulnerable = true
+        display.interpolationDuration = 2
+        display.teleportDuration = 2
+        display.viewRange = runtime.settings.contractCartVisual.viewRange
+        display.isGlowing = true
+        display.glowColorOverride = org.bukkit.Color.fromRGB(0x92, 0xbe, 0xd8)
+        val item = ItemStack(MaterialRules.material(runtime.settings.contractCartVisual.material))
+        if (runtime.settings.contractCartVisual.customModelData > 0) item.editMeta { meta: ItemMeta ->
+            @Suppress("DEPRECATION")
+            meta.setCustomModelData(runtime.settings.contractCartVisual.customModelData)
+        }
+        display.setItemStack(item)
+        display.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.GROUND
+        val scale = runtime.settings.routeDelivery.cartScale
+        display.transformation = Transformation(
+            display.transformation.translation,
+            display.transformation.leftRotation,
+            Vector3f(scale, scale, scale),
+            display.transformation.rightRotation,
+        )
+    }
 
     private fun spawnLoad(
         runtime: FarmRuntime,
@@ -652,6 +696,16 @@ internal class FarmFoodDeliveryIncident(
         material: String,
         customModelData: Int,
     ): ItemDisplay = runtime.region.world.spawn(at, ItemDisplay::class.java) { display ->
+        configureLoad(runtime, display, material, customModelData)
+        mark(display, runtime, ROLE_LOAD)
+    }
+
+    private fun configureLoad(
+        runtime: FarmRuntime,
+        display: ItemDisplay,
+        material: String,
+        customModelData: Int,
+    ) {
         display.isPersistent = false
         display.isInvulnerable = true
         display.interpolationDuration = 2
@@ -671,11 +725,11 @@ internal class FarmFoodDeliveryIncident(
             Vector3f(scale, scale, scale),
             display.transformation.rightRotation,
         )
-        mark(display, runtime, ROLE_LOAD)
     }
 
-    private fun loadLocation(cart: Location, slot: Int, yOffset: Double): Location {
-        val offsets = listOf(-0.24 to -0.08, 0.24 to -0.08, -0.24 to 0.24, 0.24 to 0.24)
+    private fun loadLocation(cart: Location, slot: Int, yOffset: Double, spacing: Double): Location {
+        val front = -spacing / 3.0
+        val offsets = listOf(-spacing to front, spacing to front, -spacing to spacing, spacing to spacing)
         val (localX, localZ) = offsets[slot.coerceIn(0, offsets.lastIndex)]
         val radians = Math.toRadians(cart.yaw.toDouble())
         val x = localX * cos(radians) - localZ * sin(radians)
@@ -784,7 +838,6 @@ internal class FarmFoodDeliveryIncident(
     private companion object {
         const val TRAIL_INTERVAL_TICKS = 10L
         const val ROUTE_SOUND_INTERVAL = 8
-        const val PORTAL_ARRIVAL_SIDE = 3.0
         const val ROLE_HORSE = "horse"
         const val ROLE_CART = "cart"
         const val ROLE_GUNNER_SEAT = "gunner_seat"

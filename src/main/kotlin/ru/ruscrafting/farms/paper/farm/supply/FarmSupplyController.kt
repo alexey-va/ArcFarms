@@ -96,17 +96,22 @@ internal class FarmSupplyController(
             entities[key] = active.mapTo(mutableSetOf(), Entity::getUniqueId)
             if (active.size == EXPECTED_ENTITY_COUNT && visualMaterials[key] == visual && matchesLocation(active, location)) {
                 active.filterIsInstance<ItemDisplay>().forEach { entity ->
+                    entity.setItemStack(serviceItem(runtime, kind))
+                    entity.uniformScale(runtime.settings.supplies.itemScale)
                     entity.viewRange = viewRange
                     entity.isGlowing = true
                 }
-                active.filterIsInstance<TextDisplay>().forEach { entity -> entity.viewRange = viewRange }
+                active.filterIsInstance<TextDisplay>().forEach { entity ->
+                    entity.text(label(runtime, kind, visual))
+                    entity.viewRange = viewRange
+                }
                 return@forEach
             }
             removeEntities(key, "refresh")
             val item = world.spawn(location.clone().add(0.0, ITEM_Y_OFFSET, 0.0), ItemDisplay::class.java) { entity ->
                 entity.setItemStack(serviceItem(runtime, kind))
                 entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
-                entity.uniformScale(ITEM_SCALE)
+                entity.uniformScale(runtime.settings.supplies.itemScale)
                 entity.viewRange = viewRange
                 entity.isGlowing = true
                 entity.isPersistent = false
@@ -236,6 +241,21 @@ internal class FarmSupplyController(
         }
     }
 
+    /** Rebuilds tagged temporary items in place so material/model config changes do not steal player gear. */
+    fun reconfigurePlayerItems(runtimes: Collection<FarmRuntime>) {
+        val byId = runtimes.associateBy { it.settings.id }
+        Bukkit.getOnlinePlayers().forEach { player ->
+            player.inventory.storageContents.forEachIndexed { slot, current ->
+                refreshed(current, byId)?.let { player.inventory.setItem(slot, it) }
+            }
+            runCatching { player.openInventory.topInventory }.getOrNull()?.let { top ->
+                for (slot in 0 until top.size) refreshed(top.getItem(slot), byId)?.let { top.setItem(slot, it) }
+            }
+            refreshed(player.inventory.itemInOffHand, byId)?.let(player.inventory::setItemInOffHand)
+            refreshed(player.itemOnCursor, byId)?.let(player::setItemOnCursor)
+        }
+    }
+
     fun refresh(runtime: FarmRuntime, kind: FarmSupplyKind, point: (FarmSupplyKind) -> FarmPointPosition, reason: String) {
         removeEntities(SupplyKey(runtime.settings.id, kind), reason)
         ensure(runtime, point)
@@ -320,6 +340,19 @@ internal class FarmSupplyController(
         }
     }
 
+    private fun refreshed(current: ItemStack?, runtimes: Map<String, FarmRuntime>): ItemStack? {
+        current ?: return null
+        val value = taggedValue(current) ?: return null
+        val runtime = runtimes[value.substringBefore(':')] ?: return null
+        val kind = runCatching { FarmSupplyKind.valueOf(value.substringAfter(':')) }.getOrNull() ?: return null
+        val templates = items(runtime, kind)
+        val template = if (kind == FarmSupplyKind.ARCHERY) {
+            val bow = current.type.name.endsWith("BOW")
+            templates.firstOrNull { it.type.name.endsWith("BOW") == bow }
+        } else templates.firstOrNull()
+        return template?.clone()?.also { it.amount = current.amount.coerceAtMost(it.maxStackSize) }
+    }
+
     private fun serviceItem(runtime: FarmRuntime, kind: FarmSupplyKind): ItemStack = ItemStack(material(runtime, kind)).also { item ->
         if (kind != FarmSupplyKind.FIRE) return@also
         val supplies = runtime.settings.supplies
@@ -369,6 +402,5 @@ internal class FarmSupplyController(
         const val ITEM_Y_OFFSET = 0.25
         const val LABEL_Y_OFFSET = 1.15
         const val INTERACTION_Y_OFFSET = 0.25
-        const val ITEM_SCALE = 1.35f
     }
 }

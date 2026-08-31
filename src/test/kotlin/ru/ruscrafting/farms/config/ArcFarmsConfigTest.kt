@@ -218,6 +218,8 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().contractCartVisual.yOffset shouldBe 0.15
         settings.farms.single().contractCartVisual.viewRange shouldBe 2.0f
         settings.titleStaySeconds shouldBe 4
+        settings.taskHintCooldownMillis shouldBe 900L
+        settings.taskTitleCooldownMillis shouldBe 8_000L
         settings.farms.single().placementMinObjectiveDistance shouldBe 10
         settings.farms.single().placementMaxPlayerDistance shouldBe 28
         settings.farms.single().placementSearchRadius shouldBe 32
@@ -248,6 +250,8 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().processing.spawnPerTick shouldBe 4
         settings.farms.single().processing.cargoReminderSeconds shouldBe 12
         settings.farms.single().processing.cargoReturnSeconds shouldBe 30
+        settings.farms.single().processing.cargoProgressDistance shouldBe 1.0
+        settings.farms.single().processing.crankVerticalTolerance shouldBe 2.5
         settings.farms.single().processing.visuals.getValue(FarmProcessingVisualRole.MACHINE).material shouldBe
             "CRAFTING_TABLE"
         settings.farms.single().processing.visuals.getValue(FarmProcessingVisualRole.OUTPUT_PALLET).material shouldBe
@@ -267,6 +271,24 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().barnFire.sprayRange shouldBe 32.0
         settings.farms.single().barnFire.sprayHitRadius shouldBe 3.2
         settings.farms.single().supplies.fireEquipmentMaterial shouldBe "SPYGLASS"
+        settings.farms.single().droughtWaterRadius shouldBe 5
+        settings.farms.single().droughtWaterSettleTicks shouldBe 21L
+        settings.farms.single().placementReceivingExclusionPadding shouldBe 1.5
+        settings.farms.single().careAnimalFollowDistance shouldBe 1.5
+        settings.farms.single().careAnimalFollowSpeed shouldBe 1.25
+        settings.farms.single().deliveryCarriedForwardOffset shouldBe 0.65
+        settings.farms.single().scarecrowCarriedForwardOffset shouldBe 0.7
+        settings.lumbermills.single().rushOrderDurationMillis shouldBe 75_000L
+        settings.lumbermills.single().forestFireCandidateMultiplier shouldBe 4
+        settings.lumbermills.single().sawInteractionCooldownMillis shouldBe 150L
+        settings.lumbermills.single().bundleInteractionCooldownMillis shouldBe 350L
+        settings.lumbermills.single().plankInteractionCooldownMillis shouldBe 350L
+        settings.lumbermills.single().dispatchInteractionCooldownMillis shouldBe 500L
+        settings.mines.all { mine ->
+            mine.lostMinerDeliveryRadius == 2.5 && mine.lostMinerFollowSnapDistance == 6.0 &&
+                mine.lostMinerFollowOffsetZ == -1.0 && mine.extractionCheckpointRadius == 1.6 &&
+                mine.loadingDeliveryRadius == 2.0
+        } shouldBe true
         settings.farms.single().specialIncidents.channelBlockageCount shouldBe 5
         settings.farms.single().specialIncidents.channelBlockageMaterial shouldBe "MANGROVE_ROOTS"
         settings.farms.single().specialIncidents.channelBlockageDisplayYOffset shouldBe 0.8
@@ -328,13 +350,18 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().routeDelivery.trailLookaheadPoints shouldBe 28
         settings.farms.single().routeDelivery.trailHeight shouldBe 0.35
         settings.farms.single().routeDelivery.trailParticleSize shouldBe 1.15f
+        settings.farms.single().routeDelivery.trailSpacing shouldBe 0.7
         settings.farms.single().routeDelivery.horseSpeed shouldBe 0.17
+        settings.farms.single().routeDelivery.horseJumpStrength shouldBe 0.45
+        settings.farms.single().routeDelivery.portalArrivalSideOffset shouldBe 3.0
+        settings.farms.single().routeDelivery.cartBackOffset shouldBe 2.15
         settings.farms.single().routeDelivery.cartYOffset shouldBe 0.875
         settings.farms.single().routeDelivery.gunnerSeatYOffset shouldBe -0.15
         settings.farms.single().routeDelivery.gunnerSeatBackOffset shouldBe 0.65
         settings.farms.single().routeDelivery.gunnerInteractionWidth shouldBe 2.8f
         settings.farms.single().routeDelivery.gunnerInteractionHeight shouldBe 0.7f
         settings.farms.single().routeDelivery.cartLoadCount shouldBe 4
+        settings.farms.single().routeDelivery.cartLoadSpacing shouldBe 0.24
         settings.farms.single().routeDelivery.ambushDistance shouldBe 120.0
         settings.farms.single().routeDelivery.ambushMaxCount shouldBe 3
         settings.farms.single().routeDelivery.ambushAfterFarmDistance shouldBe 20.0
@@ -350,6 +377,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().routeDelivery.rifleDamage shouldBe 7.0
         settings.farms.single().routeDelivery.rifleRange shouldBe 42.0
         settings.farms.single().routeDelivery.rifleCooldownTicks shouldBe 6
+        settings.farms.single().routeDelivery.rifleRaySize shouldBe 0.65
         settings.farms.single().routeDelivery.playerTime shouldBe 18_000L
         settings.farms.single().routeDelivery.timeTransitionSeconds shouldBe 18
         settings.farms.single().routeDelivery.inactivityReminderSeconds shouldBe 20
@@ -520,6 +548,86 @@ class ArcFarmsConfigTest : FunSpec({
         )
 
         ArcFarmsConfig.inspect(root).farms.single().supplyNearbyViewDistance shouldBe 45.0f
+    }
+
+    test("farm gameplay and presentation tunables load from the bundled config") {
+        val root = resourceTree()
+        val configPath = root.resolve("config.yml")
+        configPath.writeText(
+            Files.readString(configPath)
+                .replace("vertical-tolerance: 2.5", "vertical-tolerance: 3.25")
+                .replace("animal-follow-impulse-base: 0.16", "animal-follow-impulse-base: 0.2")
+                .replace("animal-follow-impulse-per-block: 0.025", "animal-follow-impulse-per-block: 0.04")
+                .replace("animal-follow-impulse-max: 0.42", "animal-follow-impulse-max: 0.6")
+                .replace("animal-follow-impulse-smoothing: 0.25", "animal-follow-impulse-smoothing: 0.4")
+                .replace("hard-correction-strength: 0.42", "hard-correction-strength: 0.55")
+                .replace("corridor-correction-strength: 0.24", "corridor-correction-strength: 0.3")
+                .replace("spawn-min-multiplier: 0.8", "spawn-min-multiplier: 0.7")
+                .replace("spawn-max-multiplier: 1.15", "spawn-max-multiplier: 1.2")
+                .replace("phantom-spawn-height: 7.0", "phantom-spawn-height: 9.0")
+                .replace("radius: 1}", "radius: 2}")
+                .replace("amplifier: 0, refresh-ticks: 60", "amplifier: 1, refresh-ticks: 80")
+                .replace("food: 2, saturation: 1.0, health: 1.0", "food: 3, saturation: 1.5, health: 0.5")
+                .replace("supply-millis: 500", "supply-millis: 550")
+                .replace("delivery-millis: 500", "delivery-millis: 600")
+                .replace("patch-miss-millis: 500", "patch-miss-millis: 650")
+                .replace("care-millis: 100", "care-millis: 150")
+                .replace("care-target-millis: 250", "care-target-millis: 300")
+                .replace("mole-millis: 500", "mole-millis: 700")
+                .replace("frost-pickup-millis: 750", "frost-pickup-millis: 800")
+                .replace("contract-scene-millis: 700", "contract-scene-millis: 900"),
+        )
+        val farm = ArcFarmsConfig.inspect(root).farms.single()
+
+        farm.pestEatIntervalMillis shouldBe 1_000L
+        farm.pestNestMinSpacing shouldBe 16.0
+        farm.pestNestDisplayScale shouldBe 2.0f
+        farm.scarecrowMinSpacing shouldBe 12.0
+        farm.specialIncidents.giantCropHitCooldownMillis shouldBe 90L
+        farm.cropEffects.blockParticleCount shouldBe 14
+        farm.cropEffects.dustParticleCount shouldBe 7
+        farm.cropEffects.composterParticleCount shouldBe 3
+        farm.cropEffects.poofParticleCount shouldBe 5
+        farm.barnFire.waterSideStreams shouldBe 4
+        farm.supplies.itemScale shouldBe 1.35f
+        farm.processing.crankVerticalTolerance shouldBe 3.25
+        farm.careAnimalFollowImpulseBase shouldBe 0.2
+        farm.careAnimalFollowImpulsePerBlock shouldBe 0.04
+        farm.careAnimalFollowImpulseMax shouldBe 0.6
+        farm.careAnimalFollowImpulseSmoothing shouldBe 0.4
+        farm.routeDelivery.hardCorrectionStrength shouldBe 0.55
+        farm.routeDelivery.corridorCorrectionStrength shouldBe 0.3
+        farm.routeDelivery.monsterSpawnMinMultiplier shouldBe 0.7
+        farm.routeDelivery.monsterSpawnMaxMultiplier shouldBe 1.2
+        farm.routeDelivery.phantomSpawnHeight shouldBe 9.0
+        farm.perks.harvestAreaRadius shouldBe 2
+        farm.perks.speedAmplifier shouldBe 1
+        farm.perks.speedRefreshTicks shouldBe 80
+        farm.perks.sustenanceFood shouldBe 3
+        farm.perks.sustenanceSaturation shouldBe 1.5f
+        farm.perks.sustenanceHealth shouldBe 0.5
+        farm.inputCooldowns.supplyMillis shouldBe 550L
+        farm.inputCooldowns.deliveryMillis shouldBe 600L
+        farm.inputCooldowns.patchMissMillis shouldBe 650L
+        farm.inputCooldowns.careMillis shouldBe 150L
+        farm.inputCooldowns.careTargetMillis shouldBe 300L
+        farm.inputCooldowns.moleMillis shouldBe 700L
+        farm.inputCooldowns.frostPickupMillis shouldBe 800L
+        farm.inputCooldowns.contractSceneMillis shouldBe 900L
+    }
+
+    test("farm gameplay tunables reject unsafe values before startup") {
+        val root = resourceTree()
+        val configPath = root.resolve("config.yml")
+        val config = Files.readString(configPath)
+            .replace("pest-eat-interval-millis: 1000", "pest-eat-interval-millis: 99")
+            .replace("side-streams: 4", "side-streams: 9")
+            .replace("water-radius: 5", "water-radius: 0")
+            .replace("follow-snap-distance: 6.0", "follow-snap-distance: 1.0")
+            .replace("animal-follow-impulse-max: 0.42", "animal-follow-impulse-max: 0.01")
+        configPath.writeText(config)
+
+        shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(root) }
     }
 
     test("farm patch size is bounded before runtime scanning") {
@@ -739,6 +847,18 @@ class ArcFarmsConfigTest : FunSpec({
         Files.readString(relayRoot.resolve("config.yml")) shouldContain "farm-zones: {}"
         Files.readString(relayRoot.resolve("config.yml")) shouldContain "lumber-zones: {}"
         Files.readString(relayRoot.resolve("config.yml")) shouldContain "mine-zones: {}"
+    }
+
+    test("startup load reads the latest accepted disk config in the same JVM") {
+        val root = resourceTree()
+        ArcFarmsConfig.load(root).titleStaySeconds shouldBe 4
+
+        Config(root, "config.yml").also { changed ->
+            changed.setStructured("ui.title-stay-seconds", 3)
+            changed.saveStrict()
+        }
+
+        ArcFarmsConfig.load(root).titleStaySeconds shouldBe 3
     }
 
     test("hex-colored farm bossbar renders without leaking MiniMessage tags") {

@@ -2,7 +2,6 @@ package ru.ruscrafting.farms.paper.mine.extraction
 
 import org.bukkit.Bukkit
 import org.bukkit.Location
-import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Interaction
@@ -13,7 +12,10 @@ import org.bukkit.plugin.Plugin
 import org.bukkit.util.Transformation
 import org.joml.AxisAngle4f
 import org.joml.Vector3f
+import ru.ruscrafting.farms.config.FarmItemDisplayTransform
+import ru.ruscrafting.farms.config.MineCartVisualSettings
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
+import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import java.util.UUID
 
@@ -24,11 +26,7 @@ internal interface MineCartEffects {
     fun reconcileChunk(chunk: org.bukkit.Chunk) = Unit
 }
 
-/**
- * IA contact proof: elitecreatures:medieval_market_decoration_v1_cart_2, PAPER:10747,
- * model SHA-256 06fcde3cc7fdd62b8bcd5920dbd806c3867dd719abcae279c8fc11f58a3d425c.
- * GROUND at entity scale 3 has support Y=-0.5625, hence entity Y=surface+0.5625.
- */
+/** Keeps the active extraction scene stable while applying live visual configuration on every reconcile. */
 internal class PaperMineCartEffects(private val plugin: Plugin) : MineCartEffects {
     private val displays = mutableMapOf<String, UUID>()
     private val interactions = mutableMapOf<String, UUID>()
@@ -37,30 +35,24 @@ internal class PaperMineCartEffects(private val plugin: Plugin) : MineCartEffect
 
     override fun show(runtime: MineRuntime, position: WorksitePosition, yaw: Float) {
         val world = Bukkit.getWorld(position.world) ?: return
-        val entityLocation = Location(
-            world, position.x + 0.5, position.y + 1.0 + GROUND_Y_OFFSET, position.z + 0.5, yaw, 0f,
-        )
+        val visual = runtime.settings.cartVisual
+        val interactionLocation = Location(world, position.x + 0.5, position.y + 1.0, position.z + 0.5, yaw, 0f)
+        val displayLocation = interactionLocation.clone().add(0.0, visual.yOffset, 0.0)
         val display = displays[runtime.settings.id]?.let(Bukkit::getEntity) as? ItemDisplay
         val interaction = interactions[runtime.settings.id]?.let(Bukkit::getEntity) as? Interaction
         if (display?.isValid == true && interaction?.isValid == true) {
-            display.teleport(entityLocation)
-            interaction.teleport(entityLocation.clone().subtract(0.0, GROUND_Y_OFFSET, 0.0))
+            display.teleport(displayLocation)
+            interaction.teleport(interactionLocation)
+            applyVisual(display, visual)
+            applyHitbox(interaction, visual)
         } else {
             hide(runtime.settings.id)
-            val item = ItemStack(Material.PAPER).also { stack -> stack.editMeta { it.setCustomModelData(CUSTOM_MODEL_DATA) } }
-            val spawnedDisplay = world.spawn(entityLocation, ItemDisplay::class.java) { entity ->
-                entity.setItemStack(item)
-                entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.GROUND
-                entity.transformation = Transformation(Vector3f(), AxisAngle4f(), Vector3f(3f), AxisAngle4f())
-                entity.viewRange = 48f
+            val spawnedDisplay = world.spawn(displayLocation, ItemDisplay::class.java) { entity ->
+                applyVisual(entity, visual)
                 entity.persistentDataContainer.set(zoneKey, PersistentDataType.STRING, runtime.settings.id)
             }
-            val spawnedInteraction = world.spawn(
-                entityLocation.clone().subtract(0.0, GROUND_Y_OFFSET, 0.0), Interaction::class.java,
-            ) { entity ->
-                entity.interactionWidth = 2.4f
-                entity.interactionHeight = 1.8f
-                entity.isResponsive = true
+            val spawnedInteraction = world.spawn(interactionLocation, Interaction::class.java) { entity ->
+                applyHitbox(entity, visual)
                 entity.persistentDataContainer.set(zoneKey, PersistentDataType.STRING, runtime.settings.id)
             }
             displays[runtime.settings.id] = spawnedDisplay.uniqueId
@@ -94,9 +86,28 @@ internal class PaperMineCartEffects(private val plugin: Plugin) : MineCartEffect
         else if (current != entity.uniqueId) entity.remove()
     }
 
-    private companion object {
-        const val CUSTOM_MODEL_DATA = 10_747
-        const val GROUND_Y_OFFSET = 0.5625
+    private fun applyVisual(display: ItemDisplay, visual: MineCartVisualSettings) {
+        display.isPersistent = false
+        display.setItemStack(ItemStack(MaterialRules.material(visual.material)).also { stack ->
+            stack.editMeta { meta ->
+                if (visual.customModelData > 0) meta.setCustomModelData(visual.customModelData)
+                visual.itemModel?.let { model -> meta.setItemModel(requireNotNull(NamespacedKey.fromString(model))) }
+            }
+        })
+        display.itemDisplayTransform = when (visual.displayTransform) {
+            FarmItemDisplayTransform.GROUND -> ItemDisplay.ItemDisplayTransform.GROUND
+            FarmItemDisplayTransform.FIXED -> ItemDisplay.ItemDisplayTransform.FIXED
+            FarmItemDisplayTransform.HEAD -> ItemDisplay.ItemDisplayTransform.HEAD
+        }
+        display.transformation = Transformation(Vector3f(), AxisAngle4f(), Vector3f(visual.scale), AxisAngle4f())
+        display.viewRange = visual.viewRange
+    }
+
+    private fun applyHitbox(interaction: Interaction, visual: MineCartVisualSettings) {
+        interaction.isPersistent = false
+        interaction.interactionWidth = visual.interactionWidth
+        interaction.interactionHeight = visual.interactionHeight
+        interaction.isResponsive = true
     }
 }
 

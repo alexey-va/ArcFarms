@@ -192,7 +192,10 @@ internal class FarmFrostIncident(
         val woodpile = woodpileLocation(runtime) ?: return false
         val pickupRadius = runtime.settings.specialIncidents.frost.pickupRadius
         if (player.world !== woodpile.world || player.location.distanceSquared(woodpile) > pickupRadius * pickupRadius) return false
-        if (!access.allowInteraction("farm-frost-pickup:${runtime.settings.id}:${player.uniqueId}", 750)) return false
+        if (!access.allowInteraction(
+                "farm-frost-pickup:${runtime.settings.id}:${player.uniqueId}",
+                runtime.settings.inputCooldowns.frostPickupMillis,
+            )) return false
         val item = firewoodItem(runtime, player)
         if (player.inventory.addItem(item).isNotEmpty()) {
             audience.sendActionBar(player, MessageKey.FARM_FROST_INVENTORY_FULL)

@@ -37,7 +37,10 @@ internal class LumberDispatchController(
             audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return true
         }
-        if (!access.allowInteraction("lumber-dispatch:${runtime.settings.id}:${player.uniqueId}", 500L)) return true
+        if (!access.allowInteraction(
+                "lumber-dispatch:${runtime.settings.id}:${player.uniqueId}", runtime.settings.dispatchInteractionCooldownMillis,
+            )
+        ) return true
         ringBell(runtime, player, clock())
         return true
     }

@@ -34,6 +34,8 @@ import ru.ruscrafting.farms.domain.MineRules
 import ru.ruscrafting.farms.domain.MineShiftEngine
 import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.domain.PendingMineBlock
+import ru.ruscrafting.farms.paper.lumber.lumberSliceSettings
+import ru.ruscrafting.farms.paper.mine.mineV2Settings
 import ru.ruscrafting.farms.persistence.MineRecoveryJournal
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
@@ -338,6 +340,36 @@ class WorksiteControllerMockBukkitTest : FunSpec({
             LumbermillController.validateReload(
                 listOf(lumberSettings().copy(species = listOf("BIRCH"))),
                 mapOf("sawmill" to active),
+            )
+        }
+    }
+
+    test("reload validation rejects removing active V2 lumber and mine orders") {
+        val lumber = lumberSliceSettings()
+        val activeLumber = LumberShiftState(
+            engineVersion = 2,
+            phase = LumberPhase.FELLING,
+            orderId = lumber.orders.single().id,
+            species = "OAK",
+        )
+        shouldThrow<IllegalArgumentException> {
+            LumbermillController.validateReload(
+                listOf(lumber.copy(orders = listOf(lumber.orders.single().copy(id = "replacement")))),
+                mapOf(lumber.id to activeLumber),
+            )
+        }
+
+        val mine = mineV2Settings()
+        val activeMine = MineShiftState(
+            engineVersion = 2,
+            phase = MinePhase.PROSPECTING,
+            orderId = mine.orders.single().id,
+        )
+        shouldThrow<IllegalArgumentException> {
+            MineController.validateReload(
+                listOf(mine.copy(orders = listOf(mine.orders.single().copy(id = "replacement")))),
+                mapOf(mine.id to activeMine),
+                ControlledMineJournal(),
             )
         }
     }

@@ -349,7 +349,10 @@ internal class FarmEventRouter(
                 audience.sendChat(event.player, MessageKey.ZONE_LOCKED)
                 return
             }
-            if (access.allowInteraction("farm-supply:${identity.zoneId}:${identity.kind}:${event.player.uniqueId}", 500)) {
+            if (access.allowInteraction(
+                    "farm-supply:${identity.zoneId}:${identity.kind}:${event.player.uniqueId}",
+                    runtime.settings.inputCooldowns.supplyMillis,
+                )) {
                 supplies.give(runtime, identity.kind, event.player)
             }
             return
@@ -362,7 +365,10 @@ internal class FarmEventRouter(
             audience.sendChat(event.player, MessageKey.ZONE_LOCKED)
             return
         }
-        if (access.allowInteraction("farm-delivery:${identity.zoneId}:${identity.index}:${event.player.uniqueId}", 500)) {
+        if (access.allowInteraction(
+                "farm-delivery:${identity.zoneId}:${identity.index}:${event.player.uniqueId}",
+                runtime.settings.inputCooldowns.deliveryMillis,
+            )) {
             delivery.pickup(runtime, identity, event.player)
         }
     }

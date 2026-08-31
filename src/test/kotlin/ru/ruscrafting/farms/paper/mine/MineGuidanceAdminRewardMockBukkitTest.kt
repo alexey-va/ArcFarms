@@ -70,6 +70,9 @@ class MineGuidanceAdminRewardMockBukkitTest : FunSpec({
         admin.status("old_shafts")!!.phase shouldBe MinePhase.IDLE.name
         admin.startReindex("old_shafts") shouldBe true
         admin.startReindex("old_shafts") shouldBe false
+        graph.module.beforeReload("config_reload")
+        admin.tickReindex("old_shafts", 262_144) shouldBe null
+        admin.startReindex("old_shafts") shouldBe true
         admin.tickReindex("old_shafts", 262_144)!!.scannedBlocks.shouldBeGreaterThan(0L)
     }
 })
