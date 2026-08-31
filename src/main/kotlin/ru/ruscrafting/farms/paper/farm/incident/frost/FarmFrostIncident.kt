@@ -69,6 +69,15 @@ internal class FarmFrostIncident(
 
     fun initialize(runtime: FarmRuntime): Boolean {
         if (!active(runtime)) return false
+        if (!hasConfiguredPoint(runtime)) {
+            debug.event(
+                "farm_frost_unavailable",
+                "zone" to runtime.settings.id,
+                "sequence" to runtime.state.sequence,
+                "reason" to "missing_firewood_point",
+            )
+            return false
+        }
         runtime.state.frost?.let { frost ->
             knownCampfires[runtime.settings.id] = frost.campfires.map { it.position }
             return true
@@ -208,6 +217,9 @@ internal class FarmFrostIncident(
 
     fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(entityZoneKey, PersistentDataType.STRING)
 
+    fun hasConfiguredPoint(runtime: FarmRuntime): Boolean =
+        points.configured(runtime, FarmPointKind.FIREWOOD) != null
+
     fun protects(location: Location): Boolean {
         val position = location.toFarmPlotPosition().copy(y = location.blockY - 1)
         return knownCampfires.values.any { position in it }
@@ -338,7 +350,7 @@ internal class FarmFrostIncident(
     }
 
     private fun woodpileLocation(runtime: FarmRuntime): Location? {
-        val point = points.resolve(runtime, FarmPointKind.FIREWOOD)
+        val point = points.configured(runtime, FarmPointKind.FIREWOOD) ?: return null
         val world = Bukkit.getWorld(point.world) ?: return null
         val visuals = runtime.settings.specialIncidents.frost
         return Location(

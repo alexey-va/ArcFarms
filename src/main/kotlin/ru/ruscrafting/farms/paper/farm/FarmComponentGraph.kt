@@ -3,12 +3,14 @@ package ru.ruscrafting.farms.paper.farm
 import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
+import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.ArcFarmsRuntimeValidator
 import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmBlockRegistry
 import ru.ruscrafting.farms.paper.FarmEconomyGateway
 import ru.ruscrafting.farms.paper.FarmNightShiftController
+import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.RegionGateway
 import ru.ruscrafting.farms.paper.worksite.WorksitePorts
 import ru.ruscrafting.farms.paper.farm.admin.FarmGameplayAdminService
@@ -109,8 +111,12 @@ internal class FarmComponentGraph(
         participantCount = { region -> ports.audience.players(region).size },
         log = ports.state::log,
     )
-    private val points = FarmPointProvider { runtime, kind ->
-        carePlans.fixturePoint(runtime, kind) ?: pointService.resolveBase(runtime, kind)
+    private val points = object : FarmPointProvider {
+        override fun resolve(runtime: FarmRuntime, kind: FarmPointKind) =
+            carePlans.fixturePoint(runtime, kind) ?: pointService.resolveBase(runtime, kind)
+
+        override fun configured(runtime: FarmRuntime, kind: FarmPointKind) =
+            pointService.configured(runtime.settings.id, kind)
     }
     private val transitions = FarmTransitionRouter()
     private val launches = FarmShiftLaunchRouter()

@@ -315,6 +315,8 @@ are available through commands such as `/arcfarms admin point <zone> help`,
 - `/arcfarms admin point <zone> <tool|seeds|water|crates|receiving|food-delivery-portal|cart|customer|travel|hive|irrigation|covers|scarecrows|barn|archery|fire-equipment|firewood|perk-vendor|processing>` —
   save the administrator's current world, coordinates, yaw, and pitch for a farm
   operation point. Non-travel points must be inside the farm and off crop beds.
+  `firewood` is required explicitly before frost can start and never inherits
+  `fire-equipment`; `food-delivery-portal` alone defaults to `receiving`.
   `processing` is the centre of the whole workshop: stand on a clear 9×5
   platform and face its front. ArcFarms validates the footprint and shows its
   outline plus the input, mechanism, and output columns immediately.

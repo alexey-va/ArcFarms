@@ -433,6 +433,15 @@ internal class FarmShiftCoordinator(
             }
             FarmIncidentType.FROST -> {
                 if (!frost.initialize(runtime)) {
+                    actor?.takeIf {
+                        it.hasPermission("arcfarms.admin") && !frost.hasConfiguredPoint(runtime)
+                    }?.let { player ->
+                        port.sendChat(
+                            player,
+                            MessageKey.ADMIN_POINT_NOT_OVERRIDDEN,
+                            mapOf("point" to locale.renderPath("admin.point.firewood", player)),
+                        )
+                    }
                     apply(runtime, FarmShiftEngine.skipUnavailableIncident(runtime.state, FarmIncidentType.FROST), null)
                     return
                 }

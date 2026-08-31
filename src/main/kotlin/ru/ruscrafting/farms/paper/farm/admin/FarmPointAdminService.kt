@@ -40,7 +40,7 @@ internal class FarmPointAdminService(
         return FarmPointKind.entries.mapNotNull { kind ->
             val configured = pointService.configured(runtime.settings.id, kind)
             val resolved = configured ?: when (kind) {
-                FarmPointKind.PROCESSING -> null
+                FarmPointKind.PROCESSING, FarmPointKind.FIREWOOD -> null
                 FarmPointKind.PROCESSING_INPUT,
                 FarmPointKind.PROCESSING_INPUT_2,
                 FarmPointKind.PROCESSING_INPUT_3,

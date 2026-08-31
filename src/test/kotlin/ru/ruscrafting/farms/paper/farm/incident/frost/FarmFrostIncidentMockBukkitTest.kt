@@ -23,6 +23,7 @@ import ru.ruscrafting.farms.config.FarmZoneSettings
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPlotPosition
+import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
@@ -84,6 +85,15 @@ class FarmFrostIncidentMockBukkitTest : FunSpec({
         fixture.runtime.state.frost shouldBe null
     }
 
+    test("frost does not start without an explicitly configured firewood point") {
+        val fixture = frostFixture(paper, world, firewoodConfigured = false)
+
+        fixture.controller.initialize(fixture.runtime) shouldBe false
+
+        fixture.crop.type shouldBe Material.WHEAT
+        fixture.runtime.state.frost shouldBe null
+    }
+
     test("woodpile is upright and grounded then proximity carry fuels the campfire") {
         val fixture = frostFixture(paper, world, woodpileScale = 3f, woodpileYOffset = 0.375)
         val player = paper.addPlayer("Farmer")
@@ -130,6 +140,7 @@ private fun frostFixture(
     woodpileYOffset: Double = 0.0,
     mature: Boolean = true,
     indexed: Boolean = true,
+    firewoodConfigured: Boolean = true,
 ): FrostFixture {
     val soil = world.getBlockAt(1, 64, 1)
     soil.type = Material.FARMLAND
@@ -198,7 +209,14 @@ private fun frostFixture(
         beds = FarmIncidentBedProvider {
             if (indexed) setOf(FarmPlotPosition(world.name, 1, 64, 1)) else emptySet()
         },
-        points = FarmPointProvider { _, _ -> FarmPointPosition(world.name, 5.5, 65.0, 5.5, yaw = 37f) },
+        points = object : FarmPointProvider {
+            private val firewood = FarmPointPosition(world.name, 5.5, 65.0, 5.5, yaw = 37f)
+
+            override fun resolve(runtime: FarmRuntime, kind: FarmPointKind) = firewood
+
+            override fun configured(runtime: FarmRuntime, kind: FarmPointKind) =
+                firewood.takeIf { firewoodConfigured && kind == FarmPointKind.FIREWOOD }
+        },
         transitions = FarmTransitionSink { target, result, _ -> if (result.accepted) target.state = result.state },
         runtimes = { listOf(runtime) },
         clock = { 1_000L },

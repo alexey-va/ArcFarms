@@ -13,6 +13,8 @@ import ru.ruscrafting.farms.paper.FarmRuntime
 /** Named seam for configured/default farm points while point administration is extracted. */
 internal fun interface FarmPointProvider {
     fun resolve(runtime: FarmRuntime, kind: FarmPointKind): FarmPointPosition
+
+    fun configured(runtime: FarmRuntime, kind: FarmPointKind): FarmPointPosition? = null
 }
 
 /** Sole application boundary through which a feature may apply a farm state transition. */
