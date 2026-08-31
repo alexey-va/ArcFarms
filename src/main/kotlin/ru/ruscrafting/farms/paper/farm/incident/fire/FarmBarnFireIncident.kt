@@ -232,20 +232,33 @@ internal class FarmBarnFireIncident(
                     if (x * x + z * z <= config.placementRadius * config.placementRadius) add(x to z)
                 }
             }
-        }.sortedBy { (x, z) -> mix(runtime.state.placementSequence, x, z) }
-        val chosen = mutableListOf<FarmPointPosition>()
-        candidates.forEach { (offsetX, offsetZ) ->
-            if (chosen.size >= config.hotspotCount) return@forEach
+        }.sortedWith(
+            compareBy<Pair<Int, Int>> { (x, z) -> x * x + z * z }
+                .thenBy { (x, z) -> mix(runtime.state.placementSequence, x, z) },
+        )
+        val available = candidates.mapNotNull { (offsetX, offsetZ) ->
             val x = anchor.x.toIntFloor() + offsetX
             val z = anchor.z.toIntFloor() + offsetZ
-            if (!world.isChunkLoaded(x shr 4, z shr 4)) return@forEach
-            val y = surfaceY(runtime, x, anchor.y.toIntFloor(), z, config.verticalSearch) ?: return@forEach
-            val point = FarmPointPosition(world.name, x + 0.5, y + 1.02, z + 0.5)
-            if (chosen.any { horizontalDistanceSquared(it, point) < config.minSpacing * config.minSpacing }) return@forEach
-            chosen += point
+            if (!world.isChunkLoaded(x shr 4, z shr 4)) return@mapNotNull null
+            val y = surfaceY(runtime, x, anchor.y.toIntFloor(), z, config.verticalSearch) ?: return@mapNotNull null
+            FarmPointPosition(world.name, x + 0.5, y + 1.02, z + 0.5)
+        }.toMutableList()
+        val chosen = mutableListOf<FarmPointPosition>()
+        available.removeFirstOrNull()?.let(chosen::add)
+        while (chosen.size < config.hotspotCount) {
+            val next = available.firstOrNull { candidate ->
+                chosen.none { horizontalDistanceSquared(it, candidate) < config.minSpacing * config.minSpacing } &&
+                    chosen.any { isNeighbour(it, candidate) }
+            } ?: break
+            available.remove(next)
+            chosen += next
         }
         return chosen
     }
+
+    private fun isNeighbour(left: FarmPointPosition, right: FarmPointPosition): Boolean =
+        left.world == right.world && abs(left.y - right.y) <= 2.0 &&
+            abs(left.x - right.x) <= 1.0 && abs(left.z - right.z) <= 1.0
 
     private fun spread(runtime: FarmRuntime, tick: Long) {
         val zoneId = runtime.settings.id

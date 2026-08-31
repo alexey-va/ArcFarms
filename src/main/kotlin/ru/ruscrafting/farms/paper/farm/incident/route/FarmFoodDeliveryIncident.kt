@@ -48,6 +48,7 @@ import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
 import ru.ruscrafting.farms.paper.platform.*
 import java.util.random.RandomGenerator
 import java.util.logging.Level
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.sin
@@ -147,9 +148,10 @@ internal class FarmFoodDeliveryIncident(
         }
         val selected = selectedRoute(runtime) ?: return
         val route = selected.route
-        val session = sessions[runtime.settings.id]?.takeIf {
-            it.sequence == runtime.state.sequence && it.routeName == selected.name
-        }
+        sessions[runtime.settings.id]?.takeIf {
+            it.sequence != runtime.state.sequence || it.routeName != selected.name
+        }?.let { clear(runtime.settings.id, "route_identity_changed") }
+        val session = sessions[runtime.settings.id]
             ?: FarmFoodDeliverySession(runtime.state.sequence, selected.name)
                 .also { sessions[runtime.settings.id] = it }
         refreshAmbushPlan(runtime, session, route.points)
@@ -260,6 +262,25 @@ internal class FarmFoodDeliveryIncident(
         val horse = session.horseId?.let(Bukkit::getEntity) as? Horse ?: return true
         if (entityRole == ROLE_PORTAL) return joinDelivery(event.player, runtime, session, horse)
         return mountAvailableSeat(event.player, runtime, session, horse)
+    }
+
+    fun enterPortal(player: Player, destination: Location, runtimes: Collection<FarmRuntime>): Boolean {
+        val runtime = runtimes.firstOrNull { candidate ->
+            val session = sessions[candidate.settings.id] ?: return@firstOrNull false
+            val portal = session.portalId?.let(Bukkit::getEntity) as? Interaction ?: return@firstOrNull false
+            active(candidate) && portal.isValid && destination.world === portal.world &&
+                abs(destination.x - portal.location.x) <= portal.interactionWidth / 2.0 &&
+                destination.y >= portal.location.y - 0.5 &&
+                destination.y <= portal.location.y + portal.interactionHeight &&
+                abs(destination.z - portal.location.z) <= portal.interactionWidth / 2.0
+        } ?: return false
+        if (!access.hasAccess(player, runtime.settings.permission)) {
+            audience.sendChat(player, MessageKey.ZONE_LOCKED)
+            return true
+        }
+        val session = sessions.getValue(runtime.settings.id)
+        val horse = session.horseId?.let(Bukkit::getEntity) as? Horse ?: return true
+        return joinDelivery(player, runtime, session, horse)
     }
 
     private fun mountAvailableSeat(

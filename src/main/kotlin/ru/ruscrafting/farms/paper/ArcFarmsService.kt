@@ -308,10 +308,7 @@ class ArcFarmsService(
     fun onInteract(event: PlayerInteractEvent) = worksiteEvents.onInteract(event)
     fun onBlockFromTo(event: org.bukkit.event.block.BlockFromToEvent) = farm.events.onBlockFromTo(event)
     fun onMove(event: PlayerMoveEvent) = worksiteEvents.onMove(event)
-    fun onTeleport(event: PlayerTeleportEvent) {
-        worksiteEvents.onMove(event)
-        worksiteEvents.release(event.player, WorksitePlayerReleaseReason.TELEPORT_OUT)
-    }
+    fun onTeleport(event: PlayerTeleportEvent) = worksiteEvents.onTeleport(event)
     fun onPortal(event: PlayerPortalEvent) {
         worksiteEvents.onMove(event)
         worksiteEvents.release(event.player, WorksitePlayerReleaseReason.PORTAL_OUT)

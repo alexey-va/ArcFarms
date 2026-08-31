@@ -85,7 +85,7 @@ class FarmGameplayAdminServiceTest : FunSpec({
         }
     }
 
-    test("admin can start the configured food delivery incident") {
+    test("admin can start the configured terminal delivery and frost incidents") {
         val paper = MockBukkitTestRuntime.open()
         try {
             val world = paper.server.addSimpleWorld("sp11")
@@ -159,6 +159,10 @@ class FarmGameplayAdminServiceTest : FunSpec({
             service.setStage(player, runtime.settings.id, "food-delivery") shouldBe true
             runtime.state.incidentType shouldBe FarmIncidentType.FOOD_DELIVERY
             verify(exactly = 1) { transitions.apply(runtime, match { it.state.incidentType == FarmIncidentType.FOOD_DELIVERY }, player) }
+
+            service.setStage(player, runtime.settings.id, "frost") shouldBe true
+            runtime.state.incidentType shouldBe FarmIncidentType.FROST
+            verify(exactly = 1) { transitions.apply(runtime, match { it.state.incidentType == FarmIncidentType.FROST }, player) }
         } finally {
             paper.close()
         }

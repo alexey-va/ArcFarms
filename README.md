@@ -312,7 +312,7 @@ are available through commands such as `/arcfarms admin point <zone> help`,
 - `/arcfarms admin inspect` — toggle read-only block inspection. Clicking a
   block prints its BlockData, fixed-crop or bed ledger entry, pending restore,
   and current patch/incident ownership.
-- `/arcfarms admin point <zone> <tool|seeds|water|crates|receiving|food-delivery-portal|cart|customer|travel|hive|irrigation|covers|scarecrows|barn|archery|perk-vendor|processing>` —
+- `/arcfarms admin point <zone> <tool|seeds|water|crates|receiving|food-delivery-portal|cart|customer|travel|hive|irrigation|covers|scarecrows|barn|archery|fire-equipment|firewood|perk-vendor|processing>` —
   save the administrator's current world, coordinates, yaw, and pitch for a farm
   operation point. Non-travel points must be inside the farm and off crop beds.
   `processing` is the centre of the whole workshop: stand on a clear 9×5
@@ -340,12 +340,12 @@ are available through commands such as `/arcfarms admin point <zone> help`,
 - `/arcfarms admin route <zone> start [name]` — record a named food-delivery
   route on foot. Omit the name for the backward-compatible `main` route; use
   `finish`, `status [name]`, `clear [name]`, or `cancel` to manage recordings.
-- `/arcfarms admin stage <zone> <preparation|planting|harvesting|seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought|birds|giant-crop|channels|night-shift|market|food-delivery|processing|delivery|complete|reset>` —
+- `/arcfarms admin stage <zone> <preparation|planting|harvesting|seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought|birds|giant-crop|channels|night-shift|market|food-delivery|processing|barn-fire|frost|delivery|complete|reset>` —
   switch the current farm to an exact QA stage while preserving normal recovery.
 - `/arcfarms admin next <zone>` — advance to the next useful QA stage.
 - `/arcfarms admin finish <zone>` — finish the current order through its normal
   completion and reward path.
-- `/arcfarms admin event <zone> <seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought|birds|giant-crop|channels|night-shift|market|food-delivery|processing>` —
+- `/arcfarms admin event <zone> <seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought|birds|giant-crop|channels|night-shift|market|food-delivery|processing|barn-fire|frost>` —
   start any exact farm story or harvest incident.
 
 Farm counts, manual and mechanized patch sizes, machinery radius, spacing,

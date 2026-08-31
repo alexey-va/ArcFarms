@@ -54,6 +54,11 @@ internal interface WorksiteMoveHandler {
     fun onMove(from: Location, to: Location, player: Player): Boolean
 }
 
+/** Lets a live off-site activity retain its participant across plugin-owned teleports. */
+internal interface WorksiteTeleportRetention {
+    fun retainOnTeleport(player: Player): Boolean
+}
+
 internal interface WorksiteEntityInteractHandler {
     fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean
 }
@@ -128,6 +133,9 @@ internal class WorksiteModuleRegistry(
         }
         return handled
     }
+
+    fun retainOnTeleport(player: Player): Boolean =
+        modulesInOrder.filterIsInstance<WorksiteTeleportRetention>().any { it.retainOnTeleport(player) }
 
     fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean =
         modulesInOrder.filterIsInstance<WorksiteEntityInteractHandler>().any { it.onInteractEntity(event) }

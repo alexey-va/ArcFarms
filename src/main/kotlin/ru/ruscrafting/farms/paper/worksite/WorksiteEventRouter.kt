@@ -8,6 +8,7 @@ import org.bukkit.event.player.PlayerDropItemEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerMoveEvent
+import org.bukkit.event.player.PlayerTeleportEvent
 import org.bukkit.event.entity.EntityDeathEvent
 import ru.ruscrafting.farms.paper.WorksiteModuleRegistry
 
@@ -35,6 +36,15 @@ internal class WorksiteEventRouter(
             event.from.blockZ == destination.blockZ
         ) return false
         return registry.onMove(event.from, destination, event.player)
+    }
+
+    fun onTeleport(event: PlayerTeleportEvent): Boolean = onMove(event).also {
+        if (
+            event.cause != PlayerTeleportEvent.TeleportCause.DISMOUNT &&
+            !registry.retainOnTeleport(event.player)
+        ) {
+            release(event.player, WorksitePlayerReleaseReason.TELEPORT_OUT)
+        }
     }
 
     fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean = registry.onInteractEntity(event)

@@ -512,13 +512,13 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().routeDelivery.portalLabelScale shouldBe 1.8f
         settings.farms.single().delivery.proximityPickupRadius shouldBe 1.75
         settings.farms.single().scarecrowPickupRadius shouldBe 1.75
-        settings.farms.single().barnFire.hotspotCount shouldBe 24
+        settings.farms.single().barnFire.hotspotCount shouldBe 36
         settings.farms.single().barnFire.initialHotspotCount shouldBe 6
-        settings.farms.single().barnFire.spreadIntervalTicks shouldBe 40
+        settings.farms.single().barnFire.spreadIntervalTicks shouldBe 13
         settings.farms.single().barnFire.spreadHotspotsPerPulse shouldBe 1
         settings.farms.single().barnFire.spawnPerTick shouldBe 8
         settings.farms.single().barnFire.placementRadius shouldBe 16
-        settings.farms.single().barnFire.particleHotspotLimit shouldBe 24
+        settings.farms.single().barnFire.particleHotspotLimit shouldBe 32
         settings.farms.single().barnFire.sprayRange shouldBe 32.0
         settings.farms.single().barnFire.sprayHitRadius shouldBe 3.2
         settings.farms.single().supplies.fireEquipmentMaterial shouldBe "SPYGLASS"

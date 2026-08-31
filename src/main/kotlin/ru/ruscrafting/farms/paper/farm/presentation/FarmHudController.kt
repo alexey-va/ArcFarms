@@ -7,6 +7,7 @@ import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.JoinConfiguration
 import org.bukkit.Bukkit
 import org.bukkit.Sound
+import org.bukkit.SoundCategory
 import org.bukkit.entity.Player
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
@@ -240,10 +241,10 @@ internal class FarmHudController(
             )
         }
         transition.stopSound?.let { sound ->
-            player.stopSound(musicSound(sound, 1.0f))
             debug.event("farm_music_stopped", "player" to player.name, "sound" to sound)
         }
         transition.playSound?.let { sound ->
+            player.stopSound(SoundCategory.MUSIC)
             val volume = requireNotNull(configured).volume
             player.playSound(musicSound(sound, volume), AdventureSound.Emitter.self())
             debug.event(
@@ -254,19 +255,21 @@ internal class FarmHudController(
                 "duration_seconds" to configured.durationSeconds,
             )
         }
+        if (configured == null) player.stopSound(SoundCategory.MUSIC)
     }
 
     fun stopMusic(player: Player, reason: String) {
         music.remove(player.uniqueId).stopSound?.let { sound ->
-            player.stopSound(musicSound(sound, 1.0f))
             debug.event("farm_music_stopped", "player" to player.name, "sound" to sound, "reason" to reason)
         }
+        player.stopSound(SoundCategory.MUSIC)
     }
 
     fun stopAllMusic(reason: String) {
-        music.clear().forEach { (playerId, sound) ->
-            Bukkit.getPlayer(playerId)?.takeIf(Player::isOnline)?.let { player ->
-                player.stopSound(musicSound(sound, 1.0f))
+        val stopped = music.clear()
+        Bukkit.getOnlinePlayers().forEach { player ->
+            player.stopSound(SoundCategory.MUSIC)
+            stopped[player.uniqueId]?.let { sound ->
                 debug.event("farm_music_stopped", "player" to player.name, "sound" to sound, "reason" to reason)
             }
         }

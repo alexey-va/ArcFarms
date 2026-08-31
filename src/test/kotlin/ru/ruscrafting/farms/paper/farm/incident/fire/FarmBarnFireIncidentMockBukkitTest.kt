@@ -282,6 +282,12 @@ class FarmBarnFireIncidentMockBukkitTest : FunSpec({
             controller.initialize(runtime) shouldBe true
             controller.ensure(runtime)
             val hotspots = runtime.state.specialIncident!!.points.map { it.location(world) }
+            hotspots.drop(1).forEachIndexed { index, hotspot ->
+                hotspots.take(index + 1).any { previous ->
+                    kotlin.math.abs(previous.x - hotspot.x) <= 1.0 &&
+                        kotlin.math.abs(previous.z - hotspot.z) <= 1.0
+                } shouldBe true
+            }
             hotspots.count { it.block.type == Material.FIRE } shouldBe 1
 
             controller.update(listOf(runtime), 0L)

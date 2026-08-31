@@ -33,6 +33,7 @@ import ru.ruscrafting.farms.paper.WorksiteModule
 import ru.ruscrafting.farms.paper.WorksiteBlockBreakHandler
 import ru.ruscrafting.farms.paper.WorksitePlayerInteractHandler
 import ru.ruscrafting.farms.paper.WorksiteMoveHandler
+import ru.ruscrafting.farms.paper.WorksiteTeleportRetention
 import ru.ruscrafting.farms.paper.WorksiteGuidanceHandler
 import ru.ruscrafting.farms.paper.blockIndexDefinition
 import ru.ruscrafting.farms.paper.farm.admin.FarmWorldAdminService
@@ -104,7 +105,7 @@ internal class FarmModule(
     private val guidance: FarmGuidanceController,
     private val events: FarmEventRouter,
 ) : WorksiteModule<FarmShiftState>, WorksiteBlockBreakHandler, WorksitePlayerInteractHandler, WorksiteMoveHandler,
-    WorksiteGuidanceHandler, WorksiteParticipantOwner {
+    WorksiteGuidanceHandler, WorksiteParticipantOwner, WorksiteTeleportRetention {
     override val kind: ActivityKind = ActivityKind.FARM
     override val zoneCount: Int get() = registry.size
 
@@ -334,6 +335,8 @@ internal class FarmModule(
 
     override fun onMove(from: Location, to: Location, player: Player): Boolean =
         events.onMove(PlayerMoveEvent(player, from, to))
+
+    override fun retainOnTeleport(player: Player): Boolean = events.retainOnTeleport(player)
 
     override fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
         if (reason == WorksitePlayerReleaseReason.JOIN_STALE) events.onJoin(player)

@@ -270,6 +270,32 @@ class ArcFarmsStateRepositoryTest : FunSpec({
         ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
     }
 
+    test("gradually spreading barn fire persists before reaching its hotspot cap") {
+        val root = Files.createTempDirectory("arcfarms-state-growing-barn-fire-test")
+        val points = (0 until 6).map { index ->
+            FarmPointPosition("sp11", 10.5 + index, 65.02, 10.5)
+        }
+        val expected = ArcFarmsState(
+            farms = mapOf(
+                "farm" to FarmShiftState(
+                    phase = FarmPhase.INCIDENT,
+                    sequence = 10,
+                    placementSequence = 5,
+                    orderId = "farm_order",
+                    startedAt = 1,
+                    incidentType = FarmIncidentType.BARN_FIRE,
+                    incidentCrop = "WHEAT",
+                    incidentProgress = 0,
+                    incidentRequired = points.size,
+                    specialIncident = FarmSpecialIncidentState(points = points, active = setOf(0, 1)),
+                ),
+            ),
+        )
+
+        ArcFarmsStateRepository(root).use { it.saveBlocking(expected) }
+        ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
+    }
+
     test("state persistence rejects processing progress inconsistent with its stage") {
         val root = Files.createTempDirectory("arcfarms-state-processing-stage-test")
         val processing = FarmProcessingState(

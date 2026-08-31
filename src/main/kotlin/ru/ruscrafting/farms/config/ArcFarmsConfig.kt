@@ -457,6 +457,7 @@ data class FarmBarnFireSettings(
         require(initialHotspotCount <= hotspotCount) {
             "barn fire initial hotspot count must not exceed its total hotspot cap"
         }
+        require(minSpacing in 1.0..1.4) { "barn fire minimum spacing must preserve adjacent spread" }
         require(waterSideStreams in 1..8) { "barn fire spray side streams must be in 1..8" }
     }
 }
@@ -1260,13 +1261,13 @@ class ArcFarmsConfig private constructor(
                         )
                     },
                 )
-                val barnFireHotspotCount = section.int("barn-fire.hotspots", 24)
+                val barnFireHotspotCount = section.int("barn-fire.hotspots", 36)
                     .checked("barn-fire.hotspots", 1, 256)
                 val barnFire = FarmBarnFireSettings(
                     hotspotCount = barnFireHotspotCount,
                     initialHotspotCount = section.int("barn-fire.initial-hotspots", minOf(6, barnFireHotspotCount))
                         .checked("barn-fire.initial-hotspots", 1, barnFireHotspotCount),
-                    spreadIntervalTicks = section.int("barn-fire.spread.interval-ticks", 40)
+                    spreadIntervalTicks = section.int("barn-fire.spread.interval-ticks", 13)
                         .checked("barn-fire.spread.interval-ticks", 10, 400),
                     spreadHotspotsPerPulse = section.int("barn-fire.spread.hotspots-per-pulse", 1)
                         .checked("barn-fire.spread.hotspots-per-pulse", 1, 8),
@@ -1274,7 +1275,7 @@ class ArcFarmsConfig private constructor(
                         .checked("barn-fire.spawn-per-tick", 1, 32),
                     placementRadius = section.int("barn-fire.placement-radius", 16)
                         .checked("barn-fire.placement-radius", 2, 32),
-                    minSpacing = section.finiteDouble("barn-fire.min-spacing", 1.4, 1.0, 8.0),
+                    minSpacing = section.finiteDouble("barn-fire.min-spacing", 1.4, 1.0, 1.4),
                     verticalSearch = section.int("barn-fire.vertical-search", 5)
                         .checked("barn-fire.vertical-search", 1, 12),
                     sprayRange = section.finiteDouble("barn-fire.spray.range", 18.0, 4.0, 32.0),
@@ -1284,7 +1285,7 @@ class ArcFarmsConfig private constructor(
                     particleStep = section.finiteDouble("barn-fire.spray.particle-step", 0.55, 0.2, 2.0),
                     flameParticleIntervalTicks = section.int("barn-fire.flame-particle-interval-ticks", 5)
                         .checked("barn-fire.flame-particle-interval-ticks", 1, 40),
-                    particleHotspotLimit = section.int("barn-fire.particle-hotspot-limit", 24)
+                    particleHotspotLimit = section.int("barn-fire.particle-hotspot-limit", 32)
                         .checked("barn-fire.particle-hotspot-limit", 0, 64),
                     waterSideStreams = section.int("barn-fire.spray.side-streams", 4)
                         .checked("barn-fire.spray.side-streams", 1, 8),

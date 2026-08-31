@@ -381,7 +381,8 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                     ) { "Farm food delivery state is incomplete" }
                     FarmIncidentType.BARN_FIRE -> require(
                         special.points.size in 1..256 && special.plots.isEmpty() && special.crop == null &&
-                            special.active.isNotEmpty() && special.active.size + farm.incidentProgress == farm.incidentRequired &&
+                            special.active.isNotEmpty() &&
+                            special.active.size + farm.incidentProgress <= farm.incidentRequired &&
                             farm.incidentRequired == special.points.size,
                     ) { "Farm barn fire state is incomplete" }
                     else -> error("Farm special incident state has an invalid type")

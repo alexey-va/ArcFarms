@@ -271,6 +271,7 @@ internal class FarmEventRouter(
             event.from.blockY == destination.blockY && event.from.blockZ == destination.blockZ
         ) return false
         val player = event.player
+        if (!worldAdmin.isEditing(player) && foodDelivery.enterPortal(player, destination, runtimes())) return true
         val from = farmAt(event.from)
         val to = farmAt(destination)
         val routeRuntime = foodDelivery.participantRuntime(player, runtimes())
@@ -286,6 +287,9 @@ internal class FarmEventRouter(
         frost.onMove(player, to)
         return from != null || to != null || routeRuntime != null
     }
+
+    fun retainOnTeleport(player: Player): Boolean =
+        foodDelivery.participantRuntime(player, runtimes()) != null
 
     fun onQuit(player: Player, reason: String = "player_quit") {
         routeAdmin.release(player)

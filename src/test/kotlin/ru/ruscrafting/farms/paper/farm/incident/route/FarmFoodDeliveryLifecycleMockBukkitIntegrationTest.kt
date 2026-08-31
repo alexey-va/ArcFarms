@@ -34,6 +34,39 @@ import ru.ruscrafting.farms.paper.fixtures.FarmIncidentScenarioFixture
 import ru.ruscrafting.farms.paper.fixtures.requiredMockBukkitScenario
 
 class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
+    test("a replaced route sequence removes its stale portal and keeps only the receiving portal") {
+        requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
+            val route = (0..8).map { index ->
+                FarmPointPosition(fixture.world.name, 8.5 + index * 4.0, 65.0, 32.5, -90f, 0f)
+            }
+            val runtime = fixture.runtime(
+                FarmShiftState(
+                    phase = FarmPhase.INCIDENT,
+                    sequence = 70,
+                    orderId = "bakery_supply",
+                    incidentType = FarmIncidentType.FOOD_DELIVERY,
+                ),
+            )
+            val delivery = fixture.foodDelivery(runtime, route)
+            val role = NamespacedKey(fixture.plugin, "farm_food_route_role")
+
+            delivery.ensure(runtime, 1_000L)
+            val stalePortal = fixture.world.entities.filterIsInstance<Interaction>().single { entity ->
+                entity.persistentDataContainer.get(role, PersistentDataType.STRING) == "portal"
+            }
+            runtime.state = runtime.state.copy(sequence = 71)
+
+            delivery.ensure(runtime, 2_000L)
+
+            stalePortal.isValid shouldBe false
+            val currentPortal = fixture.world.entities.filterIsInstance<Interaction>().single { entity ->
+                entity.persistentDataContainer.get(role, PersistentDataType.STRING) == "portal"
+            }
+            currentPortal.location.x shouldBe (12.5 plusOrMinus 0.0001)
+            currentPortal.location.z shouldBe (12.5 plusOrMinus 0.0001)
+        } }
+    }
+
     test("two-player delivery survives restart, resolves one wave at a time, and returns everyone to the farm") {
         requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
             val route = (0..50).map { index ->
@@ -86,6 +119,8 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
             portalLabel.transformation.scale.x shouldBe fixture.zone.routeDelivery.portalLabelScale
             delivery.interact(PlayerInteractEntityEvent(gunner, portal, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
             gunner.location.distanceSquared(horse.location) shouldBe (9.0 plusOrMinus 1.0)
+            delivery.enterPortal(driver, portal.location, listOf(runtime)) shouldBe true
+            driver.location.distanceSquared(horse.location) shouldBe (9.0 plusOrMinus 1.0)
 
             var seat = fixture.world.entities.filterIsInstance<Interaction>().filter(delivery::owns)
                 .minBy { it.location.distanceSquared(horse.location) }

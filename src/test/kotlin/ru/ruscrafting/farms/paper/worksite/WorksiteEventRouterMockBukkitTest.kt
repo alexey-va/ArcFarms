@@ -8,6 +8,7 @@ import org.bukkit.entity.Player
 import org.bukkit.event.block.Action
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.event.player.PlayerTeleportEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
 import org.bukkit.Material
@@ -18,6 +19,7 @@ import ru.ruscrafting.farms.paper.WorksiteBlockBreakHandler
 import ru.ruscrafting.farms.paper.WorksiteModule
 import ru.ruscrafting.farms.paper.WorksiteModuleRegistry
 import ru.ruscrafting.farms.paper.WorksitePlayerInteractHandler
+import ru.ruscrafting.farms.paper.WorksiteTeleportRetention
 
 class WorksiteEventRouterMockBukkitTest : FunSpec({
     lateinit var paper: MockBukkitTestRuntime
@@ -80,6 +82,39 @@ class WorksiteEventRouterMockBukkitTest : FunSpec({
 
         releases shouldContainExactly reasons
     }
+
+    test("horse dismount teleport keeps worksite participation while real teleport releases it") {
+        val releases = mutableListOf<WorksitePlayerReleaseReason>()
+        val participant = RoutingModule(ActivityKind.FARM, release = releases::add)
+        val router = router(paper, WorksiteModuleRegistry(listOf(participant)))
+        val world = paper.server.addSimpleWorld("world")
+        val player = paper.server.addPlayer("CaravanDriver")
+        val destination = player.location.clone().add(1.0, 0.0, 0.0)
+
+        router.onTeleport(
+            PlayerTeleportEvent(player, player.location, destination, PlayerTeleportEvent.TeleportCause.DISMOUNT),
+        )
+        releases shouldBe emptyList()
+
+        router.onTeleport(
+            PlayerTeleportEvent(player, destination, world.spawnLocation, PlayerTeleportEvent.TeleportCause.COMMAND),
+        )
+        releases shouldContainExactly listOf(WorksitePlayerReleaseReason.TELEPORT_OUT)
+    }
+
+    test("an off-site activity retains its service items across plugin teleports") {
+        val releases = mutableListOf<WorksitePlayerReleaseReason>()
+        val participant = RoutingModule(ActivityKind.FARM, retainTeleport = true, release = releases::add)
+        val router = router(paper, WorksiteModuleRegistry(listOf(participant)))
+        val player = paper.server.addPlayer("CaravanEscort")
+        val destination = player.location.clone().add(20.0, 0.0, 0.0)
+
+        router.onTeleport(
+            PlayerTeleportEvent(player, player.location, destination, PlayerTeleportEvent.TeleportCause.PLUGIN),
+        )
+
+        releases shouldBe emptyList()
+    }
 })
 
 private fun router(
@@ -98,8 +133,10 @@ private class RoutingModule(
     override val kind: ActivityKind,
     private val handlesBreak: Boolean = false,
     private val handlesInteraction: Boolean = false,
+    private val retainTeleport: Boolean = false,
     private val release: (WorksitePlayerReleaseReason) -> Unit = {},
-) : WorksiteModule<Any>, WorksiteBlockBreakHandler, WorksitePlayerInteractHandler, WorksiteParticipantOwner {
+) : WorksiteModule<Any>, WorksiteBlockBreakHandler, WorksitePlayerInteractHandler, WorksiteParticipantOwner,
+    WorksiteTeleportRetention {
     override val zoneCount: Int = 1
     var breakCalls: Int = 0
     var interactionCalls: Int = 0
@@ -118,6 +155,8 @@ private class RoutingModule(
         interactionCalls++
         return handlesInteraction
     }
+
+    override fun retainOnTeleport(player: Player): Boolean = retainTeleport
 
     override fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) = release(reason)
 }
