@@ -33,15 +33,43 @@ sources:
     include:
       - menu.*
       - companies.*
+  gameplay:
+    path: src/main/resources/lang/ru.yml
+    include:
+      - admin.stage-name.channels
+      - admin.stage-description.channels
+      - admin.event-description.channels
+      - farm.entry-channels
+      - farm.channels-*
+      - incident.channels.*
+      - scoreboard.phase.channels
+      - scoreboard.hint.channels
+      - scoreboard.hint-detail.channels
 
 placeholders:
+  color: ''
   'color:#20252b': '<#20252b>'
+  'color:#2bba43': '<#2bba43>'
   'color:#45c8f5': '<#45c8f5>'
   'color:#55d98b': '<#55d98b>'
   'color:#666666': '<#666666>'
   'color:#707a76': '<#707a76>'
+  'color:#8bd3ff': '<#8bd3ff>'
+  'color:#969696': '<#969696>'
+  'color:#976948': '<#976948>'
+  'color:#9a8cff': '<#9a8cff>'
+  'color:#a9825a': '<#a9825a>'
+  'color:#b8c8c0': '<#b8c8c0>'
+  'color:#bd52d6': '<#bd52d6>'
+  'color:#c28946': '<#c28946>'
+  'color:#c42323': '<#c42323>'
+  'color:#c69cff': '<#c69cff>'
+  'color:#c778ff': '<#c778ff>'
+  'color:#d8a56d': '<#d8a56d>'
   'color:#f2fff7': '<#f2fff7>'
   'color:#ff5f6d': '<#ff5f6d>'
+  'color:#ff7a45': '<#ff7a45>'
+  'color:#ff9f0f': '<#ff9f0f>'
   'color:#ffad42': '<#ffad42>'
   'color:#ffc857': '<#ffc857>'
   cycle: '184'
@@ -61,6 +89,8 @@ placeholders:
   shares: '5'
   limit: '20'
   count: '1'
+  done: '4'
+  total: '10'
 
 surfaces:
   fragments:
@@ -68,6 +98,14 @@ surfaces:
       include: [blank]
     - source: farms
       include: [menu.*, companies.*]
+  chat:
+    - source: gameplay
+      include: ['*']
+  hud:
+    - id: irrigation-channel
+      title: gameplay:farm.channels-started
+      subtitle: gameplay:farm.channels-started-subtitle
+      actionbar: gameplay:farm.channels-progress
   inventories:
     - id: work-shifts
       title: farms:menu.title

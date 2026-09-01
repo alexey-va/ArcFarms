@@ -11,6 +11,7 @@ import org.bukkit.entity.Entity
 import org.bukkit.entity.EntityType
 import org.bukkit.entity.Ghast
 import org.bukkit.entity.Hoglin
+import org.bukkit.entity.ArmorStand
 import org.bukkit.entity.Mob
 import org.bukkit.entity.Player
 import org.bukkit.event.Event
@@ -22,6 +23,7 @@ import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerTeleportEvent
 import org.bukkit.inventory.EquipmentSlot
+import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.config.ArcFarmsConfig
@@ -45,12 +47,15 @@ import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmRuntime
+import ru.ruscrafting.farms.paper.FarmNightShiftController
 import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.platform.FarmEntityRayTrace
+import ru.ruscrafting.farms.paper.platform.FarmMobDespawnPolicy
+import ru.ruscrafting.farms.paper.platform.FarmMobNavigation
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
@@ -60,6 +65,7 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import java.util.UUID
 import java.util.logging.Level
 import kotlin.math.cos
+import kotlin.math.PI
 import kotlin.math.sin
 
 internal val ACTION_FARM_INCIDENT_TYPES = setOf(FarmIncidentType.BOAR_BREAKOUT, FarmIncidentType.RIVAL_RAID)
@@ -80,15 +86,23 @@ internal class FarmActionIncidentController(
     private val transitions: FarmTransitionSink,
     private val runtimes: () -> Collection<FarmRuntime>,
     private val entityRayTrace: FarmEntityRayTrace,
+    private val mobDespawns: FarmMobDespawnPolicy,
+    private val mobNavigation: FarmMobNavigation,
+    private val nightShift: FarmNightShiftController,
 ) {
     private data class RaidSession(
         val sequence: Long,
         val objectiveNonce: Long,
         val returnPoint: FarmPointPosition,
         var ghastId: UUID? = null,
+        val riderSeatIds: MutableMap<UUID, UUID> = linkedMapOf(),
         val workerIds: MutableSet<UUID> = linkedSetOf(),
         val participantIds: MutableSet<UUID> = linkedSetOf(),
         val shotAt: MutableMap<UUID, Long> = hashMapOf(),
+        var workerSpawnSequence: Int = 0,
+        var orbiting: Boolean = false,
+        var orbitAngle: Double = 0.0,
+        var lastFlightTick: Long = 0,
     )
 
     private data class PlanAttempt(
@@ -234,9 +248,19 @@ internal class FarmActionIncidentController(
             return true
         }
         val ghast = event.rightClicked as? Ghast ?: return true
-        if (event.player.vehicle !== ghast && !ghast.addPassenger(event.player)) return true
         session.participantIds += event.player.uniqueId
+        val seat = ensureRaidSeat(runtime, session, ghast, event.player) ?: return true
+        if (event.player.vehicle !== seat) {
+            event.player.leaveVehicle()
+            if (!seat.addPassenger(event.player)) return true
+        }
         issueTool(event.player, runtime, RAID_GUN_ID, MaterialRules.material(runtime.settings.rivalRaid.gunMaterial), MessageKey.FARM_RIVAL_RAID_GUN)
+        nightShift.syncAmbientTime(
+            raidAtmosphereOwner(runtime.settings.id),
+            session.participantIds.mapNotNull(Bukkit::getPlayer).filter(Player::isOnline),
+            runtime.settings.rivalRaid.playerTime,
+            runtime.settings.rivalRaid.timeTransitionSeconds,
+        )
         audience.sendActionBar(event.player, MessageKey.FARM_RIVAL_RAID_MOUNTED)
         if (settings().sounds) event.player.playSound(event.player.location, Sound.ITEM_ARMOR_EQUIP_LEATHER, 0.8f, 1.15f)
         return true
@@ -282,6 +306,7 @@ internal class FarmActionIncidentController(
         val zoneId = event.entity.persistentDataContainer.get(zoneKey, PersistentDataType.STRING) ?: return true
         val session = raids[zoneId] ?: return true
         session.workerIds.remove(event.entity.uniqueId)
+        nightShift.releaseExternalLight(raidWorkerLightOwner(zoneId, event.entity.uniqueId))
         val player = event.entity.killer?.takeIf { it.uniqueId in session.participantIds } ?: return true
         val runtime = runtimes().firstOrNull { it.settings.id == zoneId } ?: return true
         val result = FarmSpecialIncidentEngine.advanceAction(runtime.state, FarmIncidentType.RIVAL_RAID, player.uniqueId)
@@ -299,8 +324,12 @@ internal class FarmActionIncidentController(
         .mapNotNull(Bukkit::getPlayer).filter(Player::isOnline)
 
     fun onQuit(player: Player) {
-        raids.values.forEach { session ->
-            if (player.uniqueId in session.participantIds) returnParticipant(session, player)
+        raids.forEach { (zoneId, session) ->
+            if (player.uniqueId in session.participantIds) {
+                removeRaidSeat(session, player.uniqueId)
+                returnParticipant(session, player)
+                nightShift.clearAmbientPlayer(raidAtmosphereOwner(zoneId), player)
+            }
             session.participantIds.remove(player.uniqueId)
             session.shotAt.remove(player.uniqueId)
         }
@@ -414,10 +443,11 @@ internal class FarmActionIncidentController(
             if (!spawn.chunk.isLoaded) break
             val hoglin = spawn.world.spawn(spawn, Hoglin::class.java) { entity ->
                 entity.isPersistent = false
-                entity.removeWhenFarAway = false
+                mobDespawns.setRemoveWhenFarAway(entity, false)
                 entity.isImmuneToZombification = true
                 entity.isGlowing = true
                 entity.getAttribute(Attribute.MOVEMENT_SPEED)?.baseValue = runtime.settings.boarBreakout.movementSpeed
+                entity.getAttribute(Attribute.FOLLOW_RANGE)?.baseValue = runtime.settings.boarBreakout.aggroRadius
                 mark(entity, runtime, ROLE_BOAR, targetIndex)
             }
             active += hoglin.uniqueId
@@ -429,11 +459,14 @@ internal class FarmActionIncidentController(
         ensureBoars(runtime)
         val special = runtime.state.specialIncident ?: return
         val ids = boars[runtime.settings.id]?.toList().orEmpty()
+        val players = audience.players(runtime.region).filterNot(access::isAdminEditing)
+        val fieldBeds = beds.discover(runtime)
+        var cropsChanged = false
         ids.forEach { id ->
             val boar = Bukkit.getEntity(id) as? Hoglin ?: return@forEach
             val index = boar.persistentDataContainer.get(targetKey, PersistentDataType.INTEGER) ?: 0
             val target = special.plots.getOrNull(index) ?: return@forEach
-            val blocker = audience.players(runtime.region).filterNot(access::isAdminEditing).firstOrNull { player ->
+            val blocker = players.firstOrNull { player ->
                 if (player.world !== boar.world) return@firstOrNull false
                 val offsetX = boar.location.x - player.location.x
                 val offsetZ = boar.location.z - player.location.z
@@ -458,15 +491,28 @@ internal class FarmActionIncidentController(
                 if (result.accepted) transitions.apply(runtime, result, blocker)
                 return@forEach
             }
+            val aggroSquared = runtime.settings.boarBreakout.aggroRadius * runtime.settings.boarBreakout.aggroRadius
+            val targetPlayer = players.asSequence()
+                .filter { it.world === boar.world && it.location.distanceSquared(boar.location) <= aggroSquared }
+                .minByOrNull { it.location.distanceSquared(boar.location) }
             val targetLocation = target.cropLocation() ?: return@forEach
-            if (boar.world === targetLocation.world && boar.location.distanceSquared(targetLocation) <=
+            if (targetPlayer != null) {
+                boar.target = targetPlayer
+                mobNavigation.moveTo(boar, targetPlayer, 1.25)
+            } else if (boar.world === targetLocation.world && boar.location.distanceSquared(targetLocation) <=
                 runtime.settings.boarBreakout.cropReachRadius * runtime.settings.boarBreakout.cropReachRadius
             ) {
-                damageCrop(runtime, target)
+                cropsChanged = damageCrop(runtime, target) || cropsChanged
                 val next = nextBoarTarget(runtime, index)
                 boar.persistentDataContainer.set(targetKey, PersistentDataType.INTEGER, next)
-            } else boar.pathfinder.moveTo(targetLocation, 1.0)
+            } else {
+                boar.target = null
+                mobNavigation.moveTo(boar, targetLocation, 1.0)
+            }
+            cropsChanged = trampleAround(runtime, boar, fieldBeds) || cropsChanged
+            emitBoarChargeParticles(runtime, boar)
         }
+        if (cropsChanged) state.persistAsync()
     }
 
     private fun nextBoarTarget(runtime: FarmRuntime, current: Int): Int {
@@ -474,8 +520,51 @@ internal class FarmActionIncidentController(
         return Math.floorMod(current + 1 + runtime.state.incidentProgress, size)
     }
 
-    private fun damageCrop(runtime: FarmRuntime, position: FarmPlotPosition) {
-        if (runtime.state.specialDamagedCrops.any { it.position == position }) return
+    private fun trampleAround(runtime: FarmRuntime, boar: Hoglin, fieldBeds: Set<FarmPlotPosition>): Boolean {
+        val radiusSquared = runtime.settings.boarBreakout.trampleRadius * runtime.settings.boarBreakout.trampleRadius
+        var changed = false
+        fieldBeds.asSequence()
+            .filter { plot ->
+                if (plot.world != boar.world.name) return@filter false
+                val dx = plot.x + 0.5 - boar.location.x
+                val dz = plot.z + 0.5 - boar.location.z
+                dx * dx + dz * dz <= radiusSquared
+            }
+            .sortedBy { plot ->
+                val dx = plot.x + 0.5 - boar.location.x
+                val dz = plot.z + 0.5 - boar.location.z
+                dx * dx + dz * dz
+            }
+            .take(runtime.settings.boarBreakout.trampleCropsPerUpdate)
+            .forEach { plot -> changed = damageCrop(runtime, plot) || changed }
+        return changed
+    }
+
+    private fun emitBoarChargeParticles(runtime: FarmRuntime, boar: Hoglin) {
+        if (!settings().particles || runtime.settings.boarBreakout.trampleParticleCount <= 0) return
+        val ground = boar.location.block.getRelative(org.bukkit.block.BlockFace.DOWN)
+        boar.world.spawnParticle(
+            Particle.DUST_PLUME,
+            boar.location.clone().add(0.0, 0.15, 0.0),
+            runtime.settings.boarBreakout.trampleParticleCount,
+            0.55,
+            0.08,
+            0.55,
+            0.025,
+        )
+        if (!ground.type.isAir) boar.world.spawnParticle(
+            Particle.BLOCK_CRUMBLE,
+            boar.location.clone().add(0.0, 0.1, 0.0),
+            runtime.settings.boarBreakout.trampleParticleCount,
+            0.5,
+            0.12,
+            0.5,
+            ground.blockData,
+        )
+    }
+
+    private fun damageCrop(runtime: FarmRuntime, position: FarmPlotPosition): Boolean {
+        if (runtime.state.specialDamagedCrops.any { it.position == position }) return false
         val total = beds.discover(runtime).size
         val remaining = FarmDamageBudget.remaining(
             total,
@@ -484,16 +573,17 @@ internal class FarmActionIncidentController(
             runtime.settings.damageSafety.minimumRemaining,
             runtime.settings.boarBreakout.cropDamageMaximum,
         )
-        if (remaining <= 0) return
-        val soil = position.block() ?: return
+        if (remaining <= 0) return false
+        val soil = position.block() ?: return false
         val crop = soil.getRelative(org.bukkit.block.BlockFace.UP)
-        if (crop.type.isAir || crop.type.name !in runtime.settings.crops) return
+        if (crop.type.isAir || crop.type.name !in runtime.settings.crops) return false
         ledger.captureActiveCrop(soil, runtime.settings.id)
         val damage = FarmCropDamage(position, crop.type.name)
         crop.world.spawnParticle(Particle.BLOCK, crop.location.toCenterLocation(), 10, 0.3, 0.25, 0.3, crop.blockData)
         crop.setType(Material.AIR, false)
+        soil.setType(Material.DIRT, false)
         runtime.state = runtime.state.copy(specialDamagedCrops = runtime.state.specialDamagedCrops + damage)
-        state.persistAsync()
+        return true
     }
 
     private fun ensureRaid(runtime: FarmRuntime) {
@@ -511,7 +601,7 @@ internal class FarmActionIncidentController(
         if (ghast?.isValid != true && departure.world.isChunkLoaded(departure.blockX shr 4, departure.blockZ shr 4)) {
             ghast = departure.world.spawn(departure.clone().add(0.0, 2.0, 0.0), Ghast::class.java) { entity ->
                 entity.isPersistent = false
-                entity.removeWhenFarAway = false
+                mobDespawns.setRemoveWhenFarAway(entity, false)
                 entity.isAware = false
                 entity.isInvulnerable = true
                 entity.setGravity(false)
@@ -529,19 +619,29 @@ internal class FarmActionIncidentController(
             return
         }
         while (session.workerIds.size < runtime.settings.rivalRaid.workerCount) {
-            val index = session.workerIds.size
+            val index = session.workerSpawnSequence++
             val angle = index * Math.PI * 2.0 / runtime.settings.rivalRaid.workerCount
             val radius = runtime.settings.rivalRaid.workerRadius * (0.45 + (index % 3) * 0.2)
             val spawn = rival.clone().add(cos(angle) * radius, 0.0, sin(angle) * radius)
             val mob = spawn.world.spawnEntity(spawn, EntityType.valueOf(runtime.settings.rivalRaid.workerEntity)) as? Mob ?: break
             mob.isPersistent = false
-            mob.removeWhenFarAway = false
+            mobDespawns.setRemoveWhenFarAway(mob, false)
             mob.isGlowing = true
             mob.getAttribute(Attribute.MAX_HEALTH)?.baseValue = runtime.settings.rivalRaid.workerHealth
             mob.health = runtime.settings.rivalRaid.workerHealth
             mob.customName(locale.render(MessageKey.FARM_RIVAL_RAID_WORKER))
+            mob.equipment.setItemInMainHand(ItemStack(MaterialRules.material(runtime.settings.rivalRaid.workerHeldItem)), true)
+            mob.equipment.itemInMainHandDropChance = 0.0f
             mark(mob, runtime, ROLE_WORKER, index)
             session.workerIds += mob.uniqueId
+        }
+        session.workerIds.forEach { workerId ->
+            val worker = Bukkit.getEntity(workerId) as? Mob ?: return@forEach
+            nightShift.updateExternalLight(
+                raidWorkerLightOwner(runtime.settings.id, workerId),
+                worker,
+                runtime.settings.rivalRaid.workerLightLevel,
+            )
         }
     }
 
@@ -552,21 +652,59 @@ internal class FarmActionIncidentController(
         val ghast = session.ghastId?.let(Bukkit::getEntity) as? Ghast ?: return
         ghast.passengers.filterIsInstance<Player>().forEach { player ->
             session.participantIds += player.uniqueId
+            player.leaveVehicle()
+            ensureRaidSeat(runtime, session, ghast, player)?.addPassenger(player)
             issueTool(player, runtime, RAID_GUN_ID, MaterialRules.material(runtime.settings.rivalRaid.gunMaterial), MessageKey.FARM_RIVAL_RAID_GUN)
         }
-        if (ghast.passengers.none { it is Player }) return
+        val participants = session.participantIds.mapNotNull(Bukkit::getPlayer).filter(Player::isOnline)
+        nightShift.syncAmbientTime(
+            raidAtmosphereOwner(runtime.settings.id),
+            participants,
+            runtime.settings.rivalRaid.playerTime,
+            runtime.settings.rivalRaid.timeTransitionSeconds,
+        )
+        if (participants.isEmpty()) return
+        participants.forEach { player ->
+            issueTool(player, runtime, RAID_GUN_ID, MaterialRules.material(runtime.settings.rivalRaid.gunMaterial), MessageKey.FARM_RIVAL_RAID_GUN)
+            ensureRaidSeat(runtime, session, ghast, player)
+        }
         val departure = special.points.first()
         val rival = special.points.getOrNull(1) ?: return
         val launch = departure.copy(y = departure.y + runtime.settings.rivalRaid.flightHeight)
-        val cruiseTarget = rival.copy(y = rival.y + runtime.settings.rivalRaid.flightHeight)
+        val orbitTarget = FarmRaidFlight.orbitPoint(
+            rival,
+            runtime.settings.rivalRaid.flightHeight,
+            runtime.settings.rivalRaid.orbitRadius,
+            session.orbitAngle,
+        )
         val current = FarmPointPosition(ghast.world.name, ghast.location.x, ghast.location.y, ghast.location.z)
-        val target = if (current.horizontalDistanceSquared(departure) <= 0.25 && current.y < launch.y - 0.1) {
-            launch
-        } else cruiseTarget
+        val target = when {
+            current.horizontalDistanceSquared(departure) <= 0.25 && current.y < launch.y - 0.1 -> launch
+            !session.orbiting -> orbitTarget
+            else -> {
+                val now = ghast.world.gameTime
+                val elapsed = if (session.lastFlightTick <= 0L) 1L else (now - session.lastFlightTick).coerceIn(1L, 20L)
+                session.lastFlightTick = now
+                session.orbitAngle = FarmRaidFlight.advanceOrbit(
+                    session.orbitAngle,
+                    elapsed,
+                    runtime.settings.rivalRaid.orbitPeriodSeconds,
+                )
+                FarmRaidFlight.orbitPoint(
+                    rival,
+                    runtime.settings.rivalRaid.flightHeight,
+                    runtime.settings.rivalRaid.orbitRadius,
+                    session.orbitAngle,
+                )
+            }
+        }
         val next = FarmRaidFlight.step(current, target, runtime.settings.rivalRaid.flightSpeed)
-        val passengers = ghast.passengers.toList()
+        if (!session.orbiting && next.horizontalDistanceSquared(orbitTarget) <= 0.04 && kotlin.math.abs(next.y - orbitTarget.y) <= 0.2) {
+            session.orbiting = true
+            session.lastFlightTick = ghast.world.gameTime
+        }
         ghast.teleport(next.location() ?: return, PlayerTeleportEvent.TeleportCause.PLUGIN)
-        passengers.filter { it.vehicle !== ghast && it.isValid }.forEach(ghast::addPassenger)
+        positionRaidSeats(runtime, session, ghast, rival)
     }
 
     private fun fire(player: Player, runtime: FarmRuntime, session: RaidSession) {
@@ -609,9 +747,72 @@ internal class FarmActionIncidentController(
         if (player.inventory.storageContents.any { serviceItems.identity(it) == identity } ||
             serviceItems.identity(player.inventory.itemInOffHand) == identity
         ) return
-        if (serviceItems.issue(player, identity, material, locale.render(key, player)) == null) {
+        val raid = runtime.settings.rivalRaid.takeIf { itemId == RAID_GUN_ID }
+        val itemModel = raid?.gunItemModel?.let { model -> requireNotNull(NamespacedKey.fromString(model)) }
+        if (serviceItems.issue(
+                player,
+                identity,
+                material,
+                locale.render(key, player),
+                raid?.gunCustomModelData ?: 0,
+                itemModel,
+            ) == null
+        ) {
             audience.sendActionBar(player, MessageKey.FARM_ACTION_INVENTORY_FULL)
         }
+    }
+
+    private fun ensureRaidSeat(
+        runtime: FarmRuntime,
+        session: RaidSession,
+        ghast: Ghast,
+        player: Player,
+    ): ArmorStand? {
+        val current = session.riderSeatIds[player.uniqueId]?.let(Bukkit::getEntity) as? ArmorStand
+        if (current?.isValid == true && current.world === ghast.world) return current
+        current?.remove()
+        val seat = ghast.world.spawn(ghast.location, ArmorStand::class.java) { stand ->
+            stand.isVisible = false
+            stand.isMarker = true
+            stand.isSmall = true
+            stand.setGravity(false)
+            stand.isInvulnerable = true
+            stand.isPersistent = false
+            mark(stand, runtime, ROLE_SEAT, session.riderSeatIds.size)
+        }
+        session.riderSeatIds[player.uniqueId] = seat.uniqueId
+        return seat
+    }
+
+    private fun positionRaidSeats(
+        runtime: FarmRuntime,
+        session: RaidSession,
+        ghast: Ghast,
+        rival: FarmPointPosition,
+    ) {
+        val dx = rival.x - ghast.location.x
+        val dz = rival.z - ghast.location.z
+        val length = kotlin.math.sqrt(dx * dx + dz * dz).coerceAtLeast(1.0e-6)
+        val forwardX = dx / length
+        val forwardZ = dz / length
+        val sideX = -forwardZ
+        val sideZ = forwardX
+        val liveParticipants = session.participantIds.sortedBy(UUID::toString)
+        liveParticipants.forEachIndexed { index, playerId ->
+            val player = Bukkit.getPlayer(playerId)
+            val seat = player?.let { ensureRaidSeat(runtime, session, ghast, it) } ?: return@forEachIndexed
+            val sideOffset = (index - (liveParticipants.size - 1) / 2.0) * RAID_SEAT_SPACING
+            val target = ghast.location.clone().add(
+                forwardX * runtime.settings.rivalRaid.seatForwardOffset + sideX * sideOffset,
+                runtime.settings.rivalRaid.seatYOffset,
+                forwardZ * runtime.settings.rivalRaid.seatForwardOffset + sideZ * sideOffset,
+            )
+            seat.teleport(target, PlayerTeleportEvent.TeleportCause.PLUGIN)
+        }
+    }
+
+    private fun removeRaidSeat(session: RaidSession, playerId: UUID) {
+        session.riderSeatIds.remove(playerId)?.let(Bukkit::getEntity)?.remove()
     }
 
     private fun identity(runtime: FarmRuntime, itemId: String) = ServiceItemIdentity(
@@ -653,10 +854,14 @@ internal class FarmActionIncidentController(
                         ObjectiveTargetRole("farm_action"),
                         RAID_GUN_ID,
                     ))) Unit
+                removeRaidSeat(session, playerId)
                 returnParticipant(session, player)
             }
             raids.remove(zoneId, session)
         }
+        nightShift.clearAmbientTime(raidAtmosphereOwner(zoneId))
+        nightShift.releaseExternalLights(raidWorkerLightPrefix(zoneId))
+        session?.riderSeatIds?.values.orEmpty().forEach { Bukkit.getEntity(it)?.remove() }
         session?.workerIds.orEmpty().forEach { Bukkit.getEntity(it)?.remove() }
         session?.ghastId?.let(Bukkit::getEntity)?.remove()
         val runtime = runtimes().firstOrNull { it.settings.id == zoneId }
@@ -668,8 +873,13 @@ internal class FarmActionIncidentController(
     }
 
     private fun returnParticipant(session: RaidSession, player: Player) {
+        player.leaveVehicle()
         session.returnPoint.location()?.let(player::teleport)
     }
+
+    private fun raidAtmosphereOwner(zoneId: String) = "raid:$zoneId"
+    private fun raidWorkerLightPrefix(zoneId: String) = "raid:$zoneId:worker:"
+    private fun raidWorkerLightOwner(zoneId: String, workerId: UUID) = raidWorkerLightPrefix(zoneId) + workerId
 
     private fun WorksitePlayerReleaseReason.returnsRaidParticipant(): Boolean = this in setOf(
         WorksitePlayerReleaseReason.QUIT,
@@ -705,8 +915,10 @@ internal class FarmActionIncidentController(
     private companion object {
         const val ROLE_BOAR = "boar"
         const val ROLE_GHAST = "raid_ghast"
+        const val ROLE_SEAT = "raid_seat"
         const val ROLE_WORKER = "raid_worker"
         const val BOAR_SHIELD_ID = "boar_shield"
         const val RAID_GUN_ID = "raid_gun"
+        const val RAID_SEAT_SPACING = 1.1
     }
 }

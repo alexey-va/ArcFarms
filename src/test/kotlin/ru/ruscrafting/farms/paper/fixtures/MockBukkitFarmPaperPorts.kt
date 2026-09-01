@@ -70,6 +70,11 @@ internal object MockBukkitFarmMobDespawns : FarmMobDespawnPolicy {
     override fun setRemoveWhenFarAway(entity: LivingEntity, value: Boolean) = Unit
 }
 
+internal object MockBukkitFarmMobNavigation : ru.ruscrafting.farms.paper.platform.FarmMobNavigation {
+    override fun moveTo(mob: org.bukkit.entity.Mob, target: Entity, speed: Double) = Unit
+    override fun moveTo(mob: org.bukkit.entity.Mob, target: org.bukkit.Location, speed: Double) = Unit
+}
+
 internal object MockBukkitFarmVehiclePassengers : FarmVehiclePassengerControl {
     override fun ejectAll(entity: Entity): Boolean {
         val passengers = entity.passengers.toList()

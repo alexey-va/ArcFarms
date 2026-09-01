@@ -88,33 +88,53 @@ object FarmSpecialIncidentEngine {
         }
     }
 
-    fun clearChannelBlockage(
+    fun digChannelSegment(
         current: FarmShiftState,
-        blockageIndex: Int,
+        segmentIndex: Int,
         playerId: UUID,
     ): EngineResult<FarmShiftState, FarmShiftEvent> {
         if (current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.CHANNELS) {
             return EngineResult(current, false)
         }
         val special = current.specialIncident ?: return EngineResult(current, false)
-        if (blockageIndex !in special.points.indices || blockageIndex in special.active) {
+        if (segmentIndex !in special.points.indices || segmentIndex in special.solution) {
             return EngineResult(current, false)
         }
-        val cleared = special.active + blockageIndex
-        val progress = cleared.size
+        val dug = special.solution + segmentIndex
+        val progress = dug.size
         val updated = current.copy(
             incidentProgress = progress,
-            specialIncident = special.copy(active = cleared),
+            specialIncident = special.copy(solution = dug),
         )
-        if (progress >= current.incidentRequired) {
-            return complete(updated, playerId, contribution = 1)
-        }
         return EngineResult(
             updated.copy(contributors = incrementContribution(updated.contributors, playerId, 1)),
             true,
             contribution = 1,
             events = listOf(FarmShiftEvent.INCIDENT_PROGRESS),
         )
+    }
+
+    fun advanceChannelFlow(current: FarmShiftState): EngineResult<FarmShiftState, FarmShiftEvent> {
+        if (current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.CHANNELS) {
+            return EngineResult(current, false)
+        }
+        val special = current.specialIncident ?: return EngineResult(current, false)
+        val next = channelFlowProgress(special.active, special.points.size)
+        if (next !in special.points.indices || next !in special.solution) return EngineResult(current, false)
+        return EngineResult(
+            current.copy(specialIncident = special.copy(active = special.active + next)),
+            true,
+        )
+    }
+
+    fun completeChannels(current: FarmShiftState): EngineResult<FarmShiftState, FarmShiftEvent> {
+        if (current.phase != FarmPhase.INCIDENT || current.incidentType != FarmIncidentType.CHANNELS) {
+            return EngineResult(current, false)
+        }
+        val special = current.specialIncident ?: return EngineResult(current, false)
+        val expected = special.points.indices.toSet()
+        if (special.solution != expected || special.active != expected) return EngineResult(current, false)
+        return complete(current, playerId = null, contribution = 0)
     }
 
     fun acceptMarket(current: FarmShiftState, now: Long, durationMillis: Long): EngineResult<FarmShiftState, FarmShiftEvent> {
@@ -185,12 +205,12 @@ object FarmSpecialIncidentEngine {
         )
     }
 
-    fun channelFlowProgress(cleared: Set<Int>, blockageCount: Int): Int {
-        require(blockageCount in 1..16) { "Farm channel blockage count is invalid" }
-        require(cleared.all { it in 0 until blockageCount }) {
-            "Farm channel state references an unknown blockage"
+    fun channelFlowProgress(dug: Set<Int>, segmentCount: Int): Int {
+        require(segmentCount in 1..16) { "Farm channel segment count is invalid" }
+        require(dug.all { it in 0 until segmentCount }) {
+            "Farm channel state references an unknown segment"
         }
-        return (0 until blockageCount).takeWhile(cleared::contains).count()
+        return (0 until segmentCount).takeWhile(dug::contains).count()
     }
 
     private fun advance(

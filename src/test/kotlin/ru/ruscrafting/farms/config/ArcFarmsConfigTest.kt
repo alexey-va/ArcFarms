@@ -540,9 +540,7 @@ class ArcFarmsConfigTest : FunSpec({
                 mine.lostMinerFollowOffsetZ == -1.0 && mine.extractionCheckpointRadius == 1.6 &&
                 mine.loadingDeliveryRadius == 2.0
         } shouldBe true
-        settings.farms.single().specialIncidents.channelBlockageCount shouldBe 5
-        settings.farms.single().specialIncidents.channelBlockageMaterial shouldBe "MANGROVE_ROOTS"
-        settings.farms.single().specialIncidents.channelBlockageDisplayYOffset shouldBe 0.8
+        settings.farms.single().specialIncidents.channelSegmentCount shouldBe 5
         settings.farms.single().boarBreakout.requiredDeflections shouldBe 8
         settings.farms.single().boarBreakout.activeBoars shouldBe 3
         settings.farms.single().boarBreakout.shieldMaterial shouldBe "SHIELD"
@@ -1579,7 +1577,7 @@ class ArcFarmsConfigTest : FunSpec({
             ) to "Ведите свиней над грядками",
         ) + mapOf(
             FarmCareType.WEEDS to "Ищите подсвеченные корни",
-            FarmCareType.IRRIGATION to "Открывайте вентили по порядку",
+            FarmCareType.IRRIGATION to "Открывайте любые подсвеченные вентили",
             FarmCareType.POLLINATION to "Пыльцу из улья несите к цветам",
             FarmCareType.STORM_COVERS to "Закрепите укрытие во всех метках",
             FarmCareType.SCARECROWS to "Берите пугала в хлеву и несите к меткам",
@@ -1616,8 +1614,8 @@ class ArcFarmsConfigTest : FunSpec({
             base.copy(phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.CHANNELS, done = 1, total = 4),
             null,
         ).map(PlainTextComponentSerializer.plainText()::serialize)
-        channels[6] shouldBe "| Раскапывайте отмеченные корневые завалы"
-        channels[7] shouldBe "| Лопатой ломайте только отмеченные завалы"
+        channels[6] shouldBe "| Копайте русло по меткам от точки полива"
+        channels[7] shouldBe "| Служебной лопатой разбейте каждый отмеченный блок земли"
         (channels.size <= FarmScoreboardRenderer.MAX_ROWS) shouldBe true
     }
 

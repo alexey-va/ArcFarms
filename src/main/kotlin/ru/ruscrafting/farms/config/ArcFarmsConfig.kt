@@ -280,11 +280,10 @@ data class FarmZoneSettings(
 }
 
 data class FarmSpecialIncidentSettings(
-    val channelBlockageCount: Int,
-    val channelBlockageMaterial: String,
-    val channelBlockageCustomModelData: Int,
-    val channelBlockageDisplayScale: Float,
-    val channelBlockageDisplayYOffset: Double,
+    val channelAutomaticEnabled: Boolean,
+    val channelSegmentCount: Int,
+    val channelFlowIntervalTicks: Int,
+    val channelCompletionDelayTicks: Int,
     val nightCropPlacementCount: Int,
     val nightCropTargetCount: Int,
     val nightCropMinSpacing: Double,
@@ -359,9 +358,13 @@ data class FarmBoarBreakoutSettings(
     val requiredDeflections: Int = 8,
     val activeBoars: Int = 3,
     val movementSpeed: Double = 0.34,
+    val aggroRadius: Double = 28.0,
     val interceptRadius: Double = 2.6,
     val facingDot: Double = 0.25,
     val cropReachRadius: Double = 1.35,
+    val trampleRadius: Double = 1.35,
+    val trampleCropsPerUpdate: Int = 2,
+    val trampleParticleCount: Int = 8,
     val cropDamageMaximum: Int = 96,
     val shieldMaterial: String = "SHIELD",
 ) {
@@ -369,23 +372,37 @@ data class FarmBoarBreakoutSettings(
         require(requiredDeflections in 1..64) { "boar deflection quota must be in 1..64" }
         require(activeBoars in 1..12) { "active boars must be in 1..12" }
         require(movementSpeed.isFinite() && movementSpeed in 0.05..1.0) { "boar movement speed is invalid" }
+        require(aggroRadius.isFinite() && aggroRadius in 4.0..64.0) { "boar aggro radius is invalid" }
         require(interceptRadius.isFinite() && interceptRadius in 1.0..8.0) { "boar intercept radius is invalid" }
         require(facingDot.isFinite() && facingDot in -1.0..1.0) { "boar facing threshold is invalid" }
         require(cropReachRadius.isFinite() && cropReachRadius in 0.5..4.0) { "boar crop reach is invalid" }
+        require(trampleRadius.isFinite() && trampleRadius in 0.5..4.0) { "boar trample radius is invalid" }
+        require(trampleCropsPerUpdate in 1..16) { "boar trample crop limit is invalid" }
+        require(trampleParticleCount in 0..32) { "boar trample particle count is invalid" }
         require(cropDamageMaximum in 0..4_096) { "boar crop damage maximum is invalid" }
     }
 }
 
 data class FarmRivalRaidSettings(
-    val requiredKills: Int = 14,
-    val workerCount: Int = 10,
+    val requiredKills: Int = 32,
+    val workerCount: Int = 12,
     val workerEntity: String = "HUSK",
     val workerHealth: Double = 12.0,
     val workerRadius: Double = 12.0,
+    val workerHeldItem: String = "TORCH",
+    val workerLightLevel: Int = 15,
     val flightHeight: Double = 12.0,
     val flightSpeed: Double = 0.48,
+    val orbitRadius: Double = 16.0,
+    val orbitPeriodSeconds: Int = 45,
+    val seatForwardOffset: Double = 3.25,
+    val seatYOffset: Double = -1.25,
+    val playerTime: Long = 18_000L,
+    val timeTransitionSeconds: Int = 8,
     val maximumDistance: Double = 512.0,
-    val gunMaterial: String = "IRON_HORSE_ARMOR",
+    val gunMaterial: String = "CROSSBOW",
+    val gunCustomModelData: Int = 2_100_103,
+    val gunItemModel: String? = null,
     val gunDamage: Double = 6.0,
     val gunRange: Double = 56.0,
     val gunCooldownTicks: Int = 3,
@@ -396,9 +413,17 @@ data class FarmRivalRaidSettings(
         require(workerCount in 1..32) { "rival raid worker count must be in 1..32" }
         require(workerHealth.isFinite() && workerHealth in 1.0..100.0) { "rival worker health is invalid" }
         require(workerRadius.isFinite() && workerRadius in 2.0..48.0) { "rival worker radius is invalid" }
+        require(workerLightLevel in 0..15) { "rival worker light level is invalid" }
         require(flightHeight.isFinite() && flightHeight in 3.0..48.0) { "rival raid flight height is invalid" }
         require(flightSpeed.isFinite() && flightSpeed in 0.1..2.0) { "rival raid flight speed is invalid" }
+        require(orbitRadius.isFinite() && orbitRadius in 4.0..48.0) { "rival raid orbit radius is invalid" }
+        require(orbitPeriodSeconds in 10..180) { "rival raid orbit period is invalid" }
+        require(seatForwardOffset.isFinite() && seatForwardOffset in 1.5..6.0) { "rival raid seat offset is invalid" }
+        require(seatYOffset.isFinite() && seatYOffset in -4.0..2.0) { "rival raid seat height is invalid" }
+        require(playerTime in 0..24_000L) { "rival raid player time is invalid" }
+        require(timeTransitionSeconds in 1..60) { "rival raid time transition is invalid" }
         require(maximumDistance.isFinite() && maximumDistance in 32.0..2_048.0) { "rival farm maximum distance is invalid" }
+        require(gunCustomModelData >= 0) { "rival raid gun custom model data is invalid" }
         require(gunDamage.isFinite() && gunDamage in 0.5..100.0) { "rival raid gun damage is invalid" }
         require(gunRange.isFinite() && gunRange in 8.0..128.0) { "rival raid gun range is invalid" }
         require(gunCooldownTicks in 1..20) { "rival raid gun cooldown is invalid" }
@@ -1680,26 +1705,15 @@ class ArcFarmsConfig private constructor(
                         "Farm order ${order.id} must define at least incident-count.max distinct incident types"
                     }
                 }
+                val legacyChannelSegmentCount = section.int("special-incidents.channels.blockages", 10)
                 val specialIncidents = FarmSpecialIncidentSettings(
-                    channelBlockageCount = section.int("special-incidents.channels.blockages", 5)
-                        .checked("special-incidents.channels.blockages", 3, 8),
-                    channelBlockageMaterial = materialName(
-                        section.string("special-incidents.channels.blockage.material", "MANGROVE_ROOTS"),
-                    ),
-                    channelBlockageCustomModelData = section.int("special-incidents.channels.blockage.custom-model-data", 0)
-                        .checked("special-incidents.channels.blockage.custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
-                    channelBlockageDisplayScale = section.finiteFloat(
-                        "special-incidents.channels.blockage.display-scale",
-                        1.6f,
-                        0.5f,
-                        3.0f,
-                    ),
-                    channelBlockageDisplayYOffset = section.finiteDouble(
-                        "special-incidents.channels.blockage.y-offset",
-                        0.8,
-                        0.0,
-                        2.0,
-                    ),
+                    channelAutomaticEnabled = section.boolean("special-incidents.channels.automatic-enabled", false),
+                    channelSegmentCount = section.int("special-incidents.channels.segments", legacyChannelSegmentCount)
+                        .checked("special-incidents.channels.segments", 4, 16),
+                    channelFlowIntervalTicks = section.int("special-incidents.channels.flow-interval-ticks", 6)
+                        .checked("special-incidents.channels.flow-interval-ticks", 1, 40),
+                    channelCompletionDelayTicks = section.int("special-incidents.channels.completion-delay-ticks", 40)
+                        .checked("special-incidents.channels.completion-delay-ticks", 10, 200),
                     nightCropPlacementCount = section.int("special-incidents.night-shift.placement-count", 90)
                         .checked("special-incidents.night-shift.placement-count", 6, 128),
                     nightCropTargetCount = section.int("special-incidents.night-shift.target-count", 24)
@@ -2067,6 +2081,9 @@ class ArcFarmsConfig private constructor(
                         movementSpeed = section.finiteDouble(
                             "special-incidents.boar-breakout.movement-speed", 0.34, 0.05, 1.0,
                         ),
+                        aggroRadius = section.finiteDouble(
+                            "special-incidents.boar-breakout.aggro-radius", 28.0, 4.0, 64.0,
+                        ),
                         interceptRadius = section.finiteDouble(
                             "special-incidents.boar-breakout.intercept-radius", 2.6, 1.0, 8.0,
                         ),
@@ -2076,6 +2093,15 @@ class ArcFarmsConfig private constructor(
                         cropReachRadius = section.finiteDouble(
                             "special-incidents.boar-breakout.crop-reach-radius", 1.35, 0.5, 4.0,
                         ),
+                        trampleRadius = section.finiteDouble(
+                            "special-incidents.boar-breakout.trample-radius", 1.35, 0.5, 4.0,
+                        ),
+                        trampleCropsPerUpdate = section.int(
+                            "special-incidents.boar-breakout.trample-crops-per-update", 2,
+                        ).checked("special-incidents.boar-breakout.trample-crops-per-update", 1, 16),
+                        trampleParticleCount = section.int(
+                            "special-incidents.boar-breakout.trample-particle-count", 8,
+                        ).checked("special-incidents.boar-breakout.trample-particle-count", 0, 32),
                         cropDamageMaximum = section.int("special-incidents.boar-breakout.crop-damage-maximum", 96)
                             .checked("special-incidents.boar-breakout.crop-damage-maximum", 0, 4_096),
                         shieldMaterial = materialName(
@@ -2083,9 +2109,9 @@ class ArcFarmsConfig private constructor(
                         ),
                     ),
                     rivalRaid = FarmRivalRaidSettings(
-                        requiredKills = section.int("special-incidents.rival-raid.required-kills", 14)
+                        requiredKills = section.int("special-incidents.rival-raid.required-kills", 32)
                             .checked("special-incidents.rival-raid.required-kills", 1, 128),
-                        workerCount = section.int("special-incidents.rival-raid.worker-count", 10)
+                        workerCount = section.int("special-incidents.rival-raid.worker-count", 12)
                             .checked("special-incidents.rival-raid.worker-count", 1, 32),
                         workerEntity = entityName(
                             section.string("special-incidents.rival-raid.worker-entity", "HUSK"),
@@ -2096,18 +2122,51 @@ class ArcFarmsConfig private constructor(
                         workerRadius = section.finiteDouble(
                             "special-incidents.rival-raid.worker-radius", 12.0, 2.0, 48.0,
                         ),
+                        workerHeldItem = materialName(
+                            section.string("special-incidents.rival-raid.worker-held-item", "TORCH"),
+                        ),
+                        workerLightLevel = section.int("special-incidents.rival-raid.worker-light-level", 15)
+                            .checked("special-incidents.rival-raid.worker-light-level", 0, 15),
                         flightHeight = section.finiteDouble(
                             "special-incidents.rival-raid.flight-height", 12.0, 3.0, 48.0,
                         ),
                         flightSpeed = section.finiteDouble(
                             "special-incidents.rival-raid.flight-speed", 0.48, 0.1, 2.0,
                         ),
+                        orbitRadius = section.finiteDouble(
+                            "special-incidents.rival-raid.orbit-radius", 16.0, 4.0, 48.0,
+                        ),
+                        orbitPeriodSeconds = section.int("special-incidents.rival-raid.orbit-period-seconds", 45)
+                            .checked("special-incidents.rival-raid.orbit-period-seconds", 10, 180),
+                        seatForwardOffset = section.finiteDouble(
+                            "special-incidents.rival-raid.seat-forward-offset", 3.25, 1.5, 6.0,
+                        ),
+                        seatYOffset = section.finiteDouble(
+                            "special-incidents.rival-raid.seat-y-offset", -1.25, -4.0, 2.0,
+                        ),
+                        playerTime = section.string("special-incidents.rival-raid.player-time", "18000")
+                            .toLongOrNull()?.also {
+                                require(it in 0..24_000) {
+                                    "special-incidents.rival-raid.player-time must be in 0..24000"
+                                }
+                            } ?: error("special-incidents.rival-raid.player-time must be an integer"),
+                        timeTransitionSeconds = section.int("special-incidents.rival-raid.transition-seconds", 8)
+                            .checked("special-incidents.rival-raid.transition-seconds", 1, 60),
                         maximumDistance = section.finiteDouble(
                             "special-incidents.rival-raid.maximum-distance", 512.0, 32.0, 2_048.0,
                         ),
                         gunMaterial = materialName(
-                            section.string("special-incidents.rival-raid.gun-material", "IRON_HORSE_ARMOR"),
+                            section.string("special-incidents.rival-raid.gun-material", "CROSSBOW"),
                         ),
+                        gunCustomModelData = section.int(
+                            "special-incidents.rival-raid.gun-custom-model-data", 2_100_103,
+                        ).checked("special-incidents.rival-raid.gun-custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
+                        gunItemModel = section.string("special-incidents.rival-raid.gun-item-model", "").trim()
+                            .ifEmpty { null }?.also { model ->
+                                require(model.matches(Regex("[a-z0-9._-]+:[a-z0-9/._-]+"))) {
+                                    "special-incidents.rival-raid.gun-item-model must be a namespaced item model"
+                                }
+                            },
                         gunDamage = section.finiteDouble(
                             "special-incidents.rival-raid.gun-damage", 6.0, 0.5, 100.0,
                         ),

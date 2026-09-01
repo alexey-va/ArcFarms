@@ -94,6 +94,7 @@ internal class FarmComponentGraph(
     private val textDisplays = PaperFarmTextDisplayRenderer
     private val entityRayTrace = PaperFarmEntityRayTrace
     private val mobDespawns = PaperFarmMobDespawnPolicy
+    private val mobNavigation = ru.ruscrafting.farms.paper.platform.PaperFarmMobNavigation
     private val vehiclePassengers = PaperFarmVehiclePassengerControl
     private val moleChunkRetention = PaperMoleBurrowChunkRetention(plugin)
     private val ledger = FarmBlockLedger(plugin)
@@ -342,6 +343,9 @@ internal class FarmComponentGraph(
         transitions = transitions,
         runtimes = runtimes::snapshot,
         entityRayTrace = entityRayTrace,
+        mobDespawns = mobDespawns,
+        mobNavigation = mobNavigation,
+        nightShift = nightShift,
     )
     private val processing = FarmProcessingIncident(
         plugin = plugin,

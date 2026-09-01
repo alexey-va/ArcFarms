@@ -42,6 +42,22 @@ internal interface WorksiteServiceItemOwner {
 
 internal interface WorksiteServiceItems {
     fun issue(player: Player, identity: ServiceItemIdentity, material: Material, name: Component): ItemStack?
+    fun issue(
+        player: Player,
+        identity: ServiceItemIdentity,
+        material: Material,
+        name: Component,
+        customModelData: Int,
+        itemModel: NamespacedKey?,
+    ): ItemStack? = issue(player, identity, material, name)?.also { item ->
+        item.editMeta { meta ->
+            if (customModelData > 0) {
+                @Suppress("DEPRECATION")
+                meta.setCustomModelData(customModelData)
+            }
+            itemModel?.let(meta::setItemModel)
+        }
+    }
     fun consume(player: Player, expected: ServiceItemIdentity): Boolean
     fun identity(item: ItemStack?): ServiceItemIdentity?
     fun isServiceItem(item: ItemStack?): Boolean
@@ -57,6 +73,15 @@ internal class LateBoundWorksiteServiceItems : WorksiteServiceItems {
 
     override fun issue(player: Player, identity: ServiceItemIdentity, material: Material, name: Component): ItemStack? =
         delegate?.issue(player, identity, material, name)
+
+    override fun issue(
+        player: Player,
+        identity: ServiceItemIdentity,
+        material: Material,
+        name: Component,
+        customModelData: Int,
+        itemModel: NamespacedKey?,
+    ): ItemStack? = delegate?.issue(player, identity, material, name, customModelData, itemModel)
 
     override fun consume(player: Player, expected: ServiceItemIdentity): Boolean = delegate?.consume(player, expected) == true
     override fun identity(item: ItemStack?): ServiceItemIdentity? = delegate?.identity(item)
@@ -75,17 +100,28 @@ internal class WorksiteServiceItemController(
     private val roleKey = NamespacedKey(plugin, "worksite_role")
     private val itemKey = NamespacedKey(plugin, "worksite_item_id")
 
+    override fun issue(player: Player, identity: ServiceItemIdentity, material: Material, name: Component): ItemStack? =
+        issue(player, identity, material, name, 0, null)
+
     override fun issue(
         player: Player,
         identity: ServiceItemIdentity,
         material: Material,
         name: Component,
+        customModelData: Int,
+        itemModel: NamespacedKey?,
     ): ItemStack? {
         require(material.isItem && !material.isAir) { "Service item material must be a real item" }
+        require(customModelData >= 0) { "Service item custom model data cannot be negative" }
         if (!owner.isActive(identity)) return null
         val item = ItemStack(material)
         item.editMeta { meta ->
             meta.displayName(name.decoration(TextDecoration.ITALIC, false))
+            if (customModelData > 0) {
+                @Suppress("DEPRECATION")
+                meta.setCustomModelData(customModelData)
+            }
+            itemModel?.let(meta::setItemModel)
             val pdc = meta.persistentDataContainer
             pdc.set(markerKey, PersistentDataType.INTEGER, MARKER)
             pdc.set(activityKey, PersistentDataType.STRING, identity.activity.name)

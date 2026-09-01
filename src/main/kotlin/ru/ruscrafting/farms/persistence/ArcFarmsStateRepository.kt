@@ -359,13 +359,13 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 special.plots.forEach(::validatePlot)
                 special.crop?.let { require(CONTENT_ID.matches(it)) { "Farm special incident crop is invalid" } }
                 require(special.solution.all { it in special.points.indices } && special.active.all { it in special.points.indices }) {
-                    "Farm channel state references an unknown blockage"
+                    "Farm channel state references an unknown segment"
                 }
                 when (farm.incidentType) {
                     FarmIncidentType.GIANT_CROP -> require(special.points.size == 1 && special.crop != null) {
                         "Farm giant crop state is incomplete"
                     }
-                    FarmIncidentType.CHANNELS -> require(special.points.size in 3..8 && special.solution.isNotEmpty()) {
+                    FarmIncidentType.CHANNELS -> require(special.points.size in 3..16) {
                         "Farm channel state is incomplete"
                     }
                     FarmIncidentType.NIGHT_SHIFT -> require(special.plots.isNotEmpty()) {

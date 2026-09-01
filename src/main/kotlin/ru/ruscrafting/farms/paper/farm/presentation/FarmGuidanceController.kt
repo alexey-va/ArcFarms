@@ -17,7 +17,6 @@ import ru.ruscrafting.farms.domain.FarmPlotGeometry
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
-import ru.ruscrafting.farms.domain.FarmSpecialIncidentEngine
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
@@ -117,7 +116,7 @@ internal class FarmGuidanceController(
             val visible = when (runtime.state.careType) {
                 FarmCareType.SEEDER -> incomplete.firstOrNull { it.role == FarmCareRole.SEEDER_HORSE }
                     ?.let(::listOf).orEmpty()
-                FarmCareType.IRRIGATION -> incomplete.minByOrNull(FarmCareTarget::id)?.let(::listOf).orEmpty()
+                FarmCareType.IRRIGATION -> incomplete
                 FarmCareType.POLLINATION -> if (care.hasPollen(player, runtime)) {
                     incomplete.filter { it.role == FarmCareRole.FLOWER_PATCH }
                 } else listOfNotNull(hive)
@@ -138,7 +137,7 @@ internal class FarmGuidanceController(
                     val world = Bukkit.getWorld(pen.world) ?: return@let
                     if (player.world == world) spawnColumn(player, Location(world, pen.x, pen.y, pen.z), SUCCESS_COLOR)
                 }
-            } else {
+            } else if (runtime.state.careType != FarmCareType.IRRIGATION) {
                 visible.filter { Bukkit.getWorld(it.position.world) == player.world && isVisibleCareTarget(it) }
                     .minByOrNull { target ->
                         val dx = target.position.x - player.location.x
@@ -179,21 +178,38 @@ internal class FarmGuidanceController(
                     spawnRing(player, anchor.clone().add(0.0, -1.0, 0.0), 2.3, AMBER_COLOR)
                     emitGiantCropBlocks(player, point, special.crop, runtime.settings.specialIncidents.giantCropParticleStride)
                 }
-                FarmIncidentType.CHANNELS -> special.points.forEachIndexed { index, point ->
-                    if (index in special.active) return@forEachIndexed
-                    val location = Location(player.world, point.x, point.y, point.z)
-                    if (!FarmSurfacePolicy.isSurfaceSpawn(location)) return@forEachIndexed
-                    spawnSlimColumn(
-                        player,
-                        location,
-                        WATER_COLOR,
-                    )
-                }.also {
+                FarmIncidentType.CHANNELS -> {
                     val source = points.resolve(runtime, FarmPointKind.IRRIGATION)
-                    val reached = FarmSpecialIncidentEngine.channelFlowProgress(special.active, special.points.size)
-                    val visibleFlow = (reached + 1).coerceAtMost(special.points.size)
-                    (listOf(source) + special.points.take(visibleFlow)).zipWithNext()
-                        .forEach { (from, to) -> spawnWaterTrail(player, from, to) }
+                    (listOf(source) + special.points).zipWithNext().forEachIndexed { index, (from, to) ->
+                        spawnChannelTrail(
+                            player,
+                            from,
+                            to,
+                            if (index in special.solution) WATER_COLOR else EARTH_COLOR,
+                        )
+                        if (index in special.active) spawnWaterTrail(player, from, to)
+                    }
+                    special.points.forEachIndexed { index, point ->
+                        val location = Location(player.world, point.x, point.y, point.z)
+                        if (!FarmSurfacePolicy.isSurfaceSpawn(location)) return@forEachIndexed
+                        when {
+                            index !in special.solution -> {
+                                spawnSlimColumn(player, location, AMBER_COLOR)
+                                spawnPlotMarker(player, location.clone().add(0.0, -1.0, 0.0), EARTH_COLOR)
+                            }
+                            index !in special.active ->
+                                spawnPlotMarker(player, location.clone().add(0.0, -1.0, 0.0), WATER_COLOR)
+                            else -> player.spawnParticle(
+                                Particle.SPLASH,
+                                location.clone().add(0.0, -0.65, 0.0),
+                                2,
+                                0.22,
+                                0.05,
+                                0.22,
+                                0.02,
+                            )
+                        }
+                    }
                 }
                 FarmIncidentType.NIGHT_SHIFT -> remaining.filter(::isOutdoorPlot).forEach { plot ->
                     plot.location()?.let { location ->
@@ -284,9 +300,9 @@ internal class FarmGuidanceController(
         }
         FarmIncidentType.CHANNELS -> runtime.state.specialIncident?.let { special ->
             special.points.mapIndexedNotNull { index, point ->
-                if (index in special.active) null else {
+                if (index in special.solution) null else {
                     Bukkit.getWorld(point.world)?.let { world -> Location(world, point.x, point.y, point.z) }
-                        ?.takeIf(FarmSurfacePolicy::isSurfaceSpawn)?.let { it to WATER_COLOR }
+                        ?.takeIf(FarmSurfacePolicy::isSurfaceSpawn)?.let { it to AMBER_COLOR }
                 }
             }
         }.orEmpty()
@@ -344,6 +360,34 @@ internal class FarmGuidanceController(
                 0.02,
                 0.04,
                 0.0,
+            )
+        }
+    }
+
+    private fun spawnChannelTrail(player: Player, from: FarmPointPosition, to: FarmPointPosition, color: Color) {
+        val dx = to.x - from.x
+        val dy = to.y - from.y
+        val dz = to.z - from.z
+        val steps = (sqrt(dx * dx + dy * dy + dz * dz) * 3.0).toInt().coerceIn(1, 64)
+        repeat(steps) { step ->
+            val ratio = (step + 1).toDouble() / steps
+            val location = Location(
+                player.world,
+                from.x + dx * ratio,
+                from.y + dy * ratio + 0.08,
+                from.z + dz * ratio,
+            )
+            if (!FarmSurfacePolicy.isAtOrAboveSurface(location)) return@repeat
+            player.spawnParticle(
+                Particle.DUST,
+                location,
+                1,
+                0.03,
+                0.02,
+                0.03,
+                0.0,
+                Particle.DustOptions(color, 1.25f),
+                true,
             )
         }
     }
@@ -466,6 +510,7 @@ internal class FarmGuidanceController(
         val DANGER_COLOR: Color = Color.fromRGB(255, 95, 109)
         val SUCCESS_COLOR: Color = Color.fromRGB(85, 217, 139)
         val WATER_COLOR: Color = Color.fromRGB(79, 195, 247)
+        val EARTH_COLOR: Color = Color.fromRGB(184, 123, 72)
         val NIGHT_COLOR: Color = Color.fromRGB(139, 211, 255)
         val FROST_COLOR: Color = Color.fromRGB(128, 220, 255)
         val POINT_COLORS = mapOf(

@@ -283,12 +283,11 @@ internal class ArcFarmsRuntimeValidator(
     }
 
     private fun validateFarmZone(zone: FarmZoneSettings) {
-        val channelBlockage = MaterialRules.material(zone.specialIncidents.channelBlockageMaterial)
-        require(channelBlockage.isBlock && !channelBlockage.isAir) {
-            "Farm zone ${zone.id} special-incidents.channels.blockage.material must be a non-air block"
-        }
         require(MaterialRules.material(zone.boarBreakout.shieldMaterial) == Material.SHIELD) {
             "Farm zone ${zone.id} special-incidents.boar-breakout.shield-material must be SHIELD"
+        }
+        require(MaterialRules.material(zone.rivalRaid.workerHeldItem).let { it.isItem && !it.isAir }) {
+            "Farm zone ${zone.id} special-incidents.rival-raid.worker-held-item must be a non-air item"
         }
         val raidGun = MaterialRules.material(zone.rivalRaid.gunMaterial)
         require(raidGun.isItem && !raidGun.isAir) {

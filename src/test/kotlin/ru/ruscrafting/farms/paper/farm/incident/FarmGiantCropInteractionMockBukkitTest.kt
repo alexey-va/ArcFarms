@@ -6,9 +6,12 @@ import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.block.BlockFace
+import org.bukkit.entity.Interaction
 import org.bukkit.event.block.Action
+import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
@@ -184,6 +187,32 @@ class FarmGiantCropInteractionMockBukkitTest : FunSpec({
             verify(exactly = 1) { barnFire.spray(event, runtime) }
         } }
     }
+
+    test("woodpile entity interaction is routed to the frost incident") {
+        requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
+            val runtime = fixture.runtime(
+                FarmShiftState(
+                    phase = FarmPhase.INCIDENT,
+                    sequence = 77,
+                    incidentType = FarmIncidentType.FROST,
+                ),
+            )
+            val player = fixture.paper.addPlayer("WoodCarrier")
+            val interaction = fixture.world.spawn(Location(fixture.world, 4.5, 65.0, 4.5), Interaction::class.java)
+            val frost = mockk<FarmFrostIncident>(relaxed = true)
+            every { frost.interact(any(), any()) } answers {
+                firstArg<PlayerInteractEntityEvent>().isCancelled = true
+                true
+            }
+            val router = farmEventRouter(fixture, runtime, frost = frost)
+            val event = PlayerInteractEntityEvent(player, interaction, EquipmentSlot.HAND)
+
+            router.onInteractEntity(event)
+
+            event.isCancelled shouldBe true
+            verify(exactly = 1) { frost.interact(event, listOf(runtime)) }
+        } }
+    }
 })
 
 internal fun farmEventRouter(
@@ -193,6 +222,7 @@ internal fun farmEventRouter(
     supplies: FarmSupplyController = mockk(relaxed = true),
     barnFire: FarmBarnFireIncident = mockk(relaxed = true),
     harvest: FarmHarvestController = mockk(relaxed = true),
+    frost: FarmFrostIncident = mockk(relaxed = true),
 ): FarmEventRouter = FarmEventRouter(
     locale = fixture.locale,
     debug = ArcFarmsDebug({ false }) {},
@@ -215,7 +245,7 @@ internal fun farmEventRouter(
     special = special,
     processing = mockk<FarmProcessingIncident>(relaxed = true),
     barnFire = barnFire,
-    frost = mockk<FarmFrostIncident>(relaxed = true),
+    frost = frost,
     actionIncidents = mockk(relaxed = true),
     delivery = mockk<FarmDeliveryController>(relaxed = true),
     enterprise = mockk<FarmEnterprisePort>(relaxed = true),

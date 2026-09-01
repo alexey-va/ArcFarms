@@ -6,6 +6,7 @@ import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
+import net.kyori.adventure.text.format.TextDecoration
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.FarmRouteDeliverySettings
 import ru.ruscrafting.farms.config.MessageKey
@@ -44,8 +45,8 @@ internal class FarmFoodDeliveryGear(
     private fun rifle(player: Player, owner: Owner, settings: FarmRouteDeliverySettings): ItemStack =
         ItemStack(requireNotNull(Material.matchMaterial(settings.rifleMaterial))).also { rifle ->
             rifle.editMeta { meta ->
-                meta.displayName(locale.render(MessageKey.FARM_ROUTE_RIFLE_NAME, player))
-                meta.lore(listOf(locale.render(MessageKey.FARM_ROUTE_RIFLE_LORE, player)))
+                meta.displayName(locale.render(MessageKey.FARM_ROUTE_RIFLE_NAME, player).decoration(TextDecoration.ITALIC, false))
+                meta.lore(listOf(locale.render(MessageKey.FARM_ROUTE_RIFLE_LORE, player).decoration(TextDecoration.ITALIC, false)))
                 meta.isUnbreakable = true
                 if (settings.rifleCustomModelData > 0) {
                     @Suppress("DEPRECATION")

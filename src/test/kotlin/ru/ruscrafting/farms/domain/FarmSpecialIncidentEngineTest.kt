@@ -51,27 +51,34 @@ class FarmSpecialIncidentEngineTest : FunSpec({
         skipped.state.incidentsResolved shouldBe 1
     }
 
-    test("channel blockages can be cleared cooperatively while water follows the open prefix") {
+    test("channel segments can be dug in any order while water advances only through a connected prefix") {
         var state = incident(FarmIncidentType.CHANNELS).copy(
             specialIncident = FarmSpecialIncidentState(
                 points = (0 until 4).map { FarmPointPosition("world", it + 0.5, 65.0, 0.5) },
-                solution = setOf(0, 1, 2, 3),
+                routeName = FARM_CHANNEL_ROUTE_NAME,
             ),
             incidentRequired = 4,
         )
 
-        state = FarmSpecialIncidentEngine.clearChannelBlockage(state, 2, player).state
+        state = FarmSpecialIncidentEngine.digChannelSegment(state, 2, player).state
         state.incidentProgress shouldBe 1
         FarmSpecialIncidentEngine.channelFlowProgress(state.specialIncident!!.active, 4) shouldBe 0
-        state = FarmSpecialIncidentEngine.clearChannelBlockage(state, 0, player).state
+        FarmSpecialIncidentEngine.advanceChannelFlow(state).accepted shouldBe false
+        state = FarmSpecialIncidentEngine.digChannelSegment(state, 0, player).state
         state.incidentProgress shouldBe 2
+        state = FarmSpecialIncidentEngine.advanceChannelFlow(state).state
         FarmSpecialIncidentEngine.channelFlowProgress(state.specialIncident!!.active, 4) shouldBe 1
-        val duplicate = FarmSpecialIncidentEngine.clearChannelBlockage(state, 2, player)
+        val duplicate = FarmSpecialIncidentEngine.digChannelSegment(state, 2, player)
         duplicate.accepted shouldBe false
-        state = FarmSpecialIncidentEngine.clearChannelBlockage(state, 1, player).state
+        state = FarmSpecialIncidentEngine.digChannelSegment(state, 1, player).state
         state.incidentProgress shouldBe 3
+        state = FarmSpecialIncidentEngine.advanceChannelFlow(state).state
+        state = FarmSpecialIncidentEngine.advanceChannelFlow(state).state
         FarmSpecialIncidentEngine.channelFlowProgress(state.specialIncident!!.active, 4) shouldBe 3
-        state = FarmSpecialIncidentEngine.clearChannelBlockage(state, 3, player).state
+        state = FarmSpecialIncidentEngine.digChannelSegment(state, 3, player).state
+        state.phase shouldBe FarmPhase.INCIDENT
+        state = FarmSpecialIncidentEngine.advanceChannelFlow(state).state
+        state = FarmSpecialIncidentEngine.completeChannels(state).state
         state.phase shouldBe FarmPhase.HARVESTING
     }
 
@@ -93,16 +100,16 @@ class FarmSpecialIncidentEngineTest : FunSpec({
         }
     }
 
-    test("channel planner creates a visible blockage route with no hidden switch solution") {
+    test("channel planner creates one connected visible trench from the irrigation side") {
         val source = FarmPointPosition("world", 0.5, 65.0, 0.5)
-        val target = FarmMatureCrop(FarmPlotPosition("world", 25, 64, 0), "WHEAT")
+        val crops = (0 until 12).map { x -> FarmMatureCrop(FarmPlotPosition("world", x, 64, 0), "WHEAT") }
 
         val plan = FarmSpecialIncidentPlanner.plan(
             type = FarmIncidentType.CHANNELS,
             sequence = 8,
-            matureCrops = listOf(target),
-            nightPatrolPlots = (1..5).map { step -> FarmPlotPosition("world", step * 5, 64, 0) },
-            fallbackPlot = target.plot,
+            matureCrops = crops,
+            nightPatrolPlots = crops.map(FarmMatureCrop::plot),
+            fallbackPlot = crops.first().plot,
             irrigationSource = source,
             channelBlockages = 5,
             nightCropPlacements = 8,
@@ -115,11 +122,15 @@ class FarmSpecialIncidentEngineTest : FunSpec({
 
         plan.required shouldBe 5
         plan.state.points.size shouldBe 5
-        plan.state.solution shouldBe setOf(0, 1, 2, 3, 4)
+        plan.state.routeName shouldBe FARM_CHANNEL_ROUTE_NAME
+        plan.state.points.zipWithNext().all { (left, right) ->
+            kotlin.math.abs(left.x - right.x) + kotlin.math.abs(left.z - right.z) == 1.0
+        } shouldBe true
+        plan.state.solution shouldBe emptySet()
         plan.state.active shouldBe emptySet()
     }
 
-    test("channel blockages are projected onto indexed surface beds instead of interpolating underground y") {
+    test("channel segments are placed on indexed surface beds instead of interpolating underground y") {
         val beds = (0 until 8).map { x -> FarmPlotPosition("world", x, 72, 0) }
         val plan = FarmSpecialIncidentPlanner.plan(
             type = FarmIncidentType.CHANNELS,

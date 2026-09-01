@@ -101,7 +101,7 @@ class FarmScarecrowDeliveryControllerMockBukkitTest : FunSpec({
         )
         world.entities.filterIsInstance<ItemDisplay>().count { controller.owns(it) } shouldBe 2
         world.entities.filterIsInstance<ItemDisplay>().filter(controller::owns)
-            .maxBy { it.location.x }.location.x.let { carriedX -> (carriedX > player.location.x) shouldBe true }
+            .minBy { it.location.x }.location.x.let { carriedX -> (carriedX < player.location.x) shouldBe true }
 
         // Pickup reserves target 0 internally, but any free nearby marker must accept the carried scarecrow.
         controller.onMove(

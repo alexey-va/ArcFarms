@@ -1,6 +1,9 @@
 package ru.ruscrafting.farms.domain
 
 import java.util.UUID
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.math.sqrt
 
 /** Pure shield-facing policy used by the boar breakout incident. */
@@ -63,5 +66,21 @@ object FarmRaidFlight {
             y = current.y + dy * scale,
             z = current.z + dz * scale,
         )
+    }
+
+    fun orbitPoint(center: FarmPointPosition, height: Double, radius: Double, angle: Double): FarmPointPosition {
+        require(height.isFinite() && radius.isFinite() && radius > 0.0 && angle.isFinite())
+        return center.copy(
+            x = center.x + cos(angle) * radius,
+            y = center.y + height,
+            z = center.z + sin(angle) * radius,
+        )
+    }
+
+    fun advanceOrbit(angle: Double, elapsedTicks: Long, periodSeconds: Int): Double {
+        require(angle.isFinite() && elapsedTicks >= 0 && periodSeconds > 0)
+        val periodTicks = periodSeconds * 20.0
+        val advanced = angle + elapsedTicks / periodTicks * 2.0 * PI
+        return ((advanced % (2.0 * PI)) + 2.0 * PI) % (2.0 * PI)
     }
 }

@@ -40,14 +40,23 @@ import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.CuboidActivityRegion
 import ru.ruscrafting.farms.paper.FarmNightShiftController
 import ru.ruscrafting.farms.paper.FarmRuntime
+import ru.ruscrafting.farms.paper.FarmBlockLedger
+import ru.ruscrafting.farms.paper.FarmBlockRegistry
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
+import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.admin.FarmRouteAdminService
 import ru.ruscrafting.farms.paper.farm.incident.fire.FarmBarnFireIncident
+import ru.ruscrafting.farms.paper.farm.incident.action.FarmActionIncidentController
 import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingIncident
 import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingSceneRole
 import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
+import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentController
+import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
+import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItemController
+import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItemOwner
+import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
 import ru.ruscrafting.farms.persistence.ArcFarmsStateRepository
 import ru.ruscrafting.farms.persistence.FarmRouteRepository
 import java.nio.file.Files
@@ -143,6 +152,103 @@ internal class FarmIncidentScenarioFixture private constructor(
         transitions = transitionSink,
         blockPassability = MockBukkitFarmBlockPassability,
     )
+
+    fun channels(
+        runtime: FarmRuntime,
+        beds: List<ru.ruscrafting.farms.domain.FarmPlotPosition>,
+        irrigation: FarmPointPosition,
+    ): FarmSpecialIncidentController {
+        val registry = mockk<FarmBlockRegistry>(relaxed = true)
+        every { registry.beds(zone.id) } returns beds.toSet()
+        every { registry.fixedCrops(zone.id) } returns emptySet()
+        lateinit var controller: FarmSpecialIncidentController
+        val serviceItems = WorksiteServiceItemController(plugin, object : WorksiteServiceItemOwner {
+            override fun isActive(identity: ServiceItemIdentity): Boolean = controller.isServiceItemActive(identity)
+            override fun release(playerId: java.util.UUID, identity: ServiceItemIdentity, reason: WorksitePlayerReleaseReason) {
+                controller.releaseServiceItem(playerId, identity, reason)
+            }
+        })
+        controller = FarmSpecialIncidentController(
+            plugin = plugin,
+            settings = { settings },
+            locale = locale,
+            debug = ArcFarmsDebug({ false }) {},
+            access = port,
+            audience = port,
+            state = port,
+            tasks = port,
+            serviceItems = serviceItems,
+            ledger = FarmBlockLedger(plugin),
+            registry = registry,
+            beds = FarmIncidentBedProvider { candidate ->
+                check(candidate === runtime)
+                beds.toSet()
+            },
+            points = FarmPointProvider { candidate, kind ->
+                check(candidate === runtime)
+                check(kind == FarmPointKind.IRRIGATION)
+                irrigation
+            },
+            transitions = transitionSink,
+            runtimes = { listOf(runtime) },
+            clock = System::currentTimeMillis,
+            nightShift = night,
+        )
+        return controller
+    }
+
+    fun actions(
+        runtime: FarmRuntime,
+        beds: Set<ru.ruscrafting.farms.domain.FarmPlotPosition>,
+        receiving: FarmPointPosition,
+        rival: FarmPointPosition,
+    ): FarmActionIncidentController {
+        lateinit var controller: FarmActionIncidentController
+        val serviceItems = WorksiteServiceItemController(plugin, object : WorksiteServiceItemOwner {
+            override fun isActive(identity: ServiceItemIdentity): Boolean = controller.isActive(identity)
+            override fun release(playerId: java.util.UUID, identity: ServiceItemIdentity, reason: WorksitePlayerReleaseReason) {
+                controller.release(playerId, identity, reason)
+            }
+        })
+        val pointProvider = object : FarmPointProvider {
+            override fun resolve(candidate: FarmRuntime, kind: FarmPointKind): FarmPointPosition {
+                check(candidate === runtime)
+                return when (kind) {
+                    FarmPointKind.RECEIVING -> receiving
+                    FarmPointKind.RIVAL_FARM -> rival
+                    else -> error("Unexpected action-incident point $kind")
+                }
+            }
+
+            override fun configured(candidate: FarmRuntime, kind: FarmPointKind): FarmPointPosition? {
+                check(candidate === runtime)
+                return rival.takeIf { kind == FarmPointKind.RIVAL_FARM }
+            }
+        }
+        controller = FarmActionIncidentController(
+            plugin = plugin,
+            settings = { settings },
+            locale = locale,
+            debug = ArcFarmsDebug({ false }) {},
+            access = port,
+            audience = port,
+            state = port,
+            serviceItems = serviceItems,
+            ledger = FarmBlockLedger(plugin),
+            beds = FarmIncidentBedProvider { candidate ->
+                check(candidate === runtime)
+                beds
+            },
+            points = pointProvider,
+            transitions = transitionSink,
+            runtimes = { listOf(runtime) },
+            entityRayTrace = MockBukkitFarmEntityRayTrace,
+            mobDespawns = MockBukkitFarmMobDespawns,
+            mobNavigation = MockBukkitFarmMobNavigation,
+            nightShift = night,
+        )
+        return controller
+    }
 
     fun foodDelivery(runtime: FarmRuntime, points: List<FarmPointPosition>): FarmFoodDeliveryIncident {
         routeRepository.saveBlocking(

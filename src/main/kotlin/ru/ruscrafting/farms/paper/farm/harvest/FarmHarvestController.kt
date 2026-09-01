@@ -378,7 +378,10 @@ internal class FarmHarvestController(
 
     fun plannedIncident(runtime: FarmRuntime, order: FarmOrder): FarmIncidentType {
         val count = runtime.rules.incidentTargetCount(runtime.state.sequence)
-        val plan = FarmIncidentPlanner.sequence(order.incidentTypes, count, runtime.state.sequence)
+        val enabledTypes = order.incidentTypes.filter { type ->
+            type != FarmIncidentType.CHANNELS || runtime.settings.specialIncidents.channelAutomaticEnabled
+        }
+        val plan = FarmIncidentPlanner.sequence(enabledTypes, count.coerceAtMost(enabledTypes.size), runtime.state.sequence)
         return plan.getOrElse(runtime.state.incidentsResolved) { plan.last() }
     }
 

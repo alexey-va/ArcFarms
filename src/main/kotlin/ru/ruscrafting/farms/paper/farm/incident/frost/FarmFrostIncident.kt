@@ -13,9 +13,11 @@ import org.bukkit.entity.Entity
 import org.bukkit.entity.Interaction
 import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Player
+import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
+import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.util.Transformation
 import org.joml.AxisAngle4f
 import org.joml.Vector3f
@@ -219,8 +221,41 @@ internal class FarmFrostIncident(
             return true
         }
         val woodpile = woodpileLocation(runtime) ?: return false
-        val pickupRadius = runtime.settings.specialIncidents.frost.pickupRadius
-        if (player.world !== woodpile.world || player.location.distanceSquared(woodpile) > pickupRadius * pickupRadius) return false
+        WorksiteCarryable.nearest(
+            player.location,
+            sequenceOf(Unit to woodpile),
+            runtime.settings.specialIncidents.frost.pickupRadius,
+        ) ?: return false
+        return pickupWood(runtime, player)
+    }
+
+    fun interact(event: PlayerInteractEntityEvent, runtimes: Collection<FarmRuntime>): Boolean {
+        if (role(event.rightClicked) != ROLE_INTERACTION) return false
+        event.isCancelled = true
+        val zoneId = event.rightClicked.persistentDataContainer
+            .get(entityZoneKey, PersistentDataType.STRING) ?: return true
+        val runtime = runtimes.firstOrNull { it.settings.id == zoneId } ?: return true
+        if (!active(runtime)) return true
+        val player = event.player
+        if (!access.hasAccess(player, runtime.settings.permission)) {
+            audience.sendChat(player, MessageKey.ZONE_LOCKED)
+            return true
+        }
+        if (player.world !== event.rightClicked.world || !WorksiteCarryable.withinInteractionReach(
+                player,
+                event.rightClicked,
+                runtime.settings.specialIncidents.frost.pickupRadius,
+            )
+        ) return true
+        pickupWood(runtime, player)
+        return true
+    }
+
+    private fun pickupWood(runtime: FarmRuntime, player: Player): Boolean {
+        if (isCarrying(player, runtime.settings.id)) {
+            updateCarriedDisplay(player, runtime)
+            return true
+        }
         if (!access.allowInteraction(
                 "farm-frost-pickup:${runtime.settings.id}:${player.uniqueId}",
                 runtime.settings.inputCooldowns.frostPickupMillis,
@@ -440,7 +475,7 @@ internal class FarmFrostIncident(
     private fun firewoodItem(runtime: FarmRuntime, player: Player): ItemStack {
         val item = ItemStack(MaterialRules.material(runtime.settings.specialIncidents.frost.fuelMaterial))
         item.editMeta { meta ->
-            meta.displayName(locale.render(MessageKey.FARM_FROST_FIREWOOD_ITEM, player))
+            meta.displayName(locale.render(MessageKey.FARM_FROST_FIREWOOD_ITEM, player).decoration(TextDecoration.ITALIC, false))
             meta.persistentDataContainer.set(itemZoneKey, PersistentDataType.STRING, runtime.settings.id)
             meta.persistentDataContainer.set(itemSequenceKey, PersistentDataType.LONG, runtime.state.sequence)
         }

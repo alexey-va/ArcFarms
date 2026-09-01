@@ -34,6 +34,7 @@ import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteCarryable
+import ru.ruscrafting.farms.paper.worksite.WorksiteCarryPosition
 import ru.ruscrafting.farms.paper.farm.FarmFieldPoiVisibility
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
@@ -354,6 +355,7 @@ internal class FarmScarecrowDeliveryController(
             player,
             runtime.settings.scarecrowCarriedForwardOffset,
             runtime.settings.scarecrowCarriedYOffset,
+            position = WorksiteCarryPosition.BACK,
         )
     }
 

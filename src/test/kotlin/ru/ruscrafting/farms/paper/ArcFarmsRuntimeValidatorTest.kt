@@ -51,15 +51,11 @@ class ArcFarmsRuntimeValidatorTest : FunSpec({
             paper.server.addSimpleWorld("world")
 
             shouldThrow<IllegalArgumentException> {
-                validator().validateRuntime(candidateWith("blockage: {material: MANGROVE_ROOTS", "blockage: {material: IRON_HORSE_ARMOR"))
-            }.message shouldContain "channels.blockage.material must be a non-air block"
-
-            shouldThrow<IllegalArgumentException> {
                 validator().validateRuntime(candidateWith("shield-material: SHIELD", "shield-material: IRON_SWORD"))
             }.message shouldContain "boar-breakout.shield-material must be SHIELD"
 
             shouldThrow<IllegalArgumentException> {
-                validator().validateRuntime(candidateWith("gun-material: IRON_HORSE_ARMOR", "gun-material: AIR"))
+                validator().validateRuntime(candidateWith("gun-material: CROSSBOW", "gun-material: AIR"))
             }.message shouldContain "rival-raid.gun-material must be a non-air item"
         }
     }

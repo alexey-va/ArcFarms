@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.paper.farm.incident.frost
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
@@ -12,6 +13,8 @@ import org.bukkit.WeatherType
 import org.bukkit.block.data.Ageable
 import org.bukkit.entity.Interaction
 import org.bukkit.entity.ItemDisplay
+import org.bukkit.event.player.PlayerInteractEntityEvent
+import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
 import org.mockbukkit.mockbukkit.world.WorldMock
 import ru.arc.paper.testing.MockBukkitTestRuntime
@@ -139,6 +142,43 @@ class FarmFrostIncidentMockBukkitTest : FunSpec({
         fixture.runtime.state.contributors[player.uniqueId] shouldBe 1
         fixture.crop.type shouldBe Material.CAMPFIRE
         carried.isValid shouldBe false
+    }
+
+    test("right clicking the woodpile picks up one log and carries it in front") {
+        val fixture = frostFixture(paper, world)
+        val player = paper.addPlayer("WoodCarrier")
+        every { fixture.port.hasAccess(player, "arcfarms.farm") } returns true
+        every { fixture.port.allowInteraction(any(), any()) } returns true
+
+        fixture.controller.initialize(fixture.runtime) shouldBe true
+        fixture.controller.ensure(fixture.runtime)
+        val interaction = world.entities.filterIsInstance<Interaction>().single()
+        val woodpile = world.entities.filterIsInstance<ItemDisplay>().single { it.itemStack.type == Material.OAK_LOG }
+        player.teleport(interaction.location.clone().add(4.0, 0.0, 0.0))
+
+        val distantEvent = PlayerInteractEntityEvent(player, interaction, EquipmentSlot.HAND)
+        fixture.controller.interact(distantEvent, listOf(fixture.runtime)) shouldBe true
+        distantEvent.isCancelled shouldBe true
+        player.inventory.contents.count(fixture.controller::isServiceItem) shouldBe 0
+
+        player.teleport(woodpile.location)
+
+        val event = PlayerInteractEntityEvent(player, interaction, EquipmentSlot.HAND)
+        fixture.controller.interact(event, listOf(fixture.runtime)) shouldBe true
+
+        event.isCancelled shouldBe true
+        player.inventory.contents.count(fixture.controller::isServiceItem) shouldBe 1
+        val carried = world.entities.filterIsInstance<ItemDisplay>()
+            .filter { it.itemStack.type == Material.OAK_LOG }
+            .maxBy { it.location.y }
+        carried.location.y shouldBe (player.location.y + 0.65 plusOrMinus 0.0001)
+        carried.location.clone().subtract(player.location).apply { y = 0.0 }.length() shouldBe (0.65 plusOrMinus 0.0001)
+
+        fixture.controller.interact(
+            PlayerInteractEntityEvent(player, interaction, EquipmentSlot.HAND),
+            listOf(fixture.runtime),
+        ) shouldBe true
+        player.inventory.contents.count(fixture.controller::isServiceItem) shouldBe 1
     }
 
     test("moving the configured firewood point refreshes only the woodpile during active frost") {

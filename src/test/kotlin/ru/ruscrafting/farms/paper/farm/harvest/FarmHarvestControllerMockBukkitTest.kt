@@ -16,8 +16,10 @@ import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.CuboidBounds
 import ru.ruscrafting.farms.config.FarmCropBreakEffectsSettings
+import ru.ruscrafting.farms.config.FarmSpecialIncidentSettings
 import ru.ruscrafting.farms.config.FarmZoneSettings
 import ru.ruscrafting.farms.domain.FarmOrder
+import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmRules
 import ru.ruscrafting.farms.domain.FarmShiftState
@@ -53,12 +55,16 @@ class FarmHarvestControllerMockBukkitTest : FunSpec({
         val player = paper.addPlayer("Worker")
         val block = world.getBlockAt(5, 64, 5).apply { type = Material.MELON }
         val order = FarmOrder("test_order", mapOf(Material.MELON.name to 10))
+        val incidentSettings = mockk<FarmSpecialIncidentSettings> {
+            every { channelAutomaticEnabled } returns false
+        }
         val runtime = FarmRuntime(
             settings = mockk<FarmZoneSettings> {
                 every { id } returns "communal_farm"
                 every { permission } returns "arcfarms.farm"
                 every { crops } returns setOf(Material.MELON.name)
                 every { cropEffects } returns FarmCropBreakEffectsSettings()
+                every { specialIncidents } returns incidentSettings
             },
             region = CuboidActivityRegion(world, "farm", CuboidBounds(0, 0, 0, 31, 128, 31)),
             orders = mapOf(order.id to order),
@@ -99,6 +105,14 @@ class FarmHarvestControllerMockBukkitTest : FunSpec({
             runtimes = { listOf(runtime) },
             clock = { 1_000L },
         )
+        controller.plannedIncident(
+            runtime,
+            FarmOrder(
+                "channels_disabled",
+                mapOf(Material.MELON.name to 10),
+                incidentTypes = listOf(FarmIncidentType.CHANNELS, FarmIncidentType.PESTS),
+            ),
+        ) shouldBe FarmIncidentType.PESTS
         controller.onFixedCropHit(runtime, player, block) shouldBe true
 
         block.type shouldBe Material.MELON

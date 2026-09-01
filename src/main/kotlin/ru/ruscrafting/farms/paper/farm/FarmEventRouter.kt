@@ -343,6 +343,7 @@ internal class FarmEventRouter(
         if (foodDelivery.interact(event, runtimes())) return
         if (actionIncidents.interact(event)) return
         if (processing.interact(event, runtimes())) return
+        if (frost.interact(event, runtimes())) return
         if (special.ownsScene(event.rightClicked)) {
             event.isCancelled = true
             special.interactScene(event.player, event.rightClicked)

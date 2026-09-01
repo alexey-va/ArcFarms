@@ -5,6 +5,11 @@ import org.bukkit.entity.Entity
 import org.bukkit.entity.Interaction
 import org.bukkit.entity.Player
 
+internal enum class WorksiteCarryPosition(val directionMultiplier: Double) {
+    FRONT(1.0),
+    BACK(-1.0),
+}
+
 /** Shared spatial rules for physical worksite objects that can be clicked, walked onto, and carried. */
 internal object WorksiteCarryable {
     fun carriedLocation(
@@ -13,9 +18,12 @@ internal object WorksiteCarryable {
         verticalOffset: Double,
         localX: Double = 0.0,
         localZ: Double = 0.0,
+        position: WorksiteCarryPosition = WorksiteCarryPosition.FRONT,
     ): Location {
         val direction = player.location.direction.setY(0.0)
-        if (direction.lengthSquared() > 0.001) direction.normalize().multiply(forwardOffset)
+        if (direction.lengthSquared() > 0.001) {
+            direction.normalize().multiply(forwardOffset * position.directionMultiplier)
+        }
         return player.location.clone().add(direction).add(localX, verticalOffset, localZ)
     }
 

@@ -4,8 +4,10 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.Bukkit
 import org.bukkit.Material
+import org.bukkit.NamespacedKey
 import org.bukkit.event.inventory.ClickType
 import org.bukkit.event.inventory.InventoryAction
 import org.bukkit.event.inventory.InventoryClickEvent
@@ -93,6 +95,18 @@ class WorksiteServiceItemControllerMockBukkitTest : FunSpec({
         owner.released shouldBe emptyList()
         owner.progress shouldBe 0
         controller.isServiceItem(first) shouldBe true
+    }
+
+    test("service item appearance applies its model and explicitly disables italic text") {
+        val model = NamespacedKey("voxelspawns_megaflintlocks", "vs_rifle_double")
+        val item = requireNotNull(
+            controller.issue(player, identity, Material.CROSSBOW, Component.text("Machine gun"), 2_100_103, model),
+        )
+
+        item.itemMeta.displayName()?.decoration(TextDecoration.ITALIC) shouldBe TextDecoration.State.FALSE
+        @Suppress("DEPRECATION")
+        item.itemMeta.customModelData shouldBe 2_100_103
+        // MockBukkit 4.84 does not retain Paper's item_model component; the real API call is compile-checked above.
     }
 })
 

@@ -20,6 +20,7 @@ import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.FarmCropDamage
+import ru.ruscrafting.farms.domain.FARM_CHANNEL_ROUTE_NAME
 import ru.ruscrafting.farms.domain.FarmGiantCropBlueprint
 import ru.ruscrafting.farms.domain.FarmGiantCropCandidate
 import ru.ruscrafting.farms.domain.FarmGiantCropCandidateSelection
@@ -48,9 +49,6 @@ import ru.ruscrafting.farms.paper.FarmMarketMenu
 import ru.ruscrafting.farms.paper.FarmNightShiftController
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.FarmSpecialIncidentSceneManager
-import ru.ruscrafting.farms.paper.FarmSpecialSceneObject
-import ru.ruscrafting.farms.paper.FarmSpecialSceneRole
-import ru.ruscrafting.farms.paper.FarmSpecialSceneSpec
 import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.deferInventoryTransition
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
@@ -64,6 +62,7 @@ import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
+import ru.ruscrafting.farms.paper.farm.field.FARM_SOIL_TYPES
 import ru.ruscrafting.farms.paper.farm.harvest.FarmCropBreakEffects
 import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
 import ru.ruscrafting.farms.paper.toFarmPlotPosition
@@ -76,6 +75,7 @@ internal val SPECIAL_FARM_INCIDENT_TYPES =
     setOf(FarmIncidentType.GIANT_CROP, FarmIncidentType.CHANNELS, FarmIncidentType.NIGHT_SHIFT, FarmIncidentType.MARKET)
 
 private const val MAX_GIANT_CROP_PLACEMENT_CHECKS = 128
+private data class ChannelTaskKey(val zoneId: String, val sequence: Long)
 
 /** Complete owner for giant crop, channels, night shift and urgent market incidents. */
 internal class FarmSpecialIncidentController(
@@ -101,6 +101,8 @@ internal class FarmSpecialIncidentController(
     private val giantCrop = FarmGiantCropController(plugin)
     private val marketMenu = FarmMarketMenu(locale, settings, ::refreshMarketView)
     private val giantSelectionAttempts = mutableMapOf<String, Long>()
+    private val channelFlowTasks = mutableSetOf<ChannelTaskKey>()
+    private val channelCompletionTasks = mutableSetOf<ChannelTaskKey>()
 
     fun ensure(runtime: FarmRuntime) {
         val type = runtime.state.incidentType
@@ -137,15 +139,22 @@ internal class FarmSpecialIncidentController(
         val requestedPatrols = specialSettings.nightPatrolCount(indexedBedCount)
         var giantSelection: FarmGiantCropCandidateSelection? = null
         val order = runtime.state.orderId?.let(runtime.orders::get)
-        val configuredTypes = order?.incidentTypes.orEmpty().filter(SPECIAL_FARM_INCIDENT_TYPES::contains)
-        val scheduledTypes = order?.let { configured ->
+        val enabledOrderTypes = order?.incidentTypes.orEmpty().filter { candidate ->
+            candidate != FarmIncidentType.CHANNELS || specialSettings.channelAutomaticEnabled
+        }
+        val configuredTypes = enabledOrderTypes.filter(SPECIAL_FARM_INCIDENT_TYPES::contains)
+        val scheduledTypes = order?.let {
             FarmIncidentPlanner.sequence(
-                configured.incidentTypes,
+                enabledOrderTypes,
                 runtime.rules.incidentTargetCount(runtime.state.sequence),
                 runtime.state.sequence,
             )
         }.orEmpty()
-        val candidateTypes = (listOf(type) + configuredTypes.filterNot(scheduledTypes::contains) + configuredTypes).distinct()
+        val candidateTypes = if (type == FarmIncidentType.CHANNELS && !specialSettings.channelAutomaticEnabled) {
+            listOf(type)
+        } else {
+            (listOf(type) + configuredTypes.filterNot(scheduledTypes::contains) + configuredTypes).distinct()
+        }
         val selected = candidateTypes.firstNotNullOfOrNull { candidateType ->
             val giantCandidates = if (candidateType == FarmIncidentType.GIANT_CROP) {
                 val selection = giantSelection ?: selectGiantCandidate(runtime, mature).also { giantSelection = it }
@@ -159,7 +168,7 @@ internal class FarmSpecialIncidentController(
                 nightPatrolPlots = incidentBeds,
                 fallbackPlot = areaCenter(runtime.state.preparationPatch),
                 irrigationSource = points.resolve(runtime, FarmPointKind.IRRIGATION),
-                channelBlockages = specialSettings.channelBlockageCount,
+                channelBlockages = specialSettings.channelSegmentCount,
                 nightCropPlacements = specialSettings.nightCropPlacementCount,
                 nightCropTarget = specialSettings.nightCropTargetCount,
                 nightCropMinSpacing = specialSettings.nightCropMinSpacing,
@@ -321,40 +330,8 @@ internal class FarmSpecialIncidentController(
         giantCrop.owns(block, runtime.settings.id, runtime.state.sequence)
 
     fun interactScene(player: Player, entity: Entity) {
-        val identity = scene.metadata(entity) ?: return
-        val runtime = runtimes().firstOrNull { it.settings.id == identity.zoneId } ?: return
-        if (!access.hasAccess(player, runtime.settings.permission) || !runtime.region.contains(player.location)) return
-        if (runtime.state.sequence != identity.sequence || runtime.state.phase != FarmPhase.INCIDENT) return
-        if (identity.role !in setOf(
-                FarmSpecialSceneRole.CHANNEL_BLOCKAGE,
-                FarmSpecialSceneRole.CHANNEL_BLOCKAGE_HITBOX,
-            )
-        ) return
-        if (runtime.state.incidentType != FarmIncidentType.CHANNELS) return
-        if (!access.allowInteraction("farm-channel:${identity.zoneId}:${identity.index}:${player.uniqueId}", 250L)) return
-        val beforeFlow = runtime.state.specialIncident?.let { incident ->
-            FarmSpecialIncidentEngine.channelFlowProgress(incident.active, incident.points.size)
-        } ?: 0
-        val result = FarmSpecialIncidentEngine.clearChannelBlockage(runtime.state, identity.index, player.uniqueId)
-        if (!result.accepted) return
-        if (settings().particles) entity.world.spawnParticle(
-            Particle.BLOCK,
-            entity.location.clone().add(0.0, 0.45, 0.0),
-            12,
-            0.35,
-            0.25,
-            0.35,
-            runtime.settings.specialIncidents.channelBlockageMaterial.let(MaterialRules::material).createBlockData(),
-        )
-        if (settings().sounds) {
-            player.playSound(entity.location, Sound.BLOCK_ROOTED_DIRT_BREAK, 0.9f, 0.9f)
-            val incident = result.state.specialIncident
-            if (incident != null && FarmSpecialIncidentEngine.channelFlowProgress(incident.active, incident.points.size) > beforeFlow) {
-                player.playSound(entity.location, Sound.ITEM_BUCKET_EMPTY, 0.65f, 1.3f)
-            }
-        }
-        transitions.apply(runtime, result, player)
-        ensure(runtime)
+        // Legacy blockage displays are inert. The drainage-v2 objective is completed only by digging its soil blocks.
+        if (scene.metadata(entity) != null) audience.sendActionBar(player, MessageKey.FARM_CHANNELS_TOOL)
     }
 
     fun handleChannelBreak(runtime: FarmRuntime, player: Player, block: Block): Boolean {
@@ -362,9 +339,9 @@ internal class FarmSpecialIncidentController(
         val special = runtime.state.specialIncident ?: return false
         val index = special.points.indexOfFirst { point ->
             point.world == block.world.name && floor(point.x).toInt() == block.x &&
-                floor(point.y).toInt() == block.y && floor(point.z).toInt() == block.z
+                floor(point.y).toInt() - 1 == block.y && floor(point.z).toInt() == block.z
         }
-        if (index < 0 || index in special.active) return false
+        if (index < 0 || index in special.solution) return false
         if (!access.hasAccess(player, runtime.settings.permission)) {
             audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return true
@@ -373,13 +350,18 @@ internal class FarmSpecialIncidentController(
             audience.sendActionBar(player, MessageKey.FARM_CHANNELS_TOOL)
             return true
         }
-        val blockage = MaterialRules.material(runtime.settings.specialIncidents.channelBlockageMaterial)
-        if (block.type != blockage) return true
-        block.world.spawnParticle(Particle.BLOCK, block.location.toCenterLocation(), 10, 0.3, 0.25, 0.3, block.blockData)
+        if (block.type !in FARM_SOIL_TYPES) return true
+        if (settings().particles) {
+            block.world.spawnParticle(Particle.BLOCK_CRUMBLE, block.location.toCenterLocation(), 12, 0.35, 0.2, 0.35, block.blockData)
+            block.world.spawnParticle(Particle.DUST_PLUME, block.location.toCenterLocation(), 4, 0.3, 0.12, 0.3, 0.01)
+        }
         block.setType(Material.AIR, false)
-        if (settings().sounds) player.playSound(block.location, Sound.BLOCK_ROOTED_DIRT_BREAK, 0.9f, 0.9f)
-        val result = FarmSpecialIncidentEngine.clearChannelBlockage(runtime.state, index, player.uniqueId)
-        if (result.accepted) transitions.apply(runtime, result, player)
+        if (settings().sounds) player.playSound(block.location, Sound.BLOCK_GRAVEL_BREAK, 0.9f, 0.85f)
+        val result = FarmSpecialIncidentEngine.digChannelSegment(runtime.state, index, player.uniqueId)
+        if (result.accepted) {
+            transitions.apply(runtime, result, player)
+            scheduleChannelFlow(runtime)
+        }
         return true
     }
 
@@ -534,6 +516,9 @@ internal class FarmSpecialIncidentController(
     fun restoreZoneNow(runtime: FarmRuntime): Set<Chunk> = giantCrop.restoreZoneNow(runtime.region.world, runtime.settings.id)
 
     fun clearZone(runtime: FarmRuntime, reason: String) {
+        val channelKey = ChannelTaskKey(runtime.settings.id, runtime.state.sequence)
+        channelFlowTasks.remove(channelKey)
+        channelCompletionTasks.remove(channelKey)
         scene.clearZone(runtime.settings.id, reason)
         nightShift.clearZone(runtime.settings.id)
         if (runtime.state.incidentType == FarmIncidentType.CHANNELS) {
@@ -571,6 +556,8 @@ internal class FarmSpecialIncidentController(
 
     fun cleanup(reason: String) {
         giantSelectionAttempts.clear()
+        channelFlowTasks.clear()
+        channelCompletionTasks.clear()
         giantCrop.restoreLoadedAll(reason)
         scene.cleanupLoaded(reason)
         nightShift.clearAll(org.bukkit.Bukkit.getOnlinePlayers())
@@ -658,7 +645,6 @@ internal class FarmSpecialIncidentController(
     }
 
     private fun ensureChannels(runtime: FarmRuntime, special: FarmSpecialIncidentState) {
-        val blockage = MaterialRules.material(runtime.settings.specialIncidents.channelBlockageMaterial)
         val persistedPlots = special.points.mapTo(hashSetOf()) { point ->
             FarmPlotPosition(
                 point.world,
@@ -684,7 +670,7 @@ internal class FarmSpecialIncidentController(
             scene.clearZone(runtime.settings.id, "channel_surface_unavailable")
             return
         }
-        val projectedSpecial = if (surfacePoints != special.points) {
+        val projectedSpecial = if (surfacePoints != special.points && special.routeName != FARM_CHANNEL_ROUTE_NAME) {
             special.copy(points = surfacePoints).also { projected ->
                 runtime.state = runtime.state.copy(specialIncident = projected)
                 debug.event(
@@ -697,28 +683,28 @@ internal class FarmSpecialIncidentController(
             }
         } else special
         val normalized = normalizeChannels(runtime, projectedSpecial)
-        scene.clearZone(runtime.settings.id, "physical_drainage")
+        scene.clearZone(runtime.settings.id, "physical_drainage_v2")
         val additions = mutableListOf<FarmCropDamage>()
         normalized.points.forEachIndexed { index, point ->
-            val block = runtime.region.world.getBlockAt(floor(point.x).toInt(), floor(point.y).toInt(), floor(point.z).toInt())
-            val soil = block.getRelative(org.bukkit.block.BlockFace.DOWN)
+            val soil = runtime.region.world.getBlockAt(
+                floor(point.x).toInt(),
+                floor(point.y).toInt() - 1,
+                floor(point.z).toInt(),
+            )
+            val crop = soil.getRelative(org.bukkit.block.BlockFace.UP)
             val position = soil.toFarmPlotPosition()
             val recordedDamage = runtime.state.specialDamagedCrops.firstOrNull { it.position == position }
-            if (index in normalized.active) {
-                if (recordedDamage != null && !block.type.isAir && block.type.name != recordedDamage.crop) {
-                    block.setType(Material.AIR, false)
-                }
-                return@forEachIndexed
+            if (recordedDamage == null && crop.type.name in runtime.settings.crops) {
+                ledger.captureActiveCrop(soil, runtime.settings.id)
+                additions += FarmCropDamage(position, crop.type.name)
             }
-            if (block.type == blockage) return@forEachIndexed
-            if (recordedDamage != null) {
-                block.setType(blockage, false)
-                return@forEachIndexed
+            if (recordedDamage == null && crop.type.name !in runtime.settings.crops) return@forEachIndexed
+            if (!crop.type.isAir) crop.setType(Material.AIR, false)
+            when {
+                index in normalized.active -> if (soil.type != Material.WATER) soil.setType(Material.WATER, false)
+                index in normalized.solution -> if (!soil.type.isAir) soil.setType(Material.AIR, false)
+                soil.type !in FARM_SOIL_TYPES -> soil.setType(Material.FARMLAND, false)
             }
-            if (block.type.name !in runtime.settings.crops) return@forEachIndexed
-            ledger.captureActiveCrop(soil, runtime.settings.id)
-            additions += FarmCropDamage(position, block.type.name)
-            block.setType(blockage, false)
         }
         if (additions.isNotEmpty()) {
             runtime.state = runtime.state.copy(
@@ -738,6 +724,7 @@ internal class FarmSpecialIncidentController(
                 ) == null
             ) audience.sendActionBar(player, MessageKey.FARM_ACTION_INVENTORY_FULL)
         }
+        scheduleChannelFlow(runtime)
     }
 
     private fun channelToolIdentity(runtime: FarmRuntime) = ServiceItemIdentity(
@@ -750,12 +737,15 @@ internal class FarmSpecialIncidentController(
     )
 
     private fun normalizeChannels(runtime: FarmRuntime, special: FarmSpecialIncidentState): FarmSpecialIncidentState {
-        val expected = special.points.indices.toSet()
         if (
-            special.solution == expected && runtime.state.incidentRequired == special.points.size &&
-            runtime.state.incidentProgress == special.active.size
+            special.routeName == FARM_CHANNEL_ROUTE_NAME && runtime.state.incidentRequired == special.points.size &&
+            runtime.state.incidentProgress == special.solution.size
         ) return special
-        val normalized = special.copy(solution = expected, active = emptySet())
+        val normalized = special.copy(
+            routeName = FARM_CHANNEL_ROUTE_NAME,
+            solution = emptySet(),
+            active = emptySet(),
+        )
         runtime.state = runtime.state.copy(
             specialIncident = normalized,
             incidentProgress = 0,
@@ -765,10 +755,67 @@ internal class FarmSpecialIncidentController(
             "farm_channel_state_migrated",
             "zone" to runtime.settings.id,
             "sequence" to runtime.state.sequence,
-            "blockages" to special.points.size,
+            "segments" to special.points.size,
         )
         state.persistAsync()
         return normalized
+    }
+
+    private fun scheduleChannelFlow(runtime: FarmRuntime) {
+        if (runtime.state.phase != FarmPhase.INCIDENT || runtime.state.incidentType != FarmIncidentType.CHANNELS) return
+        val special = runtime.state.specialIncident ?: return
+        val key = ChannelTaskKey(runtime.settings.id, runtime.state.sequence)
+        val next = FarmSpecialIncidentEngine.channelFlowProgress(special.active, special.points.size)
+        if (next >= special.points.size) {
+            scheduleChannelCompletion(runtime, key)
+            return
+        }
+        if (next !in special.solution || !channelFlowTasks.add(key)) return
+        val scheduled = tasks.runLater(runtime.settings.specialIncidents.channelFlowIntervalTicks.toLong()) {
+            channelFlowTasks.remove(key)
+            val current = runtimes().firstOrNull { candidate ->
+                candidate.settings.id == key.zoneId && candidate.state.sequence == key.sequence &&
+                    candidate.state.phase == FarmPhase.INCIDENT && candidate.state.incidentType == FarmIncidentType.CHANNELS
+            } ?: return@runLater
+            val result = FarmSpecialIncidentEngine.advanceChannelFlow(current.state)
+            if (!result.accepted) return@runLater
+            current.state = result.state
+            val flowed = requireNotNull(current.state.specialIncident).active.maxOrNull() ?: return@runLater
+            val point = requireNotNull(current.state.specialIncident).points[flowed]
+            val soil = current.region.world.getBlockAt(
+                floor(point.x).toInt(),
+                floor(point.y).toInt() - 1,
+                floor(point.z).toInt(),
+            )
+            soil.setType(Material.WATER, false)
+            if (settings().particles) {
+                soil.world.spawnParticle(Particle.SPLASH, soil.location.toCenterLocation().add(0.0, 0.35, 0.0), 14, 0.35, 0.08, 0.35, 0.08)
+            }
+            if (settings().sounds) {
+                audience.players(current.region).forEach { player ->
+                    player.playSound(soil.location, Sound.ITEM_BUCKET_EMPTY, 0.55f, 1.2f)
+                }
+            }
+            state.persistAsync()
+            scheduleChannelFlow(current)
+        }
+        if (!scheduled) channelFlowTasks.remove(key)
+    }
+
+    private fun scheduleChannelCompletion(runtime: FarmRuntime, key: ChannelTaskKey) {
+        val special = runtime.state.specialIncident ?: return
+        val expected = special.points.indices.toSet()
+        if (special.solution != expected || special.active != expected || !channelCompletionTasks.add(key)) return
+        val scheduled = tasks.runLater(runtime.settings.specialIncidents.channelCompletionDelayTicks.toLong()) {
+            channelCompletionTasks.remove(key)
+            val current = runtimes().firstOrNull { candidate ->
+                candidate.settings.id == key.zoneId && candidate.state.sequence == key.sequence &&
+                    candidate.state.phase == FarmPhase.INCIDENT && candidate.state.incidentType == FarmIncidentType.CHANNELS
+            } ?: return@runLater
+            val result = FarmSpecialIncidentEngine.completeChannels(current.state)
+            if (result.accepted) transitions.apply(current, result, null)
+        }
+        if (!scheduled) channelCompletionTasks.remove(key)
     }
 
     fun handleGiantCropHit(runtime: FarmRuntime, player: Player, block: Block): Boolean {

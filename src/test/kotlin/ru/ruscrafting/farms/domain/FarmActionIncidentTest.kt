@@ -102,4 +102,16 @@ class FarmActionIncidentTest : FunSpec({
             )
         }
     }
+
+    test("raid orbit keeps a fixed radius and completes one circuit in the configured period") {
+        val center = FarmPointPosition("world", 20.0, 65.0, -4.0)
+        val startAngle = 0.35
+        val start = FarmRaidFlight.orbitPoint(center, height = 12.0, radius = 16.0, angle = startAngle)
+        val completedAngle = FarmRaidFlight.advanceOrbit(startAngle, elapsedTicks = 45L * 20L, periodSeconds = 45)
+        val completed = FarmRaidFlight.orbitPoint(center, height = 12.0, radius = 16.0, angle = completedAngle)
+
+        start.x shouldBe (completed.x plusOrMinus 1.0e-9)
+        start.y shouldBe 77.0
+        start.z shouldBe (completed.z plusOrMinus 1.0e-9)
+    }
 })

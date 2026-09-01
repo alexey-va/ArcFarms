@@ -234,7 +234,7 @@ data class FarmSpecialIncidentState(
         require(marketDeadlineAt >= 0) { "Farm market deadline is invalid" }
         val gateRange = points.indices
         require(solution.all(gateRange::contains) && active.all(gateRange::contains)) {
-            "Farm channel state references an unknown blockage"
+            "Farm channel state references an unknown segment"
         }
     }
 }
