@@ -479,7 +479,8 @@ class ArcFarmsConfigTest : FunSpec({
             FarmIncidentType.PROCESSING,
             FarmIncidentType.BARN_FIRE,
             FarmIncidentType.FROST,
-            FarmIncidentType.CHANNELS,
+            FarmIncidentType.BOAR_BREAKOUT,
+            FarmIncidentType.RIVAL_RAID,
             FarmIncidentType.NIGHT_SHIFT,
             FarmIncidentType.MARKET,
             FarmIncidentType.BIRDS,
@@ -540,13 +541,14 @@ class ArcFarmsConfigTest : FunSpec({
                 mine.lostMinerFollowOffsetZ == -1.0 && mine.extractionCheckpointRadius == 1.6 &&
                 mine.loadingDeliveryRadius == 2.0
         } shouldBe true
-        settings.farms.single().specialIncidents.channelSegmentCount shouldBe 5
+        settings.farms.single().specialIncidents.channelAutomaticEnabled shouldBe false
+        settings.farms.single().specialIncidents.channelSegmentCount shouldBe 10
         settings.farms.single().boarBreakout.requiredDeflections shouldBe 8
         settings.farms.single().boarBreakout.activeBoars shouldBe 3
         settings.farms.single().boarBreakout.shieldMaterial shouldBe "SHIELD"
-        settings.farms.single().rivalRaid.requiredKills shouldBe 14
+        settings.farms.single().rivalRaid.requiredKills shouldBe 32
         settings.farms.single().rivalRaid.workerEntity shouldBe "HUSK"
-        settings.farms.single().rivalRaid.gunMaterial shouldBe "IRON_HORSE_ARMOR"
+        settings.farms.single().rivalRaid.gunMaterial shouldBe "CROSSBOW"
         settings.farms.single().music.rivalRaidSound shouldBe "minecraft:music_disc.pigstep"
         settings.farms.single().specialIncidents.nightCropPlacementCount shouldBe 90
         settings.farms.single().specialIncidents.nightCropTargetCount shouldBe 24
