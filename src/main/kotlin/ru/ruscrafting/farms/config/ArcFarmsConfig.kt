@@ -1705,7 +1705,7 @@ class ArcFarmsConfig private constructor(
                         "Farm order ${order.id} must define at least incident-count.max distinct incident types"
                     }
                 }
-                val legacyChannelSegmentCount = section.int("special-incidents.channels.blockages", 10)
+                val legacyChannelSegmentCount = section.stringOrNull("special-incidents.channels.blockages")?.toInt() ?: 10
                 val specialIncidents = FarmSpecialIncidentSettings(
                     channelAutomaticEnabled = section.boolean("special-incidents.channels.automatic-enabled", false),
                     channelSegmentCount = section.int("special-incidents.channels.segments", legacyChannelSegmentCount)

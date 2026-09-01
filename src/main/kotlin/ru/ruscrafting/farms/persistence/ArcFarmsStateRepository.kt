@@ -524,11 +524,8 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 require(farm.orderId != null) { "Active farm state has no order" }
             }
             if (farm.phase == FarmPhase.INCIDENT) {
-                val incidentIdentityComplete = if (farm.incidentType == FarmIncidentType.FOOD_DELIVERY) {
-                    farm.specialIncident != null
-                } else {
-                    farm.incidentCrop != null
-                }
+                val incidentIdentityComplete = farm.incidentCrop != null || farm.specialIncident != null ||
+                    farm.frost != null || farm.processing != null
                 require(
                     incidentIdentityComplete && farm.incidentRequired > 0 &&
                         farm.incidentProgress < farm.incidentRequired && !farm.incidentResolved,

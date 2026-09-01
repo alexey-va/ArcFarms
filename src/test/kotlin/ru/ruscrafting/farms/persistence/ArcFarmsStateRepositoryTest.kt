@@ -211,6 +211,31 @@ class ArcFarmsStateRepositoryTest : FunSpec({
         ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
     }
 
+    test("channels incident without a crop survives an atomic state round trip") {
+        val root = Files.createTempDirectory("arcfarms-state-channels-roundtrip-test")
+        val points = listOf(
+            FarmPointPosition("sp11", 10.5, 64.0, 10.5),
+            FarmPointPosition("sp11", 11.5, 64.0, 10.5),
+            FarmPointPosition("sp11", 12.5, 64.0, 10.5),
+        )
+        val expected = ArcFarmsState(
+            farms = mapOf(
+                "farm" to FarmShiftState(
+                    phase = FarmPhase.INCIDENT,
+                    sequence = 5,
+                    orderId = "farm_order",
+                    startedAt = 1,
+                    incidentType = FarmIncidentType.CHANNELS,
+                    incidentRequired = points.size,
+                    specialIncident = FarmSpecialIncidentState(points = points),
+                ),
+            ),
+        )
+
+        ArcFarmsStateRepository(root).use { it.saveBlocking(expected) }
+        ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
+    }
+
     test("processing incident survives an atomic state round trip") {
         val root = Files.createTempDirectory("arcfarms-state-processing-roundtrip-test")
         val processing = FarmProcessingState(
