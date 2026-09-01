@@ -15,13 +15,14 @@ data class FarmSpecialIncidentPlan(
     val required: Int,
 )
 
-internal const val FARM_CHANNEL_ROUTE_NAME = "drainage-v2"
+internal const val FARM_CHANNEL_ROUTE_NAME = "drainage-v3"
 
 object FarmSpecialIncidentPlanner {
     fun plan(
         type: FarmIncidentType,
         sequence: Long,
         matureCrops: Collection<FarmMatureCrop>,
+        channelPlots: Collection<FarmPlotPosition> = matureCrops.map(FarmMatureCrop::plot),
         giantCandidates: Collection<FarmGiantCropCandidate> = emptyList(),
         nightPatrolPlots: Collection<FarmPlotPosition> = matureCrops.map(FarmMatureCrop::plot),
         fallbackPlot: FarmPlotPosition?,
@@ -34,7 +35,7 @@ object FarmSpecialIncidentPlanner {
         nightPatrolMinSpacing: Double,
         marketCrops: Int,
     ): FarmSpecialIncidentPlan? {
-        require(channelBlockages in 1..16)
+        require(channelBlockages in 1..128)
         require(nightCropPlacements in 1..128)
         require(nightCropTarget in 1..nightCropPlacements)
         require(nightCropMinSpacing.isFinite() && nightCropMinSpacing in 0.0..64.0)
@@ -76,7 +77,7 @@ object FarmSpecialIncidentPlanner {
                 val source = irrigationSource ?: return null
                 val route = planChannelRoute(
                     source,
-                    matureCrops.map(FarmMatureCrop::plot).ifEmpty { nightPatrolPlots.toList() },
+                    channelPlots.ifEmpty { matureCrops.map(FarmMatureCrop::plot) },
                     channelBlockages,
                     sequence,
                 )
@@ -88,6 +89,8 @@ object FarmSpecialIncidentPlanner {
                         },
                         plots = route,
                         routeName = FARM_CHANNEL_ROUTE_NAME,
+                        solution = setOf(0),
+                        active = setOf(0),
                     ),
                     route.size,
                 )
@@ -174,7 +177,7 @@ object FarmSpecialIncidentPlanner {
         requestedSegments: Int,
         sequence: Long,
     ): List<FarmPlotPosition> {
-        require(requestedSegments in 1..16)
+        require(requestedSegments in 1..128)
         val plots = surfacePlots.distinct().filter { it.world == source.world }
         if (plots.isEmpty()) return emptyList()
         val start = plots.minWithOrNull(

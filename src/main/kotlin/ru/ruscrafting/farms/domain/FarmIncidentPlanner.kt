@@ -50,7 +50,7 @@ object FarmIncidentPlanner {
         minimumSpacing: Double,
         selectionIndex: Long,
     ): List<FarmPlotPosition> {
-        require(count in 1..16) { "Farm incident center count must be in 1..16" }
+        require(count in 1..64) { "Farm incident center count must be in 1..64" }
         return WorksitePlacementPlanner.select(
             candidates,
             WorksitePlacementRequest(count, selectionIndex),

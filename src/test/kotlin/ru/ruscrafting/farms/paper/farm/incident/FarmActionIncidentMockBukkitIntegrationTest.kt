@@ -36,6 +36,7 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             )
             val defender = fixture.paper.addPlayer("BoarGuard")
             controller.initialize(runtime, FarmIncidentType.BOAR_BREAKOUT) shouldBe FarmIncidentType.BOAR_BREAKOUT
+            (requireNotNull(runtime.state.specialIncident).plots.size > 16) shouldBe true
             controller.ensure(runtime)
             val boar = fixture.world.entities.filterIsInstance<Hoglin>().first(controller::owns)
             defender.teleport(boar.location.clone().add(8.0, 0.0, 0.0))
@@ -49,6 +50,13 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             runtime.state.specialDamagedCrops.forEach { damage ->
                 fixture.world.getBlockAt(damage.position.x, damage.position.y, damage.position.z).type shouldBe Material.DIRT
             }
+
+            defender.teleport(fixture.world.getBlockAt(63, 100, 63).location.toCenterLocation())
+            beds.take(140).forEach { plot ->
+                boar.teleport(fixture.world.getBlockAt(plot.x, plot.y + 1, plot.z).location.toCenterLocation())
+                controller.update(runtime)
+            }
+            (runtime.state.specialDamagedCrops.size > 96) shouldBe true
         } }
     }
 

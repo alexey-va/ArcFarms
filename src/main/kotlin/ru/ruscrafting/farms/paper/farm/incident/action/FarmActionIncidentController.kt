@@ -32,7 +32,6 @@ import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.FarmBoarShieldPolicy
 import ru.ruscrafting.farms.domain.FarmCropDamage
-import ru.ruscrafting.farms.domain.FarmDamageBudget
 import ru.ruscrafting.farms.domain.FarmIncidentPlanner
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
@@ -381,7 +380,7 @@ internal class FarmActionIncidentController(
             val crop = soil.getRelative(org.bukkit.block.BlockFace.UP)
             runtime.region.contains(soil.location) && crop.type.name in runtime.settings.crops && !crop.type.isAir
         }
-        val wanted = (runtime.settings.boarBreakout.activeBoars * 4).coerceIn(4, 16).coerceAtMost(candidates.size)
+        val wanted = (runtime.settings.boarBreakout.activeBoars * 16).coerceIn(16, 64).coerceAtMost(candidates.size)
         if (wanted == 0) return PlanAttempt(null, 0, "no_eligible_crops")
         val selected = FarmIncidentPlanner.centralDispersedCenters(
             candidates,
@@ -507,7 +506,7 @@ internal class FarmActionIncidentController(
                 boar.persistentDataContainer.set(targetKey, PersistentDataType.INTEGER, next)
             } else {
                 boar.target = null
-                mobNavigation.moveTo(boar, targetLocation, 1.0)
+                mobNavigation.moveTo(boar, targetLocation, 1.25)
             }
             cropsChanged = trampleAround(runtime, boar, fieldBeds) || cropsChanged
             emitBoarChargeParticles(runtime, boar)
@@ -565,15 +564,7 @@ internal class FarmActionIncidentController(
 
     private fun damageCrop(runtime: FarmRuntime, position: FarmPlotPosition): Boolean {
         if (runtime.state.specialDamagedCrops.any { it.position == position }) return false
-        val total = beds.discover(runtime).size
-        val remaining = FarmDamageBudget.remaining(
-            total,
-            runtime.state.specialDamagedCrops.size,
-            runtime.settings.damageSafety.maximumPercent,
-            runtime.settings.damageSafety.minimumRemaining,
-            runtime.settings.boarBreakout.cropDamageMaximum,
-        )
-        if (remaining <= 0) return false
+        if (runtime.state.specialDamagedCrops.size >= runtime.settings.boarBreakout.cropDamageMaximum) return false
         val soil = position.block() ?: return false
         val crop = soil.getRelative(org.bukkit.block.BlockFace.UP)
         if (crop.type.isAir || crop.type.name !in runtime.settings.crops) return false

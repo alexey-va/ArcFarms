@@ -56,18 +56,17 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             specialIncident = FarmSpecialIncidentState(
                 points = (0 until 4).map { FarmPointPosition("world", it + 0.5, 65.0, 0.5) },
                 routeName = FARM_CHANNEL_ROUTE_NAME,
+                solution = setOf(0),
+                active = setOf(0),
             ),
             incidentRequired = 4,
+            incidentProgress = 1,
         )
 
         state = FarmSpecialIncidentEngine.digChannelSegment(state, 2, player).state
-        state.incidentProgress shouldBe 1
-        FarmSpecialIncidentEngine.channelFlowProgress(state.specialIncident!!.active, 4) shouldBe 0
-        FarmSpecialIncidentEngine.advanceChannelFlow(state).accepted shouldBe false
-        state = FarmSpecialIncidentEngine.digChannelSegment(state, 0, player).state
         state.incidentProgress shouldBe 2
-        state = FarmSpecialIncidentEngine.advanceChannelFlow(state).state
         FarmSpecialIncidentEngine.channelFlowProgress(state.specialIncident!!.active, 4) shouldBe 1
+        FarmSpecialIncidentEngine.advanceChannelFlow(state).accepted shouldBe false
         val duplicate = FarmSpecialIncidentEngine.digChannelSegment(state, 2, player)
         duplicate.accepted shouldBe false
         state = FarmSpecialIncidentEngine.digChannelSegment(state, 1, player).state
@@ -126,8 +125,36 @@ class FarmSpecialIncidentEngineTest : FunSpec({
         plan.state.points.zipWithNext().all { (left, right) ->
             kotlin.math.abs(left.x - right.x) + kotlin.math.abs(left.z - right.z) == 1.0
         } shouldBe true
-        plan.state.solution shouldBe emptySet()
-        plan.state.active shouldBe emptySet()
+        plan.state.solution shouldBe setOf(0)
+        plan.state.active shouldBe setOf(0)
+    }
+
+    test("channel planner supports a fifty block connected trench") {
+        val plots = (0 until 64).map { x -> FarmPlotPosition("world", x, 64, 0) }
+        val crops = plots.take(7).map { FarmMatureCrop(it, "WHEAT") }
+
+        val plan = FarmSpecialIncidentPlanner.plan(
+            type = FarmIncidentType.CHANNELS,
+            sequence = 9,
+            matureCrops = crops,
+            channelPlots = plots,
+            nightPatrolPlots = plots,
+            fallbackPlot = crops.first().plot,
+            irrigationSource = FarmPointPosition("world", -1.5, 65.0, 0.5),
+            channelBlockages = 50,
+            nightCropPlacements = 8,
+            nightCropTarget = 4,
+            nightCropMinSpacing = 4.0,
+            nightPatrols = 0,
+            nightPatrolMinSpacing = 4.0,
+            marketCrops = 32,
+        ) ?: error("Channel plan is missing")
+
+        plan.required shouldBe 50
+        plan.state.points.size shouldBe 50
+        plan.state.points.zipWithNext().all { (left, right) ->
+            kotlin.math.abs(left.x - right.x) + kotlin.math.abs(left.z - right.z) == 1.0
+        } shouldBe true
     }
 
     test("channel segments are placed on indexed surface beds instead of interpolating underground y") {

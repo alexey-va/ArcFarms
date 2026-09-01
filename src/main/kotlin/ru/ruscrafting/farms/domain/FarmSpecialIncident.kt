@@ -47,7 +47,7 @@ object FarmSpecialIncidentEngine {
         ) return EngineResult(current, false)
         return EngineResult(
             current.copy(
-                incidentProgress = 0,
+                incidentProgress = if (type == FarmIncidentType.CHANNELS) state.solution.size else 0,
                 incidentRequired = required,
                 specialIncident = state,
             ),
@@ -206,7 +206,7 @@ object FarmSpecialIncidentEngine {
     }
 
     fun channelFlowProgress(dug: Set<Int>, segmentCount: Int): Int {
-        require(segmentCount in 1..16) { "Farm channel segment count is invalid" }
+        require(segmentCount in 1..128) { "Farm channel segment count is invalid" }
         require(dug.all { it in 0 until segmentCount }) {
             "Farm channel state references an unknown segment"
         }

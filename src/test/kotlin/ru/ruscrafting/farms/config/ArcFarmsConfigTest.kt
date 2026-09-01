@@ -542,9 +542,10 @@ class ArcFarmsConfigTest : FunSpec({
                 mine.loadingDeliveryRadius == 2.0
         } shouldBe true
         settings.farms.single().specialIncidents.channelAutomaticEnabled shouldBe false
-        settings.farms.single().specialIncidents.channelSegmentCount shouldBe 10
+        settings.farms.single().specialIncidents.channelSegmentCount shouldBe 50
         settings.farms.single().boarBreakout.requiredDeflections shouldBe 8
         settings.farms.single().boarBreakout.activeBoars shouldBe 3
+        settings.farms.single().boarBreakout.cropDamageMaximum shouldBe 4_096
         settings.farms.single().boarBreakout.shieldMaterial shouldBe "SHIELD"
         settings.farms.single().rivalRaid.requiredKills shouldBe 32
         settings.farms.single().rivalRaid.workerEntity shouldBe "HUSK"

@@ -365,7 +365,7 @@ data class FarmBoarBreakoutSettings(
     val trampleRadius: Double = 1.35,
     val trampleCropsPerUpdate: Int = 2,
     val trampleParticleCount: Int = 8,
-    val cropDamageMaximum: Int = 96,
+    val cropDamageMaximum: Int = 4_096,
     val shieldMaterial: String = "SHIELD",
 ) {
     init {
@@ -1705,11 +1705,11 @@ class ArcFarmsConfig private constructor(
                         "Farm order ${order.id} must define at least incident-count.max distinct incident types"
                     }
                 }
-                val legacyChannelSegmentCount = section.stringOrNull("special-incidents.channels.blockages")?.toInt() ?: 10
+                val legacyChannelSegmentCount = section.stringOrNull("special-incidents.channels.blockages")?.toInt() ?: 50
                 val specialIncidents = FarmSpecialIncidentSettings(
                     channelAutomaticEnabled = section.boolean("special-incidents.channels.automatic-enabled", false),
                     channelSegmentCount = section.int("special-incidents.channels.segments", legacyChannelSegmentCount)
-                        .checked("special-incidents.channels.segments", 4, 16),
+                        .checked("special-incidents.channels.segments", 4, 128),
                     channelFlowIntervalTicks = section.int("special-incidents.channels.flow-interval-ticks", 6)
                         .checked("special-incidents.channels.flow-interval-ticks", 1, 40),
                     channelCompletionDelayTicks = section.int("special-incidents.channels.completion-delay-ticks", 40)
@@ -2102,7 +2102,7 @@ class ArcFarmsConfig private constructor(
                         trampleParticleCount = section.int(
                             "special-incidents.boar-breakout.trample-particle-count", 8,
                         ).checked("special-incidents.boar-breakout.trample-particle-count", 0, 32),
-                        cropDamageMaximum = section.int("special-incidents.boar-breakout.crop-damage-maximum", 96)
+                        cropDamageMaximum = section.int("special-incidents.boar-breakout.crop-damage-maximum", 4_096)
                             .checked("special-incidents.boar-breakout.crop-damage-maximum", 0, 4_096),
                         shieldMaterial = materialName(
                             section.string("special-incidents.boar-breakout.shield-material", "SHIELD"),

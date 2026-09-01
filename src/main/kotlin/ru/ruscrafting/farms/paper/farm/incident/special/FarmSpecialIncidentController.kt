@@ -134,6 +134,10 @@ internal class FarmSpecialIncidentController(
             if (age.age != age.maximumAge || crop.type.name !in runtime.settings.crops) return@mapNotNull null
             FarmMatureCrop(plot, crop.type.name)
         }
+        val channelPlots = incidentBeds.filter { plot ->
+            val soil = plot.block() ?: return@filter false
+            soil.getRelative(org.bukkit.block.BlockFace.UP).type.name in runtime.settings.crops
+        }
         val specialSettings = runtime.settings.specialIncidents
         val indexedBedCount = registry.beds(runtime.settings.id).size
         val requestedPatrols = specialSettings.nightPatrolCount(indexedBedCount)
@@ -164,6 +168,7 @@ internal class FarmSpecialIncidentController(
                 type = candidateType,
                 sequence = runtime.state.placementSequence,
                 matureCrops = mature,
+                channelPlots = channelPlots,
                 giantCandidates = giantCandidates,
                 nightPatrolPlots = incidentBeds,
                 fallbackPlot = areaCenter(runtime.state.preparationPatch),
@@ -330,7 +335,7 @@ internal class FarmSpecialIncidentController(
         giantCrop.owns(block, runtime.settings.id, runtime.state.sequence)
 
     fun interactScene(player: Player, entity: Entity) {
-        // Legacy blockage displays are inert. The drainage-v2 objective is completed only by digging its soil blocks.
+        // Legacy blockage displays are inert. The drainage-v3 objective is completed only by digging its soil blocks.
         if (scene.metadata(entity) != null) audience.sendActionBar(player, MessageKey.FARM_CHANNELS_TOOL)
     }
 
@@ -743,12 +748,12 @@ internal class FarmSpecialIncidentController(
         ) return special
         val normalized = special.copy(
             routeName = FARM_CHANNEL_ROUTE_NAME,
-            solution = emptySet(),
-            active = emptySet(),
+            solution = setOf(0),
+            active = setOf(0),
         )
         runtime.state = runtime.state.copy(
             specialIncident = normalized,
-            incidentProgress = 0,
+            incidentProgress = 1,
             incidentRequired = special.points.size,
         )
         debug.event(

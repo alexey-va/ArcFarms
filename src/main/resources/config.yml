@@ -316,7 +316,7 @@ farm-zones:
       channels:
         # Disabled in automatic orders while the physical trench flow is tuned; admin stage remains available.
         automatic-enabled: false
-        segments: 10
+        segments: 50
         flow-interval-ticks: 6
         completion-delay-ticks: 40
       boar-breakout:
@@ -330,7 +330,7 @@ farm-zones:
         trample-radius: 1.35
         trample-crops-per-update: 2
         trample-particle-count: 8
-        crop-damage-maximum: 96
+        crop-damage-maximum: 4096
         shield-material: SHIELD
       rival-raid:
         required-kills: 32
@@ -518,7 +518,7 @@ farm-zones:
     scarecrow-carried-forward-offset: 0.7
     crop-effects:
       harvest-burst: {block-particle-count: 14, dust-particle-count: 7, composter-particle-count: 3, poof-particle-count: 5}
-    # Incidents may damage crops temporarily, but never consume the entire indexed field.
+    # Routine incidents preserve a field reserve; boar breakout uses its own event cap below.
     damage-safety: {maximum-percent: 18, minimum-remaining: 128, birds-maximum: 96, pests-maximum: 128, disease-maximum: 96}
     supplies:
       tool: {x: 212.5, y: 49.0, z: 448.5}

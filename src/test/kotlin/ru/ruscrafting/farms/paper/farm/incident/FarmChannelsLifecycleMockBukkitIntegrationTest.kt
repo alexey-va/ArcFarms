@@ -18,7 +18,7 @@ import kotlin.math.abs
 class FarmChannelsLifecycleMockBukkitIntegrationTest : FunSpec({
     test("a marked connected trench can be dug in any order and fills with real water before completion") {
         requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
-            val beds = (10 until 22).map { x -> FarmPlotPosition(fixture.world.name, x, 64, 10) }
+            val beds = (10 until 62).map { x -> FarmPlotPosition(fixture.world.name, x, 64, 10) }
             beds.forEach { plot ->
                 val soil = fixture.world.getBlockAt(plot.x, plot.y, plot.z)
                 soil.type = Material.FARMLAND
@@ -52,6 +52,10 @@ class FarmChannelsLifecycleMockBukkitIntegrationTest : FunSpec({
                 abs(left.x - right.x) + abs(left.z - right.z) == 1.0
             } shouldBe true
             worker.inventory.itemInMainHand.type shouldBe Material.IRON_SHOVEL
+            val source = planned.points.first()
+            fixture.world.getBlockAt(source.x.toInt(), source.y.toInt() - 1, source.z.toInt()).type shouldBe Material.WATER
+            planned.solution shouldBe setOf(0)
+            planned.active shouldBe setOf(0)
 
             fun dig(index: Int) {
                 val point = requireNotNull(runtime.state.specialIncident).points[index]
@@ -62,10 +66,9 @@ class FarmChannelsLifecycleMockBukkitIntegrationTest : FunSpec({
 
             dig(2)
             fixture.runDelayedTasks() shouldBe emptyList()
-            dig(0)
-            fixture.runDelayedTasks() shouldBe listOf(fixture.zone.specialIncidents.channelFlowIntervalTicks.toLong())
-            requireNotNull(runtime.state.specialIncident).active shouldBe setOf(0)
             dig(1)
+            fixture.runDelayedTasks() shouldBe listOf(fixture.zone.specialIncidents.channelFlowIntervalTicks.toLong())
+            requireNotNull(runtime.state.specialIncident).active shouldBe setOf(0, 1)
             (3 until planned.points.size).forEach(::dig)
 
             while (requireNotNull(runtime.state.specialIncident).active.size < planned.points.size) {

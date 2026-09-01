@@ -365,7 +365,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                     FarmIncidentType.GIANT_CROP -> require(special.points.size == 1 && special.crop != null) {
                         "Farm giant crop state is incomplete"
                     }
-                    FarmIncidentType.CHANNELS -> require(special.points.size in 3..16) {
+                    FarmIncidentType.CHANNELS -> require(special.points.size in 3..128) {
                         "Farm channel state is incomplete"
                     }
                     FarmIncidentType.NIGHT_SHIFT -> require(special.plots.isNotEmpty()) {
