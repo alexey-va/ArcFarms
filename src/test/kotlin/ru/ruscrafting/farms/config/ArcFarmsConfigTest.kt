@@ -1483,6 +1483,16 @@ class ArcFarmsConfigTest : FunSpec({
         ArcFarmsLocale.validateFiles(root, settings)
     }
 
+    test("isolated lab profile is stable under merge-forward") {
+        val root = resourceTree(opsRoot().resolve("scripts/lab/plugin-configs/ArcFarms/config.yml"))
+        val config = root.resolve("config.yml")
+        val reviewed = Files.readString(config)
+
+        ArcFarmsConfig.synchronize(root)
+
+        Files.readString(config) shouldBe reviewed
+    }
+
     test("production farm sized bounds remain valid while excessive cuboids fail closed") {
         CuboidBounds(109, -64, 363, 298, 139, 575).volume shouldBe 8_255_880L
         shouldThrow<IllegalArgumentException> { CuboidBounds(0, 0, 0, 399, 399, 399) }
