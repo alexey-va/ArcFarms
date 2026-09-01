@@ -2,7 +2,6 @@ package ru.ruscrafting.farms.paper.farm.incident
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldHaveSize
-import io.kotest.matchers.doubles.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.Material
@@ -12,6 +11,8 @@ import org.bukkit.entity.ArmorStand
 import org.bukkit.entity.Ghast
 import org.bukkit.entity.Hoglin
 import org.bukkit.entity.Mob
+import org.bukkit.entity.Snowball
+import org.bukkit.event.entity.ProjectileHitEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.inventory.EquipmentSlot
 import ru.ruscrafting.farms.domain.FarmIncidentType
@@ -60,41 +61,63 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
         } }
     }
 
-    test("raid riders sit ahead of the ghast while it circles torch-lit workers with the configured gun model") {
+    test("raid gives four riders smooth flight and two weapons while workers stay on outdoor beds") {
         requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
-            val beds = plantedLine(fixture, 10 until 34, 20)
+            val beds = plantedField(fixture, 31..53, 31..53)
             val runtime = fixture.runtime(actionState(FarmIncidentType.RIVAL_RAID, 82))
             val receiving = FarmPointPosition(fixture.world.name, 10.5, 65.0, 10.5)
             val rival = FarmPointPosition(fixture.world.name, 42.5, 65.0, 42.5)
             val controller = fixture.actions(runtime, beds, receiving, rival)
-            val gunner = fixture.paper.addPlayer("GhastGunner")
-            gunner.teleport(fixture.location(receiving))
+            val riders = (1..5).map { fixture.paper.addPlayer("GhastGunner$it") }
+            riders.forEach { it.teleport(fixture.location(receiving)) }
 
             controller.initialize(runtime, FarmIncidentType.RIVAL_RAID) shouldBe FarmIncidentType.RIVAL_RAID
             controller.ensure(runtime)
             val ghast = fixture.world.entities.filterIsInstance<Ghast>().single(controller::owns)
-            controller.interact(PlayerInteractEntityEvent(gunner, ghast, EquipmentSlot.HAND)) shouldBe true
+            riders.forEach { rider ->
+                controller.interact(PlayerInteractEntityEvent(rider, ghast, EquipmentSlot.HAND)) shouldBe true
+            }
 
-            repeat(180) {
+            repeat(20) {
                 controller.update(runtime)
+                controller.updateRaidMotion(runtime)
                 fixture.night.updatePlayerTimes()
             }
 
-            val horizontalRadius = sqrt(
-                (ghast.location.x - rival.x) * (ghast.location.x - rival.x) +
-                    (ghast.location.z - rival.z) * (ghast.location.z - rival.z),
-            )
-            horizontalRadius.shouldBeGreaterThan(fixture.zone.rivalRaid.orbitRadius - 1.0)
-            val seat = fixture.world.entities.filterIsInstance<ArmorStand>().single { it.passengers.contains(gunner) }
-            seat.location.distanceSquared(ghast.location).shouldBeGreaterThan(2.0)
-            fixture.world.entities.filterIsInstance<Mob>().filter { it !is Ghast && controller.owns(it) }
+            (ghast.velocity.length() > 0.0) shouldBe true
+            val occupiedSeats = fixture.world.entities.filterIsInstance<ArmorStand>().filter { it.passengers.isNotEmpty() }
+            occupiedSeats shouldHaveSize fixture.zone.rivalRaid.maximumRiders
+            val workers = fixture.world.entities.filterIsInstance<Mob>().filter { it !is Ghast && controller.owns(it) }
                 .also { it shouldHaveSize fixture.zone.rivalRaid.workerCount }
-                .forEach { it.equipment.itemInMainHand.type shouldBe Material.TORCH }
+                .onEach {
+                    it.equipment.itemInMainHand.type shouldBe Material.TORCH
+                    it.location.block.getRelative(BlockFace.DOWN).type shouldBe Material.FARMLAND
+                }
 
-            val gun = gunner.inventory.storageContents.filterNotNull().single { it.type == Material.CROSSBOW }
+            val gunner = riders.first()
+            val issued = gunner.inventory.storageContents.filterNotNull().filter { it.type == Material.PAPER }
+            issued shouldHaveSize 2
+            val gun = issued.single {
+                @Suppress("DEPRECATION")
+                it.itemMeta.customModelData == fixture.zone.rivalRaid.gunCustomModelData
+            }
             gun.itemMeta.displayName()?.decoration(TextDecoration.ITALIC) shouldBe TextDecoration.State.FALSE
             @Suppress("DEPRECATION")
             gun.itemMeta.customModelData shouldBe fixture.zone.rivalRaid.gunCustomModelData
+            val grenade = issued.single {
+                @Suppress("DEPRECATION")
+                it.itemMeta.customModelData == fixture.zone.rivalRaid.grenadeCustomModelData
+            }
+            grenade.itemMeta.displayName()?.decoration(TextDecoration.ITALIC) shouldBe TextDecoration.State.FALSE
+
+            gunner.inventory.setItemInMainHand(grenade)
+            controller.interact(PlayerInteractEntityEvent(gunner, workers.first(), EquipmentSlot.HAND)) shouldBe true
+            val projectile = fixture.world.entities.filterIsInstance<Snowball>().single()
+            workers.take(2).forEach { it.teleport(workers.first().location) }
+            projectile.teleport(workers.first().location)
+            controller.onProjectileHit(ProjectileHitEvent(projectile, workers.first())) shouldBe true
+            workers.take(2).all { it.health < fixture.zone.rivalRaid.workerHealth } shouldBe true
+            projectile.isValid shouldBe false
             runtime.state.incidentRequired shouldBe fixture.zone.rivalRaid.requiredKills
         } }
     }

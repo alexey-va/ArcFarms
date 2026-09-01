@@ -15,6 +15,12 @@ custom-items:
   arc:left_gray:
     material: BLUE_STAINED_GLASS_PANE
     model: assets/arc/models/gui/left_gray.json
+  gold_guns:gold_rpl20:
+    material: PAPER
+    model: assets/gold_guns/models/item/gold_rpl20.json
+  gold_guns:gold_m79:
+    material: PAPER
+    model: assets/gold_guns/models/item/gold_m79.json
 
 glyphs:
   - character: '💰'
@@ -25,7 +31,7 @@ glyphs:
 sources:
   preview:
     path: visual-preview-fragments.yml
-    include: [blank]
+    include: [blank, raid-loadout-title]
   farms:
     path: src/main/resources/lang/ru.yml
     prefix-key: prefix
@@ -45,6 +51,7 @@ sources:
       - scoreboard.phase.channels
       - scoreboard.hint.channels
       - scoreboard.hint-detail.channels
+      - farm.rival-raid.*
 
 placeholders:
   color: ''
@@ -95,7 +102,7 @@ placeholders:
 surfaces:
   fragments:
     - source: preview
-      include: [blank]
+      include: [blank, raid-loadout-title]
     - source: farms
       include: [menu.*, companies.*]
   chat:
@@ -107,6 +114,14 @@ surfaces:
       subtitle: gameplay:farm.channels-started-subtitle
       actionbar: gameplay:farm.channels-progress
   inventories:
+    - id: raid-loadout-review
+      title: preview:raid-loadout-title
+      rows: 1
+      filler: GRAY_STAINED_GLASS_PANE
+      items:
+        - {slot: 3, material: PAPER, itemsadder: 'gold_guns:gold_rpl20', name: gameplay:farm.rival-raid.gun}
+        - {slot: 5, material: PAPER, itemsadder: 'gold_guns:gold_m79', name: gameplay:farm.rival-raid.grenade}
+
     - id: work-shifts
       title: farms:menu.title
       rows: 3

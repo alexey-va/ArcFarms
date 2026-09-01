@@ -6,6 +6,10 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 
+data class FarmMotionVector(val x: Double, val y: Double, val z: Double) {
+    fun length(): Double = sqrt(x * x + y * y + z * z)
+}
+
 /** Pure shield-facing policy used by the boar breakout incident. */
 object FarmBoarShieldPolicy {
     fun canDeflect(
@@ -29,6 +33,42 @@ object FarmBoarShieldPolicy {
         val dot = (viewX * boarOffsetX + viewZ * boarOffsetZ) / (viewLength * offsetLength)
         return dot >= facingDot
     }
+
+    fun knockback(
+        boarX: Double,
+        boarZ: Double,
+        playerX: Double,
+        playerZ: Double,
+        fallbackX: Double,
+        fallbackZ: Double,
+        horizontal: Double,
+        vertical: Double,
+    ): FarmMotionVector {
+        require(horizontal.isFinite() && horizontal >= 0.0)
+        require(vertical.isFinite() && vertical >= 0.0)
+        var dx = playerX - boarX
+        var dz = playerZ - boarZ
+        var length = sqrt(dx * dx + dz * dz)
+        if (length <= 1.0e-6) {
+            dx = fallbackX
+            dz = fallbackZ
+            length = sqrt(dx * dx + dz * dz)
+        }
+        if (length <= 1.0e-6) return FarmMotionVector(0.0, vertical, 0.0)
+        return FarmMotionVector(dx / length * horizontal, vertical, dz / length * horizontal)
+    }
+}
+
+object FarmRaidSeatPolicy {
+    fun canBoard(currentRiders: Int, maximumRiders: Int, alreadyMounted: Boolean): Boolean {
+        require(currentRiders >= 0 && maximumRiders > 0)
+        return alreadyMounted || currentRiders < maximumRiders
+    }
+}
+
+object FarmRivalFieldPolicy {
+    fun isEligible(loaded: Boolean, outdoor: Boolean, farmland: Boolean, headroom: Boolean): Boolean =
+        loaded && outdoor && farmland && headroom
 }
 
 /** One-shot authorization for damage emitted by the raid gun's synchronous Paper damage call. */
@@ -82,5 +122,37 @@ object FarmRaidFlight {
         val periodTicks = periodSeconds * 20.0
         val advanced = angle + elapsedTicks / periodTicks * 2.0 * PI
         return ((advanced % (2.0 * PI)) + 2.0 * PI) % (2.0 * PI)
+    }
+
+    fun steer(
+        current: FarmPointPosition,
+        target: FarmPointPosition,
+        currentVelocity: FarmMotionVector,
+        maximumSpeed: Double,
+        steering: Double,
+    ): FarmMotionVector {
+        require(current.world == target.world) { "Raid flight cannot cross worlds" }
+        require(maximumSpeed.isFinite() && maximumSpeed > 0.0)
+        require(steering.isFinite() && steering in 0.0..1.0)
+        val dx = target.x - current.x
+        val dy = target.y - current.y
+        val dz = target.z - current.z
+        val distance = sqrt(dx * dx + dy * dy + dz * dz)
+        val desired = if (distance <= 1.0e-6) {
+            FarmMotionVector(0.0, 0.0, 0.0)
+        } else {
+            FarmMotionVector(dx / distance * maximumSpeed, dy / distance * maximumSpeed, dz / distance * maximumSpeed)
+        }
+        var next = FarmMotionVector(
+            currentVelocity.x + (desired.x - currentVelocity.x) * steering,
+            currentVelocity.y + (desired.y - currentVelocity.y) * steering,
+            currentVelocity.z + (desired.z - currentVelocity.z) * steering,
+        )
+        val length = next.length()
+        if (length > maximumSpeed) {
+            val scale = maximumSpeed / length
+            next = FarmMotionVector(next.x * scale, next.y * scale, next.z * scale)
+        }
+        return next
     }
 }

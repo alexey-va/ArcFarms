@@ -14,6 +14,7 @@ import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareType
+import ru.ruscrafting.farms.domain.FarmChannelOwnership
 import ru.ruscrafting.farms.domain.FarmFieldQuota
 import ru.ruscrafting.farms.domain.FarmPatchPlanner
 import ru.ruscrafting.farms.domain.FarmPhase
@@ -583,6 +584,7 @@ internal class FarmFieldController(
             specialDamageCache.source = specialDamageSource
         }
         val indexedBeds = registry.beds(zoneId)
+        val activeChannelPlots = FarmChannelOwnership.activePlots(runtime.state)
         maintenanceRecords.reset()
         val crop = runtime.state.preparationCrop?.let(MaterialRules::material)
         val incidentActive = runtime.state.phase == FarmPhase.INCIDENT
@@ -612,6 +614,10 @@ internal class FarmFieldController(
         fun maintainPosition(position: FarmPlotPosition) {
             val soil = position.block() ?: return
             val record = maintenanceRecords.record(position, soil)
+            if (position in activeChannelPlots) {
+                if (soil.type != Material.WATER) soil.setType(Material.WATER, false)
+                return
+            }
             // The mole journal owns both the crop and soil at a bed entrance.
             // Ordinary hydration/crop maintenance must not immediately close it.
             if (position in maintenanceMoleEntrances) return

@@ -487,6 +487,7 @@ class ArcFarmsService(
         periodicTaskSupervisor.runTimer(20L, 20L) { runGuarded("tick", ::tick) }
         periodicTaskSupervisor.runTimer(10L, 10L) { runGuarded("guidance_particles", ::emitGuidanceParticles) }
         periodicTaskSupervisor.runTimer(5L, 5L) { farm.module.updateAmbient() }
+        periodicTaskSupervisor.runTimer(1L, 1L) { farm.module.updateRaidMotion() }
         periodicTaskSupervisor.runTimer(1L, 1L) { farm.module.updatePlayerTimes() }
         periodicTaskSupervisor.runTimer(1L, 1L) { runGuarded("carried_displays") { worksiteEvents.updateVisuals(farm.module::updateCarriedDisplays) } }
         periodicTaskSupervisor.runTimer(

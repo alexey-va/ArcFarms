@@ -55,8 +55,12 @@ class ArcFarmsRuntimeValidatorTest : FunSpec({
             }.message shouldContain "boar-breakout.shield-material must be SHIELD"
 
             shouldThrow<IllegalArgumentException> {
-                validator().validateRuntime(candidateWith("gun-material: CROSSBOW", "gun-material: AIR"))
+                validator().validateRuntime(candidateWith("gun-material: PAPER", "gun-material: AIR"))
             }.message shouldContain "rival-raid.gun-material must be a non-air item"
+
+            shouldThrow<IllegalArgumentException> {
+                validator().validateRuntime(candidateWith("grenade-material: PAPER", "grenade-material: AIR"))
+            }.message shouldContain "rival-raid.grenade-material must be a non-air item"
         }
     }
 

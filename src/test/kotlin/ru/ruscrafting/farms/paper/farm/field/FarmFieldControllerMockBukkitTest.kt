@@ -15,10 +15,12 @@ import ru.ruscrafting.farms.config.FarmZoneSettings
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareTarget
 import ru.ruscrafting.farms.domain.FarmCareType
+import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmShiftState
+import ru.ruscrafting.farms.domain.FarmSpecialIncidentState
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.CuboidActivityRegion
 import ru.ruscrafting.farms.paper.FarmBlockLedger
@@ -220,6 +222,50 @@ class FarmFieldControllerMockBukkitTest : FunSpec({
 
         controller.maintain(runtime, activeWater = false)
         (soil.blockData as Farmland).moisture shouldBe (soil.blockData as Farmland).maximumMoisture
+    }
+
+    test("active channel ownership keeps every flowed segment as water") {
+        val position = FarmPlotPosition(world.name, 2, 64, 2)
+        val soil = world.getBlockAt(position.x, position.y, position.z).apply { type = Material.DIRT }
+        val zone = mockk<FarmZoneSettings>(relaxed = true) {
+            every { id } returns "farm"
+            every { crops } returns setOf("WHEAT")
+        }
+        val runtime = FarmRuntime(
+            settings = zone,
+            region = CuboidActivityRegion(world, "farm", CuboidBounds(0, 0, 0, 15, 128, 15)),
+            orders = emptyMap(),
+            orderList = emptyList(),
+            rules = mockk(relaxed = true),
+            state = FarmShiftState(
+                phase = FarmPhase.INCIDENT,
+                incidentType = FarmIncidentType.CHANNELS,
+                specialIncident = FarmSpecialIncidentState(
+                    points = listOf(FarmPointPosition(world.name, 2.5, 65.0, 2.5)),
+                    active = setOf(0),
+                ),
+            ),
+        )
+        val registry = mockk<FarmBlockRegistry>(relaxed = true) {
+            every { beds("farm") } returns setOf(position)
+        }
+        val controller = FarmFieldController(
+            settings = { mockk<ArcFarmsConfig>(relaxed = true) },
+            debug = ArcFarmsDebug({ false }) {},
+            access = mockk<WorksiteRuntimePort>(relaxed = true),
+            audience = mockk<WorksiteRuntimePort>(relaxed = true),
+            state = mockk<WorksiteRuntimePort>(relaxed = true),
+            tasks = mockk<WorksiteRuntimePort>(relaxed = true),
+            ledger = FarmBlockLedger(paper.createSimplePlugin("FarmChannelOwnershipTest")),
+            registry = registry,
+            points = FarmPointProvider { _, _ -> error("maintenance does not resolve operation points") },
+            transitions = FarmTransitionSink { _, _, _ -> },
+            persistAsync = { CompletableFuture.completedFuture(Unit) },
+        )
+
+        repeat(20) { controller.maintain(runtime, activeWater = false) }
+
+        soil.type shouldBe Material.WATER
     }
 
     test("ordinary maintenance does not close a journalled mole entrance in a crop bed") {

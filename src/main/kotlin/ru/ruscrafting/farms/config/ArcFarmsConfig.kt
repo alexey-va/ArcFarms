@@ -367,6 +367,8 @@ data class FarmBoarBreakoutSettings(
     val trampleParticleCount: Int = 8,
     val cropDamageMaximum: Int = 4_096,
     val shieldMaterial: String = "SHIELD",
+    val shieldKnockbackHorizontal: Double = 0.9,
+    val shieldKnockbackVertical: Double = 0.32,
 ) {
     init {
         require(requiredDeflections in 1..64) { "boar deflection quota must be in 1..64" }
@@ -380,6 +382,12 @@ data class FarmBoarBreakoutSettings(
         require(trampleCropsPerUpdate in 1..16) { "boar trample crop limit is invalid" }
         require(trampleParticleCount in 0..32) { "boar trample particle count is invalid" }
         require(cropDamageMaximum in 0..4_096) { "boar crop damage maximum is invalid" }
+        require(shieldKnockbackHorizontal.isFinite() && shieldKnockbackHorizontal in 0.0..2.0) {
+            "boar shield horizontal knockback is invalid"
+        }
+        require(shieldKnockbackVertical.isFinite() && shieldKnockbackVertical in 0.0..1.0) {
+            "boar shield vertical knockback is invalid"
+        }
     }
 }
 
@@ -391,22 +399,34 @@ data class FarmRivalRaidSettings(
     val workerRadius: Double = 12.0,
     val workerHeldItem: String = "TORCH",
     val workerLightLevel: Int = 15,
-    val flightHeight: Double = 12.0,
-    val flightSpeed: Double = 0.48,
-    val orbitRadius: Double = 16.0,
-    val orbitPeriodSeconds: Int = 45,
+    val workerPatrolIntervalTicks: Int = 40,
+    val workerPatrolSpeed: Double = 1.1,
+    val flightHeight: Double = 20.0,
+    val flightSpeed: Double = 0.24,
+    val flightSteering: Double = 0.22,
+    val orbitRadius: Double = 28.0,
+    val orbitPeriodSeconds: Int = 48,
+    val maximumRiders: Int = 4,
     val seatForwardOffset: Double = 3.25,
     val seatYOffset: Double = -1.25,
     val playerTime: Long = 18_000L,
     val timeTransitionSeconds: Int = 8,
     val maximumDistance: Double = 512.0,
-    val gunMaterial: String = "CROSSBOW",
-    val gunCustomModelData: Int = 2_100_103,
+    val gunMaterial: String = "PAPER",
+    val gunCustomModelData: Int = 2_100_006,
     val gunItemModel: String? = null,
     val gunDamage: Double = 6.0,
     val gunRange: Double = 56.0,
-    val gunCooldownTicks: Int = 3,
+    val gunCooldownTicks: Int = 2,
     val gunRaySize: Double = 0.55,
+    val grenadeMaterial: String = "PAPER",
+    val grenadeCustomModelData: Int = 2_100_009,
+    val grenadeItemModel: String? = null,
+    val grenadeDamage: Double = 8.0,
+    val grenadeRadius: Double = 5.0,
+    val grenadeCooldownTicks: Int = 30,
+    val grenadeVelocity: Double = 1.2,
+    val grenadeLifetimeTicks: Int = 60,
 ) {
     init {
         require(requiredKills in 1..128) { "rival raid kill quota must be in 1..128" }
@@ -414,10 +434,14 @@ data class FarmRivalRaidSettings(
         require(workerHealth.isFinite() && workerHealth in 1.0..100.0) { "rival worker health is invalid" }
         require(workerRadius.isFinite() && workerRadius in 2.0..48.0) { "rival worker radius is invalid" }
         require(workerLightLevel in 0..15) { "rival worker light level is invalid" }
+        require(workerPatrolIntervalTicks in 10..200) { "rival worker patrol interval is invalid" }
+        require(workerPatrolSpeed.isFinite() && workerPatrolSpeed in 0.5..2.0) { "rival worker patrol speed is invalid" }
         require(flightHeight.isFinite() && flightHeight in 3.0..48.0) { "rival raid flight height is invalid" }
         require(flightSpeed.isFinite() && flightSpeed in 0.1..2.0) { "rival raid flight speed is invalid" }
+        require(flightSteering.isFinite() && flightSteering in 0.01..1.0) { "rival raid flight steering is invalid" }
         require(orbitRadius.isFinite() && orbitRadius in 4.0..48.0) { "rival raid orbit radius is invalid" }
         require(orbitPeriodSeconds in 10..180) { "rival raid orbit period is invalid" }
+        require(maximumRiders in 1..8) { "rival raid rider limit is invalid" }
         require(seatForwardOffset.isFinite() && seatForwardOffset in 1.5..6.0) { "rival raid seat offset is invalid" }
         require(seatYOffset.isFinite() && seatYOffset in -4.0..2.0) { "rival raid seat height is invalid" }
         require(playerTime in 0..24_000L) { "rival raid player time is invalid" }
@@ -428,6 +452,12 @@ data class FarmRivalRaidSettings(
         require(gunRange.isFinite() && gunRange in 8.0..128.0) { "rival raid gun range is invalid" }
         require(gunCooldownTicks in 1..20) { "rival raid gun cooldown is invalid" }
         require(gunRaySize.isFinite() && gunRaySize in 0.1..2.0) { "rival raid gun ray size is invalid" }
+        require(grenadeCustomModelData >= 0) { "rival raid grenade custom model data is invalid" }
+        require(grenadeDamage.isFinite() && grenadeDamage in 0.5..100.0) { "rival raid grenade damage is invalid" }
+        require(grenadeRadius.isFinite() && grenadeRadius in 1.0..12.0) { "rival raid grenade radius is invalid" }
+        require(grenadeCooldownTicks in 1..200) { "rival raid grenade cooldown is invalid" }
+        require(grenadeVelocity.isFinite() && grenadeVelocity in 0.2..3.0) { "rival raid grenade velocity is invalid" }
+        require(grenadeLifetimeTicks in 20..200) { "rival raid grenade lifetime is invalid" }
     }
 }
 
@@ -2107,6 +2137,12 @@ class ArcFarmsConfig private constructor(
                         shieldMaterial = materialName(
                             section.string("special-incidents.boar-breakout.shield-material", "SHIELD"),
                         ),
+                        shieldKnockbackHorizontal = section.finiteDouble(
+                            "special-incidents.boar-breakout.shield-knockback-horizontal", 0.9, 0.0, 2.0,
+                        ),
+                        shieldKnockbackVertical = section.finiteDouble(
+                            "special-incidents.boar-breakout.shield-knockback-vertical", 0.32, 0.0, 1.0,
+                        ),
                     ),
                     rivalRaid = FarmRivalRaidSettings(
                         requiredKills = section.int("special-incidents.rival-raid.required-kills", 32)
@@ -2127,17 +2163,28 @@ class ArcFarmsConfig private constructor(
                         ),
                         workerLightLevel = section.int("special-incidents.rival-raid.worker-light-level", 15)
                             .checked("special-incidents.rival-raid.worker-light-level", 0, 15),
+                        workerPatrolIntervalTicks = section.int(
+                            "special-incidents.rival-raid.worker-patrol-interval-ticks", 40,
+                        ).checked("special-incidents.rival-raid.worker-patrol-interval-ticks", 10, 200),
+                        workerPatrolSpeed = section.finiteDouble(
+                            "special-incidents.rival-raid.worker-patrol-speed", 1.1, 0.5, 2.0,
+                        ),
                         flightHeight = section.finiteDouble(
-                            "special-incidents.rival-raid.flight-height", 12.0, 3.0, 48.0,
+                            "special-incidents.rival-raid.flight-height", 20.0, 3.0, 48.0,
                         ),
                         flightSpeed = section.finiteDouble(
-                            "special-incidents.rival-raid.flight-speed", 0.48, 0.1, 2.0,
+                            "special-incidents.rival-raid.flight-speed", 0.24, 0.1, 2.0,
+                        ),
+                        flightSteering = section.finiteDouble(
+                            "special-incidents.rival-raid.flight-steering", 0.22, 0.01, 1.0,
                         ),
                         orbitRadius = section.finiteDouble(
-                            "special-incidents.rival-raid.orbit-radius", 16.0, 4.0, 48.0,
+                            "special-incidents.rival-raid.orbit-radius", 28.0, 4.0, 48.0,
                         ),
-                        orbitPeriodSeconds = section.int("special-incidents.rival-raid.orbit-period-seconds", 45)
+                        orbitPeriodSeconds = section.int("special-incidents.rival-raid.orbit-period-seconds", 48)
                             .checked("special-incidents.rival-raid.orbit-period-seconds", 10, 180),
+                        maximumRiders = section.int("special-incidents.rival-raid.maximum-riders", 4)
+                            .checked("special-incidents.rival-raid.maximum-riders", 1, 8),
                         seatForwardOffset = section.finiteDouble(
                             "special-incidents.rival-raid.seat-forward-offset", 3.25, 1.5, 6.0,
                         ),
@@ -2156,10 +2203,10 @@ class ArcFarmsConfig private constructor(
                             "special-incidents.rival-raid.maximum-distance", 512.0, 32.0, 2_048.0,
                         ),
                         gunMaterial = materialName(
-                            section.string("special-incidents.rival-raid.gun-material", "CROSSBOW"),
+                            section.string("special-incidents.rival-raid.gun-material", "PAPER"),
                         ),
                         gunCustomModelData = section.int(
-                            "special-incidents.rival-raid.gun-custom-model-data", 2_100_103,
+                            "special-incidents.rival-raid.gun-custom-model-data", 2_100_006,
                         ).checked("special-incidents.rival-raid.gun-custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
                         gunItemModel = section.string("special-incidents.rival-raid.gun-item-model", "").trim()
                             .ifEmpty { null }?.also { model ->
@@ -2173,11 +2220,38 @@ class ArcFarmsConfig private constructor(
                         gunRange = section.finiteDouble(
                             "special-incidents.rival-raid.gun-range", 56.0, 8.0, 128.0,
                         ),
-                        gunCooldownTicks = section.int("special-incidents.rival-raid.gun-cooldown-ticks", 3)
+                        gunCooldownTicks = section.int("special-incidents.rival-raid.gun-cooldown-ticks", 2)
                             .checked("special-incidents.rival-raid.gun-cooldown-ticks", 1, 20),
                         gunRaySize = section.finiteDouble(
                             "special-incidents.rival-raid.gun-ray-size", 0.55, 0.1, 2.0,
                         ),
+                        grenadeMaterial = materialName(
+                            section.string("special-incidents.rival-raid.grenade-material", "PAPER"),
+                        ),
+                        grenadeCustomModelData = section.int(
+                            "special-incidents.rival-raid.grenade-custom-model-data", 2_100_009,
+                        ).checked("special-incidents.rival-raid.grenade-custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
+                        grenadeItemModel = section.string("special-incidents.rival-raid.grenade-item-model", "").trim()
+                            .ifEmpty { null }?.also { model ->
+                                require(model.matches(Regex("[a-z0-9._-]+:[a-z0-9/._-]+"))) {
+                                    "special-incidents.rival-raid.grenade-item-model must be a namespaced item model"
+                                }
+                            },
+                        grenadeDamage = section.finiteDouble(
+                            "special-incidents.rival-raid.grenade-damage", 8.0, 0.5, 100.0,
+                        ),
+                        grenadeRadius = section.finiteDouble(
+                            "special-incidents.rival-raid.grenade-radius", 5.0, 1.0, 12.0,
+                        ),
+                        grenadeCooldownTicks = section.int(
+                            "special-incidents.rival-raid.grenade-cooldown-ticks", 30,
+                        ).checked("special-incidents.rival-raid.grenade-cooldown-ticks", 1, 200),
+                        grenadeVelocity = section.finiteDouble(
+                            "special-incidents.rival-raid.grenade-velocity", 1.2, 0.2, 3.0,
+                        ),
+                        grenadeLifetimeTicks = section.int(
+                            "special-incidents.rival-raid.grenade-lifetime-ticks", 60,
+                        ).checked("special-incidents.rival-raid.grenade-lifetime-ticks", 20, 200),
                     ),
                     processing = processing,
                     barnFire = barnFire,

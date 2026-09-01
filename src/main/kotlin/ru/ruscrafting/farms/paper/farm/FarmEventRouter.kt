@@ -441,6 +441,7 @@ internal class FarmEventRouter(
     }
 
     fun onProjectileHit(event: ProjectileHitEvent) {
+        if (actionIncidents.onProjectileHit(event)) return
         birds.onProjectileHit(event, runtimes())
     }
 

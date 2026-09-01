@@ -549,7 +549,11 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().boarBreakout.shieldMaterial shouldBe "SHIELD"
         settings.farms.single().rivalRaid.requiredKills shouldBe 32
         settings.farms.single().rivalRaid.workerEntity shouldBe "HUSK"
-        settings.farms.single().rivalRaid.gunMaterial shouldBe "CROSSBOW"
+        settings.farms.single().rivalRaid.gunMaterial shouldBe "PAPER"
+        settings.farms.single().rivalRaid.gunCustomModelData shouldBe 2_100_006
+        settings.farms.single().rivalRaid.grenadeCustomModelData shouldBe 2_100_009
+        settings.farms.single().rivalRaid.maximumRiders shouldBe 4
+        settings.farms.single().rivalRaid.flightHeight shouldBe 20.0
         settings.farms.single().music.rivalRaidSound shouldBe "minecraft:music_disc.pigstep"
         settings.farms.single().specialIncidents.nightCropPlacementCount shouldBe 90
         settings.farms.single().specialIncidents.nightCropTargetCount shouldBe 24

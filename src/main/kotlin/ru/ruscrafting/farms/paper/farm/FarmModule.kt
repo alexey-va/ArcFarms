@@ -240,6 +240,12 @@ internal class FarmModule(
         }
     }
 
+    fun updateRaidMotion() = registry.snapshot().forEach { runtime ->
+        tasks.guarded("farm_raid_motion:${runtime.settings.id}") {
+            if (!isAdminEditing(runtime)) actionIncidents.updateRaidMotion(runtime)
+        }
+    }
+
     fun updatePlayerTimes() = tasks.guarded("farm_night_time") { special.updatePlayerTimes() }
 
     fun updateCarriedDisplays() {

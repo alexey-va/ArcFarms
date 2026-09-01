@@ -332,6 +332,8 @@ farm-zones:
         trample-particle-count: 8
         crop-damage-maximum: 4096
         shield-material: SHIELD
+        shield-knockback-horizontal: 0.9
+        shield-knockback-vertical: 0.32
       rival-raid:
         required-kills: 32
         worker-count: 12
@@ -340,23 +342,36 @@ farm-zones:
         worker-radius: 12.0
         worker-held-item: TORCH
         worker-light-level: 15
-        flight-height: 12.0
-        flight-speed: 0.48
-        orbit-radius: 16.0
-        orbit-period-seconds: 45
+        worker-patrol-interval-ticks: 40
+        worker-patrol-speed: 1.1
+        flight-height: 20.0
+        flight-speed: 0.24
+        flight-steering: 0.22
+        orbit-radius: 28.0
+        orbit-period-seconds: 48
+        maximum-riders: 4
         seat-forward-offset: 3.25
         seat-y-offset: -1.25
         player-time: 18000
         transition-seconds: 8
         maximum-distance: 512.0
-        # voxelspawns_megaflintlocks:vs_rifle_double from the live ItemsAdder pack.
-        gun-material: CROSSBOW
-        gun-custom-model-data: 2100103
+        # gold_guns:gold_rpl20 from the live ItemsAdder pack.
+        gun-material: PAPER
+        gun-custom-model-data: 2100006
         gun-item-model: ''
         gun-damage: 6.0
         gun-range: 56.0
-        gun-cooldown-ticks: 3
+        gun-cooldown-ticks: 2
         gun-ray-size: 0.55
+        # gold_guns:gold_m79 from the live ItemsAdder pack.
+        grenade-material: PAPER
+        grenade-custom-model-data: 2100009
+        grenade-item-model: ''
+        grenade-damage: 8.0
+        grenade-radius: 5.0
+        grenade-cooldown-ticks: 30
+        grenade-velocity: 1.2
+        grenade-lifetime-ticks: 60
       night-shift:
         placement-count: 90
         target-count: 24

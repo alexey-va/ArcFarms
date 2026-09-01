@@ -1,6 +1,19 @@
 package ru.ruscrafting.farms.domain
 
 import java.util.UUID
+import kotlin.math.floor
+
+object FarmChannelOwnership {
+    fun activePlots(state: FarmShiftState): Set<FarmPlotPosition> {
+        if (state.phase != FarmPhase.INCIDENT || state.incidentType != FarmIncidentType.CHANNELS) return emptySet()
+        val special = state.specialIncident ?: return emptySet()
+        return special.active.mapNotNullTo(linkedSetOf()) { index ->
+            special.points.getOrNull(index)?.let { point ->
+                FarmPlotPosition(point.world, floor(point.x).toInt(), floor(point.y).toInt() - 1, floor(point.z).toInt())
+            }
+        }
+    }
+}
 
 private val SPECIAL_INCIDENT_TYPES = setOf(
     FarmIncidentType.GIANT_CROP,
