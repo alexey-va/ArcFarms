@@ -1,7 +1,6 @@
 package ru.ruscrafting.farms.paper
 
 import net.kyori.adventure.text.Component
-import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.Material
 import org.bukkit.entity.Player
 import org.bukkit.event.inventory.ClickType
@@ -136,11 +135,9 @@ internal class FarmMarketMenu(
         onClick = { context -> decisions[context.event] = decision },
     )
 
-    private fun item(material: Material, name: Component, lore: List<Component>): ItemStack = ItemStack(material).apply {
-        editMeta { meta ->
-            meta.displayName(name.decoration(TextDecoration.ITALIC, false))
-            meta.lore(lore.map { it.decoration(TextDecoration.ITALIC, false) })
-        }
+    private fun item(material: Material, name: Component, lore: List<Component>): ItemStack {
+        val configured = menus.item(MENU, ORDER, name, lore)
+        return ItemStack.of(material, configured.amount).also { item -> item.itemMeta = configured.itemMeta }
     }
 
     private companion object {

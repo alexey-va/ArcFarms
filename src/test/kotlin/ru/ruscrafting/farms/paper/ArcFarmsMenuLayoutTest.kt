@@ -45,4 +45,14 @@ class ArcFarmsMenuLayoutTest : FunSpec({
 
         runCatching { ArcFarmsMenuPlatform.loadConfiguration(root) }.isFailure shouldBe true
     }
+
+    test("every configured menu item delegates name and lore composition to ARC Core") {
+        val root = Files.createTempDirectory("arcfarms-menu-text")
+        val input = requireNotNull(ArcFarmsMenuLayoutTest::class.java.classLoader.getResourceAsStream("config.yml"))
+        input.use { Files.copy(it, root.resolve("config.yml")) }
+
+        val configuration = ArcFarmsMenuPlatform.loadConfiguration(root)
+
+        configuration.templates.filterValues { it.text == null }.keys.sorted() shouldBe emptyList()
+    }
 })

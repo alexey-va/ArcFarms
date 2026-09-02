@@ -132,38 +132,57 @@ ui:
         regions:
           offers: {slots: [10, 12, 14, 16]}
     templates:
-      background: {material: GRAY_STAINED_GLASS_PANE, hide-tooltip: true}
-      back: {material: ARROW}
-      farm: {material: WHEAT}
-      lumber: {material: IRON_AXE}
-      mine: {material: MINECART}
-      workday: {material: WRITABLE_BOOK}
-      companies: {material: EMERALD}
-      stats: {material: BOOK}
-      market-order: {material: WHEAT}
-      market-accept: {material: EMERALD}
-      market-decline: {material: BARRIER}
-      enterprise-overview-farm: {material: WHEAT}
-      enterprise-overview-lumber: {material: IRON_AXE}
-      enterprise-overview-mine: {material: MINECART}
-      enterprise-farm-header: {material: WHEAT}
-      enterprise-report: {material: PAPER}
-      enterprise-workers: {material: WHEAT}
-      enterprise-policy: {material: WRITABLE_BOOK}
-      enterprise-license: {material: BOOK}
-      enterprise-shares: {material: EMERALD}
-      enterprise-market: {material: GOLD_INGOT}
-      enterprise-share-status: {material: HONEYCOMB}
-      enterprise-share-holding: {material: PAPER}
-      enterprise-share-account: {material: GOLD_INGOT}
-      enterprise-share-buy: {material: EMERALD}
-      enterprise-share-confirm: {material: LIME_DYE}
-      enterprise-share-withdraw: {material: SUNFLOWER}
-      perk-balance: {material: SUNFLOWER}
-      perk-harvest-area: {material: DIAMOND_HOE}
-      perk-speed: {material: RABBIT_FOOT}
-      perk-sustenance: {material: GOLDEN_CARROT}
-      perk-reward-boost: {material: EMERALD}
+      # ARC Core validates these safe localized component slots before publishing a menu generation.
+      background: {material: GRAY_STAINED_GLASS_PANE, hide-tooltip: true, name: '<name>',
+        lore: [{repeat: lore, text: '<line>'}]}
+      back: {material: ARROW, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}
+      farm: {material: WHEAT, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}
+      lumber: {material: IRON_AXE, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}
+      mine: {material: MINECART, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}
+      workday: {material: WRITABLE_BOOK, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}
+      companies: {material: EMERALD, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}
+      stats: {material: BOOK, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}
+      market-order: {material: WHEAT, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}
+      market-accept: {material: EMERALD, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}
+      market-decline: {material: BARRIER, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}
+      enterprise-overview-farm: {material: WHEAT, name: '<name>', lore: [{repeat: lore,
+            text: '<line>'}]}
+      enterprise-overview-lumber: {material: IRON_AXE, name: '<name>', lore: [{repeat: lore,
+            text: '<line>'}]}
+      enterprise-overview-mine: {material: MINECART, name: '<name>', lore: [{repeat: lore,
+            text: '<line>'}]}
+      enterprise-farm-header: {material: WHEAT, name: '<name>', lore: [{repeat: lore,
+            text: '<line>'}]}
+      enterprise-report: {material: PAPER, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}
+      enterprise-workers: {material: WHEAT, name: '<name>', lore: [{repeat: lore,
+            text: '<line>'}]}
+      enterprise-policy: {material: WRITABLE_BOOK, name: '<name>', lore: [{repeat: lore,
+            text: '<line>'}]}
+      enterprise-license: {material: BOOK, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}
+      enterprise-shares: {material: EMERALD, name: '<name>', lore: [{repeat: lore,
+            text: '<line>'}]}
+      enterprise-market: {material: GOLD_INGOT, name: '<name>', lore: [{repeat: lore,
+            text: '<line>'}]}
+      enterprise-share-status: {material: HONEYCOMB, name: '<name>', lore: [{repeat: lore,
+            text: '<line>'}]}
+      enterprise-share-holding: {material: PAPER, name: '<name>', lore: [{repeat: lore,
+            text: '<line>'}]}
+      enterprise-share-account: {material: GOLD_INGOT, name: '<name>', lore: [{repeat: lore,
+            text: '<line>'}]}
+      enterprise-share-buy: {material: EMERALD, name: '<name>', lore: [{repeat: lore,
+            text: '<line>'}]}
+      enterprise-share-confirm: {material: LIME_DYE, name: '<name>', lore: [{repeat: lore,
+            text: '<line>'}]}
+      enterprise-share-withdraw: {material: SUNFLOWER, name: '<name>', lore: [{repeat: lore,
+            text: '<line>'}]}
+      perk-balance: {material: SUNFLOWER, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}
+      perk-harvest-area: {material: DIAMOND_HOE, name: '<name>', lore: [{repeat: lore,
+            text: '<line>'}]}
+      perk-speed: {material: RABBIT_FOOT, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}
+      perk-sustenance: {material: GOLDEN_CARROT, name: '<name>', lore: [{repeat: lore,
+            text: '<line>'}]}
+      perk-reward-boost: {material: EMERALD, name: '<name>', lore: [{repeat: lore,
+            text: '<line>'}]}
 
 state:
   save-seconds: 10

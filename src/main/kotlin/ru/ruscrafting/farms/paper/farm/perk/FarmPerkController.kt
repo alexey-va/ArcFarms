@@ -1,9 +1,7 @@
 package ru.ruscrafting.farms.paper.farm.perk
 
 import net.kyori.adventure.text.Component
-import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.Bukkit
-import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.Sound
 import org.bukkit.attribute.Attribute
@@ -241,7 +239,7 @@ internal class FarmPerkController(
                 val session = menus.session(player) ?: return@runLater
                 if (session.menuId != MENU || session.inventory !== inventory) return@runLater
                 val liveRuntime = runtimes().firstOrNull { it.settings.id == runtime.settings.id } ?: return@runLater
-                session.refresh()
+                session.requestRefresh()
                 scheduleMenuRefresh(player, liveRuntime, inventory)
             }
         ) {
@@ -406,8 +404,8 @@ internal class FarmPerkController(
         lore: List<Component>,
     ) {
         val inventory = session.inventory
-        val material = inventory.getItem(slot)?.type ?: return
-        inventory.setItem(slot, named(material, name, lore))
+        if (inventory.getItem(slot) == null) return
+        inventory.setItem(slot, menus.item(template(type), name, lore))
         val feedbackId = ++feedbackSequence
         feedbackTasks[player.uniqueId] = feedbackId
         tasks.runLater(FEEDBACK_TICKS) {
@@ -415,7 +413,7 @@ internal class FarmPerkController(
             if (!player.isOnline) return@runLater
             val current = menus.session(player) ?: return@runLater
             if (current !== session || current.menuId != MENU || current.inventory !== inventory) return@runLater
-            current.refresh()
+            current.requestRefresh()
         }
     }
 
@@ -442,13 +440,6 @@ internal class FarmPerkController(
         FarmPerkType.SPEED -> "perk-speed"
         FarmPerkType.SUSTENANCE -> "perk-sustenance"
         FarmPerkType.REWARD_BOOST -> "perk-reward-boost"
-    }
-
-    private fun named(material: Material, name: Component, lore: List<Component> = emptyList()): ItemStack = ItemStack(material).apply {
-        editMeta { meta ->
-            meta.displayName(name.decoration(TextDecoration.ITALIC, false))
-            meta.lore(lore.map { it.decoration(TextDecoration.ITALIC, false) })
-        }
     }
 
     private sealed interface FarmPerkPurchaseUiResult {

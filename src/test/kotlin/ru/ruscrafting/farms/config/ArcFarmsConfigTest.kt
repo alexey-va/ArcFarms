@@ -561,10 +561,10 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().rivalRaid.gunMaterial shouldBe "PAPER"
         settings.farms.single().rivalRaid.gunCustomModelData shouldBe 2_100_006
         settings.farms.single().rivalRaid.grenadeCustomModelData shouldBe 2_100_009
-        settings.farms.single().rivalRaid.grenadeDamage shouldBe 16.0
-        settings.farms.single().rivalRaid.grenadeRadius shouldBe 7.0
-        settings.farms.single().rivalRaid.grenadeCooldownTicks shouldBe 12
-        settings.farms.single().rivalRaid.grenadePreviewBlocks shouldBe 72
+        settings.farms.single().rivalRaid.grenadeDamage shouldBe 48.0
+        settings.farms.single().rivalRaid.grenadeRadius shouldBe 8.0
+        settings.farms.single().rivalRaid.grenadeCooldownTicks shouldBe 8
+        settings.farms.single().rivalRaid.grenadePreviewBlocks shouldBe 96
         settings.farms.single().rivalRaid.grenadePreviewTicks shouldBe 80
         settings.farms.single().rivalRaid.grenadePreviewSoilMaterial shouldBe "COARSE_DIRT"
         settings.farms.single().rivalRaid.maximumRiders shouldBe 4
@@ -575,7 +575,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().rivalRaid.orbitRadius shouldBe 36.0
         settings.farms.single().rivalRaid.orbitLookAheadDegrees shouldBe 12.0
         settings.farms.single().rivalRaid.seatSpacing shouldBe 1.6
-        settings.farms.single().rivalRaid.seatYOffset shouldBe -2.6
+        settings.farms.single().rivalRaid.seatYOffset shouldBe -4.5
         settings.farms.single().rivalRaid.portalWidth shouldBe 3.6f
         settings.farms.single().rivalRaid.portalHeight shouldBe 3.2f
         settings.farms.single().rivalRaid.portalLabelHeight shouldBe 3.35

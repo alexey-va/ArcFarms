@@ -232,7 +232,8 @@ class FarmPerkControllerMockBukkitTest : FunSpec({
         val activeInventory = player.openInventory.topInventory
         activeInventory.getItem(10)?.itemMeta?.enchantmentGlintOverride shouldBe true
         now = activeUntil + 1L
-        server.scheduler.performTicks(2L)
+        // Expiry schedules one coalesced ARC Core refresh on the following tick.
+        server.scheduler.performTicks(3L)
 
         (player.openInventory.topInventory === activeInventory) shouldBe true
         val expired = requireNotNull(player.openInventory.topInventory.getItem(10))

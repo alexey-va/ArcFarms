@@ -25,6 +25,33 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
+    test("menu name composition reloads through the ARC Core text template") {
+        val paper = MockBukkitTestRuntime.open()
+        try {
+            paper.server.addSimpleWorld("sp11")
+            paper.server.addSimpleWorld("world")
+            val plugin = paper.server.pluginManager.loadPlugin(ArcFarmsPlugin::class.java) as ArcFarmsPlugin
+            preparePluginData(plugin.dataFolder.toPath())
+            paper.server.pluginManager.enablePlugin(plugin)
+            val operator = paper.addPlayer("MenuOperator")
+            operator.isOp = true
+
+            operator.performCommand("arcfarms") shouldBe true
+            operator.openInventory.topInventory.getItem(3).plainName() shouldBe "Harvest Shift"
+
+            updatePluginConfig(
+                plugin.dataFolder.toPath(),
+                "ui.menus.templates.farm.name" to "<name> <dark_gray>· Core API</dark_gray>",
+            )
+            operator.performCommand("arcfarms reload") shouldBe true
+
+            operator.openInventory.topInventory.getItem(3).plainName() shouldBe "Harvest Shift · Core API"
+            paper.server.pluginManager.disablePlugin(plugin)
+        } finally {
+            paper.close()
+        }
+    }
+
     test("complete plugin boot registers commands, remains entity-stable, and shuts down cleanly") {
         val paper = MockBukkitTestRuntime.open()
         try {

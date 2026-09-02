@@ -17,8 +17,10 @@ import ru.arc.paper.menu.PaperMenuConfiguration
 import ru.arc.paper.menu.PaperMenuConfigurationParser
 import ru.arc.paper.menu.PaperMenuContent
 import ru.arc.paper.menu.PaperMenuItemFactory
+import ru.arc.paper.menu.PaperMenuItemRenderContext
 import ru.arc.paper.menu.PaperMenuRuntime
 import ru.arc.paper.menu.PaperMenuSession
+import ru.arc.paper.menu.PaperMenuTextContract
 import java.nio.file.Path
 import java.util.UUID
 
@@ -35,13 +37,13 @@ class ArcFarmsMenuPlatform(
     fun prepareReload(): PaperMenuConfiguration = loadConfiguration(plugin.dataFolder.toPath())
 
     fun item(menu: MenuId, element: MenuElementId, name: Component, lore: List<Component>) =
-        items.create(current().template(menu, element), name, lore)
+        items.create(current().template(menu, element), text(name, lore))
 
     fun item(template: String, name: Component, lore: List<Component>) =
-        items.create(current().template(MenuTemplateId.of(template)), name, lore)
+        items.create(current().template(MenuTemplateId.of(template)), text(name, lore))
 
     fun background(menu: MenuId) = current().catalog.require(menu).backgroundTemplate?.let { template ->
-        items.create(current().template(template), Component.empty(), emptyList())
+        items.create(current().template(template), text(Component.empty(), emptyList()))
     }
 
     fun open(
@@ -81,6 +83,11 @@ class ArcFarmsMenuPlatform(
         runtime.close()
     }
 
+    private fun text(name: Component, lore: List<Component>) = PaperMenuItemRenderContext(
+        values = mapOf("name" to name),
+        repeats = mapOf("lore" to lore.map { line -> mapOf("line" to line) }),
+    )
+
     companion object {
         val MAIN = MenuId.of("main")
         val MARKET = MenuId.of("market")
@@ -110,12 +117,53 @@ class ArcFarmsMenuPlatform(
             FARM_PERKS to MenuContract(requiredElements = ids("balance"), requiredRegions = setOf(PERK_OFFERS)),
         )
 
+        private val TEXT_CONTRACT = PaperMenuTextContract(
+            values = setOf("name"),
+            repeats = mapOf("lore" to setOf("line")),
+        )
+
+        private val TEXT_CONTRACTS = setOf(
+            "background",
+            "back",
+            "farm",
+            "lumber",
+            "mine",
+            "workday",
+            "companies",
+            "stats",
+            "market-order",
+            "market-accept",
+            "market-decline",
+            "enterprise-overview-farm",
+            "enterprise-overview-lumber",
+            "enterprise-overview-mine",
+            "enterprise-farm-header",
+            "enterprise-report",
+            "enterprise-workers",
+            "enterprise-policy",
+            "enterprise-license",
+            "enterprise-shares",
+            "enterprise-market",
+            "enterprise-share-status",
+            "enterprise-share-holding",
+            "enterprise-share-account",
+            "enterprise-share-buy",
+            "enterprise-share-confirm",
+            "enterprise-share-withdraw",
+            "perk-balance",
+            "perk-harvest-area",
+            "perk-speed",
+            "perk-sustenance",
+            "perk-reward-boost",
+        ).associateWith { TEXT_CONTRACT }
+
         fun loadConfiguration(dataRoot: Path): PaperMenuConfiguration = PaperMenuConfigurationParser.require(
             Config(dataRoot, "config.yml"),
             "ui.menus.layouts",
             "ui.menus.templates",
             CONTRACTS,
             requiredTemplates = setOf("perk-harvest-area", "perk-speed", "perk-sustenance", "perk-reward-boost"),
+            textContracts = TEXT_CONTRACTS,
         )
     }
 }
