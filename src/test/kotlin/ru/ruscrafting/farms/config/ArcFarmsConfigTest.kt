@@ -565,6 +565,11 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().rivalRaid.flightHeight shouldBe 20.0
         settings.farms.single().rivalRaid.seatForwardOffset shouldBe 3.75
         settings.farms.single().rivalRaid.seatYOffset shouldBe 2.4
+        settings.farms.single().rivalRaid.portalWidth shouldBe 3.6f
+        settings.farms.single().rivalRaid.portalHeight shouldBe 3.2f
+        settings.farms.single().rivalRaid.portalLabelHeight shouldBe 3.35
+        settings.farms.single().rivalRaid.portalLabelScale shouldBe 1.8f
+        settings.farms.single().rivalRaid.portalActivationSeconds shouldBe 3
         settings.farms.single().music.rivalRaidSound shouldBe "minecraft:music_disc.pigstep"
         settings.farms.single().specialIncidents.nightCropPlacementCount shouldBe 90
         settings.farms.single().specialIncidents.nightCropTargetCount shouldBe 24
@@ -1078,6 +1083,20 @@ class ArcFarmsConfigTest : FunSpec({
         )
         shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(catchupRoot) }
             .message shouldContain "seeder-pig-catchup-distance"
+    }
+
+    test("rival raid portal geometry and countdown stay bounded") {
+        val root = resourceTree()
+        val configPath = root.resolve("config.yml")
+        configPath.writeText(
+            Files.readString(configPath).replace(
+                "          activation-seconds: 3\n        player-time: 18000",
+                "          activation-seconds: 16\n        player-time: 18000",
+            ),
+        )
+
+        shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(root) }
+            .message shouldContain "special-incidents.rival-raid.portal.activation-seconds"
     }
 
     test("locale parity includes dynamic order route and phase paths") {

@@ -214,6 +214,7 @@ internal class FarmIncidentScenarioFixture private constructor(
         beds: Set<ru.ruscrafting.farms.domain.FarmPlotPosition>,
         receiving: FarmPointPosition,
         rival: FarmPointPosition,
+        portal: FarmPointPosition = receiving,
     ): FarmActionIncidentController {
         lateinit var controller: FarmActionIncidentController
         val serviceItems = WorksiteServiceItemController(plugin, object : WorksiteServiceItemOwner {
@@ -228,6 +229,7 @@ internal class FarmIncidentScenarioFixture private constructor(
                 return when (kind) {
                     FarmPointKind.RECEIVING -> receiving
                     FarmPointKind.RIVAL_FARM -> rival
+                    FarmPointKind.FOOD_DELIVERY_PORTAL -> portal
                     else -> error("Unexpected action-incident point $kind")
                 }
             }
@@ -260,6 +262,7 @@ internal class FarmIncidentScenarioFixture private constructor(
             mobNavigation = MockBukkitFarmMobNavigation,
             seatMotion = MockBukkitFarmRaidSeatMotion,
             blockPreviews = raidBlockPreviews,
+            textDisplays = MockBukkitFarmTextDisplays,
             nightShift = night,
         )
         return controller

@@ -12,9 +12,11 @@ import org.bukkit.entity.ArmorStand
 import org.bukkit.entity.Entity
 import org.bukkit.entity.EntityType
 import org.bukkit.entity.Ghast
+import org.bukkit.entity.Interaction
 import org.bukkit.entity.Mob
 import org.bukkit.entity.Player
 import org.bukkit.entity.Snowball
+import org.bukkit.entity.TextDisplay
 import org.bukkit.event.Event
 import org.bukkit.event.block.Action
 import org.bukkit.event.entity.EntityDamageByEntityEvent
@@ -29,7 +31,9 @@ import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
+import org.bukkit.util.Transformation
 import org.bukkit.util.Vector
+import org.joml.Vector3f
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
@@ -64,6 +68,8 @@ import ru.ruscrafting.farms.paper.platform.FarmMobDespawnPolicy
 import ru.ruscrafting.farms.paper.platform.FarmMobNavigation
 import ru.ruscrafting.farms.paper.platform.FarmRaidSeatMotion
 import ru.ruscrafting.farms.paper.platform.FarmClientBlockPreview
+import ru.ruscrafting.farms.paper.platform.FarmTextDisplayRenderer
+import ru.ruscrafting.farms.paper.platform.FarmTextDisplayStyle
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
@@ -72,7 +78,10 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import java.util.UUID
+import kotlin.math.abs
 import kotlin.math.ceil
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.math.sqrt
 
 internal data class FarmActionIncidentPlanAttempt(
@@ -101,6 +110,7 @@ internal class FarmRivalRaidController(
     private val mobNavigation: FarmMobNavigation,
     private val seatMotion: FarmRaidSeatMotion,
     private val blockPreviews: FarmClientBlockPreview,
+    private val textDisplays: FarmTextDisplayRenderer,
     private val nightShift: FarmNightShiftController,
 ) {
     private data class RaidSession(
@@ -123,6 +133,15 @@ internal class FarmRivalRaidController(
         var launched: Boolean = false,
         var orbitAngle: Double = 0.0,
         var lastFlightTick: Long = 0,
+        var portalId: UUID? = null,
+        var portalLabelId: UUID? = null,
+    )
+
+    private data class PortalEntry(
+        val zoneId: String,
+        val sequence: Long,
+        val token: UUID,
+        var remainingSeconds: Int,
     )
 
     private val zoneKey = NamespacedKey(plugin, "farm_raid_zone")
@@ -132,6 +151,7 @@ internal class FarmRivalRaidController(
     private val ownerKey = NamespacedKey(plugin, "farm_raid_owner")
     private val spawnedAtKey = NamespacedKey(plugin, "farm_raid_spawned_at")
     private val raids = mutableMapOf<String, RaidSession>()
+    private val portalEntries = mutableMapOf<UUID, PortalEntry>()
     private val damageGate = FarmRaidDamageGate()
 
     fun plan(runtime: FarmRuntime): FarmActionIncidentPlanAttempt {
@@ -208,6 +228,7 @@ internal class FarmRivalRaidController(
         }
         session.workerIds.removeIf { Bukkit.getEntity(it)?.isValid != true }
         val raidGhast = ghast ?: return
+        ensurePortal(runtime, session)
         if (!session.launched) return
         val spawnBatch = minOf(
             runtime.settings.rivalRaid.workerSpawnBatchSize,
@@ -246,6 +267,9 @@ internal class FarmRivalRaidController(
         ensure(runtime)
         val session = raids[runtime.settings.id] ?: return
         val ghast = session.ghastId?.let(Bukkit::getEntity) as? Ghast ?: return
+        if (settings().particles && ghast.world.gameTime % PORTAL_RENDER_INTERVAL_TICKS == 0L) {
+            renderPortal(runtime, session)
+        }
         ghast.passengers.filterIsInstance<Player>().forEach { board(runtime, session, ghast, it) }
         val participants = session.participantIds.mapNotNull(Bukkit::getPlayer).filter(Player::isOnline)
         nightShift.syncAmbientTime(
@@ -321,6 +345,11 @@ internal class FarmRivalRaidController(
 
     fun interact(event: PlayerInteractEntityEvent): Boolean {
         val role = role(event.rightClicked) ?: return false
+        if (role == ROLE_PORTAL) {
+            event.isCancelled = true
+            enterPortal(event.player, event.player.location)
+            return true
+        }
         if (role == ROLE_WORKER) {
             val identity = serviceItems.identity(event.player.inventory.itemInMainHand) ?: return false
             if (identity.activity != ActivityKind.FARM || identity.itemId !in WEAPON_IDS) return false
@@ -362,6 +391,48 @@ internal class FarmRivalRaidController(
         if (isActive(identity) && event.player.uniqueId in session.participantIds) {
             fire(event.player, runtime, session, identity.itemId)
         }
+        return true
+    }
+
+    fun enterPortal(player: Player, destination: Location): Boolean {
+        val match = raids.entries.firstNotNullOfOrNull { (zoneId, session) ->
+            val runtime = runtimes().firstOrNull { it.settings.id == zoneId } ?: return@firstNotNullOfOrNull null
+            val portal = session.portalId?.let(Bukkit::getEntity) as? Interaction ?: return@firstNotNullOfOrNull null
+            if (active(runtime, session.sequence) && portal.isValid && contains(portal, destination)) {
+                Triple(runtime, session, portal)
+            } else null
+        }
+        if (match == null) {
+            cancelPortalEntry(player)
+            return false
+        }
+        val (runtime, session) = match
+        if (!access.hasAccess(player, runtime.settings.permission)) {
+            cancelPortalEntry(player)
+            audience.sendChat(player, MessageKey.ZONE_LOCKED)
+            return true
+        }
+        if (!FarmRaidSeatPolicy.canBoard(
+                session.participantIds.size,
+                runtime.settings.rivalRaid.maximumRiders,
+                player.uniqueId in session.participantIds,
+            )
+        ) {
+            cancelPortalEntry(player)
+            audience.sendActionBar(player, MessageKey.FARM_RIVAL_RAID_FULL)
+            return true
+        }
+        val existing = portalEntries[player.uniqueId]
+        if (existing?.zoneId == runtime.settings.id && existing.sequence == session.sequence) return true
+        cancelPortalEntry(player)
+        val entry = PortalEntry(
+            runtime.settings.id,
+            session.sequence,
+            UUID.randomUUID(),
+            runtime.settings.rivalRaid.portalActivationSeconds,
+        )
+        portalEntries[player.uniqueId] = entry
+        continuePortalEntry(player.uniqueId, entry.token)
         return true
     }
 
@@ -449,6 +520,7 @@ internal class FarmRivalRaidController(
         .mapNotNull(Bukkit::getPlayer).filter(Player::isOnline)
 
     fun onQuit(player: Player) {
+        portalEntries.remove(player.uniqueId)
         raids.forEach { (zoneId, session) ->
             if (player.uniqueId in session.participantIds) {
                 removeSeat(session, player.uniqueId)
@@ -483,6 +555,11 @@ internal class FarmRivalRaidController(
 
     fun clear(zoneId: String, reason: String) {
         val session = raids.remove(zoneId)
+        portalEntries.entries.removeIf { (playerId, entry) ->
+            if (entry.zoneId != zoneId) return@removeIf false
+            Bukkit.getPlayer(playerId)?.let(audience::clearScreenTitle)
+            true
+        }
         if (session != null) {
             session.participantIds.forEach { playerId ->
                 val player = Bukkit.getPlayer(playerId) ?: return@forEach
@@ -499,6 +576,8 @@ internal class FarmRivalRaidController(
         session?.riderSeatIds?.values.orEmpty().forEach { Bukkit.getEntity(it)?.remove() }
         session?.workerIds.orEmpty().forEach { Bukkit.getEntity(it)?.remove() }
         session?.projectileIds.orEmpty().forEach { Bukkit.getEntity(it)?.remove() }
+        session?.portalId?.let(Bukkit::getEntity)?.remove()
+        session?.portalLabelId?.let(Bukkit::getEntity)?.remove()
         session?.ghastId?.let(Bukkit::getEntity)?.remove()
         debug.event("farm_rival_raid_cleared", "zone" to zoneId, "reason" to reason)
     }
@@ -507,6 +586,139 @@ internal class FarmRivalRaidController(
         raids.keys.toSet().forEach { clear(it, reason) }
         Bukkit.getWorlds().asSequence().flatMap { it.entities.asSequence() }.filter(::owns).forEach(Entity::remove)
     }
+
+    private fun ensurePortal(runtime: FarmRuntime, session: RaidSession) {
+        val point = points.resolve(runtime, FarmPointKind.FOOD_DELIVERY_PORTAL)
+        val world = Bukkit.getWorld(point.world) ?: return
+        val config = runtime.settings.rivalRaid
+        val at = Location(world, point.x, point.y, point.z, point.yaw, point.pitch)
+        if (!world.isChunkLoaded(at.blockX shr 4, at.blockZ shr 4)) return
+        val portal = (session.portalId?.let(Bukkit::getEntity) as? Interaction)?.takeIf(Entity::isValid)
+            ?: world.spawn(at, Interaction::class.java).also { session.portalId = it.uniqueId }
+        portal.teleport(at)
+        portal.interactionWidth = config.portalWidth
+        portal.interactionHeight = config.portalHeight
+        portal.isResponsive = true
+        portal.isPersistent = false
+        mark(portal, runtime, ROLE_PORTAL, 0)
+
+        val labelAt = at.clone().add(0.0, config.portalLabelHeight, 0.0).apply {
+            yaw = 0f
+            pitch = 0f
+        }
+        val label = (session.portalLabelId?.let(Bukkit::getEntity) as? TextDisplay)?.takeIf(Entity::isValid)
+            ?: world.spawn(labelAt, TextDisplay::class.java).also { session.portalLabelId = it.uniqueId }
+        label.teleport(labelAt)
+        textDisplays.render(
+            label,
+            locale.render(
+                MessageKey.FARM_RIVAL_RAID_PORTAL_LABEL,
+                Bukkit.getConsoleSender(),
+                mapOf("seconds" to locale.text(config.portalActivationSeconds)),
+            ),
+            FarmTextDisplayStyle(viewRange = runtime.settings.displayViewRange),
+        )
+        label.transformation = Transformation(
+            Vector3f(),
+            label.transformation.leftRotation,
+            Vector3f(config.portalLabelScale, config.portalLabelScale, config.portalLabelScale),
+            label.transformation.rightRotation,
+        )
+        mark(label, runtime, ROLE_PORTAL_LABEL, 0)
+    }
+
+    private fun renderPortal(runtime: FarmRuntime, session: RaidSession) {
+        val portal = session.portalId?.let(Bukkit::getEntity) as? Interaction ?: return
+        val viewers = audience.players(runtime.region).filter { it.world === portal.world && !access.isAdminEditing(it) }
+        val center = portal.location.clone().add(0.0, 0.12, 0.0)
+        repeat(PORTAL_RING_PARTICLES) { index ->
+            val angle = Math.PI * 2.0 * index / PORTAL_RING_PARTICLES
+            val point = center.clone().add(cos(angle) * PORTAL_RING_RADIUS, 0.0, sin(angle) * PORTAL_RING_RADIUS)
+            viewers.forEach { viewer ->
+                viewer.spawnParticle(
+                    Particle.DUST,
+                    point,
+                    1,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    Particle.DustOptions(org.bukkit.Color.fromRGB(199, 120, 255), 1.15f),
+                )
+            }
+        }
+        repeat(PORTAL_COLUMN_LAYERS) { layer ->
+            viewers.forEach { viewer ->
+                viewer.spawnParticle(
+                    Particle.REVERSE_PORTAL,
+                    center.clone().add(0.0, 0.45 + layer * 0.42, 0.0),
+                    2,
+                    0.32,
+                    0.12,
+                    0.32,
+                    0.01,
+                )
+            }
+        }
+    }
+
+    private fun continuePortalEntry(playerId: UUID, token: UUID) {
+        val entry = portalEntries[playerId]?.takeIf { it.token == token } ?: return
+        val player = Bukkit.getPlayer(playerId)?.takeIf(Player::isOnline) ?: run {
+            portalEntries.remove(playerId, entry)
+            return
+        }
+        val runtime = runtimes().firstOrNull { it.settings.id == entry.zoneId }
+        val session = raids[entry.zoneId]?.takeIf { it.sequence == entry.sequence }
+        val portal = session?.portalId?.let(Bukkit::getEntity) as? Interaction
+        val ghast = session?.ghastId?.let(Bukkit::getEntity) as? Ghast
+        if (runtime == null || session == null || portal?.isValid != true || ghast?.isValid != true ||
+            !active(runtime, entry.sequence) || !contains(portal, player.location) ||
+            !access.hasAccess(player, runtime.settings.permission)
+        ) {
+            cancelPortalEntry(player, token)
+            return
+        }
+        if (!FarmRaidSeatPolicy.canBoard(
+                session.participantIds.size,
+                runtime.settings.rivalRaid.maximumRiders,
+                playerId in session.participantIds,
+            )
+        ) {
+            cancelPortalEntry(player, token)
+            audience.sendActionBar(player, MessageKey.FARM_RIVAL_RAID_FULL)
+            return
+        }
+        if (entry.remainingSeconds <= 0) {
+            portalEntries.remove(playerId, entry)
+            audience.clearScreenTitle(player)
+            board(runtime, session, ghast, player)
+            return
+        }
+        audience.showScreenTitle(
+            player,
+            MessageKey.FARM_RIVAL_RAID_PORTAL_COUNTDOWN,
+            mapOf("seconds" to locale.text(entry.remainingSeconds)),
+            "raid_portal",
+        )
+        entry.remainingSeconds--
+        if (!tasks.runLater(20L) { continuePortalEntry(playerId, token) }) {
+            cancelPortalEntry(player, token)
+        }
+    }
+
+    private fun cancelPortalEntry(player: Player, token: UUID? = null) {
+        val entry = portalEntries[player.uniqueId] ?: return
+        if (token != null && entry.token != token) return
+        if (portalEntries.remove(player.uniqueId, entry)) audience.clearScreenTitle(player)
+    }
+
+    private fun contains(portal: Interaction, location: Location): Boolean =
+        location.world === portal.world &&
+            abs(location.x - portal.location.x) <= portal.interactionWidth / 2.0 &&
+            location.y >= portal.location.y - 0.5 &&
+            location.y <= portal.location.y + portal.interactionHeight &&
+            abs(location.z - portal.location.z) <= portal.interactionWidth / 2.0
 
     private fun fieldPlots(runtime: FarmRuntime, rival: FarmPointPosition): List<FarmPlotPosition> {
         val world = Bukkit.getWorld(rival.world) ?: return emptyList()
@@ -948,12 +1160,18 @@ internal class FarmRivalRaidController(
         const val ROLE_SEAT = "raid_seat"
         const val ROLE_WORKER = "raid_worker"
         const val ROLE_GRENADE = "raid_grenade"
+        const val ROLE_PORTAL = "raid_portal"
+        const val ROLE_PORTAL_LABEL = "raid_portal_label"
         const val RAID_GUN_ID = "raid_gun"
         const val RAID_GRENADE_ID = "raid_grenade_launcher"
         const val ACTION_ROLE = "farm_action"
         const val OFFHAND_SLOT = 36
         const val PATROL_PLOT_STRIDE = 37
         const val RAID_SEAT_SPACING = 1.1
+        const val PORTAL_RENDER_INTERVAL_TICKS = 10L
+        const val PORTAL_RING_PARTICLES = 18
+        const val PORTAL_COLUMN_LAYERS = 5
+        const val PORTAL_RING_RADIUS = 1.15
         val WEAPON_IDS = setOf(RAID_GUN_ID, RAID_GRENADE_ID)
     }
 }

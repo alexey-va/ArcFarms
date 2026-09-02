@@ -352,6 +352,7 @@ internal class FarmComponentGraph(
         mobNavigation = mobNavigation,
         seatMotion = ru.ruscrafting.farms.paper.platform.PaperFarmRaidSeatMotion,
         blockPreviews = ru.ruscrafting.farms.paper.platform.PaperFarmClientBlockPreview,
+        textDisplays = textDisplays,
         nightShift = nightShift,
     )
     private val processing = FarmProcessingIncident(

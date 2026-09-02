@@ -279,6 +279,7 @@ internal class FarmEventRouter(
             event.from.blockY == destination.blockY && event.from.blockZ == destination.blockZ
         ) return false
         val player = event.player
+        if (!worldAdmin.isEditing(player) && actionIncidents.enterPortal(player, destination)) return true
         if (!worldAdmin.isEditing(player) && foodDelivery.enterPortal(player, destination, runtimes())) return true
         val from = farmAt(event.from)
         val to = farmAt(destination)

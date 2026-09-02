@@ -57,6 +57,7 @@ import ru.ruscrafting.farms.paper.platform.FarmMobDespawnPolicy
 import ru.ruscrafting.farms.paper.platform.FarmMobNavigation
 import ru.ruscrafting.farms.paper.platform.FarmRaidSeatMotion
 import ru.ruscrafting.farms.paper.platform.FarmClientBlockPreview
+import ru.ruscrafting.farms.paper.platform.FarmTextDisplayRenderer
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
@@ -93,6 +94,7 @@ internal class FarmActionIncidentController(
     private val mobNavigation: FarmMobNavigation,
     private val seatMotion: FarmRaidSeatMotion,
     private val blockPreviews: FarmClientBlockPreview,
+    private val textDisplays: FarmTextDisplayRenderer,
     private val nightShift: FarmNightShiftController,
 ) {
     private val zoneKey = NamespacedKey(plugin, "farm_action_zone")
@@ -119,6 +121,7 @@ internal class FarmActionIncidentController(
         mobNavigation,
         seatMotion,
         blockPreviews,
+        textDisplays,
         nightShift,
     )
 
@@ -258,6 +261,8 @@ internal class FarmActionIncidentController(
     fun participantRuntime(player: Player): FarmRuntime? = raid.participantRuntime(player)
 
     fun participants(runtime: FarmRuntime): List<Player> = raid.participants(runtime)
+
+    fun enterPortal(player: Player, destination: Location): Boolean = raid.enterPortal(player, destination)
 
     fun onQuit(player: Player) = raid.onQuit(player)
 

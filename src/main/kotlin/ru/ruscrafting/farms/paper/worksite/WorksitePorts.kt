@@ -47,6 +47,7 @@ internal interface WorksiteAudiencePort {
         scope: String = "player",
     )
     fun showScreenTitle(player: Player, title: Component, subtitle: Component)
+    fun clearScreenTitle(player: Player)
     fun broadcast(
         regions: Collection<ActivityRegion>,
         key: MessageKey,

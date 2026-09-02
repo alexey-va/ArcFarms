@@ -414,6 +414,11 @@ data class FarmRivalRaidSettings(
     val maximumRiders: Int = 4,
     val seatForwardOffset: Double = 3.75,
     val seatYOffset: Double = 2.4,
+    val portalWidth: Float = 3.6f,
+    val portalHeight: Float = 3.2f,
+    val portalLabelHeight: Double = 3.35,
+    val portalLabelScale: Float = 1.8f,
+    val portalActivationSeconds: Int = 3,
     val playerTime: Long = 18_000L,
     val timeTransitionSeconds: Int = 8,
     val maximumDistance: Double = 512.0,
@@ -455,6 +460,15 @@ data class FarmRivalRaidSettings(
         require(maximumRiders in 1..8) { "rival raid rider limit is invalid" }
         require(seatForwardOffset.isFinite() && seatForwardOffset in 1.5..6.0) { "rival raid seat offset is invalid" }
         require(seatYOffset.isFinite() && seatYOffset in -4.0..6.0) { "rival raid seat height is invalid" }
+        require(portalWidth.isFinite() && portalWidth in 1.0f..8.0f) { "rival raid portal width is invalid" }
+        require(portalHeight.isFinite() && portalHeight in 1.0f..8.0f) { "rival raid portal height is invalid" }
+        require(portalLabelHeight.isFinite() && portalLabelHeight in 1.0..8.0) {
+            "rival raid portal label height is invalid"
+        }
+        require(portalLabelScale.isFinite() && portalLabelScale in 0.5f..4.0f) {
+            "rival raid portal label scale is invalid"
+        }
+        require(portalActivationSeconds in 1..15) { "rival raid portal activation time is invalid" }
         require(playerTime in 0..24_000L) { "rival raid player time is invalid" }
         require(timeTransitionSeconds in 1..60) { "rival raid time transition is invalid" }
         require(maximumDistance.isFinite() && maximumDistance in 32.0..2_048.0) { "rival farm maximum distance is invalid" }
@@ -2214,6 +2228,21 @@ class ArcFarmsConfig private constructor(
                         seatYOffset = section.finiteDouble(
                             "special-incidents.rival-raid.seat-y-offset", 2.4, -4.0, 6.0,
                         ),
+                        portalWidth = section.finiteFloat(
+                            "special-incidents.rival-raid.portal.width", 3.6f, 1.0f, 8.0f,
+                        ),
+                        portalHeight = section.finiteFloat(
+                            "special-incidents.rival-raid.portal.height", 3.2f, 1.0f, 8.0f,
+                        ),
+                        portalLabelHeight = section.finiteDouble(
+                            "special-incidents.rival-raid.portal.label-height", 3.35, 1.0, 8.0,
+                        ),
+                        portalLabelScale = section.finiteFloat(
+                            "special-incidents.rival-raid.portal.label-scale", 1.8f, 0.5f, 4.0f,
+                        ),
+                        portalActivationSeconds = section.int(
+                            "special-incidents.rival-raid.portal.activation-seconds", 3,
+                        ).checked("special-incidents.rival-raid.portal.activation-seconds", 1, 15),
                         playerTime = section.string("special-incidents.rival-raid.player-time", "18000")
                             .toLongOrNull()?.also {
                                 require(it in 0..24_000) {

@@ -3,13 +3,16 @@ package ru.ruscrafting.farms.paper.farm.incident
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.mockk.verify
 import net.kyori.adventure.text.format.TextDecoration
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.Material
 import org.bukkit.block.BlockFace
 import org.bukkit.block.data.Ageable
 import org.bukkit.entity.ArmorStand
 import org.bukkit.entity.Ghast
 import org.bukkit.entity.Hoglin
+import org.bukkit.entity.Interaction
 import org.bukkit.entity.Mob
 import org.bukkit.entity.Snowball
 import org.bukkit.event.entity.ProjectileHitEvent
@@ -25,6 +28,7 @@ import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmShiftState
+import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.paper.fixtures.FarmIncidentScenarioFixture
 import ru.ruscrafting.farms.paper.fixtures.requiredMockBukkitScenario
 import kotlin.math.sqrt
@@ -192,7 +196,79 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             gunner.inventory.storageContents.filterNotNull().none { it.type == Material.PAPER } shouldBe true
         } }
     }
+
+    test("raid portal counts down by title, cancels on exit, and mounts only the current entry") {
+        requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
+            val beds = plantedField(fixture, 31..53, 31..53)
+            val runtime = fixture.runtime(actionState(FarmIncidentType.RIVAL_RAID, 83))
+            val receiving = FarmPointPosition(fixture.world.name, 10.5, 65.0, 10.5)
+            val rival = FarmPointPosition(fixture.world.name, 42.5, 65.0, 42.5)
+            val portalPoint = FarmPointPosition(fixture.world.name, 14.5, 65.0, 14.5)
+            val controller = fixture.actions(runtime, beds, receiving, rival, portalPoint)
+            val rider = fixture.paper.addPlayer("PortalGunner")
+            val cancelled = fixture.paper.addPlayer("PortalCancelled")
+
+            controller.initialize(runtime, FarmIncidentType.RIVAL_RAID) shouldBe FarmIncidentType.RIVAL_RAID
+            controller.ensure(runtime)
+            val portal = fixture.world.entities.filterIsInstance<Interaction>().single(controller::owns)
+            portal.location.x shouldBe portalPoint.x
+            portal.location.z shouldBe portalPoint.z
+
+            rider.teleport(portal.location)
+            controller.enterPortal(rider, rider.location) shouldBe true
+            verify(exactly = 1) {
+                fixture.port.showScreenTitle(
+                    rider,
+                    MessageKey.FARM_RIVAL_RAID_PORTAL_COUNTDOWN,
+                    match { values -> plain(values.getValue("seconds")) == "3" },
+                    "raid_portal",
+                )
+            }
+            fixture.runDelayedTasks() shouldBe listOf(20L)
+            verify(exactly = 1) {
+                fixture.port.showScreenTitle(
+                    rider,
+                    MessageKey.FARM_RIVAL_RAID_PORTAL_COUNTDOWN,
+                    match { values -> plain(values.getValue("seconds")) == "2" },
+                    "raid_portal",
+                )
+            }
+            fixture.runDelayedTasks() shouldBe listOf(20L)
+            verify(exactly = 1) {
+                fixture.port.showScreenTitle(
+                    rider,
+                    MessageKey.FARM_RIVAL_RAID_PORTAL_COUNTDOWN,
+                    match { values -> plain(values.getValue("seconds")) == "1" },
+                    "raid_portal",
+                )
+            }
+            fixture.runDelayedTasks() shouldBe listOf(20L)
+            (rider.vehicle is ArmorStand) shouldBe true
+            controller.participantRuntime(rider) shouldBe runtime
+
+            cancelled.teleport(portal.location)
+            controller.enterPortal(cancelled, cancelled.location) shouldBe true
+            val outside = portal.location.clone().add(portal.interactionWidth.toDouble(), 0.0, 0.0)
+            cancelled.teleport(outside)
+            controller.enterPortal(cancelled, outside) shouldBe false
+            verify(exactly = 1) { fixture.port.clearScreenTitle(cancelled) }
+
+            // Re-enter before the cancelled timer fires: its stale callback must
+            // not advance or cancel the new countdown for the same raid sequence.
+            cancelled.teleport(portal.location)
+            controller.enterPortal(cancelled, cancelled.location) shouldBe true
+            fixture.runDelayedTasks() shouldBe listOf(20L, 20L)
+            cancelled.vehicle shouldBe null
+            fixture.runDelayedTasks() shouldBe listOf(20L)
+            fixture.runDelayedTasks() shouldBe listOf(20L)
+            (cancelled.vehicle is ArmorStand) shouldBe true
+            controller.participantRuntime(cancelled) shouldBe runtime
+        } }
+    }
 })
+
+private fun plain(component: net.kyori.adventure.text.Component): String =
+    PlainTextComponentSerializer.plainText().serialize(component)
 
 private fun plantedLine(
     fixture: FarmIncidentScenarioFixture,

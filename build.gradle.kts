@@ -72,6 +72,10 @@ tasks {
     }
     test {
         useJUnitPlatform()
+        // The full MockBukkit suite constructs several complete 64x64 worlds.
+        // Keep the test worker above the JVM default so late suites do not fail
+        // with unrelated coroutine-debugging OOMs after hundreds of green tests.
+        maxHeapSize = "1g"
         systemProperty("arcfarms.projectDir", projectDir.absolutePath)
         providers.gradleProperty("ruscraftingOpsRoot")
             .orElse(providers.environmentVariable("RUSCRAFTING_OPS_ROOT"))

@@ -459,6 +459,13 @@ farm-zones:
         maximum-riders: 4
         seat-forward-offset: 3.75
         seat-y-offset: 2.4
+        # Uses the shared food-delivery-portal farm point as the departure ring.
+        portal:
+          width: 3.6
+          height: 3.2
+          label-height: 3.35
+          label-scale: 1.8
+          activation-seconds: 3
         player-time: 18000
         transition-seconds: 8
         maximum-distance: 512.0

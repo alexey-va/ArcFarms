@@ -130,6 +130,8 @@ internal class PaperWorksiteAdapter(
         )
     }
 
+    override fun clearScreenTitle(player: Player) = player.clearTitle()
+
     override fun updateBar(
         player: Player,
         runtimeKey: String,
