@@ -37,6 +37,7 @@ import ru.ruscrafting.farms.domain.FarmRouteState
 import ru.ruscrafting.farms.domain.FarmRules
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
+import ru.ruscrafting.farms.paper.ArcFarmsMenuPlatform
 import ru.ruscrafting.farms.paper.CuboidActivityRegion
 import ru.ruscrafting.farms.paper.FarmNightShiftController
 import ru.ruscrafting.farms.paper.FarmRuntime
@@ -80,6 +81,15 @@ internal class FarmIncidentScenarioFixture private constructor(
     private val routeRepository: FarmRouteRepository,
     private val delayedTasks: MutableList<DelayedTask>,
 ) : AutoCloseable {
+    private val menuPlatform by lazy {
+        Files.createDirectories(plugin.dataFolder.toPath())
+        Files.copy(
+            fixtureRoot.resolve("config/config.yml"),
+            plugin.dataFolder.toPath().resolve("config.yml"),
+            java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+        )
+        ArcFarmsMenuPlatform(plugin)
+    }
     data class AppliedTransition(
         val actor: Player?,
         val result: EngineResult<FarmShiftState, FarmShiftEvent>,
@@ -194,6 +204,7 @@ internal class FarmIncidentScenarioFixture private constructor(
             runtimes = { listOf(runtime) },
             clock = System::currentTimeMillis,
             nightShift = night,
+            menus = menuPlatform,
         )
         return controller
     }

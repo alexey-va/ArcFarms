@@ -33,8 +33,7 @@ ui:
   menu-back:
     material: ARROW
     custom-model-data: 0
-  # Menu item visuals are applied to open and newly rendered inventories after /arcfarms reload.
-  # Slots and inventory sizes are intentionally fixed so click ownership cannot drift.
+  # Legacy item aliases remain readable during the menu-platform migration.
   main-menu:
     items:
       farm: {material: WHEAT, custom-model-data: 0}
@@ -74,14 +73,97 @@ ui:
           workday: {slot: 19, template: workday}
           companies: {slot: 22, template: companies}
           stats: {slot: 25, kind: decoration, template: stats}
+        background: {template: background}
+      market:
+        schema-version: 1
+        rows: 3
+        background: {template: background}
+        elements:
+          order: {slot: 13, kind: decoration, template: market-order}
+          accept: {slot: 11, template: market-accept}
+          decline: {slot: 15, template: market-decline}
+      enterprise-overview:
+        schema-version: 1
+        rows: 3
+        background: {template: background}
+        elements:
+          farm: {slot: 2, template: enterprise-overview-farm}
+          lumber: {slot: 4, kind: decoration, template: enterprise-overview-lumber}
+          mine: {slot: 6, kind: decoration, template: enterprise-overview-mine}
+          back: {slot: 18, template: back}
+      enterprise-farm:
+        schema-version: 1
+        rows: 5
+        background: {template: background}
+        elements:
+          header: {slot: 4, kind: decoration, template: enterprise-farm-header}
+          report: {slot: 10, kind: decoration, template: enterprise-report}
+          workers: {slot: 12, kind: decoration, template: enterprise-workers}
+          policy: {slot: 14, kind: decoration, template: enterprise-policy}
+          license: {slot: 16, kind: decoration, template: enterprise-license}
+          shares: {slot: 28, template: enterprise-shares}
+          market: {slot: 30, kind: decoration, template: enterprise-market}
+          back: {slot: 36, template: back}
+      enterprise-shares:
+        schema-version: 1
+        rows: 5
+        background: {template: background}
+        elements:
+          status: {slot: 10, kind: decoration, template: enterprise-share-status}
+          holding: {slot: 12, kind: decoration, template: enterprise-share-holding}
+          account: {slot: 14, kind: decoration, template: enterprise-share-account}
+          withdraw: {slot: 32, template: enterprise-share-withdraw}
+          back: {slot: 36, template: back}
+        regions:
+          buy-options: {slots: [19, 20, 21, 22, 23, 24, 25]}
+      enterprise-confirm:
+        schema-version: 1
+        rows: 3
+        background: {template: background}
+        elements:
+          confirm: {slot: 13, template: enterprise-share-confirm}
+          back: {slot: 18, template: back}
+      farm-perks:
+        schema-version: 1
+        rows: 3
+        background: {template: background}
+        elements:
+          balance: {slot: 4, kind: decoration, template: perk-balance}
+        regions:
+          offers: {slots: [10, 12, 14, 16]}
     templates:
       background: {material: GRAY_STAINED_GLASS_PANE, hide-tooltip: true}
+      back: {material: ARROW}
       farm: {material: WHEAT}
       lumber: {material: IRON_AXE}
       mine: {material: MINECART}
       workday: {material: WRITABLE_BOOK}
       companies: {material: EMERALD}
       stats: {material: BOOK}
+      market-order: {material: WHEAT}
+      market-accept: {material: EMERALD}
+      market-decline: {material: BARRIER}
+      enterprise-overview-farm: {material: WHEAT}
+      enterprise-overview-lumber: {material: IRON_AXE}
+      enterprise-overview-mine: {material: MINECART}
+      enterprise-farm-header: {material: WHEAT}
+      enterprise-report: {material: PAPER}
+      enterprise-workers: {material: WHEAT}
+      enterprise-policy: {material: WRITABLE_BOOK}
+      enterprise-license: {material: BOOK}
+      enterprise-shares: {material: EMERALD}
+      enterprise-market: {material: GOLD_INGOT}
+      enterprise-share-status: {material: HONEYCOMB}
+      enterprise-share-holding: {material: PAPER}
+      enterprise-share-account: {material: GOLD_INGOT}
+      enterprise-share-buy: {material: EMERALD}
+      enterprise-share-confirm: {material: LIME_DYE}
+      enterprise-share-withdraw: {material: SUNFLOWER}
+      perk-balance: {material: SUNFLOWER}
+      perk-harvest-area: {material: DIAMOND_HOE}
+      perk-speed: {material: RABBIT_FOOT}
+      perk-sustenance: {material: GOLDEN_CARROT}
+      perk-reward-boost: {material: EMERALD}
 
 state:
   save-seconds: 10

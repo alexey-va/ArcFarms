@@ -78,12 +78,12 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
             paper.performTicks(1)
             val companies = operator.openInventory.topInventory
             companies.size shouldBe 27
-            companies.getItem(2)?.type shouldBe Material.HAY_BLOCK
+            companies.getItem(3)?.type shouldBe Material.HAY_BLOCK
             companies.getItem(4)?.type shouldBe Material.GOLDEN_AXE
             companies.getItem(6)?.type shouldBe Material.CHEST_MINECART
             companies.getItem(18)?.type shouldBe Material.ARROW
-            companies.getItem(2).plainLore() shouldContain "Shadow mode"
-            companies.getItem(2).plainLoreLines().apply {
+            companies.getItem(3).plainLore() shouldContain "Shadow mode"
+            companies.getItem(3).plainLoreLines().apply {
                 count(String::isEmpty) shouldBe 3
                 last() shouldContain "LMB — open company"
             }
@@ -97,7 +97,7 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
             operator.openInventory.topInventory shouldBe companies
             clickTopInventory(paper, operator, 2, ClickType.RIGHT).isCancelled shouldBe true
             operator.openInventory.topInventory shouldBe companies
-            clickTopInventory(paper, operator, 2).isCancelled shouldBe true
+            clickTopInventory(paper, operator, 3).isCancelled shouldBe true
             operator.openInventory.topInventory shouldBe companies
             paper.performTicks(1)
             val farmCompany = operator.openInventory.topInventory
@@ -130,7 +130,7 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
                 plugin.dataFolder.toPath(),
                 "ui.menus.templates.farm.material" to "BEETROOT",
                 "ui.menus.templates.farm.custom-model-data" to 31_099,
-                "ui.enterprise-menu.items.market.material" to "IRON_INGOT",
+                "ui.menus.templates.enterprise-market.material" to "IRON_INGOT",
             )
             operator.performCommand("arcfarms reload") shouldBe true
             val reloadedRoot = operator.openInventory.topInventory
@@ -138,14 +138,14 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
             reloadedRoot.getItem(3)?.itemMeta?.customModelData shouldBe 31_099
             clickTopInventory(paper, operator, 22)
             paper.performTicks(1)
-            clickTopInventory(paper, operator, 2)
+            clickTopInventory(paper, operator, 3)
             paper.performTicks(1)
             operator.openInventory.topInventory.getItem(30)?.type shouldBe Material.IRON_INGOT
 
             updatePluginConfig(
                 plugin.dataFolder.toPath(),
-                "ui.enterprise-menu.items.market.material" to "NETHERITE_INGOT",
-                "ui.enterprise-menu.items.report.custom-model-data" to 31_100,
+                "ui.menus.templates.enterprise-market.material" to "NETHERITE_INGOT",
+                "ui.menus.templates.enterprise-report.custom-model-data" to 31_100,
             )
             operator.performCommand("arcfarms reload") shouldBe true
             val reloadedCompany = operator.openInventory.topInventory
@@ -161,19 +161,19 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
 
             updatePluginConfig(
                 plugin.dataFolder.toPath(),
-                "ui.enterprise-menu.items.market.material" to "AIR",
+                "ui.menus.templates.enterprise-market.material" to "AIR",
             )
             operator.performCommand("arcfarms reload") shouldBe true
             clickTopInventory(paper, operator, 36)
             paper.performTicks(1)
-            clickTopInventory(paper, operator, 2)
+            clickTopInventory(paper, operator, 3)
             paper.performTicks(1)
             operator.openInventory.topInventory.getItem(30)?.type shouldBe Material.NETHERITE_INGOT
             operator.openInventory.topInventory.getItem(30).plainName() shouldBe acceptedMarketName
 
             updatePluginConfig(
                 plugin.dataFolder.toPath(),
-                "ui.enterprise-menu.items.market.material" to "NETHERITE_INGOT",
+                "ui.menus.templates.enterprise-market.material" to "NETHERITE_INGOT",
             )
             updatePluginLocale(
                 plugin.dataFolder.toPath(),
@@ -185,7 +185,7 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
             updatePluginConfig(
                 plugin.dataFolder.toPath(),
                 "enterprises.farm.company-id" to "renamed_farm_company",
-                "ui.enterprise-menu.items.market.material" to "GOLD_INGOT",
+                "ui.menus.templates.enterprise-market.material" to "GOLD_INGOT",
             )
             updatePluginLocale(
                 plugin.dataFolder.toPath(),
@@ -195,7 +195,7 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
             operator.performCommand("arcfarms reload") shouldBe true
             clickTopInventory(paper, operator, 36)
             paper.performTicks(1)
-            clickTopInventory(paper, operator, 2)
+            clickTopInventory(paper, operator, 3)
             paper.performTicks(1)
             operator.openInventory.topInventory.getItem(30)?.type shouldBe Material.NETHERITE_INGOT
             operator.openInventory.topInventory.getItem(30).plainName() shouldBe acceptedMarketName
@@ -203,7 +203,7 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
             updatePluginConfig(
                 plugin.dataFolder.toPath(),
                 "enterprises.farm.company-id" to "communal_farm",
-                "ui.enterprise-menu.items.market.material" to "NETHERITE_INGOT",
+                "ui.menus.templates.enterprise-market.material" to "NETHERITE_INGOT",
             )
             updatePluginLocale(
                 plugin.dataFolder.toPath(),
@@ -255,10 +255,11 @@ private fun preparePluginData(dataRoot: Path) {
     config.set("ui.farm-scoreboard.enabled", false)
     config.set("ui.menus.layouts.main.background.template", "background")
     config.set("ui.menus.layouts.main.elements.farm.slot", 3)
+    config.set("ui.menus.layouts.enterprise-overview.elements.farm.slot", 3)
     config.set("ui.menus.templates.background.material", "GRAY_STAINED_GLASS_PANE")
     config.set("ui.menus.templates.background.custom-model-data", 0)
-    config.set("ui.menu-back.material", "ARROW")
-    config.set("ui.menu-back.custom-model-data", 0)
+    config.set("ui.menus.templates.back.material", "ARROW")
+    config.set("ui.menus.templates.back.custom-model-data", 0)
     config.set("ui.menus.templates.farm.material", "CARROT")
     config.set("ui.menus.templates.farm.custom-model-data", 31_001)
     config.set("ui.menus.templates.lumber.material", "DIAMOND_AXE")
@@ -267,17 +268,17 @@ private fun preparePluginData(dataRoot: Path) {
     config.set("ui.menus.templates.stats.material", "ENCHANTED_BOOK")
     config.set("ui.menus.templates.companies.material", "DIAMOND")
     config.set("ui.menus.templates.companies.custom-model-data", 31_002)
-    config.set("ui.enterprise-menu.items.overview-farm.material", "HAY_BLOCK")
-    config.set("ui.enterprise-menu.items.overview-lumber.material", "GOLDEN_AXE")
-    config.set("ui.enterprise-menu.items.overview-mine.material", "CHEST_MINECART")
-    config.set("ui.enterprise-menu.items.farm-header.material", "BREAD")
-    config.set("ui.enterprise-menu.items.report.material", "MAP")
-    config.set("ui.enterprise-menu.items.report.custom-model-data", 31_003)
-    config.set("ui.enterprise-menu.items.workers.material", "GOLDEN_HOE")
-    config.set("ui.enterprise-menu.items.policy.material", "KNOWLEDGE_BOOK")
-    config.set("ui.enterprise-menu.items.license.material", "NAME_TAG")
-    config.set("ui.enterprise-menu.items.shares.material", "EMERALD_BLOCK")
-    config.set("ui.enterprise-menu.items.market.material", "GOLD_BLOCK")
+    config.set("ui.menus.templates.enterprise-overview-farm.material", "HAY_BLOCK")
+    config.set("ui.menus.templates.enterprise-overview-lumber.material", "GOLDEN_AXE")
+    config.set("ui.menus.templates.enterprise-overview-mine.material", "CHEST_MINECART")
+    config.set("ui.menus.templates.enterprise-farm-header.material", "BREAD")
+    config.set("ui.menus.templates.enterprise-report.material", "MAP")
+    config.set("ui.menus.templates.enterprise-report.custom-model-data", 31_003)
+    config.set("ui.menus.templates.enterprise-workers.material", "GOLDEN_HOE")
+    config.set("ui.menus.templates.enterprise-policy.material", "KNOWLEDGE_BOOK")
+    config.set("ui.menus.templates.enterprise-license.material", "NAME_TAG")
+    config.set("ui.menus.templates.enterprise-shares.material", "EMERALD_BLOCK")
+    config.set("ui.menus.templates.enterprise-market.material", "GOLD_BLOCK")
     config.set("enterprises.farm.mode", "SHADOW")
     config.set("farm-zones.communal_farm.region", null)
     config.set("farm-zones.communal_farm.bounds.min", listOf(185, 35, 420))

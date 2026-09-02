@@ -31,9 +31,12 @@ import ru.ruscrafting.farms.domain.FarmPlayerPerks
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.purchasePerk
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
-import ru.ruscrafting.farms.paper.ArcFarmsReloadableInventory
+import ru.ruscrafting.farms.paper.ArcFarmsMenuPlatform
 import ru.ruscrafting.farms.paper.FarmRuntime
-import ru.ruscrafting.farms.paper.MaterialRules
+import ru.arc.menu.MenuElementId
+import ru.arc.paper.menu.PaperMenuContent
+import ru.arc.paper.menu.PaperMenuEntry
+import ru.arc.paper.menu.PaperMenuSession
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
@@ -61,18 +64,9 @@ internal class FarmPerkController(
     private val currentWeekStart: () -> Long,
     private val clock: () -> Long,
     private val persistAsync: () -> CompletableFuture<Unit>,
+    private val menus: ArcFarmsMenuPlatform,
 ) {
-    private inner class PerkHolder(val zoneId: String) : ArcFarmsReloadableInventory {
-        lateinit var value: Inventory
-        override fun getInventory(): Inventory = value
-        override fun refresh(player: Player) {
-            val runtime = runtimes().firstOrNull { it.settings.id == zoneId }
-            if (runtime == null) player.closeInventory() else open(player, runtime)
-        }
-    }
-
     private val zoneKey = NamespacedKey(plugin, "farm_perk_vendor_zone")
-    private val offerKey = NamespacedKey(plugin, "farm_perk_offer")
     private val vendorIds = mutableMapOf<String, UUID>()
     private val feedbackTasks = mutableMapOf<UUID, Long>()
     private val menuRefreshTasks = mutableMapOf<UUID, Long>()
@@ -152,36 +146,10 @@ internal class FarmPerkController(
     }
 
     fun handleClick(event: InventoryClickEvent): Boolean {
-        val holder = event.view.topInventory.holder as? PerkHolder ?: return false
-        event.isCancelled = true
-        val player = event.whoClicked as? Player ?: return true
-        if (event.clickedInventory !== event.view.topInventory || event.click != ClickType.LEFT) return true
-        if (event.rawSlot !in 0 until event.view.topInventory.size) return true
-        val type = event.currentItem?.itemMeta?.persistentDataContainer
-            ?.get(offerKey, PersistentDataType.STRING)
-            ?.let { runCatching { FarmPerkType.valueOf(it) }.getOrNull() }
-            ?: return true
-        val runtime = runtimes().firstOrNull { it.settings.id == holder.zoneId } ?: return true
-        when (val result = purchase(player, runtime, type)) {
-            FarmPerkPurchaseUiResult.PENDING -> Unit
-            is FarmPerkPurchaseUiResult.REJECTED -> showRejectedOffer(
-                player,
-                event.view.topInventory,
-                event.rawSlot,
-                runtime,
-                type,
-                result.name,
-                result.lore,
-            )
-        }
-        return true
+        return menus.owns(event, setOf(MENU))
     }
 
-    fun handleDrag(event: InventoryDragEvent): Boolean {
-        if (event.view.topInventory.holder !is PerkHolder) return false
-        event.isCancelled = true
-        return true
-    }
+    fun handleDrag(event: InventoryDragEvent): Boolean = menus.owns(event, setOf(MENU))
 
     fun tick(runtime: FarmRuntime) {
         val now = clock()
@@ -231,23 +199,31 @@ internal class FarmPerkController(
     internal fun open(player: Player, runtime: FarmRuntime) {
         feedbackTasks.remove(player.uniqueId)
         menuRefreshTasks.remove(player.uniqueId)
-        val holder = PerkHolder(runtime.settings.id)
-        val inventory = Bukkit.createInventory(holder, 27, locale.render(MessageKey.FARM_PERK_MENU_TITLE, player))
-        holder.value = inventory
-        backgroundItem()?.let { background ->
-            repeat(inventory.size) { slot -> inventory.setItem(slot, background.clone()) }
-        }
-        val available = available(player.uniqueId)
-        inventory.setItem(4, named(Material.SUNFLOWER, locale.render(
-            MessageKey.FARM_PERK_BALANCE, player, mapOf("points" to locale.text(available)),
-        )))
-        offer(inventory, 10, player, runtime, FarmPerkType.HARVEST_AREA, Material.DIAMOND_HOE)
-        offer(inventory, 12, player, runtime, FarmPerkType.SPEED, Material.RABBIT_FOOT)
-        offer(inventory, 14, player, runtime, FarmPerkType.SUSTENANCE, Material.GOLDEN_CARROT)
-        offer(inventory, 16, player, runtime, FarmPerkType.REWARD_BOOST, Material.EMERALD)
-        player.openInventory(inventory)
-        scheduleMenuRefresh(player, runtime, inventory)
+        val session = menus.open(player, MENU, {
+            val live = runtimes().firstOrNull { it.settings.id == runtime.settings.id }
+            if (live == null) player.closeInventory() else open(player, live)
+        }) { content(player, runtime) }
+        scheduleMenuRefresh(player, runtime, session.inventory)
     }
+
+    private fun content(player: Player, runtime: FarmRuntime): PaperMenuContent = PaperMenuContent(
+        title = locale.render(MessageKey.FARM_PERK_MENU_TITLE, player),
+        background = menus.background(MENU),
+        elements = mapOf(
+            BALANCE to PaperMenuEntry(
+                menus.item(
+                    MENU,
+                    BALANCE,
+                    locale.render(MessageKey.FARM_PERK_BALANCE, player, mapOf("points" to locale.text(available(player.uniqueId)))),
+                    emptyList(),
+                ),
+                enabled = false,
+            ),
+        ),
+        regions = mapOf(
+            ArcFarmsMenuPlatform.PERK_OFFERS to FarmPerkType.entries.map { type -> offerEntry(player, runtime, type) },
+        ),
+    )
 
     private fun scheduleMenuRefresh(player: Player, runtime: FarmRuntime, inventory: Inventory) {
         val now = clock()
@@ -262,14 +238,10 @@ internal class FarmPerkController(
         if (!tasks.runLater(delayTicks) {
                 if (!menuRefreshTasks.remove(player.uniqueId, refreshId)) return@runLater
                 if (!player.isOnline) return@runLater
-                val current = player.openInventory
-                val holder = current.topInventory.holder as? PerkHolder ?: return@runLater
-                if (holder.zoneId != runtime.settings.id || current.topInventory !== inventory) return@runLater
-                val liveRuntime = runtimes().firstOrNull { it.settings.id == holder.zoneId } ?: return@runLater
-                offer(inventory, 10, player, liveRuntime, FarmPerkType.HARVEST_AREA, Material.DIAMOND_HOE)
-                offer(inventory, 12, player, liveRuntime, FarmPerkType.SPEED, Material.RABBIT_FOOT)
-                offer(inventory, 14, player, liveRuntime, FarmPerkType.SUSTENANCE, Material.GOLDEN_CARROT)
-                offer(inventory, 16, player, liveRuntime, FarmPerkType.REWARD_BOOST, Material.EMERALD)
+                val session = menus.session(player) ?: return@runLater
+                if (session.menuId != MENU || session.inventory !== inventory) return@runLater
+                val liveRuntime = runtimes().firstOrNull { it.settings.id == runtime.settings.id } ?: return@runLater
+                session.refresh()
                 scheduleMenuRefresh(player, liveRuntime, inventory)
             }
         ) {
@@ -277,29 +249,36 @@ internal class FarmPerkController(
         }
     }
 
-    private fun offer(
-        inventory: Inventory,
-        slot: Int,
+    private fun offerEntry(
         player: Player,
         runtime: FarmRuntime,
         type: FarmPerkType,
-        material: Material,
-    ) {
-        inventory.setItem(slot, offerItem(player, runtime, type, material))
-    }
+    ): PaperMenuEntry = PaperMenuEntry(
+        item = offerItem(player, runtime, type),
+        enabled = normalized(player.uniqueId).activeUntil[type]?.let { it <= clock() } != false &&
+            available(player.uniqueId) >= offer(runtime, type).price,
+        acceptedClicks = setOf(ClickType.LEFT),
+        onClick = { context ->
+            when (val result = purchase(player, runtime, type)) {
+                FarmPerkPurchaseUiResult.PENDING -> Unit
+                is FarmPerkPurchaseUiResult.REJECTED -> showRejectedOffer(
+                    player, context.session, context.event.rawSlot, type, result.name, result.lore,
+                )
+            }
+        },
+    )
 
     private fun offerItem(
         player: Player,
         runtime: FarmRuntime,
         type: FarmPerkType,
-        material: Material,
     ): ItemStack {
         val config = offer(runtime, type)
         val now = clock()
         val until = normalized(player.uniqueId).activeUntil[type]?.takeIf { it > now }
         val canBuy = until == null && available(player.uniqueId) >= config.price
-        return named(
-            material,
+        return menus.item(
+            template(type),
             locale.renderPath("perk.${type.name.lowercase()}.name", player),
             buildList {
                 add(locale.renderPath("perk.${type.name.lowercase()}.description", player))
@@ -333,7 +312,6 @@ internal class FarmPerkController(
             },
         ).also { item ->
             item.editMeta { meta ->
-                if (canBuy) meta.persistentDataContainer.set(offerKey, PersistentDataType.STRING, type.name)
                 meta.setEnchantmentGlintOverride(until != null)
             }
         }
@@ -421,31 +399,23 @@ internal class FarmPerkController(
 
     private fun showRejectedOffer(
         player: Player,
-        inventory: Inventory,
+        session: PaperMenuSession,
         slot: Int,
-        runtime: FarmRuntime,
         type: FarmPerkType,
         name: Component,
         lore: List<Component>,
     ) {
+        val inventory = session.inventory
         val material = inventory.getItem(slot)?.type ?: return
-        val error = named(material, name, lore).also { item ->
-            item.editMeta { it.persistentDataContainer.set(offerKey, PersistentDataType.STRING, type.name) }
-        }
-        inventory.setItem(slot, error)
+        inventory.setItem(slot, named(material, name, lore))
         val feedbackId = ++feedbackSequence
         feedbackTasks[player.uniqueId] = feedbackId
         tasks.runLater(FEEDBACK_TICKS) {
             if (!feedbackTasks.remove(player.uniqueId, feedbackId)) return@runLater
             if (!player.isOnline) return@runLater
-            val current = player.openInventory
-            val holder = current.topInventory.holder as? PerkHolder ?: return@runLater
-            if (holder.zoneId != runtime.settings.id || current.topInventory !== inventory) return@runLater
-            val liveRuntime = runtimes().firstOrNull { it.settings.id == holder.zoneId } ?: return@runLater
-            val currentType = current.topInventory.getItem(slot)?.itemMeta?.persistentDataContainer
-                ?.get(offerKey, PersistentDataType.STRING)
-            if (currentType != type.name) return@runLater
-            current.topInventory.setItem(slot, offerItem(player, liveRuntime, type, material))
+            val current = menus.session(player) ?: return@runLater
+            if (current !== session || current.menuId != MENU || current.inventory !== inventory) return@runLater
+            current.refresh()
         }
     }
 
@@ -467,16 +437,11 @@ internal class FarmPerkController(
         FarmPerkType.REWARD_BOOST -> runtime.settings.perks.rewardBoost
     }
 
-    @Suppress("DEPRECATION")
-    private fun backgroundItem(): ItemStack? {
-        val background = settings().menuBackground
-        if (!background.enabled) return null
-        return ItemStack(MaterialRules.material(background.material)).apply {
-            editMeta { meta ->
-                if (background.customModelData > 0) meta.setCustomModelData(background.customModelData)
-                meta.setHideTooltip(true)
-            }
-        }
+    private fun template(type: FarmPerkType): String = when (type) {
+        FarmPerkType.HARVEST_AREA -> "perk-harvest-area"
+        FarmPerkType.SPEED -> "perk-speed"
+        FarmPerkType.SUSTENANCE -> "perk-sustenance"
+        FarmPerkType.REWARD_BOOST -> "perk-reward-boost"
     }
 
     private fun named(material: Material, name: Component, lore: List<Component> = emptyList()): ItemStack = ItemStack(material).apply {
@@ -492,6 +457,8 @@ internal class FarmPerkController(
     }
 
     private companion object {
+        val MENU = ArcFarmsMenuPlatform.FARM_PERKS
+        val BALANCE = MenuElementId.of("balance")
         const val FEEDBACK_TICKS = 40L
         const val MILLIS_PER_TICK = 50L
     }

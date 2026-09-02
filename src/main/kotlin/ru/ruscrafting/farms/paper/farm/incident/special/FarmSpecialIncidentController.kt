@@ -39,6 +39,7 @@ import ru.ruscrafting.farms.domain.FarmSpecialIncidentState
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
+import ru.ruscrafting.farms.paper.ArcFarmsMenuPlatform
 import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmBlockPolicy
 import ru.ruscrafting.farms.paper.FarmBlockRegistry
@@ -96,10 +97,11 @@ internal class FarmSpecialIncidentController(
     private val runtimes: () -> Collection<FarmRuntime>,
     private val clock: () -> Long,
     private val nightShift: FarmNightShiftController,
+    menus: ArcFarmsMenuPlatform,
 ) {
     private val scene = FarmSpecialIncidentSceneManager(plugin, debug)
     private val giantCrop = FarmGiantCropController(plugin)
-    private val marketMenu = FarmMarketMenu(locale, settings, ::refreshMarketView)
+    private val marketMenu = FarmMarketMenu(locale, menus, ::refreshMarketView)
     private val giantSelectionAttempts = mutableMapOf<String, Long>()
     private val channelFlowTasks = mutableSetOf<ChannelTaskKey>()
     private val channelCompletionTasks = mutableSetOf<ChannelTaskKey>()

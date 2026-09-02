@@ -7,6 +7,7 @@ import io.mockk.mockk
 import net.kyori.adventure.text.format.TextDecoration
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.Material
+import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.event.inventory.ClickType
 import org.bukkit.event.inventory.InventoryAction
 import org.bukkit.event.inventory.InventoryClickEvent
@@ -26,6 +27,7 @@ import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmRules
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
+import ru.ruscrafting.farms.paper.ArcFarmsMenuPlatform
 import ru.ruscrafting.farms.paper.ArcFarmsReloadableInventory
 import ru.ruscrafting.farms.paper.CuboidActivityRegion
 import ru.ruscrafting.farms.paper.FarmRuntime
@@ -79,6 +81,7 @@ class FarmPerkControllerMockBukkitTest : FunSpec({
             state = FarmShiftState(),
         )
         val plugin = paper.createSimplePlugin("FarmPerkMenuTest")
+        val menus = menuPlatform(plugin)
         val port = mockk<WorksiteRuntimePort>(relaxed = true) {
             every { runLater(any(), any()) } answers {
                 server.scheduler.runTaskLater(plugin, secondArg<() -> Unit>(), firstArg())
@@ -100,6 +103,7 @@ class FarmPerkControllerMockBukkitTest : FunSpec({
             currentWeekStart = { 107 },
             clock = { now },
             persistAsync = { CompletableFuture.completedFuture(Unit) },
+            menus = menus,
         )
         controller.replace(mapOf(
             player.uniqueId to FarmPlayerPerks(
@@ -137,7 +141,7 @@ class FarmPerkControllerMockBukkitTest : FunSpec({
 
         val beforeRefresh = player.openInventory.topInventory
         now = activeUntil + 1
-        (beforeRefresh.holder as ArcFarmsReloadableInventory).refresh(player)
+        menus.session(player)?.refresh()
         val refreshed = player.openInventory.topInventory
         (refreshed === beforeRefresh) shouldBe false
         PlainTextComponentSerializer.plainText().serialize(requireNotNull(refreshed.getItem(10)?.itemMeta?.displayName())) shouldBe
@@ -193,6 +197,7 @@ class FarmPerkControllerMockBukkitTest : FunSpec({
             state = FarmShiftState(),
         )
         val plugin = paper.createSimplePlugin("FarmPerkExpiryTest")
+        val menus = menuPlatform(plugin)
         val port = mockk<WorksiteRuntimePort>(relaxed = true) {
             every { runLater(any(), any()) } answers {
                 server.scheduler.runTaskLater(plugin, secondArg<() -> Unit>(), firstArg())
@@ -214,6 +219,7 @@ class FarmPerkControllerMockBukkitTest : FunSpec({
             currentWeekStart = { 107 },
             clock = { now },
             persistAsync = { CompletableFuture.completedFuture(Unit) },
+            menus = menus,
         )
         controller.replace(mapOf(
             player.uniqueId to FarmPlayerPerks(
@@ -242,6 +248,17 @@ class FarmPerkControllerMockBukkitTest : FunSpec({
                 val input = requireNotNull(FarmPerkControllerMockBukkitTest::class.java.classLoader.getResourceAsStream(name))
                 input.use { Files.copy(it, root.resolve(name)) }
             }
+        }
+
+        private fun menuPlatform(plugin: org.bukkit.plugin.Plugin): ArcFarmsMenuPlatform {
+            Files.createDirectories(plugin.dataFolder.toPath())
+            val input = requireNotNull(FarmPerkControllerMockBukkitTest::class.java.classLoader.getResourceAsStream("config.yml"))
+            input.use { Files.copy(it, plugin.dataFolder.toPath().resolve("config.yml")) }
+            val file = plugin.dataFolder.toPath().resolve("config.yml").toFile()
+            val yaml = YamlConfiguration.loadConfiguration(file)
+            yaml.set("ui.menus.templates.background.custom-model-data", 11_000)
+            yaml.save(file)
+            return ArcFarmsMenuPlatform(plugin)
         }
     }
 }

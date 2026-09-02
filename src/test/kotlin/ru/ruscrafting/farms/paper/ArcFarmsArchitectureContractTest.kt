@@ -145,20 +145,23 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         val rootClick = Files.readString(repositoryRoot.resolve(
             "src/main/kotlin/ru/ruscrafting/farms/paper/ArcFarmsMenu.kt",
         )).substringAfter("private fun content(").substringBefore("private fun activityEntry(")
-        val enterpriseClick = Files.readString(repositoryRoot.resolve(
+        val enterpriseSource = Files.readString(repositoryRoot.resolve(
             "src/main/kotlin/ru/ruscrafting/farms/paper/WorksiteEnterpriseMenu.kt",
-        )).substringAfter("fun onClick(").substringBefore("fun onDrag(")
+        ))
+        val enterpriseNavigation = enterpriseSource.substringAfter("fun openOverview(").substringBefore("private fun openFarmOrTravel(")
         val marketDecision = Files.readString(farmRoot.resolve(
             "incident/special/FarmSpecialIncidentController.kt",
         )).substringAfter("private fun handleMarketDecision(").substringBefore("private fun marketDurationMillis(")
 
         transition.contains("runLater(lifecycle, 1L)") shouldBe true
         transition.contains("player.openInventory.topInventory !== expectedTop") shouldBe true
-        listOf(rootClick, enterpriseClick, marketDecision).forEach { handler ->
+        listOf(rootClick, enterpriseNavigation, marketDecision).forEach { handler ->
             handler.contains("deferInventoryTransition") shouldBe true
             handler.contains("player.openInventory(") shouldBe false
             handler.contains("player.closeInventory()") shouldBe false
         }
+        enterpriseSource.contains("event.rawSlot") shouldBe false
+        enterpriseSource.contains("createInventory") shouldBe false
     }
 
     test("food delivery hot path does not scan every entity in the world") {

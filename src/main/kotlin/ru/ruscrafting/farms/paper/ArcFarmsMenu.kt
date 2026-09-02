@@ -1,24 +1,17 @@
 package ru.ruscrafting.farms.paper
 
 import net.kyori.adventure.text.Component
-import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 import org.bukkit.event.inventory.ClickType
 import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.inventory.Inventory
-import org.bukkit.plugin.Plugin
-import ru.arc.config.Config
-import ru.arc.core.BukkitTaskScheduler
 import ru.arc.menu.MenuContract
 import ru.arc.menu.MenuElementId
 import ru.arc.menu.MenuId
 import ru.arc.paper.menu.PaperMenuConfiguration
-import ru.arc.paper.menu.PaperMenuConfigurationParser
 import ru.arc.paper.menu.PaperMenuContent
 import ru.arc.paper.menu.PaperMenuEntry
-import ru.arc.paper.menu.PaperMenuItemFactory
-import ru.arc.paper.menu.PaperMenuRuntime
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
@@ -26,17 +19,15 @@ import ru.ruscrafting.farms.domain.ActivityKind
 
 /** Main activity menu. Layout and item sources live in config; code owns domain actions only. */
 class ArcFarmsMenu(
-    private val plugin: Plugin,
+    private val menus: ArcFarmsMenuPlatform,
     private val service: ArcFarmsService,
     private val locale: ArcFarmsLocale,
     private val settings: () -> ArcFarmsConfig,
 ) : AutoCloseable {
-    private val enterpriseMenu = WorksiteEnterpriseMenu(service, locale, settings, ::open)
-    private val items = PaperMenuItemFactory()
-    private val menus = PaperMenuRuntime(plugin, BukkitTaskScheduler(plugin), loadConfiguration())
+    private val enterpriseMenu = WorksiteEnterpriseMenu(service, locale, settings, menus, ::open)
 
     fun open(player: Player) {
-        menus.open(player, MENU) { content(player, menus.current()) }
+        menus.open(player, MENU, { open(player) }) { content(player, menus.current()) }
     }
 
     /** Enterprise screens still route through their holder until their dedicated controller is replaced. */
@@ -50,18 +41,14 @@ class ArcFarmsMenu(
 
     fun prepareReload(): PaperMenuConfiguration = loadConfiguration()
 
-    fun publishReload(candidate: PaperMenuConfiguration) {
-        val viewers = Bukkit.getOnlinePlayers().filter { menus.session(it)?.menuId == MENU }
-        menus.replace(candidate)
-        viewers.filter(Player::isOnline).forEach(::open)
-    }
+    fun publishReload(candidate: PaperMenuConfiguration) = menus.replace(candidate)
 
     private fun content(player: Player, configuration: PaperMenuConfiguration): PaperMenuContent {
         val stats = service.playerStats(player.uniqueId)
         return PaperMenuContent(
             title = locale.render(MessageKey.MENU_TITLE, player),
             background = configuration.catalog.require(MENU).backgroundTemplate?.let { template ->
-                items.create(configuration.template(template), Component.empty(), emptyList())
+                menus.item(template.value, Component.empty(), emptyList())
             },
             elements = mapOf(
                 FARM to activityEntry(player, configuration, FARM, ActivityKind.FARM, MessageKey.MENU_FARM_NAME, MessageKey.MENU_FARM_LORE),
@@ -178,7 +165,7 @@ class ArcFarmsMenu(
         enabled: Boolean = true,
         click: (ru.arc.paper.menu.PaperMenuClickContext) -> Unit = {},
     ): PaperMenuEntry = PaperMenuEntry(
-        item = items.create(configuration.template(MENU, element), name, lore),
+        item = menus.item(MENU, element, name, lore),
         enabled = enabled,
         acceptedClicks = setOf(ClickType.LEFT),
         onClick = click,
@@ -218,19 +205,14 @@ class ArcFarmsMenu(
         }
     }
 
-    private fun loadConfiguration(): PaperMenuConfiguration = PaperMenuConfigurationParser.require(
-        Config(plugin.dataFolder.toPath(), "config.yml"),
-        "ui.menus.layouts",
-        "ui.menus.templates",
-        mapOf(MENU to CONTRACT),
-    )
+    private fun loadConfiguration(): PaperMenuConfiguration = menus.prepareReload()
 
     override fun close() {
         menus.close()
     }
 
     private companion object {
-        val MENU = MenuId.of("main")
+        val MENU = ArcFarmsMenuPlatform.MAIN
         val FARM = MenuElementId.of("farm")
         val LUMBER = MenuElementId.of("lumber")
         val MINE = MenuElementId.of("mine")

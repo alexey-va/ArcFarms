@@ -119,6 +119,7 @@ open class ArcFarmsPlugin : JavaPlugin() {
             val backendTransfer = lifecycle.own(BungeeBackendTransfer(this) { failure ->
                 logger.log(Level.WARNING, "ArcFarms backend transfer send failed", failure)
             }).also { transfer = it }
+            val menuPlatform = ArcFarmsMenuPlatform(this)
             val activeService = lifecycle.own(ArcFarmsService(
                 plugin = this,
                 initialSettings = settings,
@@ -134,6 +135,7 @@ open class ArcFarmsPlugin : JavaPlugin() {
                 debug = debug,
                 regionGateway = regionGateway,
                 economy = resolveEconomy(settings),
+                menus = menuPlatform,
             ))
             service = activeService
             activeService.start()
@@ -145,7 +147,7 @@ open class ArcFarmsPlugin : JavaPlugin() {
             } else {
                 logger.warning("PlaceholderAPI is unavailable; ArcFarms leaderboard placeholders are disabled")
             }
-            val activeMenu = ArcFarmsMenu(this, activeService, locale) { settings }
+            val activeMenu = ArcFarmsMenu(menuPlatform, activeService, locale) { settings }
             menu = activeMenu
             lifecycle.own(activeMenu)
             val command = ArcFarmsCommand(activeService, locale, activeMenu, ::reloadPlugin)

@@ -5,6 +5,7 @@ import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
+import ru.ruscrafting.farms.paper.ArcFarmsMenuPlatform
 import ru.ruscrafting.farms.paper.ArcFarmsRuntimeValidator
 import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmBlockRegistry
@@ -87,6 +88,7 @@ internal class FarmComponentGraph(
     currentWeekStart: () -> Long,
     persistAsync: () -> CompletableFuture<Unit>,
     enterprise: FarmEnterprisePort,
+    menus: ArcFarmsMenuPlatform,
 ) {
     val runtimes = FarmRuntimeRegistry()
     private val blockPassability = PaperFarmBlockPassability
@@ -250,6 +252,7 @@ internal class FarmComponentGraph(
         currentWeekStart = currentWeekStart,
         clock = clock,
         persistAsync = persistAsync,
+        menus = menus,
     )
     val rewards = FarmRewardService(
         plugin = plugin,
@@ -327,6 +330,7 @@ internal class FarmComponentGraph(
         runtimes = runtimes::snapshot,
         clock = clock,
         nightShift = nightShift,
+        menus = menus,
     )
     private val actionIncidents = FarmActionIncidentController(
         plugin = plugin,

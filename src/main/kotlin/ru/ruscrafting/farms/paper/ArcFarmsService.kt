@@ -87,6 +87,7 @@ class ArcFarmsService(
     private val economy: FarmEconomyGateway = NoOpFarmEconomyGateway,
     private val clock: () -> Long = System::currentTimeMillis,
     private val random: RandomGenerator = RandomGenerator.getDefault(),
+    private val menus: ArcFarmsMenuPlatform,
 ) : AutoCloseable {
     @Volatile
     private var settings: ArcFarmsConfig = initialSettings
@@ -146,6 +147,7 @@ class ArcFarmsService(
         currentWeekStart = { farmWeekStartEpochDay(clock()) },
         persistAsync = ::persistAsync,
         enterprise = enterprise.farm,
+        menus = menus,
     )
     private val worksiteRewards = WorksiteRewardGrantService(farm.rewards)
     private val lumbermillModule = LumbermillVersionedModule(plugin, initialSettings.lumbermills, regionGateway, locale, worksitePorts, clock, lumberJournal, worksiteServiceItems, worksiteRewards)
