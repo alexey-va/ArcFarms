@@ -143,7 +143,7 @@ class FarmPerkControllerMockBukkitTest : FunSpec({
         now = activeUntil + 1
         menus.session(player)?.refresh()
         val refreshed = player.openInventory.topInventory
-        (refreshed === beforeRefresh) shouldBe false
+        (refreshed === beforeRefresh) shouldBe true
         PlainTextComponentSerializer.plainText().serialize(requireNotNull(refreshed.getItem(10)?.itemMeta?.displayName())) shouldBe
             "Широкий взмах"
         refreshed.getItem(10)?.itemMeta?.lore()?.joinToString(" ") {
@@ -229,10 +229,12 @@ class FarmPerkControllerMockBukkitTest : FunSpec({
         ))
         controller.open(player, runtime)
 
-        player.openInventory.topInventory.getItem(10)?.itemMeta?.enchantmentGlintOverride shouldBe true
+        val activeInventory = player.openInventory.topInventory
+        activeInventory.getItem(10)?.itemMeta?.enchantmentGlintOverride shouldBe true
         now = activeUntil + 1L
         server.scheduler.performTicks(2L)
 
+        (player.openInventory.topInventory === activeInventory) shouldBe true
         val expired = requireNotNull(player.openInventory.topInventory.getItem(10))
         expired.type shouldBe Material.DIAMOND_HOE
         expired.itemMeta.enchantmentGlintOverride shouldBe false
