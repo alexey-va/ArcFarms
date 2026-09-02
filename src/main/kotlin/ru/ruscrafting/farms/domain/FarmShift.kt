@@ -29,6 +29,7 @@ enum class FarmShiftEvent {
 
 const val MAX_FARM_PATCH_PLOTS = 6_144
 const val MAX_FARM_INCIDENTS = 8
+const val MAX_FARM_SPECIAL_PLOTS = 192
 
 enum class FarmPhase {
     IDLE,
@@ -226,7 +227,7 @@ data class FarmSpecialIncidentState(
 ) {
     init {
         require(points.size <= 256) { "Farm special incident has too many points" }
-        require(plots.size <= 128 && plots.distinct().size == plots.size) {
+        require(plots.size <= MAX_FARM_SPECIAL_PLOTS && plots.distinct().size == plots.size) {
             "Farm special incident has invalid plots"
         }
         crop?.let { require(DomainIdentifiers.isContent(it)) { "Invalid special incident crop: $it" } }

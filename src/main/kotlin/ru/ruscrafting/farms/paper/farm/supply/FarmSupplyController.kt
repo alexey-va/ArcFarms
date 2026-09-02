@@ -30,6 +30,7 @@ import ru.ruscrafting.farms.paper.BukkitFarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
+import ru.ruscrafting.farms.paper.worksite.PlayerHeldItemLoadout
 import java.util.UUID
 
 internal enum class FarmSupplyKind { TOOL, SEEDS, WATER, ARCHERY, FIRE }
@@ -145,10 +146,13 @@ internal class FarmSupplyController(
     }
 
     fun give(runtime: FarmRuntime, kind: FarmSupplyKind, player: Player): Boolean {
+        val before = player.inventory.storageContents.map { it?.clone() }.toTypedArray()
         removeServiceItems(player, runtime.settings.id, "replace_supply", kind)
         val items = items(runtime, kind)
-        if (player.inventory.storageContents.count { it == null } < items.size) return false
-        items.forEach { item -> player.inventory.addItem(item) }
+        if (!PlayerHeldItemLoadout.place(player, items)) {
+            player.inventory.storageContents = before
+            return false
+        }
         if (settings().sounds) player.playSound(player.location, Sound.ENTITY_ITEM_PICKUP, 0.7f, 1.2f)
         debug.event(
             "farm_supply_given",

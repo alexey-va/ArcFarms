@@ -19,6 +19,7 @@ import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.domain.MAX_FARM_PATCH_PLOTS
 import ru.ruscrafting.farms.domain.MAX_FARM_INCIDENTS
+import ru.ruscrafting.farms.domain.MAX_FARM_SPECIAL_PLOTS
 import ru.ruscrafting.farms.domain.PlayerActivityStats
 import ru.ruscrafting.farms.domain.ShiftOutcome
 import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseLedger
@@ -352,7 +353,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                         FarmIncidentType.RIVAL_RAID,
                     ),
                 ) { "Farm special incident state escaped its active incident" }
-                require(special.points.size <= 256 && special.plots.size <= 128) {
+                require(special.points.size <= 256 && special.plots.size <= MAX_FARM_SPECIAL_PLOTS) {
                     "Farm special incident state is unbounded"
                 }
                 special.points.forEach(::validatePoint)

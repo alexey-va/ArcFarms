@@ -17,6 +17,7 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.EntityTargetEvent
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent
+import org.bukkit.event.entity.EntityDismountEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.inventory.EquipmentSlot
 import ru.ruscrafting.farms.domain.FarmIncidentType
@@ -74,20 +75,35 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             val controller = fixture.actions(runtime, beds, receiving, rival)
             val riders = (1..5).map { fixture.paper.addPlayer("GhastGunner$it") }
             riders.forEach { it.teleport(fixture.location(receiving)) }
+            val packed = fixture.paper.addPlayer("PackedGunner")
+            packed.inventory.storageContents.indices.forEach { slot ->
+                packed.inventory.setItem(slot, org.bukkit.inventory.ItemStack(Material.COBBLESTONE, 64))
+            }
 
             controller.initialize(runtime, FarmIncidentType.RIVAL_RAID) shouldBe FarmIncidentType.RIVAL_RAID
             controller.ensure(runtime)
             val ghast = fixture.world.entities.filterIsInstance<Ghast>().single(controller::owns)
             fixture.world.entities.filterIsInstance<Mob>().filter { it !is Ghast && controller.owns(it) } shouldHaveSize 0
             val plannedField = requireNotNull(runtime.state.specialIncident).plots
-            plannedField shouldHaveSize 128
+            plannedField shouldHaveSize 192
             (plannedField.minOf { it.x } <= 32) shouldBe true
             (plannedField.maxOf { it.x } >= 52) shouldBe true
             (plannedField.minOf { it.z } <= 32) shouldBe true
             (plannedField.maxOf { it.z } >= 52) shouldBe true
+            controller.interact(PlayerInteractEntityEvent(packed, ghast, EquipmentSlot.HAND)) shouldBe true
+            packed.vehicle shouldBe null
+            packed.inventory.storageContents.all { it?.type == Material.COBBLESTONE } shouldBe true
+
+            riders.first().inventory.setItem(0, org.bukkit.inventory.ItemStack(Material.DIAMOND, 3))
+            riders.first().inventory.setItem(1, org.bukkit.inventory.ItemStack(Material.EMERALD, 5))
             riders.forEach { rider ->
                 controller.interact(PlayerInteractEntityEvent(rider, ghast, EquipmentSlot.HAND)) shouldBe true
             }
+
+            controller.updateRaidMotion(runtime)
+            controller.update(runtime)
+            fixture.world.entities.filterIsInstance<Mob>().filter { it !is Ghast && controller.owns(it) } shouldHaveSize
+                fixture.zone.rivalRaid.workerSpawnBatchSize
 
             repeat(20) {
                 controller.update(runtime)
@@ -126,6 +142,12 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             workerAttack.isCancelled shouldBe true
 
             val gunner = riders.first()
+            @Suppress("DEPRECATION")
+            gunner.inventory.getItem(0)?.itemMeta?.customModelData shouldBe fixture.zone.rivalRaid.gunCustomModelData
+            @Suppress("DEPRECATION")
+            gunner.inventory.getItem(1)?.itemMeta?.customModelData shouldBe fixture.zone.rivalRaid.grenadeCustomModelData
+            gunner.inventory.getItem(9)?.type shouldBe Material.DIAMOND
+            gunner.inventory.getItem(10)?.type shouldBe Material.EMERALD
             val issued = gunner.inventory.storageContents.filterNotNull().filter { it.type == Material.PAPER }
             issued shouldHaveSize 2
             val gun = issued.single {
@@ -146,10 +168,28 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             val projectile = fixture.world.entities.filterIsInstance<Snowball>().single()
             workers.take(2).forEach { it.teleport(workers.first().location) }
             projectile.teleport(workers.first().location)
+            val blastSoil = workers.first().location.block.getRelative(BlockFace.DOWN)
+            val authoritativeSoil = blastSoil.blockData.clone()
+            val authoritativeCrop = blastSoil.getRelative(BlockFace.UP).blockData.clone()
             controller.onProjectileHit(ProjectileHitEvent(projectile, workers.first())) shouldBe true
             workers.take(2).all { it.health < fixture.zone.rivalRaid.workerHealth } shouldBe true
             projectile.isValid shouldBe false
             runtime.state.incidentRequired shouldBe fixture.zone.rivalRaid.requiredKills
+            blastSoil.blockData shouldBe authoritativeSoil
+            blastSoil.getRelative(BlockFace.UP).blockData shouldBe authoritativeCrop
+            fixture.raidBlockPreviews.batches.flatMap { it.changes.values }.map { it.material }.toSet().containsAll(
+                setOf(Material.COARSE_DIRT, Material.FIRE),
+            ) shouldBe true
+            fixture.runDelayedTasks() shouldBe listOf(fixture.zone.rivalRaid.grenadePreviewTicks.toLong())
+            fixture.raidBlockPreviews.batches.last().changes.values.any { it.material == Material.FARMLAND } shouldBe true
+
+            val seat = requireNotNull(gunner.vehicle)
+            controller.onDismount(EntityDismountEvent(gunner, seat)) shouldBe true
+            gunner.leaveVehicle()
+            fixture.runDelayedTasks() shouldBe listOf(1L)
+            gunner.location.distanceSquared(fixture.location(receiving)) shouldBe 0.0
+            controller.participantRuntime(gunner) shouldBe null
+            gunner.inventory.storageContents.filterNotNull().none { it.type == Material.PAPER } shouldBe true
         } }
     }
 })

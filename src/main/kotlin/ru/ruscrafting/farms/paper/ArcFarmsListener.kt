@@ -20,6 +20,7 @@ import org.bukkit.event.entity.EntityDeathEvent
 import org.bukkit.event.entity.EntityChangeBlockEvent
 import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent
+import org.bukkit.event.entity.EntityDismountEvent
 import org.bukkit.event.entity.PlayerDeathEvent
 import org.bukkit.event.entity.ProjectileHitEvent
 import org.bukkit.event.entity.EntityShootBowEvent
@@ -121,6 +122,11 @@ class ArcFarmsListener(
 
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onVehicleEnter(event: VehicleEnterEvent) = service.onVehicleEnter(event)
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    fun onDismount(event: EntityDismountEvent) {
+        service.onDismount(event)
+    }
 
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onEntityDamage(event: EntityDamageEvent) = service.onEntityDamage(event)

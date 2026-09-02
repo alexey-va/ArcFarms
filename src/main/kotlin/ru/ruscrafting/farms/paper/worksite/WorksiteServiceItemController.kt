@@ -58,6 +58,23 @@ internal interface WorksiteServiceItems {
             itemModel?.let(meta::setItemModel)
         }
     }
+    fun issueAtSlot(
+        player: Player,
+        slot: Int,
+        identity: ServiceItemIdentity,
+        material: Material,
+        name: Component,
+        customModelData: Int,
+        itemModel: NamespacedKey?,
+    ): ItemStack? = throw UnsupportedOperationException("Exact-slot service item issue is not supported by this adapter")
+    fun issueHeld(
+        player: Player,
+        identity: ServiceItemIdentity,
+        material: Material,
+        name: Component,
+        customModelData: Int = 0,
+        itemModel: NamespacedKey? = null,
+    ): ItemStack? = throw UnsupportedOperationException("Held service item issue is not supported by this adapter")
     fun consume(player: Player, expected: ServiceItemIdentity): Boolean
     fun identity(item: ItemStack?): ServiceItemIdentity?
     fun isServiceItem(item: ItemStack?): Boolean
@@ -82,6 +99,25 @@ internal class LateBoundWorksiteServiceItems : WorksiteServiceItems {
         customModelData: Int,
         itemModel: NamespacedKey?,
     ): ItemStack? = delegate?.issue(player, identity, material, name, customModelData, itemModel)
+
+    override fun issueAtSlot(
+        player: Player,
+        slot: Int,
+        identity: ServiceItemIdentity,
+        material: Material,
+        name: Component,
+        customModelData: Int,
+        itemModel: NamespacedKey?,
+    ): ItemStack? = delegate?.issueAtSlot(player, slot, identity, material, name, customModelData, itemModel)
+
+    override fun issueHeld(
+        player: Player,
+        identity: ServiceItemIdentity,
+        material: Material,
+        name: Component,
+        customModelData: Int,
+        itemModel: NamespacedKey?,
+    ): ItemStack? = delegate?.issueHeld(player, identity, material, name, customModelData, itemModel)
 
     override fun consume(player: Player, expected: ServiceItemIdentity): Boolean = delegate?.consume(player, expected) == true
     override fun identity(item: ItemStack?): ServiceItemIdentity? = delegate?.identity(item)
@@ -111,27 +147,66 @@ internal class WorksiteServiceItemController(
         customModelData: Int,
         itemModel: NamespacedKey?,
     ): ItemStack? {
+        val item = create(identity, material, name, customModelData, itemModel) ?: return null
+        return item.takeIf { player.inventory.addItem(it).isEmpty() }
+    }
+
+    override fun issueAtSlot(
+        player: Player,
+        slot: Int,
+        identity: ServiceItemIdentity,
+        material: Material,
+        name: Component,
+        customModelData: Int,
+        itemModel: NamespacedKey?,
+    ): ItemStack? {
+        require(slot in 0 until player.inventory.storageContents.size) { "Service item slot is outside storage" }
+        if (player.inventory.getItem(slot)?.type?.isAir == false) return null
+        val item = create(identity, material, name, customModelData, itemModel) ?: return null
+        player.inventory.setItem(slot, item)
+        return item
+    }
+
+    override fun issueHeld(
+        player: Player,
+        identity: ServiceItemIdentity,
+        material: Material,
+        name: Component,
+        customModelData: Int,
+        itemModel: NamespacedKey?,
+    ): ItemStack? {
+        val item = create(identity, material, name, customModelData, itemModel) ?: return null
+        return item.takeIf { PlayerHeldItemLoadout.place(player, listOf(it)) }
+    }
+
+    private fun create(
+        identity: ServiceItemIdentity,
+        material: Material,
+        name: Component,
+        customModelData: Int,
+        itemModel: NamespacedKey?,
+    ): ItemStack? {
         require(material.isItem && !material.isAir) { "Service item material must be a real item" }
         require(customModelData >= 0) { "Service item custom model data cannot be negative" }
         if (!owner.isActive(identity)) return null
-        val item = ItemStack(material)
-        item.editMeta { meta ->
-            meta.displayName(name.decoration(TextDecoration.ITALIC, false))
-            if (customModelData > 0) {
-                @Suppress("DEPRECATION")
-                meta.setCustomModelData(customModelData)
+        return ItemStack(material).also { item ->
+            item.editMeta { meta ->
+                meta.displayName(name.decoration(TextDecoration.ITALIC, false))
+                if (customModelData > 0) {
+                    @Suppress("DEPRECATION")
+                    meta.setCustomModelData(customModelData)
+                }
+                itemModel?.let(meta::setItemModel)
+                val pdc = meta.persistentDataContainer
+                pdc.set(markerKey, PersistentDataType.INTEGER, MARKER)
+                pdc.set(activityKey, PersistentDataType.STRING, identity.activity.name)
+                pdc.set(zoneKey, PersistentDataType.STRING, identity.zoneId)
+                pdc.set(sequenceKey, PersistentDataType.LONG, identity.sequence)
+                pdc.set(objectiveKey, PersistentDataType.LONG, identity.objectiveNonce)
+                pdc.set(roleKey, PersistentDataType.STRING, identity.role.value)
+                pdc.set(itemKey, PersistentDataType.STRING, identity.itemId)
             }
-            itemModel?.let(meta::setItemModel)
-            val pdc = meta.persistentDataContainer
-            pdc.set(markerKey, PersistentDataType.INTEGER, MARKER)
-            pdc.set(activityKey, PersistentDataType.STRING, identity.activity.name)
-            pdc.set(zoneKey, PersistentDataType.STRING, identity.zoneId)
-            pdc.set(sequenceKey, PersistentDataType.LONG, identity.sequence)
-            pdc.set(objectiveKey, PersistentDataType.LONG, identity.objectiveNonce)
-            pdc.set(roleKey, PersistentDataType.STRING, identity.role.value)
-            pdc.set(itemKey, PersistentDataType.STRING, identity.itemId)
         }
-        return item.takeIf { player.inventory.addItem(it).isEmpty() }
     }
 
     override fun isServiceItem(item: ItemStack?): Boolean = item?.itemMeta?.persistentDataContainer

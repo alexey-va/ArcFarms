@@ -58,9 +58,12 @@ class ArcFarmsRuntimeValidatorTest : FunSpec({
                 validator().validateRuntime(candidateWith("gun-material: PAPER", "gun-material: AIR"))
             }.message shouldContain "rival-raid.gun-material must be a non-air item"
 
-            shouldThrow<IllegalArgumentException> {
-                validator().validateRuntime(candidateWith("grenade-material: PAPER", "grenade-material: AIR"))
-            }.message shouldContain "rival-raid.grenade-material must be a non-air item"
+        shouldThrow<IllegalArgumentException> {
+            validator().validateRuntime(candidateWith("grenade-material: PAPER", "grenade-material: AIR"))
+        }.message shouldContain "rival-raid.grenade-material must be a non-air item"
+        shouldThrow<IllegalArgumentException> {
+            validator().validateRuntime(candidateWith("grenade-preview-soil-material: COARSE_DIRT", "grenade-preview-soil-material: AIR"))
+        }.message shouldContain "rival-raid.grenade-preview-soil-material must be a solid block"
         }
     }
 

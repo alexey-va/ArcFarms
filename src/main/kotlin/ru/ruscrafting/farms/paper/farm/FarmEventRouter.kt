@@ -21,6 +21,7 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.EntityDeathEvent
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent
+import org.bukkit.event.entity.EntityDismountEvent
 import org.bukkit.event.entity.EntityShootBowEvent
 import org.bukkit.event.entity.ProjectileHitEvent
 import org.bukkit.event.entity.PlayerDeathEvent
@@ -392,6 +393,8 @@ internal class FarmEventRouter(
     }
 
     fun onVehicleEnter(event: VehicleEnterEvent) = care.onVehicleEnter(event)
+
+    fun onDismount(event: EntityDismountEvent) = actionIncidents.onDismount(event)
 
     fun onEntityDamage(event: EntityDamageEvent) {
         val inspecting = (event as? EntityDamageByEntityEvent)?.playerDamager()?.takeIf(worldAdmin::isInspecting)

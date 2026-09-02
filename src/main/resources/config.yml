@@ -317,6 +317,7 @@ farm-zones:
         # Disabled in automatic orders while the physical trench flow is tuned; admin stage remains available.
         automatic-enabled: false
         segments: 50
+        marker-column-stride: 10
         flow-interval-ticks: 6
         completion-delay-ticks: 40
       boar-breakout:
@@ -336,12 +337,15 @@ farm-zones:
         shield-knockback-vertical: 0.32
       rival-raid:
         required-kills: 32
-        worker-count: 12
+        worker-count: 120
+        worker-spawn-batch-size: 12
+        worker-patrol-batch-size: 12
         worker-entity: HUSK
         worker-health: 12.0
         worker-radius: 64.0
         worker-held-item: TORCH
         worker-light-level: 15
+        worker-light-stride: 10
         worker-patrol-interval-ticks: 40
         worker-patrol-speed: 1.1
         flight-height: 20.0
@@ -372,6 +376,9 @@ farm-zones:
         grenade-cooldown-ticks: 30
         grenade-velocity: 1.2
         grenade-lifetime-ticks: 60
+        grenade-preview-blocks: 12
+        grenade-preview-ticks: 40
+        grenade-preview-soil-material: COARSE_DIRT
       night-shift:
         placement-count: 90
         target-count: 24

@@ -759,7 +759,7 @@ internal class FarmCareController(
         audience.players(runtime.region).filterNot(access::isAdminEditing).forEach { player ->
             val hasRod = player.inventory.storageContents.any { serviceItems.identity(it) == identity } ||
                 serviceItems.identity(player.inventory.itemInOffHand) == identity
-            if (!hasRod && serviceItems.issue(
+            if (!hasRod && serviceItems.issueHeld(
                     player,
                     identity,
                     Material.FISHING_ROD,

@@ -297,6 +297,10 @@ internal class ArcFarmsRuntimeValidator(
         require(raidGrenade.isItem && !raidGrenade.isAir) {
             "Farm zone ${zone.id} special-incidents.rival-raid.grenade-material must be a non-air item"
         }
+        val raidPreviewSoil = MaterialRules.material(zone.rivalRaid.grenadePreviewSoilMaterial)
+        require(raidPreviewSoil.isBlock && raidPreviewSoil.isSolid && raidPreviewSoil.isOccluding) {
+            "Farm zone ${zone.id} special-incidents.rival-raid.grenade-preview-soil-material must be a solid block"
+        }
         require(!zone.rewards.requiresEconomy || economyAvailable()) {
             "Farm zone ${zone.id} money reward requires Vault and an economy provider"
         }

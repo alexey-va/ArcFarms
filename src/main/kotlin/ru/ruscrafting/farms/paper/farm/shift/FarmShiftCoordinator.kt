@@ -50,6 +50,8 @@ import ru.ruscrafting.farms.paper.farm.presentation.FarmHudController
 import ru.ruscrafting.farms.paper.farm.reward.FarmRewardService
 import ru.ruscrafting.farms.paper.farm.scene.FarmContractSceneController
 import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyController
+import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyKind
+import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyVisibilityPolicy
 
 /** The only application owner allowed to apply a farm domain EngineResult. */
 internal class FarmShiftCoordinator(
@@ -157,6 +159,7 @@ internal class FarmShiftCoordinator(
             locale.renderPath("order.farm.${runtime.state.orderId}", player) to
                 mapOf("total" to locale.text(runtime.state.preparationRequired))
         }
+        issueRequiredSupply(runtime)
     }
 
     private fun preparationProgress(runtime: FarmRuntime, actor: Player?) {
@@ -189,6 +192,7 @@ internal class FarmShiftCoordinator(
             title = true,
         )
         hud.playStageFanfare(runtime, 0.95f)
+        issueRequiredSupply(runtime)
         state.persistAsync()
     }
 
@@ -240,6 +244,7 @@ internal class FarmShiftCoordinator(
             if (settings().sounds) player.playSound(player.location, care.startSound(type), 0.75f, 1.0f)
         }
         port.warningBurst(runtime.region)
+        issueRequiredSupply(runtime)
         debug.event(
             "farm_care_started",
             "zone" to runtime.settings.id,
@@ -470,6 +475,7 @@ internal class FarmShiftCoordinator(
                 special.ensure(runtime)
             }
         }
+        issueRequiredSupply(runtime)
         port.warningBurst(runtime.region)
         network.signal(
             NetworkSignal.FARM_INCIDENT,
@@ -654,6 +660,18 @@ internal class FarmShiftCoordinator(
 
     private fun currentOrder(runtime: FarmRuntime): FarmOrder? = runtime.state.orderId?.let(runtime.orders::get)
     private fun players(runtime: FarmRuntime): List<Player> = port.players(runtime.region)
+
+    private fun issueSupply(runtime: FarmRuntime, kind: FarmSupplyKind) {
+        players(runtime).forEach { player ->
+            if (!supplies.give(runtime, kind, player)) {
+                port.sendActionBar(player, MessageKey.FARM_ACTION_INVENTORY_FULL)
+            }
+        }
+    }
+
+    private fun issueRequiredSupply(runtime: FarmRuntime) {
+        FarmSupplyVisibilityPolicy.required(runtime.state)?.let { kind -> issueSupply(runtime, kind) }
+    }
 
     private companion object {
         const val PERSIST_INTERVAL = 10

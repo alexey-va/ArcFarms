@@ -282,6 +282,7 @@ data class FarmZoneSettings(
 data class FarmSpecialIncidentSettings(
     val channelAutomaticEnabled: Boolean,
     val channelSegmentCount: Int,
+    val channelMarkerColumnStride: Int,
     val channelFlowIntervalTicks: Int,
     val channelCompletionDelayTicks: Int,
     val nightCropPlacementCount: Int,
@@ -325,6 +326,7 @@ data class FarmSpecialIncidentSettings(
     val frost: FarmFrostSettings,
 ) {
     init {
+        require(channelMarkerColumnStride in 1..32) { "channel marker column stride must be in 1..32" }
         require(nightCropTargetCount <= nightCropPlacementCount) {
             "night-shift crop target must not exceed its placement count"
         }
@@ -393,12 +395,15 @@ data class FarmBoarBreakoutSettings(
 
 data class FarmRivalRaidSettings(
     val requiredKills: Int = 32,
-    val workerCount: Int = 12,
+    val workerCount: Int = 120,
+    val workerSpawnBatchSize: Int = 12,
+    val workerPatrolBatchSize: Int = 12,
     val workerEntity: String = "HUSK",
     val workerHealth: Double = 12.0,
     val workerRadius: Double = 64.0,
     val workerHeldItem: String = "TORCH",
     val workerLightLevel: Int = 15,
+    val workerLightStride: Int = 10,
     val workerPatrolIntervalTicks: Int = 40,
     val workerPatrolSpeed: Double = 1.1,
     val flightHeight: Double = 20.0,
@@ -427,13 +432,19 @@ data class FarmRivalRaidSettings(
     val grenadeCooldownTicks: Int = 30,
     val grenadeVelocity: Double = 1.2,
     val grenadeLifetimeTicks: Int = 60,
+    val grenadePreviewBlocks: Int = 12,
+    val grenadePreviewTicks: Int = 40,
+    val grenadePreviewSoilMaterial: String = "COARSE_DIRT",
 ) {
     init {
         require(requiredKills in 1..128) { "rival raid kill quota must be in 1..128" }
-        require(workerCount in 1..32) { "rival raid worker count must be in 1..32" }
+        require(workerCount in 1..192) { "rival raid worker count must be in 1..192" }
+        require(workerSpawnBatchSize in 1..32) { "rival worker spawn batch size must be in 1..32" }
+        require(workerPatrolBatchSize in 1..32) { "rival worker patrol batch size must be in 1..32" }
         require(workerHealth.isFinite() && workerHealth in 1.0..100.0) { "rival worker health is invalid" }
         require(workerRadius.isFinite() && workerRadius in 2.0..192.0) { "rival worker radius is invalid" }
         require(workerLightLevel in 0..15) { "rival worker light level is invalid" }
+        require(workerLightStride in 1..32) { "rival worker light stride is invalid" }
         require(workerPatrolIntervalTicks in 10..200) { "rival worker patrol interval is invalid" }
         require(workerPatrolSpeed.isFinite() && workerPatrolSpeed in 0.5..2.0) { "rival worker patrol speed is invalid" }
         require(flightHeight.isFinite() && flightHeight in 3.0..48.0) { "rival raid flight height is invalid" }
@@ -458,6 +469,8 @@ data class FarmRivalRaidSettings(
         require(grenadeCooldownTicks in 1..200) { "rival raid grenade cooldown is invalid" }
         require(grenadeVelocity.isFinite() && grenadeVelocity in 0.2..3.0) { "rival raid grenade velocity is invalid" }
         require(grenadeLifetimeTicks in 20..200) { "rival raid grenade lifetime is invalid" }
+        require(grenadePreviewBlocks in 1..64) { "rival raid grenade preview block count is invalid" }
+        require(grenadePreviewTicks in 5..200) { "rival raid grenade preview duration is invalid" }
     }
 }
 
@@ -1740,6 +1753,8 @@ class ArcFarmsConfig private constructor(
                     channelAutomaticEnabled = section.boolean("special-incidents.channels.automatic-enabled", false),
                     channelSegmentCount = section.int("special-incidents.channels.segments", legacyChannelSegmentCount)
                         .checked("special-incidents.channels.segments", 4, 128),
+                    channelMarkerColumnStride = section.int("special-incidents.channels.marker-column-stride", 10)
+                        .checked("special-incidents.channels.marker-column-stride", 1, 32),
                     channelFlowIntervalTicks = section.int("special-incidents.channels.flow-interval-ticks", 6)
                         .checked("special-incidents.channels.flow-interval-ticks", 1, 40),
                     channelCompletionDelayTicks = section.int("special-incidents.channels.completion-delay-ticks", 40)
@@ -2147,8 +2162,14 @@ class ArcFarmsConfig private constructor(
                     rivalRaid = FarmRivalRaidSettings(
                         requiredKills = section.int("special-incidents.rival-raid.required-kills", 32)
                             .checked("special-incidents.rival-raid.required-kills", 1, 128),
-                        workerCount = section.int("special-incidents.rival-raid.worker-count", 12)
-                            .checked("special-incidents.rival-raid.worker-count", 1, 32),
+                        workerCount = section.int("special-incidents.rival-raid.worker-count", 120)
+                            .checked("special-incidents.rival-raid.worker-count", 1, 192),
+                        workerSpawnBatchSize = section.int(
+                            "special-incidents.rival-raid.worker-spawn-batch-size", 12,
+                        ).checked("special-incidents.rival-raid.worker-spawn-batch-size", 1, 32),
+                        workerPatrolBatchSize = section.int(
+                            "special-incidents.rival-raid.worker-patrol-batch-size", 12,
+                        ).checked("special-incidents.rival-raid.worker-patrol-batch-size", 1, 32),
                         workerEntity = entityName(
                             section.string("special-incidents.rival-raid.worker-entity", "HUSK"),
                         ).also { require(it in RIVAL_WORKER_TYPES) { "Unsupported rival raid worker entity: $it" } },
@@ -2163,6 +2184,8 @@ class ArcFarmsConfig private constructor(
                         ),
                         workerLightLevel = section.int("special-incidents.rival-raid.worker-light-level", 15)
                             .checked("special-incidents.rival-raid.worker-light-level", 0, 15),
+                        workerLightStride = section.int("special-incidents.rival-raid.worker-light-stride", 10)
+                            .checked("special-incidents.rival-raid.worker-light-stride", 1, 32),
                         workerPatrolIntervalTicks = section.int(
                             "special-incidents.rival-raid.worker-patrol-interval-ticks", 40,
                         ).checked("special-incidents.rival-raid.worker-patrol-interval-ticks", 10, 200),
@@ -2252,6 +2275,15 @@ class ArcFarmsConfig private constructor(
                         grenadeLifetimeTicks = section.int(
                             "special-incidents.rival-raid.grenade-lifetime-ticks", 60,
                         ).checked("special-incidents.rival-raid.grenade-lifetime-ticks", 20, 200),
+                        grenadePreviewBlocks = section.int(
+                            "special-incidents.rival-raid.grenade-preview-blocks", 12,
+                        ).checked("special-incidents.rival-raid.grenade-preview-blocks", 1, 64),
+                        grenadePreviewTicks = section.int(
+                            "special-incidents.rival-raid.grenade-preview-ticks", 40,
+                        ).checked("special-incidents.rival-raid.grenade-preview-ticks", 5, 200),
+                        grenadePreviewSoilMaterial = materialName(
+                            section.string("special-incidents.rival-raid.grenade-preview-soil-material", "COARSE_DIRT"),
+                        ),
                     ),
                     processing = processing,
                     barnFire = barnFire,

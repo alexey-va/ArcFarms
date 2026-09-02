@@ -10,6 +10,7 @@ import net.kyori.adventure.text.Component
 import org.bukkit.Material
 import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Player
+import org.bukkit.inventory.ItemStack
 import org.bukkit.plugin.Plugin
 import org.mockbukkit.mockbukkit.ServerMock
 import org.mockbukkit.mockbukkit.entity.PlayerMock
@@ -62,6 +63,32 @@ class FarmSupplyControllerMockBukkitTest : FunSpec({
         player.inventory.storageContents.filterNotNull().filter(controller::isServiceItem) shouldHaveSize 1
         controller.removeServiceItems(player, runtime.settings.id, "left_zone")
         player.inventory.storageContents.filterNotNull().filter(controller::isServiceItem) shouldHaveSize 0
+    }
+
+    test("required supply replaces the selected slot without deleting the held item") {
+        val controller = controller(plugin)
+        val runtime = runtime(world)
+        player.inventory.heldItemSlot = 4
+        player.inventory.setItem(4, ItemStack(Material.DIAMOND, 3))
+
+        controller.give(runtime, FarmSupplyKind.TOOL, player) shouldBe true
+
+        controller.isServiceItem(player.inventory.getItem(4), FarmSupplyKind.TOOL) shouldBe true
+        player.inventory.getItem(9) shouldBe ItemStack(Material.DIAMOND, 3)
+    }
+
+    test("required supply leaves a full inventory unchanged") {
+        val controller = controller(plugin)
+        val runtime = runtime(world)
+        player.inventory.heldItemSlot = 4
+        repeat(player.inventory.storageContents.size) { slot ->
+            player.inventory.setItem(slot, ItemStack(Material.COBBLESTONE, slot + 1))
+        }
+        val before = player.inventory.storageContents.map { it?.clone() }
+
+        controller.give(runtime, FarmSupplyKind.TOOL, player) shouldBe false
+
+        player.inventory.storageContents.toList() shouldBe before
     }
 
     test("loaded supply scene converges after controller restart without duplicate entities") {

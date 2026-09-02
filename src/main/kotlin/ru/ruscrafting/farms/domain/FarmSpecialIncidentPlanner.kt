@@ -17,6 +17,14 @@ data class FarmSpecialIncidentPlan(
 
 internal const val FARM_CHANNEL_ROUTE_NAME = "drainage-v3"
 
+object FarmChannelMarkerPolicy {
+    fun showsColumn(index: Int, solved: Boolean, stride: Int): Boolean {
+        require(index >= 0)
+        require(stride >= 1)
+        return !solved && index % stride == 0
+    }
+}
+
 object FarmSpecialIncidentPlanner {
     fun plan(
         type: FarmIncidentType,
@@ -180,14 +188,33 @@ object FarmSpecialIncidentPlanner {
         require(requestedSegments in 1..128)
         val plots = surfacePlots.distinct().filter { it.world == source.world }
         if (plots.isEmpty()) return emptyList()
-        val start = plots.minWithOrNull(
+        val orderedStarts = plots.sortedWith(
             compareBy<FarmPlotPosition> { plot ->
                 val dx = plot.x + 0.5 - source.x
                 val dz = plot.z + 0.5 - source.z
                 dx * dx + dz * dz
             }.thenBy(FarmPlotPosition::x).thenBy(FarmPlotPosition::z).thenBy(FarmPlotPosition::y),
-        ) ?: return emptyList()
+        )
         val horizontal = plots.groupBy { it.x to it.z }
+        val startCandidates = rotate(
+            orderedStarts.take(minOf(24, maxOf(8, requestedSegments / 3), orderedStarts.size)),
+            sequence + CHANNEL_START_SALT,
+        )
+        var longest = emptyList<FarmPlotPosition>()
+        startCandidates.forEachIndexed { attempt, start ->
+            val route = shortestChannelRoute(start, horizontal, requestedSegments, sequence + attempt * 97L)
+            if (route.size == requestedSegments) return route
+            if (route.size > longest.size) longest = route
+        }
+        return longest.takeIf { it.size >= MIN_CHANNEL_SEGMENTS }.orEmpty()
+    }
+
+    private fun shortestChannelRoute(
+        start: FarmPlotPosition,
+        horizontal: Map<Pair<Int, Int>, List<FarmPlotPosition>>,
+        requestedSegments: Int,
+        sequence: Long,
+    ): List<FarmPlotPosition> {
         val parents = mutableMapOf<FarmPlotPosition, FarmPlotPosition?>()
         val distances = mutableMapOf<FarmPlotPosition, Int>()
         val queue = ArrayDeque<FarmPlotPosition>()
@@ -229,6 +256,8 @@ object FarmSpecialIncidentPlanner {
         val offset = java.lang.Math.floorMod((mixed xor (mixed ushr 32)).toInt(), values.size)
         return values.drop(offset) + values.take(offset)
     }
+
+    private const val CHANNEL_START_SALT = 0x4348414e53544152L
 
     private const val MIN_CHANNEL_SEGMENTS = 4
     private val CARDINAL_DIRECTIONS = listOf(1 to 0, 0 to 1, -1 to 0, 0 to -1)

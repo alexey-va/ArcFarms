@@ -20,6 +20,7 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.EntityDeathEvent
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent
+import org.bukkit.event.entity.EntityDismountEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerTeleportEvent
@@ -54,12 +55,15 @@ import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.platform.FarmEntityRayTrace
 import ru.ruscrafting.farms.paper.platform.FarmMobDespawnPolicy
 import ru.ruscrafting.farms.paper.platform.FarmMobNavigation
+import ru.ruscrafting.farms.paper.platform.FarmRaidSeatMotion
+import ru.ruscrafting.farms.paper.platform.FarmClientBlockPreview
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import java.util.UUID
 import java.util.logging.Level
 import kotlin.math.cos
@@ -77,6 +81,7 @@ internal class FarmActionIncidentController(
     private val access: WorksiteAccessPort,
     private val audience: WorksiteAudiencePort,
     private val state: WorksiteStatePort,
+    private val tasks: WorksiteTaskPort,
     private val serviceItems: WorksiteServiceItems,
     private val ledger: FarmBlockLedger,
     private val beds: FarmIncidentBedProvider,
@@ -86,6 +91,8 @@ internal class FarmActionIncidentController(
     private val entityRayTrace: FarmEntityRayTrace,
     private val mobDespawns: FarmMobDespawnPolicy,
     private val mobNavigation: FarmMobNavigation,
+    private val seatMotion: FarmRaidSeatMotion,
+    private val blockPreviews: FarmClientBlockPreview,
     private val nightShift: FarmNightShiftController,
 ) {
     private val zoneKey = NamespacedKey(plugin, "farm_action_zone")
@@ -101,6 +108,7 @@ internal class FarmActionIncidentController(
         access,
         audience,
         state,
+        tasks,
         serviceItems,
         beds,
         points,
@@ -109,6 +117,8 @@ internal class FarmActionIncidentController(
         entityRayTrace,
         mobDespawns,
         mobNavigation,
+        seatMotion,
+        blockPreviews,
         nightShift,
     )
 
@@ -238,6 +248,8 @@ internal class FarmActionIncidentController(
     fun onDeath(event: EntityDeathEvent): Boolean = raid.onDeath(event)
 
     fun onTarget(event: EntityTargetLivingEntityEvent): Boolean = raid.onTarget(event)
+
+    fun onDismount(event: EntityDismountEvent): Boolean = raid.onDismount(event)
 
     fun onProjectileHit(event: org.bukkit.event.entity.ProjectileHitEvent): Boolean = raid.onProjectileHit(event)
 
@@ -491,7 +503,7 @@ internal class FarmActionIncidentController(
         if (player.inventory.storageContents.any { serviceItems.identity(it) == identity } ||
             serviceItems.identity(player.inventory.itemInOffHand) == identity
         ) return
-        if (serviceItems.issue(player, identity, material, locale.render(key, player), 0, null) == null) {
+        if (serviceItems.issueHeld(player, identity, material, locale.render(key, player), 0, null) == null) {
             audience.sendActionBar(player, MessageKey.FARM_ACTION_INVENTORY_FULL)
         }
     }

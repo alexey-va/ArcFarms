@@ -91,6 +91,7 @@ internal class FarmIncidentScenarioFixture private constructor(
     )
 
     val transitions = mutableListOf<AppliedTransition>()
+    val raidBlockPreviews = RecordingFarmClientBlockPreview()
 
     private val processingRoleKey = NamespacedKey(plugin, "farm_processing_role")
     private val processingIndexKey = NamespacedKey(plugin, "farm_processing_index")
@@ -233,6 +234,7 @@ internal class FarmIncidentScenarioFixture private constructor(
             access = port,
             audience = port,
             state = port,
+            tasks = port,
             serviceItems = serviceItems,
             ledger = FarmBlockLedger(plugin),
             beds = FarmIncidentBedProvider { candidate ->
@@ -245,6 +247,8 @@ internal class FarmIncidentScenarioFixture private constructor(
             entityRayTrace = MockBukkitFarmEntityRayTrace,
             mobDespawns = MockBukkitFarmMobDespawns,
             mobNavigation = MockBukkitFarmMobNavigation,
+            seatMotion = MockBukkitFarmRaidSeatMotion,
+            blockPreviews = raidBlockPreviews,
             nightShift = night,
         )
         return controller

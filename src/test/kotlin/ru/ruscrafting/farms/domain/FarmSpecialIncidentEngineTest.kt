@@ -158,8 +158,8 @@ class FarmSpecialIncidentEngineTest : FunSpec({
     }
 
     test("channel planner varies the trench through the same broad field across placements") {
-        val plots = (0..8).flatMap { x ->
-            (0..8).map { z -> FarmPlotPosition("world", x, 64, z) }
+        val plots = (0..12).flatMap { x ->
+            (0..12).map { z -> FarmPlotPosition("world", x, 64, z) }
         }
         val source = FarmPointPosition("world", -1.5, 65.0, -1.5)
 
@@ -174,6 +174,15 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             }
         } shouldBe true
         (routes.distinct().size > 1) shouldBe true
+        (routes.map { it.first() }.distinct().size > 1) shouldBe true
+    }
+
+    test("channel guidance raises a column only on every tenth unfinished segment") {
+        val columns = (0 until 37).filter { index ->
+            FarmChannelMarkerPolicy.showsColumn(index, solved = index in setOf(0, 20), stride = 10)
+        }
+
+        columns shouldBe listOf(10, 30)
     }
 
     test("channel segments are placed on indexed surface beds instead of interpolating underground y") {

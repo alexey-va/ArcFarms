@@ -108,6 +108,42 @@ class WorksiteServiceItemControllerMockBukkitTest : FunSpec({
         item.itemMeta.customModelData shouldBe 2_100_103
         // MockBukkit 4.84 does not retain Paper's item_model component; the real API call is compile-checked above.
     }
+
+    test("a service item can be issued into one exact empty hotbar slot without overwriting it") {
+        val blocker = org.bukkit.inventory.ItemStack(Material.DIAMOND, 3)
+        player.inventory.setItem(1, blocker)
+
+        val issued = controller.issueAtSlot(player, 0, identity, Material.IRON_NUGGET, Component.text("Drive belt"), 0, null)
+
+        controller.identity(issued) shouldBe identity
+        player.inventory.getItem(0) shouldBe issued
+        controller.issueAtSlot(player, 1, identity.copy(itemId = "belt-2"), Material.RAIL, Component.text("Rail kit"), 0, null) shouldBe null
+        player.inventory.getItem(1) shouldBe blocker
+    }
+
+    test("a held service item preserves the selected personal item in deep storage") {
+        val blocker = org.bukkit.inventory.ItemStack(Material.DIAMOND, 3)
+        player.inventory.heldItemSlot = 4
+        player.inventory.setItem(4, blocker)
+
+        val issued = controller.issueHeld(player, identity, Material.IRON_NUGGET, Component.text("Drive belt"), 0, null)
+
+        controller.identity(issued) shouldBe identity
+        player.inventory.getItem(4) shouldBe issued
+        player.inventory.getItem(9) shouldBe blocker
+    }
+
+    test("a held service item does not change a full inventory") {
+        player.inventory.heldItemSlot = 4
+        repeat(player.inventory.storageContents.size) { slot ->
+            player.inventory.setItem(slot, org.bukkit.inventory.ItemStack(Material.COBBLESTONE, slot + 1))
+        }
+        val before = player.inventory.storageContents.map { it?.clone() }
+
+        controller.issueHeld(player, identity, Material.IRON_NUGGET, Component.text("Drive belt"), 0, null) shouldBe null
+
+        player.inventory.storageContents.toList() shouldBe before
+    }
 })
 
 private class RecordingServiceItemOwner(

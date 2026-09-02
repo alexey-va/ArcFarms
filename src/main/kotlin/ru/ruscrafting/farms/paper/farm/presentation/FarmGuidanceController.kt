@@ -9,6 +9,7 @@ import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareTarget
 import ru.ruscrafting.farms.domain.FarmCareType
+import ru.ruscrafting.farms.domain.FarmChannelMarkerPolicy
 import ru.ruscrafting.farms.domain.FarmGuidancePlanner
 import ru.ruscrafting.farms.domain.FarmGiantCropBlueprint
 import ru.ruscrafting.farms.domain.FarmIncidentType
@@ -194,7 +195,12 @@ internal class FarmGuidanceController(
                         if (!FarmSurfacePolicy.isSurfaceSpawn(location)) return@forEachIndexed
                         when {
                             index !in special.solution -> {
-                                spawnSlimColumn(player, location, AMBER_COLOR)
+                                if (FarmChannelMarkerPolicy.showsColumn(
+                                        index,
+                                        solved = false,
+                                        stride = runtime.settings.specialIncidents.channelMarkerColumnStride,
+                                    )
+                                ) spawnSlimColumn(player, location, AMBER_COLOR)
                                 spawnPlotMarker(player, location.clone().add(0.0, -1.0, 0.0), EARTH_COLOR)
                             }
                             index !in special.active ->
@@ -298,14 +304,9 @@ internal class FarmGuidanceController(
                 isVisibleGiantCrop(world, point, runtime.state.specialIncident?.crop)
             }?.let { world -> Location(world, point.x, point.y, point.z) to AMBER_COLOR }
         }
-        FarmIncidentType.CHANNELS -> runtime.state.specialIncident?.let { special ->
-            special.points.mapIndexedNotNull { index, point ->
-                if (index in special.solution) null else {
-                    Bukkit.getWorld(point.world)?.let { world -> Location(world, point.x, point.y, point.z) }
-                        ?.takeIf(FarmSurfacePolicy::isSurfaceSpawn)?.let { it to AMBER_COLOR }
-                }
-            }
-        }.orEmpty()
+        // Channel columns are rendered by emitSpecial with an explicit stride.
+        // Returning them here would draw a second full-height column over every unsolved segment.
+        FarmIncidentType.CHANNELS -> emptyList()
         FarmIncidentType.NIGHT_SHIFT -> runtime.state.specialIncident?.plots.orEmpty().filter(::isOutdoorPlot)
             .mapNotNull(FarmPlotPosition::location)
             .map { it to NIGHT_COLOR }

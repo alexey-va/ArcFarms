@@ -336,6 +336,7 @@ internal class FarmComponentGraph(
         access = ports.access,
         audience = ports.audience,
         state = ports.state,
+        tasks = ports.tasks,
         serviceItems = serviceItems,
         ledger = ledger,
         beds = incidentBeds,
@@ -345,6 +346,8 @@ internal class FarmComponentGraph(
         entityRayTrace = entityRayTrace,
         mobDespawns = mobDespawns,
         mobNavigation = mobNavigation,
+        seatMotion = ru.ruscrafting.farms.paper.platform.PaperFarmRaidSeatMotion,
+        blockPreviews = ru.ruscrafting.farms.paper.platform.PaperFarmClientBlockPreview,
         nightShift = nightShift,
     )
     private val processing = FarmProcessingIncident(

@@ -7,6 +7,7 @@ import net.kyori.adventure.text.Component
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.entity.Horse
+import org.bukkit.entity.ArmorStand
 import org.bukkit.entity.TextDisplay
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.paper.fixtures.MockBukkitFarmBlockDataDecoder
@@ -71,6 +72,23 @@ class FarmPlatformPortsMockBukkitTest : FunSpec({
             lease.close()
             lease.close()
             leases.retainedCount() shouldBe 0
+        }
+    }
+
+    test("production raid seat motion keeps the rider mounted and uses velocity instead of per-tick teleport") {
+        MockBukkitTestRuntime.open().use { paper ->
+            val world = paper.server.addSimpleWorld("farm")
+            val player = paper.server.addPlayer()
+            val seat = world.spawn(Location(world, 2.5, 70.0, 2.5), ArmorStand::class.java)
+            seat.addPassenger(player) shouldBe true
+            val before = seat.location.clone()
+            val target = before.clone().add(0.25, 0.05, -0.15)
+
+            PaperFarmRaidSeatMotion.move(seat, target)
+
+            player.vehicle shouldBe seat
+            seat.location shouldBe before
+            seat.velocity shouldBe target.toVector().subtract(before.toVector())
         }
     }
 })

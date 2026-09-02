@@ -32,6 +32,7 @@ class FarmSupplyVisibilityPolicyTest : FunSpec({
         )
 
         cases.forEach { (state, kind) ->
+            FarmSupplyVisibilityPolicy.required(state) shouldBe kind
             FarmSupplyVisibilityPolicy.viewRange(
                 state,
                 kind,
