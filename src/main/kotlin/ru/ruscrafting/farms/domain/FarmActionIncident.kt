@@ -69,6 +69,27 @@ object FarmRaidSeatPolicy {
 object FarmRivalFieldPolicy {
     fun isEligible(loaded: Boolean, outdoor: Boolean, farmland: Boolean, headroom: Boolean): Boolean =
         loaded && outdoor && farmland && headroom
+
+    /** Selects a bounded, deterministic farthest-point sample instead of one sorted corner of a large field. */
+    fun distribute(
+        candidates: Collection<FarmPlotPosition>,
+        maximumPlots: Int,
+        selectionIndex: Long,
+    ): List<FarmPlotPosition> {
+        require(maximumPlots > 0) { "Rival field sample size must be positive" }
+        val ordered = candidates.distinct().sortedWith(
+            compareBy<FarmPlotPosition> { it.x }.thenBy { it.z }.thenBy { it.y }.thenBy { it.world },
+        )
+        if (ordered.isEmpty()) return emptyList()
+        val mixed = FarmSpatialSeed.mix(selectionIndex, 0x524956414c5f4649L)
+        val offset = java.lang.Math.floorMod((mixed xor (mixed ushr 32)).toInt(), ordered.size)
+        val rotated = ordered.drop(offset) + ordered.take(offset)
+        return FarmSpacedPlotSelector.select(
+            rotated.map { FarmMatureCrop(it, "") },
+            minOf(maximumPlots, rotated.size),
+            minimumSpacing = 0.0,
+        ).values.map(FarmMatureCrop::plot)
+    }
 }
 
 /** One-shot authorization for damage emitted by the raid gun's synchronous Paper damage call. */

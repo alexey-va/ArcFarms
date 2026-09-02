@@ -157,6 +157,25 @@ class FarmSpecialIncidentEngineTest : FunSpec({
         } shouldBe true
     }
 
+    test("channel planner varies the trench through the same broad field across placements") {
+        val plots = (0..8).flatMap { x ->
+            (0..8).map { z -> FarmPlotPosition("world", x, 64, z) }
+        }
+        val source = FarmPointPosition("world", -1.5, 65.0, -1.5)
+
+        val routes = (1L..8L).map { sequence ->
+            FarmSpecialIncidentPlanner.planChannelRoute(source, plots, requestedSegments = 17, sequence)
+        }
+
+        routes.all { it.size == 17 } shouldBe true
+        routes.all { route ->
+            route.zipWithNext().all { (left, right) ->
+                kotlin.math.abs(left.x - right.x) + kotlin.math.abs(left.z - right.z) == 1
+            }
+        } shouldBe true
+        (routes.distinct().size > 1) shouldBe true
+    }
+
     test("channel segments are placed on indexed surface beds instead of interpolating underground y") {
         val beds = (0 until 8).map { x -> FarmPlotPosition("world", x, 72, 0) }
         val plan = FarmSpecialIncidentPlanner.plan(

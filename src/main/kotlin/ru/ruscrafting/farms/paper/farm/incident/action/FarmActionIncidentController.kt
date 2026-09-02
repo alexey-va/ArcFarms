@@ -19,6 +19,7 @@ import org.bukkit.event.block.Action
 import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.EntityDeathEvent
+import org.bukkit.event.entity.EntityTargetLivingEntityEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerTeleportEvent
@@ -101,6 +102,7 @@ internal class FarmActionIncidentController(
         audience,
         state,
         serviceItems,
+        beds,
         points,
         transitions,
         runtimes,
@@ -234,6 +236,8 @@ internal class FarmActionIncidentController(
     }
 
     fun onDeath(event: EntityDeathEvent): Boolean = raid.onDeath(event)
+
+    fun onTarget(event: EntityTargetLivingEntityEvent): Boolean = raid.onTarget(event)
 
     fun onProjectileHit(event: org.bukkit.event.entity.ProjectileHitEvent): Boolean = raid.onProjectileHit(event)
 

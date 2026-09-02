@@ -51,6 +51,7 @@ sources:
       - scoreboard.phase.channels
       - scoreboard.hint.channels
       - scoreboard.hint-detail.channels
+      - farm.boar-breakout.*
       - farm.rival-raid.*
 
 placeholders:
@@ -113,6 +114,14 @@ surfaces:
       title: gameplay:farm.channels-started
       subtitle: gameplay:farm.channels-started-subtitle
       actionbar: gameplay:farm.channels-progress
+    - id: boar-breakout
+      title: gameplay:farm.boar-breakout.started
+      subtitle: gameplay:farm.boar-breakout.started-subtitle
+      actionbar: gameplay:farm.boar-breakout.progress
+    - id: rival-raid
+      title: gameplay:farm.rival-raid.started
+      subtitle: gameplay:farm.rival-raid.started-subtitle
+      actionbar: gameplay:farm.rival-raid.progress
   inventories:
     - id: raid-loadout-review
       title: preview:raid-loadout-title

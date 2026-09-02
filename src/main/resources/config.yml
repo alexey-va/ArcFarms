@@ -339,7 +339,7 @@ farm-zones:
         worker-count: 12
         worker-entity: HUSK
         worker-health: 12.0
-        worker-radius: 12.0
+        worker-radius: 64.0
         worker-held-item: TORCH
         worker-light-level: 15
         worker-patrol-interval-ticks: 40
@@ -350,8 +350,8 @@ farm-zones:
         orbit-radius: 28.0
         orbit-period-seconds: 48
         maximum-riders: 4
-        seat-forward-offset: 3.25
-        seat-y-offset: -1.25
+        seat-forward-offset: 3.75
+        seat-y-offset: 2.4
         player-time: 18000
         transition-seconds: 8
         maximum-distance: 512.0

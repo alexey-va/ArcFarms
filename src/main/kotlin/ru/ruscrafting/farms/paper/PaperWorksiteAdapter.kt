@@ -14,6 +14,7 @@ import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
+import ru.ruscrafting.farms.config.SCREEN_TITLE_SUBTITLES
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.ActivityStatsIndex
 import ru.ruscrafting.farms.domain.EngineResult
@@ -332,50 +333,6 @@ internal class PaperWorksiteAdapter(
     private companion object {
         val DANGER_COLOR: Color = Color.fromRGB(255, 95, 109)
         val SUCCESS_COLOR: Color = Color.fromRGB(85, 217, 139)
-        val TITLE_SUBTITLES = mapOf(
-            MessageKey.FARM_ENTRY_TITLE to MessageKey.FARM_ENTRY_SUBTITLE,
-            MessageKey.FARM_PLANTING_STARTED to MessageKey.FARM_PLANTING_STARTED_SUBTITLE,
-            MessageKey.FARM_PREPARATION_COMPLETED to MessageKey.FARM_PREPARATION_COMPLETED_SUBTITLE,
-            MessageKey.FARM_CARE_RESOLVED to MessageKey.FARM_CARE_RESOLVED_SUBTITLE,
-            MessageKey.FARM_CARE_SEEDER_RESOLVED to MessageKey.FARM_CARE_SEEDER_RESOLVED_SUBTITLE,
-            MessageKey.FARM_MOLE_ENTERED to MessageKey.FARM_MOLE_ENTERED_SUBTITLE,
-            MessageKey.FARM_INCIDENT_STARTED to MessageKey.FARM_INCIDENT_STARTED_SUBTITLE,
-            MessageKey.FARM_INCIDENT_RESOLVED to MessageKey.FARM_INCIDENT_RESOLVED_SUBTITLE,
-            MessageKey.FARM_DROUGHT_STARTED to MessageKey.FARM_DROUGHT_STARTED_SUBTITLE,
-            MessageKey.FARM_BIRDS_STARTED to MessageKey.FARM_BIRDS_STARTED_SUBTITLE,
-            MessageKey.FARM_ROUTE_STARTED to MessageKey.FARM_ROUTE_STARTED_SUBTITLE,
-            MessageKey.FARM_ROUTE_MOUNTED to MessageKey.FARM_ROUTE_MOUNTED_SUBTITLE,
-            MessageKey.FARM_ROUTE_STALLED to MessageKey.FARM_ROUTE_STALLED_SUBTITLE,
-            MessageKey.FARM_ROUTE_PASSENGER_RESCUED to MessageKey.FARM_ROUTE_PASSENGER_RESCUED_SUBTITLE,
-            MessageKey.FARM_ROUTE_PORTAL_JOINED to MessageKey.FARM_ROUTE_PORTAL_JOINED_SUBTITLE,
-            MessageKey.FARM_PROCESSING_STARTED to MessageKey.FARM_PROCESSING_STARTED_SUBTITLE,
-            MessageKey.FARM_PROCESSING_LOADING_TITLE to MessageKey.FARM_PROCESSING_LOADING_SUBTITLE,
-            MessageKey.FARM_PROCESSING_OPERATING_TITLE to MessageKey.FARM_PROCESSING_OPERATING_SUBTITLE,
-            MessageKey.FARM_PROCESSING_PACKING_TITLE to MessageKey.FARM_PROCESSING_PACKING_SUBTITLE,
-            MessageKey.FARM_PROCESSING_RAW_PICKED_UP to MessageKey.FARM_PROCESSING_RAW_PICKED_UP_SUBTITLE,
-            MessageKey.FARM_PROCESSING_PRODUCT_PICKED_UP to MessageKey.FARM_PROCESSING_PRODUCT_PICKED_UP_SUBTITLE,
-            MessageKey.FARM_PROCESSING_RETURNED to MessageKey.FARM_PROCESSING_RETURNED_SUBTITLE,
-            MessageKey.FARM_BARN_FIRE_STARTED to MessageKey.FARM_BARN_FIRE_STARTED_SUBTITLE,
-            MessageKey.FARM_FROST_STARTED to MessageKey.FARM_FROST_STARTED_SUBTITLE,
-            MessageKey.FARM_FROST_PICKED_UP to MessageKey.FARM_FROST_PICKED_UP_SUBTITLE,
-            MessageKey.FARM_FROST_FUELED to MessageKey.FARM_FROST_FUELED_SUBTITLE,
-            MessageKey.FARM_SPECIAL_RESOLVED to MessageKey.FARM_SPECIAL_RESOLVED_SUBTITLE,
-            MessageKey.FARM_GIANT_CROP_STARTED to MessageKey.FARM_GIANT_CROP_STARTED_SUBTITLE,
-            MessageKey.FARM_CHANNELS_STARTED to MessageKey.FARM_CHANNELS_STARTED_SUBTITLE,
-            MessageKey.FARM_NIGHT_SHIFT_STARTED to MessageKey.FARM_NIGHT_SHIFT_STARTED_SUBTITLE,
-            MessageKey.FARM_MARKET_EXPIRED to MessageKey.FARM_MARKET_EXPIRED_SUBTITLE,
-            MessageKey.FARM_MARKET_STARTED to MessageKey.FARM_MARKET_STARTED_SUBTITLE,
-            MessageKey.FARM_MARKET_ACCEPTED to MessageKey.FARM_MARKET_ACCEPTED_SUBTITLE,
-            MessageKey.FARM_DELIVERY_STARTED to MessageKey.FARM_DELIVERY_STARTED_SUBTITLE,
-            MessageKey.FARM_DELIVERY_PICKED_UP to MessageKey.FARM_DELIVERY_PICKED_UP_SUBTITLE,
-            MessageKey.FARM_CROP_COMPLETED to MessageKey.FARM_CROP_COMPLETED_SUBTITLE,
-            MessageKey.FARM_COMPLETED to MessageKey.FARM_COMPLETED_SUBTITLE,
-            MessageKey.LUMBER_PROCESSING to MessageKey.LUMBER_PROCESSING_SUBTITLE,
-            MessageKey.LUMBER_COMPLETED to MessageKey.LUMBER_COMPLETED_SUBTITLE,
-            MessageKey.MINE_HAZARD_STARTED to MessageKey.MINE_HAZARD_STARTED_SUBTITLE,
-            MessageKey.MINE_HAZARD_RESOLVED to MessageKey.MINE_HAZARD_RESOLVED_SUBTITLE,
-            MessageKey.MINE_EXTRACTION_STARTED to MessageKey.MINE_EXTRACTION_STARTED_SUBTITLE,
-            MessageKey.MINE_COMPLETED to MessageKey.MINE_COMPLETED_SUBTITLE,
-        )
+        val TITLE_SUBTITLES = SCREEN_TITLE_SUBTITLES
     }
 }

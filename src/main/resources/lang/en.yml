@@ -669,13 +669,15 @@ farm:
   channels-shovel: '<color:#45c8f5>Trenching shovel</color>'
   action-inventory-full: '<color:#ff5f6d>Clear one inventory slot for the service equipment.</color>'
   boar-breakout:
-    started: '<color:#ff7a45><bold>Boar breakout</bold></color><newline><color:#f2fff7>Stop their charges with shields: <total></color>'
+    started: '<color:#ff7a45><bold>Boar breakout</bold></color>'
+    started-subtitle: '<color:#f2fff7>Stop their charges with shields: <total></color>'
     progress: '<color:#ff7a45>Boars stopped</color> <color:#707a76>•</color> <color:#f2fff7><done>/<total></color>'
     required: '<color:#ffad42>Take the shield, face the boar, and hold block.</color>'
     bossbar: '<color:#ff7a45>Field defense</color> <color:#707a76>•</color> <color:#f2fff7><done>/<total></color>'
     shield: '<color:#ffc857>Farm shield</color>'
   rival-raid:
-    started: '<color:#c778ff><bold>Rival farm raid</bold></color><newline><color:#f2fff7>Board the ghast: <total> targets</color>'
+    started: '<color:#c778ff><bold>Rival farm raid</bold></color>'
+    started-subtitle: '<color:#f2fff7>Board the ghast: <total> targets</color>'
     progress: '<color:#c778ff>Targets eliminated</color> <color:#707a76>•</color> <color:#f2fff7><done>/<total></color>'
     required: '<color:#ffad42>Board the glowing ghast; right-click the machine gun to fire.</color>'
     bossbar: '<color:#c778ff>Raid</color> <color:#707a76>•</color> <color:#f2fff7><done>/<total></color>'

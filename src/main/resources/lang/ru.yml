@@ -669,13 +669,15 @@ farm:
   channels-shovel: '<color:#45c8f5>Лопата землекопа</color>'
   action-inventory-full: '<color:#ff5f6d>Освободите одну ячейку для служебного снаряжения.</color>'
   boar-breakout:
-    started: '<color:#ff7a45><bold>Прорыв кабанов</bold></color><newline><color:#f2fff7>Встречайте их щитами: <total></color>'
+    started: '<color:#ff7a45><bold>Прорыв кабанов</bold></color>'
+    started-subtitle: '<color:#f2fff7>Встречайте их щитами: <total></color>'
     progress: '<color:#ff7a45>Кабаны остановлены</color> <color:#707a76>•</color> <color:#f2fff7><done>/<total></color>'
     required: '<color:#ffad42>Возьмите щит, повернитесь к кабану и удерживайте блок.</color>'
     bossbar: '<color:#ff7a45>Оборона поля</color> <color:#707a76>•</color> <color:#f2fff7><done>/<total></color>'
     shield: '<color:#ffc857>Фермерский щит</color>'
   rival-raid:
-    started: '<color:#c778ff><bold>Налёт на соседнюю ферму</bold></color><newline><color:#f2fff7>Садитесь на гаста: целей <total></color>'
+    started: '<color:#c778ff><bold>Налёт на соседнюю ферму</bold></color>'
+    started-subtitle: '<color:#f2fff7>Садитесь на гаста: целей <total></color>'
     progress: '<color:#c778ff>Цели поражены</color> <color:#707a76>•</color> <color:#f2fff7><done>/<total></color>'
     required: '<color:#ffad42>Сядьте на светящегося гаста; ПКМ пулемётом — огонь.</color>'
     bossbar: '<color:#c778ff>Налёт</color> <color:#707a76>•</color> <color:#f2fff7><done>/<total></color>'

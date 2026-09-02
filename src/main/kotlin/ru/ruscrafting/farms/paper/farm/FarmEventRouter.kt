@@ -20,6 +20,7 @@ import org.bukkit.event.entity.EntityChangeBlockEvent
 import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.EntityDeathEvent
+import org.bukkit.event.entity.EntityTargetLivingEntityEvent
 import org.bukkit.event.entity.EntityShootBowEvent
 import org.bukkit.event.entity.ProjectileHitEvent
 import org.bukkit.event.entity.PlayerDeathEvent
@@ -443,6 +444,10 @@ internal class FarmEventRouter(
     fun onProjectileHit(event: ProjectileHitEvent) {
         if (actionIncidents.onProjectileHit(event)) return
         birds.onProjectileHit(event, runtimes())
+    }
+
+    fun onEntityTarget(event: EntityTargetLivingEntityEvent) {
+        actionIncidents.onTarget(event)
     }
 
     fun onLoadCrossbow(event: EntityLoadCrossbowEvent): Boolean {

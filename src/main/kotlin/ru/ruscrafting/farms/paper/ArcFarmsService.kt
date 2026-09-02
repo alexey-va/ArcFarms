@@ -7,6 +7,7 @@ import org.bukkit.entity.Player
 import org.bukkit.event.entity.EntityDeathEvent
 import org.bukkit.event.entity.EntityChangeBlockEvent
 import org.bukkit.event.entity.EntityDamageEvent
+import org.bukkit.event.entity.EntityTargetLivingEntityEvent
 import org.bukkit.event.player.PlayerFishEvent
 import org.bukkit.event.entity.PlayerDeathEvent
 import org.bukkit.event.entity.ProjectileHitEvent
@@ -322,6 +323,7 @@ class ArcFarmsService(
     fun onInteractEntity(event: PlayerInteractEntityEvent) = worksiteEvents.onInteractEntity(event) { farm.events.onInteractEntity(event) }
     fun onVehicleEnter(event: VehicleEnterEvent) = farm.events.onVehicleEnter(event)
     fun onEntityDamage(event: EntityDamageEvent) = farm.events.onEntityDamage(event)
+    fun onEntityTarget(event: EntityTargetLivingEntityEvent) = farm.events.onEntityTarget(event)
     fun onFish(event: PlayerFishEvent) = farm.events.onFish(event)
     fun onProjectileHit(event: ProjectileHitEvent) = farm.events.onProjectileHit(event)
     fun onLoadCrossbow(event: EntityLoadCrossbowEvent) = farm.events.onLoadCrossbow(event)

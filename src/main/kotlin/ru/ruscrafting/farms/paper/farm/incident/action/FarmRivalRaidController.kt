@@ -20,6 +20,7 @@ import org.bukkit.event.block.Action
 import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.EntityDeathEvent
+import org.bukkit.event.entity.EntityTargetLivingEntityEvent
 import org.bukkit.event.entity.ProjectileHitEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerInteractEvent
@@ -52,6 +53,7 @@ import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
+import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.platform.FarmEntityRayTrace
 import ru.ruscrafting.farms.paper.platform.FarmMobDespawnPolicy
@@ -82,6 +84,7 @@ internal class FarmRivalRaidController(
     private val audience: WorksiteAudiencePort,
     private val state: WorksiteStatePort,
     private val serviceItems: WorksiteServiceItems,
+    private val beds: FarmIncidentBedProvider,
     private val points: FarmPointProvider,
     private val transitions: FarmTransitionSink,
     private val runtimes: () -> Collection<FarmRuntime>,
@@ -104,6 +107,7 @@ internal class FarmRivalRaidController(
         val grenadeShotAt: MutableMap<UUID, Long> = hashMapOf(),
         var workerSpawnSequence: Int = 0,
         var orbiting: Boolean = false,
+        var launched: Boolean = false,
         var orbitAngle: Double = 0.0,
         var lastFlightTick: Long = 0,
     )
@@ -132,7 +136,10 @@ internal class FarmRivalRaidController(
             return FarmActionIncidentPlanAttempt(null, candidates.size, "insufficient_outdoor_beds")
         }
         return FarmActionIncidentPlanAttempt(
-            FarmSpecialIncidentState(points = listOf(departure.copy(pitch = 0f), rival.copy(pitch = 0f))),
+            FarmSpecialIncidentState(
+                points = listOf(departure.copy(pitch = 0f), rival.copy(pitch = 0f)),
+                plots = candidates,
+            ),
             candidates.size,
         )
     }
@@ -143,7 +150,7 @@ internal class FarmRivalRaidController(
             runtime.state.sequence,
             runtime.state.placementSequence,
             plan.points.first(),
-            fieldPlots(runtime, rival),
+            plan.plots.ifEmpty { fieldPlots(runtime, rival) },
         )
     }
 
@@ -154,7 +161,9 @@ internal class FarmRivalRaidController(
                 runtime.state.sequence,
                 runtime.state.placementSequence,
                 special.points.first(),
-                special.points.getOrNull(1)?.let { fieldPlots(runtime, it) }.orEmpty(),
+                special.plots.ifEmpty {
+                    special.points.getOrNull(1)?.let { fieldPlots(runtime, it) }.orEmpty()
+                },
             )
         }
         if (session.sequence != runtime.state.sequence) {
@@ -185,10 +194,8 @@ internal class FarmRivalRaidController(
             session.ghastId = ghast.uniqueId
         }
         session.workerIds.removeIf { Bukkit.getEntity(it)?.isValid != true }
-        val rival = special.points.getOrNull(1)?.location() ?: return
         val raidGhast = ghast ?: return
-        val activationRadius = maxOf(runtime.settings.rivalRaid.gunRange, runtime.settings.rivalRaid.workerRadius * 2.0)
-        if (raidGhast.world !== rival.world || raidGhast.location.distanceSquared(rival) > activationRadius * activationRadius) return
+        if (!session.launched) return
         while (session.workerIds.size < runtime.settings.rivalRaid.workerCount) {
             val index = session.workerSpawnSequence++
             val plot = session.fieldPlots[Math.floorMod(index, session.fieldPlots.size)]
@@ -196,6 +203,7 @@ internal class FarmRivalRaidController(
             val mob = spawn.world.spawnEntity(spawn, EntityType.valueOf(runtime.settings.rivalRaid.workerEntity)) as? Mob ?: break
             mob.isPersistent = false
             mobDespawns.setRemoveWhenFarAway(mob, false)
+            mob.target = null
             mob.isGlowing = true
             mob.getAttribute(Attribute.MAX_HEALTH)?.baseValue = runtime.settings.rivalRaid.workerHealth
             mob.health = runtime.settings.rivalRaid.workerHealth
@@ -242,6 +250,7 @@ internal class FarmRivalRaidController(
         expireProjectiles(runtime, session)
         if (session.participantIds.isEmpty()) return
         val ghast = session.ghastId?.let(Bukkit::getEntity) as? Ghast ?: return
+        session.launched = true
         val departure = special.points.first()
         val rival = special.points.getOrNull(1) ?: return
         val launch = departure.copy(y = departure.y + runtime.settings.rivalRaid.flightHeight)
@@ -348,6 +357,11 @@ internal class FarmRivalRaidController(
     }
 
     fun onDamage(event: EntityDamageEvent): Boolean {
+        val attacker = (event as? EntityDamageByEntityEvent)?.damager
+        if (attacker != null && role(attacker) == ROLE_WORKER) {
+            event.isCancelled = true
+            return true
+        }
         val role = role(event.entity) ?: return false
         if (role == ROLE_GHAST || role == ROLE_SEAT || role == ROLE_GRENADE) {
             event.isCancelled = true
@@ -361,6 +375,13 @@ internal class FarmRivalRaidController(
         if (player == null || session == null || player.uniqueId !in session.participantIds ||
             !hasGun(player, zoneId, session) || !damageGate.consume(player.uniqueId, event.entity.uniqueId)
         ) event.isCancelled = true
+        return true
+    }
+
+    fun onTarget(event: EntityTargetLivingEntityEvent): Boolean {
+        if (role(event.entity) != ROLE_WORKER) return false
+        event.isCancelled = true
+        (event.entity as? Mob)?.target = null
         return true
     }
 
@@ -451,7 +472,15 @@ internal class FarmRivalRaidController(
         val world = Bukkit.getWorld(rival.world) ?: return emptyList()
         val radius = ceil(runtime.settings.rivalRaid.workerRadius).toInt()
         val radiusSquared = runtime.settings.rivalRaid.workerRadius * runtime.settings.rivalRaid.workerRadius
-        return buildList {
+        val indexed = if (runtime.region.contains(Location(world, rival.x, rival.y, rival.z))) {
+            beds.discover(runtime).asSequence()
+                .filter { it.world == rival.world && it.horizontalDistanceSquared(rival) <= radiusSquared }
+                .filter { eligiblePlot(runtime, world, it) }
+                .toList()
+        } else {
+            emptyList()
+        }
+        val eligible = indexed.ifEmpty { buildList {
             for (x in rival.x.toInt() - radius..rival.x.toInt() + radius) {
                 for (z in rival.z.toInt() - radius..rival.z.toInt() + radius) {
                     val dx = x + 0.5 - rival.x
@@ -473,12 +502,38 @@ internal class FarmRivalRaidController(
                     }
                 }
             }
-        }.sortedWith(compareBy<FarmPlotPosition> { it.x }.thenBy { it.z }).take(MAX_FIELD_PLOTS)
+        } }
+        return FarmRivalFieldPolicy.distribute(
+            eligible,
+            MAX_FIELD_PLOTS,
+            runtime.state.placementSequence,
+        )
+    }
+
+    private fun eligiblePlot(runtime: FarmRuntime, world: org.bukkit.World, plot: FarmPlotPosition): Boolean {
+        val loaded = world.isChunkLoaded(plot.x shr 4, plot.z shr 4) || world.loadChunk(plot.x shr 4, plot.z shr 4, true)
+        if (!loaded) return false
+        val soil = world.getBlockAt(plot.x, plot.y, plot.z)
+        val crop = soil.getRelative(org.bukkit.block.BlockFace.UP)
+        val head = crop.getRelative(org.bukkit.block.BlockFace.UP)
+        return FarmRivalFieldPolicy.isEligible(
+            loaded = true,
+            outdoor = world.getHighestBlockYAt(plot.x, plot.z, HeightMap.MOTION_BLOCKING) == soil.y,
+            farmland = soil.type == Material.FARMLAND && (crop.type.isAir || crop.type.name in runtime.settings.crops),
+            headroom = head.isPassable,
+        )
+    }
+
+    private fun FarmPlotPosition.horizontalDistanceSquared(point: FarmPointPosition): Double {
+        val dx = x + 0.5 - point.x
+        val dz = z + 0.5 - point.z
+        return dx * dx + dz * dz
     }
 
     private fun patrol(runtime: FarmRuntime, session: RaidSession) {
         session.workerIds.forEach { workerId ->
             val worker = Bukkit.getEntity(workerId) as? Mob ?: return@forEach
+            worker.target = null
             val current = worker.persistentDataContainer.get(targetKey, PersistentDataType.INTEGER) ?: 0
             val next = Math.floorMod(current + runtime.settings.rivalRaid.workerCount, session.fieldPlots.size)
             worker.persistentDataContainer.set(targetKey, PersistentDataType.INTEGER, next)
@@ -654,7 +709,11 @@ internal class FarmRivalRaidController(
                 runtime.settings.rivalRaid.seatYOffset,
                 forwardZ * runtime.settings.rivalRaid.seatForwardOffset + sideZ * sideOffset,
             )
-            seat.teleport(target, PlayerTeleportEvent.TeleportCause.PLUGIN)
+            val passenger = seat.passengers.singleOrNull { it.uniqueId == playerId }
+            if (passenger != null) passenger.leaveVehicle()
+            if (seat.teleport(target, PlayerTeleportEvent.TeleportCause.PLUGIN) && passenger != null) {
+                seat.addPassenger(passenger)
+            }
         }
     }
 

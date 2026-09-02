@@ -196,7 +196,11 @@ object FarmSpecialIncidentPlanner {
         queue += start
         while (queue.isNotEmpty()) {
             val current = queue.removeFirst()
-            CARDINAL_DIRECTIONS.forEach { (dx, dz) ->
+            val directionSalt = FarmSpatialSeed.mix(
+                sequence,
+                current.x.toLong() * 73_856_093L xor current.z.toLong() * 19_349_663L,
+            )
+            rotate(CARDINAL_DIRECTIONS, directionSalt).forEach { (dx, dz) ->
                 val next = horizontal[current.x + dx to current.z + dz]
                     .orEmpty()
                     .filter { kotlin.math.abs(it.y - current.y) <= 1 }

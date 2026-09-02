@@ -13,6 +13,10 @@ import org.bukkit.entity.Hoglin
 import org.bukkit.entity.Mob
 import org.bukkit.entity.Snowball
 import org.bukkit.event.entity.ProjectileHitEvent
+import org.bukkit.event.entity.EntityDamageByEntityEvent
+import org.bukkit.event.entity.EntityDamageEvent
+import org.bukkit.event.entity.EntityTargetEvent
+import org.bukkit.event.entity.EntityTargetLivingEntityEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.inventory.EquipmentSlot
 import ru.ruscrafting.farms.domain.FarmIncidentType
@@ -74,6 +78,13 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             controller.initialize(runtime, FarmIncidentType.RIVAL_RAID) shouldBe FarmIncidentType.RIVAL_RAID
             controller.ensure(runtime)
             val ghast = fixture.world.entities.filterIsInstance<Ghast>().single(controller::owns)
+            fixture.world.entities.filterIsInstance<Mob>().filter { it !is Ghast && controller.owns(it) } shouldHaveSize 0
+            val plannedField = requireNotNull(runtime.state.specialIncident).plots
+            plannedField shouldHaveSize 128
+            (plannedField.minOf { it.x } <= 32) shouldBe true
+            (plannedField.maxOf { it.x } >= 52) shouldBe true
+            (plannedField.minOf { it.z } <= 32) shouldBe true
+            (plannedField.maxOf { it.z } >= 52) shouldBe true
             riders.forEach { rider ->
                 controller.interact(PlayerInteractEntityEvent(rider, ghast, EquipmentSlot.HAND)) shouldBe true
             }
@@ -87,12 +98,32 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             (ghast.velocity.length() > 0.0) shouldBe true
             val occupiedSeats = fixture.world.entities.filterIsInstance<ArmorStand>().filter { it.passengers.isNotEmpty() }
             occupiedSeats shouldHaveSize fixture.zone.rivalRaid.maximumRiders
+            val seatHeightOffsets = occupiedSeats.map { it.location.y - ghast.location.y }
+            check(seatHeightOffsets.all { it > 0.0 }) { "seat height offsets=$seatHeightOffsets" }
             val workers = fixture.world.entities.filterIsInstance<Mob>().filter { it !is Ghast && controller.owns(it) }
                 .also { it shouldHaveSize fixture.zone.rivalRaid.workerCount }
                 .onEach {
                     it.equipment.itemInMainHand.type shouldBe Material.TORCH
                     it.location.block.getRelative(BlockFace.DOWN).type shouldBe Material.FARMLAND
                 }
+
+            val groundPlayer = riders.last()
+            val worker = workers.first()
+            val targetEvent = EntityTargetLivingEntityEvent(
+                worker,
+                groundPlayer,
+                EntityTargetEvent.TargetReason.CLOSEST_PLAYER,
+            )
+            controller.onTarget(targetEvent) shouldBe true
+            targetEvent.isCancelled shouldBe true
+            val workerAttack = EntityDamageByEntityEvent(
+                worker,
+                groundPlayer,
+                EntityDamageEvent.DamageCause.ENTITY_ATTACK,
+                4.0,
+            )
+            controller.onDamage(workerAttack) shouldBe true
+            workerAttack.isCancelled shouldBe true
 
             val gunner = riders.first()
             val issued = gunner.inventory.storageContents.filterNotNull().filter { it.type == Material.PAPER }

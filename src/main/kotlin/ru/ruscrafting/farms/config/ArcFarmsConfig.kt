@@ -396,7 +396,7 @@ data class FarmRivalRaidSettings(
     val workerCount: Int = 12,
     val workerEntity: String = "HUSK",
     val workerHealth: Double = 12.0,
-    val workerRadius: Double = 12.0,
+    val workerRadius: Double = 64.0,
     val workerHeldItem: String = "TORCH",
     val workerLightLevel: Int = 15,
     val workerPatrolIntervalTicks: Int = 40,
@@ -407,8 +407,8 @@ data class FarmRivalRaidSettings(
     val orbitRadius: Double = 28.0,
     val orbitPeriodSeconds: Int = 48,
     val maximumRiders: Int = 4,
-    val seatForwardOffset: Double = 3.25,
-    val seatYOffset: Double = -1.25,
+    val seatForwardOffset: Double = 3.75,
+    val seatYOffset: Double = 2.4,
     val playerTime: Long = 18_000L,
     val timeTransitionSeconds: Int = 8,
     val maximumDistance: Double = 512.0,
@@ -432,7 +432,7 @@ data class FarmRivalRaidSettings(
         require(requiredKills in 1..128) { "rival raid kill quota must be in 1..128" }
         require(workerCount in 1..32) { "rival raid worker count must be in 1..32" }
         require(workerHealth.isFinite() && workerHealth in 1.0..100.0) { "rival worker health is invalid" }
-        require(workerRadius.isFinite() && workerRadius in 2.0..48.0) { "rival worker radius is invalid" }
+        require(workerRadius.isFinite() && workerRadius in 2.0..192.0) { "rival worker radius is invalid" }
         require(workerLightLevel in 0..15) { "rival worker light level is invalid" }
         require(workerPatrolIntervalTicks in 10..200) { "rival worker patrol interval is invalid" }
         require(workerPatrolSpeed.isFinite() && workerPatrolSpeed in 0.5..2.0) { "rival worker patrol speed is invalid" }
@@ -443,7 +443,7 @@ data class FarmRivalRaidSettings(
         require(orbitPeriodSeconds in 10..180) { "rival raid orbit period is invalid" }
         require(maximumRiders in 1..8) { "rival raid rider limit is invalid" }
         require(seatForwardOffset.isFinite() && seatForwardOffset in 1.5..6.0) { "rival raid seat offset is invalid" }
-        require(seatYOffset.isFinite() && seatYOffset in -4.0..2.0) { "rival raid seat height is invalid" }
+        require(seatYOffset.isFinite() && seatYOffset in -4.0..6.0) { "rival raid seat height is invalid" }
         require(playerTime in 0..24_000L) { "rival raid player time is invalid" }
         require(timeTransitionSeconds in 1..60) { "rival raid time transition is invalid" }
         require(maximumDistance.isFinite() && maximumDistance in 32.0..2_048.0) { "rival farm maximum distance is invalid" }
@@ -2156,7 +2156,7 @@ class ArcFarmsConfig private constructor(
                             "special-incidents.rival-raid.worker-health", 12.0, 1.0, 100.0,
                         ),
                         workerRadius = section.finiteDouble(
-                            "special-incidents.rival-raid.worker-radius", 12.0, 2.0, 48.0,
+                            "special-incidents.rival-raid.worker-radius", 64.0, 2.0, 192.0,
                         ),
                         workerHeldItem = materialName(
                             section.string("special-incidents.rival-raid.worker-held-item", "TORCH"),
@@ -2186,10 +2186,10 @@ class ArcFarmsConfig private constructor(
                         maximumRiders = section.int("special-incidents.rival-raid.maximum-riders", 4)
                             .checked("special-incidents.rival-raid.maximum-riders", 1, 8),
                         seatForwardOffset = section.finiteDouble(
-                            "special-incidents.rival-raid.seat-forward-offset", 3.25, 1.5, 6.0,
+                            "special-incidents.rival-raid.seat-forward-offset", 3.75, 1.5, 6.0,
                         ),
                         seatYOffset = section.finiteDouble(
-                            "special-incidents.rival-raid.seat-y-offset", -1.25, -4.0, 2.0,
+                            "special-incidents.rival-raid.seat-y-offset", 2.4, -4.0, 6.0,
                         ),
                         playerTime = section.string("special-incidents.rival-raid.player-time", "18000")
                             .toLongOrNull()?.also {

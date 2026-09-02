@@ -553,7 +553,10 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().rivalRaid.gunCustomModelData shouldBe 2_100_006
         settings.farms.single().rivalRaid.grenadeCustomModelData shouldBe 2_100_009
         settings.farms.single().rivalRaid.maximumRiders shouldBe 4
+        settings.farms.single().rivalRaid.workerRadius shouldBe 64.0
         settings.farms.single().rivalRaid.flightHeight shouldBe 20.0
+        settings.farms.single().rivalRaid.seatForwardOffset shouldBe 3.75
+        settings.farms.single().rivalRaid.seatYOffset shouldBe 2.4
         settings.farms.single().music.rivalRaidSound shouldBe "minecraft:music_disc.pigstep"
         settings.farms.single().specialIncidents.nightCropPlacementCount shouldBe 90
         settings.farms.single().specialIncidents.nightCropTargetCount shouldBe 24
@@ -1120,6 +1123,21 @@ class ArcFarmsConfigTest : FunSpec({
         }.message shouldContain "unsupported closing tag"
     }
 
+    test("locale validation rejects line-feed controls in screen titles") {
+        val root = resourceTree()
+        val settings = ArcFarmsConfig.inspect(root)
+        val russian = root.resolve("lang/ru.yml")
+        russian.writeText(
+            Files.readString(russian).replace(
+                "<color:#45c8f5><bold>Новый поливной канал</bold></color>",
+                "<color:#45c8f5><bold>Новый поливной канал</bold></color><newline><white>Лишняя строка</white>",
+            ),
+        )
+
+        shouldThrow<IllegalArgumentException> { ArcFarmsLocale.validateFiles(root, settings) }
+            .message shouldContain "screen title contains a line break"
+    }
+
     test("locale synchronization backfills bundled keys without replacing operator translations") {
         val root = resourceTree()
         val russian = root.resolve("lang/ru.yml")
@@ -1423,6 +1441,18 @@ class ArcFarmsConfigTest : FunSpec({
             val subtitle = PlainTextComponentSerializer.plainText().serialize(locale.render(subtitleKey, values = values))
             title shouldNotContain "•"
             title.isNotBlank() shouldBe true
+            subtitle.isNotBlank() shouldBe true
+        }
+
+        listOf(
+            "farm.boar-breakout.started" to "farm.boar-breakout.started-subtitle",
+            "farm.rival-raid.started" to "farm.rival-raid.started-subtitle",
+        ).forEach { (titlePath, subtitlePath) ->
+            val title = PlainTextComponentSerializer.plainText().serialize(locale.renderPath(titlePath, values = values))
+            val subtitle = PlainTextComponentSerializer.plainText().serialize(locale.renderPath(subtitlePath, values = values))
+            title shouldNotContain "\n"
+            title shouldNotContain "\r"
+            title shouldNotContain "␊"
             subtitle.isNotBlank() shouldBe true
         }
     }

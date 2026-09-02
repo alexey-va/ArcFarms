@@ -391,7 +391,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                         special.points.isNotEmpty() && special.points.size == special.plots.size,
                     ) { "Farm boar breakout state is incomplete" }
                     FarmIncidentType.RIVAL_RAID -> require(
-                        special.points.size == 2 && special.plots.isEmpty(),
+                        special.points.size == 2,
                     ) { "Farm rival raid state is incomplete" }
                     else -> error("Farm special incident state has an invalid type")
                 }
