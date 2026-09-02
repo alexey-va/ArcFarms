@@ -97,6 +97,7 @@ placeholders:
   shares: '5'
   limit: '20'
   count: '1'
+  seconds: '3'
   done: '4'
   total: '10'
 

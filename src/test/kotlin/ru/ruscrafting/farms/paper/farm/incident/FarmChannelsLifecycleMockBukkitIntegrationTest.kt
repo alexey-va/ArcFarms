@@ -54,6 +54,9 @@ class FarmChannelsLifecycleMockBukkitIntegrationTest : FunSpec({
             worker.inventory.itemInMainHand.type shouldBe Material.IRON_SHOVEL
             val source = planned.points.first()
             fixture.world.getBlockAt(source.x.toInt(), source.y.toInt() - 1, source.z.toInt()).type shouldBe Material.WATER
+            planned.points.drop(1).forEach { point ->
+                fixture.world.getBlockAt(point.x.toInt(), point.y.toInt() - 1, point.z.toInt()).type shouldBe Material.DIRT
+            }
             planned.solution shouldBe setOf(0)
             planned.active shouldBe setOf(0)
 

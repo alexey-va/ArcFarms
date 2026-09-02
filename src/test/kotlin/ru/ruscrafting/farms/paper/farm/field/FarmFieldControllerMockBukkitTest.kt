@@ -268,6 +268,54 @@ class FarmFieldControllerMockBukkitTest : FunSpec({
         soil.type shouldBe Material.WATER
     }
 
+    test("dug channel segment ahead of the water remains open during field maintenance") {
+        val position = FarmPlotPosition(world.name, 3, 64, 3)
+        val soil = world.getBlockAt(position.x, position.y, position.z).apply { type = Material.AIR }
+        val zone = mockk<FarmZoneSettings>(relaxed = true) {
+            every { id } returns "farm"
+            every { crops } returns setOf("WHEAT")
+        }
+        val runtime = FarmRuntime(
+            settings = zone,
+            region = CuboidActivityRegion(world, "farm", CuboidBounds(0, 0, 0, 15, 128, 15)),
+            orders = emptyMap(),
+            orderList = emptyList(),
+            rules = mockk(relaxed = true),
+            state = FarmShiftState(
+                phase = FarmPhase.INCIDENT,
+                incidentType = FarmIncidentType.CHANNELS,
+                specialIncident = FarmSpecialIncidentState(
+                    points = listOf(
+                        FarmPointPosition(world.name, 2.5, 65.0, 3.5),
+                        FarmPointPosition(world.name, 3.5, 65.0, 3.5),
+                    ),
+                    solution = setOf(0, 1),
+                    active = setOf(0),
+                ),
+            ),
+        )
+        val registry = mockk<FarmBlockRegistry>(relaxed = true) {
+            every { beds("farm") } returns setOf(position)
+        }
+        val controller = FarmFieldController(
+            settings = { mockk<ArcFarmsConfig>(relaxed = true) },
+            debug = ArcFarmsDebug({ false }) {},
+            access = mockk<WorksiteRuntimePort>(relaxed = true),
+            audience = mockk<WorksiteRuntimePort>(relaxed = true),
+            state = mockk<WorksiteRuntimePort>(relaxed = true),
+            tasks = mockk<WorksiteRuntimePort>(relaxed = true),
+            ledger = FarmBlockLedger(paper.createSimplePlugin("FarmChannelOpenSegmentTest")),
+            registry = registry,
+            points = FarmPointProvider { _, _ -> error("maintenance does not resolve operation points") },
+            transitions = FarmTransitionSink { _, _, _ -> },
+            persistAsync = { CompletableFuture.completedFuture(Unit) },
+        )
+
+        repeat(20) { controller.maintain(runtime, activeWater = false) }
+
+        soil.type shouldBe Material.AIR
+    }
+
     test("ordinary maintenance does not close a journalled mole entrance in a crop bed") {
         val position = FarmPlotPosition(world.name, 2, 64, 2)
         val soil = world.getBlockAt(position.x, position.y, position.z).apply { type = Material.BARRIER }

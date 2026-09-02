@@ -584,7 +584,8 @@ internal class FarmFieldController(
             specialDamageCache.source = specialDamageSource
         }
         val indexedBeds = registry.beds(zoneId)
-        val activeChannelPlots = FarmChannelOwnership.activePlots(runtime.state)
+        val flowedChannelPlots = FarmChannelOwnership.flowedPlots(runtime.state)
+        val dugChannelPlots = FarmChannelOwnership.dugPlots(runtime.state)
         maintenanceRecords.reset()
         val crop = runtime.state.preparationCrop?.let(MaterialRules::material)
         val incidentActive = runtime.state.phase == FarmPhase.INCIDENT
@@ -614,10 +615,11 @@ internal class FarmFieldController(
         fun maintainPosition(position: FarmPlotPosition) {
             val soil = position.block() ?: return
             val record = maintenanceRecords.record(position, soil)
-            if (position in activeChannelPlots) {
+            if (position in flowedChannelPlots) {
                 if (soil.type != Material.WATER) soil.setType(Material.WATER, false)
                 return
             }
+            if (position in dugChannelPlots) return
             // The mole journal owns both the crop and soil at a bed entrance.
             // Ordinary hydration/crop maintenance must not immediately close it.
             if (position in maintenanceMoleEntrances) return

@@ -446,19 +446,22 @@ farm-zones:
         worker-entity: HUSK
         worker-health: 12.0
         worker-radius: 64.0
+        worker-focus-radius: 34.0
+        worker-retire-radius: 48.0
         worker-held-item: TORCH
         worker-light-level: 15
         worker-light-stride: 10
         worker-patrol-interval-ticks: 10
         worker-patrol-speed: 1.8
-        flight-height: 28.0
+        flight-height: 14.0
         flight-speed: 0.30
-        flight-steering: 0.22
-        orbit-radius: 42.0
+        flight-steering: 0.65
+        orbit-radius: 36.0
+        orbit-look-ahead-degrees: 12.0
         orbit-period-seconds: 48
         maximum-riders: 4
         seat-spacing: 1.6
-        seat-y-offset: 4.8
+        seat-y-offset: -2.6
         # Uses the shared food-delivery-portal farm point as the departure ring.
         portal:
           width: 3.6
@@ -481,12 +484,12 @@ farm-zones:
         grenade-material: PAPER
         grenade-custom-model-data: 2100009
         grenade-item-model: ''
-        grenade-damage: 8.0
-        grenade-radius: 5.0
-        grenade-cooldown-ticks: 30
+        grenade-damage: 16.0
+        grenade-radius: 7.0
+        grenade-cooldown-ticks: 12
         grenade-velocity: 1.2
         grenade-lifetime-ticks: 60
-        grenade-preview-blocks: 36
+        grenade-preview-blocks: 72
         grenade-preview-ticks: 80
         grenade-preview-soil-material: COARSE_DIRT
       night-shift:

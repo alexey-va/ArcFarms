@@ -3,6 +3,8 @@ package ru.ruscrafting.farms.paper.platform
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.doubles.shouldBeGreaterThan
+import io.kotest.matchers.doubles.shouldBeLessThan
 import net.kyori.adventure.text.Component
 import org.bukkit.Location
 import org.bukkit.Material
@@ -84,11 +86,13 @@ class FarmPlatformPortsMockBukkitTest : FunSpec({
             val before = seat.location.clone()
             val target = before.clone().add(0.25, 0.05, -0.15)
 
-            PaperFarmRaidSeatMotion.move(seat, target)
+            val leaderVelocity = org.bukkit.util.Vector(0.20, 0.01, -0.05)
+            PaperFarmRaidSeatMotion.move(seat, target, leaderVelocity)
 
             player.vehicle shouldBe seat
             seat.location shouldBe before
-            seat.velocity shouldBe target.toVector().subtract(before.toVector())
+            seat.velocity.x shouldBeGreaterThan leaderVelocity.x
+            seat.velocity.length() shouldBeLessThan 0.28
         }
     }
 })

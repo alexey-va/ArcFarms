@@ -710,7 +710,7 @@ internal class FarmSpecialIncidentController(
             when {
                 index in normalized.active -> if (soil.type != Material.WATER) soil.setType(Material.WATER, false)
                 index in normalized.solution -> if (!soil.type.isAir) soil.setType(Material.AIR, false)
-                soil.type !in FARM_SOIL_TYPES -> soil.setType(Material.FARMLAND, false)
+                soil.type != Material.DIRT -> soil.setType(Material.DIRT, false)
             }
         }
         if (additions.isNotEmpty()) {

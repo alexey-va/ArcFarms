@@ -401,19 +401,22 @@ data class FarmRivalRaidSettings(
     val workerEntity: String = "HUSK",
     val workerHealth: Double = 12.0,
     val workerRadius: Double = 64.0,
+    val workerFocusRadius: Double = 34.0,
+    val workerRetireRadius: Double = 48.0,
     val workerHeldItem: String = "TORCH",
     val workerLightLevel: Int = 15,
     val workerLightStride: Int = 10,
     val workerPatrolIntervalTicks: Int = 10,
     val workerPatrolSpeed: Double = 1.8,
-    val flightHeight: Double = 28.0,
+    val flightHeight: Double = 14.0,
     val flightSpeed: Double = 0.30,
-    val flightSteering: Double = 0.22,
-    val orbitRadius: Double = 42.0,
+    val flightSteering: Double = 0.65,
+    val orbitRadius: Double = 36.0,
+    val orbitLookAheadDegrees: Double = 12.0,
     val orbitPeriodSeconds: Int = 48,
     val maximumRiders: Int = 4,
     val seatSpacing: Double = 1.6,
-    val seatYOffset: Double = 4.8,
+    val seatYOffset: Double = -2.6,
     val portalWidth: Float = 3.6f,
     val portalHeight: Float = 3.2f,
     val portalLabelHeight: Double = 3.35,
@@ -432,12 +435,12 @@ data class FarmRivalRaidSettings(
     val grenadeMaterial: String = "PAPER",
     val grenadeCustomModelData: Int = 2_100_009,
     val grenadeItemModel: String? = null,
-    val grenadeDamage: Double = 8.0,
-    val grenadeRadius: Double = 5.0,
-    val grenadeCooldownTicks: Int = 30,
+    val grenadeDamage: Double = 16.0,
+    val grenadeRadius: Double = 7.0,
+    val grenadeCooldownTicks: Int = 12,
     val grenadeVelocity: Double = 1.2,
     val grenadeLifetimeTicks: Int = 60,
-    val grenadePreviewBlocks: Int = 36,
+    val grenadePreviewBlocks: Int = 72,
     val grenadePreviewTicks: Int = 80,
     val grenadePreviewSoilMaterial: String = "COARSE_DIRT",
 ) {
@@ -448,6 +451,10 @@ data class FarmRivalRaidSettings(
         require(workerPatrolBatchSize in 1..32) { "rival worker patrol batch size must be in 1..32" }
         require(workerHealth.isFinite() && workerHealth in 1.0..100.0) { "rival worker health is invalid" }
         require(workerRadius.isFinite() && workerRadius in 2.0..192.0) { "rival worker radius is invalid" }
+        require(workerFocusRadius.isFinite() && workerFocusRadius in 2.0..workerRadius) { "rival worker focus radius is invalid" }
+        require(workerRetireRadius.isFinite() && workerRetireRadius in workerFocusRadius..192.0) {
+            "rival worker retire radius is invalid"
+        }
         require(workerLightLevel in 0..15) { "rival worker light level is invalid" }
         require(workerLightStride in 1..32) { "rival worker light stride is invalid" }
         require(workerPatrolIntervalTicks in 10..200) { "rival worker patrol interval is invalid" }
@@ -456,10 +463,13 @@ data class FarmRivalRaidSettings(
         require(flightSpeed.isFinite() && flightSpeed in 0.1..2.0) { "rival raid flight speed is invalid" }
         require(flightSteering.isFinite() && flightSteering in 0.01..1.0) { "rival raid flight steering is invalid" }
         require(orbitRadius.isFinite() && orbitRadius in 4.0..64.0) { "rival raid orbit radius is invalid" }
+        require(orbitLookAheadDegrees.isFinite() && orbitLookAheadDegrees in 3.0..45.0) {
+            "rival raid orbit look-ahead is invalid"
+        }
         require(orbitPeriodSeconds in 10..180) { "rival raid orbit period is invalid" }
         require(maximumRiders in 1..8) { "rival raid rider limit is invalid" }
         require(seatSpacing.isFinite() && seatSpacing in 0.5..3.0) { "rival raid seat spacing is invalid" }
-        require(seatYOffset.isFinite() && seatYOffset in 3.5..8.0) { "rival raid seat height is invalid" }
+        require(seatYOffset.isFinite() && seatYOffset in -6.0..8.0) { "rival raid seat height is invalid" }
         require(portalWidth.isFinite() && portalWidth in 1.0f..8.0f) { "rival raid portal width is invalid" }
         require(portalHeight.isFinite() && portalHeight in 1.0f..8.0f) { "rival raid portal height is invalid" }
         require(portalLabelHeight.isFinite() && portalLabelHeight in 1.0..8.0) {
@@ -483,7 +493,7 @@ data class FarmRivalRaidSettings(
         require(grenadeCooldownTicks in 1..200) { "rival raid grenade cooldown is invalid" }
         require(grenadeVelocity.isFinite() && grenadeVelocity in 0.2..3.0) { "rival raid grenade velocity is invalid" }
         require(grenadeLifetimeTicks in 20..200) { "rival raid grenade lifetime is invalid" }
-        require(grenadePreviewBlocks in 1..64) { "rival raid grenade preview block count is invalid" }
+        require(grenadePreviewBlocks in 1..128) { "rival raid grenade preview block count is invalid" }
         require(grenadePreviewTicks in 5..200) { "rival raid grenade preview duration is invalid" }
     }
 }
@@ -2193,6 +2203,12 @@ class ArcFarmsConfig private constructor(
                         workerRadius = section.finiteDouble(
                             "special-incidents.rival-raid.worker-radius", 64.0, 2.0, 192.0,
                         ),
+                        workerFocusRadius = section.finiteDouble(
+                            "special-incidents.rival-raid.worker-focus-radius", 34.0, 2.0, 192.0,
+                        ),
+                        workerRetireRadius = section.finiteDouble(
+                            "special-incidents.rival-raid.worker-retire-radius", 48.0, 2.0, 192.0,
+                        ),
                         workerHeldItem = materialName(
                             section.string("special-incidents.rival-raid.worker-held-item", "TORCH"),
                         ),
@@ -2207,16 +2223,19 @@ class ArcFarmsConfig private constructor(
                             "special-incidents.rival-raid.worker-patrol-speed", 1.8, 0.5, 2.0,
                         ),
                         flightHeight = section.finiteDouble(
-                            "special-incidents.rival-raid.flight-height", 28.0, 3.0, 48.0,
+                            "special-incidents.rival-raid.flight-height", 14.0, 3.0, 48.0,
                         ),
                         flightSpeed = section.finiteDouble(
                             "special-incidents.rival-raid.flight-speed", 0.30, 0.1, 2.0,
                         ),
                         flightSteering = section.finiteDouble(
-                            "special-incidents.rival-raid.flight-steering", 0.22, 0.01, 1.0,
+                            "special-incidents.rival-raid.flight-steering", 0.65, 0.01, 1.0,
                         ),
                         orbitRadius = section.finiteDouble(
-                            "special-incidents.rival-raid.orbit-radius", 42.0, 4.0, 64.0,
+                            "special-incidents.rival-raid.orbit-radius", 36.0, 4.0, 64.0,
+                        ),
+                        orbitLookAheadDegrees = section.finiteDouble(
+                            "special-incidents.rival-raid.orbit-look-ahead-degrees", 12.0, 3.0, 45.0,
                         ),
                         orbitPeriodSeconds = section.int("special-incidents.rival-raid.orbit-period-seconds", 48)
                             .checked("special-incidents.rival-raid.orbit-period-seconds", 10, 180),
@@ -2226,7 +2245,7 @@ class ArcFarmsConfig private constructor(
                             "special-incidents.rival-raid.seat-spacing", 1.6, 0.5, 3.0,
                         ),
                         seatYOffset = section.finiteDouble(
-                            "special-incidents.rival-raid.seat-y-offset", 4.8, 3.5, 8.0,
+                            "special-incidents.rival-raid.seat-y-offset", -2.6, -6.0, 8.0,
                         ),
                         portalWidth = section.finiteFloat(
                             "special-incidents.rival-raid.portal.width", 3.6f, 1.0f, 8.0f,
@@ -2290,13 +2309,13 @@ class ArcFarmsConfig private constructor(
                                 }
                             },
                         grenadeDamage = section.finiteDouble(
-                            "special-incidents.rival-raid.grenade-damage", 8.0, 0.5, 100.0,
+                            "special-incidents.rival-raid.grenade-damage", 16.0, 0.5, 100.0,
                         ),
                         grenadeRadius = section.finiteDouble(
-                            "special-incidents.rival-raid.grenade-radius", 5.0, 1.0, 12.0,
+                            "special-incidents.rival-raid.grenade-radius", 7.0, 1.0, 12.0,
                         ),
                         grenadeCooldownTicks = section.int(
-                            "special-incidents.rival-raid.grenade-cooldown-ticks", 30,
+                            "special-incidents.rival-raid.grenade-cooldown-ticks", 12,
                         ).checked("special-incidents.rival-raid.grenade-cooldown-ticks", 1, 200),
                         grenadeVelocity = section.finiteDouble(
                             "special-incidents.rival-raid.grenade-velocity", 1.2, 0.2, 3.0,
@@ -2305,8 +2324,8 @@ class ArcFarmsConfig private constructor(
                             "special-incidents.rival-raid.grenade-lifetime-ticks", 60,
                         ).checked("special-incidents.rival-raid.grenade-lifetime-ticks", 20, 200),
                         grenadePreviewBlocks = section.int(
-                            "special-incidents.rival-raid.grenade-preview-blocks", 36,
-                        ).checked("special-incidents.rival-raid.grenade-preview-blocks", 1, 64),
+                            "special-incidents.rival-raid.grenade-preview-blocks", 72,
+                        ).checked("special-incidents.rival-raid.grenade-preview-blocks", 1, 128),
                         grenadePreviewTicks = section.int(
                             "special-incidents.rival-raid.grenade-preview-ticks", 80,
                         ).checked("special-incidents.rival-raid.grenade-preview-ticks", 5, 200),

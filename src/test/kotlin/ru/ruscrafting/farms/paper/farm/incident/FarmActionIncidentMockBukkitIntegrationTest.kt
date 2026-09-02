@@ -105,6 +105,7 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             }
 
             controller.updateRaidMotion(runtime)
+            ghast.teleport(fixture.location(rival.copy(y = rival.y + fixture.zone.rivalRaid.flightHeight)))
             controller.update(runtime)
             fixture.world.entities.filterIsInstance<Mob>().filter { it !is Ghast && controller.owns(it) } shouldHaveSize
                 fixture.zone.rivalRaid.workerSpawnBatchSize
@@ -119,7 +120,7 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             val occupiedSeats = fixture.world.entities.filterIsInstance<ArmorStand>().filter { it.passengers.isNotEmpty() }
             occupiedSeats shouldHaveSize fixture.zone.rivalRaid.maximumRiders
             val seatHeightOffsets = occupiedSeats.map { it.location.y - ghast.location.y }
-            check(seatHeightOffsets.all { it >= 4.0 }) { "seat height offsets=$seatHeightOffsets" }
+            check(seatHeightOffsets.all { it <= -2.0 }) { "seat height offsets=$seatHeightOffsets" }
             val workers = fixture.world.entities.filterIsInstance<Mob>().filter { it !is Ghast && controller.owns(it) }
                 .also { it shouldHaveSize fixture.zone.rivalRaid.workerCount }
                 .onEach {
@@ -192,12 +193,27 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             fixture.raidBlockPreviews.batches.last().changes.values.any { it.material == Material.FARMLAND } shouldBe true
 
             val seat = requireNotNull(gunner.vehicle)
+            gunner.setPlayerTime(runtime.settings.rivalRaid.playerTime, false)
             controller.onDismount(EntityDismountEvent(gunner, seat)) shouldBe true
             gunner.leaveVehicle()
             fixture.runDelayedTasks() shouldBe listOf(1L)
             gunner.location.distanceSquared(fixture.location(receiving)) shouldBe 0.0
             controller.participantRuntime(gunner) shouldBe null
             gunner.inventory.storageContents.filterNotNull().none { it.type == Material.PAPER } shouldBe true
+            controller.update(runtime)
+            repeat(runtime.settings.rivalRaid.timeTransitionSeconds * 20) { fixture.night.updatePlayerTimes() }
+            gunner.playerTime shouldBe runtime.settings.rivalRaid.playerTime
+
+            val remainingRiders = riders.drop(1).filter { it.vehicle != null }
+            remainingRiders.forEach { rider ->
+                val riderSeat = requireNotNull(rider.vehicle)
+                controller.onDismount(EntityDismountEvent(rider, riderSeat)) shouldBe true
+                rider.leaveVehicle()
+            }
+            fixture.runDelayedTasks() shouldBe List(remainingRiders.size) { 1L }
+            ghast.velocity = org.bukkit.util.Vector()
+            controller.updateRaidMotion(runtime)
+            (ghast.velocity.length() > 0.0) shouldBe true
         } }
     }
 

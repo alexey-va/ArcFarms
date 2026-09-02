@@ -68,7 +68,7 @@ object FarmRaidSeatPolicy {
     fun deck(riders: Int, spacing: Double, height: Double): List<FarmMotionVector> {
         require(riders in 1..8)
         require(spacing.isFinite() && spacing > 0.0)
-        require(height.isFinite() && height > 0.0)
+        require(height.isFinite() && height in -6.0..8.0)
         if (riders == 1) return listOf(FarmMotionVector(0.0, height, 0.0))
         val rows = (riders + 1) / 2
         return (0 until riders).map { index ->
@@ -108,21 +108,50 @@ object FarmRivalPatrolPlanner {
                 )
             }
             .toList()
-        val local = evaluated.filter { it.workerDistance in MIN_TARGET_DISTANCE_SQUARED..MAX_TARGET_DISTANCE_SQUARED }
-        val ranked = local.ifEmpty { evaluated }
+        val local = evaluated.filter {
+            it.workerDistance in MIN_TARGET_DISTANCE_SQUARED..MAX_TARGET_DISTANCE_SQUARED &&
+                it.threatDistance <= MAX_THREAT_DISTANCE_SQUARED
+        }
+        val ranked = local.ifEmpty { evaluated.filter { it.threatDistance <= MAX_THREAT_DISTANCE_SQUARED } }
+            .ifEmpty { evaluated }
             .asSequence()
             .sortedWith(
-                compareByDescending<Candidate> { it.threatDistance + it.workerDistance * 0.2 }
+                compareBy<Candidate> { it.threatDistance }
+                    .thenByDescending { it.workerDistance }
                     .thenBy { it.plot.x }.thenBy { it.plot.z }.thenBy { it.plot.y },
             )
             .toList()
         if (ranked.isEmpty()) return null
-        val pool = ranked.take(minOf(ranked.size, maxOf(8, ranked.size / 3)))
-        return pool[java.lang.Math.floorMod(sequence, pool.size.toLong()).toInt()].plot
+        return ranked[java.lang.Math.floorMod(sequence, ranked.size.toLong()).toInt()].plot
     }
 
     private const val MIN_TARGET_DISTANCE_SQUARED = 36.0
     private const val MAX_TARGET_DISTANCE_SQUARED = 576.0
+    private const val MAX_THREAT_DISTANCE_SQUARED = 324.0
+}
+
+object FarmRaidSeatFollower {
+    fun velocity(
+        current: FarmPointPosition,
+        target: FarmPointPosition,
+        leaderVelocity: FarmMotionVector,
+        correctionFactor: Double,
+        maximumCorrection: Double,
+    ): FarmMotionVector {
+        require(current.world == target.world) { "Raid seat cannot cross worlds" }
+        require(correctionFactor.isFinite() && correctionFactor in 0.0..1.0)
+        require(maximumCorrection.isFinite() && maximumCorrection >= 0.0)
+        val dx = (target.x - current.x) * correctionFactor
+        val dy = (target.y - current.y) * correctionFactor
+        val dz = (target.z - current.z) * correctionFactor
+        val length = sqrt(dx * dx + dy * dy + dz * dz)
+        val scale = if (length > maximumCorrection && length > 1.0e-9) maximumCorrection / length else 1.0
+        return FarmMotionVector(
+            leaderVelocity.x + dx * scale,
+            leaderVelocity.y + dy * scale,
+            leaderVelocity.z + dz * scale,
+        )
+    }
 }
 
 object FarmRivalFieldPolicy {
@@ -202,7 +231,11 @@ object FarmRaidFlight {
         height: Double,
         radius: Double,
         angle: Double,
-    ): FarmPointPosition = orbitPoint(center, height, radius, angle + PI / 4.0)
+        lookAheadDegrees: Double,
+    ): FarmPointPosition {
+        require(lookAheadDegrees.isFinite() && lookAheadDegrees in 0.0..90.0)
+        return orbitPoint(center, height, radius, angle + Math.toRadians(lookAheadDegrees))
+    }
 
     fun advanceOrbit(angle: Double, elapsedTicks: Long, periodSeconds: Int): Double {
         require(angle.isFinite() && elapsedTicks >= 0 && periodSeconds > 0)

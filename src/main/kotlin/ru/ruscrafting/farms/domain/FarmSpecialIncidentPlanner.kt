@@ -193,10 +193,7 @@ object FarmSpecialIncidentPlanner {
             }.thenBy(FarmPlotPosition::x).thenBy(FarmPlotPosition::z).thenBy(FarmPlotPosition::y),
         )
         val horizontal = plots.groupBy { it.x to it.z }
-        val startCandidates = rotate(
-            orderedStarts.take(minOf(24, maxOf(8, requestedSegments / 3), orderedStarts.size)),
-            sequence + CHANNEL_START_SALT,
-        )
+        val startCandidates = rotate(orderedStarts, sequence + CHANNEL_START_SALT)
         var longest = emptyList<FarmPlotPosition>()
         startCandidates.forEachIndexed { attempt, start ->
             val route = wanderingChannelRoute(start, horizontal, requestedSegments, sequence + attempt * 97L)
@@ -228,7 +225,7 @@ object FarmSpecialIncidentPlanner {
                 horizontal[current.x + dx to current.z + dz]
                     .orEmpty()
                     .asSequence()
-                    .filter { it !in visited && kotlin.math.abs(it.y - current.y) <= 1 }
+                    .filter { it !in visited && it.y <= current.y && current.y - it.y <= 1 }
                     .minWithOrNull(compareBy<FarmPlotPosition> { kotlin.math.abs(it.y - current.y) }.thenBy { it.y })
             }
             neighbours.forEach { next ->

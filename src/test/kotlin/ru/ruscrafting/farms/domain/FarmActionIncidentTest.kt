@@ -141,12 +141,18 @@ class FarmActionIncidentTest : FunSpec({
         start.z shouldBe (completed.z plusOrMinus 1.0e-9)
     }
 
-    test("raid orbit pursues a fixed point ahead instead of chasing its own current angle") {
+    test("raid orbit pursues a nearby configured waypoint instead of wandering toward a distant chord") {
         val center = FarmPointPosition("world", 20.0, 65.0, -4.0)
-        val pursued = FarmRaidFlight.orbitPursuitPoint(center, height = 20.0, radius = 28.0, angle = 0.0)
+        val pursued = FarmRaidFlight.orbitPursuitPoint(
+            center,
+            height = 20.0,
+            radius = 28.0,
+            angle = 0.0,
+            lookAheadDegrees = 12.0,
+        )
 
-        pursued.x shouldBe (center.x + 28.0 / kotlin.math.sqrt(2.0) plusOrMinus 1.0e-9)
-        pursued.z shouldBe (center.z + 28.0 / kotlin.math.sqrt(2.0) plusOrMinus 1.0e-9)
+        pursued.x shouldBe (center.x + kotlin.math.cos(Math.toRadians(12.0)) * 28.0 plusOrMinus 1.0e-9)
+        pursued.z shouldBe (center.z + kotlin.math.sin(Math.toRadians(12.0)) * 28.0 plusOrMinus 1.0e-9)
     }
 
     test("raid velocity steering is smoothed and capped") {
@@ -169,10 +175,10 @@ class FarmActionIncidentTest : FunSpec({
         FarmRaidSeatPolicy.canBoard(currentRiders = 4, maximumRiders = 4, alreadyMounted = true) shouldBe true
     }
 
-    test("raid seats stay on a stable deck above the ghast body") {
-        val seats = FarmRaidSeatPolicy.deck(riders = 4, spacing = 1.6, height = 4.8)
+    test("raid seats hang on a stable rack below the ghast body") {
+        val seats = FarmRaidSeatPolicy.deck(riders = 4, spacing = 1.6, height = -2.6)
 
-        seats.map { it.y }.toSet() shouldBe setOf(4.8)
+        seats.map { it.y }.toSet() shouldBe setOf(-2.6)
         seats.map { it.x to it.z }.toSet() shouldBe setOf(
             -0.8 to -0.8,
             0.8 to -0.8,
@@ -181,7 +187,21 @@ class FarmActionIncidentTest : FunSpec({
         )
     }
 
-    test("rival workers choose varied destinations away from the flying threat") {
+    test("raid seat follows leader velocity with only a bounded positional correction") {
+        val velocity = FarmRaidSeatFollower.velocity(
+            current = FarmPointPosition("world", 0.0, 70.0, 0.0),
+            target = FarmPointPosition("world", 1.0, 70.0, 0.0),
+            leaderVelocity = FarmMotionVector(0.28, 0.01, -0.04),
+            correctionFactor = 0.18,
+            maximumCorrection = 0.06,
+        )
+
+        velocity.x shouldBe (0.34 plusOrMinus 1.0e-9)
+        velocity.y shouldBe (0.01 plusOrMinus 1.0e-9)
+        velocity.z shouldBe (-0.04 plusOrMinus 1.0e-9)
+    }
+
+    test("rival workers choose unique nearby destinations around the flying threat") {
         val plots = (-12..12 step 4).flatMap { x ->
             (-12..12 step 4).map { z -> FarmPlotPosition("world", x, 64, z) }
         }
@@ -193,7 +213,12 @@ class FarmActionIncidentTest : FunSpec({
         }
 
         targets.toSet().size shouldBe 8
-        targets.all { requireNotNull(it).x >= 4 } shouldBe true
+        targets.all { target ->
+            requireNotNull(target)
+            val dx = target.x + 0.5 - threat.x
+            val dz = target.z + 0.5 - threat.z
+            dx * dx + dz * dz <= 18.0 * 18.0
+        } shouldBe true
     }
 
     test("rival field policy accepts only loaded outdoor farmland with headroom") {

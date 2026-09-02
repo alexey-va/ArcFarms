@@ -174,10 +174,34 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             }
         } shouldBe true
         routes.distinct().size shouldBe 8
-        (routes.map { it.first() }.distinct().size >= 6) shouldBe true
+        routes.map { it.first() }.distinct().size shouldBe 8
         routes.zipWithNext().all { (left, right) ->
             left.toSet().intersect(right.toSet()).size <= 11
         } shouldBe true
+    }
+
+    test("channel route may descend but never climbs back uphill") {
+        val plots = buildList {
+            for (x in 0..8) {
+                val y = when (x) {
+                    0, 1 -> 66
+                    2, 3, 4 -> 65
+                    else -> 66
+                }
+                add(FarmPlotPosition("world", x, y, 0))
+            }
+            for (x in 0..8) add(FarmPlotPosition("world", x, 64, 1))
+        }
+
+        val route = FarmSpecialIncidentPlanner.planChannelRoute(
+            FarmPointPosition("world", -1.0, 67.0, 0.5),
+            plots,
+            requestedSegments = 8,
+            sequence = 13,
+        )
+
+        route.size shouldBe 8
+        route.zipWithNext().all { (from, to) -> to.y <= from.y } shouldBe true
     }
 
     test("channel guidance renders unfinished earth only on every tenth segment") {

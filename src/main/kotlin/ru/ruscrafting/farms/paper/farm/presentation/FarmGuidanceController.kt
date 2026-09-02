@@ -190,6 +190,7 @@ internal class FarmGuidanceController(
                         if (!FarmSurfacePolicy.isSurfaceSpawn(location)) return@forEachIndexed
                         when {
                             index !in special.solution -> {
+                                spawnChannelSoilHint(player, location.clone().add(0.0, -1.0, 0.0))
                                 if (FarmChannelMarkerPolicy.showsEarthGuidance(
                                         index,
                                         solved = false,
@@ -197,7 +198,6 @@ internal class FarmGuidanceController(
                                     )
                                 ) {
                                     spawnSlimColumn(player, location, AMBER_COLOR)
-                                    spawnPlotMarker(player, location.clone().add(0.0, -1.0, 0.0), EARTH_COLOR)
                                 }
                             }
                             index !in special.active ->
@@ -464,6 +464,20 @@ internal class FarmGuidanceController(
                 true,
             )
         }
+    }
+
+    private fun spawnChannelSoilHint(player: Player, soil: Location) {
+        player.spawnParticle(
+            Particle.DUST,
+            soil.clone().toCenterLocation().add(0.0, 1.08, 0.0),
+            2,
+            0.24,
+            0.04,
+            0.24,
+            0.0,
+            Particle.DustOptions(EARTH_COLOR, 1.25f),
+            true,
+        )
     }
 
     private fun spawnRing(player: Player, center: Location, radius: Double, color: Color) {

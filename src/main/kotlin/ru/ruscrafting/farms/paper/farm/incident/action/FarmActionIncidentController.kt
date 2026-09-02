@@ -73,6 +73,12 @@ import kotlin.math.sin
 
 internal val ACTION_FARM_INCIDENT_TYPES = setOf(FarmIncidentType.BOAR_BREAKOUT, FarmIncidentType.RIVAL_RAID)
 
+internal data class FarmActionIncidentPlanAttempt(
+    val plan: FarmSpecialIncidentState?,
+    val candidates: Int,
+    val rejection: String? = null,
+)
+
 /** Facade for action incidents; boar state stays here while rival-raid state has its own owner. */
 internal class FarmActionIncidentController(
     plugin: Plugin,

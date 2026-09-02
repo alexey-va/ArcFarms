@@ -555,20 +555,27 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().rivalRaid.workerPatrolBatchSize shouldBe 32
         settings.farms.single().rivalRaid.workerPatrolIntervalTicks shouldBe 10
         settings.farms.single().rivalRaid.workerPatrolSpeed shouldBe 1.8
+        settings.farms.single().rivalRaid.workerFocusRadius shouldBe 34.0
+        settings.farms.single().rivalRaid.workerRetireRadius shouldBe 48.0
         settings.farms.single().rivalRaid.workerLightStride shouldBe 10
         settings.farms.single().rivalRaid.gunMaterial shouldBe "PAPER"
         settings.farms.single().rivalRaid.gunCustomModelData shouldBe 2_100_006
         settings.farms.single().rivalRaid.grenadeCustomModelData shouldBe 2_100_009
-        settings.farms.single().rivalRaid.grenadePreviewBlocks shouldBe 36
+        settings.farms.single().rivalRaid.grenadeDamage shouldBe 16.0
+        settings.farms.single().rivalRaid.grenadeRadius shouldBe 7.0
+        settings.farms.single().rivalRaid.grenadeCooldownTicks shouldBe 12
+        settings.farms.single().rivalRaid.grenadePreviewBlocks shouldBe 72
         settings.farms.single().rivalRaid.grenadePreviewTicks shouldBe 80
         settings.farms.single().rivalRaid.grenadePreviewSoilMaterial shouldBe "COARSE_DIRT"
         settings.farms.single().rivalRaid.maximumRiders shouldBe 4
         settings.farms.single().rivalRaid.workerRadius shouldBe 64.0
-        settings.farms.single().rivalRaid.flightHeight shouldBe 28.0
+        settings.farms.single().rivalRaid.flightHeight shouldBe 14.0
         settings.farms.single().rivalRaid.flightSpeed shouldBe 0.30
-        settings.farms.single().rivalRaid.orbitRadius shouldBe 42.0
+        settings.farms.single().rivalRaid.flightSteering shouldBe 0.65
+        settings.farms.single().rivalRaid.orbitRadius shouldBe 36.0
+        settings.farms.single().rivalRaid.orbitLookAheadDegrees shouldBe 12.0
         settings.farms.single().rivalRaid.seatSpacing shouldBe 1.6
-        settings.farms.single().rivalRaid.seatYOffset shouldBe 4.8
+        settings.farms.single().rivalRaid.seatYOffset shouldBe -2.6
         settings.farms.single().rivalRaid.portalWidth shouldBe 3.6f
         settings.farms.single().rivalRaid.portalHeight shouldBe 3.2f
         settings.farms.single().rivalRaid.portalLabelHeight shouldBe 3.35

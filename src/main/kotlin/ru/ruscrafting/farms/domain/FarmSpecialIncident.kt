@@ -4,10 +4,17 @@ import java.util.UUID
 import kotlin.math.floor
 
 object FarmChannelOwnership {
-    fun activePlots(state: FarmShiftState): Set<FarmPlotPosition> {
+    fun flowedPlots(state: FarmShiftState): Set<FarmPlotPosition> = plots(state) { it.active }
+
+    fun dugPlots(state: FarmShiftState): Set<FarmPlotPosition> = plots(state) { it.solution }
+
+    private fun plots(
+        state: FarmShiftState,
+        indices: (FarmSpecialIncidentState) -> Set<Int>,
+    ): Set<FarmPlotPosition> {
         if (state.phase != FarmPhase.INCIDENT || state.incidentType != FarmIncidentType.CHANNELS) return emptySet()
         val special = state.specialIncident ?: return emptySet()
-        return special.active.mapNotNullTo(linkedSetOf()) { index ->
+        return indices(special).mapNotNullTo(linkedSetOf()) { index ->
             special.points.getOrNull(index)?.let { point ->
                 FarmPlotPosition(point.world, floor(point.x).toInt(), floor(point.y).toInt() - 1, floor(point.z).toInt())
             }
