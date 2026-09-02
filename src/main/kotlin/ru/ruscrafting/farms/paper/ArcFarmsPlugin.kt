@@ -145,8 +145,9 @@ open class ArcFarmsPlugin : JavaPlugin() {
             } else {
                 logger.warning("PlaceholderAPI is unavailable; ArcFarms leaderboard placeholders are disabled")
             }
-            val activeMenu = ArcFarmsMenu(activeService, locale) { settings }
+            val activeMenu = ArcFarmsMenu(this, activeService, locale) { settings }
             menu = activeMenu
+            lifecycle.own(activeMenu)
             val command = ArcFarmsCommand(activeService, locale, activeMenu, ::reloadPlugin)
             requireNotNull(getCommand("arcfarms")).apply {
                 setExecutor(command)
@@ -221,6 +222,7 @@ open class ArcFarmsPlugin : JavaPlugin() {
         ) { "PlaceholderAPI is required when ui.farm-scoreboard.provider is TAB" }
         ArcFarmsLocale.synchronizeFiles(dataRoot)
         val candidateLocale = locale.prepareReload(candidate)
+        val candidateMenus = menu?.prepareReload()
         if (candidate.network.enabled) {
             require(RedisRuntimeSettings.from(ArcFarmsRedisBootstrap.loadFresh(dataRoot, candidate)) == redisRuntimeSettings) {
                 "modules/redis.yml connection settings require a full plugin restart"
@@ -231,6 +233,7 @@ open class ArcFarmsPlugin : JavaPlugin() {
         locale.publish(candidateLocale)
         try {
             requireNotNull(service).reload(candidate) { active -> settings = active }
+            candidateMenus?.let { menu?.publishReload(it) }
         } catch (failure: Exception) {
             settings = previous
             locale.publish(previousLocale)

@@ -45,17 +45,18 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
             operator.performCommand("arcfarms") shouldBe true
             val root = operator.openInventory.topInventory
             root.size shouldBe 27
-            root.getItem(2)?.type shouldBe Material.CARROT
+            root.getItem(2)?.type shouldBe Material.GRAY_STAINED_GLASS_PANE
+            root.getItem(3)?.type shouldBe Material.CARROT
             root.getItem(4)?.type shouldBe Material.DIAMOND_AXE
             root.getItem(6)?.type shouldBe Material.DIAMOND_PICKAXE
             root.getItem(19)?.type shouldBe Material.COMPASS
             root.getItem(22)?.type shouldBe Material.DIAMOND
             root.getItem(25)?.type shouldBe Material.ENCHANTED_BOOK
-            root.getItem(2)?.itemMeta?.customModelData shouldBe 31_001
+            root.getItem(3)?.itemMeta?.customModelData shouldBe 31_001
             root.getItem(22)?.itemMeta?.customModelData shouldBe 31_002
             root.assertVisibleComponentsAreNonItalic()
             root.getItem(22).plainLore() shouldContain "LMB — open companies"
-            root.getItem(2).plainLoreLines().apply {
+            root.getItem(3).plainLoreLines().apply {
                 size shouldBe 3
                 this[1] shouldBe ""
                 this[2] shouldContain "LMB — travel to the shift"
@@ -127,14 +128,14 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
 
             updatePluginConfig(
                 plugin.dataFolder.toPath(),
-                "ui.main-menu.items.farm.material" to "BEETROOT",
-                "ui.main-menu.items.farm.custom-model-data" to 31_099,
+                "ui.menus.templates.farm.material" to "BEETROOT",
+                "ui.menus.templates.farm.custom-model-data" to 31_099,
                 "ui.enterprise-menu.items.market.material" to "IRON_INGOT",
             )
             operator.performCommand("arcfarms reload") shouldBe true
             val reloadedRoot = operator.openInventory.topInventory
-            reloadedRoot.getItem(2)?.type shouldBe Material.BEETROOT
-            reloadedRoot.getItem(2)?.itemMeta?.customModelData shouldBe 31_099
+            reloadedRoot.getItem(3)?.type shouldBe Material.BEETROOT
+            reloadedRoot.getItem(3)?.itemMeta?.customModelData shouldBe 31_099
             clickTopInventory(paper, operator, 22)
             paper.performTicks(1)
             clickTopInventory(paper, operator, 2)
@@ -252,19 +253,20 @@ private fun preparePluginData(dataRoot: Path) {
     config.set("ui.particles", false)
     config.set("ui.sounds", false)
     config.set("ui.farm-scoreboard.enabled", false)
-    config.set("ui.menu-background.enabled", true)
-    config.set("ui.menu-background.material", "GRAY_STAINED_GLASS_PANE")
-    config.set("ui.menu-background.custom-model-data", 0)
+    config.set("ui.menus.layouts.main.background.template", "background")
+    config.set("ui.menus.layouts.main.elements.farm.slot", 3)
+    config.set("ui.menus.templates.background.material", "GRAY_STAINED_GLASS_PANE")
+    config.set("ui.menus.templates.background.custom-model-data", 0)
     config.set("ui.menu-back.material", "ARROW")
     config.set("ui.menu-back.custom-model-data", 0)
-    config.set("ui.main-menu.items.farm.material", "CARROT")
-    config.set("ui.main-menu.items.farm.custom-model-data", 31_001)
-    config.set("ui.main-menu.items.lumber.material", "DIAMOND_AXE")
-    config.set("ui.main-menu.items.mine.material", "DIAMOND_PICKAXE")
-    config.set("ui.main-menu.items.workday.material", "COMPASS")
-    config.set("ui.main-menu.items.stats.material", "ENCHANTED_BOOK")
-    config.set("ui.enterprise-menu.items.companies.material", "DIAMOND")
-    config.set("ui.enterprise-menu.items.companies.custom-model-data", 31_002)
+    config.set("ui.menus.templates.farm.material", "CARROT")
+    config.set("ui.menus.templates.farm.custom-model-data", 31_001)
+    config.set("ui.menus.templates.lumber.material", "DIAMOND_AXE")
+    config.set("ui.menus.templates.mine.material", "DIAMOND_PICKAXE")
+    config.set("ui.menus.templates.workday.material", "COMPASS")
+    config.set("ui.menus.templates.stats.material", "ENCHANTED_BOOK")
+    config.set("ui.menus.templates.companies.material", "DIAMOND")
+    config.set("ui.menus.templates.companies.custom-model-data", 31_002)
     config.set("ui.enterprise-menu.items.overview-farm.material", "HAY_BLOCK")
     config.set("ui.enterprise-menu.items.overview-lumber.material", "GOLDEN_AXE")
     config.set("ui.enterprise-menu.items.overview-mine.material", "CHEST_MINECART")

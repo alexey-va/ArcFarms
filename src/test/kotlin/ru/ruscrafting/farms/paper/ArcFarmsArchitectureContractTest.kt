@@ -144,7 +144,7 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         val transition = Files.readString(inventoryTransitionPath)
         val rootClick = Files.readString(repositoryRoot.resolve(
             "src/main/kotlin/ru/ruscrafting/farms/paper/ArcFarmsMenu.kt",
-        )).substringAfter("fun onClick(").substringBefore("fun onDrag(")
+        )).substringAfter("private fun content(").substringBefore("private fun activityEntry(")
         val enterpriseClick = Files.readString(repositoryRoot.resolve(
             "src/main/kotlin/ru/ruscrafting/farms/paper/WorksiteEnterpriseMenu.kt",
         )).substringAfter("fun onClick(").substringBefore("fun onDrag(")

@@ -61,6 +61,27 @@ ui:
       share-buy: {material: EMERALD, custom-model-data: 0}
       share-confirm: {material: LIME_DYE, custom-model-data: 0}
       share-withdraw: {material: SUNFLOWER, custom-model-data: 0}
+  # Semantic IDs stay in code; operators own rows, slots and safe item sources.
+  menus:
+    layouts:
+      main:
+        schema-version: 1
+        rows: 3
+        elements:
+          farm: {slot: 2, template: farm}
+          lumber: {slot: 4, template: lumber}
+          mine: {slot: 6, template: mine}
+          workday: {slot: 19, template: workday}
+          companies: {slot: 22, template: companies}
+          stats: {slot: 25, kind: decoration, template: stats}
+    templates:
+      background: {material: GRAY_STAINED_GLASS_PANE, hide-tooltip: true}
+      farm: {material: WHEAT}
+      lumber: {material: IRON_AXE}
+      mine: {material: MINECART}
+      workday: {material: WRITABLE_BOOK}
+      companies: {material: EMERALD}
+      stats: {material: BOOK}
 
 state:
   save-seconds: 10
