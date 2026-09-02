@@ -18,7 +18,7 @@ data class FarmSpecialIncidentPlan(
 internal const val FARM_CHANNEL_ROUTE_NAME = "drainage-v3"
 
 object FarmChannelMarkerPolicy {
-    fun showsColumn(index: Int, solved: Boolean, stride: Int): Boolean {
+    fun showsEarthGuidance(index: Int, solved: Boolean, stride: Int): Boolean {
         require(index >= 0)
         require(stride >= 1)
         return !solved && index % stride == 0
@@ -175,10 +175,7 @@ object FarmSpecialIncidentPlanner {
         }
     }
 
-    /**
-     * Builds one cardinally connected trench from the irrigation side of the field.
-     * A shortest-path tree makes the result deterministic, bounded and free of disconnected visual gates.
-     */
+    /** Builds a deterministic but sequence-specific cardinal trench from the irrigation side of the field. */
     fun planChannelRoute(
         source: FarmPointPosition,
         surfacePlots: Collection<FarmPlotPosition>,
@@ -202,52 +199,50 @@ object FarmSpecialIncidentPlanner {
         )
         var longest = emptyList<FarmPlotPosition>()
         startCandidates.forEachIndexed { attempt, start ->
-            val route = shortestChannelRoute(start, horizontal, requestedSegments, sequence + attempt * 97L)
+            val route = wanderingChannelRoute(start, horizontal, requestedSegments, sequence + attempt * 97L)
             if (route.size == requestedSegments) return route
             if (route.size > longest.size) longest = route
         }
         return longest.takeIf { it.size >= MIN_CHANNEL_SEGMENTS }.orEmpty()
     }
 
-    private fun shortestChannelRoute(
+    private fun wanderingChannelRoute(
         start: FarmPlotPosition,
         horizontal: Map<Pair<Int, Int>, List<FarmPlotPosition>>,
         requestedSegments: Int,
         sequence: Long,
     ): List<FarmPlotPosition> {
-        val parents = mutableMapOf<FarmPlotPosition, FarmPlotPosition?>()
-        val distances = mutableMapOf<FarmPlotPosition, Int>()
-        val queue = ArrayDeque<FarmPlotPosition>()
-        parents[start] = null
-        distances[start] = 0
-        queue += start
-        while (queue.isNotEmpty()) {
-            val current = queue.removeFirst()
+        val path = mutableListOf(start)
+        val visited = mutableSetOf(start)
+        var probes = 0
+
+        fun search(): Boolean {
+            if (path.size == requestedSegments) return true
+            if (++probes > MAX_CHANNEL_SEARCH_PROBES) return false
+            val current = path.last()
             val directionSalt = FarmSpatialSeed.mix(
-                sequence,
+                sequence + path.size * 131L,
                 current.x.toLong() * 73_856_093L xor current.z.toLong() * 19_349_663L,
             )
-            rotate(CARDINAL_DIRECTIONS, directionSalt).forEach { (dx, dz) ->
-                val next = horizontal[current.x + dx to current.z + dz]
+            val neighbours = rotate(CARDINAL_DIRECTIONS, directionSalt).mapNotNull { (dx, dz) ->
+                horizontal[current.x + dx to current.z + dz]
                     .orEmpty()
-                    .filter { kotlin.math.abs(it.y - current.y) <= 1 }
+                    .asSequence()
+                    .filter { it !in visited && kotlin.math.abs(it.y - current.y) <= 1 }
                     .minWithOrNull(compareBy<FarmPlotPosition> { kotlin.math.abs(it.y - current.y) }.thenBy { it.y })
-                    ?: return@forEach
-                if (next in parents) return@forEach
-                parents[next] = current
-                distances[next] = requireNotNull(distances[current]) + 1
-                queue += next
             }
+            neighbours.forEach { next ->
+                visited += next
+                path += next
+                if (search()) return true
+                path.removeAt(path.lastIndex)
+                visited -= next
+            }
+            return false
         }
-        val targetDistance = minOf(requestedSegments - 1, distances.values.maxOrNull() ?: 0)
-        if (targetDistance < MIN_CHANNEL_SEGMENTS - 1) return emptyList()
-        val targets = distances.entries.asSequence()
-            .filter { it.value == targetDistance }
-            .map(Map.Entry<FarmPlotPosition, Int>::key)
-            .sortedWith(compareBy<FarmPlotPosition> { it.x }.thenBy { it.z }.thenBy { it.y })
-            .toList()
-        val target = rotate(targets, sequence + 0x4348414e4e454cL).firstOrNull() ?: return emptyList()
-        return generateSequence(target) { parents[it] }.toList().asReversed()
+
+        search()
+        return path.toList()
     }
 
     private fun <T> rotate(values: List<T>, salt: Long): List<T> {
@@ -258,6 +253,7 @@ object FarmSpecialIncidentPlanner {
     }
 
     private const val CHANNEL_START_SALT = 0x4348414e53544152L
+    private const val MAX_CHANNEL_SEARCH_PROBES = 2_048
 
     private const val MIN_CHANNEL_SEGMENTS = 4
     private val CARDINAL_DIRECTIONS = listOf(1 to 0, 0 to 1, -1 to 0, 0 to -1)

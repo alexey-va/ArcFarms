@@ -397,23 +397,23 @@ data class FarmRivalRaidSettings(
     val requiredKills: Int = 32,
     val workerCount: Int = 120,
     val workerSpawnBatchSize: Int = 12,
-    val workerPatrolBatchSize: Int = 12,
+    val workerPatrolBatchSize: Int = 32,
     val workerEntity: String = "HUSK",
     val workerHealth: Double = 12.0,
     val workerRadius: Double = 64.0,
     val workerHeldItem: String = "TORCH",
     val workerLightLevel: Int = 15,
     val workerLightStride: Int = 10,
-    val workerPatrolIntervalTicks: Int = 40,
-    val workerPatrolSpeed: Double = 1.1,
-    val flightHeight: Double = 20.0,
-    val flightSpeed: Double = 0.24,
+    val workerPatrolIntervalTicks: Int = 10,
+    val workerPatrolSpeed: Double = 1.8,
+    val flightHeight: Double = 28.0,
+    val flightSpeed: Double = 0.30,
     val flightSteering: Double = 0.22,
-    val orbitRadius: Double = 28.0,
+    val orbitRadius: Double = 42.0,
     val orbitPeriodSeconds: Int = 48,
     val maximumRiders: Int = 4,
-    val seatForwardOffset: Double = 3.75,
-    val seatYOffset: Double = 2.4,
+    val seatSpacing: Double = 1.6,
+    val seatYOffset: Double = 4.8,
     val portalWidth: Float = 3.6f,
     val portalHeight: Float = 3.2f,
     val portalLabelHeight: Double = 3.35,
@@ -437,8 +437,8 @@ data class FarmRivalRaidSettings(
     val grenadeCooldownTicks: Int = 30,
     val grenadeVelocity: Double = 1.2,
     val grenadeLifetimeTicks: Int = 60,
-    val grenadePreviewBlocks: Int = 12,
-    val grenadePreviewTicks: Int = 40,
+    val grenadePreviewBlocks: Int = 36,
+    val grenadePreviewTicks: Int = 80,
     val grenadePreviewSoilMaterial: String = "COARSE_DIRT",
 ) {
     init {
@@ -455,11 +455,11 @@ data class FarmRivalRaidSettings(
         require(flightHeight.isFinite() && flightHeight in 3.0..48.0) { "rival raid flight height is invalid" }
         require(flightSpeed.isFinite() && flightSpeed in 0.1..2.0) { "rival raid flight speed is invalid" }
         require(flightSteering.isFinite() && flightSteering in 0.01..1.0) { "rival raid flight steering is invalid" }
-        require(orbitRadius.isFinite() && orbitRadius in 4.0..48.0) { "rival raid orbit radius is invalid" }
+        require(orbitRadius.isFinite() && orbitRadius in 4.0..64.0) { "rival raid orbit radius is invalid" }
         require(orbitPeriodSeconds in 10..180) { "rival raid orbit period is invalid" }
         require(maximumRiders in 1..8) { "rival raid rider limit is invalid" }
-        require(seatForwardOffset.isFinite() && seatForwardOffset in 1.5..6.0) { "rival raid seat offset is invalid" }
-        require(seatYOffset.isFinite() && seatYOffset in -4.0..6.0) { "rival raid seat height is invalid" }
+        require(seatSpacing.isFinite() && seatSpacing in 0.5..3.0) { "rival raid seat spacing is invalid" }
+        require(seatYOffset.isFinite() && seatYOffset in 3.5..8.0) { "rival raid seat height is invalid" }
         require(portalWidth.isFinite() && portalWidth in 1.0f..8.0f) { "rival raid portal width is invalid" }
         require(portalHeight.isFinite() && portalHeight in 1.0f..8.0f) { "rival raid portal height is invalid" }
         require(portalLabelHeight.isFinite() && portalLabelHeight in 1.0..8.0) {
@@ -2182,7 +2182,7 @@ class ArcFarmsConfig private constructor(
                             "special-incidents.rival-raid.worker-spawn-batch-size", 12,
                         ).checked("special-incidents.rival-raid.worker-spawn-batch-size", 1, 32),
                         workerPatrolBatchSize = section.int(
-                            "special-incidents.rival-raid.worker-patrol-batch-size", 12,
+                            "special-incidents.rival-raid.worker-patrol-batch-size", 32,
                         ).checked("special-incidents.rival-raid.worker-patrol-batch-size", 1, 32),
                         workerEntity = entityName(
                             section.string("special-incidents.rival-raid.worker-entity", "HUSK"),
@@ -2201,32 +2201,32 @@ class ArcFarmsConfig private constructor(
                         workerLightStride = section.int("special-incidents.rival-raid.worker-light-stride", 10)
                             .checked("special-incidents.rival-raid.worker-light-stride", 1, 32),
                         workerPatrolIntervalTicks = section.int(
-                            "special-incidents.rival-raid.worker-patrol-interval-ticks", 40,
+                            "special-incidents.rival-raid.worker-patrol-interval-ticks", 10,
                         ).checked("special-incidents.rival-raid.worker-patrol-interval-ticks", 10, 200),
                         workerPatrolSpeed = section.finiteDouble(
-                            "special-incidents.rival-raid.worker-patrol-speed", 1.1, 0.5, 2.0,
+                            "special-incidents.rival-raid.worker-patrol-speed", 1.8, 0.5, 2.0,
                         ),
                         flightHeight = section.finiteDouble(
-                            "special-incidents.rival-raid.flight-height", 20.0, 3.0, 48.0,
+                            "special-incidents.rival-raid.flight-height", 28.0, 3.0, 48.0,
                         ),
                         flightSpeed = section.finiteDouble(
-                            "special-incidents.rival-raid.flight-speed", 0.24, 0.1, 2.0,
+                            "special-incidents.rival-raid.flight-speed", 0.30, 0.1, 2.0,
                         ),
                         flightSteering = section.finiteDouble(
                             "special-incidents.rival-raid.flight-steering", 0.22, 0.01, 1.0,
                         ),
                         orbitRadius = section.finiteDouble(
-                            "special-incidents.rival-raid.orbit-radius", 28.0, 4.0, 48.0,
+                            "special-incidents.rival-raid.orbit-radius", 42.0, 4.0, 64.0,
                         ),
                         orbitPeriodSeconds = section.int("special-incidents.rival-raid.orbit-period-seconds", 48)
                             .checked("special-incidents.rival-raid.orbit-period-seconds", 10, 180),
                         maximumRiders = section.int("special-incidents.rival-raid.maximum-riders", 4)
                             .checked("special-incidents.rival-raid.maximum-riders", 1, 8),
-                        seatForwardOffset = section.finiteDouble(
-                            "special-incidents.rival-raid.seat-forward-offset", 3.75, 1.5, 6.0,
+                        seatSpacing = section.finiteDouble(
+                            "special-incidents.rival-raid.seat-spacing", 1.6, 0.5, 3.0,
                         ),
                         seatYOffset = section.finiteDouble(
-                            "special-incidents.rival-raid.seat-y-offset", 2.4, -4.0, 6.0,
+                            "special-incidents.rival-raid.seat-y-offset", 4.8, 3.5, 8.0,
                         ),
                         portalWidth = section.finiteFloat(
                             "special-incidents.rival-raid.portal.width", 3.6f, 1.0f, 8.0f,
@@ -2305,10 +2305,10 @@ class ArcFarmsConfig private constructor(
                             "special-incidents.rival-raid.grenade-lifetime-ticks", 60,
                         ).checked("special-incidents.rival-raid.grenade-lifetime-ticks", 20, 200),
                         grenadePreviewBlocks = section.int(
-                            "special-incidents.rival-raid.grenade-preview-blocks", 12,
+                            "special-incidents.rival-raid.grenade-preview-blocks", 36,
                         ).checked("special-incidents.rival-raid.grenade-preview-blocks", 1, 64),
                         grenadePreviewTicks = section.int(
-                            "special-incidents.rival-raid.grenade-preview-ticks", 40,
+                            "special-incidents.rival-raid.grenade-preview-ticks", 80,
                         ).checked("special-incidents.rival-raid.grenade-preview-ticks", 5, 200),
                         grenadePreviewSoilMaterial = materialName(
                             section.string("special-incidents.rival-raid.grenade-preview-soil-material", "COARSE_DIRT"),

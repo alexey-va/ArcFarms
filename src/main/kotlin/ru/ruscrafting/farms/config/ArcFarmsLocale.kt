@@ -774,10 +774,22 @@ class ArcFarmsLocale(
             listOf("giant-crop", "channels", "night-shift", "market").forEach { incident ->
                 add("incident.$incident.name")
                 add("farm.entry-$incident")
+            }
+            listOf(
+                "pests", "drought", "birds", "food-delivery", "giant-crop", "channels", "night-shift", "market",
+                "processing", "barn-fire", "frost", "boar-breakout", "rival-raid",
+            ).forEach { incident ->
                 add("scoreboard.objective.$incident")
                 add("scoreboard.hint.$incident")
             }
-            listOf("preparation", "planting", "seeder-tilling", "seeder-planting", "channels", "night-shift", "market-pending")
+            listOf("loading", "operating", "packing").forEach { stage ->
+                add("scoreboard.objective.processing-$stage")
+                add("scoreboard.hint.processing-$stage")
+            }
+            listOf(
+                "preparation", "planting", "seeder-tilling", "seeder-planting", "channels", "night-shift",
+                "market-pending", "processing", "barn-fire", "frost",
+            )
                 .mapTo(this) { "scoreboard.hint-detail.$it" }
             FarmCareType.entries.forEach { type ->
                 add("care.${type.name.lowercase()}.name")

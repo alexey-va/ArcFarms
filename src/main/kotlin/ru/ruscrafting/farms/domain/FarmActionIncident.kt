@@ -64,6 +64,65 @@ object FarmRaidSeatPolicy {
         require(currentRiders >= 0 && maximumRiders > 0)
         return alreadyMounted || currentRiders < maximumRiders
     }
+
+    fun deck(riders: Int, spacing: Double, height: Double): List<FarmMotionVector> {
+        require(riders in 1..8)
+        require(spacing.isFinite() && spacing > 0.0)
+        require(height.isFinite() && height > 0.0)
+        if (riders == 1) return listOf(FarmMotionVector(0.0, height, 0.0))
+        val rows = (riders + 1) / 2
+        return (0 until riders).map { index ->
+            val row = index / 2
+            val rowSize = minOf(2, riders - row * 2)
+            val column = index % 2
+            FarmMotionVector(
+                x = (column - (rowSize - 1) / 2.0) * spacing,
+                y = height,
+                z = (row - (rows - 1) / 2.0) * spacing,
+            )
+        }
+    }
+}
+
+object FarmRivalPatrolPlanner {
+    private data class Candidate(val plot: FarmPlotPosition, val threatDistance: Double, val workerDistance: Double)
+
+    fun select(
+        candidates: Collection<FarmPlotPosition>,
+        worker: FarmPointPosition,
+        threat: FarmPointPosition,
+        sequence: Long,
+    ): FarmPlotPosition? {
+        val evaluated = candidates.asSequence()
+            .filter { it.world == worker.world && it.world == threat.world }
+            .distinct()
+            .map { plot ->
+                val threatDx = plot.x + 0.5 - threat.x
+                val threatDz = plot.z + 0.5 - threat.z
+                val workerDx = plot.x + 0.5 - worker.x
+                val workerDz = plot.z + 0.5 - worker.z
+                Candidate(
+                    plot,
+                    threatDx * threatDx + threatDz * threatDz,
+                    workerDx * workerDx + workerDz * workerDz,
+                )
+            }
+            .toList()
+        val local = evaluated.filter { it.workerDistance in MIN_TARGET_DISTANCE_SQUARED..MAX_TARGET_DISTANCE_SQUARED }
+        val ranked = local.ifEmpty { evaluated }
+            .asSequence()
+            .sortedWith(
+                compareByDescending<Candidate> { it.threatDistance + it.workerDistance * 0.2 }
+                    .thenBy { it.plot.x }.thenBy { it.plot.z }.thenBy { it.plot.y },
+            )
+            .toList()
+        if (ranked.isEmpty()) return null
+        val pool = ranked.take(minOf(ranked.size, maxOf(8, ranked.size / 3)))
+        return pool[java.lang.Math.floorMod(sequence, pool.size.toLong()).toInt()].plot
+    }
+
+    private const val MIN_TARGET_DISTANCE_SQUARED = 36.0
+    private const val MAX_TARGET_DISTANCE_SQUARED = 576.0
 }
 
 object FarmRivalFieldPolicy {
@@ -137,6 +196,13 @@ object FarmRaidFlight {
             z = center.z + sin(angle) * radius,
         )
     }
+
+    fun orbitPursuitPoint(
+        center: FarmPointPosition,
+        height: Double,
+        radius: Double,
+        angle: Double,
+    ): FarmPointPosition = orbitPoint(center, height, radius, angle + PI / 4.0)
 
     fun advanceOrbit(angle: Double, elapsedTicks: Long, periodSeconds: Int): Double {
         require(angle.isFinite() && elapsedTicks >= 0 && periodSeconds > 0)

@@ -141,6 +141,14 @@ class FarmActionIncidentTest : FunSpec({
         start.z shouldBe (completed.z plusOrMinus 1.0e-9)
     }
 
+    test("raid orbit pursues a fixed point ahead instead of chasing its own current angle") {
+        val center = FarmPointPosition("world", 20.0, 65.0, -4.0)
+        val pursued = FarmRaidFlight.orbitPursuitPoint(center, height = 20.0, radius = 28.0, angle = 0.0)
+
+        pursued.x shouldBe (center.x + 28.0 / kotlin.math.sqrt(2.0) plusOrMinus 1.0e-9)
+        pursued.z shouldBe (center.z + 28.0 / kotlin.math.sqrt(2.0) plusOrMinus 1.0e-9)
+    }
+
     test("raid velocity steering is smoothed and capped") {
         val velocity = FarmRaidFlight.steer(
             current = FarmPointPosition("world", 0.0, 70.0, 0.0),
@@ -159,6 +167,33 @@ class FarmActionIncidentTest : FunSpec({
         FarmRaidSeatPolicy.canBoard(currentRiders = 3, maximumRiders = 4, alreadyMounted = false) shouldBe true
         FarmRaidSeatPolicy.canBoard(currentRiders = 4, maximumRiders = 4, alreadyMounted = false) shouldBe false
         FarmRaidSeatPolicy.canBoard(currentRiders = 4, maximumRiders = 4, alreadyMounted = true) shouldBe true
+    }
+
+    test("raid seats stay on a stable deck above the ghast body") {
+        val seats = FarmRaidSeatPolicy.deck(riders = 4, spacing = 1.6, height = 4.8)
+
+        seats.map { it.y }.toSet() shouldBe setOf(4.8)
+        seats.map { it.x to it.z }.toSet() shouldBe setOf(
+            -0.8 to -0.8,
+            0.8 to -0.8,
+            -0.8 to 0.8,
+            0.8 to 0.8,
+        )
+    }
+
+    test("rival workers choose varied destinations away from the flying threat") {
+        val plots = (-12..12 step 4).flatMap { x ->
+            (-12..12 step 4).map { z -> FarmPlotPosition("world", x, 64, z) }
+        }
+        val threat = FarmPointPosition("world", -10.0, 75.0, 0.0)
+        val worker = FarmPointPosition("world", 0.0, 65.0, 0.0)
+
+        val targets = (0L..7L).map { sequence ->
+            FarmRivalPatrolPlanner.select(plots, worker, threat, sequence)
+        }
+
+        targets.toSet().size shouldBe 8
+        targets.all { requireNotNull(it).x >= 4 } shouldBe true
     }
 
     test("rival field policy accepts only loaded outdoor farmland with headroom") {

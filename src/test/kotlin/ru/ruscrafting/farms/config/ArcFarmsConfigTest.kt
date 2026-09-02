@@ -552,19 +552,23 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().rivalRaid.workerEntity shouldBe "HUSK"
         settings.farms.single().rivalRaid.workerCount shouldBe 120
         settings.farms.single().rivalRaid.workerSpawnBatchSize shouldBe 12
-        settings.farms.single().rivalRaid.workerPatrolBatchSize shouldBe 12
+        settings.farms.single().rivalRaid.workerPatrolBatchSize shouldBe 32
+        settings.farms.single().rivalRaid.workerPatrolIntervalTicks shouldBe 10
+        settings.farms.single().rivalRaid.workerPatrolSpeed shouldBe 1.8
         settings.farms.single().rivalRaid.workerLightStride shouldBe 10
         settings.farms.single().rivalRaid.gunMaterial shouldBe "PAPER"
         settings.farms.single().rivalRaid.gunCustomModelData shouldBe 2_100_006
         settings.farms.single().rivalRaid.grenadeCustomModelData shouldBe 2_100_009
-        settings.farms.single().rivalRaid.grenadePreviewBlocks shouldBe 12
-        settings.farms.single().rivalRaid.grenadePreviewTicks shouldBe 40
+        settings.farms.single().rivalRaid.grenadePreviewBlocks shouldBe 36
+        settings.farms.single().rivalRaid.grenadePreviewTicks shouldBe 80
         settings.farms.single().rivalRaid.grenadePreviewSoilMaterial shouldBe "COARSE_DIRT"
         settings.farms.single().rivalRaid.maximumRiders shouldBe 4
         settings.farms.single().rivalRaid.workerRadius shouldBe 64.0
-        settings.farms.single().rivalRaid.flightHeight shouldBe 20.0
-        settings.farms.single().rivalRaid.seatForwardOffset shouldBe 3.75
-        settings.farms.single().rivalRaid.seatYOffset shouldBe 2.4
+        settings.farms.single().rivalRaid.flightHeight shouldBe 28.0
+        settings.farms.single().rivalRaid.flightSpeed shouldBe 0.30
+        settings.farms.single().rivalRaid.orbitRadius shouldBe 42.0
+        settings.farms.single().rivalRaid.seatSpacing shouldBe 1.6
+        settings.farms.single().rivalRaid.seatYOffset shouldBe 4.8
         settings.farms.single().rivalRaid.portalWidth shouldBe 3.6f
         settings.farms.single().rivalRaid.portalHeight shouldBe 3.2f
         settings.farms.single().rivalRaid.portalLabelHeight shouldBe 3.35
@@ -1665,6 +1669,29 @@ class ArcFarmsConfigTest : FunSpec({
             val rows = renderer.rows(view, null)
             (rows.size in 10..11) shouldBe true
             PlainTextComponentSerializer.plainText().serialize(rows[6]) shouldBe "| $expectedHint"
+        }
+    }
+
+    test("production locale renders every incident scoreboard instead of collapsing to section headers") {
+        val root = opsRoot().resolve("classic/plugins/ArcFarms")
+        val settings = ArcFarmsConfig.inspect(root)
+        val renderer = FarmScoreboardRenderer(ArcFarmsLocale(root) { settings })
+        val base = FarmScoreboardView(
+            orderId = "miners_rations",
+            phase = FarmPhase.INCIDENT,
+            done = 0,
+            total = 32,
+            required = linkedMapOf("WHEAT" to 640),
+            cropProgress = emptyMap(),
+        )
+
+        FarmIncidentType.entries.forEach { incident ->
+            val plain = renderer.rows(base.copy(incidentType = incident), null)
+                .map(PlainTextComponentSerializer.plainText()::serialize)
+            withClue("incident=$incident rows=$plain") {
+                plain[4].removePrefix("| ").isNotBlank() shouldBe true
+                plain[6].removePrefix("| ").isNotBlank() shouldBe true
+            }
         }
     }
 

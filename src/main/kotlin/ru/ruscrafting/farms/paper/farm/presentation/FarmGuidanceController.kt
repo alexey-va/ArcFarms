@@ -182,12 +182,7 @@ internal class FarmGuidanceController(
                 FarmIncidentType.CHANNELS -> {
                     val source = points.resolve(runtime, FarmPointKind.IRRIGATION)
                     (listOf(source) + special.points).zipWithNext().forEachIndexed { index, (from, to) ->
-                        spawnChannelTrail(
-                            player,
-                            from,
-                            to,
-                            if (index in special.solution) WATER_COLOR else EARTH_COLOR,
-                        )
+                        if (index in special.solution) spawnChannelTrail(player, from, to, WATER_COLOR)
                         if (index in special.active) spawnWaterTrail(player, from, to)
                     }
                     special.points.forEachIndexed { index, point ->
@@ -195,13 +190,15 @@ internal class FarmGuidanceController(
                         if (!FarmSurfacePolicy.isSurfaceSpawn(location)) return@forEachIndexed
                         when {
                             index !in special.solution -> {
-                                if (FarmChannelMarkerPolicy.showsColumn(
+                                if (FarmChannelMarkerPolicy.showsEarthGuidance(
                                         index,
                                         solved = false,
                                         stride = runtime.settings.specialIncidents.channelMarkerColumnStride,
                                     )
-                                ) spawnSlimColumn(player, location, AMBER_COLOR)
-                                spawnPlotMarker(player, location.clone().add(0.0, -1.0, 0.0), EARTH_COLOR)
+                                ) {
+                                    spawnSlimColumn(player, location, AMBER_COLOR)
+                                    spawnPlotMarker(player, location.clone().add(0.0, -1.0, 0.0), EARTH_COLOR)
+                                }
                             }
                             index !in special.active ->
                                 spawnPlotMarker(player, location.clone().add(0.0, -1.0, 0.0), WATER_COLOR)

@@ -173,16 +173,19 @@ class FarmSpecialIncidentEngineTest : FunSpec({
                 kotlin.math.abs(left.x - right.x) + kotlin.math.abs(left.z - right.z) == 1
             }
         } shouldBe true
-        (routes.distinct().size > 1) shouldBe true
-        (routes.map { it.first() }.distinct().size > 1) shouldBe true
+        routes.distinct().size shouldBe 8
+        (routes.map { it.first() }.distinct().size >= 6) shouldBe true
+        routes.zipWithNext().all { (left, right) ->
+            left.toSet().intersect(right.toSet()).size <= 11
+        } shouldBe true
     }
 
-    test("channel guidance raises a column only on every tenth unfinished segment") {
-        val columns = (0 until 37).filter { index ->
-            FarmChannelMarkerPolicy.showsColumn(index, solved = index in setOf(0, 20), stride = 10)
+    test("channel guidance renders unfinished earth only on every tenth segment") {
+        val markers = (0 until 37).filter { index ->
+            FarmChannelMarkerPolicy.showsEarthGuidance(index, solved = index in setOf(0, 20), stride = 10)
         }
 
-        columns shouldBe listOf(10, 30)
+        markers shouldBe listOf(10, 30)
     }
 
     test("channel segments are placed on indexed surface beds instead of interpolating underground y") {

@@ -119,7 +119,7 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             val occupiedSeats = fixture.world.entities.filterIsInstance<ArmorStand>().filter { it.passengers.isNotEmpty() }
             occupiedSeats shouldHaveSize fixture.zone.rivalRaid.maximumRiders
             val seatHeightOffsets = occupiedSeats.map { it.location.y - ghast.location.y }
-            check(seatHeightOffsets.all { it > 0.0 }) { "seat height offsets=$seatHeightOffsets" }
+            check(seatHeightOffsets.all { it >= 4.0 }) { "seat height offsets=$seatHeightOffsets" }
             val workers = fixture.world.entities.filterIsInstance<Mob>().filter { it !is Ghast && controller.owns(it) }
                 .also { it shouldHaveSize fixture.zone.rivalRaid.workerCount }
                 .onEach {
@@ -170,9 +170,11 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             gunner.inventory.setItemInMainHand(grenade)
             controller.interact(PlayerInteractEntityEvent(gunner, workers.first(), EquipmentSlot.HAND)) shouldBe true
             val projectile = fixture.world.entities.filterIsInstance<Snowball>().single()
-            workers.take(2).forEach { it.teleport(workers.first().location) }
-            projectile.teleport(workers.first().location)
-            val blastSoil = workers.first().location.block.getRelative(BlockFace.DOWN)
+            val blastPlot = beds.first { it !in plannedField }
+            val blastLocation = fixture.world.getBlockAt(blastPlot.x, blastPlot.y + 1, blastPlot.z).location.toCenterLocation()
+            workers.take(2).forEach { it.teleport(blastLocation) }
+            projectile.teleport(blastLocation)
+            val blastSoil = fixture.world.getBlockAt(blastPlot.x, blastPlot.y, blastPlot.z)
             val authoritativeSoil = blastSoil.blockData.clone()
             val authoritativeCrop = blastSoil.getRelative(BlockFace.UP).blockData.clone()
             controller.onProjectileHit(ProjectileHitEvent(projectile, workers.first())) shouldBe true
@@ -181,9 +183,11 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             runtime.state.incidentRequired shouldBe fixture.zone.rivalRaid.requiredKills
             blastSoil.blockData shouldBe authoritativeSoil
             blastSoil.getRelative(BlockFace.UP).blockData shouldBe authoritativeCrop
-            fixture.raidBlockPreviews.batches.flatMap { it.changes.values }.map { it.material }.toSet().containsAll(
-                setOf(Material.COARSE_DIRT, Material.FIRE),
-            ) shouldBe true
+            val blastChanges = fixture.raidBlockPreviews.batches.flatMap { it.changes.entries }
+            blastChanges.any { it.key == blastSoil.location && it.value.material == Material.AIR } shouldBe true
+            blastChanges.any {
+                it.key == blastSoil.getRelative(BlockFace.UP).location && it.value.material == Material.AIR
+            } shouldBe true
             fixture.runDelayedTasks() shouldBe listOf(fixture.zone.rivalRaid.grenadePreviewTicks.toLong())
             fixture.raidBlockPreviews.batches.last().changes.values.any { it.material == Material.FARMLAND } shouldBe true
 
