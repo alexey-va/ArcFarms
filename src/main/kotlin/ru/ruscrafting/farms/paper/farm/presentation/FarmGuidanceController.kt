@@ -10,6 +10,7 @@ import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareTarget
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmChannelMarkerPolicy
+import ru.ruscrafting.farms.domain.FarmChannelTrailPolicy
 import ru.ruscrafting.farms.domain.FarmGuidancePlanner
 import ru.ruscrafting.farms.domain.FarmGiantCropBlueprint
 import ru.ruscrafting.farms.domain.FarmIncidentType
@@ -180,10 +181,17 @@ internal class FarmGuidanceController(
                     emitGiantCropBlocks(player, point, special.crop, runtime.settings.specialIncidents.giantCropParticleStride)
                 }
                 FarmIncidentType.CHANNELS -> {
-                    val source = points.resolve(runtime, FarmPointKind.IRRIGATION)
-                    (listOf(source) + special.points).zipWithNext().forEachIndexed { index, (from, to) ->
-                        if (index in special.solution) spawnChannelTrail(player, from, to, WATER_COLOR)
-                        if (index in special.active) spawnWaterTrail(player, from, to)
+                    special.points.firstOrNull()?.let { source ->
+                        val sourceLocation = Location(player.world, source.x, source.y, source.z)
+                        if (FarmSurfacePolicy.isSurfaceSpawn(sourceLocation)) {
+                            spawnColumn(player, sourceLocation, WATER_COLOR)
+                        }
+                    }
+                    FarmChannelTrailPolicy.visibleLinks(special.points.size, special.solution).forEach { (from, to) ->
+                        spawnChannelTrail(player, special.points[from], special.points[to], WATER_COLOR)
+                    }
+                    FarmChannelTrailPolicy.visibleLinks(special.points.size, special.active).forEach { (from, to) ->
+                        spawnWaterTrail(player, special.points[from], special.points[to])
                     }
                     special.points.forEachIndexed { index, point ->
                         val location = Location(player.world, point.x, point.y, point.z)

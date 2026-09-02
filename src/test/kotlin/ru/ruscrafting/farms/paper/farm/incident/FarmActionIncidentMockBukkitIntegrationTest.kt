@@ -179,7 +179,7 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             val authoritativeSoil = blastSoil.blockData.clone()
             val authoritativeCrop = blastSoil.getRelative(BlockFace.UP).blockData.clone()
             controller.onProjectileHit(ProjectileHitEvent(projectile, workers.first())) shouldBe true
-            workers.take(2).all { it.health < fixture.zone.rivalRaid.workerHealth } shouldBe true
+            workers.take(2).all { it.isDead || it.health <= 0.0 } shouldBe true
             projectile.isValid shouldBe false
             runtime.state.incidentRequired shouldBe fixture.zone.rivalRaid.requiredKills
             blastSoil.blockData shouldBe authoritativeSoil
@@ -189,7 +189,10 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             blastChanges.any {
                 it.key == blastSoil.getRelative(BlockFace.UP).location && it.value.material == Material.AIR
             } shouldBe true
-            fixture.runDelayedTasks() shouldBe listOf(fixture.zone.rivalRaid.grenadePreviewTicks.toLong())
+            fixture.runDelayedTasks() shouldBe listOf(
+                fixture.zone.rivalRaid.grenadeDebrisTicks.toLong(),
+                fixture.zone.rivalRaid.grenadePreviewTicks.toLong(),
+            )
             fixture.raidBlockPreviews.batches.last().changes.values.any { it.material == Material.FARMLAND } shouldBe true
 
             val seat = requireNotNull(gunner.vehicle)

@@ -45,7 +45,9 @@ import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmRaidDamageGate
 import ru.ruscrafting.farms.domain.FarmRaidFlight
 import ru.ruscrafting.farms.domain.FarmRaidBlastPlanner
+import ru.ruscrafting.farms.domain.FarmRaidBlastDamage
 import ru.ruscrafting.farms.domain.FarmRaidSeatPolicy
+import ru.ruscrafting.farms.domain.FarmRaidWeaponAim
 import ru.ruscrafting.farms.domain.FarmSpecialIncidentEngine
 import ru.ruscrafting.farms.domain.FarmSpecialIncidentState
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
@@ -72,6 +74,7 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import java.util.UUID
+import java.util.concurrent.ThreadLocalRandom
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.cos
@@ -109,6 +112,7 @@ internal class FarmRivalRaidController(
         var ghastId: UUID? = null,
         val riderSeatIds: MutableMap<UUID, UUID> = linkedMapOf(),
         val projectileIds: MutableSet<UUID> = linkedSetOf(),
+        val debrisIds: MutableSet<UUID> = linkedSetOf(),
         val participantIds: MutableSet<UUID> = linkedSetOf(),
         val gunShotAt: MutableMap<UUID, Long> = hashMapOf(),
         val grenadeShotAt: MutableMap<UUID, Long> = hashMapOf(),
@@ -412,7 +416,7 @@ internal class FarmRivalRaidController(
             return true
         }
         val role = role(event.entity) ?: return false
-        if (role == ROLE_GHAST || role == ROLE_SEAT || role == ROLE_GRENADE) {
+        if (role == ROLE_GHAST || role == ROLE_SEAT || role == ROLE_GRENADE || role == ROLE_DEBRIS) {
             event.isCancelled = true
             return true
         }
@@ -529,6 +533,7 @@ internal class FarmRivalRaidController(
         workers.clear(zoneId)
         session?.riderSeatIds?.values.orEmpty().forEach { Bukkit.getEntity(it)?.remove() }
         session?.projectileIds.orEmpty().forEach { Bukkit.getEntity(it)?.remove() }
+        session?.debrisIds.orEmpty().forEach { Bukkit.getEntity(it)?.remove() }
         session?.portalId?.let(Bukkit::getEntity)?.remove()
         session?.portalLabelId?.let(Bukkit::getEntity)?.remove()
         session?.ghastId?.let(Bukkit::getEntity)?.remove()
@@ -711,8 +716,16 @@ internal class FarmRivalRaidController(
         val previous = session.gunShotAt[player.uniqueId] ?: Long.MIN_VALUE / 2
         if (now - previous < config.gunCooldownTicks) return
         session.gunShotAt[player.uniqueId] = now
-        val start = player.eyeLocation.clone().add(player.eyeLocation.direction.clone().multiply(0.55))
-        val direction = player.eyeLocation.direction.normalize()
+        val eye = player.eyeLocation
+        val random = ThreadLocalRandom.current()
+        val spread = config.gunSpreadDegrees
+        val aimed = FarmRaidWeaponAim.spread(
+            FarmMotionVector(eye.direction.x, eye.direction.y, eye.direction.z),
+            random.nextDouble(-spread, spread),
+            random.nextDouble(-spread, spread),
+        )
+        val direction = Vector(aimed.x, aimed.y, aimed.z)
+        val start = eye.clone().add(direction.clone().multiply(config.weaponMuzzleForward))
         val hit = entityRayTrace.trace(start, direction, config.gunRange, config.gunRaySize) { entity ->
             workers.contains(runtime.settings.id, entity.uniqueId) && entity.isValid && !entity.isDead
         }
@@ -738,21 +751,23 @@ internal class FarmRivalRaidController(
         val previous = session.grenadeShotAt[player.uniqueId] ?: Long.MIN_VALUE / 2
         if (now - previous < config.grenadeCooldownTicks) return
         session.grenadeShotAt[player.uniqueId] = now
-        val projectile = player.world.spawnEntity(player.eyeLocation, EntityType.SNOWBALL) as Snowball
+        val direction = player.eyeLocation.direction.normalize()
+        val muzzle = player.eyeLocation.clone().add(direction.clone().multiply(config.weaponMuzzleForward))
+        val projectile = player.world.spawnEntity(muzzle, EntityType.SNOWBALL) as Snowball
         projectile.shooter = player
-        projectile.velocity = player.eyeLocation.direction.normalize().multiply(config.grenadeVelocity)
+        projectile.velocity = direction.multiply(config.grenadeVelocity)
         projectile.item = ItemStack(Material.TNT)
         mark(projectile, runtime, ROLE_GRENADE, 0)
         projectile.persistentDataContainer.set(ownerKey, PersistentDataType.STRING, player.uniqueId.toString())
         projectile.persistentDataContainer.set(spawnedAtKey, PersistentDataType.LONG, now)
         session.projectileIds += projectile.uniqueId
         if (settings().particles) {
-            player.world.spawnParticle(Particle.LARGE_SMOKE, player.eyeLocation, 5, 0.12, 0.1, 0.12, 0.025)
-            player.world.spawnParticle(Particle.FLAME, player.eyeLocation, 3, 0.08, 0.08, 0.08, 0.02)
+            player.world.spawnParticle(Particle.LARGE_SMOKE, muzzle, 5, 0.12, 0.1, 0.12, 0.025)
+            player.world.spawnParticle(Particle.FLAME, muzzle, 3, 0.08, 0.08, 0.08, 0.02)
         }
         if (settings().sounds) {
-            player.world.playSound(player.eyeLocation, Sound.ENTITY_FIREWORK_ROCKET_LAUNCH, 1.0f, 0.62f)
-            player.world.playSound(player.eyeLocation, Sound.ENTITY_GENERIC_EXPLODE, 0.28f, 1.75f)
+            player.world.playSound(muzzle, Sound.ENTITY_FIREWORK_ROCKET_LAUNCH, 1.0f, 0.62f)
+            player.world.playSound(muzzle, Sound.ENTITY_GENERIC_EXPLODE, 0.28f, 1.75f)
         }
     }
 
@@ -768,7 +783,8 @@ internal class FarmRivalRaidController(
             val worker = Bukkit.getEntity(workerId) as? Mob ?: return@forEach
             if (worker.world !== location.world || worker.location.distanceSquared(location) > radiusSquared) return@forEach
             worker.noDamageTicks = 0
-            damageGate.authorize(shooter.uniqueId, worker.uniqueId) { worker.damage(config.grenadeDamage, shooter) }
+            val damage = FarmRaidBlastDamage.lethal(config.grenadeDamage, worker.health, worker.absorptionAmount)
+            damageGate.authorize(shooter.uniqueId, worker.uniqueId) { worker.damage(damage, shooter) }
         }
         showBlastPreview(runtime, session, location)
     }
@@ -807,6 +823,7 @@ internal class FarmRivalRaidController(
                 soil.world.spawnParticle(Particle.FLAME, crop.location.toCenterLocation(), 5, 0.3, 0.2, 0.3, 0.025)
             }
         }
+        spawnBlastDebris(runtime, session, location, plots)
         session.participantIds.mapNotNull(Bukkit::getPlayer).filter(Player::isOnline).forEach { player ->
             blockPreviews.send(player, changes)
         }
@@ -818,6 +835,44 @@ internal class FarmRivalRaidController(
                 restorePreview(player, expired)
             }
             expired.forEach(current.previewGenerations::remove)
+        }
+    }
+
+    private fun spawnBlastDebris(
+        runtime: FarmRuntime,
+        session: RaidSession,
+        center: Location,
+        plots: List<FarmPlotPosition>,
+    ) {
+        val count = minOf(runtime.settings.rivalRaid.grenadeDebrisBlocks, plots.size)
+        if (count <= 0) return
+        val random = ThreadLocalRandom.current()
+        val spawned = plots.take(count).mapNotNull { plot ->
+            val soil = plot.block() ?: return@mapNotNull null
+            val crop = soil.getRelative(org.bukkit.block.BlockFace.UP)
+            val blockData = crop.blockData.takeUnless { crop.type.isAir } ?: soil.blockData
+            val origin = crop.location.toCenterLocation()
+            val dx = origin.x - center.x
+            val dz = origin.z - center.z
+            val horizontal = sqrt(dx * dx + dz * dz).coerceAtLeast(0.25)
+            soil.world.spawnFallingBlock(origin, blockData).also { debris ->
+                debris.dropItem = false
+                debris.cancelDrop = true
+                debris.setHurtEntities(false)
+                debris.velocity = Vector(
+                    dx / horizontal * random.nextDouble(0.22, 0.42),
+                    random.nextDouble(0.38, 0.70),
+                    dz / horizontal * random.nextDouble(0.22, 0.42),
+                )
+                mark(debris, runtime, ROLE_DEBRIS, 0)
+                session.debrisIds += debris.uniqueId
+            }
+        }
+        tasks.runLater(runtime.settings.rivalRaid.grenadeDebrisTicks.toLong()) {
+            spawned.forEach { debris ->
+                session.debrisIds.remove(debris.uniqueId)
+                debris.remove()
+            }
         }
     }
 
@@ -867,9 +922,10 @@ internal class FarmRivalRaidController(
         current?.remove()
         val seat = ghast.world.spawn(ghast.location, ArmorStand::class.java) { stand ->
             stand.isVisible = false
-            stand.isMarker = true
+            stand.isMarker = false
             stand.isSmall = true
             stand.setGravity(false)
+            stand.isCollidable = false
             stand.isInvulnerable = true
             stand.isPersistent = false
             mark(stand, runtime, ROLE_SEAT, session.riderSeatIds.size)
@@ -985,6 +1041,7 @@ internal class FarmRivalRaidController(
         const val ROLE_SEAT = "raid_seat"
         const val ROLE_WORKER = "raid_worker"
         const val ROLE_GRENADE = "raid_grenade"
+        const val ROLE_DEBRIS = "raid_debris"
         const val ROLE_PORTAL = "raid_portal"
         const val ROLE_PORTAL_LABEL = "raid_portal_label"
         const val RAID_GUN_ID = "raid_gun"

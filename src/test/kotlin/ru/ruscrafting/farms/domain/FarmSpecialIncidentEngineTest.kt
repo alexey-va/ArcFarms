@@ -99,8 +99,7 @@ class FarmSpecialIncidentEngineTest : FunSpec({
         }
     }
 
-    test("channel planner creates one connected visible trench from the irrigation side") {
-        val source = FarmPointPosition("world", 0.5, 65.0, 0.5)
+    test("channel planner chooses its own first water block without a configured irrigation point") {
         val crops = (0 until 12).map { x -> FarmMatureCrop(FarmPlotPosition("world", x, 64, 0), "WHEAT") }
 
         val plan = FarmSpecialIncidentPlanner.plan(
@@ -109,7 +108,6 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             matureCrops = crops,
             nightPatrolPlots = crops.map(FarmMatureCrop::plot),
             fallbackPlot = crops.first().plot,
-            irrigationSource = source,
             channelBlockages = 5,
             nightCropPlacements = 8,
             nightCropTarget = 4,
@@ -140,7 +138,6 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             channelPlots = plots,
             nightPatrolPlots = plots,
             fallbackPlot = crops.first().plot,
-            irrigationSource = FarmPointPosition("world", -1.5, 65.0, 0.5),
             channelBlockages = 50,
             nightCropPlacements = 8,
             nightCropTarget = 4,
@@ -161,10 +158,8 @@ class FarmSpecialIncidentEngineTest : FunSpec({
         val plots = (0..12).flatMap { x ->
             (0..12).map { z -> FarmPlotPosition("world", x, 64, z) }
         }
-        val source = FarmPointPosition("world", -1.5, 65.0, -1.5)
-
         val routes = (1L..8L).map { sequence ->
-            FarmSpecialIncidentPlanner.planChannelRoute(source, plots, requestedSegments = 17, sequence)
+            FarmSpecialIncidentPlanner.planChannelRoute(plots, requestedSegments = 17, sequence)
         }
 
         routes.all { it.size == 17 } shouldBe true
@@ -194,7 +189,6 @@ class FarmSpecialIncidentEngineTest : FunSpec({
         }
 
         val route = FarmSpecialIncidentPlanner.planChannelRoute(
-            FarmPointPosition("world", -1.0, 67.0, 0.5),
             plots,
             requestedSegments = 8,
             sequence = 13,
@@ -202,6 +196,32 @@ class FarmSpecialIncidentEngineTest : FunSpec({
 
         route.size shouldBe 8
         route.zipWithNext().all { (from, to) -> to.y <= from.y } shouldBe true
+    }
+
+    test("channel route stays one block wide without touching an earlier non-consecutive segment") {
+        val plots = (0..12).flatMap { x ->
+            (0..12).map { z -> FarmPlotPosition("world", x, 64, z) }
+        }
+        val routes = (1L..32L).map { sequence ->
+            FarmSpecialIncidentPlanner.planChannelRoute(plots, requestedSegments = 32, sequence)
+        }
+
+        routes.all { it.size == 32 } shouldBe true
+        routes.all { route ->
+            route.indices.all { leftIndex ->
+                ((leftIndex + 2) until route.size).all { rightIndex ->
+                    val left = route[leftIndex]
+                    val right = route[rightIndex]
+                    kotlin.math.abs(left.x - right.x) + kotlin.math.abs(left.z - right.z) > 1
+                }
+            }
+        } shouldBe true
+    }
+
+    test("channel trail connects only neighbouring dug cells and never the remote irrigation point") {
+        FarmChannelTrailPolicy.visibleLinks(segmentCount = 5, visible = setOf(0)) shouldBe emptyList()
+        FarmChannelTrailPolicy.visibleLinks(segmentCount = 5, visible = setOf(0, 1, 2)) shouldBe listOf(0 to 1, 1 to 2)
+        FarmChannelTrailPolicy.visibleLinks(segmentCount = 5, visible = setOf(0, 2, 3)) shouldBe listOf(2 to 3)
     }
 
     test("channel guidance renders unfinished earth only on every tenth segment") {
@@ -220,7 +240,6 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             matureCrops = beds.map { FarmMatureCrop(it, "WHEAT") },
             nightPatrolPlots = beds,
             fallbackPlot = beds.first(),
-            irrigationSource = FarmPointPosition("world", -10.0, 25.0, 0.0),
             channelBlockages = 4,
             nightCropPlacements = 6,
             nightCropTarget = 4,
@@ -302,7 +321,6 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             matureCrops = emptyList(),
             giantCandidates = listOf(candidate),
             fallbackPlot = null,
-            irrigationSource = null,
             channelBlockages = 4,
             nightCropPlacements = 8,
             nightCropTarget = 4,
@@ -325,7 +343,6 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             matureCrops = emptyList(),
             giantCandidates = listOf(FarmGiantCropCandidate(cropPlots.first(), "SWEET_BERRY_BUSH")),
             fallbackPlot = null,
-            irrigationSource = null,
             channelBlockages = 4,
             nightCropPlacements = 8,
             nightCropTarget = 4,
@@ -385,7 +402,6 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             sequence = 4,
             matureCrops = mature,
             fallbackPlot = cropPlots.first(),
-            irrigationSource = FarmPointPosition("world", -2.0, 65.0, 0.0),
             channelBlockages = 4,
             nightCropPlacements = 4,
             nightCropTarget = 2,
@@ -399,7 +415,6 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             sequence = 4,
             matureCrops = mature,
             fallbackPlot = cropPlots.first(),
-            irrigationSource = FarmPointPosition("world", -2.0, 65.0, 0.0),
             channelBlockages = 4,
             nightCropPlacements = 4,
             nightCropTarget = 2,
@@ -425,7 +440,6 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             sequence = 7,
             matureCrops = mature,
             fallbackPlot = mature.first().plot,
-            irrigationSource = FarmPointPosition("world", -2.0, 65.0, 0.0),
             channelBlockages = 4,
             nightCropPlacements = 12,
             nightCropTarget = 8,
@@ -458,7 +472,6 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             matureCrops = mature,
             nightPatrolPlots = wholeFarm,
             fallbackPlot = mature.first().plot,
-            irrigationSource = null,
             channelBlockages = 4,
             nightCropPlacements = 6,
             nightCropTarget = 4,
@@ -482,7 +495,6 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             sequence = 11,
             matureCrops = mature,
             fallbackPlot = mature.first().plot,
-            irrigationSource = FarmPointPosition("world", -2.0, 65.0, 0.0),
             channelBlockages = 4,
             nightCropPlacements = 6,
             nightCropTarget = 4,

@@ -95,4 +95,21 @@ class FarmPlatformPortsMockBukkitTest : FunSpec({
             seat.velocity.length() shouldBeLessThan 0.28
         }
     }
+
+    test("production raid seat never snaps a mounted player during same-world catch-up") {
+        MockBukkitTestRuntime.open().use { paper ->
+            val world = paper.server.addSimpleWorld("farm")
+            val player = paper.server.addPlayer()
+            val seat = world.spawn(Location(world, 2.5, 70.0, 2.5), ArmorStand::class.java)
+            seat.addPassenger(player) shouldBe true
+            val before = seat.location.clone()
+            val distantTarget = before.clone().add(20.0, 0.0, 0.0)
+
+            PaperFarmRaidSeatMotion.move(seat, distantTarget, org.bukkit.util.Vector(0.30, 0.0, 0.0))
+
+            player.vehicle shouldBe seat
+            seat.location shouldBe before
+            seat.velocity.length() shouldBeLessThan 0.55
+        }
+    }
 })

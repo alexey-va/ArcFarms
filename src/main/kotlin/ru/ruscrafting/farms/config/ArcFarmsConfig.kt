@@ -416,7 +416,7 @@ data class FarmRivalRaidSettings(
     val orbitPeriodSeconds: Int = 48,
     val maximumRiders: Int = 4,
     val seatSpacing: Double = 1.6,
-    val seatYOffset: Double = -2.6,
+    val seatYOffset: Double = -4.5,
     val portalWidth: Float = 3.6f,
     val portalHeight: Float = 3.2f,
     val portalLabelHeight: Double = 3.35,
@@ -432,17 +432,21 @@ data class FarmRivalRaidSettings(
     val gunRange: Double = 56.0,
     val gunCooldownTicks: Int = 2,
     val gunRaySize: Double = 0.55,
+    val gunSpreadDegrees: Double = 1.25,
+    val weaponMuzzleForward: Double = 2.2,
     val grenadeMaterial: String = "PAPER",
     val grenadeCustomModelData: Int = 2_100_009,
     val grenadeItemModel: String? = null,
-    val grenadeDamage: Double = 16.0,
-    val grenadeRadius: Double = 7.0,
-    val grenadeCooldownTicks: Int = 12,
+    val grenadeDamage: Double = 48.0,
+    val grenadeRadius: Double = 8.0,
+    val grenadeCooldownTicks: Int = 8,
     val grenadeVelocity: Double = 1.2,
     val grenadeLifetimeTicks: Int = 60,
-    val grenadePreviewBlocks: Int = 72,
+    val grenadePreviewBlocks: Int = 96,
     val grenadePreviewTicks: Int = 80,
     val grenadePreviewSoilMaterial: String = "COARSE_DIRT",
+    val grenadeDebrisBlocks: Int = 24,
+    val grenadeDebrisTicks: Int = 34,
 ) {
     init {
         require(requiredKills in 1..128) { "rival raid kill quota must be in 1..128" }
@@ -487,6 +491,8 @@ data class FarmRivalRaidSettings(
         require(gunRange.isFinite() && gunRange in 8.0..128.0) { "rival raid gun range is invalid" }
         require(gunCooldownTicks in 1..20) { "rival raid gun cooldown is invalid" }
         require(gunRaySize.isFinite() && gunRaySize in 0.1..2.0) { "rival raid gun ray size is invalid" }
+        require(gunSpreadDegrees.isFinite() && gunSpreadDegrees in 0.0..6.0) { "rival raid gun spread is invalid" }
+        require(weaponMuzzleForward.isFinite() && weaponMuzzleForward in 0.5..4.0) { "rival raid muzzle offset is invalid" }
         require(grenadeCustomModelData >= 0) { "rival raid grenade custom model data is invalid" }
         require(grenadeDamage.isFinite() && grenadeDamage in 0.5..100.0) { "rival raid grenade damage is invalid" }
         require(grenadeRadius.isFinite() && grenadeRadius in 1.0..12.0) { "rival raid grenade radius is invalid" }
@@ -495,6 +501,8 @@ data class FarmRivalRaidSettings(
         require(grenadeLifetimeTicks in 20..200) { "rival raid grenade lifetime is invalid" }
         require(grenadePreviewBlocks in 1..128) { "rival raid grenade preview block count is invalid" }
         require(grenadePreviewTicks in 5..200) { "rival raid grenade preview duration is invalid" }
+        require(grenadeDebrisBlocks in 0..64) { "rival raid grenade debris count is invalid" }
+        require(grenadeDebrisTicks in 5..100) { "rival raid grenade debris duration is invalid" }
     }
 }
 
@@ -2245,7 +2253,7 @@ class ArcFarmsConfig private constructor(
                             "special-incidents.rival-raid.seat-spacing", 1.6, 0.5, 3.0,
                         ),
                         seatYOffset = section.finiteDouble(
-                            "special-incidents.rival-raid.seat-y-offset", -2.6, -6.0, 8.0,
+                            "special-incidents.rival-raid.seat-y-offset", -4.5, -6.0, 8.0,
                         ),
                         portalWidth = section.finiteFloat(
                             "special-incidents.rival-raid.portal.width", 3.6f, 1.0f, 8.0f,
@@ -2296,6 +2304,12 @@ class ArcFarmsConfig private constructor(
                         gunRaySize = section.finiteDouble(
                             "special-incidents.rival-raid.gun-ray-size", 0.55, 0.1, 2.0,
                         ),
+                        gunSpreadDegrees = section.finiteDouble(
+                            "special-incidents.rival-raid.gun-spread-degrees", 1.25, 0.0, 6.0,
+                        ),
+                        weaponMuzzleForward = section.finiteDouble(
+                            "special-incidents.rival-raid.weapon-muzzle-forward", 2.2, 0.5, 4.0,
+                        ),
                         grenadeMaterial = materialName(
                             section.string("special-incidents.rival-raid.grenade-material", "PAPER"),
                         ),
@@ -2309,13 +2323,13 @@ class ArcFarmsConfig private constructor(
                                 }
                             },
                         grenadeDamage = section.finiteDouble(
-                            "special-incidents.rival-raid.grenade-damage", 16.0, 0.5, 100.0,
+                            "special-incidents.rival-raid.grenade-damage", 48.0, 0.5, 100.0,
                         ),
                         grenadeRadius = section.finiteDouble(
-                            "special-incidents.rival-raid.grenade-radius", 7.0, 1.0, 12.0,
+                            "special-incidents.rival-raid.grenade-radius", 8.0, 1.0, 12.0,
                         ),
                         grenadeCooldownTicks = section.int(
-                            "special-incidents.rival-raid.grenade-cooldown-ticks", 12,
+                            "special-incidents.rival-raid.grenade-cooldown-ticks", 8,
                         ).checked("special-incidents.rival-raid.grenade-cooldown-ticks", 1, 200),
                         grenadeVelocity = section.finiteDouble(
                             "special-incidents.rival-raid.grenade-velocity", 1.2, 0.2, 3.0,
@@ -2324,7 +2338,7 @@ class ArcFarmsConfig private constructor(
                             "special-incidents.rival-raid.grenade-lifetime-ticks", 60,
                         ).checked("special-incidents.rival-raid.grenade-lifetime-ticks", 20, 200),
                         grenadePreviewBlocks = section.int(
-                            "special-incidents.rival-raid.grenade-preview-blocks", 72,
+                            "special-incidents.rival-raid.grenade-preview-blocks", 96,
                         ).checked("special-incidents.rival-raid.grenade-preview-blocks", 1, 128),
                         grenadePreviewTicks = section.int(
                             "special-incidents.rival-raid.grenade-preview-ticks", 80,
@@ -2332,6 +2346,12 @@ class ArcFarmsConfig private constructor(
                         grenadePreviewSoilMaterial = materialName(
                             section.string("special-incidents.rival-raid.grenade-preview-soil-material", "COARSE_DIRT"),
                         ),
+                        grenadeDebrisBlocks = section.int(
+                            "special-incidents.rival-raid.grenade-debris-blocks", 24,
+                        ).checked("special-incidents.rival-raid.grenade-debris-blocks", 0, 64),
+                        grenadeDebrisTicks = section.int(
+                            "special-incidents.rival-raid.grenade-debris-ticks", 34,
+                        ).checked("special-incidents.rival-raid.grenade-debris-ticks", 5, 100),
                     ),
                     processing = processing,
                     barnFire = barnFire,

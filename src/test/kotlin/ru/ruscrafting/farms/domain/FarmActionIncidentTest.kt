@@ -3,6 +3,8 @@ package ru.ruscrafting.farms.domain
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.doubles.plusOrMinus
+import io.kotest.matchers.doubles.shouldBeGreaterThan
+import io.kotest.matchers.doubles.shouldBeGreaterThanOrEqual
 import io.kotest.matchers.doubles.shouldBeLessThanOrEqual
 import io.kotest.matchers.shouldBe
 import java.util.UUID
@@ -176,9 +178,9 @@ class FarmActionIncidentTest : FunSpec({
     }
 
     test("raid seats hang on a stable rack below the ghast body") {
-        val seats = FarmRaidSeatPolicy.deck(riders = 4, spacing = 1.6, height = -2.6)
+        val seats = FarmRaidSeatPolicy.deck(riders = 4, spacing = 1.6, height = -4.5)
 
-        seats.map { it.y }.toSet() shouldBe setOf(-2.6)
+        seats.map { it.y }.toSet() shouldBe setOf(-4.5)
         seats.map { it.x to it.z }.toSet() shouldBe setOf(
             -0.8 to -0.8,
             0.8 to -0.8,
@@ -199,6 +201,25 @@ class FarmActionIncidentTest : FunSpec({
         velocity.x shouldBe (0.34 plusOrMinus 1.0e-9)
         velocity.y shouldBe (0.01 plusOrMinus 1.0e-9)
         velocity.z shouldBe (-0.04 plusOrMinus 1.0e-9)
+    }
+
+    test("raid gun spread is normalized and remains a subtle bounded cone") {
+        val direction = FarmRaidWeaponAim.spread(
+            FarmMotionVector(0.0, 0.0, 1.0),
+            yawDegrees = 1.25,
+            pitchDegrees = -0.75,
+        )
+
+        direction.length() shouldBe (1.0 plusOrMinus 1.0e-9)
+        direction.x shouldBeLessThanOrEqual 0.023
+        direction.x shouldBeGreaterThanOrEqual 0.020
+        direction.y shouldBeLessThanOrEqual -0.012
+        direction.z shouldBeGreaterThan 0.999
+    }
+
+    test("grenade blast damage is always lethal to a worker inside the configured radius") {
+        FarmRaidBlastDamage.lethal(configuredDamage = 16.0, health = 12.0, absorption = 0.0) shouldBe 16.0
+        FarmRaidBlastDamage.lethal(configuredDamage = 16.0, health = 20.0, absorption = 4.0) shouldBe 25.0
     }
 
     test("rival workers choose unique nearby destinations around the flying threat") {

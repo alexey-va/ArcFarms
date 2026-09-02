@@ -174,7 +174,6 @@ internal class FarmSpecialIncidentController(
                 giantCandidates = giantCandidates,
                 nightPatrolPlots = incidentBeds,
                 fallbackPlot = areaCenter(runtime.state.preparationPatch),
-                irrigationSource = points.resolve(runtime, FarmPointKind.IRRIGATION),
                 channelBlockages = specialSettings.channelSegmentCount,
                 nightCropPlacements = specialSettings.nightCropPlacementCount,
                 nightCropTarget = specialSettings.nightCropTargetCount,

@@ -25,6 +25,17 @@ object FarmChannelMarkerPolicy {
     }
 }
 
+object FarmChannelTrailPolicy {
+    fun visibleLinks(segmentCount: Int, visible: Set<Int>): List<Pair<Int, Int>> {
+        require(segmentCount >= 0)
+        require(visible.all { it in 0 until segmentCount })
+        return (0 until (segmentCount - 1)).mapNotNull { from ->
+            val to = from + 1
+            (from to to).takeIf { from in visible && to in visible }
+        }
+    }
+}
+
 object FarmSpecialIncidentPlanner {
     fun plan(
         type: FarmIncidentType,
@@ -34,7 +45,6 @@ object FarmSpecialIncidentPlanner {
         giantCandidates: Collection<FarmGiantCropCandidate> = emptyList(),
         nightPatrolPlots: Collection<FarmPlotPosition> = matureCrops.map(FarmMatureCrop::plot),
         fallbackPlot: FarmPlotPosition?,
-        irrigationSource: FarmPointPosition?,
         channelBlockages: Int,
         nightCropPlacements: Int,
         nightCropTarget: Int,
@@ -82,9 +92,7 @@ object FarmSpecialIncidentPlanner {
                 )
             }
             FarmIncidentType.CHANNELS -> {
-                val source = irrigationSource ?: return null
                 val route = planChannelRoute(
-                    source,
                     channelPlots.ifEmpty { matureCrops.map(FarmMatureCrop::plot) },
                     channelBlockages,
                     sequence,
@@ -175,22 +183,19 @@ object FarmSpecialIncidentPlanner {
         }
     }
 
-    /** Builds a deterministic but sequence-specific cardinal trench from the irrigation side of the field. */
+    /** Builds a deterministic but sequence-specific cardinal trench whose first bed is its water source. */
     fun planChannelRoute(
-        source: FarmPointPosition,
         surfacePlots: Collection<FarmPlotPosition>,
         requestedSegments: Int,
         sequence: Long,
     ): List<FarmPlotPosition> {
         require(requestedSegments in 1..128)
-        val plots = surfacePlots.distinct().filter { it.world == source.world }
+        val plots = surfacePlots.distinct().groupBy(FarmPlotPosition::world).entries
+            .maxWithOrNull(compareBy<Map.Entry<String, List<FarmPlotPosition>>> { it.value.size }.thenByDescending { it.key })
+            ?.value.orEmpty()
         if (plots.isEmpty()) return emptyList()
         val orderedStarts = plots.sortedWith(
-            compareBy<FarmPlotPosition> { plot ->
-                val dx = plot.x + 0.5 - source.x
-                val dz = plot.z + 0.5 - source.z
-                dx * dx + dz * dz
-            }.thenBy(FarmPlotPosition::x).thenBy(FarmPlotPosition::z).thenBy(FarmPlotPosition::y),
+            compareBy(FarmPlotPosition::x).thenBy(FarmPlotPosition::z).thenBy(FarmPlotPosition::y),
         )
         val horizontal = plots.groupBy { it.x to it.z }
         val startCandidates = rotate(orderedStarts, sequence + CHANNEL_START_SALT)
@@ -225,7 +230,13 @@ object FarmSpecialIncidentPlanner {
                 horizontal[current.x + dx to current.z + dz]
                     .orEmpty()
                     .asSequence()
-                    .filter { it !in visited && it.y <= current.y && current.y - it.y <= 1 }
+                    .filter { candidate ->
+                        candidate !in visited && candidate.y <= current.y && current.y - candidate.y <= 1 &&
+                            visited.asSequence().filter { it != current }.none { previous ->
+                                kotlin.math.abs(previous.x - candidate.x) +
+                                    kotlin.math.abs(previous.z - candidate.z) == 1
+                            }
+                    }
                     .minWithOrNull(compareBy<FarmPlotPosition> { kotlin.math.abs(it.y - current.y) }.thenBy { it.y })
             }
             neighbours.forEach { next ->

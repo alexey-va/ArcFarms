@@ -461,7 +461,7 @@ farm-zones:
         orbit-period-seconds: 48
         maximum-riders: 4
         seat-spacing: 1.6
-        seat-y-offset: -2.6
+        seat-y-offset: -4.5
         # Uses the shared food-delivery-portal farm point as the departure ring.
         portal:
           width: 3.6
@@ -480,18 +480,22 @@ farm-zones:
         gun-range: 56.0
         gun-cooldown-ticks: 2
         gun-ray-size: 0.55
+        gun-spread-degrees: 1.25
+        weapon-muzzle-forward: 2.2
         # gold_guns:gold_m79 from the live ItemsAdder pack.
         grenade-material: PAPER
         grenade-custom-model-data: 2100009
         grenade-item-model: ''
-        grenade-damage: 16.0
-        grenade-radius: 7.0
-        grenade-cooldown-ticks: 12
+        grenade-damage: 48.0
+        grenade-radius: 8.0
+        grenade-cooldown-ticks: 8
         grenade-velocity: 1.2
         grenade-lifetime-ticks: 60
-        grenade-preview-blocks: 72
+        grenade-preview-blocks: 96
         grenade-preview-ticks: 80
         grenade-preview-soil-material: COARSE_DIRT
+        grenade-debris-blocks: 24
+        grenade-debris-ticks: 34
       night-shift:
         placement-count: 90
         target-count: 24

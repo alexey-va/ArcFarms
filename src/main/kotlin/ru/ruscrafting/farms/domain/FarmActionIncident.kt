@@ -5,6 +5,7 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlin.math.tan
 
 data class FarmMotionVector(val x: Double, val y: Double, val z: Double) {
     fun length(): Double = sqrt(x * x + y * y + z * z)
@@ -151,6 +152,43 @@ object FarmRaidSeatFollower {
             leaderVelocity.y + dy * scale,
             leaderVelocity.z + dz * scale,
         )
+    }
+}
+
+object FarmRaidWeaponAim {
+    fun spread(direction: FarmMotionVector, yawDegrees: Double, pitchDegrees: Double): FarmMotionVector {
+        require(yawDegrees.isFinite() && pitchDegrees.isFinite())
+        val length = direction.length()
+        require(length > 1.0e-9) { "Raid weapon direction must not be zero" }
+        val forward = FarmMotionVector(direction.x / length, direction.y / length, direction.z / length)
+        val horizontal = sqrt(forward.x * forward.x + forward.z * forward.z)
+        val right = if (horizontal > 1.0e-9) {
+            FarmMotionVector(forward.z / horizontal, 0.0, -forward.x / horizontal)
+        } else {
+            FarmMotionVector(1.0, 0.0, 0.0)
+        }
+        val yaw = tan(Math.toRadians(yawDegrees))
+        val pitch = tan(Math.toRadians(pitchDegrees))
+        val candidate = FarmMotionVector(
+            forward.x + right.x * yaw,
+            forward.y + pitch,
+            forward.z + right.z * yaw,
+        )
+        val candidateLength = candidate.length()
+        return FarmMotionVector(
+            candidate.x / candidateLength,
+            candidate.y / candidateLength,
+            candidate.z / candidateLength,
+        )
+    }
+}
+
+object FarmRaidBlastDamage {
+    fun lethal(configuredDamage: Double, health: Double, absorption: Double): Double {
+        require(configuredDamage.isFinite() && configuredDamage >= 0.0)
+        require(health.isFinite() && health >= 0.0)
+        require(absorption.isFinite() && absorption >= 0.0)
+        return maxOf(configuredDamage, health + absorption + 1.0)
     }
 }
 

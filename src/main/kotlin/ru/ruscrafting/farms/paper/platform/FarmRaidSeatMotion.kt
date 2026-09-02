@@ -16,7 +16,7 @@ internal fun interface FarmRaidSeatMotion {
 
 internal object PaperFarmRaidSeatMotion : FarmRaidSeatMotion {
     override fun move(seat: ArmorStand, target: Location, leaderVelocity: Vector) {
-        if (seat.world !== target.world || seat.location.distanceSquared(target) > MAX_SMOOTH_CORRECTION_SQUARED) {
+        if (seat.world !== target.world) {
             seat.teleport(
                 target,
                 PlayerTeleportEvent.TeleportCause.PLUGIN,
@@ -36,7 +36,6 @@ internal object PaperFarmRaidSeatMotion : FarmRaidSeatMotion {
         seat.velocity = Vector(velocity.x, velocity.y, velocity.z)
     }
 
-    private const val MAX_SMOOTH_CORRECTION_SQUARED = 36.0
-    private const val CORRECTION_FACTOR = 0.18
-    private const val MAXIMUM_CORRECTION = 0.06
+    private const val CORRECTION_FACTOR = 0.25
+    private const val MAXIMUM_CORRECTION = 0.18
 }
