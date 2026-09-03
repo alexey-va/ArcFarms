@@ -350,7 +350,7 @@ internal class FarmComponentGraph(
         entityRayTrace = entityRayTrace,
         mobDespawns = mobDespawns,
         mobNavigation = mobNavigation,
-        seatMotion = ru.ruscrafting.farms.paper.platform.PaperFarmRaidSeatMotion,
+        riderVisibility = ru.ruscrafting.farms.paper.platform.PaperFarmRaidRiderVisibility,
         blockPreviews = ru.ruscrafting.farms.paper.platform.PaperFarmClientBlockPreview,
         textDisplays = textDisplays,
         nightShift = nightShift,

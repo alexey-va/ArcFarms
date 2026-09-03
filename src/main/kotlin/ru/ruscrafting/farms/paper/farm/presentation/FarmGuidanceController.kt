@@ -183,7 +183,7 @@ internal class FarmGuidanceController(
                 FarmIncidentType.CHANNELS -> {
                     special.points.firstOrNull()?.let { source ->
                         val sourceLocation = Location(player.world, source.x, source.y, source.z)
-                        if (FarmSurfacePolicy.isSurfaceSpawn(sourceLocation)) {
+                        if (FarmSurfacePolicy.isAtOrAboveSurface(sourceLocation)) {
                             spawnColumn(player, sourceLocation, WATER_COLOR)
                         }
                     }

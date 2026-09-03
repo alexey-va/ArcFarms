@@ -109,7 +109,7 @@ internal class FarmRivalRaidWorkers(
             mark(mob, runtime, index)
             mob.persistentDataContainer.set(targetKey, PersistentDataType.INTEGER, selectedIndex)
             swarm.workerIds += mob.uniqueId
-            move(runtime, swarm, mob, threat, index.toLong())
+            move(runtime, swarm, mob, index.toLong())
         }
         swarm.workerIds.forEachIndexed { index, workerId ->
             val worker = Bukkit.getEntity(workerId) as? Mob ?: return@forEachIndexed
@@ -123,7 +123,7 @@ internal class FarmRivalRaidWorkers(
         }
     }
 
-    fun patrol(runtime: FarmRuntime, threat: FarmPointPosition) {
+    fun patrol(runtime: FarmRuntime) {
         val swarm = swarms[runtime.settings.id] ?: return
         val workers = swarm.workerIds.toList()
         if (workers.isEmpty()) return
@@ -131,7 +131,7 @@ internal class FarmRivalRaidWorkers(
             val workerId = workers[Math.floorMod(swarm.patrolCursor + offset, workers.size)]
             val worker = Bukkit.getEntity(workerId) as? Mob ?: return@repeat
             worker.target = null
-            move(runtime, swarm, worker, threat, swarm.patrolCursor.toLong() + offset)
+            move(runtime, swarm, worker, swarm.patrolCursor.toLong() + offset)
         }
         swarm.patrolCursor = Math.floorMod(
             swarm.patrolCursor + runtime.settings.rivalRaid.workerPatrolBatchSize,
@@ -194,11 +194,10 @@ internal class FarmRivalRaidWorkers(
         nightShift.releaseExternalLights(lightPrefix(zoneId))
     }
 
-    private fun move(runtime: FarmRuntime, swarm: Swarm, worker: Mob, threat: FarmPointPosition, sequence: Long) {
+    private fun move(runtime: FarmRuntime, swarm: Swarm, worker: Mob, sequence: Long) {
         val target = FarmRivalPatrolPlanner.select(
-            localPlots(swarm, threat, runtime.settings.rivalRaid.workerFocusRadius),
+            swarm.fieldPlots,
             FarmPointPosition(worker.world.name, worker.location.x, worker.location.y, worker.location.z),
-            threat,
             swarm.placementSequence * 1_000_003L + sequence * 97L,
         ) ?: return
         val targetIndex = swarm.fieldPlots.indexOf(target)

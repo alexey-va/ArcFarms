@@ -11,7 +11,6 @@ import org.bukkit.entity.Entity
 import org.bukkit.entity.EntityType
 import org.bukkit.entity.Ghast
 import org.bukkit.entity.Hoglin
-import org.bukkit.entity.ArmorStand
 import org.bukkit.entity.Mob
 import org.bukkit.entity.Player
 import org.bukkit.event.Event
@@ -55,7 +54,7 @@ import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.platform.FarmEntityRayTrace
 import ru.ruscrafting.farms.paper.platform.FarmMobDespawnPolicy
 import ru.ruscrafting.farms.paper.platform.FarmMobNavigation
-import ru.ruscrafting.farms.paper.platform.FarmRaidSeatMotion
+import ru.ruscrafting.farms.paper.platform.FarmRaidRiderVisibility
 import ru.ruscrafting.farms.paper.platform.FarmClientBlockPreview
 import ru.ruscrafting.farms.paper.platform.FarmTextDisplayRenderer
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
@@ -98,7 +97,7 @@ internal class FarmActionIncidentController(
     private val entityRayTrace: FarmEntityRayTrace,
     private val mobDespawns: FarmMobDespawnPolicy,
     private val mobNavigation: FarmMobNavigation,
-    private val seatMotion: FarmRaidSeatMotion,
+    private val riderVisibility: FarmRaidRiderVisibility,
     private val blockPreviews: FarmClientBlockPreview,
     private val textDisplays: FarmTextDisplayRenderer,
     private val nightShift: FarmNightShiftController,
@@ -125,7 +124,7 @@ internal class FarmActionIncidentController(
         entityRayTrace,
         mobDespawns,
         mobNavigation,
-        seatMotion,
+        riderVisibility,
         blockPreviews,
         textDisplays,
         nightShift,

@@ -9,7 +9,7 @@ import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.Material
 import org.bukkit.block.BlockFace
 import org.bukkit.block.data.Ageable
-import org.bukkit.entity.ArmorStand
+import org.bukkit.entity.FallingBlock
 import org.bukkit.entity.Ghast
 import org.bukkit.entity.Hoglin
 import org.bukkit.entity.Interaction
@@ -117,10 +117,10 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             }
 
             (ghast.velocity.length() > 0.0) shouldBe true
-            val occupiedSeats = fixture.world.entities.filterIsInstance<ArmorStand>().filter { it.passengers.isNotEmpty() }
-            occupiedSeats shouldHaveSize fixture.zone.rivalRaid.maximumRiders
-            val seatHeightOffsets = occupiedSeats.map { it.location.y - ghast.location.y }
-            check(seatHeightOffsets.all { it <= -2.0 }) { "seat height offsets=$seatHeightOffsets" }
+            ghast.passengers shouldHaveSize fixture.zone.rivalRaid.maximumRiders
+            riders.take(fixture.zone.rivalRaid.maximumRiders).all { it.vehicle === ghast } shouldBe true
+            fixture.raidRiderVisibilityEvents.count { (_, ghastId, hidden) -> ghastId == ghast.uniqueId && hidden } shouldBe
+                fixture.zone.rivalRaid.maximumRiders
             val workers = fixture.world.entities.filterIsInstance<Mob>().filter { it !is Ghast && controller.owns(it) }
                 .also { it shouldHaveSize fixture.zone.rivalRaid.workerCount }
                 .onEach {
@@ -189,6 +189,9 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             blastChanges.any {
                 it.key == blastSoil.getRelative(BlockFace.UP).location && it.value.material == Material.AIR
             } shouldBe true
+            val debris = fixture.world.entities.filterIsInstance<FallingBlock>()
+            debris shouldHaveSize fixture.zone.rivalRaid.grenadeDebrisBlocks
+            debris.all { it.location.distanceSquared(blastLocation) < 2.0 && it.velocity.y >= 0.72 } shouldBe true
             fixture.runDelayedTasks() shouldBe listOf(
                 fixture.zone.rivalRaid.grenadeDebrisTicks.toLong(),
                 fixture.zone.rivalRaid.grenadePreviewTicks.toLong(),
@@ -201,6 +204,7 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             gunner.leaveVehicle()
             fixture.runDelayedTasks() shouldBe listOf(1L)
             gunner.location.distanceSquared(fixture.location(receiving)) shouldBe 0.0
+            fixture.raidRiderVisibilityEvents.last() shouldBe Triple(gunner.uniqueId, ghast.uniqueId, false)
             controller.participantRuntime(gunner) shouldBe null
             gunner.inventory.storageContents.filterNotNull().none { it.type == Material.PAPER } shouldBe true
             controller.update(runtime)
@@ -266,7 +270,7 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
                 )
             }
             fixture.runDelayedTasks() shouldBe listOf(20L)
-            (rider.vehicle is ArmorStand) shouldBe true
+            (rider.vehicle is Ghast) shouldBe true
             controller.participantRuntime(rider) shouldBe runtime
 
             cancelled.teleport(portal.location)
@@ -284,7 +288,7 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             cancelled.vehicle shouldBe null
             fixture.runDelayedTasks() shouldBe listOf(20L)
             fixture.runDelayedTasks() shouldBe listOf(20L)
-            (cancelled.vehicle is ArmorStand) shouldBe true
+            (cancelled.vehicle is Ghast) shouldBe true
             controller.participantRuntime(cancelled) shouldBe runtime
         } }
     }

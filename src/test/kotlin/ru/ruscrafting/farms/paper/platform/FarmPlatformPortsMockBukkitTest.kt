@@ -3,13 +3,10 @@ package ru.ruscrafting.farms.paper.platform
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.doubles.shouldBeGreaterThan
-import io.kotest.matchers.doubles.shouldBeLessThan
 import net.kyori.adventure.text.Component
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.entity.Horse
-import org.bukkit.entity.ArmorStand
 import org.bukkit.entity.TextDisplay
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.paper.fixtures.MockBukkitFarmBlockDataDecoder
@@ -74,42 +71,6 @@ class FarmPlatformPortsMockBukkitTest : FunSpec({
             lease.close()
             lease.close()
             leases.retainedCount() shouldBe 0
-        }
-    }
-
-    test("production raid seat motion keeps the rider mounted and uses velocity instead of per-tick teleport") {
-        MockBukkitTestRuntime.open().use { paper ->
-            val world = paper.server.addSimpleWorld("farm")
-            val player = paper.server.addPlayer()
-            val seat = world.spawn(Location(world, 2.5, 70.0, 2.5), ArmorStand::class.java)
-            seat.addPassenger(player) shouldBe true
-            val before = seat.location.clone()
-            val target = before.clone().add(0.25, 0.05, -0.15)
-
-            val leaderVelocity = org.bukkit.util.Vector(0.20, 0.01, -0.05)
-            PaperFarmRaidSeatMotion.move(seat, target, leaderVelocity)
-
-            player.vehicle shouldBe seat
-            seat.location shouldBe before
-            seat.velocity.x shouldBeGreaterThan leaderVelocity.x
-            seat.velocity.length() shouldBeLessThan 0.28
-        }
-    }
-
-    test("production raid seat never snaps a mounted player during same-world catch-up") {
-        MockBukkitTestRuntime.open().use { paper ->
-            val world = paper.server.addSimpleWorld("farm")
-            val player = paper.server.addPlayer()
-            val seat = world.spawn(Location(world, 2.5, 70.0, 2.5), ArmorStand::class.java)
-            seat.addPassenger(player) shouldBe true
-            val before = seat.location.clone()
-            val distantTarget = before.clone().add(20.0, 0.0, 0.0)
-
-            PaperFarmRaidSeatMotion.move(seat, distantTarget, org.bukkit.util.Vector(0.30, 0.0, 0.0))
-
-            player.vehicle shouldBe seat
-            seat.location shouldBe before
-            seat.velocity.length() shouldBeLessThan 0.55
         }
     }
 })

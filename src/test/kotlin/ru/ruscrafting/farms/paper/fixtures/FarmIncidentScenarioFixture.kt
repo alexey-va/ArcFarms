@@ -102,6 +102,7 @@ internal class FarmIncidentScenarioFixture private constructor(
 
     val transitions = mutableListOf<AppliedTransition>()
     val raidBlockPreviews = RecordingFarmClientBlockPreview()
+    val raidRiderVisibilityEvents = mutableListOf<Triple<java.util.UUID, java.util.UUID, Boolean>>()
 
     private val processingRoleKey = NamespacedKey(plugin, "farm_processing_role")
     private val processingIndexKey = NamespacedKey(plugin, "farm_processing_index")
@@ -260,7 +261,9 @@ internal class FarmIncidentScenarioFixture private constructor(
             entityRayTrace = MockBukkitFarmEntityRayTrace,
             mobDespawns = MockBukkitFarmMobDespawns,
             mobNavigation = MockBukkitFarmMobNavigation,
-            seatMotion = MockBukkitFarmRaidSeatMotion,
+            riderVisibility = { player, ghast, hidden ->
+                raidRiderVisibilityEvents += Triple(player.uniqueId, ghast.uniqueId, hidden)
+            },
             blockPreviews = raidBlockPreviews,
             textDisplays = MockBukkitFarmTextDisplays,
             nightShift = night,

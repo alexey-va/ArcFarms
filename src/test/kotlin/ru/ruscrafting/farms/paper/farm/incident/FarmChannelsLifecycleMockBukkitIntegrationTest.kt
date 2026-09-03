@@ -5,6 +5,7 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import org.bukkit.Material
 import org.bukkit.block.data.Ageable
+import org.bukkit.entity.ItemDisplay
 import ru.ruscrafting.farms.domain.FARM_CHANNEL_ROUTE_NAME
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
@@ -54,6 +55,12 @@ class FarmChannelsLifecycleMockBukkitIntegrationTest : FunSpec({
             worker.inventory.itemInMainHand.type shouldBe Material.IRON_SHOVEL
             val source = planned.points.first()
             fixture.world.getBlockAt(source.x.toInt(), source.y.toInt() - 1, source.z.toInt()).type shouldBe Material.WATER
+            val sourceMarker = fixture.world.entities.filterIsInstance<ItemDisplay>()
+                .single { it.itemStack.type == Material.SOUL_LANTERN }
+            sourceMarker.isGlowing shouldBe true
+            sourceMarker.glowColorOverride shouldBe org.bukkit.Color.fromRGB(0x48, 0xc9, 0xff)
+            sourceMarker.location.x shouldBe source.x
+            sourceMarker.location.z shouldBe source.z
             planned.points.drop(1).forEach { point ->
                 fixture.world.getBlockAt(point.x.toInt(), point.y.toInt() - 1, point.z.toInt()).type shouldBe Material.DIRT
             }
@@ -83,6 +90,9 @@ class FarmChannelsLifecycleMockBukkitIntegrationTest : FunSpec({
             fixture.runDelayedTasks() shouldBe listOf(fixture.zone.specialIncidents.channelCompletionDelayTicks.toLong())
             runtime.state.phase shouldBe FarmPhase.HARVESTING
             runtime.state.incidentType shouldBe null
+            controller.ensure(runtime)
+            fixture.world.entities.filterIsInstance<ItemDisplay>()
+                .none { it.itemStack.type == Material.SOUL_LANTERN } shouldBe true
         }
     }
     }

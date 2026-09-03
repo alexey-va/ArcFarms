@@ -86,40 +86,27 @@ object FarmRaidSeatPolicy {
 }
 
 object FarmRivalPatrolPlanner {
-    private data class Candidate(val plot: FarmPlotPosition, val threatDistance: Double, val workerDistance: Double)
+    private data class Candidate(val plot: FarmPlotPosition, val workerDistance: Double)
 
     fun select(
         candidates: Collection<FarmPlotPosition>,
         worker: FarmPointPosition,
-        threat: FarmPointPosition,
         sequence: Long,
     ): FarmPlotPosition? {
         val evaluated = candidates.asSequence()
-            .filter { it.world == worker.world && it.world == threat.world }
+            .filter { it.world == worker.world }
             .distinct()
             .map { plot ->
-                val threatDx = plot.x + 0.5 - threat.x
-                val threatDz = plot.z + 0.5 - threat.z
                 val workerDx = plot.x + 0.5 - worker.x
                 val workerDz = plot.z + 0.5 - worker.z
-                Candidate(
-                    plot,
-                    threatDx * threatDx + threatDz * threatDz,
-                    workerDx * workerDx + workerDz * workerDz,
-                )
+                Candidate(plot, workerDx * workerDx + workerDz * workerDz)
             }
             .toList()
-        val local = evaluated.filter {
-            it.workerDistance in MIN_TARGET_DISTANCE_SQUARED..MAX_TARGET_DISTANCE_SQUARED &&
-                it.threatDistance <= MAX_THREAT_DISTANCE_SQUARED
-        }
-        val ranked = local.ifEmpty { evaluated.filter { it.threatDistance <= MAX_THREAT_DISTANCE_SQUARED } }
+        val ranked = evaluated.filter { it.workerDistance in MIN_TARGET_DISTANCE_SQUARED..MAX_TARGET_DISTANCE_SQUARED }
             .ifEmpty { evaluated }
             .asSequence()
             .sortedWith(
-                compareBy<Candidate> { it.threatDistance }
-                    .thenByDescending { it.workerDistance }
-                    .thenBy { it.plot.x }.thenBy { it.plot.z }.thenBy { it.plot.y },
+                compareBy<Candidate> { it.plot.x }.thenBy { it.plot.z }.thenBy { it.plot.y },
             )
             .toList()
         if (ranked.isEmpty()) return null
@@ -128,31 +115,6 @@ object FarmRivalPatrolPlanner {
 
     private const val MIN_TARGET_DISTANCE_SQUARED = 36.0
     private const val MAX_TARGET_DISTANCE_SQUARED = 576.0
-    private const val MAX_THREAT_DISTANCE_SQUARED = 324.0
-}
-
-object FarmRaidSeatFollower {
-    fun velocity(
-        current: FarmPointPosition,
-        target: FarmPointPosition,
-        leaderVelocity: FarmMotionVector,
-        correctionFactor: Double,
-        maximumCorrection: Double,
-    ): FarmMotionVector {
-        require(current.world == target.world) { "Raid seat cannot cross worlds" }
-        require(correctionFactor.isFinite() && correctionFactor in 0.0..1.0)
-        require(maximumCorrection.isFinite() && maximumCorrection >= 0.0)
-        val dx = (target.x - current.x) * correctionFactor
-        val dy = (target.y - current.y) * correctionFactor
-        val dz = (target.z - current.z) * correctionFactor
-        val length = sqrt(dx * dx + dy * dy + dz * dz)
-        val scale = if (length > maximumCorrection && length > 1.0e-9) maximumCorrection / length else 1.0
-        return FarmMotionVector(
-            leaderVelocity.x + dx * scale,
-            leaderVelocity.y + dy * scale,
-            leaderVelocity.z + dz * scale,
-        )
-    }
 }
 
 object FarmRaidWeaponAim {

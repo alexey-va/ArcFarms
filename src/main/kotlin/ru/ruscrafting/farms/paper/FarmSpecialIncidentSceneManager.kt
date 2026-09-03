@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.paper
 
 import org.bukkit.Bukkit
 import org.bukkit.Chunk
+import org.bukkit.Color
 import org.bukkit.Location
 import org.bukkit.NamespacedKey
 import org.bukkit.entity.Entity
@@ -17,7 +18,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.UUID
 import kotlin.math.floor
 
-internal enum class FarmSpecialSceneRole { CHANNEL_BLOCKAGE, CHANNEL_BLOCKAGE_HITBOX }
+internal enum class FarmSpecialSceneRole { CHANNEL_SOURCE, CHANNEL_BLOCKAGE, CHANNEL_BLOCKAGE_HITBOX }
 
 internal data class FarmSpecialSceneIdentity(
     val zoneId: String,
@@ -33,6 +34,7 @@ internal data class FarmSpecialSceneObject(
     val item: ItemStack? = null,
     val scale: Float = 1f,
     val active: Boolean = false,
+    val glowColor: Color? = null,
 )
 
 internal data class FarmSpecialSceneSpec(
@@ -160,6 +162,7 @@ internal class FarmSpecialIncidentSceneManager(
     ): Entity {
         val world = requireNotNull(target.location.world)
         val entity = when (target.role) {
+            FarmSpecialSceneRole.CHANNEL_SOURCE,
             FarmSpecialSceneRole.CHANNEL_BLOCKAGE -> world.spawn(target.location, ItemDisplay::class.java)
             FarmSpecialSceneRole.CHANNEL_BLOCKAGE_HITBOX -> world.spawn(target.location, Interaction::class.java)
         }
@@ -202,6 +205,7 @@ internal class FarmSpecialIncidentSceneManager(
                 entity.displayHeight = maxOf(1f, target.scale)
                 entity.viewRange = spec.viewRange
                 entity.isGlowing = target.active
+                entity.glowColorOverride = target.glowColor
             }
             is Interaction -> {
                 entity.interactionWidth = 1.25f
@@ -212,6 +216,7 @@ internal class FarmSpecialIncidentSceneManager(
     }
 
     private fun entityMatchesRole(entity: Entity, role: FarmSpecialSceneRole): Boolean = when (role) {
+        FarmSpecialSceneRole.CHANNEL_SOURCE,
         FarmSpecialSceneRole.CHANNEL_BLOCKAGE -> entity is ItemDisplay
         FarmSpecialSceneRole.CHANNEL_BLOCKAGE_HITBOX -> entity is Interaction
     }

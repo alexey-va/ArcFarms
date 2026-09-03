@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.paper.farm.incident.special
 
 import net.kyori.adventure.text.Component
 import org.bukkit.Chunk
+import org.bukkit.Color
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.Particle
@@ -16,6 +17,7 @@ import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.plugin.Plugin
+import org.bukkit.inventory.ItemStack
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
@@ -50,6 +52,9 @@ import ru.ruscrafting.farms.paper.FarmMarketMenu
 import ru.ruscrafting.farms.paper.FarmNightShiftController
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.FarmSpecialIncidentSceneManager
+import ru.ruscrafting.farms.paper.FarmSpecialSceneObject
+import ru.ruscrafting.farms.paper.FarmSpecialSceneRole
+import ru.ruscrafting.farms.paper.FarmSpecialSceneSpec
 import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.deferInventoryTransition
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
@@ -689,7 +694,34 @@ internal class FarmSpecialIncidentController(
             }
         } else special
         val normalized = normalizeChannels(runtime, projectedSpecial)
-        scene.clearZone(runtime.settings.id, "physical_drainage_v2")
+        val source = normalized.points.firstOrNull()
+        if (source == null) {
+            scene.clearZone(runtime.settings.id, "channel_source_missing")
+        } else {
+            scene.ensure(
+                FarmSpecialSceneSpec(
+                    zoneId = runtime.settings.id,
+                    sequence = runtime.state.sequence,
+                    viewRange = runtime.settings.displayViewRange,
+                    objects = listOf(
+                        FarmSpecialSceneObject(
+                            role = FarmSpecialSceneRole.CHANNEL_SOURCE,
+                            index = 0,
+                            location = Location(
+                                runtime.region.world,
+                                source.x,
+                                source.y + CHANNEL_SOURCE_MARKER_Y_OFFSET,
+                                source.z,
+                            ),
+                            item = ItemStack(Material.SOUL_LANTERN),
+                            scale = CHANNEL_SOURCE_MARKER_SCALE,
+                            active = true,
+                            glowColor = CHANNEL_SOURCE_MARKER_COLOR,
+                        ),
+                    ),
+                ),
+            )
+        }
         val additions = mutableListOf<FarmCropDamage>()
         normalized.points.forEachIndexed { index, point ->
             val soil = runtime.region.world.getBlockAt(
@@ -961,5 +993,8 @@ internal class FarmSpecialIncidentController(
 
     private companion object {
         const val CHANNEL_TOOL_ID = "drainage_shovel"
+        const val CHANNEL_SOURCE_MARKER_Y_OFFSET = 2.6
+        const val CHANNEL_SOURCE_MARKER_SCALE = 0.9f
+        val CHANNEL_SOURCE_MARKER_COLOR: Color = Color.fromRGB(0x48, 0xc9, 0xff)
     }
 }

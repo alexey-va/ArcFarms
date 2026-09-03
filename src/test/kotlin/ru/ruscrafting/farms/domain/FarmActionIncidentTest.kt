@@ -189,20 +189,6 @@ class FarmActionIncidentTest : FunSpec({
         )
     }
 
-    test("raid seat follows leader velocity with only a bounded positional correction") {
-        val velocity = FarmRaidSeatFollower.velocity(
-            current = FarmPointPosition("world", 0.0, 70.0, 0.0),
-            target = FarmPointPosition("world", 1.0, 70.0, 0.0),
-            leaderVelocity = FarmMotionVector(0.28, 0.01, -0.04),
-            correctionFactor = 0.18,
-            maximumCorrection = 0.06,
-        )
-
-        velocity.x shouldBe (0.34 plusOrMinus 1.0e-9)
-        velocity.y shouldBe (0.01 plusOrMinus 1.0e-9)
-        velocity.z shouldBe (-0.04 plusOrMinus 1.0e-9)
-    }
-
     test("raid gun spread is normalized and remains a subtle bounded cone") {
         val direction = FarmRaidWeaponAim.spread(
             FarmMotionVector(0.0, 0.0, 1.0),
@@ -222,23 +208,22 @@ class FarmActionIncidentTest : FunSpec({
         FarmRaidBlastDamage.lethal(configuredDamage = 16.0, health = 20.0, absorption = 4.0) shouldBe 25.0
     }
 
-    test("rival workers choose unique nearby destinations around the flying threat") {
+    test("rival workers choose unique nearby destinations independently of the flying ghast") {
         val plots = (-12..12 step 4).flatMap { x ->
             (-12..12 step 4).map { z -> FarmPlotPosition("world", x, 64, z) }
         }
-        val threat = FarmPointPosition("world", -10.0, 75.0, 0.0)
         val worker = FarmPointPosition("world", 0.0, 65.0, 0.0)
 
         val targets = (0L..7L).map { sequence ->
-            FarmRivalPatrolPlanner.select(plots, worker, threat, sequence)
+            FarmRivalPatrolPlanner.select(plots, worker, sequence)
         }
 
         targets.toSet().size shouldBe 8
         targets.all { target ->
             requireNotNull(target)
-            val dx = target.x + 0.5 - threat.x
-            val dz = target.z + 0.5 - threat.z
-            dx * dx + dz * dz <= 18.0 * 18.0
+            val dx = target.x + 0.5 - worker.x
+            val dz = target.z + 0.5 - worker.z
+            dx * dx + dz * dz in 6.0 * 6.0..24.0 * 24.0
         } shouldBe true
     }
 
