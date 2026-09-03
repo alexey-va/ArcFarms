@@ -458,7 +458,7 @@ farm-zones:
         shield-knockback-horizontal: 0.9
         shield-knockback-vertical: 0.32
       rival-raid:
-        required-kills: 64
+        required-kills: 128
         worker-count: 120
         worker-spawn-batch-size: 12
         worker-patrol-batch-size: 32
@@ -497,7 +497,10 @@ farm-zones:
         gun-item-model: ''
         gun-damage: 6.0
         gun-range: 56.0
-        gun-cooldown-ticks: 2
+        # One trigger sends a short three-round burst: 20 rounds per second at sustained fire.
+        gun-cooldown-ticks: 3
+        gun-burst-rounds: 3
+        gun-burst-interval-ticks: 1
         gun-ray-size: 0.55
         gun-spread-degrees: 1.25
         weapon-muzzle-forward: 2.2

@@ -75,8 +75,6 @@ import java.util.UUID
 import java.util.concurrent.ThreadLocalRandom
 import kotlin.math.abs
 import kotlin.math.ceil
-import kotlin.math.cos
-import kotlin.math.sin
 import kotlin.math.sqrt
 
 /** Complete owner of the rival-farm raid lifecycle. */
@@ -588,37 +586,10 @@ internal class FarmRivalRaidController(
 
     private fun renderPortal(runtime: FarmRuntime, session: RaidSession) {
         val portal = session.portalId?.let(Bukkit::getEntity) as? Interaction ?: return
-        val viewers = audience.players(runtime.region).filter { it.world === portal.world && !access.isAdminEditing(it) }
-        val center = portal.location.clone().add(0.0, 0.12, 0.0)
-        repeat(PORTAL_RING_PARTICLES) { index ->
-            val angle = Math.PI * 2.0 * index / PORTAL_RING_PARTICLES
-            val point = center.clone().add(cos(angle) * PORTAL_RING_RADIUS, 0.0, sin(angle) * PORTAL_RING_RADIUS)
-            viewers.forEach { viewer ->
-                viewer.spawnParticle(
-                    Particle.DUST,
-                    point,
-                    1,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    Particle.DustOptions(org.bukkit.Color.fromRGB(199, 120, 255), 1.15f),
-                )
-            }
+        val viewers = portal.world.players.filter { player ->
+            !access.isAdminEditing(player) && player.location.distanceSquared(portal.location) <= PORTAL_VIEW_DISTANCE_SQUARED
         }
-        repeat(PORTAL_COLUMN_LAYERS) { layer ->
-            viewers.forEach { viewer ->
-                viewer.spawnParticle(
-                    Particle.REVERSE_PORTAL,
-                    center.clone().add(0.0, 0.45 + layer * 0.42, 0.0),
-                    2,
-                    0.32,
-                    0.12,
-                    0.32,
-                    0.01,
-                )
-            }
-        }
+        FarmRivalRaidPortalRenderer.render(portal, runtime.settings.rivalRaid, viewers)
     }
 
     private fun continuePortalEntry(playerId: UUID, token: UUID) {
@@ -715,6 +686,20 @@ internal class FarmRivalRaidController(
         val previous = session.gunShotAt[player.uniqueId] ?: Long.MIN_VALUE / 2
         if (now - previous < config.gunCooldownTicks) return
         session.gunShotAt[player.uniqueId] = now
+        fireGunRound(player, runtime)
+        repeat(config.gunBurstRounds - 1) { index ->
+            val delay = (index + 1L) * config.gunBurstIntervalTicks
+            tasks.runLater(delay) {
+                val current = raids[runtime.settings.id]?.takeIf { it === session } ?: return@runLater
+                val gunner = Bukkit.getPlayer(player.uniqueId)?.takeIf(Player::isOnline) ?: return@runLater
+                if (gunner.uniqueId !in current.participantIds || !active(runtime, current.sequence)) return@runLater
+                fireGunRound(gunner, runtime)
+            }
+        }
+    }
+
+    private fun fireGunRound(player: Player, runtime: FarmRuntime) {
+        val config = runtime.settings.rivalRaid
         val eye = player.eyeLocation
         val random = ThreadLocalRandom.current()
         val spread = config.gunSpreadDegrees
@@ -791,6 +776,7 @@ internal class FarmRivalRaidController(
     private fun showBlastPreview(runtime: FarmRuntime, session: RaidSession, location: Location) {
         val config = runtime.settings.rivalRaid
         val plots = workers.blastPlots(runtime, location, config.grenadeRadius, config.grenadePreviewBlocks)
+        spawnBlastDebris(runtime, session, location, plots)
         if (plots.isEmpty()) return
         val generation = ++session.previewGeneration
         plots.forEach { session.previewGenerations[it] = generation }
@@ -817,7 +803,6 @@ internal class FarmRivalRaidController(
                 soil.world.spawnParticle(Particle.FLAME, crop.location.toCenterLocation(), 5, 0.3, 0.2, 0.3, 0.025)
             }
         }
-        spawnBlastDebris(runtime, session, location, plots)
         session.participantIds.mapNotNull(Bukkit::getPlayer).filter(Player::isOnline).forEach { player ->
             blockPreviews.send(player, changes)
         }
@@ -991,10 +976,8 @@ internal class FarmRivalRaidController(
         const val RAID_GUN_ID = "raid_gun"
         const val RAID_GRENADE_ID = "raid_grenade_launcher"
         const val ACTION_ROLE = "farm_action"
-        const val PORTAL_RENDER_INTERVAL_TICKS = 10L
-        const val PORTAL_RING_PARTICLES = 18
-        const val PORTAL_COLUMN_LAYERS = 5
-        const val PORTAL_RING_RADIUS = 1.15
+        const val PORTAL_RENDER_INTERVAL_TICKS = 5L
+        const val PORTAL_VIEW_DISTANCE_SQUARED = 9_216.0
         const val CRATER_SHARE = 0.8
         val WEAPON_IDS = setOf(RAID_GUN_ID, RAID_GRENADE_ID)
         val WEAPON_ACTIONS = setOf(

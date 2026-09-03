@@ -177,6 +177,18 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             }
             grenade.itemMeta.displayName()?.decoration(TextDecoration.ITALIC) shouldBe TextDecoration.State.FALSE
 
+            gunner.inventory.setItemInMainHand(gun)
+            val burstShot = PlayerInteractEvent(
+                gunner,
+                Action.LEFT_CLICK_AIR,
+                gun,
+                null,
+                BlockFace.SELF,
+                EquipmentSlot.HAND,
+            )
+            controller.interact(burstShot) shouldBe true
+            fixture.runDelayedTasks() shouldBe listOf(1L, 2L)
+
             gunner.inventory.setItemInMainHand(grenade)
             val leftClickShot = PlayerInteractEvent(
                 gunner,

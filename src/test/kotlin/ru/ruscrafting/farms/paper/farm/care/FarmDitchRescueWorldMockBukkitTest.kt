@@ -35,11 +35,14 @@ class FarmDitchRescueWorldMockBukkitTest : FunSpec({
             val ditchCells = layout.map { centerX + it.x to centerZ + it.z }.toSet()
             val expectedCrops = mutableMapOf<Pair<Int, Int>, String>()
             val expectedTerrain = mutableMapOf<Triple<Int, Int, Int>, String>()
-            for (x in 5..11) for (z in 5..11) {
+            for (x in 2..14) for (z in 2..14) {
                 world.getBlockAt(x, 64, z).type = Material.FARMLAND
                 world.getBlockAt(x, 63, z).type = Material.DIRT
                 world.getBlockAt(x, 62, z).type = Material.STONE
                 world.getBlockAt(x, 61, z).type = Material.DEEPSLATE
+                world.getBlockAt(x, 60, z).type = Material.STONE
+                world.getBlockAt(x, 59, z).type = Material.DEEPSLATE
+                world.getBlockAt(x, 58, z).type = Material.STONE
                 val crop = world.getBlockAt(x, 65, z)
                 crop.type = Material.WHEAT
                 val age = crop.blockData as Ageable
@@ -58,7 +61,7 @@ class FarmDitchRescueWorldMockBukkitTest : FunSpec({
             }
             val runtime = FarmRuntime(
                 settings = settings,
-                region = CuboidActivityRegion(world, "farm", CuboidBounds(0, 60, 0, 16, 72, 16)),
+                region = CuboidActivityRegion(world, "farm", CuboidBounds(0, 56, 0, 16, 72, 16)),
                 orders = emptyMap(),
                 orderList = emptyList(),
                 rules = FarmRules(listOf(50), 1, 1_000),
@@ -87,7 +90,7 @@ class FarmDitchRescueWorldMockBukkitTest : FunSpec({
             ditch.ensure(runtime)
             ditch.ensure(runtime)
 
-            (ditchCells.size in 28..36) shouldBe true
+            (ditchCells.size in 68..78) shouldBe true
             val boundingArea =
                 (ditchCells.maxOf { it.first } - ditchCells.minOf { it.first } + 1) *
                     (ditchCells.maxOf { it.second } - ditchCells.minOf { it.second } + 1)
@@ -100,7 +103,10 @@ class FarmDitchRescueWorldMockBukkitTest : FunSpec({
                 val z = centerZ + cell.z
                 world.getBlockAt(x, 65, z).type shouldBe Material.AIR
             }
-            world.getBlockAt(5, 64, 5).type shouldBe Material.FARMLAND
+            world.getBlockAt(2, 64, 2).type shouldBe Material.FARMLAND
+            val spawn = requireNotNull(ditch.spawnLocation(runtime, runtime.state.careTargets.single()))
+            spawn.block.type shouldBe Material.AIR
+            spawn.block.getRelative(org.bukkit.block.BlockFace.DOWN).type.isSolid shouldBe true
 
             ditch.restore(runtime)
 
@@ -118,6 +124,8 @@ class FarmDitchRescueWorldMockBukkitTest : FunSpec({
     test("every ditch template is connected and leaves a missing cell in its bounding box") {
         (0L..3L).forEach { selection ->
             val cells = FarmDitchLayout.cellsForSelection(selection)
+            cells.first().x shouldBe 0
+            cells.first().z shouldBe 0
             val offsets = cells.map { it.x to it.z }.toSet()
             val visited = mutableSetOf(0 to 0)
             val queue = ArrayDeque(visited)
@@ -135,8 +143,9 @@ class FarmDitchRescueWorldMockBukkitTest : FunSpec({
                 (offsets.maxOf { it.first } - offsets.minOf { it.first } + 1) *
                     (offsets.maxOf { it.second } - offsets.minOf { it.second } + 1)
             (boundingArea > offsets.size) shouldBe true
-            cells.maxOf { it.depth } shouldBe 4
-            (cells.sumOf { it.depth } >= 78) shouldBe true
+            cells.minOf { it.depth } shouldBe 3
+            cells.maxOf { it.depth } shouldBe 6
+            (cells.sumOf { it.depth } >= 280) shouldBe true
         }
     }
 })

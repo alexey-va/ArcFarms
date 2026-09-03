@@ -394,7 +394,7 @@ data class FarmBoarBreakoutSettings(
 }
 
 data class FarmRivalRaidSettings(
-    val requiredKills: Int = 64,
+    val requiredKills: Int = 128,
     val workerCount: Int = 120,
     val workerSpawnBatchSize: Int = 12,
     val workerPatrolBatchSize: Int = 32,
@@ -430,7 +430,9 @@ data class FarmRivalRaidSettings(
     val gunItemModel: String? = null,
     val gunDamage: Double = 6.0,
     val gunRange: Double = 56.0,
-    val gunCooldownTicks: Int = 2,
+    val gunCooldownTicks: Int = 3,
+    val gunBurstRounds: Int = 3,
+    val gunBurstIntervalTicks: Int = 1,
     val gunRaySize: Double = 0.55,
     val gunSpreadDegrees: Double = 1.25,
     val weaponMuzzleForward: Double = 2.2,
@@ -490,6 +492,8 @@ data class FarmRivalRaidSettings(
         require(gunDamage.isFinite() && gunDamage in 0.5..100.0) { "rival raid gun damage is invalid" }
         require(gunRange.isFinite() && gunRange in 8.0..128.0) { "rival raid gun range is invalid" }
         require(gunCooldownTicks in 1..20) { "rival raid gun cooldown is invalid" }
+        require(gunBurstRounds in 1..6) { "rival raid gun burst size is invalid" }
+        require(gunBurstIntervalTicks in 1..5) { "rival raid gun burst interval is invalid" }
         require(gunRaySize.isFinite() && gunRaySize in 0.1..2.0) { "rival raid gun ray size is invalid" }
         require(gunSpreadDegrees.isFinite() && gunSpreadDegrees in 0.0..6.0) { "rival raid gun spread is invalid" }
         require(weaponMuzzleForward.isFinite() && weaponMuzzleForward in 0.5..4.0) { "rival raid muzzle offset is invalid" }
@@ -2192,7 +2196,7 @@ class ArcFarmsConfig private constructor(
                         ),
                     ),
                     rivalRaid = FarmRivalRaidSettings(
-                        requiredKills = section.int("special-incidents.rival-raid.required-kills", 64)
+                        requiredKills = section.int("special-incidents.rival-raid.required-kills", 128)
                             .checked("special-incidents.rival-raid.required-kills", 1, 128),
                         workerCount = section.int("special-incidents.rival-raid.worker-count", 120)
                             .checked("special-incidents.rival-raid.worker-count", 1, 192),
@@ -2299,8 +2303,12 @@ class ArcFarmsConfig private constructor(
                         gunRange = section.finiteDouble(
                             "special-incidents.rival-raid.gun-range", 56.0, 8.0, 128.0,
                         ),
-                        gunCooldownTicks = section.int("special-incidents.rival-raid.gun-cooldown-ticks", 2)
+                        gunCooldownTicks = section.int("special-incidents.rival-raid.gun-cooldown-ticks", 3)
                             .checked("special-incidents.rival-raid.gun-cooldown-ticks", 1, 20),
+                        gunBurstRounds = section.int("special-incidents.rival-raid.gun-burst-rounds", 3)
+                            .checked("special-incidents.rival-raid.gun-burst-rounds", 1, 6),
+                        gunBurstIntervalTicks = section.int("special-incidents.rival-raid.gun-burst-interval-ticks", 1)
+                            .checked("special-incidents.rival-raid.gun-burst-interval-ticks", 1, 5),
                         gunRaySize = section.finiteDouble(
                             "special-incidents.rival-raid.gun-ray-size", 0.55, 0.1, 2.0,
                         ),

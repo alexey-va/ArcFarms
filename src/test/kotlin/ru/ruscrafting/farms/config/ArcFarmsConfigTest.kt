@@ -550,7 +550,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().boarBreakout.activeBoars shouldBe 3
         settings.farms.single().boarBreakout.cropDamageMaximum shouldBe 4_096
         settings.farms.single().boarBreakout.shieldMaterial shouldBe "SHIELD"
-        settings.farms.single().rivalRaid.requiredKills shouldBe 64
+        settings.farms.single().rivalRaid.requiredKills shouldBe 128
         settings.farms.single().rivalRaid.workerEntity shouldBe "HUSK"
         settings.farms.single().rivalRaid.workerCount shouldBe 120
         settings.farms.single().rivalRaid.workerSpawnBatchSize shouldBe 12
@@ -562,6 +562,9 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().rivalRaid.workerLightStride shouldBe 10
         settings.farms.single().rivalRaid.gunMaterial shouldBe "PAPER"
         settings.farms.single().rivalRaid.gunCustomModelData shouldBe 2_100_006
+        settings.farms.single().rivalRaid.gunCooldownTicks shouldBe 3
+        settings.farms.single().rivalRaid.gunBurstRounds shouldBe 3
+        settings.farms.single().rivalRaid.gunBurstIntervalTicks shouldBe 1
         settings.farms.single().rivalRaid.grenadeCustomModelData shouldBe 2_100_009
         settings.farms.single().rivalRaid.grenadeDamage shouldBe 48.0
         settings.farms.single().rivalRaid.grenadeRadius shouldBe 8.0

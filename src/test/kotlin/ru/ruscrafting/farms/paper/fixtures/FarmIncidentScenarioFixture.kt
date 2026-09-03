@@ -264,10 +264,11 @@ internal class FarmIncidentScenarioFixture private constructor(
             entityRayTrace = MockBukkitFarmEntityRayTrace,
             mobDespawns = MockBukkitFarmMobDespawns,
             mobNavigation = object : FarmMobNavigation {
-                override fun moveTo(mob: Mob, target: org.bukkit.entity.Entity, speed: Double) = Unit
+                override fun moveTo(mob: Mob, target: org.bukkit.entity.Entity, speed: Double) = true
 
-                override fun moveTo(mob: Mob, target: Location, speed: Double) {
+                override fun moveTo(mob: Mob, target: Location, speed: Double): Boolean {
                     raidNavigationMoves += Triple(mob.uniqueId, target.clone(), speed)
+                    return true
                 }
             },
             riderVisibility = { player, ghast, hidden ->

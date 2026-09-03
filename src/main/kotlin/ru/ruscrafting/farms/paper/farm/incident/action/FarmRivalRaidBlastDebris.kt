@@ -1,6 +1,8 @@
 package ru.ruscrafting.farms.paper.farm.incident.action
 
 import org.bukkit.Location
+import org.bukkit.Material
+import org.bukkit.block.data.BlockData
 import org.bukkit.entity.FallingBlock
 import org.bukkit.util.Vector
 import ru.ruscrafting.farms.domain.FarmPlotPosition
@@ -11,21 +13,26 @@ import kotlin.math.sin
 
 internal object FarmRivalRaidBlastDebris {
     fun spawn(center: Location, plots: List<FarmPlotPosition>, maximumBlocks: Int): List<FallingBlock> {
-        val count = minOf(maximumBlocks, plots.size)
-        if (count <= 0) return emptyList()
-        val random = ThreadLocalRandom.current()
-        return plots.take(count).mapIndexedNotNull { index, plot ->
-            val soil = plot.block() ?: return@mapIndexedNotNull null
+        if (maximumBlocks <= 0) return emptyList()
+        val sources = plots.flatMap { plot ->
+            val soil = plot.block() ?: return@flatMap emptyList()
             val crop = soil.getRelative(org.bukkit.block.BlockFace.UP)
-            val blockData = if (index % 3 == 0 && !crop.type.isAir) crop.blockData else soil.blockData
-            val angle = 2.0 * Math.PI * index / count + random.nextDouble(-0.16, 0.16)
+            buildList<BlockData> {
+                if (!crop.type.isAir) add(crop.blockData)
+                if (!soil.type.isAir) add(soil.blockData)
+            }
+        }.ifEmpty { listOf(Material.DIRT.createBlockData()) }
+        val random = ThreadLocalRandom.current()
+        return (0 until maximumBlocks).map { index ->
+            val blockData = sources[index % sources.size]
+            val angle = 2.0 * Math.PI * index / maximumBlocks + random.nextDouble(-0.16, 0.16)
             val origin = center.clone().add(
                 random.nextDouble(-0.35, 0.35),
                 random.nextDouble(0.25, 0.65),
                 random.nextDouble(-0.35, 0.35),
             )
             val horizontalSpeed = random.nextDouble(0.48, 0.86)
-            soil.world.spawn(origin, FallingBlock::class.java) { debris ->
+            center.world.spawn(origin, FallingBlock::class.java) { debris ->
                 debris.blockData = blockData
                 debris.dropItem = false
                 debris.cancelDrop = true

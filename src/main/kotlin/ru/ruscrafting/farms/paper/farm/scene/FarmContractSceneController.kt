@@ -99,16 +99,7 @@ internal class FarmContractSceneController(
                 viewRange = visual.viewRange,
                 customerName = market?.let { locale.renderPath("farm.market-buyer-name", null) },
                 customerGlowing = market?.marketAccepted == false,
-                hiddenRoles = if (
-                    runtime.state.phase == FarmPhase.INCIDENT &&
-                    runtime.state.incidentType == FarmIncidentType.FOOD_DELIVERY
-                ) {
-                    setOf(
-                        FarmContractSceneRole.CART,
-                        FarmContractSceneRole.CART_INTERACTION,
-                        FarmContractSceneRole.CART_LOAD,
-                    )
-                } else emptySet(),
+                hiddenRoles = FarmContractSceneVisibility.hiddenRoles(runtime.state.phase, runtime.state.incidentType),
             ),
         )
     }
@@ -186,4 +177,16 @@ internal class FarmContractSceneController(
         }
 
     private fun currentOrder(runtime: FarmRuntime): FarmOrder? = runtime.state.orderId?.let(runtime.orders::get)
+}
+
+internal object FarmContractSceneVisibility {
+    private val CART_ROLES = setOf(
+        FarmContractSceneRole.CART,
+        FarmContractSceneRole.CART_INTERACTION,
+        FarmContractSceneRole.CART_LOAD,
+    )
+    private val MOBILE_CART_INCIDENTS = setOf(FarmIncidentType.FOOD_DELIVERY, FarmIncidentType.RIVAL_RAID)
+
+    fun hiddenRoles(phase: FarmPhase, incidentType: FarmIncidentType?): Set<FarmContractSceneRole> =
+        if (phase == FarmPhase.INCIDENT && incidentType in MOBILE_CART_INCIDENTS) CART_ROLES else emptySet()
 }

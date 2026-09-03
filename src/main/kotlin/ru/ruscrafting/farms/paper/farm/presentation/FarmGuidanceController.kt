@@ -140,7 +140,7 @@ internal class FarmGuidanceController(
                     if (player.world == world) spawnColumn(player, Location(world, pen.x, pen.y, pen.z), SUCCESS_COLOR)
                 }
             } else if (runtime.state.careType == FarmCareType.DITCH_RESCUE) {
-                carePlans.fixturePoint(runtime, FarmPointKind.DITCH)?.let { ditch ->
+                runtime.state.careTargets.firstOrNull { it.role == FarmCareRole.ANIMAL }?.position?.let { ditch ->
                     val world = Bukkit.getWorld(ditch.world) ?: return@let
                     if (player.world == world) spawnColumn(player, Location(world, ditch.x, ditch.y, ditch.z), SUCCESS_COLOR)
                 }

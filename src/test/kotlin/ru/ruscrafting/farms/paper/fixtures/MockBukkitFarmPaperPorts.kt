@@ -71,8 +71,8 @@ internal object MockBukkitFarmMobDespawns : FarmMobDespawnPolicy {
 }
 
 internal object MockBukkitFarmMobNavigation : ru.ruscrafting.farms.paper.platform.FarmMobNavigation {
-    override fun moveTo(mob: org.bukkit.entity.Mob, target: Entity, speed: Double) = Unit
-    override fun moveTo(mob: org.bukkit.entity.Mob, target: org.bukkit.Location, speed: Double) = Unit
+    override fun moveTo(mob: org.bukkit.entity.Mob, target: Entity, speed: Double) = true
+    override fun moveTo(mob: org.bukkit.entity.Mob, target: org.bukkit.Location, speed: Double) = true
 }
 
 internal object MockBukkitFarmVehiclePassengers : FarmVehiclePassengerControl {

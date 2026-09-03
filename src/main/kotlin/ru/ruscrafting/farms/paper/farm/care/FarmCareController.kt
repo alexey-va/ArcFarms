@@ -460,9 +460,7 @@ internal class FarmCareController(
         }
         removeEntities(key, "replace_seeder")
         val world = Bukkit.getWorld(target.position.world) ?: return
-        val location = (if (target.role == FarmCareRole.ANIMAL && runtime.state.careType == FarmCareType.DITCH_RESCUE) {
-            ditchWorld.spawnLocation(runtime, target)
-        } else null) ?: Location(world, target.position.x, target.position.y, target.position.z)
+        val location = Location(world, target.position.x, target.position.y, target.position.z)
         if (!runtime.region.contains(location) || !world.isChunkLoaded(location.blockX shr 4, location.blockZ shr 4)) return
         if (!FarmSurfacePolicy.isSurfaceSpawn(location)) {
             state.log(Level.WARNING, "Skipped covered farm seeder target ${runtime.settings.id}/${target.id}")
@@ -509,7 +507,9 @@ internal class FarmCareController(
         removeEntities(key, "replace_target")
         val world = Bukkit.getWorld(target.position.world) ?: return
         if (!world.isChunkLoaded(target.position.x.toInt() shr 4, target.position.z.toInt() shr 4)) return
-        val location = Location(world, target.position.x, target.position.y, target.position.z)
+        val location = if (target.role == FarmCareRole.ANIMAL && runtime.state.careType == FarmCareType.DITCH_RESCUE) {
+            ditchWorld.spawnLocation(runtime, target) ?: return
+        } else Location(world, target.position.x, target.position.y, target.position.z)
         if (!runtime.region.contains(location)) {
             state.log(Level.WARNING, "Farm care target ${runtime.settings.id}/${target.id} is outside ${runtime.region.label}")
             return
