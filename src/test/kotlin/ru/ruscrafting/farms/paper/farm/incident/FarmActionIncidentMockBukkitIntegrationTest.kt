@@ -21,7 +21,10 @@ import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.EntityTargetEvent
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent
 import org.bukkit.event.entity.EntityDismountEvent
+import org.bukkit.event.Event
+import org.bukkit.event.block.Action
 import org.bukkit.event.player.PlayerInteractEntityEvent
+import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.inventory.EquipmentSlot
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
@@ -119,14 +122,20 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             (ghast.velocity.length() > 0.0) shouldBe true
             ghast.passengers shouldHaveSize fixture.zone.rivalRaid.maximumRiders
             riders.take(fixture.zone.rivalRaid.maximumRiders).all { it.vehicle === ghast } shouldBe true
-            fixture.raidRiderVisibilityEvents.count { (_, ghastId, hidden) -> ghastId == ghast.uniqueId && hidden } shouldBe
-                fixture.zone.rivalRaid.maximumRiders
+            (fixture.raidRiderVisibilityEvents.count { (_, ghastId, hidden) ->
+                ghastId == ghast.uniqueId && hidden
+            } > fixture.zone.rivalRaid.maximumRiders) shouldBe true
             val workers = fixture.world.entities.filterIsInstance<Mob>().filter { it !is Ghast && controller.owns(it) }
                 .also { it shouldHaveSize fixture.zone.rivalRaid.workerCount }
                 .onEach {
                     it.equipment.itemInMainHand.type shouldBe Material.TORCH
                     it.location.block.getRelative(BlockFace.DOWN).type shouldBe Material.FARMLAND
                 }
+            val repeatedPatrols = fixture.raidNavigationMoves.groupBy { it.first }.values.filter { it.size > 1 }
+            (repeatedPatrols.isNotEmpty()) shouldBe true
+            repeatedPatrols.all { moves ->
+                moves.take(2).map { (_, target, _) -> Triple(target.blockX, target.blockY, target.blockZ) }.distinct().size == 1
+            } shouldBe true
 
             val groundPlayer = riders.last()
             val worker = workers.first()
@@ -169,7 +178,44 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             grenade.itemMeta.displayName()?.decoration(TextDecoration.ITALIC) shouldBe TextDecoration.State.FALSE
 
             gunner.inventory.setItemInMainHand(grenade)
-            controller.interact(PlayerInteractEntityEvent(gunner, workers.first(), EquipmentSlot.HAND)) shouldBe true
+            val leftClickShot = PlayerInteractEvent(
+                gunner,
+                Action.LEFT_CLICK_AIR,
+                grenade,
+                null,
+                BlockFace.SELF,
+                EquipmentSlot.HAND,
+            )
+            controller.interact(leftClickShot) shouldBe true
+            leftClickShot.isCancelled shouldBe true
+            leftClickShot.useItemInHand() shouldBe Event.Result.DENY
+            fixture.world.entities.filterIsInstance<Snowball>() shouldHaveSize 1
+            fixture.world.entities.filterIsInstance<Snowball>().single().remove()
+
+            val targetClickGunner = riders[2]
+            val targetClickGrenade = targetClickGunner.inventory.storageContents.filterNotNull().single {
+                @Suppress("DEPRECATION")
+                it.type == Material.PAPER && it.itemMeta.customModelData == fixture.zone.rivalRaid.grenadeCustomModelData
+            }
+            targetClickGunner.inventory.setItemInMainHand(targetClickGrenade)
+            val leftClickTarget = EntityDamageByEntityEvent(
+                targetClickGunner,
+                workers.first(),
+                EntityDamageEvent.DamageCause.ENTITY_ATTACK,
+                1.0,
+            )
+            controller.onDamage(leftClickTarget) shouldBe true
+            leftClickTarget.isCancelled shouldBe true
+            fixture.world.entities.filterIsInstance<Snowball>() shouldHaveSize 1
+            fixture.world.entities.filterIsInstance<Snowball>().single().remove()
+
+            val rightClickGunner = riders[1]
+            val rightClickGrenade = rightClickGunner.inventory.storageContents.filterNotNull().single {
+                @Suppress("DEPRECATION")
+                it.type == Material.PAPER && it.itemMeta.customModelData == fixture.zone.rivalRaid.grenadeCustomModelData
+            }
+            rightClickGunner.inventory.setItemInMainHand(rightClickGrenade)
+            controller.interact(PlayerInteractEntityEvent(rightClickGunner, workers.first(), EquipmentSlot.HAND)) shouldBe true
             val projectile = fixture.world.entities.filterIsInstance<Snowball>().single()
             val blastPlot = beds.first { it !in plannedField }
             val blastLocation = fixture.world.getBlockAt(blastPlot.x, blastPlot.y + 1, blastPlot.z).location.toCenterLocation()

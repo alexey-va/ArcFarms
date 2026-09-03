@@ -68,6 +68,7 @@ internal class FarmCarePresentation(private val settings: () -> ArcFarmsConfig) 
         FarmCareType.DISEASE -> Sound.BLOCK_SCULK_SPREAD
         FarmCareType.MOLES -> Sound.ENTITY_RABBIT_JUMP
         FarmCareType.APPLE_HARVEST -> Sound.BLOCK_CHERRY_LEAVES_BREAK
+        FarmCareType.DITCH_RESCUE -> Sound.ENTITY_CHICKEN_AMBIENT
     }
 
     fun stageId(type: FarmCareType): String = when (type) {
@@ -81,6 +82,7 @@ internal class FarmCarePresentation(private val settings: () -> ArcFarmsConfig) 
         FarmCareType.DISEASE -> "disease"
         FarmCareType.MOLES -> "moles"
         FarmCareType.APPLE_HARVEST -> "apples"
+        FarmCareType.DITCH_RESCUE -> "ditch-animals"
     }
 
     fun scale(display: ItemDisplay, scale: Float) {

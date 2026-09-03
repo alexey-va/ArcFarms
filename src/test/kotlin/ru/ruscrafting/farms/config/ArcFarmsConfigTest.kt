@@ -302,6 +302,7 @@ class ArcFarmsConfigTest : FunSpec({
                 FarmCareType.MOLES,
                 FarmCareType.IRRIGATION,
                 FarmCareType.ANIMAL_RESCUE,
+                FarmCareType.DITCH_RESCUE,
                 FarmCareType.WEEDS,
             ),
             "bakery_supply" to listOf(
@@ -317,6 +318,7 @@ class ArcFarmsConfigTest : FunSpec({
                 FarmCareType.APPLE_HARVEST,
                 FarmCareType.SCARECROWS,
                 FarmCareType.ANIMAL_RESCUE,
+                FarmCareType.DITCH_RESCUE,
                 FarmCareType.STORM_COVERS,
             ),
             "harvest_festival" to listOf(
@@ -1666,10 +1668,11 @@ class ArcFarmsConfigTest : FunSpec({
             FarmCareType.POLLINATION to "Пыльцу из улья несите к цветам",
             FarmCareType.STORM_COVERS to "Закрепите укрытие во всех метках",
             FarmCareType.SCARECROWS to "Берите пугала в хлеву и несите к меткам",
-            FarmCareType.ANIMAL_RESCUE to "Зацепляйте животных в канаве служебной удочкой",
+            FarmCareType.ANIMAL_RESCUE to "Ведите животных к зелёной метке у амбара",
             FarmCareType.DISEASE to "Срезайте очаги мотыгой вовремя",
             FarmCareType.MOLES to "Бейте свежие холмики мотыгой",
             FarmCareType.APPLE_HARVEST to "Ищите светящиеся яблоки под кронами",
+            FarmCareType.DITCH_RESCUE to "Зацепляйте животных в канаве служебной удочкой",
         ).map { (type, hint) -> base.copy(phase = FarmPhase.CARE, careType = type) to hint }
 
         scenarios.forEach { (view, expectedHint) ->
@@ -1725,6 +1728,27 @@ class ArcFarmsConfigTest : FunSpec({
         channels[6] shouldBe "| Копайте русло по меткам от точки полива"
         channels[7] shouldBe "| Служебной лопатой разбейте каждый отмеченный блок земли"
         (channels.size <= FarmScoreboardRenderer.MAX_ROWS) shouldBe true
+    }
+
+    test("rival raid scoreboard keeps boarding and firing controls on separate compact rows") {
+        val root = resourceTree()
+        val settings = ArcFarmsConfig.inspect(root)
+        val rows = FarmScoreboardRenderer(ArcFarmsLocale(root) { settings }).rows(
+            FarmScoreboardView(
+                orderId = "miners_rations",
+                phase = FarmPhase.INCIDENT,
+                done = 3,
+                total = 32,
+                required = linkedMapOf("WHEAT" to 640),
+                cropProgress = emptyMap(),
+                incidentType = FarmIncidentType.RIVAL_RAID,
+            ),
+            null,
+        ).map(PlainTextComponentSerializer.plainText()::serialize)
+
+        rows[6] shouldBe "| Встаньте в портал и выберите оружие"
+        rows[7] shouldBe "| Стреляйте ЛКМ или ПКМ"
+        (rows.size <= FarmScoreboardRenderer.MAX_ROWS) shouldBe true
     }
 
     test("night shift scoreboard keeps patrol guidance on its own row") {

@@ -8,6 +8,7 @@ import org.bukkit.NamespacedKey
 import org.bukkit.block.BlockFace
 import org.bukkit.entity.Interaction
 import org.bukkit.entity.ItemDisplay
+import org.bukkit.entity.Mob
 import org.bukkit.entity.TextDisplay
 import org.bukkit.entity.Player
 import org.bukkit.event.block.Action
@@ -54,6 +55,7 @@ import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingInciden
 import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingSceneRole
 import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
 import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentController
+import ru.ruscrafting.farms.paper.platform.FarmMobNavigation
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItemController
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItemOwner
@@ -103,6 +105,7 @@ internal class FarmIncidentScenarioFixture private constructor(
     val transitions = mutableListOf<AppliedTransition>()
     val raidBlockPreviews = RecordingFarmClientBlockPreview()
     val raidRiderVisibilityEvents = mutableListOf<Triple<java.util.UUID, java.util.UUID, Boolean>>()
+    val raidNavigationMoves = mutableListOf<Triple<java.util.UUID, Location, Double>>()
 
     private val processingRoleKey = NamespacedKey(plugin, "farm_processing_role")
     private val processingIndexKey = NamespacedKey(plugin, "farm_processing_index")
@@ -260,7 +263,13 @@ internal class FarmIncidentScenarioFixture private constructor(
             runtimes = { listOf(runtime) },
             entityRayTrace = MockBukkitFarmEntityRayTrace,
             mobDespawns = MockBukkitFarmMobDespawns,
-            mobNavigation = MockBukkitFarmMobNavigation,
+            mobNavigation = object : FarmMobNavigation {
+                override fun moveTo(mob: Mob, target: org.bukkit.entity.Entity, speed: Double) = Unit
+
+                override fun moveTo(mob: Mob, target: Location, speed: Double) {
+                    raidNavigationMoves += Triple(mob.uniqueId, target.clone(), speed)
+                }
+            },
             riderVisibility = { player, ghast, hidden ->
                 raidRiderVisibilityEvents += Triple(player.uniqueId, ghast.uniqueId, hidden)
             },

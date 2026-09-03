@@ -4,6 +4,7 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import org.bukkit.Location
 import org.bukkit.Material
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.config.CuboidBounds
@@ -18,6 +19,7 @@ import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmRules
 import ru.ruscrafting.farms.domain.FarmShiftState
+import ru.ruscrafting.farms.domain.nextPlacementSequence
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.CuboidActivityRegion
 import ru.ruscrafting.farms.paper.FarmBlockRegistry
@@ -29,23 +31,27 @@ import java.util.random.RandomGenerator
 import kotlin.math.abs
 
 class FarmCarePlanServiceMockBukkitTest : FunSpec({
-    test("animal rescue is unavailable without an admin ditch and is planned around that point when configured") {
+    test("barn return and ditch rescue remain separate animal activities") {
         val paper = MockBukkitTestRuntime.open()
         try {
             val world = paper.server.addSimpleWorld("sp11")
             world.getChunkAt(0, 0).load()
             val bed = FarmPlotPosition(world.name, 4, 64, 4)
             world.getBlockAt(bed.x, bed.y, bed.z).type = Material.FARMLAND
+            var indexedBeds = setOf(bed)
             val registry = mockk<FarmBlockRegistry> {
-                every { beds("communal_farm") } returns setOf(bed)
+                every { beds("communal_farm") } answers { indexedBeds }
             }
             val settings = mockk<FarmZoneSettings> {
                 every { id } returns "communal_farm"
                 every { careTargetsPerPlayer } returns 3
                 every { careTargetsMax } returns 6
                 every { careRadius } returns 8
+                every { placementSearchRadius } returns 32
+                every { placementMinObjectiveDistance } returns 0
                 every { animalRescueTargetCount } returns 2
                 every { animalRescueMinSpacing } returns 2.0
+                every { animalRescueMaxPlayerDistance } returns 28
             }
             val runtime = FarmRuntime(
                 settings = settings,
@@ -60,7 +66,12 @@ class FarmCarePlanServiceMockBukkitTest : FunSpec({
                 ),
             )
             val placement = mockk<FarmPlacementService> {
+                every { sources(runtime, null) } returns listOf(Location(world, 4.5, 65.0, 4.5))
                 every { bedCandidates(runtime, any(), 8) } returns listOf(
+                    FarmDeliveryPosition(world.name, 7.5, 65.05, 7.5),
+                    FarmDeliveryPosition(world.name, 10.5, 65.05, 7.5),
+                )
+                every { bedCandidates(runtime, any(), 32) } returns listOf(
                     FarmDeliveryPosition(world.name, 7.5, 65.05, 7.5),
                     FarmDeliveryPosition(world.name, 10.5, 65.05, 7.5),
                 )
@@ -70,7 +81,10 @@ class FarmCarePlanServiceMockBukkitTest : FunSpec({
                 debug = ArcFarmsDebug({ false }) {},
                 registry = registry,
                 placement = placement,
-                points = FarmPointProvider { _, _ -> error("No derived point expected") },
+                points = FarmPointProvider { _, kind ->
+                    if (kind == FarmPointKind.RECEIVING) FarmPointPosition(world.name, 14.5, 65.0, 14.5)
+                    else error("No derived point expected")
+                },
                 overrides = { overrides },
                 random = mockk<RandomGenerator>(relaxed = true),
                 moleBurrow = mockk<FarmMoleBurrowWorld>(relaxed = true),
@@ -78,18 +92,37 @@ class FarmCarePlanServiceMockBukkitTest : FunSpec({
                 log = { _, _ -> },
             )
 
-            service.targets(runtime, FarmCareType.ANIMAL_RESCUE, null) shouldBe null
+            val barnTargets = requireNotNull(service.targets(runtime, FarmCareType.ANIMAL_RESCUE, null))
+            barnTargets.size shouldBe 2
+            barnTargets.all { it.role == FarmCareRole.ANIMAL } shouldBe true
+            service.targets(runtime, FarmCareType.DITCH_RESCUE, null) shouldBe null
+
+            val ditchCenterX = 8
+            val ditchCenterZ = 8
+            val proceduralBeds = FarmDitchLayout.offsets(runtime.state.nextPlacementSequence()).mapTo(mutableSetOf()) { offset ->
+                val x = ditchCenterX + offset.x
+                val z = ditchCenterZ + offset.z
+                    world.getBlockAt(x, 64, z).type = Material.FARMLAND
+                FarmPlotPosition(world.name, x, 64, z)
+            }
+            indexedBeds = indexedBeds + proceduralBeds
+            val procedural = requireNotNull(service.targets(runtime, FarmCareType.DITCH_RESCUE, null))
+            procedural.size shouldBe 2
+            procedural.first().position shouldBe FarmPointPosition(world.name, 8.5, 64.0, 8.5)
+
+            for (x in 11..13) for (z in 11..13) world.getBlockAt(x, 64, z).type = Material.STONE
 
             overrides = FarmLocationOverrides(
                 zones = mapOf(
                     runtime.settings.id to mapOf(
-                        FarmPointKind.DITCH to FarmPointPosition(world.name, 8.0, 64.0, 8.0),
+                        FarmPointKind.DITCH to FarmPointPosition(world.name, 12.5, 65.0, 12.5),
                     ),
                 ),
             )
-            val targets = requireNotNull(service.targets(runtime, FarmCareType.ANIMAL_RESCUE, null))
+            val targets = requireNotNull(service.targets(runtime, FarmCareType.DITCH_RESCUE, null))
             targets.size shouldBe 2
             targets.all { it.role == FarmCareRole.ANIMAL } shouldBe true
+            targets.all { it.position.x in 11.5..13.5 && it.position.z in 11.5..13.5 } shouldBe true
         } finally {
             paper.close()
         }

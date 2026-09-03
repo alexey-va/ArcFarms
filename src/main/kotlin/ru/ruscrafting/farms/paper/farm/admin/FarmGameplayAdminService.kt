@@ -622,6 +622,7 @@ internal class FarmGameplayAdminService(
             "covers" to FarmCareType.STORM_COVERS, "scarecrows" to FarmCareType.SCARECROWS,
             "animals" to FarmCareType.ANIMAL_RESCUE, "disease" to FarmCareType.DISEASE,
             "moles" to FarmCareType.MOLES, "apples" to FarmCareType.APPLE_HARVEST,
+            "ditch-animals" to FarmCareType.DITCH_RESCUE,
         )
         val INCIDENT_STAGES = mapOf(
             "pests" to FarmIncidentType.PESTS, "drought" to FarmIncidentType.DROUGHT,

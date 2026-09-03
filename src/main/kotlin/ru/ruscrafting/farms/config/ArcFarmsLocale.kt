@@ -761,7 +761,7 @@ class ArcFarmsLocale(
                 .mapTo(this) { "admin-inspect.tracking-kind.$it" }
             val adminStages = listOf(
                 "preparation", "planting", "harvesting", "seeder", "weeds", "irrigation", "pollination", "covers", "scarecrows",
-                "animals", "disease", "moles", "apples", "pests", "drought", "birds", "food-delivery", "giant-crop", "channels",
+                "animals", "ditch-animals", "disease", "moles", "apples", "pests", "drought", "birds", "food-delivery", "giant-crop", "channels",
                 "night-shift", "market", "processing", "barn-fire", "frost", "delivery", "complete", "reset",
             )
             adminStages.mapTo(this) { "admin.stage.$it" }

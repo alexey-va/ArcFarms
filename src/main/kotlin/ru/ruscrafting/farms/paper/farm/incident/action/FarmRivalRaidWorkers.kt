@@ -27,6 +27,8 @@ import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
 import ru.ruscrafting.farms.paper.platform.FarmMobDespawnPolicy
 import ru.ruscrafting.farms.paper.platform.FarmMobNavigation
+import java.util.UUID
+import java.util.concurrent.ThreadLocalRandom
 import kotlin.math.ceil
 
 /** Owns the moving local worker swarm for a rival raid. */
@@ -42,9 +44,17 @@ internal class FarmRivalRaidWorkers(
         val sequence: Long,
         val placementSequence: Long,
         val fieldPlots: List<FarmPlotPosition>,
-        val workerIds: MutableSet<java.util.UUID> = linkedSetOf(),
+        val patrolSeed: Long = ThreadLocalRandom.current().nextLong(),
+        val workerIds: MutableSet<UUID> = linkedSetOf(),
+        val patrols: MutableMap<UUID, Patrol> = hashMapOf(),
         var spawnSequence: Int = 0,
         var patrolCursor: Int = 0,
+        var patrolSequence: Long = 0,
+    )
+    private data class Patrol(
+        val target: Location,
+        var lastPosition: Location,
+        var stalledChecks: Int = 0,
     )
 
     private val zoneKey = NamespacedKey(plugin, "farm_raid_zone")
@@ -66,7 +76,11 @@ internal class FarmRivalRaidWorkers(
             start(runtime, fallbackPlots)
             return
         }
-        swarm.workerIds.removeIf { Bukkit.getEntity(it)?.isValid != true }
+        swarm.workerIds.removeIf { workerId ->
+            val missing = Bukkit.getEntity(workerId)?.isValid != true
+            if (missing) swarm.patrols.remove(workerId)
+            missing
+        }
         val threat = ghast.point()
         val retireRadiusSquared = runtime.settings.rivalRaid.workerRetireRadius * runtime.settings.rivalRaid.workerRetireRadius
         swarm.workerIds.removeIf { workerId ->
@@ -75,6 +89,7 @@ internal class FarmRivalRaidWorkers(
                 worker.location.horizontalDistanceSquared(ghast.location) > retireRadiusSquared
             if (retired) {
                 worker?.remove()
+                swarm.patrols.remove(workerId)
                 nightShift.releaseExternalLight(lightOwner(runtime.settings.id, workerId))
             }
             retired
@@ -109,7 +124,7 @@ internal class FarmRivalRaidWorkers(
             mark(mob, runtime, index)
             mob.persistentDataContainer.set(targetKey, PersistentDataType.INTEGER, selectedIndex)
             swarm.workerIds += mob.uniqueId
-            move(runtime, swarm, mob, index.toLong())
+            assignPatrol(runtime, swarm, mob)
         }
         swarm.workerIds.forEachIndexed { index, workerId ->
             val worker = Bukkit.getEntity(workerId) as? Mob ?: return@forEachIndexed
@@ -131,7 +146,7 @@ internal class FarmRivalRaidWorkers(
             val workerId = workers[Math.floorMod(swarm.patrolCursor + offset, workers.size)]
             val worker = Bukkit.getEntity(workerId) as? Mob ?: return@repeat
             worker.target = null
-            move(runtime, swarm, worker, swarm.patrolCursor.toLong() + offset)
+            continuePatrol(runtime, swarm, worker)
         }
         swarm.patrolCursor = Math.floorMod(
             swarm.patrolCursor + runtime.settings.rivalRaid.workerPatrolBatchSize,
@@ -177,12 +192,13 @@ internal class FarmRivalRaidWorkers(
         return FarmRivalFieldPolicy.distribute(eligible, MAX_FARM_SPECIAL_PLOTS, runtime.state.placementSequence)
     }
 
-    fun ids(zoneId: String): Set<java.util.UUID> = swarms[zoneId]?.workerIds.orEmpty()
+    fun ids(zoneId: String): Set<UUID> = swarms[zoneId]?.workerIds.orEmpty()
 
     fun contains(zoneId: String, entityId: java.util.UUID): Boolean = entityId in ids(zoneId)
 
     fun remove(zoneId: String, entityId: java.util.UUID) {
         swarms[zoneId]?.workerIds?.remove(entityId)
+        swarms[zoneId]?.patrols?.remove(entityId)
         nightShift.releaseExternalLight(lightOwner(zoneId, entityId))
     }
 
@@ -194,15 +210,36 @@ internal class FarmRivalRaidWorkers(
         nightShift.releaseExternalLights(lightPrefix(zoneId))
     }
 
-    private fun move(runtime: FarmRuntime, swarm: Swarm, worker: Mob, sequence: Long) {
+    private fun continuePatrol(runtime: FarmRuntime, swarm: Swarm, worker: Mob) {
+        val patrol = swarm.patrols[worker.uniqueId] ?: return assignPatrol(runtime, swarm, worker)
+        val current = worker.location
+        if (current.world !== patrol.target.world || current.distanceSquared(patrol.target) <= PATROL_REACHED_DISTANCE_SQUARED) {
+            assignPatrol(runtime, swarm, worker)
+            return
+        }
+        val moved = current.horizontalDistanceSquared(patrol.lastPosition)
+        patrol.stalledChecks = if (moved < PATROL_MINIMUM_PROGRESS_SQUARED) patrol.stalledChecks + 1 else 0
+        patrol.lastPosition = current.clone()
+        if (patrol.stalledChecks >= PATROL_STALLED_CHECKS) {
+            assignPatrol(runtime, swarm, worker)
+            return
+        }
+        mobNavigation.moveTo(worker, patrol.target, runtime.settings.rivalRaid.workerPatrolSpeed)
+    }
+
+    private fun assignPatrol(runtime: FarmRuntime, swarm: Swarm, worker: Mob) {
+        val sequence = swarm.patrolSeed xor swarm.placementSequence xor worker.uniqueId.mostSignificantBits xor
+            (++swarm.patrolSequence * PATROL_SEQUENCE_MIX)
         val target = FarmRivalPatrolPlanner.select(
             swarm.fieldPlots,
             FarmPointPosition(worker.world.name, worker.location.x, worker.location.y, worker.location.z),
-            swarm.placementSequence * 1_000_003L + sequence * 97L,
+            sequence,
         ) ?: return
         val targetIndex = swarm.fieldPlots.indexOf(target)
         if (targetIndex >= 0) worker.persistentDataContainer.set(targetKey, PersistentDataType.INTEGER, targetIndex)
-        target.spawnLocation(sequence)?.let { mobNavigation.moveTo(worker, it, runtime.settings.rivalRaid.workerPatrolSpeed) }
+        val location = target.spawnLocation(sequence) ?: return
+        swarm.patrols[worker.uniqueId] = Patrol(location, worker.location.clone())
+        mobNavigation.moveTo(worker, location, runtime.settings.rivalRaid.workerPatrolSpeed)
     }
 
     private fun localPlots(swarm: Swarm, center: FarmPointPosition, radius: Double): List<FarmPlotPosition> {
@@ -256,5 +293,9 @@ internal class FarmRivalRaidWorkers(
 
     private companion object {
         const val ROLE_WORKER = "raid_worker"
+        const val PATROL_REACHED_DISTANCE_SQUARED = 4.0
+        const val PATROL_MINIMUM_PROGRESS_SQUARED = 0.04
+        const val PATROL_STALLED_CHECKS = 8
+        const val PATROL_SEQUENCE_MIX = -7046029254386353131L
     }
 }

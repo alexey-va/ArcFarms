@@ -334,7 +334,7 @@ internal class FarmRivalRaidController(
         return true
     }
     fun interact(event: PlayerInteractEvent): Boolean {
-        if (event.hand != EquipmentSlot.HAND || event.action !in setOf(Action.RIGHT_CLICK_AIR, Action.RIGHT_CLICK_BLOCK)) return false
+        if (event.hand != EquipmentSlot.HAND || event.action !in WEAPON_ACTIONS) return false
         val identity = serviceItems.identity(event.player.inventory.itemInMainHand) ?: return false
         if (identity.activity != ActivityKind.FARM || identity.itemId !in WEAPON_IDS) return false
         event.setUseInteractedBlock(Event.Result.DENY)
@@ -420,9 +420,19 @@ internal class FarmRivalRaidController(
         val player = damage?.damager as? Player
         val zoneId = event.entity.persistentDataContainer.get(zoneKey, PersistentDataType.STRING)
         val session = zoneId?.let(raids::get)
-        if (player == null || session == null || player.uniqueId !in session.participantIds ||
-            !hasGun(player, zoneId, session) || !damageGate.consume(player.uniqueId, event.entity.uniqueId)
-        ) event.isCancelled = true
+        if (player == null || zoneId == null || session == null || player.uniqueId !in session.participantIds) {
+            event.isCancelled = true
+            return true
+        }
+        if (damageGate.consume(player.uniqueId, event.entity.uniqueId)) return true
+        event.isCancelled = true
+        val heldIdentity = serviceItems.identity(player.inventory.itemInMainHand)
+        if (heldIdentity != null && heldIdentity.itemId in WEAPON_IDS &&
+            heldIdentity == identity(zoneId, session, heldIdentity.itemId)
+        ) {
+            val runtime = runtimes().firstOrNull { it.settings.id == zoneId }
+            if (runtime != null && active(runtime, session.sequence)) fire(player, runtime, session, heldIdentity.itemId)
+        }
         return true
     }
 
@@ -897,7 +907,8 @@ internal class FarmRivalRaidController(
             player.leaveVehicle()
             if (!ghast.addPassenger(player)) return false
         }
-        if (session.hiddenRiderIds.add(player.uniqueId)) riderVisibility.setHidden(player, ghast, true)
+        session.hiddenRiderIds += player.uniqueId
+        riderVisibility.setHidden(player, ghast, true)
         return true
     }
 
@@ -937,10 +948,6 @@ internal class FarmRivalRaidController(
         ObjectiveTargetRole(ACTION_ROLE),
         itemId,
     )
-
-    private fun hasGun(player: Player, zoneId: String, session: RaidSession): Boolean =
-        serviceItems.identity(player.inventory.itemInMainHand) == identity(zoneId, session, RAID_GUN_ID) ||
-            serviceItems.identity(player.inventory.itemInMainHand) == identity(zoneId, session, RAID_GRENADE_ID)
 
     private fun mark(entity: Entity, runtime: FarmRuntime, role: String, target: Int) {
         entity.persistentDataContainer.set(zoneKey, PersistentDataType.STRING, runtime.settings.id)
@@ -996,5 +1003,11 @@ internal class FarmRivalRaidController(
         const val PORTAL_RING_RADIUS = 1.15
         const val CRATER_SHARE = 0.8
         val WEAPON_IDS = setOf(RAID_GUN_ID, RAID_GRENADE_ID)
+        val WEAPON_ACTIONS = setOf(
+            Action.LEFT_CLICK_AIR,
+            Action.LEFT_CLICK_BLOCK,
+            Action.RIGHT_CLICK_AIR,
+            Action.RIGHT_CLICK_BLOCK,
+        )
     }
 }

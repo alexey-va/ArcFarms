@@ -139,6 +139,11 @@ internal class FarmGuidanceController(
                     val world = Bukkit.getWorld(pen.world) ?: return@let
                     if (player.world == world) spawnColumn(player, Location(world, pen.x, pen.y, pen.z), SUCCESS_COLOR)
                 }
+            } else if (runtime.state.careType == FarmCareType.DITCH_RESCUE) {
+                carePlans.fixturePoint(runtime, FarmPointKind.DITCH)?.let { ditch ->
+                    val world = Bukkit.getWorld(ditch.world) ?: return@let
+                    if (player.world == world) spawnColumn(player, Location(world, ditch.x, ditch.y, ditch.z), SUCCESS_COLOR)
+                }
             } else if (runtime.state.careType != FarmCareType.IRRIGATION) {
                 visible.filter { Bukkit.getWorld(it.position.world) == player.world && isVisibleCareTarget(it) }
                     .minByOrNull { target ->

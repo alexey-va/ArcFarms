@@ -160,6 +160,7 @@ internal class FarmScoreboardRenderer(
             view.phase == FarmPhase.INCIDENT && view.incidentType == FarmIncidentType.PROCESSING -> "processing"
             view.phase == FarmPhase.INCIDENT && view.incidentType == FarmIncidentType.BARN_FIRE -> "barn-fire"
             view.phase == FarmPhase.INCIDENT && view.incidentType == FarmIncidentType.FROST -> "frost"
+            view.phase == FarmPhase.INCIDENT && view.incidentType == FarmIncidentType.RIVAL_RAID -> "rival-raid"
             else -> null
         } ?: return emptyList()
         return listOf(locale.renderPath("scoreboard.hint-detail.$id", audience))

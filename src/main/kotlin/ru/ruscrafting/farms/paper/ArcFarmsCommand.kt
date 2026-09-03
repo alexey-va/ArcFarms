@@ -738,6 +738,7 @@ class ArcFarmsCommand(
             "covers" to FarmCareType.STORM_COVERS,
             "scarecrows" to FarmCareType.SCARECROWS,
             "animals" to FarmCareType.ANIMAL_RESCUE,
+            "ditch-animals" to FarmCareType.DITCH_RESCUE,
             "disease" to FarmCareType.DISEASE,
             "moles" to FarmCareType.MOLES,
             "apples" to FarmCareType.APPLE_HARVEST,

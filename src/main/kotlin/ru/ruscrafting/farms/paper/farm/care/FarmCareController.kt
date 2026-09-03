@@ -70,7 +70,7 @@ internal class FarmCareController(
     private val locale: ArcFarmsLocale,
     private val debug: ArcFarmsDebug,
     private val access: WorksiteAccessPort, private val audience: WorksiteAudiencePort,
-    private val state: WorksiteStatePort, ledger: FarmBlockLedger,
+    private val state: WorksiteStatePort, private val ledger: FarmBlockLedger,
     private val serviceItems: WorksiteServiceItems,
     private val registry: FarmBlockRegistry, private val plans: FarmCarePlanService,
     points: FarmPointProvider, private val moles: FarmMoleBurrowController,
@@ -105,9 +105,11 @@ internal class FarmCareController(
     private val seederRig = FarmSeederRigManager(plugin)
     private val machineBlocks = FarmMachineBlockProcessor(ledger)
     private val entities = mutableMapOf<FarmCareEntityKey, MutableSet<UUID>>()
+    private val animalFollowers = mutableMapOf<FarmCareEntityKey, UUID>()
     private val reconciledSequences = mutableMapOf<String, Long>()
     private val pollenCharges = FarmPollenCharges()
     private val starts = FarmCareStartService(state, moles)
+    private val ditchWorld = FarmDitchRescueWorld(ledger, state, debug)
     private val zoneKey = NamespacedKey(plugin, "farm_care_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_care_sequence")
     private val targetKey = NamespacedKey(plugin, "farm_care_target")
@@ -132,8 +134,12 @@ internal class FarmCareController(
     fun releasePlayer(player: Player, reason: String) {
         moles.releasePlayer(player, reason)
         scarecrows.releasePlayer(player, reason)
+        animalFollowers.filterValues { it == player.uniqueId }.keys.toList().forEach { key ->
+            val mob = entities[key].orEmpty().asSequence().mapNotNull(Bukkit::getEntity).filterIsInstance<Mob>().firstOrNull()
+            releaseFollower(key, mob, reason)
+        }
         pollenCharges.remove(player.uniqueId)
-        runtimes().filter { it.state.careType == FarmCareType.ANIMAL_RESCUE }.forEach { runtime ->
+        runtimes().filter { it.state.careType == FarmCareType.DITCH_RESCUE }.forEach { runtime ->
             val identity = rescueRodIdentity(runtime)
             while (serviceItems.consume(player, identity)) Unit
         }
@@ -201,10 +207,12 @@ internal class FarmCareController(
         pollenCharges.remaining(player.uniqueId, runtime.settings.id, runtime.state.sequence) > 0
 
     fun cleanup(reason: String) {
+        runtimes().filter { it.state.careType == FarmCareType.DITCH_RESCUE }.forEach(ditchWorld::restore)
         moles.cleanup(reason)
         scarecrows.cleanup(reason)
         entityLookup.inAllWorlds().asSequence().filter(::owns).forEach(Entity::remove)
         entities.clear()
+        animalFollowers.clear()
         disease.clearAll()
         irrigation.clearAll()
         reconciledSequences.clear()
@@ -308,7 +316,20 @@ internal class FarmCareController(
                 }
             }
             FarmCareRole.ANIMAL -> {
-                audience.sendActionBar(player, MessageKey.FARM_CARE_ANIMAL_ROD)
+                if (runtime.state.careType == FarmCareType.DITCH_RESCUE) {
+                    audience.sendActionBar(player, MessageKey.FARM_CARE_ANIMAL_ROD)
+                    return
+                }
+                if (runtime.state.careType != FarmCareType.ANIMAL_RESCUE) return
+                val key = FarmCareEntityKey(zoneId, targetId)
+                animalFollowers[key] = player.uniqueId
+                (entity as? Mob)?.let { mob ->
+                    mob.isGlowing = true
+                    mob.setLeashHolder(player)
+                    mob.pathfinder.moveTo(player, runtime.settings.careAnimalFollowSpeed)
+                }
+                audience.sendActionBar(player, MessageKey.FARM_CARE_ANIMAL_FOLLOWING)
+                debug.event("farm_care_animal_following", "zone" to zoneId, "target" to targetId, "player" to player.name)
                 return
             }
             FarmCareRole.COVER_ANCHOR, FarmCareRole.SEEDER_WAYPOINT, FarmCareRole.APPLE -> Unit
@@ -343,6 +364,7 @@ internal class FarmCareController(
             moles.ensure(runtime)
             return
         }
+        if (runtime.state.careType == FarmCareType.DITCH_RESCUE) ditchWorld.ensure(runtime)
         val activeIds = runtime.state.careTargets.mapTo(mutableSetOf(), FarmCareTarget::id)
         val scarecrowIds = runtime.state.careTargets.asSequence()
             .filter { it.role == FarmCareRole.SCARECROW }
@@ -377,7 +399,8 @@ internal class FarmCareController(
             }
             ensureFarmCareTarget(runtime, target)
         }
-        if (runtime.state.careType == FarmCareType.ANIMAL_RESCUE) ensureRescueRods(runtime)
+        if (runtime.state.careType == FarmCareType.ANIMAL_RESCUE) ensureFarmAnimalPen(runtime)
+        if (runtime.state.careType == FarmCareType.DITCH_RESCUE) ensureRescueRods(runtime)
         if (runtime.state.careType == FarmCareType.SEEDER) ensureFarmSeeder(runtime)
     }
 
@@ -396,8 +419,10 @@ internal class FarmCareController(
             val ordinaryTarget = targetId?.let(targets::get)
             val currentTarget = ordinaryTarget != null && ordinaryTarget.role != FarmCareRole.SCARECROW &&
                 ordinaryTarget.role.name == role
+            val currentPen = targetId == -1 && role == FarmCareRole.PEN.name &&
+                runtime.state.careType == FarmCareType.ANIMAL_RESCUE
             val valid = runtime.state.phase == FarmPhase.CARE && runtime.state.sequence == sequence &&
-                currentTarget
+                (currentTarget || currentPen)
             if (!valid) {
                 entity.remove()
                 debug.event(
@@ -558,9 +583,100 @@ internal class FarmCareController(
         )
     }
 
+    private fun ensureFarmAnimalPen(runtime: FarmRuntime) {
+        val point = plans.fixturePoint(runtime, FarmPointKind.PEN) ?: return
+        val key = FarmCareEntityKey(runtime.settings.id, -1)
+        val active = entities[key].orEmpty().mapNotNull(Bukkit::getEntity).filter { entity ->
+            entity.isValid &&
+                entity.persistentDataContainer.get(zoneKey, PersistentDataType.STRING) == runtime.settings.id &&
+                entity.persistentDataContainer.get(sequenceKey, PersistentDataType.LONG) == runtime.state.sequence &&
+                entity.persistentDataContainer.get(targetKey, PersistentDataType.INTEGER) == -1 &&
+                entity.persistentDataContainer.get(roleKey, PersistentDataType.STRING) == FarmCareRole.PEN.name
+        }
+        if (active.size == 2) return
+        removeEntities(key, "replace_pen")
+        val world = Bukkit.getWorld(point.world) ?: return
+        if (!world.isChunkLoaded(point.x.toInt() shr 4, point.z.toInt() shr 4)) return
+        val location = Location(world, point.x, point.y, point.z)
+        if (!runtime.region.contains(location)) return
+        val visual = runtime.settings.careVisuals.getValue(FarmCareRole.PEN)
+        val stack = ItemStack(MaterialRules.material(visual.material)).also { item ->
+            if (visual.customModelData > 0) item.itemMeta = item.itemMeta.also { it.setCustomModelData(visual.customModelData) }
+        }
+        val display = world.spawn(location.clone().add(0.0, 0.55, 0.0), ItemDisplay::class.java) { entity ->
+            entity.setItemStack(stack)
+            entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
+            entity.viewRange = ru.ruscrafting.farms.paper.farm.FarmFieldPoiVisibility.fullField(runtime.settings.displayViewRange)
+            entity.isGlowing = true
+            entity.glowColorOverride = FarmCarePresentation.SUCCESS_COLOR
+            entity.isPersistent = false
+            mark(entity, runtime, -1, FarmCareRole.PEN)
+        }
+        val interaction = world.spawn(location, Interaction::class.java) { entity ->
+            entity.interactionWidth = 2.2f
+            entity.interactionHeight = 1.8f
+            entity.isResponsive = true
+            entity.isPersistent = false
+            mark(entity, runtime, -1, FarmCareRole.PEN)
+        }
+        entities[key] = mutableSetOf(display.uniqueId, interaction.uniqueId)
+        debug.event(
+            "farm_care_pen_spawned",
+            "zone" to runtime.settings.id,
+            "x" to location.x,
+            "y" to location.y,
+            "z" to location.z,
+        )
+    }
+
     fun updateAnimals(runtime: FarmRuntime) {
-        if (runtime.state.phase == FarmPhase.CARE && runtime.state.careType == FarmCareType.ANIMAL_RESCUE) {
+        if (runtime.state.phase != FarmPhase.CARE) return
+        if (runtime.state.careType == FarmCareType.DITCH_RESCUE) {
             ensureRescueRods(runtime)
+            return
+        }
+        if (runtime.state.careType != FarmCareType.ANIMAL_RESCUE) return
+        val pen = plans.fixturePoint(runtime, FarmPointKind.PEN) ?: return
+        val penLocation = Bukkit.getWorld(pen.world)?.let { Location(it, pen.x, pen.y, pen.z) } ?: return
+        runtime.state.careTargets.filter { it.role == FarmCareRole.ANIMAL && !it.complete }.forEach { target ->
+            val key = FarmCareEntityKey(runtime.settings.id, target.id)
+            val mob = entities[key].orEmpty().asSequence()
+                .mapNotNull(Bukkit::getEntity).filterIsInstance<Mob>().firstOrNull() ?: return@forEach
+            val actor = animalFollowers[key]?.let(Bukkit::getPlayer)?.takeIf { player ->
+                player.isOnline && runtime.region.contains(player.location)
+            }
+            if (actor != null && mob.world == penLocation.world &&
+                mob.location.distanceSquared(penLocation) <= runtime.settings.animalDeliveryRadius * runtime.settings.animalDeliveryRadius
+            ) {
+                releaseFollower(key, mob, "delivered")
+                presentation.feedback(actor, mob.location, FarmCareRole.ANIMAL, true)
+                transitions.apply(runtime, FarmShiftEngine.advanceCare(runtime.state, target.id, actor.uniqueId), actor)
+                return@forEach
+            }
+            if (!runtime.region.contains(mob.location)) {
+                mob.teleport(Location(mob.world, target.position.x, target.position.y, target.position.z))
+                releaseFollower(key, mob, "outside_zone")
+                return@forEach
+            }
+            if (actor == null) {
+                releaseFollower(key, mob, "actor_unavailable")
+            } else if (
+                mob.location.distanceSquared(actor.location) >
+                    runtime.settings.careAnimalFollowDistance * runtime.settings.careAnimalFollowDistance
+            ) {
+                if (!mob.isLeashed || runCatching { mob.leashHolder }.getOrNull() != actor) mob.setLeashHolder(actor)
+                mob.pathfinder.moveTo(actor, runtime.settings.careAnimalFollowSpeed)
+                pullFarmAnimalTowardHolder(
+                    mob = mob,
+                    holder = actor,
+                    followDistance = runtime.settings.careAnimalFollowDistance,
+                    followSpeed = runtime.settings.careAnimalFollowSpeed,
+                    impulseBase = runtime.settings.careAnimalFollowImpulseBase,
+                    impulsePerBlock = runtime.settings.careAnimalFollowImpulsePerBlock,
+                    impulseMax = runtime.settings.careAnimalFollowImpulseMax,
+                    smoothing = runtime.settings.careAnimalFollowImpulseSmoothing,
+                )
+            }
         }
     }
 
@@ -573,7 +689,7 @@ internal class FarmCareController(
         event.expToDrop = 0
         event.hook.remove()
         val runtime = runtimes().firstOrNull { it.settings.id == identity.zoneId } ?: return true
-        if (runtime.state.phase != FarmPhase.CARE || runtime.state.careType != FarmCareType.ANIMAL_RESCUE ||
+        if (runtime.state.phase != FarmPhase.CARE || runtime.state.careType != FarmCareType.DITCH_RESCUE ||
             runtime.state.sequence != identity.sequence || !access.hasAccess(event.player, runtime.settings.permission)
         ) return true
         val held = if (event.hand == org.bukkit.inventory.EquipmentSlot.OFF_HAND) {
@@ -603,7 +719,7 @@ internal class FarmCareController(
     fun isServiceItemActive(identity: ServiceItemIdentity): Boolean {
         if (identity.activity != ActivityKind.FARM || identity.itemId != RESCUE_ROD_ID) return false
         val runtime = runtimes().firstOrNull { it.settings.id == identity.zoneId } ?: return false
-        return runtime.state.phase == FarmPhase.CARE && runtime.state.careType == FarmCareType.ANIMAL_RESCUE &&
+        return runtime.state.phase == FarmPhase.CARE && runtime.state.careType == FarmCareType.DITCH_RESCUE &&
             runtime.state.sequence == identity.sequence && runtime.state.placementSequence == identity.objectiveNonce
     }
 
@@ -709,12 +825,19 @@ internal class FarmCareController(
 
     fun refreshPoint(runtime: FarmRuntime, kind: FarmPointKind, reason: String) {
         if (runtime.state.phase != FarmPhase.CARE) return
+        if (kind == FarmPointKind.PEN) {
+            if (runtime.state.careType == FarmCareType.ANIMAL_RESCUE) {
+                removeEntities(FarmCareEntityKey(runtime.settings.id, -1), reason)
+                ensureFarmAnimalPen(runtime)
+            }
+            return
+        }
         val type = when (kind) {
             FarmPointKind.HIVE -> FarmCareType.POLLINATION
             FarmPointKind.IRRIGATION -> FarmCareType.IRRIGATION
             FarmPointKind.COVERS -> FarmCareType.STORM_COVERS
             FarmPointKind.SCARECROWS -> FarmCareType.SCARECROWS
-            FarmPointKind.DITCH -> FarmCareType.ANIMAL_RESCUE
+            FarmPointKind.DITCH -> FarmCareType.DITCH_RESCUE
             else -> return
         }
         if (runtime.state.careType != type) return
@@ -736,11 +859,17 @@ internal class FarmCareController(
 
     private fun removeEntities(key: FarmCareEntityKey, reason: String) {
         val ids = entities.remove(key).orEmpty()
-        ids.forEach { id -> Bukkit.getEntity(id)?.remove() }
+        ids.forEach { id ->
+            val entity = Bukkit.getEntity(id)
+            if (entity is Mob) releaseFollower(key, entity, reason)
+            entity?.remove()
+        }
+        animalFollowers.remove(key)
         if (ids.isNotEmpty()) debug.event("farm_care_entities_removed", "zone" to key.zoneId, "target" to key.targetId, "reason" to reason)
     }
 
     fun clear(runtime: FarmRuntime, reason: String) {
+        if (runtime.state.careType == FarmCareType.DITCH_RESCUE) ditchWorld.restore(runtime)
         if (runtime.state.careType == FarmCareType.MOLES) moles.clear(runtime, reason)
         scarecrows.clear(runtime, reason)
         entities.keys.filter { it.zoneId == runtime.settings.id }.toList().forEach { removeEntities(it, reason) }
@@ -777,6 +906,15 @@ internal class FarmCareController(
         ObjectiveTargetRole("farm_care"),
         RESCUE_ROD_ID,
     )
+
+    private fun releaseFollower(key: FarmCareEntityKey, mob: Mob?, reason: String) {
+        val playerId = animalFollowers.remove(key)
+        mob?.pathfinder?.stopPathfinding()
+        if (mob?.isLeashed == true) runCatching { mob.setLeashHolder(null) }
+        if (playerId != null) {
+            debug.event("farm_care_animal_released", "zone" to key.zoneId, "target" to key.targetId, "reason" to reason)
+        }
+    }
 
     private companion object {
         const val RESCUE_ROD_ID = "ditch_rescue_rod"

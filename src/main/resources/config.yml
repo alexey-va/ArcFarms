@@ -276,7 +276,7 @@ farm-zones:
     backup-blocks-per-tick: 2048
     backup-max-blocks: 4000000
     care-radius: 10
-    care-types: [WEEDS, IRRIGATION, POLLINATION, APPLE_HARVEST, STORM_COVERS, SCARECROWS, ANIMAL_RESCUE, DISEASE, MOLES]
+    care-types: [WEEDS, IRRIGATION, POLLINATION, APPLE_HARVEST, STORM_COVERS, SCARECROWS, ANIMAL_RESCUE, DISEASE, MOLES, DITCH_RESCUE]
     # Physical care objects scale with active workers, but remain bounded.
     care-targets-per-player: 15
     care-targets-max: 45
@@ -743,7 +743,7 @@ farm-zones:
       miners_rations:
         rarity: COMMON
         crops: [WHEAT:640, CARROTS:320, POTATOES:320]
-        care-types: [MOLES, IRRIGATION, ANIMAL_RESCUE, WEEDS]
+        care-types: [MOLES, IRRIGATION, ANIMAL_RESCUE, DITCH_RESCUE, WEEDS]
         incident-types: [GIANT_CROP, PROCESSING, BARN_FIRE, FROST, BOAR_BREAKOUT, RIVAL_RAID, NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, DROUGHT, PESTS]
         customer: MINE_SUPPLIER
         cart-load: {material: POTATO, custom-model-data: 0}
@@ -757,7 +757,7 @@ farm-zones:
       market_crates:
         rarity: COMMON
         crops: [CARROTS:320, POTATOES:320, BEETROOTS:320, SWEET_BERRY_BUSH:50, MELON:48, PUMPKIN:48]
-        care-types: [WEEDS, APPLE_HARVEST, SCARECROWS, ANIMAL_RESCUE, STORM_COVERS]
+        care-types: [WEEDS, APPLE_HARVEST, SCARECROWS, ANIMAL_RESCUE, DITCH_RESCUE, STORM_COVERS]
         incident-types: [MARKET, PROCESSING, BARN_FIRE, FROST, BOAR_BREAKOUT, RIVAL_RAID, GIANT_CROP, NIGHT_SHIFT, BIRDS, FOOD_DELIVERY, PESTS, DROUGHT]
         customer: MARKET_TRADER
         cart-load: {material: CARROT, custom-model-data: 0}

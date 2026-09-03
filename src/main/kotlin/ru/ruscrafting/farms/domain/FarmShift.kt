@@ -144,6 +144,7 @@ enum class FarmCareType {
     ANIMAL_RESCUE,
     DISEASE,
     MOLES,
+    DITCH_RESCUE,
 }
 
 enum class FarmSeederStage {

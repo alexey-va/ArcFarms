@@ -178,17 +178,16 @@ internal class FarmCarePlanService(
                 explicit(FarmPointKind.SCARECROWS),
             )
             FarmCareType.ANIMAL_RESCUE -> {
-                val ditch = explicit(FarmPointKind.DITCH) ?: return null
-                val ditchLocation = runtime.region.world.takeIf { it.name == ditch.world }
-                    ?.let { Location(it, ditch.x, ditch.y, ditch.z) } ?: return null
-                val bedCandidates = placement.bedCandidates(runtime, listOf(ditchLocation), runtime.settings.careRadius)
+                val pen = fixturePoint(runtime, FarmPointKind.PEN, placementSequence) ?: return null
+                val sources = placement.sources(runtime, actor?.location)
+                val bedCandidates = placement.bedCandidates(runtime, sources, runtime.settings.placementSearchRadius)
                 val safePoints = FarmDeliveryPlanner.selectTargets(
                     bedCandidates,
-                    ditch.x,
-                    ditch.z,
-                    listOf(ditch.x to ditch.z),
-                    0.0,
-                    runtime.settings.careRadius.toDouble(),
+                    pen.x,
+                    pen.z,
+                    sources.map { it.x to it.z },
+                    runtime.settings.placementMinObjectiveDistance.toDouble(),
+                    runtime.settings.animalRescueMaxPlayerDistance.toDouble(),
                     runtime.settings.animalRescueTargetCount,
                     salt,
                     runtime.settings.animalRescueMinSpacing,
@@ -196,8 +195,8 @@ internal class FarmCarePlanService(
                 if (safePoints.isEmpty()) {
                     log(
                         Level.WARNING,
-                            "Could not plan farm animal rescue: zone=${runtime.settings.id} " +
-                            "sequence=${runtime.state.sequence} reason=no_ditch_spawn_candidates " +
+                        "Could not plan farm animal rescue: zone=${runtime.settings.id} " +
+                            "sequence=${runtime.state.sequence} reason=no_open_sky_beds " +
                             "indexed_beds=${registry.beds(runtime.settings.id).size} candidates=${bedCandidates.size} " +
                             "requested=${runtime.settings.animalRescueTargetCount}",
                     )
@@ -292,7 +291,88 @@ internal class FarmCarePlanService(
                     FarmCareTarget(index, FarmCareRole.APPLE, FarmPointPosition(leaf.world, leaf.x + 0.5, leaf.y + 0.5, leaf.z + 0.5))
                 }.takeIf { it.size >= minOf(3, runtime.settings.appleTargetCount) } ?: return null
             }
+            FarmCareType.DITCH_RESCUE -> {
+                val explicitDitch = explicit(FarmPointKind.DITCH)
+                val safePoints = if (explicitDitch != null) {
+                    existingDitchSpawnPoints(runtime, explicitDitch, salt)
+                } else {
+                    proceduralDitchSpawnPoints(runtime, farmBeds, salt)
+                }
+                    .take(runtime.settings.animalRescueTargetCount)
+                if (safePoints.isEmpty()) {
+                    log(
+                        Level.WARNING,
+                        "Could not plan farm ditch rescue: zone=${runtime.settings.id} " +
+                            "sequence=${runtime.state.sequence} reason=no_safe_ditch " +
+                            "explicit=${explicitDitch != null} indexed_beds=${farmBeds.size}",
+                    )
+                    return null
+                }
+                safePoints.mapIndexed { index, position -> FarmCareTarget(index, FarmCareRole.ANIMAL, position) }
+            }
         }.takeIf { it.isNotEmpty() }
+    }
+
+    private fun existingDitchSpawnPoints(
+        runtime: FarmRuntime,
+        ditch: FarmPointPosition,
+        selection: Long,
+    ): List<FarmPointPosition> {
+        val world = runtime.region.world.takeIf { it.name == ditch.world } ?: return emptyList()
+        val origin = Location(world, ditch.x, ditch.y, ditch.z)
+        val candidates = buildList {
+            for (x in origin.blockX - DITCH_HALF_WIDTH..origin.blockX + DITCH_HALF_WIDTH) {
+                for (z in origin.blockZ - DITCH_HALF_WIDTH..origin.blockZ + DITCH_HALF_WIDTH) {
+                    listOf(0, -1, 1).firstNotNullOfOrNull { yOffset ->
+                        val location = Location(world, x + 0.5, origin.blockY + yOffset.toDouble(), z + 0.5)
+                        location.takeIf { runtime.region.contains(it) && FarmSurfacePolicy.isSurfaceSpawn(it) }
+                    }?.let { location ->
+                        add(FarmPointPosition(world.name, location.x, location.y, location.z))
+                    }
+                }
+            }
+        }
+        if (candidates.isEmpty()) return emptyList()
+        return centerFirst(candidates, origin.blockX, origin.blockZ, selection)
+    }
+
+    private fun proceduralDitchSpawnPoints(
+        runtime: FarmRuntime,
+        beds: Collection<FarmPlotPosition>,
+        selection: Long,
+    ): List<FarmPointPosition> {
+        val indexed = beds.associateBy { Triple(it.x, it.y, it.z) }
+        val offsets = FarmDitchLayout.offsetsForSelection(selection)
+        val centers = beds.filter { center ->
+            offsets.all { offset ->
+                val plot = indexed[Triple(center.x + offset.x, center.y, center.z + offset.z)] ?: return@all false
+                val soil = plot.block() ?: return@all false
+                soil.type == Material.FARMLAND && FarmSurfacePolicy.isOutdoorBed(soil) && runtime.region.contains(soil.location)
+            }
+        }
+        if (centers.isEmpty()) return emptyList()
+        val center = centers[Math.floorMod(selection, centers.size.toLong()).toInt()]
+        return offsets.map { offset ->
+            FarmPointPosition(
+                center.world,
+                center.x + offset.x + 0.5,
+                center.y.toDouble(),
+                center.z + offset.z + 0.5,
+            )
+        }
+    }
+
+    private fun centerFirst(
+        candidates: List<FarmPointPosition>,
+        centerX: Int,
+        centerZ: Int,
+        selection: Long,
+    ): List<FarmPointPosition> {
+        val center = candidates.firstOrNull { it.x.toInt() == centerX && it.z.toInt() == centerZ }
+        val rest = candidates.filterNot { it == center }
+        if (rest.isEmpty()) return listOfNotNull(center)
+        val start = Math.floorMod(selection, rest.size.toLong()).toInt()
+        return listOfNotNull(center) + rest.indices.map { rest[(start + it) % rest.size] }
     }
 
     private fun hasRegionClearance(
@@ -385,6 +465,10 @@ internal class FarmCarePlanService(
                 }
             }
         }
+    }
+
+    private companion object {
+        const val DITCH_HALF_WIDTH = 1
     }
 
 }
