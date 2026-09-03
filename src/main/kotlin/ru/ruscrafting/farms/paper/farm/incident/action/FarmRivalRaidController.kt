@@ -43,7 +43,6 @@ import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmRaidDamageGate
 import ru.ruscrafting.farms.domain.FarmRaidFlight
-import ru.ruscrafting.farms.domain.FarmRaidBlastPlanner
 import ru.ruscrafting.farms.domain.FarmRaidBlastDamage
 import ru.ruscrafting.farms.domain.FarmRaidSeatPolicy
 import ru.ruscrafting.farms.domain.FarmRaidWeaponAim
@@ -791,12 +790,7 @@ internal class FarmRivalRaidController(
 
     private fun showBlastPreview(runtime: FarmRuntime, session: RaidSession, location: Location) {
         val config = runtime.settings.rivalRaid
-        val plots = FarmRaidBlastPlanner.select(
-            beds.discover(runtime) + session.fieldPlots,
-            FarmPointPosition(location.world.name, location.x, location.y, location.z),
-            config.grenadeRadius,
-            config.grenadePreviewBlocks,
-        )
+        val plots = workers.blastPlots(runtime, location, config.grenadeRadius, config.grenadePreviewBlocks)
         if (plots.isEmpty()) return
         val generation = ++session.previewGeneration
         plots.forEach { session.previewGenerations[it] = generation }

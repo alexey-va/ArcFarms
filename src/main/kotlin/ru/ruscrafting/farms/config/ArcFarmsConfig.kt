@@ -394,7 +394,7 @@ data class FarmBoarBreakoutSettings(
 }
 
 data class FarmRivalRaidSettings(
-    val requiredKills: Int = 32,
+    val requiredKills: Int = 64,
     val workerCount: Int = 120,
     val workerSpawnBatchSize: Int = 12,
     val workerPatrolBatchSize: Int = 32,
@@ -445,7 +445,7 @@ data class FarmRivalRaidSettings(
     val grenadePreviewBlocks: Int = 96,
     val grenadePreviewTicks: Int = 80,
     val grenadePreviewSoilMaterial: String = "COARSE_DIRT",
-    val grenadeDebrisBlocks: Int = 24,
+    val grenadeDebrisBlocks: Int = 48,
     val grenadeDebrisTicks: Int = 34,
 ) {
     init {
@@ -2192,7 +2192,7 @@ class ArcFarmsConfig private constructor(
                         ),
                     ),
                     rivalRaid = FarmRivalRaidSettings(
-                        requiredKills = section.int("special-incidents.rival-raid.required-kills", 32)
+                        requiredKills = section.int("special-incidents.rival-raid.required-kills", 64)
                             .checked("special-incidents.rival-raid.required-kills", 1, 128),
                         workerCount = section.int("special-incidents.rival-raid.worker-count", 120)
                             .checked("special-incidents.rival-raid.worker-count", 1, 192),
@@ -2347,7 +2347,7 @@ class ArcFarmsConfig private constructor(
                             section.string("special-incidents.rival-raid.grenade-preview-soil-material", "COARSE_DIRT"),
                         ),
                         grenadeDebrisBlocks = section.int(
-                            "special-incidents.rival-raid.grenade-debris-blocks", 24,
+                            "special-incidents.rival-raid.grenade-debris-blocks", 48,
                         ).checked("special-incidents.rival-raid.grenade-debris-blocks", 0, 64),
                         grenadeDebrisTicks = section.int(
                             "special-incidents.rival-raid.grenade-debris-ticks", 34,

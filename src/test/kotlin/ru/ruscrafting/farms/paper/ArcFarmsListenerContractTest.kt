@@ -9,7 +9,9 @@ import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.block.BlockSpreadEvent
 import org.bukkit.event.block.BlockGrowEvent
 import org.bukkit.event.entity.ProjectileHitEvent
+import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.EntityShootBowEvent
+import org.bukkit.event.player.PlayerFishEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerPortalEvent
 import org.bukkit.event.player.PlayerTeleportEvent
@@ -41,6 +43,16 @@ class ArcFarmsListenerContractTest : FunSpec({
 
     test("bird projectile collisions are resolved before vanilla damage protection") {
         handler("onProjectileHit", ProjectileHitEvent::class.java).priority shouldBe EventPriority.HIGHEST
+    }
+
+    test("ditch rescue hook collisions can reclaim a WorldGuard-cancelled service interaction") {
+        listOf(
+            handler("onEntityDamage", EntityDamageEvent::class.java),
+            handler("onFish", PlayerFishEvent::class.java),
+        ).forEach { handler ->
+            handler.priority shouldBe EventPriority.HIGHEST
+            handler.ignoreCancelled shouldBe false
+        }
     }
 
     test("fire equipment cancels both crossbow charge and projectile release") {

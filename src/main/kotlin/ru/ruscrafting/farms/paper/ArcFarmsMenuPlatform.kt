@@ -157,13 +157,28 @@ class ArcFarmsMenuPlatform(
             "perk-reward-boost",
         ).associateWith { TEXT_CONTRACT }
 
-        fun loadConfiguration(dataRoot: Path): PaperMenuConfiguration = PaperMenuConfigurationParser.require(
-            Config(dataRoot, "config.yml"),
-            "ui.menus.layouts",
-            "ui.menus.templates",
-            CONTRACTS,
-            requiredTemplates = setOf("perk-harvest-area", "perk-speed", "perk-sustenance", "perk-reward-boost"),
-            textContracts = TEXT_CONTRACTS,
-        )
+        fun loadConfiguration(dataRoot: Path): PaperMenuConfiguration {
+            val config = Config(dataRoot, "config.yml")
+            val loaded = PaperMenuConfigurationParser.require(
+                config,
+                "ui.menus.layouts",
+                "ui.menus.templates",
+                CONTRACTS,
+                requiredTemplates = setOf("perk-harvest-area", "perk-speed", "perk-sustenance", "perk-reward-boost"),
+                textContracts = TEXT_CONTRACTS,
+            )
+            if (config.booleanOrNull("ui.menu-background.enabled") != true) return loaded
+            val template = requireNotNull(loaded.templates["background"]) {
+                "Enabled ui.menu-background requires the ARC menu background template"
+            }
+            val customModelData = config.intOrNull("ui.menu-background.custom-model-data") ?: 0
+            return loaded.copy(
+                templates = loaded.templates + (
+                    "background" to template.copy(
+                        customModelData = customModelData,
+                    )
+                ),
+            )
+        }
     }
 }

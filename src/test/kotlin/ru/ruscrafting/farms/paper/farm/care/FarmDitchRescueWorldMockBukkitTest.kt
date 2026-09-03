@@ -31,18 +31,27 @@ class FarmDitchRescueWorldMockBukkitTest : FunSpec({
             val placementSequence = 12L
             val centerX = 8
             val centerZ = 8
-            val ditchCells = FarmDitchLayout.offsets(placementSequence)
-                .map { centerX + it.x to centerZ + it.z }
-                .toSet()
+            val layout = FarmDitchLayout.cells(placementSequence)
+            val ditchCells = layout.map { centerX + it.x to centerZ + it.z }.toSet()
             val expectedCrops = mutableMapOf<Pair<Int, Int>, String>()
+            val expectedTerrain = mutableMapOf<Triple<Int, Int, Int>, String>()
             for (x in 5..11) for (z in 5..11) {
                 world.getBlockAt(x, 64, z).type = Material.FARMLAND
+                world.getBlockAt(x, 63, z).type = Material.DIRT
+                world.getBlockAt(x, 62, z).type = Material.STONE
+                world.getBlockAt(x, 61, z).type = Material.DEEPSLATE
                 val crop = world.getBlockAt(x, 65, z)
                 crop.type = Material.WHEAT
                 val age = crop.blockData as Ageable
                 age.age = (x + z) % (age.maximumAge + 1)
                 crop.blockData = age
                 if (x to z in ditchCells) expectedCrops[x to z] = crop.blockData.asString
+            }
+            layout.forEach { cell ->
+                repeat(cell.depth) { depth ->
+                    val block = world.getBlockAt(centerX + cell.x, 64 - depth, centerZ + cell.z)
+                    expectedTerrain[Triple(block.x, block.y, block.z)] = block.blockData.asString
+                }
             }
             val settings = mockk<FarmZoneSettings> {
                 io.mockk.every { id } returns "communal_farm"
@@ -78,21 +87,27 @@ class FarmDitchRescueWorldMockBukkitTest : FunSpec({
             ditch.ensure(runtime)
             ditch.ensure(runtime)
 
-            (ditchCells.size in 9..12) shouldBe true
+            (ditchCells.size in 28..36) shouldBe true
             val boundingArea =
                 (ditchCells.maxOf { it.first } - ditchCells.minOf { it.first } + 1) *
                     (ditchCells.maxOf { it.second } - ditchCells.minOf { it.second } + 1)
             (boundingArea > ditchCells.size) shouldBe true
-            ditchCells.forEach { (x, z) ->
-                world.getBlockAt(x, 64, z).type shouldBe Material.AIR
+            layout.forEach { cell ->
+                repeat(cell.depth) { depth ->
+                    world.getBlockAt(centerX + cell.x, 64 - depth, centerZ + cell.z).type shouldBe Material.AIR
+                }
+                val x = centerX + cell.x
+                val z = centerZ + cell.z
                 world.getBlockAt(x, 65, z).type shouldBe Material.AIR
             }
             world.getBlockAt(5, 64, 5).type shouldBe Material.FARMLAND
 
             ditch.restore(runtime)
 
+            expectedTerrain.forEach { (position, data) ->
+                world.getBlockAt(position.first, position.second, position.third).blockData.asString shouldBe data
+            }
             ditchCells.forEach { (x, z) ->
-                world.getBlockAt(x, 64, z).type shouldBe Material.FARMLAND
                 world.getBlockAt(x, 65, z).blockData.asString shouldBe expectedCrops.getValue(x to z)
             }
         } finally {
@@ -102,23 +117,26 @@ class FarmDitchRescueWorldMockBukkitTest : FunSpec({
 
     test("every ditch template is connected and leaves a missing cell in its bounding box") {
         (0L..3L).forEach { selection ->
-            val offsets = FarmDitchLayout.offsetsForSelection(selection).toSet()
-            val visited = mutableSetOf(FarmDitchLayout.Offset(0, 0))
+            val cells = FarmDitchLayout.cellsForSelection(selection)
+            val offsets = cells.map { it.x to it.z }.toSet()
+            val visited = mutableSetOf(0 to 0)
             val queue = ArrayDeque(visited)
             while (queue.isNotEmpty()) {
                 val current = queue.removeFirst()
                 listOf(
-                    FarmDitchLayout.Offset(current.x - 1, current.z),
-                    FarmDitchLayout.Offset(current.x + 1, current.z),
-                    FarmDitchLayout.Offset(current.x, current.z - 1),
-                    FarmDitchLayout.Offset(current.x, current.z + 1),
+                    current.first - 1 to current.second,
+                    current.first + 1 to current.second,
+                    current.first to current.second - 1,
+                    current.first to current.second + 1,
                 ).filter { it in offsets && visited.add(it) }.forEach(queue::addLast)
             }
             visited.shouldContainExactlyInAnyOrder(offsets)
             val boundingArea =
-                (offsets.maxOf { it.x } - offsets.minOf { it.x } + 1) *
-                    (offsets.maxOf { it.z } - offsets.minOf { it.z } + 1)
+                (offsets.maxOf { it.first } - offsets.minOf { it.first } + 1) *
+                    (offsets.maxOf { it.second } - offsets.minOf { it.second } + 1)
             (boundingArea > offsets.size) shouldBe true
+            cells.maxOf { it.depth } shouldBe 4
+            (cells.sumOf { it.depth } >= 78) shouldBe true
         }
     }
 })

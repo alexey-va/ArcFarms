@@ -182,16 +182,16 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         handler.contains("dryPlots(runtime)") shouldBe false
     }
 
-    test("ditch rescue prefers an explicit point and otherwise owns an uneven indexed-bed footprint") {
+    test("ditch rescue owns a procedural deep uneven indexed-bed footprint") {
         val planner = Files.readString(farmRoot.resolve("care/FarmCarePlanService.kt"))
         val world = Files.readString(farmRoot.resolve("care/FarmDitchRescueWorld.kt"))
 
-        planner.contains("explicit(FarmPointKind.DITCH)") shouldBe true
+        planner.contains("explicit(FarmPointKind.DITCH)") shouldBe false
         planner.contains("proceduralDitchSpawnPoints(runtime, farmBeds, salt)") shouldBe true
-        planner.contains("FarmDitchLayout.offsetsForSelection(selection)") shouldBe true
+        planner.contains("FarmDitchLayout.cellsForSelection(selection)") shouldBe true
         planner.contains("soil.type == Material.FARMLAND") shouldBe true
-        world.contains("ledger.captureActiveCrops(pending, runtime.settings.id)") shouldBe true
-        world.contains("ledger.restoreActiveCrop(soil, record)") shouldBe true
+        world.contains("ledger.captureAll(carved, runtime.settings.id)") shouldBe true
+        world.contains("ledger.removeTransient(block)") shouldBe true
     }
 
     test("gameplay owners cannot block the server thread on the state store") {

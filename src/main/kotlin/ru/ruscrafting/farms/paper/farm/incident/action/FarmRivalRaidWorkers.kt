@@ -17,6 +17,7 @@ import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmPointPosition
+import ru.ruscrafting.farms.domain.FarmRaidBlastPlanner
 import ru.ruscrafting.farms.domain.FarmRivalFieldPolicy
 import ru.ruscrafting.farms.domain.FarmRivalPatrolPlanner
 import ru.ruscrafting.farms.domain.MAX_FARM_SPECIAL_PLOTS
@@ -190,6 +191,30 @@ internal class FarmRivalRaidWorkers(
             }
         }
         return FarmRivalFieldPolicy.distribute(eligible, MAX_FARM_SPECIAL_PLOTS, runtime.state.placementSequence)
+    }
+
+    /** Discovers the actual local crop patch at impact time instead of relying on the sparse worker sample. */
+    fun blastPlots(runtime: FarmRuntime, center: Location, radius: Double, limit: Int): List<FarmPlotPosition> {
+        val radiusBlocks = ceil(radius).toInt()
+        val radiusSquared = radius * radius
+        val candidates = buildList {
+            for (x in center.blockX - radiusBlocks..center.blockX + radiusBlocks) {
+                for (z in center.blockZ - radiusBlocks..center.blockZ + radiusBlocks) {
+                    val dx = x + 0.5 - center.x
+                    val dz = z + 0.5 - center.z
+                    if (dx * dx + dz * dz > radiusSquared || !center.world.isChunkLoaded(x shr 4, z shr 4)) continue
+                    val highestY = center.world.getHighestBlockYAt(x, z, HeightMap.MOTION_BLOCKING)
+                    val plot = FarmPlotPosition(center.world.name, x, highestY, z)
+                    if (eligiblePlot(runtime, center.world, plot)) add(plot)
+                }
+            }
+        }
+        return FarmRaidBlastPlanner.select(
+            candidates,
+            FarmPointPosition(center.world.name, center.x, center.y, center.z),
+            radius,
+            limit,
+        )
     }
 
     fun ids(zoneId: String): Set<UUID> = swarms[zoneId]?.workerIds.orEmpty()

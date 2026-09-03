@@ -133,7 +133,7 @@ ui:
           offers: {slots: [10, 12, 14, 16]}
     templates:
       # ARC Core validates these safe localized component slots before publishing a menu generation.
-      background: {material: GRAY_STAINED_GLASS_PANE, hide-tooltip: true, name: '<name>',
+      background: {material: GRAY_STAINED_GLASS_PANE, custom-model-data: 0, hide-tooltip: true, name: '<name>',
         lore: [{repeat: lore, text: '<line>'}]}
       back: {material: ARROW, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}
       farm: {material: WHEAT, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}
@@ -458,7 +458,7 @@ farm-zones:
         shield-knockback-horizontal: 0.9
         shield-knockback-vertical: 0.32
       rival-raid:
-        required-kills: 32
+        required-kills: 64
         worker-count: 120
         worker-spawn-batch-size: 12
         worker-patrol-batch-size: 32
@@ -513,7 +513,7 @@ farm-zones:
         grenade-preview-blocks: 96
         grenade-preview-ticks: 80
         grenade-preview-soil-material: COARSE_DIRT
-        grenade-debris-blocks: 24
+        grenade-debris-blocks: 48
         grenade-debris-ticks: 34
       night-shift:
         placement-count: 90

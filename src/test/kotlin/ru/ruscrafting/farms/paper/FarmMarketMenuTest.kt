@@ -29,6 +29,9 @@ class FarmMarketMenuTest : FunSpec({
             val configFile = plugin.dataFolder.toPath().resolve("config.yml").toFile()
             val yaml = YamlConfiguration.loadConfiguration(configFile)
             yaml.set("ui.menus.layouts.market.elements.accept.slot", 12)
+            yaml.set("ui.menu-background.enabled", true)
+            yaml.set("ui.menu-background.custom-model-data", 11_000)
+            yaml.set("ui.menus.templates.background.custom-model-data", 0)
             yaml.save(configFile)
             val settings = ArcFarmsConfig.inspect(plugin.dataFolder.toPath())
             val locale = ArcFarmsLocale(plugin.dataFolder.toPath()) { settings }
@@ -40,6 +43,8 @@ class FarmMarketMenuTest : FunSpec({
 
             player.openInventory.topInventory.getItem(12)?.type shouldBe Material.EMERALD
             player.openInventory.topInventory.getItem(11)?.type shouldBe Material.GRAY_STAINED_GLASS_PANE
+            @Suppress("DEPRECATION")
+            player.openInventory.topInventory.getItem(11)?.itemMeta?.customModelData shouldBe 11_000
             val event = InventoryClickEvent(
                 player.openInventory,
                 InventoryType.SlotType.CONTAINER,

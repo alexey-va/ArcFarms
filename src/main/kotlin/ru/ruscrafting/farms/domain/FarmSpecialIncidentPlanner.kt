@@ -226,7 +226,14 @@ object FarmSpecialIncidentPlanner {
                 sequence + path.size * 131L,
                 current.x.toLong() * 73_856_093L xor current.z.toLong() * 19_349_663L,
             )
-            val neighbours = rotate(CARDINAL_DIRECTIONS, directionSalt).mapNotNull { (dx, dz) ->
+            val previousDirection = path.takeIf { it.size >= 2 }?.let {
+                val previous = it[it.lastIndex - 1]
+                current.x - previous.x to current.z - previous.z
+            }
+            val directions = rotate(CARDINAL_DIRECTIONS, directionSalt).let { shuffled ->
+                if (previousDirection == null) shuffled else listOf(previousDirection) + shuffled.filter { it != previousDirection }
+            }
+            val neighbours = directions.mapNotNull { (dx, dz) ->
                 horizontal[current.x + dx to current.z + dz]
                     .orEmpty()
                     .asSequence()

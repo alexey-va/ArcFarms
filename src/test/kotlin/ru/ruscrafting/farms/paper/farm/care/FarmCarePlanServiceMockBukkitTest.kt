@@ -99,7 +99,7 @@ class FarmCarePlanServiceMockBukkitTest : FunSpec({
 
             val ditchCenterX = 8
             val ditchCenterZ = 8
-            val proceduralBeds = FarmDitchLayout.offsets(runtime.state.nextPlacementSequence()).mapTo(mutableSetOf()) { offset ->
+            val proceduralBeds = FarmDitchLayout.cells(runtime.state.nextPlacementSequence()).mapTo(mutableSetOf()) { offset ->
                 val x = ditchCenterX + offset.x
                 val z = ditchCenterZ + offset.z
                     world.getBlockAt(x, 64, z).type = Material.FARMLAND
@@ -110,19 +110,19 @@ class FarmCarePlanServiceMockBukkitTest : FunSpec({
             procedural.size shouldBe 2
             procedural.first().position shouldBe FarmPointPosition(world.name, 8.5, 64.0, 8.5)
 
-            for (x in 11..13) for (z in 11..13) world.getBlockAt(x, 64, z).type = Material.STONE
+            for (x in 13..15) for (z in 13..15) world.getBlockAt(x, 64, z).type = Material.STONE
 
             overrides = FarmLocationOverrides(
                 zones = mapOf(
                     runtime.settings.id to mapOf(
-                        FarmPointKind.DITCH to FarmPointPosition(world.name, 12.5, 65.0, 12.5),
+                        FarmPointKind.DITCH to FarmPointPosition(world.name, 14.5, 65.0, 14.5),
                     ),
                 ),
             )
             val targets = requireNotNull(service.targets(runtime, FarmCareType.DITCH_RESCUE, null))
             targets.size shouldBe 2
             targets.all { it.role == FarmCareRole.ANIMAL } shouldBe true
-            targets.all { it.position.x in 11.5..13.5 && it.position.z in 11.5..13.5 } shouldBe true
+            targets.none { it.position.x in 13.5..15.5 && it.position.z in 13.5..15.5 } shouldBe true
         } finally {
             paper.close()
         }

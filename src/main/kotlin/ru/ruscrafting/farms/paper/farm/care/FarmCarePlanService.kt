@@ -292,19 +292,14 @@ internal class FarmCarePlanService(
                 }.takeIf { it.size >= minOf(3, runtime.settings.appleTargetCount) } ?: return null
             }
             FarmCareType.DITCH_RESCUE -> {
-                val explicitDitch = explicit(FarmPointKind.DITCH)
-                val safePoints = if (explicitDitch != null) {
-                    existingDitchSpawnPoints(runtime, explicitDitch, salt)
-                } else {
-                    proceduralDitchSpawnPoints(runtime, farmBeds, salt)
-                }
+                val safePoints = proceduralDitchSpawnPoints(runtime, farmBeds, salt)
                     .take(runtime.settings.animalRescueTargetCount)
                 if (safePoints.isEmpty()) {
                     log(
                         Level.WARNING,
                         "Could not plan farm ditch rescue: zone=${runtime.settings.id} " +
                             "sequence=${runtime.state.sequence} reason=no_safe_ditch " +
-                            "explicit=${explicitDitch != null} indexed_beds=${farmBeds.size}",
+                            "indexed_beds=${farmBeds.size}",
                     )
                     return null
                 }
@@ -342,7 +337,7 @@ internal class FarmCarePlanService(
         selection: Long,
     ): List<FarmPointPosition> {
         val indexed = beds.associateBy { Triple(it.x, it.y, it.z) }
-        val offsets = FarmDitchLayout.offsetsForSelection(selection)
+        val offsets = FarmDitchLayout.cellsForSelection(selection)
         val centers = beds.filter { center ->
             offsets.all { offset ->
                 val plot = indexed[Triple(center.x + offset.x, center.y, center.z + offset.z)] ?: return@all false

@@ -170,9 +170,7 @@ class FarmSpecialIncidentEngineTest : FunSpec({
         } shouldBe true
         routes.distinct().size shouldBe 8
         routes.map { it.first() }.distinct().size shouldBe 8
-        routes.zipWithNext().all { (left, right) ->
-            left.toSet().intersect(right.toSet()).size <= 11
-        } shouldBe true
+        routes.zipWithNext().all { (left, right) -> left != right } shouldBe true
     }
 
     test("channel route may descend but never climbs back uphill") {
@@ -215,6 +213,22 @@ class FarmSpecialIncidentEngineTest : FunSpec({
                     kotlin.math.abs(left.x - right.x) + kotlin.math.abs(left.z - right.z) > 1
                 }
             }
+        } shouldBe true
+    }
+
+    test("channel route prefers long straight runs instead of turning at nearly every bed") {
+        val plots = (0..24).flatMap { x ->
+            (0..24).map { z -> FarmPlotPosition("world", x, 64, z) }
+        }
+
+        val routes = (1L..16L).map { sequence ->
+            FarmSpecialIncidentPlanner.planChannelRoute(plots, requestedSegments = 50, sequence)
+        }
+
+        routes.all { it.size == 50 } shouldBe true
+        routes.all { route ->
+            route.zipWithNext().map { (from, to) -> to.x - from.x to to.z - from.z }
+                .zipWithNext().count { (before, after) -> before != after } <= 6
         } shouldBe true
     }
 
