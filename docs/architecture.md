@@ -314,8 +314,8 @@ are untrusted at their ingress.
 
 ## Agentic-first repository rules
 
-An agent should locate a feature with one search and open fewer than five files
-before editing it.
+Inspect the feature owner, its callers and the focused tests before editing; widen
+the inspection when the behavior crosses component or persistence boundaries.
 
 1. Package and class names use the player-facing concept (`drought`, `delivery`,
    `orchard`, `mine`), not generic `Manager2`, `Utils`, or numbered phases.

@@ -1,7 +1,5 @@
 # Worksite Kernel V2 Implementation Plan
 
-> **For Codex:** Use `superpowers:executing-plans` to implement this plan task-by-task in the current worktree. Do not delegate this execution; steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Build the activity-neutral lifecycle, typed events, objective pools, guidance, service-item safety and event routing used by farm, lumbermill and mine.
 
 **Architecture:** Pure Kotlin domain types own objective state and transitions. Focused Paper owners render guidance and enforce inventory/player lifecycle boundaries. `WorksiteModuleRegistry` contains all modules and routes only typed capabilities; the existing farm keeps its behavior while adopting the common contracts.

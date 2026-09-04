@@ -1,6 +1,6 @@
 # Worksite V2 Configuration, QA and Rollout Implementation Plan
 
-> **For Codex:** Execute this plan only after the kernel, lumbermill and mine V2 plans are green. Use the `superpowers:executing-plans` skill, follow every verification gate, and do not call production healthy until active-JAR hashes and runtime smoke both agree.
+> Execute this plan only after the kernel, lumbermill and mine V2 plans are green. Follow every verification gate, and do not call production healthy until active-JAR hashes and runtime smoke both agree.
 
 **Goal:** Ship Worksite V2 as a reversible ArcFarms 0.28.0 release on both `classic` and `classic_survival`, with tracked configuration, automated player-bot acceptance, Spark evidence, exact artifact identity and verified production activation.
 

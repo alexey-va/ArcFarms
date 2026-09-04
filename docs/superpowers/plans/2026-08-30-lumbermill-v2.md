@@ -1,7 +1,5 @@
 # Lumbermill V2 Implementation Plan
 
-> **For Codex:** Use `superpowers:executing-plans` to implement this plan task-by-task in the current worktree. Do not delegate this execution; steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Replace the legacy two-stage lumber controller with the full indexed, recoverable, guided lumber shift and all eight specified incidents.
 
 **Architecture:** `LumbermillComponentGraph` wires focused vertical owners into `LumbermillModule`. Pure domain state controls phases, schedules and incident resume behavior. Paper owners use the common objective, guidance, service-item and participant-safety kernel.

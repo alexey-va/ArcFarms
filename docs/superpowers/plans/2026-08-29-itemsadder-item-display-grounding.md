@@ -1,7 +1,5 @@
 # ItemsAdder ItemDisplay Grounding Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to execute this plan task by task.
-
 **Goal:** Create and verify an automatically discoverable Codex skill that resolves an ItemsAdder item model, reproduces Minecraft's item/display transforms, computes the exact entity Y needed for ground contact, and proves the result on the ArcFarms cart in the QA world.
 
 **Architecture:** A user-owned skill contains a deterministic Python analyzer and a renderer. The analyzer is the sole owner of model resolution, transform math, contact classification, and machine-readable output; the renderer consumes that output. ArcFarms adds a repository gate requiring the report before custom `ItemDisplay` placement. The live smoke test uses a tagged `ItemDisplay` in `arc_qa_flat`, not ItemsAdder furniture placement.

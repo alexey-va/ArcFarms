@@ -1,6 +1,6 @@
 # ArcFarms action incidents implementation plan
 
-> **For Codex:** Execute this plan inline with `superpowers:executing-plans`; preserve unrelated work and keep source, resource-pack publication, JAR activation and live smoke as separate gates.
+> Preserve unrelated work and keep source, resource-pack publication, JAR activation and live smoke as separate gates.
 
 **Goal:** Add boar shield knockback, a smooth four-seat rival raid with outdoor patrolling husks, upgraded RPL-20/M79 weapons, and channel water that persists for the whole incident.
 
@@ -124,4 +124,3 @@
 4. Deploy the exact newly built ArcFarms shadow JAR to `classic` with an explicit goal and restart that backend.
 5. Verify readiness, plugin version, active config values, no new ArcFarms ERROR stack traces, ItemsAdder pack readiness and a bounded event-level smoke.
 6. Report source push, pack publication, JAR activation and player-visible smoke as separate outcomes.
-
