@@ -458,7 +458,7 @@ farm-zones:
         shield-knockback-horizontal: 0.9
         shield-knockback-vertical: 0.32
       rival-raid:
-        required-kills: 128
+        required-kills: 256
         worker-count: 120
         worker-spawn-batch-size: 12
         worker-patrol-batch-size: 32

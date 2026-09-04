@@ -350,6 +350,43 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             controller.participantRuntime(cancelled) shouldBe runtime
         } }
     }
+
+    test("raid resolution immediately restores an active grenade blast preview") {
+        requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
+            val beds = plantedField(fixture, 31..53, 31..53)
+            val runtime = fixture.runtime(actionState(FarmIncidentType.RIVAL_RAID, 84))
+            val receiving = FarmPointPosition(fixture.world.name, 10.5, 65.0, 10.5)
+            val rival = FarmPointPosition(fixture.world.name, 42.5, 65.0, 42.5)
+            val controller = fixture.actions(runtime, beds, receiving, rival)
+            val gunner = fixture.paper.addPlayer("FinalBlastGunner")
+
+            controller.initialize(runtime, FarmIncidentType.RIVAL_RAID) shouldBe FarmIncidentType.RIVAL_RAID
+            controller.ensure(runtime)
+            val ghast = fixture.world.entities.filterIsInstance<Ghast>().single(controller::owns)
+            controller.interact(PlayerInteractEntityEvent(gunner, ghast, EquipmentSlot.HAND)) shouldBe true
+            controller.updateRaidMotion(runtime)
+            ghast.teleport(fixture.location(rival.copy(y = rival.y + fixture.zone.rivalRaid.flightHeight)))
+            controller.update(runtime)
+            val worker = fixture.world.entities.filterIsInstance<Mob>().first { it !is Ghast && controller.owns(it) }
+
+            val grenade = gunner.inventory.storageContents.filterNotNull().single {
+                @Suppress("DEPRECATION")
+                it.type == Material.PAPER && it.itemMeta.customModelData == fixture.zone.rivalRaid.grenadeCustomModelData
+            }
+            gunner.inventory.setItemInMainHand(grenade)
+            controller.interact(PlayerInteractEntityEvent(gunner, worker, EquipmentSlot.HAND)) shouldBe true
+            val projectile = fixture.world.entities.filterIsInstance<Snowball>().single()
+            val impact = worker.location.clone()
+            val blastSoil = impact.block.getRelative(BlockFace.DOWN)
+            projectile.teleport(impact)
+
+            controller.onProjectileHit(ProjectileHitEvent(projectile, worker)) shouldBe true
+
+            fixture.raidBlockPreviews.batches.last().changes.getValue(blastSoil.location).material shouldBe Material.AIR
+            controller.clear(runtime, "incident_resolved")
+            fixture.raidBlockPreviews.batches.last().changes.getValue(blastSoil.location).material shouldBe Material.FARMLAND
+        } }
+    }
 })
 
 private fun plain(component: net.kyori.adventure.text.Component): String =

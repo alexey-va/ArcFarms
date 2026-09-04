@@ -394,7 +394,7 @@ data class FarmBoarBreakoutSettings(
 }
 
 data class FarmRivalRaidSettings(
-    val requiredKills: Int = 128,
+    val requiredKills: Int = 256,
     val workerCount: Int = 120,
     val workerSpawnBatchSize: Int = 12,
     val workerPatrolBatchSize: Int = 32,
@@ -451,7 +451,7 @@ data class FarmRivalRaidSettings(
     val grenadeDebrisTicks: Int = 34,
 ) {
     init {
-        require(requiredKills in 1..128) { "rival raid kill quota must be in 1..128" }
+        require(requiredKills in 1..256) { "rival raid kill quota must be in 1..256" }
         require(workerCount in 1..192) { "rival raid worker count must be in 1..192" }
         require(workerSpawnBatchSize in 1..32) { "rival worker spawn batch size must be in 1..32" }
         require(workerPatrolBatchSize in 1..32) { "rival worker patrol batch size must be in 1..32" }
@@ -2196,8 +2196,8 @@ class ArcFarmsConfig private constructor(
                         ),
                     ),
                     rivalRaid = FarmRivalRaidSettings(
-                        requiredKills = section.int("special-incidents.rival-raid.required-kills", 128)
-                            .checked("special-incidents.rival-raid.required-kills", 1, 128),
+                        requiredKills = section.int("special-incidents.rival-raid.required-kills", 256)
+                            .checked("special-incidents.rival-raid.required-kills", 1, 256),
                         workerCount = section.int("special-incidents.rival-raid.worker-count", 120)
                             .checked("special-incidents.rival-raid.worker-count", 1, 192),
                         workerSpawnBatchSize = section.int(

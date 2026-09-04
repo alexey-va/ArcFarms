@@ -762,6 +762,9 @@ internal class FarmRivalRaidController(
             location.world.spawnParticle(Particle.LARGE_SMOKE, location, 18, 1.4, 0.8, 1.4, 0.04)
         }
         if (settings().sounds) location.world.playSound(location, Sound.ENTITY_GENERIC_EXPLODE, 1.2f, 0.9f)
+        // Register the client-only crater before damage: a lethal hit can resolve the raid
+        // synchronously, and incident cleanup must see and restore this preview.
+        showBlastPreview(runtime, session, location)
         val radiusSquared = config.grenadeRadius * config.grenadeRadius
         workers.ids(runtime.settings.id).forEach { workerId ->
             val worker = Bukkit.getEntity(workerId) as? Mob ?: return@forEach
@@ -770,7 +773,6 @@ internal class FarmRivalRaidController(
             val damage = FarmRaidBlastDamage.lethal(config.grenadeDamage, worker.health, worker.absorptionAmount)
             damageGate.authorize(shooter.uniqueId, worker.uniqueId) { worker.damage(damage, shooter) }
         }
-        showBlastPreview(runtime, session, location)
     }
 
     private fun showBlastPreview(runtime: FarmRuntime, session: RaidSession, location: Location) {
