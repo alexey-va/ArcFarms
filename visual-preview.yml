@@ -53,6 +53,12 @@ sources:
       - scoreboard.hint-detail.channels
       - farm.boar-breakout.*
       - farm.rival-raid.*
+      - farm.customer-hologram
+      - farm.customer-explanation
+      - customer.*
+      - customer-request.*
+      - order.farm.*
+      - crop.*
 
 placeholders:
   color: ''
@@ -97,8 +103,13 @@ placeholders:
   shares: '5'
   limit: '20'
   count: '1'
+  customer: '<color:#ffc857>Пекарь</color>'
   seconds: '3'
   done: '4'
+  order: '<gold>Запасы пекарни</gold>'
+  reason: 'Пекарне нужны свежие запасы к открытию.'
+  requirements: 'Пшеница × 24, Морковь × 12'
+  remaining: 'Пшеница × 9, Морковь × 4'
   total: '10'
 
 surfaces:
@@ -110,6 +121,12 @@ surfaces:
   chat:
     - source: gameplay
       include: ['*']
+  world:
+    - id: farm-customer-order
+      text: gameplay:farm.customer-hologram
+      placeholders:
+        customer: '<color:#ffc857>Пекарь</color>'
+        order: '<gold>Запасы пекарни</gold>'
   hud:
     - id: irrigation-channel
       title: gameplay:farm.channels-started

@@ -48,6 +48,8 @@ internal val FARM_OUTDOOR_CARE_ROLES = setOf(
     FarmCareRole.DISEASED_CROP,
 )
 
+private const val DITCH_MAX_SURFACE_STEP = 2
+
 /** Planner for care activities. It never mutates runtime or Bukkit state. */
 internal class FarmCarePlanService(
     private val debug: ArcFarmsDebug,
@@ -297,7 +299,7 @@ internal class FarmCarePlanService(
                 }.takeIf { it.size >= minOf(3, runtime.settings.appleTargetCount) } ?: return null
             }
             FarmCareType.DITCH_RESCUE -> {
-                val safePoints = proceduralDitchSpawnPoints(runtime, farmBeds, salt)
+                val safePoints = proceduralDitchSpawnPoints(runtime, farmBeds, placementSequence, salt)
                     .take(runtime.settings.animalRescueTargetCount)
                 if (safePoints.isEmpty()) {
                     log(
@@ -339,25 +341,48 @@ internal class FarmCarePlanService(
     private fun proceduralDitchSpawnPoints(
         runtime: FarmRuntime,
         beds: Collection<FarmPlotPosition>,
+        placementSequence: Long,
         selection: Long,
     ): List<FarmPointPosition> {
-        val indexed = beds.associateBy { Triple(it.x, it.y, it.z) }
-        val offsets = FarmDitchLayout.cellsForSelection(selection)
-        val centers = beds.filter { center ->
-            offsets.all { offset ->
-                val plot = indexed[Triple(center.x + offset.x, center.y, center.z + offset.z)] ?: return@all false
-                val soil = plot.block() ?: return@all false
-                soil.type == Material.FARMLAND && FarmSurfacePolicy.isOutdoorBed(soil) && runtime.region.contains(soil.location)
+        val indexed = beds.groupBy { Triple(it.world, it.x, it.z) }
+        val offsets = FarmDitchLayout.cells(placementSequence)
+        val candidates = beds.mapNotNull { center ->
+            val footprint = offsets.map { offset ->
+                indexed[Triple(center.world, center.x + offset.x, center.z + offset.z)]
+                    .orEmpty()
+                    .asSequence()
+                    .filter { kotlin.math.abs(it.y - center.y) <= DITCH_MAX_SURFACE_STEP }
+                    .sortedBy { kotlin.math.abs(it.y - center.y) }
+                    .firstOrNull { plot ->
+                        val soil = plot.block() ?: return@firstOrNull false
+                        soil.type == Material.FARMLAND && FarmSurfacePolicy.isOutdoorBed(soil) &&
+                            runtime.region.contains(soil.location)
+                    }
             }
+            footprint.takeIf { plots -> plots.all { it != null } }
+                ?.filterNotNull()
+                ?.takeIf { plots ->
+                    val ys = plots.map(FarmPlotPosition::y)
+                    (ys.maxOrNull() ?: center.y) - (ys.minOrNull() ?: center.y) <= DITCH_MAX_SURFACE_STEP
+                }
         }
-        if (centers.isEmpty()) return emptyList()
-        val center = centers[Math.floorMod(selection, centers.size.toLong()).toInt()]
-        return offsets.map { offset ->
+        debug.event(
+            "farm_care_ditch_candidates",
+            "zone" to runtime.settings.id,
+            "sequence" to runtime.state.sequence,
+            "placement_sequence" to placementSequence,
+            "beds" to beds.size,
+            "candidates" to candidates.size,
+            "surface_step" to DITCH_MAX_SURFACE_STEP,
+        )
+        if (candidates.isEmpty()) return emptyList()
+        val footprint = candidates[Math.floorMod(selection, candidates.size.toLong()).toInt()]
+        return footprint.map { plot ->
             FarmPointPosition(
-                center.world,
-                center.x + offset.x + 0.5,
-                center.y.toDouble(),
-                center.z + offset.z + 0.5,
+                plot.world,
+                plot.x + 0.5,
+                plot.y.toDouble(),
+                plot.z + 0.5,
             )
         }
     }

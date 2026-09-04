@@ -554,6 +554,8 @@ farm:
   harvest-milestone: '<color:#ffc857><percent>% of the order harvested</color>'
   cart-progress: '<order> <color:#707a76>•</color> <color:#f2fff7>delivered <done>/<total></color>'
   customer-reminder: '<customer> <color:#707a76>•</color> <color:#f2fff7>is waiting for</color> <order>'
+  customer-hologram: '<customer><newline><order><newline><color:#b8c8c0>Right-click — view order</color>'
+  customer-explanation: '<prefix> <customer><gray>:</gray> <color:#f2fff7><reason></color><newline><color:#707a76>Order:</color> <order><newline><color:#707a76>Needed:</color> <color:#f2fff7><requirements></color><newline><color:#707a76>Remaining:</color> <color:#ffc857><remaining></color>'
   pests-required: '<color:#ffad42>Break the nests and defeat every remaining pest.</color>'
   pest-name: '<color:#ff5f6d>Pest</color>'
   pest-nest-name: '<color:#ff7a45>Pest nest</color>'
@@ -1067,6 +1069,15 @@ customer:
     name: '<color:#8bd3ff>Mine Supplier</color>'
   market_trader:
     name: '<color:#c69cff>Market Trader</color>'
+customer-request:
+  miners_rations: 'I am gathering provisions for the miners and their caravan.'
+  bakery_supply: 'The bakery needs fresh supplies before opening.'
+  market_crates: 'I am preparing goods for the market opening.'
+  harvest_festival: 'I am collecting food for the harvest festival.'
+  deep_mine_relief: 'The caravan will take these supplies to the deep mine.'
+  master_baker_request: 'The master baker is preparing a large batch of pastries.'
+  lab_order: 'I am testing a new crop batch for the laboratory.'
+  lab_berry_order: 'The laboratory needs fresh berries for its experiments.'
 reward:
   bundle:
     field_lunch: 'Field lunch'

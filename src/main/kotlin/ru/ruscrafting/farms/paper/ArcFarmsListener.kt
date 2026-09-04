@@ -132,11 +132,6 @@ class ArcFarmsListener(
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onEntityDamage(event: EntityDamageEvent) = service.onEntityDamage(event)
 
-    @EventHandler(priority = EventPriority.MONITOR)
-    fun onRescueHookDamageMonitor(event: EntityDamageByEntityEvent) {
-        service.onRescueHookDamageMonitor(event)
-    }
-
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onEntityTarget(event: EntityTargetLivingEntityEvent) = service.onEntityTarget(event)
 

@@ -554,6 +554,8 @@ farm:
   harvest-milestone: '<color:#ffc857>Собрано <percent>% урожая по заказу</color>'
   cart-progress: '<order> <color:#707a76>•</color> <color:#f2fff7>доставлено <done>/<total></color>'
   customer-reminder: '<customer> <color:#707a76>•</color> <color:#f2fff7>ждёт заказ</color> <order>'
+  customer-hologram: '<customer><newline><order><newline><color:#b8c8c0>ПКМ — узнать заказ</color>'
+  customer-explanation: '<prefix> <customer><gray>:</gray> <color:#f2fff7><reason></color><newline><color:#707a76>Заказ:</color> <order><newline><color:#707a76>Нужно:</color> <color:#f2fff7><requirements></color><newline><color:#707a76>Осталось:</color> <color:#ffc857><remaining></color>'
   pests-required: '<color:#ffad42>Разбейте гнёзда и добейте всех вредителей.</color>'
   pest-name: '<color:#ff5f6d>Вредитель</color>'
   pest-nest-name: '<color:#ff7a45>Гнездо вредителей</color>'
@@ -1067,6 +1069,15 @@ customer:
     name: '<color:#8bd3ff>Снабженец шахты</color>'
   market_trader:
     name: '<color:#c69cff>Торговец ярмарки</color>'
+customer-request:
+  miners_rations: 'Собираю провизию для шахтёров и их каравана.'
+  bakery_supply: 'Пекарне нужны свежие запасы к открытию.'
+  market_crates: 'Готовлю товары к открытию ярмарки.'
+  harvest_festival: 'Собираю продукты для праздника урожая.'
+  deep_mine_relief: 'Обоз повезёт припасы в дальнюю шахту.'
+  master_baker_request: 'Главный пекарь готовит большую партию выпечки.'
+  lab_order: 'Проверяю новую партию урожая для лаборатории.'
+  lab_berry_order: 'Лаборатории нужны свежие ягоды для опытов.'
 reward:
   bundle:
     field_lunch: 'Полевой обед'

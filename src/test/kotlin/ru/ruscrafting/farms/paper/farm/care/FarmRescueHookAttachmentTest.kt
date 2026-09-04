@@ -7,10 +7,20 @@ import io.mockk.mockk
 import io.mockk.verify
 import org.bukkit.entity.Entity
 import org.bukkit.entity.FishHook
+import org.bukkit.entity.Mob
 import org.bukkit.event.entity.EntityDamageByEntityEvent
 
 class FarmRescueHookAttachmentTest : FunSpec({
-    test("validated rescue hit overrides protection cancellation and attaches the hook") {
+    test("ditch rescue animals expose native hook collision") {
+        val animal = mockk<Mob>(relaxed = true)
+
+        FarmRescueHookAttachment.configureAnimal(animal, enabled = true)
+
+        verify(exactly = 1) { animal.isInvulnerable = false }
+        verify(exactly = 1) { animal.isCollidable = true }
+    }
+
+    test("validated rescue hit prevents damage and attaches the hook") {
         val hook = mockk<FishHook>(relaxed = true)
         val animal = mockk<Entity>(relaxed = true)
         val event = mockk<EntityDamageByEntityEvent>(relaxed = true)
@@ -19,7 +29,7 @@ class FarmRescueHookAttachmentTest : FunSpec({
 
         FarmRescueHookAttachment.attach(event) shouldBe true
 
-        verify(exactly = 1) { event.isCancelled = false }
+        verify(exactly = 1) { event.isCancelled = true }
         verify(exactly = 1) { hook.hookedEntity = animal }
     }
 })

@@ -1,5 +1,7 @@
 package ru.ruscrafting.farms.paper.farm.scene
 
+import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.JoinConfiguration
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.Sound
@@ -26,6 +28,7 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentController
+import ru.ruscrafting.farms.paper.platform.FarmTextDisplayRenderer
 
 /** Complete high-level lifecycle for the customer, cart and delivered cargo scene. */
 internal class FarmContractSceneController(
@@ -38,9 +41,10 @@ internal class FarmContractSceneController(
     private val state: WorksiteStatePort,
     private val points: FarmPointProvider,
     private val special: FarmSpecialIncidentController,
+    textDisplays: FarmTextDisplayRenderer,
     private val runtimes: () -> Collection<FarmRuntime>,
 ) {
-    private val scene = FarmContractSceneManager(plugin, debug)
+    private val scene = FarmContractSceneManager(plugin, debug, textDisplays)
 
     fun owns(entity: Entity): Boolean = scene.owns(entity)
 
@@ -97,6 +101,14 @@ internal class FarmContractSceneController(
                 loadYOffset = visual.loadYOffset,
                 loadScale = visual.loadScale,
                 viewRange = visual.viewRange,
+                customerLabel = locale.render(
+                    MessageKey.FARM_CUSTOMER_HOLOGRAM,
+                    null,
+                    mapOf(
+                        "customer" to locale.renderPath("customer.${order.customerType.name.lowercase()}.name", null),
+                        "order" to locale.renderPath("order.farm.${order.id}", null),
+                    ),
+                ),
                 customerName = market?.let { locale.renderPath("farm.market-buyer-name", null) },
                 customerGlowing = market?.marketAccepted == false,
                 hiddenRoles = FarmContractSceneVisibility.hiddenRoles(runtime.state.phase, runtime.state.incidentType),
@@ -141,6 +153,7 @@ internal class FarmContractSceneController(
                     "total" to locale.text(runtime.settings.delivery.crates),
                 ),
             )
+            FarmContractSceneRole.CUSTOMER_LABEL -> Unit
         }
     }
 
@@ -156,12 +169,20 @@ internal class FarmContractSceneController(
             special.openMarket(player, runtime, market)
             return
         }
-        audience.sendActionBar(
+        audience.sendChat(
             player,
-            MessageKey.FARM_CUSTOMER_REMINDER,
+            MessageKey.FARM_CUSTOMER_EXPLANATION,
             mapOf(
                 "customer" to locale.renderPath("customer.${order.customerType.name.lowercase()}.name", player),
                 "order" to locale.renderPath("order.farm.${order.id}", player),
+                "reason" to locale.renderPath("customer-request.${order.id}", player),
+                "requirements" to cropAmounts(order.required, player),
+                "remaining" to cropAmounts(
+                    order.required.mapValues { (crop, required) ->
+                        (required - (runtime.state.progress[crop] ?: 0)).coerceAtLeast(0)
+                    },
+                    player,
+                ),
             ),
         )
         if (settings().sounds) player.playSound(entity.location, Sound.ENTITY_VILLAGER_YES, 0.65f, 1.05f)
@@ -177,6 +198,14 @@ internal class FarmContractSceneController(
         }
 
     private fun currentOrder(runtime: FarmRuntime): FarmOrder? = runtime.state.orderId?.let(runtime.orders::get)
+
+    private fun cropAmounts(amounts: Map<String, Int>, player: Player): Component = Component.join(
+        JoinConfiguration.commas(true),
+        amounts.map { (crop, amount) ->
+            locale.renderPath("crop.${crop.lowercase()}", player)
+                .append(Component.text(" × $amount"))
+        },
+    )
 }
 
 internal object FarmContractSceneVisibility {

@@ -33,17 +33,19 @@ class FarmDitchRescueWorldMockBukkitTest : FunSpec({
             val centerZ = 8
             val layout = FarmDitchLayout.cells(placementSequence)
             val ditchCells = layout.map { centerX + it.x to centerZ + it.z }.toSet()
+            fun surfaceY(x: Int, z: Int): Int = 64 + ((x + z) and 1)
             val expectedCrops = mutableMapOf<Pair<Int, Int>, String>()
             val expectedTerrain = mutableMapOf<Triple<Int, Int, Int>, String>()
             for (x in 2..14) for (z in 2..14) {
-                world.getBlockAt(x, 64, z).type = Material.FARMLAND
-                world.getBlockAt(x, 63, z).type = Material.DIRT
-                world.getBlockAt(x, 62, z).type = Material.STONE
-                world.getBlockAt(x, 61, z).type = Material.DEEPSLATE
-                world.getBlockAt(x, 60, z).type = Material.STONE
-                world.getBlockAt(x, 59, z).type = Material.DEEPSLATE
-                world.getBlockAt(x, 58, z).type = Material.STONE
-                val crop = world.getBlockAt(x, 65, z)
+                val surfaceY = surfaceY(x, z)
+                world.getBlockAt(x, surfaceY, z).type = Material.FARMLAND
+                world.getBlockAt(x, surfaceY - 1, z).type = Material.DIRT
+                world.getBlockAt(x, surfaceY - 2, z).type = Material.STONE
+                world.getBlockAt(x, surfaceY - 3, z).type = Material.DEEPSLATE
+                world.getBlockAt(x, surfaceY - 4, z).type = Material.STONE
+                world.getBlockAt(x, surfaceY - 5, z).type = Material.DEEPSLATE
+                world.getBlockAt(x, surfaceY - 6, z).type = Material.STONE
+                val crop = world.getBlockAt(x, surfaceY + 1, z)
                 crop.type = Material.WHEAT
                 val age = crop.blockData as Ageable
                 age.age = (x + z) % (age.maximumAge + 1)
@@ -51,8 +53,9 @@ class FarmDitchRescueWorldMockBukkitTest : FunSpec({
                 if (x to z in ditchCells) expectedCrops[x to z] = crop.blockData.asString
             }
             layout.forEach { cell ->
+                val surfaceY = surfaceY(centerX + cell.x, centerZ + cell.z)
                 repeat(cell.depth) { depth ->
-                    val block = world.getBlockAt(centerX + cell.x, 64 - depth, centerZ + cell.z)
+                    val block = world.getBlockAt(centerX + cell.x, surfaceY - depth, centerZ + cell.z)
                     expectedTerrain[Triple(block.x, block.y, block.z)] = block.blockData.asString
                 }
             }
@@ -91,7 +94,7 @@ class FarmDitchRescueWorldMockBukkitTest : FunSpec({
             ditch.ensure(runtime)
 
             val floatingCrop = layout.first().let { cell ->
-                world.getBlockAt(centerX + cell.x, 65, centerZ + cell.z)
+                world.getBlockAt(centerX + cell.x, surfaceY(centerX + cell.x, centerZ + cell.z) + 1, centerZ + cell.z)
             }
             floatingCrop.type = Material.WHEAT
             ditch.ensure(runtime)
@@ -103,12 +106,13 @@ class FarmDitchRescueWorldMockBukkitTest : FunSpec({
                     (ditchCells.maxOf { it.second } - ditchCells.minOf { it.second } + 1)
             (boundingArea > ditchCells.size) shouldBe true
             layout.forEach { cell ->
+                val surfaceY = surfaceY(centerX + cell.x, centerZ + cell.z)
                 repeat(cell.depth) { depth ->
-                    world.getBlockAt(centerX + cell.x, 64 - depth, centerZ + cell.z).type shouldBe Material.AIR
+                    world.getBlockAt(centerX + cell.x, surfaceY - depth, centerZ + cell.z).type shouldBe Material.AIR
                 }
                 val x = centerX + cell.x
                 val z = centerZ + cell.z
-                world.getBlockAt(x, 65, z).type shouldBe Material.AIR
+                world.getBlockAt(x, surfaceY + 1, z).type shouldBe Material.AIR
             }
             world.getBlockAt(2, 64, 2).type shouldBe Material.FARMLAND
             val spawn = requireNotNull(ditch.spawnLocation(runtime, runtime.state.careTargets.single()))
@@ -121,7 +125,7 @@ class FarmDitchRescueWorldMockBukkitTest : FunSpec({
                 world.getBlockAt(position.first, position.second, position.third).blockData.asString shouldBe data
             }
             ditchCells.forEach { (x, z) ->
-                world.getBlockAt(x, 65, z).blockData.asString shouldBe expectedCrops.getValue(x to z)
+                world.getBlockAt(x, surfaceY(x, z) + 1, z).blockData.asString shouldBe expectedCrops.getValue(x to z)
             }
         } finally {
             paper.close()

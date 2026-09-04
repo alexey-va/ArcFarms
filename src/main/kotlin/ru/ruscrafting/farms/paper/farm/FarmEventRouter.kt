@@ -445,8 +445,6 @@ internal class FarmEventRouter(
         pests.handlePestDamage(event, runtimes())
     }
 
-    fun onRescueHookDamageMonitor(event: EntityDamageByEntityEvent) = care.onRescueHookDamageMonitor(event)
-
     fun onProjectileHit(event: ProjectileHitEvent) {
         if (actionIncidents.onProjectileHit(event)) return
         birds.onProjectileHit(event, runtimes())

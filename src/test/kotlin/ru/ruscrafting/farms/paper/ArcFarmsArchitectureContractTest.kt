@@ -187,8 +187,9 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         val world = Files.readString(farmRoot.resolve("care/FarmDitchRescueWorld.kt"))
 
         planner.contains("explicit(FarmPointKind.DITCH)") shouldBe false
-        planner.contains("proceduralDitchSpawnPoints(runtime, farmBeds, salt)") shouldBe true
-        planner.contains("FarmDitchLayout.cellsForSelection(selection)") shouldBe true
+        planner.contains("proceduralDitchSpawnPoints(runtime, farmBeds, placementSequence, salt)") shouldBe true
+        planner.contains("FarmDitchLayout.cells(placementSequence)") shouldBe true
+        planner.contains("DITCH_MAX_SURFACE_STEP") shouldBe true
         planner.contains("soil.type == Material.FARMLAND") shouldBe true
         world.contains("ledger.captureAll(carved, runtime.settings.id)") shouldBe true
         world.contains("ledger.removeTransient(block)") shouldBe true

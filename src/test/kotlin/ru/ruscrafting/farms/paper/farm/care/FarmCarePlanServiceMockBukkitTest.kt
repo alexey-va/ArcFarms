@@ -184,6 +184,56 @@ class FarmCarePlanServiceMockBukkitTest : FunSpec({
         }
     }
 
+    test("procedural ditch follows small height changes across the field") {
+        val paper = MockBukkitTestRuntime.open()
+        try {
+            val world = paper.server.addSimpleWorld("sp11")
+            for (chunkX in 0..2) for (chunkZ in 0..2) world.getChunkAt(chunkX, chunkZ).load()
+            val beds = (2..30).flatMapTo(linkedSetOf()) { x ->
+                (2..30).map { z ->
+                    val y = 64 + ((x + z) and 1)
+                    world.getBlockAt(x, y, z).type = Material.FARMLAND
+                    FarmPlotPosition(world.name, x, y, z)
+                }
+            }
+            val runtime = FarmRuntime(
+                settings = mockk<FarmZoneSettings> {
+                    every { id } returns "communal_farm"
+                    every { careTargetsPerPlayer } returns 3
+                    every { careTargetsMax } returns 6
+                    every { animalRescueTargetCount } returns 6
+                },
+                region = CuboidActivityRegion(world, "farm", CuboidBounds(0, 60, 0, 34, 72, 34)),
+                orders = emptyMap(),
+                orderList = emptyList(),
+                rules = FarmRules(listOf(50), 1, 1_000),
+                state = FarmShiftState(
+                    phase = FarmPhase.HARVESTING,
+                    sequence = 9,
+                    placementSequence = 12,
+                    preparationPatch = beds.take(12),
+                ),
+            )
+            val service = FarmCarePlanService(
+                debug = ArcFarmsDebug({ false }) {},
+                registry = mockk<FarmBlockRegistry> { every { beds("communal_farm") } returns beds },
+                placement = mockk<FarmPlacementService>(relaxed = true),
+                points = FarmPointProvider { _, _ -> error("No fixed point expected") },
+                overrides = { FarmLocationOverrides() },
+                random = java.util.Random(17L),
+                moleBurrow = mockk<FarmMoleBurrowWorld>(relaxed = true),
+                participantCount = { 1 },
+                log = { _, _ -> },
+            )
+
+            val targets = requireNotNull(service.targets(runtime, FarmCareType.DITCH_RESCUE, null))
+
+            targets.map { it.position.y }.toSet() shouldBe setOf(64.0, 65.0)
+        } finally {
+            paper.close()
+        }
+    }
+
     test("scarecrow targets occupy the middle field ring and remain spaced") {
         val paper = MockBukkitTestRuntime.open()
         try {

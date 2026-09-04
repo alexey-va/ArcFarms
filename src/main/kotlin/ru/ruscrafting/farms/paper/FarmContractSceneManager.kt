@@ -7,6 +7,7 @@ import org.bukkit.NamespacedKey
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Interaction
 import org.bukkit.entity.ItemDisplay
+import org.bukkit.entity.TextDisplay
 import org.bukkit.entity.Villager
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
@@ -16,11 +17,13 @@ import org.joml.AxisAngle4f
 import org.joml.Vector3f
 import ru.ruscrafting.farms.config.FarmItemDisplayTransform
 import ru.ruscrafting.farms.domain.FarmCustomerType
+import ru.ruscrafting.farms.paper.platform.FarmTextDisplayRenderer
+import ru.ruscrafting.farms.paper.platform.FarmTextDisplayStyle
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.floor
 
-internal enum class FarmContractSceneRole { CART, CART_INTERACTION, CART_LOAD, CUSTOMER }
+internal enum class FarmContractSceneRole { CART, CART_INTERACTION, CART_LOAD, CUSTOMER, CUSTOMER_LABEL }
 
 internal data class FarmContractSceneIdentity(
     val zoneId: String,
@@ -104,6 +107,7 @@ internal data class FarmContractSceneSpec(
     val loadYOffset: Double,
     val loadScale: Float,
     val viewRange: Float,
+    val customerLabel: Component,
     val customerName: Component? = null,
     val customerGlowing: Boolean = false,
     val hiddenRoles: Set<FarmContractSceneRole> = emptySet(),
@@ -122,6 +126,7 @@ internal data class FarmContractSceneSpec(
 internal class FarmContractSceneManager(
     plugin: Plugin,
     private val debug: ArcFarmsDebug,
+    private val textDisplays: FarmTextDisplayRenderer,
 ) {
     private val zoneKey = NamespacedKey(plugin, "farm_contract_scene_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_contract_scene_sequence")
@@ -208,12 +213,15 @@ internal class FarmContractSceneManager(
             target.x,
             target.y,
             target.z,
-            if (target.identity.role == FarmContractSceneRole.CUSTOMER) spec.customerLocation.yaw else spec.cartLocation.yaw,
+            if (target.identity.role in CUSTOMER_ROLES) spec.customerLocation.yaw else spec.cartLocation.yaw,
             0f,
         )
         val entity = when (target.identity.role) {
             FarmContractSceneRole.CUSTOMER -> location.world.spawn(location, Villager::class.java) { customer ->
                 normalize(customer, spec, target.identity)
+            }
+            FarmContractSceneRole.CUSTOMER_LABEL -> location.world.spawn(location, TextDisplay::class.java) { label ->
+                normalize(label, spec, target.identity)
             }
             FarmContractSceneRole.CART, FarmContractSceneRole.CART_LOAD ->
                 location.world.spawn(location, ItemDisplay::class.java) { display ->
@@ -264,6 +272,14 @@ internal class FarmContractSceneManager(
                 entity.isResponsive = true
                 entity.setRotation(spec.cartLocation.yaw, 0f)
             }
+            is TextDisplay -> if (identity.role == FarmContractSceneRole.CUSTOMER_LABEL) {
+                textDisplays.render(
+                    entity,
+                    spec.customerLabel,
+                    FarmTextDisplayStyle(lineWidth = 220, viewRange = spec.viewRange),
+                )
+                entity.setRotation(spec.customerLocation.yaw, 0f)
+            }
             is ItemDisplay -> when (identity.role) {
                 FarmContractSceneRole.CART -> {
                     entity.setItemStack(spec.cartItem.clone())
@@ -299,6 +315,9 @@ internal class FarmContractSceneManager(
     private fun targets(spec: FarmContractSceneSpec): List<FarmContractSceneTarget> = buildList {
         if (FarmContractSceneRole.CUSTOMER !in spec.hiddenRoles) {
             add(target(spec, FarmContractSceneRole.CUSTOMER, 0, spec.customerLocation))
+        }
+        if (FarmContractSceneRole.CUSTOMER_LABEL !in spec.hiddenRoles) {
+            add(target(spec, FarmContractSceneRole.CUSTOMER_LABEL, 0, spec.customerLocation.clone().add(0.0, 2.35, 0.0)))
         }
         if (FarmContractSceneRole.CART !in spec.hiddenRoles) {
             add(target(spec, FarmContractSceneRole.CART, 0, spec.cartLocation))
@@ -347,6 +366,7 @@ internal class FarmContractSceneManager(
         val identity = decode(entity)
         val role = when {
             entity is Villager && identity?.role == FarmContractSceneRole.CUSTOMER -> FarmContractSceneRole.CUSTOMER
+            entity is TextDisplay && identity?.role == FarmContractSceneRole.CUSTOMER_LABEL -> FarmContractSceneRole.CUSTOMER_LABEL
             entity is Interaction && identity?.role == FarmContractSceneRole.CART_INTERACTION -> FarmContractSceneRole.CART_INTERACTION
             entity is ItemDisplay && identity?.role == FarmContractSceneRole.CART -> FarmContractSceneRole.CART
             entity is ItemDisplay && identity?.role == FarmContractSceneRole.CART_LOAD -> FarmContractSceneRole.CART_LOAD
@@ -388,6 +408,10 @@ internal class FarmContractSceneManager(
                 candidate.world == target.world &&
                 FarmContractSceneReconciler.plan(listOf(target), listOf(candidate)).keep[target.identity] == candidate.id
         }
+    }
+
+    private companion object {
+        val CUSTOMER_ROLES = setOf(FarmContractSceneRole.CUSTOMER, FarmContractSceneRole.CUSTOMER_LABEL)
     }
 
     private fun loadedChunk(target: FarmContractSceneTarget): Chunk? {

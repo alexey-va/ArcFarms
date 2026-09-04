@@ -328,7 +328,6 @@ class ArcFarmsService(
     fun onVehicleEnter(event: VehicleEnterEvent) = farm.events.onVehicleEnter(event)
     fun onDismount(event: EntityDismountEvent) = farm.events.onDismount(event)
     fun onEntityDamage(event: EntityDamageEvent) = farm.events.onEntityDamage(event)
-    fun onRescueHookDamageMonitor(event: EntityDamageByEntityEvent) = farm.events.onRescueHookDamageMonitor(event)
     fun onEntityTarget(event: EntityTargetLivingEntityEvent) = farm.events.onEntityTarget(event)
     fun onFish(event: PlayerFishEvent) = farm.events.onFish(event)
     fun onProjectileHit(event: ProjectileHitEvent) = farm.events.onProjectileHit(event)

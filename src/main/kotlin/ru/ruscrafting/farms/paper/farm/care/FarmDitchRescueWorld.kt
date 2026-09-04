@@ -108,10 +108,21 @@ internal class FarmDitchRescueWorld(
                 val x = origin.blockX + cell.x
                 val z = origin.blockZ + cell.z
                 if (!world.isChunkLoaded(x shr 4, z shr 4)) return emptyList()
-                val soil = world.getBlockAt(x, origin.blockY, z)
+                val soil = DITCH_SURFACE_SEARCH.firstNotNullOfOrNull { offset ->
+                    world.getBlockAt(x, origin.blockY + offset, z).takeIf(::isDitchSurface)
+                } ?: return emptyList()
                 if (!runtime.region.contains(soil.location)) return emptyList()
                 add(cell to soil)
             }
         }
+    }
+
+    private fun isDitchSurface(block: Block): Boolean =
+        block.type == Material.FARMLAND || ledger.record(block)?.originalSoilData?.let { serialized ->
+            runCatching { Bukkit.createBlockData(serialized).material == Material.FARMLAND }.getOrDefault(false)
+        } == true
+
+    private companion object {
+        val DITCH_SURFACE_SEARCH = listOf(0, -1, 1, -2, 2)
     }
 }

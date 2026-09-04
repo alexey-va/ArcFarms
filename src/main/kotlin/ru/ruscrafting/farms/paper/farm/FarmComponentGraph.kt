@@ -388,6 +388,7 @@ internal class FarmComponentGraph(
         state = ports.state,
         points = points,
         special = special,
+        textDisplays = textDisplays,
         runtimes = runtimes::snapshot,
     )
     private val pests = FarmPestIncident(

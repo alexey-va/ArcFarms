@@ -182,7 +182,13 @@ internal class FarmCareController(
         if (moles.onDamage(event)) return true
         val identity = identity(event.entity) ?: return false
         if (allowsRescueHook(event, identity)) {
-            event.isCancelled = false
+            FarmRescueHookAttachment.attach(event as EntityDamageByEntityEvent)
+            debug.event(
+                "farm_care_animal_hooked",
+                "zone" to identity.zoneId,
+                "target" to identity.targetId,
+                "player" to (((event.damager as FishHook).shooter as? Player)?.name ?: "unknown"),
+            )
             return true
         }
         event.isCancelled = true
@@ -542,8 +548,8 @@ internal class FarmCareController(
             val mob = world.spawnEntity(location, EntityType.valueOf(typeName)) as? Mob ?: return
             mob.isPersistent = false
             mob.removeWhenFarAway = false
-            mob.isInvulnerable = true
-            mob.isCollidable = false
+            val nativeHookable = runtime.state.careType == FarmCareType.DITCH_RESCUE
+            FarmRescueHookAttachment.configureAnimal(mob, nativeHookable)
             mob.isGlowing = true
             mark(mob, runtime, target.id, target.role)
             entities[key] = mutableSetOf(mob.uniqueId)
@@ -719,25 +725,6 @@ internal class FarmCareController(
             "zone" to identity.zoneId,
             "target" to identity.targetId,
             "player" to event.player.name,
-        )
-        return true
-    }
-
-    /**
-     * WorldGuard may cancel the hook damage after the regular farm damage handler.
-     * Reclaim only the exact tagged rescue interaction at MONITOR, after protection
-     * plugins have made their decision, and explicitly attach the hook to the animal.
-     */
-    fun onRescueHookDamageMonitor(event: EntityDamageByEntityEvent): Boolean {
-        val identity = identity(event.entity) ?: return false
-        val hook = event.damager as? FishHook ?: return false
-        if (!allowsRescueHook(event, identity)) return false
-        FarmRescueHookAttachment.attach(event)
-        debug.event(
-            "farm_care_animal_hooked",
-            "zone" to identity.zoneId,
-            "target" to identity.targetId,
-            "player" to ((hook.shooter as? Player)?.name ?: "unknown"),
         )
         return true
     }
