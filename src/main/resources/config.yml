@@ -431,9 +431,10 @@ farm-zones:
       water-settle-ticks: 21
     # В одном заказе планировщик не повторяет события и допускает максимум
     # одно обычное полевое происшествие (вредители или засуха).
-    incident-types: [GIANT_CROP, PROCESSING, BARN_FIRE, FROST, BOAR_BREAKOUT, RIVAL_RAID, NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, PESTS, DROUGHT]
+    incident-types: [GIANT_CROP, PROCESSING, BARN_FIRE, FROST, BOAR_BREAKOUT, RIVAL_RAID, TORNADO, NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, PESTS, DROUGHT]
     special-incidents:
       giant-crop: {block-particle-stride: 4, hit-cooldown-millis: 90}
+      tornado: {warning-seconds: 6, duration-seconds: 45, speed: 2.4, height: 24.0, radius: 7.0, debris-count: 28, hit-damage: 2.0}
       birds: {min-count: 6, max-count: 14, beds-per-bird: 180, spawn-multiplier: 2, spawn-height: 4.0, flying-speed: 0.65, health: 4.0, eat-radius: 5.0, eat-interval-seconds: 3, ranged-contribution: 2, melee-contribution: 1}
       channels:
         # Disabled in automatic orders while the physical trench flow is tuned; admin stage remains available.
@@ -748,42 +749,42 @@ farm-zones:
         rarity: COMMON
         crops: [WHEAT:640, CARROTS:320, POTATOES:320]
         care-types: [MOLES, IRRIGATION, ANIMAL_RESCUE, DITCH_RESCUE, WEEDS]
-        incident-types: [GIANT_CROP, PROCESSING, BARN_FIRE, FROST, BOAR_BREAKOUT, RIVAL_RAID, NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, DROUGHT, PESTS]
+        incident-types: [GIANT_CROP, PROCESSING, BARN_FIRE, FROST, BOAR_BREAKOUT, RIVAL_RAID, TORNADO, NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, DROUGHT, PESTS]
         customer: MINE_SUPPLIER
         cart-load: {material: POTATO, custom-model-data: 0}
       bakery_supply:
         rarity: COMMON
         crops: [WHEAT:960, BEETROOTS:320]
         care-types: [POLLINATION, APPLE_HARVEST, DISEASE, IRRIGATION, SCARECROWS, MOLES]
-        incident-types: [PROCESSING, BARN_FIRE, FROST, BOAR_BREAKOUT, RIVAL_RAID, NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, GIANT_CROP, PESTS, DROUGHT]
+        incident-types: [PROCESSING, BARN_FIRE, FROST, BOAR_BREAKOUT, RIVAL_RAID, TORNADO, NIGHT_SHIFT, MARKET, BIRDS, FOOD_DELIVERY, GIANT_CROP, PESTS, DROUGHT]
         customer: BAKER
         cart-load: {material: WHEAT, custom-model-data: 0}
       market_crates:
         rarity: COMMON
         crops: [CARROTS:320, POTATOES:320, BEETROOTS:320, SWEET_BERRY_BUSH:50, MELON:48, PUMPKIN:48]
         care-types: [WEEDS, APPLE_HARVEST, SCARECROWS, ANIMAL_RESCUE, DITCH_RESCUE, STORM_COVERS]
-        incident-types: [MARKET, PROCESSING, BARN_FIRE, FROST, BOAR_BREAKOUT, RIVAL_RAID, GIANT_CROP, NIGHT_SHIFT, BIRDS, FOOD_DELIVERY, PESTS, DROUGHT]
+        incident-types: [MARKET, PROCESSING, BARN_FIRE, FROST, BOAR_BREAKOUT, RIVAL_RAID, TORNADO, GIANT_CROP, NIGHT_SHIFT, BIRDS, FOOD_DELIVERY, PESTS, DROUGHT]
         customer: MARKET_TRADER
         cart-load: {material: CARROT, custom-model-data: 0}
       harvest_festival:
         rarity: RARE
         crops: [WHEAT:800, CARROTS:480, POTATOES:480, BEETROOTS:320, MELON:64, PUMPKIN:64]
         care-types: [POLLINATION, APPLE_HARVEST, STORM_COVERS, SCARECROWS]
-        incident-types: [GIANT_CROP, PROCESSING, BARN_FIRE, FROST, BOAR_BREAKOUT, RIVAL_RAID, MARKET, BIRDS, FOOD_DELIVERY, NIGHT_SHIFT, DROUGHT, PESTS]
+        incident-types: [GIANT_CROP, PROCESSING, BARN_FIRE, FROST, BOAR_BREAKOUT, RIVAL_RAID, TORNADO, MARKET, BIRDS, FOOD_DELIVERY, NIGHT_SHIFT, DROUGHT, PESTS]
         customer: MARKET_TRADER
         cart-load: {material: HAY_BLOCK, custom-model-data: 0}
       deep_mine_relief:
         rarity: RARE
         crops: [WHEAT:800, CARROTS:480, POTATOES:640]
         care-types: [MOLES, IRRIGATION, DISEASE]
-        incident-types: [PROCESSING, BARN_FIRE, FROST, BOAR_BREAKOUT, RIVAL_RAID, GIANT_CROP, BIRDS, FOOD_DELIVERY, NIGHT_SHIFT, MARKET, DROUGHT, PESTS]
+        incident-types: [PROCESSING, BARN_FIRE, FROST, BOAR_BREAKOUT, RIVAL_RAID, TORNADO, GIANT_CROP, BIRDS, FOOD_DELIVERY, NIGHT_SHIFT, MARKET, DROUGHT, PESTS]
         customer: MINE_SUPPLIER
         cart-load: {material: BAKED_POTATO, custom-model-data: 0}
       master_baker_request:
         rarity: RARE
         crops: [WHEAT:1440, BEETROOTS:480]
         care-types: [POLLINATION, APPLE_HARVEST, DISEASE, STORM_COVERS]
-        incident-types: [NIGHT_SHIFT, PROCESSING, BARN_FIRE, FROST, BOAR_BREAKOUT, RIVAL_RAID, MARKET, BIRDS, FOOD_DELIVERY, GIANT_CROP, PESTS, DROUGHT]
+        incident-types: [NIGHT_SHIFT, PROCESSING, BARN_FIRE, FROST, BOAR_BREAKOUT, RIVAL_RAID, TORNADO, MARKET, BIRDS, FOOD_DELIVERY, GIANT_CROP, PESTS, DROUGHT]
         customer: BAKER
         cart-load: {material: BREAD, custom-model-data: 0}
 

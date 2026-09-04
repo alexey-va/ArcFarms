@@ -351,6 +351,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                         FarmIncidentType.BARN_FIRE,
                         FarmIncidentType.BOAR_BREAKOUT,
                         FarmIncidentType.RIVAL_RAID,
+                        FarmIncidentType.TORNADO,
                     ),
                 ) { "Farm special incident state escaped its active incident" }
                 require(special.points.size <= 256 && special.plots.size <= MAX_FARM_SPECIAL_PLOTS) {
@@ -391,6 +392,10 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                     FarmIncidentType.BOAR_BREAKOUT -> require(
                         special.points.isNotEmpty() && special.points.size == special.plots.size,
                     ) { "Farm boar breakout state is incomplete" }
+                    FarmIncidentType.TORNADO -> require(
+                        special.points.size in 1..32 && special.plots.isEmpty() && special.crop == null &&
+                            farm.incidentRequired in 10..180,
+                    ) { "Farm tornado state is incomplete" }
                     FarmIncidentType.RIVAL_RAID -> require(
                         special.points.size == 2,
                     ) { "Farm rival raid state is incomplete" }

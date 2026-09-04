@@ -749,6 +749,7 @@ class ArcFarmsCommand(
                 "pests", "drought", "birds", "giant-crop", "channels", "night-shift", "market",
                 "food-delivery", "processing", "barn-fire", "frost",
                 "boar-breakout", "rival-raid",
+                "tornado",
             )
         private val STAGE_STAGES = listOf("preparation", "planting", "harvesting") +
             EVENT_STAGES + listOf("delivery", "complete", "reset")

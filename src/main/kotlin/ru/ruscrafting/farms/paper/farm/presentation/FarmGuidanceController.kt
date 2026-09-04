@@ -346,6 +346,7 @@ internal class FarmGuidanceController(
         FarmIncidentType.RIVAL_RAID -> points.configured(runtime, FarmPointKind.RIVAL_FARM)?.let { point ->
             Bukkit.getWorld(point.world)?.let { world -> listOf(Location(world, point.x, point.y, point.z) to DANGER_COLOR) }
         }.orEmpty()
+        FarmIncidentType.TORNADO -> emptyList()
         null -> emptyList()
     }
 

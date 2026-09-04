@@ -270,6 +270,7 @@ enum class MessageKey(val path: String) {
     FARM_ENTRY_FROST("farm.entry-frost"),
     FARM_ENTRY_BOAR_BREAKOUT("farm.entry-boar-breakout"),
     FARM_ENTRY_RIVAL_RAID("farm.entry-rival-raid"),
+    FARM_ENTRY_TORNADO("farm.entry-tornado"),
     FARM_ENTRY_DELIVERY("farm.entry-delivery"),
     FARM_STARTED("farm.started"),
     FARM_PATCH_UNAVAILABLE("farm.patch-unavailable"),
@@ -467,6 +468,11 @@ enum class MessageKey(val path: String) {
     FARM_RIVAL_RAID_PORTAL_LABEL("farm.rival-raid.portal-label"),
     FARM_RIVAL_RAID_PORTAL_COUNTDOWN("farm.rival-raid.portal-countdown"),
     FARM_RIVAL_RAID_PORTAL_COUNTDOWN_SUBTITLE("farm.rival-raid.portal-countdown-subtitle"),
+    FARM_TORNADO_STARTED("farm.tornado.started"),
+    FARM_TORNADO_STARTED_SUBTITLE("farm.tornado.started-subtitle"),
+    FARM_TORNADO_PROGRESS("farm.tornado.progress"),
+    FARM_TORNADO_REQUIRED("farm.tornado.required"),
+    FARM_TORNADO_BOSSBAR("farm.tornado.bossbar"),
     FARM_NIGHT_SHIFT_STARTED("farm.night-shift-started"),
     FARM_NIGHT_SHIFT_STARTED_SUBTITLE("farm.night-shift-started-subtitle"),
     FARM_NIGHT_PATROL_AVOID("farm.night-patrol-avoid"),
@@ -649,6 +655,7 @@ internal val SCREEN_TITLE_SUBTITLES = mapOf(
     MessageKey.FARM_BOAR_BREAKOUT_STARTED to MessageKey.FARM_BOAR_BREAKOUT_STARTED_SUBTITLE,
     MessageKey.FARM_RIVAL_RAID_STARTED to MessageKey.FARM_RIVAL_RAID_STARTED_SUBTITLE,
     MessageKey.FARM_RIVAL_RAID_PORTAL_COUNTDOWN to MessageKey.FARM_RIVAL_RAID_PORTAL_COUNTDOWN_SUBTITLE,
+    MessageKey.FARM_TORNADO_STARTED to MessageKey.FARM_TORNADO_STARTED_SUBTITLE,
     MessageKey.FARM_NIGHT_SHIFT_STARTED to MessageKey.FARM_NIGHT_SHIFT_STARTED_SUBTITLE,
     MessageKey.FARM_MARKET_EXPIRED to MessageKey.FARM_MARKET_EXPIRED_SUBTITLE,
     MessageKey.FARM_MARKET_STARTED to MessageKey.FARM_MARKET_STARTED_SUBTITLE,
@@ -764,22 +771,22 @@ class ArcFarmsLocale(
             val adminStages = listOf(
                 "preparation", "planting", "harvesting", "seeder", "weeds", "irrigation", "pollination", "covers", "scarecrows",
                 "animals", "ditch-animals", "disease", "moles", "apples", "pests", "drought", "birds", "food-delivery", "giant-crop", "channels",
-                "night-shift", "market", "processing", "barn-fire", "frost", "delivery", "complete", "reset",
+                "night-shift", "market", "processing", "barn-fire", "frost", "tornado", "delivery", "complete", "reset",
             )
             adminStages.mapTo(this) { "admin.stage.$it" }
             adminStages.mapTo(this) { "admin.stage-description.$it" }
             listOf(
                 "pests", "drought", "birds", "food-delivery", "giant-crop", "channels", "night-shift", "market", "processing",
-                "barn-fire", "frost",
+                "barn-fire", "frost", "tornado",
             )
                 .mapTo(this) { "admin.event-description.$it" }
-            listOf("giant-crop", "channels", "night-shift", "market").forEach { incident ->
+            listOf("giant-crop", "channels", "night-shift", "market", "tornado").forEach { incident ->
                 add("incident.$incident.name")
                 add("farm.entry-$incident")
             }
             listOf(
                 "pests", "drought", "birds", "food-delivery", "giant-crop", "channels", "night-shift", "market",
-                "processing", "barn-fire", "frost", "boar-breakout", "rival-raid",
+                "processing", "barn-fire", "frost", "boar-breakout", "rival-raid", "tornado",
             ).forEach { incident ->
                 add("scoreboard.objective.$incident")
                 add("scoreboard.hint.$incident")
@@ -790,7 +797,7 @@ class ArcFarmsLocale(
             }
             listOf(
                 "preparation", "planting", "seeder-tilling", "seeder-planting", "channels", "night-shift",
-                "market-pending", "processing", "barn-fire", "frost",
+                "market-pending", "processing", "barn-fire", "frost", "tornado",
             )
                 .mapTo(this) { "scoreboard.hint-detail.$it" }
             FarmCareType.entries.forEach { type ->

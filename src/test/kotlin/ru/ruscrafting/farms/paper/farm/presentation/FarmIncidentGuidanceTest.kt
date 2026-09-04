@@ -25,6 +25,7 @@ class FarmIncidentGuidanceTest : FunSpec({
             FarmIncidentType.FROST to MessageKey.FARM_FROST_REQUIRED,
             FarmIncidentType.BOAR_BREAKOUT to MessageKey.FARM_BOAR_BREAKOUT_REQUIRED,
             FarmIncidentType.RIVAL_RAID to MessageKey.FARM_RIVAL_RAID_REQUIRED,
+            FarmIncidentType.TORNADO to MessageKey.FARM_TORNADO_REQUIRED,
         )
     }
 

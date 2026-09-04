@@ -211,6 +211,62 @@ class ArcFarmsStateRepositoryTest : FunSpec({
         ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
     }
 
+    test("tornado incident survives an atomic state round trip") {
+        val root = Files.createTempDirectory("arcfarms-state-tornado-roundtrip-test")
+        val player = UUID(0, 77)
+        val expected = ArcFarmsState(
+            farms = mapOf(
+                "tornado_farm" to FarmShiftState(
+                    phase = FarmPhase.INCIDENT,
+                    sequence = 12,
+                    orderId = "farm_order",
+                    startedAt = 1,
+                    incidentType = FarmIncidentType.TORNADO,
+                    incidentProgress = 17,
+                    incidentRequired = 45,
+                    contributors = mapOf(player to 17),
+                    specialIncident = FarmSpecialIncidentState(
+                        points = listOf(
+                            FarmPointPosition("world", 0.5, 64.0, 0.5),
+                            FarmPointPosition("world", 3.5, 64.0, 2.5),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        ArcFarmsStateRepository(root).use { it.saveBlocking(expected) }
+        ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
+    }
+
+    test("tornado persistence rejects empty or oversized funnel points and invalid quota") {
+        val root = Files.createTempDirectory("arcfarms-state-tornado-invalid-test")
+        val cases = listOf(
+            FarmSpecialIncidentState(points = emptyList()) to 45,
+            FarmSpecialIncidentState(points = (0 until 33).map { FarmPointPosition("world", it.toDouble(), 64.0, 0.5) }) to 45,
+            FarmSpecialIncidentState(points = listOf(FarmPointPosition("world", 0.5, 64.0, 0.5))) to 9,
+        )
+
+        cases.forEach { (special, required) ->
+            val invalid = ArcFarmsState(
+                farms = mapOf(
+                    "farm" to FarmShiftState(
+                        phase = FarmPhase.INCIDENT,
+                        sequence = 1,
+                        orderId = "farm_order",
+                        incidentType = FarmIncidentType.TORNADO,
+                        incidentRequired = required,
+                        specialIncident = special,
+                    ),
+                ),
+            )
+            ArcFarmsStateRepository(root).use { repository ->
+                val failure = shouldThrow<ExecutionException> { repository.saveBlocking(invalid) }
+                (failure.cause is IllegalArgumentException) shouldBe true
+            }
+        }
+    }
+
     test("channels incident without a crop survives an atomic state round trip") {
         val root = Files.createTempDirectory("arcfarms-state-channels-roundtrip-test")
         val points = listOf(

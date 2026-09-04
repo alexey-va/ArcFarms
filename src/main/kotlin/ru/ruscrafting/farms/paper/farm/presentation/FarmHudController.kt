@@ -116,6 +116,11 @@ internal class FarmHudController(
                         }?.let { locale.text(special.marketTime(runtime, it)) } ?: Component.empty()),
                         "done" to locale.text(phaseDone),
                         "total" to locale.text(phaseTotal),
+                        "remaining" to locale.text(
+                            if (runtime.state.incidentType == FarmIncidentType.TORNADO) {
+                                (runtime.state.incidentRequired - runtime.state.incidentProgress).coerceAtLeast(0)
+                            } else phaseTotal - phaseDone,
+                        ),
                     ),
                 )
                 audience.updateBar(
@@ -151,6 +156,7 @@ internal class FarmHudController(
                 FarmIncidentType.FROST -> MessageKey.FARM_ENTRY_FROST
                 FarmIncidentType.BOAR_BREAKOUT -> MessageKey.FARM_ENTRY_BOAR_BREAKOUT
                 FarmIncidentType.RIVAL_RAID -> MessageKey.FARM_ENTRY_RIVAL_RAID
+                FarmIncidentType.TORNADO -> MessageKey.FARM_ENTRY_TORNADO
                 FarmIncidentType.GIANT_CROP,
                 FarmIncidentType.CHANNELS,
                 FarmIncidentType.NIGHT_SHIFT,
@@ -382,6 +388,7 @@ internal class FarmHudController(
             FarmIncidentType.FROST -> MessageKey.FARM_FROST_BOSSBAR
             FarmIncidentType.BOAR_BREAKOUT -> MessageKey.FARM_BOAR_BREAKOUT_BOSSBAR
             FarmIncidentType.RIVAL_RAID -> MessageKey.FARM_RIVAL_RAID_BOSSBAR
+            FarmIncidentType.TORNADO -> MessageKey.FARM_TORNADO_BOSSBAR
             FarmIncidentType.MARKET -> if (runtime.state.specialIncident?.marketAccepted == true) {
                 MessageKey.FARM_MARKET_ACTIVE_BOSSBAR
             } else MessageKey.FARM_MARKET_PENDING_BOSSBAR
@@ -537,4 +544,5 @@ internal fun farmIncidentHintKey(
     FarmIncidentType.FROST -> MessageKey.FARM_FROST_REQUIRED
     FarmIncidentType.BOAR_BREAKOUT -> MessageKey.FARM_BOAR_BREAKOUT_REQUIRED
     FarmIncidentType.RIVAL_RAID -> MessageKey.FARM_RIVAL_RAID_REQUIRED
+    FarmIncidentType.TORNADO -> MessageKey.FARM_TORNADO_REQUIRED
 }

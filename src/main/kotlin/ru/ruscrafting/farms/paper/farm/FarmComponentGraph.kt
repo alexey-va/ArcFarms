@@ -188,6 +188,9 @@ internal class FarmComponentGraph(
     )
     private val incidentBeds = FarmIncidentBedProvider(field::incidentBeds)
     private val nightShift = FarmNightShiftController(plugin)
+    private val tornado = ru.ruscrafting.farms.paper.farm.incident.tornado.FarmTornadoIncident(
+        plugin, settings, ports.access, ports.audience, ports.state, incidentBeds, transitions,
+    )
     private val frost = FarmFrostIncident(
         plugin = plugin,
         settings = settings,
@@ -451,6 +454,7 @@ internal class FarmComponentGraph(
         processing = processing,
         barnFire = barnFire,
         frost = frost,
+        tornado = tornado,
         delivery = delivery,
         scene = scene,
         supplies = supplies,
@@ -565,6 +569,7 @@ internal class FarmComponentGraph(
         processing = processing,
         barnFire = barnFire,
         frost = frost,
+        tornado = tornado,
         delivery = delivery,
         scene = scene,
         supplies = supplies,
@@ -609,6 +614,7 @@ internal class FarmComponentGraph(
         processing = processing,
         barnFire = barnFire,
         frost = frost,
+        tornado = tornado,
         incidentRecovery = recovery,
         delivery = delivery,
         enterprise = enterprise,

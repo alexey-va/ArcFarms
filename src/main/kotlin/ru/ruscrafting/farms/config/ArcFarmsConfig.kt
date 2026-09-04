@@ -324,6 +324,7 @@ data class FarmSpecialIncidentSettings(
     val marketMinimumSeconds: Int,
     val marketMaximumSeconds: Int,
     val frost: FarmFrostSettings,
+    val tornado: FarmTornadoSettings = FarmTornadoSettings(),
 ) {
     init {
         require(channelMarkerColumnStride in 1..32) { "channel marker column stride must be in 1..32" }
@@ -1907,6 +1908,15 @@ class ArcFarmsConfig private constructor(
                         .checked("special-incidents.market.timer.minimum-seconds", 10, 3_600),
                     marketMaximumSeconds = section.int("special-incidents.market.timer.maximum-seconds", 180)
                         .checked("special-incidents.market.timer.maximum-seconds", 10, 3_600),
+                    tornado = FarmTornadoSettings(
+                        warningSeconds = section.int("special-incidents.tornado.warning-seconds", 6),
+                        durationSeconds = section.int("special-incidents.tornado.duration-seconds", 45),
+                        speed = section.finiteDouble("special-incidents.tornado.speed", 2.4, 0.5, 4.0),
+                        height = section.finiteDouble("special-incidents.tornado.height", 24.0, 12.0, 40.0),
+                        radius = section.finiteDouble("special-incidents.tornado.radius", 7.0, 4.0, 10.0),
+                        debrisCount = section.int("special-incidents.tornado.debris-count", 28),
+                        hitDamage = section.finiteDouble("special-incidents.tornado.hit-damage", 2.0, 0.0, 8.0),
+                    ),
                     frost = FarmFrostSettings(
                         campfireMinCount = section.int("special-incidents.frost.campfires.min-count", 4)
                             .checked("special-incidents.frost.campfires.min-count", 1, 16),

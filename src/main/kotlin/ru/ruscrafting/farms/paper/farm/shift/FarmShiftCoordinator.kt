@@ -42,6 +42,7 @@ import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentContr
 import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
 import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingIncident
 import ru.ruscrafting.farms.paper.farm.incident.fire.FarmBarnFireIncident
+import ru.ruscrafting.farms.paper.farm.incident.tornado.FarmTornadoIncident
 import ru.ruscrafting.farms.paper.farm.incident.frost.FarmFrostIncident
 import ru.ruscrafting.farms.paper.farm.incident.special.SPECIAL_FARM_INCIDENT_TYPES
 import ru.ruscrafting.farms.paper.farm.incident.action.ACTION_FARM_INCIDENT_TYPES
@@ -73,6 +74,7 @@ internal class FarmShiftCoordinator(
     private val processing: FarmProcessingIncident,
     private val barnFire: FarmBarnFireIncident,
     private val frost: FarmFrostIncident,
+    private val tornado: FarmTornadoIncident,
     private val delivery: FarmDeliveryController,
     private val scene: FarmContractSceneController,
     private val supplies: FarmSupplyController,
@@ -439,6 +441,14 @@ internal class FarmShiftCoordinator(
                     title = true,
                 )
             }
+            FarmIncidentType.TORNADO -> {
+                if (!tornado.initialize(runtime)) {
+                    apply(runtime, FarmShiftEngine.skipUnavailableIncident(runtime.state, type), null)
+                    return
+                }
+                port.broadcast(listOf(runtime.region), MessageKey.FARM_TORNADO_STARTED,
+                    sound = Sound.ENTITY_BREEZE_CHARGE, title = true)
+            }
             FarmIncidentType.FROST -> {
                 if (!frost.initialize(runtime)) {
                     actor?.takeIf {
@@ -524,13 +534,14 @@ internal class FarmShiftCoordinator(
         processing.clear(runtime.settings.id, "incident_resolved")
         barnFire.clear(runtime.settings.id, "incident_resolved")
         frost.clear(runtime, "incident_resolved")
+        tornado.clear(runtime)
         actionIncidents.clear(runtime, "incident_resolved")
         if (type == FarmIncidentType.GIANT_CROP) special.beginRestore(runtime)
         special.clearZone(runtime, "incident_resolved")
         port.broadcast(
             listOf(runtime.region),
             if (type in SPECIAL_FARM_INCIDENT_TYPES || type in ACTION_FARM_INCIDENT_TYPES ||
-                type in setOf(FarmIncidentType.PROCESSING, FarmIncidentType.BARN_FIRE, FarmIncidentType.FROST)
+                type in setOf(FarmIncidentType.PROCESSING, FarmIncidentType.BARN_FIRE, FarmIncidentType.FROST, FarmIncidentType.TORNADO)
             ) {
                 MessageKey.FARM_SPECIAL_RESOLVED
             } else MessageKey.FARM_INCIDENT_RESOLVED,
@@ -631,6 +642,7 @@ internal class FarmShiftCoordinator(
         delivery.clear(runtime, "completed")
         foodDelivery.clear(runtime.settings.id, "shift_completed")
         actionIncidents.clear(runtime, "shift_completed")
+        tornado.clear(runtime)
         val contributors = runtime.state.contributors
         enterprise.orderCompleted(runtime.settings.id, runtime.state.sequence, contributors, commercialEligible)
         stats.recordCompletion(ActivityKind.FARM, contributors)

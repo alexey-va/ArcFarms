@@ -182,6 +182,7 @@ internal class FarmScoreboardRenderer(
         FarmIncidentType.FROST -> "frost"
         FarmIncidentType.BOAR_BREAKOUT -> "boar-breakout"
         FarmIncidentType.RIVAL_RAID -> "rival-raid"
+        FarmIncidentType.TORNADO -> "tornado"
     }
 
     companion object {

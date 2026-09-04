@@ -46,6 +46,7 @@ import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentContr
 import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
 import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingIncident
 import ru.ruscrafting.farms.paper.farm.incident.fire.FarmBarnFireIncident
+import ru.ruscrafting.farms.paper.farm.incident.tornado.FarmTornadoIncident
 import ru.ruscrafting.farms.paper.farm.incident.frost.FarmFrostIncident
 import ru.ruscrafting.farms.paper.farm.incident.action.FarmActionIncidentController
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
@@ -81,6 +82,7 @@ internal class FarmGameplayAdminService(
     private val processing: FarmProcessingIncident,
     private val barnFire: FarmBarnFireIncident,
     private val frost: FarmFrostIncident,
+    private val tornado: FarmTornadoIncident,
     private val incidentRecovery: FarmIncidentRecoveryController,
     private val delivery: FarmDeliveryController,
     private val enterprise: FarmEnterprisePort,
@@ -364,6 +366,7 @@ internal class FarmGameplayAdminService(
         processing.clear(runtime.settings.id, "admin_stage")
         barnFire.clear(runtime.settings.id, "admin_stage")
         frost.clear(runtime, "admin_stage")
+        tornado.clear(runtime)
         restoreGiantCrop(runtime, "admin_stage")
         special.clearZone(runtime, "admin_stage")
         // An explicit admin transition must leave no incident journal behind. A bounded
@@ -485,6 +488,7 @@ internal class FarmGameplayAdminService(
         processing.clear(runtime.settings.id, "admin_reset")
         barnFire.clear(runtime.settings.id, "admin_reset")
         frost.clear(runtime, "admin_reset")
+        tornado.clear(runtime)
         restoreGiantCrop(runtime, "admin_reset")
         special.clearZone(runtime, "admin_reset")
         delivery.clear(runtime, "admin_reset")
@@ -635,6 +639,7 @@ internal class FarmGameplayAdminService(
             "frost" to FarmIncidentType.FROST,
             "boar-breakout" to FarmIncidentType.BOAR_BREAKOUT,
             "rival-raid" to FarmIncidentType.RIVAL_RAID,
+            "tornado" to FarmIncidentType.TORNADO,
         )
         val STANDARD_STAGES = setOf("preparation", "planting", "harvesting", "delivery", "complete", "reset") + INCIDENT_STAGES.keys
         val BED_PATCH_CARE_TYPES = setOf(FarmCareType.SEEDER, FarmCareType.WEEDS, FarmCareType.DISEASE, FarmCareType.MOLES)

@@ -167,5 +167,6 @@ object FarmIncidentPlanner {
         FarmIncidentType.FROST,
         FarmIncidentType.BOAR_BREAKOUT,
         FarmIncidentType.RIVAL_RAID,
+        FarmIncidentType.TORNADO,
     )
 }

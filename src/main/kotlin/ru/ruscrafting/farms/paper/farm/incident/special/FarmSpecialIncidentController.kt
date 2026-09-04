@@ -989,6 +989,7 @@ internal class FarmSpecialIncidentController(
         FarmIncidentType.FROST -> "frost"
         FarmIncidentType.BOAR_BREAKOUT -> "boar-breakout"
         FarmIncidentType.RIVAL_RAID -> "rival-raid"
+        FarmIncidentType.TORNADO -> "tornado"
     }
 
     private companion object {

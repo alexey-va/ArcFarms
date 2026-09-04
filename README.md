@@ -276,6 +276,23 @@ delivers it by leaving the mine. Broken
 mine blocks are durably journaled before replacement and regenerate from the
 configured weighted material table.
 
+The `TORNADO` incident gives workers a six-second warning, then pursues them
+for 45 active seconds. Sprint away from the funnel; its core deals one heart
+of damage and throws nearby workers outwards. The 24-block funnel combines
+six particle ropes, ground dust, a cloud crown and 28 tumbling block displays.
+It never edits terrain or creates collectible debris. Visual updates run every
+three ticks, with at most 40 displays and 283 particles per frame per nearby
+viewer (including the warning ring). Particle recipients rotate through at most
+eight viewers per frame to bound packet load on crowded farms. `special-incidents.tornado` controls the
+warning, duration, movement speed, height, radius, debris count and hit damage.
+The global particle and sound switches remain respected.
+
+The survival clock pauses when no eligible workers remain. Reload/restart keeps
+completed seconds and reconstructs the scene with a fresh warning. Completion,
+admin stage/reset, reload, shutdown and chunk reconciliation remove owned
+visuals. Test with `/arcfarms admin event <zone> tornado`; it needs indexed,
+loaded outdoor beds but no manually configured spawn point.
+
 Farm incidents, mine instability, phase changes, and completions use localized
 titles, boss bars, sounds, and particles. Completion fireworks are client-side
 particles and sounds only: no firework entity, explosion, damage, or block
@@ -349,12 +366,12 @@ are available through commands such as `/arcfarms admin point <zone> help`,
 - `/arcfarms admin route <zone> start [name]` — record a named food-delivery
   route on foot. Omit the name for the backward-compatible `main` route; use
   `finish`, `status [name]`, `clear [name]`, or `cancel` to manage recordings.
-- `/arcfarms admin stage <zone> <preparation|planting|harvesting|seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought|birds|giant-crop|channels|night-shift|market|food-delivery|processing|barn-fire|frost|delivery|complete|reset>` —
+- `/arcfarms admin stage <zone> <preparation|planting|harvesting|seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought|birds|giant-crop|channels|night-shift|market|food-delivery|processing|barn-fire|frost|tornado|delivery|complete|reset>` —
   switch the current farm to an exact QA stage while preserving normal recovery.
 - `/arcfarms admin next <zone>` — advance to the next useful QA stage.
 - `/arcfarms admin finish <zone>` — finish the current order through its normal
   completion and reward path.
-- `/arcfarms admin event <zone> <seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought|birds|giant-crop|channels|night-shift|market|food-delivery|processing|barn-fire|frost>` —
+- `/arcfarms admin event <zone> <seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought|birds|giant-crop|channels|night-shift|market|food-delivery|processing|barn-fire|frost|tornado>` —
   start any exact farm story or harvest incident.
 
 Farm counts, manual and mechanized patch sizes, machinery radius, spacing,

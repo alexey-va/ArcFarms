@@ -49,6 +49,7 @@ import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentContr
 import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
 import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingIncident
 import ru.ruscrafting.farms.paper.farm.incident.fire.FarmBarnFireIncident
+import ru.ruscrafting.farms.paper.farm.incident.tornado.FarmTornadoIncident
 import ru.ruscrafting.farms.paper.farm.incident.frost.FarmFrostIncident
 import ru.ruscrafting.farms.paper.farm.incident.action.FarmActionIncidentController
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
@@ -99,6 +100,7 @@ internal class FarmModule(
     private val processing: FarmProcessingIncident,
     private val barnFire: FarmBarnFireIncident,
     private val frost: FarmFrostIncident,
+    private val tornado: FarmTornadoIncident,
     private val delivery: FarmDeliveryController,
     private val scene: FarmContractSceneController,
     private val supplies: FarmSupplyController,
@@ -154,7 +156,7 @@ internal class FarmModule(
             pests.ownsPest(entity) || pests.ownsNest(entity) || birds.owns(entity) || foodDelivery.owns(entity) ||
                 actionIncidents.owns(entity) ||
                 processing.owns(entity) || delivery.owns(entity) || supplies.owns(entity) ||
-                care.owns(entity) || perks.owns(entity) || frost.owns(entity)
+                care.owns(entity) || perks.owns(entity) || frost.owns(entity) || tornado.owns(entity)
         }.forEach { entity ->
             entity.remove()
             removed++
@@ -166,6 +168,7 @@ internal class FarmModule(
     }
 
     override fun beforeReload(reason: String) {
+        tornado.cleanup()
         blockRegistry.cancelReindexes()
         shiftStart.clearPending()
         orderCycle.clearPending()
@@ -250,6 +253,7 @@ internal class FarmModule(
 
     fun updateCarriedDisplays() {
         val runtimes = registry.snapshot()
+        runtimes.forEach { runtime -> tasks.guarded("farm_tornado:${runtime.settings.id}") { tornado.update(runtime) } }
         delivery.updateCarriedDisplays(runtimes)
         foodDelivery.updateVisuals(runtimes)
         care.updateCarriedDisplays()
@@ -427,6 +431,7 @@ internal class FarmModule(
         processing.cleanup(reason)
         barnFire.cleanup(reason)
         frost.cleanup(reason)
+        tornado.cleanup()
         supplies.cleanup(reason)
         delivery.cleanup(reason)
         pests.cleanup(reason)

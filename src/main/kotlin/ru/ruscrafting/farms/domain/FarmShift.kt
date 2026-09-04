@@ -82,6 +82,7 @@ enum class FarmIncidentType {
     FROST,
     BOAR_BREAKOUT,
     RIVAL_RAID,
+    TORNADO,
 }
 
 enum class FarmProcessingStage {
