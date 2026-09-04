@@ -570,7 +570,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().rivalRaid.grenadeRadius shouldBe 8.0
         settings.farms.single().rivalRaid.grenadeCooldownTicks shouldBe 8
         settings.farms.single().rivalRaid.grenadePreviewBlocks shouldBe 96
-        settings.farms.single().rivalRaid.grenadePreviewTicks shouldBe 80
+        settings.farms.single().rivalRaid.grenadePreviewTicks shouldBe 1_200
         settings.farms.single().rivalRaid.grenadePreviewSoilMaterial shouldBe "COARSE_DIRT"
         settings.farms.single().rivalRaid.grenadeDebrisBlocks shouldBe 48
         settings.farms.single().rivalRaid.maximumRiders shouldBe 4

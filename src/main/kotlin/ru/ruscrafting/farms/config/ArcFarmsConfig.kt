@@ -445,7 +445,7 @@ data class FarmRivalRaidSettings(
     val grenadeVelocity: Double = 1.2,
     val grenadeLifetimeTicks: Int = 60,
     val grenadePreviewBlocks: Int = 96,
-    val grenadePreviewTicks: Int = 80,
+    val grenadePreviewTicks: Int = 1_200,
     val grenadePreviewSoilMaterial: String = "COARSE_DIRT",
     val grenadeDebrisBlocks: Int = 48,
     val grenadeDebrisTicks: Int = 34,
@@ -504,7 +504,7 @@ data class FarmRivalRaidSettings(
         require(grenadeVelocity.isFinite() && grenadeVelocity in 0.2..3.0) { "rival raid grenade velocity is invalid" }
         require(grenadeLifetimeTicks in 20..200) { "rival raid grenade lifetime is invalid" }
         require(grenadePreviewBlocks in 1..128) { "rival raid grenade preview block count is invalid" }
-        require(grenadePreviewTicks in 5..200) { "rival raid grenade preview duration is invalid" }
+        require(grenadePreviewTicks in 5..2_400) { "rival raid grenade preview duration is invalid" }
         require(grenadeDebrisBlocks in 0..64) { "rival raid grenade debris count is invalid" }
         require(grenadeDebrisTicks in 5..100) { "rival raid grenade debris duration is invalid" }
     }
@@ -2349,8 +2349,8 @@ class ArcFarmsConfig private constructor(
                             "special-incidents.rival-raid.grenade-preview-blocks", 96,
                         ).checked("special-incidents.rival-raid.grenade-preview-blocks", 1, 128),
                         grenadePreviewTicks = section.int(
-                            "special-incidents.rival-raid.grenade-preview-ticks", 80,
-                        ).checked("special-incidents.rival-raid.grenade-preview-ticks", 5, 200),
+                            "special-incidents.rival-raid.grenade-preview-ticks", 1_200,
+                        ).checked("special-incidents.rival-raid.grenade-preview-ticks", 5, 2_400),
                         grenadePreviewSoilMaterial = materialName(
                             section.string("special-incidents.rival-raid.grenade-preview-soil-material", "COARSE_DIRT"),
                         ),

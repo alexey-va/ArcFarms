@@ -353,6 +353,7 @@ internal class FarmComponentGraph(
         riderVisibility = ru.ruscrafting.farms.paper.platform.PaperFarmRaidRiderVisibility,
         textDisplays = textDisplays,
         nightShift = nightShift,
+        random = random,
     )
     private val processing = FarmProcessingIncident(
         plugin = plugin,

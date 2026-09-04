@@ -9,6 +9,7 @@ import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.block.BlockSpreadEvent
 import org.bukkit.event.block.BlockGrowEvent
 import org.bukkit.event.entity.ProjectileHitEvent
+import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.EntityShootBowEvent
 import org.bukkit.event.player.PlayerFishEvent
@@ -46,13 +47,13 @@ class ArcFarmsListenerContractTest : FunSpec({
     }
 
     test("ditch rescue hook collisions can reclaim a WorldGuard-cancelled service interaction") {
-        listOf(
-            handler("onEntityDamage", EntityDamageEvent::class.java),
-            handler("onFish", PlayerFishEvent::class.java),
-        ).forEach { handler ->
+        listOf(handler("onEntityDamage", EntityDamageEvent::class.java), handler("onFish", PlayerFishEvent::class.java)).forEach { handler ->
             handler.priority shouldBe EventPriority.HIGHEST
             handler.ignoreCancelled shouldBe false
         }
+        val finalHookHandler = handler("onRescueHookDamageMonitor", EntityDamageByEntityEvent::class.java)
+        finalHookHandler.priority shouldBe EventPriority.MONITOR
+        finalHookHandler.ignoreCancelled shouldBe false
     }
 
     test("fire equipment cancels both crossbow charge and projectile release") {

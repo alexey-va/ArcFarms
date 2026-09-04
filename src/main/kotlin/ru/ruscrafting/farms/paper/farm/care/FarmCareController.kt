@@ -723,6 +723,25 @@ internal class FarmCareController(
         return true
     }
 
+    /**
+     * WorldGuard may cancel the hook damage after the regular farm damage handler.
+     * Reclaim only the exact tagged rescue interaction at MONITOR, after protection
+     * plugins have made their decision, and explicitly attach the hook to the animal.
+     */
+    fun onRescueHookDamageMonitor(event: EntityDamageByEntityEvent): Boolean {
+        val identity = identity(event.entity) ?: return false
+        val hook = event.damager as? FishHook ?: return false
+        if (!allowsRescueHook(event, identity)) return false
+        FarmRescueHookAttachment.attach(event)
+        debug.event(
+            "farm_care_animal_hooked",
+            "zone" to identity.zoneId,
+            "target" to identity.targetId,
+            "player" to ((hook.shooter as? Player)?.name ?: "unknown"),
+        )
+        return true
+    }
+
     private fun allowsRescueHook(event: EntityDamageEvent, identity: FarmCareEntityIdentity): Boolean {
         if (identity.role != FarmCareRole.ANIMAL) return false
         val hook = (event as? EntityDamageByEntityEvent)?.damager as? FishHook ?: return false

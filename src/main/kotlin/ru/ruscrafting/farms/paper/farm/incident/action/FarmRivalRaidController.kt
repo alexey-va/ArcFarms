@@ -220,7 +220,10 @@ internal class FarmRivalRaidController(
         ensure(runtime)
         val session = raids[runtime.settings.id] ?: return
         val ghast = session.ghastId?.let(Bukkit::getEntity) as? Ghast ?: return
-        if (settings().particles && ghast.world.gameTime % PORTAL_RENDER_INTERVAL_TICKS == 0L) {
+        // updateAmbient already runs once every five ticks. A second modulo gate tied
+        // to world time could stay permanently out of phase with that scheduler and
+        // suppress the portal for the whole incident.
+        if (settings().particles) {
             renderPortal(runtime, session)
         }
         ghast.passengers.filterIsInstance<Player>().forEach { board(runtime, session, ghast, it) }
@@ -972,7 +975,6 @@ internal class FarmRivalRaidController(
         const val RAID_GUN_ID = "raid_gun"
         const val RAID_GRENADE_ID = "raid_grenade_launcher"
         const val ACTION_ROLE = "farm_action"
-        const val PORTAL_RENDER_INTERVAL_TICKS = 5L
         const val PORTAL_VIEW_DISTANCE_SQUARED = 9_216.0
         const val CRATER_SHARE = 0.8
         val WEAPON_IDS = setOf(RAID_GUN_ID, RAID_GRENADE_ID)

@@ -3,6 +3,11 @@ package ru.ruscrafting.farms.paper.farm.incident
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.mockk.Runs
+import io.mockk.every
+import io.mockk.just
+import io.mockk.mockkObject
+import io.mockk.unmockkObject
 import io.mockk.verify
 import net.kyori.adventure.text.format.TextDecoration
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
@@ -34,9 +39,61 @@ import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.paper.fixtures.FarmIncidentScenarioFixture
 import ru.ruscrafting.farms.paper.fixtures.requiredMockBukkitScenario
+import ru.ruscrafting.farms.paper.farm.incident.action.FarmRivalRaidPortalRenderer
 import kotlin.math.sqrt
 
 class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
+    test("successive boar starts choose different field points") {
+        requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
+            val beds = plantedField(fixture, 4..44, 4..32)
+            val initial = actionState(FarmIncidentType.BOAR_BREAKOUT, 80)
+            val runtime = fixture.runtime(initial)
+            val controller = fixture.actions(
+                runtime,
+                beds,
+                FarmPointPosition(fixture.world.name, 8.5, 65.0, 20.5),
+                FarmPointPosition(fixture.world.name, 45.5, 65.0, 45.5),
+                random = java.util.Random(73L),
+            )
+
+            controller.initialize(runtime, FarmIncidentType.BOAR_BREAKOUT) shouldBe FarmIncidentType.BOAR_BREAKOUT
+            val first = requireNotNull(runtime.state.specialIncident).plots.toSet()
+            controller.clear(runtime, "repeat_test")
+            runtime.state = initial
+            controller.initialize(runtime, FarmIncidentType.BOAR_BREAKOUT) shouldBe FarmIncidentType.BOAR_BREAKOUT
+            val second = requireNotNull(runtime.state.specialIncident).plots.toSet()
+
+            (first != second) shouldBe true
+        } }
+    }
+
+    test("raid portal particles pulse even when the ambient scheduler is out of phase with world time") {
+        requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
+            val beds = plantedField(fixture, 31..53, 31..53)
+            val runtime = fixture.runtime(actionState(FarmIncidentType.RIVAL_RAID, 79))
+            val receiving = FarmPointPosition(fixture.world.name, 10.5, 65.0, 10.5)
+            val controller = fixture.actions(
+                runtime,
+                beds,
+                receiving,
+                FarmPointPosition(fixture.world.name, 42.5, 65.0, 42.5),
+            )
+            controller.initialize(runtime, FarmIncidentType.RIVAL_RAID) shouldBe FarmIncidentType.RIVAL_RAID
+            controller.ensure(runtime)
+            fixture.world.fullTime = 1L
+            mockkObject(FarmRivalRaidPortalRenderer)
+            try {
+                every { FarmRivalRaidPortalRenderer.render(any(), any(), any()) } just Runs
+
+                controller.update(runtime)
+
+                verify(exactly = 1) { FarmRivalRaidPortalRenderer.render(any(), any(), any()) }
+            } finally {
+                unmockkObject(FarmRivalRaidPortalRenderer)
+            }
+        } }
+    }
+
     test("boars acquire a distant player and trample real crops along their charge") {
         requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
             val beds = plantedField(fixture, 6..36, 8..24)

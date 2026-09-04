@@ -18,6 +18,7 @@ import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.event.entity.EntityDeathEvent
 import org.bukkit.event.entity.EntityChangeBlockEvent
+import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent
 import org.bukkit.event.entity.EntityDismountEvent
@@ -130,6 +131,11 @@ class ArcFarmsListener(
 
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onEntityDamage(event: EntityDamageEvent) = service.onEntityDamage(event)
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    fun onRescueHookDamageMonitor(event: EntityDamageByEntityEvent) {
+        service.onRescueHookDamageMonitor(event)
+    }
 
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onEntityTarget(event: EntityTargetLivingEntityEvent) = service.onEntityTarget(event)

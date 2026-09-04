@@ -48,7 +48,7 @@ internal val FARM_OUTDOOR_CARE_ROLES = setOf(
     FarmCareRole.DISEASED_CROP,
 )
 
-/** Deterministic planner for care activities. It never mutates runtime or Bukkit state. */
+/** Planner for care activities. It never mutates runtime or Bukkit state. */
 internal class FarmCarePlanService(
     private val debug: ArcFarmsDebug,
     private val registry: FarmBlockRegistry,
@@ -119,7 +119,12 @@ internal class FarmCarePlanService(
         // A shift sequence alone is constant while an administrator repeatedly forces
         // scenarios, which used to place every target on the same beds.
         val placementSequence = runtime.state.nextPlacementSequence()
-        val salt = FarmSpatialSeed.mix(placementSequence, type.ordinal * 17L + 101L)
+        // Persisted targets keep an active scene stable across reloads, while a fresh
+        // random nonce makes repeated admin/event starts choose genuinely new ground.
+        val salt = FarmSpatialSeed.mix(
+            FarmSpatialSeed.mix(placementSequence, type.ordinal * 17L + 101L),
+            random.nextLong(),
+        )
         fun bedTargets(
             role: FarmCareRole,
             amount: Int,

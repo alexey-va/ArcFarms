@@ -218,6 +218,7 @@ internal class FarmIncidentScenarioFixture private constructor(
         receiving: FarmPointPosition,
         rival: FarmPointPosition,
         portal: FarmPointPosition = receiving,
+        random: java.util.random.RandomGenerator = java.util.Random(1L),
     ): FarmActionIncidentController {
         lateinit var controller: FarmActionIncidentController
         val serviceItems = WorksiteServiceItemController(plugin, object : WorksiteServiceItemOwner {
@@ -275,6 +276,7 @@ internal class FarmIncidentScenarioFixture private constructor(
             },
             textDisplays = MockBukkitFarmTextDisplays,
             nightShift = night,
+            random = random,
         )
         return controller
     }

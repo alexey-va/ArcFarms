@@ -514,7 +514,8 @@ farm-zones:
         grenade-velocity: 1.2
         grenade-lifetime-ticks: 60
         grenade-preview-blocks: 96
-        grenade-preview-ticks: 80
+        # Keep the damaged field visible for one minute; incident cleanup restores it immediately.
+        grenade-preview-ticks: 1200
         grenade-preview-soil-material: COARSE_DIRT
         grenade-debris-blocks: 48
         grenade-debris-ticks: 34

@@ -41,6 +41,7 @@ import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmSpecialIncidentEngine
 import ru.ruscrafting.farms.domain.FarmSpecialIncidentState
+import ru.ruscrafting.farms.domain.FarmSpatialSeed
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockLedger
@@ -64,6 +65,7 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import java.util.UUID
+import java.util.random.RandomGenerator
 import java.util.logging.Level
 import kotlin.math.cos
 import kotlin.math.PI
@@ -99,6 +101,7 @@ internal class FarmActionIncidentController(
     private val riderVisibility: FarmRaidRiderVisibility,
     private val textDisplays: FarmTextDisplayRenderer,
     private val nightShift: FarmNightShiftController,
+    private val random: RandomGenerator,
 ) {
     private val zoneKey = NamespacedKey(plugin, "farm_action_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_action_sequence")
@@ -319,7 +322,7 @@ internal class FarmActionIncidentController(
             candidates,
             wanted,
             minimumSpacing = 6.0,
-            selectionIndex = runtime.state.placementSequence,
+            selectionIndex = FarmSpatialSeed.mix(runtime.state.placementSequence, random.nextLong()),
         )
         debug.event(
             "farm_boar_candidates",
