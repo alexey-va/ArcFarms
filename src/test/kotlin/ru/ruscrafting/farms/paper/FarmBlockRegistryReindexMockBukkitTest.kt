@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.paper
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import org.bukkit.Material
 import org.mockbukkit.mockbukkit.world.WorldMock
 import ru.arc.core.Tasks
 import ru.arc.core.TestTaskScheduler
@@ -114,6 +115,51 @@ class FarmBlockRegistryReindexMockBukkitTest : FunSpec({
             registry.beds("farm") shouldBe setOf(accepted)
             scheduler.tick(10L)
             registry.beds("farm") shouldBe setOf(accepted)
+        }
+    }
+
+    test("chunk reconciliation restores an interrupted temporary crater before rebuilding the bed index") {
+        failOnUnsupportedMockOperation {
+            val plugin = paper.createSimplePlugin("FarmCraterRecoveryTest")
+            val ledger = FarmBlockLedger(plugin)
+            val soil = world.getBlockAt(6, 64, 6).also { block ->
+                block.type = Material.FARMLAND
+                block.getRelative(org.bukkit.block.BlockFace.UP).type = Material.WHEAT
+            }
+            ledger.replaceZoneIndex(
+                chunk = soil.chunk,
+                zoneId = "farm",
+                beds = listOf(soil),
+                fixedCrops = emptyList(),
+                orchardLeaves = emptyList(),
+            )
+            ledger.beginTemporaryRemoval(listOf(soil), "farm", "raid:farm:7", restoreAt = 100L)
+            soil.getRelative(org.bukkit.block.BlockFace.UP).type = Material.AIR
+            soil.type = Material.AIR
+            val registry = FarmBlockRegistry(plugin, ledger, addChunkTicket = { true }, removeChunkTicket = {})
+
+            registry.reconcileChunk(
+                FarmBlockIndexDefinition(
+                    zoneId = "farm",
+                    region = CuboidActivityRegion(world, "farm", CuboidBounds(0, 64, 0, 15, 65, 15)),
+                    crops = setOf("WHEAT"),
+                    blocksPerTick = 2_048,
+                    maxBlocks = 10_000,
+                    maxOrchardLeaves = 1_024,
+                    cropLayout = FarmCropLayoutSettings(
+                        enabled = true,
+                        weights = mapOf("WHEAT" to 1),
+                        smallComponentMaxSize = 0,
+                        smallComponentMergeDistance = 0,
+                    ),
+                ),
+                soil.chunk,
+            )
+
+            soil.type shouldBe Material.FARMLAND
+            soil.getRelative(org.bukkit.block.BlockFace.UP).type shouldBe Material.WHEAT
+            registry.beds("farm") shouldBe setOf(FarmPlotPosition(world.name, 6, 64, 6))
+            ledger.record(soil)?.temporaryMutation shouldBe null
         }
     }
 })

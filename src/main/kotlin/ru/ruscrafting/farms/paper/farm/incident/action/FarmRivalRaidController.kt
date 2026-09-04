@@ -50,6 +50,7 @@ import ru.ruscrafting.farms.domain.FarmSpecialIncidentEngine
 import ru.ruscrafting.farms.domain.FarmSpecialIncidentState
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
+import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmNightShiftController
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
@@ -61,7 +62,6 @@ import ru.ruscrafting.farms.paper.platform.FarmEntityRayTrace
 import ru.ruscrafting.farms.paper.platform.FarmMobDespawnPolicy
 import ru.ruscrafting.farms.paper.platform.FarmMobNavigation
 import ru.ruscrafting.farms.paper.platform.FarmRaidRiderVisibility
-import ru.ruscrafting.farms.paper.platform.FarmClientBlockPreview
 import ru.ruscrafting.farms.paper.platform.FarmTextDisplayRenderer
 import ru.ruscrafting.farms.paper.platform.FarmTextDisplayStyle
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
@@ -88,6 +88,7 @@ internal class FarmRivalRaidController(
     private val state: WorksiteStatePort,
     private val tasks: WorksiteTaskPort,
     private val serviceItems: WorksiteServiceItems,
+    private val ledger: FarmBlockLedger,
     private val beds: FarmIncidentBedProvider,
     private val points: FarmPointProvider,
     private val transitions: FarmTransitionSink,
@@ -96,7 +97,6 @@ internal class FarmRivalRaidController(
     private val mobDespawns: FarmMobDespawnPolicy,
     private val mobNavigation: FarmMobNavigation,
     private val riderVisibility: FarmRaidRiderVisibility,
-    private val blockPreviews: FarmClientBlockPreview,
     private val textDisplays: FarmTextDisplayRenderer,
     private val nightShift: FarmNightShiftController,
 ) {
@@ -112,8 +112,8 @@ internal class FarmRivalRaidController(
         val participantIds: MutableSet<UUID> = linkedSetOf(),
         val gunShotAt: MutableMap<UUID, Long> = hashMapOf(),
         val grenadeShotAt: MutableMap<UUID, Long> = hashMapOf(),
-        val previewGenerations: MutableMap<FarmPlotPosition, Long> = hashMapOf(),
-        var previewGeneration: Long = 0,
+        val craterGenerations: MutableMap<FarmPlotPosition, Long> = hashMapOf(),
+        var craterGeneration: Long = 0,
         var orbiting: Boolean = false,
         var launched: Boolean = false,
         var orbitAngle: Double = 0.0,
@@ -520,9 +520,9 @@ internal class FarmRivalRaidController(
             true
         }
         if (session != null) {
+            restoreCrater(zoneId, session, session.craterGenerations.keys)
             session.participantIds.forEach { playerId ->
                 val player = Bukkit.getPlayer(playerId) ?: return@forEach
-                restorePreview(player, session.previewGenerations.keys)
                 WEAPON_IDS.forEach { itemId ->
                     while (serviceItems.consume(player, identity(zoneId, session, itemId))) Unit
                 }
@@ -762,9 +762,9 @@ internal class FarmRivalRaidController(
             location.world.spawnParticle(Particle.LARGE_SMOKE, location, 18, 1.4, 0.8, 1.4, 0.04)
         }
         if (settings().sounds) location.world.playSound(location, Sound.ENTITY_GENERIC_EXPLODE, 1.2f, 0.9f)
-        // Register the client-only crater before damage: a lethal hit can resolve the raid
-        // synchronously, and incident cleanup must see and restore this preview.
-        showBlastPreview(runtime, session, location)
+        // Create the journalled crater before damage: a lethal hit can resolve the raid
+        // synchronously, and incident cleanup must still restore the terrain.
+        showBlastCrater(runtime, session, location)
         val radiusSquared = config.grenadeRadius * config.grenadeRadius
         workers.ids(runtime.settings.id).forEach { workerId ->
             val worker = Bukkit.getEntity(workerId) as? Mob ?: return@forEach
@@ -775,23 +775,28 @@ internal class FarmRivalRaidController(
         }
     }
 
-    private fun showBlastPreview(runtime: FarmRuntime, session: RaidSession, location: Location) {
+    private fun showBlastCrater(runtime: FarmRuntime, session: RaidSession, location: Location) {
         val config = runtime.settings.rivalRaid
         val plots = workers.blastPlots(runtime, location, config.grenadeRadius, config.grenadePreviewBlocks)
         spawnBlastDebris(runtime, session, location, plots)
         if (plots.isEmpty()) return
-        val generation = ++session.previewGeneration
-        plots.forEach { session.previewGenerations[it] = generation }
-        val scorched = MaterialRules.material(config.grenadePreviewSoilMaterial).createBlockData()
-        val fire = Material.FIRE.createBlockData()
-        val air = Material.AIR.createBlockData()
+        val generation = ++session.craterGeneration
+        plots.forEach { session.craterGenerations[it] = generation }
+        val soils = plots.mapNotNull(FarmPlotPosition::block)
+        ledger.beginTemporaryRemoval(
+            soils,
+            runtime.settings.id,
+            craterOwner(runtime.settings.id, session),
+            location.world.gameTime + config.grenadePreviewTicks,
+        )
+        val scorched = MaterialRules.material(config.grenadePreviewSoilMaterial)
         val craterCount = ceil(plots.size * CRATER_SHARE).toInt().coerceIn(1, plots.size)
-        val changes = linkedMapOf<Location, org.bukkit.block.data.BlockData>()
         plots.forEachIndexed { index, plot ->
             val soil = plot.block() ?: return@forEachIndexed
             val crop = soil.getRelative(org.bukkit.block.BlockFace.UP)
-            changes[soil.location] = if (index < craterCount) air else scorched
-            changes[crop.location] = if (index < craterCount) air else fire
+            val debrisData = soil.blockData
+            crop.setType(if (index < craterCount) Material.AIR else Material.FIRE, false)
+            soil.setType(if (index < craterCount) Material.AIR else scorched, false)
             if (settings().particles) {
                 soil.world.spawnParticle(
                     Particle.BLOCK_CRUMBLE,
@@ -800,22 +805,17 @@ internal class FarmRivalRaidController(
                     0.45,
                     0.35,
                     0.45,
-                    soil.blockData,
+                    debrisData,
                 )
                 soil.world.spawnParticle(Particle.FLAME, crop.location.toCenterLocation(), 5, 0.3, 0.2, 0.3, 0.025)
             }
         }
-        session.participantIds.mapNotNull(Bukkit::getPlayer).filter(Player::isOnline).forEach { player ->
-            blockPreviews.send(player, changes)
-        }
         tasks.runLater(config.grenadePreviewTicks.toLong()) {
             val current = raids[runtime.settings.id]?.takeIf { it === session } ?: return@runLater
-            val expired = plots.filter { current.previewGenerations[it] == generation }
+            val expired = plots.filter { current.craterGenerations[it] == generation }
             if (expired.isEmpty()) return@runLater
-            current.participantIds.mapNotNull(Bukkit::getPlayer).filter(Player::isOnline).forEach { player ->
-                restorePreview(player, expired)
-            }
-            expired.forEach(current.previewGenerations::remove)
+            restoreCrater(runtime.settings.id, current, expired)
+            expired.forEach(current.craterGenerations::remove)
         }
     }
 
@@ -843,16 +843,11 @@ internal class FarmRivalRaidController(
         }
     }
 
-    private fun restorePreview(player: Player, plots: Collection<FarmPlotPosition>) {
-        val changes = linkedMapOf<Location, org.bukkit.block.data.BlockData>()
-        plots.forEach { plot ->
-            val soil = plot.block() ?: return@forEach
-            val crop = soil.getRelative(org.bukkit.block.BlockFace.UP)
-            changes[soil.location] = soil.blockData
-            changes[crop.location] = crop.blockData
-        }
-        if (changes.isNotEmpty()) blockPreviews.send(player, changes)
+    private fun restoreCrater(zoneId: String, session: RaidSession, plots: Collection<FarmPlotPosition>) {
+        ledger.restoreTemporaryRemovals(plots.mapNotNull(FarmPlotPosition::block), craterOwner(zoneId, session))
     }
+
+    private fun craterOwner(zoneId: String, session: RaidSession): String = "raid:$zoneId:${session.sequence}"
 
     private fun expireProjectiles(runtime: FarmRuntime, session: RaidSession) {
         val now = runtime.region.world.gameTime
@@ -900,7 +895,6 @@ internal class FarmRivalRaidController(
         WEAPON_IDS.forEach { itemId ->
             while (serviceItems.consume(player, identity(zoneId, session, itemId))) Unit
         }
-        restorePreview(player, session.previewGenerations.keys)
         returnParticipant(session, player)
     }
 

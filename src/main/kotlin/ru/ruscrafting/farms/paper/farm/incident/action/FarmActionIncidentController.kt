@@ -55,7 +55,6 @@ import ru.ruscrafting.farms.paper.platform.FarmEntityRayTrace
 import ru.ruscrafting.farms.paper.platform.FarmMobDespawnPolicy
 import ru.ruscrafting.farms.paper.platform.FarmMobNavigation
 import ru.ruscrafting.farms.paper.platform.FarmRaidRiderVisibility
-import ru.ruscrafting.farms.paper.platform.FarmClientBlockPreview
 import ru.ruscrafting.farms.paper.platform.FarmTextDisplayRenderer
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
@@ -98,7 +97,6 @@ internal class FarmActionIncidentController(
     private val mobDespawns: FarmMobDespawnPolicy,
     private val mobNavigation: FarmMobNavigation,
     private val riderVisibility: FarmRaidRiderVisibility,
-    private val blockPreviews: FarmClientBlockPreview,
     private val textDisplays: FarmTextDisplayRenderer,
     private val nightShift: FarmNightShiftController,
 ) {
@@ -117,6 +115,7 @@ internal class FarmActionIncidentController(
         state,
         tasks,
         serviceItems,
+        ledger,
         beds,
         points,
         transitions,
@@ -125,7 +124,6 @@ internal class FarmActionIncidentController(
         mobDespawns,
         mobNavigation,
         riderVisibility,
-        blockPreviews,
         textDisplays,
         nightShift,
     )

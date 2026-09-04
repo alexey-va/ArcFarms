@@ -84,6 +84,7 @@ internal class FarmFieldController(
     private val maintenanceSpecialDamageByZone = mutableMapOf<String, MaintenancePositionCache>()
     private val maintenanceRecords = ledger.recordLookup()
     private val maintenanceMoleEntrances = hashSetOf<FarmPlotPosition>()
+    private val maintenanceDitchPlots = hashSetOf<FarmPlotPosition>()
     private val maintenanceRemovedBeds = arrayListOf<FarmPlotPosition>()
 
     fun clearCaches() {
@@ -97,6 +98,7 @@ internal class FarmFieldController(
         maintenanceSpecialDamageByZone.clear()
         maintenanceRecords.reset()
         maintenanceMoleEntrances.clear()
+        maintenanceDitchPlots.clear()
         maintenanceRemovedBeds.clear()
     }
 
@@ -590,6 +592,7 @@ internal class FarmFieldController(
         val crop = runtime.state.preparationCrop?.let(MaterialRules::material)
         val incidentActive = runtime.state.phase == FarmPhase.INCIDENT
         maintenanceMoleEntrances.clear()
+        maintenanceDitchPlots.clear()
         if (runtime.state.phase == FarmPhase.CARE && runtime.state.careType == FarmCareType.MOLES) {
             runtime.state.careTargets.asSequence()
                 .filter { it.role == FarmCareRole.MOLE_MOUND }
@@ -602,8 +605,21 @@ internal class FarmFieldController(
                     )
                 }
         }
+        if (runtime.state.phase == FarmPhase.CARE && runtime.state.careType == FarmCareType.DITCH_RESCUE) {
+            runtime.state.careTargets.asSequence()
+                .filter { it.role == FarmCareRole.ANIMAL }
+                .mapTo(maintenanceDitchPlots) { target ->
+                    FarmPlotPosition(
+                        target.position.world,
+                        kotlin.math.floor(target.position.x).toInt(),
+                        kotlin.math.floor(target.position.y).toInt(),
+                        kotlin.math.floor(target.position.z).toInt(),
+                    )
+                }
+        }
         fun temporarilyControlled(position: FarmPlotPosition): Boolean {
             return position in preparationCache.positions ||
+                position in maintenanceDitchPlots ||
                 position in runtime.state.droughtPlots ||
                 position in runtime.state.droughtDamagedPlots ||
                 position in pestDamageCache.positions ||
@@ -615,6 +631,11 @@ internal class FarmFieldController(
         fun maintainPosition(position: FarmPlotPosition) {
             val soil = position.block() ?: return
             val record = maintenanceRecords.record(position, soil)
+            if (record?.temporaryMutation != null) {
+                val restoreAt = requireNotNull(record.temporaryRestoreAt)
+                if (soil.world.gameTime >= restoreAt) ledger.restoreTemporaryRemovals(listOf(soil), record.temporaryMutation)
+                return
+            }
             if (position in flowedChannelPlots) {
                 if (soil.type != Material.WATER) soil.setType(Material.WATER, false)
                 return

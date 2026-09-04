@@ -103,7 +103,6 @@ internal class FarmIncidentScenarioFixture private constructor(
     )
 
     val transitions = mutableListOf<AppliedTransition>()
-    val raidBlockPreviews = RecordingFarmClientBlockPreview()
     val raidRiderVisibilityEvents = mutableListOf<Triple<java.util.UUID, java.util.UUID, Boolean>>()
     val raidNavigationMoves = mutableListOf<Triple<java.util.UUID, Location, Double>>()
 
@@ -274,7 +273,6 @@ internal class FarmIncidentScenarioFixture private constructor(
             riderVisibility = { player, ghast, hidden ->
                 raidRiderVisibilityEvents += Triple(player.uniqueId, ghast.uniqueId, hidden)
             },
-            blockPreviews = raidBlockPreviews,
             textDisplays = MockBukkitFarmTextDisplays,
             nightShift = night,
         )

@@ -28,7 +28,10 @@ internal class FarmDitchRescueWorld(
         }.distinct()
         val pendingSoils = soils.filter { it.type != Material.AIR }
         if (pendingSoils.isEmpty()) {
-            if (soils.all { ledger.record(it) != null }) carved.forEach { it.setType(Material.AIR, false) }
+            if (soils.all { ledger.record(it) != null }) {
+                soils.forEach { it.getRelative(BlockFace.UP).setType(Material.AIR, false) }
+                carved.forEach { it.setType(Material.AIR, false) }
+            }
             return
         }
         if (pendingSoils.any { it.type != Material.FARMLAND }) {

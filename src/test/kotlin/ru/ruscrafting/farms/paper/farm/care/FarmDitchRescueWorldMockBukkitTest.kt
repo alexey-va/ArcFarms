@@ -90,6 +90,13 @@ class FarmDitchRescueWorldMockBukkitTest : FunSpec({
             ditch.ensure(runtime)
             ditch.ensure(runtime)
 
+            val floatingCrop = layout.first().let { cell ->
+                world.getBlockAt(centerX + cell.x, 65, centerZ + cell.z)
+            }
+            floatingCrop.type = Material.WHEAT
+            ditch.ensure(runtime)
+            floatingCrop.type shouldBe Material.AIR
+
             (ditchCells.size in 68..78) shouldBe true
             val boundingArea =
                 (ditchCells.maxOf { it.first } - ditchCells.minOf { it.first } + 1) *

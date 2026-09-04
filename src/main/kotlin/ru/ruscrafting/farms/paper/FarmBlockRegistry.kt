@@ -107,7 +107,13 @@ internal class FarmBlockRegistry(
 
     fun reconcileChunk(definition: FarmBlockIndexDefinition, chunk: Chunk) {
         if (chunk.world != definition.region.world) return
-        val chunkBeds = ledger.blockRecords(chunk).asSequence()
+        val records = ledger.blockRecords(chunk)
+        val interruptedTemporaryBlocks = records.asSequence()
+            .filter { it.zoneId == definition.zoneId && it.indexed && it.temporaryMutation != null }
+            .map { chunk.world.getBlockAt(it.x, it.y, it.z) }
+            .toList()
+        ledger.restoreTemporaryRemovals(interruptedTemporaryBlocks)
+        val chunkBeds = records.asSequence()
             .filter { it.zoneId == definition.zoneId && it.indexed }
             .map { FarmPlotPosition(chunk.world.name, it.x, it.y, it.z) }
             .filter { position ->

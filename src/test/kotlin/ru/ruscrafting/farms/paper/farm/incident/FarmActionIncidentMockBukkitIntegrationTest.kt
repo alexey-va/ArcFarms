@@ -133,9 +133,6 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
                 }
             val repeatedPatrols = fixture.raidNavigationMoves.groupBy { it.first }.values.filter { it.size > 1 }
             (repeatedPatrols.isNotEmpty()) shouldBe true
-            repeatedPatrols.all { moves ->
-                moves.take(2).map { (_, target, _) -> Triple(target.blockX, target.blockY, target.blockZ) }.distinct().size == 1
-            } shouldBe true
 
             val groundPlayer = riders.last()
             val worker = workers.first()
@@ -234,19 +231,12 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             workers.take(2).forEach { it.teleport(blastLocation) }
             projectile.teleport(blastLocation)
             val blastSoil = fixture.world.getBlockAt(blastPlot.x, blastPlot.y, blastPlot.z)
-            val authoritativeSoil = blastSoil.blockData.clone()
-            val authoritativeCrop = blastSoil.getRelative(BlockFace.UP).blockData.clone()
             controller.onProjectileHit(ProjectileHitEvent(projectile, workers.first())) shouldBe true
             workers.take(2).all { it.isDead || it.health <= 0.0 } shouldBe true
             projectile.isValid shouldBe false
             runtime.state.incidentRequired shouldBe fixture.zone.rivalRaid.requiredKills
-            blastSoil.blockData shouldBe authoritativeSoil
-            blastSoil.getRelative(BlockFace.UP).blockData shouldBe authoritativeCrop
-            val blastChanges = fixture.raidBlockPreviews.batches.flatMap { it.changes.entries }
-            blastChanges.any { it.key == blastSoil.location && it.value.material == Material.AIR } shouldBe true
-            blastChanges.any {
-                it.key == blastSoil.getRelative(BlockFace.UP).location && it.value.material == Material.AIR
-            } shouldBe true
+            blastSoil.type shouldBe Material.AIR
+            blastSoil.getRelative(BlockFace.UP).type shouldBe Material.AIR
             val debris = fixture.world.entities.filterIsInstance<FallingBlock>()
             debris shouldHaveSize fixture.zone.rivalRaid.grenadeDebrisBlocks
             debris.all { it.location.distanceSquared(blastLocation) < 2.0 && it.velocity.y >= 0.72 } shouldBe true
@@ -254,7 +244,8 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
                 fixture.zone.rivalRaid.grenadeDebrisTicks.toLong(),
                 fixture.zone.rivalRaid.grenadePreviewTicks.toLong(),
             )
-            fixture.raidBlockPreviews.batches.last().changes.values.any { it.material == Material.FARMLAND } shouldBe true
+            blastSoil.type shouldBe Material.FARMLAND
+            blastSoil.getRelative(BlockFace.UP).type shouldBe Material.WHEAT
 
             val seat = requireNotNull(gunner.vehicle)
             gunner.setPlayerTime(runtime.settings.rivalRaid.playerTime, false)
@@ -279,6 +270,40 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             ghast.velocity = org.bukkit.util.Vector()
             controller.updateRaidMotion(runtime)
             (ghast.velocity.length() > 0.0) shouldBe true
+        } }
+    }
+
+    test("raid workers retarget their patrol around the moving ghast") {
+        requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
+            val beds = plantedField(fixture, 2..61, 2..61)
+            val runtime = fixture.runtime(actionState(FarmIncidentType.RIVAL_RAID, 85))
+            val receiving = FarmPointPosition(fixture.world.name, 10.5, 65.0, 10.5)
+            val rival = FarmPointPosition(fixture.world.name, 42.5, 65.0, 42.5)
+            val controller = fixture.actions(runtime, beds, receiving, rival)
+            val rider = fixture.paper.addPlayer("MovingFocusGunner")
+
+            controller.initialize(runtime, FarmIncidentType.RIVAL_RAID) shouldBe FarmIncidentType.RIVAL_RAID
+            controller.ensure(runtime)
+            val ghast = fixture.world.entities.filterIsInstance<Ghast>().single(controller::owns)
+            controller.interact(PlayerInteractEntityEvent(rider, ghast, EquipmentSlot.HAND)) shouldBe true
+            controller.updateRaidMotion(runtime)
+            ghast.teleport(fixture.location(rival.copy(y = rival.y + fixture.zone.rivalRaid.flightHeight)))
+            repeat(20) { controller.update(runtime) }
+
+            fixture.raidNavigationMoves.clear()
+            val movedFocus = FarmPointPosition(fixture.world.name, 8.5, ghast.location.y, 8.5)
+            ghast.eject()
+            ghast.teleport(fixture.location(movedFocus)) shouldBe true
+            repeat(4) { controller.update(runtime) }
+
+            fixture.raidNavigationMoves.isNotEmpty() shouldBe true
+            val focusRadius = fixture.zone.rivalRaid.workerFocusRadius + 0.5
+            val outside = fixture.raidNavigationMoves.filterNot { (_, target, _) ->
+                val dx = target.x - movedFocus.x
+                val dz = target.z - movedFocus.z
+                dx * dx + dz * dz <= focusRadius * focusRadius
+            }
+            check(outside.isEmpty()) { "patrols outside ghast focus: ${outside.map { it.second }}" }
         } }
     }
 
@@ -351,7 +376,7 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
         } }
     }
 
-    test("raid resolution immediately restores an active grenade blast preview") {
+    test("raid resolution immediately restores an active grenade crater") {
         requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
             val beds = plantedField(fixture, 31..53, 31..53)
             val runtime = fixture.runtime(actionState(FarmIncidentType.RIVAL_RAID, 84))
@@ -382,9 +407,10 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
 
             controller.onProjectileHit(ProjectileHitEvent(projectile, worker)) shouldBe true
 
-            fixture.raidBlockPreviews.batches.last().changes.getValue(blastSoil.location).material shouldBe Material.AIR
+            blastSoil.type shouldBe Material.AIR
             controller.clear(runtime, "incident_resolved")
-            fixture.raidBlockPreviews.batches.last().changes.getValue(blastSoil.location).material shouldBe Material.FARMLAND
+            blastSoil.type shouldBe Material.FARMLAND
+            blastSoil.getRelative(BlockFace.UP).type shouldBe Material.WHEAT
         } }
     }
 })

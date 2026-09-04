@@ -21,6 +21,8 @@ internal data class ManagedFarmBlockRecord(
     val originalCropData: String?,
     val activeCropData: String?,
     val indexed: Boolean = false,
+    val temporaryMutation: String? = null,
+    val temporaryRestoreAt: Long? = null,
 )
 
 internal data class ManagedFarmFixedCropRecord(
@@ -209,6 +211,63 @@ internal class FarmBlockLedger(plugin: Plugin) {
         val data = record.activeCropData
         if (data == null) crop.setType(Material.AIR, false)
         else crop.setBlockData(Bukkit.createBlockData(data), false)
+    }
+
+    /** Journals a short-lived terrain effect before its authoritative blocks are changed. */
+    fun beginTemporaryRemoval(
+        soils: Collection<Block>,
+        zoneId: String,
+        owner: String,
+        restoreAt: Long,
+    ) {
+        require(owner.matches(Regex("[a-z0-9:_-]{1,96}"))) { "Invalid farm temporary mutation owner" }
+        require(restoreAt >= 0L) { "Farm temporary restoration time must not be negative" }
+        val distinct = soils.distinctBy { FarmPlotPosition(it.world.name, it.x, it.y, it.z) }
+        val fresh = distinct.filter { record(it)?.temporaryMutation == null }
+        captureActiveCrops(fresh, zoneId)
+        distinct.groupBy(Block::getChunk).forEach { (chunk, blocks) ->
+            val records = blockRecords(chunk).toMutableList()
+            val indices = records.withIndex().associate { Triple(it.value.x, it.value.y, it.value.z) to it.index }
+            var changed = false
+            blocks.forEach { soil ->
+                val index = requireNotNull(indices[Triple(soil.x, soil.y, soil.z)]) {
+                    "Farm temporary removal contains an uncaptured block"
+                }
+                val current = records[index]
+                val deadline = maxOf(current.temporaryRestoreAt ?: restoreAt, restoreAt)
+                if (current.temporaryMutation != owner || current.temporaryRestoreAt != deadline) {
+                    records[index] = current.copy(temporaryMutation = owner, temporaryRestoreAt = deadline)
+                    changed = true
+                }
+            }
+            if (changed) write(chunk, records)
+        }
+    }
+
+    /** Restores the active crop snapshot and retires only the matching temporary journal entry. */
+    fun restoreTemporaryRemovals(soils: Collection<Block>, owner: String? = null): Set<Block> = buildSet {
+        soils.distinctBy { FarmPlotPosition(it.world.name, it.x, it.y, it.z) }
+            .groupBy(Block::getChunk)
+            .forEach { (chunk, blocks) ->
+                val records = blockRecords(chunk).toMutableList()
+                val indices = records.withIndex().associate { Triple(it.value.x, it.value.y, it.value.z) to it.index }
+                val removals = hashSetOf<Int>()
+                var changed = false
+                blocks.forEach { soil ->
+                    val index = indices[Triple(soil.x, soil.y, soil.z)] ?: return@forEach
+                    val record = records[index]
+                    if (record.temporaryMutation == null || owner != null && record.temporaryMutation != owner) return@forEach
+                    soil.setBlockData(Bukkit.createBlockData(record.originalSoilData), false)
+                    restoreActiveCrop(soil, record)
+                    add(soil)
+                    if (record.indexed) {
+                        records[index] = record.copy(temporaryMutation = null, temporaryRestoreAt = null)
+                    } else removals += index
+                    changed = true
+                }
+                removals.sortedDescending().forEach(records::removeAt)
+                if (changed) write(chunk, records)
+            }
     }
 
     fun restoreOriginal(soil: Block, clear: Boolean = true): Boolean =
@@ -509,7 +568,10 @@ internal class FarmBlockLedger(plugin: Plugin) {
                         record.y in chunk.world.minHeight until chunk.world.maxHeight &&
                         record.originalSoilData.length in 1..512 &&
                         (record.originalCropData?.length ?: 0) <= 512 &&
-                        (record.activeCropData?.length ?: 0) <= 512
+                        (record.activeCropData?.length ?: 0) <= 512 &&
+                        (record.temporaryMutation == null) == (record.temporaryRestoreAt == null) &&
+                        (record.temporaryMutation == null || record.temporaryMutation.matches(Regex("[a-z0-9:_-]{1,96}"))) &&
+                        (record.temporaryRestoreAt == null || record.temporaryRestoreAt >= 0L)
                 }) { "Managed farm block record is invalid" }
             }.let(::ManagedFarmBlockSnapshot).also { blockCache[cacheKey] = it }
         }.getOrElse { failure ->
