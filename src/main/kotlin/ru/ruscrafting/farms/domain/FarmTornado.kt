@@ -5,29 +5,37 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-/** Progress is active survival time, never wall time spent offline or without participants. */
+/** A timed hazard alongside harvesting; its clock pauses while the farm has no participants. */
 object FarmTornadoEngine {
+    fun start(current: FarmShiftState, seconds: Int = 45): EngineResult<FarmShiftState, FarmShiftEvent> {
+        require(seconds in 10..180)
+        if (current.phase != FarmPhase.HARVESTING || current.tornado != null) return EngineResult(current, false)
+        return EngineResult(current.copy(
+            tornado = FarmTornadoState(durationSeconds = seconds),
+            incidentsResolved = (current.incidentsResolved + 1).coerceAtMost(MAX_FARM_INCIDENTS),
+            placementSequence = current.nextPlacementSequence(),
+        ), true,
+            events = listOf(FarmShiftEvent.TORNADO_STARTED))
+    }
+
     fun initialize(current: FarmShiftState, anchors: List<FarmPointPosition>, seconds: Int): EngineResult<FarmShiftState, FarmShiftEvent> {
         require(anchors.size in 1..32 && seconds in 10..180)
-        if (!active(current) || current.specialIncident != null) return EngineResult(current, false)
+        val existing = current.tornado ?: return EngineResult(current, false)
+        if (existing.points.isNotEmpty() || current.phase != FarmPhase.HARVESTING || current.specialIncident != null) return EngineResult(current, false)
         return EngineResult(current.copy(
-            specialIncident = FarmSpecialIncidentState(points = anchors),
-            incidentRequired = seconds,
-            incidentProgress = 0,
+            tornado = existing.copy(points = anchors, durationSeconds = seconds, elapsedSeconds = existing.elapsedSeconds.coerceAtMost(seconds - 1)),
         ), true)
     }
 
     fun second(current: FarmShiftState, participants: Set<UUID>): EngineResult<FarmShiftState, FarmShiftEvent> {
-        if (!active(current) || current.specialIncident == null || participants.isEmpty()) return EngineResult(current, false)
-        val next = current.copy(incidentProgress = current.incidentProgress + 1)
-        if (next.incidentProgress < next.incidentRequired) return EngineResult(next, true)
-        val credited = current.contributors.toMutableMap()
-        participants.forEach { credited[it] = (credited[it] ?: 0) + 1 }
-        return FarmShiftEngine.completeIncident(next.copy(contributors = credited), contribution = 0)
-            .copy(contributionCredits = participants.associateWith { 1 })
+        val tornado = current.tornado ?: return EngineResult(current, false)
+        if (!active(current) || participants.isEmpty()) return EngineResult(current, false)
+        val elapsed = tornado.elapsedSeconds + 1
+        if (elapsed < tornado.durationSeconds) return EngineResult(current.copy(tornado = tornado.copy(elapsedSeconds = elapsed)), true)
+        return EngineResult(current.copy(tornado = null), true, events = listOf(FarmShiftEvent.TORNADO_RESOLVED))
     }
 
-    fun active(state: FarmShiftState): Boolean = state.phase == FarmPhase.INCIDENT && state.incidentType == FarmIncidentType.TORNADO
+    fun active(state: FarmShiftState): Boolean = state.phase == FarmPhase.HARVESTING && state.tornado != null
 }
 
 /** Shared, deterministic geometry for the particle ropes and tumbling block orbits. */

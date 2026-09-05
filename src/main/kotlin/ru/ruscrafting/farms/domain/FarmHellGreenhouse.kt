@@ -57,44 +57,30 @@ object FarmHellGreenhouseEngine {
 
     fun initialize(current: FarmHellGreenhouseState, rules: FarmHellGreenhouseRules): FarmHellGreenhouseResult {
         validate(current)
-        require(rules.quota <= current.points.size) { "Hell greenhouse quota must not exceed points" }
-        return FarmHellGreenhouseResult(current, accepted = true)
+        val normalized = normalize(current)
+        validate(normalized)
+        require(rules.quota <= normalized.points.size) { "Hell greenhouse quota must not exceed points" }
+        val next = if (normalized.cooled >= rules.quota) normalized.copy(finished = true, carried = emptyMap()) else normalized
+        return FarmHellGreenhouseResult(next, accepted = true, finished = next.finished, successful = next.finished)
     }
 
     fun validate(state: FarmHellGreenhouseState) {
         require(state.points.size in 4..16) { "Hell greenhouse points must contain 4..16 plants" }
         require(state.points.distinct().size == state.points.size) { "Hell greenhouse points must be unique" }
         require(state.points.all { point ->
-            POINT_WORLD_ID.matches(point.world) &&
-                listOf(point.x, point.y, point.z).all(Double::isFinite) &&
+            POINT_WORLD_ID.matches(point.world) && listOf(point.x, point.y, point.z).all(Double::isFinite) &&
                 point.x in -30_000_000.0..30_000_000.0 && point.z in -30_000_000.0..30_000_000.0 &&
                 point.y in -2_048.0..2_048.0 && point.yaw.isFinite() && point.pitch.isFinite() && point.pitch in -90f..90f
         }) { "Hell greenhouse point is invalid" }
-        require(state.points.map(FarmPointPosition::world).distinct().size == 1) {
-            "Hell greenhouse points must share a world"
-        }
-        require(state.elapsedSeconds in 0..1_000_000 && state.heat in 0..1_000_000 && state.cooled >= 0) {
-            "Hell greenhouse progress must be non-negative"
-        }
+        require(state.points.map(FarmPointPosition::world).distinct().size == 1) { "Hell greenhouse points must share a world" }
+        require(state.elapsedSeconds in 0..1_000_000 && state.heat in 0..1_000_000 && state.cooled >= 0) { "Hell greenhouse progress must be non-negative" }
         require(state.harvested.all { it in state.points.indices }) { "Hell greenhouse harvested index is invalid" }
         require(state.cooled <= state.harvested.size) { "Hell greenhouse cooled count exceeds harvested plants" }
-        require(state.evacuationSeconds == null || state.evacuationSeconds in 0..86_400) {
-            "Hell greenhouse evacuation countdown is invalid"
-        }
-        val peppers = state.carried.values
-        require(peppers.all { it.index in state.points.indices && it.expiresAt > state.elapsedSeconds }) {
-            "Hell greenhouse carried pepper is expired or invalid"
-        }
-        require(peppers.map(FarmHellPepper::index).distinct().size == peppers.size) {
-            "Hell greenhouse carried plants must be unique"
-        }
-        require(peppers.all { it.index in state.harvested }) {
-            "Hell greenhouse carried plant is not harvested"
-        }
-        require(state.cooled + peppers.size <= state.harvested.size) {
-            "Hell greenhouse cooled count exceeds harvested plants"
-        }
-        if (state.finished) require(peppers.isEmpty()) { "Finished hell greenhouse retains carried plants" }
+        require(state.evacuationSeconds == null || state.evacuationSeconds in 0..86_400) { "Hell greenhouse evacuation countdown is invalid" }
+        require(state.carried.values.all { it.index in state.points.indices && it.index in state.harvested && it.expiresAt >= 0 }) { "Hell greenhouse carried plant is invalid" }
+        require(state.carried.values.map(FarmHellPepper::index).distinct().size == state.carried.size) { "Hell greenhouse carried plants must be unique" }
+        require(state.cooled + state.carried.size <= state.harvested.size) { "Hell greenhouse cooled count exceeds harvested plants" }
+        if (state.finished) require(state.carried.isEmpty()) { "Finished hell greenhouse retains carried plants" }
     }
 
     fun ripe(current: FarmHellGreenhouseState, index: Int, rules: FarmHellGreenhouseRules): Boolean {
@@ -102,100 +88,52 @@ object FarmHellGreenhouseEngine {
         return current.elapsedSeconds >= rules.growSeconds
     }
 
-    fun pick(
-        current: FarmHellGreenhouseState,
-        playerId: UUID,
-        index: Int,
-        rules: FarmHellGreenhouseRules,
-    ): FarmHellGreenhouseResult {
+    fun pick(current: FarmHellGreenhouseState, playerId: UUID, index: Int, rules: FarmHellGreenhouseRules): FarmHellGreenhouseResult {
         validate(current)
-        if (current.finished || current.evacuationSeconds != null || current.carried.containsKey(playerId) ||
-            index in current.harvested || !ripe(current, index, rules)
-        ) return FarmHellGreenhouseResult(current, accepted = false)
-        val next = current.copy(
-            heat = (current.heat + rules.heatPerHarvest).coerceAtMost(rules.heatLimit),
-            harvested = current.harvested + index,
-            carried = current.carried + (playerId to FarmHellPepper(index, current.elapsedSeconds + rules.hotSeconds)),
-            evacuationSeconds = if (current.heat + rules.heatPerHarvest >= rules.heatLimit) {
-                rules.evacuationSeconds
-            } else current.evacuationSeconds,
-        )
+        val state = normalize(current)
+        if (state.finished || state.carried.containsKey(playerId) || index in state.harvested || !ripe(state, index, rules)) return FarmHellGreenhouseResult(state, accepted = false)
+        val next = state.copy(heat = 0, harvested = state.harvested + index, carried = state.carried + (playerId to FarmHellPepper(index, Int.MAX_VALUE)), evacuationSeconds = null)
         return FarmHellGreenhouseResult(next, accepted = true)
     }
 
-    fun cool(
-        current: FarmHellGreenhouseState,
-        playerId: UUID,
-        rules: FarmHellGreenhouseRules,
-    ): FarmHellGreenhouseResult {
+    fun cool(current: FarmHellGreenhouseState, playerId: UUID, rules: FarmHellGreenhouseRules): FarmHellGreenhouseResult {
         validate(current)
-        val pepper = current.carried[playerId] ?: return FarmHellGreenhouseResult(current, accepted = false)
-        if (current.finished || current.elapsedSeconds >= pepper.expiresAt) return FarmHellGreenhouseResult(current, accepted = false)
-        val next = current.copy(carried = current.carried - playerId, cooled = current.cooled + 1)
-        return FarmHellGreenhouseResult(next, accepted = true, contribution = 1)
+        val state = normalize(current)
+        if (playerId !in state.carried) return FarmHellGreenhouseResult(state, accepted = false)
+        if (state.finished) return FarmHellGreenhouseResult(state, accepted = false)
+        val done = state.cooled + 1 >= rules.quota
+        val next = state.copy(carried = if (done) emptyMap() else state.carried - playerId, cooled = state.cooled + 1, finished = done)
+        return FarmHellGreenhouseResult(next, accepted = true, contribution = 1, finished = done, successful = done)
     }
 
-    fun second(
-        current: FarmHellGreenhouseState,
-        participants: Set<UUID>,
-        rules: FarmHellGreenhouseRules,
-    ): FarmHellGreenhouseResult {
+    fun second(current: FarmHellGreenhouseState, participants: Set<UUID>, rules: FarmHellGreenhouseRules): FarmHellGreenhouseResult {
         validate(current)
-        if (current.finished || participants.isEmpty()) return FarmHellGreenhouseResult(current, accepted = false)
-        if (current.evacuationSeconds != null && current.evacuationSeconds <= 0) {
-            return FarmHellGreenhouseResult(current.copy(finished = true), accepted = true, finished = true, timedOut = true)
-        }
-        val elapsed = current.elapsedSeconds + 1
-        val expired = current.carried.filterValues { it.expiresAt <= elapsed }.keys
-        val carried = current.carried - expired
-        val heat = (current.heat + 1).coerceAtMost(rules.heatLimit)
-        val countdown = when {
-            current.evacuationSeconds != null -> current.evacuationSeconds - 1
-            heat >= rules.heatLimit -> rules.evacuationSeconds
-            else -> null
-        }
-        val timedOut = countdown != null && countdown <= 0
-        val next = current.copy(
-            elapsedSeconds = elapsed,
-            heat = heat,
-            carried = if (timedOut) emptyMap() else carried,
-            evacuationSeconds = if (timedOut) 0 else countdown,
-            finished = timedOut,
-        )
-        return FarmHellGreenhouseResult(
-            next,
-            accepted = true,
-            expiredPlayerIds = expired,
-            finished = timedOut,
-            timedOut = timedOut,
-        )
+        val state = normalize(current)
+        if (state.finished || participants.isEmpty()) return FarmHellGreenhouseResult(state, accepted = false)
+        val elapsed = (state.elapsedSeconds + 1).coerceAtMost(1_000_000)
+        val done = state.cooled >= rules.quota
+        val next = state.copy(elapsedSeconds = elapsed, heat = 0, evacuationSeconds = null, finished = done, carried = if (done) emptyMap() else state.carried)
+        return FarmHellGreenhouseResult(next, accepted = true, finished = done, successful = done)
     }
 
-    fun evacuate(
-        current: FarmHellGreenhouseState,
-        playerId: UUID,
-        rules: FarmHellGreenhouseRules,
-    ): FarmHellGreenhouseResult {
+    fun release(current: FarmHellGreenhouseState, playerId: UUID, rules: FarmHellGreenhouseRules): FarmHellGreenhouseResult {
         validate(current)
-        if (current.finished || (current.cooled < rules.quota && current.evacuationSeconds == null)) {
-            return FarmHellGreenhouseResult(current, accepted = false)
-        }
-        val successful = current.cooled >= rules.quota
-        return FarmHellGreenhouseResult(
-            current.copy(finished = true, carried = emptyMap()),
-            accepted = true,
-            finished = true,
-            successful = successful,
-        )
+        val state = normalize(current)
+        val pepper = state.carried[playerId] ?: return FarmHellGreenhouseResult(state, accepted = false)
+        val next = state.copy(carried = state.carried - playerId, harvested = state.harvested - pepper.index)
+        return FarmHellGreenhouseResult(next, accepted = true)
     }
 
-    fun release(
-        current: FarmHellGreenhouseState,
-        playerId: UUID,
-        rules: FarmHellGreenhouseRules,
-    ): FarmHellGreenhouseResult {
-        validate(current)
-        if (current.finished || !current.carried.containsKey(playerId)) return FarmHellGreenhouseResult(current, accepted = false)
-        return FarmHellGreenhouseResult(current.copy(carried = current.carried - playerId), accepted = true)
+    private fun normalize(current: FarmHellGreenhouseState): FarmHellGreenhouseState {
+        // Legacy saves do not identify which delivered plants were cooled. Retain that many
+        // harvested plants deterministically and regrow the rest, preserving every carried pepper.
+        val carriedIndices = current.carried.values.mapTo(linkedSetOf(), FarmHellPepper::index)
+        val cooledIndices = (current.harvested - carriedIndices).sorted().take(current.cooled)
+        return current.copy(
+            heat = 0,
+            evacuationSeconds = null,
+            harvested = cooledIndices.toSet() + carriedIndices,
+            carried = current.carried.mapValues { (_, pepper) -> pepper.copy(expiresAt = Int.MAX_VALUE) },
+        )
     }
 }

@@ -173,7 +173,10 @@ internal class FarmGameplayAdminService(
         transitions.apply(runtime, EngineResult(runtime.state, true, events = events), player)
         persistAsync()
         val requestedIncident = INCIDENT_STAGES[normalized]
-        if (requestedIncident != null && (runtime.state.phase != FarmPhase.INCIDENT || runtime.state.incidentType != requestedIncident)) {
+        val incidentActive = if (requestedIncident == FarmIncidentType.TORNADO) {
+            ru.ruscrafting.farms.domain.FarmTornadoEngine.active(runtime.state)
+        } else runtime.state.phase == FarmPhase.INCIDENT && runtime.state.incidentType == requestedIncident
+        if (requestedIncident != null && !incidentActive) {
             port.sendChat(player, MessageKey.ADMIN_INCIDENT_REJECTED, mapOf("stage" to locale.renderPath("admin.stage.$normalized", player)))
             return false
         }
@@ -391,6 +394,7 @@ internal class FarmGameplayAdminService(
             frost = null,
             processing = null,
             hellGreenhouse = null,
+            tornado = null,
             specialDamagedCrops = emptyList(),
         )
         delivery.clear(runtime, "admin_stage")
@@ -461,6 +465,14 @@ internal class FarmGameplayAdminService(
     ): FarmShiftState {
         preparePatch(runtime, plant = true, mature = true)
         val type = INCIDENT_STAGES.getValue(stage)
+        if (type == FarmIncidentType.TORNADO) {
+            val result = ru.ruscrafting.farms.domain.FarmTornadoEngine.start(
+                harvestingState(runtime),
+                runtime.settings.specialIncidents.tornado.durationSeconds,
+            )
+            events += result.events
+            return result.state
+        }
         val quota = if (type == FarmIncidentType.DROUGHT) {
             runtime.settings.droughtTargetBeds(field.incidentBeds(runtime).size.coerceAtLeast(runtime.state.preparationPatch.size))
         } else runtime.rules.incidentQuota

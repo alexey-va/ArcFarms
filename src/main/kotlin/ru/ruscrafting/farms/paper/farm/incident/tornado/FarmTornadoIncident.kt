@@ -26,7 +26,7 @@ import java.util.logging.Level
 import kotlin.math.abs
 import kotlin.math.sqrt
 
-/** Owns the warning, pursuit, survival clock and complete transient scene lifecycle. */
+/** Owns the warning, pursuit, harvest complication clock and complete transient scene lifecycle. */
 internal class FarmTornadoIncident(
     plugin: Plugin,
     private val settings: () -> ArcFarmsConfig,
@@ -52,7 +52,7 @@ internal class FarmTornadoIncident(
 
     fun initialize(runtime: FarmRuntime): Boolean {
         if (!FarmTornadoEngine.active(runtime.state)) return false
-        if (runtime.state.specialIncident != null) return true
+        if (runtime.state.tornado?.points?.isNotEmpty() == true) return true
         val candidates = beds.discover(runtime).filter { position ->
             val soil = position.block() ?: return@filter false
             runtime.region.contains(soil.location.add(0.5, 1.0, 0.5)) && FarmSurfacePolicy.isOutdoorBed(soil) &&
@@ -97,14 +97,13 @@ internal class FarmTornadoIncident(
             clear(runtime)
             return
         }
-        if (runtime.state.specialIncident == null && !initialize(runtime)) {
-            transitions.apply(runtime, ru.ruscrafting.farms.domain.FarmShiftEngine.skipUnavailableIncident(
-                runtime.state, ru.ruscrafting.farms.domain.FarmIncidentType.TORNADO,
-            ), null)
+        if (runtime.state.tornado?.points.isNullOrEmpty() && !initialize(runtime)) {
+            runtime.state = runtime.state.copy(tornado = null)
+            clear(runtime)
             state.persistAsync()
             return
         }
-        val anchors = runtime.state.specialIncident?.points.orEmpty().mapNotNull { point ->
+        val anchors = runtime.state.tornado?.points.orEmpty().mapNotNull { point ->
             if (point.world != runtime.region.world.name) return@mapNotNull null
             Location(runtime.region.world, point.x, point.y, point.z).takeIf {
                 it.world.isChunkLoaded(it.blockX shr 4, it.blockZ shr 4) && runtime.region.contains(it)
@@ -112,6 +111,9 @@ internal class FarmTornadoIncident(
         }
         if (anchors.isEmpty()) {
             clear(runtime)
+            runtime.state = runtime.state.copy(tornado = runtime.state.tornado?.copy(points = emptyList()))
+            if (!initialize(runtime)) runtime.state = runtime.state.copy(tornado = null)
+            state.persistAsync()
             return
         }
         var session = sessions[zone]
@@ -146,7 +148,8 @@ internal class FarmTornadoIncident(
             }
             participants.forEach { player -> affect(player, active, options.hitDamage) }
         }
-        val fade = ((runtime.state.incidentRequired - runtime.state.incidentProgress) / 4.0).coerceIn(0.25, 1.0)
+        val storm = runtime.state.tornado ?: return
+        val fade = ((storm.durationSeconds - storm.elapsedSeconds) / 4.0).coerceIn(0.25, 1.0)
         val strength = if (pursuing) fade else (active.ticks.toDouble() / warningTicks).coerceAtLeast(0.15)
         scene.render(zone, active.center, options, active.ticks, strength, players, settings().particles)
         if (settings().sounds && active.ticks % 40 == 0) players.forEach { player ->
@@ -157,6 +160,7 @@ internal class FarmTornadoIncident(
             val result = FarmTornadoEngine.second(runtime.state, participants.mapTo(mutableSetOf(), Player::getUniqueId))
             if (result.accepted) {
                 transitions.apply(runtime, result, null)
+                if (!FarmTornadoEngine.active(runtime.state)) clear(runtime)
                 state.persistAsync()
             }
         }

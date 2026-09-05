@@ -22,7 +22,7 @@ import ru.ruscrafting.farms.paper.platform.FarmTextDisplayRenderer
 import ru.ruscrafting.farms.paper.platform.FarmTextDisplayStyle
 import java.util.UUID
 
-internal enum class HellGreenhouseRole { SCENE, PEPPER, VAT, EXIT }
+internal enum class HellGreenhouseRole { SCENE, PEPPER, VAT }
 internal data class HellGreenhouseIdentity(val zone: String, val sequence: Long, val placement: Long, val role: HellGreenhouseRole, val index: Int)
 
 /** A bounded display scene over existing ground. It never replaces blocks or creates dropped items. */
@@ -36,7 +36,7 @@ internal class FarmHellGreenhouseScene(
     private val placementKey = NamespacedKey(plugin, "hell_greenhouse_placement")
     private val roleKey = NamespacedKey(plugin, "hell_greenhouse_role")
     private val indexKey = NamespacedKey(plugin, "hell_greenhouse_index")
-    private data class Scene(val identity: HellGreenhouseIdentity, val entities: MutableSet<UUID>, val plants: List<UUID>, val carried: MutableMap<UUID, UUID>)
+    private data class Scene(val identity: HellGreenhouseIdentity, val entities: MutableSet<UUID>, val plants: List<UUID>, val carried: MutableMap<UUID, UUID>, val vatLabel: UUID, var cooled: Int = -1)
     private val scenes = mutableMapOf<String, Scene>()
 
     fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING)
@@ -63,6 +63,14 @@ internal class FarmHellGreenhouseScene(
             scenes[zone] = active
         }
         val owned = active
+        if (owned.cooled != greenhouse.cooled) {
+            (Bukkit.getEntity(owned.vatLabel) as? TextDisplay)?.let {
+                text.render(it, locale.render(MessageKey.FARM_HELL_GREENHOUSE_VAT, values = mapOf(
+                    "done" to locale.text(greenhouse.cooled), "total" to locale.text(runtime.settings.specialIncidents.hellGreenhouse.quota),
+                )), FarmTextDisplayStyle(viewRange = 1.0f))
+            }
+            owned.cooled = greenhouse.cooled
+        }
         greenhouse.points.forEachIndexed { index, _ ->
             val material = when {
                 index in greenhouse.harvested -> Material.CRIMSON_ROOTS
@@ -86,10 +94,12 @@ internal class FarmHellGreenhouseScene(
         if (particles && tick % 10 == 0) {
             val at = center(runtime, greenhouse)
             players.take(12).forEach { player ->
-                player.spawnParticle(Particle.PORTAL, at.clone().add(0.0, 1.4, -4.4), 8, 0.6, 1.0, 0.1, 0.03)
-                if (greenhouse.evacuationSeconds != null) {
-                    player.spawnParticle(Particle.FLAME, at.clone().add(0.0, 0.2, 0.0), 12, 3.5, 0.1, 4.0, 0.01)
+                if (player.uniqueId in greenhouse.carried) {
+                    val from = player.location.add(0.0, 0.4, 0.0)
+                    val step = at.clone().add(0.0, 0.5, -2.3).toVector().subtract(from.toVector()).multiply(1.0 / 8)
+                    repeat(8) { player.spawnParticle(Particle.END_ROD, from.add(step), 1, 0.0, 0.0, 0.0, 0.0) }
                 }
+                player.spawnParticle(Particle.SPLASH, at.clone().add(0.0, 1.0, -2.3), 5, 0.35, 0.1, 0.35, 0.01)
             }
         }
     }
@@ -98,10 +108,21 @@ internal class FarmHellGreenhouseScene(
         val center = center(runtime, state)
         val entities = linkedSetOf<UUID>()
         try {
-        // Four pillars, open sides, ribbed tinted roof and two long growing beds.
+        // Glazed walls surround one wide entrance; the central aisle leads directly to the water vat.
         for (x in listOf(-4.0, 3.75)) for (z in listOf(-5.0, 4.75)) {
             block(center.clone().add(x, 0.0, z), Material.POLISHED_BASALT, 0.25f, 4.0f, 0.25f, stamp, entities)
         }
+        for (x in listOf(-4.0, 3.88)) {
+            block(center.clone().add(x, 0.0, -5.0), Material.RED_STAINED_GLASS, 0.12f, 3.8f, 10.0f, stamp, entities)
+        }
+        block(center.clone().add(-4.0, 0.0, -5.0), Material.RED_STAINED_GLASS, 8.0f, 3.8f, 0.12f, stamp, entities)
+        for (x in listOf(-4.0, 1.25)) {
+            block(center.clone().add(x, 0.0, 4.88), Material.RED_STAINED_GLASS, 2.75f, 3.8f, 0.12f, stamp, entities)
+        }
+        for (x in listOf(-1.5, 1.25)) {
+            block(center.clone().add(x, 0.0, 4.75), Material.CRIMSON_PLANKS, 0.25f, 3.8f, 0.25f, stamp, entities)
+        }
+        block(center.clone().add(-1.25, 0.01, -4.0), Material.POLISHED_BLACKSTONE_BRICKS, 2.5f, 0.08f, 9.0f, stamp, entities)
         for (z in listOf(-5.0, -2.5, 0.0, 2.5, 4.75)) {
             block(center.clone().add(-4.0, 3.8, z), Material.CRIMSON_PLANKS, 8.0f, 0.2f, 0.25f, stamp, entities)
         }
@@ -120,14 +141,12 @@ internal class FarmHellGreenhouseScene(
         val vat = center.clone().add(0.0, 0.0, -2.3)
         block(vat.clone().add(-0.6, 0.0, -0.6), Material.WATER_CAULDRON, 1.2f, 1.0f, 1.2f, stamp, entities)
         interaction(vat, stamp.copy(role = HellGreenhouseRole.VAT), 1.5f, 1.4f, entities)
-        label(vat.clone().add(0.0, 1.8, 0.0), MessageKey.FARM_HELL_GREENHOUSE_VAT, stamp, entities)
-        val exit = center.clone().add(0.0, 0.0, -4.5)
-        for (x in listOf(-1.2, 0.9)) block(exit.clone().add(x, 0.0, -0.2), Material.CRYING_OBSIDIAN, 0.3f, 2.8f, 0.4f, stamp, entities)
-        block(exit.clone().add(-1.2, 2.8, -0.2), Material.CRYING_OBSIDIAN, 2.4f, 0.3f, 0.4f, stamp, entities)
-        block(exit.clone().add(-0.9, 0.0, 0.0), Material.PURPLE_STAINED_GLASS, 1.8f, 2.8f, 0.08f, stamp, entities)
-        interaction(exit, stamp.copy(role = HellGreenhouseRole.EXIT), 2.0f, 2.8f, entities)
-        label(exit.clone().add(0.0, 3.4, 0.0), MessageKey.FARM_HELL_GREENHOUSE_EXIT, stamp, entities)
-        return Scene(stamp, entities, plants, mutableMapOf())
+        val vatLabel = label(vat.clone().add(0.0, 2.0, 0.0), MessageKey.FARM_HELL_GREENHOUSE_VAT, stamp, entities,
+            mapOf("done" to locale.text(state.cooled), "total" to locale.text(runtime.settings.specialIncidents.hellGreenhouse.quota)))
+        label(center.clone().add(0.0, 3.2, 5.0), MessageKey.FARM_HELL_GREENHOUSE_ENTRANCE, stamp, entities,
+            mapOf("total" to locale.text(runtime.settings.specialIncidents.hellGreenhouse.quota)))
+        return Scene(stamp, entities, plants, mutableMapOf(), vatLabel.uniqueId)
+
         } catch (failure: Exception) {
             entities.forEach { Bukkit.getEntity(it)?.remove() }
             throw failure
@@ -148,7 +167,9 @@ internal class FarmHellGreenhouseScene(
     private fun block(at: Location, material: Material, x: Float, y: Float, z: Float, identity: HellGreenhouseIdentity, entities: MutableSet<UUID>): BlockDisplay =
         at.world.spawn(at, BlockDisplay::class.java) { entity ->
             mark(entity, identity, entities)
-            entity.block = material.createBlockData()
+            entity.block = material.createBlockData().also {
+                if (it is org.bukkit.block.data.Levelled && material == Material.WATER_CAULDRON) it.level = it.maximumLevel
+            }
             entity.setTransformationMatrix(Matrix4f().scale(x, y, z))
             entity.viewRange = 1.5f
         }
@@ -162,12 +183,13 @@ internal class FarmHellGreenhouseScene(
         }
     }
 
-    private fun label(at: Location, message: MessageKey, identity: HellGreenhouseIdentity, entities: MutableSet<UUID>) {
+    private fun label(at: Location, message: MessageKey, identity: HellGreenhouseIdentity, entities: MutableSet<UUID>,
+        values: Map<String, net.kyori.adventure.text.Component> = emptyMap()): TextDisplay =
         at.world.spawn(at, TextDisplay::class.java) { entity ->
             mark(entity, identity, entities)
-            text.render(entity, locale.render(message), FarmTextDisplayStyle(viewRange = 1.0f))
+            text.render(entity, locale.render(message, values = values), FarmTextDisplayStyle(
+                lineWidth = if (message == MessageKey.FARM_HELL_GREENHOUSE_ENTRANCE) 256 else 180, viewRange = 1.0f))
         }
-    }
 
     fun clear(zone: String) { scenes.remove(zone)?.entities?.forEach { Bukkit.getEntity(it)?.remove() } }
     fun cleanup() {

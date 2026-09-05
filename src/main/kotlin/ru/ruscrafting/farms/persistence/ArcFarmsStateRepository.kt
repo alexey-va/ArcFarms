@@ -13,6 +13,7 @@ import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmProcessingStage
 import ru.ruscrafting.farms.domain.FarmShiftState
+import ru.ruscrafting.farms.domain.FarmTornadoState
 import ru.ruscrafting.farms.domain.PendingFarmReward
 import ru.ruscrafting.farms.domain.LumberPhase
 import ru.ruscrafting.farms.domain.LumberShiftState
@@ -83,17 +84,29 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
             val normalized = if (farm.diseaseDamagedCrops == null) {
                 farm.copy(diseaseDamagedCrops = emptyList())
             } else farm
-            val resolved = maxOf(normalized.incidentsResolved, if (normalized.incidentResolved) 1 else 0)
-            val completedLegacyIncident = normalized.phase == FarmPhase.HARVESTING &&
-                normalized.incidentResolved && normalized.incidentType == null && normalized.incidentCrop != null
-            if (resolved == normalized.incidentsResolved && !completedLegacyIncident) {
-                normalized
+            val legacyTornado = normalized.takeIf {
+                it.phase == FarmPhase.INCIDENT && it.incidentType == FarmIncidentType.TORNADO
+            }?.let {
+                it.copy(
+                    phase = FarmPhase.HARVESTING, incidentCrop = null, incidentType = null,
+                    incidentProgress = 0, incidentRequired = 0, incidentResolved = false,
+                    specialIncident = null,
+                    incidentsResolved = (it.incidentsResolved + 1).coerceAtMost(MAX_FARM_INCIDENTS),
+                    tornado = FarmTornadoState(it.specialIncident?.points.orEmpty(), it.incidentProgress,
+                        if (it.specialIncident == null) 45 else it.incidentRequired),
+                )
+            } ?: normalized
+            val resolved = maxOf(legacyTornado.incidentsResolved, if (legacyTornado.incidentResolved) 1 else 0)
+            val completedLegacyIncident = legacyTornado.phase == FarmPhase.HARVESTING &&
+                legacyTornado.incidentResolved && legacyTornado.incidentType == null && legacyTornado.incidentCrop != null
+            if (resolved == legacyTornado.incidentsResolved && !completedLegacyIncident) {
+                legacyTornado
             } else {
-                normalized.copy(
+                legacyTornado.copy(
                     incidentsResolved = resolved,
-                    incidentCrop = if (completedLegacyIncident) null else normalized.incidentCrop,
-                    incidentProgress = if (completedLegacyIncident) 0 else normalized.incidentProgress,
-                    incidentRequired = if (completedLegacyIncident) 0 else normalized.incidentRequired,
+                    incidentCrop = if (completedLegacyIncident) null else legacyTornado.incidentCrop,
+                    incidentProgress = if (completedLegacyIncident) 0 else legacyTornado.incidentProgress,
+                    incidentRequired = if (completedLegacyIncident) 0 else legacyTornado.incidentRequired,
                 )
             }
         }
@@ -347,7 +360,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 }
                 FarmHellGreenhouseEngine.validate(greenhouse)
                 greenhouse.points.forEach(::validatePoint)
-                require(farm.incidentRequired in 1..8) { "Farm hell greenhouse quota is invalid" }
+                require(farm.incidentRequired in 1..greenhouse.points.size) { "Farm hell greenhouse quota is invalid" }
                 require(farm.incidentProgress == greenhouse.cooled.coerceAtMost(farm.incidentRequired)) {
                     "Farm hell greenhouse progress drifted from cooled peppers"
                 }
@@ -487,6 +500,19 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
             } else {
                 require(farm.frost == null) { "Inactive farm contains frost state" }
             }
+            farm.tornado?.let { tornado ->
+                require(farm.phase == FarmPhase.HARVESTING && farm.incidentType == null && farm.specialIncident == null) {
+                    "Farm tornado overlay escaped harvesting"
+                }
+                require(tornado.points.size <= 32 && tornado.points.distinct().size == tornado.points.size) {
+                    "Farm tornado overlay points are invalid"
+                }
+                require(tornado.durationSeconds in 10..180) { "Farm tornado overlay duration is invalid" }
+                tornado.points.forEach(::validatePoint)
+                require(tornado.elapsedSeconds in 0 until tornado.durationSeconds) {
+                    "Farm tornado overlay progress is invalid"
+                }
+            }
             require(farm.specialDamagedCrops.size <= 4_096) { "Farm special crop damage is unbounded" }
             require(farm.specialDamagedCrops.distinctBy(FarmCropDamage::position).size == farm.specialDamagedCrops.size) {
                 "Farm special crop damage contains duplicate plots"
@@ -518,6 +544,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 farm.diseaseDamagedCrops.orEmpty().mapTo(this) { it.position.world }
                 farm.specialIncident?.points?.mapTo(this) { it.world }
                 farm.specialIncident?.plots?.mapTo(this, FarmPlotPosition::world)
+                farm.tornado?.points?.mapTo(this) { it.world }
                 farm.frost?.campfires?.mapTo(this) { it.position.world }
                 farm.specialDamagedCrops.mapTo(this) { it.position.world }
                 farm.deliveryPosition?.world?.let(::add)
@@ -533,6 +560,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                         farm.droughtPlots.isEmpty() && farm.droughtDamagedPlots.isEmpty() &&
                         !farm.pestNestsInitialized && farm.pestNests.isEmpty() && farm.pestAlive == 0 &&
                         farm.pestDamagedCrops.isEmpty() && farm.specialIncident == null && farm.frost == null &&
+                        farm.tornado == null &&
                         farm.diseaseDamagedCrops.orEmpty().isEmpty() &&
                         farm.specialDamagedCrops.isEmpty() && farm.rewardMoneyBonusPercent == 0 &&
                         farm.deliveryPosition == null && farm.deliveredCrates.isEmpty() &&

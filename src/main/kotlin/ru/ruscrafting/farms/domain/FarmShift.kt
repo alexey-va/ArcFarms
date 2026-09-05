@@ -20,6 +20,8 @@ enum class FarmShiftEvent {
     INCIDENT_PROGRESS,
     PROCESSING_STAGE_CHANGED,
     INCIDENT_RESOLVED,
+    TORNADO_STARTED,
+    TORNADO_RESOLVED,
     MARKET_EXPIRED,
     DELIVERY_STARTED,
     DELIVERY_PROGRESS,
@@ -243,6 +245,18 @@ data class FarmSpecialIncidentState(
     }
 }
 
+data class FarmTornadoState(
+    val points: List<FarmPointPosition> = emptyList(),
+    val elapsedSeconds: Int = 0,
+    val durationSeconds: Int = 45,
+) {
+    init {
+        require(points.size <= 32) { "Farm tornado has too many points" }
+        require(elapsedSeconds in 0..durationSeconds) { "Farm tornado progress is invalid" }
+        require(durationSeconds in 10..180) { "Farm tornado duration is invalid" }
+    }
+}
+
 data class FarmFrostCampfire(
     val position: FarmPlotPosition,
     val fuelUntil: Long = 0,
@@ -370,6 +384,7 @@ data class FarmShiftState(
     val pestDamagedCrops: List<FarmCropDamage> = emptyList(),
     val diseaseDamagedCrops: List<FarmCropDamage>? = emptyList(),
     val specialIncident: FarmSpecialIncidentState? = null,
+    val tornado: FarmTornadoState? = null,
     val frost: FarmFrostState? = null,
     val processing: FarmProcessingState? = null,
     val hellGreenhouse: FarmHellGreenhouseState? = null,
@@ -559,6 +574,7 @@ object FarmShiftEngine {
                 pestAlive = 0,
                 pestDamagedCrops = emptyList(),
                 specialIncident = null,
+                tornado = null,
                 hellGreenhouse = null,
                 frost = null,
                 processing = null,
@@ -572,9 +588,17 @@ object FarmShiftEngine {
 
         val nextTrigger = rules.incidentTriggers(state.sequence).getOrNull(state.incidentsResolved)
         val triggerReached = nextTrigger != null && state.completed(order) * 100 >= order.totalRequired * nextTrigger
-        if (state.incidentCrop == null && triggerReached) {
+        if (state.incidentCrop == null && state.tornado == null && triggerReached) {
             val incidentCrop = remainingCrop(state, order)
             if (incidentCrop != null) {
+                if (incidentType == FarmIncidentType.TORNADO) {
+                    val started = FarmTornadoEngine.start(state)
+                    if (started.accepted) {
+                        state = started.state.copy(incidentCrop = null)
+                        events += FarmShiftEvent.TORNADO_STARTED
+                    }
+                    return EngineResult(state, true, contribution, events)
+                }
                 state = state.copy(
                     phase = FarmPhase.INCIDENT,
                     placementSequence = state.nextPlacementSequence(),
@@ -590,6 +614,7 @@ object FarmShiftEngine {
                     pestAlive = 0,
                     pestDamagedCrops = emptyList(),
                     specialIncident = null,
+                    tornado = null,
                     hellGreenhouse = null,
                     frost = null,
                     processing = null,
@@ -612,7 +637,7 @@ object FarmShiftEngine {
         } else {
             current.phase == FarmPhase.HARVESTING
         }
-        if (!validSource || current.careType != null) {
+        if (!validSource || current.careType != null || current.tornado != null) {
             return EngineResult(current, false)
         }
         require(targets.isNotEmpty() && targets.size <= 512) { "Farm care scene must contain 1..512 targets" }
@@ -940,6 +965,7 @@ object FarmShiftEngine {
             hellGreenhouse = null,
             frost = null,
             processing = null,
+            tornado = null,
         )
         return EngineResult(state, true, contribution, listOf(FarmShiftEvent.INCIDENT_RESOLVED))
     }
@@ -1297,6 +1323,7 @@ object FarmShiftEngine {
                     hellGreenhouse = null,
                     frost = null,
                     processing = null,
+                    tornado = null,
                     specialDamagedCrops = emptyList(),
                     deliveryPosition = null,
                     deliveredCrates = emptySet(),

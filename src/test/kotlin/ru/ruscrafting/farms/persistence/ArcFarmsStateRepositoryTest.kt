@@ -20,6 +20,7 @@ import ru.ruscrafting.farms.domain.FarmPerkType
 import ru.ruscrafting.farms.domain.FarmPlayerPerks
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.domain.FarmSpecialIncidentState
+import ru.ruscrafting.farms.domain.FarmTornadoState
 import ru.ruscrafting.farms.domain.FarmSeederStage
 import ru.ruscrafting.farms.domain.LumberPhase
 import ru.ruscrafting.farms.domain.LumberShiftState
@@ -40,6 +41,58 @@ import java.util.UUID
 import java.util.concurrent.ExecutionException
 
 class ArcFarmsStateRepositoryTest : FunSpec({
+    test("harvesting tornado overlay survives an atomic state round trip") {
+        val root = Files.createTempDirectory("arcfarms-state-tornado-overlay-test")
+        val expected = ArcFarmsState(farms = mapOf("farm" to FarmShiftState(
+            phase = FarmPhase.HARVESTING,
+            sequence = 8,
+            orderId = "farm_order",
+            progress = mapOf("WHEAT" to 3),
+            tornado = FarmTornadoState(
+                points = listOf(FarmPointPosition("sp11", 10.5, 65.0, 10.5), FarmPointPosition("sp11", 12.5, 65.0, 10.5)),
+                elapsedSeconds = 4,
+                durationSeconds = 45,
+            ),
+        )))
+        ArcFarmsStateRepository(root).use { repository ->
+            repository.saveBlocking(expected)
+            repository.load() shouldBe expected
+        }
+    }
+
+    test("legacy foreground tornado migrates to a harvesting overlay") {
+        val root = Files.createTempDirectory("arcfarms-state-tornado-migration-test")
+        val data = root.resolve("data")
+        Files.createDirectories(data)
+        Files.writeString(data.resolve("state.json"), """
+            {"schemaVersion":1,"farms":{"farm":{"phase":"INCIDENT","sequence":3,"orderId":"farm_order",
+            "incidentType":"TORNADO","incidentProgress":4,"incidentRequired":45,
+            "specialIncident":{"points":[{"world":"sp11","x":10.5,"y":65.0,"z":10.5,"yaw":0.0,"pitch":0.0}]}}},"lumbermills":{},"mines":{},"stats":{}}
+        """.trimIndent())
+        val farm = ArcFarmsStateRepository(root).use { it.load().farms.getValue("farm") }
+        farm.phase shouldBe FarmPhase.HARVESTING
+        farm.incidentType shouldBe null
+        farm.tornado?.points shouldBe listOf(FarmPointPosition("sp11", 10.5, 65.0, 10.5, 0f, 0f))
+        farm.tornado?.elapsedSeconds shouldBe 4
+        farm.tornado?.durationSeconds shouldBe 45
+    }
+
+    test("tornado overlay rejects duplicate points cross-world anchors and incompatible phases") {
+        val root = Files.createTempDirectory("arcfarms-state-tornado-overlay-invalid")
+        val point = FarmPointPosition("sp11", 10.5, 65.0, 10.5)
+        val valid = FarmShiftState(phase = FarmPhase.HARVESTING, orderId = "farm_order", tornado = FarmTornadoState(points = listOf(point)))
+        val cases = listOf(
+            valid.copy(tornado = FarmTornadoState(points = listOf(point, point))),
+            valid.copy(tornado = FarmTornadoState(points = listOf(point, point.copy(world = "other")))),
+            valid.copy(phase = FarmPhase.DELIVERY),
+        )
+        ArcFarmsStateRepository(root).use { repository ->
+            cases.forEach { farm -> shouldThrow<ExecutionException> {
+                repository.saveBlocking(ArcFarmsState(farms = mapOf("farm" to farm)))
+            } }
+        }
+    }
+
     test("persistence health tracks completed asynchronous requests without retaining backlog") {
         val root = Files.createTempDirectory("arcfarms-state-health-test")
         ArcFarmsStateRepository(root).use { repository ->
@@ -211,7 +264,7 @@ class ArcFarmsStateRepositoryTest : FunSpec({
         ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
     }
 
-    test("tornado incident survives an atomic state round trip") {
+    test("legacy tornado incident migrates to harvesting on load") {
         val root = Files.createTempDirectory("arcfarms-state-tornado-roundtrip-test")
         val player = UUID(0, 77)
         val expected = ArcFarmsState(
@@ -236,7 +289,17 @@ class ArcFarmsStateRepositoryTest : FunSpec({
         )
 
         ArcFarmsStateRepository(root).use { it.saveBlocking(expected) }
-        ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
+        ArcFarmsStateRepository(root).use {
+            val loaded = it.load().farms.getValue("tornado_farm")
+            val original = expected.farms.getValue("tornado_farm")
+            loaded.phase shouldBe FarmPhase.HARVESTING
+            loaded.incidentType shouldBe null
+            loaded.specialIncident shouldBe null
+            loaded.incidentsResolved shouldBe 1
+            loaded.tornado shouldBe FarmTornadoState(original.specialIncident!!.points, 17, 45)
+            loaded.contributors shouldBe original.contributors
+            it.saveBlocking(ArcFarmsState(farms = mapOf("tornado_farm" to loaded)))
+        }
     }
 
     test("tornado persistence rejects empty or oversized funnel points and invalid quota") {

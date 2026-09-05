@@ -119,6 +119,12 @@ internal class FarmShiftCoordinator(
                 FarmShiftEvent.CARE_RESOLVED -> careResolved(runtime, careType, actor)
                 FarmShiftEvent.HARVEST_CHECKPOINT -> harvestCheckpoint(runtime, actor)
                 FarmShiftEvent.HARVEST_MILESTONE -> harvestMilestone(runtime)
+                FarmShiftEvent.TORNADO_STARTED -> tornadoStarted(runtime)
+                FarmShiftEvent.TORNADO_RESOLVED -> {
+                    tornado.clear(runtime)
+                    port.broadcast(listOf(runtime.region), MessageKey.FARM_TORNADO_RESOLVED)
+                    state.persistAsync()
+                }
                 FarmShiftEvent.INCIDENT_STARTED -> incidentStarted(runtime, incidentType, actor)
                 FarmShiftEvent.INCIDENT_PROGRESS -> incidentProgress(runtime, incidentType, actor)
                 FarmShiftEvent.PROCESSING_STAGE_CHANGED -> processingStageChanged(runtime)
@@ -453,14 +459,7 @@ internal class FarmShiftCoordinator(
                     values = mapOf("total" to locale.text(runtime.state.incidentRequired)),
                     sound = Sound.BLOCK_PORTAL_TRIGGER, title = true)
             }
-            FarmIncidentType.TORNADO -> {
-                if (!tornado.initialize(runtime)) {
-                    apply(runtime, FarmShiftEngine.skipUnavailableIncident(runtime.state, type), null)
-                    return
-                }
-                port.broadcast(listOf(runtime.region), MessageKey.FARM_TORNADO_STARTED,
-                    sound = Sound.ENTITY_BREEZE_CHARGE, title = true)
-            }
+            FarmIncidentType.TORNADO -> tornadoStarted(runtime)
             FarmIncidentType.FROST -> {
                 if (!frost.initialize(runtime)) {
                     actor?.takeIf {
@@ -536,6 +535,16 @@ internal class FarmShiftCoordinator(
                 put("time", locale.text(special.marketTime(runtime, incident)))
             }
         })
+    }
+
+    private fun tornadoStarted(runtime: FarmRuntime) {
+        if (!tornado.initialize(runtime)) {
+            runtime.state = runtime.state.copy(tornado = null)
+            state.persistAsync()
+            return
+        }
+        port.broadcast(listOf(runtime.region), MessageKey.FARM_TORNADO_STARTED,
+            sound = Sound.ENTITY_BREEZE_CHARGE, title = true)
     }
 
     private fun incidentResolved(runtime: FarmRuntime, type: FarmIncidentType, actor: Player?) {
@@ -631,6 +640,7 @@ internal class FarmShiftCoordinator(
     }
 
     private fun deliveryStarted(runtime: FarmRuntime) {
+        tornado.clear(runtime)
         hud.storyTitle(runtime, "delivery", Sound.BLOCK_BARREL_CLOSE) { player ->
             locale.render(MessageKey.FARM_DELIVERY_STARTED, player) to emptyMap()
         }

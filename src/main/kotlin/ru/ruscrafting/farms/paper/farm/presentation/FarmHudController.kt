@@ -431,12 +431,15 @@ internal class FarmHudController(
     }
 
     private fun instruction(runtime: FarmRuntime, player: Player): Component {
+        runtime.state.tornado?.takeIf { runtime.state.phase == FarmPhase.HARVESTING }?.let { storm ->
+            return locale.render(MessageKey.FARM_TORNADO_PROGRESS, player, mapOf(
+                "remaining" to locale.text((storm.durationSeconds - storm.elapsedSeconds).coerceAtLeast(0)),
+            ))
+        }
         if (runtime.state.incidentType == FarmIncidentType.HELL_GREENHOUSE) {
             val greenhouse = runtime.state.hellGreenhouse
             val key = when {
                 greenhouse == null -> MessageKey.FARM_HELL_GREENHOUSE_REQUIRED
-                greenhouse.evacuationSeconds != null -> MessageKey.FARM_HELL_GREENHOUSE_EVACUATE
-                greenhouse.cooled >= runtime.settings.specialIncidents.hellGreenhouse.quota -> MessageKey.FARM_HELL_GREENHOUSE_EXIT
                 player.uniqueId in greenhouse.carried -> MessageKey.FARM_HELL_GREENHOUSE_PICKED
                 else -> MessageKey.FARM_HELL_GREENHOUSE_REQUIRED
             }

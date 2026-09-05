@@ -2,7 +2,6 @@ package ru.ruscrafting.farms.paper.farm.incident.greenhouse
 
 import org.bukkit.GameMode
 import org.bukkit.Location
-import org.bukkit.Particle
 import org.bukkit.Sound
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Player
@@ -27,7 +26,7 @@ import java.util.UUID
 import java.util.logging.Level
 import kotlin.math.abs
 
-/** Complete owner of the generated greenhouse, virtual hot cargo and evacuation lifecycle. */
+/** Complete owner of the generated greenhouse, pepper delivery and completion lifecycle. */
 internal class FarmHellGreenhouseIncident(
     plugin: Plugin,
     private val settings: () -> ArcFarmsConfig,
@@ -95,10 +94,11 @@ internal class FarmHellGreenhouseIncident(
         }
         placement.prepare(runtime, chosen)
         val center = chosen.center
-        val points = listOf(-2, 2).flatMap { x -> listOf(-3, -1, 1, 3).map { z ->
+        val rules = runtime.settings.specialIncidents.hellGreenhouse
+        val rows = if (rules.quota > 8) List(8) { -3.5 + it } else listOf(-3.0, -1.0, 1.0, 3.0)
+        val points = listOf(-2, 2).flatMap { x -> rows.map { z ->
             FarmPointPosition(center.world.name, center.x + x, center.y, center.z + z)
         } }
-        val rules = runtime.settings.specialIncidents.hellGreenhouse
         val initialized = FarmHellGreenhouseEngine.initialize(FarmHellGreenhouseState(points), rules)
         runtime.state = runtime.state.copy(hellGreenhouse = initialized.state, incidentProgress = 0, incidentRequired = rules.quota)
         reportedPauses.remove(runtime.settings.id)
@@ -173,13 +173,6 @@ internal class FarmHellGreenhouseIncident(
         clock.ticks++
         if (clock.ticks % 20 == 0 && participants.isNotEmpty()) {
             val result = FarmHellGreenhouseEngine.second(greenhouse, participants.mapTo(linkedSetOf(), Player::getUniqueId), runtime.settings.specialIncidents.hellGreenhouse)
-            result.expiredPlayerIds.forEach { id ->
-                participants.firstOrNull { it.uniqueId == id }?.let { player ->
-                    audience.sendActionBar(player, MessageKey.FARM_HELL_GREENHOUSE_HOT_BURST)
-                    if (settings().particles) player.world.spawnParticle(Particle.FLAME, player.location.add(0.0, 1.0, 0.0), 10, 0.3, 0.3, 0.3, 0.01)
-                    if (settings().sounds) player.playSound(player.location, Sound.ENTITY_GENERIC_EXPLODE, 0.4f, 1.7f)
-                }
-            }
             apply(runtime, result, null)
             if (!active(runtime)) return
         }
@@ -204,14 +197,11 @@ internal class FarmHellGreenhouseIncident(
                 FarmHellGreenhouseEngine.pick(current, player.uniqueId, target.index, rules)
             }
             HellGreenhouseRole.VAT -> FarmHellGreenhouseEngine.cool(current, player.uniqueId, rules)
-            HellGreenhouseRole.EXIT -> FarmHellGreenhouseEngine.evacuate(current, player.uniqueId, rules)
             HellGreenhouseRole.SCENE -> return true
         }
         if (!result.accepted) {
             val message = when {
-                target.role == HellGreenhouseRole.EXIT -> MessageKey.FARM_HELL_GREENHOUSE_QUOTA_REQUIRED
                 target.role == HellGreenhouseRole.VAT -> MessageKey.FARM_HELL_GREENHOUSE_EMPTY_HANDS
-                current.evacuationSeconds != null -> MessageKey.FARM_HELL_GREENHOUSE_EVACUATE
                 player.uniqueId in current.carried -> MessageKey.FARM_HELL_GREENHOUSE_HANDS_FULL
                 else -> MessageKey.FARM_HELL_GREENHOUSE_TOO_EARLY
             }
@@ -228,21 +218,18 @@ internal class FarmHellGreenhouseIncident(
 
     private fun apply(runtime: FarmRuntime, result: FarmHellGreenhouseResult, actor: Player?) {
         if (!result.accepted) return
-        val previous = runtime.state.hellGreenhouse
         val options = runtime.settings.specialIncidents.hellGreenhouse
         val next = runtime.state.copy(hellGreenhouse = result.state, incidentProgress = result.state.cooled.coerceAtMost(options.quota),
             contributors = if (actor != null && result.contribution > 0) incrementContribution(runtime.state.contributors, actor.uniqueId, result.contribution) else runtime.state.contributors)
         if (result.finished) {
-            val message = when { result.timedOut -> MessageKey.FARM_HELL_GREENHOUSE_TIMEOUT; result.successful -> MessageKey.FARM_HELL_GREENHOUSE_SUCCESS; else -> MessageKey.FARM_HELL_GREENHOUSE_PARTIAL }
+            val message = MessageKey.FARM_HELL_GREENHOUSE_SUCCESS
             runtime.state = next
             audience.broadcast(listOf(runtime.region), message, values(runtime), sound = if (result.successful) Sound.ENTITY_PLAYER_LEVELUP else Sound.BLOCK_FIRE_EXTINGUISH)
             clear(runtime)
             transitions.apply(runtime, FarmShiftEngine.completeIncident(next, result.contribution), actor)
         } else {
             transitions.apply(runtime, EngineResult(next, true, contribution = result.contribution), actor)
-            if (previous?.evacuationSeconds == null && result.state.evacuationSeconds != null) {
-                audience.broadcast(listOf(runtime.region), MessageKey.FARM_HELL_GREENHOUSE_EVACUATE, values(runtime), sound = Sound.BLOCK_BELL_USE)
-            }
+
         }
         state.persistAsync()
     }

@@ -8,6 +8,9 @@ import ru.ruscrafting.farms.paper.FarmBlockLedger
 import org.bukkit.GameMode
 import org.bukkit.Location
 import org.bukkit.Material
+import org.bukkit.entity.BlockDisplay
+import org.bukkit.entity.TextDisplay
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.entity.Interaction
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.inventory.EquipmentSlot
@@ -67,7 +70,7 @@ class FarmHellGreenhouseIncidentTest : FunSpec({
         }
     }
 
-    test("greenhouse builds once, harvest must be cooled, exit completes and scene disappears") {
+    test("greenhouse builds once, harvest must be cooled, last cooled pepper completes and scene disappears") {
         FarmIncidentScenarioFixture.open().use { f ->
             val runtime = f.runtime(FarmShiftState(phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.HELL_GREENHOUSE,
                 sequence = 4, placementSequence = 2, orderId = "bakery_supply"))
@@ -88,6 +91,12 @@ class FarmHellGreenhouseIncidentTest : FunSpec({
             controller.update(runtime)
             val count = f.world.entities.count(controller::owns)
             (count in 30..100) shouldBe true
+            val glass = f.world.entities.filterIsInstance<BlockDisplay>().filter { it.block.material == Material.RED_STAINED_GLASS }
+            // Roof, two sides, back and two front panels leave one central entrance.
+            glass.size shouldBe 6
+            val vatLabel = f.world.entities.filterIsInstance<TextDisplay>().single {
+                PlainTextComponentSerializer.plainText().serialize(it.text()).contains("0/2")
+            }
             repeat(20) { controller.update(runtime) }
             f.world.entities.count(controller::owns) shouldBe count
             runtime.state.hellGreenhouse!!.elapsedSeconds shouldBe 1
@@ -106,12 +115,12 @@ class FarmHellGreenhouseIncidentTest : FunSpec({
             runtime.state.contributors shouldBe emptyMap()
             click(target(HellGreenhouseRole.VAT))
             runtime.state.hellGreenhouse!!.cooled shouldBe 1
+            PlainTextComponentSerializer.plainText().serialize(vatLabel.text()).contains("1/2") shouldBe true
             runtime.state.contributors[player.uniqueId] shouldBe 1
             click(target(HellGreenhouseRole.VAT))
             runtime.state.contributors[player.uniqueId] shouldBe 1
             click(target(HellGreenhouseRole.PEPPER, 1))
             click(target(HellGreenhouseRole.VAT))
-            click(target(HellGreenhouseRole.EXIT))
             runtime.state.phase shouldBe FarmPhase.HARVESTING
             runtime.state.hellGreenhouse shouldBe null
             runtime.state.contributors[player.uniqueId] shouldBe 2
@@ -155,7 +164,7 @@ class FarmHellGreenhouseIncidentTest : FunSpec({
             runtime.state.hellGreenhouse!!.harvested.size shouldBe 1
             owner.releasePlayer(player.uniqueId, listOf(runtime))
             runtime.state.hellGreenhouse!!.carried shouldBe emptyMap()
-            runtime.state.hellGreenhouse!!.harvested.size shouldBe 1
+            runtime.state.hellGreenhouse!!.harvested.size shouldBe 0
             owner.interact(PlayerInteractEntityEvent(player, plant, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
             runtime.state.hellGreenhouse!!.cooled shouldBe 0
             runtime.state = runtime.state.copy(phase = FarmPhase.HARVESTING, hellGreenhouse = null)
@@ -195,8 +204,8 @@ class FarmHellGreenhouseIncidentTest : FunSpec({
             owner.cleanup()
         }
     }
-    test("overheat exit and timeout both restore the ordinary order without extra contribution") {
-        for (exitEarly in listOf(false, true)) FarmIncidentScenarioFixture.open().use { f ->
+    test("greenhouse stays available without a hidden heat or time failure") {
+        FarmIncidentScenarioFixture.open().use { f ->
             val runtime = f.runtime(FarmShiftState(phase = FarmPhase.INCIDENT,
                 incidentType = FarmIncidentType.HELL_GREENHOUSE, orderId = "bakery_supply"))
             runtime.settings = runtime.settings.copy(specialIncidents = runtime.settings.specialIncidents.copy(
@@ -215,16 +224,10 @@ class FarmHellGreenhouseIncidentTest : FunSpec({
             runtime.state.hellGreenhouse!!.elapsedSeconds shouldBe 0
             player.teleport(Location(f.world, 24.5, 65.0, 24.5))
             repeat(60) { owner.update(runtime) }
-            runtime.state.hellGreenhouse!!.evacuationSeconds shouldBe 2
-            if (exitEarly) {
-                val exit = f.world.entities.filterIsInstance<Interaction>().single { owner.identity(it)?.role == HellGreenhouseRole.EXIT }
-                player.teleport(exit.location)
-                owner.interact(PlayerInteractEntityEvent(player, exit, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
-            } else repeat(40) { owner.update(runtime) }
-            runtime.state.phase shouldBe FarmPhase.HARVESTING
-            runtime.state.hellGreenhouse shouldBe null
+            repeat(200) { owner.update(runtime) }
+            runtime.state.hellGreenhouse!!.evacuationSeconds shouldBe null
+            runtime.state.phase shouldBe FarmPhase.INCIDENT
             runtime.state.contributors shouldBe emptyMap()
-            f.world.entities.count(owner::owns) shouldBe 0
             owner.cleanup()
         }
     }

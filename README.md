@@ -326,8 +326,10 @@ delivers it by leaving the mine. Broken
 mine blocks are durably journaled before replacement and regenerate from the
 configured weighted material table.
 
-The `TORNADO` incident gives workers a six-second warning, then pursues them
-for 45 active seconds. Sprint away from the funnel; its core deals one heart
+`TORNADO` is a complication during `HARVESTING`: the crop order, progress,
+contributions and harvest guidance continue normally. It consumes one scheduled
+incident slot without creating a separate foreground objective. Workers receive
+a six-second warning before the funnel pursues them for 45 active seconds. Sprint away from the funnel; its core deals one heart
 of damage and lifts nearby players into a ten-block updraft before throwing them
 outwards. Creative players participate and are lifted too; spectators do not
 advance the event. Players on the farm see a rainy evening during the storm.
@@ -347,20 +349,21 @@ eight viewers per frame to bound packet load on crowded farms. `special-incident
 warning, duration, movement speed, height, radius, debris count and hit damage.
 The global particle and sound switches remain respected.
 
-The survival clock pauses when no eligible workers remain. Reload/restart keeps
+The storm clock pauses when no eligible workers remain. Finishing the crop order
+ends the storm immediately and restores its temporary damage. Reload/restart keeps
 completed seconds and reconstructs the scene with a fresh warning. Completion,
 admin stage/reset, reload, shutdown and chunk reconciliation remove owned
 visuals. Test with `/arcfarms admin event <zone> tornado`; it needs indexed,
 loaded outdoor beds but no manually configured spawn point.
 
-The `HELL_GREENHOUSE` incident builds a temporary crimson greenhouse over an
-indexed outdoor farm bed: eight pepper plants, a cooling vat and an exit rift.
-Right-click a ripe pepper, carry it to the vat and right-click to cool it within
-six active seconds. Only cooled peppers count toward the quota and contribution;
-expired or abandoned peppers cannot be harvested again. Collect four by default,
-then use the exit. Each pick adds heat; at the heat limit, harvest stops and a
-15-second evacuation begins. An early evacuation or timeout resumes the ordinary
-crop order with only the contribution already earned.
+The `HELL_GREENHOUSE` incident builds a temporary greenhouse over an indexed
+outdoor farm bed with pepper plants and a water cauldron. Right-click one ripe
+pepper, then right-click the water cauldron with it; each cooled pepper counts
+toward the quota and contribution. The default quota is four peppers. There is
+no heat, expiry, evacuation or exit step: the incident completes automatically
+when the quota is reached. Carried peppers do not expire; leaving returns the
+plant for another worker. Legacy heat and evacuation settings remain readable
+for configuration compatibility but no longer affect gameplay.
 
 Placement searches across the loaded bed index (up to 4,096 anchors sampled
 across the entire pool), instead of only the 32 beds nearest its centre. The
