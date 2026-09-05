@@ -1,5 +1,6 @@
 package ru.ruscrafting.farms.domain.enterprise
 
+import com.google.gson.Gson
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
@@ -218,6 +219,71 @@ class WorksiteEnterpriseCapitalLedgerTest : FunSpec({
                 revenueSnapshot = WorksiteEnterpriseSnapshot(),
             )
         }.message shouldBe "Enterprise capital terms are immutable after funding opens"
+    }
+
+    test("license pacing unlocks cumulative envelope and carries unused capacity") {
+        val ledger = activeLedger()
+        ledger.unlockedGrossCents(ActivityKind.FARM, COMPANY, 99, 1_000_000) shouldBe 0
+        ledger.unlockedGrossCents(ActivityKind.FARM, COMPANY, 100, 1_000_000) shouldBe 83_333
+        ledger.unlockedGrossCents(ActivityKind.FARM, COMPANY, 107, 1_000_000) shouldBe 166_666
+        ledger.unlockedGrossCents(ActivityKind.FARM, COMPANY, 184, 1_000_000) shouldBe 1_000_000
+        ledger.unlockedGrossCents(ActivityKind.FARM, "missing", 107, 1_000_000) shouldBe null
+    }
+
+    test("expired company liquidates treasury once, including offline owners") {
+        val ledger = activeLedger()
+        val policy = policy(totalShares = 4, sharePriceCents = 1_000_000, maxSharesPerOwner = 4)
+        ledger.advance(policy, now = 9_000, currentWeekStartEpochDay = 184, revenueSnapshot = WorksiteEnterpriseSnapshot()) shouldBe true
+        val first = ledger.snapshot()
+        first.companies.getValue("farm:$COMPANY").phase shouldBe WorksiteEnterpriseCapitalPhase.EXPIRED
+        first.companies.getValue("farm:$COMPANY").liquidationCompleted shouldBe true
+        first.companies.getValue("farm:$COMPANY").treasuryCents shouldBe 0
+        first.investmentCreditsCents.getValue(OWNER_A) shouldBe 800_000
+
+        ledger.advance(policy, now = 10_000, currentWeekStartEpochDay = 184, revenueSnapshot = WorksiteEnterpriseSnapshot()) shouldBe false
+        ledger.snapshot().investmentCreditsCents.getValue(OWNER_A) shouldBe 800_000
+    }
+
+    test("pending reservation delays expiry liquidation") {
+        val ledger = activeLedger()
+        val reservation = WorksiteEnterpriseReservation(
+            operationId = "enterprise:farm:communal_farm:${UUID(0, 18)}",
+            activity = ActivityKind.FARM, companyId = COMPANY, worksiteId = COMPANY,
+            orderId = "bakery_supply", sequence = 18, grossTariffCents = 1_000_000,
+            reservedAt = 2_000, businessWeekStartEpochDay = 100,
+        )
+        val pending = WorksiteEnterpriseSnapshot(reservations = mapOf("farm:$COMPANY" to reservation))
+        ledger.advance(policy(totalShares = 4, sharePriceCents = 1_000_000, maxSharesPerOwner = 4), 9_000, 184, pending) shouldBe false
+        ledger.snapshot().companies.getValue("farm:$COMPANY").phase shouldBe WorksiteEnterpriseCapitalPhase.ACTIVE
+        ledger.advance(policy(totalShares = 4, sharePriceCents = 1_000_000, maxSharesPerOwner = 4), 9_001, 184, WorksiteEnterpriseSnapshot()) shouldBe true
+        ledger.snapshot().companies.getValue("farm:$COMPANY").liquidationCompleted shouldBe true
+    }
+
+    test("legacy expired company without watermark liquidates exactly once") {
+        val company = WorksiteEnterpriseCapitalCompany(
+            activity = ActivityKind.FARM, companyId = COMPANY,
+            phase = WorksiteEnterpriseCapitalPhase.EXPIRED, fundingOpenedAt = 1,
+            fundingClosesAt = 2, totalShares = 2, sharePriceCents = 50_000,
+            maxSharesPerOwner = 2, licenseBurnPercent = 50, licenseWeeks = 12,
+            reserveTargetWeeks = 1, issuedShares = 2, shareholdings = mapOf(OWNER_A to 2),
+            treasuryCents = 100_001, activatedWeekStartEpochDay = 0,
+            licenseEndsWeekStartEpochDay = 84, lastClosedWeekStartEpochDay = 77,
+        )
+        val ledger = WorksiteEnterpriseCapitalLedger()
+        val gson = Gson()
+        val legacyJson = gson.toJsonTree(company).asJsonObject.also { it.remove("liquidationCompleted") }
+        val restoredCompany = gson.fromJson(legacyJson, WorksiteEnterpriseCapitalCompany::class.java)
+        restoredCompany.liquidationCompleted shouldBe false
+        ledger.replace(WorksiteEnterpriseFinancingSnapshot(companies = mapOf("farm:$COMPANY" to restoredCompany)))
+        val p = policy(totalShares = 2, sharePriceCents = 50_000, maxSharesPerOwner = 2)
+        ledger.advance(p, 9_000, 84, WorksiteEnterpriseSnapshot()) shouldBe true
+        ledger.snapshot().investmentCreditsCents.getValue(OWNER_A) shouldBe 100_001
+        val reloaded = WorksiteEnterpriseCapitalLedger().also {
+            it.replace(gson.fromJson(gson.toJson(ledger.snapshot()), WorksiteEnterpriseFinancingSnapshot::class.java))
+        }
+        reloaded.advance(p, 9_001, 84, WorksiteEnterpriseSnapshot()) shouldBe false
+        reloaded.snapshot().investmentCreditsCents.getValue(OWNER_A) shouldBe 100_001
+        ledger.snapshot().investmentCreditsCents.getValue(OWNER_A) shouldBe 100_001
     }
 })
 

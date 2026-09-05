@@ -9,6 +9,7 @@ import org.bukkit.entity.Player
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerMoveEvent
+import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.ArcFarmsState
@@ -456,7 +457,16 @@ internal class FarmModule(
         runtime.region.world.loadedChunks.forEach { chunk -> blockRegistry.reconcileChunk(runtime.blockIndexDefinition(), chunk) }
     }
 
-    private fun ensureSupplies(runtime: FarmRuntime) = supplies.ensure(runtime) { supplyPoint(runtime, it) }
+    private fun ensureSupplies(runtime: FarmRuntime) {
+        supplies.ensure(runtime) { supplyPoint(runtime, it) }
+        audience.players(runtime.region).filter {
+            it.isOnline && !it.isDead && !access.isAdminEditing(it) && access.hasAccess(it, runtime.settings.permission)
+        }.forEach { player ->
+            if (!supplies.ensureRequired(runtime, player) &&
+                access.allowInteraction("farm-equipment-full:${player.uniqueId}", 3_000L)
+            ) audience.sendChat(player, MessageKey.FARM_ACTION_INVENTORY_FULL)
+        }
+    }
 
     private fun hasRestoreWork(runtime: FarmRuntime): Boolean =
         (runtime.state.preparationPatch.isNotEmpty() && !runtime.state.preparationReleased) ||

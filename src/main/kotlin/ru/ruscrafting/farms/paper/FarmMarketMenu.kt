@@ -8,11 +8,8 @@ import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.inventory.ItemStack
 import ru.arc.menu.MenuElementId
-import ru.arc.paper.menu.PaperMenuContent
-import ru.arc.paper.menu.PaperMenuEntry
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
-import java.util.WeakHashMap
 
 internal enum class FarmMarketMode { PENDING, ACTIVE }
 
@@ -30,9 +27,8 @@ internal class FarmMarketMenu(
     private val locale: ArcFarmsLocale,
     private val menus: ArcFarmsMenuPlatform,
     private val refreshView: (Player, String, Long) -> Unit,
+    private val onDecision: (Player, FarmMenuSession, FarmMarketClick) -> Unit,
 ) {
-    private val decisions = WeakHashMap<InventoryClickEvent, FarmMarketClick>()
-
     fun openPending(
         player: Player,
         zoneId: String,
@@ -66,8 +62,8 @@ internal class FarmMarketMenu(
         mode: FarmMarketMode,
     ) {
         menus.open(player, MENU, { refreshView(player, zoneId, sequence) }) {
-            val elements = linkedMapOf<MenuElementId, PaperMenuEntry>()
-            elements[ORDER] = PaperMenuEntry(
+            val elements = linkedMapOf<MenuElementId, FarmMenuEntry>()
+            elements[ORDER] = FarmMenuEntry(
                 item = item(
                     MaterialRules.harvestItemForCrop(crop),
                     locale.render(
@@ -108,7 +104,7 @@ internal class FarmMarketMenu(
                     FarmMarketClick(zoneId, sequence, mode, FarmMarketDecision.DECLINE),
                 )
             }
-            PaperMenuContent(
+            FarmMenuContent(
                 title = locale.render(MessageKey.FARM_MARKET_MENU_TITLE, player),
                 background = menus.background(MENU),
                 elements = elements,
@@ -116,12 +112,9 @@ internal class FarmMarketMenu(
         }
     }
 
-    fun handleClick(event: InventoryClickEvent): FarmMarketClick? {
-        if (!menus.owns(event, setOf(MENU))) return null
-        return decisions.remove(event)
-    }
+    fun handleClick(event: InventoryClickEvent): Boolean = menus.owns(event, setOf(MENU)).also { if (it) event.isCancelled = true }
 
-    fun handleDrag(event: InventoryDragEvent): Boolean = menus.owns(event, setOf(MENU))
+    fun handleDrag(event: InventoryDragEvent): Boolean = menus.owns(event, setOf(MENU)).also { if (it) event.isCancelled = true }
 
     private fun decisionEntry(
         element: MenuElementId,
@@ -129,10 +122,10 @@ internal class FarmMarketMenu(
         name: Component,
         lore: List<Component>,
         decision: FarmMarketClick,
-    ) = PaperMenuEntry(
+    ) = FarmMenuEntry(
         item = menus.item(MENU, element, name, lore),
         acceptedClicks = setOf(ClickType.LEFT),
-        onClick = { context -> decisions[context.event] = decision },
+        onClick = { context -> onDecision(context.player, context.session, decision) },
     )
 
     private fun item(material: Material, name: Component, lore: List<Component>): ItemStack {

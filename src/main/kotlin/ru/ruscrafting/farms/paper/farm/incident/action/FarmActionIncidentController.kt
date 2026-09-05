@@ -56,6 +56,8 @@ import ru.ruscrafting.farms.paper.platform.FarmEntityRayTrace
 import ru.ruscrafting.farms.paper.platform.FarmMobDespawnPolicy
 import ru.ruscrafting.farms.paper.platform.FarmMobNavigation
 import ru.ruscrafting.farms.paper.platform.FarmRaidRiderVisibility
+import ru.ruscrafting.farms.paper.platform.FarmRivalRaidSeatMovement
+import ru.ruscrafting.farms.paper.platform.PaperFarmRivalRaidSeatMovement
 import ru.ruscrafting.farms.paper.platform.FarmTextDisplayRenderer
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
@@ -99,6 +101,7 @@ internal class FarmActionIncidentController(
     private val mobDespawns: FarmMobDespawnPolicy,
     private val mobNavigation: FarmMobNavigation,
     private val riderVisibility: FarmRaidRiderVisibility,
+    private val seatMovement: FarmRivalRaidSeatMovement = PaperFarmRivalRaidSeatMovement,
     private val textDisplays: FarmTextDisplayRenderer,
     private val nightShift: FarmNightShiftController,
     private val random: RandomGenerator,
@@ -127,6 +130,7 @@ internal class FarmActionIncidentController(
         mobDespawns,
         mobNavigation,
         riderVisibility,
+        seatMovement,
         textDisplays,
         nightShift,
     )
@@ -514,8 +518,10 @@ internal class FarmActionIncidentController(
         if (player.inventory.storageContents.any { serviceItems.identity(it) == identity } ||
             serviceItems.identity(player.inventory.itemInOffHand) == identity
         ) return
-        if (serviceItems.issueHeld(player, identity, material, locale.render(key, player), 0, null) == null) {
-            audience.sendActionBar(player, MessageKey.FARM_ACTION_INVENTORY_FULL)
+        if (serviceItems.issueHeld(player, identity, material, locale.render(key, player), 0, null) == null &&
+            access.allowInteraction("farm-equipment-full:${player.uniqueId}", 3_000L)
+        ) {
+            audience.sendChat(player, MessageKey.FARM_ACTION_INVENTORY_FULL)
         }
     }
 

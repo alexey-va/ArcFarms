@@ -1,6 +1,10 @@
 package ru.ruscrafting.farms.paper.enterprise
 
 import ru.ruscrafting.farms.config.ArcFarmsConfig
+import ru.ruscrafting.farms.config.WorksiteEnterpriseMode
+import ru.ruscrafting.farms.domain.FarmOrder
+import ru.ruscrafting.farms.domain.enterprise.*
+import java.time.LocalDate
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseCompanyView
 import ru.ruscrafting.farms.domain.enterprise.EnterpriseMoneyPreparationOutcome
@@ -80,6 +84,9 @@ internal class WorksiteEnterpriseService(
 ) {
     private val ledger = WorksiteEnterpriseLedger()
     private val capital = WorksiteEnterpriseCapitalLedger()
+    private val participation = WorksiteEnterpriseParticipationLedger()
+    private var ballotWritePending = false
+    private var ballotWriteFailed = false
     private val settings = settings
     private val debug = debug
     private val clock = clock
@@ -97,18 +104,58 @@ internal class WorksiteEnterpriseService(
         },
         shadowEligible = { configured -> !capital.hasCompany(configured.activity, configured.companyId) },
         companyExists = { configured -> capital.hasCompany(configured.activity, configured.companyId) },
+        availableGrossLimit = { configured, reservationWeek ->
+            capital.unlockedGrossCents(configured.activity, configured.companyId,
+                reservationWeek, configured.licenseGrossEnvelopeCents)
+        },
     )
 
-    val farm: FarmEnterprisePort = farmAdapter
+    val farm: FarmEnterprisePort = object : FarmEnterprisePort {
+        override fun orderPremium(worksiteId: String, sequence: Long): WorksiteEnterpriseOrderPremium? {
+            val reservation = ledger.snapshot().reservations["farm:$worksiteId"]?.takeIf { it.sequence == sequence } ?: return null
+            val terms = reservation.terms ?: return null
+            val afterCost = reservation.grossTariffCents - reservation.grossTariffCents * terms.operatingCostPercent / 100
+            return WorksiteEnterpriseOrderPremium(afterCost * terms.workerBonusPercent / 100,
+                !capital.hasCompany(reservation.activity, reservation.companyId))
+        }
+        override fun orderStarted(worksiteId: String, orderId: String, sequence: Long, startedAt: Long) =
+            farmAdapter.orderStarted(worksiteId, orderId, sequence, startedAt)
+        override fun orderCancelled(worksiteId: String, sequence: Long) = farmAdapter.orderCancelled(worksiteId, sequence)
+        override fun orderCompleted(worksiteId: String, sequence: Long, contributors: Map<UUID, Int>, commercialEligible: Boolean): Boolean {
+            val revenueChanged = farmAdapter.orderCompleted(worksiteId, sequence, contributors, commercialEligible)
+            val configured = settings().enterprises.getValue(ActivityKind.FARM)
+            val recorded = engagementEnabled() && configured.worksiteId == worksiteId && commercialEligible &&
+                contributors.any { it.value > 0 } && participation.recordCompleted(configured.activity, configured.companyId,
+                    worksiteId, sequence, configured.weekStartEpochDay(clock()), contributors)
+            return revenueChanged || recorded
+        }
+        override fun orderPool(worksiteId: String, orders: List<FarmOrder>): List<FarmOrder> {
+            val configured = settings().enterprises.getValue(ActivityKind.FARM)
+            if (!engagementEnabled() || configured.worksiteId != worksiteId) return orders
+            if (capital.hasCompany(configured.activity, configured.companyId) &&
+                !capital.isCommerciallyActive(configured.activity, configured.companyId, configured.weekStartEpochDay(clock()))) return orders
+            advanceParticipation()
+            return FarmEnterpriseOrderPlan.orders(participation.view(configured.activity, configured.companyId).targetPlan, orders)
+        }
+        override fun playerView(playerId: UUID) = this@WorksiteEnterpriseService.playerView(playerId)
+        override fun projectView(worksiteId: String): WorksiteEnterpriseProjectProgress? {
+            val configured = settings().enterprises.getValue(ActivityKind.FARM)
+            return if (engagementEnabled() && configured.worksiteId == worksiteId)
+                participation.view(configured.activity, configured.companyId).project else null
+        }
+    }
 
     fun replace(snapshot: WorksiteEnterpriseSnapshot?): Boolean {
         val restored = snapshot ?: WorksiteEnterpriseSnapshot()
         ledger.replace(restored)
         capital.replace(restored.financing)
+        participation.replace(restored.participation)
+        ballotWritePending = false
+        ballotWriteFailed = false
         return capital.recoverPreparedOperations()
     }
 
-    fun snapshot(): WorksiteEnterpriseSnapshot = ledger.snapshot().copy(financing = capital.snapshot())
+    fun snapshot(): WorksiteEnterpriseSnapshot = ledger.snapshot().copy(financing = capital.snapshot(), participation = participation.snapshot())
 
     fun reconcileFarms(runtimes: Collection<FarmRuntime>, candidate: ArcFarmsConfig? = null): Boolean {
         val configured = candidate?.enterprises?.getValue(ActivityKind.FARM)
@@ -129,7 +176,8 @@ internal class WorksiteEnterpriseService(
             ledger.snapshot(),
             allowCreate = active.mode == ru.ruscrafting.farms.config.WorksiteEnterpriseMode.LIVE,
         )
-        return clearedShadowAccounting || reconciled || pruned || capitalChanged
+        val participationChanged = advanceParticipation(candidate)
+        return clearedShadowAccounting || reconciled || pruned || capitalChanged || participationChanged
     }
 
     fun companyView(activity: ActivityKind): WorksiteEnterpriseCompanyView? = when (activity) {
@@ -202,14 +250,93 @@ internal class WorksiteEnterpriseService(
     }
 
     fun tick(): Boolean {
+        val participationChanged = advanceParticipation()
         val configured = settings().enterprises.getValue(ActivityKind.FARM)
-        return capital.advance(
+        val capitalChanged = capital.advance(
             configured.capitalPolicy(),
             clock(),
             configured.weekStartEpochDay(clock()),
             ledger.snapshot(),
             allowCreate = configured.mode == ru.ruscrafting.farms.config.WorksiteEnterpriseMode.LIVE,
         )
+        return capitalChanged || participationChanged
+    }
+
+    private fun engagementEnabled(): Boolean {
+        val configured = settings().enterprises.getValue(ActivityKind.FARM)
+        return configured.mode != WorksiteEnterpriseMode.OFF || capital.hasCompany(configured.activity, configured.companyId)
+    }
+
+    private fun holdings(configured: ru.ruscrafting.farms.config.WorksiteEnterpriseSettings = settings().enterprises.getValue(ActivityKind.FARM)): Map<UUID, Int> {
+        val company = capital.snapshot().companies["farm:${configured.companyId}"] ?: return emptyMap()
+        return if (capital.isCommerciallyActive(configured.activity, configured.companyId, configured.weekStartEpochDay(clock())))
+            company.shareholdings else emptyMap()
+    }
+
+    private fun advanceParticipation(candidate: ArcFarmsConfig? = null): Boolean {
+        val configured = (candidate ?: settings()).enterprises.getValue(ActivityKind.FARM)
+        if (configured.mode == WorksiteEnterpriseMode.OFF && !capital.hasCompany(configured.activity, configured.companyId) ||
+            ballotWritePending || ballotWriteFailed) return false
+        return participation.advance(configured.activity, configured.companyId,
+            configured.weekStartEpochDay(clock()), holdings(configured)).changed
+    }
+
+    fun participationView(playerId: UUID): WorksiteEnterpriseParticipationView? {
+        if (!engagementEnabled()) return null
+        val configured = settings().enterprises.getValue(ActivityKind.FARM)
+        return participation.view(configured.activity, configured.companyId, playerId)
+    }
+
+    fun playerView(playerId: UUID): WorksiteEnterprisePlayerView? {
+        if (!engagementEnabled()) return null
+        val configured = settings().enterprises.getValue(ActivityKind.FARM)
+        val week = configured.weekStartEpochDay(clock())
+        val key = "farm:${configured.companyId}"
+        val company = capital.snapshot().companies[key]
+        val ownership = capital.view(configured.activity, configured.companyId, playerId)
+        val overview = farmAdapter.companyView() ?: return null
+        val view = participation.view(configured.activity, configured.companyId, playerId)
+        val unlocked = capital.unlockedGrossCents(configured.activity, configured.companyId, week,
+            configured.licenseGrossEnvelopeCents) ?: configured.licenseGrossEnvelopeCents
+        val next = LocalDate.ofEpochDay(week).plusWeeks(1).atTime(configured.businessWeek.startTime)
+            .atZone(configured.businessWeek.zoneId).toInstant().toEpochMilli()
+        val pendingWorker = ledger.snapshot().weeks.values.filter {
+            it.activity == configured.activity && it.companyId == configured.companyId &&
+                (company?.lastClosedWeekStartEpochDay == null || it.weekStartEpochDay > company.lastClosedWeekStartEpochDay)
+        }.sumOf { it.projectedWorkerCreditsCents[playerId] ?: 0L }
+        return WorksiteEnterprisePlayerView(
+            simulated = company == null,
+            workerAccruedCents = pendingWorker,
+            projectedDividendCents = overview.projectedDividendPoolCents / configured.capital.totalShares * (ownership?.ownedShares ?: 0),
+            nextSettlementMillis = next, currentWeekStartEpochDay = week,
+            completedOrders = view.project.personalCompletedOrders.toLong(), contribution = view.project.personalContributions.toLong(),
+            availableThisWeekCents = (unlocked - overview.settledGrossCents - overview.reservedGrossCents).coerceAtLeast(0),
+            licenseWeeksRemaining = company?.licenseEndsWeekStartEpochDay?.let { ((it - week) / 7).coerceIn(0, 52).toInt() } ?: 0,
+            projectStage = view.project.completedMilestones, projectOrders = view.project.contributions.toLong(),
+            projectTarget = (view.project.nextMilestone ?: 50).toLong(), planId = view.targetPlan.name.lowercase(),
+            canVote = !ballotWritePending && !ballotWriteFailed && participation.selectedBallot(configured.activity, configured.companyId, playerId) == null && (holdings()[playerId] ?: 0) > 0,
+            canAdvise = !ballotWritePending && !ballotWriteFailed && participation.selectedBallot(configured.activity, configured.companyId, playerId) == null && participation.canAdvise(configured.activity, configured.companyId, playerId),
+        )
+    }
+
+    fun vote(playerId: UUID, plan: WorksiteEnterprisePlan, week: Long, complete: (Boolean) -> Unit) {
+        if (!engagementEnabled() || ballotWritePending || ballotWriteFailed) { complete(false); return }
+        advanceParticipation()
+        val configured = settings().enterprises.getValue(ActivityKind.FARM)
+        if (week != configured.weekStartEpochDay(clock()) + 7) { complete(false); return }
+        val result = participation.vote(configured.activity, configured.companyId, playerId, plan, week, holdings())
+        if (!result.changed) { complete(false); return }
+        ballotWritePending = true
+        val token = tasks.token()
+        runCatching(persist).getOrElse { CompletableFuture.failedFuture(it) }.whenComplete { _, failure ->
+            tasks.run(token) {
+                ballotWritePending = false
+                // An ambiguous disk write must not apply an unconfirmed policy. Reload reconciles the saved ballot.
+                ballotWriteFailed = failure != null
+                if (failure != null) debugMoneyFailure("enterprise_ballot_write_failed", "$playerId:$week", failure)
+                complete(failure == null)
+            }
+        }
     }
 
     private fun persistPrepared(

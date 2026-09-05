@@ -23,7 +23,7 @@ class ArcFarmsMenuLayoutTest : FunSpec({
         yaml.set("ui.menus.layouts.market.elements.accept.slot", 12)
         yaml.set("ui.menus.layouts.enterprise-overview.elements.farm.slot", 3)
         yaml.set("ui.menus.layouts.enterprise-shares.regions.buy-options.slots", listOf(18, 19, 20, 21))
-        yaml.set("ui.menus.layouts.farm-perks.regions.offers.slots", listOf(11, 13, 15, 17))
+        yaml.set("ui.menus.layouts.farm-perks.regions.offers.slots", listOf(11, 13, 15, 17, 20, 22, 24, 26))
         yaml.save(root.resolve("config.yml").toFile())
 
         val configuration = ArcFarmsMenuPlatform.loadConfiguration(root)
@@ -33,7 +33,7 @@ class ArcFarmsMenuLayoutTest : FunSpec({
         configuration.catalog.require(MenuId.of("enterprise-shares")).region(MenuRegionId.of("buy-options"))
             .map { it.index } shouldBe listOf(18, 19, 20, 21)
         configuration.catalog.require(MenuId.of("farm-perks")).region(MenuRegionId.of("offers"))
-            .map { it.index } shouldBe listOf(11, 13, 15, 17)
+            .map { it.index } shouldBe listOf(11, 13, 15, 17, 20, 22, 24, 26)
     }
 
     test("invalid overlap is rejected before a generation can be published") {

@@ -923,8 +923,8 @@ internal class FarmCareController(
                     identity,
                     Material.FISHING_ROD,
                     locale.render(MessageKey.FARM_CARE_ANIMAL_FISHING_ROD, player),
-                ) == null
-            ) audience.sendActionBar(player, MessageKey.FARM_ACTION_INVENTORY_FULL)
+                ) == null && access.allowInteraction("farm-equipment-full:${player.uniqueId}", 3_000L)
+            ) audience.sendChat(player, MessageKey.FARM_ACTION_INVENTORY_FULL)
         }
     }
 

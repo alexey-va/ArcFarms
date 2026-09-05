@@ -155,8 +155,13 @@ class ArcFarmsArchitectureContractTest : FunSpec({
 
         transition.contains("runLater(lifecycle, 1L)") shouldBe true
         transition.contains("player.openInventory.topInventory !== expectedTop") shouldBe true
+        val menuPlatform = Files.readString(repositoryRoot.resolve(
+            "src/main/kotlin/ru/ruscrafting/farms/paper/ArcFarmsMenuPlatform.kt",
+        ))
+        menuPlatform.contains("tasks.runLater(1L)") shouldBe true
+        menuPlatform.contains("session(player) !== expected") shouldBe true
         listOf(rootClick, enterpriseNavigation, marketDecision).forEach { handler ->
-            handler.contains("deferInventoryTransition") shouldBe true
+            handler.contains("menus.transition") shouldBe true
             handler.contains("player.openInventory(") shouldBe false
             handler.contains("player.closeInventory()") shouldBe false
         }

@@ -139,3 +139,12 @@ internal class MockBukkitMoleBurrowChunkRetention : MoleBurrowChunkRetention {
 
     private fun Chunk.key() = Key(world.name, x, z)
 }
+
+/** Paper 1.21.10+ moves passengers with their seat; pinned MockBukkit still refuses that teleport. */
+internal object MockBukkitFarmRivalRaidSeatMovement : ru.ruscrafting.farms.paper.platform.FarmRivalRaidSeatMovement {
+    override fun move(seat: org.bukkit.entity.ArmorStand, destination: org.bukkit.Location): Boolean {
+        (seat as org.mockbukkit.mockbukkit.entity.EntityMock).setLocation(destination.clone())
+        seat.passengers.forEach { (it as org.mockbukkit.mockbukkit.entity.EntityMock).setLocation(destination.clone()) }
+        return true
+    }
+}

@@ -692,7 +692,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().damageSafety.minimumRemaining shouldBe 128
         settings.farms.single().perks.harvestArea.price shouldBe 250L
         settings.farms.single().perks.rewardBoost.durationHours shouldBe 72
-        settings.farms.single().perks.rewardBonusPercent shouldBe 25
+        settings.farms.single().perks.rewardBonusPercent shouldBe 75
         settings.farms.single().supplies.tool.x shouldBe 212.5
         settings.farms.single().supplies.tool.z shouldBe 448.5
         settings.farms.single().supplies.seeds.z shouldBe 453.5
@@ -868,6 +868,26 @@ class ArcFarmsConfigTest : FunSpec({
         ArcFarmsConfig.inspect(root).farms.single().supplyNearbyViewDistance shouldBe 45.0f
     }
 
+    test("legacy perk menu expands once while existing gameplay overrides survive") {
+        val root = resourceTree()
+        val file = root.resolve("config.yml")
+        val yaml = org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(file.toFile())
+        val path = "ui.menus.layouts.farm-perks"
+        yaml.set("$path.rows", 3)
+        yaml.set("$path.regions.offers.slots", listOf(10, 12, 14, 16))
+        val zone = yaml.getConfigurationSection("farm-zones")!!.getKeys(false).single()
+        yaml.set("farm-zones.$zone.perks.speed.amplifier", 0)
+        yaml.save(file.toFile())
+
+        ArcFarmsConfig.load(root).farms.single().perks.speedAmplifier shouldBe 0
+        val migrated = Files.readString(file)
+        ArcFarmsConfig.load(root)
+        Files.readString(file) shouldBe migrated
+        val menu = Config(root, "config.yml")
+        menu.int("$path.rows", 0) shouldBe 4
+        menu.list<Any>("$path.regions.offers.slots").size shouldBe 8
+    }
+
     test("farm gameplay and presentation tunables load from the bundled config") {
         val root = resourceTree()
         val configPath = root.resolve("config.yml")
@@ -883,9 +903,9 @@ class ArcFarmsConfigTest : FunSpec({
                 .replace("spawn-min-multiplier: 0.8", "spawn-min-multiplier: 0.7")
                 .replace("spawn-max-multiplier: 1.15", "spawn-max-multiplier: 1.2")
                 .replace("phantom-spawn-height: 7.0", "phantom-spawn-height: 9.0")
-                .replace("radius: 1}", "radius: 2}")
-                .replace("amplifier: 0, refresh-ticks: 60", "amplifier: 1, refresh-ticks: 80")
-                .replace("food: 2, saturation: 1.0, health: 1.0", "food: 3, saturation: 1.5, health: 0.5")
+                .replace("radius: 2}", "radius: 3}")
+                .replace("amplifier: 2, refresh-ticks: 60", "amplifier: 1, refresh-ticks: 80")
+                .replace("food: 20, saturation: 10.0, health: 4.0", "food: 3, saturation: 1.5, health: 0.5")
                 .replace("supply-millis: 500", "supply-millis: 550")
                 .replace("delivery-millis: 500", "delivery-millis: 600")
                 .replace("patch-miss-millis: 500", "patch-miss-millis: 650")
@@ -918,7 +938,7 @@ class ArcFarmsConfigTest : FunSpec({
         farm.routeDelivery.monsterSpawnMinMultiplier shouldBe 0.7
         farm.routeDelivery.monsterSpawnMaxMultiplier shouldBe 1.2
         farm.routeDelivery.phantomSpawnHeight shouldBe 9.0
-        farm.perks.harvestAreaRadius shouldBe 2
+        farm.perks.harvestAreaRadius shouldBe 3
         farm.perks.speedAmplifier shouldBe 1
         farm.perks.speedRefreshTicks shouldBe 80
         farm.perks.sustenanceFood shouldBe 3

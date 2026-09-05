@@ -91,6 +91,85 @@ class FarmSupplyControllerMockBukkitTest : FunSpec({
         player.inventory.storageContents.toList() shouldBe before
     }
 
+    test("required equipment retries after a full inventory and never duplicates a complete loadout") {
+        val controller = controller(plugin)
+        val runtime = runtime(world)
+        runtime.state = runtime.state.copy(phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.BIRDS)
+        repeat(player.inventory.storageContents.size) { player.inventory.setItem(it, ItemStack(Material.STONE)) }
+        controller.ensureRequired(runtime, player) shouldBe false
+        player.inventory.setItem(9, null)
+        player.inventory.setItem(10, null)
+        controller.ensureRequired(runtime, player) shouldBe true
+        val supplied = player.inventory.storageContents.map { it?.clone() }
+        controller.ensureRequired(runtime, player) shouldBe true
+        player.inventory.storageContents.toList() shouldBe supplied
+        player.inventory.storageContents.forEachIndexed { slot, item ->
+            if (item?.type == Material.ARROW) player.inventory.setItem(slot, null)
+        }
+        controller.ensureRequired(runtime, player) shouldBe true
+        player.inventory.storageContents.filterNotNull().count { it.type == Material.BOW } shouldBe 1
+        player.inventory.storageContents.filterNotNull().count { it.type == Material.ARROW } shouldBe 1
+        runtime.state = runtime.state.copy(phase = FarmPhase.HARVESTING)
+        controller.removeServiceItems(player, reason = "test")
+        controller.ensureRequired(runtime, player) shouldBe true
+        player.inventory.storageContents.filterNotNull().any(controller::isServiceItem) shouldBe false
+    }
+
+    test("reconcile removes obsolete equipment when the required supply changes") {
+        val controller = controller(plugin)
+        val runtime = runtime(world)
+        runtime.state = runtime.state.copy(phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.DROUGHT)
+        controller.give(runtime, FarmSupplyKind.WATER, player) shouldBe true
+        controller.isServiceItem(player.inventory.itemInMainHand, runtime.settings.id, FarmSupplyKind.WATER) shouldBe true
+
+        runtime.state = runtime.state.copy(incidentType = FarmIncidentType.BIRDS)
+        controller.ensureRequired(runtime, player) shouldBe true
+
+        player.inventory.contents.filterNotNull().none {
+            controller.isServiceItem(it, runtime.settings.id, FarmSupplyKind.WATER)
+        } shouldBe true
+        player.inventory.contents.filterNotNull().count {
+            controller.isServiceItem(it, runtime.settings.id, FarmSupplyKind.ARCHERY)
+        } shouldBe 2
+    }
+
+    test("reconcile removes obsolete farm equipment from storage, offhand, cursor, and open top inventory") {
+        val controller = controller(plugin)
+        val runtime = runtime(world)
+        runtime.state = runtime.state.copy(phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.BARN_FIRE)
+        controller.give(runtime, FarmSupplyKind.FIRE, player) shouldBe true
+        val equipment = requireNotNull(player.inventory.storageContents.first { controller.isServiceItem(it, FarmSupplyKind.FIRE) })
+        player.inventory.setItem(2, equipment.clone())
+        player.inventory.setItem(0, null)
+        val top = server.createInventory(null, 9, Component.text("Test inventory"))
+        player.openInventory(top)
+        player.inventory.setItemInOffHand(equipment.clone())
+        player.setItemOnCursor(equipment.clone())
+        player.openInventory.topInventory.setItem(0, equipment.clone())
+        player.inventory.setItem(1, ItemStack(Material.DIAMOND))
+
+        runtime.state = runtime.state.copy(phase = FarmPhase.HARVESTING, incidentType = null)
+        controller.ensureRequired(runtime, player) shouldBe true
+
+        player.inventory.contents.filterNotNull().none { controller.isServiceItem(it) } shouldBe true
+        player.itemOnCursor.type shouldBe Material.AIR
+        player.openInventory.topInventory.contents.filterNotNull().none { controller.isServiceItem(it) } shouldBe true
+        player.inventory.getItem(1) shouldBe ItemStack(Material.DIAMOND)
+    }
+
+    test("hiding optional supply points removes existing scenes and survives controller restart") {
+        val runtime = runtime(world)
+        val controller = controller(plugin)
+        controller.ensure(runtime, supplyPoints(world)::getValue)
+        world.entities.filter(controller::owns) shouldHaveSize 15
+        every { runtime.settings.supplyPointsVisible } returns false
+        val restarted = controller(plugin)
+        restarted.ensure(runtime, supplyPoints(world)::getValue)
+        world.entities.filter(restarted::owns) shouldHaveSize 0
+        restarted.ensure(runtime, supplyPoints(world)::getValue)
+        world.entities.filter(restarted::owns) shouldHaveSize 0
+    }
+
     test("loaded supply scene converges after controller restart without duplicate entities") {
         val runtime = runtime(world)
         val points = supplyPoints(world)
@@ -207,6 +286,7 @@ private fun runtime(world: WorldMock): FarmRuntime {
     val settings = mockk<FarmZoneSettings> {
         every { id } returns "communal_farm"
         every { this@mockk.supplies } returns supplies
+        every { supplyPointsVisible } returns true
         every { supplyNearbyViewDistance } returns 30.0f
         every { displayViewRange } returns 1.0f
     }

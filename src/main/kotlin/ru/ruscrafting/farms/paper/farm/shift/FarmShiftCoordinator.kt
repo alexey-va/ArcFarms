@@ -53,8 +53,6 @@ import ru.ruscrafting.farms.paper.farm.presentation.FarmHudController
 import ru.ruscrafting.farms.paper.farm.reward.FarmRewardService
 import ru.ruscrafting.farms.paper.farm.scene.FarmContractSceneController
 import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyController
-import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyKind
-import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyVisibilityPolicy
 
 /** The only application owner allowed to apply a farm domain EngineResult. */
 internal class FarmShiftCoordinator(
@@ -63,6 +61,7 @@ internal class FarmShiftCoordinator(
     private val debug: ArcFarmsDebug,
     private val port: WorksiteAudiencePort,
     private val state: WorksiteStatePort,
+    private val tasks: ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort,
     private val stats: WorksiteStatsPort,
     private val network: WorksiteNetworkPort,
     private val carePlans: FarmCarePlanService,
@@ -363,6 +362,7 @@ internal class FarmShiftCoordinator(
     }
 
     private fun incidentStarted(runtime: FarmRuntime, type: FarmIncidentType, actor: Player?) {
+        clearSupplies(runtime, "incident_started")
         when (type) {
             FarmIncidentType.DROUGHT -> {
                 drought.ensure(runtime)
@@ -539,6 +539,7 @@ internal class FarmShiftCoordinator(
     }
 
     private fun incidentResolved(runtime: FarmRuntime, type: FarmIncidentType, actor: Player?) {
+        clearSupplies(runtime, "incident_resolved")
         drought.resetGrowth(runtime.settings.id)
         pests.clear(runtime, "incident_resolved")
         birds.clear(runtime.settings.id, "incident_resolved")
@@ -659,7 +660,7 @@ internal class FarmShiftCoordinator(
         tornado.clear(runtime)
         greenhouse.clear(runtime)
         val contributors = runtime.state.contributors
-        enterprise.orderCompleted(runtime.settings.id, runtime.state.sequence, contributors, commercialEligible)
+        val enterpriseChanged = enterprise.orderCompleted(runtime.settings.id, runtime.state.sequence, contributors, commercialEligible)
         stats.recordCompletion(ActivityKind.FARM, contributors)
         rewards.queueCompletion(runtime, contributors)
         port.broadcast(
@@ -676,7 +677,23 @@ internal class FarmShiftCoordinator(
             actor?.name,
             players(runtime).mapTo(mutableSetOf(), Player::getUniqueId),
         )
-        state.persistAsync()
+        val personal = if (enterpriseChanged && commercialEligible) contributors.keys.mapNotNull { id ->
+            enterprise.playerView(id)?.let { id to it }
+        }.toMap() else emptyMap()
+        val token = tasks.lifecycleToken()
+        state.persistAsync().whenComplete { _, failure ->
+            if (failure == null && personal.isNotEmpty()) tasks.runSync(token) {
+                personal.forEach { (id, view) ->
+                    Bukkit.getPlayer(id)?.let { player ->
+                        val weekSettings = settings().enterprises.getValue(ActivityKind.FARM).businessWeek
+                        val date = java.time.Instant.ofEpochMilli(view.nextSettlementMillis).atZone(weekSettings.zoneId)
+                            .format(java.time.format.DateTimeFormatter.ofPattern("dd.MM HH:mm z"))
+                        port.sendChat(player, if (view.simulated) MessageKey.COMPANY_PERSONAL_SHADOW else MessageKey.COMPANY_PERSONAL_RESULT,
+                            mapOf("amount" to locale.text(java.math.BigDecimal.valueOf(view.workerAccruedCents, 2).toPlainString()), "date" to locale.text(date)))
+                    }
+                }
+            }
+        }
     }
 
     private fun seederInstructionPath(state: FarmShiftState): String = when (state.seederStage()) {
@@ -688,16 +705,16 @@ internal class FarmShiftCoordinator(
     private fun currentOrder(runtime: FarmRuntime): FarmOrder? = runtime.state.orderId?.let(runtime.orders::get)
     private fun players(runtime: FarmRuntime): List<Player> = port.players(runtime.region)
 
-    private fun issueSupply(runtime: FarmRuntime, kind: FarmSupplyKind) {
+    private fun issueRequiredSupply(runtime: FarmRuntime) {
         players(runtime).forEach { player ->
-            if (!supplies.give(runtime, kind, player)) {
+            if (!supplies.ensureRequired(runtime, player)) {
                 port.sendActionBar(player, MessageKey.FARM_ACTION_INVENTORY_FULL)
             }
         }
     }
 
-    private fun issueRequiredSupply(runtime: FarmRuntime) {
-        FarmSupplyVisibilityPolicy.required(runtime.state)?.let { kind -> issueSupply(runtime, kind) }
+    private fun clearSupplies(runtime: FarmRuntime, reason: String) {
+        players(runtime).forEach { supplies.removeServiceItems(it, runtime.settings.id, reason) }
     }
 
     private companion object {

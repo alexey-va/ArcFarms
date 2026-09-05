@@ -16,6 +16,11 @@ import ru.ruscrafting.farms.paper.FarmRuntime
 import java.util.UUID
 
 internal interface FarmEnterprisePort {
+    fun orderPremium(worksiteId: String, sequence: Long): ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseOrderPremium? = null
+    fun orderPool(worksiteId: String, orders: List<ru.ruscrafting.farms.domain.FarmOrder>): List<ru.ruscrafting.farms.domain.FarmOrder> = orders
+    fun playerView(playerId: UUID): ru.ruscrafting.farms.domain.enterprise.WorksiteEnterprisePlayerView? = null
+    fun projectView(worksiteId: String): ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseProjectProgress? = null
+
     fun orderStarted(worksiteId: String, orderId: String, sequence: Long, startedAt: Long): Boolean
 
     fun orderCancelled(worksiteId: String, sequence: Long): Boolean
@@ -37,6 +42,7 @@ internal class FarmEnterpriseAdapter(
     private val commerciallyActive: (WorksiteEnterpriseSettings) -> Boolean = { false },
     private val shadowEligible: (WorksiteEnterpriseSettings) -> Boolean = { true },
     private val companyExists: (WorksiteEnterpriseSettings) -> Boolean = { false },
+    private val availableGrossLimit: (WorksiteEnterpriseSettings, Long) -> Long? = { _, _ -> null },
 ) : FarmEnterprisePort {
     fun replace(snapshot: WorksiteEnterpriseSnapshot?) = ledger.replace(snapshot ?: WorksiteEnterpriseSnapshot())
 
@@ -63,6 +69,7 @@ internal class FarmEnterpriseAdapter(
                 reservedAt = startedAt,
                 businessWeekStartEpochDay = configured.weekStartEpochDay(startedAt),
             ),
+            availableGrossLimitCents = availableGrossLimit(configured, configured.weekStartEpochDay(startedAt)),
         )
         debugReservation(worksiteId, orderId, sequence, decision)
         return decision.changed

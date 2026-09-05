@@ -65,6 +65,8 @@ data class WorksiteEnterpriseCapitalCompany(
     val activatedWeekStartEpochDay: Long? = null,
     val licenseEndsWeekStartEpochDay: Long? = null,
     val lastClosedWeekStartEpochDay: Long? = null,
+    /** Durable watermark: expiry proceeds have been credited exactly once. */
+    val liquidationCompleted: Boolean = false,
 )
 
 data class WorksiteEnterpriseMoneyOperation(
@@ -222,6 +224,30 @@ internal class WorksiteEnterpriseCapitalLedger {
         return company.phase == WorksiteEnterpriseCapitalPhase.ACTIVE && weekStartEpochDay < licenseEnd
     }
 
+    /**
+     * Cumulative gross revenue unlocked by the license at a business-week boundary.
+     * Unused capacity carries forward because this is cumulative, rather than a weekly cap.
+     */
+    fun unlockedGrossCents(
+        activity: ActivityKind,
+        companyId: String,
+        weekStartEpochDay: Long,
+        envelopeCents: Long,
+    ): Long? {
+        require(weekStartEpochDay >= 0L) { "Enterprise week is invalid" }
+        require(envelopeCents in 0..MAX_ENTERPRISE_MONEY_CENTS) { "Enterprise envelope is invalid" }
+        val company = state.companies[companyKey(activity, companyId)] ?: return null
+        val activated = company.activatedWeekStartEpochDay ?: return 0L
+        val licenseWeeks = company.licenseWeeks.toLong()
+        if (weekStartEpochDay < activated) return 0L
+        val elapsedWeeks = (weekStartEpochDay - activated) / DAYS_PER_WEEK
+        val unlockedWeeks = (elapsedWeeks + 1L).coerceAtMost(licenseWeeks)
+        return BigInteger.valueOf(envelopeCents)
+            .multiply(BigInteger.valueOf(unlockedWeeks))
+            .divide(BigInteger.valueOf(licenseWeeks))
+            .longValueExact()
+    }
+
     fun hasCompany(activity: ActivityKind, companyId: String): Boolean =
         state.companies.containsKey(companyKey(activity, companyId))
 
@@ -373,7 +399,21 @@ internal class WorksiteEnterpriseCapitalLedger {
             if (licenseEnd != null && currentWeekStartEpochDay >= licenseEnd && !hasReservations &&
                 company.lastClosedWeekStartEpochDay == licenseEnd - DAYS_PER_WEEK
             ) {
-                state = state.copy(companies = state.companies + (key to company.copy(phase = WorksiteEnterpriseCapitalPhase.EXPIRED)))
+                company = company.copy(phase = WorksiteEnterpriseCapitalPhase.EXPIRED)
+                state = state.copy(companies = state.companies + (key to company))
+                changed = true
+            }
+        }
+        company = state.companies[key] ?: return changed
+        if (company.phase == WorksiteEnterpriseCapitalPhase.EXPIRED && !company.liquidationCompleted) {
+            val licenseEnd = company.licenseEndsWeekStartEpochDay
+            val hasReservations = revenueSnapshot.reservations.values.any {
+                it.activity == company.activity && it.companyId == company.companyId
+            }
+            if (licenseEnd != null && !hasReservations &&
+                company.lastClosedWeekStartEpochDay == licenseEnd - DAYS_PER_WEEK
+            ) {
+                liquidateExpiredCompany(key, company)
                 changed = true
             }
         }
@@ -457,6 +497,29 @@ internal class WorksiteEnterpriseCapitalLedger {
                     escrowCents = 0,
                 )
             ),
+            investmentCreditsCents = credits,
+        )
+    }
+
+    private fun liquidateExpiredCompany(key: String, company: WorksiteEnterpriseCapitalCompany) {
+        val treasury = company.treasuryCents
+        var credits = state.investmentCreditsCents
+        if (treasury > 0L) {
+            val basePerShare = treasury / company.totalShares
+            var remainder = treasury % company.totalShares
+            company.shareholdings.entries.sortedBy { it.key.toString() }.forEach { (playerId, shares) ->
+                val extra = minOf(remainder, shares.toLong())
+                val payout = safeCapitalAdd(
+                    Math.multiplyExact(basePerShare, shares.toLong()),
+                    extra,
+                )
+                credits = addCredit(credits, playerId, payout)
+                remainder -= extra
+            }
+            check(remainder == 0L) { "Enterprise liquidation did not allocate treasury" }
+        }
+        state = state.copy(
+            companies = state.companies + (key to company.copy(treasuryCents = 0L, liquidationCompleted = true)),
             investmentCreditsCents = credits,
         )
     }
@@ -612,6 +675,16 @@ internal class WorksiteEnterpriseCapitalLedger {
                     "Enterprise license terms are invalid"
                 }
                 require(company.reserveTargetWeeks in setOf(1, 2, 4)) { "Enterprise reserve target is invalid" }
+                listOfNotNull(
+                    company.activatedWeekStartEpochDay,
+                    company.licenseEndsWeekStartEpochDay,
+                    company.lastClosedWeekStartEpochDay,
+                ).forEach { require(it >= 0L) { "Enterprise license date is invalid" } }
+                if (company.liquidationCompleted) {
+                    require(company.phase == WorksiteEnterpriseCapitalPhase.EXPIRED && company.treasuryCents == 0L) {
+                        "Enterprise liquidation watermark is invalid"
+                    }
+                }
                 if (company.phase == WorksiteEnterpriseCapitalPhase.FUNDING) {
                     require(company.escrowCents == safeCapitalMultiply(company.sharePriceCents, company.issuedShares)) {
                         "Enterprise funding escrow does not conserve purchases"

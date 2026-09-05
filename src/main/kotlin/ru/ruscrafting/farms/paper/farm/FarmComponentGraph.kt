@@ -396,6 +396,7 @@ internal class FarmComponentGraph(
         special = special,
         textDisplays = textDisplays,
         runtimes = runtimes::snapshot,
+        enterprise = enterprise,
     )
     private val pests = FarmPestIncident(
         plugin = plugin,
@@ -439,6 +440,7 @@ internal class FarmComponentGraph(
         runtimes = runtimes::snapshot,
     )
     private val shifts = FarmShiftCoordinator(
+        tasks = ports.tasks,
         settings = settings,
         locale = locale,
         debug = debug,

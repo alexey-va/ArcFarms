@@ -12,7 +12,6 @@ import org.bukkit.event.inventory.ClickType
 import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
-import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
@@ -32,9 +31,9 @@ import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.ArcFarmsMenuPlatform
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.arc.menu.MenuElementId
-import ru.arc.paper.menu.PaperMenuContent
-import ru.arc.paper.menu.PaperMenuEntry
-import ru.arc.paper.menu.PaperMenuSession
+import ru.ruscrafting.farms.paper.FarmMenuContent
+import ru.ruscrafting.farms.paper.FarmMenuEntry
+import ru.ruscrafting.farms.paper.FarmMenuSession
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
@@ -153,19 +152,23 @@ internal class FarmPerkController(
         val now = clock()
         ensure(runtime)
         audience.players(runtime.region).forEach { player ->
-            if (active(player.uniqueId, FarmPerkType.SPEED, now)) {
-                val current = player.getPotionEffect(PotionEffectType.SPEED)
-                val perk = runtime.settings.perks
-                if (current == null || current.amplifier <= perk.speedAmplifier) {
-                    player.addPotionEffect(
-                        PotionEffect(PotionEffectType.SPEED, perk.speedRefreshTicks, perk.speedAmplifier, true, false, false),
-                    )
-                }
+            if (!access.hasAccess(player, runtime.settings.permission) || player.isDead) return@forEach
+            val perk = runtime.settings.perks
+            fun effect(type: FarmPerkType, potion: PotionEffectType, amplifier: Int) {
+                if (!active(player.uniqueId, type, now)) return
+                val current = player.getPotionEffect(potion)
+                if (current != null && (current.amplifier > amplifier ||
+                        current.amplifier == amplifier && (current.isInfinite || current.duration >= perk.speedRefreshTicks))) return
+                player.addPotionEffect(PotionEffect(potion, perk.speedRefreshTicks, amplifier, true, false, true))
             }
+            effect(FarmPerkType.SPEED, PotionEffectType.SPEED, perk.speedAmplifier)
+            effect(FarmPerkType.STRENGTH, PotionEffectType.STRENGTH, perk.strengthAmplifier)
+            effect(FarmPerkType.RESISTANCE, PotionEffectType.RESISTANCE, perk.resistanceAmplifier)
+            effect(FarmPerkType.FIRE_RESISTANCE, PotionEffectType.FIRE_RESISTANCE, 0)
+            effect(FarmPerkType.JUMP_BOOST, PotionEffectType.JUMP_BOOST, perk.jumpAmplifier)
             if (active(player.uniqueId, FarmPerkType.SUSTENANCE, now) &&
                 access.allowInteraction("farm-perk-sustain:${player.uniqueId}", runtime.settings.perks.sustainIntervalSeconds * 1_000L)
             ) {
-                val perk = runtime.settings.perks
                 player.foodLevel = (player.foodLevel + perk.sustenanceFood).coerceAtMost(20)
                 player.saturation = (player.saturation + perk.sustenanceSaturation).coerceAtMost(20.0f)
                 val maxHealth = player.getAttribute(Attribute.MAX_HEALTH)?.value ?: 20.0
@@ -199,16 +202,16 @@ internal class FarmPerkController(
         menuRefreshTasks.remove(player.uniqueId)
         val session = menus.open(player, MENU, {
             val live = runtimes().firstOrNull { it.settings.id == runtime.settings.id }
-            if (live == null) player.closeInventory() else open(player, live)
+            if (live == null) menus.close(player) else open(player, live)
         }) { content(player, runtime) }
-        scheduleMenuRefresh(player, runtime, session.inventory)
+        scheduleMenuRefresh(player, runtime, session)
     }
 
-    private fun content(player: Player, runtime: FarmRuntime): PaperMenuContent = PaperMenuContent(
+    private fun content(player: Player, runtime: FarmRuntime): FarmMenuContent = FarmMenuContent(
         title = locale.render(MessageKey.FARM_PERK_MENU_TITLE, player),
         background = menus.background(MENU),
         elements = mapOf(
-            BALANCE to PaperMenuEntry(
+            BALANCE to FarmMenuEntry(
                 menus.item(
                     MENU,
                     BALANCE,
@@ -223,7 +226,7 @@ internal class FarmPerkController(
         ),
     )
 
-    private fun scheduleMenuRefresh(player: Player, runtime: FarmRuntime, inventory: Inventory) {
+    private fun scheduleMenuRefresh(player: Player, runtime: FarmRuntime, session: FarmMenuSession) {
         val now = clock()
         val until = normalized(player.uniqueId).activeUntil.values.filter { it > now }.minOrNull()
         if (until == null) {
@@ -236,11 +239,11 @@ internal class FarmPerkController(
         if (!tasks.runLater(delayTicks) {
                 if (!menuRefreshTasks.remove(player.uniqueId, refreshId)) return@runLater
                 if (!player.isOnline) return@runLater
-                val session = menus.session(player) ?: return@runLater
-                if (session.menuId != MENU || session.inventory !== inventory) return@runLater
+                val current = menus.session(player) ?: return@runLater
+                if (current !== session || current.menuId != MENU) return@runLater
                 val liveRuntime = runtimes().firstOrNull { it.settings.id == runtime.settings.id } ?: return@runLater
                 session.requestRefresh()
-                scheduleMenuRefresh(player, liveRuntime, inventory)
+                scheduleMenuRefresh(player, liveRuntime, session)
             }
         ) {
             menuRefreshTasks.remove(player.uniqueId, refreshId)
@@ -251,16 +254,16 @@ internal class FarmPerkController(
         player: Player,
         runtime: FarmRuntime,
         type: FarmPerkType,
-    ): PaperMenuEntry = PaperMenuEntry(
+    ): FarmMenuEntry = FarmMenuEntry(
         item = offerItem(player, runtime, type),
         enabled = normalized(player.uniqueId).activeUntil[type]?.let { it <= clock() } != false &&
             available(player.uniqueId) >= offer(runtime, type).price,
         acceptedClicks = setOf(ClickType.LEFT),
         onClick = { context ->
-            when (val result = purchase(player, runtime, type)) {
+            when (val result = purchase(player, runtime, type, context.session)) {
                 FarmPerkPurchaseUiResult.PENDING -> Unit
                 is FarmPerkPurchaseUiResult.REJECTED -> showRejectedOffer(
-                    player, context.session, context.event.rawSlot, type, result.name, result.lore,
+                    player, context.session, context.slot, type, result.name, result.lore,
                 )
             }
         },
@@ -279,7 +282,9 @@ internal class FarmPerkController(
             template(type),
             locale.renderPath("perk.${type.name.lowercase()}.name", player),
             buildList {
-                add(locale.renderPath("perk.${type.name.lowercase()}.description", player))
+                add(locale.renderPath("perk.${type.name.lowercase()}.description", player, descriptionValues(runtime)))
+                add(locale.renderPath("perk.${type.name.lowercase()}.detail", player, descriptionValues(runtime)))
+                add(Component.empty())
                 add(
                     locale.render(
                         MessageKey.FARM_PERK_PRICE,
@@ -315,7 +320,12 @@ internal class FarmPerkController(
         }
     }
 
-    private fun purchase(player: Player, runtime: FarmRuntime, type: FarmPerkType): FarmPerkPurchaseUiResult {
+    private fun purchase(
+        player: Player,
+        runtime: FarmRuntime,
+        type: FarmPerkType,
+        expectedSession: FarmMenuSession,
+    ): FarmPerkPurchaseUiResult {
         if (player.uniqueId in pendingPurchases) {
             return FarmPerkPurchaseUiResult.REJECTED(
                 locale.render(MessageKey.FARM_PERK_SAVE_FAILED_TITLE, player),
@@ -373,7 +383,7 @@ internal class FarmPerkController(
                     state.log(Level.SEVERE, "Could not persist farm perk purchase for ${player.uniqueId}", failure)
                     if (player.isOnline) {
                         audience.sendChat(player, MessageKey.FARM_PERK_SAVE_FAILED)
-                        open(player, runtime)
+                        menus.transition(player, expectedSession) { open(player, runtime) }
                     }
                     return@runSync
                 }
@@ -384,7 +394,7 @@ internal class FarmPerkController(
                         mapOf("perk" to locale.renderPath("perk.${type.name.lowercase()}.name", player)),
                     )
                     player.playSound(player.location, Sound.ENTITY_PLAYER_LEVELUP, 0.8f, 1.15f)
-                    open(player, runtime)
+                    menus.transition(player, expectedSession) { open(player, runtime) }
                 }
                 debug.event(
                     "farm_perk_purchased", "zone" to runtime.settings.id, "player" to player.name,
@@ -397,22 +407,21 @@ internal class FarmPerkController(
 
     private fun showRejectedOffer(
         player: Player,
-        session: PaperMenuSession,
+        session: FarmMenuSession,
         slot: Int,
         type: FarmPerkType,
         name: Component,
         lore: List<Component>,
     ) {
-        val inventory = session.inventory
-        if (inventory.getItem(slot) == null) return
-        inventory.setItem(slot, menus.item(template(type), name, lore))
+        val item = menus.item(template(type), name, lore)
+        session.feedback(slot, item)
         val feedbackId = ++feedbackSequence
         feedbackTasks[player.uniqueId] = feedbackId
         tasks.runLater(FEEDBACK_TICKS) {
             if (!feedbackTasks.remove(player.uniqueId, feedbackId)) return@runLater
             if (!player.isOnline) return@runLater
             val current = menus.session(player) ?: return@runLater
-            if (current !== session || current.menuId != MENU || current.inventory !== inventory) return@runLater
+            if (current !== session || current.menuId != MENU) return@runLater
             current.requestRefresh()
         }
     }
@@ -428,19 +437,32 @@ internal class FarmPerkController(
         return current?.forWeek(week, clock()) ?: FarmPlayerPerks(weekStartEpochDay = week)
     }
 
+    private fun descriptionValues(runtime: FarmRuntime): Map<String, Component> = with(runtime.settings.perks) {
+        mapOf(
+            "width" to locale.text(harvestAreaRadius * 2 + 1),
+            "speed" to locale.text((speedAmplifier + 1) * 20),
+            "hearts" to locale.text(sustenanceHealth / 2.0),
+            "food" to locale.text(sustenanceFood / 2.0),
+            "seconds" to locale.text(sustainIntervalSeconds),
+            "bonus" to locale.text(rewardBonusPercent),
+            "strength" to locale.text(strengthAmplifier + 1),
+            "resistance" to locale.text((resistanceAmplifier + 1) * 20),
+            "jump" to locale.text(jumpAmplifier + 1),
+        )
+    }
+
     private fun offer(runtime: FarmRuntime, type: FarmPerkType): FarmPerkOfferSettings = when (type) {
         FarmPerkType.HARVEST_AREA -> runtime.settings.perks.harvestArea
         FarmPerkType.SPEED -> runtime.settings.perks.speed
         FarmPerkType.SUSTENANCE -> runtime.settings.perks.sustenance
         FarmPerkType.REWARD_BOOST -> runtime.settings.perks.rewardBoost
+        FarmPerkType.STRENGTH -> runtime.settings.perks.strength
+        FarmPerkType.RESISTANCE -> runtime.settings.perks.resistance
+        FarmPerkType.FIRE_RESISTANCE -> runtime.settings.perks.fireResistance
+        FarmPerkType.JUMP_BOOST -> runtime.settings.perks.jumpBoost
     }
 
-    private fun template(type: FarmPerkType): String = when (type) {
-        FarmPerkType.HARVEST_AREA -> "perk-harvest-area"
-        FarmPerkType.SPEED -> "perk-speed"
-        FarmPerkType.SUSTENANCE -> "perk-sustenance"
-        FarmPerkType.REWARD_BOOST -> "perk-reward-boost"
-    }
+    private fun template(type: FarmPerkType): String = "perk-${type.name.lowercase().replace('_', '-')}"
 
     private sealed interface FarmPerkPurchaseUiResult {
         data object PENDING : FarmPerkPurchaseUiResult

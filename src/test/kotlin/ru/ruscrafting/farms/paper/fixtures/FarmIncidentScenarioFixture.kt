@@ -90,6 +90,9 @@ internal class FarmIncidentScenarioFixture private constructor(
             plugin.dataFolder.toPath().resolve("config.yml"),
             java.nio.file.StandardCopyOption.REPLACE_EXISTING,
         )
+        val yaml = org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(plugin.dataFolder.toPath().resolve("config.yml").toFile())
+        yaml.set("ui.menu-presentation", "INVENTORY")
+        yaml.save(plugin.dataFolder.toPath().resolve("config.yml").toFile())
         ArcFarmsMenuPlatform(plugin)
     }
     data class AppliedTransition(
@@ -274,6 +277,7 @@ internal class FarmIncidentScenarioFixture private constructor(
             riderVisibility = { player, ghast, hidden ->
                 raidRiderVisibilityEvents += Triple(player.uniqueId, ghast.uniqueId, hidden)
             },
+            seatMovement = MockBukkitFarmRivalRaidSeatMovement,
             textDisplays = MockBukkitFarmTextDisplays,
             nightShift = night,
             random = random,
