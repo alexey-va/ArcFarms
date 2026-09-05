@@ -141,7 +141,8 @@ class FarmPerkControllerMockBukkitTest : FunSpec({
 
         val beforeRefresh = player.openInventory.topInventory
         now = activeUntil + 1
-        menus.session(player)?.refresh()
+        menus.session(player)?.requestRefresh()
+        paper.server.scheduler.performTicks(2)
         val refreshed = player.openInventory.topInventory
         (refreshed === beforeRefresh) shouldBe true
         PlainTextComponentSerializer.plainText().serialize(requireNotNull(refreshed.getItem(10)?.itemMeta?.displayName())) shouldBe
@@ -309,6 +310,7 @@ class FarmPerkControllerMockBukkitTest : FunSpec({
             input.use { Files.copy(it, plugin.dataFolder.toPath().resolve("config.yml")) }
             val file = plugin.dataFolder.toPath().resolve("config.yml").toFile()
             val yaml = YamlConfiguration.loadConfiguration(file)
+            yaml.set("ui.menu-presentation", "INVENTORY")
             yaml.set("ui.menus.templates.background.custom-model-data", 11_000)
             yaml.save(file)
             return ArcFarmsMenuPlatform(plugin)

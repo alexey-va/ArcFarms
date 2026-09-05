@@ -17,43 +17,57 @@ import ru.ruscrafting.farms.domain.enterprise.*
 import java.nio.file.Files
 
 class WorksiteEnterpriseParticipationMenuTest : FunSpec({
-    test("candidate opens confirmation and only confirmed LEFT submits the selected plan") {
+    listOf("INVENTORY", "DIALOG").forEach { presentation ->
+    test("$presentation candidate opens confirmation and only confirmed LEFT submits the selected plan") {
         val paper = MockBukkitTestRuntime.open()
         try {
             val plugin = paper.createSimplePlugin("ParticipationMenuTest")
             copyResources(plugin)
+            val yaml = org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(plugin.dataFolder.toPath().resolve("config.yml").toFile())
+            yaml.set("ui.menu-presentation", presentation)
+            yaml.save(plugin.dataFolder.toPath().resolve("config.yml").toFile())
             val config = ArcFarmsConfig.inspect(plugin.dataFolder.toPath())
             val locale = ArcFarmsLocale(plugin.dataFolder.toPath()) { config }
-            val menus = ArcFarmsMenuPlatform(plugin)
+            val capture = ParticipationDialogCapture()
+            val menus = ArcFarmsMenuPlatform(plugin, capture)
+            menus.configureDialogs(locale)
             val service = mockk<ArcFarmsService>(relaxed = true)
             val player = paper.addPlayer("Participant")
             val view = participationView()
             var personal = personalView(canVote = true)
             every { service.enterpriseParticipation(player.uniqueId) } returns view
             every { service.enterprisePlayerView(player.uniqueId) } answers { personal }
-            every { service.deferInventoryTransition(any(), any(), any()) } answers {
-                arg<() -> Unit>(2).invoke(); true
+            fun choose(slot: Int, click: ClickType) {
+                if (presentation == "INVENTORY") click(paper, player, slot, click)
+                else if (click == ClickType.LEFT) {
+                    val actionId = if (slot == 13) "confirm" else "steady"
+                    capture.last!!.buttons.firstOrNull { it.id.value == actionId }?.onClick?.handle(
+                        mockk<ru.arc.paper.menu.PaperDialogClickContext>(relaxed = true),
+                    )
+                }
+                paper.server.scheduler.performTicks(2)
             }
             val menu = WorksiteEnterpriseParticipationMenu(service, locale, { config }, menus) {}
             menu.open(player)
 
-            click(paper, player, 10, ClickType.LEFT)
+            choose(10, ClickType.LEFT)
             menus.session(player)?.menuId shouldBe ArcFarmsMenuPlatform.ENTERPRISE_CONFIRM
-            click(paper, player, 13, ClickType.RIGHT)
+            choose(13, ClickType.RIGHT)
             verify(exactly = 0) { service.voteEnterprise(any(), any(), any(), any()) }
-            click(paper, player, 13, ClickType.LEFT)
+            choose(13, ClickType.LEFT)
             verify(exactly = 1) {
                 service.voteEnterprise(player.uniqueId, WorksiteEnterprisePlan.STEADY, 107L, any())
             }
 
             personal = personalView(canVote = false)
             menu.open(player)
-            click(paper, player, 10, ClickType.LEFT)
-            click(paper, player, 13, ClickType.LEFT)
+            choose(10, ClickType.LEFT)
+            choose(13, ClickType.LEFT)
             verify(exactly = 1) { service.voteEnterprise(any(), any(), any(), any()) }
         } finally {
             paper.close()
         }
+    }
     }
 })
 
@@ -80,4 +94,11 @@ private fun copyResources(plugin: org.bukkit.plugin.Plugin) {
         Files.createDirectories(target.parent)
         source.use { Files.copy(it, target) }
     }
+}
+
+private class ParticipationDialogCapture : FarmDialogDisplay {
+    var last: ru.arc.paper.menu.PaperDialogScreen? = null
+    override fun show(player: org.bukkit.entity.Player, screen: ru.arc.paper.menu.PaperDialogScreen) { last = screen }
+    override fun close(player: org.bukkit.entity.Player) = Unit
+    override fun close() = Unit
 }

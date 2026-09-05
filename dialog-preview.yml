@@ -1,0 +1,420 @@
+schema: 1
+plugin: ArcFarms native dialogs
+minecraft-version: 1.21.11
+minecraft-client-sha1: ba2df812c2d12e0219c489c4cd9a5e1f0760f5bd
+gallery-accent: '#55d98b'
+sources:
+  farms:
+    path: src/main/resources/lang/ru.yml
+    prefix-key: prefix
+    exclude:
+    - prefix
+    include:
+    - companies.back.lore
+    - companies.back.name
+    - companies.farm-detail.header.lore
+    - companies.farm-detail.license.name
+    - companies.farm-detail.license.outcome
+    - companies.farm-detail.market.lore
+    - companies.farm-detail.market.name
+    - companies.farm-detail.policy.name
+    - companies.farm-detail.policy.open
+    - companies.farm-detail.report.name
+    - companies.farm-detail.report.personal
+    - companies.farm-detail.shares.live-lore
+    - companies.farm-detail.shares.name
+    - companies.farm-detail.title
+    - companies.farm-detail.workers.contribution
+    - companies.farm-detail.workers.name
+    - companies.participation.challenge.lore
+    - companies.participation.challenge.name
+    - companies.participation.project-progress
+    - companies.participation.project-purpose
+    - companies.participation.quorum
+    - companies.participation.steady.lore
+    - companies.participation.steady.name
+    - companies.participation.summary
+    - companies.participation.team.lore
+    - companies.participation.team.name
+    - companies.participation.title
+    - companies.participation.voting
+    - companies.shares.confirm.click
+    - companies.shares.confirm.cost
+    - companies.shares.confirm.effect
+    - companies.shares.confirm.license
+    - companies.shares.confirm.name
+    - companies.shares.confirm.risk
+    - companies.shares.confirm.title
+    - companies.shares.confirm.warning
+    - dialog.close
+    - dialog.help
+    - dialog.intro.enterprise-confirm
+    - dialog.intro.enterprise-farm
+    - dialog.intro.enterprise-participation
+    - dialog.intro.farm-perks
+    - dialog.intro.main
+    - dialog.intro.market
+    - farm.market-menu.accept
+    - farm.market-menu.choose
+    - farm.market-menu.decline
+    - farm.market-menu.order
+    - farm.market-menu.title
+    - farm.perk-menu.balance
+    - farm.perk-menu.title
+    - menu.companies.lore
+    - menu.companies.name
+    - menu.farm.lore
+    - menu.farm.name
+    - menu.lumber.lore
+    - menu.lumber.name
+    - menu.mine.lore
+    - menu.mine.name
+    - menu.stats.lore
+    - menu.title
+    - menu.workday.lore
+    - menu.workday.name
+    - perk.harvest_area.description
+    - perk.harvest_area.name
+    - perk.reward_boost.description
+    - perk.reward_boost.name
+    - perk.speed.description
+    - perk.speed.name
+    - perk.sustenance.description
+    - perk.sustenance.name
+placeholders:
+  amount: 250 000
+  bonus: '75'
+  color: <#55d98b>
+  contribution: '86'
+  crop: Пшеница
+  cycle: '12'
+  farm: '86'
+  food: '10'
+  hearts: '2'
+  limit: '20'
+  lumber: '42'
+  mine: '31'
+  orders: '37'
+  percent: '50'
+  plan: Командный план
+  points: '12'
+  seconds: '30'
+  shares: '5'
+  speed: '60'
+  stage: '2'
+  target: '50'
+  week: '07.09'
+  width: '3'
+  color:#20252b: <#20252b>
+  color:#2bba43: <#2bba43>
+  color:#45c8f5: <#45c8f5>
+  color:#55d98b: <#55d98b>
+  color:#666666: <#666666>
+  color:#707a76: <#707a76>
+  color:#8bd3ff: <#8bd3ff>
+  color:#969696: <#969696>
+  color:#976948: <#976948>
+  color:#9a8cff: <#9a8cff>
+  color:#a9825a: <#a9825a>
+  color:#b8c8c0: <#b8c8c0>
+  color:#bd52d6: <#bd52d6>
+  color:#c28946: <#c28946>
+  color:#c42323: <#c42323>
+  color:#c69cff: <#c69cff>
+  color:#c778ff: <#c778ff>
+  color:#d8a56d: <#d8a56d>
+  color:#f2fff7: <#f2fff7>
+  color:#ff5f6d: <#ff5f6d>
+  color:#ff7a45: <#ff7a45>
+  color:#ff9f0f: <#ff9f0f>
+  color:#ffad42: <#ffad42>
+  color:#ffc857: <#ffc857>
+surfaces:
+  dialogs:
+  - id: arcfarms-dialog-main
+    source: farms
+    format: reference-multi-action
+    name-key: menu.title
+    external-title-key: menu.title
+    columns: 2
+    body:
+    - id: intro
+      text-key: dialog.intro.main
+      width: 440
+    - id: stats
+      text-key: menu.stats.lore
+      width: 440
+      placeholders:
+        farm: '86'
+        lumber: '42'
+        mine: '31'
+    buttons:
+    - id: farm
+      text-key: menu.farm.name
+      tooltip-key: menu.farm.lore
+      width: 210
+    - id: lumber
+      text-key: menu.lumber.name
+      tooltip-key: menu.lumber.lore
+      width: 210
+    - id: mine
+      text-key: menu.mine.name
+      tooltip-key: menu.mine.lore
+      width: 210
+    - id: workday
+      text-key: menu.workday.name
+      tooltip-key: menu.workday.lore
+      width: 210
+      placeholders:
+        cycle: '12'
+        farm: ✓ ферма
+        lumber: лес
+        mine: шахта
+    - id: companies
+      text-key: menu.companies.name
+      tooltip-key: menu.companies.lore
+      width: 210
+    - id: help
+      text-key: dialog.help
+      tooltip-key: dialog.help
+      width: 210
+    - id: close
+      text-key: dialog.close
+      tooltip-key: dialog.close
+      width: 210
+    viewport:
+    - 960
+    - 600
+    variants:
+    - id: default
+  - id: arcfarms-dialog-market
+    source: farms
+    format: reference-multi-action
+    name-key: farm.market-menu.title
+    external-title-key: farm.market-menu.title
+    columns: 2
+    body:
+    - id: intro
+      text-key: dialog.intro.market
+      width: 440
+    - id: order
+      text-key: farm.market-menu.order
+      width: 440
+      placeholders:
+        crop: Пшеница
+        amount: '120'
+    buttons:
+    - id: accept
+      text-key: farm.market-menu.accept
+      tooltip-key: farm.market-menu.choose
+      width: 210
+    - id: decline
+      text-key: farm.market-menu.decline
+      tooltip-key: farm.market-menu.choose
+      width: 210
+    - id: close
+      text-key: dialog.close
+      tooltip-key: dialog.close
+      width: 210
+    viewport:
+    - 960
+    - 600
+    variants:
+    - id: pending
+  - id: arcfarms-dialog-enterprise-farm
+    source: farms
+    format: reference-multi-action
+    name-key: companies.farm-detail.title
+    external-title-key: companies.farm-detail.title
+    columns: 2
+    body:
+    - id: intro
+      text-key: dialog.intro.enterprise-farm
+      width: 440
+    - id: header
+      text-key: companies.farm-detail.header.lore
+      width: 440
+    buttons:
+    - id: report
+      text-key: companies.farm-detail.report.name
+      tooltip-key: companies.farm-detail.report.personal
+      width: 210
+      placeholders:
+        amount: 2 400
+        time: 07.09.2026 04:00 Europe/Moscow
+    - id: workers
+      text-key: companies.farm-detail.workers.name
+      tooltip-key: companies.farm-detail.workers.contribution
+      width: 210
+      placeholders:
+        orders: '37'
+        contribution: '86'
+    - id: policy
+      text-key: companies.farm-detail.policy.name
+      tooltip-key: companies.farm-detail.policy.open
+      width: 210
+    - id: license
+      text-key: companies.farm-detail.license.name
+      tooltip-key: companies.farm-detail.license.outcome
+      width: 210
+    - id: shares
+      text-key: companies.farm-detail.shares.name
+      tooltip-key: companies.farm-detail.shares.live-lore
+      width: 210
+    - id: market
+      text-key: companies.farm-detail.market.name
+      tooltip-key: companies.farm-detail.market.lore
+      width: 210
+    - id: back
+      text-key: companies.back.name
+      tooltip-key: companies.back.lore
+      width: 210
+    viewport:
+    - 960
+    - 600
+    variants:
+    - id: active-shadow
+  - id: arcfarms-dialog-enterprise-participation
+    source: farms
+    format: reference-multi-action
+    name-key: companies.participation.title
+    external-title-key: companies.participation.title
+    columns: 2
+    body:
+    - id: intro
+      text-key: dialog.intro.enterprise-participation
+      width: 440
+    - id: summary
+      text-key: companies.participation.summary
+      width: 440
+      placeholders:
+        plan: Командный план
+    - id: voting
+      text-key: companies.participation.voting
+      width: 440
+      placeholders:
+        week: '07.09'
+    - id: quorum
+      text-key: companies.participation.quorum
+      width: 440
+    - id: progress
+      text-key: companies.participation.project-progress
+      width: 440
+      placeholders:
+        stage: '2'
+        orders: '37'
+        target: '50'
+    - id: purpose
+      text-key: companies.participation.project-purpose
+      width: 440
+    buttons:
+    - id: steady
+      text-key: companies.participation.steady.name
+      tooltip-key: companies.participation.steady.lore
+      width: 210
+    - id: team
+      text-key: companies.participation.team.name
+      tooltip-key: companies.participation.team.lore
+      width: 210
+    - id: challenge
+      text-key: companies.participation.challenge.name
+      tooltip-key: companies.participation.challenge.lore
+      width: 210
+    - id: back
+      text-key: companies.back.name
+      tooltip-key: companies.back.lore
+      width: 210
+    viewport:
+    - 960
+    - 720
+    variants:
+    - id: eligible
+  - id: arcfarms-dialog-enterprise-confirm
+    source: farms
+    format: reference-multi-action
+    name-key: companies.shares.confirm.name
+    external-title-key: companies.shares.confirm.title
+    columns: 1
+    body:
+    - id: intro
+      text-key: dialog.intro.enterprise-confirm
+      width: 440
+    - id: cost
+      text-key: companies.shares.confirm.cost
+      width: 440
+      placeholders:
+        amount: 250 000
+    - id: effect
+      text-key: companies.shares.confirm.effect
+      width: 440
+      placeholders:
+        shares: '5'
+        limit: '20'
+    - id: warning
+      text-key: companies.shares.confirm.warning
+      width: 440
+    - id: license
+      text-key: companies.shares.confirm.license
+      width: 440
+      placeholders:
+        percent: '50'
+    - id: risk
+      text-key: companies.shares.confirm.risk
+      width: 440
+    buttons:
+    - id: confirm
+      text-key: companies.shares.confirm.name
+      tooltip-key: companies.shares.confirm.click
+      width: 210
+      placeholders:
+        shares: '5'
+    - id: back
+      text-key: companies.back.name
+      tooltip-key: companies.back.lore
+      width: 210
+    viewport:
+    - 960
+    - 600
+    variants:
+    - id: purchase
+  - id: arcfarms-dialog-farm-perks
+    source: farms
+    format: reference-multi-action
+    name-key: farm.perk-menu.title
+    external-title-key: farm.perk-menu.title
+    columns: 2
+    body:
+    - id: intro
+      text-key: dialog.intro.farm-perks
+      width: 440
+    - id: balance
+      text-key: farm.perk-menu.balance
+      width: 440
+      placeholders:
+        points: '12'
+    buttons:
+    - id: harvest-area
+      text-key: perk.harvest_area.name
+      tooltip-key: perk.harvest_area.description
+      width: 210
+    - id: speed
+      text-key: perk.speed.name
+      tooltip-key: perk.speed.description
+      width: 210
+    - id: sustenance
+      text-key: perk.sustenance.name
+      tooltip-key: perk.sustenance.description
+      width: 210
+    - id: reward-boost
+      text-key: perk.reward_boost.name
+      tooltip-key: perk.reward_boost.description
+      width: 210
+    - id: close
+      text-key: dialog.close
+      tooltip-key: dialog.close
+      width: 210
+    viewport:
+    - 960
+    - 600
+    variants:
+    - id: default

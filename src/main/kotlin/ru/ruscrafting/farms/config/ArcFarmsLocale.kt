@@ -774,6 +774,8 @@ class ArcFarmsLocale(
 
         fun requiredPaths(settings: ArcFarmsConfig): Set<String> = buildSet {
             addAll(MessageKey.entries.map(MessageKey::path))
+            addAll(listOf("dialog.close", "dialog.back", "dialog.help"))
+            addAll(listOf("main", "market", "enterprise-overview", "enterprise-farm", "enterprise-shares", "enterprise-confirm", "enterprise-participation", "farm-perks").map { "dialog.intro.$it" })
             addAll(listOf(
                 "companies.participation.title", "companies.participation.summary-name", "companies.participation.summary",
                 "companies.participation.voting", "companies.participation.eligibility", "companies.participation.advisory",

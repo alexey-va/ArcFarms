@@ -32,11 +32,13 @@ class FarmMarketMenuTest : FunSpec({
             yaml.set("ui.menu-background.enabled", true)
             yaml.set("ui.menu-background.custom-model-data", 11_000)
             yaml.set("ui.menus.templates.background.custom-model-data", 0)
+            yaml.set("ui.menu-presentation", "INVENTORY")
             yaml.save(configFile)
             val settings = ArcFarmsConfig.inspect(plugin.dataFolder.toPath())
             val locale = ArcFarmsLocale(plugin.dataFolder.toPath()) { settings }
             val menus = ArcFarmsMenuPlatform(plugin)
-            val menu = FarmMarketMenu(locale, menus) { _, _, _ -> }
+            var decision: FarmMarketClick? = null
+            val menu = FarmMarketMenu(locale, menus, { _, _, _ -> }) { _, _, selected -> decision = selected }
             val player = paper.addPlayer("MarketFarmer")
 
             menu.openPending(player, "communal_farm", 42, Material.WHEAT, 64, 25, "5 мин.")
@@ -53,7 +55,7 @@ class FarmMarketMenuTest : FunSpec({
                 InventoryAction.PICKUP_ALL,
             )
             paper.server.pluginManager.callEvent(event)
-            menu.handleClick(event) shouldBe FarmMarketClick(
+            decision shouldBe FarmMarketClick(
                 "communal_farm", 42, FarmMarketMode.PENDING, FarmMarketDecision.ACCEPT,
             )
             event.isCancelled shouldBe true

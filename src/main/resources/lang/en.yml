@@ -1280,3 +1280,17 @@ phase:
     extraction: '<gold>extracting</gold>'
     incident: '<red>incident</red>'
     cooldown: '<gray>cooldown</gray>'
+
+dialog:
+  close: '<#969696>Close'
+  back: '<#969696>Back'
+  help: '<#969696>Server main menu'
+  intro:
+    main: '<#e6fff3>Choose a worksite or open your company. Hover over a button for details.'
+    market: '<#e6fff3>An order for the whole shift. Review the terms, then accept or decline.'
+    enterprise-overview: '<#e6fff3>Shared worksites: work, development and company participation.'
+    enterprise-farm: '<#e6fff3>Your company: work results, license terms and plans for the next week.'
+    enterprise-shares: '<#e6fff3>Shares and your investment account. Review the price and terms before buying.'
+    enterprise-confirm: '<#e6fff3>Review the selected action and its terms below.'
+    enterprise-participation: '<#e6fff3>Choose next week’s plan. Hover over each button to see its terms.'
+    farm-perks: '<#e6fff3>Upgrades earned through your farm work. Each card shows the cost and duration.'

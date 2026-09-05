@@ -41,6 +41,23 @@ shadowJar`; see the investment design for financial assumptions and limitations.
 
 ## Player flows
 
+### Native menus
+
+`/arcfarms` opens a native Minecraft dialog styled like ARC Help. Activities,
+companies, reports, shares, investment confirmations, weekly plans, market orders
+and farm perks use the same dialog navigation. Confirmation terms stay visible
+in the body; informational cards open a detail screen. Back and Escape follow
+the exit action, and the root links to `arc help`.
+
+`ui.menu-presentation: DIALOG` is the default. `INVENTORY` explicitly selects the
+previous presentation using the same content and actions. Native buttons are
+bound to the current player, screen revision and runtime generation; replaced
+screens and duplicate clicks cannot replay a purchase or navigation. Locale
+text remains in both language files. `dialog-preview.yml` describes native
+screens for the canonical RusCrafting renderer (text/layout preview; it does not
+apply runtime palette transforms and approximates the exit footer). MockBukkit captures the narrow
+native display boundary to verify actions and session lifetime.
+
 ### Harvest shift
 
 Entering the farm starts a shared order by selecting a compact patch of existing

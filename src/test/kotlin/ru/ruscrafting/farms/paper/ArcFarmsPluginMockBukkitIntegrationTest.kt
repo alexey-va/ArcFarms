@@ -276,6 +276,7 @@ private fun preparePluginData(dataRoot: Path) {
     val input = requireNotNull(ArcFarmsPluginMockBukkitIntegrationTest::class.java.classLoader.getResourceAsStream("config.yml"))
     val config = input.use { YamlConfiguration.loadConfiguration(InputStreamReader(it)) }
     config.set("network.enabled", false)
+    config.set("ui.menu-presentation", "INVENTORY")
     config.set("ui.bossbars", false)
     config.set("ui.particles", false)
     config.set("ui.sounds", false)

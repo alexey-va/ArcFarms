@@ -1,7 +1,6 @@
 package ru.ruscrafting.farms.paper
 
 import net.kyori.adventure.text.Component
-import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryDragEvent
@@ -16,25 +15,56 @@ import ru.arc.menu.MenuTemplateId
 import ru.arc.paper.menu.PaperMenuConfiguration
 import ru.arc.paper.menu.PaperMenuConfigurationParser
 import ru.arc.paper.menu.PaperMenuContent
+import ru.arc.paper.menu.PaperMenuEntry
+import ru.arc.paper.menu.PaperDialogRuntime
 import ru.arc.paper.menu.PaperMenuItemFactory
 import ru.arc.paper.menu.PaperMenuItemRenderContext
 import ru.arc.paper.menu.PaperMenuRuntime
-import ru.arc.paper.menu.PaperMenuSession
 import ru.arc.paper.menu.PaperMenuTextContract
 import java.nio.file.Path
 import java.util.UUID
+import ru.arc.core.LifecycleTaskScope
+import org.bukkit.event.Listener
+import org.bukkit.event.EventHandler
+import org.bukkit.event.HandlerList
+import org.bukkit.event.player.PlayerQuitEvent
+import org.bukkit.event.inventory.InventoryCloseEvent
+import org.bukkit.event.inventory.InventoryOpenEvent
 
-/** One validated layout generation and one Inventory Framework listener for every ArcFarms screen. */
+/** Shared menu actions with native dialogs by default and an explicit inventory presentation. */
 class ArcFarmsMenuPlatform(
     private val plugin: Plugin,
-) : AutoCloseable {
+    dialogDisplay: FarmDialogDisplay? = null,
+) : AutoCloseable, Listener {
     private val items = PaperMenuItemFactory()
     private val runtime = PaperMenuRuntime(plugin, BukkitTaskScheduler(plugin), loadConfiguration(plugin.dataFolder.toPath()))
-    private val reopen = mutableMapOf<UUID, () -> Unit>()
+    private val sessions = mutableMapOf<UUID, FarmMenuSession>()
+    private val tasks = LifecycleTaskScope(BukkitTaskScheduler(plugin))
+    private var generation = 0L
+    private val dialogs: FarmDialogDisplay by lazy {
+        dialogDisplay ?: object : FarmDialogDisplay {
+            private val delegate = PaperDialogRuntime(plugin)
+            override fun show(player: Player, screen: ru.arc.paper.menu.PaperDialogScreen) = delegate.open(player, screen)
+            override fun close(player: Player) = player.closeDialog()
+            override fun close() = delegate.close()
+        }
+    }
+    private var dialogsUsed = false
+    private var dialogMode = readDialogMode()
+    init { plugin.server.pluginManager.registerEvents(this, plugin) }
+    private fun readDialogMode(): Boolean {
+        val mode = Config(plugin.dataFolder.toPath(), "config.yml").stringOrNull("ui.menu-presentation") ?: "DIALOG"
+        require(mode in setOf("DIALOG", "INVENTORY")) { "ui.menu-presentation must be DIALOG or INVENTORY" }
+        return mode == "DIALOG"
+    }
+    internal var dialogText: (Player, String) -> Component = { _, _ -> Component.empty() }
+    fun configureDialogs(locale: ru.ruscrafting.farms.config.ArcFarmsLocale) {
+        dialogText = { player, key -> locale.renderPath("dialog.$key", player) }
+    }
 
     fun current(): PaperMenuConfiguration = runtime.current()
 
-    fun prepareReload(): PaperMenuConfiguration = loadConfiguration(plugin.dataFolder.toPath())
+    fun prepareReload(): PaperMenuConfiguration { readDialogMode(); return loadConfiguration(plugin.dataFolder.toPath()) }
 
     fun item(menu: MenuId, element: MenuElementId, name: Component, lore: List<Component>) =
         items.create(current().template(menu, element), text(name, lore))
@@ -50,37 +80,100 @@ class ArcFarmsMenuPlatform(
         player: Player,
         menu: MenuId,
         reopenView: (() -> Unit)? = null,
-        content: () -> PaperMenuContent,
-    ): PaperMenuSession {
-        reopen[player.uniqueId] = reopenView ?: { if (player.isOnline) open(player, menu, content = content) }
-        return runtime.open(player, menu, content)
+        content: () -> FarmMenuContent,
+    ): FarmMenuSession {
+        close(player)
+        val session = FarmMenuSession(player, menu, this, content,
+            reopenView ?: { if (player.isOnline) open(player, menu, content = content) })
+        sessions[player.uniqueId] = session
+        if (dialogMode) {
+            player.closeInventory()
+            refresh(session)
+        } else {
+            session.delegate = runtime.open(player, menu) { inventoryContent(session, content()) }
+        }
+        return session
     }
 
-    fun session(player: Player): PaperMenuSession? = runtime.session(player)
+    private fun inventoryContent(session: FarmMenuSession, content: FarmMenuContent): PaperMenuContent {
+        fun entry(value: FarmMenuEntry) = PaperMenuEntry(value.item, value.enabled, value.acceptedClicks,
+            { context -> value.onClick.handle(FarmMenuClickContext(context.player, session, context.event.rawSlot)) })
+        return PaperMenuContent(content.title, content.background,
+            content.elements.mapValues { entry(it.value) }, content.regions.mapValues { it.value.map(::entry) })
+    }
+
+    fun session(player: Player): FarmMenuSession? = sessions[player.uniqueId]?.takeIf {
+        it.delegate == null || runtime.session(player) === it.delegate
+    }
+
+    internal fun refresh(session: FarmMenuSession) {
+        if (sessions[session.player.uniqueId] !== session || !session.player.isOnline) return
+        session.pending = false
+        session.revision++
+        if (session.delegate != null) session.delegate!!.requestRefresh()
+        else {
+            dialogsUsed = true
+            dialogs.show(session.player, FarmDialogScreens.screen(session, current(), dialogText))
+        }
+    }
+
+    /** Main-thread transition guarded against reload, a replaced view and duplicate clicks. */
+    fun transition(player: Player, expected: FarmMenuSession, action: () -> Unit): Boolean {
+        if (session(player) !== expected || expected.pending) return false
+        expected.pending = true
+        val revision = expected.revision
+        val epoch = generation
+        tasks.runLater(1L) {
+            if (generation != epoch || session(player) !== expected || !player.isOnline || expected.revision != revision) return@runLater
+            expected.pending = false
+            action()
+        }
+        return true
+    }
+
+    fun close(player: Player) {
+        val old = sessions.remove(player.uniqueId) ?: return
+        old.revision++
+        old.delegate?.close() ?: if (dialogsUsed) dialogs.close(player) else Unit
+    }
 
     fun owns(event: InventoryClickEvent, menus: Set<MenuId>): Boolean {
         val player = event.whoClicked as? Player ?: return false
-        val session = runtime.session(player) ?: return false
+        val session = session(player) ?: return false
         return event.view.topInventory === session.inventory && session.menuId in menus
     }
-
     fun owns(event: InventoryDragEvent, menus: Set<MenuId>): Boolean {
         val player = event.whoClicked as? Player ?: return false
-        val session = runtime.session(player) ?: return false
+        val session = session(player) ?: return false
         return event.view.topInventory === session.inventory && session.menuId in menus
+    }
+    @EventHandler fun onQuit(event: PlayerQuitEvent) { close(event.player) }
+    @EventHandler fun onInventoryClose(event: InventoryCloseEvent) {
+        val active = sessions[event.player.uniqueId] ?: return
+        if (active.inventory === event.inventory) sessions.remove(event.player.uniqueId)
+    }
+    @EventHandler fun onInventoryOpen(event: InventoryOpenEvent) {
+        val player = event.player as? Player ?: return
+        val active = sessions[player.uniqueId] ?: return
+        if (active.delegate == null && dialogMode) close(player)
     }
 
     fun replace(candidate: PaperMenuConfiguration) {
-        val active = Bukkit.getOnlinePlayers().mapNotNull { player ->
-            if (runtime.session(player) == null) null else reopen[player.uniqueId]
-        }
+        val nextMode = readDialogMode()
+        val active = sessions.values.filter { it.player.isOnline }.map { it.reopen }
+        generation++
+        sessions.values.toList().forEach { close(it.player) }
         runtime.replace(candidate)
+        dialogMode = nextMode
         active.forEach { it() }
     }
-
     override fun close() {
-        reopen.clear()
+        generation++
+        sessions.values.toList().forEach { close(it.player) }
+        tasks.close()
+        if (dialogsUsed) dialogs.close()
         runtime.close()
+        HandlerList.unregisterAll(this)
     }
 
     private fun text(name: Component, lore: List<Component>) = PaperMenuItemRenderContext(

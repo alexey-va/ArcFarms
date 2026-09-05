@@ -5,13 +5,10 @@ import org.bukkit.entity.Player
 import org.bukkit.event.inventory.ClickType
 import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryDragEvent
-import org.bukkit.inventory.Inventory
 import ru.arc.menu.MenuContract
 import ru.arc.menu.MenuElementId
 import ru.arc.menu.MenuId
 import ru.arc.paper.menu.PaperMenuConfiguration
-import ru.arc.paper.menu.PaperMenuContent
-import ru.arc.paper.menu.PaperMenuEntry
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
@@ -24,6 +21,7 @@ class ArcFarmsMenu(
     private val locale: ArcFarmsLocale,
     private val settings: () -> ArcFarmsConfig,
 ) : AutoCloseable {
+    init { menus.configureDialogs(locale) }
     private val participationMenu: WorksiteEnterpriseParticipationMenu = WorksiteEnterpriseParticipationMenu(service, locale, settings, menus) { player -> enterpriseMenu.openOverview(player) }
     private val enterpriseMenu: WorksiteEnterpriseMenu = WorksiteEnterpriseMenu(service, locale, settings, menus, ::open, participationMenu::open)
 
@@ -44,9 +42,9 @@ class ArcFarmsMenu(
 
     fun publishReload(candidate: PaperMenuConfiguration) = menus.replace(candidate)
 
-    private fun content(player: Player, configuration: PaperMenuConfiguration): PaperMenuContent {
+    private fun content(player: Player, configuration: PaperMenuConfiguration): FarmMenuContent {
         val stats = service.playerStats(player.uniqueId)
-        return PaperMenuContent(
+        return FarmMenuContent(
             title = locale.render(MessageKey.MENU_TITLE, player),
             background = configuration.catalog.require(MENU).backgroundTemplate?.let { template ->
                 menus.item(template.value, Component.empty(), emptyList())
@@ -68,7 +66,7 @@ class ArcFarmsMenu(
                     locale.render(MessageKey.MENU_WORKDAY_NAME, player),
                     workdayLore(player),
                 ) { context ->
-                    service.workday()?.recommended()?.let { navigateIfEnabled(context.player, it, context.session.inventory) }
+                    service.workday()?.recommended()?.let { navigateIfEnabled(context.player, it, context.session) }
                 },
                 COMPANIES to entry(
                     configuration,
@@ -80,7 +78,7 @@ class ArcFarmsMenu(
                         locale.render(MessageKey.MENU_COMPANIES_CLICK, player),
                     ),
                 ) { context ->
-                    service.deferInventoryTransition(context.player, context.session.inventory) {
+                    menus.transition(context.player, context.session) {
                         enterpriseMenu.openOverview(context.player)
                     }
                 },
@@ -112,7 +110,7 @@ class ArcFarmsMenu(
         kind: ActivityKind,
         name: MessageKey,
         lore: MessageKey,
-    ): PaperMenuEntry {
+    ): FarmMenuEntry {
         val lines = mutableListOf(locale.render(lore, player))
         when {
             !service.canNavigate(kind) -> lines += listOf(Component.empty(), locale.render(MessageKey.MENU_UNAVAILABLE, player))
@@ -122,8 +120,8 @@ class ArcFarmsMenu(
                 lines += listOf(Component.empty(), locale.render(MessageKey.MENU_CLICK, player))
             }
         }
-        return entry(configuration, element, locale.render(name, player), lines) { context ->
-            navigateIfEnabled(context.player, kind, context.session.inventory)
+        return entry(configuration, element, locale.render(name, player), lines, enabled = service.canNavigate(kind) && service.canAccess(player, kind)) { context ->
+            navigateIfEnabled(context.player, kind, context.session)
         }
     }
 
@@ -164,8 +162,8 @@ class ArcFarmsMenu(
         name: Component,
         lore: List<Component>,
         enabled: Boolean = true,
-        click: (ru.arc.paper.menu.PaperMenuClickContext) -> Unit = {},
-    ): PaperMenuEntry = PaperMenuEntry(
+        click: (FarmMenuClickContext) -> Unit = {},
+    ): FarmMenuEntry = FarmMenuEntry(
         item = menus.item(MENU, element, name, lore),
         enabled = enabled,
         acceptedClicks = setOf(ClickType.LEFT),
@@ -196,13 +194,13 @@ class ArcFarmsMenu(
             player.sendMessage(locale.render(MessageKey.ZONE_LOCKED, player))
             return
         }
-        player.closeInventory()
+        menus.close(player)
         service.travel(player, kind)
     }
 
-    private fun navigateIfEnabled(player: Player, kind: ActivityKind, expectedTop: Inventory) {
+    private fun navigateIfEnabled(player: Player, kind: ActivityKind, expectedTop: FarmMenuSession) {
         if (service.canNavigate(kind) && service.canAccess(player, kind)) {
-            service.deferInventoryTransition(player, expectedTop) { navigate(player, kind) }
+            menus.transition(player, expectedTop) { navigate(player, kind) }
         }
     }
 

@@ -10,8 +10,6 @@ import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.inventory.ItemStack
 import ru.arc.menu.MenuElementId
 import ru.arc.menu.MenuId
-import ru.arc.paper.menu.PaperMenuContent
-import ru.arc.paper.menu.PaperMenuEntry
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
@@ -42,17 +40,17 @@ internal class WorksiteEnterpriseMenu(
     fun openOverview(player: Player) {
         val current = settings()
         menus.open(player, OVERVIEW, { openOverview(player) }) {
-            PaperMenuContent(
+            FarmMenuContent(
                 title = locale.render(MessageKey.COMPANIES_TITLE, player),
                 background = menus.background(OVERVIEW),
                 elements = mapOf(
                     FARM to entry(farmCard(player)) { context ->
-                        service.deferInventoryTransition(player, context.session.inventory) { openFarmOrTravel(player) }
+                        menus.transition(player, context.session) { openFarmOrTravel(player) }
                     },
                     LUMBER to entry(unavailableCard(player, LUMBER, MessageKey.COMPANIES_LUMBER_NAME, MessageKey.COMPANIES_LUMBER_LORE), false),
                     MINE to entry(unavailableCard(player, MINE, MessageKey.COMPANIES_MINE_NAME, MessageKey.COMPANIES_MINE_LORE), false),
                     BACK to entry(backItem(player, OVERVIEW)) { context ->
-                        service.deferInventoryTransition(player, context.session.inventory) { openRoot(player) }
+                        menus.transition(player, context.session) { openRoot(player) }
                     },
                 ),
             )
@@ -73,7 +71,7 @@ internal class WorksiteEnterpriseMenu(
         if (!service.isAvailable(ActivityKind.FARM) && service.canNavigate(ActivityKind.FARM) &&
             service.canAccess(player, ActivityKind.FARM)
         ) {
-            player.closeInventory()
+            menus.close(player)
             service.travel(player, ActivityKind.FARM)
         }
     }
@@ -86,7 +84,7 @@ internal class WorksiteEnterpriseMenu(
         val ownership = service.enterpriseOwnership(ActivityKind.FARM, player.uniqueId)
         val playerView = service.enterprisePlayerView(player.uniqueId)
         menus.open(player, FARM_DETAIL, { openFarm(player) }) {
-            val elements = linkedMapOf<MenuElementId, PaperMenuEntry>()
+            val elements = linkedMapOf<MenuElementId, FarmMenuEntry>()
             elements[HEADER] = entry(item(
                 FARM_DETAIL, HEADER,
                 locale.render(MessageKey.COMPANY_FARM_HEADER_NAME, player),
@@ -99,7 +97,7 @@ internal class WorksiteEnterpriseMenu(
             elements[REPORT] = entry(reportItem(player, view, playerView), false)
             elements[WORKERS] = entry(workersItem(player, view, playerView), false)
             elements[POLICY] = entry(policyItem(player, view), true) { context ->
-                service.deferInventoryTransition(player, context.session.inventory) { openParticipation(player) }
+                menus.transition(player, context.session) { openParticipation(player) }
             }
             elements[LICENSE] = entry(licenseItem(player, view, playerView), false)
             val sharesLore = if (ownership == null) {
@@ -115,19 +113,19 @@ internal class WorksiteEnterpriseMenu(
                 item(FARM_DETAIL, SHARES, locale.render(MessageKey.COMPANY_SHARES_NAME, player), sharesLore),
                 enabled = ownership != null,
             ) { context ->
-                service.deferInventoryTransition(player, context.session.inventory) { openShares(player) }
+                menus.transition(player, context.session) { openShares(player) }
             }
             elements[MARKET] = entry(item(
                 FARM_DETAIL, MARKET,
                 locale.render(MessageKey.COMPANY_MARKET_NAME, player),
                 projectLore(player, playerView),
             ), true) { context ->
-                service.deferInventoryTransition(player, context.session.inventory) { openParticipation(player) }
+                menus.transition(player, context.session) { openParticipation(player) }
             }
             elements[BACK] = entry(backItem(player, FARM_DETAIL)) { context ->
-                service.deferInventoryTransition(player, context.session.inventory) { openOverview(player) }
+                menus.transition(player, context.session) { openOverview(player) }
             }
-            PaperMenuContent(
+            FarmMenuContent(
                 title = locale.render(MessageKey.COMPANY_FARM_TITLE, player),
                 background = menus.background(FARM_DETAIL),
                 elements = elements,
@@ -135,14 +133,14 @@ internal class WorksiteEnterpriseMenu(
         }
     }
 
-    private fun openShares(player: Player) {
+    private fun openShares(player: Player): FarmMenuSession? {
         val view = service.enterpriseOwnership(ActivityKind.FARM, player.uniqueId) ?: run {
             openFarm(player)
-            return
+            return null
         }
         val current = settings()
         val playerView = service.enterprisePlayerView(player.uniqueId)
-        val elements = linkedMapOf<MenuElementId, PaperMenuEntry>()
+        val elements = linkedMapOf<MenuElementId, FarmMenuEntry>()
         val statusLore = mutableListOf(
             locale.render(MessageKey.COMPANY_SHARES_STATUS_PHASE, player, mapOf("phase" to phase(player, view.phase))),
             locale.render(
@@ -198,7 +196,7 @@ internal class WorksiteEnterpriseMenu(
         elements[ACCOUNT] = entry(item(SHARES_DETAIL, ACCOUNT, locale.render(MessageKey.COMPANY_SHARES_ACCOUNT_NAME, player), accountLore), false)
         val buyOptions = current.enterprises.getValue(ActivityKind.FARM).capital.purchaseOptions.map { shares ->
             entry(buyItem(player, view, shares), canBuy(view, shares)) { context ->
-                service.deferInventoryTransition(player, context.session.inventory) { openPurchaseConfirmation(player, shares) }
+                menus.transition(player, context.session) { openPurchaseConfirmation(player, shares) }
             }
         }
         val withdrawLore = if (view.accountAvailableCents > 0L) {
@@ -213,12 +211,12 @@ internal class WorksiteEnterpriseMenu(
         elements[WITHDRAW] = entry(
             item(SHARES_DETAIL, WITHDRAW, locale.render(MessageKey.COMPANY_SHARES_WITHDRAW_NAME, player), withdrawLore),
             view.accountAvailableCents > 0L,
-        ) { context -> service.deferInventoryTransition(player, context.session.inventory) { withdraw(player) } }
+        ) { context -> menus.transition(player, context.session) { withdraw(player) } }
         elements[BACK] = entry(backItem(player, SHARES_DETAIL)) { context ->
-            service.deferInventoryTransition(player, context.session.inventory) { openFarm(player) }
+            menus.transition(player, context.session) { openFarm(player) }
         }
-        menus.open(player, SHARES_DETAIL, { openShares(player) }) {
-            PaperMenuContent(
+        return menus.open(player, SHARES_DETAIL, { openShares(player) }) {
+            FarmMenuContent(
                 title = locale.render(MessageKey.COMPANY_SHARES_TITLE, player),
                 background = menus.background(SHARES_DETAIL),
                 elements = elements,
@@ -258,7 +256,7 @@ internal class WorksiteEnterpriseMenu(
                 ),
             ).also { it.amount = shares.coerceAtMost(it.maxStackSize) }
         menus.open(player, CONFIRM, { openPurchaseConfirmation(player, shares) }) {
-            PaperMenuContent(
+            FarmMenuContent(
                 title = locale.render(MessageKey.COMPANY_SHARES_CONFIRM_TITLE, player),
                 background = menus.background(CONFIRM),
                 elements = mapOf(
@@ -266,11 +264,11 @@ internal class WorksiteEnterpriseMenu(
                         val options = settings().enterprises.getValue(ActivityKind.FARM).capital.purchaseOptions
                         val ownership = service.enterpriseOwnership(ActivityKind.FARM, player.uniqueId)
                         if (shares in options && ownership != null && canBuy(ownership, shares)) {
-                            service.deferInventoryTransition(player, context.session.inventory) { buy(player, shares) }
+                            menus.transition(player, context.session) { buy(player, shares) }
                         }
                     },
                     BACK to entry(backItem(player, CONFIRM)) { context ->
-                        service.deferInventoryTransition(player, context.session.inventory) { openShares(player) }
+                        menus.transition(player, context.session) { openShares(player) }
                     },
                 ),
             )
@@ -308,21 +306,23 @@ internal class WorksiteEnterpriseMenu(
     }
 
     private fun buy(player: Player, shares: Int) {
+        var expectedSession: FarmMenuSession? = null
         val result = service.buyFarmShares(player, shares) { completed ->
             notifyInvestment(player, completed, withdrawal = false)
-            refreshSharesIfOpen(player)
+            refreshSharesIfOpen(player, expectedSession)
         }
         notifyInvestment(player, result, withdrawal = false)
-        openShares(player)
+        expectedSession = openShares(player)
     }
 
     private fun withdraw(player: Player) {
+        var expectedSession: FarmMenuSession? = null
         val result = service.withdrawFarmInvestment(player) { completed ->
             notifyInvestment(player, completed, withdrawal = true)
-            refreshSharesIfOpen(player)
+            refreshSharesIfOpen(player, expectedSession)
         }
         notifyInvestment(player, result, withdrawal = true)
-        openShares(player)
+        expectedSession = openShares(player)
     }
 
     private fun notifyInvestment(player: Player, result: EnterpriseInvestmentActionResult, withdrawal: Boolean) {
@@ -344,10 +344,9 @@ internal class WorksiteEnterpriseMenu(
         if (player.isOnline) player.sendMessage(locale.render(key, player))
     }
 
-    private fun refreshSharesIfOpen(player: Player) {
-        if (!player.isOnline) return
-        val menu = menus.session(player)?.menuId
-        if (menu == SHARES_DETAIL || menu == CONFIRM) openShares(player)
+    private fun refreshSharesIfOpen(player: Player, expectedSession: FarmMenuSession?) {
+        if (!player.isOnline || expectedSession == null) return
+        if (menus.session(player) === expectedSession) openShares(player)
     }
 
     private fun canBuy(view: WorksiteEnterpriseOwnershipView, shares: Int): Boolean =
@@ -524,8 +523,8 @@ internal class WorksiteEnterpriseMenu(
     private fun entry(
         item: ItemStack,
         enabled: Boolean = true,
-        click: (ru.arc.paper.menu.PaperMenuClickContext) -> Unit = {},
-    ) = PaperMenuEntry(item, enabled, setOf(ClickType.LEFT), click)
+        click: (FarmMenuClickContext) -> Unit = {},
+    ) = FarmMenuEntry(item, enabled, setOf(ClickType.LEFT), click)
 
     private fun item(
         menu: MenuId,
