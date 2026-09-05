@@ -1,5 +1,7 @@
 package ru.ruscrafting.farms.paper.farm
 
+import ru.ruscrafting.farms.paper.farm.incident.greenhouse.FarmHellGreenhouseIncident
+
 import io.papermc.paper.event.entity.EntityLoadCrossbowEvent
 import org.bukkit.Material
 import org.bukkit.entity.Player
@@ -103,6 +105,7 @@ internal class FarmEventRouter(
     private val processing: FarmProcessingIncident,
     private val barnFire: FarmBarnFireIncident,
     private val frost: FarmFrostIncident,
+    private val greenhouse: FarmHellGreenhouseIncident,
     private val actionIncidents: FarmActionIncidentController,
     private val delivery: FarmDeliveryController,
     private val enterprise: FarmEnterprisePort,
@@ -285,6 +288,7 @@ internal class FarmEventRouter(
         val to = farmAt(destination)
         val routeRuntime = foodDelivery.participantRuntime(player, runtimes()) ?: actionIncidents.participantRuntime(player)
         if (from != null && from !== to) {
+            greenhouse.releasePlayer(player.uniqueId, listOf(from))
             supplies.removeServiceItems(player, from.settings.id, "left_zone")
             frost.clearPlayer(player, "left_zone")
             care.releasePlayer(player, "left_zone")
@@ -304,6 +308,7 @@ internal class FarmEventRouter(
 
     fun onQuit(player: Player, reason: String = "player_quit") {
         routeAdmin.release(player)
+        greenhouse.releasePlayer(player.uniqueId, runtimes())
         foodDelivery.onQuit(player)
         actionIncidents.onQuit(player)
         hud.stopMusic(player, reason)
@@ -332,7 +337,7 @@ internal class FarmEventRouter(
         if (care.owns(event.rightClicked) || supplies.owns(event.rightClicked) || delivery.owns(event.rightClicked) ||
             foodDelivery.owns(event.rightClicked) || perks.owns(event.rightClicked) ||
             scene.owns(event.rightClicked) || special.ownsScene(event.rightClicked) || processing.owns(event.rightClicked) ||
-            frost.owns(event.rightClicked) || actionIncidents.owns(event.rightClicked)
+            greenhouse.owns(event.rightClicked) || frost.owns(event.rightClicked) || actionIncidents.owns(event.rightClicked)
         ) event.isCancelled = true
     }
 
@@ -342,6 +347,7 @@ internal class FarmEventRouter(
             return
         }
         if (worldAdmin.isEditing(event.player) || event.hand != EquipmentSlot.HAND) return
+        if (greenhouse.interact(event, runtimes())) return
         if (perks.interact(event)) return
         if (foodDelivery.interact(event, runtimes())) return
         if (actionIncidents.interact(event)) return
@@ -398,6 +404,7 @@ internal class FarmEventRouter(
     fun onDismount(event: EntityDismountEvent) = actionIncidents.onDismount(event)
 
     fun onEntityDamage(event: EntityDamageEvent) {
+        if (greenhouse.owns(event.entity)) { event.isCancelled = true; return }
         val inspecting = (event as? EntityDamageByEntityEvent)?.playerDamager()?.takeIf(worldAdmin::isInspecting)
         if (inspecting != null) {
             event.isCancelled = true
@@ -495,6 +502,7 @@ internal class FarmEventRouter(
     }
 
     fun onDeath(event: PlayerDeathEvent) {
+        greenhouse.releasePlayer(event.entity.uniqueId, runtimes())
         care.onPlayerDeath(event.entity)
         event.drops.removeIf { supplies.isServiceItem(it) || foodDelivery.ownsServiceItem(it) || frost.isServiceItem(it) }
         foodDelivery.removeServiceItems(event.entity, "player_death")

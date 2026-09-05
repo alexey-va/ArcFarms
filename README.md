@@ -293,6 +293,24 @@ admin stage/reset, reload, shutdown and chunk reconciliation remove owned
 visuals. Test with `/arcfarms admin event <zone> tornado`; it needs indexed,
 loaded outdoor beds but no manually configured spawn point.
 
+The `HELL_GREENHOUSE` incident builds a temporary crimson greenhouse over an
+indexed outdoor farm bed: eight pepper plants, a cooling vat and an exit rift.
+Right-click a ripe pepper, carry it to the vat and right-click to cool it within
+six active seconds. Only cooled peppers count toward the quota and contribution;
+expired or abandoned peppers cannot be harvested again. Collect four by default,
+then use the exit. Each pick adds heat; at the heat limit, harvest stops and a
+15-second evacuation begins. An early evacuation or timeout resumes the ordinary
+crop order with only the contribution already earned.
+
+The scene needs a loaded, clear 9×11 footprint with five blocks of clearance.
+Shallow irrigation water is allowed. The structure uses bounded nonpersistent
+displays and interaction hitboxes over the existing terrain; it does not replace
+blocks, drop items or teleport players. The clock pauses without eligible players
+inside the greenhouse. Reload reconstructs the scene from saved progress; leaving
+the farm or dying discards virtual cargo. Forced stages and shutdown remove the
+scene. Settings live at `special-incidents.hell-greenhouse`; test with
+`/arcfarms admin event <zone> hell-greenhouse`.
+
 Farm incidents, mine instability, phase changes, and completions use localized
 titles, boss bars, sounds, and particles. Completion fireworks are client-side
 particles and sounds only: no firework entity, explosion, damage, or block
@@ -366,12 +384,12 @@ are available through commands such as `/arcfarms admin point <zone> help`,
 - `/arcfarms admin route <zone> start [name]` — record a named food-delivery
   route on foot. Omit the name for the backward-compatible `main` route; use
   `finish`, `status [name]`, `clear [name]`, or `cancel` to manage recordings.
-- `/arcfarms admin stage <zone> <preparation|planting|harvesting|seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought|birds|giant-crop|channels|night-shift|market|food-delivery|processing|barn-fire|frost|tornado|delivery|complete|reset>` —
+- `/arcfarms admin stage <zone> <preparation|planting|harvesting|seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought|birds|giant-crop|channels|night-shift|market|food-delivery|processing|barn-fire|frost|tornado|hell-greenhouse|delivery|complete|reset>` —
   switch the current farm to an exact QA stage while preserving normal recovery.
 - `/arcfarms admin next <zone>` — advance to the next useful QA stage.
 - `/arcfarms admin finish <zone>` — finish the current order through its normal
   completion and reward path.
-- `/arcfarms admin event <zone> <seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought|birds|giant-crop|channels|night-shift|market|food-delivery|processing|barn-fire|frost|tornado>` —
+- `/arcfarms admin event <zone> <seeder|weeds|irrigation|pollination|apples|covers|scarecrows|animals|disease|moles|pests|drought|birds|giant-crop|channels|night-shift|market|food-delivery|processing|barn-fire|frost|tornado|hell-greenhouse>` —
   start any exact farm story or harvest incident.
 
 Farm counts, manual and mechanized patch sizes, machinery radius, spacing,

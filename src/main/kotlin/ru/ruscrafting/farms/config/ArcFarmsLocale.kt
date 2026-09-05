@@ -271,6 +271,7 @@ enum class MessageKey(val path: String) {
     FARM_ENTRY_BOAR_BREAKOUT("farm.entry-boar-breakout"),
     FARM_ENTRY_RIVAL_RAID("farm.entry-rival-raid"),
     FARM_ENTRY_TORNADO("farm.entry-tornado"),
+    FARM_ENTRY_HELL_GREENHOUSE("farm.entry-hell-greenhouse"),
     FARM_ENTRY_DELIVERY("farm.entry-delivery"),
     FARM_STARTED("farm.started"),
     FARM_PATCH_UNAVAILABLE("farm.patch-unavailable"),
@@ -473,6 +474,24 @@ enum class MessageKey(val path: String) {
     FARM_TORNADO_PROGRESS("farm.tornado.progress"),
     FARM_TORNADO_REQUIRED("farm.tornado.required"),
     FARM_TORNADO_BOSSBAR("farm.tornado.bossbar"),
+    FARM_HELL_GREENHOUSE_STARTED("farm.hell-greenhouse.started"),
+    FARM_HELL_GREENHOUSE_STARTED_SUBTITLE("farm.hell-greenhouse.started-subtitle"),
+    FARM_HELL_GREENHOUSE_BOSSBAR("farm.hell-greenhouse.bossbar"),
+    FARM_HELL_GREENHOUSE_REQUIRED("farm.hell-greenhouse.required"),
+    FARM_HELL_GREENHOUSE_PICKED("farm.hell-greenhouse.picked"),
+    FARM_HELL_GREENHOUSE_COOLED("farm.hell-greenhouse.cooled"),
+    FARM_HELL_GREENHOUSE_TOO_EARLY("farm.hell-greenhouse.too-early"),
+    FARM_HELL_GREENHOUSE_HANDS_FULL("farm.hell-greenhouse.hands-full"),
+    FARM_HELL_GREENHOUSE_EMPTY_HANDS("farm.hell-greenhouse.empty-hands"),
+    FARM_HELL_GREENHOUSE_HOT_BURST("farm.hell-greenhouse.hot-burst"),
+    FARM_HELL_GREENHOUSE_EVACUATE("farm.hell-greenhouse.evacuate"),
+    FARM_HELL_GREENHOUSE_QUOTA_REQUIRED("farm.hell-greenhouse.quota-required"),
+    FARM_HELL_GREENHOUSE_SUCCESS("farm.hell-greenhouse.success"),
+    FARM_HELL_GREENHOUSE_PARTIAL("farm.hell-greenhouse.partial"),
+    FARM_HELL_GREENHOUSE_TIMEOUT("farm.hell-greenhouse.timeout"),
+    FARM_HELL_GREENHOUSE_VAT("farm.hell-greenhouse.vat"),
+    FARM_HELL_GREENHOUSE_EXIT("farm.hell-greenhouse.exit"),
+    FARM_HELL_GREENHOUSE_PEPPER("farm.hell-greenhouse.pepper"),
     FARM_NIGHT_SHIFT_STARTED("farm.night-shift-started"),
     FARM_NIGHT_SHIFT_STARTED_SUBTITLE("farm.night-shift-started-subtitle"),
     FARM_NIGHT_PATROL_AVOID("farm.night-patrol-avoid"),
@@ -656,6 +675,7 @@ internal val SCREEN_TITLE_SUBTITLES = mapOf(
     MessageKey.FARM_RIVAL_RAID_STARTED to MessageKey.FARM_RIVAL_RAID_STARTED_SUBTITLE,
     MessageKey.FARM_RIVAL_RAID_PORTAL_COUNTDOWN to MessageKey.FARM_RIVAL_RAID_PORTAL_COUNTDOWN_SUBTITLE,
     MessageKey.FARM_TORNADO_STARTED to MessageKey.FARM_TORNADO_STARTED_SUBTITLE,
+    MessageKey.FARM_HELL_GREENHOUSE_STARTED to MessageKey.FARM_HELL_GREENHOUSE_STARTED_SUBTITLE,
     MessageKey.FARM_NIGHT_SHIFT_STARTED to MessageKey.FARM_NIGHT_SHIFT_STARTED_SUBTITLE,
     MessageKey.FARM_MARKET_EXPIRED to MessageKey.FARM_MARKET_EXPIRED_SUBTITLE,
     MessageKey.FARM_MARKET_STARTED to MessageKey.FARM_MARKET_STARTED_SUBTITLE,
@@ -771,22 +791,22 @@ class ArcFarmsLocale(
             val adminStages = listOf(
                 "preparation", "planting", "harvesting", "seeder", "weeds", "irrigation", "pollination", "covers", "scarecrows",
                 "animals", "ditch-animals", "disease", "moles", "apples", "pests", "drought", "birds", "food-delivery", "giant-crop", "channels",
-                "night-shift", "market", "processing", "barn-fire", "frost", "tornado", "delivery", "complete", "reset",
+                "night-shift", "market", "processing", "barn-fire", "frost", "tornado", "hell-greenhouse", "delivery", "complete", "reset",
             )
             adminStages.mapTo(this) { "admin.stage.$it" }
             adminStages.mapTo(this) { "admin.stage-description.$it" }
             listOf(
                 "pests", "drought", "birds", "food-delivery", "giant-crop", "channels", "night-shift", "market", "processing",
-                "barn-fire", "frost", "tornado",
+                "barn-fire", "frost", "tornado", "hell-greenhouse",
             )
                 .mapTo(this) { "admin.event-description.$it" }
-            listOf("giant-crop", "channels", "night-shift", "market", "tornado").forEach { incident ->
+            listOf("giant-crop", "channels", "night-shift", "market", "tornado", "hell-greenhouse").forEach { incident ->
                 add("incident.$incident.name")
                 add("farm.entry-$incident")
             }
             listOf(
                 "pests", "drought", "birds", "food-delivery", "giant-crop", "channels", "night-shift", "market",
-                "processing", "barn-fire", "frost", "boar-breakout", "rival-raid", "tornado",
+                "processing", "barn-fire", "frost", "boar-breakout", "rival-raid", "tornado", "hell-greenhouse",
             ).forEach { incident ->
                 add("scoreboard.objective.$incident")
                 add("scoreboard.hint.$incident")
@@ -797,7 +817,7 @@ class ArcFarmsLocale(
             }
             listOf(
                 "preparation", "planting", "seeder-tilling", "seeder-planting", "channels", "night-shift",
-                "market-pending", "processing", "barn-fire", "frost", "tornado",
+                "market-pending", "processing", "barn-fire", "frost", "tornado", "hell-greenhouse",
             )
                 .mapTo(this) { "scoreboard.hint-detail.$it" }
             FarmCareType.entries.forEach { type ->
@@ -903,7 +923,7 @@ class ArcFarmsLocale(
             "action", "active", "activity", "actor", "alive", "amount", "arguments", "beds", "blocks", "bonus",
             "bundle", "care", "carriers", "cart", "chunks", "command", "count", "crop", "crops", "customer",
             "cycle", "damaged", "data", "description", "distance", "done", "dry", "entities", "event", "expected",
-            "farm", "flows", "health", "hint", "hours", "id", "incident", "instruction", "item", "leaves", "limit",
+            "farm", "flows", "health", "heat", "hint", "hours", "id", "incident", "instruction", "item", "leaves", "limit",
             "lumber", "material", "mine", "name", "nests", "next", "objective", "order", "orders", "original",
             "percent", "perk", "pests", "phase", "place", "planted", "player", "players", "plots", "point", "points", "remaining",
             "prefix", "price", "progress", "rarity", "reason", "records", "requirements", "restore", "reward", "route",

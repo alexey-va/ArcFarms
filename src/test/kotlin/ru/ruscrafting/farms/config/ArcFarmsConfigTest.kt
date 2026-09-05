@@ -484,6 +484,7 @@ class ArcFarmsConfigTest : FunSpec({
             FarmIncidentType.BOAR_BREAKOUT,
             FarmIncidentType.RIVAL_RAID,
             FarmIncidentType.TORNADO,
+            FarmIncidentType.HELL_GREENHOUSE,
             FarmIncidentType.NIGHT_SHIFT,
             FarmIncidentType.MARKET,
             FarmIncidentType.BIRDS,

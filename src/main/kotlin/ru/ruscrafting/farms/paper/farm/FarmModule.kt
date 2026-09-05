@@ -1,5 +1,7 @@
 package ru.ruscrafting.farms.paper.farm
 
+import ru.ruscrafting.farms.paper.farm.incident.greenhouse.FarmHellGreenhouseIncident
+
 import org.bukkit.Bukkit
 import org.bukkit.Chunk
 import org.bukkit.Location
@@ -101,6 +103,7 @@ internal class FarmModule(
     private val barnFire: FarmBarnFireIncident,
     private val frost: FarmFrostIncident,
     private val tornado: FarmTornadoIncident,
+    private val greenhouse: FarmHellGreenhouseIncident,
     private val delivery: FarmDeliveryController,
     private val scene: FarmContractSceneController,
     private val supplies: FarmSupplyController,
@@ -156,7 +159,7 @@ internal class FarmModule(
             pests.ownsPest(entity) || pests.ownsNest(entity) || birds.owns(entity) || foodDelivery.owns(entity) ||
                 actionIncidents.owns(entity) ||
                 processing.owns(entity) || delivery.owns(entity) || supplies.owns(entity) ||
-                care.owns(entity) || perks.owns(entity) || frost.owns(entity) || tornado.owns(entity)
+                care.owns(entity) || perks.owns(entity) || frost.owns(entity) || tornado.owns(entity) || greenhouse.owns(entity)
         }.forEach { entity ->
             entity.remove()
             removed++
@@ -169,6 +172,7 @@ internal class FarmModule(
 
     override fun beforeReload(reason: String) {
         tornado.cleanup()
+        greenhouse.cleanup()
         blockRegistry.cancelReindexes()
         shiftStart.clearPending()
         orderCycle.clearPending()
@@ -254,6 +258,7 @@ internal class FarmModule(
     fun updateCarriedDisplays() {
         val runtimes = registry.snapshot()
         runtimes.forEach { runtime -> tasks.guarded("farm_tornado:${runtime.settings.id}") { tornado.update(runtime) } }
+        runtimes.forEach { runtime -> tasks.guarded("farm_greenhouse:${runtime.settings.id}") { greenhouse.update(runtime) } }
         delivery.updateCarriedDisplays(runtimes)
         foodDelivery.updateVisuals(runtimes)
         care.updateCarriedDisplays()
@@ -432,6 +437,7 @@ internal class FarmModule(
         barnFire.cleanup(reason)
         frost.cleanup(reason)
         tornado.cleanup()
+        greenhouse.cleanup()
         supplies.cleanup(reason)
         delivery.cleanup(reason)
         pests.cleanup(reason)

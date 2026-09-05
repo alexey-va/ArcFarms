@@ -7,6 +7,7 @@ import ru.arc.network.BackendServerId
 import ru.arc.redis.RedisModuleConfig
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.FarmIncidentType
+import ru.ruscrafting.farms.domain.FarmHellGreenhouseRules
 import ru.ruscrafting.farms.domain.FarmContractRarity
 import ru.ruscrafting.farms.domain.FarmCustomerType
 import ru.ruscrafting.farms.domain.FarmCareRole
@@ -326,6 +327,7 @@ data class FarmSpecialIncidentSettings(
     val marketMaximumSeconds: Int,
     val frost: FarmFrostSettings,
     val tornado: FarmTornadoSettings = FarmTornadoSettings(),
+    val hellGreenhouse: FarmHellGreenhouseRules = FarmHellGreenhouseRules(),
 ) {
     init {
         require(channelMarkerColumnStride in 1..32) { "channel marker column stride must be in 1..32" }
@@ -1897,6 +1899,20 @@ class ArcFarmsConfig private constructor(
                         radius = section.finiteDouble("special-incidents.tornado.radius", 7.0, 4.0, 10.0),
                         debrisCount = section.int("special-incidents.tornado.debris-count", 28),
                         hitDamage = section.finiteDouble("special-incidents.tornado.hit-damage", 2.0, 0.0, 8.0),
+                    ),
+                    hellGreenhouse = FarmHellGreenhouseRules(
+                        quota = section.int("special-incidents.hell-greenhouse.quota", 4)
+                            .checked("special-incidents.hell-greenhouse.quota", 1, 8),
+                        growSeconds = section.int("special-incidents.hell-greenhouse.grow-seconds", 6)
+                            .checked("special-incidents.hell-greenhouse.grow-seconds", 1, 120),
+                        hotSeconds = section.int("special-incidents.hell-greenhouse.hot-seconds", 6)
+                            .checked("special-incidents.hell-greenhouse.hot-seconds", 1, 120),
+                        heatLimit = section.int("special-incidents.hell-greenhouse.heat-limit", 100)
+                            .checked("special-incidents.hell-greenhouse.heat-limit", 1, 1_000),
+                        heatPerHarvest = section.int("special-incidents.hell-greenhouse.heat-per-harvest", 10)
+                            .checked("special-incidents.hell-greenhouse.heat-per-harvest", 1, 1_000),
+                        evacuationSeconds = section.int("special-incidents.hell-greenhouse.evacuation-seconds", 15)
+                            .checked("special-incidents.hell-greenhouse.evacuation-seconds", 1, 300),
                     ),
                     frost = FarmFrostSettings(
                         campfireMinCount = section.int("special-incidents.frost.campfires.min-count", 4)

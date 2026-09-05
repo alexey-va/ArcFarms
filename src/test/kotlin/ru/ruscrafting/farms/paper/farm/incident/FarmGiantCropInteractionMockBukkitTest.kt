@@ -245,6 +245,7 @@ internal fun farmEventRouter(
     special = special,
     processing = mockk<FarmProcessingIncident>(relaxed = true),
     barnFire = barnFire,
+    greenhouse = io.mockk.mockk(relaxed = true),
     frost = frost,
     actionIncidents = mockk(relaxed = true),
     delivery = mockk<FarmDeliveryController>(relaxed = true),

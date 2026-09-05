@@ -83,6 +83,7 @@ enum class FarmIncidentType {
     BOAR_BREAKOUT,
     RIVAL_RAID,
     TORNADO,
+    HELL_GREENHOUSE,
 }
 
 enum class FarmProcessingStage {
@@ -371,6 +372,7 @@ data class FarmShiftState(
     val specialIncident: FarmSpecialIncidentState? = null,
     val frost: FarmFrostState? = null,
     val processing: FarmProcessingState? = null,
+    val hellGreenhouse: FarmHellGreenhouseState? = null,
     val specialDamagedCrops: List<FarmCropDamage> = emptyList(),
     val rewardMoneyBonusPercent: Int = 0,
     val startedAt: Long = 0,
@@ -557,6 +559,7 @@ object FarmShiftEngine {
                 pestAlive = 0,
                 pestDamagedCrops = emptyList(),
                 specialIncident = null,
+                hellGreenhouse = null,
                 frost = null,
                 processing = null,
                 specialDamagedCrops = emptyList(),
@@ -587,6 +590,7 @@ object FarmShiftEngine {
                     pestAlive = 0,
                     pestDamagedCrops = emptyList(),
                     specialIncident = null,
+                    hellGreenhouse = null,
                     frost = null,
                     processing = null,
                     specialDamagedCrops = emptyList(),
@@ -933,6 +937,7 @@ object FarmShiftEngine {
             pestNestsInitialized = false,
             pestAlive = 0,
             specialIncident = null,
+            hellGreenhouse = null,
             frost = null,
             processing = null,
         )
@@ -1289,6 +1294,7 @@ object FarmShiftEngine {
                     pestAlive = 0,
                     pestDamagedCrops = emptyList(),
                     specialIncident = null,
+                    hellGreenhouse = null,
                     frost = null,
                     processing = null,
                     specialDamagedCrops = emptyList(),

@@ -1,5 +1,7 @@
 package ru.ruscrafting.farms.paper.farm.shift
 
+import ru.ruscrafting.farms.paper.farm.incident.greenhouse.FarmHellGreenhouseIncident
+
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.Particle
@@ -75,6 +77,7 @@ internal class FarmShiftCoordinator(
     private val barnFire: FarmBarnFireIncident,
     private val frost: FarmFrostIncident,
     private val tornado: FarmTornadoIncident,
+    private val greenhouse: FarmHellGreenhouseIncident,
     private val delivery: FarmDeliveryController,
     private val scene: FarmContractSceneController,
     private val supplies: FarmSupplyController,
@@ -441,6 +444,15 @@ internal class FarmShiftCoordinator(
                     title = true,
                 )
             }
+            FarmIncidentType.HELL_GREENHOUSE -> {
+                if (!greenhouse.initialize(runtime)) {
+                    apply(runtime, FarmShiftEngine.skipUnavailableIncident(runtime.state, type), null)
+                    return
+                }
+                port.broadcast(listOf(runtime.region), MessageKey.FARM_HELL_GREENHOUSE_STARTED,
+                    values = mapOf("total" to locale.text(runtime.state.incidentRequired)),
+                    sound = Sound.BLOCK_PORTAL_TRIGGER, title = true)
+            }
             FarmIncidentType.TORNADO -> {
                 if (!tornado.initialize(runtime)) {
                     apply(runtime, FarmShiftEngine.skipUnavailableIncident(runtime.state, type), null)
@@ -535,9 +547,11 @@ internal class FarmShiftCoordinator(
         barnFire.clear(runtime.settings.id, "incident_resolved")
         frost.clear(runtime, "incident_resolved")
         tornado.clear(runtime)
+        greenhouse.clear(runtime)
         actionIncidents.clear(runtime, "incident_resolved")
         if (type == FarmIncidentType.GIANT_CROP) special.beginRestore(runtime)
         special.clearZone(runtime, "incident_resolved")
+        if (type == FarmIncidentType.HELL_GREENHOUSE) { state.persistAsync(); return }
         port.broadcast(
             listOf(runtime.region),
             if (type in SPECIAL_FARM_INCIDENT_TYPES || type in ACTION_FARM_INCIDENT_TYPES ||
@@ -643,6 +657,7 @@ internal class FarmShiftCoordinator(
         foodDelivery.clear(runtime.settings.id, "shift_completed")
         actionIncidents.clear(runtime, "shift_completed")
         tornado.clear(runtime)
+        greenhouse.clear(runtime)
         val contributors = runtime.state.contributors
         enterprise.orderCompleted(runtime.settings.id, runtime.state.sequence, contributors, commercialEligible)
         stats.recordCompletion(ActivityKind.FARM, contributors)

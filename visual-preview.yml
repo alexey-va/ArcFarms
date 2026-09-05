@@ -46,6 +46,12 @@ sources:
       - admin.stage-description.channels
       - admin.event-description.channels
       - farm.entry-channels
+      - farm.entry-hell-greenhouse
+      - farm.hell-greenhouse.*
+      - incident.hell-greenhouse.*
+      - scoreboard.objective.hell-greenhouse
+      - scoreboard.hint.hell-greenhouse
+      - scoreboard.hint-detail.hell-greenhouse
       - farm.channels-*
       - incident.channels.*
       - scoreboard.phase.channels
@@ -61,6 +67,8 @@ sources:
       - crop.*
 
 placeholders:
+  heat: '70'
+  time: '8'
   color: ''
   'color:#20252b': '<#20252b>'
   'color:#2bba43': '<#2bba43>'
@@ -140,6 +148,15 @@ surfaces:
       title: gameplay:farm.rival-raid.started
       subtitle: gameplay:farm.rival-raid.started-subtitle
       actionbar: gameplay:farm.rival-raid.progress
+    - id: hell-greenhouse
+      title: gameplay:farm.hell-greenhouse.started
+      subtitle: gameplay:farm.hell-greenhouse.started-subtitle
+      actionbar: gameplay:farm.hell-greenhouse.cooled
+      placeholders:
+        done: '2'
+        total: '4'
+        heat: '70'
+        time: '8'
   inventories:
     - id: raid-loadout-review
       title: preview:raid-loadout-title

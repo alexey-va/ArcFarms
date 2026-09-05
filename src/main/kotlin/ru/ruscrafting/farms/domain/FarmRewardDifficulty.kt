@@ -19,7 +19,7 @@ object FarmRewardDifficulty {
         FarmIncidentType.CHANNELS -> 5
         FarmIncidentType.BIRDS, FarmIncidentType.GIANT_CROP -> 6
         FarmIncidentType.NIGHT_SHIFT, FarmIncidentType.PROCESSING, FarmIncidentType.BARN_FIRE,
-        FarmIncidentType.FROST, FarmIncidentType.BOAR_BREAKOUT, FarmIncidentType.TORNADO,
+        FarmIncidentType.FROST, FarmIncidentType.BOAR_BREAKOUT, FarmIncidentType.TORNADO, FarmIncidentType.HELL_GREENHOUSE,
         -> 8
         FarmIncidentType.RIVAL_RAID -> 10
         FarmIncidentType.FOOD_DELIVERY -> 12
