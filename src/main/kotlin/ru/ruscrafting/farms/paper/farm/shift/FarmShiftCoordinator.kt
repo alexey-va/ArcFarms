@@ -53,8 +53,6 @@ import ru.ruscrafting.farms.paper.farm.presentation.FarmHudController
 import ru.ruscrafting.farms.paper.farm.reward.FarmRewardService
 import ru.ruscrafting.farms.paper.farm.scene.FarmContractSceneController
 import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyController
-import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyKind
-import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyVisibilityPolicy
 
 /** The only application owner allowed to apply a farm domain EngineResult. */
 internal class FarmShiftCoordinator(
@@ -688,16 +686,12 @@ internal class FarmShiftCoordinator(
     private fun currentOrder(runtime: FarmRuntime): FarmOrder? = runtime.state.orderId?.let(runtime.orders::get)
     private fun players(runtime: FarmRuntime): List<Player> = port.players(runtime.region)
 
-    private fun issueSupply(runtime: FarmRuntime, kind: FarmSupplyKind) {
+    private fun issueRequiredSupply(runtime: FarmRuntime) {
         players(runtime).forEach { player ->
-            if (!supplies.give(runtime, kind, player)) {
+            if (!supplies.ensureRequired(runtime, player)) {
                 port.sendActionBar(player, MessageKey.FARM_ACTION_INVENTORY_FULL)
             }
         }
-    }
-
-    private fun issueRequiredSupply(runtime: FarmRuntime) {
-        FarmSupplyVisibilityPolicy.required(runtime.state)?.let { kind -> issueSupply(runtime, kind) }
     }
 
     private companion object {

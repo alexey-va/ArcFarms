@@ -161,6 +161,56 @@ class FarmPerkControllerMockBukkitTest : FunSpec({
         )) shouldBe true
         controller.snapshot() shouldBe beforeRightClick
 
+        val slots = listOf(10, 12, 14, 16, 19, 21, 23, 25)
+        slots.forEach { slot ->
+            val meta = requireNotNull(refreshed.getItem(slot)).itemMeta
+            meta.displayName()?.decoration(TextDecoration.ITALIC) shouldBe TextDecoration.State.FALSE
+            meta.lore()?.all { it.decoration(TextDecoration.ITALIC) == TextDecoration.State.FALSE } shouldBe true
+        }
+        val speedLore = refreshed.getItem(12)!!.itemMeta.lore()!!.joinToString(" ") {
+            PlainTextComponentSerializer.plainText().serialize(it)
+        }
+        speedLore.contains("+60%") shouldBe true
+        controller.replace(mapOf(player.uniqueId to FarmPlayerPerks(
+            weekStartEpochDay = 107,
+            activeUntil = FarmPerkType.entries.associateWith { now + 1_000 },
+        )))
+        every { port.players(runtime.region) } returns listOf(player)
+        every { port.hasAccess(player, zone.permission) } returns true
+        every { port.allowInteraction(any(), any()) } returns true
+        player.foodLevel = 2
+        player.saturation = 0f
+        player.health = 10.0
+        controller.tick(runtime)
+        val effects = mapOf(
+            org.bukkit.potion.PotionEffectType.SPEED to 2,
+            org.bukkit.potion.PotionEffectType.STRENGTH to 1,
+            org.bukkit.potion.PotionEffectType.RESISTANCE to 1,
+            org.bukkit.potion.PotionEffectType.FIRE_RESISTANCE to 0,
+            org.bukkit.potion.PotionEffectType.JUMP_BOOST to 1,
+        )
+        effects.forEach { (type, amplifier) -> player.getPotionEffect(type)?.amplifier shouldBe amplifier }
+        player.foodLevel shouldBe 20
+        player.health shouldBe 14.0
+        controller.rewardMultiplier(player.uniqueId, 75) shouldBe 175
+
+        val stronger = org.bukkit.potion.PotionEffect(org.bukkit.potion.PotionEffectType.STRENGTH, 600, 2)
+        player.addPotionEffect(stronger)
+        val longer = org.bukkit.potion.PotionEffect(org.bukkit.potion.PotionEffectType.SPEED, 600, 2)
+        player.addPotionEffect(longer)
+        controller.tick(runtime)
+        player.getPotionEffect(stronger.type) shouldBe stronger
+        player.getPotionEffect(longer.type) shouldBe longer
+        effects.keys.forEach(player::removePotionEffect)
+        every { port.hasAccess(player, zone.permission) } returns false
+        controller.tick(runtime)
+        effects.keys.forEach { player.getPotionEffect(it) shouldBe null }
+        every { port.hasAccess(player, zone.permission) } returns true
+        now += 1_001
+        controller.tick(runtime)
+        effects.keys.forEach { player.getPotionEffect(it) shouldBe null }
+        controller.rewardMultiplier(player.uniqueId, 75) shouldBe 100
+
     }
 
     test("an open perk menu removes the active mark and glint when the perk expires") {

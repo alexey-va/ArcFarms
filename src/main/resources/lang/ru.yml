@@ -497,7 +497,7 @@ farm:
   entry-market-pending: '<color:#f2fff7>Найдите светящегося покупателя у телеги и нажмите ПКМ</color>'
   entry-market-active: '<color:#f2fff7><crop> <done>/<total> — осталось <time></color>'
   entry-processing: '<color:#f2fff7>Идите в мельницу и найдите перерабатывающий цех</color>'
-  entry-barn-fire: '<color:#f2fff7>Возьмите водомёт у амбара и погасите все очаги</color>'
+  entry-barn-fire: '<color:#f2fff7>Выданным водомётом погасите все очаги</color>'
   entry-frost: '<color:#f2fff7>Берите поленья в дровнице и разжигайте костры на поле</color>'
   entry-boar-breakout: '<color:#f2fff7>Возьмите щит и встречайте кабанов лицом к атаке</color>'
   entry-rival-raid: '<color:#f2fff7>Встаньте в фиолетовый портал и дождитесь посадки на гаста</color>'
@@ -579,7 +579,7 @@ farm:
   drought-started-subtitle: '<color:#f2fff7>Залейте сухие пятна: <total></color>'
   drought-tool: '<color:#ffad42>Для полива нужно ведро воды.</color>'
   drought-progress: '<color:#45c8f5>Полив</color> <color:#707a76>•</color> <color:#f2fff7><done>/<total></color>'
-  birds-required: '<color:#ffad42>Возьмите лук у стойки и сбейте птиц над полем.</color>'
+  birds-required: '<color:#ffad42>Выданным луком сбейте птиц над полем.</color>'
   birds-started: '<color:#ff7a45><bold>Стая над полем</bold></color>'
   birds-started-subtitle: '<color:#f2fff7>Возьмите лук и защитите посевы: <total></color>'
   birds-progress: '<color:#ffad42>Птицы</color> <color:#707a76>•</color> <color:#f2fff7><done>/<total></color>'
@@ -603,7 +603,7 @@ farm:
   route-gunner-mounted: '<color:#55d98b>Вы заняли место стрелка. ПКМ из винтовки — выстрел.</color>'
   route-gunner-occupied: '<color:#ffad42>Место стрелка уже занято.</color>'
   route-gunner-needs-driver: '<color:#ffad42>Сначала один фермер должен сесть на коня.</color>'
-  route-gunner-inventory-full: '<color:#ffad42>Освободите одну ячейку инвентаря для винтовки.</color>'
+  route-gunner-inventory-full: '<color:#ffad42>Освободите ячейку — винтовка выдастся автоматически.</color>'
   route-rifle-name: '<color:#ffc857>Дорожная винтовка</color>'
   route-rifle-lore: '<color:#b8c8c0>Временное оружие экипажа телеги</color>'
   route-portal-label: '<color:#45c8f5><bold>Доставка уже в пути</bold></color><newline><color:#f2fff7>Стойте внутри <seconds> сек., чтобы догнать телегу</color>'
@@ -637,7 +637,7 @@ farm:
     bossbar: '<color:#ffc857>Переработка <done>/<total></color> <color:#707a76>—</color> <instruction>'
   barn-fire:
     started: '<color:#ff7a45><bold>Пожар в амбаре</bold></color>'
-    started-subtitle: '<color:#f2fff7>Возьмите водомёт у амбара и погасите <total> очагов</color>'
+    started-subtitle: '<color:#f2fff7>Выданным водомётом погасите <total> очагов</color>'
     progress: '<color:#45c8f5>Пожар</color> <color:#707a76>•</color> <color:#f2fff7>погашено <done>/<total></color>'
     aim-hint: '<color:#ffad42>Направьте струю на видимый очаг огня.</color>'
     bossbar: '<color:#ff7a45>Пожар в амбаре</color> <color:#707a76>•</color> <color:#45c8f5>погашено <done>/<total></color>'
@@ -679,7 +679,7 @@ farm:
   channels-progress: '<color:#45c8f5>Русло выкопано</color> <color:#707a76>•</color> <color:#f2fff7><done>/<total></color> <color:#707a76>•</color> <color:#ffc857>копайте служебной лопатой</color>'
   channels-tool: '<color:#ffad42>Отмеченную землю можно копать только служебной лопатой.</color>'
   channels-shovel: '<color:#45c8f5>Лопата землекопа</color>'
-  action-inventory-full: '<color:#ff5f6d>Освободите одну ячейку для служебного снаряжения.</color>'
+  action-inventory-full: '<color:#ff5f6d>Освободите место — снаряжение выдастся автоматически.</color>'
   boar-breakout:
     started: '<color:#ff7a45><bold>Прорыв кабанов</bold></color>'
     started-subtitle: '<color:#f2fff7>Встречайте их щитами: <total></color>'
@@ -829,16 +829,37 @@ incident:
 perk:
   harvest_area:
     name: '<color:#55d98b>Широкий взмах</color>'
-    description: '<gray>Один удар собирает управляемые культуры в области 3×3.</gray>'
+    description: '<gray>Собирайте зрелые грядки в области <width>×<width>.</gray>'
+    detail: '<gray>Работает на злаках, корнеплодах и ягодах.</gray>'
   speed:
-    name: '<color:#8bd3ff>Лёгкий шаг</color>'
-    description: '<gray>Повышает скорость передвижения, пока вы на ферме.</gray>'
+    name: '<color:#8bd3ff>Фермерский форсаж</color>'
+    description: '<gray>Скорость передвижения: +<speed>%.</gray>'
+    detail: '<gray>Быстрее добирайтесь до любой задачи на ферме.</gray>'
   sustenance:
-    name: '<color:#ffad42>Сытный паёк</color>'
-    description: '<gray>Постепенно восстанавливает здоровье и голод на ферме.</gray>'
+    name: '<color:#ffad42>Богатырский паёк</color>'
+    description: '<gray>Каждые <seconds> с: +<hearts> сердца, +<food> еды.</gray>'
+    detail: '<gray>Также восстанавливает насыщение на ферме.</gray>'
   reward_boost:
     name: '<color:#ffc857>Выгодный контракт</color>'
-    description: '<gray>Увеличивает денежную награду за ваш вклад в заказ.</gray>'
+    description: '<gray>Денежная награда за заказ: +<bonus>%.</gray>'
+    detail: '<gray>Бонус к выплате за ваш личный вклад.</gray>'
+  strength:
+    name: '<color:#ffad42>Гроза вредителей</color>'
+    description: '<gray>Сила <strength>: мощнее удары в ближнем бою.</gray>'
+    detail: '<gray>Помогает отбивать нападения на ферму.</gray>'
+  resistance:
+    name: '<color:#8bd3ff>Крепкий орешек</color>'
+    description: '<gray>Сопротивление: −<resistance>% обычного урона.</gray>'
+    detail: '<gray>Защищает от ударов, взрывов и падений.</gray>'
+  fire_resistance:
+    name: '<color:#ffad42>Огнеупорный фартук</color>'
+    description: '<gray>Огнестойкость: защита от огня и лавы.</gray>'
+    detail: '<gray>Входите в горящий амбар без ожогов.</gray>'
+  jump_boost:
+    name: '<color:#55d98b>Пружинные сапоги</color>'
+    description: '<gray>Прыгучесть <jump>: высокие прыжки на ферме.</gray>'
+    detail: '<gray>Перепрыгивайте канавы и препятствия.</gray>'
+
 scoreboard:
   title: '<color:#55d98b>Ферма</color>'
   section:

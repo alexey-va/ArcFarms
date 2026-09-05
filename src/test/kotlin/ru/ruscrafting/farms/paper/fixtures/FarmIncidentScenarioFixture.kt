@@ -274,6 +274,7 @@ internal class FarmIncidentScenarioFixture private constructor(
             riderVisibility = { player, ghast, hidden ->
                 raidRiderVisibilityEvents += Triple(player.uniqueId, ghast.uniqueId, hidden)
             },
+            seatMovement = MockBukkitFarmRivalRaidSeatMovement,
             textDisplays = MockBukkitFarmTextDisplays,
             nightShift = night,
             random = random,

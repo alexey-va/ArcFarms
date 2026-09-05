@@ -532,3 +532,24 @@ fixtures. The player-bot session exposes only the fixed `arcfarms` operations
 `pest-stability`, `farm`, `lumber`, `mine`, `status`, and `fixture-cleanup` on
 the lab port and documented OP QA identities; it accepts no command or target
 arguments. Always clean the scene after a smoke run.
+
+### Farm upgrades and automatic equipment
+
+The perk vendor offers eight independent 72-hour upgrades. Defaults are a 5×5
+harvest area, +60% movement speed, a hearty ration (2 hearts and full food every
+3 seconds), +75% order money, Strength II, Resistance II, Fire Resistance and
+Jump Boost II. Prices and effects remain under each farm zone's `perks` settings.
+The menu shows effective configured values and preserves existing purchases.
+
+Equipment pickup displays are optional and hidden by default
+(`farm-zones.<id>.supply-points-visible: false`). Required tools, seeds, water,
+archery and fire equipment are checked every farm tick, including for late
+arrivals. A full inventory keeps the request eligible for retry; reminders are
+limited to once every three seconds. Special shield, shovel, rescue rod and
+vehicle weapon owners also retry. Objective cargo such as firewood, scarecrows
+and processing packages retains its pickup-and-deliver gameplay.
+
+Rival raid riders occupy separate seats that follow the ghast. A failed weapon
+issue keeps the participant eligible for retry instead of ending participation.
+Tornado visuals and its survival clock pause when the field has no eligible
+Survival/Adventure participants or an administrator is editing the farm.

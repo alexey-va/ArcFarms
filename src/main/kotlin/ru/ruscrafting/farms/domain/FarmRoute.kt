@@ -65,6 +65,10 @@ enum class FarmPerkType {
     SPEED,
     SUSTENANCE,
     REWARD_BOOST,
+    STRENGTH,
+    RESISTANCE,
+    FIRE_RESISTANCE,
+    JUMP_BOOST,
 }
 
 data class FarmPlayerPerks(

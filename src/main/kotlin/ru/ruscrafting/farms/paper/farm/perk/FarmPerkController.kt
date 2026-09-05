@@ -153,19 +153,23 @@ internal class FarmPerkController(
         val now = clock()
         ensure(runtime)
         audience.players(runtime.region).forEach { player ->
-            if (active(player.uniqueId, FarmPerkType.SPEED, now)) {
-                val current = player.getPotionEffect(PotionEffectType.SPEED)
-                val perk = runtime.settings.perks
-                if (current == null || current.amplifier <= perk.speedAmplifier) {
-                    player.addPotionEffect(
-                        PotionEffect(PotionEffectType.SPEED, perk.speedRefreshTicks, perk.speedAmplifier, true, false, false),
-                    )
-                }
+            if (!access.hasAccess(player, runtime.settings.permission) || player.isDead) return@forEach
+            val perk = runtime.settings.perks
+            fun effect(type: FarmPerkType, potion: PotionEffectType, amplifier: Int) {
+                if (!active(player.uniqueId, type, now)) return
+                val current = player.getPotionEffect(potion)
+                if (current != null && (current.amplifier > amplifier ||
+                        current.amplifier == amplifier && (current.isInfinite || current.duration >= perk.speedRefreshTicks))) return
+                player.addPotionEffect(PotionEffect(potion, perk.speedRefreshTicks, amplifier, true, false, true))
             }
+            effect(FarmPerkType.SPEED, PotionEffectType.SPEED, perk.speedAmplifier)
+            effect(FarmPerkType.STRENGTH, PotionEffectType.STRENGTH, perk.strengthAmplifier)
+            effect(FarmPerkType.RESISTANCE, PotionEffectType.RESISTANCE, perk.resistanceAmplifier)
+            effect(FarmPerkType.FIRE_RESISTANCE, PotionEffectType.FIRE_RESISTANCE, 0)
+            effect(FarmPerkType.JUMP_BOOST, PotionEffectType.JUMP_BOOST, perk.jumpAmplifier)
             if (active(player.uniqueId, FarmPerkType.SUSTENANCE, now) &&
                 access.allowInteraction("farm-perk-sustain:${player.uniqueId}", runtime.settings.perks.sustainIntervalSeconds * 1_000L)
             ) {
-                val perk = runtime.settings.perks
                 player.foodLevel = (player.foodLevel + perk.sustenanceFood).coerceAtMost(20)
                 player.saturation = (player.saturation + perk.sustenanceSaturation).coerceAtMost(20.0f)
                 val maxHealth = player.getAttribute(Attribute.MAX_HEALTH)?.value ?: 20.0
@@ -279,7 +283,9 @@ internal class FarmPerkController(
             template(type),
             locale.renderPath("perk.${type.name.lowercase()}.name", player),
             buildList {
-                add(locale.renderPath("perk.${type.name.lowercase()}.description", player))
+                add(locale.renderPath("perk.${type.name.lowercase()}.description", player, descriptionValues(runtime)))
+                add(locale.renderPath("perk.${type.name.lowercase()}.detail", player, descriptionValues(runtime)))
+                add(Component.empty())
                 add(
                     locale.render(
                         MessageKey.FARM_PERK_PRICE,
@@ -428,19 +434,32 @@ internal class FarmPerkController(
         return current?.forWeek(week, clock()) ?: FarmPlayerPerks(weekStartEpochDay = week)
     }
 
+    private fun descriptionValues(runtime: FarmRuntime): Map<String, Component> = with(runtime.settings.perks) {
+        mapOf(
+            "width" to locale.text(harvestAreaRadius * 2 + 1),
+            "speed" to locale.text((speedAmplifier + 1) * 20),
+            "hearts" to locale.text(sustenanceHealth / 2.0),
+            "food" to locale.text(sustenanceFood / 2.0),
+            "seconds" to locale.text(sustainIntervalSeconds),
+            "bonus" to locale.text(rewardBonusPercent),
+            "strength" to locale.text(strengthAmplifier + 1),
+            "resistance" to locale.text((resistanceAmplifier + 1) * 20),
+            "jump" to locale.text(jumpAmplifier + 1),
+        )
+    }
+
     private fun offer(runtime: FarmRuntime, type: FarmPerkType): FarmPerkOfferSettings = when (type) {
         FarmPerkType.HARVEST_AREA -> runtime.settings.perks.harvestArea
         FarmPerkType.SPEED -> runtime.settings.perks.speed
         FarmPerkType.SUSTENANCE -> runtime.settings.perks.sustenance
         FarmPerkType.REWARD_BOOST -> runtime.settings.perks.rewardBoost
+        FarmPerkType.STRENGTH -> runtime.settings.perks.strength
+        FarmPerkType.RESISTANCE -> runtime.settings.perks.resistance
+        FarmPerkType.FIRE_RESISTANCE -> runtime.settings.perks.fireResistance
+        FarmPerkType.JUMP_BOOST -> runtime.settings.perks.jumpBoost
     }
 
-    private fun template(type: FarmPerkType): String = when (type) {
-        FarmPerkType.HARVEST_AREA -> "perk-harvest-area"
-        FarmPerkType.SPEED -> "perk-speed"
-        FarmPerkType.SUSTENANCE -> "perk-sustenance"
-        FarmPerkType.REWARD_BOOST -> "perk-reward-boost"
-    }
+    private fun template(type: FarmPerkType): String = "perk-${type.name.lowercase().replace('_', '-')}"
 
     private sealed interface FarmPerkPurchaseUiResult {
         data object PENDING : FarmPerkPurchaseUiResult

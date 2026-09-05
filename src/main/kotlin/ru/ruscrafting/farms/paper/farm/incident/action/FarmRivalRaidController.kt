@@ -62,6 +62,8 @@ import ru.ruscrafting.farms.paper.platform.FarmEntityRayTrace
 import ru.ruscrafting.farms.paper.platform.FarmMobDespawnPolicy
 import ru.ruscrafting.farms.paper.platform.FarmMobNavigation
 import ru.ruscrafting.farms.paper.platform.FarmRaidRiderVisibility
+import ru.ruscrafting.farms.paper.platform.FarmRivalRaidSeatMovement
+import ru.ruscrafting.farms.paper.platform.PaperFarmRivalRaidSeatMovement
 import ru.ruscrafting.farms.paper.platform.FarmTextDisplayRenderer
 import ru.ruscrafting.farms.paper.platform.FarmTextDisplayStyle
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
@@ -97,6 +99,7 @@ internal class FarmRivalRaidController(
     private val mobDespawns: FarmMobDespawnPolicy,
     private val mobNavigation: FarmMobNavigation,
     private val riderVisibility: FarmRaidRiderVisibility,
+    private val seatMovement: FarmRivalRaidSeatMovement = PaperFarmRivalRaidSeatMovement,
     private val textDisplays: FarmTextDisplayRenderer,
     private val nightShift: FarmNightShiftController,
 ) {
@@ -138,6 +141,7 @@ internal class FarmRivalRaidController(
     private val damageGate = FarmRaidDamageGate()
     private val workers = FarmRivalRaidWorkers(plugin, locale, beds, mobDespawns, mobNavigation, nightShift)
     private val loadout = FarmRivalRaidLoadout(locale, serviceItems)
+    private val seats = FarmRivalRaidSeats(plugin, seatMovement)
     fun plan(runtime: FarmRuntime): FarmActionIncidentPlanAttempt {
         val rival = points.configured(runtime, FarmPointKind.RIVAL_FARM)
             ?: return FarmActionIncidentPlanAttempt(null, 0, "rival_point_missing")
@@ -226,7 +230,6 @@ internal class FarmRivalRaidController(
         if (settings().particles) {
             renderPortal(runtime, session)
         }
-        ghast.passengers.filterIsInstance<Player>().forEach { board(runtime, session, ghast, it) }
         val participants = session.participantIds.mapNotNull(Bukkit::getPlayer).filter(Player::isOnline)
         val atmospherePlayers = audience.players(runtime.region).filterNot(access::isAdminEditing)
         nightShift.syncAmbientTime(
@@ -237,11 +240,10 @@ internal class FarmRivalRaidController(
         )
         participants.forEach { player ->
             if (!issueWeapons(player, runtime)) {
-                audience.sendActionBar(player, MessageKey.FARM_ACTION_INVENTORY_FULL)
-                finishParticipant(runtime.settings.id, session, player)
+                notifyInventoryFull(player)
                 return@forEach
             }
-            if (!ensurePassenger(session, ghast, player)) finishParticipant(runtime.settings.id, session, player)
+            if (!ensurePassenger(runtime, session, ghast, player)) finishParticipant(runtime.settings.id, session, player)
         }
         val now = ghast.world.gameTime
         if (now % runtime.settings.rivalRaid.workerPatrolIntervalTicks == 0L) workers.patrol(runtime)
@@ -253,6 +255,7 @@ internal class FarmRivalRaidController(
         expireProjectiles(runtime, session)
         if (!session.launched && session.participantIds.isEmpty()) return
         val ghast = session.ghastId?.let(Bukkit::getEntity) as? Ghast ?: return
+        seats.sync(runtime, session.participantIds.toList(), ghast)
         session.launched = true
         val departure = special.points.first()
         val rival = special.points.getOrNull(1) ?: return
@@ -445,14 +448,14 @@ internal class FarmRivalRaidController(
 
     fun onDismount(event: EntityDismountEvent): Boolean {
         val player = event.entity as? Player ?: return false
-        val ghast = event.dismounted
-        if (role(ghast) != ROLE_GHAST) return false
-        val zoneId = ghast.persistentDataContainer.get(zoneKey, PersistentDataType.STRING) ?: return true
+        val seat = event.dismounted
+        if (!seats.isSeat(seat)) return false
+        val zoneId = seats.zoneId(seat) ?: return true
         val session = raids[zoneId] ?: return true
-        if (session.ghastId != ghast.uniqueId || player.uniqueId !in session.participantIds) return true
+        if (seats.seatId(zoneId, player.uniqueId) != seat.uniqueId || player.uniqueId !in session.participantIds) return true
         tasks.runLater(1L) {
             val current = raids[zoneId]?.takeIf { it === session } ?: return@runLater
-            if (player.uniqueId in current.participantIds && player.vehicle?.uniqueId != ghast.uniqueId) {
+            if (player.uniqueId in current.participantIds && player.vehicle?.uniqueId != seat.uniqueId) {
                 finishParticipant(zoneId, current, player)
             }
         }
@@ -486,7 +489,7 @@ internal class FarmRivalRaidController(
         portalEntries.remove(player.uniqueId)
         raids.forEach { (zoneId, session) ->
             if (player.uniqueId in session.participantIds) {
-                returnParticipant(session, player)
+                returnParticipant(zoneId, session, player)
                 nightShift.clearAmbientPlayer(atmosphereOwner(zoneId), player)
             }
             session.participantIds.remove(player.uniqueId)
@@ -507,7 +510,7 @@ internal class FarmRivalRaidController(
             val wasParticipant = playerId in session.participantIds
             if ((wasParticipant || reason == WorksitePlayerReleaseReason.JOIN_STALE) && reason.returnsParticipant()) {
                 session.participantIds += playerId
-                Bukkit.getPlayer(playerId)?.let { returnParticipant(session, it) }
+                Bukkit.getPlayer(playerId)?.let { returnParticipant(identity.zoneId, session, it) }
             }
             session.participantIds.remove(playerId)
             session.gunShotAt.remove(playerId)
@@ -529,7 +532,7 @@ internal class FarmRivalRaidController(
                 WEAPON_IDS.forEach { itemId ->
                     while (serviceItems.consume(player, identity(zoneId, session, itemId))) Unit
                 }
-                returnParticipant(session, player)
+                returnParticipant(zoneId, session, player)
             }
         }
         nightShift.clearAmbientTime(atmosphereOwner(zoneId))
@@ -538,6 +541,7 @@ internal class FarmRivalRaidController(
         session?.debrisIds.orEmpty().forEach { Bukkit.getEntity(it)?.remove() }
         session?.portalId?.let(Bukkit::getEntity)?.remove()
         session?.portalLabelId?.let(Bukkit::getEntity)?.remove()
+        seats.clear(zoneId)
         session?.ghastId?.let(Bukkit::getEntity)?.remove()
         debug.event("farm_rival_raid_cleared", "zone" to zoneId, "reason" to reason)
     }
@@ -661,11 +665,12 @@ internal class FarmRivalRaidController(
             )
         ) return
         if (!issueWeapons(player, runtime)) {
-            audience.sendActionBar(player, MessageKey.FARM_ACTION_INVENTORY_FULL)
+            session.participantIds += player.uniqueId
+            notifyInventoryFull(player)
             return
         }
         session.participantIds += player.uniqueId
-        if (!ensurePassenger(session, ghast, player)) {
+        if (!ensurePassenger(runtime, session, ghast, player)) {
             finishParticipant(runtime.settings.id, session, player)
             return
         }
@@ -881,11 +886,14 @@ internal class FarmRivalRaidController(
         return loadout.issue(player, runtime, required.associateWith { identity(runtime, it) })
     }
 
-    private fun ensurePassenger(session: RaidSession, ghast: Ghast, player: Player): Boolean {
-        if (player.vehicle !== ghast) {
-            player.leaveVehicle()
-            if (!ghast.addPassenger(player)) return false
+    private fun notifyInventoryFull(player: Player) {
+        if (access.allowInteraction("farm-rival-raid-inventory-full:${player.uniqueId}", 3_000L)) {
+            audience.sendChat(player, MessageKey.FARM_ACTION_INVENTORY_FULL)
         }
+    }
+
+    private fun ensurePassenger(runtime: FarmRuntime, session: RaidSession, ghast: Ghast, player: Player): Boolean {
+        if (!seats.ensure(runtime, ghast, player)) return false
         session.hiddenRiderIds += player.uniqueId
         riderVisibility.setHidden(player, ghast, true)
         return true
@@ -898,14 +906,15 @@ internal class FarmRivalRaidController(
         WEAPON_IDS.forEach { itemId ->
             while (serviceItems.consume(player, identity(zoneId, session, itemId))) Unit
         }
-        returnParticipant(session, player)
+        returnParticipant(zoneId, session, player)
     }
 
-    private fun returnParticipant(session: RaidSession, player: Player) {
+    private fun returnParticipant(zoneId: String, session: RaidSession, player: Player) {
         if (session.hiddenRiderIds.remove(player.uniqueId)) {
             (session.ghastId?.let(Bukkit::getEntity) as? Ghast)?.let { riderVisibility.setHidden(player, it, false) }
         }
         player.leaveVehicle()
+        seats.remove(zoneId, player)
         session.returnPoint.location()?.let(player::teleport)
     }
 

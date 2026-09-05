@@ -125,12 +125,12 @@ ui:
           back: {slot: 18, template: back}
       farm-perks:
         schema-version: 1
-        rows: 3
+        rows: 4
         background: {template: background}
         elements:
           balance: {slot: 4, kind: decoration, template: perk-balance}
         regions:
-          offers: {slots: [10, 12, 14, 16]}
+          offers: {slots: [10, 12, 14, 16, 19, 21, 23, 25]}
     templates:
       # ARC Core validates these safe localized component slots before publishing a menu generation.
       background: {material: GRAY_STAINED_GLASS_PANE, custom-model-data: 0, hide-tooltip: true, name: '<name>',
@@ -178,6 +178,10 @@ ui:
       perk-balance: {material: SUNFLOWER, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}
       perk-harvest-area: {material: DIAMOND_HOE, name: '<name>', lore: [{repeat: lore,
             text: '<line>'}]}
+      perk-strength: {material: IRON_SWORD, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}
+      perk-resistance: {material: IRON_CHESTPLATE, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}
+      perk-fire-resistance: {material: MAGMA_CREAM, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}
+      perk-jump-boost: {material: SLIME_BLOCK, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}
       perk-speed: {material: RABBIT_FOOT, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}
       perk-sustenance: {material: GOLDEN_CARROT, name: '<name>', lore: [{repeat: lore,
             text: '<line>'}]}
@@ -312,6 +316,8 @@ farm-zones:
     animal-rescue-max-player-distance: 28
     animal-delivery-radius: 3.0
     # Idle supply displays (hoe, seeds, water, bow and fire equipment) are visible within this many blocks.
+    # Equipment is issued automatically; enable only to show optional pickup points.
+    supply-points-visible: false
     supply-nearby-view-distance: 15.0
     display-view-range: 2.0
     seeder-every-shifts: 2
@@ -719,10 +725,14 @@ farm-zones:
       carried-y-offset: 0.65
       display-view-range: 2.0
     perks:
-      harvest-area: {price: 250, duration-hours: 72, radius: 1}
-      speed: {price: 180, duration-hours: 72, amplifier: 0, refresh-ticks: 60}
-      sustenance: {price: 150, duration-hours: 72, interval-seconds: 5, food: 2, saturation: 1.0, health: 1.0}
-      reward-boost: {price: 400, duration-hours: 72, bonus-percent: 25}
+      harvest-area: {price: 250, duration-hours: 72, radius: 2}
+      speed: {price: 180, duration-hours: 72, amplifier: 2, refresh-ticks: 60}
+      sustenance: {price: 150, duration-hours: 72, interval-seconds: 3, food: 20, saturation: 10.0, health: 4.0}
+      reward-boost: {price: 400, duration-hours: 72, bonus-percent: 75}
+      strength: {price: 220, duration-hours: 72, amplifier: 1}
+      resistance: {price: 240, duration-hours: 72, amplifier: 1}
+      fire-resistance: {price: 160, duration-hours: 72}
+      jump-boost: {price: 140, duration-hours: 72, amplifier: 1}
     rewards:
       # Every reward rolls independently. Commands run as console after the grant is durably claimed.
       # Supported command placeholders: %player%, %uuid%, %zone%, %sequence%, %contribution%, %rank%, %grant_id%.

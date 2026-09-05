@@ -76,6 +76,11 @@ internal class FarmSupplyController(
                 }
             }.groupBy({ it.first }, { it.second })
         } else emptyMap()
+        if (!runtime.settings.supplyPointsVisible) {
+            loadedByKind.values.flatten().forEach(Entity::remove)
+            FarmSupplyKind.entries.forEach { removeEntities(SupplyKey(runtime.settings.id, it), "hidden") }
+            return
+        }
         FarmSupplyKind.entries.forEach { kind ->
             val position = point(kind)
             val key = SupplyKey(runtime.settings.id, kind)
@@ -145,12 +150,29 @@ internal class FarmSupplyController(
         }
     }
 
+    /** Retried by the farm tick: keep existing equipment and replenish only a missing part. */
+    fun ensureRequired(runtime: FarmRuntime, player: Player): Boolean {
+        val kind = FarmSupplyVisibilityPolicy.required(runtime.state) ?: return true
+        val held = player.inventory.storageContents.toList() + player.inventory.itemInOffHand + player.itemOnCursor
+        if (items(runtime, kind).all { expected -> held.any {
+                it != null && it.amount > 0 && it.type == expected.type && isServiceItem(it, runtime.settings.id, kind)
+            } }) return true
+        return give(runtime, kind, player)
+    }
+
     fun give(runtime: FarmRuntime, kind: FarmSupplyKind, player: Player): Boolean {
         val before = player.inventory.storageContents.map { it?.clone() }.toTypedArray()
+        val offHand = player.inventory.itemInOffHand.clone()
+        val cursor = player.itemOnCursor.clone()
+        val top: org.bukkit.inventory.Inventory? = player.openInventory.topInventory
+        val topBefore = top?.contents?.map { it?.clone() }?.toTypedArray()
         removeServiceItems(player, runtime.settings.id, "replace_supply", kind)
         val items = items(runtime, kind)
         if (!PlayerHeldItemLoadout.place(player, items)) {
+            if (topBefore != null) top?.contents = topBefore
             player.inventory.storageContents = before
+            player.inventory.setItemInOffHand(offHand)
+            player.setItemOnCursor(cursor)
             return false
         }
         if (settings().sounds) player.playSound(player.location, Sound.ENTITY_ITEM_PICKUP, 0.7f, 1.2f)
