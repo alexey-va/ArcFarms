@@ -115,6 +115,48 @@ class FarmSupplyControllerMockBukkitTest : FunSpec({
         player.inventory.storageContents.filterNotNull().any(controller::isServiceItem) shouldBe false
     }
 
+    test("reconcile removes obsolete equipment when the required supply changes") {
+        val controller = controller(plugin)
+        val runtime = runtime(world)
+        runtime.state = runtime.state.copy(phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.DROUGHT)
+        controller.give(runtime, FarmSupplyKind.WATER, player) shouldBe true
+        controller.isServiceItem(player.inventory.itemInMainHand, runtime.settings.id, FarmSupplyKind.WATER) shouldBe true
+
+        runtime.state = runtime.state.copy(incidentType = FarmIncidentType.BIRDS)
+        controller.ensureRequired(runtime, player) shouldBe true
+
+        player.inventory.contents.filterNotNull().none {
+            controller.isServiceItem(it, runtime.settings.id, FarmSupplyKind.WATER)
+        } shouldBe true
+        player.inventory.contents.filterNotNull().count {
+            controller.isServiceItem(it, runtime.settings.id, FarmSupplyKind.ARCHERY)
+        } shouldBe 2
+    }
+
+    test("reconcile removes obsolete farm equipment from storage, offhand, cursor, and open top inventory") {
+        val controller = controller(plugin)
+        val runtime = runtime(world)
+        runtime.state = runtime.state.copy(phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.BARN_FIRE)
+        controller.give(runtime, FarmSupplyKind.FIRE, player) shouldBe true
+        val equipment = requireNotNull(player.inventory.storageContents.first { controller.isServiceItem(it, FarmSupplyKind.FIRE) })
+        player.inventory.setItem(2, equipment.clone())
+        player.inventory.setItem(0, null)
+        val top = server.createInventory(null, 9, Component.text("Test inventory"))
+        player.openInventory(top)
+        player.inventory.setItemInOffHand(equipment.clone())
+        player.setItemOnCursor(equipment.clone())
+        player.openInventory.topInventory.setItem(0, equipment.clone())
+        player.inventory.setItem(1, ItemStack(Material.DIAMOND))
+
+        runtime.state = runtime.state.copy(phase = FarmPhase.HARVESTING, incidentType = null)
+        controller.ensureRequired(runtime, player) shouldBe true
+
+        player.inventory.contents.filterNotNull().none { controller.isServiceItem(it) } shouldBe true
+        player.itemOnCursor.type shouldBe Material.AIR
+        player.openInventory.topInventory.contents.filterNotNull().none { controller.isServiceItem(it) } shouldBe true
+        player.inventory.getItem(1) shouldBe ItemStack(Material.DIAMOND)
+    }
+
     test("hiding optional supply points removes existing scenes and survives controller restart") {
         val runtime = runtime(world)
         val controller = controller(plugin)

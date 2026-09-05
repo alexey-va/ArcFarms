@@ -152,7 +152,11 @@ internal class FarmSupplyController(
 
     /** Retried by the farm tick: keep existing equipment and replenish only a missing part. */
     fun ensureRequired(runtime: FarmRuntime, player: Player): Boolean {
-        val kind = FarmSupplyVisibilityPolicy.required(runtime.state) ?: return true
+        val kind = FarmSupplyVisibilityPolicy.required(runtime.state)
+        FarmSupplyKind.entries.filterNot { it == kind }.forEach { stale ->
+            removeServiceItems(player, runtime.settings.id, "phase_changed", stale)
+        }
+        kind ?: return true
         val held = player.inventory.storageContents.toList() + player.inventory.itemInOffHand + player.itemOnCursor
         if (items(runtime, kind).all { expected -> held.any {
                 it != null && it.amount > 0 && it.type == expected.type && isServiceItem(it, runtime.settings.id, kind)

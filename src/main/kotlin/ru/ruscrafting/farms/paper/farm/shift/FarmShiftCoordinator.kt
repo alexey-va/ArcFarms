@@ -362,6 +362,7 @@ internal class FarmShiftCoordinator(
     }
 
     private fun incidentStarted(runtime: FarmRuntime, type: FarmIncidentType, actor: Player?) {
+        clearSupplies(runtime, "incident_started")
         when (type) {
             FarmIncidentType.DROUGHT -> {
                 drought.ensure(runtime)
@@ -538,6 +539,7 @@ internal class FarmShiftCoordinator(
     }
 
     private fun incidentResolved(runtime: FarmRuntime, type: FarmIncidentType, actor: Player?) {
+        clearSupplies(runtime, "incident_resolved")
         drought.resetGrowth(runtime.settings.id)
         pests.clear(runtime, "incident_resolved")
         birds.clear(runtime.settings.id, "incident_resolved")
@@ -709,6 +711,10 @@ internal class FarmShiftCoordinator(
                 port.sendActionBar(player, MessageKey.FARM_ACTION_INVENTORY_FULL)
             }
         }
+    }
+
+    private fun clearSupplies(runtime: FarmRuntime, reason: String) {
+        players(runtime).forEach { supplies.removeServiceItems(it, runtime.settings.id, reason) }
     }
 
     private companion object {
