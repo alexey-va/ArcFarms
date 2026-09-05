@@ -7,6 +7,7 @@ import org.bukkit.GameMode
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.entity.BlockDisplay
+import org.bukkit.WeatherType
 import ru.ruscrafting.farms.config.FarmTornadoSettings
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
@@ -15,6 +16,7 @@ import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.fixtures.FarmIncidentScenarioFixture
+import ru.ruscrafting.farms.paper.FarmBlockLedger
 
 class FarmTornadoIncidentMockBukkitTest : FunSpec({
     test("warning is harmless, debris stays bounded, empty farm pauses and resumed survival finishes with cleanup") {
@@ -32,6 +34,7 @@ class FarmTornadoIncidentMockBukkitTest : FunSpec({
                 fixture.plugin, { fixture.settings }, fixture.port, fixture.port, fixture.port,
                 FarmIncidentBedProvider { setOf(plot) },
                 FarmTransitionSink { target, result, _ -> target.state = result.state },
+                FarmBlockLedger(fixture.plugin), fixture.night,
             )
             controller.initialize(runtime) shouldBe true
             val player = fixture.paper.addPlayer("StormRunner")
@@ -41,11 +44,20 @@ class FarmTornadoIncidentMockBukkitTest : FunSpec({
             repeat(60) { controller.update(runtime) }
             player.health shouldBe initialHealth
             runtime.state.incidentProgress shouldBe 0
+            player.playerTime shouldBe 13_000L
+            player.playerWeather shouldBe WeatherType.DOWNFALL
             fixture.world.entities.count(controller::owns) shouldBe 8
             fixture.world.entities.filter(controller::owns).all { it is BlockDisplay && !it.isPersistent } shouldBe true
             controller.update(runtime)
             (player.health < initialHealth) shouldBe true
+            player.velocity.y shouldBe 1.1
             (player.velocity.lengthSquared() > 0.0) shouldBe true
+            val elevated = fixture.paper.addPlayer("ElevatedStormRunner")
+            elevated.gameMode = GameMode.SURVIVAL
+            elevated.teleport(Location(fixture.world, 24.5, 75.0, 24.5))
+            controller.update(runtime)
+            elevated.velocity.y shouldBe 0.65
+            (elevated.velocity.clone().setY(0).length() > 1.0) shouldBe true
             player.teleport(Location(fixture.world, 50.5, 65.0, 50.5))
             repeat(39) { controller.update(runtime) }
             runtime.state.incidentProgress shouldBe 2
@@ -53,6 +65,9 @@ class FarmTornadoIncidentMockBukkitTest : FunSpec({
             repeat(100) { controller.update(runtime) }
             runtime.state.incidentProgress shouldBe 2
             fixture.world.entities.count(controller::owns) shouldBe 0
+            player.playerWeather shouldBe null
+            repeat(60) { fixture.night.updatePlayerTimes() }
+            player.playerTime shouldBe fixture.world.time
 
             every { fixture.port.players(any()) } returns listOf(player)
             val saved = runtime.state.copy()
@@ -68,7 +83,7 @@ class FarmTornadoIncidentMockBukkitTest : FunSpec({
         }
     }
 
-    test("roofed or missing beds reject placement and creative spectators cannot run the clock") {
+    test("roofed beds reject placement while creative participates and spectator or admin editing pauses") {
         FarmIncidentScenarioFixture.open().use { fixture ->
             val runtime = fixture.runtime(FarmShiftState(
                 phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.TORNADO,
@@ -81,6 +96,7 @@ class FarmTornadoIncidentMockBukkitTest : FunSpec({
                 fixture.plugin, { fixture.settings }, fixture.port, fixture.port, fixture.port,
                 FarmIncidentBedProvider { setOf(plot) },
                 FarmTransitionSink { target, result, _ -> target.state = result.state },
+                FarmBlockLedger(fixture.plugin), fixture.night,
             )
             controller.initialize(runtime) shouldBe false
             fixture.world.getBlockAt(24, 70, 24).type = Material.AIR
@@ -89,8 +105,13 @@ class FarmTornadoIncidentMockBukkitTest : FunSpec({
             player.gameMode = GameMode.CREATIVE
             player.teleport(Location(fixture.world, 24.5, 65.0, 24.5))
             repeat(200) { controller.update(runtime) }
-            runtime.state.incidentProgress shouldBe 0
-            fixture.world.entities.count(controller::owns) shouldBe 0
+            (runtime.state.incidentProgress > 0) shouldBe true
+            player.velocity.y shouldBe 1.1
+            player.health shouldBe 20.0
+            val creativeProgress = runtime.state.incidentProgress
+            player.gameMode = GameMode.SPECTATOR
+            repeat(200) { controller.update(runtime) }
+            runtime.state.incidentProgress shouldBe creativeProgress
             // A persisted incident that was interrupted before planning heals on the next visual tick.
             runtime.state = runtime.state.copy(specialIncident = null)
             player.gameMode = GameMode.SURVIVAL

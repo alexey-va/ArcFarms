@@ -328,9 +328,19 @@ configured weighted material table.
 
 The `TORNADO` incident gives workers a six-second warning, then pursues them
 for 45 active seconds. Sprint away from the funnel; its core deals one heart
-of damage and throws nearby workers outwards. The 24-block funnel combines
+of damage and lifts nearby players into a ten-block updraft before throwing them
+outwards. Creative players participate and are lifted too; spectators do not
+advance the event. Players on the farm see a rainy evening during the storm.
+The 24-block funnel combines
 six particle ropes, ground dust, a cloud crown and 28 tumbling block displays.
-It never edits terrain or creates collectible debris. Visual updates run every
+The funnel tears out up to twelve indexed beds every half-second within its
+3.5-block ground footprint (half the configured radius, capped at four blocks).
+Both soil and active crops are journalled before removal, restored after six
+seconds or when the storm clears, and recovered through the existing chunk
+ledger after an interruption. At most 144 beds are temporarily removed. Flying
+soil and crop debris reuse the rival-raid grenade effect, cannot drop items or
+place blocks, and expire after two seconds; their count is capped by the
+configured debris count independently of the funnel displays. Visual updates run every
 three ticks, with at most 40 displays and 283 particles per frame per nearby
 viewer (including the warning ring). Particle recipients rotate through at most
 eight viewers per frame to bound packet load on crowded farms. `special-incidents.tornado` controls the
@@ -602,4 +612,6 @@ and processing packages retains its pickup-and-deliver gameplay.
 Rival raid riders occupy separate seats that follow the ghast. A failed weapon
 issue keeps the participant eligible for retry instead of ending participation.
 Tornado visuals and its survival clock pause when the field has no eligible
-Survival/Adventure participants or an administrator is editing the farm.
+Survival/Adventure/Creative participants or an administrator is editing the farm.
+Clearing the storm restores loaded damaged beds and returns player weather and
+time to the world defaults; unloaded repairs remain in the chunk journal.

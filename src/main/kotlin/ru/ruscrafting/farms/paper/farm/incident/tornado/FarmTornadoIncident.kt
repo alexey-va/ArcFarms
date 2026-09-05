@@ -12,6 +12,8 @@ import ru.ruscrafting.farms.domain.FarmIncidentPlanner
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmTornadoEngine
 import ru.ruscrafting.farms.paper.FarmRuntime
+import ru.ruscrafting.farms.paper.FarmBlockLedger
+import ru.ruscrafting.farms.paper.FarmNightShiftController
 import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
@@ -33,6 +35,8 @@ internal class FarmTornadoIncident(
     private val state: WorksiteStatePort,
     private val beds: FarmIncidentBedProvider,
     private val transitions: FarmTransitionSink,
+    ledger: FarmBlockLedger,
+    private val atmosphere: FarmNightShiftController,
 ) {
     private data class Session(
         val sequence: Long,
@@ -44,6 +48,7 @@ internal class FarmTornadoIncident(
 
     private val sessions = mutableMapOf<String, Session>()
     private val scene = FarmTornadoScene(plugin)
+    private val terrain = FarmTornadoTerrain(plugin, ledger, beds)
 
     fun initialize(runtime: FarmRuntime): Boolean {
         if (!FarmTornadoEngine.active(runtime.state)) return false
@@ -85,7 +90,7 @@ internal class FarmTornadoIncident(
             return
         }
         val participants = players.filter {
-            it.isOnline && !it.isDead && runtime.region.contains(it.location) && it.gameMode in setOf(GameMode.SURVIVAL, GameMode.ADVENTURE) &&
+            it.isOnline && !it.isDead && runtime.region.contains(it.location) && it.gameMode != GameMode.SPECTATOR &&
                 access.hasAccess(it, runtime.settings.permission)
         }
         if (participants.isEmpty()) {
@@ -122,6 +127,9 @@ internal class FarmTornadoIncident(
             return
         }
         active.ticks++
+        atmosphere.syncFixedAmbientTime(atmosphereOwner(zone), players, STORM_EVENING_TIME, 3)
+        atmosphere.syncAmbientWeather(atmosphereOwner(zone), players, downfall = true)
+        terrain.update(runtime, active.center, active.ticks, pursuing = active.ticks > options.warningSeconds * 20)
         active.lastHits.keys.retainAll(participants.mapTo(mutableSetOf(), Player::getUniqueId))
         val warningTicks = options.warningSeconds * 20
         val pursuing = active.ticks > warningTicks
@@ -156,7 +164,8 @@ internal class FarmTornadoIncident(
 
     private fun affect(player: Player, session: Session, damage: Double) {
         val location = player.location
-        if (abs(location.y - session.center.y) > 3.0) return
+        val elevation = location.y - session.center.y
+        if (elevation < -3.0 || elevation > LIFT_HEIGHT + 3.0) return
         val dx = location.x - session.center.x
         val dz = location.z - session.center.z
         val distance = sqrt(dx * dx + dz * dz)
@@ -165,26 +174,46 @@ internal class FarmTornadoIncident(
         val nz = if (distance > 0.01) dz / distance else 0.0
         if (distance <= 2.8) {
             val last = session.lastHits[player.uniqueId]
-            if (last != null && session.ticks - last < 20) return
-            session.lastHits[player.uniqueId] = session.ticks
-            if (damage > 0) player.damage(damage)
-            player.velocity = Vector(nx * 0.85 - nz * 0.25, 0.38, nz * 0.85 + nx * 0.25)
+            if (last == null || session.ticks - last >= 20) {
+                session.lastHits[player.uniqueId] = session.ticks
+                if (damage > 0 && player.gameMode != GameMode.CREATIVE) player.damage(damage)
+            }
+            if (elevation < LIFT_HEIGHT) {
+                player.velocity = Vector(-nx * 0.18 - nz * 0.5, 1.1, -nz * 0.18 + nx * 0.5)
+            } else {
+                player.velocity = Vector(nx * 1.2 - nz * 0.3, 0.65, nz * 1.2 + nx * 0.3)
+            }
         } else if (session.ticks % 4 == 0) {
             val velocity = player.velocity
             // Gentle inward wind; sprinting outwards remains faster than the pursuit and pull.
-            player.velocity = velocity.add(Vector(-nx * 0.06 - nz * 0.025, 0.0, -nz * 0.06 + nx * 0.025))
+            player.velocity = velocity.add(Vector(-nx * 0.10 - nz * 0.05, 0.08, -nz * 0.10 + nx * 0.05))
         }
     }
 
-    fun owns(entity: Entity): Boolean = scene.owns(entity)
+    fun owns(entity: Entity): Boolean = scene.owns(entity) || terrain.owns(entity)
 
     fun clear(runtime: FarmRuntime) {
         sessions.remove(runtime.settings.id)
         scene.clear(runtime.settings.id)
+        terrain.clear(runtime.settings.id)
+        atmosphere.clearAmbientTime(atmosphereOwner(runtime.settings.id))
+        atmosphere.clearAmbientWeather(atmosphereOwner(runtime.settings.id))
     }
 
     fun cleanup() {
+        sessions.keys.toList().forEach { zone ->
+            atmosphere.clearAmbientTime(atmosphereOwner(zone))
+            atmosphere.clearAmbientWeather(atmosphereOwner(zone))
+        }
         sessions.clear()
         scene.cleanup()
+        terrain.cleanup()
+    }
+
+    private fun atmosphereOwner(zone: String) = "tornado:$zone"
+
+    private companion object {
+        const val STORM_EVENING_TIME = 13_000L
+        const val LIFT_HEIGHT = 10.0
     }
 }

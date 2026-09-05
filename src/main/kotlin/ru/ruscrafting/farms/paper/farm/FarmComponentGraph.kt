@@ -190,6 +190,7 @@ internal class FarmComponentGraph(
     private val nightShift = FarmNightShiftController(plugin)
     private val tornado = ru.ruscrafting.farms.paper.farm.incident.tornado.FarmTornadoIncident(
         plugin, settings, ports.access, ports.audience, ports.state, incidentBeds, transitions,
+        ledger, nightShift,
     )
     private val greenhouse = ru.ruscrafting.farms.paper.farm.incident.greenhouse.FarmHellGreenhouseIncident(
         plugin, settings, locale, ports.access, ports.audience, ports.state, incidentBeds, transitions,
