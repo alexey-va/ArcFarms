@@ -45,7 +45,11 @@ shadowJar`; see the investment design for financial assumptions and limitations.
 
 `/arcfarms` opens a native Minecraft dialog styled like ARC Help. Activities,
 companies, reports, shares, investment confirmations, weekly plans, market orders
-and farm perks use the same dialog navigation. Confirmation terms stay visible
+and farm perks use the same dialog navigation. The company button opens the farm
+directly; reports and rules share a single Details screen. Worksite and plan
+descriptions are visible without hovering; the share balance stays on the
+purchase screen. Upgrade buttons show their full price and duration before a
+separate Buy action spends points. Back buttons name their destination. Confirmation terms stay visible
 in the body; informational cards open a detail screen. Back and Escape follow
 the exit action, and the root links to `arc help`.
 

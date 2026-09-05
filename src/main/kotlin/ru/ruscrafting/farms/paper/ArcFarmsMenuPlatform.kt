@@ -51,6 +51,7 @@ class ArcFarmsMenuPlatform(
     }
     private var dialogsUsed = false
     private var dialogMode = readDialogMode()
+    val usesDialogs: Boolean get() = dialogMode
     init { plugin.server.pluginManager.registerEvents(this, plugin) }
     private fun readDialogMode(): Boolean {
         val mode = Config(plugin.dataFolder.toPath(), "config.yml").stringOrNull("ui.menu-presentation") ?: "DIALOG"

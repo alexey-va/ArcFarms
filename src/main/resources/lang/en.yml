@@ -316,20 +316,20 @@ admin:
     rival-raid: '<gray>stand in the purple portal, wait to board, then fire from the ghast at marked workers</gray>'
     tornado: '<gray>keep away from the funnel until the storm ends</gray>'
     hell-greenhouse: '<gray>harvest ripe peppers, cool them in the vat, and evacuate when the heat peaks</gray>'
-generic-error: '<prefix> <red>The action failed. Details were written to the server log.</red>'
+generic-error: "<prefix> <red>Could not complete this action. Try again later.</red>"
 zone-unavailable: '<prefix> <red>This worksite is currently unavailable.</red>'
 zone-locked: '<prefix> <red>You do not have access to this worksite yet.</red>'
 cooldown: '<color:#f2fff7>Next activity in </color><color:#ffc857><seconds> sec.</color>'
 menu:
-  title: '<color:#20252b>Work Shifts</color>'
+  title: "<color:#20252b>Choose an activity</color>"
   farm:
-    name: '<color:#55d98b>Harvest Shift</color>'
+    name: '<color:#55d98b>Farm</color>'
     lore: '<color:#f2fff7>Prepare the field, solve a problem, and deliver the harvest.</color>'
   lumber:
     name: '<color:#ffc857>Lumbermill</color>'
     lore: '<color:#f2fff7>Gather timber and process it at the machine.</color>'
   mine:
-    name: '<color:#45c8f5>Mine Expedition</color>'
+    name: '<color:#45c8f5>Mine</color>'
     lore: '<color:#f2fff7>Fill the cart, secure the workings, and leave safely.</color>'
   stats:
     name: '<color:#ffc857>Your Contribution</color>'
@@ -339,16 +339,16 @@ menu:
   unavailable: '<color:#707a76>This worksite is currently unavailable.</color>'
   locked: '<color:#ff5f6d>Access to this worksite is locked.</color>'
   companies:
-    name: '<color:#55d98b>Companies</color>'
-    lore: '<color:#f2fff7>Worksite income, policy, and future shares.</color>'
-    click: '<color:#55d98b>[▶]</color> <color:#707a76>LMB —</color> <color:#f2fff7>open companies</color>'
+    name: "<color:#55d98b>Money and plans</color>"
+    lore: "<color:#f2fff7>Shared farm shares and next week’s orders.</color>"
+    click: '<color:#55d98b>[▶]</color> <color:#707a76>LMB —</color> <color:#f2fff7>open my farm</color>'
   workday:
-    name: '<color:#ffc857><bold>Network Workday</bold></color>'
-    lore: '<color:#707a76>Workday #<cycle>:</color> <farm> <lumber> <mine>'
+    name: '<color:#ffc857><bold>Shift status</bold></color>'
+    lore: '<color:#707a76>Shift #<cycle>:</color> <farm> <lumber> <mine>'
     loading: '<color:#707a76>Syncing seals across servers… Local shifts are already available.</color>'
-    click: '<color:#55d98b>[▶]</color> <color:#707a76>LMB —</color> <color:#f2fff7>travel to “<activity>”</color>'
+    click: "<color:#55d98b>[▶]</color> <color:#707a76>LMB —</color> <color:#f2fff7>travel to “<activity>”</color>"
 companies:
-  title: '<color:#20252b>Companies</color>'
+  title: "<color:#20252b>Shared farm</color>"
   back:
     name: '<color:#55d98b>Back</color>'
     lore: '<color:#707a76>Return to the previous screen.</color>'
@@ -367,7 +367,7 @@ companies:
     worker-bonus: '<color:#707a76>Worker bonus:</color> <color:#55d98b><percent>%</color>'
     available: '<color:#707a76>License remaining:</color> <color:#ffc857><amount></color> <white><bold:false>💰</bold></white>'
     projected: '<color:#707a76>Accrued from closed orders:</color> <color:#ffc857><amount></color> <white><bold:false>💰</bold></white>'
-    shadow: '<color:#ffad42>Shadow mode: no payouts or trades yet.</color>'
+    shadow: '<color:#ffad42>Test mode: no personal payouts or trades yet.</color>'
     live-funding: '<color:#ffc857>Capital funding:</color> <color:#f2fff7><issued>/<total> shares</color>'
     live-active: '<color:#55d98b>The company is operating. Treasury:</color> <color:#ffc857><amount></color> <white><bold:false>💰</bold></white>'
     live-cancelled: '<color:#ffad42>Funding failed. Contributions were credited to investment accounts.</color>'
@@ -377,22 +377,22 @@ companies:
     open: '<color:#55d98b>[▶]</color> <color:#707a76>LMB —</color> <color:#f2fff7>open company</color>'
     travel: '<color:#55d98b>[▶]</color> <color:#707a76>LMB —</color> <color:#f2fff7>travel to the farm</color>'
   farm-detail:
-    title: '<color:#20252b>Farm Cooperative</color>'
+    title: "<color:#20252b>Shared farm</color>"
     header:
-      name: '<color:#55d98b>Farm Cooperative</color>'
-      lore: '<color:#f2fff7>Player work creates this company’s revenue.</color>'
+      name: "<color:#55d98b>Shared farm</color>"
+      lore: "<color:#f2fff7>Complete orders together. You do not need shares to work here.</color>"
     report:
       name: '<color:#55d98b>Weekly Report</color>'
       orders: '<color:#707a76>Completed orders:</color> <color:#f2fff7><orders></color>'
       contributors: '<color:#707a76>Active workers:</color> <color:#f2fff7><workers></color>'
       gross: '<color:#707a76>Revenue:</color> <color:#ffc857><amount></color> <white><bold:false>💰</bold></white>'
       retained: '<color:#707a76>After costs and bonuses:</color> <color:#ffc857><amount></color> <white><bold:false>💰</bold></white>'
-      projected: '<color:#ffad42>Pool estimate, not a promise:</color> <color:#ffc857><amount></color> <white><bold:false>💰</bold></white>'
+      projected: '<color:#ffad42>Fund estimate; payment is not promised:</color> <color:#ffc857><amount></color> <white><bold:false>💰</bold></white>'
       personal: '<color:#707a76>My projected dividend:</color> <color:#ffc857><amount></color> <color:#ffad42>(estimate)</color>'
       settlement: '<color:#707a76>Week settles:</color> <color:#f2fff7><time></color>'
     workers:
       name: '<color:#55d98b>Workers</color>'
-      bonus: '<color:#707a76>Margin bonus:</color> <color:#55d98b><percent>%</color>'
+      bonus: '<color:#707a76>Worker bonus:</color> <color:#55d98b><percent>%</color>'
       accrued: '<color:#707a76>Accrued this week:</color> <color:#ffc857><amount></color> <white><bold:false>💰</bold></white>'
       personal-accrued: '<color:#707a76>My worker amount:</color> <color:#ffc857><amount></color> <color:#ffad42>(estimate)</color>'
       projected: '<color:#707a76>My projected dividend:</color> <color:#ffc857><amount></color> <color:#ffad42>(estimate)</color>'
@@ -400,9 +400,9 @@ companies:
       settlement: '<color:#707a76>Week settles:</color> <color:#f2fff7><time></color>'
       contribution: '<color:#707a76>Project contribution:</color> <color:#f2fff7><orders> orders · <contribution> units</color>'
     policy:
-      name: '<color:#ffc857>Policy</color>'
-      operating: '<color:#707a76>Operating costs:</color> <color:#f2fff7><percent>%</color>'
-      dividend: '<color:#707a76>Estimated pool share:</color> <color:#f2fff7><percent>%</color>'
+      name: "<color:#ffc857>How money is shared</color>"
+      operating: '<color:#707a76>Work costs:</color> <color:#f2fff7><percent>%</color>'
+      dividend: '<color:#707a76>Estimated payment share:</color> <color:#f2fff7><percent>%</color>'
       upkeep: '<color:#707a76>Weekly upkeep:</color> <color:#ffc857><amount></color> <white><bold:false>💰</bold></white>'
       open: '<color:#55d98b>[▶]</color> <color:#707a76>LMB —</color> <color:#f2fff7>open participation and voting</color>'
     license:
@@ -414,18 +414,18 @@ companies:
       weeks: '<color:#707a76>License remaining:</color> <color:#f2fff7><weeks> weeks</color>'
       outcome: '<color:#ffad42>After settlement, the treasury residual is distributed to owners’ investment accounts.</color>'
     shares:
-      name: '<color:#ffc857>Cooperative shares</color>'
-      lore: '<color:#707a76>Ownership opens after the shadow test.</color>'
-      live-lore: '<color:#f2fff7>Cooperative participation, capital funding, and your account. Profit is not guaranteed.</color>'
+      name: "<color:#ffc857>Shares and my account</color>"
+      lore: "<color:#707a76>Share purchases are closed while the farm is in test mode.</color>"
+      live-lore: "<color:#f2fff7>Buy shares or withdraw account funds. Income is not guaranteed.</color>"
       open: '<color:#55d98b>[▶]</color> <color:#707a76>LMB —</color> <color:#f2fff7>open registry</color>'
     market:
-      name: '<color:#707a76>Cooperative development</color>'
-      lore: '<color:#707a76>A shared cooperative project. Participation does not guarantee profit.</color>'
+      name: "<color:#55d98b>Choose a plan</color>"
+      lore: "<color:#f2fff7>Suggest which orders to complete next week.</color>"
       stage: '<color:#707a76>Project stage:</color> <color:#f2fff7><stage></color>'
       orders: '<color:#707a76>Project orders:</color> <color:#f2fff7><orders>/<target></color>'
       open: '<color:#55d98b>[▶]</color> <color:#707a76>LMB —</color> <color:#f2fff7>open participation</color>'
   shares:
-    title: '<color:#20252b>Farm cooperative shares</color>'
+    title: '<color:#20252b>Farm shares</color>'
     status:
       name: '<color:#ffc857>Company status</color>'
       phase: '<color:#707a76>Stage:</color> <color:#f2fff7><phase></color>'
@@ -457,7 +457,7 @@ companies:
       name: '<color:#55d98b>Confirm package: <shares></color>'
       cost: '<color:#707a76>Amount charged:</color> <color:#ffc857><amount></color> <white><bold:false>💰</bold></white>'
       effect: '<color:#707a76>Resulting ownership:</color> <color:#f2fff7><shares>/<limit></color>'
-      warning: '<color:#ffad42>Your contribution stays in escrow until launch or refund.</color>'
+      warning: '<color:#ffad42>Your money is returned if funding fails; until launch it cannot be used.</color>'
       license: '<color:#ffad42>At full funding, <percent>% of capital goes to the license.</color>'
       risk: '<color:#ffad42>After launch, the contribution cannot be fully refunded and shares cannot be sold.</color>'
       click: '<color:#55d98b>[▶]</color> <color:#707a76>LMB —</color> <color:#f2fff7>charge funds and buy</color>'
@@ -467,12 +467,12 @@ companies:
       cancelled: 'Funding failed'
       expired: 'License ended'
   investment:
-    started: '<prefix> <color:#707a76>The operation is recorded. Checking it with the economy…</color>'
+    started: '<prefix> <color:#707a76>Checking the operation…</color>'
     buy-success: '<prefix> <color:#55d98b>The shares were purchased and added to the registry.</color>'
     withdraw-success: '<prefix> <color:#55d98b>The accruals were deposited to your game balance.</color>'
-    provider-rejected: '<prefix> <color:#ffad42>The economy rejected the operation. Your balance and registry were unchanged.</color>'
-    manual-review: '<prefix> <color:#ffad42>The operation result is uncertain. Automatic retry is disabled and the record needs manual review.</color>'
-    state-error: '<prefix> <color:#ffad42>The operation could not be recorded safely. No money was charged.</color>'
+    provider-rejected: '<prefix> <color:#ffad42>Operation declined. Money and shares were unchanged.</color>'
+    manual-review: '<prefix> <color:#ffad42>This operation needs review. Do not repeat it.</color>'
+    state-error: '<prefix> <color:#ffad42>Operation was not recorded. No money was charged.</color>'
     funding-closed: '<prefix> <color:#707a76>Capital funding is already closed.</color>'
     owner-limit: '<prefix> <color:#707a76>This purchase would exceed your personal share cap.</color>'
     sold-out: '<prefix> <color:#707a76>There are not enough free shares for this purchase.</color>'
@@ -480,13 +480,13 @@ companies:
     no-credit: '<prefix> <color:#707a76>Your investment account has nothing to withdraw yet.</color>'
     not-available: '<prefix> <color:#707a76>Company money operations are currently disabled.</color>'
   participation:
-    title: '<color:#20252b>Project participation</color>'
+    title: "<color:#20252b>Next week’s plan</color>"
     summary-name: '<color:#55d98b>Weekly plan</color>'
-    summary: '<color:#707a76>Participation plan:</color> <color:#f2fff7><plan></color>'
-    voting: '<color:#707a76>Weekly vote:</color> <color:#f2fff7><week></color>'
-    eligibility: '<color:#707a76>Shareholders can vote; a second vote is unavailable.</color>'
-    advisory: '<color:#707a76>Advice unlocks after completing one work shift.</color>'
-    quorum: '<color:#707a76>Quorum is 20% of shares; ties keep the current plan.</color>'
+    summary: "<color:#707a76>Current plan:</color> <color:#f2fff7><plan></color>"
+    voting: "<color:#707a76>Choosing orders for the week of</color> <color:#f2fff7><week></color>"
+    eligibility: "<color:#707a76>More shares give your vote more weight. You can choose once.</color>"
+    advisory: "<color:#707a76>You suggest a plan as a worker. Shareholder votes decide the result.</color>"
+    quorum: "<color:#707a76>Votes must represent at least 20% of issued shares. The majority wins. A tie keeps the current plan.</color>"
     steady:
       name: '<color:#55d98b>Steady plan</color>'
       lore: '<color:#f2fff7>Small common orders.</color>'
@@ -497,23 +497,23 @@ companies:
       name: '<color:#ffc857>Challenge plan</color>'
       lore: '<color:#f2fff7>Rare orders with special conditions.</color>'
     candidate: '<color:#707a76>Votes:</color> <color:#f2fff7><votes></color> <color:#707a76>· workers:</color> <color:#f2fff7><workers></color>'
-    selected: '<color:#55d98b>Selected for this week.</color>'
+    selected: "<color:#55d98b>Current plan.</color>"
     vote-click: '<color:#55d98b>[▶]</color> <color:#707a76>LMB —</color> <color:#f2fff7>vote</color>'
     advise-click: '<color:#55d98b>[▶]</color> <color:#707a76>LMB —</color> <color:#f2fff7>suggest a plan</color>'
-    confirm-title: '<color:#20252b>Confirm participation</color>'
+    confirm-title: "<color:#20252b>Confirm your choice</color>"
     confirm-name: '<color:#55d98b>Plan: <plan></color>'
-    confirm-lore: '<color:#707a76>Week:</color> <color:#f2fff7><week></color> <color:#707a76>· terms remain until settlement.</color>'
+    confirm-lore: "<color:#707a76>For the week of</color> <color:#f2fff7><week></color> <color:#707a76>— you cannot change your choice after confirming.</color>"
     confirm-click: '<color:#55d98b>[▶]</color> <color:#707a76>LMB —</color> <color:#f2fff7>confirm</color>'
-    saved: '<prefix> <color:#55d98b>Participation saved.</color>'
-    failed: '<prefix> <color:#ffad42>Participation could not be saved.</color>'
-    unavailable: '<color:#707a76>Your vote is saved, or advice unlocks after one work shift.</color>'
+    saved: "<prefix> <color:#55d98b>Your choice is recorded. The result is decided at the start of next week.</color>"
+    failed: "<prefix> <color:#ffad42>Could not save your choice. Try again later.</color>"
+    unavailable: "<color:#707a76>You have already chosen a plan or have not completed a farm order yet.</color>"
     project-name: '<color:#55d98b>Cooperative development</color>'
     project-progress: '<color:#707a76>Progress:</color> <color:#f2fff7><orders>/<target></color> <color:#707a76>· stage <stage></color>'
     project-purpose: '<color:#f2fff7>Complete orders together; insignias unlock at 10, 25, and 50.</color>'
     project-complete: '<color:#55d98b>Project target reached. No milestone payout is provided.</color>'
     world-project: '<color:#707a76>Farm cooperative project:</color> <color:#f2fff7>stage <stage>, orders <orders>/<target></color>'
-    order-premium: '<color:#55d98b>Shared premium pool:</color> <color:#ffc857><amount></color> <color:#707a76>Split by contribution; settled weekly.</color>'
-    order-shadow: '<color:#ffad42>Test calculation: shared premium pool <amount>; no payouts yet.</color>'
+    order-premium: '<color:#55d98b>Shared premium:</color> <color:#ffc857><amount></color> <color:#707a76>Split by contribution; settled weekly.</color>'
+    order-shadow: '<color:#ffad42>Test calculation: premium fund <amount>; no payouts yet.</color>'
     order-no-premium: '<color:#707a76>This order has no premium: the quota is exhausted.</color>'
     personal-result: '<color:#707a76>Premiums pending settlement:</color> <color:#ffc857><amount></color> <color:#707a76>Next settlement: <date>.</color>'
     personal-shadow: '<color:#ffad42>Test calculation: this amount is not paid.</color>'
@@ -713,12 +713,12 @@ farm:
     balance: '<color:#ffc857>Weekly points:</color> <white><points></white>'
     price: '<gray>Price:</gray> <color:#ffc857><price></color> <dark_gray>•</dark_gray> <gray><hours> h</gray>'
     active: '<color:#55d98b>Active for about <hours> more hours.</color>'
-    buy: '<color:#55d98b>[▶]</color> <color:#707a76>LMB —</color> <color:#f2fff7>buy perk</color>'
+    buy: "<color:#55d98b>[▶]</color> <color:#707a76>LMB —</color> <color:#f2fff7>buy perk</color>"
     already-active-title: '<color:#ff5f6d>This perk is already active</color>'
-    already-active: '<gray>About</gray> <white><hours> h</white> <gray>remaining.</gray>'
-    already-active-hint: '<dark_gray>Buy it again after the current perk expires.</dark_gray>'
+    already-active: '<gray>Already active for about</gray> <white><hours> h</white>'
+    already-active-hint: '<dark_gray>A new upgrade is available after this one ends.</dark_gray>'
     not-enough-title: '<color:#ff5f6d>Not enough points</color>'
-    not-enough: '<color:#ff5f6d>You need <price> weekly farm points.</color>'
+    not-enough: '<color:#ff5f6d>Points needed: <price>.</color>'
     save-failed-title: '<color:#ff5f6d>Purchase was not saved</color>'
     save-failed: '<gray>No points were spent. Please try again.</gray>'
     purchased: '<color:#55d98b>Perk purchased:</color> <perk>'
@@ -804,9 +804,9 @@ farm:
     progress: '<gray>Collected:</gray> <color:#55d98b><done>/<total></color>'
     time-limit: '<gray>Time limit:</gray> <color:#ffc857><time></color>'
     time-remaining: '<gray>Remaining:</gray> <color:#ffc857><time></color>'
-    accept: '<color:#55d98b>Take the delivery</color>'
-    decline: '<color:#ff7a45>Continue normal harvesting</color>'
-    choose: '<color:#55d98b>[▶]</color> <color:#707a76>LMB —</color> <color:#f2fff7>choose</color>'
+    accept: '<color:#55d98b>Accept order</color>'
+    decline: '<color:#ff7a45>Decline</color>'
+    choose: "<color:#55d98b>[▶]</color> <color:#707a76>LMB —</color> <color:#f2fff7>choose</color>"
     close: '<color:#b8c8c0>Close</color>'
   completed: '<color:#55d98b><bold>Order delivered</bold></color>'
   completed-subtitle: '<color:#ffc857>Rewards were resolved for every contributor</color>'
@@ -1052,7 +1052,7 @@ lumber:
     warped_batch: '<color:#f2fff7>Sort good and warped planks onto the correct pallets</color>'
     rush_order: '<color:#ffc857>Rush order: stack the planks before the bonus timer expires</color>'
 mine:
-  started: '<color:#45c8f5>Mine expedition</color> <color:#707a76>•</color> <route>'
+  started: "<color:#45c8f5>Mine expedition</color> <color:#707a76>•</color> <route>"
   pickaxe-required: '<red>You need a pickaxe to work this mine face.</red>'
   regenerating: '<gray>This part of the mine is still regenerating.</gray>'
   hazard-started: '<red><bold>The mine face is unstable</bold></red>'
@@ -1282,15 +1282,21 @@ phase:
     cooldown: '<gray>cooldown</gray>'
 
 dialog:
+  buy-perk: "<#92bed8>Buy upgrade"
   close: '<#969696>Close'
   back: '<#969696>Back'
   help: '<#969696>Server main menu'
+  details: '<#969696>Details'
+  back-root: '<#969696>Back to activities'
+  back-company: '<#969696>Back to farm'
+  back-shares: '<#969696>Back to shares'
+  back-participation: '<#969696>Back to plan choices'
   intro:
-    main: '<#e6fff3>Choose a worksite or open your company. Hover over a button for details.'
-    market: '<#e6fff3>An order for the whole shift. Review the terms, then accept or decline.'
+    main: "<#e6fff3>Click an activity to travel there."
+    market: '<#e6fff3>Review the order target, then choose Accept or Decline.'
     enterprise-overview: '<#e6fff3>Shared worksites: work, development and company participation.'
-    enterprise-farm: '<#e6fff3>Your company: work results, license terms and plans for the next week.'
-    enterprise-shares: '<#e6fff3>Shares and your investment account. Review the price and terms before buying.'
-    enterprise-confirm: '<#e6fff3>Review the selected action and its terms below.'
-    enterprise-participation: '<#e6fff3>Choose next week’s plan. Hover over each button to see its terms.'
-    farm-perks: '<#e6fff3>Upgrades earned through your farm work. Each card shows the cost and duration.'
+    enterprise-farm: "<#e6fff3>Open your account or choose a plan. Reports and rules are under Details."
+    enterprise-shares: '<#e6fff3>Buy shares, view your account, and withdraw available money here.'
+    enterprise-confirm: "<#e6fff3>Review the terms and confirm your choice."
+    enterprise-participation: '<#e6fff3>Choose the weekly plan. Its terms and available action are shown here.'
+    farm-perks: "<#e6fff3>Choose an upgrade. Review its price, duration and effect before buying."

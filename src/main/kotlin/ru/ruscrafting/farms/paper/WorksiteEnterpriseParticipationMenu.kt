@@ -84,7 +84,8 @@ internal class WorksiteEnterpriseParticipationMenu(
     }
 
     private fun backEntry(player: Player, menu: ru.arc.menu.MenuId, action: (Player) -> Unit) = entry(
-        menus.item(menu, id("back"), locale.render(MessageKey.COMPANIES_BACK_NAME, player), listOf(
+        menus.item(menu, id("back"), locale.renderPath("dialog." +
+            if (menu == MENU) "back-company" else "back-participation", player), listOf(
             locale.render(MessageKey.COMPANIES_BACK_LORE, player), Component.empty(), locale.render(MessageKey.COMPANIES_BACK_CLICK, player),
         )), acceptedClicks = setOf(ClickType.LEFT),
     ) { context -> menus.transition(player, context.session) { action(player) } }

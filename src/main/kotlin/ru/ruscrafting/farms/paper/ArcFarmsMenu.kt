@@ -22,7 +22,7 @@ class ArcFarmsMenu(
     private val settings: () -> ArcFarmsConfig,
 ) : AutoCloseable {
     init { menus.configureDialogs(locale) }
-    private val participationMenu: WorksiteEnterpriseParticipationMenu = WorksiteEnterpriseParticipationMenu(service, locale, settings, menus) { player -> enterpriseMenu.openOverview(player) }
+    private val participationMenu: WorksiteEnterpriseParticipationMenu = WorksiteEnterpriseParticipationMenu(service, locale, settings, menus) { player -> enterpriseMenu.openCompany(player) }
     private val enterpriseMenu: WorksiteEnterpriseMenu = WorksiteEnterpriseMenu(service, locale, settings, menus, ::open, participationMenu::open)
 
     fun open(player: Player) {
@@ -65,6 +65,7 @@ class ArcFarmsMenu(
                     WORKDAY,
                     locale.render(MessageKey.MENU_WORKDAY_NAME, player),
                     workdayLore(player),
+                    enabled = !menus.usesDialogs,
                 ) { context ->
                     service.workday()?.recommended()?.let { navigateIfEnabled(context.player, it, context.session) }
                 },
@@ -79,7 +80,7 @@ class ArcFarmsMenu(
                     ),
                 ) { context ->
                     menus.transition(context.player, context.session) {
-                        enterpriseMenu.openOverview(context.player)
+                        enterpriseMenu.openCompany(context.player)
                     }
                 },
                 STATS to entry(

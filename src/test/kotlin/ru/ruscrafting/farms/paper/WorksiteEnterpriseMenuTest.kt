@@ -15,7 +15,7 @@ class WorksiteEnterpriseMenuTest : FunSpec({
     test("enterprise participation locale keeps contract placeholders scoped to their rows") {
         val yaml = requireNotNull(WorksiteEnterpriseMenuTest::class.java.classLoader.getResourceAsStream("lang/ru.yml"))
             .use { YamlConfiguration.loadConfiguration(InputStreamReader(it)) }
-        yaml.getString("companies.participation.summary") shouldBe "<color:#707a76>План участия:</color> <color:#f2fff7><plan></color>"
+        yaml.getString("companies.participation.summary") shouldBe "<color:#707a76>Текущий план:</color> <color:#f2fff7><plan></color>"
         yaml.getString("companies.participation.project-progress")!!.let {
             it.contains("<stage>") shouldBe true
             it.contains("<orders>") shouldBe true

@@ -37,7 +37,7 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
             operator.isOp = true
 
             operator.performCommand("arcfarms") shouldBe true
-            operator.openInventory.topInventory.getItem(3).plainName() shouldBe "Harvest Shift"
+            operator.openInventory.topInventory.getItem(3).plainName() shouldBe "Farm"
 
             updatePluginConfig(
                 plugin.dataFolder.toPath(),
@@ -45,7 +45,7 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
             )
             operator.performCommand("arcfarms reload") shouldBe true
 
-            operator.openInventory.topInventory.getItem(3).plainName() shouldBe "Harvest Shift · Core API"
+            operator.openInventory.topInventory.getItem(3).plainName() shouldBe "Farm · Core API"
             paper.server.pluginManager.disablePlugin(plugin)
         } finally {
             paper.close()
@@ -82,7 +82,7 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
             root.getItem(3)?.itemMeta?.customModelData shouldBe 31_001
             root.getItem(22)?.itemMeta?.customModelData shouldBe 31_002
             root.assertVisibleComponentsAreNonItalic()
-            root.getItem(22).plainLore() shouldContain "LMB — open companies"
+            root.getItem(22).plainLore() shouldContain "LMB — open my farm"
             root.getItem(3).plainLoreLines().apply {
                 size shouldBe 3
                 this[1] shouldBe ""
@@ -109,7 +109,7 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
             companies.getItem(4)?.type shouldBe Material.GOLDEN_AXE
             companies.getItem(6)?.type shouldBe Material.CHEST_MINECART
             companies.getItem(18)?.type shouldBe Material.ARROW
-            companies.getItem(3).plainLore() shouldContain "Shadow mode"
+            companies.getItem(3).plainLore() shouldContain "Test mode"
             companies.getItem(3).plainLoreLines().apply {
                 count(String::isEmpty) shouldBe 3
                 last() shouldContain "LMB — open company"
@@ -138,7 +138,7 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
             farmCompany.getItem(30)?.type shouldBe Material.GOLD_BLOCK
             farmCompany.getItem(10)?.itemMeta?.customModelData shouldBe 31_003
             farmCompany.getItem(36)?.type shouldBe Material.ARROW
-            farmCompany.getItem(10).plainLore() shouldContain "Pool estimate, not a promise"
+            farmCompany.getItem(10).plainLore() shouldContain "Fund estimate; payment is not promised"
             farmCompany.getItem(28).plainLore().contains("LMB —") shouldBe false
             farmCompany.assertVisibleComponentsAreNonItalic()
 

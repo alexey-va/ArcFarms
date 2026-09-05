@@ -316,20 +316,20 @@ admin:
     rival-raid: '<gray>встаньте в фиолетовый портал, дождитесь посадки и стреляйте с гаста по отмеченным работникам</gray>'
     tornado: '<gray>держитесь подальше от воронки до конца бури</gray>'
     hell-greenhouse: '<gray>собирайте перцы, остужайте их в чане и следите за жаром</gray>'
-generic-error: '<prefix> <red>Действие не удалось. Подробности записаны в журнал.</red>'
+generic-error: "<prefix> <red>Не удалось выполнить действие. Попробуйте позже.</red>"
 zone-unavailable: '<prefix> <red>Эта рабочая зона сейчас недоступна.</red>'
 zone-locked: '<prefix> <red>У вас пока нет доступа к этой рабочей зоне.</red>'
 cooldown: '<color:#f2fff7>Следующая работа через </color><color:#ffc857><seconds> сек.</color>'
 menu:
-  title: '<color:#20252b>Рабочие смены</color>'
+  title: "<color:#20252b>Выберите занятие</color>"
   farm:
-    name: '<color:#55d98b>Урожайная смена</color>'
+    name: '<color:#55d98b>Ферма</color>'
     lore: '<color:#f2fff7>Подготовьте поле, решите проблему и доставьте урожай.</color>'
   lumber:
     name: '<color:#ffc857>Лесопилка</color>'
     lore: '<color:#f2fff7>Заготовьте древесину и обработайте её на станке.</color>'
   mine:
-    name: '<color:#45c8f5>Шахтная экспедиция</color>'
+    name: '<color:#45c8f5>Шахта</color>'
     lore: '<color:#f2fff7>Наполните вагонетку, укрепите выработку и выйдите.</color>'
   stats:
     name: '<color:#ffc857>Ваш вклад</color>'
@@ -339,16 +339,16 @@ menu:
   unavailable: '<color:#707a76>Рабочая зона сейчас недоступна.</color>'
   locked: '<color:#ff5f6d>Доступ к рабочей зоне пока закрыт.</color>'
   companies:
-    name: '<color:#55d98b>Компании</color>'
-    lore: '<color:#f2fff7>Выручка промыслов, политика и будущие доли.</color>'
+    name: "<color:#55d98b>Деньги и планы</color>"
+    lore: "<color:#f2fff7>Доли общей фермы и выбор заказов на следующую неделю.</color>"
     click: '<color:#55d98b>[▶]</color> <color:#707a76>ЛКМ —</color> <color:#f2fff7>открыть компании</color>'
   workday:
-    name: '<color:#ffc857><bold>Общий наряд сети</bold></color>'
-    lore: '<color:#707a76>Наряд #<cycle>:</color> <farm> <lumber> <mine>'
+    name: '<color:#ffc857><bold>Состояние смен</bold></color>'
+    lore: '<color:#707a76>Смена #<cycle>:</color> <farm> <lumber> <mine>'
     loading: '<color:#707a76>Сверяем печати между серверами… Локальные смены уже доступны.</color>'
-    click: '<color:#55d98b>[▶]</color> <color:#707a76>ЛКМ —</color> <color:#f2fff7>перейти к цели «<activity>»</color>'
+    click: "<color:#55d98b>[▶]</color> <color:#707a76>ЛКМ —</color> <color:#f2fff7>перейти к цели «<activity>»</color>"
 companies:
-  title: '<color:#20252b>Компании</color>'
+  title: "<color:#20252b>Общая ферма</color>"
   back:
     name: '<color:#55d98b>Назад</color>'
     lore: '<color:#707a76>Вернуться на предыдущий экран.</color>'
@@ -367,7 +367,7 @@ companies:
     worker-bonus: '<color:#707a76>Бонус работникам:</color> <color:#55d98b><percent>%</color>'
     available: '<color:#707a76>Остаток лицензии:</color> <color:#ffc857><amount></color> <white><bold:false>💰</bold></white>'
     projected: '<color:#707a76>Начислено по закрытым заказам:</color> <color:#ffc857><amount></color> <white><bold:false>💰</bold></white>'
-    shadow: '<color:#ffad42>Теневой режим: выплат и сделок пока нет.</color>'
+    shadow: '<color:#ffad42>Тестовый режим: личных выплат и сделок пока нет.</color>'
     live-funding: '<color:#ffc857>Идёт сбор капитала:</color> <color:#f2fff7><issued>/<total> долей</color>'
     live-active: '<color:#55d98b>Компания работает. Казна:</color> <color:#ffc857><amount></color> <white><bold:false>💰</bold></white>'
     live-cancelled: '<color:#ffad42>Сбор не состоялся. Взносы зачислены на инвестсчета.</color>'
@@ -377,22 +377,22 @@ companies:
     open: '<color:#55d98b>[▶]</color> <color:#707a76>ЛКМ —</color> <color:#f2fff7>открыть компанию</color>'
     travel: '<color:#55d98b>[▶]</color> <color:#707a76>ЛКМ —</color> <color:#f2fff7>отправиться к ферме</color>'
   farm-detail:
-    title: '<color:#20252b>Фермерская артель</color>'
+    title: "<color:#20252b>Общая ферма</color>"
     header:
-      name: '<color:#55d98b>Фермерская артель</color>'
-      lore: '<color:#f2fff7>Общий бизнес: выручку создаёт работа игроков.</color>'
+      name: "<color:#55d98b>Общая ферма</color>"
+      lore: "<color:#f2fff7>Выполняйте заказы вместе. Покупать доли для работы не нужно.</color>"
     report:
       name: '<color:#55d98b>Отчёт недели</color>'
       orders: '<color:#707a76>Завершено заказов:</color> <color:#f2fff7><orders></color>'
       contributors: '<color:#707a76>Работало игроков:</color> <color:#f2fff7><workers></color>'
       gross: '<color:#707a76>Выручка:</color> <color:#ffc857><amount></color> <white><bold:false>💰</bold></white>'
       retained: '<color:#707a76>Осталось после затрат и премий:</color> <color:#ffc857><amount></color> <white><bold:false>💰</bold></white>'
-      projected: '<color:#ffad42>Расчёт фонда, не обещание:</color> <color:#ffc857><amount></color> <white><bold:false>💰</bold></white>'
+      projected: '<color:#ffad42>Оценка фонда, выплата не обещана:</color> <color:#ffc857><amount></color> <white><bold:false>💰</bold></white>'
       personal: '<color:#707a76>Мой расчётный дивиденд:</color> <color:#ffc857><amount></color> <color:#ffad42>(оценка)</color>'
       settlement: '<color:#707a76>Расчёт недели:</color> <color:#f2fff7><time></color>'
     workers:
       name: '<color:#55d98b>Работникам</color>'
-      bonus: '<color:#707a76>Доплата из маржи:</color> <color:#55d98b><percent>%</color>'
+      bonus: '<color:#707a76>Доплата работникам:</color> <color:#55d98b><percent>%</color>'
       accrued: '<color:#707a76>Начислено за неделю:</color> <color:#ffc857><amount></color> <white><bold:false>💰</bold></white>'
       personal-accrued: '<color:#707a76>Моя доплата:</color> <color:#ffc857><amount></color> <color:#ffad42>(оценка)</color>'
       projected: '<color:#707a76>Мой расчётный дивиденд:</color> <color:#ffc857><amount></color> <color:#ffad42>(оценка)</color>'
@@ -400,9 +400,9 @@ companies:
       settlement: '<color:#707a76>Расчёт недели:</color> <color:#f2fff7><time></color>'
       contribution: '<color:#707a76>В проекте:</color> <color:#f2fff7><orders> заказов · <contribution> ед. вклада</color>'
     policy:
-      name: '<color:#ffc857>Политика</color>'
-      operating: '<color:#707a76>Операционные затраты:</color> <color:#f2fff7><percent>%</color>'
-      dividend: '<color:#707a76>Доля расчётного фонда:</color> <color:#f2fff7><percent>%</color>'
+      name: "<color:#ffc857>Как делятся деньги</color>"
+      operating: '<color:#707a76>Затраты на работу:</color> <color:#f2fff7><percent>%</color>'
+      dividend: '<color:#707a76>Доля расчётных выплат:</color> <color:#f2fff7><percent>%</color>'
       upkeep: '<color:#707a76>Недельное содержание:</color> <color:#ffc857><amount></color> <white><bold:false>💰</bold></white>'
       open: '<color:#55d98b>[▶]</color> <color:#707a76>ЛКМ —</color> <color:#f2fff7>открыть участие и голосование</color>'
     license:
@@ -414,18 +414,18 @@ companies:
       weeks: '<color:#707a76>Осталось лицензии:</color> <color:#f2fff7><weeks> нед.</color>'
       outcome: '<color:#ffad42>После расчётов остаток казны распределяется владельцам на инвестсчета.</color>'
     shares:
-      name: '<color:#ffc857>Доли артели</color>'
-      lore: '<color:#707a76>Реестр долей откроется после теневого теста.</color>'
-      live-lore: '<color:#f2fff7>Участие в артели, сбор капитала и инвестиционный счёт. Прибыль не гарантирована.</color>'
+      name: "<color:#ffc857>Доли и мой счёт</color>"
+      lore: "<color:#707a76>Покупка долей пока закрыта: ферма работает в тестовом режиме.</color>"
+      live-lore: "<color:#f2fff7>Купите доли или заберите деньги со счёта. Доход не гарантирован.</color>"
       open: '<color:#55d98b>[▶]</color> <color:#707a76>ЛКМ —</color> <color:#f2fff7>открыть реестр</color>'
     market:
-      name: '<color:#707a76>Развитие артели</color>'
-      lore: '<color:#707a76>Общий проект артели. Участие не гарантирует прибыль.</color>'
+      name: "<color:#55d98b>Выбрать план</color>"
+      lore: "<color:#f2fff7>Предложите, какие заказы выполнять на следующей неделе.</color>"
       stage: '<color:#707a76>Этап проекта:</color> <color:#f2fff7><stage></color>'
       orders: '<color:#707a76>Заказы проекта:</color> <color:#f2fff7><orders>/<target></color>'
       open: '<color:#55d98b>[▶]</color> <color:#707a76>ЛКМ —</color> <color:#f2fff7>открыть участие</color>'
   shares:
-    title: '<color:#20252b>Доли фермерской артели</color>'
+    title: '<color:#20252b>Доли фермы</color>'
     status:
       name: '<color:#ffc857>Состояние компании</color>'
       phase: '<color:#707a76>Этап:</color> <color:#f2fff7><phase></color>'
@@ -457,7 +457,7 @@ companies:
       name: '<color:#55d98b>Подтвердить пакет: <shares></color>'
       cost: '<color:#707a76>Будет списано:</color> <color:#ffc857><amount></color> <white><bold:false>💰</bold></white>'
       effect: '<color:#707a76>Итоговое владение:</color> <color:#f2fff7><shares>/<limit></color>'
-      warning: '<color:#ffad42>Взнос заморожен до запуска или возврата сбора.</color>'
+      warning: '<color:#ffad42>Деньги будут возвращены, если сбор не состоится; до запуска их нельзя использовать.</color>'
       license: '<color:#ffad42>При полном сборе <percent>% капитала уйдёт на лицензию.</color>'
       risk: '<color:#ffad42>После запуска вернуть взнос целиком и продать долю нельзя.</color>'
       click: '<color:#55d98b>[▶]</color> <color:#707a76>ЛКМ —</color> <color:#f2fff7>списать деньги и купить</color>'
@@ -467,12 +467,12 @@ companies:
       cancelled: 'Сбор не состоялся'
       expired: 'Лицензия завершена'
   investment:
-    started: '<prefix> <color:#707a76>Операция записана. Сверяем её с экономикой…</color>'
+    started: '<prefix> <color:#707a76>Проверяем операцию…</color>'
     buy-success: '<prefix> <color:#55d98b>Доли куплены и внесены в реестр.</color>'
     withdraw-success: '<prefix> <color:#55d98b>Начисления выведены на игровой баланс.</color>'
-    provider-rejected: '<prefix> <color:#ffad42>Экономика отклонила операцию. Баланс и реестр не изменены.</color>'
-    manual-review: '<prefix> <color:#ffad42>Результат операции неоднозначен. Повтор отключён; запись передана на ручную проверку.</color>'
-    state-error: '<prefix> <color:#ffad42>Не удалось надёжно записать операцию. Деньги не списывались.</color>'
+    provider-rejected: '<prefix> <color:#ffad42>Операция отклонена. Деньги и доли не изменены.</color>'
+    manual-review: '<prefix> <color:#ffad42>Операция требует проверки. Повторять её не нужно.</color>'
+    state-error: '<prefix> <color:#ffad42>Операция не записана. Деньги не списывались.</color>'
     funding-closed: '<prefix> <color:#707a76>Сбор капитала уже закрыт.</color>'
     owner-limit: '<prefix> <color:#707a76>Эта покупка превысит личный предел долей.</color>'
     sold-out: '<prefix> <color:#707a76>Свободных долей для такой покупки уже нет.</color>'
@@ -480,13 +480,13 @@ companies:
     no-credit: '<prefix> <color:#707a76>На инвестиционном счёте пока нечего выводить.</color>'
     not-available: '<prefix> <color:#707a76>Денежные операции компании сейчас выключены.</color>'
   participation:
-    title: '<color:#20252b>Участие в проекте</color>'
+    title: "<color:#20252b>План следующей недели</color>"
     summary-name: '<color:#55d98b>План недели</color>'
-    summary: '<color:#707a76>План участия:</color> <color:#f2fff7><plan></color>'
-    voting: '<color:#707a76>Голосование недели:</color> <color:#f2fff7><week></color>'
-    eligibility: '<color:#707a76>Голосовать может владелец доли; повторный голос недоступен.</color>'
-    advisory: '<color:#707a76>Совет доступен после завершения одной рабочей смены.</color>'
-    quorum: '<color:#707a76>Кворум — 20% долей; при равенстве сохраняется текущий план.</color>'
+    summary: "<color:#707a76>Текущий план:</color> <color:#f2fff7><plan></color>"
+    voting: "<color:#707a76>Выбираем заказы на неделю с</color> <color:#f2fff7><week></color>"
+    eligibility: "<color:#707a76>Чем больше у вас долей, тем весомее голос. Выбрать можно один раз.</color>"
+    advisory: "<color:#707a76>Вы предлагаете план как работник. Итог решают голоса владельцев долей.</color>"
+    quorum: "<color:#707a76>Нужны голоса владельцев хотя бы 20% выпущенных долей. Побеждает большинство. При ничьей план не меняется.</color>"
     steady:
       name: '<color:#55d98b>Стабильный план</color>'
       lore: '<color:#f2fff7>Небольшие обычные заказы.</color>'
@@ -497,27 +497,27 @@ companies:
       name: '<color:#ffc857>Сложный план</color>'
       lore: '<color:#f2fff7>Редкие заказы и их особые условия.</color>'
     candidate: '<color:#707a76>Голосов:</color> <color:#f2fff7><votes></color> <color:#707a76>· работников:</color> <color:#f2fff7><workers></color>'
-    selected: '<color:#55d98b>Выбрано на эту неделю.</color>'
+    selected: "<color:#55d98b>Текущий план.</color>"
     vote-click: '<color:#55d98b>[▶]</color> <color:#707a76>ЛКМ —</color> <color:#f2fff7>проголосовать</color>'
     advise-click: '<color:#55d98b>[▶]</color> <color:#707a76>ЛКМ —</color> <color:#f2fff7>предложить план</color>'
-    confirm-title: '<color:#20252b>Подтвердить участие</color>'
+    confirm-title: "<color:#20252b>Подтвердить выбор</color>"
     confirm-name: '<color:#55d98b>План: <plan></color>'
-    confirm-lore: '<color:#707a76>Неделя:</color> <color:#f2fff7><week></color> <color:#707a76>· условия сохраняются до расчёта.</color>'
+    confirm-lore: "<color:#707a76>На неделю с</color> <color:#f2fff7><week></color> <color:#707a76>— после подтверждения изменить выбор нельзя.</color>"
     confirm-click: '<color:#55d98b>[▶]</color> <color:#707a76>ЛКМ —</color> <color:#f2fff7>подтвердить</color>'
-    saved: '<prefix> <color:#55d98b>Участие сохранено.</color>'
-    failed: '<prefix> <color:#ffad42>Не удалось сохранить участие.</color>'
-    unavailable: '<color:#707a76>Голос уже сохранён или совет станет доступен после одной рабочей смены.</color>'
+    saved: "<prefix> <color:#55d98b>Ваш выбор учтён. Итог определится к началу следующей недели.</color>"
+    failed: "<prefix> <color:#ffad42>Не удалось сохранить выбор. Попробуйте позже.</color>"
+    unavailable: "<color:#707a76>Выбор недоступен: вы уже выбрали план или ещё не завершили заказ на ферме.</color>"
     project-name: '<color:#55d98b>Развитие артели</color>'
     project-progress: '<color:#707a76>Прогресс:</color> <color:#f2fff7><orders>/<target></color> <color:#707a76>· этап <stage></color>'
     project-purpose: '<color:#f2fff7>Завершайте заказы вместе; знаки отличия выдаются на 10, 25 и 50.</color>'
     project-complete: '<color:#55d98b>Цель проекта достигнута. Доплата за этап не предусмотрена.</color>'
     world-project: '<color:#707a76>Проект фермерской артели:</color> <color:#f2fff7>этап <stage>, заказы <orders>/<target></color>'
-    order-premium: '<color:#55d98b>Общий фонд премии:</color> <color:#ffc857><amount></color> <color:#707a76>Делится по вкладу; расчёт раз в неделю.</color>'
-    order-shadow: '<color:#ffad42>Тестовый расчёт: общий фонд премии <amount>; выплат пока нет.</color>'
+    order-premium: '<color:#55d98b>Общая премия:</color> <color:#ffc857><amount></color> <color:#707a76>Делится по вкладу; расчёт раз в неделю.</color>'
+    order-shadow: '<color:#ffad42>Тестовый расчёт: фонд премии <amount>; выплат пока нет.</color>'
     order-no-premium: '<color:#707a76>Премия за этот заказ не начисляется: квота уже исчерпана.</color>'
     personal-result: '<color:#707a76>К расчёту премий:</color> <color:#ffc857><amount></color> <color:#707a76>Ближайший расчёт: <date>.</color>'
-    personal-shadow: '<color:#ffad42>Тестовый расчёт: сумма не выплачивается.</color>'
-    risk: '<color:#ffad42>Взнос частично расходуется без возврата; долю нельзя продать. Выплата не обещана.</color>'
+    personal-shadow: '<color:#ffad42>Тестовый расчёт: эта сумма не выплачивается.</color>'
+    risk: '<color:#ffad42>Часть взноса расходуется без возврата; долю нельзя продать. Выплата не обещана.</color>'
 status:
   header: '<prefix> <gold>Текущие рабочие смены:</gold>'
   entry: '<dark_gray>•</dark_gray> <name> <gray>— <phase>, <progress></gray>'
@@ -713,12 +713,12 @@ farm:
     balance: '<color:#ffc857>Недельные очки:</color> <white><points></white>'
     price: '<gray>Цена:</gray> <color:#ffc857><price></color> <dark_gray>•</dark_gray> <gray><hours> ч.</gray>'
     active: '<color:#55d98b>Активно ещё около <hours> ч.</color>'
-    buy: '<color:#55d98b>[▶]</color> <color:#707a76>ЛКМ —</color> <color:#f2fff7>купить усиление</color>'
+    buy: "<color:#55d98b>[▶]</color> <color:#707a76>ЛКМ —</color> <color:#f2fff7>купить усиление</color>"
     already-active-title: '<color:#ff5f6d>Усиление уже действует</color>'
-    already-active: '<gray>До окончания ещё около</gray> <white><hours> ч.</white>'
-    already-active-hint: '<dark_gray>Новое можно купить после окончания текущего.</dark_gray>'
+    already-active: '<gray>Уже действует ещё около</gray> <white><hours> ч.</white>'
+    already-active-hint: '<dark_gray>Новое усиление станет доступно после этого.</dark_gray>'
     not-enough-title: '<color:#ff5f6d>Недостаточно очков</color>'
-    not-enough: '<color:#ff5f6d>Нужно <price> недельных очков фермы.</color>'
+    not-enough: '<color:#ff5f6d>Нужно очков: <price>.</color>'
     save-failed-title: '<color:#ff5f6d>Покупка не сохранена</color>'
     save-failed: '<gray>Очки не списаны. Попробуйте ещё раз.</gray>'
     purchased: '<color:#55d98b>Усиление куплено:</color> <perk>'
@@ -804,9 +804,9 @@ farm:
     progress: '<gray>Собрано:</gray> <color:#55d98b><done>/<total></color>'
     time-limit: '<gray>На выполнение:</gray> <color:#ffc857><time></color>'
     time-remaining: '<gray>Осталось:</gray> <color:#ffc857><time></color>'
-    accept: '<color:#55d98b>Взяться за поставку</color>'
-    decline: '<color:#ff7a45>Продолжить обычный сбор</color>'
-    choose: '<color:#55d98b>[▶]</color> <color:#707a76>ЛКМ —</color> <color:#f2fff7>выбрать</color>'
+    accept: '<color:#55d98b>Принять заказ</color>'
+    decline: '<color:#ff7a45>Отказаться</color>'
+    choose: "<color:#55d98b>[▶]</color> <color:#707a76>ЛКМ —</color> <color:#f2fff7>выбрать</color>"
     close: '<color:#b8c8c0>Закрыть</color>'
   completed: '<color:#55d98b><bold>Заказ доставлен</bold></color>'
   completed-subtitle: '<color:#ffc857>Награды рассчитаны для каждого участника</color>'
@@ -1052,7 +1052,7 @@ lumber:
     warped_batch: '<color:#f2fff7>Разложите хорошие и бракованные доски по нужным поддонам</color>'
     rush_order: '<color:#ffc857>Срочный заказ: сложите доски до истечения бонусного времени</color>'
 mine:
-  started: '<color:#45c8f5>Шахтная экспедиция</color> <color:#707a76>•</color> <route>'
+  started: "<color:#45c8f5>Шахтная экспедиция</color> <color:#707a76>•</color> <route>"
   pickaxe-required: '<red>Для работы в шахте нужна кирка.</red>'
   regenerating: '<gray>Этот участок ещё восстанавливается.</gray>'
   hazard-started: '<red><bold>Забой нестабилен</bold></red>'
@@ -1282,15 +1282,21 @@ phase:
     cooldown: '<gray>перерыв</gray>'
 
 dialog:
+  buy-perk: "<#92bed8>Купить усиление"
   close: '<#969696>Закрыть'
   back: '<#969696>Назад'
   help: '<#969696>Главное меню сервера'
+  details: '<#969696>Подробнее'
+  back-root: '<#969696>К выбору занятий'
+  back-company: '<#969696>К ферме'
+  back-shares: '<#969696>К долям'
+  back-participation: '<#969696>К выбору плана'
   intro:
-    main: '<#e6fff3>Выберите промысел или откройте свою артель. Подробности — в подсказках кнопок.'
-    market: '<#e6fff3>Заказ для всей смены. Проверьте условия и выберите, принять его или отказаться.'
+    main: "<#e6fff3>Нажмите на занятие, чтобы отправиться к нему."
+    market: '<#e6fff3>Посмотрите цель заказа и нажмите «Принять» или «Отказаться».'
     enterprise-overview: '<#e6fff3>Совместные промыслы: работа, развитие и участие в артели.'
-    enterprise-farm: '<#e6fff3>Ваша артель: результаты работы, условия лицензии и решения на следующую неделю.'
-    enterprise-shares: '<#e6fff3>Доли и инвестиционный счёт. Перед покупкой покажем стоимость и условия.'
-    enterprise-confirm: '<#e6fff3>Проверьте выбранное действие и условия ниже.'
-    enterprise-participation: '<#e6fff3>Выберите план следующей недели. Условия каждого плана — в подсказке кнопки.'
-    farm-perks: '<#e6fff3>Усиления за личный вклад в работу фермы. Цена и срок действия — в карточке.'
+    enterprise-farm: "<#e6fff3>Откройте свой счёт или выберите план. Отчёты и правила — в «Подробнее»."
+    enterprise-shares: '<#e6fff3>Здесь можно купить доли, увидеть счёт и вывести доступные деньги.'
+    enterprise-confirm: "<#e6fff3>Проверьте условия и подтвердите свой выбор."
+    enterprise-participation: '<#e6fff3>Выберите план недели. На экране сразу видны условия и доступные действия.'
+    farm-perks: "<#e6fff3>Выберите усиление. Перед покупкой покажем цену, срок и эффект."

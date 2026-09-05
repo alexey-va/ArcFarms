@@ -38,6 +38,7 @@ class FarmMenuSession internal constructor(
     internal var revision = 0L
     internal var pending = false
     internal var detailSlot: Int? = null
+    internal var showInformation = false
     internal val feedback = mutableMapOf<Int, ItemStack>()
     val inventory: Inventory? get() = delegate?.inventory
     fun requestRefresh() { feedback.clear(); platform.refresh(this) }

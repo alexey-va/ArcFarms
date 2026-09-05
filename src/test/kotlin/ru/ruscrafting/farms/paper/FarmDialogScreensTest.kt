@@ -78,7 +78,7 @@ class FarmDialogScreensTest : FunSpec({
         }
     }
 
-    test("informational detail has a back action that restores the screen") {
+    test("farm report groups information and keeps the selected action visible") {
         val paper = MockBukkitTestRuntime.open()
         try {
             val plugin = paper.createSimplePlugin("FarmDialogDetailTest")
@@ -90,19 +90,98 @@ class FarmDialogScreensTest : FunSpec({
                 FarmMenuContent(
                     title = Component.text("Report"),
                     elements = mapOf(
-                        MenuElementId.of("report") to FarmMenuEntry(menus.item(ArcFarmsMenuPlatform.ENTERPRISE_FARM, MenuElementId.of("report"), Component.text("Info"), listOf(Component.text("Terms"))), enabled = false),
+                        MenuElementId.of("report") to FarmMenuEntry(menus.item(ArcFarmsMenuPlatform.ENTERPRISE_FARM, MenuElementId.of("report"), Component.text("Report"), listOf(Component.text("Revenue 100"))), enabled = false),
+                        MenuElementId.of("workers") to FarmMenuEntry(menus.item(ArcFarmsMenuPlatform.ENTERPRISE_FARM, MenuElementId.of("workers"), Component.text("Workers"), listOf(Component.text("Workers 4"))), enabled = false),
+                        MenuElementId.of("policy") to FarmMenuEntry(menus.item(ArcFarmsMenuPlatform.ENTERPRISE_FARM, MenuElementId.of("policy"), Component.text("Policy"), listOf(Component.text("Plan steady"))), enabled = false),
+                        MenuElementId.of("license") to FarmMenuEntry(menus.item(ArcFarmsMenuPlatform.ENTERPRISE_FARM, MenuElementId.of("license"), Component.text("License"), listOf(Component.text("12 weeks"))), enabled = false),
                         MenuElementId.of("back") to FarmMenuEntry(menus.item(ArcFarmsMenuPlatform.ENTERPRISE_CONFIRM, MenuElementId.of("back"), Component.text("Back"), emptyList())),
                     ),
                 )
             }
-            capture.last!!.buttons.single().onClick.handle(mockk<PaperDialogClickContext>(relaxed = true))
+            capture.last!!.buttons.map { it.id.value } shouldContain "details"
+            capture.last!!.buttons.first { it.id.value == "details" }.onClick.handle(mockk<PaperDialogClickContext>(relaxed = true))
             capture.last!!.buttons.single().id.value shouldBe "detail_back"
+            listOf("Revenue 100", "Workers 4", "Plan steady", "12 weeks").forEach {
+                capture.last!!.bodyText() shouldContain it
+            }
             capture.last!!.buttons.single().onClick.handle(mockk<PaperDialogClickContext>(relaxed = true))
-            capture.last!!.buttons.map { it.id.value } shouldContain "info_report"
-            capture.last!!.buttons.single().onClick.handle(mockk<PaperDialogClickContext>(relaxed = true))
+            capture.last!!.buttons.map { it.id.value } shouldContain "details"
+        } finally {
+            paper.close()
+        }
+    }
+
+    test("disabled share action exposes an explanation and money details remain visible") {
+        val paper = MockBukkitTestRuntime.open()
+        try {
+            val plugin = paper.createSimplePlugin("FarmDialogMoneyTest")
+            copyConfig(plugin)
+            val capture = CapturingDialog()
+            val menus = ArcFarmsMenuPlatform(plugin, capture)
+            val player = paper.addPlayer("DialogMoney")
+            menus.open(player, ArcFarmsMenuPlatform.ENTERPRISE_SHARES) {
+                FarmMenuContent(
+                    title = Component.text("Shares"),
+                    elements = mapOf(
+                        MenuElementId.of("status") to FarmMenuEntry(menus.item(ArcFarmsMenuPlatform.ENTERPRISE_SHARES, MenuElementId.of("status"), Component.text("Status"), listOf(Component.text("Issued 20 / 100"))), enabled = false),
+                        MenuElementId.of("holding") to FarmMenuEntry(menus.item(ArcFarmsMenuPlatform.ENTERPRISE_SHARES, MenuElementId.of("holding"), Component.text("Holding"), listOf(Component.text("Owned 7 / 100"))), enabled = false),
+                        MenuElementId.of("account") to FarmMenuEntry(menus.item(ArcFarmsMenuPlatform.ENTERPRISE_SHARES, MenuElementId.of("account"), Component.text("Account"), listOf(Component.text("Balance 1,234¢"))), enabled = false),
+                        MenuElementId.of("withdraw") to FarmMenuEntry(menus.item(ArcFarmsMenuPlatform.ENTERPRISE_SHARES, MenuElementId.of("withdraw"), Component.text("Withdraw"), listOf(Component.text("Unavailable"))), enabled = false),
+                        MenuElementId.of("back") to FarmMenuEntry(menus.item(ArcFarmsMenuPlatform.ENTERPRISE_SHARES, MenuElementId.of("back"), Component.text("Back"), emptyList())),
+                    ),
+                )
+            }
+            capture.last!!.bodyText() shouldContain "Issued 20 / 100"
+            capture.last!!.bodyText() shouldContain "Owned 7 / 100"
+            capture.last!!.bodyText() shouldContain "Balance 1,234¢"
+            capture.last!!.buttons.map { it.id.value } shouldContain "info_withdraw"
+            capture.last!!.buttons.first { it.id.value == "info_withdraw" }.onClick.handle(mockk<PaperDialogClickContext>(relaxed = true))
             capture.last!!.exitButton!!.id.value shouldBe "detail_close"
             capture.last!!.exitButton!!.onClick.handle(mockk<PaperDialogClickContext>(relaxed = true))
             menus.session(player) shouldBe null
+        } finally {
+            paper.close()
+        }
+    }
+
+    test("perk offer opens terms before purchase and dispatches buy once") {
+        val paper = MockBukkitTestRuntime.open()
+        try {
+            val plugin = paper.createSimplePlugin("FarmDialogPerkTest")
+            copyConfig(plugin)
+            val capture = CapturingDialog()
+            val menus = ArcFarmsMenuPlatform(plugin, capture)
+            val player = paper.addPlayer("DialogPerk")
+            var purchases = 0
+            menus.open(player, ArcFarmsMenuPlatform.FARM_PERKS) {
+                FarmMenuContent(
+                    title = Component.text("Perks"),
+                    elements = mapOf(
+                        MenuElementId.of("balance") to FarmMenuEntry(
+                            menus.item(ArcFarmsMenuPlatform.FARM_PERKS, MenuElementId.of("balance"), Component.text("Points"), emptyList()),
+                            enabled = false,
+                        ),
+                    ),
+                    regions = mapOf(
+                        ArcFarmsMenuPlatform.PERK_OFFERS to listOf(
+                            FarmMenuEntry(
+                                menus.item("perk-speed", Component.text("Speed"), listOf(Component.text("Price 25"), Component.text("Duration 6 hours"))),
+                                acceptedClicks = setOf(ClickType.LEFT),
+                                onClick = FarmMenuClickHandler { purchases++ },
+                            ),
+                        ),
+                    ),
+                )
+            }
+            val offer = capture.last!!.buttons.first { it.id.value == "offers_0" }
+            offer.onClick.handle(mockk<PaperDialogClickContext>(relaxed = true))
+            purchases shouldBe 0
+            capture.last!!.bodyText() shouldContain "Price 25"
+            capture.last!!.bodyText() shouldContain "Duration 6 hours"
+            val buy = capture.last!!.buttons.first { it.id.value == "buy_perk" }
+            buy.onClick.handle(mockk<PaperDialogClickContext>(relaxed = true))
+            buy.onClick.handle(mockk<PaperDialogClickContext>(relaxed = true))
+            purchases shouldBe 1
         } finally {
             paper.close()
         }
@@ -115,6 +194,8 @@ private class CapturingDialog : FarmDialogDisplay {
     override fun close(player: Player) = Unit
     override fun close() = Unit
 }
+
+private fun PaperDialogScreen.bodyText(): String = body.joinToString(" ") { it.text.toString() }
 
 private fun copyConfig(plugin: org.bukkit.plugin.Plugin) {
     val source = requireNotNull(FarmDialogScreensTest::class.java.classLoader.getResourceAsStream("config.yml"))

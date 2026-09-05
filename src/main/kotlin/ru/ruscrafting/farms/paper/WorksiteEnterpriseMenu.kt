@@ -37,6 +37,11 @@ internal class WorksiteEnterpriseMenu(
     private val openRoot: (Player) -> Unit,
     private val openParticipation: (Player) -> Unit = {},
 ) {
+    fun openCompany(player: Player) {
+        if (menus.usesDialogs && service.enterpriseCompany(ActivityKind.FARM) != null) openFarm(player)
+        else openOverview(player)
+    }
+
     fun openOverview(player: Player) {
         val current = settings()
         menus.open(player, OVERVIEW, { openOverview(player) }) {
@@ -96,7 +101,7 @@ internal class WorksiteEnterpriseMenu(
             ), false)
             elements[REPORT] = entry(reportItem(player, view, playerView), false)
             elements[WORKERS] = entry(workersItem(player, view, playerView), false)
-            elements[POLICY] = entry(policyItem(player, view), true) { context ->
+            elements[POLICY] = entry(policyItem(player, view), !menus.usesDialogs) { context ->
                 menus.transition(player, context.session) { openParticipation(player) }
             }
             elements[LICENSE] = entry(licenseItem(player, view, playerView), false)
@@ -123,7 +128,9 @@ internal class WorksiteEnterpriseMenu(
                 menus.transition(player, context.session) { openParticipation(player) }
             }
             elements[BACK] = entry(backItem(player, FARM_DETAIL)) { context ->
-                menus.transition(player, context.session) { openOverview(player) }
+                menus.transition(player, context.session) {
+                    if (menus.usesDialogs) openRoot(player) else openOverview(player)
+                }
             }
             FarmMenuContent(
                 title = locale.render(MessageKey.COMPANY_FARM_TITLE, player),
@@ -516,7 +523,11 @@ internal class WorksiteEnterpriseMenu(
         item(
             menu,
             BACK,
-            locale.render(MessageKey.COMPANIES_BACK_NAME, player),
+            locale.renderPath("dialog." + when (menu) {
+                SHARES_DETAIL -> "back-company"
+                CONFIRM -> "back-shares"
+                else -> "back-root"
+            }, player),
             listOf(locale.render(MessageKey.COMPANIES_BACK_LORE, player), Component.empty(), locale.render(MessageKey.COMPANIES_BACK_CLICK, player)),
         )
 
