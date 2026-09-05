@@ -7,6 +7,7 @@ import io.kotest.matchers.ints.shouldBeGreaterThanOrEqual
 import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.shouldBe
 import io.mockk.every
+import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.block.BlockFace
 import org.bukkit.damage.DamageSource
@@ -25,6 +26,7 @@ import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.inventory.EquipmentSlot
+import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
@@ -401,6 +403,49 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
             delivery.onQuit(gunner)
             delivery.participants(runtime).map { it.uniqueId }.toSet() shouldBe setOf(driver.uniqueId)
             gunner.inventory.contents.filterNotNull().none(delivery::ownsServiceItem) shouldBe true
+        } }
+    }
+
+    test("mounted gunner stays in the session when a rifle replacement cannot fit") {
+        requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
+            val route = (0..8).map { index ->
+                FarmPointPosition(fixture.world.name, 8.5 + index * 2.0, 65.0, 32.5, -90f, 0f)
+            }
+            val runtime = fixture.runtime(
+                FarmShiftState(
+                    phase = FarmPhase.INCIDENT,
+                    sequence = 91,
+                    placementSequence = 37,
+                    orderId = "bakery_supply",
+                    incidentType = FarmIncidentType.FOOD_DELIVERY,
+                ),
+            )
+            val delivery = fixture.foodDelivery(runtime, route)
+            val driver = fixture.paper.addPlayer("FullInventoryDriver")
+            val gunner = fixture.paper.addPlayer("FullInventoryGunner")
+
+            delivery.ensure(runtime, 4_000L)
+            val horse = fixture.world.entities.filterIsInstance<Horse>().single(delivery::owns)
+            val seat = fixture.world.entities.filterIsInstance<Interaction>().filter(delivery::owns)
+                .minBy { it.location.distanceSquared(horse.location) }
+            delivery.interact(PlayerInteractEntityEvent(driver, horse, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
+            delivery.interact(PlayerInteractEntityEvent(gunner, seat, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
+            seat.passengers.single() shouldBe gunner
+
+            gunner.inventory.storageContents = Array(36) { ItemStack(Material.DIRT) }
+            delivery.ensure(runtime, 4_061L)
+
+            seat.passengers.single() shouldBe gunner
+            delivery.participants(runtime).map { it.uniqueId }.toSet() shouldContainExactly
+                setOf(driver.uniqueId, gunner.uniqueId)
+
+            gunner.inventory.setItem(35, null)
+            delivery.ensure(runtime, 4_122L)
+
+            seat.passengers.single() shouldBe gunner
+            gunner.inventory.contents.filterNotNull().count(delivery::ownsServiceItem) shouldBe 1
+            delivery.ensure(runtime, 4_183L)
+            gunner.inventory.contents.filterNotNull().count(delivery::ownsServiceItem) shouldBe 1
         } }
     }
 

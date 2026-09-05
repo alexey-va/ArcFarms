@@ -19,6 +19,7 @@ import org.bukkit.entity.Ghast
 import org.bukkit.entity.Hoglin
 import org.bukkit.entity.Interaction
 import org.bukkit.entity.Mob
+import org.bukkit.entity.ArmorStand
 import org.bukkit.entity.Snowball
 import org.bukkit.event.entity.ProjectileHitEvent
 import org.bukkit.event.entity.EntityDamageByEntityEvent
@@ -177,8 +178,23 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             }
 
             (ghast.velocity.length() > 0.0) shouldBe true
-            ghast.passengers shouldHaveSize fixture.zone.rivalRaid.maximumRiders
-            riders.take(fixture.zone.rivalRaid.maximumRiders).all { it.vehicle === ghast } shouldBe true
+            ghast.passengers shouldHaveSize 0
+            val seats = fixture.world.entities.filterIsInstance<ArmorStand>()
+                .filter { controller.owns(it) && it.passengers.isNotEmpty() }
+            seats shouldHaveSize fixture.zone.rivalRaid.maximumRiders - 1
+            seats.map { it.location.x to it.location.z }.toSet() shouldHaveSize seats.size
+            riders.take(fixture.zone.rivalRaid.maximumRiders - 1).all { it.vehicle is ArmorStand } shouldBe true
+            controller.participants(runtime).map { it.name } shouldBe
+                listOf("PackedGunner") + riders.take(fixture.zone.rivalRaid.maximumRiders - 1).map { it.name }
+
+            packed.inventory.clear()
+            controller.update(runtime)
+            controller.updateRaidMotion(runtime)
+            (packed.vehicle is ArmorStand) shouldBe true
+            packed.inventory.storageContents.count { it?.type == Material.PAPER } shouldBe 2
+            fixture.world.entities.filterIsInstance<ArmorStand>()
+                .filter { controller.owns(it) && it.passengers.isNotEmpty() }
+                .map { it.location.x to it.location.z }.toSet() shouldHaveSize fixture.zone.rivalRaid.maximumRiders
             (fixture.raidRiderVisibilityEvents.count { (_, ghastId, hidden) ->
                 ghastId == ghast.uniqueId && hidden
             } > fixture.zone.rivalRaid.maximumRiders) shouldBe true
@@ -327,6 +343,8 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             ghast.velocity = org.bukkit.util.Vector()
             controller.updateRaidMotion(runtime)
             (ghast.velocity.length() > 0.0) shouldBe true
+            controller.clear(runtime, "seat_cleanup_test")
+            fixture.world.entities.filterIsInstance<ArmorStand>().filter(controller::owns) shouldHaveSize 0
         } }
     }
 
@@ -410,7 +428,7 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
                 )
             }
             fixture.runDelayedTasks() shouldBe listOf(20L)
-            (rider.vehicle is Ghast) shouldBe true
+            (rider.vehicle is ArmorStand) shouldBe true
             controller.participantRuntime(rider) shouldBe runtime
 
             cancelled.teleport(portal.location)
@@ -428,7 +446,7 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             cancelled.vehicle shouldBe null
             fixture.runDelayedTasks() shouldBe listOf(20L)
             fixture.runDelayedTasks() shouldBe listOf(20L)
-            (cancelled.vehicle is Ghast) shouldBe true
+            (cancelled.vehicle is ArmorStand) shouldBe true
             controller.participantRuntime(cancelled) shouldBe runtime
         } }
     }

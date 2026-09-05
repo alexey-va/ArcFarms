@@ -160,6 +160,10 @@ class ArcFarmsMenuPlatform(
             "perk-speed",
             "perk-sustenance",
             "perk-reward-boost",
+            "perk-strength",
+            "perk-resistance",
+            "perk-fire-resistance",
+            "perk-jump-boost",
         ).associateWith { TEXT_CONTRACT }
 
         fun loadConfiguration(dataRoot: Path): PaperMenuConfiguration {
@@ -169,9 +173,14 @@ class ArcFarmsMenuPlatform(
                 "ui.menus.layouts",
                 "ui.menus.templates",
                 CONTRACTS,
-                requiredTemplates = setOf("perk-harvest-area", "perk-speed", "perk-sustenance", "perk-reward-boost"),
+                requiredTemplates = ru.ruscrafting.farms.domain.FarmPerkType.entries
+                    .map { "perk-${it.name.lowercase().replace('_', '-')}" }.toSet(),
                 textContracts = TEXT_CONTRACTS,
             )
+            require(loaded.catalog.require(FARM_PERKS).region(PERK_OFFERS).size >=
+                ru.ruscrafting.farms.domain.FarmPerkType.entries.size) {
+                "ui.menus.layouts.farm-perks.regions.offers.slots must fit all 8 farm perks"
+            }
             if (config.booleanOrNull("ui.menu-background.enabled") != true) return loaded
             val template = requireNotNull(loaded.templates["background"]) {
                 "Enabled ui.menu-background requires the ARC menu background template"

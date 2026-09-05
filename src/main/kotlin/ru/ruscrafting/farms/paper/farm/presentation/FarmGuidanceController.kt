@@ -347,6 +347,12 @@ internal class FarmGuidanceController(
             Bukkit.getWorld(point.world)?.let { world -> listOf(Location(world, point.x, point.y, point.z) to DANGER_COLOR) }
         }.orEmpty()
         FarmIncidentType.TORNADO -> emptyList()
+        FarmIncidentType.HELL_GREENHOUSE -> runtime.state.hellGreenhouse?.let { greenhouse ->
+            greenhouse.points.mapIndexedNotNull { index, point ->
+                if (index in greenhouse.harvested) return@mapIndexedNotNull null
+                Bukkit.getWorld(point.world)?.let { world -> Location(world, point.x, point.y, point.z) to AMBER_COLOR }
+            }
+        }.orEmpty()
         null -> emptyList()
     }
 

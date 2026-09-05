@@ -29,6 +29,9 @@ glyphs:
     ascent: 8
 
 sources:
+  perks:
+    path: src/main/resources/lang/ru.yml
+    include: [perk.*, farm.perk-menu.*]
   preview:
     path: visual-preview-fragments.yml
     include: [blank, raid-loadout-title]
@@ -42,10 +45,21 @@ sources:
   gameplay:
     path: src/main/resources/lang/ru.yml
     include:
+      - farm.action-inventory-full
+      - farm.route-gunner-inventory-full
+      - farm.entry-barn-fire
+      - farm.barn-fire.started-subtitle
+      - farm.birds-required
       - admin.stage-name.channels
       - admin.stage-description.channels
       - admin.event-description.channels
       - farm.entry-channels
+      - farm.entry-hell-greenhouse
+      - farm.hell-greenhouse.*
+      - incident.hell-greenhouse.*
+      - scoreboard.objective.hell-greenhouse
+      - scoreboard.hint.hell-greenhouse
+      - scoreboard.hint-detail.hell-greenhouse
       - farm.channels-*
       - incident.channels.*
       - scoreboard.phase.channels
@@ -61,6 +75,8 @@ sources:
       - crop.*
 
 placeholders:
+  heat: '70'
+  time: '8'
   color: ''
   'color:#20252b': '<#20252b>'
   'color:#2bba43': '<#2bba43>'
@@ -86,6 +102,17 @@ placeholders:
   'color:#ff9f0f': '<#ff9f0f>'
   'color:#ffad42': '<#ffad42>'
   'color:#ffc857': '<#ffc857>'
+  width: '5'
+  speed: '60'
+  hearts: '2.0'
+  food: '10.0'
+  bonus: '75'
+  strength: '2'
+  resistance: '40'
+  jump: '2'
+  perk: 'Фермерский форсаж'
+  points: '2 000'
+  price: '250'
   cycle: '184'
   farm: '8 420'
   lumber: '3 180'
@@ -124,6 +151,8 @@ placeholders:
 
 surfaces:
   fragments:
+    - source: perks
+      include: [perk.*, farm.perk-menu.*]
     - source: preview
       include: [blank, raid-loadout-title]
     - source: farms
@@ -150,7 +179,93 @@ surfaces:
       title: gameplay:farm.rival-raid.started
       subtitle: gameplay:farm.rival-raid.started-subtitle
       actionbar: gameplay:farm.rival-raid.progress
+    - id: hell-greenhouse
+      title: gameplay:farm.hell-greenhouse.started
+      subtitle: gameplay:farm.hell-greenhouse.started-subtitle
+      actionbar: gameplay:farm.hell-greenhouse.cooled
+      placeholders:
+        done: '2'
+        total: '4'
+        heat: '70'
+        time: '8'
   inventories:
+    - id: farm-perks
+      title: perks:farm.perk-menu.title
+      rows: 4
+      filler: GRAY_STAINED_GLASS_PANE
+      background-item: arc:background
+      placeholders:
+        points: '2 000'
+        width: '5'
+        speed: '60'
+        hearts: '2.0'
+        food: '10.0'
+        seconds: '3'
+        bonus: '75'
+        strength: '2'
+        resistance: '40'
+        jump: '2'
+        hours: '72'
+      items:
+        - {slot: 4, material: SUNFLOWER, name: perks:farm.perk-menu.balance}
+        - slot: 10
+          material: DIAMOND_HOE
+          name: perks:perk.harvest_area.name
+          placeholders: {price: '250'}
+          lore: [perks:perk.harvest_area.description, perks:perk.harvest_area.detail, preview:blank, perks:farm.perk-menu.price, preview:blank, perks:farm.perk-menu.buy]
+        - slot: 12
+          material: RABBIT_FOOT
+          name: perks:perk.speed.name
+          placeholders: {price: '180'}
+          lore: [perks:perk.speed.description, perks:perk.speed.detail, preview:blank, perks:farm.perk-menu.price, preview:blank, perks:farm.perk-menu.buy]
+        - slot: 14
+          material: GOLDEN_CARROT
+          name: perks:perk.sustenance.name
+          placeholders: {price: '150'}
+          lore: [perks:perk.sustenance.description, perks:perk.sustenance.detail, preview:blank, perks:farm.perk-menu.price, preview:blank, perks:farm.perk-menu.buy]
+        - slot: 16
+          material: EMERALD
+          name: perks:perk.reward_boost.name
+          placeholders: {price: '400'}
+          lore: [perks:perk.reward_boost.description, perks:perk.reward_boost.detail, preview:blank, perks:farm.perk-menu.price, preview:blank, perks:farm.perk-menu.buy]
+        - slot: 19
+          material: IRON_SWORD
+          name: perks:perk.strength.name
+          placeholders: {price: '220'}
+          lore: [perks:perk.strength.description, perks:perk.strength.detail, preview:blank, perks:farm.perk-menu.price, preview:blank, perks:farm.perk-menu.buy]
+        - slot: 21
+          material: IRON_CHESTPLATE
+          name: perks:perk.resistance.name
+          placeholders: {price: '240'}
+          lore: [perks:perk.resistance.description, perks:perk.resistance.detail, preview:blank, perks:farm.perk-menu.price, preview:blank, perks:farm.perk-menu.buy]
+        - slot: 23
+          material: MAGMA_CREAM
+          name: perks:perk.fire_resistance.name
+          placeholders: {price: '160'}
+          lore: [perks:perk.fire_resistance.description, perks:perk.fire_resistance.detail, preview:blank, perks:farm.perk-menu.price, preview:blank, perks:farm.perk-menu.buy]
+        - slot: 25
+          material: SLIME_BLOCK
+          name: perks:perk.jump_boost.name
+          placeholders: {price: '140'}
+          lore: [perks:perk.jump_boost.description, perks:perk.jump_boost.detail, preview:blank, perks:farm.perk-menu.price, preview:blank, perks:farm.perk-menu.buy]
+    - id: farm-perks-active-and-locked
+      title: perks:farm.perk-menu.title
+      rows: 4
+      filler: GRAY_STAINED_GLASS_PANE
+      background-item: arc:background
+      placeholders: {width: '5', speed: '60', hours: '72', points: '20'}
+      items:
+        - {slot: 4, material: SUNFLOWER, name: perks:farm.perk-menu.balance}
+        - slot: 10
+          material: DIAMOND_HOE
+          name: perks:perk.harvest_area.name
+          placeholders: {price: '250'}
+          lore: [perks:perk.harvest_area.description, perks:perk.harvest_area.detail, preview:blank, perks:farm.perk-menu.price, perks:farm.perk-menu.active]
+        - slot: 12
+          material: RABBIT_FOOT
+          name: perks:perk.speed.name
+          placeholders: {price: '180'}
+          lore: [perks:perk.speed.description, perks:perk.speed.detail, preview:blank, perks:farm.perk-menu.price, perks:farm.perk-menu.not-enough]
     - id: raid-loadout-review
       title: preview:raid-loadout-title
       rows: 1

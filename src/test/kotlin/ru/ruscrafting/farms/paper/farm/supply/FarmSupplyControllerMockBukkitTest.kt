@@ -91,6 +91,43 @@ class FarmSupplyControllerMockBukkitTest : FunSpec({
         player.inventory.storageContents.toList() shouldBe before
     }
 
+    test("required equipment retries after a full inventory and never duplicates a complete loadout") {
+        val controller = controller(plugin)
+        val runtime = runtime(world)
+        runtime.state = runtime.state.copy(phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.BIRDS)
+        repeat(player.inventory.storageContents.size) { player.inventory.setItem(it, ItemStack(Material.STONE)) }
+        controller.ensureRequired(runtime, player) shouldBe false
+        player.inventory.setItem(9, null)
+        player.inventory.setItem(10, null)
+        controller.ensureRequired(runtime, player) shouldBe true
+        val supplied = player.inventory.storageContents.map { it?.clone() }
+        controller.ensureRequired(runtime, player) shouldBe true
+        player.inventory.storageContents.toList() shouldBe supplied
+        player.inventory.storageContents.forEachIndexed { slot, item ->
+            if (item?.type == Material.ARROW) player.inventory.setItem(slot, null)
+        }
+        controller.ensureRequired(runtime, player) shouldBe true
+        player.inventory.storageContents.filterNotNull().count { it.type == Material.BOW } shouldBe 1
+        player.inventory.storageContents.filterNotNull().count { it.type == Material.ARROW } shouldBe 1
+        runtime.state = runtime.state.copy(phase = FarmPhase.HARVESTING)
+        controller.removeServiceItems(player, reason = "test")
+        controller.ensureRequired(runtime, player) shouldBe true
+        player.inventory.storageContents.filterNotNull().any(controller::isServiceItem) shouldBe false
+    }
+
+    test("hiding optional supply points removes existing scenes and survives controller restart") {
+        val runtime = runtime(world)
+        val controller = controller(plugin)
+        controller.ensure(runtime, supplyPoints(world)::getValue)
+        world.entities.filter(controller::owns) shouldHaveSize 15
+        every { runtime.settings.supplyPointsVisible } returns false
+        val restarted = controller(plugin)
+        restarted.ensure(runtime, supplyPoints(world)::getValue)
+        world.entities.filter(restarted::owns) shouldHaveSize 0
+        restarted.ensure(runtime, supplyPoints(world)::getValue)
+        world.entities.filter(restarted::owns) shouldHaveSize 0
+    }
+
     test("loaded supply scene converges after controller restart without duplicate entities") {
         val runtime = runtime(world)
         val points = supplyPoints(world)
@@ -207,6 +244,7 @@ private fun runtime(world: WorldMock): FarmRuntime {
     val settings = mockk<FarmZoneSettings> {
         every { id } returns "communal_farm"
         every { this@mockk.supplies } returns supplies
+        every { supplyPointsVisible } returns true
         every { supplyNearbyViewDistance } returns 30.0f
         every { displayViewRange } returns 1.0f
     }

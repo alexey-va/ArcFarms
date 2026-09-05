@@ -759,8 +759,8 @@ internal class FarmSpecialIncidentController(
                     identity,
                     Material.IRON_SHOVEL,
                     locale.render(MessageKey.FARM_CHANNELS_SHOVEL, player),
-                ) == null
-            ) audience.sendActionBar(player, MessageKey.FARM_ACTION_INVENTORY_FULL)
+                ) == null && access.allowInteraction("farm-equipment-full:${player.uniqueId}", 3_000L)
+            ) audience.sendChat(player, MessageKey.FARM_ACTION_INVENTORY_FULL)
         }
         scheduleChannelFlow(runtime)
     }
@@ -990,6 +990,7 @@ internal class FarmSpecialIncidentController(
         FarmIncidentType.BOAR_BREAKOUT -> "boar-breakout"
         FarmIncidentType.RIVAL_RAID -> "rival-raid"
         FarmIncidentType.TORNADO -> "tornado"
+        FarmIncidentType.HELL_GREENHOUSE -> "hell-greenhouse"
     }
 
     private companion object {

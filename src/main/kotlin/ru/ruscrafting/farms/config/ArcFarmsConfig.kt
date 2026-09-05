@@ -7,6 +7,7 @@ import ru.arc.network.BackendServerId
 import ru.arc.redis.RedisModuleConfig
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.FarmIncidentType
+import ru.ruscrafting.farms.domain.FarmHellGreenhouseRules
 import ru.ruscrafting.farms.domain.FarmContractRarity
 import ru.ruscrafting.farms.domain.FarmCustomerType
 import ru.ruscrafting.farms.domain.FarmCareRole
@@ -158,6 +159,7 @@ data class FarmZoneSettings(
     val animalRescueMaxPlayerDistance: Int,
     val animalDeliveryRadius: Double,
     val supplyNearbyViewDistance: Float,
+    val supplyPointsVisible: Boolean = false,
     val displayViewRange: Float,
     val seederEveryShifts: Int,
     val seederPatchSize: Int,
@@ -326,6 +328,7 @@ data class FarmSpecialIncidentSettings(
     val marketMaximumSeconds: Int,
     val frost: FarmFrostSettings,
     val tornado: FarmTornadoSettings = FarmTornadoSettings(),
+    val hellGreenhouse: FarmHellGreenhouseRules = FarmHellGreenhouseRules(),
 ) {
     init {
         require(channelMarkerColumnStride in 1..32) { "channel marker column stride must be in 1..32" }
@@ -899,14 +902,24 @@ data class FarmPerkSettings(
     val rewardBoost: FarmPerkOfferSettings,
     val rewardBonusPercent: Int,
     val sustainIntervalSeconds: Int,
-    val speedAmplifier: Int = 0,
+    val speedAmplifier: Int = 2,
     val speedRefreshTicks: Int = 60,
-    val sustenanceFood: Int = 2,
-    val sustenanceSaturation: Float = 1.0f,
-    val sustenanceHealth: Double = 1.0,
-    val harvestAreaRadius: Int = 1,
+    val sustenanceFood: Int = 20,
+    val sustenanceSaturation: Float = 10.0f,
+    val sustenanceHealth: Double = 4.0,
+    val harvestAreaRadius: Int = 2,
+    val strength: FarmPerkOfferSettings = FarmPerkOfferSettings(220, 72),
+    val resistance: FarmPerkOfferSettings = FarmPerkOfferSettings(240, 72),
+    val fireResistance: FarmPerkOfferSettings = FarmPerkOfferSettings(160, 72),
+    val jumpBoost: FarmPerkOfferSettings = FarmPerkOfferSettings(140, 72),
+    val strengthAmplifier: Int = 1,
+    val resistanceAmplifier: Int = 1,
+    val jumpAmplifier: Int = 1,
 ) {
     init {
+        require(strengthAmplifier in 0..2) { "Farm strength perk amplifier must be in 0..2" }
+        require(resistanceAmplifier in 0..2) { "Farm resistance perk amplifier must be in 0..2" }
+        require(jumpAmplifier in 0..2) { "Farm jump perk amplifier must be in 0..2" }
         require(speedAmplifier in 0..4) { "Farm speed perk amplifier must be in 0..4" }
         require(speedRefreshTicks in 20..200) { "Farm speed perk refresh ticks must be in 20..200" }
         require(sustenanceFood in 0..20) { "Farm sustenance food must be in 0..20" }
@@ -1215,6 +1228,13 @@ class ArcFarmsConfig private constructor(
 
         private fun synchronizeAndParse(config: Config): ArcFarmsConfig {
             config.mergeMissingFromBundled("config.yml", ENVIRONMENT_OWNED_ROOT_KEYS)
+            val perkMenu = "ui.menus.layouts.farm-perks"
+            if (config.int("$perkMenu.rows", 0) == 3 &&
+                config.list<Any>("$perkMenu.regions.offers.slots").map { it.toString() } == listOf("10", "12", "14", "16")
+            ) {
+                config.setInt("$perkMenu.rows", 4)
+                config.setStructured("$perkMenu.regions.offers.slots", listOf(10, 12, 14, 16, 19, 21, 23, 25))
+            }
             return parse(config).also { config.saveStrict() }
         }
 
@@ -1603,19 +1623,29 @@ class ArcFarmsConfig private constructor(
                     speed = perk("speed", 180, 72),
                     sustenance = perk("sustenance", 150, 72),
                     rewardBoost = perk("reward-boost", 400, 72),
-                    rewardBonusPercent = section.int("perks.reward-boost.bonus-percent", 25)
+                    strength = perk("strength", 220, 72),
+                    resistance = perk("resistance", 240, 72),
+                    fireResistance = perk("fire-resistance", 160, 72),
+                    jumpBoost = perk("jump-boost", 140, 72),
+                    strengthAmplifier = section.int("perks.strength.amplifier", 1)
+                        .checked("perks.strength.amplifier", 0, 2),
+                    resistanceAmplifier = section.int("perks.resistance.amplifier", 1)
+                        .checked("perks.resistance.amplifier", 0, 2),
+                    jumpAmplifier = section.int("perks.jump-boost.amplifier", 1)
+                        .checked("perks.jump-boost.amplifier", 0, 2),
+                    rewardBonusPercent = section.int("perks.reward-boost.bonus-percent", 75)
                         .checked("perks.reward-boost.bonus-percent", 1, 100),
-                    sustainIntervalSeconds = section.int("perks.sustenance.interval-seconds", 5)
+                    sustainIntervalSeconds = section.int("perks.sustenance.interval-seconds", 3)
                         .checked("perks.sustenance.interval-seconds", 1, 60),
-                    speedAmplifier = section.int("perks.speed.amplifier", 0)
+                    speedAmplifier = section.int("perks.speed.amplifier", 2)
                         .checked("perks.speed.amplifier", 0, 4),
                     speedRefreshTicks = section.int("perks.speed.refresh-ticks", 60)
                         .checked("perks.speed.refresh-ticks", 20, 200),
-                    sustenanceFood = section.int("perks.sustenance.food", 2)
+                    sustenanceFood = section.int("perks.sustenance.food", 20)
                         .checked("perks.sustenance.food", 0, 20),
-                    sustenanceSaturation = section.finiteFloat("perks.sustenance.saturation", 1.0f, 0.0f, 20.0f),
-                    sustenanceHealth = section.finiteDouble("perks.sustenance.health", 1.0, 0.0, 20.0),
-                    harvestAreaRadius = section.int("perks.harvest-area.radius", 1)
+                    sustenanceSaturation = section.finiteFloat("perks.sustenance.saturation", 10.0f, 0.0f, 20.0f),
+                    sustenanceHealth = section.finiteDouble("perks.sustenance.health", 4.0, 0.0, 20.0),
+                    harvestAreaRadius = section.int("perks.harvest-area.radius", 2)
                         .checked("perks.harvest-area.radius", 1, 3),
                 )
                 reference.bounds?.let { bounds ->
@@ -1898,6 +1928,20 @@ class ArcFarmsConfig private constructor(
                         debrisCount = section.int("special-incidents.tornado.debris-count", 28),
                         hitDamage = section.finiteDouble("special-incidents.tornado.hit-damage", 2.0, 0.0, 8.0),
                     ),
+                    hellGreenhouse = FarmHellGreenhouseRules(
+                        quota = section.int("special-incidents.hell-greenhouse.quota", 4)
+                            .checked("special-incidents.hell-greenhouse.quota", 1, 8),
+                        growSeconds = section.int("special-incidents.hell-greenhouse.grow-seconds", 6)
+                            .checked("special-incidents.hell-greenhouse.grow-seconds", 1, 120),
+                        hotSeconds = section.int("special-incidents.hell-greenhouse.hot-seconds", 6)
+                            .checked("special-incidents.hell-greenhouse.hot-seconds", 1, 120),
+                        heatLimit = section.int("special-incidents.hell-greenhouse.heat-limit", 100)
+                            .checked("special-incidents.hell-greenhouse.heat-limit", 1, 1_000),
+                        heatPerHarvest = section.int("special-incidents.hell-greenhouse.heat-per-harvest", 10)
+                            .checked("special-incidents.hell-greenhouse.heat-per-harvest", 1, 1_000),
+                        evacuationSeconds = section.int("special-incidents.hell-greenhouse.evacuation-seconds", 15)
+                            .checked("special-incidents.hell-greenhouse.evacuation-seconds", 1, 300),
+                    ),
                     frost = FarmFrostSettings(
                         campfireMinCount = section.int("special-incidents.frost.campfires.min-count", 4)
                             .checked("special-incidents.frost.campfires.min-count", 1, 16),
@@ -2038,6 +2082,7 @@ class ArcFarmsConfig private constructor(
                     animalRescueMaxPlayerDistance = section.int("animal-rescue-max-player-distance", placementMaxPlayerDistance)
                         .checked("animal-rescue-max-player-distance", 4, 64),
                     animalDeliveryRadius = section.finiteDouble("animal-delivery-radius", 3.0, 1.0, 8.0),
+                    supplyPointsVisible = section.boolean("supply-points-visible", false),
                     supplyNearbyViewDistance = section.finiteFloat("supply-nearby-view-distance", 15.0f, 1.0f, 192.0f),
                     displayViewRange = section.finiteFloat("display-view-range", 2.0f, 0.25f, 8.0f),
                     seederEveryShifts = section.int("seeder-every-shifts", 2)

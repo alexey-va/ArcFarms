@@ -1,5 +1,7 @@
 package ru.ruscrafting.farms.paper.farm
 
+import ru.ruscrafting.farms.paper.farm.incident.greenhouse.FarmHellGreenhouseIncident
+
 import org.bukkit.Bukkit
 import org.bukkit.Chunk
 import org.bukkit.Location
@@ -7,6 +9,7 @@ import org.bukkit.entity.Player
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerMoveEvent
+import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.ArcFarmsState
@@ -101,6 +104,7 @@ internal class FarmModule(
     private val barnFire: FarmBarnFireIncident,
     private val frost: FarmFrostIncident,
     private val tornado: FarmTornadoIncident,
+    private val greenhouse: FarmHellGreenhouseIncident,
     private val delivery: FarmDeliveryController,
     private val scene: FarmContractSceneController,
     private val supplies: FarmSupplyController,
@@ -156,7 +160,7 @@ internal class FarmModule(
             pests.ownsPest(entity) || pests.ownsNest(entity) || birds.owns(entity) || foodDelivery.owns(entity) ||
                 actionIncidents.owns(entity) ||
                 processing.owns(entity) || delivery.owns(entity) || supplies.owns(entity) ||
-                care.owns(entity) || perks.owns(entity) || frost.owns(entity) || tornado.owns(entity)
+                care.owns(entity) || perks.owns(entity) || frost.owns(entity) || tornado.owns(entity) || greenhouse.owns(entity)
         }.forEach { entity ->
             entity.remove()
             removed++
@@ -169,6 +173,7 @@ internal class FarmModule(
 
     override fun beforeReload(reason: String) {
         tornado.cleanup()
+        greenhouse.cleanup()
         blockRegistry.cancelReindexes()
         shiftStart.clearPending()
         orderCycle.clearPending()
@@ -254,6 +259,7 @@ internal class FarmModule(
     fun updateCarriedDisplays() {
         val runtimes = registry.snapshot()
         runtimes.forEach { runtime -> tasks.guarded("farm_tornado:${runtime.settings.id}") { tornado.update(runtime) } }
+        runtimes.forEach { runtime -> tasks.guarded("farm_greenhouse:${runtime.settings.id}") { greenhouse.update(runtime) } }
         delivery.updateCarriedDisplays(runtimes)
         foodDelivery.updateVisuals(runtimes)
         care.updateCarriedDisplays()
@@ -432,6 +438,7 @@ internal class FarmModule(
         barnFire.cleanup(reason)
         frost.cleanup(reason)
         tornado.cleanup()
+        greenhouse.cleanup()
         supplies.cleanup(reason)
         delivery.cleanup(reason)
         pests.cleanup(reason)
@@ -450,7 +457,16 @@ internal class FarmModule(
         runtime.region.world.loadedChunks.forEach { chunk -> blockRegistry.reconcileChunk(runtime.blockIndexDefinition(), chunk) }
     }
 
-    private fun ensureSupplies(runtime: FarmRuntime) = supplies.ensure(runtime) { supplyPoint(runtime, it) }
+    private fun ensureSupplies(runtime: FarmRuntime) {
+        supplies.ensure(runtime) { supplyPoint(runtime, it) }
+        audience.players(runtime.region).filter {
+            it.isOnline && !it.isDead && !access.isAdminEditing(it) && access.hasAccess(it, runtime.settings.permission)
+        }.forEach { player ->
+            if (!supplies.ensureRequired(runtime, player) &&
+                access.allowInteraction("farm-equipment-full:${player.uniqueId}", 3_000L)
+            ) audience.sendChat(player, MessageKey.FARM_ACTION_INVENTORY_FULL)
+        }
+    }
 
     private fun hasRestoreWork(runtime: FarmRuntime): Boolean =
         (runtime.state.preparationPatch.isNotEmpty() && !runtime.state.preparationReleased) ||

@@ -191,6 +191,9 @@ internal class FarmComponentGraph(
     private val tornado = ru.ruscrafting.farms.paper.farm.incident.tornado.FarmTornadoIncident(
         plugin, settings, ports.access, ports.audience, ports.state, incidentBeds, transitions,
     )
+    private val greenhouse = ru.ruscrafting.farms.paper.farm.incident.greenhouse.FarmHellGreenhouseIncident(
+        plugin, settings, locale, ports.access, ports.audience, ports.state, incidentBeds, transitions,
+    )
     private val frost = FarmFrostIncident(
         plugin = plugin,
         settings = settings,
@@ -457,6 +460,7 @@ internal class FarmComponentGraph(
         barnFire = barnFire,
         frost = frost,
         tornado = tornado,
+        greenhouse = greenhouse,
         delivery = delivery,
         scene = scene,
         supplies = supplies,
@@ -530,6 +534,7 @@ internal class FarmComponentGraph(
         processing = processing,
         barnFire = barnFire,
         frost = frost,
+        greenhouse = greenhouse,
         delivery = delivery,
         enterprise = enterprise,
         supplies = supplies,
@@ -572,6 +577,7 @@ internal class FarmComponentGraph(
         barnFire = barnFire,
         frost = frost,
         tornado = tornado,
+        greenhouse = greenhouse,
         delivery = delivery,
         scene = scene,
         supplies = supplies,
@@ -617,6 +623,7 @@ internal class FarmComponentGraph(
         barnFire = barnFire,
         frost = frost,
         tornado = tornado,
+        greenhouse = greenhouse,
         incidentRecovery = recovery,
         delivery = delivery,
         enterprise = enterprise,

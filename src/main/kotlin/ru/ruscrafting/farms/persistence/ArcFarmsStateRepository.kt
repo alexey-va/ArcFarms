@@ -8,6 +8,7 @@ import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmIncidentType
+import ru.ruscrafting.farms.domain.FarmHellGreenhouseEngine
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmProcessingStage
@@ -339,6 +340,17 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
             farm.diseaseDamagedCrops.orEmpty().forEach { damage ->
                 validatePlot(damage.position)
                 require(CONTENT_ID.matches(damage.crop)) { "Farm disease crop damage has an invalid crop" }
+            }
+            farm.hellGreenhouse?.let { greenhouse ->
+                require(farm.phase == FarmPhase.INCIDENT && farm.incidentType == FarmIncidentType.HELL_GREENHOUSE) {
+                    "Farm hell greenhouse state escaped its active incident"
+                }
+                FarmHellGreenhouseEngine.validate(greenhouse)
+                greenhouse.points.forEach(::validatePoint)
+                require(farm.incidentRequired in 1..8) { "Farm hell greenhouse quota is invalid" }
+                require(farm.incidentProgress == greenhouse.cooled.coerceAtMost(farm.incidentRequired)) {
+                    "Farm hell greenhouse progress drifted from cooled peppers"
+                }
             }
             farm.specialIncident?.let { special ->
                 require(

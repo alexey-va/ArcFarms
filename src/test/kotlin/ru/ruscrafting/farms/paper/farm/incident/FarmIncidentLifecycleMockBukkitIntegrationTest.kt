@@ -359,6 +359,7 @@ private fun fireSafetyRouter(
     special = mockk<FarmSpecialIncidentController>(relaxed = true),
     processing = mockk(relaxed = true),
     barnFire = fire,
+    greenhouse = io.mockk.mockk(relaxed = true),
     frost = mockk(relaxed = true),
     actionIncidents = mockk(relaxed = true),
     delivery = mockk<FarmDeliveryController>(relaxed = true),

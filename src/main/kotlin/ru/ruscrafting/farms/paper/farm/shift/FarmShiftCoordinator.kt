@@ -1,5 +1,7 @@
 package ru.ruscrafting.farms.paper.farm.shift
 
+import ru.ruscrafting.farms.paper.farm.incident.greenhouse.FarmHellGreenhouseIncident
+
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.Particle
@@ -51,8 +53,6 @@ import ru.ruscrafting.farms.paper.farm.presentation.FarmHudController
 import ru.ruscrafting.farms.paper.farm.reward.FarmRewardService
 import ru.ruscrafting.farms.paper.farm.scene.FarmContractSceneController
 import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyController
-import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyKind
-import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyVisibilityPolicy
 
 /** The only application owner allowed to apply a farm domain EngineResult. */
 internal class FarmShiftCoordinator(
@@ -76,6 +76,7 @@ internal class FarmShiftCoordinator(
     private val barnFire: FarmBarnFireIncident,
     private val frost: FarmFrostIncident,
     private val tornado: FarmTornadoIncident,
+    private val greenhouse: FarmHellGreenhouseIncident,
     private val delivery: FarmDeliveryController,
     private val scene: FarmContractSceneController,
     private val supplies: FarmSupplyController,
@@ -442,6 +443,15 @@ internal class FarmShiftCoordinator(
                     title = true,
                 )
             }
+            FarmIncidentType.HELL_GREENHOUSE -> {
+                if (!greenhouse.initialize(runtime)) {
+                    apply(runtime, FarmShiftEngine.skipUnavailableIncident(runtime.state, type), null)
+                    return
+                }
+                port.broadcast(listOf(runtime.region), MessageKey.FARM_HELL_GREENHOUSE_STARTED,
+                    values = mapOf("total" to locale.text(runtime.state.incidentRequired)),
+                    sound = Sound.BLOCK_PORTAL_TRIGGER, title = true)
+            }
             FarmIncidentType.TORNADO -> {
                 if (!tornado.initialize(runtime)) {
                     apply(runtime, FarmShiftEngine.skipUnavailableIncident(runtime.state, type), null)
@@ -536,9 +546,11 @@ internal class FarmShiftCoordinator(
         barnFire.clear(runtime.settings.id, "incident_resolved")
         frost.clear(runtime, "incident_resolved")
         tornado.clear(runtime)
+        greenhouse.clear(runtime)
         actionIncidents.clear(runtime, "incident_resolved")
         if (type == FarmIncidentType.GIANT_CROP) special.beginRestore(runtime)
         special.clearZone(runtime, "incident_resolved")
+        if (type == FarmIncidentType.HELL_GREENHOUSE) { state.persistAsync(); return }
         port.broadcast(
             listOf(runtime.region),
             if (type in SPECIAL_FARM_INCIDENT_TYPES || type in ACTION_FARM_INCIDENT_TYPES ||
@@ -644,6 +656,7 @@ internal class FarmShiftCoordinator(
         foodDelivery.clear(runtime.settings.id, "shift_completed")
         actionIncidents.clear(runtime, "shift_completed")
         tornado.clear(runtime)
+        greenhouse.clear(runtime)
         val contributors = runtime.state.contributors
         val enterpriseChanged = enterprise.orderCompleted(runtime.settings.id, runtime.state.sequence, contributors, commercialEligible)
         stats.recordCompletion(ActivityKind.FARM, contributors)
@@ -690,16 +703,12 @@ internal class FarmShiftCoordinator(
     private fun currentOrder(runtime: FarmRuntime): FarmOrder? = runtime.state.orderId?.let(runtime.orders::get)
     private fun players(runtime: FarmRuntime): List<Player> = port.players(runtime.region)
 
-    private fun issueSupply(runtime: FarmRuntime, kind: FarmSupplyKind) {
+    private fun issueRequiredSupply(runtime: FarmRuntime) {
         players(runtime).forEach { player ->
-            if (!supplies.give(runtime, kind, player)) {
+            if (!supplies.ensureRequired(runtime, player)) {
                 port.sendActionBar(player, MessageKey.FARM_ACTION_INVENTORY_FULL)
             }
         }
-    }
-
-    private fun issueRequiredSupply(runtime: FarmRuntime) {
-        FarmSupplyVisibilityPolicy.required(runtime.state)?.let { kind -> issueSupply(runtime, kind) }
     }
 
     private companion object {

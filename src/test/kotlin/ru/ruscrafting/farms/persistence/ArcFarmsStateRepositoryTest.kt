@@ -169,7 +169,7 @@ class ArcFarmsStateRepositoryTest : FunSpec({
                 playerId to FarmPlayerPerks(
                     weekStartEpochDay = 20_690,
                     spentPoints = 120,
-                    activeUntil = mapOf(FarmPerkType.HARVEST_AREA to 1_800_000_000_000L),
+                    activeUntil = FarmPerkType.entries.associateWith { 1_800_000_000_000L },
                 ),
             ),
         )

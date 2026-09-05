@@ -113,9 +113,18 @@ internal class FarmHudController(
                             ?.let { special.name(it, player) } ?: Component.empty()),
                         "time" to (runtime.state.specialIncident?.takeIf {
                             runtime.state.incidentType == FarmIncidentType.MARKET && it.marketAccepted
-                        }?.let { locale.text(special.marketTime(runtime, it)) } ?: Component.empty()),
+                        }?.let { locale.text(special.marketTime(runtime, it)) }
+                            ?: runtime.state.hellGreenhouse?.let { greenhouse ->
+                                locale.text(
+                                    greenhouse.evacuationSeconds
+                                        ?: greenhouse.carried[player.uniqueId]?.let { it.expiresAt - greenhouse.elapsedSeconds }
+                                        ?: 0,
+                                )
+                            }
+                            ?: Component.empty()),
                         "done" to locale.text(phaseDone),
                         "total" to locale.text(phaseTotal),
+                        "heat" to locale.text(runtime.state.hellGreenhouse?.heat ?: 0),
                         "remaining" to locale.text(
                             if (runtime.state.incidentType == FarmIncidentType.TORNADO) {
                                 (runtime.state.incidentRequired - runtime.state.incidentProgress).coerceAtLeast(0)
@@ -157,6 +166,7 @@ internal class FarmHudController(
                 FarmIncidentType.BOAR_BREAKOUT -> MessageKey.FARM_ENTRY_BOAR_BREAKOUT
                 FarmIncidentType.RIVAL_RAID -> MessageKey.FARM_ENTRY_RIVAL_RAID
                 FarmIncidentType.TORNADO -> MessageKey.FARM_ENTRY_TORNADO
+                FarmIncidentType.HELL_GREENHOUSE -> MessageKey.FARM_ENTRY_HELL_GREENHOUSE
                 FarmIncidentType.GIANT_CROP,
                 FarmIncidentType.CHANNELS,
                 FarmIncidentType.NIGHT_SHIFT,
@@ -389,6 +399,7 @@ internal class FarmHudController(
             FarmIncidentType.BOAR_BREAKOUT -> MessageKey.FARM_BOAR_BREAKOUT_BOSSBAR
             FarmIncidentType.RIVAL_RAID -> MessageKey.FARM_RIVAL_RAID_BOSSBAR
             FarmIncidentType.TORNADO -> MessageKey.FARM_TORNADO_BOSSBAR
+            FarmIncidentType.HELL_GREENHOUSE -> MessageKey.FARM_HELL_GREENHOUSE_BOSSBAR
             FarmIncidentType.MARKET -> if (runtime.state.specialIncident?.marketAccepted == true) {
                 MessageKey.FARM_MARKET_ACTIVE_BOSSBAR
             } else MessageKey.FARM_MARKET_PENDING_BOSSBAR
@@ -420,6 +431,22 @@ internal class FarmHudController(
     }
 
     private fun instruction(runtime: FarmRuntime, player: Player): Component {
+        if (runtime.state.incidentType == FarmIncidentType.HELL_GREENHOUSE) {
+            val greenhouse = runtime.state.hellGreenhouse
+            val key = when {
+                greenhouse == null -> MessageKey.FARM_HELL_GREENHOUSE_REQUIRED
+                greenhouse.evacuationSeconds != null -> MessageKey.FARM_HELL_GREENHOUSE_EVACUATE
+                greenhouse.cooled >= runtime.settings.specialIncidents.hellGreenhouse.quota -> MessageKey.FARM_HELL_GREENHOUSE_EXIT
+                player.uniqueId in greenhouse.carried -> MessageKey.FARM_HELL_GREENHOUSE_PICKED
+                else -> MessageKey.FARM_HELL_GREENHOUSE_REQUIRED
+            }
+            return locale.render(key, player, mapOf(
+                "done" to locale.text(greenhouse?.cooled ?: 0),
+                "total" to locale.text(runtime.settings.specialIncidents.hellGreenhouse.quota),
+                "heat" to locale.text(greenhouse?.heat ?: 0),
+                "time" to locale.text(greenhouse?.evacuationSeconds ?: 0),
+            ))
+        }
         if (runtime.state.incidentType == FarmIncidentType.PROCESSING) {
             val key = when (runtime.state.processing?.stage) {
                 FarmProcessingStage.LOADING -> MessageKey.FARM_PROCESSING_LOADING_HINT
@@ -545,4 +572,5 @@ internal fun farmIncidentHintKey(
     FarmIncidentType.BOAR_BREAKOUT -> MessageKey.FARM_BOAR_BREAKOUT_REQUIRED
     FarmIncidentType.RIVAL_RAID -> MessageKey.FARM_RIVAL_RAID_REQUIRED
     FarmIncidentType.TORNADO -> MessageKey.FARM_TORNADO_REQUIRED
+    FarmIncidentType.HELL_GREENHOUSE -> MessageKey.FARM_HELL_GREENHOUSE_REQUIRED
 }

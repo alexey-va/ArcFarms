@@ -4,6 +4,9 @@ Standalone Kotlin/Paper plugin for the three shared RusCrafting worksite
 activities: farm, lumbermill, and mine.
 
 - Target Purpur/Paper 1.21.11, WorldGuard 7.0.16, Java 25, and Kotlin 2.3.0.
+- Deploy and activate ArcFarms only on spawn (`classic`). Do not update its live
+  JAR or configuration on `classic_survival` or `parkour`; their installed
+  copies and tracked locale mirrors do not imply deployment authorization.
 - WorldGuard is a soft dependency: require it only when a configured zone uses
   a named region. Relay-only and explicit-cuboid nodes must load without it.
 - Use the pinned public `arc-core` release by default; opt into a local

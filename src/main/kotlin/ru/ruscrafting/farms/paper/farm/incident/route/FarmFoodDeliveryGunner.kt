@@ -38,7 +38,7 @@ internal class FarmFoodDeliveryGunner(
 ) {
     private val gear = FarmFoodDeliveryGear(plugin, locale, debug)
     private val shotAt = mutableMapOf<UUID, Long>()
-    private val inventoryWarnings = mutableSetOf<UUID>()
+    private val inventoryWarningAt = mutableMapOf<UUID, Long>()
     private val pendingRemounts = mutableSetOf<UUID>()
 
     fun owns(item: ItemStack?): Boolean = gear.owns(item)
@@ -118,10 +118,9 @@ internal class FarmFoodDeliveryGunner(
         session.riderId = mountedDriver?.uniqueId ?: session.riderId?.takeIf(session.ambushCrewIds::contains)
         session.gunnerId = mountedGunner?.uniqueId ?: session.gunnerId?.takeIf(session.ambushCrewIds::contains)
         mountedDriver?.let { equip(it, runtime, session) }
-        if (mountedGunner != null && !equip(mountedGunner, runtime, session)) {
-            seat.eject()
-            session.gunnerId = null
-        }
+        // Keep the participant mounted when a replacement rifle cannot fit. The
+        // next reconcile will retry after the player frees a slot.
+        mountedGunner?.let { equip(it, runtime, session) }
         session.ambushCrewIds.mapNotNull(Bukkit::getPlayer).filter(Player::isOnline).forEach { equip(it, runtime, session) }
         session.escortIds.mapNotNull(Bukkit::getPlayer).filter(Player::isOnline).forEach { equip(it, runtime, session) }
     }
@@ -245,24 +244,27 @@ internal class FarmFoodDeliveryGunner(
     fun cleanup(reason: String) {
         Bukkit.getOnlinePlayers().forEach { gear.remove(it, reason = reason) }
         shotAt.clear()
-        inventoryWarnings.clear()
+        inventoryWarningAt.clear()
         pendingRemounts.clear()
     }
 
     private fun equip(player: Player, runtime: FarmRuntime, session: FarmFoodDeliverySession): Boolean {
         if (gear.give(player, runtime.settings.id, session.sequence, runtime.settings.routeDelivery)) {
-            inventoryWarnings.remove(player.uniqueId)
+            inventoryWarningAt.remove(player.uniqueId)
             return true
         }
-        if (inventoryWarnings.add(player.uniqueId)) {
-            audience.sendActionBar(player, MessageKey.FARM_ROUTE_GUNNER_INVENTORY_FULL)
+        val now = player.world.gameTime
+        val previous = inventoryWarningAt[player.uniqueId]
+        if (previous == null || now - previous >= INVENTORY_WARNING_INTERVAL_TICKS) {
+            inventoryWarningAt[player.uniqueId] = now
+            audience.sendChat(player, MessageKey.FARM_ROUTE_GUNNER_INVENTORY_FULL)
         }
         return false
     }
 
     private fun clearTracking(playerId: UUID) {
         shotAt.remove(playerId)
-        inventoryWarnings.remove(playerId)
+        inventoryWarningAt.remove(playerId)
         pendingRemounts.remove(playerId)
     }
 
@@ -299,6 +301,7 @@ internal class FarmFoodDeliveryGunner(
     }
 
     private companion object {
+        const val INVENTORY_WARNING_INTERVAL_TICKS = 60L
         const val PARTICLE_SPACING = 1.2
         const val MAX_PARTICLES = 72
         const val TRAIL_POINT_DISTANCE_SQUARED = 0.16

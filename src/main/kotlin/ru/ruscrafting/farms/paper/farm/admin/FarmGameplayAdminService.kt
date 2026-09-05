@@ -47,6 +47,7 @@ import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
 import ru.ruscrafting.farms.paper.farm.incident.processing.FarmProcessingIncident
 import ru.ruscrafting.farms.paper.farm.incident.fire.FarmBarnFireIncident
 import ru.ruscrafting.farms.paper.farm.incident.tornado.FarmTornadoIncident
+import ru.ruscrafting.farms.paper.farm.incident.greenhouse.FarmHellGreenhouseIncident
 import ru.ruscrafting.farms.paper.farm.incident.frost.FarmFrostIncident
 import ru.ruscrafting.farms.paper.farm.incident.action.FarmActionIncidentController
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
@@ -83,6 +84,7 @@ internal class FarmGameplayAdminService(
     private val barnFire: FarmBarnFireIncident,
     private val frost: FarmFrostIncident,
     private val tornado: FarmTornadoIncident,
+    private val greenhouse: FarmHellGreenhouseIncident,
     private val incidentRecovery: FarmIncidentRecoveryController,
     private val delivery: FarmDeliveryController,
     private val enterprise: FarmEnterprisePort,
@@ -367,6 +369,7 @@ internal class FarmGameplayAdminService(
         barnFire.clear(runtime.settings.id, "admin_stage")
         frost.clear(runtime, "admin_stage")
         tornado.clear(runtime)
+        greenhouse.clear(runtime)
         restoreGiantCrop(runtime, "admin_stage")
         special.clearZone(runtime, "admin_stage")
         // An explicit admin transition must leave no incident journal behind. A bounded
@@ -378,7 +381,13 @@ internal class FarmGameplayAdminService(
             port.sendChat(player, MessageKey.ADMIN_INCIDENT_RECOVERY_PENDING, mapOf("count" to locale.text(incidentRecovery.remaining(runtime))))
             return false
         }
-        runtime.state = runtime.state.copy(specialIncident = null, frost = null, processing = null, specialDamagedCrops = emptyList())
+        runtime.state = runtime.state.copy(
+            specialIncident = null,
+            frost = null,
+            processing = null,
+            hellGreenhouse = null,
+            specialDamagedCrops = emptyList(),
+        )
         delivery.clear(runtime, "admin_stage")
         return true
     }
@@ -640,6 +649,7 @@ internal class FarmGameplayAdminService(
             "boar-breakout" to FarmIncidentType.BOAR_BREAKOUT,
             "rival-raid" to FarmIncidentType.RIVAL_RAID,
             "tornado" to FarmIncidentType.TORNADO,
+            "hell-greenhouse" to FarmIncidentType.HELL_GREENHOUSE,
         )
         val STANDARD_STAGES = setOf("preparation", "planting", "harvesting", "delivery", "complete", "reset") + INCIDENT_STAGES.keys
         val BED_PATCH_CARE_TYPES = setOf(FarmCareType.SEEDER, FarmCareType.WEEDS, FarmCareType.DISEASE, FarmCareType.MOLES)
