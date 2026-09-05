@@ -670,64 +670,44 @@ object FarmShiftEngine {
         }
         require(playerIds.isNotEmpty()) { "Seeder work must have at least one mounted participant" }
         require(processed.all(current.preparationPatch::contains)) { "Seeder processed outside the preparation patch" }
-        return when (requireNotNull(current.seederStage())) {
-            FarmSeederStage.TILLING -> {
-                val remaining = (current.preparationRequired - current.tilledPlots.size).coerceAtLeast(0)
-                val added = (processed - current.tilledPlots).sortedWith(FARM_PLOT_ORDER).take(remaining).toSet()
-                if (added.isEmpty()) return EngineResult(current, false)
-                val worked = current.tilledPlots + added
-                val complete = worked.size >= current.preparationRequired
-                val tilled = if (complete) current.preparationPatch.toSet() else worked
-                EngineResult(
-                    current.copy(
-                        tilledPlots = tilled,
-                        preparationProgress = tilled.size,
-                        seederStage = if (complete) FarmSeederStage.PLANTING else FarmSeederStage.TILLING,
-                        careTargets = if (complete) {
-                            current.careTargets.filter { it.role == FarmCareRole.SEEDER_HORSE }
-                        } else {
-                            current.careTargets
-                        },
-                        contributors = incrementContributions(current.contributors, playerIds, added.size),
-                    ),
-                    true,
-                    contribution = added.size,
-                    events = if (complete) {
-                        listOf(FarmShiftEvent.SEEDER_PLANTING_STARTED)
-                    } else {
-                        listOf(FarmShiftEvent.SEEDER_PROGRESS)
-                    },
-                    contributionCredits = playerIds.associateWith { added.size },
-                )
-            }
-            FarmSeederStage.PLANTING -> {
-                require(processed.all(current.tilledPlots::contains)) { "Seeder planted an untilled plot" }
-                val remaining = (current.preparationRequired - current.plantedPlots.size).coerceAtLeast(0)
-                val added = (processed - current.plantedPlots).sortedWith(FARM_PLOT_ORDER).take(remaining).toSet()
-                if (added.isEmpty()) return EngineResult(current, false)
-                val worked = current.plantedPlots + added
-                val complete = worked.size >= current.preparationRequired
-                val planted = if (complete) current.preparationPatch.toSet() else worked
-                EngineResult(
-                    current.copy(
-                        phase = if (complete) FarmPhase.HARVESTING else FarmPhase.CARE,
-                        plantedPlots = planted,
-                        plantingProgress = planted.size,
-                        seederStage = if (complete) null else FarmSeederStage.PLANTING,
-                        careTargets = if (complete) emptyList() else current.careTargets,
-                        contributors = incrementContributions(current.contributors, playerIds, added.size),
-                    ),
-                    true,
-                    contribution = added.size,
-                    events = if (complete) {
-                        listOf(FarmShiftEvent.CARE_RESOLVED)
-                    } else {
-                        listOf(FarmShiftEvent.SEEDER_PROGRESS)
-                    },
-                    contributionCredits = playerIds.associateWith { added.size },
-                )
-            }
+        val stage = requireNotNull(current.seederStage())
+        if (stage == FarmSeederStage.PLANTING) {
+            require(processed.all(current.tilledPlots::contains)) { "Seeder planted an untilled plot" }
         }
+        val existing = if (stage == FarmSeederStage.TILLING) current.tilledPlots else current.plantedPlots
+        val remaining = (current.preparationRequired - existing.size).coerceAtLeast(0)
+        val added = (processed - existing).sortedWith(FARM_PLOT_ORDER).take(remaining).toSet()
+        if (added.isEmpty()) return EngineResult(current, false)
+        val worked = existing + added
+        val complete = worked.size >= current.preparationRequired
+        val plots = if (complete) current.preparationPatch.toSet() else worked
+        val next = when (stage) {
+            FarmSeederStage.TILLING -> current.copy(
+                tilledPlots = plots,
+                preparationProgress = plots.size,
+                seederStage = if (complete) FarmSeederStage.PLANTING else FarmSeederStage.TILLING,
+                careTargets = if (complete) current.careTargets.filter { it.role == FarmCareRole.SEEDER_HORSE } else current.careTargets,
+            )
+            FarmSeederStage.PLANTING -> current.copy(
+                phase = if (complete) FarmPhase.HARVESTING else FarmPhase.CARE,
+                plantedPlots = plots,
+                plantingProgress = plots.size,
+                seederStage = if (complete) null else FarmSeederStage.PLANTING,
+                careTargets = if (complete) emptyList() else current.careTargets,
+            )
+        }
+        val event = when {
+            !complete -> FarmShiftEvent.SEEDER_PROGRESS
+            stage == FarmSeederStage.TILLING -> FarmShiftEvent.SEEDER_PLANTING_STARTED
+            else -> FarmShiftEvent.CARE_RESOLVED
+        }
+        return EngineResult(
+            next.copy(contributors = incrementContributions(current.contributors, playerIds, added.size)),
+            true,
+            contribution = added.size,
+            events = listOf(event),
+            contributionCredits = playerIds.associateWith { added.size },
+        )
     }
 
     private val FARM_PLOT_ORDER = compareBy<FarmPlotPosition> { it.x }

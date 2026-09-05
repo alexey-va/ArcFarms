@@ -564,106 +564,72 @@ class ArcFarmsCommand(
         alias: String,
         args: Array<out String>,
     ): List<String> {
-        if (args.firstOrNull()?.lowercase() in setOf("admin", "debug") && !sender.hasPermission("arcfarms.admin")) {
-            return emptyList()
-        }
-        return when (args.size) {
-            1 -> buildList {
-                add("status")
-                add("top")
-                add("travel")
-                if (sender.hasPermission("arcfarms.admin")) {
-                    add("reload")
-                    add("admin")
-                    add("debug")
-                }
-            }.filter { it.startsWith(args[0], ignoreCase = true) }
-            2 -> when {
-                args[0].equals("top", true) || args[0].equals("travel", true) ->
-                    listOf("farm", "lumber", "mine").filter { it.startsWith(args[1], true) }
-                args[0].equals("admin", true) && sender.hasPermission("arcfarms.admin") ->
-                    (listOf("help", "edit", "inspect", "point", "points", "unmanage", "blockreset", "backup", "stage", "next", "finish", "event", "route", "worksite") + ADMIN_SHORTCUTS)
-                        .filter { it.startsWith(args[1], true) }
-                args[0].equals("debug", true) && sender.hasPermission("arcfarms.admin") ->
-                    service.farmZoneIds().filter { it.startsWith(args[1], true) }
-                else -> emptyList()
-            }
-            3 -> when {
-                args[0].equals("admin", true) && args[1].equals("worksite", true) ->
-                    listOf("lumber", "mine", "help").filter { it.startsWith(args[2], true) }
-                args[0].equals("admin", true) && args[1].lowercase() in setOf("edit", "inspect") ->
-                    listOf("help").filter { it.startsWith(args[2], true) }
-                args[0].equals("admin", true) && args[1].lowercase() in
-                    setOf("point", "points", "unmanage", "blockreset", "backup", "stage", "next", "finish", "event", "route") ->
-                    (service.farmZoneIds() + "help").filter { it.startsWith(args[2], true) }
-                args[0].equals("admin", true) && args[1].lowercase() in ADMIN_SHORTCUTS ->
-                    (service.farmZoneIds() + "help").filter { it.startsWith(args[2], true) }
-                args[0].equals("debug", true) && sender.hasPermission("arcfarms.admin") ->
-                    listOf("status", "contract", "stage", "next", "finish", "event", "give", "show", "points", "reset")
-                        .filter { it.startsWith(args[2], true) }
-                else -> emptyList()
-            }
-            4 -> when {
-                args[0].equals("admin", true) && args[1].equals("worksite", true) -> {
-                    val kind = parseKind(args[2])
-                    (kind?.let(service.worksiteAdmins::zoneIds).orEmpty() + "help").filter { it.startsWith(args[3], true) }
-                }
-                args[0].equals("admin", true) && args[1].equals("point", true) ->
-                    (POINT_ARGUMENTS + "help")
-                        .filter { it.startsWith(args[3], true) }
-                args[0].equals("admin", true) && args[1].equals("stage", true) ->
-                    (STAGE_STAGES + "help")
-                        .filter { it.startsWith(args[3], true) }
-                args[0].equals("admin", true) && args[1].equals("event", true) ->
-                    (EVENT_STAGES + "help").filter { it.startsWith(args[3], true) }
-                args[0].equals("admin", true) && args[1].equals("route", true) ->
-                    listOf("start", "finish", "cancel", "status", "clear", "help").filter { it.startsWith(args[3], true) }
-                args[0].equals("admin", true) && args[1].equals("blockreset", true) ->
-                    listOf("status", "help").filter { it.startsWith(args[3], true) }
-                args[0].equals("admin", true) && args[1].equals("backup", true) ->
-                    listOf("save", "list", "status", "restore", "help").filter { it.startsWith(args[3], true) }
-                args[0].equals("admin", true) && args[1].lowercase() in
-                    setOf("points", "unmanage", "next", "finish") ->
-                    listOf("help").filter { it.startsWith(args[3], true) }
-                args[0].equals("admin", true) && args[1].lowercase() in ADMIN_SHORTCUTS ->
-                    listOf("help").filter { it.startsWith(args[3], true) }
-                args[0].equals("debug", true) && args[2].equals("stage", true) ->
-                    (listOf("preparation", "planting", "harvesting") + CARE_STAGES +
-                        listOf("pests", "drought", "giant-crop", "channels", "night-shift", "market", "delivery", "complete", "reset"))
-                        .filter { it.startsWith(args[3], true) }
-                args[0].equals("debug", true) && args[2].equals("event", true) ->
-                    EVENT_STAGES.filter { it.startsWith(args[3], true) }
-                args[0].equals("debug", true) && args[2].equals("give", true) ->
-                    listOf("tool", "seeds", "water", "archery").filter { it.startsWith(args[3], true) }
-                args[0].equals("debug", true) && args[2].equals("contract", true) ->
-                    service.farmOrderIds(args[1]).filter { it.startsWith(args[3], true) }
-                else -> emptyList()
-            }
-            5 -> when {
-                args[0].equals("admin", true) && args[1].equals("worksite", true) ->
-                    listOf("status", "start", "incident", "reindex", "help").filter { it.startsWith(args[4], true) }
-                args[0].equals("admin", true) && args[1].equals("route", true) &&
-                    args[3].lowercase() in setOf("start", "status", "clear", "remove") ->
-                    (service.adminFarmRouteNames(args[2]) + "main")
-                        .distinct()
-                        .filter { it.startsWith(args[4], true) }
-                args[0].equals("admin", true) && args[1].equals("point", true) ->
-                    listOf("clear", "remove", "help").filter { it.startsWith(args[4], true) }
-                args[0].equals("admin", true) && args[1].equals("backup", true) && args[3].equals("restore", true) ->
-                    listOf("help").filter { it.startsWith(args[4], true) }
-                else -> emptyList()
-            }
-            6 -> when {
-                args[0].equals("admin", true) && args[1].equals("worksite", true) && args[4].equals("incident", true) -> {
-                    val kind = parseKind(args[2])
-                    kind?.let(service.worksiteAdmins::handler)?.incidentIds().orEmpty().filter { it.startsWith(args[5], true) }
-                }
-                args[0].equals("admin", true) && args[1].equals("worksite", true) && args[4].equals("reindex", true) ->
-                    listOf("start", "tick", "cancel").filter { it.startsWith(args[5], true) }
-                else -> emptyList()
-            }
+        if (args.isEmpty()) return emptyList()
+        val root = args[0].lowercase()
+        val admin = sender.hasPermission("arcfarms.admin")
+        val candidates = when {
+            args.size == 1 -> listOf("status", "top", "travel") +
+                if (admin) listOf("reload", "admin", "debug") else emptyList()
+            root == "top" || root == "travel" -> if (args.size == 2) listOf("farm", "lumber", "mine") else emptyList()
+            root == "admin" && admin -> adminCompletions(args)
+            root == "debug" && admin -> debugCompletions(args)
             else -> emptyList()
         }
+        return candidates.filter { it.startsWith(args.last(), ignoreCase = true) }
+    }
+
+    private fun adminCompletions(args: Array<out String>): List<String> {
+        val action = args[1].lowercase()
+        return when (args.size) {
+            2 -> listOf("help", "edit", "inspect", "point", "points", "unmanage", "blockreset", "backup", "stage", "next", "finish", "event", "route", "worksite") + ADMIN_SHORTCUTS
+            3 -> when (action) {
+                "worksite" -> listOf("lumber", "mine", "help")
+                "edit", "inspect" -> listOf("help")
+                "point", "points", "unmanage", "blockreset", "backup", "stage", "next", "finish", "event", "route",
+                in ADMIN_SHORTCUTS -> service.farmZoneIds() + "help"
+                else -> emptyList()
+            }
+            4 -> when (action) {
+                "worksite" -> parseKind(args[2])?.let(service.worksiteAdmins::zoneIds).orEmpty() + "help"
+                "point" -> POINT_ARGUMENTS + "help"
+                "stage" -> STAGE_STAGES + "help"
+                "event" -> EVENT_STAGES + "help"
+                "route" -> listOf("start", "finish", "cancel", "status", "clear", "help")
+                "blockreset" -> listOf("status", "help")
+                "backup" -> listOf("save", "list", "status", "restore", "help")
+                "points", "unmanage", "next", "finish", in ADMIN_SHORTCUTS -> listOf("help")
+                else -> emptyList()
+            }
+            5 -> when (action) {
+                "worksite" -> listOf("status", "start", "incident", "reindex", "help")
+                "route" -> if (args[3].lowercase() in setOf("start", "status", "clear", "remove")) {
+                    (service.adminFarmRouteNames(args[2]) + "main").distinct()
+                } else emptyList()
+                "point" -> listOf("clear", "remove", "help")
+                "backup" -> if (args[3].equals("restore", true)) listOf("help") else emptyList()
+                else -> emptyList()
+            }
+            6 -> if (action == "worksite") when (args[4].lowercase()) {
+                "incident" -> parseKind(args[2])?.let(service.worksiteAdmins::handler)?.incidentIds().orEmpty()
+                "reindex" -> listOf("start", "tick", "cancel")
+                else -> emptyList()
+            } else emptyList()
+            else -> emptyList()
+        }
+    }
+
+    private fun debugCompletions(args: Array<out String>): List<String> = when (args.size) {
+        2 -> service.farmZoneIds()
+        3 -> listOf("status", "contract", "stage", "next", "finish", "event", "give", "show", "points", "reset")
+        4 -> when (args[2].lowercase()) {
+            "stage" -> listOf("preparation", "planting", "harvesting") + CARE_STAGES +
+                listOf("pests", "drought", "giant-crop", "channels", "night-shift", "market", "delivery", "complete", "reset")
+            "event" -> EVENT_STAGES
+            "give" -> listOf("tool", "seeds", "water", "archery")
+            "contract" -> service.farmOrderIds(args[1])
+            else -> emptyList()
+        }
+        else -> emptyList()
     }
 
     private fun parsePoint(raw: String): FarmPointKind? = when (raw.lowercase()) {

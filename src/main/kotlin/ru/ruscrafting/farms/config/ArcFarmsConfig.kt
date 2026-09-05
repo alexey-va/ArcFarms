@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.config
 
 import ru.arc.config.Config
 import ru.arc.config.ConfigManager
+import ru.arc.config.ConfigSection
 import ru.arc.network.BackendServerId
 import ru.arc.redis.RedisModuleConfig
 import ru.ruscrafting.farms.domain.ActivityKind
@@ -1346,13 +1347,7 @@ class ArcFarmsConfig private constructor(
                         material = materialName(section.string("$path.material", defaultMaterial)),
                         customModelData = section.int("$path.custom-model-data", 0)
                             .checked("$path.custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
-                        displayTransform = section.string("$path.display-transform", "FIXED")
-                            .trim()
-                            .uppercase()
-                            .let { raw ->
-                                FarmItemDisplayTransform.entries.firstOrNull { it.name == raw }
-                                    ?: error("$path.display-transform must be GROUND, FIXED, or HEAD")
-                            },
+                        displayTransform = section.displayTransform(path, "FIXED"),
                         displayScale = section.finiteFloat("$path.display-scale", 1.0f, 0.05f, 8.0f),
                         displayYOffset = section.finiteDouble("$path.display-y-offset", 0.45, -4.0, 4.0),
                     )
@@ -1362,13 +1357,7 @@ class ArcFarmsConfig private constructor(
                     material = materialName(section.string("$contractCartPath.material", "MINECART")),
                     customModelData = section.int("$contractCartPath.custom-model-data", 0)
                         .checked("$contractCartPath.custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
-                    displayTransform = section.string("$contractCartPath.display-transform", "GROUND")
-                        .trim()
-                        .uppercase()
-                        .let { raw ->
-                            FarmItemDisplayTransform.entries.firstOrNull { it.name == raw }
-                                ?: error("$contractCartPath.display-transform must be GROUND, FIXED, or HEAD")
-                        },
+                    displayTransform = section.displayTransform(contractCartPath, "GROUND"),
                     scale = section.finiteFloat("$contractCartPath.scale", 1.0f, 0.05f, 8.0f),
                     yOffset = section.finiteDouble("$contractCartPath.y-offset", 0.15, -4.0, 4.0),
                     yawOffset = section.finiteFloat("$contractCartPath.yaw-offset", 0.0f, -360.0f, 360.0f),
@@ -1425,11 +1414,7 @@ class ArcFarmsConfig private constructor(
                             customModelData = section.int("$path.custom-model-data", 0)
                                 .checked("$path.custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
                             itemModel = itemModel,
-                            displayTransform = section.string("$path.display-transform", "FIXED")
-                                .trim().uppercase().let { raw ->
-                                    FarmItemDisplayTransform.entries.firstOrNull { it.name == raw }
-                                        ?: error("$path.display-transform must be GROUND, FIXED, or HEAD")
-                                },
+                            displayTransform = section.displayTransform(path, "FIXED"),
                             scale = section.finiteFloat("$path.scale", 1.0f, 0.05f, 8.0f),
                             yOffset = section.finiteDouble("$path.y-offset", 0.0, -4.0, 4.0),
                             yawOffset = section.finiteFloat("$path.yaw-offset", 0.0f, -360.0f, 360.0f),
@@ -1725,11 +1710,7 @@ class ArcFarmsConfig private constructor(
                         material = materialName(section.string("$moleLairPath.material", "RABBIT_HIDE")),
                         customModelData = section.int("$moleLairPath.custom-model-data", 0)
                             .checked("$moleLairPath.custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
-                        displayTransform = section.string("$moleLairPath.display-transform", "FIXED")
-                            .trim().uppercase().let { raw ->
-                                FarmItemDisplayTransform.entries.firstOrNull { it.name == raw }
-                                    ?: error("$moleLairPath.display-transform must be GROUND, FIXED, or HEAD")
-                            },
+                        displayTransform = section.displayTransform(moleLairPath, "FIXED"),
                         displayScale = section.finiteFloat("$moleLairPath.display-scale", 1.6f, 0.05f, 8.0f),
                         displayYOffset = section.finiteDouble("$moleLairPath.display-y-offset", 0.6, -4.0, 4.0),
                     ),
@@ -2582,11 +2563,7 @@ class ArcFarmsConfig private constructor(
                             customModelData = section.int("$path.custom-model-data", 0)
                                 .checked("mine $id cart custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
                             itemModel = itemModel,
-                            displayTransform = section.string("$path.display-transform", "GROUND")
-                                .trim().uppercase().let { raw ->
-                                    FarmItemDisplayTransform.entries.firstOrNull { it.name == raw }
-                                        ?: error("mine-zones.$id.$path.display-transform must be GROUND, FIXED, or HEAD")
-                                },
+                            displayTransform = section.displayTransform(path, "GROUND", "mine-zones.$id.$path"),
                             scale = section.finiteFloat("$path.scale", 1.0f, 0.05f, 8.0f),
                             yOffset = section.finiteDouble("$path.y-offset", 0.15, -4.0, 4.0),
                             viewRange = section.finiteFloat("$path.view-range", 2.0f, 0.25f, 64.0f),
@@ -2812,13 +2789,7 @@ class ArcFarmsConfig private constructor(
                 itemMaterial = materialName(section.string("delivery.item.material", "BARREL")),
                 itemCustomModelData = section.int("delivery.item.custom-model-data", 0)
                     .checked("delivery.item.custom-model-data", 0, MAX_CUSTOM_MODEL_DATA),
-                displayTransform = section.string("delivery.display-transform", "GROUND")
-                    .trim()
-                    .uppercase()
-                    .let { raw ->
-                        FarmItemDisplayTransform.entries.firstOrNull { it.name == raw }
-                            ?: error("farm-zones.$zoneId.delivery.display-transform must be GROUND, FIXED, or HEAD")
-                    },
+                displayTransform = section.displayTransform("delivery", "GROUND", "farm-zones.$zoneId.delivery"),
                 displayScale = section.finiteFloat("delivery.display-scale", 2.0f, 0.05f, 8.0f),
                 displayYOffset = section.finiteDouble("delivery.display-y-offset", 0.15, -2.0, 4.0),
                 carriedScale = section.finiteFloat("delivery.carried-scale", 1.5f, 0.05f, 8.0f),
@@ -3095,6 +3066,16 @@ class ArcFarmsConfig private constructor(
                 error("$label supports at most two decimal places")
             }
         }
+
+        private fun ConfigSection.displayTransform(
+            path: String,
+            default: String,
+            errorPath: String = path,
+        ): FarmItemDisplayTransform =
+            string("$path.display-transform", default).trim().uppercase().let { raw ->
+                FarmItemDisplayTransform.entries.firstOrNull { it.name == raw }
+                    ?: error("$errorPath.display-transform must be GROUND, FIXED, or HEAD")
+            }
 
         private fun parseMenuItem(config: Config, path: String, defaultMaterial: String): MenuItemVisualSettings =
             MenuItemVisualSettings(
