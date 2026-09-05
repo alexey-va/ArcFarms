@@ -193,7 +193,7 @@ internal class FarmComponentGraph(
         ledger, nightShift,
     )
     private val greenhouse = ru.ruscrafting.farms.paper.farm.incident.greenhouse.FarmHellGreenhouseIncident(
-        plugin, settings, locale, ports.access, ports.audience, ports.state, incidentBeds, transitions,
+        plugin, settings, locale, ports.access, ports.audience, ports.state, incidentBeds, transitions, ledger,
     )
     private val frost = FarmFrostIncident(
         plugin = plugin,

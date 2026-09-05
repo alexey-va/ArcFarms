@@ -5,6 +5,7 @@ import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.Particle
+import org.bukkit.Tag
 import org.bukkit.Sound
 import org.bukkit.block.BlockFace
 import org.bukkit.entity.Player
@@ -241,10 +242,25 @@ internal class FarmBarnFireIncident(
             val z = anchor.z.toIntFloor() + offsetZ
             if (!world.isChunkLoaded(x shr 4, z shr 4)) return@mapNotNull null
             val y = surfaceY(runtime, x, anchor.y.toIntFloor(), z, config.verticalSearch) ?: return@mapNotNull null
-            FarmPointPosition(world.name, x + 0.5, y + 1.02, z + 0.5)
-        }.toMutableList()
+            val floor = world.getBlockAt(x, y, z)
+            FarmPointPosition(world.name, x + 0.5, y + 1.02, z + 0.5) to isWoodenStructure(floor.type)
+        }.sortedByDescending { it.second }
+            .mapTo(mutableListOf()) { it.first }
         val chosen = mutableListOf<FarmPointPosition>()
-        available.removeFirstOrNull()?.let(chosen::add)
+        val wooden = available.filter { isWoodenStructure(world.getBlockAt(it.x.toIntFloor(), it.y.toIntFloor() - 1, it.z.toIntFloor()).type) }.toSet()
+        // Seed separate fires before extending their neighbouring flames.
+        while (chosen.size < config.initialHotspotCount) {
+            val eligible = available.filter { candidate ->
+                chosen.none { horizontalDistanceSquared(it, candidate) < config.minSpacing * config.minSpacing }
+            }
+            val preferred = eligible.filter { it in wooden }.ifEmpty { eligible }
+            val next = if (chosen.isEmpty()) preferred.firstOrNull() else preferred.maxByOrNull { candidate ->
+                chosen.minOf { horizontalDistanceSquared(it, candidate) }
+            }
+            if (next == null) break
+            chosen += next
+            available.remove(next)
+        }
         while (chosen.size < config.hotspotCount) {
             val next = available.firstOrNull { candidate ->
                 chosen.none { horizontalDistanceSquared(it, candidate) < config.minSpacing * config.minSpacing } &&
@@ -255,6 +271,11 @@ internal class FarmBarnFireIncident(
         }
         return chosen
     }
+
+    private fun isWoodenStructure(material: Material): Boolean =
+        Tag.LOGS.isTagged(material) || Tag.PLANKS.isTagged(material) || Tag.WOODEN_FENCES.isTagged(material) ||
+            Tag.WOODEN_SLABS.isTagged(material) || Tag.WOODEN_STAIRS.isTagged(material) ||
+            Tag.WOODEN_TRAPDOORS.isTagged(material) || material == Material.BARREL || material == Material.BOOKSHELF
 
     private fun isNeighbour(left: FarmPointPosition, right: FarmPointPosition): Boolean =
         left.world == right.world && abs(left.y - right.y) <= 2.0 &&
@@ -288,12 +309,14 @@ internal class FarmBarnFireIncident(
                 add(-step)
             }
         }
-        return offsets.firstNotNullOfOrNull { offset ->
+        val surfaces = offsets.mapNotNull { offset ->
             val floor = world.getBlockAt(x, centerY + offset - 1, z)
             val feet = floor.getRelative(BlockFace.UP)
             val head = feet.getRelative(BlockFace.UP)
-            if (floor.type.isSolid && feet.type.isAir && blockPassability.isPassable(head) && runtime.region.contains(feet.location)) floor.y else null
+            if (floor.y in world.minHeight until world.maxHeight - 2 && floor.type.isSolid && feet.type.isAir &&
+                blockPassability.isPassable(head) && runtime.region.contains(feet.location)) floor else null
         }
+        return (surfaces.firstOrNull { isWoodenStructure(it.type) } ?: surfaces.firstOrNull())?.y
     }
 
     private fun hitsInSpray(

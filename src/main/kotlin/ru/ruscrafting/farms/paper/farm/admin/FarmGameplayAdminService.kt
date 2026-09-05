@@ -172,6 +172,11 @@ internal class FarmGameplayAdminService(
         }
         transitions.apply(runtime, EngineResult(runtime.state, true, events = events), player)
         persistAsync()
+        val requestedIncident = INCIDENT_STAGES[normalized]
+        if (requestedIncident != null && (runtime.state.phase != FarmPhase.INCIDENT || runtime.state.incidentType != requestedIncident)) {
+            port.sendChat(player, MessageKey.ADMIN_INCIDENT_REJECTED, mapOf("stage" to locale.renderPath("admin.stage.$normalized", player)))
+            return false
+        }
         port.sendChat(player, MessageKey.ADMIN_STAGE_SET, mapOf("stage" to locale.renderPath("admin.stage.$normalized", player)))
         return true
     }

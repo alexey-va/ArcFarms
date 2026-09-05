@@ -36,6 +36,21 @@ admin-inspect:
     orchard: '<gray>apple anchor</gray>'
 admin:
   help: '<prefix> <gray>Farm controls</gray><newline>  <dark_gray>•</dark_gray> <white>reset-farm communal_farm</white> <gray>— clear the farm and stop new orders</gray><newline>  <dark_gray>•</dark_gray> <white>stop-order-cycle</white><gray> / </gray><white>start-order-cycle communal_farm</white> <gray>— stop or start the cycle</gray><newline>  <dark_gray>•</dark_gray> <white>save-farm-backup communal_farm</white> <gray>— save the entire farm region</gray><newline>  <dark_gray>•</dark_gray> <white>reindex-farm communal_farm</white> <gray>— rescan beds, fruit, and leaves</gray><newline>  <dark_gray>•</dark_gray> <white>event</white><gray>, </gray><white>next</white><gray>, </gray><white>finish</white><gray>, </gray><white>edit</white><gray>, </gray><white>inspect</white><gray>, </gray><white>point</white><gray>, </gray><white>backup</white><gray>, </gray><white>blockreset</white><newline>  <dark_gray>•</dark_gray> <gray>append </gray><white>help</white> <gray>to any command to see its syntax</gray>'
+  incident-rejected: '<prefix> <gold>Could not start: <stage>.</gold> <gray>The reason is shown above or in the server log.</gray>'
+  greenhouse-failed: '<prefix> <red>Greenhouse site not found.</red><newline><gray>Farm: <zone>. Checked: <candidates> of <total>.</gray>'
+  greenhouse-reason: '<prefix> <gray>Reason: <reason> (<count> checks).</gray><newline><gray>Example: <at> — <material>.</gray>'
+  greenhouse-paused: '<prefix> <gold>Hell greenhouse paused:</gold> <gray><reason></gray>'
+  greenhouse-reasons:
+    no-beds: 'no indexed beds are available'
+    search-limit: 'the bounded search budget was exhausted'
+    height: 'the required beds are outside the world height'
+    unloaded: 'required chunks are unloaded'
+    region: 'beds are outside the configured region'
+    journal: 'an active repair journal blocks the beds'
+    support: 'the floor is unsupported'
+    obstruction: 'a non-removable building or decor blocks the area'
+    admin-editing: 'admin editing mode is active'
+    no-participants: 'no eligible workers are available'
   worksite:
     help: '<prefix> <gray>Lumbermill and mine:</gray><newline><white>/arcfarms admin worksite \<lumber|mine> \<zone> status</white><newline><white>… start</white> <gray>— start a shift</gray><newline><white>… incident \<type></white> <gray>— force an incident</gray><newline><white>… reindex \<start|tick|cancel></white> <gray>— rebuild the block index</gray>'
     unknown: '<prefix> <red>Worksite <activity>:<zone> was not found.</red>'

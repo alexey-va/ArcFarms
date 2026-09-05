@@ -94,6 +94,10 @@ enum class MessageKey(val path: String) {
     ADMIN_POINT_NOT_OVERRIDDEN("admin.point-not-overridden"),
     ADMIN_POINTS_HEADER("admin.points-header"),
     ADMIN_POINTS_ENTRY("admin.points-entry"),
+    ADMIN_INCIDENT_REJECTED("admin.incident-rejected"),
+    ADMIN_GREENHOUSE_FAILED("admin.greenhouse-failed"),
+    ADMIN_GREENHOUSE_REASON("admin.greenhouse-reason"),
+    ADMIN_GREENHOUSE_PAUSED("admin.greenhouse-paused"),
     ADMIN_STAGE_SET("admin.stage-set"),
     ADMIN_STAGE_UNKNOWN("admin.stage-unknown"),
     ADMIN_ROUTE_STARTED("admin.route-started"),
@@ -825,6 +829,8 @@ class ArcFarmsLocale(
                 "special-target", "special-damaged", "giant-crop", "orchard",
             )
                 .mapTo(this) { "admin-inspect.tracking-kind.$it" }
+            listOf("no-beds", "search-limit", "height", "unloaded", "region", "journal", "support", "obstruction", "admin-editing", "no-participants")
+                .mapTo(this) { "admin.greenhouse-reasons.$it" }
             val adminStages = listOf(
                 "preparation", "planting", "harvesting", "seeder", "weeds", "irrigation", "pollination", "covers", "scarecrows",
                 "animals", "ditch-animals", "disease", "moles", "apples", "pests", "drought", "birds", "food-delivery", "giant-crop", "channels",
@@ -957,7 +963,7 @@ class ArcFarmsLocale(
         )
         private val LOCALES = listOf("ru", "en")
         private val ALLOWED_LOCALE_PLACEHOLDERS = setOf(
-            "action", "active", "activity", "actor", "alive", "amount", "arguments", "beds", "blocks", "bonus",
+            "at", "candidates", "action", "active", "activity", "actor", "alive", "amount", "arguments", "beds", "blocks", "bonus",
             "bundle", "care", "carriers", "cart", "chunks", "command", "count", "crop", "crops", "customer",
             "cycle", "damaged", "data", "description", "distance", "done", "dry", "entities", "event", "expected",
             "farm", "flows", "health", "heat", "hint", "hours", "id", "incident", "instruction", "item", "leaves", "limit",
@@ -969,6 +975,10 @@ class ArcFarmsLocale(
             "zone", "weeks", "plan", "week", "votes", "target", "date", "contribution",
         )
         private val EXPECTED_PLACEHOLDERS = mapOf(
+            "admin.incident-rejected" to setOf("prefix", "stage"),
+            "admin.greenhouse-failed" to setOf("prefix", "zone", "candidates", "total"),
+            "admin.greenhouse-reason" to setOf("prefix", "reason", "at", "material", "count"),
+            "admin.greenhouse-paused" to setOf("prefix", "reason"),
             "menu.stats.lore" to setOf("farm", "lumber", "mine"),
             "menu.workday.lore" to setOf("cycle", "farm", "lumber", "mine"),
             "menu.workday.click" to setOf("activity"),

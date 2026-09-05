@@ -2,7 +2,6 @@ package ru.ruscrafting.farms.paper.farm.incident.greenhouse
 
 import org.bukkit.GameMode
 import org.bukkit.Location
-import org.bukkit.Material
 import org.bukkit.Particle
 import org.bukkit.Sound
 import org.bukkit.entity.Entity
@@ -14,11 +13,11 @@ import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.*
+import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
-import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
 import ru.ruscrafting.farms.paper.platform.FarmTextDisplayRenderer
 import ru.ruscrafting.farms.paper.platform.PaperFarmTextDisplayRenderer
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
@@ -38,61 +37,102 @@ internal class FarmHellGreenhouseIncident(
     private val state: WorksiteStatePort,
     private val beds: FarmIncidentBedProvider,
     private val transitions: FarmTransitionSink,
+    ledger: FarmBlockLedger,
     text: FarmTextDisplayRenderer = PaperFarmTextDisplayRenderer,
 ) {
     private data class Clock(val sequence: Long, val placement: Long, var ticks: Int = 0)
     private val clocks = mutableMapOf<String, Clock>()
     private val scene = FarmHellGreenhouseScene(plugin, locale, text)
+    private val placement = FarmGreenhousePlacement(ledger)
+    private val reportedPauses = mutableMapOf<String, String>()
 
     fun owns(entity: Entity): Boolean = scene.owns(entity)
     fun identity(entity: Entity): HellGreenhouseIdentity? = scene.identity(entity)
     private fun active(runtime: FarmRuntime) = runtime.state.phase == FarmPhase.INCIDENT && runtime.state.incidentType == FarmIncidentType.HELL_GREENHOUSE
 
-    fun initialize(runtime: FarmRuntime): Boolean {
+    fun initialize(runtime: FarmRuntime, actor: Player? = null): Boolean {
         if (!active(runtime)) return false
         if (runtime.state.hellGreenhouse != null) return true
         val indexed = beds.discover(runtime)
         val middleX = indexed.map { it.x }.average()
         val middleZ = indexed.map { it.z }.average()
-        val candidates = indexed.sortedBy { (it.x - middleX) * (it.x - middleX) + (it.z - middleZ) * (it.z - middleZ) }.take(32)
-        val chosen = candidates.firstOrNull { plot ->
-            val soil = plot.block() ?: return@firstOrNull false
-            FarmSurfacePolicy.isOutdoorBed(soil) && available(runtime, Location(soil.world, soil.x + 0.5, soil.y + 1.0, soil.z + 0.5))
+        // Sample the entire loaded index if it exceeds the bounded search, never just its central cluster.
+        val ordered = indexed.sortedWith(compareBy({ it.x }, { it.z }, { it.y }))
+        val candidates = if (ordered.size <= 4096) ordered else List(4096) { ordered[it * ordered.size / 4096] }
+        val ranked = candidates.sortedBy { (it.x - middleX) * (it.x - middleX) + (it.z - middleZ) * (it.z - middleZ) }
+        val rejections = linkedMapOf<String, Pair<Int, GreenhouseObstruction>>()
+        fun reject(issue: GreenhouseObstruction) {
+            val previous = rejections[issue.reason]
+            rejections[issue.reason] = (previous?.first?.plus(1) ?: 1) to (previous?.second ?: issue)
+        }
+        var checked = 0
+        var chosen: GreenhouseSite? = null
+        for (plot in ranked) {
+            checked++
+            val soil = plot.block()
+            if (soil == null) {
+                reject(GreenhouseObstruction("unloaded", at = Location(runtime.region.world, plot.x.toDouble(), plot.y.toDouble(), plot.z.toDouble())))
+                continue
+            }
+            val site = placement.inspect(runtime, Location(soil.world, soil.x + 0.5, soil.y + 1.0, soil.z + 0.5))
+            if (site.failure == null) { chosen = site; break }
+            reject(site.failure)
         }
         if (chosen == null) {
-            state.log(Level.WARNING, "Could not plan hell greenhouse: zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
-                "attempted=HELL_GREENHOUSE candidates=${candidates.size} rejection=no_loaded_clear_flat_9x11_site")
+            if (indexed.isEmpty()) reject(GreenhouseObstruction("no-beds"))
+            if (candidates.size < indexed.size) reject(GreenhouseObstruction("search-limit"))
+            state.log(Level.WARNING, "Farm greenhouse placement rejected: zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
+                "attempted=HELL_GREENHOUSE indexed=${indexed.size} checked=$checked " +
+                "rejections=${rejections.values.joinToString("; ") { (count, issue) -> "count=$count ${issue.describe()}" }}")
+            admins(runtime, actor).forEach { player ->
+                audience.sendChat(player, MessageKey.ADMIN_GREENHOUSE_FAILED, mapOf(
+                    "zone" to locale.text(runtime.settings.id), "candidates" to locale.text(checked), "total" to locale.text(indexed.size)))
+                rejections.values.sortedByDescending { it.first }.take(3).forEach { (count, issue) ->
+                    reportIssue(player, issue, count)
+                }
+            }
             return false
         }
+        placement.prepare(runtime, chosen)
+        val center = chosen.center
         val points = listOf(-2, 2).flatMap { x -> listOf(-3, -1, 1, 3).map { z ->
-            FarmPointPosition(chosen.world, chosen.x + 0.5 + x, chosen.y + 1.0, chosen.z + 0.5 + z)
+            FarmPointPosition(center.world.name, center.x + x, center.y, center.z + z)
         } }
         val rules = runtime.settings.specialIncidents.hellGreenhouse
         val initialized = FarmHellGreenhouseEngine.initialize(FarmHellGreenhouseState(points), rules)
         runtime.state = runtime.state.copy(hellGreenhouse = initialized.state, incidentProgress = 0, incidentRequired = rules.quota)
+        reportedPauses.remove(runtime.settings.id)
+        state.log(Level.INFO, "Farm greenhouse placement accepted: zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
+            "indexed=${indexed.size} checked=$checked center=${center.blockX},${center.blockY},${center.blockZ} prepared_beds=${chosen.edits.size}")
         state.persistAsync()
         return true
     }
 
-    private fun available(runtime: FarmRuntime, center: Location): Boolean {
-        val world = center.world
-        if (center.blockY + 5 >= world.maxHeight || center.blockY <= world.minHeight) return false
-        for (x in center.blockX - 4..center.blockX + 4) for (z in center.blockZ - 5..center.blockZ + 5) {
-            if (!world.isChunkLoaded(x shr 4, z shr 4)) return false
-            if (!runtime.region.contains(Location(world, x + 0.5, center.y, z + 0.5))) return false
-            val support = world.getBlockAt(x, center.blockY - 1, z)
-            if (!support.type.isSolid && !(support.type == Material.WATER &&
-                    world.getBlockAt(x, center.blockY - 2, z).type.isSolid)) return false
-            for (y in center.blockY..center.blockY + 4) {
-                val material = world.getBlockAt(x, y, z).type
-                if (!material.isAir && !(y == center.blockY && material.name in runtime.settings.crops)) return false
-            }
+    private fun admins(runtime: FarmRuntime, actor: Player? = null) =
+        (audience.players(runtime.region) + listOfNotNull(actor)).distinctBy(Player::getUniqueId)
+            .filter { it.isOnline && it.hasPermission("arcfarms.admin") }
+
+    private fun reportIssue(player: Player, issue: GreenhouseObstruction, count: Int = 1) {
+        audience.sendChat(player, MessageKey.ADMIN_GREENHOUSE_REASON, mapOf(
+            "reason" to locale.renderPath("admin.greenhouse-reasons.${issue.reason}", player),
+            "at" to locale.text(issue.at?.let { "${it.world.name}: ${it.blockX}, ${it.blockY}, ${it.blockZ}" } ?: "—"),
+            "material" to locale.text(issue.block?.type?.name ?: "—"), "count" to locale.text(count),
+        ))
+    }
+
+    private fun reportPause(runtime: FarmRuntime, reason: String, issue: GreenhouseObstruction? = null) {
+        val signature = "${runtime.state.sequence}:${runtime.state.placementSequence}:$reason:${issue?.describe()}"
+        if (reportedPauses.put(runtime.settings.id, signature) == signature) return
+        state.log(Level.WARNING, "Farm greenhouse paused: zone=${runtime.settings.id} sequence=${runtime.state.sequence} reason=$reason ${issue?.describe().orEmpty()}")
+        admins(runtime).forEach { player ->
+            audience.sendChat(player, MessageKey.ADMIN_GREENHOUSE_PAUSED,
+                mapOf("reason" to locale.renderPath("admin.greenhouse-reasons.$reason", player)))
+            if (issue != null) reportIssue(player, issue)
         }
-        return true
     }
 
     private fun eligible(runtime: FarmRuntime, player: Player): Boolean = player.isOnline && !player.isDead &&
-        player.gameMode in setOf(GameMode.SURVIVAL, GameMode.ADVENTURE) && !access.isAdminEditing(player) &&
+        player.gameMode != GameMode.SPECTATOR && !access.isAdminEditing(player) &&
         runtime.region.contains(player.location) && access.hasAccess(player, runtime.settings.permission)
 
     private fun inside(runtime: FarmRuntime, player: Player): Boolean {
@@ -105,11 +145,11 @@ internal class FarmHellGreenhouseIncident(
 
     /** Called by the existing supervised per-tick visual loop; no scheduler is owned here. */
     fun update(runtime: FarmRuntime) {
-        if (!active(runtime)) { clear(runtime); return }
+        if (!active(runtime)) { clear(runtime); reportedPauses.remove(runtime.settings.id); return }
         val viewers = audience.players(runtime.region)
-        if (viewers.any(access::isAdminEditing)) { clear(runtime); return }
+        if (viewers.any(access::isAdminEditing)) { reportPause(runtime, "admin-editing"); clear(runtime); return }
         val eligible = viewers.filter { eligible(runtime, it) }
-        if (eligible.isEmpty()) { clear(runtime); return }
+        if (eligible.isEmpty()) { reportPause(runtime, "no-participants"); clear(runtime); return }
         if (runtime.state.hellGreenhouse == null && !initialize(runtime)) {
             transitions.apply(runtime, FarmShiftEngine.skipUnavailableIncident(runtime.state, FarmIncidentType.HELL_GREENHOUSE), null)
             state.persistAsync()
@@ -124,7 +164,12 @@ internal class FarmHellGreenhouseIncident(
             return
         }
         // The footprint is revalidated once per second, not on each visual tick.
-        if (clock.ticks % 20 == 0 && !available(runtime, center)) { clear(runtime); return }
+        if (clock.ticks % 20 == 0) {
+            val site = placement.inspect(runtime, center)
+            if (site.failure != null) { reportPause(runtime, site.failure.reason, site.failure); clear(runtime); return }
+            placement.prepare(runtime, site)
+            reportedPauses.remove(runtime.settings.id)
+        }
         clock.ticks++
         if (clock.ticks % 20 == 0 && participants.isNotEmpty()) {
             val result = FarmHellGreenhouseEngine.second(greenhouse, participants.mapTo(linkedSetOf(), Player::getUniqueId), runtime.settings.specialIncidents.hellGreenhouse)
@@ -216,6 +261,6 @@ internal class FarmHellGreenhouseIncident(
             }
         }
     }
-    fun clear(runtime: FarmRuntime) { clocks.remove(runtime.settings.id); scene.clear(runtime.settings.id) }
-    fun cleanup() { clocks.clear(); scene.cleanup() }
+    fun clear(runtime: FarmRuntime) { clocks.remove(runtime.settings.id); scene.clear(runtime.settings.id); placement.clear(runtime.settings.id) }
+    fun cleanup() { clocks.clear(); scene.cleanup(); placement.cleanup(); reportedPauses.clear() }
 }

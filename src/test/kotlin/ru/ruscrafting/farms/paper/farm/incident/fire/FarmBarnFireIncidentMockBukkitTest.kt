@@ -37,6 +37,7 @@ class FarmBarnFireIncidentMockBukkitTest : FunSpec({
             val world = paper.server.addSimpleWorld("farm")
             world.getChunkAt(0, 0).load()
             for (x in 1..15) for (z in 1..15) world.getBlockAt(x, 64, z).type = Material.STONE
+            for (x in 6..10) for (z in 6..10) if (x != 8) world.getBlockAt(x, 64, z).type = Material.OAK_PLANKS
             val anchor = FarmPointPosition(world.name, 8.5, 65.0, 8.5)
             val fire = FarmBarnFireSettings(
                 hotspotCount = 3,
@@ -44,7 +45,7 @@ class FarmBarnFireIncidentMockBukkitTest : FunSpec({
                 spreadIntervalTicks = 20,
                 spreadHotspotsPerPulse = 1,
                 spawnPerTick = 3,
-                placementRadius = 2,
+                placementRadius = 4,
                 minSpacing = 1.0,
                 verticalSearch = 2,
                 sprayRange = 18.0,
@@ -101,8 +102,13 @@ class FarmBarnFireIncidentMockBukkitTest : FunSpec({
             world.entities.size shouldBe 0
             val hotspots = runtime.state.specialIncident!!.points.map { it.location(world) }
             hotspots.size shouldBe 3
+            hotspots.map { it.blockX to it.blockZ }.distinct().size shouldBe 3
+            hotspots.forEachIndexed { index, hotspot ->
+                hotspots.drop(index + 1).all { it.distanceSquared(hotspot) >= 4.0 } shouldBe true
+            }
             hotspots.forEach { hotspot ->
                 hotspot.block.type shouldBe Material.FIRE
+                hotspot.block.getRelative(BlockFace.DOWN).type shouldBe Material.OAK_PLANKS
                 controller.protects(hotspot) shouldBe true
             }
 

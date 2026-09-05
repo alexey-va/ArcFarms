@@ -36,6 +36,21 @@ admin-inspect:
     orchard: '<gray>точка для яблок</gray>'
 admin:
   help: '<prefix> <gray>Управление фермой</gray><newline>  <dark_gray>•</dark_gray> <white>reset-farm communal_farm</white> <gray>— очистить ферму и остановить новые заказы</gray><newline>  <dark_gray>•</dark_gray> <white>stop-order-cycle</white><gray> / </gray><white>start-order-cycle communal_farm</white> <gray>— остановить или запустить цикл</gray><newline>  <dark_gray>•</dark_gray> <white>save-farm-backup communal_farm</white> <gray>— сохранить весь регион фермы</gray><newline>  <dark_gray>•</dark_gray> <white>reindex-farm communal_farm</white> <gray>— заново найти грядки, плоды и листву</gray><newline>  <dark_gray>•</dark_gray> <white>event</white><gray>, </gray><white>next</white><gray>, </gray><white>finish</white><gray>, </gray><white>edit</white><gray>, </gray><white>inspect</white><gray>, </gray><white>point</white><gray>, </gray><white>backup</white><gray>, </gray><white>blockreset</white><newline>  <dark_gray>•</dark_gray> <gray>добавьте </gray><white>help</white> <gray>после любой команды, чтобы увидеть синтаксис</gray>'
+  incident-rejected: '<prefix> <gold>Не удалось запустить: <stage>.</gold> <gray>Причина указана выше или в журнале сервера.</gray>'
+  greenhouse-failed: '<prefix> <red>Не найдена площадка для теплицы.</red><newline><gray>Ферма: <zone>. Проверено: <candidates> из <total>.</gray>'
+  greenhouse-reason: '<prefix> <gray>Причина: <reason> (<count> проверок).</gray><newline><gray>Пример: <at> — <material>.</gray>'
+  greenhouse-paused: '<prefix> <gold>Адская теплица приостановлена:</gold> <gray><reason></gray>'
+  greenhouse-reasons:
+    no-beds: 'в индексе нет доступных грядок'
+    search-limit: 'исчерпан ограниченный бюджет поиска'
+    height: 'нужные грядки находятся вне высоты мира'
+    unloaded: 'нужные чанки не загружены'
+    region: 'грядки находятся вне настроенного региона'
+    journal: 'активный журнал восстановления блокирует грядки'
+    support: 'пол под грядками не поддерживается'
+    obstruction: 'область перекрывает несъёмное здание или декор'
+    admin-editing: 'включён режим админского редактирования'
+    no-participants: 'нет подходящих работников'
   worksite:
     help: '<prefix> <gray>Лесопилка и шахта:</gray><newline><white>/arcfarms admin worksite \<lumber|mine> \<зона> status</white><newline><white>… start</white> <gray>— начать смену</gray><newline><white>… incident \<тип></white> <gray>— запустить происшествие</gray><newline><white>… reindex \<start|tick|cancel></white> <gray>— обновить индекс блоков</gray>'
     unknown: '<prefix> <red>Площадка <activity>:<zone> не найдена.</red>'

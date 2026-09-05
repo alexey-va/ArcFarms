@@ -445,7 +445,7 @@ internal class FarmShiftCoordinator(
                 )
             }
             FarmIncidentType.HELL_GREENHOUSE -> {
-                if (!greenhouse.initialize(runtime)) {
+                if (!greenhouse.initialize(runtime, actor)) {
                     apply(runtime, FarmShiftEngine.skipUnavailableIncident(runtime.state, type), null)
                     return
                 }

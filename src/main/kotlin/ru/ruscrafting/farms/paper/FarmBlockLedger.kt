@@ -315,6 +315,8 @@ internal class FarmBlockLedger(plugin: Plugin) {
     }
 
     fun remove(soil: Block): Boolean {
+        // Unmanaging a bed must not discard the only recovery record for an active terrain effect.
+        if (record(soil)?.temporaryMutation != null && soil !in restoreTemporaryRemovals(listOf(soil))) return false
         val records = blockRecords(soil.chunk).toMutableList()
         val removed = records.removeIf { it.x == soil.x && it.y == soil.y && it.z == soil.z }
         if (removed) write(soil.chunk, records)

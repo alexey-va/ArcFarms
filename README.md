@@ -362,14 +362,30 @@ then use the exit. Each pick adds heat; at the heat limit, harvest stops and a
 15-second evacuation begins. An early evacuation or timeout resumes the ordinary
 crop order with only the contribution already earned.
 
-The scene needs a loaded, clear 9×11 footprint with five blocks of clearance.
-Shallow irrigation water is allowed. The structure uses bounded nonpersistent
-displays and interaction hitboxes over the existing terrain; it does not replace
-blocks, drop items or teleport players. The clock pauses without eligible players
-inside the greenhouse. Reload reconstructs the scene from saved progress; leaving
+Placement searches across the loaded bed index (up to 4,096 anchors sampled
+across the entire pool), instead of only the 32 beds nearest its centre. The
+scene needs a loaded 9×11 footprint with five blocks of clearance. Shallow
+irrigation water is allowed. Indexed crops can be cleared and beds one block
+above or below the floor can be levelled temporarily. Soil and active crops are
+journalled before modification and restored on cleanup, unmanage or chunk
+reconciliation; later updates reprepare a restored active site. Buildings,
+decoration, unsupported terrain and foreign recovery journals remain blockers.
+The structure uses bounded nonpersistent displays and interaction hitboxes;
+preparation never drops items or teleports players. Creative players participate,
+and the clock pauses without eligible players inside the greenhouse.
+A rejected admin start reports checked/indexed counts, specific reasons, example
+coordinates and materials in admin chat and the server log. Paused scenes report
+their reason once per change. Commands never report success for an incident that
+immediately fell back to harvesting. Reload reconstructs the scene from saved progress; leaving
 the farm or dying discards virtual cargo. Forced stages and shutdown remove the
 scene. Settings live at `special-incidents.hell-greenhouse`; test with
 `/arcfarms admin event <zone> hell-greenhouse`.
+
+Barn fire seeds its configured initial hotspots at separate positions before
+planning neighbouring spread. Wooden floors, beams, fences, slabs and stairs
+are preferred over nearby road surfaces, including when a wooden surface is
+above the nearest ground level. Existing hotspot, spacing and spread limits
+still apply, and event fire cannot burn away the underlying building.
 
 Farm incidents, mine instability, phase changes, and completions use localized
 titles, boss bars, sounds, and particles. Completion fireworks are client-side
