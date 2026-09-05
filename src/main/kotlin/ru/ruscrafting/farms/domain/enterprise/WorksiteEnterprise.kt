@@ -100,6 +100,8 @@ data class WorksiteEnterpriseSnapshot(
     val excludedCompletionsByCompany: Map<String, Long> = emptyMap(),
     // Nullable only for snapshots written before primary funding existed.
     val financing: WorksiteEnterpriseFinancingSnapshot? = WorksiteEnterpriseFinancingSnapshot(),
+    // Nullable while older snapshots have no retained participation history.
+    val participation: WorksiteEnterpriseParticipationSnapshot? = null,
 ) {
     companion object {
         const val SCHEMA_VERSION = 1
@@ -207,13 +209,17 @@ internal class WorksiteEnterpriseLedger {
     fun reserve(
         policy: WorksiteEnterprisePolicy,
         order: ActiveWorksiteEnterpriseOrder,
+        availableGrossLimitCents: Long? = null,
     ): EnterpriseReservationDecision {
         validateOrder(order)
+        availableGrossLimitCents?.let {
+            require(it in 0..MAX_ENTERPRISE_MONEY_CENTS) { "Enterprise available gross limit is invalid" }
+        }
         val worksiteKey = worksiteKey(policy.activity, order.worksiteId)
         val companyKey = companyKey(policy.activity, policy.companyId)
         val lastCompleted = state.lastCompletedSequenceByWorksite[worksiteKey] ?: -1L
         if (order.sequence <= lastCompleted) {
-            return EnterpriseReservationDecision(EnterpriseReservationOutcome.STALE_SEQUENCE, false, available(policy))
+            return EnterpriseReservationDecision(EnterpriseReservationOutcome.STALE_SEQUENCE, false, available(policy, availableGrossLimitCents))
         }
         val current = state.reservations[worksiteKey]
         if (current?.sequence == order.sequence) {
@@ -232,17 +238,17 @@ internal class WorksiteEnterpriseLedger {
                 return EnterpriseReservationDecision(
                     EnterpriseReservationOutcome.ALREADY_RESERVED,
                     true,
-                    available(policy),
+                    available(policy, availableGrossLimitCents),
                 )
             }
             return EnterpriseReservationDecision(
                 if (matches) EnterpriseReservationOutcome.ALREADY_RESERVED else EnterpriseReservationOutcome.CONFLICT,
                 false,
-                available(policy),
+                available(policy, availableGrossLimitCents),
             )
         }
         if (current != null && current.sequence > order.sequence) {
-            return EnterpriseReservationDecision(EnterpriseReservationOutcome.STALE_SEQUENCE, false, available(policy))
+            return EnterpriseReservationDecision(EnterpriseReservationOutcome.STALE_SEQUENCE, false, available(policy, availableGrossLimitCents))
         }
 
         var changed = false
@@ -253,7 +259,7 @@ internal class WorksiteEnterpriseLedger {
             )
             changed = true
         }
-        val available = available(policy)
+        val available = available(policy, availableGrossLimitCents)
         if (order.grossTariffCents > available) {
             val alreadyCounted = state.rejectedReservationSequenceByWorksite[worksiteKey] == order.sequence
             state = state.copy(
@@ -506,13 +512,14 @@ internal class WorksiteEnterpriseLedger {
         return true
     }
 
-    private fun available(policy: WorksiteEnterprisePolicy): Long {
+    private fun available(policy: WorksiteEnterprisePolicy, availableGrossLimitCents: Long? = null): Long {
         val companyKey = companyKey(policy.activity, policy.companyId)
         val settled = state.settledGrossByCompany[companyKey] ?: 0L
         val reserved = state.reservations.values.asSequence()
             .filter { it.companyKey() == companyKey }
             .fold(0L) { total, reservation -> safeMoneyAdd(total, reservation.grossTariffCents) }
-        return (policy.licenseGrossEnvelopeCents - settled - reserved).coerceAtLeast(0)
+        val envelope = minOf(policy.licenseGrossEnvelopeCents, availableGrossLimitCents ?: policy.licenseGrossEnvelopeCents)
+        return (envelope - settled - reserved).coerceAtLeast(0)
     }
 
     private fun acceptedTerms(policy: WorksiteEnterprisePolicy, weekStartEpochDay: Long): WorksiteEnterpriseTerms =

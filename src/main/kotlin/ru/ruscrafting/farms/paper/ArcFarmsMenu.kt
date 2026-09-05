@@ -24,7 +24,8 @@ class ArcFarmsMenu(
     private val locale: ArcFarmsLocale,
     private val settings: () -> ArcFarmsConfig,
 ) : AutoCloseable {
-    private val enterpriseMenu = WorksiteEnterpriseMenu(service, locale, settings, menus, ::open)
+    private val participationMenu: WorksiteEnterpriseParticipationMenu = WorksiteEnterpriseParticipationMenu(service, locale, settings, menus) { player -> enterpriseMenu.openOverview(player) }
+    private val enterpriseMenu: WorksiteEnterpriseMenu = WorksiteEnterpriseMenu(service, locale, settings, menus, ::open, participationMenu::open)
 
     fun open(player: Player) {
         menus.open(player, MENU, { open(player) }) { content(player, menus.current()) }

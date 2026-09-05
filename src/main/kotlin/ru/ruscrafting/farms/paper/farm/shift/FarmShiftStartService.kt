@@ -73,7 +73,7 @@ internal class FarmShiftStartService(
         if (worldAdmin.anyEditing()) return false
         if (!access.allowInteraction("farm-patch-scan:${runtime.settings.id}", 5_000)) return false
         val order = forcedOrder ?: FarmContractPlanner.select(
-            orders = runtime.orderList,
+            orders = enterprise.orderPool(runtime.settings.id, runtime.orderList),
             rareChancePercent = runtime.settings.rareOrderChancePercent,
             rareRoll = random.nextInt(100),
             selectionIndex = runtime.state.sequence,
@@ -191,5 +191,12 @@ internal class FarmShiftStartService(
             "mechanized" to pending.seederShift,
         )
         transitions.apply(runtime, pending.result.copy(state = runtime.state), pending.player)
+        if (pending.player.isOnline) {
+            val premium = enterprise.orderPremium(zoneId, runtime.state.sequence)
+            if (premium != null) audience.sendChat(pending.player,
+                if (premium.simulated) MessageKey.COMPANY_ORDER_SHADOW else MessageKey.COMPANY_ORDER_PREMIUM,
+                mapOf("amount" to net.kyori.adventure.text.Component.text(java.math.BigDecimal.valueOf(premium.workerPoolCents, 2).toPlainString())))
+            else if (enterprise.projectView(zoneId) != null) audience.sendChat(pending.player, MessageKey.COMPANY_ORDER_NO_PREMIUM)
+        }
     }
 }

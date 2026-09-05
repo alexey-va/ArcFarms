@@ -27,6 +27,7 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
+import ru.ruscrafting.farms.paper.farm.enterprise.FarmEnterprisePort
 import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentController
 import ru.ruscrafting.farms.paper.platform.FarmTextDisplayRenderer
 
@@ -43,6 +44,7 @@ internal class FarmContractSceneController(
     private val special: FarmSpecialIncidentController,
     textDisplays: FarmTextDisplayRenderer,
     private val runtimes: () -> Collection<FarmRuntime>,
+    private val enterprise: FarmEnterprisePort? = null,
 ) {
     private val scene = FarmContractSceneManager(plugin, debug, textDisplays)
 
@@ -86,6 +88,18 @@ internal class FarmContractSceneController(
         val market = runtime.state.specialIncident?.takeIf {
             runtime.state.phase == FarmPhase.INCIDENT && runtime.state.incidentType == FarmIncidentType.MARKET
         }
+        val project = enterprise?.projectView(runtime.settings.id)
+        val projectLabel = project?.let {
+            locale.renderPath(
+                "companies.participation.world-project",
+                null,
+                mapOf(
+                    "stage" to locale.text(it.completedMilestones),
+                    "orders" to locale.text(it.contributions),
+                    "target" to locale.text(it.nextMilestone ?: it.contributions),
+                ),
+            )
+        }
         scene.ensure(
             FarmContractSceneSpec(
                 zoneId = runtime.settings.id,
@@ -108,7 +122,8 @@ internal class FarmContractSceneController(
                         "customer" to locale.renderPath("customer.${order.customerType.name.lowercase()}.name", null),
                         "order" to locale.renderPath("order.farm.${order.id}", null),
                     ),
-                ),
+                ).let { label -> projectLabel?.let { label.append(Component.newline()).append(it) } ?: label },
+                enterpriseBadgeItem = enterpriseBadge(project),
                 customerName = market?.let { locale.renderPath("farm.market-buyer-name", null) },
                 customerGlowing = market?.marketAccepted == false,
                 hiddenRoles = FarmContractSceneVisibility.hiddenRoles(runtime.state.phase, runtime.state.incidentType),
@@ -153,7 +168,8 @@ internal class FarmContractSceneController(
                     "total" to locale.text(runtime.settings.delivery.crates),
                 ),
             )
-            FarmContractSceneRole.CUSTOMER_LABEL -> Unit
+            FarmContractSceneRole.CUSTOMER_LABEL,
+            FarmContractSceneRole.ENTERPRISE_BADGE -> Unit
         }
     }
 
@@ -199,6 +215,12 @@ internal class FarmContractSceneController(
 
     private fun currentOrder(runtime: FarmRuntime): FarmOrder? = runtime.state.orderId?.let(runtime.orders::get)
 
+    @Suppress("DEPRECATION")
+    private fun enterpriseBadge(project: ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseProjectProgress?): ItemStack? {
+        val material = FarmEnterpriseBadge.material(project?.completedMilestones) ?: return null
+        return sceneItem(material, 0)
+    }
+
     private fun cropAmounts(amounts: Map<String, Int>, player: Player): Component = Component.join(
         JoinConfiguration.commas(true),
         amounts.map { (crop, amount) ->
@@ -206,6 +228,15 @@ internal class FarmContractSceneController(
                 .append(Component.text(" × $amount"))
         },
     )
+}
+
+internal object FarmEnterpriseBadge {
+    fun material(stage: Int?): String? = when (stage) {
+        1 -> "WHEAT"
+        2 -> "HAY_BLOCK"
+        3 -> "GOLDEN_HOE"
+        else -> null
+    }
 }
 
 internal object FarmContractSceneVisibility {

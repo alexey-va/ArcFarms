@@ -23,7 +23,7 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.floor
 
-internal enum class FarmContractSceneRole { CART, CART_INTERACTION, CART_LOAD, CUSTOMER, CUSTOMER_LABEL }
+internal enum class FarmContractSceneRole { CART, CART_INTERACTION, CART_LOAD, CUSTOMER, CUSTOMER_LABEL, ENTERPRISE_BADGE }
 
 internal data class FarmContractSceneIdentity(
     val zoneId: String,
@@ -108,6 +108,7 @@ internal data class FarmContractSceneSpec(
     val loadScale: Float,
     val viewRange: Float,
     val customerLabel: Component,
+    val enterpriseBadgeItem: ItemStack? = null,
     val customerName: Component? = null,
     val customerGlowing: Boolean = false,
     val hiddenRoles: Set<FarmContractSceneRole> = emptySet(),
@@ -230,6 +231,9 @@ internal class FarmContractSceneManager(
             FarmContractSceneRole.CART_INTERACTION -> location.world.spawn(location, Interaction::class.java) { interaction ->
                 normalize(interaction, spec, target.identity)
             }
+            FarmContractSceneRole.ENTERPRISE_BADGE -> location.world.spawn(location, ItemDisplay::class.java) { display ->
+                normalize(display, spec, target.identity)
+            }
         }
         mark(entity, target.identity)
         tracked[target.identity] = entity.uniqueId
@@ -307,6 +311,17 @@ internal class FarmContractSceneManager(
                     entity.viewRange = spec.viewRange
                     entity.setRotation(spec.cartLocation.yaw, 0f)
                 }
+                FarmContractSceneRole.ENTERPRISE_BADGE -> {
+                    entity.setItemStack(spec.enterpriseBadgeItem?.clone() ?: return)
+                    entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
+                    entity.transformation = Transformation(
+                        Vector3f(), AxisAngle4f(), Vector3f(0.45f, 0.45f, 0.45f), AxisAngle4f(),
+                    )
+                    entity.displayWidth = 0.6f
+                    entity.displayHeight = 0.6f
+                    entity.viewRange = spec.viewRange
+                    entity.setRotation(spec.customerLocation.yaw, 0f)
+                }
                 else -> return
             }
         }
@@ -318,6 +333,9 @@ internal class FarmContractSceneManager(
         }
         if (FarmContractSceneRole.CUSTOMER_LABEL !in spec.hiddenRoles) {
             add(target(spec, FarmContractSceneRole.CUSTOMER_LABEL, 0, spec.customerLocation.clone().add(0.0, 2.35, 0.0)))
+        }
+        if (spec.enterpriseBadgeItem != null && FarmContractSceneRole.CUSTOMER !in spec.hiddenRoles) {
+            add(target(spec, FarmContractSceneRole.ENTERPRISE_BADGE, 0, spec.customerLocation.clone().add(0.0, 3.05, 0.0)))
         }
         if (FarmContractSceneRole.CART !in spec.hiddenRoles) {
             add(target(spec, FarmContractSceneRole.CART, 0, spec.cartLocation))
@@ -370,6 +388,7 @@ internal class FarmContractSceneManager(
             entity is Interaction && identity?.role == FarmContractSceneRole.CART_INTERACTION -> FarmContractSceneRole.CART_INTERACTION
             entity is ItemDisplay && identity?.role == FarmContractSceneRole.CART -> FarmContractSceneRole.CART
             entity is ItemDisplay && identity?.role == FarmContractSceneRole.CART_LOAD -> FarmContractSceneRole.CART_LOAD
+            entity is ItemDisplay && identity?.role == FarmContractSceneRole.ENTERPRISE_BADGE -> FarmContractSceneRole.ENTERPRISE_BADGE
             else -> null
         }
         return FarmContractSceneCandidate(

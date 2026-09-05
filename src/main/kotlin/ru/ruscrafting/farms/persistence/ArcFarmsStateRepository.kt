@@ -207,6 +207,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
             state.stats.values.forEach(::validateStats)
             WorksiteEnterpriseLedger().replace(state.worksiteEnterprise ?: WorksiteEnterpriseSnapshot())
             WorksiteEnterpriseCapitalLedger().replace(state.worksiteEnterprise?.financing)
+            ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseParticipationLedger().replace(state.worksiteEnterprise?.participation)
             require(state.farmPerks.orEmpty().size <= 1_000_000) { "Farm perk ledgers are unbounded" }
             state.farmPerks.orEmpty().values.forEach { perks ->
                 require(perks.weekStartEpochDay >= 0 && perks.spentPoints >= 0) { "Farm perk ledger is invalid" }

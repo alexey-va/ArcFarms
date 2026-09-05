@@ -95,6 +95,7 @@ class ArcFarmsMenuPlatform(
         val ENTERPRISE_FARM = MenuId.of("enterprise-farm")
         val ENTERPRISE_SHARES = MenuId.of("enterprise-shares")
         val ENTERPRISE_CONFIRM = MenuId.of("enterprise-confirm")
+        val ENTERPRISE_PARTICIPATION = MenuId.of("enterprise-participation")
         val FARM_PERKS = MenuId.of("farm-perks")
 
         val BUY_OPTIONS = MenuRegionId.of("buy-options")
@@ -114,6 +115,7 @@ class ArcFarmsMenuPlatform(
                 requiredRegions = setOf(BUY_OPTIONS),
             ),
             ENTERPRISE_CONFIRM to MenuContract(requiredElements = ids("confirm", "back")),
+            ENTERPRISE_PARTICIPATION to MenuContract(requiredElements = ids("summary", "steady", "team", "challenge", "back")),
             FARM_PERKS to MenuContract(requiredElements = ids("balance"), requiredRegions = setOf(PERK_OFFERS)),
         )
 
@@ -141,6 +143,9 @@ class ArcFarmsMenuPlatform(
             "enterprise-report",
             "enterprise-workers",
             "enterprise-policy",
+            "enterprise-plan-steady",
+            "enterprise-plan-team",
+            "enterprise-plan-challenge",
             "enterprise-license",
             "enterprise-shares",
             "enterprise-market",

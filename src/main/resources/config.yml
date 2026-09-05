@@ -99,10 +99,10 @@ ui:
           header: {slot: 4, kind: decoration, template: enterprise-farm-header}
           report: {slot: 10, kind: decoration, template: enterprise-report}
           workers: {slot: 12, kind: decoration, template: enterprise-workers}
-          policy: {slot: 14, kind: decoration, template: enterprise-policy}
+          policy: {slot: 14, template: enterprise-policy}
           license: {slot: 16, kind: decoration, template: enterprise-license}
           shares: {slot: 28, template: enterprise-shares}
-          market: {slot: 30, kind: decoration, template: enterprise-market}
+          market: {slot: 30, template: enterprise-market}
           back: {slot: 36, template: back}
       enterprise-shares:
         schema-version: 1
@@ -116,6 +116,16 @@ ui:
           back: {slot: 36, template: back}
         regions:
           buy-options: {slots: [19, 20, 21, 22, 23, 24, 25]}
+      enterprise-participation:
+        schema-version: 1
+        rows: 3
+        background: {template: background}
+        elements:
+          summary: {slot: 4, kind: decoration, template: enterprise-report}
+          steady: {slot: 10, template: enterprise-plan-steady}
+          team: {slot: 12, template: enterprise-plan-team}
+          challenge: {slot: 14, template: enterprise-plan-challenge}
+          back: {slot: 18, template: back}
       enterprise-confirm:
         schema-version: 1
         rows: 3
@@ -156,6 +166,9 @@ ui:
       enterprise-report: {material: PAPER, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}
       enterprise-workers: {material: WHEAT, name: '<name>', lore: [{repeat: lore,
             text: '<line>'}]}
+      enterprise-plan-steady: {material: WHEAT, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}
+      enterprise-plan-team: {material: CHEST, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}
+      enterprise-plan-challenge: {material: GOLD_INGOT, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}
       enterprise-policy: {material: WRITABLE_BOOK, name: '<name>', lore: [{repeat: lore,
             text: '<line>'}]}
       enterprise-license: {material: BOOK, name: '<name>', lore: [{repeat: lore, text: '<line>'}]}

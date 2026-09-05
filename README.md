@@ -10,6 +10,35 @@ the objective pauses in place and resumes from the same shared progress when a
 player returns. Only a completed objective enters the short configured cooldown
 before the next one becomes available.
 
+
+## Enterprise participation
+
+Farm companies retain the existing prices and money sinks. This build adds a
+weekly choice of complete contract pools (small common, balanced, or rare),
+share-weighted voting with a 20% turnout quorum, and advisory ballots for recent
+workers. One confirmed ballot per player targets the next business week; ties
+and missing quorum keep the previous plan. Defaults preserve the original pool.
+
+Real completed farm orders advance permanent company milestones at 10, 25 and
+50 orders, including ordinary shifts after the commercial quota is exhausted.
+Workers can participate without buying shares. Personal contribution, pending
+premiums, estimated dividends and the next settlement are visible in the company
+menu. The customer scene displays project progress and a milestone badge.
+
+A LIVE license unlocks its gross envelope cumulatively across its business
+weeks, beginning with the first tranche immediately on activation. Unused
+capacity carries forward; accepted obligations retain their original terms.
+After expiry and all outstanding settlements, the remaining treasury is credited
+once to owners' investment accounts. Credits survive offline time. There is no
+forced offline sale, automatic renewal or secondary trading in this build.
+Existing SHADOW profiles remain simulations and never pay money.
+
+State owners: `domain/enterprise/WorksiteEnterpriseParticipation.kt`,
+`WorksiteEnterpriseCapital.kt`, and `paper/enterprise/WorksiteEnterpriseService.kt`.
+A failed ballot write suspends new ballots and policy application until a
+validated reload reconciles the durable snapshot. Verify with `./gradlew test
+shadowJar`; see the investment design for financial assumptions and limitations.
+
 ## Player flows
 
 ### Harvest shift

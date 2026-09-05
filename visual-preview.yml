@@ -111,6 +111,16 @@ placeholders:
   requirements: 'Пшеница × 24, Морковь × 12'
   remaining: 'Пшеница × 9, Морковь × 4'
   total: '10'
+  plan: 'Командный план'
+  stage: '2'
+  target: '50'
+  time: '07.09.2026 04:00 Europe/Moscow'
+  weeks: '8'
+  week: '07.09'
+  date: '07.09'
+  votes: '12'
+  contribution: '86'
+  percent: '50'
 
 surfaces:
   fragments:
@@ -216,13 +226,38 @@ surfaces:
       background-item: arc:background
       items:
         - {slot: 4, material: WHEAT, name: farms:companies.farm-detail.header.name, lore: [farms:companies.farm-detail.header.lore, preview:blank, farms:companies.card.shadow]}
-        - {slot: 10, material: PAPER, name: farms:companies.farm-detail.report.name, lore: [farms:companies.farm-detail.report.orders, farms:companies.farm-detail.report.contributors, farms:companies.farm-detail.report.gross, farms:companies.farm-detail.report.retained, preview:blank, farms:companies.farm-detail.report.projected]}
-        - {slot: 12, material: WHEAT, name: farms:companies.farm-detail.workers.name, lore: [farms:companies.farm-detail.workers.bonus, farms:companies.farm-detail.workers.accrued]}
-        - {slot: 14, material: WRITABLE_BOOK, name: farms:companies.farm-detail.policy.name, lore: [farms:companies.farm-detail.policy.operating, farms:companies.farm-detail.policy.dividend, farms:companies.farm-detail.policy.upkeep]}
-        - {slot: 16, material: BOOK, name: farms:companies.farm-detail.license.name, lore: [farms:companies.farm-detail.license.envelope, farms:companies.farm-detail.license.settled, farms:companies.farm-detail.license.reserved, farms:companies.farm-detail.license.available]}
+        - {slot: 10, material: PAPER, name: farms:companies.farm-detail.report.name, lore: [farms:companies.farm-detail.report.orders, farms:companies.farm-detail.report.contributors, farms:companies.farm-detail.report.gross, farms:companies.farm-detail.report.retained, preview:blank, farms:companies.farm-detail.report.projected, farms:companies.farm-detail.report.personal, farms:companies.farm-detail.report.settlement]}
+        - {slot: 12, material: WHEAT, name: farms:companies.farm-detail.workers.name, lore: [farms:companies.farm-detail.workers.bonus, farms:companies.farm-detail.workers.accrued, farms:companies.farm-detail.workers.personal-accrued, farms:companies.farm-detail.workers.projected, farms:companies.farm-detail.workers.available, farms:companies.farm-detail.workers.settlement, farms:companies.farm-detail.workers.contribution]}
+        - {slot: 14, material: WRITABLE_BOOK, name: farms:companies.farm-detail.policy.name, lore: [farms:companies.farm-detail.policy.operating, farms:companies.farm-detail.policy.dividend, farms:companies.farm-detail.policy.upkeep, preview:blank, farms:companies.farm-detail.policy.open]}
+        - {slot: 16, material: BOOK, name: farms:companies.farm-detail.license.name, lore: [farms:companies.farm-detail.license.envelope, farms:companies.farm-detail.license.settled, farms:companies.farm-detail.license.reserved, farms:companies.farm-detail.license.available, farms:companies.farm-detail.license.weeks, farms:companies.farm-detail.license.outcome]}
         - {slot: 28, material: EMERALD, name: farms:companies.farm-detail.shares.name, lore: farms:companies.farm-detail.shares.lore}
-        - {slot: 30, material: GOLD_INGOT, name: farms:companies.farm-detail.market.name, lore: farms:companies.farm-detail.market.lore}
+        - {slot: 30, material: GOLD_INGOT, name: farms:companies.farm-detail.market.name, lore: [farms:companies.farm-detail.market.lore, farms:companies.farm-detail.market.stage, farms:companies.farm-detail.market.orders, preview:blank, farms:companies.farm-detail.market.open]}
         - {slot: 36, material: BLUE_STAINED_GLASS_PANE, itemsadder: 'arc:left_gray', name: farms:companies.back.name, lore: [farms:companies.back.lore, preview:blank, farms:companies.back.click]}
+
+    - id: enterprise-participation
+      title: farms:companies.participation.title
+      rows: 3
+      filler: GRAY_STAINED_GLASS_PANE
+      background-item: arc:background
+      items:
+        - {slot: 4, material: PAPER, name: farms:companies.participation.summary-name, lore: [farms:companies.participation.summary, farms:companies.participation.voting, farms:companies.participation.quorum, farms:companies.participation.project-progress, farms:companies.participation.project-purpose]}
+        - {slot: 10, material: WHEAT, name: farms:companies.participation.steady.name, lore: [farms:companies.participation.steady.lore, farms:companies.participation.candidate, farms:companies.participation.eligibility, preview:blank, farms:companies.participation.vote-click]}
+        - {slot: 12, material: CHEST, name: farms:companies.participation.team.name, lore: [farms:companies.participation.team.lore, farms:companies.participation.candidate, farms:companies.participation.eligibility, farms:companies.participation.selected, preview:blank, farms:companies.participation.vote-click]}
+        - {slot: 14, material: GOLD_INGOT, name: farms:companies.participation.challenge.name, lore: [farms:companies.participation.challenge.lore, farms:companies.participation.candidate, farms:companies.participation.eligibility, preview:blank, farms:companies.participation.vote-click]}
+        - {slot: 18, material: BLUE_STAINED_GLASS_PANE, itemsadder: 'arc:left_gray', name: farms:companies.back.name, lore: [farms:companies.back.lore, preview:blank, farms:companies.back.click]}
+
+    - id: enterprise-confirmation
+      title: farms:companies.participation.confirm-title
+      rows: 3
+      filler: GRAY_STAINED_GLASS_PANE
+      background-item: arc:background
+      items:
+        - slot: 13
+          material: LIME_DYE
+          name: farms:companies.participation.confirm-name
+          lore: [farms:companies.participation.confirm-lore, farms:companies.participation.eligibility, preview:blank, farms:companies.participation.confirm-click]
+          placeholders: {plan: 'Командный план', week: '07.09', percent: '50'}
+        - {slot: 18, material: BLUE_STAINED_GLASS_PANE, itemsadder: 'arc:left_gray', name: farms:companies.back.name, lore: [farms:companies.back.lore, preview:blank, farms:companies.back.click]}
 
     - id: farm-company-funding
       extends: farm-company-shadow
@@ -275,6 +310,6 @@ surfaces:
           material: LIME_DYE
           amount: 5
           name: farms:companies.shares.confirm.name
-          lore: [farms:companies.shares.confirm.cost, farms:companies.shares.confirm.effect, preview:blank, farms:companies.shares.confirm.warning, preview:blank, farms:companies.shares.confirm.click]
+          lore: [farms:companies.shares.confirm.cost, farms:companies.shares.confirm.effect, preview:blank, farms:companies.shares.confirm.warning, farms:companies.shares.confirm.license, farms:companies.shares.confirm.risk, preview:blank, farms:companies.shares.confirm.click]
           placeholders: {shares: '5', amount: '250 000'}
         - {slot: 18, material: BLUE_STAINED_GLASS_PANE, itemsadder: 'arc:left_gray', name: farms:companies.back.name, lore: [farms:companies.back.lore, preview:blank, farms:companies.back.click]}

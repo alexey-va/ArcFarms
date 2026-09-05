@@ -19,10 +19,13 @@ import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseCapitalPhase
 import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseCompanyView
 import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseOwnershipView
+import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterprisePlayerView
 import ru.ruscrafting.farms.paper.enterprise.EnterpriseInvestmentActionResult
 import java.math.BigDecimal
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
+import java.time.Instant
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlin.math.ceil
@@ -34,6 +37,7 @@ internal class WorksiteEnterpriseMenu(
     private val settings: () -> ArcFarmsConfig,
     private val menus: ArcFarmsMenuPlatform,
     private val openRoot: (Player) -> Unit,
+    private val openParticipation: (Player) -> Unit = {},
 ) {
     fun openOverview(player: Player) {
         val current = settings()
@@ -79,8 +83,8 @@ internal class WorksiteEnterpriseMenu(
             openOverview(player)
             return
         }
-        val current = settings()
         val ownership = service.enterpriseOwnership(ActivityKind.FARM, player.uniqueId)
+        val playerView = service.enterprisePlayerView(player.uniqueId)
         menus.open(player, FARM_DETAIL, { openFarm(player) }) {
             val elements = linkedMapOf<MenuElementId, PaperMenuEntry>()
             elements[HEADER] = entry(item(
@@ -92,10 +96,12 @@ internal class WorksiteEnterpriseMenu(
                     companyStatus(player, ownership),
                 ),
             ), false)
-            elements[REPORT] = entry(reportItem(player, view), false)
-            elements[WORKERS] = entry(workersItem(player, view), false)
-            elements[POLICY] = entry(policyItem(player, view), false)
-            elements[LICENSE] = entry(licenseItem(player, view), false)
+            elements[REPORT] = entry(reportItem(player, view, playerView), false)
+            elements[WORKERS] = entry(workersItem(player, view, playerView), false)
+            elements[POLICY] = entry(policyItem(player, view), true) { context ->
+                service.deferInventoryTransition(player, context.session.inventory) { openParticipation(player) }
+            }
+            elements[LICENSE] = entry(licenseItem(player, view, playerView), false)
             val sharesLore = if (ownership == null) {
                 listOf(locale.render(MessageKey.COMPANY_SHARES_LORE, player))
             } else {
@@ -114,8 +120,10 @@ internal class WorksiteEnterpriseMenu(
             elements[MARKET] = entry(item(
                 FARM_DETAIL, MARKET,
                 locale.render(MessageKey.COMPANY_MARKET_NAME, player),
-                listOf(locale.render(MessageKey.COMPANY_MARKET_LORE, player)),
-            ), false)
+                projectLore(player, playerView),
+            ), true) { context ->
+                service.deferInventoryTransition(player, context.session.inventory) { openParticipation(player) }
+            }
             elements[BACK] = entry(backItem(player, FARM_DETAIL)) { context ->
                 service.deferInventoryTransition(player, context.session.inventory) { openOverview(player) }
             }
@@ -133,6 +141,7 @@ internal class WorksiteEnterpriseMenu(
             return
         }
         val current = settings()
+        val playerView = service.enterprisePlayerView(player.uniqueId)
         val elements = linkedMapOf<MenuElementId, PaperMenuEntry>()
         val statusLore = mutableListOf(
             locale.render(MessageKey.COMPANY_SHARES_STATUS_PHASE, player, mapOf("phase" to phase(player, view.phase))),
@@ -175,6 +184,10 @@ internal class WorksiteEnterpriseMenu(
             locale.render(MessageKey.COMPANY_SHARES_ACCOUNT_BALANCE, player, mapOf("amount" to money(view.accountBalanceCents))),
             locale.render(MessageKey.COMPANY_SHARES_ACCOUNT_AVAILABLE, player, mapOf("amount" to money(view.accountAvailableCents))),
         )
+        playerView?.let {
+            accountLore += locale.render(MessageKey.COMPANY_WORKERS_PROJECTED, player, mapOf("amount" to money(it.projectedDividendCents)))
+            accountLore += locale.render(MessageKey.COMPANY_WORKERS_SETTLEMENT, player, mapOf("time" to locale.text(settlementTime(it.nextSettlementMillis))))
+        }
         if (view.pendingManualReviewCount > 0) {
             accountLore += locale.render(
                 MessageKey.COMPANY_SHARES_ACCOUNT_REVIEW,
@@ -234,6 +247,12 @@ internal class WorksiteEnterpriseMenu(
                     ),
                     Component.empty(),
                     locale.render(MessageKey.COMPANY_SHARES_CONFIRM_WARNING, player),
+                    locale.render(
+                        MessageKey.COMPANY_SHARES_CONFIRM_LICENSE,
+                        player,
+                        mapOf("percent" to locale.text(current.enterprises.getValue(ActivityKind.FARM).capital.licenseBurnPercent)),
+                    ),
+                    locale.render(MessageKey.COMPANY_SHARES_CONFIRM_RISK, player),
                     Component.empty(),
                     locale.render(MessageKey.COMPANY_SHARES_CONFIRM_CLICK, player),
                 ),
@@ -407,32 +426,45 @@ internal class WorksiteEnterpriseMenu(
     private fun reportItem(
         player: Player,
         view: WorksiteEnterpriseCompanyView,
-    ): ItemStack = item(
-        FARM_DETAIL,
-        REPORT,
-        locale.render(MessageKey.COMPANY_REPORT_NAME, player),
-        listOf(
+        playerView: WorksiteEnterprisePlayerView?,
+    ): ItemStack {
+        val lore = mutableListOf(
             locale.render(MessageKey.COMPANY_REPORT_ORDERS, player, mapOf("orders" to locale.text(view.completedOrdersThisWeek))),
             locale.render(MessageKey.COMPANY_REPORT_CONTRIBUTORS, player, mapOf("workers" to locale.text(view.uniqueContributorsThisWeek))),
             locale.render(MessageKey.COMPANY_REPORT_GROSS, player, mapOf("amount" to money(view.grossRevenueThisWeekCents))),
             locale.render(MessageKey.COMPANY_REPORT_RETAINED, player, mapOf("amount" to money(view.retainedProfitThisWeekCents))),
             Component.empty(),
             locale.render(MessageKey.COMPANY_REPORT_PROJECTED, player, mapOf("amount" to money(view.projectedDividendPoolCents))),
-        ),
-    )
+        )
+        playerView?.let {
+            lore += locale.render(MessageKey.COMPANY_REPORT_PERSONAL, player, mapOf("amount" to money(it.projectedDividendCents)))
+            lore += locale.render(MessageKey.COMPANY_REPORT_SETTLEMENT, player, mapOf("time" to locale.text(settlementTime(it.nextSettlementMillis))))
+        }
+        return item(FARM_DETAIL, REPORT, locale.render(MessageKey.COMPANY_REPORT_NAME, player), lore)
+    }
 
     private fun workersItem(
         player: Player,
         view: WorksiteEnterpriseCompanyView,
-    ): ItemStack = item(
-        FARM_DETAIL,
-        WORKERS,
-        locale.render(MessageKey.COMPANY_WORKERS_NAME, player),
-        listOf(
+        playerView: WorksiteEnterprisePlayerView?,
+    ): ItemStack {
+        val lore = mutableListOf(
             locale.render(MessageKey.COMPANY_WORKERS_BONUS, player, mapOf("percent" to locale.text(view.workerBonusPercent))),
             locale.render(MessageKey.COMPANY_WORKERS_ACCRUED, player, mapOf("amount" to money(view.workerBonusThisWeekCents))),
-        ),
-    )
+        )
+        playerView?.let {
+            lore += locale.render(MessageKey.COMPANY_WORKERS_PERSONAL_ACCRUED, player, mapOf("amount" to money(it.workerAccruedCents)))
+            lore += locale.render(MessageKey.COMPANY_WORKERS_PROJECTED, player, mapOf("amount" to money(it.projectedDividendCents)))
+            lore += locale.render(MessageKey.COMPANY_WORKERS_AVAILABLE, player, mapOf("amount" to money(it.availableThisWeekCents)))
+            lore += locale.render(MessageKey.COMPANY_WORKERS_SETTLEMENT, player, mapOf("time" to locale.text(settlementTime(it.nextSettlementMillis))))
+            lore += locale.render(
+                MessageKey.COMPANY_WORKERS_CONTRIBUTION,
+                player,
+                mapOf("orders" to locale.text(it.completedOrders), "contribution" to locale.text(it.contribution)),
+            )
+        }
+        return item(FARM_DETAIL, WORKERS, locale.render(MessageKey.COMPANY_WORKERS_NAME, player), lore)
+    }
 
     private fun policyItem(
         player: Player,
@@ -445,12 +477,15 @@ internal class WorksiteEnterpriseMenu(
             locale.render(MessageKey.COMPANY_POLICY_OPERATING, player, mapOf("percent" to locale.text(view.operatingCostPercent))),
             locale.render(MessageKey.COMPANY_POLICY_DIVIDEND, player, mapOf("percent" to locale.text(view.dividendPercent))),
             locale.render(MessageKey.COMPANY_POLICY_UPKEEP, player, mapOf("amount" to money(view.weeklyUpkeepCents))),
+            Component.empty(),
+            locale.render(MessageKey.COMPANY_POLICY_OPEN, player),
         ),
     )
 
     private fun licenseItem(
         player: Player,
         view: WorksiteEnterpriseCompanyView,
+        playerView: WorksiteEnterprisePlayerView?,
     ): ItemStack = item(
         FARM_DETAIL,
         LICENSE,
@@ -460,8 +495,23 @@ internal class WorksiteEnterpriseMenu(
             locale.render(MessageKey.COMPANY_LICENSE_SETTLED, player, mapOf("amount" to money(view.settledGrossCents))),
             locale.render(MessageKey.COMPANY_LICENSE_RESERVED, player, mapOf("amount" to money(view.reservedGrossCents))),
             locale.render(MessageKey.COMPANY_LICENSE_AVAILABLE, player, mapOf("amount" to money(view.availableGrossCents))),
+            *(playerView?.let { listOf(locale.render(MessageKey.COMPANY_LICENSE_WEEKS, player, mapOf("weeks" to locale.text(it.licenseWeeksRemaining))), locale.render(MessageKey.COMPANY_LICENSE_OUTCOME, player)) } ?: emptyList()).toTypedArray(),
         ),
     )
+
+    private fun projectLore(player: Player, view: WorksiteEnterprisePlayerView?): List<Component> = listOfNotNull(
+        locale.render(MessageKey.COMPANY_MARKET_LORE, player),
+        view?.let { locale.render(MessageKey.COMPANY_MARKET_STAGE, player, mapOf("stage" to locale.text(it.projectStage))) },
+        view?.let { locale.render(MessageKey.COMPANY_MARKET_ORDERS, player, mapOf("orders" to locale.text(it.projectOrders), "target" to locale.text(it.projectTarget))) },
+        Component.empty(),
+        locale.render(MessageKey.COMPANY_MARKET_OPEN, player),
+    )
+
+    private fun settlementTime(millis: Long): String = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm z")
+        .withLocale(Locale.forLanguageTag(settings().defaultLocale))
+        .withZone(settings().enterprises.getValue(ActivityKind.FARM).businessWeek.zoneId)
+        .format(Instant.ofEpochMilli(millis))
+
 
     private fun backItem(player: Player, menu: MenuId): ItemStack =
         item(

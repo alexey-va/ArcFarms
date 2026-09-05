@@ -289,6 +289,19 @@ class WorksiteEnterpriseLedgerTest : FunSpec({
             )
         }
     }
+
+    test("paced reservation cap rolls forward and never removes an accepted reservation") {
+        val ledger = WorksiteEnterpriseLedger()
+        val policy = policy(ActivityKind.FARM, envelope = 1_000_000)
+
+        ledger.reserve(policy, order("farm_a", 1, 400_000), availableGrossLimitCents = 0)
+            .outcome shouldBe EnterpriseReservationOutcome.ENVELOPE_EXHAUSTED
+        ledger.reserve(policy, order("farm_a", 2, 400_000), availableGrossLimitCents = 500_000)
+            .outcome shouldBe EnterpriseReservationOutcome.RESERVED
+        ledger.reserve(policy, order("farm_a", 2, 400_000), availableGrossLimitCents = 0)
+            .outcome shouldBe EnterpriseReservationOutcome.ALREADY_RESERVED
+        ledger.hasReservation(ActivityKind.FARM, "farm_a", 2) shouldBe true
+    }
 })
 
 private fun policy(

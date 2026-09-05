@@ -61,6 +61,7 @@ internal class FarmShiftCoordinator(
     private val debug: ArcFarmsDebug,
     private val port: WorksiteAudiencePort,
     private val state: WorksiteStatePort,
+    private val tasks: ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort,
     private val stats: WorksiteStatsPort,
     private val network: WorksiteNetworkPort,
     private val carePlans: FarmCarePlanService,
@@ -644,7 +645,7 @@ internal class FarmShiftCoordinator(
         actionIncidents.clear(runtime, "shift_completed")
         tornado.clear(runtime)
         val contributors = runtime.state.contributors
-        enterprise.orderCompleted(runtime.settings.id, runtime.state.sequence, contributors, commercialEligible)
+        val enterpriseChanged = enterprise.orderCompleted(runtime.settings.id, runtime.state.sequence, contributors, commercialEligible)
         stats.recordCompletion(ActivityKind.FARM, contributors)
         rewards.queueCompletion(runtime, contributors)
         port.broadcast(
@@ -661,7 +662,23 @@ internal class FarmShiftCoordinator(
             actor?.name,
             players(runtime).mapTo(mutableSetOf(), Player::getUniqueId),
         )
-        state.persistAsync()
+        val personal = if (enterpriseChanged && commercialEligible) contributors.keys.mapNotNull { id ->
+            enterprise.playerView(id)?.let { id to it }
+        }.toMap() else emptyMap()
+        val token = tasks.lifecycleToken()
+        state.persistAsync().whenComplete { _, failure ->
+            if (failure == null && personal.isNotEmpty()) tasks.runSync(token) {
+                personal.forEach { (id, view) ->
+                    Bukkit.getPlayer(id)?.let { player ->
+                        val weekSettings = settings().enterprises.getValue(ActivityKind.FARM).businessWeek
+                        val date = java.time.Instant.ofEpochMilli(view.nextSettlementMillis).atZone(weekSettings.zoneId)
+                            .format(java.time.format.DateTimeFormatter.ofPattern("dd.MM HH:mm z"))
+                        port.sendChat(player, if (view.simulated) MessageKey.COMPANY_PERSONAL_SHADOW else MessageKey.COMPANY_PERSONAL_RESULT,
+                            mapOf("amount" to locale.text(java.math.BigDecimal.valueOf(view.workerAccruedCents, 2).toPlainString()), "date" to locale.text(date)))
+                    }
+                }
+            }
+        }
     }
 
     private fun seederInstructionPath(state: FarmShiftState): String = when (state.seederStage()) {
