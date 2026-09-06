@@ -23,10 +23,15 @@ class ArcFarmsMenu(
 ) : AutoCloseable {
     init { menus.configureDialogs(locale) }
     private val participationMenu: WorksiteEnterpriseParticipationMenu = WorksiteEnterpriseParticipationMenu(service, locale, settings, menus) { player -> enterpriseMenu.openCompany(player) }
-    private val enterpriseMenu: WorksiteEnterpriseMenu = WorksiteEnterpriseMenu(service, locale, settings, menus, ::open, participationMenu::open)
+    private val enterpriseMenu: WorksiteEnterpriseMenu = WorksiteEnterpriseMenu(service, locale, settings, menus, ::openView, participationMenu::open)
 
     fun open(player: Player) {
-        menus.open(player, MENU, { open(player) }) { content(player, menus.current()) }
+        menus.beginFlow(player)
+        openView(player)
+    }
+
+    private fun openView(player: Player) {
+        menus.open(player, MENU, { openView(player) }) { content(player, menus.current()) }
     }
 
     /** Enterprise screens still route through their holder until their dedicated controller is replaced. */

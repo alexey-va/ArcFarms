@@ -4,7 +4,7 @@ plugins {
     jacoco
 }
 group = "ru.ruscrafting"
-version = "0.35.0"
+version = "0.35.1"
 description = "Shared farm, lumbermill, and mine activities for RusCrafting"
 
 val integrationTestSourceSet = sourceSets.create("integrationTest") {
@@ -26,7 +26,7 @@ repositories {
 java { toolchain { languageVersion.set(JavaLanguageVersion.of(25)) } }
 kotlin { jvmToolchain(25) }
 
-val arcCoreVersion = "2.5.0"
+val arcCoreVersion = "2.7.4"
 
 dependencies {
     implementation(kotlin("stdlib"))
@@ -42,6 +42,7 @@ dependencies {
     compileOnly("com.sk89q.worldguard:worldguard-bukkit:7.0.16")
     compileOnly("com.sk89q.worldedit:worldedit-bukkit:7.3.18")
     compileOnly("me.clip:placeholderapi:2.12.3")
+    compileOnly("net.luckperms:api:5.5")
     compileOnly("com.github.retrooper:packetevents-spigot:2.12.1") {
         exclude(group = "io.netty")
     }
@@ -54,6 +55,7 @@ dependencies {
     testImplementation("io.mockk:mockk:1.14.7")
     testImplementation("ru.ruscrafting.arc:arc-core-paper-testing:$arcCoreVersion")
     testRuntimeOnly("me.clip:placeholderapi:2.12.3")
+    testRuntimeOnly("net.luckperms:api:5.5")
     testRuntimeOnly("com.github.MilkBowl:VaultAPI:1.7") {
         exclude(group = "org.bukkit", module = "bukkit")
     }

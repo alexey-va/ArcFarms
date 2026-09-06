@@ -13,7 +13,7 @@ import ru.arc.paper.menu.*
 
 /** The Help center's restrained palette and two-column native dialog composition. */
 internal object FarmDialogScreens {
-    fun screen(session: FarmMenuSession, config: PaperMenuConfiguration, text: (Player, String) -> Component): PaperDialogScreen {
+    fun screen(session: FarmMenuSession, config: PaperMenuConfiguration, text: (Player, String) -> Component, closeOnEscape: Boolean = false): PaperDialogScreen {
         val content = session.content()
         val layout = config.catalog.require(session.menuId)
         data class Row(val id: String, val slot: Int, val entry: FarmMenuEntry, val actionable: Boolean)
@@ -34,7 +34,7 @@ internal object FarmDialogScreens {
         val revision = session.revision
         fun button(id: String, name: Component, tooltip: Component = Component.empty(), action: () -> Unit) = PaperDialogButton(
             id = PaperDialogActionId.of(id.replace('-', '_')), label = recolor(name, ACTION),
-            tooltip = tooltip, width = 210, onClick = {
+            tooltip = tooltip, width = 230, onClick = {
                 if (session.platform.session(session.player) === session && session.revision == revision && !session.pending) {
                     session.revision++
                     val consumedRevision = session.revision
@@ -48,13 +48,11 @@ internal object FarmDialogScreens {
         )
         val detail = session.detailSlot?.let { slot -> rows.firstOrNull { it.slot == slot } }
         if (detail != null || session.showInformation) {
-            val back = button("detail_back", text(session.player, "back")) {
-                session.detailSlot = null; session.showInformation = false; session.platform.refresh(session)
-            }
             return PaperDialogScreen(
+                id = "farms.${session.menuId.value}.detail",
                 title = recolor(detail?.let { name(it.entry.item) } ?: text(session.player, "details"), TITLE),
-                body = if (detail != null) listOf(PaperDialogBody(join(lore(detail.entry.item)), 440)) else
-                    information.map { row -> PaperDialogBody(join(listOf(recolor(name(row.entry.item), TITLE)) + lore(row.entry.item)), 440) },
+                body = if (detail != null) listOf(PaperDialogBody(join(lore(detail.entry.item)), 468)) else
+                    information.map { row -> PaperDialogBody(join(listOf(recolor(name(row.entry.item), TITLE)) + lore(row.entry.item)), 468) },
                 buttons = buildList {
                     if (session.menuId == ArcFarmsMenuPlatform.FARM_PERKS && detail?.actionable == true) {
                         add(button("buy_perk", text(session.player, "buy-perk")) {
@@ -63,12 +61,12 @@ internal object FarmDialogScreens {
                             }
                         })
                     }
-                    add(back)
                 },
-                exitButton = button("detail_close", text(session.player, "close")) { session.close() }, columns = 1,
+                exitButton = button("detail_back", text(session.player, if (closeOnEscape) "close" else "back")) { session.close() }
+                    .copy(width = 200, label = recolor(text(session.player, if (closeOnEscape) "close" else "back"), MUTED)), columns = 1,
             )
         }
-        val body = mutableListOf(PaperDialogBody(text(session.player, "intro.${session.menuId.value}"), 440))
+        val body = mutableListOf(PaperDialogBody(text(session.player, "intro.${session.menuId.value}"), 468))
         val buttons = mutableListOf<PaperDialogButton>()
         var back: PaperDialogButton? = null
         rows.forEach { row ->
@@ -81,7 +79,7 @@ internal object FarmDialogScreens {
                     ArcFarmsMenuPlatform.ENTERPRISE_PARTICIPATION,
                 )) {
                 lines.firstOrNull { plain.serialize(it).isNotBlank() }?.let {
-                    body += PaperDialogBody(join(listOf(recolor(title, TITLE), it)), 440)
+                    body += PaperDialogBody(join(listOf(recolor(title, TITLE), it)), 468)
                 }
             }
             val dispatch = {
@@ -92,13 +90,14 @@ internal object FarmDialogScreens {
             when {
                 row in information -> Unit
                 row.id == "back" -> back = button("back", title, tooltip, dispatch)
+                    .copy(width = 200, label = recolor(title, MUTED))
                 row.id == "confirm" -> {
                     // Price, license loss and voting terms stay visible before the action.
-                    body += PaperDialogBody(join(listOf(recolor(title, TITLE)) + lines), 440)
+                    body += PaperDialogBody(join(listOf(recolor(title, TITLE)) + lines), 468)
                     if (row.actionable) buttons += button(row.id, title, tooltip, dispatch)
                 }
                 row.id in setOf("header", "summary", "balance", "order", "status", "holding", "account") ->
-                    body.add(PaperDialogBody(join(listOf(recolor(title, TITLE)) + lines), 440))
+                    body.add(PaperDialogBody(join(listOf(recolor(title, TITLE)) + lines), 468))
                 row.actionable -> buttons += button(row.id, title, tooltip) {
                     if (session.menuId == ArcFarmsMenuPlatform.FARM_PERKS) {
                         session.detailSlot = row.slot; session.platform.refresh(session)
@@ -113,18 +112,19 @@ internal object FarmDialogScreens {
             session.detailSlot = null; session.showInformation = true; session.platform.refresh(session)
         }
         if (back == null) {
-            back = button("close", text(session.player, "close")) { session.close() }
+            back = button("close", text(session.player, if (closeOnEscape) "close" else "back")) { session.close() }
+                .copy(width = 200, label = recolor(text(session.player, if (closeOnEscape) "close" else "back"), MUTED))
             if (session.menuId == ArcFarmsMenuPlatform.MAIN) {
                 buttons += button("help", text(session.player, "help")) {
                     session.platform.transition(session.player, session) {
-                        session.close(); session.player.performCommand("arc help")
+                        if (!session.platform.usesDialogs) session.close()
+                        session.player.performCommand("arc help")
                     }
                 }
             }
         }
-        // Multi-action requires at least one button even for an informational state.
-        if (buttons.isEmpty()) buttons += button("dismiss", text(session.player, "close")) { session.close() }
         return PaperDialogScreen(
+            id = "farms.${session.menuId.value}",
             title = recolor(content.title, TITLE), body = body,
             buttons = buttons, exitButton = back, columns = if (buttons.size == 1) 1 else 2,
         )
@@ -145,7 +145,7 @@ internal object FarmDialogScreens {
     }).children(value.children().map(::restyle))
     private val plain = PlainTextComponentSerializer.plainText()
     private val TITLE = TextColor.color(0xf4bd6a)
-    private val ACTION = TextColor.color(0x92bed8)
-    private val MUTED = TextColor.color(0x969696)
-    private val BODY = TextColor.color(0xe6fff3)
+    private val ACTION = TextColor.color(0xd7b486)
+    private val MUTED = TextColor.color(0xaaa49a)
+    private val BODY = TextColor.color(0xe8dfd2)
 }

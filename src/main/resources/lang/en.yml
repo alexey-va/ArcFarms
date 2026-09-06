@@ -1301,7 +1301,7 @@ phase:
 dialog:
   buy-perk: "<#92bed8>Buy upgrade"
   close: '<#969696>Close'
-  back: '<#969696>Back'
+  back: '<#aaa49a>‹ Back'
   help: '<#969696>Server main menu'
   details: '<#969696>Details'
   back-root: '<#969696>Back to activities'

@@ -53,6 +53,14 @@ class FarmMenuSession internal constructor(
 /** Paper's native dialog display is the only boundary replaced by MockBukkit tests. */
 interface FarmDialogDisplay : AutoCloseable {
     fun show(player: Player, screen: ru.arc.paper.menu.PaperDialogScreen)
+    fun show(
+        player: Player,
+        screen: ru.arc.paper.menu.PaperDialogScreen,
+        reopen: (() -> Unit)?,
+        onDismiss: () -> Unit,
+        closeOnEscape: Boolean,
+    ) = show(player, screen)
+    fun beginFlow(player: Player) = Unit
     fun close(player: Player)
     override fun close()
 }

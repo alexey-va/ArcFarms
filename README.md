@@ -51,7 +51,11 @@ descriptions are visible without hovering; the share balance stays on the
 purchase screen. Upgrade buttons show their full price and duration before a
 separate Buy action spends points. Back buttons name their destination. Confirmation terms stay visible
 in the body; informational cards open a detail screen. Back and Escape follow
-the exit action, and the root links to `arc help`.
+the actual visited screens, while a fresh `/arcfarms` command starts a new flow;
+the root keeps an explicit Close footer and links to `arc help`.
+
+Native dialogs use the shared ARC Core 2.7.4 runtime, including footer-only detail
+screens and runtime-owned history.
 
 `ui.menu-presentation: DIALOG` is the default. `INVENTORY` explicitly selects the
 previous presentation using the same content and actions. Native buttons are

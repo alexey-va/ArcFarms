@@ -5,6 +5,8 @@ import org.bukkit.entity.Player
 import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.plugin.Plugin
+import org.bukkit.Bukkit
+import net.luckperms.api.LuckPerms
 import ru.arc.config.Config
 import ru.arc.core.BukkitTaskScheduler
 import ru.arc.menu.MenuContract
@@ -35,6 +37,10 @@ import org.bukkit.event.inventory.InventoryOpenEvent
 class ArcFarmsMenuPlatform(
     private val plugin: Plugin,
     dialogDisplay: FarmDialogDisplay? = null,
+    private val escapeCloses: (Player) -> Boolean = { player ->
+        Bukkit.getServicesManager().load(LuckPerms::class.java)?.userManager?.getUser(player.uniqueId)
+            ?.cachedData?.metaData?.getMetaValue("arc-menu-escape") == "close"
+    },
 ) : AutoCloseable, Listener {
     private val items = PaperMenuItemFactory()
     private val runtime = PaperMenuRuntime(plugin, BukkitTaskScheduler(plugin), loadConfiguration(plugin.dataFolder.toPath()))
@@ -45,7 +51,17 @@ class ArcFarmsMenuPlatform(
         dialogDisplay ?: object : FarmDialogDisplay {
             private val delegate = PaperDialogRuntime(plugin)
             override fun show(player: Player, screen: ru.arc.paper.menu.PaperDialogScreen) = delegate.open(player, screen)
-            override fun close(player: Player) = player.closeDialog()
+            override fun show(
+                player: Player,
+                screen: ru.arc.paper.menu.PaperDialogScreen,
+                reopen: (() -> Unit)?,
+                onDismiss: () -> Unit,
+                closeOnEscape: Boolean,
+            ) = delegate.open(player, screen, reopen, onDismiss, closeOnEscape)
+            override fun beginFlow(player: Player) = delegate.beginFlow(player)
+            override fun close(player: Player) {
+                delegate.close(player)
+            }
             override fun close() = delegate.close()
         }
     }
@@ -83,7 +99,9 @@ class ArcFarmsMenuPlatform(
         reopenView: (() -> Unit)? = null,
         content: () -> FarmMenuContent,
     ): FarmMenuSession {
-        close(player)
+        val old = sessions.remove(player.uniqueId)
+        old?.revision = old.revision + 1
+        old?.delegate?.close()
         val session = FarmMenuSession(player, menu, this, content,
             reopenView ?: { if (player.isOnline) open(player, menu, content = content) })
         sessions[player.uniqueId] = session
@@ -114,8 +132,33 @@ class ArcFarmsMenuPlatform(
         if (session.delegate != null) session.delegate!!.requestRefresh()
         else {
             dialogsUsed = true
-            dialogs.show(session.player, FarmDialogScreens.screen(session, current(), dialogText))
+            val closeOnEscape = escapeCloses(session.player)
+            val screen = FarmDialogScreens.screen(session, current(), dialogText, closeOnEscape)
+            val reopen = when {
+                screen.id.endsWith(".detail") && screen.buttons.isEmpty() -> null
+                screen.id.endsWith(".detail") -> {
+                    { restoreDetail(session) }
+                }
+                else -> { { if (session.player.isOnline) session.reopen() } }
+            }
+            dialogs.show(
+                session.player,
+                screen,
+                reopen = reopen,
+                onDismiss = {
+                    if (sessions[session.player.uniqueId] === session) sessions.remove(session.player.uniqueId)
+                    session.pending = false
+                    session.revision++
+                },
+                closeOnEscape = closeOnEscape,
+            )
         }
+    }
+
+    private fun restoreDetail(session: FarmMenuSession) {
+        if (!session.player.isOnline) return
+        sessions[session.player.uniqueId] = session
+        refresh(session)
     }
 
     /** Main-thread transition guarded against reload, a replaced view and duplicate clicks. */
@@ -124,6 +167,15 @@ class ArcFarmsMenuPlatform(
         expected.pending = true
         val revision = expected.revision
         val epoch = generation
+        if (dialogMode) {
+            if (generation != epoch || session(player) !== expected || !player.isOnline || expected.revision != revision) {
+                expected.pending = false
+                return false
+            }
+            expected.pending = false
+            action()
+            return true
+        }
         tasks.runLater(1L) {
             if (generation != epoch || session(player) !== expected || !player.isOnline || expected.revision != revision) return@runLater
             expected.pending = false
@@ -135,7 +187,15 @@ class ArcFarmsMenuPlatform(
     fun close(player: Player) {
         val old = sessions.remove(player.uniqueId) ?: return
         old.revision++
-        old.delegate?.close() ?: if (dialogsUsed) dialogs.close(player) else Unit
+        old.delegate?.close() ?: dialogs.close(player)
+    }
+
+    /** Starts a new command/hotkey flow without closing the native surface mid-transition. */
+    fun beginFlow(player: Player) {
+        val old = sessions.remove(player.uniqueId)
+        old?.revision = old.revision + 1
+        old?.delegate?.close()
+        if (dialogMode) dialogs.beginFlow(player)
     }
 
     fun owns(event: InventoryClickEvent, menus: Set<MenuId>): Boolean {

@@ -5,6 +5,7 @@ import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.string.shouldContain
 import io.mockk.mockk
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import net.kyori.adventure.text.Component
 import org.bukkit.event.inventory.ClickType
 import org.bukkit.entity.Player
@@ -21,9 +22,11 @@ class FarmDialogScreensTest : FunSpec({
             val plugin = paper.createSimplePlugin("FarmDialogScreensTest")
             copyConfig(plugin)
             val capture = CapturingDialog()
-            val menus = ArcFarmsMenuPlatform(plugin, capture)
+            var preferenceCloses = false
+            val menus = ArcFarmsMenuPlatform(plugin, capture) { preferenceCloses }
             val player = paper.addPlayer("DialogFarmer")
             var dispatches = 0
+            menus.beginFlow(player)
             menus.open(player, ArcFarmsMenuPlatform.ENTERPRISE_CONFIRM) {
                 FarmMenuContent(
                     title = Component.text("Confirm"),
@@ -39,9 +42,11 @@ class FarmDialogScreensTest : FunSpec({
                     ),
                 )
             }
+            capture.beginFlows shouldBe 1
+            capture.closeOnEscape shouldBe false
             menus.session(player)!!.inventory shouldBe null
             capture.last!!.title.color()?.value() shouldBe 0xf4bd6a
-            capture.last!!.buttons.first().label.color()?.value() shouldBe 0x92bed8
+            capture.last!!.buttons.first().label.color()?.value() shouldBe 0xd7b486
             capture.last!!.body.joinToString(" ") { it.text.toString() } shouldContain "Price 100"
             val confirm = capture.last!!.buttons.first { it.id.value == "confirm" }
             val context = mockk<PaperDialogClickContext>(relaxed = true)
@@ -53,6 +58,10 @@ class FarmDialogScreensTest : FunSpec({
             menus.replace(menus.prepareReload())
             old.buttons.first { it.id.value == "confirm" }.onClick.handle(context)
             dispatches shouldBe 1
+
+            preferenceCloses = true
+            menus.open(player, ArcFarmsMenuPlatform.MAIN) { FarmMenuContent(title = Component.text("Main")) }
+            capture.closeOnEscape shouldBe true
         } finally {
             paper.close()
         }
@@ -70,9 +79,30 @@ class FarmDialogScreensTest : FunSpec({
             }
             var dispatched = 0
             menus.transition(player, session) { dispatched++ } shouldBe true
+            dispatched shouldBe 1
             menus.close(player)
             paper.server.scheduler.performTicks(2)
-            dispatched shouldBe 0
+            dispatched shouldBe 1
+        } finally {
+            paper.close()
+        }
+    }
+
+    test("native child restoration uses a fresh parent session without closing the dialog") {
+        val paper = MockBukkitTestRuntime.open()
+        try {
+            val plugin = paper.createSimplePlugin("FarmDialogHistoryTest")
+            copyConfig(plugin)
+            val capture = CapturingDialog()
+            val menus = ArcFarmsMenuPlatform(plugin, capture)
+            val player = paper.addPlayer("DialogHistory")
+            menus.open(player, ArcFarmsMenuPlatform.MAIN) { FarmMenuContent(title = Component.text("Root")) }
+            val root = menus.session(player)!!
+            menus.open(player, ArcFarmsMenuPlatform.ENTERPRISE_CONFIRM) { FarmMenuContent(title = Component.text("Child")) }
+            capture.reopens.first()!!.invoke()
+            menus.session(player)!!.menuId shouldBe ArcFarmsMenuPlatform.MAIN
+            menus.session(player) shouldNotBe root
+            capture.closeCalls shouldBe 0
         } finally {
             paper.close()
         }
@@ -100,12 +130,14 @@ class FarmDialogScreensTest : FunSpec({
             }
             capture.last!!.buttons.map { it.id.value } shouldContain "details"
             capture.last!!.buttons.first { it.id.value == "details" }.onClick.handle(mockk<PaperDialogClickContext>(relaxed = true))
-            capture.last!!.buttons.single().id.value shouldBe "detail_back"
+            capture.last!!.buttons shouldBe emptyList()
+            capture.last!!.exitButton!!.id.value shouldBe "detail_back"
+            capture.last!!.exitButton!!.width shouldBe 200
             listOf("Revenue 100", "Workers 4", "Plan steady", "12 weeks").forEach {
                 capture.last!!.bodyText() shouldContain it
             }
-            capture.last!!.buttons.single().onClick.handle(mockk<PaperDialogClickContext>(relaxed = true))
-            capture.last!!.buttons.map { it.id.value } shouldContain "details"
+            capture.last!!.exitButton!!.onClick.handle(mockk<PaperDialogClickContext>(relaxed = true))
+            menus.session(player) shouldBe null
         } finally {
             paper.close()
         }
@@ -136,7 +168,8 @@ class FarmDialogScreensTest : FunSpec({
             capture.last!!.bodyText() shouldContain "Balance 1,234¢"
             capture.last!!.buttons.map { it.id.value } shouldContain "info_withdraw"
             capture.last!!.buttons.first { it.id.value == "info_withdraw" }.onClick.handle(mockk<PaperDialogClickContext>(relaxed = true))
-            capture.last!!.exitButton!!.id.value shouldBe "detail_close"
+            capture.last!!.exitButton!!.id.value shouldBe "detail_back"
+            capture.last!!.exitButton!!.width shouldBe 200
             capture.last!!.exitButton!!.onClick.handle(mockk<PaperDialogClickContext>(relaxed = true))
             menus.session(player) shouldBe null
         } finally {
@@ -190,8 +223,24 @@ class FarmDialogScreensTest : FunSpec({
 
 private class CapturingDialog : FarmDialogDisplay {
     var last: PaperDialogScreen? = null
+    var beginFlows = 0
+    var closeOnEscape = false
+    var closeCalls = 0
+    val reopens = mutableListOf<(() -> Unit)?>()
     override fun show(player: Player, screen: PaperDialogScreen) { last = screen }
-    override fun close(player: Player) = Unit
+    override fun show(
+        player: Player,
+        screen: PaperDialogScreen,
+        reopen: (() -> Unit)?,
+        onDismiss: () -> Unit,
+        closeOnEscape: Boolean,
+    ) {
+        last = screen
+        this.closeOnEscape = closeOnEscape
+        reopens += reopen
+    }
+    override fun beginFlow(player: Player) { beginFlows++ }
+    override fun close(player: Player) { closeCalls++ }
     override fun close() = Unit
 }
 
