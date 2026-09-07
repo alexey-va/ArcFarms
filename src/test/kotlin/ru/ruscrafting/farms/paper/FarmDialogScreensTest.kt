@@ -83,8 +83,8 @@ class FarmDialogScreensTest : FunSpec({
             capture.beginFlows shouldBe 1
             capture.closeOnEscape shouldBe false
             menus.session(player)!!.inventory shouldBe null
-            capture.last!!.title.color()?.value() shouldBe 0xf4bd6a
-            capture.last!!.buttons.first().label.color()?.value() shouldBe 0xd7b486
+            capture.last!!.title.color()?.value() shouldBe 0xffb277
+            capture.last!!.buttons.first().label.color()?.value() shouldBe 0x9bd48d
             capture.last!!.body.joinToString(" ") { it.text.toString() } shouldContain "Price 100"
             val confirm = capture.last!!.buttons.first { it.id.value == "confirm" }
             val context = mockk<PaperDialogClickContext>(relaxed = true)

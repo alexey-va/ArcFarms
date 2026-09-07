@@ -24,6 +24,7 @@ data class FarmMenuEntry(
     val enabled: Boolean = true,
     val acceptedClicks: Set<ClickType> = setOf(ClickType.LEFT),
     val onClick: FarmMenuClickHandler = FarmMenuClickHandler {},
+    val selected: Boolean = false,
 )
 data class FarmMenuClickContext(val player: Player, val session: FarmMenuSession, val slot: Int)
 

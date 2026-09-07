@@ -49,7 +49,7 @@ internal class WorksiteEnterpriseParticipationMenu(
                 elements[id(key)] = entry(menus.item(MENU, id(key), text(player, "$key.name"), lore),
                     enabled = canSubmit, acceptedClicks = setOf(ClickType.LEFT)) { context ->
                     menus.transition(player, context.session) { confirm(player, plan, week) }
-                }
+                }.copy(selected = plan == view.targetPlan)
             }
             elements[id("back")] = backEntry(player, MENU, back)
             FarmMenuContent(title = text(player, "title"), background = menus.background(MENU), elements = elements)
