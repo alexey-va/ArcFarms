@@ -1,11 +1,11 @@
 import { test, expect } from '@drownek/plugwright';
 
-test('worksite menu opens and routes a disabled farm to exact zone feedback', async ({ player }) => {
+test('worksite menu opens and routes a disabled lumbermill to exact zone feedback', async ({ player }) => {
   player.chat('/arcfarms');
   const main = await player.gui({ title: /Choose an activity|Выберите занятие/ });
-  const farm = main.locator((item) => item.slot === 2);
-  await expect(farm).toHaveLore('Access to this worksite is locked.');
-  await farm.click();
+  const lumbermill = main.locator((item) => item.slot === 4);
+  await expect(lumbermill).toHaveLore('Access to this worksite is locked.');
+  await lumbermill.click();
   await player.gui({ title: /Choose an activity|Выберите занятие/ });
 });
 

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "routes": {
+    "communal_farm": {
+      "points": [
+        {"world": "world", "x": 120.5, "y": -60.0, "z": 0.5, "yaw": -90.0, "pitch": 0.0},
+        {"world": "world", "x": 128.5, "y": -60.0, "z": 0.5, "yaw": -90.0, "pitch": 0.0},
+        {"world": "world", "x": 136.5, "y": -60.0, "z": 0.5, "yaw": -90.0, "pitch": 0.0}
+      ]
+    }
+  }
+}
