@@ -14,9 +14,14 @@ async function state() {
 }
 
 async function phase(expected, signal) {
-  await waitUntil(async () => (await state()).farms?.communal_farm?.phase === expected, {
-    signal, timeout: 20000, message: `Farm must durably enter ${expected}`,
-  });
+  try {
+    await waitUntil(async () => (await state()).farms?.communal_farm?.phase === expected, {
+      signal, timeout: 20000, message: `Farm must durably enter ${expected}`,
+    });
+  } catch (error) {
+    console.error('Persisted farm at failed phase:', JSON.stringify((await state()).farms?.communal_farm));
+    throw error;
+  }
   return (await state()).farms.communal_farm;
 }
 
@@ -88,6 +93,7 @@ test('ordinary farm work reaches mounted delivery, rewards once and survives rej
   } finally {
     player.bot.clearControlStates();
   }
+  await command(server, player, [`minecraft:data get entity ${player.username} Pos`]);
   const route = await phase('INCIDENT', signal);
   assert.equal(route.incidentType, 'FOOD_DELIVERY');
   assert.deepEqual(route.deliveredCrates, [0]);

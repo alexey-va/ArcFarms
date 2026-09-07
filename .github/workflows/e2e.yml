@@ -53,3 +53,5 @@ jobs:
             build/plugwright-e2e.log
             build/plugwright/logs/
             build/plugwright/crash-reports/
+            build/plugwright/plugins/ArcFarms/config.yml
+            build/plugwright/plugins/ArcFarms/data/state.json

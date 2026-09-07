@@ -129,6 +129,7 @@ plugwright {
                 .replace("default: ru", "default: en")
                 .replace("use-client-locale: true", "use-client-locale: false")
                 .replace("particles: true", "particles: false")
+                .replace("debug:\n  enabled: false", "debug:\n  enabled: true")
                 .replace("world: sp11", "world: world")
                 .replace("preparation-patch-size: 100", "preparation-patch-size: 1")
                 .replace("preparation-patch-max-size: 256", "preparation-patch-max-size: 1")
