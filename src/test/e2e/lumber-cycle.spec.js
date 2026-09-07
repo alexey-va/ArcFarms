@@ -52,6 +52,12 @@ test('lumber shift resolves three incidents, restores a dropped lease and reward
     await waitUntil(() => player.bot.blockAt(target), { signal });
     await player.bot.activateBlock(player.bot.blockAt(target));
   };
+  const fell = async target => {
+    await waitUntil(() => player.bot.blockAt(target)?.name === 'oak_log', {
+      signal, message: 'Client must receive the indexed log after teleport',
+    });
+    await player.bot.dig(player.bot.blockAt(target));
+  };
   const targetEntity = target => Object.values(player.bot.entities).find(entity =>
     entity.name === 'interaction' && entity.position.distanceTo(
       position(target.position.x + 0.5, target.position.y, target.position.z + 0.5),
@@ -75,13 +81,13 @@ test('lumber shift resolves three incidents, restores a dropped lease and reward
   // One explicit tick covers this bounded map; the regular ticker may already have completed it.
   player.chat('/arcfarms admin worksite lumber communal_lumbermill reindex tick');
   await expect(player).toHaveReceivedMessage(/Index lumber:communal_lumbermill:.*blocks,.*targets/);
-  await player.bot.dig(player.bot.blockAt(position(200, -60, 2)));
+  await fell(position(200, -60, 2));
   const first = await reaches(s => s?.phase === 'FELLING' && s.felled === 1, 'First indexed log must start the shift', signal);
   assert.equal(first.sequence, 1);
   assert.deepEqual(first.incidentSchedule, ['SAW_JAM', 'CONVEYOR_BREAKDOWN', 'RUSH_ORDER']);
   const remaining = first.objective.targets.find(target => target.status === 'AVAILABLE');
   await player.teleport(remaining.position.x - 1.5, -60, remaining.position.z + 0.5);
-  await player.bot.dig(player.bot.blockAt(position(remaining.position.x, remaining.position.y, remaining.position.z)));
+  await fell(position(remaining.position.x, remaining.position.y, remaining.position.z));
   const skid = await reaches(s => s.phase === 'SKIDDING', 'Felling quota must create physical bundles', signal);
   assert.equal(skid.felled, 2);
   const bundle = skid.objective.targets.find(target => target.status === 'AVAILABLE');
