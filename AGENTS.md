@@ -12,7 +12,9 @@ activities: farm, lumbermill, and mine.
 - Use the pinned public `arc-core` release by default; opt into a local
   composite only with `-ParcCoreDir=/absolute/path/to/arc-core`. ArcFarms owns
   its Redis profile and protocol; do not import
-  ARC configuration or add ARC API/path compatibility.
+  ARC configuration or add ARC config/path compatibility. The owner-authorized
+  exception is optional ARC economy/product telemetry through narrow reflective
+  bridges and `softdepend: ARC`; missing telemetry never affects gameplay.
 - Keep shift state machines and persistence DTOs independent of Bukkit.
 - Use `Tasks.scheduler`; never schedule gameplay directly through Bukkit.
   `ArcFarmsService` callbacks additionally belong to `RuntimeTaskSupervisor`:

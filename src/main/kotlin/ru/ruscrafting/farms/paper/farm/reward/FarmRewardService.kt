@@ -16,6 +16,8 @@ import ru.ruscrafting.farms.domain.FarmRewardPlanner
 import ru.ruscrafting.farms.domain.FarmRewardRecipient
 import ru.ruscrafting.farms.domain.PendingFarmReward
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
+import ru.ruscrafting.farms.paper.ArcEconomyAuditBridge
+import ru.ruscrafting.farms.paper.ArcProductTelemetryBridge
 import ru.ruscrafting.farms.paper.FarmEconomyGateway
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
@@ -215,11 +217,22 @@ internal class FarmRewardService(
 
     private fun deliverClaimed(player: Player, reward: PendingFarmReward) {
         if (reward.experience > 0) player.giveExp(reward.experience)
-        val moneySuccess = reward.moneyCents == 0L || runCatching {
-            economy.deposit(player, reward.moneyCents / 100.0)
-        }.onFailure { failure ->
-            plugin.logger.log(Level.SEVERE, "Farm reward ${reward.id} economy provider failed", failure)
-        }.getOrDefault(false)
+        val moneySuccess = if (reward.moneyCents == 0L) {
+            true
+        } else {
+            val auditToken = ArcEconomyAuditBridge.mark(
+                player.uniqueId,
+                reward.moneyCents / 100.0,
+                reward.id,
+            )
+            val deposited = runCatching {
+                economy.deposit(player, reward.moneyCents / 100.0)
+            }.onFailure { failure ->
+                plugin.logger.log(Level.SEVERE, "Farm reward ${reward.id} economy provider failed", failure)
+            }.getOrDefault(false)
+            if (!deposited) ArcEconomyAuditBridge.cancel(player.uniqueId, auditToken)
+            deposited
+        }
         if (!moneySuccess) plugin.logger.severe("Farm reward ${reward.id} could not deposit ${reward.moneyCents} cents")
 
         var overflow = false
@@ -307,6 +320,9 @@ internal class FarmRewardService(
             "commands" to reward.commands.size,
             "overflow" to overflow,
         )
+        if (moneySuccess && successfulCommands == reward.commands.size) {
+            ArcProductTelemetryBridge.rewardClaimed(player.uniqueId, reward.id)
+        }
     }
 
     private fun fixedRewardItems(reward: PendingFarmReward): List<FarmRewardItem> {
