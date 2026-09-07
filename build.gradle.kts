@@ -121,6 +121,7 @@ plugwright {
     writeFiles {
         file("server.properties", projectDir.resolve("src/test/e2e/fixtures/server.properties"))
         file("plugins/ArcFarms/data/farm-routes.json", projectDir.resolve("src/test/e2e/fixtures/farm-routes.json"))
+        file("plugins/ArcFarms/data/farm-locations.json", projectDir.resolve("src/test/e2e/fixtures/farm-locations.json"))
         file(
             "plugins/ArcFarms/config.yml",
             projectDir.resolve("src/main/resources/config.yml").readText()

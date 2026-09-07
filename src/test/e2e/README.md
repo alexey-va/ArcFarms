@@ -13,6 +13,8 @@ care, harvesting, carrying a crate on foot, and mounted food delivery. It
 checks persisted phase transitions, consumed crops, one completion, the default
 100 experience reward, and no repeated reward after rejoining. The fixture
 uses one crop and a short route; growth is accelerated with a world command.
+Its receiving point uses the normal saved-point override, so procedural care
+placement cannot move the delivery destination away from the test map.
 Mineflayer lacks horse physics, so the mounted part sends normal client vehicle
 movement packets while Paper validates the rider and route.
 

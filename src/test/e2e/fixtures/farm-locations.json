@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "zones": {
+    "communal_farm": {
+      "RECEIVING": {"world": "world", "x": 116.5, "y": -60.0, "z": 0.5, "yaw": 0.0, "pitch": 0.0}
+    }
+  }
+}
