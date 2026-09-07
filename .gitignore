@@ -1,4 +1,5 @@
 .gradle/
+src/test/e2e/node_modules/
 .kotlin/
 build/
 docs/evidence/mine-cart-grounding.json

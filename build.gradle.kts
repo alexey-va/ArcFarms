@@ -1,6 +1,7 @@
 plugins {
     kotlin("jvm") version "2.3.0"
     id("com.gradleup.shadow") version "9.3.0"
+    id("io.github.drownek.plugwright") version "2.0.4"
     jacoco
 }
 group = "ru.ruscrafting"
@@ -106,4 +107,37 @@ tasks {
         exclude("io/papermc/**")
     }
     check { dependsOn(shadowJar, "integrationTest") }
+}
+
+// Real Paper coverage for the player-facing worksite entry journey.
+plugwright {
+    minecraftVersion.set("1.21.11")
+    runDir.set(layout.buildDirectory.dir("plugwright"))
+    testsDir.set(layout.projectDirectory.dir("src/test/e2e"))
+    downloadNode.set(true)
+    nodeVersion.set("22.14.0")
+    acceptEula.set(true)
+    jvmArgs.set(listOf("-Xms512M", "-Xmx2G", "-XX:ActiveProcessorCount=2"))
+    writeFiles {
+        file("server.properties", projectDir.resolve("src/test/e2e/fixtures/server.properties"))
+        file(
+            "plugins/ArcFarms/config.yml",
+            projectDir.resolve("src/main/resources/config.yml").readText()
+                .replace("network:\n  enabled: true", "network:\n  enabled: false")
+                .replace("menu-presentation: DIALOG", "menu-presentation: INVENTORY")
+                .replace("world: sp11", "world: world")
+                .replace("farm-zones:\n  communal_farm:\n    enabled: true", "farm-zones:\n  communal_farm:\n    enabled: false")
+                .replace("lumber-zones:\n  communal_lumbermill:\n    enabled: true", "lumber-zones:\n  communal_lumbermill:\n    enabled: false")
+                .replace("mine-zones:\n  old_shafts:\n    enabled: true", "mine-zones:\n  old_shafts:\n    enabled: false")
+                .replace("region: farm", "bounds:\n      min: [-8, 63, -8]\n      max: [8, 80, 8]")
+                .replace("region: spawn_lumbermill", "bounds:\n      min: [-8, 63, -8]\n      max: [8, 80, 8]")
+                .replace("station-region: spawn_lumberhouse", "station-bounds:\n      min: [-8, 63, -8]\n      max: [8, 80, 8]")
+                .replace("region: mine1", "bounds:\n      min: [-8, 20, -8]\n      max: [8, 80, 8]")
+                .replace("region: mine2", "bounds:\n      min: [-8, 20, -8]\n      max: [8, 80, 8]")
+                .replace("region: mine3", "bounds:\n      min: [-8, 20, -8]\n      max: [8, 80, 8]")
+                .replace("region: mine4", "bounds:\n      min: [-8, 20, -8]\n      max: [8, 80, 8]")
+                .replace(Regex("region: [^\\n]+"), "bounds:\n      min: [-8, 20, -8]\n      max: [8, 80, 8]")
+                .replace(Regex("station-region: [^\\n]+"), "station-bounds:\n      min: [-8, 20, -8]\n      max: [8, 80, 8]"),
+        )
+    }
 }
