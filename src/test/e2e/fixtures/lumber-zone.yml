@@ -4,7 +4,7 @@ lumber-zones:
     engine-version: 2
     world: world
     bounds: {min: [192, -60, -8], max: [223, -58, 8]}
-    station-bounds: {min: [224, -60, -2], max: [232, -58, 8]}
+    station-bounds: {min: [224, -61, -2], max: [232, -58, 8]}
     permission: arcfarms.lumber
     felling-quota: 2
     processing-quota: 1
@@ -28,4 +28,3 @@ lumber-zones:
         species: [OAK]
         phases: {felling-required: 2, skidding-required: 1, sawing-required: 2, stacking-required: 1}
         incidents: [SAW_JAM, CONVEYOR_BREAKDOWN, RUSH_ORDER]
-
