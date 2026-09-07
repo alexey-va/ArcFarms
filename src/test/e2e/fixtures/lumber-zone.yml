@@ -1,0 +1,31 @@
+lumber-zones:
+  communal_lumbermill:
+    enabled: true
+    engine-version: 2
+    world: world
+    bounds: {min: [192, -60, -8], max: [223, -58, 8]}
+    station-bounds: {min: [224, -60, -2], max: [232, -58, 8]}
+    permission: arcfarms.lumber
+    felling-quota: 2
+    processing-quota: 1
+    processing-per-use: 1
+    species: [OAK]
+    station-materials: [STONECUTTER, GRINDSTONE, SMITHING_TABLE, LOOM]
+    target-multiplier: 2
+    incident-count-min: 3
+    incident-count-max: 3
+    recovery-seconds: 90
+    rewards:
+      experience: {amount: 180, chance-percent: 100}
+      items:
+        timber: {material: OAK_LOG, amount: 6, chance-percent: 100}
+    orders:
+      forest_supply:
+        species: [OAK]
+        phases: {felling-required: 2, skidding-required: 1, sawing-required: 2, stacking-required: 1}
+        incidents: [SAW_JAM, CONVEYOR_BREAKDOWN, RUSH_ORDER]
+      workshop_contract:
+        species: [OAK]
+        phases: {felling-required: 2, skidding-required: 1, sawing-required: 2, stacking-required: 1}
+        incidents: [SAW_JAM, CONVEYOR_BREAKDOWN, RUSH_ORDER]
+

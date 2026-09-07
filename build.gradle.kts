@@ -146,7 +146,10 @@ plugwright {
                 .replace(Regex("x: 212\\.5, y: 49\\.0, z: [0-9.]+"), "x: 112.5, y: -60.0, z: 10.5")
                 .replace("x: 201.65\n      y: 49.0\n      z: 453.46", "x: 116.5\n      y: -60.0\n      z: 0.5")
                 .replace("checkpoint-radius: 8.0", "checkpoint-radius: 2.0")
-                .replace("lumber-zones:\n  communal_lumbermill:\n    enabled: true", "lumber-zones:\n  communal_lumbermill:\n    enabled: false")
+                .replace(
+                    Regex("(?s)lumber-zones:.*?(?=mine-zones:)"),
+                    projectDir.resolve("src/test/e2e/fixtures/lumber-zone.yml").readText(),
+                )
                 .replace("mine-zones:\n  old_shafts:\n    enabled: true", "mine-zones:\n  old_shafts:\n    enabled: false")
                 .replace("region: farm", "bounds:\n      min: [96, -64, -16]\n      max: [128, -40, 16]")
                 .replace("region: spawn_lumbermill", "bounds:\n      min: [-8, 63, -8]\n      max: [8, 80, 8]")
