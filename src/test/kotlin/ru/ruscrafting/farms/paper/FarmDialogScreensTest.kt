@@ -36,17 +36,19 @@ class FarmDialogScreensTest : FunSpec({
                 title = Component.text("Activities"),
                 elements = mapOf(
                     MenuElementId.of("back") to FarmMenuEntry(
-                        menus.item(ArcFarmsMenuPlatform.ENTERPRISE_CONFIRM, MenuElementId.of("back"), Component.text("Back to activities"), emptyList()),
+                        menus.item(ArcFarmsMenuPlatform.ENTERPRISE_CONFIRM, MenuElementId.of("back"), Component.text("Back to activities"), listOf(Component.text("Return to the previous screen."))),
                     ),
                 ),
             )
 
             menus.open(player, ArcFarmsMenuPlatform.ENTERPRISE_CONFIRM, content = ::content)
             PlainTextComponentSerializer.plainText().serialize(capture.last!!.exitButton!!.label) shouldBe "Back to activities"
+            PlainTextComponentSerializer.plainText().serialize(capture.last!!.exitButton!!.tooltip) shouldBe "Return to the previous screen."
 
             closePreference = true
             menus.open(player, ArcFarmsMenuPlatform.ENTERPRISE_CONFIRM, content = ::content)
             PlainTextComponentSerializer.plainText().serialize(capture.last!!.exitButton!!.label) shouldBe "close"
+            capture.last!!.exitButton!!.tooltip shouldBe Component.empty()
         } finally {
             paper.close()
         }

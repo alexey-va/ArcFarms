@@ -90,7 +90,11 @@ internal object FarmDialogScreens {
             when {
                 row in information -> Unit
                 row.id == "back" -> back = button("back", title, tooltip, dispatch)
-                    .copy(width = 200, label = recolor(if (closeOnEscape) text(session.player, "close") else title, MUTED))
+                    .copy(
+                        width = 200,
+                        label = recolor(if (closeOnEscape) text(session.player, "close") else title, MUTED),
+                        tooltip = if (closeOnEscape) Component.empty() else tooltip,
+                    )
                 row.id == "confirm" -> {
                     // Price, license loss and voting terms stay visible before the action.
                     body += PaperDialogBody(join(listOf(recolor(title, TITLE)) + lines), 468)
