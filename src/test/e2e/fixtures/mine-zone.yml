@@ -1,0 +1,31 @@
+mine-zones:
+  old_shafts:
+    enabled: true
+    engine-version: 2
+    world: world
+    bounds: {min: [300, -60, 0], max: [312, -57, 10]}
+    permission: arcfarms.e2e.mine
+    cart-quota: 2
+    hazard-trigger: 1
+    supports-required: 1
+    restore-seconds: 60
+    materials: [IRON_ORE:1]
+    temp-material: COBBLESTONE
+    base-material: STONE
+    target-multiplier: 2
+    incident-count-min: 3
+    incident-count-max: 3
+    rewards:
+      experience: {amount: 220, chance-percent: 100}
+      items:
+        iron: {material: IRON_INGOT, amount: 4, chance-percent: 100}
+    orders:
+      deep_ore:
+        phases: {prospecting-required: 1, mining-required: 2, loading-required: 1}
+        incidents: [CAVE_IN, GAS_LEAK, TRACK_DAMAGE]
+  sand_quarry:
+    enabled: false
+  infernal_working:
+    enabled: false
+  lush_depths:
+    enabled: false

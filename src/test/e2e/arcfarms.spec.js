@@ -1,6 +1,6 @@
 import { test, expect } from '@drownek/plugwright';
 
-test('worksite menu opens and routes a disabled mine to exact zone feedback', async ({ player }) => {
+test('worksite menu keeps a mine without permission locked', async ({ player }) => {
   player.chat('/arcfarms');
   const main = await player.gui({ title: /Choose an activity|Выберите занятие/ });
   const mine = main.locator((item) => item.slot === 6);
