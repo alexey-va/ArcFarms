@@ -10,6 +10,7 @@ import io.mockk.verify
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.Bukkit
 import org.bukkit.event.inventory.ClickType
 import org.bukkit.event.inventory.InventoryType
@@ -21,6 +22,36 @@ import ru.arc.paper.testing.MockBukkitTestRuntime
 import java.nio.file.Files
 
 class FarmDialogScreensTest : FunSpec({
+    test("native footer uses Close when escape closes and keeps Back otherwise") {
+        val paper = MockBukkitTestRuntime.open()
+        try {
+            val plugin = paper.createSimplePlugin("FarmDialogFooterLabelTest")
+            copyConfig(plugin)
+            val capture = CapturingDialog()
+            var closePreference = false
+            val menus = ArcFarmsMenuPlatform(plugin, capture, escapeCloses = { closePreference })
+            menus.dialogText = { _, key -> Component.text(key) }
+            val player = paper.addPlayer("DialogFooter")
+            fun content() = FarmMenuContent(
+                title = Component.text("Activities"),
+                elements = mapOf(
+                    MenuElementId.of("back") to FarmMenuEntry(
+                        menus.item(ArcFarmsMenuPlatform.ENTERPRISE_CONFIRM, MenuElementId.of("back"), Component.text("Back to activities"), emptyList()),
+                    ),
+                ),
+            )
+
+            menus.open(player, ArcFarmsMenuPlatform.ENTERPRISE_CONFIRM, content = ::content)
+            PlainTextComponentSerializer.plainText().serialize(capture.last!!.exitButton!!.label) shouldBe "Back to activities"
+
+            closePreference = true
+            menus.open(player, ArcFarmsMenuPlatform.ENTERPRISE_CONFIRM, content = ::content)
+            PlainTextComponentSerializer.plainText().serialize(capture.last!!.exitButton!!.label) shouldBe "close"
+        } finally {
+            paper.close()
+        }
+    }
+
     test("default DIALOG shows confirmation terms and dispatches an action only once") {
         val paper = MockBukkitTestRuntime.open()
         try {
