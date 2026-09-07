@@ -1529,7 +1529,7 @@ class ArcFarmsConfigTest : FunSpec({
         val settings = ArcFarmsConfig.inspect(root)
 
         settings.serverId shouldBe "lab"
-        settings.network.allowedOrigins shouldBe setOf("lab", "lab2")
+        settings.network.allowedOrigins shouldBe setOf("lab")
         settings.network.playerAnnouncementsEnabled shouldBe false
         settings.debug.enabled shouldBe true
         settings.destinations.getValue("farm").server shouldBe "lab"

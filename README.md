@@ -598,12 +598,14 @@ manifest targets Paper 1.21.11.
 ## Build
 
 ```bash
-./gradlew test shadowJar
+./gradlew shadowJar
 ```
 
-This is the developer-workstation lane. Do not run `check`, Testcontainers,
-or containerized integration tests locally. Platform and integration acceptance
-uses the leased `./scripts/mc lab` workflow described in `AGENTS.md`.
+This is the fast developer-workstation lane. For a focused change, run the
+relevant unit test explicitly, for example
+`./gradlew test --tests '*WorksiteLifecycleContractTest' shadowJar`. Full `clean check shadowJar`
+verification, Testcontainers, and platform acceptance are opt-in; the leased
+`./scripts/mc lab` workflow is described in `AGENTS.md`.
 
 The deployable artifact is `build/libs/ArcFarms-0.25.0.jar`.
 

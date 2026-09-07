@@ -175,9 +175,10 @@ activities: farm, lumbermill, and mine.
   Redis owns the short-lived handoff ticket; Paper uses the BungeeCord plugin
   messaging channel only for the backend switch.
 - Player-facing network announcements are disabled by default.
-- On a developer workstation run `./gradlew test shadowJar`; never run
-  `check`, containerized integration tests, or Testcontainers there. Platform
-  and integration acceptance belongs to the leased `./scripts/mc lab`
-  workflow. Set
-  `RUSCRAFTING_OPS_ROOT=/absolute/path/to/ruscrafting-ops` to include tests
-  that verify tracked runtime profiles.
+- On a developer workstation run `./gradlew shadowJar`. Run a focused unit test
+  with `./gradlew test --tests '<fully-qualified-test-pattern>' shadowJar` when
+  the change needs it. Full `clean check shadowJar` verification, including
+  containerized integration tests, is opt-in; platform acceptance belongs to
+  the explicitly requested `./scripts/mc lab` workflow. Set
+  `RUSCRAFTING_OPS_ROOT=/absolute/path/to/ruscrafting-ops` only when checking
+  tracked runtime profiles.
