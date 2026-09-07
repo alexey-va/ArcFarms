@@ -11,7 +11,7 @@ mine-zones:
     restore-seconds: 60
     materials: [IRON_ORE:1]
     temp-material: COBBLESTONE
-    base-material: STONE
+    base-material: IRON_ORE
     target-multiplier: 2
     incident-count-min: 3
     incident-count-max: 3

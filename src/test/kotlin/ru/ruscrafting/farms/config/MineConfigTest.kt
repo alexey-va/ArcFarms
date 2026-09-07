@@ -4,8 +4,28 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import ru.ruscrafting.farms.domain.MineIncidentType
+import java.nio.file.Files
+import java.nio.file.Path
 
 class MineConfigTest : FunSpec({
+    test("real Paper mine fixture passes the native configuration contract") {
+        val project = Path.of(requireNotNull(System.getProperty("arcfarms.projectDir")))
+        val root = Files.createTempDirectory("arcfarms-mine-e2e-config")
+        try {
+            val source = Files.readString(project.resolve("src/main/resources/config.yml"))
+            val fixture = Files.readString(project.resolve("src/test/e2e/fixtures/mine-zone.yml"))
+            Files.writeString(root.resolve("config.yml"), source.replace(
+                Regex("(?ms)^mine-zones:.*?(?=^[a-z][a-z-]*:|\\z)"), fixture,
+            ))
+            val mine = ArcFarmsConfig.inspect(root).mines.single()
+            mine.id shouldBe "old_shafts"
+            mine.orders.single().incidentTypes.size shouldBe 3
+            mine.rewards.experience.amount shouldBe 220
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
     val order = MineOrderSettings(
         "deep_vein",
         prospectingRequired = 3,
