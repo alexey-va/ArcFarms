@@ -3,11 +3,16 @@ package ru.ruscrafting.farms.paper
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.string.shouldContain
+import io.mockk.clearMocks
 import io.mockk.mockk
+import io.mockk.spyk
+import io.mockk.verify
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import net.kyori.adventure.text.Component
+import org.bukkit.Bukkit
 import org.bukkit.event.inventory.ClickType
+import org.bukkit.event.inventory.InventoryType
 import org.bukkit.entity.Player
 import ru.arc.menu.MenuElementId
 import ru.arc.paper.menu.PaperDialogClickContext
@@ -103,6 +108,34 @@ class FarmDialogScreensTest : FunSpec({
             menus.session(player)!!.menuId shouldBe ArcFarmsMenuPlatform.MAIN
             menus.session(player) shouldNotBe root
             capture.closeCalls shouldBe 0
+        } finally {
+            paper.close()
+        }
+    }
+
+    test("native navigation keeps the crafting view, while inventory to native closes a container") {
+        val paper = MockBukkitTestRuntime.open()
+        try {
+            val plugin = paper.createSimplePlugin("FarmDialogInventoryBoundaryTest")
+            copyConfig(plugin)
+            val capture = CapturingDialog()
+            val menus = ArcFarmsMenuPlatform(plugin, capture)
+            val player = spyk(paper.addPlayer("DialogBoundary"))
+
+            menus.open(player, ArcFarmsMenuPlatform.MAIN) { FarmMenuContent(title = Component.text("Root")) }
+            player.openInventory.type shouldBe InventoryType.CRAFTING
+            menus.open(player, ArcFarmsMenuPlatform.ENTERPRISE_CONFIRM) {
+                FarmMenuContent(title = Component.text("Child"))
+            }
+            verify(exactly = 0) { player.closeInventory() }
+
+            player.openInventory(Bukkit.createInventory(null, 9))
+            player.openInventory.type shouldBe InventoryType.CHEST
+            clearMocks(player, recordedCalls = true)
+            menus.open(player, ArcFarmsMenuPlatform.ENTERPRISE_CONFIRM) {
+                FarmMenuContent(title = Component.text("From chest"))
+            }
+            verify(exactly = 1) { player.closeInventory() }
         } finally {
             paper.close()
         }

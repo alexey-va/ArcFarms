@@ -32,6 +32,7 @@ import org.bukkit.event.HandlerList
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.event.inventory.InventoryCloseEvent
 import org.bukkit.event.inventory.InventoryOpenEvent
+import org.bukkit.event.inventory.InventoryType
 
 /** Shared menu actions with native dialogs by default and an explicit inventory presentation. */
 class ArcFarmsMenuPlatform(
@@ -106,7 +107,7 @@ class ArcFarmsMenuPlatform(
             reopenView ?: { if (player.isOnline) open(player, menu, content = content) })
         sessions[player.uniqueId] = session
         if (dialogMode) {
-            player.closeInventory()
+            if (player.openInventory.type != InventoryType.CRAFTING) player.closeInventory()
             refresh(session)
         } else {
             session.delegate = runtime.open(player, menu) { inventoryContent(session, content()) }
