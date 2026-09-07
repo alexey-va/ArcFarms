@@ -34,6 +34,8 @@ async function command(server, player, commands) {
 
 test('ordinary farm work reaches mounted delivery, rewards once and survives rejoin', async ({ player, server, signal }) => {
   const playerId = player.bot.player.uuid;
+  // First common bakery contract, one crop, unchanged difficulty plan and base XP.
+  const rewardExperience = 161;
   await command(server, player, [
     'minecraft:gamerule randomTickSpeed 0',
     'minecraft:forceload add 96 -16 144 16',
@@ -46,6 +48,7 @@ test('ordinary farm work reaches mounted delivery, rewards once and survives rej
   await player.teleport(100.5, -60, 2.5);
   const started = await phase('PREPARATION', signal);
   assert.equal(started.sequence, 1);
+  assert.equal(started.orderId, 'bakery_supply');
   assert.deepEqual(started.preparationPatch.map(({ x, y, z }) => [x, y, z]), [[100, -61, 0]]);
 
   const soilPosition = player.bot.entity.position.clone().set(100, -61, 0);
@@ -93,7 +96,6 @@ test('ordinary farm work reaches mounted delivery, rewards once and survives rej
   } finally {
     player.bot.clearControlStates();
   }
-  await command(server, player, [`minecraft:data get entity ${player.username} Pos`]);
   const route = await phase('INCIDENT', signal);
   assert.equal(route.incidentType, 'FOOD_DELIVERY');
   assert.deepEqual(route.deliveredCrates, [0]);
@@ -118,7 +120,9 @@ test('ordinary farm work reaches mounted delivery, rewards once and survives rej
     player.bot.physicsEnabled = physicsEnabled;
     player.bot.clearControlStates();
   }
-  await waitUntil(() => player.bot.experience.points === 100, { signal, timeout: 15000 });
+  await waitUntil(() => player.bot.experience.points === rewardExperience, {
+    signal, timeout: 15000, message: 'Bakery contract must deliver exactly 161 XP',
+  });
   const completed = await state();
   assert.equal(completed.farms.communal_farm.outcome, 'COMPLETED');
   assert.equal(completed.stats[playerId].completedShifts.FARM, 1);
@@ -126,6 +130,6 @@ test('ordinary farm work reaches mounted delivery, rewards once and survives rej
   assert.deepEqual(completed.pendingFarmRewards, []);
   await player.rejoin();
   await command(server, player, [`minecraft:tellraw ${player.username} {"text":"farm-rejoined"}`]);
-  assert.equal(player.bot.experience.points, 100);
+  assert.equal(player.bot.experience.points, rewardExperience);
   assert.equal((await state()).stats[playerId].completedShifts.FARM, 1);
 });

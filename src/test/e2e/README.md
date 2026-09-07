@@ -10,9 +10,10 @@ lore, the rejected click remaining in that menu, and the real admin help route.
 
 The farm scenario performs preparation with a hoe, planting, mandatory weed
 care, harvesting, carrying a crate on foot, and mounted food delivery. It
-checks persisted phase transitions, consumed crops, one completion, the default
-100 experience reward, and no repeated reward after rejoining. The fixture
-uses one crop and a short route; growth is accelerated with a world command.
+checks persisted phase transitions, consumed crops, one completion, the bakery
+contract's 161 experience reward, and no repeated reward after rejoining. The fixture
+uses the first common contract, one crop and a short route; growth is accelerated
+with a world command. Reward settings and difficulty scaling are unchanged.
 Its receiving point uses the normal saved-point override, so procedural care
 placement cannot move the delivery destination away from the test map.
 Mineflayer lacks horse physics, so the mounted part sends normal client vehicle

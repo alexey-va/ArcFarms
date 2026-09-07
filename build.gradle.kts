@@ -136,6 +136,7 @@ plugwright {
                 .replace("preparation-patch-max-size: 256", "preparation-patch-max-size: 1")
                 .replace("field-completion-percent: 90", "field-completion-percent: 100")
                 .replace("seeder-every-shifts: 2", "seeder-every-shifts: 0")
+                .replace("rare-order-chance-percent: 20", "rare-order-chance-percent: 0")
                 .replace(Regex("care-types: \\[[^\\n]+\\]"), "care-types: [WEEDS]")
                 .replace("care-targets-per-player: 15", "care-targets-per-player: 1")
                 .replace("care-targets-max: 45", "care-targets-max: 1")
