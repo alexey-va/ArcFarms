@@ -3,6 +3,7 @@ package ru.ruscrafting.farms.paper.mine.index
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import org.bukkit.Material
 import ru.arc.paper.testing.MockBukkitTestRuntime
@@ -15,6 +16,39 @@ class MineBlockIndexMockBukkitTest : FunSpec({
 
     beforeEach { paper = MockBukkitTestRuntime.open() }
     afterEach { paper.close() }
+
+    test("rail material filter keeps the legacy default and only gates walkable floors") {
+        val world = paper.server.addSimpleWorld("world")
+        fun floor(x: Int, material: Material): org.bukkit.block.Block {
+            val block = world.getBlockAt(x, 63, 1).also { it.type = material }
+            world.getBlockAt(x, 64, 1).type = Material.AIR
+            world.getBlockAt(x, 65, 1).type = Material.AIR
+            return block
+        }
+
+        MineAnchorClassifier.classify(floor(1, Material.STONE), emptySet()) shouldContain MineAnchorRole.RAIL
+        MineAnchorClassifier.classify(floor(2, Material.POLISHED_ANDESITE), emptySet(), setOf(Material.POLISHED_ANDESITE))
+            .apply {
+                this shouldContain MineAnchorRole.RAIL
+                this shouldContain MineAnchorRole.NEST
+                this shouldContain MineAnchorRole.MINER
+            }
+        MineAnchorClassifier.classify(floor(3, Material.STONE), emptySet(), setOf(Material.POLISHED_ANDESITE))
+            .apply {
+                this shouldNotContain MineAnchorRole.RAIL
+                this shouldContain MineAnchorRole.NEST
+                this shouldContain MineAnchorRole.MINER
+            }
+
+        val blocked = world.getBlockAt(4, 63, 1).also { it.type = Material.POLISHED_ANDESITE }
+        world.getBlockAt(4, 64, 1).type = Material.STONE
+        world.getBlockAt(4, 65, 1).type = Material.AIR
+        MineAnchorClassifier.classify(blocked, emptySet(), setOf(Material.POLISHED_ANDESITE)).apply {
+            this shouldNotContain MineAnchorRole.RAIL
+            this shouldNotContain MineAnchorRole.NEST
+            this shouldNotContain MineAnchorRole.MINER
+        }
+    }
 
     test("bounded reindex classifies reachable roles and loaded readers never reload a chunk") {
         val world = paper.server.addSimpleWorld("world")

@@ -110,7 +110,7 @@ internal class MineLostMinerIncident(
 
     private fun candidates(runtime: MineRuntime): List<ObjectiveTargetCandidate> =
         index.loadedTargets(runtime.settings.id, MineAnchorRole.MINER)
-            .filter { index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.MINER) }
+            .filter { index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.MINER, runtime.railMaterials) }
             .mapIndexed { order, position ->
                 ObjectiveTargetCandidate("lost_miner_${order + 1}", position, ObjectiveTargetRole("lost_miner"), order.toLong())
             }

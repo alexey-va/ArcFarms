@@ -12,7 +12,11 @@ internal enum class MineAnchorRole {
 internal object MineAnchorClassifier {
     private val faces = listOf(BlockFace.UP, BlockFace.DOWN, BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST)
 
-    fun classify(block: Block, mineable: Set<Material>): Set<MineAnchorRole> = buildSet {
+    fun classify(
+        block: Block,
+        mineable: Set<Material>,
+        railMaterials: Set<Material> = emptySet(),
+    ): Set<MineAnchorRole> = buildSet {
         val exposed = faces.any { !block.getRelative(it).type.isSolid }
         val walkableFloor = block.type.isSolid && !block.getRelative(BlockFace.UP).type.isSolid &&
             !block.getRelative(BlockFace.UP, 2).type.isSolid
@@ -25,8 +29,10 @@ internal object MineAnchorClassifier {
             add(MineAnchorRole.LAMP)
             add(MineAnchorRole.POWER)
         }
-        if (walkableFloor) {
+        if (walkableFloor && (railMaterials.isEmpty() || block.type in railMaterials)) {
             add(MineAnchorRole.RAIL)
+        }
+        if (walkableFloor) {
             add(MineAnchorRole.NEST)
             add(MineAnchorRole.MINER)
         }

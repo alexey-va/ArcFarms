@@ -13,6 +13,7 @@ internal data class MineIndexDefinition(
     val zoneId: String,
     val region: ActivityRegion,
     val mineable: Set<Material>,
+    val railMaterials: Set<Material> = emptySet(),
     val maxBlocks: Int = 20_000_000,
 ) {
     init {
@@ -46,11 +47,16 @@ internal class MineBlockIndex(private val plugin: Plugin) {
         return targetsByZone[zoneId].orEmpty().any { it.position == position && role in it.roles }
     }
 
-    fun isLiveTarget(zoneId: String, position: WorksitePosition, role: MineAnchorRole): Boolean {
+    fun isLiveTarget(
+        zoneId: String,
+        position: WorksitePosition,
+        role: MineAnchorRole,
+        railMaterials: Set<Material> = emptySet(),
+    ): Boolean {
         val world = Bukkit.getWorld(position.world) ?: return false
         if (!world.isChunkLoaded(position.x shr 4, position.z shr 4)) return false
         val block = world.getBlockAt(position.x, position.y, position.z)
-        return contains(zoneId, block, role) && role in MineAnchorClassifier.classify(block, emptySet())
+        return contains(zoneId, block, role) && role in MineAnchorClassifier.classify(block, emptySet(), railMaterials)
     }
 
     fun reconcileChunk(definition: MineIndexDefinition, chunk: Chunk) {
@@ -61,7 +67,8 @@ internal class MineBlockIndex(private val plugin: Plugin) {
                 if ((position.x shr 4) != chunk.x || (position.z shr 4) != chunk.z) return@mapNotNull null
                 val block = chunk.world.getBlockAt(position.x, position.y, position.z)
                 if (!definition.region.contains(block.location)) return@mapNotNull null
-                val valid = MineAnchorClassifier.classify(block, definition.mineable).intersect(target.roles)
+                val valid = MineAnchorClassifier.classify(block, definition.mineable, definition.railMaterials)
+                    .intersect(target.roles)
                 target.copy(roles = valid).takeIf { valid.isNotEmpty() }
             }
             .toSet()

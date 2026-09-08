@@ -60,7 +60,10 @@ internal class MineAdminService(
         if (runtime.state.phase != ru.ruscrafting.farms.domain.MinePhase.IDLE) return false
         reindexes[zoneId] = MineReindexJob(
             MineIndexDefinition(
-                zoneId, runtime.region, runtime.settings.materialWeights.keys.mapTo(linkedSetOf(), MaterialRules::material),
+                zoneId,
+                runtime.region,
+                runtime.settings.materialWeights.keys.mapTo(linkedSetOf(), MaterialRules::material),
+                runtime.railMaterials,
             ),
             index,
             tickets,

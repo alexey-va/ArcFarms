@@ -59,7 +59,8 @@ internal abstract class MineSequenceIncident(
         runtime.state.phase == MinePhase.INCIDENT && runtime.state.incident?.type == type
 
     private fun candidates(runtime: MineRuntime): List<ObjectiveTargetCandidate> =
-        index.loadedTargets(runtime.settings.id, anchorRole).filter { index.isLiveTarget(runtime.settings.id, it, anchorRole) }
+        index.loadedTargets(runtime.settings.id, anchorRole)
+            .filter { index.isLiveTarget(runtime.settings.id, it, anchorRole, runtime.railMaterials) }
             .mapIndexed { order, position ->
                 ObjectiveTargetCandidate(
                     "${targetRole}_${order + 1}_${token(position.x)}_${token(position.y)}_${token(position.z)}".take(48),

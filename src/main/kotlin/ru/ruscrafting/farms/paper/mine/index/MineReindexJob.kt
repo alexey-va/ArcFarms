@@ -41,7 +41,7 @@ internal class MineReindexJob(
                     val block = slice.blockAt(definition.region.world, cursor++)
                     scanned++
                     if (!definition.region.contains(block.location)) return@repeat
-                    val roles = MineAnchorClassifier.classify(block, definition.mineable)
+                    val roles = MineAnchorClassifier.classify(block, definition.mineable, definition.railMaterials)
                     if (roles.isEmpty()) return@repeat
                     require(targets.size < MAX_TARGETS) { "Mine index target limit exceeded" }
                     targets += MineIndexedTarget(WorksitePosition(block.world.name, block.x, block.y, block.z), roles)

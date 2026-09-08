@@ -16,6 +16,7 @@ internal data class MineRuntime(
     var state: MineShiftState,
 ) {
     val orders: Map<String, MineOrderSettings> get() = settings.orders.associateBy(MineOrderSettings::id)
+    val railMaterials get() = settings.extractionRailMaterials.mapTo(linkedSetOf(), MaterialRules::material)
 
     fun currentOrder(): MineOrderSettings? = state.orderId?.let(orders::get)
 
@@ -54,6 +55,7 @@ internal object MineRuntimeFactory {
         MaterialRules.material(settings.baseMaterial)
         MaterialRules.material(settings.cartVisual.material)
         settings.materialWeights.keys.forEach(MaterialRules::material)
+        settings.extractionRailMaterials.forEach(MaterialRules::material)
         MineRuntime(
             settings = settings,
             region = requireNotNull(regions.resolve(settings.reference)) {

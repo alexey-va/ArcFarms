@@ -86,7 +86,7 @@ internal abstract class MineConstructionIncident(
     fun reconcile(runtime: MineRuntime): Int {
         if (!active(runtime)) return 0
         val invalid = runtime.state.objective?.targets.orEmpty().filter { target ->
-            !index.isLiveTarget(runtime.settings.id, target.position, anchorRole)
+            !index.isLiveTarget(runtime.settings.id, target.position, anchorRole, runtime.railMaterials)
         }
         invalid.forEach { incidents.invalidate(runtime, it.id) }
         return invalid.size
@@ -137,7 +137,8 @@ internal abstract class MineConstructionIncident(
     )
 
     private fun candidates(runtime: MineRuntime): List<ObjectiveTargetCandidate> =
-        index.loadedTargets(runtime.settings.id, anchorRole).filter { index.isLiveTarget(runtime.settings.id, it, anchorRole) }
+        index.loadedTargets(runtime.settings.id, anchorRole)
+            .filter { index.isLiveTarget(runtime.settings.id, it, anchorRole, runtime.railMaterials) }
             .mapIndexed { order, position ->
                 ObjectiveTargetCandidate(
                     "${itemRole}_${order + 1}_${token(position.x)}_${token(position.y)}_${token(position.z)}".take(48),

@@ -656,3 +656,5 @@ Tornado visuals and its survival clock pause when the field has no eligible
 Survival/Adventure/Creative participants or an administrator is editing the farm.
 Clearing the storm restores loaded damaged beds and returns player weather and
 time to the world defaults; unloaded repairs remain in the chunk journal.
+
+Mine extraction paths may set `mine-zones.<id>.extraction.rail-materials` to a list of solid floor materials. An empty list preserves automatic floor discovery; a nonempty list restricts wagon route anchors while keeping rescue and nest anchors unchanged. Reindex idle zones after changing the route materials or relocating a worksite.

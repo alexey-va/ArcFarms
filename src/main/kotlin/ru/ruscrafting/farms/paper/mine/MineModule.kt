@@ -204,6 +204,7 @@ internal class MineModule(
         settings.id,
         region,
         settings.materialWeights.keys.mapTo(linkedSetOf(), MaterialRules::material),
+        settings.extractionRailMaterials.mapTo(linkedSetOf(), MaterialRules::material),
     )
 
     private companion object {

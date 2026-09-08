@@ -92,7 +92,7 @@ internal class MineCreatureNestIncident(
 
     private fun candidates(runtime: MineRuntime): List<ObjectiveTargetCandidate> =
         index.loadedTargets(runtime.settings.id, MineAnchorRole.NEST)
-            .filter { index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.NEST) }
+            .filter { index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.NEST, runtime.railMaterials) }
             .mapIndexed { order, position ->
                 ObjectiveTargetCandidate("nest_${order + 1}", position, ObjectiveTargetRole("creature_nest"), order.toLong())
             }

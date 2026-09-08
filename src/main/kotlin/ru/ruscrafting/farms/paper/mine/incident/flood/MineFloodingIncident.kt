@@ -139,7 +139,10 @@ internal class MineFloodingIncident(
 
     private fun candidates(runtime: MineRuntime): List<ObjectiveTargetCandidate> =
         index.loadedTargets(runtime.settings.id, MineAnchorRole.PUMP)
-            .filter { index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.PUMP) && it.floodPosition().block()?.type == Material.AIR }
+            .filter {
+                index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.PUMP, runtime.railMaterials) &&
+                    it.floodPosition().block()?.type == Material.AIR
+            }
             .mapIndexed { order, position ->
                 ObjectiveTargetCandidate(
                     "flood_${order + 1}_${token(position.x)}_${token(position.z)}",

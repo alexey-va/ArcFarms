@@ -76,7 +76,10 @@ internal class MinePowerFailureIncident(
 
     private fun candidates(runtime: MineRuntime): List<ObjectiveTargetCandidate> =
         index.loadedTargets(runtime.settings.id, MineAnchorRole.POWER)
-            .filter { index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.POWER) && it.lightPosition().blockType() == Material.AIR }
+            .filter {
+                index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.POWER, runtime.railMaterials) &&
+                    it.lightPosition().blockType() == Material.AIR
+            }
             .mapIndexed { order, position ->
                 ObjectiveTargetCandidate(
                     "power_${order + 1}_${token(position.x)}_${token(position.z)}",

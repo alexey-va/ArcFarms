@@ -3,6 +3,7 @@ package ru.ruscrafting.farms.config
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import ru.ruscrafting.farms.domain.MineIncidentType
 import java.nio.file.Files
 import java.nio.file.Path
@@ -21,6 +22,30 @@ class MineConfigTest : FunSpec({
             mine.id shouldBe "old_shafts"
             mine.orders.single().incidentTypes.size shouldBe 3
             mine.rewards.experience.amount shouldBe 220
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    test("extraction rail materials default empty and parse a validated material list") {
+        val project = Path.of(requireNotNull(System.getProperty("arcfarms.projectDir")))
+        val root = Files.createTempDirectory("arcfarms-mine-rail-config")
+        try {
+            val source = Files.readString(project.resolve("src/main/resources/config.yml"))
+            val marker = "    extraction:\n      checkpoint-radius: 1.6"
+            val markerStart = source.indexOf(marker).also { require(it >= 0) }
+            val replacement = "    extraction:\n      rail-materials: [POLISHED_ANDESITE]\n      checkpoint-radius: 1.6"
+            val configured = source.substring(0, markerStart) + replacement +
+                source.substring(markerStart + marker.length)
+            Files.writeString(root.resolve("config.yml"), configured)
+
+            val settings = ArcFarmsConfig.inspect(root).mines
+            settings.first { it.id == "old_shafts" }.extractionRailMaterials shouldBe setOf("POLISHED_ANDESITE")
+            settings.filterNot { it.id == "old_shafts" }.all { it.extractionRailMaterials.isEmpty() } shouldBe true
+
+            Files.writeString(root.resolve("config.yml"), configured.replace("POLISHED_ANDESITE", "bad-material!"))
+            shouldThrow<IllegalArgumentException> { ArcFarmsConfig.inspect(root) }
+                .message shouldContain "Invalid material name"
         } finally {
             root.toFile().deleteRecursively()
         }

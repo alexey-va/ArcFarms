@@ -1086,6 +1086,7 @@ data class MineZoneSettings(
     val lostMinerFollowSnapDistance: Double = 6.0,
     val lostMinerFollowOffsetZ: Double = -1.0,
     val extractionCheckpointRadius: Double = 1.6,
+    val extractionRailMaterials: Set<String> = emptySet(),
     val loadingDeliveryRadius: Double = 2.0,
     val cartVisual: MineCartVisualSettings = MineCartVisualSettings(),
 ) {
@@ -2623,6 +2624,8 @@ class ArcFarmsConfig private constructor(
                     extractionCheckpointRadius = section.finiteDouble(
                         "extraction.checkpoint-radius", 1.6, 0.75, 4.0,
                     ),
+                    extractionRailMaterials = section.stringList("extraction.rail-materials")
+                        .map(::materialName).toSet(),
                     loadingDeliveryRadius = section.finiteDouble("loading.delivery-radius", 2.0, 1.0, 5.0),
                     cartVisual = run {
                         val path = "extraction.cart"
