@@ -1,0 +1,495 @@
+{
+  "version": 1,
+  "title": "Farm food repricing 100/120/160",
+  "assumptions": [
+    "Scenarios are assumptions, not telemetry: 60/300/600 useful FARM points per hour, 1/2/4 active hours per day, participants 2/5/10.",
+    "Food packs per day: 0.25/1/2 of each SKU; premium renewals 0/0.1/0.25 of each SKU. Fractional events describe group averages, not fractions sold.",
+    "Premium perks last 24 wall-clock hours; ordinary perks remain 72 hours. No extra reward multiplier.",
+    "Live spawn economy 168h read 2026-09-08: currency-separated ledger; requested food materials returned no matching shop rows, so NPC resale rate is unknown.",
+    "FARM contribution income is not covered by the vault ledger. Existing farm food reward rolls and sustenance remain alternative sources."
+  ],
+  "participants": [
+    2,
+    5,
+    10
+  ],
+  "currencies": {
+    "farm_points": {
+      "minor_per_unit": 1,
+      "disposable_per_player_day": {
+        "before": [
+          "60",
+          "600",
+          "2400"
+        ],
+        "after": [
+          "60",
+          "600",
+          "2400"
+        ]
+      },
+      "flows": [
+        {
+          "id": "bread",
+          "kind": "burn",
+          "source": "ArcFarms farm perks/food shop",
+          "basis": "Assumed demand; affordability and weekly reset constrain actual purchases",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "20",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.25",
+              "1",
+              "2"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "100",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.25",
+              "1",
+              "2"
+            ]
+          }
+        },
+        {
+          "id": "cooked_beef",
+          "kind": "burn",
+          "source": "ArcFarms farm perks/food shop",
+          "basis": "Assumed demand; affordability and weekly reset constrain actual purchases",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "40",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.25",
+              "1",
+              "2"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "120",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.25",
+              "1",
+              "2"
+            ]
+          }
+        },
+        {
+          "id": "golden_carrot",
+          "kind": "burn",
+          "source": "ArcFarms farm perks/food shop",
+          "basis": "Assumed demand; affordability and weekly reset constrain actual purchases",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "80",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.25",
+              "1",
+              "2"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "160",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.25",
+              "1",
+              "2"
+            ]
+          }
+        },
+        {
+          "id": "iron_farmer",
+          "kind": "burn",
+          "source": "ArcFarms farm perks/food shop",
+          "basis": "Assumed demand; affordability and weekly reset constrain actual purchases",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "900",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0",
+              "0.1",
+              "0.25"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "900",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0",
+              "0.1",
+              "0.25"
+            ]
+          }
+        },
+        {
+          "id": "sky_courier",
+          "kind": "burn",
+          "source": "ArcFarms farm perks/food shop",
+          "basis": "Assumed demand; affordability and weekly reset constrain actual purchases",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "700",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0",
+              "0.1",
+              "0.25"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "700",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0",
+              "0.1",
+              "0.25"
+            ]
+          }
+        }
+      ]
+    },
+    "bread": {
+      "minor_per_unit": 1,
+      "disposable_per_player_day": {
+        "before": [
+          "0",
+          "0",
+          "0"
+        ],
+        "after": [
+          "0",
+          "0",
+          "0"
+        ]
+      },
+      "flows": [
+        {
+          "id": "bread",
+          "kind": "item",
+          "source": "ArcFarms farm perks/food shop",
+          "basis": "Assumed demand; affordability and weekly reset constrain actual purchases",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "16",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.25",
+              "1",
+              "2"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "16",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.25",
+              "1",
+              "2"
+            ]
+          }
+        }
+      ]
+    },
+    "cooked_beef": {
+      "minor_per_unit": 1,
+      "disposable_per_player_day": {
+        "before": [
+          "0",
+          "0",
+          "0"
+        ],
+        "after": [
+          "0",
+          "0",
+          "0"
+        ]
+      },
+      "flows": [
+        {
+          "id": "cooked_beef",
+          "kind": "item",
+          "source": "ArcFarms farm perks/food shop",
+          "basis": "Assumed demand; affordability and weekly reset constrain actual purchases",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "16",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.25",
+              "1",
+              "2"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "16",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.25",
+              "1",
+              "2"
+            ]
+          }
+        }
+      ]
+    },
+    "golden_carrot": {
+      "minor_per_unit": 1,
+      "disposable_per_player_day": {
+        "before": [
+          "0",
+          "0",
+          "0"
+        ],
+        "after": [
+          "0",
+          "0",
+          "0"
+        ]
+      },
+      "flows": [
+        {
+          "id": "golden_carrot",
+          "kind": "item",
+          "source": "ArcFarms farm perks/food shop",
+          "basis": "Assumed demand; affordability and weekly reset constrain actual purchases",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "8",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.25",
+              "1",
+              "2"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "8",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.25",
+              "1",
+              "2"
+            ]
+          }
+        }
+      ]
+    },
+    "vault": {
+      "minor_per_unit": 100,
+      "disposable_per_player_day": {
+        "before": [
+          "0",
+          "0",
+          "0"
+        ],
+        "after": [
+          "0",
+          "0",
+          "0"
+        ]
+      },
+      "flows": [
+        {
+          "id": "conditional_resale_bread",
+          "kind": "mint",
+          "source": "tracked classic/plugins/EconomyShopGUI-Premium/shops/Food.yml",
+          "basis": "Conditional current SELL scenario: all bought food sold at tracked prices; live effective rate unmeasured. Target SELL-off is zero.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "128",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.25",
+              "1",
+              "2"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "128",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.25",
+              "1",
+              "2"
+            ]
+          }
+        },
+        {
+          "id": "conditional_resale_cooked_beef",
+          "kind": "mint",
+          "source": "tracked classic/plugins/EconomyShopGUI-Premium/shops/Food.yml",
+          "basis": "Conditional current SELL scenario: all bought food sold at tracked prices; live effective rate unmeasured. Target SELL-off is zero.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "64",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.25",
+              "1",
+              "2"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "64",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.25",
+              "1",
+              "2"
+            ]
+          }
+        },
+        {
+          "id": "conditional_resale_golden_carrot",
+          "kind": "mint",
+          "source": "tracked classic/plugins/EconomyShopGUI-Premium/shops/Food.yml",
+          "basis": "Conditional current SELL scenario: all bought food sold at tracked prices; live effective rate unmeasured. Target SELL-off is zero.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "56",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.25",
+              "1",
+              "2"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "56",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.25",
+              "1",
+              "2"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "prices": [
+    {
+      "id": "bread",
+      "currency": "farm_points",
+      "before": {
+        "value": "20",
+        "unit": "major"
+      },
+      "after": {
+        "value": "100",
+        "unit": "major"
+      }
+    },
+    {
+      "id": "cooked_beef",
+      "currency": "farm_points",
+      "before": {
+        "value": "40",
+        "unit": "major"
+      },
+      "after": {
+        "value": "120",
+        "unit": "major"
+      }
+    },
+    {
+      "id": "golden_carrot",
+      "currency": "farm_points",
+      "before": {
+        "value": "80",
+        "unit": "major"
+      },
+      "after": {
+        "value": "160",
+        "unit": "major"
+      }
+    },
+    {
+      "id": "iron_farmer",
+      "currency": "farm_points",
+      "before": {
+        "value": "900",
+        "unit": "major"
+      },
+      "after": {
+        "value": "900",
+        "unit": "major"
+      }
+    },
+    {
+      "id": "sky_courier",
+      "currency": "farm_points",
+      "before": {
+        "value": "700",
+        "unit": "major"
+      },
+      "after": {
+        "value": "700",
+        "unit": "major"
+      }
+    }
+  ]
+}

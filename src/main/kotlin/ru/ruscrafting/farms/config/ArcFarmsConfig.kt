@@ -902,9 +902,9 @@ data class FarmFoodOfferSettings(val id: String, val material: String, val amoun
     }
     companion object {
         val defaults = listOf(
-            FarmFoodOfferSettings("bread", "BREAD", 16, 20),
-            FarmFoodOfferSettings("steak", "COOKED_BEEF", 16, 40),
-            FarmFoodOfferSettings("golden-carrot", "GOLDEN_CARROT", 8, 80),
+            FarmFoodOfferSettings("bread", "BREAD", 16, 100),
+            FarmFoodOfferSettings("steak", "COOKED_BEEF", 16, 120),
+            FarmFoodOfferSettings("golden-carrot", "GOLDEN_CARROT", 8, 160),
         )
     }
 }

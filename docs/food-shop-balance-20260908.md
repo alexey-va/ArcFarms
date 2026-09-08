@@ -103,3 +103,33 @@ button roles. Offline previews export actual ARC DialogTables components.
 Disk JAR/config delivery, process activation and real-client purchase/render
 acceptance are separate facts in the task report. No unrequested player-data
 mutation or production economy QA is performed.
+
+## Repricing accepted 2026-09-08 (0.36.1)
+
+Supersedes the initial food prices above: 16 bread 20 -> 100 FARM points,
+16 steaks 40 -> 120, 8 golden carrots 80 -> 160. Premium perks are unchanged.
+The separate food-shop-reprice-20260908.json compares the delivered initial
+offers with this revision; neither snapshot proves runtime activation.
+At the same assumed demand, point burn changes from 35/300/680 to
+95/540/1160 per player-day, or 490/10500/47600 to 1330/18900/81200 per
+network-week. Low demand now exceeds 60 points/day and cannot be sustained;
+these are desired-demand potentials, not actual purchases or measured income.
+At assumed 300 points/hour, food takes 20/24/32 minutes instead of 4/8/16.
+One of each costs 380 instead of 140; all five new offers cost 1980.
+
+Item quantities and conditional resale per pack remain 128/64/56 vault.
+At fixed pack demand, item and vault flows therefore do not change.
+Conditional vault per point falls from 6.4/1.6/0.7 to 1.28/0.5333/0.35.
+Spending the entire hypothetical 2400-point daily budget on bread yields
+24 packs, 384 bread and at most 3072 vault instead of 15360 at tracked SELL
+rates. This excludes buying other offers with those points; multi-account
+output scales with separately earned points. Live SELL availability and
+actual point income remain unmeasured. Target NPC SELL-off makes resale mint
+zero; player trading remains a transfer. No direct vault, token or XP change.
+
+Decision: reduce cheap repeatable food issuance and resale conversion while
+keeping food below premium perks. Existing food rewards and 150-point/72h
+farm-only Sustenance remain alternatives. Purchases retain their recorded
+price and quantity across recovery; no retrospective debit or change to
+paid pending deliveries. Validate defaults/config and publish to classic
+on disk; activation and real-player economics remain separate checks.

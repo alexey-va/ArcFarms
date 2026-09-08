@@ -749,9 +749,9 @@ farm-zones:
       iron-farmer: {price: 900, duration-hours: 24}
       sky-courier: {price: 700, duration-hours: 24}
       food:
-        bread: {amount: 16, price: 20}
-        steak: {amount: 16, price: 40}
-        golden-carrot: {amount: 8, price: 80}
+        bread: {amount: 16, price: 100}
+        steak: {amount: 16, price: 120}
+        golden-carrot: {amount: 8, price: 160}
       sustenance: {price: 150, duration-hours: 72, interval-seconds: 3, food: 20, saturation: 10.0, health: 4.0}
       reward-boost: {price: 400, duration-hours: 72, bonus-percent: 75}
       strength: {price: 220, duration-hours: 72, amplifier: 1}

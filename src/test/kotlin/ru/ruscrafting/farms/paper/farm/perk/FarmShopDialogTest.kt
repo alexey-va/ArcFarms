@@ -53,7 +53,7 @@ class FarmShopDialogTest : FunSpec({
             catalog.buttons.first { it.id.value == "offers_10" }.onClick.handle(mockk<PaperDialogClickContext>(relaxed = true))
             val food = capture.last!!
             val text = food.body.joinToString("\n") { PlainTextComponentSerializer.plainText().serialize(it.text) }
-            text shouldContain "20"
+            text shouldContain "100"
             text shouldContain "16"
             PlainTextComponentSerializer.plainText().serialize(food.buttons.single().label) shouldBe "Купить еду"
             food.buttons.single().label.color()!!.value() shouldBe 0x9bd48d
