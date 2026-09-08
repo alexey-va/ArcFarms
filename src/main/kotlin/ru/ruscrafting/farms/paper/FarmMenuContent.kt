@@ -30,6 +30,7 @@ data class FarmMenuEntry(
     val selected: Boolean = false,
     val category: FarmMenuCategory = FarmMenuCategory.DEFAULT,
     val details: List<Pair<Component, Component>> = emptyList(),
+    val catalogValue: Component? = null,
 )
 data class FarmMenuClickContext(val player: Player, val session: FarmMenuSession, val slot: Int)
 

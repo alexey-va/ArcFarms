@@ -59,6 +59,9 @@ class FarmShopDialogTest : FunSpec({
             controller.open(player, runtime)
             val catalog = capture.last!!
             catalog.buttons.size shouldBe 13
+            catalog.body.size shouldBe 3
+            val catalogText = PlainTextComponentSerializer.plainText().serialize(catalog.body.last().text)
+            listOf("Хлеб", "Стейк", "Золотая морковь", "100", "120", "160", "900", "700").forEach { catalogText shouldContain it }
             catalog.buttons.first { it.id.value == "offers_10" }.label.color()!!.value() shouldBe 0xf4d87a
             catalog.buttons.first { it.id.value == "offers_8" }.label.color()!!.value() shouldBe 0xc4abff
             exportShopScreen("catalog", catalog)

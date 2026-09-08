@@ -35,6 +35,7 @@ internal class FarmFoodShop(
             val values = mapOf("amount" to locale.text(offer.amount), "price" to locale.text(offer.price))
             FarmMenuEntry(
                 category = FarmMenuCategory.FOOD,
+                catalogValue = locale.renderPath("food.price", player, values),
                 details = listOf(
                     locale.renderPath("shop-table.quantity", player) to locale.text(offer.amount),
                     locale.renderPath("shop-table.price", player) to locale.renderPath("food.price", player, values),

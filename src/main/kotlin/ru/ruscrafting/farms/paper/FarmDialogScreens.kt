@@ -136,6 +136,8 @@ internal object FarmDialogScreens {
         val body = mutableListOf(PaperDialogBody(restyle(text(session.player, "intro.${session.menuId.value}")), 468))
         if (content.summary.isNotEmpty()) body += FarmDialogTables.body(content.summary,
             if (session.menuId == ArcFarmsMenuPlatform.FARM_PERKS) FarmDialogTables.Frame.LEGENDARY else FarmDialogTables.Frame.EPIC)
+        val catalog = rows.mapNotNull { row -> row.entry.catalogValue?.let { name(row.entry.item) to it } }
+        if (catalog.isNotEmpty()) body += FarmDialogTables.body(catalog, FarmDialogTables.Frame.LEGENDARY)
         val buttons = mutableListOf<PaperDialogButton>()
         var back: PaperDialogButton? = null
         rows.forEach { row ->
