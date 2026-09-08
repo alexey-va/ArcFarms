@@ -5,6 +5,13 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.mockk.mockk
 import io.mockk.every
+import io.mockk.spyk
+import io.mockk.just
+import io.mockk.Runs
+import org.bukkit.entity.Villager
+import org.bukkit.event.player.PlayerInteractEntityEvent
+import org.bukkit.persistence.PersistentDataType
+import org.bukkit.NamespacedKey
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.entity.Player
@@ -36,14 +43,19 @@ class FarmShopDialogTest : FunSpec({
             val capture = ShopDialogCapture()
             val menus = ArcFarmsMenuPlatform(plugin, capture)
             menus.configureDialogs(locale)
-            val player = paper.addPlayer("ShopFarmer")
+            val player = spyk(paper.addPlayer("ShopFarmer"))
+            every { player.isDead } returns false
+            every { player.isValid } returns true
+            every { player.showDialog(any()) } just Runs
+            every { player.closeDialog() } just Runs
             val zone = settings.farms.first()
             val runtime = FarmRuntime(settings = zone, region = mockk(relaxed = true), orders = emptyMap(), orderList = emptyList(), rules = FarmRules(listOf(50), 1, 1000), state = FarmShiftState())
             val port = mockk<WorksiteRuntimePort>(relaxed = true)
             var contribution = 2000L
-            val controller = FarmPerkController(plugin, { settings }, locale, ArcFarmsDebug({ false }) {},
+            fun controllerFor(platform: ArcFarmsMenuPlatform) = FarmPerkController(plugin, { settings }, locale, ArcFarmsDebug({ false }) {},
                 port, port, port, port, FarmPointProvider { _, _ -> FarmPointPosition("farm", 0.0, 64.0, 0.0) },
-                { listOf(runtime) }, { contribution }, { 107 }, { 1000 }, { CompletableFuture.completedFuture(Unit) }, menus)
+                { listOf(runtime) }, { contribution }, { 107 }, { 1000 }, { CompletableFuture.completedFuture(Unit) }, platform)
+            val controller = controllerFor(menus)
             controller.open(player, runtime)
             val catalog = capture.last!!
             catalog.buttons.size shouldBe 13
@@ -79,6 +91,39 @@ class FarmShopDialogTest : FunSpec({
             }
             ArcFarmsMenu(menus, service, locale) { settings }.open(player)
             exportShopScreen("main", capture.last!!)
+            // Exercise the real Core history, not the content-only capture above.
+            var nativeShown = 0
+            val presenter: (Player, PaperDialogScreen, Any) -> Unit = { _, _, _ -> nativeShown++ }
+            val nativeRuntime = ru.arc.paper.menu.PaperDialogRuntime::class.java
+                .getDeclaredConstructor(org.bukkit.plugin.Plugin::class.java, kotlin.jvm.functions.Function3::class.java)
+                .newInstance(plugin, presenter)
+            val nativeDisplay = object : FarmDialogDisplay {
+                override fun show(player: Player, screen: PaperDialogScreen) = nativeRuntime.open(player, screen)
+                override fun show(player: Player, screen: PaperDialogScreen, reopen: (() -> Unit)?, onDismiss: () -> Unit, closeOnEscape: Boolean) =
+                    nativeRuntime.open(player, screen, reopen, onDismiss, closeOnEscape)
+                override fun beginFlow(player: Player) = nativeRuntime.beginFlow(player)
+                override fun close(player: Player) = nativeRuntime.close(player)
+                override fun close() = nativeRuntime.close()
+            }
+            val nativeMenus = ArcFarmsMenuPlatform(plugin, nativeDisplay)
+            nativeMenus.configureDialogs(locale)
+            val nativeController = controllerFor(nativeMenus)
+            val vendor = mockk<Villager> {
+                every { persistentDataContainer.has(NamespacedKey(plugin, "farm_perk_vendor_zone"), PersistentDataType.STRING) } returns true
+                every { persistentDataContainer.get(NamespacedKey(plugin, "farm_perk_vendor_zone"), PersistentDataType.STRING) } returns zone.id
+            }
+            every { port.hasAccess(player, zone.permission) } returns true
+            nativeMenus.beginFlow(player)
+            nativeMenus.open(player, ArcFarmsMenuPlatform.MAIN) { FarmMenuContent(title = net.kyori.adventure.text.Component.text("Previous menu")) }
+            nativeMenus.close(player)
+            repeat(2) {
+                nativeController.interact(PlayerInteractEntityEvent(player, vendor)) shouldBe true
+                nativeShown shouldBe it + 2
+                nativeMenus.session(player)!!.menuId shouldBe ArcFarmsMenuPlatform.FARM_PERKS
+                nativeMenus.close(player)
+            }
+            nativeMenus.close()
+
             capture.last!!.buttons.first { it.id.value == "farm" }.label.color()!!.value() shouldBe 0x92bed8
         } finally { paper.close() }
     }

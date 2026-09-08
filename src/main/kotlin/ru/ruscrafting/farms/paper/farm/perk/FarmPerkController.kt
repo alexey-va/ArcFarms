@@ -167,6 +167,7 @@ internal class FarmPerkController(
             audience.sendChat(event.player, MessageKey.ZONE_LOCKED)
             return true
         }
+        menus.beginFlow(event.player)
         open(event.player, runtime)
         return true
     }
