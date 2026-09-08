@@ -722,9 +722,9 @@ farm:
     fueled-subtitle: '<color:#f2fff7>Keep the other fires burning until the field warms up</color>'
     inventory-full: '<color:#ff5f6d>Clear an inventory slot for the log.</color>'
     firewood-item: '<color:#ffc857>Campfire log</color>'
-  perk-vendor-name: '<color:#ffc857>Farm upgrades</color>'
+  perk-vendor-name: '<color:#ffc857>Farm shop</color>'
   perk-menu:
-    title: '<dark_gray>Farm perks</dark_gray>'
+    title: '<dark_gray>Farm shop</dark_gray>'
     balance: '<color:#ffc857>Weekly points:</color> <white><points></white>'
     price: '<gray>Price:</gray> <color:#ffc857><price></color> <dark_gray>•</dark_gray> <gray><hours> h</gray>'
     active: '<color:#55d98b>Active for about <hours> more hours.</color>'
@@ -930,6 +930,15 @@ perk:
     name: '<color:#55d98b>Spring boots</color>'
     description: '<gray>Jump Boost <jump>: higher jumps on the farm.</gray>'
     detail: '<gray>Leap over ditches and obstacles.</gray>'
+  iron_farmer:
+    name: '<color:#ffc857>Iron Farmer</color>'
+    description: '<gray>Strength III and Resistance III: −60% ordinary damage.</gray>'
+    detail: '<gray>Farm only; replaces weaker effects without stacking.</gray>'
+  sky_courier:
+    name: '<color:#c778ff>Sky Courier</color>'
+    description: '<gray>Speed V (+100%) and Slow Falling.</gray>'
+    detail: '<gray>Farm only; does not stack with the speed perk.</gray>'
+
 
 scoreboard:
   title: '<color:#55d98b>Farm</color>'
@@ -1299,6 +1308,7 @@ phase:
     cooldown: '<gray>cooldown</gray>'
 
 dialog:
+  buy-food: 'Buy food'
   buy-perk: "<#92bed8>Buy upgrade"
   close: '<#969696>Close'
   back: '<#aaa49a>‹ Back'
@@ -1316,4 +1326,38 @@ dialog:
     enterprise-shares: '<#e6fff3>Buy shares, view your account, and withdraw available money here.'
     enterprise-confirm: "<#e6fff3>Review the terms and confirm your choice."
     enterprise-participation: '<#e6fff3>Choose the weekly plan. Its terms and available action are shown here.'
-    farm-perks: "<#e6fff3>Choose an upgrade. Review its price, duration and effect before buying."
+    farm-perks: "<#e6fff3>Food and upgrades for farm points. Review each offer before buying."
+
+food:
+  bread: '<color:#ffc857>Bread ×<amount></color>'
+  steak: '<color:#ffc857>Steak ×<amount></color>'
+  golden-carrot: '<color:#ffc857>Golden carrot ×<amount></color>'
+  description: '<color:#ffc857>Regular food delivered to your inventory. Take it anywhere.</color>'
+  price: '<color:#ffc857>Price: <price> farm points</color>'
+  buy: '<color:#55d98b>[▶]</color> <color:#707a76>LMB —</color> <color:#f2fff7>buy food</color>'
+  not-enough: '<color:#ffc857>Not enough farm points.</color>'
+  waiting: '<color:#ffc857>Paid food is waiting for inventory space.</color>'
+  review: '<color:#ffc857>Delivery needs an administrator check. No further charge.</color>'
+  full: '<color:#ffc857>Free some inventory space. No points charged.</color>'
+  purchased: '<color:#ffc857>Food paid for. Your purchase is saved until delivery.</color>'
+  delivered: '<color:#ffc857>Food delivered to your inventory.</color>'
+
+shop-table:
+  seals: 'Workday seals'
+  next: 'Next activity'
+  balance: 'Available points'
+  currency: 'Currency'
+  farm-points: 'Weekly farm points'
+  active: 'Active perks'
+  effect: 'Effect'
+  scope: 'Details'
+  price: 'Cost'
+  duration: 'Duration'
+  hours: '<hours> hours from purchase'
+  state: 'Status'
+  available: 'Available to buy'
+  quantity: 'Quantity'
+  delivery: 'Delivery'
+  farm-contribution: 'Contribution: farm'
+  lumber-contribution: 'Contribution: lumbermill'
+  mine-contribution: 'Contribution: mine'

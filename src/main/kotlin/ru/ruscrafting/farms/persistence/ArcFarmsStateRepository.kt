@@ -225,6 +225,11 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
             require(state.farmPerks.orEmpty().size <= 1_000_000) { "Farm perk ledgers are unbounded" }
             state.farmPerks.orEmpty().values.forEach { perks ->
                 require(perks.weekStartEpochDay >= 0 && perks.spentPoints >= 0) { "Farm perk ledger is invalid" }
+                perks.foodPurchase?.let { food ->
+                    require(runCatching { java.util.UUID.fromString(food.id) }.isSuccess) { "Invalid food purchase id" }
+                    require(food.material in setOf("BREAD", "COOKED_BEEF", "GOLDEN_CARROT")) { "Invalid food material" }
+                    require(food.amount in 1..64 && food.price in 1..1_000_000 && food.chargedWeek >= 0) { "Invalid food purchase" }
+                }
                 require(perks.activeUntil.size <= ru.ruscrafting.farms.domain.FarmPerkType.entries.size) {
                     "Farm perk ledger contains too many active perks"
                 }

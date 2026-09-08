@@ -53,6 +53,7 @@ internal object FarmDialogScreens {
         )
         fun style(row: DialogRow): LabelStyle {
             val informational = row.id in setOf("stats", "workday", "report", "workers", "policy", "license")
+            if (row.entry.selected && row.entry.category != FarmMenuCategory.DEFAULT) return LabelStyle(SELECTED, marker = "✔", chevron = true)
             if (!row.entry.enabled && !informational) return LabelStyle(MUTED, marker = "[Недоступно]")
             return when (session.menuId) {
                 ArcFarmsMenuPlatform.MAIN -> when (row.id) {
@@ -88,7 +89,11 @@ internal object FarmDialogScreens {
                     else -> LabelStyle(ORDINARY)
                 }
                 ArcFarmsMenuPlatform.FARM_PERKS -> if (row.id.startsWith("offers_")) {
-                    LabelStyle(DETAIL, chevron = true)
+                    LabelStyle(when (row.entry.category) {
+                        FarmMenuCategory.FOOD -> TRADE
+                        FarmMenuCategory.PREMIUM_PERK -> PROGRESSION
+                        else -> DETAIL
+                    }, chevron = true)
                 } else LabelStyle(ORDINARY)
                 ArcFarmsMenuPlatform.MARKET -> when (row.id) {
                     "accept" -> LabelStyle(SAVE)
@@ -111,11 +116,13 @@ internal object FarmDialogScreens {
             return PaperDialogScreen(
                 id = "farms.${session.menuId.value}.detail",
                 title = recolor(detail?.let { name(it.entry.item) } ?: text(session.player, "details"), detailTitleColor),
-                body = if (detail != null) listOf(PaperDialogBody(join(lore(detail.entry.item)), 468)) else
-                    information.map { row -> PaperDialogBody(join(listOf(recolor(name(row.entry.item), TITLE)) + lore(row.entry.item)), 468) },
+                body = if (detail != null) {
+                    if (detail.entry.details.isNotEmpty()) listOf(FarmDialogTables.body(detail.entry.details, FarmDialogTables.Frame.LEGENDARY))
+                    else listOf(PaperDialogBody(join(lore(detail.entry.item)), 468))
+                } else listOf(FarmDialogTables.body(information.map { row -> name(row.entry.item) to join(lore(row.entry.item)) })),
                 buttons = buildList {
                     if (session.menuId == ArcFarmsMenuPlatform.FARM_PERKS && detail?.actionable == true) {
-                        add(button("buy_perk", text(session.player, "buy-perk"), style = LabelStyle(SAVE)) {
+                        add(button("buy_perk", text(session.player, if (detail.entry.category == FarmMenuCategory.FOOD) "buy-food" else "buy-perk"), style = LabelStyle(SAVE)) {
                             if (ClickType.LEFT in detail.entry.acceptedClicks) {
                                 detail.entry.onClick.handle(FarmMenuClickContext(session.player, session, detail.slot))
                             }
@@ -127,6 +134,8 @@ internal object FarmDialogScreens {
             )
         }
         val body = mutableListOf(PaperDialogBody(restyle(text(session.player, "intro.${session.menuId.value}")), 468))
+        if (content.summary.isNotEmpty()) body += FarmDialogTables.body(content.summary,
+            if (session.menuId == ArcFarmsMenuPlatform.FARM_PERKS) FarmDialogTables.Frame.LEGENDARY else FarmDialogTables.Frame.EPIC)
         val buttons = mutableListOf<PaperDialogButton>()
         var back: PaperDialogButton? = null
         rows.forEach { row ->
@@ -134,7 +143,7 @@ internal object FarmDialogScreens {
             val lines = lore(item)
             val title = name(item)
             val tooltip = join(lines)
-            if (row.actionable && row.id != "back" && session.menuId in setOf(
+            if (content.summary.isEmpty() && row.actionable && row.id != "back" && session.menuId in setOf(
                     ArcFarmsMenuPlatform.MAIN, ArcFarmsMenuPlatform.ENTERPRISE_FARM,
                     ArcFarmsMenuPlatform.ENTERPRISE_PARTICIPATION,
                 )) {
@@ -160,6 +169,7 @@ internal object FarmDialogScreens {
                     body += PaperDialogBody(join(listOf(recolor(title, TITLE)) + lines), 468)
                     if (row.actionable) buttons += button(row.id, title, tooltip, style(row), dispatch)
                 }
+                row.id == "balance" && content.summary.isNotEmpty() -> Unit
                 row.id in setOf("header", "summary", "balance", "order", "status", "holding", "account") ->
                     body.add(PaperDialogBody(join(listOf(recolor(title, TITLE)) + lines), 468))
                 row.actionable -> buttons += button(row.id, title, tooltip, style(row)) {
@@ -172,7 +182,7 @@ internal object FarmDialogScreens {
                 }
             }
         }
-        if (information.isNotEmpty()) buttons += button("details", text(session.player, "details"), style = LabelStyle(DETAIL, chevron = true)) {
+        if (information.isNotEmpty() && content.summary.isEmpty()) buttons += button("details", text(session.player, "details"), style = LabelStyle(DETAIL, chevron = true)) {
             session.detailSlot = null; session.showInformation = true; session.platform.refresh(session)
         }
         if (back == null) {
@@ -181,7 +191,7 @@ internal object FarmDialogScreens {
         }
         return PaperDialogScreen(
             id = "farms.${session.menuId.value}",
-            title = recolor(content.title, TITLE), body = body,
+            title = recolor(content.title, if (session.menuId == ArcFarmsMenuPlatform.FARM_PERKS) TRADE else TITLE), body = body,
             buttons = buttons, exitButton = back, columns = if (buttons.size == 1) 1 else 2,
         )
     }
@@ -219,6 +229,7 @@ internal object FarmDialogScreens {
     private val TITLE = TextColor.color(0xffb277)
     private val TELEPORT = TextColor.color(0x92bed8)
     private val TRADE = TextColor.color(0xf4d87a)
+    private val PROGRESSION = TextColor.color(0xc4abff)
     private val DETAIL = TextColor.color(0xc4a7e7)
     private val AVAILABLE = TextColor.color(0xffffff)
     private val SELECTED = TextColor.color(0x9bd48d)

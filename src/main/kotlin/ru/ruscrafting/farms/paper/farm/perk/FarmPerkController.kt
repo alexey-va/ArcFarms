@@ -31,6 +31,7 @@ import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.ArcFarmsMenuPlatform
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.arc.menu.MenuElementId
+import ru.ruscrafting.farms.paper.FarmMenuCategory
 import ru.ruscrafting.farms.paper.FarmMenuContent
 import ru.ruscrafting.farms.paper.FarmMenuEntry
 import ru.ruscrafting.farms.paper.FarmMenuSession
@@ -63,6 +64,33 @@ internal class FarmPerkController(
     private val persistAsync: () -> CompletableFuture<Unit>,
     private val menus: ArcFarmsMenuPlatform,
 ) {
+    private val foodTransactions = mutableMapOf<UUID, FarmPlayerPerks>()
+    private val foodShop = FarmFoodShop(locale, menus, object : FarmFoodWallet {
+        override fun read(playerId: UUID) = normalized(playerId)
+        override fun available(playerId: UUID) = this@FarmPerkController.available(playerId)
+        override fun busy(playerId: UUID) = playerId in pendingPurchases
+        override fun update(playerId: UUID, next: FarmPlayerPerks, committed: () -> Unit) {
+            if (busy(playerId)) return
+            val before = normalized(playerId)
+            ledger = FarmPerkLedgerState(ledger.values + (playerId to next))
+            pendingPurchases[playerId] = next
+            foodTransactions[playerId] = before
+            val generation = persistenceGeneration
+            val token = tasks.lifecycleToken()
+            runCatching(persistAsync).getOrElse { CompletableFuture.failedFuture(it) }.whenComplete { _, failure ->
+                tasks.runSync(token) {
+                    if (generation != persistenceGeneration || pendingPurchases[playerId] != next) return@runSync
+                    pendingPurchases.remove(playerId)
+                    foodTransactions.remove(playerId)
+                    if (failure != null) {
+                        ledger = FarmPerkLedgerState(ledger.values + (playerId to before))
+                        state.log(Level.SEVERE, "Could not persist farm food purchase for $playerId", failure)
+                        Bukkit.getPlayer(playerId)?.let { audience.sendChat(it, MessageKey.FARM_PERK_SAVE_FAILED) }
+                    } else committed()
+                }
+            }
+        }
+    })
     private val zoneKey = NamespacedKey(plugin, "farm_perk_vendor_zone")
     private val vendorIds = mutableMapOf<String, UUID>()
     private val feedbackTasks = mutableMapOf<UUID, Long>()
@@ -76,6 +104,7 @@ internal class FarmPerkController(
     fun replace(values: Map<UUID, FarmPlayerPerks>) {
         persistenceGeneration++
         pendingPurchases.clear()
+        foodTransactions.clear()
         menuRefreshTasks.clear()
         ledger = FarmPerkLedgerState(values)
     }
@@ -153,6 +182,7 @@ internal class FarmPerkController(
         ensure(runtime)
         audience.players(runtime.region).forEach { player ->
             if (!access.hasAccess(player, runtime.settings.permission) || player.isDead) return@forEach
+            foodShop.deliver(player)
             val perk = runtime.settings.perks
             fun effect(type: FarmPerkType, potion: PotionEffectType, amplifier: Int) {
                 if (!active(player.uniqueId, type, now)) return
@@ -166,6 +196,10 @@ internal class FarmPerkController(
             effect(FarmPerkType.RESISTANCE, PotionEffectType.RESISTANCE, perk.resistanceAmplifier)
             effect(FarmPerkType.FIRE_RESISTANCE, PotionEffectType.FIRE_RESISTANCE, 0)
             effect(FarmPerkType.JUMP_BOOST, PotionEffectType.JUMP_BOOST, perk.jumpAmplifier)
+            effect(FarmPerkType.IRON_FARMER, PotionEffectType.STRENGTH, 2)
+            effect(FarmPerkType.IRON_FARMER, PotionEffectType.RESISTANCE, 2)
+            effect(FarmPerkType.SKY_COURIER, PotionEffectType.SPEED, 4)
+            effect(FarmPerkType.SKY_COURIER, PotionEffectType.SLOW_FALLING, 0)
             if (active(player.uniqueId, FarmPerkType.SUSTENANCE, now) &&
                 access.allowInteraction("farm-perk-sustain:${player.uniqueId}", runtime.settings.perks.sustainIntervalSeconds * 1_000L)
             ) {
@@ -184,6 +218,11 @@ internal class FarmPerkController(
     }
 
     fun beforeReload() {
+        // No food side effect has run for these callbacks; retain recoverable intent.
+        foodTransactions.forEach { (playerId, before) ->
+            ledger = FarmPerkLedgerState(ledger.values + (playerId to before))
+        }
+        foodTransactions.clear()
         persistenceGeneration++
         pendingPurchases.clear()
     }
@@ -198,6 +237,7 @@ internal class FarmPerkController(
     }
 
     internal fun open(player: Player, runtime: FarmRuntime) {
+        foodShop.deliver(player)
         feedbackTasks.remove(player.uniqueId)
         menuRefreshTasks.remove(player.uniqueId)
         val session = menus.open(player, MENU, {
@@ -221,8 +261,14 @@ internal class FarmPerkController(
                 enabled = false,
             ),
         ),
+        summary = listOf(
+            locale.renderPath("shop-table.balance", player) to locale.text(available(player.uniqueId)),
+            locale.renderPath("shop-table.currency", player) to locale.renderPath("shop-table.farm-points", player),
+            locale.renderPath("shop-table.active", player) to locale.text(normalized(player.uniqueId).activeUntil.count { it.value > clock() }),
+        ),
         regions = mapOf(
-            ArcFarmsMenuPlatform.PERK_OFFERS to FarmPerkType.entries.map { type -> offerEntry(player, runtime, type) },
+            ArcFarmsMenuPlatform.PERK_OFFERS to FarmPerkType.entries.map { type -> offerEntry(player, runtime, type) } +
+                foodShop.entries(player, runtime.settings.perks.food) { access.hasAccess(player, runtime.settings.permission) },
         ),
     )
 
@@ -256,6 +302,18 @@ internal class FarmPerkController(
         type: FarmPerkType,
     ): FarmMenuEntry = FarmMenuEntry(
         item = offerItem(player, runtime, type),
+        selected = active(player.uniqueId, type),
+        category = if (type in setOf(FarmPerkType.IRON_FARMER, FarmPerkType.SKY_COURIER)) FarmMenuCategory.PREMIUM_PERK else FarmMenuCategory.PERK,
+        details = listOf(
+            locale.renderPath("shop-table.effect", player) to locale.renderPath("perk.${type.name.lowercase()}.description", player, descriptionValues(runtime)),
+            locale.renderPath("shop-table.scope", player) to locale.renderPath("perk.${type.name.lowercase()}.detail", player, descriptionValues(runtime)),
+            locale.renderPath("shop-table.price", player) to locale.renderPath("food.price", player, mapOf("price" to locale.text(offer(runtime, type).price))),
+            locale.renderPath("shop-table.duration", player) to locale.renderPath("shop-table.hours", player, mapOf("hours" to locale.text(offer(runtime, type).durationHours))),
+            locale.renderPath("shop-table.state", player) to if (active(player.uniqueId, type)) {
+                locale.render(MessageKey.FARM_PERK_ACTIVE, player, mapOf("hours" to locale.text(remainingHours(normalized(player.uniqueId).activeUntil.getValue(type), clock()))))
+            } else if (available(player.uniqueId) < offer(runtime, type).price) locale.renderPath("food.not-enough", player)
+            else locale.renderPath("shop-table.available", player),
+        ),
         enabled = normalized(player.uniqueId).activeUntil[type]?.let { it <= clock() } != false &&
             available(player.uniqueId) >= offer(runtime, type).price,
         acceptedClicks = setOf(ClickType.LEFT),
@@ -460,6 +518,8 @@ internal class FarmPerkController(
         FarmPerkType.RESISTANCE -> runtime.settings.perks.resistance
         FarmPerkType.FIRE_RESISTANCE -> runtime.settings.perks.fireResistance
         FarmPerkType.JUMP_BOOST -> runtime.settings.perks.jumpBoost
+        FarmPerkType.IRON_FARMER -> runtime.settings.perks.ironFarmer
+        FarmPerkType.SKY_COURIER -> runtime.settings.perks.skyCourier
     }
 
     private fun template(type: FarmPerkType): String = "perk-${type.name.lowercase().replace('_', '-')}"

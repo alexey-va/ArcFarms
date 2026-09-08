@@ -884,8 +884,8 @@ class ArcFarmsConfigTest : FunSpec({
         ArcFarmsConfig.load(root)
         Files.readString(file) shouldBe migrated
         val menu = Config(root, "config.yml")
-        menu.int("$path.rows", 0) shouldBe 4
-        menu.list<Any>("$path.regions.offers.slots").size shouldBe 8
+        menu.int("$path.rows", 0) shouldBe 6
+        menu.list<Any>("$path.regions.offers.slots").size shouldBe 13
     }
 
     test("farm gameplay and presentation tunables load from the bundled config") {

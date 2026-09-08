@@ -69,12 +69,15 @@ enum class FarmPerkType {
     RESISTANCE,
     FIRE_RESISTANCE,
     JUMP_BOOST,
+    IRON_FARMER,
+    SKY_COURIER,
 }
 
 data class FarmPlayerPerks(
     val weekStartEpochDay: Long,
     val spentPoints: Long = 0,
     val activeUntil: Map<FarmPerkType, Long> = emptyMap(),
+    val foodPurchase: FarmFoodPurchase? = null,
 ) {
     init {
         require(spentPoints >= 0) { "Spent farm perk points cannot be negative" }
@@ -88,6 +91,7 @@ data class FarmPlayerPerks(
             weekStartEpochDay = weekStart,
             spentPoints = 0,
             activeUntil = activeUntil.filterValues { it > now },
+            foodPurchase = foodPurchase,
         )
     }
 }

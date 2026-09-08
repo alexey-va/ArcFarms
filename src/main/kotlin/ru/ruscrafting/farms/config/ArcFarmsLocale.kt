@@ -780,7 +780,9 @@ class ArcFarmsLocale(
 
         fun requiredPaths(settings: ArcFarmsConfig): Set<String> = buildSet {
             addAll(MessageKey.entries.map(MessageKey::path))
-            addAll(listOf("close", "back", "help", "details", "buy-perk", "back-root", "back-company", "back-shares", "back-participation").map { "dialog.$it" })
+            addAll(listOf("seals", "next", "balance", "currency", "farm-points", "active", "effect", "scope", "price", "duration", "hours", "state", "available", "quantity", "delivery", "farm-contribution", "lumber-contribution", "mine-contribution").map { "shop-table.$it" })
+            addAll(listOf("bread", "steak", "golden-carrot", "description", "price", "buy", "not-enough", "waiting", "review", "full", "purchased", "delivered").map { "food.$it" })
+            addAll(listOf("close", "back", "help", "details", "buy-perk", "buy-food", "back-root", "back-company", "back-shares", "back-participation").map { "dialog.$it" })
             addAll(listOf("main", "market", "enterprise-overview", "enterprise-farm", "enterprise-shares", "enterprise-confirm", "enterprise-participation", "farm-perks").map { "dialog.intro.$it" })
             addAll(listOf(
                 "companies.participation.title", "companies.participation.summary-name", "companies.participation.summary",

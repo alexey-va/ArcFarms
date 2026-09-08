@@ -226,6 +226,7 @@ class ArcFarmsService(
         runtimeValidator.validateRuntime(candidate)
         runtimeValidator.validateLocations(candidate, farm.pointService.snapshot())
         farm.rewards.prepareForLifecycleBoundary()
+        farm.perks.beforeReload()
         val snapshot = snapshotState()
         val reconciledSnapshot = runtimeValidator.reconcileOrderProgress(candidate, snapshot)
         persistBlocking()

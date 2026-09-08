@@ -49,8 +49,18 @@ class ArcFarmsMenu(
 
     private fun content(player: Player, configuration: PaperMenuConfiguration): FarmMenuContent {
         val stats = service.playerStats(player.uniqueId)
+        val workday = service.workday()
         return FarmMenuContent(
             title = locale.render(MessageKey.MENU_TITLE, player),
+            summary = listOf(
+                locale.renderPath("shop-table.farm-contribution", player) to locale.text(stats.contributions[ActivityKind.FARM] ?: 0),
+                locale.renderPath("shop-table.lumber-contribution", player) to locale.text(stats.contributions[ActivityKind.LUMBER] ?: 0),
+                locale.renderPath("shop-table.mine-contribution", player) to locale.text(stats.contributions[ActivityKind.MINE] ?: 0),
+                locale.renderPath("shop-table.seals", player) to (workday?.let { locale.text("${it.completed.size} / ${ActivityKind.entries.size}") }
+                    ?: locale.render(MessageKey.MENU_WORKDAY_LOADING, player)),
+                locale.renderPath("shop-table.next", player) to (workday?.let { activityName(player, it.recommended()) }
+                    ?: locale.render(MessageKey.MENU_WORKDAY_LOADING, player)),
+            ),
             background = configuration.catalog.require(MENU).backgroundTemplate?.let { template ->
                 menus.item(template.value, Component.empty(), emptyList())
             },

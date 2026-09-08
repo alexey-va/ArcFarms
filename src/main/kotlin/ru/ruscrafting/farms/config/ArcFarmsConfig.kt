@@ -895,6 +895,20 @@ data class FarmPerkOfferSettings(
     val durationHours: Int,
 )
 
+data class FarmFoodOfferSettings(val id: String, val material: String, val amount: Int, val price: Long) {
+    init {
+        require(id in setOf("bread", "steak", "golden-carrot"))
+        require(amount in 1..64 && price in 1..1_000_000)
+    }
+    companion object {
+        val defaults = listOf(
+            FarmFoodOfferSettings("bread", "BREAD", 16, 20),
+            FarmFoodOfferSettings("steak", "COOKED_BEEF", 16, 40),
+            FarmFoodOfferSettings("golden-carrot", "GOLDEN_CARROT", 8, 80),
+        )
+    }
+}
+
 data class FarmPerkSettings(
     val harvestArea: FarmPerkOfferSettings,
     val speed: FarmPerkOfferSettings,
@@ -915,6 +929,9 @@ data class FarmPerkSettings(
     val strengthAmplifier: Int = 1,
     val resistanceAmplifier: Int = 1,
     val jumpAmplifier: Int = 1,
+    val ironFarmer: FarmPerkOfferSettings = FarmPerkOfferSettings(900, 24),
+    val skyCourier: FarmPerkOfferSettings = FarmPerkOfferSettings(700, 24),
+    val food: List<FarmFoodOfferSettings> = FarmFoodOfferSettings.defaults,
 ) {
     init {
         require(strengthAmplifier in 0..2) { "Farm strength perk amplifier must be in 0..2" }
@@ -1229,11 +1246,13 @@ class ArcFarmsConfig private constructor(
         private fun synchronizeAndParse(config: Config): ArcFarmsConfig {
             config.mergeMissingFromBundled("config.yml", ENVIRONMENT_OWNED_ROOT_KEYS)
             val perkMenu = "ui.menus.layouts.farm-perks"
-            if (config.int("$perkMenu.rows", 0) == 3 &&
-                config.list<Any>("$perkMenu.regions.offers.slots").map { it.toString() } == listOf("10", "12", "14", "16")
-            ) {
-                config.setInt("$perkMenu.rows", 4)
-                config.setStructured("$perkMenu.regions.offers.slots", listOf(10, 12, 14, 16, 19, 21, 23, 25))
+            val slots = config.list<Any>("$perkMenu.regions.offers.slots").map { it.toString() }
+            val legacySlots = listOf("10", "12", "14", "16")
+            val previousSlots = legacySlots + listOf("19", "21", "23", "25")
+            if ((config.int("$perkMenu.rows", 0) == 3 && slots == legacySlots) ||
+                (config.int("$perkMenu.rows", 0) == 4 && slots == previousSlots)) {
+                config.setInt("$perkMenu.rows", 6)
+                config.setStructured("$perkMenu.regions.offers.slots", listOf(10, 12, 14, 16, 19, 21, 23, 25, 29, 33, 38, 40, 42))
             }
             return parse(config).also { config.saveStrict() }
         }
@@ -1627,6 +1646,16 @@ class ArcFarmsConfig private constructor(
                     resistance = perk("resistance", 240, 72),
                     fireResistance = perk("fire-resistance", 160, 72),
                     jumpBoost = perk("jump-boost", 140, 72),
+                    ironFarmer = perk("iron-farmer", 900, 24),
+                    skyCourier = perk("sky-courier", 700, 24),
+                    food = FarmFoodOfferSettings.defaults.map { food ->
+                        food.copy(
+                            amount = section.int("perks.food.${food.id}.amount", food.amount)
+                                .checked("perks.food.${food.id}.amount", 1, 64),
+                            price = section.string("perks.food.${food.id}.price", food.price.toString()).toLongOrNull()
+                                ?.also { require(it in 1..1_000_000) } ?: error("Invalid farm food price"),
+                        )
+                    },
                     strengthAmplifier = section.int("perks.strength.amplifier", 1)
                         .checked("perks.strength.amplifier", 0, 2),
                     resistanceAmplifier = section.int("perks.resistance.amplifier", 1)

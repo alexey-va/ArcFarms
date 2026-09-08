@@ -722,9 +722,9 @@ farm:
     fueled-subtitle: '<color:#f2fff7>Поддерживайте другие костры, пока поле не согреется</color>'
     inventory-full: '<color:#ff5f6d>Освободите место в инвентаре для полена.</color>'
     firewood-item: '<color:#ffc857>Полено для костра</color>'
-  perk-vendor-name: '<color:#ffc857>Улучшения фермы</color>'
+  perk-vendor-name: '<color:#ffc857>Лавка фермы</color>'
   perk-menu:
-    title: '<dark_gray>Усиления фермы</dark_gray>'
+    title: '<dark_gray>Лавка фермы</dark_gray>'
     balance: '<color:#ffc857>Недельные очки:</color> <white><points></white>'
     price: '<gray>Цена:</gray> <color:#ffc857><price></color> <dark_gray>•</dark_gray> <gray><hours> ч.</gray>'
     active: '<color:#55d98b>Активно ещё около <hours> ч.</color>'
@@ -930,6 +930,15 @@ perk:
     name: '<color:#55d98b>Пружинные сапоги</color>'
     description: '<gray>Прыгучесть <jump>: высокие прыжки на ферме.</gray>'
     detail: '<gray>Перепрыгивайте канавы и препятствия.</gray>'
+  iron_farmer:
+    name: '<color:#ffc857>Стальной фермер</color>'
+    description: '<gray>Сила III и Сопротивление III: −60% обычного урона.</gray>'
+    detail: '<gray>Только на ферме; заменяет слабые эффекты, не складывается.</gray>'
+  sky_courier:
+    name: '<color:#c778ff>Небесный курьер</color>'
+    description: '<gray>Скорость V (+100%) и медленное падение.</gray>'
+    detail: '<gray>Только на ферме; скорость не складывается с форсажем.</gray>'
+
 
 scoreboard:
   title: '<color:#55d98b>Ферма</color>'
@@ -1299,6 +1308,7 @@ phase:
     cooldown: '<gray>перерыв</gray>'
 
 dialog:
+  buy-food: 'Купить еду'
   buy-perk: "<#92bed8>Купить усиление"
   close: '<#969696>Закрыть'
   back: '<#aaa49a>‹ Назад'
@@ -1316,4 +1326,38 @@ dialog:
     enterprise-shares: '<#e6fff3>Здесь можно купить доли, увидеть счёт и вывести доступные деньги.'
     enterprise-confirm: "<#e6fff3>Проверьте условия и подтвердите свой выбор."
     enterprise-participation: '<#e6fff3>Выберите план недели. На экране сразу видны условия и доступные действия.'
-    farm-perks: "<#e6fff3>Выберите усиление. Перед покупкой покажем цену, срок и эффект."
+    farm-perks: "<#e6fff3>Усиления и еда за очки фермы. Цена и эффект — в описании."
+
+food:
+  bread: '<color:#ffc857>Хлеб ×<amount></color>'
+  steak: '<color:#ffc857>Стейк ×<amount></color>'
+  golden-carrot: '<color:#ffc857>Золотая морковь ×<amount></color>'
+  description: '<color:#ffc857>Обычная еда в инвентарь. Можно взять с собой.</color>'
+  price: '<color:#ffc857>Цена: <price> очков фермы</color>'
+  buy: '<color:#55d98b>[▶]</color> <color:#707a76>ЛКМ —</color> <color:#f2fff7>купить еду</color>'
+  not-enough: '<color:#ffc857>Не хватает очков фермы.</color>'
+  waiting: '<color:#ffc857>Оплаченная еда ждёт свободного места.</color>'
+  review: '<color:#ffc857>Выдача требует проверки администратора. Повторного списания нет.</color>'
+  full: '<color:#ffc857>Освободите место в инвентаре. Очки не списаны.</color>'
+  purchased: '<color:#ffc857>Еда оплачена. Покупка сохранена до выдачи.</color>'
+  delivered: '<color:#ffc857>Еда выдана в инвентарь.</color>'
+
+shop-table:
+  seals: 'Печати смен'
+  next: 'Следующая цель'
+  balance: 'Доступно очков'
+  currency: 'Валюта'
+  farm-points: 'Недельные очки фермы'
+  active: 'Активных усилений'
+  effect: 'Эффект'
+  scope: 'Особенности'
+  price: 'Стоимость'
+  duration: 'Длительность'
+  hours: '<hours> ч. с момента покупки'
+  state: 'Состояние'
+  available: 'Доступно для покупки'
+  quantity: 'Количество'
+  delivery: 'Выдача'
+  farm-contribution: 'Вклад: ферма'
+  lumber-contribution: 'Вклад: лесопилка'
+  mine-contribution: 'Вклад: шахта'

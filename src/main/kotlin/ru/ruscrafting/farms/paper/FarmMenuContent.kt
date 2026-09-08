@@ -16,7 +16,10 @@ data class FarmMenuContent(
     val background: ItemStack? = null,
     val elements: Map<MenuElementId, FarmMenuEntry> = emptyMap(),
     val regions: Map<MenuRegionId, List<FarmMenuEntry>> = emptyMap(),
+    val summary: List<Pair<Component, Component>> = emptyList(),
 )
+
+enum class FarmMenuCategory { DEFAULT, PERK, PREMIUM_PERK, FOOD }
 
 fun interface FarmMenuClickHandler { fun handle(context: FarmMenuClickContext) }
 data class FarmMenuEntry(
@@ -25,6 +28,8 @@ data class FarmMenuEntry(
     val acceptedClicks: Set<ClickType> = setOf(ClickType.LEFT),
     val onClick: FarmMenuClickHandler = FarmMenuClickHandler {},
     val selected: Boolean = false,
+    val category: FarmMenuCategory = FarmMenuCategory.DEFAULT,
+    val details: List<Pair<Component, Component>> = emptyList(),
 )
 data class FarmMenuClickContext(val player: Player, val session: FarmMenuSession, val slot: Int)
 
