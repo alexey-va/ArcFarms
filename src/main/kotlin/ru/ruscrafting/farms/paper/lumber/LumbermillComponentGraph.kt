@@ -39,6 +39,7 @@ import ru.ruscrafting.farms.paper.lumber.admin.LumberAdminService
 /** Composition-only graph; the registry is the sole mutable runtime collection owner. */
 internal class LumbermillComponentGraph(
     plugin: Plugin,
+    serverId: String,
     regions: RegionGateway,
     ports: WorksitePorts,
     clock: () -> Long,
@@ -71,7 +72,7 @@ internal class LumbermillComponentGraph(
         stackingScene::reconcile,
     )
     val dispatch = LumberDispatchController(
-        registry, transitions, ports.access, ports.audience, ports.stats, ports.network, clock, rewardGrants,
+        registry, serverId, transitions, ports.access, ports.audience, ports.stats, ports.network, clock, rewardGrants,
     )
     val windthrow = LumberWindthrowIncident(registry, index, recovery, incidents, ports.state)
     val beetles = LumberBarkBeetleIncident(registry, index, incidents)

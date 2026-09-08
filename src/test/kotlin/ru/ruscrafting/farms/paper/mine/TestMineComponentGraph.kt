@@ -31,6 +31,7 @@ internal fun testMineComponentGraph(
     rewardGrants: WorksiteRewardGrantService? = null,
 ) = MineComponentGraph(
     plugin,
+    "spawn",
     regions,
     port.asWorksitePorts(),
     clock,

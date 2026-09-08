@@ -27,6 +27,7 @@ internal fun testLumbermillComponentGraph(
     rewardGrants: WorksiteRewardGrantService? = null,
 ) = LumbermillComponentGraph(
     plugin,
+    "spawn",
     regions,
     port.asWorksitePorts(),
     clock,

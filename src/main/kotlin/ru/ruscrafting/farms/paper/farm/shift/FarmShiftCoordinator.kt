@@ -53,6 +53,7 @@ import ru.ruscrafting.farms.paper.farm.presentation.FarmHudController
 import ru.ruscrafting.farms.paper.farm.reward.FarmRewardService
 import ru.ruscrafting.farms.paper.farm.scene.FarmContractSceneController
 import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyController
+import ru.ruscrafting.farms.api.WorkShiftCompletedEvent
 
 /** The only application owner allowed to apply a farm domain EngineResult. */
 internal class FarmShiftCoordinator(
@@ -670,6 +671,16 @@ internal class FarmShiftCoordinator(
         tornado.clear(runtime)
         greenhouse.clear(runtime)
         val contributors = runtime.state.contributors
+        if (commercialEligible && contributors.isNotEmpty()) {
+            Bukkit.getPluginManager().callEvent(
+                WorkShiftCompletedEvent(
+                    eventId = "${settings().serverId}:farm:${runtime.settings.id}:${runtime.state.sequence}",
+                    kind = "farm",
+                    contributors = contributors.keys,
+                    zoneId = runtime.settings.id,
+                ),
+            )
+        }
         val enterpriseChanged = enterprise.orderCompleted(runtime.settings.id, runtime.state.sequence, contributors, commercialEligible)
         stats.recordCompletion(ActivityKind.FARM, contributors)
         rewards.queueCompletion(runtime, contributors)

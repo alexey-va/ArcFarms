@@ -38,6 +38,7 @@ import java.util.UUID
 /** Stable application boundary that constructs exactly one lumber engine generation. */
 internal class LumbermillVersionedModule(
     plugin: Plugin,
+    serverId: String,
     initial: List<LumberZoneSettings>,
     regions: RegionGateway,
     locale: ArcFarmsLocale,
@@ -52,7 +53,7 @@ internal class LumbermillVersionedModule(
     private val engineVersion = initial.firstOrNull()?.engineVersion ?: 1
     private val delegate: WorksiteModule<LumberShiftState> = if (engineVersion == 2) {
         LumbermillComponentGraph(
-            plugin, regions, ports, clock, journal, serviceItems, locale = locale, rewardGrants = rewardGrants,
+            plugin, serverId, regions, ports, clock, journal, serviceItems, locale = locale, rewardGrants = rewardGrants,
         ).module
     } else {
         LumbermillController(

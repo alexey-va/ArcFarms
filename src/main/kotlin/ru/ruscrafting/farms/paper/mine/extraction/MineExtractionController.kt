@@ -17,9 +17,11 @@ import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.paper.worksite.WorksiteRewardGrantService
+import ru.ruscrafting.farms.api.WorkShiftCompletedEvent
 
 internal class MineExtractionController(
     private val registry: MineRuntimeRegistry,
+    private val serverId: String,
     private val index: MineBlockIndex,
     private val scene: MineCartScene,
     private val transitions: MineTransitionCoordinator,
@@ -58,6 +60,17 @@ internal class MineExtractionController(
             val result = MineShiftEngine.extract(runtime.state, runtime.rules(), player.uniqueId, clock())
             transitions.apply(runtime, result, player)
             if (result.accepted) {
+                val contributors = result.state.contributors
+                if (contributors.isNotEmpty()) {
+                    org.bukkit.Bukkit.getPluginManager().callEvent(
+                        WorkShiftCompletedEvent(
+                            eventId = "$serverId:mine:${runtime.settings.id}:${result.state.sequence}",
+                            kind = "mine",
+                            contributors = contributors.keys,
+                            zoneId = runtime.settings.id,
+                        ),
+                    )
+                }
                 stats.recordCompletion(ActivityKind.MINE, result.state.contributors)
                 rewards?.queueCompletion(
                     ActivityKind.MINE, runtime.settings.rewards, runtime.settings.id, result.state.sequence,
