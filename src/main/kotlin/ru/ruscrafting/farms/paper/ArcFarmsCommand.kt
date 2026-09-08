@@ -184,6 +184,10 @@ class ArcFarmsCommand(
             }
             return
         }
+        if (action == "worksite") {
+            worksiteAdmin(sender, args.drop(1))
+            return
+        }
         val player = sender as? Player
         if (player == null) {
             sender.sendMessage(locale.render(MessageKey.PLAYER_ONLY, sender))
@@ -292,7 +296,6 @@ class ArcFarmsCommand(
                     else -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_ROUTE, sender))
                 }
             }
-            "worksite" -> worksiteAdmin(player, args.drop(1))
             "reset-farm" -> args.getOrNull(1)?.let { service.adminSetFarmStage(player, it, "reset") }
                 ?: sendShortcutHelp(sender, action)
             "stop-order-cycle" -> args.getOrNull(1)?.let { service.adminStopFarmOrderCycle(player, it) }
@@ -489,13 +492,13 @@ class ArcFarmsCommand(
         )
     }
 
-    private fun worksiteAdmin(player: Player, args: List<String>) {
+    private fun worksiteAdmin(sender: CommandSender, args: List<String>) {
         val kind = parseKind(args.getOrNull(0))?.takeIf { it != ActivityKind.FARM }
         val admin = kind?.let(service.worksiteAdmins::handler)
         val zone = args.getOrNull(1)
         val operation = args.getOrNull(2)?.lowercase()
         if (admin == null || zone == null || operation == null) {
-            sendWorksiteAdminHelp(player)
+            sendWorksiteAdminHelp(sender)
             return
         }
         val values = mutableMapOf("activity" to locale.text(kind.name.lowercase()), "zone" to locale.text(zone))
@@ -503,7 +506,7 @@ class ArcFarmsCommand(
             "status" -> {
                 val status = admin.status(zone)
                 if (status == null) {
-                    player.sendMessage(locale.renderPath("admin.worksite.unknown", player, values))
+                    sender.sendMessage(locale.renderPath("admin.worksite.unknown", sender, values))
                 } else {
                     values += mapOf(
                         "phase" to locale.text(status.phase.lowercase()),
@@ -511,25 +514,45 @@ class ArcFarmsCommand(
                         "incident" to locale.text(status.incident?.lowercase() ?: "—"),
                         "progress" to locale.text(status.objective?.let { "${it.completed}/${it.required}" } ?: "—"),
                     )
-                    player.sendMessage(locale.renderPath("admin.worksite.status", player, values))
+                    sender.sendMessage(locale.renderPath("admin.worksite.status", sender, values))
                 }
             }
-            "start" -> player.sendMessage(
-                locale.renderPath(if (admin.start(zone, player)) "admin.worksite.started" else "admin.worksite.rejected", player, values),
-            )
+            "start" -> {
+                val player = sender as? Player
+                if (player == null) {
+                    sender.sendMessage(locale.render(MessageKey.PLAYER_ONLY, sender))
+                } else {
+                    sender.sendMessage(
+                        locale.renderPath(
+                            if (admin.start(zone, player)) "admin.worksite.started" else "admin.worksite.rejected",
+                            sender,
+                            values,
+                        ),
+                    )
+                }
+            }
             "incident" -> {
                 val incident = args.getOrNull(3)
                 values["incident"] = locale.text(incident?.lowercase() ?: "—")
-                val accepted = incident != null && admin.forceIncident(zone, incident, System.currentTimeMillis())
-                player.sendMessage(
-                    locale.renderPath(if (accepted) "admin.worksite.incident-started" else "admin.worksite.incident-rejected", player, values),
-                )
+                val player = sender as? Player
+                if (player == null) {
+                    sender.sendMessage(locale.render(MessageKey.PLAYER_ONLY, sender))
+                } else {
+                    val accepted = incident != null && admin.forceIncident(zone, incident, System.currentTimeMillis())
+                    sender.sendMessage(
+                        locale.renderPath(
+                            if (accepted) "admin.worksite.incident-started" else "admin.worksite.incident-rejected",
+                            sender,
+                            values,
+                        ),
+                    )
+                }
             }
             "reindex" -> when (args.getOrNull(3)?.lowercase() ?: "start") {
-                "start" -> player.sendMessage(
+                "start" -> sender.sendMessage(
                     locale.renderPath(
                         if (admin.startReindex(zone)) "admin.worksite.reindex-started" else "admin.worksite.reindex-rejected",
-                        player,
+                        sender,
                         values,
                     ),
                 )
@@ -539,18 +562,18 @@ class ArcFarmsCommand(
                         "blocks" to locale.text(tick?.scannedBlocks ?: 0),
                         "targets" to locale.text(tick?.indexedTargets ?: 0),
                     )
-                    player.sendMessage(locale.renderPath("admin.worksite.reindex-progress", player, values))
+                    sender.sendMessage(locale.renderPath("admin.worksite.reindex-progress", sender, values))
                 }
-                "cancel" -> player.sendMessage(
+                "cancel" -> sender.sendMessage(
                     locale.renderPath(
                         if (admin.cancelReindex(zone)) "admin.worksite.reindex-cancelled" else "admin.worksite.reindex-rejected",
-                        player,
+                        sender,
                         values,
                     ),
                 )
-                else -> sendWorksiteAdminHelp(player)
+                else -> sendWorksiteAdminHelp(sender)
             }
-            else -> sendWorksiteAdminHelp(player)
+            else -> sendWorksiteAdminHelp(sender)
         }
     }
 

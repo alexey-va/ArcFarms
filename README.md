@@ -429,6 +429,13 @@ next cycle. Atomic Redis compare-and-set prevents duplicate cross-server stamps.
 
 ## Commands
 
+Console operators with `arcfarms.admin` can inspect and rebuild mine/lumber
+indexes with `/arcfarms admin worksite <mine|lumber> <zone> status` and
+`reindex start|tick|cancel`. Starting a shift or forcing an incident still
+requires a player. Relocate only idle mines with an empty block-recovery
+journal, retain their zone IDs, and finish reindexing after changing world or
+bounds before opening the new worksite to players.
+
 Every `/arcfarms admin` subcommand accepts a trailing `help`. Contextual lists
 are available through commands such as `/arcfarms admin point <zone> help`,
 `/arcfarms admin stage <zone> help`, and `/arcfarms admin event <zone> help`.
