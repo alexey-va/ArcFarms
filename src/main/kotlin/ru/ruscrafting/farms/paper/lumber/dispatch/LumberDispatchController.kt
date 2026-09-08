@@ -18,9 +18,11 @@ import ru.ruscrafting.farms.paper.lumber.LumberRuntime
 import ru.ruscrafting.farms.paper.lumber.LumberRuntimeRegistry
 import ru.ruscrafting.farms.paper.lumber.LumberTransitionCoordinator
 import ru.ruscrafting.farms.paper.worksite.WorksiteRewardGrantService
+import ru.ruscrafting.farms.api.WorkShiftCompletedEvent
 
 internal class LumberDispatchController(
     private val registry: LumberRuntimeRegistry,
+    private val serverId: String,
     private val transitions: LumberTransitionCoordinator,
     private val access: WorksiteAccessPort,
     private val audience: WorksiteAudiencePort,
@@ -53,6 +55,17 @@ internal class LumberDispatchController(
         val result = LumberShiftEngine.dispatch(runtime.state, runtime.rules(), player.uniqueId, now)
         if (!result.accepted) return result
         transitions.apply(runtime, result, player)
+        val contributors = result.state.contributors
+        if (contributors.isNotEmpty()) {
+            org.bukkit.Bukkit.getPluginManager().callEvent(
+                WorkShiftCompletedEvent(
+                    eventId = "$serverId:lumber:${runtime.settings.id}:${result.state.sequence}",
+                    kind = "lumber",
+                    contributors = contributors.keys,
+                    zoneId = runtime.settings.id,
+                ),
+            )
+        }
         stats.recordCompletion(ActivityKind.LUMBER, result.state.contributors)
         rewards?.queueCompletion(
             ActivityKind.LUMBER, runtime.settings.rewards, runtime.settings.id, result.state.sequence,

@@ -10,6 +10,15 @@ the objective pauses in place and resumes from the same shared progress when a
 player returns. Only a completed objective enters the short configured cooldown
 before the next one becomes available.
 
+## Public completion event
+
+`ru.ruscrafting.farms.api.WorkShiftCompletedEvent` is emitted after a real
+farm, lumbermill, or mine shift completes. Its immutable API exposes
+`eventId`, `kind`, `contributors`, and `zoneId`. The event ID is
+`<server-id>:<kind>:<zone-id>:<sequence>` and is stable for the persisted
+shift sequence, including after a plugin restart. Admin-forced completion
+without player contribution does not emit this event.
+
 
 ## Enterprise participation
 
@@ -607,7 +616,7 @@ relevant unit test explicitly, for example
 verification, Testcontainers, and platform acceptance are opt-in; the leased
 `./scripts/mc lab` workflow is described in `AGENTS.md`.
 
-The deployable artifact is `build/libs/ArcFarms-0.25.0.jar`.
+The deployable artifact is `build/libs/ArcFarms-0.35.2.jar`.
 
 ## Isolated gameplay QA
 

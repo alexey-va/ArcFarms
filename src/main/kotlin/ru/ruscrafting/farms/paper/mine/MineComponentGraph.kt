@@ -42,6 +42,7 @@ import java.util.random.RandomGenerator
 /** Composition-only graph; the registry remains the sole V2 runtime collection owner. */
 internal class MineComponentGraph(
     plugin: Plugin,
+    serverId: String,
     regions: RegionGateway,
     ports: WorksitePorts,
     clock: () -> Long,
@@ -68,7 +69,7 @@ internal class MineComponentGraph(
     val powerFailure = MinePowerFailureIncident(registry, index, incidents, incidentJournal)
     val cartScene = MineCartScene(cartEffects)
     val extraction = MineExtractionController(
-        registry, index, cartScene, transitions, ports.access, ports.audience, ports.stats, ports.network, clock, rewardGrants,
+        registry, serverId, index, cartScene, transitions, ports.access, ports.audience, ports.stats, ports.network, clock, rewardGrants,
     )
     val loading = MineLoadingController(
         registry, index, extraction, transitions, serviceItems, locale, ports.access, ports.audience, ports.state, clock,

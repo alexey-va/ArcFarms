@@ -43,6 +43,7 @@ import ru.ruscrafting.farms.domain.MineIncidentType
 /** Stable boundary that constructs exactly one mine engine generation for the process lifetime. */
 internal class MineVersionedModule(
     plugin: Plugin,
+    serverId: String,
     initial: List<MineZoneSettings>,
     regions: RegionGateway,
     locale: ArcFarmsLocale,
@@ -58,7 +59,7 @@ internal class MineVersionedModule(
     private val engineVersion = initial.firstOrNull()?.engineVersion ?: 1
     private val delegate: WorksiteModule<MineShiftState> = if (engineVersion == 2) {
         MineComponentGraph(
-            plugin, regions, ports, clock, journal, random, serviceItems = serviceItems, locale = locale,
+            plugin, serverId, regions, ports, clock, journal, random, serviceItems = serviceItems, locale = locale,
             rewardGrants = rewardGrants,
         ).module
     } else {

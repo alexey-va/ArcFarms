@@ -151,8 +151,8 @@ class ArcFarmsService(
         menus = menus,
     )
     private val worksiteRewards = WorksiteRewardGrantService(farm.rewards)
-    private val lumbermillModule = LumbermillVersionedModule(plugin, initialSettings.lumbermills, regionGateway, locale, worksitePorts, clock, lumberJournal, worksiteServiceItems, worksiteRewards)
-    private val mineModule = MineVersionedModule(plugin, initialSettings.mines, regionGateway, locale, mineJournal, worksitePorts, clock, random, worksiteServiceItems, worksiteRewards)
+    private val lumbermillModule = LumbermillVersionedModule(plugin, initialSettings.serverId, initialSettings.lumbermills, regionGateway, locale, worksitePorts, clock, lumberJournal, worksiteServiceItems, worksiteRewards)
+    private val mineModule = MineVersionedModule(plugin, initialSettings.serverId, initialSettings.mines, regionGateway, locale, mineJournal, worksitePorts, clock, random, worksiteServiceItems, worksiteRewards)
     internal val worksiteAdmins = WorksiteAdminRegistry(listOf(lumbermillModule, mineModule))
     private val worksites = WorksiteModuleRegistry(listOf(farm.module, lumbermillModule, mineModule))
     private val serviceItems = WorksiteServiceItemController(plugin, worksites).also(worksiteServiceItems::bind)
