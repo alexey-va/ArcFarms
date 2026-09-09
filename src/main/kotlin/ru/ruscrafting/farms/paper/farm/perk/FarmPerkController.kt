@@ -263,7 +263,7 @@ internal class FarmPerkController(
             ),
         ),
         summary = listOf(
-            locale.renderPath("shop-table.balance", player) to locale.text(available(player.uniqueId)),
+            locale.renderPath("shop-table.balance", player) to locale.renderPath("shop-table.points", player, mapOf("points" to locale.text(available(player.uniqueId)))),
             locale.renderPath("shop-table.currency", player) to locale.renderPath("shop-table.farm-points", player),
             locale.renderPath("shop-table.active", player) to locale.text(normalized(player.uniqueId).activeUntil.count { it.value > clock() }),
         ),
@@ -303,7 +303,7 @@ internal class FarmPerkController(
         type: FarmPerkType,
     ): FarmMenuEntry = FarmMenuEntry(
         item = offerItem(player, runtime, type),
-        catalogValue = locale.text(offer(runtime, type).price),
+        catalogValue = locale.renderPath("shop-table.points", player, mapOf("points" to locale.text(offer(runtime, type).price))),
         selected = active(player.uniqueId, type),
         category = if (type in setOf(FarmPerkType.IRON_FARMER, FarmPerkType.SKY_COURIER)) FarmMenuCategory.PREMIUM_PERK else FarmMenuCategory.PERK,
         details = listOf(

@@ -1343,6 +1343,7 @@ food:
   delivered: '<color:#ffc857>Еда выдана в инвентарь.</color>'
 
 shop-table:
+  points: '<points>'
   seals: 'Печати смен'
   next: 'Следующая цель'
   balance: 'Доступно очков'

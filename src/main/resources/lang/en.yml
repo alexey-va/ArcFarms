@@ -1343,6 +1343,7 @@ food:
   delivered: '<color:#ffc857>Food delivered to your inventory.</color>'
 
 shop-table:
+  points: '<points>'
   seals: 'Workday seals'
   next: 'Next activity'
   balance: 'Available points'

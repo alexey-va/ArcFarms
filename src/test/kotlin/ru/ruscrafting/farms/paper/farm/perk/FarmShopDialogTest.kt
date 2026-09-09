@@ -38,6 +38,8 @@ class FarmShopDialogTest : FunSpec({
                 javaClass.classLoader.getResourceAsStream(name)!!.use { Files.copy(it, root.resolve(name)) }
             }
             Files.writeString(root.resolve("config.yml"), Files.readString(root.resolve("config.yml")).replace("use-client-locale: true", "use-client-locale: false"))
+            val russianLocale = root.resolve("lang/ru.yml")
+            Files.writeString(russianLocale, Files.readString(russianLocale).replace("points: '<points>'", "points: '<points> <white>\uE5A0</white>'"))
             val settings = ArcFarmsConfig.load(root)
             val locale = ArcFarmsLocale(root) { settings }
             val capture = ShopDialogCapture()
@@ -62,6 +64,12 @@ class FarmShopDialogTest : FunSpec({
             catalog.body.size shouldBe 3
             val catalogText = PlainTextComponentSerializer.plainText().serialize(catalog.body.last().text)
             listOf("Хлеб", "Стейк", "Золотая морковь", "100", "120", "160", "900", "700").forEach { catalogText shouldContain it }
+            catalogText.count { it == '\uE5A0' } shouldBe 13
+            fun glyphColors(component: net.kyori.adventure.text.Component): List<Int?> = buildList {
+                if (component is net.kyori.adventure.text.TextComponent && '\uE5A0' in component.content()) add(component.color()?.value())
+                component.children().forEach { addAll(glyphColors(it)) }
+            }
+            glyphColors(catalog.body.last().text).all { it == 0xffffff } shouldBe true
             catalog.buttons.first { it.id.value == "offers_10" }.label.color()!!.value() shouldBe 0xf4d87a
             catalog.buttons.first { it.id.value == "offers_8" }.label.color()!!.value() shouldBe 0xc4abff
             exportShopScreen("catalog", catalog)
