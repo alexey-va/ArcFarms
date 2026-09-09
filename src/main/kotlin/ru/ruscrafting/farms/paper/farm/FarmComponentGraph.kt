@@ -194,6 +194,8 @@ internal class FarmComponentGraph(
     )
     private val greenhouse = ru.ruscrafting.farms.paper.farm.incident.greenhouse.FarmHellGreenhouseIncident(
         plugin, settings, locale, ports.access, ports.audience, ports.state, incidentBeds, transitions, ledger,
+        rooms = FarmMoleBurrowWorld(plugin, debug, moleChunkRetention, blockDataDecoder, "farm_greenhouse"),
+        tasks = ports.tasks,
     )
     private val frost = FarmFrostIncident(
         plugin = plugin,

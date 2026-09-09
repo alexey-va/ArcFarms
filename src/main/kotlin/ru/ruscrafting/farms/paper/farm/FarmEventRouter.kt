@@ -288,7 +288,7 @@ internal class FarmEventRouter(
         val to = farmAt(destination)
         val routeRuntime = foodDelivery.participantRuntime(player, runtimes()) ?: actionIncidents.participantRuntime(player)
         if (from != null && from !== to) {
-            greenhouse.releasePlayer(player.uniqueId, listOf(from))
+            if (!greenhouse.contains(from, destination)) greenhouse.releasePlayer(player.uniqueId, listOf(from))
             supplies.removeServiceItems(player, from.settings.id, "left_zone")
             frost.clearPlayer(player, "left_zone")
             care.releasePlayer(player, "left_zone")
@@ -304,10 +304,11 @@ internal class FarmEventRouter(
     }
 
     fun retainOnTeleport(player: Player): Boolean =
-        foodDelivery.participantRuntime(player, runtimes()) != null || actionIncidents.participantRuntime(player) != null
+        greenhouse.retains(player) || foodDelivery.participantRuntime(player, runtimes()) != null || actionIncidents.participantRuntime(player) != null
 
     fun onQuit(player: Player, reason: String = "player_quit") {
         routeAdmin.release(player)
+        greenhouse.quit(player)
         greenhouse.releasePlayer(player.uniqueId, runtimes())
         foodDelivery.onQuit(player)
         actionIncidents.onQuit(player)
@@ -324,6 +325,7 @@ internal class FarmEventRouter(
     }
 
     fun onJoin(player: Player) {
+        greenhouse.recoverPlayer(player)
         foodDelivery.removeServiceItems(player, "player_join")
         frost.clearPlayer(player, "player_join")
     }
@@ -698,7 +700,7 @@ internal class FarmEventRouter(
         event.isCancelled = true
     }
 
-    private fun farmAt(location: org.bukkit.Location): FarmRuntime? = runtimes().firstOrNull { it.region.contains(location) }
+    private fun farmAt(location: org.bukkit.Location): FarmRuntime? = runtimes().firstOrNull { it.region.contains(location) || greenhouse.protects(it, location) }
     private fun currentOrder(runtime: FarmRuntime) = runtime.state.orderId?.let(runtime.orders::get)
 
     private companion object {

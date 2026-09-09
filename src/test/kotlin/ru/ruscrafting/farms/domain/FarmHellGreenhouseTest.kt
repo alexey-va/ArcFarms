@@ -39,16 +39,44 @@ class FarmHellGreenhouseTest : FunSpec({
         FarmHellGreenhouseEngine.validate(result.state)
     }
 
-    test("growth remains available after long idle time and has no timeout") {
+    test("carried peppers expire back into the harvested index") {
         var current = state()
         repeat(200) { current = FarmHellGreenhouseEngine.second(current, setOf(first), rules).state }
+        val hotRules = rules.copy(hotSeconds = 1)
+        current = FarmHellGreenhouseEngine.pick(current, first, 0, hotRules).state
+        val result = FarmHellGreenhouseEngine.second(current, setOf(first), hotRules)
+        result.expiredPlayerIds shouldBe setOf(first)
+        result.state.harvested shouldBe emptySet()
+        result.state.carried shouldBe emptyMap()
+        FarmHellGreenhouseEngine.cool(result.state, first, rules).accepted shouldBe false
+    }
+
+    test("elapsed and carried expiry pause with no participants") {
+        var current = state()
+        repeat(2) { current = FarmHellGreenhouseEngine.second(current, setOf(first), rules).state }
         current = FarmHellGreenhouseEngine.pick(current, first, 0, rules).state
-        repeat(200) { current = FarmHellGreenhouseEngine.second(current, setOf(first), rules).state }
-        current = FarmHellGreenhouseEngine.cool(current, first, rules).state
-        current.cooled shouldBe 1
+        val paused = FarmHellGreenhouseEngine.second(current, emptySet(), rules)
+        paused.accepted shouldBe false
+        paused.state shouldBe current
+        paused.state.carried[first]!!.expiresAt shouldBe 8
+        current = paused.state
+        repeat(6) { current = FarmHellGreenhouseEngine.second(current, setOf(first), rules).state }
+        current.harvested shouldBe emptySet()
+        current.cooled shouldBe 0
         current.finished shouldBe false
         current.evacuationSeconds shouldBe null
         current.heat shouldBe 0
+    }
+
+    test("hazard alternates beds with warning, active, and safe rest") {
+        FarmHellGreenhouseEngine.hazard(state().copy(elapsedSeconds = 0)) shouldBe
+            FarmHellHazard(FarmHellHazardPhase.WARNING, FarmHellHazardSide.LEFT, 3)
+        FarmHellGreenhouseEngine.hazard(state().copy(elapsedSeconds = 3)) shouldBe
+            FarmHellHazard(FarmHellHazardPhase.ACTIVE, FarmHellHazardSide.LEFT, 2)
+        FarmHellGreenhouseEngine.hazard(state().copy(elapsedSeconds = 5)) shouldBe
+            FarmHellHazard(FarmHellHazardPhase.REST, FarmHellHazardSide.NONE, 3)
+        FarmHellGreenhouseEngine.hazard(state().copy(elapsedSeconds = 8)) shouldBe
+            FarmHellHazard(FarmHellHazardPhase.WARNING, FarmHellHazardSide.RIGHT, 3)
     }
 
     test("release returns the plant for another player") {
@@ -65,12 +93,12 @@ class FarmHellGreenhouseTest : FunSpec({
             elapsedSeconds = 10,
             harvested = setOf(0, 1, 2, 3),
             cooled = 1,
-            carried = mapOf(first to FarmHellPepper(0, 4)),
+            carried = mapOf(first to FarmHellPepper(0, Int.MAX_VALUE)),
             heat = 99,
             evacuationSeconds = 1,
         )
         val result = FarmHellGreenhouseEngine.second(legacy, setOf(first), rules)
-        result.state.carried shouldBe mapOf(first to FarmHellPepper(0, Int.MAX_VALUE))
+        result.state.carried shouldBe mapOf(first to FarmHellPepper(0, 16))
         result.state.harvested shouldBe setOf(0, 1)
         result.state.cooled shouldBe 1
         result.state.heat shouldBe 0
@@ -100,6 +128,9 @@ class FarmHellGreenhouseTest : FunSpec({
         shouldThrow<IllegalArgumentException> { FarmHellGreenhouseEngine.initialize(FarmHellGreenhouseState(points, harvested = setOf(4)), rules) }
         shouldThrow<IllegalArgumentException> {
             FarmHellGreenhouseEngine.initialize(FarmHellGreenhouseState(points, harvested = setOf(0), carried = mapOf(first to FarmHellPepper(0, 4), second to FarmHellPepper(0, 5))), rules)
+        }
+        shouldThrow<IllegalArgumentException> {
+            FarmHellGreenhouseEngine.initialize(FarmHellGreenhouseState(points, entrance = FarmPointPosition("other", 0.5, 65.0, 0.5)), rules)
         }
         shouldThrow<IllegalArgumentException> { FarmHellGreenhouseEngine.pick(state(), first, 4, rules) }
     }

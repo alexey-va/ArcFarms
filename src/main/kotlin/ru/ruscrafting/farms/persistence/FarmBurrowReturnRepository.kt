@@ -22,11 +22,11 @@ data class FarmBurrowReturn(
 )
 
 /** One durable safe return per player, committed before entering a temporary tunnel. */
-class FarmBurrowReturnRepository(dataRoot: Path) {
+class FarmBurrowReturnRepository(dataRoot: Path, relativeDirectory: Path = Path.of("data/recovery/farm-burrow-returns")) {
     private val gson = Gson()
     private val journal = DurableRecordJournal(
         root = dataRoot,
-        relativeDirectory = Path.of("data/recovery/farm-burrow-returns"),
+        relativeDirectory = relativeDirectory,
         maxRecordBytes = MAX_RECORD_BYTES,
         encode = { record: FarmBurrowReturn -> gson.toJson(record).toByteArray(StandardCharsets.UTF_8) },
         decode = ::decode,

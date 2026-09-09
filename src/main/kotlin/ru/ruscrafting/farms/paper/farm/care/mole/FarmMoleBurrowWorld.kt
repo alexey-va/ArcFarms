@@ -114,11 +114,12 @@ internal class FarmMoleBurrowWorld(
     private val debug: ArcFarmsDebug,
     private val chunkRetention: MoleBurrowChunkRetention,
     private val blockDataDecoder: FarmBlockDataDecoder,
+    private val journalNamespace: String = "farm_mole_burrow",
 ) {
     private data class SceneKey(val world: String, val zoneId: String, val sequence: Long, val burrowId: Int)
     private data class RecordKey(val world: String, val x: Int, val y: Int, val z: Int)
 
-    private val journalKey = NamespacedKey(plugin, "farm_mole_burrow_v1")
+    private val journalKey = NamespacedKey(plugin, "${journalNamespace}_v1")
     private val logger = plugin.logger
     private val buildQueue = ArrayDeque<FarmMoleBurrowJournalRecord>()
     private val restoreQueue = ArrayDeque<FarmMoleBurrowJournalRecord>()
@@ -378,6 +379,146 @@ internal class FarmMoleBurrowWorld(
         return FarmMoleBurrowEnsureResult.BUILDING to plan
     }
 
+    /** Prepares the bounded underground room used by greenhouse scenes. */
+    fun previewGreenhouseChamber(
+        runtime: FarmRuntime,
+        surface: FarmPointPosition,
+    ): FarmMoleBurrowScene? {
+        val world = runtime.region.world
+        if (surface.world != world.name) return null
+        val settings = runtime.settings.moleBurrow
+        val depthSpan = settings.maxDepth - settings.minDepth + 1
+        if (depthSpan <= 0) return null
+        val depth = settings.minDepth + Math.floorMod(
+            seed(runtime.state.placementSequence, floor(surface.x).toInt(), floor(surface.z).toInt()).toInt(),
+            depthSpan,
+        )
+        val centerX = floor(surface.x).toInt()
+        val centerZ = floor(surface.z).toInt()
+        val feetY = floor(surface.y).toInt() - depth
+        if (feetY - 1 <= world.minHeight || feetY + 5 >= world.maxHeight || feetY + 5 >= floor(surface.y).toInt()) return null
+        val planned = linkedMapOf<Triple<Int, Int, Int>, Pair<String, FarmMoleBurrowMarker>>()
+        val solid = Material.STONE.createBlockData().asString
+        val light = Material.SHROOMLIGHT.createBlockData().asString
+        for (dx in -5..5) for (dz in -6..6) {
+            val wall = dx == -5 || dx == 5 || dz == -6 || dz == 6
+            for (dy in -1..5) {
+                val ceilingOrFloor = dy == -1 || dy == 5
+                planned[Triple(centerX + dx, feetY + dy, centerZ + dz)] =
+                    (if (wall || ceilingOrFloor) solid else AIR_DATA) to FarmMoleBurrowMarker.NONE
+            }
+        }
+        listOf(centerZ - 3, centerZ, centerZ + 3).forEach { z ->
+            planned[Triple(centerX, feetY + 5, z)] = light to FarmMoleBurrowMarker.NONE
+        }
+        planned[Triple(centerX, feetY, centerZ)] = AIR_DATA to FarmMoleBurrowMarker.START
+        planned[Triple(centerX, feetY, centerZ + 1)] = AIR_DATA to FarmMoleBurrowMarker.LAIR
+        val positions = planned.keys
+        val chunks = positions.map { (x, _, z) -> (x shr 4) to (z shr 4) }.distinct()
+        if (chunks.any { (x, z) -> !world.isChunkLoaded(x, z) }) return null
+        if (chunks.any { (x, z) ->
+                val chunk = world.getChunkAt(x, z)
+                read(chunk) == null || foreignJournalOverlaps(chunk, positions)
+            }) return null
+        val blocks = positions.map { (x, y, z) -> world.getBlockAt(x, y, z) }
+        if (viabilityFailures(runtime, blocks, emptySet(), floor(surface.y).toInt()).isNotEmpty()) return null
+        val total = planned.size
+        val records = planned.map { (position, active) ->
+            val block = world.getBlockAt(position.first, position.second, position.third)
+            FarmMoleBurrowJournalRecord(
+                world = world.name,
+                zoneId = runtime.settings.id,
+                sequence = runtime.state.sequence,
+                burrowId = 0,
+                x = position.first,
+                y = position.second,
+                z = position.third,
+                originalData = block.blockData.asString,
+                burrowData = active.first,
+                marker = active.second,
+                totalRecords = total,
+            )
+        }
+        return FarmMoleBurrowScene(
+            world,
+            runtime.settings.id,
+            runtime.state.sequence,
+            0,
+            Location(world, surface.x, surface.y, surface.z),
+            Location(world, centerX + 0.5, feetY.toDouble(), centerZ + 0.5),
+            Location(world, centerX + 0.5, feetY.toDouble(), centerZ + 1.5),
+            records,
+        )
+    }
+
+    fun previewGreenhouseChamberDetailed(
+        runtime: FarmRuntime,
+        surface: FarmPointPosition,
+    ): FarmMoleBurrowPreview {
+        val scene = previewGreenhouseChamber(runtime, surface)
+        if (scene != null) return FarmMoleBurrowPreview(scene, 1, emptyMap())
+        if (surface.world != runtime.region.world.name) {
+            return FarmMoleBurrowPreview(null, 0, mapOf("wrong_world" to 1))
+        }
+        val settings = runtime.settings.moleBurrow
+        if (settings.minDepth > settings.maxDepth) {
+            return FarmMoleBurrowPreview(null, 0, mapOf("invalid_depth_range" to 1))
+        }
+        val x = floor(surface.x).toInt()
+        val z = floor(surface.z).toInt()
+        val depth = settings.minDepth + Math.floorMod(
+            seed(runtime.state.placementSequence, x, z).toInt(), settings.maxDepth - settings.minDepth + 1)
+        val feetY = floor(surface.y).toInt() - depth
+        if (feetY - 1 <= runtime.region.world.minHeight ||
+            feetY + 5 >= runtime.region.world.maxHeight ||
+            feetY + 5 >= floor(surface.y).toInt()
+        ) return FarmMoleBurrowPreview(null, 1, mapOf("world_height" to 1))
+        val positions = (-5..5).flatMap { dx -> (-6..6).flatMap { dz -> (-1..5).map { dy -> Triple(x + dx, feetY + dy, z + dz) } } }
+        val chunks = positions.map { (px, _, pz) -> (px shr 4) to (pz shr 4) }.distinct()
+        if (chunks.any { (cx, cz) -> !runtime.region.world.isChunkLoaded(cx, cz) }) {
+            return FarmMoleBurrowPreview(null, 1, mapOf("unloaded_chunk" to 1))
+        }
+        if (chunks.any { (cx, cz) -> foreignJournalOverlaps(runtime.region.world.getChunkAt(cx, cz), positions) }) {
+            return FarmMoleBurrowPreview(null, 1, mapOf("journal_collision" to 1))
+        }
+        val failures = viabilityFailures(
+            runtime,
+            positions.map { (px, py, pz) -> runtime.region.world.getBlockAt(px, py, pz) },
+            emptySet(),
+            floor(surface.y).toInt(),
+        )
+        return FarmMoleBurrowPreview(null, 1, failures.ifEmpty { mapOf("unavailable" to 1) })
+    }
+
+    fun ensureGreenhouseChamber(
+        runtime: FarmRuntime,
+        surface: FarmPointPosition,
+    ): Pair<FarmMoleBurrowEnsureResult, FarmMoleBurrowScene?> {
+        val existing = scene(
+            runtime.region.world,
+            runtime.settings.id,
+            runtime.state.sequence,
+            0,
+            surface,
+            recoveryRadius(runtime.settings.moleBurrow),
+        )
+        if (existing != null) {
+            ticket(existing)
+            enqueueBuild(existing.records)
+            return (if (existing.ready) FarmMoleBurrowEnsureResult.READY else FarmMoleBurrowEnsureResult.BUILDING) to existing
+        }
+        if (hasLoadedSceneRecords(runtime.region.world, runtime.settings.id, runtime.state.sequence, 0)) {
+            beginRestore(runtime.region.world, runtime.settings.id, runtime.state.sequence)
+            return FarmMoleBurrowEnsureResult.BUILDING to null
+        }
+        val plan = previewGreenhouseChamber(runtime, surface) ?: return FarmMoleBurrowEnsureResult.UNAVAILABLE to null
+        if (!commit(listOf(plan))) return FarmMoleBurrowEnsureResult.UNAVAILABLE to null
+        scenes[SceneKey(plan.world.name, plan.zoneId, plan.sequence, plan.burrowId)] = plan
+        ticket(plan)
+        enqueueBuild(plan.records)
+        return FarmMoleBurrowEnsureResult.BUILDING to plan
+    }
+
     fun scene(runtime: FarmRuntime, burrowId: Int): FarmMoleBurrowScene? {
         val surface = runtime.state.careTargets.firstOrNull { it.id == burrowId }?.position ?: return null
         return scene(
@@ -499,6 +640,7 @@ internal class FarmMoleBurrowWorld(
                 val current = read(chunk) ?: error("Mole burrow journal is unreadable")
                 val positions = additions.mapTo(hashSetOf()) { Triple(it.x, it.y, it.z) }
                 require(current.none { Triple(it.x, it.y, it.z) in positions }) { "Mole burrow journal overlaps another scene" }
+                require(!foreignJournalOverlaps(chunk, positions)) { "Foreign temporary journal overlaps another scene" }
                 additions.forEach { record ->
                     require(scene.world.getBlockAt(record.x, record.y, record.z).blockData.asString == record.originalData) {
                         "Mole burrow placement changed before commit"
@@ -707,6 +849,30 @@ internal class FarmMoleBurrowWorld(
         }
     }
 
+    private fun foreignJournalOverlaps(
+        chunk: Chunk,
+        positions: Collection<Triple<Int, Int, Int>>,
+    ): Boolean {
+        val wanted = positions.toHashSet()
+        return FOREIGN_JOURNAL_NAMESPACES
+            .asSequence()
+            .filter { it != journalNamespace }
+            .map { NamespacedKey(plugin, "${it}_v1") }
+            .any { key ->
+                val raw = chunk.persistentDataContainer.get(key, PersistentDataType.BYTE_ARRAY) ?: return@any false
+                runCatching {
+                    FarmMoleBurrowJournalCodec.decode(
+                        raw,
+                        chunk.world.name,
+                        chunk.x,
+                        chunk.z,
+                        chunk.world.minHeight,
+                        chunk.world.maxHeight,
+                    ).any { Triple(it.x, it.y, it.z) in wanted }
+                }.getOrElse { true }
+            }
+    }
+
     private fun write(chunk: Chunk, records: List<FarmMoleBurrowJournalRecord>) {
         if (records.isEmpty()) chunk.persistentDataContainer.remove(journalKey)
         else chunk.persistentDataContainer.set(journalKey, PersistentDataType.BYTE_ARRAY, encode(chunk, records))
@@ -773,6 +939,7 @@ internal class FarmMoleBurrowWorld(
         const val DEPTH_PROBE_STEP = 5
         val AIR_DATA: String = Material.AIR.createBlockData().asString
         val BARRIER_DATA: String = Material.BARRIER.createBlockData().asString
+        val FOREIGN_JOURNAL_NAMESPACES = setOf("farm_mole_burrow", "farm_greenhouse")
     }
 }
 

@@ -131,6 +131,8 @@ internal class FarmModule(
     }
 
     override fun activateLoadedState() {
+        greenhouse.reconcileLoaded(registry.snapshot())
+        org.bukkit.Bukkit.getOnlinePlayers().forEach(greenhouse::recoverPlayer)
         moles.reconcileLoaded()
         org.bukkit.Bukkit.getOnlinePlayers().forEach(moles::recoverPlayer)
         field.reconcile(registry.snapshot())
@@ -147,6 +149,7 @@ internal class FarmModule(
     }
 
     override fun reconcileChunk(chunk: Chunk) {
+        greenhouse.onChunkLoad(chunk, registry.snapshot())
         moles.onChunkLoad(chunk)
         scene.onChunkLoad(chunk)
         special.onChunkLoad(chunk)
@@ -190,6 +193,7 @@ internal class FarmModule(
         if (!hasEditor) care.processIrrigation()
         val moleBlockBudget = runtimes.maxOfOrNull { it.settings.moleBurrow.blocksPerTick } ?: 8
         moles.processBlocks(moleBlockBudget)
+        greenhouse.processBlocks(runtimes, moleBlockBudget)
         val limit = runtimes.maxOfOrNull { it.settings.restoreBlocksPerTick } ?: 1
         special.processRestores(limit).forEach { chunk ->
             runtimes.filter { it.region.world === chunk.world }.forEach { runtime ->
@@ -327,6 +331,7 @@ internal class FarmModule(
     fun hudRuntime(player: Player): FarmRuntime? =
         registry.at(player.location) ?: foodDelivery.participantRuntime(player, registry.snapshot())
         ?: actionIncidents.participantRuntime(player)
+        ?: greenhouse.participantRuntime(player, registry.snapshot())
 
     override fun states(): Map<String, FarmShiftState> =
         registry.snapshot().associate { it.settings.id to it.state }
