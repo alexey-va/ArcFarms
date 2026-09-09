@@ -303,7 +303,7 @@ internal class FarmPerkController(
         type: FarmPerkType,
     ): FarmMenuEntry = FarmMenuEntry(
         item = offerItem(player, runtime, type),
-        catalogValue = locale.renderPath("food.price", player, mapOf("price" to locale.text(offer(runtime, type).price))),
+        catalogValue = locale.text(offer(runtime, type).price),
         selected = active(player.uniqueId, type),
         category = if (type in setOf(FarmPerkType.IRON_FARMER, FarmPerkType.SKY_COURIER)) FarmMenuCategory.PREMIUM_PERK else FarmMenuCategory.PERK,
         details = listOf(

@@ -115,7 +115,7 @@ object FarmFrostEngine {
     }
 }
 
-/** Deterministically spreads campfires over indexed field beds. */
+/** Deterministically spreads campfires within the central half of the indexed field beds. */
 object FarmFrostPlanner {
     fun select(
         beds: Collection<FarmPlotPosition>,
@@ -123,10 +123,19 @@ object FarmFrostPlanner {
         sequence: Long,
     ): List<FarmPlotPosition> {
         require(count in 0..16) { "Farm frost campfire count is invalid" }
-        val available = beds.distinct().sortedWith(
+        val ordered = beds.distinct().sortedWith(
             compareBy<FarmPlotPosition> { it.world }.thenBy { it.x }.thenBy { it.z }.thenBy { it.y },
-        ).toMutableList()
-        if (available.isEmpty() || count == 0) return emptyList()
+        )
+        if (ordered.isEmpty() || count == 0) return emptyList()
+        val centerX = (ordered.minOf { it.x }.toDouble() + ordered.maxOf { it.x }) / 2
+        val centerZ = (ordered.minOf { it.z }.toDouble() + ordered.maxOf { it.z }) / 2
+        val radiusX = ((ordered.maxOf { it.x }.toDouble() - ordered.minOf { it.x }) / 2).coerceAtLeast(1.0)
+        val radiusZ = ((ordered.maxOf { it.z }.toDouble() - ordered.minOf { it.z }) / 2).coerceAtLeast(1.0)
+        val available = ordered.sortedBy {
+            val dx = (it.x - centerX) / radiusX
+            val dz = (it.z - centerZ) / radiusZ
+            dx * dx + dz * dz
+        }.take(maxOf(count, (ordered.size + 1) / 2)).toMutableList()
         val mixed = FarmSpatialSeed.mix(sequence, 0x46524f5354L)
         val first = java.lang.Math.floorMod((mixed xor (mixed ushr 32)).toInt(), available.size)
         val selected = mutableListOf(available.removeAt(first))

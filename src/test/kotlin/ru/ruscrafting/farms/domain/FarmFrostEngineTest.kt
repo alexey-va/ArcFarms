@@ -119,8 +119,19 @@ class FarmFrostEngineTest : FunSpec({
         selected.size shouldBe 5
         selected.distinct().size shouldBe 5
         FarmFrostPlanner.select(beds, count = 5, sequence = 12) shouldContainExactly selected
-        selected.maxOf(FarmPlotPosition::x) - selected.minOf(FarmPlotPosition::x) shouldBe 7
-        selected.maxOf(FarmPlotPosition::z) - selected.minOf(FarmPlotPosition::z) shouldBe 7
+        selected.all { it.x in 1..6 && it.z in 1..6 } shouldBe true
+        FarmFrostPlanner.select(beds.reversed(), count = 5, sequence = 12) shouldContainExactly selected
+        (0L..100L).forEach { sequence ->
+            FarmFrostPlanner.select(beds, 5, sequence).all { it.x in 1..6 && it.z in 1..6 } shouldBe true
+        }
+    }
+
+    test("frost planner preserves count on sparse or narrow fields") {
+        val sparse = (0..3).map { FarmPlotPosition("world", it * 10, 64, 0) }
+        val selected = FarmFrostPlanner.select(sparse + sparse, 5, 12)
+        selected.toSet() shouldBe sparse.toSet()
+        FarmFrostPlanner.select(sparse, 0, 12) shouldBe emptyList()
+        FarmFrostPlanner.select(emptyList(), 5, 12) shouldBe emptyList()
     }
 
     test("firewood point keeps free yaw but is always upright") {
