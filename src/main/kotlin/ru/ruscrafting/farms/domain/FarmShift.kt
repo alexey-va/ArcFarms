@@ -1136,10 +1136,20 @@ object FarmShiftEngine {
         ) return EngineResult(current, false)
         val ignitedCount = (current.incidentProgress + incident.active.size).coerceAtMost(incident.points.size)
         if (ignitedCount >= incident.points.size) return EngineResult(current, false)
-        val nextLimit = (ignitedCount + hotspotCount).coerceAtMost(incident.points.size)
+        val fresh = incident.points.drop(ignitedCount)
+        val spreading = fresh.filter { candidate ->
+            incident.active.any { index ->
+                val source = incident.points[index]
+                source.world == candidate.world && kotlin.math.abs(source.y - candidate.y) <= 2.0 &&
+                    kotlin.math.abs(source.x - candidate.x) <= 1.0 && kotlin.math.abs(source.z - candidate.z) <= 1.0
+            }
+        }.take(hotspotCount)
+        if (spreading.isEmpty()) return EngineResult(current, false)
+        val nextLimit = ignitedCount + spreading.size
         return EngineResult(
             current.copy(
                 specialIncident = incident.copy(
+                    points = incident.points.take(ignitedCount) + spreading + (fresh - spreading.toSet()),
                     active = incident.active + (ignitedCount until nextLimit),
                 ),
             ),

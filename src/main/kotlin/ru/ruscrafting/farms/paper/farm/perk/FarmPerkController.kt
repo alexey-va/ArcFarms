@@ -264,7 +264,6 @@ internal class FarmPerkController(
         ),
         summary = listOf(
             locale.renderPath("shop-table.balance", player) to locale.renderPath("shop-table.points", player, mapOf("points" to locale.text(available(player.uniqueId)))),
-            locale.renderPath("shop-table.currency", player) to locale.renderPath("shop-table.farm-points", player),
             locale.renderPath("shop-table.active", player) to locale.text(normalized(player.uniqueId).activeUntil.count { it.value > clock() }),
         ),
         regions = mapOf(

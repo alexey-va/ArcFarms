@@ -310,6 +310,59 @@ class FarmBarnFireIncidentMockBukkitTest : FunSpec({
             paper.close()
         }
     }
+    test("fire alternates between wooden and hay fronts without filling the stone road") {
+        val paper = MockBukkitTestRuntime.open()
+        try {
+            val world = paper.server.addSimpleWorld("farm")
+            world.getChunkAt(0, 0).load()
+            for (x in 1..15) for (z in 1..15) world.getBlockAt(x, 64, z).type = Material.STONE
+            for (x in 3..5) for (z in 6..8) world.getBlockAt(x, 64, z).type = Material.OAK_PLANKS
+            for (x in 11..13) for (z in 6..8) world.getBlockAt(x, 66, z).type = Material.HAY_BLOCK
+            val config = FarmBarnFireSettings(
+                hotspotCount = 8, initialHotspotCount = 2, spreadIntervalTicks = 20,
+                spreadHotspotsPerPulse = 1, spawnPerTick = 8, placementRadius = 7,
+                minSpacing = 1.0, verticalSearch = 4, sprayRange = 18.0, sprayHitRadius = 3.0,
+                sprayCooldownTicks = 1, particleStep = 0.5, flameParticleIntervalTicks = 5,
+                particleHotspotLimit = 8,
+            )
+            val zone = mockk<FarmZoneSettings> {
+                every { id } returns "communal_farm"
+                every { barnFire } returns config
+            }
+            val runtime = FarmRuntime(
+                settings = zone,
+                region = CuboidActivityRegion(world, "farm", CuboidBounds(0, 0, 0, 31, 128, 31)),
+                orders = emptyMap(), orderList = emptyList(), rules = mockk(relaxed = true),
+                state = FarmShiftState(phase = FarmPhase.INCIDENT, sequence = 3, placementSequence = 9,
+                    orderId = "test_order", incidentType = FarmIncidentType.BARN_FIRE),
+            )
+            val port = mockk<WorksiteRuntimePort>(relaxed = true)
+            val controller = FarmBarnFireIncident(
+                settings = { mockk<ArcFarmsConfig> { every { particles } returns false } },
+                debug = ArcFarmsDebug({ false }) {}, access = port, audience = port, state = port,
+                points = FarmPointProvider { _, _ -> FarmPointPosition(world.name, 8.5, 65.0, 7.5) },
+                transitions = FarmTransitionSink { target, result, _ -> target.state = result.state },
+                blockPassability = MockBukkitFarmBlockPassability,
+            )
+            controller.initialize(runtime) shouldBe true
+            val planned = runtime.state.specialIncident!!.points
+            planned.size shouldBe 8
+            planned.forEach { point ->
+                (point.location(world).block.getRelative(BlockFace.DOWN).type in setOf(Material.OAK_PLANKS, Material.HAY_BLOCK)) shouldBe true
+            }
+            planned.chunked(2).forEach { pair -> pair.map { it.x < 8 }.toSet() shouldBe setOf(true, false) }
+            controller.update(listOf(runtime), 0)
+            controller.update(listOf(runtime), 20)
+            controller.update(listOf(runtime), 40)
+            val active = runtime.state.specialIncident!!.active.map { runtime.state.specialIncident!!.points[it] }
+            active.count { it.x < 8 } shouldBe 2
+            active.count { it.x > 8 } shouldBe 2
+            for (x in 6..10) for (z in 1..15) (world.getBlockAt(x, 65, z).type == Material.FIRE) shouldBe false
+        } finally {
+            paper.close()
+        }
+    }
+
 })
 
 private fun FarmPointPosition.location(world: org.bukkit.World): Location = Location(world, x, y, z, yaw, pitch)

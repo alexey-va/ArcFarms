@@ -10,8 +10,8 @@ class FarmBarnFireTest : FunSpec({
     val second = UUID.fromString("00000000-0000-0000-0000-000000000002")
     val hotspots = listOf(
         FarmPointPosition("farm", 1.5, 65.02, 1.5),
-        FarmPointPosition("farm", 4.5, 65.02, 1.5),
-        FarmPointPosition("farm", 7.5, 65.02, 1.5),
+        FarmPointPosition("farm", 2.5, 65.02, 1.5),
+        FarmPointPosition("farm", 3.5, 65.02, 1.5),
     )
 
     fun incident() = FarmShiftState(
@@ -67,4 +67,17 @@ class FarmBarnFireTest : FunSpec({
         capped.accepted shouldBe false
         capped.state.specialIncident?.active shouldBe setOf(1, 2)
     }
+    test("extinguished fronts do not reignite and live fronts keep spreading after recovery") {
+        val points = listOf(0.5, 10.5, 1.5, 11.5, 2.5, 12.5).map { FarmPointPosition("farm", it, 65.02, 1.5) }
+        var state = FarmShiftEngine.initializeBarnFire(incident(), points, 2).state
+        state = FarmShiftEngine.extinguishBarnFire(state, 0, first).state
+        state = FarmShiftEngine.spreadBarnFire(state.copy(), 1).state
+        state.specialIncident!!.active.map { state.specialIncident!!.points[it].x }.toSet() shouldBe setOf(10.5, 11.5)
+        state.specialIncident!!.points[0] shouldBe points[0]
+        state = FarmShiftEngine.spreadBarnFire(state.copy(), 8).state
+        state.specialIncident!!.active.map { state.specialIncident!!.points[it].x }.toSet() shouldBe setOf(10.5, 11.5, 12.5)
+        FarmShiftEngine.spreadBarnFire(state, 1).accepted shouldBe false
+        state.incidentProgress shouldBe 1
+    }
+
 })

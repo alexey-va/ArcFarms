@@ -27,7 +27,7 @@ class FarmDialogTablesTest : FunSpec({
             shouldThrow<NoSuchMethodException> {
                 owner.getMethod("render", List::class.java, Pair::class.java, frame, Int::class.javaPrimitiveType, columns)
             }
-            val rendered = FarmDialogTables.bind(owner)(listOf(Component.text("Bread") to Component.text("100")), FarmDialogTables.Frame.LEGENDARY, 468)
+            val rendered = FarmDialogTables.bind(owner)(listOf(Component.text("Bread") to Component.text("100")), FarmDialogTables.Frame.LEGENDARY, 468, FarmDialogTables.Columns.LABEL_WIDE)
             PlainTextComponentSerializer.plainText().serialize(rendered) shouldBe "Bread100"
         }
     }
@@ -36,7 +36,7 @@ class FarmDialogTablesTest : FunSpec({
 /** Owns a separate Kotlin Pair just as independently shaded plugins can. */
 object IsolatedTableOwner {
     enum class Frame { EPIC, LEGENDARY }
-    enum class Columns { AUTO }
+    enum class Columns { AUTO, LABEL_WIDE }
     data class Result(val component: Component)
     @Suppress("UNUSED_PARAMETER")
     fun render(rows: List<Pair<Component, Component>>, headers: Pair<Component, Component>?, frame: Frame, width: Int, columns: Columns): Result =

@@ -243,39 +243,48 @@ internal class FarmBarnFireIncident(
             if (!world.isChunkLoaded(x shr 4, z shr 4)) return@mapNotNull null
             val y = surfaceY(runtime, x, anchor.y.toIntFloor(), z, config.verticalSearch) ?: return@mapNotNull null
             val floor = world.getBlockAt(x, y, z)
-            FarmPointPosition(world.name, x + 0.5, y + 1.02, z + 0.5) to isWoodenStructure(floor.type)
+            FarmPointPosition(world.name, x + 0.5, y + 1.02, z + 0.5) to isPreferredFuel(floor.type)
         }.sortedByDescending { it.second }
             .mapTo(mutableListOf()) { it.first }
         val chosen = mutableListOf<FarmPointPosition>()
-        val wooden = available.filter { isWoodenStructure(world.getBlockAt(it.x.toIntFloor(), it.y.toIntFloor() - 1, it.z.toIntFloor()).type) }.toSet()
+        val fuel = available.filter { isPreferredFuel(world.getBlockAt(it.x.toIntFloor(), it.y.toIntFloor() - 1, it.z.toIntFloor()).type) }.toSet()
+        if (fuel.isNotEmpty()) available.retainAll(fuel)
         // Seed separate fires before extending their neighbouring flames.
         while (chosen.size < config.initialHotspotCount) {
             val eligible = available.filter { candidate ->
                 chosen.none { horizontalDistanceSquared(it, candidate) < config.minSpacing * config.minSpacing }
             }
-            val preferred = eligible.filter { it in wooden }.ifEmpty { eligible }
-            val next = if (chosen.isEmpty()) preferred.firstOrNull() else preferred.maxByOrNull { candidate ->
+            val next = if (chosen.isEmpty()) eligible.firstOrNull() else eligible.maxByOrNull { candidate ->
                 chosen.minOf { horizontalDistanceSquared(it, candidate) }
             }
             if (next == null) break
             chosen += next
             available.remove(next)
         }
+        val fronts = chosen.map { mutableListOf(it) }
         while (chosen.size < config.hotspotCount) {
-            val next = available.firstOrNull { candidate ->
-                chosen.none { horizontalDistanceSquared(it, candidate) < config.minSpacing * config.minSpacing } &&
-                    chosen.any { isNeighbour(it, candidate) }
-            } ?: break
-            available.remove(next)
-            chosen += next
+            var extended = false
+            for (front in fronts) {
+                if (chosen.size >= config.hotspotCount) break
+                val next = available.firstOrNull { candidate ->
+                    chosen.none { horizontalDistanceSquared(it, candidate) < config.minSpacing * config.minSpacing } &&
+                        front.any { isNeighbour(it, candidate) }
+                } ?: continue
+                available.remove(next)
+                chosen += next
+                front += next
+                extended = true
+            }
+            if (!extended) break
         }
         return chosen
     }
 
-    private fun isWoodenStructure(material: Material): Boolean =
-        Tag.LOGS.isTagged(material) || Tag.PLANKS.isTagged(material) || Tag.WOODEN_FENCES.isTagged(material) ||
+    private fun isPreferredFuel(material: Material): Boolean =
+        material == Material.HAY_BLOCK || Tag.LOGS.isTagged(material) || Tag.PLANKS.isTagged(material) || Tag.WOODEN_FENCES.isTagged(material) ||
             Tag.WOODEN_SLABS.isTagged(material) || Tag.WOODEN_STAIRS.isTagged(material) ||
-            Tag.WOODEN_TRAPDOORS.isTagged(material) || material == Material.BARREL || material == Material.BOOKSHELF
+            Tag.WOODEN_TRAPDOORS.isTagged(material) || Tag.WOODEN_DOORS.isTagged(material) ||
+            Tag.FENCE_GATES.isTagged(material) || material in setOf(Material.BARREL, Material.BOOKSHELF, Material.CHEST, Material.CRAFTING_TABLE)
 
     private fun isNeighbour(left: FarmPointPosition, right: FarmPointPosition): Boolean =
         left.world == right.world && abs(left.y - right.y) <= 2.0 &&
@@ -316,7 +325,7 @@ internal class FarmBarnFireIncident(
             if (floor.y in world.minHeight until world.maxHeight - 2 && floor.type.isSolid && feet.type.isAir &&
                 blockPassability.isPassable(head) && runtime.region.contains(feet.location)) floor else null
         }
-        return (surfaces.firstOrNull { isWoodenStructure(it.type) } ?: surfaces.firstOrNull())?.y
+        return (surfaces.firstOrNull { isPreferredFuel(it.type) } ?: surfaces.firstOrNull())?.y
     }
 
     private fun hitsInSpray(

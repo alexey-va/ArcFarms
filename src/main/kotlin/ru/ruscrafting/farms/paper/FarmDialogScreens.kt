@@ -134,12 +134,20 @@ internal object FarmDialogScreens {
             )
         }
         val body = mutableListOf(PaperDialogBody(restyle(text(session.player, "intro.${session.menuId.value}")), 468))
-        if (content.summary.isNotEmpty()) body += FarmDialogTables.body(content.summary,
-            if (session.menuId == ArcFarmsMenuPlatform.FARM_PERKS) FarmDialogTables.Frame.LEGENDARY else FarmDialogTables.Frame.EPIC)
+        val farmShop = session.menuId == ArcFarmsMenuPlatform.FARM_PERKS
+        if (content.summary.isNotEmpty()) body += FarmDialogTables.body(
+            content.summary,
+            if (farmShop) FarmDialogTables.Frame.LEGENDARY else FarmDialogTables.Frame.EPIC,
+            width = if (farmShop) FARM_SHOP_TABLE_WIDTH else 468,
+            columns = if (farmShop) FarmDialogTables.Columns.LABEL_WIDE else FarmDialogTables.Columns.AUTO,
+        )
         val catalog = rows.mapNotNull { row ->
             row.entry.catalogValue?.let { recolor(name(row.entry.item), BODY) to it.color(TRADE).decoration(TextDecoration.ITALIC, false) }
         }
-        if (catalog.isNotEmpty()) body += FarmDialogTables.body(catalog, FarmDialogTables.Frame.LEGENDARY)
+        if (catalog.isNotEmpty()) body += FarmDialogTables.body(
+            catalog, FarmDialogTables.Frame.LEGENDARY,
+            width = FARM_SHOP_TABLE_WIDTH, columns = FarmDialogTables.Columns.LABEL_WIDE,
+        )
         val buttons = mutableListOf<PaperDialogButton>()
         var back: PaperDialogButton? = null
         rows.forEach { row ->
@@ -232,6 +240,7 @@ internal object FarmDialogScreens {
     private val plain = PlainTextComponentSerializer.plainText()
     private val TITLE = TextColor.color(0xffb277)
     private val TELEPORT = TextColor.color(0x92bed8)
+    private const val FARM_SHOP_TABLE_WIDTH = 280
     private val TRADE = TextColor.color(0xf4d87a)
     private val PROGRESSION = TextColor.color(0xc4abff)
     private val DETAIL = TextColor.color(0xc4a7e7)

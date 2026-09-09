@@ -62,6 +62,9 @@ class FarmShopDialogTest : FunSpec({
             val catalog = capture.last!!
             catalog.buttons.size shouldBe 13
             catalog.body.size shouldBe 3
+            catalog.body[1].width shouldBe 280
+            catalog.body[2].width shouldBe 280
+            PlainTextComponentSerializer.plainText().serialize(catalog.body[1].text).contains("Валюта") shouldBe false
             val catalogText = PlainTextComponentSerializer.plainText().serialize(catalog.body.last().text)
             listOf("Хлеб", "Стейк", "Золотая морковь", "100", "120", "160", "900", "700").forEach { catalogText shouldContain it }
             catalogText.count { it == '\uE5A0' } shouldBe 13

@@ -7,6 +7,7 @@ import ru.arc.paper.menu.PaperDialogBody
 /** Optional bridge to ARC's pack-owned renderer. Only Adventure components cross the plugin boundary. */
 internal object FarmDialogTables {
     enum class Frame { EPIC, LEGENDARY }
+    enum class Columns { AUTO, LABEL_WIDE }
 
     private val renderer by lazy {
         try {
@@ -18,7 +19,7 @@ internal object FarmDialogTables {
         }
     }
 
-    internal fun bind(owner: Class<*>): (List<Pair<Component, Component>>, Frame, Int) -> Component {
+    internal fun bind(owner: Class<*>): (List<Pair<Component, Component>>, Frame, Int, Columns) -> Component {
         val loader = owner.classLoader
         val frame = Class.forName("${owner.name}\$Frame", true, loader)
         val columns = Class.forName("${owner.name}\$Columns", true, loader)
@@ -26,18 +27,18 @@ internal object FarmDialogTables {
         val makePair = pair.getConstructor(Any::class.java, Any::class.java)
         val method = owner.getMethod("render", List::class.java, pair, frame, Int::class.javaPrimitiveType, columns)
         val instance = owner.getField("INSTANCE").get(null)
-        val auto = columns.enumConstants.first { (it as Enum<*>).name == "AUTO" }
         val component = Class.forName("${owner.name}\$Result", true, loader).getMethod("getComponent")
-        return { rows, style, width ->
+        return { rows, style, width, columnStyle ->
+            val selectedColumns = columns.enumConstants.first { (it as Enum<*>).name == columnStyle.name }
             val selected = frame.enumConstants.first { (it as Enum<*>).name == style.name }
             val ownedRows = rows.map { (label, value) -> makePair.newInstance(label, value) }
-            component.invoke(method.invoke(instance, ownedRows, null, selected, width, auto)) as Component
+            component.invoke(method.invoke(instance, ownedRows, null, selected, width, selectedColumns)) as Component
         }
     }
 
-    fun body(rows: List<Pair<Component, Component>>, frame: Frame = Frame.EPIC, width: Int = 468): PaperDialogBody {
+    fun body(rows: List<Pair<Component, Component>>, frame: Frame = Frame.EPIC, width: Int = 468, columns: Columns = Columns.AUTO): PaperDialogBody {
         val rendered = try {
-            renderer?.invoke(rows, frame, width)
+            renderer?.invoke(rows, frame, width, columns)
         } catch (_: ReflectiveOperationException) {
             null
         } catch (_: LinkageError) {
