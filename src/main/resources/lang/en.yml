@@ -1077,7 +1077,6 @@ lumber:
   actionbar-felling: '<wood> <dark_gray>•</dark_gray> <gold><done></gold><gray>/</gray><yellow><total></yellow> logs'
   actionbar-processing: '<gold>Processing</gold> <dark_gray>•</dark_gray> <yellow><done></yellow><gray>/</gray><gold><total></gold>'
   guidance:
-    resource_order: '<color:#f2fff7>Mine: <resource></color>'
     title: '<color:#ffc857><bold>Lumbermill task</bold></color>'
     bar: '<action> <dark_gray>•</dark_gray> <yellow><done></yellow><gray>/</gray><gold><total></gold>'
     felling: '<color:#f2fff7>Fell the highlighted trees of the required species</color>'
@@ -1122,6 +1121,7 @@ mine:
   ore-crate: '<gold>Ore crate</gold>'
   loading-required: '<yellow>Pick up a highlighted ore crate and carry it to the extraction cart.</yellow>'
   guidance:
+    resource_order: '<color:#f2fff7>Mine: <resource></color>'
     completion_pending: '<gray>Completing the order</gray>'
     idle: '<gray>Preparing the worksite — the order starts automatically</gray>'
     title: '<color:#45c8f5><bold>Mine task</bold></color>'
