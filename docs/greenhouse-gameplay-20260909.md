@@ -1,40 +1,59 @@
-# Hell rift gameplay
+# Infernal plantation
 
-The event reuses the mole expedition entrance policy, marker/hitbox renderer,
-particle pillar, durable return records and journalled room pipeline. Its
-`UndergroundEvent` type inherits the common title/subtitle and HUD hint flow.
-The entrance is chosen from interior indexed beds, not the farm boundary.
+The event inherits the underground event type and the shared mole expedition:
+interior indexed-bed entrance, purple particle pillar, title/subtitle, durable
+return record and journalled construction/restoration.
 
-A separate 9×11×5 hell chamber uses native blackstone, nether bricks, basalt,
-crying obsidian and nine real shroomlights. Stand on the highlighted rune for
-60 consecutive ticks to seal it. Leaving or entering an active heat zone
-resets only the current hold. Completed seals persist across restart.
-Sides alternate on an eight-second cycle: three seconds of warning, two of
-heat, three of rest. Heat pushes toward the safe central aisle. Visible floor
-materials communicate the warning even with particles disabled. There are no
-pepper items, forced hotbar selection, item consumption or health damage.
+## Player flow
 
-Entry waits for construction and a committed return record. Exit and completion
-evacuate players before restoration; rejected teleports retain the room and
-return record. Offline players recover on join. Legacy greenhouse layouts are
-restored before rebuilding, preserving completed progress and dropping obsolete
-carried-pepper state without granting contribution.
+Enter a 21×25-block underground farming hall with four raised 5×5 soul-sand
+beds, basalt arches, a contained furnace and 17 real shroomlights. Each bed has
+its own lever and visible heat channel. Right-click the lever to heat the bed.
+Nether wart visibly grows through its native stages over eight active seconds.
+
+Once mature, the bed warns for four seconds. Turn off its heat, wait two seconds
+for cooling, then right-click the wart to collect one batch. The bed replants
+automatically. Players can stagger several beds, cool one while growing another,
+and divide the work. Closing a bed early preserves its partial growth. Leaving
+mature crops heated for four extra seconds scorches only that planting and
+closes its valve; previously collected batches remain safe. No health, inventory
+items or forced hotbar selection are involved.
+
+Labels name the next action and remaining time. Lever labels match bed numbers;
+orange channels show open heat, full-grown crops and green particles identify
+ready harvest. State wording remains available with particles disabled. The
+entrance and exit use the common expedition markers. The scoreboard counts
+collected batches against the existing configured quota.
+
+## Recovery and bounds
+
+Four physical beds support the full existing 1..16 batch quota. Growth, valve,
+cooling and overheat state persists; no participants inside pauses all timers.
+Legacy rune/pepper rooms restore before layout version 2 is built, preserving
+completed progress. The return journal keeps its existing namespace.
+
+The eight-layer room contains 4,200 journal entries. A regression checks every
+in-chunk center alignment against the existing 2,048-record chunk limit and
+8,192-record scene limit. Placement still requires loaded chunks, the full farm
+footprint, permitted materials and no overlapping foreign journal. The sealed
+shell and connected aisles prevent accidental access outside the temporary room.
 
 ## Economy assessment
 
-Quota and all reward quantities, chances and multipliers are unchanged.
-Per-completion deltas are 0 vault, 0 tokens, 0 XP and 0 reward items. Each newly
-completed seal contributes one unit; interrupted holds and migration contribute
-zero. Completion throughput changes with movement and heat timing; no measured
-hourly-income neutrality is claimed. Temporary blocks remain protected and are
-restored. The planned EconomyShopGUI SELL-to-contract transition is unchanged.
+Per-completion deltas: 0 vault, 0 tokens, 0 XP and 0 reward items. Quota,
+contribution per completed batch and reward amounts/chances/multipliers are
+unchanged. Valves, growth, scorching and migration grant zero contribution.
+Displayed crops create no inventory loot; room blocks are protected/restored.
+Four parallel beds can theoretically mature/cool in ten seconds plus input and
+travel, while the previous rune mechanic required three seconds per seal plus
+travel. This is a timing change, not a claim of neutral measured hourly income.
+The planned EconomyShopGUI SELL-to-contract transition is unchanged.
 
 ## Verification
 
-Focused tests cover continuous hold/reset, ordered idempotent seals, hazard
-phases, participant pause, legacy progress, durable entry/return and preserved
-hotbar selection. Chamber checks cover native lighting, walkable routes to all
-runes, depth, region footprint, exact restoration and journal namespace
-collisions. Registry tests enforce all incident types; startup locale validation
-requires their titles, subtitles and hints. These checks do not substitute for
-a player-client visual inspection.
+Focused tests cover growth, cooling, overheat, early-close/resume, duplicate
+harvest, paused timers, idempotent initialization, persisted timers and quotas
+larger than the physical bed count. Integration covers actual valve/crop entity
+routing, held-slot preservation, entry/return and restoration. Geometry checks
+cover native light, every valve/bed approach, sealed bounds and namespace
+collisions. Startup validation checks new locale keys and placeholders.

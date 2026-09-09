@@ -50,33 +50,48 @@ class FarmHellGreenhouseIncidentTest : FunSpec({
             runtime.state.hellGreenhouse!!.points.first().y shouldBe 55.0
             owner.update(runtime)
             f.world.entities.filterIsInstance<Interaction>().any { owner.identity(it)?.role == HellGreenhouseRole.ENTRANCE } shouldBe true
-            repeat(3) { owner.processBlocks(listOf(runtime), 1000) }
+            repeat(6) { owner.processBlocks(listOf(runtime), 1000) }
             owner.update(runtime)
             val entrance = f.world.entities.filterIsInstance<Interaction>().single { owner.identity(it)?.role == HellGreenhouseRole.ENTRANCE }
             owner.interact(PlayerInteractEntityEvent(player, entrance, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
             player.location.y shouldBe 55.05
             player.inventory.heldItemSlot shouldBe 4
             owner.retains(player) shouldBe true
-            val pad = runtime.state.hellGreenhouse!!.points.first()
-            player.teleport(Location(f.world, pad.x, pad.y, pad.z))
-            runtime.state = runtime.state.copy(hellGreenhouse = runtime.state.hellGreenhouse!!.copy(elapsedSeconds = 5))
-            repeat(59) { owner.update(runtime) }
-            runtime.state.incidentProgress shouldBe 0
+            val crop = runtime.state.hellGreenhouse!!.points.first()
+            player.teleport(Location(f.world, crop.x + 3.0, crop.y, crop.z))
             owner.update(runtime)
+            fun interact(role: HellGreenhouseRole) {
+                val target = f.world.entities.filterIsInstance<Interaction>().single {
+                    owner.identity(it)?.let { id -> id.role == role && id.index == 0 } == true
+                }
+                // Use the walkable center-side approach to the actual target.
+                player.teleport(Location(f.world, crop.x + 3.0, crop.y, crop.z))
+                owner.interact(PlayerInteractEntityEvent(player, target, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
+            }
+            interact(HellGreenhouseRole.CROP)
+            runtime.state.incidentProgress shouldBe 0
+            interact(HellGreenhouseRole.VALVE)
+            repeat(160) { owner.update(runtime) }
+            runtime.state.hellGreenhouse!!.plots.first().growthSeconds shouldBe 8
+            interact(HellGreenhouseRole.CROP)
+            runtime.state.incidentProgress shouldBe 0
+            interact(HellGreenhouseRole.VALVE)
+            repeat(40) { owner.update(runtime) }
+            interact(HellGreenhouseRole.CROP)
             runtime.state.incidentProgress shouldBe 1
             player.inventory.heldItemSlot shouldBe 4
-            repeat(60) { owner.update(runtime) }
+            interact(HellGreenhouseRole.CROP)
             runtime.state.incidentProgress shouldBe 1
             owner.clear(runtime)
             player.location.y shouldBe 65.0
             owner.retains(player) shouldBe false
-            repeat(3) { owner.processBlocks(listOf(runtime), 1000) }
+            repeat(6) { owner.processBlocks(listOf(runtime), 1000) }
             f.world.getBlockAt(24, 55, 24).type shouldBe Material.STONE
             owner.cleanup()
         } }
     }
 
-    test("legacy surface greenhouse becomes a rift without losing progress") {
+    test("legacy surface greenhouse becomes a plantation without losing progress") {
         requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { f ->
             val points = listOf(-2, 2).flatMap { x -> listOf(-3, -1, 1, 3).map { z ->
                 FarmPointPosition(f.world.name, 24.5 + x, 65.0, 24.5 + z)

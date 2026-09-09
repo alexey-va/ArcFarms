@@ -278,7 +278,7 @@ admin:
     boar-breakout: '<white>boar breakout</white>'
     rival-raid: '<white>rival farm raid</white>'
     tornado: '<white>tornado</white>'
-    hell-greenhouse: "<white>hell rift</white>"
+    hell-greenhouse: "<white>infernal plantation</white>"
     delivery: '<white>delivery</white>'
     complete: '<white>completion</white>'
     reset: '<white>reset</white>'
@@ -311,7 +311,7 @@ admin:
     boar-breakout: '<gray>releases boars across the field; stop their charges with a shield before crops are trampled</gray>'
     rival-raid: '<gray>mounts the crew on an autonomous ghast bound for the configured rival farm</gray>'
     tornado: '<gray>runs a harvest order during a tornado: work while staying clear of the funnel</gray>'
-    hell-greenhouse: '<color:#b8c8c0>Find the purple pillar, descend and hold the highlighted runes</color>'
+    hell-greenhouse: "<color:#b8c8c0>Follow the purple marker underground; manage heat and harvest wart</color>"
     delivery: '<gray>closes harvesting and creates crates for delivery</gray>'
     complete: '<gray>runs delivery, field recovery, and rewards immediately</gray>'
     reset: '<gray>removes the current scene, restores the field, and stops automatic starts</gray>'
@@ -330,7 +330,7 @@ admin:
     boar-breakout: '<gray>boars charge across the field; block them with the service shield</gray>'
     rival-raid: '<gray>stand in the purple portal, wait to board, then fire from the ghast at marked workers</gray>'
     tornado: '<gray>harvest the order while moving across the field and avoiding the funnel</gray>'
-    hell-greenhouse: '<color:#b8c8c0>Find the purple pillar, descend and hold the highlighted runes</color>'
+    hell-greenhouse: "<color:#b8c8c0>Follow the purple marker underground; manage heat and harvest wart</color>"
 generic-error: "<prefix> <red>Could not complete this action. Try again later.</red>"
 zone-unavailable: '<prefix> <red>This worksite is currently unavailable.</red>'
 zone-locked: '<prefix> <red>You do not have access to this worksite yet.</red>'
@@ -571,7 +571,7 @@ farm:
   entry-boar-breakout: '<color:#f2fff7>Take a shield and face each charging boar</color>'
   entry-rival-raid: '<color:#f2fff7>Stand in the purple portal and wait to board the ghast</color>'
   entry-tornado: '<color:#f2fff7>Harvest the order while moving across the field and avoiding the funnel</color>'
-  entry-hell-greenhouse: '<color:#b8c8c0>Find the purple pillar, descend and hold the highlighted runes</color>'
+  entry-hell-greenhouse: "<color:#b8c8c0>Follow the purple marker underground; manage heat and harvest wart</color>"
   entry-delivery: '<color:#f2fff7>Carry the crates to receiving</color>'
   started: '<color:#55d98b>New order</color> <color:#707a76>•</color> <order> <color:#707a76>•</color> <color:#f2fff7>till a patch of <total> beds</color>'
   patch-unavailable: '<color:#ffad42>There is no free farm patch nearby for a new shift.</color>'
@@ -778,20 +778,20 @@ farm:
     bossbar: '<color:#8bd3ff>Tornado</color> <color:#707a76>•</color> <color:#f2fff7>harvested <done>/<total></color>'
     resolved: '<color:#55d98b>Tornado has cleared. Keep harvesting.</color>'
   hell-greenhouse:
-    started: '<color:#c778ff><bold>Hell rift</bold></color>'
-    started-subtitle: '<color:#f2fff7>Hold <total> runes to seal the rift</color>'
-    bossbar: '<color:#c778ff>Rift seals</color> <color:#f2fff7><done>/<total></color>'
-    entrance: '<color:#c778ff><bold>Hell rift</bold></color><newline><color:#f2fff7>Right-click — enter the seal chamber</color>'
-    required: '<color:#45c8f5>Stand on the highlighted rune for 3 seconds. Orange floors warn of heat.</color>'
+    started: "<color:#ffc857><bold>Infernal plantation</bold></color>"
+    started-subtitle: "<white>Grow and harvest <total> beds of nether wart</white>"
+    bossbar: "<color:#ffc857>Plantation harvest</color> <white><done>/<total></white>"
+    entrance: "<color:#c778ff><bold>Infernal plantation</bold></color><newline><white>Right-click to enter the growing hall</white>"
+    required: "<white>Lever: heat; mature: close heat; cooled: right-click wart</white>"
     picked: '<color:#45c8f5>Hold the rune: <time>s</color>'
-    cooled: '<color:#55d98b>Seals restored: <done>/<total></color>'
+    cooled: "<color:#55d98b>Harvest collected: <done>/<total></color>"
     too-early: '<color:#ffad42>That pepper is not ripe yet.</color>'
     hands-full: '<color:#ffad42>You are already carrying a ripe pepper.</color>'
     empty-hands: '<color:#ffad42>Pick up a ripe pepper first.</color>'
     hot-burst: '<color:#ffc857>The heat wave broke your hold. Wait in the central aisle.</color>'
     evacuate: '<color:#f2fff7>Leave the greenhouse.</color>'
     quota-required: '<color:#ffad42>Cool <total> peppers for a full success.</color>'
-    success: '<color:#55d98b><bold>Rift sealed. Return to harvesting.</bold></color>'
+    success: "<color:#55d98b>Infernal harvest collected: <done>/<total>. Returning to the farm.</color>"
     partial: '<color:#ffc857>Greenhouse result: <done>/<total>.</color>'
     timeout: '<color:#ff5f6d>Greenhouse cycle complete.</color>'
     vat: '<color:#45c8f5>Water cauldron</color><newline><color:#55d98b>Cooled: <done>/<total></color><newline><color:#f2fff7>Right-click with pepper</color>'
@@ -805,6 +805,16 @@ farm:
     dormant: '<gray>Rune <point> — awaiting its turn</gray>'
     sealed: '<color:#55d98b>Rune <point> sealed</color>'
     charging: '<color:#45c8f5><bold>Hold the rune: <time>s</bold></color>'
+    plot-cold: "<color:#b8c8c0>Bed <point>: turn on the heat</color>"
+    plot-growing: "<color:#ffc857>Bed <point>: growing · <time>s left</color>"
+    plot-hot: "<color:#ff7a45>Bed <point>: mature! Close the heat — <time>s</color>"
+    plot-cooling: "<color:#45c8f5>Bed <point>: cooling · <time>s</color>"
+    plot-ready: "<color:#55d98b>Bed <point>: right-click the wart to harvest</color>"
+    valve-open: "<white>Right-click the lever to turn on heat</white>"
+    valve-close: "<white>Right-click the lever to close heat</white>"
+    valve-label: "<color:#ffc857>Heat valve <point></color>"
+    scorched: "<color:#ff7a45>Bed <point> overheated. Heat shut off; the bed was replanted.</color>"
+    guide: "<color:#ffc857><bold>Infernal plantation</bold></color><newline><white>1. Turn on heat with a lever</white><newline><white>2. Mature — turn the heat off</white><newline><color:#55d98b>3. Cooled — right-click the wart</color>"
   night-shift-started: '<color:#8bd3ff><bold>Night shift</bold></color>'
   night-shift-started-subtitle: '<color:#f2fff7>Find <total> crops and avoid the torch patrols</color>'
   night-patrol-avoid: '<color:#ffad42>The night patrol cannot be defeated — avoid it.</color>'
@@ -900,7 +910,7 @@ incident:
   tornado:
     name: '<color:#8bd3ff>Tornado</color>'
   hell-greenhouse:
-    name: '<color:#c778ff>Hell rift</color>'
+    name: "<color:#ffc857>Infernal plantation</color>"
   birds:
     name: '<color:#ff7a45>Bird flock</color>'
   food-delivery:
@@ -988,7 +998,7 @@ scoreboard:
     boar-breakout: '<color:#ff7a45>Boar breakout</color>'
     rival-raid: '<color:#c778ff>Rival farm raid</color>'
     tornado: '<color:#8bd3ff>Tornado</color>'
-    hell-greenhouse: '<color:#c778ff>Hell rift</color>'
+    hell-greenhouse: "<color:#ffc857>Infernal plantation</color>"
     delivery: '<color:#f2fff7>Crate delivery</color>'
     delivery-carrying: '<color:#ffc857>Crate in hand</color>'
     cooldown: '<color:#55d98b>Shift complete</color>'
@@ -1016,7 +1026,7 @@ scoreboard:
     boar-breakout: '<color:#b8c8c0>Face each boar and block its charge with the shield</color>'
     rival-raid: '<color:#b8c8c0>Stand in the portal and select a weapon</color>'
     tornado: '<color:#b8c8c0>Run from the funnel cloud and survive the storm</color>'
-    hell-greenhouse: '<color:#b8c8c0>Find the purple pillar, descend and hold the highlighted runes</color>'
+    hell-greenhouse: "<color:#b8c8c0>The bed lever turns heat on and off</color>"
     delivery: '<color:#b8c8c0>Pick up crates at the cart</color>'
     delivery-carrying: '<color:#b8c8c0>Carry the crate to the </color><color:#c778ff>marker</color>'
     cooldown: '<color:#b8c8c0>A new order will appear later</color>'
@@ -1045,7 +1055,7 @@ scoreboard:
     market-pending: '<color:#b8c8c0>Right-click by the cart</color>'
     rival-raid: '<color:#b8c8c0>Fire with left- or right-click</color>'
     tornado: '<color:#b8c8c0>Stay clear: the wind can lift and throw you</color>'
-    hell-greenhouse: '<color:#b8c8c0>Find the purple pillar, descend and hold the highlighted runes</color>'
+    hell-greenhouse: "<color:#b8c8c0>Mature → close heat → cool → right-click harvest</color>"
     processing: '<color:#b8c8c0>Follow the prompt above the required station</color>'
     barn-fire: '<color:#b8c8c0>Aim at the fire and right-click</color>'
     frost: '<color:#b8c8c0>Blue columns mark fires; the gold one marks the woodpile</color>'

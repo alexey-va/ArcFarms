@@ -278,7 +278,7 @@ admin:
     boar-breakout: '<white>прорыв кабанов</white>'
     rival-raid: '<white>налёт на соседнюю ферму</white>'
     tornado: '<white>торнадо</white>'
-    hell-greenhouse: "<white>адский разлом</white>"
+    hell-greenhouse: "<white>адская плантация</white>"
     delivery: '<white>доставка</white>'
     complete: '<white>завершение</white>'
     reset: '<white>сброс</white>'
@@ -311,7 +311,7 @@ admin:
     boar-breakout: '<gray>выпускает кабанов через поле; встречайте их щитом до того, как они вытопчут урожай</gray>'
     rival-raid: '<gray>сажает отряд на автономного гаста и отправляет к заданной соседней ферме</gray>'
     tornado: '<gray>запускает сбор урожая во время торнадо: работайте и держитесь подальше от воронки</gray>'
-    hell-greenhouse: '<color:#b8c8c0>Найдите фиолетовый столб, спуститесь и удерживайте подсвеченные руны</color>'
+    hell-greenhouse: "<color:#b8c8c0>Спуститесь по фиолетовой метке; управляйте жаром и собирайте нарост</color>"
     delivery: '<gray>закрывает сбор культур и создаёт ящики для доставки</gray>'
     complete: '<gray>мгновенно проводит доставку, восстановление и награды</gray>'
     reset: '<gray>убирает текущую сцену, восстанавливает поле и останавливает автозапуск</gray>'
@@ -330,7 +330,7 @@ admin:
     boar-breakout: '<gray>кабаны пойдут через поле; блокируйте их рывки служебным щитом</gray>'
     rival-raid: '<gray>встаньте в фиолетовый портал, дождитесь посадки и стреляйте с гаста по отмеченным работникам</gray>'
     tornado: '<gray>собирайте заказ, двигаясь по полю и избегая воронки</gray>'
-    hell-greenhouse: '<color:#b8c8c0>Найдите фиолетовый столб, спуститесь и удерживайте подсвеченные руны</color>'
+    hell-greenhouse: "<color:#b8c8c0>Спуститесь по фиолетовой метке; управляйте жаром и собирайте нарост</color>"
 generic-error: "<prefix> <red>Не удалось выполнить действие. Попробуйте позже.</red>"
 zone-unavailable: '<prefix> <red>Эта рабочая зона сейчас недоступна.</red>'
 zone-locked: '<prefix> <red>У вас пока нет доступа к этой рабочей зоне.</red>'
@@ -571,7 +571,7 @@ farm:
   entry-boar-breakout: '<color:#f2fff7>Возьмите щит и встречайте кабанов лицом к атаке</color>'
   entry-rival-raid: '<color:#f2fff7>Встаньте в фиолетовый портал и дождитесь посадки на гаста</color>'
   entry-tornado: '<color:#f2fff7>Собирайте заказ, двигаясь по полю и избегая воронки</color>'
-  entry-hell-greenhouse: '<color:#b8c8c0>Найдите фиолетовый столб, спуститесь и удерживайте подсвеченные руны</color>'
+  entry-hell-greenhouse: "<color:#b8c8c0>Спуститесь по фиолетовой метке; управляйте жаром и собирайте нарост</color>"
   entry-delivery: '<color:#f2fff7>Перенесите ящики к приёмке</color>'
   started: '<color:#55d98b>Новый заказ</color> <color:#707a76>•</color> <order> <color:#707a76>•</color> <color:#f2fff7>вспашите участок: <total> грядок</color>'
   patch-unavailable: '<color:#ffad42>Рядом нет свободного участка для новой смены.</color>'
@@ -778,20 +778,20 @@ farm:
     bossbar: '<color:#8bd3ff>Торнадо</color> <color:#707a76>•</color> <color:#f2fff7>собрано <done>/<total></color>'
     resolved: '<color:#55d98b>Торнадо стих. Продолжайте сбор урожая.</color>'
   hell-greenhouse:
-    started: '<color:#c778ff><bold>Адский разлом</bold></color>'
-    started-subtitle: '<color:#f2fff7>Удержите <total> рун и запечатайте разлом</color>'
-    bossbar: '<color:#c778ff>Печати разлома</color> <color:#f2fff7><done>/<total></color>'
-    entrance: '<color:#c778ff><bold>Адский разлом</bold></color><newline><color:#f2fff7>ПКМ — спуститься в зал печатей</color>'
-    required: '<color:#45c8f5>Встаньте на подсвеченную руну на 3 секунды. Оранжевый пол предупреждает о жаре.</color>'
+    started: "<color:#ffc857><bold>Адская плантация</bold></color>"
+    started-subtitle: "<white>Вырастите нарост и соберите урожай: <total></white>"
+    bossbar: "<color:#ffc857>Урожай плантации</color> <white><done>/<total></white>"
+    entrance: "<color:#c778ff><bold>Адская плантация</bold></color><newline><white>ПКМ — спуститься к грядкам</white>"
+    required: "<white>Рычаг — жар; созрело — перекройте; остыло — ПКМ по наросту</white>"
     picked: '<color:#45c8f5>Удерживайте руну: <time> с</color>'
-    cooled: '<color:#55d98b>Печатей восстановлено: <done>/<total></color>'
+    cooled: "<color:#55d98b>Урожай собран: <done>/<total></color>"
     too-early: '<color:#ffad42>Перец ещё не созрел.</color>'
     hands-full: '<color:#ffad42>У вас уже есть спелый перец.</color>'
     empty-hands: '<color:#ffad42>Сначала возьмите спелый перец.</color>'
     hot-burst: '<color:#ffc857>Волна жара сбила удержание. Переждите в центральном проходе.</color>'
     evacuate: '<color:#f2fff7>Покиньте теплицу.</color>'
     quota-required: '<color:#ffad42>Для полного успеха нужно остудить <total> перцев.</color>'
-    success: '<color:#55d98b><bold>Разлом запечатан. Возвращайтесь к урожаю.</bold></color>'
+    success: "<color:#55d98b>Адский урожай собран: <done>/<total>. Возвращаемся на ферму.</color>"
     partial: '<color:#ffc857>Результат теплицы: <done>/<total>.</color>'
     timeout: '<color:#ff5f6d>Цикл теплицы завершён.</color>'
     vat: '<color:#45c8f5>Котёл с водой</color><newline><color:#55d98b>Остужено: <done>/<total></color><newline><color:#f2fff7>ПКМ с перцем</color>'
@@ -805,6 +805,16 @@ farm:
     dormant: '<gray>Руна <point> — ждёт своей очереди</gray>'
     sealed: '<color:#55d98b>Руна <point> запечатана</color>'
     charging: '<color:#45c8f5><bold>Удерживайте руну: <time> с</bold></color>'
+    plot-cold: "<color:#b8c8c0>Грядка <point>: откройте жар</color>"
+    plot-growing: "<color:#ffc857>Грядка <point>: растёт · ещё <time> с</color>"
+    plot-hot: "<color:#ff7a45>Грядка <point>: созрела! Перекройте жар — <time> с</color>"
+    plot-cooling: "<color:#45c8f5>Грядка <point>: остывает · <time> с</color>"
+    plot-ready: "<color:#55d98b>Грядка <point>: ПКМ по наросту — собрать</color>"
+    valve-open: "<white>ПКМ по рычагу — включить жар</white>"
+    valve-close: "<white>ПКМ по рычагу — перекрыть жар</white>"
+    valve-label: "<color:#ffc857>Заслонка <point></color>"
+    scorched: "<color:#ff7a45>Грядка <point> перегрелась. Жар отключён, посадка обновлена.</color>"
+    guide: "<color:#ffc857><bold>Адская плантация</bold></color><newline><white>1. Включите жар рычагом</white><newline><white>2. Созрело — перекройте жар</white><newline><color:#55d98b>3. Остыло — ПКМ по наросту</color>"
   night-shift-started: '<color:#8bd3ff><bold>Ночная смена</bold></color>'
   night-shift-started-subtitle: '<color:#f2fff7>Найдите <total> культур и обходите дозор с факелами</color>'
   night-patrol-avoid: '<color:#ffad42>Ночной дозор не победить — обходите его.</color>'
@@ -900,7 +910,7 @@ incident:
   tornado:
     name: '<color:#8bd3ff>Торнадо</color>'
   hell-greenhouse:
-    name: '<color:#c778ff>Адский разлом</color>'
+    name: "<color:#ffc857>Адская плантация</color>"
   birds:
     name: '<color:#ff7a45>Стая птиц</color>'
   food-delivery:
@@ -988,7 +998,7 @@ scoreboard:
     boar-breakout: '<color:#ff7a45>Прорыв кабанов</color>'
     rival-raid: '<color:#c778ff>Налёт на соседнюю ферму</color>'
     tornado: '<color:#8bd3ff>Торнадо</color>'
-    hell-greenhouse: '<color:#c778ff>Адский разлом</color>'
+    hell-greenhouse: "<color:#ffc857>Адская плантация</color>"
     delivery: '<color:#f2fff7>Доставка ящиков</color>'
     delivery-carrying: '<color:#ffc857>Ящик в руках</color>'
     cooldown: '<color:#55d98b>Смена завершена</color>'
@@ -1016,7 +1026,7 @@ scoreboard:
     boar-breakout: '<color:#b8c8c0>Стойте лицом к кабану и блокируйте щитом</color>'
     rival-raid: '<color:#b8c8c0>Встаньте в портал и выберите оружие</color>'
     tornado: '<color:#b8c8c0>Убегайте от воронки и переживите бурю</color>'
-    hell-greenhouse: '<color:#b8c8c0>Найдите фиолетовый столб, спуститесь и удерживайте подсвеченные руны</color>'
+    hell-greenhouse: "<color:#b8c8c0>Рычаг у грядки включает и перекрывает жар</color>"
     delivery: '<color:#b8c8c0>Берите ящики у телеги</color>'
     delivery-carrying: '<color:#b8c8c0>Несите ящик к </color><color:#c778ff>фиолетовой метке</color>'
     cooldown: '<color:#b8c8c0>Новый заказ появится позже</color>'
@@ -1045,7 +1055,7 @@ scoreboard:
     market-pending: '<color:#b8c8c0>Нажмите ПКМ у телеги</color>'
     rival-raid: '<color:#b8c8c0>Стреляйте ЛКМ или ПКМ</color>'
     tornado: '<color:#b8c8c0>Не подходите к воронке: ветер подхватит и отбросит</color>'
-    hell-greenhouse: '<color:#b8c8c0>Найдите фиолетовый столб, спуститесь и удерживайте подсвеченные руны</color>'
+    hell-greenhouse: "<color:#b8c8c0>Созрело → перекройте → остыло → соберите ПКМ</color>"
     processing: '<color:#b8c8c0>Следуйте подсказке над нужной станцией</color>'
     barn-fire: '<color:#b8c8c0>Цельтесь в огонь и нажимайте ПКМ</color>'
     frost: '<color:#b8c8c0>Голубые столбы — костры; золотой — дровница</color>'

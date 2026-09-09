@@ -9,6 +9,7 @@ import io.kotest.matchers.shouldBe
 import ru.ruscrafting.farms.domain.ArcFarmsState
 import ru.ruscrafting.farms.domain.FarmHellGreenhouseState
 import ru.ruscrafting.farms.domain.FarmHellPepper
+import ru.ruscrafting.farms.domain.FarmHellPlantationPlot
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPointPosition
@@ -54,6 +55,32 @@ class FarmHellGreenhousePersistenceTest : FunSpec({
         ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
     }
 
+    test("plantation plot timers survive an atomic restart round trip") {
+        val root = Files.createTempDirectory("arcfarms-hell-plantation-roundtrip")
+        val plantation = FarmHellGreenhouseState(
+            points = points,
+            layoutVersion = 2,
+            plots = listOf(
+                FarmHellPlantationPlot(heating = true, growthSeconds = 8),
+                FarmHellPlantationPlot(growthSeconds = 8, coolingSeconds = 2),
+                FarmHellPlantationPlot(), FarmHellPlantationPlot(heating = true, growthSeconds = 8, overheatSeconds = 3),
+            ),
+            cooled = 2,
+        )
+        val expected = ArcFarmsState(farms = mapOf("farm" to farm(greenhouse = plantation, progress = 2, required = 4)))
+        ArcFarmsStateRepository(root).use { it.saveBlocking(expected) }
+        ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
+    }
+
+    test("four reusable beds preserve progress beyond their physical count") {
+        val root = Files.createTempDirectory("arcfarms-plantation-repeat-quota")
+        val plantation = FarmHellGreenhouseState(points = points, layoutVersion = 2,
+            plots = List(4) { FarmHellPlantationPlot() }, cooled = 7)
+        val expected = ArcFarmsState(farms = mapOf("farm" to farm(greenhouse = plantation, progress = 7).copy(incidentRequired = 16)))
+        ArcFarmsStateRepository(root).use { it.saveBlocking(expected) }
+        ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
+    }
+
     test("legacy farm state without greenhouse field loads as null") {
         val root = Files.createTempDirectory("arcfarms-hell-greenhouse-legacy")
         ArcFarmsStateRepository(root).use { it.saveBlocking(ArcFarmsState(farms = mapOf("farm" to farm()))) }
@@ -87,6 +114,18 @@ class FarmHellGreenhousePersistenceTest : FunSpec({
         val json = JsonParser.parseString(Files.readString(path)).asJsonObject
         json.getAsJsonObject("farms").getAsJsonObject("farm").getAsJsonObject("hellGreenhouse")
             .addProperty("elapsedSeconds", -1)
+        Files.writeString(path, Gson().toJson(json))
+        ArcFarmsStateRepository(root).use { repository -> shouldThrow<Exception> { repository.load() } }
+    }
+
+    test("raw persisted invalid plantation timer is rejected after JSON decoding") {
+        val root = Files.createTempDirectory("arcfarms-hell-plantation-raw")
+        val plantation = FarmHellGreenhouseState(points = points, layoutVersion = 2, plots = List(4) { FarmHellPlantationPlot() })
+        ArcFarmsStateRepository(root).use { it.saveBlocking(ArcFarmsState(farms = mapOf("farm" to farm(greenhouse = plantation)))) }
+        val path = root.resolve("data/state.json")
+        val json = JsonParser.parseString(Files.readString(path)).asJsonObject
+        json.getAsJsonObject("farms").getAsJsonObject("farm").getAsJsonObject("hellGreenhouse")
+            .getAsJsonArray("plots").get(0).asJsonObject.addProperty("growthSeconds", 9)
         Files.writeString(path, Gson().toJson(json))
         ArcFarmsStateRepository(root).use { repository -> shouldThrow<Exception> { repository.load() } }
     }

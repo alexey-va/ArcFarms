@@ -33,7 +33,7 @@ internal enum class FarmUndergroundVariant(
     private val destinationZOffset: Double,
 ) {
     MOLES("mole", Path.of("data/recovery/farm-burrow-returns"), 0.0),
-    HELL_RIFT("hell-rift", Path.of("data/recovery/farm-greenhouse-returns"), 4.0),
+    HELL_RIFT("hell-rift", Path.of("data/recovery/farm-greenhouse-returns"), 10.0),
 
     ;
 

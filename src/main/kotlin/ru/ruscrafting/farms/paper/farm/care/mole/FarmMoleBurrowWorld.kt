@@ -19,6 +19,7 @@ import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockPolicy
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.platform.FarmBlockDataDecoder
+import ru.ruscrafting.farms.paper.farm.incident.greenhouse.FarmHellRiftRoom
 import java.util.ArrayDeque
 import java.util.logging.Level
 import kotlin.math.floor
@@ -396,7 +397,7 @@ internal class FarmMoleBurrowWorld(
         val centerX = floor(surface.x).toInt()
         val centerZ = floor(surface.z).toInt()
         val feetY = floor(surface.y).toInt() - depth
-        if (feetY - 1 <= world.minHeight || feetY + 5 >= world.maxHeight || feetY + 5 >= floor(surface.y).toInt()) return null
+        if (feetY - 1 <= world.minHeight || feetY + FarmHellRiftRoom.CEILING >= world.maxHeight || feetY + FarmHellRiftRoom.CEILING >= floor(surface.y).toInt()) return null
         val planned = ru.ruscrafting.farms.paper.farm.incident.greenhouse.FarmHellRiftRoom.blocks(centerX, feetY, centerZ)
         val positions = planned.keys
         val chunks = positions.map { (x, _, z) -> (x shr 4) to (z shr 4) }.distinct()
@@ -414,7 +415,7 @@ internal class FarmMoleBurrowWorld(
                 world = world.name,
                 zoneId = runtime.settings.id,
                 sequence = runtime.state.sequence,
-                burrowId = 1,
+                burrowId = FarmHellRiftRoom.BURROW_ID,
                 x = position.first,
                 y = position.second,
                 z = position.third,
@@ -428,7 +429,7 @@ internal class FarmMoleBurrowWorld(
             world,
             runtime.settings.id,
             runtime.state.sequence,
-            1,
+            FarmHellRiftRoom.BURROW_ID,
             Location(world, surface.x, surface.y, surface.z),
             Location(world, centerX + 0.5, feetY.toDouble(), centerZ + 0.5),
             Location(world, centerX + 0.5, feetY.toDouble(), centerZ + 1.5),
@@ -455,10 +456,10 @@ internal class FarmMoleBurrowWorld(
             seed(runtime.state.placementSequence, x, z).toInt(), settings.maxDepth - settings.minDepth + 1)
         val feetY = floor(surface.y).toInt() - depth
         if (feetY - 1 <= runtime.region.world.minHeight ||
-            feetY + 5 >= runtime.region.world.maxHeight ||
-            feetY + 5 >= floor(surface.y).toInt()
+            feetY + FarmHellRiftRoom.CEILING >= runtime.region.world.maxHeight ||
+            feetY + FarmHellRiftRoom.CEILING >= floor(surface.y).toInt()
         ) return FarmMoleBurrowPreview(null, 1, mapOf("world_height" to 1))
-        val positions = (-5..5).flatMap { dx -> (-6..6).flatMap { dz -> (-1..5).map { dy -> Triple(x + dx, feetY + dy, z + dz) } } }
+        val positions = FarmHellRiftRoom.blocks(x, feetY, z).keys.toList()
         val chunks = positions.map { (px, _, pz) -> (px shr 4) to (pz shr 4) }.distinct()
         if (chunks.any { (cx, cz) -> !runtime.region.world.isChunkLoaded(cx, cz) }) {
             return FarmMoleBurrowPreview(null, 1, mapOf("unloaded_chunk" to 1))
@@ -483,7 +484,7 @@ internal class FarmMoleBurrowWorld(
             runtime.region.world,
             runtime.settings.id,
             runtime.state.sequence,
-            1,
+            FarmHellRiftRoom.BURROW_ID,
             surface,
             recoveryRadius(runtime.settings.moleBurrow),
         )
@@ -492,7 +493,7 @@ internal class FarmMoleBurrowWorld(
             enqueueBuild(existing.records)
             return (if (existing.ready) FarmMoleBurrowEnsureResult.READY else FarmMoleBurrowEnsureResult.BUILDING) to existing
         }
-        if (hasLoadedSceneRecords(runtime.region.world, runtime.settings.id, runtime.state.sequence, 1)) {
+        if (hasLoadedSceneRecords(runtime.region.world, runtime.settings.id, runtime.state.sequence, FarmHellRiftRoom.BURROW_ID)) {
             beginRestore(runtime.region.world, runtime.settings.id, runtime.state.sequence)
             return FarmMoleBurrowEnsureResult.BUILDING to null
         }
@@ -548,9 +549,9 @@ internal class FarmMoleBurrowWorld(
 
     fun onChunkLoad(chunk: Chunk, active: (String, Long) -> Boolean) {
         val records = read(chunk) ?: return
-        enqueueBuild(records.filter { active(it.zoneId, it.sequence) && (journalNamespace != "farm_greenhouse" || it.burrowId == 1) })
+        enqueueBuild(records.filter { active(it.zoneId, it.sequence) && (journalNamespace != "farm_greenhouse" || it.burrowId == FarmHellRiftRoom.BURROW_ID) })
         enqueueRestore(
-            records.filterNot { active(it.zoneId, it.sequence) && (journalNamespace != "farm_greenhouse" || it.burrowId == 1) }
+            records.filterNot { active(it.zoneId, it.sequence) && (journalNamespace != "farm_greenhouse" || it.burrowId == FarmHellRiftRoom.BURROW_ID) }
                 .sortedByDescending(FarmMoleBurrowJournalRecord::y),
         )
     }

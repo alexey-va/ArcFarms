@@ -365,7 +365,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 }
                 FarmHellGreenhouseEngine.validate(greenhouse)
                 greenhouse.points.forEach(::validatePoint)
-                require(farm.incidentRequired in 1..greenhouse.points.size) { "Farm hell greenhouse quota is invalid" }
+                require(farm.incidentRequired in 1..(if (greenhouse.layoutVersion >= 2) 16 else greenhouse.points.size)) { "Farm hell greenhouse quota is invalid" }
                 require(farm.incidentProgress == greenhouse.cooled.coerceAtMost(farm.incidentRequired)) {
                     "Farm hell greenhouse progress drifted from cooled peppers"
                 }

@@ -19,7 +19,6 @@ import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.farm.care.mole.*
 import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import org.bukkit.Chunk
-import org.bukkit.util.Vector
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
@@ -31,9 +30,8 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import java.util.UUID
 import java.util.logging.Level
-import kotlin.math.abs
 
-/** HELL_RIFT variant of the shared underground expedition; owns only the ritual and its room. */
+/** HELL_RIFT variant of the shared underground expedition; owns only the plantation and its room. */
 internal class FarmHellGreenhouseIncident(
     plugin: Plugin,
     private val settings: () -> ArcFarmsConfig,
@@ -48,7 +46,7 @@ internal class FarmHellGreenhouseIncident(
     private val rooms: FarmMoleBurrowWorld,
     tasks: WorksiteTaskPort,
 ) {
-    private data class Clock(val sequence: Long, val placement: Long, var ticks: Int = 0, var room: FarmMoleBurrowScene? = null, var charge: FarmHellRiftCharge = FarmHellRiftCharge())
+    private data class Clock(val sequence: Long, val placement: Long, var ticks: Int = 0, var room: FarmMoleBurrowScene? = null)
     private val clocks = mutableMapOf<String, Clock>()
     private val scene = FarmHellGreenhouseScene(plugin, locale, text)
     private val expedition = FarmUndergroundExpedition(plugin, tasks, access, audience, state, FarmUndergroundVariant.HELL_RIFT,
@@ -68,7 +66,7 @@ internal class FarmHellGreenhouseIncident(
         if (!active(runtime)) return false
         activeRuntimes[runtime.settings.id] = runtime
         val current = runtime.state.hellGreenhouse
-        if (current?.entrance != null && current.layoutVersion == 1) return true
+        if (current?.entrance != null && current.layoutVersion == FarmHellRiftRoom.LAYOUT_VERSION) return true
         if (current?.entrance != null && migrated.add(runtime.settings.id)) {
             if (!evacuate(runtime)) { migrated.remove(runtime.settings.id); return true }
             rooms.beginRestore(runtime.region.world, runtime.settings.id, runtime.state.sequence)
@@ -87,24 +85,27 @@ internal class FarmHellGreenhouseIncident(
             preview.rejections.forEach { (reason, count) -> rejections[reason] = rejections.getOrDefault(reason, 0) + count }
         }
         val room = chosen ?: run {
-            state.log(Level.WARNING, "Underground greenhouse unavailable: zone=${runtime.settings.id} " +
+            state.log(Level.WARNING, "Underground plantation unavailable: zone=${runtime.settings.id} " +
                 "sequence=${runtime.state.sequence} candidates=${candidates.size} rejections=$rejections")
             return false
         }
         val center = room.start
         val rules = runtime.settings.specialIncidents.hellGreenhouse
-        val offsets = if (rules.quota <= 8) listOf(-2.0 to -3.0, 2.0 to 3.0, -2.0 to 3.0, 2.0 to -3.0,
-            -2.0 to -1.0, 2.0 to 1.0, -2.0 to 1.0, 2.0 to -1.0)
-        else List(8) { -3.5 + it }.flatMap { z -> listOf(-2.0 to z, 2.0 to -z) }
-        val points = offsets.map { (x, z) -> FarmPointPosition(center.world.name, center.x + x, center.y, center.z + z) }
+        val points = FarmHellRiftRoom.bedOffsets.map { (x, z) ->
+            FarmPointPosition(center.world.name, center.x + x, center.y, center.z + z)
+        }
         val surface = room.surface.let { FarmPointPosition(it.world.name, it.x, it.y, it.z) }
+        current?.let(FarmHellGreenhouseEngine::validate)
         val initialized = FarmHellGreenhouseEngine.initialize(
-            (current ?: FarmHellGreenhouseState(points)).copy(points = points, entrance = surface), rules)
+            FarmHellGreenhouseState(points = points, entrance = surface, cooled = current?.cooled ?: 0,
+                layoutVersion = FarmHellRiftRoom.LAYOUT_VERSION,
+                plots = current?.takeIf { it.layoutVersion == FarmHellRiftRoom.LAYOUT_VERSION }?.plots
+                    ?: List(FarmHellGreenhouseEngine.PHYSICAL_PLOTS) { FarmHellPlantationPlot() }), rules)
         runtime.state = runtime.state.copy(hellGreenhouse = initialized.state,
             incidentProgress = initialized.state.cooled, incidentRequired = rules.quota)
         if (current != null) legacyLedger.restoreTemporaryRemovals(indexed.mapNotNull { it.block() }, "greenhouse:${runtime.settings.id}")
         reportedPauses.remove(runtime.settings.id)
-        state.log(Level.INFO, "Underground greenhouse planned: zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
+        state.log(Level.INFO, "Underground plantation planned: zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
             "surface=$surface center=$center preserved_progress=${initialized.state.cooled}")
         state.persistAsync()
         return true
@@ -113,7 +114,7 @@ internal class FarmHellGreenhouseIncident(
     private fun reportPause(runtime: FarmRuntime, reason: String) {
         val signature = "${runtime.state.sequence}:${runtime.state.placementSequence}:$reason"
         if (reportedPauses.put(runtime.settings.id, signature) == signature) return
-        state.log(Level.WARNING, "Farm greenhouse paused: zone=${runtime.settings.id} sequence=${runtime.state.sequence} reason=$reason")
+        state.log(Level.WARNING, "Farm plantation paused: zone=${runtime.settings.id} sequence=${runtime.state.sequence} reason=$reason")
 
     }
 
@@ -132,8 +133,8 @@ internal class FarmHellGreenhouseIncident(
         val greenhouse = runtime.state.hellGreenhouse ?: return false
         if (greenhouse.entrance == null) return false
         val center = scene.center(runtime, greenhouse)
-        return location.world === center.world && location.blockX in center.blockX - 5..center.blockX + 5 &&
-            location.blockZ in center.blockZ - 6..center.blockZ + 6 && location.blockY in center.blockY - 1..center.blockY + 5
+        return location.world === center.world && location.blockX in center.blockX - FarmHellRiftRoom.HALF_WIDTH..center.blockX + FarmHellRiftRoom.HALF_WIDTH &&
+            location.blockZ in center.blockZ - FarmHellRiftRoom.HALF_LENGTH..center.blockZ + FarmHellRiftRoom.HALF_LENGTH && location.blockY in center.blockY - 1..center.blockY + FarmHellRiftRoom.CEILING
     }
 
     /** Called by the existing supervised per-tick visual loop; no scheduler is owned here. */
@@ -155,7 +156,7 @@ internal class FarmHellGreenhouseIncident(
             return
         }
         val greenhouse = runtime.state.hellGreenhouse ?: return
-        if (greenhouse.layoutVersion != 1) return
+        if (greenhouse.layoutVersion != FarmHellRiftRoom.LAYOUT_VERSION) return
         val participants = eligible.filter { inside(runtime, it) }
         val clock = clocks.getOrPut(runtime.settings.id) { Clock(runtime.state.sequence, runtime.state.placementSequence) }
         if (clock.sequence != runtime.state.sequence || clock.placement != runtime.state.placementSequence) {
@@ -181,10 +182,9 @@ internal class FarmHellGreenhouseIncident(
             val result = FarmHellGreenhouseEngine.second(greenhouse, participants.mapTo(linkedSetOf(), Player::getUniqueId), runtime.settings.specialIncidents.hellGreenhouse)
             apply(runtime, result, null)
             if (!active(runtime)) return
-            updateHeat(runtime, participants)
+            if (result.scorchedPlots.isEmpty()) updateInstructions(runtime, participants)
         }
-        advanceRitual(runtime, participants, clock)
-        if (active(runtime)) scene.render(runtime, eligible, clock.ticks, settings().particles, clock.charge)
+        if (active(runtime)) scene.render(runtime, participants, clock.ticks, settings().particles)
     }
 
     fun interact(event: PlayerInteractEntityEvent, runtimes: Collection<FarmRuntime>): Boolean {
@@ -211,6 +211,26 @@ internal class FarmHellGreenhouseIncident(
             if (expedition.exit(player)) releasePlayer(player.uniqueId, listOf(runtime))
             return true
         }
+        val rules = runtime.settings.specialIncidents.hellGreenhouse
+        val result = when (target.role) {
+            HellGreenhouseRole.VALVE -> FarmHellGreenhouseEngine.toggleHeat(current, target.index, rules)
+            HellGreenhouseRole.CROP -> FarmHellGreenhouseEngine.harvest(current, target.index, rules)
+            else -> return true
+        }
+        apply(runtime, result, player)
+        if (result.accepted) {
+            if (settings().sounds) player.playSound(player.location,
+                if (result.contribution > 0) Sound.BLOCK_CROP_BREAK else Sound.BLOCK_LEVER_CLICK, 0.8f, 1.0f)
+            state.log(Level.INFO, "Hell plantation action: zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
+                "player=${player.name} action=${target.role} plot=${target.index + 1} progress=${result.state.cooled}")
+        }
+        if (result.contribution > 0) {
+            audience.sendActionBar(player, MessageKey.FARM_HELL_GREENHOUSE_COOLED,
+                mapOf("done" to locale.text(result.state.cooled), "total" to locale.text(rules.quota)))
+        } else result.state.plots.getOrNull(target.index)?.let { plot ->
+            audience.sendActionBar(player, FarmHellGreenhouseScene.statusKey(plot),
+                FarmHellGreenhouseScene.statusValues(locale, target.index, plot))
+        }
         return true
     }
 
@@ -226,40 +246,15 @@ internal class FarmHellGreenhouseIncident(
             "farm.hell-greenhouse.entrance", true) { scene.mark(it, scene.stamp(runtime, HellGreenhouseRole.ENTRANCE)) }
     }
 
-    private fun advanceRitual(runtime: FarmRuntime, players: List<Player>, clock: Clock) {
-        val rift = runtime.state.hellGreenhouse ?: return
-        val point = rift.points.getOrNull(rift.cooled) ?: return
-        val hazard = FarmHellGreenhouseEngine.hazard(rift)
-        val center = scene.center(runtime, rift)
-        val occupants = players.filter { player ->
-            val at = player.location
-            abs(at.x - point.x) <= 0.65 && abs(at.z - point.z) <= 0.65 && abs(at.y - point.y) <= 0.4 &&
-                !exposed(at, center, hazard)
-        }.mapTo(linkedSetOf(), Player::getUniqueId)
-        clock.charge = clock.charge.tick(occupants)
-        if (clock.charge.ticks > 0 && clock.charge.ticks % 20 == 1) {
-            org.bukkit.Bukkit.getPlayer(clock.charge.playerId!!)?.let { player ->
-                audience.sendActionBar(player, MessageKey.FARM_HELL_RIFT_CHARGING,
-                    mapOf("time" to locale.text(clock.charge.remainingSeconds)))
-            }
-        }
-        if (!clock.charge.complete) return
-        val actor = org.bukkit.Bukkit.getPlayer(clock.charge.playerId!!) ?: return
-        clock.charge = FarmHellRiftCharge()
-        val result = FarmHellGreenhouseEngine.seal(rift, rift.cooled, runtime.settings.specialIncidents.hellGreenhouse)
-        apply(runtime, result, actor)
-        if (result.accepted) {
-            if (settings().sounds) actor.playSound(actor.location, Sound.BLOCK_RESPAWN_ANCHOR_CHARGE, 0.8f, 1.2f)
-            state.log(Level.INFO, "Hell rift rune sealed: zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
-                "player=${actor.name} rune=${rift.cooled + 1} quota=${runtime.settings.specialIncidents.hellGreenhouse.quota}")
-        }
-    }
-
     private fun apply(runtime: FarmRuntime, result: FarmHellGreenhouseResult, actor: Player?) {
         if (!result.accepted) return
-        result.expiredPlayerIds.forEach { id -> org.bukkit.Bukkit.getPlayer(id)?.let {
-            audience.sendActionBar(it, MessageKey.FARM_HELL_GREENHOUSE_HOT_BURST)
-        } }
+        result.scorchedPlots.forEach { index ->
+            runtime.region.world.players.filter { inside(runtime, it) }.forEach { player ->
+                audience.sendActionBar(player, MessageKey.FARM_HELL_PLANTATION_SCORCHED,
+                    mapOf("point" to locale.text(index + 1)))
+            }
+            state.log(Level.INFO, "Hell plantation overheat: zone=${runtime.settings.id} sequence=${runtime.state.sequence} plot=${index + 1} progress=${result.state.cooled}")
+        }
         val options = runtime.settings.specialIncidents.hellGreenhouse
         val next = runtime.state.copy(hellGreenhouse = result.state, incidentProgress = result.state.cooled.coerceAtMost(options.quota),
             contributors = if (actor != null && result.contribution > 0) incrementContribution(runtime.state.contributors, actor.uniqueId, result.contribution) else runtime.state.contributors)
@@ -286,9 +281,7 @@ internal class FarmHellGreenhouseIncident(
         "time" to locale.text(runtime.state.hellGreenhouse?.evacuationSeconds ?: runtime.settings.specialIncidents.hellGreenhouse.hotSeconds),
     )
 
-    fun releasePlayer(playerId: UUID, runtimes: Collection<FarmRuntime>) {
-        runtimes.forEach { runtime -> clocks[runtime.settings.id]?.let { if (it.charge.playerId == playerId) it.charge = FarmHellRiftCharge() } }
-    }
+    fun releasePlayer(playerId: UUID, runtimes: Collection<FarmRuntime>) = Unit
     fun retains(player: Player) = expedition.retains(player)
     fun recoverPlayer(player: Player) = expedition.recover(player)
     fun quit(player: Player) = expedition.quit(player)
@@ -300,38 +293,24 @@ internal class FarmHellGreenhouseIncident(
     }
     fun reconcileLoaded(runtimes: Collection<FarmRuntime>) {
         runtimes.forEach { activeRuntimes[it.settings.id] = it }
-        rooms.reconcileLoaded { zone, sequence -> runtimes.any { it.settings.id == zone && it.state.sequence == sequence && active(it) && it.state.hellGreenhouse?.layoutVersion == 1 } }
+        rooms.reconcileLoaded { zone, sequence -> runtimes.any { it.settings.id == zone && it.state.sequence == sequence && active(it) && it.state.hellGreenhouse?.layoutVersion == FarmHellRiftRoom.LAYOUT_VERSION } }
     }
     fun onChunkLoad(chunk: Chunk, runtimes: Collection<FarmRuntime>) = rooms.onChunkLoad(chunk) { zone, sequence ->
-        runtimes.any { it.settings.id == zone && it.state.sequence == sequence && active(it) && it.state.hellGreenhouse?.layoutVersion == 1 }
+        runtimes.any { it.settings.id == zone && it.state.sequence == sequence && active(it) && it.state.hellGreenhouse?.layoutVersion == FarmHellRiftRoom.LAYOUT_VERSION }
     }
 
-    private fun updateHeat(runtime: FarmRuntime, participants: List<Player>) {
-        val greenhouse = runtime.state.hellGreenhouse ?: return
-        val hazard = FarmHellGreenhouseEngine.hazard(greenhouse)
-        val center = scene.center(runtime, greenhouse)
+    private fun updateInstructions(runtime: FarmRuntime, participants: List<Player>) {
+        val plantation = runtime.state.hellGreenhouse ?: return
         participants.forEach { player ->
-            if (exposed(player.location, center, hazard) &&
-                access.allowInteraction("rift-heat:${runtime.settings.id}:${player.uniqueId}", 2_000L)) {
-                player.velocity = Vector(if (player.location.x < center.x) 0.35 else -0.35, 0.15, 0.0)
-                audience.sendActionBar(player, MessageKey.FARM_HELL_GREENHOUSE_HOT_BURST)
-                if (settings().sounds) player.playSound(player.location, Sound.BLOCK_FIRE_EXTINGUISH, 0.7f, 1f)
-            } else if (clocks[runtime.settings.id]?.charge?.playerId != player.uniqueId) {
-                val key = when (hazard.phase) {
-                    FarmHellHazardPhase.WARNING -> MessageKey.FARM_HELL_GREENHOUSE_HEAT_WARNING
-                    FarmHellHazardPhase.ACTIVE -> MessageKey.FARM_HELL_GREENHOUSE_HEAT_ACTIVE
-                    FarmHellHazardPhase.REST -> MessageKey.FARM_HELL_GREENHOUSE_REQUIRED
-                }
-                audience.sendActionBar(player, key, values(runtime) + mapOf("time" to locale.text(hazard.secondsRemaining),
-                    "side" to locale.render(if (hazard.side == FarmHellHazardSide.LEFT) MessageKey.FARM_HELL_GREENHOUSE_LEFT else MessageKey.FARM_HELL_GREENHOUSE_RIGHT, player)))
-            }
+            val nearest = plantation.points.indices.minByOrNull { index ->
+                val point = plantation.points[index]
+                player.location.distanceSquared(Location(player.world, point.x, point.y, point.z))
+            } ?: return@forEach
+            val plot = plantation.plots.getOrNull(nearest) ?: return@forEach
+            audience.sendActionBar(player, FarmHellGreenhouseScene.statusKey(plot),
+                FarmHellGreenhouseScene.statusValues(locale, nearest, plot))
         }
     }
-
-    private fun exposed(at: Location, center: Location, hazard: FarmHellHazard): Boolean =
-        hazard.phase == FarmHellHazardPhase.ACTIVE && abs(at.z - center.z) <= 4.5 &&
-            ((hazard.side == FarmHellHazardSide.LEFT && at.x - center.x in -3.5..-1.5) ||
-                (hazard.side == FarmHellHazardSide.RIGHT && at.x - center.x in 1.5..3.5))
 
     private fun evacuate(runtime: FarmRuntime): Boolean {
         var safe = expedition.evacuate(runtime.settings.id)
