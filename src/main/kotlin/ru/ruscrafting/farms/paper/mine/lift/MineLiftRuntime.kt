@@ -20,6 +20,7 @@ import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.event.player.PlayerQuitEvent
+import org.bukkit.event.player.PlayerRespawnEvent
 import org.bukkit.event.player.PlayerTeleportEvent
 import org.bukkit.event.world.ChunkLoadEvent
 import org.bukkit.event.world.WorldLoadEvent
@@ -116,7 +117,7 @@ internal class MineLiftRuntime(private val plugin: JavaPlugin, private val local
         riders.keys.toList().forEach { id ->
             val player = Bukkit.getPlayer(id)
             val seat = cabin.seats[riders.getValue(id)]
-            if (player == null) { riders.remove(id); return@forEach }
+            if (player == null || player.isDead) { riders.remove(id); return@forEach }
             if (player.vehicle != seat) {
                 recover(player)
                 check(player.uniqueId !in riders) { "Mine lift passenger recovery rejected" }
@@ -218,7 +219,7 @@ internal class MineLiftRuntime(private val plugin: JavaPlugin, private val local
     }
 
     private fun recover(player: Player) {
-        if (!recovery.contains(player.uniqueId)) return
+        if (player.isDead || !recovery.contains(player.uniqueId)) return
         val target = recovery.destination(player.uniqueId) ?: return
         if (unload(player, target)) player.sendMessage(text("recovered", player))
     }
@@ -257,6 +258,7 @@ internal class MineLiftRuntime(private val plugin: JavaPlugin, private val local
 
     @EventHandler fun quit(event: PlayerQuitEvent) { recover(event.player); riders.remove(event.player.uniqueId) }
     @EventHandler fun join(event: PlayerJoinEvent) { tasks.runLater(1) { recover(event.player) } }
+    @EventHandler fun respawn(event: PlayerRespawnEvent) { tasks.runLater(1) { recover(event.player) } }
     @EventHandler fun worldLoad(event: WorldLoadEvent) {
         Bukkit.getOnlinePlayers().filter { recovery.contains(it.uniqueId) }.forEach(::recover)
         if (event.world.name == settings?.world) tryStart()
