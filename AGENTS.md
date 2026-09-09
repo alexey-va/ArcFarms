@@ -111,7 +111,7 @@ activities: farm, lumbermill, and mine.
 - All temporary underground activities compose `FarmUndergroundExpedition` with
   a `FarmUndergroundVariant` and its `surface` owner. The shared type owns
   durable return records, plugin-authorized teleports, session snapshots and
-  recovery directories; mole and hell-rift controllers own only their activity
+  recovery directories; mole and infernal-plantation controllers own only their activity
   scenes, eligibility and completion rules. Do not instantiate
   `FarmBurrowReturnRepository`, `ScopedTeleportAuthorizer`, or a second surface
   marker/candidate owner inside an activity controller.
