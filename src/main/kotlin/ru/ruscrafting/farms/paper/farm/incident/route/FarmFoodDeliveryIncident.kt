@@ -71,6 +71,7 @@ internal class FarmFoodDeliveryIncident(
     private val mobDespawns: FarmMobDespawnPolicy,
     private val vehiclePassengers: FarmVehiclePassengerControl,
     private val textDisplays: FarmTextDisplayRenderer,
+    private val chunkLoader: FarmRouteChunkLoader,
 ) {
     private val zoneKey = NamespacedKey(plugin, "farm_food_route_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_food_route_sequence")
@@ -156,12 +157,43 @@ internal class FarmFoodDeliveryIncident(
         val session = sessions[runtime.settings.id]
             ?: FarmFoodDeliverySession(runtime.state.sequence, selected.name)
                 .also { sessions[runtime.settings.id] = it }
+        // Farm entry and ambience must not depend on a distant route chunk being loaded.
+        ensurePortal(runtime, session)
+        val participants = (
+            audience.players(runtime.region) + participants(runtime)
+            ).distinctBy(Player::getUniqueId)
+        night.syncAmbientTime(
+            nightOwner(runtime.settings.id),
+            participants,
+            runtime.settings.routeDelivery.playerTime,
+            runtime.settings.routeDelivery.timeTransitionSeconds,
+        )
         refreshAmbushPlan(runtime, session, route.points)
-        val horse = session.horseId?.let(Bukkit::getEntity) as? Horse
+        val horse = (session.horseId?.let(Bukkit::getEntity) as? Horse)?.takeIf { it.isValid && !it.isDead }
         val resumePoint = route.points[(runtime.state.incidentProgress - 1).coerceIn(0, route.points.lastIndex)]
         val resumeWorld = Bukkit.getWorld(resumePoint.world) ?: return
-        if (horse == null && !resumeWorld.isChunkLoaded(floor(resumePoint.x).toInt() shr 4, floor(resumePoint.z).toInt() shr 4)) return
-        val activeHorse = horse?.takeIf { it.isValid && !it.isDead } ?: run {
+        if (horse == null && !resumeWorld.isChunkLoaded(floor(resumePoint.x).toInt() shr 4, floor(resumePoint.z).toInt() shr 4)) {
+            if (!session.resumeChunkPending && now >= session.resumeChunkRetryAt) {
+                session.resumeChunkPending = true
+                session.resumeChunkRetryAt = now + 10_000L
+                val token = tasks.lifecycleToken()
+                chunkLoader.load(resumeWorld, floor(resumePoint.x).toInt() shr 4, floor(resumePoint.z).toInt() shr 4)
+                    .whenComplete { chunk, failure ->
+                        tasks.runSync(token) {
+                            if (sessions[runtime.settings.id] !== session) return@runSync
+                            session.resumeChunkPending = false
+                            if (failure != null || chunk == null) {
+                                state.log(Level.WARNING, "Could not resume farm food delivery: zone=${runtime.settings.id} " +
+                                    "sequence=${session.sequence} reason=resume_chunk_unavailable")
+                            } else {
+                                ensure(runtime, System.currentTimeMillis())
+                            }
+                        }
+                    }
+            }
+            return
+        }
+        val activeHorse = horse ?: run {
             val resumeLocation = safeSurface(location(resumePoint)) ?: return
             spawnHorse(runtime, resumeLocation).also { session.horseId = it.uniqueId }
         }
@@ -183,17 +215,7 @@ internal class FarmFoodDeliveryIncident(
         session.loadIds.mapNotNull { Bukkit.getEntity(it) as? ItemDisplay }.forEach { display ->
             configureLoad(runtime, display, order.cartLoadMaterial, order.cartLoadCustomModelData)
         }
-        ensurePortal(runtime, session)
         gunner.reconcile(runtime, session, activeHorse)
-        val participants = (
-            audience.players(runtime.region) + participants(runtime)
-            ).distinctBy(Player::getUniqueId)
-        night.syncAmbientTime(
-            nightOwner(runtime.settings.id),
-            participants,
-            runtime.settings.routeDelivery.playerTime,
-            runtime.settings.routeDelivery.timeTransitionSeconds,
-        )
         updateProgress(runtime, activeHorse, session, route.points, now)
         if (!active(runtime)) return
         updateMonsters(runtime, activeHorse, session, route.points)

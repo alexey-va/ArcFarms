@@ -10,6 +10,8 @@ internal data class FarmFoodDeliverySession(
     val sequence: Long,
     val routeName: String,
     var horseId: UUID? = null,
+    var resumeChunkPending: Boolean = false,
+    var resumeChunkRetryAt: Long = 0L,
     var cartId: UUID? = null,
     var gunnerSeatId: UUID? = null,
     val loadIds: MutableList<UUID> = mutableListOf(),

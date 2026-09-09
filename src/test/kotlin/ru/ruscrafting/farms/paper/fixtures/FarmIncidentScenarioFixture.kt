@@ -285,7 +285,11 @@ internal class FarmIncidentScenarioFixture private constructor(
         return controller
     }
 
-    fun foodDelivery(runtime: FarmRuntime, points: List<FarmPointPosition>): FarmFoodDeliveryIncident {
+    fun foodDelivery(
+        runtime: FarmRuntime,
+        points: List<FarmPointPosition>,
+        chunkLoader: ru.ruscrafting.farms.paper.platform.FarmRouteChunkLoader = MockBukkitFarmRouteChunkLoader,
+    ): FarmFoodDeliveryIncident {
         routeRepository.saveBlocking(
             FarmRouteState(
                 routes = mapOf(FarmRouteKeys.encode(zone.id, FarmRouteKeys.DEFAULT_NAME) to FarmDeliveryRoute(points)),
@@ -298,6 +302,7 @@ internal class FarmIncidentScenarioFixture private constructor(
             runtimes = { listOf(runtime) },
         )
         return FarmFoodDeliveryIncident(
+            chunkLoader = chunkLoader,
             plugin = plugin,
             settings = { settings },
             locale = locale,

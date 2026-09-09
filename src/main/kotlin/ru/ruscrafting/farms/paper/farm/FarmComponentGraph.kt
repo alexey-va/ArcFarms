@@ -225,6 +225,7 @@ internal class FarmComponentGraph(
         transitions = transitions,
     )
     private val foodDelivery = FarmFoodDeliveryIncident(
+        chunkLoader = ru.ruscrafting.farms.paper.platform.PaperFarmRouteChunkLoader,
         plugin = plugin,
         settings = settings,
         locale = locale,
