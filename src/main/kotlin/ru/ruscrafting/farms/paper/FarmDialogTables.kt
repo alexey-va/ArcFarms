@@ -36,7 +36,7 @@ internal object FarmDialogTables {
         }
     }
 
-    fun body(rows: List<Pair<Component, Component>>, frame: Frame = Frame.EPIC, width: Int = 468, columns: Columns = Columns.AUTO): PaperDialogBody {
+    fun body(rows: List<Pair<Component, Component>>, frame: Frame = Frame.EPIC, width: Int = 320, columns: Columns = Columns.AUTO): PaperDialogBody {
         val rendered = try {
             renderer?.invoke(rows, frame, width, columns)
         } catch (_: ReflectiveOperationException) {

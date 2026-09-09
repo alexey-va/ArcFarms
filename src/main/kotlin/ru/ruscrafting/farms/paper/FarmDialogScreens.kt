@@ -138,7 +138,7 @@ internal object FarmDialogScreens {
         if (content.summary.isNotEmpty()) body += FarmDialogTables.body(
             content.summary,
             if (farmShop) FarmDialogTables.Frame.LEGENDARY else FarmDialogTables.Frame.EPIC,
-            width = if (farmShop) FARM_SHOP_TABLE_WIDTH else 468,
+            width = if (farmShop) FARM_SHOP_TABLE_WIDTH else 320,
             columns = if (farmShop) FarmDialogTables.Columns.LABEL_WIDE else FarmDialogTables.Columns.AUTO,
         )
         val catalog = rows.mapNotNull { row ->
