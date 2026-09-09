@@ -9,6 +9,7 @@ data class MineOrderSettings(
     val miningRequired: Int,
     val loadingRequired: Int,
     val incidentTypes: List<MineIncidentType>,
+    val miningMaterials: Set<String> = emptySet(),
 ) {
     init {
         require(id.matches(Regex("[a-z0-9][a-z0-9_-]{0,47}"))) { "Invalid mine order id: $id" }

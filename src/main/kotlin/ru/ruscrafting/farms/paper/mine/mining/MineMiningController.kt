@@ -47,7 +47,7 @@ internal class MineMiningController(
         }
         if (access.isAdminEditing(event.player)) return false.also { event.isCancelled = false }
         if (runtime.state.phase != MinePhase.MINING) {
-            remind(event, MessageKey.MINE_PROSPECT_REQUIRED)
+            remind(event, if (runtime.settings.miningOnly) MessageKey.MINE_ORDER_PAUSED else MessageKey.MINE_PROSPECT_REQUIRED)
             return true
         }
         val toolSlot = event.player.inventory.heldItemSlot
@@ -57,19 +57,18 @@ internal class MineMiningController(
             return true
         }
         if (!index.contains(runtime.settings.id, event.block, MineAnchorRole.MINEABLE)) {
-            remind(event, MessageKey.MINE_TARGET_REQUIRED)
+            remind(event, if (runtime.settings.miningOnly) MessageKey.MINE_MANAGED_REQUIRED else MessageKey.MINE_TARGET_REQUIRED)
             return true
         }
-        val objective = requireNotNull(runtime.state.objective)
-        val target = objective.targets.firstOrNull { it.position == event.block.position() }
-        if (target == null || target.status != ObjectiveTargetStatus.AVAILABLE) {
-            remind(event, MessageKey.MINE_TARGET_REQUIRED)
+        val target = runtime.state.objective?.targets?.firstOrNull { it.position == event.block.position() }
+        if (!runtime.settings.miningOnly && (target == null || target.status != ObjectiveTargetStatus.AVAILABLE)) {
+            remind(event, if (runtime.settings.miningOnly) MessageKey.MINE_MANAGED_REQUIRED else MessageKey.MINE_TARGET_REQUIRED)
             return true
         }
         val original = event.block.type
         if (original.name !in runtime.settings.materialWeights) return true
         val drops = runCatching { effects.captureDrops(event.block, tool, event.player) }.getOrElse { failure ->
-            state.log(Level.WARNING, "Could not calculate mine drops for ${target.id}", failure)
+            state.log(Level.WARNING, "Could not calculate mine drops for ${target?.id ?: event.block.position()}", failure)
             audience.sendChat(event.player, MessageKey.GENERIC_ERROR)
             return true
         }
@@ -96,12 +95,20 @@ internal class MineMiningController(
             original,
             stillValid = {
                 runtime.state.sequence == sequence && runtime.state.phase == MinePhase.MINING &&
-                    runtime.state.objective?.target(target.id)?.status == ObjectiveTargetStatus.AVAILABLE
+                    (runtime.settings.miningOnly ||
+                        runtime.state.objective?.target(requireNotNull(target).id)?.status == ObjectiveTargetStatus.AVAILABLE)
             },
         ) {
             event.block.setType(MaterialRules.material(runtime.settings.temporaryMaterial), false)
+            if (runtime.settings.miningOnly) {
+                if (original.name in requireNotNull(runtime.currentOrder()).miningMaterials) {
+                    transitions.apply(runtime, MineShiftEngine.mineTarget(runtime.state, runtime.rules(), event.player.uniqueId), event.player)
+                }
+                effects.deliverRewards(event.player, event.block, drops, experience, toolSlot, tool)
+                return@prepare
+            }
             val current = requireNotNull(runtime.state.objective)
-            val completed = ObjectiveTargetPool.complete(current, target.id, event.player.uniqueId)
+            val completed = ObjectiveTargetPool.complete(current, requireNotNull(target).id, event.player.uniqueId)
             if (!completed.accepted) return@prepare
             val advanced = MineShiftEngine.mineTarget(
                 runtime.state.copy(objective = completed.state), runtime.rules(), event.player.uniqueId,
@@ -115,7 +122,7 @@ internal class MineMiningController(
             effects.deliverRewards(event.player, event.block, drops, experience, toolSlot, tool)
         }.whenComplete { accepted, failure ->
             if (failure != null) {
-                state.log(Level.WARNING, "Could not journal mine target ${target.id}", failure)
+                state.log(Level.WARNING, "Could not journal mine target ${target?.id ?: event.block.position()}", failure)
                 remind(event, MessageKey.MINE_JOURNAL_FAILED)
             } else if (accepted == false) {
                 remind(event, MessageKey.MINE_REGENERATING)

@@ -2,7 +2,6 @@ package ru.ruscrafting.farms.paper.mine
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.shouldNotBe
 import io.mockk.every
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.Chunk
@@ -51,7 +50,45 @@ class MineBasicCycleMockBukkitTest : FunSpec({
         graph.module.tick(1_000L)
 
         runtime.state.phase shouldBe MinePhase.MINING
-        runtime.state.objective shouldNotBe null
+        runtime.state.objective shouldBe null
+    }
+
+    test("resource order counts matching ore anywhere and restored blocks without highlighted targets") {
+        val world = paper.server.addSimpleWorld("world")
+        val player = paper.server.addPlayer("ResourceMiner")
+        player.teleport(Location(world, 5.5, 64.0, 5.5))
+        player.inventory.setItemInMainHand(ItemStack(Material.IRON_PICKAXE))
+        val original = miningOnlySettings()
+        val settings = original.copy(orders = original.orders.map {
+            it.copy(miningRequired = 100, miningMaterials = setOf("IRON_ORE"))
+        })
+        val graph = graph(paper, settings)
+        val runtime = graph.registry.byId("old_shafts")!!
+        val stone = world.getBlockAt(1, 64, 2).also { it.type = Material.STONE }
+        val ore = world.getBlockAt(19, 64, 19).also { it.type = Material.IRON_ORE }
+        graph.index.replaceZone(
+            MineIndexDefinition(settings.id, runtime.region, setOf(Material.STONE, Material.IRON_ORE)),
+            listOf(world.getChunkAt(0, 0), world.getChunkAt(1, 1)),
+            listOf(stone, ore).map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.MINEABLE)) },
+        )
+        graph.module.tick(1_000L)
+        runtime.state.phase shouldBe MinePhase.MINING
+        runtime.state.objective shouldBe null
+        graph.guidance.view(player.uniqueId)!!.targets.isEmpty() shouldBe true
+        graph.mining.onBreakHigh(BlockBreakEvent(stone, player))
+        runtime.state.mined shouldBe 0
+        graph.mining.onBreakHigh(BlockBreakEvent(ore, player))
+        runtime.state.mined shouldBe 1
+        graph.mining.onBreakHigh(BlockBreakEvent(ore, player))
+        runtime.state.mined shouldBe 1
+        graph.recovery.processDue(4_000L)
+        // The journal restored the position; either weighted material may have been selected.
+        ore.type = Material.IRON_ORE
+        graph.mining.onBreakHigh(BlockBreakEvent(ore, player))
+        runtime.state.mined shouldBe 2
+        val saved = graph.module.states()
+        graph.module.rebuild(listOf(settings), saved, 5_000L)
+        graph.registry.byId(settings.id)!!.state.mined shouldBe 2
     }
 
     test("unauthorized and admin players outside a mine cannot auto-start it") {
@@ -112,7 +149,7 @@ class MineBasicCycleMockBukkitTest : FunSpec({
         }
         runtime.state.phase shouldBe MinePhase.MINING
         runtime.state.incident shouldBe null
-        runtime.state.objective shouldNotBe null
+        runtime.state.objective shouldBe null
         graph.mining.onBreakHigh(BlockBreakEvent(mineable[1], player)) shouldBe true
         runtime.state.phase shouldBe MinePhase.EXTRACTION
         graph.module.tick(3_000L)
@@ -136,7 +173,7 @@ private fun graph(
 
 private fun miningOnlySettings() = mineV2Settings().let { original ->
     original.copy(miningOnly = true, guidanceRadius = 24.0, incidentCountMin = 1, incidentCountMax = 1,
-        orders = original.orders.map { it.copy(incidentTypes = listOf(MineIncidentType.CREATURE_NEST)) })
+        orders = original.orders.map { it.copy(incidentTypes = listOf(MineIncidentType.CREATURE_NEST), miningMaterials = setOf("STONE")) })
 }
 
 private fun indexMineables(graph: MineComponentGraph, runtime: MineRuntime, world: org.bukkit.World) {

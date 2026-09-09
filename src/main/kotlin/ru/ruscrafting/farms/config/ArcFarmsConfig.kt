@@ -1113,6 +1113,9 @@ data class MineZoneSettings(
         require(loadingDeliveryRadius in 1.0..5.0) {
             "Mine zone $id loading delivery-radius is invalid"
         }
+        require(!miningOnly || orders.all { order ->
+            order.miningMaterials.isNotEmpty() && order.miningMaterials.any { it in materialWeights }
+        }) { "Basic mine $id orders must request available mining-materials" }
         require(engineVersion == 1 || orders.isNotEmpty()) { "Mine V2 zone $id has no orders" }
         require(orders.all { it.incidentTypes.size >= incidentCountMax }) {
             "Mine zone $id order has fewer incidents than incident-count-max"
@@ -2587,6 +2590,7 @@ class ArcFarmsConfig private constructor(
                     val order = section.section("orders.$orderId")
                     MineOrderSettings(
                         id = orderId,
+                        miningMaterials = order.stringList("mining-materials").map(::materialName).toSet(),
                         prospectingRequired = order.int("phases.prospecting-required", 3)
                             .checked("mine order prospecting-required", 1, 100_000),
                         miningRequired = order.int("phases.mining-required", section.int("cart-quota", 16))

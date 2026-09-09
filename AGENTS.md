@@ -130,6 +130,9 @@ activities: farm, lumbermill, and mine.
 - Animal-rescue targets come only from indexed, validated outdoor crop beds.
   Never use a generic highest-surface search: roofs inside the region are not
   farm spawn points.
+- Ordinary mine orders count N matching ore blocks anywhere in the managed region,
+  like ordinary farm crop quotas. Do not select or highlight individual baseline
+  targets; target illumination belongs to a dedicated event such as night patrol.
 - Mine block replacement is journaled before mutation and must converge after
   restart without duplicate drops or permanent temporary blocks.
 - All player text belongs in `lang/ru.yml` and `lang/en.yml`; keys stay equal

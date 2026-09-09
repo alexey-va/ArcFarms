@@ -1077,6 +1077,7 @@ lumber:
   actionbar-felling: '<wood> <dark_gray>•</dark_gray> <gold><done></gold><gray>/</gray><yellow><total></yellow> logs'
   actionbar-processing: '<gold>Processing</gold> <dark_gray>•</dark_gray> <yellow><done></yellow><gray>/</gray><gold><total></gold>'
   guidance:
+    resource_order: '<color:#f2fff7>Mine: <resource></color>'
     title: '<color:#ffc857><bold>Lumbermill task</bold></color>'
     bar: '<action> <dark_gray>•</dark_gray> <yellow><done></yellow><gray>/</gray><gold><total></gold>'
     felling: '<color:#f2fff7>Fell the highlighted trees of the required species</color>'
@@ -1097,6 +1098,8 @@ lumber:
     rush_order: '<color:#ffc857>Rush order: stack the planks before the bonus timer expires</color>'
 mine:
   started: "<color:#45c8f5>Mine expedition</color> <color:#707a76>•</color> <route>"
+  order-paused: '<yellow>Resume mining after the current event or order preparation.</yellow>'
+  managed-required: '<yellow>Mine ore and rock in the working area.</yellow>'
   pickaxe-required: '<red>You need a pickaxe to work this mine face.</red>'
   regenerating: '<gray>This part of the mine is still regenerating.</gray>'
   hazard-started: '<red><bold>The mine face is unstable</bold></red>'

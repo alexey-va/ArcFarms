@@ -1077,6 +1077,7 @@ lumber:
   actionbar-felling: '<wood> <dark_gray>•</dark_gray> <gold><done></gold><gray>/</gray><yellow><total></yellow> брёвен'
   actionbar-processing: '<gold>Обработка</gold> <dark_gray>•</dark_gray> <yellow><done></yellow><gray>/</gray><gold><total></gold>'
   guidance:
+    resource_order: '<color:#f2fff7>Добыть: <resource></color>'
     title: '<color:#ffc857><bold>Работа на лесопилке</bold></color>'
     bar: '<action> <dark_gray>•</dark_gray> <yellow><done></yellow><gray>/</gray><gold><total></gold>'
     felling: '<color:#f2fff7>Рубите подсвеченные деревья нужной породы</color>'
@@ -1097,6 +1098,8 @@ lumber:
     rush_order: '<color:#ffc857>Срочный заказ: сложите доски до истечения бонусного времени</color>'
 mine:
   started: "<color:#45c8f5>Шахтная экспедиция</color> <color:#707a76>•</color> <route>"
+  order-paused: '<yellow>Продолжите добычу после текущего события или подготовки заказа.</yellow>'
+  managed-required: '<yellow>Добывайте руду и породу в рабочем забое.</yellow>'
   pickaxe-required: '<red>Для работы в шахте нужна кирка.</red>'
   regenerating: '<gray>Этот участок ещё восстанавливается.</gray>'
   hazard-started: '<red><bold>Забой нестабилен</bold></red>'

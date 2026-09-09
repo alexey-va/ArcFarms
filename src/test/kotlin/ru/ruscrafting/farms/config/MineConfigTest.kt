@@ -61,7 +61,11 @@ class MineConfigTest : FunSpec({
                 it.guidanceRadius shouldBe 128.0
                 it.incidentCountMin shouldBe 1
                 it.incidentCountMax shouldBe 1
-                it.orders.single().incidentTypes shouldBe listOf(MineIncidentType.CREATURE_NEST)
+                it.orders.forEach { order ->
+                    order.incidentTypes shouldBe listOf(MineIncidentType.CREATURE_NEST)
+                    order.miningRequired shouldBe 100
+                    order.miningMaterials.isNotEmpty() shouldBe true
+                }
             }
         }
     }

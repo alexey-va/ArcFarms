@@ -67,7 +67,9 @@ internal object MineRuntimeFactory {
                 val allowed = settings.orders.flatMap { it.incidentTypes }.toSet()
                 if (settings.miningOnly && saved.phase !in setOf(ru.ruscrafting.farms.domain.MinePhase.IDLE,
                         ru.ruscrafting.farms.domain.MinePhase.COOLDOWN) &&
-                    (saved.incidentSchedule.any { it !in allowed } || saved.phase in setOf(
+                    (saved.orderId !in settings.orders.map { it.id } ||
+                        saved.objective?.key?.objectiveId == "mining" || saved.resumeObjective?.key?.objectiveId == "mining" ||
+                        saved.incidentSchedule.any { it !in allowed } || saved.phase in setOf(
                         ru.ruscrafting.farms.domain.MinePhase.PROSPECTING, ru.ruscrafting.farms.domain.MinePhase.LOADING))) {
                     MineShiftState(engineVersion = 2, sequence = saved.sequence)
                 } else saved

@@ -663,6 +663,8 @@ enum class MessageKey(val path: String) {
     MINE_JOURNAL_FAILED("mine.journal-failed"),
     MINE_PROSPECT_REQUIRED("mine.prospect-required"),
     MINE_TARGET_REQUIRED("mine.target-required"),
+    MINE_ORDER_PAUSED("mine.order-paused"),
+    MINE_MANAGED_REQUIRED("mine.managed-required"),
     MINE_RECOVERY_PENDING("mine.recovery-pending"),
     MINE_INDEX_SHORTAGE("mine.index-shortage"),
     MINE_ORE_CRATE("mine.ore-crate"),

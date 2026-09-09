@@ -41,7 +41,7 @@ internal class MineProspectingController(
     fun onInteract(event: PlayerInteractEvent): Boolean {
         val clicked = event.clickedBlock ?: return false
         val runtime = registry.at(clicked.location) ?: return false
-        if (event.action != Action.RIGHT_CLICK_BLOCK) return false
+        if (runtime.settings.miningOnly || event.action != Action.RIGHT_CLICK_BLOCK) return false
         event.isCancelled = true
         if (!access.hasAccess(event.player, runtime.settings.permission)) {
             audience.sendChat(event.player, MessageKey.ZONE_LOCKED)
@@ -81,7 +81,7 @@ internal class MineProspectingController(
     fun autoStart(runtime: MineRuntime, player: org.bukkit.entity.Player): Boolean {
         if (!runtime.settings.miningOnly || runtime.state.phase != MinePhase.IDLE ||
             !recovery.canStart(runtime.settings.id) ||
-            !hasCapacity(runtime, MineAnchorRole.MINEABLE, runtime.rules().miningQuota)) return false
+            index.loadedTargets(runtime.settings.id, MineAnchorRole.MINEABLE).isEmpty()) return false
         return ensureStarted(runtime, player)
     }
 
@@ -92,12 +92,12 @@ internal class MineProspectingController(
         val order = runtime.nextOrder()
         val rules = runtime.rules(order)
         if ((!rules.miningOnly && (!hasCapacity(runtime, MineAnchorRole.PROSPECT, rules.prospectingQuota) || !canStartLoading(runtime))) ||
-            !hasCapacity(runtime, MineAnchorRole.MINEABLE, rules.miningQuota)) {
+            (!rules.miningOnly && !hasCapacity(runtime, MineAnchorRole.MINEABLE, rules.miningQuota))) {
             remind(player, MessageKey.MINE_INDEX_SHORTAGE)
             return false
         }
         val started = MineShiftEngine.start(runtime.state, order.domain(), rules, clock())
-        val objective = if (rules.miningOnly) plan(runtime, MineAnchorRole.MINEABLE, "mining", rules.miningQuota, started.state.sequence)
+        val objective = if (rules.miningOnly) null
         else plan(runtime, MineAnchorRole.PROSPECT, "prospecting", rules.prospectingQuota, started.state.sequence)
         transitions.apply(runtime, started.copy(state = started.state.copy(objective = objective)), player)
         audience.broadcast(

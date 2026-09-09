@@ -39,9 +39,13 @@ internal class MineGuidanceSource(
     internal fun view(player: Player, runtime: MineRuntime): WorksiteGuidanceView {
         val (done, total) = progress(runtime)
         val action = actionKey(runtime)
-        val values = mapOf(
+        val resource = runtime.currentOrder()?.miningMaterials?.firstOrNull()
+            ?.let { ru.ruscrafting.farms.paper.MaterialRules.cropComponent(ru.ruscrafting.farms.paper.MaterialRules.material(it)) }
+            ?: Component.empty()
+        val resourceValues = mapOf("resource" to resource)
+        val values = resourceValues + mapOf(
             "done" to text(done), "total" to text(total),
-            "action" to render("mine.guidance.$action", player),
+            "action" to render("mine.guidance.$action", player, resourceValues),
         )
         return WorksiteGuidanceView(
             "mine:${runtime.settings.id}", progressVersion(runtime),
@@ -60,6 +64,7 @@ internal class MineGuidanceSource(
     }
 
     private fun targets(playerId: UUID, runtime: MineRuntime): List<WorksiteGuidanceTarget> {
+        if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.MINING) return emptyList()
         val objective = runtime.state.objective?.targets.orEmpty().filter { target ->
             target.status != ObjectiveTargetStatus.COMPLETED &&
                 (target.status != ObjectiveTargetStatus.LEASED || target.leasedBy == playerId)
@@ -90,6 +95,7 @@ internal class MineGuidanceSource(
     private fun actionKey(runtime: MineRuntime): String = if (runtime.state.phase == MinePhase.INCIDENT) {
         runtime.state.incident?.type?.name?.lowercase() ?: "incident"
     } else if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.EXTRACTION) "completion_pending"
+    else if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.MINING) "resource_order"
     else runtime.state.phase.name.lowercase()
 
     private fun progress(runtime: MineRuntime): Pair<Int, Int> = when (runtime.state.phase) {
