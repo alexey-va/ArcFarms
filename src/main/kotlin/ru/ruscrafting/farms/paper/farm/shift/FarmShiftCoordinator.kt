@@ -15,6 +15,7 @@ import ru.ruscrafting.farms.domain.EngineResult
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmIncidentType
+import ru.ruscrafting.farms.domain.FarmEventTypeRegistry
 import ru.ruscrafting.farms.domain.FarmOrder
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmSeederStage
@@ -369,24 +370,16 @@ internal class FarmShiftCoordinator(
     }
 
     private fun incidentStarted(runtime: FarmRuntime, type: FarmIncidentType, actor: Player?) {
+        // Forces every incident through the explicit field/portal/underground contract.
+        FarmEventTypeRegistry.definition(type)
+        var announcedType = type
         clearSupplies(runtime, "incident_started")
         when (type) {
             FarmIncidentType.DROUGHT -> {
                 drought.ensure(runtime)
-                hud.storyTitle(runtime, "drought", Sound.WEATHER_RAIN_ABOVE) { player ->
-                    locale.render(MessageKey.FARM_DROUGHT_STARTED, player) to
-                        mapOf("total" to locale.text(runtime.state.incidentRequired))
-                }
             }
             FarmIncidentType.PESTS -> {
                 pests.ensure(runtime)
-                hud.storyTitle(runtime, "pests", Sound.ENTITY_BEE_LOOP_AGGRESSIVE) { player ->
-                    locale.render(MessageKey.FARM_INCIDENT_STARTED, player) to mapOf(
-                        "crop" to MaterialRules.cropComponent(MaterialRules.material(requireNotNull(runtime.state.incidentCrop))),
-                        "nests" to locale.text(runtime.state.pestNests.size),
-                        "pests" to locale.text(runtime.state.pestAlive),
-                    )
-                }
             }
             FarmIncidentType.BIRDS -> {
                 if (!birds.initialize(runtime)) {
@@ -394,13 +387,6 @@ internal class FarmShiftCoordinator(
                     return
                 }
                 birds.ensure(runtime)
-                port.broadcast(
-                    listOf(runtime.region),
-                    MessageKey.FARM_BIRDS_STARTED,
-                    mapOf("total" to locale.text(runtime.state.incidentRequired)),
-                    Sound.ENTITY_PARROT_IMITATE_PHANTOM,
-                    title = true,
-                )
             }
             FarmIncidentType.FOOD_DELIVERY -> {
                 if (!foodDelivery.initialize(runtime)) {
@@ -408,12 +394,6 @@ internal class FarmShiftCoordinator(
                     return
                 }
                 foodDelivery.ensure(runtime, System.currentTimeMillis())
-                port.broadcast(
-                    listOf(runtime.region),
-                    MessageKey.FARM_ROUTE_STARTED,
-                    sound = Sound.ENTITY_HORSE_AMBIENT,
-                    title = true,
-                )
             }
             FarmIncidentType.PROCESSING -> {
                 if (!processing.initialize(runtime)) {
@@ -430,12 +410,6 @@ internal class FarmShiftCoordinator(
                     return
                 }
                 processing.ensure(runtime)
-                port.broadcast(
-                    listOf(runtime.region),
-                    MessageKey.FARM_PROCESSING_STARTED,
-                    sound = Sound.BLOCK_GRINDSTONE_USE,
-                    title = true,
-                )
             }
             FarmIncidentType.BARN_FIRE -> {
                 if (!barnFire.initialize(runtime)) {
@@ -443,24 +417,14 @@ internal class FarmShiftCoordinator(
                     return
                 }
                 barnFire.ensure(runtime)
-                port.broadcast(
-                    listOf(runtime.region),
-                    MessageKey.FARM_BARN_FIRE_STARTED,
-                    values = mapOf("total" to locale.text(runtime.state.incidentRequired)),
-                    sound = Sound.ITEM_FIRECHARGE_USE,
-                    title = true,
-                )
             }
             FarmIncidentType.HELL_GREENHOUSE -> {
                 if (!greenhouse.initialize(runtime, actor)) {
                     apply(runtime, FarmShiftEngine.skipUnavailableIncident(runtime.state, type), null)
                     return
                 }
-                port.broadcast(listOf(runtime.region), MessageKey.FARM_HELL_GREENHOUSE_STARTED,
-                    values = mapOf("total" to locale.text(runtime.state.incidentRequired)),
-                    sound = Sound.BLOCK_PORTAL_TRIGGER, title = true)
             }
-            FarmIncidentType.TORNADO -> tornadoStarted(runtime)
+            FarmIncidentType.TORNADO -> { tornadoStarted(runtime); return }
             FarmIncidentType.FROST -> {
                 if (!frost.initialize(runtime)) {
                     actor?.takeIf {
@@ -476,12 +440,6 @@ internal class FarmShiftCoordinator(
                     return
                 }
                 frost.ensure(runtime)
-                port.broadcast(
-                    listOf(runtime.region),
-                    MessageKey.FARM_FROST_STARTED,
-                    sound = Sound.BLOCK_GLASS_BREAK,
-                    title = true,
-                )
             }
             FarmIncidentType.BOAR_BREAKOUT, FarmIncidentType.RIVAL_RAID -> {
                 if (actionIncidents.initialize(runtime, type) == null) {
@@ -489,14 +447,13 @@ internal class FarmShiftCoordinator(
                     return
                 }
                 actionIncidents.ensure(runtime)
-                actionIncidents.announce(runtime)
             }
             else -> {
-                val activeType = special.initialize(runtime, type) ?: return
-                special.announce(runtime, activeType)
+                announcedType = special.initialize(runtime, type) ?: return
                 special.ensure(runtime)
             }
         }
+        announceEvent(runtime, announcedType)
         issueRequiredSupply(runtime)
         port.warningBurst(runtime.region)
         network.signal(
@@ -544,8 +501,47 @@ internal class FarmShiftCoordinator(
             state.persistAsync()
             return
         }
-        port.broadcast(listOf(runtime.region), MessageKey.FARM_TORNADO_STARTED,
-            sound = Sound.ENTITY_BREEZE_CHARGE, title = true)
+        announceEvent(runtime, FarmIncidentType.TORNADO)
+    }
+
+    private fun announceEvent(runtime: FarmRuntime, type: FarmIncidentType) {
+        val definition = FarmEventTypeRegistry.definition(type)
+        val title = MessageKey.entries.firstOrNull { it.path == definition.titlePath }
+            ?: error("Missing title key for farm event $type: ${definition.titlePath}")
+        val values = buildMap {
+            put("total", locale.text(runtime.state.incidentRequired))
+            if (type == FarmIncidentType.PESTS) {
+                put("crop", MaterialRules.cropComponent(MaterialRules.material(requireNotNull(runtime.state.incidentCrop))))
+                put("nests", locale.text(runtime.state.pestNests.size))
+                put("pests", locale.text(runtime.state.pestAlive))
+            }
+        }
+        if (type == FarmIncidentType.PESTS || type == FarmIncidentType.DROUGHT) {
+            hud.storyTitle(runtime, type.name.lowercase(), eventSound(type)) { player -> locale.render(title, player, values) to values }
+            return
+        }
+        port.broadcast(listOf(runtime.region), title, values, eventSound(type), title = true,
+            valuesForPlayer = { player -> values + buildMap {
+                runtime.state.specialIncident?.crop?.let { crop -> put("crop", locale.renderPath("crop.${crop.lowercase()}", player)) }
+            } })
+    }
+
+    private fun eventSound(type: FarmIncidentType): Sound = when (type) {
+        FarmIncidentType.DROUGHT -> Sound.WEATHER_RAIN_ABOVE
+        FarmIncidentType.PESTS -> Sound.ENTITY_BEE_LOOP_AGGRESSIVE
+        FarmIncidentType.BIRDS -> Sound.ENTITY_PARROT_IMITATE_PHANTOM
+        FarmIncidentType.FOOD_DELIVERY -> Sound.ENTITY_HORSE_AMBIENT
+        FarmIncidentType.PROCESSING -> Sound.BLOCK_GRINDSTONE_USE
+        FarmIncidentType.BARN_FIRE -> Sound.ITEM_FIRECHARGE_USE
+        FarmIncidentType.HELL_GREENHOUSE -> Sound.BLOCK_PORTAL_TRIGGER
+        FarmIncidentType.TORNADO -> Sound.ENTITY_BREEZE_CHARGE
+        FarmIncidentType.FROST -> Sound.BLOCK_GLASS_BREAK
+        FarmIncidentType.BOAR_BREAKOUT -> Sound.ENTITY_HOGLIN_ANGRY
+        FarmIncidentType.RIVAL_RAID -> Sound.ENTITY_GHAST_AMBIENT
+        FarmIncidentType.GIANT_CROP -> Sound.BLOCK_ROOTED_DIRT_BREAK
+        FarmIncidentType.CHANNELS -> Sound.BLOCK_CONDUIT_ACTIVATE
+        FarmIncidentType.NIGHT_SHIFT -> Sound.BLOCK_AMETHYST_BLOCK_RESONATE
+        FarmIncidentType.MARKET -> Sound.ENTITY_VILLAGER_TRADE
     }
 
     private fun incidentResolved(runtime: FarmRuntime, type: FarmIncidentType, actor: Player?) {

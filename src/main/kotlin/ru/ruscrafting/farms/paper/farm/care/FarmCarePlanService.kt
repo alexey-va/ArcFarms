@@ -10,7 +10,6 @@ import ru.ruscrafting.farms.domain.FarmCareTarget
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmDeliveryPlanner
 import ru.ruscrafting.farms.domain.FarmLocationOverrides
-import ru.ruscrafting.farms.domain.FarmMoleEntrancePlanner
 import ru.ruscrafting.farms.domain.FarmOrchardPlanner
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmPointKind
@@ -25,6 +24,7 @@ import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.care.mole.FarmMoleBurrowWorld
+import ru.ruscrafting.farms.paper.farm.expedition.FarmUndergroundEntrySelection
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
 import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
 import ru.ruscrafting.farms.paper.location
@@ -219,18 +219,13 @@ internal class FarmCarePlanService(
                 // Keep discoverable entrances away from both the indexed field edge and
                 // concave WorldGuard boundaries. For a narrow farm the pure planner
                 // automatically reduces only the margin of the narrow axis.
-                val indexedInterior = FarmMoleEntrancePlanner.preferredBeds(
+                val centralBeds = FarmUndergroundEntrySelection.candidates(
                     farmBeds,
                     runtime.settings.moleBurrow.entranceMinBoundaryDistance,
-                )
-                val centralBeds = indexedInterior.filter { plot ->
-                    hasRegionClearance(runtime.region, plot, runtime.settings.moleBurrow.entranceMinBoundaryDistance)
-                }.ifEmpty { indexedInterior }
-                val bedCandidates = FarmCarePlanner.spread(
-                    centralBeds,
-                    runtime.settings.moleBurrow.candidateAttempts.coerceAtMost(centralBeds.size),
+                    runtime.settings.moleBurrow.candidateAttempts,
                     salt xor 0x4D4F4C45L,
-                ).map { plot -> FarmPointPosition(plot.world, plot.x + 0.5, plot.y + 1.05, plot.z + 0.5) }
+                ) { plot, distance -> hasRegionClearance(runtime.region, plot, distance) }
+                val bedCandidates = centralBeds
                 val requested = participantCount(runtime.region).coerceAtLeast(1)
                     .coerceAtMost(runtime.settings.moleBurrow.maxBurrows)
                 val startedAt = System.nanoTime()

@@ -50,6 +50,8 @@ class ArcFarmsArchitectureContractTest : FunSpec({
     val inventoryTransitionPath = repositoryRoot.resolve(
         "src/main/kotlin/ru/ruscrafting/farms/paper/InventoryViewTransition.kt",
     )
+    val greenhouseIncidentPath = farmRoot.resolve("incident/greenhouse/FarmHellGreenhouseIncident.kt")
+    val moleControllerPath = farmRoot.resolve("care/mole/FarmMoleBurrowController.kt")
 
     test("shift engines do not share one global event enum") {
         val source = Files.readString(domainPath)
@@ -97,6 +99,16 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         }
 
         offenders shouldBe emptyList()
+    }
+
+    test("underground activities compose one expedition owner") {
+        val greenhouse = Files.readString(greenhouseIncidentPath)
+        val moles = Files.readString(moleControllerPath)
+        listOf(greenhouse, moles).forEach { source ->
+            source.contains("FarmUndergroundExpedition") shouldBe true
+            source.contains("FarmBurrowReturnRepository") shouldBe false
+            source.contains("ScopedTeleportAuthorizer") shouldBe false
+        }
     }
 
     test("lumber and mine modules receive one incident set instead of every incident") {

@@ -440,7 +440,6 @@ internal class FarmHudController(
             val greenhouse = runtime.state.hellGreenhouse
             val key = when {
                 greenhouse == null -> MessageKey.FARM_HELL_GREENHOUSE_REQUIRED
-                player.uniqueId in greenhouse.carried -> MessageKey.FARM_HELL_GREENHOUSE_PICKED
                 else -> MessageKey.FARM_HELL_GREENHOUSE_REQUIRED
             }
             return locale.render(key, player, mapOf(
@@ -476,7 +475,7 @@ internal class FarmHudController(
                 mapOf("total" to locale.text(runtime.state.careRequired())),
             )
         } ?: Component.empty()
-        FarmPhase.INCIDENT -> runtime.state.incidentType?.takeIf { it in NAMED_INCIDENT_TYPES }?.let { type ->
+        FarmPhase.INCIDENT -> runtime.state.incidentType?.let { type ->
             if (type == FarmIncidentType.MARKET) {
                 runtime.state.specialIncident?.let { incident ->
                     locale.renderPath(
@@ -485,7 +484,7 @@ internal class FarmHudController(
                         special.marketValues(runtime, incident, player),
                     )
                 } ?: locale.renderPath("farm.entry-market", player)
-            } else locale.renderPath("farm.entry-${special.id(type)}", player)
+            } else locale.renderPath(ru.ruscrafting.farms.domain.FarmEventTypeRegistry.definition(type).hintPath, player)
         } ?: Component.empty()
         else -> Component.empty()
     }
@@ -527,7 +526,10 @@ internal class FarmHudController(
 
     private fun currentOrder(runtime: FarmRuntime): FarmOrder? = runtime.state.orderId?.let(runtime.orders::get)
     private fun players(runtime: FarmRuntime): List<Player> =
-        (audience.players(runtime.region) + foodDelivery.participants(runtime) + actionIncidents.participants(runtime))
+        (audience.players(runtime.region) + foodDelivery.participants(runtime) + actionIncidents.participants(runtime) +
+            runtime.region.world.players.filter { player -> player.location.let { at ->
+                runtime.state.hellGreenhouse?.containsRoom(at.world.name, at.x, at.y, at.z) == true
+            } })
             .distinctBy(Player::getUniqueId)
     private fun remainingSeconds(deadline: Long, now: Long): Long = ceil((deadline - now).coerceAtLeast(0) / 1_000.0).toLong()
     private fun musicSound(sound: String, volume: Float): AdventureSound = AdventureSound.sound(

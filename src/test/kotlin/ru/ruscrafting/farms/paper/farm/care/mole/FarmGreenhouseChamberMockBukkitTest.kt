@@ -51,9 +51,24 @@ class FarmGreenhouseChamberMockBukkitTest : FunSpec({
         for (x in -5..5) for (z in -6..6) for (y in -1..5) {
             val record = requireNotNull(records[Triple(x, scene.start.blockY + y, z)])
             val shell = x == -5 || x == 5 || z == -6 || z == 6 || y == -1 || y == 5
-            val lamp = y == 5 && x == 0 && z in setOf(-3, 0, 3)
-            (record.burrowData.substringBefore('[') == if (lamp) "minecraft:shroomlight" else "minecraft:stone") shouldBe (shell || lamp)
+            if (shell) (record.burrowData != "minecraft:air") shouldBe true
+            (record.burrowData in setOf("minecraft:lava", "minecraft:fire")) shouldBe false
         }
+        scene.records.count { it.burrowData == "minecraft:shroomlight" } shouldBe 9
+        // Both player headroom and a solid floor must connect the entry to all rune positions.
+        val visited = mutableSetOf(0 to 4)
+        val queue = ArrayDeque(visited)
+        while (queue.isNotEmpty()) {
+            val (x, z) = queue.removeFirst()
+            listOf(x - 1 to z, x + 1 to z, x to z - 1, x to z + 1).forEach { point ->
+                if (point !in visited && (0..1).all { dy -> records[Triple(point.first, scene.start.blockY + dy, point.second)]?.burrowData == "minecraft:air" } &&
+                    records[Triple(point.first, scene.start.blockY - 1, point.second)]?.burrowData?.let { it != "minecraft:air" } == true) {
+                    visited += point; queue += point
+                }
+            }
+        }
+        listOf(-2 to -3, 2 to 3, -2 to 3, 2 to -3, -2 to -1, 2 to 1).all { it in visited } shouldBe true
+
         scene.records.count { it.marker == FarmMoleBurrowMarker.START } shouldBe 1
         scene.records.count { it.marker == FarmMoleBurrowMarker.LAIR } shouldBe 1
     }

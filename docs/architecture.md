@@ -166,11 +166,11 @@ owns the zone collection; the module delegates to the following vertical owners.
 | `farm.harvest/FarmHarvestController` | accepted crop validation, drop suppression, fixed fruit intent and respawn | wrong phase/crop, no drops, journal-before-mutation |
 | `farm.care/FarmCareController`, `FarmDiseaseController`, `FarmCarePresentation` | routes care, owns shared entities and seeder/animal lifecycles, local disease frontier/death journal and shared feedback | cleanup and activity scenarios |
 | `farm.care.scarecrow/FarmScarecrowDeliveryController` | receiving stock, one-player carriers, moving displays and placed scarecrow convergence | pickup, carry, leave/reload and completion |
-| `farm.care.mole/FarmMoleBurrowController`, `FarmMoleBurrowWorld` | underground expedition, nonpersistent entrance/lair scene, durable player return, chunk-PDC tunnel journal and bounded build/restore | deterministic maze, codec corruption, restart return, non-mutating preview |
+| `farm.expedition/FarmUndergroundExpedition`, `FarmUndergroundSurfaceOwner`; `farm.care.mole/FarmMoleBurrowController`, `FarmMoleBurrowWorld` | shared underground travel, surface candidate/marker ownership, plus mole entrance/lair scene, durable player return, chunk-PDC tunnel journal and bounded build/restore | deterministic maze, codec corruption, restart return, non-mutating preview, authorized teleport reconciliation |
 | `farm.shift/FarmShiftCoordinator` | transition dispatch and configured incident schedule | configured count/range and non-repeat rules |
 | `farm.incident/drought`, `pest`, `special` | drought, pests, giant crop, channels, night shift, market; each owns entities/blocks/maps/recovery | restart/dedup/cleanup plus story flow |
 | `farm.incident.processing/FarmProcessingIncident`, `FarmProcessingScene` | durable load/operate/pack flow from one oriented anchor; bounded transient workshop, cargo carriers, interactions and timing visual | three-stage domain flow, persistence invariants, bounded spawn/restart reconciliation/cleanup |
-| `farm.incident.greenhouse/FarmHellGreenhouseIncident`, `FarmHellGreenhouseScene` | generated display greenhouse, persisted virtual peppers, heat/evacuation, interactions and cleanup; pure rules in `domain/FarmHellGreenhouse` | full run, expired/duplicate cargo, pause/restart/exit, obstruction/water placement and persistence corruption |
+| `farm.incident.greenhouse/FarmHellGreenhouseIncident`, `FarmHellGreenhouseScene` | hell-rift chamber and rune/heat interaction lifecycle; shared travel and surface entry remain in `farm.expedition/FarmUndergroundExpedition`; pure rules in `domain/FarmHellGreenhouse` | full run, sweep interruption, pause/restart/exit, obstruction/water placement and persistence corruption |
 | `farm.delivery/FarmDeliveryController` | crate placement, carrier state, display following, receiving and return | two players, quit/leave/reload, no duplicate crate |
 | `farm.presentation/FarmActivityPortal`, `FarmPortalRenderer` | shared portal scene, particle pulse, title countdown, cancellation and destination action; delivery and rival raid supply `FarmPortalDestination` | delayed target readiness, off-phase pulses, exit/re-entry, cleanup and both activity boarding flows |
 | `domain/FarmTerminalDelivery`, `farm.incident.route/FarmFoodDeliveryIncident`, `FarmFoodDeliverySession` | fixed crate-to-route finale, delayed portal seating, mounted/walking participant identity, rifle/HUD/time/damage lifecycle | portal driver/gunner assignment, dismount, varied ambush, restart, unavailable route and final cleanup |
@@ -256,9 +256,8 @@ Procedural outdoor objectives share `FarmSurfacePolicy`. A loaded column is
 eligible only when the entity feet are walkable at the terrain height, or when
 an indexed crop bed has no motion-blocking terrain above its crop layer.
 Persisted coordinates are checked again before an entity or guidance marker is
-created. Explicit indoor service points remain administrator-owned; the mole
-burrow is the only intentionally underground activity, and its entrance still
-uses the outdoor policy.
+created. Explicit indoor service points remain administrator-owned; underground events use the shared indexed-bed entrance policy and journalled
+room pipeline.
 
 ## Threading and failure model
 
@@ -382,3 +381,16 @@ display/objective removal packets, yields while it is present and restores its
 own afterward, respecting the player's `/sb` preference. No polling placeholder
 is used to arbitrate ownership, and tablist/nametag features remain enabled.
 See [TAB's compatibility contract](https://github.com/NEZNAMY/TAB/wiki/Feature-guide:-Scoreboard#compatibility-with-other-plugins).
+
+## Event types and inherited presentation
+
+Every incident selects `FieldEvent`, `PortalEvent` or `UndergroundEvent` in
+`FarmEventTypeRegistry`. The registry is exhaustive; locale validation requires
+each type’s title, subtitle and hint. `FarmShiftCoordinator` announces the
+resolved event through this definition, `FarmHudController` reads its hint,
+and `FarmGuidanceController` applies its shared marker policy. Portal variants
+use the existing common countdown portal; underground variants compose
+`FarmUndergroundExpedition` for entrance, durable travel and return recovery.
+Add variant mechanics after selecting an existing type. Extend a shared owner
+when a QoL fix applies to siblings; do not copy its implementation into a new
+event controller.

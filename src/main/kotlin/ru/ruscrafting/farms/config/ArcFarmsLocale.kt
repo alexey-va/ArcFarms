@@ -500,6 +500,10 @@ enum class MessageKey(val path: String) {
     FARM_TORNADO_PROGRESS("farm.tornado.progress"),
     FARM_TORNADO_REQUIRED("farm.tornado.required"),
     FARM_TORNADO_BOSSBAR("farm.tornado.bossbar"),
+    FARM_HELL_RIFT_RUNE("farm.hell-greenhouse.rune"),
+    FARM_HELL_RIFT_DORMANT("farm.hell-greenhouse.dormant"),
+    FARM_HELL_RIFT_SEALED("farm.hell-greenhouse.sealed"),
+    FARM_HELL_RIFT_CHARGING("farm.hell-greenhouse.charging"),
     FARM_HELL_GREENHOUSE_STARTED("farm.hell-greenhouse.started"),
     FARM_HELL_GREENHOUSE_STARTED_SUBTITLE("farm.hell-greenhouse.started-subtitle"),
     FARM_HELL_GREENHOUSE_BOSSBAR("farm.hell-greenhouse.bossbar"),
@@ -804,6 +808,12 @@ class ArcFarmsLocale(
                 "companies.participation.personal-shadow", "companies.participation.risk",
                 "companies.shares.confirm.license", "companies.shares.confirm.risk",
             ))
+            ru.ruscrafting.farms.domain.FarmIncidentType.entries.forEach { type ->
+                val event = ru.ruscrafting.farms.domain.FarmEventTypeRegistry.definition(type)
+                add(event.titlePath)
+                add(event.subtitlePath)
+                add(event.hintPath)
+            }
             settings.farms.flatMapTo(this) { zone -> zone.orders.map { "order.farm.${it.id}" } }
             settings.farms.flatMapTo(this) { zone -> zone.crops.map { "crop.${it.lowercase()}" } }
             settings.farms.flatMapTo(this) { zone ->
@@ -984,6 +994,10 @@ class ArcFarmsLocale(
             "zone", "weeks", "plan", "week", "votes", "target", "date", "contribution",
         )
         private val EXPECTED_PLACEHOLDERS = mapOf(
+            "farm.hell-greenhouse.rune" to setOf("point"),
+            "farm.hell-greenhouse.dormant" to setOf("point"),
+            "farm.hell-greenhouse.sealed" to setOf("point"),
+            "farm.hell-greenhouse.charging" to setOf("time"),
             "farm.hell-greenhouse.heat-warning" to setOf("side", "time"),
             "farm.hell-greenhouse.heat-active" to setOf("side"),
             "admin.incident-rejected" to setOf("prefix", "stage"),

@@ -46,9 +46,10 @@ class FarmHellGreenhouseIncidentTest : FunSpec({
             player.teleport(Location(f.world, 24.5, 65.0, 24.5))
             player.inventory.heldItemSlot = 4
             owner.initialize(runtime) shouldBe true
-            runtime.state.hellGreenhouse!!.entrance!!.y shouldBe 65.0
+            runtime.state.hellGreenhouse!!.entrance!!.y shouldBe 65.05
             runtime.state.hellGreenhouse!!.points.first().y shouldBe 55.0
             owner.update(runtime)
+            f.world.entities.filterIsInstance<Interaction>().any { owner.identity(it)?.role == HellGreenhouseRole.ENTRANCE } shouldBe true
             repeat(3) { owner.processBlocks(listOf(runtime), 1000) }
             owner.update(runtime)
             val entrance = f.world.entities.filterIsInstance<Interaction>().single { owner.identity(it)?.role == HellGreenhouseRole.ENTRANCE }
@@ -56,18 +57,16 @@ class FarmHellGreenhouseIncidentTest : FunSpec({
             player.location.y shouldBe 55.05
             player.inventory.heldItemSlot shouldBe 4
             owner.retains(player) shouldBe true
-            runtime.state = runtime.state.copy(hellGreenhouse = runtime.state.hellGreenhouse!!.copy(elapsedSeconds = 8))
-            val pepper = f.world.entities.filterIsInstance<Interaction>().single { owner.identity(it)?.role == HellGreenhouseRole.PEPPER && owner.identity(it)?.index == 0 }
-            player.teleport(Location(f.world, 24.5, 55.0, 21.5))
-            owner.interact(PlayerInteractEntityEvent(player, pepper, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
-            runtime.state.hellGreenhouse!!.carried.isEmpty() shouldBe true
-            player.teleport(Location(f.world, 22.5, 55.0, 21.5))
-            owner.interact(PlayerInteractEntityEvent(player, pepper, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
-            runtime.state.hellGreenhouse!!.carried.containsKey(player.uniqueId) shouldBe true
-            runtime.state = runtime.state.copy(hellGreenhouse = runtime.state.hellGreenhouse!!.copy(elapsedSeconds = 19))
-            repeat(20) { owner.update(runtime) }
-            runtime.state.hellGreenhouse!!.carried.isEmpty() shouldBe true
+            val pad = runtime.state.hellGreenhouse!!.points.first()
+            player.teleport(Location(f.world, pad.x, pad.y, pad.z))
+            runtime.state = runtime.state.copy(hellGreenhouse = runtime.state.hellGreenhouse!!.copy(elapsedSeconds = 5))
+            repeat(59) { owner.update(runtime) }
             runtime.state.incidentProgress shouldBe 0
+            owner.update(runtime)
+            runtime.state.incidentProgress shouldBe 1
+            player.inventory.heldItemSlot shouldBe 4
+            repeat(60) { owner.update(runtime) }
+            runtime.state.incidentProgress shouldBe 1
             owner.clear(runtime)
             player.location.y shouldBe 65.0
             owner.retains(player) shouldBe false
@@ -77,7 +76,7 @@ class FarmHellGreenhouseIncidentTest : FunSpec({
         } }
     }
 
-    test("legacy surface greenhouse moves underground without losing cooled progress") {
+    test("legacy surface greenhouse becomes a rift without losing progress") {
         requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { f ->
             val points = listOf(-2, 2).flatMap { x -> listOf(-3, -1, 1, 3).map { z ->
                 FarmPointPosition(f.world.name, 24.5 + x, 65.0, 24.5 + z)
@@ -90,13 +89,13 @@ class FarmHellGreenhouseIncidentTest : FunSpec({
             val rooms = FarmMoleBurrowWorld(f.plugin, ArcFarmsDebug({ false }) {},
                 MockBukkitMoleBurrowChunkRetention(), MockBukkitFarmBlockDataDecoder, "farm_greenhouse")
             val owner = FarmHellGreenhouseIncident(f.plugin, { f.settings }, f.locale, f.port, f.port, f.port,
-                FarmIncidentBedProvider { emptySet() }, FarmTransitionSink { target, result, _ -> target.state = result.state },
+                FarmIncidentBedProvider { setOf(FarmPlotPosition(f.world.name, 24, 64, 24)) }, FarmTransitionSink { target, result, _ -> target.state = result.state },
                 FarmBlockLedger(f.plugin), MockBukkitFarmTextDisplays, rooms, f.port)
             owner.initialize(runtime) shouldBe true
             runtime.state.incidentProgress shouldBe 1
             runtime.state.hellGreenhouse!!.cooled shouldBe 1
             runtime.state.hellGreenhouse!!.points.first().y shouldBe 55.0
-            runtime.state.hellGreenhouse!!.entrance!!.y shouldBe 65.0
+            runtime.state.hellGreenhouse!!.entrance!!.y shouldBe 65.05
             owner.initialize(runtime) shouldBe true
             runtime.state.hellGreenhouse!!.points.first().y shouldBe 55.0
             val quota = runtime.settings.specialIncidents.hellGreenhouse.quota

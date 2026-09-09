@@ -397,22 +397,7 @@ internal class FarmMoleBurrowWorld(
         val centerZ = floor(surface.z).toInt()
         val feetY = floor(surface.y).toInt() - depth
         if (feetY - 1 <= world.minHeight || feetY + 5 >= world.maxHeight || feetY + 5 >= floor(surface.y).toInt()) return null
-        val planned = linkedMapOf<Triple<Int, Int, Int>, Pair<String, FarmMoleBurrowMarker>>()
-        val solid = Material.STONE.createBlockData().asString
-        val light = Material.SHROOMLIGHT.createBlockData().asString
-        for (dx in -5..5) for (dz in -6..6) {
-            val wall = dx == -5 || dx == 5 || dz == -6 || dz == 6
-            for (dy in -1..5) {
-                val ceilingOrFloor = dy == -1 || dy == 5
-                planned[Triple(centerX + dx, feetY + dy, centerZ + dz)] =
-                    (if (wall || ceilingOrFloor) solid else AIR_DATA) to FarmMoleBurrowMarker.NONE
-            }
-        }
-        listOf(centerZ - 3, centerZ, centerZ + 3).forEach { z ->
-            planned[Triple(centerX, feetY + 5, z)] = light to FarmMoleBurrowMarker.NONE
-        }
-        planned[Triple(centerX, feetY, centerZ)] = AIR_DATA to FarmMoleBurrowMarker.START
-        planned[Triple(centerX, feetY, centerZ + 1)] = AIR_DATA to FarmMoleBurrowMarker.LAIR
+        val planned = ru.ruscrafting.farms.paper.farm.incident.greenhouse.FarmHellRiftRoom.blocks(centerX, feetY, centerZ)
         val positions = planned.keys
         val chunks = positions.map { (x, _, z) -> (x shr 4) to (z shr 4) }.distinct()
         if (chunks.any { (x, z) -> !world.isChunkLoaded(x, z) }) return null
@@ -429,7 +414,7 @@ internal class FarmMoleBurrowWorld(
                 world = world.name,
                 zoneId = runtime.settings.id,
                 sequence = runtime.state.sequence,
-                burrowId = 0,
+                burrowId = 1,
                 x = position.first,
                 y = position.second,
                 z = position.third,
@@ -443,7 +428,7 @@ internal class FarmMoleBurrowWorld(
             world,
             runtime.settings.id,
             runtime.state.sequence,
-            0,
+            1,
             Location(world, surface.x, surface.y, surface.z),
             Location(world, centerX + 0.5, feetY.toDouble(), centerZ + 0.5),
             Location(world, centerX + 0.5, feetY.toDouble(), centerZ + 1.5),
@@ -498,7 +483,7 @@ internal class FarmMoleBurrowWorld(
             runtime.region.world,
             runtime.settings.id,
             runtime.state.sequence,
-            0,
+            1,
             surface,
             recoveryRadius(runtime.settings.moleBurrow),
         )
@@ -507,7 +492,7 @@ internal class FarmMoleBurrowWorld(
             enqueueBuild(existing.records)
             return (if (existing.ready) FarmMoleBurrowEnsureResult.READY else FarmMoleBurrowEnsureResult.BUILDING) to existing
         }
-        if (hasLoadedSceneRecords(runtime.region.world, runtime.settings.id, runtime.state.sequence, 0)) {
+        if (hasLoadedSceneRecords(runtime.region.world, runtime.settings.id, runtime.state.sequence, 1)) {
             beginRestore(runtime.region.world, runtime.settings.id, runtime.state.sequence)
             return FarmMoleBurrowEnsureResult.BUILDING to null
         }
@@ -549,6 +534,8 @@ internal class FarmMoleBurrowWorld(
         enqueueRestore(records.sortedByDescending(FarmMoleBurrowJournalRecord::y))
     }
 
+    fun restoring(zoneId: String): Boolean = restoreQueue.any { it.zoneId == zoneId }
+
     fun process(limit: Int, allowed: (FarmMoleBurrowJournalRecord) -> Boolean): Int {
         require(limit >= 1) { "Mole burrow block budget must be positive" }
         val restored = processQueue(restoreQueue, queuedRestores, limit, restore = true, allowed = allowed)
@@ -561,9 +548,9 @@ internal class FarmMoleBurrowWorld(
 
     fun onChunkLoad(chunk: Chunk, active: (String, Long) -> Boolean) {
         val records = read(chunk) ?: return
-        enqueueBuild(records.filter { active(it.zoneId, it.sequence) })
+        enqueueBuild(records.filter { active(it.zoneId, it.sequence) && (journalNamespace != "farm_greenhouse" || it.burrowId == 1) })
         enqueueRestore(
-            records.filterNot { active(it.zoneId, it.sequence) }
+            records.filterNot { active(it.zoneId, it.sequence) && (journalNamespace != "farm_greenhouse" || it.burrowId == 1) }
                 .sortedByDescending(FarmMoleBurrowJournalRecord::y),
         )
     }

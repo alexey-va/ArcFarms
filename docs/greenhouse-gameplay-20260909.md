@@ -1,38 +1,40 @@
-# Underground greenhouse gameplay
+# Hell rift gameplay
 
-The greenhouse is a journalled 9×11×5 underground chamber. Its surface hatch
-enters only after construction completes and a durable return record commits.
-The return journal is isolated from mole returns. Exit/completion evacuates
-players before restoration; rejected returns retain the record and chamber.
-Offline players recover on join. Legacy surface scenes move underground while
-preserving cooled progress and carried plant identity.
+The event reuses the mole expedition entrance policy, marker/hitbox renderer,
+particle pillar, durable return records and journalled room pipeline. Its
+`UndergroundEvent` type inherits the common title/subtitle and HUD hint flow.
+The entrance is chosen from interior indexed beds, not the farm boundary.
 
-The beds alternate on an 8-second cycle: 3 seconds of yellow warning,
-2 seconds of magma heat, then 3 seconds of rest. The central aisle is safe.
-Floor displays communicate the warning with particles disabled. Ceiling
-shroomlights are real journalled blocks, providing actual light underground.
-Picking requires approaching the bed; the central aisle cannot reach every
-pepper through the old generous click radius. Hot peppers use the existing
-configured carrying deadline. Expiry or exposure loses the carried pepper,
-regrows its plant and preserves delivered progress. Heat pushes exposed
-players toward the aisle. No personal items or health are consumed.
+A separate 9×11×5 hell chamber uses native blackstone, nether bricks, basalt,
+crying obsidian and nine real shroomlights. Stand on the highlighted rune for
+60 consecutive ticks to seal it. Leaving or entering an active heat zone
+resets only the current hold. Completed seals persist across restart.
+Sides alternate on an eight-second cycle: three seconds of warning, two of
+heat, three of rest. Heat pushes toward the safe central aisle. Visible floor
+materials communicate the warning even with particles disabled. There are no
+pepper items, forced hotbar selection, item consumption or health damage.
 
-## Economy scope
+Entry waits for construction and a committed return record. Exit and completion
+evacuate players before restoration; rejected teleports retain the room and
+return record. Offline players recover on join. Legacy greenhouse layouts are
+restored before rebuilding, preserving completed progress and dropping obsolete
+carried-pepper state without granting contribution.
 
-Quota, contribution per cooled pepper, eligibility and all reward quantities,
-chances, multipliers and currencies are unchanged. The per-completion change
-is 0 vault, 0 tokens, 0 XP and 0 reward items. Timing now requires movement and
-waiting for safe beds, so completion throughput may decrease; no measured
-hourly income claim is made. Expired peppers give zero contribution, journalled
-room blocks are protected, and temporary peppers never become inventory loot.
-The planned EconomyShopGUI SELL-to-contract transition is unchanged.
+## Economy assessment
+
+Quota and all reward quantities, chances and multipliers are unchanged.
+Per-completion deltas are 0 vault, 0 tokens, 0 XP and 0 reward items. Each newly
+completed seal contributes one unit; interrupted holds and migration contribute
+zero. Completion throughput changes with movement and heat timing; no measured
+hourly-income neutrality is claimed. Temporary blocks remain protected and are
+restored. The planned EconomyShopGUI SELL-to-contract transition is unchanged.
 
 ## Verification
 
-Focused domain tests cover warning/active/rest timing, alternating sides,
-expiry, participant pause and legacy normalization. Chamber tests cover
-geometry, depth, real lighting, surface-only region ownership, exact restore
-and bidirectional namespace collision rejection. The incident regression
-covers descent after a durable return, preserved hotbar selection, rejecting
-harvest from the aisle, expiry without progress, evacuation before restore,
-and migration without resetting cooled progress.
+Focused tests cover continuous hold/reset, ordered idempotent seals, hazard
+phases, participant pause, legacy progress, durable entry/return and preserved
+hotbar selection. Chamber checks cover native lighting, walkable routes to all
+runes, depth, region footprint, exact restoration and journal namespace
+collisions. Registry tests enforce all incident types; startup locale validation
+requires their titles, subtitles and hints. These checks do not substitute for
+a player-client visual inspection.

@@ -8,7 +8,6 @@ import net.kyori.adventure.bossbar.BossBar
 import org.bukkit.attribute.Attribute
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Interaction
-import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Player
 import org.bukkit.entity.Projectile
 import org.bukkit.entity.Rabbit
@@ -18,10 +17,8 @@ import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.EntityDeathEvent
 import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.event.player.PlayerTeleportEvent
-import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
-import ru.arc.paper.teleport.ScopedTeleportAuthorizer
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
@@ -38,18 +35,14 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
-import ru.ruscrafting.farms.paper.farm.FarmFieldPoiVisibility
+import ru.ruscrafting.farms.paper.farm.expedition.FarmUndergroundExpedition
+import ru.ruscrafting.farms.paper.farm.expedition.FarmUndergroundVariant
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
-import ru.ruscrafting.farms.paper.farm.care.FarmCarePresentation
 import ru.ruscrafting.farms.paper.farm.care.bukkit
 import ru.ruscrafting.farms.paper.platform.FarmMobDespawnPolicy
 import ru.ruscrafting.farms.paper.platform.FarmTextDisplayRenderer
 import ru.ruscrafting.farms.paper.platform.FarmTextDisplayStyle
-import ru.ruscrafting.farms.persistence.FarmBurrowReturn
-import ru.ruscrafting.farms.persistence.FarmBurrowReturnRepository
 import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
-import java.util.logging.Level
 import kotlin.random.Random
 
 private val MOLE_LABEL_STYLE = FarmTextDisplayStyle(viewRange = 0.8f)
@@ -75,15 +68,11 @@ internal class FarmMoleBurrowController(
     private data class SceneKey(val zoneId: String, val sequence: Long, val burrowId: Int)
     private data class Identity(val zoneId: String, val sequence: Long, val burrowId: Int, val role: Role)
 
-    private val presentation = FarmCarePresentation(settings)
-    private val returns by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        FarmBurrowReturnRepository(plugin.dataFolder.toPath())
-    }
-    private val teleports = ScopedTeleportAuthorizer()
+    private val expedition = FarmUndergroundExpedition(
+        plugin, tasks, access, audience, state, FarmUndergroundVariant.MOLES, settings, locale, textDisplays,
+    )
     private val entities = mutableMapOf<SceneKey, MutableSet<UUID>>()
     private val molesInitialized = mutableSetOf<SceneKey>()
-    private val sessions = ConcurrentHashMap<UUID, FarmBurrowReturn>()
-    private val pendingEntries = ConcurrentHashMap.newKeySet<UUID>()
     private val zoneKey = NamespacedKey(plugin, "farm_mole_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_mole_sequence")
     private val roleKey = NamespacedKey(plugin, "farm_mole_role")
@@ -164,9 +153,9 @@ internal class FarmMoleBurrowController(
     }
 
     fun onMove(event: PlayerMoveEvent) {
-        val record = sessions[event.player.uniqueId] ?: return
+        val record = expedition.record(event.player) ?: return
         val destination = event.to
-        if (event is PlayerTeleportEvent && teleports.isAuthorized(event.player.uniqueId, destination)) return
+        if (event is PlayerTeleportEvent && expedition.isAuthorized(event.player, destination)) return
         val runtime = runtimes().firstOrNull {
             it.settings.id == record.zoneId && it.state.sequence == record.sequence && active(it)
         }
@@ -174,90 +163,43 @@ internal class FarmMoleBurrowController(
             world.scenes(activeRuntime).firstOrNull { it.contains(destination) }
         }
         if (scene == null || !scene.contains(destination)) {
-            sessions.remove(event.player.uniqueId, record)
-            acknowledgeAsync(record)
+            expedition.reconcile(event.player, false)
             debug.event("farm_mole_burrow_external_exit", "zone" to record.zoneId, "player" to event.player.name)
         }
     }
 
     fun recoverPlayer(player: Player) {
-        val lifecycleToken = tasks.lifecycleToken()
-        tasks.runAsync(lifecycleToken) {
-            val record = runCatching { returns.load(player.uniqueId) }.getOrElse { failure ->
-                state.log(Level.SEVERE, "Could not read mole burrow return for ${player.uniqueId}", failure)
-                return@runAsync
-            } ?: return@runAsync
-            tasks.runSync(lifecycleToken) {
-                if (!player.isOnline) return@runSync
-                val destination = returnLocation(record) ?: run {
-                    state.log(Level.SEVERE, "Rejected invalid mole burrow return for ${player.uniqueId}")
-                    return@runSync
-                }
-                val moved = teleports.authorize(player.uniqueId, destination) {
-                    player.teleport(destination, PlayerTeleportEvent.TeleportCause.PLUGIN)
-                }
-                if (moved) {
-                    sessions.remove(player.uniqueId)
-                    acknowledgeAsync(record)
-                    audience.sendChat(player, MessageKey.FARM_MOLE_RECOVERED)
-                    debug.event("farm_mole_burrow_player_recovered", "zone" to record.zoneId, "player" to player.name)
-                } else {
-                    if (access.allowInteraction("farm-mole-return-failure:${record.zoneId}:${record.playerId}", 10_000L)) {
-                        state.log(
-                            Level.WARNING,
-                            "Could not teleport player out of mole burrow: zone=${record.zoneId} " +
-                                "sequence=${record.sequence} player=${player.name} reason=teleport_rejected",
-                        )
-                    }
-                }
-            }
-        }
+        expedition.recover(player)
     }
 
     fun releasePlayer(player: Player, reason: String) {
-        pendingEntries.remove(player.uniqueId)
-        val record = sessions.remove(player.uniqueId) ?: return
-        if (reason != "player_quit") acknowledgeAsync(record)
+        if (reason == "player_quit") expedition.quit(player) else expedition.reconcile(player, false)
     }
 
-    fun beforeReload() = pendingEntries.clear()
+    fun beforeReload() = Unit
 
     fun onPlayerDeath(player: Player) = releasePlayer(player, "player_death")
 
     fun clear(runtime: FarmRuntime, reason: String) {
-        val keys = entities.keys.filter { it.zoneId == runtime.settings.id && it.sequence == runtime.state.sequence }
-        keys.toList().forEach(::removeEntities)
         val scenes = world.scenes(runtime)
-        sessions.values.filter { it.zoneId == runtime.settings.id && it.sequence == runtime.state.sequence }.forEach { record ->
-            val player = Bukkit.getPlayer(record.playerId)
-            if (player != null && player.isOnline) leave(player, record, null)
-            else sessions.remove(record.playerId, record)
-        }
+        var returned = expedition.evacuate(runtime.settings.id)
         scenes.forEach { activeScene ->
             activeScene.world.players.filter { activeScene.contains(it.location) }.forEach { player ->
-                val destination = activeScene.surface.clone().apply {
-                    yaw = player.location.yaw
-                    pitch = player.location.pitch
-                }
-                teleports.authorize(player.uniqueId, destination) {
-                    player.teleport(destination, PlayerTeleportEvent.TeleportCause.PLUGIN)
-                }
-                recoverPlayer(player)
+                if (!expedition.exit(player, activeScene)) returned = false
             }
         }
+        if (!returned) return
+        entities.keys.filter { it.zoneId == runtime.settings.id && it.sequence == runtime.state.sequence }
+            .toList().forEach(::removeEntities)
         world.beginRestore(runtime.region.world, runtime.settings.id, runtime.state.sequence)
         debug.event("farm_mole_burrow_cleared", "zone" to runtime.settings.id, "sequence" to runtime.state.sequence, "reason" to reason)
     }
 
     fun cleanup(reason: String) {
-        sessions.values.toList().forEach { record ->
-            Bukkit.getPlayer(record.playerId)?.takeIf(Player::isOnline)?.let { leave(it, record, null) }
-        }
+        expedition.records().keys.mapNotNull(Bukkit::getPlayer).filter(Player::isOnline).forEach { expedition.exit(it) }
         Bukkit.getWorlds().asSequence().flatMap { it.entities.asSequence() }.filter(::owns).forEach(Entity::remove)
         entities.clear()
         molesInitialized.clear()
-        sessions.clear()
-        pendingEntries.clear()
         world.clearQueues()
         debug.event("farm_mole_burrow_cleanup", "reason" to reason)
     }
@@ -273,7 +215,7 @@ internal class FarmMoleBurrowController(
     }
 
     fun updateGuidance(expectedBars: MutableSet<ActivityBarKey>) {
-        sessions.values.forEach { record ->
+        expedition.records().values.forEach { record ->
             val runtime = runtimes().firstOrNull {
                 it.settings.id == record.zoneId && it.state.sequence == record.sequence && active(it)
             } ?: return@forEach
@@ -296,62 +238,15 @@ internal class FarmMoleBurrowController(
     }
 
     private fun enter(player: Player, runtime: FarmRuntime, scene: FarmMoleBurrowScene) {
-        if (!scene.ready || !pendingEntries.add(player.uniqueId)) {
-            if (!scene.ready) audience.sendActionBar(player, MessageKey.FARM_MOLE_BUILDING)
+        if (!scene.ready) {
+            audience.sendActionBar(player, MessageKey.FARM_MOLE_BUILDING)
             return
         }
-        val surface = scene.surface.clone().apply {
-            yaw = player.location.yaw
-            pitch = player.location.pitch
+        expedition.enter(player, runtime, scene)
+        if (settings().sounds) {
+            player.playSound(scene.start, Sound.BLOCK_ROOTED_DIRT_BREAK, 0.85f, 0.7f)
         }
-        val record = FarmBurrowReturn(
-            player.uniqueId,
-            runtime.settings.id,
-            runtime.state.sequence,
-            surface.world.name,
-            surface.x,
-            surface.y,
-            surface.z,
-            surface.yaw,
-            surface.pitch,
-            clock(),
-        )
-        val lifecycleToken = tasks.lifecycleToken()
-        tasks.runAsync(lifecycleToken) {
-            val committed = runCatching { returns.commit(record) }.getOrElse { failure ->
-                state.log(Level.SEVERE, "Could not commit mole burrow return for ${player.uniqueId}", failure)
-                null
-            }
-            tasks.runSync(lifecycleToken) {
-                pendingEntries.remove(player.uniqueId)
-                val stillAtEntrance = player.isOnline && player.world === scene.world && runtime.region.contains(player.location) &&
-                    player.location.distanceSquared(scene.surface) <= 25.0
-                if (committed == null || !active(runtime) || runtime.state.sequence != record.sequence ||
-                    !scene.ready || !stillAtEntrance
-                ) {
-                    if (committed != null) acknowledgeAsync(committed)
-                    return@runSync
-                }
-                val destination = scene.start.clone().add(0.0, 0.05, 0.0).apply {
-                    yaw = player.location.yaw
-                    pitch = 0f
-                }
-                val moved = teleports.authorize(player.uniqueId, destination) {
-                    player.teleport(destination, PlayerTeleportEvent.TeleportCause.PLUGIN)
-                }
-                if (!moved) {
-                    acknowledgeAsync(committed)
-                    return@runSync
-                }
-                sessions[player.uniqueId] = committed
-                player.fallDistance = 0f
-                audience.showScreenTitle(player, MessageKey.FARM_MOLE_ENTERED)
-                if (settings().sounds) {
-                    player.playSound(destination, Sound.BLOCK_ROOTED_DIRT_BREAK, 0.85f, 0.7f)
-                }
-                debug.event("farm_mole_burrow_entered", "zone" to runtime.settings.id, "player" to player.name)
-            }
-        }
+        debug.event("farm_mole_burrow_entered", "zone" to runtime.settings.id, "player" to player.name)
     }
 
     private fun finish(player: Player, runtime: FarmRuntime, scene: FarmMoleBurrowScene) {
@@ -389,32 +284,7 @@ internal class FarmMoleBurrowController(
     }
 
     private fun leave(player: Player, scene: FarmMoleBurrowScene, message: MessageKey?) {
-        val record = sessions[player.uniqueId] ?: FarmBurrowReturn(
-            player.uniqueId, scene.zoneId, scene.sequence, scene.world.name,
-            scene.surface.x, scene.surface.y, scene.surface.z, player.location.yaw, player.location.pitch, clock(),
-        )
-        leave(player, record, message)
-    }
-
-    private fun leave(player: Player, record: FarmBurrowReturn, message: MessageKey?) {
-        val destination = returnLocation(record) ?: return
-        val moved = teleports.authorize(player.uniqueId, destination) {
-            player.teleport(destination, PlayerTeleportEvent.TeleportCause.PLUGIN)
-        }
-        if (!moved) {
-            if (access.allowInteraction("farm-mole-return-failure:${record.zoneId}:${record.playerId}", 10_000L)) {
-                state.log(
-                    Level.WARNING,
-                    "Could not return player from mole burrow: zone=${record.zoneId} " +
-                        "sequence=${record.sequence} player=${player.name} reason=teleport_rejected",
-                )
-            }
-            return
-        }
-        player.fallDistance = 0f
-        sessions.remove(player.uniqueId, record)
-        acknowledgeAsync(record)
-        if (message != null) audience.sendActionBar(player, message)
+        if (expedition.exit(player, scene) && message != null) audience.sendActionBar(player, message)
     }
 
     private fun ensureScene(runtime: FarmRuntime, scene: FarmMoleBurrowScene) {
@@ -513,40 +383,9 @@ internal class FarmMoleBurrowController(
         labelPath: String,
         glowing: Boolean,
     ): List<Entity> {
-        val result = mutableListOf<Entity>()
-        val material = MaterialRules.material(visual.material)
-        val viewRange = if (role == Role.ENTRANCE) {
-            FarmFieldPoiVisibility.fullField(runtime.settings.displayViewRange)
-        } else runtime.settings.displayViewRange
-        if (material != org.bukkit.Material.AIR) {
-            val stack = ItemStack(material).also { item ->
-                if (visual.customModelData > 0) item.itemMeta = item.itemMeta.also { it.setCustomModelData(visual.customModelData) }
-            }
-            result += location.world.spawn(location.clone().add(0.0, visual.displayYOffset, 0.0), ItemDisplay::class.java) { entity ->
-                entity.setItemStack(stack)
-                entity.itemDisplayTransform = visual.displayTransform.bukkit
-                presentation.scale(entity, visual.displayScale)
-                entity.viewRange = viewRange
-                entity.isGlowing = glowing
-                entity.isPersistent = false
-                mark(entity, runtime, scene.burrowId, role)
-            }
-        }
-        val label = location.world.spawn(location.clone().add(0.0, 1.85, 0.0), TextDisplay::class.java) { entity ->
-            val style = if (role == Role.ENTRANCE) MOLE_LABEL_STYLE.copy(viewRange = viewRange) else MOLE_LABEL_STYLE
-            textDisplays.render(entity, locale.renderPath(labelPath), style)
+        return expedition.surface.spawnEntry(runtime, location, visual, labelPath, glowing) { entity ->
             mark(entity, runtime, scene.burrowId, role)
         }
-        val hitbox = location.world.spawn(location.clone().add(0.0, 0.55, 0.0), Interaction::class.java) { entity ->
-            entity.interactionWidth = 1.45f
-            entity.interactionHeight = 1.7f
-            entity.isResponsive = true
-            entity.isPersistent = false
-            mark(entity, runtime, scene.burrowId, role)
-        }
-        result += label
-        result += hitbox
-        return result
     }
 
     private fun spawnExit(runtime: FarmRuntime, scene: FarmMoleBurrowScene, location: Location): List<Entity> {
@@ -583,23 +422,6 @@ internal class FarmMoleBurrowController(
     private fun removeEntities(key: SceneKey) {
         entities.remove(key).orEmpty().forEach { Bukkit.getEntity(it)?.remove() }
         molesInitialized.remove(key)
-    }
-
-    private fun acknowledgeAsync(record: FarmBurrowReturn) {
-        if (!plugin.isEnabled) return
-        val lifecycleToken = runCatching(tasks::lifecycleToken).getOrNull() ?: return
-        tasks.runAsync(lifecycleToken) {
-            runCatching { returns.acknowledge(record) }.onFailure { failure ->
-                state.log(Level.SEVERE, "Could not acknowledge mole burrow return for ${record.playerId}", failure)
-            }
-        }
-    }
-
-    private fun returnLocation(record: FarmBurrowReturn): Location? {
-        val runtime = runtimes().firstOrNull { it.settings.id == record.zoneId } ?: return null
-        val world = runtime.region.world.takeIf { it.name == record.world } ?: return null
-        return Location(world, record.x, record.y, record.z, record.yaw, record.pitch)
-            .takeIf(runtime.region::contains)
     }
 
     private fun active(runtime: FarmRuntime): Boolean = runtime.state.phase == FarmPhase.CARE &&

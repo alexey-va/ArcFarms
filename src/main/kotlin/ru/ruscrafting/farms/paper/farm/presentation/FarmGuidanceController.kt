@@ -14,6 +14,8 @@ import ru.ruscrafting.farms.domain.FarmChannelTrailPolicy
 import ru.ruscrafting.farms.domain.FarmGuidancePlanner
 import ru.ruscrafting.farms.domain.FarmGiantCropBlueprint
 import ru.ruscrafting.farms.domain.FarmIncidentType
+import ru.ruscrafting.farms.domain.FarmEventArchetype
+import ru.ruscrafting.farms.domain.FarmEventTypeRegistry
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPlotGeometry
 import ru.ruscrafting.farms.domain.FarmPlotPosition
@@ -29,6 +31,7 @@ import ru.ruscrafting.farms.paper.farm.care.FarmCareController
 import ru.ruscrafting.farms.paper.farm.care.FarmCarePlanService
 import ru.ruscrafting.farms.paper.farm.care.FARM_OUTDOOR_CARE_ROLES
 import ru.ruscrafting.farms.paper.farm.delivery.FarmDeliveryController
+import ru.ruscrafting.farms.paper.farm.expedition.FarmUndergroundSurfacePillar
 import ru.ruscrafting.farms.paper.farm.incident.special.SPECIAL_FARM_INCIDENT_TYPES
 import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
 import ru.ruscrafting.farms.paper.location
@@ -80,20 +83,18 @@ internal class FarmGuidanceController(
                 }
             }
         }
-        farms.filter { it.state.phase == FarmPhase.INCIDENT && it.state.incidentType == FarmIncidentType.DROUGHT }
-            .forEach { runtime ->
-                val markers = cluster(
-                    runtime.state.droughtPlots.filterTo(linkedSetOf(), ::isOutdoorPlot),
-                    runtime.settings.droughtPatches,
-                )
-                    .mapNotNull(FarmPlotGeometry::center)
-                    .mapNotNull(FarmPlotPosition::location)
-                players(runtime).filterNot(access::isAdminEditing).forEach { player ->
-                    markers.forEach { spawnColumn(player, it, DROUGHT_COLOR) }
+        farms.filter { it.state.phase == FarmPhase.INCIDENT }.forEach { runtime ->
+            val type = runtime.state.incidentType ?: return@forEach
+            val baseline = FarmEventTypeRegistry.definition(type)
+            if (!baseline.particleColumns) return@forEach
+            when {
+                baseline.archetype == FarmEventArchetype.UNDERGROUND -> emitUnderground(runtime)
+                type in SPECIAL_FARM_INCIDENT_TYPES -> emitSpecial(runtime)
+                else -> players(runtime).filterNot(access::isAdminEditing).forEach { player ->
+                    incidentMarkers(runtime).filter { it.first.world == player.world }.forEach { (at, color) -> spawnColumn(player, at, color) }
                 }
             }
-        farms.filter { it.state.phase == FarmPhase.INCIDENT && it.state.incidentType in SPECIAL_FARM_INCIDENT_TYPES }
-            .forEach(::emitSpecial)
+        }
         farms.filter { it.state.phase == FarmPhase.CARE }.forEach(::emitCare)
         farms.filter { it.state.phase == FarmPhase.DELIVERY }.forEach(::emitDelivery)
     }
@@ -158,6 +159,17 @@ internal class FarmGuidanceController(
                         )
                     }
             }
+        }
+    }
+
+    /** Underground entry guidance is visible while the room is still building. */
+    private fun emitUnderground(runtime: FarmRuntime) {
+        if (!FarmEventTypeRegistry.definition(runtime.state.incidentType ?: return).entryHint) return
+        val entrance = runtime.state.hellGreenhouse?.entrance ?: return
+        val world = Bukkit.getWorld(entrance.world) ?: return
+        val target = Location(world, entrance.x, entrance.y, entrance.z)
+        players(runtime).filter { it.world == world && !access.isAdminEditing(it) }.forEach { player ->
+            FarmUndergroundSurfacePillar.render(player, target, PLANT_COLOR, settings().markerHeight)
         }
     }
 
@@ -347,11 +359,8 @@ internal class FarmGuidanceController(
             Bukkit.getWorld(point.world)?.let { world -> listOf(Location(world, point.x, point.y, point.z) to DANGER_COLOR) }
         }.orEmpty()
         FarmIncidentType.TORNADO -> emptyList()
-        FarmIncidentType.HELL_GREENHOUSE -> runtime.state.hellGreenhouse?.let { greenhouse ->
-            greenhouse.points.mapIndexedNotNull { index, point ->
-                if (index in greenhouse.harvested) return@mapIndexedNotNull null
-                Bukkit.getWorld(point.world)?.let { world -> Location(world, point.x, point.y, point.z) to AMBER_COLOR }
-            }
+        FarmIncidentType.HELL_GREENHOUSE -> runtime.state.hellGreenhouse?.entrance?.let { point ->
+            Bukkit.getWorld(point.world)?.let { listOf(Location(it, point.x, point.y, point.z) to PLANT_COLOR) }
         }.orEmpty()
         null -> emptyList()
     }
@@ -435,21 +444,7 @@ internal class FarmGuidanceController(
     }
 
     private fun spawnColumn(player: Player, base: Location, color: Color) {
-        val center = base.clone().toCenterLocation().add(0.0, 1.0, 0.0)
-        val steps = settings().markerHeight * 2
-        for (step in 0..steps) {
-            player.spawnParticle(
-                Particle.DUST,
-                center.clone().add(0.0, step * 0.5, 0.0),
-                if (step == 0 || step == steps) 4 else 2,
-                0.22,
-                0.12,
-                0.22,
-                0.0,
-                Particle.DustOptions(color, if (step % 4 == 0) 2.2f else 1.7f),
-                true,
-            )
-        }
+        FarmUndergroundSurfacePillar.render(player, base, color, settings().markerHeight)
     }
 
     private fun spawnSlimColumn(player: Player, base: Location, color: Color) {

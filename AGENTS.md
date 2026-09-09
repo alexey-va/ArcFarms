@@ -103,6 +103,18 @@ activities: farm, lumbermill, and mine.
   region does not need to extend down through the generated tunnel depth.
   Unconfigured building materials, world-height limits, occupied journals, and
   unloaded chunks remain hard rejections and must be reported separately.
+- Every incident must register an existing `FarmEventTypeDefinition` subtype
+  in `FarmEventTypeRegistry` before adding variant mechanics. Field, portal and
+  underground types share startup title/subtitle, HUD hints and guidance policy.
+  New variants must use these common owners rather than duplicate QoL code.
+  Registry completeness and required locale paths are enforced by tests/startup.
+- All temporary underground activities compose `FarmUndergroundExpedition` with
+  a `FarmUndergroundVariant` and its `surface` owner. The shared type owns
+  durable return records, plugin-authorized teleports, session snapshots and
+  recovery directories; mole and hell-rift controllers own only their activity
+  scenes, eligibility and completion rules. Do not instantiate
+  `FarmBurrowReturnRepository`, `ScopedTeleportAuthorizer`, or a second surface
+  marker/candidate owner inside an activity controller.
 - Animal-rescue targets come only from indexed, validated outdoor crop beds.
   Never use a generic highest-surface search: roofs inside the region are not
   farm spawn points.
