@@ -23,6 +23,7 @@ internal data class MineRuntime(
     fun nextOrder(): MineOrderSettings = settings.orders[(state.sequence % settings.orders.size).toInt()]
 
     fun rules(order: MineOrderSettings = defaultOrder()): MineRules = MineRules(
+        miningOnly = settings.miningOnly,
         cartQuota = order.miningRequired,
         hazardTrigger = minOf(settings.hazardTrigger, order.miningRequired - 1).coerceAtLeast(1),
         supportsRequired = settings.supportsRequired,
@@ -62,7 +63,15 @@ internal object MineRuntimeFactory {
                 "Mine zone ${settings.id} cannot resolve ${settings.reference}"
             },
             cooldownMillis = cooldownMillis,
-            state = MineStateMigration.migrate(persisted[settings.id] ?: MineShiftState()),
+            state = MineStateMigration.migrate(persisted[settings.id] ?: MineShiftState()).let { saved ->
+                val allowed = settings.orders.flatMap { it.incidentTypes }.toSet()
+                if (settings.miningOnly && saved.phase !in setOf(ru.ruscrafting.farms.domain.MinePhase.IDLE,
+                        ru.ruscrafting.farms.domain.MinePhase.COOLDOWN) &&
+                    (saved.incidentSchedule.any { it !in allowed } || saved.phase in setOf(
+                        ru.ruscrafting.farms.domain.MinePhase.PROSPECTING, ru.ruscrafting.farms.domain.MinePhase.LOADING))) {
+                    MineShiftState(engineVersion = 2, sequence = saved.sequence)
+                } else saved
+            },
         )
     }
 }

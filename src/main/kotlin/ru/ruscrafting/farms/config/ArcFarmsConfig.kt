@@ -1076,6 +1076,8 @@ data class MineZoneSettings(
     val temporaryMaterial: String,
     val baseMaterial: String,
     val materialWeights: LinkedHashMap<String, Int>,
+    val miningOnly: Boolean = false,
+    val guidanceRadius: Double = 0.0,
     val engineVersion: Int = 1,
     val orders: List<MineOrderSettings> = emptyList(),
     val targetMultiplier: Int = 2,
@@ -1093,7 +1095,7 @@ data class MineZoneSettings(
     init {
         require(engineVersion in 1..2) { "Mine zone $id engine-version must be 1 or 2" }
         require(targetMultiplier in 2..4) { "Mine zone $id target-multiplier must be 2..4" }
-        require(incidentCountMin in 3..5 && incidentCountMax in incidentCountMin..5) {
+        require(incidentCountMin in 1..5 && incidentCountMax in incidentCountMin..5) {
             "Mine zone $id incident count range is invalid"
         }
         require(lostMinerDeliveryRadius in 1.0..6.0) {
@@ -2578,8 +2580,8 @@ class ArcFarmsConfig private constructor(
                 val baseMaterial = materialName(section.string("base-material"))
                 require(baseMaterial in materialWeights) { "Mine $id base-material must be present in materials" }
                 val engineVersion = section.int("engine-version", 1).checked("mine engine-version", 1, 2)
-                val incidentCountMin = section.int("incident-count-min", 3).checked("mine incident-count-min", 3, 5)
-                val incidentCountMax = section.int("incident-count-max", 5).checked("mine incident-count-max", 3, 5)
+                val incidentCountMin = section.int("incident-count-min", 3).checked("mine incident-count-min", 1, 5)
+                val incidentCountMax = section.int("incident-count-max", 5).checked("mine incident-count-max", 1, 5)
                 val orders = section.keys("orders").sorted().map { orderId ->
                     validateId(orderId, "mine order")
                     val order = section.section("orders.$orderId")
@@ -2610,6 +2612,8 @@ class ArcFarmsConfig private constructor(
                     temporaryMaterial = materialName(section.string("temp-material")),
                     baseMaterial = baseMaterial,
                     materialWeights = LinkedHashMap(materialWeights),
+                    miningOnly = section.boolean("mining-only", false),
+                    guidanceRadius = section.finiteDouble("guidance-radius", 0.0, 0.0, 256.0),
                     engineVersion = engineVersion,
                     orders = orders,
                     targetMultiplier = section.int("target-multiplier", 2).checked("mine target-multiplier", 2, 4),

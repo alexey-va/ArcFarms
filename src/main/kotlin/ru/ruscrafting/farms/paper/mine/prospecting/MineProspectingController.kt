@@ -78,19 +78,27 @@ internal class MineProspectingController(
 
     fun adminStart(runtime: MineRuntime, player: org.bukkit.entity.Player): Boolean = ensureStarted(runtime, player)
 
+    fun autoStart(runtime: MineRuntime, player: org.bukkit.entity.Player): Boolean {
+        if (!runtime.settings.miningOnly || runtime.state.phase != MinePhase.IDLE ||
+            !recovery.canStart(runtime.settings.id) ||
+            !hasCapacity(runtime, MineAnchorRole.MINEABLE, runtime.rules().miningQuota)) return false
+        return ensureStarted(runtime, player)
+    }
+
     private fun ensureStarted(runtime: MineRuntime, player: org.bukkit.entity.Player): Boolean {
         if (runtime.state.phase == MinePhase.COOLDOWN) return false.also { remind(player, MessageKey.COOLDOWN) }
         if (runtime.state.phase != MinePhase.IDLE) return true
         if (!recovery.canStart(runtime.settings.id)) return false.also { remind(player, MessageKey.MINE_RECOVERY_PENDING) }
         val order = runtime.nextOrder()
         val rules = runtime.rules(order)
-        if (!hasCapacity(runtime, MineAnchorRole.PROSPECT, rules.prospectingQuota) ||
-            !hasCapacity(runtime, MineAnchorRole.MINEABLE, rules.miningQuota) || !canStartLoading(runtime)) {
+        if ((!rules.miningOnly && (!hasCapacity(runtime, MineAnchorRole.PROSPECT, rules.prospectingQuota) || !canStartLoading(runtime))) ||
+            !hasCapacity(runtime, MineAnchorRole.MINEABLE, rules.miningQuota)) {
             remind(player, MessageKey.MINE_INDEX_SHORTAGE)
             return false
         }
         val started = MineShiftEngine.start(runtime.state, order.domain(), rules, clock())
-        val objective = plan(runtime, MineAnchorRole.PROSPECT, "prospecting", rules.prospectingQuota, started.state.sequence)
+        val objective = if (rules.miningOnly) plan(runtime, MineAnchorRole.MINEABLE, "mining", rules.miningQuota, started.state.sequence)
+        else plan(runtime, MineAnchorRole.PROSPECT, "prospecting", rules.prospectingQuota, started.state.sequence)
         transitions.apply(runtime, started.copy(state = started.state.copy(objective = objective)), player)
         audience.broadcast(
             listOf(runtime.region),
@@ -103,7 +111,7 @@ internal class MineProspectingController(
     }
 
     private fun hasCapacity(runtime: MineRuntime, role: MineAnchorRole, quota: Int): Boolean =
-        index.loadedTargets(runtime.settings.id, role).size >= quota * runtime.rules(runtime.nextOrder()).targetMultiplier
+        candidates(runtime, role).size >= quota * runtime.rules(runtime.nextOrder()).targetMultiplier
 
     private fun plan(
         runtime: MineRuntime,
@@ -118,7 +126,13 @@ internal class MineProspectingController(
     )
 
     private fun candidates(runtime: MineRuntime, role: MineAnchorRole): List<ObjectiveTargetCandidate> =
-        index.loadedTargets(runtime.settings.id, role).map { position ->
+        index.loadedTargets(runtime.settings.id, role).filter { position ->
+            val block = runtime.region.world.getBlockAt(position.x, position.y, position.z)
+            block.type.name in runtime.settings.materialWeights &&
+                (!runtime.settings.miningOnly || listOf(org.bukkit.block.BlockFace.UP, org.bukkit.block.BlockFace.NORTH,
+                    org.bukkit.block.BlockFace.SOUTH, org.bukkit.block.BlockFace.EAST, org.bukkit.block.BlockFace.WEST)
+                    .any { block.getRelative(it).isPassable })
+        }.map { position ->
             ObjectiveTargetCandidate(
                 "${role.name.lowercase()}_${token(position.x)}_${token(position.y)}_${token(position.z)}",
                 position,

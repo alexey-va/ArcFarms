@@ -59,6 +59,18 @@ activities: farm, lumbermill, and mine.
   recovery intent is written before the world mutation, and a rejected stale
   callback retires intent only when it has not mutated the world.
 - Farm, lumbermill, and mine must have different player verbs and phase flows.
+- Reuse proven farm and shared worksite infrastructure before implementing any
+  mine or lumber feature. Trace the existing farm owner and its callers first;
+  use the existing lifecycle, objective/progress, incident interruption/resume,
+  placement/indexing, guidance/HUD, participant safety, recovery and reward
+  primitives wherever their contract fits. Do not copy these systems into a
+  worksite package or introduce a parallel runtime for the same responsibility.
+- If a proven farm component is unnecessarily farm-specific and another worksite
+  needs the same behavior now, extract the smallest activity-neutral owner and
+  migrate both callers together, preserving its tests and recovery guarantees.
+  Keep only worksite-specific verbs, scene mechanics and policy in each module.
+  Do not generalize unrelated farm behavior speculatively. Reviews must identify
+  which existing owners were reused and justify any genuinely new owner.
 - A farm shift has one foreground objective. Resolving an incident resumes the
   ordinary crop order directly; do not insert harvest multipliers or parallel
   crop bonus windows between the incident and the next required crop.

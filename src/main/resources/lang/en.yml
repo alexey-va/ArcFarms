@@ -1119,6 +1119,8 @@ mine:
   ore-crate: '<gold>Ore crate</gold>'
   loading-required: '<yellow>Pick up a highlighted ore crate and carry it to the extraction cart.</yellow>'
   guidance:
+    completion_pending: '<gray>Completing the order</gray>'
+    idle: '<gray>Preparing the worksite — the order starts automatically</gray>'
     title: '<color:#45c8f5><bold>Mine task</bold></color>'
     bar: '<action> <dark_gray>•</dark_gray> <aqua><done></aqua><gray>/</gray><gold><total></gold>'
     prospecting: '<color:#f2fff7>Right-click the highlighted rock faces to inspect them</color>'
@@ -1133,7 +1135,7 @@ mine:
     flooding: '<color:#f2fff7>Take a pump and drain the highlighted flooded sections</color>'
     track_damage: '<color:#f2fff7>Take a rail kit and repair the marked track sections</color>'
     crystal_resonance: '<color:#f2fff7>Activate the highlighted crystals in order</color>'
-    creature_nest: '<color:#f2fff7>Defeat the creatures around the marked nest</color>'
+    creature_nest: '<color:#f2fff7>Defeat the raiders in the worksite</color>'
     power_failure: '<color:#f2fff7>Activate the highlighted power nodes in order</color>'
     lost_miner: '<color:#f2fff7>Find the miner, click them, and escort them to the exit</color>'
 shift:

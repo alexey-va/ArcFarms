@@ -50,6 +50,27 @@ class MineShiftV2Test : FunSpec({
         state.phase shouldBe MinePhase.COOLDOWN
     }
 
+    test("basic order mines directly and resumes after its single invasion") {
+        val basicRules = rules.copy(miningOnly = true, incidentCountMin = 1, incidentCountMax = 1)
+        val basicOrder = MineOrder("basic_ore", listOf(MineIncidentType.CREATURE_NEST))
+        var state = MineShiftEngine.start(MineShiftState(), basicOrder, basicRules, 1000).state
+        state.phase shouldBe MinePhase.MINING
+        state.incidentSchedule shouldBe listOf(MineIncidentType.CREATURE_NEST)
+        state = MineShiftEngine.mineTarget(state, basicRules, player).state
+        state = MineShiftEngine.startIncident(state, MineIncidentType.CREATURE_NEST, 3, 2000).state
+        MineShiftEngine.mineTarget(state, basicRules, player).accepted shouldBe false
+        state = MineShiftEngine.workIncident(state, player, 3).state
+        state = MineShiftEngine.resolveIncident(state).state
+        state.mined shouldBe 1
+        state.phase shouldBe MinePhase.MINING
+        repeat(2) { state = MineShiftEngine.mineTarget(state, basicRules, player).state }
+        state.phase shouldBe MinePhase.EXTRACTION
+        state = MineShiftEngine.extract(state, basicRules, player, 3000).state
+        state.phase shouldBe MinePhase.COOLDOWN
+        MineShiftEngine.extract(state, basicRules, player, 3000).accepted shouldBe false
+        MineShiftEngine.tick(state, basicRules, 8000).state.phase shouldBe MinePhase.IDLE
+    }
+
     test("legacy active mine state resets only when entering V2") {
         MineStateMigration.migrate(MineShiftState(phase = MinePhase.HAZARD, sequence = 4)).let { migrated ->
             migrated.phase shouldBe MinePhase.IDLE

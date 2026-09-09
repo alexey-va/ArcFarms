@@ -51,6 +51,21 @@ class MineConfigTest : FunSpec({
         }
     }
 
+    test("basic runtime profile parses one invasion and landing guidance") {
+        val root = System.getProperty("ruscrafting.opsRoot")?.let(Path::of)
+        if (root != null) {
+            val mines = ArcFarmsConfig.inspect(root.resolve("classic/plugins/ArcFarms")).mines
+            mines.size shouldBe 4
+            mines.forEach {
+                it.miningOnly shouldBe true
+                it.guidanceRadius shouldBe 128.0
+                it.incidentCountMin shouldBe 1
+                it.incidentCountMax shouldBe 1
+                it.orders.single().incidentTypes shouldBe listOf(MineIncidentType.CREATURE_NEST)
+            }
+        }
+    }
+
     val order = MineOrderSettings(
         "deep_vein",
         prospectingRequired = 3,

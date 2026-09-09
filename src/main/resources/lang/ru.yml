@@ -1119,6 +1119,8 @@ mine:
   ore-crate: '<gold>Ящик с рудой</gold>'
   loading-required: '<yellow>Возьмите отмеченный ящик с рудой и отнесите его к вывозной телеге.</yellow>'
   guidance:
+    completion_pending: '<gray>Завершение заказа</gray>'
+    idle: '<gray>Подготовка выработки — заказ начнётся автоматически</gray>'
     title: '<color:#45c8f5><bold>Работа в шахте</bold></color>'
     bar: '<action> <dark_gray>•</dark_gray> <aqua><done></aqua><gray>/</gray><gold><total></gold>'
     prospecting: '<color:#f2fff7>Осмотрите подсвеченные участки породы правой кнопкой</color>'
@@ -1133,7 +1135,7 @@ mine:
     flooding: '<color:#f2fff7>Возьмите насос и осушите отмеченные затопленные участки</color>'
     track_damage: '<color:#f2fff7>Возьмите рельсовый набор и почините отмеченные участки пути</color>'
     crystal_resonance: '<color:#f2fff7>Активируйте подсвеченные кристаллы по порядку</color>'
-    creature_nest: '<color:#f2fff7>Уничтожьте существ у отмеченного гнезда</color>'
+    creature_nest: '<color:#f2fff7>Победите налётчиков в выработке</color>'
     power_failure: '<color:#f2fff7>Включайте подсвеченные узлы питания по порядку</color>'
     lost_miner: '<color:#f2fff7>Найдите шахтёра, нажмите на него и проводите к выходу</color>'
 shift:

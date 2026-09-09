@@ -21,8 +21,8 @@ enum class MineIncidentType {
 data class MineOrder(val id: String, val incidents: List<MineIncidentType>) {
     init {
         require(DomainIdentifiers.isOrder(id)) { "Invalid mine order id: $id" }
-        require(incidents.size in 3..8 && incidents.distinct().size == incidents.size) {
-            "Mine order must contain three to eight distinct incidents"
+        require(incidents.size in 1..8 && incidents.distinct().size == incidents.size) {
+            "Mine order must contain one to eight distinct incidents"
         }
     }
 }
@@ -36,6 +36,7 @@ data class MineRules(
     val miningQuota: Int = cartQuota,
     val loadingQuota: Int = 1,
     val targetMultiplier: Int = 2,
+    val miningOnly: Boolean = false,
     val incidentCountMin: Int = 3,
     val incidentCountMax: Int = 5,
 ) {
@@ -46,7 +47,7 @@ data class MineRules(
         require(cooldownMillis in 0..3_600_000)
         require(prospectingQuota in 1..100_000 && miningQuota in 1..100_000 && loadingQuota in 1..100_000)
         require(targetMultiplier in 2..4)
-        require(incidentCountMin in 3..5 && incidentCountMax in incidentCountMin..5)
+        require(incidentCountMin in 1..5 && incidentCountMax in incidentCountMin..5)
     }
 }
 
@@ -123,7 +124,7 @@ object MineShiftEngine {
         return EngineResult(
             MineShiftState(
                 engineVersion = 2,
-                phase = MinePhase.PROSPECTING,
+                phase = if (rules.miningOnly) MinePhase.MINING else MinePhase.PROSPECTING,
                 sequence = sequence,
                 orderId = order.id,
                 startedAt = now,
@@ -140,7 +141,7 @@ object MineShiftEngine {
         }
 
     fun mineTarget(current: MineShiftState, rules: MineRules, playerId: UUID): EngineResult<MineShiftState, MineShiftEvent> =
-        progress(current, MinePhase.MINING, current.mined, rules.miningQuota, MinePhase.LOADING, playerId) { state, next ->
+        progress(current, MinePhase.MINING, current.mined, rules.miningQuota, if (rules.miningOnly) MinePhase.EXTRACTION else MinePhase.LOADING, playerId) { state, next ->
             state.copy(mined = next, cart = next)
         }
 

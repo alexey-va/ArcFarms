@@ -54,7 +54,7 @@ internal class PaperMineIncidentEntityEffects(plugin: Plugin) : MineIncidentEnti
         val world = requireNotNull(Bukkit.getWorld(position.world))
         val entity = world.spawnEntity(
             Location(world, position.x + 0.5, position.y + 1.0, position.z + 0.5),
-            if (kind == MineIncidentEntityKind.CREATURE) EntityType.SILVERFISH else EntityType.VILLAGER,
+            if (kind == MineIncidentEntityKind.CREATURE) EntityType.HUSK else EntityType.VILLAGER,
         )
         entity.persistentDataContainer.apply {
             set(markerKey, PersistentDataType.INTEGER, 1)

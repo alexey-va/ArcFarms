@@ -27,7 +27,10 @@ internal class MineIncidentScheduler(
     fun tick(runtime: MineRuntime, now: Long, onlineParticipants: Int): Boolean {
         if (onlineParticipants <= 0 || runtime.state.phase == MinePhase.INCIDENT) return false
         val type = runtime.state.incidentSchedule.getOrNull(runtime.state.incidentCursor) ?: return false
-        if ((PHASE_RANK[runtime.state.phase] ?: return false) < INCIDENT_RANK.getValue(type)) return false
+        if (runtime.settings.miningOnly) {
+            if (runtime.state.phase !in setOf(MinePhase.MINING, MinePhase.EXTRACTION) ||
+                runtime.state.mined < (runtime.rules().miningQuota / 2).coerceAtLeast(1)) return false
+        } else if ((PHASE_RANK[runtime.state.phase] ?: return false) < INCIDENT_RANK.getValue(type)) return false
         val key = "${runtime.settings.id}:${runtime.state.sequence}:${runtime.state.incidentCursor}"
         if (now < (retryAfter[key] ?: 0L)) return false
         val started = force(runtime, type, now)
@@ -38,7 +41,7 @@ internal class MineIncidentScheduler(
     fun force(runtime: MineRuntime, type: MineIncidentType, now: Long): Boolean {
         if (runtime.state.phase == MinePhase.INCIDENT) return false
         val phaseRank = PHASE_RANK[runtime.state.phase] ?: return false
-        if (phaseRank < INCIDENT_RANK.getValue(type)) return false
+        if (!runtime.settings.miningOnly && phaseRank < INCIDENT_RANK.getValue(type)) return false
         return when (type) {
             MineIncidentType.CAVE_IN -> caveIn.start(runtime, runtime.rules().supportsRequired, now)
             MineIncidentType.GAS_LEAK -> gasLeak.start(runtime, 2, now)

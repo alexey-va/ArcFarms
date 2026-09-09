@@ -22,7 +22,7 @@ internal class MineLiftMotion(private val floors: List<Double>, private val spee
 
     init {
         require(floors.size in 2..8 && floors.distinct().size == floors.size)
-        require(floors.all(Double::isFinite) && speed.isFinite() && speed in 1.0..8.0)
+        require(floors.all(Double::isFinite) && speed.isFinite() && speed in 1.0..MAX_SPEED)
     }
 
     fun call(destination: Int) {
@@ -79,7 +79,8 @@ internal class MineLiftMotion(private val floors: List<Double>, private val spee
     }
 
     companion object {
-        const val BOARDING_TICKS = 60
-        const val DOCK_TICKS = 100
+        const val BOARDING_TICKS = 30
+        const val DOCK_TICKS = 40
+        const val MAX_SPEED = 20.0
     }
 }

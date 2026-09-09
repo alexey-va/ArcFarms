@@ -27,13 +27,12 @@ internal class MineGuidanceSource(
     private val routeTarget: (MineRuntime) -> WorksitePosition? = { null },
     private val routeTotal: (MineRuntime) -> Int = { 1 },
 ) : WorksiteGuidanceSource {
-    override fun participants(): Collection<Player> = registry.snapshot().flatMap { audience.players(it.region) }
+    override fun participants(): Collection<Player> = registry.snapshot().flatMap { it.region.world.players }.filter { registry.forAudience(it.location) != null }
         .distinctBy(Player::getUniqueId)
 
     override fun view(playerId: UUID): WorksiteGuidanceView? {
         val player = Bukkit.getPlayer(playerId) ?: return null
-        val runtime = registry.at(player.location) ?: return null
-        if (runtime.state.phase == MinePhase.IDLE) return null
+        val runtime = registry.forAudience(player.location) ?: return null
         return view(player, runtime)
     }
 
@@ -53,6 +52,7 @@ internal class MineGuidanceSource(
             if (runtime.state.phase == MinePhase.INCIDENT) BossBar.Color.RED else BossBar.Color.BLUE,
             targets(player.uniqueId, runtime),
             sidebarRows = listOf(
+                render("route.mine.${runtime.settings.id}", player),
                 render("mine.guidance.$action", player, values),
                 render("scoreboard.progress", player, values),
             ),
@@ -65,9 +65,9 @@ internal class MineGuidanceSource(
                 (target.status != ObjectiveTargetStatus.LEASED || target.leasedBy == playerId)
         }.mapNotNull { target -> target.position.guidance(target.id, target.role) }
         if (objective.isNotEmpty()) return objective
-        val route = if (runtime.state.phase == MinePhase.EXTRACTION) routeTarget(runtime) else null
+        val route = if (!runtime.settings.miningOnly && runtime.state.phase == MinePhase.EXTRACTION) routeTarget(runtime) else null
         if (route != null) return listOfNotNull(route.guidance("route_next", ObjectiveTargetRole("extraction")))
-        if (runtime.state.phase == MinePhase.COOLDOWN) return emptyList()
+        if (runtime.state.phase in setOf(MinePhase.IDLE, MinePhase.COOLDOWN, MinePhase.EXTRACTION)) return emptyList()
         val bounds = runtime.region.bounds
         return listOf(
             WorksiteGuidanceTarget(
@@ -89,7 +89,8 @@ internal class MineGuidanceSource(
 
     private fun actionKey(runtime: MineRuntime): String = if (runtime.state.phase == MinePhase.INCIDENT) {
         runtime.state.incident?.type?.name?.lowercase() ?: "incident"
-    } else runtime.state.phase.name.lowercase()
+    } else if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.EXTRACTION) "completion_pending"
+    else runtime.state.phase.name.lowercase()
 
     private fun progress(runtime: MineRuntime): Pair<Int, Int> = when (runtime.state.phase) {
         MinePhase.PROSPECTING -> runtime.state.prospected to runtime.rules().prospectingQuota

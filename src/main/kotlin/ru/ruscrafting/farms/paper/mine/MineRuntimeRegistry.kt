@@ -31,5 +31,18 @@ internal class MineRuntimeRegistry {
 
     fun byId(zoneId: String): MineRuntime? = runtimes.firstOrNull { it.settings.id == zoneId }
 
+    /** Presentation may include the landing; block ownership remains the exact extraction region. */
+    fun forAudience(location: Location): MineRuntime? = at(location) ?: runtimes
+        .filter { it.region.world === location.world && it.settings.guidanceRadius > 0 }
+        .map { runtime ->
+            val b = runtime.region.bounds
+            val dx = location.x - (b.minX + b.maxX + 1) / 2.0
+            val dy = location.y - (b.minY + b.maxY + 1) / 2.0
+            val dz = location.z - (b.minZ + b.maxZ + 1) / 2.0
+            runtime to (dx * dx + 4 * dy * dy + dz * dz)
+        }
+        .filter { (runtime, distance) -> distance <= runtime.settings.guidanceRadius * runtime.settings.guidanceRadius }
+        .minByOrNull { it.second }?.first
+
     fun at(location: Location): MineRuntime? = runtimes.firstOrNull { it.region.contains(location) }
 }

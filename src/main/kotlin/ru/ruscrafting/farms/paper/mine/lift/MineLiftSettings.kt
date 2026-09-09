@@ -3,6 +3,7 @@ package ru.ruscrafting.farms.paper.mine.lift
 import org.bukkit.Location
 import org.bukkit.World
 import ru.arc.config.Config
+import ru.ruscrafting.farms.domain.mine.lift.MineLiftMotion
 import java.nio.file.Path
 
 internal data class LiftPoint(val x: Double, val y: Double, val z: Double, val yaw: Float = 0f) {
@@ -40,7 +41,7 @@ internal data class MineLiftSettings(
             val width = number("cabin.width").also { require(it in 1.8..3.5) }
             val depth = number("cabin.depth").also { require(it in 1.8..3.5) }
             return MineLiftSettings(requireNotNull(config.stringOrNull("world")), number("cabin.x"), number("cabin.z"),
-                width, depth, number("speed").also { require(it in 1.0..8.0) }, floors)
+                width, depth, number("speed").also { require(it in 1.0..MineLiftMotion.MAX_SPEED) }, floors)
         }
     }
 }

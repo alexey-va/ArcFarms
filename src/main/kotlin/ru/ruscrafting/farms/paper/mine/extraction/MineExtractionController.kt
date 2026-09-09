@@ -49,7 +49,7 @@ internal class MineExtractionController(
     }
 
     fun push(runtime: MineRuntime, player: Player, to: Location): Boolean {
-        if (runtime.state.phase != MinePhase.EXTRACTION || !access.hasAccess(player, runtime.settings.permission)) return false
+        if (runtime.settings.miningOnly || runtime.state.phase != MinePhase.EXTRACTION || !access.hasAccess(player, runtime.settings.permission)) return false
         val route = route(runtime) ?: return false
         if (runtime.state.routeIndex >= route.finalIndex) return false
         val next = route.sample(runtime.state.routeIndex + 1)
@@ -57,31 +57,7 @@ internal class MineExtractionController(
         val advanced = MineShiftEngine.advanceRoute(runtime.state, route.finalIndex, player.uniqueId)
         transitions.apply(runtime, advanced, player)
         if (runtime.state.routeIndex >= route.finalIndex) {
-            val result = MineShiftEngine.extract(runtime.state, runtime.rules(), player.uniqueId, clock())
-            transitions.apply(runtime, result, player)
-            if (result.accepted) {
-                val contributors = result.state.contributors
-                if (contributors.isNotEmpty()) {
-                    org.bukkit.Bukkit.getPluginManager().callEvent(
-                        WorkShiftCompletedEvent(
-                            eventId = "$serverId:mine:${runtime.settings.id}:${result.state.sequence}",
-                            kind = "mine",
-                            contributors = contributors.keys,
-                            zoneId = runtime.settings.id,
-                        ),
-                    )
-                }
-                stats.recordCompletion(ActivityKind.MINE, result.state.contributors)
-                rewards?.queueCompletion(
-                    ActivityKind.MINE, runtime.settings.rewards, runtime.settings.id, result.state.sequence,
-                    result.state.contributors,
-                    runtime.rules().let { it.prospectingQuota + it.miningQuota + it.loadingQuota + route.finalIndex },
-                    result.state.incidentSchedule.size,
-                )
-                network.complete(ActivityKind.MINE, player.name, emptySet())
-                audience.announceWinner(listOf(runtime.region), result.state.contributors)
-                audience.celebration(listOf(runtime.region))
-            }
+            complete(runtime, player, route.finalIndex)
             scene.cleanup(runtime.settings.id)
         } else {
             scene.reconcile(runtime, route)
@@ -89,7 +65,43 @@ internal class MineExtractionController(
         return true
     }
 
-    fun reconcile(runtime: MineRuntime) = scene.reconcile(runtime, route(runtime))
+    fun completeMiningOrder(runtime: MineRuntime, player: Player) {
+        if (!runtime.settings.miningOnly || runtime.state.phase != MinePhase.EXTRACTION ||
+            runtime.state.incidentCursor < runtime.state.incidentSchedule.size) return
+        complete(runtime, player, 0)
+    }
+
+    private fun complete(runtime: MineRuntime, player: Player, routeLength: Int) {
+        val result = MineShiftEngine.extract(runtime.state, runtime.rules(), player.uniqueId, clock())
+        transitions.apply(runtime, result, player)
+        if (result.accepted) {
+            val contributors = result.state.contributors
+            if (contributors.isNotEmpty()) {
+                org.bukkit.Bukkit.getPluginManager().callEvent(
+                    WorkShiftCompletedEvent(
+                        eventId = "$serverId:mine:${runtime.settings.id}:${result.state.sequence}",
+                        kind = "mine",
+                        contributors = contributors.keys,
+                        zoneId = runtime.settings.id,
+                    ),
+                )
+            }
+            stats.recordCompletion(ActivityKind.MINE, result.state.contributors)
+            rewards?.queueCompletion(
+                ActivityKind.MINE, runtime.settings.rewards, runtime.settings.id, result.state.sequence,
+                result.state.contributors,
+                runtime.rules().let { if (it.miningOnly) it.miningQuota else it.prospectingQuota + it.miningQuota + it.loadingQuota + routeLength },
+                result.state.incidentSchedule.size,
+            )
+            network.complete(ActivityKind.MINE, player.name, emptySet())
+            audience.announceWinner(listOf(runtime.region), result.state.contributors)
+            audience.celebration(listOf(runtime.region))
+        }
+    }
+
+    fun reconcile(runtime: MineRuntime) {
+        if (!runtime.settings.miningOnly) scene.reconcile(runtime, route(runtime))
+    }
     fun routeFor(runtime: MineRuntime): MineExtractionRoute? = route(runtime)
     fun guidanceTarget(runtime: MineRuntime): WorksitePosition? = route(runtime)?.let { route ->
         route.sample((runtime.state.routeIndex + 1).coerceAtMost(route.finalIndex))

@@ -98,7 +98,16 @@ internal class MineModule(
         registry.snapshot().forEach { runtime ->
             tasks.guarded("mine_v2:${runtime.settings.id}") {
                 transitions.apply(runtime, MineShiftEngine.tick(runtime.state, runtime.rules(), now), null)
-                incidents.tick(runtime, now, audience.players(runtime.region).size)
+                val participants = runtime.region.world.players.filter {
+                    registry.forAudience(it.location) === runtime && access.hasAccess(it, runtime.settings.permission) && !access.isAdminEditing(it)
+                }
+                if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.IDLE) {
+                    participants.firstOrNull()?.let { prospecting.autoStart(runtime, it) }
+                }
+                incidents.tick(runtime, now, participants.size)
+                participants.firstOrNull { it.uniqueId in runtime.state.contributors }?.let {
+                    extraction.completeMiningOrder(runtime, it)
+                }
                 extraction.reconcile(runtime)
             }
         }
@@ -152,6 +161,9 @@ internal class MineModule(
             extraction.reconcile(runtime)
         }
         recovery.activateLoadedState()
+        registry.snapshot().filter { it.settings.miningOnly && it.state.phase == MinePhase.IDLE }.forEach {
+            admin.startReindex(it.settings.id)
+        }
     }
 
     override fun reconcileChunk(chunk: Chunk) {

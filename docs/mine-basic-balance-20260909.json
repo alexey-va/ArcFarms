@@ -1,0 +1,193 @@
+{
+  "version": 1,
+  "title": "Basic mine cycle and faster lift — 2026-09-09",
+  "assumptions": [
+    "Low/base/high: 3/6/12 old orders per hour, 6/12/24 new; 0.5/1/2 active hours/day, 2/5/10 participants. Assumptions, not telemetry.",
+    "Existing cooldown60s and 16 blocks/order unchanged. One foreground activity per player. No automatic sale; SELL remains current until owner transition. Contract budgets constrain possible conversion.",
+    "Money/tokens unchanged at zero. XP and items cannot be added to money. Old difficulty at least142%, new118%. Old XP/iron lower bound used; actual old route/schedule increases it.",
+    "No prices, progression purchase costs or entitlement changes. No time-to-purchase claim without measured net disposable income."
+  ],
+  "participants": [
+    2,
+    5,
+    10
+  ],
+  "currencies": {
+    "vault": {
+      "minor_per_unit": 100,
+      "flows": [
+        {
+          "id": "basic_mine_vault",
+          "kind": "mint",
+          "source": "classic/plugins/ArcFarms/config.yml mine-zones.old_shafts; WorksiteRewardGrantService",
+          "basis": "Simplified 16-block order, one incident; rates are assumptions, no automatic monetary conversion. Conservative old reward lower bound (142%): XP312, iron5.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "1.5",
+              6,
+              24
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              3,
+              12,
+              48
+            ]
+          }
+        }
+      ]
+    },
+    "tokens": {
+      "minor_per_unit": 100,
+      "flows": [
+        {
+          "id": "basic_mine_tokens",
+          "kind": "mint",
+          "source": "classic/plugins/ArcFarms/config.yml mine-zones.old_shafts; WorksiteRewardGrantService",
+          "basis": "Simplified 16-block order, one incident; rates are assumptions, no automatic monetary conversion. Conservative old reward lower bound (142%): XP312, iron5.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "1.5",
+              6,
+              24
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              3,
+              12,
+              48
+            ]
+          }
+        }
+      ]
+    },
+    "xp": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "basic_mine_xp",
+          "kind": "item",
+          "source": "classic/plugins/ArcFarms/config.yml mine-zones.old_shafts; WorksiteRewardGrantService",
+          "basis": "Simplified 16-block order, one incident; rates are assumptions, no automatic monetary conversion. Conservative old reward lower bound (142%): XP312, iron5.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "312",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "1.5",
+              6,
+              24
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "259",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              3,
+              12,
+              48
+            ]
+          }
+        }
+      ]
+    },
+    "iron_ingot": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "basic_mine_iron_ingot",
+          "kind": "item",
+          "source": "classic/plugins/ArcFarms/config.yml mine-zones.old_shafts; WorksiteRewardGrantService",
+          "basis": "Simplified 16-block order, one incident; rates are assumptions, no automatic monetary conversion. Conservative old reward lower bound (142%): XP312, iron5.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "5",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "1.5",
+              6,
+              24
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "4",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              3,
+              12,
+              48
+            ]
+          }
+        }
+      ]
+    },
+    "mined_blocks": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "basic_mine_mined_blocks",
+          "kind": "item",
+          "source": "classic/plugins/ArcFarms/config.yml mine-zones.old_shafts; WorksiteRewardGrantService",
+          "basis": "Simplified 16-block order, one incident; rates are assumptions, no automatic monetary conversion. Conservative old reward lower bound (142%): XP312, iron5.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "16",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "1.5",
+              6,
+              24
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "16",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              3,
+              12,
+              48
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "prices": []
+}
