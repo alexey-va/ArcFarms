@@ -121,7 +121,7 @@ class WorksiteServiceItemControllerMockBukkitTest : FunSpec({
         player.inventory.getItem(1) shouldBe blocker
     }
 
-    test("a held service item preserves the selected personal item in deep storage") {
+    test("service equipment preserves the selected slot and personal item") {
         val blocker = org.bukkit.inventory.ItemStack(Material.DIAMOND, 3)
         player.inventory.heldItemSlot = 4
         player.inventory.setItem(4, blocker)
@@ -129,8 +129,9 @@ class WorksiteServiceItemControllerMockBukkitTest : FunSpec({
         val issued = controller.issueHeld(player, identity, Material.IRON_NUGGET, Component.text("Drive belt"), 0, null)
 
         controller.identity(issued) shouldBe identity
-        player.inventory.getItem(4) shouldBe issued
-        player.inventory.getItem(9) shouldBe blocker
+        player.inventory.heldItemSlot shouldBe 4
+        player.inventory.getItem(4) shouldBe blocker
+        player.inventory.getItem(0) shouldBe issued
     }
 
     test("a held service item does not change a full inventory") {

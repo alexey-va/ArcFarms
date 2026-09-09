@@ -315,6 +315,7 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
             )
             val delivery = fixture.foodDelivery(runtime, route)
             val driver = fixture.paper.addPlayer("ReloadDriver")
+            driver.inventory.heldItemSlot = 4
 
             delivery.ensure(runtime, 3_000L)
             val horse = fixture.world.entities.filterIsInstance<Horse>().single(delivery::owns)
@@ -352,6 +353,7 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
             cart.transformation.scale.x shouldBe 2.2f
             seat.interactionWidth shouldBe 1.4f
             @Suppress("DEPRECATION")
+            driver.inventory.heldItemSlot shouldBe 4
             val rifle = driver.inventory.contents.filterNotNull().single(delivery::ownsServiceItem)
             @Suppress("DEPRECATION")
             rifle.itemMeta.customModelData shouldBe 777

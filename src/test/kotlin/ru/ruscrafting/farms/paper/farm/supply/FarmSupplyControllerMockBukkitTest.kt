@@ -65,7 +65,7 @@ class FarmSupplyControllerMockBukkitTest : FunSpec({
         player.inventory.storageContents.filterNotNull().filter(controller::isServiceItem) shouldHaveSize 0
     }
 
-    test("required supply replaces the selected slot without deleting the held item") {
+    test("required supply leaves the selected slot and held item alone") {
         val controller = controller(plugin)
         val runtime = runtime(world)
         player.inventory.heldItemSlot = 4
@@ -73,8 +73,9 @@ class FarmSupplyControllerMockBukkitTest : FunSpec({
 
         controller.give(runtime, FarmSupplyKind.TOOL, player) shouldBe true
 
-        controller.isServiceItem(player.inventory.getItem(4), FarmSupplyKind.TOOL) shouldBe true
-        player.inventory.getItem(9) shouldBe ItemStack(Material.DIAMOND, 3)
+        controller.isServiceItem(player.inventory.getItem(0), FarmSupplyKind.TOOL) shouldBe true
+        player.inventory.heldItemSlot shouldBe 4
+        player.inventory.getItem(4) shouldBe ItemStack(Material.DIAMOND, 3)
     }
 
     test("required supply leaves a full inventory unchanged") {

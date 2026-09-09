@@ -25,7 +25,6 @@ internal class FarmFoodDeliveryGear(
         val owner = Owner(zoneId, sequence, player.uniqueId)
         find(player, owner)?.let { slot ->
             player.inventory.setItem(slot, rifle(player, owner, settings))
-            if (slot in HOTBAR) player.inventory.heldItemSlot = slot
             return true
         }
         val slot = HOTBAR.firstOrNull { player.inventory.getItem(it).isEmpty() }
@@ -33,7 +32,6 @@ internal class FarmFoodDeliveryGear(
             ?: return false
         val rifle = rifle(player, owner, settings)
         player.inventory.setItem(slot, rifle)
-        if (slot in HOTBAR) player.inventory.heldItemSlot = slot
         debug.event(
             "farm_food_rifle_given", "zone" to zoneId, "sequence" to sequence,
             "player" to player.name, "slot" to slot, "material" to settings.rifleMaterial,
