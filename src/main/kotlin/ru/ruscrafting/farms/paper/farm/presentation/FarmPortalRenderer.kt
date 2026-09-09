@@ -1,16 +1,15 @@
-package ru.ruscrafting.farms.paper.farm.incident.action
+package ru.ruscrafting.farms.paper.farm.presentation
 
 import org.bukkit.Color
 import org.bukkit.Particle
 import org.bukkit.entity.Interaction
 import org.bukkit.entity.Player
-import ru.ruscrafting.farms.config.FarmRivalRaidSettings
 import kotlin.math.cos
 import kotlin.math.sin
 
-/** Draws a dense, vertical raid entry field that remains readable from every approach angle. */
-internal object FarmRivalRaidPortalRenderer {
-    fun render(portal: Interaction, settings: FarmRivalRaidSettings, viewers: Collection<Player>) {
+/** Draws a dense, vertical activity entry field that remains readable from every approach angle. */
+internal object FarmPortalRenderer {
+    fun render(portal: Interaction, viewers: Collection<Player>) {
         if (viewers.isEmpty()) return
         val ground = portal.location.clone().add(0.0, 0.12, 0.0)
         repeat(RING_PARTICLES) { index ->
@@ -20,11 +19,11 @@ internal object FarmRivalRaidPortalRenderer {
                 viewer.spawnParticle(Particle.DUST, point, 1, 0.0, 0.0, 0.0, 0.0, PURPLE_EDGE)
             }
         }
-        val center = portal.location.clone().add(0.0, settings.portalHeight * 0.5, 0.0)
+        val center = portal.location.clone().add(0.0, portal.interactionHeight * 0.5, 0.0)
         repeat(FRAME_PARTICLES) { index ->
             val angle = Math.PI * 2.0 * index / FRAME_PARTICLES
-            val horizontal = cos(angle) * settings.portalWidth * 0.46
-            val vertical = sin(angle) * settings.portalHeight * 0.48
+            val horizontal = cos(angle) * portal.interactionWidth * 0.46
+            val vertical = sin(angle) * portal.interactionHeight * 0.48
             viewers.forEach { viewer ->
                 viewer.spawnParticle(
                     Particle.DUST,
@@ -53,9 +52,9 @@ internal object FarmRivalRaidPortalRenderer {
                 Particle.REVERSE_PORTAL,
                 center,
                 FIELD_PARTICLES,
-                settings.portalWidth * 0.35,
-                settings.portalHeight * 0.38,
-                settings.portalWidth * 0.35,
+                portal.interactionWidth * 0.35,
+                portal.interactionHeight * 0.38,
+                portal.interactionWidth * 0.35,
                 0.035,
             )
         }

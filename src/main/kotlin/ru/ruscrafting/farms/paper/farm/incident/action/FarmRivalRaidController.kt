@@ -73,6 +73,9 @@ import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
+import ru.ruscrafting.farms.paper.farm.presentation.FarmActivityPortal
+import ru.ruscrafting.farms.paper.farm.presentation.FarmPortalStyle
+import ru.ruscrafting.farms.paper.farm.presentation.FarmPortalDestination
 import java.util.UUID
 import java.util.concurrent.ThreadLocalRandom
 import kotlin.math.abs
@@ -121,14 +124,6 @@ internal class FarmRivalRaidController(
         var launched: Boolean = false,
         var orbitAngle: Double = 0.0,
         var lastFlightTick: Long = 0,
-        var portalId: UUID? = null,
-        var portalLabelId: UUID? = null,
-    )
-    private data class PortalEntry(
-        val zoneId: String,
-        val sequence: Long,
-        val token: UUID,
-        var remainingSeconds: Int,
     )
     private val zoneKey = NamespacedKey(plugin, "farm_raid_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_raid_sequence")
@@ -137,7 +132,7 @@ internal class FarmRivalRaidController(
     private val ownerKey = NamespacedKey(plugin, "farm_raid_owner")
     private val spawnedAtKey = NamespacedKey(plugin, "farm_raid_spawned_at")
     private val raids = mutableMapOf<String, RaidSession>()
-    private val portalEntries = mutableMapOf<UUID, PortalEntry>()
+    private val portals = FarmActivityPortal(plugin, locale, access, audience, tasks, textDisplays, "farm_raid", rolePrefix = "raid_")
     private val damageGate = FarmRaidDamageGate()
     private val workers = FarmRivalRaidWorkers(plugin, locale, beds, mobDespawns, mobNavigation, nightShift)
     private val loadout = FarmRivalRaidLoadout(locale, serviceItems)
@@ -201,6 +196,7 @@ internal class FarmRivalRaidController(
             )
             return
         }
+        ensurePortal(runtime, session)
         val departure = special.points.first().location() ?: return
         var ghast = session.ghastId?.let(Bukkit::getEntity) as? Ghast
         if (ghast?.isValid != true && departure.world.isChunkLoaded(departure.blockX shr 4, departure.blockZ shr 4)) {
@@ -216,20 +212,14 @@ internal class FarmRivalRaidController(
             session.ghastId = ghast.uniqueId
         }
         val raidGhast = ghast ?: return
-        ensurePortal(runtime, session)
         if (!session.launched) return
         workers.ensure(runtime, raidGhast, session.fieldPlots)
     }
     fun updateAmbient(runtime: FarmRuntime) {
         ensure(runtime)
         val session = raids[runtime.settings.id] ?: return
+        portals.update(settings().particles)
         val ghast = session.ghastId?.let(Bukkit::getEntity) as? Ghast ?: return
-        // updateAmbient already runs once every five ticks. A second modulo gate tied
-        // to world time could stay permanently out of phase with that scheduler and
-        // suppress the portal for the whole incident.
-        if (settings().particles) {
-            renderPortal(runtime, session)
-        }
         val participants = session.participantIds.mapNotNull(Bukkit::getPlayer).filter(Player::isOnline)
         val atmospherePlayers = audience.players(runtime.region).filterNot(access::isAdminEditing)
         nightShift.syncAmbientTime(
@@ -351,47 +341,7 @@ internal class FarmRivalRaidController(
         return true
     }
 
-    fun enterPortal(player: Player, destination: Location): Boolean {
-        val match = raids.entries.firstNotNullOfOrNull { (zoneId, session) ->
-            val runtime = runtimes().firstOrNull { it.settings.id == zoneId } ?: return@firstNotNullOfOrNull null
-            val portal = session.portalId?.let(Bukkit::getEntity) as? Interaction ?: return@firstNotNullOfOrNull null
-            if (active(runtime, session.sequence) && portal.isValid && contains(portal, destination)) {
-                Triple(runtime, session, portal)
-            } else null
-        }
-        if (match == null) {
-            cancelPortalEntry(player)
-            return false
-        }
-        val (runtime, session) = match
-        if (!access.hasAccess(player, runtime.settings.permission)) {
-            cancelPortalEntry(player)
-            audience.sendChat(player, MessageKey.ZONE_LOCKED)
-            return true
-        }
-        if (!FarmRaidSeatPolicy.canBoard(
-                session.participantIds.size,
-                runtime.settings.rivalRaid.maximumRiders,
-                player.uniqueId in session.participantIds,
-            )
-        ) {
-            cancelPortalEntry(player)
-            audience.sendActionBar(player, MessageKey.FARM_RIVAL_RAID_FULL)
-            return true
-        }
-        val existing = portalEntries[player.uniqueId]
-        if (existing?.zoneId == runtime.settings.id && existing.sequence == session.sequence) return true
-        cancelPortalEntry(player)
-        val entry = PortalEntry(
-            runtime.settings.id,
-            session.sequence,
-            UUID.randomUUID(),
-            runtime.settings.rivalRaid.portalActivationSeconds,
-        )
-        portalEntries[player.uniqueId] = entry
-        continuePortalEntry(player.uniqueId, entry.token)
-        return true
-    }
+    fun enterPortal(player: Player, destination: Location): Boolean = portals.enter(player, destination)
 
     fun onProjectileHit(event: ProjectileHitEvent): Boolean {
         val projectile = event.entity
@@ -486,7 +436,7 @@ internal class FarmRivalRaidController(
         .mapNotNull(Bukkit::getPlayer).filter(Player::isOnline)
 
     fun onQuit(player: Player) {
-        portalEntries.remove(player.uniqueId)
+        portals.onQuit(player)
         raids.forEach { (zoneId, session) ->
             if (player.uniqueId in session.participantIds) {
                 returnParticipant(zoneId, session, player)
@@ -520,11 +470,7 @@ internal class FarmRivalRaidController(
 
     fun clear(zoneId: String, reason: String) {
         val session = raids.remove(zoneId)
-        portalEntries.entries.removeIf { (playerId, entry) ->
-            if (entry.zoneId != zoneId) return@removeIf false
-            Bukkit.getPlayer(playerId)?.let(audience::clearScreenTitle)
-            true
-        }
+        portals.clear(zoneId)
         if (session != null) {
             restoreCrater(zoneId, session, session.craterGenerations.keys)
             session.participantIds.forEach { playerId ->
@@ -539,8 +485,6 @@ internal class FarmRivalRaidController(
         workers.clear(zoneId)
         session?.projectileIds.orEmpty().forEach { Bukkit.getEntity(it)?.remove() }
         session?.debrisIds.orEmpty().forEach { Bukkit.getEntity(it)?.remove() }
-        session?.portalId?.let(Bukkit::getEntity)?.remove()
-        session?.portalLabelId?.let(Bukkit::getEntity)?.remove()
         seats.clear(zoneId)
         session?.ghastId?.let(Bukkit::getEntity)?.remove()
         debug.event("farm_rival_raid_cleared", "zone" to zoneId, "reason" to reason)
@@ -552,110 +496,28 @@ internal class FarmRivalRaidController(
     }
 
     private fun ensurePortal(runtime: FarmRuntime, session: RaidSession) {
-        val point = points.resolve(runtime, FarmPointKind.FOOD_DELIVERY_PORTAL)
-        val world = Bukkit.getWorld(point.world) ?: return
         val config = runtime.settings.rivalRaid
-        val at = Location(world, point.x, point.y, point.z, point.yaw, point.pitch)
-        if (!world.isChunkLoaded(at.blockX shr 4, at.blockZ shr 4)) return
-        val portal = (session.portalId?.let(Bukkit::getEntity) as? Interaction)?.takeIf(Entity::isValid)
-            ?: world.spawn(at, Interaction::class.java).also { session.portalId = it.uniqueId }
-        portal.teleport(at)
-        portal.interactionWidth = config.portalWidth
-        portal.interactionHeight = config.portalHeight
-        portal.isResponsive = true
-        portal.isPersistent = false
-        mark(portal, runtime, ROLE_PORTAL, 0)
-
-        val labelAt = at.clone().add(0.0, config.portalLabelHeight, 0.0).apply {
-            yaw = 0f
-            pitch = 0f
-        }
-        val label = (session.portalLabelId?.let(Bukkit::getEntity) as? TextDisplay)?.takeIf(Entity::isValid)
-            ?: world.spawn(labelAt, TextDisplay::class.java).also { session.portalLabelId = it.uniqueId }
-        label.teleport(labelAt)
-        textDisplays.render(
-            label,
-            locale.render(
-                MessageKey.FARM_RIVAL_RAID_PORTAL_LABEL,
-                Bukkit.getConsoleSender(),
-                mapOf("seconds" to locale.text(config.portalActivationSeconds)),
-            ),
-            FarmTextDisplayStyle(viewRange = runtime.settings.displayViewRange),
+        portals.ensure(
+            runtime, points.resolve(runtime, FarmPointKind.FOOD_DELIVERY_PORTAL),
+            FarmPortalStyle(config.portalWidth, config.portalHeight, config.portalLabelHeight,
+                config.portalLabelScale, config.portalActivationSeconds, runtime.settings.displayViewRange),
+            MessageKey.FARM_RIVAL_RAID_PORTAL_LABEL,
+            object : FarmPortalDestination {
+                override fun canEnter(player: Player): Boolean {
+                    val allowed = FarmRaidSeatPolicy.canBoard(session.participantIds.size, config.maximumRiders,
+                        player.uniqueId in session.participantIds)
+                    if (!allowed) audience.sendActionBar(player, MessageKey.FARM_RIVAL_RAID_FULL)
+                    return allowed
+                }
+                override fun enter(player: Player): Boolean {
+                    val ghast = (session.ghastId?.let(Bukkit::getEntity) as? Ghast)?.takeIf { it.isValid && !it.isDead }
+                        ?: return false
+                    board(runtime, session, ghast, player)
+                    return true
+                }
+            },
         )
-        label.transformation = Transformation(
-            Vector3f(),
-            label.transformation.leftRotation,
-            Vector3f(config.portalLabelScale, config.portalLabelScale, config.portalLabelScale),
-            label.transformation.rightRotation,
-        )
-        mark(label, runtime, ROLE_PORTAL_LABEL, 0)
     }
-
-    private fun renderPortal(runtime: FarmRuntime, session: RaidSession) {
-        val portal = session.portalId?.let(Bukkit::getEntity) as? Interaction ?: return
-        val viewers = portal.world.players.filter { player ->
-            !access.isAdminEditing(player) && player.location.distanceSquared(portal.location) <= PORTAL_VIEW_DISTANCE_SQUARED
-        }
-        FarmRivalRaidPortalRenderer.render(portal, runtime.settings.rivalRaid, viewers)
-    }
-
-    private fun continuePortalEntry(playerId: UUID, token: UUID) {
-        val entry = portalEntries[playerId]?.takeIf { it.token == token } ?: return
-        val player = Bukkit.getPlayer(playerId)?.takeIf(Player::isOnline) ?: run {
-            portalEntries.remove(playerId, entry)
-            return
-        }
-        val runtime = runtimes().firstOrNull { it.settings.id == entry.zoneId }
-        val session = raids[entry.zoneId]?.takeIf { it.sequence == entry.sequence }
-        val portal = session?.portalId?.let(Bukkit::getEntity) as? Interaction
-        val ghast = session?.ghastId?.let(Bukkit::getEntity) as? Ghast
-        if (runtime == null || session == null || portal?.isValid != true || ghast?.isValid != true ||
-            !active(runtime, entry.sequence) || !contains(portal, player.location) ||
-            !access.hasAccess(player, runtime.settings.permission)
-        ) {
-            cancelPortalEntry(player, token)
-            return
-        }
-        if (!FarmRaidSeatPolicy.canBoard(
-                session.participantIds.size,
-                runtime.settings.rivalRaid.maximumRiders,
-                playerId in session.participantIds,
-            )
-        ) {
-            cancelPortalEntry(player, token)
-            audience.sendActionBar(player, MessageKey.FARM_RIVAL_RAID_FULL)
-            return
-        }
-        if (entry.remainingSeconds <= 0) {
-            portalEntries.remove(playerId, entry)
-            audience.clearScreenTitle(player)
-            board(runtime, session, ghast, player)
-            return
-        }
-        audience.showScreenTitle(
-            player,
-            MessageKey.FARM_RIVAL_RAID_PORTAL_COUNTDOWN,
-            mapOf("seconds" to locale.text(entry.remainingSeconds)),
-            "raid_portal",
-        )
-        entry.remainingSeconds--
-        if (!tasks.runLater(20L) { continuePortalEntry(playerId, token) }) {
-            cancelPortalEntry(player, token)
-        }
-    }
-
-    private fun cancelPortalEntry(player: Player, token: UUID? = null) {
-        val entry = portalEntries[player.uniqueId] ?: return
-        if (token != null && entry.token != token) return
-        if (portalEntries.remove(player.uniqueId, entry)) audience.clearScreenTitle(player)
-    }
-
-    private fun contains(portal: Interaction, location: Location): Boolean =
-        location.world === portal.world &&
-            abs(location.x - portal.location.x) <= portal.interactionWidth / 2.0 &&
-            location.y >= portal.location.y - 0.5 &&
-            location.y <= portal.location.y + portal.interactionHeight &&
-            abs(location.z - portal.location.z) <= portal.interactionWidth / 2.0
 
     private fun board(runtime: FarmRuntime, session: RaidSession, ghast: Ghast, player: Player) {
         if (!FarmRaidSeatPolicy.canBoard(
@@ -984,7 +846,6 @@ internal class FarmRivalRaidController(
         const val RAID_GUN_ID = "raid_gun"
         const val RAID_GRENADE_ID = "raid_grenade_launcher"
         const val ACTION_ROLE = "farm_action"
-        const val PORTAL_VIEW_DISTANCE_SQUARED = 9_216.0
         const val CRATER_SHARE = 0.8
         val WEAPON_IDS = setOf(RAID_GUN_ID, RAID_GRENADE_ID)
         val WEAPON_ACTIONS = setOf(

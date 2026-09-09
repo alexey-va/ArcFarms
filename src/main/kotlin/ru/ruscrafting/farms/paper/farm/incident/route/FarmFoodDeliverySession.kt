@@ -20,8 +20,6 @@ internal data class FarmFoodDeliverySession(
     val crewIds: MutableSet<UUID> = linkedSetOf(),
     val escortIds: MutableSet<UUID> = linkedSetOf(),
     val ambushCrewIds: MutableSet<UUID> = linkedSetOf(),
-    var portalId: UUID? = null,
-    var portalLabelId: UUID? = null,
     var brokenDown: Boolean = false,
     var spawnedMonsters: Int = 0,
     var ambushesStarted: Int = 0,

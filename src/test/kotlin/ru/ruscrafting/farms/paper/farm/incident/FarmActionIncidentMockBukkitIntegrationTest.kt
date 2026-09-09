@@ -40,7 +40,7 @@ import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.paper.fixtures.FarmIncidentScenarioFixture
 import ru.ruscrafting.farms.paper.fixtures.requiredMockBukkitScenario
-import ru.ruscrafting.farms.paper.farm.incident.action.FarmRivalRaidPortalRenderer
+import ru.ruscrafting.farms.paper.farm.presentation.FarmPortalRenderer
 import kotlin.math.sqrt
 
 class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
@@ -82,15 +82,15 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             controller.initialize(runtime, FarmIncidentType.RIVAL_RAID) shouldBe FarmIncidentType.RIVAL_RAID
             controller.ensure(runtime)
             fixture.world.fullTime = 1L
-            mockkObject(FarmRivalRaidPortalRenderer)
+            mockkObject(FarmPortalRenderer)
             try {
-                every { FarmRivalRaidPortalRenderer.render(any(), any(), any()) } just Runs
+                every { FarmPortalRenderer.render(any(), any()) } just Runs
 
                 controller.update(runtime)
 
-                verify(exactly = 1) { FarmRivalRaidPortalRenderer.render(any(), any(), any()) }
+                verify(exactly = 1) { FarmPortalRenderer.render(any(), any()) }
             } finally {
-                unmockkObject(FarmRivalRaidPortalRenderer)
+                unmockkObject(FarmPortalRenderer)
             }
         } }
     }
@@ -404,27 +404,27 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             verify(exactly = 1) {
                 fixture.port.showScreenTitle(
                     rider,
-                    MessageKey.FARM_RIVAL_RAID_PORTAL_COUNTDOWN,
+                    MessageKey.FARM_ACTIVITY_PORTAL_COUNTDOWN,
                     match { values -> plain(values.getValue("seconds")) == "3" },
-                    "raid_portal",
+                    "activity_portal",
                 )
             }
             fixture.runDelayedTasks() shouldBe listOf(20L)
             verify(exactly = 1) {
                 fixture.port.showScreenTitle(
                     rider,
-                    MessageKey.FARM_RIVAL_RAID_PORTAL_COUNTDOWN,
+                    MessageKey.FARM_ACTIVITY_PORTAL_COUNTDOWN,
                     match { values -> plain(values.getValue("seconds")) == "2" },
-                    "raid_portal",
+                    "activity_portal",
                 )
             }
             fixture.runDelayedTasks() shouldBe listOf(20L)
             verify(exactly = 1) {
                 fixture.port.showScreenTitle(
                     rider,
-                    MessageKey.FARM_RIVAL_RAID_PORTAL_COUNTDOWN,
+                    MessageKey.FARM_ACTIVITY_PORTAL_COUNTDOWN,
                     match { values -> plain(values.getValue("seconds")) == "1" },
-                    "raid_portal",
+                    "activity_portal",
                 )
             }
             fixture.runDelayedTasks() shouldBe listOf(20L)

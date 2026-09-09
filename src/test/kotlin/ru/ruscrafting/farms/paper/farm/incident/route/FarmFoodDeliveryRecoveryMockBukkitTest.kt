@@ -5,6 +5,12 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.shouldBe
 import io.mockk.every
+import io.mockk.mockkObject
+import io.mockk.unmockkObject
+import io.mockk.verify
+import io.mockk.just
+import io.mockk.Runs
+import ru.ruscrafting.farms.paper.farm.presentation.FarmPortalRenderer
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.entity.Horse
@@ -81,6 +87,22 @@ class FarmFoodDeliveryRecoveryMockBukkitTest : FunSpec({
             repeat(400) { fixture.night.updatePlayerTimes() }
             player.playerTime shouldBe runtime.settings.routeDelivery.playerTime
 
+            // Portal rendering is independent of the missing cart and of farm-region membership.
+            player.teleport(org.bukkit.Location(fixture.world, 12.5, 65.0, 12.5))
+            every { fixture.port.players(any()) } returns emptyList()
+            mockkObject(FarmPortalRenderer)
+            try {
+                every { FarmPortalRenderer.render(any(), any()) } just Runs
+                delivery.updateVisuals(listOf(runtime))
+                verify(exactly = 1) { FarmPortalRenderer.render(any(), match { player in it }) }
+            } finally {
+                unmockkObject(FarmPortalRenderer)
+            }
+
+            every { fixture.port.players(any()) } returns listOf(player)
+
+            // A traversable recorded checkpoint under a canopy must also recover.
+            fixture.world.getBlockAt(76, 69, 32).type = Material.STONE
             // Completing the platform load resumes the same session.
             fixture.world.loadChunk(4, 2, false)
             resumeChunk.complete(fixture.world.getChunkAt(4, 2))

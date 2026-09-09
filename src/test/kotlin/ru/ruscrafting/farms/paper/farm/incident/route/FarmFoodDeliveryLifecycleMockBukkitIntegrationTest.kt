@@ -125,7 +125,7 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
             val outsidePortal = portal.location.clone().add(portal.interactionWidth.toDouble(), 0.0, 0.0)
             passerby.teleport(outsidePortal)
             delivery.enterPortal(passerby, outsidePortal, listOf(runtime)) shouldBe false
-            fixture.runDelayedTasks() shouldContainExactly listOf(60L)
+            fixture.runDelayedTasks() shouldContainExactly listOf(20L)
             horse.passengers shouldBe emptyList()
 
             driver.teleport(portal.location)
@@ -133,13 +133,13 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
             var seat = fixture.world.entities.filterIsInstance<Interaction>().filter(delivery::owns)
                 .minBy { it.location.distanceSquared(horse.location) }
             horse.passengers shouldBe emptyList()
-            fixture.runDelayedTasks() shouldContainExactly listOf(60L)
+            repeat(3) { fixture.runDelayedTasks() shouldContainExactly listOf(20L) }
             horse.passengers.single() shouldBe driver
 
             gunner.teleport(portal.location)
             delivery.interact(PlayerInteractEntityEvent(gunner, portal, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
             seat.passengers shouldBe emptyList()
-            fixture.runDelayedTasks() shouldContainExactly listOf(60L)
+            repeat(3) { fixture.runDelayedTasks() shouldContainExactly listOf(20L) }
             seat.passengers.single() shouldBe gunner
             delivery.participants(runtime).map { it.uniqueId }.toSet() shouldBe
                 setOf(driver.uniqueId, gunner.uniqueId)
