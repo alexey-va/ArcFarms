@@ -91,6 +91,19 @@ class MineBasicCycleMockBukkitTest : FunSpec({
         graph.registry.byId(settings.id)!!.state.mined shouldBe 2
     }
 
+    test("startup validates the migrated legacy order before building the ordinary resource runtime") {
+        paper.server.addSimpleWorld("world")
+        val settings = miningOnlySettings()
+        val legacy = ru.ruscrafting.farms.domain.MineShiftState(
+            engineVersion = 2, phase = MinePhase.MINING, orderId = "removed_vein", sequence = 7, mined = 12,
+        )
+        ru.ruscrafting.farms.paper.MineController.validatePersisted(listOf(settings), mapOf(settings.id to legacy))
+        val restored = MineRuntimeFactory.build(listOf(settings), mapOf(settings.id to legacy), 5_000L, CuboidRegionGateway()).single()
+        restored.state.phase shouldBe MinePhase.IDLE
+        restored.state.sequence shouldBe 7L
+        restored.state.mined shouldBe 0
+    }
+
     test("unauthorized and admin players outside a mine cannot auto-start it") {
         val world = paper.server.addSimpleWorld("world")
         val unauthorized = paper.server.addPlayer("UnauthorizedMiner")

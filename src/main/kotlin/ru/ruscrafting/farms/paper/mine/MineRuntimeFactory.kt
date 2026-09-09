@@ -63,17 +63,20 @@ internal object MineRuntimeFactory {
                 "Mine zone ${settings.id} cannot resolve ${settings.reference}"
             },
             cooldownMillis = cooldownMillis,
-            state = MineStateMigration.migrate(persisted[settings.id] ?: MineShiftState()).let { saved ->
-                val allowed = settings.orders.flatMap { it.incidentTypes }.toSet()
-                if (settings.miningOnly && saved.phase !in setOf(ru.ruscrafting.farms.domain.MinePhase.IDLE,
-                        ru.ruscrafting.farms.domain.MinePhase.COOLDOWN) &&
-                    (saved.orderId !in settings.orders.map { it.id } ||
-                        saved.objective?.key?.objectiveId == "mining" || saved.resumeObjective?.key?.objectiveId == "mining" ||
-                        saved.incidentSchedule.any { it !in allowed } || saved.phase in setOf(
-                        ru.ruscrafting.farms.domain.MinePhase.PROSPECTING, ru.ruscrafting.farms.domain.MinePhase.LOADING))) {
-                    MineShiftState(engineVersion = 2, sequence = saved.sequence)
-                } else saved
-            },
+            state = migrate(settings, persisted[settings.id] ?: MineShiftState()),
         )
+    }
+
+    /** Startup validation and runtime construction must apply the same compatibility migration. */
+    fun migrate(settings: MineZoneSettings, persisted: MineShiftState): MineShiftState = MineStateMigration.migrate(persisted).let { saved ->
+        val allowed = settings.orders.flatMap { it.incidentTypes }.toSet()
+        if (settings.miningOnly && saved.phase !in setOf(ru.ruscrafting.farms.domain.MinePhase.IDLE,
+                ru.ruscrafting.farms.domain.MinePhase.COOLDOWN) &&
+            (saved.orderId !in settings.orders.map { it.id } ||
+                saved.objective?.key?.objectiveId == "mining" || saved.resumeObjective?.key?.objectiveId == "mining" ||
+                saved.incidentSchedule.any { it !in allowed } || saved.phase in setOf(
+                ru.ruscrafting.farms.domain.MinePhase.PROSPECTING, ru.ruscrafting.farms.domain.MinePhase.LOADING))) {
+            MineShiftState(engineVersion = 2, sequence = saved.sequence)
+        } else saved
     }
 }

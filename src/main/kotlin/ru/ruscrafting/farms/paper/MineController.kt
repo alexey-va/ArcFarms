@@ -506,7 +506,9 @@ internal class MineController(
 
         private fun validateActiveOrder(zone: MineZoneSettings, state: MineShiftState, reload: Boolean) {
             if (zone.engineVersion != 2 || state.engineVersion < 2) return
-            require(zone.orders.any { it.id == state.orderId }) {
+            val migrated = ru.ruscrafting.farms.paper.mine.MineRuntimeFactory.migrate(zone, state)
+            if (migrated.phase in setOf(MinePhase.IDLE, MinePhase.COOLDOWN)) return
+            require(zone.orders.any { it.id == migrated.orderId }) {
                 if (reload) "Cannot remove active mine order ${zone.id}/${state.orderId} during reload"
                 else "Persisted active mine order ${zone.id}/${state.orderId} is missing from config"
             }
