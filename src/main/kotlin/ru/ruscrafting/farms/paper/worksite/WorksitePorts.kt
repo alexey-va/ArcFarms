@@ -65,6 +65,9 @@ internal interface WorksiteAudiencePort {
         color: BossBar.Color,
         expected: MutableSet<ActivityBarKey>,
     )
+    fun updateSidebar(player: Player, runtimeKey: String, title: Component, rows: List<Component>) = Unit
+    fun reconcileSidebars(owner: String, expected: Set<UUID>) = Unit
+    fun removeSidebar(player: Player, owner: String) = Unit
     fun reconcileBars(expected: Set<ActivityBarKey>)
     fun removePlayerBars(player: Player)
     fun hideAllBars()

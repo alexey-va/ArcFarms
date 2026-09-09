@@ -52,6 +52,10 @@ internal class MineGuidanceSource(
             done.toFloat() / total.coerceAtLeast(1),
             if (runtime.state.phase == MinePhase.INCIDENT) BossBar.Color.RED else BossBar.Color.BLUE,
             targets(player.uniqueId, runtime),
+            sidebarRows = listOf(
+                render("mine.guidance.$action", player, values),
+                render("scoreboard.progress", player, values),
+            ),
         )
     }
 

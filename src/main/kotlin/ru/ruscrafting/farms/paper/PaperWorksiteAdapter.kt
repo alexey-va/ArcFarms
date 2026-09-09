@@ -59,6 +59,8 @@ internal class PaperWorksiteAdapter(
     WorksiteNetworkPort {
     fun ports(): WorksitePorts = WorksitePorts(this, this, this, this, this, this)
 
+    private val sidebars = ru.ruscrafting.farms.paper.worksite.WorksiteSidebarController()
+
     private val activeBars = mutableMapOf<ActivityBarKey, BossBar>()
 
     override fun isOperational(): Boolean = operational()
@@ -140,9 +142,9 @@ internal class PaperWorksiteAdapter(
         color: BossBar.Color,
         expected: MutableSet<ActivityBarKey>,
     ) {
-        if (!settings().bossbars) return
         val key = ActivityBarKey(player.uniqueId, runtimeKey)
         expected += key
+        if (!settings().bossbars) return
         val existing = activeBars[key]
         val bar = existing ?: BossBar.bossBar(
             name,
@@ -162,7 +164,20 @@ internal class PaperWorksiteAdapter(
         bar.color(color)
     }
 
+    override fun updateSidebar(player: Player, runtimeKey: String, title: Component, rows: List<Component>) {
+        val current = settings().farmScoreboard
+        if (!current.enabled || current.provider != ru.ruscrafting.farms.config.FarmScoreboardProvider.BUKKIT) {
+            sidebars.remove(player, runtimeKey.substringBefore(':'))
+            return
+        }
+        sidebars.update(player, runtimeKey, title, rows, current.replaceExisting)
+    }
+
+    override fun reconcileSidebars(owner: String, expected: Set<UUID>) = sidebars.reconcile(owner, expected)
+    override fun removeSidebar(player: Player, owner: String) = sidebars.remove(player, owner)
+
     override fun reconcileBars(expected: Set<ActivityBarKey>) {
+        sidebars.reconcileKeys(expected.mapTo(hashSetOf()) { it.playerId to it.runtimeKey })
         (activeBars.keys - expected).forEach { key ->
             val bar = activeBars.remove(key) ?: return@forEach
             Bukkit.getPlayer(key.playerId)?.hideBossBar(bar)
@@ -170,12 +185,14 @@ internal class PaperWorksiteAdapter(
     }
 
     override fun removePlayerBars(player: Player) {
+        sidebars.remove(player)
         activeBars.keys.filter { it.playerId == player.uniqueId }.forEach { key ->
             activeBars.remove(key)?.let(player::hideBossBar)
         }
     }
 
     override fun hideAllBars() {
+        sidebars.restoreAll()
         activeBars.forEach { (key, bar) -> Bukkit.getPlayer(key.playerId)?.hideBossBar(bar) }
         activeBars.clear()
     }

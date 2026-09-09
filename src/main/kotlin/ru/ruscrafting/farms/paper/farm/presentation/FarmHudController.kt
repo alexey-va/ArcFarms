@@ -60,7 +60,7 @@ internal class FarmHudController(
     private val scoreboards: FarmScoreboardPort = FarmScoreboardController(
         FarmScoreboardRenderer(locale),
         { settings().farmScoreboard },
-        debug,
+        audience,
     ),
 ) {
     private val music = FarmMusicLoop()

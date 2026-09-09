@@ -43,6 +43,7 @@ internal class WorksiteGuidancePresenter(
                 view.barColor,
                 expected,
             )
+            audience.updateSidebar(player, view.runtimeKey, view.title, view.sidebarRows)
             if (changed) {
                 audience.showScreenTitle(player, view.title, view.subtitle)
             } else if (elapsed(now, session.lastProgressAt) >= stallMillis && elapsed(now, session.lastReminderAt) >= stallMillis) {

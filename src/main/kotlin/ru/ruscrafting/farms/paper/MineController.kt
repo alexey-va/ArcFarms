@@ -177,6 +177,10 @@ internal class MineController(
                     MinePhase.EXTRACTION -> BossBar.Color.YELLOW
                     else -> BossBar.Color.BLUE
                 }
+                audience.updateSidebar(
+                    player, "mine:${runtime.settings.id}", locale.renderPath("mine.guidance.title", player),
+                    listOf(component),
+                )
                 audience.updateBar(
                     player,
                     "mine:${runtime.settings.id}",

@@ -55,6 +55,10 @@ internal class LumberGuidanceSource(
             barProgress = done.toFloat() / total.coerceAtLeast(1),
             barColor = if (runtime.state.phase == LumberPhase.INCIDENT) BossBar.Color.RED else BossBar.Color.YELLOW,
             targets = targets(playerId = player.uniqueId, runtime = runtime),
+            sidebarRows = listOf(
+                render("lumber.guidance.$action", player, values),
+                render("scoreboard.progress", player, values),
+            ),
         )
     }
 

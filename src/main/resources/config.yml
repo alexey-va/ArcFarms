@@ -23,6 +23,8 @@ ui:
   task-title-cooldown-millis: 8000
   marker-height: 12
   missing-bed-highlight-threshold: 10
+  # Shared native sidebar for farm, mine and lumber; legacy key retained for compatibility.
+  # BUKKIT owns dynamic rows; TAB is the legacy farm-placeholder adapter.
   farm-scoreboard:
     enabled: true
     provider: BUKKIT

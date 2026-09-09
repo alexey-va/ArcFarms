@@ -181,6 +181,7 @@ owns the zone collection; the module delegates to the following vertical owners.
 | `domain.enterprise/WorksiteEnterpriseCapitalLedger` | primary funding, ownership, treasury, weekly distributions, player claims and durable money-operation journal | Bukkit/Vault calls, menus or concrete worksite rules |
 | `paper.enterprise/WorksiteEnterpriseService` | the single enterprise state owner, lifecycle-safe persistence-before-Vault orchestration and typed activity adapters | concrete crop/order mechanics or secondary-market matching |
 | `farm.enterprise/FarmEnterpriseAdapter` | translates farm order start/cancellation/completion into the shared enterprise contract | ownership, dividends, auctions or reusable accounting rules |
+| `worksite/WorksiteSidebarController` | shared native sidebar sessions, incremental dynamic rows, scoped cleanup and prior-board restoration; TAB 6 automatically yields to its objective packets | grow/shrink, activity handoff, leave/reload and existing sidebar |
 | `farm.presentation/FarmHudController` and `FarmGuidanceController` | boss bars, scoreboard, guidance, entry UI, music and stage feedback | join/leave/reload and competing scoreboard |
 | `farm.admin/FarmGameplayAdminService`, `FarmPointAdminService`, `FarmWorldAdminService` | typed admin operations through feature APIs | invalid stage/point/selection, active event edit |
 | `farm/FarmEventRouter` | Paper event classification and delegation only | listener routing and cancelled-event policy |
@@ -365,3 +366,19 @@ together.
 No migration step is complete when it only reduces a line count. It is complete
 when the old owner has no state or lifecycle branch for that feature and the new
 owner passes restart/dedup/cleanup tests.
+
+### Native worksite sidebar and proxy TAB
+
+`PaperWorksiteAdapter` owns one `WorksiteSidebarController` for farm, mine and
+lumber. Renderers supply a title and up to 15 component rows; updates keep the
+objective and unchanged entries, deleting only vanished rows. Farm retains its
+rich order layout; mine/lumber reuse their current guidance and progress. The
+legacy `ui.farm-scoreboard` settings apply to this shared sidebar. `BUKKIT` is the
+native provider; `TAB` retains only the old farm placeholder integration.
+
+With native rendering, `arcfarms_farm_active` is false so TAB cannot select its
+legacy farm layout. Proxy TAB 6.1.0 automatically detects another sidebar's
+display/objective removal packets, yields while it is present and restores its
+own afterward, respecting the player's `/sb` preference. No polling placeholder
+is used to arbitrate ownership, and tablist/nametag features remain enabled.
+See [TAB's compatibility contract](https://github.com/NEZNAMY/TAB/wiki/Feature-guide:-Scoreboard#compatibility-with-other-plugins).

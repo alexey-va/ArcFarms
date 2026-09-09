@@ -145,6 +145,10 @@ internal class LumbermillController(
                 )
                 val component = locale.render(key, player, values)
                 audience.sendActionBar(player, key, values)
+                audience.updateSidebar(
+                    player, "lumber:${runtime.settings.id}", locale.renderPath("lumber.guidance.title", player),
+                    listOf(component),
+                )
                 audience.updateBar(
                     player,
                     "lumber:${runtime.settings.id}",
