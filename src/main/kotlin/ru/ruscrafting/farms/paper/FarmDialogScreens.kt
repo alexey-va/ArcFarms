@@ -10,6 +10,7 @@ import org.bukkit.event.inventory.ClickType
 import org.bukkit.inventory.ItemStack
 import ru.arc.menu.MenuElementKind
 import ru.arc.paper.menu.*
+import ru.arc.paper.menu.DialogTables
 
 /** The Help center's restrained palette and two-column native dialog composition. */
 internal object FarmDialogScreens {
@@ -117,9 +118,9 @@ internal object FarmDialogScreens {
                 id = "farms.${session.menuId.value}.detail",
                 title = recolor(detail?.let { name(it.entry.item) } ?: text(session.player, "details"), detailTitleColor),
                 body = if (detail != null) {
-                    if (detail.entry.details.isNotEmpty()) listOf(FarmDialogTables.body(detail.entry.details, FarmDialogTables.Frame.LEGENDARY))
+                    if (detail.entry.details.isNotEmpty()) listOf(DialogTables.body(detail.entry.details, frame = DialogTables.Frame.LEGENDARY))
                     else listOf(PaperDialogBody(join(lore(detail.entry.item)), 468))
-                } else listOf(FarmDialogTables.body(information.map { row -> name(row.entry.item) to join(lore(row.entry.item)) })),
+                } else listOf(DialogTables.body(information.map { row -> name(row.entry.item) to join(lore(row.entry.item)) })),
                 buttons = buildList {
                     if (session.menuId == ArcFarmsMenuPlatform.FARM_PERKS && detail?.actionable == true) {
                         add(button("buy_perk", text(session.player, if (detail.entry.category == FarmMenuCategory.FOOD) "buy-food" else "buy-perk"), style = LabelStyle(SAVE)) {
@@ -135,18 +136,18 @@ internal object FarmDialogScreens {
         }
         val body = mutableListOf(PaperDialogBody(restyle(text(session.player, "intro.${session.menuId.value}")), 468))
         val farmShop = session.menuId == ArcFarmsMenuPlatform.FARM_PERKS
-        if (content.summary.isNotEmpty()) body += FarmDialogTables.body(
+        if (content.summary.isNotEmpty()) body += DialogTables.body(
             content.summary,
-            if (farmShop) FarmDialogTables.Frame.LEGENDARY else FarmDialogTables.Frame.EPIC,
+            frame = if (farmShop) DialogTables.Frame.LEGENDARY else DialogTables.Frame.EPIC,
             width = if (farmShop) FARM_SHOP_TABLE_WIDTH else 320,
-            columns = if (farmShop) FarmDialogTables.Columns.LABEL_WIDE else FarmDialogTables.Columns.AUTO,
+            columns = if (farmShop) DialogTables.Columns.LABEL_WIDE else DialogTables.Columns.AUTO,
         )
         val catalog = rows.mapNotNull { row ->
             row.entry.catalogValue?.let { recolor(name(row.entry.item), BODY) to it.color(TRADE).decoration(TextDecoration.ITALIC, false) }
         }
-        if (catalog.isNotEmpty()) body += FarmDialogTables.body(
-            catalog, FarmDialogTables.Frame.LEGENDARY,
-            width = FARM_SHOP_TABLE_WIDTH, columns = FarmDialogTables.Columns.LABEL_WIDE,
+        if (catalog.isNotEmpty()) body += DialogTables.body(
+            catalog, frame = DialogTables.Frame.LEGENDARY,
+            width = FARM_SHOP_TABLE_WIDTH, columns = DialogTables.Columns.LABEL_WIDE,
         )
         val buttons = mutableListOf<PaperDialogButton>()
         var back: PaperDialogButton? = null

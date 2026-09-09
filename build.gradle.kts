@@ -27,7 +27,7 @@ repositories {
 java { toolchain { languageVersion.set(JavaLanguageVersion.of(25)) } }
 kotlin { jvmToolchain(25) }
 
-val arcCoreVersion = "2.7.5"
+val arcCoreVersion = "2.7.6"
 
 dependencies {
     implementation(kotlin("stdlib"))
