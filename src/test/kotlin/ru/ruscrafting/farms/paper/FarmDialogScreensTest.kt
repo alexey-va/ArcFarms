@@ -22,6 +22,31 @@ import ru.arc.paper.testing.MockBukkitTestRuntime
 import java.nio.file.Files
 
 class FarmDialogScreensTest : FunSpec({
+    test("native farm reads ARC escape preference from the registered LuckPerms service on every visit") {
+        val paper = MockBukkitTestRuntime.open()
+        try {
+            val plugin = paper.createSimplePlugin("FarmEscapePreferenceTest")
+            copyConfig(plugin)
+            val capture = CapturingDialog()
+            val player = paper.addPlayer("EscapePreference")
+            val permissions = mockk<net.luckperms.api.LuckPerms>()
+            var preference = "close"
+            io.mockk.every {
+                permissions.userManager.getUser(player.uniqueId)?.cachedData?.metaData?.getMetaValue("arc-menu-escape")
+            } answers { preference }
+            paper.server.servicesManager.register(net.luckperms.api.LuckPerms::class.java, permissions, plugin, org.bukkit.plugin.ServicePriority.Normal)
+            val menus = ArcFarmsMenuPlatform(plugin, capture)
+            menus.open(player, ArcFarmsMenuPlatform.MAIN) { FarmMenuContent(Component.text("Root")) }
+            capture.closeOnEscape shouldBe true
+            menus.open(player, ArcFarmsMenuPlatform.ENTERPRISE_CONFIRM) { FarmMenuContent(Component.text("Child")) }
+            capture.closeOnEscape shouldBe true
+            capture.closeCalls shouldBe 0
+            preference = "back"
+            menus.open(player, ArcFarmsMenuPlatform.MAIN) { FarmMenuContent(Component.text("Root")) }
+            capture.closeOnEscape shouldBe false
+        } finally { paper.close() }
+    }
+
     test("native footer uses Close when escape closes and keeps Back otherwise") {
         val paper = MockBukkitTestRuntime.open()
         try {
@@ -49,6 +74,7 @@ class FarmDialogScreensTest : FunSpec({
             menus.open(player, ArcFarmsMenuPlatform.ENTERPRISE_CONFIRM, content = ::content)
             PlainTextComponentSerializer.plainText().serialize(capture.last!!.exitButton!!.label) shouldBe "close"
             capture.last!!.exitButton!!.tooltip shouldBe Component.empty()
+            PlainTextComponentSerializer.plainText().serialize(capture.last!!.buttons.single { it.id.value == "back" }.label) shouldBe "Back to activities"
         } finally {
             paper.close()
         }

@@ -4,7 +4,7 @@ main: ru.ruscrafting.farms.paper.ArcFarmsPlugin
 api-version: '1.21.11'
 authors: [RusCrafting]
 description: Shared farm, lumbermill, and mine activities
-softdepend: [ARC, WorldEdit, WorldGuard, PlaceholderAPI, Vault, RedisEconomy, packetevents]
+softdepend: [ARC, LuckPerms, WorldEdit, WorldGuard, PlaceholderAPI, Vault, RedisEconomy, packetevents]
 commands:
   minelift:
     description: Call the mine lift or choose a floor near its landing

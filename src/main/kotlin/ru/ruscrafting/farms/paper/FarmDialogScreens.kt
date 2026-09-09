@@ -170,12 +170,11 @@ internal object FarmDialogScreens {
             }
             when {
                 row in information -> Unit
-                row.id == "back" -> back = button("back", title, tooltip, LabelStyle(MUTED), dispatch)
-                    .copy(
-                        width = 200,
-                        label = label(if (closeOnEscape) text(session.player, "close") else title, LabelStyle(MUTED)),
-                        tooltip = if (closeOnEscape) Component.empty() else tooltip,
-                    )
+                row.id == "back" -> {
+                    val navigation = button("back", title, tooltip, LabelStyle(MUTED), dispatch)
+                    if (closeOnEscape) buttons += navigation
+                    else back = navigation.copy(width = 200)
+                }
                 row.id == "confirm" -> {
                     // Price, license loss and voting terms stay visible before the action.
                     body += PaperDialogBody(join(listOf(recolor(title, TITLE)) + lines), 468)
