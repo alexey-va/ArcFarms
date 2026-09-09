@@ -5,7 +5,7 @@ plugins {
     jacoco
 }
 group = "ru.ruscrafting"
-version = "0.40.4"
+version = "0.40.5"
 description = "Shared farm, lumbermill, and mine activities for RusCrafting"
 
 val integrationTestSourceSet = sourceSets.create("integrationTest") {
@@ -36,6 +36,7 @@ dependencies {
     implementation("ru.ruscrafting.arc:arc-core-menu:$arcCoreVersion")
     implementation("ru.ruscrafting.arc:arc-core-paper-menu:$arcCoreVersion")
     implementation("ru.ruscrafting.arc:arc-core-redis:$arcCoreVersion")
+    compileOnly("ru.ruscrafting.arc:arc-core-paper-api:$arcCoreVersion")
     implementation("com.google.code.gson:gson:2.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
 
@@ -55,6 +56,7 @@ dependencies {
     testImplementation("io.kotest:kotest-assertions-core:6.0.7")
     testImplementation("io.mockk:mockk:1.14.7")
     testImplementation("ru.ruscrafting.arc:arc-core-paper-testing:$arcCoreVersion")
+    testImplementation("ru.ruscrafting.arc:arc-core-paper-api:$arcCoreVersion")
     testRuntimeOnly("me.clip:placeholderapi:2.12.3")
     testImplementation("net.luckperms:api:5.5")
     testRuntimeOnly("com.github.MilkBowl:VaultAPI:1.7") {

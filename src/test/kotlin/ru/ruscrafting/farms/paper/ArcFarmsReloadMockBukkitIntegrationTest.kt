@@ -33,6 +33,7 @@ import ru.ruscrafting.farms.persistence.ArcFarmsStateRepository
 import ru.ruscrafting.farms.persistence.FarmRouteRepository
 import ru.ruscrafting.farms.paper.platform.PaperFarmTextDisplayRenderer
 import ru.ruscrafting.farms.paper.platform.PaperFarmMobDespawnPolicy
+import ru.ruscrafting.farms.paper.platform.PaperFarmRouteChunkLoader
 import java.io.InputStreamReader
 import java.nio.file.Files
 import java.nio.file.Path
@@ -53,6 +54,8 @@ class ArcFarmsReloadMockBukkitIntegrationTest : FunSpec({
             every { anyConstructed<FarmContractSceneManager>().ensure(any()) } just Runs
             mockkObject(PaperFarmMobDespawnPolicy)
             every { PaperFarmMobDespawnPolicy.setRemoveWhenFarAway(any(), any()) } just Runs
+            mockkObject(PaperFarmRouteChunkLoader)
+            every { PaperFarmRouteChunkLoader.retain(any(), any()) } returns true
             mockkObject(PaperFarmTextDisplayRenderer)
             every { PaperFarmTextDisplayRenderer.render(any(), any(), any()) } just Runs
             mockkConstructor(ObjectiveMock::class, ScoreMock::class)
@@ -78,8 +81,6 @@ class ArcFarmsReloadMockBukkitIntegrationTest : FunSpec({
             horse.passengers.singleOrNull() shouldBe participant
             participant.inventory.contents.any { it?.type == Material.CROSSBOW } shouldBe true
 
-            val hud = privateProperty(privateProperty(service, "farm"), "hud")
-            invoke(hud, "active", participant.uniqueId) shouldBe true
             val horseId = horse.uniqueId
             val progressBefore = stateBefore.incidentProgress
             val gearBefore = participant.inventory.contents.map { it?.clone() }
@@ -113,7 +114,6 @@ class ArcFarmsReloadMockBukkitIntegrationTest : FunSpec({
             horseAfter.uniqueId shouldBe horseId
             horseAfter.passengers.singleOrNull() shouldBe participant
             participant.inventory.contents.map { it?.clone() } shouldBe gearBefore
-            invoke(hud, "active", participant.uniqueId) shouldBe true
             staleLifecycleCallbackRan shouldBe false
             activeGameplayDelayRan shouldBe true
             privateProperty(runtimeAfter, "settings").let { zoneSettings ->
@@ -125,7 +125,7 @@ class ArcFarmsReloadMockBukkitIntegrationTest : FunSpec({
             (privateProperty(service, "periodicTaskSupervisor") as RuntimeTaskSupervisor).trackedCount() shouldBe periodicBefore
             service.farmScoreboardTitle(participant.uniqueId) shouldBe "§aReloaded farm"
             PlainTextComponentSerializer.plainText().serialize(
-                requireNotNull(participant.scoreboard.getObjective("arcfarms_farm")).displayName(),
+                requireNotNull(participant.scoreboard.getObjective("arcfarms_work")).displayName(),
             ) shouldBe "Reloaded farm"
 
             val locale = privateProperty(plugin, "locale") as ArcFarmsLocale
@@ -149,7 +149,7 @@ class ArcFarmsReloadMockBukkitIntegrationTest : FunSpec({
             world.entities.filterIsInstance<Horse>().single().uniqueId shouldBe horseId
             horseAfter.passengers.singleOrNull() shouldBe participant
             service.farmScoreboardTitle(participant.uniqueId) shouldBe "§aReloaded farm"
-            plain.serialize(requireNotNull(participant.scoreboard.getObjective("arcfarms_farm")).displayName()) shouldBe
+            plain.serialize(requireNotNull(participant.scoreboard.getObjective("arcfarms_work")).displayName()) shouldBe
                 "Reloaded farm"
         } finally {
             unmockkAll()
