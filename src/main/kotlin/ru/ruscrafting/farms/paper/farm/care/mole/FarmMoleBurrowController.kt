@@ -201,6 +201,14 @@ internal class FarmMoleBurrowController(
                     acknowledgeAsync(record)
                     audience.sendChat(player, MessageKey.FARM_MOLE_RECOVERED)
                     debug.event("farm_mole_burrow_player_recovered", "zone" to record.zoneId, "player" to player.name)
+                } else {
+                    if (access.allowInteraction("farm-mole-return-failure:${record.zoneId}:${record.playerId}", 10_000L)) {
+                        state.log(
+                            Level.WARNING,
+                            "Could not teleport player out of mole burrow: zone=${record.zoneId} " +
+                                "sequence=${record.sequence} player=${player.name} reason=teleport_rejected",
+                        )
+                    }
                 }
             }
         }
@@ -393,7 +401,16 @@ internal class FarmMoleBurrowController(
         val moved = teleports.authorize(player.uniqueId, destination) {
             player.teleport(destination, PlayerTeleportEvent.TeleportCause.PLUGIN)
         }
-        if (!moved) return
+        if (!moved) {
+            if (access.allowInteraction("farm-mole-return-failure:${record.zoneId}:${record.playerId}", 10_000L)) {
+                state.log(
+                    Level.WARNING,
+                    "Could not return player from mole burrow: zone=${record.zoneId} " +
+                        "sequence=${record.sequence} player=${player.name} reason=teleport_rejected",
+                )
+            }
+            return
+        }
         player.fallDistance = 0f
         sessions.remove(player.uniqueId, record)
         acknowledgeAsync(record)

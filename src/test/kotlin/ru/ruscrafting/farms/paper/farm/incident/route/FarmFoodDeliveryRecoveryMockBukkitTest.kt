@@ -48,9 +48,17 @@ class FarmFoodDeliveryRecoveryMockBukkitTest : FunSpec({
             fixture.world.isChunkLoaded(4, 2) shouldBe false
             var loadRequests = 0
             val resumeChunk = CompletableFuture<org.bukkit.Chunk?>()
-            val chunkLoader = FarmRouteChunkLoader { _, _, _ ->
-                loadRequests++
-                resumeChunk
+            val retained = mutableSetOf<Pair<Int, Int>>()
+            val chunkLoader = object : FarmRouteChunkLoader {
+                override fun load(world: org.bukkit.World, x: Int, z: Int): CompletableFuture<org.bukkit.Chunk?> {
+                    loadRequests++
+                    return resumeChunk
+                }
+                override fun retain(chunk: org.bukkit.Chunk, plugin: org.bukkit.plugin.Plugin) =
+                    retained.add(chunk.x to chunk.z)
+                override fun release(chunk: org.bukkit.Chunk, plugin: org.bukkit.plugin.Plugin) {
+                    retained.remove(chunk.x to chunk.z)
+                }
             }
 
             var runtime = fixture.runtime(
@@ -71,6 +79,7 @@ class FarmFoodDeliveryRecoveryMockBukkitTest : FunSpec({
             runtime.state = runtime.state.copy(incidentProgress = 18)
             val persistedProgress = runtime.state.incidentProgress
             delivery.cleanup("simulated_restart")
+            retained.isEmpty() shouldBe true
             runtime = fixture.persistAndReload(runtime)
             delivery = fixture.foodDelivery(runtime, route, chunkLoader)
             runtime.state.incidentProgress shouldBe persistedProgress
@@ -107,6 +116,7 @@ class FarmFoodDeliveryRecoveryMockBukkitTest : FunSpec({
             fixture.world.loadChunk(4, 2, false)
             resumeChunk.complete(fixture.world.getChunkAt(4, 2))
             fixture.world.isChunkLoaded(4, 2) shouldBe true
+            retained shouldBe setOf(4 to 2)
             runtime.state.incidentProgress shouldBe persistedProgress
 
             val role = NamespacedKey(fixture.plugin, "farm_food_route_role")
@@ -128,6 +138,8 @@ class FarmFoodDeliveryRecoveryMockBukkitTest : FunSpec({
             val ids = fixture.world.entities.filter(delivery::owns).mapTo(linkedSetOf()) { it.uniqueId }
             delivery.ensure(runtime, 2_001L)
             fixture.world.entities.filter(delivery::owns).mapTo(linkedSetOf()) { it.uniqueId } shouldBe ids
+            delivery.cleanup("test_complete")
+            retained.isEmpty() shouldBe true
         } }
     }
 })

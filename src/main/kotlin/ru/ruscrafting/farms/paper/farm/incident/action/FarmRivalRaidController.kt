@@ -78,6 +78,7 @@ import ru.ruscrafting.farms.paper.farm.presentation.FarmPortalStyle
 import ru.ruscrafting.farms.paper.farm.presentation.FarmPortalDestination
 import java.util.UUID
 import java.util.concurrent.ThreadLocalRandom
+import java.util.logging.Level
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.sqrt
@@ -233,7 +234,16 @@ internal class FarmRivalRaidController(
                 notifyInventoryFull(player)
                 return@forEach
             }
-            if (!ensurePassenger(runtime, session, ghast, player)) finishParticipant(runtime.settings.id, session, player)
+            if (!ensurePassenger(runtime, session, ghast, player)) {
+                if (access.allowInteraction("farm-rival-raid-seat-failure:${runtime.settings.id}:${player.uniqueId}", 10_000L)) {
+                    state.log(
+                        Level.WARNING,
+                        "Rival raid could not board participant: zone=${runtime.settings.id} " +
+                            "sequence=${runtime.state.sequence} player=${player.name} ghast=${ghast.uniqueId}",
+                    )
+                }
+                finishParticipant(runtime.settings.id, session, player)
+            }
         }
         val now = ghast.world.gameTime
         if (now % runtime.settings.rivalRaid.workerPatrolIntervalTicks == 0L) workers.patrol(runtime)
@@ -777,7 +787,12 @@ internal class FarmRivalRaidController(
         }
         player.leaveVehicle()
         seats.remove(zoneId, player)
-        session.returnPoint.location()?.let(player::teleport)
+        val destination = session.returnPoint.location()
+        if (destination == null || !player.teleport(destination)) {
+            state.log(Level.WARNING, "Rival raid return failed: zone=$zoneId sequence=${session.sequence} " +
+                "player=${player.name} reason=${if (destination == null) "world_unavailable" else "teleport_rejected"} " +
+                "target=${session.returnPoint}")
+        }
     }
 
     private fun identity(runtime: FarmRuntime, itemId: String) = ServiceItemIdentity(

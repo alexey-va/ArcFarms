@@ -31,7 +31,7 @@ internal data class FarmPortalStyle(
     val viewRange: Float,
 )
 
-/** Activity action. False from enter means no transfer occurred and the target is still loading. */
+/** Activity action. False ends the attempt; leaving the portal permits another try. */
 internal interface FarmPortalDestination {
     fun canEnter(player: Player): Boolean = true
     fun enter(player: Player): Boolean
@@ -39,7 +39,7 @@ internal interface FarmPortalDestination {
 
 /** Shared visual and countdown lifecycle for farm activity entry portals. */
 internal class FarmActivityPortal(
-    plugin: Plugin,
+    private val plugin: Plugin,
     private val locale: ArcFarmsLocale,
     private val access: WorksiteAccessPort,
     private val audience: WorksiteAudiencePort,
@@ -205,9 +205,13 @@ internal class FarmActivityPortal(
             return
         }
         if (pending[playerId] !== pendingEntry) return
-        pendingEntry.remainingSeconds = 1
-        showCountdown(player, pendingEntry)
-        if (!tasks.runLater(20L) { continueEntry(playerId, pendingEntry) }) cancel(player)
+        // A destination failure finishes this entry. Keep the session latched until
+        // the player leaves so small movements cannot restart a failed countdown.
+        pendingEntry.remainingSeconds = 0
+        plugin.logger.warning("Farm activity portal failed: reason=destination_rejected " +
+            "zone=${entry.runtime.settings.id} sequence=${entry.sequence} incident=${entry.incidentType} " +
+            "player=${player.name} portal=${portal.location}")
+        audience.sendChat(player, MessageKey.TRAVEL_FAILED)
     }
 
     private fun showCountdown(player: Player, pendingEntry: PendingEntry) {

@@ -59,7 +59,7 @@ import kotlin.math.sin
 
 /** Mounted route incident with a hard geometric corridor independent of WorldGuard. */
 internal class FarmFoodDeliveryIncident(
-    plugin: Plugin,
+    private val plugin: Plugin,
     private val settings: () -> ArcFarmsConfig,
     private val locale: ArcFarmsLocale,
     private val debug: ArcFarmsDebug,
@@ -187,8 +187,10 @@ internal class FarmFoodDeliveryIncident(
                             session.resumeChunkPending = false
                             if (failure != null || chunk == null) {
                                 state.log(Level.WARNING, "Could not resume farm food delivery: zone=${runtime.settings.id} " +
-                                    "sequence=${session.sequence} reason=resume_chunk_unavailable")
+                                    "sequence=${session.sequence} reason=resume_chunk_unavailable route=${session.routeName} " +
+                                    "point=$resumePoint", failure)
                             } else {
+                                retainChunk(session, chunk)
                                 ensure(runtime, System.currentTimeMillis())
                             }
                         }
@@ -196,9 +198,24 @@ internal class FarmFoodDeliveryIncident(
             }
             return
         }
+        retainChunk(session, horse?.location?.chunk ?: resumeWorld.getChunkAt(
+            floor(resumePoint.x).toInt() shr 4, floor(resumePoint.z).toInt() shr 4))
         val activeHorse = horse ?: run {
-            val resumeLocation = safeSurface(location(resumePoint)) ?: return
-            spawnHorse(runtime, resumeLocation).also { session.horseId = it.uniqueId }
+            val resumeLocation = safeSurface(location(resumePoint)) ?: run {
+                if (!session.resumeSurfaceWarned) {
+                    session.resumeSurfaceWarned = true
+                    state.log(Level.WARNING, "Could not resume farm food delivery: zone=${runtime.settings.id} " +
+                        "sequence=${session.sequence} reason=resume_surface_unavailable point=$resumePoint")
+                }
+                return
+            }
+            spawnHorse(runtime, resumeLocation).also {
+                session.horseId = it.uniqueId
+                session.resumeSurfaceWarned = false
+                state.log(Level.INFO, "Farm food delivery transport restored: zone=${runtime.settings.id} " +
+                    "sequence=${session.sequence} route=${session.routeName} checkpoint=${runtime.state.incidentProgress} " +
+                    "horse=${it.uniqueId} location=${it.location}")
+            }
         }
         configureHorse(runtime, activeHorse)
         val cart = (session.cartId?.let(Bukkit::getEntity) as? ItemDisplay)?.takeIf(Entity::isValid)
@@ -393,6 +410,7 @@ internal class FarmFoodDeliveryIncident(
         portals.clear(zoneId)
         sessions.remove(zoneId)?.let { session ->
             removeSessionEntities(session)
+            releaseChunk(session)
             gunner.clear(zoneId, session, reason)
         }
         night.clearAmbientTime(nightOwner(zoneId))
@@ -403,6 +421,7 @@ internal class FarmFoodDeliveryIncident(
     fun cleanup(reason: String) {
         Bukkit.getWorlds().asSequence().flatMap { it.entities.asSequence() }.filter(::owns).forEach(Entity::remove)
         sessions.keys.forEach { night.clearAmbientTime(nightOwner(it)) }
+        sessions.values.forEach(::releaseChunk)
         sessions.clear()
         portals.cleanup()
         gunner.cleanup(reason)
@@ -627,9 +646,16 @@ internal class FarmFoodDeliveryIncident(
                     val horse = (session.horseId?.let(Bukkit::getEntity) as? Horse)?.takeIf { it.isValid && !it.isDead }
                     if (horse == null) {
                         ensure(runtime, System.currentTimeMillis())
-                        return false
                     }
-                    return joinDelivery(player, runtime, session, horse)
+                    val readyHorse = (session.horseId?.let(Bukkit::getEntity) as? Horse)
+                        ?.takeIf { it.isValid && !it.isDead } ?: run {
+                            state.log(Level.WARNING, "Farm portal destination unavailable: reason=horse_unavailable " +
+                                "zone=${runtime.settings.id} sequence=${session.sequence} route=${session.routeName} " +
+                                "checkpoint=${runtime.state.incidentProgress} player=${player.name} " +
+                                "horse=${session.horseId} chunk_pending=${session.resumeChunkPending}")
+                            return false
+                        }
+                    return joinDelivery(player, runtime, session, readyHorse)
                 }
             },
         )
@@ -645,7 +671,11 @@ internal class FarmFoodDeliveryIncident(
         val side = runtime.settings.routeDelivery.portalArrivalSideOffset
         val beside = horse.location.clone().add(cos(yaw) * side, 0.0, sin(yaw) * side)
         val target = safeSurface(beside) ?: horse.location.clone().add(0.0, 0.25, 0.0)
-        if (!player.teleport(target.apply { this.yaw = horse.location.yaw }, PlayerTeleportEvent.TeleportCause.PLUGIN)) return false
+        if (!player.teleport(target.apply { this.yaw = horse.location.yaw }, PlayerTeleportEvent.TeleportCause.PLUGIN)) {
+            state.log(Level.WARNING, "Farm portal teleport rejected: zone=${runtime.settings.id} " +
+                "sequence=${session.sequence} player=${player.name} target=$target")
+            return false
+        }
         if (!session.brokenDown && hasFreeSeat(session, horse)) {
             mountAvailableSeat(player, runtime, session, horse)
             if (session.riderId == player.uniqueId || session.gunnerId == player.uniqueId) return true
@@ -754,6 +784,21 @@ internal class FarmFoodDeliveryIncident(
         entity.persistentDataContainer.set(zoneKey, PersistentDataType.STRING, runtime.settings.id)
         entity.persistentDataContainer.set(sequenceKey, PersistentDataType.LONG, runtime.state.sequence)
         entity.persistentDataContainer.set(roleKey, PersistentDataType.STRING, role)
+    }
+
+    private fun retainChunk(session: FarmFoodDeliverySession, chunk: org.bukkit.Chunk) {
+        val previous = session.retainedChunk
+        if (previous?.world === chunk.world && previous.x == chunk.x && previous.z == chunk.z) return
+        val owned = chunkLoader.retain(chunk, plugin)
+        releaseChunk(session)
+        session.retainedChunk = chunk
+        session.retainedChunkOwned = owned
+    }
+
+    private fun releaseChunk(session: FarmFoodDeliverySession) {
+        if (session.retainedChunkOwned) session.retainedChunk?.let { chunkLoader.release(it, plugin) }
+        session.retainedChunk = null
+        session.retainedChunkOwned = false
     }
 
     private fun removeSessionEntities(session: FarmFoodDeliverySession) {

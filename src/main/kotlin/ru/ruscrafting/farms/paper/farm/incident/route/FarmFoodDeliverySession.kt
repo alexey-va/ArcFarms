@@ -1,5 +1,6 @@
 package ru.ruscrafting.farms.paper.farm.incident.route
 
+import org.bukkit.Chunk
 import org.bukkit.Location
 import ru.ruscrafting.farms.domain.FarmStallWatchdogState
 import java.util.ArrayDeque
@@ -10,6 +11,9 @@ internal data class FarmFoodDeliverySession(
     val sequence: Long,
     val routeName: String,
     var horseId: UUID? = null,
+    var retainedChunk: Chunk? = null,
+    var retainedChunkOwned: Boolean = false,
+    var resumeSurfaceWarned: Boolean = false,
     var resumeChunkPending: Boolean = false,
     var resumeChunkRetryAt: Long = 0L,
     var cartId: UUID? = null,

@@ -47,8 +47,17 @@ class FarmActivityPortalTest : FunSpec({
             fixture.runDelayedTasks() shouldBe listOf(20L)
             attempts shouldBe 1
             arrivals shouldBe 0
+            // Failed transfers end instead of replaying "1" forever, including
+            // repeated movement packets while the player remains inside.
+            fixture.runDelayedTasks() shouldBe emptyList()
+            portals.enter(player, inside) shouldBe true
+            fixture.runDelayedTasks() shouldBe emptyList()
+            attempts shouldBe 1
+            verify(exactly = 1) { fixture.port.sendChat(player, MessageKey.TRAVEL_FAILED, any()) }
             available = true
-            fixture.runDelayedTasks() shouldBe listOf(20L)
+            portals.enter(player, outside) shouldBe false
+            portals.enter(player, inside) shouldBe true
+            repeat(3) { fixture.runDelayedTasks() shouldBe listOf(20L) }
             arrivals shouldBe 1
             fixture.runDelayedTasks() shouldBe emptyList()
 
