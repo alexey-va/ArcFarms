@@ -1189,6 +1189,24 @@ class ArcFarmsConfigTest : FunSpec({
         }.message shouldContain "unsupported closing tag"
     }
 
+    test("startup accepts bundled greenhouse hazard placeholders in both locales") {
+        val root = resourceTree()
+        ArcFarmsLocale.validateFiles(root, ArcFarmsConfig.inspect(root))
+        listOf("ru", "en").forEach { language ->
+            Config(root, "lang/$language.yml").string("farm.hell-greenhouse.heat-warning") shouldContain "<side>"
+        }
+    }
+
+    test("startup accepts tracked spawn locale catalogs") {
+        val root = resourceTree(opsRoot().resolve("classic/plugins/ArcFarms/config.yml"))
+        listOf("ru", "en").forEach { language ->
+            root.resolve("lang/$language.yml").writeText(
+                Files.readString(opsRoot().resolve("classic/plugins/ArcFarms/lang/$language.yml")),
+            )
+        }
+        ArcFarmsLocale.validateFiles(root, ArcFarmsConfig.inspect(root))
+    }
+
     test("locale validation rejects line-feed controls in screen titles") {
         val root = resourceTree()
         val settings = ArcFarmsConfig.inspect(root)

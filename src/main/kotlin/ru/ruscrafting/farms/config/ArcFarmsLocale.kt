@@ -979,11 +979,13 @@ class ArcFarmsLocale(
             "lumber", "material", "mine", "name", "nests", "next", "objective", "order", "orders", "original",
             "percent", "perk", "pests", "phase", "place", "planted", "player", "players", "plots", "point", "points", "remaining",
             "prefix", "price", "progress", "rarity", "reason", "records", "requirements", "restore", "reward", "route",
-            "seals", "seconds", "seed", "sequence", "size", "soil", "source", "spawned", "stage", "supply", "targets",
+            "seals", "seconds", "seed", "sequence", "side", "size", "soil", "source", "spawned", "stage", "supply", "targets",
             "reserved", "shares", "issued", "tilled", "time", "tool", "total", "tracking", "type", "water", "wood", "workers", "world", "x", "y", "z",
             "zone", "weeks", "plan", "week", "votes", "target", "date", "contribution",
         )
         private val EXPECTED_PLACEHOLDERS = mapOf(
+            "farm.hell-greenhouse.heat-warning" to setOf("side", "time"),
+            "farm.hell-greenhouse.heat-active" to setOf("side"),
             "admin.incident-rejected" to setOf("prefix", "stage"),
             "admin.greenhouse-failed" to setOf("prefix", "zone", "candidates", "total"),
             "admin.greenhouse-reason" to setOf("prefix", "reason", "at", "material", "count"),
