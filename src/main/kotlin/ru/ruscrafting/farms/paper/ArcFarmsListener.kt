@@ -40,6 +40,7 @@ import org.bukkit.event.world.ChunkLoadEvent
 class ArcFarmsListener(
     private val service: ArcFarmsService,
     private val menu: ArcFarmsMenu,
+    private val isInternalTransport: (PlayerTeleportEvent) -> Boolean = { false },
 ) : Listener {
     @EventHandler(priority = EventPriority.LOWEST)
     fun onChunkLoad(event: ChunkLoadEvent) = service.onChunkLoad(event.chunk)
@@ -97,7 +98,7 @@ class ArcFarmsListener(
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onTeleport(event: PlayerTeleportEvent) {
-        if (event !is PlayerPortalEvent) service.onTeleport(event)
+        if (event !is PlayerPortalEvent && !isInternalTransport(event)) service.onTeleport(event)
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)

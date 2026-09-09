@@ -29,6 +29,9 @@ glyphs:
     ascent: 8
 
 sources:
+  mine-lift:
+    path: src/main/resources/lang/ru.yml
+    include: [mine-lift.*]
   perks:
     path: src/main/resources/lang/ru.yml
     include: [perk.*, farm.perk-menu.*]
@@ -75,9 +78,13 @@ sources:
       - crop.*
 
 placeholders:
+  floor: '3 · Зелёные глубины'
+  state: 'ПКМ — выбрать ярус'
   heat: '70'
   time: '8'
   color: ''
+  'color:#e8dfd2': '<#e8dfd2>'
+  'color:#8ed8b1': '<#8ed8b1>'
   'color:#20252b': '<#20252b>'
   'color:#2bba43': '<#2bba43>'
   'color:#45c8f5': '<#45c8f5>'
@@ -151,6 +158,8 @@ placeholders:
 
 surfaces:
   fragments:
+    - source: mine-lift
+      include: [mine-lift.close, mine-lift.description, mine-lift.floors.*, mine-lift.go, mine-lift.panel-call, mine-lift.panel-ready, mine-lift.title]
     - source: perks
       include: [perk.*, farm.perk-menu.*]
     - source: preview
@@ -158,15 +167,23 @@ surfaces:
     - source: farms
       include: [menu.*, companies.*]
   chat:
+    - source: mine-lift
+      include: [mine-lift.called, mine-lift.boarding, mine-lift.arrived, mine-lift.unavailable, mine-lift.full, mine-lift.recovered, mine-lift.near-panel]
     - source: gameplay
       include: ['*']
   world:
+    - id: mine-lift-panel
+      text: mine-lift:mine-lift.panel
     - id: farm-customer-order
       text: gameplay:farm.customer-hologram
       placeholders:
         customer: '<color:#ffc857>Пекарь</color>'
         order: '<gold>Запасы пекарни</gold>'
   hud:
+    - id: mine-lift-moving
+      actionbar: mine-lift:mine-lift.travelling
+    - id: mine-lift-boarding
+      actionbar: mine-lift:mine-lift.boarding-hud
     - id: irrigation-channel
       title: gameplay:farm.channels-started
       subtitle: gameplay:farm.channels-started-subtitle

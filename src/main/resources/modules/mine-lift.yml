@@ -1,0 +1,31 @@
+# Restart required after changes. Prepare and inspect the entire cabin path before enabling.
+enabled: false
+world: mines_by_breadbuilds
+speed: 6.0
+cabin:
+  x: 51.5
+  z: 78.5
+  width: 2.8
+  depth: 2.8
+floor-order: [top, upper, middle, lower, bottom]
+floors:
+  top:
+    y: 123.0
+    exit: {x: 47.5, y: 123.0, z: 78.5, yaw: 90.0}
+    panel: {x: 47.5, y: 123.0, z: 76.5}
+  upper:
+    y: 88.0
+    exit: {x: 47.5, y: 88.0, z: 78.5, yaw: 90.0}
+    panel: {x: 47.5, y: 88.0, z: 76.5}
+  middle:
+    y: 73.0
+    exit: {x: 47.5, y: 73.0, z: 78.5, yaw: 90.0}
+    panel: {x: 47.5, y: 73.0, z: 76.5}
+  lower:
+    y: 53.0
+    exit: {x: 47.5, y: 53.0, z: 78.5, yaw: 90.0}
+    panel: {x: 47.5, y: 53.0, z: 76.5}
+  bottom:
+    y: 38.0
+    exit: {x: 51.5, y: 38.0, z: 74.5, yaw: 180.0}
+    panel: {x: 49.5, y: 38.0, z: 74.5}

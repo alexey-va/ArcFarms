@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+selection="$(mktemp "${TMPDIR:-/tmp}/mine-lift-tests.XXXXXX.gradle")"
+trap 'rm -f "$selection"' EXIT
+# Limit class discovery itself: Kotest 6.0.7's ignored-spec descriptor path fails with --tests.
+cat > "$selection" <<'GRADLE'
+allprojects {
+    tasks.withType(Test).configureEach {
+        include '**/MineLift*Test*.class'
+    }
+}
+GRADLE
+./gradlew test --init-script "$selection" --console=plain

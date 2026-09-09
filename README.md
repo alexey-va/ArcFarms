@@ -658,3 +658,13 @@ Clearing the storm restores loaded damaged beds and returns player weather and
 time to the world defaults; unloaded repairs remain in the chunk journal.
 
 Mine extraction paths may set `mine-zones.<id>.extraction.rail-materials` to a list of solid floor materials. An empty list preserves automatic floor discovery; a nonempty list restricts wagon route anchors while keeping rescue and nest anchors unchanged. Reindex idle zones after changing the route materials or relocating a worksite.
+
+The optional animated mine lift is owned by `paper/mine/lift/MineLiftRuntime`.
+Configure `modules/mine-lift.yml` and restart after surveying and clearing the
+exact cabin path. The source default is disabled. Panels and `/minelift` provide
+local calls and floor selection; `/minelift status` is the administrative readback.
+One cabin carries four passengers and queues other floor calls. Passenger return
+locations are committed before mounting and acknowledged only after a safe saved
+arrival. No inventory, game mode, rewards or world blocks are changed by the lift.
+Run `./scripts/test-mine-lift` for motion and crash-journal checks; native passenger
+movement and display animation additionally need a Paper client smoke.

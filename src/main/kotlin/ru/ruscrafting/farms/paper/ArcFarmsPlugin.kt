@@ -59,6 +59,7 @@ open class ArcFarmsPlugin : JavaPlugin() {
         saveResourceIfMissing("lang/ru.yml")
         saveResourceIfMissing("lang/en.yml")
         saveResourceIfMissing("modules/redis.yml")
+        saveResourceIfMissing("modules/mine-lift.yml")
         PaperArcRuntime.installScheduling(this)
         val lifecycle = PaperPluginRuntime(this, "arc-farms").also {
             pluginRuntime = it
@@ -155,7 +156,16 @@ open class ArcFarmsPlugin : JavaPlugin() {
                 setExecutor(command)
                 tabCompleter = command
             }
-            server.pluginManager.registerEvents(ArcFarmsListener(activeService, activeMenu), this)
+            val mineLift = runCatching {
+                lifecycle.own(ru.ruscrafting.farms.paper.mine.lift.MineLiftRuntime(this, locale))
+            }.getOrElse { failure ->
+                logger.log(Level.SEVERE, "Mine lift unavailable; inspect its recovery journal", failure)
+                null
+            }
+            server.pluginManager.registerEvents(ArcFarmsListener(activeService, activeMenu) {
+                mineLift?.ownsTeleport(it) == true
+            }, this)
+            mineLift?.start()
             lifecycle.registerHealth("runtime") {
                 val serviceReady = activeService.isOperational()
                 val redisReady = !settings.network.enabled || redis?.isConnected() == true

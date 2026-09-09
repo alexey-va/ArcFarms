@@ -6,6 +6,9 @@ authors: [RusCrafting]
 description: Shared farm, lumbermill, and mine activities
 softdepend: [ARC, WorldEdit, WorldGuard, PlaceholderAPI, Vault, RedisEconomy, packetevents]
 commands:
+  minelift:
+    description: Call the mine lift or choose a floor near its landing
+    usage: /minelift [1-5]
   arcfarms:
     description: Shared worksite activities
     usage: /arcfarms
