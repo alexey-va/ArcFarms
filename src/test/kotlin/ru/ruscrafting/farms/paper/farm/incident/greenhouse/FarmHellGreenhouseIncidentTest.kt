@@ -71,7 +71,7 @@ class FarmHellGreenhouseIncidentTest : FunSpec({
             interact(HellGreenhouseRole.CROP)
             runtime.state.incidentProgress shouldBe 0
             interact(HellGreenhouseRole.VALVE)
-            repeat(160) { owner.update(runtime) }
+            repeat(200) { owner.update(runtime) }
             runtime.state.hellGreenhouse!!.plots.first().growthSeconds shouldBe 8
             interact(HellGreenhouseRole.CROP)
             runtime.state.incidentProgress shouldBe 0

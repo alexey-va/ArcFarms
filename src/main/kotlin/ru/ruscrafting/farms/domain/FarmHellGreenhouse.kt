@@ -113,8 +113,10 @@ object FarmHellGreenhouseEngine {
         validate(current)
         if (current.layoutVersion != 2 || current.finished || index !in current.plots.indices) return FarmHellGreenhouseResult(current, false)
         val old = current.plots[index]
-        val plot = old.copy(heating = !old.heating, coolingSeconds = 0)
-        return FarmHellGreenhouseResult(current.copy(plots = current.plots.updated(index, plot)), true)
+        val plot = old.copy(heating = !old.heating, coolingSeconds = 0, overheatSeconds = 0)
+        val next = current.copy(plots = current.plots.updated(index, plot))
+        validate(next)
+        return FarmHellGreenhouseResult(next, true)
     }
 
     fun harvest(current: FarmHellGreenhouseState, index: Int, rules: FarmHellGreenhouseRules): FarmHellGreenhouseResult {
@@ -161,12 +163,16 @@ object FarmHellGreenhouseEngine {
         } else {
             require(state.points.size == PHYSICAL_PLOTS && state.plots.size == PHYSICAL_PLOTS)
             require(state.carried.isEmpty()) { "Plantation layout cannot carry legacy peppers" }
-            require(state.plots.all { it.growthSeconds in 0..GROWTH_TARGET_SECONDS && it.coolingSeconds in 0..COOLING_SECONDS && it.overheatSeconds in 0..OVERHEAT_SECONDS })
-            require(state.plots.all { plot ->
-                (plot.coolingSeconds == 0 || plot.growthSeconds == GROWTH_TARGET_SECONDS) &&
+            state.plots.forEachIndexed { index, plot ->
+                require(plot.growthSeconds in 0..GROWTH_TARGET_SECONDS &&
+                    plot.coolingSeconds in 0..COOLING_SECONDS && plot.overheatSeconds in 0..OVERHEAT_SECONDS &&
+                    (plot.coolingSeconds == 0 || plot.growthSeconds == GROWTH_TARGET_SECONDS) &&
                     (plot.overheatSeconds == 0 || (plot.heating && plot.growthSeconds == GROWTH_TARGET_SECONDS)) &&
-                    !(plot.heating && plot.coolingSeconds > 0)
-            })
+                    !(plot.heating && plot.coolingSeconds > 0)) {
+                    "Invalid plantation timers: plot=${index + 1} heating=${plot.heating} " +
+                        "growth=${plot.growthSeconds} cooling=${plot.coolingSeconds} overheat=${plot.overheatSeconds}"
+                }
+            }
             require(state.harvested.all { it in 0 until PHYSICAL_PLOTS })
         }
     }

@@ -7,6 +7,8 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import ru.ruscrafting.farms.domain.ArcFarmsState
+import ru.ruscrafting.farms.domain.FarmHellGreenhouseEngine
+import ru.ruscrafting.farms.domain.FarmHellGreenhouseRules
 import ru.ruscrafting.farms.domain.FarmHellGreenhouseState
 import ru.ruscrafting.farms.domain.FarmHellPepper
 import ru.ruscrafting.farms.domain.FarmHellPlantationPlot
@@ -70,6 +72,25 @@ class FarmHellGreenhousePersistenceTest : FunSpec({
         val expected = ArcFarmsState(farms = mapOf("farm" to farm(greenhouse = plantation, progress = 2, required = 4)))
         ArcFarmsStateRepository(root).use { it.saveBlocking(expected) }
         ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
+    }
+
+    test("closing an overheated bed persists and resumes cooling after restart") {
+        val root = Files.createTempDirectory("arcfarms-plantation-close-hot")
+        val rules = FarmHellGreenhouseRules(quota = 2)
+        val hot = FarmHellGreenhouseState(points = points, layoutVersion = 2,
+            plots = listOf(FarmHellPlantationPlot(heating = true, growthSeconds = 8, overheatSeconds = 2)) +
+                List(3) { FarmHellPlantationPlot() })
+        val cooling = FarmHellGreenhouseEngine.toggleHeat(hot, 0, rules).state
+        val snapshot = ArcFarmsState(farms = mapOf("farm" to farm(greenhouse = cooling)))
+        ArcFarmsStateRepository(root).use { it.saveBlocking(snapshot) }
+        var resumed = ArcFarmsStateRepository(root).use { it.load().farms.getValue("farm").hellGreenhouse!! }
+        resumed shouldBe cooling
+        repeat(2) { resumed = FarmHellGreenhouseEngine.second(resumed, setOf(player), rules).state }
+        val collected = FarmHellGreenhouseEngine.harvest(resumed, 0, rules)
+        collected.contribution shouldBe 1
+        ArcFarmsStateRepository(root).use {
+            it.saveBlocking(ArcFarmsState(farms = mapOf("farm" to farm(greenhouse = collected.state))))
+        }
     }
 
     test("four reusable beds preserve progress beyond their physical count") {

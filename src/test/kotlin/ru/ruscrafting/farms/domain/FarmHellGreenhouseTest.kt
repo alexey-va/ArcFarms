@@ -46,6 +46,20 @@ class FarmHellGreenhouseTest : FunSpec({
         FarmHellGreenhouseEngine.harvest(harvested.state, 0, rules).accepted shouldBe false
     }
 
+    test("closing during every warning second leaves a valid cooling state") {
+        for (delay in 1..3) {
+            var current = FarmHellGreenhouseEngine.toggleHeat(state(), 0, rules).state
+            repeat(8 + delay) { current = FarmHellGreenhouseEngine.second(current, setOf(player), rules).state }
+            current.plots[0].overheatSeconds shouldBe delay
+            current = FarmHellGreenhouseEngine.toggleHeat(current, 0, rules).state
+            FarmHellGreenhouseEngine.validate(current)
+            current.plots[0].overheatSeconds shouldBe 0
+            repeat(2) { current = FarmHellGreenhouseEngine.second(current, setOf(player), rules).state }
+            FarmHellGreenhouseEngine.phase(current.plots[0]) shouldBe FarmHellPlantationPhase.READY
+            FarmHellGreenhouseEngine.harvest(current, 0, rules).contribution shouldBe 1
+        }
+    }
+
     test("four hot seconds scorch and reset the plot") {
         var current = state()
         current = FarmHellGreenhouseEngine.toggleHeat(current, 0, rules).state
