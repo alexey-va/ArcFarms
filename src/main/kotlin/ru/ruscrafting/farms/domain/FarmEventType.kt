@@ -48,5 +48,16 @@ object FarmEventTypeRegistry {
         }
     }
 
+    private val mineDefinitions: Map<MineIncidentType, FarmEventTypeDefinition> = MineIncidentType.entries.associateWith { type ->
+        val id = type.name.lowercase()
+        if (MineScenarioCatalog.definition(id) != null) {
+            FarmEventTypeDefinition.UndergroundEvent("mine.events.$id.title", "mine.events.$id.subtitle", "mine.events.$id.hint")
+        } else {
+            FarmEventTypeDefinition.FieldEvent("mine.guidance.title", "mine.guidance.$id", "mine.guidance.$id")
+        }
+    }
+
+    fun definition(type: MineIncidentType): FarmEventTypeDefinition = mineDefinitions.getValue(type)
+
     fun definition(type: FarmIncidentType): FarmEventTypeDefinition = definitions.getValue(type)
 }

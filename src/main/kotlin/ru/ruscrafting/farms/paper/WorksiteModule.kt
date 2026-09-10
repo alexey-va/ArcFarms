@@ -55,8 +55,17 @@ internal interface WorksiteMoveHandler {
 }
 
 /** Lets a live off-site activity retain its participant across plugin-owned teleports. */
+internal interface WorksiteTemporaryBlockOwner {
+    fun protectsTemporaryBlock(location: Location): Boolean
+}
+
 internal interface WorksiteTeleportRetention {
-    fun retainOnTeleport(player: Player): Boolean
+    fun retainOnTeleport(player: Player, destination: org.bukkit.Location): Boolean
+}
+
+/** Optional durable participant recovery after the shared stale-release pass. */
+internal interface WorksiteParticipantRecoveryOwner {
+    fun recoverPlayer(player: Player)
 }
 
 internal interface WorksiteEntityInteractHandler {
@@ -134,8 +143,14 @@ internal class WorksiteModuleRegistry(
         return handled
     }
 
-    fun retainOnTeleport(player: Player): Boolean =
-        modulesInOrder.filterIsInstance<WorksiteTeleportRetention>().any { it.retainOnTeleport(player) }
+    fun protectsTemporaryBlock(location: Location): Boolean =
+        modulesInOrder.filterIsInstance<WorksiteTemporaryBlockOwner>().any { it.protectsTemporaryBlock(location) }
+
+    fun retainOnTeleport(player: Player, destination: org.bukkit.Location): Boolean =
+        modulesInOrder.filterIsInstance<WorksiteTeleportRetention>().any { it.retainOnTeleport(player, destination) }
+
+    fun recoverPlayer(player: Player) =
+        modulesInOrder.filterIsInstance<WorksiteParticipantRecoveryOwner>().forEach { it.recoverPlayer(player) }
 
     fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean =
         modulesInOrder.filterIsInstance<WorksiteEntityInteractHandler>().any { it.onInteractEntity(event) }

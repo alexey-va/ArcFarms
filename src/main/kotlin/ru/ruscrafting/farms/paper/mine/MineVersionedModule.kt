@@ -39,6 +39,7 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteAdminStatus
 import java.util.UUID
 import java.util.random.RandomGenerator
 import ru.ruscrafting.farms.domain.MineIncidentType
+import ru.ruscrafting.farms.paper.mine.lift.MineLiftAccess
 
 /** Stable boundary that constructs exactly one mine engine generation for the process lifetime. */
 internal class MineVersionedModule(
@@ -53,14 +54,17 @@ internal class MineVersionedModule(
     random: RandomGenerator,
     serviceItems: WorksiteServiceItems? = null,
     rewardGrants: WorksiteRewardGrantService? = null,
+    lift: MineLiftAccess? = null,
 ) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler,
     WorksiteMoveHandler, WorksiteGuidanceHandler, WorksiteFastVisualHandler, WorksiteServiceItemOwner,
-    WorksiteParticipantOwner, WorksiteEntityInteractHandler, WorksiteEntityDeathHandler, WorksiteAdminHandler {
+    WorksiteParticipantOwner, WorksiteEntityInteractHandler, WorksiteEntityDeathHandler, WorksiteAdminHandler,
+    ru.ruscrafting.farms.paper.WorksiteParticipantRecoveryOwner, ru.ruscrafting.farms.paper.WorksiteTeleportRetention, ru.ruscrafting.farms.paper.WorksiteTemporaryBlockOwner {
     private val engineVersion = initial.firstOrNull()?.engineVersion ?: 1
     private val delegate: WorksiteModule<MineShiftState> = if (engineVersion == 2) {
         MineComponentGraph(
             plugin, serverId, regions, ports, clock, journal, random, serviceItems = serviceItems, locale = locale,
             rewardGrants = rewardGrants,
+            lift = lift,
         ).module
     } else {
         MineController(
@@ -125,6 +129,11 @@ internal class MineVersionedModule(
     override fun reconcileChunk(chunk: Chunk) = delegate.reconcileChunk(chunk)
     override fun beforeReload(reason: String) = delegate.beforeReload(reason)
     override fun cleanup(reason: String) = delegate.cleanup(reason)
+
+    override fun protectsTemporaryBlock(location: Location): Boolean = (delegate as? ru.ruscrafting.farms.paper.WorksiteTemporaryBlockOwner)?.protectsTemporaryBlock(location) == true
+
+    override fun recoverPlayer(player: Player) { (delegate as? ru.ruscrafting.farms.paper.WorksiteParticipantRecoveryOwner)?.recoverPlayer(player) }
+    override fun retainOnTeleport(player: Player, destination: org.bukkit.Location): Boolean = (delegate as? ru.ruscrafting.farms.paper.WorksiteTeleportRetention)?.retainOnTeleport(player, destination) == true
 
     override fun onBreakHigh(event: BlockBreakEvent): Boolean =
         (delegate as? WorksiteBlockBreakHandler)?.onBreakHigh(event) == true

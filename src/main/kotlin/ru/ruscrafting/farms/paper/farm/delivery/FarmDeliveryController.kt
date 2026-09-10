@@ -31,6 +31,7 @@ import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteCarryable
+import ru.ruscrafting.farms.paper.worksite.WorksiteCarriedDisplayRenderer
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
@@ -67,6 +68,7 @@ internal class FarmDeliveryController(
     private val groundEntities = mutableMapOf<DeliveryKey, MutableSet<UUID>>()
     private val carriers = mutableMapOf<DeliveryKey, UUID>()
     private val carriedDisplays = mutableMapOf<DeliveryKey, UUID>()
+    private val carriedDisplayRenderer = WorksiteCarriedDisplayRenderer()
     private val reconciledSequences = mutableMapOf<String, Long>()
     private val layouts = mutableMapOf<String, DeliveryLayout>()
     private val missingLocationWarnings = mutableSetOf<DeliveryKey>()
@@ -144,16 +146,15 @@ internal class FarmDeliveryController(
         removeGround(key, "picked_up")
         removeLoaded(runtime, identity.index, "picked_up")
         carriers[key] = player.uniqueId
-        val display = player.world.spawn(carriedDisplayLocation(runtime, player), ItemDisplay::class.java) { entity ->
-            entity.setItemStack(itemStack(runtime))
-            entity.itemDisplayTransform = runtime.settings.delivery.displayTransform.bukkit
-            entity.uniformScale(runtime.settings.delivery.carriedScale)
-            entity.viewRange = runtime.settings.delivery.displayViewRange
-            entity.teleportDuration = 1
-            entity.isGlowing = true
-            entity.isPersistent = false
-            mark(entity, runtime, identity.index, DeliveryEntityRole.CARRIED_DISPLAY)
-        }
+        val display = carriedDisplayRenderer.spawn(
+            player,
+            itemStack(runtime),
+            runtime.settings.delivery.displayTransform.bukkit,
+            runtime.settings.delivery.carriedScale,
+            runtime.settings.delivery.displayViewRange,
+            runtime.settings.deliveryCarriedForwardOffset,
+            runtime.settings.delivery.carriedYOffset,
+        ) { entity -> mark(entity, runtime, identity.index, DeliveryEntityRole.CARRIED_DISPLAY) }
         carriedDisplays[key] = display.uniqueId
         port.showScreenTitle(player, MessageKey.FARM_DELIVERY_PICKED_UP)
         if (settings().sounds) player.playSound(player.location, Sound.ENTITY_ITEM_PICKUP, 0.9f, 0.8f)
@@ -377,12 +378,8 @@ internal class FarmDeliveryController(
 
     private fun updateCarriedDisplay(runtime: FarmRuntime, key: DeliveryKey, player: Player) {
         val display = carriedDisplays[key]?.let(Bukkit::getEntity) as? ItemDisplay ?: return
-        if (display.world != player.world) return
-        display.teleport(carriedDisplayLocation(runtime, player))
-    }
-
-    private fun carriedDisplayLocation(runtime: FarmRuntime, player: Player): Location {
-        return WorksiteCarryable.carriedLocation(
+        carriedDisplayRenderer.move(
+            display,
             player,
             runtime.settings.deliveryCarriedForwardOffset,
             runtime.settings.delivery.carriedYOffset,

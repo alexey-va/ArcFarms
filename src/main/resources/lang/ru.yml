@@ -1141,6 +1141,133 @@ mine:
     creature_nest: '<color:#f2fff7>Победите налётчиков в выработке</color>'
     power_failure: '<color:#f2fff7>Включайте подсвеченные узлы питания по порядку</color>'
     lost_miner: '<color:#f2fff7>Найдите шахтёра, нажмите на него и проводите к выходу</color>'
+  events:
+    common:
+      entry: '<color:#f2fff7>Нажмите ПКМ по входному маркеру и войдите в комнату события</color>'
+      building: '<color:#f2fff7>Комната события готовится — дождитесь безопасного входа</color>'
+      exit: '<color:#f2fff7>Выход: <destination></color>'
+      return: '<color:#f2fff7>Вернитесь на <floor></color>'
+      floor: '<color:#f2fff7>Этаж: <floor></color>'
+      destination: '<color:#f2fff7>Отнесите к <destination></color>'
+      stage-progress: '<gray>Этап <stage>/<stages> ·</gray> <white><done>/<total></white>'
+      maintenance: '<color:#b8c8c0>Подъёмник выполняет безопасную остановку и ремонт</color>'
+      wrong-order: '<color:#ffad42>Сначала включите механизм, к которому ведёт указатель</color>'
+      carrying: '<color:#f2fff7>Несите предмет к <destination></color>'
+    creature_nest:
+      title: '<color:#ff5f6d><bold>Нашествие в забое</bold></color>'
+      subtitle: '<color:#f2fff7>Отбейте налёт и уничтожьте гнездо</color>'
+      hint: '<color:#f2fff7>Победите налётчиков, затем разбейте ядро гнезда</color>'
+      stages:
+        defend: '<color:#f2fff7>Победите налётчиков в забое</color>'
+        seal: '<color:#f2fff7>Разбейте ядро гнезда</color>'
+    cave_in:
+      title: '<color:#ffad42><bold>Обвал штольни</bold></color>'
+      subtitle: '<color:#f2fff7>Расчистите завал и поставьте подпоры</color>'
+      hint: '<color:#f2fff7>Разберите камни, затем нажмите ПКМ по местам для подпор</color>'
+      stages:
+        clear: '<color:#f2fff7>Разберите камни завала киркой</color>'
+        supports: '<color:#f2fff7>Нажмите ПКМ по отмеченным местам и установите подпоры</color>'
+    flooding:
+      title: '<color:#45c8f5><bold>Прорыв воды</bold></color>'
+      subtitle: '<color:#f2fff7>Запустите насосы и осушите выработку</color>'
+      hint: '<color:#f2fff7>Нажмите ПКМ по насосам, затем удерживайте слив открытым</color>'
+      stages:
+        pumps: '<color:#f2fff7>Нажмите ПКМ по отмеченным насосам</color>'
+        drain: '<color:#f2fff7>Нажмите ПКМ по сливу и оставайтесь рядом 20 секунд</color>'
+    gas_leak:
+      title: '<color:#d7e66b><bold>Утечка газа</bold></color>'
+      subtitle: '<color:#f2fff7>Откройте вентиляцию и проветрите забой</color>'
+      hint: '<color:#f2fff7>Нажимайте ПКМ по решёткам в показанном порядке</color>'
+      stages:
+        vents: '<color:#f2fff7>Откройте вентиляционные решётки по порядку</color>'
+        ventilation: '<color:#f2fff7>Нажмите ПКМ по вентилятору и оставайтесь рядом 15 секунд</color>'
+    power_failure:
+      title: '<color:#ffc857><bold>Отказ питания</bold></color>'
+      subtitle: '<color:#f2fff7>Замените предохранитель и включите цепь</color>'
+      hint: '<color:#f2fff7>Разбейте повреждённый предохранитель, затем включите узлы по порядку</color>'
+      stages:
+        fuse: '<color:#f2fff7>Разбейте повреждённый предохранитель</color>'
+        circuits: '<color:#f2fff7>Нажмите ПКМ по узлам питания по порядку</color>'
+    injured_miner:
+      title: '<color:#ffad42><bold>Раненый шахтёр</bold></color>'
+      subtitle: '<color:#f2fff7>Поднимите его и доставьте на другой этаж</color>'
+      hint: '<color:#f2fff7>Нажмите ПКМ по домкратам, возьмите носилки и доставьте на этаж назначения</color>'
+      stages:
+        jacks: '<color:#f2fff7>Нажмите ПКМ по домкратам и освободите шахтёра</color>'
+        stretcher: '<color:#f2fff7>Возьмите носилки ПКМ и доставьте на <destination></color>'
+    runaway_cart:
+      title: '<color:#ff5f6d><bold>Убежавшая вагонетка</bold></color>'
+      subtitle: '<color:#f2fff7>Переключите путь, затормозите вагонетку и сопроводите её на другой этаж</color>'
+      hint: '<color:#f2fff7>Направляйте вагонетку по стрелкам, нажмите ПКМ по тормозу, затем сопроводите её на <destination></color>'
+      stages:
+        switches: '<color:#f2fff7>Переключайте стрелки и направляйте вагонетку</color>'
+        brake: '<color:#f2fff7>Нажмите ПКМ по тормозному рычагу</color>'
+        escort: '<color:#f2fff7>Сопроводите вагонетку на <destination></color>'
+    convoy:
+      title: '<color:#45c8f5><bold>Шахтный обоз</bold></color>'
+      subtitle: '<color:#f2fff7>Почините путь и проводите вагонетку на другой этаж</color>'
+      hint: '<color:#f2fff7>Разберите повреждённые рельсы, затем сопровождайте обоз до <destination></color>'
+      stages:
+        track: '<color:#f2fff7>Разберите повреждённые участки рельсов</color>'
+        escort: '<color:#f2fff7>Сопровождайте вагонетку до <destination></color>'
+    lift_breakdown:
+      title: '<color:#c778ff><bold>Поломка подъёмника</bold></color>'
+      subtitle: '<color:#f2fff7>Откройте выход, принесите детали и проверьте подъёмник</color>'
+      hint: '<color:#f2fff7>Нажмите ПКМ по выходу, принесите детали на площадку и запустите тест</color>'
+      stages:
+        exit: '<color:#f2fff7>Нажмите ПКМ по рычагу аварийного выхода</color>'
+        parts: '<color:#f2fff7>Отнесите детали к подъёмнику на <destination></color>'
+        test: '<color:#f2fff7>Нажимайте ПКМ по тестовым узлам по порядку</color>'
+    bat_swarm:
+      title: '<color:#9a8cff><bold>Стая летучих мышей</bold></color>'
+      subtitle: '<color:#f2fff7>Направьте стаю к выходу и закройте пролёт</color>'
+      hint: '<color:#f2fff7>Ведите мышей светом ламп, затем нажмите ПКМ по заслонке</color>'
+      stages:
+        flight: '<color:#f2fff7>Ведите стаю светом ламп к безопасному пролёту</color>'
+        seal: '<color:#f2fff7>Нажмите ПКМ по заслонке и закройте пролёт</color>'
+    fungal_bloom:
+      title: '<color:#c778ff><bold>Грибное цветение</bold></color>'
+      subtitle: '<color:#f2fff7>Соберите образцы и уничтожьте споры</color>'
+      hint: '<color:#f2fff7>Разбейте отмеченные грибы, затем уничтожьте споровые очаги</color>'
+      stages:
+        samples: '<color:#f2fff7>Разбейте красные грибы для образцов</color>'
+        spores: '<color:#f2fff7>Разбейте коричневые грибные очаги</color>'
+    root_invasion:
+      title: '<color:#55d98b><bold>Нашествие корней</bold></color>'
+      subtitle: '<color:#f2fff7>Срежьте корни и уничтожьте сердцевину</color>'
+      hint: '<color:#f2fff7>Разбейте корни вокруг прохода, затем доберитесь до сердцевины</color>'
+      stages:
+        roots: '<color:#f2fff7>Разбейте отмеченные корни</color>'
+        heart: '<color:#f2fff7>Разбейте сердцевину корней</color>'
+    lava_breach:
+      title: '<color:#ff5f6d><bold>Прорыв лавы</bold></color>'
+      subtitle: '<color:#f2fff7>Принесите барьеры и перекройте шлюзы</color>'
+      hint: '<color:#f2fff7>Отнесите каменные барьеры к пролому, затем закройте шлюзы по порядку</color>'
+      stages:
+        barriers: '<color:#f2fff7>Отнесите барьеры к месту прорыва</color>'
+        sluices: '<color:#f2fff7>Нажимайте ПКМ по шлюзам по порядку</color>'
+    ancient_door:
+      title: '<color:#ffc857><bold>Древняя дверь</bold></color>'
+      subtitle: '<color:#f2fff7>Доставьте шестерни и соберите замок</color>'
+      hint: '<color:#f2fff7>Отнесите шестерни к двери, затем активируйте замок по порядку</color>'
+      stages:
+        gears: '<color:#f2fff7>Отнесите шестерни к древней двери</color>'
+        lock: '<color:#f2fff7>Нажимайте ПКМ по деталям замка по порядку</color>'
+    old_warehouse:
+      title: '<color:#b8c8c0><bold>Старый склад</bold></color>'
+      subtitle: '<color:#f2fff7>Перенесите ящики и запустите лебёдку</color>'
+      hint: '<color:#f2fff7>Отнесите хрупкие ящики на платформы, затем нажмите ПКМ по лебёдке</color>'
+      stages:
+        crates: '<color:#f2fff7>Отнесите ящики на отмеченные платформы</color>'
+        winch: '<color:#f2fff7>Нажмите ПКМ по рычагу лебёдки</color>'
+    drill_trial:
+      title: '<color:#45c8f5><bold>Испытание бура</bold></color>'
+      subtitle: '<color:#f2fff7>Охладите бур, удерживайте управление и пробейте жилу</color>'
+      hint: '<color:#f2fff7>Отнесите охлаждающую жидкость к буру, удерживайте пульт и завершите проход</color>'
+      stages:
+        coolant: '<color:#f2fff7>Отнесите охлаждающую жидкость к буровой установке</color>'
+        controls: '<color:#f2fff7>Нажмите ПКМ по пульту и оставайтесь рядом 20 секунд</color>'
+        breakthrough: '<color:#f2fff7>Разбейте забой после завершения охлаждения</color>'
 shift:
   winner: '<color:#ffc857>Лучший вклад</color> <color:#707a76>•</color> <white><player></white> <color:#f2fff7>— <amount></color>'
 care:

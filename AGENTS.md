@@ -120,13 +120,18 @@ activities: farm, lumbermill, and mine.
   underground types share startup title/subtitle, HUD hints and guidance policy.
   New variants must use these common owners rather than duplicate QoL code.
   Registry completeness and required locale paths are enforced by tests/startup.
-- All temporary underground activities compose `FarmUndergroundExpedition` with
-  a `FarmUndergroundVariant` and its `surface` owner. The shared type owns
+- All temporary underground activities reuse `WorksiteExpeditionTravel` for
   durable return records, plugin-authorized teleports, session snapshots and
-  recovery directories; mole and infernal-plantation controllers own only their activity
-  scenes, eligibility and completion rules. Do not instantiate
-  `FarmBurrowReturnRepository`, `ScopedTeleportAuthorizer`, or a second surface
-  marker/candidate owner inside an activity controller.
+  recovery. Farm variants compose its `FarmUndergroundExpedition` adapter and
+  existing `surface` owner. Activity controllers own only their scenes,
+  eligibility and completion rules. Preserve existing return directories and
+  record formats. Do not instantiate `FarmBurrowReturnRepository`,
+  `ScopedTeleportAuthorizer`, or a duplicate surface marker/candidate owner
+  inside an activity controller.
+- Mine events respect the configured lift levels: local hazards affect their
+  own level, inter-level transport has an explicit destination, and guidance
+  identifies the destination level. Whole-mine lift incidents must coordinate
+  with transport events; never strand players by disabling their only exit.
 - Animal-rescue targets come only from indexed, validated outdoor crop beds.
   Never use a generic highest-surface search: roofs inside the region are not
   farm spawn points.

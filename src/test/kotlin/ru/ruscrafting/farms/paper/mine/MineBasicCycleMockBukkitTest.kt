@@ -128,7 +128,7 @@ class MineBasicCycleMockBukkitTest : FunSpec({
         runtime.state.sequence shouldBe 0L
     }
 
-    test("half mining starts creature nest and resolving it resumes mining") {
+    test("unsafe room entry preserves mining and legacy incident resolution still resumes the order") {
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("IncidentMiner")
         player.inventory.setItemInMainHand(ItemStack(Material.IRON_PICKAXE))
@@ -153,6 +153,13 @@ class MineBasicCycleMockBukkitTest : FunSpec({
 
         graph.module.tick(2_000L)
 
+        // This legacy fixture places the player inside a nest block. New rooms must
+        // reject that entrance instead of silently using the old nest handler.
+        // Automatic prepared-room entry is covered by mine-auto-event.spec.js on Paper.
+        runtime.state.phase shouldBe MinePhase.MINING
+        runtime.state.mined shouldBe 1
+        effects.count(MineIncidentEntityKind.CREATURE) shouldBe 0
+        graph.creatureNest.start(runtime, 3, 2_000L) shouldBe true
         runtime.state.phase shouldBe MinePhase.INCIDENT
         runtime.state.incident?.type shouldBe MineIncidentType.CREATURE_NEST
         runtime.state.resumePhase shouldBe MinePhase.MINING

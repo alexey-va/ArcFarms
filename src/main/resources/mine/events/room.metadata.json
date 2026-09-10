@@ -1,0 +1,194 @@
+{
+  "version": 1,
+  "size": [
+    17,
+    8,
+    25
+  ],
+  "origin": [
+    8,
+    1,
+    22
+  ],
+  "entryFeet": [
+    8,
+    2,
+    22
+  ],
+  "exitFeet": [
+    8,
+    2,
+    3
+  ],
+  "route": [
+    [
+      8,
+      1,
+      22
+    ],
+    [
+      8,
+      1,
+      20
+    ],
+    [
+      8,
+      1,
+      14
+    ],
+    [
+      8,
+      1,
+      8
+    ],
+    [
+      8,
+      1,
+      3
+    ]
+  ],
+  "zones": [
+    {
+      "id": "entrance",
+      "from": [
+        2,
+        1,
+        20
+      ],
+      "to": [
+        14,
+        6,
+        24
+      ]
+    },
+    {
+      "id": "work_platform",
+      "from": [
+        2,
+        1,
+        8
+      ],
+      "to": [
+        14,
+        6,
+        19
+      ]
+    },
+    {
+      "id": "mechanism_bay",
+      "from": [
+        2,
+        1,
+        1
+      ],
+      "to": [
+        14,
+        6,
+        7
+      ]
+    }
+  ],
+  "objectivePads": [
+    {
+      "id": "pad_01",
+      "center": [
+        3,
+        2,
+        6
+      ],
+      "zone": "mechanism_bay"
+    },
+    {
+      "id": "pad_02",
+      "center": [
+        12,
+        2,
+        6
+      ],
+      "zone": "mechanism_bay"
+    },
+    {
+      "id": "pad_03",
+      "center": [
+        3,
+        2,
+        10
+      ],
+      "zone": "work_platform"
+    },
+    {
+      "id": "pad_04",
+      "center": [
+        12,
+        2,
+        10
+      ],
+      "zone": "work_platform"
+    },
+    {
+      "id": "pad_05",
+      "center": [
+        3,
+        2,
+        14
+      ],
+      "zone": "work_platform"
+    },
+    {
+      "id": "pad_06",
+      "center": [
+        12,
+        2,
+        14
+      ],
+      "zone": "work_platform"
+    },
+    {
+      "id": "pad_07",
+      "center": [
+        3,
+        2,
+        18
+      ],
+      "zone": "work_platform"
+    },
+    {
+      "id": "pad_08",
+      "center": [
+        12,
+        2,
+        18
+      ],
+      "zone": "work_platform"
+    }
+  ],
+  "markers": [
+    {
+      "id": "entrance",
+      "at": [
+        8,
+        1,
+        22
+      ],
+      "label": "Entrance"
+    },
+    {
+      "id": "work_platform",
+      "at": [
+        8,
+        1,
+        14
+      ],
+      "label": "Work platform"
+    },
+    {
+      "id": "mechanism_bay",
+      "at": [
+        8,
+        1,
+        4
+      ],
+      "label": "Mechanism bay"
+    }
+  ]
+}

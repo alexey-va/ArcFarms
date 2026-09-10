@@ -16,8 +16,8 @@ data class MineOrderSettings(
         require(listOf(prospectingRequired, miningRequired, loadingRequired).all { it in 1..100_000 }) {
             "Mine order $id has an invalid phase quota"
         }
-        require(incidentTypes.size in 1..5 && incidentTypes.distinct().size == incidentTypes.size) {
-            "Mine order $id must contain one to five distinct incidents"
+        require(incidentTypes.size in 1..MineIncidentType.entries.size && incidentTypes.distinct().size == incidentTypes.size) {
+            "Mine order $id must contain a non-empty distinct incident pool"
         }
     }
 

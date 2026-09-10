@@ -14,7 +14,7 @@ import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import java.util.UUID
 
-internal enum class MineIncidentEntityKind { CREATURE, MINER }
+internal enum class MineIncidentEntityKind { CREATURE, HERD, MINER }
 
 internal data class MineIncidentEntityIdentity(
     val kind: MineIncidentEntityKind,
@@ -54,7 +54,11 @@ internal class PaperMineIncidentEntityEffects(plugin: Plugin) : MineIncidentEnti
         val world = requireNotNull(Bukkit.getWorld(position.world))
         val entity = world.spawnEntity(
             Location(world, position.x + 0.5, position.y + 1.0, position.z + 0.5),
-            if (kind == MineIncidentEntityKind.CREATURE) EntityType.HUSK else EntityType.VILLAGER,
+            when (kind) {
+                MineIncidentEntityKind.CREATURE -> EntityType.HUSK
+                MineIncidentEntityKind.HERD -> EntityType.BAT
+                MineIncidentEntityKind.MINER -> EntityType.VILLAGER
+            },
         )
         entity.persistentDataContainer.apply {
             set(markerKey, PersistentDataType.INTEGER, 1)
@@ -65,6 +69,7 @@ internal class PaperMineIncidentEntityEffects(plugin: Plugin) : MineIncidentEnti
         }
         entity.isPersistent = false
         (entity as? LivingEntity)?.removeWhenFarAway = false
+        if (kind == MineIncidentEntityKind.HERD) (entity as? LivingEntity)?.setAI(false)
         (entity as? Villager)?.apply { setAI(false); isSilent = true }
         return entity.uniqueId
     }

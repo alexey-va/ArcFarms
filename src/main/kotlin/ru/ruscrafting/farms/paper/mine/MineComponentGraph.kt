@@ -38,6 +38,7 @@ import ru.ruscrafting.farms.paper.mine.presentation.MineGuidanceSource
 import ru.ruscrafting.farms.paper.worksite.WorksiteGuidancePresenter
 import ru.ruscrafting.farms.paper.mine.admin.MineAdminService
 import java.util.random.RandomGenerator
+import ru.ruscrafting.farms.paper.mine.lift.MineLiftAccess
 
 /** Composition-only graph; the registry remains the sole V2 runtime collection owner. */
 internal class MineComponentGraph(
@@ -54,6 +55,7 @@ internal class MineComponentGraph(
     cartEffects: MineCartEffects = PaperMineCartEffects(plugin),
     incidentEntityEffects: MineIncidentEntityEffects = PaperMineIncidentEntityEffects(plugin),
     rewardGrants: WorksiteRewardGrantService? = null,
+    internal val lift: MineLiftAccess? = null,
 ) {
     internal val registry = MineRuntimeRegistry()
     val recovery = MineBlockRecoveryController(journal, ports.access, ports.state, ports.tasks, clock)
@@ -76,15 +78,29 @@ internal class MineComponentGraph(
     )
     val creatureNest = MineCreatureNestIncident(registry, index, incidents, incidentEntityEffects)
     val lostMiner = MineLostMinerIncident(registry, index, incidents, incidentEntityEffects, extraction::deliveryPoint)
+    val scenarioRooms = ru.ruscrafting.farms.paper.mine.incident.scenario.MineScenarioRooms(
+        plugin, ports.tasks, ports.access, ports.state,
+        ru.ruscrafting.farms.paper.platform.PaperFarmBlockDataDecoder,
+        ru.ruscrafting.farms.paper.farm.care.mole.PaperMoleBurrowChunkRetention(plugin),
+        ru.ruscrafting.farms.paper.platform.PaperFarmRouteChunkLoader, locale,
+    )
+    val scenarios = ru.ruscrafting.farms.paper.mine.incident.scenario.MineScenarioController(
+        registry, scenarioRooms, incidents, ports.access, ports.state, locale, lift,
+        ru.ruscrafting.farms.paper.mine.incident.entity.MineScenarioActors(incidentEntityEffects),
+        PaperMineCartEffects(plugin, "mine_scenario_cart", ru.ruscrafting.farms.config.MineCartVisualSettings()),
+        ports.audience, ru.ruscrafting.farms.paper.mine.incident.scenario.MineScenarioEnvironment(
+            ru.ruscrafting.farms.paper.platform.PaperFarmBlockDataDecoder),
+        ru.ruscrafting.farms.paper.mine.incident.scenario.MineScenarioCargo(plugin),
+    )
     val incidentScheduler = MineIncidentScheduler(
-        caveIn, gasLeak, flooding, trackDamage, crystalResonance, creatureNest, powerFailure, lostMiner,
+        caveIn, gasLeak, flooding, trackDamage, crystalResonance, creatureNest, powerFailure, lostMiner, scenarios,
     )
     val incidentSet = MineIncidentSet(
         registry, caveIn, trackDamage, gasLeak, crystalResonance, flooding, powerFailure, creatureNest, lostMiner,
-        incidentScheduler,
+        incidentScheduler, scenarios,
     )
     val guidance = MineGuidanceSource(
-        registry, ports.audience, locale, extraction::guidanceTarget, { extraction.routeFor(it)?.finalIndex ?: 1 },
+        registry, ports.audience, locale, extraction::guidanceTarget, { extraction.routeFor(it)?.finalIndex ?: 1 }, scenarioRooms,
     )
     private val guidancePresenter = WorksiteGuidancePresenter(ports.audience, ports.access, guidance)
     val prospecting = MineProspectingController(
@@ -106,7 +122,7 @@ internal class MineComponentGraph(
     )
     val module = MineModule(
         regions, ports.access, ports.audience, ports.tasks, transitions, registry, recovery, index, tickets, prospecting, mining, loading, extraction, cartScene,
-        incidentSet, guidancePresenter, admin, clock,
+        incidentSet, guidancePresenter, admin, clock, scenarios,
     )
 
     internal val mutableRuntimeCollectionCount: Int = 1

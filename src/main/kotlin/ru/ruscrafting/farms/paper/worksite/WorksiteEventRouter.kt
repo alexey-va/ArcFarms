@@ -18,6 +18,8 @@ internal class WorksiteEventRouter(
     private val serviceItems: WorksiteServiceItemController,
     private val participantSafety: WorksiteParticipantSafety,
 ) {
+    fun protectsTemporaryBlock(location: org.bukkit.Location): Boolean = registry.protectsTemporaryBlock(location)
+
     fun onBreakHigh(event: BlockBreakEvent): Boolean = registry.onBreakHigh(event)
 
     fun onBreakMonitor(event: BlockBreakEvent) = registry.onBreakMonitor(event)
@@ -38,13 +40,14 @@ internal class WorksiteEventRouter(
         return registry.onMove(event.from, destination, event.player)
     }
 
-    fun onTeleport(event: PlayerTeleportEvent): Boolean = onMove(event).also {
+    fun onTeleport(event: PlayerTeleportEvent): Boolean {
         if (
             event.cause != PlayerTeleportEvent.TeleportCause.DISMOUNT &&
-            !registry.retainOnTeleport(event.player)
+            !registry.retainOnTeleport(event.player, event.to)
         ) {
             release(event.player, WorksitePlayerReleaseReason.TELEPORT_OUT)
         }
+        return onMove(event)
     }
 
     fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean = registry.onInteractEntity(event)
@@ -77,7 +80,10 @@ internal class WorksiteEventRouter(
         release(player, WorksitePlayerReleaseReason.DEATH)
     }
 
-    fun onJoin(player: Player) = release(player, WorksitePlayerReleaseReason.JOIN_STALE)
+    fun onJoin(player: Player) {
+        release(player, WorksitePlayerReleaseReason.JOIN_STALE)
+        registry.recoverPlayer(player)
+    }
 
     fun release(player: Player, reason: WorksitePlayerReleaseReason): WorksiteReleaseReport =
         participantSafety.release(player, reason)

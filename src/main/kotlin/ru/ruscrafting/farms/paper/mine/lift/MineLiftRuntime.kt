@@ -41,13 +41,30 @@ import java.util.logging.Level
 import kotlin.math.abs
 import kotlin.math.floor
 
+internal class MineLiftMaintenanceClaim {
+    private var owner: String? = null
+
+    fun begin(ownerKey: String): Boolean {
+        if (ownerKey.isBlank()) return false
+        if (owner == null) owner = ownerKey
+        return owner == ownerKey
+    }
+
+    fun end(ownerKey: String) { if (owner == ownerKey) owner = null }
+    fun owns(ownerKey: String): Boolean = owner == ownerKey
+    fun ownsAny(): Boolean = owner != null
+    fun ready(ownerKey: String, phase: MineLiftMotion.Phase, riderCount: Int, queued: List<Int>): Boolean =
+        owns(ownerKey) && phase == MineLiftMotion.Phase.DOCKED && riderCount == 0 && queued.isEmpty()
+    fun clear() { owner = null }
+}
+
 /**
  * Main-thread transport owner: one cabin, four passengers, at most eight queued floor calls.
  * The location escrow commits before mounting, and survives quit, disable and process crashes.
  * No world blocks are changed by this runtime; a blocked surveyed shaft closes the lift.
  */
 internal class MineLiftRuntime(private val plugin: JavaPlugin, private val locale: ArcFarmsLocale) :
-    AutoCloseable, Listener, CommandExecutor, TabCompleter {
+    AutoCloseable, Listener, CommandExecutor, TabCompleter, MineLiftAccess {
     private val recovery = MineLiftRecovery(plugin.dataFolder.toPath())
     private val tasks = LifecycleTaskScope()
     private val dialogs = PaperDialogRuntime(plugin)
@@ -63,6 +80,7 @@ internal class MineLiftRuntime(private val plugin: JavaPlugin, private val local
     private var tickNumber = 0L
     private var movementTask: ScheduledTask? = null
     private val exiting = mutableSetOf<UUID>()
+    private val maintenance = MineLiftMaintenanceClaim()
 
     fun start() {
         plugin.server.pluginManager.registerEvents(this, plugin)
@@ -153,7 +171,7 @@ internal class MineLiftRuntime(private val plugin: JavaPlugin, private val local
     }
 
     private fun open(player: Player, index: Int) {
-        if (!player.hasPermission("arcfarms.mine") || nearFloor(player) != index || recovery.contains(player.uniqueId)) {
+        if (maintenance.ownsAny() || !player.hasPermission("arcfarms.mine") || nearFloor(player) != index || recovery.contains(player.uniqueId)) {
             player.sendMessage(text("unavailable", player)); return
         }
         val state = motion ?: run { player.sendMessage(text("unavailable", player)); return }
@@ -182,7 +200,7 @@ internal class MineLiftRuntime(private val plugin: JavaPlugin, private val local
         val config = settings ?: return
         val state = motion ?: return
         val cabin = scene ?: return
-        if (!player.hasPermission("arcfarms.mine") || nearFloor(player) != source || state.floor != source ||
+        if (maintenance.ownsAny() || !player.hasPermission("arcfarms.mine") || nearFloor(player) != source || state.floor != source ||
             player.isInsideVehicle || player.isDead || recovery.contains(player.uniqueId) ||
             state.phase == MineLiftMotion.Phase.MOVING ||
             (state.phase == MineLiftMotion.Phase.BOARDING && state.target != destination)) {
@@ -225,6 +243,36 @@ internal class MineLiftRuntime(private val plugin: JavaPlugin, private val local
     }
 
     fun ownsTeleport(event: PlayerTeleportEvent): Boolean = teleports.isAuthorized(event.player.uniqueId, event.to)
+
+    /** Claims exclusive maintenance while the cabin finishes its current trip and unloads riders. */
+    override fun beginMaintenance(ownerKey: String): Boolean {
+        if (ownerKey.isBlank() || closed || settings == null || scene == null || motion == null) return false
+        if (!maintenance.begin(ownerKey)) return false
+        val state = requireNotNull(motion)
+        if (state.phase == MineLiftMotion.Phase.DOCKED && riders.isNotEmpty()) {
+            val floor = requireNotNull(settings).floors[state.floor]
+            val world = Bukkit.getWorld(requireNotNull(settings).world)
+            if (world != null) riders.keys.toList().mapNotNull(Bukkit::getPlayer).forEach { unload(it, floor.exit.location(world)) }
+        }
+        return true
+    }
+
+    /** Releases maintenance only for its owner; repeated release is harmless. */
+    override fun endMaintenance(ownerKey: String) {
+        maintenance.end(ownerKey)
+    }
+
+    override fun maintenanceReady(ownerKey: String): Boolean {
+        val state = motion ?: return false
+        return maintenance.ready(ownerKey, state.phase, riders.size, state.queued)
+    }
+
+    /** Read-only configured floor facts for maintenance planning; values come from the loaded settings. */
+    override fun floors(): List<MineLiftAccess.FloorSnapshot> {
+        val config = settings ?: return emptyList()
+        val world = Bukkit.getWorld(config.world) ?: return emptyList()
+        return config.floors.map { MineLiftAccess.FloorSnapshot(it.id, it.y, it.exit.location(world)) }
+    }
 
     @EventHandler(ignoreCancelled = true)
     fun interact(event: PlayerInteractEntityEvent) {
@@ -301,6 +349,7 @@ internal class MineLiftRuntime(private val plugin: JavaPlugin, private val local
     override fun close() {
         if (closed) return
         closed = true
+        maintenance.clear()
         stopCabin(); tasks.close(); dialogs.close(); HandlerList.unregisterAll(this)
     }
 }

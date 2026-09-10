@@ -121,6 +121,12 @@ open class ArcFarmsPlugin : JavaPlugin() {
                 logger.log(Level.WARNING, "ArcFarms backend transfer send failed", failure)
             }).also { transfer = it }
             val menuPlatform = ArcFarmsMenuPlatform(this)
+            val mineLift = runCatching {
+                lifecycle.own(ru.ruscrafting.farms.paper.mine.lift.MineLiftRuntime(this, locale))
+            }.getOrElse { failure ->
+                logger.log(Level.SEVERE, "Mine lift unavailable; inspect its recovery journal", failure)
+                null
+            }
             val activeService = lifecycle.own(ArcFarmsService(
                 plugin = this,
                 initialSettings = settings,
@@ -137,6 +143,7 @@ open class ArcFarmsPlugin : JavaPlugin() {
                 regionGateway = regionGateway,
                 economy = resolveEconomy(settings),
                 menus = menuPlatform,
+                mineLift = mineLift,
             ))
             service = activeService
             activeService.start()
@@ -155,12 +162,6 @@ open class ArcFarmsPlugin : JavaPlugin() {
             requireNotNull(getCommand("arcfarms")).apply {
                 setExecutor(command)
                 tabCompleter = command
-            }
-            val mineLift = runCatching {
-                lifecycle.own(ru.ruscrafting.farms.paper.mine.lift.MineLiftRuntime(this, locale))
-            }.getOrElse { failure ->
-                logger.log(Level.SEVERE, "Mine lift unavailable; inspect its recovery journal", failure)
-                null
             }
             server.pluginManager.registerEvents(ArcFarmsListener(activeService, activeMenu) {
                 mineLift?.ownsTeleport(it) == true

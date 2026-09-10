@@ -18,10 +18,17 @@ class MineConfigTest : FunSpec({
             Files.writeString(root.resolve("config.yml"), source.replace(
                 Regex("(?ms)^mine-zones:.*?(?=^[a-z][a-z-]*:|\\z)"), fixture,
             ))
-            val mine = ArcFarmsConfig.inspect(root).mines.single()
+            val mines = ArcFarmsConfig.inspect(root).mines
+            mines.map { it.id }.toSet() shouldBe setOf("old_shafts", "lab_mine")
+            val mine = mines.single { it.id == "old_shafts" }
             mine.id shouldBe "old_shafts"
             mine.orders.single().incidentTypes.size shouldBe 3
             mine.rewards.experience.amount shouldBe 220
+            val basic = mines.single { it.id == "lab_mine" }
+            basic.miningOnly shouldBe true
+            basic.orders.single().miningRequired shouldBe 100
+            basic.orders.single().miningMaterials shouldBe setOf("COAL_ORE")
+            basic.orders.single().incidentTypes shouldBe listOf(MineIncidentType.CAVE_IN)
         } finally {
             root.toFile().deleteRecursively()
         }

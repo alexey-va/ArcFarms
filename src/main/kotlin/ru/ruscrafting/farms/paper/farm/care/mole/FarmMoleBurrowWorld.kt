@@ -480,24 +480,34 @@ internal class FarmMoleBurrowWorld(
         runtime: FarmRuntime,
         surface: FarmPointPosition,
     ): Pair<FarmMoleBurrowEnsureResult, FarmMoleBurrowScene?> {
-        val existing = scene(
-            runtime.region.world,
-            runtime.settings.id,
-            runtime.state.sequence,
-            FarmHellRiftRoom.BURROW_ID,
-            surface,
-            recoveryRadius(runtime.settings.moleBurrow),
-        )
+        return ensurePreparedScene(runtime.region.world, runtime.settings.id, runtime.state.sequence,
+            FarmHellRiftRoom.BURROW_ID, surface, recoveryRadius(runtime.settings.moleBurrow)) {
+            previewGreenhouseChamber(runtime, surface)
+        }
+    }
+
+    /** Uses the same journal, build budget and restoration path for every temporary worksite room. */
+    fun ensurePreparedScene(
+        world: World,
+        zoneId: String,
+        sequence: Long,
+        sceneId: Int,
+        surface: FarmPointPosition,
+        recoveryRadius: Int,
+        prepare: () -> FarmMoleBurrowScene?,
+    ): Pair<FarmMoleBurrowEnsureResult, FarmMoleBurrowScene?> {
+        val existing = scene(world, zoneId, sequence, sceneId, surface, recoveryRadius)
         if (existing != null) {
             ticket(existing)
             enqueueBuild(existing.records)
             return (if (existing.ready) FarmMoleBurrowEnsureResult.READY else FarmMoleBurrowEnsureResult.BUILDING) to existing
         }
-        if (hasLoadedSceneRecords(runtime.region.world, runtime.settings.id, runtime.state.sequence, FarmHellRiftRoom.BURROW_ID)) {
-            beginRestore(runtime.region.world, runtime.settings.id, runtime.state.sequence)
+        if (hasLoadedSceneRecords(world, zoneId, sequence, sceneId)) {
+            beginRestore(world, zoneId, sequence)
             return FarmMoleBurrowEnsureResult.BUILDING to null
         }
-        val plan = previewGreenhouseChamber(runtime, surface) ?: return FarmMoleBurrowEnsureResult.UNAVAILABLE to null
+        val plan = prepare() ?: return FarmMoleBurrowEnsureResult.UNAVAILABLE to null
+        require(plan.world === world && plan.zoneId == zoneId && plan.sequence == sequence && plan.burrowId == sceneId)
         if (!commit(listOf(plan))) return FarmMoleBurrowEnsureResult.UNAVAILABLE to null
         scenes[SceneKey(plan.world.name, plan.zoneId, plan.sequence, plan.burrowId)] = plan
         ticket(plan)
@@ -533,6 +543,11 @@ internal class FarmMoleBurrowWorld(
         // maintenance from briefly rebuilding a generic bed before the exact
         // journalled crop age and farmland moisture are applied.
         enqueueRestore(records.sortedByDescending(FarmMoleBurrowJournalRecord::y))
+    }
+
+    fun hasPendingBlock(location: Location): Boolean {
+        val key = RecordKey(location.world.name, location.blockX, location.blockY, location.blockZ)
+        return key in queuedBuilds || key in queuedRestores
     }
 
     fun restoring(zoneId: String): Boolean = restoreQueue.any { it.zoneId == zoneId }

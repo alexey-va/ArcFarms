@@ -1141,6 +1141,133 @@ mine:
     creature_nest: '<color:#f2fff7>Defeat the raiders in the worksite</color>'
     power_failure: '<color:#f2fff7>Activate the highlighted power nodes in order</color>'
     lost_miner: '<color:#f2fff7>Find the miner, click them, and escort them to the exit</color>'
+  events:
+    common:
+      entry: '<color:#f2fff7>Right-click the entrance marker to enter the event room</color>'
+      building: '<color:#f2fff7>The event room is being prepared — wait for a safe entry</color>'
+      exit: '<color:#f2fff7>Exit: <destination></color>'
+      return: '<color:#f2fff7>Return to <floor></color>'
+      floor: '<color:#f2fff7>Floor: <floor></color>'
+      destination: '<color:#f2fff7>Carry it to <destination></color>'
+      stage-progress: '<gray>Stage <stage>/<stages> ·</gray> <white><done>/<total></white>'
+      maintenance: '<color:#b8c8c0>The lift is landing safely and undergoing repairs</color>'
+      wrong-order: '<color:#ffad42>Activate the nearest highlighted mechanism first</color>'
+      carrying: '<color:#f2fff7>Carry the item to <destination></color>'
+    creature_nest:
+      title: '<color:#ff5f6d><bold>Mine Invasion</bold></color>'
+      subtitle: '<color:#f2fff7>Hold the line and seal the nest</color>'
+      hint: '<color:#f2fff7>Defeat the raiders, then break the nest core</color>'
+      stages:
+        defend: '<color:#f2fff7>Defeat the raiders in the chamber</color>'
+        seal: '<color:#f2fff7>Break the nest core</color>'
+    cave_in:
+      title: '<color:#ffad42><bold>Cave In</bold></color>'
+      subtitle: '<color:#f2fff7>Clear the collapse and install supports</color>'
+      hint: '<color:#f2fff7>Break the rocks, then right-click the marked support points</color>'
+      stages:
+        clear: '<color:#f2fff7>Break the collapsed rocks with a pickaxe</color>'
+        supports: '<color:#f2fff7>Right-click the marked points to install supports</color>'
+    flooding:
+      title: '<color:#45c8f5><bold>Flooding</bold></color>'
+      subtitle: '<color:#f2fff7>Start the pumps and drain the tunnel</color>'
+      hint: '<color:#f2fff7>Right-click the pumps, then keep the drain open</color>'
+      stages:
+        pumps: '<color:#f2fff7>Right-click the highlighted pumps</color>'
+        drain: '<color:#f2fff7>Right-click the drain and stay nearby for 20 seconds</color>'
+    gas_leak:
+      title: '<color:#d7e66b><bold>Gas Leak</bold></color>'
+      subtitle: '<color:#f2fff7>Open ventilation and clear the air</color>'
+      hint: '<color:#f2fff7>Right-click the grates in the shown order</color>'
+      stages:
+        vents: '<color:#f2fff7>Open the ventilation grates in order</color>'
+        ventilation: '<color:#f2fff7>Right-click the fan and stay nearby for 15 seconds</color>'
+    power_failure:
+      title: '<color:#ffc857><bold>Power Failure</bold></color>'
+      subtitle: '<color:#f2fff7>Replace the fuse and restore the circuit</color>'
+      hint: '<color:#f2fff7>Break the damaged fuse, then activate the nodes in order</color>'
+      stages:
+        fuse: '<color:#f2fff7>Break the damaged fuse</color>'
+        circuits: '<color:#f2fff7>Right-click the power nodes in order</color>'
+    injured_miner:
+      title: '<color:#ffad42><bold>Injured Miner</bold></color>'
+      subtitle: '<color:#f2fff7>Free the miner and carry them to another floor</color>'
+      hint: '<color:#f2fff7>Right-click the jacks, pick up the stretcher, and carry it to the medic</color>'
+      stages:
+        jacks: '<color:#f2fff7>Right-click the jacks to free the miner</color>'
+        stretcher: '<color:#f2fff7>Carry the stretcher to the medic at <destination></color>'
+    runaway_cart:
+      title: '<color:#ff5f6d><bold>Runaway Cart</bold></color>'
+      subtitle: '<color:#f2fff7>Switch the track, brake the cart, and escort it to another floor</color>'
+      hint: '<color:#f2fff7>Steer the cart through the switches, right-click the brake, then escort it to <destination></color>'
+      stages:
+        switches: '<color:#f2fff7>Switch the track to steer the cart</color>'
+        brake: '<color:#f2fff7>Right-click the brake lever</color>'
+        escort: '<color:#f2fff7>Escort the cart to <destination></color>'
+    convoy:
+      title: '<color:#45c8f5><bold>Mine Convoy</bold></color>'
+      subtitle: '<color:#f2fff7>Repair the track and escort the cart to another floor</color>'
+      hint: '<color:#f2fff7>Break the damaged rails, then escort the convoy to <destination></color>'
+      stages:
+        track: '<color:#f2fff7>Break the damaged rail sections</color>'
+        escort: '<color:#f2fff7>Escort the cart to <destination></color>'
+    lift_breakdown:
+      title: '<color:#c778ff><bold>Lift Breakdown</bold></color>'
+      subtitle: '<color:#f2fff7>Open the exit, bring parts, and test the lift</color>'
+      hint: '<color:#f2fff7>Right-click the exit, carry parts to the platform, and run the test</color>'
+      stages:
+        exit: '<color:#f2fff7>Right-click the emergency exit lever</color>'
+        parts: '<color:#f2fff7>Carry the parts to the lift at <destination></color>'
+        test: '<color:#f2fff7>Right-click the test nodes in order</color>'
+    bat_swarm:
+      title: '<color:#9a8cff><bold>Bat Swarm</bold></color>'
+      subtitle: '<color:#f2fff7>Herd the bats through the exit and seal the gap</color>'
+      hint: '<color:#f2fff7>Herd the bats with lamp light, then right-click the gate</color>'
+      stages:
+        flight: '<color:#f2fff7>Herd the bats with lamps to the safe passage</color>'
+        seal: '<color:#f2fff7>Right-click the gate to seal the passage</color>'
+    fungal_bloom:
+      title: '<color:#c778ff><bold>Fungal Bloom</bold></color>'
+      subtitle: '<color:#f2fff7>Collect samples and destroy the spores</color>'
+      hint: '<color:#f2fff7>Break the marked mushrooms, then clear the spore clusters</color>'
+      stages:
+        samples: '<color:#f2fff7>Break the red mushrooms for samples</color>'
+        spores: '<color:#f2fff7>Break the brown mushroom spore clusters</color>'
+    root_invasion:
+      title: '<color:#55d98b><bold>Root Invasion</bold></color>'
+      subtitle: '<color:#f2fff7>Cut through the roots and destroy the heart</color>'
+      hint: '<color:#f2fff7>Break the roots around the passage, then reach the heart</color>'
+      stages:
+        roots: '<color:#f2fff7>Break the highlighted roots</color>'
+        heart: '<color:#f2fff7>Break the root heart</color>'
+    lava_breach:
+      title: '<color:#ff5f6d><bold>Lava Breach</bold></color>'
+      subtitle: '<color:#f2fff7>Carry barriers and close the sluices</color>'
+      hint: '<color:#f2fff7>Carry stone barriers to the breach, then close the sluices in order</color>'
+      stages:
+        barriers: '<color:#f2fff7>Carry barriers to the breach</color>'
+        sluices: '<color:#f2fff7>Right-click the sluices in order</color>'
+    ancient_door:
+      title: '<color:#ffc857><bold>Ancient Door</bold></color>'
+      subtitle: '<color:#f2fff7>Carry the gears and assemble the lock</color>'
+      hint: '<color:#f2fff7>Carry gears to the door, then activate the lock in order</color>'
+      stages:
+        gears: '<color:#f2fff7>Carry the gears to the ancient door</color>'
+        lock: '<color:#f2fff7>Right-click the lock parts in order</color>'
+    old_warehouse:
+      title: '<color:#b8c8c0><bold>Old Warehouse</bold></color>'
+      subtitle: '<color:#f2fff7>Carry the crates and start the winch</color>'
+      hint: '<color:#f2fff7>Carry fragile crates to the platforms, then right-click the winch</color>'
+      stages:
+        crates: '<color:#f2fff7>Carry crates to the marked platforms</color>'
+        winch: '<color:#f2fff7>Right-click the winch lever</color>'
+    drill_trial:
+      title: '<color:#45c8f5><bold>Drill Trial</bold></color>'
+      subtitle: '<color:#f2fff7>Cool the drill, hold the controls, and break through</color>'
+      hint: '<color:#f2fff7>Carry coolant to the drill, sustain the controls, and finish the breakthrough</color>'
+      stages:
+        coolant: '<color:#f2fff7>Carry coolant to the drilling rig</color>'
+        controls: '<color:#f2fff7>Right-click the controls and stay nearby for 20 seconds</color>'
+        breakthrough: '<color:#f2fff7>Break the face after cooling is complete</color>'
 shift:
   winner: '<color:#ffc857>Top contribution</color> <color:#707a76>•</color> <white><player></white> <color:#f2fff7>— <amount></color>'
 care:

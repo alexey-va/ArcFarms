@@ -32,9 +32,12 @@ internal class MineIncidentSet(
     private val creatureNest: MineCreatureNestIncident,
     private val lostMiner: MineLostMinerIncident,
     private val scheduler: MineIncidentScheduler,
+    private val scenarios: ru.ruscrafting.farms.paper.mine.incident.scenario.MineScenarioController? = null,
 ) {
     fun tick(runtime: MineRuntime, now: Long, onlineParticipants: Int) {
         scheduler.tick(runtime, now, onlineParticipants)
+        scenarios?.tick(runtime, now)
+        if (runtime.state.incident?.scenarioPlacement != null) return
         caveIn.reconcile(runtime)
         trackDamage.reconcile(runtime)
         flooding.reconcile(runtime)
@@ -43,9 +46,11 @@ internal class MineIncidentSet(
         lostMiner.reconcileMissing(runtime)
     }
 
-    fun onInteract(event: PlayerInteractEvent): Boolean =
-        caveIn.onInteract(event) || trackDamage.onInteract(event) || gasLeak.onInteract(event) ||
+    fun onInteract(event: PlayerInteractEvent): Boolean {
+        if (registry.at(event.clickedBlock?.location ?: event.player.location)?.state?.incident?.scenarioPlacement != null) return false
+        return caveIn.onInteract(event) || trackDamage.onInteract(event) || gasLeak.onInteract(event) ||
             crystalResonance.onInteract(event) || flooding.onInteract(event) || powerFailure.onInteract(event)
+    }
 
     fun onMove(to: Location, player: Player): Boolean = lostMiner.onMove(to, player)
 
@@ -70,6 +75,10 @@ internal class MineIncidentSet(
     }
 
     fun reconcileChunk(runtime: MineRuntime, chunk: Chunk) {
+        if (runtime.state.incident?.scenarioPlacement != null) {
+            scenarios?.reconcileChunk(runtime, chunk)
+            return
+        }
         creatureNest.reconcileChunk(runtime, chunk)
         lostMiner.reconcileChunk(runtime, chunk)
     }

@@ -24,8 +24,12 @@ internal class MineIncidentCoordinator(
         required: Int,
         now: Long,
         candidates: List<ObjectiveTargetCandidate> = emptyList(),
+        placement: ru.ruscrafting.farms.domain.MineScenarioPlacement? = null,
     ): Boolean {
-        val started = MineShiftEngine.startIncident(runtime.state, type, required, now)
+        val initial = MineShiftEngine.startIncident(runtime.state, type, required, now)
+        val started = if (placement == null) initial else initial.copy(state = initial.state.copy(
+            incident = initial.state.incident?.copy(scenarioPlacement = placement),
+        ))
         if (!started.accepted) return false
         val state = if (candidates.isEmpty()) started.state else started.state.copy(
             objective = ObjectiveTargetPool.plan(
@@ -55,15 +59,31 @@ internal class MineIncidentCoordinator(
         if (!worked.accepted) return worked
         val incident = worked.state.incident
         val result = if (incident != null && incident.progress >= incident.required) {
-            val resolved = MineShiftEngine.resolveIncident(worked.state)
-            EngineResult(
-                resolved.state,
-                accepted = resolved.accepted,
-                contribution = worked.contribution,
-                events = worked.events + resolved.events,
-            )
+            endIncident(runtime, worked, player, aborted = false)
         } else worked
-        transitions.apply(runtime, result, player)
+        if (incident == null || incident.progress < incident.required) transitions.apply(runtime, result, player)
+        return result
+    }
+
+    fun abort(runtime: MineRuntime): Boolean {
+        val current = EngineResult<MineShiftState, MineShiftEvent>(runtime.state, accepted = true)
+        val result = endIncident(runtime, current, null, aborted = true)
+        return result.accepted
+    }
+
+    private fun endIncident(
+        runtime: MineRuntime,
+        source: EngineResult<MineShiftState, MineShiftEvent>,
+        actor: Player?,
+        aborted: Boolean,
+    ): EngineResult<MineShiftState, MineShiftEvent> {
+        val ended = if (aborted) MineShiftEngine.abortIncident(source.state) else MineShiftEngine.resolveIncident(source.state)
+        if (!ended.accepted) return ended
+        val result = ended.copy(
+            contribution = source.contribution,
+            events = source.events + ended.events,
+        )
+        transitions.apply(runtime, result, actor)
         return result
     }
 

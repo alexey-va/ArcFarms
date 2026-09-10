@@ -5,6 +5,9 @@ import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.longs.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
+import io.mockk.every
+import io.mockk.mockk
+import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.Location
 import org.bukkit.Material
@@ -14,6 +17,17 @@ import ru.ruscrafting.farms.domain.MineIncidentState
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineShiftEngine
+import ru.ruscrafting.farms.domain.MineScenarioPlacement
+import ru.ruscrafting.farms.domain.worksite.WorksitePosition
+import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
+import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetState
+import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus
+import ru.ruscrafting.farms.domain.worksite.WorksiteObjectiveKey
+import ru.ruscrafting.farms.domain.worksite.WorksiteObjectiveState
+import ru.ruscrafting.farms.config.ArcFarmsLocale
+import ru.ruscrafting.farms.paper.asWorksitePorts
+import ru.ruscrafting.farms.paper.mine.incident.scenario.MineScenarioRooms
+import ru.ruscrafting.farms.paper.mine.presentation.MineGuidanceSource
 import ru.ruscrafting.farms.paper.CuboidRegionGateway
 import ru.ruscrafting.farms.paper.worksite.WorksiteAdminHandler
 
@@ -52,6 +66,83 @@ class MineGuidanceAdminRewardMockBukkitTest : FunSpec({
             )
             plain.serialize(graph.guidance.view(player, runtime).subtitle).length shouldBeGreaterThan 0
         }
+    }
+
+    test("scenario guidance outside its room points to the entrance and exposes stage progress") {
+        val world = paper.server.addSimpleWorld("world")
+        val player = paper.server.addPlayer("ScenarioMiner")
+        player.teleport(Location(world, 4.5, 64.0, 4.5))
+        val graph = testMineComponentGraph(
+            paper.createSimplePlugin("MineScenarioGuidanceTest"), CuboidRegionGateway(), immediateMinePort(),
+            clock = { 1_000L }, journal = ImmediateMineJournal(), random = java.util.Random(4),
+        )
+        graph.module.rebuild(listOf(mineV2Settings()), emptyMap(), 5_000L)
+        val runtime = graph.registry.byId("old_shafts")!!
+        val placement = MineScenarioPlacement(
+            origin = WorksitePosition("world", 20, 64, 20),
+            entrance = WorksitePosition("world", 20, 64, 24),
+            floorId = "old_shafts",
+            destination = WorksitePosition("world", 47, 88, 78),
+            destinationFloorId = "upper",
+        )
+        runtime.state = runtime.state.copy(
+            phase = MinePhase.INCIDENT,
+            incident = MineIncidentState(MineIncidentType.CAVE_IN, required = 3, progress = 1, scenarioPlacement = placement),
+        )
+
+        val view = graph.guidance.view(player, runtime)
+        view.targets.map { it.id } shouldBe listOf("scenario_entrance")
+        view.targets.single().position shouldBe Location(world, 20.5, 64.35, 24.5)
+        view.barProgress shouldBe (1f / 3f)
+        view.sidebarRows.size shouldBe 4
+    }
+
+    test("leased multi-floor carry guidance keeps its destination and passes placeholders to the locale") {
+        val world = paper.server.addSimpleWorld("world")
+        val player = paper.server.addPlayer("CarryMiner")
+        player.teleport(Location(world, 30.5, 88.0, 30.5))
+        val graph = testMineComponentGraph(
+            paper.createSimplePlugin("MineScenarioCarryGuidanceTest"), CuboidRegionGateway(), immediateMinePort(),
+            clock = { 1_000L }, journal = ImmediateMineJournal(), random = java.util.Random(4),
+        )
+        graph.module.rebuild(listOf(mineV2Settings()), emptyMap(), 5_000L)
+        val runtime = graph.registry.byId("old_shafts")!!
+        val destination = WorksitePosition("world", 47, 88, 78)
+        val placement = MineScenarioPlacement(
+            origin = WorksitePosition("world", 20, 64, 20),
+            entrance = WorksitePosition("world", 20, 64, 24),
+            floorId = "old_shafts",
+            destination = destination,
+            destinationFloorId = "upper",
+        )
+        runtime.state = runtime.state.copy(
+            phase = MinePhase.INCIDENT,
+            incident = MineIncidentState(MineIncidentType.INJURED_MINER, required = 2, progress = 1, scenarioPlacement = placement),
+            objective = WorksiteObjectiveState(
+                WorksiteObjectiveKey("old_shafts", "rescue", 1), 1,
+                listOf(ObjectiveTargetState("stretcher", WorksitePosition("world", 21, 64, 21), ObjectiveTargetRole("stretcher"), 0,
+                    ObjectiveTargetStatus.LEASED, player.uniqueId)),
+            ),
+        )
+        val rooms = mockk<MineScenarioRooms>(relaxed = true) {
+            every { at(any()) } returns null
+        }
+        val port = immediateMinePort()
+        val locale = mockk<ArcFarmsLocale>(relaxed = true) {
+            every { text(any()) } answers { Component.text(firstArg<Any?>()?.toString().orEmpty()) }
+            every { renderPath(any(), any(), any()) } answers {
+                val values = thirdArg<Map<String, Component>>()
+                Component.text(firstArg<String>() + values.entries.joinToString("|") { "${it.key}=${PlainTextComponentSerializer.plainText().serialize(it.value)}" })
+            }
+        }
+        val source = MineGuidanceSource(graph.registry, port.asWorksitePorts().audience, locale, rooms = rooms)
+
+        val view = requireNotNull(source.view(player.uniqueId))
+        view.targets.single().position.blockX shouldBe destination.x
+        view.targets.single().position.blockY shouldBe destination.y
+        view.targets.single().position.blockZ shouldBe destination.z
+        PlainTextComponentSerializer.plainText().serialize(view.subtitle).contains("destination=mine-lift.floors.upper") shouldBe true
+        source.participants().map { it.uniqueId } shouldBe listOf(player.uniqueId)
     }
 
     test("mine admin boundary reports status incidents and bounded reindex without leaking runtimes") {

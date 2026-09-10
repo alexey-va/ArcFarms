@@ -4,7 +4,7 @@ import java.util.UUID
 
 enum class MineShiftEvent {
     STARTED, PROGRESS, PHASE_CHANGED, INCIDENT_STARTED, INCIDENT_RESOLVED,
-    HAZARD_STARTED, HAZARD_RESOLVED, EXTRACTION_STARTED, COMPLETED, RESET,
+    INCIDENT_ABORTED, HAZARD_STARTED, HAZARD_RESOLVED, EXTRACTION_STARTED, COMPLETED, RESET,
 }
 
 enum class MinePhase {
@@ -16,13 +16,15 @@ enum class MinePhase {
 
 enum class MineIncidentType {
     CAVE_IN, GAS_LEAK, FLOODING, TRACK_DAMAGE, CRYSTAL_RESONANCE, CREATURE_NEST, POWER_FAILURE, LOST_MINER,
+    INJURED_MINER, RUNAWAY_CART, CONVOY, LIFT_BREAKDOWN, BAT_SWARM, FUNGAL_BLOOM,
+    ROOT_INVASION, LAVA_BREACH, ANCIENT_DOOR, OLD_WAREHOUSE, DRILL_TRIAL,
 }
 
 data class MineOrder(val id: String, val incidents: List<MineIncidentType>) {
     init {
         require(DomainIdentifiers.isOrder(id)) { "Invalid mine order id: $id" }
-        require(incidents.size in 1..8 && incidents.distinct().size == incidents.size) {
-            "Mine order must contain one to eight distinct incidents"
+        require(incidents.size in 1..MineIncidentType.entries.size && incidents.distinct().size == incidents.size) {
+            "Mine order must contain a non-empty distinct incident pool"
         }
     }
 }
@@ -58,10 +60,12 @@ data class MineIncidentState(
     val objectiveNonce: Long = 0L,
     val startedAt: Long = 0L,
     val serviceLeases: Map<String, UUID> = emptyMap(),
+    val scenarioPlacement: MineScenarioPlacement? = null,
+    val scenarioStep: Int = 0,
 ) {
     init {
         require(required in 1..100_000 && progress in 0..required)
-        require(objectiveNonce >= 0L && startedAt >= 0L)
+        require(objectiveNonce >= 0L && startedAt >= 0L && scenarioStep >= 0)
     }
 }
 
@@ -251,19 +255,32 @@ object MineShiftEngine {
         val incident = current.incident ?: return EngineResult(current, false)
         val resume = current.resumePhase ?: return EngineResult(current, false)
         if (current.phase != MinePhase.INCIDENT || incident.progress < incident.required) return EngineResult(current, false)
-        return EngineResult(
-            current.copy(
-                phase = resume,
-                resumePhase = null,
-                incident = null,
-                incidentCursor = current.incidentCursor + 1,
-                objective = current.resumeObjective,
-                resumeObjective = null,
-            ),
-            true,
-            events = listOf(MineShiftEvent.INCIDENT_RESOLVED),
-        )
+        return endIncident(current, resume, MineShiftEvent.INCIDENT_RESOLVED)
     }
+
+    fun abortIncident(current: MineShiftState): EngineResult<MineShiftState, MineShiftEvent> {
+        val incident = current.incident ?: return EngineResult(current, false)
+        val resume = current.resumePhase ?: return EngineResult(current, false)
+        if (current.phase != MinePhase.INCIDENT) return EngineResult(current, false)
+        return endIncident(current, resume, MineShiftEvent.INCIDENT_ABORTED)
+    }
+
+    private fun endIncident(
+        current: MineShiftState,
+        resume: MinePhase,
+        event: MineShiftEvent,
+    ): EngineResult<MineShiftState, MineShiftEvent> = EngineResult(
+        current.copy(
+            phase = resume,
+            resumePhase = null,
+            incident = null,
+            incidentCursor = current.incidentCursor + 1,
+            objective = current.resumeObjective,
+            resumeObjective = null,
+        ),
+        true,
+        events = listOf(event),
+    )
 
     fun extract(
         current: MineShiftState,

@@ -39,6 +39,34 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
 
     afterEach { paper.close() }
 
+    test("prepared worksite scene reuses durable build and exact restoration without a farm runtime") {
+        val controller = FarmMoleBurrowWorld(
+            paper.createSimplePlugin("MineRoomJournalTest"), ArcFarmsDebug({ false }) {},
+            MockBukkitMoleBurrowChunkRetention(), MockBukkitFarmBlockDataDecoder, "mine_event_rooms",
+        )
+        val surface = FarmPointPosition(world.name, 0.5, 65.0, 0.5)
+        val records = (0..2).map { x ->
+            FarmMoleBurrowJournalRecord(world.name, "old_shafts", 9, 1, x, 50, 0,
+                world.getBlockAt(x, 50, 0).blockData.asString, "minecraft:air",
+                when (x) { 0 -> FarmMoleBurrowMarker.START; 2 -> FarmMoleBurrowMarker.LAIR; else -> FarmMoleBurrowMarker.NONE }, 3)
+        }
+        val plan = FarmMoleBurrowScene(world, "old_shafts", 9, 1,
+            org.bukkit.Location(world, 0.5, 65.0, 0.5), org.bukkit.Location(world, 0.5, 50.0, 0.5),
+            org.bukkit.Location(world, 2.5, 50.0, 0.5), records)
+        controller.ensurePreparedScene(world, "old_shafts", 9, 1, surface, 3) { plan }.first shouldBe FarmMoleBurrowEnsureResult.BUILDING
+        world.getBlockAt(0, 50, 0).type shouldBe Material.STONE
+        controller.process(8) { true }
+        plan.ready shouldBe true
+        controller.ensurePreparedScene(world, "old_shafts", 9, 1, surface, 3) {
+            error("An existing journal must be reused")
+        }.first shouldBe FarmMoleBurrowEnsureResult.READY
+        controller.beginRestore(world, "old_shafts", 9)
+        controller.hasPendingBlock(plan.start) shouldBe true
+        controller.process(8) { it.zoneId == "old_shafts" }
+        controller.hasPendingBlock(plan.start) shouldBe false
+        records.forEach { record -> world.getBlockAt(record.x, record.y, record.z).blockData.asString shouldBe record.originalData }
+    }
+
     test("preview finds a bounded underground maze without mutating the world") {
         val burrow = FarmMoleBurrowSettings(
             cells = 8,

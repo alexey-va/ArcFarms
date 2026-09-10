@@ -366,7 +366,7 @@ internal class FarmModule(
     override fun onMove(from: Location, to: Location, player: Player): Boolean =
         events.onMove(PlayerMoveEvent(player, from, to))
 
-    override fun retainOnTeleport(player: Player): Boolean = events.retainOnTeleport(player)
+    override fun retainOnTeleport(player: Player, destination: org.bukkit.Location): Boolean = events.retainOnTeleport(player)
 
     override fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
         if (reason == WorksitePlayerReleaseReason.JOIN_STALE) events.onJoin(player)

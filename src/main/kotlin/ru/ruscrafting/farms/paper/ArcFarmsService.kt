@@ -59,6 +59,7 @@ import ru.ruscrafting.farms.paper.enterprise.SupervisedEnterpriseMoneyTasks
 import ru.ruscrafting.farms.paper.navigation.ActivityTravelService
 import ru.ruscrafting.farms.paper.lumber.LumbermillVersionedModule
 import ru.ruscrafting.farms.paper.mine.MineVersionedModule
+import ru.ruscrafting.farms.paper.mine.lift.MineLiftAccess
 import ru.ruscrafting.farms.paper.worksite.WorksiteEventRouter
 import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantSafety
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
@@ -89,6 +90,7 @@ class ArcFarmsService(
     private val clock: () -> Long = System::currentTimeMillis,
     private val random: RandomGenerator = RandomGenerator.getDefault(),
     private val menus: ArcFarmsMenuPlatform,
+    private val mineLift: MineLiftAccess? = null,
 ) : AutoCloseable {
     @Volatile
     private var settings: ArcFarmsConfig = initialSettings
@@ -152,7 +154,7 @@ class ArcFarmsService(
     )
     private val worksiteRewards = WorksiteRewardGrantService(farm.rewards)
     private val lumbermillModule = LumbermillVersionedModule(plugin, initialSettings.serverId, initialSettings.lumbermills, regionGateway, locale, worksitePorts, clock, lumberJournal, worksiteServiceItems, worksiteRewards)
-    private val mineModule = MineVersionedModule(plugin, initialSettings.serverId, initialSettings.mines, regionGateway, locale, mineJournal, worksitePorts, clock, random, worksiteServiceItems, worksiteRewards)
+    private val mineModule = MineVersionedModule(plugin, initialSettings.serverId, initialSettings.mines, regionGateway, locale, mineJournal, worksitePorts, clock, random, worksiteServiceItems, worksiteRewards, mineLift)
     internal val worksiteAdmins = WorksiteAdminRegistry(listOf(lumbermillModule, mineModule))
     private val worksites = WorksiteModuleRegistry(listOf(farm.module, lumbermillModule, mineModule))
     private val serviceItems = WorksiteServiceItemController(plugin, worksites).also(worksiteServiceItems::bind)
@@ -434,7 +436,11 @@ class ArcFarmsService(
     fun onBlockIgnite(event: BlockIgniteEvent) = farm.events.onBlockIgnite(event)
     fun onBlockSpread(event: BlockSpreadEvent) = farm.events.onBlockSpread(event)
     fun onBlockGrow(event: BlockGrowEvent) = farm.events.onBlockGrow(event)
-    fun onBlockPlace(event: BlockPlaceEvent) = farm.events.onBlockPlace(event)
+    fun onBlockPlace(event: BlockPlaceEvent) {
+        if (worksiteEvents.protectsTemporaryBlock(event.blockPlaced.location)) event.isCancelled = true
+        else farm.events.onBlockPlace(event)
+    }
+    fun protectsTemporaryBlock(location: org.bukkit.Location): Boolean = worksiteEvents.protectsTemporaryBlock(location)
     fun statuses(): List<ActivityStatus> = worksites.statuses()
     fun enterpriseCompany(kind: ActivityKind) = enterprise.companyView(kind)
     fun enterpriseOwnership(kind: ActivityKind, playerId: UUID) = enterprise.ownershipView(kind, playerId)

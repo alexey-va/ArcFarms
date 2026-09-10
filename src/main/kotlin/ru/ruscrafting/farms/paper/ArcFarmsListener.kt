@@ -42,6 +42,31 @@ class ArcFarmsListener(
     private val menu: ArcFarmsMenu,
     private val isInternalTransport: (PlayerTeleportEvent) -> Boolean = { false },
 ) : Listener {
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    fun onTemporaryEntityExplosion(event: org.bukkit.event.entity.EntityExplodeEvent) {
+        event.blockList().removeIf { service.protectsTemporaryBlock(it.location) }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    fun onTemporaryBlockExplosion(event: org.bukkit.event.block.BlockExplodeEvent) {
+        event.blockList().removeIf { service.protectsTemporaryBlock(it.location) }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    fun onTemporaryFluid(event: org.bukkit.event.block.BlockFromToEvent) {
+        if (service.protectsTemporaryBlock(event.block.location) || service.protectsTemporaryBlock(event.toBlock.location)) event.isCancelled = true
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    fun onTemporaryBucket(event: org.bukkit.event.player.PlayerBucketEmptyEvent) {
+        if (service.protectsTemporaryBlock(event.block.location)) event.isCancelled = true
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    fun onTemporaryBucketFill(event: org.bukkit.event.player.PlayerBucketFillEvent) {
+        if (service.protectsTemporaryBlock(event.block.location)) event.isCancelled = true
+    }
+
     @EventHandler(priority = EventPriority.LOWEST)
     fun onChunkLoad(event: ChunkLoadEvent) = service.onChunkLoad(event.chunk)
 
@@ -51,6 +76,7 @@ class ArcFarmsListener(
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onBreakHigh(event: BlockBreakEvent) {
         service.onBreakHigh(event)
+        if (service.protectsTemporaryBlock(event.block.location)) event.isCancelled = true
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -63,10 +89,16 @@ class ArcFarmsListener(
     fun onBlockFade(event: BlockFadeEvent) = service.onBlockFade(event)
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    fun onBlockBurn(event: BlockBurnEvent) = service.onBlockBurn(event)
+    fun onBlockBurn(event: BlockBurnEvent) {
+        if (service.protectsTemporaryBlock(event.block.location)) event.isCancelled = true
+        else service.onBlockBurn(event)
+    }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    fun onBlockIgnite(event: BlockIgniteEvent) = service.onBlockIgnite(event)
+    fun onBlockIgnite(event: BlockIgniteEvent) {
+        if (service.protectsTemporaryBlock(event.block.location)) event.isCancelled = true
+        else service.onBlockIgnite(event)
+    }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     fun onBlockSpread(event: BlockSpreadEvent) = service.onBlockSpread(event)

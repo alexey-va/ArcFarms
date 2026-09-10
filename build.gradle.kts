@@ -5,7 +5,7 @@ plugins {
     jacoco
 }
 group = "ru.ruscrafting"
-version = "0.40.5"
+version = "0.40.6"
 description = "Shared farm, lumbermill, and mine activities for RusCrafting"
 
 val integrationTestSourceSet = sourceSets.create("integrationTest") {
@@ -166,5 +166,8 @@ plugwright {
                 .replace(Regex("region: [^\\n]+"), "bounds:\n      min: [-8, 20, -8]\n      max: [8, 80, 8]")
                 .replace(Regex("station-region: [^\\n]+"), "station-bounds:\n      min: [-8, 20, -8]\n      max: [8, 80, 8]"),
         )
+        if (System.getenv("MINE_LIFT_TEST") == "true") {
+            file("plugins/ArcFarms/modules/mine-lift.yml", projectDir.resolve("src/test/e2e/fixtures/mine-lift.yml"))
+        }
     }
 }

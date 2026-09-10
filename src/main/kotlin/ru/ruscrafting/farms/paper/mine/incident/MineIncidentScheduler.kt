@@ -21,6 +21,7 @@ internal class MineIncidentScheduler(
     private val creatures: MineCreatureNestIncident,
     private val power: MinePowerFailureIncident,
     private val lostMiner: MineLostMinerIncident,
+    private val scenarios: ru.ruscrafting.farms.paper.mine.incident.scenario.MineScenarioController? = null,
 ) {
     private val retryAfter = mutableMapOf<String, Long>()
 
@@ -30,7 +31,7 @@ internal class MineIncidentScheduler(
         if (runtime.settings.miningOnly) {
             if (runtime.state.phase !in setOf(MinePhase.MINING, MinePhase.EXTRACTION) ||
                 runtime.state.mined < (runtime.rules().miningQuota / 2).coerceAtLeast(1)) return false
-        } else if ((PHASE_RANK[runtime.state.phase] ?: return false) < INCIDENT_RANK.getValue(type)) return false
+        } else if ((PHASE_RANK[runtime.state.phase] ?: return false) < (INCIDENT_RANK[type] ?: 0)) return false
         val key = "${runtime.settings.id}:${runtime.state.sequence}:${runtime.state.incidentCursor}"
         if (now < (retryAfter[key] ?: 0L)) return false
         val started = force(runtime, type, now)
@@ -41,7 +42,8 @@ internal class MineIncidentScheduler(
     fun force(runtime: MineRuntime, type: MineIncidentType, now: Long): Boolean {
         if (runtime.state.phase == MinePhase.INCIDENT) return false
         val phaseRank = PHASE_RANK[runtime.state.phase] ?: return false
-        if (!runtime.settings.miningOnly && phaseRank < INCIDENT_RANK.getValue(type)) return false
+        if (!runtime.settings.miningOnly && phaseRank < (INCIDENT_RANK[type] ?: 0)) return false
+        if (scenarios?.supports(type) == true && (runtime.settings.miningOnly || type.ordinal > MineIncidentType.LOST_MINER.ordinal)) return scenarios.start(runtime, type, now)
         return when (type) {
             MineIncidentType.CAVE_IN -> caveIn.start(runtime, runtime.rules().supportsRequired, now)
             MineIncidentType.GAS_LEAK -> gasLeak.start(runtime, 2, now)
@@ -51,6 +53,7 @@ internal class MineIncidentScheduler(
             MineIncidentType.CREATURE_NEST -> creatures.start(runtime, 3, now)
             MineIncidentType.POWER_FAILURE -> power.start(runtime, 2, now)
             MineIncidentType.LOST_MINER -> lostMiner.start(runtime, now)
+            else -> false
         }
     }
 

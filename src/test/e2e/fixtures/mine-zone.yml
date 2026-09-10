@@ -29,3 +29,26 @@ mine-zones:
     enabled: false
   lush_depths:
     enabled: false
+  lab_mine:
+    enabled: true
+    engine-version: 2
+    mining-only: true
+    guidance-radius: 18
+    world: world
+    bounds: {min: [700, 64, 0], max: [711, 69, 11]}
+    permission: arcfarms.e2e.mine
+    cart-quota: 100
+    hazard-trigger: 50
+    supports-required: 1
+    restore-seconds: 60
+    materials: [COAL_ORE:1]
+    temp-material: STONE
+    base-material: COAL_ORE
+    target-multiplier: 2
+    incident-count-min: 1
+    incident-count-max: 1
+    orders:
+      coal_order:
+        phases: {prospecting-required: 1, mining-required: 100, loading-required: 1}
+        mining-materials: [COAL_ORE]
+        incidents: [CAVE_IN]

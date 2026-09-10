@@ -69,9 +69,11 @@ internal class MineModule(
     private val guidance: WorksiteGuidancePresenter,
     internal val admin: MineAdminService,
     private val clock: () -> Long,
+    private val scenarios: ru.ruscrafting.farms.paper.mine.incident.scenario.MineScenarioController?,
 ) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler,
     WorksiteMoveHandler, WorksiteEntityInteractHandler, WorksiteEntityDeathHandler, WorksiteFastVisualHandler,
-    WorksiteParticipantOwner, WorksiteServiceItemOwner, WorksiteGuidanceHandler {
+    WorksiteParticipantOwner, WorksiteServiceItemOwner, WorksiteGuidanceHandler,
+    ru.ruscrafting.farms.paper.WorksiteParticipantRecoveryOwner, ru.ruscrafting.farms.paper.WorksiteTeleportRetention, ru.ruscrafting.farms.paper.WorksiteTemporaryBlockOwner {
     override val kind: ActivityKind = ActivityKind.MINE
     override val zoneCount: Int get() = registry.size
     val pendingBlockCount: Int get() = recovery.pendingCount
@@ -111,6 +113,7 @@ internal class MineModule(
                 extraction.reconcile(runtime)
             }
         }
+        scenarios?.rooms?.process()
         tasks.guarded("mine_v2_recovery") { recovery.processDue(now) }
         tasks.guarded("mine_v2_reindex") { admin.tickReindexes(REINDEX_BLOCKS_PER_TICK) }
     }
@@ -118,18 +121,18 @@ internal class MineModule(
     override fun canAccess(player: Player): Boolean =
         registry.snapshot().any { access.hasAccess(player, it.settings.permission) }
 
-    override fun onBreakHigh(event: BlockBreakEvent): Boolean = mining.onBreakHigh(event)
+    override fun onBreakHigh(event: BlockBreakEvent): Boolean = scenarios?.onBreak(event) == true || mining.onBreakHigh(event)
 
     override fun onInteract(event: PlayerInteractEvent, clicked: Block, player: Player): Boolean =
-        incidents.onInteract(event) ||
+        scenarios?.onInteract(event, clock()) == true || incidents.onInteract(event) ||
             loading.onInteract(event) || prospecting.onInteract(event)
 
     override fun onMove(from: Location, to: Location, player: Player): Boolean =
-        incidents.onMove(to, player) || loading.onMove(to, player) || extraction.onMove(from, to, player)
+        scenarios?.onMove(player, to) == true || incidents.onMove(to, player) || loading.onMove(to, player) || extraction.onMove(from, to, player)
 
-    override fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean = incidents.onInteractEntity(event)
+    override fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean = scenarios?.onInteractEntity(event) == true || incidents.onInteractEntity(event)
 
-    override fun onEntityDeath(event: EntityDeathEvent): Boolean = incidents.onEntityDeath(event)
+    override fun onEntityDeath(event: EntityDeathEvent): Boolean = scenarios?.onDeath(event) == true || incidents.onEntityDeath(event)
 
     override fun updateVisuals() = Unit
 
@@ -137,7 +140,16 @@ internal class MineModule(
 
     override fun emitGuidance() = guidance.emitParticles()
 
+    override fun protectsTemporaryBlock(location: Location): Boolean = scenarios?.rooms?.protects(location) == true
+
+    override fun recoverPlayer(player: Player) { scenarios?.rooms?.travel?.recover(player) }
+
+    override fun retainOnTeleport(player: Player, destination: org.bukkit.Location): Boolean = scenarios?.rooms?.travel?.isAuthorized(player, destination) == true
+
     override fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
+        scenarios?.release(player)
+        if (reason != WorksitePlayerReleaseReason.TELEPORT_OUT) scenarios?.rooms?.travel?.quit(player)
+
         loading.releasePlayer(player, reason)
         incidents.releasePlayer(player.uniqueId)
         guidance.releasePlayer(player)
@@ -160,6 +172,10 @@ internal class MineModule(
             }
             extraction.reconcile(runtime)
         }
+        scenarios?.rooms?.reconcileLoaded { zone, sequence -> registry.byId(zone)?.state?.let {
+            it.sequence == sequence && it.incident?.scenarioPlacement != null
+        } == true }
+        org.bukkit.Bukkit.getOnlinePlayers().forEach(::recoverPlayer)
         recovery.activateLoadedState()
         registry.snapshot().filter { it.settings.miningOnly && it.state.phase == MinePhase.IDLE }.forEach {
             admin.startReindex(it.settings.id)
@@ -167,6 +183,10 @@ internal class MineModule(
     }
 
     override fun reconcileChunk(chunk: Chunk) {
+        scenarios?.rooms?.reconcileChunk(chunk) { zone, sequence -> registry.byId(zone)?.state?.let {
+            it.sequence == sequence && it.incident?.scenarioPlacement != null
+        } == true }
+
         registry.snapshot().filter { it.region.world === chunk.world }.forEach { runtime ->
             index.reconcileChunk(runtime.indexDefinition(), chunk)
         }
@@ -183,6 +203,7 @@ internal class MineModule(
     }
 
     override fun cleanup(reason: String) {
+        scenarios?.close()
         recovery.cleanup(reason)
         loading.cleanup()
         extraction.cleanup()

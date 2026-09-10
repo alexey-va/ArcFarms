@@ -20,6 +20,7 @@ import ru.ruscrafting.farms.paper.WorksiteModule
 import ru.ruscrafting.farms.paper.WorksiteModuleRegistry
 import ru.ruscrafting.farms.paper.WorksitePlayerInteractHandler
 import ru.ruscrafting.farms.paper.WorksiteTeleportRetention
+import ru.ruscrafting.farms.paper.WorksiteParticipantRecoveryOwner
 
 class WorksiteEventRouterMockBukkitTest : FunSpec({
     lateinit var paper: MockBukkitTestRuntime
@@ -130,6 +131,17 @@ class WorksiteEventRouterMockBukkitTest : FunSpec({
 
         releases shouldBe emptyList()
     }
+
+    test("join releases stale participation before requesting durable recovery") {
+        val order = mutableListOf<String>()
+        val participant = RoutingModule(ActivityKind.MINE, release = { order += "release:$it" }, recover = { order += "recover" })
+        val router = router(paper, WorksiteModuleRegistry(listOf(participant)))
+        val player = paper.server.addPlayer("ReturningMiner")
+
+        router.onJoin(player)
+
+        order shouldContainExactly listOf("release:JOIN_STALE", "recover")
+    }
 })
 
 private fun router(
@@ -150,8 +162,9 @@ private class RoutingModule(
     private val handlesInteraction: Boolean = false,
     private val retainTeleport: Boolean = false,
     private val release: (WorksitePlayerReleaseReason) -> Unit = {},
+    private val recover: (Player) -> Unit = {},
 ) : WorksiteModule<Any>, WorksiteBlockBreakHandler, WorksitePlayerInteractHandler, WorksiteParticipantOwner,
-    WorksiteTeleportRetention {
+    WorksiteTeleportRetention, WorksiteParticipantRecoveryOwner {
     override val zoneCount: Int = 1
     var breakCalls: Int = 0
     var interactionCalls: Int = 0
@@ -171,7 +184,9 @@ private class RoutingModule(
         return handlesInteraction
     }
 
-    override fun retainOnTeleport(player: Player): Boolean = retainTeleport
+    override fun retainOnTeleport(player: Player, destination: org.bukkit.Location): Boolean = retainTeleport
 
     override fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) = release(reason)
+
+    override fun recoverPlayer(player: Player) = recover(player)
 }

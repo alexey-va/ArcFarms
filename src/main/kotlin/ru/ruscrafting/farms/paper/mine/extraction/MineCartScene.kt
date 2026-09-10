@@ -27,15 +27,19 @@ internal interface MineCartEffects {
 }
 
 /** Keeps the active extraction scene stable while applying live visual configuration on every reconcile. */
-internal class PaperMineCartEffects(private val plugin: Plugin) : MineCartEffects {
+internal class PaperMineCartEffects(
+    private val plugin: Plugin,
+    namespace: String = "mine_cart_zone",
+    private val visualOverride: MineCartVisualSettings? = null,
+) : MineCartEffects {
     private val displays = mutableMapOf<String, UUID>()
     private val interactions = mutableMapOf<String, UUID>()
     private val positions = mutableMapOf<String, WorksitePosition>()
-    private val zoneKey = NamespacedKey(plugin, "mine_cart_zone")
+    private val zoneKey = NamespacedKey(plugin, namespace)
 
     override fun show(runtime: MineRuntime, position: WorksitePosition, yaw: Float) {
         val world = Bukkit.getWorld(position.world) ?: return
-        val visual = runtime.settings.cartVisual
+        val visual = visualOverride ?: runtime.settings.cartVisual
         val interactionLocation = Location(world, position.x + 0.5, position.y + 1.0, position.z + 0.5, yaw, 0f)
         val displayLocation = interactionLocation.clone().add(0.0, visual.yOffset, 0.0)
         val display = displays[runtime.settings.id]?.let(Bukkit::getEntity) as? ItemDisplay
