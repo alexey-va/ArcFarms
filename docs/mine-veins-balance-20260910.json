@@ -1,0 +1,110 @@
+{
+  "version": 1,
+  "title": "Mine deposit throughput sensitivity",
+  "assumptions": [
+    "1 hour per player day; before 1/2/4 and after 2/4/8 orders/hour are unmeasured assumptions",
+    "No direct vault or tokens; raw mined drops separate; SELL and job eligibility unchanged"
+  ],
+  "participants": [
+    10,
+    25,
+    50
+  ],
+  "currencies": {
+    "xp": {
+      "minor_per_unit": 1,
+      "disposable_per_player_day": {
+        "before": [
+          "0",
+          "0",
+          "0"
+        ],
+        "after": [
+          "0",
+          "0",
+          "0"
+        ]
+      },
+      "flows": [
+        {
+          "id": "mine_completion",
+          "kind": "item",
+          "source": "economy-inventory.md mine completion",
+          "basis": "Assumed 1 active hour/day; throughput sensitivity, not telemetry",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "220",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              1,
+              2,
+              4
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "220",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              2,
+              4,
+              8
+            ]
+          }
+        }
+      ]
+    },
+    "iron_ingot": {
+      "minor_per_unit": 1,
+      "disposable_per_player_day": {
+        "before": [
+          "0",
+          "0",
+          "0"
+        ],
+        "after": [
+          "0",
+          "0",
+          "0"
+        ]
+      },
+      "flows": [
+        {
+          "id": "mine_completion",
+          "kind": "item",
+          "source": "economy-inventory.md mine completion",
+          "basis": "Assumed 1 active hour/day; throughput sensitivity, not telemetry",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "4",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              1,
+              2,
+              4
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "4",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              2,
+              4,
+              8
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "prices": []
+}

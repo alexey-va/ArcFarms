@@ -108,6 +108,7 @@ internal class MineComponentGraph(
     ) { runtime, player ->
         locale?.renderPath("route.mine.${runtime.settings.id}", player) ?: Component.text(runtime.settings.id)
     }
+    val veins = ru.ruscrafting.farms.paper.mine.mining.MineVeinController(index, recovery, ports.state, clock)
     val mining = MineMiningController(
         registry, index, recovery, transitions, ports.access, ports.audience, ports.state, clock, random, blockEffects, loading::begin,
     )
@@ -122,7 +123,7 @@ internal class MineComponentGraph(
     )
     val module = MineModule(
         regions, ports.access, ports.audience, ports.tasks, transitions, registry, recovery, index, tickets, prospecting, mining, loading, extraction, cartScene,
-        incidentSet, guidancePresenter, admin, clock, scenarios,
+        incidentSet, guidancePresenter, admin, clock, scenarios, veins,
     )
 
     internal val mutableRuntimeCollectionCount: Int = 1

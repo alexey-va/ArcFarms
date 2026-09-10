@@ -91,6 +91,31 @@ class MineBasicCycleMockBukkitTest : FunSpec({
         graph.registry.byId(settings.id)!!.state.mined shouldBe 2
     }
 
+    test("decorative walls receive a connected order deposit and do not exceed the deficit") {
+        val world = paper.server.addSimpleWorld("world")
+        val player = paper.server.addPlayer("WallMiner")
+        player.teleport(Location(world, 5.5, 64.0, 5.5))
+        val original = miningOnlySettings()
+        val settings = original.copy(orders = original.orders.map {
+            it.copy(miningRequired = 16, miningMaterials = setOf("IRON_ORE"))
+        })
+        val graph = graph(paper, settings)
+        val runtime = graph.registry.byId(settings.id)!!
+        val wall = (2..5).flatMap { x -> (64..67).map { y ->
+            world.getBlockAt(x, y, 2).also { it.type = if (x % 2 == 0) Material.ORANGE_TERRACOTTA else Material.SMOOTH_SANDSTONE }
+        } }
+        graph.index.replaceZone(MineIndexDefinition(settings.id, runtime.region, setOf(Material.STONE, Material.IRON_ORE)),
+            listOf(world.getChunkAt(0, 0)), wall.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.SUPPORT)) })
+        graph.module.tick(1_000L)
+        runtime.state.phase shouldBe MinePhase.MINING
+        wall.count { it.type == Material.IRON_ORE } shouldBe 16
+        wall.forEach { graph.index.contains(settings.id, it, MineAnchorRole.MINEABLE) shouldBe true }
+        graph.recovery.processDue(5_000L)
+        graph.veins.tick(runtime, 6_000L)
+        wall.count { it.type == Material.IRON_ORE } shouldBe 16
+        runtime.state.mined shouldBe 0
+    }
+
     test("startup validates the migrated legacy order before building the ordinary resource runtime") {
         paper.server.addSimpleWorld("world")
         val settings = miningOnlySettings()

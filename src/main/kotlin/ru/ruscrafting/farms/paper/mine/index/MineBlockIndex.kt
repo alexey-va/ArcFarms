@@ -68,7 +68,7 @@ internal class MineBlockIndex(private val plugin: Plugin) {
                 val block = chunk.world.getBlockAt(position.x, position.y, position.z)
                 if (!definition.region.contains(block.location)) return@mapNotNull null
                 val valid = MineAnchorClassifier.classify(block, definition.mineable, definition.railMaterials)
-                    .intersect(target.roles)
+
                 target.copy(roles = valid).takeIf { valid.isNotEmpty() }
             }
             .toSet()
@@ -88,6 +88,17 @@ internal class MineBlockIndex(private val plugin: Plugin) {
             if (encoded.isEmpty()) chunk.persistentDataContainer.remove(key(definition.zoneId))
             else chunk.persistentDataContainer.set(key(definition.zoneId), PersistentDataType.STRING, encoded)
         }
+    }
+
+    fun refreshBlock(definition: MineIndexDefinition, block: org.bukkit.block.Block) {
+        val chunk = block.chunk
+        val position = WorksitePosition(block.world.name, block.x, block.y, block.z)
+        val current = targetsByZone.getOrPut(definition.zoneId, ::linkedSetOf)
+        current.removeIf { it.position == position }
+        val roles = MineAnchorClassifier.classify(block, definition.mineable, definition.railMaterials)
+        if (roles.isNotEmpty()) current += MineIndexedTarget(position, roles)
+        chunk.persistentDataContainer.set(key(definition.zoneId), PersistentDataType.STRING,
+            encode(current.filter { (it.position.x shr 4) == chunk.x && (it.position.z shr 4) == chunk.z }))
     }
 
     fun clear() = targetsByZone.clear()

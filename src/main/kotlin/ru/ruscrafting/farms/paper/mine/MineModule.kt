@@ -70,6 +70,7 @@ internal class MineModule(
     internal val admin: MineAdminService,
     private val clock: () -> Long,
     private val scenarios: ru.ruscrafting.farms.paper.mine.incident.scenario.MineScenarioController?,
+    private val veins: ru.ruscrafting.farms.paper.mine.mining.MineVeinController,
 ) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler,
     WorksiteMoveHandler, WorksiteEntityInteractHandler, WorksiteEntityDeathHandler, WorksiteFastVisualHandler,
     WorksiteParticipantOwner, WorksiteServiceItemOwner, WorksiteGuidanceHandler,
@@ -106,6 +107,7 @@ internal class MineModule(
                 if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.IDLE) {
                     participants.firstOrNull()?.let { prospecting.autoStart(runtime, it) }
                 }
+                if (participants.isNotEmpty()) veins.tick(runtime, now)
                 incidents.tick(runtime, now, participants.size)
                 participants.firstOrNull { it.uniqueId in runtime.state.contributors }?.let {
                     extraction.completeMiningOrder(runtime, it)

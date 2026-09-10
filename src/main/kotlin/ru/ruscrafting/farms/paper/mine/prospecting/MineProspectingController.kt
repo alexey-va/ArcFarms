@@ -81,7 +81,8 @@ internal class MineProspectingController(
     fun autoStart(runtime: MineRuntime, player: org.bukkit.entity.Player): Boolean {
         if (!runtime.settings.miningOnly || runtime.state.phase != MinePhase.IDLE ||
             !recovery.canStart(runtime.settings.id) ||
-            index.loadedTargets(runtime.settings.id, MineAnchorRole.MINEABLE).isEmpty()) return false
+            (index.loadedTargets(runtime.settings.id, MineAnchorRole.MINEABLE).isEmpty() &&
+                index.loadedTargets(runtime.settings.id, MineAnchorRole.SUPPORT).isEmpty())) return false
         return ensureStarted(runtime, player)
     }
 

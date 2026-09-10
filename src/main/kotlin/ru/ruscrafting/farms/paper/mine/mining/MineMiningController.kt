@@ -133,7 +133,6 @@ internal class MineMiningController(
 
     private fun remind(event: BlockBreakEvent, key: MessageKey) {
         audience.sendActionBar(event.player, key)
-        audience.showScreenTitle(event.player, key, scope = "mine:${key.path}")
     }
 
     private fun org.bukkit.block.Block.position() = WorksitePosition(world.name, x, y, z)

@@ -61,6 +61,7 @@ internal class MineGuidanceSource(
             done.toFloat() / total.coerceAtLeast(1),
             if (runtime.state.phase == MinePhase.INCIDENT) BossBar.Color.RED else BossBar.Color.BLUE,
             targets(player, runtime),
+            quietProgress = runtime.settings.miningOnly,
             sidebarRows = listOf(
                 render("route.mine.${runtime.settings.id}", player),
                 render("mine.guidance.$action", player, values),

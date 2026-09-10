@@ -89,6 +89,28 @@ class WorksiteGuidancePresenterMockBukkitTest : FunSpec({
         verify(exactly = 3) { audience.showScreenTitle(player, view.title, view.subtitle) }
     }
 
+    test("quiet mining updates HUD without repeating progress or idle titles") {
+        val audience = mockk<WorksiteAudiencePort>(relaxed = true)
+        val access = mockk<WorksiteAccessPort>()
+        every { access.isAdminEditing(player) } returns false
+        var view = basicView().copy(quietProgress = true)
+        val source = object : WorksiteGuidanceSource {
+            override fun participants() = listOf(player)
+            override fun view(playerId: UUID) = view
+        }
+        val presenter = WorksiteGuidancePresenter(audience, access, source)
+        presenter.updateHud(1_000L)
+        repeat(3) {
+            view = view.copy(progressVersion = view.progressVersion + 1)
+            presenter.updateHud(20_000L * (it + 1))
+        }
+        presenter.updateHud(100_000L)
+        verify(exactly = 1) { audience.showScreenTitle(player, any<Component>(), any<Component>()) }
+        view = view.copy(progressVersion = 10, subtitle = Component.text("New order"))
+        presenter.updateHud(101_000L)
+        verify(exactly = 2) { audience.showScreenTitle(player, any<Component>(), any<Component>()) }
+    }
+
     test("release forgets the session and removes every player worksite bar") {
         val audience = mockk<WorksiteAudiencePort>(relaxed = true)
         val access = mockk<WorksiteAccessPort>()

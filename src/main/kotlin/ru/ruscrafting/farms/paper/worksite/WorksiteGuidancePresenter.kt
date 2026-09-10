@@ -44,13 +44,13 @@ internal class WorksiteGuidancePresenter(
                 expected,
             )
             audience.updateSidebar(player, view.runtimeKey, view.title, view.sidebarRows)
-            if (changed) {
+            if (changed && (!view.quietProgress || previous == null || previous.runtimeKey != view.runtimeKey || previous.subtitle != view.subtitle)) {
                 audience.showScreenTitle(player, view.title, view.subtitle)
-            } else if (elapsed(now, session.lastProgressAt) >= stallMillis && elapsed(now, session.lastReminderAt) >= stallMillis) {
+            } else if (!view.quietProgress && elapsed(now, session.lastProgressAt) >= stallMillis && elapsed(now, session.lastReminderAt) >= stallMillis) {
                 audience.showScreenTitle(player, view.title, view.subtitle)
                 session = session.copy(lastReminderAt = now)
             }
-            sessions[player.uniqueId] = session
+            sessions[player.uniqueId] = session.copy(subtitle = view.subtitle)
         }
         if (sharedExpected == null) audience.reconcileBars(expected)
     }
@@ -113,6 +113,7 @@ internal class WorksiteGuidancePresenter(
         val progressVersion: Long,
         val lastProgressAt: Long,
         val lastReminderAt: Long,
+        val subtitle: net.kyori.adventure.text.Component? = null,
     )
 
     private companion object {
