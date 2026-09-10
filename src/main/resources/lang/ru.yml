@@ -1191,10 +1191,10 @@ mine:
     injured_miner:
       title: '<color:#ffad42><bold>Раненый шахтёр</bold></color>'
       subtitle: '<color:#f2fff7>Поднимите его и доставьте на другой этаж</color>'
-      hint: '<color:#f2fff7>Нажмите ПКМ по домкратам, возьмите носилки и доставьте на этаж назначения</color>'
+      hint: '<color:#f2fff7>Освободите шахтёра, подхватите его и доставьте к лифту на другом ярусе</color>'
       stages:
         jacks: '<color:#f2fff7>Нажмите ПКМ по домкратам и освободите шахтёра</color>'
-        stretcher: '<color:#f2fff7>Возьмите носилки ПКМ и доставьте на <destination></color>'
+        stretcher: '<color:#f2fff7>Донесите шахтёра к выходу лифта: <destination></color>'
     runaway_cart:
       title: '<color:#ff5f6d><bold>Убежавшая вагонетка</bold></color>'
       subtitle: '<color:#f2fff7>Переключите путь, затормозите вагонетку и сопроводите её на другой этаж</color>'
@@ -1256,9 +1256,9 @@ mine:
     old_warehouse:
       title: '<color:#b8c8c0><bold>Старый склад</bold></color>'
       subtitle: '<color:#f2fff7>Перенесите ящики и запустите лебёдку</color>'
-      hint: '<color:#f2fff7>Отнесите хрупкие ящики на платформы, затем нажмите ПКМ по лебёдке</color>'
+      hint: '<color:#f2fff7>Отнесите ящики к выходу из комнаты, затем нажмите ПКМ по лебёдке</color>'
       stages:
-        crates: '<color:#f2fff7>Отнесите ящики на отмеченные платформы</color>'
+        crates: '<color:#f2fff7>Отнесите ящики к выходу из комнаты</color>'
         winch: '<color:#f2fff7>Нажмите ПКМ по рычагу лебёдки</color>'
     drill_trial:
       title: '<color:#45c8f5><bold>Испытание бура</bold></color>'

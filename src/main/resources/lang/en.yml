@@ -1191,10 +1191,10 @@ mine:
     injured_miner:
       title: '<color:#ffad42><bold>Injured Miner</bold></color>'
       subtitle: '<color:#f2fff7>Free the miner and carry them to another floor</color>'
-      hint: '<color:#f2fff7>Right-click the jacks, pick up the stretcher, and carry it to the medic</color>'
+      hint: '<color:#f2fff7>Free the miner, pick them up, and carry them to the lift on another floor</color>'
       stages:
         jacks: '<color:#f2fff7>Right-click the jacks to free the miner</color>'
-        stretcher: '<color:#f2fff7>Carry the stretcher to the medic at <destination></color>'
+        stretcher: '<color:#f2fff7>Carry the miner to the lift exit at <destination></color>'
     runaway_cart:
       title: '<color:#ff5f6d><bold>Runaway Cart</bold></color>'
       subtitle: '<color:#f2fff7>Switch the track, brake the cart, and escort it to another floor</color>'
@@ -1256,9 +1256,9 @@ mine:
     old_warehouse:
       title: '<color:#b8c8c0><bold>Old Warehouse</bold></color>'
       subtitle: '<color:#f2fff7>Carry the crates and start the winch</color>'
-      hint: '<color:#f2fff7>Carry fragile crates to the platforms, then right-click the winch</color>'
+      hint: '<color:#f2fff7>Carry crates to the room exit, then right-click the winch</color>'
       stages:
-        crates: '<color:#f2fff7>Carry crates to the marked platforms</color>'
+        crates: '<color:#f2fff7>Carry crates to the room exit</color>'
         winch: '<color:#f2fff7>Right-click the winch lever</color>'
     drill_trial:
       title: '<color:#45c8f5><bold>Drill Trial</bold></color>'
