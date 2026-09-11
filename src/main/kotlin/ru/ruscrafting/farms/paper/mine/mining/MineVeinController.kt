@@ -25,6 +25,8 @@ internal class MineVeinController(
 ) {
     private val nextCheck = mutableMapOf<String, Long>()
     private val nextWarning = mutableMapOf<String, Long>()
+    private val nextSummary = mutableMapOf<String, Long>()
+    private val lastSummary = mutableMapOf<String, String>()
 
     fun tick(runtime: MineRuntime, now: Long) {
         if (!runtime.settings.miningOnly || runtime.state.phase != MinePhase.MINING ||
@@ -50,12 +52,13 @@ internal class MineVeinController(
         } }
         val pending = recovery.records(runtime.settings.id).count { it.nextMaterial in materials.map(Material::name) }
         val missing = (runtime.rules().miningQuota - runtime.state.mined - available - pending).coerceAtLeast(0)
-        if (missing == 0) return
-        val candidates = positions.filterTo(linkedSetOf()) { p ->
+        val players = world.players.filter { runtime.region.contains(it.location) }.map { it.location }
+        val candidates = if (missing == 0) emptySet() else positions.filterTo(linkedSetOf()) { p ->
             val b = block(p)
             host(b.type) && exposed(b) && !recovery.containsPosition("${p.world}:${p.x}:${p.y}:${p.z}")
         }
-        val players = world.players.filter { runtime.region.contains(it.location) }.map { it.location }
+        logSummary(runtime, now, materials, positions.size, matching.size, available, pending, missing, candidates.size, players.size)
+        if (missing == 0) return
         val nearby = candidates.sortedBy { p -> players.minOfOrNull {
             it.distanceSquared(block(p).location)
         } ?: Double.MAX_VALUE }
@@ -76,6 +79,12 @@ internal class MineVeinController(
             return
         }
         val ore = materials[(runtime.state.sequence % materials.size).toInt()]
+        val sequence = runtime.state.sequence
+        val orderId = runtime.state.orderId
+        state.log(Level.INFO, "Mine vein placement scheduled zone=${runtime.settings.id} sequence=$sequence " +
+            "order=$orderId ore=$ore blocks=${selected.size} indexed=${positions.size} candidates=${candidates.size} " +
+            "available=$available pending=$pending missing=$missing players=${players.size} " +
+            "positions=${selected.joinToString(",") { "${it.x}:${it.y}:${it.z}" }}")
         selected.forEach { p ->
             val b = block(p)
             val original = b.type
@@ -90,11 +99,42 @@ internal class MineVeinController(
             }.whenComplete { _, failure ->
                 if (failure != null) state.log(Level.WARNING,
                     "Mine vein journal failed zone=${runtime.settings.id} position=${record.positionKey} ore=$ore", failure)
+            }.whenComplete { accepted, failure ->
+                if (failure == null) state.log(
+                    if (accepted == true) Level.INFO else Level.WARNING,
+                    "Mine vein block ${if (accepted == true) "placed" else "rejected"} zone=${runtime.settings.id} " +
+                        "sequence=$sequence order=$orderId ore=$ore original=$original " +
+                        "position=${record.positionKey} record=${record.id}",
+                )
             }
         }
     }
 
+    private fun logSummary(
+        runtime: MineRuntime,
+        now: Long,
+        materials: List<Material>,
+        indexed: Int,
+        matching: Int,
+        available: Int,
+        pending: Int,
+        missing: Int,
+        candidates: Int,
+        players: Int,
+    ) {
+        val signature = listOf(runtime.state.sequence, runtime.state.orderId, runtime.state.mined, indexed,
+            matching, available, pending, missing, candidates, players).joinToString("|")
+        if (lastSummary[runtime.settings.id] == signature && now < nextSummary.getOrDefault(runtime.settings.id, 0L)) return
+        lastSummary[runtime.settings.id] = signature
+        nextSummary[runtime.settings.id] = now + SUMMARY_INTERVAL_MILLIS
+        state.log(Level.INFO, "Mine vein state zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
+            "order=${runtime.state.orderId} phase=${runtime.state.phase} materials=${materials.joinToString(",")} " +
+            "progress=${runtime.state.mined}/${runtime.rules().miningQuota} indexed=$indexed matching=$matching " +
+            "availableConnected=$available pending=$pending missing=$missing candidates=$candidates players=$players")
+    }
+
     internal companion object {
+        private const val SUMMARY_INTERVAL_MILLIS = 60_000L
         private val faces = listOf(BlockFace.UP, BlockFace.DOWN, BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST)
         fun exposed(block: Block): Boolean = faces.any {
             block.world.isChunkLoaded((block.x + it.modX) shr 4, (block.z + it.modZ) shr 4) &&

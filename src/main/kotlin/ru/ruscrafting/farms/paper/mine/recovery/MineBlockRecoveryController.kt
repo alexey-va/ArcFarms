@@ -90,7 +90,12 @@ internal class MineBlockRecoveryController(
             val next = material(record.nextMaterial, record) ?: return@forEach
             val block = world.getBlockAt(record.x, record.y, record.z)
             runCatching {
-                if (block.type == temporary) block.setType(next, false)
+                val before = block.type
+                val changed = before == temporary
+                if (changed) block.setType(next, false)
+                state.log(Level.INFO, "Mine recovery due zone=${record.zoneId} record=${record.id} " +
+                    "position=${record.positionKey} expected=$temporary before=$before next=$next changed=$changed " +
+                    "restoreAt=${record.restoreAt} overdueMillis=${(now - record.restoreAt).coerceAtLeast(0)}")
                 retire(record, "restored")
                 processed++
             }.onFailure { failure ->
@@ -107,13 +112,22 @@ internal class MineBlockRecoveryController(
         val temporary = material(record.temporaryMaterial, record)
             ?: return CompletableFuture.completedFuture(false)
         val next = material(record.nextMaterial, record) ?: return CompletableFuture.completedFuture(false)
-        if (block.type == temporary) block.setType(next, false)
+        val before = block.type
+        val changed = before == temporary
+        if (changed) block.setType(next, false)
+        state.log(Level.INFO, "Mine recovery forced zone=${record.zoneId} record=${record.id} " +
+            "position=${record.positionKey} expected=$temporary before=$before next=$next changed=$changed")
         retire(record, "restored-now")
         return CompletableFuture.completedFuture(true)
     }
 
     override fun activateLoadedState() {
-        processDue()
+        val records = journal.records()
+        val now = clock()
+        state.log(Level.INFO, "Mine recovery activated pending=${records.size} due=${records.count { it.restoreAt <= now }} " +
+            "zones=${records.groupingBy(PendingMineBlock::zoneId).eachCount()}")
+        val processed = processDue(now)
+        state.log(Level.INFO, "Mine recovery activation completed processed=$processed remaining=${journal.records().size}")
     }
 
     override fun reconcileChunk(chunk: Chunk) {
@@ -123,8 +137,10 @@ internal class MineBlockRecoveryController(
     override fun beforeReload(reason: String) = cancelPending()
 
     override fun cleanup(reason: String) {
+        state.log(Level.INFO, "Mine recovery cleanup started reason=$reason pending=${journal.records().size} inFlight=${pendingResults.size}")
         cancelPending()
-        processDue(Long.MAX_VALUE, 262_144)
+        val processed = processDue(Long.MAX_VALUE, 262_144)
+        state.log(Level.INFO, "Mine recovery cleanup completed reason=$reason processed=$processed remaining=${journal.records().size}")
     }
 
     private fun cancelPending() {
@@ -144,6 +160,8 @@ internal class MineBlockRecoveryController(
         journal.remove(record.id).whenComplete { _, failure ->
             retiringRecords.remove(record.id)
             if (failure != null) state.log(Level.SEVERE, "Could not retire $reason mine journal record ${record.id}", failure)
+            else state.log(Level.INFO, "Mine recovery journal retired reason=$reason zone=${record.zoneId} " +
+                "record=${record.id} position=${record.positionKey}")
         }
     }
 

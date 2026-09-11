@@ -136,12 +136,14 @@ internal class MineModule(
     }
 
     override fun onBlockPlace(event: BlockPlaceEvent): Boolean {
-        if (registry.at(event.blockPlaced.location) == null) return false
+        val runtime = registry.at(event.blockPlaced.location) ?: return false
         if (access.isAdminEditing(event.player)) {
             event.isCancelled = false
+            mining.logPlacement(event, runtime, true)
             return true
         }
         event.isCancelled = true
+        mining.logPlacement(event, runtime, false)
         audience.sendActionBar(event.player, ru.ruscrafting.farms.config.MessageKey.MINE_MANAGED_REQUIRED)
         return true
     }
@@ -203,6 +205,7 @@ internal class MineModule(
         // Mining-only maps depend on a complete visible-surface index. Rebuild it on every activation,
         // including a persisted active order after a restart or region topology change.
         registry.snapshot().filter { it.settings.miningOnly }.forEach {
+            mining.logRuntimeActivation(it)
             admin.startReindex(it.settings.id)
         }
     }

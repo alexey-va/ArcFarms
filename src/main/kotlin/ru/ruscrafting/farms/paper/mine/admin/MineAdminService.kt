@@ -30,6 +30,7 @@ internal class MineAdminService(
     private val state: WorksiteStatePort,
 ) : WorksiteAdminHandler {
     private val reindexes = mutableMapOf<String, MineReindexJob>()
+    private val reindexProgress = mutableMapOf<String, Int>()
     override val kind: ActivityKind = ActivityKind.MINE
 
     override fun zoneIds(): List<String> = registry.snapshot().map { it.settings.id }.sorted()
@@ -72,6 +73,7 @@ internal class MineAdminService(
             index,
             tickets,
         )
+        reindexProgress[zoneId] = 0
         state.log(Level.INFO, "Mine reindex started zone=$zoneId phase=$phase bounds=${runtime.region.bounds} volume=${runtime.region.bounds.volume}")
         return true
     }
@@ -82,25 +84,43 @@ internal class MineAdminService(
             job.tick(budget)
         } catch (failure: Throwable) {
             reindexes.remove(zoneId)
+            reindexProgress.remove(zoneId)
             state.log(Level.SEVERE, "Mine reindex failed zone=$zoneId budget=$budget", failure)
             throw failure
         }.also {
             if (it.finished) {
                 reindexes.remove(zoneId)
+                reindexProgress.remove(zoneId)
                 state.log(Level.INFO, "Mine reindex completed zone=$zoneId scanned=${it.scannedBlocks} indexed=${it.indexedTargets}")
+            } else {
+                val total = registry.byId(zoneId)?.region?.bounds?.volume ?: 0L
+                val percent = if (total == 0L) 0 else ((it.scannedBlocks * 100L) / total).toInt().coerceIn(0, 99)
+                val bucket = percent / 10
+                if (bucket > reindexProgress.getOrDefault(zoneId, 0)) {
+                    reindexProgress[zoneId] = bucket
+                    state.log(Level.INFO, "Mine reindex progress zone=$zoneId scanned=${it.scannedBlocks}/$total " +
+                        "percent=$percent indexed=${it.indexedTargets} budget=$budget")
+                }
             }
         }
         return WorksiteAdminReindexTick(tick.finished, tick.scannedBlocks, tick.indexedTargets)
     }
 
-    override fun cancelReindex(zoneId: String): Boolean = reindexes.remove(zoneId)?.let { it.cancel(); true } == true
+    override fun cancelReindex(zoneId: String): Boolean = reindexes.remove(zoneId)?.let {
+        it.cancel()
+        reindexProgress.remove(zoneId)
+        state.log(Level.INFO, "Mine reindex cancelled zone=$zoneId")
+        true
+    } == true
 
     fun tickReindexes(budgetPerZone: Int) {
         reindexes.keys.toList().forEach { tickReindex(it, budgetPerZone) }
     }
 
     fun cleanup() {
+        if (reindexes.isNotEmpty()) state.log(Level.INFO, "Mine reindex cleanup zones=${reindexes.keys.sorted()}")
         reindexes.values.forEach(MineReindexJob::cancel)
         reindexes.clear()
+        reindexProgress.clear()
     }
 }
