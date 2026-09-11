@@ -1530,6 +1530,11 @@ mine-lift:
   full: '<color:#e8dfd2>Все четыре места заняты. Дождись следующей поездки.</color>'
   recovered: '<color:#e8dfd2>Поездка прервана. Ты на безопасной площадке подъёмника.</color>'
   near-panel: '<color:#e8dfd2>Подойди к пульту подъёмника в шахте.</color>'
+  admin-required: '<color:#e8dfd2>Недостаточно прав для диагностики подъёмников.</color>'
+  unknown: '<color:#e8dfd2>Неизвестный подъёмник: <id>.</color>'
+  none: '<color:#e8dfd2>Подъёмники не настроены.</color>'
+  several: '<color:#e8dfd2>Рядом несколько подъёмников; используй /minelift id ярус.</color>'
+  unavailable-id: '<color:#e8dfd2>Подъёмник <id> недоступен с этого пульта.</color>'
   floors:
     top: '1 · Верхняя галерея'
     upper: '2 · Каменный ярус'

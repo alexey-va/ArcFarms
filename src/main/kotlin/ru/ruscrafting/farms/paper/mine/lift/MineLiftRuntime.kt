@@ -64,15 +64,19 @@ internal class MineLiftMaintenanceClaim {
  * The location escrow commits before mounting, and survives quit, disable and process crashes.
  * No world blocks are changed by this runtime; a blocked surveyed shaft closes the lift.
  */
-internal class MineLiftRuntime(private val plugin: JavaPlugin, private val locale: ArcFarmsLocale) :
+internal class MineLiftRuntime(
+    private val plugin: JavaPlugin,
+    private val locale: ArcFarmsLocale,
+    private val settings: MineLiftSettings,
+    private val claimRider: (UUID, String) -> Boolean = { _, _ -> true },
+    private val releaseRider: (UUID, String) -> Unit = { _, _ -> },
+    private val hasRecovery: (UUID) -> Boolean = { false },
+) :
     AutoCloseable, Listener, CommandExecutor, TabCompleter, MineLiftAccess {
-    private val recovery = MineLiftRecovery(plugin.dataFolder.toPath())
+    private val recovery = MineLiftRecovery(plugin.dataFolder.toPath(), settings.id)
     private val tasks = LifecycleTaskScope()
     private val dialogs = PaperDialogRuntime(plugin)
     private val teleports = ScopedTeleportAuthorizer()
-    private val settings = runCatching { MineLiftSettings.load(plugin.dataFolder.toPath()) }.getOrElse {
-        plugin.logger.log(Level.SEVERE, "Mine lift configuration rejected; lift remains closed", it); null
-    }
     private var scene: MineLiftScene? = null
     private var motion: MineLiftMotion? = null
     private val riders = linkedMapOf<UUID, Int>()
@@ -85,13 +89,12 @@ internal class MineLiftRuntime(private val plugin: JavaPlugin, private val local
 
     fun start() {
         plugin.server.pluginManager.registerEvents(this, plugin)
-        requireNotNull(plugin.getCommand("minelift")).also { it.setExecutor(this); it.tabCompleter = this }
         Bukkit.getOnlinePlayers().forEach(::recover)
         tryStart()
     }
 
     private fun tryStart() {
-        val config = settings ?: return
+        val config = settings
         if (closed || scene != null) return
         val world = Bukkit.getWorld(config.world) ?: return
         try {
@@ -129,14 +132,18 @@ internal class MineLiftRuntime(private val plugin: JavaPlugin, private val local
     private fun tick() {
         val cabin = scene ?: return
         val state = motion ?: return
-        val config = requireNotNull(settings)
+        val config = settings
         tickNumber++
         val arrived = state.tick()
         check(cabin.move(state.y, state.phase == MineLiftMotion.Phase.DOCKED)) { "Mine lift entity movement rejected" }
         riders.keys.toList().forEach { id ->
             val player = Bukkit.getPlayer(id)
             val seat = cabin.seats[riders.getValue(id)]
-            if (player == null || player.isDead) { riders.remove(id); return@forEach }
+            if (player == null || player.isDead) {
+                riders.remove(id)
+                releaseRider(id, settings.id)
+                return@forEach
+            }
             if (player.vehicle != seat) {
                 recover(player)
                 check(player.uniqueId !in riders) { "Mine lift passenger recovery rejected" }
@@ -165,14 +172,14 @@ internal class MineLiftRuntime(private val plugin: JavaPlugin, private val local
     private fun label(index: Int): Component = text("panel", values = mapOf("floor" to floorName(index),
         "state" to text(if (motion?.phase != MineLiftMotion.Phase.MOVING && motion?.floor == index) "panel-ready" else "panel-call")))
 
-    private fun nearFloor(player: Player): Int? = settings?.floors?.indices?.firstOrNull { index ->
-        val config = requireNotNull(settings)
+    private fun nearFloor(player: Player): Int? = settings.floors.indices.firstOrNull { index ->
+        val config = settings
         player.world.name == config.world && player.location.distanceSquared(config.floors[index].exit.location(player.world)) <= 36 &&
             abs(player.y - config.floors[index].y) < 2.5
     }
 
     private fun open(player: Player, index: Int) {
-        if (maintenance.ownsAny() || !player.hasPermission("arcfarms.mine") || nearFloor(player) != index || recovery.contains(player.uniqueId)) {
+        if (maintenance.ownsAny() || !player.hasPermission("arcfarms.mine") || nearFloor(player) != index || hasRecovery(player.uniqueId)) {
             player.sendMessage(text("unavailable", player)); return
         }
         val state = motion ?: run { player.sendMessage(text("unavailable", player)); return }
@@ -181,7 +188,7 @@ internal class MineLiftRuntime(private val plugin: JavaPlugin, private val local
             player.sendMessage(text("called", player, mapOf("floor" to floorName(index, player))))
             return
         }
-        val config = requireNotNull(settings)
+        val config = settings
         dialogs.beginFlow(player)
         dialogs.open(player, PaperDialogScreen(
             id = "farms.mine_lift", title = FarmDialogScreens.nativeBody(text("title", player)),
@@ -204,11 +211,11 @@ internal class MineLiftRuntime(private val plugin: JavaPlugin, private val local
     }
 
     private fun board(player: Player, source: Int, destination: Int) {
-        val config = settings ?: return
+        val config = settings
         val state = motion ?: return
         val cabin = scene ?: return
         if (maintenance.ownsAny() || !player.hasPermission("arcfarms.mine") || nearFloor(player) != source || state.floor != source ||
-            player.isInsideVehicle || player.isDead || recovery.contains(player.uniqueId) ||
+            player.isInsideVehicle || player.isDead || hasRecovery(player.uniqueId) ||
             state.phase == MineLiftMotion.Phase.MOVING ||
             (state.phase == MineLiftMotion.Phase.BOARDING && state.target != destination)) {
             player.sendMessage(text("unavailable", player)); return
@@ -217,7 +224,15 @@ internal class MineLiftRuntime(private val plugin: JavaPlugin, private val local
             ?: run { player.sendMessage(text("full", player)); return }
         val returnPoint = config.floors[source].exit.location(player.world)
         if (!safe(returnPoint)) { player.sendMessage(text("unavailable", player)); return }
-        recovery.capture(player, returnPoint)
+        if (!claimRider(player.uniqueId, settings.id)) { player.sendMessage(text("unavailable", player)); return }
+        try {
+            recovery.capture(player, returnPoint)
+        } catch (failure: Exception) {
+            releaseRider(player.uniqueId, settings.id)
+            plugin.logger.log(Level.SEVERE, "Mine lift passenger escrow rejected for ${player.uniqueId}", failure)
+            player.sendMessage(text("unavailable", player))
+            return
+        }
         if (!cabin.seats[slot].addPassenger(player)) {
             recover(player); player.sendMessage(text("unavailable", player)); return
         }
@@ -239,6 +254,7 @@ internal class MineLiftRuntime(private val plugin: JavaPlugin, private val local
             player.fallDistance = 0f
             recovery.acknowledge(player)
             riders.remove(player.uniqueId)
+            releaseRider(player.uniqueId, settings.id)
             return true
         } finally { exiting -= player.uniqueId }
     }
@@ -253,12 +269,12 @@ internal class MineLiftRuntime(private val plugin: JavaPlugin, private val local
 
     /** Claims exclusive maintenance while the cabin finishes its current trip and unloads riders. */
     override fun beginMaintenance(ownerKey: String): Boolean {
-        if (ownerKey.isBlank() || closed || settings == null || scene == null || motion == null) return false
+        if (ownerKey.isBlank() || closed || scene == null || motion == null) return false
         if (!maintenance.begin(ownerKey)) return false
         val state = requireNotNull(motion)
         if (state.phase == MineLiftMotion.Phase.DOCKED && riders.isNotEmpty()) {
-            val floor = requireNotNull(settings).floors[state.floor]
-            val world = Bukkit.getWorld(requireNotNull(settings).world)
+            val floor = settings.floors[state.floor]
+            val world = Bukkit.getWorld(settings.world)
             if (world != null) riders.keys.toList().mapNotNull(Bukkit::getPlayer).forEach { unload(it, floor.exit.location(world)) }
         }
         return true
@@ -276,7 +292,7 @@ internal class MineLiftRuntime(private val plugin: JavaPlugin, private val local
 
     /** Read-only configured floor facts for maintenance planning; values come from the loaded settings. */
     override fun floors(): List<MineLiftAccess.FloorSnapshot> {
-        val config = settings ?: return emptyList()
+        val config = settings
         val world = Bukkit.getWorld(config.world) ?: return emptyList()
         return config.floors.map { MineLiftAccess.FloorSnapshot(it.id, it.y, it.exit.location(world)) }
     }
@@ -305,41 +321,64 @@ internal class MineLiftRuntime(private val plugin: JavaPlugin, private val local
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     fun move(event: PlayerMoveEvent) {
         if (event is PlayerTeleportEvent || event.player.uniqueId in riders || event.player.uniqueId in exiting) return
-        if (settings?.contains(event.to) == true && settings.contains(event.from).not()) event.isCancelled = true
+        if (settings.contains(event.to) && settings.contains(event.from).not()) event.isCancelled = true
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     fun damage(event: EntityDamageEvent) { if (event.entity.uniqueId in riders) event.isCancelled = true }
 
-    @EventHandler fun quit(event: PlayerQuitEvent) { recover(event.player); riders.remove(event.player.uniqueId) }
+    @EventHandler fun quit(event: PlayerQuitEvent) {
+        recover(event.player)
+        if (riders.remove(event.player.uniqueId) != null) releaseRider(event.player.uniqueId, settings.id)
+    }
     @EventHandler fun join(event: PlayerJoinEvent) { tasks.runLater(1) { recover(event.player) } }
     @EventHandler fun respawn(event: PlayerRespawnEvent) { tasks.runLater(1) { recover(event.player) } }
     @EventHandler fun worldLoad(event: WorldLoadEvent) {
         Bukkit.getOnlinePlayers().filter { recovery.contains(it.uniqueId) }.forEach(::recover)
-        if (event.world.name == settings?.world) tryStart()
+        if (event.world.name == settings.world) tryStart()
     }
     @EventHandler fun chunkLoad(event: ChunkLoadEvent) { scene?.cleanOrphans(event.chunk) }
 
+    fun isNearAuthorized(player: Player): Boolean = !closed && scene != null &&
+        player.hasPermission("arcfarms.mine") && nearFloor(player) != null
+
+    fun sendNearPanel(player: Player) { player.sendMessage(text("near-panel", player)) }
+
+    fun handlePlayerCommand(player: Player, args: Array<out String>) {
+        val index = nearFloor(player)
+        if (index == null) {
+            sendNearPanel(player)
+            return
+        }
+        val target = args.firstOrNull()?.toIntOrNull()?.minus(1)
+        if (target != null && target in settings.floors.indices && target != index) board(player, index, target)
+        else open(player, index)
+    }
+
+    fun floorArguments(): List<String> = settings.floors.indices.map { (it + 1).toString() }
+
+    fun statusLine(): String {
+        val state = motion
+        return "MINE_LIFT id=${settings.id} ready=${scene != null} phase=${state?.phase} floor=${state?.floor} " +
+            "target=${state?.target} y=${state?.y} riders=${riders.size} recovery=${recovery.pendingCount} queue=${state?.queued}"
+    }
+
+    fun hasRecovery(player: UUID): Boolean = recovery.contains(player)
+
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
         if (args.firstOrNull() == "status" && sender.hasPermission("arcfarms.admin")) {
-            val state = motion
-            sender.sendMessage("MINE_LIFT ready=${scene != null} phase=${state?.phase} floor=${state?.floor} target=${state?.target} y=${state?.y} riders=${riders.size} recovery=${recovery.pendingCount} queue=${state?.queued}")
+            sender.sendMessage(statusLine())
         } else if (sender is Player) {
-            val index = nearFloor(sender)
-            if (index == null) sender.sendMessage(text("near-panel", sender)) else {
-                val target = args.firstOrNull()?.toIntOrNull()?.minus(1)
-                if (target != null && target in requireNotNull(settings).floors.indices && target != index) board(sender, index, target)
-                else open(sender, index)
-            }
+            handlePlayerCommand(sender, args)
         }
         return true
     }
 
     override fun onTabComplete(sender: CommandSender, command: Command, alias: String, args: Array<out String>): List<String> =
-        if (args.size == 1) (settings?.floors?.indices?.map { (it + 1).toString() }.orEmpty() +
+        if (args.size == 1) (settings.floors.indices.map { (it + 1).toString() } +
             if (sender.hasPermission("arcfarms.admin")) listOf("status") else emptyList()).filter { it.startsWith(args[0]) } else emptyList()
 
-    private fun floorName(index: Int, player: Player? = null) = text("floors.${requireNotNull(settings).floors[index].id}", player)
+    private fun floorName(index: Int, player: Player? = null) = text("floors.${settings.floors[index].id}", player)
     private fun text(key: String, player: Player? = null, values: Map<String, Component> = emptyMap()) =
         locale.renderPath("mine-lift.$key", player, values).decoration(TextDecoration.ITALIC, false)
 
@@ -349,6 +388,7 @@ internal class MineLiftRuntime(private val plugin: JavaPlugin, private val local
         riders.keys.toList().mapNotNull(Bukkit::getPlayer).forEach { player ->
             runCatching { recover(player) }.onFailure { plugin.logger.log(Level.SEVERE, "Mine lift recovery remains pending", it) }
         }
+        riders.keys.forEach { releaseRider(it, settings.id) }
         scene?.close(); scene = null; motion = null; riders.clear()
         chunks.forEach { it.removePluginChunkTicket(plugin) }; chunks.clear()
     }

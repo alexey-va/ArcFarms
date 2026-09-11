@@ -1530,6 +1530,11 @@ mine-lift:
   full: '<color:#e8dfd2>All four seats are occupied. Please wait for the next trip.</color>'
   recovered: '<color:#e8dfd2>The ride was interrupted. You are on a safe lift landing.</color>'
   near-panel: '<color:#e8dfd2>Approach a lift control panel in the mine.</color>'
+  admin-required: '<color:#e8dfd2>You do not have permission to inspect mine lifts.</color>'
+  unknown: '<color:#e8dfd2>Unknown mine lift: <id>.</color>'
+  none: '<color:#e8dfd2>No mine lifts are configured.</color>'
+  several: '<color:#e8dfd2>Several mine lifts are nearby; use /minelift id floor.</color>'
+  unavailable-id: '<color:#e8dfd2>Mine lift <id> is not available from this panel.</color>'
   floors:
     top: '1 · Upper gallery'
     upper: '2 · Stone level'

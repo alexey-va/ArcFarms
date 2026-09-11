@@ -26,11 +26,13 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
     val seats = mutableListOf<Interaction>()
     val panels = mutableMapOf<UUID, Int>()
     private val labels = mutableListOf<TextDisplay>()
-    private val key = NamespacedKey(plugin, "mine_lift")
+    private val key = NamespacedKey(plugin, "mine_lift_${settings.id}")
+    private val legacyKey = if (settings.id == "main") NamespacedKey(plugin, "mine_lift") else null
     private var doorOpening = 1.0
     private var previousY = Double.NaN
 
-    fun owns(entity: Entity) = entity.persistentDataContainer.has(key, PersistentDataType.BYTE)
+    fun owns(entity: Entity) = entity.persistentDataContainer.has(key, PersistentDataType.BYTE) ||
+        (legacyKey != null && entity.persistentDataContainer.has(legacyKey, PersistentDataType.BYTE))
     fun cleanOrphans(chunk: org.bukkit.Chunk) {
         chunk.entities.filter { owns(it) && it !in entities }.forEach(Entity::remove)
     }

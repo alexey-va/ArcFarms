@@ -43,4 +43,20 @@ class MineLiftRecoveryTest : FreeSpec({
             Files.readString(file) shouldBe "not json"
         } finally { root.toFile().deleteRecursively() }
     }
+
+    "additional lifts use an id-scoped journal" {
+        val root = createTempDirectory("mine-lift-scoped-recovery")
+        try {
+            val id = UUID.randomUUID()
+            val player = mockk<Player>()
+            every { player.uniqueId } returns id
+            val world = mockk<World>()
+            every { world.name } returns "mine"
+            MineLiftRecovery(root, "main").capture(player, Location(world, 1.0, 20.0, 1.0))
+            MineLiftRecovery(root, "west").capture(player, Location(world, 2.0, 20.0, 2.0))
+            MineLiftRecovery(root, "main").contains(id) shouldBe true
+            MineLiftRecovery(root, "west").contains(id) shouldBe true
+            Files.exists(root.resolve("data/mine-lift-passengers-west.json")) shouldBe true
+        } finally { root.toFile().deleteRecursively() }
+    }
 })

@@ -8,7 +8,7 @@ softdepend: [ARC, LuckPerms, WorldEdit, WorldGuard, PlaceholderAPI, Vault, Redis
 commands:
   minelift:
     description: Call the mine lift or choose a floor near its landing
-    usage: /minelift [1-5]
+    usage: /minelift [id] [floor]
   arcfarms:
     description: Shared worksite activities
     usage: /arcfarms

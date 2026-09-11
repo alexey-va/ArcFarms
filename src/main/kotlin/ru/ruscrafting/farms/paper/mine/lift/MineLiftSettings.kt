@@ -13,6 +13,7 @@ internal data class LiftPoint(val x: Double, val y: Double, val z: Double, val y
 internal data class MineLiftFloor(val id: String, val y: Double, val exit: LiftPoint, val panel: LiftPoint)
 
 internal data class MineLiftSettings(
+    val id: String,
     val world: String,
     val x: Double,
     val z: Double,
@@ -25,22 +26,71 @@ internal data class MineLiftSettings(
         kotlin.math.abs(point.x - x) < width / 2 + 0.3 && kotlin.math.abs(point.z - z) < depth / 2 + 0.3 &&
         point.y in (floors.minOf { it.y } - 2)..(floors.maxOf { it.y } + 4)
 
+    fun overlaps(other: MineLiftSettings): Boolean {
+        if (world != other.world) return false
+        fun overlap(leftMin: Double, leftMax: Double, rightMin: Double, rightMax: Double) =
+            leftMin < rightMax && rightMin < leftMax
+        return overlap(x - width / 2, x + width / 2, other.x - other.width / 2, other.x + other.width / 2) &&
+            overlap(z - depth / 2, z + depth / 2, other.z - other.depth / 2, other.z + other.depth / 2) &&
+            overlap(floors.minOf { it.y }, floors.maxOf { it.y } + 2.8,
+                other.floors.minOf { it.y }, other.floors.maxOf { it.y } + 2.8)
+    }
+
     companion object {
-        fun load(root: Path): MineLiftSettings? {
+        private val ID_PATTERN = Regex("[a-z][a-z0-9_]{0,31}")
+
+        fun load(root: Path): MineLiftSettings? = loadAll(root).firstOrNull { it.id == "main" }
+
+        fun loadAll(root: Path, report: (String, Throwable) -> Unit = { _, _ -> }): List<MineLiftSettings> {
             val config = Config(root, "modules/mine-lift.yml")
-            if (config.booleanOrNull("enabled") != true) return null
-            fun number(path: String): Double = requireNotNull(config.doubleOrNull(path)) { "Missing mine lift $path" }
-                .also { require(it.isFinite()) { "Non-finite mine lift $path" } }
-            fun point(path: String) = LiftPoint(number("$path.x"), number("$path.y"), number("$path.z"),
-                (config.doubleOrNull("$path.yaw") ?: 0.0).toFloat().also { require(it.isFinite()) })
-            val ids = config.stringList("floor-order")
-            require(ids.size in 2..8 && ids.distinct().size == ids.size && ids.all { it.matches(Regex("[a-z][a-z0-9_]{0,31}")) })
-            val floors = ids.map { id -> MineLiftFloor(id, number("floors.$id.y"), point("floors.$id.exit"), point("floors.$id.panel")) }
+            val candidates = mutableListOf<MineLiftSettings>()
+
+            fun add(id: String, prefix: String, enabled: Boolean) {
+                if (!enabled) return
+                runCatching { parse(config, id, prefix) }
+                    .onSuccess(candidates::add)
+                    .onFailure { report(id, it) }
+            }
+
+            add("main", "", config.booleanOrNull("enabled") == true)
+            config.keys("additional-lifts").sorted().forEach { id ->
+                if (id == "main" || id == "status" || !ID_PATTERN.matches(id)) {
+                    report(id, IllegalArgumentException("Mine lift id must match ${ID_PATTERN.pattern} and cannot be main or status"))
+                } else {
+                    val prefix = "additional-lifts.$id"
+                    add(id, prefix, config.booleanOrNull("$prefix.enabled") == true)
+                }
+            }
+
+            val accepted = mutableListOf<MineLiftSettings>()
+            candidates.forEach { candidate ->
+                val conflict = accepted.firstOrNull(candidate::overlaps)
+                if (conflict == null) {
+                    accepted += candidate
+                } else {
+                    report(candidate.id, IllegalArgumentException("overlaps configured mine lift ${conflict.id}"))
+                }
+            }
+            return accepted
+        }
+
+        private fun parse(config: Config, id: String, prefix: String): MineLiftSettings {
+            require(id.matches(ID_PATTERN) && id != "status") { "Invalid or reserved mine lift id $id" }
+            fun path(value: String) = if (prefix.isBlank()) value else "$prefix.$value"
+            fun number(name: String): Double = requireNotNull(config.doubleOrNull(path(name))) { "Missing mine lift $id $name" }
+                .also { require(it.isFinite()) { "Non-finite mine lift $id $name" } }
+            fun point(name: String) = LiftPoint(number("$name.x"), number("$name.y"), number("$name.z"),
+                (config.doubleOrNull(path("$name.yaw")) ?: 0.0).toFloat().also { require(it.isFinite()) })
+            val ids = config.stringList(path("floor-order"))
+            require(ids.size in 2..8 && ids.distinct().size == ids.size && ids.all { it.matches(ID_PATTERN) })
+            val floors = ids.map { floorId ->
+                MineLiftFloor(floorId, number("floors.$floorId.y"), point("floors.$floorId.exit"), point("floors.$floorId.panel"))
+            }
             require(floors.map { it.y }.distinct().size == floors.size)
             require(floors.zipWithNext().all { (a, b) -> a.y - b.y >= 4 }) { "Lift floors must descend by at least four blocks" }
             val width = number("cabin.width").also { require(it in 1.8..3.5) }
             val depth = number("cabin.depth").also { require(it in 1.8..3.5) }
-            return MineLiftSettings(requireNotNull(config.stringOrNull("world")), number("cabin.x"), number("cabin.z"),
+            return MineLiftSettings(id, requireNotNull(config.stringOrNull(path("world"))), number("cabin.x"), number("cabin.z"),
                 width, depth, number("speed").also { require(it in 1.0..MineLiftMotion.MAX_SPEED) }, floors)
         }
     }

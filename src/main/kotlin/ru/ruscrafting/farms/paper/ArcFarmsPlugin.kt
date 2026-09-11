@@ -122,7 +122,7 @@ open class ArcFarmsPlugin : JavaPlugin() {
             }).also { transfer = it }
             val menuPlatform = ArcFarmsMenuPlatform(this)
             val mineLift = runCatching {
-                lifecycle.own(ru.ruscrafting.farms.paper.mine.lift.MineLiftRuntime(this, locale))
+                lifecycle.own(ru.ruscrafting.farms.paper.mine.lift.MineLiftRuntimeManager(this, locale))
             }.getOrElse { failure ->
                 logger.log(Level.SEVERE, "Mine lift unavailable; inspect its recovery journal", failure)
                 null

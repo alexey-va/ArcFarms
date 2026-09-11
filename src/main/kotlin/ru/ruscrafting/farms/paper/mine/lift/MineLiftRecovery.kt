@@ -9,11 +9,16 @@ import java.nio.file.Path
 import java.util.UUID
 
 /** Location-only transport escrow; inventories, effects and game modes are never mutated by the lift. */
-internal class MineLiftRecovery(root: Path) {
+internal class MineLiftRecovery(root: Path, journalId: String = "main") {
+    init {
+        require(journalId == "main" || journalId.matches(Regex("[a-z][a-z0-9_]{0,31}"))) {
+            "Invalid mine lift journal id: $journalId"
+        }
+    }
     data class ReturnPoint(val player: UUID, val world: String, val x: Double, val y: Double, val z: Double, val yaw: Float)
     private val gson = Gson()
     private val store = AtomicFileStore(
-        root, Path.of("data/mine-lift-passengers.json"), 262_144,
+        root, Path.of("data", if (journalId == "main") "mine-lift-passengers.json" else "mine-lift-passengers-$journalId.json"), 262_144,
         encode = { entries: Array<ReturnPoint> -> gson.toJson(entries).toByteArray(Charsets.UTF_8) },
         decode = { gson.fromJson(it.toString(Charsets.UTF_8), Array<ReturnPoint>::class.java) },
         validate = { entries ->
