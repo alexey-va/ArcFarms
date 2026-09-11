@@ -10,6 +10,7 @@ import io.mockk.verify
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.Bukkit
 import org.bukkit.event.inventory.ClickType
@@ -22,6 +23,18 @@ import ru.arc.paper.testing.MockBukkitTestRuntime
 import java.nio.file.Files
 
 class FarmDialogScreensTest : FunSpec({
+    test("native palette removes gray while preserving semantic and white child runs") {
+        val source = Component.text("details", NamedTextColor.GRAY)
+            .append(Component.text(" ").color(NamedTextColor.WHITE))
+            .append(Component.text("ready", NamedTextColor.GREEN))
+
+        val body = FarmDialogScreens.nativeBody(source)
+        body.color()?.value() shouldBe 0xe8dfd2
+        body.children()[0].color()?.value() shouldBe 0xffffff
+        body.children()[1].color()?.value() shouldBe 0x55ff55
+        FarmDialogScreens.nativeControl(Component.text("Back")).color()?.value() shouldBe 0xffffff
+    }
+
     test("native farm reads ARC escape preference from the registered LuckPerms service on every visit") {
         val paper = MockBukkitTestRuntime.open()
         try {

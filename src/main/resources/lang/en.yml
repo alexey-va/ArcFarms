@@ -1518,7 +1518,7 @@ mine-lift:
   title: '<white>Mine lift</white>'
   description: '<color:#e8dfd2>Here: <floor>.<newline>Choose a floor; the cabin departs in 3 seconds.<newline>Up to four passengers. Exit onto the landing is automatic.</color>'
   go: '<color:#8ed8b1><floor> ›</color>'
-  close: '<gray>Close</gray>'
+  close: '<white>Close</white>'
   panel: '<white>Lift · <floor></white><newline><color:#8ed8b1><state></color>'
   panel-ready: 'Right-click to choose a floor'
   panel-call: 'Right-click to call the cabin'

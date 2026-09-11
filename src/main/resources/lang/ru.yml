@@ -1518,7 +1518,7 @@ mine-lift:
   title: '<white>Шахтный подъёмник</white>'
   description: '<color:#e8dfd2>Сейчас: <floor>.<newline>Выбери ярус — кабина отправится через 3 секунды.<newline>До четырёх пассажиров. Выход на площадку автоматический.</color>'
   go: '<color:#8ed8b1><floor> ›</color>'
-  close: '<gray>Закрыть</gray>'
+  close: '<white>Закрыть</white>'
   panel: '<white>Подъёмник · <floor></white><newline><color:#8ed8b1><state></color>'
   panel-ready: 'ПКМ — выбрать ярус'
   panel-call: 'ПКМ — вызвать кабину'

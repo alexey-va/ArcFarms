@@ -55,7 +55,7 @@ internal object FarmDialogScreens {
         fun style(row: DialogRow): LabelStyle {
             val informational = row.id in setOf("stats", "workday", "report", "workers", "policy", "license")
             if (row.entry.selected && row.entry.category != FarmMenuCategory.DEFAULT) return LabelStyle(SELECTED, marker = "✔", chevron = true)
-            if (!row.entry.enabled && !informational) return LabelStyle(MUTED, marker = "[Недоступно]")
+            if (!row.entry.enabled && !informational) return LabelStyle(CONTROL, marker = "[Недоступно]")
             return when (session.menuId) {
                 ArcFarmsMenuPlatform.MAIN -> when (row.id) {
                     "farm", "lumber", "mine" -> LabelStyle(TELEPORT, chevron = true)
@@ -118,9 +118,9 @@ internal object FarmDialogScreens {
                 id = "farms.${session.menuId.value}.detail",
                 title = recolor(detail?.let { name(it.entry.item) } ?: text(session.player, "details"), detailTitleColor),
                 body = if (detail != null) {
-                    if (detail.entry.details.isNotEmpty()) listOf(DialogTables.body(detail.entry.details, frame = DialogTables.Frame.LEGENDARY))
+                    if (detail.entry.details.isNotEmpty()) listOf(DialogTables.body(nativeRows(detail.entry.details), frame = DialogTables.Frame.LEGENDARY))
                     else listOf(PaperDialogBody(join(lore(detail.entry.item)), 468))
-                } else listOf(DialogTables.body(information.map { row -> name(row.entry.item) to join(lore(row.entry.item)) })),
+                } else listOf(DialogTables.body(information.map { row -> nativeBody(name(row.entry.item)) to nativeBody(join(lore(row.entry.item))) })),
                 buttons = buildList {
                     if (session.menuId == ArcFarmsMenuPlatform.FARM_PERKS && detail?.actionable == true) {
                         add(button("buy_perk", text(session.player, if (detail.entry.category == FarmMenuCategory.FOOD) "buy-food" else "buy-perk"), style = LabelStyle(SAVE)) {
@@ -130,14 +130,14 @@ internal object FarmDialogScreens {
                         })
                     }
                 },
-                exitButton = button("detail_back", text(session.player, if (closeOnEscape) "close" else "back"), style = LabelStyle(MUTED)) { session.close() }
-                    .copy(width = 200, label = label(text(session.player, if (closeOnEscape) "close" else "back"), LabelStyle(MUTED))), columns = 1,
+                exitButton = button("detail_back", text(session.player, if (closeOnEscape) "close" else "back"), style = LabelStyle(CONTROL)) { session.close() }
+                    .copy(width = 200, label = label(text(session.player, if (closeOnEscape) "close" else "back"), LabelStyle(CONTROL))), columns = 1,
             )
         }
         val body = mutableListOf(PaperDialogBody(restyle(text(session.player, "intro.${session.menuId.value}")), 468))
         val farmShop = session.menuId == ArcFarmsMenuPlatform.FARM_PERKS
         if (content.summary.isNotEmpty()) body += DialogTables.body(
-            content.summary,
+            nativeRows(content.summary),
             frame = if (farmShop) DialogTables.Frame.LEGENDARY else DialogTables.Frame.EPIC,
             width = if (farmShop) FARM_SHOP_TABLE_WIDTH else 320,
             columns = if (farmShop) DialogTables.Columns.LABEL_WIDE else DialogTables.Columns.AUTO,
@@ -172,7 +172,7 @@ internal object FarmDialogScreens {
             when {
                 row in information -> Unit
                 row.id == "back" -> {
-                    val navigation = button("back", title, tooltip, LabelStyle(MUTED), dispatch)
+                    val navigation = button("back", title, tooltip, LabelStyle(CONTROL), dispatch)
                     if (closeOnEscape) buttons += navigation
                     else back = navigation.copy(width = 200)
                 }
@@ -198,8 +198,8 @@ internal object FarmDialogScreens {
             session.detailSlot = null; session.showInformation = true; session.platform.refresh(session)
         }
         if (back == null) {
-            back = button("close", text(session.player, if (closeOnEscape) "close" else "back"), style = LabelStyle(MUTED)) { session.close() }
-                .copy(width = 200, label = label(text(session.player, if (closeOnEscape) "close" else "back"), LabelStyle(MUTED)))
+            back = button("close", text(session.player, if (closeOnEscape) "close" else "back"), style = LabelStyle(CONTROL)) { session.close() }
+                .copy(width = 200, label = label(text(session.player, if (closeOnEscape) "close" else "back"), LabelStyle(CONTROL)))
         }
         return PaperDialogScreen(
             id = "farms.${session.menuId.value}",
@@ -209,6 +209,10 @@ internal object FarmDialogScreens {
     }
 
     private fun name(item: ItemStack) = item.itemMeta.displayName() ?: Component.text(item.type.name)
+    private fun nativeRows(rows: List<Pair<Component, Component>>) = rows.map { nativeBody(it.first) to nativeBody(it.second) }
+    internal fun nativeBody(value: Component): Component = restyle(value)
+    internal fun nativeControl(value: Component): Component = recolor(value, CONTROL)
+
     internal fun lore(item: ItemStack): List<Component> = item.itemMeta.lore().orEmpty()
         .filterNot { plain.serialize(it).contains("[▶]") }
         .dropLastWhile { plain.serialize(it).isBlank() }
@@ -229,13 +233,19 @@ internal object FarmDialogScreens {
         return (prefix?.append(styled) ?: styled).let { suffix?.let(it::append) ?: it }
     }
 
-    private fun recolor(value: Component, color: TextColor): Component = value.color(color)
-        .decoration(TextDecoration.ITALIC, false).children(value.children().map { recolor(it, color) })
-    private fun restyle(value: Component): Component = value.color(when (value.color()?.value()) {
-        0x707a76, 0x969696, 0xb8c8c0 -> MUTED
-        0xe6fff3, 0xf2fff7 -> BODY
-        else -> value.color()
-    }).children(value.children().map(::restyle))
+    private fun recolor(value: Component, color: TextColor, root: Boolean = true): Component {
+        val source = value.color()
+        val tinted = if (root || source?.value() in AUTHORED_NEUTRALS) value.color(color) else value
+        return tinted.decoration(TextDecoration.ITALIC, false)
+            .children(tinted.children().map { recolor(it, color, root = false) })
+    }
+
+    private fun restyle(value: Component): Component {
+        val source = value.color()
+        val restyled = if (source?.value() in AUTHORED_NEUTRALS) value.color(BODY) else value
+        return restyled.decoration(TextDecoration.ITALIC, false)
+            .children(restyled.children().map(::restyle))
+    }
     private data class DialogRow(val id: String, val slot: Int, val entry: FarmMenuEntry, val actionable: Boolean)
     private val plain = PlainTextComponentSerializer.plainText()
     private val TITLE = TextColor.color(0xffb277)
@@ -248,7 +258,12 @@ internal object FarmDialogScreens {
     private val SELECTED = TextColor.color(0x9bd48d)
     private val SAVE = TextColor.color(0x9bd48d)
     private val DELETE = TextColor.color(0xff6b61)
-    private val MUTED = TextColor.color(0xaaa49a)
+    private val CONTROL = TextColor.color(0xffffff)
     private val BODY = TextColor.color(0xe8dfd2)
     private val ORDINARY = TextColor.color(0xd7b486)
+    private val AUTHORED_NEUTRALS = setOf(
+        0x20252b, 0x555555, 0x666666, 0x707070, 0x707a76, 0x77736d, 0x777777,
+        0x8c8c8c, 0x969696, 0x9aa8b7, 0xaaaaaa, 0xaaa49a, 0xb8b8b8, 0xb8c8c0,
+        0xc9c3ba, 0xd0d0d0,
+    )
 }

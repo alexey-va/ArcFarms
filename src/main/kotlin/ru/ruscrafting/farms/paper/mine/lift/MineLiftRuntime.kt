@@ -36,6 +36,7 @@ import ru.arc.paper.menu.PaperDialogScreen
 import ru.arc.paper.teleport.ScopedTeleportAuthorizer
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.domain.mine.lift.MineLiftMotion
+import ru.ruscrafting.farms.paper.FarmDialogScreens
 import java.util.UUID
 import java.util.logging.Level
 import kotlin.math.abs
@@ -183,16 +184,22 @@ internal class MineLiftRuntime(private val plugin: JavaPlugin, private val local
         val config = requireNotNull(settings)
         dialogs.beginFlow(player)
         dialogs.open(player, PaperDialogScreen(
-            id = "farms.mine_lift", title = text("title", player),
-            body = listOf(PaperDialogBody(text("description", player, mapOf("floor" to floorName(index, player))))),
+            id = "farms.mine_lift", title = FarmDialogScreens.nativeBody(text("title", player)),
+            body = listOf(
+                PaperDialogBody(
+                    FarmDialogScreens.nativeBody(
+                        text("description", player, mapOf("floor" to floorName(index, player)))
+                    )
+                )
+            ),
             buttons = config.floors.indices.filter {
                 it != index && (state.phase != MineLiftMotion.Phase.BOARDING || it == state.target)
             }.map { target ->
-                PaperDialogButton(PaperDialogActionId.of("floor_$target"), text("go", player,
-                    mapOf("floor" to floorName(target, player))), width = 230, closeDialogBeforeAction = true,
+                PaperDialogButton(PaperDialogActionId.of("floor_$target"), FarmDialogScreens.nativeBody(text("go", player,
+                    mapOf("floor" to floorName(target, player)))), width = 230, closeDialogBeforeAction = true,
                     onClick = { board(it.player, index, target) })
             }, columns = 2,
-            exitButton = PaperDialogButton(PaperDialogActionId.of("close"), text("close", player), width = 200, onClick = {}),
+            exitButton = PaperDialogButton(PaperDialogActionId.of("close"), FarmDialogScreens.nativeControl(text("close", player)), width = 200, onClick = {}),
         ))
     }
 
