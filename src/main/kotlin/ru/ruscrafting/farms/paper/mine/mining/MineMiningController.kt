@@ -60,6 +60,10 @@ internal class MineMiningController(
             remind(event, if (runtime.settings.miningOnly) MessageKey.MINE_MANAGED_REQUIRED else MessageKey.MINE_TARGET_REQUIRED)
             return true
         }
+        if (runtime.settings.miningOnly && event.block.type.name !in requireNotNull(runtime.currentOrder()).miningMaterials) {
+            remind(event, MessageKey.MINE_MANAGED_REQUIRED)
+            return true
+        }
         val target = runtime.state.objective?.targets?.firstOrNull { it.position == event.block.position() }
         if (!runtime.settings.miningOnly && (target == null || target.status != ObjectiveTargetStatus.AVAILABLE)) {
             remind(event, if (runtime.settings.miningOnly) MessageKey.MINE_MANAGED_REQUIRED else MessageKey.MINE_TARGET_REQUIRED)

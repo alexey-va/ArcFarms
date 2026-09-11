@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.paper.worksite
 
 import org.bukkit.entity.Player
 import org.bukkit.event.block.BlockBreakEvent
+import org.bukkit.event.block.BlockPlaceEvent
 import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.event.player.PlayerDropItemEvent
@@ -21,6 +22,10 @@ internal class WorksiteEventRouter(
     fun protectsTemporaryBlock(location: org.bukkit.Location): Boolean = registry.protectsTemporaryBlock(location)
 
     fun onBreakHigh(event: BlockBreakEvent): Boolean = registry.onBreakHigh(event)
+
+    fun onBreakLowest(event: BlockBreakEvent): Boolean = registry.onBreakLowest(event)
+
+    fun onBlockPlace(event: BlockPlaceEvent): Boolean = registry.onBlockPlace(event)
 
     fun onBreakMonitor(event: BlockBreakEvent) = registry.onBreakMonitor(event)
 

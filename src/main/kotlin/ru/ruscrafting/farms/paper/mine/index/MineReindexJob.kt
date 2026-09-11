@@ -43,7 +43,7 @@ internal class MineReindexJob(
                     if (!definition.region.contains(block.location)) return@repeat
                     val roles = MineAnchorClassifier.classify(block, definition.mineable, definition.railMaterials)
                     if (roles.isEmpty()) return@repeat
-                    require(targets.size < MAX_TARGETS) { "Mine index target limit exceeded" }
+                    require(targets.size < MineBlockIndex.MAX_TARGETS_PER_ZONE) { "Mine index target limit exceeded" }
                     targets += MineIndexedTarget(WorksitePosition(block.world.name, block.x, block.y, block.z), roles)
                 }
                 remaining -= count
@@ -108,7 +108,6 @@ internal class MineReindexJob(
     }
 
     private companion object {
-        const val MAX_TARGETS = 150_000
         fun slices(bounds: CuboidBounds): List<Slice> = buildList {
             for (chunkX in (bounds.minX shr 4)..(bounds.maxX shr 4)) {
                 for (chunkZ in (bounds.minZ shr 4)..(bounds.maxZ shr 4)) {

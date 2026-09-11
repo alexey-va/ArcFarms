@@ -310,7 +310,10 @@ class ArcFarmsService(
         return enterpriseChanged
     }
 
-    fun onBreakLowest(event: BlockBreakEvent) = farm.events.onBreakLowest(event)
+    fun onBreakLowest(event: BlockBreakEvent) {
+        worksiteEvents.onBreakLowest(event)
+        farm.events.onBreakLowest(event)
+    }
     fun onBreakHigh(event: BlockBreakEvent) = worksiteEvents.onBreakHigh(event)
     fun onBreakMonitor(event: BlockBreakEvent) = worksiteEvents.onBreakMonitor(event)
     fun onBlockDrop(event: BlockDropItemEvent) = farm.events.onBlockDrop(event)
@@ -438,7 +441,7 @@ class ArcFarmsService(
     fun onBlockGrow(event: BlockGrowEvent) = farm.events.onBlockGrow(event)
     fun onBlockPlace(event: BlockPlaceEvent) {
         if (worksiteEvents.protectsTemporaryBlock(event.blockPlaced.location)) event.isCancelled = true
-        else farm.events.onBlockPlace(event)
+        else if (!worksiteEvents.onBlockPlace(event)) farm.events.onBlockPlace(event)
     }
     fun protectsTemporaryBlock(location: org.bukkit.Location): Boolean = worksiteEvents.protectsTemporaryBlock(location)
     fun statuses(): List<ActivityStatus> = worksites.statuses()

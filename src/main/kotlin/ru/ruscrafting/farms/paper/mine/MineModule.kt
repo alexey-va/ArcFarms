@@ -4,6 +4,7 @@ import org.bukkit.Chunk
 import org.bukkit.entity.Player
 import org.bukkit.block.Block
 import org.bukkit.event.block.BlockBreakEvent
+import org.bukkit.event.block.BlockPlaceEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.Location
 import ru.ruscrafting.farms.config.MineZoneSettings
@@ -15,6 +16,8 @@ import ru.ruscrafting.farms.paper.ActivityStatus
 import ru.ruscrafting.farms.paper.RegionGateway
 import ru.ruscrafting.farms.paper.WorksiteModule
 import ru.ruscrafting.farms.paper.WorksiteBlockBreakHandler
+import ru.ruscrafting.farms.paper.WorksiteBlockBreakGuard
+import ru.ruscrafting.farms.paper.WorksiteBlockPlaceHandler
 import ru.ruscrafting.farms.paper.WorksiteBlockInteractHandler
 import ru.ruscrafting.farms.paper.WorksiteMoveHandler
 import ru.ruscrafting.farms.paper.WorksiteFastVisualHandler
@@ -71,7 +74,8 @@ internal class MineModule(
     private val clock: () -> Long,
     private val scenarios: ru.ruscrafting.farms.paper.mine.incident.scenario.MineScenarioController?,
     private val veins: ru.ruscrafting.farms.paper.mine.mining.MineVeinController,
-) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler,
+) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockBreakGuard, WorksiteBlockPlaceHandler,
+    WorksiteBlockInteractHandler,
     WorksiteMoveHandler, WorksiteEntityInteractHandler, WorksiteEntityDeathHandler, WorksiteFastVisualHandler,
     WorksiteParticipantOwner, WorksiteServiceItemOwner, WorksiteGuidanceHandler,
     ru.ruscrafting.farms.paper.WorksiteParticipantRecoveryOwner, ru.ruscrafting.farms.paper.WorksiteTeleportRetention, ru.ruscrafting.farms.paper.WorksiteTemporaryBlockOwner {
@@ -124,6 +128,23 @@ internal class MineModule(
         registry.snapshot().any { access.hasAccess(player, it.settings.permission) }
 
     override fun onBreakHigh(event: BlockBreakEvent): Boolean = scenarios?.onBreak(event) == true || mining.onBreakHigh(event)
+
+    override fun onBreakLowest(event: BlockBreakEvent): Boolean {
+        if (registry.at(event.block.location) == null || access.isAdminEditing(event.player)) return false
+        event.isCancelled = true
+        return true
+    }
+
+    override fun onBlockPlace(event: BlockPlaceEvent): Boolean {
+        if (registry.at(event.blockPlaced.location) == null) return false
+        if (access.isAdminEditing(event.player)) {
+            event.isCancelled = false
+            return true
+        }
+        event.isCancelled = true
+        audience.sendActionBar(event.player, ru.ruscrafting.farms.config.MessageKey.MINE_MANAGED_REQUIRED)
+        return true
+    }
 
     override fun onInteract(event: PlayerInteractEvent, clicked: Block, player: Player): Boolean =
         scenarios?.onInteract(event, clock()) == true || incidents.onInteract(event) ||
@@ -179,7 +200,9 @@ internal class MineModule(
         } == true }
         org.bukkit.Bukkit.getOnlinePlayers().forEach(::recoverPlayer)
         recovery.activateLoadedState()
-        registry.snapshot().filter { it.settings.miningOnly && it.state.phase == MinePhase.IDLE }.forEach {
+        // Mining-only maps depend on a complete visible-surface index. Rebuild it on every activation,
+        // including a persisted active order after a restart or region topology change.
+        registry.snapshot().filter { it.settings.miningOnly }.forEach {
             admin.startReindex(it.settings.id)
         }
     }
@@ -238,7 +261,7 @@ internal class MineModule(
     private fun MineRuntime.indexDefinition() = MineIndexDefinition(
         settings.id,
         region,
-        settings.materialWeights.keys.mapTo(linkedSetOf(), MaterialRules::material),
+        mineableMaterials,
         settings.extractionRailMaterials.mapTo(linkedSetOf(), MaterialRules::material),
     )
 

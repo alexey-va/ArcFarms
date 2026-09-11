@@ -129,5 +129,5 @@ internal class MineBlockIndex(private val plugin: Plugin) {
         }.getOrNull()
     }
 
-    private companion object { const val MAX_TARGETS_PER_ZONE = 150_000 }
+    internal companion object { const val MAX_TARGETS_PER_ZONE = 250_000 }
 }

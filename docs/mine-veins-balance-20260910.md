@@ -30,3 +30,14 @@ Unknown actual actions/hour and enchantment mixes prevent a measured monetary
 forecast. Keep existing caps and verify actual throughput after activation before
 any further supply increase. Do not sum resource sale value with raw items as
 if both were independent rewards.
+
+The 2026-09-11 full-map correction does not change those values or caps. It makes
+the startup reindex run for a persisted active basic-mine order, restricts mining
+to the current order's declared ore materials, and recognizes additional exposed
+full-block cave decoration such as deepslate/stone/tuff/mud bricks, moss/rooted
+dirt and bone blocks. A read-only scan of the live `mine1` cuboid found 3,317,760
+positions, 160,736 non-air blocks adjacent to air and 142,854 eligible exposed
+hosts under the conservative masonry/terrain policy before adding the smaller
+moss/dirt/bone families. Deposits remain deficit-bound and limited to 16 connected
+blocks per pass. Direct delta remains 0 vault, 0 tokens, 0 XP and 0 granted items;
+the same unmeasured throughput sensitivity above remains the indirect risk model.

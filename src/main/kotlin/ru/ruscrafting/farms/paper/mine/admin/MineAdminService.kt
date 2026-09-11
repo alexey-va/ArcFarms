@@ -3,7 +3,6 @@ package ru.ruscrafting.farms.paper.mine.admin
 import org.bukkit.entity.Player
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.ActivityKind
-import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.mine.extraction.MineExtractionController
 import ru.ruscrafting.farms.paper.mine.incident.MineIncidentScheduler
@@ -15,6 +14,8 @@ import ru.ruscrafting.farms.paper.mine.prospecting.MineProspectingController
 import ru.ruscrafting.farms.paper.worksite.WorksiteAdminHandler
 import ru.ruscrafting.farms.paper.worksite.WorksiteAdminReindexTick
 import ru.ruscrafting.farms.paper.worksite.WorksiteAdminStatus
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import java.util.logging.Level
 
 internal typealias MineAdminStatus = WorksiteAdminStatus
 
@@ -26,6 +27,7 @@ internal class MineAdminService(
     private val prospecting: MineProspectingController,
     private val extraction: MineExtractionController,
     private val incidents: MineIncidentScheduler,
+    private val state: WorksiteStatePort,
 ) : WorksiteAdminHandler {
     private val reindexes = mutableMapOf<String, MineReindexJob>()
     override val kind: ActivityKind = ActivityKind.MINE
@@ -57,23 +59,37 @@ internal class MineAdminService(
     override fun startReindex(zoneId: String): Boolean {
         if (zoneId in reindexes) return false
         val runtime = registry.byId(zoneId) ?: return false
-        if (runtime.state.phase != ru.ruscrafting.farms.domain.MinePhase.IDLE) return false
+        val phase = runtime.state.phase
+        if (phase != ru.ruscrafting.farms.domain.MinePhase.IDLE &&
+            !(runtime.settings.miningOnly && phase == ru.ruscrafting.farms.domain.MinePhase.MINING)) return false
         reindexes[zoneId] = MineReindexJob(
             MineIndexDefinition(
                 zoneId,
                 runtime.region,
-                runtime.settings.materialWeights.keys.mapTo(linkedSetOf(), MaterialRules::material),
+                runtime.mineableMaterials,
                 runtime.railMaterials,
             ),
             index,
             tickets,
         )
+        state.log(Level.INFO, "Mine reindex started zone=$zoneId phase=$phase bounds=${runtime.region.bounds} volume=${runtime.region.bounds.volume}")
         return true
     }
 
     override fun tickReindex(zoneId: String, budget: Int): WorksiteAdminReindexTick? {
         val job = reindexes[zoneId] ?: return null
-        val tick = job.tick(budget).also { if (it.finished) reindexes.remove(zoneId) }
+        val tick = try {
+            job.tick(budget)
+        } catch (failure: Throwable) {
+            reindexes.remove(zoneId)
+            state.log(Level.SEVERE, "Mine reindex failed zone=$zoneId budget=$budget", failure)
+            throw failure
+        }.also {
+            if (it.finished) {
+                reindexes.remove(zoneId)
+                state.log(Level.INFO, "Mine reindex completed zone=$zoneId scanned=${it.scannedBlocks} indexed=${it.indexedTargets}")
+            }
+        }
         return WorksiteAdminReindexTick(tick.finished, tick.scannedBlocks, tick.indexedTargets)
     }
 

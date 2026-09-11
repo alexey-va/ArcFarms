@@ -5,6 +5,7 @@ import org.bukkit.Location
 import org.bukkit.block.Block
 import org.bukkit.entity.Player
 import org.bukkit.event.block.BlockBreakEvent
+import org.bukkit.event.block.BlockPlaceEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.config.ArcFarmsLocale
@@ -16,6 +17,8 @@ import ru.ruscrafting.farms.paper.ActivityStatus
 import ru.ruscrafting.farms.paper.MineController
 import ru.ruscrafting.farms.paper.RegionGateway
 import ru.ruscrafting.farms.paper.WorksiteBlockBreakHandler
+import ru.ruscrafting.farms.paper.WorksiteBlockBreakGuard
+import ru.ruscrafting.farms.paper.WorksiteBlockPlaceHandler
 import ru.ruscrafting.farms.paper.WorksiteBlockInteractHandler
 import ru.ruscrafting.farms.paper.WorksiteGuidanceHandler
 import ru.ruscrafting.farms.paper.WorksiteModule
@@ -55,7 +58,8 @@ internal class MineVersionedModule(
     serviceItems: WorksiteServiceItems? = null,
     rewardGrants: WorksiteRewardGrantService? = null,
     lift: MineLiftAccess? = null,
-) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler,
+) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockBreakGuard, WorksiteBlockPlaceHandler,
+    WorksiteBlockInteractHandler,
     WorksiteMoveHandler, WorksiteGuidanceHandler, WorksiteFastVisualHandler, WorksiteServiceItemOwner,
     WorksiteParticipantOwner, WorksiteEntityInteractHandler, WorksiteEntityDeathHandler, WorksiteAdminHandler,
     ru.ruscrafting.farms.paper.WorksiteParticipantRecoveryOwner, ru.ruscrafting.farms.paper.WorksiteTeleportRetention, ru.ruscrafting.farms.paper.WorksiteTemporaryBlockOwner {
@@ -137,6 +141,12 @@ internal class MineVersionedModule(
 
     override fun onBreakHigh(event: BlockBreakEvent): Boolean =
         (delegate as? WorksiteBlockBreakHandler)?.onBreakHigh(event) == true
+
+    override fun onBreakLowest(event: BlockBreakEvent): Boolean =
+        (delegate as? WorksiteBlockBreakGuard)?.onBreakLowest(event) == true
+
+    override fun onBlockPlace(event: BlockPlaceEvent): Boolean =
+        (delegate as? WorksiteBlockPlaceHandler)?.onBlockPlace(event) == true
 
     override fun onBreakMonitor(event: BlockBreakEvent): Boolean =
         (delegate as? WorksiteBlockBreakHandler)?.onBreakMonitor(event) == true

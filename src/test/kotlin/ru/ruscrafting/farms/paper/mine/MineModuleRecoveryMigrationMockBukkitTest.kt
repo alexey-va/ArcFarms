@@ -3,6 +3,7 @@ package ru.ruscrafting.farms.paper.mine
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.mockk.mockk
 import io.mockk.every
 import org.bukkit.Material
@@ -14,6 +15,7 @@ import ru.ruscrafting.farms.config.ZoneReference
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineShiftState
+import ru.ruscrafting.farms.domain.MineShiftEngine
 import ru.ruscrafting.farms.domain.PendingMineBlock
 import ru.ruscrafting.farms.paper.CuboidRegionGateway
 import ru.ruscrafting.farms.paper.RuntimeTaskSupervisor
@@ -27,6 +29,26 @@ class MineModuleRecoveryMigrationMockBukkitTest : FunSpec({
 
     beforeEach { paper = MockBukkitTestRuntime.open() }
     afterEach { paper.close() }
+
+    test("activation reindexes a persisted active mining-only map") {
+        val world = paper.server.addSimpleWorld("world")
+        world.getBlockAt(1, 64, 1).type = Material.DEEPSLATE_BRICKS
+        val graph = testMineComponentGraph(
+            paper.createSimplePlugin("MineActiveReindexTest"), CuboidRegionGateway(), immediateMinePort(),
+            clock = { 1_000L }, journal = ImmediateMineJournal(), random = java.util.Random(4),
+        )
+        graph.module.rebuild(listOf(mineV2Settings().copy(miningOnly = true)), emptyMap(), 5_000L)
+        val runtime = graph.registry.byId("old_shafts")!!
+        runtime.state = MineShiftEngine.start(
+            runtime.state, runtime.nextOrder().domain(), runtime.rules(), 1_000L,
+        ).state
+        runtime.state.phase shouldBe MinePhase.MINING
+
+        graph.module.activateLoadedState()
+
+        graph.admin.startReindex("old_shafts") shouldBe false
+        graph.admin.tickReindex("old_shafts", 262_144) shouldNotBe null
+    }
 
     test("v2 module reconciles every legacy pending block before the affected zone starts") {
         val world = paper.server.addSimpleWorld("world")
@@ -143,6 +165,7 @@ internal fun mineV2Settings() = MineZoneSettings(
             prospectingRequired = 1,
             miningRequired = 2,
             loadingRequired = 1,
+            miningMaterials = setOf("IRON_ORE"),
             incidentTypes = listOf(
                 MineIncidentType.CAVE_IN,
                 MineIncidentType.GAS_LEAK,

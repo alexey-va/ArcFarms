@@ -5,6 +5,7 @@ import org.bukkit.Location
 import org.bukkit.block.Block
 import org.bukkit.entity.Player
 import org.bukkit.event.block.BlockBreakEvent
+import org.bukkit.event.block.BlockPlaceEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.entity.EntityDeathEvent
@@ -39,6 +40,15 @@ internal interface WorksiteModule<S> : RuntimeComponent {
 internal interface WorksiteBlockBreakHandler {
     fun onBreakHigh(event: BlockBreakEvent): Boolean
     fun onBreakMonitor(event: BlockBreakEvent): Boolean = false
+}
+
+/** Early ownership guard: a worksite cancels world mutation before other gameplay plugins observe it. */
+internal interface WorksiteBlockBreakGuard {
+    fun onBreakLowest(event: BlockBreakEvent): Boolean
+}
+
+internal interface WorksiteBlockPlaceHandler {
+    fun onBlockPlace(event: BlockPlaceEvent): Boolean
 }
 
 internal interface WorksiteBlockInteractHandler {
@@ -124,6 +134,12 @@ internal class WorksiteModuleRegistry(
 
     fun onBreakHigh(event: BlockBreakEvent): Boolean =
         BREAK_ROUTING_ORDER.any { kind -> onBreakHigh(kind, event) }
+
+    fun onBreakLowest(event: BlockBreakEvent): Boolean =
+        modulesInOrder.filterIsInstance<WorksiteBlockBreakGuard>().any { it.onBreakLowest(event) }
+
+    fun onBlockPlace(event: BlockPlaceEvent): Boolean =
+        modulesInOrder.filterIsInstance<WorksiteBlockPlaceHandler>().any { it.onBlockPlace(event) }
 
     fun onBreakMonitor(event: BlockBreakEvent) {
         modulesInOrder.filterIsInstance<WorksiteBlockBreakHandler>().forEach { it.onBreakMonitor(event) }

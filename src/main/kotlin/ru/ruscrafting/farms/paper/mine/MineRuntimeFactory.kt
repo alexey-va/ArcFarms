@@ -17,6 +17,11 @@ internal data class MineRuntime(
 ) {
     val orders: Map<String, MineOrderSettings> get() = settings.orders.associateBy(MineOrderSettings::id)
     val railMaterials get() = settings.extractionRailMaterials.mapTo(linkedSetOf(), MaterialRules::material)
+    val mineableMaterials get() = (if (settings.miningOnly) {
+        settings.orders.asSequence().flatMap { it.miningMaterials.asSequence() }
+    } else {
+        settings.materialWeights.keys.asSequence()
+    }).mapTo(linkedSetOf(), MaterialRules::material)
 
     fun currentOrder(): MineOrderSettings? = state.orderId?.let(orders::get)
 

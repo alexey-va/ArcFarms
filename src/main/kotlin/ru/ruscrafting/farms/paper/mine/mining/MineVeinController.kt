@@ -38,7 +38,7 @@ internal class MineVeinController(
         val positions = index.loadedTargets(runtime.settings.id, MineAnchorRole.SUPPORT)
             .filterTo(linkedSetOf()) { it.world == world.name && runtime.region.contains(block(it).location) }
         val definition = MineIndexDefinition(runtime.settings.id, runtime.region,
-            runtime.settings.materialWeights.keys.mapTo(linkedSetOf(), MaterialRules::material), runtime.railMaterials)
+            runtime.mineableMaterials, runtime.railMaterials)
         // Recover the index too if a crash occurred after the durable block write.
         val indexedMineables = index.loadedTargets(runtime.settings.id, MineAnchorRole.MINEABLE)
         positions.filter { block(it).type in materials && it !in indexedMineables }
@@ -96,8 +96,7 @@ internal class MineVeinController(
 
     internal companion object {
         private val faces = listOf(BlockFace.UP, BlockFace.DOWN, BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST)
-        private val wallFaces = listOf(BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST)
-        fun exposed(block: Block): Boolean = wallFaces.any {
+        fun exposed(block: Block): Boolean = faces.any {
             block.world.isChunkLoaded((block.x + it.modX) shr 4, (block.z + it.modZ) shr 4) &&
                 block.getRelative(it).type.isAir
         }
@@ -106,12 +105,21 @@ internal class MineVeinController(
             return material in setOf(Material.STONE, Material.GRANITE, Material.DIORITE, Material.ANDESITE,
                 Material.DEEPSLATE, Material.TUFF, Material.CALCITE, Material.NETHERRACK, Material.BASALT,
                 Material.SMOOTH_BASALT, Material.BLACKSTONE, Material.END_STONE, Material.DRIPSTONE_BLOCK,
-                Material.COBBLESTONE, Material.MOSSY_COBBLESTONE, Material.TERRACOTTA) ||
+                Material.COBBLESTONE, Material.MOSSY_COBBLESTONE, Material.TERRACOTTA, Material.DIRT,
+                Material.COARSE_DIRT, Material.ROOTED_DIRT, Material.MOSS_BLOCK, Material.MUD,
+                Material.PACKED_MUD, Material.GRAVEL, Material.CLAY, Material.SAND, Material.RED_SAND,
+                Material.BONE_BLOCK, Material.SOUL_SAND, Material.SOUL_SOIL, Material.MAGMA_BLOCK,
+                Material.CRIMSON_NYLIUM, Material.WARPED_NYLIUM) ||
                 name.endsWith("_TERRACOTTA") && !name.endsWith("_GLAZED_TERRACOTTA") || name.endsWith("_CONCRETE") ||
                 name in setOf("SANDSTONE", "SMOOTH_SANDSTONE", "CUT_SANDSTONE", "CHISELED_SANDSTONE",
                     "RED_SANDSTONE", "SMOOTH_RED_SANDSTONE", "CUT_RED_SANDSTONE", "CHISELED_RED_SANDSTONE",
                     "POLISHED_ANDESITE", "POLISHED_DIORITE", "POLISHED_GRANITE", "POLISHED_BASALT",
-                    "COBBLED_DEEPSLATE", "POLISHED_DEEPSLATE", "POLISHED_TUFF", "POLISHED_BLACKSTONE")
+                    "COBBLED_DEEPSLATE", "POLISHED_DEEPSLATE", "DEEPSLATE_BRICKS", "CRACKED_DEEPSLATE_BRICKS",
+                    "DEEPSLATE_TILES", "CRACKED_DEEPSLATE_TILES", "STONE_BRICKS", "MOSSY_STONE_BRICKS",
+                    "CRACKED_STONE_BRICKS", "CHISELED_STONE_BRICKS", "PACKED_MUD", "MUD_BRICKS",
+                    "POLISHED_TUFF", "TUFF_BRICKS", "CHISELED_TUFF_BRICKS", "POLISHED_BLACKSTONE",
+                    "POLISHED_BLACKSTONE_BRICKS", "CRACKED_POLISHED_BLACKSTONE_BRICKS", "NETHER_BRICKS",
+                    "RED_NETHER_BRICKS", "CRACKED_NETHER_BRICKS", "END_STONE_BRICKS", "PURPUR_BLOCK", "BRICKS")
         }
         fun connected(seed: WorksitePosition, candidates: Set<WorksitePosition>, limit: Int): List<WorksitePosition> {
             val queue = ArrayDeque<WorksitePosition>()

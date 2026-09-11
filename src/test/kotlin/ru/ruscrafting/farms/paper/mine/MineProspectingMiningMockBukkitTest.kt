@@ -15,6 +15,7 @@ import org.bukkit.block.BlockFace
 import org.bukkit.entity.Player
 import org.bukkit.event.block.Action
 import org.bukkit.event.block.BlockBreakEvent
+import org.bukkit.event.block.BlockPlaceEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
@@ -105,6 +106,57 @@ class MineProspectingMiningMockBukkitTest : FunSpec({
         vein.first().type shouldBe Material.DEEPSLATE
         effects.rewardCalls shouldBe 1
         runtime.state.mined shouldBe 1
+    }
+
+    test("mine owns breaking and placing throughout its region before phase-specific handling") {
+        val world = paper.server.addSimpleWorld("world")
+        val player = paper.server.addPlayer("Miner").also {
+            it.inventory.setItemInMainHand(ItemStack(Material.IRON_PICKAXE))
+        }
+        val graph = testMineComponentGraph(
+            paper.createSimplePlugin("MineOwnershipTest"), CuboidRegionGateway(), immediateMinePort(),
+            clock = { 1_000L }, journal = ImmediateMineJournal(), random = java.util.Random(9),
+        )
+        graph.module.rebuild(listOf(mineV2Settings().copy(miningOnly = true)), emptyMap(), 5_000L)
+        val runtime = graph.registry.byId("old_shafts")!!
+        runtime.state = ru.ruscrafting.farms.domain.MineShiftEngine.start(
+            runtime.state, requireNotNull(runtime.currentOrder() ?: runtime.nextOrder()).domain(), runtime.rules(), 1_000L,
+        ).state
+
+        val decoration = world.getBlockAt(8, 64, 8).also { it.type = Material.DEEPSLATE_BRICKS }
+        val breakEvent = BlockBreakEvent(decoration, player)
+        graph.module.onBreakLowest(breakEvent) shouldBe true
+        breakEvent.isCancelled shouldBe true
+
+        val stone = world.getBlockAt(7, 64, 8).also { it.type = Material.STONE }
+        val ore = world.getBlockAt(6, 64, 8).also { it.type = Material.IRON_ORE }
+        graph.index.replaceZone(
+            MineIndexDefinition(runtime.settings.id, runtime.region, runtime.mineableMaterials),
+            listOf(world.getChunkAt(0, 0)),
+            listOf(
+                MineIndexedTarget(stone.position(), setOf(MineAnchorRole.MINEABLE)),
+                MineIndexedTarget(ore.position(), setOf(MineAnchorRole.MINEABLE)),
+            ),
+        )
+        graph.module.onBreakHigh(BlockBreakEvent(stone, player)) shouldBe true
+        stone.type shouldBe Material.STONE
+        runtime.state.mined shouldBe 0
+        graph.module.onBreakHigh(BlockBreakEvent(ore, player)) shouldBe true
+        ore.type shouldBe Material.DEEPSLATE
+        runtime.state.mined shouldBe 1
+
+        val placed = world.getBlockAt(9, 64, 8).also { it.type = Material.COBBLESTONE }
+        val placeEvent = BlockPlaceEvent(
+            placed, placed.state, world.getBlockAt(9, 63, 8), ItemStack(Material.COBBLESTONE),
+            player, true, EquipmentSlot.HAND,
+        )
+        graph.module.onBlockPlace(placeEvent) shouldBe true
+        placeEvent.isCancelled shouldBe true
+
+        val outside = world.getBlockAt(40, 64, 40).also { it.type = Material.STONE }
+        val outsideBreak = BlockBreakEvent(outside, player)
+        graph.module.onBreakLowest(outsideBreak) shouldBe false
+        outsideBreak.isCancelled shouldBe false
     }
 })
 

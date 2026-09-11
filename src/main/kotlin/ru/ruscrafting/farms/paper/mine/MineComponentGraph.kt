@@ -119,7 +119,7 @@ internal class MineComponentGraph(
         }
     }
     val admin = MineAdminService(
-        registry, index, tickets, prospecting, extraction, incidentScheduler,
+        registry, index, tickets, prospecting, extraction, incidentScheduler, ports.state,
     )
     val module = MineModule(
         regions, ports.access, ports.audience, ports.tasks, transitions, registry, recovery, index, tickets, prospecting, mining, loading, extraction, cartScene,
