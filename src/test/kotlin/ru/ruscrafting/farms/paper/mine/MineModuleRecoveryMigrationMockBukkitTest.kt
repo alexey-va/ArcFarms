@@ -128,7 +128,65 @@ class MineModuleRecoveryMigrationMockBukkitTest : FunSpec({
         retried.isDone shouldBe false
         controller.beforeReload("test_cleanup")
     }
+
+    test("due recovery does not race a journaled block mutation") {
+        val world = paper.server.addSimpleWorld("world")
+        world.getChunkAt(0, 0).load()
+        val block = world.getBlockAt(2, 64, 2).also { it.type = Material.STONE }
+        val journal = ControllableMineJournal()
+        val token = mockk<RuntimeTaskSupervisor.Token>()
+        val port = mockk<WorksiteRuntimePort>(relaxed = true) {
+            every { lifecycleToken() } returns token
+            every { runSync(token, any()) } answers {
+                secondArg<() -> Unit>().invoke()
+                true
+            }
+            every { isOperational() } returns true
+        }
+        val controller = MineBlockRecoveryController(journal, port, port, port, { 1_000L })
+        val record = PendingMineBlock(
+            id = "vein:race",
+            zoneId = "old_shafts",
+            world = world.name,
+            x = block.x,
+            y = block.y,
+            z = block.z,
+            originalMaterial = "STONE",
+            temporaryMaterial = "STONE",
+            nextMaterial = "IRON_ORE",
+            restoreAt = 1_000L,
+        )
+
+        val prepared = controller.prepare(record, block, Material.STONE) {
+            block.type = Material.IRON_ORE
+        }
+
+        controller.processDue(now = 1_000L) shouldBe 0
+        block.type shouldBe Material.STONE
+        journal.records() shouldContainExactly listOf(record)
+
+        journal.completePrepare()
+        prepared.join() shouldBe true
+        block.type shouldBe Material.IRON_ORE
+    }
 })
+
+private class ControllableMineJournal : MineRecoveryJournal {
+    private val records = linkedMapOf<String, PendingMineBlock>()
+    private var pending: CompletableFuture<Unit>? = null
+
+    override fun records(): List<PendingMineBlock> = records.values.toList()
+    override fun containsPosition(positionKey: String): Boolean = records.values.any { it.positionKey == positionKey }
+    override fun prepare(record: PendingMineBlock): CompletableFuture<Unit> {
+        records[record.id] = record
+        return CompletableFuture<Unit>().also { pending = it }
+    }
+    override fun remove(recordId: String): CompletableFuture<Unit> {
+        records.remove(recordId)
+        return CompletableFuture.completedFuture(Unit)
+    }
+    fun completePrepare() = requireNotNull(pending).complete(Unit)
+}
 
 internal class ImmediateMineJournal(vararg initial: PendingMineBlock) : MineRecoveryJournal {
     private val records = initial.associateByTo(linkedMapOf(), PendingMineBlock::id)

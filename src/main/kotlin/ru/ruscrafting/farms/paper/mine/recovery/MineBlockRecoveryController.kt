@@ -105,7 +105,10 @@ internal class MineBlockRecoveryController(
     fun processDue(now: Long = clock(), budget: Int = 128): Int {
         require(budget in 1..262_144)
         var processed = 0
-        journal.records().asSequence().filter { it.restoreAt <= now }.take(budget).forEach { record ->
+        journal.records().asSequence()
+            .filter { it.restoreAt <= now && it.positionKey !in inFlightPositions }
+            .take(budget)
+            .forEach { record ->
             val world = Bukkit.getWorld(record.world) ?: return@forEach
             if (!world.isChunkLoaded(record.x shr 4, record.z shr 4)) return@forEach
             val temporary = material(record.temporaryMaterial, record) ?: return@forEach
