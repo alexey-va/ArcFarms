@@ -35,6 +35,29 @@ class FarmDialogScreensTest : FunSpec({
         FarmDialogScreens.nativeControl(Component.text("Back")).color()?.value() shouldBe 0xffffff
     }
 
+    test("rendered summary tables do not reintroduce gray labels or fallback separators") {
+        val paper = MockBukkitTestRuntime.open()
+        try {
+            val plugin = paper.createSimplePlugin("FarmSummaryContrast")
+            copyConfig(plugin)
+            val capture = CapturingDialog()
+            val menus = ArcFarmsMenuPlatform(plugin, capture)
+            val player = paper.addPlayer("TableReader")
+            menus.open(player, ArcFarmsMenuPlatform.MAIN) {
+                FarmMenuContent(
+                    title = Component.text("Activities"),
+                    summary = listOf(Component.text("Contribution: farm") to Component.text("10", NamedTextColor.GREEN)),
+                )
+            }
+            fun colors(component: Component): List<Int> = listOfNotNull(component.color()?.value()) + component.children().flatMap(::colors)
+            val table = capture.last!!.body.last().text
+            colors(table).any { it in setOf(0x9aa8b7, 0xaaaaaa, 0x555555) } shouldBe false
+            colors(table) shouldContain 0xe8dfd2
+            colors(table) shouldContain 0x55ff55
+            PlainTextComponentSerializer.plainText().serialize(table) shouldContain "Contribution: farm"
+        } finally { paper.close() }
+    }
+
     test("native farm reads ARC escape preference from the registered LuckPerms service on every visit") {
         val paper = MockBukkitTestRuntime.open()
         try {

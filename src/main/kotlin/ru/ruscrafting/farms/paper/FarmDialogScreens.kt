@@ -14,7 +14,12 @@ import ru.arc.paper.menu.DialogTables
 
 /** The Help center's restrained palette and two-column native dialog composition. */
 internal object FarmDialogScreens {
-    fun screen(session: FarmMenuSession, config: PaperMenuConfiguration, text: (Player, String) -> Component, closeOnEscape: Boolean = false): PaperDialogScreen {
+    fun screen(session: FarmMenuSession, config: PaperMenuConfiguration, text: (Player, String) -> Component, closeOnEscape: Boolean = false): PaperDialogScreen =
+        compose(session, config, text, closeOnEscape).let { screen ->
+            screen.copy(body = screen.body.map { it.copy(text = nativeBody(it.text)) })
+        }
+
+    private fun compose(session: FarmMenuSession, config: PaperMenuConfiguration, text: (Player, String) -> Component, closeOnEscape: Boolean): PaperDialogScreen {
         val content = session.content()
         val layout = config.catalog.require(session.menuId)
         val rows = buildList {
