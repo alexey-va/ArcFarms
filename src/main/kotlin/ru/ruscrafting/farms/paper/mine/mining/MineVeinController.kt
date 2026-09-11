@@ -27,6 +27,7 @@ internal class MineVeinController(
     private val nextWarning = mutableMapOf<String, Long>()
     private val nextSummary = mutableMapOf<String, Long>()
     private val lastSummary = mutableMapOf<String, String>()
+    private val placementRounds = mutableMapOf<String, Long>()
 
     fun tick(runtime: MineRuntime, now: Long) {
         if (!runtime.settings.miningOnly || runtime.state.phase != MinePhase.MINING ||
@@ -50,7 +51,8 @@ internal class MineVeinController(
         val available = matching.count { p -> faces.any { face ->
             p.copy(x = p.x + face.modX, y = p.y + face.modY, z = p.z + face.modZ) in matching
         } }
-        val pending = recovery.records(runtime.settings.id).count { it.nextMaterial in materials.map(Material::name) }
+        val pendingRecords = recovery.records(runtime.settings.id).filter { it.nextMaterial in materials.map(Material::name) }
+        val pending = pendingRecords.size
         val missing = (runtime.rules().miningQuota - runtime.state.mined - available - pending).coerceAtLeast(0)
         val players = world.players.filter { runtime.region.contains(it.location) }.map { it.location }
         val candidates = if (missing == 0) emptySet() else positions.filterTo(linkedSetOf()) { p ->
@@ -59,17 +61,28 @@ internal class MineVeinController(
         }
         logSummary(runtime, now, materials, positions.size, matching.size, available, pending, missing, candidates.size, players.size)
         if (missing == 0) return
-        val nearby = candidates.sortedBy { p -> players.minOfOrNull {
-            it.distanceSquared(block(p).location)
-        } ?: Double.MAX_VALUE }
-        val remaining = candidates.toMutableSet()
+        val bandCount = verticalBandCount(runtime.region.bounds.minY, runtime.region.bounds.maxY)
+        val supplyByBand = IntArray(bandCount)
+        matching.forEach { supplyByBand[verticalBand(it.y, runtime.region.bounds.minY, runtime.region.bounds.maxY, bandCount)]++ }
+        pendingRecords.forEach { supplyByBand[verticalBand(it.y, runtime.region.bounds.minY, runtime.region.bounds.maxY, bandCount)]++ }
+        val candidatesByBand = candidates.groupBy {
+            verticalBand(it.y, runtime.region.bounds.minY, runtime.region.bounds.maxY, bandCount)
+        }
+        val round = placementRounds.getOrDefault(runtime.settings.id, 0L)
+        val firstBand = Math.floorMod(runtime.state.sequence + round, bandCount.toLong()).toInt()
+        val targetBand = candidatesByBand.keys.minWithOrNull(
+            compareBy<Int> { supplyByBand[it] }.thenBy { Math.floorMod(it - firstBand, bandCount) },
+        ) ?: return
+        val bandCandidates = candidatesByBand.getValue(targetBand).toCollection(linkedSetOf())
+        val orderedSeeds = bandCandidates.toList()
+        val seedOffset = Math.floorMod(runtime.state.sequence * 31L + round * 104_729L, orderedSeeds.size.toLong()).toInt()
+        val seedStep = (orderedSeeds.size / MAX_SEED_CHECKS).coerceAtLeast(1)
         var selected = emptyList<WorksitePosition>()
-        for (seed in nearby) {
-            if (seed !in remaining) continue
-            val component = connected(seed, remaining, minOf(16, missing))
-            remaining.removeAll(component.toSet())
+        for (check in 0 until minOf(MAX_SEED_CHECKS, orderedSeeds.size)) {
+            val seed = orderedSeeds[(seedOffset + check * seedStep) % orderedSeeds.size]
+            val component = connected(seed, bandCandidates, minOf(VEIN_BLOCKS, missing))
             if (component.size > selected.size) selected = component
-            if (selected.size >= minOf(8, missing)) break
+            if (selected.size >= minOf(VEIN_BLOCKS, missing)) break
         }
         if (selected.isEmpty()) {
             if (now >= nextWarning.getOrDefault(runtime.settings.id, 0)) {
@@ -84,7 +97,9 @@ internal class MineVeinController(
         state.log(Level.INFO, "Mine vein placement scheduled zone=${runtime.settings.id} sequence=$sequence " +
             "order=$orderId ore=$ore blocks=${selected.size} indexed=${positions.size} candidates=${candidates.size} " +
             "available=$available pending=$pending missing=$missing players=${players.size} " +
+            "band=${targetBand + 1}/$bandCount bandSupply=${supplyByBand[targetBand]} " +
             "positions=${selected.joinToString(",") { "${it.x}:${it.y}:${it.z}" }}")
+        placementRounds[runtime.settings.id] = round + 1L
         selected.forEach { p ->
             val b = block(p)
             val original = b.type
@@ -135,6 +150,10 @@ internal class MineVeinController(
 
     internal companion object {
         private const val SUMMARY_INTERVAL_MILLIS = 60_000L
+        private const val MAX_VERTICAL_BANDS = 5
+        private const val MIN_BAND_HEIGHT = 16
+        private const val MAX_SEED_CHECKS = 64
+        private const val VEIN_BLOCKS = 8
         private val faces = listOf(BlockFace.UP, BlockFace.DOWN, BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST)
         fun exposed(block: Block): Boolean = faces.any {
             block.world.isChunkLoaded((block.x + it.modX) shr 4, (block.z + it.modZ) shr 4) &&
@@ -171,6 +190,17 @@ internal class MineVeinController(
                 faces.forEach { queue.add(p.copy(x = p.x + it.modX, y = p.y + it.modY, z = p.z + it.modZ)) }
             }
             return seen.toList()
+        }
+
+        fun verticalBandCount(minY: Int, maxY: Int): Int {
+            val height = (maxY - minY + 1).coerceAtLeast(1)
+            return minOf(MAX_VERTICAL_BANDS, ((height + MIN_BAND_HEIGHT - 1) / MIN_BAND_HEIGHT).coerceAtLeast(1))
+        }
+
+        fun verticalBand(y: Int, minY: Int, maxY: Int, bands: Int): Int {
+            require(bands > 0)
+            val height = (maxY - minY + 1).coerceAtLeast(1)
+            return (((y - minY).coerceIn(0, height - 1).toLong() * bands) / height).toInt().coerceAtMost(bands - 1)
         }
     }
 }

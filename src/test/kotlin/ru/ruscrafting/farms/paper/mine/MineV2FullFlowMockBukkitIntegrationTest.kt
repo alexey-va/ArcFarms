@@ -115,8 +115,8 @@ private class FullFlowMineItems : WorksiteServiceItems {
 }
 
 private object FullFlowMineBlocks : MineBlockEffects {
-    override fun applyToolWear(
-        player: Player, toolSlot: Int, toolSnapshot: ItemStack,
+    override fun completeExtraction(
+        player: Player, block: org.bukkit.block.Block, original: Material, toolSlot: Int, toolSnapshot: ItemStack,
     ) = Unit
 }
 

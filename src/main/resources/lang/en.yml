@@ -1098,7 +1098,7 @@ lumber:
 mine:
   started: "<color:#45c8f5>Mine expedition</color> <color:#707a76>•</color> <route>"
   order-paused: '<yellow>Resume mining after the current event or order preparation.</yellow>'
-  managed-required: '<yellow>Mine ore and rock in the working area.</yellow>'
+  managed-required: '<yellow>Mine the ore specified by the current order.</yellow>'
   pickaxe-required: '<red>You need a pickaxe to work this mine face.</red>'
   regenerating: '<gray>This part of the mine is still regenerating.</gray>'
   hazard-started: '<red><bold>The mine face is unstable</bold></red>'
@@ -1124,7 +1124,7 @@ mine:
     resource_order: '<color:#f2fff7>Mine: <resource></color>'
     completion_pending: '<gray>Completing the order</gray>'
     idle: '<gray>Preparing the worksite — the order starts automatically</gray>'
-    title: '<color:#45c8f5><bold>Mine task</bold></color>'
+    title: '<color:#45c8f5><bold>Mine order</bold></color>'
     bar: '<action> <dark_gray>•</dark_gray> <aqua><done></aqua><gray>/</gray><gold><total></gold>'
     prospecting: '<color:#f2fff7>Right-click the highlighted rock faces to inspect them</color>'
     mining: '<color:#f2fff7>Mine the highlighted blocks in the revealed vein</color>'

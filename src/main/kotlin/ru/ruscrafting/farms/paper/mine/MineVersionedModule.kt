@@ -5,6 +5,7 @@ import org.bukkit.Location
 import org.bukkit.block.Block
 import org.bukkit.entity.Player
 import org.bukkit.event.block.BlockBreakEvent
+import org.bukkit.event.block.BlockDamageEvent
 import org.bukkit.event.block.BlockPlaceEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.plugin.Plugin
@@ -18,6 +19,7 @@ import ru.ruscrafting.farms.paper.MineController
 import ru.ruscrafting.farms.paper.RegionGateway
 import ru.ruscrafting.farms.paper.WorksiteBlockBreakHandler
 import ru.ruscrafting.farms.paper.WorksiteBlockBreakGuard
+import ru.ruscrafting.farms.paper.WorksiteBlockDamageHandler
 import ru.ruscrafting.farms.paper.WorksiteBlockPlaceHandler
 import ru.ruscrafting.farms.paper.WorksiteBlockInteractHandler
 import ru.ruscrafting.farms.paper.WorksiteGuidanceHandler
@@ -58,7 +60,7 @@ internal class MineVersionedModule(
     serviceItems: WorksiteServiceItems? = null,
     rewardGrants: WorksiteRewardGrantService? = null,
     lift: MineLiftAccess? = null,
-) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockBreakGuard, WorksiteBlockPlaceHandler,
+) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockBreakGuard, WorksiteBlockDamageHandler, WorksiteBlockPlaceHandler,
     WorksiteBlockInteractHandler,
     WorksiteMoveHandler, WorksiteGuidanceHandler, WorksiteFastVisualHandler, WorksiteServiceItemOwner,
     WorksiteParticipantOwner, WorksiteEntityInteractHandler, WorksiteEntityDeathHandler, WorksiteAdminHandler,
@@ -144,6 +146,9 @@ internal class MineVersionedModule(
 
     override fun onBreakLowest(event: BlockBreakEvent): Boolean =
         (delegate as? WorksiteBlockBreakGuard)?.onBreakLowest(event) == true
+
+    override fun onBlockDamage(event: BlockDamageEvent): Boolean =
+        (delegate as? WorksiteBlockDamageHandler)?.onBlockDamage(event) == true
 
     override fun onBlockPlace(event: BlockPlaceEvent): Boolean =
         (delegate as? WorksiteBlockPlaceHandler)?.onBlockPlace(event) == true

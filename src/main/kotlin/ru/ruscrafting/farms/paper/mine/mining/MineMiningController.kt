@@ -120,7 +120,7 @@ internal class MineMiningController(
                 if (original.name in requireNotNull(runtime.currentOrder()).miningMaterials) {
                     transitions.apply(runtime, MineShiftEngine.mineTarget(runtime.state, runtime.rules(), event.player.uniqueId), event.player)
                 }
-                effects.applyToolWear(event.player, toolSlot, tool)
+                effects.completeExtraction(event.player, event.block, original, toolSlot, tool)
                 return@prepare
             }
             val current = requireNotNull(runtime.state.objective)
@@ -135,7 +135,7 @@ internal class MineMiningController(
                 advanced.state.copy(objective = completed.state)
             }
             transitions.apply(runtime, advanced.copy(state = finalState), event.player)
-            effects.applyToolWear(event.player, toolSlot, tool)
+            effects.completeExtraction(event.player, event.block, original, toolSlot, tool)
         }.whenComplete { accepted, failure ->
             if (failure != null) {
                 state.log(Level.WARNING, "Mine break journal failed player=${event.player.name} uuid=${event.player.uniqueId} " +

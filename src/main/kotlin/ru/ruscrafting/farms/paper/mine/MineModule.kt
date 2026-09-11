@@ -4,6 +4,7 @@ import org.bukkit.Chunk
 import org.bukkit.entity.Player
 import org.bukkit.block.Block
 import org.bukkit.event.block.BlockBreakEvent
+import org.bukkit.event.block.BlockDamageEvent
 import org.bukkit.event.block.BlockPlaceEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.Location
@@ -17,6 +18,7 @@ import ru.ruscrafting.farms.paper.RegionGateway
 import ru.ruscrafting.farms.paper.WorksiteModule
 import ru.ruscrafting.farms.paper.WorksiteBlockBreakHandler
 import ru.ruscrafting.farms.paper.WorksiteBlockBreakGuard
+import ru.ruscrafting.farms.paper.WorksiteBlockDamageHandler
 import ru.ruscrafting.farms.paper.WorksiteBlockPlaceHandler
 import ru.ruscrafting.farms.paper.WorksiteBlockInteractHandler
 import ru.ruscrafting.farms.paper.WorksiteMoveHandler
@@ -74,7 +76,7 @@ internal class MineModule(
     private val clock: () -> Long,
     private val scenarios: ru.ruscrafting.farms.paper.mine.incident.scenario.MineScenarioController?,
     private val veins: ru.ruscrafting.farms.paper.mine.mining.MineVeinController,
-) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockBreakGuard, WorksiteBlockPlaceHandler,
+) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockBreakGuard, WorksiteBlockDamageHandler, WorksiteBlockPlaceHandler,
     WorksiteBlockInteractHandler,
     WorksiteMoveHandler, WorksiteEntityInteractHandler, WorksiteEntityDeathHandler, WorksiteFastVisualHandler,
     WorksiteParticipantOwner, WorksiteServiceItemOwner, WorksiteGuidanceHandler,
@@ -128,6 +130,13 @@ internal class MineModule(
         registry.snapshot().any { access.hasAccess(player, it.settings.permission) }
 
     override fun onBreakHigh(event: BlockBreakEvent): Boolean = scenarios?.onBreak(event) == true || mining.onBreakHigh(event)
+
+    override fun onBlockDamage(event: BlockDamageEvent): Boolean {
+        if (registry.at(event.block.location) == null || access.isAdminEditing(event.player)) return false
+        event.isCancelled = true
+        onBreakHigh(BlockBreakEvent(event.block, event.player))
+        return true
+    }
 
     override fun onBreakLowest(event: BlockBreakEvent): Boolean {
         if (registry.at(event.block.location) == null || access.isAdminEditing(event.player)) return false

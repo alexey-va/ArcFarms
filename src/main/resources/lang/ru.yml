@@ -1098,7 +1098,7 @@ lumber:
 mine:
   started: "<color:#45c8f5>Шахтная экспедиция</color> <color:#707a76>•</color> <route>"
   order-paused: '<yellow>Продолжите добычу после текущего события или подготовки заказа.</yellow>'
-  managed-required: '<yellow>Добывайте руду и породу в рабочем забое.</yellow>'
+  managed-required: '<yellow>Добывайте руду, указанную в заказе.</yellow>'
   pickaxe-required: '<red>Для работы в шахте нужна кирка.</red>'
   regenerating: '<gray>Этот участок ещё восстанавливается.</gray>'
   hazard-started: '<red><bold>Забой нестабилен</bold></red>'
@@ -1121,10 +1121,10 @@ mine:
   ore-crate: '<gold>Ящик с рудой</gold>'
   loading-required: '<yellow>Возьмите отмеченный ящик с рудой и отнесите его к вывозной телеге.</yellow>'
   guidance:
-    resource_order: '<color:#f2fff7>Добыть: <resource></color>'
+    resource_order: '<color:#f2fff7>Добывайте: <resource></color>'
     completion_pending: '<gray>Завершение заказа</gray>'
     idle: '<gray>Подготовка выработки — заказ начнётся автоматически</gray>'
-    title: '<color:#45c8f5><bold>Работа в шахте</bold></color>'
+    title: '<color:#45c8f5><bold>Заказ шахты</bold></color>'
     bar: '<action> <dark_gray>•</dark_gray> <aqua><done></aqua><gray>/</gray><gold><total></gold>'
     prospecting: '<color:#f2fff7>Осмотрите подсвеченные участки породы правой кнопкой</color>'
     mining: '<color:#f2fff7>Добывайте подсвеченные блоки найденной жилы</color>'

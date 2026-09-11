@@ -5,6 +5,7 @@ import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
 import org.bukkit.event.block.BlockBreakEvent
+import org.bukkit.event.block.BlockDamageEvent
 import org.bukkit.event.block.BlockFadeEvent
 import org.bukkit.event.block.BlockBurnEvent
 import org.bukkit.event.block.BlockIgniteEvent
@@ -72,6 +73,11 @@ class ArcFarmsListener(
 
     @EventHandler(priority = EventPriority.LOWEST)
     fun onBreakLowest(event: BlockBreakEvent) = service.onBreakLowest(event)
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    fun onBlockDamage(event: BlockDamageEvent) {
+        service.onBlockDamage(event)
+    }
 
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onBreakHigh(event: BlockBreakEvent) {

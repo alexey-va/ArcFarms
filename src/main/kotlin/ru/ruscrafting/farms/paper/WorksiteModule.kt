@@ -5,6 +5,7 @@ import org.bukkit.Location
 import org.bukkit.block.Block
 import org.bukkit.entity.Player
 import org.bukkit.event.block.BlockBreakEvent
+import org.bukkit.event.block.BlockDamageEvent
 import org.bukkit.event.block.BlockPlaceEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerInteractEvent
@@ -45,6 +46,11 @@ internal interface WorksiteBlockBreakHandler {
 /** Early ownership guard: a worksite cancels world mutation before other gameplay plugins observe it. */
 internal interface WorksiteBlockBreakGuard {
     fun onBreakLowest(event: BlockBreakEvent): Boolean
+}
+
+/** Lets a worksite replace client-predicted vanilla breaking with an owned interaction. */
+internal interface WorksiteBlockDamageHandler {
+    fun onBlockDamage(event: BlockDamageEvent): Boolean
 }
 
 internal interface WorksiteBlockPlaceHandler {
@@ -137,6 +143,9 @@ internal class WorksiteModuleRegistry(
 
     fun onBreakLowest(event: BlockBreakEvent): Boolean =
         modulesInOrder.filterIsInstance<WorksiteBlockBreakGuard>().any { it.onBreakLowest(event) }
+
+    fun onBlockDamage(event: BlockDamageEvent): Boolean =
+        modulesInOrder.filterIsInstance<WorksiteBlockDamageHandler>().any { it.onBlockDamage(event) }
 
     fun onBlockPlace(event: BlockPlaceEvent): Boolean =
         modulesInOrder.filterIsInstance<WorksiteBlockPlaceHandler>().any { it.onBlockPlace(event) }

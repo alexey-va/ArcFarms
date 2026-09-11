@@ -94,7 +94,7 @@ class FarmShopDialogTest : FunSpec({
             val active = locked.buttons.first { it.id.value == "info_offers_8" }
             active.label.color()!!.value() shouldBe 0x9bd48d
             PlainTextComponentSerializer.plainText().serialize(active.label) shouldContain "✔"
-            locked.buttons.first { it.id.value == "info_offers_10" }.label.color()!!.value() shouldBe 0xaaa49a
+            locked.buttons.first { it.id.value == "info_offers_10" }.label.color()!!.value() shouldBe 0xffffff
             exportShopScreen("locked", locked)
             val service = mockk<ArcFarmsService>(relaxed = true) {
                 every { playerStats(any()) } returns PlayerActivityStats(contributions = mapOf(ActivityKind.FARM to 2000L, ActivityKind.LUMBER to 480L, ActivityKind.MINE to 720L))

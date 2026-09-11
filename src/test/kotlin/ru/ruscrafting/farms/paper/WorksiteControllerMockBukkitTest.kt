@@ -492,8 +492,10 @@ private class ControlledMineJournal(
 }
 
 private object NoOpMineBlockEffects : MineBlockEffects {
-    override fun applyToolWear(
+    override fun completeExtraction(
         player: org.bukkit.entity.Player,
+        block: org.bukkit.block.Block,
+        original: Material,
         toolSlot: Int,
         toolSnapshot: ItemStack,
     ) = Unit

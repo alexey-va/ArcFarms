@@ -9,6 +9,7 @@ import org.bukkit.Sound
 import org.bukkit.block.Block
 import org.bukkit.entity.Player
 import org.bukkit.event.block.BlockBreakEvent
+import org.bukkit.event.block.BlockDamageEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.inventory.ItemStack
 import ru.ruscrafting.farms.config.ArcFarmsLocale
@@ -51,7 +52,7 @@ internal class MineController(
     private val clock: () -> Long,
     private val random: RandomGenerator,
     private val blockEffects: MineBlockEffects = PaperMineBlockEffects,
-) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler, WorksiteMoveHandler,
+) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockDamageHandler, WorksiteBlockInteractHandler, WorksiteMoveHandler,
     WorksiteGuidanceHandler {
     override val kind: ActivityKind = ActivityKind.MINE
     private var runtimes: List<Runtime> = emptyList()
@@ -120,6 +121,14 @@ internal class MineController(
         val runtime = runtimeAt(event.block.location) ?: return false
         state.traceBlockBreak(event, kind, runtime.settings.id)
         breakBlock(event, runtime)
+        return true
+    }
+
+    override fun onBlockDamage(event: BlockDamageEvent): Boolean {
+        val runtime = runtimeAt(event.block.location) ?: return false
+        if (access.isAdminEditing(event.player)) return false
+        event.isCancelled = true
+        breakBlock(BlockBreakEvent(event.block, event.player), runtime)
         return true
     }
 
@@ -296,7 +305,7 @@ internal class MineController(
                     apply(runtime, MineShiftEngine.mine(runtime.state, runtime.rules, points, player.uniqueId, now), player)
                 }
                 tasks.guarded("mine_tool_wear:${record.id}") {
-                    blockEffects.applyToolWear(player, toolSlot, toolSnapshot)
+                    blockEffects.completeExtraction(player, block, originalMaterial, toolSlot, toolSnapshot)
                 }
             }
             if (!accepted) {

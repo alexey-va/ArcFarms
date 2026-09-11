@@ -11,8 +11,11 @@ import org.bukkit.entity.Entity
 import org.bukkit.entity.EntityType
 import org.bukkit.entity.Player
 import org.bukkit.event.block.BlockBreakEvent
+import org.bukkit.event.block.BlockDamageEvent
 import org.bukkit.inventory.ItemStack
 import ru.arc.paper.testing.MockBukkitTestRuntime
+import ru.ruscrafting.farms.config.CuboidBounds
+import ru.ruscrafting.farms.config.ZoneReference
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
@@ -110,13 +113,13 @@ class MineBasicCycleMockBukkitTest : FunSpec({
             listOf(MineIndexedTarget(ore.position(), setOf(MineAnchorRole.MINEABLE))),
         )
         graph.module.tick(1_000L)
-        val event = BlockBreakEvent(ore, player).also { it.expToDrop = 7 }
+        val event = BlockDamageEvent(player, ore, player.inventory.itemInMainHand, false)
 
-        graph.mining.onBreakHigh(event) shouldBe true
+        graph.module.onBlockDamage(event) shouldBe true
 
         runtime.state.mined shouldBe 1
-        event.isDropItems shouldBe false
-        event.expToDrop shouldBe 0
+        event.isCancelled shouldBe true
+        ore.type shouldBe Material.DEEPSLATE
         player.inventory.contents.none { it?.type == Material.COAL } shouldBe true
         player.totalExperience shouldBe 0
     }
@@ -138,12 +141,46 @@ class MineBasicCycleMockBukkitTest : FunSpec({
             listOf(world.getChunkAt(0, 0)), wall.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.SUPPORT)) })
         graph.module.tick(1_000L)
         runtime.state.phase shouldBe MinePhase.MINING
-        wall.count { it.type == Material.IRON_ORE } shouldBe 16
-        wall.forEach { graph.index.contains(settings.id, it, MineAnchorRole.MINEABLE) shouldBe true }
+        wall.count { it.type == Material.IRON_ORE } shouldBe 8
         graph.recovery.processDue(5_000L)
         graph.veins.tick(runtime, 6_000L)
         wall.count { it.type == Material.IRON_ORE } shouldBe 16
+        wall.forEach { graph.index.contains(settings.id, it, MineAnchorRole.MINEABLE) shouldBe true }
         runtime.state.mined shouldBe 0
+    }
+
+    test("large mines spread managed veins across vertical sections") {
+        val world = paper.server.addSimpleWorld("world")
+        val player = paper.server.addPlayer("SpreadMiner")
+        player.teleport(Location(world, 5.5, 10.0, 5.5))
+        val original = miningOnlySettings()
+        val settings = original.copy(
+            reference = ZoneReference("world", null, CuboidBounds(0, 0, 0, 20, 99, 20)),
+            orders = original.orders.map { it.copy(miningRequired = 40, miningMaterials = setOf("IRON_ORE")) },
+        )
+        val graph = graph(paper, settings)
+        val runtime = graph.registry.byId(settings.id)!!
+        val walls = listOf(10, 30, 50, 70, 90).flatMap { floorY ->
+            (2..5).flatMap { x -> (floorY..floorY + 3).map { y ->
+                world.getBlockAt(x, y, 2).also { it.type = Material.STONE }
+            } }
+        }
+        graph.index.replaceZone(
+            MineIndexDefinition(settings.id, runtime.region, setOf(Material.STONE, Material.IRON_ORE)),
+            listOf(world.getChunkAt(0, 0)),
+            walls.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.SUPPORT)) },
+        )
+
+        graph.module.tick(1_000L)
+        listOf(6_000L, 11_000L, 16_000L, 21_000L).forEach { now ->
+            graph.recovery.processDue(now)
+            graph.veins.tick(runtime, now)
+        }
+
+        walls.count { it.type == Material.IRON_ORE } shouldBe 40
+        walls.filter { it.type == Material.IRON_ORE }
+            .map { ru.ruscrafting.farms.paper.mine.mining.MineVeinController.verticalBand(it.y, 0, 99, 5) }
+            .toSet() shouldBe setOf(0, 1, 2, 3, 4)
     }
 
     test("startup validates the migrated legacy order before building the ordinary resource runtime") {

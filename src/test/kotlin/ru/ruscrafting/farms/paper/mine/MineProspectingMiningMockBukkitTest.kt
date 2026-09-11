@@ -194,8 +194,10 @@ private class DeferredMineJournal : MineRecoveryJournal {
 
 private class RecordingMineEffects : MineBlockEffects {
     var toolWearCalls = 0
-    override fun applyToolWear(
+    override fun completeExtraction(
         player: Player,
+        block: org.bukkit.block.Block,
+        original: Material,
         toolSlot: Int,
         toolSnapshot: ItemStack,
     ) { toolWearCalls++ }

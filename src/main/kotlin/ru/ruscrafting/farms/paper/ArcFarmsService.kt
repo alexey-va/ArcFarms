@@ -315,6 +315,7 @@ class ArcFarmsService(
         farm.events.onBreakLowest(event)
     }
     fun onBreakHigh(event: BlockBreakEvent) = worksiteEvents.onBreakHigh(event)
+    fun onBlockDamage(event: org.bukkit.event.block.BlockDamageEvent) = worksiteEvents.onBlockDamage(event)
     fun onBreakMonitor(event: BlockBreakEvent) = worksiteEvents.onBreakMonitor(event)
     fun onBlockDrop(event: BlockDropItemEvent) = farm.events.onBlockDrop(event)
     fun onInteractLowest(event: PlayerInteractEvent) = farm.events.onInteractLowest(event)
