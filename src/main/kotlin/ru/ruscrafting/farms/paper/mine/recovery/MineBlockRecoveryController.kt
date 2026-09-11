@@ -44,7 +44,15 @@ internal class MineBlockRecoveryController(
         stillValid: () -> Boolean = { true },
         mutation: () -> Unit,
     ): CompletableFuture<Boolean> {
-        if (!inFlightPositions.add(record.positionKey) || journal.containsPosition(record.positionKey)) {
+        if (!inFlightPositions.add(record.positionKey)) {
+            state.log(Level.INFO, "Mine recovery prepare rejected reason=position_in_flight zone=${record.zoneId} " +
+                "record=${record.id} position=${record.positionKey} expected=$expectedOriginal actual=${block.type}")
+            return CompletableFuture.completedFuture(false)
+        }
+        if (journal.containsPosition(record.positionKey)) {
+            inFlightPositions.remove(record.positionKey)
+            state.log(Level.INFO, "Mine recovery prepare rejected reason=position_journaled zone=${record.zoneId} " +
+                "record=${record.id} position=${record.positionKey} expected=$expectedOriginal actual=${block.type}")
             return CompletableFuture.completedFuture(false)
         }
         val token = tasks.lifecycleToken()
@@ -58,7 +66,17 @@ internal class MineBlockRecoveryController(
             }
             if (!tasks.runSync(token) {
                     try {
-                        if (block.type != expectedOriginal || !access.isOperational() || !stillValid()) {
+                        val actual = block.type
+                        val rejection = when {
+                            actual != expectedOriginal -> "block_changed"
+                            !access.isOperational() -> "runtime_not_operational"
+                            !stillValid() -> "validation_failed"
+                            else -> null
+                        }
+                        if (rejection != null) {
+                            state.log(Level.INFO, "Mine recovery mutation rejected reason=$rejection zone=${record.zoneId} " +
+                                "record=${record.id} position=${record.positionKey} expected=$expectedOriginal actual=$actual " +
+                                "temporary=${record.temporaryMaterial} next=${record.nextMaterial}")
                             retire(record, "stale")
                             result.complete(false)
                         } else {
@@ -66,6 +84,8 @@ internal class MineBlockRecoveryController(
                             result.complete(true)
                         }
                     } catch (mutationFailure: Throwable) {
+                        state.log(Level.SEVERE, "Mine recovery mutation failed zone=${record.zoneId} record=${record.id} " +
+                            "position=${record.positionKey} expected=$expectedOriginal actual=${block.type}", mutationFailure)
                         result.completeExceptionally(mutationFailure)
                     } finally {
                         release(record.positionKey, result)
@@ -73,6 +93,8 @@ internal class MineBlockRecoveryController(
                 }
             ) {
                 release(record.positionKey, result)
+                state.log(Level.INFO, "Mine recovery mutation rejected reason=lifecycle_token_inactive zone=${record.zoneId} " +
+                    "record=${record.id} position=${record.positionKey} expected=$expectedOriginal actual=${block.type}")
                 retire(record, "stale")
                 result.complete(false)
             }
