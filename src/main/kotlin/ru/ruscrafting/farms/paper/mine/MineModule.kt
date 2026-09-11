@@ -133,8 +133,7 @@ internal class MineModule(
 
     override fun onBlockDamage(event: BlockDamageEvent): Boolean {
         if (registry.at(event.block.location) == null || access.isAdminEditing(event.player)) return false
-        event.isCancelled = true
-        onBreakHigh(BlockBreakEvent(event.block, event.player))
+        event.instaBreak = true
         return true
     }
 

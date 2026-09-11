@@ -125,10 +125,9 @@ internal class MineController(
     }
 
     override fun onBlockDamage(event: BlockDamageEvent): Boolean {
-        val runtime = runtimeAt(event.block.location) ?: return false
+        runtimeAt(event.block.location) ?: return false
         if (access.isAdminEditing(event.player)) return false
-        event.isCancelled = true
-        breakBlock(BlockBreakEvent(event.block, event.player), runtime)
+        event.instaBreak = true
         return true
     }
 

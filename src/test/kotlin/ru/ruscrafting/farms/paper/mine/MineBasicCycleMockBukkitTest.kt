@@ -113,12 +113,19 @@ class MineBasicCycleMockBukkitTest : FunSpec({
             listOf(MineIndexedTarget(ore.position(), setOf(MineAnchorRole.MINEABLE))),
         )
         graph.module.tick(1_000L)
-        val event = BlockDamageEvent(player, ore, player.inventory.itemInMainHand, false)
+        val damage = BlockDamageEvent(player, ore, player.inventory.itemInMainHand, false)
 
-        graph.module.onBlockDamage(event) shouldBe true
+        graph.module.onBlockDamage(damage) shouldBe true
+        damage.instaBreak shouldBe true
+        damage.isCancelled shouldBe false
+        runtime.state.mined shouldBe 0
+
+        val event = BlockBreakEvent(ore, player).also { it.expToDrop = 7 }
+        graph.mining.onBreakHigh(event) shouldBe true
 
         runtime.state.mined shouldBe 1
-        event.isCancelled shouldBe true
+        event.isDropItems shouldBe false
+        event.expToDrop shouldBe 0
         ore.type shouldBe Material.DEEPSLATE
         player.inventory.contents.none { it?.type == Material.COAL } shouldBe true
         player.totalExperience shouldBe 0

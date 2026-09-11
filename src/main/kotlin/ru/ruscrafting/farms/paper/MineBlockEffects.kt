@@ -28,6 +28,7 @@ internal object PaperMineBlockEffects : MineBlockEffects {
         toolSnapshot: ItemStack,
     ) {
         val center = block.location.toCenterLocation()
+        player.sendBlockChange(block.location, block.blockData)
         player.spawnParticle(Particle.BLOCK, center, 18, 0.28, 0.28, 0.28, 0.08, original.createBlockData())
         player.playSound(center, Sound.BLOCK_STONE_BREAK, 0.75f, 1.15f)
         player.playSound(center, Sound.ENTITY_ITEM_PICKUP, 0.22f, 1.65f)
