@@ -206,8 +206,9 @@ internal class MineController(
     }
 
     private fun breakBlock(event: BlockBreakEvent, runtime: Runtime) {
-        val experience = event.expToDrop
         event.isCancelled = true
+        event.isDropItems = false
+        event.expToDrop = 0
         val player = event.player
         if (!access.hasAccess(player, runtime.settings.permission)) {
             audience.sendChat(player, MessageKey.ZONE_LOCKED)
@@ -259,14 +260,6 @@ internal class MineController(
             restoreAt = clock() + runtime.settings.restoreSeconds * 1000L,
         )
         val originalMaterial = block.type
-        val drops = try {
-            blockEffects.captureDrops(block, toolSnapshot, player)
-        } catch (failure: RuntimeException) {
-            reservations.remove(positionKey)
-            state.log(Level.SEVERE, "Could not calculate mine drops at $positionKey", failure)
-            audience.sendChat(player, MessageKey.GENERIC_ERROR)
-            return
-        }
         val lifecycle = tasks.lifecycleToken()
         journal.prepare(record).whenComplete { _, failure ->
             if (!access.isOperational()) {
@@ -302,8 +295,8 @@ internal class MineController(
                     val points = if (originalMaterial == runtime.baseMaterial) 1 else 2
                     apply(runtime, MineShiftEngine.mine(runtime.state, runtime.rules, points, player.uniqueId, now), player)
                 }
-                tasks.guarded("mine_rewards:${record.id}") {
-                    blockEffects.deliverRewards(player, block, drops, experience, toolSlot, toolSnapshot)
+                tasks.guarded("mine_tool_wear:${record.id}") {
+                    blockEffects.applyToolWear(player, toolSlot, toolSnapshot)
                 }
             }
             if (!accepted) {

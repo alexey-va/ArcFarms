@@ -492,17 +492,8 @@ private class ControlledMineJournal(
 }
 
 private object NoOpMineBlockEffects : MineBlockEffects {
-    override fun captureDrops(
-        block: org.bukkit.block.Block,
-        tool: ItemStack,
+    override fun applyToolWear(
         player: org.bukkit.entity.Player,
-    ): List<ItemStack> = emptyList()
-
-    override fun deliverRewards(
-        player: org.bukkit.entity.Player,
-        block: org.bukkit.block.Block,
-        drops: List<ItemStack>,
-        experience: Int,
         toolSlot: Int,
         toolSnapshot: ItemStack,
     ) = Unit

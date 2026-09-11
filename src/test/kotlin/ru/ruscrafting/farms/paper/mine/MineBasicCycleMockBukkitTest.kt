@@ -91,6 +91,36 @@ class MineBasicCycleMockBukkitTest : FunSpec({
         graph.registry.byId(settings.id)!!.state.mined shouldBe 2
     }
 
+    test("managed ore is consumed by the order without item or experience drops") {
+        val world = paper.server.addSimpleWorld("world")
+        val player = paper.server.addPlayer("OrderOnlyMiner")
+        player.teleport(Location(world, 5.5, 64.0, 5.5))
+        player.inventory.setItemInMainHand(ItemStack(Material.IRON_PICKAXE))
+        val original = miningOnlySettings()
+        val settings = original.copy(
+            materialWeights = linkedMapOf("STONE" to 1, "COAL_ORE" to 1),
+            orders = original.orders.map { it.copy(miningRequired = 100, miningMaterials = setOf("COAL_ORE")) },
+        )
+        val graph = graph(paper, settings)
+        val runtime = graph.registry.byId(settings.id)!!
+        val ore = world.getBlockAt(2, 64, 2).also { it.type = Material.COAL_ORE }
+        graph.index.replaceZone(
+            MineIndexDefinition(settings.id, runtime.region, setOf(Material.STONE, Material.COAL_ORE)),
+            listOf(world.getChunkAt(0, 0)),
+            listOf(MineIndexedTarget(ore.position(), setOf(MineAnchorRole.MINEABLE))),
+        )
+        graph.module.tick(1_000L)
+        val event = BlockBreakEvent(ore, player).also { it.expToDrop = 7 }
+
+        graph.mining.onBreakHigh(event) shouldBe true
+
+        runtime.state.mined shouldBe 1
+        event.isDropItems shouldBe false
+        event.expToDrop shouldBe 0
+        player.inventory.contents.none { it?.type == Material.COAL } shouldBe true
+        player.totalExperience shouldBe 0
+    }
+
     test("decorative walls receive a connected order deposit and do not exceed the deficit") {
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("WallMiner")

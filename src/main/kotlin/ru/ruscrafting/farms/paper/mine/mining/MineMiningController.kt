@@ -56,6 +56,8 @@ internal class MineMiningController(
             event.isCancelled = false
             return false
         }
+        event.isDropItems = false
+        event.expToDrop = 0
         if (runtime.state.phase != MinePhase.MINING) {
             return deny(event, runtime, "phase_not_mining",
                 if (runtime.settings.miningOnly) MessageKey.MINE_ORDER_PAUSED else MessageKey.MINE_PROSPECT_REQUIRED)
@@ -80,11 +82,6 @@ internal class MineMiningController(
         if (original.name !in runtime.settings.materialWeights) {
             return deny(event, runtime, "material_not_configured", MessageKey.MINE_MANAGED_REQUIRED)
         }
-        val drops = runCatching { effects.captureDrops(event.block, tool, event.player) }.getOrElse { failure ->
-            state.log(Level.WARNING, "Could not calculate mine drops for ${target?.id ?: event.block.position()}", failure)
-            audience.sendChat(event.player, MessageKey.GENERIC_ERROR)
-            return true
-        }
         val next = MaterialRules.weightedMaterial(
             LinkedHashMap(runtime.settings.materialWeights.mapKeys { MaterialRules.material(it.key) }), random,
         )
@@ -104,7 +101,6 @@ internal class MineMiningController(
         val orderId = runtime.state.orderId
         val minedBefore = runtime.state.mined
         val quota = runtime.rules().miningQuota
-        val experience = event.expToDrop
         state.log(Level.INFO, "Mine break journal scheduled player=${event.player.name} uuid=${event.player.uniqueId} " +
             "zone=${runtime.settings.id} sequence=$sequence order=$orderId phase=${runtime.state.phase} " +
             "position=${event.block.position()} ore=$original temporary=${runtime.settings.temporaryMaterial} next=$next " +
@@ -124,7 +120,7 @@ internal class MineMiningController(
                 if (original.name in requireNotNull(runtime.currentOrder()).miningMaterials) {
                     transitions.apply(runtime, MineShiftEngine.mineTarget(runtime.state, runtime.rules(), event.player.uniqueId), event.player)
                 }
-                effects.deliverRewards(event.player, event.block, drops, experience, toolSlot, tool)
+                effects.applyToolWear(event.player, toolSlot, tool)
                 return@prepare
             }
             val current = requireNotNull(runtime.state.objective)
@@ -139,7 +135,7 @@ internal class MineMiningController(
                 advanced.state.copy(objective = completed.state)
             }
             transitions.apply(runtime, advanced.copy(state = finalState), event.player)
-            effects.deliverRewards(event.player, event.block, drops, experience, toolSlot, tool)
+            effects.applyToolWear(event.player, toolSlot, tool)
         }.whenComplete { accepted, failure ->
             if (failure != null) {
                 state.log(Level.WARNING, "Mine break journal failed player=${event.player.name} uuid=${event.player.uniqueId} " +
@@ -152,10 +148,10 @@ internal class MineMiningController(
                     "position=${event.block.position()} ore=$original record=${record.id}")
                 remind(event, MessageKey.MINE_REGENERATING)
             } else {
-                val dropSummary = drops.joinToString(",") { "${it.type}:${it.amount}" }.ifEmpty { "none" }
                 state.log(Level.INFO, "Mine break completed player=${event.player.name} uuid=${event.player.uniqueId} " +
                     "zone=${runtime.settings.id} sequence=$sequence order=$orderId position=${event.block.position()} " +
-                    "ore=$original temporary=${runtime.settings.temporaryMaterial} next=$next drops=$dropSummary xp=$experience " +
+                    "ore=$original temporary=${runtime.settings.temporaryMaterial} next=$next " +
+                    "resourceDisposition=order_accounting experienceDisposition=suppressed " +
                     "progressBefore=$minedBefore/$quota progressAfter=${runtime.state.mined}/${runtime.rules().miningQuota} " +
                     "phaseAfter=${runtime.state.phase} record=${record.id}")
             }

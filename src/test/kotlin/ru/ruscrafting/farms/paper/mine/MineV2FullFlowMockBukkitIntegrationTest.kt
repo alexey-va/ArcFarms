@@ -115,10 +115,8 @@ private class FullFlowMineItems : WorksiteServiceItems {
 }
 
 private object FullFlowMineBlocks : MineBlockEffects {
-    override fun captureDrops(block: org.bukkit.block.Block, tool: ItemStack, player: Player): List<ItemStack> = emptyList()
-    override fun deliverRewards(
-        player: Player, block: org.bukkit.block.Block, drops: List<ItemStack>, experience: Int,
-        toolSlot: Int, toolSnapshot: ItemStack,
+    override fun applyToolWear(
+        player: Player, toolSlot: Int, toolSnapshot: ItemStack,
     ) = Unit
 }
 

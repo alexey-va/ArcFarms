@@ -99,12 +99,12 @@ class MineProspectingMiningMockBukkitTest : FunSpec({
 
         graph.module.onBreakHigh(BlockBreakEvent(vein.first(), player)) shouldBe true
         vein.first().type shouldBe Material.IRON_ORE
-        effects.rewardCalls shouldBe 0
+        effects.toolWearCalls shouldBe 0
 
         journal.completePrepare()
 
         vein.first().type shouldBe Material.DEEPSLATE
-        effects.rewardCalls shouldBe 1
+        effects.toolWearCalls shouldBe 1
         runtime.state.mined shouldBe 1
     }
 
@@ -193,18 +193,12 @@ private class DeferredMineJournal : MineRecoveryJournal {
 }
 
 private class RecordingMineEffects : MineBlockEffects {
-    var rewardCalls = 0
-    override fun captureDrops(block: org.bukkit.block.Block, tool: ItemStack, player: Player): List<ItemStack> =
-        listOf(ItemStack(block.type))
-
-    override fun deliverRewards(
+    var toolWearCalls = 0
+    override fun applyToolWear(
         player: Player,
-        block: org.bukkit.block.Block,
-        drops: List<ItemStack>,
-        experience: Int,
         toolSlot: Int,
         toolSnapshot: ItemStack,
-    ) { rewardCalls++ }
+    ) { toolWearCalls++ }
 }
 
 private fun org.bukkit.block.Block.position() = WorksitePosition(world.name, x, y, z)
