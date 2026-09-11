@@ -11,9 +11,12 @@ import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.MineBlockEffects
+import ru.ruscrafting.farms.paper.mineClientBreakTicks
+import ru.ruscrafting.farms.paper.scheduleMineClientResync
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.mine.MineTransitionCoordinator
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
@@ -31,6 +34,7 @@ internal class MineMiningController(
     private val access: WorksiteAccessPort,
     private val audience: WorksiteAudiencePort,
     private val state: WorksiteStatePort,
+    private val tasks: WorksiteTaskPort,
     private val clock: () -> Long,
     private val random: RandomGenerator,
     private val effects: MineBlockEffects,
@@ -79,6 +83,7 @@ internal class MineMiningController(
             return deny(event, runtime, "target_unavailable", MessageKey.MINE_TARGET_REQUIRED)
         }
         val original = event.block.type
+        val predictedBreakTicks = mineClientBreakTicks(event.block, event.player)
         if (original.name !in runtime.settings.materialWeights) {
             return deny(event, runtime, "material_not_configured", MessageKey.MINE_MANAGED_REQUIRED)
         }
@@ -121,6 +126,7 @@ internal class MineMiningController(
                     transitions.apply(runtime, MineShiftEngine.mineTarget(runtime.state, runtime.rules(), event.player.uniqueId), event.player)
                 }
                 effects.completeExtraction(event.player, event.block, original, toolSlot, tool)
+                scheduleMineClientResync(tasks, state, event.player, event.block, record.id, predictedBreakTicks)
                 return@prepare
             }
             val current = requireNotNull(runtime.state.objective)
@@ -136,6 +142,7 @@ internal class MineMiningController(
             }
             transitions.apply(runtime, advanced.copy(state = finalState), event.player)
             effects.completeExtraction(event.player, event.block, original, toolSlot, tool)
+            scheduleMineClientResync(tasks, state, event.player, event.block, record.id, predictedBreakTicks)
         }.whenComplete { accepted, failure ->
             if (failure != null) {
                 state.log(Level.WARNING, "Mine break journal failed player=${event.player.name} uuid=${event.player.uniqueId} " +

@@ -268,6 +268,7 @@ internal class MineController(
             restoreAt = clock() + runtime.settings.restoreSeconds * 1000L,
         )
         val originalMaterial = block.type
+        val predictedBreakTicks = mineClientBreakTicks(block, player)
         val lifecycle = tasks.lifecycleToken()
         journal.prepare(record).whenComplete { _, failure ->
             if (!access.isOperational()) {
@@ -305,6 +306,7 @@ internal class MineController(
                 }
                 tasks.guarded("mine_tool_wear:${record.id}") {
                     blockEffects.completeExtraction(player, block, originalMaterial, toolSlot, toolSnapshot)
+                    scheduleMineClientResync(tasks, state, player, block, record.id, predictedBreakTicks)
                 }
             }
             if (!accepted) {

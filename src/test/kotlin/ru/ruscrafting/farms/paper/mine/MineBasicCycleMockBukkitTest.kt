@@ -20,6 +20,7 @@ import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.CuboidRegionGateway
+import ru.ruscrafting.farms.paper.mineClientBreakTicks
 import ru.ruscrafting.farms.paper.mine.incident.entity.MineIncidentEntityEffects
 import ru.ruscrafting.farms.paper.mine.incident.entity.MineIncidentEntityIdentity
 import ru.ruscrafting.farms.paper.mine.incident.entity.MineIncidentEntityKind
@@ -29,6 +30,13 @@ import ru.ruscrafting.farms.paper.mine.index.MineIndexedTarget
 import java.util.UUID
 
 class MineBasicCycleMockBukkitTest : FunSpec({
+    test("client resync delay follows the original vanilla break speed") {
+        mineClientBreakTicks(1.0f) shouldBe 1L
+        mineClientBreakTicks(0.5f) shouldBe 2L
+        mineClientBreakTicks(1.0f / 150.0f) shouldBe 150L
+        mineClientBreakTicks(0.0f) shouldBe 400L
+    }
+
     lateinit var paper: MockBukkitTestRuntime
 
     beforeEach { paper = MockBukkitTestRuntime.open() }
