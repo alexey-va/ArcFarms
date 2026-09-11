@@ -26,7 +26,10 @@ import ru.ruscrafting.farms.paper.WorksiteFastVisualHandler
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.MaterialRules
+import ru.ruscrafting.farms.paper.mineClientBreakTicks
+import ru.ruscrafting.farms.paper.scheduleMineClientResync
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 import ru.ruscrafting.farms.paper.mine.index.MineChunkTicket
 import ru.ruscrafting.farms.paper.mine.index.MineIndexDefinition
@@ -60,6 +63,7 @@ internal class MineModule(
     private val access: WorksiteAccessPort,
     private val audience: WorksiteAudiencePort,
     private val tasks: WorksiteTaskPort,
+    private val state: WorksiteStatePort,
     private val transitions: MineTransitionCoordinator,
     internal val registry: MineRuntimeRegistry,
     internal val recovery: MineBlockRecoveryController,
@@ -132,8 +136,18 @@ internal class MineModule(
     override fun onBreakHigh(event: BlockBreakEvent): Boolean = scenarios?.onBreak(event) == true || mining.onBreakHigh(event)
 
     override fun onBlockDamage(event: BlockDamageEvent): Boolean {
-        if (registry.at(event.block.location) == null || access.isAdminEditing(event.player)) return false
+        val runtime = registry.at(event.block.location) ?: return false
+        if (access.isAdminEditing(event.player)) return false
+        val predictedBreakTicks = mineClientBreakTicks(event.block, event.player)
         event.instaBreak = true
+        scheduleMineClientResync(
+            tasks,
+            state,
+            event.player,
+            event.block,
+            "damage:${runtime.settings.id}:${runtime.state.sequence}:${event.block.x}:${event.block.y}:${event.block.z}",
+            predictedBreakTicks,
+        )
         return true
     }
 

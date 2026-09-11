@@ -110,7 +110,7 @@ internal class MineComponentGraph(
     }
     val veins = ru.ruscrafting.farms.paper.mine.mining.MineVeinController(index, recovery, ports.state, clock)
     val mining = MineMiningController(
-        registry, index, recovery, transitions, ports.access, ports.audience, ports.state, ports.tasks, clock, random, blockEffects, loading::begin,
+        registry, index, recovery, transitions, ports.access, ports.audience, ports.state, clock, random, blockEffects, loading::begin,
     )
     private val tickets = object : MineChunkTicket {
         override fun retain(chunk: org.bukkit.Chunk): Boolean = chunk.addPluginChunkTicket(plugin)
@@ -122,7 +122,7 @@ internal class MineComponentGraph(
         registry, index, tickets, prospecting, extraction, incidentScheduler, ports.state,
     )
     val module = MineModule(
-        regions, ports.access, ports.audience, ports.tasks, transitions, registry, recovery, index, tickets, prospecting, mining, loading, extraction, cartScene,
+        regions, ports.access, ports.audience, ports.tasks, ports.state, transitions, registry, recovery, index, tickets, prospecting, mining, loading, extraction, cartScene,
         incidentSet, guidancePresenter, admin, clock, scenarios, veins,
     )
 

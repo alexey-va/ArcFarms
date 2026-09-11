@@ -125,9 +125,18 @@ internal class MineController(
     }
 
     override fun onBlockDamage(event: BlockDamageEvent): Boolean {
-        runtimeAt(event.block.location) ?: return false
+        val runtime = runtimeAt(event.block.location) ?: return false
         if (access.isAdminEditing(event.player)) return false
+        val predictedBreakTicks = mineClientBreakTicks(event.block, event.player)
         event.instaBreak = true
+        scheduleMineClientResync(
+            tasks,
+            state,
+            event.player,
+            event.block,
+            "damage:${runtime.settings.id}:${runtime.state.sequence}:${event.block.x}:${event.block.y}:${event.block.z}",
+            predictedBreakTicks,
+        )
         return true
     }
 
@@ -268,7 +277,6 @@ internal class MineController(
             restoreAt = clock() + runtime.settings.restoreSeconds * 1000L,
         )
         val originalMaterial = block.type
-        val predictedBreakTicks = mineClientBreakTicks(block, player)
         val lifecycle = tasks.lifecycleToken()
         journal.prepare(record).whenComplete { _, failure ->
             if (!access.isOperational()) {
@@ -306,7 +314,6 @@ internal class MineController(
                 }
                 tasks.guarded("mine_tool_wear:${record.id}") {
                     blockEffects.completeExtraction(player, block, originalMaterial, toolSlot, toolSnapshot)
-                    scheduleMineClientResync(tasks, state, player, block, record.id, predictedBreakTicks)
                 }
             }
             if (!accepted) {

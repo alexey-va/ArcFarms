@@ -56,7 +56,7 @@ internal fun scheduleMineClientResync(
     state: WorksiteStatePort,
     player: Player,
     block: Block,
-    recordId: String,
+    source: String,
     predictedBreakTicks: Long,
 ) {
     val delayTicks = (predictedBreakTicks + CLIENT_RESYNC_GRACE_TICKS).coerceAtMost(MAX_CLIENT_BREAK_TICKS)
@@ -67,7 +67,7 @@ internal fun scheduleMineClientResync(
             Level.INFO,
             "Mine client block resynced player=${player.name} uuid=${player.uniqueId} " +
                 "position=${block.world.name}:${block.x}:${block.y}:${block.z} material=${block.type} " +
-                "predictedBreakTicks=$predictedBreakTicks delayTicks=$delayTicks record=$recordId",
+                "predictedBreakTicks=$predictedBreakTicks delayTicks=$delayTicks source=$source",
         )
     }
     if (!scheduled) {
@@ -75,7 +75,7 @@ internal fun scheduleMineClientResync(
             Level.WARNING,
             "Mine client block resync not scheduled player=${player.name} uuid=${player.uniqueId} " +
                 "position=${block.world.name}:${block.x}:${block.y}:${block.z} " +
-                "predictedBreakTicks=$predictedBreakTicks delayTicks=$delayTicks record=$recordId",
+                "predictedBreakTicks=$predictedBreakTicks delayTicks=$delayTicks source=$source",
         )
     }
 }
