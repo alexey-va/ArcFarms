@@ -3,6 +3,7 @@ package ru.ruscrafting.farms.paper.mine
 import ru.ruscrafting.farms.config.MineOrderSettings
 import ru.ruscrafting.farms.config.MineZoneSettings
 import ru.ruscrafting.farms.domain.MineRules
+import ru.ruscrafting.farms.domain.MineResource
 import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.domain.MineStateMigration
 import ru.ruscrafting.farms.paper.ActivityRegion
@@ -18,7 +19,9 @@ internal data class MineRuntime(
     val orders: Map<String, MineOrderSettings> get() = settings.orders.associateBy(MineOrderSettings::id)
     val railMaterials get() = settings.extractionRailMaterials.mapTo(linkedSetOf(), MaterialRules::material)
     val mineableMaterials get() = (if (settings.miningOnly) {
-        settings.orders.asSequence().flatMap { it.miningMaterials.asSequence() }
+        settings.orders.asSequence().flatMap { order ->
+            order.requestedResources.asSequence().flatMap(MineResource::variants)
+        }
     } else {
         settings.materialWeights.keys.asSequence()
     }).mapTo(linkedSetOf(), MaterialRules::material)
@@ -73,7 +76,8 @@ internal object MineRuntimeFactory {
     }
 
     /** Startup validation and runtime construction must apply the same compatibility migration. */
-    fun migrate(settings: MineZoneSettings, persisted: MineShiftState): MineShiftState = MineStateMigration.migrate(persisted).let { saved ->
+    fun migrate(settings: MineZoneSettings, persisted: MineShiftState): MineShiftState = MineStateMigration.migrate(persisted).let { original ->
+        val saved = normalizeResourceProgress(settings, original)
         val allowed = settings.orders.flatMap { it.incidentTypes }.toSet()
         if (settings.miningOnly && saved.phase !in setOf(ru.ruscrafting.farms.domain.MinePhase.IDLE,
                 ru.ruscrafting.farms.domain.MinePhase.COOLDOWN) &&
@@ -82,21 +86,35 @@ internal object MineRuntimeFactory {
                 saved.incidentSchedule.any { it !in allowed } || saved.phase in setOf(
                 ru.ruscrafting.farms.domain.MinePhase.PROSPECTING, ru.ruscrafting.farms.domain.MinePhase.LOADING))) {
             MineShiftState(engineVersion = 2, sequence = saved.sequence)
-        } else if (settings.miningOnly && saved.phase !in setOf(
-                ru.ruscrafting.farms.domain.MinePhase.IDLE, ru.ruscrafting.farms.domain.MinePhase.COOLDOWN,
-            ) && saved.mined > 0 && saved.minedByMaterial.isEmpty()) {
-            val order = settings.orders.firstOrNull { it.id == saved.orderId }
-            if (order?.miningRequirements?.isNotEmpty() == true) {
-                var remaining = saved.mined
-                val migrated = linkedMapOf<String, Int>()
-                order.miningMaterials.forEach { material ->
-                    val assigned = minOf(remaining, order.miningRequirements[material] ?: 0)
-                    if (assigned > 0) migrated[material] = assigned
+        } else saved
+    }
+
+    /**
+     * State files written by the first multi-ore release used exact block
+     * names.  Merge ordinary/deepslate variants into the active order's
+     * resource buckets before any phase or quota decision is made.
+     */
+    private fun normalizeResourceProgress(settings: MineZoneSettings, state: MineShiftState): MineShiftState {
+        val order = state.orderId?.let { id -> settings.orders.firstOrNull { it.id == id } }
+        val requirements = order?.normalizedRequirements.orEmpty()
+        val normalized = MineResource.normalizeProgress(state.minedByMaterial)
+        if (requirements.isEmpty()) {
+            return if (normalized == state.minedByMaterial) state else state.copy(minedByMaterial = normalized)
+        }
+        val progress = if (normalized.isEmpty() && state.mined > 0) {
+            var remaining = state.mined
+            buildMap {
+                requirements.forEach { (resource, quota) ->
+                    val assigned = minOf(remaining, quota)
+                    if (assigned > 0) put(resource, assigned)
                     remaining -= assigned
                 }
-                val total = migrated.values.sum()
-                saved.copy(mined = total, cart = total, minedByMaterial = migrated)
-            } else saved
-        } else saved
+            }
+        } else {
+            normalized.mapValues { (resource, value) -> minOf(value, requirements[resource] ?: 0) }
+                .filterValues { it > 0 }
+        }
+        val total = requirements.entries.sumOf { (resource, quota) -> minOf(progress[resource] ?: 0, quota) }
+        return state.copy(mined = total, cart = total, minedByMaterial = progress)
     }
 }

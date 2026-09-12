@@ -20,17 +20,25 @@ import kotlin.math.floor
 
 /** Bounded vanilla display scene in the surveyed shaft. Interaction seats scale with the cabin footprint. */
 internal class MineLiftScene(private val plugin: Plugin, private val settings: MineLiftSettings, private val world: World) : AutoCloseable {
-    private data class Part(val display: BlockDisplay, val x: Double, val y: Double, val z: Double, val door: Boolean = false)
+    private data class Part(
+        val display: BlockDisplay,
+        val x: Double,
+        val y: Double,
+        val z: Double,
+        val doorSide: MineLiftDoorSide? = null,
+    )
     private val parts = mutableListOf<Part>()
     private val entities = mutableListOf<Entity>()
     private val chain = mutableListOf<BlockDisplay>()
     val seats = mutableListOf<Interaction>()
     private val seatOffsets = mutableListOf<Pair<Double, Double>>()
     val panels = mutableMapOf<UUID, Int>()
+    private val entranceHitboxes = mutableMapOf<UUID, MineLiftDoorSide>()
     private val labels = mutableListOf<TextDisplay>()
     private val key = NamespacedKey(plugin, "mine_lift_${settings.id}")
     private val legacyKey = if (settings.id == "main") NamespacedKey(plugin, "mine_lift") else null
     private var doorOpening = 1.0
+    private var openDoorSide: MineLiftDoorSide? = null
     private var previousY = Double.NaN
 
     fun owns(entity: Entity) = entity.persistentDataContainer.has(key, PersistentDataType.BYTE) ||
@@ -38,6 +46,10 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
     fun cleanOrphans(chunk: org.bukkit.Chunk) {
         chunk.entities.filter { owns(it) && it !in entities }.forEach(Entity::remove)
     }
+
+    fun ownsEntrance(entity: Entity): Boolean = entity.uniqueId in entranceHitboxes
+
+    internal fun entranceSides(): Map<UUID, MineLiftDoorSide> = entranceHitboxes.toMap()
 
     fun spawn(y: Double, floorText: (Int) -> Component) {
         val halfX = settings.width / 2
@@ -47,13 +59,25 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
         for (x in listOf(-halfX, halfX - .16)) for (z in listOf(-halfZ, halfZ - .16)) {
             block(x, 0.0, z, .16, 2.65, .16, Material.STRIPPED_SPRUCE_LOG)
         }
-        // East and south guards; both west and north are doors because the lowest landing faces north.
-        block(halfX - .08, .45, -halfZ, .08, .12, settings.depth, Material.IRON_BLOCK)
-        block(halfX - .08, 1.15, -halfZ, .08, .12, settings.depth, Material.IRON_BLOCK)
-        block(-halfX, .45, halfZ - .08, settings.width, .12, .08, Material.IRON_BLOCK)
-        block(-halfX, 1.15, halfZ - .08, settings.width, .12, .08, Material.IRON_BLOCK)
-        block(-halfX, .45, -halfZ, .08, .85, settings.depth, Material.COPPER_GRATE, door = true)
-        block(-halfX, .45, -halfZ, settings.width, .85, .08, Material.COPPER_GRATE, door = true)
+        val doorSides = settings.floors.indices.map(settings::openingSide).toSet()
+        MineLiftDoorSide.entries.forEach { side ->
+            if (side in doorSides) {
+                when (side) {
+                    MineLiftDoorSide.WEST -> block(-halfX, .45, -halfZ, .08, .85, settings.depth, Material.COPPER_GRATE, side)
+                    MineLiftDoorSide.EAST -> block(halfX - .08, .45, -halfZ, .08, .85, settings.depth, Material.COPPER_GRATE, side)
+                    MineLiftDoorSide.NORTH -> block(-halfX, .45, -halfZ, settings.width, .85, .08, Material.COPPER_GRATE, side)
+                    MineLiftDoorSide.SOUTH -> block(-halfX, .45, halfZ - .08, settings.width, .85, .08, Material.COPPER_GRATE, side)
+                }
+                spawnEntrance(y, side, halfX, halfZ)
+            } else {
+                when (side) {
+                    MineLiftDoorSide.WEST -> guard(-halfX, -halfZ, settings.depth, vertical = true)
+                    MineLiftDoorSide.EAST -> guard(halfX - .08, -halfZ, settings.depth, vertical = true)
+                    MineLiftDoorSide.NORTH -> guard(-halfX, -halfZ, settings.width, vertical = false)
+                    MineLiftDoorSide.SOUTH -> guard(-halfX, halfZ - .08, settings.width, vertical = false)
+                }
+            }
+        }
         block(-.2, 2.3, -.2, .4, .35, .4, Material.LANTERN)
         parts.forEach { it.display.teleport(origin(y).add(it.x, it.y, it.z)) }
         for (x in seatAxis(settings.width)) for (z in seatAxis(settings.depth)) {
@@ -90,14 +114,26 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
         val previousDoor = doorOpening
         doorOpening = (doorOpening + if (open) .1 else -.1).coerceIn(0.0, 1.0)
         val heightChanged = y != previousY
+        val nextOpenDoorSide = if (open) {
+            settings.openingSide(settings.floors.indices.minBy { kotlin.math.abs(settings.floors[it].y - y) })
+        } else openDoorSide?.takeIf { doorOpening > 0.0 }
+        val doorSideChanged = nextOpenDoorSide != openDoorSide
         var moved = true
-        parts.filter { heightChanged || (it.door && previousDoor != doorOpening) }.forEach { part ->
-            moved = part.display.teleport(origin(y).add(part.x, part.y + if (part.door) doorOpening * 1.6 else 0.0, part.z)) && moved
+        parts.filter { heightChanged || (it.doorSide != null && (previousDoor != doorOpening || doorSideChanged)) }.forEach { part ->
+            val doorOffset = if (part.doorSide == nextOpenDoorSide) doorOpening * 1.6 else 0.0
+            moved = part.display.teleport(origin(y).add(part.x, part.y + doorOffset, part.z)) && moved
         }
-        if (!heightChanged) return moved
+        if (!heightChanged) {
+            openDoorSide = nextOpenDoorSide
+            return moved
+        }
         seats.forEachIndexed { index, seat ->
             val (x, z) = seatOffsets[index]
             moved = seat.teleport(origin(y).add(x, .02, z)) && moved
+        }
+        entranceHitboxes.forEach { (id, side) ->
+            val entrance = world.getEntity(id) as? Interaction ?: return@forEach
+            moved = entrance.teleport(entranceLocation(y, side)) && moved
         }
         val top = settings.floors.first().y + 3
         chain.forEachIndexed { index, link ->
@@ -107,17 +143,49 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
             link.transformation = transform(0.0, 0.0, 0.0, 1.0, length, 1.0)
         }
         previousY = y
+        openDoorSide = nextOpenDoorSide
         return moved
     }
 
     fun label(index: Int, text: Component) { labels[index].text(text) }
     private fun origin(y: Double) = Location(world, settings.x, y, settings.z)
-    private fun block(x: Double, y: Double, z: Double, sx: Double, sy: Double, sz: Double, material: Material, door: Boolean = false) {
+    private fun guard(x: Double, z: Double, span: Double, vertical: Boolean) {
+        if (vertical) {
+            block(x, .45, z, .08, .12, span, Material.IRON_BLOCK)
+            block(x, 1.15, z, .08, .12, span, Material.IRON_BLOCK)
+        } else {
+            block(x, .45, z, span, .12, .08, Material.IRON_BLOCK)
+            block(x, 1.15, z, span, .12, .08, Material.IRON_BLOCK)
+        }
+    }
+
+    private fun spawnEntrance(y: Double, side: MineLiftDoorSide, halfX: Double, halfZ: Double) {
+        val span = if (side == MineLiftDoorSide.WEST || side == MineLiftDoorSide.EAST) settings.depth else settings.width
+        val interaction = world.spawn(entranceLocation(y, side, halfX, halfZ), Interaction::class.java) {
+            mark(it)
+            it.interactionWidth = span.coerceIn(1.4, 5.8).toFloat()
+            it.interactionHeight = 1.8f
+            it.isResponsive = true
+        }.also(entities::add)
+        entranceHitboxes[interaction.uniqueId] = side
+    }
+
+    private fun entranceLocation(y: Double, side: MineLiftDoorSide): Location =
+        entranceLocation(y, side, settings.width / 2, settings.depth / 2)
+
+    private fun entranceLocation(y: Double, side: MineLiftDoorSide, halfX: Double, halfZ: Double): Location = when (side) {
+        MineLiftDoorSide.WEST -> origin(y).add(-halfX - .12, .9, 0.0)
+        MineLiftDoorSide.EAST -> origin(y).add(halfX + .12, .9, 0.0)
+        MineLiftDoorSide.NORTH -> origin(y).add(0.0, .9, -halfZ - .12)
+        MineLiftDoorSide.SOUTH -> origin(y).add(0.0, .9, halfZ + .12)
+    }
+
+    private fun block(x: Double, y: Double, z: Double, sx: Double, sy: Double, sz: Double, material: Material, doorSide: MineLiftDoorSide? = null) {
         val entity = display(origin(settings.floors.first().y).add(x, y, z), material)
         entity.isGlowing = true
         entity.glowColorOverride = org.bukkit.Color.fromRGB(0x75, 0xe6, 0xff)
         entity.transformation = transform(0.0, 0.0, 0.0, sx, sy, sz)
-        parts += Part(entity, x, y, z, door)
+        parts += Part(entity, x, y, z, doorSide)
     }
 
     private fun display(at: Location, material: Material): BlockDisplay = world.spawn(at, BlockDisplay::class.java) {
@@ -134,7 +202,8 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
 
     override fun close() {
         entities.asReversed().forEach(Entity::remove)
-        entities.clear(); parts.clear(); seats.clear(); seatOffsets.clear(); chain.clear(); panels.clear(); labels.clear()
+        entities.clear(); parts.clear(); seats.clear(); seatOffsets.clear(); chain.clear(); panels.clear(); entranceHitboxes.clear(); labels.clear()
+        openDoorSide = null
     }
 
     private fun seatAxis(span: Double): List<Double> {

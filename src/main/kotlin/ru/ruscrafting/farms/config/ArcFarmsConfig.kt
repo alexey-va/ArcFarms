@@ -15,6 +15,7 @@ import ru.ruscrafting.farms.domain.FarmCarePlanner
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.LumberIncidentType
 import ru.ruscrafting.farms.domain.MineIncidentType
+import ru.ruscrafting.farms.domain.MineResource
 import ru.ruscrafting.farms.domain.MAX_FARM_PATCH_PLOTS
 import ru.ruscrafting.farms.domain.TrustedFarmCommandTemplate
 import java.nio.file.Path
@@ -1114,8 +1115,10 @@ data class MineZoneSettings(
             "Mine zone $id loading delivery-radius is invalid"
         }
         require(!miningOnly || orders.all { order ->
-            order.miningMaterials.isNotEmpty() && order.miningMaterials.all { it in materialWeights }
-        }) { "Basic mine $id orders must request available mining-materials" }
+            order.requestedResources.isNotEmpty() && order.requestedResources.all { resource ->
+                MineResource.variants(resource).any { it in materialWeights }
+            }
+        }) { "Basic mine $id orders must request available mining resources" }
         require(engineVersion == 1 || orders.isNotEmpty()) { "Mine V2 zone $id has no orders" }
         require(orders.all { it.incidentTypes.size >= incidentCountMax }) {
             "Mine zone $id order has fewer incidents than incident-count-max"
@@ -2597,10 +2600,22 @@ class ArcFarmsConfig private constructor(
                     val miningMaterials = order.stringList("mining-materials")
                         .mapTo(linkedSetOf(), ::materialName)
                         .also { it += miningRequirements.keys }
+                    val miningResources = order.stringList("mining-resources")
+                        .mapTo(linkedSetOf(), ::resourceName)
+                    val resourceRequirements = linkedMapOf<String, Int>()
+                    order.keys("resource-requirements").forEach { rawResource ->
+                        val resource = resourceName(rawResource)
+                        require(resourceRequirements.put(resource, order.int("resource-requirements.$rawResource")
+                            .checked("mine order resource requirement", 1, 100_000)) == null) {
+                            "Mine order $id/$orderId contains duplicate resource requirement $resource"
+                        }
+                    }
                     MineOrderSettings(
                         id = orderId,
                         miningMaterials = miningMaterials,
                         miningRequirements = miningRequirements,
+                        miningResources = miningResources,
+                        resourceRequirements = resourceRequirements,
                         prospectingRequired = order.int("phases.prospecting-required", 3)
                             .checked("mine order prospecting-required", 1, 100_000),
                         miningRequired = order.int("phases.mining-required", section.int("cart-quota", 16))
@@ -3206,6 +3221,10 @@ class ArcFarmsConfig private constructor(
 
         private fun materialName(value: String): String = value.trim().uppercase().also {
             require(it.matches(Regex("[A-Z0-9_]{2,64}"))) { "Invalid material name: $value" }
+        }
+
+        private fun resourceName(value: String): String = MineResource.normalize(materialName(value)).also {
+            require(it in MineResource.knownResources) { "Unknown mine resource: $value" }
         }
 
         private fun entityName(value: String): String = value.trim().uppercase().also {

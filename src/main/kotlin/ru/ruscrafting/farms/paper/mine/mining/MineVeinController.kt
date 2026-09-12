@@ -4,6 +4,7 @@ import org.bukkit.Material
 import org.bukkit.block.Block
 import org.bukkit.block.BlockFace
 import ru.ruscrafting.farms.domain.MinePhase
+import ru.ruscrafting.farms.domain.MineResource
 import ru.ruscrafting.farms.domain.PendingMineBlock
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.MaterialRules
@@ -34,8 +35,13 @@ internal class MineVeinController(
             now < nextCheck.getOrDefault(runtime.settings.id, 0)) return
         nextCheck[runtime.settings.id] = now + 5_000L
         val order = runtime.currentOrder() ?: return
-        val materials = order.miningMaterials
-            .filter { it in runtime.settings.materialWeights }.map(MaterialRules::material)
+        val acceptedByResource = order.requestedResources.associateWith { resource ->
+            MineResource.variants(resource).map(MaterialRules::material)
+        }.filterValues { it.isNotEmpty() }
+        val generationByResource = acceptedByResource.mapValues { (_, variants) ->
+            variants.filter { it.name in runtime.settings.materialWeights }
+        }.filterValues { it.isNotEmpty() }
+        val materials = acceptedByResource.values.flatten().distinct()
         if (materials.isEmpty()) return
         val world = runtime.region.world
         fun block(p: WorksitePosition) = world.getBlockAt(p.x, p.y, p.z)
@@ -53,20 +59,26 @@ internal class MineVeinController(
             p.copy(x = p.x + face.modX, y = p.y + face.modY, z = p.z + face.modZ) in matching
         } }
         val available = connectedMatching.size
-        val pendingRecords = recovery.records(runtime.settings.id).filter { it.nextMaterial in materials.map(Material::name) }
+        val materialNames = materials.mapTo(linkedSetOf(), Material::name)
+        val pendingRecords = recovery.records(runtime.settings.id).filter { it.nextMaterial in materialNames }
         val pending = pendingRecords.size
-        val shortageByMaterial = if (order.miningRequirements.isEmpty()) emptyMap() else materials.associateWith { material ->
-            val required = order.miningRequirements[material.name] ?: 0
-            val completed = runtime.state.minedByMaterial[material.name] ?: 0
-            val stocked = connectedMatching.count { block(it).type == material }
-            val queued = pendingRecords.count { it.nextMaterial == material.name }
+        val shortageByResource = if (order.normalizedRequirements.isEmpty()) emptyMap() else generationByResource.mapValues { (resource, generatedVariants) ->
+            val required = order.normalizedRequirements[resource] ?: 0
+            val completed = runtime.state.minedByMaterial[resource] ?: 0
+            val acceptedVariants = acceptedByResource.getValue(resource)
+            val stocked = connectedMatching.count { block(it).type in acceptedVariants }
+            val queued = pendingRecords.count { it.nextMaterial in acceptedVariants.map(Material::name) }
             (required - completed - stocked - queued).coerceAtLeast(0)
         }
-        val ore = shortageByMaterial.maxByOrNull { it.value }?.takeIf { it.value > 0 }?.key
-            ?: materials[(runtime.state.sequence % materials.size).toInt()]
-        val missing = if (order.miningRequirements.isEmpty()) {
+        val resource = shortageByResource.maxByOrNull { it.value }?.takeIf { it.value > 0 }?.key
+            ?: generationByResource.keys.elementAt((runtime.state.sequence % generationByResource.size).toInt())
+        val resourceMaterials = generationByResource.getValue(resource)
+        val acceptedResourceMaterials = acceptedByResource.getValue(resource)
+        val ore = matching.asSequence().map { block(it).type }.firstOrNull { it in resourceMaterials }
+            ?: resourceMaterials[(runtime.state.sequence % resourceMaterials.size).toInt()]
+        val missing = if (order.normalizedRequirements.isEmpty()) {
             (runtime.rules().miningQuota - runtime.state.mined - available - pending).coerceAtLeast(0)
-        } else shortageByMaterial.values.sum()
+        } else shortageByResource.values.sum()
         val players = world.players.filter { runtime.region.contains(it.location) }.map { it.location }
         val candidates = if (missing == 0) emptySet() else positions.filterTo(linkedSetOf()) { p ->
             val b = block(p)
@@ -76,10 +88,10 @@ internal class MineVeinController(
         if (missing == 0) return
         val bandCount = verticalBandCount(runtime.region.bounds.minY, runtime.region.bounds.maxY)
         val supplyByBand = IntArray(bandCount)
-        matching.filter { block(it).type == ore }.forEach {
+        matching.filter { block(it).type in acceptedResourceMaterials }.forEach {
             supplyByBand[verticalBand(it.y, runtime.region.bounds.minY, runtime.region.bounds.maxY, bandCount)]++
         }
-        pendingRecords.filter { it.nextMaterial == ore.name }.forEach {
+        pendingRecords.filter { it.nextMaterial in acceptedResourceMaterials.map(Material::name) }.forEach {
             supplyByBand[verticalBand(it.y, runtime.region.bounds.minY, runtime.region.bounds.maxY, bandCount)]++
         }
         val candidatesByBand = candidates.groupBy {
@@ -87,7 +99,7 @@ internal class MineVeinController(
         }
         val round = placementRounds.getOrDefault(runtime.settings.id, 0L)
         val firstBand = Math.floorMod(runtime.state.sequence + round, bandCount.toLong()).toInt()
-        val knownOreBand = matching.asSequence().filter { block(it).type == ore }
+        val knownOreBand = matching.asSequence().filter { block(it).type in acceptedResourceMaterials }
             .groupingBy { verticalBand(it.y, runtime.region.bounds.minY, runtime.region.bounds.maxY, bandCount) }
             .eachCount().filterKeys(candidatesByBand::containsKey).maxByOrNull { it.value }?.key
         val targetBand = knownOreBand ?: candidatesByBand.keys.minWithOrNull(

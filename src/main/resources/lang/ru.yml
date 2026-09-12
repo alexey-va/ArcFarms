@@ -1096,10 +1096,21 @@ lumber:
     warped_batch: '<color:#f2fff7>Разложите хорошие и бракованные доски по нужным поддонам</color>'
     rush_order: '<color:#ffc857>Срочный заказ: сложите доски до истечения бонусного времени</color>'
 mine:
+  resources:
+    coal: 'Уголь'
+    copper: 'Медь'
+    iron: 'Железо'
+    gold: 'Золото'
+    redstone: 'Красная пыль'
+    quartz: 'Кварц'
+    diamond: 'Алмазы'
+    lapis: 'Лазурит'
+    emerald: 'Изумруды'
+    ancient_debris: 'Древние обломки'
   started: "<color:#45c8f5>Шахтная экспедиция</color> <color:#707a76>•</color> <route>"
   order-paused: '<yellow>Продолжите добычу после текущего события или подготовки заказа.</yellow>'
-  managed-required: '<yellow>Добывайте руду, указанную в заказе.</yellow>'
-  resource-complete: '<yellow>Этой руды уже достаточно. Спускайтесь на другой ярус за оставшимися породами.</yellow>'
+  managed-required: '<yellow>Добывайте ресурсы, указанные в заказе.</yellow>'
+  resource-complete: '<yellow>Этот ресурс уже собран. Отправляйтесь на другой ярус за оставшимися.</yellow>'
   pickaxe-required: '<red>Для работы в шахте нужна кирка.</red>'
   regenerating: '<gray>Этот участок ещё восстанавливается.</gray>'
   hazard-started: '<red><bold>Забой нестабилен</bold></red>'
@@ -1123,7 +1134,7 @@ mine:
   loading-required: '<yellow>Возьмите отмеченный ящик с рудой и отнесите его к вывозной телеге.</yellow>'
   guidance:
     resource_order: '<color:#f2fff7>Добывайте: <resource></color>'
-    multi_resource_order: '<color:#f2fff7>Соберите руду со всех ярусов</color>'
+    multi_resource_order: '<color:#f2fff7>Соберите ресурсы со всех ярусов</color>'
     resource-progress: '<gray><resource>:</gray> <white><done>/<total></white>'
     completion_pending: '<gray>Завершение заказа</gray>'
     idle: '<gray>Подготовка выработки — заказ начнётся автоматически</gray>'

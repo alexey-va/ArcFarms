@@ -7,6 +7,8 @@ cabin:
   z: 78.5
   width: 2.8
   depth: 2.8
+# Cabin doors and click hitboxes are derived per floor from the direction of its exit.
+# Keep each exit on the actual landing side so the walk-in face follows the shaft.
 floor-order: [top, upper, middle, lower, bottom]
 floors:
   top:

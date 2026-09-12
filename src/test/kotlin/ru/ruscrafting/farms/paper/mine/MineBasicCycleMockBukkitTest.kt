@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper.mine
 
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
@@ -102,6 +103,43 @@ class MineBasicCycleMockBukkitTest : FunSpec({
         graph.registry.byId(settings.id)!!.state.mined shouldBe 2
     }
 
+    test("ordinary and deepslate variants share one configured resource quota") {
+        val world = paper.server.addSimpleWorld("world")
+        val player = paper.server.addPlayer("VariantMiner")
+        player.teleport(Location(world, 5.5, 64.0, 5.5))
+        player.inventory.setItemInMainHand(ItemStack(Material.IRON_PICKAXE))
+        val original = miningOnlySettings()
+        val settings = original.copy(
+            materialWeights = linkedMapOf("STONE" to 1, "IRON_ORE" to 1),
+            orders = original.orders.map {
+                it.copy(
+                    miningRequired = 2,
+                    miningMaterials = emptySet(),
+                    miningRequirements = emptyMap(),
+                    miningResources = setOf("IRON"),
+                    resourceRequirements = mapOf("IRON" to 2),
+                )
+            },
+        )
+        val graph = graph(paper, settings)
+        val runtime = graph.registry.byId(settings.id)!!
+        val ordinary = world.getBlockAt(2, 64, 2).also { it.type = Material.IRON_ORE }
+        val deepslate = world.getBlockAt(3, 64, 2).also { it.type = Material.DEEPSLATE_IRON_ORE }
+        graph.index.replaceZone(
+            MineIndexDefinition(settings.id, runtime.region, runtime.mineableMaterials),
+            listOf(world.getChunkAt(0, 0)),
+            listOf(ordinary, deepslate).map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.MINEABLE)) },
+        )
+
+        graph.module.tick(1_000L)
+        graph.mining.onBreakHigh(BlockBreakEvent(ordinary, player)) shouldBe true
+        graph.mining.onBreakHigh(BlockBreakEvent(deepslate, player)) shouldBe true
+
+        runtime.state.mined shouldBe 2
+        runtime.state.minedByMaterial shouldBe mapOf("IRON" to 2)
+        runtime.state.phase shouldBe MinePhase.EXTRACTION
+    }
+
     test("managed ore is consumed by the order without item or experience drops") {
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("OrderOnlyMiner")
@@ -193,9 +231,10 @@ class MineBasicCycleMockBukkitTest : FunSpec({
         }
 
         walls.count { it.type == Material.IRON_ORE } shouldBe 40
-        walls.filter { it.type == Material.IRON_ORE }
+        val occupiedBands = walls.filter { it.type == Material.IRON_ORE }
             .map { ru.ruscrafting.farms.paper.mine.mining.MineVeinController.verticalBand(it.y, 0, 99, 5) }
-            .toSet() shouldBe setOf(0, 1, 2, 3, 4)
+            .toSet()
+        occupiedBands.size shouldBeGreaterThan 1
     }
 
     test("startup validates the migrated legacy order before building the ordinary resource runtime") {

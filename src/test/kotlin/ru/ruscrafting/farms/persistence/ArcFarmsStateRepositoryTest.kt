@@ -60,6 +60,26 @@ class ArcFarmsStateRepositoryTest : FunSpec({
         }
     }
 
+    test("legacy exact ore progress loads into one resource bucket") {
+        val root = Files.createTempDirectory("arcfarms-state-mine-resource-migration-test")
+        val legacy = MineShiftState(
+            engineVersion = 2,
+            phase = MinePhase.MINING,
+            sequence = 4,
+            orderId = "coal_order",
+            mined = 25,
+            cart = 25,
+            minedByMaterial = mapOf("COAL_ORE" to 11, "DEEPSLATE_COAL_ORE" to 14),
+        )
+        ArcFarmsStateRepository(root).use { repository ->
+            repository.saveBlocking(ArcFarmsState(mines = mapOf("old_shafts" to legacy)))
+        }
+
+        ArcFarmsStateRepository(root).use { repository ->
+            repository.load().mines.getValue("old_shafts").minedByMaterial shouldBe mapOf("COAL" to 25)
+        }
+    }
+
     test("legacy foreground tornado migrates to a harvesting overlay") {
         val root = Files.createTempDirectory("arcfarms-state-tornado-migration-test")
         val data = root.resolve("data")

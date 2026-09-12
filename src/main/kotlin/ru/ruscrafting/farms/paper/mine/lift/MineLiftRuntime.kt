@@ -86,6 +86,7 @@ internal class MineLiftRuntime(
     private var movementTask: ScheduledTask? = null
     private val exiting = mutableSetOf<UUID>()
     private val maintenance = MineLiftMaintenanceClaim()
+    private val interactionGate = MineLiftInteractionGate()
 
     fun start() {
         plugin.server.pluginManager.registerEvents(this, plugin)
@@ -178,8 +179,16 @@ internal class MineLiftRuntime(
             abs(player.y - config.floors[index].y) < 2.5
     }
 
-    private fun open(player: Player, index: Int) {
-        if (maintenance.ownsAny() || !player.hasPermission("arcfarms.mine") || nearFloor(player) != index || hasRecovery(player.uniqueId)) {
+    private fun nearCabin(player: Player, index: Int): Boolean {
+        val state = motion ?: return false
+        return state.phase == MineLiftMotion.Phase.DOCKED && state.floor == index && settings.cabinContains(player.location, state.y)
+    }
+
+    private fun near(player: Player, index: Int, allowCabin: Boolean): Boolean =
+        nearFloor(player) == index || (allowCabin && nearCabin(player, index))
+
+    private fun open(player: Player, index: Int, allowCabin: Boolean = false) {
+        if (maintenance.ownsAny() || !player.hasPermission("arcfarms.mine") || !near(player, index, allowCabin) || hasRecovery(player.uniqueId)) {
             player.sendMessage(text("unavailable", player)); return
         }
         val state = motion ?: run { player.sendMessage(text("unavailable", player)); return }
@@ -204,17 +213,17 @@ internal class MineLiftRuntime(
             }.map { target ->
                 PaperDialogButton(PaperDialogActionId.of("floor_$target"), FarmDialogScreens.nativeBody(text("go", player,
                     mapOf("floor" to floorName(target, player)))), width = 230, closeDialogBeforeAction = true,
-                    onClick = { board(it.player, index, target) })
+                    onClick = { board(it.player, index, target, allowCabin) })
             }, columns = 2,
             exitButton = PaperDialogButton(PaperDialogActionId.of("close"), FarmDialogScreens.nativeControl(text("close", player)), width = 200, onClick = {}),
         ))
     }
 
-    private fun board(player: Player, source: Int, destination: Int) {
+    private fun board(player: Player, source: Int, destination: Int, allowCabin: Boolean = false) {
         val config = settings
         val state = motion ?: return
         val cabin = scene ?: return
-        if (maintenance.ownsAny() || !player.hasPermission("arcfarms.mine") || nearFloor(player) != source || state.floor != source ||
+        if (maintenance.ownsAny() || !player.hasPermission("arcfarms.mine") || !near(player, source, allowCabin) || state.floor != source ||
             player.isInsideVehicle || player.isDead || hasRecovery(player.uniqueId) ||
             state.phase == MineLiftMotion.Phase.MOVING ||
             (state.phase == MineLiftMotion.Phase.BOARDING && state.target != destination)) {
@@ -300,9 +309,20 @@ internal class MineLiftRuntime(
     @EventHandler(ignoreCancelled = true)
     fun interact(event: PlayerInteractEntityEvent) {
         if (event.hand != EquipmentSlot.HAND) return
-        val index = scene?.panels?.get(event.rightClicked.uniqueId) ?: return
+        val cabin = scene ?: return
+        val index = cabin.panels[event.rightClicked.uniqueId]
+        val isEntrance = cabin.ownsEntrance(event.rightClicked)
+        if (index == null && !isEntrance) return
         event.isCancelled = true
-        open(event.player, index)
+        if (interactionGate.isDuplicate(event.player.uniqueId, Bukkit.getCurrentTick().toLong())) return
+        if (isEntrance) {
+            val state = motion
+            val floor = state?.takeIf { it.phase == MineLiftMotion.Phase.DOCKED }?.floor
+            if (floor == null || !nearCabin(event.player, floor)) event.player.sendMessage(text("unavailable", event.player))
+            else open(event.player, floor, allowCabin = true)
+        } else {
+            open(event.player, requireNotNull(index))
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -328,6 +348,7 @@ internal class MineLiftRuntime(
     fun damage(event: EntityDamageEvent) { if (event.entity.uniqueId in riders) event.isCancelled = true }
 
     @EventHandler fun quit(event: PlayerQuitEvent) {
+        interactionGate.clear(event.player.uniqueId)
         recover(event.player)
         if (riders.remove(event.player.uniqueId) != null) releaseRider(event.player.uniqueId, settings.id)
     }
@@ -397,6 +418,6 @@ internal class MineLiftRuntime(
         if (closed) return
         closed = true
         maintenance.clear()
-        stopCabin(); tasks.close(); dialogs.close(); HandlerList.unregisterAll(this)
+        stopCabin(); tasks.close(); dialogs.close(); interactionGate.clear(); HandlerList.unregisterAll(this)
     }
 }

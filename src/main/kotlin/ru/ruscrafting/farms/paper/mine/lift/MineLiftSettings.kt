@@ -10,6 +10,9 @@ internal data class LiftPoint(val x: Double, val y: Double, val z: Double, val y
     fun location(world: World) = Location(world, x, y, z, yaw, 0f)
 }
 
+/** Cardinal side of the cabin that faces a floor landing. */
+internal enum class MineLiftDoorSide { NORTH, EAST, SOUTH, WEST }
+
 internal data class MineLiftFloor(val id: String, val y: Double, val exit: LiftPoint, val panel: LiftPoint)
 
 internal data class MineLiftSettings(
@@ -25,6 +28,27 @@ internal data class MineLiftSettings(
     fun contains(point: Location): Boolean = point.world.name == world &&
         kotlin.math.abs(point.x - x) < width / 2 + 0.3 && kotlin.math.abs(point.z - z) < depth / 2 + 0.3 &&
         point.y in (floors.minOf { it.y } - 2)..(floors.maxOf { it.y } + 4)
+
+    /** The cabin is an entity scene, so this is deliberately a soft reach bound around its live Y. */
+    fun cabinContains(point: Location, cabinY: Double): Boolean = point.world.name == world &&
+        kotlin.math.abs(point.x - x) <= width / 2 + 3.0 &&
+        kotlin.math.abs(point.z - z) <= depth / 2 + 3.0 &&
+        kotlin.math.abs(point.y - cabinY) <= 3.0
+
+    fun openingSide(index: Int): MineLiftDoorSide {
+        require(index in floors.indices)
+        val exit = floors[index].exit
+        val dx = exit.x - x
+        val dz = exit.z - z
+        // Exits are authored on a cardinal landing. For a malformed diagonal/center point,
+        // preserve a deterministic side instead of rotating the scene unpredictably.
+        return when {
+            kotlin.math.abs(dx) > kotlin.math.abs(dz) -> if (dx < 0.0) MineLiftDoorSide.WEST else MineLiftDoorSide.EAST
+            kotlin.math.abs(dz) > 0.0 -> if (dz < 0.0) MineLiftDoorSide.NORTH else MineLiftDoorSide.SOUTH
+            dx < 0.0 -> MineLiftDoorSide.WEST
+            else -> MineLiftDoorSide.EAST
+        }
+    }
 
     fun overlaps(other: MineLiftSettings): Boolean {
         if (world != other.world) return false

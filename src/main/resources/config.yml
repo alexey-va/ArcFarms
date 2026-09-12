@@ -915,11 +915,11 @@ mine-zones:
         iron: {material: IRON_INGOT, amount: 4, chance-percent: 100}
     orders:
       coal_order:
-        mining-materials: [COAL_ORE]
+        mining-resources: [COAL]
         phases: {prospecting-required: 3, mining-required: 100, loading-required: 4}
         incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE, BAT_SWARM, FUNGAL_BLOOM, ROOT_INVASION, LAVA_BREACH, ANCIENT_DOOR, OLD_WAREHOUSE, DRILL_TRIAL]
       iron_order:
-        mining-materials: [IRON_ORE]
+        mining-resources: [IRON]
         phases: {prospecting-required: 3, mining-required: 100, loading-required: 4}
         incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE, BAT_SWARM, FUNGAL_BLOOM, ROOT_INVASION, LAVA_BREACH, ANCIENT_DOOR, OLD_WAREHOUSE, DRILL_TRIAL]
   sand_quarry:
@@ -957,11 +957,11 @@ mine-zones:
     incident-count-max: 1
     orders:
       coal_order:
-        mining-materials: [COAL_ORE]
+        mining-resources: [COAL]
         phases: {prospecting-required: 3, mining-required: 100, loading-required: 4}
         incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE, BAT_SWARM, FUNGAL_BLOOM, ROOT_INVASION, LAVA_BREACH, ANCIENT_DOOR, OLD_WAREHOUSE, DRILL_TRIAL]
       iron_order:
-        mining-materials: [IRON_ORE]
+        mining-resources: [IRON]
         phases: {prospecting-required: 3, mining-required: 100, loading-required: 4}
         incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE, BAT_SWARM, FUNGAL_BLOOM, ROOT_INVASION, LAVA_BREACH, ANCIENT_DOOR, OLD_WAREHOUSE, DRILL_TRIAL]
   infernal_working:
@@ -999,7 +999,7 @@ mine-zones:
     incident-count-max: 1
     orders:
       quartz_order:
-        mining-materials: [NETHER_QUARTZ_ORE]
+        mining-resources: [QUARTZ]
         phases: {prospecting-required: 3, mining-required: 100, loading-required: 4}
         incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE, BAT_SWARM, FUNGAL_BLOOM, ROOT_INVASION, LAVA_BREACH, ANCIENT_DOOR, OLD_WAREHOUSE, DRILL_TRIAL]
   lush_depths:
@@ -1037,10 +1037,10 @@ mine-zones:
     incident-count-max: 1
     orders:
       coal_order:
-        mining-materials: [COAL_ORE]
+        mining-resources: [COAL]
         phases: {prospecting-required: 3, mining-required: 100, loading-required: 4}
         incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE, BAT_SWARM, FUNGAL_BLOOM, ROOT_INVASION, LAVA_BREACH, ANCIENT_DOOR, OLD_WAREHOUSE, DRILL_TRIAL]
       iron_order:
-        mining-materials: [IRON_ORE]
+        mining-resources: [IRON]
         phases: {prospecting-required: 3, mining-required: 100, loading-required: 4}
         incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE, BAT_SWARM, FUNGAL_BLOOM, ROOT_INVASION, LAVA_BREACH, ANCIENT_DOOR, OLD_WAREHOUSE, DRILL_TRIAL]

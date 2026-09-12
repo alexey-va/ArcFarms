@@ -9,6 +9,7 @@ import org.bukkit.entity.Player
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.domain.FarmEventTypeRegistry
 import ru.ruscrafting.farms.domain.MinePhase
+import ru.ruscrafting.farms.domain.MineResource
 import ru.ruscrafting.farms.domain.MineScenarioCatalog
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus
@@ -45,7 +46,7 @@ internal class MineGuidanceSource(
         scenarioView(player, runtime)?.let { return it }
         val (done, total) = progress(runtime)
         val action = actionKey(runtime)
-        val resource = resourceSummary(runtime)
+        val resource = resourceSummary(runtime, player)
         val resourceValues = mapOf("resource" to resource)
         val values = resourceValues + mapOf(
             "done" to text(done), "total" to text(total),
@@ -68,28 +69,28 @@ internal class MineGuidanceSource(
         )
     }
 
-    private fun resourceSummary(runtime: MineRuntime): Component {
-        val materials = runtime.currentOrder()?.miningMaterials.orEmpty()
-        return materials.map(::resourceName).foldIndexed(Component.empty()) { index, result, resource ->
+    private fun resourceSummary(runtime: MineRuntime, player: Player): Component {
+        val resources = runtime.currentOrder()?.requestedResources.orEmpty()
+        return resources.map { resourceName(it, player) }.foldIndexed(Component.empty()) { index, result, resource ->
             result.append(if (index == 0) Component.empty() else Component.text(" · ")).append(resource)
         }
     }
 
     private fun resourceRows(runtime: MineRuntime, player: Player): List<Component> {
-        val requirements = runtime.currentOrder()?.miningRequirements.orEmpty()
+        val requirements = runtime.currentOrder()?.normalizedRequirements.orEmpty()
         if (requirements.isEmpty() || runtime.state.phase != MinePhase.MINING) return emptyList()
-        return requirements.map { (material, required) ->
+        return requirements.map { (resource, required) ->
             render("mine.guidance.resource-progress", player, mapOf(
-                "resource" to resourceName(material),
-                "done" to text((runtime.state.minedByMaterial[material] ?: 0).coerceAtMost(required)),
+                "resource" to resourceName(resource, player),
+                "done" to text((runtime.state.minedByMaterial[resource] ?: 0).coerceAtMost(required)),
                 "total" to text(required),
             ))
         }
     }
 
-    private fun resourceName(material: String): Component = ru.ruscrafting.farms.paper.MaterialRules.cropComponent(
-        ru.ruscrafting.farms.paper.MaterialRules.material(material),
-    )
+    private fun resourceName(resource: String, player: Player): Component =
+        locale?.renderPath("mine.resources.${MineResource.normalize(resource).lowercase()}", player)
+            ?: Component.text(MineResource.displayName(resource))
 
     private fun targets(player: Player, runtime: MineRuntime): List<WorksiteGuidanceTarget> {
         if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.MINING) return emptyList()
@@ -215,7 +216,7 @@ internal class MineGuidanceSource(
         runtime.state.incident?.type?.name?.lowercase() ?: "incident"
     } else if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.EXTRACTION) "completion_pending"
     else if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.MINING &&
-        runtime.currentOrder()?.miningRequirements?.isNotEmpty() == true) "multi_resource_order"
+        runtime.currentOrder()?.normalizedRequirements?.isNotEmpty() == true) "multi_resource_order"
     else if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.MINING) "resource_order"
     else runtime.state.phase.name.lowercase()
 

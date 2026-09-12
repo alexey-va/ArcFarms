@@ -4,6 +4,7 @@ import org.bukkit.Material
 import org.bukkit.event.block.BlockBreakEvent
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.MinePhase
+import ru.ruscrafting.farms.domain.MineResource
 import ru.ruscrafting.farms.domain.MineShiftEngine
 import ru.ruscrafting.farms.domain.PendingMineBlock
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetPool
@@ -73,21 +74,22 @@ internal class MineMiningController(
         }
         val original = event.block.type
         val order = runtime.currentOrder()
-        if (runtime.settings.miningOnly && original.name !in requireNotNull(order).miningMaterials) {
+        val resource = MineResource.fromMaterial(original.name)
+        if (runtime.settings.miningOnly && resource !in requireNotNull(order).requestedResources) {
             return deny(event, runtime, "wrong_order_material", MessageKey.MINE_MANAGED_REQUIRED)
         }
         if (runtime.settings.miningOnly && order != null &&
-            (order.miningRequirements[original.name]?.let { (runtime.state.minedByMaterial[original.name] ?: 0) >= it } == true)) {
+            (order.normalizedRequirements[resource]?.let { (runtime.state.minedByMaterial[resource] ?: 0) >= it } == true)) {
             return deny(event, runtime, "material_quota_complete", MessageKey.MINE_RESOURCE_COMPLETE)
         }
         val target = runtime.state.objective?.targets?.firstOrNull { it.position == event.block.position() }
         if (!runtime.settings.miningOnly && (target == null || target.status != ObjectiveTargetStatus.AVAILABLE)) {
             return deny(event, runtime, "target_unavailable", MessageKey.MINE_TARGET_REQUIRED)
         }
-        if (original.name !in runtime.settings.materialWeights) {
+        if (original !in runtime.mineableMaterials) {
             return deny(event, runtime, "material_not_configured", MessageKey.MINE_MANAGED_REQUIRED)
         }
-        val next = if (order?.miningRequirements?.isNotEmpty() == true) original else MaterialRules.weightedMaterial(
+        val next = if (order?.normalizedRequirements?.isNotEmpty() == true) original else MaterialRules.weightedMaterial(
             LinkedHashMap(runtime.settings.materialWeights.mapKeys { MaterialRules.material(it.key) }), random,
         )
         val record = PendingMineBlock(
@@ -123,9 +125,9 @@ internal class MineMiningController(
             event.block.setType(MaterialRules.material(runtime.settings.temporaryMaterial), false)
             if (runtime.settings.miningOnly) {
                 val currentOrder = requireNotNull(runtime.currentOrder())
-                if (original.name in currentOrder.miningMaterials) {
+                if (MineResource.fromMaterial(original.name) in currentOrder.requestedResources) {
                     transitions.apply(runtime, MineShiftEngine.mineTarget(
-                        runtime.state, runtime.rules(), event.player.uniqueId, original.name, currentOrder.miningRequirements,
+                        runtime.state, runtime.rules(), event.player.uniqueId, original.name, currentOrder.normalizedRequirements,
                     ), event.player)
                 }
                 effects.completeExtraction(event.player, event.block, original, toolSlot, tool)

@@ -18,6 +18,7 @@ import ru.ruscrafting.farms.domain.PendingFarmReward
 import ru.ruscrafting.farms.domain.LumberPhase
 import ru.ruscrafting.farms.domain.LumberShiftState
 import ru.ruscrafting.farms.domain.MinePhase
+import ru.ruscrafting.farms.domain.MineResource
 import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.domain.MAX_FARM_PATCH_PLOTS
 import ru.ruscrafting.farms.domain.MAX_FARM_INCIDENTS
@@ -117,6 +118,10 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 playerStats
             }
         }
+        val mines = state.mines.mapValues { (_, mine) ->
+            val normalized = MineResource.normalizeProgress(mine.minedByMaterial)
+            if (normalized == mine.minedByMaterial) mine else mine.copy(minedByMaterial = normalized)
+        }
         val pausedFarmZones = state.pausedFarmZones.orEmpty()
         val farmPerks = state.farmPerks.orEmpty()
         val loadedEnterprise = state.worksiteEnterprise ?: WorksiteEnterpriseSnapshot()
@@ -124,13 +129,14 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
             loadedEnterprise.copy(financing = WorksiteEnterpriseFinancingSnapshot())
         } else loadedEnterprise
         return if (
-            stats == state.stats && farms == state.farms && pausedFarmZones == state.pausedFarmZones &&
+            stats == state.stats && farms == state.farms && mines == state.mines && pausedFarmZones == state.pausedFarmZones &&
             farmPerks == state.farmPerks && worksiteEnterprise == state.worksiteEnterprise
         ) {
             state
         } else {
             state.copy(
                 farms = farms,
+                mines = mines,
                 pausedFarmZones = pausedFarmZones,
                 stats = stats,
                 farmPerks = farmPerks,
@@ -616,7 +622,9 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
             validateSequenceAndTimes(mine.sequence, mine.startedAt, mine.cooldownEndsAt)
             require(
                 mine.cart in 0..100_000 && mine.supports in 0..32 && mine.prospected in 0..100_000 &&
-                    mine.mined in 0..100_000 && mine.loaded in 0..100_000 && mine.routeIndex in 0..100_000,
+                    mine.mined in 0..100_000 && mine.loaded in 0..100_000 && mine.routeIndex in 0..100_000 &&
+                    mine.minedByMaterial.size <= 64 && mine.minedByMaterial.keys.all(CONTENT_ID::matches) &&
+                    mine.minedByMaterial.values.all { it in 0..100_000 },
             ) { "Mine progress is invalid" }
             validateContributors(mine.contributors)
             when (mine.phase) {

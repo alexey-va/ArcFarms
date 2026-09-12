@@ -58,20 +58,21 @@ class MineConfigTest : FunSpec({
         }
     }
 
-    test("per-material mining requirements parse and define the order total") {
+    test("resource mining requirements parse and define the order total") {
         val project = Path.of(requireNotNull(System.getProperty("arcfarms.projectDir")))
         val root = Files.createTempDirectory("arcfarms-mine-mixed-order")
         try {
             val source = Files.readString(project.resolve("src/main/resources/config.yml"))
             val configured = source.replaceFirst(
-                "        mining-materials: [COAL_ORE]\n",
-                "        mining-materials: [COAL_ORE, IRON_ORE]\n" +
-                    "        mining-requirements: {COAL_ORE: 7, IRON_ORE: 5}\n",
+                "        mining-resources: [COAL]\n",
+                "        mining-resources: [COAL, IRON]\n" +
+                    "        resource-requirements: {COAL: 7, IRON: 5}\n",
             )
             Files.writeString(root.resolve("config.yml"), configured)
 
             val order = ArcFarmsConfig.inspect(root).mines.first { it.id == "old_shafts" }.orders.first()
-            order.miningRequirements shouldBe linkedMapOf("COAL_ORE" to 7, "IRON_ORE" to 5)
+            order.requestedResources shouldBe linkedSetOf("COAL", "IRON")
+            order.normalizedRequirements shouldBe linkedMapOf("COAL" to 7, "IRON" to 5)
             order.totalMiningRequired shouldBe 12
         } finally {
             root.toFile().deleteRecursively()
@@ -91,10 +92,10 @@ class MineConfigTest : FunSpec({
                 it.orders.forEach { order ->
                     order.incidentTypes.size shouldBe 16
                     order.totalMiningRequired shouldBe 100
-                    order.miningMaterials.isNotEmpty() shouldBe true
+                    order.requestedResources.isNotEmpty() shouldBe true
                 }
             }
-            mines.single().orders.single().miningRequirements.values.sum() shouldBe 100
+            mines.single().orders.single().normalizedRequirements.values.sum() shouldBe 100
         }
     }
 
@@ -117,6 +118,17 @@ class MineConfigTest : FunSpec({
             miningRequirements = linkedMapOf("COAL_ORE" to 7, "IRON_ORE" to 5),
         )
         mixed.totalMiningRequired shouldBe 12
+    }
+
+    test("legacy exact-material aliases normalize ordinary and deepslate ores into one resource") {
+        val legacy = order.copy(
+            miningMaterials = linkedSetOf("COAL_ORE", "DEEPSLATE_COAL_ORE"),
+            miningRequirements = linkedMapOf("COAL_ORE" to 7, "DEEPSLATE_COAL_ORE" to 5),
+        )
+
+        legacy.requestedResources shouldBe setOf("COAL")
+        legacy.normalizedRequirements shouldBe mapOf("COAL" to 12)
+        legacy.totalMiningRequired shouldBe 12
     }
 
     test("mine V2 zone requires at least one complete order") {

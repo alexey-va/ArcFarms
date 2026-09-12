@@ -80,13 +80,13 @@ class MineShiftV2Test : FunSpec({
         state = MineShiftEngine.mineTarget(state, basicRules, player, "COAL_ORE", requirements).state
         state = MineShiftEngine.mineTarget(state, basicRules, player, "COAL_ORE", requirements).state
         state.mined shouldBe 2
-        state.minedByMaterial shouldBe mapOf("COAL_ORE" to 2)
+        state.minedByMaterial shouldBe mapOf("COAL" to 2)
         MineShiftEngine.mineTarget(state, basicRules, player, "COAL_ORE", requirements).accepted shouldBe false
         state.phase shouldBe MinePhase.MINING
 
-        state = MineShiftEngine.mineTarget(state, basicRules, player, "IRON_ORE", requirements).state
+        state = MineShiftEngine.mineTarget(state, basicRules, player, "DEEPSLATE_IRON_ORE", requirements).state
         state.mined shouldBe 3
-        state.minedByMaterial shouldBe mapOf("COAL_ORE" to 2, "IRON_ORE" to 1)
+        state.minedByMaterial shouldBe mapOf("COAL" to 2, "IRON" to 1)
         state.phase shouldBe MinePhase.EXTRACTION
     }
 

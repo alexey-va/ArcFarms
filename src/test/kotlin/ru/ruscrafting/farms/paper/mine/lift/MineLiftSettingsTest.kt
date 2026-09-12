@@ -50,6 +50,18 @@ class MineLiftSettingsTest : FreeSpec({
             root.toFile().deleteRecursively()
         }
     }
+
+    "derives each cabin opening from the corresponding landing side" {
+        val root = writeConfig(additionalX = 10.0)
+        try {
+            val settings = MineLiftSettings.loadAll(root)
+            settings.first().openingSide(0) shouldBe MineLiftDoorSide.EAST
+            settings.first().openingSide(1) shouldBe MineLiftDoorSide.EAST
+            settings[1].openingSide(0) shouldBe MineLiftDoorSide.SOUTH
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
 })
 
 private fun writeConfig(additionalX: Double, additionalZ: Double = 10.0, mainWidth: Double = 2.8): Path {

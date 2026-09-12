@@ -159,16 +159,19 @@ object MineShiftEngine {
     ): EngineResult<MineShiftState, MineShiftEvent> {
         if (requirements.isEmpty()) return mineTarget(current, rules, playerId)
         if (current.phase != MinePhase.MINING) return EngineResult(current, false)
-        val required = requirements[material] ?: return EngineResult(current, false)
-        val completed = current.minedByMaterial[material] ?: 0
+        val resource = MineResource.fromMaterial(material)
+        val normalizedRequirements = MineResource.normalizeRequirements(requirements)
+        val required = normalizedRequirements[resource] ?: return EngineResult(current, false)
+        val normalizedProgress = MineResource.normalizeProgress(current.minedByMaterial)
+        val completed = normalizedProgress[resource] ?: 0
         if (completed >= required) return EngineResult(current, false)
-        val byMaterial = current.minedByMaterial.toMutableMap().apply { put(material, completed + 1) }.toMap()
-        val total = requirements.entries.sumOf { (key, quota) -> minOf(byMaterial[key] ?: 0, quota) }
-        val finished = requirements.all { (key, quota) -> (byMaterial[key] ?: 0) >= quota }
+        val byResource = normalizedProgress.toMutableMap().apply { put(resource, completed + 1) }.toMap()
+        val total = normalizedRequirements.entries.sumOf { (key, quota) -> minOf(byResource[key] ?: 0, quota) }
+        val finished = normalizedRequirements.all { (key, quota) -> (byResource[key] ?: 0) >= quota }
         var state = current.copy(
             mined = total,
             cart = total,
-            minedByMaterial = byMaterial,
+            minedByMaterial = byResource,
             contributors = incrementContribution(current.contributors, playerId, 1),
         )
         val events = mutableListOf(MineShiftEvent.PROGRESS)
