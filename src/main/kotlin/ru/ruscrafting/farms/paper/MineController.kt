@@ -491,10 +491,22 @@ internal class MineController(
             }
         }
 
-        fun validatePersisted(configured: List<MineZoneSettings>, persisted: Map<String, MineShiftState>) {
+        fun validatePersisted(
+            configured: List<MineZoneSettings>,
+            persisted: Map<String, MineShiftState>,
+            pendingRecoveryZoneIds: Set<String> = emptySet(),
+        ) {
             val zones = configured.associateBy(MineZoneSettings::id)
+            val orphanedRecovery = pendingRecoveryZoneIds - zones.keys
+            require(orphanedRecovery.isEmpty()) {
+                "Persisted mine zones ${orphanedRecovery.sorted().joinToString()} are missing from config with pending block recovery"
+            }
             persisted.filterValues { it.phase !in setOf(MinePhase.IDLE, MinePhase.COOLDOWN) }.forEach { (id, state) ->
-                val zone = requireNotNull(zones[id]) { "Persisted active mine zone $id is missing from config" }
+                // A full restart is the explicit boundary for retiring a mine
+                // zone. Its orphaned state is omitted by rebuild() and the
+                // next persistence snapshot, provided no world recovery still
+                // belongs to it. Hot reload remains strict in validateReload.
+                val zone = zones[id] ?: return@forEach
                 validateActiveOrder(zone, state, reload = false)
             }
         }

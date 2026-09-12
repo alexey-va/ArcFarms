@@ -174,7 +174,11 @@ internal class ArcFarmsRuntimeValidator(
             }
         }
         LumbermillController.validatePersisted(candidate.lumbermills, persisted.lumbermills)
-        MineController.validatePersisted(candidate.mines, persisted.mines)
+        MineController.validatePersisted(
+            candidate.mines,
+            persisted.mines,
+            mineJournal.records().mapTo(linkedSetOf()) { it.zoneId },
+        )
     }
 
     fun validateReload(candidate: ArcFarmsConfig, snapshot: ArcFarmsState) {

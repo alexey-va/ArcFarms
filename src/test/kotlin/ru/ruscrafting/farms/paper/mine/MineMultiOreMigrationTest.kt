@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper.mine
 
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import ru.ruscrafting.farms.config.CuboidBounds
 import ru.ruscrafting.farms.config.MineOrderSettings
@@ -52,5 +53,26 @@ class MineMultiOreMigrationTest : FunSpec({
 
         migrated.mined shouldBe 32
         migrated.minedByMaterial shouldBe mapOf("COAL_ORE" to 25, "COPPER_ORE" to 7)
+    }
+
+    test("a full restart retires orphaned mine state only when no block recovery remains") {
+        val active = MineShiftState(
+            engineVersion = 2,
+            phase = MinePhase.MINING,
+            sequence = 2,
+            orderId = "retired_order",
+        )
+
+        ru.ruscrafting.farms.paper.MineController.validatePersisted(
+            configured = emptyList(),
+            persisted = mapOf("retired_depth" to active),
+        )
+        shouldThrow<IllegalArgumentException> {
+            ru.ruscrafting.farms.paper.MineController.validatePersisted(
+                configured = emptyList(),
+                persisted = mapOf("retired_depth" to active),
+                pendingRecoveryZoneIds = setOf("retired_depth"),
+            )
+        }.message shouldBe "Persisted mine zones retired_depth are missing from config with pending block recovery"
     }
 })
