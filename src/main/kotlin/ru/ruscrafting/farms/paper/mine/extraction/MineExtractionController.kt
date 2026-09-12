@@ -107,6 +107,10 @@ internal class MineExtractionController(
         route.sample((runtime.state.routeIndex + 1).coerceAtMost(route.finalIndex))
     }
 
+    fun invalidateRoute(zoneId: String) { routes.remove(zoneId) }
+
+    fun clearRoutes() = routes.clear()
+
     fun cleanup() {
         registry.snapshot().forEach { scene.cleanup(it.settings.id) }
         routes.clear()

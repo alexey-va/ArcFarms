@@ -23,6 +23,7 @@ import java.util.logging.Level
 internal interface RuntimeComponent {
     fun activateLoadedState() = Unit
     fun reconcileChunk(chunk: Chunk) = Unit
+    fun beforeChunkUnload(chunk: Chunk) = Unit
     fun beforeReload(reason: String) = Unit
     fun cleanup(reason: String) = Unit
 }

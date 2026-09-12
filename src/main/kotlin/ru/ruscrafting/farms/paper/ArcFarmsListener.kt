@@ -71,6 +71,9 @@ class ArcFarmsListener(
     @EventHandler(priority = EventPriority.LOWEST)
     fun onChunkLoad(event: ChunkLoadEvent) = service.onChunkLoad(event.chunk)
 
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    fun onChunkUnload(event: org.bukkit.event.world.ChunkUnloadEvent) = service.onChunkUnload(event.chunk)
+
     @EventHandler(priority = EventPriority.LOWEST)
     fun onBreakLowest(event: BlockBreakEvent) = service.onBreakLowest(event)
 

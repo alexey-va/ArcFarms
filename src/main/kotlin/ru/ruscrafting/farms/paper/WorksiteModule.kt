@@ -126,6 +126,7 @@ internal class WorksiteModuleRegistry(
     fun activateLoadedState() = modulesInOrder.forEach(WorksiteModule<*>::activateLoadedState)
 
     fun reconcileChunk(chunk: Chunk) = modulesInOrder.forEach { it.reconcileChunk(chunk) }
+    fun beforeChunkUnload(chunk: Chunk) = modulesInOrder.forEach { it.beforeChunkUnload(chunk) }
 
     fun beforeReload(reason: String) = modulesInOrder.forEach { it.beforeReload(reason) }
 

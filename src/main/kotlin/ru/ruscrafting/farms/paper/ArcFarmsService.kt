@@ -473,6 +473,7 @@ class ArcFarmsService(
     fun farmScoreboardTitle(playerId: UUID): String = farm.hud.title(playerId)
     fun farmScoreboardLine(playerId: UUID, line: Int): String = farm.hud.line(playerId, line)
     fun onChunkLoad(chunk: org.bukkit.Chunk) = worksites.reconcileChunk(chunk)
+    fun onChunkUnload(chunk: org.bukkit.Chunk) = worksites.beforeChunkUnload(chunk)
     fun canNavigate(kind: ActivityKind): Boolean = travelService.canNavigate(kind)
     fun travel(player: Player, kind: ActivityKind) = travelService.travel(player, kind)
 

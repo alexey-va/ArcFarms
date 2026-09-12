@@ -120,6 +120,37 @@ A feature constructor should normally depend on no more than five typed ports.
 Clock and random sources are injectable values, not service callbacks. Do not
 replace the god class with a god context or dozens of lambdas.
 
+## Shared block-storage and recovery infrastructure
+
+Farm and mine use the same low-level worksite tools:
+
+- `WorksiteChunkPayload` reads legacy NBT strings and writes byte arrays for both
+  farm ledgers and mine indexes. NBT UTF strings cannot safely hold dense chunks.
+  Domain payloads differ deliberately: farm records preserve exact block data,
+  crop/recovery metadata and ownership; mine topology packs local coordinates and
+  eleven role flags into four bytes per target plus an eight-byte chunk header.
+- `WorksiteRestoreQueue` is the shared time-ordered repair queue. It holds one
+  entry per key, bounds each due batch, and replaces repeated schedules without
+  accumulating stale heap entries. Durable journals remain authoritative.
+- `WorksiteTickBudget` bounds farm and mine index scans by operation count and a
+  cooperative two-millisecond time slice. Chunk loads use Paper's asynchronous
+  API; code only consumes completed requests on the server thread.
+- `WorksiteCooldownTimer` and the existing audience/guidance ports supply the
+  common next-order countdown, localized titles and progress presentation.
+
+The mine's runtime topology cache is partitioned by zone and chunk with packed
+positions and role masks. Point membership is a hash lookup. Loaded-target
+queries check chunk availability once per chunk, without loading it. Dirty
+updates to the same chunk coalesce and normally write at most one chunk per
+server tick; unload/reload/close flush pending updates. A complete reindex is an
+explicit/startup operation, never a response to each mined block. Ordinary ore
+recovery retains a durable intent before replacing the block with air and does
+not restore over a player's replacement block.
+
+These limits bound work; they are not a guarantee that the entire server always
+stays below a fixed tick duration. Domain-specific controllers and Paper's chunk
+callbacks still need profiling with the actual world and player workload.
+
 ## Platform testability boundary
 
 MockBukkit is a partial Paper implementation, not a server emulator. In the

@@ -36,6 +36,7 @@ class FarmBlockRegistryReindexMockBukkitTest : FunSpec({
             val registry = FarmBlockRegistry(
                 plugin,
                 FarmBlockLedger(plugin),
+                nanoTime = { 0L },
                 addChunkTicket = { true },
                 removeChunkTicket = {},
             )
@@ -68,6 +69,49 @@ class FarmBlockRegistryReindexMockBukkitTest : FunSpec({
             (start is FarmBlockReindexStart.Started) shouldBe true
             completed?.status?.scannedBlocks shouldBe 2_048L
             completed?.status?.appliedChunks shouldBe 4
+        }
+    }
+
+    test("loaded scan yields at the shared wall-time checkpoint") {
+        failOnUnsupportedMockOperation {
+            val plugin = paper.createSimplePlugin("FarmReindexBudgetTest")
+            val scheduler = TestTaskScheduler()
+            Tasks.install(scheduler)
+            var clockReads = 0
+            val registry = FarmBlockRegistry(
+                plugin,
+                FarmBlockLedger(plugin),
+                nanoTime = {
+                    clockReads++
+                    if (clockReads >= 2) 2_000_001L else 0L
+                },
+                addChunkTicket = { true },
+                removeChunkTicket = {},
+            )
+
+            registry.startReindex(
+                definition = FarmBlockIndexDefinition(
+                    zoneId = "farm",
+                    region = CuboidActivityRegion(world, "farm", CuboidBounds(0, 64, 0, 15, 64, 15)),
+                    crops = setOf("WHEAT"),
+                    blocksPerTick = 2_048,
+                    maxBlocks = 10_000,
+                    maxOrchardLeaves = 1_024,
+                    cropLayout = FarmCropLayoutSettings(
+                        enabled = true,
+                        weights = mapOf("WHEAT" to 1),
+                        smallComponentMaxSize = 0,
+                        smallComponentMergeDistance = 0,
+                    ),
+                ),
+                onProgress = {},
+                onComplete = { error("wall-time budget should yield before completion") },
+                onFailure = { throw it },
+            )
+
+            registry.status("farm")?.scannedBlocks shouldBe 64L
+            registry.status("farm")?.phase shouldBe FarmBlockReindexPhase.SCANNING
+            clockReads shouldBe 2
         }
     }
 

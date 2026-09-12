@@ -33,6 +33,7 @@ class MineModuleRecoveryMigrationMockBukkitTest : FunSpec({
 
     test("activation reindexes a persisted active mining-only map") {
         val world = paper.server.addSimpleWorld("world")
+        world.getChunkAt(0, 0).load()
         world.getBlockAt(1, 64, 1).type = Material.DEEPSLATE_BRICKS
         val graph = testMineComponentGraph(
             paper.createSimplePlugin("MineActiveReindexTest"), CuboidRegionGateway(), immediateMinePort(),
@@ -226,7 +227,10 @@ class MineModuleRecoveryMigrationMockBukkitTest : FunSpec({
         journal.records().size shouldBe 1
 
         player.teleport(Location(world, 20.5, 64.0, 20.5))
-        controller.processDue(now = 1_001L) shouldBe 1
+        // A blocked loaded chunk is retried on the bounded one-second queue,
+        // rather than being scanned on every server tick.
+        controller.processDue(now = 1_001L) shouldBe 0
+        controller.processDue(now = 2_000L) shouldBe 1
         block.type shouldBe Material.IRON_ORE
         journal.records() shouldBe emptyList()
 
@@ -244,7 +248,7 @@ class MineModuleRecoveryMigrationMockBukkitTest : FunSpec({
             restoreAt = 1_000L,
         )
         journal.prepare(editedRecord)
-        controller.processDue(now = 1_002L) shouldBe 1
+        controller.processDue(now = 2_001L) shouldBe 1
         edited.type shouldBe Material.STONE
         journal.records() shouldBe emptyList()
     }

@@ -3,19 +3,101 @@ package ru.ruscrafting.farms.paper.mine.mining
 import org.bukkit.Material
 import org.bukkit.block.Block
 import org.bukkit.block.BlockFace
+import org.bukkit.Location
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineResource
 import ru.ruscrafting.farms.domain.PendingMineBlock
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.MaterialRules
+import ru.ruscrafting.farms.paper.WorksiteTickBudget
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 import ru.ruscrafting.farms.paper.mine.index.MineIndexDefinition
 import ru.ruscrafting.farms.paper.mine.recovery.MineBlockRecoveryController
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import java.util.IdentityHashMap
 import java.util.UUID
 import java.util.logging.Level
+
+private val SURFACE_FACES = listOf(
+    BlockFace.UP,
+    BlockFace.DOWN,
+    BlockFace.NORTH,
+    BlockFace.SOUTH,
+    BlockFace.EAST,
+    BlockFace.WEST,
+)
+
+internal data class MineVeinSurfaceSnapshot(
+    val position: WorksitePosition,
+    val type: Material,
+    val exposed: Boolean,
+)
+
+/** Incrementally captures one type and six neighbor states per indexed position. */
+internal class MineVeinSurfaceSurvey(
+    private val positions: List<WorksitePosition>,
+    private val isNeighborLoaded: (WorksitePosition) -> Boolean,
+    private val readType: (WorksitePosition) -> Material,
+) {
+    private val targetPositions = positions.toHashSet()
+    private val knownTypes = HashMap<WorksitePosition, Material>(positions.size)
+
+    private data class Pending(
+        val position: WorksitePosition,
+        val type: Material,
+        var nextFace: Int = 0,
+        var exposed: Boolean = false,
+    )
+
+    private var cursor = 0
+    private var pending: Pending? = null
+    val snapshots = LinkedHashMap<WorksitePosition, MineVeinSurfaceSnapshot>()
+
+    val complete: Boolean
+        get() = cursor >= positions.size && pending == null
+
+    fun advance(budget: ru.ruscrafting.farms.paper.WorksiteTickBudget): Boolean {
+        while (cursor < positions.size) {
+            val position = positions[cursor]
+            val current = pending ?: run {
+                if (!budget.tryConsume()) return false
+                val type = knownTypes[position]
+                when {
+                    type != null -> Pending(position, type).also { pending = it }
+                    !isNeighborLoaded(position) -> {
+                        snapshots[position] = MineVeinSurfaceSnapshot(position, Material.AIR, false)
+                        cursor++
+                        null
+                    }
+                    else -> Pending(position, readType(position).also { knownTypes[position] = it }).also { pending = it }
+                }
+            }
+            if (current == null) continue
+            while (current.nextFace < SURFACE_FACES.size && !current.exposed) {
+                if (!budget.tryConsume()) return false
+                val face = SURFACE_FACES[current.nextFace]
+                val neighbor = current.position.copy(
+                    x = current.position.x + face.modX,
+                    y = current.position.y + face.modY,
+                    z = current.position.z + face.modZ,
+                )
+                if (isNeighborLoaded(neighbor)) {
+                    val neighborType = knownTypes[neighbor] ?: readType(neighbor).also {
+                        if (neighbor in targetPositions) knownTypes[neighbor] = it
+                    }
+                    current.exposed = current.exposed || neighborType.isAir
+                }
+                current.nextFace++
+            }
+            snapshots[current.position] = MineVeinSurfaceSnapshot(current.position, current.type, current.exposed)
+            pending = null
+            cursor++
+        }
+        return true
+    }
+}
 
 /** Bounded order supply on indexed cave faces; uses the normal durable regeneration journal. */
 internal class MineVeinController(
@@ -24,17 +106,24 @@ internal class MineVeinController(
     private val state: WorksiteStatePort,
     private val clock: () -> Long,
 ) {
-    private val nextCheck = mutableMapOf<String, Long>()
+    private val nextCheck = IdentityHashMap<MineRuntime, Long>()
+    private val surveys = IdentityHashMap<MineRuntime, SurveyState>()
     private val nextWarning = mutableMapOf<String, Long>()
     private val nextSummary = mutableMapOf<String, Long>()
     private val lastSummary = mutableMapOf<String, String>()
     private val placementRounds = mutableMapOf<String, Long>()
 
-    fun tick(runtime: MineRuntime, now: Long) {
-        if (!runtime.settings.miningOnly || runtime.state.phase != MinePhase.MINING ||
-            now < nextCheck.getOrDefault(runtime.settings.id, 0)) return
-        nextCheck[runtime.settings.id] = now + 5_000L
-        val order = runtime.currentOrder() ?: return
+    fun tick(runtime: MineRuntime, now: Long, tickBudget: WorksiteTickBudget = WorksiteTickBudget(SURVEY_BLOCK_READS_PER_TICK)) {
+        if (!runtime.settings.miningOnly || runtime.state.phase != MinePhase.MINING) {
+            surveys.remove(runtime)
+            nextCheck.remove(runtime)
+            return
+        }
+        val order = runtime.currentOrder() ?: run {
+            surveys.remove(runtime)
+            nextCheck.remove(runtime)
+            return
+        }
         val acceptedByResource = order.requestedResources.associateWith { resource ->
             MineResource.variants(resource).map(MaterialRules::material)
         }.filterValues { it.isNotEmpty() }
@@ -42,18 +131,56 @@ internal class MineVeinController(
             variants.filter { it.name in runtime.settings.materialWeights }
         }.filterValues { it.isNotEmpty() }
         val materials = acceptedByResource.values.flatten().distinct()
-        if (materials.isEmpty()) return
+        if (materials.isEmpty()) {
+            surveys.remove(runtime)
+            nextCheck.remove(runtime)
+            return
+        }
         val world = runtime.region.world
-        fun block(p: WorksitePosition) = world.getBlockAt(p.x, p.y, p.z)
-        val positions = index.loadedTargets(runtime.settings.id, MineAnchorRole.SUPPORT)
-            .filterTo(linkedSetOf()) { it.world == world.name && runtime.region.contains(block(it).location) }
+
+        val key = SurveyKey(runtime.settings, runtime.region, runtime.state.sequence, runtime.state.orderId)
+        var survey = surveys[runtime]
+        if (survey?.key != key) {
+            surveys.remove(runtime)
+            nextCheck.remove(runtime)
+            survey = null
+        }
+        if (survey == null || survey.scan.complete) {
+            if (now < nextCheck.getOrDefault(runtime, 0L)) return
+            val positions = index.loadedTargets(runtime.settings.id, MineAnchorRole.SUPPORT)
+                .filterTo(linkedSetOf()) {
+                    it.world == world.name && runtime.region.contains(Location(world, it.x.toDouble(), it.y.toDouble(), it.z.toDouble()))
+                }
+                .toList()
+            val indexedMineables = index.loadedTargets(runtime.settings.id, MineAnchorRole.MINEABLE)
+            survey = SurveyState(
+                key = key,
+                positions = positions,
+                indexedMineables = indexedMineables,
+                scan = MineVeinSurfaceSurvey(
+                    positions = positions,
+                    isNeighborLoaded = { p -> world.isChunkLoaded(p.x shr 4, p.z shr 4) },
+                    readType = { p -> world.getBlockAt(p.x, p.y, p.z).type },
+                ),
+            ).also { surveys[runtime] = it }
+        }
+        val activeSurvey = survey ?: return
+        if (!activeSurvey.scan.advance(tickBudget)) return
+        nextCheck[runtime] = now + SURVEY_INTERVAL_MILLIS
+
+        val snapshots = activeSurvey.scan.snapshots
+        val positions = activeSurvey.positions
         val definition = MineIndexDefinition(runtime.settings.id, runtime.region,
             runtime.mineableMaterials, runtime.railMaterials)
         // Recover the index too if a crash occurred after the durable block write.
-        val indexedMineables = index.loadedTargets(runtime.settings.id, MineAnchorRole.MINEABLE)
-        positions.filter { block(it).type in materials && it !in indexedMineables }
-            .take(16).forEach { index.refreshBlock(definition, block(it)) }
-        val matching = positions.filterTo(linkedSetOf()) { block(it).type in materials && exposed(block(it)) }
+        positions.asSequence()
+            .mapNotNull { snapshots[it]?.takeIf { snapshot -> snapshot.type in materials } }
+            .filter { it.position !in activeSurvey.indexedMineables }
+            .take(16)
+            .forEach { snapshot -> index.refreshBlock(definition, world.getBlockAt(snapshot.position.x, snapshot.position.y, snapshot.position.z)) }
+        val matching = positions.filterTo(linkedSetOf()) { position ->
+            snapshots[position]?.let { it.type in materials && it.exposed } == true
+        }
         // Scattered single ores must not suppress creation of a visible vein.
         val connectedMatching = matching.filterTo(linkedSetOf()) { p -> faces.any { face ->
             p.copy(x = p.x + face.modX, y = p.y + face.modY, z = p.z + face.modZ) in matching
@@ -66,7 +193,7 @@ internal class MineVeinController(
             val required = order.normalizedRequirements[resource] ?: 0
             val completed = runtime.state.minedByMaterial[resource] ?: 0
             val acceptedVariants = acceptedByResource.getValue(resource)
-            val stocked = connectedMatching.count { block(it).type in acceptedVariants }
+            val stocked = connectedMatching.count { snapshots.getValue(it).type in acceptedVariants }
             val queued = pendingRecords.count { it.nextMaterial in acceptedVariants.map(Material::name) }
             (required - completed - stocked - queued).coerceAtLeast(0)
         }
@@ -74,21 +201,21 @@ internal class MineVeinController(
             ?: generationByResource.keys.elementAt((runtime.state.sequence % generationByResource.size).toInt())
         val resourceMaterials = generationByResource.getValue(resource)
         val acceptedResourceMaterials = acceptedByResource.getValue(resource)
-        val ore = matching.asSequence().map { block(it).type }.firstOrNull { it in resourceMaterials }
+        val ore = matching.asSequence().map { snapshots.getValue(it).type }.firstOrNull { it in resourceMaterials }
             ?: resourceMaterials[(runtime.state.sequence % resourceMaterials.size).toInt()]
         val missing = if (order.normalizedRequirements.isEmpty()) {
             (runtime.rules().miningQuota - runtime.state.mined - available - pending).coerceAtLeast(0)
         } else shortageByResource.values.sum()
         val players = world.players.filter { runtime.region.contains(it.location) }.map { it.location }
         val candidates = if (missing == 0) emptySet() else positions.filterTo(linkedSetOf()) { p ->
-            val b = block(p)
-            host(b.type) && exposed(b) && !recovery.containsPosition("${p.world}:${p.x}:${p.y}:${p.z}")
+            val snapshot = snapshots.getValue(p)
+            host(snapshot.type) && snapshot.exposed && !recovery.containsPosition("${p.world}:${p.x}:${p.y}:${p.z}")
         }
         logSummary(runtime, now, materials, positions.size, matching.size, available, pending, missing, candidates.size, players.size)
         if (missing == 0) return
         val bandCount = verticalBandCount(runtime.region.bounds.minY, runtime.region.bounds.maxY)
         val supplyByBand = IntArray(bandCount)
-        matching.filter { block(it).type in acceptedResourceMaterials }.forEach {
+        matching.filter { snapshots.getValue(it).type in acceptedResourceMaterials }.forEach {
             supplyByBand[verticalBand(it.y, runtime.region.bounds.minY, runtime.region.bounds.maxY, bandCount)]++
         }
         pendingRecords.filter { it.nextMaterial in acceptedResourceMaterials.map(Material::name) }.forEach {
@@ -99,7 +226,7 @@ internal class MineVeinController(
         }
         val round = placementRounds.getOrDefault(runtime.settings.id, 0L)
         val firstBand = Math.floorMod(runtime.state.sequence + round, bandCount.toLong()).toInt()
-        val knownOreBand = matching.asSequence().filter { block(it).type in acceptedResourceMaterials }
+        val knownOreBand = matching.asSequence().filter { snapshots.getValue(it).type in acceptedResourceMaterials }
             .groupingBy { verticalBand(it.y, runtime.region.bounds.minY, runtime.region.bounds.maxY, bandCount) }
             .eachCount().filterKeys(candidatesByBand::containsKey).maxByOrNull { it.value }?.key
         val targetBand = knownOreBand ?: candidatesByBand.keys.minWithOrNull(
@@ -132,8 +259,12 @@ internal class MineVeinController(
             "positions=${selected.joinToString(",") { "${it.x}:${it.y}:${it.z}" }}")
         placementRounds[runtime.settings.id] = round + 1L
         selected.forEach { p ->
-            val b = block(p)
+            val snapshot = snapshots[p] ?: return@forEach
+            val b = world.getBlockAt(p.x, p.y, p.z)
             val original = b.type
+            if (original != snapshot.type || !host(original) || !exposed(b) || recovery.containsPosition("${p.world}:${p.x}:${p.y}:${p.z}")) {
+                return@forEach
+            }
             val record = PendingMineBlock("vein:${UUID.randomUUID()}", runtime.settings.id, p.world, p.x, p.y, p.z,
                 original.name, original.name, ore.name, clock().coerceAtLeast(1))
             // This is a permanent managed deposit, like ordinary regenerated ore, not a temporary event scene.
@@ -155,6 +286,30 @@ internal class MineVeinController(
             }
         }
     }
+
+    /** Drops in-progress snapshots when the module lifecycle or runtime collection is rebuilt. */
+    fun clear() {
+        surveys.clear()
+        nextCheck.clear()
+        nextWarning.clear()
+        nextSummary.clear()
+        lastSummary.clear()
+        placementRounds.clear()
+    }
+
+    private data class SurveyKey(
+        val settings: ru.ruscrafting.farms.config.MineZoneSettings,
+        val region: ru.ruscrafting.farms.paper.ActivityRegion,
+        val sequence: Long,
+        val orderId: String?,
+    )
+
+    private data class SurveyState(
+        val key: SurveyKey,
+        val positions: List<WorksitePosition>,
+        val indexedMineables: Set<WorksitePosition>,
+        val scan: MineVeinSurfaceSurvey,
+    )
 
     private fun logSummary(
         runtime: MineRuntime,
@@ -181,11 +336,13 @@ internal class MineVeinController(
 
     internal companion object {
         private const val SUMMARY_INTERVAL_MILLIS = 60_000L
+        private const val SURVEY_INTERVAL_MILLIS = 5_000L
+        private const val SURVEY_BLOCK_READS_PER_TICK = 1_024
         private const val MAX_VERTICAL_BANDS = 5
         private const val MIN_BAND_HEIGHT = 16
         private const val MAX_SEED_CHECKS = 64
         private const val VEIN_BLOCKS = 8
-        private val faces = listOf(BlockFace.UP, BlockFace.DOWN, BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST)
+        private val faces = SURFACE_FACES
         fun exposed(block: Block): Boolean = faces.any {
             block.world.isChunkLoaded((block.x + it.modX) shr 4, (block.z + it.modZ) shr 4) &&
                 block.getRelative(it).type.isAir

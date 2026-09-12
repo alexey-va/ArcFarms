@@ -8,6 +8,8 @@ import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.ActivityRegion
+import ru.ruscrafting.farms.paper.worksite.WorksiteChunkPayload
+import java.util.logging.Level
 
 internal data class MineIndexDefinition(
     val zoneId: String,
@@ -30,21 +32,29 @@ internal data class MineIndexedTarget(
     init { require(roles.isNotEmpty()) }
 }
 
-/** Durable chunk-PDC-backed topology. Hot readers never load a chunk or scan a region. */
+/** Chunk-local packed cache. Gameplay lookups never load chunks or scan the region. */
 internal class MineBlockIndex(private val plugin: Plugin) {
-    private val targetsByZone = mutableMapOf<String, MutableSet<MineIndexedTarget>>()
+    private data class ChunkKey(val world: String, val x: Int, val z: Int)
+    private data class DirtyChunk(val zoneId: String, val chunk: ChunkKey)
+    private val targetsByZone = mutableMapOf<String, MutableMap<ChunkKey, MutableMap<Int, Int>>>()
+    private val dirtyChunks = linkedSetOf<DirtyChunk>()
 
-    fun targets(zoneId: String, role: MineAnchorRole): Set<WorksitePosition> = targetsByZone[zoneId].orEmpty()
-        .asSequence().filter { role in it.roles }.map(MineIndexedTarget::position).toCollection(linkedSetOf())
+    fun targets(zoneId: String, role: MineAnchorRole): Set<WorksitePosition> = collectTargets(zoneId, role, false)
 
-    fun loadedTargets(zoneId: String, role: MineAnchorRole): Set<WorksitePosition> =
-        targets(zoneId, role).filterTo(linkedSetOf()) { position ->
-            Bukkit.getWorld(position.world)?.isChunkLoaded(position.x shr 4, position.z shr 4) == true
+    fun loadedTargets(zoneId: String, role: MineAnchorRole): Set<WorksitePosition> = collectTargets(zoneId, role, true)
+
+    private fun collectTargets(zoneId: String, role: MineAnchorRole, loadedOnly: Boolean): Set<WorksitePosition> = buildSet {
+        val mask = 1 shl role.ordinal
+        targetsByZone[zoneId]?.forEach { (chunk, entries) ->
+            if (loadedOnly && Bukkit.getWorld(chunk.world)?.isChunkLoaded(chunk.x, chunk.z) != true) return@forEach
+            entries.forEach { (packed, roles) -> if (roles and mask != 0) add(position(chunk, packed)) }
         }
+    }
 
     fun contains(zoneId: String, block: org.bukkit.block.Block, role: MineAnchorRole): Boolean {
-        val position = WorksitePosition(block.world.name, block.x, block.y, block.z)
-        return targetsByZone[zoneId].orEmpty().any { it.position == position && role in it.roles }
+        val roles = targetsByZone[zoneId]?.get(ChunkKey(block.world.name, block.x shr 4, block.z shr 4))
+            ?.get(packPosition(block.x, block.y, block.z)) ?: return false
+        return roles and (1 shl role.ordinal) != 0
     }
 
     fun isLiveTarget(
@@ -61,18 +71,37 @@ internal class MineBlockIndex(private val plugin: Plugin) {
 
     fun reconcileChunk(definition: MineIndexDefinition, chunk: Chunk) {
         if (chunk.world !== definition.region.world) return
-        val decoded = decode(chunk.world.name, chunk.persistentDataContainer.get(key(definition.zoneId), PersistentDataType.STRING))
-            .mapNotNull { target ->
-                val position = target.position
-                if ((position.x shr 4) != chunk.x || (position.z shr 4) != chunk.z) return@mapNotNull null
-                val block = chunk.world.getBlockAt(position.x, position.y, position.z)
-                if (!definition.region.contains(block.location)) return@mapNotNull null
-                val valid = MineAnchorClassifier.classify(block, definition.mineable, definition.railMaterials)
-
-                target.copy(roles = valid).takeIf { valid.isNotEmpty() }
-            }
-            .toSet()
-        replaceChunk(definition.zoneId, chunk, decoded)
+        val bounds = definition.region.bounds
+        if (chunk.x !in (bounds.minX shr 4)..(bounds.maxX shr 4) ||
+            chunk.z !in (bounds.minZ shr 4)..(bounds.maxZ shr 4)) return
+        val chunkKey = ChunkKey(chunk.world.name, chunk.x, chunk.z)
+        // Pending local changes take precedence over an older PDC snapshot.
+        if (DirtyChunk(definition.zoneId, chunkKey) in dirtyChunks) return
+        val storageKey = key(definition.zoneId)
+        val container = chunk.persistentDataContainer
+        val legacy = container.has(storageKey, PersistentDataType.STRING)
+        val bytes = WorksiteChunkPayload.read(container, storageKey)
+        val decoded = runCatching {
+            bytes?.let { MineIndexCodec.decode(chunk.world.name, chunk.x, chunk.z, it) }.orEmpty()
+        }.getOrElse { failure ->
+            targetsByZone[definition.zoneId]?.remove(chunkKey)
+            plugin.logger.log(Level.WARNING, "Invalid mine index zone=${definition.zoneId} chunk=${chunk.x},${chunk.z}; retained for repair", failure)
+            return
+        }
+        val entries = linkedMapOf<Int, Int>()
+        decoded.forEach { target ->
+            val p = target.position
+            if ((p.x shr 4) != chunk.x || (p.z shr 4) != chunk.z ||
+                p.y !in chunk.world.minHeight until chunk.world.maxHeight) return@forEach
+            val block = chunk.getBlock(p.x and 15, p.y, p.z and 15)
+            if (!definition.region.contains(block.location)) return@forEach
+            val roles = reconciledRoles(definition, block, target.roles)
+            if (roles.isNotEmpty()) entries[packPosition(p.x, p.y, p.z)] = roleMask(roles)
+        }
+        targetsByZone.getOrPut(definition.zoneId, ::linkedMapOf)[chunkKey] = entries
+        if (legacy || bytes != null && !MineIndexCodec.isCompact(bytes)) {
+            dirtyChunks += DirtyChunk(definition.zoneId, chunkKey)
+        }
     }
 
     internal fun replaceZone(
@@ -80,54 +109,100 @@ internal class MineBlockIndex(private val plugin: Plugin) {
         chunks: Collection<Chunk>,
         targets: Collection<MineIndexedTarget>,
     ) {
-        val bounded = targets.distinct().also { require(it.size <= MAX_TARGETS_PER_ZONE) }
-        targetsByZone[definition.zoneId] = bounded.toCollection(linkedSetOf())
-        val byChunk = bounded.groupBy { (it.position.x shr 4) to (it.position.z shr 4) }
-        chunks.forEach { chunk ->
-            val encoded = encode(byChunk[chunk.x to chunk.z].orEmpty())
-            if (encoded.isEmpty()) chunk.persistentDataContainer.remove(key(definition.zoneId))
-            else chunk.persistentDataContainer.set(key(definition.zoneId), PersistentDataType.STRING, encoded)
+        require(targets.size <= MAX_TARGETS_PER_ZONE)
+        val replacement = linkedMapOf<ChunkKey, MutableMap<Int, Int>>()
+        chunks.forEach { replacement[ChunkKey(it.world.name, it.x, it.z)] = linkedMapOf() }
+        targets.forEach { target ->
+            val p = target.position
+            val chunk = ChunkKey(p.world, p.x shr 4, p.z shr 4)
+            replacement.getOrPut(chunk, ::linkedMapOf)[packPosition(p.x, p.y, p.z)] = roleMask(target.roles)
         }
+        targetsByZone[definition.zoneId] = replacement
+        dirtyChunks.removeIf { it.zoneId == definition.zoneId }
+        replacement.keys.forEach { dirtyChunks += DirtyChunk(definition.zoneId, it) }
     }
 
     fun refreshBlock(definition: MineIndexDefinition, block: org.bukkit.block.Block) {
-        val chunk = block.chunk
-        val position = WorksitePosition(block.world.name, block.x, block.y, block.z)
-        val current = targetsByZone.getOrPut(definition.zoneId, ::linkedSetOf)
-        current.removeIf { it.position == position }
-        val roles = MineAnchorClassifier.classify(block, definition.mineable, definition.railMaterials)
-        if (roles.isNotEmpty()) current += MineIndexedTarget(position, roles)
-        chunk.persistentDataContainer.set(key(definition.zoneId), PersistentDataType.STRING,
-            encode(current.filter { (it.position.x shr 4) == chunk.x && (it.position.z shr 4) == chunk.z }))
+        if (!definition.region.contains(block.location)) return
+        val chunkKey = ChunkKey(block.world.name, block.x shr 4, block.z shr 4)
+        val entries = targetsByZone.getOrPut(definition.zoneId, ::linkedMapOf).getOrPut(chunkKey, ::linkedMapOf)
+        val packed = packPosition(block.x, block.y, block.z)
+        val mask = roleMask(reconciledRoles(definition, block, rolesByMask[entries.getOrDefault(packed, 0)]))
+        if (entries.getOrDefault(packed, 0) == mask) return
+        if (mask == 0) entries.remove(packed) else entries[packed] = mask
+        dirtyChunks += DirtyChunk(definition.zoneId, chunkKey)
     }
 
-    fun clear() = targetsByZone.clear()
+    /** Coalesces all changes to a chunk into one PDC update; the normal tick writes at most one. */
+    fun flushDirty(chunkBudget: Int = 1): Int {
+        require(chunkBudget > 0)
+        var written = 0
+        val iterator = dirtyChunks.iterator()
+        while (iterator.hasNext() && written < chunkBudget) {
+            val dirty = iterator.next()
+            val world = Bukkit.getWorld(dirty.chunk.world) ?: continue
+            if (!world.isChunkLoaded(dirty.chunk.x, dirty.chunk.z)) continue
+            writeChunk(dirty, world.getChunkAt(dirty.chunk.x, dirty.chunk.z))
+            iterator.remove()
+            written++
+        }
+        return written
+    }
 
-    private fun replaceChunk(zoneId: String, chunk: Chunk, replacement: Set<MineIndexedTarget>) {
-        val current = targetsByZone.getOrPut(zoneId, ::linkedSetOf)
-        current.removeIf { it.position.world == chunk.world.name && (it.position.x shr 4) == chunk.x && (it.position.z shr 4) == chunk.z }
-        current += replacement
-        if (current.isEmpty()) targetsByZone.remove(zoneId)
+    /** Called before Paper saves/unloads the chunk. Never loads a different chunk. */
+    fun flushChunk(chunk: Chunk) {
+        val chunkKey = ChunkKey(chunk.world.name, chunk.x, chunk.z)
+        val iterator = dirtyChunks.iterator()
+        while (iterator.hasNext()) {
+            val dirty = iterator.next()
+            if (dirty.chunk != chunkKey) continue
+            writeChunk(dirty, chunk)
+            iterator.remove()
+        }
+    }
+
+    fun clear() {
+        flushDirty(Int.MAX_VALUE)
+        targetsByZone.clear()
+        dirtyChunks.clear()
+    }
+
+    private fun writeChunk(dirty: DirtyChunk, chunk: Chunk) {
+        val entries = targetsByZone[dirty.zoneId]?.get(dirty.chunk).orEmpty()
+        val targets = entries.map { (packed, mask) -> MineIndexedTarget(position(dirty.chunk, packed), rolesByMask[mask]) }
+        val storageKey = key(dirty.zoneId)
+        if (targets.isEmpty()) chunk.persistentDataContainer.remove(storageKey)
+        else WorksiteChunkPayload.write(chunk.persistentDataContainer, storageKey,
+            MineIndexCodec.encode(chunk.x, chunk.z, targets))
+    }
+
+    private fun reconciledRoles(
+        definition: MineIndexDefinition,
+        block: org.bukkit.block.Block,
+        previous: Set<MineAnchorRole>,
+    ): Set<MineAnchorRole> {
+        val current = MineAnchorClassifier.classify(block, definition.mineable, definition.railMaterials)
+        if (!block.type.isSolid || !MineAnchorClassifier.hasUnloadedHorizontalNeighbor(block)) return current
+        // Keep only previously verified boundary anchors while a neighbour is unavailable.
+        // Gameplay's isLiveTarget still validates actual exposure before any action.
+        return current + previous.filter { role ->
+            role in boundaryRoles || role == MineAnchorRole.PROSPECT && block.type in definition.mineable
+        }
     }
 
     private fun key(zoneId: String) = NamespacedKey(plugin, "mine_index_$zoneId")
 
-    private fun encode(targets: Collection<MineIndexedTarget>): String = targets.joinToString(";") { target ->
-        val p = target.position
-        "${p.x},${p.y},${p.z},${target.roles.joinToString("+") { it.name }}"
-    }
+    private fun position(chunk: ChunkKey, packed: Int) = WorksitePosition(
+        chunk.world, (chunk.x shl 4) + (packed and 15), packed shr 8, (chunk.z shl 4) + ((packed ushr 4) and 15),
+    )
 
-    private fun decode(world: String, encoded: String?): List<MineIndexedTarget> = encoded.orEmpty().split(';').mapNotNull { entry ->
-        if (entry.isBlank()) return@mapNotNull null
-        val parts = entry.split(',')
-        if (parts.size != 4) return@mapNotNull null
-        runCatching {
-            MineIndexedTarget(
-                WorksitePosition(world, parts[0].toInt(), parts[1].toInt(), parts[2].toInt()),
-                parts[3].split('+').map(MineAnchorRole::valueOf).toSet(),
-            )
-        }.getOrNull()
+    internal companion object {
+        const val MAX_TARGETS_PER_ZONE = 250_000
+        private val boundaryRoles = setOf(MineAnchorRole.SUPPORT, MineAnchorRole.LAMP, MineAnchorRole.POWER)
+        private fun packPosition(x: Int, y: Int, z: Int) = (y shl 8) or ((z and 15) shl 4) or (x and 15)
+        private fun roleMask(roles: Set<MineAnchorRole>) = roles.fold(0) { mask, role -> mask or (1 shl role.ordinal) }
+        private val rolesByMask = Array(1 shl MineAnchorRole.entries.size) { mask ->
+            MineAnchorRole.entries.filterTo(linkedSetOf()) { mask and (1 shl it.ordinal) != 0 }
+        }
     }
-
-    internal companion object { const val MAX_TARGETS_PER_ZONE = 250_000 }
 }

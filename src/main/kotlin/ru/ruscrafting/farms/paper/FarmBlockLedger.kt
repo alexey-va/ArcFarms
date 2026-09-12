@@ -6,7 +6,7 @@ import org.bukkit.Chunk
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.block.Block
-import org.bukkit.persistence.PersistentDataType
+import ru.ruscrafting.farms.paper.worksite.WorksiteChunkPayload
 import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import java.util.LinkedHashMap
@@ -380,7 +380,7 @@ internal class FarmBlockLedger(plugin: Plugin) {
     fun fixedCropRecords(chunk: Chunk): List<ManagedFarmFixedCropRecord> {
         val cacheKey = chunk.cacheKey()
         fixedCropCache[cacheKey]?.let { return it }
-        val raw = chunk.persistentDataContainer.get(fixedCropKey, PersistentDataType.STRING) ?: return emptyList()
+        val raw = WorksiteChunkPayload.read(chunk.persistentDataContainer, fixedCropKey)?.toString(Charsets.UTF_8) ?: return emptyList()
         return runCatching {
             require(raw.length <= 2_000_000) { "Fixed farm crop payload is unbounded" }
             gson.fromJson(raw, Array<ManagedFarmFixedCropRecord>::class.java)?.toList().orEmpty().also { records ->
@@ -416,7 +416,7 @@ internal class FarmBlockLedger(plugin: Plugin) {
     fun orchardLeafRecords(chunk: Chunk): List<ManagedFarmOrchardLeafRecord> {
         val cacheKey = chunk.cacheKey()
         orchardCache[cacheKey]?.let { return it }
-        val raw = chunk.persistentDataContainer.get(orchardLeafKey, PersistentDataType.STRING) ?: return emptyList()
+        val raw = WorksiteChunkPayload.read(chunk.persistentDataContainer, orchardLeafKey)?.toString(Charsets.UTF_8) ?: return emptyList()
         return runCatching {
             require(raw.length <= 2_000_000) { "Farm orchard leaf payload is unbounded" }
             gson.fromJson(raw, Array<ManagedFarmOrchardLeafRecord>::class.java)?.toList().orEmpty().also { records ->
@@ -556,7 +556,7 @@ internal class FarmBlockLedger(plugin: Plugin) {
     private fun blockSnapshot(chunk: Chunk): ManagedFarmBlockSnapshot {
         val cacheKey = chunk.cacheKey()
         blockCache[cacheKey]?.let { return it }
-        val raw = chunk.persistentDataContainer.get(key, PersistentDataType.STRING) ?: return EMPTY_BLOCK_SNAPSHOT
+        val raw = WorksiteChunkPayload.read(chunk.persistentDataContainer, key)?.toString(Charsets.UTF_8) ?: return EMPTY_BLOCK_SNAPSHOT
         return runCatching {
             require(raw.length <= 2_000_000) { "Managed farm block payload is unbounded" }
             gson.fromJson(raw, Array<ManagedFarmBlockRecord>::class.java)?.toList().orEmpty().also { records ->
@@ -590,7 +590,7 @@ internal class FarmBlockLedger(plugin: Plugin) {
         require(records.size <= MAX_RECORDS_PER_CHUNK) { "Managed farm block list is unbounded" }
         val container = chunk.persistentDataContainer
         if (records.isEmpty()) container.remove(key)
-        else container.set(key, PersistentDataType.STRING, gson.toJson(records))
+        else WorksiteChunkPayload.write(container, key, gson.toJson(records).toByteArray(Charsets.UTF_8))
         blockCache[chunk.cacheKey()] = ManagedFarmBlockSnapshot(records)
     }
 
@@ -598,7 +598,7 @@ internal class FarmBlockLedger(plugin: Plugin) {
         require(records.size <= MAX_RECORDS_PER_CHUNK) { "Fixed farm crop list is unbounded" }
         val container = chunk.persistentDataContainer
         if (records.isEmpty()) container.remove(fixedCropKey)
-        else container.set(fixedCropKey, PersistentDataType.STRING, gson.toJson(records))
+        else WorksiteChunkPayload.write(container, fixedCropKey, gson.toJson(records).toByteArray(Charsets.UTF_8))
         fixedCropCache[chunk.cacheKey()] = records.toList()
     }
 
@@ -606,7 +606,7 @@ internal class FarmBlockLedger(plugin: Plugin) {
         require(records.size <= MAX_RECORDS_PER_CHUNK) { "Farm orchard leaf list is unbounded" }
         val container = chunk.persistentDataContainer
         if (records.isEmpty()) container.remove(orchardLeafKey)
-        else container.set(orchardLeafKey, PersistentDataType.STRING, gson.toJson(records))
+        else WorksiteChunkPayload.write(container, orchardLeafKey, gson.toJson(records).toByteArray(Charsets.UTF_8))
         orchardCache[chunk.cacheKey()] = records.toList()
     }
 

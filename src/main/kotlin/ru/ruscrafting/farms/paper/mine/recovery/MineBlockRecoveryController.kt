@@ -10,6 +10,7 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import ru.ruscrafting.farms.paper.worksite.RuntimeComponent
+import ru.ruscrafting.farms.paper.worksite.WorksiteRestoreQueue
 import ru.ruscrafting.farms.persistence.MineRecoveryJournal
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
@@ -27,9 +28,14 @@ internal class MineBlockRecoveryController(
     private val inFlightPositions = ConcurrentHashMap.newKeySet<String>()
     private val pendingResults = ConcurrentHashMap<String, CompletableFuture<Boolean>>()
     private val retiringRecords = ConcurrentHashMap.newKeySet<String>()
-    private var dueCursor = 0
+    private val queue = WorksiteRestoreQueue<String, PendingMineBlock>(
+        keyOf = PendingMineBlock::positionKey,
+        restoreAtOf = PendingMineBlock::restoreAt,
+    )
+    private var queueInitialized = false
+    private var knownJournalCount: Int? = null
 
-    val pendingCount: Int get() = journal.records().size
+    val pendingCount: Int get() = journal.pendingCount()
 
     fun records(zoneId: String): List<PendingMineBlock> = journal.records().filter { it.zoneId == zoneId }
 
@@ -68,6 +74,11 @@ internal class MineBlockRecoveryController(
                 return@whenComplete
             }
             if (!tasks.runSync(token) {
+                    // The journal is durable before the world mutation. Keep
+                    // queue mutation on the sync path so callbacks cannot
+                    // race the regular recovery tick.
+                    queue.schedule(record)
+                    knownJournalCount = journal.pendingCount()
                     try {
                         val actual = block.type
                         val rejection = when {
@@ -107,52 +118,70 @@ internal class MineBlockRecoveryController(
 
     fun processDue(now: Long = clock(), budget: Int = 128): Int {
         require(budget in 1..262_144)
+        ensureQueue()
         var processed = 0
-        val due = journal.records()
-            .filter { it.restoreAt <= now && it.positionKey !in inFlightPositions }
-        if (due.isEmpty()) {
-            dueCursor = 0
-            return 0
-        }
-        val start = dueCursor % due.size
-        val scanCount = minOf(budget, due.size)
-        dueCursor = (start + scanCount) % due.size
-        repeat(scanCount) { offset ->
-            val record = due[(start + offset) % due.size]
-            val world = Bukkit.getWorld(record.world) ?: return@repeat
-            if (!world.isChunkLoaded(record.x shr 4, record.z shr 4)) return@repeat
-            val temporary = material(record.temporaryMaterial, record) ?: return@repeat
-            val next = material(record.nextMaterial, record) ?: return@repeat
+        val due = queue.pollDue(now, budget)
+        due.forEach { queued ->
+            if (queued.positionKey in inFlightPositions) {
+                retry(queued, now)
+                return@forEach
+            }
+            val persisted = journal.record(queued.id)
+            if (persisted == null) return@forEach
+            if (persisted.positionKey != queued.positionKey) {
+                // An id may be reused after a successful retirement. Do not
+                // apply an old queued position to the new journal record.
+                queue.schedule(persisted)
+                return@forEach
+            }
+            val record = persisted.copy(restoreAt = queued.restoreAt)
+            val world = Bukkit.getWorld(record.world)
+            if (world == null) {
+                retry(record, now)
+                return@forEach
+            }
+            if (!world.isChunkLoaded(record.x shr 4, record.z shr 4)) {
+                retry(record, now)
+                return@forEach
+            }
+            val temporary = material(record.temporaryMaterial, record)
+            val next = material(record.nextMaterial, record)
+            if (temporary == null || next == null) {
+                retry(record, now)
+                return@forEach
+            }
             val block = world.getBlockAt(record.x, record.y, record.z)
-            runCatching {
+            try {
                 val before = block.type
-                val changed = before == temporary
-                if (!changed) {
+                if (before != temporary) {
                     state.log(Level.INFO, "Mine recovery due skipped reason=block_changed zone=${record.zoneId} record=${record.id} " +
                         "position=${record.positionKey} expected=$temporary before=$before next=$next")
                     retire(record, "changed")
                     processed++
-                    return@runCatching
-                }
-                if (world.players.any { player ->
+                } else if (world.players.none { player ->
                         player.location.distanceSquared(block.location.toCenterLocation()) <= RESTORE_PLAYER_RADIUS_SQUARED
-                    }) return@runCatching
-                block.setType(next, false)
-                state.log(Level.INFO, "Mine recovery due zone=${record.zoneId} record=${record.id} " +
-                    "position=${record.positionKey} expected=$temporary before=$before next=$next changed=$changed " +
-                    "restoreAt=${record.restoreAt} overdueMillis=${(now - record.restoreAt).coerceAtLeast(0)}")
-                retire(record, "restored")
-                processed++
-            }.onFailure { failure ->
+                    }) {
+                    block.setType(next, false)
+                    state.log(Level.INFO, "Mine recovery due zone=${record.zoneId} record=${record.id} " +
+                        "position=${record.positionKey} expected=$temporary before=$before next=$next changed=true " +
+                        "restoreAt=${record.restoreAt} overdueMillis=${(now - record.restoreAt).coerceAtLeast(0)}")
+                    retire(record, "restored")
+                    processed++
+                } else {
+                    retry(record, now)
+                }
+            } catch (failure: Throwable) {
+                retry(record, now)
                 state.log(Level.WARNING, "Could not restore mine block ${record.id}", failure)
             }
         }
+        knownJournalCount = journal.pendingCount()
         return processed
     }
 
     fun restoreNow(block: Block): CompletableFuture<Boolean> {
         val positionKey = "${block.world.name}:${block.x}:${block.y}:${block.z}"
-        val record = journal.records().firstOrNull { it.positionKey == positionKey }
+        val record = journal.recordAtPosition(positionKey)
             ?: return CompletableFuture.completedFuture(false)
         val temporary = material(record.temporaryMaterial, record)
             ?: return CompletableFuture.completedFuture(false)
@@ -176,16 +205,31 @@ internal class MineBlockRecoveryController(
     }
 
     override fun reconcileChunk(chunk: Chunk) {
-        processDue()
+        // The regular bounded recovery tick owns due work. Chunk callbacks only
+        // refresh the queue cache; they must not scan the whole journal for one
+        // newly loaded chunk.
+        ensureQueue()
     }
 
-    override fun beforeReload(reason: String) = cancelPending()
+    override fun beforeReload(reason: String) {
+        cancelPending()
+        queue.clear()
+        queueInitialized = false
+        knownJournalCount = null
+    }
 
     override fun cleanup(reason: String) {
         state.log(Level.INFO, "Mine recovery cleanup started reason=$reason pending=${journal.records().size} inFlight=${pendingResults.size}")
         cancelPending()
-        val processed = processDue(Long.MAX_VALUE, 262_144)
-        state.log(Level.INFO, "Mine recovery cleanup completed reason=$reason processed=$processed remaining=${journal.records().size}")
+        // Keep the durable journal authoritative across shutdown. A bounded
+        // pass may repair a few already-due loaded blocks, but shutdown must
+        // not force a full-world restoration or scan tens of thousands of rows.
+        val processed = processDue(clock(), CLEANUP_BUDGET)
+        queue.clear()
+        queueInitialized = false
+        knownJournalCount = null
+        state.log(Level.INFO, "Mine recovery cleanup completed reason=$reason processed=$processed " +
+            "remaining=${journal.pendingCount()}")
     }
 
     private fun cancelPending() {
@@ -193,6 +237,33 @@ internal class MineBlockRecoveryController(
         pendingResults.clear()
         inFlightPositions.clear()
         cancelled.forEach { it.complete(false) }
+    }
+
+    private fun ensureQueue() {
+        if (!queueInitialized) {
+            journal.records().forEach(queue::schedule)
+            queueInitialized = true
+            knownJournalCount = journal.pendingCount()
+            return
+        }
+        // Production journals expose an O(1) count. A full snapshot is only
+        // taken after a journal mutation observed between queue flushes, which
+        // also keeps source-compatible test journals working.
+        val currentCount = journal.pendingCount()
+        if (currentCount != knownJournalCount) {
+            journal.records().forEach(queue::schedule)
+            knownJournalCount = currentCount
+        }
+    }
+
+    private fun retry(record: PendingMineBlock, now: Long) {
+        queue.schedule(record.copy(restoreAt = retryAt(now)))
+    }
+
+    private fun retryAt(now: Long): Long = when {
+        now >= Long.MAX_VALUE - RETRY_DELAY_MILLIS -> Long.MAX_VALUE
+        now < 0L -> RETRY_DELAY_MILLIS
+        else -> now + RETRY_DELAY_MILLIS
     }
 
     private fun release(positionKey: String, result: CompletableFuture<Boolean>) {
@@ -204,9 +275,17 @@ internal class MineBlockRecoveryController(
         if (!retiringRecords.add(record.id)) return
         journal.remove(record.id).whenComplete { _, failure ->
             retiringRecords.remove(record.id)
-            if (failure != null) state.log(Level.SEVERE, "Could not retire $reason mine journal record ${record.id}", failure)
-            else state.log(Level.INFO, "Mine recovery journal retired reason=$reason zone=${record.zoneId} " +
-                "record=${record.id} position=${record.positionKey}")
+            if (failure != null) {
+                val retry = record.copy(restoreAt = retryAt(clock()))
+                runCatching {
+                    val token = tasks.lifecycleToken()
+                    tasks.runSync(token) { queue.schedule(retry) }
+                }
+                state.log(Level.SEVERE, "Could not retire $reason mine journal record ${record.id}", failure)
+            } else {
+                state.log(Level.INFO, "Mine recovery journal retired reason=$reason zone=${record.zoneId} " +
+                    "record=${record.id} position=${record.positionKey}")
+            }
         }
     }
 
@@ -224,5 +303,7 @@ internal class MineBlockRecoveryController(
         const val MINING_RECORD_PREFIX = "mine:"
         const val RESTORE_PLAYER_RADIUS_BLOCKS = 12.0
         const val RESTORE_PLAYER_RADIUS_SQUARED = RESTORE_PLAYER_RADIUS_BLOCKS * RESTORE_PLAYER_RADIUS_BLOCKS
+        const val RETRY_DELAY_MILLIS = 1_000L
+        const val CLEANUP_BUDGET = 128
     }
 }

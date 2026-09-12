@@ -1,6 +1,6 @@
 package ru.ruscrafting.farms.paper
 
-import java.util.PriorityQueue
+import ru.ruscrafting.farms.paper.worksite.WorksiteRestoreQueue
 
 internal data class FarmFixedCropPosition(
     val world: String,
@@ -19,30 +19,14 @@ internal data class FarmFixedCropRestore(
  * durable source of truth; this queue is rebuilt from loaded chunks after start.
  */
 internal class FarmBlockRestoreQueue {
-    private val due = PriorityQueue(compareBy<FarmFixedCropRestore> { it.restoreAt }.thenBy { it.position.world })
-    private val scheduled = mutableMapOf<FarmFixedCropPosition, Long>()
+    private val queue = WorksiteRestoreQueue<FarmFixedCropPosition, FarmFixedCropRestore>(
+        keyOf = FarmFixedCropRestore::position,
+        restoreAtOf = FarmFixedCropRestore::restoreAt,
+    )
 
-    fun schedule(entry: FarmFixedCropRestore) {
-        val current = scheduled[entry.position]
-        if (current != null && current <= entry.restoreAt) return
-        scheduled[entry.position] = entry.restoreAt
-        due += entry
-    }
+    fun schedule(entry: FarmFixedCropRestore) = queue.schedule(entry)
 
-    fun pollDue(now: Long, limit: Int): List<FarmFixedCropRestore> = buildList {
-        require(limit >= 1) { "Restore batch size must be positive" }
-        while (size < limit) {
-            val next = due.peek() ?: break
-            if (next.restoreAt > now) break
-            due.remove()
-            if (scheduled[next.position] != next.restoreAt) continue
-            scheduled.remove(next.position)
-            add(next)
-        }
-    }
+    fun pollDue(now: Long, limit: Int): List<FarmFixedCropRestore> = queue.pollDue(now, limit)
 
-    fun clear() {
-        due.clear()
-        scheduled.clear()
-    }
+    fun clear() = queue.clear()
 }

@@ -12,14 +12,34 @@ internal enum class MineAnchorRole {
 internal object MineAnchorClassifier {
     private val faces = listOf(BlockFace.UP, BlockFace.DOWN, BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST)
 
+    fun hasUnloadedHorizontalNeighbor(block: Block): Boolean {
+        val world = block.world
+        val chunkX = block.x shr 4
+        val chunkZ = block.z shr 4
+        return (block.x and 15 == 0 && !world.isChunkLoaded(chunkX - 1, chunkZ)) ||
+            (block.x and 15 == 15 && !world.isChunkLoaded(chunkX + 1, chunkZ)) ||
+            (block.z and 15 == 0 && !world.isChunkLoaded(chunkX, chunkZ - 1)) ||
+            (block.z and 15 == 15 && !world.isChunkLoaded(chunkX, chunkZ + 1))
+    }
+
     fun classify(
         block: Block,
         mineable: Set<Material>,
         railMaterials: Set<Material> = emptySet(),
     ): Set<MineAnchorRole> = buildSet {
-        val exposed = faces.any { !block.getRelative(it).type.isSolid }
-        val walkableFloor = block.type.isSolid && !block.getRelative(BlockFace.UP).type.isSolid &&
-            !block.getRelative(BlockFace.UP, 2).type.isSolid
+        val material = block.type
+        if (material.isAir) return@buildSet
+        fun nonSolid(face: BlockFace, distance: Int = 1): Boolean {
+            val x = block.x + face.modX * distance
+            val y = block.y + face.modY * distance
+            val z = block.z + face.modZ * distance
+            val world = block.world
+            if (y !in world.minHeight until world.maxHeight) return false
+            if (!world.isChunkLoaded(x shr 4, z shr 4)) return false
+            return !world.getBlockAt(x, y, z).type.isSolid
+        }
+        val exposed = material.isSolid && faces.any { nonSolid(it) }
+        val walkableFloor = material.isSolid && nonSolid(BlockFace.UP) && nonSolid(BlockFace.UP, 2)
         if (block.type in mineable) {
             add(MineAnchorRole.MINEABLE)
             if (exposed) add(MineAnchorRole.PROSPECT)

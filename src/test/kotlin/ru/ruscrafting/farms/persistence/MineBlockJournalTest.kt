@@ -15,12 +15,18 @@ class MineBlockJournalTest : FunSpec({
         MineBlockJournal(root).use { journal ->
             journal.prepare(record).join()
             journal.records() shouldContainExactly listOf(record)
+            journal.record(record.id) shouldBe record
+            journal.recordAtPosition(record.positionKey) shouldBe record
+            journal.pendingCount() shouldBe 1
             journal.containsPosition(record.positionKey) shouldBe true
         }
 
         MineBlockJournal(root).use { journal ->
             journal.records() shouldContainExactly listOf(record)
             journal.remove(record.id).join()
+            journal.record(record.id) shouldBe null
+            journal.recordAtPosition(record.positionKey) shouldBe null
+            journal.pendingCount() shouldBe 0
         }
         MineBlockJournal(root).use { journal -> journal.records() shouldBe emptyList() }
     }

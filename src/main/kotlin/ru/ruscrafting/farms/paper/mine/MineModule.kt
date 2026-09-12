@@ -90,10 +90,16 @@ internal class MineModule(
     val pendingBlockCount: Int get() = recovery.pendingCount
 
     fun rebuild(configured: List<MineZoneSettings>, persisted: Map<String, MineShiftState>, cooldownMillis: Long) {
+        veins.clear()
+        index.clear()
+        extraction.clearRoutes()
         registry.replace(MineRuntimeFactory.build(configured, persisted, cooldownMillis, regions))
     }
 
     fun reconfigure(configured: List<MineZoneSettings>, persisted: Map<String, MineShiftState>, cooldownMillis: Long) {
+        veins.clear()
+        index.clear()
+        extraction.clearRoutes()
         registry.reconfigure(MineRuntimeFactory.build(configured, persisted, cooldownMillis, regions))
     }
 
@@ -117,7 +123,6 @@ internal class MineModule(
                 if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.IDLE) {
                     participants.firstOrNull()?.let { prospecting.autoStart(runtime, it) }
                 }
-                if (participants.isNotEmpty()) veins.tick(runtime, now)
                 incidents.tick(runtime, now, participants.size)
                 participants.firstOrNull { it.uniqueId in runtime.state.contributors }?.let {
                     extraction.completeMiningOrder(runtime, it)
@@ -127,7 +132,6 @@ internal class MineModule(
         }
         scenarios?.rooms?.process()
         tasks.guarded("mine_v2_recovery") { recovery.processDue(now) }
-        tasks.guarded("mine_v2_reindex") { admin.tickReindexes(REINDEX_BLOCKS_PER_TICK) }
     }
 
     override fun canAccess(player: Player): Boolean =
@@ -181,7 +185,20 @@ internal class MineModule(
 
     override fun onEntityDeath(event: EntityDeathEvent): Boolean = scenarios?.onDeath(event) == true || incidents.onEntityDeath(event)
 
-    override fun updateVisuals() = Unit
+    override fun updateVisuals() {
+        val supplyBudget = ru.ruscrafting.farms.paper.WorksiteTickBudget(1_024)
+        registry.snapshot().forEach { runtime ->
+            if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.MINING &&
+                runtime.region.world.players.any { registry.forAudience(it.location) === runtime &&
+                    access.hasAccess(it, runtime.settings.permission) && !access.isAdminEditing(it) }) {
+                tasks.guarded("mine_v2_supply:${runtime.settings.id}") { veins.tick(runtime, clock(), supplyBudget) }
+            }
+        }
+        tasks.guarded("mine_v2_reindex") { admin.tickReindexes(REINDEX_BLOCKS_PER_TICK) }
+        tasks.guarded("mine_v2_index_flush") { index.flushDirty() }
+    }
+
+    override fun beforeChunkUnload(chunk: Chunk) = index.flushChunk(chunk)
 
     override fun updateGuidance(expectedBars: MutableSet<ActivityBarKey>) = guidance.updateHud(clock(), expectedBars)
 
@@ -248,11 +265,14 @@ internal class MineModule(
     }
 
     override fun beforeReload(reason: String) {
+        veins.clear()
         admin.cleanup()
+        index.flushDirty(Int.MAX_VALUE)
         recovery.beforeReload(reason)
     }
 
     override fun cleanup(reason: String) {
+        veins.clear()
         scenarios?.close()
         recovery.cleanup(reason)
         loading.cleanup()
@@ -291,6 +311,6 @@ internal class MineModule(
     )
 
     private companion object {
-        const val REINDEX_BLOCKS_PER_TICK = 131_072
+        const val REINDEX_BLOCKS_PER_TICK = 8_192
     }
 }

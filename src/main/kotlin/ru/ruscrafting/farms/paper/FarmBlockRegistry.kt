@@ -68,6 +68,7 @@ internal class FarmBlockRegistry(
     private val plugin: Plugin,
     private val ledger: FarmBlockLedger,
     private val clock: () -> Long = System::currentTimeMillis,
+    private val nanoTime: () -> Long = System::nanoTime,
     private val addChunkTicket: (Chunk) -> Boolean = { chunk -> chunk.addPluginChunkTicket(plugin) },
     private val removeChunkTicket: (Chunk) -> Unit = { chunk -> chunk.removePluginChunkTicket(plugin) },
 ) : FarmHarvestCropIndex, AutoCloseable {
@@ -254,6 +255,7 @@ internal class FarmBlockRegistry(
         private fun requestChunk(
             scanBudget: Int = definition.blocksPerTick,
             applyBudget: Int = MAX_APPLY_CHUNKS_PER_TICK,
+            scanTickBudget: WorksiteTickBudget? = null,
         ) {
             if (finished || closed) return
             if (chunkIndex >= geometry.chunks.size) {
@@ -263,7 +265,14 @@ internal class FarmBlockRegistry(
             val coordinates = geometry.chunks[chunkIndex]
             if (definition.region.world.isChunkLoaded(coordinates.x, coordinates.z)) {
                 prepareCurrentChunk(definition.region.world.getChunkAt(coordinates.x, coordinates.z))
-                if (phase == FarmBlockReindexPhase.SCANNING) scanStep(scanBudget) else applyChunk(applyBudget)
+                if (phase == FarmBlockReindexPhase.SCANNING) {
+                    scanStep(
+                        scanBudget,
+                        scanTickBudget ?: WorksiteTickBudget(scanBudget, nowNanos = nanoTime),
+                    )
+                } else {
+                    applyChunk(applyBudget)
+                }
                 return
             }
             definition.region.world.getChunkAtAsync(coordinates.x, coordinates.z, false).whenComplete { chunk, failure ->
@@ -275,7 +284,11 @@ internal class FarmBlockRegistry(
                             return@runSync
                         }
                         prepareCurrentChunk(chunk)
-                        if (phase == FarmBlockReindexPhase.SCANNING) scanStep() else applyChunk()
+                        if (phase == FarmBlockReindexPhase.SCANNING) {
+                            scanStep(tickBudget = WorksiteTickBudget(definition.blocksPerTick, nowNanos = nanoTime))
+                        } else {
+                            applyChunk()
+                        }
                     }
                 }.onFailure(::fail)
             }
@@ -287,7 +300,10 @@ internal class FarmBlockRegistry(
             currentCursor = 0L
         }
 
-        private fun scanStep(remainingBudget: Int = definition.blocksPerTick) {
+        private fun scanStep(
+            remainingBudget: Int = definition.blocksPerTick,
+            tickBudget: WorksiteTickBudget = WorksiteTickBudget(remainingBudget, nowNanos = nanoTime),
+        ) {
             if (finished) return
             require(remainingBudget > 0) { "Farm reindex scan budget must be positive" }
             val chunk = currentChunk ?: return fail(IllegalStateException("Farm reindex lost its current chunk"))
@@ -300,7 +316,7 @@ internal class FarmBlockRegistry(
             val slice = geometry.slice(chunk.x, chunk.z)
             val startedAtCursor = currentCursor
             val end = minOf(slice.volume, currentCursor + remainingBudget)
-            while (currentCursor < end) {
+            while (currentCursor < end && tickBudget.tryConsume()) {
                 val block = slice.blockAt(chunk.world, currentCursor++)
                 scannedBlocks++
                 val interesting = block.type == org.bukkit.Material.FARMLAND ||
@@ -332,7 +348,9 @@ internal class FarmBlockRegistry(
                 }
             }
             if (currentCursor < slice.volume) {
-                nextTask = Tasks.scheduler.runLater(1L, ::scanStep)
+                nextTask = Tasks.scheduler.runLater(1L) {
+                    scanStep(tickBudget = WorksiteTickBudget(definition.blocksPerTick, nowNanos = nanoTime))
+                }
                 return
             }
             val consumed = (currentCursor - startedAtCursor).toInt()
@@ -345,7 +363,7 @@ internal class FarmBlockRegistry(
             }
             val nextBudget = remainingBudget - consumed
             if (nextBudget > 0) {
-                requestChunk(scanBudget = nextBudget)
+                requestChunk(scanBudget = nextBudget, scanTickBudget = tickBudget)
             } else {
                 nextTask = Tasks.scheduler.runLater(1L) { requestChunk() }
             }

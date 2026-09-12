@@ -31,6 +31,7 @@ internal class MineAdminService(
 ) : WorksiteAdminHandler {
     private val reindexes = mutableMapOf<String, MineReindexJob>()
     private val reindexProgress = mutableMapOf<String, Int>()
+    private var reindexCursor = 0
     override val kind: ActivityKind = ActivityKind.MINE
 
     override fun zoneIds(): List<String> = registry.snapshot().map { it.settings.id }.sorted()
@@ -89,6 +90,7 @@ internal class MineAdminService(
             throw failure
         }.also {
             if (it.finished) {
+                extraction.invalidateRoute(zoneId)
                 reindexes.remove(zoneId)
                 reindexProgress.remove(zoneId)
                 state.log(Level.INFO, "Mine reindex completed zone=$zoneId scanned=${it.scannedBlocks} indexed=${it.indexedTargets}")
@@ -113,8 +115,12 @@ internal class MineAdminService(
         true
     } == true
 
-    fun tickReindexes(budgetPerZone: Int) {
-        reindexes.keys.toList().forEach { tickReindex(it, budgetPerZone) }
+    fun tickReindexes(blockBudget: Int) {
+        val zones = reindexes.keys.toList()
+        if (zones.isEmpty()) { reindexCursor = 0; return }
+        val current = Math.floorMod(reindexCursor, zones.size)
+        reindexCursor = (current + 1) % zones.size
+        tickReindex(zones[current], blockBudget)
     }
 
     fun cleanup() {

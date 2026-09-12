@@ -9,6 +9,12 @@ import java.util.concurrent.TimeUnit
 
 interface MineRecoveryJournal {
     fun records(): List<PendingMineBlock>
+    /** O(1) record lookup for queued recovery work; the default keeps test journals source-compatible. */
+    fun record(recordId: String): PendingMineBlock? = records().firstOrNull { it.id == recordId }
+    /** O(1) position lookup for forced recovery; the default keeps test journals source-compatible. */
+    fun recordAtPosition(positionKey: String): PendingMineBlock? = records().firstOrNull { it.positionKey == positionKey }
+    /** O(1) pending count lets controllers detect external journal changes without copying records. */
+    fun pendingCount(): Int = records().size
     fun containsPosition(positionKey: String): Boolean
     fun prepare(record: PendingMineBlock): CompletableFuture<Unit>
     fun remove(recordId: String): CompletableFuture<Unit>
@@ -24,34 +30,58 @@ class MineBlockJournal(dataRoot: Path) : MineRecoveryJournal, AutoCloseable {
     private val writer = CoalescingAsyncWriter(store::saveAsync)
     private val lock = Any()
     private val records: MutableMap<String, PendingMineBlock> = store.load().records.toMutableMap()
+    private val idsByPosition: MutableMap<String, String> = records.values.associateTo(mutableMapOf()) {
+        it.positionKey to it.id
+    }
 
     override fun records(): List<PendingMineBlock> = synchronized(lock) { records.values.toList() }
 
-    fun pendingRecordCount(): Int = synchronized(lock) { records.size }
+    override fun record(recordId: String): PendingMineBlock? = synchronized(lock) { records[recordId] }
+
+    override fun recordAtPosition(positionKey: String): PendingMineBlock? = synchronized(lock) {
+        idsByPosition[positionKey]?.let(records::get)
+    }
+
+    override fun pendingCount(): Int = synchronized(lock) { records.size }
+
+    fun pendingRecordCount(): Int = pendingCount()
 
     override fun containsPosition(positionKey: String): Boolean = synchronized(lock) {
-        records.values.any { it.positionKey == positionKey }
+        idsByPosition.containsKey(positionKey)
     }
 
     override fun prepare(record: PendingMineBlock): CompletableFuture<Unit> {
         val snapshot = synchronized(lock) {
             require(record.id !in records) { "Duplicate mine journal id: ${record.id}" }
-            require(records.values.none { it.positionKey == record.positionKey }) { "Mine block is already pending: ${record.positionKey}" }
+            require(record.positionKey !in idsByPosition) { "Mine block is already pending: ${record.positionKey}" }
             records[record.id] = record
+            idsByPosition[record.positionKey] = record.id
             MineBlockJournalState(records = records.toMap())
         }
         return writer.submit(snapshot).whenComplete { _, failure ->
-            if (failure != null) synchronized(lock) { records.remove(record.id) }
+            if (failure != null) synchronized(lock) {
+                if (records[record.id] == record) {
+                    records.remove(record.id)
+                    if (idsByPosition[record.positionKey] == record.id) idsByPosition.remove(record.positionKey)
+                }
+            }
         }
     }
 
     override fun remove(recordId: String): CompletableFuture<Unit> {
-        val removed = synchronized(lock) { records.remove(recordId) }
+        val removed = synchronized(lock) {
+            records.remove(recordId)?.also { removedRecord ->
+                if (idsByPosition[removedRecord.positionKey] == recordId) idsByPosition.remove(removedRecord.positionKey)
+            }
+        }
             ?: return CompletableFuture.completedFuture(Unit)
         val snapshot = synchronized(lock) { MineBlockJournalState(records = records.toMap()) }
         return writer.submit(snapshot).whenComplete { _, failure ->
             if (failure != null) synchronized(lock) {
-                if (records.values.none { it.positionKey == removed.positionKey }) records.putIfAbsent(recordId, removed)
+                if (recordId !in records && removed.positionKey !in idsByPosition) {
+                    records[recordId] = removed
+                    idsByPosition[removed.positionKey] = recordId
+                }
             }
         }
     }

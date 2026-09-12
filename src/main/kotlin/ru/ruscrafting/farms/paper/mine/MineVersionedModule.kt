@@ -133,6 +133,7 @@ internal class MineVersionedModule(
     override fun canAccess(player: Player): Boolean = delegate.canAccess(player)
     override fun activateLoadedState() = delegate.activateLoadedState()
     override fun reconcileChunk(chunk: Chunk) = delegate.reconcileChunk(chunk)
+    override fun beforeChunkUnload(chunk: Chunk) = delegate.beforeChunkUnload(chunk)
     override fun beforeReload(reason: String) = delegate.beforeReload(reason)
     override fun cleanup(reason: String) = delegate.cleanup(reason)
 
