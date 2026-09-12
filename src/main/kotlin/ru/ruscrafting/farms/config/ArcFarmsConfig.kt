@@ -1114,7 +1114,7 @@ data class MineZoneSettings(
             "Mine zone $id loading delivery-radius is invalid"
         }
         require(!miningOnly || orders.all { order ->
-            order.miningMaterials.isNotEmpty() && order.miningMaterials.any { it in materialWeights }
+            order.miningMaterials.isNotEmpty() && order.miningMaterials.all { it in materialWeights }
         }) { "Basic mine $id orders must request available mining-materials" }
         require(engineVersion == 1 || orders.isNotEmpty()) { "Mine V2 zone $id has no orders" }
         require(orders.all { it.incidentTypes.size >= incidentCountMax }) {
@@ -2588,9 +2588,19 @@ class ArcFarmsConfig private constructor(
                 val orders = section.keys("orders").sorted().map { orderId ->
                     validateId(orderId, "mine order")
                     val order = section.section("orders.$orderId")
+                    val miningRequirements = linkedMapOf<String, Int>()
+                    order.keys("mining-requirements").forEach { rawMaterial ->
+                        val material = materialName(rawMaterial)
+                        miningRequirements[material] = order.int("mining-requirements.$rawMaterial")
+                            .checked("mine order mining requirement", 1, 100_000)
+                    }
+                    val miningMaterials = order.stringList("mining-materials")
+                        .mapTo(linkedSetOf(), ::materialName)
+                        .also { it += miningRequirements.keys }
                     MineOrderSettings(
                         id = orderId,
-                        miningMaterials = order.stringList("mining-materials").map(::materialName).toSet(),
+                        miningMaterials = miningMaterials,
+                        miningRequirements = miningRequirements,
                         prospectingRequired = order.int("phases.prospecting-required", 3)
                             .checked("mine order prospecting-required", 1, 100_000),
                         miningRequired = order.int("phases.mining-required", section.int("cart-quota", 16))

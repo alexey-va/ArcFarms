@@ -1099,6 +1099,7 @@ mine:
   started: "<color:#45c8f5>Шахтная экспедиция</color> <color:#707a76>•</color> <route>"
   order-paused: '<yellow>Продолжите добычу после текущего события или подготовки заказа.</yellow>'
   managed-required: '<yellow>Добывайте руду, указанную в заказе.</yellow>'
+  resource-complete: '<yellow>Этой руды уже достаточно. Спускайтесь на другой ярус за оставшимися породами.</yellow>'
   pickaxe-required: '<red>Для работы в шахте нужна кирка.</red>'
   regenerating: '<gray>Этот участок ещё восстанавливается.</gray>'
   hazard-started: '<red><bold>Забой нестабилен</bold></red>'
@@ -1122,6 +1123,8 @@ mine:
   loading-required: '<yellow>Возьмите отмеченный ящик с рудой и отнесите его к вывозной телеге.</yellow>'
   guidance:
     resource_order: '<color:#f2fff7>Добывайте: <resource></color>'
+    multi_resource_order: '<color:#f2fff7>Соберите руду со всех ярусов</color>'
+    resource-progress: '<gray><resource>:</gray> <white><done>/<total></white>'
     completion_pending: '<gray>Завершение заказа</gray>'
     idle: '<gray>Подготовка выработки — заказ начнётся автоматически</gray>'
     title: '<color:#45c8f5><bold>Заказ шахты</bold></color>'
@@ -1516,7 +1519,7 @@ shop-table:
 mine-lift:
   boarding-hud: '<color:#e8dfd2>Посадка · <floor> · Shift — выйти</color>'
   title: '<white>Шахтный подъёмник</white>'
-  description: '<color:#e8dfd2>Сейчас: <floor>.<newline>Выбери ярус — кабина отправится через 3 секунды.<newline>До четырёх пассажиров. Выход на площадку автоматический.</color>'
+  description: '<color:#e8dfd2>Сейчас: <floor>.<newline>Выбери ярус — кабина отправится через 3 секунды.<newline>Просторная грузовая кабина. Выход на площадку автоматический.</color>'
   go: '<color:#8ed8b1><floor> ›</color>'
   close: '<white>Закрыть</white>'
   panel: '<white>Подъёмник · <floor></white><newline><color:#8ed8b1><state></color>'
@@ -1527,7 +1530,7 @@ mine-lift:
   travelling: '<color:#e8dfd2>Подъёмник: <floor> · дождись остановки</color>'
   arrived: '<color:#8ed8b1>Приехали: <floor>.</color>'
   unavailable: '<color:#e8dfd2>Посадка сейчас недоступна.<newline>Дождись кабины и выбери ярус снова.</color>'
-  full: '<color:#e8dfd2>Все четыре места заняты. Дождись следующей поездки.</color>'
+  full: '<color:#e8dfd2>Кабина заполнена. Дождись следующей поездки.</color>'
   recovered: '<color:#e8dfd2>Поездка прервана. Ты на безопасной площадке подъёмника.</color>'
   near-panel: '<color:#e8dfd2>Подойди к пульту подъёмника в шахте.</color>'
   admin-required: '<color:#e8dfd2>Недостаточно прав для диагностики подъёмников.</color>'

@@ -71,18 +71,23 @@ internal class MineMiningController(
             return deny(event, runtime, "block_not_indexed",
                 if (runtime.settings.miningOnly) MessageKey.MINE_MANAGED_REQUIRED else MessageKey.MINE_TARGET_REQUIRED)
         }
-        if (runtime.settings.miningOnly && event.block.type.name !in requireNotNull(runtime.currentOrder()).miningMaterials) {
+        val original = event.block.type
+        val order = runtime.currentOrder()
+        if (runtime.settings.miningOnly && original.name !in requireNotNull(order).miningMaterials) {
             return deny(event, runtime, "wrong_order_material", MessageKey.MINE_MANAGED_REQUIRED)
+        }
+        if (runtime.settings.miningOnly && order != null &&
+            (order.miningRequirements[original.name]?.let { (runtime.state.minedByMaterial[original.name] ?: 0) >= it } == true)) {
+            return deny(event, runtime, "material_quota_complete", MessageKey.MINE_RESOURCE_COMPLETE)
         }
         val target = runtime.state.objective?.targets?.firstOrNull { it.position == event.block.position() }
         if (!runtime.settings.miningOnly && (target == null || target.status != ObjectiveTargetStatus.AVAILABLE)) {
             return deny(event, runtime, "target_unavailable", MessageKey.MINE_TARGET_REQUIRED)
         }
-        val original = event.block.type
         if (original.name !in runtime.settings.materialWeights) {
             return deny(event, runtime, "material_not_configured", MessageKey.MINE_MANAGED_REQUIRED)
         }
-        val next = MaterialRules.weightedMaterial(
+        val next = if (order?.miningRequirements?.isNotEmpty() == true) original else MaterialRules.weightedMaterial(
             LinkedHashMap(runtime.settings.materialWeights.mapKeys { MaterialRules.material(it.key) }), random,
         )
         val record = PendingMineBlock(
@@ -117,8 +122,11 @@ internal class MineMiningController(
         ) {
             event.block.setType(MaterialRules.material(runtime.settings.temporaryMaterial), false)
             if (runtime.settings.miningOnly) {
-                if (original.name in requireNotNull(runtime.currentOrder()).miningMaterials) {
-                    transitions.apply(runtime, MineShiftEngine.mineTarget(runtime.state, runtime.rules(), event.player.uniqueId), event.player)
+                val currentOrder = requireNotNull(runtime.currentOrder())
+                if (original.name in currentOrder.miningMaterials) {
+                    transitions.apply(runtime, MineShiftEngine.mineTarget(
+                        runtime.state, runtime.rules(), event.player.uniqueId, original.name, currentOrder.miningRequirements,
+                    ), event.player)
                 }
                 effects.completeExtraction(event.player, event.block, original, toolSlot, tool)
                 return@prepare

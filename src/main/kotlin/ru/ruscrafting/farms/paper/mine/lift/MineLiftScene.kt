@@ -16,14 +16,16 @@ import org.bukkit.util.Transformation
 import org.joml.Quaternionf
 import org.joml.Vector3f
 import java.util.UUID
+import kotlin.math.floor
 
-/** Bounded vanilla display scene in the surveyed shaft. The four Interaction seats own passenger collision. */
+/** Bounded vanilla display scene in the surveyed shaft. Interaction seats scale with the cabin footprint. */
 internal class MineLiftScene(private val plugin: Plugin, private val settings: MineLiftSettings, private val world: World) : AutoCloseable {
     private data class Part(val display: BlockDisplay, val x: Double, val y: Double, val z: Double, val door: Boolean = false)
     private val parts = mutableListOf<Part>()
     private val entities = mutableListOf<Entity>()
     private val chain = mutableListOf<BlockDisplay>()
     val seats = mutableListOf<Interaction>()
+    private val seatOffsets = mutableListOf<Pair<Double, Double>>()
     val panels = mutableMapOf<UUID, Int>()
     private val labels = mutableListOf<TextDisplay>()
     private val key = NamespacedKey(plugin, "mine_lift_${settings.id}")
@@ -54,9 +56,10 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
         block(-halfX, .45, -halfZ, settings.width, .85, .08, Material.COPPER_GRATE, door = true)
         block(-.2, 2.3, -.2, .4, .35, .4, Material.LANTERN)
         parts.forEach { it.display.teleport(origin(y).add(it.x, it.y, it.z)) }
-        for (x in listOf(-.5, .5)) for (z in listOf(-.5, .5)) {
+        for (x in seatAxis(settings.width)) for (z in seatAxis(settings.depth)) {
+            seatOffsets += x to z
             seats += world.spawn(origin(y).add(x, .02, z), Interaction::class.java) {
-                mark(it); it.interactionWidth = .5f; it.interactionHeight = .01f; it.isResponsive = true
+                mark(it); it.interactionWidth = .7f; it.interactionHeight = .01f; it.isResponsive = true
             }.also(entities::add)
         }
         val anchorY = settings.floors.first().y + 3
@@ -93,8 +96,7 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
         }
         if (!heightChanged) return moved
         seats.forEachIndexed { index, seat ->
-            val x = if (index < 2) -.5 else .5
-            val z = if (index % 2 == 0) -.5 else .5
+            val (x, z) = seatOffsets[index]
             moved = seat.teleport(origin(y).add(x, .02, z)) && moved
         }
         val top = settings.floors.first().y + 3
@@ -112,6 +114,8 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
     private fun origin(y: Double) = Location(world, settings.x, y, settings.z)
     private fun block(x: Double, y: Double, z: Double, sx: Double, sy: Double, sz: Double, material: Material, door: Boolean = false) {
         val entity = display(origin(settings.floors.first().y).add(x, y, z), material)
+        entity.isGlowing = true
+        entity.glowColorOverride = org.bukkit.Color.fromRGB(0x75, 0xe6, 0xff)
         entity.transformation = transform(0.0, 0.0, 0.0, sx, sy, sz)
         parts += Part(entity, x, y, z, door)
     }
@@ -130,7 +134,13 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
 
     override fun close() {
         entities.asReversed().forEach(Entity::remove)
-        entities.clear(); parts.clear(); seats.clear(); chain.clear(); panels.clear(); labels.clear()
+        entities.clear(); parts.clear(); seats.clear(); seatOffsets.clear(); chain.clear(); panels.clear(); labels.clear()
+    }
+
+    private fun seatAxis(span: Double): List<Double> {
+        val count = floor((span - 1.0) / 1.1).toInt().coerceIn(2, 5)
+        val extent = (span / 2 - .65).coerceAtLeast(.45)
+        return List(count) { index -> -extent + extent * 2 * index / (count - 1) }
     }
 
     private fun transform(x: Double, y: Double, z: Double, sx: Double, sy: Double, sz: Double) = Transformation(

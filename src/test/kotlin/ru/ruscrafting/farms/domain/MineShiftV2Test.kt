@@ -71,6 +71,25 @@ class MineShiftV2Test : FunSpec({
         MineShiftEngine.tick(state, basicRules, 8000).state.phase shouldBe MinePhase.IDLE
     }
 
+    test("multi ore order completes only after every material quota") {
+        val basicRules = rules.copy(miningOnly = true, miningQuota = 3, incidentCountMin = 1, incidentCountMax = 1)
+        val basicOrder = MineOrder("mixed_ore", listOf(MineIncidentType.CREATURE_NEST))
+        val requirements = linkedMapOf("COAL_ORE" to 2, "IRON_ORE" to 1)
+        var state = MineShiftEngine.start(MineShiftState(), basicOrder, basicRules, 1000).state
+
+        state = MineShiftEngine.mineTarget(state, basicRules, player, "COAL_ORE", requirements).state
+        state = MineShiftEngine.mineTarget(state, basicRules, player, "COAL_ORE", requirements).state
+        state.mined shouldBe 2
+        state.minedByMaterial shouldBe mapOf("COAL_ORE" to 2)
+        MineShiftEngine.mineTarget(state, basicRules, player, "COAL_ORE", requirements).accepted shouldBe false
+        state.phase shouldBe MinePhase.MINING
+
+        state = MineShiftEngine.mineTarget(state, basicRules, player, "IRON_ORE", requirements).state
+        state.mined shouldBe 3
+        state.minedByMaterial shouldBe mapOf("COAL_ORE" to 2, "IRON_ORE" to 1)
+        state.phase shouldBe MinePhase.EXTRACTION
+    }
+
     test("legacy active mine state resets only when entering V2") {
         MineStateMigration.migrate(MineShiftState(phase = MinePhase.HAZARD, sequence = 4)).let { migrated ->
             migrated.phase shouldBe MinePhase.IDLE

@@ -10,6 +10,7 @@ data class MineOrderSettings(
     val loadingRequired: Int,
     val incidentTypes: List<MineIncidentType>,
     val miningMaterials: Set<String> = emptySet(),
+    val miningRequirements: Map<String, Int> = emptyMap(),
 ) {
     init {
         require(id.matches(Regex("[a-z0-9][a-z0-9_-]{0,47}"))) { "Invalid mine order id: $id" }
@@ -19,7 +20,15 @@ data class MineOrderSettings(
         require(incidentTypes.size in 1..MineIncidentType.entries.size && incidentTypes.distinct().size == incidentTypes.size) {
             "Mine order $id must contain a non-empty distinct incident pool"
         }
+        require(miningRequirements.values.all { it in 1..100_000 } && miningRequirements.values.sumOf(Int::toLong) <= 100_000L) {
+            "Mine order $id has invalid per-material mining requirements"
+        }
+        require(miningRequirements.isEmpty() || miningRequirements.keys == miningMaterials) {
+            "Mine order $id mining requirements must cover exactly mining-materials"
+        }
     }
+
+    val totalMiningRequired: Int get() = miningRequirements.values.sum().takeIf { it > 0 } ?: miningRequired
 
     fun domain(): MineOrder = MineOrder(id, incidentTypes)
 }

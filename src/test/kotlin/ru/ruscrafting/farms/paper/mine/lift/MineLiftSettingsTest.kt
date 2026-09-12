@@ -19,6 +19,15 @@ class MineLiftSettingsTest : FreeSpec({
         }
     }
 
+    "accepts a wide freight cabin" {
+        val root = writeConfig(additionalX = 10.0, mainWidth = 5.8)
+        try {
+            MineLiftSettings.loadAll(root).first().width shouldBe 5.8
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
     "reserves status as a command keyword" {
         val failures = mutableListOf<String>()
         val root = writeConfig(additionalX = 10.0)
@@ -43,7 +52,7 @@ class MineLiftSettingsTest : FreeSpec({
     }
 })
 
-private fun writeConfig(additionalX: Double, additionalZ: Double = 10.0): Path {
+private fun writeConfig(additionalX: Double, additionalZ: Double = 10.0, mainWidth: Double = 2.8): Path {
     val root = createTempDirectory("mine-lift-settings")
     root.resolve("modules").createDirectories()
     root.resolve("modules/mine-lift.yml").writeText(
@@ -51,7 +60,7 @@ private fun writeConfig(additionalX: Double, additionalZ: Double = 10.0): Path {
         enabled: true
         world: mine
         speed: 6.0
-        cabin: {x: 0.0, z: 0.0, width: 2.8, depth: 2.8}
+        cabin: {x: 0.0, z: 0.0, width: $mainWidth, depth: $mainWidth}
         floor-order: [top, bottom]
         floors:
           top: {y: 100.0, exit: {x: 4.0, y: 100.0, z: 0.0}, panel: {x: 4.0, y: 100.0, z: 1.0}}

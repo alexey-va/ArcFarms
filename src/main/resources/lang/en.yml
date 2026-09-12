@@ -1099,6 +1099,7 @@ mine:
   started: "<color:#45c8f5>Mine expedition</color> <color:#707a76>•</color> <route>"
   order-paused: '<yellow>Resume mining after the current event or order preparation.</yellow>'
   managed-required: '<yellow>Mine the ore specified by the current order.</yellow>'
+  resource-complete: '<yellow>This ore quota is complete. Take a lift to another level for the remaining ores.</yellow>'
   pickaxe-required: '<red>You need a pickaxe to work this mine face.</red>'
   regenerating: '<gray>This part of the mine is still regenerating.</gray>'
   hazard-started: '<red><bold>The mine face is unstable</bold></red>'
@@ -1122,6 +1123,8 @@ mine:
   loading-required: '<yellow>Pick up a highlighted ore crate and carry it to the extraction cart.</yellow>'
   guidance:
     resource_order: '<color:#f2fff7>Mine: <resource></color>'
+    multi_resource_order: '<color:#f2fff7>Collect ore from every level</color>'
+    resource-progress: '<gray><resource>:</gray> <white><done>/<total></white>'
     completion_pending: '<gray>Completing the order</gray>'
     idle: '<gray>Preparing the worksite — the order starts automatically</gray>'
     title: '<color:#45c8f5><bold>Mine order</bold></color>'
@@ -1516,7 +1519,7 @@ shop-table:
 mine-lift:
   boarding-hud: '<color:#e8dfd2>Boarding · <floor> · Shift to exit</color>'
   title: '<white>Mine lift</white>'
-  description: '<color:#e8dfd2>Here: <floor>.<newline>Choose a floor; the cabin departs in 3 seconds.<newline>Up to four passengers. Exit onto the landing is automatic.</color>'
+  description: '<color:#e8dfd2>Here: <floor>.<newline>Choose a floor; the cabin departs in 3 seconds.<newline>Spacious freight cabin. Exit onto the landing is automatic.</color>'
   go: '<color:#8ed8b1><floor> ›</color>'
   close: '<white>Close</white>'
   panel: '<white>Lift · <floor></white><newline><color:#8ed8b1><state></color>'
@@ -1527,7 +1530,7 @@ mine-lift:
   travelling: '<color:#e8dfd2>Lift: <floor> · wait until arrival</color>'
   arrived: '<color:#8ed8b1>Arrived: <floor>.</color>'
   unavailable: '<color:#e8dfd2>Boarding is unavailable.<newline>Wait beside the panel and choose again.</color>'
-  full: '<color:#e8dfd2>All four seats are occupied. Please wait for the next trip.</color>'
+  full: '<color:#e8dfd2>The cabin is full. Please wait for the next trip.</color>'
   recovered: '<color:#e8dfd2>The ride was interrupted. You are on a safe lift landing.</color>'
   near-panel: '<color:#e8dfd2>Approach a lift control panel in the mine.</color>'
   admin-required: '<color:#e8dfd2>You do not have permission to inspect mine lifts.</color>'

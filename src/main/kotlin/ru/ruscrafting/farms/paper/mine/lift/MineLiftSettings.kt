@@ -88,8 +88,8 @@ internal data class MineLiftSettings(
             }
             require(floors.map { it.y }.distinct().size == floors.size)
             require(floors.zipWithNext().all { (a, b) -> a.y - b.y >= 4 }) { "Lift floors must descend by at least four blocks" }
-            val width = number("cabin.width").also { require(it in 1.8..3.5) }
-            val depth = number("cabin.depth").also { require(it in 1.8..3.5) }
+            val width = number("cabin.width").also { require(it in 1.8..6.5) }
+            val depth = number("cabin.depth").also { require(it in 1.8..6.5) }
             return MineLiftSettings(id, requireNotNull(config.stringOrNull(path("world"))), number("cabin.x"), number("cabin.z"),
                 width, depth, number("speed").also { require(it in 1.0..MineLiftMotion.MAX_SPEED) }, floors)
         }

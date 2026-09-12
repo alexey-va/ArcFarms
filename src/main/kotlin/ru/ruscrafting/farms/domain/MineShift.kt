@@ -76,6 +76,7 @@ data class MineShiftState(
     val orderId: String? = null,
     val prospected: Int = 0,
     val mined: Int = 0,
+    val minedByMaterial: Map<String, Int> = emptyMap(),
     val loaded: Int = 0,
     val routeIndex: Int = 0,
     /** V1 cart/support fields remain readable for one migration release. */
@@ -148,6 +149,39 @@ object MineShiftEngine {
         progress(current, MinePhase.MINING, current.mined, rules.miningQuota, if (rules.miningOnly) MinePhase.EXTRACTION else MinePhase.LOADING, playerId) { state, next ->
             state.copy(mined = next, cart = next)
         }
+
+    fun mineTarget(
+        current: MineShiftState,
+        rules: MineRules,
+        playerId: UUID,
+        material: String,
+        requirements: Map<String, Int>,
+    ): EngineResult<MineShiftState, MineShiftEvent> {
+        if (requirements.isEmpty()) return mineTarget(current, rules, playerId)
+        if (current.phase != MinePhase.MINING) return EngineResult(current, false)
+        val required = requirements[material] ?: return EngineResult(current, false)
+        val completed = current.minedByMaterial[material] ?: 0
+        if (completed >= required) return EngineResult(current, false)
+        val byMaterial = current.minedByMaterial.toMutableMap().apply { put(material, completed + 1) }.toMap()
+        val total = requirements.entries.sumOf { (key, quota) -> minOf(byMaterial[key] ?: 0, quota) }
+        val finished = requirements.all { (key, quota) -> (byMaterial[key] ?: 0) >= quota }
+        var state = current.copy(
+            mined = total,
+            cart = total,
+            minedByMaterial = byMaterial,
+            contributors = incrementContribution(current.contributors, playerId, 1),
+        )
+        val events = mutableListOf(MineShiftEvent.PROGRESS)
+        if (finished) {
+            state = state.copy(
+                phase = if (rules.miningOnly) MinePhase.EXTRACTION else MinePhase.LOADING,
+                objective = null,
+            )
+            events += MineShiftEvent.PHASE_CHANGED
+            if (rules.miningOnly) events += MineShiftEvent.EXTRACTION_STARTED
+        }
+        return EngineResult(state, true, 1, events)
+    }
 
     fun load(current: MineShiftState, rules: MineRules, playerId: UUID): EngineResult<MineShiftState, MineShiftEvent> =
         progress(current, MinePhase.LOADING, current.loaded, rules.loadingQuota, MinePhase.EXTRACTION, playerId) { state, next ->

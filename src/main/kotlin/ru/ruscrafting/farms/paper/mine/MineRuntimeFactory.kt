@@ -29,12 +29,12 @@ internal data class MineRuntime(
 
     fun rules(order: MineOrderSettings = defaultOrder()): MineRules = MineRules(
         miningOnly = settings.miningOnly,
-        cartQuota = order.miningRequired,
-        hazardTrigger = minOf(settings.hazardTrigger, order.miningRequired - 1).coerceAtLeast(1),
+        cartQuota = order.totalMiningRequired,
+        hazardTrigger = minOf(settings.hazardTrigger, order.totalMiningRequired - 1).coerceAtLeast(1),
         supportsRequired = settings.supportsRequired,
         cooldownMillis = cooldownMillis,
         prospectingQuota = order.prospectingRequired,
-        miningQuota = order.miningRequired,
+        miningQuota = order.totalMiningRequired,
         loadingQuota = order.loadingRequired,
         targetMultiplier = settings.targetMultiplier,
         incidentCountMin = settings.incidentCountMin,
@@ -82,6 +82,21 @@ internal object MineRuntimeFactory {
                 saved.incidentSchedule.any { it !in allowed } || saved.phase in setOf(
                 ru.ruscrafting.farms.domain.MinePhase.PROSPECTING, ru.ruscrafting.farms.domain.MinePhase.LOADING))) {
             MineShiftState(engineVersion = 2, sequence = saved.sequence)
+        } else if (settings.miningOnly && saved.phase !in setOf(
+                ru.ruscrafting.farms.domain.MinePhase.IDLE, ru.ruscrafting.farms.domain.MinePhase.COOLDOWN,
+            ) && saved.mined > 0 && saved.minedByMaterial.isEmpty()) {
+            val order = settings.orders.firstOrNull { it.id == saved.orderId }
+            if (order?.miningRequirements?.isNotEmpty() == true) {
+                var remaining = saved.mined
+                val migrated = linkedMapOf<String, Int>()
+                order.miningMaterials.forEach { material ->
+                    val assigned = minOf(remaining, order.miningRequirements[material] ?: 0)
+                    if (assigned > 0) migrated[material] = assigned
+                    remaining -= assigned
+                }
+                val total = migrated.values.sum()
+                saved.copy(mined = total, cart = total, minedByMaterial = migrated)
+            } else saved
         } else saved
     }
 }

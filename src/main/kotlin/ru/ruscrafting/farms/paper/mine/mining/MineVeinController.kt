@@ -33,7 +33,8 @@ internal class MineVeinController(
         if (!runtime.settings.miningOnly || runtime.state.phase != MinePhase.MINING ||
             now < nextCheck.getOrDefault(runtime.settings.id, 0)) return
         nextCheck[runtime.settings.id] = now + 5_000L
-        val materials = runtime.currentOrder()?.miningMaterials.orEmpty()
+        val order = runtime.currentOrder() ?: return
+        val materials = order.miningMaterials
             .filter { it in runtime.settings.materialWeights }.map(MaterialRules::material)
         if (materials.isEmpty()) return
         val world = runtime.region.world
@@ -48,12 +49,24 @@ internal class MineVeinController(
             .take(16).forEach { index.refreshBlock(definition, block(it)) }
         val matching = positions.filterTo(linkedSetOf()) { block(it).type in materials && exposed(block(it)) }
         // Scattered single ores must not suppress creation of a visible vein.
-        val available = matching.count { p -> faces.any { face ->
+        val connectedMatching = matching.filterTo(linkedSetOf()) { p -> faces.any { face ->
             p.copy(x = p.x + face.modX, y = p.y + face.modY, z = p.z + face.modZ) in matching
         } }
+        val available = connectedMatching.size
         val pendingRecords = recovery.records(runtime.settings.id).filter { it.nextMaterial in materials.map(Material::name) }
         val pending = pendingRecords.size
-        val missing = (runtime.rules().miningQuota - runtime.state.mined - available - pending).coerceAtLeast(0)
+        val shortageByMaterial = if (order.miningRequirements.isEmpty()) emptyMap() else materials.associateWith { material ->
+            val required = order.miningRequirements[material.name] ?: 0
+            val completed = runtime.state.minedByMaterial[material.name] ?: 0
+            val stocked = connectedMatching.count { block(it).type == material }
+            val queued = pendingRecords.count { it.nextMaterial == material.name }
+            (required - completed - stocked - queued).coerceAtLeast(0)
+        }
+        val ore = shortageByMaterial.maxByOrNull { it.value }?.takeIf { it.value > 0 }?.key
+            ?: materials[(runtime.state.sequence % materials.size).toInt()]
+        val missing = if (order.miningRequirements.isEmpty()) {
+            (runtime.rules().miningQuota - runtime.state.mined - available - pending).coerceAtLeast(0)
+        } else shortageByMaterial.values.sum()
         val players = world.players.filter { runtime.region.contains(it.location) }.map { it.location }
         val candidates = if (missing == 0) emptySet() else positions.filterTo(linkedSetOf()) { p ->
             val b = block(p)
@@ -63,14 +76,21 @@ internal class MineVeinController(
         if (missing == 0) return
         val bandCount = verticalBandCount(runtime.region.bounds.minY, runtime.region.bounds.maxY)
         val supplyByBand = IntArray(bandCount)
-        matching.forEach { supplyByBand[verticalBand(it.y, runtime.region.bounds.minY, runtime.region.bounds.maxY, bandCount)]++ }
-        pendingRecords.forEach { supplyByBand[verticalBand(it.y, runtime.region.bounds.minY, runtime.region.bounds.maxY, bandCount)]++ }
+        matching.filter { block(it).type == ore }.forEach {
+            supplyByBand[verticalBand(it.y, runtime.region.bounds.minY, runtime.region.bounds.maxY, bandCount)]++
+        }
+        pendingRecords.filter { it.nextMaterial == ore.name }.forEach {
+            supplyByBand[verticalBand(it.y, runtime.region.bounds.minY, runtime.region.bounds.maxY, bandCount)]++
+        }
         val candidatesByBand = candidates.groupBy {
             verticalBand(it.y, runtime.region.bounds.minY, runtime.region.bounds.maxY, bandCount)
         }
         val round = placementRounds.getOrDefault(runtime.settings.id, 0L)
         val firstBand = Math.floorMod(runtime.state.sequence + round, bandCount.toLong()).toInt()
-        val targetBand = candidatesByBand.keys.minWithOrNull(
+        val knownOreBand = matching.asSequence().filter { block(it).type == ore }
+            .groupingBy { verticalBand(it.y, runtime.region.bounds.minY, runtime.region.bounds.maxY, bandCount) }
+            .eachCount().filterKeys(candidatesByBand::containsKey).maxByOrNull { it.value }?.key
+        val targetBand = knownOreBand ?: candidatesByBand.keys.minWithOrNull(
             compareBy<Int> { supplyByBand[it] }.thenBy { Math.floorMod(it - firstBand, bandCount) },
         ) ?: return
         val bandCandidates = candidatesByBand.getValue(targetBand).toCollection(linkedSetOf())
@@ -91,7 +111,6 @@ internal class MineVeinController(
             }
             return
         }
-        val ore = materials[(runtime.state.sequence % materials.size).toInt()]
         val sequence = runtime.state.sequence
         val orderId = runtime.state.orderId
         state.log(Level.INFO, "Mine vein placement scheduled zone=${runtime.settings.id} sequence=$sequence " +

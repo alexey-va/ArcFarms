@@ -45,9 +45,7 @@ internal class MineGuidanceSource(
         scenarioView(player, runtime)?.let { return it }
         val (done, total) = progress(runtime)
         val action = actionKey(runtime)
-        val resource = runtime.currentOrder()?.miningMaterials?.firstOrNull()
-            ?.let { ru.ruscrafting.farms.paper.MaterialRules.cropComponent(ru.ruscrafting.farms.paper.MaterialRules.material(it)) }
-            ?: Component.empty()
+        val resource = resourceSummary(runtime)
         val resourceValues = mapOf("resource" to resource)
         val values = resourceValues + mapOf(
             "done" to text(done), "total" to text(total),
@@ -66,9 +64,32 @@ internal class MineGuidanceSource(
                 render("route.mine.${runtime.settings.id}", player),
                 render("mine.guidance.$action", player, values),
                 render("scoreboard.progress", player, values),
-            ),
+            ) + resourceRows(runtime, player),
         )
     }
+
+    private fun resourceSummary(runtime: MineRuntime): Component {
+        val materials = runtime.currentOrder()?.miningMaterials.orEmpty()
+        return materials.map(::resourceName).foldIndexed(Component.empty()) { index, result, resource ->
+            result.append(if (index == 0) Component.empty() else Component.text(" · ")).append(resource)
+        }
+    }
+
+    private fun resourceRows(runtime: MineRuntime, player: Player): List<Component> {
+        val requirements = runtime.currentOrder()?.miningRequirements.orEmpty()
+        if (requirements.isEmpty() || runtime.state.phase != MinePhase.MINING) return emptyList()
+        return requirements.map { (material, required) ->
+            render("mine.guidance.resource-progress", player, mapOf(
+                "resource" to resourceName(material),
+                "done" to text((runtime.state.minedByMaterial[material] ?: 0).coerceAtMost(required)),
+                "total" to text(required),
+            ))
+        }
+    }
+
+    private fun resourceName(material: String): Component = ru.ruscrafting.farms.paper.MaterialRules.cropComponent(
+        ru.ruscrafting.farms.paper.MaterialRules.material(material),
+    )
 
     private fun targets(player: Player, runtime: MineRuntime): List<WorksiteGuidanceTarget> {
         if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.MINING) return emptyList()
@@ -193,6 +214,8 @@ internal class MineGuidanceSource(
     private fun actionKey(runtime: MineRuntime): String = if (runtime.state.phase == MinePhase.INCIDENT) {
         runtime.state.incident?.type?.name?.lowercase() ?: "incident"
     } else if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.EXTRACTION) "completion_pending"
+    else if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.MINING &&
+        runtime.currentOrder()?.miningRequirements?.isNotEmpty() == true) "multi_resource_order"
     else if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.MINING) "resource_order"
     else runtime.state.phase.name.lowercase()
 
@@ -205,11 +228,13 @@ internal class MineGuidanceSource(
         MinePhase.IDLE, MinePhase.HAZARD, MinePhase.COOLDOWN -> 0 to 1
     }
 
-    private fun progressVersion(runtime: MineRuntime): Long = listOf(
+    private fun progressVersion(runtime: MineRuntime): Long = (listOf(
         runtime.state.sequence, runtime.state.phase.ordinal.toLong(), runtime.state.prospected.toLong(),
         runtime.state.mined.toLong(), runtime.state.loaded.toLong(), runtime.state.routeIndex.toLong(),
         runtime.state.incident?.progress?.toLong() ?: 0L, runtime.state.incidentCursor.toLong(),
-    ).fold(17L) { hash, value -> hash * 31L + value }.and(Long.MAX_VALUE)
+    ) + runtime.state.minedByMaterial.toSortedMap().flatMap { (material, count) ->
+        listOf(material.hashCode().toLong(), count.toLong())
+    }).fold(17L) { hash, value -> hash * 31L + value }.and(Long.MAX_VALUE)
 
     private fun color(role: ObjectiveTargetRole): Color = COLORS[role.value] ?: run {
         val hash = role.value.hashCode().absoluteValue

@@ -58,22 +58,43 @@ class MineConfigTest : FunSpec({
         }
     }
 
+    test("per-material mining requirements parse and define the order total") {
+        val project = Path.of(requireNotNull(System.getProperty("arcfarms.projectDir")))
+        val root = Files.createTempDirectory("arcfarms-mine-mixed-order")
+        try {
+            val source = Files.readString(project.resolve("src/main/resources/config.yml"))
+            val configured = source.replaceFirst(
+                "        mining-materials: [COAL_ORE]\n",
+                "        mining-materials: [COAL_ORE, IRON_ORE]\n" +
+                    "        mining-requirements: {COAL_ORE: 7, IRON_ORE: 5}\n",
+            )
+            Files.writeString(root.resolve("config.yml"), configured)
+
+            val order = ArcFarmsConfig.inspect(root).mines.first { it.id == "old_shafts" }.orders.first()
+            order.miningRequirements shouldBe linkedMapOf("COAL_ORE" to 7, "IRON_ORE" to 5)
+            order.totalMiningRequired shouldBe 12
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
     test("basic runtime profile parses one invasion and landing guidance") {
         val root = System.getProperty("ruscrafting.opsRoot")?.let(Path::of)
         if (root != null) {
             val mines = ArcFarmsConfig.inspect(root.resolve("classic/plugins/ArcFarms")).mines
-            mines.size shouldBe 4
+            mines.size shouldBe 1
             mines.forEach {
                 it.miningOnly shouldBe true
                 it.guidanceRadius shouldBe 128.0
                 it.incidentCountMin shouldBe 1
                 it.incidentCountMax shouldBe 1
                 it.orders.forEach { order ->
-                    order.incidentTypes shouldBe listOf(MineIncidentType.CREATURE_NEST)
-                    order.miningRequired shouldBe 100
+                    order.incidentTypes.size shouldBe 16
+                    order.totalMiningRequired shouldBe 100
                     order.miningMaterials.isNotEmpty() shouldBe true
                 }
             }
+            mines.single().orders.single().miningRequirements.values.sum() shouldBe 100
         }
     }
 
@@ -88,6 +109,14 @@ class MineConfigTest : FunSpec({
     test("mine V2 order exposes bounded phase quotas") {
         order.domain().id shouldBe "deep_vein"
         order.miningRequired shouldBe 12
+    }
+
+    test("mine order uses the sum of material requirements as its total quota") {
+        val mixed = order.copy(
+            miningMaterials = linkedSetOf("COAL_ORE", "IRON_ORE"),
+            miningRequirements = linkedMapOf("COAL_ORE" to 7, "IRON_ORE" to 5),
+        )
+        mixed.totalMiningRequired shouldBe 12
     }
 
     test("mine V2 zone requires at least one complete order") {

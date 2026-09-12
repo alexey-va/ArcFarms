@@ -60,7 +60,7 @@ internal class MineLiftMaintenanceClaim {
 }
 
 /**
- * Main-thread transport owner: one cabin, four passengers, at most eight queued floor calls.
+ * Main-thread transport owner: one cabin, capacity derived from its seat grid, at most eight queued floor calls.
  * The location escrow commits before mounting, and survives quit, disable and process crashes.
  * No world blocks are changed by this runtime; a blocked surveyed shaft closes the lift.
  */
@@ -122,7 +122,7 @@ internal class MineLiftRuntime(
                     stopCabin()
                 }
             }
-            plugin.logger.info("MINE_LIFT ready world=${config.world} floors=${config.floors.size} seats=4")
+            plugin.logger.info("MINE_LIFT ready world=${config.world} floors=${config.floors.size} seats=${next.seats.size}")
         } catch (failure: Exception) {
             plugin.logger.log(Level.SEVERE, "Mine lift closed; inspect shaft and landing configuration", failure)
             stopCabin()
