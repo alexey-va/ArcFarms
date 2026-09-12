@@ -50,8 +50,12 @@ class MineLiftInteractionGateTest : FunSpec({
             )
             val entrances = world.entities.filterIsInstance<Interaction>().filter(scene::ownsEntrance)
             entrances.size shouldBe 2
+            val cabinHitbox = world.entities.filterIsInstance<Interaction>().single(scene::ownsCabinHitbox)
+            cabinHitbox.interactionWidth shouldBe 6.2f
+            cabinHitbox.interactionHeight shouldBe 3.23f
             scene.move(90.0, open = true) shouldBe true
             entrances.forEach { it.location.y shouldBe (90.9 plusOrMinus 0.0001) }
+            cabinHitbox.location.y shouldBe (89.76 plusOrMinus 0.0001)
 
             val doors = world.entities.filterIsInstance<BlockDisplay>().filter { it.block.material == Material.COPPER_GRATE }
             doors.size shouldBe 2

@@ -22,7 +22,11 @@ class MineLiftSettingsTest : FreeSpec({
     "accepts a wide freight cabin" {
         val root = writeConfig(additionalX = 10.0, mainWidth = 5.8)
         try {
-            MineLiftSettings.loadAll(root).first().width shouldBe 5.8
+            val settings = MineLiftSettings.loadAll(root).first()
+            settings.width shouldBe 5.8
+            settings.cabinHitboxBottomOffset() shouldBe -0.24
+            settings.cabinHitboxWidth() shouldBe 6.2
+            settings.cabinHitboxHeight() shouldBe 3.23
         } finally {
             root.toFile().deleteRecursively()
         }
@@ -61,6 +65,27 @@ class MineLiftSettingsTest : FreeSpec({
         } finally {
             root.toFile().deleteRecursively()
         }
+    }
+
+    "derives all five default floors from their configured landing sides" {
+        val settings = MineLiftSettings(
+            id = "main", world = "mine", x = 51.5, z = 78.5, width = 2.8, depth = 2.8, speed = 6.0,
+            floors = listOf(
+                MineLiftFloor("top", 123.0, LiftPoint(47.5, 123.0, 78.5), LiftPoint(47.5, 123.0, 76.5)),
+                MineLiftFloor("upper", 88.0, LiftPoint(47.5, 88.0, 78.5), LiftPoint(47.5, 88.0, 76.5)),
+                MineLiftFloor("middle", 73.0, LiftPoint(47.5, 73.0, 78.5), LiftPoint(47.5, 73.0, 76.5)),
+                MineLiftFloor("lower", 53.0, LiftPoint(47.5, 53.0, 78.5), LiftPoint(47.5, 53.0, 76.5)),
+                MineLiftFloor("bottom", 38.0, LiftPoint(51.5, 38.0, 74.5), LiftPoint(49.5, 38.0, 74.5)),
+            ),
+        )
+
+        settings.floors.indices.map(settings::openingSide) shouldBe listOf(
+            MineLiftDoorSide.WEST,
+            MineLiftDoorSide.WEST,
+            MineLiftDoorSide.WEST,
+            MineLiftDoorSide.WEST,
+            MineLiftDoorSide.NORTH,
+        )
     }
 })
 

@@ -35,6 +35,11 @@ internal data class MineLiftSettings(
         kotlin.math.abs(point.z - z) <= depth / 2 + 3.0 &&
         kotlin.math.abs(point.y - cabinY) <= 3.0
 
+    /** Padded dimensions put the interaction ray in front of the illuminated display shell. */
+    fun cabinHitboxBottomOffset(): Double = -CABIN_CLICK_BOTTOM_PADDING
+    fun cabinHitboxWidth(): Double = maxOf(width, depth) + CABIN_CLICK_MARGIN * 2
+    fun cabinHitboxHeight(): Double = CABIN_HEIGHT + CABIN_CLICK_MARGIN * 2
+
     fun openingSide(index: Int): MineLiftDoorSide {
         require(index in floors.indices)
         val exit = floors[index].exit
@@ -62,6 +67,11 @@ internal data class MineLiftSettings(
 
     companion object {
         private val ID_PATTERN = Regex("[a-z][a-z0-9_]{0,31}")
+        private const val CABIN_HEIGHT = 2.83
+        private const val CABIN_CLICK_MARGIN = .2
+        // The rendered floor starts at -.22; leave a small clearance below it so
+        // an eye ray aimed at the glowing lower frame still enters the hitbox.
+        private const val CABIN_CLICK_BOTTOM_PADDING = .24
 
         fun load(root: Path): MineLiftSettings? = loadAll(root).firstOrNull { it.id == "main" }
 

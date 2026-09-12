@@ -34,6 +34,7 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
     private val seatOffsets = mutableListOf<Pair<Double, Double>>()
     val panels = mutableMapOf<UUID, Int>()
     private val entranceHitboxes = mutableMapOf<UUID, MineLiftDoorSide>()
+    private var cabinHitbox: Interaction? = null
     private val labels = mutableListOf<TextDisplay>()
     private val key = NamespacedKey(plugin, "mine_lift_${settings.id}")
     private val legacyKey = if (settings.id == "main") NamespacedKey(plugin, "mine_lift") else null
@@ -48,6 +49,11 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
     }
 
     fun ownsEntrance(entity: Entity): Boolean = entity.uniqueId in entranceHitboxes
+
+    /** BlockDisplay is visual only; this padded interaction AABB is the click target for the visible cabin. */
+    fun ownsCabinHitbox(entity: Entity): Boolean = entity.uniqueId == cabinHitbox?.uniqueId
+
+    fun ownsCabinInteraction(entity: Entity): Boolean = ownsEntrance(entity) || ownsCabinHitbox(entity)
 
     internal fun entranceSides(): Map<UUID, MineLiftDoorSide> = entranceHitboxes.toMap()
 
@@ -78,6 +84,7 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
                 }
             }
         }
+        spawnCabinHitbox(y)
         block(-.2, 2.3, -.2, .4, .35, .4, Material.LANTERN)
         parts.forEach { it.display.teleport(origin(y).add(it.x, it.y, it.z)) }
         for (x in seatAxis(settings.width)) for (z in seatAxis(settings.depth)) {
@@ -131,6 +138,9 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
             val (x, z) = seatOffsets[index]
             moved = seat.teleport(origin(y).add(x, .02, z)) && moved
         }
+        cabinHitbox?.let {
+            moved = it.teleport(origin(y).add(0.0, settings.cabinHitboxBottomOffset(), 0.0)) && moved
+        }
         entranceHitboxes.forEach { (id, side) ->
             val entrance = world.getEntity(id) as? Interaction ?: return@forEach
             moved = entrance.teleport(entranceLocation(y, side)) && moved
@@ -170,6 +180,15 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
         entranceHitboxes[interaction.uniqueId] = side
     }
 
+    private fun spawnCabinHitbox(y: Double) {
+        cabinHitbox = world.spawn(origin(y).add(0.0, settings.cabinHitboxBottomOffset(), 0.0), Interaction::class.java) {
+            mark(it)
+            it.interactionWidth = settings.cabinHitboxWidth().toFloat()
+            it.interactionHeight = settings.cabinHitboxHeight().toFloat()
+            it.isResponsive = true
+        }.also(entities::add)
+    }
+
     private fun entranceLocation(y: Double, side: MineLiftDoorSide): Location =
         entranceLocation(y, side, settings.width / 2, settings.depth / 2)
 
@@ -202,7 +221,7 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
 
     override fun close() {
         entities.asReversed().forEach(Entity::remove)
-        entities.clear(); parts.clear(); seats.clear(); seatOffsets.clear(); chain.clear(); panels.clear(); entranceHitboxes.clear(); labels.clear()
+        entities.clear(); parts.clear(); seats.clear(); seatOffsets.clear(); chain.clear(); panels.clear(); entranceHitboxes.clear(); cabinHitbox = null; labels.clear()
         openDoorSide = null
     }
 

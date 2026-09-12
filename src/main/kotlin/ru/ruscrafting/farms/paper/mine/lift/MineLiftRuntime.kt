@@ -1,5 +1,6 @@
 package ru.ruscrafting.farms.paper.mine.lift
 
+import io.papermc.paper.event.player.PrePlayerAttackEntityEvent
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.Bukkit
@@ -309,20 +310,34 @@ internal class MineLiftRuntime(
     @EventHandler(ignoreCancelled = true)
     fun interact(event: PlayerInteractEntityEvent) {
         if (event.hand != EquipmentSlot.HAND) return
-        val cabin = scene ?: return
-        val index = cabin.panels[event.rightClicked.uniqueId]
-        val isEntrance = cabin.ownsEntrance(event.rightClicked)
-        if (index == null && !isEntrance) return
-        event.isCancelled = true
-        if (interactionGate.isDuplicate(event.player.uniqueId, Bukkit.getCurrentTick().toLong())) return
-        if (isEntrance) {
+        if (handleInteraction(event.player, event.rightClicked)) event.isCancelled = true
+    }
+
+    /** Interaction entities report left-clicks through Paper's pre-attack event, not damage. */
+    @EventHandler(ignoreCancelled = false)
+    fun attack(event: PrePlayerAttackEntityEvent) {
+        // Vanilla pre-cancels entities that cannot receive normal attack logic. Keep
+        // that cancellation for unrelated targets, while still routing our owned
+        // Interaction target through the same cabin validation as a right-click.
+        if (event.isCancelled && event.willAttack()) return
+        if (handleInteraction(event.player, event.attacked)) event.isCancelled = true
+    }
+
+    private fun handleInteraction(player: Player, target: org.bukkit.entity.Entity): Boolean {
+        val cabin = scene ?: return false
+        val index = cabin.panels[target.uniqueId]
+        val isCabinInteraction = cabin.ownsCabinInteraction(target)
+        if (index == null && !isCabinInteraction) return false
+        if (interactionGate.isDuplicate(player.uniqueId, Bukkit.getCurrentTick().toLong())) return true
+        if (isCabinInteraction) {
             val state = motion
             val floor = state?.takeIf { it.phase == MineLiftMotion.Phase.DOCKED }?.floor
-            if (floor == null || !nearCabin(event.player, floor)) event.player.sendMessage(text("unavailable", event.player))
-            else open(event.player, floor, allowCabin = true)
+            if (floor == null || !nearCabin(player, floor)) player.sendMessage(text("unavailable", player))
+            else open(player, floor, allowCabin = true)
         } else {
-            open(event.player, requireNotNull(index))
+            open(player, requireNotNull(index))
         }
+        return true
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
