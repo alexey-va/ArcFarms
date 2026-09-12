@@ -272,12 +272,40 @@ class ArcFarmsCommand(
             }
             "event" -> {
                 val zone = args.getOrNull(1)
-                val event = args.getOrNull(2)?.lowercase()
-                if (zone == null || event !in EVENT_STAGES) {
-                    sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
-                    return
+                val rawEvent = args.getOrNull(2)
+                if (isMineZone(zone)) {
+                    val event = rawEvent?.let { raw ->
+                        service.mineIncidentIds().firstOrNull { it.equals(raw, ignoreCase = true) }
+                    }
+                    if (zone == null || event == null) {
+                        sendEventHelp(sender, zone)
+                        return
+                    }
+                    val values = mapOf(
+                        "activity" to locale.text(ActivityKind.MINE.name.lowercase()),
+                        "zone" to locale.text(zone),
+                        "incident" to locale.renderPath("mine.events.${event.lowercase()}.title", sender),
+                    )
+                    sender.sendMessage(
+                        locale.renderPath(
+                            if (service.adminSetMineIncident(player,
+                                    service.mineZoneIds().first { it.equals(zone, ignoreCase = true) }, event)) {
+                                "admin.worksite.incident-started"
+                            } else {
+                                "admin.worksite.incident-rejected"
+                            },
+                            sender,
+                            values,
+                        ),
+                    )
+                } else {
+                    val event = rawEvent?.lowercase()
+                    if (zone == null || event !in EVENT_STAGES) {
+                        sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
+                        return
+                    }
+                    service.adminSetFarmStage(player, zone, requireNotNull(event))
                 }
-                service.adminSetFarmStage(player, zone, requireNotNull(event))
             }
             "route" -> {
                 val zone = args.getOrNull(1)
@@ -457,6 +485,23 @@ class ArcFarmsCommand(
                 mapOf("zone" to locale.text(zone ?: "…")),
             ),
         )
+        if (isMineZone(zone)) {
+            service.mineIncidentIds().forEach { incident ->
+                val id = incident.lowercase()
+                sender.sendMessage(
+                    locale.render(
+                        MessageKey.ADMIN_EVENT_HELP_ENTRY,
+                        sender,
+                        mapOf(
+                            "id" to locale.text(incident),
+                            "event" to locale.renderPath("mine.events.$id.title", sender),
+                            "description" to locale.renderPath("mine.events.$id.hint", sender),
+                        ),
+                    ),
+                )
+            }
+            return
+        }
         EVENT_STAGES.forEach { event ->
             val careType = CARE_EVENT_TYPES[event]
             val description = if (careType == null) {
@@ -581,6 +626,12 @@ class ArcFarmsCommand(
         sender.sendMessage(locale.renderPath("admin.worksite.help", sender))
     }
 
+    private fun isMineZone(zone: String?): Boolean =
+        zone != null && service.mineZoneIds().any { it.equals(zone, ignoreCase = true) }
+
+    private fun eventIds(zone: String?): List<String> =
+        if (isMineZone(zone)) service.mineIncidentIds() else EVENT_STAGES
+
     override fun onTabComplete(
         sender: CommandSender,
         command: Command,
@@ -609,14 +660,15 @@ class ArcFarmsCommand(
                 "worksite" -> listOf("lumber", "mine", "help")
                 "edit", "inspect" -> listOf("help")
                 "point", "points", "unmanage", "blockreset", "backup", "stage", "next", "finish", "event", "route",
-                in ADMIN_SHORTCUTS -> service.farmZoneIds() + "help"
+                in ADMIN_SHORTCUTS -> (service.farmZoneIds() +
+                    if (action == "event") service.mineZoneIds() else emptyList()) + "help"
                 else -> emptyList()
             }
             4 -> when (action) {
                 "worksite" -> parseKind(args[2])?.let(service.worksiteAdmins::zoneIds).orEmpty() + "help"
                 "point" -> POINT_ARGUMENTS + "help"
                 "stage" -> STAGE_STAGES + "help"
-                "event" -> EVENT_STAGES + "help"
+                "event" -> eventIds(args[2]) + "help"
                 "route" -> listOf("start", "finish", "cancel", "status", "clear", "help")
                 "blockreset" -> listOf("status", "help")
                 "backup" -> listOf("save", "list", "status", "restore", "help")

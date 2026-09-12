@@ -24,6 +24,8 @@ class ArcFarmsCompletionTest : FunSpec({
             every { farmZoneIds() } returns listOf("FarmAlpha", "FarmBeta")
             every { farmOrderIds("FarmAlpha") } returns listOf("wheat", "carrot")
             every { adminFarmRouteNames("FarmAlpha") } returns listOf("main", "market")
+            every { mineZoneIds() } returns listOf("OldMine")
+            every { mineIncidentIds() } returns listOf("collapse", "gas")
             every { worksiteAdmins } returns WorksiteAdminRegistry(listOf(mine))
         }
         val sender = mockk<CommandSender> { every { hasPermission("arcfarms.admin") } returns true }
@@ -38,6 +40,7 @@ class ArcFarmsCompletionTest : FunSpec({
             listOf("admin", "WORK") to listOf("worksite"),
             listOf("debug", "FaRmB") to listOf("FarmBeta"),
             listOf("ADMIN", "point", "FARM") to listOf("FarmAlpha", "FarmBeta"),
+            listOf("admin", "event", "") to listOf("FarmAlpha", "FarmBeta", "OldMine", "help"),
             listOf("admin", "reset-farm", "he") to listOf("help"),
             listOf("admin", "edit", "") to listOf("help"),
             listOf("admin", "worksite", "") to listOf("lumber", "mine", "help"),
@@ -46,6 +49,7 @@ class ArcFarmsCompletionTest : FunSpec({
             listOf("admin", "point", "FarmAlpha", "processing-input") to
                 listOf("processing-input", "processing-input-2", "processing-input-3", "processing-input-4"),
             listOf("admin", "event", "FarmAlpha", "TOR") to listOf("tornado"),
+            listOf("admin", "event", "OldMine", "G") to listOf("gas"),
             listOf("admin", "stage", "FarmAlpha", "PRE") to listOf("preparation"),
             listOf("admin", "route", "FarmAlpha", "") to listOf("start", "finish", "cancel", "status", "clear", "help"),
             listOf("admin", "blockreset", "FarmAlpha", "") to listOf("status", "help"),

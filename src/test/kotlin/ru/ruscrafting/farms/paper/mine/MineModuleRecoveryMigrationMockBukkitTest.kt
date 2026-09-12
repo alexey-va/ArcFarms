@@ -6,6 +6,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.mockk.mockk
 import io.mockk.every
+import org.bukkit.Location
 import org.bukkit.Material
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.config.CuboidBounds
@@ -85,6 +86,33 @@ class MineModuleRecoveryMigrationMockBukkitTest : FunSpec({
         block.type shouldBe Material.IRON_ORE
         graph.module.states().keys shouldContainExactly setOf("old_shafts")
         graph.mutableRuntimeCollectionCount shouldBe 1
+    }
+
+    test("ordinary AIR mining recovery does not block a new shift, while event recovery does") {
+        val ordinary = PendingMineBlock(
+            id = "mine:old_shafts:4:ordinary",
+            zoneId = "old_shafts",
+            world = "world",
+            x = 2,
+            y = 64,
+            z = 2,
+            originalMaterial = "IRON_ORE",
+            temporaryMaterial = "AIR",
+            nextMaterial = "IRON_ORE",
+            restoreAt = 2_000L,
+        )
+        val journal = ImmediateMineJournal(ordinary)
+        val port = mockk<WorksiteRuntimePort>(relaxed = true)
+        val controller = MineBlockRecoveryController(journal, port, port, port, { 1_000L })
+
+        controller.canStart("old_shafts") shouldBe true
+
+        journal.prepare(ordinary.copy(
+            id = "mine-incident:old_shafts:4:cave_in:0",
+            x = 3,
+            temporaryMaterial = "COBBLESTONE",
+        ))
+        controller.canStart("old_shafts") shouldBe false
     }
 
     test("reload completes an accepted recovery callback and releases its position lock") {
@@ -168,6 +196,92 @@ class MineModuleRecoveryMigrationMockBukkitTest : FunSpec({
         journal.completePrepare()
         prepared.join() shouldBe true
         block.type shouldBe Material.IRON_ORE
+    }
+
+    test("ore recovery waits for nearby players and never overwrites a manual edit") {
+        val world = paper.server.addSimpleWorld("world")
+        world.getChunkAt(0, 0).load()
+        val player = paper.server.addPlayer("NearbyMiner")
+        val block = world.getBlockAt(2, 64, 2).also { it.type = Material.AIR }
+        player.teleport(Location(world, 2.5, 64.0, 2.5))
+        val journal = ImmediateMineJournal(
+            PendingMineBlock(
+                id = "mine:nearby",
+                zoneId = "old_shafts",
+                world = world.name,
+                x = block.x,
+                y = block.y,
+                z = block.z,
+                originalMaterial = "IRON_ORE",
+                temporaryMaterial = "AIR",
+                nextMaterial = "IRON_ORE",
+                restoreAt = 1_000L,
+            ),
+        )
+        val port = mockk<WorksiteRuntimePort>(relaxed = true)
+        val controller = MineBlockRecoveryController(journal, port, port, port, { 1_000L })
+
+        controller.processDue(now = 1_000L) shouldBe 0
+        block.type shouldBe Material.AIR
+        journal.records().size shouldBe 1
+
+        player.teleport(Location(world, 20.5, 64.0, 20.5))
+        controller.processDue(now = 1_001L) shouldBe 1
+        block.type shouldBe Material.IRON_ORE
+        journal.records() shouldBe emptyList()
+
+        val edited = world.getBlockAt(3, 64, 2).also { it.type = Material.STONE }
+        val editedRecord = PendingMineBlock(
+            id = "mine:edited",
+            zoneId = "old_shafts",
+            world = world.name,
+            x = edited.x,
+            y = edited.y,
+            z = edited.z,
+            originalMaterial = "GOLD_ORE",
+            temporaryMaterial = "AIR",
+            nextMaterial = "GOLD_ORE",
+            restoreAt = 1_000L,
+        )
+        journal.prepare(editedRecord)
+        controller.processDue(now = 1_002L) shouldBe 1
+        edited.type shouldBe Material.STONE
+        journal.records() shouldBe emptyList()
+    }
+
+    test("due recovery rotates past a blocked prefix and reaches a later record") {
+        val world = paper.server.addSimpleWorld("world")
+        world.getChunkAt(0, 0).load()
+        world.getChunkAt(1, 0).load()
+        val player = paper.server.addPlayer("BlockingMiner")
+        val blocked = world.getBlockAt(2, 64, 2).also { it.type = Material.AIR }
+        val later = world.getBlockAt(30, 64, 2).also { it.type = Material.AIR }
+        player.teleport(Location(world, 2.5, 64.0, 2.5))
+        fun record(id: String, block: org.bukkit.block.Block, next: Material) = PendingMineBlock(
+            id = id,
+            zoneId = "old_shafts",
+            world = world.name,
+            x = block.x,
+            y = block.y,
+            z = block.z,
+            originalMaterial = next.name,
+            temporaryMaterial = Material.AIR.name,
+            nextMaterial = next.name,
+            restoreAt = 1_000L,
+        )
+        val blockedRecord = record("mine:blocked", blocked, Material.IRON_ORE)
+        val laterRecord = record("mine:later", later, Material.GOLD_ORE)
+        val journal = ImmediateMineJournal(blockedRecord, laterRecord)
+        val port = mockk<WorksiteRuntimePort>(relaxed = true)
+        val controller = MineBlockRecoveryController(journal, port, port, port, { 1_000L })
+
+        controller.processDue(now = 1_000L, budget = 1) shouldBe 0
+        later.type shouldBe Material.AIR
+        journal.records() shouldContainExactly listOf(blockedRecord, laterRecord)
+
+        controller.processDue(now = 1_001L, budget = 1) shouldBe 1
+        later.type shouldBe Material.GOLD_ORE
+        journal.records() shouldContainExactly listOf(blockedRecord)
     }
 })
 

@@ -3,6 +3,7 @@ package ru.ruscrafting.farms.paper.mine.mining
 import org.bukkit.Material
 import org.bukkit.event.block.BlockBreakEvent
 import ru.ruscrafting.farms.config.MessageKey
+import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineResource
 import ru.ruscrafting.farms.domain.MineShiftEngine
@@ -19,6 +20,7 @@ import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.mine.MineTransitionCoordinator
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
+import ru.ruscrafting.farms.paper.mine.presentation.MineResourceText
 import ru.ruscrafting.farms.paper.mine.recovery.MineBlockRecoveryController
 import java.util.UUID
 import java.util.random.RandomGenerator
@@ -37,6 +39,7 @@ internal class MineMiningController(
     private val effects: MineBlockEffects,
     private val startLoading: (ru.ruscrafting.farms.paper.mine.MineRuntime, ru.ruscrafting.farms.domain.MineShiftState) ->
         ru.ruscrafting.farms.domain.MineShiftState,
+    private val locale: ArcFarmsLocale? = null,
 ) {
     private val lastDenialLog = mutableMapOf<String, Long>()
     private val suppressedDenials = mutableMapOf<String, Int>()
@@ -89,18 +92,19 @@ internal class MineMiningController(
         if (original !in runtime.mineableMaterials) {
             return deny(event, runtime, "material_not_configured", MessageKey.MINE_MANAGED_REQUIRED)
         }
+        val resourceRequirement = order?.normalizedRequirements?.get(resource)
         val next = if (order?.normalizedRequirements?.isNotEmpty() == true) original else MaterialRules.weightedMaterial(
             LinkedHashMap(runtime.settings.materialWeights.mapKeys { MaterialRules.material(it.key) }), random,
         )
         val record = PendingMineBlock(
-            id = "${runtime.settings.id}:${runtime.state.sequence}:${UUID.randomUUID()}",
+            id = "mine:${runtime.settings.id}:${runtime.state.sequence}:${UUID.randomUUID()}",
             zoneId = runtime.settings.id,
             world = event.block.world.name,
             x = event.block.x,
             y = event.block.y,
             z = event.block.z,
             originalMaterial = original.name,
-            temporaryMaterial = runtime.settings.temporaryMaterial,
+            temporaryMaterial = Material.AIR.name,
             nextMaterial = next.name,
             restoreAt = clock() + runtime.settings.restoreSeconds * 1_000L,
         )
@@ -110,7 +114,7 @@ internal class MineMiningController(
         val quota = runtime.rules().miningQuota
         state.log(Level.INFO, "Mine break journal scheduled player=${event.player.name} uuid=${event.player.uniqueId} " +
             "zone=${runtime.settings.id} sequence=$sequence order=$orderId phase=${runtime.state.phase} " +
-            "position=${event.block.position()} ore=$original temporary=${runtime.settings.temporaryMaterial} next=$next " +
+            "position=${event.block.position()} ore=$original temporary=${record.temporaryMaterial} next=$next " +
             "progress=$minedBefore/$quota restoreAt=${record.restoreAt} record=${record.id}")
         recovery.prepare(
             record,
@@ -122,13 +126,24 @@ internal class MineMiningController(
                         runtime.state.objective?.target(requireNotNull(target).id)?.status == ObjectiveTargetStatus.AVAILABLE)
             },
         ) {
-            event.block.setType(MaterialRules.material(runtime.settings.temporaryMaterial), false)
+            event.block.setType(Material.AIR, false)
             if (runtime.settings.miningOnly) {
                 val currentOrder = requireNotNull(runtime.currentOrder())
                 if (MineResource.fromMaterial(original.name) in currentOrder.requestedResources) {
+                    val minedResourceBefore = runtime.state.minedByMaterial[resource] ?: 0
                     transitions.apply(runtime, MineShiftEngine.mineTarget(
                         runtime.state, runtime.rules(), event.player.uniqueId, original.name, currentOrder.normalizedRequirements,
                     ), event.player)
+                    if (resourceRequirement != null && minedResourceBefore < resourceRequirement &&
+                        (runtime.state.minedByMaterial[resource] ?: 0) >= resourceRequirement
+                    ) {
+                        audience.showScreenTitle(
+                            event.player,
+                            MessageKey.MINE_RESOURCE_COMPLETED,
+                            values = mapOf("resource" to MineResourceText.name(locale, resource, event.player)),
+                            scope = "mine:resource-complete:$resource",
+                        )
+                    }
                 }
                 effects.completeExtraction(event.player, event.block, original, toolSlot, tool)
                 return@prepare
@@ -160,7 +175,7 @@ internal class MineMiningController(
             } else {
                 state.log(Level.INFO, "Mine break completed player=${event.player.name} uuid=${event.player.uniqueId} " +
                     "zone=${runtime.settings.id} sequence=$sequence order=$orderId position=${event.block.position()} " +
-                    "ore=$original temporary=${runtime.settings.temporaryMaterial} next=$next " +
+                    "ore=$original temporary=${record.temporaryMaterial} next=$next " +
                     "resourceDisposition=order_accounting experienceDisposition=suppressed " +
                     "progressBefore=$minedBefore/$quota progressAfter=${runtime.state.mined}/${runtime.rules().miningQuota} " +
                     "phaseAfter=${runtime.state.phase} record=${record.id}")

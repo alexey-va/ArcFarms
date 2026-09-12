@@ -100,7 +100,7 @@ internal class MineComponentGraph(
         incidentScheduler, scenarios,
     )
     val guidance = MineGuidanceSource(
-        registry, ports.audience, locale, extraction::guidanceTarget, { extraction.routeFor(it)?.finalIndex ?: 1 }, scenarioRooms,
+        registry, ports.audience, locale, extraction::guidanceTarget, { extraction.routeFor(it)?.finalIndex ?: 1 }, scenarioRooms, clock,
     )
     private val guidancePresenter = WorksiteGuidancePresenter(ports.audience, ports.access, guidance)
     val prospecting = MineProspectingController(
@@ -111,6 +111,7 @@ internal class MineComponentGraph(
     val veins = ru.ruscrafting.farms.paper.mine.mining.MineVeinController(index, recovery, ports.state, clock)
     val mining = MineMiningController(
         registry, index, recovery, transitions, ports.access, ports.audience, ports.state, clock, random, blockEffects, loading::begin,
+        locale = locale,
     )
     private val tickets = object : MineChunkTicket {
         override fun retain(chunk: org.bukkit.Chunk): Boolean = chunk.addPluginChunkTicket(plugin)

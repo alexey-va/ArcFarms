@@ -32,6 +32,7 @@ import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
+import ru.ruscrafting.farms.paper.worksite.WorksiteCooldownTimer
 import ru.ruscrafting.farms.paper.farm.delivery.FarmDeliveryController
 import ru.ruscrafting.farms.paper.farm.harvest.FarmHarvestController
 import ru.ruscrafting.farms.paper.farm.incident.route.FarmFoodDeliveryIncident
@@ -41,7 +42,6 @@ import ru.ruscrafting.farms.paper.farm.incident.action.ACTION_FARM_INCIDENT_TYPE
 import ru.ruscrafting.farms.paper.farm.incident.action.FarmActionIncidentController
 import java.util.UUID
 import java.util.concurrent.TimeUnit
-import kotlin.math.ceil
 
 /** Sole owner of farm boss bars, scoreboard sessions, music and task hints. */
 internal class FarmHudController(
@@ -72,8 +72,6 @@ internal class FarmHudController(
             if (runtime.state.phase !in VISIBLE_PHASES) return@forEach
             if (runtime.state.phase == FarmPhase.COOLDOWN) {
                 val now = clock()
-                val remainingMillis = (runtime.state.cooldownEndsAt - now).coerceAtLeast(0)
-                val cooldownMillis = runtime.rules.cooldownMillis.coerceAtLeast(1)
                 players(runtime).filterNot(access::isAdminEditing).forEach { player ->
                     audience.updateBar(
                         player,
@@ -81,9 +79,9 @@ internal class FarmHudController(
                         locale.render(
                             MessageKey.FARM_COOLDOWN_BOSSBAR,
                             player,
-                            mapOf("seconds" to locale.text(remainingSeconds(runtime.state.cooldownEndsAt, now))),
+                            mapOf("seconds" to locale.text(WorksiteCooldownTimer.remainingSeconds(runtime.state.cooldownEndsAt, now))),
                         ),
-                        (1.0 - remainingMillis.toDouble() / cooldownMillis).toFloat(),
+                        WorksiteCooldownTimer.progress(runtime.state.cooldownEndsAt, now, runtime.rules.cooldownMillis),
                         BossBar.Color.YELLOW,
                         expectedBars,
                     )
@@ -531,7 +529,7 @@ internal class FarmHudController(
                 runtime.state.hellGreenhouse?.containsRoom(at.world.name, at.x, at.y, at.z) == true
             } })
             .distinctBy(Player::getUniqueId)
-    private fun remainingSeconds(deadline: Long, now: Long): Long = ceil((deadline - now).coerceAtLeast(0) / 1_000.0).toLong()
+    private fun remainingSeconds(deadline: Long, now: Long): Long = WorksiteCooldownTimer.remainingSeconds(deadline, now)
     private fun musicSound(sound: String, volume: Float): AdventureSound = AdventureSound.sound(
         Key.key(sound),
         AdventureSound.Source.MUSIC,

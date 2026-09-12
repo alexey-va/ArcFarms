@@ -666,6 +666,8 @@ enum class MessageKey(val path: String) {
     MINE_ORDER_PAUSED("mine.order-paused"),
     MINE_MANAGED_REQUIRED("mine.managed-required"),
     MINE_RESOURCE_COMPLETE("mine.resource-complete"),
+    MINE_RESOURCE_COMPLETED("mine.resource-completed"),
+    MINE_RESOURCE_COMPLETED_SUBTITLE("mine.resource-completed-subtitle"),
     MINE_RECOVERY_PENDING("mine.recovery-pending"),
     MINE_INDEX_SHORTAGE("mine.index-shortage"),
     MINE_ORE_CRATE("mine.ore-crate"),
@@ -738,6 +740,7 @@ internal val SCREEN_TITLE_SUBTITLES = mapOf(
     MessageKey.MINE_HAZARD_RESOLVED to MessageKey.MINE_HAZARD_RESOLVED_SUBTITLE,
     MessageKey.MINE_EXTRACTION_STARTED to MessageKey.MINE_EXTRACTION_STARTED_SUBTITLE,
     MessageKey.MINE_COMPLETED to MessageKey.MINE_COMPLETED_SUBTITLE,
+    MessageKey.MINE_RESOURCE_COMPLETED to MessageKey.MINE_RESOURCE_COMPLETED_SUBTITLE,
 )
 
 class ArcFarmsLocale(
@@ -1001,7 +1004,7 @@ class ArcFarmsLocale(
             "farm", "flows", "health", "heat", "hint", "hours", "id", "incident", "instruction", "item", "leaves", "limit",
             "lumber", "material", "mine", "name", "nests", "next", "objective", "order", "orders", "original",
             "percent", "perk", "pests", "phase", "place", "planted", "player", "players", "plots", "point", "points", "remaining",
-            "prefix", "price", "progress", "rarity", "reason", "records", "requirements", "restore", "reward", "route",
+            "prefix", "price", "progress", "rarity", "reason", "records", "requirements", "resource", "restore", "reward", "route",
             "seals", "seconds", "seed", "sequence", "side", "size", "soil", "source", "spawned", "stage", "supply", "targets",
             "reserved", "shares", "issued", "tilled", "time", "tool", "total", "tracking", "type", "water", "wood", "workers", "world", "x", "y", "z",
             "zone", "weeks", "plan", "week", "votes", "target", "date", "contribution",

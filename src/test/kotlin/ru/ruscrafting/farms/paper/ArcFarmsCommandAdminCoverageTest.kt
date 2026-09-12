@@ -23,6 +23,9 @@ class ArcFarmsCommandAdminCoverageTest : FunSpec({
         val service = mockk<ArcFarmsService>(relaxed = true) {
             every { adminSetFarmPoint(any(), any(), any()) } returns true
             every { adminSetFarmStage(any(), any(), any()) } returns true
+            every { mineZoneIds() } returns listOf("old_shafts")
+            every { mineIncidentIds() } returns listOf("GAS_LEAK")
+            every { adminSetMineIncident(any(), any(), any()) } returns true
         }
         val command = mockk<Command>(relaxed = true)
         val handler = ArcFarmsCommand(
@@ -43,9 +46,16 @@ class ArcFarmsCommandAdminCoverageTest : FunSpec({
             "arcfarms",
             arrayOf("admin", "event", "communal_farm", "frost"),
         )
+        handler.onCommand(
+            player,
+            command,
+            "arcfarms",
+            arrayOf("admin", "event", "OLD_SHAFTS", "gas_leak"),
+        )
 
         verify(exactly = 1) { service.adminSetFarmPoint(player, "communal_farm", FarmPointKind.FIREWOOD) }
         verify(exactly = 1) { service.adminSetFarmStage(player, "communal_farm", "frost") }
+        verify(exactly = 1) { service.adminSetMineIncident(player, "old_shafts", "GAS_LEAK") }
         handler.onTabComplete(
             player,
             command,

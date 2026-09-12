@@ -27,12 +27,15 @@ internal class MineBlockRecoveryController(
     private val inFlightPositions = ConcurrentHashMap.newKeySet<String>()
     private val pendingResults = ConcurrentHashMap<String, CompletableFuture<Boolean>>()
     private val retiringRecords = ConcurrentHashMap.newKeySet<String>()
+    private var dueCursor = 0
 
     val pendingCount: Int get() = journal.records().size
 
     fun records(zoneId: String): List<PendingMineBlock> = journal.records().filter { it.zoneId == zoneId }
 
-    fun canStart(zoneId: String): Boolean = journal.records().none { it.zoneId == zoneId }
+    fun canStart(zoneId: String): Boolean = journal.records().none {
+        it.zoneId == zoneId && !it.isOrdinaryMiningBreak()
+    }
 
     fun containsPosition(positionKey: String): Boolean =
         journal.containsPosition(positionKey) || positionKey in inFlightPositions
@@ -105,19 +108,36 @@ internal class MineBlockRecoveryController(
     fun processDue(now: Long = clock(), budget: Int = 128): Int {
         require(budget in 1..262_144)
         var processed = 0
-        journal.records().asSequence()
+        val due = journal.records()
             .filter { it.restoreAt <= now && it.positionKey !in inFlightPositions }
-            .take(budget)
-            .forEach { record ->
-            val world = Bukkit.getWorld(record.world) ?: return@forEach
-            if (!world.isChunkLoaded(record.x shr 4, record.z shr 4)) return@forEach
-            val temporary = material(record.temporaryMaterial, record) ?: return@forEach
-            val next = material(record.nextMaterial, record) ?: return@forEach
+        if (due.isEmpty()) {
+            dueCursor = 0
+            return 0
+        }
+        val start = dueCursor % due.size
+        val scanCount = minOf(budget, due.size)
+        dueCursor = (start + scanCount) % due.size
+        repeat(scanCount) { offset ->
+            val record = due[(start + offset) % due.size]
+            val world = Bukkit.getWorld(record.world) ?: return@repeat
+            if (!world.isChunkLoaded(record.x shr 4, record.z shr 4)) return@repeat
+            val temporary = material(record.temporaryMaterial, record) ?: return@repeat
+            val next = material(record.nextMaterial, record) ?: return@repeat
             val block = world.getBlockAt(record.x, record.y, record.z)
             runCatching {
                 val before = block.type
                 val changed = before == temporary
-                if (changed) block.setType(next, false)
+                if (!changed) {
+                    state.log(Level.INFO, "Mine recovery due skipped reason=block_changed zone=${record.zoneId} record=${record.id} " +
+                        "position=${record.positionKey} expected=$temporary before=$before next=$next")
+                    retire(record, "changed")
+                    processed++
+                    return@runCatching
+                }
+                if (world.players.any { player ->
+                        player.location.distanceSquared(block.location.toCenterLocation()) <= RESTORE_PLAYER_RADIUS_SQUARED
+                    }) return@runCatching
+                block.setType(next, false)
                 state.log(Level.INFO, "Mine recovery due zone=${record.zoneId} record=${record.id} " +
                     "position=${record.positionKey} expected=$temporary before=$before next=$next changed=$changed " +
                     "restoreAt=${record.restoreAt} overdueMillis=${(now - record.restoreAt).coerceAtLeast(0)}")
@@ -196,4 +216,13 @@ internal class MineBlockRecoveryController(
                 state.log(Level.SEVERE, "Mine journal record ${record.id} contains an unknown material and was retained for recovery")
             }
         }
+
+    private fun PendingMineBlock.isOrdinaryMiningBreak(): Boolean =
+        id.startsWith(MINING_RECORD_PREFIX) && temporaryMaterial == Material.AIR.name
+
+    private companion object {
+        const val MINING_RECORD_PREFIX = "mine:"
+        const val RESTORE_PLAYER_RADIUS_BLOCKS = 12.0
+        const val RESTORE_PLAYER_RADIUS_SQUARED = RESTORE_PLAYER_RADIUS_BLOCKS * RESTORE_PLAYER_RADIUS_BLOCKS
+    }
 }

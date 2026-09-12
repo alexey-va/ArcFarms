@@ -378,6 +378,15 @@ class ArcFarmsService(
 
     fun farmZoneIds(): List<String> = farm.runtimes.snapshot().map { it.settings.id }
 
+    /** The command surface uses the typed worksite registry instead of mine internals. */
+    fun mineZoneIds(): List<String> = worksiteAdmins.zoneIds(ActivityKind.MINE)
+
+    fun mineIncidentIds(): List<String> =
+        worksiteAdmins.handler(ActivityKind.MINE)?.incidentIds().orEmpty()
+
+    fun adminSetMineIncident(player: Player, zoneId: String, incidentId: String): Boolean =
+        worksiteAdmins.handler(ActivityKind.MINE)?.forceIncident(zoneId, incidentId, clock()) == true
+
     fun farmOrderIds(zoneId: String): List<String> = farm.runtimes.byId(zoneId)
         ?.orderList
         ?.map(FarmOrder::id)

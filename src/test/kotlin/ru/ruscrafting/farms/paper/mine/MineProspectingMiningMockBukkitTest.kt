@@ -103,7 +103,7 @@ class MineProspectingMiningMockBukkitTest : FunSpec({
 
         journal.completePrepare()
 
-        vein.first().type shouldBe Material.DEEPSLATE
+        vein.first().type shouldBe Material.AIR
         effects.toolWearCalls shouldBe 1
         runtime.state.mined shouldBe 1
     }
@@ -142,7 +142,7 @@ class MineProspectingMiningMockBukkitTest : FunSpec({
         stone.type shouldBe Material.STONE
         runtime.state.mined shouldBe 0
         graph.module.onBreakHigh(BlockBreakEvent(ore, player)) shouldBe true
-        ore.type shouldBe Material.DEEPSLATE
+        ore.type shouldBe Material.AIR
         runtime.state.mined shouldBe 1
 
         val placed = world.getBlockAt(9, 64, 8).also { it.type = Material.COBBLESTONE }

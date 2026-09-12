@@ -9,7 +9,6 @@ import org.bukkit.entity.Player
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.domain.FarmEventTypeRegistry
 import ru.ruscrafting.farms.domain.MinePhase
-import ru.ruscrafting.farms.domain.MineResource
 import ru.ruscrafting.farms.domain.MineScenarioCatalog
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus
@@ -21,6 +20,7 @@ import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.worksite.WorksiteGuidanceSource
 import ru.ruscrafting.farms.paper.worksite.WorksiteGuidanceTarget
 import ru.ruscrafting.farms.paper.worksite.WorksiteGuidanceView
+import ru.ruscrafting.farms.paper.worksite.WorksiteCooldownTimer
 import java.util.UUID
 import kotlin.math.absoluteValue
 
@@ -31,6 +31,7 @@ internal class MineGuidanceSource(
     private val routeTarget: (MineRuntime) -> WorksitePosition? = { null },
     private val routeTotal: (MineRuntime) -> Int = { 1 },
     private val rooms: MineScenarioRooms? = null,
+    private val clock: () -> Long = System::currentTimeMillis,
 ) : WorksiteGuidanceSource {
     override fun participants(): Collection<Player> = registry.snapshot().flatMap { runtime ->
         runtime.region.world.players.filter { runtimeFor(it) === runtime }
@@ -47,18 +48,27 @@ internal class MineGuidanceSource(
         val (done, total) = progress(runtime)
         val action = actionKey(runtime)
         val resource = resourceSummary(runtime, player)
+        val cooldownValues = if (runtime.state.phase == MinePhase.COOLDOWN) {
+            mapOf("seconds" to text(WorksiteCooldownTimer.remainingSeconds(runtime.state.cooldownEndsAt, clock())))
+        } else {
+            emptyMap()
+        }
         val resourceValues = mapOf("resource" to resource)
-        val values = resourceValues + mapOf(
+        val values = resourceValues + cooldownValues + mapOf(
             "done" to text(done), "total" to text(total),
-            "action" to render("mine.guidance.$action", player, resourceValues),
+            "action" to render("mine.guidance.$action", player, resourceValues + cooldownValues),
         )
         return WorksiteGuidanceView(
             "mine:${runtime.settings.id}", progressVersion(runtime),
             render("mine.guidance.title", player, values),
             render("mine.guidance.$action", player, values),
             render("mine.guidance.bar", player, values),
-            done.toFloat() / total.coerceAtLeast(1),
-            if (runtime.state.phase == MinePhase.INCIDENT) BossBar.Color.RED else BossBar.Color.BLUE,
+            barProgress(runtime, done, total),
+            when (runtime.state.phase) {
+                MinePhase.INCIDENT -> BossBar.Color.RED
+                MinePhase.COOLDOWN -> BossBar.Color.YELLOW
+                else -> BossBar.Color.BLUE
+            },
             targets(player, runtime),
             quietProgress = runtime.settings.miningOnly,
             sidebarRows = listOf(
@@ -89,8 +99,7 @@ internal class MineGuidanceSource(
     }
 
     private fun resourceName(resource: String, player: Player): Component =
-        locale?.renderPath("mine.resources.${MineResource.normalize(resource).lowercase()}", player)
-            ?: Component.text(MineResource.displayName(resource))
+        MineResourceText.name(locale, resource, player)
 
     private fun targets(player: Player, runtime: MineRuntime): List<WorksiteGuidanceTarget> {
         if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.MINING) return emptyList()
@@ -228,6 +237,13 @@ internal class MineGuidanceSource(
         MinePhase.INCIDENT -> runtime.state.incident?.let { it.progress to it.required } ?: (0 to 1)
         MinePhase.IDLE, MinePhase.HAZARD, MinePhase.COOLDOWN -> 0 to 1
     }
+
+    private fun barProgress(runtime: MineRuntime, done: Int, total: Int): Float =
+        if (runtime.state.phase == MinePhase.COOLDOWN) {
+            WorksiteCooldownTimer.progress(runtime.state.cooldownEndsAt, clock(), runtime.cooldownMillis)
+        } else {
+            done.toFloat() / total.coerceAtLeast(1)
+        }
 
     private fun progressVersion(runtime: MineRuntime): Long = (listOf(
         runtime.state.sequence, runtime.state.phase.ordinal.toLong(), runtime.state.prospected.toLong(),

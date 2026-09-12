@@ -4,6 +4,8 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 import io.mockk.every
+import io.mockk.verify
+import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.Chunk
 import org.bukkit.Location
@@ -16,11 +18,13 @@ import org.bukkit.event.block.BlockDamageEvent
 import org.bukkit.inventory.ItemStack
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.config.CuboidBounds
+import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.config.ZoneReference
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.CuboidRegionGateway
+import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.mineClientBreakTicks
 import ru.ruscrafting.farms.paper.mine.incident.entity.MineIncidentEntityEffects
 import ru.ruscrafting.farms.paper.mine.incident.entity.MineIncidentEntityIdentity
@@ -121,7 +125,8 @@ class MineBasicCycleMockBukkitTest : FunSpec({
                 )
             },
         )
-        val graph = graph(paper, settings)
+        val port = immediateMinePort()
+        val graph = graph(paper, settings, port = port)
         val runtime = graph.registry.byId(settings.id)!!
         val ordinary = world.getBlockAt(2, 64, 2).also { it.type = Material.IRON_ORE }
         val deepslate = world.getBlockAt(3, 64, 2).also { it.type = Material.DEEPSLATE_IRON_ORE }
@@ -134,10 +139,20 @@ class MineBasicCycleMockBukkitTest : FunSpec({
         graph.module.tick(1_000L)
         graph.mining.onBreakHigh(BlockBreakEvent(ordinary, player)) shouldBe true
         graph.mining.onBreakHigh(BlockBreakEvent(deepslate, player)) shouldBe true
+        ordinary.type shouldBe Material.AIR
+        deepslate.type shouldBe Material.AIR
 
         runtime.state.mined shouldBe 2
         runtime.state.minedByMaterial shouldBe mapOf("IRON" to 2)
         runtime.state.phase shouldBe MinePhase.EXTRACTION
+        verify(exactly = 1) {
+            port.showScreenTitle(
+                player,
+                MessageKey.MINE_RESOURCE_COMPLETED,
+                mapOf("resource" to Component.text("Iron")),
+                "mine:resource-complete:IRON",
+            )
+        }
     }
 
     test("managed ore is consumed by the order without item or experience drops") {
@@ -172,7 +187,7 @@ class MineBasicCycleMockBukkitTest : FunSpec({
         runtime.state.mined shouldBe 1
         event.isDropItems shouldBe false
         event.expToDrop shouldBe 0
-        ore.type shouldBe Material.DEEPSLATE
+        ore.type shouldBe Material.AIR
         player.inventory.contents.none { it?.type == Material.COAL } shouldBe true
         player.totalExperience shouldBe 0
     }
@@ -329,9 +344,10 @@ private fun graph(
     paper: MockBukkitTestRuntime,
     settings: ru.ruscrafting.farms.config.MineZoneSettings,
     effects: MineIncidentEntityEffects = RecordingIncidentEntities(),
+    port: WorksiteRuntimePort = immediateMinePort(),
 ) = testMineComponentGraph(
     paper.createSimplePlugin("MineBasicCycleTest"), CuboidRegionGateway(),
-    immediateMinePort().also {
+    port.also {
         every { it.guarded(any(), any()) } answers { secondArg<() -> Unit>().invoke() }
     },
     clock = { 1_000L }, journal = ImmediateMineJournal(), incidentEntityEffects = effects,
