@@ -1,7 +1,6 @@
 package ru.ruscrafting.farms.paper.mine.lift
 
 import io.kotest.core.spec.style.FunSpec
-import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.shouldBe
 import org.bukkit.Location
@@ -23,7 +22,7 @@ class MineLiftInteractionGateTest : FunSpec({
         gate.isDuplicate(player, 13L) shouldBe false
     }
 
-    test("cabin hitboxes follow configured landing sides and are removed with the scene") {
+    test("one cabin body hitbox covers every landing side and is removed with the scene") {
         val paper = MockBukkitTestRuntime.open()
         try {
             val world = paper.server.addSimpleWorld("mine")
@@ -44,23 +43,19 @@ class MineLiftInteractionGateTest : FunSpec({
             val scene = MineLiftScene(plugin, settings, world)
             scene.spawn(100.0) { net.kyori.adventure.text.Component.text("floor") }
 
-            scene.entranceSides().values.toSet() shouldContainExactlyInAnyOrder listOf(
-                MineLiftDoorSide.WEST,
-                MineLiftDoorSide.NORTH,
-            )
-            val entrances = world.entities.filterIsInstance<Interaction>().filter(scene::ownsEntrance)
-            entrances.size shouldBe 2
             val cabinHitbox = world.entities.filterIsInstance<Interaction>().single(scene::ownsCabinHitbox)
+            world.entities.filterIsInstance<Interaction>().count(scene::ownsCabinInteraction) shouldBe 1
+            scene.seats.size shouldBe 16
+            scene.panels.size shouldBe 2
             cabinHitbox.interactionWidth shouldBe 6.2f
             cabinHitbox.interactionHeight shouldBe 3.23f
             scene.move(90.0, open = true) shouldBe true
-            entrances.forEach { it.location.y shouldBe (90.9 plusOrMinus 0.0001) }
             cabinHitbox.location.y shouldBe (89.76 plusOrMinus 0.0001)
 
             val doors = world.entities.filterIsInstance<BlockDisplay>().filter { it.block.material == Material.COPPER_GRATE }
             doors.size shouldBe 2
             scene.close()
-            entrances.all { !it.isValid } shouldBe true
+            cabinHitbox.isValid shouldBe false
             doors.all { !it.isValid } shouldBe true
         } finally {
             paper.close()
