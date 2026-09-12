@@ -347,27 +347,7 @@ internal class MineVeinController(
             block.world.isChunkLoaded((block.x + it.modX) shr 4, (block.z + it.modZ) shr 4) &&
                 block.getRelative(it).type.isAir
         }
-        fun host(material: Material): Boolean {
-            val name = material.name
-            return material in setOf(Material.STONE, Material.GRANITE, Material.DIORITE, Material.ANDESITE,
-                Material.DEEPSLATE, Material.TUFF, Material.CALCITE, Material.NETHERRACK, Material.BASALT,
-                Material.SMOOTH_BASALT, Material.BLACKSTONE, Material.END_STONE, Material.DRIPSTONE_BLOCK,
-                Material.COBBLESTONE, Material.MOSSY_COBBLESTONE, Material.TERRACOTTA, Material.DIRT,
-                Material.COARSE_DIRT, Material.ROOTED_DIRT, Material.MOSS_BLOCK, Material.MUD,
-                Material.PACKED_MUD, Material.GRAVEL, Material.CLAY, Material.SAND, Material.RED_SAND,
-                Material.BONE_BLOCK, Material.SOUL_SAND, Material.SOUL_SOIL, Material.MAGMA_BLOCK,
-                Material.CRIMSON_NYLIUM, Material.WARPED_NYLIUM) ||
-                name.endsWith("_TERRACOTTA") && !name.endsWith("_GLAZED_TERRACOTTA") || name.endsWith("_CONCRETE") ||
-                name in setOf("SANDSTONE", "SMOOTH_SANDSTONE", "CUT_SANDSTONE", "CHISELED_SANDSTONE",
-                    "RED_SANDSTONE", "SMOOTH_RED_SANDSTONE", "CUT_RED_SANDSTONE", "CHISELED_RED_SANDSTONE",
-                    "POLISHED_ANDESITE", "POLISHED_DIORITE", "POLISHED_GRANITE", "POLISHED_BASALT",
-                    "COBBLED_DEEPSLATE", "POLISHED_DEEPSLATE", "DEEPSLATE_BRICKS", "CRACKED_DEEPSLATE_BRICKS",
-                    "DEEPSLATE_TILES", "CRACKED_DEEPSLATE_TILES", "STONE_BRICKS", "MOSSY_STONE_BRICKS",
-                    "CRACKED_STONE_BRICKS", "CHISELED_STONE_BRICKS", "PACKED_MUD", "MUD_BRICKS",
-                    "POLISHED_TUFF", "TUFF_BRICKS", "CHISELED_TUFF_BRICKS", "POLISHED_BLACKSTONE",
-                    "POLISHED_BLACKSTONE_BRICKS", "CRACKED_POLISHED_BLACKSTONE_BRICKS", "NETHER_BRICKS",
-                    "RED_NETHER_BRICKS", "CRACKED_NETHER_BRICKS", "END_STONE_BRICKS", "PURPUR_BLOCK", "BRICKS")
-        }
+        fun host(material: Material): Boolean = material in NATURAL_HOST_MATERIALS
         fun connected(seed: WorksitePosition, candidates: Set<WorksitePosition>, limit: Int): List<WorksitePosition> {
             val queue = ArrayDeque<WorksitePosition>()
             val seen = linkedSetOf<WorksitePosition>()
@@ -390,5 +370,24 @@ internal class MineVeinController(
             val height = (maxY - minY + 1).coerceAtLeast(1)
             return (((y - minY).coerceIn(0, height - 1).toLong() * bands) / height).toInt().coerceAtMost(bands - 1)
         }
+
+        // Vein placement may consume only unworked quarry stone. Built masonry,
+        // concrete, soil and road fill are deliberately outside this whitelist.
+        private val NATURAL_HOST_MATERIALS = setOf(
+            Material.STONE,
+            Material.GRANITE,
+            Material.DIORITE,
+            Material.ANDESITE,
+            Material.DEEPSLATE,
+            Material.TUFF,
+            Material.CALCITE,
+            Material.NETHERRACK,
+            Material.BASALT,
+            Material.SMOOTH_BASALT,
+            Material.BLACKSTONE,
+            Material.END_STONE,
+            Material.DRIPSTONE_BLOCK,
+            Material.COBBLED_DEEPSLATE,
+        )
     }
 }

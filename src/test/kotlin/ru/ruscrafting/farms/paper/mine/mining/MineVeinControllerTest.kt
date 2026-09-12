@@ -7,13 +7,18 @@ import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.WorksiteTickBudget
 
 class MineVeinControllerTest : FunSpec({
-    test("veins form connected bounded patches across decorative wall materials") {
-        listOf(Material.SMOOTH_SANDSTONE, Material.TUFF, Material.POLISHED_BASALT,
-            Material.ORANGE_TERRACOTTA, Material.GRAY_CONCRETE, Material.DEEPSLATE_BRICKS,
-            Material.MOSSY_STONE_BRICKS, Material.PACKED_MUD, Material.MUD_BRICKS,
-            Material.TUFF_BRICKS, Material.BONE_BLOCK, Material.MOSS_BLOCK,
-            Material.ROOTED_DIRT).forEach { MineVeinController.host(it) shouldBe true }
-        listOf(Material.CHEST, Material.BARREL, Material.RAIL, Material.AIR, Material.IRON_ORE,
+    test("veins use natural quarry stone and never replace built roads") {
+        listOf(Material.STONE, Material.GRANITE, Material.DIORITE, Material.ANDESITE,
+            Material.DEEPSLATE, Material.TUFF, Material.CALCITE, Material.NETHERRACK,
+            Material.BASALT, Material.SMOOTH_BASALT, Material.BLACKSTONE, Material.END_STONE,
+            Material.DRIPSTONE_BLOCK, Material.COBBLED_DEEPSLATE).forEach {
+            MineVeinController.host(it) shouldBe true
+        }
+        listOf(Material.STONE_BRICKS, Material.MOSSY_STONE_BRICKS, Material.DEEPSLATE_BRICKS,
+            Material.POLISHED_BASALT, Material.SMOOTH_SANDSTONE, Material.GRAY_CONCRETE,
+            Material.ORANGE_TERRACOTTA, Material.COBBLESTONE, Material.MOSSY_COBBLESTONE,
+            Material.DIRT, Material.SAND, Material.GRAVEL, Material.MUD,
+            Material.CHEST, Material.BARREL, Material.RAIL, Material.AIR, Material.IRON_ORE,
             Material.OAK_PLANKS).forEach { MineVeinController.host(it) shouldBe false }
         val wall = (0..4).flatMap { x -> (0..4).map { y -> WorksitePosition("world", x, y, 0) } }.toSet()
         val result = MineVeinController.connected(wall.first(), wall, 16)
