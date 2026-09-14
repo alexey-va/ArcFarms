@@ -28,6 +28,7 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
     test("menu name composition reloads through the ARC Core text template") {
         val paper = MockBukkitTestRuntime.open()
         try {
+            paper.installArcSidebarHost()
             paper.server.addSimpleWorld("sp11")
             paper.server.addSimpleWorld("world")
             val plugin = paper.server.pluginManager.loadPlugin(ArcFarmsPlugin::class.java) as ArcFarmsPlugin
@@ -55,6 +56,7 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
     test("complete plugin boot registers commands, remains entity-stable, and shuts down cleanly") {
         val paper = MockBukkitTestRuntime.open()
         try {
+            paper.installArcSidebarHost()
             val world = paper.server.addSimpleWorld("sp11")
             paper.server.addSimpleWorld("world")
             val plugin = paper.server.pluginManager.loadPlugin(ArcFarmsPlugin::class.java) as ArcFarmsPlugin

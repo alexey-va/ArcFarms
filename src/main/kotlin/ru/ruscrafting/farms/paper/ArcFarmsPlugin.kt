@@ -9,6 +9,8 @@ import ru.arc.core.Tasks
 import ru.arc.observability.RuntimeHealthContribution
 import ru.arc.observability.RuntimeHealthState
 import ru.arc.paper.runtime.PaperPluginRuntime
+import ru.arc.paper.api.ArcSidebarPriorities
+import ru.arc.paper.api.ArcSidebarService
 import ru.arc.redis.RedisManager
 import ru.arc.redis.RedisModuleConfig
 import ru.arc.redis.ServerIdentity
@@ -117,6 +119,13 @@ open class ArcFarmsPlugin : JavaPlugin() {
                 logger.log(Level.WARNING, "ArcFarms backend transfer send failed", failure)
             }).also { transfer = it }
             val menuPlatform = ArcFarmsMenuPlatform(this)
+            val sidebar = requireNotNull(server.servicesManager.load(ArcSidebarService::class.java)) {
+                "ARC shared sidebar service is unavailable"
+            }.register(
+                this,
+                "worksite",
+                ArcSidebarPriorities.ACTIVITY,
+            ).also(lifecycle::own)
             val mineLift = runCatching {
                 lifecycle.own(ru.ruscrafting.farms.paper.mine.lift.MineLiftRuntimeManager(this, locale))
             }.getOrElse { failure ->
@@ -139,6 +148,7 @@ open class ArcFarmsPlugin : JavaPlugin() {
                 economy = resolveEconomy(settings),
                 menus = menuPlatform,
                 mineLift = mineLift,
+                sidebar = sidebar,
             ))
             service = activeService
             activeService.start()

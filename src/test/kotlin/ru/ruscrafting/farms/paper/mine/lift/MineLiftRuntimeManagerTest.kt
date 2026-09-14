@@ -9,6 +9,7 @@ import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.configuration.file.YamlConfiguration
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.paper.ArcFarmsPlugin
+import ru.ruscrafting.farms.paper.installArcSidebarHost
 import java.io.InputStreamReader
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
@@ -18,6 +19,7 @@ class MineLiftRuntimeManagerTest : FunSpec({
     test("a corrupt additional journal does not discard the main runtime") {
         val paper = MockBukkitTestRuntime.open()
         try {
+            paper.installArcSidebarHost()
             paper.server.addSimpleWorld("sp11")
             paper.server.addSimpleWorld("world")
             paper.server.addSimpleWorld("mine")

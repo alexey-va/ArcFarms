@@ -14,8 +14,6 @@ import org.bukkit.Material
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.Horse
 import org.bukkit.event.player.PlayerInteractEntityEvent
-import org.mockbukkit.mockbukkit.scoreboard.ObjectiveMock
-import org.mockbukkit.mockbukkit.scoreboard.ScoreMock
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import ru.arc.config.Config
 import ru.arc.paper.testing.MockBukkitTestRuntime
@@ -43,6 +41,7 @@ class ArcFarmsReloadMockBukkitIntegrationTest : FunSpec({
     test("food delivery runtime, participant gear and HUD survive hot reload") {
         val paper = MockBukkitTestRuntime.open()
         try {
+            paper.installArcSidebarHost()
             val world = paper.server.addSimpleWorld("sp11")
             paper.server.addSimpleWorld("world")
             val plugin = paper.server.pluginManager.loadPlugin(ArcFarmsPlugin::class.java) as ArcFarmsPlugin
@@ -58,9 +57,6 @@ class ArcFarmsReloadMockBukkitIntegrationTest : FunSpec({
             every { PaperFarmRouteChunkLoader.retain(any(), any()) } returns true
             mockkObject(PaperFarmTextDisplayRenderer)
             every { PaperFarmTextDisplayRenderer.render(any(), any(), any()) } just Runs
-            mockkConstructor(ObjectiveMock::class, ScoreMock::class)
-            every { anyConstructed<ObjectiveMock>().numberFormat(any()) } just Runs
-            every { anyConstructed<ScoreMock>().customName(any()) } just Runs
             paper.server.pluginManager.enablePlugin(plugin)
 
             val participant = paper.addPlayer("RouteDriver")
@@ -124,9 +120,6 @@ class ArcFarmsReloadMockBukkitIntegrationTest : FunSpec({
             horseAfter.getAttribute(org.bukkit.attribute.Attribute.MOVEMENT_SPEED)?.baseValue shouldBe 0.31
             (privateProperty(service, "periodicTaskSupervisor") as RuntimeTaskSupervisor).trackedCount() shouldBe periodicBefore
             service.farmScoreboardTitle(participant.uniqueId) shouldBe "§aReloaded farm"
-            PlainTextComponentSerializer.plainText().serialize(
-                requireNotNull(participant.scoreboard.getObjective("arcfarms_work")).displayName(),
-            ) shouldBe "Reloaded farm"
 
             val locale = privateProperty(plugin, "locale") as ArcFarmsLocale
             val plain = PlainTextComponentSerializer.plainText()
@@ -149,8 +142,6 @@ class ArcFarmsReloadMockBukkitIntegrationTest : FunSpec({
             world.entities.filterIsInstance<Horse>().single().uniqueId shouldBe horseId
             horseAfter.passengers.singleOrNull() shouldBe participant
             service.farmScoreboardTitle(participant.uniqueId) shouldBe "§aReloaded farm"
-            plain.serialize(requireNotNull(participant.scoreboard.getObjective("arcfarms_work")).displayName()) shouldBe
-                "Reloaded farm"
         } finally {
             unmockkAll()
             paper.close()

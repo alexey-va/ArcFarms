@@ -11,6 +11,7 @@ import org.bukkit.Sound
 import org.bukkit.entity.Player
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.plugin.Plugin
+import ru.arc.paper.api.ArcSidebarHandle
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
@@ -51,6 +52,7 @@ internal class PaperWorksiteAdapter(
     private val adminEditing: (Player) -> Boolean,
     private val persist: () -> CompletableFuture<Unit>,
     private val guard: (String, () -> Unit) -> Unit,
+    sidebar: ArcSidebarHandle?,
 ) : WorksiteAccessPort,
     WorksiteAudiencePort,
     WorksiteStatePort,
@@ -59,7 +61,7 @@ internal class PaperWorksiteAdapter(
     WorksiteNetworkPort {
     fun ports(): WorksitePorts = WorksitePorts(this, this, this, this, this, this)
 
-    private val sidebars = ru.ruscrafting.farms.paper.worksite.WorksiteSidebarController()
+    private val sidebars = ru.ruscrafting.farms.paper.worksite.WorksiteSidebarController(sidebar)
 
     private val activeBars = mutableMapOf<ActivityBarKey, BossBar>()
 

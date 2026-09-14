@@ -71,6 +71,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import java.util.random.RandomGenerator
 import java.util.logging.Level
+import ru.arc.paper.api.ArcSidebarHandle
 
 class ArcFarmsService(
     private val plugin: Plugin,
@@ -90,6 +91,7 @@ class ArcFarmsService(
     private val random: RandomGenerator = RandomGenerator.getDefault(),
     private val menus: ArcFarmsMenuPlatform,
     private val mineLift: MineLiftAccess? = null,
+    private val sidebar: ArcSidebarHandle? = null,
 ) : AutoCloseable {
     @Volatile
     private var settings: ArcFarmsConfig = initialSettings
@@ -122,6 +124,7 @@ class ArcFarmsService(
         adminEditing = ::isAdminEditing,
         persist = ::persistAsync,
         guard = ::runGuarded,
+        sidebar = sidebar,
     )
     private val worksitePorts = worksiteAdapter.ports()
     private val worksiteServiceItems = ru.ruscrafting.farms.paper.worksite.LateBoundWorksiteServiceItems()
