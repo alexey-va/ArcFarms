@@ -173,7 +173,6 @@ internal class ArcFarmsRuntimeValidator(
                 }
             }
         }
-        LumbermillController.validatePersisted(candidate.lumbermills, persisted.lumbermills)
         MineController.validatePersisted(
             candidate.mines,
             persisted.mines,
@@ -205,7 +204,6 @@ internal class ArcFarmsRuntimeValidator(
                 }) { "Cannot move or shrink active farm patch region $id during reload" }
             }
         }
-        LumbermillController.validateReload(candidate.lumbermills, snapshot.lumbermills)
         MineController.validateReload(candidate.mines, snapshot.mines, mineJournal)
     }
 
@@ -236,7 +234,6 @@ internal class ArcFarmsRuntimeValidator(
                 "Pending fixed crop ${pending.positionKey} is no longer configured in ${pending.zoneId}"
             }
         }
-        LumbermillController.validateRuntime(candidate.lumbermills, regionGateway)
         MineController.validateRuntime(candidate.mines, regionGateway)
     }
 

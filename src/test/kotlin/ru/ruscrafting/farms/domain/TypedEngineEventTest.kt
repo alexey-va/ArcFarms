@@ -12,12 +12,6 @@ class TypedEngineEventTest : FunSpec({
             preparationCrop = "WHEAT",
             now = 1_000L,
         )
-        val lumber: EngineResult<LumberShiftState, LumberShiftEvent> = LumberShiftEngine.start(
-            current = LumberShiftState(),
-            species = "OAK",
-            rules = LumberRules(1, 1, 1, 0),
-            now = 1_000L,
-        )
         val mine: EngineResult<MineShiftState, MineShiftEvent> = MineShiftEngine.start(
             current = MineShiftState(),
             rules = MineRules(2, 1, 1, 0),
@@ -25,7 +19,6 @@ class TypedEngineEventTest : FunSpec({
         )
 
         farm.events shouldContainExactly listOf(FarmShiftEvent.STARTED)
-        lumber.events shouldContainExactly listOf(LumberShiftEvent.STARTED)
         mine.events shouldContainExactly listOf(MineShiftEvent.STARTED)
     }
 })

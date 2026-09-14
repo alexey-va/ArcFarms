@@ -48,9 +48,11 @@ internal class MineIncidentScheduler(
     }
 
     fun force(runtime: MineRuntime, type: MineIncidentType, now: Long): Boolean {
-        if (runtime.state.phase == MinePhase.INCIDENT) return false
-        val phaseRank = PHASE_RANK[runtime.state.phase] ?: return false
-        if (!runtime.settings.miningOnly && phaseRank < (INCIDENT_RANK[type] ?: 0)) return false
+        val key = "${runtime.settings.id}:${runtime.state.sequence}:${runtime.state.incidentCursor}:$type"
+        if (stateBlocker(runtime, type) != null) {
+            if (diagnosed.add(key)) logFailure(runtime, type)
+            return false
+        }
         val started = when (type) {
             MineIncidentType.CAVE_IN -> caveIn.start(runtime, now)
             MineIncidentType.GAS_LEAK -> gasLeak.start(runtime, 2, now)
@@ -60,9 +62,7 @@ internal class MineIncidentScheduler(
             MineIncidentType.CREATURE_NEST -> creatures.start(runtime, 3, now)
             MineIncidentType.POWER_FAILURE -> power.start(runtime, 2, now)
             MineIncidentType.LOST_MINER -> lostMiner.start(runtime, now)
-            else -> false
         }
-        val key = "${runtime.settings.id}:${runtime.state.sequence}:${runtime.state.incidentCursor}:$type"
         if (started) {
             diagnosed.remove(key)
         } else if (diagnosed.add(key)) {
@@ -72,8 +72,12 @@ internal class MineIncidentScheduler(
     }
 
     fun diagnostics(runtime: MineRuntime): List<MineIncidentPlacementReport> = SUPPORTED_TYPES.map { type ->
-        if (type == MineIncidentType.CAVE_IN) caveIn.diagnostics(runtime)
-        else diagnostics.report(runtime, type, required(type))
+        val blocker = stateBlocker(runtime, type)
+        when {
+            blocker != null -> MineIncidentPlacementReport(type, required(type), 0, 0, mapOf(blocker to 1))
+            type == MineIncidentType.CAVE_IN -> caveIn.diagnostics(runtime)
+            else -> diagnostics.report(runtime, type, required(type))
+        }
     }
 
     fun cleanup() {
@@ -83,13 +87,22 @@ internal class MineIncidentScheduler(
 
     private fun logFailure(runtime: MineRuntime, type: MineIncidentType) {
         val required = required(type)
+        val blocker = stateBlocker(runtime, type)
         state.log(
             Level.WARNING,
             "Mine incident start rejected zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
                 "type=$type phase=${runtime.state.phase} " +
-                (caveIn.placementFailure(runtime.settings.id).takeIf { type == MineIncidentType.CAVE_IN }
+                (blocker?.let { "required=$required usable=0 considered=0 rejected={$it=1}" }
+                    ?: caveIn.placementFailure(runtime.settings.id).takeIf { type == MineIncidentType.CAVE_IN }
                     ?: diagnostics.describe(runtime, type, required)),
         )
+    }
+
+    private fun stateBlocker(runtime: MineRuntime, type: MineIncidentType): String? {
+        if (runtime.state.phase == MinePhase.INCIDENT || runtime.state.incident != null) return "incident_already_active"
+        val phaseRank = PHASE_RANK[runtime.state.phase] ?: return "phase_not_ready"
+        if (!runtime.settings.miningOnly && phaseRank < (INCIDENT_RANK[type] ?: 0)) return "phase_too_early"
+        return null
     }
 
     companion object {

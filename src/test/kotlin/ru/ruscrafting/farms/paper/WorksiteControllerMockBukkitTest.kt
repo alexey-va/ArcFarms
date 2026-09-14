@@ -22,19 +22,15 @@ import ru.arc.core.TestTaskScheduler
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.CuboidBounds
-import ru.ruscrafting.farms.config.LumberZoneSettings
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.config.MineZoneSettings
 import ru.ruscrafting.farms.config.ZoneReference
 import ru.ruscrafting.farms.domain.ActivityKind
-import ru.ruscrafting.farms.domain.LumberPhase
-import ru.ruscrafting.farms.domain.LumberShiftState
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineRules
 import ru.ruscrafting.farms.domain.MineShiftEngine
 import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.domain.PendingMineBlock
-import ru.ruscrafting.farms.paper.lumber.lumberSliceSettings
 import ru.ruscrafting.farms.paper.mine.mineV2Settings
 import ru.ruscrafting.farms.persistence.MineRecoveryJournal
 import java.util.UUID
@@ -55,61 +51,6 @@ class WorksiteControllerMockBukkitTest : FunSpec({
     }
 
     afterEach { paper.close() }
-
-    test("lumbermill completes a full felling and processing lifecycle on Bukkit events") {
-        var now = 1_000L
-        val port = testPort()
-        val controller = lumberController(CuboidRegionGateway(), testLocale(), port, { now })
-        controller.rebuild(listOf(lumberSettings()), emptyMap(), cooldownMillis = 30_000L)
-
-        listOf(1, 2).forEach { x ->
-            val block = world.getBlockAt(x, 64, 1).apply { type = Material.OAK_LOG }
-            val event = BlockBreakEvent(block, player)
-            controller.onBreakHigh(event) shouldBe true
-            event.isCancelled shouldBe false
-            controller.onBreakMonitor(event) shouldBe true
-            now += 100L
-        }
-
-        controller.states().getValue("sawmill").phase shouldBe LumberPhase.PROCESSING
-        val station = world.getBlockAt(11, 64, 11).apply { type = Material.CRAFTING_TABLE }
-        repeat(2) {
-            val event = PlayerInteractEvent(
-                player,
-                Action.RIGHT_CLICK_BLOCK,
-                player.inventory.itemInMainHand,
-                station,
-                BlockFace.UP,
-                EquipmentSlot.HAND,
-            )
-            controller.onInteract(event, station, player) shouldBe true
-            event.isCancelled shouldBe true
-            now += 100L
-        }
-
-        val completed = controller.states().getValue("sawmill")
-        completed.phase shouldBe LumberPhase.COOLDOWN
-        completed.felled shouldBe 2
-        completed.processed shouldBe 2
-        verify(exactly = 1) { port.recordCompletion(ActivityKind.LUMBER, any()) }
-        verify(exactly = 1) { port.complete(ActivityKind.LUMBER, any(), any()) }
-    }
-
-    test("lumbermill rejects another species without losing the selected order") {
-        val port = testPort()
-        val controller = lumberController(CuboidRegionGateway(), testLocale(), port, { 1_000L })
-        controller.rebuild(listOf(lumberSettings()), emptyMap(), cooldownMillis = 30_000L)
-        val block = world.getBlockAt(1, 64, 1).apply { type = Material.BIRCH_LOG }
-
-        controller.onBreakMonitor(BlockBreakEvent(block, player)) shouldBe true
-
-        controller.states().getValue("sawmill").let { state ->
-            state.phase shouldBe LumberPhase.FELLING
-            state.species shouldBe "OAK"
-            state.felled shouldBe 0
-        }
-        verify(exactly = 1) { port.sendActionBar(player, MessageKey.LUMBER_WRONG_SPECIES, any()) }
-    }
 
     test("mine journals a real block mutation and restores it after the deadline") {
         var now = 5_000L
@@ -333,32 +274,7 @@ class WorksiteControllerMockBukkitTest : FunSpec({
         MineController.validateReload(listOf(mineSettings()), mapOf("mine" to active), journal)
     }
 
-    test("lumber reload validation rejects removing the selected species") {
-        val active = LumberShiftState(phase = LumberPhase.FELLING, species = "OAK")
-
-        shouldThrow<IllegalArgumentException> {
-            LumbermillController.validateReload(
-                listOf(lumberSettings().copy(species = listOf("BIRCH"))),
-                mapOf("sawmill" to active),
-            )
-        }
-    }
-
-    test("reload validation rejects removing active V2 lumber and mine orders") {
-        val lumber = lumberSliceSettings()
-        val activeLumber = LumberShiftState(
-            engineVersion = 2,
-            phase = LumberPhase.FELLING,
-            orderId = lumber.orders.single().id,
-            species = "OAK",
-        )
-        shouldThrow<IllegalArgumentException> {
-            LumbermillController.validateReload(
-                listOf(lumber.copy(orders = listOf(lumber.orders.single().copy(id = "replacement")))),
-                mapOf(lumber.id to activeLumber),
-            )
-        }
-
+    test("reload validation rejects removing an active V2 mine order") {
         val mine = mineV2Settings()
         val activeMine = MineShiftState(
             engineVersion = 2,
@@ -400,13 +316,6 @@ private fun testPort(
     }
 }
 
-private fun lumberController(
-    regions: RegionGateway,
-    locale: ArcFarmsLocale,
-    port: WorksiteRuntimePort,
-    clock: () -> Long,
-) = LumbermillController(regions, locale, port, port, port, port, port, port, clock)
-
 private fun mineController(
     regions: RegionGateway,
     locale: ArcFarmsLocale,
@@ -416,18 +325,6 @@ private fun mineController(
     random: java.util.random.RandomGenerator,
     blockEffects: MineBlockEffects,
 ) = MineController(regions, locale, journal, port, port, port, port, port, port, clock, random, blockEffects)
-
-private fun lumberSettings() = LumberZoneSettings(
-    id = "sawmill",
-    reference = ZoneReference("worksites", null, CuboidBounds(0, 60, 0, 8, 70, 8)),
-    station = ZoneReference("worksites", null, CuboidBounds(10, 60, 10, 12, 70, 12)),
-    permission = "arcfarms.use.lumber",
-    fellingQuota = 2,
-    processingQuota = 2,
-    processingPerUse = 1,
-    species = listOf("OAK"),
-    stationMaterials = setOf("CRAFTING_TABLE"),
-)
 
 private fun mineSettings() = MineZoneSettings(
     id = "mine",

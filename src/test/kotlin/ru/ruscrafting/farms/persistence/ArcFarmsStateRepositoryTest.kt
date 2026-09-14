@@ -22,8 +22,6 @@ import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.domain.FarmSpecialIncidentState
 import ru.ruscrafting.farms.domain.FarmTornadoState
 import ru.ruscrafting.farms.domain.FarmSeederStage
-import ru.ruscrafting.farms.domain.LumberPhase
-import ru.ruscrafting.farms.domain.LumberShiftState
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.domain.FarmRewardItem
@@ -949,24 +947,6 @@ class ArcFarmsStateRepositoryTest : FunSpec({
                     tilledPlots = setOf(escaped),
                     preparationProgress = 1,
                     preparationRequired = 1,
-                ),
-            ),
-        )
-
-        ArcFarmsStateRepository(root).use { repository ->
-            val failure = shouldThrow<ExecutionException> { repository.saveBlocking(invalid) }
-            (failure.cause is IllegalArgumentException) shouldBe true
-        }
-    }
-
-    test("state persistence rejects active lumber without a species") {
-        val root = Files.createTempDirectory("arcfarms-state-invalid-lumber-test")
-        val invalid = ArcFarmsState(
-            lumbermills = mapOf(
-                "lumber" to LumberShiftState(
-                    phase = LumberPhase.FELLING,
-                    sequence = 1,
-                    startedAt = 1_000,
                 ),
             ),
         )

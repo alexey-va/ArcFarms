@@ -33,15 +33,6 @@ class MineLiftRuntimeManagerTest : FunSpec({
                 config.set("farm-zones.$id.bounds.min", listOf(0, 0, 0))
                 config.set("farm-zones.$id.bounds.max", listOf(10, 10, 10))
             }
-            config.getConfigurationSection("lumber-zones")?.getKeys(false).orEmpty().forEach { id ->
-                config.set("lumber-zones.$id.enabled", false)
-                config.set("lumber-zones.$id.region", null)
-                config.set("lumber-zones.$id.station-region", null)
-                config.set("lumber-zones.$id.bounds.min", listOf(0, 0, 0))
-                config.set("lumber-zones.$id.bounds.max", listOf(10, 10, 10))
-                config.set("lumber-zones.$id.station-bounds.min", listOf(0, 0, 0))
-                config.set("lumber-zones.$id.station-bounds.max", listOf(10, 10, 10))
-            }
             config.getConfigurationSection("mine-zones")?.getKeys(false).orEmpty().forEach { id ->
                 config.set("mine-zones.$id.enabled", false)
                 config.set("mine-zones.$id.region", null)

@@ -64,8 +64,7 @@ internal class MineVersionedModule(
 ) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockBreakGuard, WorksiteBlockDamageHandler, WorksiteBlockPlaceHandler,
     WorksiteBlockInteractHandler,
     WorksiteMoveHandler, WorksiteGuidanceHandler, WorksiteFastVisualHandler, WorksiteServiceItemOwner,
-    WorksiteParticipantOwner, WorksiteEntityInteractHandler, WorksiteEntityDeathHandler, WorksiteAdminHandler,
-    ru.ruscrafting.farms.paper.WorksiteParticipantRecoveryOwner, ru.ruscrafting.farms.paper.WorksiteTeleportRetention, ru.ruscrafting.farms.paper.WorksiteTemporaryBlockOwner {
+    WorksiteParticipantOwner, WorksiteEntityInteractHandler, WorksiteEntityDeathHandler, WorksiteAdminHandler {
     private val engineVersion = initial.firstOrNull()?.engineVersion ?: 1
     private val delegate: WorksiteModule<MineShiftState> = if (engineVersion == 2) {
         MineComponentGraph(
@@ -139,11 +138,6 @@ internal class MineVersionedModule(
     override fun beforeChunkUnload(chunk: Chunk) = delegate.beforeChunkUnload(chunk)
     override fun beforeReload(reason: String) = delegate.beforeReload(reason)
     override fun cleanup(reason: String) = delegate.cleanup(reason)
-
-    override fun protectsTemporaryBlock(location: Location): Boolean = (delegate as? ru.ruscrafting.farms.paper.WorksiteTemporaryBlockOwner)?.protectsTemporaryBlock(location) == true
-
-    override fun recoverPlayer(player: Player) { (delegate as? ru.ruscrafting.farms.paper.WorksiteParticipantRecoveryOwner)?.recoverPlayer(player) }
-    override fun retainOnTeleport(player: Player, destination: org.bukkit.Location): Boolean = (delegate as? ru.ruscrafting.farms.paper.WorksiteTeleportRetention)?.retainOnTeleport(player, destination) == true
 
     override fun onBreakHigh(event: BlockBreakEvent): Boolean =
         (delegate as? WorksiteBlockBreakHandler)?.onBreakHigh(event) == true

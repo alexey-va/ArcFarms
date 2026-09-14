@@ -60,14 +60,14 @@ internal class MineComponentGraph(
     internal val registry = MineRuntimeRegistry()
     val recovery = MineBlockRecoveryController(journal, ports.access, ports.state, ports.tasks, clock)
     val index = MineBlockIndex(plugin)
-    private val transitions = MineTransitionCoordinator(ports.state, ports.stats)
+    private val transitions = MineTransitionCoordinator(ports.state, ports.stats, ports.audience, locale)
     private val incidents = MineIncidentCoordinator(transitions, ports.state)
     private val incidentJournal = MineIncidentBlockJournal(recovery)
     val caveIn = MineCaveInIncident(registry, index, incidents, incidentJournal, recovery, ports.audience, ports.state, lift, incidentEntityEffects)
-    val trackDamage = MineTrackDamageIncident(registry, index, incidents, serviceItems, ports.state)
+    val trackDamage = MineTrackDamageIncident(registry, index, incidents, serviceItems, ports.state, locale)
     val gasLeak = MineGasLeakIncident(registry, index, incidents)
     val crystalResonance = MineCrystalResonanceIncident(registry, index, incidents)
-    val flooding = MineFloodingIncident(registry, index, incidents, incidentJournal, serviceItems, ports.state)
+    val flooding = MineFloodingIncident(registry, index, incidents, incidentJournal, serviceItems, ports.state, locale)
     val powerFailure = MinePowerFailureIncident(registry, index, incidents, incidentJournal, ports.state)
     val cartScene = MineCartScene(cartEffects)
     val extraction = MineExtractionController(
@@ -76,32 +76,18 @@ internal class MineComponentGraph(
     val loading = MineLoadingController(
         registry, index, extraction, transitions, serviceItems, locale, ports.access, ports.audience, ports.state, clock,
     )
-    val creatureNest = MineCreatureNestIncident(registry, index, incidents, incidentEntityEffects)
+    val creatureNest = MineCreatureNestIncident(registry, index, incidents, incidentEntityEffects, ports.access, locale)
     val lostMiner = MineLostMinerIncident(registry, index, incidents, incidentEntityEffects, extraction::deliveryPoint)
-    val scenarioRooms = ru.ruscrafting.farms.paper.mine.incident.scenario.MineScenarioRooms(
-        plugin, ports.tasks, ports.access, ports.state,
-        ru.ruscrafting.farms.paper.platform.PaperFarmBlockDataDecoder,
-        ru.ruscrafting.farms.paper.farm.care.mole.PaperMoleBurrowChunkRetention(plugin),
-        ru.ruscrafting.farms.paper.platform.PaperFarmRouteChunkLoader, locale,
-    )
-    val scenarios = ru.ruscrafting.farms.paper.mine.incident.scenario.MineScenarioController(
-        registry, scenarioRooms, incidents, ports.access, ports.state, locale, lift,
-        ru.ruscrafting.farms.paper.mine.incident.entity.MineScenarioActors(incidentEntityEffects),
-        PaperMineCartEffects(plugin, "mine_scenario_cart", ru.ruscrafting.farms.config.MineCartVisualSettings()),
-        ports.audience, ru.ruscrafting.farms.paper.mine.incident.scenario.MineScenarioEnvironment(
-            ru.ruscrafting.farms.paper.platform.PaperFarmBlockDataDecoder),
-        ru.ruscrafting.farms.paper.mine.incident.scenario.MineScenarioCargo(plugin),
-    )
     val incidentScheduler = MineIncidentScheduler(
         caveIn, gasLeak, flooding, trackDamage, crystalResonance, creatureNest, powerFailure, lostMiner,
         ru.ruscrafting.farms.paper.mine.incident.MineIncidentPlacementDiagnostics(index), ports.state,
     )
     val incidentSet = MineIncidentSet(
         registry, caveIn, trackDamage, gasLeak, crystalResonance, flooding, powerFailure, creatureNest, lostMiner,
-        incidentScheduler, incidentJournal, scenarios,
+        incidents, incidentScheduler, incidentJournal,
     )
     val guidance = MineGuidanceSource(
-        registry, ports.audience, locale, extraction::guidanceTarget, { extraction.routeFor(it)?.finalIndex ?: 1 }, scenarioRooms, clock,
+        registry, ports.audience, locale, extraction::guidanceTarget, { extraction.routeFor(it)?.finalIndex ?: 1 }, clock,
     )
     private val guidancePresenter = WorksiteGuidancePresenter(ports.audience, ports.access, guidance)
     val prospecting = MineProspectingController(
@@ -122,11 +108,11 @@ internal class MineComponentGraph(
         }
     }
     val admin = MineAdminService(
-        registry, index, tickets, prospecting, extraction, incidentScheduler, ports.state,
+        registry, index, tickets, prospecting, extraction, incidentScheduler, incidentSet, ports.state,
     )
     val module = MineModule(
         regions, ports.access, ports.audience, ports.tasks, ports.state, transitions, registry, recovery, index, tickets, prospecting, mining, loading, extraction, cartScene,
-        incidentSet, guidancePresenter, admin, clock, scenarios, veins, pickaxes,
+        incidentSet, guidancePresenter, admin, clock, veins, pickaxes,
     )
 
     internal val mutableRuntimeCollectionCount: Int = 1

@@ -5,7 +5,7 @@ plugins {
     jacoco
 }
 group = "ru.ruscrafting"
-version = "0.40.28"
+version = "0.40.29"
 description = "Shared farm, lumbermill, and mine activities for RusCrafting"
 
 val integrationTestSourceSet = sourceSets.create("integrationTest") {
@@ -150,22 +150,15 @@ plugwright {
                 .replace("x: 201.65\n      y: 49.0\n      z: 453.46", "x: 116.5\n      y: -60.0\n      z: 0.5")
                 .replace("checkpoint-radius: 8.0", "checkpoint-radius: 2.0")
                 .replace(
-                    Regex("(?s)lumber-zones:.*?(?=mine-zones:)"),
-                    projectDir.resolve("src/test/e2e/fixtures/lumber-zone.yml").readText(),
-                )
-                .replace(
                     Regex("(?ms)^mine-zones:.*?(?=^[a-z][a-z-]*:|\\z)"),
                     projectDir.resolve("src/test/e2e/fixtures/mine-zone.yml").readText(),
                 )
                 .replace("region: farm", "bounds:\n      min: [96, -64, -16]\n      max: [128, -40, 16]")
-                .replace("region: spawn_lumbermill", "bounds:\n      min: [-8, 63, -8]\n      max: [8, 80, 8]")
-                .replace("station-region: spawn_lumberhouse", "station-bounds:\n      min: [-8, 63, -8]\n      max: [8, 80, 8]")
                 .replace("region: mine1", "bounds:\n      min: [-8, 20, -8]\n      max: [8, 80, 8]")
                 .replace("region: mine2", "bounds:\n      min: [-8, 20, -8]\n      max: [8, 80, 8]")
                 .replace("region: mine3", "bounds:\n      min: [-8, 20, -8]\n      max: [8, 80, 8]")
                 .replace("region: mine4", "bounds:\n      min: [-8, 20, -8]\n      max: [8, 80, 8]")
                 .replace(Regex("region: [^\\n]+"), "bounds:\n      min: [-8, 20, -8]\n      max: [8, 80, 8]")
-                .replace(Regex("station-region: [^\\n]+"), "station-bounds:\n      min: [-8, 20, -8]\n      max: [8, 80, 8]"),
         )
         if (System.getenv("MINE_LIFT_TEST") == "true") {
             file("plugins/ArcFarms/modules/mine-lift.yml", projectDir.resolve("src/test/e2e/fixtures/mine-lift.yml"))

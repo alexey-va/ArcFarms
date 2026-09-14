@@ -34,7 +34,6 @@ floors:
 
 # Additional service lifts use the same profile schema and are disabled by default.
 # They have their own passenger journal and entity identity; only the root profile
-# above is exposed through MineLiftAccess to mine scenarios.
 # additional-lifts:
 #   west:
 #     enabled: false

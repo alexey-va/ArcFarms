@@ -21,7 +21,6 @@ import ru.ruscrafting.farms.domain.FarmLocationOverrides
 import ru.ruscrafting.farms.domain.FarmRouteState
 import ru.ruscrafting.farms.domain.FixedFarmCropJournalState
 import ru.ruscrafting.farms.domain.MineBlockJournalState
-import ru.ruscrafting.farms.domain.LumberBlockJournalState
 import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseSnapshot
 import ru.ruscrafting.farms.network.ArcFarmsNetworkRepository
 import ru.ruscrafting.farms.network.NoOpActivityNetworkGateway
@@ -30,7 +29,6 @@ import ru.ruscrafting.farms.persistence.FarmLocationRepository
 import ru.ruscrafting.farms.persistence.FarmRouteRepository
 import ru.ruscrafting.farms.persistence.FixedFarmCropJournal
 import ru.ruscrafting.farms.persistence.MineBlockJournal
-import ru.ruscrafting.farms.persistence.LumberBlockJournal
 import java.nio.file.Files
 import java.util.logging.Level
 
@@ -42,7 +40,6 @@ open class ArcFarmsPlugin : JavaPlugin() {
     private var service: ArcFarmsService? = null
     private var stateRepository: ArcFarmsStateRepository? = null
     private var mineJournal: MineBlockJournal? = null
-    private var lumberJournal: LumberBlockJournal? = null
     private var fixedCropJournal: FixedFarmCropJournal? = null
     private var farmLocationRepository: FarmLocationRepository? = null
     private var farmRouteRepository: FarmRouteRepository? = null
@@ -101,7 +98,6 @@ open class ArcFarmsPlugin : JavaPlugin() {
             }
             val stateStore = lifecycle.own(ArcFarmsStateRepository(dataRoot)).also { stateRepository = it }
             val mineStore = lifecycle.own(MineBlockJournal(dataRoot)).also { mineJournal = it }
-            val lumberStore = lifecycle.own(LumberBlockJournal(dataRoot)).also { lumberJournal = it }
             val fixedCropStore = lifecycle.own(FixedFarmCropJournal(dataRoot)).also { fixedCropJournal = it }
             val locationStore = lifecycle.own(FarmLocationRepository(dataRoot)).also { farmLocationRepository = it }
             val routeStore = lifecycle.own(FarmRouteRepository(dataRoot)).also { farmRouteRepository = it }
@@ -133,7 +129,6 @@ open class ArcFarmsPlugin : JavaPlugin() {
                 locale = locale,
                 stateRepository = stateStore,
                 mineJournal = mineStore,
-                lumberJournal = lumberStore,
                 fixedCropJournal = fixedCropStore,
                 farmLocationRepository = locationStore,
                 farmRouteRepository = routeStore,
@@ -176,11 +171,10 @@ open class ArcFarmsPlugin : JavaPlugin() {
                         !redisReady -> RuntimeHealthState.DEGRADED
                         else -> RuntimeHealthState.UP
                     },
-                    recoveryBacklog = mineStore.pendingRecordCount() + lumberStore.records().size + fixedCropStore.pendingRecordCount(),
+                    recoveryBacklog = mineStore.pendingRecordCount() + fixedCropStore.pendingRecordCount(),
                     schemas = mapOf(
                         "state" to ArcFarmsState.SCHEMA_VERSION,
                         "mine_journal" to MineBlockJournalState.SCHEMA_VERSION,
-                        "lumber_journal" to LumberBlockJournalState.SCHEMA_VERSION,
                         "fixed_crop_journal" to FixedFarmCropJournalState.SCHEMA_VERSION,
                         "farm_locations" to FarmLocationOverrides.SCHEMA_VERSION,
                         "farm_routes" to FarmRouteState.SCHEMA_VERSION,
@@ -217,7 +211,6 @@ open class ArcFarmsPlugin : JavaPlugin() {
         redis = null
         redisRuntimeSettings = null
         mineJournal = null
-        lumberJournal = null
         fixedCropJournal = null
         farmLocationRepository = null
         farmRouteRepository = null

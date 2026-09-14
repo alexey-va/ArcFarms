@@ -15,8 +15,6 @@ import ru.ruscrafting.farms.domain.FarmProcessingStage
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.domain.FarmTornadoState
 import ru.ruscrafting.farms.domain.PendingFarmReward
-import ru.ruscrafting.farms.domain.LumberPhase
-import ru.ruscrafting.farms.domain.LumberShiftState
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineResource
 import ru.ruscrafting.farms.domain.MineShiftState
@@ -211,7 +209,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
 
         fun validateState(state: ArcFarmsState) {
             require(state.schemaVersion == ArcFarmsState.SCHEMA_VERSION) { "Unsupported ArcFarms state schema" }
-            require(state.farms.size <= 256 && state.lumbermills.size <= 256 && state.mines.size <= 256) {
+            require(state.farms.size <= 256 && state.mines.size <= 256) {
                 "ArcFarms state contains too many zones"
             }
             require(state.stats.size <= 1_000_000) { "ArcFarms player statistics are unbounded" }
@@ -219,10 +217,8 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
             require(state.pausedFarmZones.orEmpty().size <= 256 && state.pausedFarmZones.orEmpty().all(ZONE_ID::matches)) {
                 "ArcFarms paused farm zones are invalid"
             }
-            require(state.lumbermills.keys.all(ZONE_ID::matches)) { "ArcFarms state contains an invalid lumber zone id" }
             require(state.mines.keys.all(ZONE_ID::matches)) { "ArcFarms state contains an invalid mine zone id" }
             state.farms.values.forEach(::validateFarm)
-            state.lumbermills.values.forEach(::validateLumber)
             state.mines.values.forEach(::validateMine)
             state.stats.values.forEach(::validateStats)
             WorksiteEnterpriseLedger().replace(state.worksiteEnterprise ?: WorksiteEnterpriseSnapshot())
@@ -593,28 +589,6 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 require(farm.outcome == ShiftOutcome.COMPLETED && farm.cooldownEndsAt > 0) { "Farm cooldown state is incomplete" }
             } else {
                 require(farm.outcome == ShiftOutcome.NONE) { "Active farm outcome is inconsistent" }
-            }
-        }
-
-        private fun validateLumber(lumber: LumberShiftState) {
-            validateSequenceAndTimes(lumber.sequence, lumber.startedAt, lumber.cooldownEndsAt)
-            lumber.species?.let { require(CONTENT_ID.matches(it)) { "Lumber species is invalid" } }
-            require(lumber.felled in 0..100_000 && lumber.processed in 0..100_000) { "Lumber progress is invalid" }
-            validateContributors(lumber.contributors)
-            if (lumber.phase == LumberPhase.IDLE) {
-                require(
-                    lumber.species == null && lumber.felled == 0 && lumber.processed == 0 &&
-                        lumber.contributors.isEmpty() && lumber.outcome == ShiftOutcome.NONE,
-                ) { "Idle lumber state contains an active shift" }
-            } else {
-                require(lumber.species != null) { "Active lumber state has no species" }
-            }
-            if (lumber.phase == LumberPhase.COOLDOWN) {
-                require(lumber.outcome == ShiftOutcome.COMPLETED && lumber.cooldownEndsAt > 0) {
-                    "Lumber cooldown state is incomplete"
-                }
-            } else {
-                require(lumber.outcome == ShiftOutcome.NONE) { "Active lumber outcome is inconsistent" }
             }
         }
 

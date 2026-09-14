@@ -6,6 +6,7 @@ import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.mine.extraction.MineExtractionController
 import ru.ruscrafting.farms.paper.mine.incident.MineIncidentScheduler
+import ru.ruscrafting.farms.paper.mine.incident.MineIncidentSet
 import ru.ruscrafting.farms.paper.mine.incident.MineIncidentPlacementReport
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 import ru.ruscrafting.farms.paper.mine.index.MineChunkTicket
@@ -28,6 +29,7 @@ internal class MineAdminService(
     private val prospecting: MineProspectingController,
     private val extraction: MineExtractionController,
     private val incidents: MineIncidentScheduler,
+    private val incidentSet: MineIncidentSet,
     private val state: WorksiteStatePort,
 ) : WorksiteAdminHandler {
     private val reindexes = mutableMapOf<String, MineReindexJob>()
@@ -58,7 +60,7 @@ internal class MineAdminService(
 
     fun forceIncident(zoneId: String, type: MineIncidentType, now: Long): Boolean {
         val runtime = registry.byId(zoneId) ?: return false
-        return incidents.force(runtime, type, now)
+        return incidentSet.forceAdmin(runtime, type, now)
     }
 
     override fun startReindex(zoneId: String): Boolean {

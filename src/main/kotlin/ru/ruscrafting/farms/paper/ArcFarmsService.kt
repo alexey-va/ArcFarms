@@ -48,7 +48,6 @@ import ru.ruscrafting.farms.persistence.ArcFarmsStateRepository
 import ru.ruscrafting.farms.persistence.FarmLocationRepository
 import ru.ruscrafting.farms.persistence.FarmRouteRepository
 import ru.ruscrafting.farms.persistence.FixedFarmCropJournal
-import ru.ruscrafting.farms.persistence.LumberBlockJournal
 import ru.ruscrafting.farms.persistence.MineBlockJournal
 import ru.ruscrafting.farms.network.ActivityNetworkGateway
 import ru.ruscrafting.farms.network.NoOpActivityNetworkGateway
@@ -79,7 +78,6 @@ class ArcFarmsService(
     private val locale: ArcFarmsLocale,
     private val stateRepository: ArcFarmsStateRepository,
     private val mineJournal: MineBlockJournal,
-    private val lumberJournal: LumberBlockJournal,
     private val fixedCropJournal: FixedFarmCropJournal,
     private val farmLocationRepository: FarmLocationRepository,
     private val farmRouteRepository: FarmRouteRepository,
@@ -154,7 +152,7 @@ class ArcFarmsService(
         menus = menus,
     )
     private val worksiteRewards = WorksiteRewardGrantService(farm.rewards)
-    private val lumbermillModule = LumbermillVersionedModule(plugin, initialSettings.serverId, initialSettings.lumbermills, regionGateway, locale, worksitePorts, clock, lumberJournal, worksiteServiceItems, worksiteRewards)
+    private val lumbermillModule = LumbermillVersionedModule()
     private val mineModule = MineVersionedModule(plugin, initialSettings.serverId, initialSettings.mines, regionGateway, locale, mineJournal, worksitePorts, clock, random, worksiteServiceItems, worksiteRewards, mineLift)
     internal val worksiteAdmins = WorksiteAdminRegistry(listOf(lumbermillModule, mineModule))
     private val worksites = WorksiteModuleRegistry(listOf(farm.module, lumbermillModule, mineModule))
@@ -335,7 +333,7 @@ class ArcFarmsService(
     fun onInteractEntity(event: PlayerInteractEntityEvent) = worksiteEvents.onInteractEntity(event) { farm.events.onInteractEntity(event) }
     fun onVehicleEnter(event: VehicleEnterEvent) = farm.events.onVehicleEnter(event)
     fun onDismount(event: EntityDismountEvent) = farm.events.onDismount(event)
-    fun onEntityDamage(event: EntityDamageEvent) = farm.events.onEntityDamage(event)
+    fun onEntityDamage(event: EntityDamageEvent) = worksiteEvents.onEntityDamage(event) { farm.events.onEntityDamage(event) }
     fun onEntityTarget(event: EntityTargetLivingEntityEvent) = farm.events.onEntityTarget(event)
     fun onFish(event: PlayerFishEvent) = farm.events.onFish(event)
     fun onProjectileHit(event: ProjectileHitEvent) = farm.events.onProjectileHit(event)
@@ -501,14 +499,12 @@ class ArcFarmsService(
     private fun rebuild(persisted: ArcFarmsState) {
         farm.module.rebuild(persisted)
         val cooldownMillis = settings.completedCooldownSeconds * 1_000L
-        lumbermillModule.rebuild(settings.lumbermills, persisted.lumbermills, cooldownMillis)
         mineModule.rebuild(settings.mines, persisted.mines, cooldownMillis)
     }
 
     private fun reconfigure(persisted: ArcFarmsState) {
         farm.module.reconfigure(persisted)
         val cooldownMillis = settings.completedCooldownSeconds * 1_000L
-        lumbermillModule.reconfigure(settings.lumbermills, persisted.lumbermills, cooldownMillis)
         mineModule.reconfigure(settings.mines, persisted.mines, cooldownMillis)
     }
 
@@ -587,7 +583,6 @@ class ArcFarmsService(
         return ArcFarmsState(
             farms = farm.runtimes.snapshot().associate { it.settings.id to it.state },
             pausedFarmZones = farm.orderCycle.snapshot(),
-            lumbermills = lumbermillModule.states(),
             mines = mineModule.states(),
             stats = stats.snapshot(),
             pendingFarmRewards = rewards.pending,

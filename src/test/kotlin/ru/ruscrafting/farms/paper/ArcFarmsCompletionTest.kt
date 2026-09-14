@@ -40,7 +40,7 @@ class ArcFarmsCompletionTest : FunSpec({
             listOf("admin", "WORK") to listOf("worksite"),
             listOf("debug", "FaRmB") to listOf("FarmBeta"),
             listOf("ADMIN", "point", "FARM") to listOf("FarmAlpha", "FarmBeta"),
-            listOf("admin", "point", "OldMine", "g") to listOf("gas"),
+            listOf("admin", "point", "OldMine", "g") to emptyList(),
             listOf("admin", "event", "") to listOf("FarmAlpha", "FarmBeta", "OldMine", "help"),
             listOf("admin", "reset-farm", "he") to listOf("help"),
             listOf("admin", "edit", "") to listOf("help"),

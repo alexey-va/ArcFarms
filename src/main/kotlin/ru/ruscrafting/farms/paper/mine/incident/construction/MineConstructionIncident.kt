@@ -6,6 +6,8 @@ import org.bukkit.Material
 import org.bukkit.entity.Player
 import org.bukkit.event.block.Action
 import org.bukkit.event.player.PlayerInteractEvent
+import ru.ruscrafting.farms.config.ArcFarmsLocale
+import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MinePhase
@@ -36,6 +38,8 @@ internal abstract class MineConstructionIncident(
     private val incidents: MineIncidentCoordinator,
     private val items: WorksiteServiceItems?,
     private val state: WorksiteStatePort,
+    private val locale: ArcFarmsLocale?,
+    private val itemNameKey: MessageKey,
 ) {
     fun start(runtime: MineRuntime, required: Int, now: Long): Boolean {
         val candidates = candidates(runtime, required)
@@ -51,7 +55,8 @@ internal abstract class MineConstructionIncident(
         runtime.state = runtime.state.copy(
             incident = incident.copy(serviceLeases = incident.serviceLeases + (itemId to player.uniqueId)),
         )
-        val issued = items?.issue(player, identity, itemMaterial, Component.text(displayName))
+        val itemName = locale?.render(itemNameKey, player) ?: Component.text(itemNameKey.path)
+        val issued = items?.issue(player, identity, itemMaterial, itemName)
         if (issued == null) {
             runtime.state = runtime.state.copy(
                 incident = runtime.state.incident?.copy(serviceLeases = runtime.state.incident!!.serviceLeases - itemId),
@@ -117,12 +122,6 @@ internal abstract class MineConstructionIncident(
         Bukkit.getPlayer(playerId)?.let { items?.consume(it, identity(runtime, lease.key)) }
         release(playerId, identity(runtime, lease.key), WorksitePlayerReleaseReason.ZONE_EXIT)
         return true
-    }
-
-    val displayName: String get() = when (type) {
-        MineIncidentType.CAVE_IN -> "Support kit"
-        MineIncidentType.TRACK_DAMAGE -> "Track repair kit"
-        else -> error("Unsupported construction incident: $type")
     }
 
     private fun active(runtime: MineRuntime): Boolean =

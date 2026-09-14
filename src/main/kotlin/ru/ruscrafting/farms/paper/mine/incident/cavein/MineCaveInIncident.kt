@@ -76,8 +76,8 @@ internal class MineCaveInIncident(
         val selection = select(runtime)
         return MineIncidentPlacementReport(
             MineIncidentType.CAVE_IN,
-            1,
-            if (selection.footprint == null) 0 else 1,
+            RUBBLE_BLOCKS,
+            selection.footprint?.blocks?.size ?: 0,
             selection.considered,
             selection.rejected,
         )
@@ -189,8 +189,7 @@ internal class MineCaveInIncident(
 
     private fun select(runtime: MineRuntime): Selection {
         val anchors = index.targets(runtime.settings.id, MineAnchorRole.NEST)
-            .sortedWith(compareBy<WorksitePosition> { it.y }.thenBy { it.x }.thenBy { it.z })
-            .rotate(runtime.state.sequence)
+            .let { orderForParticipants(runtime, it) }
         val rejected = linkedMapOf<String, Int>()
         var checked = 0
         anchors.take(MAX_CHECKS).forEach { anchor ->
@@ -281,9 +280,23 @@ internal class MineCaveInIncident(
             if (!runtime.region.contains(position.location()) || !position.loaded()) return null
             val material = position.block()?.type ?: return null
             if (material.isAir) continue
-            return position.takeIf { material.isSolid && material in runtime.mineableMaterials }
+            return position.takeIf { material.isSolid && material in runtime.caveCeilingMaterials }
         }
         return null
+    }
+
+    private fun orderForParticipants(runtime: MineRuntime, anchors: Collection<WorksitePosition>): List<WorksitePosition> {
+        val players = runtime.region.world.players.filter { runtime.region.contains(it.location) }
+        val stable = compareBy<WorksitePosition>({ it.y }, { it.x }, { it.z })
+        if (players.isEmpty()) return anchors.sortedWith(stable).rotate(runtime.state.sequence)
+        return anchors.sortedWith(compareBy<WorksitePosition> { anchor ->
+            players.minOf { player ->
+                val dx = anchor.x + 0.5 - player.location.x
+                val dy = anchor.y + 1.0 - player.location.y
+                val dz = anchor.z + 0.5 - player.location.z
+                kotlin.math.abs(dx * dx + dz * dz - IDEAL_PLAYER_DISTANCE_SQUARED) + dy * dy * 4.0
+            }
+        }.then(stable))
     }
 
     private fun reconcileMarker(runtime: MineRuntime, positions: List<WorksitePosition>) {
@@ -352,6 +365,7 @@ internal class MineCaveInIncident(
         const val MAX_CHECKS = 512
         const val PLAYER_CLEARANCE_SQUARED = 36.0
         const val LIFT_CLEARANCE_SQUARED = 100.0
+        const val IDEAL_PLAYER_DISTANCE_SQUARED = 196.0
         val RUBBLE = Material.COBBLESTONE
     }
 }

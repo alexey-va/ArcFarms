@@ -2,7 +2,7 @@ package ru.ruscrafting.farms.domain
 
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 
-/** Stable placement belongs to the interrupted shift, so a restart cannot move its room. */
+/** Legacy deserialization marker used only to retire old off-map room incidents safely. */
 data class MineScenarioPlacement(
     val origin: WorksitePosition,
     val entrance: WorksitePosition,

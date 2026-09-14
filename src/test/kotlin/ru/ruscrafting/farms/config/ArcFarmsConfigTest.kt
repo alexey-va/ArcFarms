@@ -269,10 +269,8 @@ class ArcFarmsConfigTest : FunSpec({
         val repositoryRoot = opsRoot()
 
         settings.farms.map { it.id } shouldContainExactly listOf("communal_farm")
-        settings.lumbermills.map { it.id } shouldContainExactly listOf("communal_lumbermill")
         settings.mines.map { it.id } shouldContainExactly listOf("infernal_working", "lush_depths", "sand_quarry", "old_shafts")
         settings.farms.single().permission shouldStartWith "arcfarms."
-        settings.lumbermills.single().permission shouldStartWith "arcfarms."
         settings.mines.all { it.permission.startsWith("arcfarms.") } shouldBe true
         settings.farms.single().orders.maxOf { order -> order.required.values.sum() } shouldBe 2_208
         settings.farms.single().orders.associate { it.id to it.required } shouldBe mapOf(
@@ -534,12 +532,6 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().careAnimalFollowSpeed shouldBe 1.25
         settings.farms.single().deliveryCarriedForwardOffset shouldBe 0.65
         settings.farms.single().scarecrowCarriedForwardOffset shouldBe 0.7
-        settings.lumbermills.single().rushOrderDurationMillis shouldBe 75_000L
-        settings.lumbermills.single().forestFireCandidateMultiplier shouldBe 4
-        settings.lumbermills.single().sawInteractionCooldownMillis shouldBe 150L
-        settings.lumbermills.single().bundleInteractionCooldownMillis shouldBe 350L
-        settings.lumbermills.single().plankInteractionCooldownMillis shouldBe 350L
-        settings.lumbermills.single().dispatchInteractionCooldownMillis shouldBe 500L
         settings.mines.all { mine ->
             mine.lostMinerDeliveryRadius == 2.5 && mine.lostMinerFollowSnapDistance == 6.0 &&
                 mine.lostMinerFollowOffsetZ == -1.0 && mine.extractionCheckpointRadius == 1.6 &&
@@ -701,7 +693,6 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().rewards.experience.amount shouldBe 100
         settings.farms.single().rewards.experience.chancePercent shouldBe 100
         settings.farms.single().rewards.money.amountCents shouldBe 0
-        settings.lumbermills.single().fellingQuota shouldBe 16
         settings.mines.all { it.cartQuota == 16 && it.supportsRequired == 1 } shouldBe true
         ArcFarmsRedisBootstrap.load(root, settings).serverName shouldBe "spawn"
         ArcFarmsLocale.validateFiles(root, settings)
@@ -801,7 +792,6 @@ class ArcFarmsConfigTest : FunSpec({
             if (runtime != "classic") {
                 settings.requiresWorldGuard shouldBe false
                 settings.farms shouldBe emptyList()
-                settings.lumbermills shouldBe emptyList()
                 settings.mines shouldBe emptyList()
                 settings.farmScoreboard.provider shouldBe FarmScoreboardProvider.TAB
                 settings.farmScoreboard.enabled shouldBe (runtime == "classic_survival")
@@ -1475,7 +1465,7 @@ class ArcFarmsConfigTest : FunSpec({
     test("farm screen palette uses balanced bright colors instead of the retired muted pair") {
         listOf("ru", "en").forEach { language ->
             val raw = Files.readString(resourceTree().resolve("lang/$language.yml"))
-            val farm = raw.substringAfter("\nfarm:\n").substringBefore("\nlumber:\n")
+            val farm = raw.substringAfter("\nfarm:\n").substringBefore("\nmine:\n")
 
             farm shouldNotContain "#a8e6a3"
             farm shouldNotContain "#d6d6d6"
@@ -1512,8 +1502,6 @@ class ArcFarmsConfigTest : FunSpec({
             MessageKey.FARM_DELIVERY_PICKED_UP to MessageKey.FARM_DELIVERY_PICKED_UP_SUBTITLE,
             MessageKey.FARM_CROP_COMPLETED to MessageKey.FARM_CROP_COMPLETED_SUBTITLE,
             MessageKey.FARM_COMPLETED to MessageKey.FARM_COMPLETED_SUBTITLE,
-            MessageKey.LUMBER_PROCESSING to MessageKey.LUMBER_PROCESSING_SUBTITLE,
-            MessageKey.LUMBER_COMPLETED to MessageKey.LUMBER_COMPLETED_SUBTITLE,
             MessageKey.MINE_HAZARD_STARTED to MessageKey.MINE_HAZARD_STARTED_SUBTITLE,
             MessageKey.MINE_HAZARD_RESOLVED to MessageKey.MINE_HAZARD_RESOLVED_SUBTITLE,
             MessageKey.MINE_EXTRACTION_STARTED to MessageKey.MINE_EXTRACTION_STARTED_SUBTITLE,
@@ -1596,7 +1584,6 @@ class ArcFarmsConfigTest : FunSpec({
             grossTariffCents("lab_order") shouldBe 1_000_000L
             grossTariffCents("lab_berry_order") shouldBe 1_200_000L
         }
-        settings.lumbermills.single().fellingQuota shouldBe 2
         settings.mines.single().cartQuota shouldBe 4
         settings.farms.single().reference.bounds!!.volume shouldBe 34_668L
         ArcFarmsLocale.validateFiles(root, settings)

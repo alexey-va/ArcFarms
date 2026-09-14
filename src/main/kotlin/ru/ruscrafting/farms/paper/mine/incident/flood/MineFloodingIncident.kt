@@ -6,6 +6,8 @@ import org.bukkit.Material
 import org.bukkit.entity.Player
 import org.bukkit.event.block.Action
 import org.bukkit.event.player.PlayerInteractEvent
+import ru.ruscrafting.farms.config.ArcFarmsLocale
+import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MinePhase
@@ -34,6 +36,7 @@ internal class MineFloodingIncident(
     private val journal: MineIncidentBlockJournal,
     private val items: WorksiteServiceItems?,
     private val state: WorksiteStatePort,
+    private val locale: ArcFarmsLocale?,
 ) {
     fun start(runtime: MineRuntime, required: Int, now: Long): Boolean {
         val candidates = candidates(runtime, required)
@@ -51,7 +54,8 @@ internal class MineFloodingIncident(
         runtime.state = runtime.state.copy(
             incident = incident.copy(serviceLeases = incident.serviceLeases + (itemId to player.uniqueId)),
         )
-        val issued = items?.issue(player, identity, Material.BUCKET, Component.text("Mine pump"))
+        val itemName = locale?.render(MessageKey.MINE_SERVICE_PUMP, player) ?: Component.text(MessageKey.MINE_SERVICE_PUMP.path)
+        val issued = items?.issue(player, identity, Material.BUCKET, itemName)
         if (issued == null) {
             runtime.state = runtime.state.copy(
                 incident = runtime.state.incident?.copy(serviceLeases = runtime.state.incident!!.serviceLeases - itemId),

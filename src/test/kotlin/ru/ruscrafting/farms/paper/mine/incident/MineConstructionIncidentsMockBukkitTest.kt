@@ -35,14 +35,14 @@ class MineConstructionIncidentsMockBukkitTest : FunSpec({
             world.getBlockAt(anchor.x + dx, anchor.y, anchor.z + dz).type = Material.STONE
         } }
         (-2..2).forEach { dx -> (-1..2).forEach { dz ->
-            world.getBlockAt(anchor.x + dx, anchor.y + 5, anchor.z + dz).type = Material.IRON_ORE
+            world.getBlockAt(anchor.x + dx, anchor.y + 5, anchor.z + dz).type = Material.STONE
         } }
         val graph = testMineComponentGraph(
             paper.createSimplePlugin("MineCaveInTest"), CuboidRegionGateway(), immediateMinePort(),
             clock = { 1_000L }, journal = ImmediateMineJournal(),
         )
         graph.module.rebuild(
-            listOf(mineV2Settings()),
+            listOf(mineV2Settings().copy(miningOnly = true)),
             mapOf("old_shafts" to MineShiftState(engineVersion = 2, phase = MinePhase.MINING, sequence = 1, orderId = "ore_run")),
             5_000L,
         )

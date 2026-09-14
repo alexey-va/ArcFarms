@@ -7,15 +7,11 @@ import io.kotest.matchers.types.shouldBeSameInstanceAs
 import io.mockk.every
 import io.mockk.mockk
 import ru.ruscrafting.farms.config.FarmZoneSettings
-import ru.ruscrafting.farms.config.LumberZoneSettings
 import ru.ruscrafting.farms.config.MineZoneSettings
 import ru.ruscrafting.farms.domain.FarmRules
 import ru.ruscrafting.farms.domain.FarmShiftState
-import ru.ruscrafting.farms.domain.LumberShiftState
 import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.paper.farm.FarmRuntimeRegistry
-import ru.ruscrafting.farms.paper.lumber.LumberRuntime
-import ru.ruscrafting.farms.paper.lumber.LumberRuntimeRegistry
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 
@@ -38,21 +34,14 @@ class HotReloadRuntimeRegistryTest : FunSpec({
         current.rules.cooldownMillis shouldBe 2_000
     }
 
-    test("lumber and mine reload keep controller-held runtime references alive") {
+    test("mine reload keeps controller-held runtime references alive") {
         val region = mockk<ActivityRegion>()
-        val station = mockk<ActivityRegion>()
-        val lumberCurrent = LumberRuntime(lumberSettings("lumber"), region, station, 1_000, LumberShiftState(sequence = 3))
-        val lumberCandidate = LumberRuntime(lumberSettings("lumber"), region, station, 2_000, LumberShiftState(sequence = 3))
-        val lumber = LumberRuntimeRegistry().also { it.replace(listOf(lumberCurrent)) }
         val mineCurrent = MineRuntime(mineSettings("mine"), region, 1_000, MineShiftState(sequence = 4))
         val mineCandidate = MineRuntime(mineSettings("mine"), region, 2_000, MineShiftState(sequence = 4))
         val mine = MineRuntimeRegistry().also { it.replace(listOf(mineCurrent)) }
 
-        lumber.reconfigure(listOf(lumberCandidate))
         mine.reconfigure(listOf(mineCandidate))
 
-        lumber.snapshot().single() shouldBeSameInstanceAs lumberCurrent
-        lumberCurrent.cooldownMillis shouldBe 2_000
         mine.snapshot().single() shouldBeSameInstanceAs mineCurrent
         mineCurrent.cooldownMillis shouldBe 2_000
     }
@@ -76,11 +65,6 @@ class HotReloadRuntimeRegistryTest : FunSpec({
 
 private fun farmSettings(id: String): FarmZoneSettings = mockk {
     every { this@mockk.id } returns id
-}
-
-private fun lumberSettings(id: String): LumberZoneSettings = mockk {
-    every { this@mockk.id } returns id
-    every { orders } returns emptyList()
 }
 
 private fun mineSettings(id: String): MineZoneSettings = mockk {

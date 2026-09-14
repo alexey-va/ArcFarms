@@ -826,53 +826,7 @@ farm-zones:
         customer: BAKER
         cart-load: {material: BREAD, custom-model-data: 0}
 
-lumber-zones:
-  communal_lumbermill:
-    enabled: true
-    engine-version: 2
-    world: world
-    region: spawn_lumbermill
-    station-region: spawn_lumberhouse
-    permission: arcfarms.lumber
-    felling-quota: 16
-    processing-quota: 6
-    processing-per-use: 2
-    species: [OAK, SPRUCE, BIRCH, JUNGLE, ACACIA, DARK_OAK, MANGROVE, CHERRY]
-    station-materials: [STONECUTTER, GRINDSTONE, SMITHING_TABLE, LOOM]
-    target-multiplier: 2
-    incident-count-min: 3
-    incident-count-max: 5
-    recovery-seconds: 90
-    incidents:
-      rush-order-duration-millis: 75000
-      forest-fire:
-        candidate-multiplier: 4
-    interaction-cooldowns:
-      saw-millis: 150
-      bundle-millis: 350
-      plank-millis: 350
-      dispatch-millis: 500
-    rewards:
-      experience: {amount: 180, chance-percent: 100}
-      items:
-        timber: {material: OAK_LOG, amount: 6, chance-percent: 100}
-    orders:
-      forest_supply:
-        species: [OAK, SPRUCE, BIRCH, JUNGLE]
-        phases:
-          felling-required: 16
-          skidding-required: 6
-          sawing-required: 8
-          stacking-required: 6
-        incidents: [WINDTHROW, BARK_BEETLES, FOREST_FIRE, LOST_LOAD, RUSH_ORDER]
-      workshop_contract:
-        species: [ACACIA, DARK_OAK, MANGROVE, CHERRY]
-        phases:
-          felling-required: 16
-          skidding-required: 6
-          sawing-required: 8
-          stacking-required: 6
-        incidents: [SAW_JAM, CONVEYOR_BREAKDOWN, WARPED_BATCH, RUSH_ORDER, LOST_LOAD]
+lumber-zones: {}
 
 mine-zones:
   old_shafts:

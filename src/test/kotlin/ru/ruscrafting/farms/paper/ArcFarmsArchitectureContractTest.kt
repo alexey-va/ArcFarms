@@ -1,9 +1,7 @@
 package ru.ruscrafting.farms.paper
 
 import io.kotest.core.spec.style.FunSpec
-import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
-import ru.ruscrafting.farms.paper.lumber.LumbermillModule
 import ru.ruscrafting.farms.paper.mine.MineModule
 import java.nio.file.Files
 import java.nio.file.Path
@@ -30,9 +28,6 @@ class ArcFarmsArchitectureContractTest : FunSpec({
     )
     val lumberVersionedPath = repositoryRoot.resolve(
         "src/main/kotlin/ru/ruscrafting/farms/paper/lumber/LumbermillVersionedModule.kt",
-    )
-    val lumberFactoryPath = repositoryRoot.resolve(
-        "src/main/kotlin/ru/ruscrafting/farms/paper/lumber/LumberRuntimeFactory.kt",
     )
     val mineVersionedPath = repositoryRoot.resolve(
         "src/main/kotlin/ru/ruscrafting/farms/paper/mine/MineVersionedModule.kt",
@@ -111,15 +106,11 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         }
     }
 
-    test("lumber and mine modules receive one incident set instead of every incident") {
-        val lumberDependencies = LumbermillModule::class.java.declaredConstructors.single().parameterTypes
-            .map(Class<*>::getSimpleName)
+    test("mine module receives one incident set instead of every incident") {
         val mineDependencies = MineModule::class.java.declaredConstructors.single().parameterTypes
             .map(Class<*>::getSimpleName)
 
-        lumberDependencies shouldContain "LumberIncidentSet"
-        mineDependencies shouldContain "MineIncidentSet"
-        lumberDependencies.none { it.endsWith("Incident") || it == "LumberIncidentScheduler" } shouldBe true
+        mineDependencies.contains("MineIncidentSet") shouldBe true
         mineDependencies.none { it.endsWith("Incident") || it == "MineIncidentScheduler" } shouldBe true
     }
 
@@ -245,15 +236,20 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         source.contains("mineModule.onMove") shouldBe false
     }
 
-    test("lumber V2 cannot enter the legacy runtime") {
+    test("lumbermill remains an explicitly empty facade") {
         val versioned = Files.readString(lumberVersionedPath)
-        val factory = Files.readString(lumberFactoryPath)
+        val lumberSources = Files.walk(lumberVersionedPath.parent).use { paths ->
+            paths.filter { Files.isRegularFile(it) && it.toString().endsWith(".kt") }.toList()
+        }
 
-        versioned.contains("if (engineVersion == 2)") shouldBe true
-        versioned.contains("LumbermillComponentGraph(") shouldBe true
-        versioned.contains("rewardGrants = rewardGrants") shouldBe true
-        versioned.contains(").module") shouldBe true
-        factory.contains("require(settings.engineVersion == 2)") shouldBe true
+        lumberSources shouldBe listOf(lumberVersionedPath)
+        Files.exists(repositoryRoot.resolve("src/main/kotlin/ru/ruscrafting/farms/config/LumberConfig.kt")) shouldBe false
+        Files.exists(repositoryRoot.resolve("src/main/kotlin/ru/ruscrafting/farms/domain/LumberShift.kt")) shouldBe false
+        versioned.contains("class LumbermillVersionedModule") shouldBe true
+        versioned.contains("override val zoneCount: Int = 0") shouldBe true
+        versioned.contains("override fun isAvailable(): Boolean = false") shouldBe true
+        versioned.contains("LumbermillComponentGraph") shouldBe false
+        versioned.contains("LumberShiftEngine") shouldBe false
     }
 
     test("mine V2 cannot enter the legacy runtime") {

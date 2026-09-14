@@ -26,6 +26,12 @@ internal data class MineRuntime(
     } else {
         settings.materialWeights.keys.asSequence()
     }).mapTo(linkedSetOf(), MaterialRules::material)
+    /** Structural stone and generated ores that may form a real cave ceiling above a procedural collapse. */
+    val caveCeilingMaterials get() = buildSet {
+        add(MaterialRules.material(settings.baseMaterial))
+        settings.materialWeights.keys.mapTo(this, MaterialRules::material)
+        addAll(mineableMaterials)
+    }
 
     fun currentOrder(): MineOrderSettings? = state.orderId?.let(orders::get)
 
@@ -85,11 +91,13 @@ internal object MineRuntimeFactory {
                 incident.type == MineIncidentType.CAVE_IN &&
                 saved.objective?.targets.orEmpty().none { it.role.value == "cave_in_rubble" }
         } == true
-        if (settings.miningOnly && saved.phase !in setOf(ru.ruscrafting.farms.domain.MinePhase.IDLE,
+        if (incompatibleIncident) {
+            MineShiftState(engineVersion = 2, sequence = saved.sequence)
+        } else if (settings.miningOnly && saved.phase !in setOf(ru.ruscrafting.farms.domain.MinePhase.IDLE,
                 ru.ruscrafting.farms.domain.MinePhase.COOLDOWN) &&
             (saved.orderId !in settings.orders.map { it.id } ||
                 saved.objective?.key?.objectiveId == "mining" || saved.resumeObjective?.key?.objectiveId == "mining" ||
-                saved.incidentSchedule.any { it !in allowed } || incompatibleIncident || saved.phase in setOf(
+                saved.incidentSchedule.any { it !in allowed } || saved.phase in setOf(
                 ru.ruscrafting.farms.domain.MinePhase.PROSPECTING, ru.ruscrafting.farms.domain.MinePhase.LOADING))) {
             MineShiftState(engineVersion = 2, sequence = saved.sequence)
         } else saved

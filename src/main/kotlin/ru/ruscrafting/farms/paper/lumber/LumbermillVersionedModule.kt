@@ -1,147 +1,35 @@
 package ru.ruscrafting.farms.paper.lumber
 
-import org.bukkit.Chunk
-import org.bukkit.Location
-import org.bukkit.block.Block
 import org.bukkit.entity.Player
-import org.bukkit.event.block.BlockBreakEvent
-import org.bukkit.event.player.PlayerInteractEvent
-import org.bukkit.plugin.Plugin
-import ru.ruscrafting.farms.config.ArcFarmsLocale
-import ru.ruscrafting.farms.config.LumberZoneSettings
 import ru.ruscrafting.farms.domain.ActivityKind
-import ru.ruscrafting.farms.domain.LumberShiftState
-import ru.ruscrafting.farms.paper.ActivityBarKey
 import ru.ruscrafting.farms.paper.ActivityStatus
-import ru.ruscrafting.farms.paper.LumbermillController
-import ru.ruscrafting.farms.paper.RegionGateway
-import ru.ruscrafting.farms.paper.WorksiteBlockBreakHandler
-import ru.ruscrafting.farms.paper.WorksiteBlockInteractHandler
-import ru.ruscrafting.farms.paper.WorksiteGuidanceHandler
-import ru.ruscrafting.farms.paper.WorksiteEntityInteractHandler
-import ru.ruscrafting.farms.paper.WorksiteFastVisualHandler
 import ru.ruscrafting.farms.paper.WorksiteModule
-import ru.ruscrafting.farms.paper.WorksiteMoveHandler
-import ru.ruscrafting.farms.paper.worksite.WorksitePorts
-import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
-import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantOwner
-import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
-import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItemOwner
-import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems
-import ru.ruscrafting.farms.paper.worksite.WorksiteRewardGrantService
 import ru.ruscrafting.farms.paper.worksite.WorksiteAdminHandler
 import ru.ruscrafting.farms.paper.worksite.WorksiteAdminReindexTick
 import ru.ruscrafting.farms.paper.worksite.WorksiteAdminStatus
-import ru.ruscrafting.farms.persistence.LumberRecoveryJournal
-import java.util.UUID
 
-/** Stable application boundary that constructs exactly one lumber engine generation. */
-internal class LumbermillVersionedModule(
-    plugin: Plugin,
-    serverId: String,
-    initial: List<LumberZoneSettings>,
-    regions: RegionGateway,
-    locale: ArcFarmsLocale,
-    ports: WorksitePorts,
-    clock: () -> Long,
-    journal: LumberRecoveryJournal,
-    serviceItems: WorksiteServiceItems? = null,
-    rewardGrants: WorksiteRewardGrantService? = null,
-) : WorksiteModule<LumberShiftState>, WorksiteBlockBreakHandler, WorksiteBlockInteractHandler,
-    WorksiteMoveHandler, WorksiteEntityInteractHandler, WorksiteFastVisualHandler, WorksiteGuidanceHandler,
-    WorksiteServiceItemOwner, WorksiteParticipantOwner, WorksiteAdminHandler {
-    private val engineVersion = initial.firstOrNull()?.engineVersion ?: 1
-    private val delegate: WorksiteModule<LumberShiftState> = if (engineVersion == 2) {
-        LumbermillComponentGraph(
-            plugin, serverId, regions, ports, clock, journal, serviceItems, locale = locale, rewardGrants = rewardGrants,
-        ).module
-    } else {
-        LumbermillController(
-            regions, locale, ports.access, ports.audience, ports.state, ports.tasks, ports.stats, ports.network, clock,
-        )
-    }
+/**
+ * Deliberately empty lumbermill seam.
+ *
+ * The previous implementation was retired wholesale. A future lumbermill must be composed behind
+ * this boundary from the farm-first player-experience contract instead of reviving legacy behavior.
+ */
+internal class LumbermillVersionedModule : WorksiteModule<Unit>, WorksiteAdminHandler {
+    override val kind: ActivityKind = ActivityKind.LUMBER
+    override val zoneCount: Int = 0
 
-    override val kind: ActivityKind get() = delegate.kind
-    override val zoneCount: Int get() = delegate.zoneCount
+    override fun states(): Map<String, Unit> = emptyMap()
+    override fun statuses(): List<ActivityStatus> = emptyList()
+    override fun tick(now: Long) = Unit
+    override fun isAvailable(): Boolean = false
+    override fun canAccess(player: Player): Boolean = false
 
-    fun rebuild(configured: List<LumberZoneSettings>, persisted: Map<String, LumberShiftState>, cooldownMillis: Long) {
-        require((configured.firstOrNull()?.engineVersion ?: 1) == engineVersion) {
-            "Changing lumber engine-version requires a full plugin restart"
-        }
-        when (val target = delegate) {
-            is LumbermillController -> target.rebuild(configured, persisted, cooldownMillis)
-            is LumbermillModule -> target.rebuild(configured, persisted, cooldownMillis)
-            else -> error("Unsupported lumber module: ${target::class.qualifiedName}")
-        }
-    }
-
-    fun reconfigure(configured: List<LumberZoneSettings>, persisted: Map<String, LumberShiftState>, cooldownMillis: Long) {
-        require((configured.firstOrNull()?.engineVersion ?: 1) == engineVersion) {
-            "Changing lumber engine-version requires a full plugin restart"
-        }
-        when (val target = delegate) {
-            is LumbermillController -> target.reconfigure(configured, persisted, cooldownMillis)
-            is LumbermillModule -> target.reconfigure(configured, persisted, cooldownMillis)
-            else -> error("Unsupported lumber module: ${target::class.qualifiedName}")
-        }
-    }
-
-    override fun zoneIds(): List<String> = (delegate as? LumbermillModule)?.admin?.zoneIds().orEmpty()
-    override fun incidentIds(): List<String> = (delegate as? LumbermillModule)?.admin?.incidentIds().orEmpty()
-    override fun status(zoneId: String): WorksiteAdminStatus? = (delegate as? LumbermillModule)?.admin?.status(zoneId)
-    override fun start(zoneId: String, player: Player): Boolean = (delegate as? LumbermillModule)?.admin?.start(zoneId, player) == true
-    override fun forceIncident(zoneId: String, incidentId: String, now: Long): Boolean =
-        (delegate as? LumbermillModule)?.admin?.forceIncident(zoneId, incidentId, now) == true
-    override fun startReindex(zoneId: String): Boolean = (delegate as? LumbermillModule)?.admin?.startReindex(zoneId) == true
-    override fun tickReindex(zoneId: String, budget: Int): WorksiteAdminReindexTick? =
-        (delegate as? LumbermillModule)?.admin?.tickReindex(zoneId, budget)
-    override fun cancelReindex(zoneId: String): Boolean = (delegate as? LumbermillModule)?.admin?.cancelReindex(zoneId) == true
-
-    override fun states(): Map<String, LumberShiftState> = delegate.states()
-    override fun statuses(): List<ActivityStatus> = delegate.statuses()
-    override fun tick(now: Long) = delegate.tick(now)
-    override fun isAvailable(): Boolean = delegate.isAvailable()
-    override fun canAccess(player: Player): Boolean = delegate.canAccess(player)
-    override fun activateLoadedState() = delegate.activateLoadedState()
-    override fun reconcileChunk(chunk: Chunk) = delegate.reconcileChunk(chunk)
-    override fun beforeReload(reason: String) = delegate.beforeReload(reason)
-    override fun cleanup(reason: String) = delegate.cleanup(reason)
-
-    override fun onBreakHigh(event: BlockBreakEvent): Boolean =
-        (delegate as? WorksiteBlockBreakHandler)?.onBreakHigh(event) == true
-
-    override fun onBreakMonitor(event: BlockBreakEvent): Boolean =
-        (delegate as? WorksiteBlockBreakHandler)?.onBreakMonitor(event) == true
-
-    override fun onInteract(event: PlayerInteractEvent, clicked: Block, player: Player): Boolean =
-        (delegate as? WorksiteBlockInteractHandler)?.onInteract(event, clicked, player) == true
-
-    override fun onMove(from: Location, to: Location, player: Player): Boolean =
-        (delegate as? WorksiteMoveHandler)?.onMove(from, to, player) == true
-
-    override fun onInteractEntity(event: org.bukkit.event.player.PlayerInteractEntityEvent): Boolean =
-        (delegate as? WorksiteEntityInteractHandler)?.onInteractEntity(event) == true
-
-    override fun updateVisuals() {
-        (delegate as? WorksiteFastVisualHandler)?.updateVisuals()
-    }
-
-    override fun updateGuidance(expectedBars: MutableSet<ActivityBarKey>) {
-        (delegate as? WorksiteGuidanceHandler)?.updateGuidance(expectedBars)
-    }
-
-    override fun emitGuidance() {
-        (delegate as? WorksiteGuidanceHandler)?.emitGuidance()
-    }
-
-    override fun isActive(identity: ServiceItemIdentity): Boolean =
-        (delegate as? WorksiteServiceItemOwner)?.isActive(identity) == true
-
-    override fun release(playerId: UUID, identity: ServiceItemIdentity, reason: WorksitePlayerReleaseReason) {
-        (delegate as? WorksiteServiceItemOwner)?.release(playerId, identity, reason)
-    }
-
-    override fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
-        (delegate as? WorksiteParticipantOwner)?.releasePlayer(player, reason)
-    }
+    override fun zoneIds(): List<String> = emptyList()
+    override fun incidentIds(): List<String> = emptyList()
+    override fun status(zoneId: String): WorksiteAdminStatus? = null
+    override fun start(zoneId: String, player: Player): Boolean = false
+    override fun forceIncident(zoneId: String, incidentId: String, now: Long): Boolean = false
+    override fun startReindex(zoneId: String): Boolean = false
+    override fun tickReindex(zoneId: String, budget: Int): WorksiteAdminReindexTick? = null
+    override fun cancelReindex(zoneId: String): Boolean = false
 }

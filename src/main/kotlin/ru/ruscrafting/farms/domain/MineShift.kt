@@ -16,8 +16,6 @@ enum class MinePhase {
 
 enum class MineIncidentType {
     CAVE_IN, GAS_LEAK, FLOODING, TRACK_DAMAGE, CRYSTAL_RESONANCE, CREATURE_NEST, POWER_FAILURE, LOST_MINER,
-    INJURED_MINER, RUNAWAY_CART, CONVOY, LIFT_BREAKDOWN, BAT_SWARM, FUNGAL_BLOOM,
-    ROOT_INVASION, LAVA_BREACH, ANCIENT_DOOR, OLD_WAREHOUSE, DRILL_TRIAL,
 }
 
 data class MineOrder(val id: String, val incidents: List<MineIncidentType>) {
@@ -60,12 +58,12 @@ data class MineIncidentState(
     val objectiveNonce: Long = 0L,
     val startedAt: Long = 0L,
     val serviceLeases: Map<String, UUID> = emptyMap(),
+    /** Read-only migration marker for retired off-map room incidents. */
     val scenarioPlacement: MineScenarioPlacement? = null,
-    val scenarioStep: Int = 0,
 ) {
     init {
         require(required in 1..100_000 && progress in 0..required)
-        require(objectiveNonce >= 0L && startedAt >= 0L && scenarioStep >= 0)
+        require(objectiveNonce >= 0L && startedAt >= 0L)
     }
 }
 

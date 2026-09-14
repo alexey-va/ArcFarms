@@ -23,7 +23,6 @@ private const val MAX_TRAVEL_TICKET_MS = 5 * 60 * 1000L
 enum class NetworkSignal {
     FARM_INCIDENT,
     FARM_RESCUED,
-    LUMBER_PROCESSING,
     MINE_HAZARD,
     MINE_STABLE,
     MINE_EXTRACTION,
@@ -56,7 +55,6 @@ data class NetworkEvent(
         when (signal) {
             NetworkSignal.FARM_INCIDENT,
             NetworkSignal.FARM_RESCUED -> require(activity == ActivityKind.FARM) { "$signal requires FARM" }
-            NetworkSignal.LUMBER_PROCESSING -> require(activity == ActivityKind.LUMBER) { "$signal requires LUMBER" }
             NetworkSignal.MINE_HAZARD,
             NetworkSignal.MINE_STABLE,
             NetworkSignal.MINE_EXTRACTION -> require(activity == ActivityKind.MINE) { "$signal requires MINE" }

@@ -12,6 +12,7 @@ import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.event.player.PlayerTeleportEvent
 import org.bukkit.event.entity.EntityDeathEvent
+import org.bukkit.event.entity.EntityDamageEvent
 import ru.ruscrafting.farms.paper.WorksiteModuleRegistry
 
 /** Application-owned routing for cross-worksite events and participant safety. */
@@ -66,6 +67,10 @@ internal class WorksiteEventRouter(
 
     fun onEntityDeath(event: EntityDeathEvent, fallback: () -> Unit) {
         if (!registry.onEntityDeath(event)) fallback()
+    }
+
+    fun onEntityDamage(event: EntityDamageEvent, fallback: () -> Unit) {
+        if (!registry.onEntityDamage(event)) fallback()
     }
 
     fun updateVisuals(updateFarm: () -> Unit) {

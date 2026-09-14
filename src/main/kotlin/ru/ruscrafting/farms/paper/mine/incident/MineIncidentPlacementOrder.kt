@@ -16,9 +16,18 @@ internal fun orderMineIncidentPositions(
 ): List<WorksitePosition> {
     val available = positions.distinct()
     if (available.size <= 1 || visibleCount <= 0) return available
+    val participants = runtime.region.world.players.filter { runtime.region.contains(it.location) }
+    val localPool = if (participants.isEmpty()) available else available.sortedBy { position ->
+        participants.minOf { player ->
+            val dx = position.x + 0.5 - player.location.x
+            val dy = position.y + 1.0 - player.location.y
+            val dz = position.z + 0.5 - player.location.z
+            kotlin.math.abs(dx * dx + dz * dz - IDEAL_PLAYER_DISTANCE_SQUARED) + dy * dy * 4.0
+        }
+    }.take(minOf(available.size, maxOf(MIN_LOCAL_POOL, visibleCount * LOCAL_POOL_PER_TARGET)))
     val selected = WorksitePlacementPlanner.select(
-        available,
-        WorksitePlacementRequest(minOf(visibleCount, available.size), runtime.state.sequence xor salt),
+        localPool,
+        WorksitePlacementRequest(minOf(visibleCount, localPool.size), runtime.state.sequence xor salt),
         WorksitePlacementProfiles.evenSpread(minimumSpacing = 8.0),
     ) { position ->
         WorksitePlacementPoint(
@@ -29,5 +38,10 @@ internal fun orderMineIncidentPositions(
         )
     }
     val chosen = selected.toHashSet()
-    return selected + available.filterNot(chosen::contains)
+    val local = localPool.toHashSet()
+    return selected + localPool.filterNot(chosen::contains) + available.filterNot(local::contains)
 }
+
+private const val IDEAL_PLAYER_DISTANCE_SQUARED = 196.0
+private const val MIN_LOCAL_POOL = 128
+private const val LOCAL_POOL_PER_TARGET = 32

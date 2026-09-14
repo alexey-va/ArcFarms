@@ -321,9 +321,14 @@ class MineBasicCycleMockBukkitTest : FunSpec({
         runtime.state.incident?.type shouldBe MineIncidentType.CREATURE_NEST
         runtime.state.incident?.scenarioPlacement shouldBe null
         runtime.state.resumePhase shouldBe MinePhase.MINING
-        effects.count(MineIncidentEntityKind.CREATURE) shouldBe 6
-        runtime.state.objective!!.targets.take(3).forEach { target ->
+        effects.count(MineIncidentEntityKind.CREATURE) shouldBe 3
+        effects.count(MineIncidentEntityKind.CREATURE_NEST_DISPLAY) shouldBe 3
+        val targets = runtime.state.objective!!.targets
+        targets.filter { it.role.value == "creature" }.forEach { target ->
             graph.creatureNest.defeat(runtime, target.id, player) shouldBe true
+        }
+        targets.filter { it.role.value == "creature_nest" }.forEach { target ->
+            graph.creatureNest.destroyNest(runtime, target.id, player) shouldBe true
         }
         runtime.state.phase shouldBe MinePhase.MINING
         runtime.state.incident shouldBe null

@@ -252,7 +252,6 @@ class ArcFarmsNetworkService(
             when (event.signal) {
                 NetworkSignal.FARM_INCIDENT -> MessageKey.NETWORK_FARM_INCIDENT
                 NetworkSignal.FARM_RESCUED -> MessageKey.NETWORK_FARM_RESCUED
-                NetworkSignal.LUMBER_PROCESSING -> MessageKey.NETWORK_LUMBER_PROCESSING
                 NetworkSignal.MINE_HAZARD -> MessageKey.NETWORK_MINE_HAZARD
                 NetworkSignal.MINE_STABLE -> MessageKey.NETWORK_MINE_STABLE
                 NetworkSignal.MINE_EXTRACTION -> MessageKey.NETWORK_MINE_EXTRACTION
@@ -281,7 +280,6 @@ class ArcFarmsNetworkService(
         val sound = when (signal) {
             NetworkSignal.FARM_INCIDENT -> Sound.ENTITY_BEE_LOOP_AGGRESSIVE
             NetworkSignal.FARM_RESCUED -> Sound.ENTITY_VILLAGER_YES
-            NetworkSignal.LUMBER_PROCESSING -> Sound.BLOCK_PISTON_EXTEND
             NetworkSignal.MINE_HAZARD -> Sound.ENTITY_GENERIC_EXPLODE
             NetworkSignal.MINE_STABLE -> Sound.BLOCK_ANVIL_USE
             NetworkSignal.MINE_EXTRACTION -> Sound.BLOCK_BELL_RESONATE
@@ -430,7 +428,6 @@ class ArcFarmsNetworkService(
     companion object {
         private val CALL_SIGNALS = setOf(
             NetworkSignal.FARM_INCIDENT,
-            NetworkSignal.LUMBER_PROCESSING,
             NetworkSignal.MINE_HAZARD,
             NetworkSignal.MINE_EXTRACTION,
         )

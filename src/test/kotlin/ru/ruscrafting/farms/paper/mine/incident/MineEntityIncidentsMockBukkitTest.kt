@@ -9,6 +9,7 @@ import org.bukkit.entity.Entity
 import org.bukkit.entity.EntityType
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.domain.MinePhase
+import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.CuboidRegionGateway
@@ -31,7 +32,7 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
     beforeEach { paper = MockBukkitTestRuntime.open() }
     afterEach { paper.close() }
 
-    test("extra creatures never inflate contribution beyond the incident quota") {
+    test("creature incident requires both farm-style glowing nests and their creatures") {
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("Guard")
         val floors = (1..6).map { x -> world.getBlockAt(x, 63, 2).also { it.type = Material.STONE } }
@@ -41,14 +42,42 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         replaceEntityIndex(graph, runtime, floors)
 
         graph.creatureNest.start(runtime, required = 2, now = 1_000L) shouldBe true
-        graph.creatureNest.spawnedCount(runtime) shouldBe 4
+        graph.creatureNest.spawnedCount(runtime) shouldBe 2
+        graph.creatureNest.nestCount(runtime) shouldBe 2
+        effects.count(MineIncidentEntityKind.CREATURE_NEST_DISPLAY) shouldBe 2
+        effects.count(MineIncidentEntityKind.CREATURE_NEST_HITBOX) shouldBe 2
         val targets = runtime.state.objective!!.targets
-        graph.creatureNest.defeat(runtime, targets[0].id, player) shouldBe true
-        graph.creatureNest.defeat(runtime, targets[0].id, player) shouldBe false
-        graph.creatureNest.defeat(runtime, targets[1].id, player) shouldBe true
+        val creatures = targets.filter { it.role.value == "creature" }
+        val nests = targets.filter { it.role.value == "creature_nest" }
+        creatures.forEach { graph.creatureNest.defeat(runtime, it.id, player) shouldBe true }
+        runtime.state.phase shouldBe MinePhase.INCIDENT
+        nests.forEach { graph.creatureNest.destroyNest(runtime, it.id, player) shouldBe true }
         runtime.state.phase shouldBe MinePhase.MINING
-        runtime.state.contributors[player.uniqueId] shouldBe 2
+        runtime.state.contributors[player.uniqueId] shouldBe 4
         effects.count(MineIncidentEntityKind.CREATURE) shouldBe 0
+        effects.count(MineIncidentEntityKind.CREATURE_NEST_DISPLAY) shouldBe 0
+        effects.count(MineIncidentEntityKind.CREATURE_NEST_HITBOX) shouldBe 0
+    }
+
+    test("admin force switches the active mine incident and clears its scene like the farm") {
+        val world = paper.server.addSimpleWorld("world")
+        val floors = (1..6).map { x -> world.getBlockAt(x, 63, 2).also { it.type = Material.STONE } }
+        val effects = RecordingIncidentEntities()
+        val graph = entityGraph(paper, effects, "AdminSwitch")
+        val runtime = graph.registry.byId("old_shafts")!!
+        replaceEntityIndex(graph, runtime, floors)
+
+        graph.creatureNest.start(runtime, required = 2, now = 1_000L) shouldBe true
+        effects.count(MineIncidentEntityKind.CREATURE) shouldBe 2
+        effects.count(MineIncidentEntityKind.CREATURE_NEST_DISPLAY) shouldBe 2
+
+        graph.admin.forceIncident("old_shafts", MineIncidentType.TRACK_DAMAGE, 2_000L) shouldBe true
+
+        runtime.state.phase shouldBe MinePhase.INCIDENT
+        runtime.state.incident!!.type shouldBe MineIncidentType.TRACK_DAMAGE
+        effects.count(MineIncidentEntityKind.CREATURE) shouldBe 0
+        effects.count(MineIncidentEntityKind.CREATURE_NEST_DISPLAY) shouldBe 0
+        effects.count(MineIncidentEntityKind.CREATURE_NEST_HITBOX) shouldBe 0
     }
 
     test("lost miner is reconstructed once and escort completes at the indexed route entrance") {

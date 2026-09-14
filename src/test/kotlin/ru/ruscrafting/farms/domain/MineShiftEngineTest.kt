@@ -5,34 +5,9 @@ import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
 import java.util.UUID
 
-class LumberAndMineShiftEngineTest : FunSpec({
+class MineShiftEngineTest : FunSpec({
     val player = UUID.fromString("00000000-0000-0000-0000-000000000001")
     val outsider = UUID.fromString("00000000-0000-0000-0000-000000000002")
-
-    test("lumber order requires the requested species then machine processing") {
-        val rules = LumberRules(fellingQuota = 2, processingQuota = 4, processingPerUse = 2, cooldownMillis = 5_000)
-        var state = LumberShiftEngine.start(LumberShiftState(), "OAK", rules, 1_000).state
-
-        LumberShiftEngine.fell(state, rules, "BIRCH", player, 2_000).accepted shouldBe false
-        state = LumberShiftEngine.fell(state, rules, "OAK", player, 2_000).state
-        val processing = LumberShiftEngine.fell(state, rules, "OAK", player, 3_000)
-        processing.state.phase shouldBe LumberPhase.PROCESSING
-        processing.events shouldContain LumberShiftEvent.PHASE_CHANGED
-
-        state = LumberShiftEngine.process(processing.state, rules, player, 4_000).state
-        val completed = LumberShiftEngine.process(state, rules, player, 5_000)
-        completed.state.phase shouldBe LumberPhase.COOLDOWN
-        completed.state.outcome shouldBe ShiftOutcome.COMPLETED
-        completed.state.contributors[player] shouldBe 6
-    }
-
-    test("lumber progress survives indefinite inactivity") {
-        val rules = LumberRules(fellingQuota = 2, processingQuota = 2, processingPerUse = 1, cooldownMillis = 5_000)
-        val started = LumberShiftEngine.start(LumberShiftState(), "OAK", rules, 1_000).state
-        val partial = LumberShiftEngine.fell(started, rules, "OAK", player, 2_000).state
-
-        LumberShiftEngine.tick(partial, rules, 2_592_002_000).state shouldBe partial
-    }
 
     test("mine pauses for supports and any later player can deliver the shared cart") {
         val rules = MineRules(cartQuota = 6, hazardTrigger = 3, supportsRequired = 2, cooldownMillis = 5_000)

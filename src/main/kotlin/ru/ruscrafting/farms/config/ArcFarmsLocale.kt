@@ -628,25 +628,11 @@ enum class MessageKey(val path: String) {
     FARM_SCOREBOARD_HINT_DELIVERY("scoreboard.hint.delivery"),
     FARM_SCOREBOARD_HINT_DELIVERY_CARRYING("scoreboard.hint.delivery-carrying"),
     FARM_SCOREBOARD_HINT_COOLDOWN("scoreboard.hint.cooldown"),
-    LUMBER_STARTED("lumber.started"),
-    LUMBER_WRONG_SPECIES("lumber.wrong-species"),
-    LUMBER_TARGET_REQUIRED("lumber.target-required"),
-    LUMBER_JOURNAL_FAILED("lumber.journal-failed"),
-    LUMBER_SAW_LEFT("lumber.saw-left"),
-    LUMBER_SAW_RIGHT("lumber.saw-right"),
-    LUMBER_PLANK_UNAVAILABLE("lumber.plank-unavailable"),
-    LUMBER_PLANK_RETURNED("lumber.plank-returned"),
-    LUMBER_JAM_SEQUENCE("lumber.jam-sequence"),
-    LUMBER_PROCESSING("lumber.processing"),
-    LUMBER_PROCESSING_SUBTITLE("lumber.processing-subtitle"),
-    LUMBER_STATION_REQUIRED("lumber.station-required"),
-    LUMBER_COMPLETED("lumber.completed"),
-    LUMBER_COMPLETED_SUBTITLE("lumber.completed-subtitle"),
-    LUMBER_ACTIONBAR_FELLING("lumber.actionbar-felling"),
-    LUMBER_ACTIONBAR_PROCESSING("lumber.actionbar-processing"),
     MINE_STARTED("mine.started"),
     MINE_PICKAXE_REQUIRED("mine.pickaxe-required"),
     MINE_SERVICE_PICKAXE("mine.service-pickaxe"),
+    MINE_SERVICE_TRACK_KIT("mine.service-track-kit"),
+    MINE_SERVICE_PUMP("mine.service-pump"),
     MINE_PICKAXE_INVENTORY_FULL("mine.pickaxe-inventory-full"),
     MINE_REGENERATING("mine.regenerating"),
     MINE_HAZARD_STARTED("mine.hazard-started"),
@@ -677,7 +663,6 @@ enum class MessageKey(val path: String) {
     NETWORK_ACTOR_FALLBACK("network.actor-fallback"),
     NETWORK_FARM_INCIDENT("network.farm-incident"),
     NETWORK_FARM_RESCUED("network.farm-rescued"),
-    NETWORK_LUMBER_PROCESSING("network.lumber-processing"),
     NETWORK_MINE_HAZARD("network.mine-hazard"),
     NETWORK_MINE_STABLE("network.mine-stable"),
     NETWORK_MINE_EXTRACTION("network.mine-extraction"),
@@ -735,8 +720,6 @@ internal val SCREEN_TITLE_SUBTITLES = mapOf(
     MessageKey.FARM_DELIVERY_PICKED_UP to MessageKey.FARM_DELIVERY_PICKED_UP_SUBTITLE,
     MessageKey.FARM_CROP_COMPLETED to MessageKey.FARM_CROP_COMPLETED_SUBTITLE,
     MessageKey.FARM_COMPLETED to MessageKey.FARM_COMPLETED_SUBTITLE,
-    MessageKey.LUMBER_PROCESSING to MessageKey.LUMBER_PROCESSING_SUBTITLE,
-    MessageKey.LUMBER_COMPLETED to MessageKey.LUMBER_COMPLETED_SUBTITLE,
     MessageKey.MINE_HAZARD_STARTED to MessageKey.MINE_HAZARD_STARTED_SUBTITLE,
     MessageKey.MINE_HAZARD_RESOLVED to MessageKey.MINE_HAZARD_RESOLVED_SUBTITLE,
     MessageKey.MINE_EXTRACTION_STARTED to MessageKey.MINE_EXTRACTION_STARTED_SUBTITLE,
@@ -910,30 +893,25 @@ class ArcFarmsLocale(
             }
             settings.mines.mapTo(this) { "route.mine.${it.id}" }
             enumValues<ru.ruscrafting.farms.domain.FarmPhase>().mapTo(this) { "phase.farm.${it.name.lowercase()}" }
-            enumValues<ru.ruscrafting.farms.domain.LumberPhase>().mapTo(this) { "phase.lumber.${it.name.lowercase()}" }
             enumValues<ru.ruscrafting.farms.domain.MinePhase>().mapTo(this) { "phase.mine.${it.name.lowercase()}" }
             val mineIncidents = listOf(
                 "cave_in", "gas_leak", "flooding", "track_damage", "crystal_resonance",
                 "creature_nest", "power_failure", "lost_miner",
             )
             mineIncidents.mapTo(this) { "mine.incident-name.$it" }
-            mineIncidents.mapTo(this) { "admin.mine-point.requirement.$it" }
+            mineIncidents.mapTo(this) { "admin.mine-placement.requirement.$it" }
             listOf(
                 "world_unavailable", "chunk_unloaded", "anchor_changed", "near_player", "near_lift",
                 "journalled_block", "outside_region", "missing_stone_or_ore_ceiling", "missing_solid_floor",
                 "footprint_occupied", "space_above_occupied", "in_place_implementation_missing",
-            ).mapTo(this) { "admin.mine-point.reason.$it" }
-            add("admin.mine-point.help")
-            add("admin.mine-point.header")
-            add("admin.mine-point.entry")
-            add("admin.mine-point.ready")
-            add("lumber.guidance.title")
-            add("lumber.guidance.bar")
-            enumValues<ru.ruscrafting.farms.domain.LumberPhase>()
-                .filterNot { it == ru.ruscrafting.farms.domain.LumberPhase.IDLE }
-                .mapTo(this) { "lumber.guidance.${it.name.lowercase()}" }
-            enumValues<ru.ruscrafting.farms.domain.LumberIncidentType>()
-                .mapTo(this) { "lumber.guidance.${it.name.lowercase()}" }
+                "incident_already_active", "phase_not_ready", "phase_too_early",
+            ).mapTo(this) { "admin.mine-placement.reason.$it" }
+            add("admin.mine-placement.header")
+            add("admin.mine-placement.entry")
+            add("admin.mine-placement.no-rejection-details")
+            add("mine.creature-nest.creature-name")
+            add("mine.creature-nest.nest-name")
+            add("mine.creature-nest.destroyed")
         }
 
         fun validateFiles(dataRoot: Path, settings: ArcFarmsConfig) =

@@ -111,7 +111,7 @@ class ArcFarmsCommandAdminCoverageTest : FunSpec({
         verify(exactly = 0) { mine.forceIncident(any(), any(), any()) }
     }
 
-    test("mine point reports the exact missing placement requirement") {
+    test("rejected mine event reports exact automatic placement requirement without a point command") {
         val player = mockk<Player>(relaxed = true) {
             every { hasPermission("arcfarms.admin") } returns true
         }
@@ -121,6 +121,8 @@ class ArcFarmsCommandAdminCoverageTest : FunSpec({
         )
         val service = mockk<ArcFarmsService>(relaxed = true) {
             every { mineZoneIds() } returns listOf("old_shafts")
+            every { mineIncidentIds() } returns listOf("CAVE_IN")
+            every { adminSetMineIncident(any(), any(), any()) } returns false
             every { mineIncidentDiagnostics("old_shafts") } returns listOf(report)
         }
         val locale = mockk<ArcFarmsLocale>(relaxed = true) {
@@ -129,11 +131,12 @@ class ArcFarmsCommandAdminCoverageTest : FunSpec({
         }
         val handler = ArcFarmsCommand(service, locale, mockk<ArcFarmsMenu>(relaxed = true)) { Result.success(Unit) }
 
-        handler.onCommand(player, mockk(relaxed = true), "arcfarms", arrayOf("admin", "point", "old_shafts", "CAVE_IN"))
+        handler.onCommand(player, mockk(relaxed = true), "arcfarms", arrayOf("admin", "event", "old_shafts", "CAVE_IN"))
 
         verify(exactly = 1) {
-            locale.renderPath("admin.mine-point.reason.missing_stone_or_ore_ceiling", player, any())
+            locale.renderPath("admin.mine-placement.reason.missing_stone_or_ore_ceiling", player, any())
         }
-        verify(exactly = 1) { locale.renderPath("admin.mine-point.reason.footprint_occupied", player, any()) }
+        verify(exactly = 1) { locale.renderPath("admin.mine-placement.reason.footprint_occupied", player, any()) }
+        verify(exactly = 0) { locale.renderPath("admin.mine-point.help", any(), any()) }
     }
 })

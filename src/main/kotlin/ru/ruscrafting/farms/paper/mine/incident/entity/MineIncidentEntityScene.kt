@@ -7,6 +7,7 @@ import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.entity.Entity
 import org.bukkit.entity.EntityType
+import org.bukkit.entity.ArmorStand
 import org.bukkit.entity.LivingEntity
 import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Villager
@@ -17,7 +18,13 @@ import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import java.util.UUID
 
-internal enum class MineIncidentEntityKind { CREATURE, HERD, MINER, CAVE_IN_MARKER }
+internal enum class MineIncidentEntityKind {
+    CREATURE,
+    CREATURE_NEST_DISPLAY,
+    CREATURE_NEST_HITBOX,
+    MINER,
+    CAVE_IN_MARKER,
+}
 
 internal data class MineIncidentEntityIdentity(
     val kind: MineIncidentEntityKind,
@@ -55,12 +62,23 @@ internal class PaperMineIncidentEntityEffects(plugin: Plugin) : MineIncidentEnti
         position: WorksitePosition,
     ): UUID {
         val world = requireNotNull(Bukkit.getWorld(position.world))
-        val at = Location(world, position.x + 0.5, position.y + 0.5, position.z + 0.5)
+        val at = Location(
+            world,
+            position.x + 0.5,
+            position.y + when (kind) {
+                MineIncidentEntityKind.CREATURE -> 0.0
+                MineIncidentEntityKind.CREATURE_NEST_DISPLAY -> 1.25
+                MineIncidentEntityKind.CREATURE_NEST_HITBOX, MineIncidentEntityKind.MINER -> 1.0
+                else -> 0.5
+            },
+            position.z + 0.5,
+        )
         val entity = world.spawnEntity(
             at,
             when (kind) {
                 MineIncidentEntityKind.CREATURE -> EntityType.HUSK
-                MineIncidentEntityKind.HERD -> EntityType.BAT
+                MineIncidentEntityKind.CREATURE_NEST_DISPLAY -> EntityType.ITEM_DISPLAY
+                MineIncidentEntityKind.CREATURE_NEST_HITBOX -> EntityType.ARMOR_STAND
                 MineIncidentEntityKind.MINER -> EntityType.VILLAGER
                 MineIncidentEntityKind.CAVE_IN_MARKER -> EntityType.ITEM_DISPLAY
             },
@@ -74,15 +92,28 @@ internal class PaperMineIncidentEntityEffects(plugin: Plugin) : MineIncidentEnti
         }
         entity.isPersistent = false
         (entity as? LivingEntity)?.removeWhenFarAway = false
-        if (kind == MineIncidentEntityKind.HERD) (entity as? LivingEntity)?.setAI(false)
+        if (kind == MineIncidentEntityKind.CREATURE) entity.isGlowing = true
         (entity as? Villager)?.apply { setAI(false); isSilent = true }
-        if (kind == MineIncidentEntityKind.CAVE_IN_MARKER) (entity as ItemDisplay).apply {
+        if (kind in setOf(MineIncidentEntityKind.CAVE_IN_MARKER, MineIncidentEntityKind.CREATURE_NEST_DISPLAY)) {
+            (entity as ItemDisplay).apply {
             itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
-            setItemStack(ItemStack(Material.COBBLESTONE))
+            setItemStack(ItemStack(if (kind == MineIncidentEntityKind.CAVE_IN_MARKER) Material.COBBLESTONE else Material.MANGROVE_ROOTS))
             viewRange = 2.5f
             isGlowing = true
-            glowColorOverride = org.bukkit.Color.fromRGB(0x8b, 0xd3, 0xff)
-            transformation = transformation.also { it.scale.set(1.35f, 1.35f, 1.35f) }
+            glowColorOverride = if (kind == MineIncidentEntityKind.CAVE_IN_MARKER) {
+                org.bukkit.Color.fromRGB(0x8b, 0xd3, 0xff)
+            } else {
+                org.bukkit.Color.fromRGB(0xff, 0x7a, 0x45)
+            }
+            val scale = if (kind == MineIncidentEntityKind.CAVE_IN_MARKER) 1.35f else 1.5f
+            transformation = transformation.also { it.scale.set(scale, scale, scale) }
+            }
+        }
+        if (kind == MineIncidentEntityKind.CREATURE_NEST_HITBOX) (entity as ArmorStand).apply {
+            isInvisible = true
+            setGravity(false)
+            isSmall = false
+            isInvulnerable = false
         }
         return entity.uniqueId
     }

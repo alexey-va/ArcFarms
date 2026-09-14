@@ -311,7 +311,6 @@ private fun preparePluginData(dataRoot: Path) {
     config.set("farm-zones.communal_farm.region", null)
     config.set("farm-zones.communal_farm.bounds.min", listOf(185, 35, 420))
     config.set("farm-zones.communal_farm.bounds.max", listOf(230, 80, 490))
-    config.set("lumber-zones.communal_lumbermill.enabled", false)
     config.getConfigurationSection("mine-zones")?.getKeys(false).orEmpty().forEach { id ->
         config.set("mine-zones.$id.enabled", false)
     }

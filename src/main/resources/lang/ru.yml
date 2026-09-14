@@ -73,13 +73,12 @@ admin:
     finish: '<prefix> <white>/arcfarms admin finish \<зона></white> <gray>— завершает заказ через обычную доставку, восстановление поля и выдачу наград.</gray>'
     route: '<prefix> <gray>Именованные маршруты доставки:</gray><newline><white>/arcfarms admin route \<зона> start \<имя></white><newline><dark_gray>•</dark_gray> <gray>Начинает запись пешком; имя можно не указывать.</gray><newline><white>/arcfarms admin route \<зона> finish</white><newline><dark_gray>•</dark_gray> <gray>Сохраняет текущую запись.</gray><newline><white>/arcfarms admin route \<зона> status \<имя></white><newline><dark_gray>•</dark_gray> <gray>Проверяет маршрут; также доступны cancel и clear.</gray>'
     shortcut: '<prefix> <white>/arcfarms admin <command> <arguments></white> <gray>— <description></gray>'
-  mine-point:
-    help: '<prefix> <gold>/arcfarms admin point <zone> [INCIDENT]</gold><newline><gray>Показывает, какие реальные места шахты подходят для каждого события и почему остальные отклонены.</gray>'
-    header: '<prefix> <gold>Места для событий шахты <zone>:</gold>'
-    entry: '<dark_gray>•</dark_gray> <event> <gray>— подходит</gray> <white><usable></white><gray>, нужно</gray> <white><required></white><gray>, проверено</gray> <white><considered></white><newline>  <gray>Нужно:</gray> <requirement><newline>  <gray>Отклонено:</gray> <reasons>'
-    ready: '<green>подходящие места найдены</green>'
+  mine-placement:
+    header: '<prefix> <gold>Почему не запустилось событие в шахте <zone>:</gold>'
+    entry: '<dark_gray>•</dark_gray> <event> <gray>— доступно</gray> <white><usable></white><gray>, требуется</gray> <white><required></white><gray>, рассмотрено</gray> <white><considered></white><newline>  <gray>Что ищет автоподбор:</gray> <requirement><newline>  <gray>Причина отказа:</gray> <reasons>'
+    no-rejection-details: '<red>геометрия подходит, но переход состояния смены отклонён; проверьте текущий этап</red>'
     requirement:
-      cave_in: '<gray>твёрдый пол 5×4, четыре свободных блока в высоту и каменный либо рудный потолок не выше 8 блоков над кучей</gray>'
+      cave_in: '<gray>место для 55–65 блоков завала на сплошном полу под настоящим каменным или рудным потолком</gray>'
       gas_leak: '<gray>открытые твёрдые стены внутри шахты</gray>'
       flooding: '<gray>твёрдый пол и два свободных блока над ним; воду создаёт само событие</gray>'
       track_damage: '<gray>участки пути из настроенного материала со свободным проходом сверху</gray>'
@@ -88,6 +87,9 @@ admin:
       power_failure: '<gray>открытые твёрдые блоки со свободным местом сверху для аварийного света</gray>'
       lost_miner: '<gray>твёрдый пол и два свободных блока над ним</gray>'
     reason:
+      incident_already_active: '<red>уже идёт другое происшествие; сначала завершите его</red>'
+      phase_not_ready: '<red>текущий этап смены не допускает происшествия</red>'
+      phase_too_early: '<red>для этого происшествия смена ещё не дошла до нужного этапа</red>'
       world_unavailable: '<red><count> — мир не загружен</red>'
       chunk_unloaded: '<red><count> — чанк не загружен</red>'
       anchor_changed: '<red><count> — индексированный блок уже изменён</red>'
@@ -99,7 +101,7 @@ admin:
       missing_solid_floor: '<red><count> — снизу нет сплошного твёрдого пола</red>'
       footprint_occupied: '<red><count> — объём завала занят другими блоками</red>'
       space_above_occupied: '<red><count> — место над точкой занято</red>'
-      in_place_implementation_missing: '<red><count> — событие ещё не реализовано прямо в шахте</red>'
+      in_place_implementation_missing: '<red><count> — для события нет реализации прямо в шахте</red>'
   point-help-header: '<prefix> <gold>/arcfarms admin point <zone> \<точка></gold> <gray>сохраняет ваше текущее положение и направление взгляда:</gray>'
   point-help-entry: '  <dark_gray>•</dark_gray> <white><id></white> <dark_gray>—</dark_gray> <point><gray>: </gray><description>'
   point-help-footer: '<dark_gray>Встаньте внутри фермы, но не на грядке.</dark_gray><newline><dark_gray>Точки travel и rival-farm можно ставить снаружи.</dark_gray><newline><gray>Сброс:</gray> <white>/arcfarms admin point зона точка clear</white>'
@@ -1085,42 +1087,6 @@ scoreboard:
     processing: '<color:#b8c8c0>Следуйте подсказке над нужной станцией</color>'
     barn-fire: '<color:#b8c8c0>Цельтесь в огонь и нажимайте ПКМ</color>'
     frost: '<color:#b8c8c0>Голубые столбы — костры; золотой — дровница</color>'
-lumber:
-  started: '<color:#ffc857>Заказ лесопилки</color> <color:#707a76>•</color> <wood>'
-  wrong-species: '<gray>Этот заказ принимает только <wood>.</gray>'
-  target-required: '<yellow>Срубите подсвеченное бревно нужной породы.</yellow>'
-  journal-failed: '<red>Бревно не срублено: не удалось сохранить безопасное восстановление.</red>'
-  saw-left: '<yellow>Теперь нажмите левый рычаг пилы.</yellow>'
-  saw-right: '<yellow>Теперь нажмите правый рычаг пилы.</yellow>'
-  plank-unavailable: '<gray>Сейчас нельзя взять ещё одну пачку досок.</gray>'
-  plank-returned: '<gray>Пачка досок возвращена в цех.</gray>'
-  jam-sequence: '<yellow>Переключайте защитные рычаги по порядку.</yellow>'
-  processing: '<gold>Древесина собрана</gold>'
-  processing-subtitle: '<gray>Идите в цех и используйте станок</gray>'
-  station-required: '<gray>Обработка идёт на станке внутри лесопильного цеха.</gray>'
-  completed: '<green><bold>Партия древесины готова</bold></green>'
-  completed-subtitle: '<gray>Участников: <players></gray>'
-  actionbar-felling: '<wood> <dark_gray>•</dark_gray> <gold><done></gold><gray>/</gray><yellow><total></yellow> брёвен'
-  actionbar-processing: '<gold>Обработка</gold> <dark_gray>•</dark_gray> <yellow><done></yellow><gray>/</gray><gold><total></gold>'
-  guidance:
-    title: '<color:#ffc857><bold>Работа на лесопилке</bold></color>'
-    bar: '<action> <dark_gray>•</dark_gray> <yellow><done></yellow><gray>/</gray><gold><total></gold>'
-    felling: '<color:#f2fff7>Рубите подсвеченные деревья нужной породы</color>'
-    skidding: '<color:#f2fff7>Подберите связку брёвен и отнесите её в цех</color>'
-    sawing: '<color:#f2fff7>Чередуйте левую и правую стороны пилы</color>'
-    stacking: '<color:#f2fff7>Берите доски со стеллажа и складывайте на подсвеченные поддоны</color>'
-    dispatch: '<color:#f2fff7>Подтвердите отправку готовой партии у выходной точки</color>'
-    processing: '<color:#f2fff7>Обработайте древесину на станке</color>'
-    incident: '<color:#f2fff7>Устраните происшествие и вернитесь к заказу</color>'
-    cooldown: '<color:#b8c8c0>Дождитесь следующего заказа</color>'
-    windthrow: '<color:#f2fff7>Уберите подсвеченные поваленные деревья</color>'
-    bark_beetles: '<color:#f2fff7>Обработайте заражённые деревья топором</color>'
-    saw_jam: '<color:#f2fff7>Переключите защитные рычаги по порядку</color>'
-    conveyor_breakdown: '<color:#f2fff7>Возьмите ремонтный комплект и почините отмеченные узлы</color>'
-    forest_fire: '<color:#f2fff7>Возьмите воду и потушите отмеченные очаги</color>'
-    lost_load: '<color:#f2fff7>Соберите потерянные связки и верните их в цех</color>'
-    warped_batch: '<color:#f2fff7>Разложите хорошие и бракованные доски по нужным поддонам</color>'
-    rush_order: '<color:#ffc857>Срочный заказ: сложите доски до истечения бонусного времени</color>'
 mine:
   resources:
     coal: 'Уголь'
@@ -1141,6 +1107,8 @@ mine:
   resource-completed-subtitle: '<color:#f2fff7>Отправляйтесь на другой ярус за оставшимися ресурсами</color>'
   pickaxe-required: '<red>Для работы в шахте нужна кирка.</red>'
   service-pickaxe: '<color:#ffc857>Шахтёрская кирка</color>'
+  service-track-kit: '<color:#ffc857>Рельсовый ремонтный набор</color>'
+  service-pump: '<color:#45c8f5>Шахтный насос</color>'
   pickaxe-inventory-full: '<red>Освободите место в инвентаре: шахтёрскую кирку некуда выдать.</red>'
   incident-name:
     cave_in: '<color:#ffad42>Обвал штольни</color>'
@@ -1151,6 +1119,10 @@ mine:
     creature_nest: '<color:#ff5f6d>Нашествие</color>'
     power_failure: '<color:#ffc857>Отказ питания</color>'
     lost_miner: '<color:#55d98b>Потерявшийся шахтёр</color>'
+  creature-nest:
+    creature-name: '<color:#ff5f6d>Тварь из логова</color>'
+    nest-name: '<color:#ff7a45>Логово тварей</color>'
+    destroyed: '<color:#55d98b>Логово уничтожено.</color>'
   regenerating: '<gray>Этот участок ещё восстанавливается.</gray>'
   hazard-started: '<red><bold>Забой нестабилен</bold></red>'
   hazard-started-subtitle: '<gray>Укрепите его перед продолжением</gray>'
@@ -1191,136 +1163,9 @@ mine:
     flooding: '<color:#f2fff7>Возьмите насос и осушите отмеченные затопленные участки</color>'
     track_damage: '<color:#f2fff7>Возьмите рельсовый набор и почините отмеченные участки пути</color>'
     crystal_resonance: '<color:#f2fff7>Активируйте подсвеченные кристаллы по порядку</color>'
-    creature_nest: '<color:#f2fff7>Победите налётчиков в выработке</color>'
+    creature_nest: '<color:#f2fff7>Уничтожьте подсвеченные логова и всех тварей рядом</color>'
     power_failure: '<color:#f2fff7>Включайте подсвеченные узлы питания по порядку</color>'
     lost_miner: '<color:#f2fff7>Найдите шахтёра, нажмите на него и проводите к выходу</color>'
-  events:
-    common:
-      entry: '<color:#f2fff7>Нажмите ПКМ по входному маркеру и войдите в комнату события</color>'
-      building: '<color:#f2fff7>Комната события готовится — дождитесь безопасного входа</color>'
-      exit: '<color:#f2fff7>Выход: <destination></color>'
-      return: '<color:#f2fff7>Вернитесь на <floor></color>'
-      floor: '<color:#f2fff7>Этаж: <floor></color>'
-      destination: '<color:#f2fff7>Отнесите к <destination></color>'
-      stage-progress: '<gray>Этап <stage>/<stages> ·</gray> <white><done>/<total></white>'
-      maintenance: '<color:#b8c8c0>Подъёмник выполняет безопасную остановку и ремонт</color>'
-      wrong-order: '<color:#ffad42>Сначала включите механизм, к которому ведёт указатель</color>'
-      carrying: '<color:#f2fff7>Несите предмет к <destination></color>'
-    creature_nest:
-      title: '<color:#ff5f6d><bold>Нашествие в забое</bold></color>'
-      subtitle: '<color:#f2fff7>Отбейте налёт и уничтожьте гнездо</color>'
-      hint: '<color:#f2fff7>Победите налётчиков, затем разбейте ядро гнезда</color>'
-      stages:
-        defend: '<color:#f2fff7>Победите налётчиков в забое</color>'
-        seal: '<color:#f2fff7>Разбейте ядро гнезда</color>'
-    cave_in:
-      title: '<color:#ffad42><bold>Обвал штольни</bold></color>'
-      subtitle: '<color:#f2fff7>Расчистите завал и поставьте подпоры</color>'
-      hint: '<color:#f2fff7>Разберите камни, затем нажмите ПКМ по местам для подпор</color>'
-      stages:
-        clear: '<color:#f2fff7>Разберите камни завала киркой</color>'
-        supports: '<color:#f2fff7>Нажмите ПКМ по отмеченным местам и установите подпоры</color>'
-    flooding:
-      title: '<color:#45c8f5><bold>Прорыв воды</bold></color>'
-      subtitle: '<color:#f2fff7>Запустите насосы и осушите выработку</color>'
-      hint: '<color:#f2fff7>Нажмите ПКМ по насосам, затем удерживайте слив открытым</color>'
-      stages:
-        pumps: '<color:#f2fff7>Нажмите ПКМ по отмеченным насосам</color>'
-        drain: '<color:#f2fff7>Нажмите ПКМ по сливу и оставайтесь рядом 20 секунд</color>'
-    gas_leak:
-      title: '<color:#d7e66b><bold>Утечка газа</bold></color>'
-      subtitle: '<color:#f2fff7>Откройте вентиляцию и проветрите забой</color>'
-      hint: '<color:#f2fff7>Нажимайте ПКМ по решёткам в показанном порядке</color>'
-      stages:
-        vents: '<color:#f2fff7>Откройте вентиляционные решётки по порядку</color>'
-        ventilation: '<color:#f2fff7>Нажмите ПКМ по вентилятору и оставайтесь рядом 15 секунд</color>'
-    power_failure:
-      title: '<color:#ffc857><bold>Отказ питания</bold></color>'
-      subtitle: '<color:#f2fff7>Замените предохранитель и включите цепь</color>'
-      hint: '<color:#f2fff7>Разбейте повреждённый предохранитель, затем включите узлы по порядку</color>'
-      stages:
-        fuse: '<color:#f2fff7>Разбейте повреждённый предохранитель</color>'
-        circuits: '<color:#f2fff7>Нажмите ПКМ по узлам питания по порядку</color>'
-    injured_miner:
-      title: '<color:#ffad42><bold>Раненый шахтёр</bold></color>'
-      subtitle: '<color:#f2fff7>Поднимите его и доставьте на другой этаж</color>'
-      hint: '<color:#f2fff7>Освободите шахтёра, подхватите его и доставьте к лифту на другом ярусе</color>'
-      stages:
-        jacks: '<color:#f2fff7>Нажмите ПКМ по домкратам и освободите шахтёра</color>'
-        stretcher: '<color:#f2fff7>Донесите шахтёра к выходу лифта: <destination></color>'
-    runaway_cart:
-      title: '<color:#ff5f6d><bold>Убежавшая вагонетка</bold></color>'
-      subtitle: '<color:#f2fff7>Переключите путь, затормозите вагонетку и сопроводите её на другой этаж</color>'
-      hint: '<color:#f2fff7>Направляйте вагонетку по стрелкам, нажмите ПКМ по тормозу, затем сопроводите её на <destination></color>'
-      stages:
-        switches: '<color:#f2fff7>Переключайте стрелки и направляйте вагонетку</color>'
-        brake: '<color:#f2fff7>Нажмите ПКМ по тормозному рычагу</color>'
-        escort: '<color:#f2fff7>Сопроводите вагонетку на <destination></color>'
-    convoy:
-      title: '<color:#45c8f5><bold>Шахтный обоз</bold></color>'
-      subtitle: '<color:#f2fff7>Почините путь и проводите вагонетку на другой этаж</color>'
-      hint: '<color:#f2fff7>Разберите повреждённые рельсы, затем сопровождайте обоз до <destination></color>'
-      stages:
-        track: '<color:#f2fff7>Разберите повреждённые участки рельсов</color>'
-        escort: '<color:#f2fff7>Сопровождайте вагонетку до <destination></color>'
-    lift_breakdown:
-      title: '<color:#c778ff><bold>Поломка подъёмника</bold></color>'
-      subtitle: '<color:#f2fff7>Откройте выход, принесите детали и проверьте подъёмник</color>'
-      hint: '<color:#f2fff7>Нажмите ПКМ по выходу, принесите детали на площадку и запустите тест</color>'
-      stages:
-        exit: '<color:#f2fff7>Нажмите ПКМ по рычагу аварийного выхода</color>'
-        parts: '<color:#f2fff7>Отнесите детали к подъёмнику на <destination></color>'
-        test: '<color:#f2fff7>Нажимайте ПКМ по тестовым узлам по порядку</color>'
-    bat_swarm:
-      title: '<color:#9a8cff><bold>Стая летучих мышей</bold></color>'
-      subtitle: '<color:#f2fff7>Направьте стаю к выходу и закройте пролёт</color>'
-      hint: '<color:#f2fff7>Ведите мышей светом ламп, затем нажмите ПКМ по заслонке</color>'
-      stages:
-        flight: '<color:#f2fff7>Ведите стаю светом ламп к безопасному пролёту</color>'
-        seal: '<color:#f2fff7>Нажмите ПКМ по заслонке и закройте пролёт</color>'
-    fungal_bloom:
-      title: '<color:#c778ff><bold>Грибное цветение</bold></color>'
-      subtitle: '<color:#f2fff7>Соберите образцы и уничтожьте споры</color>'
-      hint: '<color:#f2fff7>Разбейте отмеченные грибы, затем уничтожьте споровые очаги</color>'
-      stages:
-        samples: '<color:#f2fff7>Разбейте красные грибы для образцов</color>'
-        spores: '<color:#f2fff7>Разбейте коричневые грибные очаги</color>'
-    root_invasion:
-      title: '<color:#55d98b><bold>Нашествие корней</bold></color>'
-      subtitle: '<color:#f2fff7>Срежьте корни и уничтожьте сердцевину</color>'
-      hint: '<color:#f2fff7>Разбейте корни вокруг прохода, затем доберитесь до сердцевины</color>'
-      stages:
-        roots: '<color:#f2fff7>Разбейте отмеченные корни</color>'
-        heart: '<color:#f2fff7>Разбейте сердцевину корней</color>'
-    lava_breach:
-      title: '<color:#ff5f6d><bold>Прорыв лавы</bold></color>'
-      subtitle: '<color:#f2fff7>Принесите барьеры и перекройте шлюзы</color>'
-      hint: '<color:#f2fff7>Отнесите каменные барьеры к пролому, затем закройте шлюзы по порядку</color>'
-      stages:
-        barriers: '<color:#f2fff7>Отнесите барьеры к месту прорыва</color>'
-        sluices: '<color:#f2fff7>Нажимайте ПКМ по шлюзам по порядку</color>'
-    ancient_door:
-      title: '<color:#ffc857><bold>Древняя дверь</bold></color>'
-      subtitle: '<color:#f2fff7>Доставьте шестерни и соберите замок</color>'
-      hint: '<color:#f2fff7>Отнесите шестерни к двери, затем активируйте замок по порядку</color>'
-      stages:
-        gears: '<color:#f2fff7>Отнесите шестерни к древней двери</color>'
-        lock: '<color:#f2fff7>Нажимайте ПКМ по деталям замка по порядку</color>'
-    old_warehouse:
-      title: '<color:#b8c8c0><bold>Старый склад</bold></color>'
-      subtitle: '<color:#f2fff7>Перенесите ящики и запустите лебёдку</color>'
-      hint: '<color:#f2fff7>Отнесите ящики к выходу из комнаты, затем нажмите ПКМ по лебёдке</color>'
-      stages:
-        crates: '<color:#f2fff7>Отнесите ящики к выходу из комнаты</color>'
-        winch: '<color:#f2fff7>Нажмите ПКМ по рычагу лебёдки</color>'
-    drill_trial:
-      title: '<color:#45c8f5><bold>Испытание бура</bold></color>'
-      subtitle: '<color:#f2fff7>Охладите бур, удерживайте управление и пробейте жилу</color>'
-      hint: '<color:#f2fff7>Отнесите охлаждающую жидкость к буру, удерживайте пульт и завершите проход</color>'
-      stages:
-        coolant: '<color:#f2fff7>Отнесите охлаждающую жидкость к буровой установке</color>'
-        controls: '<color:#f2fff7>Нажмите ПКМ по пульту и оставайтесь рядом 20 секунд</color>'
-        breakthrough: '<color:#f2fff7>Разбейте забой после завершения охлаждения</color>'
 shift:
   winner: '<color:#ffc857>Лучший вклад</color> <color:#707a76>•</color> <white><player></white> <color:#f2fff7>— <amount></color>'
 care:
@@ -1386,7 +1231,6 @@ network:
   actor-fallback: '<gray>бригада</gray>'
   farm-incident: '<prefix> <color:#ff5f6d>На ферме бедствие:</color> <color:#f2fff7>полям нужна помощь.</color>'
   farm-rescued: '<prefix> <green>Поля спасены.</green> <gray>Бедствие пережито без потери основного заказа.</gray>'
-  lumber-processing: '<prefix> <gold>Лесопилке нужны руки в цеху:</gold> <gray>древесина собрана, осталось запустить станки.</gray>'
   mine-hazard: '<prefix> <red><bold>Шахтный забой нестабилен:</bold></red> <yellow>нужна подпорка. Добыча и вагонетка никуда не пропадут.</yellow>'
   mine-stable: '<prefix> <green>Шахтёры укрепили забой.</green> <gray>Экспедиция продолжается.</gray>'
   mine-extraction: '<prefix> <gold><bold>Вагонетка заполнена:</bold></gold> <yellow>её можно доставить в любое время.</yellow>'
@@ -1489,16 +1333,6 @@ phase:
     harvesting: '<green>сбор урожая</green>'
     incident: '<red>спасение полей</red>'
     delivery: '<gold>доставка заказа</gold>'
-    cooldown: '<gray>перерыв</gray>'
-  lumber:
-    idle: '<gray>ожидает</gray>'
-    felling: '<gold>заготовка</gold>'
-    skidding: '<gold>трелёвка</gold>'
-    sawing: '<yellow>распил</yellow>'
-    stacking: '<yellow>укладка</yellow>'
-    dispatch: '<green>отправка</green>'
-    incident: '<red>авария</red>'
-    processing: '<yellow>обработка</yellow>'
     cooldown: '<gray>перерыв</gray>'
   mine:
     idle: '<gray>ожидает</gray>'

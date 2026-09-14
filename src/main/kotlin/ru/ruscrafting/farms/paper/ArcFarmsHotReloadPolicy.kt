@@ -20,10 +20,6 @@ internal object ArcFarmsHotReloadPolicy {
                 candidate.farms.associate { it.id to it.reference },
         ) { "Changing farm zone ids or regions requires a full plugin restart" }
         require(
-            current.lumbermills.associate { it.id to Triple(it.reference, it.station, it.engineVersion) } ==
-                candidate.lumbermills.associate { it.id to Triple(it.reference, it.station, it.engineVersion) },
-        ) { "Changing lumber zone topology or engine-version requires a full plugin restart" }
-        require(
             current.mines.associate { it.id to (it.reference to it.engineVersion) } ==
                 candidate.mines.associate { it.id to (it.reference to it.engineVersion) },
         ) { "Changing mine zone topology or engine-version requires a full plugin restart" }

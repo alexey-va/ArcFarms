@@ -13,7 +13,6 @@ import ru.ruscrafting.farms.domain.FarmCustomerType
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCarePlanner
 import ru.ruscrafting.farms.domain.FarmCareType
-import ru.ruscrafting.farms.domain.LumberIncidentType
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MineResource
 import ru.ruscrafting.farms.domain.MAX_FARM_PATCH_PLOTS
@@ -1199,7 +1198,6 @@ class ArcFarmsConfig private constructor(
     val destinations: Map<String, TeleportDestination>,
     val enterprises: Map<ActivityKind, WorksiteEnterpriseSettings>,
     val farms: List<FarmZoneSettings>,
-    val lumbermills: List<LumberZoneSettings>,
     val mines: List<MineZoneSettings>,
 ) {
     init {
@@ -1236,7 +1234,6 @@ class ArcFarmsConfig private constructor(
 
     val requiresWorldGuard: Boolean = buildList {
         addAll(farms.map(FarmZoneSettings::reference))
-        lumbermills.forEach { add(it.reference); add(it.station) }
         addAll(mines.map(MineZoneSettings::reference))
     }.any { it.region != null }
 
@@ -2498,86 +2495,6 @@ class ArcFarmsConfig private constructor(
                 }
             }
 
-            val lumbermills = config.keys("lumber-zones").sorted().mapNotNull { id ->
-                val section = config.section("lumber-zones.$id")
-                if (!section.boolean("enabled", true)) return@mapNotNull null
-                validateId(id, "lumber zone")
-                val reference = parseReference(section, "", id)
-                val station = parseReference(section, "station-", "$id station", reference.world)
-                val fellingQuota = section.int("felling-quota", 16).checked("felling-quota", 1, 100_000)
-                val processingQuota = section.int("processing-quota", 6).checked("processing-quota", 1, 100_000)
-                val processingPerUse = section.int("processing-per-use", 2).checked("processing-per-use", 1, 100_000)
-                val species = section.stringList("species").map(::speciesName).distinct().also {
-                    require(it.isNotEmpty()) { "Lumber zone $id has no species" }
-                }
-                val engineVersion = section.int("engine-version", 1).checked("lumber engine-version", 1, 2)
-                val incidentCountMin = section.int("incident-count-min", 3).checked("lumber incident-count-min", 3, 5)
-                val incidentCountMax = section.int("incident-count-max", 5).checked("lumber incident-count-max", 3, 5)
-                val orders = section.keys("orders").sorted().map { orderId ->
-                    validateId(orderId, "lumber order")
-                    val order = section.section("orders.$orderId")
-                    LumberOrderSettings(
-                        id = orderId,
-                        species = order.stringList("species").ifEmpty { species }.map(::speciesName).distinct(),
-                        fellingRequired = order.int("phases.felling-required", fellingQuota)
-                            .checked("lumber order felling-required", 1, 100_000),
-                        skiddingRequired = order.int("phases.skidding-required", processingQuota)
-                            .checked("lumber order skidding-required", 1, 100_000),
-                        sawingRequired = order.int("phases.sawing-required", processingQuota)
-                            .checked("lumber order sawing-required", 1, 100_000),
-                        stackingRequired = order.int("phases.stacking-required", processingQuota)
-                            .checked("lumber order stacking-required", 1, 100_000),
-                        incidentTypes = order.stringList("incidents").map { raw ->
-                            runCatching { LumberIncidentType.valueOf(raw.trim().uppercase()) }.getOrElse {
-                                throw IllegalArgumentException("Unknown lumber incident '$raw' in $id/$orderId")
-                            }
-                        },
-                    )
-                }
-                LumberZoneSettings(
-                    id = id,
-                    reference = reference,
-                    station = station,
-                    permission = permission(section.string("permission", "arcfarms.lumber")),
-                    fellingQuota = fellingQuota,
-                    processingQuota = processingQuota,
-                    processingPerUse = processingPerUse,
-                    species = species,
-                    stationMaterials = section.stringList("station-materials").map(::materialName).toSet().also {
-                        require(it.isNotEmpty()) { "Lumber zone $id has no station materials" }
-                    },
-                    engineVersion = engineVersion,
-                    orders = orders,
-                    targetMultiplier = section.int("target-multiplier", 2).checked("lumber target-multiplier", 2, 4),
-                    incidentCountMin = incidentCountMin,
-                    incidentCountMax = incidentCountMax,
-                    recoverySeconds = section.int("recovery-seconds", 90).checked("lumber recovery-seconds", 5, 3_600),
-                    rewards = parseRewards(section, id, "lumber-zones", 110),
-                    rushOrderDurationMillis = section.int("incidents.rush-order-duration-millis", 75_000)
-                        .checked("lumber incidents.rush-order-duration-millis", 1_000, 3_600_000)
-                        .toLong(),
-                    forestFireCandidateMultiplier = section.int("incidents.forest-fire.candidate-multiplier", 4)
-                        .checked("lumber incidents.forest-fire.candidate-multiplier", 2, 8),
-                    sawInteractionCooldownMillis = section.int("interaction-cooldowns.saw-millis", 150)
-                        .checked("lumber interaction-cooldowns.saw-millis", 50, 2_000)
-                        .toLong(),
-                    bundleInteractionCooldownMillis = section.int("interaction-cooldowns.bundle-millis", 350)
-                        .checked("lumber interaction-cooldowns.bundle-millis", 50, 2_000)
-                        .toLong(),
-                    plankInteractionCooldownMillis = section.int("interaction-cooldowns.plank-millis", 350)
-                        .checked("lumber interaction-cooldowns.plank-millis", 50, 2_000)
-                        .toLong(),
-                    dispatchInteractionCooldownMillis = section.int("interaction-cooldowns.dispatch-millis", 500)
-                        .checked("lumber interaction-cooldowns.dispatch-millis", 50, 2_000)
-                        .toLong(),
-                ).also {
-                    require(it.processingPerUse <= it.processingQuota) { "processing-per-use exceeds processing-quota in $id" }
-                }
-            }
-            require(lumbermills.map(LumberZoneSettings::engineVersion).distinct().size <= 1) {
-                "All lumber zones must use the same engine-version"
-            }
-
             val mines = config.keys("mine-zones").sorted().mapNotNull { id ->
                 val section = config.section("mine-zones.$id")
                 if (!section.boolean("enabled", true)) return@mapNotNull null
@@ -2793,7 +2710,6 @@ class ArcFarmsConfig private constructor(
                 destinations = destinations,
                 enterprises = enterprises,
                 farms = farms,
-                lumbermills = lumbermills,
                 mines = mines.sortedByDescending(MineZoneSettings::priority),
             )
         }
