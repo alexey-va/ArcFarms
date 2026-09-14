@@ -63,7 +63,7 @@ internal class MineComponentGraph(
     private val transitions = MineTransitionCoordinator(ports.state, ports.stats)
     private val incidents = MineIncidentCoordinator(transitions, ports.state)
     private val incidentJournal = MineIncidentBlockJournal(recovery)
-    val caveIn = MineCaveInIncident(registry, index, incidents, serviceItems, ports.state)
+    val caveIn = MineCaveInIncident(registry, index, incidents, incidentJournal, recovery, ports.audience, ports.state, lift)
     val trackDamage = MineTrackDamageIncident(registry, index, incidents, serviceItems, ports.state)
     val gasLeak = MineGasLeakIncident(registry, index, incidents)
     val crystalResonance = MineCrystalResonanceIncident(registry, index, incidents)
@@ -93,11 +93,12 @@ internal class MineComponentGraph(
         ru.ruscrafting.farms.paper.mine.incident.scenario.MineScenarioCargo(plugin),
     )
     val incidentScheduler = MineIncidentScheduler(
-        caveIn, gasLeak, flooding, trackDamage, crystalResonance, creatureNest, powerFailure, lostMiner, scenarios,
+        caveIn, gasLeak, flooding, trackDamage, crystalResonance, creatureNest, powerFailure, lostMiner,
+        ru.ruscrafting.farms.paper.mine.incident.MineIncidentPlacementDiagnostics(index), ports.state,
     )
     val incidentSet = MineIncidentSet(
         registry, caveIn, trackDamage, gasLeak, crystalResonance, flooding, powerFailure, creatureNest, lostMiner,
-        incidentScheduler, scenarios,
+        incidentScheduler, incidentJournal, scenarios,
     )
     val guidance = MineGuidanceSource(
         registry, ports.audience, locale, extraction::guidanceTarget, { extraction.routeFor(it)?.finalIndex ?: 1 }, scenarioRooms, clock,

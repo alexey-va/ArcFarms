@@ -14,15 +14,21 @@ import ru.ruscrafting.farms.config.MineOrderSettings
 import ru.ruscrafting.farms.config.MineZoneSettings
 import ru.ruscrafting.farms.config.ZoneReference
 import ru.ruscrafting.farms.domain.MineIncidentType
+import ru.ruscrafting.farms.domain.MineIncidentState
 import ru.ruscrafting.farms.domain.MinePhase
+import ru.ruscrafting.farms.domain.MineScenarioPlacement
 import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.domain.MineShiftEngine
 import ru.ruscrafting.farms.domain.PendingMineBlock
+import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.CuboidRegionGateway
 import ru.ruscrafting.farms.paper.RuntimeTaskSupervisor
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.mine.recovery.MineBlockRecoveryController
+import ru.ruscrafting.farms.paper.mine.recovery.MineIncidentBlockJournal
+import ru.ruscrafting.farms.persistence.MineBlockJournal
 import ru.ruscrafting.farms.persistence.MineRecoveryJournal
+import java.nio.file.Files
 import java.util.concurrent.CompletableFuture
 
 class MineModuleRecoveryMigrationMockBukkitTest : FunSpec({
@@ -114,6 +120,36 @@ class MineModuleRecoveryMigrationMockBukkitTest : FunSpec({
             temporaryMaterial = "COBBLESTONE",
         ))
         controller.canStart("old_shafts") shouldBe false
+    }
+
+    test("startup retires persisted room incidents and the obsolete support-kit cave-in") {
+        val settings = mineV2Settings().copy(miningOnly = true)
+        val position = WorksitePosition("world", 2, 64, 2)
+        val roomIncident = MineShiftState(
+            engineVersion = 2,
+            phase = MinePhase.INCIDENT,
+            sequence = 4,
+            orderId = "ore_run",
+            incidentSchedule = listOf(MineIncidentType.CAVE_IN),
+            resumePhase = MinePhase.MINING,
+            incident = MineIncidentState(
+                type = MineIncidentType.CAVE_IN,
+                required = 2,
+                scenarioPlacement = MineScenarioPlacement(position, position, "middle"),
+            ),
+        )
+        val supportKitIncident = roomIncident.copy(
+            sequence = 5,
+            incident = MineIncidentState(type = MineIncidentType.CAVE_IN, required = 2),
+        )
+
+        listOf(roomIncident, supportKitIncident).forEach { persisted ->
+            val migrated = MineRuntimeFactory.migrate(settings, persisted)
+            migrated.phase shouldBe MinePhase.IDLE
+            migrated.sequence shouldBe persisted.sequence
+            migrated.incident shouldBe null
+            migrated.objective shouldBe null
+        }
     }
 
     test("reload completes an accepted recovery callback and releases its position lock") {
@@ -286,6 +322,69 @@ class MineModuleRecoveryMigrationMockBukkitTest : FunSpec({
         controller.processDue(now = 1_001L, budget = 1) shouldBe 1
         later.type shouldBe Material.GOLD_ORE
         journal.records() shouldContainExactly listOf(blockedRecord)
+    }
+
+    test("ordinary mined block survives journal reopen and restores after an abrupt restart") {
+        val world = paper.server.addSimpleWorld("world")
+        world.getChunkAt(0, 0).load()
+        val block = world.getBlockAt(6, 64, 6).also { it.type = Material.IRON_ORE }
+        val root = Files.createTempDirectory("mine-recovery-reopen-")
+        val record = PendingMineBlock(
+            id = "mine:old_shafts:8:reopen",
+            zoneId = "old_shafts",
+            world = world.name,
+            x = block.x,
+            y = block.y,
+            z = block.z,
+            originalMaterial = Material.IRON_ORE.name,
+            temporaryMaterial = Material.AIR.name,
+            nextMaterial = Material.IRON_ORE.name,
+            restoreAt = 1_000L,
+        )
+        MineBlockJournal(root).use { journal ->
+            journal.prepare(record).join()
+            block.type = Material.AIR
+        }
+
+        MineBlockJournal(root).use { reopened ->
+            val port = mockk<WorksiteRuntimePort>(relaxed = true)
+            val controller = MineBlockRecoveryController(reopened, port, port, port, { 2_000L })
+            controller.activateLoadedState()
+            block.type shouldBe Material.IRON_ORE
+            reopened.records() shouldBe emptyList()
+        }
+    }
+
+    test("incident journal replays a committed rubble block after an abrupt restart") {
+        val world = paper.server.addSimpleWorld("world")
+        world.getChunkAt(0, 0).load()
+        val block = world.getBlockAt(7, 65, 7).also { it.type = Material.AIR }
+        val root = Files.createTempDirectory("mine-incident-reopen-")
+        val record = PendingMineBlock(
+            id = "mine-incident:old_shafts:9:cave_in:0",
+            zoneId = "old_shafts",
+            world = world.name,
+            x = block.x,
+            y = block.y,
+            z = block.z,
+            originalMaterial = Material.AIR.name,
+            temporaryMaterial = Material.COBBLESTONE.name,
+            nextMaterial = Material.AIR.name,
+            restoreAt = Long.MAX_VALUE,
+        )
+        MineBlockJournal(root).use { it.prepare(record).join() }
+
+        MineBlockJournal(root).use { reopened ->
+            val port = mockk<WorksiteRuntimePort>(relaxed = true)
+            val incidentJournal = MineIncidentBlockJournal(
+                MineBlockRecoveryController(reopened, port, port, port, { 2_000L }),
+            )
+            incidentJournal.ensureTemporary(WorksitePosition(world.name, block.x, block.y, block.z), Material.COBBLESTONE) shouldBe true
+            block.type shouldBe Material.COBBLESTONE
+            incidentJournal.restoreNow(WorksitePosition(world.name, block.x, block.y, block.z)).join() shouldBe true
+            block.type shouldBe Material.AIR
+            reopened.records() shouldBe emptyList()
+        }
     }
 })
 

@@ -61,7 +61,9 @@ internal class MinePowerFailureIncident(
         var scheduled = 0
         runtime.state.objective?.targets.orEmpty().forEachIndexed { ordinal, target ->
             val position = target.position.lightPosition()
-            if (position !in existing) {
+            if (position in existing) {
+                journal.ensureTemporary(position, Material.LIGHT)
+            } else {
                 journal.prepare(runtime, INCIDENT_ID, ordinal, position, Material.LIGHT)
                 scheduled++
             }

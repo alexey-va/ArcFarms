@@ -917,11 +917,11 @@ mine-zones:
       coal_order:
         mining-resources: [COAL]
         phases: {prospecting-required: 3, mining-required: 100, loading-required: 4}
-        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE, BAT_SWARM, FUNGAL_BLOOM, ROOT_INVASION, LAVA_BREACH, ANCIENT_DOOR, OLD_WAREHOUSE, DRILL_TRIAL]
+        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE]
       iron_order:
         mining-resources: [IRON]
         phases: {prospecting-required: 3, mining-required: 100, loading-required: 4}
-        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE, BAT_SWARM, FUNGAL_BLOOM, ROOT_INVASION, LAVA_BREACH, ANCIENT_DOOR, OLD_WAREHOUSE, DRILL_TRIAL]
+        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE]
   sand_quarry:
     enabled: true
     engine-version: 2
@@ -959,11 +959,11 @@ mine-zones:
       coal_order:
         mining-resources: [COAL]
         phases: {prospecting-required: 3, mining-required: 100, loading-required: 4}
-        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE, BAT_SWARM, FUNGAL_BLOOM, ROOT_INVASION, LAVA_BREACH, ANCIENT_DOOR, OLD_WAREHOUSE, DRILL_TRIAL]
+        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE]
       iron_order:
         mining-resources: [IRON]
         phases: {prospecting-required: 3, mining-required: 100, loading-required: 4}
-        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE, BAT_SWARM, FUNGAL_BLOOM, ROOT_INVASION, LAVA_BREACH, ANCIENT_DOOR, OLD_WAREHOUSE, DRILL_TRIAL]
+        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE]
   infernal_working:
     enabled: true
     engine-version: 2
@@ -1001,7 +1001,7 @@ mine-zones:
       quartz_order:
         mining-resources: [QUARTZ]
         phases: {prospecting-required: 3, mining-required: 100, loading-required: 4}
-        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE, BAT_SWARM, FUNGAL_BLOOM, ROOT_INVASION, LAVA_BREACH, ANCIENT_DOOR, OLD_WAREHOUSE, DRILL_TRIAL]
+        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE]
   lush_depths:
     enabled: true
     engine-version: 2
@@ -1039,8 +1039,8 @@ mine-zones:
       coal_order:
         mining-resources: [COAL]
         phases: {prospecting-required: 3, mining-required: 100, loading-required: 4}
-        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE, BAT_SWARM, FUNGAL_BLOOM, ROOT_INVASION, LAVA_BREACH, ANCIENT_DOOR, OLD_WAREHOUSE, DRILL_TRIAL]
+        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE]
       iron_order:
         mining-resources: [IRON]
         phases: {prospecting-required: 3, mining-required: 100, loading-required: 4}
-        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE, BAT_SWARM, FUNGAL_BLOOM, ROOT_INVASION, LAVA_BREACH, ANCIENT_DOOR, OLD_WAREHOUSE, DRILL_TRIAL]
+        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE]

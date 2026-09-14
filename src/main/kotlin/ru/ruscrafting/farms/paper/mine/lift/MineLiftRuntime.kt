@@ -414,7 +414,9 @@ internal class MineLiftRuntime(
         if (args.size == 1) (settings.floors.indices.map { (it + 1).toString() } +
             if (sender.hasPermission("arcfarms.admin")) listOf("status") else emptyList()).filter { it.startsWith(args[0]) } else emptyList()
 
-    private fun floorName(index: Int, player: Player? = null) = text("floors.${settings.floors[index].id}", player)
+    private fun floorName(index: Int, player: Player? = null) = text(
+        "floors.${settings.floors[index].id}", player, mapOf("number" to Component.text(index + 1)),
+    )
     private fun text(key: String, player: Player? = null, values: Map<String, Component> = emptyMap()) =
         locale.renderPath("mine-lift.$key", player, values).decoration(TextDecoration.ITALIC, false)
 

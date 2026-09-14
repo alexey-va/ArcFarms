@@ -177,7 +177,7 @@ class MineBasicCycleMockBukkitTest : FunSpec({
         val damage = BlockDamageEvent(player, ore, player.inventory.itemInMainHand, false)
 
         graph.module.onBlockDamage(damage) shouldBe true
-        damage.instaBreak shouldBe true
+        damage.instaBreak shouldBe false
         damage.isCancelled shouldBe false
         runtime.state.mined shouldBe 0
 
@@ -289,7 +289,7 @@ class MineBasicCycleMockBukkitTest : FunSpec({
         runtime.state.sequence shouldBe 0L
     }
 
-    test("unsafe room entry preserves mining and legacy incident resolution still resumes the order") {
+    test("scheduled incident starts inside the mine without creating or entering a room") {
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("IncidentMiner")
         player.inventory.setItemInMainHand(ItemStack(Material.IRON_PICKAXE))
@@ -314,15 +314,10 @@ class MineBasicCycleMockBukkitTest : FunSpec({
 
         graph.module.tick(2_000L)
 
-        // This legacy fixture places the player inside a nest block. New rooms must
-        // reject that entrance instead of silently using the old nest handler.
-        // Automatic prepared-room entry is covered by mine-auto-event.spec.js on Paper.
-        runtime.state.phase shouldBe MinePhase.MINING
-        runtime.state.mined shouldBe 1
-        effects.count(MineIncidentEntityKind.CREATURE) shouldBe 0
-        graph.creatureNest.start(runtime, 3, 2_000L) shouldBe true
         runtime.state.phase shouldBe MinePhase.INCIDENT
+        runtime.state.mined shouldBe 1
         runtime.state.incident?.type shouldBe MineIncidentType.CREATURE_NEST
+        runtime.state.incident?.scenarioPlacement shouldBe null
         runtime.state.resumePhase shouldBe MinePhase.MINING
         effects.count(MineIncidentEntityKind.CREATURE) shouldBe 6
         runtime.state.objective!!.targets.take(3).forEach { target ->

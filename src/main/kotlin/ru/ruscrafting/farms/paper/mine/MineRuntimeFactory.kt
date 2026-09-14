@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.paper.mine
 
 import ru.ruscrafting.farms.config.MineOrderSettings
 import ru.ruscrafting.farms.config.MineZoneSettings
+import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MineRules
 import ru.ruscrafting.farms.domain.MineResource
 import ru.ruscrafting.farms.domain.MineShiftState
@@ -79,11 +80,16 @@ internal object MineRuntimeFactory {
     fun migrate(settings: MineZoneSettings, persisted: MineShiftState): MineShiftState = MineStateMigration.migrate(persisted).let { original ->
         val saved = normalizeResourceProgress(settings, original)
         val allowed = settings.orders.flatMap { it.incidentTypes }.toSet()
+        val incompatibleIncident = saved.incident?.let { incident ->
+            incident.scenarioPlacement != null ||
+                incident.type == MineIncidentType.CAVE_IN &&
+                saved.objective?.targets.orEmpty().none { it.role.value == "cave_in_rubble" }
+        } == true
         if (settings.miningOnly && saved.phase !in setOf(ru.ruscrafting.farms.domain.MinePhase.IDLE,
                 ru.ruscrafting.farms.domain.MinePhase.COOLDOWN) &&
             (saved.orderId !in settings.orders.map { it.id } ||
                 saved.objective?.key?.objectiveId == "mining" || saved.resumeObjective?.key?.objectiveId == "mining" ||
-                saved.incidentSchedule.any { it !in allowed } || saved.phase in setOf(
+                saved.incidentSchedule.any { it !in allowed } || incompatibleIncident || saved.phase in setOf(
                 ru.ruscrafting.farms.domain.MinePhase.PROSPECTING, ru.ruscrafting.farms.domain.MinePhase.LOADING))) {
             MineShiftState(engineVersion = 2, sequence = saved.sequence)
         } else saved

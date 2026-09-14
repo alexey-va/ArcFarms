@@ -137,13 +137,13 @@ internal class MineModule(
     override fun canAccess(player: Player): Boolean =
         registry.snapshot().any { access.hasAccess(player, it.settings.permission) }
 
-    override fun onBreakHigh(event: BlockBreakEvent): Boolean = scenarios?.onBreak(event) == true || mining.onBreakHigh(event)
+    override fun onBreakHigh(event: BlockBreakEvent): Boolean =
+        incidents.onBreak(event) || scenarios?.onBreak(event) == true || mining.onBreakHigh(event)
 
     override fun onBlockDamage(event: BlockDamageEvent): Boolean {
         val runtime = registry.at(event.block.location) ?: return false
         if (access.isAdminEditing(event.player)) return false
         val predictedBreakTicks = mineClientBreakTicks(event.block, event.player)
-        event.instaBreak = true
         scheduleMineClientResync(
             tasks,
             state,
@@ -239,6 +239,7 @@ internal class MineModule(
         scenarios?.rooms?.reconcileLoaded { zone, sequence -> registry.byId(zone)?.state?.let {
             it.sequence == sequence && it.incident?.scenarioPlacement != null
         } == true }
+        incidents.reconcileRecovery()
         org.bukkit.Bukkit.getOnlinePlayers().forEach(::recoverPlayer)
         recovery.activateLoadedState()
         // Mining-only maps depend on a complete visible-surface index. Rebuild it on every activation,
@@ -258,6 +259,7 @@ internal class MineModule(
             index.reconcileChunk(runtime.indexDefinition(), chunk)
         }
         recovery.reconcileChunk(chunk)
+        incidents.reconcileRecovery(chunk)
         cartScene.reconcileChunk(chunk)
         registry.snapshot().filter { it.region.world === chunk.world }.forEach { runtime ->
             incidents.reconcileChunk(runtime, chunk)

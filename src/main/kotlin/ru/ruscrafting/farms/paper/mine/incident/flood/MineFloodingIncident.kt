@@ -91,7 +91,9 @@ internal class MineFloodingIncident(
         var scheduled = 0
         runtime.state.objective?.targets.orEmpty().forEachIndexed { ordinal, target ->
             val position = target.position.floodPosition()
-            if (position !in existing) {
+            if (position in existing) {
+                journal.ensureTemporary(position, Material.WATER)
+            } else {
                 journal.prepare(runtime, INCIDENT_ID, ordinal, position, Material.WATER)
                 scheduled++
             }

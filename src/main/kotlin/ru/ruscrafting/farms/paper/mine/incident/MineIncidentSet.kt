@@ -4,6 +4,7 @@ import org.bukkit.Chunk
 import org.bukkit.Location
 import org.bukkit.entity.Player
 import org.bukkit.event.entity.EntityDeathEvent
+import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import ru.ruscrafting.farms.paper.mine.MineRuntime
@@ -16,6 +17,7 @@ import ru.ruscrafting.farms.paper.mine.incident.gas.MineGasLeakIncident
 import ru.ruscrafting.farms.paper.mine.incident.power.MinePowerFailureIncident
 import ru.ruscrafting.farms.paper.mine.incident.rescue.MineLostMinerIncident
 import ru.ruscrafting.farms.paper.mine.incident.track.MineTrackDamageIncident
+import ru.ruscrafting.farms.paper.mine.recovery.MineIncidentBlockJournal
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 import java.util.UUID
@@ -32,6 +34,7 @@ internal class MineIncidentSet(
     private val creatureNest: MineCreatureNestIncident,
     private val lostMiner: MineLostMinerIncident,
     private val scheduler: MineIncidentScheduler,
+    private val journal: MineIncidentBlockJournal,
     private val scenarios: ru.ruscrafting.farms.paper.mine.incident.scenario.MineScenarioController? = null,
 ) {
     fun tick(runtime: MineRuntime, now: Long, onlineParticipants: Int) {
@@ -48,9 +51,11 @@ internal class MineIncidentSet(
 
     fun onInteract(event: PlayerInteractEvent): Boolean {
         if (registry.at(event.clickedBlock?.location ?: event.player.location)?.state?.incident?.scenarioPlacement != null) return false
-        return caveIn.onInteract(event) || trackDamage.onInteract(event) || gasLeak.onInteract(event) ||
+        return trackDamage.onInteract(event) || gasLeak.onInteract(event) ||
             crystalResonance.onInteract(event) || flooding.onInteract(event) || powerFailure.onInteract(event)
     }
+
+    fun onBreak(event: BlockBreakEvent): Boolean = caveIn.onBreak(event)
 
     fun onMove(to: Location, player: Player): Boolean = lostMiner.onMove(to, player)
 
@@ -59,17 +64,15 @@ internal class MineIncidentSet(
     fun onEntityDeath(event: EntityDeathEvent): Boolean = creatureNest.onDeath(event)
 
     fun releasePlayer(playerId: UUID) {
-        caveIn.releasePlayer(playerId)
         trackDamage.releasePlayer(playerId)
         flooding.releasePlayer(playerId)
         lostMiner.releasePlayer(playerId)
     }
 
     fun isActive(identity: ServiceItemIdentity): Boolean =
-        caveIn.isActive(identity) || trackDamage.isActive(identity) || flooding.isActive(identity)
+        trackDamage.isActive(identity) || flooding.isActive(identity)
 
     fun release(playerId: UUID, identity: ServiceItemIdentity, reason: WorksitePlayerReleaseReason) {
-        caveIn.release(playerId, identity, reason)
         trackDamage.release(playerId, identity, reason)
         flooding.release(playerId, identity, reason)
     }
@@ -79,8 +82,20 @@ internal class MineIncidentSet(
             scenarios?.reconcileChunk(runtime, chunk)
             return
         }
+        caveIn.reconcile(runtime)
+        flooding.reconcile(runtime)
+        powerFailure.reconcile(runtime)
         creatureNest.reconcileChunk(runtime, chunk)
         lostMiner.reconcileChunk(runtime, chunk)
+    }
+
+    fun reconcileRecovery(chunk: Chunk? = null): Int {
+        if (chunk == null) registry.snapshot().forEach { runtime ->
+            caveIn.reconcile(runtime)
+            flooding.reconcile(runtime)
+            powerFailure.reconcile(runtime)
+        }
+        return journal.restoreOrphans(registry.snapshot(), chunk)
     }
 
     fun cleanup() {
@@ -89,6 +104,7 @@ internal class MineIncidentSet(
         }
         scheduler.cleanup()
         registry.snapshot().forEach { runtime ->
+            caveIn.cleanup(runtime)
             creatureNest.cleanup(runtime)
             lostMiner.cleanup(runtime)
         }

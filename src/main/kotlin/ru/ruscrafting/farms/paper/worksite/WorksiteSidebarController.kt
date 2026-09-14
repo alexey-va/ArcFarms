@@ -21,8 +21,9 @@ internal class WorksiteSidebarController {
     private val sessions = mutableMapOf<UUID, Session>()
 
     fun update(player: Player, runtimeKey: String, title: Component, rows: List<Component>, replaceExisting: Boolean) {
-        require(rows.size <= MAX_ROWS) { "A Minecraft sidebar supports at most $MAX_ROWS rows" }
-        if (rows.isEmpty()) {
+        val visibleRows = if (runtimeKey.startsWith("mine:")) SidebarLineWrapper.wrap(rows, MINE_LINE_CHARACTERS) else rows
+        require(visibleRows.size <= MAX_ROWS) { "A Minecraft sidebar supports at most $MAX_ROWS rows" }
+        if (visibleRows.isEmpty()) {
             remove(player)
             return
         }
@@ -46,8 +47,8 @@ internal class WorksiteSidebarController {
         val objective = requireNotNull(session.board.getObjective(OBJECTIVE))
         if (objective.displayName() != title) objective.displayName(title)
         // Stable entries allow duplicate/blank rows. Shrinking deletes only vanished rows.
-        for (index in rows.size until session.rows.size) session.board.resetScores(entry(index))
-        rows.forEachIndexed { index, row ->
+        for (index in visibleRows.size until session.rows.size) session.board.resetScores(entry(index))
+        visibleRows.forEachIndexed { index, row ->
             if (session.rows.getOrNull(index) != row) {
                 objective.getScore(entry(index)).also {
                     it.customName(row)
@@ -55,7 +56,7 @@ internal class WorksiteSidebarController {
                 }
             }
         }
-        session.rows = rows.toList()
+        session.rows = visibleRows.toList()
         if (player.scoreboard !== session.board) player.scoreboard = session.board
     }
 
@@ -87,5 +88,6 @@ internal class WorksiteSidebarController {
     private companion object {
         const val OBJECTIVE = "arcfarms_work"
         const val MAX_ROWS = 15
+        const val MINE_LINE_CHARACTERS = 28
     }
 }

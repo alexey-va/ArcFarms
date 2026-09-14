@@ -5,6 +5,7 @@ import org.bukkit.Chunk
 import org.bukkit.Material
 import org.bukkit.block.Block
 import ru.ruscrafting.farms.domain.PendingMineBlock
+import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
@@ -38,6 +39,8 @@ internal class MineBlockRecoveryController(
     val pendingCount: Int get() = journal.pendingCount()
 
     fun records(zoneId: String): List<PendingMineBlock> = journal.records().filter { it.zoneId == zoneId }
+
+    fun records(): List<PendingMineBlock> = journal.records()
 
     fun canStart(zoneId: String): Boolean = journal.records().none {
         it.zoneId == zoneId && !it.isOrdinaryMiningBreak()
@@ -193,6 +196,31 @@ internal class MineBlockRecoveryController(
             "position=${record.positionKey} expected=$temporary before=$before next=$next changed=$changed")
         retire(record, "restored-now")
         return CompletableFuture.completedFuture(true)
+    }
+
+    /** Replays a durable incident intent when a crash happened after journal commit but before world mutation. */
+    fun ensureTemporary(position: WorksitePosition, expectedTemporary: Material): Boolean {
+        val record = journal.recordAtPosition("${position.world}:${position.x}:${position.y}:${position.z}") ?: return false
+        if (record.temporaryMaterial != expectedTemporary.name) return false
+        val world = Bukkit.getWorld(position.world) ?: return false
+        if (!world.isChunkLoaded(position.x shr 4, position.z shr 4)) return false
+        val block = world.getBlockAt(position.x, position.y, position.z)
+        val original = material(record.originalMaterial, record) ?: return false
+        return when (block.type) {
+            expectedTemporary -> true
+            original -> {
+                block.setType(expectedTemporary, false)
+                state.log(Level.INFO, "Mine recovery replayed durable incident mutation zone=${record.zoneId} " +
+                    "record=${record.id} position=${record.positionKey} original=$original temporary=$expectedTemporary")
+                true
+            }
+            else -> {
+                state.log(Level.WARNING, "Mine recovery retained conflicting incident mutation zone=${record.zoneId} " +
+                    "record=${record.id} position=${record.positionKey} original=$original " +
+                    "temporary=$expectedTemporary actual=${block.type}")
+                false
+            }
+        }
     }
 
     override fun activateLoadedState() {

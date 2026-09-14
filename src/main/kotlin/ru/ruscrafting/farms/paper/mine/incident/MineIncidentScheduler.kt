@@ -11,6 +11,8 @@ import ru.ruscrafting.farms.paper.mine.incident.gas.MineGasLeakIncident
 import ru.ruscrafting.farms.paper.mine.incident.power.MinePowerFailureIncident
 import ru.ruscrafting.farms.paper.mine.incident.rescue.MineLostMinerIncident
 import ru.ruscrafting.farms.paper.mine.incident.track.MineTrackDamageIncident
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import java.util.logging.Level
 
 internal class MineIncidentScheduler(
     private val caveIn: MineCaveInIncident,
@@ -21,9 +23,11 @@ internal class MineIncidentScheduler(
     private val creatures: MineCreatureNestIncident,
     private val power: MinePowerFailureIncident,
     private val lostMiner: MineLostMinerIncident,
-    private val scenarios: ru.ruscrafting.farms.paper.mine.incident.scenario.MineScenarioController? = null,
+    private val diagnostics: MineIncidentPlacementDiagnostics,
+    private val state: WorksiteStatePort,
 ) {
     private val retryAfter = mutableMapOf<String, Long>()
+    private val diagnosed = mutableSetOf<String>()
 
     fun tick(runtime: MineRuntime, now: Long, onlineParticipants: Int): Boolean {
         if (onlineParticipants <= 0 || runtime.state.phase == MinePhase.INCIDENT) return false
@@ -35,7 +39,11 @@ internal class MineIncidentScheduler(
         val key = "${runtime.settings.id}:${runtime.state.sequence}:${runtime.state.incidentCursor}"
         if (now < (retryAfter[key] ?: 0L)) return false
         val started = force(runtime, type, now)
-        if (started) retryAfter.remove(key) else retryAfter[key] = now + RETRY_MILLIS
+        if (started) {
+            retryAfter.remove(key)
+        } else {
+            retryAfter[key] = now + RETRY_MILLIS
+        }
         return started
     }
 
@@ -43,9 +51,8 @@ internal class MineIncidentScheduler(
         if (runtime.state.phase == MinePhase.INCIDENT) return false
         val phaseRank = PHASE_RANK[runtime.state.phase] ?: return false
         if (!runtime.settings.miningOnly && phaseRank < (INCIDENT_RANK[type] ?: 0)) return false
-        if (scenarios?.supports(type) == true && (runtime.settings.miningOnly || type.ordinal > MineIncidentType.LOST_MINER.ordinal)) return scenarios.start(runtime, type, now)
-        return when (type) {
-            MineIncidentType.CAVE_IN -> caveIn.start(runtime, runtime.rules().supportsRequired, now)
+        val started = when (type) {
+            MineIncidentType.CAVE_IN -> caveIn.start(runtime, now)
             MineIncidentType.GAS_LEAK -> gasLeak.start(runtime, 2, now)
             MineIncidentType.FLOODING -> flooding.start(runtime, 2, now)
             MineIncidentType.TRACK_DAMAGE -> trackDamage.start(runtime, 2, now)
@@ -55,9 +62,35 @@ internal class MineIncidentScheduler(
             MineIncidentType.LOST_MINER -> lostMiner.start(runtime, now)
             else -> false
         }
+        val key = "${runtime.settings.id}:${runtime.state.sequence}:${runtime.state.incidentCursor}:$type"
+        if (started) {
+            diagnosed.remove(key)
+        } else if (diagnosed.add(key)) {
+            logFailure(runtime, type)
+        }
+        return started
     }
 
-    fun cleanup() = retryAfter.clear()
+    fun cleanup() {
+        retryAfter.clear()
+        diagnosed.clear()
+    }
+
+    private fun logFailure(runtime: MineRuntime, type: MineIncidentType) {
+        val required = when (type) {
+            MineIncidentType.CAVE_IN -> 4
+            MineIncidentType.CREATURE_NEST -> 3
+            MineIncidentType.LOST_MINER -> 1
+            else -> 2
+        }
+        state.log(
+            Level.WARNING,
+            "Mine incident start rejected zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
+                "type=$type phase=${runtime.state.phase} " +
+                (caveIn.placementFailure(runtime.settings.id).takeIf { type == MineIncidentType.CAVE_IN }
+                    ?: diagnostics.describe(runtime, type, required)),
+        )
+    }
 
     private companion object {
         const val RETRY_MILLIS = 5_000L
