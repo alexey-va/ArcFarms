@@ -20,6 +20,7 @@ class MinePickaxeSupplyMockBukkitTest : FunSpec({
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("Miner")
         player.teleport(Location(world, 10.0, 64.0, 10.0))
+        player.inventory.heldItemSlot = 4
         val plugin = paper.createSimplePlugin("MinePickaxeSupplyTest")
         val lateItems = LateBoundWorksiteServiceItems()
         val port = immediateMinePort().also {
@@ -36,6 +37,7 @@ class MinePickaxeSupplyMockBukkitTest : FunSpec({
         graph.module.tick(2_000L)
         player.inventory.storageContents.filterNotNull().count(serviceItems::isServiceItem) shouldBe 1
         player.inventory.storageContents.filterNotNull().single(serviceItems::isServiceItem).type shouldBe Material.IRON_PICKAXE
+        player.inventory.getItem(4)?.type shouldBe Material.IRON_PICKAXE
 
         val runtime = graph.registry.byId("old_shafts")!!
         runtime.state = runtime.state.copy(sequence = 2)
