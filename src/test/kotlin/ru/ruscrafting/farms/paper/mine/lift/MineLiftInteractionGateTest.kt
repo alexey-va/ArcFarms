@@ -22,7 +22,7 @@ class MineLiftInteractionGateTest : FunSpec({
         gate.isDuplicate(player, 13L) shouldBe false
     }
 
-    test("one cabin body hitbox covers every landing side and is removed with the scene") {
+    test("one cabin body hitbox and four matching iron guard walls are removed with the scene") {
         val paper = MockBukkitTestRuntime.open()
         try {
             val world = paper.server.addSimpleWorld("mine")
@@ -52,11 +52,12 @@ class MineLiftInteractionGateTest : FunSpec({
             scene.move(90.0, open = true) shouldBe true
             cabinHitbox.location.y shouldBe (89.76 plusOrMinus 0.0001)
 
-            val doors = world.entities.filterIsInstance<BlockDisplay>().filter { it.block.material == Material.COPPER_GRATE }
-            doors.size shouldBe 2
+            val rails = world.entities.filterIsInstance<BlockDisplay>().filter { it.block.material == Material.IRON_BLOCK }
+            world.entities.filterIsInstance<BlockDisplay>().count { it.block.material == Material.COPPER_GRATE } shouldBe 0
+            rails.size shouldBe 8
             scene.close()
             cabinHitbox.isValid shouldBe false
-            doors.all { !it.isValid } shouldBe true
+            rails.all { !it.isValid } shouldBe true
         } finally {
             paper.close()
         }

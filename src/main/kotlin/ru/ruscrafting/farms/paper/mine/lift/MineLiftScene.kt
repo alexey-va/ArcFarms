@@ -62,20 +62,12 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
         }
         val doorSides = settings.floors.indices.map(settings::openingSide).toSet()
         MineLiftDoorSide.entries.forEach { side ->
-            if (side in doorSides) {
-                when (side) {
-                    MineLiftDoorSide.WEST -> block(-halfX, .45, -halfZ, .08, .85, settings.depth, Material.COPPER_GRATE, side)
-                    MineLiftDoorSide.EAST -> block(halfX - .08, .45, -halfZ, .08, .85, settings.depth, Material.COPPER_GRATE, side)
-                    MineLiftDoorSide.NORTH -> block(-halfX, .45, -halfZ, settings.width, .85, .08, Material.COPPER_GRATE, side)
-                    MineLiftDoorSide.SOUTH -> block(-halfX, .45, halfZ - .08, settings.width, .85, .08, Material.COPPER_GRATE, side)
-                }
-            } else {
-                when (side) {
-                    MineLiftDoorSide.WEST -> guard(-halfX, -halfZ, settings.depth, vertical = true)
-                    MineLiftDoorSide.EAST -> guard(halfX - .08, -halfZ, settings.depth, vertical = true)
-                    MineLiftDoorSide.NORTH -> guard(-halfX, -halfZ, settings.width, vertical = false)
-                    MineLiftDoorSide.SOUTH -> guard(-halfX, halfZ - .08, settings.width, vertical = false)
-                }
+            val openingSide = side.takeIf { it in doorSides }
+            when (side) {
+                MineLiftDoorSide.WEST -> guard(-halfX, -halfZ, settings.depth, vertical = true, openingSide)
+                MineLiftDoorSide.EAST -> guard(halfX - .08, -halfZ, settings.depth, vertical = true, openingSide)
+                MineLiftDoorSide.NORTH -> guard(-halfX, -halfZ, settings.width, vertical = false, openingSide)
+                MineLiftDoorSide.SOUTH -> guard(-halfX, halfZ - .08, settings.width, vertical = false, openingSide)
             }
         }
         spawnCabinHitbox(y)
@@ -149,13 +141,13 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
 
     fun label(index: Int, text: Component) { labels[index].text(text) }
     private fun origin(y: Double) = Location(world, settings.x, y, settings.z)
-    private fun guard(x: Double, z: Double, span: Double, vertical: Boolean) {
+    private fun guard(x: Double, z: Double, span: Double, vertical: Boolean, openingSide: MineLiftDoorSide? = null) {
         if (vertical) {
-            block(x, .45, z, .08, .12, span, Material.IRON_BLOCK)
-            block(x, 1.15, z, .08, .12, span, Material.IRON_BLOCK)
+            block(x, .45, z, .08, .12, span, Material.IRON_BLOCK, openingSide)
+            block(x, 1.15, z, .08, .12, span, Material.IRON_BLOCK, openingSide)
         } else {
-            block(x, .45, z, span, .12, .08, Material.IRON_BLOCK)
-            block(x, 1.15, z, span, .12, .08, Material.IRON_BLOCK)
+            block(x, .45, z, span, .12, .08, Material.IRON_BLOCK, openingSide)
+            block(x, 1.15, z, span, .12, .08, Material.IRON_BLOCK, openingSide)
         }
     }
 

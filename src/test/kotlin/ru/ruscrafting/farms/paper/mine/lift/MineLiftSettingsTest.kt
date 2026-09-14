@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.paper.mine.lift
 
 import io.kotest.core.spec.style.FreeSpec
 import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.shouldBe
 import java.nio.file.Files
 import java.nio.file.Path
@@ -19,13 +20,14 @@ class MineLiftSettingsTest : FreeSpec({
         }
     }
 
-    "accepts a wide freight cabin" {
-        val root = writeConfig(additionalX = 10.0, mainWidth = 5.8)
+    "accepts a rectangular cabin fitted to its shaft" {
+        val root = writeConfig(additionalX = 10.0, mainWidth = 4.8, mainDepth = 6.4)
         try {
             val settings = MineLiftSettings.loadAll(root).first()
-            settings.width shouldBe 5.8
+            settings.width shouldBe 4.8
+            settings.depth shouldBe 6.4
             settings.cabinHitboxBottomOffset() shouldBe -0.24
-            settings.cabinHitboxWidth() shouldBe 6.2
+            settings.cabinHitboxWidth() shouldBe (6.8 plusOrMinus 0.0001)
             settings.cabinHitboxHeight() shouldBe 3.23
         } finally {
             root.toFile().deleteRecursively()
@@ -89,7 +91,12 @@ class MineLiftSettingsTest : FreeSpec({
     }
 })
 
-private fun writeConfig(additionalX: Double, additionalZ: Double = 10.0, mainWidth: Double = 2.8): Path {
+private fun writeConfig(
+    additionalX: Double,
+    additionalZ: Double = 10.0,
+    mainWidth: Double = 2.8,
+    mainDepth: Double = mainWidth,
+): Path {
     val root = createTempDirectory("mine-lift-settings")
     root.resolve("modules").createDirectories()
     root.resolve("modules/mine-lift.yml").writeText(
@@ -97,7 +104,7 @@ private fun writeConfig(additionalX: Double, additionalZ: Double = 10.0, mainWid
         enabled: true
         world: mine
         speed: 6.0
-        cabin: {x: 0.0, z: 0.0, width: $mainWidth, depth: $mainWidth}
+        cabin: {x: 0.0, z: 0.0, width: $mainWidth, depth: $mainDepth}
         floor-order: [top, bottom]
         floors:
           top: {y: 100.0, exit: {x: 4.0, y: 100.0, z: 0.0}, panel: {x: 4.0, y: 100.0, z: 1.0}}
