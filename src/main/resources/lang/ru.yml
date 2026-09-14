@@ -79,7 +79,7 @@ admin:
     entry: '<dark_gray>•</dark_gray> <event> <gray>— подходит</gray> <white><usable></white><gray>, нужно</gray> <white><required></white><gray>, проверено</gray> <white><considered></white><newline>  <gray>Нужно:</gray> <requirement><newline>  <gray>Отклонено:</gray> <reasons>'
     ready: '<green>подходящие места найдены</green>'
     requirement:
-      cave_in: '<gray>твёрдый пол 5×4, четыре свободных блока в высоту и каменный либо рудный потол не выше 8 блоков над кучей</gray>'
+      cave_in: '<gray>твёрдый пол 5×4, четыре свободных блока в высоту и каменный либо рудный потолок не выше 8 блоков над кучей</gray>'
       gas_leak: '<gray>открытые твёрдые стены внутри шахты</gray>'
       flooding: '<gray>твёрдый пол и два свободных блока над ним; воду создаёт само событие</gray>'
       track_damage: '<gray>участки пути из настроенного материала со свободным проходом сверху</gray>'
