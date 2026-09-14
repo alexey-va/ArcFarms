@@ -23,7 +23,15 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.floor
 
-internal enum class FarmContractSceneRole { CART, CART_INTERACTION, CART_LOAD, CUSTOMER, CUSTOMER_LABEL, ENTERPRISE_BADGE }
+internal enum class FarmContractSceneRole {
+    CART,
+    CART_INTERACTION,
+    CART_LOAD,
+    CUSTOMER,
+    CUSTOMER_INTERACTION,
+    CUSTOMER_LABEL,
+    ENTERPRISE_BADGE,
+}
 
 internal data class FarmContractSceneIdentity(
     val zoneId: String,
@@ -228,7 +236,9 @@ internal class FarmContractSceneManager(
                 location.world.spawn(location, ItemDisplay::class.java) { display ->
                     normalize(display, spec, target.identity)
                 }
-            FarmContractSceneRole.CART_INTERACTION -> location.world.spawn(location, Interaction::class.java) { interaction ->
+            FarmContractSceneRole.CART_INTERACTION,
+            FarmContractSceneRole.CUSTOMER_INTERACTION,
+            -> location.world.spawn(location, Interaction::class.java) { interaction ->
                 normalize(interaction, spec, target.identity)
             }
             FarmContractSceneRole.ENTERPRISE_BADGE -> location.world.spawn(location, ItemDisplay::class.java) { display ->
@@ -271,10 +281,11 @@ internal class FarmContractSceneManager(
                 entity.setRotation(spec.customerLocation.yaw, 0f)
             }
             is Interaction -> {
-                entity.interactionWidth = 1.8f
-                entity.interactionHeight = 1.6f
+                val customer = identity.role == FarmContractSceneRole.CUSTOMER_INTERACTION
+                entity.interactionWidth = if (customer) 1.2f else 1.8f
+                entity.interactionHeight = if (customer) 2.0f else 1.6f
                 entity.isResponsive = true
-                entity.setRotation(spec.cartLocation.yaw, 0f)
+                entity.setRotation(if (customer) spec.customerLocation.yaw else spec.cartLocation.yaw, 0f)
             }
             is TextDisplay -> if (identity.role == FarmContractSceneRole.CUSTOMER_LABEL) {
                 textDisplays.render(
@@ -330,6 +341,7 @@ internal class FarmContractSceneManager(
     private fun targets(spec: FarmContractSceneSpec): List<FarmContractSceneTarget> = buildList {
         if (FarmContractSceneRole.CUSTOMER !in spec.hiddenRoles) {
             add(target(spec, FarmContractSceneRole.CUSTOMER, 0, spec.customerLocation))
+            add(target(spec, FarmContractSceneRole.CUSTOMER_INTERACTION, 0, spec.customerLocation))
         }
         if (FarmContractSceneRole.CUSTOMER_LABEL !in spec.hiddenRoles) {
             add(target(spec, FarmContractSceneRole.CUSTOMER_LABEL, 0, spec.customerLocation.clone().add(0.0, 2.35, 0.0)))
@@ -384,6 +396,7 @@ internal class FarmContractSceneManager(
         val identity = decode(entity)
         val role = when {
             entity is Villager && identity?.role == FarmContractSceneRole.CUSTOMER -> FarmContractSceneRole.CUSTOMER
+            entity is Interaction && identity?.role == FarmContractSceneRole.CUSTOMER_INTERACTION -> FarmContractSceneRole.CUSTOMER_INTERACTION
             entity is TextDisplay && identity?.role == FarmContractSceneRole.CUSTOMER_LABEL -> FarmContractSceneRole.CUSTOMER_LABEL
             entity is Interaction && identity?.role == FarmContractSceneRole.CART_INTERACTION -> FarmContractSceneRole.CART_INTERACTION
             entity is ItemDisplay && identity?.role == FarmContractSceneRole.CART -> FarmContractSceneRole.CART
@@ -430,7 +443,11 @@ internal class FarmContractSceneManager(
     }
 
     private companion object {
-        val CUSTOMER_ROLES = setOf(FarmContractSceneRole.CUSTOMER, FarmContractSceneRole.CUSTOMER_LABEL)
+        val CUSTOMER_ROLES = setOf(
+            FarmContractSceneRole.CUSTOMER,
+            FarmContractSceneRole.CUSTOMER_INTERACTION,
+            FarmContractSceneRole.CUSTOMER_LABEL,
+        )
     }
 
     private fun loadedChunk(target: FarmContractSceneTarget): Chunk? {

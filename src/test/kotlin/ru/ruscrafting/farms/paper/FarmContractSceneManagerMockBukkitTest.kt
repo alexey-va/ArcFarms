@@ -8,6 +8,7 @@ import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.entity.TextDisplay
 import org.bukkit.entity.ItemDisplay
+import org.bukkit.entity.Interaction
 import org.bukkit.inventory.ItemStack
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.config.FarmItemDisplayTransform
@@ -54,12 +55,19 @@ class FarmContractSceneManagerMockBukkitTest : FunSpec({
         world.entities.filter(manager::owns).mapNotNull(manager::metadata).map { it.role }
             .shouldContainExactlyInAnyOrder(
                 FarmContractSceneRole.CUSTOMER,
+                FarmContractSceneRole.CUSTOMER_INTERACTION,
                 FarmContractSceneRole.CUSTOMER_LABEL,
                 FarmContractSceneRole.CART,
                 FarmContractSceneRole.CART_INTERACTION,
                 FarmContractSceneRole.CART_LOAD,
                 FarmContractSceneRole.CART_LOAD,
             )
+        val customerInteraction = world.entities.single {
+            manager.metadata(it)?.role == FarmContractSceneRole.CUSTOMER_INTERACTION
+        } as Interaction
+        customerInteraction.isResponsive shouldBe true
+        customerInteraction.interactionWidth shouldBe 1.2f
+        customerInteraction.interactionHeight shouldBe 2.0f
 
         manager.ensure(
             base.copy(
@@ -73,11 +81,12 @@ class FarmContractSceneManagerMockBukkitTest : FunSpec({
         val remaining = world.entities.filter(manager::owns)
         remaining.mapNotNull(manager::metadata).map { it.role }.shouldContainExactlyInAnyOrder(
             FarmContractSceneRole.CUSTOMER,
+            FarmContractSceneRole.CUSTOMER_INTERACTION,
             FarmContractSceneRole.CUSTOMER_LABEL,
         )
 
         manager.ensure(base)
-        world.entities.filter(manager::owns).size shouldBe 6
+        world.entities.filter(manager::owns).size shouldBe 7
     }
 
     test("enterprise badge is one reconstructible display and disappears at stage zero") {

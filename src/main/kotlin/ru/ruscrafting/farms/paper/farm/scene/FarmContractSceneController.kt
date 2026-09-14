@@ -155,7 +155,9 @@ internal class FarmContractSceneController(
             "market_accepted" to runtime.state.specialIncident?.marketAccepted,
         )
         when (identity.role) {
-            FarmContractSceneRole.CUSTOMER -> interactCustomer(player, entity, runtime, order)
+            FarmContractSceneRole.CUSTOMER,
+            FarmContractSceneRole.CUSTOMER_INTERACTION,
+            -> interactCustomer(player, entity, runtime, order)
             FarmContractSceneRole.CART,
             FarmContractSceneRole.CART_INTERACTION,
             FarmContractSceneRole.CART_LOAD,
