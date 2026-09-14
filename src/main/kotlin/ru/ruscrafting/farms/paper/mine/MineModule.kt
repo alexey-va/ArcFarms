@@ -80,6 +80,7 @@ internal class MineModule(
     private val clock: () -> Long,
     private val scenarios: ru.ruscrafting.farms.paper.mine.incident.scenario.MineScenarioController?,
     private val veins: ru.ruscrafting.farms.paper.mine.mining.MineVeinController,
+    private val pickaxes: MinePickaxeSupply,
 ) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockBreakGuard, WorksiteBlockDamageHandler, WorksiteBlockPlaceHandler,
     WorksiteBlockInteractHandler,
     WorksiteMoveHandler, WorksiteEntityInteractHandler, WorksiteEntityDeathHandler, WorksiteFastVisualHandler,
@@ -120,6 +121,7 @@ internal class MineModule(
                 val participants = runtime.region.world.players.filter {
                     registry.forAudience(it.location) === runtime && access.hasAccess(it, runtime.settings.permission) && !access.isAdminEditing(it)
                 }
+                participants.forEach { pickaxes.ensure(runtime, it) }
                 if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.IDLE) {
                     participants.firstOrNull()?.let { prospecting.autoStart(runtime, it) }
                 }
@@ -220,7 +222,7 @@ internal class MineModule(
     }
 
     override fun isActive(identity: ServiceItemIdentity): Boolean =
-        loading.isActive(identity) || incidents.isActive(identity)
+        pickaxes.isActive(identity) || loading.isActive(identity) || incidents.isActive(identity)
 
     override fun release(playerId: UUID, identity: ServiceItemIdentity, reason: WorksitePlayerReleaseReason) {
         loading.release(playerId, identity, reason)

@@ -16,6 +16,7 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.mine.incident.MineIncidentCoordinator
+import ru.ruscrafting.farms.paper.mine.incident.orderMineIncidentPositions
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 import ru.ruscrafting.farms.paper.mine.recovery.MineIncidentBlockJournal
@@ -23,6 +24,7 @@ import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems
 import java.util.UUID
+import java.util.logging.Level
 import kotlin.math.absoluteValue
 
 internal class MineFloodingIncident(
@@ -34,7 +36,7 @@ internal class MineFloodingIncident(
     private val state: WorksiteStatePort,
 ) {
     fun start(runtime: MineRuntime, required: Int, now: Long): Boolean {
-        val candidates = candidates(runtime)
+        val candidates = candidates(runtime, required)
         if (candidates.size < required * runtime.rules().targetMultiplier) return false
         if (!incidents.start(runtime, MineIncidentType.FLOODING, required, now, candidates)) return false
         reconcile(runtime)
@@ -77,7 +79,9 @@ internal class MineFloodingIncident(
         val runtime = registry.at(clicked.location) ?: return false
         if (!active(runtime)) return false
         val position = WorksitePosition(clicked.world.name, clicked.x, clicked.y, clicked.z)
-        val target = runtime.state.objective?.targets?.firstOrNull { it.position == position } ?: return false
+        val target = runtime.state.objective?.targets?.firstOrNull {
+            it.position == position || it.position.floodPosition() == position
+        } ?: return false
         event.isCancelled = true
         if (runtime.state.incident?.serviceLeases?.values?.contains(event.player.uniqueId) == true) {
             drain(runtime, target.id, event.player)
@@ -88,17 +92,30 @@ internal class MineFloodingIncident(
     fun reconcile(runtime: MineRuntime): Int {
         if (!active(runtime)) return 0
         val existing = journal.positions(runtime, INCIDENT_ID).toSet()
-        var scheduled = 0
+        val missing = mutableListOf<Pair<Int, WorksitePosition>>()
         runtime.state.objective?.targets.orEmpty().forEachIndexed { ordinal, target ->
             val position = target.position.floodPosition()
             if (position in existing) {
                 journal.ensureTemporary(position, Material.WATER)
-            } else {
-                journal.prepare(runtime, INCIDENT_ID, ordinal, position, Material.WATER)
-                scheduled++
+            } else if (position.block()?.type == Material.AIR) {
+                missing += ordinal to position
             }
         }
-        return scheduled
+        if (missing.isNotEmpty()) journal.prepareAll(runtime, INCIDENT_ID, missing, Material.WATER).whenComplete { prepared, failure ->
+            if (failure != null || prepared != true) {
+                state.log(
+                    Level.WARNING,
+                    "Mine flooding placement failed zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
+                        "blocks=${missing.size} reason=${failure?.javaClass?.simpleName ?: "journal_rejected"}",
+                    failure,
+                )
+                if (active(runtime)) {
+                    journal.restore(runtime, INCIDENT_ID)
+                    incidents.abort(runtime)
+                }
+            }
+        }
+        return missing.size
     }
 
     fun waterPositions(runtime: MineRuntime): List<WorksitePosition> = journal.positions(runtime, INCIDENT_ID)
@@ -139,12 +156,17 @@ internal class MineFloodingIncident(
         requireNotNull(runtime.state.incident).objectiveNonce, ObjectiveTargetRole(PUMP_ROLE), itemId,
     )
 
-    private fun candidates(runtime: MineRuntime): List<ObjectiveTargetCandidate> =
-        index.loadedTargets(runtime.settings.id, MineAnchorRole.PUMP)
-            .filter {
-                index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.PUMP, runtime.railMaterials) &&
-                    it.floodPosition().block()?.type == Material.AIR
-            }
+    private fun candidates(runtime: MineRuntime, required: Int): List<ObjectiveTargetCandidate> =
+        orderMineIncidentPositions(
+            runtime,
+            index.loadedTargets(runtime.settings.id, MineAnchorRole.NEST)
+                .filter {
+                    index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.NEST, runtime.railMaterials) &&
+                        it.floodPosition().block()?.type == Material.AIR
+                },
+            required * runtime.rules().targetMultiplier * 2,
+            0xF100DL,
+        )
             .mapIndexed { order, position ->
                 ObjectiveTargetCandidate(
                     "flood_${order + 1}_${token(position.x)}_${token(position.z)}",

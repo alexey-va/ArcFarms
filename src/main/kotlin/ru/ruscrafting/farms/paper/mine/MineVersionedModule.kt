@@ -45,6 +45,7 @@ import java.util.UUID
 import java.util.random.RandomGenerator
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.paper.mine.lift.MineLiftAccess
+import ru.ruscrafting.farms.paper.mine.incident.MineIncidentPlacementReport
 
 /** Stable boundary that constructs exactly one mine engine generation for the process lifetime. */
 internal class MineVersionedModule(
@@ -125,6 +126,8 @@ internal class MineVersionedModule(
     fun adminStart(zoneId: String, player: Player): Boolean = start(zoneId, player)
     fun adminForceIncident(zoneId: String, type: MineIncidentType, now: Long): Boolean =
         (delegate as? MineModule)?.adminForceIncident(zoneId, type, now) == true
+    fun incidentDiagnostics(zoneId: String): List<MineIncidentPlacementReport> =
+        (delegate as? MineModule)?.admin?.incidentDiagnostics(zoneId).orEmpty()
 
     override fun states(): Map<String, MineShiftState> = delegate.states()
     override fun statuses(): List<ActivityStatus> = delegate.statuses()

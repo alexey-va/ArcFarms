@@ -11,6 +11,7 @@ import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.mine.incident.MineIncidentCoordinator
+import ru.ruscrafting.farms.paper.mine.incident.orderMineIncidentPositions
 import ru.ruscrafting.farms.paper.mine.incident.entity.MineIncidentEntityEffects
 import ru.ruscrafting.farms.paper.mine.incident.entity.MineIncidentEntityKind
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
@@ -25,7 +26,7 @@ internal class MineCreatureNestIncident(
     private val entities = mutableMapOf<String, MutableMap<String, java.util.UUID>>()
 
     fun start(runtime: MineRuntime, required: Int, now: Long): Boolean {
-        val candidates = candidates(runtime)
+        val candidates = candidates(runtime, required)
         if (candidates.size < required * runtime.rules().targetMultiplier) return false
         if (!incidents.start(runtime, MineIncidentType.CREATURE_NEST, required, now, candidates)) return false
         runtime.region.world.loadedChunks.forEach { reconcileChunk(runtime, it) }
@@ -90,9 +91,14 @@ internal class MineCreatureNestIncident(
     private fun active(runtime: MineRuntime): Boolean =
         runtime.state.phase == MinePhase.INCIDENT && runtime.state.incident?.type == MineIncidentType.CREATURE_NEST
 
-    private fun candidates(runtime: MineRuntime): List<ObjectiveTargetCandidate> =
-        index.loadedTargets(runtime.settings.id, MineAnchorRole.NEST)
-            .filter { index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.NEST, runtime.railMaterials) }
+    private fun candidates(runtime: MineRuntime, required: Int): List<ObjectiveTargetCandidate> =
+        orderMineIncidentPositions(
+            runtime,
+            index.loadedTargets(runtime.settings.id, MineAnchorRole.NEST)
+                .filter { index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.NEST, runtime.railMaterials) },
+            required * runtime.rules().targetMultiplier * 2,
+            0xCEEA7L,
+        )
             .mapIndexed { order, position ->
                 ObjectiveTargetCandidate("nest_${order + 1}", position, ObjectiveTargetRole("creature_nest"), order.toLong())
             }

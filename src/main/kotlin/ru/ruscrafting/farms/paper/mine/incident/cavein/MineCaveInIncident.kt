@@ -15,6 +15,9 @@ import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.mine.incident.MineIncidentCoordinator
+import ru.ruscrafting.farms.paper.mine.incident.MineIncidentPlacementReport
+import ru.ruscrafting.farms.paper.mine.incident.entity.MineIncidentEntityEffects
+import ru.ruscrafting.farms.paper.mine.incident.entity.MineIncidentEntityKind
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 import ru.ruscrafting.farms.paper.mine.lift.MineLiftAccess
@@ -34,8 +37,10 @@ internal class MineCaveInIncident(
     private val audience: WorksiteAudiencePort,
     private val state: WorksiteStatePort,
     private val lift: MineLiftAccess?,
+    private val effects: MineIncidentEntityEffects,
 ) {
     private val placementFailures = mutableMapOf<String, String>()
+    private val loggedBlockedTargets = mutableSetOf<String>()
 
     fun start(runtime: MineRuntime, now: Long): Boolean {
         val selection = select(runtime)
@@ -46,7 +51,7 @@ internal class MineCaveInIncident(
                 "rejected=${selection.rejected.entries.joinToString(",", "{", "}") { "${it.key}=${it.value}" }}"
             return false
         }
-        val candidates = footprint.mapIndexed { ordinal, position ->
+        val candidates = footprint.blocks.mapIndexed { ordinal, position ->
             ObjectiveTargetCandidate(
                 "cave_rubble_${ordinal + 1}_${position.x}_${position.y}_${position.z}".replace('-', 'm').take(48),
                 position,
@@ -66,6 +71,17 @@ internal class MineCaveInIncident(
     }
 
     fun placementFailure(zoneId: String): String? = placementFailures[zoneId]
+
+    fun diagnostics(runtime: MineRuntime): MineIncidentPlacementReport {
+        val selection = select(runtime)
+        return MineIncidentPlacementReport(
+            MineIncidentType.CAVE_IN,
+            1,
+            if (selection.footprint == null) 0 else 1,
+            selection.considered,
+            selection.rejected,
+        )
+    }
 
     fun onBreak(event: BlockBreakEvent): Boolean {
         val runtime = registry.at(event.block.location) ?: return false
@@ -100,38 +116,74 @@ internal class MineCaveInIncident(
                 return@whenComplete
             }
             val completed = incidents.completeTarget(runtime, target.id, event.player).accepted
-            if (completed && !active(runtime)) journal.restore(runtime, INCIDENT_ID)
+            if (completed && !active(runtime)) {
+                journal.restore(runtime, INCIDENT_ID)
+                effects.cleanup(runtime, MineIncidentEntityKind.CAVE_IN_MARKER)
+            }
         }
         return true
     }
 
     fun reconcile(runtime: MineRuntime): Int {
         if (!active(runtime)) return 0
+        val targets = runtime.state.objective?.targets.orEmpty().filter { it.role.value == RUBBLE_ROLE }
+        if (targets.size !in MIN_RUBBLE_BLOCKS..MAX_RUBBLE_BLOCKS) {
+            targets.forEach { target ->
+                if (!recovery.containsPosition(target.position.key()) && target.position.block()?.type == RUBBLE) {
+                    target.position.block()?.setType(Material.AIR, false)
+                }
+            }
+            effects.cleanup(runtime, MineIncidentEntityKind.CAVE_IN_MARKER)
+            incidents.abort(runtime)
+            state.log(Level.WARNING, "Mine cave-in legacy scene aborted zone=${runtime.settings.id} " +
+                "sequence=${runtime.state.sequence} targets=${targets.size} expected=$MIN_RUBBLE_BLOCKS..$MAX_RUBBLE_BLOCKS")
+            return 0
+        }
         val existing = journal.positions(runtime, INCIDENT_ID).toSet()
-        var scheduled = 0
-        runtime.state.objective?.targets.orEmpty().forEachIndexed { ordinal, target ->
-            if (target.role.value != RUBBLE_ROLE) return@forEachIndexed
+        val missing = mutableListOf<Pair<Int, WorksitePosition>>()
+        targets.forEachIndexed { ordinal, target ->
             if (target.status == ObjectiveTargetStatus.COMPLETED) {
                 if (target.position in existing) journal.restoreNow(target.position)
             } else if (target.position in existing) {
                 journal.ensureTemporary(target.position, RUBBLE)
             } else if (target.position.block()?.type == Material.AIR) {
-                journal.prepare(runtime, INCIDENT_ID, ordinal, target.position, RUBBLE)
-                scheduled++
+                missing += ordinal to target.position
             } else {
-                state.log(
-                    Level.WARNING,
-                    "Mine cave-in reconcile blocked zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
-                        "target=${target.id} position=${target.position} reason=footprint_occupied " +
-                        "material=${target.position.block()?.type}",
+                val key = "${runtime.settings.id}:${runtime.state.sequence}:${target.id}"
+                if (loggedBlockedTargets.add(key)) state.log(
+                    Level.WARNING, "Mine cave-in reconcile blocked zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
+                        "target=${target.id} position=${target.position} reason=footprint_occupied material=${target.position.block()?.type}",
                 )
             }
         }
-        return scheduled
+        if (missing.isNotEmpty()) {
+            journal.prepareAll(runtime, INCIDENT_ID, missing, RUBBLE).whenComplete { prepared, failure ->
+                if (failure == null && prepared == true) {
+                    if (active(runtime)) reconcileMarker(runtime, targets.map { it.position })
+                } else {
+                    state.log(
+                        Level.WARNING,
+                        "Mine cave-in placement failed zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
+                            "blocks=${missing.size} reason=${failure?.javaClass?.simpleName ?: "journal_rejected"}",
+                        failure,
+                    )
+                    if (active(runtime)) {
+                        journal.restore(runtime, INCIDENT_ID)
+                        effects.cleanup(runtime, MineIncidentEntityKind.CAVE_IN_MARKER)
+                        incidents.abort(runtime)
+                    }
+                }
+            }
+        } else if (existing.size == targets.count { it.status != ObjectiveTargetStatus.COMPLETED }) {
+            reconcileMarker(runtime, targets.map { it.position })
+        }
+        return missing.size
     }
 
     fun cleanup(runtime: MineRuntime): Int {
         placementFailures.remove(runtime.settings.id)
+        loggedBlockedTargets.removeIf { it.startsWith("${runtime.settings.id}:") }
+        effects.cleanup(runtime, MineIncidentEntityKind.CAVE_IN_MARKER)
         return journal.restore(runtime, INCIDENT_ID)
     }
 
@@ -148,13 +200,14 @@ internal class MineCaveInIncident(
                 rejected[issue] = rejected.getOrDefault(issue, 0) + 1
                 return@forEach
             }
-            val footprint = footprints(anchor).firstOrNull { rubbleIssue(runtime, it) == null }
+            val footprint = footprints(runtime, anchor).firstOrNull { rubbleIssue(runtime, it) == null }
             if (footprint != null) return Selection(footprint, anchors.size, checked, rejected)
-            val footprintIssues = footprints(anchor).mapNotNull { rubbleIssue(runtime, it) }
+            val footprintIssues = footprints(runtime, anchor).mapNotNull { rubbleIssue(runtime, it) }
             val reason = when {
                 "journalled_block" in footprintIssues -> "journalled_block"
                 "outside_region" in footprintIssues -> "outside_region"
                 "chunk_unloaded" in footprintIssues -> "chunk_unloaded"
+                "missing_stone_or_ore_ceiling" in footprintIssues -> "missing_stone_or_ore_ceiling"
                 "missing_solid_floor" in footprintIssues -> "missing_solid_floor"
                 else -> "footprint_occupied"
             }
@@ -175,21 +228,86 @@ internal class MineCaveInIncident(
         return null
     }
 
-    private fun rubbleIssue(runtime: MineRuntime, footprint: List<WorksitePosition>): String? {
-        if (footprint.any { !runtime.region.contains(it.location()) }) return "outside_region"
-        if (footprint.any { !it.loaded() }) return "chunk_unloaded"
-        if (footprint.any { recovery.containsPosition(it.key()) }) return "journalled_block"
-        if (footprint.take(3).any { it.copy(y = it.y - 1).block()?.type?.isSolid != true }) return "missing_solid_floor"
-        if (footprint.any { it.block()?.type != Material.AIR }) return "footprint_occupied"
+    private fun rubbleIssue(runtime: MineRuntime, footprint: Footprint): String? {
+        val occupied = footprint.blocks + footprint.marker
+        val checked = occupied + footprint.roof
+        if (checked.any { !runtime.region.contains(it.location()) }) return "outside_region"
+        if (checked.any { !it.loaded() }) return "chunk_unloaded"
+        if (footprint.blocks.any { recovery.containsPosition(it.key()) }) return "journalled_block"
+        if (footprint.bottom.any { it.copy(y = it.y - 1).block()?.type?.isSolid != true }) return "missing_solid_floor"
+        if (footprint.roof.size < MIN_ROOF_BLOCKS) return "missing_stone_or_ore_ceiling"
+        if (occupied.any { it.block()?.type != Material.AIR }) return "footprint_occupied"
         return null
     }
 
-    private fun footprints(anchor: WorksitePosition): List<List<WorksitePosition>> = listOf(
-        listOf(-1 to 0, 0 to 0, 1 to 0).map { (dx, dz) -> anchor.copy(x = anchor.x + dx, y = anchor.y + 1, z = anchor.z + dz) } +
-            anchor.copy(y = anchor.y + 2),
-        listOf(0 to -1, 0 to 0, 0 to 1).map { (dx, dz) -> anchor.copy(x = anchor.x + dx, y = anchor.y + 1, z = anchor.z + dz) } +
-            anchor.copy(y = anchor.y + 2),
-    )
+    private fun footprints(runtime: MineRuntime, anchor: WorksitePosition): List<Footprint> =
+        listOf(false, true).map { rotated -> footprint(runtime, anchor, rotated) }
+
+    private fun footprint(runtime: MineRuntime, anchor: WorksitePosition, rotated: Boolean): Footprint {
+        fun point(dx: Int, dy: Int, dz: Int): WorksitePosition {
+            val (x, z) = if (rotated) dz to dx else dx to dz
+            return anchor.copy(x = anchor.x + x, y = anchor.y + dy, z = anchor.z + z)
+        }
+        val bottom = (-2..2).flatMap { dx -> (-1..2).map { dz -> point(dx, 1, dz) } }
+        val second = (-2..2).flatMap { dx -> (-1..2).map { dz -> point(dx, 2, dz) } }
+        val third = (-1..2).flatMap { dx -> (-1..2).map { dz -> point(dx, 3, dz) } }
+        val cap = listOf(0 to 0) + (-1..1).flatMap { dx -> (-1..1).map { dz -> dx to dz } }.filterNot { it == 0 to 0 }
+        val seed = runtime.state.sequence * 1_000_003L + anchor.x * 73_856_093L + anchor.y * 19_349_663L + anchor.z * 83_492_791L
+        val random = java.util.Random(seed xor if (rotated) -7046029254386353131L else 0L)
+        val shuffledThird = third.shuffled(random)
+        val shuffledCap = cap.map { (dx, dz) -> point(dx, 4, dz) }.let { list ->
+            listOf(list.first()) + list.drop(1).shuffled(random)
+        }
+        val count = MIN_RUBBLE_BLOCKS + java.lang.Math.floorMod(seed, (MAX_RUBBLE_BLOCKS - MIN_RUBBLE_BLOCKS + 1).toLong()).toInt()
+        val mandatory = bottom + second + shuffledThird.take(14) + shuffledCap.take(1)
+        val optional = shuffledThird.drop(14) + shuffledCap.drop(1)
+        val blocks = mandatory + optional.take(count - mandatory.size)
+        val roof = bottom.mapNotNull { column -> ceilingPosition(runtime, anchor, column) }
+        return Footprint(
+            blocks = blocks,
+            bottom = bottom,
+            roof = roof,
+            marker = if (rotated) point(-2, 1, 0) else point(0, 1, -2),
+        )
+    }
+
+    private fun ceilingPosition(
+        runtime: MineRuntime,
+        anchor: WorksitePosition,
+        column: WorksitePosition,
+    ): WorksitePosition? {
+        for (dy in MIN_ROOF_HEIGHT..MAX_ROOF_HEIGHT) {
+            val position = column.copy(y = anchor.y + dy)
+            if (!runtime.region.contains(position.location()) || !position.loaded()) return null
+            val material = position.block()?.type ?: return null
+            if (material.isAir) continue
+            return position.takeIf { material.isSolid && material in runtime.mineableMaterials }
+        }
+        return null
+    }
+
+    private fun reconcileMarker(runtime: MineRuntime, positions: List<WorksitePosition>) {
+        val marker = markerPosition(positions) ?: return
+        val chunkX = marker.x shr 4
+        val chunkZ = marker.z shr 4
+        val world = runtime.region.world
+        if (world.isChunkLoaded(chunkX, chunkZ)) {
+            effects.reconcileChunk(runtime, world.getChunkAt(chunkX, chunkZ), MineIncidentEntityKind.CAVE_IN_MARKER,
+                mapOf(MARKER_TARGET_ID to marker))
+        }
+    }
+
+    private fun markerPosition(positions: List<WorksitePosition>): WorksitePosition? {
+        if (positions.isEmpty()) return null
+        val minX = positions.minOf { it.x }; val maxX = positions.maxOf { it.x }
+        val minZ = positions.minOf { it.z }; val maxZ = positions.maxOf { it.z }
+        val y = positions.minOf { it.y }
+        return if (maxX - minX >= maxZ - minZ) {
+            WorksitePosition(positions.first().world, (minX + maxX) / 2, y, minZ - 1)
+        } else {
+            WorksitePosition(positions.first().world, minX - 1, y, (minZ + maxZ) / 2)
+        }
+    }
 
     private fun List<WorksitePosition>.rotate(sequence: Long): List<WorksitePosition> {
         if (isEmpty()) return this
@@ -208,16 +326,29 @@ internal class MineCaveInIncident(
             runtime.state.incident?.scenarioPlacement == null
 
     private data class Selection(
-        val footprint: List<WorksitePosition>?,
+        val footprint: Footprint?,
         val considered: Int,
         val checked: Int,
         val rejected: Map<String, Int>,
     )
 
+    private data class Footprint(
+        val blocks: List<WorksitePosition>,
+        val bottom: List<WorksitePosition>,
+        val roof: List<WorksitePosition>,
+        val marker: WorksitePosition,
+    )
+
     private companion object {
         const val INCIDENT_ID = "cave_in"
         const val RUBBLE_ROLE = "cave_in_rubble"
-        const val RUBBLE_BLOCKS = 4
+        const val RUBBLE_BLOCKS = 60
+        const val MIN_RUBBLE_BLOCKS = 55
+        const val MAX_RUBBLE_BLOCKS = 65
+        const val MIN_ROOF_BLOCKS = 12
+        const val MIN_ROOF_HEIGHT = 5
+        const val MAX_ROOF_HEIGHT = 12
+        const val MARKER_TARGET_ID = "cave_in_marker"
         const val MAX_CHECKS = 512
         const val PLAYER_CLEARANCE_SQUARED = 36.0
         const val LIFT_CLEARANCE_SQUARED = 100.0

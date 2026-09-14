@@ -63,12 +63,12 @@ internal class MineComponentGraph(
     private val transitions = MineTransitionCoordinator(ports.state, ports.stats)
     private val incidents = MineIncidentCoordinator(transitions, ports.state)
     private val incidentJournal = MineIncidentBlockJournal(recovery)
-    val caveIn = MineCaveInIncident(registry, index, incidents, incidentJournal, recovery, ports.audience, ports.state, lift)
+    val caveIn = MineCaveInIncident(registry, index, incidents, incidentJournal, recovery, ports.audience, ports.state, lift, incidentEntityEffects)
     val trackDamage = MineTrackDamageIncident(registry, index, incidents, serviceItems, ports.state)
     val gasLeak = MineGasLeakIncident(registry, index, incidents)
     val crystalResonance = MineCrystalResonanceIncident(registry, index, incidents)
     val flooding = MineFloodingIncident(registry, index, incidents, incidentJournal, serviceItems, ports.state)
-    val powerFailure = MinePowerFailureIncident(registry, index, incidents, incidentJournal)
+    val powerFailure = MinePowerFailureIncident(registry, index, incidents, incidentJournal, ports.state)
     val cartScene = MineCartScene(cartEffects)
     val extraction = MineExtractionController(
         registry, serverId, index, cartScene, transitions, ports.access, ports.audience, ports.stats, ports.network, clock, rewardGrants,
@@ -114,6 +114,7 @@ internal class MineComponentGraph(
         registry, index, recovery, transitions, ports.access, ports.audience, ports.state, clock, random, blockEffects, loading::begin,
         locale = locale,
     )
+    private val pickaxes = MinePickaxeSupply(registry, serviceItems, locale, ports.audience)
     private val tickets = object : MineChunkTicket {
         override fun retain(chunk: org.bukkit.Chunk): Boolean = chunk.addPluginChunkTicket(plugin)
         override fun release(chunk: org.bukkit.Chunk) {
@@ -125,7 +126,7 @@ internal class MineComponentGraph(
     )
     val module = MineModule(
         regions, ports.access, ports.audience, ports.tasks, ports.state, transitions, registry, recovery, index, tickets, prospecting, mining, loading, extraction, cartScene,
-        incidentSet, guidancePresenter, admin, clock, scenarios, veins,
+        incidentSet, guidancePresenter, admin, clock, scenarios, veins, pickaxes,
     )
 
     internal val mutableRuntimeCollectionCount: Int = 1

@@ -17,6 +17,11 @@ interface MineRecoveryJournal {
     fun pendingCount(): Int = records().size
     fun containsPosition(positionKey: String): Boolean
     fun prepare(record: PendingMineBlock): CompletableFuture<Unit>
+    fun prepareAll(records: List<PendingMineBlock>): CompletableFuture<Unit> {
+        var result = CompletableFuture.completedFuture(Unit)
+        records.forEach { record -> result = result.thenCompose { prepare(record) } }
+        return result
+    }
     fun remove(recordId: String): CompletableFuture<Unit>
 }
 
@@ -51,18 +56,33 @@ class MineBlockJournal(dataRoot: Path) : MineRecoveryJournal, AutoCloseable {
     }
 
     override fun prepare(record: PendingMineBlock): CompletableFuture<Unit> {
+        return prepareAll(listOf(record))
+    }
+
+    override fun prepareAll(records: List<PendingMineBlock>): CompletableFuture<Unit> {
+        if (records.isEmpty()) return CompletableFuture.completedFuture(Unit)
+        require(records.map(PendingMineBlock::id).distinct().size == records.size) { "Duplicate mine journal ids in batch" }
+        require(records.map(PendingMineBlock::positionKey).distinct().size == records.size) {
+            "Duplicate mine journal positions in batch"
+        }
         val snapshot = synchronized(lock) {
-            require(record.id !in records) { "Duplicate mine journal id: ${record.id}" }
-            require(record.positionKey !in idsByPosition) { "Mine block is already pending: ${record.positionKey}" }
-            records[record.id] = record
-            idsByPosition[record.positionKey] = record.id
-            MineBlockJournalState(records = records.toMap())
+            records.forEach { record ->
+                require(record.id !in this.records) { "Duplicate mine journal id: ${record.id}" }
+                require(record.positionKey !in idsByPosition) { "Mine block is already pending: ${record.positionKey}" }
+            }
+            records.forEach { record ->
+                this.records[record.id] = record
+                idsByPosition[record.positionKey] = record.id
+            }
+            MineBlockJournalState(records = this.records.toMap())
         }
         return writer.submit(snapshot).whenComplete { _, failure ->
             if (failure != null) synchronized(lock) {
-                if (records[record.id] == record) {
-                    records.remove(record.id)
-                    if (idsByPosition[record.positionKey] == record.id) idsByPosition.remove(record.positionKey)
+                records.forEach { record ->
+                    if (this.records[record.id] == record) {
+                        this.records.remove(record.id)
+                        if (idsByPosition[record.positionKey] == record.id) idsByPosition.remove(record.positionKey)
+                    }
                 }
             }
         }

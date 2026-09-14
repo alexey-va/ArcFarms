@@ -71,18 +71,18 @@ internal class MineIncidentScheduler(
         return started
     }
 
+    fun diagnostics(runtime: MineRuntime): List<MineIncidentPlacementReport> = SUPPORTED_TYPES.map { type ->
+        if (type == MineIncidentType.CAVE_IN) caveIn.diagnostics(runtime)
+        else diagnostics.report(runtime, type, required(type))
+    }
+
     fun cleanup() {
         retryAfter.clear()
         diagnosed.clear()
     }
 
     private fun logFailure(runtime: MineRuntime, type: MineIncidentType) {
-        val required = when (type) {
-            MineIncidentType.CAVE_IN -> 4
-            MineIncidentType.CREATURE_NEST -> 3
-            MineIncidentType.LOST_MINER -> 1
-            else -> 2
-        }
+        val required = required(type)
         state.log(
             Level.WARNING,
             "Mine incident start rejected zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
@@ -92,12 +92,30 @@ internal class MineIncidentScheduler(
         )
     }
 
-    private companion object {
-        const val RETRY_MILLIS = 5_000L
-        val PHASE_RANK = mapOf(
+    companion object {
+        val SUPPORTED_TYPES = listOf(
+            MineIncidentType.CAVE_IN,
+            MineIncidentType.GAS_LEAK,
+            MineIncidentType.FLOODING,
+            MineIncidentType.TRACK_DAMAGE,
+            MineIncidentType.CRYSTAL_RESONANCE,
+            MineIncidentType.CREATURE_NEST,
+            MineIncidentType.POWER_FAILURE,
+            MineIncidentType.LOST_MINER,
+        )
+
+        private fun required(type: MineIncidentType): Int = when (type) {
+            MineIncidentType.CAVE_IN -> 60
+            MineIncidentType.CREATURE_NEST -> 3
+            MineIncidentType.LOST_MINER -> 1
+            else -> 2
+        }
+
+        private const val RETRY_MILLIS = 5_000L
+        private val PHASE_RANK = mapOf(
             MinePhase.PROSPECTING to 0, MinePhase.MINING to 1, MinePhase.LOADING to 2, MinePhase.EXTRACTION to 3,
         )
-        val INCIDENT_RANK = mapOf(
+        private val INCIDENT_RANK = mapOf(
             MineIncidentType.CAVE_IN to 0,
             MineIncidentType.GAS_LEAK to 0,
             MineIncidentType.FLOODING to 0,

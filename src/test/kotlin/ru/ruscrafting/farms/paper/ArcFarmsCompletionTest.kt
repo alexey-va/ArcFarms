@@ -40,6 +40,7 @@ class ArcFarmsCompletionTest : FunSpec({
             listOf("admin", "WORK") to listOf("worksite"),
             listOf("debug", "FaRmB") to listOf("FarmBeta"),
             listOf("ADMIN", "point", "FARM") to listOf("FarmAlpha", "FarmBeta"),
+            listOf("admin", "point", "OldMine", "g") to listOf("gas"),
             listOf("admin", "event", "") to listOf("FarmAlpha", "FarmBeta", "OldMine", "help"),
             listOf("admin", "reset-farm", "he") to listOf("help"),
             listOf("admin", "edit", "") to listOf("help"),
@@ -65,6 +66,7 @@ class ArcFarmsCompletionTest : FunSpec({
             listOf("admin", "worksite", "mine", "OldMine", "reindex", "") to listOf("start", "tick", "cancel"),
             listOf("admin", "worksite", "invalid", "OldMine", "incident", "") to emptyList(),
             listOf("admin", "point", "FarmAlpha", "tool", "clear", "extra", "") to emptyList(),
+            listOf("admin", "points", "") to emptyList(),
         )
         cases.forEach { (args, expected) ->
             withClue(args) { handler.onTabComplete(sender, command, "arcfarms", args.toTypedArray()) shouldBe expected }

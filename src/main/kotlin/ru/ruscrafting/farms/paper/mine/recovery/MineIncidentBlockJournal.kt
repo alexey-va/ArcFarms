@@ -38,6 +38,34 @@ internal class MineIncidentBlockJournal(
         return recovery.prepare(record, block, original) { block.setType(temporary, false) }
     }
 
+    fun prepareAll(
+        runtime: MineRuntime,
+        incidentId: String,
+        placements: List<Pair<Int, WorksitePosition>>,
+        temporary: Material,
+    ): CompletableFuture<Boolean> {
+        val mutations = placements.map { (ordinal, position) ->
+            val world = Bukkit.getWorld(position.world) ?: return CompletableFuture.completedFuture(false)
+            if (!world.isChunkLoaded(position.x shr 4, position.z shr 4)) return CompletableFuture.completedFuture(false)
+            val block = world.getBlockAt(position.x, position.y, position.z)
+            val original = block.type
+            val record = PendingMineBlock(
+                id = "mine-incident:${runtime.settings.id}:${runtime.state.sequence}:$incidentId:$ordinal",
+                zoneId = runtime.settings.id,
+                world = position.world,
+                x = position.x,
+                y = position.y,
+                z = position.z,
+                originalMaterial = original.name,
+                temporaryMaterial = temporary.name,
+                nextMaterial = original.name,
+                restoreAt = Long.MAX_VALUE,
+            )
+            MineBlockMutation(record, block, original) { block.setType(temporary, false) }
+        }
+        return recovery.prepareAll(mutations)
+    }
+
     fun positions(runtime: MineRuntime, incidentId: String): List<WorksitePosition> {
         val prefix = "mine-incident:${runtime.settings.id}:${runtime.state.sequence}:$incidentId:"
         return recovery.records(runtime.settings.id).filter { it.id.startsWith(prefix) }.map {

@@ -2,10 +2,12 @@ package ru.ruscrafting.farms.paper.mine.incident
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.ints.shouldBeInRange
 import io.kotest.matchers.shouldBe
 import org.bukkit.Material
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.inventory.ItemStack
+import org.bukkit.entity.ItemDisplay
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineShiftState
@@ -29,7 +31,12 @@ class MineConstructionIncidentsMockBukkitTest : FunSpec({
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("Miner")
         val anchor = world.getBlockAt(10, 64, 10)
-        (-1..1).forEach { dx -> world.getBlockAt(anchor.x + dx, anchor.y, anchor.z).type = Material.STONE }
+        (-2..2).forEach { dx -> (-2..2).forEach { dz ->
+            world.getBlockAt(anchor.x + dx, anchor.y, anchor.z + dz).type = Material.STONE
+        } }
+        (-2..2).forEach { dx -> (-1..2).forEach { dz ->
+            world.getBlockAt(anchor.x + dx, anchor.y + 5, anchor.z + dz).type = Material.IRON_ORE
+        } }
         val graph = testMineComponentGraph(
             paper.createSimplePlugin("MineCaveInTest"), CuboidRegionGateway(), immediateMinePort(),
             clock = { 1_000L }, journal = ImmediateMineJournal(),
@@ -48,22 +55,29 @@ class MineConstructionIncidentsMockBukkitTest : FunSpec({
 
         graph.caveIn.start(runtime, now = 1_000L) shouldBe true
         val targets = runtime.state.objective!!.targets
-        targets shouldHaveSize 4
+        targets.size.shouldBeInRange(55..65)
         targets.forEach { world.getBlockAt(it.position.x, it.position.y, it.position.z).type shouldBe Material.COBBLESTONE }
+        world.entities.filterIsInstance<ItemDisplay>().single().apply {
+            isGlowing shouldBe true
+            itemStack.type shouldBe Material.COBBLESTONE
+        }
 
         player.inventory.setItemInMainHand(ItemStack(Material.IRON_PICKAXE))
-        val target = targets.first()
-        val rubble = world.getBlockAt(target.position.x, target.position.y, target.position.z)
-        val event = BlockBreakEvent(rubble, player).also { it.expToDrop = 7 }
-        graph.caveIn.onBreak(event) shouldBe true
+        targets.forEachIndexed { index, target ->
+            val rubble = world.getBlockAt(target.position.x, target.position.y, target.position.z)
+            val event = BlockBreakEvent(rubble, player).also { it.expToDrop = 7 }
+            graph.module.onBreakHigh(event) shouldBe true
+            event.isCancelled shouldBe true
+            event.isDropItems shouldBe false
+            event.expToDrop shouldBe 0
+            rubble.type shouldBe Material.AIR
+            if (index < targets.lastIndex) {
+                runtime.state.objective!!.targets.first { it.id == target.id }.status shouldBe ObjectiveTargetStatus.COMPLETED
+            }
+        }
 
-        event.isCancelled shouldBe true
-        event.isDropItems shouldBe false
-        event.expToDrop shouldBe 0
-        rubble.type shouldBe Material.AIR
-        runtime.state.objective!!.targets.first { it.id == target.id }.status shouldBe ObjectiveTargetStatus.COMPLETED
-
-        graph.caveIn.cleanup(runtime) shouldBe 3
+        world.entities.filterIsInstance<ItemDisplay>() shouldHaveSize 0
+        graph.caveIn.cleanup(runtime) shouldBe 0
         targets.forEach { world.getBlockAt(it.position.x, it.position.y, it.position.z).type shouldBe Material.AIR }
     }
 })

@@ -169,7 +169,6 @@ class ArcFarmsCommand(
                 "edit" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_EDIT, sender))
                 "inspect" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_INSPECT, sender))
                 "point" -> sendPointHelp(sender, zone)
-                "points" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_POINTS, sender))
                 "unmanage" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_UNMANAGE, sender))
                 "blockreset" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_BLOCKRESET, sender))
                 "backup" -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_BACKUP, sender))
@@ -198,6 +197,14 @@ class ArcFarmsCommand(
             "inspect" -> service.toggleAdminInspect(player)
             "point" -> {
                 val zone = args.getOrNull(1)
+                if (zone != null && isMineZone(zone)) {
+                    if (args.size > 3 || !sendMinePoints(sender, zone, args.getOrNull(2))) sendPointHelp(sender, zone)
+                    return
+                }
+                if (zone != null && args.size == 2) {
+                    if (!sendFarmPoints(sender, zone)) sendPointHelp(sender, zone)
+                    return
+                }
                 val point = args.getOrNull(2)?.let(::parsePoint)
                 if (zone == null || point == null) {
                     sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
@@ -211,12 +218,6 @@ class ArcFarmsCommand(
                     null -> service.adminSetFarmPoint(player, zone, point)
                     "clear", "remove" -> service.adminClearFarmPoint(player, zone, point)
                     else -> sendPointHelp(sender, zone)
-                }
-            }
-            "points" -> {
-                val zone = args.getOrNull(1)
-                if (zone == null || !sendFarmPoints(sender, zone)) {
-                    sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
                 }
             }
             "unmanage" -> {
@@ -284,12 +285,13 @@ class ArcFarmsCommand(
                     val values = mapOf(
                         "activity" to locale.text(ActivityKind.MINE.name.lowercase()),
                         "zone" to locale.text(zone),
-                        "incident" to locale.renderPath("mine.events.${event.lowercase()}.title", sender),
+                        "incident" to locale.renderPath("mine.incident-name.${event.lowercase()}", sender),
                     )
+                    val started = service.adminSetMineIncident(player,
+                        service.mineZoneIds().first { it.equals(zone, ignoreCase = true) }, event)
                     sender.sendMessage(
                         locale.renderPath(
-                            if (service.adminSetMineIncident(player,
-                                    service.mineZoneIds().first { it.equals(zone, ignoreCase = true) }, event)) {
+                            if (started) {
                                 "admin.worksite.incident-started"
                             } else {
                                 "admin.worksite.incident-rejected"
@@ -298,6 +300,7 @@ class ArcFarmsCommand(
                             values,
                         ),
                     )
+                    if (!started) sendMinePoints(sender, zone, event)
                 } else {
                     val event = rawEvent?.lowercase()
                     if (zone == null || event !in EVENT_STAGES) {
@@ -367,7 +370,7 @@ class ArcFarmsCommand(
         }
         when (args.getOrNull(1)?.lowercase() ?: "status") {
             "status" -> service.adminDebugFarmStatus(player, zone)
-            "points" -> if (!sendFarmPoints(sender, zone)) {
+            "point" -> if (!sendFarmPoints(sender, zone)) {
                 sender.sendMessage(locale.render(MessageKey.ADMIN_ZONE_UNKNOWN, sender, mapOf("zone" to locale.text(zone))))
             }
             "show", "markers" -> service.adminShowFarmGuidance(player, zone)
@@ -430,7 +433,45 @@ class ArcFarmsCommand(
         return true
     }
 
+    private fun sendMinePoints(sender: CommandSender, zone: String, rawIncident: String? = null): Boolean {
+        val reports = service.mineIncidentDiagnostics(zone)
+        if (reports.isEmpty()) return false
+        val selected = if (rawIncident == null) reports else reports.filter { it.type.name.equals(rawIncident, true) }
+        if (selected.isEmpty()) return false
+        sender.sendMessage(locale.renderPath("admin.mine-point.header", sender, mapOf("zone" to locale.text(zone))))
+        selected.forEach { report ->
+            val id = report.type.name.lowercase()
+            val reasons = if (report.rejected.isEmpty()) {
+                locale.renderPath("admin.mine-point.ready", sender)
+            } else {
+                report.rejected.entries.sortedByDescending { it.value }.map { (reason, count) ->
+                    locale.renderPath("admin.mine-point.reason.$reason", sender, mapOf("count" to locale.text(count)))
+                }.foldIndexed(Component.empty()) { index, result, reason ->
+                    result.append(if (index == 0) Component.empty() else Component.text(", "))
+                        .append(reason)
+                }
+            }
+            sender.sendMessage(locale.renderPath("admin.mine-point.entry", sender, mapOf(
+                "event" to locale.renderPath("mine.incident-name.$id", sender),
+                "usable" to locale.text(report.usable),
+                "required" to locale.text(report.required),
+                "considered" to locale.text(report.considered),
+                "requirement" to locale.renderPath("admin.mine-point.requirement.$id", sender),
+                "reasons" to reasons,
+            )))
+        }
+        return true
+    }
+
     private fun sendPointHelp(sender: CommandSender, zone: String?) {
+        if (isMineZone(zone)) {
+            sender.sendMessage(locale.renderPath(
+                "admin.mine-point.help",
+                sender,
+                mapOf("zone" to locale.text(zone)),
+            ))
+            return
+        }
         sender.sendMessage(
             locale.render(
                 MessageKey.ADMIN_POINT_HELP_HEADER,
@@ -494,8 +535,8 @@ class ArcFarmsCommand(
                         sender,
                         mapOf(
                             "id" to locale.text(incident),
-                            "event" to locale.renderPath("mine.events.$id.title", sender),
-                            "description" to locale.renderPath("mine.events.$id.hint", sender),
+                            "event" to locale.renderPath("mine.incident-name.$id", sender),
+                            "description" to locale.renderPath("mine.guidance.$id", sender),
                         ),
                     ),
                 )
@@ -655,24 +696,24 @@ class ArcFarmsCommand(
     private fun adminCompletions(args: Array<out String>): List<String> {
         val action = args[1].lowercase()
         return when (args.size) {
-            2 -> listOf("help", "edit", "inspect", "point", "points", "unmanage", "blockreset", "backup", "stage", "next", "finish", "event", "route", "worksite") + ADMIN_SHORTCUTS
+            2 -> listOf("help", "edit", "inspect", "point", "unmanage", "blockreset", "backup", "stage", "next", "finish", "event", "route", "worksite") + ADMIN_SHORTCUTS
             3 -> when (action) {
                 "worksite" -> listOf("lumber", "mine", "help")
                 "edit", "inspect" -> listOf("help")
-                "point", "points", "unmanage", "blockreset", "backup", "stage", "next", "finish", "event", "route",
+                "point", "unmanage", "blockreset", "backup", "stage", "next", "finish", "event", "route",
                 in ADMIN_SHORTCUTS -> (service.farmZoneIds() +
-                    if (action == "event") service.mineZoneIds() else emptyList()) + "help"
+                    if (action in setOf("event", "point")) service.mineZoneIds() else emptyList()) + "help"
                 else -> emptyList()
             }
             4 -> when (action) {
                 "worksite" -> parseKind(args[2])?.let(service.worksiteAdmins::zoneIds).orEmpty() + "help"
-                "point" -> POINT_ARGUMENTS + "help"
+                "point" -> if (isMineZone(args[2])) service.mineIncidentIds() + "help" else POINT_ARGUMENTS + "help"
                 "stage" -> STAGE_STAGES + "help"
                 "event" -> eventIds(args[2]) + "help"
                 "route" -> listOf("start", "finish", "cancel", "status", "clear", "help")
                 "blockreset" -> listOf("status", "help")
                 "backup" -> listOf("save", "list", "status", "restore", "help")
-                "points", "unmanage", "next", "finish", in ADMIN_SHORTCUTS -> listOf("help")
+                "unmanage", "next", "finish", in ADMIN_SHORTCUTS -> listOf("help")
                 else -> emptyList()
             }
             5 -> when (action) {
@@ -695,7 +736,7 @@ class ArcFarmsCommand(
 
     private fun debugCompletions(args: Array<out String>): List<String> = when (args.size) {
         2 -> service.farmZoneIds()
-        3 -> listOf("status", "contract", "stage", "next", "finish", "event", "give", "show", "points", "reset")
+        3 -> listOf("status", "contract", "stage", "next", "finish", "event", "give", "show", "point", "reset")
         4 -> when (args[2].lowercase()) {
             "stage" -> listOf("preparation", "planting", "harvesting") + CARE_STAGES +
                 listOf("pests", "drought", "giant-crop", "channels", "night-shift", "market", "delivery", "complete", "reset")

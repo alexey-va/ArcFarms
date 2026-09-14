@@ -6,6 +6,7 @@ import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.mine.extraction.MineExtractionController
 import ru.ruscrafting.farms.paper.mine.incident.MineIncidentScheduler
+import ru.ruscrafting.farms.paper.mine.incident.MineIncidentPlacementReport
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 import ru.ruscrafting.farms.paper.mine.index.MineChunkTicket
 import ru.ruscrafting.farms.paper.mine.index.MineIndexDefinition
@@ -35,7 +36,9 @@ internal class MineAdminService(
     override val kind: ActivityKind = ActivityKind.MINE
 
     override fun zoneIds(): List<String> = registry.snapshot().map { it.settings.id }.sorted()
-    override fun incidentIds(): List<String> = MineIncidentType.entries.map(Enum<*>::name)
+    override fun incidentIds(): List<String> = MineIncidentScheduler.SUPPORTED_TYPES.map(Enum<*>::name)
+    fun incidentDiagnostics(zoneId: String): List<MineIncidentPlacementReport> =
+        registry.byId(zoneId)?.let(incidents::diagnostics).orEmpty()
 
     override fun status(zoneId: String): MineAdminStatus? = registry.byId(zoneId)?.let { runtime ->
         MineAdminStatus(

@@ -11,6 +11,6 @@ import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 
 internal class MineGasLeakIncident(
     registry: MineRuntimeRegistry, index: MineBlockIndex, incidents: MineIncidentCoordinator,
-) : MineSequenceIncident(MineIncidentType.GAS_LEAK, MineAnchorRole.VENT, "gas_vent", registry, index, incidents) {
+) : MineSequenceIncident(MineIncidentType.GAS_LEAK, MineAnchorRole.SUPPORT, "gas_vent", registry, index, incidents) {
     fun useVent(runtime: MineRuntime, targetId: String, player: Player): Boolean = use(runtime, targetId, player)
 }

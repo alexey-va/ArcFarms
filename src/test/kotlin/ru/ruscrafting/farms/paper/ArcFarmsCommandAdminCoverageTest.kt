@@ -8,12 +8,15 @@ import io.mockk.verify
 import org.bukkit.command.Command
 import org.bukkit.command.CommandSender
 import org.bukkit.entity.Player
+import net.kyori.adventure.text.Component
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.paper.worksite.WorksiteAdminHandler
 import ru.ruscrafting.farms.paper.worksite.WorksiteAdminReindexTick
 import ru.ruscrafting.farms.paper.worksite.WorksiteAdminRegistry
+import ru.ruscrafting.farms.paper.mine.incident.MineIncidentPlacementReport
+import ru.ruscrafting.farms.domain.MineIncidentType
 
 class ArcFarmsCommandAdminCoverageTest : FunSpec({
     test("firewood point and frost event are executable and suggested to administrators") {
@@ -106,5 +109,31 @@ class ArcFarmsCommandAdminCoverageTest : FunSpec({
         verify(exactly = 1) { mine.cancelReindex("old_shafts") }
         verify(exactly = 0) { mine.start(any(), any()) }
         verify(exactly = 0) { mine.forceIncident(any(), any(), any()) }
+    }
+
+    test("mine point reports the exact missing placement requirement") {
+        val player = mockk<Player>(relaxed = true) {
+            every { hasPermission("arcfarms.admin") } returns true
+        }
+        val report = MineIncidentPlacementReport(
+            MineIncidentType.CAVE_IN, required = 1, usable = 0, considered = 17,
+            rejected = mapOf("missing_stone_or_ore_ceiling" to 12, "footprint_occupied" to 5),
+        )
+        val service = mockk<ArcFarmsService>(relaxed = true) {
+            every { mineZoneIds() } returns listOf("old_shafts")
+            every { mineIncidentDiagnostics("old_shafts") } returns listOf(report)
+        }
+        val locale = mockk<ArcFarmsLocale>(relaxed = true) {
+            every { text(any()) } returns Component.empty()
+            every { renderPath(any(), any(), any()) } returns Component.empty()
+        }
+        val handler = ArcFarmsCommand(service, locale, mockk<ArcFarmsMenu>(relaxed = true)) { Result.success(Unit) }
+
+        handler.onCommand(player, mockk(relaxed = true), "arcfarms", arrayOf("admin", "point", "old_shafts", "CAVE_IN"))
+
+        verify(exactly = 1) {
+            locale.renderPath("admin.mine-point.reason.missing_stone_or_ore_ceiling", player, any())
+        }
+        verify(exactly = 1) { locale.renderPath("admin.mine-point.reason.footprint_occupied", player, any()) }
     }
 })

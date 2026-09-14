@@ -64,6 +64,7 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteEventRouter
 import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantSafety
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItemController
+import ru.ruscrafting.farms.paper.mine.incident.MineIncidentPlacementReport
 import ru.ruscrafting.farms.paper.worksite.WorksiteRewardGrantService
 import ru.ruscrafting.farms.paper.worksite.WorksiteAdminRegistry
 import java.util.UUID
@@ -386,6 +387,9 @@ class ArcFarmsService(
 
     fun adminSetMineIncident(player: Player, zoneId: String, incidentId: String): Boolean =
         worksiteAdmins.handler(ActivityKind.MINE)?.forceIncident(zoneId, incidentId, clock()) == true
+
+    internal fun mineIncidentDiagnostics(zoneId: String): List<MineIncidentPlacementReport> =
+        mineModule.incidentDiagnostics(zoneId)
 
     fun farmOrderIds(zoneId: String): List<String> = farm.runtimes.byId(zoneId)
         ?.orderList

@@ -55,6 +55,7 @@ class MineLiftInteractionGateTest : FunSpec({
             val rails = world.entities.filterIsInstance<BlockDisplay>().filter { it.block.material == Material.IRON_BLOCK }
             world.entities.filterIsInstance<BlockDisplay>().count { it.block.material == Material.COPPER_GRATE } shouldBe 0
             rails.size shouldBe 8
+            rails.all { !it.isGlowing } shouldBe true
             scene.close()
             cabinHitbox.isValid shouldBe false
             rails.all { !it.isValid } shouldBe true

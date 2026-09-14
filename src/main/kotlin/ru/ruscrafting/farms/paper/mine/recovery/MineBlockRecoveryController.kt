@@ -119,6 +119,70 @@ internal class MineBlockRecoveryController(
         return result
     }
 
+    fun prepareAll(mutations: List<MineBlockMutation>): CompletableFuture<Boolean> {
+        if (mutations.isEmpty()) return CompletableFuture.completedFuture(true)
+        require(mutations.map { it.record.positionKey }.distinct().size == mutations.size) {
+            "Mine recovery batch contains duplicate positions"
+        }
+        val acquired = mutableListOf<String>()
+        mutations.forEach { mutation ->
+            val key = mutation.record.positionKey
+            if (!inFlightPositions.add(key)) {
+                acquired.forEach(inFlightPositions::remove)
+                state.log(Level.INFO, "Mine recovery batch rejected reason=position_busy zone=${mutation.record.zoneId} " +
+                    "record=${mutation.record.id} position=$key")
+                return CompletableFuture.completedFuture(false)
+            }
+            if (journal.containsPosition(key)) {
+                inFlightPositions.remove(key)
+                acquired.forEach(inFlightPositions::remove)
+                state.log(Level.INFO, "Mine recovery batch rejected reason=position_journaled zone=${mutation.record.zoneId} " +
+                    "record=${mutation.record.id} position=$key")
+                return CompletableFuture.completedFuture(false)
+            }
+            acquired += key
+        }
+        val token = tasks.lifecycleToken()
+        val result = CompletableFuture<Boolean>()
+        acquired.forEach { pendingResults[it] = result }
+        journal.prepareAll(mutations.map(MineBlockMutation::record)).whenComplete { _, failure ->
+            if (failure != null) {
+                releaseAll(acquired, result)
+                result.completeExceptionally(failure)
+                return@whenComplete
+            }
+            if (!tasks.runSync(token) {
+                    mutations.forEach { queue.schedule(it.record) }
+                    knownJournalCount = journal.pendingCount()
+                    val invalid = mutations.firstOrNull { mutation ->
+                        mutation.block.type != mutation.expectedOriginal || !access.isOperational() || !mutation.stillValid()
+                    }
+                    if (invalid != null) {
+                        state.log(Level.INFO, "Mine recovery batch mutation rejected reason=validation_failed " +
+                            "zone=${invalid.record.zoneId} record=${invalid.record.id} position=${invalid.record.positionKey} " +
+                            "expected=${invalid.expectedOriginal} actual=${invalid.block.type}")
+                        mutations.forEach { retire(it.record, "stale-batch") }
+                        result.complete(false)
+                    } else {
+                        try {
+                            mutations.forEach { it.mutation() }
+                            result.complete(true)
+                        } catch (mutationFailure: Throwable) {
+                            state.log(Level.SEVERE, "Mine recovery batch mutation failed zone=${mutations.first().record.zoneId} " +
+                                "records=${mutations.size}", mutationFailure)
+                            result.completeExceptionally(mutationFailure)
+                        }
+                    }
+                    releaseAll(acquired, result)
+                }) {
+                releaseAll(acquired, result)
+                mutations.forEach { retire(it.record, "stale-batch") }
+                result.complete(false)
+            }
+        }
+        return result
+    }
+
     fun processDue(now: Long = clock(), budget: Int = 128): Int {
         require(budget in 1..262_144)
         ensureQueue()
@@ -299,6 +363,10 @@ internal class MineBlockRecoveryController(
         inFlightPositions.remove(positionKey)
     }
 
+    private fun releaseAll(positionKeys: Collection<String>, result: CompletableFuture<Boolean>) {
+        positionKeys.forEach { release(it, result) }
+    }
+
     private fun retire(record: PendingMineBlock, reason: String) {
         if (!retiringRecords.add(record.id)) return
         journal.remove(record.id).whenComplete { _, failure ->
@@ -335,3 +403,11 @@ internal class MineBlockRecoveryController(
         const val CLEANUP_BUDGET = 128
     }
 }
+
+internal data class MineBlockMutation(
+    val record: PendingMineBlock,
+    val block: Block,
+    val expectedOriginal: Material,
+    val stillValid: () -> Boolean = { true },
+    val mutation: () -> Unit,
+)

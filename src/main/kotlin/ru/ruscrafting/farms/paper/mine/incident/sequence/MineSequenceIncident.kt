@@ -10,6 +10,7 @@ import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.mine.incident.MineIncidentCoordinator
+import ru.ruscrafting.farms.paper.mine.incident.orderMineIncidentPositions
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 import kotlin.math.absoluteValue
@@ -24,7 +25,7 @@ internal abstract class MineSequenceIncident(
     private val incidents: MineIncidentCoordinator,
 ) {
     fun start(runtime: MineRuntime, required: Int, now: Long): Boolean {
-        val candidates = candidates(runtime)
+        val candidates = candidates(runtime, required)
         if (candidates.size < required * runtime.rules().targetMultiplier) return false
         return incidents.start(runtime, type, required, now, candidates)
     }
@@ -58,9 +59,14 @@ internal abstract class MineSequenceIncident(
     private fun active(runtime: MineRuntime): Boolean =
         runtime.state.phase == MinePhase.INCIDENT && runtime.state.incident?.type == type
 
-    private fun candidates(runtime: MineRuntime): List<ObjectiveTargetCandidate> =
-        index.loadedTargets(runtime.settings.id, anchorRole)
-            .filter { index.isLiveTarget(runtime.settings.id, it, anchorRole, runtime.railMaterials) }
+    private fun candidates(runtime: MineRuntime, required: Int): List<ObjectiveTargetCandidate> =
+        orderMineIncidentPositions(
+            runtime,
+            index.loadedTargets(runtime.settings.id, anchorRole)
+                .filter { index.isLiveTarget(runtime.settings.id, it, anchorRole, runtime.railMaterials) },
+            required * runtime.rules().targetMultiplier * 2,
+            type.ordinal.toLong() + 1L,
+        )
             .mapIndexed { order, position ->
                 ObjectiveTargetCandidate(
                     "${targetRole}_${order + 1}_${token(position.x)}_${token(position.y)}_${token(position.z)}".take(48),

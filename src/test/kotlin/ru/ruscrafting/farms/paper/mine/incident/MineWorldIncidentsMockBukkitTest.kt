@@ -4,8 +4,12 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
 import org.bukkit.Material
+import org.bukkit.block.BlockFace
 import org.bukkit.entity.Player
+import org.bukkit.event.block.Action
+import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.inventory.ItemStack
+import org.bukkit.inventory.EquipmentSlot
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineShiftState
@@ -29,12 +33,12 @@ class MineWorldIncidentsMockBukkitTest : FunSpec({
 
     test("flood water pauses without players and reconstructs from the durable journal after restart") {
         val world = paper.server.addSimpleWorld("world")
-        val pumps = (1..5).map { x -> world.getBlockAt(x, 64, 2).also { it.type = Material.WATER } }
+        val floors = (1..5).map { x -> world.getBlockAt(x, 63, 2).also { it.type = Material.STONE } }
         val journal = ImmediateMineJournal()
         val items = WorldIncidentItems()
         val graph = worldGraph(paper, journal, items, "FloodA")
         val runtime = graph.registry.byId("old_shafts")!!
-        index(graph, runtime, pumps.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.PUMP)) })
+        index(graph, runtime, floors.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.NEST)) })
         items.active = graph.flooding::isActive
 
         graph.flooding.start(runtime, required = 2, now = 1_000L) shouldBe true
@@ -46,10 +50,26 @@ class MineWorldIncidentsMockBukkitTest : FunSpec({
         val persisted = runtime.state
         val restarted = worldGraph(paper, journal, items, "FloodB", persisted)
         val restartedRuntime = restarted.registry.byId("old_shafts")!!
-        index(restarted, restartedRuntime, pumps.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.PUMP)) })
+        index(restarted, restartedRuntime, floors.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.NEST)) })
         restarted.flooding.waterPositions(restartedRuntime) shouldContainExactlyInAnyOrder initial
 
-        restarted.module.cleanup("reload")
+        val player = paper.server.addPlayer("PumpOperator")
+        items.active = restarted.flooding::isActive
+        restartedRuntime.state.objective!!.targets.take(2).forEach { target ->
+            val water = world.getBlockAt(target.position.x, target.position.y + 1, target.position.z)
+            restarted.flooding.onInteract(
+                PlayerInteractEvent(
+                    player, Action.RIGHT_CLICK_BLOCK, player.inventory.itemInMainHand,
+                    water, BlockFace.UP, EquipmentSlot.HAND,
+                ),
+            ) shouldBe true
+            restarted.flooding.onInteract(
+                PlayerInteractEvent(
+                    player, Action.RIGHT_CLICK_BLOCK, player.inventory.itemInMainHand,
+                    water, BlockFace.UP, EquipmentSlot.HAND,
+                ),
+            ) shouldBe true
+        }
         initial.all { world.getBlockAt(it.x, it.y, it.z).type == Material.AIR } shouldBe true
     }
 

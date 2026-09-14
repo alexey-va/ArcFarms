@@ -70,7 +70,7 @@ internal data class MineLiftSettings(
         private const val CABIN_HEIGHT = 2.83
         private const val CABIN_CLICK_MARGIN = .2
         // The rendered floor starts at -.22; leave a small clearance below it so
-        // an eye ray aimed at the glowing lower frame still enters the hitbox.
+        // an eye ray aimed at the lower frame still enters the interaction hitbox.
         private const val CABIN_CLICK_BOTTOM_PADDING = .24
 
         fun load(root: Path): MineLiftSettings? = loadAll(root).firstOrNull { it.id == "main" }

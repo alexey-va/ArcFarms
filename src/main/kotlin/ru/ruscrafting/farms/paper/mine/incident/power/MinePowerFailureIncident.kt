@@ -13,9 +13,12 @@ import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.mine.incident.MineIncidentCoordinator
+import ru.ruscrafting.farms.paper.mine.incident.orderMineIncidentPositions
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 import ru.ruscrafting.farms.paper.mine.recovery.MineIncidentBlockJournal
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import java.util.logging.Level
 import kotlin.math.absoluteValue
 
 internal class MinePowerFailureIncident(
@@ -23,9 +26,10 @@ internal class MinePowerFailureIncident(
     private val index: MineBlockIndex,
     private val incidents: MineIncidentCoordinator,
     private val journal: MineIncidentBlockJournal,
+    private val state: WorksiteStatePort,
 ) {
     fun start(runtime: MineRuntime, required: Int, now: Long): Boolean {
-        val candidates = candidates(runtime)
+        val candidates = candidates(runtime, required)
         if (candidates.size < required * runtime.rules().targetMultiplier) return false
         if (!incidents.start(runtime, MineIncidentType.POWER_FAILURE, required, now, candidates)) return false
         reconcile(runtime)
@@ -58,17 +62,30 @@ internal class MinePowerFailureIncident(
     fun reconcile(runtime: MineRuntime): Int {
         if (!active(runtime)) return 0
         val existing = journal.positions(runtime, INCIDENT_ID).toSet()
-        var scheduled = 0
+        val missing = mutableListOf<Pair<Int, WorksitePosition>>()
         runtime.state.objective?.targets.orEmpty().forEachIndexed { ordinal, target ->
             val position = target.position.lightPosition()
             if (position in existing) {
                 journal.ensureTemporary(position, Material.LIGHT)
-            } else {
-                journal.prepare(runtime, INCIDENT_ID, ordinal, position, Material.LIGHT)
-                scheduled++
+            } else if (position.blockType() == Material.AIR) {
+                missing += ordinal to position
             }
         }
-        return scheduled
+        if (missing.isNotEmpty()) journal.prepareAll(runtime, INCIDENT_ID, missing, Material.LIGHT).whenComplete { prepared, failure ->
+            if (failure != null || prepared != true) {
+                state.log(
+                    Level.WARNING,
+                    "Mine power placement failed zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
+                        "blocks=${missing.size} reason=${failure?.javaClass?.simpleName ?: "journal_rejected"}",
+                    failure,
+                )
+                if (active(runtime)) {
+                    journal.restore(runtime, INCIDENT_ID)
+                    incidents.abort(runtime)
+                }
+            }
+        }
+        return missing.size
     }
 
     fun lightPositions(runtime: MineRuntime): List<WorksitePosition> = journal.positions(runtime, INCIDENT_ID)
@@ -76,12 +93,17 @@ internal class MinePowerFailureIncident(
     private fun active(runtime: MineRuntime): Boolean =
         runtime.state.phase == MinePhase.INCIDENT && runtime.state.incident?.type == MineIncidentType.POWER_FAILURE
 
-    private fun candidates(runtime: MineRuntime): List<ObjectiveTargetCandidate> =
-        index.loadedTargets(runtime.settings.id, MineAnchorRole.POWER)
-            .filter {
-                index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.POWER, runtime.railMaterials) &&
-                    it.lightPosition().blockType() == Material.AIR
-            }
+    private fun candidates(runtime: MineRuntime, required: Int): List<ObjectiveTargetCandidate> =
+        orderMineIncidentPositions(
+            runtime,
+            index.loadedTargets(runtime.settings.id, MineAnchorRole.POWER)
+                .filter {
+                    index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.POWER, runtime.railMaterials) &&
+                        it.lightPosition().blockType() == Material.AIR
+                },
+            required * runtime.rules().targetMultiplier * 2,
+            0xA11CEL,
+        )
             .mapIndexed { order, position ->
                 ObjectiveTargetCandidate(
                     "power_${order + 1}_${token(position.x)}_${token(position.z)}",

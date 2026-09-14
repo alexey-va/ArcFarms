@@ -192,7 +192,7 @@ class MineBasicCycleMockBukkitTest : FunSpec({
         player.totalExperience shouldBe 0
     }
 
-    test("decorative walls receive a connected order deposit and do not exceed the deficit") {
+    test("natural cave walls receive a connected order deposit and do not exceed the deficit") {
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("WallMiner")
         player.teleport(Location(world, 5.5, 64.0, 5.5))
@@ -203,11 +203,12 @@ class MineBasicCycleMockBukkitTest : FunSpec({
         val graph = graph(paper, settings)
         val runtime = graph.registry.byId(settings.id)!!
         val wall = (2..5).flatMap { x -> (64..67).map { y ->
-            world.getBlockAt(x, y, 2).also { it.type = if (x % 2 == 0) Material.ORANGE_TERRACOTTA else Material.SMOOTH_SANDSTONE }
+            world.getBlockAt(x, y, 2).also { it.type = if (x % 2 == 0) Material.STONE else Material.TUFF }
         } }
         graph.index.replaceZone(MineIndexDefinition(settings.id, runtime.region, setOf(Material.STONE, Material.IRON_ORE)),
             listOf(world.getChunkAt(0, 0)), wall.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.SUPPORT)) })
         graph.module.tick(1_000L)
+        graph.module.updateVisuals()
         runtime.state.phase shouldBe MinePhase.MINING
         wall.count { it.type == Material.IRON_ORE } shouldBe 8
         graph.recovery.processDue(5_000L)
@@ -240,7 +241,8 @@ class MineBasicCycleMockBukkitTest : FunSpec({
         )
 
         graph.module.tick(1_000L)
-        listOf(6_000L, 11_000L, 16_000L, 21_000L).forEach { now ->
+        graph.module.updateVisuals()
+        (1L..10L).map { 1_000L + it * 5_000L }.forEach { now ->
             graph.recovery.processDue(now)
             graph.veins.tick(runtime, now)
         }

@@ -24,7 +24,7 @@ class MineSequenceIncidentsMockBukkitTest : FunSpec({
     test("wrong sequence input repeats the next target without losing progress") {
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("Engineer")
-        val vents = (1..5).map { x -> world.getBlockAt(x, 64, 2).also { it.type = Material.IRON_BARS } }
+        val supports = (1..5).map { x -> world.getBlockAt(x, 64, 2).also { it.type = Material.STONE } }
         val crystals = (1..5).map { x -> world.getBlockAt(x, 64, 5).also { it.type = Material.AMETHYST_BLOCK } }
         val graph = testMineComponentGraph(
             paper.createSimplePlugin("MineSequenceTest"), CuboidRegionGateway(), immediateMinePort(),
@@ -39,7 +39,7 @@ class MineSequenceIncidentsMockBukkitTest : FunSpec({
         graph.index.replaceZone(
             MineIndexDefinition(runtime.settings.id, runtime.region, setOf(Material.STONE)),
             listOf(world.getChunkAt(0, 0)),
-            vents.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.VENT)) } +
+            supports.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.SUPPORT)) } +
                 crystals.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.CRYSTAL)) },
         )
 

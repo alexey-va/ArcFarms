@@ -162,8 +162,6 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
 
     private fun block(x: Double, y: Double, z: Double, sx: Double, sy: Double, sz: Double, material: Material, doorSide: MineLiftDoorSide? = null) {
         val entity = display(origin(settings.floors.first().y).add(x, y, z), material)
-        entity.isGlowing = true
-        entity.glowColorOverride = org.bukkit.Color.fromRGB(0x75, 0xe6, 0xff)
         entity.transformation = transform(0.0, 0.0, 0.0, sx, sy, sz)
         parts += Part(entity, x, y, z, doorSide)
     }

@@ -30,6 +30,7 @@ import ru.ruscrafting.farms.paper.mine.incident.scenario.MineScenarioRooms
 import ru.ruscrafting.farms.paper.mine.presentation.MineGuidanceSource
 import ru.ruscrafting.farms.paper.CuboidRegionGateway
 import ru.ruscrafting.farms.paper.worksite.WorksiteAdminHandler
+import ru.ruscrafting.farms.paper.mine.incident.MineIncidentScheduler
 
 class MineGuidanceAdminRewardMockBukkitTest : FunSpec({
     lateinit var paper: MockBukkitTestRuntime
@@ -157,7 +158,7 @@ class MineGuidanceAdminRewardMockBukkitTest : FunSpec({
 
         admin.kind shouldBe ActivityKind.MINE
         admin.zoneIds() shouldBe listOf("old_shafts")
-        admin.incidentIds().shouldContainExactlyInAnyOrder(MineIncidentType.entries.map(Enum<*>::name))
+        admin.incidentIds().shouldContainExactlyInAnyOrder(MineIncidentScheduler.SUPPORTED_TYPES.map(Enum<*>::name))
         admin.status("old_shafts")!!.phase shouldBe MinePhase.IDLE.name
         admin.startReindex("old_shafts") shouldBe true
         admin.startReindex("old_shafts") shouldBe false

@@ -16,6 +16,7 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.mine.incident.MineIncidentCoordinator
+import ru.ruscrafting.farms.paper.mine.incident.orderMineIncidentPositions
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
@@ -37,7 +38,7 @@ internal abstract class MineConstructionIncident(
     private val state: WorksiteStatePort,
 ) {
     fun start(runtime: MineRuntime, required: Int, now: Long): Boolean {
-        val candidates = candidates(runtime)
+        val candidates = candidates(runtime, required)
         if (candidates.size < required * runtime.rules().targetMultiplier) return false
         return incidents.start(runtime, type, required, now, candidates)
     }
@@ -136,9 +137,14 @@ internal abstract class MineConstructionIncident(
         itemId,
     )
 
-    private fun candidates(runtime: MineRuntime): List<ObjectiveTargetCandidate> =
-        index.loadedTargets(runtime.settings.id, anchorRole)
-            .filter { index.isLiveTarget(runtime.settings.id, it, anchorRole, runtime.railMaterials) }
+    private fun candidates(runtime: MineRuntime, required: Int): List<ObjectiveTargetCandidate> =
+        orderMineIncidentPositions(
+            runtime,
+            index.loadedTargets(runtime.settings.id, anchorRole)
+                .filter { index.isLiveTarget(runtime.settings.id, it, anchorRole, runtime.railMaterials) },
+            required * runtime.rules().targetMultiplier * 2,
+            type.ordinal.toLong() + 0xC011L,
+        )
             .mapIndexed { order, position ->
                 ObjectiveTargetCandidate(
                     "${itemRole}_${order + 1}_${token(position.x)}_${token(position.y)}_${token(position.z)}".take(48),

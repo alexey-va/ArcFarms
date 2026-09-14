@@ -8,9 +8,23 @@ import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 
+internal data class MineIncidentPlacementReport(
+    val type: MineIncidentType,
+    val required: Int,
+    val usable: Int,
+    val considered: Int,
+    val rejected: Map<String, Int>,
+) {
+    fun technical(): String = "required=$required usable=$usable considered=$considered " +
+        "rejected=${rejected.entries.joinToString(",", "{", "}") { "${it.key}=${it.value}" }}"
+}
+
 internal class MineIncidentPlacementDiagnostics(private val index: MineBlockIndex) {
-    fun describe(runtime: MineRuntime, type: MineIncidentType, required: Int): String {
-        val role = role(type) ?: return "required=$required usable=0 rejected={in_place_implementation_missing=1}"
+    fun report(runtime: MineRuntime, type: MineIncidentType, required: Int): MineIncidentPlacementReport {
+        val needed = required * runtime.rules().targetMultiplier
+        val role = role(type) ?: return MineIncidentPlacementReport(
+            type, needed, 0, 0, mapOf("in_place_implementation_missing" to 1),
+        )
         val rejected = linkedMapOf<String, Int>()
         var usable = 0
         val candidates = index.targets(runtime.settings.id, role)
@@ -18,10 +32,10 @@ internal class MineIncidentPlacementDiagnostics(private val index: MineBlockInde
             val reason = issue(runtime, type, role, position)
             if (reason == null) usable++ else rejected[reason] = rejected.getOrDefault(reason, 0) + 1
         }
-        val needed = required * runtime.rules().targetMultiplier
-        return "required=$needed usable=$usable considered=${candidates.size} " +
-            "rejected=${rejected.entries.joinToString(",", "{", "}") { "${it.key}=${it.value}" }}"
+        return MineIncidentPlacementReport(type, needed, usable, candidates.size, rejected)
     }
+
+    fun describe(runtime: MineRuntime, type: MineIncidentType, required: Int): String = report(runtime, type, required).technical()
 
     private fun issue(runtime: MineRuntime, type: MineIncidentType, role: MineAnchorRole, position: WorksitePosition): String? {
         val world = Bukkit.getWorld(position.world) ?: return "world_unavailable"
@@ -35,8 +49,8 @@ internal class MineIncidentPlacementDiagnostics(private val index: MineBlockInde
     }
 
     private fun role(type: MineIncidentType): MineAnchorRole? = when (type) {
-        MineIncidentType.GAS_LEAK -> MineAnchorRole.VENT
-        MineIncidentType.FLOODING -> MineAnchorRole.PUMP
+        MineIncidentType.GAS_LEAK -> MineAnchorRole.SUPPORT
+        MineIncidentType.FLOODING -> MineAnchorRole.NEST
         MineIncidentType.POWER_FAILURE -> MineAnchorRole.POWER
         MineIncidentType.CREATURE_NEST -> MineAnchorRole.NEST
         MineIncidentType.TRACK_DAMAGE -> MineAnchorRole.RAIL

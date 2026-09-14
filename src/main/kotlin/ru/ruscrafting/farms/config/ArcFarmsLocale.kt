@@ -51,7 +51,6 @@ enum class MessageKey(val path: String) {
     ADMIN_HELP_INSPECT("admin.command-help.inspect"),
     ADMIN_HELP_BLOCKRESET("admin.command-help.blockreset"),
     ADMIN_HELP_BACKUP("admin.command-help.backup"),
-    ADMIN_HELP_POINTS("admin.command-help.points"),
     ADMIN_HELP_UNMANAGE("admin.command-help.unmanage"),
     ADMIN_HELP_NEXT("admin.command-help.next"),
     ADMIN_HELP_FINISH("admin.command-help.finish"),
@@ -647,6 +646,8 @@ enum class MessageKey(val path: String) {
     LUMBER_ACTIONBAR_PROCESSING("lumber.actionbar-processing"),
     MINE_STARTED("mine.started"),
     MINE_PICKAXE_REQUIRED("mine.pickaxe-required"),
+    MINE_SERVICE_PICKAXE("mine.service-pickaxe"),
+    MINE_PICKAXE_INVENTORY_FULL("mine.pickaxe-inventory-full"),
     MINE_REGENERATING("mine.regenerating"),
     MINE_HAZARD_STARTED("mine.hazard-started"),
     MINE_HAZARD_STARTED_SUBTITLE("mine.hazard-started-subtitle"),
@@ -911,6 +912,21 @@ class ArcFarmsLocale(
             enumValues<ru.ruscrafting.farms.domain.FarmPhase>().mapTo(this) { "phase.farm.${it.name.lowercase()}" }
             enumValues<ru.ruscrafting.farms.domain.LumberPhase>().mapTo(this) { "phase.lumber.${it.name.lowercase()}" }
             enumValues<ru.ruscrafting.farms.domain.MinePhase>().mapTo(this) { "phase.mine.${it.name.lowercase()}" }
+            val mineIncidents = listOf(
+                "cave_in", "gas_leak", "flooding", "track_damage", "crystal_resonance",
+                "creature_nest", "power_failure", "lost_miner",
+            )
+            mineIncidents.mapTo(this) { "mine.incident-name.$it" }
+            mineIncidents.mapTo(this) { "admin.mine-point.requirement.$it" }
+            listOf(
+                "world_unavailable", "chunk_unloaded", "anchor_changed", "near_player", "near_lift",
+                "journalled_block", "outside_region", "missing_stone_or_ore_ceiling", "missing_solid_floor",
+                "footprint_occupied", "space_above_occupied", "in_place_implementation_missing",
+            ).mapTo(this) { "admin.mine-point.reason.$it" }
+            add("admin.mine-point.help")
+            add("admin.mine-point.header")
+            add("admin.mine-point.entry")
+            add("admin.mine-point.ready")
             add("lumber.guidance.title")
             add("lumber.guidance.bar")
             enumValues<ru.ruscrafting.farms.domain.LumberPhase>()
@@ -1007,7 +1023,8 @@ class ArcFarmsLocale(
             "prefix", "price", "progress", "rarity", "reason", "records", "requirements", "resource", "restore", "reward", "route",
             "seals", "seconds", "seed", "sequence", "side", "size", "soil", "source", "spawned", "stage", "supply", "targets",
             "reserved", "shares", "issued", "tilled", "time", "tool", "total", "tracking", "type", "water", "wood", "workers", "world", "x", "y", "z",
-            "zone", "weeks", "plan", "week", "votes", "target", "date", "contribution",
+            "zone", "weeks", "plan", "week", "votes", "target", "date", "contribution", "usable", "required",
+            "considered", "requirement", "reasons",
         )
         private val EXPECTED_PLACEHOLDERS = mapOf(
             "farm.hell-greenhouse.plot-cold" to setOf("point"),

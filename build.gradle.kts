@@ -5,7 +5,7 @@ plugins {
     jacoco
 }
 group = "ru.ruscrafting"
-version = "0.40.26"
+version = "0.40.27"
 description = "Shared farm, lumbermill, and mine activities for RusCrafting"
 
 val integrationTestSourceSet = sourceSets.create("integrationTest") {
@@ -82,9 +82,10 @@ tasks {
     test {
         useJUnitPlatform()
         // The full MockBukkit suite constructs several complete 64x64 worlds.
-        // Keep the test worker above the JVM default so late suites do not fail
-        // with unrelated coroutine-debugging OOMs after hundreds of green tests.
+        // Keep the heap above the JVM default and recycle the worker before
+        // retained server fixtures accumulate across the whole 200+ class suite.
         maxHeapSize = "1g"
+        forkEvery = 64
         systemProperty("arcfarms.projectDir", projectDir.absolutePath)
         providers.gradleProperty("ruscraftingOpsRoot")
             .orElse(providers.environmentVariable("RUSCRAFTING_OPS_ROOT"))
