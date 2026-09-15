@@ -1,5 +1,7 @@
 package ru.ruscrafting.farms.domain
 
+import ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed
+
 internal data class FarmGiantCropCandidateSelection(
     val candidate: FarmGiantCropCandidate?,
     val considered: Int,
@@ -44,7 +46,7 @@ internal object FarmGiantCropCandidateSelector {
 
     private fun <T> List<T>.rotate(salt: Long): List<T> {
         if (isEmpty()) return this
-        val mixed = FarmSpatialSeed.mix(salt, 0x4749414e54L)
+        val mixed = WorksiteDeterministicSeed.derive(salt, 0x4749414e54L)
         val offset = java.lang.Math.floorMod((mixed xor (mixed ushr 32)).toInt(), size)
         return drop(offset) + take(offset)
     }

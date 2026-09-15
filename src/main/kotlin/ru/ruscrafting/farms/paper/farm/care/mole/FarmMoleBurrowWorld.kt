@@ -14,6 +14,7 @@ import ru.ruscrafting.farms.config.FarmMoleBurrowSettings
 import ru.ruscrafting.farms.domain.FarmMoleBurrowDecorationPlanner
 import ru.ruscrafting.farms.domain.FarmMoleBurrowPlanner
 import ru.ruscrafting.farms.domain.FarmMolePassage
+import ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockPolicy
@@ -146,7 +147,11 @@ internal class FarmMoleBurrowWorld(
         fun reject(reason: String, count: Int = 1) {
             rejections[reason] = rejections.getOrDefault(reason, 0) + count
         }
-        val layoutSeed = seed(placementSequence xor (burrowId.toLong() shl 40), floor(surface.x).toInt(), floor(surface.z).toInt())
+        val layoutSeed = WorksiteDeterministicSeed.gridScore(
+            placementSequence xor (burrowId.toLong() shl 40),
+            floor(surface.x).toInt(),
+            floor(surface.z).toInt(),
+        )
         val raw = FarmMoleBurrowPlanner.plan(
             settings.cells,
             layoutSeed,
@@ -391,7 +396,11 @@ internal class FarmMoleBurrowWorld(
         val depthSpan = settings.maxDepth - settings.minDepth + 1
         if (depthSpan <= 0) return null
         val depth = settings.minDepth + Math.floorMod(
-            seed(runtime.state.placementSequence, floor(surface.x).toInt(), floor(surface.z).toInt()).toInt(),
+            WorksiteDeterministicSeed.gridScore(
+                runtime.state.placementSequence,
+                floor(surface.x).toInt(),
+                floor(surface.z).toInt(),
+            ).toInt(),
             depthSpan,
         )
         val centerX = floor(surface.x).toInt()
@@ -453,7 +462,9 @@ internal class FarmMoleBurrowWorld(
         val x = floor(surface.x).toInt()
         val z = floor(surface.z).toInt()
         val depth = settings.minDepth + Math.floorMod(
-            seed(runtime.state.placementSequence, x, z).toInt(), settings.maxDepth - settings.minDepth + 1)
+            WorksiteDeterministicSeed.gridScore(runtime.state.placementSequence, x, z).toInt(),
+            settings.maxDepth - settings.minDepth + 1,
+        )
         val feetY = floor(surface.y).toInt() - depth
         if (feetY - 1 <= runtime.region.world.minHeight ||
             feetY + FarmHellRiftRoom.CEILING >= runtime.region.world.maxHeight ||
@@ -933,9 +944,6 @@ internal class FarmMoleBurrowWorld(
 
     private fun recoveryRadius(settings: FarmMoleBurrowSettings): Int =
         settings.cells * 2 * settings.tunnelWidth + 2
-
-    private fun seed(sequence: Long, x: Int, z: Int): Long = sequence * 0x9E3779B97F4A7C15UL.toLong() xor
-        x.toLong() * 0xBF58476D1CE4E5B9UL.toLong() xor z.toLong() * 0x94D049BB133111EBUL.toLong()
 
     private companion object {
         const val MAX_LAYOUT_PROBES = 64

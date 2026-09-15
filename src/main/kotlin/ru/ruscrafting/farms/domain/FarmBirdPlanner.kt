@@ -1,5 +1,7 @@
 package ru.ruscrafting.farms.domain
 
+import ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed
+
 /** Deterministically spreads a small flock over the full indexed field. */
 object FarmBirdPlanner {
     fun select(
@@ -12,7 +14,7 @@ object FarmBirdPlanner {
             compareBy<FarmPlotPosition> { it.world }.thenBy { it.x }.thenBy { it.z }.thenBy { it.y },
         ).toMutableList()
         if (available.isEmpty() || count == 0) return emptyList()
-        val mixed = FarmSpatialSeed.mix(sequence, 0x42495244L)
+        val mixed = WorksiteDeterministicSeed.derive(sequence, 0x42495244L)
         val first = java.lang.Math.floorMod((mixed xor (mixed ushr 32)).toInt(), available.size)
         val selected = mutableListOf(available.removeAt(first))
         while (selected.size < count && available.isNotEmpty()) {

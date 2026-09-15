@@ -27,6 +27,8 @@ import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmMoleGuidance
 import ru.ruscrafting.farms.domain.FarmShiftEngine
+import ru.ruscrafting.farms.domain.placement.WorksitePlacementPlanner
+import ru.ruscrafting.farms.domain.placement.WorksitePlacementPoint
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.ActivityBarKey
 import ru.ruscrafting.farms.paper.FarmRuntime
@@ -43,7 +45,6 @@ import ru.ruscrafting.farms.paper.platform.FarmMobDespawnPolicy
 import ru.ruscrafting.farms.paper.platform.FarmTextDisplayRenderer
 import ru.ruscrafting.farms.paper.platform.FarmTextDisplayStyle
 import java.util.UUID
-import kotlin.random.Random
 
 private val MOLE_LABEL_STYLE = FarmTextDisplayStyle(viewRange = 0.8f)
 
@@ -355,9 +356,12 @@ internal class FarmMoleBurrowController(
             .filter { it.distanceSquared(scene.start) >= 16.0 && it.distanceSquared(scene.lair) >= 9.0 }
             .filter { it.block.getRelative(org.bukkit.block.BlockFace.DOWN).type.isSolid }
             .distinctBy { it.blockX to it.blockZ }
-            .toMutableList()
-        candidates.shuffle(Random(runtime.state.placementSequence xor 0x4d4f4c45L))
-        return candidates.take(runtime.settings.moleBurrow.moleCount).map { location ->
+            .toList()
+        val ordered = WorksitePlacementPlanner.seededOrder(
+            candidates,
+            runtime.state.placementSequence xor 0x4d4f4c45L,
+        ) { location -> WorksitePlacementPoint(location.world.name, location.x, location.y, location.z) }
+        return ordered.take(runtime.settings.moleBurrow.moleCount).map { location ->
             scene.world.spawn(location, Rabbit::class.java) { mole ->
                 mole.setAdult()
                 mole.rabbitType = Rabbit.Type.BROWN

@@ -1,5 +1,7 @@
 package ru.ruscrafting.farms.domain
 
+import ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed
+
 import java.util.UUID
 import kotlin.math.PI
 import kotlin.math.cos
@@ -169,7 +171,7 @@ object FarmRivalFieldPolicy {
             compareBy<FarmPlotPosition> { it.x }.thenBy { it.z }.thenBy { it.y }.thenBy { it.world },
         )
         if (ordered.isEmpty()) return emptyList()
-        val mixed = FarmSpatialSeed.mix(selectionIndex, 0x524956414c5f4649L)
+        val mixed = WorksiteDeterministicSeed.derive(selectionIndex, 0x524956414c5f4649L)
         val offset = java.lang.Math.floorMod((mixed xor (mixed ushr 32)).toInt(), ordered.size)
         val rotated = ordered.drop(offset) + ordered.take(offset)
         return FarmSpacedPlotSelector.select(

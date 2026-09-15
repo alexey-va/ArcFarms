@@ -20,9 +20,8 @@ internal class MinePickaxeSupply(
     fun ensure(runtime: MineRuntime, player: Player): Boolean {
         val serviceItems = items ?: return true
         val expected = identity(runtime)
-        val held = player.inventory.storageContents.toList() + player.inventory.itemInOffHand + player.itemOnCursor
-        if (held.any { serviceItems.identity(it) == expected }) return true
-        held.mapNotNull(serviceItems::identity)
+        if (serviceItems.has(player, expected)) return true
+        serviceItems.identities(player)
             .filter { it.activity == ActivityKind.MINE && it.zoneId == runtime.settings.id && it.role.value == ROLE }
             .distinct()
             .forEach { stale -> while (serviceItems.consume(player, stale)) Unit }

@@ -41,7 +41,7 @@ import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmSpecialIncidentEngine
 import ru.ruscrafting.farms.domain.FarmSpecialIncidentState
-import ru.ruscrafting.farms.domain.FarmSpatialSeed
+import ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockLedger
@@ -326,7 +326,7 @@ internal class FarmActionIncidentController(
             candidates,
             wanted,
             minimumSpacing = 6.0,
-            selectionIndex = FarmSpatialSeed.mix(runtime.state.placementSequence, random.nextLong()),
+            selectionIndex = WorksiteDeterministicSeed.derive(runtime.state.placementSequence, random.nextLong()),
         )
         debug.event(
             "farm_boar_candidates",
@@ -515,9 +515,7 @@ internal class FarmActionIncidentController(
 
     private fun issueTool(player: Player, runtime: FarmRuntime, itemId: String, material: Material, key: MessageKey) {
         val identity = identity(runtime, itemId)
-        if (player.inventory.storageContents.any { serviceItems.identity(it) == identity } ||
-            serviceItems.identity(player.inventory.itemInOffHand) == identity
-        ) return
+        if (serviceItems.has(player, identity)) return
         if (serviceItems.issueTool(player, identity, material, locale.render(key, player)) == null &&
             access.allowInteraction("farm-equipment-full:${player.uniqueId}", 3_000L)
         ) {

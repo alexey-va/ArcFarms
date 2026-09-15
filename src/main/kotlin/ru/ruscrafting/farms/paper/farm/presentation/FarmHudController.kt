@@ -458,7 +458,7 @@ internal class FarmHudController(
         }
         return runtime.state.careType?.let { type ->
             locale.renderPath(
-                if (type == FarmCareType.SEEDER) seederInstructionPath(runtime.state) else "care.${type.name.lowercase()}.instruction",
+                if (type == FarmCareType.SEEDER) FarmSeederInstruction.path(runtime.state) else "care.${type.name.lowercase()}.instruction",
                 player,
                 mapOf("total" to locale.text(runtime.state.careRequired())),
             )
@@ -515,12 +515,6 @@ internal class FarmHudController(
                     .append(Component.text("${runtime.state.progress[crop] ?: 0}/$required"))
             },
     )
-
-    private fun seederInstructionPath(state: FarmShiftState): String = when (state.seederStage()) {
-        FarmSeederStage.TILLING -> "care.seeder.tilling-instruction"
-        FarmSeederStage.PLANTING -> "care.seeder.planting-instruction"
-        null -> "care.seeder.instruction"
-    }
 
     private fun currentOrder(runtime: FarmRuntime): FarmOrder? = runtime.state.orderId?.let(runtime.orders::get)
     private fun players(runtime: FarmRuntime): List<Player> =

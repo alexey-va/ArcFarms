@@ -8,7 +8,6 @@ import org.bukkit.entity.Player
 import org.bukkit.event.inventory.ClickType
 import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryDragEvent
-import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
@@ -85,6 +84,10 @@ internal interface WorksiteServiceItems {
         itemModel: NamespacedKey? = null,
     ): ItemStack? = issueHeld(player, identity, material, name, customModelData, itemModel)
     fun consume(player: Player, expected: ServiceItemIdentity): Boolean
+    fun has(player: Player, expected: ServiceItemIdentity): Boolean =
+        WorksitePlayerItems.contains(player) { identity(it) == expected }
+    fun identities(player: Player): List<ServiceItemIdentity> =
+        WorksitePlayerItems.items(player).mapNotNull(::identity)
     fun identity(item: ItemStack?): ServiceItemIdentity?
     fun isServiceItem(item: ItemStack?): Boolean
 }
@@ -129,6 +132,8 @@ internal class LateBoundWorksiteServiceItems : WorksiteServiceItems {
     ): ItemStack? = delegate?.issueHeld(player, identity, material, name, customModelData, itemModel)
 
     override fun consume(player: Player, expected: ServiceItemIdentity): Boolean = delegate?.consume(player, expected) == true
+    override fun has(player: Player, expected: ServiceItemIdentity): Boolean = delegate?.has(player, expected) == true
+    override fun identities(player: Player): List<ServiceItemIdentity> = delegate?.identities(player).orEmpty()
     override fun identity(item: ItemStack?): ServiceItemIdentity? = delegate?.identity(item)
     override fun isServiceItem(item: ItemStack?): Boolean = delegate?.isServiceItem(item) == true
 }
@@ -185,7 +190,7 @@ internal class WorksiteServiceItemController(
         itemModel: NamespacedKey?,
     ): ItemStack? {
         val item = create(identity, material, name, customModelData, itemModel) ?: return null
-        return item.takeIf { PlayerHeldItemLoadout.place(player, listOf(it)) }
+        return item.takeIf { WorksitePlayerItems.placeSelectedFirst(player, listOf(it)) != null }
     }
 
     private fun create(
@@ -237,22 +242,11 @@ internal class WorksiteServiceItemController(
     }
 
     override fun consume(player: Player, expected: ServiceItemIdentity): Boolean {
-        player.inventory.storageContents.forEachIndexed { index, item ->
-            if (identity(item) == expected) {
-                player.inventory.setItem(index, null)
-                return true
-            }
-        }
-        if (identity(player.inventory.itemInOffHand) == expected) {
-            player.inventory.setItemInOffHand(null)
-            return true
-        }
-        if (identity(player.itemOnCursor) == expected) {
-            player.setItemOnCursor(null)
-            return true
-        }
-        return false
+        return WorksitePlayerItems.removeFirst(player) { identity(it) == expected } != null
     }
+
+    override fun has(player: Player, expected: ServiceItemIdentity): Boolean =
+        WorksitePlayerItems.contains(player) { identity(it) == expected }
 
     fun guardDrop(item: ItemStack?): Boolean = isServiceItem(item)
 
@@ -284,41 +278,10 @@ internal class WorksiteServiceItemController(
     }
 
     fun cleanupPlayer(player: Player, reason: WorksitePlayerReleaseReason): Int {
-        val released = linkedSetOf<ServiceItemIdentity>()
-        var removed = 0
-        fun remove(item: ItemStack?, clear: () -> Unit) {
-            if (!isServiceItem(item)) return
-            identity(item)?.let(released::add)
-            removed += item?.amount ?: 0
-            clear()
-        }
-
-        player.inventory.storageContents.forEachIndexed { index, item -> remove(item) { player.inventory.setItem(index, null) } }
-        player.inventory.armorContents.forEachIndexed { index, item ->
-            remove(item) {
-                val armor = player.inventory.armorContents
-                armor[index] = null
-                player.inventory.armorContents = armor
-            }
-        }
-        remove(player.inventory.itemInOffHand) { player.inventory.setItemInOffHand(null) }
-        remove(player.itemOnCursor) { player.setItemOnCursor(null) }
-        @Suppress("UNNECESSARY_SAFE_CALL")
-        player.openInventory.topInventory?.let { top -> removed += removeFrom(top, released) }
-
+        val removal = WorksitePlayerItems.removeAll(player, WorksitePlayerItemScope.EVERYWHERE, ::isServiceItem)
+        val released = removal.items.mapNotNull(::identity).toSet()
         released.forEach { identity -> owner.release(player.uniqueId, identity, reason) }
-        return removed
-    }
-
-    private fun removeFrom(inventory: Inventory, released: MutableSet<ServiceItemIdentity>): Int {
-        var removed = 0
-        inventory.contents.forEachIndexed { index, item ->
-            if (!isServiceItem(item)) return@forEachIndexed
-            identity(item)?.let(released::add)
-            removed += item?.amount ?: 0
-            inventory.setItem(index, null)
-        }
-        return removed
+        return removal.amount
     }
 
     private companion object {

@@ -1,5 +1,7 @@
 package ru.ruscrafting.farms.domain.placement
 
+import ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed
+
 /** Deterministic farthest-point sampling for events that want full-field spread. */
 object FarthestPointPlacementStrategy : WorksitePlacementStrategy {
     override val id: String = "farthest_point"
@@ -42,8 +44,5 @@ object FarthestPointPlacementStrategy : WorksitePlacementStrategy {
     }
 
     private fun tieRank(point: WorksitePlacementPoint, seed: Long): Long =
-        WorksitePlacementMix.mix(
-            seed xor java.lang.Double.doubleToLongBits(point.x) xor
-                java.lang.Long.rotateLeft(java.lang.Double.doubleToLongBits(point.z), 29),
-        )
+        WorksiteDeterministicSeed.positionScore(seed, point)
 }

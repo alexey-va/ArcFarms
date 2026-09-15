@@ -916,8 +916,7 @@ internal class FarmCareController(
     private fun ensureRescueRods(runtime: FarmRuntime) {
         val identity = rescueRodIdentity(runtime)
         audience.players(runtime.region).filterNot(access::isAdminEditing).forEach { player ->
-            val hasRod = player.inventory.storageContents.any { serviceItems.identity(it) == identity } ||
-                serviceItems.identity(player.inventory.itemInOffHand) == identity
+            val hasRod = serviceItems.has(player, identity)
             if (!hasRod && serviceItems.issueTool(
                     player,
                     identity,

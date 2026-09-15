@@ -1,5 +1,7 @@
 package ru.ruscrafting.farms.domain
 
+import ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed
+
 data class FarmMatureCrop(
     val plot: FarmPlotPosition,
     val crop: String,
@@ -224,7 +226,7 @@ object FarmSpecialIncidentPlanner {
             if (path.size == requestedSegments) return true
             if (++probes > MAX_CHANNEL_SEARCH_PROBES) return false
             val current = path.last()
-            val directionSalt = FarmSpatialSeed.mix(
+            val directionSalt = WorksiteDeterministicSeed.derive(
                 sequence + path.size * 131L,
                 current.x.toLong() * 73_856_093L xor current.z.toLong() * 19_349_663L,
             )
@@ -264,7 +266,7 @@ object FarmSpecialIncidentPlanner {
 
     private fun <T> rotate(values: List<T>, salt: Long): List<T> {
         if (values.isEmpty()) return values
-        val mixed = FarmSpatialSeed.mix(salt, 0x5350454349414cL)
+        val mixed = WorksiteDeterministicSeed.derive(salt, 0x5350454349414cL)
         val offset = java.lang.Math.floorMod((mixed xor (mixed ushr 32)).toInt(), values.size)
         return values.drop(offset) + values.take(offset)
     }

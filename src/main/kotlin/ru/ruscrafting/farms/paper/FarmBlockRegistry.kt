@@ -10,6 +10,7 @@ import ru.arc.core.ScheduledTask
 import ru.arc.core.Tasks
 import ru.ruscrafting.farms.config.FarmCropLayoutSettings
 import ru.ruscrafting.farms.domain.FarmPlotPosition
+import ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed
 import java.util.PriorityQueue
 
 internal data class FarmBlockIndexDefinition(
@@ -606,12 +607,13 @@ internal class FarmBlockRegistry(
 
         fun values(): Set<FarmPlotPosition> = selected.mapTo(linkedSetOf(), Ranked::position)
 
-        private fun spatialScore(position: FarmPlotPosition): Long {
-            var value = position.world.hashCode().toLong()
-            value = value xor (position.x.toLong() * -7046029254386353131L)
-            value = java.lang.Long.rotateLeft(value, 21) xor (position.y.toLong() * -4658895280553007687L)
-            return java.lang.Long.rotateLeft(value, 17) xor (position.z.toLong() * -7723592293110705685L)
-        }
+        private fun spatialScore(position: FarmPlotPosition): Long = WorksiteDeterministicSeed.positionScore(
+            seed = 0L,
+            world = position.world,
+            x = position.x,
+            y = position.y,
+            z = position.z,
+        )
     }
 
     private companion object {

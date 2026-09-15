@@ -97,6 +97,15 @@ class WorksiteServiceItemControllerMockBukkitTest : FunSpec({
         controller.isServiceItem(first) shouldBe true
     }
 
+    test("service item ownership includes cursor and avoids duplicate reissue") {
+        val item = requireNotNull(controller.issue(player, identity, Material.RAIL, Component.text("Rail kit")))
+        player.inventory.removeItem(item)
+        player.setItemOnCursor(item)
+
+        controller.has(player, identity) shouldBe true
+        controller.identities(player) shouldContainExactly listOf(identity)
+    }
+
     test("service item appearance applies its model and explicitly disables italic text") {
         val model = NamespacedKey("voxelspawns_megaflintlocks", "vs_rifle_double")
         val item = requireNotNull(

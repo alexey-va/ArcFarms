@@ -71,6 +71,14 @@ activities: farm, lumbermill, and mine.
   Keep only worksite-specific verbs, scene mechanics and policy in each module.
   Do not generalize unrelated farm behavior speculatively. Reviews must identify
   which existing owners were reused and justify any genuinely new owner.
+- Replayable randomization starts at `WorksiteDeterministicSeed`; candidate
+  distribution starts at `WorksitePlacementPlanner`. Event-private mixer
+  constants, spatial hashes, seeded shuffles, or scan-order selection are
+  architecture defects unless the event proves a different semantic contract.
+- Temporary equipment starts at `WorksiteServiceItems` and delegates player
+  inventory traversal to `WorksitePlayerItems`. Do not hand-roll selected-slot
+  placement, storage/offhand/cursor/open-inventory scans, rollback, refresh, or
+  cleanup inside a farm or mine event.
 - A farm shift has one foreground objective. Resolving an incident resumes the
   ordinary crop order directly; do not insert harvest multipliers or parallel
   crop bonus windows between the incident and the next required crop.

@@ -11,6 +11,7 @@ import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.FarmRouteDeliverySettings
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
+import ru.ruscrafting.farms.paper.worksite.WorksitePlayerItems
 import java.util.UUID
 
 /** Inventory-safe ownership boundary for the route gunner's temporary rifle. */
@@ -27,11 +28,8 @@ internal class FarmFoodDeliveryGear(
             player.inventory.setItem(slot, rifle(player, owner, settings))
             return true
         }
-        val slot = HOTBAR.firstOrNull { player.inventory.getItem(it).isEmpty() }
-            ?: STORAGE.firstOrNull { player.inventory.getItem(it).isEmpty() }
-            ?: return false
         val rifle = rifle(player, owner, settings)
-        player.inventory.setItem(slot, rifle)
+        val slot = WorksitePlayerItems.placeSelectedFirst(player, listOf(rifle))?.singleOrNull() ?: return false
         debug.event(
             "farm_food_rifle_given", "zone" to zoneId, "sequence" to sequence,
             "player" to player.name, "slot" to slot, "material" to settings.rifleMaterial,
@@ -66,44 +64,24 @@ internal class FarmFoodDeliveryGear(
         owns(player.inventory.itemInMainHand, zoneId, sequence, player.uniqueId)
 
     fun remove(player: Player, zoneId: String? = null, sequence: Long? = null, reason: String) {
-        var removed = 0
-        player.inventory.storageContents.forEachIndexed { slot, item ->
-            val owner = rawOwner(item)?.let(Owner::decode) ?: return@forEachIndexed
-            if ((zoneId == null || owner.zoneId == zoneId) && (sequence == null || owner.sequence == sequence)) {
-                player.inventory.setItem(slot, null)
-                removed++
-            }
+        val removal = WorksitePlayerItems.removeAll(player) { item ->
+            val owner = rawOwner(item)?.let(Owner::decode) ?: return@removeAll false
+            (zoneId == null || owner.zoneId == zoneId) && (sequence == null || owner.sequence == sequence)
         }
-        val offHandOwner = rawOwner(player.inventory.itemInOffHand)?.let(Owner::decode)
-        if (offHandOwner != null && (zoneId == null || offHandOwner.zoneId == zoneId) &&
-            (sequence == null || offHandOwner.sequence == sequence)
-        ) {
-            player.inventory.setItemInOffHand(null)
-            removed++
-        }
-        val cursorOwner = rawOwner(player.itemOnCursor)?.let(Owner::decode)
-        if (cursorOwner != null && (zoneId == null || cursorOwner.zoneId == zoneId) &&
-            (sequence == null || cursorOwner.sequence == sequence)
-        ) {
-            player.setItemOnCursor(null)
-            removed++
-        }
-        if (removed > 0) {
+        if (removal.items.isNotEmpty()) {
             debug.event(
                 "farm_food_rifle_removed", "zone" to zoneId, "sequence" to sequence,
-                "player" to player.name, "count" to removed, "reason" to reason,
+                "player" to player.name, "count" to removal.items.size, "reason" to reason,
             )
         }
     }
 
-    private fun find(player: Player, owner: Owner): Int? = STORAGE.firstOrNull { slot ->
-        rawOwner(player.inventory.getItem(slot)) == owner.encoded()
+    private fun find(player: Player, owner: Owner): Int? = WorksitePlayerItems.findInventorySlot(player) { item ->
+        rawOwner(item) == owner.encoded()
     }
 
     private fun rawOwner(item: ItemStack?): String? = item?.itemMeta?.persistentDataContainer
         ?.get(ownerKey, PersistentDataType.STRING)
-
-    private fun ItemStack?.isEmpty(): Boolean = this == null || type.isAir
 
     private data class Owner(val zoneId: String, val sequence: Long, val playerId: UUID) {
         fun encoded(): String = "$zoneId:$sequence:$playerId"
@@ -117,8 +95,4 @@ internal class FarmFoodDeliveryGear(
         }
     }
 
-    private companion object {
-        val HOTBAR = 0..8
-        val STORAGE = 0..35
-    }
 }

@@ -44,6 +44,8 @@ import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteCarryable
+import ru.ruscrafting.farms.paper.worksite.WorksitePlayerItemScope
+import ru.ruscrafting.farms.paper.worksite.WorksitePlayerItems
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.toFarmPlotPosition
 import java.util.UUID
@@ -290,19 +292,16 @@ internal class FarmFrostIncident(
     fun isCarrying(player: Player, zoneId: String): Boolean = carryingSlot(player, zoneId) >= 0
 
     fun removeServiceItems(player: Player, zoneId: String? = null, reason: String) {
-        var removed = 0
-        player.inventory.contents.forEachIndexed { index, item ->
-            if (isServiceItem(item) && (zoneId == null || isServiceItem(item, zoneId))) {
-                player.inventory.setItem(index, null)
-                removed += item?.amount ?: 0
-            }
-        }
+        val removal = WorksitePlayerItems.removeAll(
+            player,
+            WorksitePlayerItemScope(armor = true, cursor = false),
+        ) { item -> isServiceItem(item) && (zoneId == null || isServiceItem(item, zoneId)) }
         removeCarriedDisplay(player.uniqueId, zoneId)
-        if (removed > 0) debug.event(
+        if (removal.amount > 0) debug.event(
             "farm_frost_firewood_removed",
             "player" to player.name,
             "zone" to zoneId,
-            "count" to removed,
+            "count" to removal.amount,
             "reason" to reason,
         )
     }
@@ -534,10 +533,10 @@ internal class FarmFrostIncident(
 
     private fun carryingSlot(player: Player, zoneId: String): Int {
         val sequence = runtimes().firstOrNull { it.settings.id == zoneId }?.state?.sequence ?: return -1
-        return player.inventory.contents.indexOfFirst { item ->
+        return WorksitePlayerItems.findInventorySlot(player) { item ->
             isServiceItem(item, zoneId) && item?.itemMeta?.persistentDataContainer
                 ?.get(itemSequenceKey, PersistentDataType.LONG) == sequence
-        }
+        } ?: -1
     }
 
     private fun removeOne(player: Player, zoneId: String) {

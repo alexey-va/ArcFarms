@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.domain
 
 import kotlin.math.abs
+import ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed
 
 data class FarmMoleDecoration(
     val position: FarmMolePassage,
@@ -28,7 +29,7 @@ object FarmMoleBurrowDecorationPlanner {
         }
 
         openFloor.sortedWith(compareBy(FarmMolePassage::x, FarmMolePassage::z)).forEach { point ->
-            val mixed = mix(seed, point.x, point.z)
+            val mixed = WorksiteDeterministicSeed.gridScore(seed, point.x, point.z)
             val floorMaterial = when {
                 manhattan(point, lair) <= 2 -> LAIR_FLOOR[Math.floorMod(mixed, LAIR_FLOOR.size.toLong()).toInt()]
                 manhattan(point, start) <= 2 -> ENTRANCE_FLOOR[Math.floorMod(mixed, ENTRANCE_FLOOR.size.toLong()).toInt()]
@@ -41,7 +42,7 @@ object FarmMoleBurrowDecorationPlanner {
                 val wall = FarmMolePassage(point.x + dx, point.z + dz)
                 if (wall in openFloor) return@forEachIndexed
                 repeat(tunnelHeight) { y ->
-                    val wallHash = mix(mixed, face, y)
+                    val wallHash = WorksiteDeterministicSeed.gridScore(mixed, face, y)
                     place(wall, y, WALL[Math.floorMod(wallHash, WALL.size.toLong()).toInt()])
                 }
             }
@@ -52,7 +53,7 @@ object FarmMoleBurrowDecorationPlanner {
         }
 
         chambers.sortedWith(compareBy(FarmMolePassage::x, FarmMolePassage::z)).forEachIndexed { index, center ->
-            val roomSeed = mix(seed xor index.toLong(), center.x, center.z)
+            val roomSeed = WorksiteDeterministicSeed.gridScore(seed xor index.toLong(), center.x, center.z)
             val boundary = ROOM_BOUNDARY_OFFSETS
                 .drop(Math.floorMod(roomSeed, ROOM_BOUNDARY_OFFSETS.size.toLong()).toInt()) +
                 ROOM_BOUNDARY_OFFSETS.take(Math.floorMod(roomSeed, ROOM_BOUNDARY_OFFSETS.size.toLong()).toInt())
@@ -81,12 +82,6 @@ object FarmMoleBurrowDecorationPlanner {
 
     private fun manhattan(first: FarmMolePassage, second: FarmMolePassage): Int =
         abs(first.x - second.x) + abs(first.z - second.z)
-
-    private fun mix(seed: Long, x: Int, z: Int): Long {
-        var value = seed xor (x.toLong() * -7046029254386353131L) xor (z.toLong() * -7723592293110705685L)
-        value = (value xor (value ushr 30)) * -4658895280553007687L
-        return value xor (value ushr 27)
-    }
 
     private val CARDINALS = listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1)
     private val ROOM_BOUNDARY_OFFSETS = listOf(

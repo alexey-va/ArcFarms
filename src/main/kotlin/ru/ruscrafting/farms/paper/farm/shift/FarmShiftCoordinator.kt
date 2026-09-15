@@ -51,6 +51,7 @@ import ru.ruscrafting.farms.paper.farm.incident.special.SPECIAL_FARM_INCIDENT_TY
 import ru.ruscrafting.farms.paper.farm.incident.action.ACTION_FARM_INCIDENT_TYPES
 import ru.ruscrafting.farms.paper.farm.incident.action.FarmActionIncidentController
 import ru.ruscrafting.farms.paper.farm.presentation.FarmHudController
+import ru.ruscrafting.farms.paper.farm.presentation.FarmSeederInstruction
 import ru.ruscrafting.farms.paper.farm.reward.FarmRewardService
 import ru.ruscrafting.farms.paper.farm.scene.FarmContractSceneController
 import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyController
@@ -243,7 +244,7 @@ internal class FarmShiftCoordinator(
         players(runtime).forEach { player ->
             val title = locale.renderPath("care.${type.name.lowercase()}.name", player)
             val instructionPath = if (type == FarmCareType.SEEDER) {
-                seederInstructionPath(runtime.state)
+                FarmSeederInstruction.path(runtime.state)
             } else "care.${type.name.lowercase()}.instruction"
             val subtitle = locale.renderPath(
                 instructionPath,
@@ -711,12 +712,6 @@ internal class FarmShiftCoordinator(
                 }
             }
         }
-    }
-
-    private fun seederInstructionPath(state: FarmShiftState): String = when (state.seederStage()) {
-        FarmSeederStage.TILLING -> "care.seeder.tilling-instruction"
-        FarmSeederStage.PLANTING -> "care.seeder.planting-instruction"
-        null -> "care.seeder.instruction"
     }
 
     private fun currentOrder(runtime: FarmRuntime): FarmOrder? = runtime.state.orderId?.let(runtime.orders::get)

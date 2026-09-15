@@ -30,7 +30,8 @@ import ru.ruscrafting.farms.paper.BukkitFarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
-import ru.ruscrafting.farms.paper.worksite.PlayerHeldItemLoadout
+import ru.ruscrafting.farms.paper.worksite.WorksitePlayerItemScope
+import ru.ruscrafting.farms.paper.worksite.WorksitePlayerItems
 import java.util.UUID
 
 internal enum class FarmSupplyKind { TOOL, SEEDS, WATER, ARCHERY, FIRE }
@@ -157,26 +158,22 @@ internal class FarmSupplyController(
             removeServiceItems(player, runtime.settings.id, "phase_changed", stale)
         }
         kind ?: return true
-        val held = player.inventory.storageContents.toList() + player.inventory.itemInOffHand + player.itemOnCursor
-        if (items(runtime, kind).all { expected -> held.any {
-                it != null && it.amount > 0 && it.type == expected.type && isServiceItem(it, runtime.settings.id, kind)
-            } }) return true
+        if (items(runtime, kind).all { expected ->
+                WorksitePlayerItems.contains(player) {
+                    it != null && it.amount > 0 && it.type == expected.type && isServiceItem(it, runtime.settings.id, kind)
+                }
+            }) return true
         return give(runtime, kind, player)
     }
 
     fun give(runtime: FarmRuntime, kind: FarmSupplyKind, player: Player): Boolean {
-        val before = player.inventory.storageContents.map { it?.clone() }.toTypedArray()
-        val offHand = player.inventory.itemInOffHand.clone()
-        val cursor = player.itemOnCursor.clone()
-        val top: org.bukkit.inventory.Inventory? = player.openInventory.topInventory
-        val topBefore = top?.contents?.map { it?.clone() }?.toTypedArray()
-        removeServiceItems(player, runtime.settings.id, "replace_supply", kind)
         val items = items(runtime, kind)
-        if (!PlayerHeldItemLoadout.place(player, items)) {
-            if (topBefore != null) top?.contents = topBefore
-            player.inventory.storageContents = before
-            player.inventory.setItemInOffHand(offHand)
-            player.setItemOnCursor(cursor)
+        if (WorksitePlayerItems.replaceLoadout(
+                player,
+                items,
+                WorksitePlayerItemScope.OWNED_WITH_OPEN_INVENTORY,
+            ) { item -> taggedValue(item)?.let { matches(it, runtime.settings.id, kind) } == true } == null
+        ) {
             return false
         }
         if (settings().sounds) player.playSound(player.location, Sound.ENTITY_ITEM_PICKUP, 0.7f, 1.2f)
@@ -231,41 +228,16 @@ internal class FarmSupplyController(
         reason: String,
         kind: FarmSupplyKind? = null,
     ) {
-        var removed = 0
-        player.inventory.storageContents.forEachIndexed { index, item ->
-            item ?: return@forEachIndexed
-            val value = taggedValue(item) ?: return@forEachIndexed
-            if (!matches(value, zoneId, kind)) return@forEachIndexed
-            removed += item.amount
-            player.inventory.setItem(index, null)
+        val removal = WorksitePlayerItems.removeAll(player, WorksitePlayerItemScope.OWNED_WITH_OPEN_INVENTORY) { item ->
+            taggedValue(item)?.let { matches(it, zoneId, kind) } == true
         }
-        val offHand = player.inventory.itemInOffHand
-        taggedValue(offHand)?.takeIf { matches(it, zoneId, kind) }?.let {
-            removed += offHand.amount
-            player.inventory.setItemInOffHand(null)
-        }
-        val cursor = player.itemOnCursor
-        taggedValue(cursor)?.takeIf { matches(it, zoneId, kind) }?.let {
-            removed += cursor.amount
-            player.setItemOnCursor(null)
-        }
-        @Suppress("UNNECESSARY_SAFE_CALL")
-        player.openInventory.topInventory?.let { top ->
-            top.contents.forEachIndexed { index, item ->
-                item ?: return@forEachIndexed
-                val value = taggedValue(item) ?: return@forEachIndexed
-                if (!matches(value, zoneId, kind)) return@forEachIndexed
-                removed += item.amount
-                top.setItem(index, null)
-            }
-        }
-        if (removed > 0) {
+        if (removal.amount > 0) {
             debug.event(
                 "farm_supply_removed",
                 "player" to player.name,
                 "zone" to zoneId,
                 "kind" to kind,
-                "count" to removed,
+                "count" to removal.amount,
                 "reason" to reason,
             )
         }
@@ -275,14 +247,9 @@ internal class FarmSupplyController(
     fun reconfigurePlayerItems(runtimes: Collection<FarmRuntime>) {
         val byId = runtimes.associateBy { it.settings.id }
         Bukkit.getOnlinePlayers().forEach { player ->
-            player.inventory.storageContents.forEachIndexed { slot, current ->
-                refreshed(current, byId)?.let { player.inventory.setItem(slot, it) }
+            WorksitePlayerItems.transform(player, WorksitePlayerItemScope.OWNED_WITH_OPEN_INVENTORY) { current ->
+                refreshed(current, byId)
             }
-            runCatching { player.openInventory.topInventory }.getOrNull()?.let { top ->
-                for (slot in 0 until top.size) refreshed(top.getItem(slot), byId)?.let { top.setItem(slot, it) }
-            }
-            refreshed(player.inventory.itemInOffHand, byId)?.let(player.inventory::setItemInOffHand)
-            refreshed(player.itemOnCursor, byId)?.let(player::setItemOnCursor)
         }
     }
 

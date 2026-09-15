@@ -1,5 +1,7 @@
 package ru.ruscrafting.farms.domain
 
+import ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed
+
 import java.util.UUID
 
 object FarmFrostEngine {
@@ -136,7 +138,7 @@ object FarmFrostPlanner {
             val dz = (it.z - centerZ) / radiusZ
             dx * dx + dz * dz
         }.take(maxOf(count, (ordered.size + 1) / 2)).toMutableList()
-        val mixed = FarmSpatialSeed.mix(sequence, 0x46524f5354L)
+        val mixed = WorksiteDeterministicSeed.derive(sequence, 0x46524f5354L)
         val first = java.lang.Math.floorMod((mixed xor (mixed ushr 32)).toInt(), available.size)
         val selected = mutableListOf(available.removeAt(first))
         while (selected.size < count && available.isNotEmpty()) {

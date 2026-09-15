@@ -143,6 +143,58 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         offenders shouldBe emptyList()
     }
 
+    test("replayable worksite randomization owns every mixer constant") {
+        val productionRoot = repositoryRoot.resolve("src/main/kotlin")
+        val canonical = productionRoot.resolve(
+            "ru/ruscrafting/farms/domain/worksite/WorksiteDeterministicSeed.kt",
+        )
+        val mixerConstants = listOf(
+            "-7046029254386353131",
+            "-4658895280553007687",
+            "-7723592293110705685",
+            "-49064778989728563",
+            "-4265267296055464877",
+            "0x9E3779B97F4A7C15",
+            "0xBF58476D1CE4E5B9",
+            "0x94D049BB133111EB",
+        )
+        val offenders = Files.walk(productionRoot).use { paths ->
+            paths.filter { Files.isRegularFile(it) && it.toString().endsWith(".kt") && it != canonical }
+                .filter { path -> Files.readString(path).let { source -> mixerConstants.any(source::contains) } }
+                .map(productionRoot::relativize)
+                .toList()
+        }
+
+        Files.exists(canonical) shouldBe true
+        offenders shouldBe emptyList()
+    }
+
+    test("temporary worksite items use one player inventory owner") {
+        val productionRoot = repositoryRoot.resolve("src/main/kotlin")
+        val migratedOwners = listOf(
+            "ru/ruscrafting/farms/paper/worksite/WorksiteServiceItemController.kt",
+            "ru/ruscrafting/farms/paper/farm/supply/FarmSupplyController.kt",
+            "ru/ruscrafting/farms/paper/farm/incident/frost/FarmFrostIncident.kt",
+            "ru/ruscrafting/farms/paper/farm/incident/route/FarmFoodDeliveryGear.kt",
+        ).map(productionRoot::resolve).map(Files::readString)
+
+        migratedOwners.forEach { source ->
+            source.contains("WorksitePlayerItems") shouldBe true
+            source.contains("storageContents.forEachIndexed") shouldBe false
+        }
+    }
+
+    test("seeder instruction path has one presentation owner") {
+        val productionRoot = repositoryRoot.resolve("src/main/kotlin")
+        val occurrences = Files.walk(productionRoot).use { paths ->
+            paths.filter { Files.isRegularFile(it) && it.toString().endsWith(".kt") }
+                .mapToInt { path -> "care.seeder.tilling-instruction".toRegex().findAll(Files.readString(path)).count() }
+                .sum()
+        }
+
+        occurrences shouldBe 1
+    }
+
     test("inventory click view changes are deferred and stale-safe") {
         val transition = Files.readString(inventoryTransitionPath)
         val rootClick = Files.readString(repositoryRoot.resolve(

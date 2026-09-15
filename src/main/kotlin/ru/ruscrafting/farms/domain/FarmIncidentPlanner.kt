@@ -1,5 +1,7 @@
 package ru.ruscrafting.farms.domain
 
+import ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed
+
 import ru.ruscrafting.farms.domain.placement.WorksitePlacementPlanner
 import ru.ruscrafting.farms.domain.placement.WorksitePlacementProfiles
 import ru.ruscrafting.farms.domain.placement.WorksitePlacementRequest
@@ -38,7 +40,7 @@ object FarmIncidentPlanner {
         require(count in 1..16) { "Farm incident center count must be in 1..16" }
         return WorksitePlacementPlanner.select(
             candidates,
-            WorksitePlacementRequest(count, mix(selectionIndex)),
+            WorksitePlacementRequest(count, WorksiteDeterministicSeed.orderScore(selectionIndex)),
             WorksitePlacementProfiles.evenSpread(),
             FarmPlotPosition::toWorksitePlacementPoint,
         )
@@ -128,17 +130,9 @@ object FarmIncidentPlanner {
         return (initial.toLong() + growthRounds * growthStep).coerceAtMost(required.toLong()).toInt()
     }
 
-    private fun mix(value: Long): Long {
-        var mixed = value xor (value ushr 33)
-        mixed *= -49064778989728563L
-        mixed = mixed xor (mixed ushr 33)
-        mixed *= -4265267296055464877L
-        return mixed xor (mixed ushr 33)
-    }
-
     private fun <T> rotate(values: List<T>, selectionIndex: Long): List<T> {
         if (values.isEmpty()) return emptyList()
-        val offset = Math.floorMod(mix(selectionIndex), values.size.toLong()).toInt()
+        val offset = Math.floorMod(WorksiteDeterministicSeed.orderScore(selectionIndex), values.size.toLong()).toInt()
         return values.drop(offset) + values.take(offset)
     }
 

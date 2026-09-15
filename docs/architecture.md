@@ -137,6 +137,19 @@ Farm and mine use the same low-level worksite tools:
   API; code only consumes completed requests on the server thread.
 - `WorksiteCooldownTimer` and the existing audience/guidance ports supply the
   common next-order countdown, localized titles and progress presentation.
+- `WorksiteDeterministicSeed` owns replayable seed derivation and coordinate
+  ranking. Procedural owners choose a semantic salt and call it directly;
+  mixer constants, private spatial hashes and seeded `shuffle` calls do not
+  belong in event code.
+- `WorksitePlacementPlanner` owns seeded candidate ordering and named spatial
+  profiles. Farm orchard targets, mole actors and mine incident geometry use
+  the same planner instead of maintaining visually different copies of the
+  same selection algorithm.
+- `WorksitePlayerItems` owns selected-slot-first delivery, transactional
+  loadout replacement and cleanup across storage, offhand, cursor, armor and
+  an open inventory. `WorksiteServiceItems` is the tagged-item interface used
+  by gameplay owners; farm supplies, route gear, frost fuel and mine equipment
+  delegate their inventory traversal to the shared owner.
 
 The mine's runtime topology cache is partitioned by zone and chunk with packed
 positions and role masks. Point membership is a hash lookup. Loaded-target

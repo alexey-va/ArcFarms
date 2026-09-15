@@ -749,8 +749,7 @@ internal class FarmSpecialIncidentController(
         }
         val identity = channelToolIdentity(runtime)
         audience.players(runtime.region).filterNot(access::isAdminEditing).forEach { player ->
-            val hasTool = player.inventory.storageContents.any { serviceItems.identity(it) == identity } ||
-                serviceItems.identity(player.inventory.itemInOffHand) == identity
+            val hasTool = serviceItems.has(player, identity)
             if (!hasTool && serviceItems.issueTool(
                     player,
                     identity,

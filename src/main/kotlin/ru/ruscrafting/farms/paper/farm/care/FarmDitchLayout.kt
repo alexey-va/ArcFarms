@@ -1,7 +1,7 @@
 package ru.ruscrafting.farms.paper.farm.care
 
 import ru.ruscrafting.farms.domain.FarmCareType
-import ru.ruscrafting.farms.domain.FarmSpatialSeed
+import ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed
 
 /** Deterministic, connected and deliberately uneven crop-bed footprints for rescue ditches. */
 internal object FarmDitchLayout {
@@ -12,7 +12,7 @@ internal object FarmDitchLayout {
     }
 
     fun cells(placementSequence: Long): List<Cell> {
-        val selection = FarmSpatialSeed.mix(
+        val selection = WorksiteDeterministicSeed.derive(
             placementSequence,
             FarmCareType.DITCH_RESCUE.ordinal * 17L + 101L,
         )

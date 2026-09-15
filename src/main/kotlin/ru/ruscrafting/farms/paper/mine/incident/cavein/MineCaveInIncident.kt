@@ -7,6 +7,9 @@ import org.bukkit.event.block.BlockBreakEvent
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MinePhase
+import ru.ruscrafting.farms.domain.placement.WorksitePlacementPlanner
+import ru.ruscrafting.farms.domain.placement.toPlacementPoint
+import ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetCandidate
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus
@@ -251,11 +254,24 @@ internal class MineCaveInIncident(
         val second = (-2..2).flatMap { dx -> (-1..2).map { dz -> point(dx, 2, dz) } }
         val third = (-1..2).flatMap { dx -> (-1..2).map { dz -> point(dx, 3, dz) } }
         val cap = listOf(0 to 0) + (-1..1).flatMap { dx -> (-1..1).map { dz -> dx to dz } }.filterNot { it == 0 to 0 }
-        val seed = runtime.state.sequence * 1_000_003L + anchor.x * 73_856_093L + anchor.y * 19_349_663L + anchor.z * 83_492_791L
-        val random = java.util.Random(seed xor if (rotated) -7046029254386353131L else 0L)
-        val shuffledThird = third.shuffled(random)
+        val seed = WorksiteDeterministicSeed.positionScore(
+            runtime.state.sequence xor if (rotated) ROTATED_SALT else 0L,
+            anchor.world,
+            anchor.x,
+            anchor.y,
+            anchor.z,
+        )
+        val shuffledThird = WorksitePlacementPlanner.seededOrder(
+            third,
+            seed,
+            WorksitePosition::toPlacementPoint,
+        )
         val shuffledCap = cap.map { (dx, dz) -> point(dx, 4, dz) }.let { list ->
-            listOf(list.first()) + list.drop(1).shuffled(random)
+            listOf(list.first()) + WorksitePlacementPlanner.seededOrder(
+                list.drop(1),
+                seed xor CAP_SALT,
+                WorksitePosition::toPlacementPoint,
+            )
         }
         val count = MIN_RUBBLE_BLOCKS + java.lang.Math.floorMod(seed, (MAX_RUBBLE_BLOCKS - MIN_RUBBLE_BLOCKS + 1).toLong()).toInt()
         val mandatory = bottom + second + shuffledThird.take(14) + shuffledCap.take(1)
@@ -353,6 +369,8 @@ internal class MineCaveInIncident(
     )
 
     private companion object {
+        const val ROTATED_SALT = 0x524f5441544544L
+        const val CAP_SALT = 0x434150L
         const val INCIDENT_ID = "cave_in"
         const val RUBBLE_ROLE = "cave_in_rubble"
         const val RUBBLE_BLOCKS = 60

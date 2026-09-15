@@ -1,6 +1,8 @@
 package ru.ruscrafting.farms.domain.placement
 
 import ru.ruscrafting.farms.domain.DomainIdentifiers
+import ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed
+import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 
 /** Platform-neutral horizontal point consumed by reusable worksite placement strategies. */
 data class WorksitePlacementPoint(
@@ -14,6 +16,9 @@ data class WorksitePlacementPoint(
         require(listOf(x, y, z).all(Double::isFinite)) { "Placement coordinates must be finite" }
     }
 }
+
+fun WorksitePosition.toPlacementPoint(): WorksitePlacementPoint =
+    WorksitePlacementPoint(world, x + 0.5, y.toDouble(), z + 0.5)
 
 data class WorksitePlacementRequest(
     val count: Int,
@@ -73,11 +78,7 @@ object WorksitePlacementPlanner {
         val valuesByPoint = valuesByPoint(candidates, positionOf)
         return valuesByPoint.keys.sortedWith(
             compareBy<WorksitePlacementPoint> { point ->
-                val coordinateSeed = java.lang.Double.doubleToLongBits(point.x) xor
-                    java.lang.Long.rotateLeft(java.lang.Double.doubleToLongBits(point.y), 17) xor
-                    java.lang.Long.rotateLeft(java.lang.Double.doubleToLongBits(point.z), 33) xor
-                    point.world.hashCode().toLong()
-                WorksitePlacementMix.mix(seed xor coordinateSeed)
+                WorksiteDeterministicSeed.positionScore(seed, point)
             }.then(POINT_ORDER),
         ).map(valuesByPoint::getValue)
     }

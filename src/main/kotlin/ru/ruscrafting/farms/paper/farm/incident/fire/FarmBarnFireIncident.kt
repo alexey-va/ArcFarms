@@ -21,6 +21,7 @@ import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
+import ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmRuntime
@@ -235,7 +236,7 @@ internal class FarmBarnFireIncident(
             }
         }.sortedWith(
             compareBy<Pair<Int, Int>> { (x, z) -> x * x + z * z }
-                .thenBy { (x, z) -> mix(runtime.state.placementSequence, x, z) },
+                .thenBy { (x, z) -> WorksiteDeterministicSeed.gridScore(runtime.state.placementSequence, x, z) },
         )
         val available = candidates.mapNotNull { (offsetX, offsetZ) ->
             val x = anchor.x.toIntFloor() + offsetX
@@ -416,13 +417,6 @@ internal class FarmBarnFireIncident(
         val dx = first.x - second.x
         val dz = first.z - second.z
         return dx * dx + dz * dz
-    }
-
-    private fun mix(sequence: Long, x: Int, z: Int): Long {
-        var value = sequence xor (x.toLong() shl 32) xor z.toLong()
-        value = (value xor (value ushr 30)) * -4658895280553007687L
-        value = (value xor (value ushr 27)) * -7723592293110705685L
-        return value xor (value ushr 31)
     }
 
     private fun active(runtime: FarmRuntime): Boolean = runtime.state.phase == FarmPhase.INCIDENT &&

@@ -1,5 +1,7 @@
 package ru.ruscrafting.farms.domain
 
+import ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed
+
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.ints.shouldBeGreaterThan
@@ -111,7 +113,7 @@ class FarmMoleBurrowPlannerTest : FunSpec({
         narrowInterior.map(FarmPlotPosition::z).toSet() shouldBe setOf(3)
 
         val forcedAdminStarts = (1L..8L).map { placementSequence ->
-            val salt = FarmSpatialSeed.mix(placementSequence, FarmCareType.MOLES.ordinal * 17L + 101L)
+            val salt = WorksiteDeterministicSeed.derive(placementSequence, FarmCareType.MOLES.ordinal * 17L + 101L)
             FarmCarePlanner.spread(interior, 12, salt xor 0x4D4F4C45L).first()
         }
         forcedAdminStarts.distinct().size shouldBeGreaterThan 1

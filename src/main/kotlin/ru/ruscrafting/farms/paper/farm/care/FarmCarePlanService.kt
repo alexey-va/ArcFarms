@@ -14,7 +14,7 @@ import ru.ruscrafting.farms.domain.FarmOrchardPlanner
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
-import ru.ruscrafting.farms.domain.FarmSpatialSeed
+import ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed
 import ru.ruscrafting.farms.domain.nextPlacementSequence
 import ru.ruscrafting.farms.paper.ActivityRegion
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
@@ -123,8 +123,8 @@ internal class FarmCarePlanService(
         val placementSequence = runtime.state.nextPlacementSequence()
         // Persisted targets keep an active scene stable across reloads, while a fresh
         // random nonce makes repeated admin/event starts choose genuinely new ground.
-        val salt = FarmSpatialSeed.mix(
-            FarmSpatialSeed.mix(placementSequence, type.ordinal * 17L + 101L),
+        val salt = WorksiteDeterministicSeed.derive(
+            WorksiteDeterministicSeed.derive(placementSequence, type.ordinal * 17L + 101L),
             random.nextLong(),
         )
         fun bedTargets(
@@ -445,12 +445,12 @@ internal class FarmCarePlanService(
         val center = areaCenter(patch)?.location() ?: return null
         val candidates = placement.safeGroundCandidates(runtime, listOf(center), runtime.settings.careRadius)
         if (candidates.isNotEmpty()) {
-            val selection = FarmSpatialSeed.mix(placementSequence, kind.ordinal * 31L)
+            val selection = WorksiteDeterministicSeed.derive(placementSequence, kind.ordinal * 31L)
             val chosen = candidates[Math.floorMod(selection, candidates.size.toLong()).toInt()]
             return FarmPointPosition(chosen.world, chosen.x, chosen.y, chosen.z)
         }
         val fallback = FarmCarePlanner.spread(
-            patch, 1, FarmSpatialSeed.mix(placementSequence, kind.ordinal.toLong()),
+            patch, 1, WorksiteDeterministicSeed.derive(placementSequence, kind.ordinal.toLong()),
         ).firstOrNull() ?: return null
         return FarmPointPosition(fallback.world, fallback.x + 0.5, fallback.y + 1.0, fallback.z + 0.5)
     }

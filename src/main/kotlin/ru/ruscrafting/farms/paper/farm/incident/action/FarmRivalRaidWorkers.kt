@@ -21,6 +21,7 @@ import ru.ruscrafting.farms.domain.FarmRaidBlastPlanner
 import ru.ruscrafting.farms.domain.FarmRivalFieldPolicy
 import ru.ruscrafting.farms.domain.FarmRivalPatrolPlanner
 import ru.ruscrafting.farms.domain.MAX_FARM_SPECIAL_PLOTS
+import ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed
 import ru.ruscrafting.farms.paper.FarmNightShiftController
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
@@ -273,8 +274,10 @@ internal class FarmRivalRaidWorkers(
         }
         val workerPoint = FarmPointPosition(worker.world.name, worker.location.x, worker.location.y, worker.location.z)
         repeat(PATROL_PATH_ATTEMPTS) {
-            val sequence = swarm.patrolSeed xor swarm.placementSequence xor worker.uniqueId.mostSignificantBits xor
-                (++swarm.patrolSequence * PATROL_SEQUENCE_MIX)
+            val sequence = WorksiteDeterministicSeed.derive(
+                swarm.patrolSeed xor swarm.placementSequence xor worker.uniqueId.mostSignificantBits,
+                ++swarm.patrolSequence,
+            )
             val target = FarmRivalPatrolPlanner.select(patrolPlots, workerPoint, sequence) ?: return
             val location = target.spawnLocation(sequence) ?: return@repeat
             if (!mobNavigation.moveTo(worker, location, runtime.settings.rivalRaid.workerPatrolSpeed)) return@repeat
@@ -347,6 +350,5 @@ internal class FarmRivalRaidWorkers(
         const val PATROL_MINIMUM_PROGRESS_SQUARED = 0.04
         const val PATROL_STALLED_CHECKS = 8
         const val PATROL_PATH_ATTEMPTS = 8
-        const val PATROL_SEQUENCE_MIX = -7046029254386353131L
     }
 }
