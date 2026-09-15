@@ -6,6 +6,7 @@ import org.bukkit.Material
 import org.bukkit.entity.Player
 import org.bukkit.event.block.Action
 import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.block.data.Levelled
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.ActivityKind
@@ -77,7 +78,14 @@ internal class MineFloodingIncident(
         val lease = incident.serviceLeases.entries.firstOrNull { it.value == player.uniqueId } ?: return false
         if (items?.consume(player, identity(runtime, lease.key)) != true) return false
         runtime.state = runtime.state.copy(incident = incident.copy(serviceLeases = incident.serviceLeases - lease.key))
-        runtime.state.objective?.target(targetId)?.position?.floodFootprint()?.forEach(journal::restoreNow)
+        val objective = runtime.state.objective ?: return false
+        val retainedWater = objective.targets.asSequence()
+            .filter { it.id != targetId && it.status != ObjectiveTargetStatus.COMPLETED }
+            .flatMap { runtime.floodFootprint(it.position).asSequence() }
+            .toSet()
+        objective.target(targetId)?.position?.let { target ->
+            runtime.floodFootprint(target).filterNot(retainedWater::contains).forEach(journal::restoreNow)
+        }
         val completed = incidents.completeTarget(runtime, targetId, player).accepted
         if (completed && !active(runtime)) journal.restore(runtime, INCIDENT_ID)
         return completed
@@ -90,7 +98,8 @@ internal class MineFloodingIncident(
         if (!active(runtime)) return false
         val position = WorksitePosition(clicked.world.name, clicked.x, clicked.y, clicked.z)
         val target = runtime.state.objective?.targets?.firstOrNull {
-            it.position == position || position in it.position.floodFootprint()
+            it.status != ObjectiveTargetStatus.COMPLETED &&
+                (it.position == position || position in runtime.floodFootprint(it.position))
         } ?: return false
         event.isCancelled = true
         if (runtime.state.incident?.serviceLeases?.values?.contains(event.player.uniqueId) == true) {
@@ -106,7 +115,7 @@ internal class MineFloodingIncident(
         runtime.state.objective?.targets.orEmpty().mapIndexed { targetIndex, target -> targetIndex to target }
             .filter { (_, target) -> target.status != ObjectiveTargetStatus.COMPLETED }
             .flatMap { (targetIndex, target) ->
-                target.position.floodFootprint().mapIndexed { offsetIndex, position ->
+                runtime.floodFootprint(target.position).mapIndexed { offsetIndex, position ->
                     targetIndex * FLOOD_JOURNAL_STRIDE + offsetIndex to position
                 }
             }
@@ -129,8 +138,11 @@ internal class MineFloodingIncident(
                     journal.restore(runtime, INCIDENT_ID)
                     incidents.abort(runtime)
                 }
+            } else {
+                shapeWater(runtime)
             }
         }
+        if (missing.isEmpty()) shapeWater(runtime)
         return missing.size
     }
 
@@ -178,8 +190,8 @@ internal class MineFloodingIncident(
             index.loadedTargets(runtime.settings.id, MineAnchorRole.NEST)
                 .filter {
                     index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.NEST, runtime.railMaterials) &&
-                        runtime.isIncidentSurface(it) && it.floodFootprint().all { water ->
-                            water.blockType() == Material.AIR && runtime.isIncidentSurface(water.copy(y = water.y - 1))
+                        runtime.isIncidentSurface(it) && runtime.floodFootprint(it).let { footprint ->
+                            footprint.size >= MIN_FLOOD_BLOCKS && footprint.all { water -> water.blockType() == Material.AIR }
                         }
                 },
             required * runtime.rules().targetMultiplier * 2,
@@ -194,9 +206,24 @@ internal class MineFloodingIncident(
 
     private fun token(value: Int): String = if (value < 0) "m${value.toLong().absoluteValue}" else value.toString()
 
+    private fun shapeWater(runtime: MineRuntime) {
+        runtime.state.objective?.targets.orEmpty().filter { it.status != ObjectiveTargetStatus.COMPLETED }.forEach { target ->
+            runtime.floodFootprint(target.position).forEach { position ->
+                val block = Bukkit.getWorld(position.world)?.takeIf { it.isChunkLoaded(position.x shr 4, position.z shr 4) }
+                    ?.getBlockAt(position.x, position.y, position.z) ?: return@forEach
+                if (block.type != Material.WATER) return@forEach
+                val data = block.blockData as? Levelled ?: return@forEach
+                val distance = kotlin.math.abs(position.x - target.position.x) + kotlin.math.abs(position.z - target.position.z)
+                data.level = distance.coerceIn(0, minOf(7, data.maximumLevel))
+                block.setBlockData(data, false)
+            }
+        }
+    }
+
     private companion object {
         const val INCIDENT_ID = "flooding"
         const val PUMP_ROLE = "mine_pump"
-        const val FLOOD_JOURNAL_STRIDE = 10
+        const val FLOOD_JOURNAL_STRIDE = 100
+        const val MIN_FLOOD_BLOCKS = 12
     }
 }

@@ -44,9 +44,10 @@ internal class MineIncidentPlacementDiagnostics(private val index: MineBlockInde
         if (type != MineIncidentType.CRYSTAL_RESONANCE && type != MineIncidentType.TRACK_DAMAGE &&
             !runtime.isIncidentSurface(position)) return "decorative_surface"
         if (type == MineIncidentType.FLOODING) {
-            if (position.floodFootprint().any { water ->
-                    water.blockType() != Material.AIR || !runtime.isIncidentSurface(water.copy(y = water.y - 1))
-                }) return "flood_footprint_blocked"
+            val footprint = runtime.floodFootprint(position)
+            if (footprint.size < 12 || footprint.any { water -> water.blockType() != Material.AIR }) {
+                return "flood_footprint_blocked"
+            }
         }
         if (type == MineIncidentType.POWER_FAILURE) {
             val above = world.getBlockAt(position.x, position.y + 1, position.z)

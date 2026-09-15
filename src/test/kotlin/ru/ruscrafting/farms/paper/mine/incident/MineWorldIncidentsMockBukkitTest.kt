@@ -5,6 +5,7 @@ import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
 import org.bukkit.Material
 import org.bukkit.block.BlockFace
+import org.bukkit.block.data.Levelled
 import org.bukkit.entity.Player
 import org.bukkit.event.block.Action
 import org.bukkit.event.player.PlayerInteractEvent
@@ -46,8 +47,10 @@ class MineWorldIncidentsMockBukkitTest : FunSpec({
 
         graph.flooding.start(runtime, required = 2, now = 1_000L) shouldBe true
         val initial = graph.flooding.waterPositions(runtime)
-        initial.size shouldBe 20
+        (initial.size >= 24) shouldBe true
         initial.all { position -> world.getBlockAt(position.x, position.y - 1, position.z).type == Material.STONE } shouldBe true
+        initial.map { position -> (world.getBlockAt(position.x, position.y, position.z).blockData as Levelled).level }
+            .let { levels -> (0 in levels && levels.any { it > 0 }) shouldBe true }
         graph.module.tick(31_000L)
         graph.flooding.waterPositions(runtime) shouldContainExactlyInAnyOrder initial
 
@@ -59,6 +62,8 @@ class MineWorldIncidentsMockBukkitTest : FunSpec({
 
         val player = paper.server.addPlayer("PumpOperator")
         items.active = restarted.flooding::isActive
+        val targetFootprints = restartedRuntime.state.objective!!.targets.take(2)
+            .associate { target -> target.id to restartedRuntime.floodFootprint(target.position).toSet() }
         restartedRuntime.state.objective!!.targets.take(2).forEachIndexed { targetIndex, target ->
             val water = world.getBlockAt(target.position.x, target.position.y + 1, target.position.z)
             restarted.flooding.onInteract(
@@ -75,7 +80,10 @@ class MineWorldIncidentsMockBukkitTest : FunSpec({
             ) shouldBe true
             if (targetIndex == 0) {
                 restarted.flooding.reconcile(restartedRuntime)
-                water.type shouldBe Material.AIR
+                val otherWater = targetFootprints.getValue(restartedRuntime.state.objective!!.targets[1].id)
+                targetFootprints.getValue(target.id).minus(otherWater)
+                    .all { world.getBlockAt(it.x, it.y, it.z).type == Material.AIR } shouldBe true
+                otherWater.all { world.getBlockAt(it.x, it.y, it.z).type == Material.WATER } shouldBe true
             }
         }
         items.toolIssues shouldBe 2
