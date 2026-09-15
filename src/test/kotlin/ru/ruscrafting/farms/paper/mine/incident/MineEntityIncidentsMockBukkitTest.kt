@@ -36,10 +36,11 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("Guard")
         val floors = (1..6).map { x -> world.getBlockAt(x, 63, 2).also { it.type = Material.STONE } }
+        val decoration = world.getBlockAt(8, 63, 2).also { it.type = Material.OAK_PLANKS }
         val effects = RecordingIncidentEntities()
         val graph = entityGraph(paper, effects, "Creatures")
         val runtime = graph.registry.byId("old_shafts")!!
-        replaceEntityIndex(graph, runtime, floors)
+        replaceEntityIndex(graph, runtime, floors + decoration)
 
         graph.creatureNest.start(runtime, required = 2, now = 1_000L) shouldBe true
         graph.creatureNest.spawnedCount(runtime) shouldBe 2
@@ -47,6 +48,9 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         effects.count(MineIncidentEntityKind.CREATURE_NEST_DISPLAY) shouldBe 2
         effects.count(MineIncidentEntityKind.CREATURE_NEST_HITBOX) shouldBe 2
         val targets = runtime.state.objective!!.targets
+        targets.filter { it.role.value == "creature_nest" }.all { target ->
+            world.getBlockAt(target.position.x, target.position.y, target.position.z).type == Material.STONE
+        } shouldBe true
         val creatures = targets.filter { it.role.value == "creature" }
         val nests = targets.filter { it.role.value == "creature_nest" }
         creatures.forEach { graph.creatureNest.defeat(runtime, it.id, player) shouldBe true }
@@ -80,6 +84,25 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         effects.count(MineIncidentEntityKind.CREATURE_NEST_HITBOX) shouldBe 0
     }
 
+    test("block interaction incidents reuse one recoverable glowing marker scene") {
+        val world = paper.server.addSimpleWorld("world")
+        val player = paper.server.addPlayer("Inspector")
+        val walls = (1..6).map { x -> world.getBlockAt(x, 63, 2).also { it.type = Material.STONE } }
+        val effects = RecordingIncidentEntities()
+        val graph = entityGraph(paper, effects, "Markers")
+        val runtime = graph.registry.byId("old_shafts")!!
+        replaceEntityIndex(graph, runtime, walls)
+
+        graph.gasLeak.start(runtime, required = 2, now = 1_000L) shouldBe true
+        graph.incidentSet.tick(runtime, 1_001L, emptyList())
+        effects.count(MineIncidentEntityKind.GAS_MARKER) shouldBe 4
+        val targets = runtime.state.objective!!.targets
+        graph.gasLeak.useVent(runtime, targets[0].id, player) shouldBe true
+        graph.gasLeak.useVent(runtime, targets[1].id, player) shouldBe true
+        graph.incidentSet.tick(runtime, 1_002L, emptyList())
+        effects.count(MineIncidentEntityKind.GAS_MARKER) shouldBe 0
+    }
+
     test("lost miner is reconstructed once and escort completes at the indexed route entrance") {
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("Rescuer")
@@ -91,6 +114,8 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
 
         graph.lostMiner.start(runtime, now = 1_000L) shouldBe true
         graph.lostMiner.canonicalCount(runtime) shouldBe 1
+        effects.count(MineIncidentEntityKind.MINER_CAMP_LANTERN) shouldBe 1
+        effects.count(MineIncidentEntityKind.MINER_CAMP_SUPPLIES) shouldBe 1
         val target = runtime.state.objective!!.targets.first()
         effects.spawn(runtime, MineIncidentEntityKind.MINER, target.id, target.position)
         effects.count(MineIncidentEntityKind.MINER) shouldBe 2
@@ -115,6 +140,8 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         restarted.lostMiner.onMove(Location(world, entrance.x + 0.5, entrance.y + 1.0, entrance.z + 0.5), player) shouldBe true
         restartedRuntime.state.phase shouldBe MinePhase.MINING
         effects.count(MineIncidentEntityKind.MINER) shouldBe 0
+        effects.count(MineIncidentEntityKind.MINER_CAMP_LANTERN) shouldBe 0
+        effects.count(MineIncidentEntityKind.MINER_CAMP_SUPPLIES) shouldBe 0
     }
 })
 
@@ -134,7 +161,12 @@ private fun replaceEntityIndex(graph: MineComponentGraph, runtime: MineRuntime, 
     graph.index.replaceZone(
         MineIndexDefinition(runtime.settings.id, runtime.region, setOf(Material.STONE)),
         listOf(runtime.region.world.getChunkAt(0, 0)),
-        floors.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.NEST, MineAnchorRole.MINER, MineAnchorRole.RAIL)) },
+        floors.map {
+            MineIndexedTarget(
+                it.position(),
+                setOf(MineAnchorRole.NEST, MineAnchorRole.MINER, MineAnchorRole.RAIL, MineAnchorRole.SUPPORT),
+            )
+        },
     )
 }
 

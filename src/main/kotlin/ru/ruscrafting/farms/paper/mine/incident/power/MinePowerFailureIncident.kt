@@ -9,11 +9,13 @@ import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetCandidate
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
+import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.mine.incident.MineIncidentCoordinator
 import ru.ruscrafting.farms.paper.mine.incident.orderMineIncidentPositions
+import ru.ruscrafting.farms.paper.mine.incident.isIncidentSurface
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 import ru.ruscrafting.farms.paper.mine.recovery.MineIncidentBlockJournal
@@ -64,6 +66,7 @@ internal class MinePowerFailureIncident(
         val existing = journal.positions(runtime, INCIDENT_ID).toSet()
         val missing = mutableListOf<Pair<Int, WorksitePosition>>()
         runtime.state.objective?.targets.orEmpty().forEachIndexed { ordinal, target ->
+            if (target.status == ObjectiveTargetStatus.COMPLETED) return@forEachIndexed
             val position = target.position.lightPosition()
             if (position in existing) {
                 journal.ensureTemporary(position, Material.LIGHT)
@@ -99,6 +102,7 @@ internal class MinePowerFailureIncident(
             index.loadedTargets(runtime.settings.id, MineAnchorRole.POWER)
                 .filter {
                     index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.POWER, runtime.railMaterials) &&
+                        runtime.isIncidentSurface(it) &&
                         it.lightPosition().blockType() == Material.AIR
                 },
             required * runtime.rules().targetMultiplier * 2,

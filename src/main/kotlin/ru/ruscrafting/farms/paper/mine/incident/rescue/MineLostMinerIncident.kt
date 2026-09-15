@@ -14,6 +14,7 @@ import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.mine.incident.MineIncidentCoordinator
 import ru.ruscrafting.farms.paper.mine.incident.orderMineIncidentPositions
+import ru.ruscrafting.farms.paper.mine.incident.isIncidentSurface
 import ru.ruscrafting.farms.paper.mine.incident.entity.MineIncidentEntityEffects
 import ru.ruscrafting.farms.paper.mine.incident.entity.MineIncidentEntityKind
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
@@ -82,6 +83,9 @@ internal class MineLostMinerIncident(
         val reconciled = effects.reconcileChunk(
             runtime, chunk, MineIncidentEntityKind.MINER, mapOf(target.id to target.position),
         )
+        CAMP_KINDS.forEach { kind ->
+            effects.reconcileChunk(runtime, chunk, kind, mapOf(target.id to target.position))
+        }
         reconciled[target.id]?.let { miners[key(runtime)] = it }
         miners[key(runtime)]?.takeIf { effects.entity(it) == null }?.let { miners.remove(key(runtime)) }
         return if (key(runtime) in miners) 1 else 0
@@ -104,6 +108,7 @@ internal class MineLostMinerIncident(
         miners.remove(key(runtime))?.let(effects::remove)
         escorts.entries.removeIf { it.value == key(runtime) }
         effects.cleanup(runtime, MineIncidentEntityKind.MINER)
+        CAMP_KINDS.forEach { effects.cleanup(runtime, it) }
     }
 
     private fun active(runtime: MineRuntime): Boolean =
@@ -113,7 +118,10 @@ internal class MineLostMinerIncident(
         orderMineIncidentPositions(
             runtime,
             index.loadedTargets(runtime.settings.id, MineAnchorRole.MINER)
-                .filter { index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.MINER, runtime.railMaterials) },
+                .filter {
+                    index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.MINER, runtime.railMaterials) &&
+                        runtime.isIncidentSurface(it)
+                },
             required * runtime.rules().targetMultiplier * 2,
             0x1057L,
         )
@@ -130,4 +138,8 @@ internal class MineLostMinerIncident(
     }
 
     private fun key(runtime: MineRuntime) = "${runtime.settings.id}:${runtime.state.sequence}"
+
+    private companion object {
+        val CAMP_KINDS = setOf(MineIncidentEntityKind.MINER_CAMP_LANTERN, MineIncidentEntityKind.MINER_CAMP_SUPPLIES)
+    }
 }

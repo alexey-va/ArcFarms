@@ -75,6 +75,15 @@ internal interface WorksiteServiceItems {
         customModelData: Int = 0,
         itemModel: NamespacedKey? = null,
     ): ItemStack? = throw UnsupportedOperationException("Held service item issue is not supported by this adapter")
+    /** Standard temporary tool delivery for every worksite: selected slot first, then free storage. */
+    fun issueTool(
+        player: Player,
+        identity: ServiceItemIdentity,
+        material: Material,
+        name: Component,
+        customModelData: Int = 0,
+        itemModel: NamespacedKey? = null,
+    ): ItemStack? = issueHeld(player, identity, material, name, customModelData, itemModel)
     fun consume(player: Player, expected: ServiceItemIdentity): Boolean
     fun identity(item: ItemStack?): ServiceItemIdentity?
     fun isServiceItem(item: ItemStack?): Boolean

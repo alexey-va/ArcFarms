@@ -29,6 +29,7 @@ import ru.ruscrafting.farms.paper.mine.incident.creature.MineCreatureNestInciden
 import ru.ruscrafting.farms.paper.mine.incident.rescue.MineLostMinerIncident
 import ru.ruscrafting.farms.paper.mine.incident.entity.MineIncidentEntityEffects
 import ru.ruscrafting.farms.paper.mine.incident.entity.PaperMineIncidentEntityEffects
+import ru.ruscrafting.farms.paper.mine.incident.entity.MineObjectiveMarkerScene
 import ru.ruscrafting.farms.paper.mine.recovery.MineIncidentBlockJournal
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems
 import ru.ruscrafting.farms.config.ArcFarmsLocale
@@ -78,12 +79,13 @@ internal class MineComponentGraph(
     )
     val creatureNest = MineCreatureNestIncident(registry, index, incidents, incidentEntityEffects, ports.access, locale)
     val lostMiner = MineLostMinerIncident(registry, index, incidents, incidentEntityEffects, extraction::deliveryPoint)
+    val objectiveMarkers = MineObjectiveMarkerScene(incidentEntityEffects)
     val incidentScheduler = MineIncidentScheduler(
         caveIn, gasLeak, flooding, trackDamage, crystalResonance, creatureNest, powerFailure, lostMiner,
         ru.ruscrafting.farms.paper.mine.incident.MineIncidentPlacementDiagnostics(index), ports.state,
     )
     val incidentSet = MineIncidentSet(
-        registry, caveIn, trackDamage, gasLeak, crystalResonance, flooding, powerFailure, creatureNest, lostMiner,
+        registry, caveIn, trackDamage, gasLeak, crystalResonance, flooding, powerFailure, creatureNest, lostMiner, objectiveMarkers,
         incidents, incidentScheduler, incidentJournal,
     )
     val guidance = MineGuidanceSource(

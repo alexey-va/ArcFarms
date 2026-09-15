@@ -260,6 +260,17 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         versioned.contains("MineComponentGraph(") shouldBe true
         versioned.contains("rewardGrants = rewardGrants") shouldBe true
         factory.contains("require(settings.engineVersion == 2)") shouldBe true
+        versioned.contains("WorksiteEntityDamageHandler") shouldBe true
+        versioned.contains("override fun onEntityDamage(event: EntityDamageEvent)") shouldBe true
+    }
+
+    test("shared sidebar boundary never invokes a Kotlin default-argument bridge across plugins") {
+        val sidebar = Files.readString(repositoryRoot.resolve(
+            "src/main/kotlin/ru/ruscrafting/farms/paper/worksite/WorksiteSidebarController.kt",
+        ))
+
+        sidebar.contains("ArcSidebarFrame(title, visibleRows, emptySet())") shouldBe true
+        sidebar.contains("ArcSidebarFrame(title, visibleRows)") shouldBe false
     }
 
     test("extracted farm features own their state and entity identities") {

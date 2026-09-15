@@ -124,7 +124,10 @@ internal class MineGuidanceSource(
         val world = Bukkit.getWorld(world) ?: return null
         return WorksiteGuidanceTarget(
             id, role, Location(world, x + 0.5, y + 0.35, z + 0.5), color(role),
-            world.isChunkLoaded(x shr 4, z shr 4), if (role.value == "lost_miner") 1.45f else 1.1f,
+            world.isChunkLoaded(x shr 4, z shr 4),
+            particleSize = if (role.value == "lost_miner") 1.9f else 1.65f,
+            columnParticles = 18,
+            columnStep = 0.45,
         )
     }
 
@@ -175,6 +178,8 @@ internal class MineGuidanceSource(
             "ore_crate" to Color.fromRGB(255, 173, 66), "support_kit" to Color.fromRGB(85, 217, 139),
             "gas_vent" to Color.fromRGB(139, 211, 255), "crystal_node" to Color.fromRGB(189, 82, 214),
             "flood_pump" to Color.fromRGB(69, 150, 245), "lost_miner" to Color.fromRGB(255, 95, 109),
+            "power_switch" to Color.fromRGB(255, 214, 72), "creature_nest" to Color.fromRGB(255, 90, 55),
+            "creature" to Color.fromRGB(255, 135, 60),
             "extraction" to Color.fromRGB(85, 217, 139),
         )
     }

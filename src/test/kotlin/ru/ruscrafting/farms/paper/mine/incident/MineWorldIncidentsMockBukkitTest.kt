@@ -33,7 +33,10 @@ class MineWorldIncidentsMockBukkitTest : FunSpec({
 
     test("flood water pauses without players and reconstructs from the durable journal after restart") {
         val world = paper.server.addSimpleWorld("world")
-        val floors = (1..5).map { x -> world.getBlockAt(x, 63, 2).also { it.type = Material.STONE } }
+        val floorPlane = (0..14).flatMap { x -> (1..3).map { z ->
+            world.getBlockAt(x, 63, z).also { it.type = Material.STONE }
+        } }
+        val floors = listOf(1, 4, 7, 10, 13).map { x -> world.getBlockAt(x, 63, 2) }
         val journal = ImmediateMineJournal()
         val items = WorldIncidentItems()
         val graph = worldGraph(paper, journal, items, "FloodA")
@@ -43,7 +46,8 @@ class MineWorldIncidentsMockBukkitTest : FunSpec({
 
         graph.flooding.start(runtime, required = 2, now = 1_000L) shouldBe true
         val initial = graph.flooding.waterPositions(runtime)
-        initial.size shouldBe 4
+        initial.size shouldBe 20
+        initial.all { position -> world.getBlockAt(position.x, position.y - 1, position.z).type == Material.STONE } shouldBe true
         graph.module.tick(31_000L)
         graph.flooding.waterPositions(runtime) shouldContainExactlyInAnyOrder initial
 
@@ -55,7 +59,7 @@ class MineWorldIncidentsMockBukkitTest : FunSpec({
 
         val player = paper.server.addPlayer("PumpOperator")
         items.active = restarted.flooding::isActive
-        restartedRuntime.state.objective!!.targets.take(2).forEach { target ->
+        restartedRuntime.state.objective!!.targets.take(2).forEachIndexed { targetIndex, target ->
             val water = world.getBlockAt(target.position.x, target.position.y + 1, target.position.z)
             restarted.flooding.onInteract(
                 PlayerInteractEvent(
@@ -69,7 +73,12 @@ class MineWorldIncidentsMockBukkitTest : FunSpec({
                     water, BlockFace.UP, EquipmentSlot.HAND,
                 ),
             ) shouldBe true
+            if (targetIndex == 0) {
+                restarted.flooding.reconcile(restartedRuntime)
+                water.type shouldBe Material.AIR
+            }
         }
+        items.toolIssues shouldBe 2
         initial.all { world.getBlockAt(it.x, it.y, it.z).type == Material.AIR } shouldBe true
     }
 
@@ -115,9 +124,21 @@ private fun index(graph: MineComponentGraph, runtime: ru.ruscrafting.farms.paper
 private class WorldIncidentItems : WorksiteServiceItems {
     private val issued = mutableMapOf<java.util.UUID, ServiceItemIdentity>()
     var active: (ServiceItemIdentity) -> Boolean = { true }
+    var toolIssues: Int = 0
     override fun issue(player: Player, identity: ServiceItemIdentity, material: Material, name: net.kyori.adventure.text.Component): ItemStack? {
         if (!active(identity)) return null
         return ItemStack(material).also { player.inventory.addItem(it); issued[player.uniqueId] = identity }
+    }
+    override fun issueHeld(
+        player: Player,
+        identity: ServiceItemIdentity,
+        material: Material,
+        name: net.kyori.adventure.text.Component,
+        customModelData: Int,
+        itemModel: org.bukkit.NamespacedKey?,
+    ): ItemStack? {
+        toolIssues++
+        return issue(player, identity, material, name)
     }
     override fun consume(player: Player, expected: ServiceItemIdentity): Boolean =
         (issued[player.uniqueId] == expected).also { if (it) issued.remove(player.uniqueId) }

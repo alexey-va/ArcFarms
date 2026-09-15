@@ -11,6 +11,7 @@ import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.mine.incident.MineIncidentCoordinator
 import ru.ruscrafting.farms.paper.mine.incident.orderMineIncidentPositions
+import ru.ruscrafting.farms.paper.mine.incident.isIncidentSurface
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 import kotlin.math.absoluteValue
@@ -23,6 +24,7 @@ internal abstract class MineSequenceIncident(
     private val registry: MineRuntimeRegistry,
     private val index: MineBlockIndex,
     private val incidents: MineIncidentCoordinator,
+    private val requireStructuralSurface: Boolean = true,
 ) {
     fun start(runtime: MineRuntime, required: Int, now: Long): Boolean {
         val candidates = candidates(runtime, required)
@@ -63,7 +65,10 @@ internal abstract class MineSequenceIncident(
         orderMineIncidentPositions(
             runtime,
             index.loadedTargets(runtime.settings.id, anchorRole)
-                .filter { index.isLiveTarget(runtime.settings.id, it, anchorRole, runtime.railMaterials) },
+                .filter {
+                    index.isLiveTarget(runtime.settings.id, it, anchorRole, runtime.railMaterials) &&
+                        (!requireStructuralSurface || runtime.isIncidentSurface(it))
+                },
             required * runtime.rules().targetMultiplier * 2,
             type.ordinal.toLong() + 1L,
         )

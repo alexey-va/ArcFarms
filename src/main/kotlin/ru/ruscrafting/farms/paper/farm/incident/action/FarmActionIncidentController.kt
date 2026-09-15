@@ -518,7 +518,7 @@ internal class FarmActionIncidentController(
         if (player.inventory.storageContents.any { serviceItems.identity(it) == identity } ||
             serviceItems.identity(player.inventory.itemInOffHand) == identity
         ) return
-        if (serviceItems.issueHeld(player, identity, material, locale.render(key, player), 0, null) == null &&
+        if (serviceItems.issueTool(player, identity, material, locale.render(key, player)) == null &&
             access.allowInteraction("farm-equipment-full:${player.uniqueId}", 3_000L)
         ) {
             audience.sendChat(player, MessageKey.FARM_ACTION_INVENTORY_FULL)

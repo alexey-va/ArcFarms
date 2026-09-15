@@ -89,6 +89,26 @@ class WorksiteGuidancePresenterMockBukkitTest : FunSpec({
         verify(exactly = 3) { audience.showScreenTitle(player, view.title, view.subtitle) }
     }
 
+    test("a presentation may request a tall high-contrast objective column") {
+        val audience = mockk<WorksiteAudiencePort>(relaxed = true)
+        val access = mockk<WorksiteAccessPort>()
+        every { access.isAdminEditing(player) } returns false
+        val target = WorksiteGuidanceTarget(
+            "mine-target", ObjectiveTargetRole("power_switch"), Location(world, 2.0, 64.0, 0.0),
+            Color.fromRGB(255, 214, 72), particleSize = 1.65f, columnParticles = 18, columnStep = 0.45,
+        )
+        val presenter = WorksiteGuidancePresenter(
+            audience, access, guidanceSource(player, basicView().copy(targets = listOf(target))),
+        )
+
+        presenter.emitParticles()
+
+        verify(exactly = 18) { audience.spawnGuidanceDust(player, any(), target.color, 1.65f) }
+        verify(exactly = 1) {
+            audience.spawnGuidanceDust(player, match { it.y > 71.5 }, target.color, 1.65f)
+        }
+    }
+
     test("quiet mining updates HUD without repeating progress or idle titles") {
         val audience = mockk<WorksiteAudiencePort>(relaxed = true)
         val access = mockk<WorksiteAccessPort>()

@@ -751,7 +751,7 @@ internal class FarmSpecialIncidentController(
         audience.players(runtime.region).filterNot(access::isAdminEditing).forEach { player ->
             val hasTool = player.inventory.storageContents.any { serviceItems.identity(it) == identity } ||
                 serviceItems.identity(player.inventory.itemInOffHand) == identity
-            if (!hasTool && serviceItems.issueHeld(
+            if (!hasTool && serviceItems.issueTool(
                     player,
                     identity,
                     Material.IRON_SHOVEL,

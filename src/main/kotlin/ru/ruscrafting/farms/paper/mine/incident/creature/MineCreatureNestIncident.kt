@@ -24,6 +24,7 @@ import ru.ruscrafting.farms.paper.mine.incident.MineIncidentCoordinator
 import ru.ruscrafting.farms.paper.mine.incident.entity.MineIncidentEntityEffects
 import ru.ruscrafting.farms.paper.mine.incident.entity.MineIncidentEntityKind
 import ru.ruscrafting.farms.paper.mine.incident.orderMineIncidentPositions
+import ru.ruscrafting.farms.paper.mine.incident.isIncidentSurface
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
@@ -175,7 +176,10 @@ internal class MineCreatureNestIncident(
         val positions = orderMineIncidentPositions(
             runtime,
             index.loadedTargets(runtime.settings.id, MineAnchorRole.NEST)
-                .filter { index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.NEST, runtime.railMaterials) },
+                .filter {
+                    index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.NEST, runtime.railMaterials) &&
+                        runtime.isIncidentSurface(it)
+                },
             required,
             0xCEEA7L,
         ).take(required)

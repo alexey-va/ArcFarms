@@ -125,7 +125,7 @@ internal class MineModule(
                 if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.IDLE) {
                     participants.firstOrNull()?.let { prospecting.autoStart(runtime, it) }
                 }
-                incidents.tick(runtime, now, participants.size)
+                incidents.tick(runtime, now, participants)
                 participants.firstOrNull { it.uniqueId in runtime.state.contributors }?.let {
                     extraction.completeMiningOrder(runtime, it)
                 }

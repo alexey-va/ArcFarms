@@ -23,7 +23,9 @@ internal class WorksiteSidebarController(
             return
         }
         runtimeKeys[player.uniqueId] = runtimeKey
-        sidebar.show(player, ArcSidebarFrame(title, visibleRows))
+        // Do not cross a plugin classloader boundary through Kotlin's synthetic
+        // default-argument constructor and its DefaultConstructorMarker.
+        sidebar.show(player, ArcSidebarFrame(title, visibleRows, emptySet()))
     }
 
     fun reconcile(owner: String, expected: Set<UUID>) {

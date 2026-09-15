@@ -36,4 +36,19 @@ class MineIncidentPlacementOrderTest : FunSpec({
         }.all { it >= 64.0 } shouldBe true
         first.toSet() shouldBe candidates.toSet()
     }
+
+    test("successive shifts sample a different mine-wide objective pool") {
+        val world = paper.server.addSimpleWorld("world")
+        val runtime = MineRuntimeFactory.build(
+            listOf(mineV2Settings()), emptyMap(), 5_000L, CuboidRegionGateway(),
+        ).single()
+        val candidates = (0 until 1_000).map { index -> WorksitePosition(world.name, index, 64, index % 37) }
+
+        val first = orderMineIncidentPositions(runtime, candidates, 4, 71L).take(4)
+        runtime.state = runtime.state.copy(sequence = 1)
+        val second = orderMineIncidentPositions(runtime, candidates, 4, 71L).take(4)
+
+        first shouldBe first.distinct()
+        (first == second) shouldBe false
+    }
 })

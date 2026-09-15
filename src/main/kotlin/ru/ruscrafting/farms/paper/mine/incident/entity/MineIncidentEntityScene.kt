@@ -5,6 +5,7 @@ import org.bukkit.Chunk
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
+import org.bukkit.block.BlockFace
 import org.bukkit.entity.Entity
 import org.bukkit.entity.EntityType
 import org.bukkit.entity.ArmorStand
@@ -23,7 +24,13 @@ internal enum class MineIncidentEntityKind {
     CREATURE_NEST_DISPLAY,
     CREATURE_NEST_HITBOX,
     MINER,
+    MINER_CAMP_LANTERN,
+    MINER_CAMP_SUPPLIES,
     CAVE_IN_MARKER,
+    GAS_MARKER,
+    CRYSTAL_MARKER,
+    FLOOD_MARKER,
+    POWER_MARKER,
 }
 
 internal data class MineIncidentEntityIdentity(
@@ -62,16 +69,14 @@ internal class PaperMineIncidentEntityEffects(plugin: Plugin) : MineIncidentEnti
         position: WorksitePosition,
     ): UUID {
         val world = requireNotNull(Bukkit.getWorld(position.world))
+        val offset = if (kind in OBJECTIVE_MARKER_KINDS) {
+            objectiveMarkerOffset(world.getBlockAt(position.x, position.y, position.z))
+        } else entityOffset(kind)
         val at = Location(
             world,
-            position.x + 0.5,
-            position.y + when (kind) {
-                MineIncidentEntityKind.CREATURE -> 0.0
-                MineIncidentEntityKind.CREATURE_NEST_DISPLAY -> 1.25
-                MineIncidentEntityKind.CREATURE_NEST_HITBOX, MineIncidentEntityKind.MINER -> 1.0
-                else -> 0.5
-            },
-            position.z + 0.5,
+            position.x + offset.first,
+            position.y + offset.second,
+            position.z + offset.third,
         )
         val entity = world.spawnEntity(
             at,
@@ -80,7 +85,13 @@ internal class PaperMineIncidentEntityEffects(plugin: Plugin) : MineIncidentEnti
                 MineIncidentEntityKind.CREATURE_NEST_DISPLAY -> EntityType.ITEM_DISPLAY
                 MineIncidentEntityKind.CREATURE_NEST_HITBOX -> EntityType.ARMOR_STAND
                 MineIncidentEntityKind.MINER -> EntityType.VILLAGER
-                MineIncidentEntityKind.CAVE_IN_MARKER -> EntityType.ITEM_DISPLAY
+                MineIncidentEntityKind.CAVE_IN_MARKER,
+                MineIncidentEntityKind.MINER_CAMP_LANTERN,
+                MineIncidentEntityKind.MINER_CAMP_SUPPLIES,
+                MineIncidentEntityKind.GAS_MARKER,
+                MineIncidentEntityKind.CRYSTAL_MARKER,
+                MineIncidentEntityKind.FLOOD_MARKER,
+                MineIncidentEntityKind.POWER_MARKER -> EntityType.ITEM_DISPLAY
             },
         )
         entity.persistentDataContainer.apply {
@@ -92,20 +103,20 @@ internal class PaperMineIncidentEntityEffects(plugin: Plugin) : MineIncidentEnti
         }
         entity.isPersistent = false
         (entity as? LivingEntity)?.removeWhenFarAway = false
-        if (kind == MineIncidentEntityKind.CREATURE) entity.isGlowing = true
+        if (kind == MineIncidentEntityKind.CREATURE || kind == MineIncidentEntityKind.MINER) entity.isGlowing = true
         (entity as? Villager)?.apply { setAI(false); isSilent = true }
-        if (kind in setOf(MineIncidentEntityKind.CAVE_IN_MARKER, MineIncidentEntityKind.CREATURE_NEST_DISPLAY)) {
+        if (kind in DISPLAY_KINDS) {
             (entity as ItemDisplay).apply {
             itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
-            setItemStack(ItemStack(if (kind == MineIncidentEntityKind.CAVE_IN_MARKER) Material.COBBLESTONE else Material.MANGROVE_ROOTS))
-            viewRange = 2.5f
+            setItemStack(ItemStack(markerMaterial(kind)))
+            viewRange = if (kind in OBJECTIVE_MARKER_KINDS) 12.0f else 4.0f
             isGlowing = true
-            glowColorOverride = if (kind == MineIncidentEntityKind.CAVE_IN_MARKER) {
-                org.bukkit.Color.fromRGB(0x8b, 0xd3, 0xff)
-            } else {
-                org.bukkit.Color.fromRGB(0xff, 0x7a, 0x45)
+            glowColorOverride = markerColor(kind)
+            val scale = when (kind) {
+                MineIncidentEntityKind.CAVE_IN_MARKER -> 1.35f
+                MineIncidentEntityKind.CREATURE_NEST_DISPLAY -> 1.75f
+                else -> 1.9f
             }
-            val scale = if (kind == MineIncidentEntityKind.CAVE_IN_MARKER) 1.35f else 1.5f
             transformation = transformation.also { it.scale.set(scale, scale, scale) }
             }
         }
@@ -161,5 +172,63 @@ internal class PaperMineIncidentEntityEffects(plugin: Plugin) : MineIncidentEnti
                 identity(entity)?.let { it.zoneId == runtime.settings.id && it.kind == kind } == true
             }.forEach(Entity::remove)
         }
+    }
+
+    private fun markerMaterial(kind: MineIncidentEntityKind): Material = when (kind) {
+        MineIncidentEntityKind.CAVE_IN_MARKER -> Material.COBBLESTONE
+        MineIncidentEntityKind.CREATURE_NEST_DISPLAY -> Material.MANGROVE_ROOTS
+        MineIncidentEntityKind.MINER_CAMP_LANTERN -> Material.SOUL_LANTERN
+        MineIncidentEntityKind.MINER_CAMP_SUPPLIES -> Material.BARREL
+        MineIncidentEntityKind.GAS_MARKER -> Material.SLIME_BALL
+        MineIncidentEntityKind.CRYSTAL_MARKER -> Material.AMETHYST_SHARD
+        MineIncidentEntityKind.FLOOD_MARKER -> Material.HEART_OF_THE_SEA
+        MineIncidentEntityKind.POWER_MARKER -> Material.REDSTONE_TORCH
+        else -> error("Entity kind $kind is not a display marker")
+    }
+
+    private fun markerColor(kind: MineIncidentEntityKind): org.bukkit.Color = when (kind) {
+        MineIncidentEntityKind.CAVE_IN_MARKER -> org.bukkit.Color.fromRGB(0x8b, 0xd3, 0xff)
+        MineIncidentEntityKind.CREATURE_NEST_DISPLAY -> org.bukkit.Color.fromRGB(0xff, 0x7a, 0x45)
+        MineIncidentEntityKind.MINER_CAMP_LANTERN -> org.bukkit.Color.fromRGB(0x75, 0xd8, 0xff)
+        MineIncidentEntityKind.MINER_CAMP_SUPPLIES -> org.bukkit.Color.fromRGB(0xff, 0xb3, 0x55)
+        MineIncidentEntityKind.GAS_MARKER -> org.bukkit.Color.fromRGB(0x75, 0xff, 0x70)
+        MineIncidentEntityKind.CRYSTAL_MARKER -> org.bukkit.Color.fromRGB(0xd5, 0x68, 0xff)
+        MineIncidentEntityKind.FLOOD_MARKER -> org.bukkit.Color.fromRGB(0x45, 0xc8, 0xf5)
+        MineIncidentEntityKind.POWER_MARKER -> org.bukkit.Color.fromRGB(0xff, 0xd6, 0x48)
+        else -> error("Entity kind $kind is not a display marker")
+    }
+
+    private companion object {
+        val OBJECTIVE_MARKER_KINDS = setOf(
+            MineIncidentEntityKind.GAS_MARKER,
+            MineIncidentEntityKind.CRYSTAL_MARKER,
+            MineIncidentEntityKind.FLOOD_MARKER,
+            MineIncidentEntityKind.POWER_MARKER,
+        )
+        val DISPLAY_KINDS = OBJECTIVE_MARKER_KINDS + setOf(
+            MineIncidentEntityKind.CAVE_IN_MARKER,
+            MineIncidentEntityKind.CREATURE_NEST_DISPLAY,
+            MineIncidentEntityKind.MINER_CAMP_LANTERN,
+            MineIncidentEntityKind.MINER_CAMP_SUPPLIES,
+        )
+    }
+
+    private fun entityOffset(kind: MineIncidentEntityKind): Triple<Double, Double, Double> = when (kind) {
+        MineIncidentEntityKind.CREATURE -> Triple(0.5, 0.0, 0.5)
+        MineIncidentEntityKind.CREATURE_NEST_DISPLAY -> Triple(0.5, 1.25, 0.5)
+        MineIncidentEntityKind.CREATURE_NEST_HITBOX, MineIncidentEntityKind.MINER -> Triple(0.5, 1.0, 0.5)
+        MineIncidentEntityKind.CAVE_IN_MARKER -> Triple(0.5, 0.5, 0.5)
+        MineIncidentEntityKind.MINER_CAMP_LANTERN -> Triple(1.15, 0.75, 0.35)
+        MineIncidentEntityKind.MINER_CAMP_SUPPLIES -> Triple(-0.15, 0.65, 0.85)
+        else -> Triple(0.5, 1.55, 0.5)
+    }
+
+    private fun objectiveMarkerOffset(block: org.bukkit.block.Block): Triple<Double, Double, Double> = when {
+        block.getRelative(BlockFace.UP).type.isAir -> Triple(0.5, 1.35, 0.5)
+        block.getRelative(BlockFace.NORTH).type.isAir -> Triple(0.5, 0.5, -0.15)
+        block.getRelative(BlockFace.SOUTH).type.isAir -> Triple(0.5, 0.5, 1.15)
+        block.getRelative(BlockFace.WEST).type.isAir -> Triple(-0.15, 0.5, 0.5)
+        block.getRelative(BlockFace.EAST).type.isAir -> Triple(1.15, 0.5, 0.5)
+        else -> Triple(0.5, 1.35, 0.5)
     }
 }

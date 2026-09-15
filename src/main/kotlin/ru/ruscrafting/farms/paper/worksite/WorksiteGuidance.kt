@@ -15,7 +15,15 @@ internal data class WorksiteGuidanceTarget(
     val color: Color,
     val loaded: Boolean = true,
     val particleSize: Float = 1.1f,
-)
+    val columnParticles: Int = 8,
+    val columnStep: Double = 0.32,
+) {
+    init {
+        require(particleSize > 0f && particleSize.isFinite()) { "Guidance particle size must be positive" }
+        require(columnParticles in 1..64) { "Guidance column particle count is invalid" }
+        require(columnStep in 0.05..2.0) { "Guidance column step is invalid" }
+    }
+}
 
 internal data class WorksiteGuidanceView(
     val runtimeKey: String,

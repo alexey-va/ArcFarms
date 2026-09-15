@@ -7,7 +7,7 @@ import ru.ruscrafting.farms.domain.placement.WorksitePlacementRequest
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 
-/** Puts the visible objective and its immediate reserves far apart without losing fallback candidates. */
+/** Puts objectives far apart and varies the mine-wide candidate pool between shifts. */
 internal fun orderMineIncidentPositions(
     runtime: MineRuntime,
     positions: Collection<WorksitePosition>,
@@ -16,15 +16,8 @@ internal fun orderMineIncidentPositions(
 ): List<WorksitePosition> {
     val available = positions.distinct()
     if (available.size <= 1 || visibleCount <= 0) return available
-    val participants = runtime.region.world.players.filter { runtime.region.contains(it.location) }
-    val localPool = if (participants.isEmpty()) available else available.sortedBy { position ->
-        participants.minOf { player ->
-            val dx = position.x + 0.5 - player.location.x
-            val dy = position.y + 1.0 - player.location.y
-            val dz = position.z + 0.5 - player.location.z
-            kotlin.math.abs(dx * dx + dz * dz - IDEAL_PLAYER_DISTANCE_SQUARED) + dy * dy * 4.0
-        }
-    }.take(minOf(available.size, maxOf(MIN_LOCAL_POOL, visibleCount * LOCAL_POOL_PER_TARGET)))
+    val poolSize = minOf(available.size, maxOf(MIN_CANDIDATE_POOL, visibleCount * CANDIDATE_POOL_PER_TARGET))
+    val localPool = available.sortedBy { position -> spreadHash(runtime.state.sequence xor salt, position) }.take(poolSize)
     val selected = WorksitePlacementPlanner.select(
         localPool,
         WorksitePlacementRequest(minOf(visibleCount, localPool.size), runtime.state.sequence xor salt),
@@ -42,6 +35,13 @@ internal fun orderMineIncidentPositions(
     return selected + localPool.filterNot(chosen::contains) + available.filterNot(local::contains)
 }
 
-private const val IDEAL_PLAYER_DISTANCE_SQUARED = 196.0
-private const val MIN_LOCAL_POOL = 128
-private const val LOCAL_POOL_PER_TARGET = 32
+private fun spreadHash(seed: Long, position: WorksitePosition): Long {
+    var hash = seed xor -7046029254386353131L
+    hash = (hash xor position.x.toLong()) * -4658895280553007687L
+    hash = (hash xor position.y.toLong()) * -7723592293110705685L
+    hash = (hash xor position.z.toLong()) * -4658895280553007687L
+    return hash xor (hash ushr 33)
+}
+
+private const val MIN_CANDIDATE_POOL = 256
+private const val CANDIDATE_POOL_PER_TARGET = 64

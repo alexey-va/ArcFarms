@@ -28,7 +28,7 @@ internal class MinePickaxeSupply(
             .forEach { stale -> while (serviceItems.consume(player, stale)) Unit }
         val name = locale?.render(MessageKey.MINE_SERVICE_PICKAXE, player)
             ?: net.kyori.adventure.text.Component.translatable("item.minecraft.iron_pickaxe")
-        if (serviceItems.issueHeld(player, expected, Material.IRON_PICKAXE, name, 0, null) != null) return true
+        if (serviceItems.issueTool(player, expected, Material.IRON_PICKAXE, name) != null) return true
         audience.sendActionBar(player, MessageKey.MINE_PICKAXE_INVENTORY_FULL)
         return false
     }

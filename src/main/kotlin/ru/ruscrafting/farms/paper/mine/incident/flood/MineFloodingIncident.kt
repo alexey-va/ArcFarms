@@ -13,12 +13,16 @@ import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetCandidate
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
+import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.mine.incident.MineIncidentCoordinator
 import ru.ruscrafting.farms.paper.mine.incident.orderMineIncidentPositions
+import ru.ruscrafting.farms.paper.mine.incident.isIncidentSurface
+import ru.ruscrafting.farms.paper.mine.incident.blockType
+import ru.ruscrafting.farms.paper.mine.incident.floodFootprint
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 import ru.ruscrafting.farms.paper.mine.recovery.MineIncidentBlockJournal
@@ -46,16 +50,18 @@ internal class MineFloodingIncident(
         return true
     }
 
-    fun pickupPump(runtime: MineRuntime, player: Player): Boolean {
+    /** Farm-style service-tool supply: keep the temporary pump in the selected slot when possible. */
+    fun ensurePump(runtime: MineRuntime, player: Player): Boolean {
         val incident = runtime.state.incident ?: return false
-        if (!active(runtime) || incident.serviceLeases.values.any { it == player.uniqueId }) return false
+        if (!active(runtime)) return false
+        if (incident.serviceLeases.values.any { it == player.uniqueId }) return true
         val itemId = (1..incident.required).map { "pump_$it" }.firstOrNull { it !in incident.serviceLeases } ?: return false
         val identity = identity(runtime, itemId)
         runtime.state = runtime.state.copy(
             incident = incident.copy(serviceLeases = incident.serviceLeases + (itemId to player.uniqueId)),
         )
         val itemName = locale?.render(MessageKey.MINE_SERVICE_PUMP, player) ?: Component.text(MessageKey.MINE_SERVICE_PUMP.path)
-        val issued = items?.issue(player, identity, Material.BUCKET, itemName)
+        val issued = items?.issueTool(player, identity, Material.BUCKET, itemName)
         if (issued == null) {
             runtime.state = runtime.state.copy(
                 incident = runtime.state.incident?.copy(serviceLeases = runtime.state.incident!!.serviceLeases - itemId),
@@ -71,7 +77,7 @@ internal class MineFloodingIncident(
         val lease = incident.serviceLeases.entries.firstOrNull { it.value == player.uniqueId } ?: return false
         if (items?.consume(player, identity(runtime, lease.key)) != true) return false
         runtime.state = runtime.state.copy(incident = incident.copy(serviceLeases = incident.serviceLeases - lease.key))
-        runtime.state.objective?.target(targetId)?.position?.floodPosition()?.let(journal::restoreNow)
+        runtime.state.objective?.target(targetId)?.position?.floodFootprint()?.forEach(journal::restoreNow)
         val completed = incidents.completeTarget(runtime, targetId, player).accepted
         if (completed && !active(runtime)) journal.restore(runtime, INCIDENT_ID)
         return completed
@@ -84,12 +90,12 @@ internal class MineFloodingIncident(
         if (!active(runtime)) return false
         val position = WorksitePosition(clicked.world.name, clicked.x, clicked.y, clicked.z)
         val target = runtime.state.objective?.targets?.firstOrNull {
-            it.position == position || it.position.floodPosition() == position
+            it.position == position || position in it.position.floodFootprint()
         } ?: return false
         event.isCancelled = true
         if (runtime.state.incident?.serviceLeases?.values?.contains(event.player.uniqueId) == true) {
             drain(runtime, target.id, event.player)
-        } else pickupPump(runtime, event.player)
+        } else ensurePump(runtime, event.player)
         return true
     }
 
@@ -97,13 +103,19 @@ internal class MineFloodingIncident(
         if (!active(runtime)) return 0
         val existing = journal.positions(runtime, INCIDENT_ID).toSet()
         val missing = mutableListOf<Pair<Int, WorksitePosition>>()
-        runtime.state.objective?.targets.orEmpty().forEachIndexed { ordinal, target ->
-            val position = target.position.floodPosition()
-            if (position in existing) {
-                journal.ensureTemporary(position, Material.WATER)
-            } else if (position.block()?.type == Material.AIR) {
-                missing += ordinal to position
+        runtime.state.objective?.targets.orEmpty().mapIndexed { targetIndex, target -> targetIndex to target }
+            .filter { (_, target) -> target.status != ObjectiveTargetStatus.COMPLETED }
+            .flatMap { (targetIndex, target) ->
+                target.position.floodFootprint().mapIndexed { offsetIndex, position ->
+                    targetIndex * FLOOD_JOURNAL_STRIDE + offsetIndex to position
+                }
             }
+            .distinctBy { (_, position) -> position }.forEach { (ordinal, position) ->
+                if (position in existing) {
+                    journal.ensureTemporary(position, Material.WATER)
+                } else if (position.blockType() == Material.AIR) {
+                    missing += ordinal to position
+                }
         }
         if (missing.isNotEmpty()) journal.prepareAll(runtime, INCIDENT_ID, missing, Material.WATER).whenComplete { prepared, failure ->
             if (failure != null || prepared != true) {
@@ -166,7 +178,9 @@ internal class MineFloodingIncident(
             index.loadedTargets(runtime.settings.id, MineAnchorRole.NEST)
                 .filter {
                     index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.NEST, runtime.railMaterials) &&
-                        it.floodPosition().block()?.type == Material.AIR
+                        runtime.isIncidentSurface(it) && it.floodFootprint().all { water ->
+                            water.blockType() == Material.AIR && runtime.isIncidentSurface(water.copy(y = water.y - 1))
+                        }
                 },
             required * runtime.rules().targetMultiplier * 2,
             0xF100DL,
@@ -178,12 +192,11 @@ internal class MineFloodingIncident(
                 )
             }
 
-    private fun WorksitePosition.floodPosition() = copy(y = y + 1)
-    private fun WorksitePosition.block() = Bukkit.getWorld(world)?.takeIf { it.isChunkLoaded(x shr 4, z shr 4) }?.getBlockAt(x, y, z)
     private fun token(value: Int): String = if (value < 0) "m${value.toLong().absoluteValue}" else value.toString()
 
     private companion object {
         const val INCIDENT_ID = "flooding"
         const val PUMP_ROLE = "mine_pump"
+        const val FLOOD_JOURNAL_STRIDE = 10
     }
 }

@@ -13,6 +13,7 @@ internal class MineCrystalResonanceIncident(
     registry: MineRuntimeRegistry, index: MineBlockIndex, incidents: MineIncidentCoordinator,
 ) : MineSequenceIncident(
     MineIncidentType.CRYSTAL_RESONANCE, MineAnchorRole.CRYSTAL, "crystal_node", registry, index, incidents,
+    requireStructuralSurface = false,
 ) {
     fun hit(runtime: MineRuntime, targetId: String, player: Player, insideForgivingWindow: Boolean): Boolean =
         use(runtime, targetId, player, insideForgivingWindow)

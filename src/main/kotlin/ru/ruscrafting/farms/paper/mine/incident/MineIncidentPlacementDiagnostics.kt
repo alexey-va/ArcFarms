@@ -41,7 +41,14 @@ internal class MineIncidentPlacementDiagnostics(private val index: MineBlockInde
         val world = Bukkit.getWorld(position.world) ?: return "world_unavailable"
         if (!world.isChunkLoaded(position.x shr 4, position.z shr 4)) return "chunk_unloaded"
         if (!index.isLiveTarget(runtime.settings.id, position, role, runtime.railMaterials)) return "anchor_changed"
-        if (type in setOf(MineIncidentType.FLOODING, MineIncidentType.POWER_FAILURE)) {
+        if (type != MineIncidentType.CRYSTAL_RESONANCE && type != MineIncidentType.TRACK_DAMAGE &&
+            !runtime.isIncidentSurface(position)) return "decorative_surface"
+        if (type == MineIncidentType.FLOODING) {
+            if (position.floodFootprint().any { water ->
+                    water.blockType() != Material.AIR || !runtime.isIncidentSurface(water.copy(y = water.y - 1))
+                }) return "flood_footprint_blocked"
+        }
+        if (type == MineIncidentType.POWER_FAILURE) {
             val above = world.getBlockAt(position.x, position.y + 1, position.z)
             if (above.type != Material.AIR) return "space_above_occupied"
         }

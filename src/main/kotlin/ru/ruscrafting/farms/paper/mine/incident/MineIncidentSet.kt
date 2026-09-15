@@ -17,6 +17,7 @@ import ru.ruscrafting.farms.paper.mine.incident.flood.MineFloodingIncident
 import ru.ruscrafting.farms.paper.mine.incident.gas.MineGasLeakIncident
 import ru.ruscrafting.farms.paper.mine.incident.power.MinePowerFailureIncident
 import ru.ruscrafting.farms.paper.mine.incident.rescue.MineLostMinerIncident
+import ru.ruscrafting.farms.paper.mine.incident.entity.MineObjectiveMarkerScene
 import ru.ruscrafting.farms.paper.mine.incident.track.MineTrackDamageIncident
 import ru.ruscrafting.farms.paper.mine.recovery.MineIncidentBlockJournal
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
@@ -34,6 +35,7 @@ internal class MineIncidentSet(
     private val powerFailure: MinePowerFailureIncident,
     private val creatureNest: MineCreatureNestIncident,
     private val lostMiner: MineLostMinerIncident,
+    private val objectiveMarkers: MineObjectiveMarkerScene,
     private val coordinator: MineIncidentCoordinator,
     private val scheduler: MineIncidentScheduler,
     private val journal: MineIncidentBlockJournal,
@@ -47,19 +49,27 @@ internal class MineIncidentSet(
         return scheduler.force(runtime, type, now)
     }
 
-    fun tick(runtime: MineRuntime, now: Long, onlineParticipants: Int) {
-        scheduler.tick(runtime, now, onlineParticipants)
+    fun tick(runtime: MineRuntime, now: Long, participants: Collection<Player>) {
+        scheduler.tick(runtime, now, participants.size)
         caveIn.reconcile(runtime)
         trackDamage.reconcile(runtime)
+        participants.forEach { trackDamage.ensureKit(runtime, it) }
         flooding.reconcile(runtime)
+        participants.forEach { flooding.ensurePump(runtime, it) }
         powerFailure.reconcile(runtime)
+        objectiveMarkers.reconcile(runtime)
         creatureNest.reconcileMissing(runtime)
         lostMiner.reconcileMissing(runtime)
     }
 
     fun onInteract(event: PlayerInteractEvent): Boolean {
-        return trackDamage.onInteract(event) || gasLeak.onInteract(event) ||
+        val handled = trackDamage.onInteract(event) || gasLeak.onInteract(event) ||
             crystalResonance.onInteract(event) || flooding.onInteract(event) || powerFailure.onInteract(event)
+        if (handled) event.clickedBlock?.location?.let(registry::at)?.let { runtime ->
+            if (runtime.state.phase == ru.ruscrafting.farms.domain.MinePhase.INCIDENT) objectiveMarkers.reconcile(runtime)
+            else objectiveMarkers.cleanup(runtime)
+        }
+        return handled
     }
 
     fun onBreak(event: BlockBreakEvent): Boolean = caveIn.onBreak(event)
@@ -92,6 +102,7 @@ internal class MineIncidentSet(
         powerFailure.reconcile(runtime)
         creatureNest.reconcileChunk(runtime, chunk)
         lostMiner.reconcileChunk(runtime, chunk)
+        objectiveMarkers.reconcileChunk(runtime, chunk)
     }
 
     fun reconcileRecovery(chunk: Chunk? = null): Int {
@@ -99,6 +110,7 @@ internal class MineIncidentSet(
             caveIn.reconcile(runtime)
             flooding.reconcile(runtime)
             powerFailure.reconcile(runtime)
+            objectiveMarkers.reconcile(runtime)
         }
         return journal.restoreOrphans(registry.snapshot(), chunk)
     }
@@ -112,6 +124,7 @@ internal class MineIncidentSet(
             caveIn.cleanup(runtime)
             creatureNest.cleanup(runtime)
             lostMiner.cleanup(runtime)
+            objectiveMarkers.cleanup(runtime)
         }
     }
 
@@ -121,5 +134,6 @@ internal class MineIncidentSet(
         caveIn.cleanup(runtime)
         creatureNest.cleanup(runtime)
         lostMiner.cleanup(runtime)
+        objectiveMarkers.cleanup(runtime)
     }
 }

@@ -47,16 +47,17 @@ internal abstract class MineConstructionIncident(
         return incidents.start(runtime, type, required, now, candidates)
     }
 
-    fun pickupKit(runtime: MineRuntime, player: Player): Boolean {
+    fun ensureKit(runtime: MineRuntime, player: Player): Boolean {
         val incident = runtime.state.incident ?: return false
-        if (!active(runtime) || incident.serviceLeases.values.any { it == player.uniqueId }) return false
+        if (!active(runtime)) return false
+        if (incident.serviceLeases.values.any { it == player.uniqueId }) return true
         val itemId = (1..incident.required).map { "kit_$it" }.firstOrNull { it !in incident.serviceLeases } ?: return false
         val identity = identity(runtime, itemId)
         runtime.state = runtime.state.copy(
             incident = incident.copy(serviceLeases = incident.serviceLeases + (itemId to player.uniqueId)),
         )
         val itemName = locale?.render(itemNameKey, player) ?: Component.text(itemNameKey.path)
-        val issued = items?.issue(player, identity, itemMaterial, itemName)
+        val issued = items?.issueTool(player, identity, itemMaterial, itemName)
         if (issued == null) {
             runtime.state = runtime.state.copy(
                 incident = runtime.state.incident?.copy(serviceLeases = runtime.state.incident!!.serviceLeases - itemId),
@@ -85,7 +86,7 @@ internal abstract class MineConstructionIncident(
         val target = runtime.state.objective?.targets?.firstOrNull { it.position == position } ?: return false
         event.isCancelled = true
         val holding = runtime.state.incident?.serviceLeases?.values?.contains(event.player.uniqueId) == true
-        if (holding) complete(runtime, target.id, event.player) else pickupKit(runtime, event.player)
+        if (holding) complete(runtime, target.id, event.player) else ensureKit(runtime, event.player)
         return true
     }
 

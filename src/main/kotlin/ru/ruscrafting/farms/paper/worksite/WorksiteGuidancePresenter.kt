@@ -60,8 +60,8 @@ internal class WorksiteGuidancePresenter(
             if (!player.isOnline || access.isAdminEditing(player)) return@forEach
             val view = source.view(player.uniqueId) ?: return@forEach
             nearestLoadedTargets(player, view.targets).forEach { target ->
-                repeat(COLUMN_PARTICLES) { index ->
-                    val point = target.position.clone().add(0.0, index * COLUMN_STEP, 0.0)
+                repeat(target.columnParticles) { index ->
+                    val point = target.position.clone().add(0.0, index * target.columnStep, 0.0)
                     audience.spawnGuidanceDust(player, point, target.color, target.particleSize)
                 }
             }
@@ -116,8 +116,4 @@ internal class WorksiteGuidancePresenter(
         val subtitle: net.kyori.adventure.text.Component? = null,
     )
 
-    private companion object {
-        const val COLUMN_PARTICLES = 8
-        const val COLUMN_STEP = 0.32
-    }
 }

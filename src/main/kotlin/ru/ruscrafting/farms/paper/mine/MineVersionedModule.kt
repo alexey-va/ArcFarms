@@ -30,6 +30,8 @@ import ru.ruscrafting.farms.persistence.MineRecoveryJournal
 import ru.ruscrafting.farms.paper.WorksiteFastVisualHandler
 import ru.ruscrafting.farms.paper.WorksiteEntityInteractHandler
 import ru.ruscrafting.farms.paper.WorksiteEntityDeathHandler
+import ru.ruscrafting.farms.paper.WorksiteEntityDamageHandler
+import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.EntityDeathEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
@@ -64,7 +66,8 @@ internal class MineVersionedModule(
 ) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockBreakGuard, WorksiteBlockDamageHandler, WorksiteBlockPlaceHandler,
     WorksiteBlockInteractHandler,
     WorksiteMoveHandler, WorksiteGuidanceHandler, WorksiteFastVisualHandler, WorksiteServiceItemOwner,
-    WorksiteParticipantOwner, WorksiteEntityInteractHandler, WorksiteEntityDeathHandler, WorksiteAdminHandler {
+    WorksiteParticipantOwner, WorksiteEntityInteractHandler, WorksiteEntityDeathHandler, WorksiteEntityDamageHandler,
+    WorksiteAdminHandler {
     private val engineVersion = initial.firstOrNull()?.engineVersion ?: 1
     private val delegate: WorksiteModule<MineShiftState> = if (engineVersion == 2) {
         MineComponentGraph(
@@ -165,6 +168,9 @@ internal class MineVersionedModule(
 
     override fun onEntityDeath(event: EntityDeathEvent): Boolean =
         (delegate as? WorksiteEntityDeathHandler)?.onEntityDeath(event) == true
+
+    override fun onEntityDamage(event: EntityDamageEvent): Boolean =
+        (delegate as? WorksiteEntityDamageHandler)?.onEntityDamage(event) == true
 
     override fun updateGuidance(expectedBars: MutableSet<ActivityBarKey>) {
         (delegate as? WorksiteGuidanceHandler)?.updateGuidance(expectedBars)
