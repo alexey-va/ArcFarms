@@ -38,6 +38,16 @@ class WorksitePlacementPlannerTest : FunSpec({
         minimumSpacing(selected.map(Candidate::point)).shouldBeGreaterThanOrEqual(19.0)
     }
 
+    test("seeded candidate order is replayable and changes with the objective sequence") {
+        val first = WorksitePlacementPlanner.seededOrder(field, seed = 17L, positionOf = Candidate::point)
+        val replay = WorksitePlacementPlanner.seededOrder(field.reversed(), seed = 17L, positionOf = Candidate::point)
+        val next = WorksitePlacementPlanner.seededOrder(field, seed = 18L, positionOf = Candidate::point)
+
+        first shouldBe replay
+        (first == next) shouldBe false
+        first.toSet() shouldBe field.toSet()
+    }
+
     test("balanced ring falls back to every valid field point before relaxing spacing") {
         val sparse = listOf(
             Candidate("center", WorksitePlacementPoint("world", 0.0, 64.0, 0.0)),

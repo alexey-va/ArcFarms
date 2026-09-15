@@ -74,15 +74,15 @@ object BalancedRingPlacementStrategy : WorksitePlacementStrategy {
     )
 
     private fun targetPoint(slot: Int, count: Int, seed: Long): RingTarget {
-        val phase = unit(mix(seed xor PHASE_SALT)) * 2.0 * PI
-        val explore = floorMod(mix(seed xor (slot + 1L) * EXPLORE_SALT), EXPLORE_EVERY) == 0L
-        val radiusUnit = unit(mix(seed xor (slot + 1L) * RADIUS_SALT))
+        val phase = unit(WorksitePlacementMix.mix(seed xor PHASE_SALT)) * 2.0 * PI
+        val explore = floorMod(WorksitePlacementMix.mix(seed xor (slot + 1L) * EXPLORE_SALT), EXPLORE_EVERY) == 0L
+        val radiusUnit = unit(WorksitePlacementMix.mix(seed xor (slot + 1L) * RADIUS_SALT))
         val radius = if (explore) {
             BROAD_TARGET_MIN + radiusUnit * (BROAD_TARGET_MAX - BROAD_TARGET_MIN)
         } else {
             PREFERRED_TARGET_MIN + radiusUnit * (PREFERRED_TARGET_MAX - PREFERRED_TARGET_MIN)
         }
-        val jitter = (unit(mix(seed xor (slot + 1L) * ANGLE_SALT)) - 0.5) * ANGLE_JITTER
+        val jitter = (unit(WorksitePlacementMix.mix(seed xor (slot + 1L) * ANGLE_SALT)) - 0.5) * ANGLE_JITTER
         val angle = phase + slot * (2.0 * PI / count) + jitter
         return RingTarget(radius * cos(angle), radius * sin(angle), explore)
     }
@@ -122,15 +122,7 @@ object BalancedRingPlacementStrategy : WorksitePlacementStrategy {
         val coordinateSeed = java.lang.Double.doubleToLongBits(position.x) xor
             java.lang.Long.rotateLeft(java.lang.Double.doubleToLongBits(position.y), 17) xor
             java.lang.Long.rotateLeft(java.lang.Double.doubleToLongBits(position.z), 33) xor position.world.hashCode().toLong()
-        return mix(seed xor coordinateSeed)
-    }
-
-    private fun mix(value: Long): Long {
-        var mixed = value xor (value ushr 33)
-        mixed *= -49064778989728563L
-        mixed = mixed xor (mixed ushr 33)
-        mixed *= -4265267296055464877L
-        return mixed xor (mixed ushr 33)
+        return WorksitePlacementMix.mix(seed xor coordinateSeed)
     }
 
     private data class FieldGeometry(

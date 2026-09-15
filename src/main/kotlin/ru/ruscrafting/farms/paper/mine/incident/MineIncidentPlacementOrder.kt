@@ -17,7 +17,10 @@ internal fun orderMineIncidentPositions(
     val available = positions.distinct()
     if (available.size <= 1 || visibleCount <= 0) return available
     val poolSize = minOf(available.size, maxOf(MIN_CANDIDATE_POOL, visibleCount * CANDIDATE_POOL_PER_TARGET))
-    val localPool = available.sortedBy { position -> spreadHash(runtime.state.sequence xor salt, position) }.take(poolSize)
+    val ordered = WorksitePlacementPlanner.seededOrder(available, runtime.state.sequence xor salt) { position ->
+        position.placementPoint()
+    }
+    val localPool = ordered.take(poolSize)
     val selected = WorksitePlacementPlanner.select(
         localPool,
         WorksitePlacementRequest(minOf(visibleCount, localPool.size), runtime.state.sequence xor salt),
@@ -31,17 +34,10 @@ internal fun orderMineIncidentPositions(
         )
     }
     val chosen = selected.toHashSet()
-    val local = localPool.toHashSet()
-    return selected + localPool.filterNot(chosen::contains) + available.filterNot(local::contains)
+    return selected + localPool.filterNot(chosen::contains) + ordered.drop(poolSize)
 }
 
-private fun spreadHash(seed: Long, position: WorksitePosition): Long {
-    var hash = seed xor -7046029254386353131L
-    hash = (hash xor position.x.toLong()) * -4658895280553007687L
-    hash = (hash xor position.y.toLong()) * -7723592293110705685L
-    hash = (hash xor position.z.toLong()) * -4658895280553007687L
-    return hash xor (hash ushr 33)
-}
+private fun WorksitePosition.placementPoint() = WorksitePlacementPoint(world, x + 0.5, y.toDouble(), z + 0.5)
 
 private const val MIN_CANDIDATE_POOL = 256
 private const val CANDIDATE_POOL_PER_TARGET = 64

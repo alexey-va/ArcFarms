@@ -61,6 +61,27 @@ object WorksitePlacementProfiles {
  * selected canonical points back to the original values.
  */
 object WorksitePlacementPlanner {
+    /**
+     * Stable pseudo-random ordering for event candidate pools. The same seed can be replayed after a restart;
+     * changing the objective sequence changes the sampled area without introducing event-local hash functions.
+     */
+    fun <T> seededOrder(
+        candidates: Collection<T>,
+        seed: Long,
+        positionOf: (T) -> WorksitePlacementPoint,
+    ): List<T> {
+        val valuesByPoint = valuesByPoint(candidates, positionOf)
+        return valuesByPoint.keys.sortedWith(
+            compareBy<WorksitePlacementPoint> { point ->
+                val coordinateSeed = java.lang.Double.doubleToLongBits(point.x) xor
+                    java.lang.Long.rotateLeft(java.lang.Double.doubleToLongBits(point.y), 17) xor
+                    java.lang.Long.rotateLeft(java.lang.Double.doubleToLongBits(point.z), 33) xor
+                    point.world.hashCode().toLong()
+                WorksitePlacementMix.mix(seed xor coordinateSeed)
+            }.then(POINT_ORDER),
+        ).map(valuesByPoint::getValue)
+    }
+
     fun <T> select(
         candidates: Collection<T>,
         request: WorksitePlacementRequest,
@@ -68,13 +89,7 @@ object WorksitePlacementPlanner {
         positionOf: (T) -> WorksitePlacementPoint,
     ): List<T> {
         if (request.count == 0 || candidates.isEmpty()) return emptyList()
-        val valuesByPoint = linkedMapOf<WorksitePlacementPoint, T>()
-        candidates.distinct().forEach { value ->
-            val point = positionOf(value)
-            require(valuesByPoint.put(point, value) == null) {
-                "Placement candidates contain duplicate point $point"
-            }
-        }
+        val valuesByPoint = valuesByPoint(candidates, positionOf)
         val available = valuesByPoint.keys.sortedWith(POINT_ORDER)
         require(available.map(WorksitePlacementPoint::world).distinct().size == 1) {
             "A placement request must belong to exactly one worksite world"
@@ -89,6 +104,18 @@ object WorksitePlacementPlanner {
             "Placement strategy '${profile.strategy.id}' returned duplicate or foreign points"
         }
         return selected.map(valuesByPoint::getValue)
+    }
+
+    private fun <T> valuesByPoint(
+        candidates: Collection<T>,
+        positionOf: (T) -> WorksitePlacementPoint,
+    ): LinkedHashMap<WorksitePlacementPoint, T> = linkedMapOf<WorksitePlacementPoint, T>().also { values ->
+        candidates.distinct().forEach { value ->
+            val point = positionOf(value)
+            require(values.put(point, value) == null) {
+                "Placement candidates contain duplicate point $point"
+            }
+        }
     }
 
     internal val POINT_ORDER = compareBy<WorksitePlacementPoint>(
