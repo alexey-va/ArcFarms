@@ -81,6 +81,12 @@ internal class FarmBarnFireIncident(
         return true
     }
 
+    fun initializationPending(runtime: FarmRuntime): Boolean {
+        val anchor = points.resolve(runtime, FarmPointKind.PEN)
+        val location = anchor.location() ?: return true
+        return !location.world.isChunkLoaded(location.blockX shr 4, location.blockZ shr 4)
+    }
+
     fun ensure(runtime: FarmRuntime) {
         if (!active(runtime)) {
             clear(runtime.settings.id, "inactive")

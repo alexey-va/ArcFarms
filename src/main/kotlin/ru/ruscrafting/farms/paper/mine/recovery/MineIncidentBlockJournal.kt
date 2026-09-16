@@ -93,6 +93,9 @@ internal class MineIncidentBlockJournal(
     fun ensureTemporary(position: WorksitePosition, temporary: Material): Boolean =
         recovery.ensureTemporary(position, temporary)
 
+    fun ensureTemporaryResult(position: WorksitePosition, temporary: Material): MineTemporaryEnsureResult =
+        recovery.ensureTemporaryResult(position, temporary)
+
     /** Restores journalled incident blocks whose owning incident state did not survive an abrupt stop. */
     fun restoreOrphans(runtimes: Collection<MineRuntime>, chunk: Chunk? = null): Int {
         val active = runtimes.mapNotNull { runtime ->

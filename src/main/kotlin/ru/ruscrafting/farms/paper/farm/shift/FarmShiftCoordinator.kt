@@ -28,6 +28,7 @@ import ru.ruscrafting.farms.domain.seederStage
 import ru.ruscrafting.farms.network.NetworkSignal
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmRuntime
+import ru.ruscrafting.farms.paper.preparationChunksLoaded
 import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteNetworkPort
@@ -384,6 +385,7 @@ internal class FarmShiftCoordinator(
             }
             FarmIncidentType.BIRDS -> {
                 if (!birds.initialize(runtime)) {
+                    if (!runtime.preparationChunksLoaded()) return
                     apply(runtime, FarmShiftEngine.skipUnavailableIncident(runtime.state, FarmIncidentType.BIRDS), null)
                     return
                 }
@@ -407,6 +409,7 @@ internal class FarmShiftCoordinator(
                             mapOf("zone" to locale.text(runtime.settings.id)),
                         )
                     }
+                    if (processing.initializationPending(runtime)) return
                     apply(runtime, FarmShiftEngine.skipUnavailableIncident(runtime.state, FarmIncidentType.PROCESSING), null)
                     return
                 }
@@ -414,6 +417,7 @@ internal class FarmShiftCoordinator(
             }
             FarmIncidentType.BARN_FIRE -> {
                 if (!barnFire.initialize(runtime)) {
+                    if (barnFire.initializationPending(runtime)) return
                     apply(runtime, FarmShiftEngine.skipUnavailableIncident(runtime.state, FarmIncidentType.BARN_FIRE), null)
                     return
                 }
@@ -421,6 +425,7 @@ internal class FarmShiftCoordinator(
             }
             FarmIncidentType.HELL_GREENHOUSE -> {
                 if (!greenhouse.initialize(runtime, actor)) {
+                    if (!runtime.preparationChunksLoaded()) return
                     apply(runtime, FarmShiftEngine.skipUnavailableIncident(runtime.state, type), null)
                     return
                 }
@@ -437,6 +442,7 @@ internal class FarmShiftCoordinator(
                             mapOf("point" to locale.renderPath("admin.point.firewood", player)),
                         )
                     }
+                    if (!runtime.preparationChunksLoaded()) return
                     apply(runtime, FarmShiftEngine.skipUnavailableIncident(runtime.state, FarmIncidentType.FROST), null)
                     return
                 }
@@ -444,6 +450,7 @@ internal class FarmShiftCoordinator(
             }
             FarmIncidentType.BOAR_BREAKOUT, FarmIncidentType.RIVAL_RAID -> {
                 if (actionIncidents.initialize(runtime, type) == null) {
+                    if (!runtime.preparationChunksLoaded()) return
                     apply(runtime, FarmSpecialIncidentEngine.skipUnavailable(runtime.state), null)
                     return
                 }

@@ -115,6 +115,41 @@ class MineConstructionIncidentsMockBukkitTest : FunSpec({
         runtime.state.phase shouldBe MinePhase.INCIDENT
         graph.caveIn.diagnostics(runtime).considered shouldBe 600
     }
+
+    test("cave-in aborts instead of exposing an objective whose journaled rubble conflicts") {
+        val world = paper.server.addSimpleWorld("world")
+        val anchor = world.getBlockAt(10, 64, 10)
+        (-2..2).forEach { dx -> (-2..2).forEach { dz ->
+            world.getBlockAt(anchor.x + dx, anchor.y, anchor.z + dz).type = Material.STONE
+        } }
+        (-2..2).forEach { dx -> (-1..2).forEach { dz ->
+            world.getBlockAt(anchor.x + dx, anchor.y + 5, anchor.z + dz).type = Material.STONE
+        } }
+        val graph = testMineComponentGraph(
+            paper.createSimplePlugin("MineCaveInConflictTest"), CuboidRegionGateway(), immediateMinePort(),
+            clock = { 1_000L }, journal = ImmediateMineJournal(),
+        )
+        graph.module.rebuild(
+            listOf(mineV2Settings().copy(miningOnly = true)),
+            mapOf("old_shafts" to MineShiftState(engineVersion = 2, phase = MinePhase.MINING, sequence = 2, orderId = "ore_run")),
+            5_000L,
+        )
+        val runtime = graph.registry.byId("old_shafts")!!
+        graph.index.replaceZone(
+            MineIndexDefinition(runtime.settings.id, runtime.region, setOf(Material.STONE)),
+            listOf(world.getChunkAt(0, 0)),
+            listOf(MineIndexedTarget(anchor.position(), setOf(MineAnchorRole.NEST))),
+        )
+        graph.caveIn.start(runtime, now = 1_000L) shouldBe true
+        val conflicted = requireNotNull(runtime.state.objective).targets.first().position
+        world.getBlockAt(conflicted.x, conflicted.y, conflicted.z).type = Material.DIAMOND_BLOCK
+
+        graph.caveIn.reconcile(runtime)
+
+        runtime.state.phase shouldBe MinePhase.MINING
+        runtime.state.objective shouldBe null
+        world.getBlockAt(conflicted.x, conflicted.y, conflicted.z).type shouldBe Material.DIAMOND_BLOCK
+    }
 })
 
 private fun org.bukkit.block.Block.position() = WorksitePosition(world.name, x, y, z)

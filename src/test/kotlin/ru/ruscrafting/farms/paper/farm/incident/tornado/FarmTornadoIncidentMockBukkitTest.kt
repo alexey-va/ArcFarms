@@ -133,4 +133,28 @@ class FarmTornadoIncidentMockBukkitTest : FunSpec({
             scene.cleanup()
         }
     }
+
+    test("persisted tornado anchors survive while their chunks are unloaded") {
+        FarmIncidentScenarioFixture.open().use { fixture ->
+            val point = ru.ruscrafting.farms.domain.FarmPointPosition(fixture.world.name, 40.5, 65.0, 40.5)
+            val runtime = fixture.runtime(FarmShiftState(
+                phase = FarmPhase.HARVESTING,
+                tornado = FarmTornadoState(points = listOf(point), durationSeconds = 10),
+                sequence = 9,
+            ))
+            val controller = FarmTornadoIncident(
+                fixture.plugin, { fixture.settings }, fixture.port, fixture.port, fixture.port,
+                FarmIncidentBedProvider { emptySet() },
+                FarmTransitionSink { target, result, _ -> target.state = result.state },
+                FarmBlockLedger(fixture.plugin), fixture.night,
+            )
+            val player = fixture.paper.addPlayer("StormWitness")
+            player.teleport(Location(fixture.world, 2.5, 65.0, 2.5))
+            fixture.world.getChunkAt(point.x.toInt() shr 4, point.z.toInt() shr 4).unload()
+
+            controller.update(runtime)
+
+            runtime.state.tornado?.points shouldBe listOf(point)
+        }
+    }
 })

@@ -147,6 +147,11 @@ internal class FarmProcessingIncident(
         return true
     }
 
+    fun initializationPending(runtime: FarmRuntime): Boolean {
+        val current = layout(runtime) ?: return false
+        return validateLayout(runtime, current) == FarmProcessingPlacementFailure.CHUNK_UNLOADED
+    }
+
     fun ensure(runtime: FarmRuntime) {
         if (!active(runtime)) {
             if (tracked(runtime.settings.id)) clear(runtime.settings.id, "inactive")

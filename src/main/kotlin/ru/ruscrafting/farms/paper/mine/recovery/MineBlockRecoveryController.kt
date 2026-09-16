@@ -18,6 +18,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.logging.Level
 
+internal enum class MineTemporaryEnsureResult { READY, PENDING, REJECTED }
+
 /** Owns the unchanged V1 journal schema and converges only loaded due records. */
 internal class MineBlockRecoveryController(
     private val journal: MineRecoveryJournal,
@@ -263,29 +265,33 @@ internal class MineBlockRecoveryController(
     }
 
     /** Replays a durable incident intent when a crash happened after journal commit but before world mutation. */
-    fun ensureTemporary(position: WorksitePosition, expectedTemporary: Material): Boolean {
-        val record = journal.recordAtPosition("${position.world}:${position.x}:${position.y}:${position.z}") ?: return false
-        if (record.temporaryMaterial != expectedTemporary.name) return false
-        val world = Bukkit.getWorld(position.world) ?: return false
-        if (!world.isChunkLoaded(position.x shr 4, position.z shr 4)) return false
+    fun ensureTemporaryResult(position: WorksitePosition, expectedTemporary: Material): MineTemporaryEnsureResult {
+        val record = journal.recordAtPosition("${position.world}:${position.x}:${position.y}:${position.z}")
+            ?: return MineTemporaryEnsureResult.REJECTED
+        if (record.temporaryMaterial != expectedTemporary.name) return MineTemporaryEnsureResult.REJECTED
+        val world = Bukkit.getWorld(position.world) ?: return MineTemporaryEnsureResult.PENDING
+        if (!world.isChunkLoaded(position.x shr 4, position.z shr 4)) return MineTemporaryEnsureResult.PENDING
         val block = world.getBlockAt(position.x, position.y, position.z)
-        val original = material(record.originalMaterial, record) ?: return false
+        val original = material(record.originalMaterial, record) ?: return MineTemporaryEnsureResult.REJECTED
         return when (block.type) {
-            expectedTemporary -> true
+            expectedTemporary -> MineTemporaryEnsureResult.READY
             original -> {
                 block.setType(expectedTemporary, false)
                 state.log(Level.INFO, "Mine recovery replayed durable incident mutation zone=${record.zoneId} " +
                     "record=${record.id} position=${record.positionKey} original=$original temporary=$expectedTemporary")
-                true
+                MineTemporaryEnsureResult.READY
             }
             else -> {
                 state.log(Level.WARNING, "Mine recovery retained conflicting incident mutation zone=${record.zoneId} " +
                     "record=${record.id} position=${record.positionKey} original=$original " +
                     "temporary=$expectedTemporary actual=${block.type}")
-                false
+                MineTemporaryEnsureResult.REJECTED
             }
         }
     }
+
+    fun ensureTemporary(position: WorksitePosition, expectedTemporary: Material): Boolean =
+        ensureTemporaryResult(position, expectedTemporary) == MineTemporaryEnsureResult.READY
 
     override fun activateLoadedState() {
         val records = journal.records()

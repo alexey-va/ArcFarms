@@ -20,6 +20,7 @@ import ru.ruscrafting.farms.paper.farm.care.mole.*
 import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import org.bukkit.Chunk
 import ru.ruscrafting.farms.paper.FarmRuntime
+import ru.ruscrafting.farms.paper.preparationChunksLoaded
 import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
@@ -151,6 +152,7 @@ internal class FarmHellGreenhouseIncident(
         val eligible = viewers.filter { eligible(runtime, it) }
         if (eligible.isEmpty()) { reportPause(runtime, "no-participants"); clear(runtime); return }
         if (!initialize(runtime)) {
+            if (!runtime.preparationChunksLoaded()) return
             transitions.apply(runtime, FarmShiftEngine.skipUnavailableIncident(runtime.state, FarmIncidentType.HELL_GREENHOUSE), null)
             state.persistAsync()
             return

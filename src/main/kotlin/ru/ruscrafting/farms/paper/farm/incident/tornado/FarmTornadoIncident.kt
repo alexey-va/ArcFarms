@@ -103,14 +103,16 @@ internal class FarmTornadoIncident(
             state.persistAsync()
             return
         }
-        val anchors = runtime.state.tornado?.points.orEmpty().mapNotNull { point ->
+        val validAnchors = runtime.state.tornado?.points.orEmpty().mapNotNull { point ->
             if (point.world != runtime.region.world.name) return@mapNotNull null
-            Location(runtime.region.world, point.x, point.y, point.z).takeIf {
-                it.world.isChunkLoaded(it.blockX shr 4, it.blockZ shr 4) && runtime.region.contains(it)
-            }
+            Location(runtime.region.world, point.x, point.y, point.z).takeIf(runtime.region::contains)
+        }
+        val anchors = validAnchors.filter {
+            it.world.isChunkLoaded(it.blockX shr 4, it.blockZ shr 4)
         }
         if (anchors.isEmpty()) {
             clear(runtime)
+            if (validAnchors.isNotEmpty()) return
             runtime.state = runtime.state.copy(tornado = runtime.state.tornado?.copy(points = emptyList()))
             if (!initialize(runtime)) runtime.state = runtime.state.copy(tornado = null)
             state.persistAsync()

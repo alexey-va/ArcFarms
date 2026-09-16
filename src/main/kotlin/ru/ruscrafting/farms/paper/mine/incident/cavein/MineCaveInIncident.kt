@@ -27,6 +27,7 @@ import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 import ru.ruscrafting.farms.paper.mine.lift.MineLiftAccess
 import ru.ruscrafting.farms.paper.mine.recovery.MineBlockRecoveryController
 import ru.ruscrafting.farms.paper.mine.recovery.MineIncidentBlockJournal
+import ru.ruscrafting.farms.paper.mine.recovery.MineTemporaryEnsureResult
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAsyncBlockScanner
 import ru.ruscrafting.farms.paper.worksite.WorksiteBlockSnapshot
@@ -210,11 +211,24 @@ internal class MineCaveInIncident(
         }
         val existing = journal.positions(runtime, INCIDENT_ID).toSet()
         val missing = mutableListOf<Pair<Int, WorksitePosition>>()
+        var replayRejected = false
+        var replayPending = false
         targets.forEachIndexed { ordinal, target ->
             if (target.status == ObjectiveTargetStatus.COMPLETED) {
                 if (target.position in existing) journal.restoreNow(target.position)
             } else if (target.position in existing) {
-                journal.ensureTemporary(target.position, RUBBLE)
+                when (journal.ensureTemporaryResult(target.position, RUBBLE)) {
+                    MineTemporaryEnsureResult.READY -> Unit
+                    MineTemporaryEnsureResult.PENDING -> replayPending = true
+                    MineTemporaryEnsureResult.REJECTED -> {
+                        replayRejected = true
+                        state.log(
+                            Level.WARNING,
+                            "Mine cave-in recovery rejected zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
+                                "target=${target.id} position=${target.position} reason=journal_conflict",
+                        )
+                    }
+                }
             } else if (target.position.block()?.type == Material.AIR) {
                 missing += ordinal to target.position
             } else {
@@ -225,6 +239,13 @@ internal class MineCaveInIncident(
                 )
             }
         }
+        if (replayRejected) {
+            journal.restore(runtime, INCIDENT_ID)
+            effects.cleanup(runtime, MineIncidentEntityKind.CAVE_IN_MARKER)
+            incidents.abort(runtime)
+            return 0
+        }
+        if (replayPending) return 0
         if (missing.isNotEmpty()) {
             journal.prepareAll(runtime, INCIDENT_ID, missing, RUBBLE).whenComplete { prepared, failure ->
                 if (failure == null && prepared == true) {

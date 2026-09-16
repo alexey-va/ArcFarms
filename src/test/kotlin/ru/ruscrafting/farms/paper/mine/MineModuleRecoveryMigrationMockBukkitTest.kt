@@ -26,6 +26,7 @@ import ru.ruscrafting.farms.paper.RuntimeTaskSupervisor
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.mine.recovery.MineBlockRecoveryController
 import ru.ruscrafting.farms.paper.mine.recovery.MineIncidentBlockJournal
+import ru.ruscrafting.farms.paper.mine.recovery.MineTemporaryEnsureResult
 import ru.ruscrafting.farms.persistence.MineBlockJournal
 import ru.ruscrafting.farms.persistence.MineRecoveryJournal
 import java.nio.file.Files
@@ -381,6 +382,19 @@ class MineModuleRecoveryMigrationMockBukkitTest : FunSpec({
             )
             incidentJournal.ensureTemporary(WorksitePosition(world.name, block.x, block.y, block.z), Material.COBBLESTONE) shouldBe true
             block.type shouldBe Material.COBBLESTONE
+            val pending = record.copy(
+                id = "mine-incident:old_shafts:9:cave_in:1",
+                world = "late_mine",
+                x = 8,
+                y = 65,
+                z = 8,
+            )
+            reopened.prepare(pending).join()
+            incidentJournal.ensureTemporaryResult(
+                WorksitePosition(pending.world, pending.x, pending.y, pending.z),
+                Material.COBBLESTONE,
+            ) shouldBe MineTemporaryEnsureResult.PENDING
+            reopened.remove(pending.id).join()
             incidentJournal.restoreNow(WorksitePosition(world.name, block.x, block.y, block.z)).join() shouldBe true
             block.type shouldBe Material.AIR
             reopened.records() shouldBe emptyList()

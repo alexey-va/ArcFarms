@@ -44,7 +44,9 @@ private data class DeliveryKey(val zoneId: String, val index: Int)
 private data class DeliveryLayout(
     val sequence: Long,
     val anchor: FarmDeliveryPosition,
+    val required: Int,
     val locations: List<Location?>,
+    val retryAtMillis: Long,
 )
 
 private enum class DeliveryEntityRole { GROUND_DISPLAY, GROUND_INTERACTION, CARRIED_DISPLAY }
@@ -60,6 +62,7 @@ internal class FarmDeliveryController(
     private val placement: FarmPlacementService,
     private val transitions: FarmTransitionSink,
     private val entityLookup: FarmEntityLookup = BukkitFarmEntityLookup,
+    private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val zoneKey = NamespacedKey(plugin, "farm_delivery_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_delivery_sequence")
@@ -113,7 +116,7 @@ internal class FarmDeliveryController(
             transitions.apply(runtime, EngineResult(runtime.state.copy(deliveryPosition = selected), accepted = true), null)
         }
         reconcileLifecycle(runtime)
-        crateLocations(runtime, position)
+        val locations = crateLocations(runtime, position)
         repeat(runtime.settings.delivery.crates) { index ->
             val key = DeliveryKey(runtime.settings.id, index)
             if (index in runtime.state.deliveredCrates) {
@@ -132,7 +135,7 @@ internal class FarmDeliveryController(
                 }
                 return@repeat
             }
-            reconcileGround(runtime, key, position)
+            reconcileGround(runtime, key, locations.getOrNull(index))
         }
     }
 
@@ -249,7 +252,7 @@ internal class FarmDeliveryController(
         if (owned.isNotEmpty()) debug.event("farm_delivery_cleanup", "count" to owned.size, "reason" to reason)
     }
 
-    private fun reconcileGround(runtime: FarmRuntime, key: DeliveryKey, anchor: FarmDeliveryPosition) {
+    private fun reconcileGround(runtime: FarmRuntime, key: DeliveryKey, location: Location?) {
         val expected = FarmDeliveryIdentity(runtime.settings.id, runtime.state.sequence, key.index)
         val active = groundEntities[key].orEmpty().mapNotNull(Bukkit::getEntity)
             .distinctBy(Entity::getUniqueId)
@@ -261,11 +264,11 @@ internal class FarmDeliveryController(
         if (correct) return
         removeGround(key, "reconcile")
         active.forEach(Entity::remove)
-        spawnGround(runtime, key, anchor)
+        spawnGround(runtime, key, location)
     }
 
-    private fun spawnGround(runtime: FarmRuntime, key: DeliveryKey, anchor: FarmDeliveryPosition) {
-        val location = crateLocations(runtime, anchor).getOrNull(key.index)?.clone() ?: run {
+    private fun spawnGround(runtime: FarmRuntime, key: DeliveryKey, candidate: Location?) {
+        val location = candidate?.clone() ?: run {
             if (missingLocationWarnings.add(key)) {
                 plugin.logger.warning(
                     "Farm ${runtime.settings.id} has no safe loaded position for delivery crate ${key.index}; " +
@@ -450,11 +453,24 @@ internal class FarmDeliveryController(
     }
 
     private fun crateLocations(runtime: FarmRuntime, anchor: FarmDeliveryPosition): List<Location?> {
+        val required = runtime.settings.delivery.crates
         val current = layouts[runtime.settings.id]
-        if (current != null && current.sequence == runtime.state.sequence && current.anchor == anchor) return current.locations
+        if (
+            current != null && current.sequence == runtime.state.sequence && current.anchor == anchor &&
+            current.required == required && current.retryAtMillis > clock()
+        ) return current.locations
         val selected = placement.deliveryCrateLocations(runtime, anchor)
-        val locations = List(runtime.settings.delivery.crates) { index -> selected.getOrNull(index)?.clone() }
-        layouts[runtime.settings.id] = DeliveryLayout(runtime.state.sequence, anchor, locations)
+        if (selected.size < required) {
+            return List<Location?>(required) { null }.also { locations ->
+                layouts[runtime.settings.id] = DeliveryLayout(
+                    runtime.state.sequence, anchor, required, locations, clock() + LAYOUT_RETRY_MILLIS,
+                )
+            }
+        }
+        val locations = List(required) { index -> selected[index].clone() }
+        layouts[runtime.settings.id] = DeliveryLayout(
+            runtime.state.sequence, anchor, required, locations, Long.MAX_VALUE,
+        )
         return locations
     }
 
@@ -500,6 +516,7 @@ internal class FarmDeliveryController(
         }
 
     private companion object {
+        const val LAYOUT_RETRY_MILLIS = 1_000L
         const val GROUND_ENTITY_COUNT = 2
         val DELIVERY_COLOR = org.bukkit.Color.fromRGB(199, 120, 255)
     }

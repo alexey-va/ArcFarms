@@ -110,6 +110,26 @@ class FarmDeliveryControllerMockBukkitTest : FunSpec({
         verify(exactly = 1) { fixture.placement.deliveryCrateLocations(fixture.runtime, any()) }
     }
 
+    test("an incomplete delivery layout is retried and never spawned partially") {
+        val fixture = deliveryFixture(world, plugin, crates = 3)
+        var availableLocations = 1
+        every { fixture.placement.deliveryCrateLocations(fixture.runtime, any()) } answers {
+            List(availableLocations) { index -> Location(world, 4.5 + index * 4.0, 65.0, 4.5) }
+        }
+
+        fixture.controller.ensure(fixture.runtime)
+
+        world.entities.filter(fixture.controller::owns) shouldHaveSize 0
+
+        availableLocations = 3
+        fixture.advanceLayoutRetry()
+        fixture.controller.ensure(fixture.runtime)
+        repeat(10) { fixture.controller.ensure(fixture.runtime) }
+
+        world.entities.filter(fixture.controller::owns) shouldHaveSize 6
+        verify(exactly = 2) { fixture.placement.deliveryCrateLocations(fixture.runtime, any()) }
+    }
+
     test("walking onto a crate picks it up and carries it in front of the player") {
         val fixture = deliveryFixture(world, plugin, crates = 1)
         fixture.controller.ensure(fixture.runtime)
@@ -130,10 +150,12 @@ private data class DeliveryFixture(
     val newController: () -> FarmDeliveryController,
     val entityLookup: CountingFarmEntityLookup,
     val placement: FarmPlacementService,
+    val advanceLayoutRetry: () -> Unit,
 )
 
 private fun deliveryFixture(world: WorldMock, plugin: Plugin, crates: Int): DeliveryFixture {
     val entityLookup = CountingFarmEntityLookup()
+    var now = 0L
     val delivery = FarmDeliverySettings(
         world = world.name,
         x = 12.5,
@@ -205,6 +227,7 @@ private fun deliveryFixture(world: WorldMock, plugin: Plugin, crates: Int): Deli
         placement = placement,
         transitions = sink,
         entityLookup = entityLookup,
+        clock = { now },
     )
-    return DeliveryFixture(runtime, create(), ::create, entityLookup, placement)
+    return DeliveryFixture(runtime, create(), ::create, entityLookup, placement, { now += 1_000L })
 }

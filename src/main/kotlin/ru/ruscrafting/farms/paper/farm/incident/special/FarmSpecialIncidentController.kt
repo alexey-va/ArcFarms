@@ -72,6 +72,7 @@ import ru.ruscrafting.farms.paper.farm.field.FARM_SOIL_TYPES
 import ru.ruscrafting.farms.paper.farm.harvest.FarmCropBreakEffects
 import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
 import ru.ruscrafting.farms.paper.toFarmPlotPosition
+import ru.ruscrafting.farms.paper.preparationChunksLoaded
 import java.util.Locale
 import java.util.UUID
 import java.util.logging.Level
@@ -189,6 +190,9 @@ internal class FarmSpecialIncidentController(
             )?.let { candidateType to it }
         }
         if (selected == null) {
+            if (!runtime.preparationChunksLoaded()) {
+                return null
+            }
             val skipped = FarmSpecialIncidentEngine.skipUnavailable(runtime.state)
             if (skipped.accepted) runtime.state = skipped.state
             state.log(Level.WARNING, "Skipped unavailable farm incident $type in ${runtime.settings.id}")

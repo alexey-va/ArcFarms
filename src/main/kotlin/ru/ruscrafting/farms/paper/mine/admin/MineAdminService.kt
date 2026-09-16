@@ -34,6 +34,7 @@ internal class MineAdminService(
 ) : WorksiteAdminHandler {
     private val reindexes = mutableMapOf<String, MineReindexJob>()
     private val reindexProgress = mutableMapOf<String, Int>()
+    private val reindexFailures = mutableMapOf<String, Int>()
     private var reindexCursor = 0
     override val kind: ActivityKind = ActivityKind.MINE
 
@@ -69,9 +70,16 @@ internal class MineAdminService(
         val phase = runtime.state.phase
         if (phase != ru.ruscrafting.farms.domain.MinePhase.IDLE &&
             !(runtime.settings.miningOnly && phase == ru.ruscrafting.farms.domain.MinePhase.MINING)) return false
-        reindexes[zoneId] = MineReindexJob(
+        reindexes[zoneId] = reindexJob(runtime)
+        reindexFailures.remove(zoneId)
+        reindexProgress[zoneId] = 0
+        state.log(Level.INFO, "Mine reindex started zone=$zoneId phase=$phase bounds=${runtime.region.bounds} volume=${runtime.region.bounds.volume}")
+        return true
+    }
+
+    private fun reindexJob(runtime: ru.ruscrafting.farms.paper.mine.MineRuntime): MineReindexJob = MineReindexJob(
             MineIndexDefinition(
-                zoneId,
+                runtime.settings.id,
                 runtime.region,
                 runtime.mineableMaterials,
                 runtime.railMaterials,
@@ -79,10 +87,6 @@ internal class MineAdminService(
             index,
             tickets,
         )
-        reindexProgress[zoneId] = 0
-        state.log(Level.INFO, "Mine reindex started zone=$zoneId phase=$phase bounds=${runtime.region.bounds} volume=${runtime.region.bounds.volume}")
-        return true
-    }
 
     override fun tickReindex(zoneId: String, budget: Int): WorksiteAdminReindexTick? {
         val job = reindexes[zoneId] ?: return null
@@ -91,13 +95,28 @@ internal class MineAdminService(
         } catch (failure: Throwable) {
             reindexes.remove(zoneId)
             reindexProgress.remove(zoneId)
-            state.log(Level.SEVERE, "Mine reindex failed zone=$zoneId budget=$budget", failure)
+            val attempt = reindexFailures.getOrDefault(zoneId, 0) + 1
+            val runtime = registry.byId(zoneId)
+            if (runtime != null && attempt <= MAX_REINDEX_RETRIES) {
+                reindexFailures[zoneId] = attempt
+                reindexes[zoneId] = reindexJob(runtime)
+                reindexProgress[zoneId] = 0
+                state.log(
+                    Level.WARNING,
+                    "Mine reindex failed zone=$zoneId budget=$budget retry=$attempt/$MAX_REINDEX_RETRIES",
+                    failure,
+                )
+            } else {
+                reindexFailures.remove(zoneId)
+                state.log(Level.SEVERE, "Mine reindex failed permanently zone=$zoneId budget=$budget", failure)
+            }
             throw failure
         }.also {
             if (it.finished) {
                 extraction.invalidateRoute(zoneId)
                 reindexes.remove(zoneId)
                 reindexProgress.remove(zoneId)
+                reindexFailures.remove(zoneId)
                 state.log(Level.INFO, "Mine reindex completed zone=$zoneId scanned=${it.scannedBlocks} indexed=${it.indexedTargets}")
             } else {
                 val total = registry.byId(zoneId)?.region?.bounds?.volume ?: 0L
@@ -116,6 +135,7 @@ internal class MineAdminService(
     override fun cancelReindex(zoneId: String): Boolean = reindexes.remove(zoneId)?.let {
         it.cancel()
         reindexProgress.remove(zoneId)
+        reindexFailures.remove(zoneId)
         state.log(Level.INFO, "Mine reindex cancelled zone=$zoneId")
         true
     } == true
@@ -133,5 +153,10 @@ internal class MineAdminService(
         reindexes.values.forEach(MineReindexJob::cancel)
         reindexes.clear()
         reindexProgress.clear()
+        reindexFailures.clear()
+    }
+
+    private companion object {
+        const val MAX_REINDEX_RETRIES = 3
     }
 }

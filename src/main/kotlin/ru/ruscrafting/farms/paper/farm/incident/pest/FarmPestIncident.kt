@@ -55,6 +55,7 @@ import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
 import ru.ruscrafting.farms.paper.location
 import ru.ruscrafting.farms.paper.toFarmPlotPosition
+import ru.ruscrafting.farms.paper.preparationChunksLoaded
 import java.util.UUID
 import java.util.random.RandomGenerator
 import java.util.logging.Level
@@ -424,6 +425,9 @@ internal class FarmPestIncident(
             minimumSpacing = runtime.settings.pestNestMinSpacing,
             selectionIndex = runtime.state.placementSequence * 53L + 11L,
         )
+        if (centers.size < safeNestCount && !runtime.preparationChunksLoaded()) {
+            return
+        }
         val damages = runtime.state.pestDamagedCrops.toMutableList()
         val nestBlocks = centers.mapNotNull { position ->
             val soil = position.block() ?: return@mapNotNull null

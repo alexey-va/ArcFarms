@@ -210,7 +210,9 @@ internal class FarmActionIncidentController(
             clearZone(runtime.settings.id, "inactive")
             return
         }
-        when (type) {
+        val activeType = if (runtime.state.specialIncident == null) initialize(runtime, requireNotNull(type)) else type
+            ?: return
+        when (activeType) {
             FarmIncidentType.BOAR_BREAKOUT -> ensureBoars(runtime)
             FarmIncidentType.RIVAL_RAID -> raid.ensure(runtime)
             else -> Unit

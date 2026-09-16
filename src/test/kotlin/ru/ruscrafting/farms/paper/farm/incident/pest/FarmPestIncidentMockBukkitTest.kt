@@ -7,6 +7,7 @@ import io.mockk.every
 import io.mockk.mockk
 import net.kyori.adventure.text.Component
 import org.bukkit.entity.ItemDisplay
+import org.bukkit.Material
 import org.bukkit.plugin.Plugin
 import org.mockbukkit.mockbukkit.ServerMock
 import org.mockbukkit.mockbukkit.world.WorldMock
@@ -14,6 +15,7 @@ import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.CuboidBounds
 import ru.ruscrafting.farms.config.FarmZoneSettings
+import ru.ruscrafting.farms.config.FarmDamageSafetySettings
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPestNest
@@ -26,6 +28,7 @@ import ru.ruscrafting.farms.paper.CountingFarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmBlockRegistry
 import ru.ruscrafting.farms.paper.FarmRuntime
+import ru.ruscrafting.farms.paper.preparationChunksLoaded
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
@@ -103,6 +106,59 @@ class FarmPestIncidentMockBukkitTest : FunSpec({
 
         fixture.entityLookup.worldScans shouldBe 1
         fixture.entityLookup.globalScans shouldBe 0
+    }
+
+    test("pest layout waits for every preparation chunk before it is committed") {
+        val first = FarmPlotPosition(world.name, 4, 64, 4)
+        val unavailable = FarmPlotPosition("late_farm", 4, 64, 4)
+        val second = FarmPlotPosition(world.name, 12, 64, 4)
+        val available = linkedSetOf(first)
+        world.getBlockAt(first.x, first.y, first.z).type = Material.FARMLAND
+        world.getBlockAt(first.x, first.y + 1, first.z).type = Material.WHEAT
+        val settings = mockk<FarmZoneSettings>(relaxed = true) {
+            every { id } returns "communal_farm"
+            every { crops } returns setOf("WHEAT")
+            every { pestNestCount } returns 2
+            every { pestNestHealth } returns 3
+            every { pestNestMinSpacing } returns 1.0
+            every { pestSpawnsPerNest } returns 1
+            every { pestMaxAlive } returns 2
+            every { pestEntity } returns "SILVERFISH"
+            every { damageSafety } returns FarmDamageSafetySettings(100, 0, 10, 10, 10)
+            every { displayViewRange } returns 1.0f
+        }
+        val runtime = FarmRuntime(
+            settings = settings,
+            region = CuboidActivityRegion(world, "farm", CuboidBounds(0, 0, 0, 63, 128, 31)),
+            orders = emptyMap(), orderList = emptyList(), rules = mockk(relaxed = true),
+            state = FarmShiftState(
+                phase = FarmPhase.INCIDENT, sequence = 10L, incidentType = FarmIncidentType.PESTS,
+                incidentCrop = "WHEAT", preparationPatch = listOf(first, unavailable),
+            ),
+        )
+        val config = mockk<ArcFarmsConfig>(relaxed = true)
+        val port = mockk<WorksiteRuntimePort>(relaxed = true) { every { players(any()) } returns emptyList() }
+        val registry = mockk<FarmBlockRegistry>(relaxed = true) {
+            every { beds(any()) } returns setOf(first, second)
+        }
+        val sink = FarmTransitionSink { target, result, _ -> if (result.accepted) target.state = result.state }
+        val controller = FarmPestIncident(
+            plugin, { config }, mockk(relaxed = true), ArcFarmsDebug({ false }) {}, port, port, port, port,
+            mockk(relaxed = true), registry, FarmIncidentBedProvider { available }, sink, Random(1L),
+        )
+
+        runtime.preparationChunksLoaded() shouldBe false
+        controller.ensure(runtime)
+        runtime.state.pestNestsInitialized shouldBe false
+
+        world.getBlockAt(second.x, second.y, second.z).type = Material.FARMLAND
+        world.getBlockAt(second.x, second.y + 1, second.z).type = Material.WHEAT
+        available += second
+        runtime.state = runtime.state.copy(preparationPatch = listOf(first, second))
+        controller.ensure(runtime)
+
+        runtime.state.pestNestsInitialized shouldBe true
+        runtime.state.pestNests shouldHaveSize 2
     }
 })
 
