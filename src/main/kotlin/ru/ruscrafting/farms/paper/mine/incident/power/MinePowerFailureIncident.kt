@@ -49,6 +49,15 @@ internal class MinePowerFailureIncident(
         return completed
     }
 
+    /** Entity-marker route; the parent router validates the PDC kind before calling this. */
+    fun onInteractEntity(runtime: MineRuntime, targetId: String, player: Player): Boolean {
+        if (!active(runtime)) return false
+        val target = runtime.state.objective?.targets?.firstOrNull { it.id == targetId } ?: return false
+        if (target.status == ObjectiveTargetStatus.COMPLETED) return false
+        relight(runtime, targetId, player)
+        return true
+    }
+
     fun onInteract(event: PlayerInteractEvent): Boolean {
         if (event.action != Action.RIGHT_CLICK_BLOCK) return false
         val clicked = event.clickedBlock ?: return false

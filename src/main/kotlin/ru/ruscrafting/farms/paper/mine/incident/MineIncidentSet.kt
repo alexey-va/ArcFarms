@@ -18,6 +18,8 @@ import ru.ruscrafting.farms.paper.mine.incident.gas.MineGasLeakIncident
 import ru.ruscrafting.farms.paper.mine.incident.power.MinePowerFailureIncident
 import ru.ruscrafting.farms.paper.mine.incident.rescue.MineLostMinerIncident
 import ru.ruscrafting.farms.paper.mine.incident.entity.MineObjectiveMarkerScene
+import ru.ruscrafting.farms.paper.mine.incident.entity.MineIncidentEntityKind
+import ru.ruscrafting.farms.paper.mine.incident.entity.isObjectiveMarkerHitbox
 import ru.ruscrafting.farms.paper.mine.incident.track.MineTrackDamageIncident
 import ru.ruscrafting.farms.paper.mine.recovery.MineIncidentBlockJournal
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
@@ -79,7 +81,23 @@ internal class MineIncidentSet(
 
     fun onMove(to: Location, player: Player): Boolean = lostMiner.onMove(to, player)
 
-    fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean = lostMiner.onInteractEntity(event)
+    fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean {
+        val identity = objectiveMarkers.identity(event.rightClicked)
+        if (identity == null || !identity.kind.isObjectiveMarkerHitbox) return lostMiner.onInteractEntity(event)
+        val runtime = registry.byId(identity.zoneId) ?: return false
+        if (runtime.state.sequence != identity.sequence) return false
+        event.isCancelled = true
+        when (identity.kind) {
+            MineIncidentEntityKind.GAS_MARKER_HITBOX -> gasLeak.onInteractEntity(runtime, identity.targetId, event.player)
+            MineIncidentEntityKind.CRYSTAL_MARKER_HITBOX -> crystalResonance.onInteractEntity(runtime, identity.targetId, event.player)
+            MineIncidentEntityKind.FLOOD_MARKER_HITBOX -> flooding.onInteractEntity(runtime, identity.targetId, event.player)
+            MineIncidentEntityKind.POWER_MARKER_HITBOX -> powerFailure.onInteractEntity(runtime, identity.targetId, event.player)
+            else -> error("unreachable objective marker kind ${identity.kind}")
+        }
+        if (runtime.state.phase == ru.ruscrafting.farms.domain.MinePhase.INCIDENT) objectiveMarkers.reconcile(runtime)
+        else objectiveMarkers.cleanup(runtime)
+        return true
+    }
 
     fun onEntityDeath(event: EntityDeathEvent): Boolean = creatureNest.onDeath(event)
 

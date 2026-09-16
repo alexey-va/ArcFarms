@@ -7,8 +7,10 @@ import org.bukkit.Material
 import org.bukkit.block.BlockFace
 import org.bukkit.block.data.Levelled
 import org.bukkit.entity.Player
+import org.bukkit.entity.Interaction
 import org.bukkit.event.block.Action
 import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.EquipmentSlot
 import ru.arc.paper.testing.MockBukkitTestRuntime
@@ -20,6 +22,7 @@ import ru.ruscrafting.farms.paper.mine.ImmediateMineJournal
 import ru.ruscrafting.farms.paper.mine.MineComponentGraph
 import ru.ruscrafting.farms.paper.mine.testMineComponentGraph
 import ru.ruscrafting.farms.paper.mine.immediateMinePort
+import ru.ruscrafting.farms.paper.mine.incident.entity.MineIncidentEntityKind
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineIndexDefinition
 import ru.ruscrafting.farms.paper.mine.index.MineIndexedTarget
@@ -62,22 +65,19 @@ class MineWorldIncidentsMockBukkitTest : FunSpec({
 
         val player = paper.server.addPlayer("PumpOperator")
         items.active = restarted.flooding::isActive
+        restarted.incidentSet.tick(restartedRuntime, 1_001L, emptyList())
         val targetFootprints = restartedRuntime.state.objective!!.targets.take(2)
             .associate { target -> target.id to restartedRuntime.floodFootprint(target.position).toSet() }
         restartedRuntime.state.objective!!.targets.take(2).forEachIndexed { targetIndex, target ->
-            val water = world.getBlockAt(target.position.x, target.position.y + 1, target.position.z)
-            restarted.flooding.onInteract(
-                PlayerInteractEvent(
-                    player, Action.RIGHT_CLICK_BLOCK, player.inventory.itemInMainHand,
-                    water, BlockFace.UP, EquipmentSlot.HAND,
-                ),
-            ) shouldBe true
-            restarted.flooding.onInteract(
-                PlayerInteractEvent(
-                    player, Action.RIGHT_CLICK_BLOCK, player.inventory.itemInMainHand,
-                    water, BlockFace.UP, EquipmentSlot.HAND,
-                ),
-            ) shouldBe true
+            repeat(2) {
+                val event = PlayerInteractEntityEvent(
+                    player,
+                    objectiveHitbox(restarted, world, MineIncidentEntityKind.FLOOD_MARKER_HITBOX, target.id),
+                    EquipmentSlot.HAND,
+                )
+                restarted.incidentSet.onInteractEntity(event) shouldBe true
+                event.isCancelled shouldBe true
+            }
             if (targetIndex == 0) {
                 restarted.flooding.reconcile(restartedRuntime)
                 val otherWater = targetFootprints.getValue(restartedRuntime.state.objective!!.targets[1].id)
@@ -99,13 +99,27 @@ class MineWorldIncidentsMockBukkitTest : FunSpec({
         index(graph, runtime, switches.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.POWER)) })
 
         graph.powerFailure.start(runtime, required = 2, now = 1_000L) shouldBe true
+        graph.incidentSet.tick(runtime, 1_001L, emptyList())
         val targets = runtime.state.objective!!.targets
         val lights = graph.powerFailure.lightPositions(runtime)
         lights.size shouldBe 4
-        graph.powerFailure.relight(runtime, targets[1].id, player) shouldBe false
+        graph.incidentSet.onInteractEntity(
+            PlayerInteractEntityEvent(
+                player,
+                objectiveHitbox(graph, world, MineIncidentEntityKind.POWER_MARKER_HITBOX, targets[1].id),
+                EquipmentSlot.HAND,
+            ),
+        ) shouldBe true
         runtime.state.incident!!.progress shouldBe 0
-        graph.powerFailure.relight(runtime, targets[0].id, player) shouldBe true
-        graph.powerFailure.relight(runtime, targets[1].id, player) shouldBe true
+        listOf(targets[0], targets[1]).forEach { target ->
+            val event = PlayerInteractEntityEvent(
+                player,
+                objectiveHitbox(graph, world, MineIncidentEntityKind.POWER_MARKER_HITBOX, target.id),
+                EquipmentSlot.HAND,
+            )
+            graph.incidentSet.onInteractEntity(event) shouldBe true
+            event.isCancelled shouldBe true
+        }
         runtime.state.phase shouldBe MinePhase.MINING
         lights.all { world.getBlockAt(it.x, it.y, it.z).type == Material.AIR } shouldBe true
     }
@@ -127,6 +141,15 @@ private fun index(graph: MineComponentGraph, runtime: ru.ruscrafting.farms.paper
         MineIndexDefinition(runtime.settings.id, runtime.region, setOf(Material.STONE)),
         listOf(runtime.region.world.getChunkAt(0, 0)), targets,
     )
+}
+
+private fun objectiveHitbox(
+    graph: MineComponentGraph,
+    world: org.bukkit.World,
+    kind: MineIncidentEntityKind,
+    targetId: String,
+): Interaction = world.entities.filterIsInstance<Interaction>().single { entity ->
+    graph.objectiveMarkers.identity(entity)?.let { it.kind == kind && it.targetId == targetId } == true
 }
 
 private class WorldIncidentItems : WorksiteServiceItems {

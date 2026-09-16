@@ -9,6 +9,7 @@ import org.bukkit.block.BlockFace
 import org.bukkit.entity.Entity
 import org.bukkit.entity.EntityType
 import org.bukkit.entity.ArmorStand
+import org.bukkit.entity.Interaction
 import org.bukkit.entity.LivingEntity
 import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Villager
@@ -28,10 +29,35 @@ internal enum class MineIncidentEntityKind {
     MINER_CAMP_SUPPLIES,
     CAVE_IN_MARKER,
     GAS_MARKER,
+    GAS_MARKER_HITBOX,
     CRYSTAL_MARKER,
+    CRYSTAL_MARKER_HITBOX,
     FLOOD_MARKER,
+    FLOOD_MARKER_HITBOX,
     POWER_MARKER,
+    POWER_MARKER_HITBOX,
 }
+
+internal val MineIncidentEntityKind.objectiveMarkerKind: MineIncidentEntityKind?
+    get() = when (this) {
+        MineIncidentEntityKind.GAS_MARKER_HITBOX -> MineIncidentEntityKind.GAS_MARKER
+        MineIncidentEntityKind.CRYSTAL_MARKER_HITBOX -> MineIncidentEntityKind.CRYSTAL_MARKER
+        MineIncidentEntityKind.FLOOD_MARKER_HITBOX -> MineIncidentEntityKind.FLOOD_MARKER
+        MineIncidentEntityKind.POWER_MARKER_HITBOX -> MineIncidentEntityKind.POWER_MARKER
+        else -> null
+    }
+
+internal val MineIncidentEntityKind.objectiveMarkerHitboxKind: MineIncidentEntityKind?
+    get() = when (this) {
+        MineIncidentEntityKind.GAS_MARKER -> MineIncidentEntityKind.GAS_MARKER_HITBOX
+        MineIncidentEntityKind.CRYSTAL_MARKER -> MineIncidentEntityKind.CRYSTAL_MARKER_HITBOX
+        MineIncidentEntityKind.FLOOD_MARKER -> MineIncidentEntityKind.FLOOD_MARKER_HITBOX
+        MineIncidentEntityKind.POWER_MARKER -> MineIncidentEntityKind.POWER_MARKER_HITBOX
+        else -> null
+    }
+
+internal val MineIncidentEntityKind.isObjectiveMarkerHitbox: Boolean
+    get() = objectiveMarkerKind != null
 
 internal data class MineIncidentEntityIdentity(
     val kind: MineIncidentEntityKind,
@@ -69,8 +95,11 @@ internal class PaperMineIncidentEntityEffects(plugin: Plugin) : MineIncidentEnti
         position: WorksitePosition,
     ): UUID {
         val world = requireNotNull(Bukkit.getWorld(position.world))
-        val offset = if (kind in OBJECTIVE_MARKER_KINDS) {
-            objectiveMarkerOffset(world.getBlockAt(position.x, position.y, position.z))
+        val offset = if (kind in OBJECTIVE_ENTITY_KINDS) {
+            val placement = requireNotNull(objectiveMarkerPlacement(world.getBlockAt(position.x, position.y, position.z))) {
+                "No open adjacent cell for mine objective marker target=$targetId position=$position"
+            }
+            if (kind in OBJECTIVE_MARKER_HITBOX_KINDS) placement.hitbox else placement.display
         } else entityOffset(kind)
         val at = Location(
             world,
@@ -92,6 +121,10 @@ internal class PaperMineIncidentEntityEffects(plugin: Plugin) : MineIncidentEnti
                 MineIncidentEntityKind.CRYSTAL_MARKER,
                 MineIncidentEntityKind.FLOOD_MARKER,
                 MineIncidentEntityKind.POWER_MARKER -> EntityType.ITEM_DISPLAY
+                MineIncidentEntityKind.GAS_MARKER_HITBOX,
+                MineIncidentEntityKind.CRYSTAL_MARKER_HITBOX,
+                MineIncidentEntityKind.FLOOD_MARKER_HITBOX,
+                MineIncidentEntityKind.POWER_MARKER_HITBOX -> EntityType.INTERACTION
             },
         )
         entity.persistentDataContainer.apply {
@@ -119,6 +152,11 @@ internal class PaperMineIncidentEntityEffects(plugin: Plugin) : MineIncidentEnti
             }
             transformation = transformation.also { it.scale.set(scale, scale, scale) }
             }
+        }
+        if (kind in OBJECTIVE_MARKER_HITBOX_KINDS) (entity as Interaction).apply {
+            interactionWidth = OBJECTIVE_HITBOX_WIDTH
+            interactionHeight = OBJECTIVE_HITBOX_HEIGHT
+            isResponsive = true
         }
         if (kind == MineIncidentEntityKind.CREATURE_NEST_HITBOX) (entity as ArmorStand).apply {
             isInvisible = true
@@ -156,11 +194,34 @@ internal class PaperMineIncidentEntityEffects(plugin: Plugin) : MineIncidentEnti
         chunk.entities.forEach { entity ->
             val identity = identity(entity) ?: return@forEach
             if (identity.zoneId != runtime.settings.id || identity.sequence != runtime.state.sequence || identity.kind != kind) return@forEach
-            if (identity.targetId !in expected || canonical.putIfAbsent(identity.targetId, entity.uniqueId) != null) entity.remove()
+            val expectedLocation = expected[identity.targetId]?.let { position ->
+                if (kind in OBJECTIVE_ENTITY_KINDS) objectiveMarkerLocation(kind, position) else null
+            }
+            val belongsToChunk = if (kind in OBJECTIVE_ENTITY_KINDS) {
+                expectedLocation?.world?.name == chunk.world.name &&
+                    (expectedLocation.blockX shr 4) == chunk.x && (expectedLocation.blockZ shr 4) == chunk.z
+            } else {
+                true
+            }
+            val remainsOpen = kind !in OBJECTIVE_ENTITY_KINDS || entity.location.block.isPassable
+            if (!belongsToChunk || !remainsOpen || identity.targetId !in expected ||
+                canonical.putIfAbsent(identity.targetId, entity.uniqueId) != null
+            ) entity.remove()
         }
-        expected.filterValues { position ->
-            position.world == chunk.world.name && (position.x shr 4) == chunk.x && (position.z shr 4) == chunk.z
-        }.forEach { (targetId, position) ->
+        val expectedInChunk = expected.filter { (targetId, position) ->
+            val spawnLocation = if (kind in OBJECTIVE_ENTITY_KINDS) {
+                objectiveMarkerLocation(kind, position)
+            } else {
+                null
+            }
+            if (kind in OBJECTIVE_ENTITY_KINDS) {
+                spawnLocation?.world?.name == chunk.world.name &&
+                    (spawnLocation.blockX shr 4) == chunk.x && (spawnLocation.blockZ shr 4) == chunk.z
+            } else {
+                position.world == chunk.world.name && (position.x shr 4) == chunk.x && (position.z shr 4) == chunk.z
+            }
+        }
+        expectedInChunk.forEach { (targetId, position) ->
             if (targetId !in canonical) canonical[targetId] = spawn(runtime, kind, targetId, position)
         }
         return canonical
@@ -205,12 +266,21 @@ internal class PaperMineIncidentEntityEffects(plugin: Plugin) : MineIncidentEnti
             MineIncidentEntityKind.FLOOD_MARKER,
             MineIncidentEntityKind.POWER_MARKER,
         )
+        val OBJECTIVE_MARKER_HITBOX_KINDS = setOf(
+            MineIncidentEntityKind.GAS_MARKER_HITBOX,
+            MineIncidentEntityKind.CRYSTAL_MARKER_HITBOX,
+            MineIncidentEntityKind.FLOOD_MARKER_HITBOX,
+            MineIncidentEntityKind.POWER_MARKER_HITBOX,
+        )
+        val OBJECTIVE_ENTITY_KINDS = OBJECTIVE_MARKER_KINDS + OBJECTIVE_MARKER_HITBOX_KINDS
         val DISPLAY_KINDS = OBJECTIVE_MARKER_KINDS + setOf(
             MineIncidentEntityKind.CAVE_IN_MARKER,
             MineIncidentEntityKind.CREATURE_NEST_DISPLAY,
             MineIncidentEntityKind.MINER_CAMP_LANTERN,
             MineIncidentEntityKind.MINER_CAMP_SUPPLIES,
         )
+        const val OBJECTIVE_HITBOX_WIDTH = 0.8f
+        const val OBJECTIVE_HITBOX_HEIGHT = 1.0f
     }
 
     private fun entityOffset(kind: MineIncidentEntityKind): Triple<Double, Double, Double> = when (kind) {
@@ -223,12 +293,56 @@ internal class PaperMineIncidentEntityEffects(plugin: Plugin) : MineIncidentEnti
         else -> Triple(0.5, 1.55, 0.5)
     }
 
-    private fun objectiveMarkerOffset(block: org.bukkit.block.Block): Triple<Double, Double, Double> = when {
-        block.getRelative(BlockFace.UP).type.isAir -> Triple(0.5, 1.35, 0.5)
-        block.getRelative(BlockFace.NORTH).type.isAir -> Triple(0.5, 0.5, -0.15)
-        block.getRelative(BlockFace.SOUTH).type.isAir -> Triple(0.5, 0.5, 1.15)
-        block.getRelative(BlockFace.WEST).type.isAir -> Triple(-0.15, 0.5, 0.5)
-        block.getRelative(BlockFace.EAST).type.isAir -> Triple(1.15, 0.5, 0.5)
-        else -> Triple(0.5, 1.35, 0.5)
+    private data class ObjectiveMarkerPlacement(
+        val display: Triple<Double, Double, Double>,
+        val hitbox: Triple<Double, Double, Double>,
+    )
+
+    private fun objectiveMarkerPlacement(block: org.bukkit.block.Block): ObjectiveMarkerPlacement? = when {
+        block.isOpenRelative(BlockFace.UP) -> ObjectiveMarkerPlacement(
+            display = Triple(0.5, 1.35, 0.5), hitbox = Triple(0.5, 1.0, 0.5),
+        )
+        block.isOpenRelative(BlockFace.NORTH) -> ObjectiveMarkerPlacement(
+            display = Triple(0.5, 0.5, -0.15), hitbox = Triple(0.5, 0.0, -0.5),
+        )
+        block.isOpenRelative(BlockFace.SOUTH) -> ObjectiveMarkerPlacement(
+            display = Triple(0.5, 0.5, 1.15), hitbox = Triple(0.5, 0.0, 1.5),
+        )
+        block.isOpenRelative(BlockFace.WEST) -> ObjectiveMarkerPlacement(
+            display = Triple(-0.15, 0.5, 0.5), hitbox = Triple(-0.5, 0.0, 0.5),
+        )
+        block.isOpenRelative(BlockFace.EAST) -> ObjectiveMarkerPlacement(
+            display = Triple(1.15, 0.5, 0.5), hitbox = Triple(1.5, 0.0, 0.5),
+        )
+        else -> null
+    }
+
+    private fun org.bukkit.block.Block.isOpenRelative(face: BlockFace): Boolean {
+        val blockX = this.x + face.modX
+        val blockY = this.y + face.modY
+        val blockZ = this.z + face.modZ
+        if (blockY !in world.minHeight until world.maxHeight || !world.isChunkLoaded(blockX shr 4, blockZ shr 4)) return false
+        return getRelative(face).isPassable
+    }
+
+    private fun objectiveMarkerLocation(kind: MineIncidentEntityKind, position: WorksitePosition): Location? {
+        val world = Bukkit.getWorld(position.world) ?: return null
+        val placement = objectiveMarkerPlacement(world.getBlockAt(position.x, position.y, position.z)) ?: return null
+        val offset = if (kind in OBJECTIVE_MARKER_HITBOX_KINDS) placement.hitbox else placement.display
+        return Location(world, position.x + offset.first, position.y + offset.second, position.z + offset.third)
+    }
+}
+
+/** Candidate discovery guard shared by crystal incidents and marker reconciliation. */
+internal fun hasMineObjectiveMarkerSpace(position: WorksitePosition): Boolean {
+    val world = Bukkit.getWorld(position.world) ?: return false
+    if (!world.isChunkLoaded(position.x shr 4, position.z shr 4)) return false
+    val block = world.getBlockAt(position.x, position.y, position.z)
+    return listOf(BlockFace.UP, BlockFace.NORTH, BlockFace.SOUTH, BlockFace.WEST, BlockFace.EAST).any { face ->
+        val x = position.x + face.modX
+        val y = position.y + face.modY
+        val z = position.z + face.modZ
+        y in world.minHeight until world.maxHeight && world.isChunkLoaded(x shr 4, z shr 4) &&
+            block.getRelative(face).isPassable
     }
 }

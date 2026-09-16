@@ -12,6 +12,7 @@ import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.mine.incident.MineIncidentCoordinator
 import ru.ruscrafting.farms.paper.mine.incident.orderMineIncidentPositions
 import ru.ruscrafting.farms.paper.mine.incident.isIncidentSurface
+import ru.ruscrafting.farms.paper.mine.incident.entity.hasMineObjectiveMarkerSpace
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 import kotlin.math.absoluteValue
@@ -41,6 +42,20 @@ internal abstract class MineSequenceIncident(
         return incidents.completeTarget(runtime, targetId, player).accepted
     }
 
+    /** Entity-marker route; the parent router validates the PDC kind before calling this. */
+    fun onInteractEntity(
+        runtime: MineRuntime,
+        targetId: String,
+        player: org.bukkit.entity.Player,
+        timingAccepted: Boolean = true,
+    ): Boolean {
+        if (!active(runtime)) return false
+        val target = runtime.state.objective?.targets?.firstOrNull { it.id == targetId } ?: return false
+        if (target.status == ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus.COMPLETED) return false
+        use(runtime, targetId, player, timingAccepted)
+        return true
+    }
+
     fun onInteract(event: PlayerInteractEvent): Boolean {
         if (event.action != Action.RIGHT_CLICK_BLOCK) return false
         val clicked = event.clickedBlock ?: return false
@@ -67,7 +82,8 @@ internal abstract class MineSequenceIncident(
             index.loadedTargets(runtime.settings.id, anchorRole)
                 .filter {
                     index.isLiveTarget(runtime.settings.id, it, anchorRole, runtime.railMaterials) &&
-                        (!requireStructuralSurface || runtime.isIncidentSurface(it))
+                        (!requireStructuralSurface || runtime.isIncidentSurface(it)) &&
+                        (requireStructuralSurface || hasMineObjectiveMarkerSpace(it))
                 },
             required * runtime.rules().targetMultiplier * 2,
             type.ordinal.toLong() + 1L,

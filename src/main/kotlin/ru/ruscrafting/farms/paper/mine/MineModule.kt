@@ -71,6 +71,7 @@ internal class MineModule(
     internal val recovery: MineBlockRecoveryController,
     internal val index: MineBlockIndex,
     internal val tickets: MineChunkTicket,
+    private val worldWarmup: MineWorldWarmup,
     private val prospecting: MineProspectingController,
     private val mining: MineMiningController,
     private val loading: MineLoadingController,
@@ -222,6 +223,7 @@ internal class MineModule(
     }
 
     override fun activateLoadedState() {
+        worldWarmup.activate(registry.snapshot().map { it.region.world })
         registry.snapshot().forEach { runtime ->
             runtime.region.world.loadedChunks.forEach { chunk ->
                 index.reconcileChunk(runtime.indexDefinition(), chunk)
@@ -254,6 +256,7 @@ internal class MineModule(
 
     override fun beforeReload(reason: String) {
         veins.clear()
+        worldWarmup.cleanup()
         admin.cleanup()
         index.flushDirty(Int.MAX_VALUE)
         recovery.beforeReload(reason)
@@ -261,6 +264,7 @@ internal class MineModule(
 
     override fun cleanup(reason: String) {
         veins.clear()
+        worldWarmup.cleanup()
         recovery.cleanup(reason)
         loading.cleanup()
         extraction.cleanup()

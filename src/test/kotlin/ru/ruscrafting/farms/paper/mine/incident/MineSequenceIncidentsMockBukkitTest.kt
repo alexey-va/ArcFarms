@@ -61,6 +61,34 @@ class MineSequenceIncidentsMockBukkitTest : FunSpec({
         graph.crystalResonance.hit(runtime, crystalTargets[2].id, player, insideForgivingWindow = false) shouldBe false
         runtime.state.incident!!.progress shouldBe 1
     }
+
+    test("crystal incident rejects a fully enclosed crystal without a marker placement cell") {
+        val world = paper.server.addSimpleWorld("world")
+        val crystal = world.getBlockAt(4, 64, 5).also { it.type = Material.AMETHYST_BLOCK }
+        listOf(
+            world.getBlockAt(4, 63, 5), world.getBlockAt(4, 65, 5),
+            world.getBlockAt(3, 64, 5), world.getBlockAt(5, 64, 5),
+            world.getBlockAt(4, 64, 4), world.getBlockAt(4, 64, 6),
+        ).forEach { it.type = Material.STONE }
+        val graph = testMineComponentGraph(
+            paper.createSimplePlugin("MineEnclosedCrystalTest"), CuboidRegionGateway(), immediateMinePort(),
+            clock = { 1_000L }, journal = ImmediateMineJournal(),
+        )
+        graph.module.rebuild(
+            listOf(mineV2Settings()),
+            mapOf("old_shafts" to MineShiftState(engineVersion = 2, phase = MinePhase.MINING, sequence = 1, orderId = "ore_run")),
+            5_000L,
+        )
+        val runtime = graph.registry.byId("old_shafts")!!
+        graph.index.replaceZone(
+            MineIndexDefinition(runtime.settings.id, runtime.region, setOf(Material.STONE)),
+            listOf(world.getChunkAt(0, 0)),
+            listOf(MineIndexedTarget(crystal.position(), setOf(MineAnchorRole.CRYSTAL))),
+        )
+
+        graph.crystalResonance.start(runtime, required = 1, now = 1_000L) shouldBe false
+        runtime.state.phase shouldBe MinePhase.MINING
+    }
 })
 
 private fun org.bukkit.block.Block.position() = WorksitePosition(world.name, x, y, z)

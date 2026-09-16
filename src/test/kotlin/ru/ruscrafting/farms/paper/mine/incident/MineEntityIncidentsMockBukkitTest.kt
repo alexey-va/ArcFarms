@@ -7,6 +7,10 @@ import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.entity.Entity
 import org.bukkit.entity.EntityType
+import org.bukkit.entity.Interaction
+import org.bukkit.entity.ItemDisplay
+import org.bukkit.event.player.PlayerInteractEntityEvent
+import org.bukkit.inventory.EquipmentSlot
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineIncidentType
@@ -96,11 +100,43 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         graph.gasLeak.start(runtime, required = 2, now = 1_000L) shouldBe true
         graph.incidentSet.tick(runtime, 1_001L, emptyList())
         effects.count(MineIncidentEntityKind.GAS_MARKER) shouldBe 4
-        val targets = runtime.state.objective!!.targets
-        graph.gasLeak.useVent(runtime, targets[0].id, player) shouldBe true
-        graph.gasLeak.useVent(runtime, targets[1].id, player) shouldBe true
-        graph.incidentSet.tick(runtime, 1_002L, emptyList())
+        effects.count(MineIncidentEntityKind.GAS_MARKER_HITBOX) shouldBe 4
+        effects.ids(MineIncidentEntityKind.GAS_MARKER_HITBOX).take(runtime.state.incident!!.required).forEach { id ->
+            val event = PlayerInteractEntityEvent(player, requireNotNull(effects.entity(id)), EquipmentSlot.HAND)
+            graph.incidentSet.onInteractEntity(event) shouldBe true
+            event.isCancelled shouldBe true
+        }
+        runtime.state.phase shouldBe MinePhase.MINING
         effects.count(MineIncidentEntityKind.GAS_MARKER) shouldBe 0
+        effects.count(MineIncidentEntityKind.GAS_MARKER_HITBOX) shouldBe 0
+    }
+
+    test("production objective markers put a responsive hitbox in open space") {
+        val world = paper.server.addSimpleWorld("world")
+        val plugin = paper.createSimplePlugin("MineProductionMarkers")
+        val graph = testMineComponentGraph(
+            plugin, CuboidRegionGateway(), immediateMinePort(),
+            clock = { 1_000L }, journal = ImmediateMineJournal(),
+        )
+        graph.module.rebuild(
+            listOf(mineV2Settings()),
+            mapOf("old_shafts" to MineShiftState(engineVersion = 2, phase = MinePhase.MINING, sequence = 1, orderId = "ore_run")),
+            5_000L,
+        )
+        val runtime = graph.registry.byId("old_shafts")!!
+        val supports = (1..4).map { x -> world.getBlockAt(x, 63, 2).also { it.type = Material.STONE } }
+        replaceEntityIndex(graph, runtime, supports)
+
+        graph.gasLeak.start(runtime, required = 2, now = 1_000L) shouldBe true
+        graph.incidentSet.tick(runtime, 1_001L, emptyList())
+
+        world.entities.filterIsInstance<ItemDisplay>().size shouldBe 4
+        world.entities.filterIsInstance<Interaction>().size shouldBe 4
+        world.entities.filterIsInstance<Interaction>().all { interaction ->
+            interaction.isResponsive && interaction.interactionWidth == 0.8f &&
+                interaction.interactionHeight == 1.0f && interaction.location.block.type.isAir &&
+                interaction.location.y == 64.0
+        } shouldBe true
     }
 
     test("lost miner is reconstructed once and escort completes at the indexed route entrance") {
@@ -194,11 +230,14 @@ private class RecordingIncidentEntities : MineIncidentEntityEffects {
     ): Map<String, UUID> {
         val canonical = linkedMapOf<String, UUID>()
         entities.toMap().forEach { (id, entity) ->
+            if ((entity.location.blockX shr 4) != chunk.x || (entity.location.blockZ shr 4) != chunk.z) return@forEach
             val identity = identities[id] ?: return@forEach
             if (identity.zoneId != runtime.settings.id || identity.sequence != runtime.state.sequence || identity.kind != kind) return@forEach
             if (identity.targetId !in expected || canonical.putIfAbsent(identity.targetId, id) != null) remove(id)
         }
-        expected.forEach { (targetId, position) ->
+        expected.filterValues { position ->
+            (position.x shr 4) == chunk.x && (position.z shr 4) == chunk.z
+        }.forEach { (targetId, position) ->
             if (targetId !in canonical) canonical[targetId] = spawn(runtime, kind, targetId, position)
         }
         return canonical
@@ -209,6 +248,7 @@ private class RecordingIncidentEntities : MineIncidentEntityEffects {
     }
 
     fun count(kind: MineIncidentEntityKind): Int = identities.values.count { it.kind == kind }
+    fun ids(kind: MineIncidentEntityKind): List<UUID> = identities.filterValues { it.kind == kind }.keys.toList()
     fun singleId(kind: MineIncidentEntityKind): UUID = identities.filterValues { it.kind == kind }.keys.single()
 }
 

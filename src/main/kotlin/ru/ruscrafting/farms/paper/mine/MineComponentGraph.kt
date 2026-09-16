@@ -113,11 +113,14 @@ internal class MineComponentGraph(
             chunk.removePluginChunkTicket(plugin)
         }
     }
+    private val worldWarmup = MineWorldWarmup(tickets, ports.tasks) { message, failure ->
+        ports.state.log(java.util.logging.Level.WARNING, message, failure)
+    }
     val admin = MineAdminService(
         registry, index, tickets, prospecting, extraction, incidentScheduler, incidentSet, ports.state,
     )
     val module = MineModule(
-        regions, ports.access, ports.audience, ports.tasks, ports.state, transitions, registry, recovery, index, tickets, prospecting, mining, loading, extraction, cartScene,
+        regions, ports.access, ports.audience, ports.tasks, ports.state, transitions, registry, recovery, index, tickets, worldWarmup, prospecting, mining, loading, extraction, cartScene,
         incidentSet, guidancePresenter, admin, clock, veins, pickaxes,
     )
 
