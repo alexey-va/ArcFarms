@@ -171,6 +171,14 @@ internal fun immediateMinePort(): WorksiteRuntimePort {
             secondArg<() -> Unit>().invoke()
             true
         }
+        every { runAsync(token, any()) } answers {
+            secondArg<() -> Unit>().invoke()
+            true
+        }
+        every { runLater(token, any(), any()) } answers {
+            thirdArg<() -> Unit>().invoke()
+            true
+        }
         every { persistAsync() } returns CompletableFuture.completedFuture(Unit)
     }
 }

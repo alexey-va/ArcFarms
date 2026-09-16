@@ -32,6 +32,7 @@ import ru.ruscrafting.farms.paper.mine.incident.entity.PaperMineIncidentEntityEf
 import ru.ruscrafting.farms.paper.mine.incident.entity.MineObjectiveMarkerScene
 import ru.ruscrafting.farms.paper.mine.recovery.MineIncidentBlockJournal
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems
+import ru.ruscrafting.farms.paper.worksite.WorksiteAsyncBlockScanner
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.paper.worksite.WorksiteRewardGrantService
 import ru.ruscrafting.farms.paper.mine.incident.MineIncidentScheduler
@@ -64,7 +65,10 @@ internal class MineComponentGraph(
     private val transitions = MineTransitionCoordinator(ports.state, ports.stats, ports.audience, locale)
     private val incidents = MineIncidentCoordinator(transitions, ports.state)
     private val incidentJournal = MineIncidentBlockJournal(recovery)
-    val caveIn = MineCaveInIncident(registry, index, incidents, incidentJournal, recovery, ports.audience, ports.state, lift, incidentEntityEffects)
+    private val blockScanner = WorksiteAsyncBlockScanner(ports.tasks)
+    val caveIn = MineCaveInIncident(
+        registry, index, incidents, incidentJournal, recovery, ports.audience, ports.state, blockScanner, lift, incidentEntityEffects,
+    )
     val trackDamage = MineTrackDamageIncident(registry, index, incidents, serviceItems, ports.state, locale)
     val gasLeak = MineGasLeakIncident(registry, index, incidents)
     val crystalResonance = MineCrystalResonanceIncident(registry, index, incidents)

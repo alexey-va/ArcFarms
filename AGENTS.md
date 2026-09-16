@@ -75,6 +75,12 @@ activities: farm, lumbermill, and mine.
   distribution starts at `WorksitePlacementPlanner`. Event-private mixer
   constants, spatial hashes, seeded shuffles, or scan-order selection are
   architecture defects unless the event proves a different semantic contract.
+- Expensive world-aware placement starts at `WorksiteAsyncBlockScanner`: keep
+  durable candidate coordinates in a worksite index, capture required loaded
+  chunks in bounded main-thread slices, plan only from immutable snapshots
+  async, then revalidate the chosen result once against the live world before
+  mutation. Farm, mine, lumber and future worksites must not perform unbounded
+  Bukkit block searches in one tick or read live Bukkit world state async.
 - Temporary equipment starts at `WorksiteServiceItems` and delegates player
   inventory traversal to `WorksitePlayerItems`. Do not hand-roll selected-slot
   placement, storage/offhand/cursor/open-inventory scans, rollback, refresh, or

@@ -42,6 +42,9 @@ internal class MineIncidentSet(
 ) {
     /** Farm-style admin switch: retire the current scene before forcing the requested incident. */
     fun forceAdmin(runtime: MineRuntime, type: ru.ruscrafting.farms.domain.MineIncidentType, now: Long): Boolean {
+        if (type != ru.ruscrafting.farms.domain.MineIncidentType.CAVE_IN) {
+            caveIn.cancelPending(runtime.settings.id)
+        }
         if (runtime.state.phase == ru.ruscrafting.farms.domain.MinePhase.INCIDENT || runtime.state.incident != null) {
             clearActive(runtime)
             if (!coordinator.abort(runtime)) return false

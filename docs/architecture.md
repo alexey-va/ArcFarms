@@ -135,6 +135,13 @@ Farm and mine use the same low-level worksite tools:
 - `WorksiteTickBudget` bounds farm and mine index scans by operation count and a
   cooperative two-millisecond time slice. Chunk loads use Paper's asynchronous
   API; code only consumes completed requests on the server thread.
+- `WorksiteAsyncBlockScanner` is the default bridge from indexed coordinates to
+  expensive world-aware planning. It captures loaded chunks in bounded
+  server-thread slices, hands immutable `WorksiteBlockSnapshot` data to an
+  async planner, and returns to the server thread for a final live revalidation
+  before mutation. This shared path applies to farm, mine, lumber and future
+  worksites; feature-local unbounded block scans and async Bukkit world reads
+  are forbidden.
 - `WorksiteCooldownTimer` and the existing audience/guidance ports supply the
   common next-order countdown, localized titles and progress presentation.
 - `WorksiteDeterministicSeed` owns replayable seed derivation and coordinate
