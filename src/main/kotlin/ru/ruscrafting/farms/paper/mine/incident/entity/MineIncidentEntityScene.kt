@@ -346,3 +346,23 @@ internal fun hasMineObjectiveMarkerSpace(position: WorksitePosition): Boolean {
             block.getRelative(face).isPassable
     }
 }
+
+/** Unloaded neighbour chunks are unknown, not proof that a persisted objective became impossible. */
+internal fun isMineObjectiveMarkerBlocked(position: WorksitePosition): Boolean {
+    val world = Bukkit.getWorld(position.world) ?: return false
+    if (!world.isChunkLoaded(position.x shr 4, position.z shr 4)) return false
+    val block = world.getBlockAt(position.x, position.y, position.z)
+    var unknown = false
+    listOf(BlockFace.UP, BlockFace.NORTH, BlockFace.SOUTH, BlockFace.WEST, BlockFace.EAST).forEach { face ->
+        val x = position.x + face.modX
+        val y = position.y + face.modY
+        val z = position.z + face.modZ
+        if (y !in world.minHeight until world.maxHeight) return@forEach
+        if (!world.isChunkLoaded(x shr 4, z shr 4)) {
+            unknown = true
+        } else if (block.getRelative(face).isPassable) {
+            return false
+        }
+    }
+    return !unknown
+}

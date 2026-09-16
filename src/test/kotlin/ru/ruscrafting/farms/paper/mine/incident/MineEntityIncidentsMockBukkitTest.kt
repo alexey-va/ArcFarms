@@ -3,6 +3,7 @@ package ru.ruscrafting.farms.paper.mine.incident
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import org.bukkit.Chunk
+import org.bukkit.block.BlockFace
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.entity.Entity
@@ -16,6 +17,8 @@ import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
+import ru.ruscrafting.farms.config.CuboidBounds
+import ru.ruscrafting.farms.config.ZoneReference
 import ru.ruscrafting.farms.paper.CuboidRegionGateway
 import ru.ruscrafting.farms.paper.mine.ImmediateMineJournal
 import ru.ruscrafting.farms.paper.mine.MineComponentGraph
@@ -137,6 +140,67 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
                 interaction.interactionHeight == 1.0f && interaction.location.block.type.isAir &&
                 interaction.location.y == 64.0
         } shouldBe true
+    }
+
+    test("completing a target removes its display and hitbox from an isolated chunk") {
+        val world = paper.server.addSimpleWorld("world")
+        val player = paper.server.addPlayer("VentOperator")
+        val effects = RecordingIncidentEntities()
+        val graph = testMineComponentGraph(
+            paper.createSimplePlugin("MineMarkerChunkCleanup"), CuboidRegionGateway(), immediateMinePort(),
+            clock = { 1_000L }, journal = ImmediateMineJournal(), incidentEntityEffects = effects,
+        )
+        val settings = mineV2Settings().copy(
+            reference = ZoneReference("world", null, CuboidBounds(0, 50, 0, 127, 90, 20)),
+        )
+        graph.module.rebuild(
+            listOf(settings),
+            mapOf("old_shafts" to MineShiftState(engineVersion = 2, phase = MinePhase.MINING, sequence = 1, orderId = "ore_run")),
+            5_000L,
+        )
+        val runtime = graph.registry.byId("old_shafts")!!
+        val supports = listOf(1, 33, 65, 97).map { x ->
+            world.getBlockAt(x, 63, 2).also { it.type = Material.STONE }
+        }
+        graph.index.replaceZone(
+            MineIndexDefinition(runtime.settings.id, runtime.region, setOf(Material.STONE)),
+            supports.map { it.chunk }.distinctBy { it.x to it.z },
+            supports.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.SUPPORT)) },
+        )
+
+        graph.gasLeak.start(runtime, required = 2, now = 1_000L) shouldBe true
+        graph.incidentSet.tick(runtime, 1_001L, emptyList())
+        effects.count(MineIncidentEntityKind.GAS_MARKER) shouldBe 4
+        effects.count(MineIncidentEntityKind.GAS_MARKER_HITBOX) shouldBe 4
+
+        val first = runtime.state.objective!!.targets.first()
+        graph.gasLeak.useVent(runtime, first.id, player) shouldBe true
+        graph.incidentSet.tick(runtime, 1_002L, emptyList())
+
+        effects.count(MineIncidentEntityKind.GAS_MARKER) shouldBe 3
+        effects.count(MineIncidentEntityKind.GAS_MARKER_HITBOX) shouldBe 3
+    }
+
+    test("a marker incident aborts cleanly when rebuilding encloses an active target") {
+        val world = paper.server.addSimpleWorld("world")
+        val supports = (1..6).map { x -> world.getBlockAt(x, 63, 2).also { it.type = Material.STONE } }
+        val effects = RecordingIncidentEntities()
+        val graph = entityGraph(paper, effects, "BlockedMarker")
+        val runtime = graph.registry.byId("old_shafts")!!
+        replaceEntityIndex(graph, runtime, supports)
+
+        graph.gasLeak.start(runtime, required = 2, now = 1_000L) shouldBe true
+        graph.incidentSet.tick(runtime, 1_001L, emptyList())
+        val target = runtime.state.objective!!.targets.first().position
+        val block = world.getBlockAt(target.x, target.y, target.z)
+        listOf(BlockFace.UP, BlockFace.NORTH, BlockFace.SOUTH, BlockFace.WEST, BlockFace.EAST)
+            .forEach { block.getRelative(it).type = Material.STONE }
+
+        graph.incidentSet.tick(runtime, 1_002L, emptyList())
+
+        runtime.state.phase shouldBe MinePhase.MINING
+        effects.count(MineIncidentEntityKind.GAS_MARKER) shouldBe 0
+        effects.count(MineIncidentEntityKind.GAS_MARKER_HITBOX) shouldBe 0
     }
 
     test("lost miner is reconstructed once and escort completes at the indexed route entrance") {

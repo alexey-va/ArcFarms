@@ -24,6 +24,7 @@ import ru.ruscrafting.farms.paper.mine.incident.orderMineIncidentPositions
 import ru.ruscrafting.farms.paper.mine.incident.isIncidentSurface
 import ru.ruscrafting.farms.paper.mine.incident.blockType
 import ru.ruscrafting.farms.paper.mine.incident.floodFootprint
+import ru.ruscrafting.farms.paper.mine.incident.entity.hasMineObjectiveMarkerSpace
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 import ru.ruscrafting.farms.paper.mine.recovery.MineIncidentBlockJournal
@@ -202,7 +203,8 @@ internal class MineFloodingIncident(
             index.loadedTargets(runtime.settings.id, MineAnchorRole.NEST)
                 .filter {
                     index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.NEST, runtime.railMaterials) &&
-                        runtime.isIncidentSurface(it) && runtime.floodFootprint(it).let { footprint ->
+                        runtime.isIncidentSurface(it) && hasMineObjectiveMarkerSpace(it) &&
+                        runtime.floodFootprint(it).let { footprint ->
                             footprint.size >= MIN_FLOOD_BLOCKS && footprint.all { water -> water.blockType() == Material.AIR }
                         }
                 },

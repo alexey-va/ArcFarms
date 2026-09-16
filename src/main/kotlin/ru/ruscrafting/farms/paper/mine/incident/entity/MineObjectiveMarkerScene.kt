@@ -11,22 +11,30 @@ import ru.ruscrafting.farms.paper.mine.MineRuntime
 /** One recoverable glowing physical marker per block-interaction objective. */
 internal class MineObjectiveMarkerScene(private val effects: MineIncidentEntityEffects) {
     private val activeScenes = mutableMapOf<String, Pair<Long, MineIncidentEntityKind>>()
+    private val activeChunks = mutableMapOf<String, Set<Pair<Int, Int>>>()
     private val idleCleanupZones = mutableSetOf<String>()
 
     fun reconcile(runtime: MineRuntime): Int {
         val kind = activeKind(runtime)
         if (kind == null) {
             activeScenes.remove(runtime.settings.id)
+            activeChunks.remove(runtime.settings.id)
             if (idleCleanupZones.add(runtime.settings.id)) cleanupEntities(runtime)
             return 0
         }
         idleCleanupZones.remove(runtime.settings.id)
         val identity = runtime.state.sequence to kind
-        if (activeScenes[runtime.settings.id] != identity) cleanupEntities(runtime)
+        if (activeScenes[runtime.settings.id] != identity) {
+            activeChunks.remove(runtime.settings.id)
+            cleanupEntities(runtime)
+        }
         activeScenes[runtime.settings.id] = identity
         val expected = expected(runtime)
-        reconcileChunks(runtime, kind, expected, chunksAround(expected.values))
-        reconcileChunks(runtime, requireNotNull(kind.objectiveMarkerHitboxKind), expected, chunksAround(expected.values))
+        val currentChunks = chunksAround(expected.values)
+        val chunksToScan = activeChunks[runtime.settings.id].orEmpty() + currentChunks
+        reconcileChunks(runtime, kind, expected, chunksToScan)
+        reconcileChunks(runtime, requireNotNull(kind.objectiveMarkerHitboxKind), expected, chunksToScan)
+        activeChunks[runtime.settings.id] = currentChunks
         return expected.size
     }
 
@@ -44,11 +52,15 @@ internal class MineObjectiveMarkerScene(private val effects: MineIncidentEntityE
 
     fun cleanup(runtime: MineRuntime) {
         activeScenes.remove(runtime.settings.id)
+        activeChunks.remove(runtime.settings.id)
         idleCleanupZones.remove(runtime.settings.id)
         cleanupEntities(runtime)
     }
 
     fun identity(entity: Entity): MineIncidentEntityIdentity? = effects.identity(entity)
+
+    fun hasBlockedTarget(runtime: MineRuntime): Boolean =
+        activeKind(runtime) != null && expected(runtime).values.any(::isMineObjectiveMarkerBlocked)
 
     private fun cleanupEntities(runtime: MineRuntime) = OWNED_KINDS.forEach { effects.cleanup(runtime, it) }
 

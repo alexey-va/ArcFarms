@@ -83,7 +83,7 @@ internal abstract class MineSequenceIncident(
                 .filter {
                     index.isLiveTarget(runtime.settings.id, it, anchorRole, runtime.railMaterials) &&
                         (!requireStructuralSurface || runtime.isIncidentSurface(it)) &&
-                        (requireStructuralSurface || hasMineObjectiveMarkerSpace(it))
+                        hasMineObjectiveMarkerSpace(it)
                 },
             required * runtime.rules().targetMultiplier * 2,
             type.ordinal.toLong() + 1L,

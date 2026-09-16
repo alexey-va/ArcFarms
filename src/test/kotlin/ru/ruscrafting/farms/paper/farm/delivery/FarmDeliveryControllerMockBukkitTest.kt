@@ -84,6 +84,20 @@ class FarmDeliveryControllerMockBukkitTest : FunSpec({
         restarted.carrierCount(fixture.runtime.settings.id) shouldBe 0
     }
 
+    test("restart removes a stale crate entity that escaped into another world") {
+        val fixture = deliveryFixture(world, plugin, crates = 1)
+        fixture.controller.ensure(fixture.runtime)
+        val foreign = server.addSimpleWorld("foreign")
+        val escaped = world.entities.filterIsInstance<Interaction>().single(fixture.controller::owns)
+        escaped.teleport(Location(foreign, 2.5, 65.0, 2.5)) shouldBe true
+
+        val restarted = fixture.newController()
+        restarted.ensure(fixture.runtime)
+
+        foreign.entities.filter(restarted::owns) shouldHaveSize 0
+        world.entities.filter(restarted::owns) shouldHaveSize 2
+    }
+
     test("delivery movement applies the domain transition once") {
         val fixture = deliveryFixture(world, plugin, crates = 1)
         fixture.controller.ensure(fixture.runtime)
@@ -105,8 +119,8 @@ class FarmDeliveryControllerMockBukkitTest : FunSpec({
 
         repeat(20) { fixture.controller.ensure(fixture.runtime) }
 
-        fixture.entityLookup.worldScans shouldBe 1
-        fixture.entityLookup.globalScans shouldBe 0
+        fixture.entityLookup.worldScans shouldBe 0
+        fixture.entityLookup.globalScans shouldBe 1
         verify(exactly = 1) { fixture.placement.deliveryCrateLocations(fixture.runtime, any()) }
     }
 

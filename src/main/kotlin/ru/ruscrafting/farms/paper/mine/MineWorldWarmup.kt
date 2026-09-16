@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.paper.mine
 
 import org.bukkit.Chunk
 import org.bukkit.World
+import ru.ruscrafting.farms.paper.RuntimeTaskSupervisor
 import ru.ruscrafting.farms.paper.mine.index.MineChunkLoader
 import ru.ruscrafting.farms.paper.mine.index.MineChunkTicket
 import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
@@ -29,21 +30,7 @@ internal class MineWorldWarmup(
             val centerZ = world.spawnLocation.blockZ shr 4
             for (chunkX in centerX - RADIUS..centerX + RADIUS) {
                 for (chunkZ in centerZ - RADIUS..centerZ + RADIUS) {
-                    val expected = ChunkKey(world.uid, chunkX, chunkZ)
-                    chunkLoader.load(world, chunkX, chunkZ).whenComplete { chunk, failure ->
-                        tasks.runSync(token) {
-                            if (activation != generation) return@runSync
-                            if (failure != null) {
-                                onFailure("Mine warmup failed for ${world.name} [$chunkX,$chunkZ]", failure)
-                                return@runSync
-                            }
-                            if (chunk == null || ChunkKey(chunk.world.uid, chunk.x, chunk.z) != expected) {
-                                onFailure("Mine warmup returned the wrong chunk for ${world.name} [$chunkX,$chunkZ]", null)
-                                return@runSync
-                            }
-                            if (expected !in retained && tickets.retain(chunk)) retained[expected] = chunk
-                        }
-                    }
+                    request(world, chunkX, chunkZ, activation, token, attempt = 1)
                 }
             }
         }
@@ -59,9 +46,58 @@ internal class MineWorldWarmup(
         retained.clear()
     }
 
+    private fun request(
+        world: World,
+        chunkX: Int,
+        chunkZ: Int,
+        activation: Long,
+        token: RuntimeTaskSupervisor.Token,
+        attempt: Int,
+    ) {
+        val future = runCatching { chunkLoader.load(world, chunkX, chunkZ) }.getOrElse { failure ->
+            retryOrLog(world, chunkX, chunkZ, activation, token, attempt, failure)
+            return
+        }
+        future.whenComplete { chunk, failure ->
+            tasks.runSync(token) {
+                if (activation != generation) return@runSync
+                val expected = ChunkKey(world.uid, chunkX, chunkZ)
+                if (failure != null) {
+                    retryOrLog(world, chunkX, chunkZ, activation, token, attempt, failure)
+                    return@runSync
+                }
+                if (chunk == null || ChunkKey(chunk.world.uid, chunk.x, chunk.z) != expected) {
+                    retryOrLog(world, chunkX, chunkZ, activation, token, attempt, null)
+                    return@runSync
+                }
+                if (expected !in retained && tickets.retain(chunk)) retained[expected] = chunk
+            }
+        }
+    }
+
+    private fun retryOrLog(
+        world: World,
+        chunkX: Int,
+        chunkZ: Int,
+        activation: Long,
+        token: RuntimeTaskSupervisor.Token,
+        attempt: Int,
+        failure: Throwable?,
+    ) {
+        if (activation != generation) return
+        if (attempt < MAX_ATTEMPTS && tasks.runLater(token, RETRY_DELAY_TICKS) {
+                if (activation == generation) request(world, chunkX, chunkZ, activation, token, attempt + 1)
+            }
+        ) return
+        val reason = if (failure == null) "returned the wrong chunk" else "failed"
+        onFailure("Mine warmup $reason for ${world.name} [$chunkX,$chunkZ] after $attempt attempts", failure)
+    }
+
     private data class ChunkKey(val worldId: UUID, val x: Int, val z: Int)
 
     private companion object {
         const val RADIUS = 3
+        const val MAX_ATTEMPTS = 3
+        const val RETRY_DELAY_TICKS = 20L
     }
 }

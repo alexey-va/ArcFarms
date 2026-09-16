@@ -7,6 +7,7 @@ import ru.ruscrafting.farms.paper.worksite.WorksitePorts
 import ru.ruscrafting.farms.paper.mine.recovery.MineBlockRecoveryController
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 import ru.ruscrafting.farms.paper.mine.index.MineChunkTicket
+import ru.ruscrafting.farms.paper.mine.index.MineChunkTicketRegistry
 import ru.ruscrafting.farms.persistence.MineRecoveryJournal
 import ru.ruscrafting.farms.paper.MineBlockEffects
 import ru.ruscrafting.farms.paper.PaperMineBlockEffects
@@ -107,12 +108,7 @@ internal class MineComponentGraph(
         locale = locale,
     )
     private val pickaxes = MinePickaxeSupply(registry, serviceItems, locale, ports.audience)
-    private val tickets = object : MineChunkTicket {
-        override fun retain(chunk: org.bukkit.Chunk): Boolean = chunk.addPluginChunkTicket(plugin)
-        override fun release(chunk: org.bukkit.Chunk) {
-            chunk.removePluginChunkTicket(plugin)
-        }
-    }
+    private val tickets: MineChunkTicket = MineChunkTicketRegistry(plugin)
     private val worldWarmup = MineWorldWarmup(tickets, ports.tasks) { message, failure ->
         ports.state.log(java.util.logging.Level.WARNING, message, failure)
     }

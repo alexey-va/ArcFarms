@@ -234,7 +234,7 @@ internal class FarmDeliveryController(
             removeCarriedDisplay(key)
         }
         if (reconciledSequences.remove(zoneId) != null) {
-            entityLookup.inWorld(runtime.region.world).filter { entity -> identity(entity)?.zoneId == zoneId }.forEach(Entity::remove)
+            entityLookup.inAllWorlds().filter { entity -> identity(entity)?.zoneId == zoneId }.forEach(Entity::remove)
         }
         layouts.remove(zoneId)
         missingLocationWarnings.removeIf { it.zoneId == zoneId }
@@ -404,7 +404,7 @@ internal class FarmDeliveryController(
     }
 
     private fun removeLoaded(runtime: FarmRuntime, index: Int, reason: String) {
-        val removed = entityLookup.inWorld(runtime.region.world).filter {
+        val removed = entityLookup.inAllWorlds().filter {
             identity(it)?.let { identity -> identity.zoneId == runtime.settings.id && identity.index == index } == true
         }
         removed.forEach(Entity::remove)
@@ -430,11 +430,11 @@ internal class FarmDeliveryController(
         carriers.keys.removeIf { it.zoneId == zoneId }
         carriedDisplays.keys.removeIf { it.zoneId == zoneId }
         missingLocationWarnings.removeIf { it.zoneId == zoneId }
-        entityLookup.inWorld(runtime.region.world).filter { entity -> identity(entity)?.zoneId == zoneId }.forEach { entity ->
+        entityLookup.inAllWorlds().filter { entity -> identity(entity)?.zoneId == zoneId }.forEach { entity ->
             val identity = identity(entity)
             val entityRole = role(entity)
             if (
-                identity == null || identity.sequence != runtime.state.sequence ||
+                entity.world !== runtime.region.world || identity == null || identity.sequence != runtime.state.sequence ||
                 identity.index !in 0 until runtime.settings.delivery.crates
             ) {
                 entity.remove()

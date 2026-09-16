@@ -60,6 +60,30 @@ class MineWorldWarmupMockBukkitTest : FunSpec({
         tickets.retained shouldBe emptyList()
         tickets.released shouldBe emptyList()
     }
+
+    test("retries one transient chunk load failure without blocking activation") {
+        val world = paper.server.addSimpleWorld("mine")
+        val attempts = mutableMapOf<Pair<Int, Int>, Int>()
+        val tickets = RecordingWarmupTickets()
+        val warmup = MineWorldWarmup(
+            tickets = tickets,
+            tasks = immediateTasks(),
+            chunkLoader = MineChunkLoader { loadedWorld, chunkX, chunkZ ->
+                val key = chunkX to chunkZ
+                attempts[key] = attempts.getOrDefault(key, 0) + 1
+                if (key == 0 to 0 && attempts.getValue(key) == 1) {
+                    CompletableFuture.failedFuture(IllegalStateException("transient"))
+                } else {
+                    CompletableFuture.completedFuture(loadedWorld.getChunkAt(chunkX, chunkZ))
+                }
+            },
+        )
+
+        warmup.activate(listOf(world))
+
+        attempts.getValue(0 to 0) shouldBe 2
+        tickets.retained.size shouldBe 49
+    }
 })
 
 private fun immediateTasks(): WorksiteTaskPort {
@@ -68,6 +92,10 @@ private fun immediateTasks(): WorksiteTaskPort {
         every { lifecycleToken() } returns token
         every { runSync(token, any()) } answers {
             secondArg<() -> Unit>().invoke()
+            true
+        }
+        every { runLater(token, any(), any()) } answers {
+            thirdArg<() -> Unit>().invoke()
             true
         }
     }

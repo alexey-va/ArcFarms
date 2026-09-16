@@ -62,7 +62,7 @@ internal class MineIncidentSet(
         flooding.reconcile(runtime)
         participants.forEach { flooding.ensurePump(runtime, it) }
         powerFailure.reconcile(runtime)
-        objectiveMarkers.reconcile(runtime)
+        reconcileObjectiveMarkers(runtime)
         creatureNest.reconcileMissing(runtime)
         lostMiner.reconcileMissing(runtime)
     }
@@ -123,7 +123,7 @@ internal class MineIncidentSet(
         powerFailure.reconcile(runtime)
         creatureNest.reconcileChunk(runtime, chunk)
         lostMiner.reconcileChunk(runtime, chunk)
-        objectiveMarkers.reconcileChunk(runtime, chunk)
+        if (!abortBlockedObjective(runtime)) objectiveMarkers.reconcileChunk(runtime, chunk)
     }
 
     fun reconcileRecovery(chunk: Chunk? = null): Int {
@@ -131,7 +131,7 @@ internal class MineIncidentSet(
             caveIn.reconcile(runtime)
             flooding.reconcile(runtime)
             powerFailure.reconcile(runtime)
-            objectiveMarkers.reconcile(runtime)
+            reconcileObjectiveMarkers(runtime)
         }
         return journal.restoreOrphans(registry.snapshot(), chunk)
     }
@@ -156,5 +156,16 @@ internal class MineIncidentSet(
         creatureNest.cleanup(runtime)
         lostMiner.cleanup(runtime)
         objectiveMarkers.cleanup(runtime)
+    }
+
+    private fun reconcileObjectiveMarkers(runtime: MineRuntime) {
+        if (!abortBlockedObjective(runtime)) objectiveMarkers.reconcile(runtime)
+    }
+
+    private fun abortBlockedObjective(runtime: MineRuntime): Boolean {
+        if (!objectiveMarkers.hasBlockedTarget(runtime)) return false
+        clearActive(runtime)
+        coordinator.abort(runtime)
+        return true
     }
 }

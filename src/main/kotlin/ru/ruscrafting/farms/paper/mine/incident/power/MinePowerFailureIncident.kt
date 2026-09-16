@@ -16,6 +16,7 @@ import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.mine.incident.MineIncidentCoordinator
 import ru.ruscrafting.farms.paper.mine.incident.orderMineIncidentPositions
 import ru.ruscrafting.farms.paper.mine.incident.isIncidentSurface
+import ru.ruscrafting.farms.paper.mine.incident.entity.hasMineObjectiveMarkerSpace
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 import ru.ruscrafting.farms.paper.mine.recovery.MineIncidentBlockJournal
@@ -112,6 +113,7 @@ internal class MinePowerFailureIncident(
                 .filter {
                     index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.POWER, runtime.railMaterials) &&
                         runtime.isIncidentSurface(it) &&
+                        hasMineObjectiveMarkerSpace(it) &&
                         it.lightPosition().blockType() == Material.AIR
                 },
             required * runtime.rules().targetMultiplier * 2,
