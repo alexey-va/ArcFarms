@@ -1,15 +1,12 @@
 package ru.ruscrafting.farms.paper.mine.incident.flood
 
-import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
 import org.bukkit.Material
+import org.bukkit.Sound
 import org.bukkit.entity.Player
 import org.bukkit.event.block.Action
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.block.data.Levelled
-import ru.ruscrafting.farms.config.ArcFarmsLocale
-import ru.ruscrafting.farms.config.MessageKey
-import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetCandidate
@@ -28,10 +25,6 @@ import ru.ruscrafting.farms.paper.mine.incident.entity.hasMineObjectiveMarkerSpa
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 import ru.ruscrafting.farms.paper.mine.recovery.MineIncidentBlockJournal
-import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
-import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
-import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems
-import java.util.UUID
 import java.util.logging.Level
 import kotlin.math.absoluteValue
 
@@ -40,54 +33,23 @@ internal class MineFloodingIncident(
     private val index: MineBlockIndex,
     private val incidents: MineIncidentCoordinator,
     private val journal: MineIncidentBlockJournal,
-    private val items: WorksiteServiceItems?,
     private val state: WorksiteStatePort,
-    private val locale: ArcFarmsLocale?,
 ) {
     fun start(runtime: MineRuntime, required: Int, now: Long): Boolean {
-        val candidates = candidates(runtime, required)
-        if (candidates.size < required * runtime.rules().targetMultiplier) return false
-        if (!incidents.start(runtime, MineIncidentType.FLOODING, required, now, candidates)) return false
+        val candidate = candidates(runtime, required).firstOrNull() ?: return false
+        // Flooding is one local obstruction, like cave-in, rather than several remote water rooms.
+        if (!incidents.start(runtime, MineIncidentType.FLOODING, 1, now, listOf(candidate))) return false
         reconcile(runtime)
         return true
     }
 
-    /** Farm-style service-tool supply: keep the temporary pump in the selected slot when possible. */
-    fun ensurePump(runtime: MineRuntime, player: Player): Boolean {
-        val incident = runtime.state.incident ?: return false
-        if (!active(runtime)) return false
-        if (incident.serviceLeases.values.any { it == player.uniqueId }) return true
-        val itemId = (1..incident.required).map { "pump_$it" }.firstOrNull { it !in incident.serviceLeases } ?: return false
-        val identity = identity(runtime, itemId)
-        runtime.state = runtime.state.copy(
-            incident = incident.copy(serviceLeases = incident.serviceLeases + (itemId to player.uniqueId)),
-        )
-        val itemName = locale?.render(MessageKey.MINE_SERVICE_PUMP, player) ?: Component.text(MessageKey.MINE_SERVICE_PUMP.path)
-        val issued = items?.issueTool(player, identity, Material.BUCKET, itemName)
-        if (issued == null) {
-            runtime.state = runtime.state.copy(
-                incident = runtime.state.incident?.copy(serviceLeases = runtime.state.incident!!.serviceLeases - itemId),
-            )
-            return false
-        }
-        state.persistAsync()
-        return true
-    }
-
     fun drain(runtime: MineRuntime, targetId: String, player: Player): Boolean {
-        val incident = runtime.state.incident ?: return false
-        val lease = incident.serviceLeases.entries.firstOrNull { it.value == player.uniqueId } ?: return false
-        if (items?.consume(player, identity(runtime, lease.key)) != true) return false
-        runtime.state = runtime.state.copy(incident = incident.copy(serviceLeases = incident.serviceLeases - lease.key))
         val objective = runtime.state.objective ?: return false
-        val retainedWater = objective.targets.asSequence()
-            .filter { it.id != targetId && it.status != ObjectiveTargetStatus.COMPLETED }
-            .flatMap { runtime.floodFootprint(it.position).asSequence() }
-            .toSet()
         objective.target(targetId)?.position?.let { target ->
-            runtime.floodFootprint(target).filterNot(retainedWater::contains).forEach(journal::restoreNow)
+            runtime.floodFootprint(target).forEach(journal::restoreNow)
         }
         val completed = incidents.completeTarget(runtime, targetId, player).accepted
+        if (completed) player.playSound(player.location, Sound.BLOCK_WATER_AMBIENT, 0.75f, 1.15f)
         if (completed && !active(runtime)) journal.restore(runtime, INCIDENT_ID)
         return completed
     }
@@ -98,9 +60,7 @@ internal class MineFloodingIncident(
         val target = runtime.state.objective?.targets?.firstOrNull {
             it.id == targetId && it.status != ObjectiveTargetStatus.COMPLETED
         } ?: return false
-        if (runtime.state.incident?.serviceLeases?.values?.contains(player.uniqueId) == true) {
-            drain(runtime, target.id, player)
-        } else ensurePump(runtime, player)
+        drain(runtime, target.id, player)
         return true
     }
 
@@ -114,10 +74,9 @@ internal class MineFloodingIncident(
             it.status != ObjectiveTargetStatus.COMPLETED &&
                 (it.position == position || position in runtime.floodFootprint(it.position))
         } ?: return false
+        if (clicked.type != Material.WATER && clicked.type != Material.WATER_CAULDRON) return false
         event.isCancelled = true
-        if (runtime.state.incident?.serviceLeases?.values?.contains(event.player.uniqueId) == true) {
-            drain(runtime, target.id, event.player)
-        } else ensurePump(runtime, event.player)
+        drain(runtime, target.id, event.player)
         return true
     }
 
@@ -161,41 +120,8 @@ internal class MineFloodingIncident(
 
     fun waterPositions(runtime: MineRuntime): List<WorksitePosition> = journal.positions(runtime, INCIDENT_ID)
 
-    fun isActive(identity: ServiceItemIdentity): Boolean {
-        if (identity.activity != ActivityKind.MINE || identity.role.value != PUMP_ROLE) return false
-        val runtime = registry.byId(identity.zoneId) ?: return false
-        val incident = runtime.state.incident ?: return false
-        return active(runtime) && runtime.state.sequence == identity.sequence &&
-            incident.objectiveNonce == identity.objectiveNonce && identity.itemId in incident.serviceLeases
-    }
-
-    fun release(playerId: UUID, identity: ServiceItemIdentity, reason: WorksitePlayerReleaseReason) {
-        val runtime = registry.byId(identity.zoneId) ?: return
-        val incident = runtime.state.incident ?: return
-        if (incident.type != MineIncidentType.FLOODING || incident.serviceLeases[identity.itemId] != playerId) return
-        runtime.state = runtime.state.copy(incident = incident.copy(serviceLeases = incident.serviceLeases - identity.itemId))
-        state.persistAsync()
-    }
-
-    fun releasePlayer(playerId: UUID): Boolean {
-        val runtime = registry.snapshot().firstOrNull {
-            it.state.incident?.takeIf { incident -> incident.type == MineIncidentType.FLOODING }
-                ?.serviceLeases?.values?.contains(playerId) == true
-        } ?: return false
-        val lease = runtime.state.incident!!.serviceLeases.entries.first { it.value == playerId }
-        val identity = identity(runtime, lease.key)
-        Bukkit.getPlayer(playerId)?.let { items?.consume(it, identity) }
-        release(playerId, identity, WorksitePlayerReleaseReason.ZONE_EXIT)
-        return true
-    }
-
     private fun active(runtime: MineRuntime): Boolean =
         runtime.state.phase == MinePhase.INCIDENT && runtime.state.incident?.type == MineIncidentType.FLOODING
-
-    private fun identity(runtime: MineRuntime, itemId: String) = ServiceItemIdentity(
-        ActivityKind.MINE, runtime.settings.id, runtime.state.sequence,
-        requireNotNull(runtime.state.incident).objectiveNonce, ObjectiveTargetRole(PUMP_ROLE), itemId,
-    )
 
     private fun candidates(runtime: MineRuntime, required: Int): List<ObjectiveTargetCandidate> =
         orderMineIncidentPositions(
@@ -208,7 +134,7 @@ internal class MineFloodingIncident(
                             footprint.size >= MIN_FLOOD_BLOCKS && footprint.all { water -> water.blockType() == Material.AIR }
                         }
                 },
-            required * runtime.rules().targetMultiplier * 2,
+            1,
             0xF100DL,
         )
             .mapIndexed { order, position ->
@@ -236,7 +162,6 @@ internal class MineFloodingIncident(
 
     private companion object {
         const val INCIDENT_ID = "flooding"
-        const val PUMP_ROLE = "mine_pump"
         const val FLOOD_JOURNAL_STRIDE = 100
         const val MIN_FLOOD_BLOCKS = 12
     }

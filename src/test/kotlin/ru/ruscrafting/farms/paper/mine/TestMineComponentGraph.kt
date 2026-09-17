@@ -3,6 +3,7 @@ package ru.ruscrafting.farms.paper.mine
 import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.paper.MineBlockEffects
+import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.PaperMineBlockEffects
 import ru.ruscrafting.farms.paper.RegionGateway
 import ru.ruscrafting.farms.paper.WorksiteRuntimePort
@@ -22,6 +23,7 @@ internal fun testMineComponentGraph(
     port: WorksiteRuntimePort,
     clock: () -> Long,
     journal: MineRecoveryJournal,
+    debug: ArcFarmsDebug = ArcFarmsDebug({ false }) {},
     random: RandomGenerator = RandomGenerator.getDefault(),
     blockEffects: MineBlockEffects = PaperMineBlockEffects,
     serviceItems: WorksiteServiceItems? = null,
@@ -36,6 +38,7 @@ internal fun testMineComponentGraph(
     port.asWorksitePorts(),
     clock,
     journal,
+    debug,
     random,
     blockEffects,
     serviceItems,

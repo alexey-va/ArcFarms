@@ -1,5 +1,6 @@
 package ru.ruscrafting.farms.paper.mine.incident.crystal
 
+import org.bukkit.Sound
 import org.bukkit.entity.Player
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.paper.mine.MineRuntime
@@ -14,6 +15,8 @@ internal class MineCrystalResonanceIncident(
 ) : MineSequenceIncident(
     MineIncidentType.CRYSTAL_RESONANCE, MineAnchorRole.CRYSTAL, "crystal_node", registry, index, incidents,
     requireStructuralSurface = false,
+    requireDirectClickSpace = true,
+    successSound = Sound.BLOCK_AMETHYST_BLOCK_CHIME,
 ) {
     fun hit(runtime: MineRuntime, targetId: String, player: Player, insideForgivingWindow: Boolean): Boolean =
         use(runtime, targetId, player, insideForgivingWindow)

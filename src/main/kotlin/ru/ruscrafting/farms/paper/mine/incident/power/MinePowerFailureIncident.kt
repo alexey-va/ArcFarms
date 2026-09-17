@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.paper.mine.incident.power
 
 import org.bukkit.Bukkit
 import org.bukkit.Material
+import org.bukkit.Sound
 import org.bukkit.entity.Player
 import org.bukkit.event.block.Action
 import org.bukkit.event.player.PlayerInteractEvent
@@ -42,10 +43,12 @@ internal class MinePowerFailureIncident(
     fun relight(runtime: MineRuntime, targetId: String, player: Player): Boolean {
         val incident = runtime.state.incident ?: return false
         if (!active(runtime)) return false
-        val target = runtime.state.objective?.targets?.getOrNull(incident.progress) ?: return false
-        if (target.id != targetId) return false
+        val target = runtime.state.objective?.targets?.firstOrNull {
+            it.id == targetId && it.status != ObjectiveTargetStatus.COMPLETED
+        } ?: return false
         journal.restoreNow(target.position.lightPosition())
         val completed = incidents.completeTarget(runtime, targetId, player).accepted
+        if (completed) player.playSound(player.location, Sound.BLOCK_LEVER_CLICK, 0.75f, 1.0f)
         if (completed && !active(runtime)) journal.restore(runtime, INCIDENT_ID)
         return completed
     }

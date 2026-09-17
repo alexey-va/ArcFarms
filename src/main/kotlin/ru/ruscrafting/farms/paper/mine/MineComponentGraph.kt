@@ -3,6 +3,7 @@ package ru.ruscrafting.farms.paper.mine
 import net.kyori.adventure.text.Component
 import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.paper.RegionGateway
+import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.worksite.WorksitePorts
 import ru.ruscrafting.farms.paper.mine.recovery.MineBlockRecoveryController
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
@@ -28,6 +29,8 @@ import ru.ruscrafting.farms.paper.mine.incident.flood.MineFloodingIncident
 import ru.ruscrafting.farms.paper.mine.incident.power.MinePowerFailureIncident
 import ru.ruscrafting.farms.paper.mine.incident.creature.MineCreatureNestIncident
 import ru.ruscrafting.farms.paper.mine.incident.rescue.MineLostMinerIncident
+import ru.ruscrafting.farms.paper.mine.incident.rescue.MineLostMinerMazeWorld
+import ru.ruscrafting.farms.paper.mine.incident.rescue.PaperMineLostMinerMazeChunkRetention
 import ru.ruscrafting.farms.paper.mine.incident.entity.MineIncidentEntityEffects
 import ru.ruscrafting.farms.paper.mine.incident.entity.PaperMineIncidentEntityEffects
 import ru.ruscrafting.farms.paper.mine.incident.entity.MineObjectiveMarkerScene
@@ -51,6 +54,7 @@ internal class MineComponentGraph(
     ports: WorksitePorts,
     clock: () -> Long,
     journal: MineRecoveryJournal,
+    debug: ArcFarmsDebug,
     random: RandomGenerator = RandomGenerator.getDefault(),
     blockEffects: MineBlockEffects = PaperMineBlockEffects,
     serviceItems: WorksiteServiceItems? = null,
@@ -63,6 +67,7 @@ internal class MineComponentGraph(
     internal val registry = MineRuntimeRegistry()
     val recovery = MineBlockRecoveryController(journal, ports.access, ports.state, ports.tasks, clock)
     val index = MineBlockIndex(plugin)
+    private val tickets: MineChunkTicket = MineChunkTicketRegistry(plugin)
     private val transitions = MineTransitionCoordinator(ports.state, ports.stats, ports.audience, locale)
     private val incidents = MineIncidentCoordinator(transitions, ports.state)
     private val incidentJournal = MineIncidentBlockJournal(recovery)
@@ -73,7 +78,7 @@ internal class MineComponentGraph(
     val trackDamage = MineTrackDamageIncident(registry, index, incidents, serviceItems, ports.state, locale)
     val gasLeak = MineGasLeakIncident(registry, index, incidents)
     val crystalResonance = MineCrystalResonanceIncident(registry, index, incidents)
-    val flooding = MineFloodingIncident(registry, index, incidents, incidentJournal, serviceItems, ports.state, locale)
+    val flooding = MineFloodingIncident(registry, index, incidents, incidentJournal, ports.state)
     val powerFailure = MinePowerFailureIncident(registry, index, incidents, incidentJournal, ports.state)
     val cartScene = MineCartScene(cartEffects)
     val extraction = MineExtractionController(
@@ -83,7 +88,12 @@ internal class MineComponentGraph(
         registry, index, extraction, transitions, serviceItems, locale, ports.access, ports.audience, ports.state, clock,
     )
     val creatureNest = MineCreatureNestIncident(registry, index, incidents, incidentEntityEffects, ports.access, locale)
-    val lostMiner = MineLostMinerIncident(registry, index, incidents, incidentEntityEffects, extraction::deliveryPoint)
+    private val lostMinerMaze = MineLostMinerMazeWorld(
+        plugin,
+        debug,
+        PaperMineLostMinerMazeChunkRetention(tickets),
+    )
+    val lostMiner = MineLostMinerIncident(registry, index, incidents, incidentEntityEffects, lostMinerMaze)
     val objectiveMarkers = MineObjectiveMarkerScene(incidentEntityEffects)
     val incidentScheduler = MineIncidentScheduler(
         caveIn, gasLeak, flooding, trackDamage, crystalResonance, creatureNest, powerFailure, lostMiner,
@@ -108,7 +118,6 @@ internal class MineComponentGraph(
         locale = locale,
     )
     private val pickaxes = MinePickaxeSupply(registry, serviceItems, locale, ports.audience)
-    private val tickets: MineChunkTicket = MineChunkTicketRegistry(plugin)
     private val worldWarmup = MineWorldWarmup(tickets, ports.tasks) { message, failure ->
         ports.state.log(java.util.logging.Level.WARNING, message, failure)
     }

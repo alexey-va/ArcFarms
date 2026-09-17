@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper.mine.incident.sequence
 
 import org.bukkit.event.block.Action
+import org.bukkit.Sound
 import org.bukkit.event.player.PlayerInteractEvent
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MinePhase
@@ -10,6 +11,7 @@ import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.mine.incident.MineIncidentCoordinator
+import ru.ruscrafting.farms.paper.mine.incident.blockType
 import ru.ruscrafting.farms.paper.mine.incident.orderMineIncidentPositions
 import ru.ruscrafting.farms.paper.mine.incident.isIncidentSurface
 import ru.ruscrafting.farms.paper.mine.incident.entity.hasMineObjectiveMarkerSpace
@@ -17,7 +19,7 @@ import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 import kotlin.math.absoluteValue
 
-/** Ordered, non-resetting sequence. A wrong input never destroys accepted progress. */
+/** Non-resetting multi-target interaction. Any remaining target may be activated. */
 internal abstract class MineSequenceIncident(
     private val type: MineIncidentType,
     private val anchorRole: MineAnchorRole,
@@ -26,6 +28,8 @@ internal abstract class MineSequenceIncident(
     private val index: MineBlockIndex,
     private val incidents: MineIncidentCoordinator,
     private val requireStructuralSurface: Boolean = true,
+    private val requireDirectClickSpace: Boolean = true,
+    private val successSound: Sound,
 ) {
     fun start(runtime: MineRuntime, required: Int, now: Long): Boolean {
         val candidates = candidates(runtime, required)
@@ -34,12 +38,13 @@ internal abstract class MineSequenceIncident(
     }
 
     fun use(runtime: MineRuntime, targetId: String, player: org.bukkit.entity.Player, timingAccepted: Boolean = true): Boolean {
-        val incident = runtime.state.incident ?: return false
+        runtime.state.incident ?: return false
         if (!active(runtime) || !timingAccepted) return false
-        val objective = runtime.state.objective ?: return false
-        val expected = objective.targets.getOrNull(incident.progress) ?: return false
-        if (expected.id != targetId) return false
-        return incidents.completeTarget(runtime, targetId, player).accepted
+        val target = runtime.state.objective?.targets?.firstOrNull { it.id == targetId } ?: return false
+        if (!actionable(target.position)) return false
+        val result = incidents.completeTarget(runtime, targetId, player)
+        if (result.accepted) player.playSound(player.location, successSound, 0.75f, 1.0f)
+        return result.accepted
     }
 
     /** Entity-marker route; the parent router validates the PDC kind before calling this. */
@@ -69,8 +74,8 @@ internal abstract class MineSequenceIncident(
     }
 
     fun nextTarget(runtime: MineRuntime): WorksitePosition? {
-        val progress = runtime.state.incident?.takeIf { active(runtime) }?.progress ?: return null
-        return runtime.state.objective?.targets?.getOrNull(progress)?.position
+        if (runtime.state.incident?.takeIf { active(runtime) } == null) return null
+        return runtime.state.objective?.targets?.firstOrNull { it.status != ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus.COMPLETED }?.position
     }
 
     private fun active(runtime: MineRuntime): Boolean =
@@ -81,9 +86,10 @@ internal abstract class MineSequenceIncident(
             runtime,
             index.loadedTargets(runtime.settings.id, anchorRole)
                 .filter {
-                    index.isLiveTarget(runtime.settings.id, it, anchorRole, runtime.railMaterials) &&
+                        index.isLiveTarget(runtime.settings.id, it, anchorRole, runtime.railMaterials) &&
                         (!requireStructuralSurface || runtime.isIncidentSurface(it)) &&
-                        hasMineObjectiveMarkerSpace(it)
+                        (!requireDirectClickSpace || hasMineObjectiveMarkerSpace(it)) &&
+                        (!isCrystalTarget() || it.blockType()?.name?.endsWith("AMETHYST_CLUSTER") == true)
                 },
             required * runtime.rules().targetMultiplier * 2,
             type.ordinal.toLong() + 1L,
@@ -98,4 +104,9 @@ internal abstract class MineSequenceIncident(
             }
 
     private fun token(value: Int): String = if (value < 0) "m${value.toLong().absoluteValue}" else value.toString()
+
+    private fun isCrystalTarget(): Boolean = anchorRole == MineAnchorRole.CRYSTAL
+
+    private fun actionable(position: WorksitePosition): Boolean =
+        !isCrystalTarget() || position.blockType() == org.bukkit.Material.AMETHYST_CLUSTER
 }

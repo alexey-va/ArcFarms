@@ -15,6 +15,7 @@ import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.paper.ActivityBarKey
 import ru.ruscrafting.farms.paper.ActivityStatus
+import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.MineController
 import ru.ruscrafting.farms.paper.RegionGateway
 import ru.ruscrafting.farms.paper.WorksiteBlockBreakHandler
@@ -25,6 +26,8 @@ import ru.ruscrafting.farms.paper.WorksiteBlockInteractHandler
 import ru.ruscrafting.farms.paper.WorksiteGuidanceHandler
 import ru.ruscrafting.farms.paper.WorksiteModule
 import ru.ruscrafting.farms.paper.WorksiteMoveHandler
+import ru.ruscrafting.farms.paper.WorksiteTeleportRetention
+import ru.ruscrafting.farms.paper.WorksiteTemporaryBlockOwner
 import ru.ruscrafting.farms.paper.worksite.WorksitePorts
 import ru.ruscrafting.farms.persistence.MineRecoveryJournal
 import ru.ruscrafting.farms.paper.WorksiteFastVisualHandler
@@ -58,6 +61,7 @@ internal class MineVersionedModule(
     locale: ArcFarmsLocale,
     journal: MineRecoveryJournal,
     ports: WorksitePorts,
+    debug: ArcFarmsDebug,
     clock: () -> Long,
     random: RandomGenerator,
     serviceItems: WorksiteServiceItems? = null,
@@ -67,11 +71,11 @@ internal class MineVersionedModule(
     WorksiteBlockInteractHandler,
     WorksiteMoveHandler, WorksiteGuidanceHandler, WorksiteFastVisualHandler, WorksiteServiceItemOwner,
     WorksiteParticipantOwner, WorksiteEntityInteractHandler, WorksiteEntityDeathHandler, WorksiteEntityDamageHandler,
-    WorksiteAdminHandler {
+    WorksiteAdminHandler, WorksiteTeleportRetention, WorksiteTemporaryBlockOwner {
     private val engineVersion = initial.firstOrNull()?.engineVersion ?: 1
     private val delegate: WorksiteModule<MineShiftState> = if (engineVersion == 2) {
         MineComponentGraph(
-            plugin, serverId, regions, ports, clock, journal, random, serviceItems = serviceItems, locale = locale,
+            plugin, serverId, regions, ports, clock, journal, debug, random, serviceItems = serviceItems, locale = locale,
             rewardGrants = rewardGrants,
             lift = lift,
         ).module
@@ -130,6 +134,8 @@ internal class MineVersionedModule(
         (delegate as? MineModule)?.adminForceIncident(zoneId, type, now) == true
     fun incidentDiagnostics(zoneId: String): List<MineIncidentPlacementReport> =
         (delegate as? MineModule)?.admin?.incidentDiagnostics(zoneId).orEmpty()
+    fun incidentDiagnostics(zoneId: String, type: MineIncidentType): MineIncidentPlacementReport? =
+        (delegate as? MineModule)?.admin?.incidentDiagnostics(zoneId, type)
 
     override fun states(): Map<String, MineShiftState> = delegate.states()
     override fun statuses(): List<ActivityStatus> = delegate.statuses()
@@ -162,6 +168,12 @@ internal class MineVersionedModule(
 
     override fun onMove(from: Location, to: Location, player: Player): Boolean =
         (delegate as? WorksiteMoveHandler)?.onMove(from, to, player) == true
+
+    override fun retainOnTeleport(player: Player, destination: Location): Boolean =
+        (delegate as? WorksiteTeleportRetention)?.retainOnTeleport(player, destination) == true
+
+    override fun protectsTemporaryBlock(location: Location): Boolean =
+        (delegate as? WorksiteTemporaryBlockOwner)?.protectsTemporaryBlock(location) == true
 
     override fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean =
         (delegate as? WorksiteEntityInteractHandler)?.onInteractEntity(event) == true

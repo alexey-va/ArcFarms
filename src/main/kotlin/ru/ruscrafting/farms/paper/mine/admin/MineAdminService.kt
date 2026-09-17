@@ -42,6 +42,8 @@ internal class MineAdminService(
     override fun incidentIds(): List<String> = MineIncidentScheduler.SUPPORTED_TYPES.map(Enum<*>::name)
     fun incidentDiagnostics(zoneId: String): List<MineIncidentPlacementReport> =
         registry.byId(zoneId)?.let(incidents::diagnostics).orEmpty()
+    fun incidentDiagnostics(zoneId: String, type: MineIncidentType): MineIncidentPlacementReport? =
+        registry.byId(zoneId)?.let { incidents.diagnostics(it, type) }
 
     override fun status(zoneId: String): MineAdminStatus? = registry.byId(zoneId)?.let { runtime ->
         MineAdminStatus(

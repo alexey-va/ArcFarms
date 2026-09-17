@@ -3,9 +3,14 @@ package ru.ruscrafting.farms.paper.mine.incident
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
+import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.block.BlockFace
 import org.bukkit.block.data.Levelled
+import org.bukkit.Sound
 import org.bukkit.entity.Player
 import org.bukkit.entity.Interaction
 import org.bukkit.event.block.Action
@@ -46,8 +51,6 @@ class MineWorldIncidentsMockBukkitTest : FunSpec({
         val graph = worldGraph(paper, journal, items, "FloodA")
         val runtime = graph.registry.byId("old_shafts")!!
         index(graph, runtime, floors.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.NEST)) })
-        items.active = graph.flooding::isActive
-
         graph.flooding.start(runtime, required = 2, now = 1_000L) shouldBe true
         val initial = graph.flooding.waterPositions(runtime)
         (initial.size >= 24) shouldBe true
@@ -64,33 +67,30 @@ class MineWorldIncidentsMockBukkitTest : FunSpec({
         restarted.flooding.waterPositions(restartedRuntime) shouldContainExactlyInAnyOrder initial
 
         val player = paper.server.addPlayer("PumpOperator")
-        items.active = restarted.flooding::isActive
         restarted.incidentSet.tick(restartedRuntime, 1_001L, emptyList())
-        val targetFootprints = restartedRuntime.state.objective!!.targets.take(2)
-            .associate { target -> target.id to restartedRuntime.floodFootprint(target.position).toSet() }
-        restartedRuntime.state.objective!!.targets.take(2).forEachIndexed { targetIndex, target ->
-            repeat(2) {
-                val event = PlayerInteractEntityEvent(
-                    player,
-                    objectiveHitbox(restarted, world, MineIncidentEntityKind.FLOOD_MARKER_HITBOX, target.id),
-                    EquipmentSlot.HAND,
-                )
-                restarted.incidentSet.onInteractEntity(event) shouldBe true
-                event.isCancelled shouldBe true
-            }
-            if (targetIndex == 0) {
-                restarted.flooding.reconcile(restartedRuntime)
-                val otherWater = targetFootprints.getValue(restartedRuntime.state.objective!!.targets[1].id)
-                targetFootprints.getValue(target.id).minus(otherWater)
-                    .all { world.getBlockAt(it.x, it.y, it.z).type == Material.AIR } shouldBe true
-                otherWater.all { world.getBlockAt(it.x, it.y, it.z).type == Material.WATER } shouldBe true
-            }
-        }
-        items.toolIssues shouldBe 2
+        val target = restartedRuntime.state.objective!!.targets.single()
+        val targetFootprint = restartedRuntime.floodFootprint(target.position).toSet()
+        val water = world.getBlockAt(
+            targetFootprint.first().x,
+            targetFootprint.first().y,
+            targetFootprint.first().z,
+        )
+        val feedback = mockk<Player>(relaxed = true)
+        every { feedback.uniqueId } returns player.uniqueId
+        every { feedback.location } returns player.location
+        restarted.flooding.onInteract(
+            PlayerInteractEvent(
+                feedback, Action.RIGHT_CLICK_BLOCK, ItemStack(Material.AIR),
+                water, BlockFace.UP, EquipmentSlot.HAND,
+            ),
+        ) shouldBe true
+        items.toolIssues shouldBe 0
+        verify(exactly = 1) { feedback.playSound(any<Location>(), Sound.BLOCK_WATER_AMBIENT, 0.75f, 1.15f) }
+        restartedRuntime.state.phase shouldBe MinePhase.MINING
         initial.all { world.getBlockAt(it.x, it.y, it.z).type == Material.AIR } shouldBe true
     }
 
-    test("power switches keep accepted order progress and temporary lights are fully restored") {
+    test("power switches accept any remaining target and restore temporary lights") {
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("Electrician")
         val switches = (1..5).map { x -> world.getBlockAt(x, 64, 5).also { it.type = Material.STONE } }
@@ -103,15 +103,19 @@ class MineWorldIncidentsMockBukkitTest : FunSpec({
         val targets = runtime.state.objective!!.targets
         val lights = graph.powerFailure.lightPositions(runtime)
         lights.size shouldBe 4
+        val powerFeedback = mockk<Player>(relaxed = true)
+        every { powerFeedback.uniqueId } returns player.uniqueId
+        every { powerFeedback.location } returns player.location
         graph.incidentSet.onInteractEntity(
             PlayerInteractEntityEvent(
-                player,
+                powerFeedback,
                 objectiveHitbox(graph, world, MineIncidentEntityKind.POWER_MARKER_HITBOX, targets[1].id),
                 EquipmentSlot.HAND,
             ),
         ) shouldBe true
-        runtime.state.incident!!.progress shouldBe 0
-        listOf(targets[0], targets[1]).forEach { target ->
+        verify(exactly = 1) { powerFeedback.playSound(any<Location>(), Sound.BLOCK_LEVER_CLICK, 0.75f, 1.0f) }
+        runtime.state.incident!!.progress shouldBe 1
+        listOf(targets[0]).forEach { target ->
             val event = PlayerInteractEntityEvent(
                 player,
                 objectiveHitbox(graph, world, MineIncidentEntityKind.POWER_MARKER_HITBOX, target.id),

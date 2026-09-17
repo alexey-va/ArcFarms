@@ -34,6 +34,7 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteBlockSnapshot
 import ru.ruscrafting.farms.paper.worksite.WorksiteChunkCoordinate
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import java.util.logging.Level
+import kotlin.math.floor
 
 /** A physical, crash-safe rubble wall placed in a suitable passage of the live mine. */
 internal class MineCaveInIncident(
@@ -532,12 +533,24 @@ internal class MineCaveInIncident(
 
     private fun reconcileMarker(runtime: MineRuntime, positions: List<WorksitePosition>) {
         val marker = markerPosition(positions) ?: return
-        val chunkX = marker.x shr 4
-        val chunkZ = marker.z shr 4
+        // The entity origin stays on the minimum rubble block; the display
+        // transformation supplies the anti-z-fighting margin. Reconcile the
+        // old center chunk too so a pre-fix marker cannot remain stale.
+        val originBlockX = positions.minOf { it.x }
+        val originBlockZ = positions.minOf { it.z }
+        val centerX = floor((positions.minOf { it.x } + positions.maxOf { it.x } + 1) / 2.0).toInt()
+        val centerZ = floor((positions.minOf { it.z } + positions.maxOf { it.z } + 1) / 2.0).toInt()
+        val legacyMarker = markerPosition(positions)
         val world = runtime.region.world
-        if (world.isChunkLoaded(chunkX, chunkZ)) {
-            effects.reconcileChunk(runtime, world.getChunkAt(chunkX, chunkZ), MineIncidentEntityKind.CAVE_IN_MARKER,
-                mapOf(MARKER_TARGET_ID to marker))
+        setOfNotNull(
+            originBlockX shr 4 to (originBlockZ shr 4),
+            centerX shr 4 to (centerZ shr 4),
+            legacyMarker?.let { it.x shr 4 to (it.z shr 4) },
+        ).forEach { (chunkX, chunkZ) ->
+            if (world.isChunkLoaded(chunkX, chunkZ)) {
+                effects.reconcileChunk(runtime, world.getChunkAt(chunkX, chunkZ), MineIncidentEntityKind.CAVE_IN_MARKER,
+                    mapOf(MARKER_TARGET_ID to marker))
+            }
         }
     }
 

@@ -22,6 +22,8 @@ import ru.ruscrafting.farms.paper.WorksiteBlockDamageHandler
 import ru.ruscrafting.farms.paper.WorksiteBlockPlaceHandler
 import ru.ruscrafting.farms.paper.WorksiteBlockInteractHandler
 import ru.ruscrafting.farms.paper.WorksiteMoveHandler
+import ru.ruscrafting.farms.paper.WorksiteTeleportRetention
+import ru.ruscrafting.farms.paper.WorksiteTemporaryBlockOwner
 import ru.ruscrafting.farms.paper.WorksiteFastVisualHandler
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
@@ -86,7 +88,7 @@ internal class MineModule(
 ) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockBreakGuard, WorksiteBlockDamageHandler, WorksiteBlockPlaceHandler,
     WorksiteBlockInteractHandler,
     WorksiteMoveHandler, WorksiteEntityInteractHandler, WorksiteEntityDeathHandler, WorksiteEntityDamageHandler, WorksiteFastVisualHandler,
-    WorksiteParticipantOwner, WorksiteServiceItemOwner, WorksiteGuidanceHandler {
+    WorksiteParticipantOwner, WorksiteServiceItemOwner, WorksiteGuidanceHandler, WorksiteTeleportRetention, WorksiteTemporaryBlockOwner {
     override val kind: ActivityKind = ActivityKind.MINE
     override val zoneCount: Int get() = registry.size
     val pendingBlockCount: Int get() = recovery.pendingCount
@@ -133,6 +135,7 @@ internal class MineModule(
                 extraction.reconcile(runtime)
             }
         }
+        tasks.guarded("mine_v2_lost_miner_maze") { incidents.process() }
         tasks.guarded("mine_v2_recovery") { recovery.processDue(now) }
     }
 
@@ -183,6 +186,11 @@ internal class MineModule(
     override fun onMove(from: Location, to: Location, player: Player): Boolean =
         incidents.onMove(to, player) || loading.onMove(to, player) || extraction.onMove(from, to, player)
 
+    override fun retainOnTeleport(player: Player, destination: Location): Boolean =
+        incidents.retainOnTeleport(player, destination)
+
+    override fun protectsTemporaryBlock(location: Location): Boolean = incidents.protectsTemporaryBlock(location)
+
     override fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean = incidents.onInteractEntity(event)
 
     override fun onEntityDeath(event: EntityDeathEvent): Boolean = incidents.onEntityDeath(event)
@@ -210,7 +218,7 @@ internal class MineModule(
 
     override fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
         loading.releasePlayer(player, reason)
-        incidents.releasePlayer(player.uniqueId)
+        incidents.releasePlayer(player, reason)
         guidance.releasePlayer(player)
     }
 

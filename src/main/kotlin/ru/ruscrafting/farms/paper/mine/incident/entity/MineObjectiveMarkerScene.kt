@@ -99,7 +99,9 @@ internal class MineObjectiveMarkerScene(private val effects: MineIncidentEntityE
         if (runtime.state.phase != MinePhase.INCIDENT) return null
         return when (runtime.state.incident?.type) {
             MineIncidentType.GAS_LEAK -> MineIncidentEntityKind.GAS_MARKER
-            MineIncidentType.CRYSTAL_RESONANCE -> MineIncidentEntityKind.CRYSTAL_MARKER
+            // Amethyst buds/clusters are the physical affordance; never shadow them with
+            // a synthetic display or hitbox.
+            MineIncidentType.CRYSTAL_RESONANCE -> null
             MineIncidentType.FLOODING -> MineIncidentEntityKind.FLOOD_MARKER
             MineIncidentType.POWER_FAILURE -> MineIncidentEntityKind.POWER_MARKER
             else -> null

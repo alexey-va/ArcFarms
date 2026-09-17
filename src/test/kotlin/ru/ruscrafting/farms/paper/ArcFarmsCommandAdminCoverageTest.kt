@@ -123,7 +123,7 @@ class ArcFarmsCommandAdminCoverageTest : FunSpec({
             every { mineZoneIds() } returns listOf("old_shafts")
             every { mineIncidentIds() } returns listOf("CAVE_IN")
             every { adminSetMineIncident(any(), any(), any()) } returns false
-            every { mineIncidentDiagnostics("old_shafts") } returns listOf(report)
+            every { mineIncidentDiagnostics("old_shafts", MineIncidentType.CAVE_IN) } returns report
         }
         val locale = mockk<ArcFarmsLocale>(relaxed = true) {
             every { text(any()) } returns Component.empty()
@@ -137,6 +137,8 @@ class ArcFarmsCommandAdminCoverageTest : FunSpec({
             locale.renderPath("admin.mine-placement.reason.missing_stone_or_ore_ceiling", player, any())
         }
         verify(exactly = 1) { locale.renderPath("admin.mine-placement.reason.footprint_occupied", player, any()) }
+        verify(exactly = 1) { service.mineIncidentDiagnostics("old_shafts", MineIncidentType.CAVE_IN) }
+        verify(exactly = 0) { service.mineIncidentDiagnostics("old_shafts") }
         verify(exactly = 0) { locale.renderPath("admin.mine-point.help", any(), any()) }
     }
 })

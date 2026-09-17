@@ -2,7 +2,13 @@ package ru.ruscrafting.farms.paper.mine.incident
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
+import org.bukkit.Location
 import org.bukkit.Material
+import org.bukkit.Sound
+import org.bukkit.entity.Player
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineShiftState
@@ -21,11 +27,11 @@ class MineSequenceIncidentsMockBukkitTest : FunSpec({
     beforeEach { paper = MockBukkitTestRuntime.open() }
     afterEach { paper.close() }
 
-    test("wrong sequence input repeats the next target without losing progress") {
+    test("any remaining sequence target can be activated without ordered clicks") {
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("Engineer")
         val supports = (1..5).map { x -> world.getBlockAt(x, 64, 2).also { it.type = Material.STONE } }
-        val crystals = (1..5).map { x -> world.getBlockAt(x, 64, 5).also { it.type = Material.AMETHYST_BLOCK } }
+        val crystals = (1..5).map { x -> world.getBlockAt(x, 64, 5).also { it.type = Material.AMETHYST_CLUSTER } }
         val graph = testMineComponentGraph(
             paper.createSimplePlugin("MineSequenceTest"), CuboidRegionGateway(), immediateMinePort(),
             clock = { 1_000L }, journal = ImmediateMineJournal(),
@@ -45,26 +51,27 @@ class MineSequenceIncidentsMockBukkitTest : FunSpec({
 
         graph.gasLeak.start(runtime, required = 2, now = 1_000L) shouldBe true
         val gasTargets = runtime.state.objective!!.targets
-        graph.gasLeak.useVent(runtime, gasTargets[1].id, player) shouldBe false
-        runtime.state.incident!!.progress shouldBe 0
-        graph.gasLeak.useVent(runtime, gasTargets[0].id, player) shouldBe true
-        graph.gasLeak.useVent(runtime, gasTargets[2].id, player) shouldBe false
+        val feedback = mockk<Player>(relaxed = true)
+        every { feedback.uniqueId } returns player.uniqueId
+        every { feedback.location } returns player.location
+        graph.gasLeak.useVent(runtime, gasTargets[1].id, feedback) shouldBe true
+        verify(exactly = 1) { feedback.playSound(any<Location>(), Sound.BLOCK_FIRE_EXTINGUISH, 0.75f, 1.0f) }
         runtime.state.incident!!.progress shouldBe 1
-        graph.gasLeak.useVent(runtime, gasTargets[1].id, player) shouldBe true
+        graph.gasLeak.useVent(runtime, gasTargets[0].id, player) shouldBe true
         runtime.state.phase shouldBe MinePhase.MINING
 
         graph.crystalResonance.start(runtime, required = 2, now = 2_000L) shouldBe true
         val crystalTargets = runtime.state.objective!!.targets
-        graph.crystalResonance.hit(runtime, crystalTargets[0].id, player, insideForgivingWindow = false) shouldBe false
-        runtime.state.incident!!.progress shouldBe 0
-        graph.crystalResonance.hit(runtime, crystalTargets[0].id, player, insideForgivingWindow = true) shouldBe true
-        graph.crystalResonance.hit(runtime, crystalTargets[2].id, player, insideForgivingWindow = false) shouldBe false
+        graph.crystalResonance.hit(runtime, crystalTargets[1].id, feedback, insideForgivingWindow = true) shouldBe true
+        verify(exactly = 1) { feedback.playSound(any<Location>(), Sound.BLOCK_AMETHYST_BLOCK_CHIME, 0.75f, 1.0f) }
         runtime.state.incident!!.progress shouldBe 1
+        graph.crystalResonance.hit(runtime, crystalTargets[0].id, player, insideForgivingWindow = true) shouldBe true
+        runtime.state.phase shouldBe MinePhase.MINING
     }
 
-    test("crystal incident rejects a fully enclosed crystal without a marker placement cell") {
+    test("crystal incident rejects a fully enclosed cluster without a direct click face") {
         val world = paper.server.addSimpleWorld("world")
-        val crystal = world.getBlockAt(4, 64, 5).also { it.type = Material.AMETHYST_BLOCK }
+        val crystal = world.getBlockAt(4, 64, 5).also { it.type = Material.AMETHYST_CLUSTER }
         listOf(
             world.getBlockAt(4, 63, 5), world.getBlockAt(4, 65, 5),
             world.getBlockAt(3, 64, 5), world.getBlockAt(5, 64, 5),

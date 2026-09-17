@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.paper.mine.incident
 
 import org.bukkit.Chunk
 import org.bukkit.Location
+import org.bukkit.Material
 import org.bukkit.entity.Player
 import org.bukkit.event.entity.EntityDeathEvent
 import org.bukkit.event.entity.EntityDamageEvent
@@ -51,21 +52,31 @@ internal class MineIncidentSet(
             clearActive(runtime)
             if (!coordinator.abort(runtime)) return false
         }
+        if (type == ru.ruscrafting.farms.domain.MineIncidentType.LOST_MINER && lostMiner.isRestoring(runtime)) {
+            return false
+        }
         return scheduler.force(runtime, type, now)
     }
 
     fun tick(runtime: MineRuntime, now: Long, participants: Collection<Player>) {
         scheduler.tick(runtime, now, participants.size)
+        if (abortIncompatibleObjective(runtime)) return
         caveIn.reconcile(runtime)
         trackDamage.reconcile(runtime)
         participants.forEach { trackDamage.ensureKit(runtime, it) }
         flooding.reconcile(runtime)
-        participants.forEach { flooding.ensurePump(runtime, it) }
         powerFailure.reconcile(runtime)
         reconcileObjectiveMarkers(runtime)
         creatureNest.reconcileMissing(runtime)
         lostMiner.reconcileMissing(runtime)
     }
+
+    fun process(): Int = lostMiner.process()
+
+    fun protectsTemporaryBlock(location: Location): Boolean = lostMiner.protects(location)
+
+    fun retainOnTeleport(player: Player, destination: Location): Boolean =
+        lostMiner.retainOnTeleport(player, destination)
 
     fun onInteract(event: PlayerInteractEvent): Boolean {
         val handled = trackDamage.onInteract(event) || gasLeak.onInteract(event) ||
@@ -103,18 +114,16 @@ internal class MineIncidentSet(
 
     fun onEntityDamage(event: EntityDamageEvent): Boolean = creatureNest.onDamage(event)
 
-    fun releasePlayer(playerId: UUID) {
-        trackDamage.releasePlayer(playerId)
-        flooding.releasePlayer(playerId)
-        lostMiner.releasePlayer(playerId)
+    fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
+        trackDamage.releasePlayer(player.uniqueId)
+        lostMiner.releasePlayer(player, reason)
     }
 
     fun isActive(identity: ServiceItemIdentity): Boolean =
-        trackDamage.isActive(identity) || flooding.isActive(identity)
+        trackDamage.isActive(identity)
 
     fun release(playerId: UUID, identity: ServiceItemIdentity, reason: WorksitePlayerReleaseReason) {
         trackDamage.release(playerId, identity, reason)
-        flooding.release(playerId, identity, reason)
     }
 
     fun reconcileChunk(runtime: MineRuntime, chunk: Chunk) {
@@ -127,18 +136,22 @@ internal class MineIncidentSet(
     }
 
     fun reconcileRecovery(chunk: Chunk? = null): Int {
-        if (chunk == null) registry.snapshot().forEach { runtime ->
-            caveIn.reconcile(runtime)
-            flooding.reconcile(runtime)
-            powerFailure.reconcile(runtime)
-            reconcileObjectiveMarkers(runtime)
-        }
+        if (chunk == null) {
+            registry.snapshot().forEach(::abortIncompatibleObjective)
+            lostMiner.activateLoadedState()
+            registry.snapshot().forEach { runtime ->
+                caveIn.reconcile(runtime)
+                flooding.reconcile(runtime)
+                powerFailure.reconcile(runtime)
+                reconcileObjectiveMarkers(runtime)
+            }
+        } else lostMiner.onChunkLoad(chunk)
         return journal.restoreOrphans(registry.snapshot(), chunk)
     }
 
     fun cleanup() {
         registry.snapshot().forEach { runtime ->
-            runtime.state.incident?.serviceLeases?.values?.toSet().orEmpty().forEach(::releasePlayer)
+            runtime.state.incident?.serviceLeases?.values?.toSet().orEmpty().forEach(trackDamage::releasePlayer)
         }
         scheduler.cleanup()
         registry.snapshot().forEach { runtime ->
@@ -147,10 +160,11 @@ internal class MineIncidentSet(
             lostMiner.cleanup(runtime)
             objectiveMarkers.cleanup(runtime)
         }
+        lostMiner.clearQueues()
     }
 
     private fun clearActive(runtime: MineRuntime) {
-        runtime.state.incident?.serviceLeases?.values?.toSet().orEmpty().forEach(::releasePlayer)
+        runtime.state.incident?.serviceLeases?.values?.toSet().orEmpty().forEach(trackDamage::releasePlayer)
         runtime.state.incident?.type?.name?.lowercase()?.let { journal.restore(runtime, it) }
         caveIn.cleanup(runtime)
         creatureNest.cleanup(runtime)
@@ -164,6 +178,27 @@ internal class MineIncidentSet(
 
     private fun abortBlockedObjective(runtime: MineRuntime): Boolean {
         if (!objectiveMarkers.hasBlockedTarget(runtime)) return false
+        clearActive(runtime)
+        coordinator.abort(runtime)
+        return true
+    }
+
+    /** Retire persisted pre-0.40.36 objectives whose world contract changed. */
+    private fun abortIncompatibleObjective(runtime: MineRuntime): Boolean {
+        val incident = runtime.state.incident ?: return false
+        val objective = runtime.state.objective
+        val incompatible = when (incident.type) {
+            ru.ruscrafting.farms.domain.MineIncidentType.FLOODING ->
+                incident.required != 1 || objective?.targets?.size != 1
+            ru.ruscrafting.farms.domain.MineIncidentType.CRYSTAL_RESONANCE ->
+                objective == null || objective.targets.any {
+                    val material = it.position.blockType()
+                    it.status != ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus.COMPLETED &&
+                        material != null && material != Material.AMETHYST_CLUSTER
+                }
+            else -> false
+        }
+        if (!incompatible) return false
         clearActive(runtime)
         coordinator.abort(runtime)
         return true

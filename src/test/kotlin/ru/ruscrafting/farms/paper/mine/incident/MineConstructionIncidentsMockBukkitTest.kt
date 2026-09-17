@@ -2,12 +2,13 @@ package ru.ruscrafting.farms.paper.mine.incident
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.floats.shouldBeGreaterThan
 import io.kotest.matchers.ints.shouldBeInRange
 import io.kotest.matchers.shouldBe
 import org.bukkit.Material
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.inventory.ItemStack
-import org.bukkit.entity.ItemDisplay
+import org.bukkit.entity.BlockDisplay
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineShiftState
@@ -30,7 +31,9 @@ class MineConstructionIncidentsMockBukkitTest : FunSpec({
     test("cave-in creates physical crash-safe rubble that players clear with a pickaxe") {
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("Miner")
-        val anchor = world.getBlockAt(10, 64, 10)
+        // The rubble begins at x=16. The entity origin must remain in chunk 1;
+        // anti-z-fighting expansion belongs in the display transformation.
+        val anchor = world.getBlockAt(18, 64, 18)
         (-2..2).forEach { dx -> (-2..2).forEach { dz ->
             world.getBlockAt(anchor.x + dx, anchor.y, anchor.z + dz).type = Material.STONE
         } }
@@ -49,7 +52,7 @@ class MineConstructionIncidentsMockBukkitTest : FunSpec({
         val runtime = graph.registry.byId("old_shafts")!!
         graph.index.replaceZone(
             MineIndexDefinition(runtime.settings.id, runtime.region, setOf(Material.STONE)),
-            listOf(world.getChunkAt(0, 0)),
+            listOf(anchor.chunk),
             listOf(MineIndexedTarget(anchor.position(), setOf(MineAnchorRole.NEST))),
         )
 
@@ -57,9 +60,18 @@ class MineConstructionIncidentsMockBukkitTest : FunSpec({
         val targets = runtime.state.objective!!.targets
         targets.size.shouldBeInRange(55..65)
         targets.forEach { world.getBlockAt(it.position.x, it.position.y, it.position.z).type shouldBe Material.COBBLESTONE }
-        world.entities.filterIsInstance<ItemDisplay>().single().apply {
+        world.entities.filterIsInstance<BlockDisplay>().single().apply {
             isGlowing shouldBe true
-            itemStack.type shouldBe Material.COBBLESTONE
+            block.material shouldBe Material.BLUE_STAINED_GLASS
+            brightness?.blockLight shouldBe 15
+            brightness?.skyLight shouldBe 15
+            transformation.scale.x shouldBeGreaterThan 5.0f
+            transformation.scale.y shouldBeGreaterThan 3.0f
+            transformation.scale.z shouldBeGreaterThan 3.0f
+            (transformation.translation.y < 0.0f) shouldBe true
+            location.blockY shouldBe targets.minOf { it.position.y }
+            (location.blockX shr 4) shouldBe 1
+            (location.blockZ shr 4) shouldBe 1
         }
 
         player.inventory.setItemInMainHand(ItemStack(Material.IRON_PICKAXE))
@@ -76,7 +88,7 @@ class MineConstructionIncidentsMockBukkitTest : FunSpec({
             }
         }
 
-        world.entities.filterIsInstance<ItemDisplay>() shouldHaveSize 0
+        world.entities.filterIsInstance<BlockDisplay>() shouldHaveSize 0
         graph.caveIn.cleanup(runtime) shouldBe 0
         targets.forEach { world.getBlockAt(it.position.x, it.position.y, it.position.z).type shouldBe Material.AIR }
     }

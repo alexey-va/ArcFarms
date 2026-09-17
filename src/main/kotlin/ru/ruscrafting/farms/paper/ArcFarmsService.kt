@@ -43,6 +43,7 @@ import ru.ruscrafting.farms.domain.ArcFarmsState
 import ru.ruscrafting.farms.domain.FarmOrder
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
+import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.PlayerActivityStats
 import ru.ruscrafting.farms.persistence.ArcFarmsStateRepository
 import ru.ruscrafting.farms.persistence.FarmLocationRepository
@@ -156,7 +157,10 @@ class ArcFarmsService(
     )
     private val worksiteRewards = WorksiteRewardGrantService(farm.rewards)
     private val lumbermillModule = LumbermillVersionedModule()
-    private val mineModule = MineVersionedModule(plugin, initialSettings.serverId, initialSettings.mines, regionGateway, locale, mineJournal, worksitePorts, clock, random, worksiteServiceItems, worksiteRewards, mineLift)
+    private val mineModule = MineVersionedModule(
+        plugin, initialSettings.serverId, initialSettings.mines, regionGateway, locale, mineJournal, worksitePorts,
+        debug, clock, random, worksiteServiceItems, worksiteRewards, mineLift,
+    )
     internal val worksiteAdmins = WorksiteAdminRegistry(listOf(lumbermillModule, mineModule))
     private val worksites = WorksiteModuleRegistry(listOf(farm.module, lumbermillModule, mineModule))
     private val serviceItems = WorksiteServiceItemController(plugin, worksites).also(worksiteServiceItems::bind)
@@ -297,6 +301,7 @@ class ArcFarmsService(
     }
 
     private fun reconfigureRuntime(candidate: ArcFarmsConfig, snapshot: ArcFarmsState, reason: String): Boolean {
+        worksiteEvents.release(Bukkit.getOnlinePlayers(), WorksitePlayerReleaseReason.RELOAD)
         worksites.beforeReload(reason)
         settings = candidate
         var enterpriseChanged = enterprise.replace(snapshot.worksiteEnterprise)
@@ -391,6 +396,9 @@ class ArcFarmsService(
 
     internal fun mineIncidentDiagnostics(zoneId: String): List<MineIncidentPlacementReport> =
         mineModule.incidentDiagnostics(zoneId)
+
+    internal fun mineIncidentDiagnostics(zoneId: String, type: MineIncidentType): MineIncidentPlacementReport? =
+        mineModule.incidentDiagnostics(zoneId, type)
 
     fun farmOrderIds(zoneId: String): List<String> = farm.runtimes.byId(zoneId)
         ?.orderList

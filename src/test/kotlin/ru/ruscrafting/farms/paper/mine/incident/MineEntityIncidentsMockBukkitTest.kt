@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper.mine.incident
 
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import org.bukkit.Chunk
 import org.bukkit.block.BlockFace
@@ -10,12 +11,18 @@ import org.bukkit.entity.Entity
 import org.bukkit.entity.EntityType
 import org.bukkit.entity.Interaction
 import org.bukkit.entity.ItemDisplay
+import org.bukkit.entity.BlockDisplay
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.inventory.EquipmentSlot
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineIncidentType
+import ru.ruscrafting.farms.domain.MineIncidentState
 import ru.ruscrafting.farms.domain.MineShiftState
+import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
+import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetState
+import ru.ruscrafting.farms.domain.worksite.WorksiteObjectiveKey
+import ru.ruscrafting.farms.domain.worksite.WorksiteObjectiveState
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.config.CuboidBounds
 import ru.ruscrafting.farms.config.ZoneReference
@@ -32,6 +39,7 @@ import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineIndexDefinition
 import ru.ruscrafting.farms.paper.mine.index.MineIndexedTarget
 import ru.ruscrafting.farms.paper.mine.mineV2Settings
+import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 import java.util.UUID
 
 class MineEntityIncidentsMockBukkitTest : FunSpec({
@@ -114,6 +122,34 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         effects.count(MineIncidentEntityKind.GAS_MARKER_HITBOX) shouldBe 0
     }
 
+    test("pre-upgrade multi-target flooding is retired before it can rebuild remote spills") {
+        val world = paper.server.addSimpleWorld("world")
+        val effects = RecordingIncidentEntities()
+        val graph = entityGraph(paper, effects, "LegacyFlood")
+        val runtime = graph.registry.byId("old_shafts")!!
+        val targets = listOf(WorksitePosition(world.name, 3, 63, 3), WorksitePosition(world.name, 12, 63, 12))
+            .mapIndexed { index, position ->
+                ObjectiveTargetState("legacy_flood_${index + 1}", position, ObjectiveTargetRole("flood_pump"), index.toLong())
+            }
+        runtime.state = runtime.state.copy(
+            phase = MinePhase.INCIDENT,
+            sequence = 2,
+            resumePhase = MinePhase.MINING,
+            incident = MineIncidentState(MineIncidentType.FLOODING, required = 2),
+            objective = WorksiteObjectiveState(
+                WorksiteObjectiveKey(runtime.settings.id, "incident_flooding", 2),
+                required = 2,
+                targets = targets,
+            ),
+        )
+
+        graph.incidentSet.tick(runtime, 1_001L, emptyList())
+
+        runtime.state.phase shouldBe MinePhase.MINING
+        runtime.state.incident shouldBe null
+        runtime.state.objective shouldBe null
+    }
+
     test("production objective markers put a responsive hitbox in open space") {
         val world = paper.server.addSimpleWorld("world")
         val plugin = paper.createSimplePlugin("MineProductionMarkers")
@@ -133,13 +169,107 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         graph.gasLeak.start(runtime, required = 2, now = 1_000L) shouldBe true
         graph.incidentSet.tick(runtime, 1_001L, emptyList())
 
-        world.entities.filterIsInstance<ItemDisplay>().size shouldBe 4
+        world.entities.filterIsInstance<BlockDisplay>().size shouldBe 4
+        world.entities.filterIsInstance<BlockDisplay>().all { display ->
+            display.block.material == Material.SLIME_BLOCK &&
+                display.brightness?.blockLight == 15 && display.brightness?.skyLight == 15 &&
+                display.transformation.scale.x < 1.0f && display.transformation.translation.x > 0.0f
+        } shouldBe true
         world.entities.filterIsInstance<Interaction>().size shouldBe 4
         world.entities.filterIsInstance<Interaction>().all { interaction ->
             interaction.isResponsive && interaction.interactionWidth == 0.8f &&
                 interaction.interactionHeight == 1.0f && interaction.location.block.type.isAir &&
                 interaction.location.y == 64.0
         } shouldBe true
+    }
+
+    test("crystal resonance uses real amethyst blocks without synthetic markers") {
+        val world = paper.server.addSimpleWorld("world")
+        val player = paper.server.addPlayer("CrystalOperator")
+        val crystals = (1..3).map { x ->
+            world.getBlockAt(x, 64, 5).also { it.type = Material.AMETHYST_CLUSTER }
+        }
+        val graph = testMineComponentGraph(
+            paper.createSimplePlugin("MineCrystalDirectTargets"), CuboidRegionGateway(), immediateMinePort(),
+            clock = { 1_000L }, journal = ImmediateMineJournal(),
+        )
+        graph.module.rebuild(
+            listOf(mineV2Settings()),
+            mapOf("old_shafts" to MineShiftState(engineVersion = 2, phase = MinePhase.MINING, sequence = 1, orderId = "ore_run")),
+            5_000L,
+        )
+        val runtime = graph.registry.byId("old_shafts")!!
+        replaceEntityIndex(graph, runtime, crystals, MineAnchorRole.CRYSTAL)
+
+        graph.crystalResonance.start(runtime, required = 1, now = 1_000L) shouldBe true
+        graph.incidentSet.tick(runtime, 1_001L, emptyList())
+        world.entities.filterIsInstance<BlockDisplay>().shouldBeEmpty()
+        world.entities.filterIsInstance<ItemDisplay>().shouldBeEmpty()
+        world.entities.filterIsInstance<Interaction>().shouldBeEmpty()
+
+        val target = runtime.state.objective!!.targets.first()
+        graph.incidentSet.onInteract(
+            org.bukkit.event.player.PlayerInteractEvent(
+                player, org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK, null,
+                world.getBlockAt(target.position.x, target.position.y, target.position.z),
+                org.bukkit.block.BlockFace.UP, EquipmentSlot.HAND,
+            ),
+        ) shouldBe true
+        runtime.state.phase shouldBe MinePhase.MINING
+    }
+
+    test("crystal resonance refuses a target that is no longer a real cluster") {
+        val world = paper.server.addSimpleWorld("world")
+        val player = paper.server.addPlayer("CrystalTamper")
+        val crystals = (1..3).map { x -> world.getBlockAt(x, 64, 5).also { it.type = Material.AMETHYST_CLUSTER } }
+        val graph = testMineComponentGraph(
+            paper.createSimplePlugin("MineCrystalMaterialGuard"), CuboidRegionGateway(), immediateMinePort(),
+            clock = { 1_000L }, journal = ImmediateMineJournal(),
+        )
+        graph.module.rebuild(
+            listOf(mineV2Settings()),
+            mapOf("old_shafts" to MineShiftState(engineVersion = 2, phase = MinePhase.MINING, sequence = 1, orderId = "ore_run")),
+            5_000L,
+        )
+        val runtime = graph.registry.byId("old_shafts")!!
+        replaceEntityIndex(graph, runtime, crystals, MineAnchorRole.CRYSTAL)
+        graph.crystalResonance.start(runtime, required = 1, now = 1_000L) shouldBe true
+        val target = runtime.state.objective!!.targets.first()
+        val changed = world.getBlockAt(target.position.x, target.position.y, target.position.z).also {
+            it.type = Material.AMETHYST_BLOCK
+        }
+
+        graph.crystalResonance.hit(runtime, target.id, player, insideForgivingWindow = true) shouldBe false
+        runtime.state.phase shouldBe MinePhase.INCIDENT
+        graph.incidentSet.tick(runtime, 1_001L, emptyList())
+        runtime.state.phase shouldBe MinePhase.MINING
+        changed.type shouldBe Material.AMETHYST_BLOCK
+    }
+
+    test("persisted crystal target waits for its chunk instead of aborting during recovery") {
+        val world = paper.server.addSimpleWorld("world")
+        val effects = RecordingIncidentEntities()
+        val graph = entityGraph(paper, effects, "CrystalUnloaded")
+        val runtime = graph.registry.byId("old_shafts")!!
+        val position = WorksitePosition(world.name, 20, 64, 2)
+        runtime.state = runtime.state.copy(
+            phase = MinePhase.INCIDENT,
+            sequence = 2,
+            resumePhase = MinePhase.MINING,
+            incident = MineIncidentState(MineIncidentType.CRYSTAL_RESONANCE, required = 1),
+            objective = WorksiteObjectiveState(
+                WorksiteObjectiveKey(runtime.settings.id, "incident_crystal_resonance", 2),
+                required = 1,
+                targets = listOf(ObjectiveTargetState("persisted_cluster", position, ObjectiveTargetRole("crystal_node"), 0)),
+            ),
+        )
+        world.getChunkAt(1, 0).load()
+        world.unloadChunk(1, 0, false)
+
+        graph.incidentSet.tick(runtime, 1_001L, emptyList())
+
+        runtime.state.phase shouldBe MinePhase.INCIDENT
+        runtime.state.incident?.type shouldBe MineIncidentType.CRYSTAL_RESONANCE
     }
 
     test("completing a target removes its display and hitbox from an isolated chunk") {
@@ -203,8 +333,9 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         effects.count(MineIncidentEntityKind.GAS_MARKER_HITBOX) shouldBe 0
     }
 
-    test("lost miner is reconstructed once and escort completes at the indexed route entrance") {
+    test("lost miner uses one maze entrance and completes when the miner is found") {
         val world = paper.server.addSimpleWorld("world")
+        for (chunkX in -3..3) for (chunkZ in -3..3) world.getChunkAt(chunkX, chunkZ).load()
         val player = paper.server.addPlayer("Rescuer")
         val floors = (1..6).map { x -> world.getBlockAt(x, 63, 5).also { it.type = Material.STONE } }
         val effects = RecordingIncidentEntities()
@@ -213,35 +344,65 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         replaceEntityIndex(graph, runtime, floors)
 
         graph.lostMiner.start(runtime, now = 1_000L) shouldBe true
+        repeat(8) { graph.lostMiner.process() }
         graph.lostMiner.canonicalCount(runtime) shouldBe 1
-        effects.count(MineIncidentEntityKind.MINER_CAMP_LANTERN) shouldBe 1
-        effects.count(MineIncidentEntityKind.MINER_CAMP_SUPPLIES) shouldBe 1
+        effects.count(MineIncidentEntityKind.MINER_MAZE_ENTRANCE) shouldBe 1
+        effects.count(MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX) shouldBe 1
+        effects.count(MineIncidentEntityKind.MINER_CAMP_LANTERN) shouldBe 0
+        effects.count(MineIncidentEntityKind.MINER_CAMP_SUPPLIES) shouldBe 0
         val target = runtime.state.objective!!.targets.first()
         effects.spawn(runtime, MineIncidentEntityKind.MINER, target.id, target.position)
         effects.count(MineIncidentEntityKind.MINER) shouldBe 2
+        graph.lostMiner.reconcileChunk(runtime, world.getChunkAt(target.position.x shr 4, target.position.z shr 4)) shouldBe 1
+        effects.count(MineIncidentEntityKind.MINER) shouldBe 1
 
-        val persisted = runtime.state
-        val restarted = testMineComponentGraph(
-            paper.createSimplePlugin("MineEntityRescueB"), CuboidRegionGateway(), immediateMinePort(),
-            clock = { 2_000L }, journal = ImmediateMineJournal(), incidentEntityEffects = effects,
+        val entryEvent = PlayerInteractEntityEvent(
+            player,
+            requireNotNull(effects.entity(effects.singleId(MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX))),
+            EquipmentSlot.HAND,
         )
-        restarted.module.rebuild(listOf(mineV2Settings()), mapOf("old_shafts" to persisted), 5_000L)
-        val restartedRuntime = restarted.registry.byId("old_shafts")!!
-        replaceEntityIndex(restarted, restartedRuntime, floors)
-        restarted.lostMiner.reconcileChunk(restartedRuntime, world.getChunkAt(0, 0)) shouldBe 1
-        effects.count(MineIncidentEntityKind.MINER) shouldBe 1
+        graph.incidentSet.onInteractEntity(entryEvent) shouldBe true
+        entryEvent.isCancelled shouldBe true
+        runtime.region.contains(player.location) shouldBe false
 
-        effects.remove(effects.singleId(MineIncidentEntityKind.MINER))
-        restarted.lostMiner.reconcileMissing(restartedRuntime) shouldBe 1
-        effects.count(MineIncidentEntityKind.MINER) shouldBe 1
+        graph.lostMiner.releasePlayer(player, WorksitePlayerReleaseReason.SHUTDOWN) shouldBe true
+        runtime.region.contains(player.location) shouldBe true
+        graph.incidentSet.onInteractEntity(entryEvent) shouldBe true
+        runtime.region.contains(player.location) shouldBe false
 
-        restarted.lostMiner.beginEscort(restartedRuntime, player) shouldBe true
-        val entrance = requireNotNull(restarted.extraction.deliveryPoint(restartedRuntime))
-        restarted.lostMiner.onMove(Location(world, entrance.x + 0.5, entrance.y + 1.0, entrance.z + 0.5), player) shouldBe true
-        restartedRuntime.state.phase shouldBe MinePhase.MINING
+        val foundEvent = PlayerInteractEntityEvent(
+            player,
+            requireNotNull(effects.entity(effects.singleId(MineIncidentEntityKind.MINER))),
+            EquipmentSlot.HAND,
+        )
+        graph.incidentSet.onInteractEntity(foundEvent) shouldBe true
+        foundEvent.isCancelled shouldBe true
+        runtime.state.phase shouldBe MinePhase.MINING
+        runtime.region.contains(player.location) shouldBe true
         effects.count(MineIncidentEntityKind.MINER) shouldBe 0
+        effects.count(MineIncidentEntityKind.MINER_MAZE_ENTRANCE) shouldBe 0
+        effects.count(MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX) shouldBe 0
         effects.count(MineIncidentEntityKind.MINER_CAMP_LANTERN) shouldBe 0
         effects.count(MineIncidentEntityKind.MINER_CAMP_SUPPLIES) shouldBe 0
+    }
+
+    test("repeated admin lost-miner waits until the previous maze is restored") {
+        val world = paper.server.addSimpleWorld("world")
+        for (chunkX in -3..3) for (chunkZ in -3..3) world.getChunkAt(chunkX, chunkZ).load()
+        val floors = (1..6).map { x -> world.getBlockAt(x, 63, 5).also { it.type = Material.STONE } }
+        val effects = RecordingIncidentEntities()
+        val graph = entityGraph(paper, effects, "RescueRepeat")
+        val runtime = graph.registry.byId("old_shafts")!!
+        replaceEntityIndex(graph, runtime, floors)
+
+        graph.lostMiner.start(runtime, now = 1_000L) shouldBe true
+        repeat(8) { graph.lostMiner.process() }
+        graph.admin.forceIncident("old_shafts", MineIncidentType.LOST_MINER, 2_000L) shouldBe false
+        runtime.state.phase shouldBe MinePhase.MINING
+
+        repeat(8) { graph.lostMiner.process() }
+        graph.admin.forceIncident("old_shafts", MineIncidentType.LOST_MINER, 3_000L) shouldBe true
+        runtime.state.incident?.type shouldBe MineIncidentType.LOST_MINER
     }
 })
 
@@ -257,14 +418,23 @@ private fun entityGraph(paper: MockBukkitTestRuntime, effects: RecordingIncident
         )
     }
 
-private fun replaceEntityIndex(graph: MineComponentGraph, runtime: MineRuntime, floors: List<org.bukkit.block.Block>) {
+private fun replaceEntityIndex(
+    graph: MineComponentGraph,
+    runtime: MineRuntime,
+    floors: List<org.bukkit.block.Block>,
+    role: MineAnchorRole = MineAnchorRole.NEST,
+) {
     graph.index.replaceZone(
         MineIndexDefinition(runtime.settings.id, runtime.region, setOf(Material.STONE)),
         listOf(runtime.region.world.getChunkAt(0, 0)),
         floors.map {
             MineIndexedTarget(
                 it.position(),
-                setOf(MineAnchorRole.NEST, MineAnchorRole.MINER, MineAnchorRole.RAIL, MineAnchorRole.SUPPORT),
+                if (role == MineAnchorRole.NEST) {
+                    setOf(MineAnchorRole.NEST, MineAnchorRole.MINER, MineAnchorRole.RAIL, MineAnchorRole.SUPPORT)
+                } else {
+                    setOf(role)
+                },
             )
         },
     )
@@ -297,7 +467,10 @@ private class RecordingIncidentEntities : MineIncidentEntityEffects {
             if ((entity.location.blockX shr 4) != chunk.x || (entity.location.blockZ shr 4) != chunk.z) return@forEach
             val identity = identities[id] ?: return@forEach
             if (identity.zoneId != runtime.settings.id || identity.sequence != runtime.state.sequence || identity.kind != kind) return@forEach
-            if (identity.targetId !in expected || canonical.putIfAbsent(identity.targetId, id) != null) remove(id)
+            val position = expected[identity.targetId]
+            if (position == null || (position.x shr 4) != chunk.x || (position.z shr 4) != chunk.z ||
+                canonical.putIfAbsent(identity.targetId, id) != null
+            ) remove(id)
         }
         expected.filterValues { position ->
             (position.x shr 4) == chunk.x && (position.z shr 4) == chunk.z

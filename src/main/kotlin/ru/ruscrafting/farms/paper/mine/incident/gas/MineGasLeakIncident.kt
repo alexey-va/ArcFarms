@@ -1,5 +1,6 @@
 package ru.ruscrafting.farms.paper.mine.incident.gas
 
+import org.bukkit.Sound
 import org.bukkit.entity.Player
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.paper.mine.MineRuntime
@@ -11,6 +12,9 @@ import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 
 internal class MineGasLeakIncident(
     registry: MineRuntimeRegistry, index: MineBlockIndex, incidents: MineIncidentCoordinator,
-) : MineSequenceIncident(MineIncidentType.GAS_LEAK, MineAnchorRole.SUPPORT, "gas_vent", registry, index, incidents) {
+) : MineSequenceIncident(
+    MineIncidentType.GAS_LEAK, MineAnchorRole.SUPPORT, "gas_vent", registry, index, incidents,
+    successSound = Sound.BLOCK_FIRE_EXTINGUISH,
+) {
     fun useVent(runtime: MineRuntime, targetId: String, player: Player): Boolean = use(runtime, targetId, player)
 }

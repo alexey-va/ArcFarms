@@ -131,6 +131,15 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         receive.contains("if (!started || !originAllowed(origin))") shouldBe true
     }
 
+    test("reload releases players from temporary worksite scenes before replacing runtimes") {
+        val service = Files.readString(servicePath)
+        val reconfigure = service.substringAfter("private fun reconfigureRuntime(").substringBefore("fun onBreakLowest(")
+
+        val release = reconfigure.indexOf("worksiteEvents.release(Bukkit.getOnlinePlayers(), WorksitePlayerReleaseReason.RELOAD)")
+        val beforeReload = reconfigure.indexOf("worksites.beforeReload(reason)")
+        (release >= 0 && release < beforeReload) shouldBe true
+    }
+
     test("gameplay code cannot schedule directly through Bukkit") {
         val productionRoot = repositoryRoot.resolve("src/main/kotlin")
         val offenders = Files.walk(productionRoot).use { paths ->

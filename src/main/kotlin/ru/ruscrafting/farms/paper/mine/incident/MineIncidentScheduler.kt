@@ -56,7 +56,7 @@ internal class MineIncidentScheduler(
         val started = when (type) {
             MineIncidentType.CAVE_IN -> caveIn.start(runtime, now)
             MineIncidentType.GAS_LEAK -> gasLeak.start(runtime, 2, now)
-            MineIncidentType.FLOODING -> flooding.start(runtime, 2, now)
+            MineIncidentType.FLOODING -> flooding.start(runtime, 1, now)
             MineIncidentType.TRACK_DAMAGE -> trackDamage.start(runtime, 2, now)
             MineIncidentType.CRYSTAL_RESONANCE -> crystal.start(runtime, 2, now)
             MineIncidentType.CREATURE_NEST -> creatures.start(runtime, 3, now)
@@ -71,9 +71,11 @@ internal class MineIncidentScheduler(
         return started
     }
 
-    fun diagnostics(runtime: MineRuntime): List<MineIncidentPlacementReport> = SUPPORTED_TYPES.map { type ->
+    fun diagnostics(runtime: MineRuntime): List<MineIncidentPlacementReport> = SUPPORTED_TYPES.map { type -> diagnostics(runtime, type) }
+
+    fun diagnostics(runtime: MineRuntime, type: MineIncidentType): MineIncidentPlacementReport {
         val blocker = stateBlocker(runtime, type)
-        when {
+        return when {
             blocker != null -> MineIncidentPlacementReport(type, required(type), 0, 0, mapOf(blocker to 1))
             type == MineIncidentType.CAVE_IN -> caveIn.diagnostics(runtime)
             else -> diagnostics.report(runtime, type, required(type))
@@ -119,6 +121,7 @@ internal class MineIncidentScheduler(
 
         private fun required(type: MineIncidentType): Int = when (type) {
             MineIncidentType.CAVE_IN -> 60
+            MineIncidentType.FLOODING -> 1
             MineIncidentType.CREATURE_NEST -> 3
             MineIncidentType.LOST_MINER -> 1
             else -> 2

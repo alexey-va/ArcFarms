@@ -12,6 +12,7 @@ import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmPointKind
+import ru.ruscrafting.farms.domain.MineIncidentType
 
 class ArcFarmsCommand(
     private val service: ArcFarmsService,
@@ -430,9 +431,8 @@ class ArcFarmsCommand(
     }
 
     private fun sendMinePlacementFailure(sender: CommandSender, zone: String, rawIncident: String): Boolean {
-        val reports = service.mineIncidentDiagnostics(zone)
-        if (reports.isEmpty()) return false
-        val selected = reports.filter { it.type.name.equals(rawIncident, true) }
+        val type = MineIncidentType.entries.firstOrNull { it.name.equals(rawIncident, true) } ?: return false
+        val selected = listOfNotNull(service.mineIncidentDiagnostics(zone, type))
         if (selected.isEmpty()) return false
         sender.sendMessage(locale.renderPath("admin.mine-placement.header", sender, mapOf("zone" to locale.text(zone))))
         selected.forEach { report ->
