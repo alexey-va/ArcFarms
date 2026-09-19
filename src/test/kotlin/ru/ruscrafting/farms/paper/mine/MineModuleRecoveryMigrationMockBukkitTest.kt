@@ -195,6 +195,50 @@ class MineModuleRecoveryMigrationMockBukkitTest : FunSpec({
         controller.beforeReload("test_cleanup")
     }
 
+    test("journal failure delivers the recovery result through the sync gate") {
+        val world = paper.server.addSimpleWorld("world")
+        world.getChunkAt(0, 0).load()
+        val block = world.getBlockAt(3, 64, 3).also { it.type = Material.STONE }
+        val journal = ControllableMineJournal()
+        val token = mockk<RuntimeTaskSupervisor.Token>()
+        val syncTasks = ArrayDeque<() -> Unit>()
+        val port = mockk<WorksiteRuntimePort>(relaxed = true) {
+            every { lifecycleToken() } returns token
+            every { runSync(token, any()) } answers {
+                syncTasks.addLast(secondArg<() -> Unit>())
+                true
+            }
+            every { isOperational() } returns true
+        }
+        val controller = MineBlockRecoveryController(journal, port, port, port, { 1_000L })
+        val record = PendingMineBlock(
+            id = "old_shafts:failure-gate",
+            zoneId = "old_shafts",
+            world = world.name,
+            x = block.x,
+            y = block.y,
+            z = block.z,
+            originalMaterial = Material.STONE.name,
+            temporaryMaterial = Material.DEEPSLATE.name,
+            nextMaterial = Material.STONE.name,
+            restoreAt = 2_000L,
+        )
+
+        val prepared = controller.prepare(record, block, Material.STONE) { block.type = Material.DEEPSLATE }
+        journal.failPrepare()
+
+        prepared.isDone shouldBe false
+        syncTasks.size shouldBe 1
+        syncTasks.removeFirst().invoke()
+        prepared.isDone shouldBe true
+        prepared.isCompletedExceptionally shouldBe true
+        // This fixture inserts the durable row before completing the future;
+        // remove that row so containsPosition observes only controller reservations.
+        journal.remove(record.id).join()
+        controller.containsPosition(record.positionKey) shouldBe false
+        block.type shouldBe Material.STONE
+    }
+
     test("due recovery does not race a journaled block mutation") {
         val world = paper.server.addSimpleWorld("world")
         world.getChunkAt(0, 0).load()
@@ -400,6 +444,85 @@ class MineModuleRecoveryMigrationMockBukkitTest : FunSpec({
             reopened.records() shouldBe emptyList()
         }
     }
+
+    test("incident journal separates replacement nonces and restores a stale new-format record") {
+        val world = paper.server.addSimpleWorld("world")
+        world.getChunkAt(0, 0).load()
+        val block = world.getBlockAt(2, 64, 2).also { it.type = Material.AIR }
+        val graph = testMineComponentGraph(
+            paper.createSimplePlugin("MineIncidentNonceJournalTest"), CuboidRegionGateway(), immediateMinePort(),
+            clock = { 1_000L }, journal = ImmediateMineJournal(),
+        )
+        graph.module.rebuild(
+            listOf(mineV2Settings().copy(miningOnly = true)),
+            mapOf("old_shafts" to MineShiftState(engineVersion = 2, phase = MinePhase.MINING, sequence = 6, orderId = "ore_run")),
+            5_000L,
+        )
+        val runtime = graph.registry.byId("old_shafts")!!
+        runtime.state = runtime.state.copy(
+            phase = MinePhase.INCIDENT,
+            incident = MineIncidentState(MineIncidentType.CAVE_IN, required = 1, objectiveNonce = 11L, startedAt = 1_000L),
+        )
+        val incidentJournal = MineIncidentBlockJournal(graph.recovery)
+        incidentJournal.prepareAll(
+            runtime,
+            "cave_in",
+            listOf(0 to WorksitePosition(world.name, block.x, block.y, block.z)),
+            Material.COBBLESTONE,
+        ).join() shouldBe true
+
+        graph.recovery.records().single().id shouldBe "mine-incident:old_shafts:6:cave_in:11:0"
+        val oldIncident = runtime.state.incident!!
+        runtime.state = runtime.state.copy(incident = oldIncident.copy(objectiveNonce = 12L))
+        incidentJournal.positions(runtime, "cave_in") shouldBe emptyList()
+
+        incidentJournal.restoreOrphans(listOf(runtime)) shouldBe 1
+        block.type shouldBe Material.AIR
+        graph.recovery.records() shouldBe emptyList()
+    }
+
+    test("incident journal keeps legacy and current records during a partial migration") {
+        val world = paper.server.addSimpleWorld("world")
+        world.getChunkAt(0, 0).load()
+        val legacyBlock = world.getBlockAt(2, 64, 2).also { it.type = Material.AIR }
+        val currentBlock = world.getBlockAt(3, 64, 2).also { it.type = Material.AIR }
+        val legacy = PendingMineBlock(
+            id = "mine-incident:old_shafts:7:cave_in:0",
+            zoneId = "old_shafts",
+            world = world.name,
+            x = legacyBlock.x,
+            y = legacyBlock.y,
+            z = legacyBlock.z,
+            originalMaterial = Material.AIR.name,
+            temporaryMaterial = Material.COBBLESTONE.name,
+            nextMaterial = Material.AIR.name,
+            restoreAt = Long.MAX_VALUE,
+        )
+        val graph = testMineComponentGraph(
+            paper.createSimplePlugin("MineIncidentMixedJournalTest"), CuboidRegionGateway(), immediateMinePort(),
+            clock = { 1_000L }, journal = ImmediateMineJournal(legacy),
+        )
+        graph.module.rebuild(
+            listOf(mineV2Settings().copy(miningOnly = true)),
+            mapOf("old_shafts" to MineShiftState(engineVersion = 2, phase = MinePhase.MINING, sequence = 7, orderId = "ore_run")),
+            5_000L,
+        )
+        val runtime = graph.registry.byId("old_shafts")!!
+        runtime.state = runtime.state.copy(
+            phase = MinePhase.INCIDENT,
+            incident = MineIncidentState(MineIncidentType.CAVE_IN, required = 1, objectiveNonce = 21L, startedAt = 1_000L),
+        )
+        val incidentJournal = MineIncidentBlockJournal(graph.recovery)
+        incidentJournal.prepareAll(
+            runtime,
+            "cave_in",
+            listOf(0 to WorksitePosition(world.name, currentBlock.x, currentBlock.y, currentBlock.z)),
+            Material.COBBLESTONE,
+        ).join() shouldBe true
+
+        incidentJournal.positions(runtime, "cave_in").map { it.x to it.z }.toSet() shouldBe
+            setOf(legacyBlock.x to legacyBlock.z, currentBlock.x to currentBlock.z)
+    }
 })
 
 private class ControllableMineJournal : MineRecoveryJournal {
@@ -417,6 +540,7 @@ private class ControllableMineJournal : MineRecoveryJournal {
         return CompletableFuture.completedFuture(Unit)
     }
     fun completePrepare() = requireNotNull(pending).complete(Unit)
+    fun failPrepare() = requireNotNull(pending).completeExceptionally(IllegalStateException("disk unavailable"))
 }
 
 internal class ImmediateMineJournal(vararg initial: PendingMineBlock) : MineRecoveryJournal {

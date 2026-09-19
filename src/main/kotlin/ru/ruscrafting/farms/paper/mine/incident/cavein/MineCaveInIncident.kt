@@ -35,6 +35,7 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteBlockSnapshot
 import ru.ruscrafting.farms.paper.worksite.WorksiteChunkCoordinate
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import java.util.logging.Level
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.floor
 
 /** A physical, crash-safe rubble wall placed in a suitable passage of the live mine. */
@@ -53,6 +54,12 @@ internal class MineCaveInIncident(
     private val placementFailures = mutableMapOf<String, String>()
     private val placementReports = mutableMapOf<String, MineIncidentPlacementReport>()
     private val pendingSearches = mutableMapOf<String, PendingSearch>()
+    /**
+     * A journal batch is durable before its world mutation runs. Reconcile can
+     * observe those records while the first callback is still pending; replaying
+     * them would change AIR to RUBBLE before prepareAll validates the original.
+     */
+    private val pendingPreparations = ConcurrentHashMap.newKeySet<String>()
     private val retryAfter = mutableMapOf<String, Long>()
     private val loggedBlockedTargets = mutableSetOf<String>()
 
@@ -219,6 +226,9 @@ internal class MineCaveInIncident(
 
     fun reconcile(runtime: MineRuntime): Int {
         if (!active(runtime)) return 0
+        val key = incidentKey(runtime)
+        // The prepare callback owns validation and marker refresh for this batch.
+        if (key in pendingPreparations) return 0
         val targets = runtime.state.objective?.targets.orEmpty().filter { it.role.value == RUBBLE_ROLE }
         if (targets.size !in MIN_RUBBLE_BLOCKS..MAX_RUBBLE_BLOCKS) {
             targets.forEach { target ->
@@ -270,7 +280,10 @@ internal class MineCaveInIncident(
         }
         if (replayPending) return 0
         if (missing.isNotEmpty()) {
+            if (!pendingPreparations.add(key)) return missing.size
             journal.prepareAll(runtime, INCIDENT_ID, missing, RUBBLE).whenComplete { prepared, failure ->
+                pendingPreparations.remove(key)
+                if (incidentKey(runtime) != key) return@whenComplete
                 if (failure == null && prepared == true) {
                     if (active(runtime)) reconcileMarker(runtime, targets.map { it.position })
                 } else {
@@ -280,7 +293,8 @@ internal class MineCaveInIncident(
                             "blocks=${missing.size} reason=${failure?.javaClass?.simpleName ?: "journal_rejected"}",
                         failure,
                     )
-                    if (active(runtime)) {
+                    if (active(runtime)) journal.runOnMain {
+                        if (!active(runtime) || incidentKey(runtime) != key) return@runOnMain
                         journal.restore(runtime, INCIDENT_ID)
                         effects.cleanup(runtime, MineIncidentEntityKind.CAVE_IN_MARKER)
                         incidents.abort(runtime)
@@ -584,6 +598,8 @@ internal class MineCaveInIncident(
     private fun WorksitePosition.loaded(): Boolean = Bukkit.getWorld(world)?.isChunkLoaded(x shr 4, z shr 4) == true
     private fun WorksitePosition.key(): String = "$world:$x:$y:$z"
     private fun Block.position() = WorksitePosition(world.name, x, y, z)
+    private fun incidentKey(runtime: MineRuntime): String =
+        "${runtime.settings.id}:${runtime.state.sequence}:$INCIDENT_ID:${runtime.state.incident?.objectiveNonce ?: -1L}"
     private fun active(runtime: MineRuntime): Boolean =
         runtime.state.phase == MinePhase.INCIDENT && runtime.state.incident?.type == MineIncidentType.CAVE_IN &&
             runtime.state.incident?.scenarioPlacement == null

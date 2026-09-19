@@ -22,6 +22,7 @@ import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 import ru.ruscrafting.farms.paper.mine.recovery.MineIncidentBlockJournal
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import java.util.concurrent.ConcurrentHashMap
 import java.util.logging.Level
 import kotlin.math.absoluteValue
 
@@ -32,6 +33,8 @@ internal class MinePowerFailureIncident(
     private val journal: MineIncidentBlockJournal,
     private val state: WorksiteStatePort,
 ) {
+    private val pendingPreparations = ConcurrentHashMap.newKeySet<String>()
+
     fun start(runtime: MineRuntime, required: Int, now: Long): Boolean {
         val candidates = candidates(runtime, required)
         if (candidates.size < required * runtime.rules().targetMultiplier) return false
@@ -76,6 +79,10 @@ internal class MinePowerFailureIncident(
 
     fun reconcile(runtime: MineRuntime): Int {
         if (!active(runtime)) return 0
+        val key = incidentKey(runtime)
+        // Journal persistence completes before the recovery callback applies light.
+        // Avoid replaying AIR -> LIGHT while that first mutation is still pending.
+        if (key in pendingPreparations) return 0
         val existing = journal.positions(runtime, INCIDENT_ID).toSet()
         val missing = mutableListOf<Pair<Int, WorksitePosition>>()
         runtime.state.objective?.targets.orEmpty().forEachIndexed { ordinal, target ->
@@ -87,7 +94,9 @@ internal class MinePowerFailureIncident(
                 missing += ordinal to position
             }
         }
-        if (missing.isNotEmpty()) journal.prepareAll(runtime, INCIDENT_ID, missing, Material.LIGHT).whenComplete { prepared, failure ->
+        if (missing.isNotEmpty() && pendingPreparations.add(key)) journal.prepareAll(runtime, INCIDENT_ID, missing, Material.LIGHT).whenComplete { prepared, failure ->
+            pendingPreparations.remove(key)
+            if (incidentKey(runtime) != key) return@whenComplete
             if (failure != null || prepared != true) {
                 state.log(
                     Level.WARNING,
@@ -95,7 +104,8 @@ internal class MinePowerFailureIncident(
                         "blocks=${missing.size} reason=${failure?.javaClass?.simpleName ?: "journal_rejected"}",
                     failure,
                 )
-                if (active(runtime)) {
+                if (active(runtime)) journal.runOnMain {
+                    if (!active(runtime) || incidentKey(runtime) != key) return@runOnMain
                     journal.restore(runtime, INCIDENT_ID)
                     incidents.abort(runtime)
                 }
@@ -108,6 +118,9 @@ internal class MinePowerFailureIncident(
 
     private fun active(runtime: MineRuntime): Boolean =
         runtime.state.phase == MinePhase.INCIDENT && runtime.state.incident?.type == MineIncidentType.POWER_FAILURE
+
+    private fun incidentKey(runtime: MineRuntime): String =
+        "${runtime.settings.id}:${runtime.state.sequence}:$INCIDENT_ID:${runtime.state.incident?.objectiveNonce ?: -1L}"
 
     private fun candidates(runtime: MineRuntime, required: Int): List<ObjectiveTargetCandidate> =
         orderMineIncidentPositions(

@@ -16,6 +16,7 @@ allprojects {
         include '**/MineOreWorkshopControllerMockBukkitTest*.class'
         include '**/MineLocationsTest*.class'
         include '**/MineLocationRepositoryTest*.class'
+        include '**/MineModuleRecoveryMigrationMockBukkitTest*.class'
         include '**/MineLostMinerMaze*Test*.class'
         include '**/MineConstructionIncidentsMockBukkitTest*.class'
         include '**/MineEntityIncidentsMockBukkitTest*.class'

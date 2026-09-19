@@ -25,6 +25,7 @@ import ru.ruscrafting.farms.paper.mine.incident.entity.hasMineObjectiveMarkerSpa
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 import ru.ruscrafting.farms.paper.mine.recovery.MineIncidentBlockJournal
+import java.util.concurrent.ConcurrentHashMap
 import java.util.logging.Level
 import kotlin.math.absoluteValue
 
@@ -38,13 +39,13 @@ internal class MineFloodingIncident(
 ) {
     private val pendingScoops = mutableSetOf<String>()
     private val drainedPositions = mutableMapOf<String, MutableSet<WorksitePosition>>()
-    private val pendingPreparations = mutableSetOf<String>()
+    private val pendingPreparations = ConcurrentHashMap.newKeySet<String>()
 
     fun start(runtime: MineRuntime, required: Int, now: Long): Boolean {
         val candidate = candidates(runtime, required).firstOrNull() ?: return false
         // Flooding is one local obstruction, like cave-in, rather than several remote water rooms.
         if (!incidents.start(runtime, MineIncidentType.FLOODING, 1, now, listOf(candidate))) return false
-        drainedPositions.remove(incidentKey(runtime))
+        clearDrained(runtime)
         reconcile(runtime)
         return true
     }
@@ -86,9 +87,13 @@ internal class MineFloodingIncident(
 
     fun reconcile(runtime: MineRuntime): Int {
         if (!active(runtime)) {
-            drainedPositions.remove(incidentKey(runtime))
+            clearDrained(runtime)
             return 0
         }
+        val key = incidentKey(runtime)
+        // Journal persistence completes before the recovery callback applies water.
+        // Do not replay those records while that first mutation is still pending.
+        if (key in pendingPreparations) return 0
         val existing = journal.positions(runtime, INCIDENT_ID).toSet()
         val drained = drainedPositions.getOrPut(incidentKey(runtime), ::linkedSetOf)
         val missing = mutableListOf<Pair<Int, WorksitePosition>>()
@@ -109,9 +114,9 @@ internal class MineFloodingIncident(
                     drained += position
                 }
         }
-        val key = incidentKey(runtime)
         if (missing.isNotEmpty() && pendingPreparations.add(key)) journal.prepareAll(runtime, INCIDENT_ID, missing, Material.WATER).whenComplete { prepared, failure ->
             pendingPreparations.remove(key)
+            if (incidentKey(runtime) != key) return@whenComplete
             if (failure != null || prepared != true) {
                 state.log(
                     Level.WARNING,
@@ -119,7 +124,8 @@ internal class MineFloodingIncident(
                         "blocks=${missing.size} reason=${failure?.javaClass?.simpleName ?: "journal_rejected"}",
                     failure,
                 )
-                if (active(runtime)) {
+                if (active(runtime)) journal.runOnMain {
+                    if (!active(runtime) || incidentKey(runtime) != key) return@runOnMain
                     journal.restore(runtime, INCIDENT_ID)
                     incidents.abort(runtime)
                 }
@@ -161,7 +167,13 @@ internal class MineFloodingIncident(
         return true
     }
 
-    private fun incidentKey(runtime: MineRuntime): String = "${runtime.settings.id}:${runtime.state.sequence}:$INCIDENT_ID"
+    private fun incidentKey(runtime: MineRuntime): String =
+        "${runtime.settings.id}:${runtime.state.sequence}:$INCIDENT_ID:${runtime.state.incident?.objectiveNonce ?: -1L}"
+
+    private fun clearDrained(runtime: MineRuntime) {
+        val prefix = "${runtime.settings.id}:${runtime.state.sequence}:$INCIDENT_ID:"
+        drainedPositions.keys.removeIf { it.startsWith(prefix) }
+    }
 
     private fun active(runtime: MineRuntime): Boolean =
         runtime.state.phase == MinePhase.INCIDENT && runtime.state.incident?.type == MineIncidentType.FLOODING

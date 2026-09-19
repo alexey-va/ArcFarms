@@ -541,7 +541,7 @@ internal class MineOreWorkshopController(
         const val INTERACTION_DISTANCE_SQUARED = 25.0
         const val DELIVERY_DISTANCE_SQUARED = 3.0625
         const val CARRY_FORWARD = 0.75
-        const val CARRY_Y = -0.25
+        const val CARRY_Y = 1.0
         const val CRANK_INNER_RADIUS = 1.2
         const val CRANK_OUTER_RADIUS = 3.2
     }

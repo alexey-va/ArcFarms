@@ -7,6 +7,7 @@ import org.bukkit.block.Block
 import ru.ruscrafting.farms.domain.PendingMineBlock
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.MaterialRules
+import ru.ruscrafting.farms.paper.RuntimeTaskSupervisor
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
@@ -51,6 +52,10 @@ internal class MineBlockRecoveryController(
     fun containsPosition(positionKey: String): Boolean =
         journal.containsPosition(positionKey) || positionKey in inFlightPositions
 
+    /** Runs recovery-owned world/state work on the Paper thread while active. */
+    fun runOnMain(task: () -> Unit): Boolean =
+        tasks.runSync(tasks.lifecycleToken(), task)
+
     fun prepare(
         record: PendingMineBlock,
         block: Block,
@@ -74,8 +79,7 @@ internal class MineBlockRecoveryController(
         pendingResults[record.positionKey] = result
         journal.prepare(record).whenComplete { _, failure ->
             if (failure != null) {
-                release(record.positionKey, result)
-                result.completeExceptionally(failure)
+                completeFailureOnMain(token, listOf(record.positionKey), result, failure)
                 return@whenComplete
             }
             if (!tasks.runSync(token) {
@@ -149,8 +153,7 @@ internal class MineBlockRecoveryController(
         acquired.forEach { pendingResults[it] = result }
         journal.prepareAll(mutations.map(MineBlockMutation::record)).whenComplete { _, failure ->
             if (failure != null) {
-                releaseAll(acquired, result)
-                result.completeExceptionally(failure)
+                completeFailureOnMain(token, acquired, result, failure)
                 return@whenComplete
             }
             if (!tasks.runSync(token) {
@@ -371,6 +374,29 @@ internal class MineBlockRecoveryController(
 
     private fun releaseAll(positionKeys: Collection<String>, result: CompletableFuture<Boolean>) {
         positionKeys.forEach { release(it, result) }
+    }
+
+    /**
+     * Journal writers complete on their own thread. Deliver the failure to
+     * incident callbacks on the sync gate while the lifecycle is alive; after
+     * disable, release bookkeeping and return false without invoking Bukkit.
+     */
+    private fun completeFailureOnMain(
+        token: RuntimeTaskSupervisor.Token,
+        positionKeys: Collection<String>,
+        result: CompletableFuture<Boolean>,
+        failure: Throwable,
+    ) {
+        val dispatched = runCatching {
+            tasks.runSync(token) {
+                releaseAll(positionKeys, result)
+                result.completeExceptionally(failure)
+            }
+        }.getOrDefault(false)
+        if (!dispatched) {
+            releaseAll(positionKeys, result)
+            result.complete(false)
+        }
     }
 
     private fun retire(record: PendingMineBlock, reason: String) {

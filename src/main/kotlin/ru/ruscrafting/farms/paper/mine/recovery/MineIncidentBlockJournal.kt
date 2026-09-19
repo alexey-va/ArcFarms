@@ -3,6 +3,7 @@ package ru.ruscrafting.farms.paper.mine.recovery
 import org.bukkit.Bukkit
 import org.bukkit.Chunk
 import org.bukkit.Material
+import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.PendingMineBlock
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.mine.MineRuntime
@@ -23,8 +24,9 @@ internal class MineIncidentBlockJournal(
         if (!world.isChunkLoaded(position.x shr 4, position.z shr 4)) return CompletableFuture.completedFuture(false)
         val block = world.getBlockAt(position.x, position.y, position.z)
         val original = block.type
+        val objectiveNonce = runtime.state.incident?.objectiveNonce ?: 0L
         val record = PendingMineBlock(
-            id = "mine-incident:${runtime.settings.id}:${runtime.state.sequence}:$incidentId:$ordinal",
+            id = incidentRecordId(runtime, incidentId, objectiveNonce, ordinal),
             zoneId = runtime.settings.id,
             world = position.world,
             x = position.x,
@@ -35,7 +37,12 @@ internal class MineIncidentBlockJournal(
             nextMaterial = original.name,
             restoreAt = Long.MAX_VALUE,
         )
-        return recovery.prepare(record, block, original) { block.setType(temporary, false) }
+        return recovery.prepare(
+            record,
+            block,
+            original,
+            stillValid = incidentStillValid(runtime, incidentId, runtime.state.sequence, objectiveNonce),
+        ) { block.setType(temporary, false) }
     }
 
     fun prepareAll(
@@ -44,13 +51,16 @@ internal class MineIncidentBlockJournal(
         placements: List<Pair<Int, WorksitePosition>>,
         temporary: Material,
     ): CompletableFuture<Boolean> {
+        val sequence = runtime.state.sequence
+        val objectiveNonce = runtime.state.incident?.objectiveNonce ?: 0L
+        val stillValid = incidentStillValid(runtime, incidentId, sequence, objectiveNonce)
         val mutations = placements.map { (ordinal, position) ->
             val world = Bukkit.getWorld(position.world) ?: return CompletableFuture.completedFuture(false)
             if (!world.isChunkLoaded(position.x shr 4, position.z shr 4)) return CompletableFuture.completedFuture(false)
             val block = world.getBlockAt(position.x, position.y, position.z)
             val original = block.type
             val record = PendingMineBlock(
-                id = "mine-incident:${runtime.settings.id}:${runtime.state.sequence}:$incidentId:$ordinal",
+                id = incidentRecordId(runtime, incidentId, objectiveNonce, ordinal),
                 zoneId = runtime.settings.id,
                 world = position.world,
                 x = position.x,
@@ -61,14 +71,20 @@ internal class MineIncidentBlockJournal(
                 nextMaterial = original.name,
                 restoreAt = Long.MAX_VALUE,
             )
-            MineBlockMutation(record, block, original) { block.setType(temporary, false) }
+            MineBlockMutation(record, block, original, stillValid) { block.setType(temporary, false) }
         }
         return recovery.prepareAll(mutations)
     }
 
     fun positions(runtime: MineRuntime, incidentId: String): List<WorksitePosition> {
-        val prefix = "mine-incident:${runtime.settings.id}:${runtime.state.sequence}:$incidentId:"
-        return recovery.records(runtime.settings.id).filter { it.id.startsWith(prefix) }.map {
+        val records = recovery.records(runtime.settings.id)
+        val currentPrefix = incidentPrefix(runtime.settings.id, runtime.state.sequence, incidentId,
+            runtime.state.incident?.objectiveNonce ?: 0L)
+        val current = records.filter { it.id.startsWith(currentPrefix) }
+        val legacy = records.filter {
+            isLegacyIncidentRecord(it.id, legacyIncidentPrefix(runtime.settings.id, runtime.state.sequence, incidentId))
+        }
+        return (current + legacy).distinctBy(PendingMineBlock::positionKey).map {
             WorksitePosition(it.world, it.x, it.y, it.z)
         }
     }
@@ -96,16 +112,26 @@ internal class MineIncidentBlockJournal(
     fun ensureTemporaryResult(position: WorksitePosition, temporary: Material): MineTemporaryEnsureResult =
         recovery.ensureTemporaryResult(position, temporary)
 
+    /** Completes incident failure handling on the Paper thread when the lifecycle is active. */
+    fun runOnMain(task: () -> Unit): Boolean = recovery.runOnMain(task)
+
     /** Restores journalled incident blocks whose owning incident state did not survive an abrupt stop. */
     fun restoreOrphans(runtimes: Collection<MineRuntime>, chunk: Chunk? = null): Int {
-        val active = runtimes.mapNotNull { runtime ->
+        val activeCurrent = runtimes.mapNotNull { runtime ->
             runtime.state.incident?.let { incident ->
-                "mine-incident:${runtime.settings.id}:${runtime.state.sequence}:${incident.type.name.lowercase()}:"
+                incidentPrefix(runtime.settings.id, runtime.state.sequence, incident.type.name.lowercase(), incident.objectiveNonce)
+            }
+        }
+        val activeLegacy = runtimes.mapNotNull { runtime ->
+            runtime.state.incident?.let { incident ->
+                legacyIncidentPrefix(runtime.settings.id, runtime.state.sequence, incident.type.name.lowercase())
             }
         }
         var restored = 0
         recovery.records().filter { record ->
-            record.id.startsWith("mine-incident:") && active.none(record.id::startsWith) &&
+            record.id.startsWith("mine-incident:") &&
+                activeCurrent.none(record.id::startsWith) &&
+                activeLegacy.none { isLegacyIncidentRecord(record.id, it) } &&
                 (chunk == null || record.world == chunk.world.name && record.x shr 4 == chunk.x && record.z shr 4 == chunk.z)
         }.forEach { record ->
             val world = Bukkit.getWorld(record.world) ?: return@forEach
@@ -115,4 +141,29 @@ internal class MineIncidentBlockJournal(
         }
         return restored
     }
+
+    private fun incidentStillValid(
+        runtime: MineRuntime,
+        incidentId: String,
+        sequence: Long,
+        objectiveNonce: Long,
+    ): () -> Boolean = {
+        val incident = runtime.state.incident
+            runtime.state.phase == MinePhase.INCIDENT &&
+            runtime.state.sequence == sequence &&
+            incident?.type?.name?.equals(incidentId, ignoreCase = true) == true &&
+            incident?.objectiveNonce == objectiveNonce
+    }
+
+    private fun incidentRecordId(runtime: MineRuntime, incidentId: String, objectiveNonce: Long, ordinal: Int): String =
+        "${incidentPrefix(runtime.settings.id, runtime.state.sequence, incidentId, objectiveNonce)}$ordinal"
+
+    private fun incidentPrefix(zoneId: String, sequence: Long, incidentId: String, objectiveNonce: Long): String =
+        "mine-incident:$zoneId:$sequence:$incidentId:$objectiveNonce:"
+
+    private fun legacyIncidentPrefix(zoneId: String, sequence: Long, incidentId: String): String =
+        "mine-incident:$zoneId:$sequence:$incidentId:"
+
+    private fun isLegacyIncidentRecord(recordId: String, legacyPrefix: String): Boolean =
+        recordId.startsWith(legacyPrefix) && !recordId.removePrefix(legacyPrefix).contains(':')
 }

@@ -67,6 +67,11 @@ class MineOreWorkshopControllerMockBukkitTest : FunSpec({
         controller.onInteractEntity(PlayerInteractEntityEvent(player, oreHitbox, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
         controller.onInteractEntity(PlayerInteractEntityEvent(player, oreHitbox, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
         workshopEntities(world).filterIsInstance<ItemDisplay>() shouldHaveSize 6
+        val carried = workshopEntities(world).filterIsInstance<ItemDisplay>().single { display ->
+            display.persistentDataContainer.keys.any { it.key == "mine_ore_workshop_carried" }
+        }
+        (carried.location.y > player.location.y + 0.5) shouldBe true
+        (carried.location.y < player.eyeLocation.y) shouldBe true
         controller.tick(runtime, listOf(player), 1_050L)
         runtime.state.incident!!.working!!.stage shouldBe MineWorkingStage.LOAD
         workshopEntities(world).filterIsInstance<ItemDisplay>() shouldHaveSize 6

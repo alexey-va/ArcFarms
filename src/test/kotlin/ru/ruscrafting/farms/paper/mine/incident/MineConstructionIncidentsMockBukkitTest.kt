@@ -7,6 +7,7 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.ints.shouldBeInRange
 import io.kotest.matchers.shouldBe
 import org.bukkit.Material
+import org.bukkit.block.data.Levelled
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.inventory.ItemStack
 import org.bukkit.entity.BlockDisplay
@@ -14,6 +15,7 @@ import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.paper.fixtures.requiredMockBukkitScenario
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineShiftState
+import ru.ruscrafting.farms.domain.PendingMineBlock
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.CuboidRegionGateway
@@ -24,6 +26,8 @@ import ru.ruscrafting.farms.paper.mine.index.MineIndexDefinition
 import ru.ruscrafting.farms.paper.mine.index.MineIndexedTarget
 import ru.ruscrafting.farms.paper.mine.mineV2Settings
 import ru.ruscrafting.farms.paper.mine.testMineComponentGraph
+import ru.ruscrafting.farms.persistence.MineRecoveryJournal
+import java.util.concurrent.CompletableFuture
 
 class MineConstructionIncidentsMockBukkitTest : FunSpec({
     lateinit var paper: MockBukkitTestRuntime
@@ -194,6 +198,163 @@ class MineConstructionIncidentsMockBukkitTest : FunSpec({
         runtime.state.objective shouldBe null
         world.getBlockAt(conflicted.x, conflicted.y, conflicted.z).type shouldBe Material.DIAMOND_BLOCK
     }
+
+    test("cave-in does not replay its durable batch while the world mutation is pending") {
+        requiredMockBukkitScenario {
+            val world = paper.server.addSimpleWorld("world")
+            val anchor = world.getBlockAt(18, 64, 18)
+            (-2..2).forEach { dx -> (-2..2).forEach { dz ->
+                world.getBlockAt(anchor.x + dx, anchor.y, anchor.z + dz).type = Material.STONE
+            } }
+            (-2..2).forEach { dx -> (-1..2).forEach { dz ->
+                world.getBlockAt(anchor.x + dx, anchor.y + 5, anchor.z + dz).type = Material.STONE
+            } }
+            val journal = DeferredMineJournal()
+            val graph = testMineComponentGraph(
+                paper.createSimplePlugin("MineCaveInPendingBatchTest"), CuboidRegionGateway(), immediateMinePort(),
+                clock = { 1_000L }, journal = journal,
+            )
+            graph.module.rebuild(
+                listOf(mineV2Settings().copy(miningOnly = true)),
+                mapOf("old_shafts" to MineShiftState(engineVersion = 2, phase = MinePhase.MINING, sequence = 3, orderId = "ore_run")),
+                5_000L,
+            )
+            val runtime = graph.registry.byId("old_shafts")!!
+            graph.index.replaceZone(
+                MineIndexDefinition(runtime.settings.id, runtime.region, setOf(Material.STONE)),
+                listOf(anchor.chunk),
+                listOf(MineIndexedTarget(anchor.position(), setOf(MineAnchorRole.NEST))),
+            )
+
+            graph.caveIn.start(runtime, now = 1_000L) shouldBe true
+            val targets = requireNotNull(runtime.state.objective).targets
+            targets.size.shouldBeInRange(55..65)
+            journal.records() shouldHaveSize targets.size
+            val first = targets.first().position
+            world.getBlockAt(first.x, first.y, first.z).type shouldBe Material.AIR
+
+            // This is the second reconcile that used to replay durable AIR->COBBLESTONE
+            // records and make the first prepare callback fail validation.
+            graph.caveIn.reconcile(runtime) shouldBe 0
+            runtime.state.phase shouldBe MinePhase.INCIDENT
+            world.getBlockAt(first.x, first.y, first.z).type shouldBe Material.AIR
+
+            journal.completePrepare()
+            runtime.state.phase shouldBe MinePhase.INCIDENT
+            world.getBlockAt(first.x, first.y, first.z).type shouldBe Material.COBBLESTONE
+        }
+    }
+    test("flooding does not replay its durable batch while the world mutation is pending") {
+        requiredMockBukkitScenario {
+            val world = paper.server.addSimpleWorld("world")
+            val floorPlane = (0..14).flatMap { x -> (1..3).map { z ->
+                world.getBlockAt(x, 63, z).also { it.type = Material.STONE }
+            } }
+            val floors = listOf(1, 4, 7, 10, 13).map { x -> world.getBlockAt(x, 63, 2) }
+            val journal = DeferredMineJournal()
+            val graph = testMineComponentGraph(
+                paper.createSimplePlugin("MineFloodPendingBatchTest"), CuboidRegionGateway(), immediateMinePort(),
+                clock = { 1_000L }, journal = journal,
+            )
+            graph.module.rebuild(
+                listOf(mineV2Settings()),
+                mapOf("old_shafts" to MineShiftState(engineVersion = 2, phase = MinePhase.MINING, sequence = 4, orderId = "ore_run")),
+                5_000L,
+            )
+            val runtime = graph.registry.byId("old_shafts")!!
+            graph.index.replaceZone(
+                MineIndexDefinition(runtime.settings.id, runtime.region, setOf(Material.STONE)),
+                listOf(world.getChunkAt(0, 0)),
+                floors.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.NEST)) },
+            )
+
+            graph.flooding.start(runtime, required = 2, now = 1_000L) shouldBe true
+            val waters = graph.flooding.waterPositions(runtime)
+            (waters.size in 20..30) shouldBe true
+            val first = waters.first()
+            val block = world.getBlockAt(first.x, first.y, first.z)
+            block.type shouldBe Material.AIR
+
+            graph.flooding.reconcile(runtime) shouldBe 0
+            runtime.state.phase shouldBe MinePhase.INCIDENT
+            block.type shouldBe Material.AIR
+
+            journal.completePrepare()
+            runtime.state.phase shouldBe MinePhase.INCIDENT
+            block.type shouldBe Material.WATER
+            (block.blockData as Levelled).level shouldBe 0
+            floorPlane.size shouldBe 45
+        }
+    }
+
+    test("cave-in ignores stale successful journal completion after the incident was replaced") {
+        requiredMockBukkitScenario {
+            val world = paper.server.addSimpleWorld("world")
+            val anchor = world.getBlockAt(18, 64, 18)
+            (-2..2).forEach { dx -> (-2..2).forEach { dz ->
+                world.getBlockAt(anchor.x + dx, anchor.y, anchor.z + dz).type = Material.STONE
+            } }
+            (-2..2).forEach { dx -> (-1..2).forEach { dz ->
+                world.getBlockAt(anchor.x + dx, anchor.y + 5, anchor.z + dz).type = Material.STONE
+            } }
+            val journal = DeferredMineJournal()
+            val graph = testMineComponentGraph(
+                paper.createSimplePlugin("MineCaveReplacementBatchTest"), CuboidRegionGateway(), immediateMinePort(),
+                clock = { 1_000L }, journal = journal,
+            )
+            graph.module.rebuild(
+                listOf(mineV2Settings().copy(miningOnly = true)),
+                mapOf("old_shafts" to MineShiftState(engineVersion = 2, phase = MinePhase.MINING, sequence = 5, orderId = "ore_run")),
+                5_000L,
+            )
+            val runtime = graph.registry.byId("old_shafts")!!
+            graph.index.replaceZone(
+                MineIndexDefinition(runtime.settings.id, runtime.region, setOf(Material.STONE)),
+                listOf(anchor.chunk),
+                listOf(MineIndexedTarget(anchor.position(), setOf(MineAnchorRole.NEST))),
+            )
+
+            graph.caveIn.start(runtime, now = 1_000L) shouldBe true
+            val first = requireNotNull(runtime.state.objective).targets.first().position
+            val oldNonce = requireNotNull(runtime.state.incident).objectiveNonce
+            runtime.state = runtime.state.copy(
+                incident = runtime.state.incident!!.copy(objectiveNonce = oldNonce + 1L),
+            )
+
+            journal.completePrepare()
+
+            runtime.state.phase shouldBe MinePhase.INCIDENT
+            requireNotNull(runtime.state.incident).objectiveNonce shouldBe oldNonce + 1L
+            world.getBlockAt(first.x, first.y, first.z).type shouldBe Material.AIR
+        }
+    }
 })
 
 private fun org.bukkit.block.Block.position() = WorksitePosition(world.name, x, y, z)
+
+private class DeferredMineJournal : MineRecoveryJournal {
+    private val records = linkedMapOf<String, PendingMineBlock>()
+    private var pending: CompletableFuture<Unit>? = null
+
+    override fun records(): List<PendingMineBlock> = records.values.toList()
+    override fun containsPosition(positionKey: String): Boolean = records.values.any { it.positionKey == positionKey }
+
+    override fun prepare(record: PendingMineBlock): CompletableFuture<Unit> = prepareAll(listOf(record))
+
+    override fun prepareAll(batch: List<PendingMineBlock>): CompletableFuture<Unit> {
+        check(pending == null) { "Only one mine batch is expected" }
+        check(batch.map(PendingMineBlock::id).distinct().size == batch.size)
+        batch.forEach { record -> records[record.id] = record }
+        return CompletableFuture<Unit>().also { pending = it }
+    }
+
+    override fun remove(recordId: String): CompletableFuture<Unit> {
+        records.remove(recordId)
+        return CompletableFuture.completedFuture(Unit)
+    }
+
+    fun completePrepare() {
+        requireNotNull(pending).complete(Unit)
+    }
+
+}
