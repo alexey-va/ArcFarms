@@ -68,6 +68,14 @@ test('mine expedition repairs three incidents, carries ore and extracts one dura
   const started = await reaches(s => s?.sequence === 1 && s.prospected === 1, 'Inspecting indexed ore must prospect the first sample');
   assert.deepEqual(started.incidentSchedule, ['CAVE_IN', 'GAS_LEAK', 'TRACK_DAMAGE']);
 
+  const firstOre = started.objective.targets.find(target => target.status === 'AVAILABLE');
+  assert.ok(firstOre, 'Mining must expose the first indexed ore target');
+  await player.teleport(firstOre.position.x + 0.5, -60, firstOre.position.z - 1.5);
+  const firstBlock = position(firstOre.position.x, firstOre.position.y, firstOre.position.z);
+  await waitUntil(() => player.bot.blockAt(firstBlock)?.name === 'iron_ore', { signal });
+  await player.bot.dig(player.bot.blockAt(firstBlock));
+  await reaches(s => s.mined === 1, 'The first ore must reach the cave-in trigger');
+
   const cave = await reaches(s => s.incident?.type === 'CAVE_IN', 'Cave-in must interrupt the expedition');
   const support = cave.objective.targets.find(target => target.status === 'AVAILABLE');
   await approach(support.position);
@@ -103,7 +111,7 @@ test('mine expedition repairs three incidents, carries ore and extracts one dura
     await reaches(s => fixed === 1 ? s.incidentCursor === 3 : s.incident?.progress === 1, 'Distinct track anchors must consume kits and advance repair');
   }
   await reaches(s => s.phase === 'MINING', 'Incident recovery must restore the original mining phase');
-  for (let mined = 0; mined < 2; mined++) {
+  for (let mined = 1; mined < 2; mined++) {
     const target = (await mine()).objective.targets.find(candidate => candidate.status === 'AVAILABLE');
     await player.teleport(target.position.x + 0.5, -60, target.position.z - 1.5);
     const blockPosition = position(target.position.x, target.position.y, target.position.z);
