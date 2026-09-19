@@ -24,9 +24,12 @@ internal class MineIncidentCoordinator(
         required: Int,
         now: Long,
         candidates: List<ObjectiveTargetCandidate> = emptyList(),
+        working: ru.ruscrafting.farms.domain.MineWorkingState? = null,
     ): Boolean {
         val initial = MineShiftEngine.startIncident(runtime.state, type, required, now)
-        val started = initial
+        val started = if (working == null) initial else initial.copy(state = initial.state.copy(
+            incident = initial.state.incident?.copy(working = working),
+        ))
         if (!started.accepted) return false
         val state = if (candidates.isEmpty()) started.state else started.state.copy(
             objective = ObjectiveTargetPool.plan(

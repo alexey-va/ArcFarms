@@ -16,6 +16,7 @@ enum class MinePhase {
 
 enum class MineIncidentType {
     CAVE_IN, GAS_LEAK, FLOODING, TRACK_DAMAGE, CRYSTAL_RESONANCE, CREATURE_NEST, POWER_FAILURE, LOST_MINER,
+    TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP,
 }
 
 data class MineOrder(val id: String, val incidents: List<MineIncidentType>) {
@@ -60,6 +61,8 @@ data class MineIncidentState(
     val serviceLeases: Map<String, UUID> = emptyMap(),
     /** Read-only migration marker for retired off-map room incidents. */
     val scenarioPlacement: MineScenarioPlacement? = null,
+    /** Optional for legacy saves; lateral workings retain their own physical placement and stage. */
+    val working: MineWorkingState? = null,
 ) {
     init {
         require(required in 1..100_000 && progress in 0..required)
@@ -119,11 +122,9 @@ object MineShiftEngine {
         val countRange = rules.incidentCountMax - rules.incidentCountMin + 1
         val count = rules.incidentCountMin + (sequence % countRange).toInt()
         require(order.incidents.size >= count) { "Mine order ${order.id} has fewer incidents than required" }
-        val offset = (sequence % order.incidents.size).toInt()
-        val schedule = order.incidents.indices
-            .map { order.incidents[(offset + it) % order.incidents.size] }
+        val schedule = order.incidents
+            .sortedBy { ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed.orderScore(sequence, it.name.hashCode().toLong()) }
             .take(count)
-            .sortedBy(MineIncidentType::ordinal)
         return EngineResult(
             MineShiftState(
                 engineVersion = 2,

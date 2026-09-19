@@ -71,6 +71,11 @@ internal interface WorksiteMoveHandler {
     fun onMove(from: Location, to: Location, player: Player): Boolean
 }
 
+/** Admission to a temporary world footprint may await a durable return record. */
+internal interface WorksiteMovementGuard {
+    fun guardMovement(event: org.bukkit.event.player.PlayerMoveEvent): Boolean
+}
+
 /** Lets a live off-site activity retain its participant across plugin-owned teleports. */
 internal interface WorksiteTemporaryBlockOwner {
     fun protectsTemporaryBlock(location: Location): Boolean
@@ -173,6 +178,9 @@ internal class WorksiteModuleRegistry(
         }
         return handled
     }
+
+    fun guardMovement(event: org.bukkit.event.player.PlayerMoveEvent): Boolean =
+        modulesInOrder.filterIsInstance<WorksiteMovementGuard>().any { it.guardMovement(event) }
 
     fun protectsTemporaryBlock(location: Location): Boolean =
         modulesInOrder.filterIsInstance<WorksiteTemporaryBlockOwner>().any { it.protectsTemporaryBlock(location) }

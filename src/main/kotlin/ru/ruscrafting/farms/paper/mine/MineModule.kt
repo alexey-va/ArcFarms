@@ -88,7 +88,8 @@ internal class MineModule(
 ) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockBreakGuard, WorksiteBlockDamageHandler, WorksiteBlockPlaceHandler,
     WorksiteBlockInteractHandler,
     WorksiteMoveHandler, WorksiteEntityInteractHandler, WorksiteEntityDeathHandler, WorksiteEntityDamageHandler, WorksiteFastVisualHandler,
-    WorksiteParticipantOwner, WorksiteServiceItemOwner, WorksiteGuidanceHandler, WorksiteTeleportRetention, WorksiteTemporaryBlockOwner {
+    WorksiteParticipantOwner, WorksiteServiceItemOwner, WorksiteGuidanceHandler, WorksiteTeleportRetention, WorksiteTemporaryBlockOwner,
+    ru.ruscrafting.farms.paper.WorksiteMovementGuard, ru.ruscrafting.farms.paper.WorksiteParticipantRecoveryOwner {
     override val kind: ActivityKind = ActivityKind.MINE
     override val zoneCount: Int get() = registry.size
     val pendingBlockCount: Int get() = recovery.pendingCount
@@ -168,6 +169,7 @@ internal class MineModule(
 
     override fun onBlockPlace(event: BlockPlaceEvent): Boolean {
         val runtime = registry.at(event.blockPlaced.location) ?: return false
+        if (incidents.protectsTemporaryBlock(event.blockPlaced.location)) { event.isCancelled = true; return true }
         if (access.isAdminEditing(event.player)) {
             event.isCancelled = false
             mining.logPlacement(event, runtime, true)
@@ -186,6 +188,10 @@ internal class MineModule(
     override fun onMove(from: Location, to: Location, player: Player): Boolean =
         incidents.onMove(to, player) || loading.onMove(to, player) || extraction.onMove(from, to, player)
 
+    override fun guardMovement(event: org.bukkit.event.player.PlayerMoveEvent): Boolean = incidents.guardMovement(event)
+
+    override fun recoverPlayer(player: Player) = incidents.recoverPlayer(player)
+
     override fun retainOnTeleport(player: Player, destination: Location): Boolean =
         incidents.retainOnTeleport(player, destination)
 
@@ -201,6 +207,7 @@ internal class MineModule(
         val supplyBudget = ru.ruscrafting.farms.paper.WorksiteTickBudget(1_024)
         registry.snapshot().forEach { runtime ->
             if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.MINING &&
+                !incidents.blocksOreSupply(runtime) &&
                 runtime.region.world.players.any { registry.forAudience(it.location) === runtime &&
                     access.hasAccess(it, runtime.settings.permission) && !access.isAdminEditing(it) }) {
                 tasks.guarded("mine_v2_supply:${runtime.settings.id}") { veins.tick(runtime, clock(), supplyBudget) }
@@ -263,6 +270,7 @@ internal class MineModule(
     }
 
     override fun beforeReload(reason: String) {
+        incidents.beforeReload()
         veins.clear()
         worldWarmup.cleanup()
         admin.cleanup()

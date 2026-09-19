@@ -95,16 +95,46 @@ internal class MineComponentGraph(
     )
     val lostMiner = MineLostMinerIncident(registry, index, incidents, incidentEntityEffects, lostMinerMaze)
     val objectiveMarkers = MineObjectiveMarkerScene(incidentEntityEffects)
+    private val workingWorld = ru.ruscrafting.farms.paper.mine.working.MineWorkingWorld(
+        registry,
+        ru.ruscrafting.farms.paper.worksite.scene.WorksitePreparedSceneOwner(
+            plugin, "mine_working",
+            ru.ruscrafting.farms.paper.farm.care.mole.FarmMoleBurrowWorksiteSceneCodec(plugin, "mine_working"),
+            ru.ruscrafting.farms.paper.worksite.scene.WorksitePreparedSceneChunkRetention { chunk ->
+                check(tickets.retain(chunk))
+                AutoCloseable { tickets.release(chunk) }
+            },
+            ru.ruscrafting.farms.paper.worksite.scene.WorksitePreparedSceneBlockDataDecoder(
+                ru.ruscrafting.farms.paper.platform.PaperFarmBlockDataDecoder::decode),
+        ),
+        ru.ruscrafting.farms.paper.platform.PaperFarmBlockDataDecoder,
+        { position -> recovery.containsPosition("${position.world}:${position.x}:${position.y}:${position.z}") },
+    )
+    private val workingPresentation = ru.ruscrafting.farms.paper.mine.working.MineWorkingPresentation(
+        plugin, locale, ru.ruscrafting.farms.paper.platform.PaperFarmTextDisplayRenderer,
+        PaperMineCartEffects(plugin, "mine_working_cart", ru.ruscrafting.farms.config.MineCartVisualSettings()),
+        { id -> lift?.floors()?.sortedByDescending { it.y }?.indexOfFirst { it.id == id }
+            ?.takeIf { it >= 0 }?.plus(1) },
+    )
+    val workings = ru.ruscrafting.farms.paper.mine.working.MineWorkingController(
+        registry, ru.ruscrafting.farms.paper.mine.working.MineWorkingPlacementService(index, blockScanner, lift, ports.state),
+        workingWorld, incidents, ru.ruscrafting.farms.paper.mine.working.MineWorkingEquipment(registry, serviceItems, ports.state, locale),
+        workingPresentation,
+        ru.ruscrafting.farms.paper.worksite.WorksiteExpeditionTravel(plugin, ports.tasks, ports.access, ports.state,
+            java.nio.file.Path.of("data/recovery/mine-working-returns")),
+        ports.access, ports.state, ports.tasks, clock,
+    )
     val incidentScheduler = MineIncidentScheduler(
         caveIn, gasLeak, flooding, trackDamage, crystalResonance, creatureNest, powerFailure, lostMiner,
-        ru.ruscrafting.farms.paper.mine.incident.MineIncidentPlacementDiagnostics(index), ports.state,
+        workings, ru.ruscrafting.farms.paper.mine.incident.MineIncidentPlacementDiagnostics(index), ports.state,
     )
     val incidentSet = MineIncidentSet(
         registry, caveIn, trackDamage, gasLeak, crystalResonance, flooding, powerFailure, creatureNest, lostMiner, objectiveMarkers,
-        incidents, incidentScheduler, incidentJournal,
+        incidents, incidentScheduler, incidentJournal, workings,
     )
     val guidance = MineGuidanceSource(
         registry, ports.audience, locale, extraction::guidanceTarget, { extraction.routeFor(it)?.finalIndex ?: 1 }, clock,
+        workings::guidanceHint, workings::guidanceTargets,
     )
     private val guidancePresenter = WorksiteGuidancePresenter(ports.audience, ports.access, guidance)
     val prospecting = MineProspectingController(

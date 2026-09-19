@@ -339,6 +339,20 @@ delivers it by leaving the mine. Broken
 mine blocks are durably journaled before replacement and regenerate from the
 configured weighted material table.
 
+Mine incidents use the physical route. `TRACK_DAMAGE` reuses the rail-working
+journey: clear the collapse, replace the missing rail sections, and escort a
+checking minecart along the repaired line. Three additional work orders open a
+temporary side working from a mine floor: `TUNNEL_DRIVE` breaks the rock front
+and installs supports, `RAIL_EXTENSION` clears a collapse, lays a continuous
+line, and tests it with a cart, while `ORE_WORKSHOP` processes three batches
+through crushing, heating, cooling, and shipment at the entrance. Service
+items are temporary work equipment and do not become ordinary loot.
+
+The source controller, scheduler, component graph, and domain lifecycle are
+wired in the current tree. World placement, restart recovery on the active
+server, activation, and real-client interaction still require deployment and
+live QA evidence.
+
 `TORNADO` is a complication during `HARVESTING`: the crop order, progress,
 contributions and harvest guidance continue normally. It consumes one scheduled
 incident slot without creating a separate foreground objective. Workers receive

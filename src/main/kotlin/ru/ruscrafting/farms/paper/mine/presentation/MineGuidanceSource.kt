@@ -28,6 +28,8 @@ internal class MineGuidanceSource(
     private val routeTarget: (MineRuntime) -> WorksitePosition? = { null },
     private val routeTotal: (MineRuntime) -> Int = { 1 },
     private val clock: () -> Long = System::currentTimeMillis,
+    private val workingHint: (MineRuntime, Player, Long) -> Component? = { _, _, _ -> null },
+    private val workingTargets: (MineRuntime, Player) -> List<WorksiteGuidanceTarget> = { _, _ -> emptyList() },
 ) : WorksiteGuidanceSource {
     override fun participants(): Collection<Player> = registry.snapshot().flatMap { runtime ->
         runtime.region.world.players.filter { runtimeFor(it) === runtime }
@@ -49,14 +51,15 @@ internal class MineGuidanceSource(
             emptyMap()
         }
         val resourceValues = mapOf("resource" to resource)
+        val hint = workingHint(runtime, player, clock())
         val values = resourceValues + cooldownValues + mapOf(
             "done" to text(done), "total" to text(total),
-            "action" to render("mine.guidance.$action", player, resourceValues + cooldownValues),
+            "action" to (hint ?: render("mine.guidance.$action", player, resourceValues + cooldownValues)),
         )
         return WorksiteGuidanceView(
             "mine:${runtime.settings.id}", progressVersion(runtime),
             render("mine.guidance.title", player, values),
-            render("mine.guidance.$action", player, values),
+            hint ?: render("mine.guidance.$action", player, values),
             render("mine.guidance.bar", player, values),
             barProgress(runtime, done, total),
             when (runtime.state.phase) {
@@ -68,7 +71,7 @@ internal class MineGuidanceSource(
             quietProgress = runtime.settings.miningOnly,
             sidebarRows = listOf(
                 render("route.mine.${runtime.settings.id}", player),
-                render("mine.guidance.$action", player, values),
+                hint ?: render("mine.guidance.$action", player, values),
                 render("scoreboard.progress", player, values),
             ) + resourceRows(runtime, player),
         )
@@ -97,6 +100,7 @@ internal class MineGuidanceSource(
         MineResourceText.name(locale, resource, player)
 
     private fun targets(player: Player, runtime: MineRuntime): List<WorksiteGuidanceTarget> {
+        if (runtime.state.incident?.working != null) return workingTargets(runtime, player)
         if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.MINING) return emptyList()
         val playerId = player.uniqueId
         val objective = runtime.state.objective?.targets.orEmpty().filter { target ->

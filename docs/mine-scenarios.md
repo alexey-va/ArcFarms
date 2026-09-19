@@ -1,76 +1,114 @@
 # Mine scenarios
 
-Ordinary orders count matching mined blocks, without a highlighted objective pool.
-The scheduled incident starts automatically after half the order quota. Its
-completion resumes the same order and mining progress; stages do not grant
-separate items, money or XP.
+This document describes the mine incidents that exist in the current source
+tree. The former version listed sixteen room scenarios that are not registered
+by `MineIncidentType` and are not started by the scheduler; that catalog has
+been removed.
 
-## Reused owners
+## Evidence status
 
-- `MineIncidentCoordinator` and `ObjectiveTargetPool`: interruption, contribution,
-  progress, exclusive carried targets and order resumption.
-- `WorksiteGuidancePresenter`: automatic bossbar, sidebar and target guidance.
-- `WorksiteEntryMarker` and `WorksiteExpeditionTravel`: clickable entrances,
-  durable return intent and scoped teleport authorization; the farm uses these
-  same owners through its existing adapters.
-- `FarmMoleBurrowWorld.ensurePreparedScene`: journaled temporary geometry and
-  restoration, shared with farm underground rooms.
-- `WorksiteCarriedDisplayRenderer`: the same renderer used by farm delivery.
-- Existing mine cart/entity effects and the real `MineLiftAccess`: visuals,
-  passengers, landing safety and exclusive maintenance.
+- **Source and focused tests** means the type is registered in
+  `MineIncidentType`, listed by `MineIncidentScheduler.SUPPORTED_TYPES`, and
+  has an incident owner with focused MockBukkit or domain coverage.
+- **Controller source and component wiring** means the working controller,
+  presentation, equipment, placement service, scheduler, and component-graph
+  route exist in source. Live placement, restart recovery on the active server,
+  activation, and real-client interaction are unverified.
+- Source/config evidence does not prove delivery, activation, or a successful
+  player journey on `classic`; those remain separate checks.
 
-The mine-specific controller owns stage verbs and floor placement. It does not
-introduce a second farm runtime, reward ledger or inventory delivery system.
+## Existing incidents
 
-## Event catalog
+These eight incident IDs remain in the scheduler. `TRACK_DAMAGE` now shares
+the physical rail-working route described below; the other seven keep their
+own incident owners:
 
-| ID | Physical sequence |
-| --- | --- |
-| `CREATURE_NEST` | Defeat raiders; destroy the nest core |
-| `CAVE_IN` | Clear rubble; install supports |
-| `FLOODING` | Start pumps; remain at the drain control |
-| `GAS_LEAK` | Open vents in order; operate ventilation |
-| `POWER_FAILURE` | Replace a fuse; reconnect circuits in order |
-| `INJURED_MINER` | Free the miner; carry them to another floor |
-| `RUNAWAY_CART` | Time switch changes; brake; escort and deliver across floors |
-| `CONVOY` | Clear the track; escort and deliver across floors |
-| `LIFT_BREAKDOWN` | Secure access; carry a repair part; test the repaired lift |
-| `BAT_SWARM` | Activate the lure; close the cleared passage |
-| `FUNGAL_BLOOM` | Collect samples; clear spores |
-| `ROOT_INVASION` | Clear roots; remove their heart |
-| `LAVA_BREACH` | Carry barriers; close sluices in order |
-| `ANCIENT_DOOR` | Carry a gear; operate the lock |
-| `OLD_WAREHOUSE` | Recover crates; operate the winch |
-| `DRILL_TRIAL` | Deliver coolant; hold the controls; break through |
+| ID | Physical sequence | Evidence |
+| --- | --- | --- |
+| `CAVE_IN` | Select a safe indexed front, journal the temporary rubble, clear it with a pickaxe, then restore the scene. | Source and focused tests: `MineCaveInIncident`, `MineBlockJournal`, `MineIncidentPlacementOrderTest`. |
+| `GAS_LEAK` | Operate the indexed ventilation targets in sequence. | Source and focused tests: `MineGasLeakIncident`, `MineSequenceIncidentsMockBukkitTest`. |
+| `FLOODING` | Interact with the real water target, drain its temporary footprint, and restore it. | Source and focused tests: `MineFloodingIncident`, `MineWorldIncidentsMockBukkitTest`. |
+| `TRACK_DAMAGE` | On the laid rail line, clear the collapse, replace the missing rail sections, and escort the checking minecart. Fresh starts reuse the `RAIL_EXTENSION` working layout; a persisted incident without `working` remains on the legacy `MineTrackDamageIncident` path for save compatibility. | Source routing: `MineIncidentScheduler`, `MineIncidentSet`, and `MineWorkingController`; live world repair and legacy-save migration are unverified. |
+| `CRYSTAL_RESONANCE` | Activate indexed amethyst targets with the forgiving interaction window. | Source and focused tests: `MineCrystalResonanceIncident`, `MineSequenceIncidentsMockBukkitTest`. |
+| `CREATURE_NEST` | Defeat the spawned creatures and destroy each glowing nest core. | Source and focused tests: `MineCreatureNestIncident`, `MineEntityIncidentsMockBukkitTest`. |
+| `POWER_FAILURE` | Activate the temporary light/power targets and restore the journaled lights. | Source and focused tests: `MinePowerFailureIncident`, `MineWorldIncidentsMockBukkitTest`. |
+| `LOST_MINER` | Enter the temporary maze, find the miner, and return through the scoped entrance. | Source and focused tests: `MineLostMinerIncident`, `MineLostMinerMazeWorldMockBukkitTest`, `MineLostMinerMazeJournalCodecTest`. |
 
-## Floors and recovery
+The ordinary mine order still resumes after an incident. Incidents do not
+create a separate payout or ordinary resource quota.
 
-Placement chooses a lift floor near eligible participants. Cross-floor delivery
-requires another configured floor in the same world. Entrances cannot overlap
-an active entrance within six blocks. Lift maintenance waits for a safe stop
-and cannot overlap cross-floor delivery.
-Abandoned lift maintenance expires after three minutes, releases the lift and
-resumes the same ordinary order without awarding incident completion credit.
+## Lateral workings
 
-The bundled standalone configuration enables the twelve events that do not
-require an enabled lift. The spawn runtime profile enables all sixteen. Keep
-lift-dependent events out of profiles without a matching surveyed lift.
+The three new events begin at a validated floor entrance and open a temporary
+side working that the player enters on foot. The geometry is journaled before
+mutation; the entrance, stage, direction, and progress must survive reload or
+restart, and unfinished scene records must restore before the next activity.
+The domain contract is in `domain/MineWorking.kt`, with regression coverage in
+`MineWorkingEngineTest`. `MineWorkingController`, `MineWorkingWorld`,
+`MineWorkingPresentation`, `MineWorkingEquipment`, the placement service, the
+scheduler, and the component graph own the source-level journey. Live world
+placement, delivery, restart recovery, activation, and client interaction are
+**unverified**.
 
-Rooms use the checked-in editable `mine/events/room.atelier.json`, compiled block
-data and route metadata. Placement uses existing chunks only, preserves original
-block data and rejects unsafe occupied volumes. Temporary blocks are protected
-from normal mining, placement, fluid and explosion changes. Players leave before
-restoration; unfinished return/restore intent survives shutdown.
+| ID | Lifecycle | Service-only materials | Evidence |
+| --- | --- | --- | --- |
+| `TUNNEL_DRIVE` | `EXCAVATE` the rock front in order, then `SUPPORT` the completed front. | Supports and temporary blocks. | Controller, placement service, scheduler, and component-graph route exist in source; domain progression is covered, while live placement and scene lifecycle are unverified. |
+| `RAIL_EXTENSION` | `CLEAR_TRACK` the collapse, `LAY_TRACK` one continuous rail line from the entrance, then `TEST_TRACK` it with a checking minecart. | Rails, the test cart, and temporary blocks. | Controller and placement route exist in source; out-of-order rail placement is rejected by the engine, while live rail placement, cart escort, and recovery are unverified. |
+| `ORE_WORKSHOP` | Repeat three batches: `LOAD` ore, perform three `CRUSH` strokes, `HEAT` for 4 seconds, cool during the following 4-second window, then `SHIP` the billet at the entrance. A missed window automatically starts another heat attempt for the same batch. | Ore, the billet, and workstation interactions. | Controller and placement route exist in source; three-batch and heat-window behavior are covered by `MineWorkingEngineTest`, while live workshop placement and recovery are unverified. |
 
-Offline and expired cargo leases are reclaimed without losing completed targets
-or contributions. Unauthorized teleports release participation before movement
-can count as delivery. An escorted cart must finish its chamber route before a
-destination-floor arrival can complete the event.
+The working is a foreground incident in the current order. Completing it
+returns the party to the same order and preserves ordinary mining progress.
+None of the service items become player loot, and no working stage awards a
+separate item, XP, Vault payment, token, or price discount.
 
-## Gameplay checks
+## Scheduling and placement
 
-Mine and mine-lift E2E scenarios have been removed while the mine mechanics are
-unfinished. Reintroduce gameplay coverage against the finished mechanics rather
-than the historical room scenarios described above. Existing unit and storage
-integration checks remain in place; `./scripts/test-mine-lift` runs the focused
-lift unit tests, not a Paper E2E server.
+Order incident selection remains deterministic for a shift, while the
+incident thresholds are distributed across the mining quota. For three
+scheduled incidents and a 100-block quota, the tested thresholds are 25, 50,
+and 75 rather than draining the schedule at the halfway point. A failed
+placement is retried with bounded diagnostics; it must not silently create a
+partial scene. The source contract is exercised by
+`MineIncidentCadenceTest`.
+
+The current working presentation resolves these canonical locale paths:
+`mine.incident-name.<type>`, `mine.guidance.<type>`,
+`mine.working.item.<role>`, `mine.working.marker.<label>`,
+`mine.working.stage.<label>`, `mine.working.hint.<stage>`, `mine.working.inventory-full`,
+`mine.working.preparing`, `mine.working.next-section`,
+`mine.working.heat-wait`, `mine.working.heat-ready`, and the stage feedback
+paths under `mine.working.*`. The required `needs-kit`, `heat-missed`, and
+`returned` entries are present for the remaining lifecycle feedback but are
+not direct `renderPath` calls in the current controller. Marker values carry
+the `floor` placeholder; heat guidance carries `seconds`, and workshop
+guidance carries `batch` and `batches`.
+
+The bundled mine pools keep their existing incident IDs and add
+`TUNNEL_DRIVE`, `RAIL_EXTENSION`, and `ORE_WORKSHOP`. Zone-specific runtime
+profiles can still narrow their pools. Pool entries and source wiring do not
+prove deployment, activation, or a successful player journey on the active
+server.
+
+## Recovery and player safety
+
+Temporary side-working blocks use the shared worksite journal/scene owner.
+Completion and cancellation return players to the floor before idempotent
+restoration. Reload and restart preserve an unfinished incident's stage and
+complete journal, so it can resume; orphaned records restore on activation.
+The entrance is on the selected floor. A scene may not overlap a
+lift, another journal, an occupied block, an unloaded chunk, or an unsafe
+front. Exact live geometry, restart recovery, and real-client affordances are
+still deployment/QA evidence, not claims made by this source document.
+
+Run `./scripts/test-mine-workings` for the focused domain, scene, equipment,
+reload and return-recovery checks. The script uses class discovery compatible
+with Kotest 6.0.7 and does not run the repository's storage integration suite.
+
+## Related sources
+
+- `src/main/kotlin/ru/ruscrafting/farms/domain/MineShift.kt`
+- `src/main/kotlin/ru/ruscrafting/farms/domain/MineWorking.kt`
+- `src/main/kotlin/ru/ruscrafting/farms/paper/mine/incident/MineIncidentScheduler.kt`
+- `src/main/kotlin/ru/ruscrafting/farms/paper/worksite/scene/WorksitePreparedScene.kt`
+- `src/test/kotlin/ru/ruscrafting/farms/domain/MineWorkingEngineTest.kt`
+- `src/test/kotlin/ru/ruscrafting/farms/paper/mine/incident/MineIncidentCadenceTest.kt`

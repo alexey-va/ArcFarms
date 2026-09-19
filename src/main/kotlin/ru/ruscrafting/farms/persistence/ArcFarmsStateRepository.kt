@@ -594,6 +594,12 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
 
         private fun validateMine(mine: MineShiftState) {
             validateSequenceAndTimes(mine.sequence, mine.startedAt, mine.cooldownEndsAt)
+            mine.incident?.working?.let { working ->
+                working.validate()
+                require(ru.ruscrafting.farms.domain.MineWorkingEngine.supports(mine.incident.type)) {
+                    "Lateral working state belongs to an incompatible mine incident"
+                }
+            }
             require(
                 mine.cart in 0..100_000 && mine.supports in 0..32 && mine.prospected in 0..100_000 &&
                     mine.mined in 0..100_000 && mine.loaded in 0..100_000 && mine.routeIndex in 0..100_000 &&

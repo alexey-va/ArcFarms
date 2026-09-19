@@ -71,7 +71,8 @@ internal class MineVersionedModule(
     WorksiteBlockInteractHandler,
     WorksiteMoveHandler, WorksiteGuidanceHandler, WorksiteFastVisualHandler, WorksiteServiceItemOwner,
     WorksiteParticipantOwner, WorksiteEntityInteractHandler, WorksiteEntityDeathHandler, WorksiteEntityDamageHandler,
-    WorksiteAdminHandler, WorksiteTeleportRetention, WorksiteTemporaryBlockOwner {
+    WorksiteAdminHandler, WorksiteTeleportRetention, WorksiteTemporaryBlockOwner,
+    ru.ruscrafting.farms.paper.WorksiteMovementGuard, ru.ruscrafting.farms.paper.WorksiteParticipantRecoveryOwner {
     private val engineVersion = initial.firstOrNull()?.engineVersion ?: 1
     private val delegate: WorksiteModule<MineShiftState> = if (engineVersion == 2) {
         MineComponentGraph(
@@ -168,6 +169,13 @@ internal class MineVersionedModule(
 
     override fun onMove(from: Location, to: Location, player: Player): Boolean =
         (delegate as? WorksiteMoveHandler)?.onMove(from, to, player) == true
+
+    override fun guardMovement(event: org.bukkit.event.player.PlayerMoveEvent): Boolean =
+        (delegate as? ru.ruscrafting.farms.paper.WorksiteMovementGuard)?.guardMovement(event) == true
+
+    override fun recoverPlayer(player: Player) {
+        (delegate as? ru.ruscrafting.farms.paper.WorksiteParticipantRecoveryOwner)?.recoverPlayer(player)
+    }
 
     override fun retainOnTeleport(player: Player, destination: Location): Boolean =
         (delegate as? WorksiteTeleportRetention)?.retainOnTeleport(player, destination) == true

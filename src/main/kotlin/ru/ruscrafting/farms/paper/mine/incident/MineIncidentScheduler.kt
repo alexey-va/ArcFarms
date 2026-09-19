@@ -23,6 +23,7 @@ internal class MineIncidentScheduler(
     private val creatures: MineCreatureNestIncident,
     private val power: MinePowerFailureIncident,
     private val lostMiner: MineLostMinerIncident,
+    private val workings: ru.ruscrafting.farms.paper.mine.working.MineWorkingController,
     private val diagnostics: MineIncidentPlacementDiagnostics,
     private val state: WorksiteStatePort,
 ) {
@@ -34,7 +35,8 @@ internal class MineIncidentScheduler(
         val type = runtime.state.incidentSchedule.getOrNull(runtime.state.incidentCursor) ?: return false
         if (runtime.settings.miningOnly) {
             if (runtime.state.phase !in setOf(MinePhase.MINING, MinePhase.EXTRACTION) ||
-                runtime.state.mined < (runtime.rules().miningQuota / 2).coerceAtLeast(1)) return false
+                runtime.state.mined < threshold(runtime.rules().miningQuota, runtime.state.incidentCursor,
+                    runtime.state.incidentSchedule.size)) return false
         } else if ((PHASE_RANK[runtime.state.phase] ?: return false) < (INCIDENT_RANK[type] ?: 0)) return false
         val key = "${runtime.settings.id}:${runtime.state.sequence}:${runtime.state.incidentCursor}"
         if (now < (retryAfter[key] ?: 0L)) return false
@@ -57,11 +59,12 @@ internal class MineIncidentScheduler(
             MineIncidentType.CAVE_IN -> caveIn.start(runtime, now)
             MineIncidentType.GAS_LEAK -> gasLeak.start(runtime, 2, now)
             MineIncidentType.FLOODING -> flooding.start(runtime, 1, now)
-            MineIncidentType.TRACK_DAMAGE -> trackDamage.start(runtime, 2, now)
+            MineIncidentType.TRACK_DAMAGE -> workings.start(runtime, type, now)
             MineIncidentType.CRYSTAL_RESONANCE -> crystal.start(runtime, 2, now)
             MineIncidentType.CREATURE_NEST -> creatures.start(runtime, 3, now)
             MineIncidentType.POWER_FAILURE -> power.start(runtime, 2, now)
             MineIncidentType.LOST_MINER -> lostMiner.start(runtime, now)
+            MineIncidentType.TUNNEL_DRIVE, MineIncidentType.RAIL_EXTENSION, MineIncidentType.ORE_WORKSHOP -> workings.start(runtime, type, now)
         }
         if (started) {
             diagnosed.remove(key)
@@ -78,6 +81,7 @@ internal class MineIncidentScheduler(
         return when {
             blocker != null -> MineIncidentPlacementReport(type, required(type), 0, 0, mapOf(blocker to 1))
             type == MineIncidentType.CAVE_IN -> caveIn.diagnostics(runtime)
+            ru.ruscrafting.farms.domain.MineWorkingEngine.supports(type) -> workings.diagnostics(runtime, type)
             else -> diagnostics.report(runtime, type, required(type))
         }
     }
@@ -96,18 +100,23 @@ internal class MineIncidentScheduler(
                 "type=$type phase=${runtime.state.phase} " +
                 (blocker?.let { "required=$required usable=0 considered=0 rejected={$it=1}" }
                     ?: caveIn.placementFailure(runtime.settings.id).takeIf { type == MineIncidentType.CAVE_IN }
-                    ?: diagnostics.describe(runtime, type, required)),
+                    ?: if (ru.ruscrafting.farms.domain.MineWorkingEngine.supports(type)) workings.diagnostics(runtime, type).toString()
+                    else diagnostics.describe(runtime, type, required)),
         )
     }
 
     private fun stateBlocker(runtime: MineRuntime, type: MineIncidentType): String? {
         if (runtime.state.phase == MinePhase.INCIDENT || runtime.state.incident != null) return "incident_already_active"
+        if (workings.transitioning(runtime)) return "working_cleanup_pending"
         val phaseRank = PHASE_RANK[runtime.state.phase] ?: return "phase_not_ready"
         if (!runtime.settings.miningOnly && phaseRank < (INCIDENT_RANK[type] ?: 0)) return "phase_too_early"
         return null
     }
 
     companion object {
+        internal fun threshold(quota: Int, cursor: Int, count: Int): Int =
+            ((quota.toLong() * (cursor + 1) + count) / (count + 1)).toInt().coerceAtLeast(1)
+
         val SUPPORTED_TYPES = listOf(
             MineIncidentType.CAVE_IN,
             MineIncidentType.GAS_LEAK,
@@ -117,6 +126,7 @@ internal class MineIncidentScheduler(
             MineIncidentType.CREATURE_NEST,
             MineIncidentType.POWER_FAILURE,
             MineIncidentType.LOST_MINER,
+            MineIncidentType.TUNNEL_DRIVE, MineIncidentType.RAIL_EXTENSION, MineIncidentType.ORE_WORKSHOP,
         )
 
         private fun required(type: MineIncidentType): Int = when (type) {

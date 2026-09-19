@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "seed": 1909,
+  "title": "ArcFarms compact lateral mine working",
+  "subtitle": "A three-wide drive with a linear ore handoff and framed machines.",
+  "size": [3, 5, 15],
+  "origin": [1, 0, 0],
+  "palette": {
+    "rock": {"block": "minecraft:stone", "color": "#777b80", "name": "Geological shell"},
+    "floor": {"block": "minecraft:smooth_stone", "color": "#a0a4a3", "name": "Working floor"},
+    "roof": {"block": "minecraft:deepslate", "color": "#45474c", "name": "Rock ceiling"},
+    "beam": {"block": "minecraft:spruce_log[axis=y]", "color": "#6b4b32", "name": "Timber frame"},
+    "lantern": {"block": "minecraft:lantern[hanging=true,waterlogged=false]", "color": "#dfa142", "name": "Working lantern"},
+    "pipe": {"block": "minecraft:copper_block", "color": "#a56f4d", "name": "Ore pipe"},
+    "machine": {"block": "minecraft:iron_block", "color": "#c5c9c9", "name": "Machine canopy"},
+    "ore": {"block": "minecraft:barrel[facing=east,open=false]", "color": "#8b6a4e", "name": "Ore pickup"},
+    "crusher": {"block": "minecraft:grindstone[face=floor,facing=north]", "color": "#9ba0a4", "name": "Crusher"},
+    "furnace": {"block": "minecraft:furnace[facing=north,lit=false]", "color": "#65676a", "name": "Furnace"},
+    "output": {"block": "minecraft:barrel[facing=west,open=false]", "color": "#8b6a4e", "name": "Finished pickup"},
+    "shipping": {"block": "minecraft:chest[facing=east,type=single,waterlogged=false]", "color": "#b18452", "name": "Shipping"}
+  },
+  "operations": [
+    {"op": "box", "from": [0, 0, 0], "to": [2, 0, 14], "material": "floor"},
+    {"op": "box", "from": [0, 4, 0], "to": [2, 4, 14], "material": "roof"},
+    {"op": "box", "from": [0, 1, 14], "to": [2, 3, 14], "material": "rock"},
+    {"op": "box", "from": [0, 4, 4], "to": [2, 4, 4], "material": "beam"},
+    {"op": "box", "from": [0, 4, 8], "to": [2, 4, 8], "material": "beam"},
+    {"op": "box", "from": [0, 4, 12], "to": [2, 4, 12], "material": "beam"},
+    {"op": "box", "from": [0, 4, 5], "to": [0, 4, 5], "material": "pipe"},
+    {"op": "box", "from": [2, 4, 9], "to": [2, 4, 9], "material": "pipe"},
+    {"op": "box", "from": [0, 4, 7], "to": [0, 4, 7], "material": "machine"},
+    {"op": "box", "from": [2, 4, 10], "to": [2, 4, 10], "material": "machine"},
+    {"op": "box", "from": [1, 3, 3], "to": [1, 3, 3], "material": "lantern"},
+    {"op": "box", "from": [1, 3, 6], "to": [1, 3, 6], "material": "lantern"},
+    {"op": "box", "from": [1, 3, 10], "to": [1, 3, 10], "material": "lantern"},
+    {"op": "box", "from": [1, 3, 13], "to": [1, 3, 13], "material": "lantern"},
+    {"op": "box", "from": [0, 1, 3], "to": [0, 1, 3], "material": "shipping"},
+    {"op": "box", "from": [0, 1, 4], "to": [0, 1, 4], "material": "ore"},
+    {"op": "box", "from": [2, 1, 7], "to": [2, 1, 7], "material": "crusher"},
+    {"op": "box", "from": [0, 1, 10], "to": [0, 1, 10], "material": "furnace"},
+    {"op": "box", "from": [2, 1, 12], "to": [2, 1, 12], "material": "output"}
+  ],
+  "route": [[1, 0, 0], [1, 0, 3], [1, 0, 6], [1, 0, 9], [1, 0, 13]],
+  "lighting": {"targetLevel": 8, "samples": [[1, 1, 0], [1, 1, 5], [1, 1, 10], [1, 1, 13]], "suggestions": 2},
+  "preview": {"defaultView": "entry", "views": [
+    {"id": "entry", "label": "У входа", "camera": [1.5, 2.8, -4], "target": [1, 2, 6], "fov": 78},
+    {"id": "plan", "label": "План", "camera": [1.5, 18, 8], "target": [1, 2, 8], "perspective": false, "cutY": 3},
+    {"id": "atelier", "label": "Цех", "camera": [0, 3.4, 10], "target": [1, 2, 9], "fov": 76}
+  ]},
+  "markers": [
+    {"at": [1, 1, 0], "label": "Entrance"},
+    {"at": [1, 1, 4], "label": "Ore pickup"},
+    {"at": [1, 1, 7], "label": "Crusher"},
+    {"at": [1, 1, 10], "label": "Furnace"},
+    {"at": [1, 1, 12], "label": "Finished pickup"}
+  ],
+  "working": {
+    "corridor": {"from": 0, "to": 14, "minSide": -1, "maxSide": 1, "minUp": 1, "maxUp": 3},
+    "excavation": {"from": 4, "to": 13},
+    "supports": [4, 8, 12],
+    "supportFrame": {"minSide": -1, "maxSide": 1, "up": 4},
+    "fixtures": [[-1, 4, 4], [0, 4, 4], [1, 4, 4], [-1, 4, 8], [0, 4, 8], [1, 4, 8], [-1, 4, 12], [0, 4, 12], [1, 4, 12], [-1, 4, 5], [1, 4, 9], [-1, 4, 7], [1, 4, 10], [0, 3, 3], [0, 3, 6], [0, 3, 10], [0, 3, 13]],
+    "rails": {"from": 1, "to": 12},
+    "extensionRubble": [10, 11, 12],
+    "trackDamageGaps": [7, 8, 9],
+    "stations": {
+      "ore": [-1, 1, 4],
+      "crusher": [1, 1, 7],
+      "furnace": [-1, 1, 10],
+      "output": [1, 1, 12],
+      "shipping": [-1, 1, 3]
+    }
+  }
+}

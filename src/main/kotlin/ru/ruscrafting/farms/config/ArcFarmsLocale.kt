@@ -896,10 +896,25 @@ class ArcFarmsLocale(
             enumValues<ru.ruscrafting.farms.domain.MinePhase>().mapTo(this) { "phase.mine.${it.name.lowercase()}" }
             val mineIncidents = listOf(
                 "cave_in", "gas_leak", "flooding", "track_damage", "crystal_resonance",
-                "creature_nest", "power_failure", "lost_miner",
+                "creature_nest", "power_failure", "lost_miner", "tunnel_drive", "rail_extension", "ore_workshop",
             )
             mineIncidents.mapTo(this) { "mine.incident-name.$it" }
             mineIncidents.mapTo(this) { "admin.mine-placement.requirement.$it" }
+            listOf("tunnel_drive", "rail_extension", "ore_workshop")
+                .mapTo(this) { "mine.incident.$it" }
+            mineIncidents.mapTo(this) { "mine.guidance.$it" }
+            listOf(
+                "entry", "preparing", "inventory-full", "needs-kit", "next-section", "heat-wait", "heat-ready",
+                "heat-missed", "returned",
+            ).mapTo(this) { "mine.working.$it" }
+            listOf("supports", "rails", "ore", "billet")
+                .mapTo(this) { "mine.working.item.$it" }
+            listOf("excavate", "support", "clear_track", "lay_track", "test_track", "load", "crush", "heat", "ship")
+                .mapTo(this) { "mine.working.stage.$it" }
+            listOf("excavate", "support", "clear_track", "lay_track", "test_track", "load", "crush", "ship")
+                .mapTo(this) { "mine.working.hint.$it" }
+            listOf("entry", "ore", "crusher", "furnace", "output", "shipping")
+                .mapTo(this) { "mine.working.marker.$it" }
             listOf(
                 "world_unavailable", "chunk_unloaded", "anchor_changed", "near_player", "near_lift",
                 "journalled_block", "outside_region", "missing_stone_or_ore_ceiling", "missing_solid_floor",
@@ -1002,6 +1017,7 @@ class ArcFarmsLocale(
             "seals", "seconds", "seed", "sequence", "side", "size", "soil", "source", "spawned", "stage", "supply", "targets",
             "reserved", "shares", "issued", "tilled", "time", "tool", "total", "tracking", "type", "water", "wood", "workers", "world", "x", "y", "z",
             "zone", "weeks", "plan", "week", "votes", "target", "date", "contribution", "usable", "required",
+            "floor", "batch", "batches",
             "considered", "requirement", "reasons",
         )
         private val EXPECTED_PLACEHOLDERS = mapOf(

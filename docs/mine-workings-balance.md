@@ -1,0 +1,62 @@
+# Mine lateral workings balance
+
+This is a balance note for `TUNNEL_DRIVE`, `RAIL_EXTENSION`, `ORE_WORKSHOP`,
+and the reworked `TRACK_DAMAGE`. The change adds work to an existing mine order; it does not add
+a reward, price, chance, quota completion grant, or currency conversion.
+
+## Before and after
+
+| Unit | Before | After | Delta |
+| --- | --- | --- | --- |
+| Vault | No direct mine payment; bundled mine reward money remains `0`. | Unchanged. | `0` Vault mint/day from the workings. |
+| Tokens | No mine token grant. | Unchanged. | `0` token mint/burn from the workings. |
+| XP | Existing order completion reward; `old_shafts` source default is `220 XP` per completion. | Same completion reward, claimed once through the existing reward ledger. | `0 XP` attributable to a working stage. |
+| Ordinary item reward | Existing `4 IRON_INGOT` completion item in `old_shafts`. | Same item amount and chance. | `0` additional ingots/order. |
+| Mined blocks and world drops | Existing mining and material-weight behavior. | Side geometry is temporary and journaled; service items are consumed by the activity and are not ordinary loot. | `0` new ordinary-drop grant. |
+
+The source anchors are `src/main/resources/config.yml` under
+`mine-zones.old_shafts.rewards` and the completion path in the existing mine
+reward service. The new domain engine (`MineWorkingEngine`) contains only
+stage transitions and timing; it has no reward or currency operation.
+
+## Activity and cadence bounds
+
+Each working is one incident inside the current order. Its service actions do
+not create a second order completion and do not multiply the existing reward.
+The bundled source profiles retain `incident-count-min: 1` and
+`incident-count-max: 1`, so a bundled order still has one scheduled incident;
+the new IDs only expand the candidate pool.
+
+For profiles with several scheduled incidents, the source cadence test checks
+quota thresholds of `25/50/75` for three incidents in a 100-block order. This
+spreads incident work through the order instead of starting the whole schedule
+after the halfway point. It changes when work is requested, not how much XP,
+items, Vault, or tokens an order pays. Exact player-hours, completions/day,
+and network-week throughput are unmeasured here; no income-per-hour or
+time-to-purchase claim follows from this change.
+
+## Separate units and side effects
+
+- **Service items:** supports, rails, ore, billet, and the checking minecart
+  are activity materials. They are not deposited into the ordinary player
+  reward inventory and have no sell price in this change.
+- **XP:** no stage gives XP. The existing completion grant remains the only
+  source.
+- **Items:** no stage gives ingots, ore drops, or a new bundle. The existing
+  completion item remains unchanged.
+- **Vault and tokens:** no direct mint, burn, transfer, escrow, or price is
+  introduced. A later SELL-to-contract migration remains outside this change;
+  current item conversion must not be counted as a new working payout.
+- **Recovery:** restoring temporary blocks is a world-state repair, not an
+  item sink or an economic mint.
+
+## Unknowns and verification boundary
+
+The active `classic` configuration was read before this change: its four
+`old_shafts` orders use one incident each, reward money `0`, `220 XP`, four
+iron ingots and zero random-bundle rolls. The configuration change only
+expands those incident pools from five to nine types. Player session
+throughput and the resulting income per hour remain unmeasured.
+After delivery, verify that the active mine reward settings still match the
+source, service items are removed on every exit/recovery path, and one complete
+working produces exactly the existing order completion reward once.

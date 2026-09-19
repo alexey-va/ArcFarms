@@ -872,11 +872,11 @@ mine-zones:
       coal_order:
         mining-resources: [COAL]
         phases: {prospecting-required: 3, mining-required: 100, loading-required: 4}
-        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE]
+        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE, TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP]
       iron_order:
         mining-resources: [IRON]
         phases: {prospecting-required: 3, mining-required: 100, loading-required: 4}
-        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE]
+        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE, TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP]
   sand_quarry:
     enabled: true
     engine-version: 2
@@ -914,11 +914,11 @@ mine-zones:
       coal_order:
         mining-resources: [COAL]
         phases: {prospecting-required: 3, mining-required: 100, loading-required: 4}
-        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE]
+        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE, TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP]
       iron_order:
         mining-resources: [IRON]
         phases: {prospecting-required: 3, mining-required: 100, loading-required: 4}
-        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE]
+        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE, TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP]
   infernal_working:
     enabled: true
     engine-version: 2
@@ -956,7 +956,7 @@ mine-zones:
       quartz_order:
         mining-resources: [QUARTZ]
         phases: {prospecting-required: 3, mining-required: 100, loading-required: 4}
-        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE]
+        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE, TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP]
   lush_depths:
     enabled: true
     engine-version: 2
@@ -994,8 +994,8 @@ mine-zones:
       coal_order:
         mining-resources: [COAL]
         phases: {prospecting-required: 3, mining-required: 100, loading-required: 4}
-        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE]
+        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE, TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP]
       iron_order:
         mining-resources: [IRON]
         phases: {prospecting-required: 3, mining-required: 100, loading-required: 4}
-        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE]
+        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, POWER_FAILURE, TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP]

@@ -84,7 +84,13 @@ internal object MineRuntimeFactory {
 
     /** Startup validation and runtime construction must apply the same compatibility migration. */
     fun migrate(settings: MineZoneSettings, persisted: MineShiftState): MineShiftState = MineStateMigration.migrate(persisted).let { original ->
-        val saved = normalizeResourceProgress(settings, original)
+        val normalized = normalizeResourceProgress(settings, original)
+        // Inventory cleanup precedes runtime reconfiguration, while its input
+        // snapshot can predate that cleanup. Working supplies are reissued on
+        // demand; restoring their leases would reserve cargo for absent items.
+        val saved = normalized.incident?.takeIf { it.working != null }?.let { incident ->
+            normalized.copy(incident = incident.copy(serviceLeases = emptyMap()))
+        } ?: normalized
         val allowed = settings.orders.flatMap { it.incidentTypes }.toSet()
         val incompatibleIncident = saved.incident?.let { incident ->
             incident.scenarioPlacement != null ||

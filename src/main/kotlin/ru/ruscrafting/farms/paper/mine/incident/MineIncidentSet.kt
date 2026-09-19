@@ -42,9 +42,11 @@ internal class MineIncidentSet(
     private val coordinator: MineIncidentCoordinator,
     private val scheduler: MineIncidentScheduler,
     private val journal: MineIncidentBlockJournal,
+    private val workings: ru.ruscrafting.farms.paper.mine.working.MineWorkingController,
 ) {
     /** Farm-style admin switch: retire the current scene before forcing the requested incident. */
     fun forceAdmin(runtime: MineRuntime, type: ru.ruscrafting.farms.domain.MineIncidentType, now: Long): Boolean {
+        workings.cancelPending(runtime.settings.id)
         if (type != ru.ruscrafting.farms.domain.MineIncidentType.CAVE_IN) {
             caveIn.cancelPending(runtime.settings.id)
         }
@@ -61,6 +63,7 @@ internal class MineIncidentSet(
     fun tick(runtime: MineRuntime, now: Long, participants: Collection<Player>) {
         scheduler.tick(runtime, now, participants.size)
         if (abortIncompatibleObjective(runtime)) return
+        workings.tick(runtime, now)
         caveIn.reconcile(runtime)
         trackDamage.reconcile(runtime)
         participants.forEach { trackDamage.ensureKit(runtime, it) }
@@ -71,15 +74,17 @@ internal class MineIncidentSet(
         lostMiner.reconcileMissing(runtime)
     }
 
-    fun process(): Int = lostMiner.process()
+    fun process(): Int = lostMiner.process() + workings.process()
 
-    fun protectsTemporaryBlock(location: Location): Boolean = lostMiner.protects(location)
+    fun blocksOreSupply(runtime: MineRuntime): Boolean = workings.blocksOreSupply(runtime)
+
+    fun protectsTemporaryBlock(location: Location): Boolean = workings.protects(location) || lostMiner.protects(location)
 
     fun retainOnTeleport(player: Player, destination: Location): Boolean =
-        lostMiner.retainOnTeleport(player, destination)
+        workings.retains(player, destination) || lostMiner.retainOnTeleport(player, destination)
 
     fun onInteract(event: PlayerInteractEvent): Boolean {
-        val handled = trackDamage.onInteract(event) || gasLeak.onInteract(event) ||
+        val handled = workings.onInteract(event) || trackDamage.onInteract(event) || gasLeak.onInteract(event) ||
             crystalResonance.onInteract(event) || flooding.onInteract(event) || powerFailure.onInteract(event)
         if (handled) event.clickedBlock?.location?.let(registry::at)?.let { runtime ->
             if (runtime.state.phase == ru.ruscrafting.farms.domain.MinePhase.INCIDENT) objectiveMarkers.reconcile(runtime)
@@ -88,11 +93,12 @@ internal class MineIncidentSet(
         return handled
     }
 
-    fun onBreak(event: BlockBreakEvent): Boolean = caveIn.onBreak(event)
+    fun onBreak(event: BlockBreakEvent): Boolean = workings.onBreak(event) || caveIn.onBreak(event)
 
     fun onMove(to: Location, player: Player): Boolean = lostMiner.onMove(to, player)
 
     fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean {
+        if (workings.onInteractEntity(event)) return true
         val identity = objectiveMarkers.identity(event.rightClicked)
         if (identity == null || !identity.kind.isObjectiveMarkerHitbox) return lostMiner.onInteractEntity(event)
         val runtime = registry.byId(identity.zoneId) ?: return false
@@ -117,13 +123,15 @@ internal class MineIncidentSet(
     fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
         trackDamage.releasePlayer(player.uniqueId)
         lostMiner.releasePlayer(player, reason)
+        workings.releasePlayer(player, reason)
     }
 
     fun isActive(identity: ServiceItemIdentity): Boolean =
-        trackDamage.isActive(identity)
+        trackDamage.isActive(identity) || workings.isActive(identity)
 
     fun release(playerId: UUID, identity: ServiceItemIdentity, reason: WorksitePlayerReleaseReason) {
         trackDamage.release(playerId, identity, reason)
+        workings.release(playerId, identity, reason)
     }
 
     fun reconcileChunk(runtime: MineRuntime, chunk: Chunk) {
@@ -139,15 +147,18 @@ internal class MineIncidentSet(
         if (chunk == null) {
             registry.snapshot().forEach(::abortIncompatibleObjective)
             lostMiner.activateLoadedState()
+            workings.reconcileLoaded()
             registry.snapshot().forEach { runtime ->
                 caveIn.reconcile(runtime)
                 flooding.reconcile(runtime)
                 powerFailure.reconcile(runtime)
                 reconcileObjectiveMarkers(runtime)
             }
-        } else lostMiner.onChunkLoad(chunk)
+        } else { lostMiner.onChunkLoad(chunk); workings.onChunkLoad(chunk) }
         return journal.restoreOrphans(registry.snapshot(), chunk)
     }
+
+    fun beforeReload() = workings.beforeReload()
 
     fun cleanup() {
         registry.snapshot().forEach { runtime ->
@@ -161,9 +172,14 @@ internal class MineIncidentSet(
             objectiveMarkers.cleanup(runtime)
         }
         lostMiner.clearQueues()
+        workings.cleanup()
     }
 
+    fun guardMovement(event: org.bukkit.event.player.PlayerMoveEvent): Boolean = workings.guardMovement(event)
+    fun recoverPlayer(player: Player) = workings.recover(player)
+
     private fun clearActive(runtime: MineRuntime) {
+        if (runtime.state.incident?.working != null) workings.retire(runtime)
         runtime.state.incident?.serviceLeases?.values?.toSet().orEmpty().forEach(trackDamage::releasePlayer)
         runtime.state.incident?.type?.name?.lowercase()?.let { journal.restore(runtime, it) }
         caveIn.cleanup(runtime)

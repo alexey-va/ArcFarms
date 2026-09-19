@@ -40,6 +40,7 @@ internal class WorksiteEventRouter(
     }
 
     fun onMove(event: PlayerMoveEvent): Boolean {
+        if (registry.guardMovement(event)) return true
         val destination = event.to
         if (
             event.from.world == destination.world &&
@@ -50,6 +51,7 @@ internal class WorksiteEventRouter(
     }
 
     fun onTeleport(event: PlayerTeleportEvent): Boolean {
+        if (registry.guardMovement(event)) return true
         if (
             event.cause != PlayerTeleportEvent.TeleportCause.DISMOUNT &&
             !registry.retainOnTeleport(event.player, event.to)

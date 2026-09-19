@@ -1,0 +1,347 @@
+{
+  "bounds": {
+    "max": [
+      87,
+      139,
+      87
+    ],
+    "min": [
+      0,
+      64,
+      0
+    ]
+  },
+  "floors": {
+    "ORE_WORKSHOP": {
+      "110": {
+        "considered": 6492,
+        "reasons": {
+          "accepted": 15,
+          "entry_not_clear": 133,
+          "lift_clearance": 680,
+          "outside_region": 161,
+          "shell_not_geological": 5503
+        },
+        "samples": [
+          {
+            "anchor": [
+              18,
+              110,
+              60
+            ],
+            "direction": 1
+          },
+          {
+            "anchor": [
+              42,
+              110,
+              75
+            ],
+            "direction": 1
+          },
+          {
+            "anchor": [
+              46,
+              110,
+              75
+            ],
+            "direction": 3
+          }
+        ],
+        "valid": 15
+      },
+      "82": {
+        "considered": 7344,
+        "reasons": {
+          "accepted": 1,
+          "entry_not_clear": 60,
+          "lift_clearance": 925,
+          "outside_region": 32,
+          "shell_not_geological": 6326
+        },
+        "samples": [
+          {
+            "anchor": [
+              18,
+              82,
+              60
+            ],
+            "direction": 1
+          }
+        ],
+        "valid": 1
+      },
+      "96": {
+        "considered": 5920,
+        "reasons": {
+          "accepted": 1,
+          "entry_not_clear": 48,
+          "fixture_not_geological": 1,
+          "lift_clearance": 669,
+          "outside_region": 18,
+          "shell_not_geological": 5183
+        },
+        "samples": [
+          {
+            "anchor": [
+              70,
+              96,
+              60
+            ],
+            "direction": 3
+          }
+        ],
+        "valid": 1
+      }
+    },
+    "RAIL_EXTENSION": {
+      "110": {
+        "considered": 6492,
+        "reasons": {
+          "accepted": 15,
+          "entry_not_clear": 133,
+          "lift_clearance": 680,
+          "outside_region": 161,
+          "shell_not_geological": 5503
+        },
+        "samples": [
+          {
+            "anchor": [
+              18,
+              110,
+              60
+            ],
+            "direction": 1
+          },
+          {
+            "anchor": [
+              42,
+              110,
+              75
+            ],
+            "direction": 1
+          },
+          {
+            "anchor": [
+              46,
+              110,
+              75
+            ],
+            "direction": 3
+          }
+        ],
+        "valid": 15
+      },
+      "82": {
+        "considered": 7344,
+        "reasons": {
+          "accepted": 1,
+          "entry_not_clear": 60,
+          "lift_clearance": 925,
+          "outside_region": 32,
+          "shell_not_geological": 6326
+        },
+        "samples": [
+          {
+            "anchor": [
+              18,
+              82,
+              60
+            ],
+            "direction": 1
+          }
+        ],
+        "valid": 1
+      },
+      "96": {
+        "considered": 5920,
+        "reasons": {
+          "accepted": 1,
+          "entry_not_clear": 48,
+          "fixture_not_geological": 1,
+          "lift_clearance": 669,
+          "outside_region": 18,
+          "shell_not_geological": 5183
+        },
+        "samples": [
+          {
+            "anchor": [
+              70,
+              96,
+              60
+            ],
+            "direction": 3
+          }
+        ],
+        "valid": 1
+      }
+    },
+    "TRACK_DAMAGE": {
+      "110": {
+        "considered": 6492,
+        "reasons": {
+          "accepted": 15,
+          "entry_not_clear": 133,
+          "lift_clearance": 680,
+          "outside_region": 161,
+          "shell_not_geological": 5503
+        },
+        "samples": [
+          {
+            "anchor": [
+              18,
+              110,
+              60
+            ],
+            "direction": 1
+          },
+          {
+            "anchor": [
+              42,
+              110,
+              75
+            ],
+            "direction": 1
+          },
+          {
+            "anchor": [
+              46,
+              110,
+              75
+            ],
+            "direction": 3
+          }
+        ],
+        "valid": 15
+      },
+      "82": {
+        "considered": 7344,
+        "reasons": {
+          "accepted": 1,
+          "entry_not_clear": 60,
+          "lift_clearance": 925,
+          "outside_region": 32,
+          "shell_not_geological": 6326
+        },
+        "samples": [
+          {
+            "anchor": [
+              18,
+              82,
+              60
+            ],
+            "direction": 1
+          }
+        ],
+        "valid": 1
+      },
+      "96": {
+        "considered": 5920,
+        "reasons": {
+          "accepted": 1,
+          "entry_not_clear": 48,
+          "fixture_not_geological": 1,
+          "lift_clearance": 669,
+          "outside_region": 18,
+          "shell_not_geological": 5183
+        },
+        "samples": [
+          {
+            "anchor": [
+              70,
+              96,
+              60
+            ],
+            "direction": 3
+          }
+        ],
+        "valid": 1
+      }
+    },
+    "TUNNEL_DRIVE": {
+      "110": {
+        "considered": 6492,
+        "reasons": {
+          "accepted": 15,
+          "entry_not_clear": 133,
+          "lift_clearance": 680,
+          "outside_region": 161,
+          "shell_not_geological": 5503
+        },
+        "samples": [
+          {
+            "anchor": [
+              18,
+              110,
+              60
+            ],
+            "direction": 1
+          },
+          {
+            "anchor": [
+              42,
+              110,
+              75
+            ],
+            "direction": 1
+          },
+          {
+            "anchor": [
+              46,
+              110,
+              75
+            ],
+            "direction": 3
+          }
+        ],
+        "valid": 15
+      },
+      "82": {
+        "considered": 7344,
+        "reasons": {
+          "accepted": 1,
+          "entry_not_clear": 60,
+          "lift_clearance": 925,
+          "outside_region": 32,
+          "shell_not_geological": 6326
+        },
+        "samples": [
+          {
+            "anchor": [
+              18,
+              82,
+              60
+            ],
+            "direction": 1
+          }
+        ],
+        "valid": 1
+      },
+      "96": {
+        "considered": 5920,
+        "reasons": {
+          "accepted": 1,
+          "entry_not_clear": 48,
+          "fixture_not_geological": 1,
+          "lift_clearance": 669,
+          "outside_region": 18,
+          "shell_not_geological": 5183
+        },
+        "samples": [
+          {
+            "anchor": [
+              70,
+              96,
+              60
+            ],
+            "direction": 3
+          }
+        ],
+        "valid": 1
+      }
+    }
+  },
+  "schema": 1,
+  "source": "compact-mine-live-20260914/server.schem",
+  "world": "rc_atelier_compact_mine"
+}

@@ -29,6 +29,11 @@ internal object MockBukkitFarmBlockDataDecoder : FarmBlockDataDecoder {
     override fun decode(serialized: String): BlockData = runCatching {
         Bukkit.createBlockData(serialized)
     }.getOrElse { failure ->
+        if (Regex("minecraft:lantern\\[hanging=(true|false),waterlogged=(true|false)]").matches(serialized)) {
+            // Pinned MockBukkit does not implement Lantern's hanging property.
+            // These journal tests verify material/progress/restore, not lamp physics.
+            return@getOrElse org.bukkit.Material.LANTERN.createBlockData()
+        }
         if (!isPinnedPointedDripstoneGap(serialized)) throw failure
         // MockBukkit 4.110.0 has no PointedDripstone BlockData implementation
         // and rejects Paper's valid thickness property. Tunnel tests only need

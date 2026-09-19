@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+selection="$(mktemp "${TMPDIR:-/tmp}/mine-working-tests.XXXXXX.gradle")"
+trap 'rm -f "$selection"' EXIT
+# Kotest 6.0.7 requires filtered class discovery (see test-mine-lift).
+cat > "$selection" <<'GRADLE'
+allprojects {
+    tasks.withType(Test).configureEach {
+        include '**/MineWorking*Test*.class'
+        include '**/MineIncidentCadenceTest*.class'
+        include '**/WorksitePreparedSceneOwnerMockBukkitTest*.class'
+        include '**/WorksiteExpeditionTravelTest*.class'
+        include '**/FarmMoleBurrowWorldMockBukkitTest*.class'
+        include '**/ArcFarmsLocaleHotReloadTest*.class'
+        include '**/MineShiftV2Test*.class'
+        include '**/FarmEventTypeRegistryTest*.class'
+    }
+}
+GRADLE
+./gradlew test --init-script "$selection" --console=plain "$@"

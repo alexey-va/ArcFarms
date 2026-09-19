@@ -55,6 +55,7 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
             org.bukkit.Location(world, 2.5, 50.0, 0.5), records)
         controller.ensurePreparedScene(world, "old_shafts", 9, 1, surface, 3) { plan }.first shouldBe FarmMoleBurrowEnsureResult.BUILDING
         world.getBlockAt(0, 50, 0).type shouldBe Material.STONE
+        controller.protects(plan.start) shouldBe true
         controller.process(8) { true }
         plan.ready shouldBe true
         controller.ensurePreparedScene(world, "old_shafts", 9, 1, surface, 3) {
@@ -64,6 +65,7 @@ class FarmMoleBurrowWorldMockBukkitTest : FunSpec({
         controller.hasPendingBlock(plan.start) shouldBe true
         controller.process(8) { it.zoneId == "old_shafts" }
         controller.hasPendingBlock(plan.start) shouldBe false
+        controller.protects(plan.start) shouldBe false
         records.forEach { record -> world.getBlockAt(record.x, record.y, record.z).blockData.asString shouldBe record.originalData }
     }
 

@@ -1,0 +1,3307 @@
+{
+  "version": 1,
+  "title": "ArcFarms compact lateral mine working",
+  "dimensions": {
+    "width": 3,
+    "height": 5,
+    "length": 15
+  },
+  "entrance": {
+    "side": 0,
+    "up": 0,
+    "forward": 0
+  },
+  "blocks": [
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 0,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 0,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 0,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 1,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 1,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 1,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 2,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 2,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 2,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 3,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 3,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 3,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 4,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 4,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 4,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 5,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 5,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 5,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 6,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 6,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 6,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 7,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 7,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 7,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 8,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 8,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 8,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 9,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 9,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 9,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 10,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 10,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 10,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 11,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 11,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 11,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 12,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 12,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 12,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 13,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 13,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 13,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 14,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 14,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 14,
+      "block": "minecraft:smooth_stone"
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 0,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 0,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 0,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 1,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 1,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 1,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 2,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 2,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 2,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 3,
+      "block": "minecraft:chest[facing=east,type=single,waterlogged=false]"
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 3,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 3,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 4,
+      "block": "minecraft:barrel[facing=east,open=false]"
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 4,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 4,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 5,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 5,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 5,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 6,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 6,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 6,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 7,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 7,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 7,
+      "block": "minecraft:grindstone[face=floor,facing=north]"
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 8,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 8,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 8,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 9,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 9,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 9,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 10,
+      "block": "minecraft:furnace[facing=north,lit=false]"
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 10,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 10,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 11,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 11,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 11,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 12,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 12,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 12,
+      "block": "minecraft:barrel[facing=west,open=false]"
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 13,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 13,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 13,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 14,
+      "block": "minecraft:stone"
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 14,
+      "block": "minecraft:stone"
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 14,
+      "block": "minecraft:stone"
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 0,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 0,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 0,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 1,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 1,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 1,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 2,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 2,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 2,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 3,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 3,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 3,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 4,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 4,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 4,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 5,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 5,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 5,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 6,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 6,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 6,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 7,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 7,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 7,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 8,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 8,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 8,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 9,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 9,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 9,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 10,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 10,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 10,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 11,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 11,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 11,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 12,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 12,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 12,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 13,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 13,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 13,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 14,
+      "block": "minecraft:stone"
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 14,
+      "block": "minecraft:stone"
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 14,
+      "block": "minecraft:stone"
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 0,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 0,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 0,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 1,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 1,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 1,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 2,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 2,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 2,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 3,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 3,
+      "block": "minecraft:lantern[hanging=true,waterlogged=false]"
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 3,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 4,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 4,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 4,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 5,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 5,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 5,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 6,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 6,
+      "block": "minecraft:lantern[hanging=true,waterlogged=false]"
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 6,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 7,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 7,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 7,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 8,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 8,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 8,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 9,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 9,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 9,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 10,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 10,
+      "block": "minecraft:lantern[hanging=true,waterlogged=false]"
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 10,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 11,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 11,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 11,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 12,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 12,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 12,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 13,
+      "block": "minecraft:air"
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 13,
+      "block": "minecraft:lantern[hanging=true,waterlogged=false]"
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 13,
+      "block": "minecraft:air"
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 14,
+      "block": "minecraft:stone"
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 14,
+      "block": "minecraft:stone"
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 14,
+      "block": "minecraft:stone"
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 0,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 0,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 0,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 1,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 1,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 1,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 2,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 2,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 2,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 3,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 3,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 3,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 4,
+      "block": "minecraft:spruce_log[axis=y]"
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 4,
+      "block": "minecraft:spruce_log[axis=y]"
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 4,
+      "block": "minecraft:spruce_log[axis=y]"
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 5,
+      "block": "minecraft:copper_block"
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 5,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 5,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 6,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 6,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 6,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 7,
+      "block": "minecraft:iron_block"
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 7,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 7,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 8,
+      "block": "minecraft:spruce_log[axis=y]"
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 8,
+      "block": "minecraft:spruce_log[axis=y]"
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 8,
+      "block": "minecraft:spruce_log[axis=y]"
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 9,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 9,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 9,
+      "block": "minecraft:copper_block"
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 10,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 10,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 10,
+      "block": "minecraft:iron_block"
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 11,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 11,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 11,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 12,
+      "block": "minecraft:spruce_log[axis=y]"
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 12,
+      "block": "minecraft:spruce_log[axis=y]"
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 12,
+      "block": "minecraft:spruce_log[axis=y]"
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 13,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 13,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 13,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 14,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 14,
+      "block": "minecraft:deepslate"
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 14,
+      "block": "minecraft:deepslate"
+    }
+  ],
+  "shell": [
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 0
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 0
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 0
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 1
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 1
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 1
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 2
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 2
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 2
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 3
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 3
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 3
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 4
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 4
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 4
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 5
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 5
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 5
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 6
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 6
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 6
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 7
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 7
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 7
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 8
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 8
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 8
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 9
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 9
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 9
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 10
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 10
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 10
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 11
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 11
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 11
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 12
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 12
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 12
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 13
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 13
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 13
+    },
+    {
+      "side": -1,
+      "up": 0,
+      "forward": 14
+    },
+    {
+      "side": 0,
+      "up": 0,
+      "forward": 14
+    },
+    {
+      "side": 1,
+      "up": 0,
+      "forward": 14
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 0
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 0
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 0
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 1
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 1
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 1
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 2
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 2
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 2
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 3
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 3
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 3
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 4
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 4
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 4
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 5
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 5
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 5
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 6
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 6
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 6
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 7
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 7
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 7
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 8
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 8
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 8
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 9
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 9
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 9
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 10
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 10
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 10
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 11
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 11
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 11
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 12
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 12
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 12
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 13
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 13
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 13
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 14
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 14
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 14
+    }
+  ],
+  "walkable": [
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 0
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 1
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 2
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 3
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 4
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 5
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 6
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 7
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 8
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 9
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 10
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 11
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 12
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 13
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 14
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 0
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 1
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 2
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 3
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 4
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 5
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 6
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 7
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 8
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 9
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 10
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 11
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 12
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 13
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 14
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 0
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 1
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 2
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 3
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 4
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 5
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 6
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 7
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 8
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 9
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 10
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 11
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 12
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 13
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 14
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 0
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 1
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 2
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 3
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 4
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 5
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 6
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 7
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 8
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 9
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 10
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 11
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 12
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 13
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 14
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 0
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 1
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 2
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 3
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 4
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 5
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 6
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 7
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 8
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 9
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 10
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 11
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 12
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 13
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 14
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 0
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 1
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 2
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 3
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 4
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 5
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 6
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 7
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 8
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 9
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 10
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 11
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 12
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 13
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 14
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 0
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 1
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 2
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 3
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 4
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 5
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 6
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 7
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 8
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 9
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 10
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 11
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 12
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 13
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 14
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 0
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 1
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 2
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 3
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 4
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 5
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 6
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 7
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 8
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 9
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 10
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 11
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 12
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 13
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 14
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 0
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 1
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 2
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 3
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 4
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 5
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 6
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 7
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 8
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 9
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 10
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 11
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 12
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 13
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 14
+    }
+  ],
+  "excavation": [
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 4
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 4
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 4
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 4
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 4
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 4
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 4
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 4
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 4
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 5
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 5
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 5
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 5
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 5
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 5
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 5
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 5
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 5
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 6
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 6
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 6
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 6
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 6
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 6
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 6
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 6
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 6
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 7
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 7
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 7
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 7
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 7
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 7
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 7
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 7
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 7
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 8
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 8
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 8
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 8
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 8
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 8
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 8
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 8
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 8
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 9
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 9
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 9
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 9
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 9
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 9
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 9
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 9
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 9
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 10
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 10
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 10
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 10
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 10
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 10
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 10
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 10
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 10
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 11
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 11
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 11
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 11
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 11
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 11
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 11
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 11
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 11
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 12
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 12
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 12
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 12
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 12
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 12
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 12
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 12
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 12
+    },
+    {
+      "side": -1,
+      "up": 1,
+      "forward": 13
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 13
+    },
+    {
+      "side": 1,
+      "up": 1,
+      "forward": 13
+    },
+    {
+      "side": -1,
+      "up": 2,
+      "forward": 13
+    },
+    {
+      "side": 0,
+      "up": 2,
+      "forward": 13
+    },
+    {
+      "side": 1,
+      "up": 2,
+      "forward": 13
+    },
+    {
+      "side": -1,
+      "up": 3,
+      "forward": 13
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 13
+    },
+    {
+      "side": 1,
+      "up": 3,
+      "forward": 13
+    }
+  ],
+  "supports": [
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 4
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 8
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 12
+    }
+  ],
+  "supportFrames": [
+    [
+      {
+        "side": -1,
+        "up": 4,
+        "forward": 4
+      },
+      {
+        "side": 0,
+        "up": 4,
+        "forward": 4
+      },
+      {
+        "side": 1,
+        "up": 4,
+        "forward": 4
+      }
+    ],
+    [
+      {
+        "side": -1,
+        "up": 4,
+        "forward": 8
+      },
+      {
+        "side": 0,
+        "up": 4,
+        "forward": 8
+      },
+      {
+        "side": 1,
+        "up": 4,
+        "forward": 8
+      }
+    ],
+    [
+      {
+        "side": -1,
+        "up": 4,
+        "forward": 12
+      },
+      {
+        "side": 0,
+        "up": 4,
+        "forward": 12
+      },
+      {
+        "side": 1,
+        "up": 4,
+        "forward": 12
+      }
+    ]
+  ],
+  "rails": [
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 1
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 2
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 3
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 4
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 5
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 6
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 7
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 8
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 9
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 10
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 11
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 12
+    }
+  ],
+  "cartRoute": [
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 1
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 2
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 3
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 4
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 5
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 6
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 7
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 8
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 9
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 10
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 11
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 12
+    }
+  ],
+  "extensionRubble": [
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 10
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 11
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 12
+    }
+  ],
+  "trackDamageGaps": [
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 7
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 8
+    },
+    {
+      "side": 0,
+      "up": 1,
+      "forward": 9
+    }
+  ],
+  "fixtures": [
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 4
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 4
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 4
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 8
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 8
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 8
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 12
+    },
+    {
+      "side": 0,
+      "up": 4,
+      "forward": 12
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 12
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 5
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 9
+    },
+    {
+      "side": -1,
+      "up": 4,
+      "forward": 7
+    },
+    {
+      "side": 1,
+      "up": 4,
+      "forward": 10
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 3
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 6
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 10
+    },
+    {
+      "side": 0,
+      "up": 3,
+      "forward": 13
+    }
+  ],
+  "stations": {
+    "ore": {
+      "side": -1,
+      "up": 1,
+      "forward": 4
+    },
+    "crusher": {
+      "side": 1,
+      "up": 1,
+      "forward": 7
+    },
+    "furnace": {
+      "side": -1,
+      "up": 1,
+      "forward": 10
+    },
+    "output": {
+      "side": 1,
+      "up": 1,
+      "forward": 12
+    },
+    "shipping": {
+      "side": -1,
+      "up": 1,
+      "forward": 3
+    }
+  },
+  "compiler": {
+    "blocks": 108,
+    "size": [
+      3,
+      5,
+      15
+    ],
+    "origin": [
+      1,
+      0,
+      0
+    ],
+    "materials": 12,
+    "routeCells": 14,
+    "routeBlocked": 0,
+    "routeSteep": 0,
+    "warnings": []
+  }
+}

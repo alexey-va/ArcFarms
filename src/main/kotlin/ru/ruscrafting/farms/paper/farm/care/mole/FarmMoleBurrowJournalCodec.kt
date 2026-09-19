@@ -1,5 +1,11 @@
 package ru.ruscrafting.farms.paper.farm.care.mole
 
+import org.bukkit.Chunk
+import org.bukkit.NamespacedKey
+import org.bukkit.persistence.PersistentDataType
+import org.bukkit.plugin.Plugin
+import ru.ruscrafting.farms.paper.worksite.scene.WorksitePreparedSceneCodec
+import ru.ruscrafting.farms.paper.worksite.scene.WorksitePreparedSceneRecord
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
@@ -138,4 +144,88 @@ internal object FarmMoleBurrowJournalCodec {
     private fun validateBounds(minHeight: Int, maxHeight: Int) {
         require(minHeight < maxHeight) { "Invalid mole burrow world height bounds" }
     }
+}
+
+/** Reuses the farm binary journal format for any prepared worksite namespace. */
+private val DEFAULT_FOREIGN_JOURNAL_NAMESPACES = setOf("farm_mole_burrow", "farm_greenhouse", "mine_working")
+
+internal class FarmMoleBurrowWorksiteSceneCodec(
+    private val plugin: Plugin,
+    private val journalNamespace: String,
+    private val foreignJournalNamespaces: Set<String> = DEFAULT_FOREIGN_JOURNAL_NAMESPACES,
+) : WorksitePreparedSceneCodec {
+    override fun decode(
+        raw: ByteArray,
+        world: String,
+        chunkX: Int,
+        chunkZ: Int,
+        minHeight: Int,
+        maxHeight: Int,
+    ): List<WorksitePreparedSceneRecord> = FarmMoleBurrowJournalCodec.decode(
+        raw, world, chunkX, chunkZ, minHeight, maxHeight,
+    ).map { record ->
+        WorksitePreparedSceneRecord(
+            world = record.world,
+            zoneId = record.zoneId,
+            sequence = record.sequence,
+            sceneId = record.burrowId,
+            x = record.x,
+            y = record.y,
+            z = record.z,
+            originalData = record.originalData,
+            activeData = record.burrowData,
+            marker = record.marker.name,
+            totalRecords = record.totalRecords,
+        )
+    }
+
+    override fun encode(
+        records: List<WorksitePreparedSceneRecord>,
+        world: String,
+        chunkX: Int,
+        chunkZ: Int,
+        minHeight: Int,
+        maxHeight: Int,
+    ): ByteArray = FarmMoleBurrowJournalCodec.encode(
+        records.map { record ->
+            FarmMoleBurrowJournalRecord(
+                world = record.world,
+                zoneId = record.zoneId,
+                sequence = record.sequence,
+                burrowId = record.sceneId,
+                x = record.x,
+                y = record.y,
+                z = record.z,
+                originalData = record.originalData,
+                burrowData = record.activeData,
+                marker = FarmMoleBurrowMarker.valueOf(record.marker),
+                totalRecords = record.totalRecords,
+            )
+        }, world, chunkX, chunkZ, minHeight, maxHeight,
+    )
+
+    override fun foreignJournalOverlaps(
+        chunk: Chunk,
+        positions: Collection<Triple<Int, Int, Int>>,
+    ): Boolean {
+        val wanted = positions.toHashSet()
+        return foreignJournalNamespaces
+            .asSequence()
+            .filter { it != journalNamespace }
+            .map { NamespacedKey(plugin, "${it}_v1") }
+            .any { key ->
+                val raw = chunk.persistentDataContainer.get(key, PersistentDataType.BYTE_ARRAY) ?: return@any false
+                runCatching {
+                    FarmMoleBurrowJournalCodec.decode(
+                        raw,
+                        chunk.world.name,
+                        chunk.x,
+                        chunk.z,
+                        chunk.world.minHeight,
+                        chunk.world.maxHeight,
+                    ).any { Triple(it.x, it.y, it.z) in wanted }
+                }.getOrElse { true }
+            }
+    }
+
 }

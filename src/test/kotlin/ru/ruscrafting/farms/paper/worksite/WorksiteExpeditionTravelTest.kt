@@ -3,6 +3,7 @@ package ru.ruscrafting.farms.paper.worksite
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
+import io.mockk.slot
 import ru.arc.core.TestTaskScheduler
 import ru.ruscrafting.farms.paper.RuntimeTaskSupervisor
 import ru.ruscrafting.farms.paper.fixtures.FarmIncidentScenarioFixture
@@ -70,6 +71,65 @@ class WorksiteExpeditionTravelTest : FunSpec({
                 travel.enter(request(player, surface, scenario.world.spawnLocation)) { true }
                 travel.retains(player) shouldBe false
                 FarmBurrowReturnRepository(scenario.plugin.dataFolder.toPath(), DIR).load(player.uniqueId)?.zoneId shouldBe "mine"
+            }
+        }
+    }
+
+    test("a recovery in flight blocks a new entry and preserves its old return") {
+        requiredMockBukkitScenario {
+            FarmIncidentScenarioFixture.open().use { scenario ->
+                val player = scenario.paper.addPlayer("RecoveryEntryRace")
+                val surface = Location(scenario.world, 12.5, 65.0, 12.5)
+                player.teleport(surface)
+                val old = FarmBurrowReturn(player.uniqueId, "mine", 3, scenario.world.name, 4.5, 64.0, 4.5, 0f, 0f, 1L)
+                val repository = FarmBurrowReturnRepository(scenario.plugin.dataFolder.toPath(), DIR)
+                repository.commit(old)
+                val asyncTasks = mutableListOf<() -> Unit>()
+                every { scenario.port.runAsync(any(), any()) } answers {
+                    asyncTasks += secondArg<() -> Unit>()
+                    true
+                }
+                every { scenario.port.runSync(any(), any()) } answers {
+                    secondArg<() -> Unit>()()
+                    true
+                }
+                val travel = travel(scenario)
+
+                travel.recover(player)
+                travel.recover(player)
+                asyncTasks.size shouldBe 1
+                travel.enter(request(player, surface, scenario.world.spawnLocation)) { true }
+                asyncTasks.first()()
+
+                travel.record(player) shouldBe null
+                travel.retains(player) shouldBe false
+                repository.load(player.uniqueId) shouldBe old
+            }
+        }
+    }
+
+    test("quit fences delayed recovery without losing the durable return") {
+        requiredMockBukkitScenario {
+            FarmIncidentScenarioFixture.open().use { scenario ->
+                val player = scenario.paper.addPlayer("RecoveryQuitRace")
+                val old = FarmBurrowReturn(player.uniqueId, "mine", 3, scenario.world.name, 4.5, 64.0, 4.5, 0f, 0f, 1L)
+                val repository = FarmBurrowReturnRepository(scenario.plugin.dataFolder.toPath(), DIR)
+                repository.commit(old)
+                val async = slot<() -> Unit>()
+                every { scenario.port.runAsync(any(), capture(async)) } returns true
+                every { scenario.port.runSync(any(), any()) } answers {
+                    secondArg<() -> Unit>()()
+                    true
+                }
+                val travel = travel(scenario)
+
+                travel.recover(player)
+                travel.quit(player)
+                async.captured()
+
+                travel.retains(player) shouldBe false
+                travel.record(player) shouldBe null
+                repository.load(player.uniqueId) shouldBe old
             }
         }
     }
