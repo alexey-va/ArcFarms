@@ -127,6 +127,9 @@ plugwright {
     downloadNode.set(true)
     nodeVersion.set("22.14.0")
     acceptEula.set(true)
+    downloadPlugins {
+        url("https://github.com/MilkBowl/Vault/releases/download/1.7.3/Vault.jar")
+    }
     jvmArgs.set(listOf("-Xms512M", "-Xmx2G", "-XX:ActiveProcessorCount=2"))
     writeFiles {
         e2eArcJar.orNull?.let { file("plugins/ARC.jar", it) }
