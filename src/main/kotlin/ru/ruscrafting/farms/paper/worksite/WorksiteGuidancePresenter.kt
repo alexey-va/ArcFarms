@@ -34,6 +34,11 @@ internal class WorksiteGuidancePresenter(
             }
             val previous = sessions[player.uniqueId]
             val changed = previous == null || previous.runtimeKey != view.runtimeKey || previous.progressVersion != view.progressVersion
+            // Incident announcements are emitted by the transition coordinator. When an
+            // async replacement briefly exposes the resumed phase, do not overwrite that
+            // announcement with a transient phase title before the new incident starts.
+            val resumedFromSilentView = previous?.runtimeKey == view.runtimeKey &&
+                previous.screenTitles == false && view.screenTitles
             var session = sessionFor(player.uniqueId, view, now)
             audience.updateBar(
                 player,
@@ -44,13 +49,14 @@ internal class WorksiteGuidancePresenter(
                 expected,
             )
             audience.updateSidebar(player, view.runtimeKey, view.title, view.sidebarRows)
-            if (view.screenTitles && changed && (!view.quietProgress || previous == null || previous.runtimeKey != view.runtimeKey || previous.subtitle != view.subtitle)) {
+            if (view.screenTitles && changed && !resumedFromSilentView &&
+                (!view.quietProgress || previous == null || previous.runtimeKey != view.runtimeKey || previous.subtitle != view.subtitle)) {
                 audience.showScreenTitle(player, view.title, view.subtitle)
             } else if (view.screenTitles && !view.quietProgress && elapsed(now, session.lastProgressAt) >= stallMillis && elapsed(now, session.lastReminderAt) >= stallMillis) {
                 audience.showScreenTitle(player, view.title, view.subtitle)
                 session = session.copy(lastReminderAt = now)
             }
-            sessions[player.uniqueId] = session.copy(subtitle = view.subtitle)
+            sessions[player.uniqueId] = session.copy(subtitle = view.subtitle, screenTitles = view.screenTitles)
         }
         if (sharedExpected == null) audience.reconcileBars(expected)
     }
@@ -71,7 +77,14 @@ internal class WorksiteGuidancePresenter(
     fun recordProgress(playerId: UUID, runtimeKey: String, progressVersion: Long, now: Long) {
         require(runtimeKey.isNotBlank()) { "Worksite guidance runtime key cannot be blank" }
         require(progressVersion >= 0 && now >= 0) { "Worksite guidance progress marker is invalid" }
-        sessions[playerId] = Session(runtimeKey, progressVersion, now, now)
+        val previous = sessions[playerId]
+        sessions[playerId] = Session(
+            runtimeKey,
+            progressVersion,
+            now,
+            now,
+            screenTitles = previous?.takeIf { it.runtimeKey == runtimeKey }?.screenTitles ?: true,
+        )
     }
 
     fun releasePlayer(player: Player) {
@@ -82,7 +95,7 @@ internal class WorksiteGuidancePresenter(
     private fun sessionFor(playerId: UUID, view: WorksiteGuidanceView, now: Long): Session {
         val current = sessions[playerId]
         if (current == null || current.runtimeKey != view.runtimeKey || current.progressVersion != view.progressVersion) {
-            return Session(view.runtimeKey, view.progressVersion, now, now)
+            return Session(view.runtimeKey, view.progressVersion, now, now, screenTitles = view.screenTitles)
         }
         return current
     }
@@ -114,6 +127,7 @@ internal class WorksiteGuidancePresenter(
         val lastProgressAt: Long,
         val lastReminderAt: Long,
         val subtitle: net.kyori.adventure.text.Component? = null,
+        val screenTitles: Boolean = true,
     )
 
 }

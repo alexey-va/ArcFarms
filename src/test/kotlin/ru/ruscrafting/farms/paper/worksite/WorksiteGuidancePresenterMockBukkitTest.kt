@@ -149,6 +149,42 @@ class WorksiteGuidancePresenterMockBukkitTest : FunSpec({
         verify(exactly = 3) { audience.updateSidebar(player, any(), any(), any()) }
     }
 
+    test("resuming a phase after a silent incident view does not overwrite its announcement") {
+        val audience = mockk<WorksiteAudiencePort>(relaxed = true)
+        val access = mockk<WorksiteAccessPort>()
+        every { access.isAdminEditing(player) } returns false
+        var view = basicView().copy(screenTitles = false)
+        val source = object : WorksiteGuidanceSource {
+            override fun participants() = listOf(player)
+            override fun view(playerId: UUID) = view
+        }
+        val presenter = WorksiteGuidancePresenter(audience, access, source)
+
+        presenter.updateHud(1_000L)
+        view = view.copy(progressVersion = 2L, screenTitles = true, subtitle = Component.text("Mine order"))
+        presenter.updateHud(2_000L)
+
+        verify(exactly = 0) { audience.showScreenTitle(player, any<Component>(), any<Component>()) }
+    }
+
+    test("a new runtime still receives its initial title after a silent view from another runtime") {
+        val audience = mockk<WorksiteAudiencePort>(relaxed = true)
+        val access = mockk<WorksiteAccessPort>()
+        every { access.isAdminEditing(player) } returns false
+        var view = basicView().copy(screenTitles = false)
+        val source = object : WorksiteGuidanceSource {
+            override fun participants() = listOf(player)
+            override fun view(playerId: UUID) = view
+        }
+        val presenter = WorksiteGuidancePresenter(audience, access, source)
+
+        presenter.updateHud(1_000L)
+        view = view.copy(runtimeKey = "mine:other", progressVersion = 2L, screenTitles = true)
+        presenter.updateHud(2_000L)
+
+        verify(exactly = 1) { audience.showScreenTitle(player, view.title, view.subtitle) }
+    }
+
     test("release forgets the session and removes every player worksite bar") {
         val audience = mockk<WorksiteAudiencePort>(relaxed = true)
         val access = mockk<WorksiteAccessPort>()
