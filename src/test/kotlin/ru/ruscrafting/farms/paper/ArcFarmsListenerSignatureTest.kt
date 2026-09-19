@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper
 
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.shouldBe
 import org.bukkit.event.EventHandler
@@ -12,7 +13,7 @@ class ArcFarmsListenerSignatureTest : FunSpec({
 
         handlers.shouldNotBeEmpty()
         handlers.forEach { method ->
-            method.returnType shouldBe Void.TYPE
+            withClue(method.name) { method.returnType shouldBe Void.TYPE }
         }
     }
 })

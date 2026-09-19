@@ -8,6 +8,9 @@ cat > "$selection" <<'GRADLE'
 allprojects {
     tasks.withType(Test).configureEach {
         include '**/MineWorking*Test*.class'
+        include '**/MineConfigTest*.class'
+        include '**/ArcFarmsCompletionTest*.class'
+        include '**/ArcFarmsListenerSignatureTest*.class'
         include '**/MineCompactMineAcceptanceTest*.class'
         include '**/MineDrillSceneMockBukkitTest*.class'
         include '**/MineOreWorkshopControllerMockBukkitTest*.class'

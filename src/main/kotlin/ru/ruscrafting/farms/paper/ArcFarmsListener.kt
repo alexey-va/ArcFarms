@@ -143,7 +143,9 @@ class ArcFarmsListener(
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    fun guardPortal(event: PlayerPortalEvent) = service.guardMovement(event)
+    fun guardPortal(event: PlayerPortalEvent) {
+        service.guardMovement(event)
+    }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onMove(event: PlayerMoveEvent) {
