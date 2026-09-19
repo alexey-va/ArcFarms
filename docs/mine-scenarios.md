@@ -16,10 +16,10 @@ and the manual force path rejects it. It is not a current player scenario.
 | ID | Player route |
 | --- | --- |
 | `CAVE_IN` | Follow the glowing rubble marker and break the journaled cobble with a pickaxe. Each cleared block restores the original scene. |
-| `GAS_LEAK` | Close the marked vents in any order. Every live vent renders cloud, smoke and dust; a non-creative participant within 3.5 blocks takes 1 damage once per second and receives Nausea for 3 seconds. |
+| `GAS_LEAK` | Close the glowing vents. Every live vent renders cloud, smoke and dust; a non-creative participant within 3.5 blocks takes 1 damage once per second and receives Nausea for 3 seconds. |
 | `FLOODING` | Drain 20–30 real water blocks with an empty bucket. The interaction is consumed by the incident, so the bucket stays empty; the journal restores the footprint after completion. |
 | `TRACK_DAMAGE` | Use the rail-working route: clear the collapse, replace missing rail sections in entrance order, then escort the checking minecart along the repaired line. |
-| `CRYSTAL_RESONANCE` | Activate the glowing amethyst targets; any remaining target may be used during the interaction window. |
+| `CRYSTAL_RESONANCE` | Activate the glowing amethyst targets during the interaction window. |
 | `CREATURE_NEST` | Defeat the spawned cave creatures and destroy each glowing nest core. Incident creatures and nests do not drop ordinary loot. |
 | `LOST_MINER` | Find the marked natural-cave entry and click it to enter. Explore the cave with hostile creatures and click the glowing miner to complete the rescue and return. The exit marker also allows leaving early, and spectator flight is unrestricted. |
 
@@ -76,13 +76,28 @@ unchanged, including the source `old_shafts` completion of 220 XP and 4 iron.
 
 ## QA boundary
 
-Focused domain, scene, equipment, cadence, locale and recovery checks pass.
+Release `0.40.38`, source `eb0e4fd`, is active on `classic` (the `spawn`
+runtime) as of 2026-09-20 MSK. Its delivered JAR SHA-256 is
+`9407e98132b267948b95f5cc9a7f4359a09bf78d8ec623d667b5582e4e7eeb40`.
+The plugin reported ready after restart with an empty recovery backlog; the
+legacy unfinished working returned to the existing mining order.
+
+All 138 selected domain, scene, equipment, cadence, locale and recovery checks
+pass. The same source cutoff passed the full
+[unit/package and storage CI](https://github.com/alexey-va/ArcFarms/actions/runs/35469860832)
+and [real Paper E2E](https://github.com/alexey-va/ArcFarms/actions/runs/35469860859).
 The real compact-map fixture accepts 64 seeds on all three default floors for
-each of the three working types, including rail headroom and crusher clearance. One client/server QA pass remains for the
-visible rubble glow, gas damage and nausea, empty-bucket flooding, natural-cave
-rescue, drill-cart control, rail/cart repair, fixed workshop routing, point
-overrides and restart recovery. This document therefore claims source and
-resource wiring only, not delivery, activation or a successful live journey.
+each of the three working types, including rail headroom and crusher clearance.
+
+A live QA player confirmed all five permanent station entities while no
+incident was active, and inspected both workshop floors. Complete live event
+journeys remain unverified: starting an incident requires an administrator
+player, and the QA actor has not been granted that permission. Remaining live
+checks include shrinking rubble glow, gas damage and nausea, empty-bucket
+flooding, rescue entry/exit, drill-cart control, rail/cart repair, full workshop
+production and point overrides. The viewer cannot render glow outlines and
+has missing fallback item textures for grindstone/blast furnace, so its images
+prove scene geometry only, not full Minecraft client fidelity.
 
 ## Related sources
 
