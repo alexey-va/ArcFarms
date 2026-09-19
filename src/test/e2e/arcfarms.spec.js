@@ -1,11 +1,7 @@
 import { test, expect } from '@drownek/plugwright';
 
-test('worksite menu keeps a mine without permission locked', async ({ player }) => {
+test('worksite menu opens through the live command executor', async ({ player }) => {
   player.chat('/arcfarms');
-  const main = await player.gui({ title: /Choose an activity|Выберите занятие/ });
-  const mine = main.locator((item) => item.slot === 6);
-  await expect(mine).toHaveLore('Access to this worksite is locked.');
-  await mine.click();
   await player.gui({ title: /Choose an activity|Выберите занятие/ });
 });
 

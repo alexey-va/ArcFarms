@@ -69,24 +69,8 @@ destination-floor arrival can complete the event.
 
 ## Gameplay checks
 
-Run the ordinary room cases with:
-
-```sh
-TEST_FILES=mine-scenarios TEST_TIMEOUT=180000 ./gradlew plugwrightTest
-```
-
-`TEST_NAMES` accepts comma-separated substrings, for example
-`TEST_NAMES=creature_nest,old_warehouse`. Cases use physical interaction and check
-automatic HUD, unchanged order progress, and no incident item/XP rewards.
-
-`./scripts/test-mine-lift.sh` prepares a surveyed two-floor fixture, restarts it
-with the lift enabled, then exercises rescue, convoy, runaway cart and repair.
-Do not inherit `TEST_NAMES` when running this wrapper: its preparation case is
-required. The gameplay legs use actual walking and lift travel.
-
-The separate automatic-trigger check mines fifty ordinary coal blocks without
-an incident-start command:
-
-```sh
-MINE_AUTO_TEST=true TEST_FILES=mine-auto-event TEST_TIMEOUT=240000 ./gradlew plugwrightTest
-```
+Mine and mine-lift E2E scenarios have been removed while the mine mechanics are
+unfinished. Reintroduce gameplay coverage against the finished mechanics rather
+than the historical room scenarios described above. Existing unit and storage
+integration checks remain in place; `./scripts/test-mine-lift` runs the focused
+lift unit tests, not a Paper E2E server.
