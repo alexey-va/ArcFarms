@@ -118,6 +118,7 @@ internal class MineIncidentScheduler(
     private fun stateBlocker(runtime: MineRuntime, type: MineIncidentType): String? {
         if (runtime.state.phase == MinePhase.INCIDENT || runtime.state.incident != null) return "incident_already_active"
         if (workings.transitioning(runtime)) return "working_cleanup_pending"
+        if (lostMiner.transitioning(runtime)) return "rescue_cleanup_pending"
         val phaseRank = PHASE_RANK[runtime.state.phase] ?: return "phase_not_ready"
         if (!runtime.settings.miningOnly && phaseRank < (INCIDENT_RANK[type] ?: 0)) return "phase_too_early"
         return null

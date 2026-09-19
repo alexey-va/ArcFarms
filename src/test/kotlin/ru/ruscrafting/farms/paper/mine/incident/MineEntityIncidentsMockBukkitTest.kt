@@ -488,13 +488,31 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         graph.incidentSet.onInteractEntity(foundEvent) shouldBe true
         foundEvent.isCancelled shouldBe true
         runtime.state.phase shouldBe MinePhase.MINING
-        runtime.region.contains(player.location) shouldBe true
+        // Completion keeps the authored maze open until its grace policy expires;
+        // the rescuer can use the native internal exit marker instead of being
+        // teleported out by the objective transition.
+        runtime.region.contains(player.location) shouldBe false
         effects.count(MineIncidentEntityKind.MINER) shouldBe 0
-        effects.count(MineIncidentEntityKind.MINER_MAZE_ENTRANCE) shouldBe 0
-        effects.count(MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX) shouldBe 0
+        effects.count(MineIncidentEntityKind.MINER_MAZE_ENTRANCE) shouldBe 1
+        effects.count(MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX) shouldBe 1
         effects.count(MineIncidentEntityKind.MINER_CAMP_LANTERN) shouldBe 0
         effects.count(MineIncidentEntityKind.MINER_CAMP_SUPPLIES) shouldBe 0
         effects.count(MineIncidentEntityKind.RESCUE_CREATURE) shouldBe 0
+
+        val retainedExit = PlayerInteractEntityEvent(
+            player,
+            requireNotNull(effects.entity(effects.id(MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX, "exit:${target.id}"))),
+            EquipmentSlot.HAND,
+        )
+        graph.incidentSet.onInteractEntity(retainedExit) shouldBe true
+        retainedExit.isCancelled shouldBe true
+        runtime.region.contains(player.location) shouldBe true
+
+        // Once everyone has left, the minimum 60-second grace expires without
+        // waiting five minutes for the hard deadline.
+        graph.lostMiner.tick(runtime, System.currentTimeMillis() + 60_001L)
+        effects.count(MineIncidentEntityKind.MINER_MAZE_ENTRANCE) shouldBe 0
+        effects.count(MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX) shouldBe 0
         }
     }
 

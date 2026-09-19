@@ -117,16 +117,19 @@ internal abstract class MineConstructionIncident(
 
     fun releasePlayer(playerId: UUID): Boolean {
         val runtime = registry.snapshot().firstOrNull { current ->
-            current.state.incident?.takeIf { it.type == type }?.serviceLeases?.values?.contains(playerId) == true
+            current.state.incident?.takeIf { it.type == type }?.serviceLeases?.any {
+                (id, holder) -> id.startsWith("kit_") && holder == playerId
+            } == true
         } ?: return false
-        val lease = runtime.state.incident!!.serviceLeases.entries.first { it.value == playerId }
+        val lease = runtime.state.incident!!.serviceLeases.entries.first { it.key.startsWith("kit_") && it.value == playerId }
         Bukkit.getPlayer(playerId)?.let { items?.consume(it, identity(runtime, lease.key)) }
         release(playerId, identity(runtime, lease.key), WorksitePlayerReleaseReason.ZONE_EXIT)
         return true
     }
 
     private fun active(runtime: MineRuntime): Boolean =
-        runtime.state.phase == MinePhase.INCIDENT && runtime.state.incident?.type == type
+        runtime.state.phase == MinePhase.INCIDENT && runtime.state.incident?.type == type &&
+            runtime.state.incident?.working == null
 
     private fun identity(runtime: MineRuntime, itemId: String) = ServiceItemIdentity(
         ActivityKind.MINE,

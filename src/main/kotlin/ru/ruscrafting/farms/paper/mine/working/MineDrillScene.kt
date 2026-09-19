@@ -175,14 +175,44 @@ internal class MineDrillScene(plugin: Plugin) {
     }
 
     private fun currentDrillPosition(plan: MineWorkingPlan, working: MineWorkingState): WorksitePosition {
-        val ordered = plan.excavation.withIndex().sortedWith(
-            compareBy<IndexedValue<WorksitePosition>>({ forwardDistance(plan.placement, it.value) }, { it.value.x }, { it.value.z }),
-        )
-        val front = ordered.firstOrNull { it.index !in working.completed } ?: ordered.last()
-        // The previous face is one block behind the nearest remaining face. If
-        // that face is the first one, the authored entrance is the safe anchor.
-        val previousIndex = ordered.indexOf(front) - 1
-        return if (previousIndex >= 0) ordered[previousIndex].value else plan.placement.position(0, 1, 0)
+        val layers = plan.excavation.withIndex()
+            .groupBy { forwardDistance(plan.placement, it.value) }
+            .toSortedMap()
+        if (layers.isEmpty()) return plan.placement.position(0, 1, 0)
+
+        val firstFace = layers.keys.first()
+        val firstRemaining = layers.entries.firstOrNull { (_, points) ->
+            points.any { it.index !in working.completed }
+        }
+        // Keep the cart inside the authored opening until the first complete
+        // face is removed. The entrance marker occupies forward 0, so forward
+        // 2 is the clear centre cell immediately before the first face (f=3).
+        val previousLayer = firstRemaining?.let { remaining ->
+            layers.keys.lastOrNull { it < remaining.key }
+        }
+        val layer = previousLayer ?: if (firstRemaining == null) layers.keys.last() else null
+        return layer?.let { layerCenter(plan.placement, layers.getValue(it)) }
+            ?: plan.placement.position(0, 1, (firstFace - 1).coerceAtLeast(0))
+    }
+
+    /** Returns the middle side of a curved excavation layer at floor + 1. */
+    private fun layerCenter(
+        placement: ru.ruscrafting.farms.domain.MineWorkingPlacement,
+        points: List<IndexedValue<WorksitePosition>>,
+    ): WorksitePosition {
+        val sides = points.map { sideDistance(placement, it.value) }
+        val centerSide = (sides.minOrNull()!! + sides.maxOrNull()!!) / 2
+        return placement.position(centerSide, 1, forwardDistance(placement, points.first().value))
+    }
+
+    private fun sideDistance(
+        placement: ru.ruscrafting.farms.domain.MineWorkingPlacement,
+        position: WorksitePosition,
+    ): Int = when (placement.direction) {
+        0 -> position.x - placement.entrance.x
+        1 -> position.z - placement.entrance.z
+        2 -> placement.entrance.x - position.x
+        else -> placement.entrance.z - position.z
     }
 
     private fun forwardDistance(placement: ru.ruscrafting.farms.domain.MineWorkingPlacement, position: WorksitePosition): Int = when (placement.direction) {

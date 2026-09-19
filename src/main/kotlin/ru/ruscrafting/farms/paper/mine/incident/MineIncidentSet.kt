@@ -51,6 +51,8 @@ internal class MineIncidentSet(
     fun forceAdmin(runtime: MineRuntime, type: ru.ruscrafting.farms.domain.MineIncidentType, now: Long): Boolean {
         if (type !in MineIncidentScheduler.SUPPORTED_TYPES) return false
         workings.cancelPending(runtime.settings.id)
+        workings.forceCleanup(runtime)
+        lostMiner.forceCleanup(runtime)
         if (type != ru.ruscrafting.farms.domain.MineIncidentType.CAVE_IN) {
             caveIn.cancelPending(runtime.settings.id)
         }
@@ -68,6 +70,7 @@ internal class MineIncidentSet(
         scheduler.tick(runtime, now, participants.size)
         if (abortIncompatibleObjective(runtime)) return
         if (runtime.state.incident?.type != ru.ruscrafting.farms.domain.MineIncidentType.ORE_WORKSHOP) workings.tick(runtime, now)
+        lostMiner.tick(runtime, now)
         workshop.tick(runtime, participants, now)
         gasLeak.tick(runtime, participants, now)
         caveIn.reconcile(runtime)

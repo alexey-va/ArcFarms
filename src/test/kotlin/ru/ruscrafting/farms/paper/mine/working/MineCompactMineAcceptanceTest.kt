@@ -13,11 +13,13 @@ import ru.ruscrafting.farms.paper.mine.point.MinePointDefaults
 import kotlin.math.abs
 
 /**
- * Acceptance checks against the trimmed, verified NE opening in
- * compact-mine-live.atelier.json (live-source-20260914). The full schematic
- * stays an ops fixture; this test records only the bounded facts consumed by
- * the placement planner. Workshop clearance is an additional bounded extract
- * from the same live source around the relocated crusher point.
+ * Acceptance checks against the verified NE working volume in
+ * compact-mine-live.atelier.json (live-source-20260914), including the
+ * extended cave envelope through Y=117 and the surveyed side shoulders.
+ * The full schematic stays an ops fixture; this test records only the bounded
+ * facts consumed by the placement planner. Workshop clearance is an
+ * additional bounded extract from the same live source around the relocated
+ * crusher point.
  */
 class MineCompactMineAcceptanceTest : FunSpec({
     test("natural working fits all three captured NE floors for replayed seeds") {

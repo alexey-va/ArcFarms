@@ -6,16 +6,25 @@ import io.mockk.spyk
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.ints.shouldBeInRange
 import io.kotest.matchers.shouldBe
+import net.kyori.adventure.text.Component
 import org.bukkit.Material
 import org.bukkit.block.data.Levelled
 import org.bukkit.event.block.BlockBreakEvent
+import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 import org.bukkit.entity.BlockDisplay
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.paper.fixtures.requiredMockBukkitScenario
 import ru.ruscrafting.farms.domain.MinePhase
+import ru.ruscrafting.farms.domain.MineIncidentState
+import ru.ruscrafting.farms.domain.MineIncidentType
+import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.MineShiftState
+import ru.ruscrafting.farms.domain.MineWorkingPlacement
+import ru.ruscrafting.farms.domain.MineWorkingStage
+import ru.ruscrafting.farms.domain.MineWorkingState
 import ru.ruscrafting.farms.domain.PendingMineBlock
+import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.CuboidRegionGateway
@@ -27,6 +36,8 @@ import ru.ruscrafting.farms.paper.mine.index.MineIndexedTarget
 import ru.ruscrafting.farms.paper.mine.mineV2Settings
 import ru.ruscrafting.farms.paper.mine.testMineComponentGraph
 import ru.ruscrafting.farms.persistence.MineRecoveryJournal
+import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
+import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems
 import java.util.concurrent.CompletableFuture
 
 class MineConstructionIncidentsMockBukkitTest : FunSpec({
@@ -328,6 +339,52 @@ class MineConstructionIncidentsMockBukkitTest : FunSpec({
             world.getBlockAt(first.x, first.y, first.z).type shouldBe Material.AIR
         }
     }
+
+    test("track damage kit release ignores a working rails lease") {
+        requiredMockBukkitScenario {
+            val world = paper.server.addSimpleWorld("world")
+            val player = paper.server.addPlayer("TrackRepairer")
+            val items = RecordingConstructionItems()
+            val graph = testMineComponentGraph(
+                paper.createSimplePlugin("MineTrackWorkingLeaseBoundaryTest"),
+                CuboidRegionGateway(), immediateMinePort(),
+                clock = { 1_000L }, journal = ImmediateMineJournal(), serviceItems = items,
+            )
+            graph.module.rebuild(listOf(mineV2Settings()), emptyMap(), 5_000L)
+            val runtime = graph.registry.byId("old_shafts")!!
+            val railsItemId = "rails_${player.uniqueId.toString().replace("-", "")}"
+            val workingRailsIdentity = ServiceItemIdentity(
+                ActivityKind.MINE, runtime.settings.id, 11, 17,
+                ObjectiveTargetRole("working_rails"), railsItemId,
+            )
+            runtime.state = MineShiftState(
+                engineVersion = 2,
+                phase = MinePhase.INCIDENT,
+                sequence = 11,
+                orderId = "ore_run",
+                incident = MineIncidentState(
+                    type = MineIncidentType.TRACK_DAMAGE,
+                    required = 3,
+                    objectiveNonce = 17,
+                    working = MineWorkingState(
+                        MineWorkingPlacement(WorksitePosition(world.name, 18, 64, 18), 0, "fixture-floor"),
+                        MineWorkingStage.CLEAR_TRACK,
+                    ),
+                    serviceLeases = mapOf(railsItemId to player.uniqueId),
+                ),
+            )
+            graph.workings.isActive(workingRailsIdentity) shouldBe true
+
+            graph.trackDamage.ensureKit(runtime, player) shouldBe false
+            requireNotNull(runtime.state.incident).serviceLeases shouldBe mapOf(railsItemId to player.uniqueId)
+            items.issued shouldBe emptyList()
+
+            graph.trackDamage.releasePlayer(player.uniqueId) shouldBe false
+            requireNotNull(runtime.state.incident).serviceLeases shouldBe mapOf(railsItemId to player.uniqueId)
+            graph.workings.isActive(workingRailsIdentity) shouldBe true
+            items.issued shouldBe emptyList()
+        }
+    }
 })
 
 private fun org.bukkit.block.Block.position() = WorksitePosition(world.name, x, y, z)
@@ -357,4 +414,31 @@ private class DeferredMineJournal : MineRecoveryJournal {
         requireNotNull(pending).complete(Unit)
     }
 
+}
+
+private class RecordingConstructionItems : WorksiteServiceItems {
+    val issued = mutableListOf<ServiceItemIdentity>()
+
+    override fun issue(
+        player: Player,
+        identity: ServiceItemIdentity,
+        material: Material,
+        name: Component,
+    ): ItemStack = ItemStack(material).also {
+        issued += identity
+        player.inventory.addItem(it)
+    }
+
+    override fun issueTool(
+        player: Player,
+        identity: ServiceItemIdentity,
+        material: Material,
+        name: Component,
+        customModelData: Int,
+        itemModel: org.bukkit.NamespacedKey?,
+    ): ItemStack? = issue(player, identity, material, name)
+
+    override fun consume(player: Player, expected: ServiceItemIdentity): Boolean = false
+    override fun identity(item: ItemStack?): ServiceItemIdentity? = null
+    override fun isServiceItem(item: ItemStack?): Boolean = false
 }

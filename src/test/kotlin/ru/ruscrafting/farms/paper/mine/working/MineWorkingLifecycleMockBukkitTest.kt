@@ -5,9 +5,12 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
+import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.entity.Player
+import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.plugin.Plugin
 import org.mockbukkit.mockbukkit.world.WorldMock
 import ru.arc.paper.testing.MockBukkitTestRuntime
@@ -37,6 +40,7 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteExpeditionTravel
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
+import ru.ruscrafting.farms.paper.worksite.scene.WorksitePreparedScene
 import ru.ruscrafting.farms.paper.worksite.scene.WorksitePreparedSceneBlockDataDecoder
 import ru.ruscrafting.farms.paper.worksite.scene.WorksitePreparedSceneChunkRetention
 import ru.ruscrafting.farms.paper.worksite.scene.WorksitePreparedSceneOwner
@@ -196,6 +200,190 @@ class MineWorkingLifecycleMockBukkitTest : FunSpec({
         graph.workings.transitioning(runtime) shouldBe false
     }
 
+    test("walking through a ready working entrance is not cancelled and records the destination") {
+        val world = paper.server.addSimpleWorld("world")
+        val player = paper.server.addPlayer("WalkingMiner")
+        val from = Location(world, 4.5, 65.0, 4.5)
+        val to = Location(world, 5.5, 65.0, 5.5)
+        player.teleport(from)
+        val runtime = lifecycleRuntime(world)
+        val registry = MineRuntimeRegistry().also { it.replace(listOf(runtime)) }
+        val placement = mockk<MineWorkingPlacementService>(relaxed = true)
+        val sceneWorld = mockk<MineWorkingWorld>(relaxed = true)
+        val scene = mockk<MineWorkingScene>(relaxed = true)
+        val incidents = mockk<MineIncidentCoordinator>(relaxed = true)
+        val equipment = mockk<MineWorkingEquipment>(relaxed = true)
+        val presentation = mockk<MineWorkingPresentation>(relaxed = true)
+        val travel = mockk<WorksiteExpeditionTravel>(relaxed = true)
+        val access = mockk<WorksiteAccessPort>(relaxed = true)
+        val state = mockk<WorksiteStatePort>(relaxed = true)
+        val tasks = mockk<WorksiteTaskPort>(relaxed = true)
+        every { sceneWorld.scene(runtime) } returns scene
+        every { sceneWorld.isReady(runtime) } returns true
+        every { scene.inside(to) } returns true
+        every { scene.surface() } returns from
+        every { travel.isAuthorized(player, to) } returns false
+        every { travel.record(player) } returns null
+        every { travel.retains(player) } returns false
+        every { access.isAdminEditing(player) } returns false
+        every { access.hasAccess(player, runtime.settings.permission) } returns true
+        val request = slot<WorksiteExpeditionTravel.EntryRequest>()
+        every { travel.enterOnFoot(capture(request), any()) } answers { }
+        val controller = MineWorkingController(
+            registry, placement, sceneWorld, incidents, equipment, presentation, travel, access, state, tasks, { 2_000L },
+        )
+
+        val event = PlayerMoveEvent(player, from, to)
+        controller.guardMovement(event) shouldBe false
+        event.isCancelled shouldBe false
+        request.captured.destination.blockX shouldBe to.blockX
+        request.captured.destination.blockY shouldBe to.blockY
+        request.captured.destination.blockZ shouldBe to.blockZ
+        verify(exactly = 1) { travel.enterOnFoot(any(), any()) }
+    }
+
+    test("completed working remains walkable during grace and restores after everyone leaves") {
+        val world = paper.server.addSimpleWorld("world")
+        val player = paper.server.addPlayer("GraceMiner")
+        player.teleport(Location(world, 100.5, 65.0, 100.5))
+        val runtime = lifecycleRuntime(world).also { it.state = it.state.copy(phase = MinePhase.MINING, incident = null) }
+        val registry = MineRuntimeRegistry().also { it.replace(listOf(runtime)) }
+        val placement = mockk<MineWorkingPlacementService>(relaxed = true)
+        val sceneWorld = mockk<MineWorkingWorld>(relaxed = true)
+        val scene = mockk<MineWorkingScene>(relaxed = true)
+        val blocks = mockk<WorksitePreparedScene>(relaxed = true)
+        val plan = mockk<MineWorkingPlan>(relaxed = true)
+        val incidents = mockk<MineIncidentCoordinator>(relaxed = true)
+        val equipment = mockk<MineWorkingEquipment>(relaxed = true)
+        val presentation = mockk<MineWorkingPresentation>(relaxed = true)
+        val travel = mockk<WorksiteExpeditionTravel>(relaxed = true)
+        val access = mockk<WorksiteAccessPort>(relaxed = true)
+        val state = mockk<WorksiteStatePort>(relaxed = true)
+        val tasks = mockk<WorksiteTaskPort>(relaxed = true)
+        every { scene.blocks } returns blocks
+        every { scene.plan } returns plan
+        every { blocks.world } returns world
+        every { blocks.sequence } returns runtime.state.sequence
+        every { plan.footprint } returns emptySet()
+        every { scene.surface() } returns Location(world, 0.5, 64.0, 0.5)
+        every { sceneWorld.scene(runtime) } returns scene
+        every { sceneWorld.retainedScene(runtime.settings.id, runtime.state.sequence) } returns scene
+        every { sceneWorld.isReady(runtime) } returns true
+        every { travel.isAuthorized(player, any<Location>()) } returns false
+        every { travel.record(player) } returns null
+        every { travel.evacuate(runtime.settings.id, any<Long>()) } returns true
+        every { sceneWorld.occupied(scene) } returns false
+        val controller = MineWorkingController(
+            registry, placement, sceneWorld, incidents, equipment, presentation, travel, access, state, tasks, { 0L },
+        )
+        MineWorkingController::class.java.getDeclaredMethod(
+            "beginCompletionGrace", MineRuntime::class.java, Long::class.javaPrimitiveType!!,
+        ).also { it.isAccessible = true }.invoke(controller, runtime, runtime.state.sequence)
+
+        controller.transitioning(runtime) shouldBe true
+        // A subsequent order may advance the runtime sequence while the old
+        // prepared scene is still visible; it must not evict that scene early.
+        runtime.state = runtime.state.copy(sequence = runtime.state.sequence + 1)
+        every { sceneWorld.scene(runtime) } returns null
+        val from = Location(world, 5.5, 65.0, 5.5)
+        val to = Location(world, 6.5, 65.0, 6.5)
+        every { scene.inside(to) } returns true
+        controller.guardMovement(PlayerMoveEvent(player, from, to)) shouldBe false
+        controller.tick(runtime, 59_999L)
+        controller.transitioning(runtime) shouldBe true
+        controller.tick(runtime, 60_000L)
+        controller.transitioning(runtime) shouldBe false
+        verify(exactly = 1) { sceneWorld.startRestore(scene) }
+    }
+
+    test("completion warning is sent fifteen seconds before hard deadline and visitors are evacuated") {
+        val world = paper.server.addSimpleWorld("world")
+        val player = paper.server.addPlayer("VisitorMiner")
+        val runtime = lifecycleRuntime(world).also { it.state = it.state.copy(phase = MinePhase.MINING, incident = null) }
+        val registry = MineRuntimeRegistry().also { it.replace(listOf(runtime)) }
+        val placement = mockk<MineWorkingPlacementService>(relaxed = true)
+        val sceneWorld = mockk<MineWorkingWorld>(relaxed = true)
+        val scene = mockk<MineWorkingScene>(relaxed = true)
+        val blocks = mockk<WorksitePreparedScene>(relaxed = true)
+        val plan = mockk<MineWorkingPlan>(relaxed = true)
+        val incidents = mockk<MineIncidentCoordinator>(relaxed = true)
+        val equipment = mockk<MineWorkingEquipment>(relaxed = true)
+        val presentation = mockk<MineWorkingPresentation>(relaxed = true)
+        val travel = mockk<WorksiteExpeditionTravel>(relaxed = true)
+        val access = mockk<WorksiteAccessPort>(relaxed = true)
+        val state = mockk<WorksiteStatePort>(relaxed = true)
+        val tasks = mockk<WorksiteTaskPort>(relaxed = true)
+        val surface = Location(world, 0.5, 64.0, 0.5)
+        every { scene.blocks } returns blocks
+        every { scene.plan } returns plan
+        every { blocks.world } returns world
+        every { blocks.sequence } returns runtime.state.sequence
+        every { plan.footprint } returns emptySet()
+        every { scene.surface() } returns surface
+        every { scene.inside(any()) } returns true
+        every { sceneWorld.scene(runtime) } returns scene
+        every { sceneWorld.retainedScene(runtime.settings.id, runtime.state.sequence) } returns scene
+        every { travel.evacuate(runtime.settings.id, runtime.state.sequence) } returns true
+        every { travel.evacuatePlayer(player, any()) } returns true
+        every { sceneWorld.occupied(scene) } returns false
+        player.teleport(surface)
+        val controller = MineWorkingController(
+            registry, placement, sceneWorld, incidents, equipment, presentation, travel, access, state, tasks, { 0L },
+        )
+        MineWorkingController::class.java.getDeclaredMethod(
+            "beginCompletionGrace", MineRuntime::class.java, Long::class.javaPrimitiveType!!,
+        ).also { it.isAccessible = true }.invoke(controller, runtime, runtime.state.sequence)
+
+        controller.tick(runtime, 4 * 60_000L + 44_999L)
+        verify(exactly = 0) { presentation.feedback(player, "closing-warning", any()) }
+        controller.tick(runtime, 4 * 60_000L + 45_000L)
+        verify(exactly = 1) { presentation.feedback(player, "closing-warning", any()) }
+        controller.tick(runtime, 5 * 60_000L)
+        verify(exactly = 1) { travel.evacuatePlayer(player, surface) }
+        verify(exactly = 1) { sceneWorld.startRestore(scene) }
+    }
+
+    test("final working step projects its physical state before the incident is cleared") {
+        val world = paper.server.addSimpleWorld("world")
+        val player = paper.server.addPlayer("ProjectionMiner")
+        val runtime = lifecycleRuntime(world)
+        val registry = MineRuntimeRegistry().also { it.replace(listOf(runtime)) }
+        val placement = mockk<MineWorkingPlacementService>(relaxed = true)
+        val sceneWorld = mockk<MineWorkingWorld>(relaxed = true)
+        val scene = mockk<MineWorkingScene>(relaxed = true)
+        val incidents = mockk<MineIncidentCoordinator>(relaxed = true)
+        val equipment = mockk<MineWorkingEquipment>(relaxed = true)
+        val presentation = mockk<MineWorkingPresentation>(relaxed = true)
+        val travel = mockk<WorksiteExpeditionTravel>(relaxed = true)
+        val access = mockk<WorksiteAccessPort>(relaxed = true)
+        val state = mockk<WorksiteStatePort>(relaxed = true)
+        val tasks = mockk<WorksiteTaskPort>(relaxed = true)
+        val token = mockk<RuntimeTaskSupervisor.Token>()
+        every { sceneWorld.retainedScene(runtime.settings.id, runtime.state.sequence) } returns scene
+        every { incidents.work(any(), any(), any(), any()) } answers {
+            runtime.state = runtime.state.copy(phase = MinePhase.MINING, incident = null)
+            EngineResult(runtime.state, true)
+        }
+        every { state.persistAsync() } returns CompletableFuture.completedFuture(Unit)
+        every { tasks.lifecycleToken() } returns token
+        every { tasks.runSync(token, any()) } answers {
+            secondArg<() -> Unit>().invoke()
+            true
+        }
+        val controller = MineWorkingController(
+            registry, placement, sceneWorld, incidents, equipment, presentation, travel, access, state, tasks, { 2_000L },
+        )
+        val advance = MineWorkingController::class.java.getDeclaredMethod(
+            "advance", MineRuntime::class.java, Player::class.java,
+            Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, Boolean::class.javaPrimitiveType!!,
+        ).also { it.isAccessible = true }
+        advance.invoke(controller, runtime, player, 0, 1, false)
+
+        verify(exactly = 1) {
+            sceneWorld.project(runtime, MineIncidentType.TUNNEL_DRIVE, any<MineWorkingState>())
+        }
+    }
+
     test("reconcileLoaded reapplies saved working projection and restores an orphaned scene") {
         val world = paper.server.addSimpleWorld("mine_working_lifecycle")
         for (chunkX in -1..1) for (chunkZ in -1..2) world.getChunkAt(chunkX, chunkZ).load()
@@ -222,13 +410,13 @@ class MineWorkingLifecycleMockBukkitTest : FunSpec({
         )
         val registry = MineRuntimeRegistry().also { it.replace(listOf(runtime)) }
         populateGeology(world, plan, placement)
+        val excavation = plan.excavation.first()
+        val original = world.getBlockAt(excavation.x, excavation.y, excavation.z).blockData.asString
         val owner = sceneOwner(plugin)
         val first = MineWorkingWorld(registry, owner, MockBukkitFarmBlockDataDecoder)
         first.prepare(runtime, MineIncidentType.TUNNEL_DRIVE, placement, 9) shouldBe true
         drain(owner, first, runtime)
         first.isReady(runtime) shouldBe true
-        val excavation = plan.excavation.first()
-        val original = world.getBlockAt(excavation.x, excavation.y, excavation.z).blockData.asString
 
         // Simulate a saved stage update whose callback never reached world.project.
         val stagedIncident = requireNotNull(runtime.state.incident)

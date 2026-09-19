@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.paper.mine.incident.rescue
 
 import org.bukkit.Bukkit
 import org.bukkit.Chunk
+import org.bukkit.GameMode
 import org.bukkit.Location
 import org.bukkit.entity.Player
 import org.bukkit.event.player.PlayerInteractEntityEvent
@@ -31,14 +32,20 @@ internal class MineLostMinerIncident(
     private val maze: MineLostMinerMazeWorld,
     private val travel: ru.ruscrafting.farms.paper.worksite.WorksiteExpeditionTravel,
     private val creatures: MineRescueCreatures,
+    private val closingWarning: (Player, Int) -> Unit = { _, _ -> },
+    private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val miners = mutableMapOf<String, UUID>()
     private val entrances = mutableMapOf<String, UUID>()
     private val entranceHitboxes = mutableMapOf<String, UUID>()
     private val entrants = mutableMapOf<UUID, String>()
     private val legacyCleanupDone = mutableSetOf<String>()
+    private val completedScenes = mutableMapOf<String, CompletionGrace>()
+    private val completedExitEntrances = mutableMapOf<String, MutableSet<UUID>>()
+    private val completedExitHitboxes = mutableMapOf<String, MutableSet<UUID>>()
 
     fun start(runtime: MineRuntime, now: Long): Boolean {
+        if (transitioning(runtime)) return false
         val candidates = candidates(runtime, 1)
         if (candidates.size < runtime.rules().targetMultiplier) return false
         if (!incidents.start(runtime, MineIncidentType.LOST_MINER, 1, now, candidates)) return false
@@ -49,11 +56,14 @@ internal class MineLostMinerIncident(
     fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean {
         val identity = effects.identity(event.rightClicked) ?: return false
         val runtime = registry.byId(identity.zoneId) ?: return false
-        if (!active(runtime) || runtime.state.sequence != identity.sequence) return false
+        val retained = completedScenes["${identity.zoneId}:${identity.sequence}"]
+        if (runtime.state.sequence != identity.sequence && retained == null) return false
         if (event.hand != org.bukkit.inventory.EquipmentSlot.HAND) return true
+        if (!active(runtime) && retained == null) return false
         return when (identity.kind) {
             MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX -> {
                 event.isCancelled = true
+                if (retained != null && !identity.targetId.startsWith("exit:")) return true
                 if (identity.targetId.startsWith("exit:") || travel.retains(event.player)) {
                     if (travel.exit(event.player)) entrants.remove(event.player.uniqueId)
                 } else enter(runtime, event.player)
@@ -84,7 +94,9 @@ internal class MineLostMinerIncident(
     fun onMove(to: Location, player: Player): Boolean {
         val runtimeKey = entrants[player.uniqueId] ?: return false
         val runtime = registry.snapshot().firstOrNull { key(it) == runtimeKey }
-        if (runtime != null && active(runtime) && maze.scene(runtime)?.contains(to) == true) return false
+        val retained = completedScenes[runtimeKey]
+        if ((runtime != null && active(runtime) && maze.scene(runtime)?.contains(to) == true) ||
+            (retained != null && retained.scene.contains(to))) return false
         // Walking, teleporting or flying away is an exit; never drag a spectator back into the cave.
         entrants.remove(player.uniqueId)
         travel.reconcile(player, inside = false)
@@ -96,8 +108,10 @@ internal class MineLostMinerIncident(
     fun retainOnTeleport(player: Player, destination: Location): Boolean {
         if (travel.isAuthorized(player, destination)) return true
         val runtimeKey = entrants[player.uniqueId] ?: return false
-        val runtime = registry.snapshot().firstOrNull { key(it) == runtimeKey } ?: return false
-        return active(runtime) && maze.scene(runtime)?.contains(destination) == true
+        val runtime = registry.snapshot().firstOrNull { key(it) == runtimeKey }
+        val retained = completedScenes[runtimeKey]
+        return (runtime != null && active(runtime) && maze.scene(runtime)?.contains(destination) == true) ||
+            (retained != null && retained.scene.contains(destination))
     }
 
     fun protects(location: Location): Boolean = maze.owns(location)
@@ -112,7 +126,7 @@ internal class MineLostMinerIncident(
         val completed = incidents.completeTarget(runtime, targetId, player).accepted
         if (!completed) return false
         MineLostMinerMazeSounds.playFound(player)
-        retire(runtime, scene.surface)
+        retainCompletedScene(runtime, scene, targetId)
         return true
     }
 
@@ -130,18 +144,34 @@ internal class MineLostMinerIncident(
 
     fun process(): Int = maze.process(MAZE_BLOCK_BUDGET, ::recordActive)
 
+    /** Lets the incident set run grace timers with its authoritative mine clock. */
+    fun tick(runtime: MineRuntime, now: Long) {
+        completedScenes.values.filter { it.zoneId == runtime.settings.id }.toList()
+            .forEach { tickCompletedScene(runtime, it, now) }
+    }
+
+    /** A retained rescue blocks a new rescue in the same zone until its maze is restored. */
+    fun transitioning(runtime: MineRuntime): Boolean =
+        completedScenes.keys.any { it.substringBefore(':') == runtime.settings.id } || isRestoring(runtime)
+
+    /** Admin replacement may explicitly bypass the natural completion grace. */
+    fun forceCleanup(runtime: MineRuntime) {
+        completedScenes.values.filter { it.zoneId == runtime.settings.id }.toList().forEach { retireCompleted(runtime, it) }
+    }
+
     fun activateLoadedState() {
         maze.reconcileLoaded { zoneId, sequence -> active(zoneId, sequence) }
         registry.snapshot().filter(::active).forEach(::reconcileMissing)
     }
 
     fun onChunkLoad(chunk: Chunk) {
-        maze.onChunkLoad(chunk) { zoneId, sequence -> active(zoneId, sequence) }
+        maze.onChunkLoad(chunk) { zoneId, sequence -> activeOrRetained(zoneId, sequence) }
     }
 
     fun reconcileChunk(runtime: MineRuntime, chunk: Chunk): Int {
         if (!active(runtime)) {
             cleanupLegacyEntities(runtime)
+            completedScenes[key(runtime)]?.let { reconcileExit(runtime, it.scene, chunk) }
             return 0
         }
         val scene = maze.scene(runtime) ?: run {
@@ -171,6 +201,7 @@ internal class MineLostMinerIncident(
     fun canonicalCount(runtime: MineRuntime): Int = if (miners[key(runtime)]?.let(effects::entity) != null) 1 else 0
 
     fun reconcileMissing(runtime: MineRuntime): Int {
+        if (completedScenes.containsKey(key(runtime))) return 0
         if (!active(runtime)) return 0
         purgeMissing(runtime)
         if (sceneComplete(runtime)) {
@@ -180,7 +211,7 @@ internal class MineLostMinerIncident(
         val target = runtime.state.objective?.targets?.firstOrNull() ?: return 0
         val (result, scene) = maze.ensure(runtime, target.position)
         if (result == MineLostMinerMazeEnsureResult.UNAVAILABLE) {
-            retire(runtime, target.position.location())
+            retire(runtime)
             incidents.abort(runtime)
             return 0
         }
@@ -193,9 +224,11 @@ internal class MineLostMinerIncident(
     }
 
     fun cleanup(runtime: MineRuntime) {
-        val surface = maze.scene(runtime)?.surface
-            ?: runtime.state.objective?.targets?.firstOrNull()?.position?.location()
-        retire(runtime, surface)
+        completedScenes.values.filter { it.zoneId == runtime.settings.id }.toList().forEach { retireCompleted(runtime, it) }
+        completedScenes.remove(key(runtime))
+        completedExitEntrances.keys.removeIf { it.substringBefore(':') == runtime.settings.id }
+        completedExitHitboxes.keys.removeIf { it.substringBefore(':') == runtime.settings.id }
+        retire(runtime)
     }
 
     fun clearQueues() {
@@ -205,21 +238,19 @@ internal class MineLostMinerIncident(
         entranceHitboxes.clear()
         entrants.clear()
         legacyCleanupDone.clear()
+        completedScenes.clear()
+        completedExitEntrances.clear()
+        completedExitHitboxes.clear()
     }
 
-    private fun retire(runtime: MineRuntime, surface: Location?) {
+    private fun retire(runtime: MineRuntime) {
         creatures.cleanup(runtime)
-        returnEntrants(runtime, surface)
+        returnEntrants(runtime, skipSpectators = false)
         miners.remove(key(runtime))?.let(effects::remove)
         entrances.remove(key(runtime))?.let(effects::remove)
         entranceHitboxes.remove(key(runtime))?.let(effects::remove)
         OWNED_KINDS.forEach { effects.cleanup(runtime, it) }
         maze.beginRestore(runtime.region.world, runtime.settings.id, runtime.state.sequence)
-    }
-
-    private fun returnEntrants(runtime: MineRuntime, surface: Location?) {
-        travel.evacuate(runtime.settings.id)
-        entrants.entries.removeIf { it.value == key(runtime) }
     }
 
     private fun cleanupLegacyEntities(runtime: MineRuntime) {
@@ -236,13 +267,122 @@ internal class MineLostMinerIncident(
         }
     }
 
-    private fun recordActive(record: MineLostMinerMazeJournalRecord): Boolean = active(record.zoneId, record.sequence)
+    private fun recordActive(record: MineLostMinerMazeJournalRecord): Boolean = activeOrRetained(record.zoneId, record.sequence)
+
+    private fun activeOrRetained(zoneId: String, sequence: Long): Boolean =
+        active(zoneId, sequence) || completedScenes["$zoneId:$sequence"]?.sequence == sequence
 
     private fun active(zoneId: String, sequence: Long): Boolean =
         registry.byId(zoneId)?.let { it.state.sequence == sequence && active(it) } == true
 
     private fun active(runtime: MineRuntime): Boolean =
         runtime.state.phase == MinePhase.INCIDENT && runtime.state.incident?.type == MineIncidentType.LOST_MINER
+
+    private fun retainCompletedScene(runtime: MineRuntime, scene: MineLostMinerMazeScene, targetId: String) {
+        val completedAt = clock()
+        completedScenes[key(runtime)] = CompletionGrace(
+            runtime.settings.id, runtime.state.sequence, targetId, scene, completedAt,
+            completedAt + HARD_DEADLINE_MILLIS - WARNING_MILLIS, completedAt + HARD_DEADLINE_MILLIS,
+        )
+        creatures.cleanup(runtime)
+        miners.remove(key(runtime))?.let(effects::remove)
+        entrances.remove(key(runtime))?.let(effects::remove)
+        entranceHitboxes.remove(key(runtime))?.let(effects::remove)
+        reconcileExit(runtime, scene = scene, targetId = targetId)
+    }
+
+    private fun reconcileExit(
+        runtime: MineRuntime,
+        scene: MineLostMinerMazeScene,
+        chunk: Chunk? = null,
+        targetId: String = completedScenes[key(runtime)]?.targetId ?: "lost_miner_1",
+    ) {
+        val expected = mapOf("exit:$targetId" to WorksitePosition(scene.world.name, scene.start.blockX, scene.start.blockY - 1, scene.start.blockZ))
+        val chunks = if (chunk != null) listOf(chunk) else listOfNotNull(
+            scene.world.takeIf { it.isChunkLoaded(scene.start.blockX shr 4, scene.start.blockZ shr 4) }
+                ?.getChunkAt(scene.start.blockX shr 4, scene.start.blockZ shr 4),
+        )
+        chunks.forEach { currentChunk ->
+            effects.reconcileChunk(runtime, currentChunk, MineIncidentEntityKind.MINER_MAZE_ENTRANCE, expected)
+                .values.forEach { id -> completedExitEntrances.getOrPut(key(runtime)) { linkedSetOf() }.add(id) }
+            effects.reconcileChunk(runtime, currentChunk, MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX, expected)
+                .values.forEach { id -> completedExitHitboxes.getOrPut(key(runtime)) { linkedSetOf() }.add(id) }
+        }
+    }
+
+    private fun tickCompletedScene(runtime: MineRuntime?, grace: CompletionGrace, now: Long) {
+        if (now >= grace.deadlineAt) {
+            evacuateAtDeadline(grace)
+            retireCompleted(runtime, grace)
+            return
+        }
+        if (!grace.warningSent && now >= grace.warningAt) {
+            grace.warningSent = true
+            grace.scene.world.players.filter { near(grace.scene, it.location) && it.gameMode != GameMode.SPECTATOR }
+                .forEach { closingWarning(it, WARNING_SECONDS) }
+        }
+        if (now >= grace.completedAt + GRACE_MILLIS && grace.scene.world.players.none { near(grace.scene, it.location) }) {
+            retireCompleted(runtime, grace)
+        }
+    }
+
+    private fun retireCompleted(runtime: MineRuntime?, grace: CompletionGrace) {
+        val sceneKey = "${grace.zoneId}:${grace.sequence}"
+        if (!completedScenes.remove(sceneKey, grace)) return
+        runtime?.takeIf { it.state.sequence == grace.sequence }?.let(creatures::cleanup)
+        returnEntrants(grace.zoneId, grace.sequence, skipSpectators = true)
+        miners.remove(sceneKey)?.let(effects::remove)
+        entrances.remove(sceneKey)?.let(effects::remove)
+        entranceHitboxes.remove(sceneKey)?.let(effects::remove)
+        completedExitEntrances.remove(sceneKey).orEmpty().forEach(effects::remove)
+        completedExitHitboxes.remove(sceneKey).orEmpty().forEach(effects::remove)
+        maze.beginRestore(grace.scene.world, grace.zoneId, grace.sequence)
+    }
+
+    private fun evacuateAtDeadline(grace: CompletionGrace) {
+        travel.records().values.filter { it.zoneId == grace.zoneId && it.sequence == grace.sequence }
+            .mapNotNull { Bukkit.getPlayer(it.playerId) }
+            .forEach { player ->
+                if (player.gameMode == GameMode.SPECTATOR) travel.reconcile(player, inside = false)
+                else travel.exit(player)
+            }
+        grace.scene.world.players.filter { near(grace.scene, it.location) && it.gameMode != GameMode.SPECTATOR }
+            .filterNot { player -> travel.records()[player.uniqueId]?.let { it.zoneId == grace.zoneId && it.sequence == grace.sequence } == true }
+            .forEach { player -> player.teleport(grace.scene.surface, org.bukkit.event.player.PlayerTeleportEvent.TeleportCause.PLUGIN) }
+        entrants.entries.removeIf { entry ->
+            entry.value == "${grace.zoneId}:${grace.sequence}" && Bukkit.getPlayer(entry.key)?.gameMode == GameMode.SPECTATOR
+        }
+    }
+
+    private fun returnEntrants(runtime: MineRuntime, skipSpectators: Boolean) =
+        returnEntrants(runtime.settings.id, runtime.state.sequence, skipSpectators)
+
+    private fun returnEntrants(zoneId: String, sequence: Long, skipSpectators: Boolean) {
+        if (!skipSpectators) {
+            travel.records().values.filter { it.zoneId == zoneId && it.sequence == sequence }
+                .mapNotNull { Bukkit.getPlayer(it.playerId) }.forEach(travel::exit)
+            entrants.entries.removeIf { it.value == "$zoneId:$sequence" }
+            return
+        }
+        travel.records().values.filter { it.zoneId == zoneId && it.sequence == sequence }
+            .mapNotNull { Bukkit.getPlayer(it.playerId) }
+            .forEach { player ->
+                if (player.gameMode == GameMode.SPECTATOR) travel.reconcile(player, inside = false)
+                else travel.exit(player)
+            }
+        entrants.entries.removeIf { it.value == "$zoneId:$sequence" }
+    }
+
+    private fun near(scene: MineLostMinerMazeScene, location: Location): Boolean {
+        if (location.world !== scene.world) return false
+        if (scene.contains(location)) return true
+        return scene.records.any { record ->
+            val dx = location.x - (record.x + 0.5)
+            val dy = location.y - (record.y + 0.5)
+            val dz = location.z - (record.z + 0.5)
+            dx * dx + dy * dy + dz * dz <= CLEANUP_DISTANCE_SQUARED
+        }
+    }
 
     private fun candidates(runtime: MineRuntime, required: Int): List<ObjectiveTargetCandidate> =
         orderMineIncidentPositions(
@@ -258,13 +398,15 @@ internal class MineLostMinerIncident(
             ObjectiveTargetCandidate("lost_miner_${order + 1}", position, ObjectiveTargetRole("lost_miner"), order.toLong())
         }
 
-    private fun WorksitePosition.location(): Location =
-        Location(Bukkit.getWorld(world), x + 0.5, y + 1.0, z + 0.5)
-
     private fun key(runtime: MineRuntime) = "${runtime.settings.id}:${runtime.state.sequence}"
 
     private companion object {
         const val MAZE_BLOCK_BUDGET = 128
+        const val GRACE_MILLIS = 60_000L
+        const val HARD_DEADLINE_MILLIS = 5 * 60_000L
+        const val WARNING_MILLIS = 15_000L
+        const val WARNING_SECONDS = 15
+        const val CLEANUP_DISTANCE_SQUARED = 64.0
         val LEGACY_CAMP_KINDS = setOf(
             MineIncidentEntityKind.MINER_CAMP_LANTERN,
             MineIncidentEntityKind.MINER_CAMP_SUPPLIES,
@@ -281,4 +423,15 @@ internal class MineLostMinerIncident(
             WorksitePlayerReleaseReason.OBJECTIVE_REPLACED,
         )
     }
+
+    private data class CompletionGrace(
+        val zoneId: String,
+        val sequence: Long,
+        val targetId: String,
+        val scene: MineLostMinerMazeScene,
+        val completedAt: Long,
+        val warningAt: Long,
+        val deadlineAt: Long,
+        var warningSent: Boolean = false,
+    )
 }

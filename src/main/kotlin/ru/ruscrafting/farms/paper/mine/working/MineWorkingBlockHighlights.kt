@@ -38,7 +38,9 @@ internal class MineWorkingBlockHighlights(plugin: Plugin) {
             }
             MineWorkingStage.SUPPORT -> scene.plan.supportFrames.forEachIndexed { index, frame ->
                 if (index !in working.completed) frame.forEach { (position, _) ->
-                    expected[position] = Material.SPRUCE_LOG.createBlockData()
+                    // Keep the preview identical to the canonical support recipe:
+                    // roof beams are directional logs while the side posts stay vertical.
+                    expected[position] = Bukkit.createBlockData(frame.getValue(position))
                 }
             }
             MineWorkingStage.LAY_TRACK -> scene.plan.rails.getOrNull(working.completed.size)?.let { add(it, Material.RAIL) }

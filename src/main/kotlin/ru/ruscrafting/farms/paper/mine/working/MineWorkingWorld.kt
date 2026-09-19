@@ -6,6 +6,7 @@ import org.bukkit.Material
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MineWorkingPlacement
 import ru.ruscrafting.farms.domain.MineWorkingStage
+import ru.ruscrafting.farms.domain.MineWorkingState
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
@@ -16,8 +17,9 @@ import ru.ruscrafting.farms.paper.worksite.scene.WorksitePreparedSceneRecord
 
 internal data class MineWorkingScene(val plan: MineWorkingPlan, val blocks: WorksitePreparedScene) {
     val floor: Int get() = plan.entrance.y
+    private val ceiling = plan.blocks.keys.maxOf(WorksitePosition::y)
     fun inside(location: Location): Boolean = location.world === blocks.world &&
-        location.blockY in floor + 1..floor + 4 &&
+        location.blockY in floor + 1..ceiling &&
         WorksitePosition(location.world.name, location.blockX, floor + 1, location.blockZ) in plan.blocks
 
     fun surface(): Location = blocks.surface.clone()
@@ -33,6 +35,7 @@ internal class MineWorkingWorld(
     private val scenes = mutableMapOf<String, MineWorkingScene>()
     private val ready = mutableSetOf<String>()
     private val retiring = mutableSetOf<String>()
+    private val retained = mutableSetOf<String>()
 
     fun prepare(runtime: MineRuntime, type: MineIncidentType, placement: MineWorkingPlacement, nonce: Long): Boolean {
         if (owner.restoring(runtime.settings.id) || retiring.any { it.startsWith("${runtime.settings.id}:") }) return false
@@ -71,7 +74,8 @@ internal class MineWorkingWorld(
         val records = plan.blocks.map { (position, data) ->
             val block = world.getBlockAt(position.x, position.y, position.z)
             WorksitePreparedSceneRecord(world.name, runtime.settings.id, runtime.state.sequence, sceneId(nonce),
-                position.x, position.y, position.z, block.blockData.asString, decoder.decode(data).asString,
+                position.x, position.y, position.z, block.blockData.asString,
+                decoder.decode(initialActiveData(plan, position, data)).asString,
                 "NONE", plan.blocks.size)
         }
         return WorksitePreparedScene(world, runtime.settings.id, runtime.state.sequence, sceneId(nonce),
@@ -90,27 +94,41 @@ internal class MineWorkingWorld(
         return true
     }
 
-    fun project(runtime: MineRuntime) {
+    fun project(
+        runtime: MineRuntime,
+        typeOverride: MineIncidentType? = null,
+        workingOverride: MineWorkingState? = null,
+    ) {
         if (key(runtime) !in ready) return
-        val incident = runtime.state.incident ?: return
-        val working = incident.working ?: return
+        val incident = runtime.state.incident
+        val type = incident?.type ?: typeOverride ?: return
+        val working = incident?.working ?: workingOverride ?: return
         val plan = scene(runtime)?.plan ?: return
         val changes = linkedMapOf<WorksitePosition, String>()
-        when (incident.type) {
+        when (type) {
             MineIncidentType.TUNNEL_DRIVE -> {
                 plan.excavation.forEachIndexed { index, position ->
                     if (working.stage != MineWorkingStage.EXCAVATE || index in working.completed) changes[position] = AIR
                 }
-                if (working.stage == MineWorkingStage.SUPPORT) working.completed.forEach { changes.putAll(plan.supportBlocks(it)) }
+                plan.supportFrames.forEachIndexed { index, frame ->
+                    val installed = working.stage == MineWorkingStage.SUPPORT && index in working.completed
+                    frame.forEach { (position, data) -> changes[position] = if (installed) data else ROCK }
+                }
             }
             MineIncidentType.RAIL_EXTENSION, MineIncidentType.TRACK_DAMAGE -> {
-                plan.rubble.forEachIndexed { index, position ->
-                    if (working.stage != MineWorkingStage.CLEAR_TRACK || index in working.completed) changes[position] = AIR
-                }
                 plan.rails.forEachIndexed { index, position ->
-                    if (working.stage == MineWorkingStage.TEST_TRACK ||
-                        working.stage == MineWorkingStage.LAY_TRACK && index in working.completed) {
-                        changes[position] = MineWorkingLayout.railData(plan, position)
+                    val rubbleIndex = plan.rubble.indexOf(position)
+                    changes[position] = when (working.stage) {
+                        MineWorkingStage.CLEAR_TRACK -> when {
+                            rubbleIndex < 0 -> AIR
+                            rubbleIndex in working.completed -> AIR
+                            else -> RUBBLE
+                        }
+                        MineWorkingStage.LAY_TRACK -> if (index in working.completed) {
+                            MineWorkingLayout.railData(plan, position)
+                        } else AIR
+                        MineWorkingStage.TEST_TRACK -> MineWorkingLayout.railData(plan, position)
+                        else -> AIR
                     }
                 }
             }
@@ -145,10 +163,34 @@ internal class MineWorkingWorld(
         }
     }
 
+    /** Restores only a retained scene when the runtime has already advanced to another sequence. */
+    fun startRestore(scene: MineWorkingScene) {
+        val sceneKey = scenes.entries.firstOrNull { it.value === scene }?.key ?: return
+        ready.remove(sceneKey)
+        retiring += sceneKey
+        owner.beginRestore(scene.blocks.world, scene.blocks.zoneId, scene.blocks.sequence)
+    }
+
     fun hasScene(runtime: MineRuntime): Boolean = scenes.values.any { it.blocks.zoneId == runtime.settings.id }
+    /** Retains a prepared scene for completion/recovery paths that outlive the incident lookup. */
+    fun retainedScene(zoneId: String, sequence: Long? = null): MineWorkingScene? = scenes.values
+        .asSequence()
+        .filter { it.blocks.zoneId == zoneId && (sequence == null || it.blocks.sequence == sequence) }
+        .maxByOrNull { it.blocks.sequence }
+
+    fun retain(scene: MineWorkingScene) {
+        scenes.entries.firstOrNull { it.value === scene }?.key?.let { retained += it }
+    }
+
+    fun release(scene: MineWorkingScene) {
+        scenes.entries.firstOrNull { it.value === scene }?.key?.let { retained -= it }
+    }
+
     fun occupied(runtime: MineRuntime): Boolean = scenes.values.any { scene ->
         scene.blocks.zoneId == runtime.settings.id && scene.blocks.world.players.any { scene.inside(it.location) }
     }
+
+    fun occupied(scene: MineWorkingScene): Boolean = scene.blocks.world.players.any { scene.inside(it.location) }
 
     fun isRestoring(runtime: MineRuntime): Boolean = owner.restoring(runtime.settings.id)
     fun protects(location: Location): Boolean = owner.protects(location)
@@ -188,21 +230,31 @@ internal class MineWorkingWorld(
     }
 
     private fun activeScene(record: WorksitePreparedSceneRecord): Boolean = registry.byId(record.zoneId)?.let {
-        it.state.incident?.let { incident -> incident.working != null && sceneId(incident.objectiveNonce) == record.sceneId }
+        "${record.zoneId}:${record.sequence}" in retained ||
+            it.state.incident?.let { incident -> incident.working != null && sceneId(incident.objectiveNonce) == record.sceneId } == true
     } == true
-    fun clearQueues() { owner.clearQueues(); scenes.clear(); ready.clear(); retiring.clear() }
+    fun clearQueues() { owner.clearQueues(); scenes.clear(); ready.clear(); retiring.clear(); retained.clear() }
 
     private fun active(zoneId: String, sequence: Long): Boolean = registry.byId(zoneId)?.let {
-        it.state.sequence == sequence && it.state.incident?.working != null && "${zoneId}:$sequence" !in retiring
+        ("$zoneId:$sequence" in retained ||
+            (it.state.sequence == sequence && it.state.incident?.working != null)) && "$zoneId:$sequence" !in retiring
     } == true
 
     private fun key(runtime: MineRuntime) = "${runtime.settings.id}:${runtime.state.sequence}"
     private fun sceneId(nonce: Long) = (nonce % 16).toInt()
 
+    private fun initialActiveData(plan: MineWorkingPlan, position: WorksitePosition, data: String): String = when {
+        plan.type == MineIncidentType.TUNNEL_DRIVE && plan.supportFrames.any { position in it } -> ROCK
+        plan.type == MineIncidentType.RAIL_EXTENSION && position in plan.rails && position !in plan.rubble -> AIR
+        else -> data
+    }
+
     companion object {
         private const val BLOCK_BUDGET = 256
         private const val RECOVERY_RADIUS = 32
+        private const val ROCK = "minecraft:stone"
         private const val AIR = "minecraft:air"
+        private const val RUBBLE = "minecraft:cobblestone"
     }
 }
 

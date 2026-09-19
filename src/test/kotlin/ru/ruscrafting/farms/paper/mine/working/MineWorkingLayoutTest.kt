@@ -72,6 +72,56 @@ class MineWorkingLayoutTest : FunSpec({
         }
     }
 
+    test("tunnel cave keeps a narrow entry, long side branch and geological palette") {
+        val placement = MineWorkingPlacement(
+            WorksitePosition("rc_atelier_compact_mine", 72, 110, 27),
+            direction = 3,
+            floorId = "top",
+            layoutSeed = 42L,
+        )
+        val plan = MineWorkingLayout.plan(MineIncidentType.TUNNEL_DRIVE, placement)
+
+        MineWorkingLayout.validate(plan).shouldBeEmpty()
+        plan.excavation.size shouldBe 90
+        plan.supports.size shouldBe 3
+        plan.blocks.keys.maxOf { placementForward(placement, it) } shouldBe 14
+        // The last branch shoulder is three cells off the forward axis and
+        // remains inside the real compact-mine corridor for this direction.
+        plan.inside(placement.position(-3, 1, 14)) shouldBe true
+        plan.blocks.values.any { it == "minecraft:tuff" } shouldBe true
+        plan.blocks.values.any { it == "minecraft:andesite" } shouldBe true
+        plan.blocks.values.any { it == "minecraft:deepslate" } shouldBe true
+        plan.blocks.values.filter { it == "minecraft:iron_chain[axis=y,waterlogged=false]" }.isNotEmpty() shouldBe true
+        plan.walkable
+            .filter { it.y in placement.entrance.y + 1..placement.entrance.y + 3 }
+            .filter { it !in plan.excavation }
+            .all { plan.blocks[it] == "minecraft:air" } shouldBe true
+    }
+
+    test("support frames follow the noisy roof and keep a usable action anchor") {
+        val placement = MineWorkingPlacement(
+            WorksitePosition("rc_atelier_compact_mine", 72, 110, 27),
+            direction = 3,
+            floorId = "top",
+            layoutSeed = 42L,
+        )
+        val plan = MineWorkingLayout.plan(MineIncidentType.TUNNEL_DRIVE, placement)
+
+        plan.supportFrames.forEachIndexed { index, frame ->
+            val beam = frame.filterValues { it.contains("axis=z") }
+            val beamHeights = beam.keys.map { it.y }.toSet()
+            beamHeights.size shouldBe 1
+            val beamPositions = beam.keys.sortedBy { it.z }
+            beamPositions.zipWithNext().forEach { (left, right) ->
+                (kotlin.math.abs(left.z - right.z) + kotlin.math.abs(left.x - right.x)) shouldBe 1
+            }
+            val anchor = plan.supports[index]
+            frame[anchor] shouldBe "minecraft:spruce_log[axis=y]"
+            (anchor.y in placement.entrance.y + 2..placement.entrance.y + 3) shouldBe true
+            (anchor !in plan.walkable) shouldBe true
+        }
+    }
+
     test("planner accepts air only at the entrance band and geological rock beyond it") {
         val plan = MineWorkingLayout.plan(
             MineIncidentType.TUNNEL_DRIVE,
@@ -128,3 +178,10 @@ class MineWorkingLayoutTest : FunSpec({
         MineWorkingPlanner.validateSnapshot(plan, snapshot) shouldBe "track_entry_not_clear"
     }
 })
+
+private fun placementForward(placement: MineWorkingPlacement, position: WorksitePosition): Int = when (placement.direction) {
+    0 -> position.z - placement.entrance.z
+    1 -> placement.entrance.x - position.x
+    2 -> placement.entrance.z - position.z
+    else -> position.x - placement.entrance.x
+}

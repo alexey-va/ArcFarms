@@ -22,6 +22,7 @@ import ru.ruscrafting.farms.paper.CuboidActivityRegion
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.mineV2Settings
 import ru.ruscrafting.farms.paper.worksite.scene.WorksitePreparedScene
+import kotlin.math.abs
 
 class MineDrillSceneMockBukkitTest : FunSpec({
     lateinit var paper: MockBukkitTestRuntime
@@ -48,7 +49,9 @@ class MineDrillSceneMockBukkitTest : FunSpec({
         cart.isGlowing shouldBe true
         head.isGlowing shouldBe true
         drill.target(control)?.first shouldBe runtime.settings.id
-        drill.target(cart)?.second shouldBe WorksitePosition(world.name, 0, 65, 0)
+        // The entry interaction owns forward 0; keep the drill two blocks in
+        // the clear stub before the first excavation face at forward 3.
+        drill.target(cart)?.second shouldBe WorksitePosition(world.name, 0, 65, 2)
 
         runtime.state = runtime.state.copy(
             incident = runtime.state.incident!!.copy(
@@ -58,6 +61,42 @@ class MineDrillSceneMockBukkitTest : FunSpec({
         drill.reconcile(runtime, scene, running = true, now = 1_500L)
         cart.isValid shouldBe true
         head.isValid shouldBe true
+    }
+
+    test("keeps the cart and drill head on the curved floor centreline in every direction") {
+        (0..3).forEach { direction ->
+            val world = paper.server.addSimpleWorld("drill_curve_$direction")
+            world.getChunkAt(0, 0).load()
+            val plugin = paper.createSimplePlugin("MineDrillCurveTest$direction")
+            val runtime = runtime(world, direction)
+            val scene = scene(world, runtime)
+            val drill = MineDrillScene(plugin)
+
+            drill.reconcile(runtime, scene, running = false, now = 1_000L)
+            val cart = world.entities.filterIsInstance<Minecart>().single()
+            val head = world.entities.filterIsInstance<BlockDisplay>().single()
+            val layers = scene.plan.excavation.withIndex()
+                .groupBy { forwardDistance(runtime.state.incident!!.working!!.placement, it.value) }
+                .toSortedMap()
+
+            var completed = emptySet<Int>()
+            layers.entries.take(3).forEach { (forward, points) ->
+                completed = completed + points.map { it.index }
+                runtime.state = runtime.state.copy(
+                    incident = runtime.state.incident!!.copy(
+                        working = runtime.state.incident!!.working!!.copy(completed = completed),
+                    ),
+                )
+                drill.reconcile(runtime, scene, running = false, now = 1_100L + forward)
+
+                val expected = center(runtime.state.incident!!.working!!.placement, points)
+                cart.location.x.closeTo(expected.x + 0.5)
+                cart.location.y.closeTo(expected.y + 0.1)
+                cart.location.z.closeTo(expected.z + 0.5)
+                head.location.y.closeTo(expected.y + 0.82)
+                drill.target(cart)?.second shouldBe expected
+            }
+        }
     }
 
     test("reload cleanup removes orphaned vehicle, drillhead and control") {
@@ -80,8 +119,8 @@ class MineDrillSceneMockBukkitTest : FunSpec({
     }
 })
 
-private fun runtime(world: WorldMock): MineRuntime {
-    val placement = MineWorkingPlacement(WorksitePosition(world.name, 0, 64, 0), 0, "drill-floor", 11L)
+private fun runtime(world: WorldMock, direction: Int = 0): MineRuntime {
+    val placement = MineWorkingPlacement(WorksitePosition(world.name, 0, 64, 0), direction, "drill-floor", 11L)
     return MineRuntime(
         settings = mineV2Settings().copy(id = "drill_zone"),
         region = CuboidActivityRegion(world, "drill_zone", CuboidBounds(-32, 48, -32, 32, 96, 48)),
@@ -99,6 +138,33 @@ private fun runtime(world: WorldMock): MineRuntime {
             ),
         ),
     )
+}
+
+private fun forwardDistance(placement: MineWorkingPlacement, position: WorksitePosition): Int = when (placement.direction) {
+    0 -> position.z - placement.entrance.z
+    1 -> placement.entrance.x - position.x
+    2 -> placement.entrance.z - position.z
+    else -> position.x - placement.entrance.x
+}
+
+private fun sideDistance(placement: MineWorkingPlacement, position: WorksitePosition): Int = when (placement.direction) {
+    0 -> position.x - placement.entrance.x
+    1 -> position.z - placement.entrance.z
+    2 -> placement.entrance.x - position.x
+    else -> placement.entrance.z - position.z
+}
+
+private fun center(
+    placement: MineWorkingPlacement,
+    points: List<IndexedValue<WorksitePosition>>,
+): WorksitePosition {
+    val sides = points.map { sideDistance(placement, it.value) }
+    val side = (sides.minOrNull()!! + sides.maxOrNull()!!) / 2
+    return placement.position(side, 1, forwardDistance(placement, points.first().value))
+}
+
+private fun Double.closeTo(expected: Double) {
+    (abs(this - expected) < 1.0e-6) shouldBe true
 }
 
 private fun scene(world: WorldMock, runtime: MineRuntime): MineWorkingScene {

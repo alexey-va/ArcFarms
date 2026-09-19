@@ -1230,6 +1230,7 @@ mine:
     rail_extension: '<color:#f2fff7>Clear the collapse with a pickaxe, right-click the markers for rails and lay one continuous line, then escort the cart</color>'
     ore_workshop: '<color:#f2fff7>Carry the ore to the crusher, process the billet at the furnace, then take it to shipping</color>'
   working:
+    closing-warning: '<color:#ffad42>The working closes in <seconds> sec. Return to the entrance.</color>'
     entry: '<color:#f2fff7>Enter the marked side working from floor <floor> on foot</color>'
     preparing: '<color:#b8c8c0>The side working is being prepared. Wait for the safe route.</color>'
     inventory-full: '<red>Free an inventory slot: there is no room for the service item.</red>'

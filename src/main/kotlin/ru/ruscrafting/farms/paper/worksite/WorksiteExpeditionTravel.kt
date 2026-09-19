@@ -144,14 +144,22 @@ internal class WorksiteExpeditionTravel(
         return exit(player)
     }
 
-    fun evacuate(zone: String): Boolean {
+    fun evacuate(zone: String, sequence: Long? = null): Boolean {
         var success = true
-        sessions.values.filter { it.zoneId == zone }.forEach { record ->
+        sessions.values.filter { it.zoneId == zone && (sequence == null || it.sequence == sequence) }.forEach { record ->
             val player = Bukkit.getPlayer(record.playerId)
             if (player?.isOnline == true) { if (!exit(player)) success = false }
             else sessions.remove(record.playerId, record)
         }
         return success
+    }
+
+    /** Evacuates a visitor who entered a retained scene without a travel lease. */
+    fun evacuatePlayer(player: Player, destination: Location): Boolean {
+        if (!player.isOnline) return true
+        if (!authorizeTeleport(player, destination)) return false
+        player.fallDistance = 0f
+        return true
     }
 
     fun reconcile(player: Player, inside: Boolean) {

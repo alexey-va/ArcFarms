@@ -11,6 +11,7 @@ import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.event.player.PlayerTeleportEvent
 import org.bukkit.inventory.EquipmentSlot
+import net.kyori.adventure.text.Component
 import ru.ruscrafting.farms.domain.*
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.mine.MineRuntime
@@ -38,6 +39,7 @@ internal class MineWorkingController(
     private val pendingSaves = mutableSetOf<String>()
     private val retiring = mutableSetOf<String>()
     private val drillOperators = mutableMapOf<String, UUID>()
+    private val completionGrace = mutableMapOf<String, CompletionGrace>()
 
     fun start(runtime: MineRuntime, type: MineIncidentType, now: Long): Boolean {
         if (transitioning(runtime)) return false
@@ -55,6 +57,10 @@ internal class MineWorkingController(
 
     fun tick(runtime: MineRuntime, now: Long) {
         if (runtime.settings.id in retiring) { retire(runtime); return }
+        completionGrace[runtime.settings.id]?.let { grace ->
+            tickCompletionGrace(runtime, grace, now)
+            return
+        }
         val incident = runtime.state.incident
         val working = incident?.working
         if (working == null) {
@@ -240,19 +246,30 @@ internal class MineWorkingController(
         incidents.work(runtime, player, amount = amount, state = next)
         val sequence = runtime.state.sequence
         val nonce = incident.objectiveNonce
+        if (step.finished) {
+            // The coordinator clears the incident on the final action. Project
+            // that last state before the incident lookup disappears.
+            world.project(runtime, incident.type, step.state)
+            beginCompletionGrace(runtime, sequence)
+        }
         val token = tasks.lifecycleToken()
         state.persistAsync().whenComplete { _, failure ->
             tasks.runSync(token) {
                 pendingSaves.remove(runtime.settings.id)
-                if (runtime.state.sequence != sequence ||
-                    runtime.state.incident?.objectiveNonce?.let { it != nonce } == true) return@runSync
+                val currentNonce = runtime.state.incident?.objectiveNonce
+                val stale = when {
+                    runtime.state.sequence != sequence -> true
+                    step.finished -> currentNonce != null && currentNonce != nonce
+                    else -> currentNonce != nonce
+                }
+                if (stale) return@runSync
                 if (failure != null) {
                     state.log(Level.SEVERE, "Mine working progress persistence failed zone=${runtime.settings.id} sequence=$sequence stage=${working.stage}", failure)
-                    retire(runtime)
-                    incidents.abort(runtime)
+                    forceCleanup(runtime)
+                    if (!step.finished) incidents.abort(runtime)
                     return@runSync
                 }
-                if (step.finished) retire(runtime) else {
+                if (!step.finished) {
                     world.project(runtime)
                     world.scene(runtime)?.let { presentation.reconcile(runtime, it) }
                 }
@@ -268,7 +285,9 @@ internal class MineWorkingController(
             return false
         }
         if (travel.isAuthorized(event.player, event.to)) return false
-        val runtime = registry.snapshot().firstOrNull { world.scene(it)?.inside(event.to) == true }
+        val runtime = registry.snapshot().firstOrNull { candidate ->
+            (world.scene(candidate) ?: completionGrace[candidate.settings.id]?.scene)?.inside(event.to) == true
+        }
         if (runtime == null) {
             travel.record(event.player)?.let { record ->
                 registry.byId(record.zoneId)?.let { equipment.clear(it, event.player.uniqueId) }
@@ -276,21 +295,41 @@ internal class MineWorkingController(
             if (travel.retains(event.player)) travel.reconcile(event.player, inside = false)
             return false
         }
-        val scene = world.scene(runtime) ?: return false
+        val scene = world.scene(runtime) ?: completionGrace[runtime.settings.id]?.scene ?: return false
+        val grace = completionGrace[runtime.settings.id]
+        if (grace != null) {
+            // A completed scene is a short-lived public set. Let ordinary walking
+            // pass through it; teleport guards still prevent entering by teleport.
+            if (event !is PlayerTeleportEvent) return false
+            event.isCancelled = true
+            return true
+        }
         if (travel.record(event.player)?.let { it.zoneId == runtime.settings.id && it.sequence == runtime.state.sequence } == true &&
             runtime.state.incident?.working != null && world.isReady(runtime)) return false
+        if (event !is PlayerTeleportEvent && runtime.settings.id !in retiring && world.isReady(runtime) &&
+            event.player.location.distanceSquared(scene.surface()) <= INTERACTION_DISTANCE_SQUARED) {
+            // A normal walk into the authored entrance is already a valid entry.
+            // Register the durable on-foot lease without cancelling the move;
+            // cancellation made the entrance feel like an invisible wall.
+            enter(runtime, scene, event.player, event.to)
+            return false
+        }
         event.isCancelled = true
-        if (event !is PlayerTeleportEvent && runtime.settings.id !in retiring && world.isReady(runtime)) enter(runtime, scene, event.player)
-        else presentation.feedback(event.player, "preparing")
+        presentation.feedback(event.player, "preparing")
         return true
     }
 
-    private fun enter(runtime: MineRuntime, scene: MineWorkingScene, player: Player) {
+    private fun enter(
+        runtime: MineRuntime,
+        scene: MineWorkingScene,
+        player: Player,
+        destination: Location = player.location.clone(),
+    ) {
         if (!allowed(runtime, player) || !world.isReady(runtime) || runtime.settings.id in retiring) return
         val sequence = runtime.state.sequence
         val nonce = runtime.state.incident?.objectiveNonce ?: return
         travel.enterOnFoot(WorksiteExpeditionTravel.EntryRequest(
-            player, runtime.settings.id, sequence, runtime.settings.permission, scene.surface().also { it.yaw = player.location.yaw; it.pitch = player.location.pitch }, player.location.clone(),
+            player, runtime.settings.id, sequence, runtime.settings.permission, scene.surface().also { it.yaw = player.location.yaw; it.pitch = player.location.pitch }, destination.clone(),
         )) { runtime.state.sequence == sequence && runtime.state.incident?.objectiveNonce == nonce &&
             runtime.settings.id !in retiring && world.isReady(runtime) }
     }
@@ -332,20 +371,50 @@ internal class MineWorkingController(
     fun release(playerId: UUID, identity: ServiceItemIdentity, reason: WorksitePlayerReleaseReason) = equipment.release(playerId, identity, reason)
 
     fun transitioning(runtime: MineRuntime): Boolean = runtime.settings.id in pendingSaves ||
-        runtime.settings.id in retiring || world.isRestoring(runtime)
+        runtime.settings.id in retiring || runtime.settings.id in completionGrace || world.isRestoring(runtime)
+
+    /** Used by admin replacement to end a completed scene without waiting for grace. */
+    fun forceCleanup(runtime: MineRuntime) {
+        val grace = completionGrace.remove(runtime.settings.id)
+        if (grace == null) retire(runtime) else retire(runtime, grace.scene)
+    }
 
     fun blocksOreSupply(runtime: MineRuntime): Boolean = world.hasScene(runtime) || transitioning(runtime)
 
     fun cancelPending(zone: String) = placement.cancel(zone)
     fun retire(runtime: MineRuntime) {
+        val grace = completionGrace.remove(runtime.settings.id)
+        retire(runtime, grace?.scene)
+    }
+
+    private fun retire(runtime: MineRuntime, retainedScene: MineWorkingScene?) {
         placement.cancel(runtime.settings.id)
         retiring += runtime.settings.id
         equipment.clear(runtime)
         drillOperators.remove(runtime.settings.id)
         presentation.cleanup(runtime.settings.id)
-        if (!travel.evacuate(runtime.settings.id)) return
-        if (world.occupied(runtime)) return
-        world.startRestore(runtime)
+        val evacuated = if (retainedScene == null) {
+            travel.evacuate(runtime.settings.id)
+        } else {
+            var success = travel.evacuate(runtime.settings.id, retainedScene.blocks.sequence)
+            retainedScene.blocks.world.players.filter { retainedScene.inside(it.location) }.forEach { player ->
+                if (!travel.evacuatePlayer(player, retainedScene.surface())) success = false
+                else travel.reconcile(player, inside = false)
+            }
+            success
+        }
+        if (!evacuated) return
+        if (retainedScene != null) {
+            if (world.occupied(retainedScene)) return
+            world.release(retainedScene)
+            world.startRestore(retainedScene)
+        } else {
+            if (!world.hasScene(runtime) || world.occupied(runtime)) {
+                if (!world.hasScene(runtime)) retiring.remove(runtime.settings.id)
+                return
+            }
+            world.startRestore(runtime)
+        }
         retiring.remove(runtime.settings.id)
     }
 
@@ -371,6 +440,7 @@ internal class MineWorkingController(
         placement.clear()
         pendingSaves.clear()
         retiring.clear()
+        completionGrace.clear()
         drillOperators.clear()
         // Active incident state survives shutdown. Keep its complete journal
         // so startup can resume it; a partial restore would discard originals
@@ -387,6 +457,44 @@ internal class MineWorkingController(
 
     private fun near(player: Player, position: WorksitePosition): Boolean = player.world.name == position.world &&
         player.location.distanceSquared(position.location(player.world)) <= INTERACTION_DISTANCE_SQUARED
+
+    private fun beginCompletionGrace(runtime: MineRuntime, sequence: Long) {
+        val scene = world.retainedScene(runtime.settings.id, sequence)
+        if (scene == null) {
+            retire(runtime)
+            return
+        }
+        val completedAt = clock()
+        completionGrace[runtime.settings.id] = CompletionGrace(
+            sequence = sequence,
+            scene = scene,
+            completedAt = completedAt,
+            warningAt = completedAt + HARD_DEADLINE_MILLIS - WARNING_MILLIS,
+            deadlineAt = completedAt + HARD_DEADLINE_MILLIS,
+        )
+        world.retain(scene)
+    }
+
+    private fun tickCompletionGrace(runtime: MineRuntime, grace: CompletionGrace, now: Long) {
+        if (now >= grace.deadlineAt) {
+            forceCleanup(runtime)
+            return
+        }
+        if (!grace.warningSent && now >= grace.warningAt) {
+            grace.warningSent = true
+            grace.scene.blocks.world.players.filter { nearCompletion(grace.scene, it) }.forEach { player ->
+                presentation.feedback(player, "closing-warning", mapOf("seconds" to Component.text(WARNING_SECONDS)))
+            }
+        }
+        if (now < grace.completedAt + GRACE_MILLIS) return
+        if (grace.scene.blocks.world.players.none { nearCompletion(grace.scene, it) }) forceCleanup(runtime)
+    }
+
+    private fun nearCompletion(scene: MineWorkingScene, player: Player): Boolean {
+        if (!player.isOnline || player.world !== scene.blocks.world) return false
+        if (player.location.distanceSquared(scene.surface()) <= COMPLETION_DISTANCE_SQUARED) return true
+        return scene.plan.footprint.any { player.location.distanceSquared(it.location(scene.blocks.world)) <= COMPLETION_DISTANCE_SQUARED }
+    }
 
     private fun distanceAlong(placement: MineWorkingPlacement, position: WorksitePosition): Int = when (placement.direction) {
         0 -> position.z - placement.entrance.z
@@ -407,5 +515,19 @@ internal class MineWorkingController(
         const val CRUSH_STROKE_MILLIS = 800L
         const val CART_STEP_MILLIS = 700L
         const val DRILL_STEP_MILLIS = 1_500L
+        const val GRACE_MILLIS = 60_000L
+        const val HARD_DEADLINE_MILLIS = 5 * 60_000L
+        const val WARNING_MILLIS = 15_000L
+        const val WARNING_SECONDS = 15
+        const val COMPLETION_DISTANCE_SQUARED = 64.0
     }
+
+    private data class CompletionGrace(
+        val sequence: Long,
+        val scene: MineWorkingScene,
+        val completedAt: Long,
+        val warningAt: Long,
+        val deadlineAt: Long,
+        var warningSent: Boolean = false,
+    )
 }

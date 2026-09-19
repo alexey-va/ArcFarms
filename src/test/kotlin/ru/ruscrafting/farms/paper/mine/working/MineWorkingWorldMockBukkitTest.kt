@@ -62,7 +62,12 @@ class MineWorkingWorldMockBukkitTest : FunSpec({
         firstOwner.process(1) { true } shouldBeGreaterThan 0
         firstWorld.isReady(fixture.runtime) shouldBe false
         drain(firstOwner, firstWorld, fixture.runtime)
+        fixture.plan.supportFrames.flatMap { it.keys }.forEach { position ->
+            block(world, position).type shouldBe Material.STONE
+        }
         firstWorld.isReady(fixture.runtime) shouldBe true
+        val upperChamber = fixture.plan.walkable.first { it.y > fixture.placement.entrance.y + 4 }
+        firstWorld.scene(fixture.runtime)!!.inside(upperChamber.location(world)) shouldBe true
 
         val activeIncident = requireNotNull(fixture.runtime.state.incident)
         fixture.runtime.state = fixture.runtime.state.copy(
@@ -74,6 +79,12 @@ class MineWorkingWorldMockBukkitTest : FunSpec({
             ),
         )
         firstWorld.project(fixture.runtime)
+        fixture.plan.supportFrames.first().keys.forEach { position ->
+            block(world, position).type shouldBe Material.SPRUCE_LOG
+        }
+        fixture.plan.supportFrames.drop(1).flatMap { it.keys }.forEach { position ->
+            block(world, position).type shouldBe Material.STONE
+        }
         val excavated = fixture.plan.excavation.first()
         block(world, excavated).blockData.asString shouldBe "minecraft:air"
 
@@ -102,12 +113,72 @@ class MineWorkingWorldMockBukkitTest : FunSpec({
         populate(world, fixture.plan, fixture.placement)
 
         workings.prepare(fixture.runtime, fixture.type, fixture.placement, fixture.nonce) shouldBe true
+        workings.retainedScene(fixture.runtime.settings.id, fixture.runtime.state.sequence)?.plan?.type shouldBe type
         workings.isReady(fixture.runtime) shouldBe false
         sceneOwner.process(1) { true } shouldBeGreaterThan 0
         workings.isReady(fixture.runtime) shouldBe false
         drain(sceneOwner, workings, fixture.runtime)
         workings.isReady(fixture.runtime) shouldBe true
       }
+    }
+
+    test("rail extension starts with empty rail cells and lays only completed rails") {
+        val fixture = fixture(world, MineIncidentType.RAIL_EXTENSION)
+        val sceneOwner = owner(plugin)
+        val workings = MineWorkingWorld(fixture.registry, sceneOwner, MockBukkitFarmBlockDataDecoder)
+        populate(world, fixture.plan, fixture.placement)
+
+        workings.prepare(fixture.runtime, fixture.type, fixture.placement, fixture.nonce) shouldBe true
+        drain(sceneOwner, workings, fixture.runtime)
+        fixture.plan.rails.forEach { position ->
+            block(world, position).type shouldBe if (position in fixture.plan.rubble) Material.COBBLESTONE else Material.AIR
+        }
+        workings.isReady(fixture.runtime) shouldBe true
+
+        fixture.runtime.state = fixture.runtime.state.copy(
+            incident = requireNotNull(fixture.runtime.state.incident).copy(
+                working = requireNotNull(fixture.runtime.state.incident!!.working).copy(
+                    stage = MineWorkingStage.LAY_TRACK,
+                    completed = setOf(0),
+                ),
+            ),
+        )
+        workings.project(fixture.runtime)
+        fixture.plan.rubble.forEach { position -> block(world, position).type shouldBe Material.AIR }
+        block(world, fixture.plan.rails.first()).type shouldBe Material.RAIL
+        fixture.plan.rails.drop(1).forEach { position -> block(world, position).type shouldBe Material.AIR }
+    }
+
+    test("track damage preserves intact baseline rails and repairs only gaps") {
+        val fixture = fixture(world, MineIncidentType.TRACK_DAMAGE)
+        val sceneOwner = owner(plugin)
+        val workings = MineWorkingWorld(fixture.registry, sceneOwner, MockBukkitFarmBlockDataDecoder)
+        populate(world, fixture.plan, fixture.placement)
+
+        workings.prepare(fixture.runtime, fixture.type, fixture.placement, fixture.nonce) shouldBe true
+        drain(sceneOwner, workings, fixture.runtime)
+        fixture.plan.cartRoute.forEach { position ->
+            block(world, position).type shouldBe if (position in fixture.plan.rubble) Material.COBBLESTONE else Material.RAIL
+        }
+        workings.isReady(fixture.runtime) shouldBe true
+
+        fixture.runtime.state = fixture.runtime.state.copy(
+            incident = requireNotNull(fixture.runtime.state.incident).copy(
+                working = requireNotNull(fixture.runtime.state.incident!!.working).copy(stage = MineWorkingStage.LAY_TRACK),
+            ),
+        )
+        workings.project(fixture.runtime)
+        fixture.plan.rubble.forEach { position -> block(world, position).type shouldBe Material.AIR }
+        block(world, fixture.plan.rails.first()).type shouldBe Material.AIR
+
+        fixture.runtime.state = fixture.runtime.state.copy(
+            incident = requireNotNull(fixture.runtime.state.incident).copy(
+                working = requireNotNull(fixture.runtime.state.incident!!.working).copy(completed = setOf(0)),
+            ),
+        )
+        workings.project(fixture.runtime)
+        block(world, fixture.plan.rails.first()).type shouldBe Material.RAIL
+        fixture.plan.rails.drop(1).forEach { position -> block(world, position).type shouldBe Material.AIR }
     }
 
     test("recovery-occupied geology rejects a candidate without writing a prepared scene") {

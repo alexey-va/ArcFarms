@@ -34,6 +34,11 @@ internal object MockBukkitFarmBlockDataDecoder : FarmBlockDataDecoder {
             // These journal tests verify material/progress/restore, not lamp physics.
             return@getOrElse org.bukkit.Material.LANTERN.createBlockData()
         }
+        if (Regex("minecraft:iron_chain\\[axis=[xyz],waterlogged=(true|false)]").matches(serialized)) {
+            // The pinned mock lacks Chain's Orientable and Waterlogged data;
+            // these journal checks still preserve its material and originals.
+            return@getOrElse org.bukkit.Material.IRON_CHAIN.createBlockData()
+        }
         if (!isPinnedPointedDripstoneGap(serialized)) throw failure
         // MockBukkit 4.110.0 has no PointedDripstone BlockData implementation
         // and rejects Paper's valid thickness property. Tunnel tests only need
