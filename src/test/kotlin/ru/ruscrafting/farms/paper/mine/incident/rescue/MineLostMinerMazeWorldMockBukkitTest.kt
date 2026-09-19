@@ -16,7 +16,7 @@ import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.CuboidActivityRegion
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.mineV2Settings
-import ru.ruscrafting.farms.paper.platform.PaperFarmBlockDataDecoder
+import ru.ruscrafting.farms.paper.fixtures.MockBukkitFarmBlockDataDecoder
 
 class MineLostMinerMazeWorldMockBukkitTest : FunSpec({
     lateinit var paper: MockBukkitTestRuntime
@@ -37,7 +37,7 @@ class MineLostMinerMazeWorldMockBukkitTest : FunSpec({
         val runtime = runtime(world)
         val target = ru.ruscrafting.farms.domain.worksite.WorksitePosition(world.name, 10, 63, 10)
         val retention = RecordingMazeRetention()
-        val first = MineLostMinerMazeWorld(plugin, ArcFarmsDebug({ false }) {}, retention, PaperFarmBlockDataDecoder)
+        val first = MineLostMinerMazeWorld(plugin, ArcFarmsDebug({ false }) {}, retention, MockBukkitFarmBlockDataDecoder)
 
         val (_, planned) = first.ensure(runtime, target)
         val scene = requireNotNull(planned)
@@ -53,7 +53,7 @@ class MineLostMinerMazeWorldMockBukkitTest : FunSpec({
 
         // A new owner sees the PDC journal and reconstructs the same entrance/target.
         first.clearQueues()
-        val restarted = MineLostMinerMazeWorld(plugin, ArcFarmsDebug({ false }) {}, retention, PaperFarmBlockDataDecoder)
+        val restarted = MineLostMinerMazeWorld(plugin, ArcFarmsDebug({ false }) {}, retention, MockBukkitFarmBlockDataDecoder)
         val recovered = requireNotNull(restarted.ensure(runtime, target).second)
         recovered.start shouldBe scene.start
         recovered.target shouldBe scene.target

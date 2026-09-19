@@ -1,6 +1,9 @@
 package ru.ruscrafting.farms.paper.mine.incident.entity
 
 import org.bukkit.Chunk
+import org.bukkit.Material
+import ru.ruscrafting.farms.paper.mine.incident.floodFootprint
+import ru.ruscrafting.farms.paper.mine.incident.blockType
 import org.bukkit.entity.Entity
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MinePhase
@@ -33,7 +36,7 @@ internal class MineObjectiveMarkerScene(private val effects: MineIncidentEntityE
         val currentChunks = chunksAround(expected.values)
         val chunksToScan = activeChunks[runtime.settings.id].orEmpty() + currentChunks
         reconcileChunks(runtime, kind, expected, chunksToScan)
-        reconcileChunks(runtime, requireNotNull(kind.objectiveMarkerHitboxKind), expected, chunksToScan)
+        if (kind !in setOf(MineIncidentEntityKind.CRYSTAL_MARKER, MineIncidentEntityKind.FLOOD_MARKER)) reconcileChunks(runtime, requireNotNull(kind.objectiveMarkerHitboxKind), expected, chunksToScan)
         activeChunks[runtime.settings.id] = currentChunks
         return expected.size
     }
@@ -47,7 +50,7 @@ internal class MineObjectiveMarkerScene(private val effects: MineIncidentEntityE
         }
         val expected = expected(runtime)
         reconcileChunks(runtime, kind, expected, chunksAround(chunk))
-        reconcileChunks(runtime, requireNotNull(kind.objectiveMarkerHitboxKind), expected, chunksAround(chunk))
+        if (kind !in setOf(MineIncidentEntityKind.CRYSTAL_MARKER, MineIncidentEntityKind.FLOOD_MARKER)) reconcileChunks(runtime, requireNotNull(kind.objectiveMarkerHitboxKind), expected, chunksAround(chunk))
     }
 
     fun cleanup(runtime: MineRuntime) {
@@ -60,7 +63,7 @@ internal class MineObjectiveMarkerScene(private val effects: MineIncidentEntityE
     fun identity(entity: Entity): MineIncidentEntityIdentity? = effects.identity(entity)
 
     fun hasBlockedTarget(runtime: MineRuntime): Boolean =
-        activeKind(runtime) != null && expected(runtime).values.any(::isMineObjectiveMarkerBlocked)
+        activeKind(runtime)?.let { it !in setOf(MineIncidentEntityKind.CRYSTAL_MARKER, MineIncidentEntityKind.FLOOD_MARKER) } == true && expected(runtime).values.any(::isMineObjectiveMarkerBlocked)
 
     private fun cleanupEntities(runtime: MineRuntime) = OWNED_KINDS.forEach { effects.cleanup(runtime, it) }
 
@@ -91,17 +94,21 @@ internal class MineObjectiveMarkerScene(private val effects: MineIncidentEntityE
     private fun chunksAround(chunk: Chunk): Set<Pair<Int, Int>> =
         (-1..1).flatMap { dx -> (-1..1).map { dz -> chunk.x + dx to chunk.z + dz } }.toSet()
 
-    private fun expected(runtime: MineRuntime): Map<String, WorksitePosition> = runtime.state.objective?.targets.orEmpty()
-        .filter { it.status != ObjectiveTargetStatus.COMPLETED }
-        .associate { it.id to it.position }
+    private fun expected(runtime: MineRuntime): Map<String, WorksitePosition> {
+        val targets = runtime.state.objective?.targets.orEmpty().filter { it.status != ObjectiveTargetStatus.COMPLETED }
+        if (runtime.state.incident?.type == MineIncidentType.FLOODING) {
+            return targets.flatMap { target -> runtime.floodFootprint(target.position) }
+                .filter { it.blockType() == Material.WATER }.distinct()
+                .associate { "water_${it.x}_${it.y}_${it.z}" to it }
+        }
+        return targets.associate { it.id to it.position }
+    }
 
     private fun activeKind(runtime: MineRuntime): MineIncidentEntityKind? {
         if (runtime.state.phase != MinePhase.INCIDENT) return null
         return when (runtime.state.incident?.type) {
             MineIncidentType.GAS_LEAK -> MineIncidentEntityKind.GAS_MARKER
-            // Amethyst buds/clusters are the physical affordance; never shadow them with
-            // a synthetic display or hitbox.
-            MineIncidentType.CRYSTAL_RESONANCE -> null
+            MineIncidentType.CRYSTAL_RESONANCE -> MineIncidentEntityKind.CRYSTAL_MARKER
             MineIncidentType.FLOODING -> MineIncidentEntityKind.FLOOD_MARKER
             MineIncidentType.POWER_FAILURE -> MineIncidentEntityKind.POWER_MARKER
             else -> null

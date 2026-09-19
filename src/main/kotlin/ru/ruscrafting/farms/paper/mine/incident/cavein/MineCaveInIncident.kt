@@ -3,6 +3,7 @@ package ru.ruscrafting.farms.paper.mine.incident.cavein
 import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.block.Block
+import org.bukkit.entity.Player
 import org.bukkit.event.block.BlockBreakEvent
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.config.CuboidBounds
@@ -64,9 +65,13 @@ internal class MineCaveInIncident(
         if (now < retryAfter.getOrDefault(zoneId, 0L)) return false
 
         val world = runtime.region.world
-        val anchors = index.loadedTargets(zoneId, MineAnchorRole.NEST).toList()
+        val indexedAnchors = index.targets(zoneId, MineAnchorRole.NEST)
+        // MineWorldWarmup owns bounded full-region retention. Until it reaches this zone,
+        // never submit a cold all-index snapshot: the async scanner can only inspect loaded chunks.
+        val anchors = indexedAnchors.filter { world.isChunkLoaded(it.x shr 4, it.z shr 4) }
         if (anchors.isEmpty()) {
-            rejectSearch(runtime, now, SearchResult(emptyList(), 0, 0, mapOf("no_loaded_anchors" to 1)))
+            rejectSearch(runtime, now, SearchResult(emptyList(), indexedAnchors.size, 0,
+                mapOf((if (indexedAnchors.isEmpty()) "no_indexed_anchors" else "warmup_pending") to 1)))
             return false
         }
         val chunkCoordinates = buildSet {
@@ -176,6 +181,7 @@ internal class MineCaveInIncident(
             audience.sendActionBar(event.player, MessageKey.MINE_PICKAXE_REQUIRED)
             return true
         }
+        if (!canMine(event.player, event.block)) return true
         journal.restoreNow(position).whenComplete { restored, failure ->
             if (failure != null || restored != true) {
                 state.log(
@@ -187,12 +193,28 @@ internal class MineCaveInIncident(
                 return@whenComplete
             }
             val completed = incidents.completeTarget(runtime, target.id, event.player).accepted
+            if (completed && active(runtime)) {
+                reconcileMarker(runtime, runtime.state.objective?.targets.orEmpty().map { it.position })
+            }
             if (completed && !active(runtime)) {
                 journal.restore(runtime, INCIDENT_ID)
                 effects.cleanup(runtime, MineIncidentEntityKind.CAVE_IN_MARKER)
             }
         }
         return true
+    }
+
+    /** Exact target predicate for the high-priority break/damage reclaim guard. */
+    fun canMine(player: Player, block: Block): Boolean {
+        val runtime = registry.at(block.location) ?: return false
+        if (!active(runtime) || block.type != RUBBLE || !MaterialRules.isPickaxe(player.inventory.itemInMainHand)) return false
+        if (player.world !== block.world || player.location.distanceSquared(block.location.clone().add(0.5, 0.5, 0.5)) > PLAYER_INTERACTION_DISTANCE_SQUARED) {
+            return false
+        }
+        val position = block.position()
+        return runtime.state.objective?.targets.orEmpty().any {
+            it.role.value == RUBBLE_ROLE && it.status != ObjectiveTargetStatus.COMPLETED && it.position == position
+        }
     }
 
     fun reconcile(runtime: MineRuntime): Int {
@@ -532,25 +554,15 @@ internal class MineCaveInIncident(
     }
 
     private fun reconcileMarker(runtime: MineRuntime, positions: List<WorksitePosition>) {
-        val marker = markerPosition(positions) ?: return
-        // The entity origin stays on the minimum rubble block; the display
-        // transformation supplies the anti-z-fighting margin. Reconcile the
-        // old center chunk too so a pre-fix marker cannot remain stale.
-        val originBlockX = positions.minOf { it.x }
-        val originBlockZ = positions.minOf { it.z }
-        val centerX = floor((positions.minOf { it.x } + positions.maxOf { it.x } + 1) / 2.0).toInt()
-        val centerZ = floor((positions.minOf { it.z } + positions.maxOf { it.z } + 1) / 2.0).toInt()
-        val legacyMarker = markerPosition(positions)
-        val world = runtime.region.world
-        setOfNotNull(
-            originBlockX shr 4 to (originBlockZ shr 4),
-            centerX shr 4 to (centerZ shr 4),
-            legacyMarker?.let { it.x shr 4 to (it.z shr 4) },
-        ).forEach { (chunkX, chunkZ) ->
-            if (world.isChunkLoaded(chunkX, chunkZ)) {
-                effects.reconcileChunk(runtime, world.getChunkAt(chunkX, chunkZ), MineIncidentEntityKind.CAVE_IN_MARKER,
-                    mapOf(MARKER_TARGET_ID to marker))
-            }
+        val remaining = runtime.state.objective?.targets.orEmpty()
+            .filter { it.role.value == RUBBLE_ROLE && it.status != ObjectiveTargetStatus.COMPLETED }
+            .associate { it.id to it.position }
+        val chunks = positions.map { (it.x shr 4) to (it.z shr 4) }.toSet() +
+            listOfNotNull(markerPosition(positions)?.let { (it.x shr 4) to (it.z shr 4) })
+        chunks.forEach { (x, z) ->
+            if (runtime.region.world.isChunkLoaded(x, z)) effects.reconcileChunk(
+                runtime, runtime.region.world.getChunkAt(x, z), MineIncidentEntityKind.CAVE_IN_MARKER, remaining,
+            )
         }
     }
 
@@ -625,9 +637,10 @@ internal class MineCaveInIncident(
         const val MAX_ROOF_HEIGHT = 12
         const val MARKER_TARGET_ID = "cave_in_marker"
         const val FOOTPRINT_RADIUS = 2
-        const val MAX_REVALIDATION_CANDIDATES = 8
+        const val MAX_REVALIDATION_CANDIDATES = 32
         const val RETRY_MILLIS = 5_000L
         const val PLAYER_CLEARANCE_SQUARED = 36.0
+        const val PLAYER_INTERACTION_DISTANCE_SQUARED = 25.0
         const val LIFT_CLEARANCE_SQUARED = 100.0
         const val IDEAL_PLAYER_DISTANCE_SQUARED = 196.0
         const val PARTICIPANT_SCORE_BAND = 64.0

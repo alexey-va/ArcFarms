@@ -85,7 +85,7 @@ internal class MineModule(
     private val clock: () -> Long,
     private val veins: ru.ruscrafting.farms.paper.mine.mining.MineVeinController,
     private val pickaxes: MinePickaxeSupply,
-) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockBreakGuard, WorksiteBlockDamageHandler, WorksiteBlockPlaceHandler,
+) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockBreakGuard, WorksiteBlockDamageHandler, WorksiteBlockPlaceHandler, ru.ruscrafting.farms.paper.WorksiteBucketFillHandler,
     WorksiteBlockInteractHandler,
     WorksiteMoveHandler, WorksiteEntityInteractHandler, WorksiteEntityDeathHandler, WorksiteEntityDamageHandler, WorksiteFastVisualHandler,
     WorksiteParticipantOwner, WorksiteServiceItemOwner, WorksiteGuidanceHandler, WorksiteTeleportRetention, WorksiteTemporaryBlockOwner,
@@ -146,9 +146,14 @@ internal class MineModule(
     override fun onBreakHigh(event: BlockBreakEvent): Boolean =
         incidents.onBreak(event) || mining.onBreakHigh(event)
 
+    override fun onBucketFill(event: org.bukkit.event.player.PlayerBucketFillEvent): Boolean = incidents.onBucketFill(event)
+
     override fun onBlockDamage(event: BlockDamageEvent): Boolean {
         val runtime = registry.at(event.block.location) ?: return false
         if (access.isAdminEditing(event.player)) return false
+        if (access.hasAccess(event.player, runtime.settings.permission) && incidents.canMine(event.player, event.block)) {
+            event.isCancelled = false
+        }
         val predictedBreakTicks = mineClientBreakTicks(event.block, event.player)
         scheduleMineClientResync(
             tasks,
@@ -181,9 +186,16 @@ internal class MineModule(
         return true
     }
 
-    override fun onInteract(event: PlayerInteractEvent, clicked: Block, player: Player): Boolean =
-        incidents.onInteract(event) ||
-            loading.onInteract(event) || prospecting.onInteract(event)
+    override fun onInteract(event: PlayerInteractEvent, clicked: Block, player: Player): Boolean {
+        val runtime = registry.at(clicked.location)
+        if (event.action == org.bukkit.event.block.Action.LEFT_CLICK_BLOCK && runtime != null &&
+            !access.isAdminEditing(player) && access.hasAccess(player, runtime.settings.permission) && incidents.canMine(player, clicked)) {
+            event.setUseInteractedBlock(org.bukkit.event.Event.Result.ALLOW)
+            event.setUseItemInHand(org.bukkit.event.Event.Result.ALLOW)
+            return true
+        }
+        return incidents.onInteract(event) || loading.onInteract(event) || prospecting.onInteract(event)
+    }
 
     override fun onMove(from: Location, to: Location, player: Player): Boolean =
         incidents.onMove(to, player) || loading.onMove(to, player) || extraction.onMove(from, to, player)
@@ -204,6 +216,7 @@ internal class MineModule(
     override fun onEntityDamage(event: EntityDamageEvent): Boolean = incidents.onEntityDamage(event)
 
     override fun updateVisuals() {
+        incidents.updateVisuals(clock())
         val supplyBudget = ru.ruscrafting.farms.paper.WorksiteTickBudget(1_024)
         registry.snapshot().forEach { runtime ->
             if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.MINING &&
@@ -238,7 +251,7 @@ internal class MineModule(
     }
 
     override fun activateLoadedState() {
-        worldWarmup.activate(registry.snapshot().map { it.region.world })
+        worldWarmup.activate(registry.snapshot().map { it.region.world }, registry.snapshot())
         registry.snapshot().forEach { runtime ->
             runtime.region.world.loadedChunks.forEach { chunk ->
                 index.reconcileChunk(runtime.indexDefinition(), chunk)

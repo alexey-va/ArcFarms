@@ -28,6 +28,7 @@ internal class WorksiteEventRouter(
     fun onBreakLowest(event: BlockBreakEvent): Boolean = registry.onBreakLowest(event)
 
     fun onBlockDamage(event: BlockDamageEvent): Boolean = registry.onBlockDamage(event)
+    fun onBucketFill(event: org.bukkit.event.player.PlayerBucketFillEvent): Boolean = registry.onBucketFill(event)
 
     fun onBlockPlace(event: BlockPlaceEvent): Boolean = registry.onBlockPlace(event)
 
@@ -39,8 +40,9 @@ internal class WorksiteEventRouter(
         return registry.onInteract(event, clicked, event.player)
     }
 
+    fun guardMovement(event: PlayerMoveEvent): Boolean = registry.guardMovement(event)
+
     fun onMove(event: PlayerMoveEvent): Boolean {
-        if (registry.guardMovement(event)) return true
         val destination = event.to
         if (
             event.from.world == destination.world &&
@@ -51,7 +53,6 @@ internal class WorksiteEventRouter(
     }
 
     fun onTeleport(event: PlayerTeleportEvent): Boolean {
-        if (registry.guardMovement(event)) return true
         if (
             event.cause != PlayerTeleportEvent.TeleportCause.DISMOUNT &&
             !registry.retainOnTeleport(event.player, event.to)

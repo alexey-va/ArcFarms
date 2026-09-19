@@ -7,12 +7,16 @@ data class MineWorkingPlacement(
     val entrance: WorksitePosition,
     val direction: Int,
     val floorId: String,
+    /** Stable geometry seed, retained across scene reconstruction. */
+    val layoutSeed: Long = 0L,
+    val geometryVersion: Int = CURRENT_GEOMETRY_VERSION,
 ) {
     init { validate() }
 
     fun validate() {
         require(direction in 0..3)
         require(floorId.isNotBlank() && floorId.length <= 64)
+        require(geometryVersion in 0..CURRENT_GEOMETRY_VERSION)
     }
 
     fun position(side: Int, up: Int, forward: Int): WorksitePosition {
@@ -24,6 +28,8 @@ data class MineWorkingPlacement(
         }
         return entrance.copy(x = entrance.x + dx, y = entrance.y + up, z = entrance.z + dz)
     }
+
+    companion object { const val CURRENT_GEOMETRY_VERSION = 2 }
 }
 
 enum class MineWorkingStage {

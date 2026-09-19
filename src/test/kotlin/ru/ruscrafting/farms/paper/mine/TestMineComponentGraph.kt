@@ -46,4 +46,9 @@ internal fun testMineComponentGraph(
     cartEffects,
     incidentEntityEffects,
     rewardGrants,
+    tickets = object : ru.ruscrafting.farms.paper.mine.index.MineChunkTicket {
+        override fun retain(chunk: org.bukkit.Chunk): Boolean = true
+        override fun release(chunk: org.bukkit.Chunk) = Unit
+    },
+    blockDataDecoder = ru.ruscrafting.farms.paper.fixtures.MockBukkitFarmBlockDataDecoder,
 )

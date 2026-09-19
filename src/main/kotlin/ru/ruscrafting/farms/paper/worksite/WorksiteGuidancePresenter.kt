@@ -44,9 +44,9 @@ internal class WorksiteGuidancePresenter(
                 expected,
             )
             audience.updateSidebar(player, view.runtimeKey, view.title, view.sidebarRows)
-            if (changed && (!view.quietProgress || previous == null || previous.runtimeKey != view.runtimeKey || previous.subtitle != view.subtitle)) {
+            if (view.screenTitles && changed && (!view.quietProgress || previous == null || previous.runtimeKey != view.runtimeKey || previous.subtitle != view.subtitle)) {
                 audience.showScreenTitle(player, view.title, view.subtitle)
-            } else if (!view.quietProgress && elapsed(now, session.lastProgressAt) >= stallMillis && elapsed(now, session.lastReminderAt) >= stallMillis) {
+            } else if (view.screenTitles && !view.quietProgress && elapsed(now, session.lastProgressAt) >= stallMillis && elapsed(now, session.lastReminderAt) >= stallMillis) {
                 audience.showScreenTitle(player, view.title, view.subtitle)
                 session = session.copy(lastReminderAt = now)
             }

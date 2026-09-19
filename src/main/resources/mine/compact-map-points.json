@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "zones": {
+    "old_shafts": {
+      "workshop": {
+        "ore_input": {
+          "world": "rc_atelier_compact_mine",
+          "x": 40.5,
+          "y": 111.0,
+          "z": 23.5,
+          "yaw": 0.0
+        },
+        "ore_crusher": {
+          "world": "rc_atelier_compact_mine",
+          "x": 44.5,
+          "y": 111.0,
+          "z": 24.5,
+          "yaw": 0.0
+        },
+        "ore_furnace": {
+          "world": "rc_atelier_compact_mine",
+          "x": 44.5,
+          "y": 97.0,
+          "z": 23.5,
+          "yaw": 0.0
+        },
+        "ore_output": {
+          "world": "rc_atelier_compact_mine",
+          "x": 40.5,
+          "y": 97.0,
+          "z": 23.5,
+          "yaw": 0.0
+        },
+        "ore_shipping": {
+          "world": "rc_atelier_compact_mine",
+          "x": 48.5,
+          "y": 97.0,
+          "z": 23.5,
+          "yaw": 0.0
+        }
+      },
+      "workings": {
+        "working_1": {
+          "world": "rc_atelier_compact_mine",
+          "x": 72.5,
+          "y": 111.0,
+          "z": 27.5,
+          "yaw": -90.0
+        },
+        "working_2": {
+          "world": "rc_atelier_compact_mine",
+          "x": 72.5,
+          "y": 97.0,
+          "z": 27.5,
+          "yaw": -90.0
+        },
+        "working_3": {
+          "world": "rc_atelier_compact_mine",
+          "x": 72.5,
+          "y": 83.0,
+          "z": 27.5,
+          "yaw": -90.0
+        }
+      }
+    }
+  }
+}

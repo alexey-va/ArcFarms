@@ -36,6 +36,7 @@ internal data class WorksiteGuidanceView(
     val targets: List<WorksiteGuidanceTarget> = emptyList(),
     val sidebarRows: List<Component> = listOf(barName),
     val quietProgress: Boolean = false,
+    val screenTitles: Boolean = true,
 ) {
     init {
         require(runtimeKey.isNotBlank()) { "Worksite guidance runtime key cannot be blank" }

@@ -44,12 +44,15 @@ import ru.ruscrafting.farms.domain.FarmOrder
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.MineIncidentType
+import ru.ruscrafting.farms.domain.MineLocationKeys
+import ru.ruscrafting.farms.domain.MineZoneLocations
 import ru.ruscrafting.farms.domain.PlayerActivityStats
 import ru.ruscrafting.farms.persistence.ArcFarmsStateRepository
 import ru.ruscrafting.farms.persistence.FarmLocationRepository
 import ru.ruscrafting.farms.persistence.FarmRouteRepository
 import ru.ruscrafting.farms.persistence.FixedFarmCropJournal
 import ru.ruscrafting.farms.persistence.MineBlockJournal
+import ru.ruscrafting.farms.persistence.MineLocationRepository
 import ru.ruscrafting.farms.network.ActivityNetworkGateway
 import ru.ruscrafting.farms.network.NoOpActivityNetworkGateway
 import ru.ruscrafting.farms.network.WorkdayState
@@ -59,6 +62,8 @@ import ru.ruscrafting.farms.paper.enterprise.SupervisedEnterpriseMoneyTasks
 import ru.ruscrafting.farms.paper.navigation.ActivityTravelService
 import ru.ruscrafting.farms.paper.lumber.LumbermillVersionedModule
 import ru.ruscrafting.farms.paper.mine.MineVersionedModule
+import ru.ruscrafting.farms.paper.mine.admin.MinePointAdminService
+import ru.ruscrafting.farms.paper.mine.point.MinePointService
 import ru.ruscrafting.farms.paper.mine.lift.MineLiftAccess
 import ru.ruscrafting.farms.paper.worksite.WorksiteEventRouter
 import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantSafety
@@ -83,6 +88,7 @@ class ArcFarmsService(
     private val fixedCropJournal: FixedFarmCropJournal,
     private val farmLocationRepository: FarmLocationRepository,
     private val farmRouteRepository: FarmRouteRepository,
+    private val mineLocationRepository: MineLocationRepository,
     private val network: ActivityNetworkGateway = NoOpActivityNetworkGateway,
     private val transfer: BackendTransfer = BackendTransfer { _, _ -> false },
     private val debug: ArcFarmsDebug = ArcFarmsDebug({ false }) {},
@@ -157,9 +163,19 @@ class ArcFarmsService(
     )
     private val worksiteRewards = WorksiteRewardGrantService(farm.rewards)
     private val lumbermillModule = LumbermillVersionedModule()
+    private val minePointService = MinePointService(mineLocationRepository)
     private val mineModule = MineVersionedModule(
         plugin, initialSettings.serverId, initialSettings.mines, regionGateway, locale, mineJournal, worksitePorts,
-        debug, clock, random, worksiteServiceItems, worksiteRewards, mineLift,
+        debug, clock, random, worksiteServiceItems, rewardGrants = worksiteRewards, lift = mineLift, points = minePointService,
+    )
+    private val minePointAdmin = MinePointAdminService(
+        locale = locale,
+        port = worksitePorts.audience,
+        state = worksitePorts.state,
+        debug = debug,
+        pointService = minePointService,
+        zone = { zoneId -> settings.mines.firstOrNull { it.id.equals(zoneId, ignoreCase = true) } },
+        region = { zone -> regionGateway.resolve(zone.reference) },
     )
     internal val worksiteAdmins = WorksiteAdminRegistry(listOf(lumbermillModule, mineModule))
     private val worksites = WorksiteModuleRegistry(listOf(farm.module, lumbermillModule, mineModule))
@@ -200,6 +216,8 @@ class ArcFarmsService(
     private fun startActivatedRuntime() {
         runtimeValidator.validateRuntime(settings)
         runtimeValidator.validateLocations(settings, farm.pointService.load())
+        minePointService.load()
+        minePointAdmin.validate(settings.mines)
         val loaded = stateRepository.load()
         val persisted = runtimeValidator.reconcileOrderProgress(settings, loaded)
         runtimeValidator.validatePersisted(settings, persisted)
@@ -233,6 +251,7 @@ class ArcFarmsService(
         runtimeValidator.validateReload(candidate, validationSnapshot)
         runtimeValidator.validateRuntime(candidate)
         runtimeValidator.validateLocations(candidate, farm.pointService.snapshot())
+        minePointAdmin.validate(candidate.mines)
         farm.rewards.prepareForLifecycleBoundary()
         farm.perks.beforeReload()
         val snapshot = snapshotState()
@@ -323,11 +342,13 @@ class ArcFarmsService(
     }
     fun onBreakHigh(event: BlockBreakEvent) = worksiteEvents.onBreakHigh(event)
     fun onBlockDamage(event: org.bukkit.event.block.BlockDamageEvent) = worksiteEvents.onBlockDamage(event)
+    fun onBucketFill(event: org.bukkit.event.player.PlayerBucketFillEvent) = worksiteEvents.onBucketFill(event)
     fun onBreakMonitor(event: BlockBreakEvent) = worksiteEvents.onBreakMonitor(event)
     fun onBlockDrop(event: BlockDropItemEvent) = farm.events.onBlockDrop(event)
     fun onInteractLowest(event: PlayerInteractEvent) = farm.events.onInteractLowest(event)
     fun onInteract(event: PlayerInteractEvent) = worksiteEvents.onInteract(event)
     fun onBlockFromTo(event: org.bukkit.event.block.BlockFromToEvent) = farm.events.onBlockFromTo(event)
+    fun guardMovement(event: PlayerMoveEvent) = worksiteEvents.guardMovement(event)
     fun onMove(event: PlayerMoveEvent) = worksiteEvents.onMove(event)
     fun onTeleport(event: PlayerTeleportEvent) = worksiteEvents.onTeleport(event)
     fun onPortal(event: PlayerPortalEvent) {
@@ -390,6 +411,16 @@ class ArcFarmsService(
 
     fun mineIncidentIds(): List<String> =
         worksiteAdmins.handler(ActivityKind.MINE)?.incidentIds().orEmpty()
+
+    fun minePointKinds(): List<String> = MineLocationKeys.all
+
+    fun adminMinePoints(zoneId: String): MineZoneLocations? = minePointAdmin.points(zoneId)
+
+    fun adminSetMinePoint(player: Player, zoneId: String, kind: String): Boolean =
+        minePointAdmin.set(player, zoneId, kind)
+
+    fun adminClearMinePoint(player: Player, zoneId: String, kind: String): Boolean =
+        minePointAdmin.clear(player, zoneId, kind)
 
     fun adminSetMineIncident(player: Player, zoneId: String, incidentId: String): Boolean =
         worksiteAdmins.handler(ActivityKind.MINE)?.forceIncident(zoneId, incidentId, clock()) == true

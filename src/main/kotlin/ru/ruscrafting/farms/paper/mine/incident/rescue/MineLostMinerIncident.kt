@@ -29,6 +29,8 @@ internal class MineLostMinerIncident(
     private val incidents: MineIncidentCoordinator,
     private val effects: MineIncidentEntityEffects,
     private val maze: MineLostMinerMazeWorld,
+    private val travel: ru.ruscrafting.farms.paper.worksite.WorksiteExpeditionTravel,
+    private val creatures: MineRescueCreatures,
 ) {
     private val miners = mutableMapOf<String, UUID>()
     private val entrances = mutableMapOf<String, UUID>()
@@ -48,10 +50,13 @@ internal class MineLostMinerIncident(
         val identity = effects.identity(event.rightClicked) ?: return false
         val runtime = registry.byId(identity.zoneId) ?: return false
         if (!active(runtime) || runtime.state.sequence != identity.sequence) return false
+        if (event.hand != org.bukkit.inventory.EquipmentSlot.HAND) return true
         return when (identity.kind) {
             MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX -> {
                 event.isCancelled = true
-                enter(runtime, event.player)
+                if (identity.targetId.startsWith("exit:") || travel.retains(event.player)) {
+                    if (travel.exit(event.player)) entrants.remove(event.player.uniqueId)
+                } else enter(runtime, event.player)
                 true
             }
             MineIncidentEntityKind.MINER -> {
@@ -65,27 +70,31 @@ internal class MineLostMinerIncident(
 
     private fun enter(runtime: MineRuntime, player: Player): Boolean {
         val scene = maze.scene(runtime)?.takeIf(MineLostMinerMazeScene::ready) ?: return false
-        entrants[player.uniqueId] = key(runtime)
-        if (!player.teleport(scene.start)) {
-            entrants.remove(player.uniqueId, key(runtime))
-            return false
-        }
-        MineLostMinerMazeSounds.playEntry(player)
-        return true
+        val sequence = runtime.state.sequence
+        travel.enter(ru.ruscrafting.farms.paper.worksite.WorksiteExpeditionTravel.EntryRequest(
+            player, runtime.settings.id, sequence, runtime.settings.permission, scene.surface,
+            scene.start.clone().also { it.yaw = player.location.yaw; it.pitch = player.location.pitch },
+        ), onEntered = {
+            entrants[player.uniqueId] = key(runtime)
+            MineLostMinerMazeSounds.playEntry(player)
+        }) { active(runtime) && runtime.state.sequence == sequence && scene.ready }
+        return travel.retains(player)
     }
 
     fun onMove(to: Location, player: Player): Boolean {
         val runtimeKey = entrants[player.uniqueId] ?: return false
         val runtime = registry.snapshot().firstOrNull { key(it) == runtimeKey }
-            ?: return entrants.remove(player.uniqueId) != null
-        if (!active(runtime)) return entrants.remove(player.uniqueId) != null
-        val scene = maze.scene(runtime) ?: return false
-        if (scene.contains(to)) return false
-        player.teleport(scene.start)
-        return true
+        if (runtime != null && active(runtime) && maze.scene(runtime)?.contains(to) == true) return false
+        // Walking, teleporting or flying away is an exit; never drag a spectator back into the cave.
+        entrants.remove(player.uniqueId)
+        travel.reconcile(player, inside = false)
+        return false
     }
 
+    fun recover(player: Player) = travel.recover(player)
+
     fun retainOnTeleport(player: Player, destination: Location): Boolean {
+        if (travel.isAuthorized(player, destination)) return true
         val runtimeKey = entrants[player.uniqueId] ?: return false
         val runtime = registry.snapshot().firstOrNull { key(it) == runtimeKey } ?: return false
         return active(runtime) && maze.scene(runtime)?.contains(destination) == true
@@ -98,6 +107,8 @@ internal class MineLostMinerIncident(
     fun complete(runtime: MineRuntime, player: Player): Boolean {
         val targetId = runtime.state.objective?.targets?.firstOrNull()?.id ?: return false
         val scene = maze.scene(runtime) ?: return false
+        if (!travel.retains(player) || !scene.contains(player.location) ||
+            player.location.distanceSquared(scene.target) > 25.0) return false
         val completed = incidents.completeTarget(runtime, targetId, player).accepted
         if (!completed) return false
         MineLostMinerMazeSounds.playFound(player)
@@ -106,13 +117,16 @@ internal class MineLostMinerIncident(
     }
 
     fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason): Boolean {
-        val runtimeKey = entrants.remove(player.uniqueId) ?: return false
+        val existed = entrants.remove(player.uniqueId) != null
         if (reason in RETURN_TO_SURFACE_REASONS) {
-            val runtime = registry.snapshot().firstOrNull { key(it) == runtimeKey }
-            maze.scene(runtime ?: return true)?.surface?.let(player::teleport)
-        }
-        return true
+            travel.exit(player)
+            travel.quit(player)
+        } else travel.reconcile(player, inside = false)
+        return existed
     }
+
+    fun onDeath(event: org.bukkit.event.entity.EntityDeathEvent) = creatures.onDeath(event)
+    fun onDamage(event: org.bukkit.event.entity.EntityDamageEvent) = creatures.onDamage(event)
 
     fun process(): Int = maze.process(MAZE_BLOCK_BUDGET, ::recordActive)
 
@@ -136,9 +150,11 @@ internal class MineLostMinerIncident(
         } ?: return 0
         if (!scene.ready) return 0
         val target = runtime.state.objective?.targets?.firstOrNull() ?: return 0
-        effects.reconcileChunk(runtime, chunk, MineIncidentEntityKind.MINER_MAZE_ENTRANCE, mapOf(target.id to target.position))
+        val entryTargets = mapOf(target.id to target.position, "exit:${target.id}" to
+            WorksitePosition(scene.world.name, scene.start.blockX, scene.start.blockY - 1, scene.start.blockZ))
+        effects.reconcileChunk(runtime, chunk, MineIncidentEntityKind.MINER_MAZE_ENTRANCE, entryTargets)
             .get(target.id)?.let { entrances[key(runtime)] = it }
-        effects.reconcileChunk(runtime, chunk, MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX, mapOf(target.id to target.position))
+        effects.reconcileChunk(runtime, chunk, MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX, entryTargets)
             .get(target.id)?.let { entranceHitboxes[key(runtime)] = it }
         val reconciled = effects.reconcileChunk(
             runtime,
@@ -157,7 +173,10 @@ internal class MineLostMinerIncident(
     fun reconcileMissing(runtime: MineRuntime): Int {
         if (!active(runtime)) return 0
         purgeMissing(runtime)
-        if (sceneComplete(runtime)) return canonicalCount(runtime)
+        if (sceneComplete(runtime)) {
+            maze.scene(runtime)?.let { creatures.reconcile(runtime, it) }
+            return canonicalCount(runtime)
+        }
         val target = runtime.state.objective?.targets?.firstOrNull() ?: return 0
         val (result, scene) = maze.ensure(runtime, target.position)
         if (result == MineLostMinerMazeEnsureResult.UNAVAILABLE) {
@@ -168,7 +187,8 @@ internal class MineLostMinerIncident(
         if (scene == null) return 0
         cleanupLegacyEntities(runtime)
         if (result != MineLostMinerMazeEnsureResult.READY || !scene.ready) return 0
-        setOf(scene.surface.chunk, scene.target.chunk).forEach { reconcileChunk(runtime, it) }
+        creatures.reconcile(runtime, scene)
+        setOf(scene.surface.chunk, scene.start.chunk, scene.target.chunk).forEach { reconcileChunk(runtime, it) }
         return canonicalCount(runtime)
     }
 
@@ -188,6 +208,7 @@ internal class MineLostMinerIncident(
     }
 
     private fun retire(runtime: MineRuntime, surface: Location?) {
+        creatures.cleanup(runtime)
         returnEntrants(runtime, surface)
         miners.remove(key(runtime))?.let(effects::remove)
         entrances.remove(key(runtime))?.let(effects::remove)
@@ -197,10 +218,8 @@ internal class MineLostMinerIncident(
     }
 
     private fun returnEntrants(runtime: MineRuntime, surface: Location?) {
-        val playerIds = entrants.entries.filter { it.value == key(runtime) }.map { it.key }
-        playerIds.forEach { entrants.remove(it) }
-        if (surface == null) return
-        playerIds.mapNotNull(Bukkit::getPlayer).forEach { it.teleport(surface) }
+        travel.evacuate(runtime.settings.id)
+        entrants.entries.removeIf { it.value == key(runtime) }
     }
 
     private fun cleanupLegacyEntities(runtime: MineRuntime) {

@@ -175,13 +175,13 @@ internal class MineCreatureNestIncident(
     private fun candidates(runtime: MineRuntime, required: Int): List<ObjectiveTargetCandidate> {
         val positions = orderMineIncidentPositions(
             runtime,
-            index.loadedTargets(runtime.settings.id, MineAnchorRole.NEST)
+            index.targets(runtime.settings.id, MineAnchorRole.NEST)
                 .filter {
                     index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.NEST, runtime.railMaterials) &&
                         runtime.isIncidentSurface(it)
                 },
             required,
-            0xCEEA7L,
+            0xCEEA7L xor runtime.state.incidentCursor.toLong(),
         ).take(required)
         return positions.flatMapIndexed { order, position ->
             listOf(

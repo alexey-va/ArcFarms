@@ -1,136 +1,93 @@
 # Mine scenarios
 
-This document describes the mine incidents that exist in the current source
-tree. The former version listed sixteen room scenarios that are not registered
-by `MineIncidentType` and are not started by the scheduler; that catalog has
-been removed.
+Mine v2 advances one shared ore order through prospecting, mining and loading.
+Incidents interrupt that order; completion resumes the same quota and does not
+create a second payout.
 
-## Evidence status
+## Supported incidents
 
-- **Source and focused tests** means the type is registered in
-  `MineIncidentType`, listed by `MineIncidentScheduler.SUPPORTED_TYPES`, and
-  has an incident owner with focused MockBukkit or domain coverage.
-- **Controller source and component wiring** means the working controller,
-  presentation, equipment, placement service, scheduler, and component-graph
-  route exist in source. Live placement, restart recovery of an active event,
-  and real-client interaction are unverified.
-- Source/config evidence does not prove delivery, activation, or a successful
-  player journey on `classic`; those remain separate checks.
+The current `MineIncidentScheduler` supports ten player-facing types: the
+seven existing incidents `CAVE_IN`, `GAS_LEAK`, `FLOODING`, `TRACK_DAMAGE`,
+`CRYSTAL_RESONANCE`, `CREATURE_NEST`, `LOST_MINER`, plus
+`TUNNEL_DRIVE`, `RAIL_EXTENSION` and `ORE_WORKSHOP`. `POWER_FAILURE` remains
+readable in old saves and in the enum, but is retired: the scheduler skips it
+and the manual force path rejects it. It is not a current player scenario.
 
-### Delivery on 2026-09-19
+| ID | Player route |
+| --- | --- |
+| `CAVE_IN` | Follow the glowing rubble marker and break the journaled cobble with a pickaxe. Each cleared block restores the original scene. |
+| `GAS_LEAK` | Close the marked vents in any order. Every live vent renders cloud, smoke and dust; a non-creative participant within 3.5 blocks takes 1 damage once per second and receives Nausea for 3 seconds. |
+| `FLOODING` | Drain 20–30 real water blocks with an empty bucket. The interaction is consumed by the incident, so the bucket stays empty; the journal restores the footprint after completion. |
+| `TRACK_DAMAGE` | Use the rail-working route: clear the collapse, replace missing rail sections in entrance order, then escort the checking minecart along the repaired line. |
+| `CRYSTAL_RESONANCE` | Activate the glowing amethyst targets; any remaining target may be used during the interaction window. |
+| `CREATURE_NEST` | Defeat the spawned cave creatures and destroy each glowing nest core. Incident creatures and nests do not drop ordinary loot. |
+| `LOST_MINER` | Find the marked natural-cave entry and click it to enter. Explore the cave with hostile creatures and click the glowing miner to complete the rescue and return. The exit marker also allows leaving early, and spectator flight is unrestricted. |
 
-- ArcFarms `0.40.37` was packaged from source commit `98afc87`; the configuration
-  and locale cutoff is ops commit `2a3272b3b`.
-- All 48 tests selected by `./scripts/test-mine-workings` passed. The complete
-  test suite and live gameplay automation were not run.
-- The canonical Minecraft 1.21.11 preview passed route and visual checks:
-  14 route cells, no blocked steps, and estimated minimum block light 10.
-  Placement feasibility uses the saved 2026-09-14 mine capture and is not a
-  fresh player journey.
-- Configuration transaction `deploy-20260919T180755Z-75252` applied exactly
-  `config.yml`, `lang/ru.yml`, and `lang/en.yml` to `classic`.
-- JAR transaction `jar-20260919T180823Z-75512` restarted `classic`, verified
-  readiness and the active artifact, and retired `ArcFarms-0.40.36.jar` into
-  its rollback backup. The plugin API reports `ArcFarms 0.40.37`, enabled.
-- Artifact SHA-256:
-  `d08a8b7808f2b45c66fd6280b04ba1a4b9c36fd95d961c9e6939fe1467477091`.
+The physical incident owners are `MineCaveInIncident`, `MineGasLeakIncident`,
+`MineFloodingIncident`, `MineTrackDamageIncident`, the crystal/creature owners,
+`MineLostMinerIncident`, and the working controllers. Focused checks cover their interaction and recovery contracts; live activation
+is tracked separately below.
 
-The new event journeys have not yet been completed with a real Minecraft
-client. In particular, production interaction, progress recovery during an
-active working, and player-visible lighting remain separate gameplay checks.
+## Physical workings
 
-## Existing incidents
+`TUNNEL_DRIVE`, `RAIL_EXTENSION` and `TRACK_DAMAGE` are the three rail/side-
+working routes. A fresh route starts from a configured mine floor entrance,
+which the player enters on foot. The temporary geometry and progress are
+journaled before mutation and restored or resumed through the shared worksite
+scene lifecycle.
 
-These eight incident IDs remain in the scheduler. `TRACK_DAMAGE` now shares
-the physical rail-working route described below; the other seven keep their
-own incident owners:
-
-| ID | Physical sequence | Evidence |
+| ID | Lifecycle | Service equipment |
 | --- | --- | --- |
-| `CAVE_IN` | Select a safe indexed front, journal the temporary rubble, clear it with a pickaxe, then restore the scene. | Source and focused tests: `MineCaveInIncident`, `MineBlockJournal`, `MineIncidentPlacementOrderTest`. |
-| `GAS_LEAK` | Operate the indexed ventilation targets in sequence. | Source and focused tests: `MineGasLeakIncident`, `MineSequenceIncidentsMockBukkitTest`. |
-| `FLOODING` | Interact with the real water target, drain its temporary footprint, and restore it. | Source and focused tests: `MineFloodingIncident`, `MineWorldIncidentsMockBukkitTest`. |
-| `TRACK_DAMAGE` | On the laid rail line, clear the collapse, replace the missing rail sections, and escort the checking minecart. Fresh starts reuse the `RAIL_EXTENSION` working layout; a persisted incident without `working` remains on the legacy `MineTrackDamageIncident` path for save compatibility. | Source routing: `MineIncidentScheduler`, `MineIncidentSet`, and `MineWorkingController`; live world repair and legacy-save migration are unverified. |
-| `CRYSTAL_RESONANCE` | Activate indexed amethyst targets with the forgiving interaction window. | Source and focused tests: `MineCrystalResonanceIncident`, `MineSequenceIncidentsMockBukkitTest`. |
-| `CREATURE_NEST` | Defeat the spawned creatures and destroy each glowing nest core. | Source and focused tests: `MineCreatureNestIncident`, `MineEntityIncidentsMockBukkitTest`. |
-| `POWER_FAILURE` | Activate the temporary light/power targets and restore the journaled lights. | Source and focused tests: `MinePowerFailureIncident`, `MineWorldIncidentsMockBukkitTest`. |
-| `LOST_MINER` | Enter the temporary maze, find the miner, and return through the scoped entrance. | Source and focused tests: `MineLostMinerIncident`, `MineLostMinerMazeWorldMockBukkitTest`, `MineLostMinerMazeJournalCodecTest`. |
+| `TUNNEL_DRIVE` | Right-click the drill cart to control the boring front, walk beside it while it cuts the real rock, then install supports at the completed front. | Drill cart and supports; neither becomes ordinary loot. |
+| `RAIL_EXTENSION` | Clear the collapse, click the rail markers to lay one continuous ordered line from the entrance, then run the checking minecart along it. | Rails and checking cart; the engine rejects out-of-order segments. |
+| `TRACK_DAMAGE` | Reuse the rail layout with the existing bed already present: clear rubble, replace damaged or missing segments, and run the checking cart. A persisted legacy incident without `working` remains readable by `MineTrackDamageIncident`. | Rails and checking cart; no new reward item. |
 
-The ordinary mine order still resumes after an incident. Incidents do not
-create a separate payout or ordinary resource quota.
+`ORE_WORKSHOP` is a separate fixed workshop incident, not a side-working
+entrance. It uses the five mapped stations in order for three batches:
+carry visible ore from `ore_input` to `ore_crusher`, walk three laps for the
+three `CRUSH` strokes, heat for 4 seconds, right-click the furnace during the
+following 4-second cooling window, then carry the visible billet from
+`ore_output` to `ore_shipping`. A missed window reheats the same batch.
 
-## Lateral workings
+## Scheduling, points and recovery
 
-The three new events begin at a validated floor entrance and open a temporary
-side working that the player enters on foot. The geometry is journaled before
-mutation; the entrance, stage, direction, and progress must survive reload or
-restart, and unfinished scene records must restore before the next activity.
-The domain contract is in `domain/MineWorking.kt`, with regression coverage in
-`MineWorkingEngineTest`. `MineWorkingController`, `MineWorkingWorld`,
-`MineWorkingPresentation`, `MineWorkingEquipment`, the placement service, the
-scheduler, and the component graph own the source-level journey. Live world
-placement, restart recovery during an active working, and client interaction are
-**unverified**.
+Incident selection is deterministic for a shift. When several incidents are
+scheduled, their thresholds are spread through the quota; a 100-block order
+with three slots uses 25, 50 and 75 rather than starting the whole schedule at
+halfway. Bundled mine order pools preserve their existing entries and add the
+three new configured working IDs; a zone may still narrow its pool.
 
-| ID | Lifecycle | Service-only materials | Evidence |
-| --- | --- | --- | --- |
-| `TUNNEL_DRIVE` | `EXCAVATE` the rock front in order, then `SUPPORT` the completed front. | Supports and temporary blocks. | Controller, placement service, scheduler, and component-graph route exist in source; domain progression is covered, while live placement and scene lifecycle are unverified. |
-| `RAIL_EXTENSION` | `CLEAR_TRACK` the collapse, `LAY_TRACK` one continuous rail line from the entrance, then `TEST_TRACK` it with a checking minecart. | Rails, the test cart, and temporary blocks. | Controller and placement route exist in source; out-of-order rail placement is rejected by the engine, while live rail placement, cart escort, and recovery are unverified. |
-| `ORE_WORKSHOP` | Repeat three batches: `LOAD` ore, perform three `CRUSH` strokes, `HEAT` for 4 seconds, cool during the following 4-second window, then `SHIP` the billet at the entrance. A missed window automatically starts another heat attempt for the same batch. | Ore, the billet, and workstation interactions. | Controller and placement route exist in source; three-batch and heat-window behavior are covered by `MineWorkingEngineTest`, while live workshop placement and recovery are unverified. |
+The bundled fallback is
+`src/main/resources/mine/compact-map-points.json`, zone `old_shafts`, world
+`rc_atelier_compact_mine`. Its crusher is `(44.5, 111, 24.5)`. The default
+side-working entrances are `(72.5, 111, 27.5)`, `(72.5, 97, 27.5)` and
+`(72.5, 83, 27.5)`, each with cardinal yaw `-90`. The other fixed stations are
+`ore_input (40.5,111,23.5)`, `ore_furnace (44.5,97,23.5)`,
+`ore_output (40.5,97,23.5)` and `ore_shipping (48.5,97,23.5)`. Administrators
+can override or clear these runtime points with `/arcfarms admin point`;
+clearing returns to the bundled fallback.
 
-The working is a foreground incident in the current order. Completing it
-returns the party to the same order and preserves ordinary mining progress.
-None of the service items become player loot, and no working stage awards a
-separate item, XP, Vault payment, token, or price discount.
+Temporary blocks, service items and working entities belong to the shared scene
+and journal owners. Completion, cancellation, reload and restart reconcile the
+saved stage before a new activity can use the floor. Supports, rails, ore,
+billets and the checking cart are service materials only: no stage awards XP,
+Vault money, tokens or ordinary loot. Existing order rewards and prices are
+unchanged, including the source `old_shafts` completion of 220 XP and 4 iron.
 
-## Scheduling and placement
+## QA boundary
 
-Order incident selection remains deterministic for a shift, while the
-incident thresholds are distributed across the mining quota. For three
-scheduled incidents and a 100-block quota, the tested thresholds are 25, 50,
-and 75 rather than draining the schedule at the halfway point. A failed
-placement is retried with bounded diagnostics; it must not silently create a
-partial scene. The source contract is exercised by
-`MineIncidentCadenceTest`.
-
-The current working presentation resolves these canonical locale paths:
-`mine.incident-name.<type>`, `mine.guidance.<type>`,
-`mine.working.item.<role>`, `mine.working.marker.<label>`,
-`mine.working.stage.<label>`, `mine.working.hint.<stage>`, `mine.working.inventory-full`,
-`mine.working.preparing`, `mine.working.next-section`,
-`mine.working.heat-wait`, `mine.working.heat-ready`, and the stage feedback
-paths under `mine.working.*`. The required `needs-kit`, `heat-missed`, and
-`returned` entries are present for the remaining lifecycle feedback but are
-not direct `renderPath` calls in the current controller. Marker values carry
-the `floor` placeholder; heat guidance carries `seconds`, and workshop
-guidance carries `batch` and `batches`.
-
-The bundled mine pools keep their existing incident IDs and add
-`TUNNEL_DRIVE`, `RAIL_EXTENSION`, and `ORE_WORKSHOP`. Zone-specific runtime
-profiles can still narrow their pools. Pool entries and source wiring do not
-prove deployment, activation, or a successful player journey on the active
-server.
-
-## Recovery and player safety
-
-Temporary side-working blocks use the shared worksite journal/scene owner.
-Completion and cancellation return players to the floor before idempotent
-restoration. Reload and restart preserve an unfinished incident's stage and
-complete journal, so it can resume; orphaned records restore on activation.
-The entrance is on the selected floor. A scene may not overlap a
-lift, another journal, an occupied block, an unloaded chunk, or an unsafe
-front. Exact live geometry, restart recovery, and real-client affordances are
-still deployment/QA evidence, not claims made by this source document.
-
-Run `./scripts/test-mine-workings` for the focused domain, scene, equipment,
-reload and return-recovery checks. The script uses class discovery compatible
-with Kotest 6.0.7 and does not run the repository's storage integration suite.
+Focused domain, scene, equipment, cadence, locale and recovery checks pass.
+The real compact-map fixture accepts 64 seeds on all three default floors for
+each of the three working types, including rail headroom and crusher clearance. One client/server QA pass remains for the
+visible rubble glow, gas damage and nausea, empty-bucket flooding, natural-cave
+rescue, drill-cart control, rail/cart repair, fixed workshop routing, point
+overrides and restart recovery. This document therefore claims source and
+resource wiring only, not delivery, activation or a successful live journey.
 
 ## Related sources
 
-- `src/main/kotlin/ru/ruscrafting/farms/domain/MineShift.kt`
 - `src/main/kotlin/ru/ruscrafting/farms/domain/MineWorking.kt`
 - `src/main/kotlin/ru/ruscrafting/farms/paper/mine/incident/MineIncidentScheduler.kt`
-- `src/main/kotlin/ru/ruscrafting/farms/paper/worksite/scene/WorksitePreparedScene.kt`
-- `src/test/kotlin/ru/ruscrafting/farms/domain/MineWorkingEngineTest.kt`
-- `src/test/kotlin/ru/ruscrafting/farms/paper/mine/incident/MineIncidentCadenceTest.kt`
+- `src/main/kotlin/ru/ruscrafting/farms/paper/mine/working/MineWorkingController.kt`
+- `src/main/kotlin/ru/ruscrafting/farms/paper/mine/workshop/MineOreWorkshopController.kt`
+- `src/main/resources/mine/compact-map-points.json`

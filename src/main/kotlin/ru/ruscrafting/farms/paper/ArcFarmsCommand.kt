@@ -13,6 +13,7 @@ import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.MineIncidentType
+import ru.ruscrafting.farms.domain.MineLocationKeys
 
 class ArcFarmsCommand(
     private val service: ArcFarmsService,
@@ -198,6 +199,23 @@ class ArcFarmsCommand(
             "inspect" -> service.toggleAdminInspect(player)
             "point" -> {
                 val zone = args.getOrNull(1)
+                if (zone != null && isMineZone(zone)) {
+                    if (args.size == 2) {
+                        if (!sendMinePoints(sender, requireNotNull(zone))) sendMinePointHelp(sender, zone)
+                        return
+                    }
+                    val point = args.getOrNull(2)?.let(MineLocationKeys::canonical)
+                    if (point == null || args.size > 4) {
+                        sendMinePointHelp(sender, zone)
+                        return
+                    }
+                    when (args.getOrNull(3)?.lowercase()) {
+                        null -> service.adminSetMinePoint(player, zone, point)
+                        "clear", "remove" -> service.adminClearMinePoint(player, zone, point)
+                        else -> sendMinePointHelp(sender, zone)
+                    }
+                    return
+                }
                 if (zone != null && args.size == 2) {
                     if (!sendFarmPoints(sender, zone)) sendPointHelp(sender, zone)
                     return
@@ -271,11 +289,15 @@ class ArcFarmsCommand(
             "event" -> {
                 val zone = args.getOrNull(1)
                 val rawEvent = args.getOrNull(2)
-                if (isMineZone(zone)) {
+                if (zone != null && isMineZone(zone)) {
+                    if (rawEvent?.equals("power_failure", ignoreCase = true) == true) {
+                        sendEventHelp(sender, zone)
+                        return
+                    }
                     val event = rawEvent?.let { raw ->
                         service.mineIncidentIds().firstOrNull { it.equals(raw, ignoreCase = true) }
                     }
-                    if (zone == null || event == null) {
+                    if (event == null) {
                         sendEventHelp(sender, zone)
                         return
                     }
@@ -430,6 +452,31 @@ class ArcFarmsCommand(
         return true
     }
 
+    private fun sendMinePoints(sender: CommandSender, zone: String): Boolean {
+        val points = service.adminMinePoints(zone) ?: return false
+        sender.sendMessage(locale.renderPath("admin.mine-points.header", sender, mapOf("zone" to locale.text(zone))))
+        (points.workshop + points.workings).forEach { (kind, point) ->
+            sender.sendMessage(
+                locale.renderPath(
+                    "admin.mine-points.entry",
+                    sender,
+                    mapOf(
+                        "point" to locale.renderPath("admin.mine-point.$kind", sender),
+                        "world" to locale.text(point.world),
+                        "x" to locale.text("%.2f".format(java.util.Locale.ROOT, point.x)),
+                        "y" to locale.text("%.2f".format(java.util.Locale.ROOT, point.y)),
+                        "z" to locale.text("%.2f".format(java.util.Locale.ROOT, point.z)),
+                        "yaw" to locale.text("%.0f".format(java.util.Locale.ROOT, point.yaw)),
+                    ),
+                ),
+            )
+        }
+        if (points.workshop.isEmpty() && points.workings.isEmpty()) {
+            sender.sendMessage(locale.renderPath("admin.mine-points.empty", sender))
+        }
+        return true
+    }
+
     private fun sendMinePlacementFailure(sender: CommandSender, zone: String, rawIncident: String): Boolean {
         val type = MineIncidentType.entries.firstOrNull { it.name.equals(rawIncident, true) } ?: return false
         val selected = listOfNotNull(service.mineIncidentDiagnostics(zone, type))
@@ -481,6 +528,24 @@ class ArcFarmsCommand(
             )
         }
         sender.sendMessage(locale.render(MessageKey.ADMIN_POINT_HELP_FOOTER, sender))
+    }
+
+    private fun sendMinePointHelp(sender: CommandSender, zone: String?) {
+        sender.sendMessage(locale.renderPath("admin.mine-point-help.header", sender, mapOf("zone" to locale.text(zone ?: "…"))))
+        MineLocationKeys.all.forEach { kind ->
+            sender.sendMessage(
+                locale.renderPath(
+                    "admin.mine-point-help.entry",
+                    sender,
+                    mapOf(
+                        "id" to locale.text(kind),
+                        "point" to locale.renderPath("admin.mine-point.$kind", sender),
+                        "description" to locale.renderPath("admin.mine-point-description.$kind", sender),
+                    ),
+                ),
+            )
+        }
+        sender.sendMessage(locale.renderPath("admin.mine-point-help.footer", sender))
     }
 
     private fun sendStageHelp(sender: CommandSender, zone: String?) {
@@ -688,14 +753,15 @@ class ArcFarmsCommand(
             3 -> when (action) {
                 "worksite" -> listOf("lumber", "mine", "help")
                 "edit", "inspect" -> listOf("help")
-                "point", "unmanage", "blockreset", "backup", "stage", "next", "finish", "event", "route",
-                in ADMIN_SHORTCUTS -> (service.farmZoneIds() +
-                    if (action == "event") service.mineZoneIds() else emptyList()) + "help"
+                "point" -> (service.farmZoneIds() + service.mineZoneIds()) + "help"
+                "unmanage", "blockreset", "backup", "stage", "next", "finish", "route",
+                in ADMIN_SHORTCUTS -> service.farmZoneIds() + "help"
+                "event" -> (service.farmZoneIds() + service.mineZoneIds()) + "help"
                 else -> emptyList()
             }
             4 -> when (action) {
                 "worksite" -> parseKind(args[2])?.let(service.worksiteAdmins::zoneIds).orEmpty() + "help"
-                "point" -> POINT_ARGUMENTS + "help"
+                "point" -> if (isMineZone(args.getOrNull(2))) service.minePointKinds() + "help" else POINT_ARGUMENTS + "help"
                 "stage" -> STAGE_STAGES + "help"
                 "event" -> eventIds(args[2]) + "help"
                 "route" -> listOf("start", "finish", "cancel", "status", "clear", "help")

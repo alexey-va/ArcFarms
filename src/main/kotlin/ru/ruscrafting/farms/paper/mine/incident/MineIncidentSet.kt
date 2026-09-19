@@ -24,6 +24,7 @@ import ru.ruscrafting.farms.paper.mine.incident.entity.isObjectiveMarkerHitbox
 import ru.ruscrafting.farms.paper.mine.incident.track.MineTrackDamageIncident
 import ru.ruscrafting.farms.paper.mine.recovery.MineIncidentBlockJournal
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
+import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 import java.util.UUID
 
@@ -43,9 +44,12 @@ internal class MineIncidentSet(
     private val scheduler: MineIncidentScheduler,
     private val journal: MineIncidentBlockJournal,
     private val workings: ru.ruscrafting.farms.paper.mine.working.MineWorkingController,
+    private val workshop: ru.ruscrafting.farms.paper.mine.workshop.MineOreWorkshopController,
+    private val access: WorksiteAccessPort,
 ) {
     /** Farm-style admin switch: retire the current scene before forcing the requested incident. */
     fun forceAdmin(runtime: MineRuntime, type: ru.ruscrafting.farms.domain.MineIncidentType, now: Long): Boolean {
+        if (type !in MineIncidentScheduler.SUPPORTED_TYPES) return false
         workings.cancelPending(runtime.settings.id)
         if (type != ru.ruscrafting.farms.domain.MineIncidentType.CAVE_IN) {
             caveIn.cancelPending(runtime.settings.id)
@@ -63,7 +67,9 @@ internal class MineIncidentSet(
     fun tick(runtime: MineRuntime, now: Long, participants: Collection<Player>) {
         scheduler.tick(runtime, now, participants.size)
         if (abortIncompatibleObjective(runtime)) return
-        workings.tick(runtime, now)
+        if (runtime.state.incident?.type != ru.ruscrafting.farms.domain.MineIncidentType.ORE_WORKSHOP) workings.tick(runtime, now)
+        workshop.tick(runtime, participants, now)
+        gasLeak.tick(runtime, participants, now)
         caveIn.reconcile(runtime)
         trackDamage.reconcile(runtime)
         participants.forEach { trackDamage.ensureKit(runtime, it) }
@@ -78,31 +84,59 @@ internal class MineIncidentSet(
 
     fun blocksOreSupply(runtime: MineRuntime): Boolean = workings.blocksOreSupply(runtime)
 
-    fun protectsTemporaryBlock(location: Location): Boolean = workings.protects(location) || lostMiner.protects(location)
+    fun protectsTemporaryBlock(location: Location): Boolean = flooding.protects(location) || workings.protects(location) || lostMiner.protects(location)
 
     fun retainOnTeleport(player: Player, destination: Location): Boolean =
         workings.retains(player, destination) || lostMiner.retainOnTeleport(player, destination)
 
     fun onInteract(event: PlayerInteractEvent): Boolean {
-        val handled = workings.onInteract(event) || trackDamage.onInteract(event) || gasLeak.onInteract(event) ||
+        val clicked = event.clickedBlock
+        val runtime = clicked?.location?.let(registry::at)
+        if (runtime != null && !canUseMineBlock(event.player, runtime)) {
+            event.isCancelled = true
+            return true
+        }
+        val handled = workshop.onInteract(event, registry.snapshot()) || workings.onInteract(event) || trackDamage.onInteract(event) || gasLeak.onInteract(event) ||
             crystalResonance.onInteract(event) || flooding.onInteract(event) || powerFailure.onInteract(event)
-        if (handled) event.clickedBlock?.location?.let(registry::at)?.let { runtime ->
+        if (handled) clicked?.location?.let(registry::at)?.let { runtime ->
             if (runtime.state.phase == ru.ruscrafting.farms.domain.MinePhase.INCIDENT) objectiveMarkers.reconcile(runtime)
             else objectiveMarkers.cleanup(runtime)
         }
         return handled
     }
 
-    fun onBreak(event: BlockBreakEvent): Boolean = workings.onBreak(event) || caveIn.onBreak(event)
+    fun onBucketFill(event: org.bukkit.event.player.PlayerBucketFillEvent): Boolean = flooding.onBucketFill(event)
+
+    fun onBreak(event: BlockBreakEvent): Boolean {
+        val runtime = registry.at(event.block.location)
+        if (runtime != null && !canUseMineBlock(event.player, runtime)) {
+            event.isCancelled = true
+            return true
+        }
+        return workings.onBreak(event) || caveIn.onBreak(event)
+    }
+
+    fun canMine(player: Player, block: org.bukkit.block.Block): Boolean {
+        val runtime = registry.at(block.location)
+        if (runtime != null && !canUseMineBlock(player, runtime)) return false
+        return workings.canMine(player, block) || caveIn.canMine(player, block)
+    }
 
     fun onMove(to: Location, player: Player): Boolean = lostMiner.onMove(to, player)
 
     fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean {
-        if (workings.onInteractEntity(event)) return true
+        if (workshop.onInteractEntity(event, registry.snapshot()) || workings.onInteractEntity(event)) return true
         val identity = objectiveMarkers.identity(event.rightClicked)
         if (identity == null || !identity.kind.isObjectiveMarkerHitbox) return lostMiner.onInteractEntity(event)
-        val runtime = registry.byId(identity.zoneId) ?: return false
-        if (runtime.state.sequence != identity.sequence) return false
+        val runtime = registry.byId(identity.zoneId)
+        if (runtime == null || runtime.state.sequence != identity.sequence ||
+            event.hand != org.bukkit.inventory.EquipmentSlot.HAND ||
+            event.player.world !== event.rightClicked.world ||
+            event.player.location.distanceSquared(event.rightClicked.location) > 25.0 ||
+            !canUseMineBlock(event.player, runtime)) {
+            event.isCancelled = true
+            return true
+        }
         event.isCancelled = true
         when (identity.kind) {
             MineIncidentEntityKind.GAS_MARKER_HITBOX -> gasLeak.onInteractEntity(runtime, identity.targetId, event.player)
@@ -116,11 +150,18 @@ internal class MineIncidentSet(
         return true
     }
 
-    fun onEntityDeath(event: EntityDeathEvent): Boolean = creatureNest.onDeath(event)
+    private fun canUseMineBlock(player: Player, runtime: MineRuntime): Boolean =
+        player.gameMode != org.bukkit.GameMode.SPECTATOR &&
+            !access.isAdminEditing(player) &&
+            player.world === runtime.region.world &&
+            access.hasAccess(player, runtime.settings.permission)
 
-    fun onEntityDamage(event: EntityDamageEvent): Boolean = creatureNest.onDamage(event)
+    fun onEntityDeath(event: EntityDeathEvent): Boolean = lostMiner.onDeath(event) || creatureNest.onDeath(event)
+
+    fun onEntityDamage(event: EntityDamageEvent): Boolean = lostMiner.onDamage(event) || creatureNest.onDamage(event)
 
     fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
+        workshop.releasePlayer(player, reason)
         trackDamage.releasePlayer(player.uniqueId)
         lostMiner.releasePlayer(player, reason)
         workings.releasePlayer(player, reason)
@@ -158,7 +199,7 @@ internal class MineIncidentSet(
         return journal.restoreOrphans(registry.snapshot(), chunk)
     }
 
-    fun beforeReload() = workings.beforeReload()
+    fun beforeReload() { workings.beforeReload(); workshop.cleanup() }
 
     fun cleanup() {
         registry.snapshot().forEach { runtime ->
@@ -173,12 +214,24 @@ internal class MineIncidentSet(
         }
         lostMiner.clearQueues()
         workings.cleanup()
+        workshop.cleanup()
     }
 
-    fun guardMovement(event: org.bukkit.event.player.PlayerMoveEvent): Boolean = workings.guardMovement(event)
-    fun recoverPlayer(player: Player) = workings.recover(player)
+    fun guardMovement(event: org.bukkit.event.player.PlayerMoveEvent): Boolean {
+        workshop.guardMovement(event, registry.snapshot())
+        return workings.guardMovement(event)
+    }
+    fun updateVisuals(now: Long) {
+        registry.snapshot().forEach { runtime ->
+            if (runtime.state.incident?.type == ru.ruscrafting.farms.domain.MineIncidentType.ORE_WORKSHOP) {
+                workshop.tick(runtime, runtime.region.world.players, now)
+            }
+        }
+    }
+    fun recoverPlayer(player: Player) { workings.recover(player); lostMiner.recover(player) }
 
     private fun clearActive(runtime: MineRuntime) {
+        if (runtime.state.incident?.type == ru.ruscrafting.farms.domain.MineIncidentType.ORE_WORKSHOP) workshop.cleanup(runtime)
         if (runtime.state.incident?.working != null) workings.retire(runtime)
         runtime.state.incident?.serviceLeases?.values?.toSet().orEmpty().forEach(trackDamage::releasePlayer)
         runtime.state.incident?.type?.name?.lowercase()?.let { journal.restore(runtime, it) }
@@ -204,6 +257,13 @@ internal class MineIncidentSet(
         val incident = runtime.state.incident ?: return false
         val objective = runtime.state.objective
         val incompatible = when (incident.type) {
+            ru.ruscrafting.farms.domain.MineIncidentType.POWER_FAILURE -> true
+            ru.ruscrafting.farms.domain.MineIncidentType.ORE_WORKSHOP ->
+                incident.working?.placement?.floorId?.startsWith("authored-") != true
+            ru.ruscrafting.farms.domain.MineIncidentType.TUNNEL_DRIVE,
+            ru.ruscrafting.farms.domain.MineIncidentType.RAIL_EXTENSION,
+            ru.ruscrafting.farms.domain.MineIncidentType.TRACK_DAMAGE ->
+                incident.working?.placement?.geometryVersion != ru.ruscrafting.farms.domain.MineWorkingPlacement.CURRENT_GEOMETRY_VERSION
             ru.ruscrafting.farms.domain.MineIncidentType.FLOODING ->
                 incident.required != 1 || objective?.targets?.size != 1
             ru.ruscrafting.farms.domain.MineIncidentType.CRYSTAL_RESONANCE ->

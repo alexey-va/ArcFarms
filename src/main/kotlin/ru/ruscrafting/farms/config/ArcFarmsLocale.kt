@@ -10,6 +10,7 @@ import ru.arc.text.ConfigLocaleCatalog
 import ru.arc.text.LocalizedMiniMessage
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmCareType
+import ru.ruscrafting.farms.domain.MineLocationKeys
 import java.nio.file.Path
 
 enum class MessageKey(val path: String) {
@@ -911,7 +912,7 @@ class ArcFarmsLocale(
                 .mapTo(this) { "mine.working.item.$it" }
             listOf("excavate", "support", "clear_track", "lay_track", "test_track", "load", "crush", "heat", "ship")
                 .mapTo(this) { "mine.working.stage.$it" }
-            listOf("excavate", "support", "clear_track", "lay_track", "test_track", "load", "crush", "ship")
+            listOf("excavate", "support", "clear_track", "lay_track", "test_track", "load", "crush", "heat", "ship")
                 .mapTo(this) { "mine.working.hint.$it" }
             listOf("entry", "ore", "crusher", "furnace", "output", "shipping")
                 .mapTo(this) { "mine.working.marker.$it" }
@@ -924,6 +925,16 @@ class ArcFarmsLocale(
             add("admin.mine-placement.header")
             add("admin.mine-placement.entry")
             add("admin.mine-placement.no-rejection-details")
+            add("admin.mine-points.header")
+            add("admin.mine-points.entry")
+            add("admin.mine-points.empty")
+            add("admin.mine-point-help.header")
+            add("admin.mine-point-help.entry")
+            add("admin.mine-point-help.footer")
+            MineLocationKeys.all.forEach { kind ->
+                add("admin.mine-point.$kind")
+                add("admin.mine-point-description.$kind")
+            }
             add("mine.creature-nest.creature-name")
             add("mine.creature-nest.nest-name")
             add("mine.creature-nest.destroyed")
@@ -1017,7 +1028,7 @@ class ArcFarmsLocale(
             "seals", "seconds", "seed", "sequence", "side", "size", "soil", "source", "spawned", "stage", "supply", "targets",
             "reserved", "shares", "issued", "tilled", "time", "tool", "total", "tracking", "type", "water", "wood", "workers", "world", "x", "y", "z",
             "zone", "weeks", "plan", "week", "votes", "target", "date", "contribution", "usable", "required",
-            "floor", "batch", "batches",
+            "floor", "batch", "batches", "yaw",
             "considered", "requirement", "reasons",
         )
         private val EXPECTED_PLACEHOLDERS = mapOf(

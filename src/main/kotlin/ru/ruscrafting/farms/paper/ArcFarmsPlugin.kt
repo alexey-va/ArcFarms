@@ -102,6 +102,7 @@ open class ArcFarmsPlugin : JavaPlugin() {
             val mineStore = lifecycle.own(MineBlockJournal(dataRoot)).also { mineJournal = it }
             val fixedCropStore = lifecycle.own(FixedFarmCropJournal(dataRoot)).also { fixedCropJournal = it }
             val locationStore = lifecycle.own(FarmLocationRepository(dataRoot)).also { farmLocationRepository = it }
+            val mineLocationStore = lifecycle.own(ru.ruscrafting.farms.persistence.MineLocationRepository(dataRoot))
             val routeStore = lifecycle.own(FarmRouteRepository(dataRoot)).also { farmRouteRepository = it }
             val regionGateway = if (settings.requiresWorldGuard) {
                 require(server.pluginManager.isPluginEnabled("WorldGuard")) {
@@ -140,6 +141,7 @@ open class ArcFarmsPlugin : JavaPlugin() {
                 mineJournal = mineStore,
                 fixedCropJournal = fixedCropStore,
                 farmLocationRepository = locationStore,
+                mineLocationRepository = mineLocationStore,
                 farmRouteRepository = routeStore,
                 network = networkGateway,
                 transfer = backendTransfer,

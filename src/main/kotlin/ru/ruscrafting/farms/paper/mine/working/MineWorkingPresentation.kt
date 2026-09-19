@@ -30,18 +30,28 @@ internal class MineWorkingPresentation(
     textDisplays: FarmTextDisplayRenderer,
     private val cart: MineCartEffects,
     private val floorNumber: (String) -> Int? = { null },
+    private val drill: MineDrillScene = MineDrillScene(plugin),
 ) {
     private data class Marker(val target: MineWorkingTarget, val entities: List<Entity>)
+    private val highlights = MineWorkingBlockHighlights(plugin)
     private val marker = locale?.let { WorksiteEntryMarker(it, textDisplays) }
     private val tag = NamespacedKey(plugin, "mine_working_marker")
     private val markers = mutableMapOf<String, MutableMap<String, Marker>>()
     private val interactions = mutableMapOf<UUID, Pair<String, MineWorkingTarget>>()
 
     fun target(entity: Entity): Pair<String, MineWorkingTarget>? = interactions[entity.uniqueId]
+        ?: drill.target(entity)?.let { (zone, position) -> zone to MineWorkingTarget("drill", position, "excavate") }
+
+    fun drillPosition(runtime: MineRuntime, scene: MineWorkingScene): WorksitePosition? =
+        scene.plan.excavation.indices.firstOrNull { it !in runtime.state.incident?.working?.completed.orEmpty() }
+            ?.let(scene.plan.excavation::get)
+
+    fun animateDrill(runtime: MineRuntime, scene: MineWorkingScene, running: Boolean, now: Long) = drill.reconcile(runtime, scene, running, now)
 
     fun reconcile(runtime: MineRuntime, scene: MineWorkingScene) {
         val working = runtime.state.incident?.working ?: return
-        val targets = targets(runtime, scene) + MineWorkingTarget("entry", scene.plan.entrance.copy(y = scene.floor + 1), "entry")
+        highlights.reconcile(runtime, scene)
+        val targets = targets(runtime, scene).filter { it.label !in setOf("excavate", "clear_track") } + MineWorkingTarget("entry", scene.plan.entrance.copy(y = scene.floor + 1), "entry")
         val current = markers.getOrPut(runtime.settings.id) { linkedMapOf() }
         current.keys.toList().forEach { id ->
             val existing = current.getValue(id)
@@ -124,9 +134,13 @@ internal class MineWorkingPresentation(
     fun cleanup(zoneId: String) {
         markers.remove(zoneId)?.values?.flatMap { it.entities }?.forEach { interactions.remove(it.uniqueId); it.remove() }
         cart.hide(zoneId)
+        drill.cleanup(zoneId)
+        highlights.cleanup(zoneId)
     }
 
     fun reconcileLoaded() {
+        drill.reconcileLoaded()
+        highlights.reconcileLoaded()
         Bukkit.getWorlds().forEach { world -> world.loadedChunks.forEach { chunk ->
             chunk.entities.filter { it.persistentDataContainer.has(tag, PersistentDataType.STRING) }.forEach(Entity::remove)
         } }

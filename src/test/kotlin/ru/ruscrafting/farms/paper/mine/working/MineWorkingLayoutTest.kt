@@ -81,7 +81,7 @@ class MineWorkingLayoutTest : FunSpec({
             plan.shell.forEach { put(it, Material.STONE) }
             plan.fixtures.forEach { put(it, Material.STONE) }
             plan.walkable.forEach { position ->
-                put(position, if (position.z - entrance.z <= 2) Material.AIR else Material.STONE)
+                put(position, if (position.z - entrance.z <= 1) Material.AIR else Material.STONE)
             }
             plan.excavation.forEach { put(it, Material.STONE) }
             put(plan.placement.position(0, 0, -1), Material.STONE)
@@ -90,7 +90,7 @@ class MineWorkingLayoutTest : FunSpec({
         MineWorkingPlanner.validateSnapshot(plan, snapshot) shouldBe null
 
         val blockedEntry = snapshot.toMutableMap()
-        blockedEntry[plan.walkable.first { it.z - entrance.z <= 2 }] = Material.CHEST
+        blockedEntry[plan.walkable.first { it.z - entrance.z <= 1 }] = Material.CHEST
         MineWorkingPlanner.validateSnapshot(plan, blockedEntry) shouldBe "entry_not_clear"
 
         val nonGeologicalShell = snapshot.toMutableMap()
@@ -115,7 +115,7 @@ class MineWorkingLayoutTest : FunSpec({
         val placement = MineWorkingPlacement(entrance, 0, "top")
         val plan = MineWorkingLayout.plan(MineIncidentType.RAIL_EXTENSION, placement)
         val snapshot = plan.blocks.keys.associateWith { Material.STONE }.toMutableMap()
-        (plan.walkable + plan.cartRoute).filter { it.z - entrance.z <= 2 }.forEach { snapshot[it] = Material.AIR }
+        (plan.walkable + plan.cartRoute).filter { it.z - entrance.z <= 1 }.forEach { snapshot[it] = Material.AIR }
         snapshot[placement.position(0, 0, -1)] = Material.STONE
         (1..3).forEach { snapshot[placement.position(0, it, -1)] = Material.AIR }
         MineWorkingPlanner.validateSnapshot(plan, snapshot) shouldBe null

@@ -1,8 +1,9 @@
 package ru.ruscrafting.farms.paper.mine.incident
 
 import io.kotest.core.spec.style.FunSpec
+import io.mockk.every
+import io.mockk.spyk
 import io.kotest.matchers.collections.shouldHaveSize
-import io.kotest.matchers.floats.shouldBeGreaterThan
 import io.kotest.matchers.ints.shouldBeInRange
 import io.kotest.matchers.shouldBe
 import org.bukkit.Material
@@ -10,6 +11,7 @@ import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.inventory.ItemStack
 import org.bukkit.entity.BlockDisplay
 import ru.arc.paper.testing.MockBukkitTestRuntime
+import ru.ruscrafting.farms.paper.fixtures.requiredMockBukkitScenario
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus
@@ -29,6 +31,7 @@ class MineConstructionIncidentsMockBukkitTest : FunSpec({
     afterEach { paper.close() }
 
     test("cave-in creates physical crash-safe rubble that players clear with a pickaxe") {
+        requiredMockBukkitScenario {
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("Miner")
         // The rubble begins at x=16. The entity origin must remain in chunk 1;
@@ -40,8 +43,9 @@ class MineConstructionIncidentsMockBukkitTest : FunSpec({
         (-2..2).forEach { dx -> (-1..2).forEach { dz ->
             world.getBlockAt(anchor.x + dx, anchor.y + 5, anchor.z + dz).type = Material.STONE
         } }
+        val port = immediateMinePort()
         val graph = testMineComponentGraph(
-            paper.createSimplePlugin("MineCaveInTest"), CuboidRegionGateway(), immediateMinePort(),
+            paper.createSimplePlugin("MineCaveInTest"), CuboidRegionGateway(), port,
             clock = { 1_000L }, journal = ImmediateMineJournal(),
         )
         graph.module.rebuild(
@@ -60,29 +64,56 @@ class MineConstructionIncidentsMockBukkitTest : FunSpec({
         val targets = runtime.state.objective!!.targets
         targets.size.shouldBeInRange(55..65)
         targets.forEach { world.getBlockAt(it.position.x, it.position.y, it.position.z).type shouldBe Material.COBBLESTONE }
-        world.entities.filterIsInstance<BlockDisplay>().single().apply {
-            isGlowing shouldBe true
-            block.material shouldBe Material.BLUE_STAINED_GLASS
-            brightness?.blockLight shouldBe 15
-            brightness?.skyLight shouldBe 15
-            transformation.scale.x shouldBeGreaterThan 5.0f
-            transformation.scale.y shouldBeGreaterThan 3.0f
-            transformation.scale.z shouldBeGreaterThan 3.0f
-            (transformation.translation.y < 0.0f) shouldBe true
-            location.blockY shouldBe targets.minOf { it.position.y }
-            (location.blockX shr 4) shouldBe 1
-            (location.blockZ shr 4) shouldBe 1
+        val highlights = world.entities.filterIsInstance<BlockDisplay>()
+        highlights shouldHaveSize targets.size
+        highlights.forEach { display ->
+            display.isGlowing shouldBe true
+            display.block.material shouldBe Material.COBBLESTONE
+            display.brightness?.blockLight shouldBe 15
+            display.transformation.scale.x shouldBe 1.002f
+            display.transformation.scale.y shouldBe 1.002f
+            display.transformation.scale.z shouldBe 1.002f
+            (display.location.blockX shr 4) shouldBe 1
+            (display.location.blockZ shr 4) shouldBe 1
         }
+
+        val unauthorized = paper.server.addPlayer("Unauthorized")
+        every { port.hasAccess(unauthorized, any()) } returns false
+        val guardedRubble = world.getBlockAt(targets.first().position.x, targets.first().position.y, targets.first().position.z)
+        unauthorized.teleport(guardedRubble.location.clone().add(0.5, 0.0, -1.5))
+        val denied = BlockBreakEvent(guardedRubble, unauthorized)
+        graph.module.onBreakHigh(denied) shouldBe true
+        denied.isCancelled shouldBe true
+        guardedRubble.type shouldBe Material.COBBLESTONE
+        runtime.state.objective!!.target(targets.first().id)!!.status shouldBe ObjectiveTargetStatus.AVAILABLE
 
         player.inventory.setItemInMainHand(ItemStack(Material.IRON_PICKAXE))
         targets.forEachIndexed { index, target ->
             val rubble = world.getBlockAt(target.position.x, target.position.y, target.position.z)
+            player.teleport(rubble.location.clone().add(0.5, 0.0, -1.5))
+            val start = org.bukkit.event.player.PlayerInteractEvent(player,
+                org.bukkit.event.block.Action.LEFT_CLICK_BLOCK, player.inventory.itemInMainHand,
+                rubble, org.bukkit.block.BlockFace.NORTH, org.bukkit.inventory.EquipmentSlot.HAND)
+                .also { it.isCancelled = true }
+            graph.module.onInteract(start, rubble, player) shouldBe true
+            start.useInteractedBlock() shouldBe org.bukkit.event.Event.Result.ALLOW
+            start.useItemInHand() shouldBe org.bukkit.event.Event.Result.ALLOW
+            val damageBlock = spyk(rubble)
+            every { damageBlock.getBreakSpeed(player) } returns 0.2f
+            val damage = org.bukkit.event.block.BlockDamageEvent(player, damageBlock, player.inventory.itemInMainHand, false)
+                .also { it.isCancelled = true }
+            graph.module.onBlockDamage(damage) shouldBe true
+            damage.isCancelled shouldBe false
             val event = BlockBreakEvent(rubble, player).also { it.expToDrop = 7 }
             graph.module.onBreakHigh(event) shouldBe true
             event.isCancelled shouldBe true
             event.isDropItems shouldBe false
             event.expToDrop shouldBe 0
             rubble.type shouldBe Material.AIR
+            val remainingGlow = world.entities.filterIsInstance<BlockDisplay>()
+            remainingGlow shouldHaveSize targets.size - index - 1
+            remainingGlow.none { it.location.blockX == target.position.x &&
+                it.location.blockY == target.position.y && it.location.blockZ == target.position.z } shouldBe true
             if (index < targets.lastIndex) {
                 runtime.state.objective!!.targets.first { it.id == target.id }.status shouldBe ObjectiveTargetStatus.COMPLETED
             }
@@ -91,6 +122,7 @@ class MineConstructionIncidentsMockBukkitTest : FunSpec({
         world.entities.filterIsInstance<BlockDisplay>() shouldHaveSize 0
         graph.caveIn.cleanup(runtime) shouldBe 0
         targets.forEach { world.getBlockAt(it.position.x, it.position.y, it.position.z).type shouldBe Material.AIR }
+        }
     }
 
     test("cave-in searches the complete indexed pool instead of rejecting after 512 anchors") {

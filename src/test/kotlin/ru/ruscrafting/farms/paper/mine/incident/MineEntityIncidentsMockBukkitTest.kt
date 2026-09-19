@@ -5,6 +5,7 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import org.bukkit.Chunk
 import org.bukkit.block.BlockFace
+import org.bukkit.GameMode
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.entity.Entity
@@ -14,7 +15,9 @@ import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.BlockDisplay
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.inventory.EquipmentSlot
+import org.bukkit.potion.PotionEffectType
 import ru.arc.paper.testing.MockBukkitTestRuntime
+import ru.ruscrafting.farms.paper.fixtures.requiredMockBukkitScenario
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MineIncidentState
@@ -68,6 +71,7 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         } shouldBe true
         val creatures = targets.filter { it.role.value == "creature" }
         val nests = targets.filter { it.role.value == "creature_nest" }
+        val firstNestPositions = nests.map { it.position }.toSet()
         creatures.forEach { graph.creatureNest.defeat(runtime, it.id, player) shouldBe true }
         runtime.state.phase shouldBe MinePhase.INCIDENT
         nests.forEach { graph.creatureNest.destroyNest(runtime, it.id, player) shouldBe true }
@@ -76,6 +80,13 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         effects.count(MineIncidentEntityKind.CREATURE) shouldBe 0
         effects.count(MineIncidentEntityKind.CREATURE_NEST_DISPLAY) shouldBe 0
         effects.count(MineIncidentEntityKind.CREATURE_NEST_HITBOX) shouldBe 0
+
+        graph.creatureNest.start(runtime, required = 2, now = 2_000L) shouldBe true
+        val secondNestPositions = runtime.state.objective!!.targets
+            .filter { it.role.value == "creature_nest" }
+            .map { it.position }
+            .toSet()
+        (secondNestPositions != firstNestPositions) shouldBe true
     }
 
     test("admin force switches the active mine incident and clears its scene like the farm") {
@@ -90,18 +101,25 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         effects.count(MineIncidentEntityKind.CREATURE) shouldBe 2
         effects.count(MineIncidentEntityKind.CREATURE_NEST_DISPLAY) shouldBe 2
 
-        graph.admin.forceIncident("old_shafts", MineIncidentType.TRACK_DAMAGE, 2_000L) shouldBe true
+        // The admin force must exercise a real indexed objective pool. Reindex these
+        // authored points as supports before switching away from the nest scene.
+        replaceEntityIndex(graph, runtime, floors, MineAnchorRole.SUPPORT)
+        graph.admin.forceIncident("old_shafts", MineIncidentType.GAS_LEAK, 2_000L) shouldBe true
+        graph.incidentSet.tick(runtime, 2_001L, emptyList())
 
         runtime.state.phase shouldBe MinePhase.INCIDENT
-        runtime.state.incident!!.type shouldBe MineIncidentType.TRACK_DAMAGE
+        runtime.state.incident!!.type shouldBe MineIncidentType.GAS_LEAK
         effects.count(MineIncidentEntityKind.CREATURE) shouldBe 0
         effects.count(MineIncidentEntityKind.CREATURE_NEST_DISPLAY) shouldBe 0
         effects.count(MineIncidentEntityKind.CREATURE_NEST_HITBOX) shouldBe 0
+        effects.count(MineIncidentEntityKind.GAS_MARKER) shouldBe 4
+        effects.count(MineIncidentEntityKind.GAS_MARKER_HITBOX) shouldBe 4
     }
 
     test("block interaction incidents reuse one recoverable glowing marker scene") {
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("Inspector")
+        player.teleport(Location(world, 1.5, 64.0, 2.5))
         val walls = (1..6).map { x -> world.getBlockAt(x, 63, 2).also { it.type = Material.STONE } }
         val effects = RecordingIncidentEntities()
         val graph = entityGraph(paper, effects, "Markers")
@@ -109,7 +127,12 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         replaceEntityIndex(graph, runtime, walls)
 
         graph.gasLeak.start(runtime, required = 2, now = 1_000L) shouldBe true
-        graph.incidentSet.tick(runtime, 1_001L, emptyList())
+        val healthBeforeGas = player.health
+        graph.incidentSet.tick(runtime, 1_001L, listOf(player))
+        player.health shouldBe healthBeforeGas - 1.0
+        player.hasPotionEffect(PotionEffectType.NAUSEA) shouldBe true
+        graph.incidentSet.tick(runtime, 1_500L, listOf(player))
+        player.health shouldBe healthBeforeGas - 1.0
         effects.count(MineIncidentEntityKind.GAS_MARKER) shouldBe 4
         effects.count(MineIncidentEntityKind.GAS_MARKER_HITBOX) shouldBe 4
         effects.ids(MineIncidentEntityKind.GAS_MARKER_HITBOX).take(runtime.state.incident!!.required).forEach { id ->
@@ -171,9 +194,11 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
 
         world.entities.filterIsInstance<BlockDisplay>().size shouldBe 4
         world.entities.filterIsInstance<BlockDisplay>().all { display ->
-            display.block.material == Material.SLIME_BLOCK &&
+            display.block.material == Material.STONE &&
+                display.isGlowing &&
                 display.brightness?.blockLight == 15 && display.brightness?.skyLight == 15 &&
-                display.transformation.scale.x < 1.0f && display.transformation.translation.x > 0.0f
+                display.transformation.scale.x == 1.002f &&
+                display.transformation.translation.x == -0.001f
         } shouldBe true
         world.entities.filterIsInstance<Interaction>().size shouldBe 4
         world.entities.filterIsInstance<Interaction>().all { interaction ->
@@ -186,7 +211,7 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
     test("crystal resonance uses real amethyst blocks without synthetic markers") {
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("CrystalOperator")
-        val crystals = (1..3).map { x ->
+        val crystals = (1..5).map { x ->
             world.getBlockAt(x, 64, 5).also { it.type = Material.AMETHYST_CLUSTER }
         }
         val graph = testMineComponentGraph(
@@ -201,21 +226,33 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         val runtime = graph.registry.byId("old_shafts")!!
         replaceEntityIndex(graph, runtime, crystals, MineAnchorRole.CRYSTAL)
 
-        graph.crystalResonance.start(runtime, required = 1, now = 1_000L) shouldBe true
+        graph.crystalResonance.start(runtime, required = 2, now = 1_000L) shouldBe true
         graph.incidentSet.tick(runtime, 1_001L, emptyList())
-        world.entities.filterIsInstance<BlockDisplay>().shouldBeEmpty()
+        val highlights = world.entities.filterIsInstance<BlockDisplay>()
+        val targets = runtime.state.objective!!.targets.toList()
+        targets.size shouldBe 4
+        highlights.size shouldBe targets.count { it.status != ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus.COMPLETED }
+        highlights.all { display ->
+            display.isGlowing && display.block.material == Material.AMETHYST_CLUSTER
+        } shouldBe true
         world.entities.filterIsInstance<ItemDisplay>().shouldBeEmpty()
         world.entities.filterIsInstance<Interaction>().shouldBeEmpty()
 
-        val target = runtime.state.objective!!.targets.first()
-        graph.incidentSet.onInteract(
-            org.bukkit.event.player.PlayerInteractEvent(
-                player, org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK, null,
-                world.getBlockAt(target.position.x, target.position.y, target.position.z),
-                org.bukkit.block.BlockFace.UP, EquipmentSlot.HAND,
-            ),
-        ) shouldBe true
+        targets.take(2).forEachIndexed { index, target ->
+            graph.incidentSet.onInteract(
+                org.bukkit.event.player.PlayerInteractEvent(
+                    player, org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK, null,
+                    world.getBlockAt(target.position.x, target.position.y, target.position.z),
+                    org.bukkit.block.BlockFace.UP, EquipmentSlot.HAND,
+                ),
+            ) shouldBe true
+            if (index == 0) {
+                runtime.state.phase shouldBe MinePhase.INCIDENT
+                world.entities.filterIsInstance<BlockDisplay>().size shouldBe 3
+            }
+        }
         runtime.state.phase shouldBe MinePhase.MINING
+        world.entities.filterIsInstance<BlockDisplay>().shouldBeEmpty()
     }
 
     test("crystal resonance refuses a target that is no longer a real cluster") {
@@ -334,6 +371,7 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
     }
 
     test("lost miner uses one maze entrance and completes when the miner is found") {
+        requiredMockBukkitScenario {
         val world = paper.server.addSimpleWorld("world")
         for (chunkX in -3..3) for (chunkZ in -3..3) world.getChunkAt(chunkX, chunkZ).load()
         val player = paper.server.addPlayer("Rescuer")
@@ -344,21 +382,37 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         replaceEntityIndex(graph, runtime, floors)
 
         graph.lostMiner.start(runtime, now = 1_000L) shouldBe true
-        repeat(8) { graph.lostMiner.process() }
+        repeat(64) { graph.lostMiner.process() }
+        graph.lostMiner.reconcileMissing(runtime) shouldBe 1
         graph.lostMiner.canonicalCount(runtime) shouldBe 1
-        effects.count(MineIncidentEntityKind.MINER_MAZE_ENTRANCE) shouldBe 1
-        effects.count(MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX) shouldBe 1
+        // One public entrance and one native click-out marker share the maze entrance kind.
+        effects.count(MineIncidentEntityKind.MINER_MAZE_ENTRANCE) shouldBe 2
+        effects.count(MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX) shouldBe 2
         effects.count(MineIncidentEntityKind.MINER_CAMP_LANTERN) shouldBe 0
         effects.count(MineIncidentEntityKind.MINER_CAMP_SUPPLIES) shouldBe 0
+        (effects.count(MineIncidentEntityKind.RESCUE_CREATURE) > 0) shouldBe true
         val target = runtime.state.objective!!.targets.first()
         effects.spawn(runtime, MineIncidentEntityKind.MINER, target.id, target.position)
         effects.count(MineIncidentEntityKind.MINER) shouldBe 2
         graph.lostMiner.reconcileChunk(runtime, world.getChunkAt(target.position.x shr 4, target.position.z shr 4)) shouldBe 1
         effects.count(MineIncidentEntityKind.MINER) shouldBe 1
 
+        // Clicking the entrance from beyond the authored surface must not move the player.
+        player.teleport(Location(world, target.position.x + 40.5, target.position.y + 1.0, target.position.z + 0.5))
+        val distantEntryEvent = PlayerInteractEntityEvent(
+            player,
+            requireNotNull(effects.entity(effects.id(MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX, target.id))),
+            EquipmentSlot.HAND,
+        )
+        graph.incidentSet.onInteractEntity(distantEntryEvent) shouldBe true
+        distantEntryEvent.isCancelled shouldBe true
+        runtime.region.contains(player.location) shouldBe false
+
+        // The normal entry is valid only at the actual indexed surface anchor.
+        player.teleport(Location(world, target.position.x + 0.5, target.position.y + 1.0, target.position.z + 0.5))
         val entryEvent = PlayerInteractEntityEvent(
             player,
-            requireNotNull(effects.entity(effects.singleId(MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX))),
+            requireNotNull(effects.entity(effects.id(MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX, target.id))),
             EquipmentSlot.HAND,
         )
         graph.incidentSet.onInteractEntity(entryEvent) shouldBe true
@@ -367,9 +421,65 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
 
         graph.lostMiner.releasePlayer(player, WorksitePlayerReleaseReason.SHUTDOWN) shouldBe true
         runtime.region.contains(player.location) shouldBe true
-        graph.incidentSet.onInteractEntity(entryEvent) shouldBe true
+        val reentryEvent = PlayerInteractEntityEvent(
+            player,
+            requireNotNull(effects.entity(effects.id(MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX, target.id))),
+            EquipmentSlot.HAND,
+        )
+        graph.incidentSet.onInteractEntity(reentryEvent) shouldBe true
+        reentryEvent.isCancelled shouldBe true
         runtime.region.contains(player.location) shouldBe false
 
+        // A spectator in flight that walks out of the maze must keep the native exit.
+        val outside = Location(world, 30.5, 64.0, 30.5)
+        player.gameMode = GameMode.SPECTATOR
+        player.allowFlight = true
+        player.isFlying = true
+        player.teleport(outside)
+        graph.incidentSet.onMove(outside, player) shouldBe false
+        player.location.blockX shouldBe outside.blockX
+        player.location.blockZ shouldBe outside.blockZ
+        player.gameMode shouldBe GameMode.SPECTATOR
+        player.isFlying shouldBe true
+
+        // Re-enter as a normal player and use the native exit marker, rather than a
+        // synthetic command or a forced teleport.
+        player.gameMode = GameMode.SURVIVAL
+        player.isFlying = false
+        player.teleport(Location(world, target.position.x + 0.5, target.position.y + 1.0, target.position.z + 0.5))
+        val thirdEntryEvent = PlayerInteractEntityEvent(
+            player,
+            requireNotNull(effects.entity(effects.id(MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX, target.id))),
+            EquipmentSlot.HAND,
+        )
+        graph.incidentSet.onInteractEntity(thirdEntryEvent) shouldBe true
+        runtime.region.contains(player.location) shouldBe false
+        val exitEvent = PlayerInteractEntityEvent(
+            player,
+            requireNotNull(effects.entity(effects.id(MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX, "exit:${target.id}"))),
+            EquipmentSlot.HAND,
+        )
+        graph.incidentSet.onInteractEntity(exitEvent) shouldBe true
+        exitEvent.isCancelled shouldBe true
+        runtime.region.contains(player.location) shouldBe true
+
+        // Re-enter for the rescue itself. Finding the NPC requires an active travel
+        // session and being inside the maze, close to the NPC itself.
+        player.teleport(Location(world, target.position.x + 0.5, target.position.y + 1.0, target.position.z + 0.5))
+        val finalEntryEvent = PlayerInteractEntityEvent(
+            player,
+            requireNotNull(effects.entity(effects.id(MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX, target.id))),
+            EquipmentSlot.HAND,
+        )
+        graph.incidentSet.onInteractEntity(finalEntryEvent) shouldBe true
+        finalEntryEvent.isCancelled shouldBe true
+        runtime.region.contains(player.location) shouldBe false
+
+        // Move to the canonical NPC location so the distance and maze containment
+        // guards are exercised by the successful interaction.
+        val miner = requireNotNull(effects.entity(effects.singleId(MineIncidentEntityKind.MINER)))
+        player.teleport(miner.location)
+        runtime.region.contains(player.location) shouldBe false
         val foundEvent = PlayerInteractEntityEvent(
             player,
             requireNotNull(effects.entity(effects.singleId(MineIncidentEntityKind.MINER))),
@@ -384,9 +494,12 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         effects.count(MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX) shouldBe 0
         effects.count(MineIncidentEntityKind.MINER_CAMP_LANTERN) shouldBe 0
         effects.count(MineIncidentEntityKind.MINER_CAMP_SUPPLIES) shouldBe 0
+        effects.count(MineIncidentEntityKind.RESCUE_CREATURE) shouldBe 0
+        }
     }
 
     test("repeated admin lost-miner waits until the previous maze is restored") {
+        requiredMockBukkitScenario {
         val world = paper.server.addSimpleWorld("world")
         for (chunkX in -3..3) for (chunkZ in -3..3) world.getChunkAt(chunkX, chunkZ).load()
         val floors = (1..6).map { x -> world.getBlockAt(x, 63, 5).also { it.type = Material.STONE } }
@@ -394,15 +507,22 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         val graph = entityGraph(paper, effects, "RescueRepeat")
         val runtime = graph.registry.byId("old_shafts")!!
         replaceEntityIndex(graph, runtime, floors)
+        // Classic staged mines offer rescue during extraction; both forced starts
+        // must use a scheduler-eligible phase rather than bypassing its contract.
+        runtime.state = runtime.state.copy(phase = MinePhase.EXTRACTION)
 
         graph.lostMiner.start(runtime, now = 1_000L) shouldBe true
-        repeat(8) { graph.lostMiner.process() }
+        repeat(64) { graph.lostMiner.process() }
         graph.admin.forceIncident("old_shafts", MineIncidentType.LOST_MINER, 2_000L) shouldBe false
-        runtime.state.phase shouldBe MinePhase.MINING
+        runtime.state.phase shouldBe MinePhase.EXTRACTION
 
-        repeat(8) { graph.lostMiner.process() }
-        graph.admin.forceIncident("old_shafts", MineIncidentType.LOST_MINER, 3_000L) shouldBe true
+        repeat(64) { graph.lostMiner.process() }
+        graph.lostMiner.isRestoring(runtime) shouldBe false
+        io.kotest.assertions.withClue(graph.admin.incidentDiagnostics("old_shafts", MineIncidentType.LOST_MINER)) {
+            graph.admin.forceIncident("old_shafts", MineIncidentType.LOST_MINER, 3_000L) shouldBe true
+        }
         runtime.state.incident?.type shouldBe MineIncidentType.LOST_MINER
+        }
     }
 })
 
@@ -487,6 +607,8 @@ private class RecordingIncidentEntities : MineIncidentEntityEffects {
     fun count(kind: MineIncidentEntityKind): Int = identities.values.count { it.kind == kind }
     fun ids(kind: MineIncidentEntityKind): List<UUID> = identities.filterValues { it.kind == kind }.keys.toList()
     fun singleId(kind: MineIncidentEntityKind): UUID = identities.filterValues { it.kind == kind }.keys.single()
+    fun id(kind: MineIncidentEntityKind, targetId: String): UUID = identities.entries
+        .single { it.value.kind == kind && it.value.targetId == targetId }.key
 }
 
 private fun org.bukkit.block.Block.position() = WorksitePosition(world.name, x, y, z)

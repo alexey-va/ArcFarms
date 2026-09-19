@@ -69,6 +69,7 @@ internal class MineGuidanceSource(
             },
             targets(player, runtime),
             quietProgress = runtime.settings.miningOnly,
+            screenTitles = runtime.state.phase != MinePhase.INCIDENT,
             sidebarRows = listOf(
                 render("route.mine.${runtime.settings.id}", player),
                 hint ?: render("mine.guidance.$action", player, values),

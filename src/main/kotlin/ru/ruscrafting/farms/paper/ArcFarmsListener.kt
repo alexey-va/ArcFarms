@@ -63,9 +63,9 @@ class ArcFarmsListener(
         if (service.protectsTemporaryBlock(event.block.location)) event.isCancelled = true
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST)
     fun onTemporaryBucketFill(event: org.bukkit.event.player.PlayerBucketFillEvent) {
-        if (service.protectsTemporaryBlock(event.block.location)) event.isCancelled = true
+        if (!service.onBucketFill(event) && service.protectsTemporaryBlock(event.block.location)) event.isCancelled = true
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
@@ -131,6 +131,19 @@ class ArcFarmsListener(
 
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onBlockFromTo(event: BlockFromToEvent) = service.onBlockFromTo(event)
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    fun guardMove(event: PlayerMoveEvent) {
+        if (event !is PlayerTeleportEvent) service.guardMovement(event)
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    fun guardTeleport(event: PlayerTeleportEvent) {
+        if (event !is PlayerPortalEvent && !isInternalTransport(event)) service.guardMovement(event)
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    fun guardPortal(event: PlayerPortalEvent) = service.guardMovement(event)
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onMove(event: PlayerMoveEvent) {

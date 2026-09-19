@@ -21,7 +21,9 @@ class WorksiteExpeditionTravelTest : FunSpec({
                 val surface = Location(scenario.world, 12.5, 65.0, 12.5)
                 player.teleport(surface.clone().add(40.0, 0.0, 0.0))
                 val travel = travel(scenario)
-                travel.enter(request(player, surface, scenario.world.spawnLocation)) { true }
+                var entered = false
+                travel.enter(request(player, surface, scenario.world.spawnLocation), onEntered = { entered = true }) { true }
+                entered shouldBe false
                 player.location.distanceSquared(surface) shouldBe 1_600.0
                 FarmBurrowReturnRepository(scenario.plugin.dataFolder.toPath(), DIR).load(player.uniqueId) shouldBe null
             }
@@ -39,6 +41,28 @@ class WorksiteExpeditionTravelTest : FunSpec({
                 val before = travel.record(player)
                 travel.enter(request(player, surface, scenario.world.spawnLocation)) { true }
                 travel.record(player) shouldBe before
+            }
+        }
+    }
+
+    test("entry acknowledgement happens only after the durable return and successful teleport") {
+        requiredMockBukkitScenario {
+            FarmIncidentScenarioFixture.open().use { scenario ->
+                val player = scenario.paper.addPlayer("EnteredExpedition")
+                every { scenario.port.runAsync(any(), any()) } answers { secondArg<() -> Unit>()(); true }
+                every { scenario.port.runSync(any(), any()) } answers { secondArg<() -> Unit>()(); true }
+                val surface = Location(scenario.world, 12.5, 65.0, 12.5)
+                val destination = Location(scenario.world, 44.5, 65.0, 44.5)
+                player.teleport(surface)
+                val travel = travel(scenario)
+                var acknowledged = false
+                travel.enter(request(player, surface, destination), onEntered = {
+                    player.location shouldBe destination
+                    travel.retains(player) shouldBe true
+                    FarmBurrowReturnRepository(scenario.plugin.dataFolder.toPath(), DIR).load(player.uniqueId)?.zoneId shouldBe "mine"
+                    acknowledged = true
+                }) { true }
+                acknowledged shouldBe true
             }
         }
     }

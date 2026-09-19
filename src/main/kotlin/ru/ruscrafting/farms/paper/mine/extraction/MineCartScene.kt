@@ -31,6 +31,7 @@ internal class PaperMineCartEffects(
     private val plugin: Plugin,
     namespace: String = "mine_cart_zone",
     private val visualOverride: MineCartVisualSettings? = null,
+    private val glowing: Boolean = false,
 ) : MineCartEffects {
     private val displays = mutableMapOf<String, UUID>()
     private val interactions = mutableMapOf<String, UUID>()
@@ -92,6 +93,7 @@ internal class PaperMineCartEffects(
 
     private fun applyVisual(display: ItemDisplay, visual: MineCartVisualSettings) {
         display.isPersistent = false
+        display.isGlowing = glowing
         display.setItemStack(ItemStack(MaterialRules.material(visual.material)).also { stack ->
             stack.editMeta { meta ->
                 if (visual.customModelData > 0) meta.setCustomModelData(visual.customModelData)

@@ -22,13 +22,14 @@ internal data class MineIncidentPlacementReport(
 internal class MineIncidentPlacementDiagnostics(private val index: MineBlockIndex) {
     fun report(runtime: MineRuntime, type: MineIncidentType, required: Int): MineIncidentPlacementReport {
         val needed = required * runtime.rules().targetMultiplier
-        val role = role(type) ?: return MineIncidentPlacementReport(
+        val roles = roles(type) ?: return MineIncidentPlacementReport(
             type, needed, 0, 0, mapOf("in_place_implementation_missing" to 1),
         )
         val rejected = linkedMapOf<String, Int>()
         var usable = 0
-        val candidates = index.targets(runtime.settings.id, role)
-        candidates.forEach { position ->
+        val candidates = roles.flatMap { role -> index.targets(runtime.settings.id, role).map { it to role } }
+            .distinctBy { it.first }
+        candidates.forEach { (position, role) ->
             val reason = issue(runtime, type, role, position)
             if (reason == null) usable++ else rejected[reason] = rejected.getOrDefault(reason, 0) + 1
         }
@@ -45,7 +46,7 @@ internal class MineIncidentPlacementDiagnostics(private val index: MineBlockInde
             !runtime.isIncidentSurface(position)) return "decorative_surface"
         if (type == MineIncidentType.FLOODING) {
             val footprint = runtime.floodFootprint(position)
-            if (footprint.size < 12 || footprint.any { water -> water.blockType() != Material.AIR }) {
+            if (footprint.size !in 20..30 || footprint.any { water -> water.blockType() != Material.AIR }) {
                 return "flood_footprint_blocked"
             }
         }
@@ -56,14 +57,14 @@ internal class MineIncidentPlacementDiagnostics(private val index: MineBlockInde
         return null
     }
 
-    private fun role(type: MineIncidentType): MineAnchorRole? = when (type) {
-        MineIncidentType.GAS_LEAK -> MineAnchorRole.SUPPORT
-        MineIncidentType.FLOODING -> MineAnchorRole.NEST
-        MineIncidentType.POWER_FAILURE -> MineAnchorRole.POWER
-        MineIncidentType.CREATURE_NEST -> MineAnchorRole.NEST
-        MineIncidentType.TRACK_DAMAGE -> MineAnchorRole.RAIL
-        MineIncidentType.CRYSTAL_RESONANCE -> MineAnchorRole.CRYSTAL
-        MineIncidentType.LOST_MINER -> MineAnchorRole.MINER
+    private fun roles(type: MineIncidentType): Set<MineAnchorRole>? = when (type) {
+        MineIncidentType.GAS_LEAK -> setOf(MineAnchorRole.SUPPORT)
+        MineIncidentType.FLOODING -> setOf(MineAnchorRole.SUPPORT, MineAnchorRole.NEST)
+        MineIncidentType.POWER_FAILURE -> setOf(MineAnchorRole.POWER)
+        MineIncidentType.CREATURE_NEST -> setOf(MineAnchorRole.NEST)
+        MineIncidentType.TRACK_DAMAGE -> setOf(MineAnchorRole.RAIL)
+        MineIncidentType.CRYSTAL_RESONANCE -> setOf(MineAnchorRole.CRYSTAL)
+        MineIncidentType.LOST_MINER -> setOf(MineAnchorRole.MINER)
         else -> null
     }
 }

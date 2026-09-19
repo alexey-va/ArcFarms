@@ -54,6 +54,10 @@ internal interface WorksiteBlockDamageHandler {
     fun onBlockDamage(event: BlockDamageEvent): Boolean
 }
 
+internal interface WorksiteBucketFillHandler {
+    fun onBucketFill(event: org.bukkit.event.player.PlayerBucketFillEvent): Boolean
+}
+
 internal interface WorksiteBlockPlaceHandler {
     fun onBlockPlace(event: BlockPlaceEvent): Boolean
 }
@@ -154,6 +158,9 @@ internal class WorksiteModuleRegistry(
 
     fun onBreakLowest(event: BlockBreakEvent): Boolean =
         modulesInOrder.filterIsInstance<WorksiteBlockBreakGuard>().any { it.onBreakLowest(event) }
+
+    fun onBucketFill(event: org.bukkit.event.player.PlayerBucketFillEvent): Boolean =
+        modulesInOrder.filterIsInstance<WorksiteBucketFillHandler>().any { it.onBucketFill(event) }
 
     fun onBlockDamage(event: BlockDamageEvent): Boolean =
         modulesInOrder.filterIsInstance<WorksiteBlockDamageHandler>().any { it.onBlockDamage(event) }

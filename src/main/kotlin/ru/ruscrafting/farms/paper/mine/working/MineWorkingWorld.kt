@@ -46,6 +46,7 @@ internal class MineWorkingWorld(
     fun scene(runtime: MineRuntime): MineWorkingScene? {
         scenes[key(runtime)]?.let { return it }
         val incident = runtime.state.incident ?: return null
+        if (incident.type == MineIncidentType.ORE_WORKSHOP) return null
         val working = incident.working ?: return null
         val placement = working.placement
         val world = runtime.region.world
@@ -109,7 +110,7 @@ internal class MineWorkingWorld(
                 plan.rails.forEachIndexed { index, position ->
                     if (working.stage == MineWorkingStage.TEST_TRACK ||
                         working.stage == MineWorkingStage.LAY_TRACK && index in working.completed) {
-                        changes[position] = if (working.placement.direction % 2 == 0) NORTH_SOUTH_RAIL else EAST_WEST_RAIL
+                        changes[position] = MineWorkingLayout.railData(plan, position)
                     }
                 }
             }
@@ -202,8 +203,6 @@ internal class MineWorkingWorld(
         private const val BLOCK_BUDGET = 256
         private const val RECOVERY_RADIUS = 32
         private const val AIR = "minecraft:air"
-        private const val NORTH_SOUTH_RAIL = "minecraft:rail[shape=north_south,waterlogged=false]"
-        private const val EAST_WEST_RAIL = "minecraft:rail[shape=east_west,waterlogged=false]"
     }
 }
 

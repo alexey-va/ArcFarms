@@ -65,6 +65,9 @@ internal data class MineLostMinerMazeScene(
     private val walkable = records.asSequence()
         .filter { it.y == walkY && it.mazeData == AIR_DATA }
         .mapTo(hashSetOf()) { it.x to it.z }
+    private val air = records.asSequence()
+        .filter { it.mazeData == AIR_DATA || it.mazeData.startsWith("minecraft:lantern[") }
+        .mapTo(hashSetOf()) { Triple(it.x, it.y, it.z) }
     private val pathDistances = distances(target.blockX to target.blockZ)
 
     val ready: Boolean
@@ -74,7 +77,10 @@ internal data class MineLostMinerMazeScene(
         }
 
     fun contains(location: Location): Boolean =
-        location.world === world && location.blockY == walkY && location.blockX to location.blockZ in walkable
+        location.world === world && location.blockY in walkY..(walkY + 1) &&
+            location.blockX to location.blockZ in walkable &&
+            Triple(location.blockX, location.blockY, location.blockZ) in air &&
+            Triple(location.blockX, location.blockY + 1, location.blockZ) in air
 
     fun owns(location: Location): Boolean =
         location.world === world && records.any { it.x == location.blockX && it.y == location.blockY && it.z == location.blockZ }
@@ -245,33 +251,63 @@ internal class MineLostMinerMazeWorld(
         val originX = anchor.x - layout.start.x
         val originZ = anchor.z - layout.start.z
         val baseY = anchor.y
-        if (baseY <= world.minHeight || baseY + 2 >= world.maxHeight) return null
-        val passages = MineLostMinerMazePlanner.translated(layout, start = anchorPoint(layout, anchor))
+        if (baseY <= world.minHeight || baseY + 6 >= world.maxHeight) return null
+        val layoutSeed = seed(runtime, surfaceTarget)
+        val translatedAnchor = anchorPoint(layout, anchor)
+        val chambers = MineLostMinerMazePlanner.chamberCells(layout, layoutSeed).mapTo(hashSetOf()) { point ->
+            MineLostMinerMazePoint(translatedAnchor.x + point.x - layout.start.x, translatedAnchor.z + point.z - layout.start.z)
+        }
         val planned = linkedMapOf<Triple<Int, Int, Int>, Pair<String, MineLostMinerMazeMarker>>()
         val floorMaterial = MaterialRules.material(runtime.settings.baseMaterial)
-        val wallMaterial = MaterialRules.material(runtime.settings.temporaryMaterial)
+        // The rescue scene is temporary, but its wall must read as natural
+        // rock. The configured temporary material used to make a cobble maze.
+        val wallMaterial = Material.DEEPSLATE
         if (!floorMaterial.isSolid || floorMaterial.hasGravity()) return null
         if (!wallMaterial.isSolid || wallMaterial.hasGravity()) return null
         val floorData = floorMaterial.createBlockData().asString
         val wallData = wallMaterial.createBlockData().asString
-        val lightData = Material.OCHRE_FROGLIGHT.createBlockData().asString
-        val passageSet = passages.mapTo(hashSetOf()) { it.x to it.z }
+        val lightData = "minecraft:lantern[hanging=true,waterlogged=false]"
+        val underfloorLightData = Material.OCHRE_FROGLIGHT.createBlockData().asString
+        val postData = "minecraft:stripped_spruce_log[axis=y]"
+        val beamData = "minecraft:stripped_spruce_log[axis=x]"
+        val chamberSet = chambers.mapTo(hashSetOf()) { it.x to it.z }
         val start = MineLostMinerMazePoint(anchor.x, anchor.z)
         val mazeTarget = MineLostMinerMazePoint(
             originX + layout.target.x,
             originZ + layout.target.z,
         )
         for (x in originX until originX + layout.width) for (z in originZ until originZ + layout.height) {
-            val passage = (x to z) in passageSet
-            val litFloor = passage && ((x - originX) * 31 + (z - originZ)) % MAZE_LIGHT_SPACING == 0
-            planned[Triple(x, baseY, z)] = (if (litFloor) lightData else floorData) to MineLostMinerMazeMarker.NONE
+            val passage = (x to z) in chamberSet
+            val lit = passage && ((x - originX) * 31 + (z - originZ)) % MAZE_LIGHT_SPACING == 0
+            val ceiling = MineLostMinerMazePlanner.chamberCeiling(layoutSeed, MineLostMinerMazePoint(x - originX + layout.start.x, z - originZ + layout.start.z))
+            planned[Triple(x, baseY, z)] = floorData to MineLostMinerMazeMarker.NONE
+            if (lit) planned[Triple(x, baseY - 1, z)] = underfloorLightData to MineLostMinerMazeMarker.NONE
             val marker = when (x to z) {
                 start.x to start.z -> MineLostMinerMazeMarker.START
                 mazeTarget.x to mazeTarget.z -> MineLostMinerMazeMarker.TARGET
                 else -> MineLostMinerMazeMarker.NONE
             }
-            planned[Triple(x, baseY + 1, z)] = (if (passage) AIR_DATA else wallData) to marker
-            planned[Triple(x, baseY + 2, z)] = (if (passage) AIR_DATA else wallData) to MineLostMinerMazeMarker.NONE
+            for (up in 1..5) {
+                planned[Triple(x, baseY + up, z)] =
+                    (if (passage && up <= ceiling) AIR_DATA else wallData) to
+                        (if (up == 1) marker else MineLostMinerMazeMarker.NONE)
+            }
+            planned[Triple(x, baseY + ceiling + 1, z)] = wallData to MineLostMinerMazeMarker.NONE
+            if (lit) planned[Triple(x, baseY + ceiling, z)] = lightData to MineLostMinerMazeMarker.NONE
+            if (passage && ((x - originX) * 13 + (z - originZ) * 7) % MAZE_SUPPORT_SPACING == 0) {
+                if ((x - 1 to z) !in chamberSet) for (y in baseY + 1..baseY + ceiling) {
+                    planned[Triple(x - 1, y, z)] = postData to MineLostMinerMazeMarker.NONE
+                }
+                if ((x + 1 to z) !in chamberSet) for (y in baseY + 1..baseY + ceiling) {
+                    planned[Triple(x + 1, y, z)] = postData to MineLostMinerMazeMarker.NONE
+                }
+                for (beamX in x - 1..x + 1) {
+                    if ((beamX to z) !in chamberSet || beamX == x) {
+                        planned[Triple(beamX, baseY + ceiling + 1, z)] = beamData to MineLostMinerMazeMarker.NONE
+                    }
+                }
+                if (lit) planned[Triple(x, baseY + ceiling, z)] = lightData to MineLostMinerMazeMarker.NONE
+            }
         }
         if (planned.size > MAX_SCENE_RECORDS) return null
         if (planned.keys.any { (x, _, z) ->
@@ -289,7 +325,7 @@ internal class MineLostMinerMazeWorld(
             val block = world.getBlockAt(position.first, position.second, position.third)
             MineLostMinerMazeJournalRecord(
                 world.name, runtime.settings.id, runtime.state.sequence,
-                block.x, block.y, block.z, block.blockData.asString, active.first, active.second, planned.size,
+                block.x, block.y, block.z, block.blockData.asString, blockDataDecoder.decode(active.first).asString, active.second, planned.size,
             )
         }
         val walkStart = Location(world, start.x + 0.5, baseY + 1.0, start.z + 0.5)
@@ -521,6 +557,7 @@ internal class MineLostMinerMazeWorld(
         const val MAZE_SALT = 0x4c4f53544d415a45L
         const val MAX_SCENE_RECORDS = 8_192
         const val MAZE_LIGHT_SPACING = 5
+        const val MAZE_SUPPORT_SPACING = 11
         const val AIR_DATA = "minecraft:air"
     }
 }

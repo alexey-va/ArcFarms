@@ -338,14 +338,17 @@ participants contribute to the same progress. Incidents interrupt the work,
 and resolving them resumes the same order. Runtime-owned ore uses the mine's
 configured material mix and a durable block journal for restoration.
 
-Mine incidents use the physical route. `TRACK_DAMAGE` reuses the rail-working
-journey: clear the collapse, replace the missing rail sections, and escort a
-checking minecart along the repaired line. Three additional work orders open a
-temporary side working from a mine floor: `TUNNEL_DRIVE` breaks the rock front
-and installs supports, `RAIL_EXTENSION` clears a collapse, lays a continuous
-line, and tests it with a cart, while `ORE_WORKSHOP` processes three batches
-through crushing, heating, cooling, and shipment at the entrance. Service
-items are temporary work equipment and do not become ordinary loot.
+Mine incidents use the physical route. `TRACK_DAMAGE`, `TUNNEL_DRIVE` and
+`RAIL_EXTENSION` share a temporary side-working entered on foot from a mine
+floor: track damage clears the collapse, replaces missing rail sections and
+escorts a checking minecart; tunnel drive controls a drill cart by right-click
+while the player walks alongside the real rock front, then installs supports;
+rail extension clears a collapse, lays one continuous line from clicked
+markers and tests it with a cart. `ORE_WORKSHOP` is a separate fixed mapped
+station chain with no side-working entrance: carry visible ore to the crusher,
+walk three laps, heat and quench at the furnace, then carry each of three
+billets to shipping. Service items are temporary work equipment and do not
+become ordinary loot.
 
 The source controller, scheduler, component graph, and domain lifecycle are
 wired in the current tree. The release evidence is recorded in
@@ -475,6 +478,14 @@ are available through commands such as `/arcfarms admin point <zone> help`,
   `processing` is the centre of the whole workshop: stand on a clear 9×5
   platform and face its front. ArcFarms validates the footprint and shows its
   outline plus the input, mechanism, and output columns immediately.
+- `/arcfarms admin point <minezone> <ore_input|ore_crusher|ore_furnace|ore_output|ore_shipping|working_1..working_12>` —
+  save the player-feet location and round the facing yaw to a cardinal
+  direction for a mine entrance or fixed workshop station. These locations can
+  be adjusted by administrators inside the mine region.
+- `/arcfarms admin point <minezone> <kind> clear` — remove a mine-point
+  override and let a bundled map point apply again when one is available.
+- `/arcfarms admin points <minezone>` and `/arcfarms admin point <minezone> help` —
+  list effective mine points or show all accepted entrance and station kinds.
 - `/arcfarms admin point <zone> <point> clear` — remove an administrator point
   override and return to the configured or procedural placement.
 - `/arcfarms admin points <zone>` — list the effective configured and overridden

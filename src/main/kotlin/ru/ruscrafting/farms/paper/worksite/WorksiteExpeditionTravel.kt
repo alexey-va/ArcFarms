@@ -43,7 +43,12 @@ internal class WorksiteExpeditionTravel(
     fun isAuthorized(player: Player, destination: Location?): Boolean =
         destination != null && teleports.isAuthorized(player.uniqueId, destination)
 
-    fun enter(request: EntryRequest, stillValid: () -> Boolean) {
+    fun enter(request: EntryRequest, onEntered: () -> Unit = {}, stillValid: () -> Boolean) =
+        enter(request, true, onEntered, stillValid)
+
+    fun enterOnFoot(request: EntryRequest, stillValid: () -> Boolean) = enter(request, false, {}, stillValid)
+
+    private fun enter(request: EntryRequest, teleport: Boolean, onEntered: () -> Unit, stillValid: () -> Boolean) {
         val player = request.player
         if (!validEntry(request) || retains(player) || recoveryInFlight.containsKey(player.uniqueId) || !stillValid()) return
         val record = FarmBurrowReturn(
@@ -66,11 +71,11 @@ internal class WorksiteExpeditionTravel(
                         return@runSync
                     }
                     sessions[player.uniqueId] = record
-                    if (!authorizeTeleport(player, request.destination)) {
+                    if (teleport && !authorizeTeleport(player, request.destination)) {
                         sessions.remove(player.uniqueId, record)
                         failure(record, "entry_teleport_rejected")
                         acknowledge(record)
-                    }
+                    } else onEntered()
                 }
                 if (!entered) {
                     pending.remove(player.uniqueId, record)

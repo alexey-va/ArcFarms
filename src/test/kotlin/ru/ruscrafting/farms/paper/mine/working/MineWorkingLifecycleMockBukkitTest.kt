@@ -155,9 +155,9 @@ class MineWorkingLifecycleMockBukkitTest : FunSpec({
 
         val advance = MineWorkingController::class.java.getDeclaredMethod(
             "advance", MineRuntime::class.java, Player::class.java,
-            Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!,
+            Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, Boolean::class.javaPrimitiveType!!,
         ).also { it.isAccessible = true }
-        advance.invoke(controller, runtime, player, 0, 2)
+        advance.invoke(controller, runtime, player, 0, 2, false)
         controller.transitioning(runtime) shouldBe true
         controller.blocksOreSupply(runtime) shouldBe true
 

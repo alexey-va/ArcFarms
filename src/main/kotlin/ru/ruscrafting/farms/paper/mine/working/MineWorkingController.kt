@@ -37,6 +37,7 @@ internal class MineWorkingController(
 ) {
     private val pendingSaves = mutableSetOf<String>()
     private val retiring = mutableSetOf<String>()
+    private val drillOperators = mutableMapOf<String, UUID>()
 
     fun start(runtime: MineRuntime, type: MineIncidentType, now: Long): Boolean {
         if (transitioning(runtime)) return false
@@ -68,6 +69,16 @@ internal class MineWorkingController(
             state.persistAsync()
         }
         presentation.reconcile(runtime, scene)
+        val operator = drillOperators[runtime.settings.id]?.let(org.bukkit.Bukkit::getPlayer)
+        val drillFace = presentation.drillPosition(runtime, scene)
+        val drilling = working.stage == MineWorkingStage.EXCAVATE && operator != null &&
+            participant(runtime, operator) && drillFace != null && operator.location.distanceSquared(drillFace.location(operator.world)) <= 36.0
+        presentation.animateDrill(runtime, scene, drilling, now)
+        if (drilling && runtime.settings.id !in pendingSaves &&
+            access.allowInteraction("mine-working-drill:${runtime.settings.id}", DRILL_STEP_MILLIS)) {
+            val index = scene.plan.excavation.indices.firstOrNull { it !in working.completed }
+            if (index != null) advance(runtime, operator!!, index, scene.plan.excavation.size, drillSection = true)
+        }
         if (working.stage == MineWorkingStage.HEAT) {
             runtime.region.world.players.filter { scene.inside(it.location) }.forEach { player ->
                 presentation.stageHint(runtime, player, now)?.let(player::sendActionBar)
@@ -84,6 +95,16 @@ internal class MineWorkingController(
         }
     }
 
+    fun canMine(player: Player, block: org.bukkit.block.Block): Boolean {
+        val runtime = registry.at(block.location) ?: return false
+        val working = runtime.state.incident?.working ?: return false
+        if (block.type != Material.COBBLESTONE || working.stage != MineWorkingStage.CLEAR_TRACK || !world.isReady(runtime) || !participant(runtime, player) ||
+            !player.inventory.itemInMainHand.type.name.endsWith("_PICKAXE")) return false
+        val position = WorksitePosition(block.world.name, block.x, block.y, block.z)
+        val target = world.scene(runtime)?.plan?.rubble?.indexOf(position) ?: -1
+        return target >= 0 && target !in working.completed && near(player, position)
+    }
+
     fun onBreak(event: BlockBreakEvent): Boolean {
         val runtime = registry.at(event.block.location) ?: return false
         if (!world.protects(event.block.location)) return false
@@ -94,20 +115,13 @@ internal class MineWorkingController(
         val scene = world.scene(runtime) ?: return true
         if (!participant(runtime, event.player) || !world.isReady(runtime) || runtime.settings.id in pendingSaves) return true
         if (!event.player.inventory.itemInMainHand.type.name.endsWith("_PICKAXE")) return true
+        if (event.block.type != Material.COBBLESTONE) return true
         val targets = when (working.stage) {
-            MineWorkingStage.EXCAVATE -> scene.plan.excavation
             MineWorkingStage.CLEAR_TRACK -> scene.plan.rubble
             else -> return true
         }
         val index = targets.indexOf(WorksitePosition(event.block.world.name, event.block.x, event.block.y, event.block.z))
         if (index < 0 || index in working.completed || !near(event.player, targets[index])) return true
-        if (working.stage == MineWorkingStage.EXCAVATE) {
-            val frontier = targets.indices.firstOrNull { it !in working.completed } ?: return true
-            if (distanceAlong(working.placement, targets[index]) > distanceAlong(working.placement, targets[frontier])) {
-                presentation.feedback(event.player, "next-section")
-                return true
-            }
-        }
         advance(runtime, event.player, index, targets.size)
         return true
     }
@@ -116,7 +130,20 @@ internal class MineWorkingController(
         val block = event.clickedBlock ?: return false
         val runtime = registry.at(block.location) ?: return false
         if (!world.protects(block.location)) return false
-        // No vanilla furnace/container/workbench can export a temporary assembly or its contents.
+        if (event.action == Action.LEFT_CLICK_BLOCK) {
+            val working = runtime.state.incident?.working
+            val scene = world.scene(runtime)
+            val position = WorksitePosition(block.world.name, block.x, block.y, block.z)
+            val target = scene?.plan?.rubble?.indexOf(position) ?: -1
+            if (block.type == Material.COBBLESTONE && working?.stage == MineWorkingStage.CLEAR_TRACK && target >= 0 && target !in working.completed &&
+                participant(runtime, event.player) && world.isReady(runtime) && near(event.player, position) &&
+                event.player.inventory.itemInMainHand.type.name.endsWith("_PICKAXE")) {
+                event.setUseInteractedBlock(org.bukkit.event.Event.Result.ALLOW)
+                event.setUseItemInHand(org.bukkit.event.Event.Result.ALLOW)
+            } else event.isCancelled = true
+            return true
+        }
+        // Right clicks on scene blocks must not open vanilla container inventories.
         event.isCancelled = true
         val scene = world.scene(runtime) ?: return true
         if (event.action != Action.RIGHT_CLICK_BLOCK || event.hand != EquipmentSlot.HAND) return true
@@ -134,7 +161,12 @@ internal class MineWorkingController(
         if (event.hand != EquipmentSlot.HAND) return true
         val runtime = registry.byId(zone) ?: return true
         val scene = world.scene(runtime) ?: return true
-        if (target.id == "entry") {
+        if (target.id == "drill") {
+            if (participant(runtime, event.player) && near(event.player, target.position)) {
+                if (drillOperators[runtime.settings.id] == event.player.uniqueId) drillOperators.remove(runtime.settings.id)
+                else drillOperators[runtime.settings.id] = event.player.uniqueId
+            }
+        } else if (target.id == "entry") {
             if (travel.retains(event.player)) {
                 equipment.clear(runtime, event.player.uniqueId)
                 travel.exit(event.player)
@@ -187,15 +219,25 @@ internal class MineWorkingController(
         }
     }
 
-    private fun advance(runtime: MineRuntime, player: Player, target: Int, required: Int) {
+    private fun advance(runtime: MineRuntime, player: Player, target: Int, required: Int, drillSection: Boolean = false) {
         val incident = runtime.state.incident ?: return
         val working = incident.working ?: return
-        val step = MineWorkingEngine.completeTarget(working, target, required, clock())
+        var step = MineWorkingEngine.completeTarget(working, target, required, clock())
+        var amount = 1
+        if (drillSection && step.accepted && working.stage == MineWorkingStage.EXCAVATE) {
+            val excavation = world.scene(runtime)?.plan?.excavation.orEmpty()
+            val layer = excavation.getOrNull(target)?.let { distanceAlong(working.placement, it) }
+            excavation.indices.filter { it != target && it !in working.completed &&
+                distanceAlong(working.placement, excavation[it]) == layer }.forEach { next ->
+                val accepted = MineWorkingEngine.completeTarget(step.state, next, required, clock())
+                if (accepted.accepted) { step = accepted; amount++ }
+            }
+        }
         if (!step.accepted || !pendingSaves.add(runtime.settings.id)) return
         if (step.finished || step.state.stage != working.stage) equipment.clear(runtime)
         val current = runtime.state.incident ?: run { pendingSaves.remove(runtime.settings.id); return }
         val next = runtime.state.copy(incident = current.copy(working = step.state))
-        incidents.work(runtime, player, state = next)
+        incidents.work(runtime, player, amount = amount, state = next)
         val sequence = runtime.state.sequence
         val nonce = incident.objectiveNonce
         val token = tasks.lifecycleToken()
@@ -221,6 +263,10 @@ internal class MineWorkingController(
     }
 
     fun guardMovement(event: PlayerMoveEvent): Boolean {
+        if (event.player.gameMode == org.bukkit.GameMode.SPECTATOR) {
+            travel.reconcile(event.player, inside = false)
+            return false
+        }
         if (travel.isAuthorized(event.player, event.to)) return false
         val runtime = registry.snapshot().firstOrNull { world.scene(it)?.inside(event.to) == true }
         if (runtime == null) {
@@ -243,8 +289,8 @@ internal class MineWorkingController(
         if (!allowed(runtime, player) || !world.isReady(runtime) || runtime.settings.id in retiring) return
         val sequence = runtime.state.sequence
         val nonce = runtime.state.incident?.objectiveNonce ?: return
-        travel.enter(WorksiteExpeditionTravel.EntryRequest(
-            player, runtime.settings.id, sequence, runtime.settings.permission, scene.surface(), scene.blocks.start.clone(),
+        travel.enterOnFoot(WorksiteExpeditionTravel.EntryRequest(
+            player, runtime.settings.id, sequence, runtime.settings.permission, scene.surface().also { it.yaw = player.location.yaw; it.pitch = player.location.pitch }, player.location.clone(),
         )) { runtime.state.sequence == sequence && runtime.state.incident?.objectiveNonce == nonce &&
             runtime.settings.id !in retiring && world.isReady(runtime) }
     }
@@ -272,6 +318,7 @@ internal class MineWorkingController(
     fun recover(player: Player) = travel.recover(player)
 
     fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
+        drillOperators.entries.removeIf { it.value == player.uniqueId }
         registry.snapshot().filter { it.state.incident?.working != null }.forEach { equipment.clear(it, player.uniqueId) }
         when (reason) {
             WorksitePlayerReleaseReason.QUIT, WorksitePlayerReleaseReason.RELOAD, WorksitePlayerReleaseReason.SHUTDOWN,
@@ -294,6 +341,7 @@ internal class MineWorkingController(
         placement.cancel(runtime.settings.id)
         retiring += runtime.settings.id
         equipment.clear(runtime)
+        drillOperators.remove(runtime.settings.id)
         presentation.cleanup(runtime.settings.id)
         if (!travel.evacuate(runtime.settings.id)) return
         if (world.occupied(runtime)) return
@@ -323,6 +371,7 @@ internal class MineWorkingController(
         placement.clear()
         pendingSaves.clear()
         retiring.clear()
+        drillOperators.clear()
         // Active incident state survives shutdown. Keep its complete journal
         // so startup can resume it; a partial restore would discard originals
         // while the saved incident still expects the whole working.
@@ -357,5 +406,6 @@ internal class MineWorkingController(
         const val INTERACTION_DISTANCE_SQUARED = 25.0
         const val CRUSH_STROKE_MILLIS = 800L
         const val CART_STEP_MILLIS = 700L
+        const val DRILL_STEP_MILLIS = 1_500L
     }
 }

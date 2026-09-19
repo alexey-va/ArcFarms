@@ -25,6 +25,7 @@ internal class MineWorkingPlacementService(
     private val scanner: WorksiteAsyncBlockScanner,
     private val lift: MineLiftAccess?,
     private val state: WorksiteStatePort,
+    private val points: ru.ruscrafting.farms.paper.mine.point.MinePointService? = null,
 ) {
     private data class Search(val sequence: Long, val cursor: Int, val type: MineIncidentType)
     private val pending = mutableMapOf<String, Search>()
@@ -39,21 +40,16 @@ internal class MineWorkingPlacementService(
         if (now < retryAfter.getOrDefault(zone, 0L)) return false
         val world = runtime.region.world
         val floors = lift?.floors().orEmpty().filter { it.exit.world === world }
-        val anchors = index.loadedTargets(zone, MineAnchorRole.NEST).filter { anchor ->
-            floors.isEmpty() || floors.any { abs(it.exit.blockY - 1 - anchor.y) <= 1 }
-        }
         val seed = WorksiteDeterministicSeed.derive(search.sequence, type.name.hashCode().toLong() + search.cursor)
-        val all = WorksitePlacementPlanner.seededOrder(anchors, seed, WorksitePosition::toPlacementPoint)
-        val scanPage = pages[zone]?.takeIf { it.first == search }?.second ?: 0
-        val ordered = page(all, scanPage, MAX_ANCHORS)
-        if (ordered.isEmpty()) {
-            reports[zone] = MineIncidentPlacementReport(type, 1, 0, 0, mapOf("no_loaded_floor_anchors" to 1))
-            return false
+        val authored = points?.workingPlacements(runtime).orEmpty().mapNotNull { (id, point) ->
+            if (point.world != world.name) return@mapNotNull null
+            val floor = floors.minByOrNull { abs(it.exit.y - point.y) }?.id ?: id
+            point.workingPlacement(floor, layoutSeed = seed)
         }
-        // Only coordinates and immutable snapshots cross to the planner worker.
-        val candidates = ordered.flatMap { anchor ->
-            val floor = floors.minByOrNull { abs(it.exit.blockY - 1 - anchor.y) }?.id ?: "${anchor.y + 1}"
-            (0..3).map { offset -> MineWorkingPlacement(anchor, ((seed and 3).toInt() + offset) % 4, floor) }
+        val candidates = WorksitePlacementPlanner.seededOrder(authored, seed) { it.entrance.toPlacementPoint() }
+        if (candidates.isEmpty()) {
+            reports[zone] = MineIncidentPlacementReport(type, 1, 0, 0, mapOf("working_points_missing" to 1))
+            return false
         }
         val bounds = runtime.region.bounds
         val exits = floors.map { WorksitePosition(world.name, it.exit.blockX, it.exit.blockY, it.exit.blockZ) }
@@ -68,7 +64,6 @@ internal class MineWorkingPlacementService(
             } }
         }.distinct()
         pending[zone] = search
-        pages[zone] = search to (scanPage + 1)
         fun current() = pending[zone] == search && runtime.state.sequence == search.sequence &&
             runtime.state.incidentCursor == search.cursor && runtime.state.incident == null &&
             runtime.state.phase in setOf(MinePhase.PROSPECTING, MinePhase.MINING, MinePhase.LOADING, MinePhase.EXTRACTION)

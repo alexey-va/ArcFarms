@@ -15,11 +15,20 @@ internal fun WorksitePosition.blockType(): Material? = Bukkit.getWorld(world)
     ?.getBlockAt(x, y, z)
     ?.type
 
-/** A bounded water plume that follows the actual walkable stone floor instead of assuming a square room. */
-internal fun MineRuntime.floodFootprint(anchor: WorksitePosition, limit: Int = 24): List<WorksitePosition> {
+/** A bounded lake that starts at an exposed wall breach and follows the actual walkable stone floor. */
+internal fun MineRuntime.floodFootprint(anchor: WorksitePosition, limit: Int = 30): List<WorksitePosition> {
     require(limit in 1..64) { "Flood footprint limit is invalid" }
     val world = Bukkit.getWorld(anchor.world) ?: return emptyList()
-    val origin = anchor.copy(y = anchor.y + 1)
+    // Prefer an exposed horizontal wall opening. Floor anchors remain a compatibility fallback
+    // for old indexes, where the opening is the air block directly above the indexed floor.
+    val origin = listOf(BlockFace.NORTH, BlockFace.EAST, BlockFace.SOUTH, BlockFace.WEST)
+        .map { face -> anchor.copy(x = anchor.x + face.modX, z = anchor.z + face.modZ) }
+        .firstOrNull { opening ->
+            world.isChunkLoaded(opening.x shr 4, opening.z shr 4) &&
+                world.getBlockAt(opening.x, opening.y, opening.z).type in setOf(Material.AIR, Material.WATER) &&
+                isIncidentSurface(opening.copy(y = opening.y - 1))
+        }
+        ?: anchor.copy(y = anchor.y + 1)
     val queue = ArrayDeque<WorksitePosition>().apply { add(origin) }
     val visited = linkedSetOf<WorksitePosition>()
     val result = mutableListOf<WorksitePosition>()

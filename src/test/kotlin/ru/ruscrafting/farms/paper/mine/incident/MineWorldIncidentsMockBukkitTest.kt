@@ -19,6 +19,7 @@ import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.EquipmentSlot
 import ru.arc.paper.testing.MockBukkitTestRuntime
+import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
@@ -53,15 +54,16 @@ class MineWorldIncidentsMockBukkitTest : FunSpec({
         index(graph, runtime, floors.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.NEST)) })
         graph.flooding.start(runtime, required = 2, now = 1_000L) shouldBe true
         val initial = graph.flooding.waterPositions(runtime)
-        (initial.size >= 24) shouldBe true
+        (initial.size in 20..30) shouldBe true
         initial.all { position -> world.getBlockAt(position.x, position.y - 1, position.z).type == Material.STONE } shouldBe true
         initial.map { position -> (world.getBlockAt(position.x, position.y, position.z).blockData as Levelled).level }
-            .let { levels -> (0 in levels && levels.any { it > 0 }) shouldBe true }
+            .let { levels -> levels.all { it == 0 } shouldBe true }
         graph.module.tick(31_000L)
         graph.flooding.waterPositions(runtime) shouldContainExactlyInAnyOrder initial
 
         val persisted = runtime.state
-        val restarted = worldGraph(paper, journal, items, "FloodB", persisted)
+        val restartedPort = immediateMinePort()
+        val restarted = worldGraph(paper, journal, items, "FloodB", persisted, restartedPort)
         val restartedRuntime = restarted.registry.byId("old_shafts")!!
         index(restarted, restartedRuntime, floors.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.NEST)) })
         restarted.flooding.waterPositions(restartedRuntime) shouldContainExactlyInAnyOrder initial
@@ -69,64 +71,85 @@ class MineWorldIncidentsMockBukkitTest : FunSpec({
         val player = paper.server.addPlayer("PumpOperator")
         restarted.incidentSet.tick(restartedRuntime, 1_001L, emptyList())
         val target = restartedRuntime.state.objective!!.targets.single()
-        val targetFootprint = restartedRuntime.floodFootprint(target.position).toSet()
-        val water = world.getBlockAt(
-            targetFootprint.first().x,
-            targetFootprint.first().y,
-            targetFootprint.first().z,
-        )
         val feedback = mockk<Player>(relaxed = true)
         every { feedback.uniqueId } returns player.uniqueId
         every { feedback.location } returns player.location
-        restarted.flooding.onInteract(
-            PlayerInteractEvent(
-                feedback, Action.RIGHT_CLICK_BLOCK, ItemStack(Material.AIR),
-                water, BlockFace.UP, EquipmentSlot.HAND,
-            ),
-        ) shouldBe true
+        val beforeScoops = restarted.flooding.waterPositions(restartedRuntime).toSet()
+        val first = beforeScoops.first()
+        val guest = paper.server.addPlayer("FloodUnauthorized")
+        every { restartedPort.hasAccess(guest, any()) } returns false
+        val water = world.getBlockAt(first.x, first.y, first.z)
+        guest.teleport(water.location.clone().add(.5, 1.0, .5))
+        guest.inventory.setItemInMainHand(ItemStack(Material.BUCKET))
+        val denied = org.bukkit.event.player.PlayerBucketFillEvent(guest, water, water, BlockFace.UP,
+            Material.BUCKET, ItemStack(Material.WATER_BUCKET), EquipmentSlot.HAND)
+        restarted.incidentSet.onBucketFill(denied) shouldBe true
+        denied.isCancelled shouldBe true
+        restarted.flooding.waterPositions(restartedRuntime).toSet() shouldBe beforeScoops
+        val firstEvent = PlayerInteractEvent(
+            feedback, Action.RIGHT_CLICK_BLOCK, ItemStack(Material.BUCKET),
+            world.getBlockAt(first.x, first.y, first.z), BlockFace.UP, EquipmentSlot.HAND,
+        )
+        restarted.flooding.onInteract(firstEvent) shouldBe true
+        firstEvent.item!!.type shouldBe Material.BUCKET
         items.toolIssues shouldBe 0
         verify(exactly = 1) { feedback.playSound(any<Location>(), Sound.BLOCK_WATER_AMBIENT, 0.75f, 1.15f) }
+        restartedRuntime.state.phase shouldBe MinePhase.INCIDENT
+        restarted.flooding.waterPositions(restartedRuntime).size shouldBe beforeScoops.size - 1
+        while (restartedRuntime.state.phase == MinePhase.INCIDENT) {
+            val next = restarted.flooding.waterPositions(restartedRuntime).first()
+            val water = world.getBlockAt(next.x, next.y, next.z)
+            player.teleport(water.location.clone().add(.5, 1.0, .5))
+            player.inventory.setItemInMainHand(ItemStack(Material.BUCKET))
+            val scoop = org.bukkit.event.player.PlayerBucketFillEvent(player, water, water, BlockFace.UP,
+                Material.BUCKET, ItemStack(Material.WATER_BUCKET), EquipmentSlot.HAND)
+            val before = restarted.flooding.waterPositions(restartedRuntime).size
+            restarted.incidentSet.onBucketFill(scoop) shouldBe true
+            scoop.isCancelled shouldBe true
+            player.inventory.itemInMainHand.type shouldBe Material.BUCKET
+            restarted.flooding.waterPositions(restartedRuntime).size shouldBe before - 1
+        }
         restartedRuntime.state.phase shouldBe MinePhase.MINING
         initial.all { world.getBlockAt(it.x, it.y, it.z).type == Material.AIR } shouldBe true
     }
 
-    test("power switches accept any remaining target and restore temporary lights") {
+    test("power failure is unavailable and an old active scene is retired with its lights") {
         val world = paper.server.addSimpleWorld("world")
-        val player = paper.server.addPlayer("Electrician")
         val switches = (1..5).map { x -> world.getBlockAt(x, 64, 5).also { it.type = Material.STONE } }
         val graph = worldGraph(paper, ImmediateMineJournal(), WorldIncidentItems(), "Power")
         val runtime = graph.registry.byId("old_shafts")!!
         index(graph, runtime, switches.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.POWER)) })
-
+        graph.admin.forceIncident("old_shafts", MineIncidentType.POWER_FAILURE, 1_000L) shouldBe false
+        // Reconstruct a persisted scene created by the previous version.
         graph.powerFailure.start(runtime, required = 2, now = 1_000L) shouldBe true
-        graph.incidentSet.tick(runtime, 1_001L, emptyList())
-        val targets = runtime.state.objective!!.targets
         val lights = graph.powerFailure.lightPositions(runtime)
-        lights.size shouldBe 4
-        val powerFeedback = mockk<Player>(relaxed = true)
-        every { powerFeedback.uniqueId } returns player.uniqueId
-        every { powerFeedback.location } returns player.location
-        graph.incidentSet.onInteractEntity(
-            PlayerInteractEntityEvent(
-                powerFeedback,
-                objectiveHitbox(graph, world, MineIncidentEntityKind.POWER_MARKER_HITBOX, targets[1].id),
-                EquipmentSlot.HAND,
-            ),
-        ) shouldBe true
-        verify(exactly = 1) { powerFeedback.playSound(any<Location>(), Sound.BLOCK_LEVER_CLICK, 0.75f, 1.0f) }
-        runtime.state.incident!!.progress shouldBe 1
-        listOf(targets[0]).forEach { target ->
-            val event = PlayerInteractEntityEvent(
-                player,
-                objectiveHitbox(graph, world, MineIncidentEntityKind.POWER_MARKER_HITBOX, target.id),
-                EquipmentSlot.HAND,
-            )
-            graph.incidentSet.onInteractEntity(event) shouldBe true
-            event.isCancelled shouldBe true
-        }
+        graph.incidentSet.tick(runtime, 1_001L, emptyList())
         runtime.state.phase shouldBe MinePhase.MINING
         lights.all { world.getBlockAt(it.x, it.y, it.z).type == Material.AIR } shouldBe true
     }
+
+    test("saved working from the old geometry is retired before a new scene is projected") {
+        val world = paper.server.addSimpleWorld("world")
+        val graph = worldGraph(paper, ImmediateMineJournal(), WorldIncidentItems(), "LegacyWorking")
+        val runtime = graph.registry.byId("old_shafts")!!
+        val original = runtime.state
+        val placement = ru.ruscrafting.farms.domain.MineWorkingPlacement(
+            WorksitePosition(world.name, 5, 63, 5), 0, "legacy-floor", geometryVersion = 0,
+        )
+        runtime.state = original.copy(
+            phase = MinePhase.INCIDENT,
+            resumePhase = MinePhase.MINING,
+            incident = ru.ruscrafting.farms.domain.MineIncidentState(
+                MineIncidentType.TUNNEL_DRIVE, required = 93, startedAt = 1_000L,
+                working = ru.ruscrafting.farms.domain.MineWorkingEngine.initial(MineIncidentType.TUNNEL_DRIVE, placement),
+            ),
+        )
+        graph.incidentSet.reconcileRecovery()
+        runtime.state.phase shouldBe MinePhase.MINING
+        runtime.state.incident shouldBe null
+        world.getBlockAt(5, 64, 5).type shouldBe Material.AIR
+    }
+
 })
 
 private fun worldGraph(
@@ -135,8 +158,9 @@ private fun worldGraph(
     items: WorldIncidentItems,
     name: String,
     state: MineShiftState = MineShiftState(engineVersion = 2, phase = MinePhase.MINING, sequence = 1, orderId = "ore_run"),
+    port: ru.ruscrafting.farms.paper.WorksiteRuntimePort = immediateMinePort(),
 ): MineComponentGraph = testMineComponentGraph(
-    paper.createSimplePlugin("MineWorld$name"), CuboidRegionGateway(), immediateMinePort(),
+    paper.createSimplePlugin("MineWorld$name"), CuboidRegionGateway(), port,
     clock = { 1_000L }, journal = journal, serviceItems = items,
 ).also { it.module.rebuild(listOf(mineV2Settings()), mapOf("old_shafts" to state), 5_000L) }
 

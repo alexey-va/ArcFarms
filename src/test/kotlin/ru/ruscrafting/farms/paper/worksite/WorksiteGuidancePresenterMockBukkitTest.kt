@@ -131,6 +131,24 @@ class WorksiteGuidancePresenterMockBukkitTest : FunSpec({
         verify(exactly = 2) { audience.showScreenTitle(player, any<Component>(), any<Component>()) }
     }
 
+    test("incident announcement is not overwritten by HUD titles on entry progress or reminders") {
+        val audience = mockk<WorksiteAudiencePort>(relaxed = true)
+        val access = mockk<WorksiteAccessPort>()
+        every { access.isAdminEditing(player) } returns false
+        var view = basicView().copy(screenTitles = false)
+        val source = object : WorksiteGuidanceSource {
+            override fun participants() = listOf(player)
+            override fun view(playerId: UUID) = view
+        }
+        val presenter = WorksiteGuidancePresenter(audience, access, source)
+        presenter.updateHud(1_000L)
+        view = view.copy(progressVersion = 2, subtitle = Component.text("Next physical action"))
+        presenter.updateHud(2_000L)
+        presenter.updateHud(120_000L)
+        verify(exactly = 0) { audience.showScreenTitle(player, any<Component>(), any<Component>()) }
+        verify(exactly = 3) { audience.updateSidebar(player, any(), any(), any()) }
+    }
+
     test("release forgets the session and removes every player worksite bar") {
         val audience = mockk<WorksiteAudiencePort>(relaxed = true)
         val access = mockk<WorksiteAccessPort>()

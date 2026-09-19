@@ -26,6 +26,7 @@ internal class MineIncidentScheduler(
     private val workings: ru.ruscrafting.farms.paper.mine.working.MineWorkingController,
     private val diagnostics: MineIncidentPlacementDiagnostics,
     private val state: WorksiteStatePort,
+    private val workshop: ru.ruscrafting.farms.paper.mine.workshop.MineOreWorkshopController,
 ) {
     private val retryAfter = mutableMapOf<String, Long>()
     private val diagnosed = mutableSetOf<String>()
@@ -33,6 +34,11 @@ internal class MineIncidentScheduler(
     fun tick(runtime: MineRuntime, now: Long, onlineParticipants: Int): Boolean {
         if (onlineParticipants <= 0 || runtime.state.phase == MinePhase.INCIDENT) return false
         val type = runtime.state.incidentSchedule.getOrNull(runtime.state.incidentCursor) ?: return false
+        if (type == MineIncidentType.POWER_FAILURE) {
+            runtime.state = runtime.state.copy(incidentCursor = runtime.state.incidentCursor + 1)
+            state.persistAsync()
+            return false
+        }
         if (runtime.settings.miningOnly) {
             if (runtime.state.phase !in setOf(MinePhase.MINING, MinePhase.EXTRACTION) ||
                 runtime.state.mined < threshold(runtime.rules().miningQuota, runtime.state.incidentCursor,
@@ -62,9 +68,11 @@ internal class MineIncidentScheduler(
             MineIncidentType.TRACK_DAMAGE -> workings.start(runtime, type, now)
             MineIncidentType.CRYSTAL_RESONANCE -> crystal.start(runtime, 2, now)
             MineIncidentType.CREATURE_NEST -> creatures.start(runtime, 3, now)
-            MineIncidentType.POWER_FAILURE -> power.start(runtime, 2, now)
+            MineIncidentType.POWER_FAILURE -> false
             MineIncidentType.LOST_MINER -> lostMiner.start(runtime, now)
-            MineIncidentType.TUNNEL_DRIVE, MineIncidentType.RAIL_EXTENSION, MineIncidentType.ORE_WORKSHOP -> workings.start(runtime, type, now)
+            MineIncidentType.TUNNEL_DRIVE, MineIncidentType.RAIL_EXTENSION -> workings.start(runtime, type, now)
+            MineIncidentType.ORE_WORKSHOP -> workshop.start(runtime, ru.ruscrafting.farms.domain.MineWorkingEngine.BATCHES *
+                (ru.ruscrafting.farms.domain.MineWorkingEngine.CRUSH_STROKES + 3))
         }
         if (started) {
             diagnosed.remove(key)
@@ -81,6 +89,8 @@ internal class MineIncidentScheduler(
         return when {
             blocker != null -> MineIncidentPlacementReport(type, required(type), 0, 0, mapOf(blocker to 1))
             type == MineIncidentType.CAVE_IN -> caveIn.diagnostics(runtime)
+            type == MineIncidentType.ORE_WORKSHOP -> if (workshop.configured(runtime)) MineIncidentPlacementReport(type, 1, 1, 1, emptyMap())
+                else MineIncidentPlacementReport(type, 1, 0, 0, mapOf("workshop_points_missing" to 1))
             ru.ruscrafting.farms.domain.MineWorkingEngine.supports(type) -> workings.diagnostics(runtime, type)
             else -> diagnostics.report(runtime, type, required(type))
         }
@@ -124,7 +134,6 @@ internal class MineIncidentScheduler(
             MineIncidentType.TRACK_DAMAGE,
             MineIncidentType.CRYSTAL_RESONANCE,
             MineIncidentType.CREATURE_NEST,
-            MineIncidentType.POWER_FAILURE,
             MineIncidentType.LOST_MINER,
             MineIncidentType.TUNNEL_DRIVE, MineIncidentType.RAIL_EXTENSION, MineIncidentType.ORE_WORKSHOP,
         )
