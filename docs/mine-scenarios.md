@@ -12,10 +12,32 @@ been removed.
   has an incident owner with focused MockBukkit or domain coverage.
 - **Controller source and component wiring** means the working controller,
   presentation, equipment, placement service, scheduler, and component-graph
-  route exist in source. Live placement, restart recovery on the active server,
-  activation, and real-client interaction are unverified.
+  route exist in source. Live placement, restart recovery of an active event,
+  and real-client interaction are unverified.
 - Source/config evidence does not prove delivery, activation, or a successful
   player journey on `classic`; those remain separate checks.
+
+### Delivery on 2026-09-19
+
+- ArcFarms `0.40.37` was packaged from source commit `98afc87`; the configuration
+  and locale cutoff is ops commit `2a3272b3b`.
+- All 48 tests selected by `./scripts/test-mine-workings` passed. The complete
+  test suite and live gameplay automation were not run.
+- The canonical Minecraft 1.21.11 preview passed route and visual checks:
+  14 route cells, no blocked steps, and estimated minimum block light 10.
+  Placement feasibility uses the saved 2026-09-14 mine capture and is not a
+  fresh player journey.
+- Configuration transaction `deploy-20260919T180755Z-75252` applied exactly
+  `config.yml`, `lang/ru.yml`, and `lang/en.yml` to `classic`.
+- JAR transaction `jar-20260919T180823Z-75512` restarted `classic`, verified
+  readiness and the active artifact, and retired `ArcFarms-0.40.36.jar` into
+  its rollback backup. The plugin API reports `ArcFarms 0.40.37`, enabled.
+- Artifact SHA-256:
+  `d08a8b7808f2b45c66fd6280b04ba1a4b9c36fd95d961c9e6939fe1467477091`.
+
+The new event journeys have not yet been completed with a real Minecraft
+client. In particular, production interaction, progress recovery during an
+active working, and player-visible lighting remain separate gameplay checks.
 
 ## Existing incidents
 
@@ -47,7 +69,7 @@ The domain contract is in `domain/MineWorking.kt`, with regression coverage in
 `MineWorkingEngineTest`. `MineWorkingController`, `MineWorkingWorld`,
 `MineWorkingPresentation`, `MineWorkingEquipment`, the placement service, the
 scheduler, and the component graph own the source-level journey. Live world
-placement, delivery, restart recovery, activation, and client interaction are
+placement, restart recovery during an active working, and client interaction are
 **unverified**.
 
 | ID | Lifecycle | Service-only materials | Evidence |

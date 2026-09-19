@@ -332,12 +332,11 @@ Logs still drop normally, and processing does not consume inventory items.
 
 ### Mine expedition
 
-Each configured mine is a route with its own block mix. Mining fills a shared
-cart and triggers one instability phase. Players stabilize the face by
-sneak-right-clicking a block with a pickaxe. Once the cart is full, a player
-delivers it by leaving the mine. Broken
-mine blocks are durably journaled before replacement and regenerate from the
-configured weighted material table.
+Mine v2 advances a shared resource order through prospecting, mining, and
+loading. Each order specifies the requested resources and their quotas;
+participants contribute to the same progress. Incidents interrupt the work,
+and resolving them resumes the same order. Runtime-owned ore uses the mine's
+configured material mix and a durable block journal for restoration.
 
 Mine incidents use the physical route. `TRACK_DAMAGE` reuses the rail-working
 journey: clear the collapse, replace the missing rail sections, and escort a
@@ -349,9 +348,10 @@ through crushing, heating, cooling, and shipment at the entrance. Service
 items are temporary work equipment and do not become ordinary loot.
 
 The source controller, scheduler, component graph, and domain lifecycle are
-wired in the current tree. World placement, restart recovery on the active
-server, activation, and real-client interaction still require deployment and
-live QA evidence.
+wired in the current tree. The release evidence is recorded in
+[`docs/mine-scenarios.md`](docs/mine-scenarios.md). World placement, recovery of
+an active event on the server, and real-client interaction still need gameplay
+QA; activation alone does not prove those journeys.
 
 `TORNADO` is a complication during `HARVESTING`: the crop order, progress,
 contributions and harvest guidance continue normally. It consumes one scheduled
