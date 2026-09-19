@@ -31,17 +31,28 @@ jobs:
       TEST_TIMEOUT: "90000"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Check out ARC runtime
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: alexey-va/ARC
+          ref: 4de993eec87a25329bb1fe2c25ba9f1d0d39719a
+          path: e2e-arc
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: "25"
       - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+      - name: Build ARC runtime
+        working-directory: e2e-arc
+        run: ./gradlew --no-daemon shadowJar
       - name: Run ArcFarms on real Paper
         shell: bash
         run: |
           set -o pipefail
           mkdir -p build
-          ./gradlew --no-daemon plugwrightTest 2>&1 | tee build/plugwright-e2e.log
+          arc_jar="$(find "$GITHUB_WORKSPACE/e2e-arc/build/libs" -maxdepth 1 -type f -name 'ARC-*.jar' ! -name '*-plain.jar' -print -quit)"
+          test -n "$arc_jar"
+          ./gradlew --no-daemon plugwrightTest -Pe2eArcJar="$arc_jar" 2>&1 | tee build/plugwright-e2e.log
           git diff --exit-code -- src/test/e2e/package-lock.json
       - name: Upload Paper logs
         if: always()

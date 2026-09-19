@@ -114,6 +114,11 @@ tasks {
     check { dependsOn(shadowJar, "integrationTest") }
 }
 
+// Real Paper tests need the shared ARC plugin, not only its compile-time API.
+// CI supplies a matching ARC shadow jar; local unit/integration tasks remain
+// independent of an ARC checkout.
+val e2eArcJar = providers.gradleProperty("e2eArcJar").map { file(it) }
+
 // Real Paper coverage, with a one-bed order and a short mounted delivery route.
 plugwright {
     minecraftVersion.set("1.21.11")
@@ -124,6 +129,7 @@ plugwright {
     acceptEula.set(true)
     jvmArgs.set(listOf("-Xms512M", "-Xmx2G", "-XX:ActiveProcessorCount=2"))
     writeFiles {
+        e2eArcJar.orNull?.let { file("plugins/ARC.jar", it) }
         file("server.properties", projectDir.resolve("src/test/e2e/fixtures/server.properties"))
         file("plugins/ArcFarms/data/farm-routes.json", projectDir.resolve("src/test/e2e/fixtures/farm-routes.json"))
         file("plugins/ArcFarms/data/farm-locations.json", projectDir.resolve("src/test/e2e/fixtures/farm-locations.json"))
