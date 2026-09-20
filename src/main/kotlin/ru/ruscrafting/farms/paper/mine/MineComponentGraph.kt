@@ -65,14 +65,15 @@ internal class MineComponentGraph(
     internal val lift: MineLiftAccess? = null,
     private val points: ru.ruscrafting.farms.paper.mine.point.MinePointService? = null,
     private val tickets: MineChunkTicket = MineChunkTicketRegistry(plugin),
+    creatureNavigation: ru.ruscrafting.farms.paper.mine.incident.creature.MineCreatureNavigation = ru.ruscrafting.farms.paper.mine.incident.creature.PaperMineCreatureNavigation,
     blockDataDecoder: ru.ruscrafting.farms.paper.platform.FarmBlockDataDecoder = ru.ruscrafting.farms.paper.platform.PaperFarmBlockDataDecoder,
 ) {
     internal val registry = MineRuntimeRegistry()
     val recovery = MineBlockRecoveryController(journal, ports.access, ports.state, ports.tasks, clock)
     val index = MineBlockIndex(plugin)
-    private val transitions = MineTransitionCoordinator(ports.state, ports.stats, ports.audience, locale)
-    private val incidents = MineIncidentCoordinator(transitions, ports.state)
     private val incidentJournal = MineIncidentBlockJournal(recovery)
+    private val transitions = MineTransitionCoordinator(ports.state, ports.stats, ports.audience, locale, incidentJournal)
+    private val incidents = MineIncidentCoordinator(transitions, ports.state)
     private val blockScanner = WorksiteAsyncBlockScanner(ports.tasks)
     val caveIn = MineCaveInIncident(
         registry, index, incidents, incidentJournal, recovery, ports.audience, ports.state, blockScanner, lift, incidentEntityEffects,
@@ -89,7 +90,8 @@ internal class MineComponentGraph(
     val loading = MineLoadingController(
         registry, index, extraction, transitions, serviceItems, locale, ports.access, ports.audience, ports.state, clock,
     )
-    val creatureNest = MineCreatureNestIncident(registry, index, incidents, incidentEntityEffects, ports.access, locale)
+    val creatureNest = MineCreatureNestIncident(registry, index, incidents, incidentEntityEffects, ports.access, locale,
+        ru.ruscrafting.farms.paper.mine.incident.creature.MineCreaturePests(incidentJournal, creatureNavigation, lift))
     private val lostMinerMaze = MineLostMinerMazeWorld(
         plugin,
         debug,
@@ -173,7 +175,7 @@ internal class MineComponentGraph(
         { runtime, player -> if (runtime.state.incident?.type?.let(ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionEngine::supports) == true)
             expeditions.guidanceTargets(runtime, player) else if (runtime.state.incident?.type == ru.ruscrafting.farms.domain.MineIncidentType.ORE_WORKSHOP)
             workshop.guidanceTargets(runtime, player) else workings.guidanceTargets(runtime, player) },
-        expeditions::participants, expeditions::runtimeFor,
+        expeditions::participants, expeditions::runtimeFor, ru.ruscrafting.farms.paper.mine.presentation.MineOrderOreGuidance(index),
     )
     private val guidancePresenter = WorksiteGuidancePresenter(ports.audience, ports.access, guidance)
     val prospecting = MineProspectingController(

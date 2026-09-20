@@ -351,6 +351,15 @@ billets to shipping. Service items are temporary work equipment and do not
 become ordinary loot.
 
 Three off-site expeditions open through the glowing `expedition_gate` point.
+One location of each kind is prepared ahead of time and retained across restarts.
+Use `/arcfarms admin expeditions status` to inspect the stock, or
+`/arcfarms admin expeditions rebuild [all|last_descent|drilling_ark|dead_factory]`
+to replace unused locations. Claiming a scene replenishes its reserve in the background.
+
+Creature nests stay inside the walkable ring. Their glowing creatures pursue players
+on the same floor, including creative players, and temporarily chew through nearby
+rock and ore. Their bounded damage is journaled and produces no drops. Ordinary
+ore orders mark the four nearest exposed, still-needed ores with bright particles.
 **The Last Descent** takes a broad, open-front lift into a geological shaft,
 with counterweight cranks, carried power cells and a deep engine. **Drilling
 Ark** sends a tracked machine through branching caves: load fuel, clear its

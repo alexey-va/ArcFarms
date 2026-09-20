@@ -203,6 +203,10 @@ internal class PaperWorksiteAdapter(
         player.spawnParticle(Particle.DUST, location, 1, 0.0, 0.0, 0.0, 0.0, Particle.DustOptions(color, size))
     }
 
+    override fun spawnGuidanceSpark(player: Player, location: Location) {
+        player.spawnParticle(Particle.END_ROD, location, 1, 0.06, 0.06, 0.06, 0.002)
+    }
+
     override fun warningBurst(region: ActivityRegion) {
         if (!settings().particles) return
         players(region).forEach { player ->

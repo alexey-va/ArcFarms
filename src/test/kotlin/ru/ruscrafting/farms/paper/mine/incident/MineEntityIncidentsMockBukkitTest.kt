@@ -53,7 +53,7 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
     test("creature incident requires both farm-style glowing nests and their creatures") {
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("Guard")
-        val floors = (1..6).map { x -> world.getBlockAt(x, 63, 2).also { it.type = Material.STONE } }
+        val floors = (1..18).flatMap { x -> (1..8).map { z -> world.getBlockAt(x, 63, z).also { it.type = Material.STONE } } }
         val decoration = world.getBlockAt(8, 63, 2).also { it.type = Material.OAK_PLANKS }
         val effects = RecordingIncidentEntities()
         val graph = entityGraph(paper, effects, "Creatures")
@@ -91,7 +91,7 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
 
     test("admin force switches the active mine incident and clears its scene like the farm") {
         val world = paper.server.addSimpleWorld("world")
-        val floors = (1..6).map { x -> world.getBlockAt(x, 63, 2).also { it.type = Material.STONE } }
+        val floors = (1..18).flatMap { x -> (1..8).map { z -> world.getBlockAt(x, 63, z).also { it.type = Material.STONE } } }
         val effects = RecordingIncidentEntities()
         val graph = entityGraph(paper, effects, "AdminSwitch")
         val runtime = graph.registry.byId("old_shafts")!!

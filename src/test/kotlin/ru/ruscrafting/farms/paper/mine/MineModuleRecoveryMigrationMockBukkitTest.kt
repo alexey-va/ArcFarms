@@ -38,6 +38,54 @@ class MineModuleRecoveryMigrationMockBukkitTest : FunSpec({
     beforeEach { paper = MockBukkitTestRuntime.open() }
     afterEach { paper.close() }
 
+    test("incident replay waits for the journal commit callback before changing a block") {
+        val world = paper.server.addSimpleWorld("world")
+        world.getChunkAt(0, 0)
+        for ((ordinal, material) in listOf(Material.COBBLESTONE, Material.WATER).withIndex()) {
+            val block = world.getBlockAt(2 + ordinal, 64, 2)
+            val stored = ImmediateMineJournal()
+            val committed = CompletableFuture<Unit>()
+            val journal = object : MineRecoveryJournal by stored {
+                override fun prepareAll(records: List<PendingMineBlock>): CompletableFuture<Unit> {
+                    records.forEach(stored::prepare)
+                    return committed
+                }
+            }
+            val port = immediateMinePort()
+            val recovery = MineBlockRecoveryController(journal, port, port, port) { 1_000L }
+            val record = PendingMineBlock("mine-incident:old_shafts:1:cave_in:1:$ordinal", "old_shafts", world.name,
+                block.x, block.y, block.z, "AIR", material.name, "AIR", Long.MAX_VALUE)
+            val preparing = recovery.prepareAll(listOf(ru.ruscrafting.farms.paper.mine.recovery.MineBlockMutation(
+                record, block, Material.AIR, mutation = { block.type = material })))
+            recovery.ensureTemporaryResult(WorksitePosition(world.name, block.x, block.y, block.z), material) shouldBe MineTemporaryEnsureResult.PENDING
+            block.type shouldBe Material.AIR
+            committed.complete(Unit)
+            preparing.join() shouldBe true
+            block.type shouldBe material
+            stored.records().single() shouldBe record
+            recovery.requestRestore(record)
+            block.type shouldBe Material.AIR
+            stored.records() shouldBe emptyList()
+        }
+    }
+
+    test("retired incident in an unloaded world remains due after unrelated journal changes") {
+        val record = PendingMineBlock("mine-incident:old_shafts:1:flooding:7:0", "old_shafts", "later_world",
+            2, 64, 2, "AIR", "WATER", "AIR", Long.MAX_VALUE)
+        val stored = ImmediateMineJournal(record)
+        val port = immediateMinePort()
+        val recovery = MineBlockRecoveryController(stored, port, port, port) { 1_000L }
+        recovery.requestRestore(record)
+        stored.prepare(record.copy(id = "another", x = 3))
+        recovery.processDue(1_000L)
+        val world = paper.server.addSimpleWorld("later_world")
+        world.getChunkAt(0, 0).load()
+        val block = world.getBlockAt(2, 64, 2).also { it.type = Material.WATER }
+        recovery.processDue(2_000L)
+        block.type shouldBe Material.AIR
+        stored.records().map { it.id } shouldBe listOf("another")
+    }
+
     test("activation reindexes a persisted active mining-only map") {
         val world = paper.server.addSimpleWorld("world")
         world.getChunkAt(0, 0).load()

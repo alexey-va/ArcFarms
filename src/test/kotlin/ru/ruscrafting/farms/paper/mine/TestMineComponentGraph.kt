@@ -50,5 +50,11 @@ internal fun testMineComponentGraph(
         override fun retain(chunk: org.bukkit.Chunk): Boolean = true
         override fun release(chunk: org.bukkit.Chunk) = Unit
     },
+    creatureNavigation = object : ru.ruscrafting.farms.paper.mine.incident.creature.MineCreatureNavigation {
+        // MockBukkit has no native pathfinder or goal selector. Selection and floor validation have separate tests.
+        override fun initialize(mob: org.bukkit.entity.Mob) = Unit
+        override fun stop(mob: org.bukkit.entity.Mob) = Unit
+        override fun chase(mob: org.bukkit.entity.Mob, destination: org.bukkit.Location, runtime: MineRuntime, floorY: Int) = Unit
+    },
     blockDataDecoder = ru.ruscrafting.farms.paper.fixtures.MockBukkitFarmBlockDataDecoder,
 )

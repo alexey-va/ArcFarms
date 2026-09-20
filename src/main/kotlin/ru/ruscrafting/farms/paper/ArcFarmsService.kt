@@ -407,6 +407,9 @@ class ArcFarmsService(
     fun farmZoneIds(): List<String> = farm.runtimes.snapshot().map { it.settings.id }
 
     /** The command surface uses the typed worksite registry instead of mine internals. */
+    internal fun expeditionStock() = mineModule.expeditionStock()
+    internal fun rebuildExpeditionStock(kind: ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionKind?) = mineModule.rebuildExpeditionStock(kind)
+
     fun mineZoneIds(): List<String> = worksiteAdmins.zoneIds(ActivityKind.MINE)
 
     fun mineIncidentIds(): List<String> =

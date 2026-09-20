@@ -24,6 +24,7 @@ import ru.ruscrafting.farms.paper.mine.incident.MineIncidentCoordinator
 import ru.ruscrafting.farms.paper.mine.incident.entity.MineIncidentEntityEffects
 import ru.ruscrafting.farms.paper.mine.incident.entity.MineIncidentEntityKind
 import ru.ruscrafting.farms.paper.mine.incident.orderMineIncidentPositions
+import ru.ruscrafting.farms.paper.mine.incident.interiorMineIncidentPositions
 import ru.ruscrafting.farms.paper.mine.incident.isIncidentSurface
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
@@ -37,6 +38,7 @@ internal class MineCreatureNestIncident(
     private val effects: MineIncidentEntityEffects,
     private val access: WorksiteAccessPort,
     private val locale: ArcFarmsLocale? = null,
+    private val pests: MineCreaturePests? = null,
 ) {
     private val entities = mutableMapOf<String, MutableMap<MineIncidentEntityKind, MutableMap<String, java.util.UUID>>>()
 
@@ -45,6 +47,7 @@ internal class MineCreatureNestIncident(
         if (candidates.size < required * COMPONENTS_PER_SITE) return false
         if (!incidents.start(runtime, MineIncidentType.CREATURE_NEST, candidates.size, now, candidates)) return false
         runtime.region.world.loadedChunks.forEach { reconcileChunk(runtime, it) }
+        tick(runtime, emptyList(), now)
         return true
     }
 
@@ -142,7 +145,18 @@ internal class MineCreatureNestIncident(
         return OWNED_KINDS.sumOf { tracked(runtime, it).size }
     }
 
+    fun tick(runtime: MineRuntime, players: Collection<Player>, now: Long) {
+        if (!active(runtime)) return
+        val objective = runtime.state.objective ?: return
+        val mobs = tracked(runtime, MineIncidentEntityKind.CREATURE).mapNotNull { (targetId, id) ->
+            val mob = effects.entity(id) as? org.bukkit.entity.Mob ?: return@mapNotNull null
+            objective.target(targetId)?.position?.let { mob to it }
+        }.toMap()
+        pests?.tick(runtime, mobs, players, now)
+    }
+
     fun cleanup(runtime: MineRuntime) {
+        pests?.cleanup(runtime)
         entities.remove(key(runtime))?.values?.flatMap { it.values }?.forEach(effects::remove)
         OWNED_KINDS.forEach { effects.cleanup(runtime, it) }
     }
@@ -175,14 +189,18 @@ internal class MineCreatureNestIncident(
     private fun candidates(runtime: MineRuntime, required: Int): List<ObjectiveTargetCandidate> {
         val positions = orderMineIncidentPositions(
             runtime,
-            index.targets(runtime.settings.id, MineAnchorRole.NEST)
+            interiorMineIncidentPositions(index.targets(runtime.settings.id, MineAnchorRole.NEST))
                 .filter {
                     index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.NEST, runtime.railMaterials) &&
                         runtime.isIncidentSurface(it)
                 },
             required,
             0xCEEA7L xor runtime.state.incidentCursor.toLong(),
-        ).take(required)
+        ).filter { center ->
+            (-2..2).all { dx -> (-2..2).all { dz -> dx * dx + dz * dz > 4 ||
+                index.isLiveTarget(runtime.settings.id, center.copy(x = center.x + dx, z = center.z + dz), MineAnchorRole.NEST, runtime.railMaterials)
+            } }
+        }.take(required)
         return positions.flatMapIndexed { order, position ->
             listOf(
                 ObjectiveTargetCandidate("nest_${order + 1}", position, ObjectiveTargetRole(NEST_ROLE), order * 2L),

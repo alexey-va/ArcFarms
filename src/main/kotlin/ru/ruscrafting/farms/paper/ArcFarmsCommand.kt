@@ -165,6 +165,10 @@ class ArcFarmsCommand(
             sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
             return
         }
+        if (action == "expeditions") {
+            MineExpeditionAdminCommand(service, locale).execute(sender, args.drop(1))
+            return
+        }
         if (args.requestsHelp()) {
             val zone = args.getOrNull(1)?.takeUnless { it.equals("help", true) }
             when (action) {
@@ -749,8 +753,9 @@ class ArcFarmsCommand(
     private fun adminCompletions(args: Array<out String>): List<String> {
         val action = args[1].lowercase()
         return when (args.size) {
-            2 -> listOf("help", "edit", "inspect", "point", "unmanage", "blockreset", "backup", "stage", "next", "finish", "event", "route", "worksite") + ADMIN_SHORTCUTS
+            2 -> listOf("help", "edit", "inspect", "point", "unmanage", "blockreset", "backup", "stage", "next", "finish", "event", "route", "worksite", "expeditions") + ADMIN_SHORTCUTS
             3 -> when (action) {
+                "expeditions" -> listOf("status", "rebuild", "help")
                 "worksite" -> listOf("lumber", "mine", "help")
                 "edit", "inspect" -> listOf("help")
                 "point" -> (service.farmZoneIds() + service.mineZoneIds()) + "help"
@@ -760,6 +765,7 @@ class ArcFarmsCommand(
                 else -> emptyList()
             }
             4 -> when (action) {
+                "expeditions" -> listOf("all", "last_descent", "drilling_ark", "dead_factory")
                 "worksite" -> parseKind(args[2])?.let(service.worksiteAdmins::zoneIds).orEmpty() + "help"
                 "point" -> if (isMineZone(args.getOrNull(2))) service.minePointKinds() + "help" else POINT_ARGUMENTS + "help"
                 "stage" -> STAGE_STAGES + "help"

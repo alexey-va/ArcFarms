@@ -43,6 +43,29 @@ internal class MineBlockIndex(private val plugin: Plugin) {
 
     fun loadedTargets(zoneId: String, role: MineAnchorRole): Set<WorksitePosition> = collectTargets(zoneId, role, true)
 
+    /** Restricts hot guidance queries to indexed chunks around the player. Never loads terrain. */
+    fun nearbyTargets(zoneId: String, role: MineAnchorRole, at: org.bukkit.Location, radius: Int): List<WorksitePosition> {
+        require(radius in 1..32)
+        val chunks = targetsByZone[zoneId] ?: return emptyList()
+        val mask = 1 shl role.ordinal
+        return buildList {
+            for (x in ((at.blockX - radius) shr 4)..((at.blockX + radius) shr 4)) {
+                for (z in ((at.blockZ - radius) shr 4)..((at.blockZ + radius) shr 4)) {
+                    if (!at.world.isChunkLoaded(x, z)) continue
+                    val key = ChunkKey(at.world.name, x, z)
+                    chunks[key]?.forEach { (packed, roles) ->
+                        if (roles and mask != 0) {
+                            val point = position(key, packed)
+                            if (kotlin.math.abs(point.y - at.blockY) <= 4 &&
+                                (point.x + 0.5 - at.x) * (point.x + 0.5 - at.x) +
+                                (point.z + 0.5 - at.z) * (point.z + 0.5 - at.z) <= radius * radius) add(point)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private fun collectTargets(zoneId: String, role: MineAnchorRole, loadedOnly: Boolean): Set<WorksitePosition> = buildSet {
         val mask = 1 shl role.ordinal
         targetsByZone[zoneId]?.forEach { (chunk, entries) ->

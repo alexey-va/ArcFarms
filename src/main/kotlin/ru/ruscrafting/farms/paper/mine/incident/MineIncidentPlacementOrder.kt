@@ -34,3 +34,14 @@ internal fun orderMineIncidentPositions(
 }
 private const val MIN_CANDIDATE_POOL = 256
 private const val CANDIDATE_POOL_PER_TARGET = 64
+
+/** Erode each floor independently, including inner holes in ring-shaped mine floors. */
+internal fun interiorMineIncidentPositions(positions: Collection<WorksitePosition>, radius: Int = 2): List<WorksitePosition> {
+    require(radius in 1..4)
+    val floors = positions.toHashSet()
+    val offsets = (-radius..radius).flatMap { x -> (-radius..radius).map { z -> x to z } }
+        .filter { (x, z) -> x * x + z * z <= radius * radius }
+    return positions.distinct().filter { point ->
+        offsets.all { (x, z) -> point.copy(x = point.x + x, z = point.z + z) in floors }
+    }
+}

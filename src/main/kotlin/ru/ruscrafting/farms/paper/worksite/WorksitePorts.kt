@@ -73,6 +73,7 @@ internal interface WorksiteAudiencePort {
     fun removePlayerBars(player: Player)
     fun hideAllBars()
     fun spawnGuidanceDust(player: Player, location: Location, color: Color, size: Float = 1.1f)
+    fun spawnGuidanceSpark(player: Player, location: Location) = spawnGuidanceDust(player, location, Color.WHITE, 1.65f)
     fun successBurst(region: ActivityRegion)
     fun warningBurst(region: ActivityRegion)
     fun celebration(regions: Collection<ActivityRegion>)

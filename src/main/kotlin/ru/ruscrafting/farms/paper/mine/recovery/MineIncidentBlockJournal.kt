@@ -76,6 +76,13 @@ internal class MineIncidentBlockJournal(
         return recovery.prepareAll(mutations)
     }
 
+    fun nextOrdinal(runtime: MineRuntime, incidentId: String): Int {
+        val prefix = incidentPrefix(runtime.settings.id, runtime.state.sequence, incidentId,
+            runtime.state.incident?.objectiveNonce ?: 0L)
+        return (recovery.records(runtime.settings.id).asSequence().filter { it.id.startsWith(prefix) }
+            .mapNotNull { it.id.removePrefix(prefix).toIntOrNull() }.maxOrNull() ?: -1) + 1
+    }
+
     fun positions(runtime: MineRuntime, incidentId: String): List<WorksitePosition> {
         val records = recovery.records(runtime.settings.id)
         val currentPrefix = incidentPrefix(runtime.settings.id, runtime.state.sequence, incidentId,
@@ -90,14 +97,15 @@ internal class MineIncidentBlockJournal(
     }
 
     fun restore(runtime: MineRuntime, incidentId: String): Int {
-        val positions = positions(runtime, incidentId)
-        positions.forEach { position ->
-            val world = Bukkit.getWorld(position.world) ?: return@forEach
-            if (world.isChunkLoaded(position.x shr 4, position.z shr 4)) {
-                recovery.restoreNow(world.getBlockAt(position.x, position.y, position.z))
-            }
-        }
-        return positions.size
+        return restore(runtime.settings.id, runtime.state.sequence, incidentId, runtime.state.incident?.objectiveNonce ?: 0L)
+    }
+
+    fun restore(zoneId: String, sequence: Long, incidentId: String, nonce: Long): Int {
+        val prefix = incidentPrefix(zoneId, sequence, incidentId, nonce)
+        val legacy = legacyIncidentPrefix(zoneId, sequence, incidentId)
+        val records = recovery.records(zoneId).filter { it.id.startsWith(prefix) || isLegacyIncidentRecord(it.id, legacy) }
+        records.forEach(recovery::requestRestore)
+        return records.size
     }
 
     fun restoreNow(position: WorksitePosition): CompletableFuture<Boolean> {
@@ -134,9 +142,7 @@ internal class MineIncidentBlockJournal(
                 activeLegacy.none { isLegacyIncidentRecord(record.id, it) } &&
                 (chunk == null || record.world == chunk.world.name && record.x shr 4 == chunk.x && record.z shr 4 == chunk.z)
         }.forEach { record ->
-            val world = Bukkit.getWorld(record.world) ?: return@forEach
-            if (!world.isChunkLoaded(record.x shr 4, record.z shr 4)) return@forEach
-            recovery.restoreNow(world.getBlockAt(record.x, record.y, record.z))
+            recovery.requestRestore(record)
             restored++
         }
         return restored

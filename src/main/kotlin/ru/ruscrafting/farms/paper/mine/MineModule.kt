@@ -303,7 +303,7 @@ internal class MineModule(
         recovery.cleanup(reason)
         loading.cleanup()
         extraction.cleanup()
-        incidents.cleanup()
+        incidents.cleanup(shutdown = reason == "plugin_close")
         admin.cleanup()
         index.clear()
     }
@@ -311,6 +311,9 @@ internal class MineModule(
     fun reindex(zoneId: String): MineReindexJob? = registry.byId(zoneId)?.let { runtime ->
         MineReindexJob(runtime.indexDefinition(), index, tickets)
     }
+
+    fun expeditionStock() = incidents.expeditionStock()
+    fun rebuildExpeditionStock(kind: ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionKind?) = incidents.rebuildExpeditionStock(kind)
 
     fun adminStatus(zoneId: String): MineAdminStatus? = admin.status(zoneId)
     fun adminStart(zoneId: String, player: Player): Boolean = admin.start(zoneId, player)

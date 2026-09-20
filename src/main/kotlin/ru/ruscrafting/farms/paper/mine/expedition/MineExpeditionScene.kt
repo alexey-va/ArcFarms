@@ -13,17 +13,19 @@ internal class MineExpeditionScene(
     val plan: MineExpeditionPlan,
     val placement: MineExpeditionPlacement,
     val world: World,
-    val zoneId: String,
-    val sequence: Long,
-    val objectiveNonce: Long,
+    var zoneId: String,
+    var sequence: Long,
+    var objectiveNonce: Long,
     val journalSequence: Long,
-    val surface: Location,
+    var surface: Location,
     internal val prepared: WorksitePreparedScene,
     var completedAt: Long = 0L,
+    var reserved: Boolean = false,
 ) {
     /** Stable incident identity; journalSequence is the cross-shift journal identity. */
     val nonce: Long get() = objectiveNonce
-    val sceneId: Int get() = objectiveNonce.toInt()
+    val sceneId: Int get() = prepared.sceneId
+    val journalOwner: String get() = prepared.zoneId
     val kind get() = plan.kind
     private var readyCached = false
     val ready: Boolean get() = readyCached

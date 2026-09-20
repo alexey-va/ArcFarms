@@ -82,8 +82,12 @@ internal class MineIncidentSet(
         powerFailure.reconcile(runtime)
         reconcileObjectiveMarkers(runtime)
         creatureNest.reconcileMissing(runtime)
+        creatureNest.tick(runtime, participants, now)
         lostMiner.reconcileMissing(runtime)
     }
+
+    fun expeditionStock() = expeditions?.stockStatus().orEmpty()
+    fun rebuildExpeditionStock(kind: ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionKind?) = expeditions?.rebuildStock(kind) ?: 0
 
     fun process(): Int = lostMiner.process() + workings.process() + (expeditions?.process() ?: 0)
 
@@ -213,7 +217,7 @@ internal class MineIncidentSet(
 
     fun beforeReload() { workings.beforeReload(); workshop.cleanup(); expeditions?.beforeReload() }
 
-    fun cleanup() {
+    fun cleanup(shutdown: Boolean = false) {
         registry.snapshot().forEach { runtime ->
             runtime.state.incident?.serviceLeases?.values?.toSet().orEmpty().forEach(trackDamage::releasePlayer)
         }
@@ -227,7 +231,7 @@ internal class MineIncidentSet(
         lostMiner.clearQueues()
         workings.cleanup()
         workshop.cleanup()
-        expeditions?.cleanup()
+        expeditions?.cleanup(shutdown)
     }
 
     fun guardMovement(event: org.bukkit.event.player.PlayerMoveEvent): Boolean {

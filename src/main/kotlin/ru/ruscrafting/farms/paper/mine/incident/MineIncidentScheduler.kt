@@ -93,9 +93,11 @@ internal class MineIncidentScheduler(
         return when {
             blocker != null -> MineIncidentPlacementReport(type, required(type), 0, 0, mapOf(blocker to 1))
             type == MineIncidentType.CAVE_IN -> caveIn.diagnostics(runtime)
-            MineExpeditionEngine.supports(type) -> if (expeditions?.configured(runtime) == true)
-                MineIncidentPlacementReport(type, 1, 1, 1, emptyMap())
-                else MineIncidentPlacementReport(type, 1, 0, 0, mapOf("expedition_gate_missing" to 1))
+            MineExpeditionEngine.supports(type) -> when {
+                expeditions?.configured(runtime) != true -> MineIncidentPlacementReport(type, 1, 0, 0, mapOf("expedition_gate_missing" to 1))
+                expeditions.available(type) -> MineIncidentPlacementReport(type, 1, 1, 1, emptyMap())
+                else -> MineIncidentPlacementReport(type, 1, 0, 0, mapOf("expedition_reserve_not_ready" to 1))
+            }
             type == MineIncidentType.ORE_WORKSHOP -> if (workshop.configured(runtime)) MineIncidentPlacementReport(type, 1, 1, 1, emptyMap())
                 else MineIncidentPlacementReport(type, 1, 0, 0, mapOf("workshop_points_missing" to 1))
             ru.ruscrafting.farms.domain.MineWorkingEngine.supports(type) -> workings.diagnostics(runtime, type)

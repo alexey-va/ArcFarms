@@ -69,7 +69,7 @@ class MineBasicCycleMockBukkitTest : FunSpec({
         runtime.state.objective shouldBe null
     }
 
-    test("resource order counts matching ore anywhere and restored blocks without highlighted targets") {
+    test("resource order counts matching ore anywhere without assigning mandatory targets") {
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("ResourceMiner")
         player.teleport(Location(world, 5.5, 64.0, 5.5))
@@ -301,7 +301,7 @@ class MineBasicCycleMockBukkitTest : FunSpec({
         val graph = graph(paper, settings, effects)
         val runtime = graph.registry.byId("old_shafts")!!
         val mineable = (1..4).map { x -> world.getBlockAt(x, 64, 2).also { it.type = Material.STONE } }
-        val nests = (1..6).map { x -> world.getBlockAt(x, 64, 5).also { it.type = Material.STONE } }
+        val nests = (1..14).flatMap { x -> (4..14).map { z -> world.getBlockAt(x, 64, z).also { it.type = Material.STONE } } }
         graph.index.replaceZone(
             MineIndexDefinition(runtime.settings.id, runtime.region, setOf(Material.STONE)),
             listOf(world.getChunkAt(0, 0)),

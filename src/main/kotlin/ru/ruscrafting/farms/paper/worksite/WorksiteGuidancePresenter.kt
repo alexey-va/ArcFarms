@@ -68,7 +68,8 @@ internal class WorksiteGuidancePresenter(
             nearestLoadedTargets(player, view.targets).forEach { target ->
                 repeat(target.columnParticles) { index ->
                     val point = target.position.clone().add(0.0, index * target.columnStep, 0.0)
-                    audience.spawnGuidanceDust(player, point, target.color, target.particleSize)
+                    if (target.bright) audience.spawnGuidanceSpark(player, point)
+                    else audience.spawnGuidanceDust(player, point, target.color, target.particleSize)
                 }
             }
         }

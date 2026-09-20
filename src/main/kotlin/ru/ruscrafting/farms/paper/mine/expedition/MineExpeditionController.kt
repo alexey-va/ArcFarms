@@ -49,9 +49,10 @@ internal class MineExpeditionController(
     private var lastRetentionTick = 0L
 
     fun configured(runtime: MineRuntime): Boolean = surfacePoint(runtime) != null
+    fun available(type: MineIncidentType): Boolean = world.available(type)
 
     fun start(runtime: MineRuntime, type: MineIncidentType, now: Long): Boolean {
-        if (!MineExpeditionEngine.supports(type) || !configured(runtime)) return false
+        if (!MineExpeditionEngine.supports(type) || !configured(runtime) || !world.available(type)) return false
         if (!incidents.start(runtime, type, MineExpeditionEngine.required(type), now)) return false
         tick(runtime, now)
         return true
@@ -62,6 +63,11 @@ internal class MineExpeditionController(
         if (!MineExpeditionEngine.supports(incident.type)) return clearGateway(runtime)
         val surface = surfacePoint(runtime) ?: return
         val scene = world.ensure(runtime, surface, now)
+        world.failure(runtime)?.let {
+            retire(runtime)
+            incidents.abort(runtime)
+            return
+        }
         markers.reconcile(gatewayScope(runtime), listOf(MineExpeditionMarkers.Target("enter", surface,
             Material.LODESTONE, render(if (scene == null) "preparing" else "enter"))))
         if (scene?.ready == true) reconcileScene(runtime, scene, now)
@@ -341,7 +347,7 @@ internal class MineExpeditionController(
         world.scene(runtime)?.let { scene ->
             if (scene.completedAt == 0L) world.markCompleted(scene, clock())
             actions.clear(scope(scene)); drivers.remove(scope(scene))
-        }
+        } ?: world.retireUnbuilt(runtime)
         clearGateway(runtime)
     }
 
@@ -350,7 +356,9 @@ internal class MineExpeditionController(
     fun protects(location: Location): Boolean = world.protects(location)
     fun recover(player: Player) = travel.recover(player)
     fun onChunkLoad(chunk: Chunk) = world.onChunkLoad(chunk)
-    fun reconcileLoaded() { world.initialize() }
+    fun reconcileLoaded() { world.initialize(registry.snapshot().any(::configured)) }
+    fun stockStatus(): List<MineExpeditionStockStatus> = world.stockStatus()
+    fun rebuildStock(kind: ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionKind?): Int = world.rebuildStock(kind)
 
     fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
         actions.release(player); machinery.release(player)
@@ -363,7 +371,7 @@ internal class MineExpeditionController(
     }
 
     fun beforeReload() { cleanupVisuals(); world.beforeReload() }
-    fun cleanup() { cleanupVisuals(); world.close() }
+    fun cleanup(shutdown: Boolean = false) { cleanupVisuals(); if (shutdown) world.close() else world.beforeReload() }
     private fun cleanupVisuals() { actions.cleanup(); markers.cleanup(); machinery.cleanup(); drivers.clear(); projectedStage.clear() }
     private fun clearScene(scene: MineExpeditionScene) {
         markers.clear(scope(scene)); actions.clear(scope(scene)); machinery.clear(scene)

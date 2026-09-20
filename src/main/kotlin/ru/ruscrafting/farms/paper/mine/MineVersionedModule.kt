@@ -89,6 +89,9 @@ internal class MineVersionedModule(
         )
     }
 
+    fun expeditionStock() = (delegate as? MineModule)?.expeditionStock().orEmpty()
+    fun rebuildExpeditionStock(kind: ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionKind?) = (delegate as? MineModule)?.rebuildExpeditionStock(kind) ?: 0
+
     override val kind: ActivityKind get() = delegate.kind
     override val zoneCount: Int get() = delegate.zoneCount
     val pendingBlockCount: Int

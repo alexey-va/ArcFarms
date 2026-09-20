@@ -88,6 +88,8 @@ internal interface MineIncidentEntityEffects {
 
 /** PDC-owned entities; only chunk reconcile and cleanup scan loaded entities. */
 internal class PaperMineIncidentEntityEffects(plugin: Plugin) : MineIncidentEntityEffects {
+    private val roaming = hashMapOf<String, UUID>()
+    private fun roamingKey(runtime: MineRuntime, target: String) = "${runtime.settings.id}:${runtime.state.sequence}:$target"
     private val markerKey = NamespacedKey(plugin, "mine_incident_entity")
     private val kindKey = NamespacedKey(plugin, "mine_incident_kind")
     private val zoneKey = NamespacedKey(plugin, "mine_incident_zone")
@@ -194,6 +196,7 @@ internal class PaperMineIncidentEntityEffects(plugin: Plugin) : MineIncidentEnti
             isSmall = false
             isInvulnerable = false
         }
+        if (kind == MineIncidentEntityKind.CREATURE) roaming[roamingKey(runtime, targetId)] = entity.uniqueId
         return entity.uniqueId
     }
 
@@ -211,7 +214,7 @@ internal class PaperMineIncidentEntityEffects(plugin: Plugin) : MineIncidentEnti
     }
 
     override fun entity(id: UUID): Entity? = Bukkit.getEntity(id)
-    override fun remove(id: UUID) { Bukkit.getEntity(id)?.remove() }
+    override fun remove(id: UUID) { roaming.values.removeIf { it == id }; Bukkit.getEntity(id)?.remove() }
 
     override fun reconcileChunk(
         runtime: MineRuntime,
@@ -221,6 +224,11 @@ internal class PaperMineIncidentEntityEffects(plugin: Plugin) : MineIncidentEnti
     ): Map<String, UUID> {
         if (chunk.world !== runtime.region.world) return emptyMap()
         val canonical = linkedMapOf<String, UUID>()
+        if (kind == MineIncidentEntityKind.CREATURE) expected.keys.forEach { target ->
+            roaming[roamingKey(runtime, target)]?.let { id ->
+                Bukkit.getEntity(id)?.takeIf { it.isValid && !it.isDead }?.let { canonical[target] = id }
+            }
+        }
         chunk.entities.forEach { entity ->
             val identity = identity(entity) ?: return@forEach
             if (identity.zoneId != runtime.settings.id || identity.sequence != runtime.state.sequence || identity.kind != kind) return@forEach
@@ -233,9 +241,16 @@ internal class PaperMineIncidentEntityEffects(plugin: Plugin) : MineIncidentEnti
             val belongsToChunk = expectedLocation?.world?.name == chunk.world.name &&
                 (expectedLocation.blockX shr 4) == chunk.x && (expectedLocation.blockZ shr 4) == chunk.z
             val remainsOpen = kind !in ADJACENT_ENTITY_KINDS || entity.location.block.isPassable
-            if (!belongsToChunk || !remainsOpen || identity.targetId !in expected ||
-                canonical.putIfAbsent(identity.targetId, entity.uniqueId) != null
-            ) entity.remove()
+            val sameCreature = kind == MineIncidentEntityKind.CREATURE && expectedLocation != null &&
+                runtime.region.contains(entity.location) && kotlin.math.abs(entity.location.y - expectedLocation.y) <= 2.0
+            val existing = canonical[identity.targetId]
+            if ((!belongsToChunk && !sameCreature) || !remainsOpen || identity.targetId !in expected ||
+                existing != null && existing != entity.uniqueId
+            ) remove(entity.uniqueId)
+            else {
+                canonical[identity.targetId] = entity.uniqueId
+                if (kind == MineIncidentEntityKind.CREATURE) roaming[roamingKey(runtime, identity.targetId)] = entity.uniqueId
+            }
         }
         val expectedInChunk = expected.filter { (targetId, position) ->
             val spawnLocation = when {
@@ -255,7 +270,7 @@ internal class PaperMineIncidentEntityEffects(plugin: Plugin) : MineIncidentEnti
         runtime.region.world.loadedChunks.forEach { chunk ->
             chunk.entities.filter { entity ->
                 identity(entity)?.let { it.zoneId == runtime.settings.id && it.kind == kind } == true
-            }.forEach(Entity::remove)
+            }.forEach { remove(it.uniqueId) }
         }
     }
 

@@ -15,6 +15,20 @@ class MineIncidentPlacementOrderTest : FunSpec({
     beforeEach { paper = MockBukkitTestRuntime.open() }
     afterEach { paper.close() }
 
+    test("nest candidates stay inside the walkable ring away from both edges") {
+        val ring = (-18..18).flatMap { x -> (-18..18).mapNotNull { z ->
+            WorksitePosition("world", x, 63, z).takeIf { x * x + z * z in 64..324 }
+        } }
+        val interior = interiorMineIncidentPositions(ring)
+        interior.isNotEmpty() shouldBe true
+        interior.all { point ->
+            (-2..2).all { dx -> (-2..2).all { dz ->
+                dx * dx + dz * dz > 4 || point.copy(x = point.x + dx, z = point.z + dz) in ring
+            } }
+        } shouldBe true
+        interior.none { it.x == 18 || it.x == 8 && it.z == 0 } shouldBe true
+    }
+
     test("visible incident targets are deterministic and distributed across the mine") {
         val world = paper.server.addSimpleWorld("world")
         val runtime = MineRuntimeFactory.build(

@@ -32,6 +32,7 @@ internal class MineGuidanceSource(
     private val workingTargets: (MineRuntime, Player) -> List<WorksiteGuidanceTarget> = { _, _ -> emptyList() },
     private val expeditionParticipants: () -> Collection<Player> = { emptyList() },
     private val expeditionRuntime: (Player) -> MineRuntime? = { null },
+    private val oreGuidance: MineOrderOreGuidance? = null,
 ) : WorksiteGuidanceSource {
     override fun participants(): Collection<Player> = registry.snapshot().flatMap { runtime ->
         runtime.region.world.players.filter { runtimeFor(it) === runtime }
@@ -106,7 +107,7 @@ internal class MineGuidanceSource(
         if (runtime.state.incident?.let { it.working != null ||
                 ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionEngine.supports(it.type) } == true)
             return workingTargets(runtime, player)
-        if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.MINING) return emptyList()
+        if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.MINING) return oreGuidance?.targets(runtime, player).orEmpty()
         val playerId = player.uniqueId
         val objective = runtime.state.objective?.targets.orEmpty().filter { target ->
             target.status != ObjectiveTargetStatus.COMPLETED &&

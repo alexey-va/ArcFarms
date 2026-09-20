@@ -17,10 +17,18 @@ internal class MineTransitionCoordinator(
     private val stats: WorksiteStatsPort,
     private val audience: WorksiteAudiencePort,
     private val locale: ArcFarmsLocale?,
+    private val incidentJournal: ru.ruscrafting.farms.paper.mine.recovery.MineIncidentBlockJournal? = null,
 ) {
     fun apply(runtime: MineRuntime, result: EngineResult<MineShiftState, MineShiftEvent>, actor: Player?) {
         if (!result.accepted && result.events.isEmpty()) return
+        val previous = runtime.state
         runtime.state = result.state
+        previous.incident?.takeIf {
+            previous.sequence != result.state.sequence || result.state.incident?.objectiveNonce != it.objectiveNonce ||
+                result.state.incident?.type != it.type
+        }?.let { ended ->
+            incidentJournal?.restore(runtime.settings.id, previous.sequence, ended.type.name.lowercase(), ended.objectiveNonce)
+        }
         state.traceResult(
             ActivityKind.MINE,
             runtime.settings.id,

@@ -35,18 +35,28 @@ class AtomicJsonStore<T : Any>(
 
     fun load(): T = store.loadOrDefault(emptyValue)
 
-    fun saveAsync(value: T): CompletableFuture<Unit> {
-        val future = CompletableFuture<Unit>()
-        executor.execute {
-            try {
-                store.write(value)
-                future.complete(Unit)
-            } catch (failure: Throwable) {
-                future.completeExceptionally(failure)
+    fun loadAsync(): CompletableFuture<T> = submit(::load)
+
+    fun saveAsync(value: T): CompletableFuture<Unit> = submit { store.write(value); Unit }
+
+    private fun <R> submit(operation: () -> R): CompletableFuture<R> {
+        val future = CompletableFuture<R>()
+        try {
+            executor.execute {
+                try {
+                    future.complete(operation())
+                } catch (failure: Throwable) {
+                    future.completeExceptionally(failure)
+                }
             }
+        } catch (failure: java.util.concurrent.RejectedExecutionException) {
+            future.completeExceptionally(failure)
         }
         return future
     }
+
+    /** Lets already queued durable writes finish without blocking a gameplay thread. */
+    fun shutdown() = executor.shutdown()
 
     fun saveBlocking(value: T) {
         saveAsync(value).get(10, TimeUnit.SECONDS)

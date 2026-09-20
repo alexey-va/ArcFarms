@@ -17,6 +17,7 @@ internal data class WorksiteGuidanceTarget(
     val particleSize: Float = 1.1f,
     val columnParticles: Int = 8,
     val columnStep: Double = 0.32,
+    val bright: Boolean = false,
 ) {
     init {
         require(particleSize > 0f && particleSize.isFinite()) { "Guidance particle size must be positive" }

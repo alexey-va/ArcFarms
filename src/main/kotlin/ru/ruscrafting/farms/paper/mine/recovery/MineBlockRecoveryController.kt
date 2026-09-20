@@ -267,8 +267,23 @@ internal class MineBlockRecoveryController(
         return CompletableFuture.completedFuture(true)
     }
 
+    /** Unloaded incident blocks stay journaled and join the normal bounded retry queue. */
+    fun requestRestore(record: PendingMineBlock) {
+        ensureQueue()
+        val world = Bukkit.getWorld(record.world)
+        if (record.temporaryMaterial != Material.AIR.name && world != null && world.isChunkLoaded(record.x shr 4, record.z shr 4) &&
+            record.positionKey !in inFlightPositions) {
+            restoreNow(world.getBlockAt(record.x, record.y, record.z))
+        } else {
+            queue.schedule(record.copy(restoreAt = clock().coerceAtLeast(1L)))
+        }
+    }
+
     /** Replays a durable incident intent when a crash happened after journal commit but before world mutation. */
     fun ensureTemporaryResult(position: WorksitePosition, expectedTemporary: Material): MineTemporaryEnsureResult {
+        // A freshly committed intent may still await its original main-thread callback.
+        // Replaying it here would make that callback reject its own changed block and retire the journal.
+        if ("${position.world}:${position.x}:${position.y}:${position.z}" in inFlightPositions) return MineTemporaryEnsureResult.PENDING
         val record = journal.recordAtPosition("${position.world}:${position.x}:${position.y}:${position.z}")
             ?: return MineTemporaryEnsureResult.REJECTED
         if (record.temporaryMaterial != expectedTemporary.name) return MineTemporaryEnsureResult.REJECTED
