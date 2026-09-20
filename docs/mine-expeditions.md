@@ -15,11 +15,11 @@ permanent return portals remain available independently of event markers.
 
 ## Factory work
 
-1. Turn the three water controls by gripping them with right-click and walking
-   around them. A real vanilla leash joins the player to the fixed invisible
-   anchor; the HUD shows turning progress. Leaving the ring, departure, stage
-   completion and shutdown release it without drops. The wheel and pumps start
-   after the first completed control. Farm processing shares this tether owner.
+1. Open three water valves with eight short right-click turns each. Each turn
+   rotates the valve by 45 degrees with a mechanical click and visible progress.
+   Nearby players share progress; duplicate clicks inside 250 ms do not count.
+   The wheel and pumps start after the first completed valve. Factory controls
+   do not attach a leash or require walking around the machinery.
 2. Carry three visible fuel loads from the bunker into the feed hopper. The
    crushers turn during loading/heating with dust and grinding sounds. Accepted
    deliveries burst coal fragments/clouds with a loading thud; HUD and hopper
@@ -28,7 +28,7 @@ permanent return portals remain available independently of event markers.
    control. The countdown is shown above the control and in the HUD. Its status
    stack changes yellow to green together with a green glow and bright end-rod
    particles. Fire and chimney smoke follow the heating/pouring stages.
-4. Turn the casting crank. The mould fills visibly, with molten droplets and
+4. Right-click the casting valve repeatedly. The mould fills visibly, with molten droplets and
    lava sounds while pouring.
 5. Right-click the crane console. A 4.5-second cycle lifts the casting, moves it
    along the overhead beam and lowers it onto the unloading table. The chain
@@ -36,7 +36,10 @@ permanent return portals remain available independently of event markers.
    hidden while a participant carries it.
 6. Carry the casting to the press and right-click. Its ram descends one block,
    strikes with sparks, dust and an anvil sound, then returns. The final domain
-   checkpoint occurs after the whole 2.4-second stroke.
+   checkpoint occurs after the whole 2.4-second stroke. The finished drive gear
+   stays on the press for a 12-second result presentation with a bell, particles
+   and return countdown; only then does automatic return occur. Return portals
+   remain usable during work without objective glow, and glow after completion.
 
 A powered cycle belongs to one operator. Repeated clicks cannot restart or
 stack it. Leaving the site, changing stage, or moving more than six blocks from
@@ -66,7 +69,7 @@ eight factory camera positions. **Demo mechanisms** animates the same wheel,
 lever and press transforms; it does not simulate gameplay, cargo, sound or
 particles. Schematics contain blocks only; ArcFarms owns display assemblies.
 
-## Verification — 2026-09-20
+## Verification and activation — 2026-09-21
 
 The 0.44.1 focused run passed 38 tests across architecture, factory operations
 and the existing farm processing lifecycle. New cases cover a real tether
@@ -78,9 +81,39 @@ clicks and departure, press cargo retention and cleanup, complete ram motion,
 domain progression, compact geometry and the moving crane suspension. `shadowJar` and preview export passed.
 The offline factory route has 43 supported/unblocked points and all 162 sampled
 walking points meet block-light level 8. The web preview opens with an animated
-press. These checks do not establish Minecraft client visuals, sound balance,
-end-to-end travel or runtime lag. This implementation is not yet activated on
-spawn; the dated 0.43.0 activation below describes the previous release.
+press.
+
+The first activation exposed an editor lifecycle initialization error: its
+constructor requested a task epoch before the owning service was active.
+Version 0.44.2 defers placement loading until reconciliation after activation.
+Its separate focused run passed 38 tests across architecture, task supervision
+and the editor startup regression; `shadowJar` passed. These run counts overlap
+and are not a unique-test total.
+
+Source `464289b` is active on spawn/classic as ArcFarms 0.44.2. JAR transaction
+`jar-20260920T210523Z-48606` verified SHA-256
+`8677e565cb077042cb758d289393bf06c1ab22ea74feff00d4c04e1328fa545b`.
+The authorized spawn-only restart reached Paper ready at 00:08:30 MSK with PID
+3339967. ArcFarms reported ready, no pending recovery and healthy content.
+All three geometry-v3 receipts subsequently reached `siteBuilt=true`,
+`reserved=true`, `restoring=false` in `rc_atelier_compact_mine`:
+
+| Site | Journal | Origin |
+| --- | --- | --- |
+| Last Descent | 16 | 155, 106, -112 |
+| Drilling Ark | 17 | 155, 106, -224 |
+| Dead Factory | 18 | -69, 106, -336 |
+
+A normal survival QA actor walked from the factory entry along the central
+aisle without an embedded camera or health loss. The enhanced client viewer
+received the large machinery, pendant lamps and both labelled return portals.
+Right-click by the west return portal moved the actor from the factory back to
+the mine surface at 68.5, 111, 31.5. This verifies a permanent room and its manual
+return path, not a complete active expedition, automatic completion return,
+client leash rendering, sound balance or runtime lag. The QA actor has no admin
+permission, so forced event startup and the full production cycle were not
+tested live. The viewer reports a stale world name after same-dimension travel;
+scene receipts, coordinates and rendered terrain establish the room placement.
 
 ---
 
@@ -319,3 +352,34 @@ DEAD_FACTORY (5) и занятую экспедицию DRILLING_ARK (2) в 18:5
 видимость частиц и нативная погоня за игроком остаются непроверенными:
 автоматическая проверка разрешений отклонила выдачу QA-аккаунту широкого
 `arcfarms.admin` как отдельное расширение административного доступа.
+
+## 0.44.3 review fixes
+
+- Factory water and pouring controls use shared repeated right-click turns, not
+  walking/leash input. Counterweight capstans in Last Descent retain their
+  separate walking mechanic; the farm processing owner is unchanged.
+- The final press result remains visible for 12 seconds before automatic return.
+  Return portals are usable without glow while work is active, then glow at completion.
+- The compact mine entrance point moves to `29,111,47.5`, beside the west lift
+  on its upper floor. A live 48-cell clearance check found only air, with spruce
+  planks across the 12 supporting cells; no terrain is replaced.
+- Casting and packet model transforms only restart interpolation when the pose
+  changes. Human controls are lowered to about 1.5 blocks; the machines stay large.
+- Body light is block 11 / sky 0; lamps and active signals use block 14 / sky 0.
+- `validateMineDisplayModels` audits transformed cuboid faces, including 65 sampled
+  poses for animated models. It runs before shadowJar and preview export. All
+  19 models pass. Rotated coplanar overlap and the original panel/lamp regression
+  have focused tests. This does not validate arbitrary non-cuboid block meshes
+  or prove the absence of conflicts between independently moved assemblies.
+- Nest creatures have 8 HP and no armor, including reconciliation without healing.
+  Two fully charged iron-pickaxe hits meet that health budget; weaker tools or
+  uncharged attacks differ. Reward quantities, chances and currencies are unchanged.
+- Explicit admin editing bypasses ArcFarms block protection before incident guards,
+  preserving existing cancellation by other plugins.
+
+Focused verification: 51 cases passed across model geometry/lighting/pose,
+factory interactions, nest health, admin edit and architecture. An exploratory
+run of the old entity-incident spec failed ten setup cases before their
+asserted interaction: those fixtures start incidents without prewarming the
+candidate stock. The focused nest regression explicitly prewarms it and checks
+Husk health/armor and wound preservation. This is not a full-suite pass.

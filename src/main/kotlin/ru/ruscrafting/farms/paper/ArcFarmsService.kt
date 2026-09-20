@@ -498,12 +498,13 @@ class ArcFarmsService(
     fun onBlockSpread(event: BlockSpreadEvent) = farm.events.onBlockSpread(event)
     fun onBlockGrow(event: BlockGrowEvent) = farm.events.onBlockGrow(event)
     fun onBlockPlace(event: BlockPlaceEvent) {
-        if (worksiteEvents.protectsTemporaryBlock(event.blockPlaced.location)) event.isCancelled = true
+        if (protectsTemporaryBlock(event.blockPlaced.location, event.player)) event.isCancelled = true
         else if (!worksiteEvents.onBlockPlace(event)) farm.events.onBlockPlace(event)
     }
     fun allowsTemporaryFlow(from: Location, to: Location) = mineModule.allowsTemporaryFlow(from, to)
 
-    fun protectsTemporaryBlock(location: org.bukkit.Location): Boolean = worksiteEvents.protectsTemporaryBlock(location)
+    fun protectsTemporaryBlock(location: org.bukkit.Location, player: Player? = null): Boolean =
+        (player == null || !isAdminEditing(player)) && worksiteEvents.protectsTemporaryBlock(location)
     fun statuses(): List<ActivityStatus> = worksites.statuses()
     fun enterpriseCompany(kind: ActivityKind) = enterprise.companyView(kind)
     fun enterpriseOwnership(kind: ActivityKind, playerId: UUID) = enterprise.ownershipView(kind, playerId)

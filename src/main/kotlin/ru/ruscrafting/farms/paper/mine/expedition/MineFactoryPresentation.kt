@@ -78,6 +78,10 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
         if(state.stage==MineExpeditionStage.FACTORY_INSTALL && press>0 && press<Math.PI && soundTick)
             sound(at("assembly_socket",y=3.0),Sound.BLOCK_PISTON_EXTEND,.7f,.55f)
     }
+    fun finished(at: Location, first: Boolean) {
+        if (first) sound(at, Sound.BLOCK_NOTE_BLOCK_BELL, 1f, .8f)
+        particles(at.clone().add(0.0, 1.0, 0.0), Particle.END_ROD, 5, .7, .5, .5, .015)
+    }
     private fun sound(at:Location?,sound:Sound,volume:Float,pitch:Float) {
         if(at==null || !plugin.config.getBoolean("ui.sounds",true)) return
         at.world.players.filter { it.location.distanceSquared(at)<=32*32 }.forEach { it.playSound(at,sound,volume,pitch) }

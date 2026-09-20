@@ -65,9 +65,9 @@
       "expeditions": {
         "expedition_gate": {
           "world": "rc_atelier_compact_mine",
-          "x": 68.5,
+          "x": 29.0,
           "y": 111.0,
-          "z": 31.5,
+          "z": 47.5,
           "yaw": 0.0
         }
       }

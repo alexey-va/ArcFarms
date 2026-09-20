@@ -86,7 +86,7 @@ class ArcFarmsListener(
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onBreakHigh(event: BlockBreakEvent) {
         service.onBreakHigh(event)
-        if (service.protectsTemporaryBlock(event.block.location)) event.isCancelled = true
+        if (service.protectsTemporaryBlock(event.block.location, event.player)) event.isCancelled = true
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)

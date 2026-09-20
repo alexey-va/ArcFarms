@@ -112,9 +112,51 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         world.entities.filter { it is ItemDisplay || it is org.bukkit.entity.Item }.size shouldBe 0
     }
 
-    test("walking crank owns one tether and duplicate clicks do not reset progress") {
+    test("factory valves turn from shared right-clicks without a rope and reject duplicate clicks") {
+        var state = MineExpeditionState(scene.placement, MineExpeditionStage.FACTORY_WATER)
+        val target = MineExpeditionObjectives.targets(scene.plan, state, null).first()
+        target.interaction shouldBe MineExpeditionInteraction.VALVE
+        val players = listOf(paper.server.addPlayer(), paper.server.addPlayer())
+        players.forEach { it.teleport(scene.at(target.position).add(0.0, 0.0, 2.0)) }
+        var completed = 0
+        val complete: (MineExpeditionStep) -> Boolean = { step ->
+            completed++; step.accepted shouldBe true; state = step.state; true
+        }
+        repeat(8) { i ->
+            actions.interact(scope, scene, state, players[i % 2], target, 1000L + i * 300, complete) {}
+            actions.interact(scope, scene, state, players[1 - i % 2], target, 1000L + i * 300, complete) {}
+            world.entities.count { actions.owns(it) } shouldBe 0
+            if (i < 7) {
+                completed shouldBe 0
+                var radians = 0.0
+                actions.tick(scope, scene, state, listOf(target), players, 1000L + i * 300, { _, _ -> error("tick cannot turn valve") }) { _, angle -> radians = angle }
+                radians shouldBe (i + 1) * Math.PI * 2 / 8
+            }
+        }
+        completed shouldBe 1
+        state.completed shouldBe setOf(0)
+        actions.interact(scope, scene, state, players.first(), target, 5000, complete) {}
+        completed shouldBe 1
+        actions.hint(scope, players.first(), 5000) shouldBe null
+    }
+
+    test("valve progress retires on stage change and factory stages never ask for walking cranks") {
         val state = MineExpeditionState(scene.placement, MineExpeditionStage.FACTORY_WATER)
         val target = MineExpeditionObjectives.targets(scene.plan, state, null).first()
+        val player = paper.server.addPlayer().also { it.teleport(scene.at(target.position)) }
+        actions.interact(scope, scene, state, player, target, 1000, { error("one click completed") }) {}
+        actions.tick(scope, scene, state.copy(stage = MineExpeditionStage.FACTORY_COAL), emptyList(), listOf(player), 2000,
+            { _, _ -> error("retired valve completed") }) { _, _ -> }
+        actions.hint(scope, player, 2000) shouldBe null
+        MineExpeditionStage.entries.filter { it.name.startsWith("FACTORY_") }.forEach { stage ->
+            MineExpeditionObjectives.targets(scene.plan, state.copy(stage = stage), null)
+                .none { it.interaction == MineExpeditionInteraction.CRANK } shouldBe true
+        }
+    }
+
+    test("walking crank owns one tether and duplicate clicks do not reset progress") {
+        val state = MineExpeditionState(scene.placement, MineExpeditionStage.FACTORY_WATER)
+        val target = MineExpeditionObjectives.targets(scene.plan, state, null).first().copy(interaction = MineExpeditionInteraction.CRANK)
         val player = paper.server.addPlayer()
         val center = scene.at(target.position)
         player.teleport(center.clone().add(2.0, 0.0, 0.0))
@@ -140,7 +182,7 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
 
     test("crank tether releases on leaving its ring, stage change, player release and shutdown") {
         val state = MineExpeditionState(scene.placement, MineExpeditionStage.FACTORY_WATER)
-        val target = MineExpeditionObjectives.targets(scene.plan, state, null).first()
+        val target = MineExpeditionObjectives.targets(scene.plan, state, null).first().copy(interaction = MineExpeditionInteraction.CRANK)
         val player = paper.server.addPlayer()
         val center = scene.at(target.position)
         fun attach() {

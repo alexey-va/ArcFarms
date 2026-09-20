@@ -277,7 +277,7 @@ internal class MineExpeditionMachinery(
         return scene.world.spawn(scene.at(local), BlockDisplay::class.java) { display ->
             mark(display, role, scene)
             display.block = material.createBlockData()
-            display.brightness = Display.Brightness(15, 15)
+            display.brightness = MineDisplayLighting.brightness(material)
             display.viewRange = 5f
             display.interpolationDuration = 4
             display.teleportDuration = 4
@@ -331,8 +331,6 @@ internal class MineExpeditionMachinery(
                 pivot.y = if (role == "core") loadY else ceilingY - chainLength / 2
             }
             if (display.location.distanceSquared(pivot) > 0.0001) display.teleport(pivot)
-            display.interpolationDuration = 4
-            display.interpolationDelay = 0
             val rotation = Quaternionf()
             val scale = when {
                 role.startsWith("wheel") -> {
@@ -351,14 +349,14 @@ internal class MineExpeditionMachinery(
                 }
                 scene.kind == MineExpeditionKind.DEAD_FACTORY && role == "molten" -> {
                     val poured = if (state.stage == MineExpeditionStage.FACTORY_POUR)
-                        ((runtime.crankAngles["pour_control"] ?: 0.0) / (Math.PI * 1.5)).coerceIn(0.0, 1.0).toFloat()
+                        ((runtime.crankAngles["pour_control"] ?: 0.0) / (Math.PI * 2)).coerceIn(0.0, 1.0).toFloat()
                     else 0f
                     Vector3f(4f * poured, 0.2f, 1.5f)
                 }
                 else -> Vector3f(0.8f)
             }
             val translation = rotation.transform(Vector3f(scale).mul(-0.5f))
-            display.transformation = Transformation(translation, rotation, scale, Quaternionf())
+            MineDisplayPose.apply(display, Transformation(translation, rotation, scale, Quaternionf()))
         }
     }
 

@@ -144,19 +144,19 @@ internal class MineModule(
         registry.snapshot().any { access.hasAccess(player, it.settings.permission) }
 
     override fun onBreakHigh(event: BlockBreakEvent): Boolean =
-        incidents.onBreak(event) || mining.onBreakHigh(event)
+        !access.isAdminEditing(event.player) && (incidents.onBreak(event) || mining.onBreakHigh(event))
 
     fun allowsTemporaryFlow(from: Location, to: Location) = incidents.allowsTemporaryFlow(from, to)
 
     override fun onBucketFill(event: org.bukkit.event.player.PlayerBucketFillEvent): Boolean = incidents.onBucketFill(event)
 
     override fun onBlockDamage(event: BlockDamageEvent): Boolean {
+        if (access.isAdminEditing(event.player)) return false
         if (registry.at(event.block.location) == null && incidents.protectsTemporaryBlock(event.block.location)) {
             event.isCancelled = !incidents.canMine(event.player, event.block)
             return true
         }
         val runtime = registry.at(event.block.location) ?: return false
-        if (access.isAdminEditing(event.player)) return false
         if (access.hasAccess(event.player, runtime.settings.permission) && incidents.canMine(event.player, event.block)) {
             event.isCancelled = false
         }
@@ -173,21 +173,17 @@ internal class MineModule(
     }
 
     override fun onBreakLowest(event: BlockBreakEvent): Boolean {
+        if (access.isAdminEditing(event.player)) return false
         if (incidents.protectsTemporaryBlock(event.block.location)) { event.isCancelled = true; return true }
-        if (registry.at(event.block.location) == null || access.isAdminEditing(event.player)) return false
+        if (registry.at(event.block.location) == null) return false
         event.isCancelled = true
         return true
     }
 
     override fun onBlockPlace(event: BlockPlaceEvent): Boolean {
+        if (access.isAdminEditing(event.player)) return false
         if (incidents.protectsTemporaryBlock(event.blockPlaced.location)) { event.isCancelled = true; return true }
         val runtime = registry.at(event.blockPlaced.location) ?: return false
-        if (incidents.protectsTemporaryBlock(event.blockPlaced.location)) { event.isCancelled = true; return true }
-        if (access.isAdminEditing(event.player)) {
-            event.isCancelled = false
-            mining.logPlacement(event, runtime, true)
-            return true
-        }
         event.isCancelled = true
         mining.logPlacement(event, runtime, false)
         audience.sendActionBar(event.player, ru.ruscrafting.farms.config.MessageKey.MINE_MANAGED_REQUIRED)

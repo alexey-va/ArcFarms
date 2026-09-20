@@ -2,10 +2,40 @@ package ru.ruscrafting.farms.paper.mine.expedition
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
+import org.bukkit.entity.BlockDisplay
+import org.bukkit.util.Transformation
+import org.joml.Vector3f
+import org.joml.Quaternionf
 import kotlin.math.PI
 import kotlin.math.abs
 
 class MineDisplayBlueprintsTest : FunSpec({
+    test("parked casting does not restart interpolation on identical poses") {
+        var pose = Transformation(Vector3f(), Quaternionf(), Vector3f(1f), Quaternionf())
+        val display = mockk<BlockDisplay>(relaxed = true)
+        every { display.transformation } answers { pose }
+        every { display.transformation = any() } answers { pose = firstArg() }
+        val desired = Transformation(Vector3f(-.8f, -.5f, -.8f), Quaternionf(), Vector3f(1.6f, 1f, 1.6f), Quaternionf())
+        repeat(40) { MineDisplayPose.apply(display, desired) }
+        verify(exactly = 1) { display.interpolationDelay = 0 }
+        verify(exactly = 1) { display.transformation = any() }
+        MineDisplayPose.apply(display, Transformation(Vector3f(), Quaternionf(), Vector3f(), Quaternionf()))
+        verify(exactly = 2) { display.interpolationDelay = 0 }
+    }
+    test("every authored model is free of coplanar overlap throughout sampled motion") {
+        MineDisplayModelValidation.validate() shouldBe emptyList()
+    }
+    test("machine bodies use moderate block light while active lamps remain legible") {
+        val body = MineDisplayLighting.brightness(org.bukkit.Material.WEATHERED_CUT_COPPER)
+        body.blockLight shouldBe 11
+        body.skyLight shouldBe 0
+        MineDisplayLighting.brightness(org.bukkit.Material.SEA_LANTERN).blockLight shouldBe 14
+        MineDisplayLighting.brightness(org.bukkit.Material.LIME_CONCRETE, true).blockLight shouldBe 14
+        MineDisplayLighting.brightness(org.bukkit.Material.GRAY_CONCRETE).blockLight shouldBe 11
+    }
     test("press moves the ram one block vertically and returns it without moving its frame") {
         val parts = MineDisplayBlueprints.model("assembly_bench")
         parts.count { it.motion == "press" } shouldBe 2

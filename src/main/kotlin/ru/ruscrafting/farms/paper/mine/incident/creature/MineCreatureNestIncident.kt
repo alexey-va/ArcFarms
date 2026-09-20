@@ -208,6 +208,14 @@ internal class MineCreatureNestIncident(
     }
 
     private fun applyPresentation(entity: Entity, kind: MineIncidentEntityKind) {
+        if (kind == MineIncidentEntityKind.CREATURE && entity is org.bukkit.entity.LivingEntity) {
+            // Two fully charged iron-pickaxe strikes. Reconciliation must never heal a wounded pest.
+            entity.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH)?.baseValue = 8.0
+            entity.health = minOf(entity.health, 8.0)
+            entity.getAttribute(org.bukkit.attribute.Attribute.ARMOR)?.baseValue = 0.0
+            entity.getAttribute(org.bukkit.attribute.Attribute.ARMOR_TOUGHNESS)?.baseValue = 0.0
+            entity.equipment?.armorContents = arrayOfNulls(4)
+        }
         val path = when (kind) {
             MineIncidentEntityKind.CREATURE -> "mine.creature-nest.creature-name"
             MineIncidentEntityKind.CREATURE_NEST_HITBOX -> "mine.creature-nest.nest-name"

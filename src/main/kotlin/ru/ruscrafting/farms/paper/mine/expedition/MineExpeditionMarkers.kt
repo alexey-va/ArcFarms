@@ -67,7 +67,7 @@ internal class MineExpeditionMarkers(private val plugin: Plugin) {
     fun clear(scope: String) = markers.keys.filter { it.startsWith("$scope/") }.forEach(::remove)
     fun retainSites(ids: Set<Long>) {
         markers.keys.filter { key ->
-            (key.startsWith("exit:") || key.startsWith("furnish:")) &&
+            (key.startsWith("exit:") || key.startsWith("furnish:") || key.startsWith("result:")) &&
                 key.substringBefore('/').substringAfter(':').toLongOrNull() !in ids
         }.forEach(::remove)
     }
@@ -90,7 +90,9 @@ internal class MineExpeditionMarkers(private val plugin: Plugin) {
         marker.signal = lit
         marker.parts.forEachIndexed { index, part ->
             if (part.center.y >= 3.3f && part.material in setOf(Material.LIME_CONCRETE, Material.YELLOW_CONCRETE, Material.RED_CONCRETE)) {
-                marker.displays[index].blockData = (if (part.material == lit) lit else Material.GRAY_CONCRETE).createBlockData()
+                val material = if (part.material == lit) lit else Material.GRAY_CONCRETE
+                marker.displays[index].blockData = material.createBlockData()
+                marker.displays[index].brightness = MineDisplayLighting.brightness(material, part.material == lit)
             }
         }
         val color = if (lit == Material.LIME_CONCRETE) Color.fromRGB(85, 217, 139) else Color.fromRGB(255, 187, 77)
@@ -105,8 +107,11 @@ internal class MineExpeditionMarkers(private val plugin: Plugin) {
             val center=worldRotation.transform(MineDisplayBlueprints.center(part,phase).mul(scale))
             val corner=Vector3f(part.size).mul(-.5f*scale)
             rotation.transform(corner).add(center)
-            display.transformation=Transformation(corner,rotation,Vector3f(part.size).mul(scale),Quaternionf())
-            display.interpolationDelay=0
+            val desired=Transformation(corner,rotation,Vector3f(part.size).mul(scale),Quaternionf())
+            if (display.transformation != desired) {
+                display.interpolationDelay=0
+                display.transformation=desired
+            }
         }
     }
 
@@ -115,7 +120,7 @@ internal class MineExpeditionMarkers(private val plugin: Plugin) {
         fun part(material: Material, x: Float, y: Float, z: Float, sx: Float, sy: Float, sz: Float, glow: Boolean = target.glowing) {
             visuals += renderer().spawnBlock(target.location, material.createBlockData()).apply {
                 transformation = Transformation(Vector3f(x,y,z), Quaternionf(), Vector3f(sx,sy,sz), Quaternionf())
-                brightness = Display.Brightness(15,15); viewRange = 3f; isGlowing = glow
+                brightness = MineDisplayLighting.brightness(material); viewRange = 3f; isGlowing = glow
                 glowColorOverride = Color.fromRGB(255,187,77); interpolationDuration = 2
             }
         }
@@ -153,7 +158,14 @@ internal class MineExpeditionMarkers(private val plugin: Plugin) {
             it.isResponsive = true; it.isPersistent = false
             it.persistentDataContainer.set(key, PersistentDataType.STRING, id)
         }
-        val label = renderer().spawnText(target.location.clone().add(0.0, if (portal(target)) 3.25 else if (blueprint.isNotEmpty()) 4.0*target.modelScale else 2.0, 0.0), target.label).apply {
+        val labelHeight = when {
+            portal(target) -> 3.25
+            target.model == "finished_gear" -> 2.1
+            target.model in setOf("crane_console", "furnace_console") -> 2.3
+            blueprint.isNotEmpty() -> 4.0*target.modelScale
+            else -> 2.0
+        }
+        val label = renderer().spawnText(target.location.clone().add(0.0, labelHeight, 0.0), target.label).apply {
             billboard = Display.Billboard.CENTER; brightness = Display.Brightness(15,15); viewRange = .65f
             backgroundColor = Color.fromARGB(100,12,18,24); isShadowed = true; isSeeThrough = true
             lineWidth = 180

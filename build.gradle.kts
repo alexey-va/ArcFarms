@@ -5,7 +5,7 @@ plugins {
     jacoco
 }
 group = "ru.ruscrafting"
-version = "0.44.2"
+version = "0.44.3"
 description = "Shared farm, lumbermill, and mine activities for RusCrafting"
 
 val integrationTestSourceSet = sourceSets.create("integrationTest") {
@@ -70,6 +70,13 @@ dependencies {
 }
 
 tasks {
+    register<JavaExec>("validateMineDisplayModels") {
+        group = "verification"
+        description = "Rejects coplanar display faces in authored mine models and sampled animation poses."
+        dependsOn("classes")
+        classpath = sourceSets.main.get().runtimeClasspath + sourceSets.main.get().compileClasspath
+        mainClass.set("ru.ruscrafting.farms.paper.mine.expedition.MineDisplayModelValidation")
+    }
     withType<Test>().configureEach {
         // MockK/ByteBuddy must attach inside the forked JVM on JDK 25. Without this,
         // the external helper can hang and leave an orphan Gradle Test Executor.
@@ -102,6 +109,7 @@ tasks {
     }
     jar { archiveClassifier.set("plain") }
     shadowJar {
+        dependsOn("validateMineDisplayModels")
         archiveClassifier.set("")
         mergeServiceFiles()
         exclude("org/slf4j/**")

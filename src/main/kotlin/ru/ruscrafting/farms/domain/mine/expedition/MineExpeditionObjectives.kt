@@ -1,6 +1,6 @@
 package ru.ruscrafting.farms.domain.mine.expedition
 
-enum class MineExpeditionInteraction { CRANK, PICKUP, DELIVER, OPERATE, BREAK, BRANCH, MOTION }
+enum class MineExpeditionInteraction { CRANK, VALVE, PICKUP, DELIVER, OPERATE, BREAK, BRANCH, MOTION }
 
 data class MineExpeditionObjective(
     val id: String,
@@ -29,7 +29,7 @@ object MineExpeditionObjectives {
                 objective("drive", MineExpeditionInteraction.MOTION, "LEVER", position = deck.offset(2, 0, -1)))
             MineExpeditionStage.DESCENT_COUNTERWEIGHTS -> many("counterweight", 3, MineExpeditionInteraction.CRANK, "GRINDSTONE")
             MineExpeditionStage.DESCENT_POWER_CELLS -> carry("power_supply", "power_socket", "COPPER_BLOCK")
-            MineExpeditionStage.DESCENT_CORE_VALVES -> many("core_valve", 3, MineExpeditionInteraction.CRANK, "HEAVY_CORE")
+            MineExpeditionStage.DESCENT_CORE_VALVES -> many("core_valve", 3, MineExpeditionInteraction.VALVE, "HEAVY_CORE")
             MineExpeditionStage.DESCENT_ENGINE -> listOf(objective("core_start", MineExpeditionInteraction.OPERATE, "LIGHTNING_ROD", 0))
             MineExpeditionStage.ARK_FUEL -> carry("fuel_supply", "boiler", "COAL_BLOCK", deck.offset(-2, 0, -2))
             MineExpeditionStage.ARK_BRANCH -> listOf(
@@ -41,10 +41,10 @@ object MineExpeditionObjectives {
             MineExpeditionStage.ARK_COOLANT -> carry("coolant_supply", "cooling", "WATER_BUCKET", deck.offset(2, 0, -2))
             MineExpeditionStage.ARK_CORES -> many("survey", 3, MineExpeditionInteraction.PICKUP, "AMETHYST_CLUSTER") +
                 objective("core_rack", MineExpeditionInteraction.DELIVER, "AMETHYST_SHARD", position = deck.offset(-2, 0, -4))
-            MineExpeditionStage.FACTORY_WATER -> many("water_valve", 3, MineExpeditionInteraction.CRANK, "GRINDSTONE")
+            MineExpeditionStage.FACTORY_WATER -> many("water_valve", 3, MineExpeditionInteraction.VALVE, "GRINDSTONE")
             MineExpeditionStage.FACTORY_COAL -> carry("fuel_supply", "furnace_input", "COAL_BLOCK")
             MineExpeditionStage.FACTORY_HEAT -> listOf(objective("furnace_control", MineExpeditionInteraction.OPERATE, "BLAZE_POWDER", 0))
-            MineExpeditionStage.FACTORY_POUR -> listOf(objective("pour_control", MineExpeditionInteraction.CRANK, "LAVA_BUCKET", 0))
+            MineExpeditionStage.FACTORY_POUR -> listOf(objective("pour_control", MineExpeditionInteraction.VALVE, "LAVA_BUCKET", 0))
             MineExpeditionStage.FACTORY_CRANE -> listOf(objective("crane_control", MineExpeditionInteraction.OPERATE, "IRON_CHAIN", 0))
             MineExpeditionStage.FACTORY_INSTALL -> carry(if ("crane_load" in plan.stations) "crane_load" else "crane_control", "assembly_socket", "IRON_BLOCK")
             MineExpeditionStage.COMPLETE -> emptyList()

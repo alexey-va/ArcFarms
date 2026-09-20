@@ -30,6 +30,9 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
     private data class Crank(val scope: String, val stage: MineExpeditionStage, val objective: String,
         var sample: FarmProcessingCrankState? = null, var radians: Double = 0.0)
     private data class Operation(val scope:String,val objective:String,val target:Int,val cycle:MineFactoryOperation)
+    private data class Valve(val scope: String, val stage: MineExpeditionStage, val objective: String,
+        var clicks: Int = 0, var nextClickAt: Long = 0, var lastPlayer: UUID? = null)
+    private val valves = mutableMapOf<Pair<String, String>, Valve>()
     private val operations=mutableMapOf<UUID,Operation>()
     private val renderer = WorksiteCarriedDisplayRenderer()
     private val cargo = mutableMapOf<UUID, Cargo>()
@@ -40,6 +43,9 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
     fun owns(entity: Entity) = tethers.owns(entity)
     fun removeOrphans(entities: Iterable<Entity>) = tethers.removeOrphans(entities)
     fun hint(scope: String, player: Player, now: Long): Component? {
+        valves.values.filter { it.scope == scope && it.lastPlayer == player.uniqueId }.maxByOrNull { it.nextClickAt }?.let {
+            return text("valve-progress", player, mapOf("count" to it.clicks, "total" to VALVE_CLICKS))
+        }
         operations[player.uniqueId]?.takeIf { it.scope == scope }?.let {
             return text("operation-progress", player, mapOf("percent" to (it.cycle.progress(now) * 100).toInt()))
         }
@@ -56,6 +62,7 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
         target: MineExpeditionObjective, now: Long, complete: (MineExpeditionStep) -> Boolean,
         drive: () -> Unit) {
         when (target.interaction) {
+            MineExpeditionInteraction.VALVE -> turnValve(scope, scene, state, player, target, now, complete)
             MineExpeditionInteraction.PICKUP -> pickup(scope, state, player, target)
             MineExpeditionInteraction.DELIVER -> {
                 val held = cargo[player.uniqueId] ?: return
@@ -108,6 +115,9 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
         targets: List<MineExpeditionObjective>, players: Collection<Player>, now: Long,
         complete: (Player, MineExpeditionStep) -> Boolean, animateCrank: (String, Double) -> Unit) {
         val participants = players.associateBy(Player::getUniqueId)
+        valves.entries.removeIf { (_, valve) -> valve.scope == scope &&
+            (valve.stage != state.stage || targets.none { it.id == valve.objective && it.interaction == MineExpeditionInteraction.VALVE }) }
+        valves.values.filter { it.scope == scope }.forEach { animateCrank(it.objective, it.clicks * PI * 2 / VALVE_CLICKS) }
         cargo.filterValues { it.scope == scope }.toMap().forEach { (id, held) ->
             val player = participants[id]
             if (player == null || held.stage != state.stage || held.target in state.completed || !held.display.isValid) {
@@ -168,6 +178,29 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
         operations[player.uniqueId]=Operation(scope,id,target,MineFactoryOperation(state.stage,now))
         player.sendActionBar(text("operating",player))
     }
+    private fun turnValve(scope: String, scene: MineExpeditionScene, state: MineExpeditionState, player: Player,
+        target: MineExpeditionObjective, now: Long, complete: (MineExpeditionStep) -> Boolean) {
+        val center = scene.at(target.position)
+        if (cargo.containsKey(player.uniqueId) || target.target in state.completed ||
+            player.world !== center.world || player.location.distanceSquared(center) > 25.0) return
+        val key = scope to target.id
+        val valve = valves[key]?.takeIf { it.stage == state.stage }
+            ?: Valve(scope, state.stage, target.id).also { valves[key] = it }
+        if (now < valve.nextClickAt) return
+        releaseCrank(player.uniqueId)
+        valve.nextClickAt = now + 250
+        valve.lastPlayer = player.uniqueId
+        valve.clicks = (valve.clicks + 1).coerceAtMost(VALVE_CLICKS)
+        val at = center.clone().add(0.0, 2.5, 0.0)
+        if (sounds()) center.world.playSound(at, Sound.BLOCK_GRINDSTONE_USE, .35f, 1.05f + valve.clicks * .025f)
+        if (particles()) center.world.spawnParticle(Particle.CRIT, at, 3, .2, .15, .2, .015)
+        player.sendActionBar(text("valve-progress", player, mapOf("count" to valve.clicks, "total" to VALVE_CLICKS)))
+        if (valve.clicks == VALVE_CLICKS && complete(MineExpeditionEngine.completeTarget(state, target.target, now))) {
+            valves.remove(key)
+            if (sounds()) center.world.playSound(at, Sound.BLOCK_CHAIN_PLACE, .7f, 1.35f)
+            if (particles()) center.world.spawnParticle(Particle.HAPPY_VILLAGER, at, 6, .3, .2, .3, 0.0)
+        }
+    }
     fun release(player: Player) = release(player.uniqueId)
     private fun release(id: UUID) {
         cargo.remove(id)?.display?.let(renderer::remove)
@@ -175,12 +208,14 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
         operations.remove(id)
     }
     fun clear(scope: String) {
+        valves.entries.removeIf { it.value.scope == scope }
         cargo.filterValues { it.scope == scope }.keys.toList().forEach(::release)
         cranks.filterValues { it.scope == scope }.keys.toList().forEach(::releaseCrank)
         tethers.clear(scope)
         operations.entries.removeIf { it.value.scope == scope }
     }
     fun cleanup() {
+        valves.clear()
         cargo.keys.toList().forEach(::release)
         cranks.keys.toList().forEach(::releaseCrank)
         tethers.cleanup(Bukkit.getWorlds().flatMap { it.entities })
@@ -219,6 +254,7 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
         locale?.renderPath("mine.expedition.$key", player, values.mapValues { Component.text(it.value.toString()) }) ?: Component.text(key)
 
     companion object {
+        private const val VALVE_CLICKS = 8
         fun material(name: String): Material = Material.matchMaterial(name) ?: Material.IRON_INGOT
     }
 }

@@ -1,7 +1,7 @@
 allprojects {
  afterEvaluate {
   tasks.register('exportMineScenes') {
-   dependsOn 'classes'
+   dependsOn 'classes', 'validateMineDisplayModels'
    doLast {
     def urls=(sourceSets.main.runtimeClasspath+sourceSets.main.compileClasspath).files.collect{it.toURI().toURL()} as URL[]
     def cl=new URLClassLoader(urls,(ClassLoader)null)
@@ -53,6 +53,7 @@ allprojects {
         [id:'left',label:'Левый цех',camera:[36,9,42],target:[15,10,23],fov:65],
         [id:'right',label:'Правый цех',camera:[35,9,44],target:[54,9,29],fov:65],
         [id:'furnace',label:'Загрузка и печь',camera:[27,8,33],target:[19,9,23],fov:65],
+        [id:'console',label:'Пульт с высоты игрока',camera:[28.5,6.62,45.5],target:[28.5,6.45,41.5],fov:65],
         [id:'press',label:'Пресс и крановый пульт',camera:[37,8,54],target:[43,8,44],fov:65],
         [id:'reverse',label:'От привода ко входу',camera:[36,9,17],target:[36,10,49],fov:72]]]
      if(kind.toString()=='LAST_DESCENT') recipe.preview=[defaultView:'entry',views:[
