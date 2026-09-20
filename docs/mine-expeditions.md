@@ -37,8 +37,36 @@ The physical cave retains its existing departure grace; walking back to the
 expedition/rescue entrance returns a retained participant without an exit marker.
 The long-stop warning and occupied-location cleanup deadline remain in place.
 
-Validation and delivery of 0.43.0 are recorded below after activation. Historical
-release evidence follows and does not certify this release's client behaviour.
+## Verification and activation — 2026-09-20
+
+Source commit `7469a95` was built as 0.43.0. The focused regression run covered
+31 tests: 30 passed and one environment-dependent test was skipped. Changed
+compact-layout, stock and construction tests passed again after the final
+geometry adjustments. `shadowJar` and changed-translation validation passed.
+This was not a full-suite or client-playthrough check.
+
+Only runtime `spawn` (classic) restarted, completing at 19:43:41 MSK; PID changed
+from 3273837 to 3286563. ArcFarms enabled as 0.43.0. The deployed JAR SHA-256 is
+`02cb3d029f140f0aef1f14d52ac6796202f0a8c22e94a86fc8ad95e57692d0e9`.
+All three geometry-version-2 reserves became ready by 19:44:04 MSK and their
+receipts are persisted in `mine-expedition-scenes.json`:
+
+| Kind | Journal | Origin | Verified entry |
+| --- | --- | --- | --- |
+| LAST_DESCENT | 10 | -21, 106, -80 | -21, 131, -63 |
+| DRILLING_ARK | 11 | 43, 106, -80 | 43, 111, -102 |
+| DEAD_FACTORY | 12 | 107, 106, -80 | 90, 111, -66 |
+
+All six world fields (scene and return for each reserve) name
+`rc_atelier_compact_mine`. At 19:47 MSK native Denizen block reads confirmed
+feet/head/floor as air/air/tuff, air/air/stone and air/air/stone respectively.
+No ArcFarms WARN/ERROR appeared in the inspected startup log. RCNet restart job:
+`69487ff403f7d4933e600dacad036c1e94fb614a27e869cb20e5a108ed418269`;
+block/hash readback: `ad141b3bed87816e7957d906e77c0411303ed0d7093f1be077b53571d56344e9`.
+
+Native water flow, creature pursuit, minecart travel and visual quality still
+need a player walkthrough. No before/after lag measurement was taken. Historical
+release evidence below does not certify this release's client behaviour.
 
 ---
 
