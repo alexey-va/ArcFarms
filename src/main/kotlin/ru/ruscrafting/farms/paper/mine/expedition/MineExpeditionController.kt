@@ -45,7 +45,7 @@ internal class MineExpeditionController(
     private val markers = MineExpeditionMarkers(plugin)
     private val factoryPresentation=MineFactoryPresentation(plugin,markers)
     private val editor = tasks?.let { MineFurnishingEditor(plugin,it,locale,world::allScenes,markers) }
-    private val actions = MineExpeditionActions(locale)
+    private val actions = MineExpeditionActions(plugin, locale)
     private val machinery = MineExpeditionMachinery(plugin, world::project) { scene,id,p ->
         editor?.position(scene,id,p) ?: p
     }
@@ -153,14 +153,15 @@ internal class MineExpeditionController(
         now: Long): MineExpeditionMarkers.Target {
         val label = when {
             state.stage == MineExpeditionStage.FACTORY_CRANE -> "control.crane-start"
-            state.stage == MineExpeditionStage.FACTORY_HEAT -> if (MineExpeditionEngine.canFinishHeat(state, now)) "heat-ready" else "heat-wait"
+            state.stage == MineExpeditionStage.FACTORY_HEAT -> if (MineExpeditionEngine.canFinishHeat(state, now)) "heat-ready" else "heat-progress"
+            state.stage == MineExpeditionStage.FACTORY_COAL && target.interaction == MineExpeditionInteraction.DELIVER -> "control.fuel-progress"
             target.interaction == MineExpeditionInteraction.CRANK -> "control.turn"
             else -> "control.${target.id.replace(Regex("_[0-9]+$"), "")}" 
         }
         val material = if (state.stage == MineExpeditionStage.FACTORY_HEAT && MineExpeditionEngine.canFinishHeat(state, now))
             Material.LIME_DYE else MineExpeditionActions.material(target.material)
         return MineExpeditionMarkers.Target(target.id, scene.at(target.position), material,
-            render(label), target.interaction == MineExpeditionInteraction.BREAK,
+            render(label, values = progressValues(state, now)), target.interaction == MineExpeditionInteraction.BREAK,
             model=if(target.interaction == MineExpeditionInteraction.BREAK || target.id=="drive") null else MineExpeditionFurnishings.model(target.id,scene.kind),
             yaw=editor?.yaw(scene,target.id) ?: 0)
     }
@@ -170,6 +171,7 @@ internal class MineExpeditionController(
             Material.RECOVERY_COMPASS, render("exit")) }
 
     fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean {
+        if (actions.owns(event.rightClicked)) { event.isCancelled = true; return true }
         if (event.isCancelled) return false
         val identity = markers.identity(event.rightClicked) ?: return false
         event.isCancelled = true
@@ -326,9 +328,11 @@ internal class MineExpeditionController(
         return when {
             scene?.ready != true || current == null -> render("preparing", player)
             !scene.contains(player.location) -> render("enter-hint", player)
-            actions.carrying(player, scope(scene)) -> render("carry", player)
+            actions.hint(scope(scene), player, now) != null -> actions.hint(scope(scene), player, now)
+            actions.carrying(player, scope(scene)) -> render(if (current.stage == MineExpeditionStage.FACTORY_COAL) "fuel-carry" else "carry", player)
+            current.stage == MineExpeditionStage.FACTORY_COAL -> render("fuel-progress", player, progressValues(current, now))
             current.stage == MineExpeditionStage.FACTORY_HEAT -> render(
-                if (MineExpeditionEngine.canFinishHeat(current, now)) "heat-ready" else "heat-wait", player)
+                if (MineExpeditionEngine.canFinishHeat(current, now)) "heat-ready" else "heat-progress", player, progressValues(current, now))
             else -> render("stage.${current.stage.name.lowercase()}", player)
         }
     }
@@ -378,8 +382,10 @@ internal class MineExpeditionController(
         world.allScenes().any { it.contains(destination) && travel.retains(player) }
     fun protects(location: Location): Boolean = world.protects(location)
     fun recover(player: Player) = travel.recover(player)
-    fun onChunkLoad(chunk: Chunk) { world.onChunkLoad(chunk); markers.onChunkLoad(chunk) }
+    fun onChunkLoad(chunk: Chunk) { world.onChunkLoad(chunk); markers.onChunkLoad(chunk); actions.removeOrphans(chunk.entities.asIterable()) }
+    fun protects(entity: org.bukkit.entity.Entity) = actions.owns(entity)
     fun reconcileLoaded() {
+        actions.removeOrphans(Bukkit.getWorlds().flatMap { it.entities })
         val runtime = registry.snapshot().firstOrNull(::configured)
         runtime?.let { world.configure(it, requireNotNull(surfacePoint(it))) }
         world.initialize(runtime != null)
@@ -429,8 +435,13 @@ internal class MineExpeditionController(
             travel.record(player)?.let { it.zoneId == scene.zoneId && it.sequence == scene.sequence } == true
     private fun near(player: Player, location: Location, radius: Double): Boolean =
         player.world === location.world && player.location.distanceSquared(location) <= radius * radius
-    private fun render(key: String, player: Player? = null): Component =
-        locale?.renderPath("mine.expedition.$key", player) ?: Component.text(key)
+    private fun progressValues(state: MineExpeditionState, now: Long): Map<String, Component> = mapOf(
+        "count" to Component.text(state.completed.size),
+        "total" to Component.text(MineExpeditionEngine.targetCount(state)),
+        "seconds" to Component.text(((state.heatStartedAt + MineExpeditionEngine.HEAT_MILLIS - now).coerceAtLeast(0) + 999) / 1000),
+    )
+    private fun render(key: String, player: Player? = null, values: Map<String, Component> = emptyMap()): Component =
+        locale?.renderPath("mine.expedition.$key", player, values) ?: Component.text(key)
     private fun scope(scene: MineExpeditionScene) = "${scene.zoneId}:${scene.sequence}:${scene.objectiveNonce}"
     private fun gatewayScope(runtime: MineRuntime) = "gate:${runtime.settings.id}"
 

@@ -190,7 +190,10 @@ internal class MineIncidentSet(
 
     fun onEntityDeath(event: EntityDeathEvent): Boolean = lostMiner.onDeath(event) || creatureNest.onDeath(event)
 
-    fun onEntityDamage(event: EntityDamageEvent): Boolean = lostMiner.onDamage(event) || creatureNest.onDamage(event)
+    fun onEntityDamage(event: EntityDamageEvent): Boolean {
+        if (expeditions?.protects(event.entity) == true) { event.isCancelled = true; return true }
+        return lostMiner.onDamage(event) || creatureNest.onDamage(event)
+    }
 
     fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
         workshop.releasePlayer(player, reason)

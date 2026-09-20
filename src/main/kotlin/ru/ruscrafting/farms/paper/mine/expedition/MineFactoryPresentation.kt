@@ -1,5 +1,6 @@
 package ru.ruscrafting.farms.paper.mine.expedition
 
+import org.bukkit.Material
 import org.bukkit.Location
 import org.bukkit.Particle
 import org.bukkit.Sound
@@ -9,7 +10,7 @@ import ru.ruscrafting.farms.domain.mine.expedition.*
 /** Local, bounded feedback for the active production stage. No timers or persistent entities. */
 internal class MineFactoryPresentation(private val plugin:Plugin,private val markers:MineExpeditionMarkers) {
     private data class Frame(var nextParticles:Long=0,var nextSound:Long=0,var heatSignal:Long=-1,
-        var lastStage:MineExpeditionStage?=null,var lastCompleted:Set<Int> = emptySet(),var pressHit:Boolean=false)
+        var pressHit:Boolean=false)
     private val frames=mutableMapOf<Long,Frame>()
     fun tick(scene:MineExpeditionScene,state:MineExpeditionState,scope:String,now:Long,angles:Map<String,Double>) {
         if(scene.kind!=MineExpeditionKind.DEAD_FACTORY || scene.placement.geometryVersion<3) return
@@ -17,6 +18,11 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
         val decor="furnish:${scene.journalSequence}"
         fun at(id:String,x:Double=0.0,y:Double=0.0,z:Double=0.0)=
             markers.at(scope,id,x,y,z) ?: markers.at(decor,id,x,y,z)
+        val heating = state.stage == MineExpeditionStage.FACTORY_HEAT
+        val heatReady = heating && MineExpeditionEngine.canFinishHeat(state, now)
+        val light = if (heatReady) Material.LIME_CONCRETE else if (heating) Material.YELLOW_CONCRETE else Material.RED_CONCRETE
+        markers.signal(scope, "furnace_control", light)
+        markers.signal(decor, "furnace_control", light)
         val water=state.stage!=MineExpeditionStage.FACTORY_WATER || state.completed.isNotEmpty()
         val hot=state.stage in setOf(MineExpeditionStage.FACTORY_HEAT,MineExpeditionStage.FACTORY_POUR)
         val phase=(now%12_000L).toDouble()/12_000*Math.PI*2
@@ -38,11 +44,6 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
             sound(at("furnace_control",y=2.2),Sound.BLOCK_NOTE_BLOCK_BELL,.8f,1.3f)
             particles(at("furnace_control",y=3.1),Particle.HAPPY_VILLAGER,10,.8,.2,.2,0.0)
         }
-        if(f.lastStage==MineExpeditionStage.FACTORY_COAL && (state.stage!=f.lastStage || state.completed!=f.lastCompleted)) {
-            sound(at("furnace_input",y=2.5),Sound.BLOCK_STONE_PLACE,.7f,.6f)
-            particles(at("furnace_input",y=2.9),Particle.ASH,12,1.0,.25,.75,.03)
-        }
-        f.lastStage=state.stage;f.lastCompleted=state.completed
         val particleTick=now>=f.nextParticles
         val soundTick=now>=f.nextSound
         if(particleTick) f.nextParticles=now+350
@@ -51,6 +52,7 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
             if(particleTick) particles(at("decor_waterwheel",y=1.2,z=.9),Particle.SPLASH,7,2.6,.25,.3,.025)
             if(soundTick) sound(at("decor_waterwheel",y=2.0),Sound.BLOCK_WATER_AMBIENT,.5f,.8f)
         }
+        if (heatReady && particleTick) particles(at("furnace_control",y=3.6),Particle.END_ROD,3,.4,.25,.3,.012)
         if(hot) {
             if(particleTick) {
                 particles(at("decor_furnace_left",y=2.8,z=2.3),Particle.SMALL_FLAME,5,1.3,.45,.1,.005)

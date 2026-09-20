@@ -1,17 +1,13 @@
 package ru.ruscrafting.farms.paper.farm.incident.processing
 
-import org.bukkit.Bukkit
 import org.bukkit.Color
 import org.bukkit.Location
 import org.bukkit.NamespacedKey
 import org.bukkit.Particle
 import org.bukkit.Sound
-import org.bukkit.entity.Chicken
 import org.bukkit.entity.Entity
 import org.bukkit.entity.ItemDisplay
-import org.bukkit.entity.Mob
 import org.bukkit.entity.Player
-import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.domain.FarmProcessingCrankSampleStatus
@@ -23,6 +19,7 @@ import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.BukkitFarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmRuntime
+import ru.ruscrafting.farms.paper.worksite.WorksiteCrankTethers
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
@@ -44,18 +41,17 @@ internal class FarmProcessingCrankController(
     private val transitions: FarmTransitionSink,
     private val entityLookup: FarmEntityLookup = BukkitFarmEntityLookup,
 ) {
-    private val tetherKey = NamespacedKey(plugin, "farm_processing_crank_tether")
+    private val tethers = WorksiteCrankTethers(NamespacedKey(plugin, "farm_processing_crank_tether"))
     private val states = mutableMapOf<Pair<String, UUID>, FarmProcessingCrankState>()
     private val radians = mutableMapOf<String, Double>()
-    private val tethers = mutableMapOf<Pair<String, UUID>, UUID>()
 
-    fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(tetherKey, PersistentDataType.STRING)
+    fun owns(entity: Entity): Boolean = tethers.owns(entity)
 
     fun participantCount(zoneId: String): Int = states.keys.count { it.first == zoneId }
 
     fun progressDegrees(zoneId: String): Int = Math.toDegrees(radians.getOrDefault(zoneId, 0.0)).toInt()
 
-    fun hasZone(zoneId: String): Boolean = states.keys.any { it.first == zoneId } || tethers.keys.any { it.first == zoneId }
+    fun hasZone(zoneId: String): Boolean = states.keys.any { it.first == zoneId } || tethers.hasScope(zoneId)
 
     fun releasePlayer(player: Player, reason: String) {
         states.keys.filter { it.second == player.uniqueId }.toList().forEach { key -> removeParticipant(key, reason) }
@@ -84,17 +80,16 @@ internal class FarmProcessingCrankController(
     }
 
     fun clear(zoneId: String, reason: String) {
-        val keys = (states.keys + tethers.keys).filter { it.first == zoneId }.distinct()
+        val keys = (states.keys.filter { it.first == zoneId } + tethers.participants(zoneId).map { zoneId to it }).distinct()
         keys.forEach { key -> removeParticipant(key, reason) }
         radians.remove(zoneId)
     }
 
     fun cleanup(reason: String) {
         val entities = entityLookup.inAllWorlds().filter(::owns)
-        entities.forEach(Entity::remove)
+        tethers.cleanup(entities)
         states.clear()
         radians.clear()
-        tethers.clear()
         if (entities.isNotEmpty()) {
             debug.event("farm_processing_crank_cleanup", "count" to entities.size, "reason" to reason)
         }
@@ -197,36 +192,9 @@ internal class FarmProcessingCrankController(
     }
 
     private fun ensureTether(runtime: FarmRuntime, player: Player, machine: Location) {
-        val key = runtime.settings.id to player.uniqueId
-        val anchor = machine.clone().add(0.0, TETHER_Y_OFFSET, 0.0)
-        val existing = tethers[key]?.let(Bukkit::getEntity) as? Mob
-        if (existing != null && existing.isValid) {
-            if (existing.world !== anchor.world || existing.location.distanceSquared(anchor) > 0.01) existing.teleport(anchor)
-            if (!existing.isLeashed || runCatching { existing.leashHolder }.getOrNull() != player) {
-                runCatching { existing.setLeashHolder(player) }
-            }
-            return
-        }
-        tethers.remove(key)
-        val tether = runCatching { anchor.world.spawn(anchor, Chicken::class.java) }.getOrElse { failure ->
-            tetherFailure(runtime, player, failure, "create")
-            return
-        }
-        tether.persistentDataContainer.set(tetherKey, PersistentDataType.STRING, runtime.settings.id)
-        tether.isPersistent = false
-        tether.isInvulnerable = true
-        runCatching { tether.isSilent = true }
-        runCatching { tether.isCollidable = false }
-        runCatching { tether.isInvisible = true }
-        runCatching { tether.setAI(false) }
-        runCatching { tether.setGravity(false) }
-        runCatching { tether.setRemoveWhenFarAway(false) }
-        runCatching { tether.setLeashHolder(player) }.exceptionOrNull()?.let { failure ->
-            tether.remove()
-            tetherFailure(runtime, player, failure, "attach")
-            return
-        }
-        tethers[key] = tether.uniqueId
+        val attached = tethers.attach(runtime.settings.id, player, machine.clone().add(0.0, TETHER_Y_OFFSET, 0.0))
+            .getOrElse { failure -> tetherFailure(runtime, player, failure, "attach"); return }
+        if (!attached) return
         debug.event(
             "farm_processing_crank_tether_attached",
             "zone" to runtime.settings.id,
@@ -250,7 +218,7 @@ internal class FarmProcessingCrankController(
 
     private fun removeParticipant(key: Pair<String, UUID>, reason: String) {
         states.remove(key)
-        tethers.remove(key)?.let(Bukkit::getEntity)?.remove()
+        tethers.release(key.first, key.second)
         debug.event("farm_processing_crank_left", "zone" to key.first, "player" to key.second, "reason" to reason)
     }
 

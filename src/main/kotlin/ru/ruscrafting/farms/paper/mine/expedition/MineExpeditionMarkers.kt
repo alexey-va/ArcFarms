@@ -22,7 +22,7 @@ internal class MineExpeditionMarkers(private val plugin: Plugin) {
         val yaw: Int = 0, val editKey: String? = null,
         val editBase: ru.ruscrafting.farms.domain.mine.expedition.ExpeditionPoint? = null)
     private data class Marker(val displays: List<PacketBlockDisplay>, val hitbox: Interaction,
-        val label: PacketTextDisplay, var target: Target, val parts: List<MineDisplayBlueprints.Part>)
+        val label: PacketTextDisplay, var target: Target, val parts: List<MineDisplayBlueprints.Part>, var signal: Material = Material.AIR)
     private val key = NamespacedKey(plugin, "mine_expedition_control")
     private val markers = linkedMapOf<String, Marker>()
     private var renderer: PaperPacketDisplays? = null
@@ -82,6 +82,19 @@ internal class MineExpeditionMarkers(private val plugin: Plugin) {
         if (portal(marker.target) || marker.target.block) return
         if (marker.parts.isEmpty()) return
         positionParts(marker.displays,marker.parts,marker.target.yaw,radians.toFloat(),marker.target.modelScale,onlyMoving=true)
+    }
+
+    fun signal(scope: String, id: String, lit: Material) {
+        val marker = markers["$scope/$id"] ?: return
+        if (marker.signal == lit) return
+        marker.signal = lit
+        marker.parts.forEachIndexed { index, part ->
+            if (part.center.y >= 3.3f && part.material in setOf(Material.LIME_CONCRETE, Material.YELLOW_CONCRETE, Material.RED_CONCRETE)) {
+                marker.displays[index].blockData = (if (part.material == lit) lit else Material.GRAY_CONCRETE).createBlockData()
+            }
+        }
+        val color = if (lit == Material.LIME_CONCRETE) Color.fromRGB(85, 217, 139) else Color.fromRGB(255, 187, 77)
+        marker.displays.forEach { it.glowColorOverride = color }
     }
 
     private fun positionParts(displays: List<PacketBlockDisplay>, parts: List<MineDisplayBlueprints.Part>, yaw: Int, phase: Float, scale: Float, onlyMoving: Boolean = false) {

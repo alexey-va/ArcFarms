@@ -1275,6 +1275,14 @@ mine:
     rail_extension: '<color:#f2fff7>Clear the collapse with a pickaxe, right-click the markers for rails and lay one continuous line, then escort the cart</color>'
     ore_workshop: '<color:#f2fff7>Carry the ore to the crusher, process the billet at the furnace, then take it to shipping</color>'
   expedition:
+    operation-progress: '<color:#f2fff7>Machine working: <percent>% · stay nearby</color>'
+    fuel-progress: '<color:#f2fff7>Fuel <count>/<total> · collect a load at the glowing bunker</color>'
+    fuel-loaded: '<color:#55d98b>Fuel loaded: <count>/<total></color>'
+    fuel-carry: '<color:#f2fff7>Carry fuel to the glowing furnace hopper · right-click to load</color>'
+    heat-progress: '<color:#ffc857>Heating: <seconds>s left · wait for the green console light</color>'
+    turn-progress: '<color:#f2fff7>Crank: <percent>% · keep walking around with the tether attached</color>'
+    turn-distance: '<color:#f2fff7>Stand 1–2 blocks from the crank and right-click</color>'
+    turn-failed: '<color:#ffc857>Could not attach the tether. Right-click to try again</color>'
     operating: '<color:#f2fff7>Machine running — stay nearby</color>'
     preparing: '<color:#f2fff7>Opening the passage…</color>'
     enter: '<color:#f2fff7>Right-click · join the expedition</color>'
@@ -1285,6 +1293,7 @@ mine:
     heat-wait: '<color:#f2fff7>Wait for the green signal at the furnace</color>'
     heat-ready: '<color:#55d98b>The furnace is ready — right-click now</color>'
     control:
+      fuel-progress: '<color:#f2fff7>Fuel <count>/<total> · right-click to load the furnace</color>'
       crane-start: '<color:#f2fff7>Right-click · start the crane</color>'
       crane_load: '<color:#f2fff7>Right-click · take the casting from the table</color>'
       turn: '<color:#f2fff7>Right-click · grip the crank, then walk around it</color>'

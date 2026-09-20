@@ -24,7 +24,7 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         val surface = Location(world, 0.5, 65.0, 24.5)
         scene = MineExpeditionScene(plan, placement, world, "factory", 1, 1, 1, surface,
             WorksitePreparedScene(world, "factory", 1, 1, surface, surface, surface, emptyList()))
-        actions = MineExpeditionActions(null)
+        actions = MineExpeditionActions(paper.createSimplePlugin("FactoryActionsTest"), null)
     }
     afterEach { actions.cleanup(); paper.close() }
 
@@ -110,6 +110,82 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         actions.clear(scope)
         actions.claimed(scope, state.stage, 0) shouldBe false
         world.entities.filter { it is ItemDisplay || it is org.bukkit.entity.Item }.size shouldBe 0
+    }
+
+    test("walking crank owns one tether and duplicate clicks do not reset progress") {
+        val state = MineExpeditionState(scene.placement, MineExpeditionStage.FACTORY_WATER)
+        val target = MineExpeditionObjectives.targets(scene.plan, state, null).first()
+        val player = paper.server.addPlayer()
+        val center = scene.at(target.position)
+        player.teleport(center.clone().add(2.0, 0.0, 0.0))
+        actions.interact(scope, scene, state, player, target, 1_000, { error("click completed crank") }) {}
+        val anchor = world.entities.single { actions.owns(it) }
+        anchor.isInvulnerable shouldBe true
+        anchor.isPersistent shouldBe false
+        (anchor as org.bukkit.entity.Mob).isInvisible shouldBe true
+        // MockBukkit incorrectly treats a Player leash holder as not leashed. We check the
+        // real anchor lifecycle here; client rope rendering remains an in-game check.
+        var completed = 0
+        repeat(41) { step ->
+            val angle = step * Math.PI / 24
+            player.teleport(center.clone().add(2 * kotlin.math.cos(angle), 0.0, 2 * kotlin.math.sin(angle)))
+            if (step == 12) actions.interact(scope, scene, state, player, target, 2_000, { true }) {}
+            actions.tick(scope, scene, state, listOf(target), listOf(player), 2_000L + step * 100,
+                { _, result -> result.accepted shouldBe true; completed++; true }) { _, _ -> }
+        }
+        completed shouldBe 1
+        world.entities.count { actions.owns(it) } shouldBe 0
+        world.entities.filterIsInstance<org.bukkit.entity.Item>().size shouldBe 0
+    }
+
+    test("crank tether releases on leaving its ring, stage change, player release and shutdown") {
+        val state = MineExpeditionState(scene.placement, MineExpeditionStage.FACTORY_WATER)
+        val target = MineExpeditionObjectives.targets(scene.plan, state, null).first()
+        val player = paper.server.addPlayer()
+        val center = scene.at(target.position)
+        fun attach() {
+            player.teleport(center.clone().add(2.0, 0.0, 0.0))
+            actions.interact(scope, scene, state, player, target, 1_000, { true }) {}
+            world.entities.count { actions.owns(it) } shouldBe 1
+        }
+        attach()
+        player.teleport(center.clone().add(4.0, 0.0, 0.0))
+        actions.tick(scope, scene, state, listOf(target), listOf(player), 1_100, { _, _ -> error("left ring") }) { _, _ -> }
+        world.entities.count { actions.owns(it) } shouldBe 0
+        attach()
+        actions.tick(scope, scene, state.copy(stage = MineExpeditionStage.FACTORY_COAL), emptyList(), listOf(player), 1_200,
+            { _, _ -> error("wrong stage") }) { _, _ -> }
+        world.entities.count { actions.owns(it) } shouldBe 0
+        attach(); actions.release(player)
+        world.entities.count { actions.owns(it) } shouldBe 0
+        attach(); actions.clear(scope)
+        world.entities.count { actions.owns(it) } shouldBe 0
+        attach(); actions.cleanup()
+        world.entities.count { actions.owns(it) } shouldBe 0
+    }
+
+    test("fuel is visibly carried and only an accepted delivery consumes its lease") {
+        var state = MineExpeditionState(scene.placement, MineExpeditionStage.FACTORY_COAL)
+        val targets = MineExpeditionObjectives.targets(scene.plan, state, null)
+        val pickup = targets.single { it.interaction == MineExpeditionInteraction.PICKUP }
+        val delivery = targets.single { it.interaction == MineExpeditionInteraction.DELIVER }
+        val player = paper.server.addPlayer()
+        repeat(3) { index ->
+            player.teleport(scene.at(pickup.position))
+            actions.interact(scope, scene, state, player, pickup, 1_000, { error("pickup cannot complete") }) {}
+            actions.carrying(player, scope) shouldBe true
+            player.teleport(scene.at(delivery.position))
+            actions.interact(scope, scene, state, player, delivery, 2_000, { false }) {}
+            actions.carrying(player, scope) shouldBe true
+            actions.interact(scope, scene, state, player, delivery, 3_000, { step ->
+                step.accepted shouldBe true; state = step.state; true
+            }) {}
+            actions.carrying(player, scope) shouldBe false
+            if (index < 2) state.completed.size shouldBe index + 1
+        }
+        state.stage shouldBe MineExpeditionStage.FACTORY_HEAT
+        world.entities.filterIsInstance<ItemDisplay>().size shouldBe 0
+        world.entities.filterIsInstance<org.bukkit.entity.Item>().size shouldBe 0
     }
 
     test("factory crane uses only current models and its chain remains attached to the carried load") {

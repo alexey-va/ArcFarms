@@ -1,6 +1,10 @@
 package ru.ruscrafting.farms.paper.mine.expedition
 
 import net.kyori.adventure.text.Component
+import org.bukkit.Bukkit
+import org.bukkit.NamespacedKey
+import org.bukkit.entity.Entity
+import org.bukkit.plugin.Plugin
 import org.bukkit.Material
 import org.bukkit.Particle
 import org.bukkit.Sound
@@ -12,13 +16,16 @@ import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.domain.FarmProcessingCrankState
 import ru.ruscrafting.farms.domain.FarmProcessingCrankTracker
 import ru.ruscrafting.farms.domain.mine.expedition.*
+import ru.ruscrafting.farms.paper.worksite.WorksiteCrankTethers
 import ru.ruscrafting.farms.paper.worksite.WorksiteCarriedDisplayRenderer
 import java.util.UUID
 import kotlin.math.PI
 import kotlin.math.abs
 
 /** Transient cargo leases and walking cranks; durable checkpoints belong to the domain engine. */
-internal class MineExpeditionActions(private val locale: ArcFarmsLocale?) {
+internal class MineExpeditionActions(private val plugin: Plugin, private val locale: ArcFarmsLocale?) {
+    private val tethers = WorksiteCrankTethers(NamespacedKey(plugin, "mine_expedition_crank_tether"))
+    private var nextTetherWarning = 0L
     private data class Cargo(val scope: String, val stage: MineExpeditionStage, val target: Int, val display: ItemDisplay)
     private data class Crank(val scope: String, val stage: MineExpeditionStage, val objective: String,
         var sample: FarmProcessingCrankState? = null, var radians: Double = 0.0)
@@ -30,6 +37,17 @@ internal class MineExpeditionActions(private val locale: ArcFarmsLocale?) {
 
     fun operationPhase(scope:String,id:String,now:Long):Double = operations.values
         .firstOrNull { it.scope==scope && it.objective==id }?.cycle?.progress(now)?.times(PI*2) ?: 0.0
+    fun owns(entity: Entity) = tethers.owns(entity)
+    fun removeOrphans(entities: Iterable<Entity>) = tethers.removeOrphans(entities)
+    fun hint(scope: String, player: Player, now: Long): Component? {
+        operations[player.uniqueId]?.takeIf { it.scope == scope }?.let {
+            return text("operation-progress", player, mapOf("percent" to (it.cycle.progress(now) * 100).toInt()))
+        }
+        cranks[player.uniqueId]?.takeIf { it.scope == scope }?.let {
+            return text("turn-progress", player, mapOf("percent" to (it.radians / (PI * 1.5) * 100).toInt().coerceAtMost(100)))
+        }
+        return null
+    }
     fun carrying(player: Player, scope: String): Boolean = cargo[player.uniqueId]?.scope == scope
     fun claimed(scope: String, stage: MineExpeditionStage, index: Int): Boolean =
         cargo.values.any { it.scope == scope && it.stage == stage && it.target == index }
@@ -44,11 +62,32 @@ internal class MineExpeditionActions(private val locale: ArcFarmsLocale?) {
                 if (held.scope != scope || held.stage != state.stage) return
                 if(state.stage==MineExpeditionStage.FACTORY_INSTALL) {
                     startOperation(scope,state,player,target.id,held.target,now)
-                } else if(complete(MineExpeditionEngine.completeTarget(state,held.target,now))) release(player)
+                } else if(complete(MineExpeditionEngine.completeTarget(state,held.target,now))) {
+                    release(player)
+                    if (state.stage == MineExpeditionStage.FACTORY_COAL) {
+                        val at = scene.at(target.position).add(0.0, 2.6, 0.0)
+                        if (sounds()) at.world.playSound(at, Sound.BLOCK_STONE_PLACE, .85f, .6f)
+                        if (particles()) {
+                            at.world.spawnParticle(Particle.BLOCK, at, 18, .6, .2, .6, Material.COAL_BLOCK.createBlockData())
+                            at.world.spawnParticle(Particle.CLOUD, at, 5, .5, .2, .5, .025)
+                        }
+                        player.sendActionBar(text("fuel-loaded", player, mapOf("count" to state.completed.size + 1, "total" to MineExpeditionEngine.targetCount(state))))
+                    }
+                }
             }
             MineExpeditionInteraction.CRANK -> {
                 if (cargo.containsKey(player.uniqueId)) return
+                if (cranks[player.uniqueId]?.let { it.scope == scope && it.objective == target.id } == true) return
+                val center = scene.at(target.position)
+                val dx = player.location.x - center.x
+                val dz = player.location.z - center.z
+                if (player.world !== center.world || abs(player.location.y - center.y) > 1.8 || dx * dx + dz * dz !in .64..9.0) {
+                    player.sendActionBar(text("turn-distance", player)); return
+                }
+                releaseCrank(player.uniqueId)
+                if (!attachTether(scope, player, center, now)) return
                 cranks[player.uniqueId] = Crank(scope, state.stage, target.id)
+                if (sounds()) player.playSound(center, Sound.BLOCK_CHAIN_PLACE, .7f, 1.1f)
                 player.sendActionBar(text("turn", player))
             }
             MineExpeditionInteraction.OPERATE -> {
@@ -97,25 +136,29 @@ internal class MineExpeditionActions(private val locale: ArcFarmsLocale?) {
             val player = participants[id]
             val target = targets.firstOrNull { it.id == crank.objective && it.interaction == MineExpeditionInteraction.CRANK }
             if (player == null || crank.stage != state.stage || target == null) {
-                cranks.remove(id)
+                releaseCrank(id)
                 return@forEach
             }
             val center = scene.at(target.position)
             if (player.world !== center.world || abs(player.location.y - center.y) > 1.8) {
-                cranks.remove(id)
+                releaseCrank(id)
                 return@forEach
             }
             val sample = FarmProcessingCrankTracker.sample(crank.sample, player.location.x, player.location.z,
                 center.x, center.z, 0.8, 2.8, radiusTolerance = 0.25, maxStepDistance = 1.8)
+            if (sample.state == null || !attachTether(scope, player, center, now)) {
+                releaseCrank(id)
+                return@forEach
+            }
             crank.sample = sample.state
             if (sample.acceptedRadians <= 0) return@forEach
             crank.radians += sample.acceptedRadians
             animateCrank(target.id, crank.radians)
-            center.world.spawnParticle(Particle.CRIT, center.clone().add(0.0, 0.9, 0.0), 2, 0.15, 0.1, 0.15, 0.0)
+            if (particles()) center.world.spawnParticle(Particle.CRIT, center.clone().add(0.0, 0.9, 0.0), 2, 0.15, 0.1, 0.15, 0.0)
             if (crank.radians >= PI * 1.5 && complete(player,
                     MineExpeditionEngine.completeTarget(state, target.target, now))) {
-                cranks.remove(id)
-                center.world.playSound(center, Sound.BLOCK_CHAIN_PLACE, 0.8f, 0.7f)
+                releaseCrank(id)
+                if (sounds()) center.world.playSound(center, Sound.BLOCK_CHAIN_PLACE, 0.8f, 0.7f)
             }
         }
     }
@@ -128,17 +171,19 @@ internal class MineExpeditionActions(private val locale: ArcFarmsLocale?) {
     fun release(player: Player) = release(player.uniqueId)
     private fun release(id: UUID) {
         cargo.remove(id)?.display?.let(renderer::remove)
-        cranks.remove(id)
+        releaseCrank(id)
         operations.remove(id)
     }
     fun clear(scope: String) {
         cargo.filterValues { it.scope == scope }.keys.toList().forEach(::release)
-        cranks.entries.removeIf { it.value.scope == scope }
+        cranks.filterValues { it.scope == scope }.keys.toList().forEach(::releaseCrank)
+        tethers.clear(scope)
         operations.entries.removeIf { it.value.scope == scope }
     }
     fun cleanup() {
         cargo.keys.toList().forEach(::release)
-        cranks.clear()
+        cranks.keys.toList().forEach(::releaseCrank)
+        tethers.cleanup(Bukkit.getWorlds().flatMap { it.entities })
         operations.clear()
     }
 
@@ -150,12 +195,28 @@ internal class MineExpeditionActions(private val locale: ArcFarmsLocale?) {
         val display = renderer.spawn(player, ItemStack(material(target.material)), ItemDisplay.ItemDisplayTransform.FIXED,
             0.85f, 2f, 0.75, 0.85) { it.brightness = Display.Brightness(15, 15) }
         cargo[player.uniqueId] = Cargo(scope, state.stage, index, display)
-        cranks.remove(player.uniqueId)
-        player.playSound(player.location, Sound.BLOCK_WOOD_PLACE, 0.65f, 0.8f)
+        releaseCrank(player.uniqueId)
+        if (sounds()) player.playSound(player.location, Sound.BLOCK_WOOD_PLACE, 0.65f, 0.8f)
     }
 
-    private fun text(key: String, player: Player): Component =
-        locale?.renderPath("mine.expedition.$key", player) ?: Component.text(key)
+    private fun releaseCrank(id: UUID) {
+        cranks.remove(id)?.let { tethers.release(it.scope, id) }
+    }
+    private fun attachTether(scope: String, player: Player, center: org.bukkit.Location, now: Long): Boolean {
+        val result = tethers.attach(scope, player, center.clone().add(0.0, .9, 0.0))
+        val failure = result.exceptionOrNull() ?: return true
+        tethers.release(scope, player.uniqueId)
+        if (now >= nextTetherWarning) {
+            nextTetherWarning = now + 30_000
+            plugin.logger.log(java.util.logging.Level.WARNING, "Mine crank leash failed scope=$scope player=${player.uniqueId}", failure)
+        }
+        player.sendActionBar(text("turn-failed", player))
+        return false
+    }
+    private fun sounds() = plugin.config.getBoolean("ui.sounds", true)
+    private fun particles() = plugin.config.getBoolean("ui.particles", true)
+    private fun text(key: String, player: Player, values: Map<String, Any> = emptyMap()): Component =
+        locale?.renderPath("mine.expedition.$key", player, values.mapValues { Component.text(it.value.toString()) }) ?: Component.text(key)
 
     companion object {
         fun material(name: String): Material = Material.matchMaterial(name) ?: Material.IRON_INGOT

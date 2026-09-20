@@ -16,11 +16,18 @@ permanent return portals remain available independently of event markers.
 ## Factory work
 
 1. Turn the three water controls by gripping them with right-click and walking
-   around them. The wheel and pumps start after the first completed control.
+   around them. A real vanilla leash joins the player to the fixed invisible
+   anchor; the HUD shows turning progress. Leaving the ring, departure, stage
+   completion and shutdown release it without drops. The wheel and pumps start
+   after the first completed control. Farm processing shares this tether owner.
 2. Carry three visible fuel loads from the bunker into the feed hopper. The
-   crushers turn during loading/heating with sparse dust and grinding sounds.
+   crushers turn during loading/heating with dust and grinding sounds. Accepted
+   deliveries burst coal fragments/clouds with a loading thud; HUD and hopper
+   label show the shared 0/3–3/3 count. Carrying players are guided to the hopper.
 3. Wait for the furnace's green ready signal and bell, then right-click its
-   control. Fire and chimney smoke follow the heating/pouring stages.
+   control. The countdown is shown above the control and in the HUD. Its status
+   stack changes yellow to green together with a green glow and bright end-rod
+   particles. Fire and chimney smoke follow the heating/pouring stages.
 4. Turn the casting crank. The mould fills visibly, with molten droplets and
    lava sounds while pouring.
 5. Right-click the crane console. A 4.5-second cycle lifts the casting, moves it
@@ -59,9 +66,14 @@ eight factory camera positions. **Demo mechanisms** animates the same wheel,
 lever and press transforms; it does not simulate gameplay, cargo, sound or
 particles. Schematics contain blocks only; ArcFarms owns display assemblies.
 
-## Verification of the pending implementation — 2026-09-20
+## Verification — 2026-09-20
 
-The focused factory/architecture run passed 40 tests, including crane duplicate
+The 0.44.1 focused run passed 38 tests across architecture, factory operations
+and the existing farm processing lifecycle. New cases cover a real tether
+anchor through duplicate clicks, completion, leaving the ring, stage change,
+player release and shutdown, plus fuel lease retention on rejected delivery.
+MockBukkit does not model client leash rendering. The preceding 0.44.0 run
+passed 40 tests, including crane duplicate
 clicks and departure, press cargo retention and cleanup, complete ram motion,
 domain progression, compact geometry and the moving crane suspension. `shadowJar` and preview export passed.
 The offline factory route has 43 supported/unblocked points and all 162 sampled
