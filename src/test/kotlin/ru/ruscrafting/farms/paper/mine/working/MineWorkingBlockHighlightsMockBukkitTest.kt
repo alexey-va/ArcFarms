@@ -32,7 +32,7 @@ class MineWorkingBlockHighlightsMockBukkitTest : FunSpec({
         val world = paper.server.addSimpleWorld("world")
         val plugin = paper.createSimplePlugin("MineWorkingBlockHighlightsTest")
         val placement = MineWorkingPlacement(
-            WorksitePosition(world.name, 18, 64, 18), direction = 0, floorId = "fixture-floor",
+            WorksitePosition(world.name, 18, 64, 18), direction = 0, floorId = "fixture-floor", geometryVersion = 4,
         )
         val plan = MineWorkingLayout.plan(MineIncidentType.TUNNEL_DRIVE, placement)
         val runtime = MineRuntime(

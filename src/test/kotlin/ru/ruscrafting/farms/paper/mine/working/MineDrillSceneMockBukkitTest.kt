@@ -120,7 +120,7 @@ class MineDrillSceneMockBukkitTest : FunSpec({
 })
 
 private fun runtime(world: WorldMock, direction: Int = 0): MineRuntime {
-    val placement = MineWorkingPlacement(WorksitePosition(world.name, 0, 64, 0), direction, "drill-floor", 11L)
+    val placement = MineWorkingPlacement(WorksitePosition(world.name, 0, 64, 0), direction, "drill-floor", 11L, geometryVersion = 4)
     return MineRuntime(
         settings = mineV2Settings().copy(id = "drill_zone"),
         region = CuboidActivityRegion(world, "drill_zone", CuboidBounds(-32, 48, -32, 32, 96, 48)),

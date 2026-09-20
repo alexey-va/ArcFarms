@@ -258,3 +258,11 @@ return receipt, and admin edit interaction/lifetime. Display validation inspecte
 Browser preview inspected the canonical drill model from the front and rear.
 Native steering smoothness, riding camera, sounds and particles still need a
 Minecraft player pass; these are not established by unit tests or browser QA.
+
+
+CI follow-up: the first 0.44.4 run passed Paper E2E and storage integration.
+The complete unit job reported 25 failures; comparison with the 0.44.3 run
+identified the same 23 prior failures plus two old-drill fixtures inadvertently
+using the new default geometry. Those two fixtures now explicitly use version
+4. The expanded local selection passed 78 checks with no failures or skips.
+The 23 prior CI failures remain unresolved; the full suite is not green.
