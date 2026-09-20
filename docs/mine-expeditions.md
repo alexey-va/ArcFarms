@@ -383,3 +383,34 @@ run of the old entity-incident spec failed ten setup cases before their
 asserted interaction: those fixtures start incidents without prewarming the
 candidate stock. The focused nest regression explicitly prewarms it and checks
 Husk health/armor and wound preservation. This is not a full-suite pass.
+
+## 0.44.3 spawn activation — 2026-09-21
+
+- Published source: `a68aaa5`; locale/skill documentation: `f900af127`.
+- Candidate: `ArcFarms-0.44.3.jar`, SHA-256
+  `f582a3bc18abf341543f8aab9536ba32d027044a14f35c69d020aa623a0701fc`.
+- Locale transaction: `push-20260920T215809Z-57988`, only classic/spawn.
+  RU SHA `015dc8cec589d8385c6acf180be624a03bd058957b15cbb5f6e3d68186c796d9`;
+  EN SHA `7f1a16f99439fb64fe847d6a0d79497c6c8ecea2f013865cd5eab356a6a33248`.
+- JAR transaction: `jar-20260920T215838Z-58369`.
+- Before activation, typed spawn and Velocity enumeration both reported only
+  GrocerMC. RCNet restart job
+  `fb08773707b86bf49936a3b5278943c83223f4cb81db04d4b27d7ef112436713`
+  completed successfully for spawn only; PID `3339967 -> 3352467`.
+- ArcFarms 0.44.3 reported ready at 01:00:36 MSK, Redis connected and zero pending
+  mine blocks. Paper reported Done at 01:01:03. Exact remote JAR hash matched.
+- Journals 16/17/18 reloaded ready at 01:01:13 with `siteBuilt=true`,
+  `reserved=true`, `restoring=false`, unchanged positions and geometry version 3.
+  No permanent room terrain rebuild was requested. The newly claimed event uses
+  the relocated gate; existing unused receipts keep historical return coordinates
+  until the normal claim transaction updates them.
+- Preview regenerated from canonical Kotlin models at http://127.0.0.1:8876/.
+  Added a console view at player eye height; two review screenshots are retained at
+  `/private/tmp/mine-0443-review/console.png` and
+  `/private/tmp/mine-0443-review/press.png`. Preview lighting is illustrative.
+- 51 focused tests passed and all 19 cuboid models passed the sampled face audit.
+  The new complete factory cycle, audio balance, and actual client interpolation
+  after activation remain unverified; the earlier ordinary-client walkthrough and
+  return-portal evidence applies to 0.44.2 only. Automatic approval previously
+  rejected granting arcfarms.admin to the QA bot; no permission grant or
+  impersonation was used to force that live scenario.
