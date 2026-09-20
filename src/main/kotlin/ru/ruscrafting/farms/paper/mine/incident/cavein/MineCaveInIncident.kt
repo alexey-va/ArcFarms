@@ -63,7 +63,20 @@ internal class MineCaveInIncident(
     private val retryAfter = mutableMapOf<String, Long>()
     private val loggedBlockedTargets = mutableSetOf<String>()
 
+    private val reserves = mutableMapOf<String, Pair<Footprint, SearchResult>>()
+
+    fun prewarm(runtime: MineRuntime, now: Long) {
+        if (runtime.state.incident != null || runtime.state.phase == MinePhase.IDLE || reserves.containsKey(runtime.settings.id)) return
+        search(runtime, now)
+    }
+
     fun start(runtime: MineRuntime, now: Long): Boolean {
+        val (footprint, report) = reserves.remove(runtime.settings.id) ?: return false
+        if (rubbleIssue(runtime, footprint) != null) return false
+        return beginIncident(runtime, footprint, report, now)
+    }
+
+    private fun search(runtime: MineRuntime, now: Long): Boolean {
         val zoneId = runtime.settings.id
         pendingSearches[zoneId]?.let { pending ->
             if (pending.sequence == runtime.state.sequence) return true
@@ -353,7 +366,8 @@ internal class MineCaveInIncident(
             rejectSearch(runtime, search.requestedAt, result.copy(rejected = rejected))
             return
         }
-        beginIncident(runtime, selected, result, search.requestedAt)
+        reserves[runtime.settings.id] = selected to result
+        placementReports[runtime.settings.id] = MineIncidentPlacementReport(MineIncidentType.CAVE_IN, RUBBLE_BLOCKS, selected.blocks.size, result.considered, result.rejected)
     }
 
     private fun rejectSearch(runtime: MineRuntime, now: Long, result: SearchResult) {

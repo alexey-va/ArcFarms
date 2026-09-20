@@ -51,7 +51,7 @@ internal class MineExpeditionStock(
         MineExpeditionKind.entries.forEach { kind ->
             val reserves = receipts.records().filter { it.kind == kind && current(it) && it.reserved && !it.restoring && it.journalSequence !in claimed }
             reserves.forEach(loader::prepare)
-            if (reserves.isNotEmpty() || kind in creating || now < (retryAfter["create:$kind"] ?: 0L)) return@forEach
+            if (receipts.records().any { it.kind == kind && current(it) && !it.restoring } || kind in creating || now < (retryAfter["create:$kind"] ?: 0L)) return@forEach
             val id = receipts.allocateJournalSequence()
             require(id <= Int.MAX_VALUE) { "Expedition scene identifier exhausted" }
             // The shared scene owner fences restoration by zone, so each allocation needs its own owner.
@@ -105,7 +105,10 @@ internal class MineExpeditionStock(
                 runtime.state = runtime.state.copy(incident = runtime.state.incident!!.copy(
                     expedition = MineExpeditionEngine.initial(incident.type, receipt.placement)))
                 state.persistAsync()
-            } else retire(receipt)
+            } else loader.prepared(receipt.journalSequence)?.let {
+                bind(it, receipt, surface)
+                release(it)
+            }
             nextRefill = 0L
         }
         return null
@@ -115,10 +118,27 @@ internal class MineExpeditionStock(
         receipts.find(runtime.settings.id, runtime.state.sequence, it.objectiveNonce)?.let { receipt -> loader.failure(receipt.journalSequence) }
     }
 
+    fun markBuilt(scene: MineExpeditionScene) {
+        if (receipts.findJournal(scene.journalSequence)?.siteBuilt == true) return
+        write("built:${scene.journalSequence}", { receipts.markBuilt(scene.journalSequence) }) {}
+    }
+
     fun complete(scene: MineExpeditionScene, now: Long) {
         if (scene.reserved || scene.completedAt != 0L) return
         write("complete:${scene.journalSequence}", { receipts.markCompleted(scene.zoneId, scene.sequence, scene.objectiveNonce, now) }) {
             scene.completedAt = now
+        }
+    }
+
+    /** Releases event ownership without restoring or regenerating the operator-editable site. */
+    fun release(scene: MineExpeditionScene) {
+        val receipt = receipts.findJournal(scene.journalSequence) ?: return
+        if (receipt.reserved || receipt.restoring) return
+        val reserve = receipt.copy(zoneId = receipt.journalOwner, sequence = 0,
+            objectiveNonce = receipt.journalSequence, completedAt = 0, reserved = true)
+        write("release:${scene.journalSequence}", { receipts.release(receipt, reserve) }) {
+            bind(scene, reserve, scene.surface)
+            nextRefill = 0
         }
     }
 
@@ -170,7 +190,7 @@ internal class MineExpeditionStock(
 
     private fun bind(scene: MineExpeditionScene, receipt: MineExpeditionSceneReceipt, surface: Location) {
         scene.zoneId = receipt.zoneId; scene.sequence = receipt.sequence; scene.objectiveNonce = receipt.objectiveNonce
-        scene.surface = surface.clone(); scene.reserved = receipt.reserved
+        scene.surface = surface.clone(); scene.reserved = receipt.reserved; scene.completedAt = receipt.completedAt
     }
 
     private fun key(runtime: MineRuntime) = "${runtime.settings.id}:${runtime.state.sequence}:${runtime.state.incident?.objectiveNonce}"

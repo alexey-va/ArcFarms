@@ -314,6 +314,7 @@ internal class MineModule(
         MineReindexJob(runtime.indexDefinition(), index, tickets)
     }
 
+    fun editExpeditionFurnishings(player: Player, action: String?) = incidents.editExpeditionFurnishings(player,action)
     fun expeditionStock() = incidents.expeditionStock()
     fun rebuildExpeditionStock(kind: ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionKind?) = incidents.rebuildExpeditionStock(kind)
 

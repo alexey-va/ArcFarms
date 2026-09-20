@@ -26,7 +26,7 @@ internal fun MineRuntime.floodFootprint(anchor: WorksitePosition, limit: Int = 3
         .firstOrNull { opening ->
             world.isChunkLoaded(opening.x shr 4, opening.z shr 4) &&
                 world.getBlockAt(opening.x, opening.y, opening.z).type in setOf(Material.AIR, Material.WATER) &&
-                isIncidentSurface(opening.copy(y = opening.y - 1))
+                opening.copy(y = opening.y - 1).blockType()?.isSolid == true
         }
         ?: anchor.copy(y = anchor.y + 1)
     val queue = ArrayDeque<WorksitePosition>().apply { add(origin) }
@@ -44,7 +44,7 @@ internal fun MineRuntime.floodFootprint(anchor: WorksitePosition, limit: Int = 3
         if (!world.isChunkLoaded(position.x shr 4, position.z shr 4)) continue
         val water = world.getBlockAt(position.x, position.y, position.z)
         if (!region.contains(water.location) || water.type !in setOf(Material.AIR, Material.WATER)) continue
-        if (!isIncidentSurface(position.copy(y = position.y - 1))) continue
+        if (position.copy(y = position.y - 1).blockType()?.isSolid != true) continue
         result += position
         directions.forEach { face ->
             queue += position.copy(x = position.x + face.modX, z = position.z + face.modZ)

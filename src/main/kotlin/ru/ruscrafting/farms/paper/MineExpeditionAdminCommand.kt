@@ -9,6 +9,7 @@ import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionKind
 internal class MineExpeditionAdminCommand(private val service: ArcFarmsService, private val locale: ArcFarmsLocale) {
     fun execute(sender: CommandSender, args: List<String>) {
         when (args.firstOrNull()?.lowercase()) {
+            "edit" -> (sender as? org.bukkit.entity.Player)?.let { service.editExpeditionFurnishings(it,args.getOrNull(1)) }
             "status" -> service.expeditionStock().forEach { status ->
                 sender.sendMessage(locale.renderPath("admin.expeditions.status", sender, mapOf(
                     "kind" to Component.text(status.kind.name.lowercase()),

@@ -95,6 +95,30 @@ class MineExpeditionSceneRepositoryTest : FunSpec({
         storage.closed shouldBe true
     }
 
+    test("built editable site survives release and repository reopen") {
+        val root = Files.createTempDirectory("arcfarms-static-site")
+        val reserve = MineExpeditionSceneReceipt("reserve",0,1,1,MineExpeditionKind.DEAD_FACTORY,
+            MineExpeditionPlacement("world",40,100,-112,73),"world",0.5,111.0,0.5,
+            reserved=true,journalZoneId="reserve",journalSceneId=1)
+        MineExpeditionSceneRepository(root).use { repository ->
+            repository.commit(reserve).join()
+            repository.markBuilt(1).join()
+            val built=repository.records().single()
+            val active=built.copy(zoneId="mine",sequence=1,objectiveNonce=8,reserved=false)
+            repository.claim(built,active).join()
+            repository.markCompleted("mine",1,8,5000).join()
+            repository.release(active,built).join()
+        }
+        MineExpeditionSceneRepository(root).use { repository ->
+            repository.ready.join()
+            val site=repository.records().single()
+            site.siteBuilt shouldBe true
+            site.reserved shouldBe true
+            site.restoring shouldBe false
+            site.placement shouldBe reserve.placement
+        }
+    }
+
     test("conflicting journal identities and invalid world names are rejected") {
         val root = Files.createTempDirectory("arcfarms-expedition-receipt-invalid")
         val placement = MineExpeditionPlacement("rc_arcfarms_expeditions", 0, 0, 0, 1L)

@@ -354,7 +354,11 @@ Three off-site expeditions open through the glowing `expedition_gate` point.
 One location of each kind is prepared ahead of time and retained across restarts.
 Use `/arcfarms admin expeditions status` to inspect the stock, or
 `/arcfarms admin expeditions rebuild [all|last_descent|drilling_ark|dead_factory]`
-to replace unused locations. Claiming a scene replenishes its reserve in the background.
+to replace unused locations. Permanent sites return to the ready stock after use;
+ordinary completion does not regenerate their terrain or erase administrator edits.
+`/arcfarms admin expeditions edit [kind|off]` opens the explicit machine-placement
+editor on an idle site. Select a whole assembly with right-click, use F for the
+move/rotate panel, then save or cancel. Positions persist across restarts.
 
 Creature nests stay inside the walkable ring. Their glowing creatures pursue players
 on the same floor, including creative players, and temporarily chew through nearby
@@ -366,13 +370,17 @@ Ark** sends a tracked machine through branching caves: load fuel, clear its
 jammed drill, refill coolant and bring crystal cores aboard before returning.
 **The Dead Factory** connects a waterwheel, furnace, casting mould and gantry:
 turn valves by walking around the cranks, carry fuel, catch the furnace signal,
-pour metal and install the casting. Interactable targets glow; carried loads,
-rotating machinery and the crane are visible in the world.
+pour metal, start the overhead crane, then carry its casting to a powered press.
+The crane runs for 4.5 seconds; the press completes its 2.4-second down/up stroke
+before the final checkpoint. Water splashes, furnace fire/smoke, heat-ready bells,
+grinding dust, chain movement and press impacts follow the production stages.
+Interactable targets glow; carried loads and moving machine parts are visible.
 
 The scenes use deterministic noise geology and authored industrial landmarks.
 Their routes, machine sweeps and station clearances are reserved before detail
-placement. A completed location remains for at least one minute, then retires
-when players have moved clear; a five-minute deadline includes a warning.
+placement. Permanent expeditions return participants on completion and retain
+return portals at rest. Their terrain remains until an explicit idle-site rebuild.
+Temporary lateral workings retain their departure grace and cleanup deadline.
 Temporary cargo and scenery produce no ordinary loot. See
 [`docs/mine-expeditions.md`](docs/mine-expeditions.md) for setup and verification.
 

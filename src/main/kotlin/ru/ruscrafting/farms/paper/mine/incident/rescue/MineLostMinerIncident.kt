@@ -35,6 +35,7 @@ internal class MineLostMinerIncident(
     private val closingWarning: (Player, Int) -> Unit = { _, _ -> },
     private val clock: () -> Long = System::currentTimeMillis,
     private val minerLabel: () -> net.kyori.adventure.text.Component = { net.kyori.adventure.text.Component.empty() },
+    private val candidateStock: ru.ruscrafting.farms.paper.mine.incident.MineIncidentCandidateStock? = null,
 ) {
     private val miners = mutableMapOf<String, UUID>()
     private val entrances = mutableMapOf<String, UUID>()
@@ -45,10 +46,30 @@ internal class MineLostMinerIncident(
     private val completedExitEntrances = mutableMapOf<String, MutableSet<UUID>>()
     private val completedExitHitboxes = mutableMapOf<String, MutableSet<UUID>>()
 
+    private val preparedTargets = mutableMapOf<String, WorksitePosition>()
+    private val nextPreparationAt = mutableMapOf<String,Long>()
+    private val candidateCursor = mutableMapOf<String,Int>()
+
+    fun prewarm(runtime: MineRuntime, now: Long) {
+        if (now < (nextPreparationAt[key(runtime)] ?: 0L) || active(runtime) || transitioning(runtime)) return
+        nextPreparationAt[key(runtime)] = now + 1_000
+        val target = preparedTargets[key(runtime)] ?: candidateStock?.candidates(runtime, MineIncidentType.LOST_MINER)?.let { values ->
+            if(values.isEmpty()) null else values[(candidateCursor[key(runtime)] ?: 0).mod(values.size)]
+        }?.also {
+            preparedTargets[key(runtime)] = it
+        } ?: return
+        val result = maze.ensure(runtime, target)
+        if (result.first == MineLostMinerMazeEnsureResult.UNAVAILABLE) {
+            preparedTargets.remove(key(runtime))
+            candidateCursor[key(runtime)]=(candidateCursor[key(runtime)] ?: 0)+1
+        }
+    }
+
     fun start(runtime: MineRuntime, now: Long): Boolean {
         if (transitioning(runtime)) return false
-        val candidates = candidates(runtime, 1)
-        if (candidates.size < runtime.rules().targetMultiplier) return false
+        val target = preparedTargets[key(runtime)] ?: return false
+        if (maze.scene(runtime)?.ready != true) return false
+        val candidates = listOf(ObjectiveTargetCandidate("lost_miner_1", target, ObjectiveTargetRole("lost_miner"), 0))
         if (!incidents.start(runtime, MineIncidentType.LOST_MINER, 1, now, candidates)) return false
         reconcileMissing(runtime)
         return active(runtime)
@@ -161,12 +182,12 @@ internal class MineLostMinerIncident(
     }
 
     fun activateLoadedState() {
-        maze.reconcileLoaded { zoneId, sequence -> active(zoneId, sequence) }
+        maze.reconcileLoaded { zoneId, sequence -> registry.byId(zoneId)?.state?.sequence == sequence }
         registry.snapshot().filter(::active).forEach(::reconcileMissing)
     }
 
     fun onChunkLoad(chunk: Chunk) {
-        maze.onChunkLoad(chunk) { zoneId, sequence -> activeOrRetained(zoneId, sequence) }
+        maze.onChunkLoad(chunk) { zoneId, sequence -> activeOrRetained(zoneId, sequence) || registry.byId(zoneId)?.state?.sequence == sequence }
     }
 
     fun reconcileChunk(runtime: MineRuntime, chunk: Chunk): Int {
@@ -228,6 +249,7 @@ internal class MineLostMinerIncident(
     }
 
     fun cleanup(runtime: MineRuntime) {
+        if (!active(runtime) && key(runtime) in preparedTargets) return
         completedScenes.values.filter { it.zoneId == runtime.settings.id }.toList().forEach { retireCompleted(runtime, it) }
         completedScenes.remove(key(runtime))
         completedExitEntrances.keys.removeIf { it.substringBefore(':') == runtime.settings.id }
@@ -236,6 +258,7 @@ internal class MineLostMinerIncident(
     }
 
     fun clearQueues() {
+        preparedTargets.clear(); nextPreparationAt.clear(); candidateCursor.clear()
         maze.clearQueues()
         miners.clear()
         entrances.clear()
@@ -248,6 +271,7 @@ internal class MineLostMinerIncident(
     }
 
     private fun retire(runtime: MineRuntime) {
+        preparedTargets.remove(key(runtime))
         creatures.cleanup(runtime)
         returnEntrants(runtime, skipSpectators = false)
         miners.remove(key(runtime))?.let(effects::remove)
@@ -274,7 +298,7 @@ internal class MineLostMinerIncident(
     private fun recordActive(record: MineLostMinerMazeJournalRecord): Boolean = activeOrRetained(record.zoneId, record.sequence)
 
     private fun activeOrRetained(zoneId: String, sequence: Long): Boolean =
-        active(zoneId, sequence) || completedScenes["$zoneId:$sequence"]?.sequence == sequence
+        active(zoneId, sequence) || "$zoneId:$sequence" in preparedTargets || completedScenes["$zoneId:$sequence"]?.sequence == sequence
 
     private fun active(zoneId: String, sequence: Long): Boolean =
         registry.byId(zoneId)?.let { it.state.sequence == sequence && active(it) } == true
@@ -283,11 +307,13 @@ internal class MineLostMinerIncident(
         runtime.state.phase == MinePhase.INCIDENT && runtime.state.incident?.type == MineIncidentType.LOST_MINER
 
     private fun retainCompletedScene(runtime: MineRuntime, scene: MineLostMinerMazeScene, targetId: String) {
+        preparedTargets.remove(key(runtime))
         val completedAt = clock()
         completedScenes[key(runtime)] = CompletionGrace(
             runtime.settings.id, runtime.state.sequence, targetId, scene, completedAt,
             completedAt + HARD_DEADLINE_MILLIS - WARNING_MILLIS, completedAt + HARD_DEADLINE_MILLIS,
         )
+        returnEntrants(runtime, skipSpectators = false)
         creatures.cleanup(runtime)
         miners.remove(key(runtime))?.let(effects::remove)
         entrances.remove(key(runtime))?.let(effects::remove)
@@ -395,11 +421,7 @@ internal class MineLostMinerIncident(
     private fun candidates(runtime: MineRuntime, required: Int): List<ObjectiveTargetCandidate> =
         orderMineIncidentPositions(
             runtime,
-            index.loadedTargets(runtime.settings.id, MineAnchorRole.MINER)
-                .filter {
-                    index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.MINER, runtime.railMaterials) &&
-                        runtime.isIncidentSurface(it)
-                },
+            candidateStock?.candidates(runtime, MineIncidentType.LOST_MINER).orEmpty(),
             required * runtime.rules().targetMultiplier * 2,
             0x1057L,
         ).mapIndexed { order, position ->

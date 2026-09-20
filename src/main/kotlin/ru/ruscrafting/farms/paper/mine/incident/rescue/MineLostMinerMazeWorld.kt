@@ -134,8 +134,18 @@ internal class MineLostMinerMazeWorld(
     private val readyScenes = mutableSetOf<String>()
     private val retiringScenes = mutableSetOf<String>()
 
+    private data class Capture(val key: String, val world: World, val zone: String, val sequence: Long,
+        val surface: Location, val start: Location, val target: Location,
+        val entries: List<Map.Entry<Triple<Int,Int,Int>, Pair<String,MineLostMinerMazeMarker>>>,
+        val records: MutableList<MineLostMinerMazeJournalRecord> = mutableListOf(), var cursor: Int = 0)
+    private val captures = linkedMapOf<String, Capture>()
+    private val failedCaptures = mutableSetOf<String>()
+    private val decodedData = mutableMapOf<String,String>()
+
     fun ensure(runtime: MineRuntime, target: WorksitePosition): Pair<MineLostMinerMazeEnsureResult, MineLostMinerMazeScene?> {
         val key = sceneKey(runtime)
+        if (failedCaptures.remove(key)) return MineLostMinerMazeEnsureResult.UNAVAILABLE to null
+        if (key in captures) return MineLostMinerMazeEnsureResult.BUILDING to null
         if (key in retiringScenes) return MineLostMinerMazeEnsureResult.BUILDING to null
         scenes[key]?.let { scene ->
             if (key in readyScenes) return MineLostMinerMazeEnsureResult.READY to scene
@@ -175,6 +185,7 @@ internal class MineLostMinerMazeWorld(
         var scene: MineLostMinerMazeScene? = null
         for (anchor in candidates) {
             scene = preview(runtime, anchor, layout, target)
+            if (key in captures) return MineLostMinerMazeEnsureResult.BUILDING to null
             if (scene != null) break
         }
         if (scene == null) {
@@ -208,6 +219,7 @@ internal class MineLostMinerMazeWorld(
 
     fun beginRestore(world: World, zoneId: String, sequence: Long) {
         val key = "$zoneId:$sequence"
+        captures.remove(key)
         readyScenes.remove(key)
         val all = scenes.remove(key)?.records ?: records(zoneId, sequence)
         if (all.isNotEmpty()) retiringScenes += key
@@ -217,6 +229,8 @@ internal class MineLostMinerMazeWorld(
 
     fun process(limit: Int, active: (MineLostMinerMazeJournalRecord) -> Boolean = { true }): Int {
         require(limit >= 1) { "Lost-miner maze block budget must be positive" }
+        val captured = captureSlice(limit)
+        if (captured > 0) return captured
         val restored = processQueue(restores, queuedRestores, limit, restore = true, active)
         return restored + processQueue(builds, queuedBuilds, limit - restored, restore = false, active)
     }
@@ -232,6 +246,7 @@ internal class MineLostMinerMazeWorld(
         Bukkit.getWorlds().forEach { world -> world.loadedChunks.forEach { onChunkLoad(it, active) } }
 
     fun clearQueues() {
+        captures.clear(); failedCaptures.clear(); decodedData.clear()
         builds.clear(); restores.clear(); queuedBuilds.clear(); queuedRestores.clear(); scenes.clear()
         readyScenes.clear()
         retiringScenes.clear()
@@ -316,29 +331,38 @@ internal class MineLostMinerMazeWorld(
         val chunks = planned.keys.map { (x, _, z) -> x shr 4 to (z shr 4) }.distinct()
         if (chunks.any { (x, z) -> !world.isChunkLoaded(x, z) }) return null
         if (chunks.any { (x, z) -> read(world.getChunkAt(x, z)) == null }) return null
-        val blocks = planned.keys.map { (x, y, z) -> world.getBlockAt(x, y, z) }
-        if (blocks.any {
-                it.isLiquid || it.type.hasGravity() || it.state is TileState ||
-                    it.y <= world.minHeight || it.y >= world.maxHeight - 1
-            }) return null
-        val records = planned.map { (position, active) ->
-            val block = world.getBlockAt(position.first, position.second, position.third)
-            MineLostMinerMazeJournalRecord(
-                world.name, runtime.settings.id, runtime.state.sequence,
-                block.x, block.y, block.z, block.blockData.asString, blockDataDecoder.decode(active.first).asString, active.second, planned.size,
-            )
+        val key = sceneKey(runtime)
+        captures[key] = Capture(key,world,runtime.settings.id,runtime.state.sequence,
+            Location(world,surfaceTarget.x+.5,surfaceTarget.y+1.0,surfaceTarget.z+.5),
+            Location(world,start.x+.5,baseY+1.0,start.z+.5),
+            Location(world,mazeTarget.x+.5,baseY+1.0,mazeTarget.z+.5),planned.entries.toList())
+        return null
+    }
+
+    /** Snapshot and validate at most one small slice; never scan a full cave on the event command. */
+    private fun captureSlice(limit: Int): Int {
+        val capture = captures.values.firstOrNull() ?: return 0
+        var count = 0
+        while(capture.cursor < capture.entries.size && count < limit) {
+            val (p,active) = capture.entries[capture.cursor++]
+            if (!capture.world.isChunkLoaded(p.first shr 4,p.third shr 4)) { captures.remove(capture.key); failedCaptures+=capture.key; return count }
+            val block=capture.world.getBlockAt(p.first,p.second,p.third)
+            if (block.isLiquid || block.type.hasGravity() || block.state is TileState ||
+                block.y <= capture.world.minHeight || block.y >= capture.world.maxHeight-1) {
+                captures.remove(capture.key); failedCaptures+=capture.key; return count
+            }
+            val data=decodedData.getOrPut(active.first) { blockDataDecoder.decode(active.first).asString }
+            capture.records += MineLostMinerMazeJournalRecord(capture.world.name,capture.zone,capture.sequence,
+                p.first,p.second,p.third,block.blockData.asString,data,active.second,capture.entries.size)
+            count++
         }
-        val walkStart = Location(world, start.x + 0.5, baseY + 1.0, start.z + 0.5)
-        val targetLocation = Location(world, mazeTarget.x + 0.5, baseY + 1.0, mazeTarget.z + 0.5)
-        return MineLostMinerMazeScene(
-            world,
-            runtime.settings.id,
-            runtime.state.sequence,
-            Location(world, surfaceTarget.x + 0.5, surfaceTarget.y + 1.0, surfaceTarget.z + 0.5),
-            walkStart,
-            targetLocation,
-            records,
-        )
+        if(capture.cursor == capture.entries.size) {
+            captures.remove(capture.key)
+            val scene=MineLostMinerMazeScene(capture.world,capture.zone,capture.sequence,capture.surface,capture.start,capture.target,capture.records)
+            if(commit(scene)) { scenes[capture.key]=scene; ticket(scene.world,scene.records); enqueueBuild(scene.records) }
+            else failedCaptures+=capture.key
+        }
+        return count
     }
 
     private fun commit(scene: MineLostMinerMazeScene): Boolean {

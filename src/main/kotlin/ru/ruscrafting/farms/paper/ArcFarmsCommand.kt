@@ -755,7 +755,7 @@ class ArcFarmsCommand(
         return when (args.size) {
             2 -> listOf("help", "edit", "inspect", "point", "unmanage", "blockreset", "backup", "stage", "next", "finish", "event", "route", "worksite", "expeditions") + ADMIN_SHORTCUTS
             3 -> when (action) {
-                "expeditions" -> listOf("status", "rebuild", "help")
+                "expeditions" -> listOf("status", "rebuild", "edit", "help")
                 "worksite" -> listOf("lumber", "mine", "help")
                 "edit", "inspect" -> listOf("help")
                 "point" -> (service.farmZoneIds() + service.mineZoneIds()) + "help"

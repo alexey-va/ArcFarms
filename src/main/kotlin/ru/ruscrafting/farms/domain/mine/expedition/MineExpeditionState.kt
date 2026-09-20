@@ -23,7 +23,7 @@ data class MineExpeditionPlacement(
     }
 
     companion object {
-        const val CURRENT_GEOMETRY_VERSION = 2
+        const val CURRENT_GEOMETRY_VERSION = 3
         const val WORLD_MIN = -29_999_984
         const val WORLD_MAX = 29_999_984
         private val WORLD_ID = Regex("[A-Za-z0-9._-]{1,128}")

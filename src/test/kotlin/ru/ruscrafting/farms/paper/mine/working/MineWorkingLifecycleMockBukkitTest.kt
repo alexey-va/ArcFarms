@@ -414,6 +414,8 @@ class MineWorkingLifecycleMockBukkitTest : FunSpec({
         val original = world.getBlockAt(excavation.x, excavation.y, excavation.z).blockData.asString
         val owner = sceneOwner(plugin)
         val first = MineWorkingWorld(registry, owner, MockBukkitFarmBlockDataDecoder)
+        first.prewarm(runtime, MineIncidentType.TUNNEL_DRIVE, placement)
+        repeat(256) { first.process() }
         first.prepare(runtime, MineIncidentType.TUNNEL_DRIVE, placement, 9) shouldBe true
         drain(owner, first, runtime)
         first.isReady(runtime) shouldBe true

@@ -1,4 +1,78 @@
-# Mine expeditions — 0.43.0
+# Mine expeditions — permanent locations and factory operation
+
+Geometry version 3 uses separate 112-block cells in the configured mine world,
+starting 112 blocks beyond the mine boundary. A completed site returns to the
+ready stock without regenerating its terrain. The durable `siteBuilt` receipt
+preserves administrator block edits across restarts. Explicit `rebuild` retires
+unused sites through their original-block journals and prepares replacements.
+Legacy geometry versions remain readable for recovery.
+
+The factory is a 73 × 29 × 67 cavern with a symmetric production floor, clear
+light-stone aisles, dark technical pads, large display assemblies and 25 pendant
+lamps below the roof bars. Machinery is always present on prepared sites. Only
+current objectives acquire gameplay glow. Completion returns participants;
+permanent return portals remain available independently of event markers.
+
+## Factory work
+
+1. Turn the three water controls by gripping them with right-click and walking
+   around them. The wheel and pumps start after the first completed control.
+2. Carry three visible fuel loads from the bunker into the feed hopper. The
+   crushers turn during loading/heating with sparse dust and grinding sounds.
+3. Wait for the furnace's green ready signal and bell, then right-click its
+   control. Fire and chimney smoke follow the heating/pouring stages.
+4. Turn the casting crank. The mould fills visibly, with molten droplets and
+   lava sounds while pouring.
+5. Right-click the crane console. A 4.5-second cycle lifts the casting, moves it
+   along the overhead beam and lowers it onto the unloading table. The chain
+   length follows the load. The casting is absent before production and is
+   hidden while a participant carries it.
+6. Carry the casting to the press and right-click. Its ram descends one block,
+   strikes with sparks, dust and an anvil sound, then returns. The final domain
+   checkpoint occurs after the whole 2.4-second stroke.
+
+A powered cycle belongs to one operator. Repeated clicks cannot restart or
+stack it. Leaving the site, changing stage, or moving more than six blocks from
+its control cancels the cycle. A cancelled press returns to rest and retains
+its carried casting; leaving the activity clears its temporary display. No
+ordinary item drops are created. Sounds are local (32-block range), respect
+`ui.sounds`, and repeated effects are throttled; particles respect `ui.particles`.
+
+Economy scope: the factory still has ten domain checkpoints and the same
+completion reward path. Direct changes per completion are zero Vault coins,
+zero premium tokens, zero XP and zero ordinary reward items. Temporary fuel and
+castings remain non-loot displays. Added machine cycles change pacing; income
+per hour has not been measured and is not claimed to be unchanged.
+
+## Editing and preview
+
+`/arcfarms admin expeditions edit dead_factory` enters an idle prepared site in
+explicit editor mode. Right-click selects an assembly; F opens one-block moves,
+15-degree turns, reset, save and cancel. Ordinary gameplay clicks cannot move
+machines. Moving a furnace also moves its grouped controls. Whole animated
+bounds are checked, and `data/mine-expedition-furnishings.json` saves placements
+asynchronously. Never rebuild a site whose manual changes should be retained.
+
+`scripts/mine-preview/export.gradle` exports geometry and display models from
+Kotlin. `scripts/mine-preview/build.mjs` builds an editable Atelier preview with
+eight factory camera positions. **Demo mechanisms** animates the same wheel,
+lever and press transforms; it does not simulate gameplay, cargo, sound or
+particles. Schematics contain blocks only; ArcFarms owns display assemblies.
+
+## Verification of the pending implementation — 2026-09-20
+
+The focused factory/architecture run passed 40 tests, including crane duplicate
+clicks and departure, press cargo retention and cleanup, complete ram motion,
+domain progression, compact geometry and the moving crane suspension. `shadowJar` and preview export passed.
+The offline factory route has 43 supported/unblocked points and all 162 sampled
+walking points meet block-light level 8. The web preview opens with an animated
+press. These checks do not establish Minecraft client visuals, sound balance,
+end-to-end travel or runtime lag. This implementation is not yet activated on
+spawn; the dated 0.43.0 activation below describes the previous release.
+
+---
+
+## Historical 0.43.0 release notes
 
 Current locations are compact, self-contained caves in the configured mine world.
 The scene stock allocates disjoint 64-block cells north of the mine, starting

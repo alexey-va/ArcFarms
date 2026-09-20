@@ -61,7 +61,7 @@ internal class MineOreWorkshopController(
     private enum class Cargo { ORE, BILLET }
 
     private data class StationEntities(
-        val display: ItemDisplay,
+        val machine: MineWorkshopMachines.Machine,
         val hitbox: Interaction,
         val material: Material,
     )
@@ -75,6 +75,7 @@ internal class MineOreWorkshopController(
 
     private data class CrankKey(val zoneId: String, val playerId: UUID)
 
+    private val machines = MineWorkshopMachines(plugin)
     private val zoneKey = NamespacedKey(plugin, "mine_ore_workshop_zone")
     private val roleKey = NamespacedKey(plugin, "mine_ore_workshop_role")
     private val sequenceKey = NamespacedKey(plugin, "mine_ore_workshop_sequence")
@@ -224,9 +225,7 @@ internal class MineOreWorkshopController(
         // The lease is transient. The persisted state has no inventory cargo to
         // restore, so returning simply makes the authored station visible again.
         if (reason.isNotBlank()) Unit
-        scenes[carrier.zoneId]?.get(if (carrier.cargo == Cargo.ORE) ORE else OUTPUT)?.display?.let { display ->
-            display.setItemStack(ItemStack(if (carrier.cargo == Cargo.ORE) Material.RAW_IRON else Material.IRON_INGOT))
-        }
+
     }
 
     fun guidanceHint(runtime: MineRuntime, player: Player, now: Long): Component? {
@@ -258,7 +257,7 @@ internal class MineOreWorkshopController(
 
     fun cleanup(reason: String = "cleanup") {
         scenes.values.flatMap { it.values }.forEach { entities ->
-            entities.display.remove()
+            entities.machine.remove()
             entities.hitbox.remove()
         }
         carriedEntityRefs.values.forEach(Entity::remove)
@@ -269,6 +268,7 @@ internal class MineOreWorkshopController(
             }
         }
         scenes.clear()
+        machines.close()
         carriers.clear()
         carriedDisplays.clear()
         carriedEntityRefs.clear()
@@ -335,9 +335,7 @@ internal class MineOreWorkshopController(
         if (advance(runtime, player, 0, 1, clock())) {
             carriers.remove(player.uniqueId)
             removeCarriedDisplay(player.uniqueId)
-            scenes[runtime.settings.id]?.get(if (cargo == Cargo.ORE) ORE else OUTPUT)?.display?.setItemStack(
-                ItemStack(if (cargo == Cargo.ORE) Material.RAW_IRON else Material.IRON_INGOT),
-            )
+
         }
     }
 
@@ -389,13 +387,10 @@ internal class MineOreWorkshopController(
     private val crankProgress = mutableMapOf<CrankKey, Double>()
 
     private fun animateCrusher(runtime: MineRuntime, crusher: Location?, participants: Collection<Player>) {
-        val display = scenes[runtime.settings.id]?.get(CRUSHER)?.display ?: return
+        val machine = scenes[runtime.settings.id]?.get(CRUSHER)?.machine ?: return
         val active = activeWorking(runtime)?.stage == MineWorkingStage.CRUSH
-        val angle = (crankRadians[runtime.settings.id] ?: 0.0).toFloat().let { it % (2 * PI).toFloat() }
-        display.transformation = Transformation(
-            Vector3f(), AxisAngle4f(angle, 0f, 1f, 0f), Vector3f(0.9f), AxisAngle4f(),
-        )
-        display.isGlowing = active
+        machine.turn(((crankRadians[runtime.settings.id] ?: 0.0) % (2 * PI)).toFloat())
+        machine.highlight(active)
         if (active && participants.any { participant(runtime, it) }) {
             crusher?.world?.spawnParticle(Particle.CRIT, crusher.clone().add(0.0, 0.55, 0.0), 2, 0.2, 0.15, 0.2, 0.01)
         }
@@ -432,6 +427,7 @@ internal class MineOreWorkshopController(
     private fun points(runtime: MineRuntime): Map<String, Location>? {
         val values = stationPoints(runtime)
         if (!STATIONS.all { id -> values[id]?.let { it.world === runtime.region.world && runtime.region.contains(it) } == true }) return null
+        if (values.values.maxOf { it.y } - values.values.minOf { it.y } > 2.0) return null
         return values
     }
 
@@ -451,20 +447,11 @@ internal class MineOreWorkshopController(
         STATIONS.forEach { id ->
             val point = points[id] ?: return@forEach
             val existing = current[id]
-            if (existing != null && (!existing.display.isValid || !existing.hitbox.isValid || existing.display.world !== point.world || existing.hitbox.location.distanceSquared(point.clone().add(0.0, 0.35, 0.0)) > 0.001)) {
-                existing.display.remove(); existing.hitbox.remove(); current.remove(id)
+            if (existing != null && (!existing.machine.body.isValid || !existing.hitbox.isValid || existing.machine.body.location.world !== point.world || existing.hitbox.location.distanceSquared(point.clone().add(0.0, 0.35, 0.0)) > 0.001)) {
+                existing.machine.remove(); existing.hitbox.remove(); current.remove(id)
             }
             if (id !in current) {
-                val display = point.world!!.spawn(point.clone().add(0.0, 0.55, 0.0), ItemDisplay::class.java) { entity ->
-                    entity.setItemStack(ItemStack(STATION_MATERIALS.getValue(id)))
-                    entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
-                    entity.transformation = Transformation(Vector3f(), AxisAngle4f(), Vector3f(0.9f), AxisAngle4f())
-                    entity.viewRange = 2.0f
-                    entity.isPersistent = false
-                    entity.persistentDataContainer.set(zoneKey, PersistentDataType.STRING, zone)
-                    entity.persistentDataContainer.set(roleKey, PersistentDataType.STRING, id)
-                    entity.persistentDataContainer.set(sequenceKey, PersistentDataType.LONG, runtime.state.sequence)
-                }
+                val machine = machines.create(id, point)
                 val hitbox = point.world!!.spawn(point.clone().add(0.0, 0.35, 0.0), Interaction::class.java) { entity ->
                     entity.interactionWidth = 2.4f
                     entity.interactionHeight = 2.0f
@@ -474,7 +461,7 @@ internal class MineOreWorkshopController(
                     entity.persistentDataContainer.set(roleKey, PersistentDataType.STRING, id)
                     entity.persistentDataContainer.set(sequenceKey, PersistentDataType.LONG, runtime.state.sequence)
                 }
-                current[id] = StationEntities(display, hitbox, STATION_MATERIALS.getValue(id))
+                current[id] = StationEntities(machine, hitbox, STATION_MATERIALS.getValue(id))
             }
         }
         return current
@@ -483,16 +470,10 @@ internal class MineOreWorkshopController(
     private fun updateStationState(runtime: MineRuntime, scene: Map<String, StationEntities>, working: ru.ruscrafting.farms.domain.MineWorkingState?) {
         val activeTargets = working?.let { targetStations(it.stage).toSet() }.orEmpty()
         scene.forEach { (id, entities) ->
-            val cargoPresent = carriers.values.any { it.zoneId == runtime.settings.id && it.cargo == if (id == ORE) Cargo.ORE else Cargo.BILLET }
-            if (id == ORE || id == OUTPUT) {
-                val item = if (cargoPresent) Material.AIR else entities.material
-                entities.display.setItemStack(ItemStack(item))
-            }
             val glowing = id in activeTargets
-            entities.display.isGlowing = glowing
+            entities.machine.highlight(glowing)
             entities.hitbox.isResponsive = glowing
             entities.hitbox.persistentDataContainer.set(sequenceKey, PersistentDataType.LONG, runtime.state.sequence)
-            entities.display.persistentDataContainer.set(sequenceKey, PersistentDataType.LONG, runtime.state.sequence)
         }
     }
 
@@ -507,7 +488,7 @@ internal class MineOreWorkshopController(
     }
 
     private fun clearScene(zoneId: String) {
-        scenes.remove(zoneId)?.values?.forEach { entities -> entities.display.remove(); entities.hitbox.remove() }
+        scenes.remove(zoneId)?.values?.forEach { entities -> entities.machine.remove(); entities.hitbox.remove() }
         clearTransient(zoneId)
     }
 

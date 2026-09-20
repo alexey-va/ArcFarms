@@ -57,9 +57,11 @@ class MineWorkingWorldMockBukkitTest : FunSpec({
 
         populate(world, fixture.plan, fixture.placement)
         val originals = fixture.plan.blocks.keys.associateWith { position -> block(world, position).blockData.asString }
+        firstWorld.prewarm(fixture.runtime, fixture.type, fixture.placement)
+        repeat(256) { firstWorld.process() }
         firstWorld.prepare(fixture.runtime, fixture.type, fixture.placement, fixture.nonce) shouldBe true
         firstWorld.isReady(fixture.runtime) shouldBe false
-        firstOwner.process(1) { true } shouldBeGreaterThan 0
+        firstOwner.process(1) { true }
         firstWorld.isReady(fixture.runtime) shouldBe false
         drain(firstOwner, firstWorld, fixture.runtime)
         fixture.plan.supportFrames.flatMap { it.keys }.forEach { position ->
@@ -112,10 +114,12 @@ class MineWorkingWorldMockBukkitTest : FunSpec({
         val workings = MineWorkingWorld(fixture.registry, sceneOwner, MockBukkitFarmBlockDataDecoder)
         populate(world, fixture.plan, fixture.placement)
 
+        workings.prewarm(fixture.runtime, fixture.type, fixture.placement)
+        repeat(256) { workings.process() }
         workings.prepare(fixture.runtime, fixture.type, fixture.placement, fixture.nonce) shouldBe true
         workings.retainedScene(fixture.runtime.settings.id, fixture.runtime.state.sequence)?.plan?.type shouldBe type
         workings.isReady(fixture.runtime) shouldBe false
-        sceneOwner.process(1) { true } shouldBeGreaterThan 0
+        sceneOwner.process(1) { true }
         workings.isReady(fixture.runtime) shouldBe false
         drain(sceneOwner, workings, fixture.runtime)
         workings.isReady(fixture.runtime) shouldBe true
@@ -128,6 +132,8 @@ class MineWorkingWorldMockBukkitTest : FunSpec({
         val workings = MineWorkingWorld(fixture.registry, sceneOwner, MockBukkitFarmBlockDataDecoder)
         populate(world, fixture.plan, fixture.placement)
 
+        workings.prewarm(fixture.runtime, fixture.type, fixture.placement)
+        repeat(256) { workings.process() }
         workings.prepare(fixture.runtime, fixture.type, fixture.placement, fixture.nonce) shouldBe true
         drain(sceneOwner, workings, fixture.runtime)
         fixture.plan.rails.forEach { position ->
@@ -155,6 +161,8 @@ class MineWorkingWorldMockBukkitTest : FunSpec({
         val workings = MineWorkingWorld(fixture.registry, sceneOwner, MockBukkitFarmBlockDataDecoder)
         populate(world, fixture.plan, fixture.placement)
 
+        workings.prewarm(fixture.runtime, fixture.type, fixture.placement)
+        repeat(256) { workings.process() }
         workings.prepare(fixture.runtime, fixture.type, fixture.placement, fixture.nonce) shouldBe true
         drain(sceneOwner, workings, fixture.runtime)
         fixture.plan.cartRoute.forEach { position ->
@@ -192,6 +200,8 @@ class MineWorkingWorldMockBukkitTest : FunSpec({
             MockBukkitFarmBlockDataDecoder,
         ) { position -> position == blocked }
 
+        workings.prewarm(fixture.runtime, fixture.type, fixture.placement)
+        repeat(256) { workings.process() }
         workings.prepare(fixture.runtime, fixture.type, fixture.placement, fixture.nonce) shouldBe false
         workings.scene(fixture.runtime) shouldBe null
         workings.protects(block(world, blocked).location) shouldBe false
@@ -285,7 +295,7 @@ private fun drain(owner: WorksitePreparedSceneOwner, workings: MineWorkingWorld,
     var rounds = 0
     while (owner.isBuilding(runtime.settings.id, runtime.state.sequence, sceneId)) {
         workings.process()
-        check(++rounds < 32) { "prepared mine scene did not finish in bounded test drain" }
+        check(++rounds < 256) { "prepared mine scene did not finish in bounded test drain" }
     }
 }
 

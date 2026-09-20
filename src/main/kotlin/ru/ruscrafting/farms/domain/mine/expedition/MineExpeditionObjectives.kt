@@ -45,8 +45,8 @@ object MineExpeditionObjectives {
             MineExpeditionStage.FACTORY_COAL -> carry("fuel_supply", "furnace_input", "COAL_BLOCK")
             MineExpeditionStage.FACTORY_HEAT -> listOf(objective("furnace_control", MineExpeditionInteraction.OPERATE, "BLAZE_POWDER", 0))
             MineExpeditionStage.FACTORY_POUR -> listOf(objective("pour_control", MineExpeditionInteraction.CRANK, "LAVA_BUCKET", 0))
-            MineExpeditionStage.FACTORY_CRANE -> listOf(objective("crane_control", MineExpeditionInteraction.CRANK, "IRON_CHAIN", 0))
-            MineExpeditionStage.FACTORY_INSTALL -> carry("crane_control", "assembly_socket", "HEAVY_CORE")
+            MineExpeditionStage.FACTORY_CRANE -> listOf(objective("crane_control", MineExpeditionInteraction.OPERATE, "IRON_CHAIN", 0))
+            MineExpeditionStage.FACTORY_INSTALL -> carry(if ("crane_load" in plan.stations) "crane_load" else "crane_control", "assembly_socket", "IRON_BLOCK")
             MineExpeditionStage.COMPLETE -> emptyList()
         }
     }

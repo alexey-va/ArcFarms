@@ -47,6 +47,7 @@ internal class MineIncidentSet(
     private val workshop: ru.ruscrafting.farms.paper.mine.workshop.MineOreWorkshopController,
     private val access: WorksiteAccessPort,
     private val expeditions: ru.ruscrafting.farms.paper.mine.expedition.MineExpeditionController? = null,
+    private val candidateStock: MineIncidentCandidateStock? = null,
 ) {
     /** Farm-style admin switch: retire the current scene before forcing the requested incident. */
     fun forceAdmin(runtime: MineRuntime, type: ru.ruscrafting.farms.domain.MineIncidentType, now: Long): Boolean {
@@ -86,10 +87,25 @@ internal class MineIncidentSet(
         lostMiner.reconcileMissing(runtime)
     }
 
+    fun editExpeditionFurnishings(player: Player, action: String?) = expeditions?.editFurnishings(player,action)
     fun expeditionStock() = expeditions?.stockStatus().orEmpty()
     fun rebuildExpeditionStock(kind: ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionKind?) = expeditions?.rebuildStock(kind) ?: 0
 
-    fun process(): Int = lostMiner.process() + workings.process() + (expeditions?.process() ?: 0)
+    private var lastPreparationAt = 0L
+
+    fun process(): Int {
+        val current = System.currentTimeMillis()
+        if (current - lastPreparationAt < 50L) return 0
+        lastPreparationAt = current
+        registry.snapshot().forEach {
+            val now = System.currentTimeMillis()
+            candidateStock?.prewarm(it, now)
+            caveIn.prewarm(it, now)
+            workings.prewarm(it, now)
+            lostMiner.prewarm(it, now)
+        }
+        return lostMiner.process() + workings.process() + (expeditions?.process() ?: 0)
+    }
 
     fun blocksOreSupply(runtime: MineRuntime): Boolean = workings.blocksOreSupply(runtime)
 
@@ -241,6 +257,7 @@ internal class MineIncidentSet(
         return workings.guardMovement(event)
     }
     fun updateVisuals(now: Long) {
+        process()
         expeditions?.updateVisuals(now)
         registry.snapshot().forEach { runtime ->
             if (runtime.state.incident?.type == ru.ruscrafting.farms.domain.MineIncidentType.ORE_WORKSHOP) {

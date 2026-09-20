@@ -37,11 +37,62 @@ internal class MineWorkingWorld(
     private val retiring = mutableSetOf<String>()
     private val retained = mutableSetOf<String>()
 
+    private data class Capture(val runtime: MineRuntime, val sequence: Long, val plan: MineWorkingPlan,
+        val placement: MineWorkingPlacement, val entries: List<Map.Entry<WorksitePosition,String>>,
+        val records: MutableList<WorksitePreparedSceneRecord> = mutableListOf(),
+        val types: MutableMap<WorksitePosition,Material> = mutableMapOf(), var cursor: Int = 0)
+    private val captures = linkedMapOf<Pair<String,MineIncidentType>,Capture>()
+    private val captured = mutableMapOf<Pair<String,MineIncidentType>,Pair<MineWorkingPlacement,WorksitePreparedScene>>()
+    private val capturedPlans = mutableMapOf<Pair<String,MineIncidentType>,MineWorkingPlan>()
+    private val captureData = mutableMapOf<String,String>()
+
+    fun prewarm(runtime: MineRuntime, type: MineIncidentType, placement: MineWorkingPlacement) {
+        val key=runtime.settings.id to type
+        if(key in captures || captured[key]?.first==placement) return
+        val plan=MineWorkingLayout.plan(type,placement)
+        captures[key]=Capture(runtime,runtime.state.sequence,plan,placement,plan.blocks.entries.toList())
+    }
+
+    private fun captureSlice() {
+        val entry=captures.entries.firstOrNull() ?: return
+        val (key,c)=entry
+        val world=c.runtime.region.world
+        if(c.runtime.state.sequence!=c.sequence) { captures.remove(key);return }
+        val deadline=System.nanoTime()+1_000_000L
+        repeat(128) {
+            if(System.nanoTime()>deadline) return
+            val next=c.entries.getOrNull(c.cursor) ?: run {
+                val valid=MineWorkingPlanner.rejection(c.plan) { p -> c.types[p] ?: if(world.isChunkLoaded(p.x shr 4,p.z shr 4)) world.getBlockAt(p.x,p.y,p.z).type else null } == null
+                if(!valid) { captures.remove(key);return }
+                val records=c.records.toList()
+                captured[key]=c.placement to WorksitePreparedScene(world,c.runtime.settings.id,c.sequence,0,
+                    c.placement.position(0,1,-1).location(world),c.placement.position(0,1,1).location(world),
+                    c.placement.position(0,1,3).location(world),records)
+                capturedPlans[key]=c.plan;captures.remove(key);return
+            }
+            val (p,data)=next
+            if(!world.isChunkLoaded(p.x shr 4,p.z shr 4) || occupiedByRecovery(p) || p.y !in world.minHeight until world.maxHeight) {
+                captures.remove(key);return
+            }
+            val block=world.getBlockAt(p.x,p.y,p.z)
+            if(block.state is org.bukkit.block.TileState) { captures.remove(key);return }
+            c.types[p]=block.type
+            val active=initialActiveData(c.plan,p,data)
+            c.records+=WorksitePreparedSceneRecord(world.name,c.runtime.settings.id,c.sequence,0,p.x,p.y,p.z,
+                block.blockData.asString,captureData.getOrPut(active) { decoder.decode(active).asString },"NONE",c.entries.size)
+            c.cursor++
+        }
+    }
+
     fun prepare(runtime: MineRuntime, type: MineIncidentType, placement: MineWorkingPlacement, nonce: Long): Boolean {
         if (owner.restoring(runtime.settings.id) || retiring.any { it.startsWith("${runtime.settings.id}:") }) return false
-        val plan = MineWorkingLayout.plan(type, placement)
-        val scene = prepareScene(runtime, plan, placement, nonce) ?: return false
-        if (!owner.prepare(listOf(scene))) return false
+        val key=runtime.settings.id to type
+        val reserve=captured.remove(key)?.takeIf { it.first==placement && it.second.sequence==runtime.state.sequence } ?: return false
+        val plan=capturedPlans.remove(key) ?: return false
+        val old=reserve.second
+        val scene=WorksitePreparedScene(old.world,old.zoneId,old.sequence,sceneId(nonce),old.surface,old.start,old.end,
+            old.records.map { it.copy(sceneId=sceneId(nonce)) })
+        if (!owner.prepareIncrementally(scene,128)) return false
         scenes[key(runtime)] = MineWorkingScene(plan, scene)
         return true
     }
@@ -66,7 +117,7 @@ internal class MineWorkingWorld(
 
     private fun prepareScene(runtime: MineRuntime, plan: MineWorkingPlan, placement: MineWorkingPlacement, nonce: Long): WorksitePreparedScene? {
         val world = runtime.region.world
-        if (plan.blocks.keys.any { !runtime.region.bounds.contains(it.x, it.y, it.z) ||
+        if (plan.blocks.keys.any { it.y !in world.minHeight until world.maxHeight ||
                 !world.isChunkLoaded(it.x shr 4, it.z shr 4) || occupiedByRecovery(it) }) return null
         if (MineWorkingPlanner.rejection(plan) { world.getBlockAt(it.x, it.y, it.z).type } != null) return null
         // The block journal preserves BlockData, not container inventories or other block-entity data.
@@ -82,6 +133,10 @@ internal class MineWorkingWorld(
             placement.position(0, 1, -1).location(world), placement.position(0, 1, 1).location(world),
             placement.position(0, 1, 3).location(world), records)
     }
+
+    fun preparationFailed(runtime: MineRuntime): Boolean = scenes[key(runtime)]?.let {
+        owner.preparationFailed(it.blocks.zoneId,it.blocks.sequence,it.blocks.sceneId)
+    } == true
 
     fun isReady(runtime: MineRuntime): Boolean {
         val key = key(runtime)
@@ -196,6 +251,7 @@ internal class MineWorkingWorld(
     fun protects(location: Location): Boolean = owner.protects(location)
 
     fun process(): Int {
+        captureSlice()
         val result = owner.process(BLOCK_BUDGET) { record ->
             val scene = scenes["${record.zoneId}:${record.sequence}"]
             // Never seal a player into a restored wall, including an admin who bypassed normal entry.
@@ -233,7 +289,7 @@ internal class MineWorkingWorld(
         "${record.zoneId}:${record.sequence}" in retained ||
             it.state.incident?.let { incident -> incident.working != null && sceneId(incident.objectiveNonce) == record.sceneId } == true
     } == true
-    fun clearQueues() { owner.clearQueues(); scenes.clear(); ready.clear(); retiring.clear(); retained.clear() }
+    fun clearQueues() { captures.clear(); captured.clear(); capturedPlans.clear(); captureData.clear(); owner.clearQueues(); scenes.clear(); ready.clear(); retiring.clear(); retained.clear() }
 
     private fun active(zoneId: String, sequence: Long): Boolean = registry.byId(zoneId)?.let {
         ("$zoneId:$sequence" in retained ||

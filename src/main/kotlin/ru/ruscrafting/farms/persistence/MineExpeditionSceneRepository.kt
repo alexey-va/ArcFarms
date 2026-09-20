@@ -21,6 +21,7 @@ data class MineExpeditionSceneReceipt(
     val surfaceYaw: Float = 0f,
     val surfacePitch: Float = 0f,
     val completedAt: Long = 0L,
+    val siteBuilt: Boolean = false,
     val restoring: Boolean = false,
     val reserved: Boolean = false,
     /** Journal identity remains stable when a ready reserve is bound to an incident. */
@@ -153,6 +154,17 @@ class MineExpeditionSceneRepository internal constructor(private val store: Mine
 
     fun remove(zoneId: String, sequence: Long, objectiveNonce: Long): CompletableFuture<Unit> = update { current ->
         current.copy(scenes = current.scenes.filterNot { it.zoneId == zoneId && it.sequence == sequence && it.objectiveNonce == objectiveNonce })
+    }
+
+    fun release(receipt: MineExpeditionSceneReceipt, reserve: MineExpeditionSceneReceipt): CompletableFuture<Unit> = update { current ->
+        val latest = requireNotNull(current.scenes.firstOrNull { it.journalSequence == receipt.journalSequence })
+        require(!latest.restoring && latest.zoneId == receipt.zoneId && latest.objectiveNonce == receipt.objectiveNonce && reserve.reserved)
+        require(receipt.journalSequence == reserve.journalSequence && receipt.placement == reserve.placement)
+        current.copy(scenes = current.scenes.map { if (it == latest) reserve.copy(siteBuilt = latest.siteBuilt) else it })
+    }
+
+    fun markBuilt(id: Long): CompletableFuture<Unit> = update { current ->
+        current.copy(scenes = current.scenes.map { if (it.journalSequence == id) it.copy(siteBuilt = true) else it })
     }
 
     fun claim(reserve: MineExpeditionSceneReceipt, claimed: MineExpeditionSceneReceipt): CompletableFuture<Unit> = update { current ->

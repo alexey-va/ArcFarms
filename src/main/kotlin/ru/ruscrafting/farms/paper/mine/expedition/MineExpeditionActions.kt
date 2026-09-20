@@ -1,7 +1,6 @@
 package ru.ruscrafting.farms.paper.mine.expedition
 
 import net.kyori.adventure.text.Component
-import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.Particle
 import org.bukkit.Sound
@@ -23,10 +22,14 @@ internal class MineExpeditionActions(private val locale: ArcFarmsLocale?) {
     private data class Cargo(val scope: String, val stage: MineExpeditionStage, val target: Int, val display: ItemDisplay)
     private data class Crank(val scope: String, val stage: MineExpeditionStage, val objective: String,
         var sample: FarmProcessingCrankState? = null, var radians: Double = 0.0)
+    private data class Operation(val scope:String,val objective:String,val target:Int,val cycle:MineFactoryOperation)
+    private val operations=mutableMapOf<UUID,Operation>()
     private val renderer = WorksiteCarriedDisplayRenderer()
     private val cargo = mutableMapOf<UUID, Cargo>()
     private val cranks = mutableMapOf<UUID, Crank>()
 
+    fun operationPhase(scope:String,id:String,now:Long):Double = operations.values
+        .firstOrNull { it.scope==scope && it.objective==id }?.cycle?.progress(now)?.times(PI*2) ?: 0.0
     fun carrying(player: Player, scope: String): Boolean = cargo[player.uniqueId]?.scope == scope
     fun claimed(scope: String, stage: MineExpeditionStage, index: Int): Boolean =
         cargo.values.any { it.scope == scope && it.stage == stage && it.target == index }
@@ -38,8 +41,10 @@ internal class MineExpeditionActions(private val locale: ArcFarmsLocale?) {
             MineExpeditionInteraction.PICKUP -> pickup(scope, state, player, target)
             MineExpeditionInteraction.DELIVER -> {
                 val held = cargo[player.uniqueId] ?: return
-                if (held.scope == scope && held.stage == state.stage &&
-                    complete(MineExpeditionEngine.completeTarget(state, held.target, now))) release(player)
+                if (held.scope != scope || held.stage != state.stage) return
+                if(state.stage==MineExpeditionStage.FACTORY_INSTALL) {
+                    startOperation(scope,state,player,target.id,held.target,now)
+                } else if(complete(MineExpeditionEngine.completeTarget(state,held.target,now))) release(player)
             }
             MineExpeditionInteraction.CRANK -> {
                 if (cargo.containsKey(player.uniqueId)) return
@@ -47,6 +52,10 @@ internal class MineExpeditionActions(private val locale: ArcFarmsLocale?) {
                 player.sendActionBar(text("turn", player))
             }
             MineExpeditionInteraction.OPERATE -> {
+                if(state.stage==MineExpeditionStage.FACTORY_CRANE) {
+                    startOperation(scope,state,player,target.id,target.target,now)
+                    return
+                }
                 if (!complete(MineExpeditionEngine.completeTarget(state, target.target, now)) &&
                     state.stage == MineExpeditionStage.FACTORY_HEAT) player.sendActionBar(text("heat-wait", player))
             }
@@ -64,7 +73,25 @@ internal class MineExpeditionActions(private val locale: ArcFarmsLocale?) {
             val player = participants[id]
             if (player == null || held.stage != state.stage || held.target in state.completed || !held.display.isValid) {
                 release(id)
-            } else renderer.move(held.display, player, 0.75, 0.85)
+            } else {
+                val target=operations[id]?.let { op -> targets.firstOrNull { it.id==op.objective } }
+                if(target!=null && state.stage==MineExpeditionStage.FACTORY_INSTALL)
+                    held.display.teleport(scene.at(target.position).add(0.0,1.9,0.0))
+                else renderer.move(held.display, player, 0.75, 0.85)
+            }
+        }
+        operations.filterValues { it.scope==scope }.toMap().forEach { (id,operation) ->
+            val player=participants[id]
+            val target=targets.firstOrNull { it.id==operation.objective }
+            if(player==null || target==null || player.world !== scene.world || operation.cycle.stage!=state.stage ||
+                player.location.distanceSquared(scene.at(target.position))>36.0 ||
+                (state.stage==MineExpeditionStage.FACTORY_INSTALL && cargo[id]?.stage!=state.stage)) {
+                operations.remove(id);animateCrank(operation.objective,0.0)
+                return@forEach
+            }
+            val progress=operation.cycle.progress(now)
+            animateCrank(operation.objective,progress*PI*2)
+            if(progress>=1 && complete(player,MineExpeditionEngine.completeTarget(state,operation.target,now))) release(id)
         }
         cranks.filterValues { it.scope == scope }.toMap().forEach { (id, crank) ->
             val player = participants[id]
@@ -93,18 +120,26 @@ internal class MineExpeditionActions(private val locale: ArcFarmsLocale?) {
         }
     }
 
+    private fun startOperation(scope:String,state:MineExpeditionState,player:Player,id:String,target:Int,now:Long) {
+        if(operations.containsKey(player.uniqueId) || operations.values.any { it.scope==scope && it.objective==id }) return
+        operations[player.uniqueId]=Operation(scope,id,target,MineFactoryOperation(state.stage,now))
+        player.sendActionBar(text("operating",player))
+    }
     fun release(player: Player) = release(player.uniqueId)
     private fun release(id: UUID) {
         cargo.remove(id)?.display?.let(renderer::remove)
         cranks.remove(id)
+        operations.remove(id)
     }
     fun clear(scope: String) {
         cargo.filterValues { it.scope == scope }.keys.toList().forEach(::release)
         cranks.entries.removeIf { it.value.scope == scope }
+        operations.entries.removeIf { it.value.scope == scope }
     }
     fun cleanup() {
         cargo.keys.toList().forEach(::release)
         cranks.clear()
+        operations.clear()
     }
 
     private fun pickup(scope: String, state: MineExpeditionState, player: Player, target: MineExpeditionObjective) {

@@ -7,5 +7,5 @@ package ru.ruscrafting.farms.domain.mine.expedition
 object MineExpeditionGenerator {
     @JvmOverloads
     fun plan(kind: MineExpeditionKind, seed: Long, geometryVersion: Int = MineExpeditionPlacement.CURRENT_GEOMETRY_VERSION): MineExpeditionPlan =
-        if (geometryVersion == 1) MineExpeditionLayout.build(kind, seed) else MineCompactExpeditionLayout.build(kind, seed)
+        if (geometryVersion == 1) MineExpeditionLayout.build(kind, seed) else if (geometryVersion == 2) MineCompactExpeditionLayout.build(kind, seed) else MinePermanentExpeditionLayout.build(kind, seed)
 }

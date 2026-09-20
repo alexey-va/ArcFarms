@@ -16,8 +16,10 @@ import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 
 internal class MineGasLeakIncident(
     registry: MineRuntimeRegistry, index: MineBlockIndex, incidents: MineIncidentCoordinator,
+    candidateStock: ru.ruscrafting.farms.paper.mine.incident.MineIncidentCandidateStock? = null,
 ) : MineSequenceIncident(
     MineIncidentType.GAS_LEAK, MineAnchorRole.SUPPORT, "gas_vent", registry, index, incidents,
+    candidateStock = candidateStock,
     successSound = Sound.BLOCK_FIRE_EXTINGUISH,
 ) {
     private data class Session(

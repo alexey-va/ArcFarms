@@ -1,0 +1,72 @@
+allprojects {
+ afterEvaluate {
+  tasks.register('exportMineScenes') {
+   dependsOn 'classes'
+   doLast {
+    def urls=(sourceSets.main.runtimeClasspath+sourceSets.main.compileClasspath).files.collect{it.toURI().toURL()} as URL[]
+    def cl=new URLClassLoader(urls,(ClassLoader)null)
+    def generator=cl.loadClass('ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionGenerator')
+    def kindClass=cl.loadClass('ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionKind')
+    def instance=generator.getField('INSTANCE').get(null)
+    def method=generator.getMethod('plan',kindClass,Long.TYPE,Integer.TYPE)
+    def out=new File(project.findProperty('minePreviewOut') ?: '/private/tmp/mine-0440-scenes');out.mkdirs()
+    kindClass.enumConstants.each { kind ->
+     def plan=method.invoke(instance,kind,73L,3)
+     def min=plan.bounds.min;def max=plan.bounds.max
+     def xyz={p->[p.x-min.x,p.y-min.y,p.z-min.z]}
+     def palette=[:];def keys=[:];def ops=[]
+     def blocks=new LinkedHashMap(plan.blocks)
+     def machines=cl.loadClass('ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionMachines')
+     def machineCenter=plan.stations[kind.toString()=='LAST_DESCENT'?'lift_top':'ark_start']
+     if(machineCenter!=null) machines.getMethod('blocks',kindClass).invoke(machines.getField('INSTANCE').get(null),kind).each{p,data ->
+      blocks[p.offset(machineCenter.x,machineCenter.y,machineCenter.z)]=data
+     }
+     blocks.each{p,data ->
+      if(data!='minecraft:air') {
+       def id=keys[data]
+       if(id==null){id='m'+keys.size();keys[data]=id;palette[id]=[block:data,color:'#858580',name:data]}
+       ops.add([op:'box',from:xyz(p),to:xyz(p),material:id])
+      }
+     }
+     def fixtureClass=cl.loadClass('ru.ruscrafting.farms.paper.mine.expedition.MineExpeditionFurnishings')
+     def blueprintClass=cl.loadClass('ru.ruscrafting.farms.paper.mine.expedition.MineDisplayBlueprints')
+     def fixtures=fixtureClass.getMethod('fixtures',plan.class).invoke(fixtureClass.getField('INSTANCE').get(null),plan)
+     def models=[:]
+     fixtures.each { fixture ->
+      if(!models.containsKey(fixture.model)) {
+       models[fixture.model]=blueprintClass.getMethod('model',String.class).invoke(blueprintClass.getField('INSTANCE').get(null),fixture.model).collect{part ->
+        def block='minecraft:'+part.material.name().toLowerCase()
+        if(!keys.containsKey(block)) { def id='m'+keys.size();keys[block]=id;palette[id]=[block:block,color:'#858580',name:block] }
+        [block:block,center:[part.center.x,part.center.y,part.center.z],size:[part.size.x,part.size.y,part.size.z],angle:part.angle,moving:part.moving,motion:part.motion,pivot:[part.pivot.x,part.pivot.y,part.pivot.z]]
+       }
+      }
+     }
+     def recipe=[version:1,seed:73,title:kind.toString(),size:[max.x-min.x+1,max.y-min.y+1,max.z-min.z+1],palette:palette,operations:ops,
+       displayModels:models,displayAssemblies:fixtures.collect{f->[id:f.id,model:f.model,scale:f.scale,at:xyz(f.at).withIndex().collect{v,i->v+(i==1?0:0.5)}]},
+       subtitle:"Офлайн-превью · геометрия и display-модели из кода · свет условный",
+       origin:xyz(plan.spawn.offset(0,-1,0)),route:(plan.routes['main'] ?: plan.walkingRoutes[0]).collect{p->xyz(p.offset(0,-1,0))},
+       lighting:[targetLevel:8,samples:plan.walkingRoutes.flatten().unique().collect{p->xyz(p)}]]
+     if(kind.toString()=='DEAD_FACTORY') recipe.preview=[defaultView:'floor',views:[
+        [id:'floor',label:'Цех со входа',camera:[36,8,58],target:[36,11,20],fov:65],
+        [id:'cross',label:'Общий разрез',camera:[95,55,90],target:[36,8,30],cutY:19],
+        [id:'wheel',label:'Водяной привод',camera:[44,9,23],target:[36,11,10],fov:65],
+        [id:'left',label:'Левый цех',camera:[36,9,42],target:[15,10,23],fov:65],
+        [id:'right',label:'Правый цех',camera:[35,9,44],target:[54,9,29],fov:65],
+        [id:'furnace',label:'Загрузка и печь',camera:[27,8,33],target:[19,9,23],fov:65],
+        [id:'press',label:'Пресс и крановый пульт',camera:[37,8,54],target:[43,8,44],fov:65],
+        [id:'reverse',label:'От привода ко входу',camera:[36,9,17],target:[36,10,49],fov:72]]]
+     if(kind.toString()=='LAST_DESCENT') recipe.preview=[defaultView:'entry',views:[
+       [id:'entry',label:'Верхняя площадка',camera:[32,27,48],target:[30,24,28],fov:72],
+       [id:'core',label:'Машинный зал внизу',camera:[38,7,44],target:[25,9,21],fov:70],
+       [id:'section',label:'Шахта в разрезе',camera:[95,60,95],target:[30,16,30],cutZ:34]]]
+     if(kind.toString()=='DRILLING_ARK') recipe.preview=[defaultView:'entry',views:[
+       [id:'entry',label:'Буровой ковчег',camera:[44,8,16],target:[32,8,30],fov:72],
+       [id:'service',label:'Ремонтная площадка',camera:[52,7,17],target:[58,7,26],fov:65],
+       [id:'section',label:'Весь маршрут',camera:[110,70,130],target:[34,6,40],cutY:15]]]
+     new File(out,kind.toString().toLowerCase()+'.atelier.json').text=groovy.json.JsonOutput.toJson(recipe)
+     println(kind.toString()+' '+plan.blocks.size()+' cells')
+    }
+   }
+  }
+ }
+}

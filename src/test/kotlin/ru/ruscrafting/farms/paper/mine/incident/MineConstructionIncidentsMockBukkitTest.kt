@@ -75,6 +75,7 @@ class MineConstructionIncidentsMockBukkitTest : FunSpec({
             listOf(MineIndexedTarget(anchor.position(), setOf(MineAnchorRole.NEST))),
         )
 
+        graph.caveIn.prewarm(runtime, 1_000L)
         graph.caveIn.start(runtime, now = 1_000L) shouldBe true
         val targets = runtime.state.objective!!.targets
         targets.size.shouldBeInRange(55..65)
@@ -169,6 +170,7 @@ class MineConstructionIncidentsMockBukkitTest : FunSpec({
             (invalid + anchor.position()).map { MineIndexedTarget(it, setOf(MineAnchorRole.NEST)) },
         )
 
+        graph.caveIn.prewarm(runtime, 1_000L)
         graph.caveIn.start(runtime, now = 1_000L) shouldBe true
 
         runtime.state.phase shouldBe MinePhase.INCIDENT
@@ -199,6 +201,7 @@ class MineConstructionIncidentsMockBukkitTest : FunSpec({
             listOf(world.getChunkAt(0, 0)),
             listOf(MineIndexedTarget(anchor.position(), setOf(MineAnchorRole.NEST))),
         )
+        graph.caveIn.prewarm(runtime, 1_000L)
         graph.caveIn.start(runtime, now = 1_000L) shouldBe true
         val conflicted = requireNotNull(runtime.state.objective).targets.first().position
         world.getBlockAt(conflicted.x, conflicted.y, conflicted.z).type = Material.DIAMOND_BLOCK
@@ -237,7 +240,8 @@ class MineConstructionIncidentsMockBukkitTest : FunSpec({
                 listOf(MineIndexedTarget(anchor.position(), setOf(MineAnchorRole.NEST))),
             )
 
-            graph.caveIn.start(runtime, now = 1_000L) shouldBe true
+            graph.caveIn.prewarm(runtime, 1_000L)
+        graph.caveIn.start(runtime, now = 1_000L) shouldBe true
             val targets = requireNotNull(runtime.state.objective).targets
             targets.size.shouldBeInRange(55..65)
             journal.records() shouldHaveSize targets.size
@@ -279,6 +283,7 @@ class MineConstructionIncidentsMockBukkitTest : FunSpec({
                 floors.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.NEST)) },
             )
 
+            repeat(40) { graph.candidateStock.prewarm(runtime, 1_000L) }
             graph.flooding.start(runtime, required = 2, now = 1_000L) shouldBe true
             val waters = graph.flooding.waterPositions(runtime)
             (waters.size in 20..30) shouldBe true
@@ -325,7 +330,8 @@ class MineConstructionIncidentsMockBukkitTest : FunSpec({
                 listOf(MineIndexedTarget(anchor.position(), setOf(MineAnchorRole.NEST))),
             )
 
-            graph.caveIn.start(runtime, now = 1_000L) shouldBe true
+            graph.caveIn.prewarm(runtime, 1_000L)
+        graph.caveIn.start(runtime, now = 1_000L) shouldBe true
             val first = requireNotNull(runtime.state.objective).targets.first().position
             val oldNonce = requireNotNull(runtime.state.incident).objectiveNonce
             runtime.state = runtime.state.copy(

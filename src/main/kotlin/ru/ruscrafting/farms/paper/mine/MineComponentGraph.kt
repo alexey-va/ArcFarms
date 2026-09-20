@@ -79,9 +79,10 @@ internal class MineComponentGraph(
         registry, index, incidents, incidentJournal, recovery, ports.audience, ports.state, blockScanner, lift, incidentEntityEffects,
     )
     val trackDamage = MineTrackDamageIncident(registry, index, incidents, serviceItems, ports.state, locale)
-    val gasLeak = MineGasLeakIncident(registry, index, incidents)
-    val crystalResonance = MineCrystalResonanceIncident(registry, index, incidents)
-    val flooding = MineFloodingIncident(registry, index, incidents, incidentJournal, ports.state, ports.access, serviceItems, locale)
+    val candidateStock = ru.ruscrafting.farms.paper.mine.incident.MineIncidentCandidateStock(index)
+    val gasLeak = MineGasLeakIncident(registry, index, incidents, candidateStock)
+    val crystalResonance = MineCrystalResonanceIncident(registry, index, incidents, candidateStock)
+    val flooding = MineFloodingIncident(registry, index, incidents, incidentJournal, ports.state, ports.access, serviceItems, locale, candidateStock)
     val powerFailure = MinePowerFailureIncident(registry, index, incidents, incidentJournal, ports.state)
     val cartScene = MineCartScene(cartEffects)
     val extraction = MineExtractionController(
@@ -91,7 +92,7 @@ internal class MineComponentGraph(
         registry, index, extraction, transitions, serviceItems, locale, ports.access, ports.audience, ports.state, clock,
     )
     val creatureNest = MineCreatureNestIncident(registry, index, incidents, incidentEntityEffects, ports.access, locale,
-        ru.ruscrafting.farms.paper.mine.incident.creature.MineCreaturePests(incidentJournal, creatureNavigation, lift))
+        ru.ruscrafting.farms.paper.mine.incident.creature.MineCreaturePests(incidentJournal, creatureNavigation, lift), candidateStock)
     private val lostMinerMaze = MineLostMinerMazeWorld(
         plugin,
         debug,
@@ -107,6 +108,7 @@ internal class MineComponentGraph(
                 mapOf("seconds" to Component.text(seconds))) ?: Component.empty())
         },
         clock = clock,
+        candidateStock = candidateStock,
         minerLabel = { locale?.renderPath("mine.rescue-miner-label", null) ?: Component.empty() },
     )
     val objectiveMarkers = MineObjectiveMarkerScene(incidentEntityEffects)
@@ -159,15 +161,15 @@ internal class MineComponentGraph(
             org.bukkit.Bukkit.getWorld(point.world)?.let { world ->
                 org.bukkit.Location(world, point.x, point.y, point.z, point.yaw, 0f)
             }
-        } }, ports.access, ports.state, locale, clock,
+        } }, ports.access, ports.state, locale, clock, ports.tasks,
     )
     val incidentScheduler = MineIncidentScheduler(
         caveIn, gasLeak, flooding, trackDamage, crystalResonance, creatureNest, powerFailure, lostMiner,
-        workings, ru.ruscrafting.farms.paper.mine.incident.MineIncidentPlacementDiagnostics(index), ports.state, workshop, expeditions,
+        workings, ru.ruscrafting.farms.paper.mine.incident.MineIncidentPlacementDiagnostics(index, candidateStock), ports.state, workshop, expeditions,
     )
     val incidentSet = MineIncidentSet(
         registry, caveIn, trackDamage, gasLeak, crystalResonance, flooding, powerFailure, creatureNest, lostMiner, objectiveMarkers,
-        incidents, incidentScheduler, incidentJournal, workings, workshop, ports.access, expeditions,
+        incidents, incidentScheduler, incidentJournal, workings, workshop, ports.access, expeditions, candidateStock,
     )
     val guidance = MineGuidanceSource(
         registry, ports.audience, locale, extraction::guidanceTarget, { extraction.routeFor(it)?.finalIndex ?: 1 }, clock,
@@ -190,7 +192,15 @@ internal class MineComponentGraph(
         locale = locale,
     )
     private val pickaxes = MinePickaxeSupply(registry, serviceItems, locale, ports.audience)
-    private val worldWarmup = MineWorldWarmup(tickets, ports.tasks) { message, failure ->
+    private val worldWarmup = MineWorldWarmup(tickets, ports.tasks, extraCoordinates = { runtime ->
+        points?.workingPlacements(runtime).orEmpty().flatMap { (_, point) ->
+            val placement=point.workingPlacement("prepared",layoutSeed=1L)
+            val end=placement.position(0,0,46)
+            val minX=minOf(placement.entrance.x,end.x)-23; val maxX=maxOf(placement.entrance.x,end.x)+23
+            val minZ=minOf(placement.entrance.z,end.z)-23; val maxZ=maxOf(placement.entrance.z,end.z)+23
+            buildList { for(x in (minX shr 4)..(maxX shr 4)) for(z in (minZ shr 4)..(maxZ shr 4)) add(x to z) }
+        }.distinct()
+    }) { message, failure ->
         ports.state.log(java.util.logging.Level.WARNING, message, failure)
     }
     val admin = MineAdminService(

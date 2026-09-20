@@ -9,7 +9,7 @@ class MineCompactExpeditionTest : FunSpec({
             listOf(71L, 999L).forEach { seed ->
                 val plan = MineExpeditionGenerator.plan(kind, seed)
                 val min = plan.bounds.min; val max = plan.bounds.max
-                (max.x - min.x <= 50 && max.z - min.z <= 50 && max.y <= 30) shouldBe true
+                (max.x - min.x in 60..80 && max.z - min.z in 60..80 && max.y <= 40) shouldBe true
                 for (x in min.x..max.x) for (z in min.z..max.z) {
                     (plan.blocks[ExpeditionPoint(x, min.y, z)] != "minecraft:air") shouldBe true
                     (plan.blocks[ExpeditionPoint(x, max.y, z)] != null) shouldBe true

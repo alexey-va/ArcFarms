@@ -35,6 +35,7 @@ import org.joml.Vector3f
 internal class MineExpeditionMachinery(
     private val plugin: Plugin,
     private val project: (MineExpeditionScene, Map<ExpeditionPoint, String>) -> Boolean,
+    private val furnishingPoint: (MineExpeditionScene,String,ExpeditionPoint) -> ExpeditionPoint = { _,_,p -> p },
 ) {
     private data class SceneKey(val world: String, val zone: String, val sequence: Long, val nonce: Long)
 
@@ -196,20 +197,20 @@ internal class MineExpeditionMachinery(
     }
 
     /** Bounded visual animation; factory effects are sparse particles, not entity spam. */
-    fun animate(scene: MineExpeditionScene, state: MineExpeditionState, now: Long) {
+    fun animate(scene: MineExpeditionScene, state: MineExpeditionState, now: Long, cargoClaimed: Boolean = false) {
         if (!scene.ready) return
         val local = localCenter(scene, state)
         val runtime = runtime(scene, state, local) ?: return
-        positionDisplays(scene, runtime, local, state, now)
+        positionDisplays(scene, runtime, local, state, now, cargoClaimed)
         val phase = (now % ANIMATION_PERIOD).toDouble() / ANIMATION_PERIOD * Math.PI * 2.0
-        if (scene.kind == MineExpeditionKind.DEAD_FACTORY && now - runtime.lastParticleAt >= PARTICLE_PERIOD &&
+        if (scene.kind == MineExpeditionKind.DEAD_FACTORY && scene.placement.geometryVersion<3 && now - runtime.lastParticleAt >= PARTICLE_PERIOD &&
             state.stage != MineExpeditionStage.FACTORY_WATER) {
             runtime.lastParticleAt = now
-            val furnace = scene.at(ExpeditionPoint(14, 11, 1))
+            val furnace = scene.at(if(scene.placement.geometryVersion>=3) furnishingPoint(scene,"decor_furnace_left",ExpeditionPoint(-17,12,-13)) else ExpeditionPoint(14,11,1))
             scene.world.spawnParticle(Particle.SMALL_FLAME, furnace.add(0.0, 4.0, 0.0), 2, 0.16, 0.24, 0.16, 0.0)
-            val wheel = scene.at(ExpeditionPoint(-15, 11, 0))
+            val wheel = scene.at(if(scene.placement.geometryVersion>=3) furnishingPoint(scene,"decor_waterwheel",ExpeditionPoint(0,11,-23)) else ExpeditionPoint(-15,11,0))
             scene.world.spawnParticle(Particle.DRIPPING_WATER, wheel.add(0.0, sin(phase) * 0.5, 0.0), 1, 0.08, 0.08, 0.08, 0.0)
-            val molten = scene.at(ExpeditionPoint(12, 5, -6))
+            val molten = scene.at(if(scene.placement.geometryVersion>=3) furnishingPoint(scene,"pour_control",ExpeditionPoint(17,5,-6)) else ExpeditionPoint(12,5,-6))
             scene.world.spawnParticle(Particle.FLAME, molten.add(0.0, 0.12, 0.0), 1, 0.14, 0.02, 0.14, 0.0)
         }
     }
@@ -232,6 +233,8 @@ internal class MineExpeditionMachinery(
         }
     }
 
+    fun turns(scene:MineExpeditionScene):Map<String,Double> = runtimes[key(scene)]?.crankAngles.orEmpty()
+
     fun turn(scene: MineExpeditionScene, id: String, radians: Double) {
         runtimes[key(scene)]?.crankAngles?.set(id, radians)
     }
@@ -249,7 +252,7 @@ internal class MineExpeditionMachinery(
     private fun runtime(scene: MineExpeditionScene, state: MineExpeditionState, local: ExpeditionPoint): Runtime? {
         val key = key(scene)
         val current = runtimes[key] ?: Runtime(key).also { runtimes[key] = it }
-        val roles = visualRoles(scene.kind)
+        val roles = displayAnchors(scene, local).keys
         roles.forEach { role ->
             val display = current.displays[role]?.takeIf(Entity::isValid)
                 ?: find(scene, local, role) as? BlockDisplay
@@ -297,9 +300,10 @@ internal class MineExpeditionMachinery(
         local: ExpeditionPoint,
         state: MineExpeditionState,
         now: Long,
+        cargoClaimed: Boolean,
     ) {
         val phase = (now % ANIMATION_PERIOD).toDouble() / ANIMATION_PERIOD * Math.PI * 2.0
-        displayAnchors(scene.kind, local).forEach { (role, anchor) ->
+        displayAnchors(scene, local).forEach { (role, anchor) ->
             val display = runtime.displays[role] ?: return@forEach
             if (!display.isValid) return@forEach
             val pivot = scene.at(anchor)
@@ -307,12 +311,24 @@ internal class MineExpeditionMachinery(
             val crank = runtime.crankAngles["crane_control"] ?: 0.0
             val craneTravel = when (state.stage) {
                 MineExpeditionStage.FACTORY_INSTALL, MineExpeditionStage.COMPLETE -> 1.0
-                MineExpeditionStage.FACTORY_CRANE -> (crank / (Math.PI * 1.5)).coerceIn(0.0, 1.0)
+                MineExpeditionStage.FACTORY_CRANE -> (crank / (Math.PI * 2)).coerceIn(0.0, 1.0)
                 else -> 0.0
             }
+            var chainLength = 8f
             if (scene.kind == MineExpeditionKind.DEAD_FACTORY && role in setOf("crane", "core")) {
-                pivot.x = scene.at(ExpeditionPoint(12, 0, 0)).x - 12.0 * craneTravel
-                if (role == "core") pivot.y = scene.placement.originY + 6.0 + sin(craneTravel * Math.PI) * 4.0
+                val modern = scene.placement.geometryVersion >= 3
+                val source = scene.plan.stations.getValue("pour_control")
+                val destination = scene.plan.stations["crane_load"] ?: scene.plan.stations.getValue("assembly_socket")
+                val from = if (modern) furnishingPoint(scene, "pour_control", source) else ExpeditionPoint(12, 5, -6)
+                val to = if (modern) furnishingPoint(scene, if ("crane_load" in scene.plan.stations) "crane_load" else "assembly_socket", destination)
+                    else ExpeditionPoint(0, 5, -6)
+                pivot.x = scene.at(from).x + (to.x - from.x) * craneTravel
+                pivot.z = scene.at(from).z + (to.z - from.z) * craneTravel
+                val loadY = scene.placement.originY + from.y + 2.2 +
+                    (to.y - from.y - .2) * craneTravel + sin(craneTravel * Math.PI) * 4.0
+                val ceilingY = scene.placement.originY + 17.0
+                chainLength = (ceilingY - (loadY + .5)).coerceAtLeast(.1).toFloat()
+                pivot.y = if (role == "core") loadY else ceilingY - chainLength / 2
             }
             if (display.location.distanceSquared(pivot) > 0.0001) display.teleport(pivot)
             display.interpolationDuration = 4
@@ -327,11 +343,16 @@ internal class MineExpeditionMachinery(
                     rotation.rotateZ(phase.toFloat() * 2 + if (role == "drill_cross") (Math.PI / 2).toFloat() else 0f)
                     Vector3f(3.6f, 0.55f, 0.65f)
                 }
-                scene.kind == MineExpeditionKind.DEAD_FACTORY && role == "crane" -> Vector3f(0.3f, 8f, 0.3f)
-                scene.kind == MineExpeditionKind.DEAD_FACTORY && role == "core" -> Vector3f(1.6f, 1.0f, 1.6f)
+                scene.kind == MineExpeditionKind.DEAD_FACTORY && role == "crane" -> Vector3f(0.3f, chainLength, 0.3f)
+                scene.kind == MineExpeditionKind.DEAD_FACTORY && role == "core" -> {
+                    val visible = state.stage == MineExpeditionStage.FACTORY_CRANE ||
+                        (state.stage == MineExpeditionStage.FACTORY_INSTALL && !cargoClaimed)
+                    if (visible) Vector3f(1.6f, 1.0f, 1.6f) else Vector3f(0f)
+                }
                 scene.kind == MineExpeditionKind.DEAD_FACTORY && role == "molten" -> {
-                    val poured = if (state.stage in setOf(MineExpeditionStage.FACTORY_CRANE, MineExpeditionStage.FACTORY_INSTALL, MineExpeditionStage.COMPLETE)) 1f
-                        else ((runtime.crankAngles["pour_control"] ?: 0.0) / (Math.PI * 1.5)).coerceIn(0.02, 1.0).toFloat()
+                    val poured = if (state.stage == MineExpeditionStage.FACTORY_POUR)
+                        ((runtime.crankAngles["pour_control"] ?: 0.0) / (Math.PI * 1.5)).coerceIn(0.0, 1.0).toFloat()
+                    else 0f
                     Vector3f(4f * poured, 0.2f, 1.5f)
                 }
                 else -> Vector3f(0.8f)
@@ -368,7 +389,7 @@ internal class MineExpeditionMachinery(
         else route[after.motionStep.coerceIn(0, route.lastIndex)]
     }
 
-    private fun displayAnchors(kind: MineExpeditionKind, center: ExpeditionPoint): Map<String, ExpeditionPoint> = when (kind) {
+    private fun displayAnchors(scene: MineExpeditionScene, center: ExpeditionPoint): Map<String, ExpeditionPoint> = when (scene.kind) {
         MineExpeditionKind.LAST_DESCENT -> linkedMapOf(
             "drive" to center.offset(0, 2, -2),
             "frame" to center.offset(-2, 1, -2),
@@ -382,13 +403,13 @@ internal class MineExpeditionMachinery(
             "drill_cross" to center.offset(0, 1, 8),
         )
         MineExpeditionKind.DEAD_FACTORY -> linkedMapOf(
-            "wheel" to ExpeditionPoint(-15, 11, 0),
-            "wheel_cross" to ExpeditionPoint(-15, 11, 0),
+            "wheel" to ExpeditionPoint(if (scene.placement.geometryVersion >= 3) -24 else -15, 11, 0),
+            "wheel_cross" to ExpeditionPoint(if (scene.placement.geometryVersion >= 3) -24 else -15, 11, 0),
             "crane" to ExpeditionPoint(0, 16, -6),
-            "boiler" to ExpeditionPoint(14, 11, 1),
-            "molten" to ExpeditionPoint(12, 6, -6),
+            "boiler" to if(scene.placement.geometryVersion>=3) furnishingPoint(scene,"decor_furnace_left",ExpeditionPoint(-17,12,-13)) else ExpeditionPoint(14,11,1),
+            "molten" to if(scene.placement.geometryVersion>=3) furnishingPoint(scene,"pour_control",scene.plan.stations.getValue("pour_control").offset(dy=2)) else ExpeditionPoint(12,6,-6),
             "core" to ExpeditionPoint(0, 6, -6),
-        )
+        ).filterKeys { scene.placement.geometryVersion < 3 || (!it.startsWith("wheel") && it != "boiler") }
     }
 
     private fun displayMaterial(kind: MineExpeditionKind, role: String): Material? = when (kind) {
@@ -410,15 +431,9 @@ internal class MineExpeditionMachinery(
             "crane" -> Material.IRON_CHAIN
             "boiler" -> Material.COPPER_BLOCK
             "molten" -> Material.MAGMA_BLOCK
-            "core" -> Material.HEAVY_CORE
+            "core" -> Material.IRON_BLOCK
             else -> null
         }
-    }
-
-    private fun visualRoles(kind: MineExpeditionKind): List<String> = when (kind) {
-        MineExpeditionKind.LAST_DESCENT -> listOf("drive", "frame", "core")
-        MineExpeditionKind.DRILLING_ARK -> listOf("drive", "boiler", "lamp", "drill", "drill_cross")
-        MineExpeditionKind.DEAD_FACTORY -> listOf("wheel", "wheel_cross", "crane", "boiler", "molten", "core")
     }
 
     private fun find(scene: MineExpeditionScene, local: ExpeditionPoint, role: String): Entity? {

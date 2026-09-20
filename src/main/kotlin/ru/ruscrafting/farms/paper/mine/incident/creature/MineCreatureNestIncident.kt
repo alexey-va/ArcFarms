@@ -39,6 +39,7 @@ internal class MineCreatureNestIncident(
     private val access: WorksiteAccessPort,
     private val locale: ArcFarmsLocale? = null,
     private val pests: MineCreaturePests? = null,
+    private val candidateStock: ru.ruscrafting.farms.paper.mine.incident.MineIncidentCandidateStock? = null,
 ) {
     private val entities = mutableMapOf<String, MutableMap<MineIncidentEntityKind, MutableMap<String, java.util.UUID>>>()
 
@@ -222,11 +223,7 @@ internal class MineCreatureNestIncident(
     private fun candidates(runtime: MineRuntime, required: Int): List<ObjectiveTargetCandidate> {
         val positions = orderMineIncidentPositions(
             runtime,
-            interiorMineIncidentPositions(index.targets(runtime.settings.id, MineAnchorRole.NEST))
-                .filter {
-                    index.isLiveTarget(runtime.settings.id, it, MineAnchorRole.NEST, runtime.railMaterials) &&
-                        runtime.isIncidentSurface(it)
-                },
+            candidateStock?.candidates(runtime, MineIncidentType.CREATURE_NEST).orEmpty(),
             required,
             0xCEEA7L xor runtime.state.incidentCursor.toLong(),
         ).filter { center ->

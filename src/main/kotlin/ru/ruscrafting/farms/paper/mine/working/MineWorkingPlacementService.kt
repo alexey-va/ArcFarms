@@ -36,7 +36,7 @@ internal class MineWorkingPlacementService(
     fun search(runtime: MineRuntime, type: MineIncidentType, now: Long, complete: (MineWorkingPlacement) -> Unit): Boolean {
         val zone = runtime.settings.id
         val search = Search(runtime.state.sequence, runtime.state.incidentCursor, type)
-        if (pending[zone] == search) return true
+        if (zone in pending) return true
         if (now < retryAfter.getOrDefault(zone, 0L)) return false
         val world = runtime.region.world
         val floors = lift?.floors().orEmpty().filter { it.exit.world === world }
@@ -75,7 +75,7 @@ internal class MineWorkingPlacementService(
                 considered++
                 val plan = MineWorkingLayout.plan(type, candidate)
                 val reason = when {
-                    plan.blocks.keys.any { !bounds.contains(it.x, it.y, it.z) } -> "outside_region"
+                    !bounds.contains(candidate.entrance.x, candidate.entrance.y, candidate.entrance.z) -> "entrance_outside_region"
                     plan.blocks.keys.any { block -> exits.any { exit ->
                         abs(block.y - exit.y) <= 5 && abs(block.x - exit.x) <= 6 && abs(block.z - exit.z) <= 6
                     } } -> "lift_clearance"
@@ -135,7 +135,7 @@ internal class MineWorkingPlacementService(
 
         const val MAX_ANCHORS = 512
         const val MAX_FINALISTS = 2
-        const val FOOTPRINT_RADIUS = 20
+        const val FOOTPRINT_RADIUS = 46
         const val RETRY_MILLIS = 10_000L
     }
 }

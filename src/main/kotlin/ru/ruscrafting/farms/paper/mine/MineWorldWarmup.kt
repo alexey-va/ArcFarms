@@ -13,8 +13,9 @@ internal class MineWorldWarmup(
     private val tickets: MineChunkTicket,
     private val tasks: WorksiteTaskPort,
     private val chunkLoader: MineChunkLoader = MineChunkLoader { world, chunkX, chunkZ ->
-        world.getChunkAtAsync(chunkX, chunkZ, false)
+        world.getChunkAtAsync(chunkX, chunkZ, true)
     },
+    private val extraCoordinates: (MineRuntime) -> Collection<Pair<Int,Int>> = { emptyList() },
     private val onFailure: (String, Throwable?) -> Unit = { _, _ -> },
 ) {
     private val retained = linkedMapOf<ChunkKey, Chunk>()
@@ -33,6 +34,7 @@ internal class MineWorldWarmup(
                 coordinates += x to z
             }
             runtimes.filter { it.region.world === world }.forEach { runtime ->
+                coordinates += extraCoordinates(runtime)
                 val bounds = runtime.region.bounds
                 val chunks = ((bounds.maxX shr 4) - (bounds.minX shr 4) + 1).toLong() *
                     ((bounds.maxZ shr 4) - (bounds.minZ shr 4) + 1)

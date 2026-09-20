@@ -30,6 +30,7 @@ internal abstract class MineSequenceIncident(
     private val requireStructuralSurface: Boolean = true,
     private val requireDirectClickSpace: Boolean = true,
     private val successSound: Sound,
+    private val candidateStock: ru.ruscrafting.farms.paper.mine.incident.MineIncidentCandidateStock? = null,
 ) {
     fun start(runtime: MineRuntime, required: Int, now: Long): Boolean {
         val candidates = candidates(runtime, required)
@@ -84,7 +85,7 @@ internal abstract class MineSequenceIncident(
     private fun candidates(runtime: MineRuntime, required: Int): List<ObjectiveTargetCandidate> =
         orderMineIncidentPositions(
             runtime,
-            index.loadedTargets(runtime.settings.id, anchorRole)
+            (candidateStock?.candidates(runtime, type) ?: index.loadedTargets(runtime.settings.id, anchorRole).take(32))
                 .filter {
                         index.isLiveTarget(runtime.settings.id, it, anchorRole, runtime.railMaterials) &&
                         (!requireStructuralSurface || runtime.isIncidentSurface(it)) &&

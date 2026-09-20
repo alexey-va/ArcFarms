@@ -38,6 +38,7 @@ internal class MineFloodingIncident(
     private val access: ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort,
     private val items: ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems? = null,
     private val locale: ru.ruscrafting.farms.config.ArcFarmsLocale? = null,
+    private val candidateStock: ru.ruscrafting.farms.paper.mine.incident.MineIncidentCandidateStock? = null,
 ) {
     private val pendingScoops = mutableSetOf<String>()
     private val drainedPositions = mutableMapOf<String, MutableSet<WorksitePosition>>()
@@ -220,18 +221,9 @@ internal class MineFloodingIncident(
     private fun candidates(runtime: MineRuntime, required: Int): List<ObjectiveTargetCandidate> =
         orderMineIncidentPositions(
             runtime,
-            (index.loadedTargets(runtime.settings.id, MineAnchorRole.SUPPORT).map { it to MineAnchorRole.SUPPORT } +
-                index.loadedTargets(runtime.settings.id, MineAnchorRole.NEST).map { it to MineAnchorRole.NEST })
-                .distinctBy { it.first }
-                .sortedBy { (p, _) -> ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed.positionScore(runtime.state.sequence xor runtime.state.incidentCursor.toLong(), "flood", p.x, p.y, p.z) }
-                .asSequence().take(96).filter { (position, role) ->
-                    index.isLiveTarget(runtime.settings.id, position, role, runtime.railMaterials) &&
-                        position.blockType() != null &&
-                        runtime.isIncidentSurface(position) && hasMineObjectiveMarkerSpace(position) &&
-                        runtime.floodFootprint(position).let { footprint ->
-                            footprint.size >= MIN_FLOOD_BLOCKS && footprint.all { water -> water.blockType() == Material.AIR }
-                        }
-                }.take(12).map { it.first }.toList(),
+            candidateStock?.candidates(runtime, MineIncidentType.FLOODING)
+                ?.take(8)?.filter { runtime.floodFootprint(it).let { cells -> cells.size >= MIN_FLOOD_BLOCKS && cells.all { p -> p.blockType() == Material.AIR } } }
+                .orEmpty(),
             1,
             0xF100DL,
         )

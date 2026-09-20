@@ -97,6 +97,7 @@ internal class WorksitePreparedSceneOwner(
     private val chunkRetention: WorksitePreparedSceneChunkRetention,
     private val blockDataDecoder: WorksitePreparedSceneBlockDataDecoder,
     private val logger: Logger = plugin.logger,
+    private val preserveEdits: (WorksitePreparedSceneRecord) -> Boolean = { false },
 ) {
     private data class SceneKey(val world: String, val zoneId: String, val sequence: Long, val sceneId: Int)
     private data class RecordKey(val world: String, val x: Int, val y: Int, val z: Int)
@@ -394,7 +395,7 @@ internal class WorksitePreparedSceneOwner(
         val activeRecords = records.filter { record ->
             active(record.zoneId, record.sequence) && isActiveScene(record)
         }
-        val projectionStatus = activeRecords.associate { it.key() to hasActiveProjection(it) }
+        val projectionStatus = activeRecords.associate { it.key() to (preserveEdits(it) || hasActiveProjection(it)) }
         activeRecords.groupBy { it.sceneKey() }.forEach { (sceneKey, sceneRecords) ->
             projectionChunks[ProjectionChunkKey(sceneKey, chunk.x, chunk.z)] = ProjectionChunkState(
                 records = sceneRecords.size,

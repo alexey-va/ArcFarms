@@ -22,7 +22,7 @@ class MineExpeditionStockTest : FunSpec({
     beforeEach { paper = MockBukkitTestRuntime.open() }
     afterEach { paper.close() }
 
-    test("ready reserves are claimed durably, replenished and excluded from stock rebuild while occupied") {
+    test("permanent sites are claimed and released without relocation or regeneration") {
         val world = paper.server.addSimpleWorld("world")
         val repository = MineExpeditionSceneRepository(MemoryExpeditionStorage())
         val loader = ReadySceneLoader(world)
@@ -47,23 +47,25 @@ class MineExpeditionStockTest : FunSpec({
         scene.zoneId shouldBe "old_shafts"
         runtime.state.incident!!.expedition!!.placement shouldBe before.placement
         stock.maintain(2_000L)
-        repository.records().size shouldBe 4
+        repository.records().size shouldBe 3
+        stock.status().single { it.kind == MineExpeditionKind.DEAD_FACTORY }.ready shouldBe 0
+        stock.complete(scene, 3_000L)
+        stock.release(scene)
+        stock.maintain(4_000L)
+        repository.records().size shouldBe 3
+        val released = repository.records().single { it.kind == MineExpeditionKind.DEAD_FACTORY }
+        released.placement shouldBe before.placement
+        released.reserved shouldBe true
+        scene.completedAt shouldBe 0L
+        loader.restored.size shouldBe 0
         stock.status().all { it.ready == 1 } shouldBe true
         stock.rebuild(null) shouldBe 3
         loader.restored.size shouldBe 3
-        loader.restored.none { it.journalSequence == scene.journalSequence } shouldBe true
-        repository.find("old_shafts", 5, 100)!!.restoring shouldBe false
-        val retiringOwners = loader.restored.map { it.journalOwner }.toSet()
-        stock.maintain(3_000L)
-        val replacements = repository.records().filter { it.reserved && !it.restoring }
-        replacements.size shouldBe 3
-        replacements.none { it.journalOwner in retiringOwners } shouldBe true
-        stock.status().all { it.ready == 1 && it.retiring == 1 } shouldBe true
         stock.deactivate()
         repository.close()
     }
 
-    test("a claim finishing after incident cancellation retires its journal instead of leaking a scene") {
+    test("a late claim releases the permanent site without deleting its blocks") {
         val world = paper.server.addSimpleWorld("world")
         val storage = MemoryExpeditionStorage()
         val repository = MineExpeditionSceneRepository(storage)
@@ -83,8 +85,8 @@ class MineExpeditionStockTest : FunSpec({
         val pending = storage.delay!!
         storage.delay = null
         pending.complete(Unit)
-        repository.find("old_shafts", 5, 100)!!.restoring shouldBe true
-        loader.restored.size shouldBe 1
+        repository.records().all { it.reserved && !it.restoring } shouldBe true
+        loader.restored.size shouldBe 0
         runtime.state.incident shouldBe null
         repository.close()
     }

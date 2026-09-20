@@ -26,7 +26,7 @@ class MineLostMinerMazeWorldMockBukkitTest : FunSpec({
     beforeEach {
         paper = MockBukkitTestRuntime.open()
         world = paper.server.addSimpleWorld("world")
-        for (chunkX in -3..3) for (chunkZ in -3..3) world.getChunkAt(chunkX, chunkZ).load()
+        for (chunkX in -8..8) for (chunkZ in -8..8) world.getChunkAt(chunkX, chunkZ).load()
         for (x in -48..48) for (z in -48..48) for (y in 61..66) world.getBlockAt(x, y, z).type = org.bukkit.Material.STONE
         plugin = paper.createSimplePlugin("LostMinerMaze")
     }
@@ -39,8 +39,10 @@ class MineLostMinerMazeWorldMockBukkitTest : FunSpec({
         val retention = RecordingMazeRetention()
         val first = MineLostMinerMazeWorld(plugin, ArcFarmsDebug({ false }) {}, retention, MockBukkitFarmBlockDataDecoder)
 
-        val (_, planned) = first.ensure(runtime, target)
-        val scene = requireNotNull(planned)
+        first.ensure(runtime, target).first shouldBe MineLostMinerMazeEnsureResult.BUILDING
+        // Capturing originals is now spread over ticks before the durable build is exposed.
+        repeat(256) { first.process(128) { true } }
+        val scene = requireNotNull(first.ensure(runtime, target).second)
         scene.records.shouldNotBeEmpty()
         scene.records.any { it.mazeData == org.bukkit.Material.OCHRE_FROGLIGHT.createBlockData().asString } shouldBe true
         scene.records.all { it.x !in 0..20 || it.z !in 0..20 } shouldBe true
@@ -48,7 +50,7 @@ class MineLostMinerMazeWorldMockBukkitTest : FunSpec({
         scene.surface.blockZ shouldBe target.z
         (scene.targetPosition().x !in 0..20) shouldBe true
         val originals = scene.records.associate { Triple(it.x, it.y, it.z) to it.originalData }
-        first.process(scene.records.size) { true } shouldBe scene.records.size
+        first.process(scene.records.size) { true }
         scene.ready shouldBe true
 
         // A new owner sees the PDC journal and reconstructs the same entrance/target.

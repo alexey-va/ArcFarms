@@ -77,6 +77,7 @@ internal class MineExpeditionWorld(
             AutoCloseable { tickets.release(chunk) }
         },
         blockDataDecoder = blockDataDecoder,
+        preserveEdits = { record -> receipts.findJournal(record.sequence)?.let { it.siteBuilt && it.placement.geometryVersion >= 3 && !it.restoring } == true },
     )
     private val scenes = linkedMapOf<Long, MineExpeditionScene>()
     private val stock = MineExpeditionStock(receipts, tasks, state, this)
@@ -138,6 +139,10 @@ internal class MineExpeditionWorld(
         scenes.values.firstOrNull { !it.reserved && it.zoneId == runtime.settings.id &&
             it.sequence == runtime.state.sequence && it.objectiveNonce == incident.objectiveNonce }
     }
+
+    fun allScenes(): Collection<MineExpeditionScene> = scenes.values.toList()
+
+    fun releaseStatic(scene: MineExpeditionScene) = stock.release(scene)
 
     fun retainedScenes(): Collection<MineExpeditionScene> = scenes.values.filterNot { it.reserved }
 
@@ -204,6 +209,7 @@ internal class MineExpeditionWorld(
                 prepared.isBuilding(scene.journalOwner, scene.journalSequence, scene.sceneId),
                 prepared.isComplete(scene.prepared),
             )
+            if (scene.ready) stock.markBuilt(scene)
             if (scene.ready && announcedReady.add(scene.journalSequence)) {
                 buildingSince.remove(scene.journalSequence)
                 state.log(Level.INFO, "Mine expedition ready kind=${scene.kind} journal=${scene.journalSequence} reserve=${scene.reserved}")
@@ -226,13 +232,9 @@ internal class MineExpeditionWorld(
         )
     }
 
-    fun protects(location: Location): Boolean = scenes.values.any { it.contains(location) } ||
-        receipts.records().any { receipt ->
-            val p = receipt.placement
-            p.geometryVersion >= 2 && location.world.name == p.world &&
-                location.blockX in p.originX - 24..p.originX + 24 && location.blockZ in p.originZ - 25..p.originZ + 25 &&
-                location.blockY in p.originY..p.originY + 29
-        }
+    fun protects(location: Location): Boolean = scenes.values.any {
+        it.contains(location) && (!it.ready || (!it.reserved && it.completedAt == 0L))
+    }
 
     fun reconcileLoaded() {
         if (!storageLoaded) return
@@ -356,7 +358,7 @@ internal class MineExpeditionWorld(
             scenes[key] = scene
             if (!receipt.restoring) {
                 buildingSince[key] = System.currentTimeMillis()
-                val baseline = baselineChanges(receipt, plan, recovered)
+                val baseline = if (receipt.placement.geometryVersion >= 3) emptyList() else baselineChanges(receipt, plan, recovered)
                 if (baseline.isEmpty()) scene.refreshReady(
                     prepared.isBuilding(scene.journalOwner, scene.journalSequence, scene.sceneId),
                     prepared.isComplete(scene.prepared),

@@ -26,7 +26,7 @@ class WorksitePreparedSceneOwnerMockBukkitTest : FunSpec({
 
     afterEach { paper.close() }
 
-    fun owner(namespace: String = "mine_working"): WorksitePreparedSceneOwner = WorksitePreparedSceneOwner(
+    fun owner(namespace: String = "mine_working", preserve: Boolean = false): WorksitePreparedSceneOwner = WorksitePreparedSceneOwner(
         plugin = plugin,
         namespace = namespace,
         codec = FarmMoleBurrowWorksiteSceneCodec(plugin, namespace),
@@ -40,6 +40,7 @@ class WorksitePreparedSceneOwnerMockBukkitTest : FunSpec({
             }
         },
         blockDataDecoder = WorksitePreparedSceneBlockDataDecoder { Bukkit.createBlockData(it) },
+        preserveEdits = { preserve },
     )
 
     fun scene(sceneId: Int, x: Int, zoneId: String = "mine_zone"): WorksitePreparedScene {
@@ -62,6 +63,20 @@ class WorksitePreparedSceneOwnerMockBukkitTest : FunSpec({
             Location(world, x + 1.5, 64.0, 0.5),
             records,
         )
+    }
+
+    test("built permanent scene keeps operator edits when its journal is loaded again") {
+        val first = owner(preserve = true)
+        val plan = scene(1, 0)
+        first.prepare(listOf(plan)) shouldBe true
+        first.process(1) { true }
+        world.getBlockAt(0,64,0).type = Material.GOLD_BLOCK
+        first.clearQueues()
+        val restarted = owner(preserve = true)
+        restarted.onChunkLoad(world.getChunkAt(0,0), { _,_ -> true })
+        restarted.process(10) { true }
+        world.getBlockAt(0,64,0).type shouldBe Material.GOLD_BLOCK
+        restarted.isBuilding("mine_zone",12,1) shouldBe false
     }
 
     test("prepare builds exact BlockData and restart restores the durable scene") {

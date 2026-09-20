@@ -41,16 +41,26 @@ internal class MineWorkingController(
     private val drillOperators = mutableMapOf<String, UUID>()
     private val completionGrace = mutableMapOf<String, CompletionGrace>()
 
+    private val preparedPlacements = mutableMapOf<Pair<String, MineIncidentType>, MineWorkingPlacement>()
+    private var preparationLane = 0
+
+    fun prewarm(runtime: MineRuntime, now: Long) {
+        if (runtime.state.incident != null || transitioning(runtime)) return
+        val types = listOf(MineIncidentType.TRACK_DAMAGE, MineIncidentType.TUNNEL_DRIVE, MineIncidentType.RAIL_EXTENSION)
+        val type = types[preparationLane++ % types.size]
+        val key = runtime.settings.id to type
+        preparedPlacements[key]?.let { world.prewarm(runtime,type,it);return }
+        placement.search(runtime, type, now) { preparedPlacements[key] = it; world.prewarm(runtime,type,it) }
+    }
+
     fun start(runtime: MineRuntime, type: MineIncidentType, now: Long): Boolean {
         if (transitioning(runtime)) return false
-        return placement.search(runtime, type, now) { chosen ->
-            if (runtime.state.incident != null) return@search
-            val nonce = runtime.state.incidentCursor.toLong() + 1
-            if (!world.prepare(runtime, type, chosen, nonce)) return@search
-            val working = MineWorkingEngine.initial(type, chosen)
-            val plan = MineWorkingLayout.plan(type, chosen)
-            if (!incidents.start(runtime, type, total(type, plan), now, working = working)) world.startRestore(runtime)
-        }
+        val chosen = preparedPlacements[runtime.settings.id to type] ?: return false
+        val nonce = runtime.state.incidentCursor.toLong() + 1
+        if (!world.prepare(runtime, type, chosen, nonce)) return false
+        val working = MineWorkingEngine.initial(type, chosen)
+        val plan = MineWorkingLayout.plan(type, chosen)
+        return incidents.start(runtime, type, total(type, plan), now, working = working).also { if (!it) world.startRestore(runtime) }
     }
 
     fun diagnostics(runtime: MineRuntime, type: MineIncidentType): MineIncidentPlacementReport = placement.diagnostics(runtime, type)
@@ -67,6 +77,7 @@ internal class MineWorkingController(
             if (world.hasScene(runtime)) retire(runtime)
             return
         }
+        if (world.preparationFailed(runtime)) { retire(runtime); incidents.abort(runtime); return }
         if (!world.isReady(runtime) || runtime.settings.id in pendingSaves) return
         val scene = world.scene(runtime) ?: return
         val reheated = MineWorkingEngine.reheat(working, now)
@@ -101,8 +112,11 @@ internal class MineWorkingController(
         }
     }
 
+    private fun runtimeAt(location: Location): MineRuntime? = registry.at(location)
+        ?: registry.snapshot().firstOrNull { world.scene(it)?.inside(location) == true }
+
     fun canMine(player: Player, block: org.bukkit.block.Block): Boolean {
-        val runtime = registry.at(block.location) ?: return false
+        val runtime = runtimeAt(block.location) ?: return false
         val working = runtime.state.incident?.working ?: return false
         if (block.type != Material.COBBLESTONE || working.stage != MineWorkingStage.CLEAR_TRACK || !world.isReady(runtime) || !participant(runtime, player) ||
             !player.inventory.itemInMainHand.type.name.endsWith("_PICKAXE")) return false
@@ -112,7 +126,7 @@ internal class MineWorkingController(
     }
 
     fun onBreak(event: BlockBreakEvent): Boolean {
-        val runtime = registry.at(event.block.location) ?: return false
+        val runtime = runtimeAt(event.block.location) ?: return false
         if (!world.protects(event.block.location)) return false
         event.isCancelled = true
         event.isDropItems = false
@@ -134,7 +148,7 @@ internal class MineWorkingController(
 
     fun onInteract(event: PlayerInteractEvent): Boolean {
         val block = event.clickedBlock ?: return false
-        val runtime = registry.at(block.location) ?: return false
+        val runtime = runtimeAt(block.location) ?: return false
         if (!world.protects(block.location)) return false
         if (event.action == Action.LEFT_CLICK_BLOCK) {
             val working = runtime.state.incident?.working
@@ -429,7 +443,7 @@ internal class MineWorkingController(
         // The lifecycle supervisor discards old save callbacks. Their locks must
         // not survive and prevent progress in the reconfigured working.
         pendingSaves.clear()
-        placement.clear()
+        placement.clear(); preparedPlacements.clear()
     }
     fun cleanup() {
         registry.snapshot().forEach { runtime ->
@@ -437,7 +451,7 @@ internal class MineWorkingController(
             presentation.cleanup(runtime.settings.id)
             travel.evacuate(runtime.settings.id)
         }
-        placement.clear()
+        placement.clear(); preparedPlacements.clear()
         pendingSaves.clear()
         retiring.clear()
         completionGrace.clear()

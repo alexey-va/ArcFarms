@@ -8,17 +8,17 @@ import ru.ruscrafting.farms.persistence.MineExpeditionSceneReceipt
 internal data class MineExpeditionSite(val world: String, val centerX: Int, val northZ: Int, val floorY: Int,
     val surfaceX: Double, val surfaceY: Double, val surfaceZ: Double)
 
-/** Nearby disjoint 64-block cells north of the authored mine and its side workings. */
+/** Nearby disjoint 112-block cells north of the authored mine and its side workings. */
 internal object MineExpeditionAllocation {
     fun allocate(kind: MineExpeditionKind, id: Long, occupied: Collection<MineExpeditionSceneReceipt>,
         site: MineExpeditionSite): MineExpeditionPlacement {
         val seed = WorksiteDeterministicSeed.derive(id, kind.ordinal.toLong())
         repeat(12) { probe ->
             val slot = (probe + kind.ordinal) % 12
-            val x = site.centerX + (slot % 3 - 1) * 64
-            val z = site.northZ - 80 - slot / 3 * 64
+            val x = site.centerX + (slot % 3 - 1) * 112
+            val z = site.northZ - 112 - slot / 3 * 112
             if (occupied.none { it.placement.world == site.world &&
-                    kotlin.math.abs(it.placement.originX - x) < 56 && kotlin.math.abs(it.placement.originZ - z) < 56 }) {
+                    kotlin.math.abs(it.placement.originX - x) < 100 && kotlin.math.abs(it.placement.originZ - z) < 100 }) {
                 return MineExpeditionPlacement(site.world, x, site.floorY - 5, z, seed)
             }
         }

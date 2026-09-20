@@ -89,6 +89,7 @@ internal class MineVersionedModule(
         )
     }
 
+    fun editExpeditionFurnishings(player: org.bukkit.entity.Player, action: String?) = (delegate as? MineModule)?.editExpeditionFurnishings(player,action)
     fun expeditionStock() = (delegate as? MineModule)?.expeditionStock().orEmpty()
     fun rebuildExpeditionStock(kind: ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionKind?) = (delegate as? MineModule)?.rebuildExpeditionStock(kind) ?: 0
 
