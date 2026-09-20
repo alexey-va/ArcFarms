@@ -66,7 +66,7 @@ class MineWorkingLifecycleMockBukkitTest : FunSpec({
                 MineIncidentType.ORE_WORKSHOP,
             ))
         })
-        val placement = MineWorkingPlacement(
+        val placement = legacyWorkingPlacement(
             WorksitePosition(world.name, 2, 64, 2), direction = 0, floorId = "floor-a",
         )
         val working = MineWorkingState(
@@ -154,7 +154,7 @@ class MineWorkingLifecycleMockBukkitTest : FunSpec({
             true
         }
         val controller = MineWorkingController(
-            registry, placement, scene, incidents, equipment, presentation, travel, access, state, tasks, { 2_000L },
+            registry, placement, scene, incidents, equipment, presentation, travel, access, state, tasks, { 2_000L }, drive = mockk(relaxed = true),
         )
 
         val advance = MineWorkingController::class.java.getDeclaredMethod(
@@ -230,7 +230,7 @@ class MineWorkingLifecycleMockBukkitTest : FunSpec({
         val request = slot<WorksiteExpeditionTravel.EntryRequest>()
         every { travel.enterOnFoot(capture(request), any()) } answers { }
         val controller = MineWorkingController(
-            registry, placement, sceneWorld, incidents, equipment, presentation, travel, access, state, tasks, { 2_000L },
+            registry, placement, sceneWorld, incidents, equipment, presentation, travel, access, state, tasks, { 2_000L }, drive = mockk(relaxed = true),
         )
 
         val event = PlayerMoveEvent(player, from, to)
@@ -274,7 +274,7 @@ class MineWorkingLifecycleMockBukkitTest : FunSpec({
         every { travel.evacuate(runtime.settings.id, any<Long>()) } returns true
         every { sceneWorld.occupied(scene) } returns false
         val controller = MineWorkingController(
-            registry, placement, sceneWorld, incidents, equipment, presentation, travel, access, state, tasks, { 0L },
+            registry, placement, sceneWorld, incidents, equipment, presentation, travel, access, state, tasks, { 0L }, drive = mockk(relaxed = true),
         )
         MineWorkingController::class.java.getDeclaredMethod(
             "beginCompletionGrace", MineRuntime::class.java, Long::class.javaPrimitiveType!!,
@@ -328,7 +328,7 @@ class MineWorkingLifecycleMockBukkitTest : FunSpec({
         every { sceneWorld.occupied(scene) } returns false
         player.teleport(surface)
         val controller = MineWorkingController(
-            registry, placement, sceneWorld, incidents, equipment, presentation, travel, access, state, tasks, { 0L },
+            registry, placement, sceneWorld, incidents, equipment, presentation, travel, access, state, tasks, { 0L }, drive = mockk(relaxed = true),
         )
         MineWorkingController::class.java.getDeclaredMethod(
             "beginCompletionGrace", MineRuntime::class.java, Long::class.javaPrimitiveType!!,
@@ -371,7 +371,7 @@ class MineWorkingLifecycleMockBukkitTest : FunSpec({
             true
         }
         val controller = MineWorkingController(
-            registry, placement, sceneWorld, incidents, equipment, presentation, travel, access, state, tasks, { 2_000L },
+            registry, placement, sceneWorld, incidents, equipment, presentation, travel, access, state, tasks, { 2_000L }, drive = mockk(relaxed = true),
         )
         val advance = MineWorkingController::class.java.getDeclaredMethod(
             "advance", MineRuntime::class.java, Player::class.java,
@@ -388,7 +388,7 @@ class MineWorkingLifecycleMockBukkitTest : FunSpec({
         val world = paper.server.addSimpleWorld("mine_working_lifecycle")
         for (chunkX in -1..1) for (chunkZ in -1..2) world.getChunkAt(chunkX, chunkZ).load()
         val plugin = paper.createSimplePlugin("MineWorkingReconcileTest")
-        val placement = MineWorkingPlacement(
+        val placement = legacyWorkingPlacement(
             WorksitePosition(world.name, 0, 64, 0), direction = 0, floorId = "fixture-floor",
         )
         val plan = MineWorkingLayout.plan(MineIncidentType.TUNNEL_DRIVE, placement)
@@ -454,7 +454,7 @@ class MineWorkingLifecycleMockBukkitTest : FunSpec({
 
 private fun lifecycleRuntime(world: WorldMock): MineRuntime {
     val settings = mineV2Settings()
-    val placement = MineWorkingPlacement(WorksitePosition(world.name, 2, 64, 2), 0, "lifecycle-floor")
+    val placement = legacyWorkingPlacement(WorksitePosition(world.name, 2, 64, 2), 0, "lifecycle-floor")
     return MineRuntime(
         settings = settings,
         region = CuboidActivityRegion(world, settings.id, CuboidBounds(0, 50, 0, 20, 90, 20)),
@@ -503,3 +503,6 @@ private fun drain(owner: WorksitePreparedSceneOwner, world: MineWorkingWorld, ru
         check(++rounds < 64) { "prepared mine scene did not finish in bounded lifecycle test" }
     }
 }
+
+private fun legacyWorkingPlacement(entrance: WorksitePosition, direction: Int, floorId: String, layoutSeed: Long = 0L, geometryVersion: Int = 4) =
+    MineWorkingPlacement(entrance, direction, floorId, layoutSeed, geometryVersion)

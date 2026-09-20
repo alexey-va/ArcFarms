@@ -1,0 +1,31 @@
+// Canonical drill model exported as a standalone inspection stage.
+allprojects {
+ afterEvaluate {
+  tasks.register('exportMineDrive') {
+   dependsOn 'classes', 'validateMineDisplayModels'
+   doLast {
+    def urls=(sourceSets.main.runtimeClasspath+sourceSets.main.compileClasspath).files.collect{it.toURI().toURL()} as URL[]
+    def cl=new URLClassLoader(urls,(ClassLoader)null)
+    def blueprints=cl.loadClass('ru.ruscrafting.farms.paper.mine.expedition.MineDisplayBlueprints')
+    def palette=[floor:[block:'minecraft:polished_deepslate',color:'#54565a',name:'Полигон']]
+    def model=blueprints.getMethod('model',String.class).invoke(blueprints.getField('INSTANCE').get(null),'drive_rig').collect { p ->
+     def block='minecraft:'+p.material.name().toLowerCase()
+     if(!palette.values().any{it.block==block}) palette['m'+palette.size()]=[block:block,color:'#858580',name:block]
+     [block:block,center:[p.center.x,p.center.y,p.center.z],size:[p.size.x,p.size.y,p.size.z],angle:p.angle,moving:p.moving,motion:p.motion,pivot:[p.pivot.x,p.pivot.y,p.pivot.z]]
+    }
+    def recipe=[version:1,seed:73,title:'Проходческая машина',size:[10,7,12],palette:palette,
+     subtitle:'Модель из кода ArcFarms · вращение резца · условный свет · без симуляции движения',
+     operations:[[op:'box',from:[0,0,0],to:[9,0,11],material:'floor']],
+     origin:[4,0,5],route:[[4,0,5],[4,0,9]],lighting:[targetLevel:8,samples:[[4,1,5]]],
+     displayModels:[drive_rig:model],displayAssemblies:[[id:'drive',model:'drive_rig',scale:1,at:[4.5,1,5.5]]],
+     preview:[defaultView:'front',views:[
+      [id:'front',label:'Резец и гусеницы',camera:[8.5,4,11],target:[4.5,2,5.8],fov:50],
+      [id:'seat',label:'Кабина сзади',camera:[7,3.8,1.5],target:[4.5,2,5.5],fov:50],
+      [id:'side',label:'Сбоку',camera:[10,3.5,5.5],target:[4.5,2,5.5],fov:50]]]]
+    def out=new File(project.findProperty('minePreviewOut') ?: '/private/tmp/mine-0444-scenes');out.mkdirs()
+    new File(out,'tunnel_drive.atelier.json').text=groovy.json.JsonOutput.toJson(recipe)
+    println('Drive parts: '+model.size())
+   }
+  }
+ }
+}

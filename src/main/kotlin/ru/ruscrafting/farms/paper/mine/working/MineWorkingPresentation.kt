@@ -90,6 +90,9 @@ internal class MineWorkingPresentation(
                 if (index in working.completed) null else MineWorkingTarget(index.toString(), position, label)
             }.let { if (one) it.take(1) else it.take(9) }
         fun station(id: String) = plan.stations[id]?.let { listOf(MineWorkingTarget(id, it, id)) }.orEmpty()
+        if (scene.plan.type == ru.ruscrafting.farms.domain.MineIncidentType.TUNNEL_DRIVE && MineDriveLayout.enabled(working.placement)) {
+            return listOf(MineWorkingTarget("drive-goal", working.placement.position(0,1,MineDriveLayout.LENGTH - 3), "drive_goal"))
+        }
         return when (working.stage) {
             MineWorkingStage.EXCAVATE -> blocks(plan.excavation, "excavate", one = true)
             MineWorkingStage.SUPPORT -> blocks(plan.supports, "support")
@@ -112,7 +115,8 @@ internal class MineWorkingPresentation(
         val readyToQuench = MineWorkingEngine.canQuench(working, now)
         val path = if (working.stage == MineWorkingStage.HEAT) {
             if (readyToQuench) "heat-ready" else "heat-wait"
-        } else "hint.${working.stage.name.lowercase()}"
+        } else if (runtime.state.incident?.type == ru.ruscrafting.farms.domain.MineIncidentType.TUNNEL_DRIVE && MineDriveLayout.enabled(working.placement)) "drive-controls"
+        else "hint.${working.stage.name.lowercase()}"
         val deadline = working.heatStartedAt + MineWorkingEngine.HEAT_MILLIS +
             if (readyToQuench) MineWorkingEngine.HEAT_WINDOW_MILLIS else 0L
         return locale?.renderPath("mine.working.$path", player, mapOf(

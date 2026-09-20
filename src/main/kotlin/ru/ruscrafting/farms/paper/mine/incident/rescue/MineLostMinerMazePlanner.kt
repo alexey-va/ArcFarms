@@ -80,27 +80,74 @@ internal object MineLostMinerMazePlanner {
     }
 
     private fun windingCave(cells: Int, seed: Long): MineLostMinerMazeLayout {
-        val last = cells * 2 - 1
-        val start = MineLostMinerMazePoint(3, 3)
-        val far = last - 3
-        val bends = listOf(start, MineLostMinerMazePoint(far, 3),
-            MineLostMinerMazePoint(far, last / 2), MineLostMinerMazePoint(3, last / 2),
-            MineLostMinerMazePoint(3, far), MineLostMinerMazePoint(far, far))
-        val passages = linkedSetOf(start)
-        bends.zipWithNext().forEach { (from, to) ->
-            var point = from
-            while (point != to) {
-                point = if (point.x != to.x) point.copy(x = point.x + (to.x - point.x).compareTo(0))
-                    else point.copy(z = point.z + (to.z - point.z).compareTo(0))
-                passages += point
+        val count = if (cells >= 16) 5 else 4
+        val spacing = (cells * 2 - 6).toDouble() / (count - 1)
+        val root = MineLostMinerMazePoint(0, 0)
+        // Rank tree edges from the shared deterministic seed. A bounded choice
+        // of trees gives a substantial rescue route without parallel switchbacks.
+        val tree = (0L..7L).map { attempt ->
+            val treeSeed = ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed.derive(seed, attempt)
+            val parents = linkedMapOf<MineLostMinerMazePoint, MineLostMinerMazePoint?> (root to null)
+            fun visit(node: MineLostMinerMazePoint) {
+                DIRECTIONS.map { MineLostMinerMazePoint(node.x + it.x, node.z + it.z) }
+                    .filter { it.x in 0 until count && it.z in 0 until count }
+                    .sortedBy { ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed.gridScore(treeSeed, it.x, it.z) }
+                    .forEach { next -> if (next !in parents) { parents[next] = node; visit(next) } }
+            }
+            visit(root)
+            fun chain(end: MineLostMinerMazePoint): List<MineLostMinerMazePoint> = buildList {
+                var current: MineLostMinerMazePoint? = end
+                while (current != null) { add(current); current = parents[current] }
+            }.asReversed()
+            val route = parents.keys.map(::chain).maxBy { it.size }
+            parents to route
+        }.maxBy { it.second.size }
+        fun position(point: MineLostMinerMazePoint): MineLostMinerMazePoint {
+            val jitterX = (coherent01(seed, point.x * 1.3, 8.1, point.z * 1.3) - 0.5) * 1.5
+            val jitterZ = (coherent01(seed, point.x * 1.3, 9.7, point.z * 1.3) - 0.5) * 1.5
+            return MineLostMinerMazePoint(kotlin.math.round(3 + point.x * spacing + jitterX).toInt(),
+                kotlin.math.round(3 + point.z * spacing + jitterZ).toInt())
+        }
+        val route = tree.second.map(::position)
+        val passages = linkedSetOf<MineLostMinerMazePoint>()
+        fun carve(points: List<MineLostMinerMazePoint>) {
+            var previous = points.first()
+            passages += previous
+            points.zipWithNext().forEachIndexed { i, (a, b) ->
+                val before = points.getOrElse(i - 1) { a }
+                val after = points.getOrElse(i + 2) { b }
+                val samples = (kotlin.math.abs(b.x - a.x) + kotlin.math.abs(b.z - a.z)) * 4
+                for (sample in 1..samples) {
+                    val t = sample.toDouble() / samples
+                    fun curve(p: Int, q: Int, r: Int, s: Int): Int = kotlin.math.round(0.5 *
+                        (2 * q + (-p + r) * t + (2 * p - 5 * q + 4 * r - s) * t * t +
+                            (-p + 3 * q - 3 * r + s) * t * t * t)).toInt().coerceIn(2, cells * 2 - 2)
+                    val next = MineLostMinerMazePoint(curve(before.x, a.x, b.x, after.x), curve(before.z, a.z, b.z, after.z))
+                    while (previous != next) {
+                        previous = if (previous.x != next.x) previous.copy(x = previous.x + (next.x - previous.x).compareTo(0))
+                            else previous.copy(z = previous.z + (next.z - previous.z).compareTo(0))
+                        passages += previous
+                    }
+                }
             }
         }
-        // Short dead ends branch into separate pockets; the rock between switchbacks prevents shortcuts.
-        listOf(10, 22).forEach { x ->
-            val depth = 3 + (score(seed, x, 41) * 2).toInt()
-            for (z in 4..3 + depth) passages += MineLostMinerMazePoint(x, z)
+        carve(route)
+        // Three attached side pockets create choices without a dense maze grid.
+        tree.first.entries.filter { it.key !in tree.second && it.value in tree.second }
+            .take(3).forEach { (node, parent) -> carve(listOf(position(requireNotNull(parent)), position(node))) }
+        return MineLostMinerMazeLayout(cells, passages, route.first(), route.last())
+    }
+
+    /** Sparse fixtures follow the travelled route, with separation across nearby bends. */
+    fun lampCells(layout: MineLostMinerMazeLayout): Set<MineLostMinerMazePoint> {
+        val lamps = linkedSetOf<MineLostMinerMazePoint>()
+        val route = path(layout)
+        val stride = (route.size / 9).coerceAtLeast(16)
+        route.filterIndexed { index, _ -> index % stride == 0 }.forEach { point ->
+            if (lamps.none { (it.x - point.x) * (it.x - point.x) + (it.z - point.z) * (it.z - point.z) < 81 }) lamps += point
         }
-        return MineLostMinerMazeLayout(cells, passages, start, bends.last())
+        if (lamps.none { (it.x - layout.target.x) * (it.x - layout.target.x) + (it.z - layout.target.z) * (it.z - layout.target.z) < 25 }) lamps += layout.target
+        return lamps
     }
 
     fun path(layout: MineLostMinerMazeLayout): List<MineLostMinerMazePoint> {

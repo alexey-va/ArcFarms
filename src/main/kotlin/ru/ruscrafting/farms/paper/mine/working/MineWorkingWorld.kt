@@ -36,6 +36,7 @@ internal class MineWorkingWorld(
     private val ready = mutableSetOf<String>()
     private val retiring = mutableSetOf<String>()
     private val retained = mutableSetOf<String>()
+    private val projectedDrive = mutableMapOf<String, ru.ruscrafting.farms.domain.MineDriveProgress>()
 
     private data class Capture(val runtime: MineRuntime, val sequence: Long, val plan: MineWorkingPlan,
         val placement: MineWorkingPlacement, val entries: List<Map.Entry<WorksitePosition,String>>,
@@ -162,6 +163,10 @@ internal class MineWorkingWorld(
         val changes = linkedMapOf<WorksitePosition, String>()
         when (type) {
             MineIncidentType.TUNNEL_DRIVE -> {
+                if (MineDriveLayout.enabled(plan.placement)) {
+                    projectDrive(runtime, plan, working)
+                    return
+                }
                 plan.excavation.forEachIndexed { index, position ->
                     if (working.stage != MineWorkingStage.EXCAVATE || index in working.completed) changes[position] = AIR
                 }
@@ -205,7 +210,31 @@ internal class MineWorkingWorld(
         }
     }
 
+    private fun projectDrive(runtime: MineRuntime, plan: MineWorkingPlan, working: MineWorkingState) {
+        val progress = working.drive ?: return
+        val world = runtime.region.world
+        fun put(position: WorksitePosition, data: String) {
+            if (position !in plan.blocks || plan.blocks[position] == "minecraft:bedrock" ||
+                !world.isChunkLoaded(position.x shr 4, position.z shr 4)) return
+            val block = world.getBlockAt(position.x, position.y, position.z)
+            if (block.type == Material.BEDROCK) return
+            if (block.blockData.asString != data) block.setBlockData(decoder.decode(data), false)
+        }
+        val old = projectedDrive[key(runtime)]
+        (progress.carved - old?.carved.orEmpty()).forEach { id ->
+            if (MineDriveLayout.driveable(MineDriveLayout.side(id), MineDriveLayout.forward(id))) {
+                for (up in 1..4) put(MineDriveLayout.position(plan.placement, id, up), AIR)
+            }
+        }
+        (progress.lamps - old?.lamps.orEmpty()).forEach { id ->
+            put(MineDriveLayout.position(plan.placement, id, 5), "minecraft:stripped_spruce_log[axis=y]")
+            put(MineDriveLayout.position(plan.placement, id, 4), "minecraft:lantern[hanging=true,waterlogged=false]")
+        }
+        projectedDrive[key(runtime)] = progress
+    }
+
     fun startRestore(runtime: MineRuntime) {
+        projectedDrive.remove(key(runtime))
         val owned = scenes.filterValues { it.blocks.zoneId == runtime.settings.id }
         if (owned.isEmpty()) {
             ready.remove(key(runtime))
@@ -273,6 +302,7 @@ internal class MineWorkingWorld(
 
     fun reconcileLoaded() {
         ready.clear()
+        projectedDrive.clear()
         scenes.forEach { (key, scene) ->
             if (!active(scene.blocks.zoneId, scene.blocks.sequence)) retiring += key
         }
@@ -281,6 +311,7 @@ internal class MineWorkingWorld(
     fun onChunkLoad(chunk: Chunk) {
         registry.snapshot().filter { it.region.world === chunk.world && it.state.incident?.working != null }.forEach {
             ready.remove(key(it))
+            projectedDrive.remove(key(it))
         }
         owner.onChunkLoad(chunk, ::active, ::activeScene)
     }
@@ -289,7 +320,7 @@ internal class MineWorkingWorld(
         "${record.zoneId}:${record.sequence}" in retained ||
             it.state.incident?.let { incident -> incident.working != null && sceneId(incident.objectiveNonce) == record.sceneId } == true
     } == true
-    fun clearQueues() { captures.clear(); captured.clear(); capturedPlans.clear(); captureData.clear(); owner.clearQueues(); scenes.clear(); ready.clear(); retiring.clear(); retained.clear() }
+    fun clearQueues() { projectedDrive.clear(); captures.clear(); captured.clear(); capturedPlans.clear(); captureData.clear(); owner.clearQueues(); scenes.clear(); ready.clear(); retiring.clear(); retained.clear() }
 
     private fun active(zoneId: String, sequence: Long): Boolean = registry.byId(zoneId)?.let {
         ("$zoneId:$sequence" in retained ||

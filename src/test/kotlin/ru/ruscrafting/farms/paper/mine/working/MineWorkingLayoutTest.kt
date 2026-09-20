@@ -14,7 +14,7 @@ class MineWorkingLayoutTest : FunSpec({
     test("machine faces rotate with the tunnel instead of facing the surrounding wall") {
         listOf("north", "east", "south", "west").forEachIndexed { direction, facing ->
             val plan = MineWorkingLayout.plan(MineIncidentType.ORE_WORKSHOP,
-                MineWorkingPlacement(entrance, direction, "top"))
+                legacyPlacement(entrance, direction, "top"))
             plan.blocks.getValue(plan.stations.getValue("furnace")) shouldBe
                 "minecraft:furnace[facing=$facing,lit=false]"
         }
@@ -22,7 +22,7 @@ class MineWorkingLayoutTest : FunSpec({
 
     test("all directions keep the bounded footprint and stage-specific targets") {
         (0..3).forEach { direction ->
-            val placement = MineWorkingPlacement(entrance, direction, "top")
+            val placement = legacyPlacement(entrance, direction, "top")
             MineIncidentType.values()
                 .filter { it in setOf(
                     MineIncidentType.TUNNEL_DRIVE,
@@ -73,7 +73,7 @@ class MineWorkingLayoutTest : FunSpec({
     }
 
     test("tunnel cave keeps a narrow entry, long side branch and geological palette") {
-        val placement = MineWorkingPlacement(
+        val placement = legacyPlacement(
             WorksitePosition("rc_atelier_compact_mine", 72, 110, 27),
             direction = 3,
             floorId = "top",
@@ -99,7 +99,7 @@ class MineWorkingLayoutTest : FunSpec({
     }
 
     test("support frames follow the noisy roof and keep a usable action anchor") {
-        val placement = MineWorkingPlacement(
+        val placement = legacyPlacement(
             WorksitePosition("rc_atelier_compact_mine", 72, 110, 27),
             direction = 3,
             floorId = "top",
@@ -125,7 +125,7 @@ class MineWorkingLayoutTest : FunSpec({
     test("planner accepts air only at the entrance band and geological rock beyond it") {
         val plan = MineWorkingLayout.plan(
             MineIncidentType.TUNNEL_DRIVE,
-            MineWorkingPlacement(entrance, 0, "top"),
+            legacyPlacement(entrance, 0, "top"),
         )
         val snapshot = buildMap {
             plan.shell.forEach { put(it, Material.STONE) }
@@ -151,7 +151,7 @@ class MineWorkingLayoutTest : FunSpec({
     test("track damage projects rails at floor plus one and leaves three repair gaps") {
         val plan = MineWorkingLayout.plan(
             MineIncidentType.TRACK_DAMAGE,
-            MineWorkingPlacement(entrance, 1, "middle"),
+            legacyPlacement(entrance, 1, "middle"),
         )
         plan.rails.all { it.y == entrance.y + 1 } shouldBe true
         plan.cartRoute.size shouldBe 12
@@ -162,7 +162,7 @@ class MineWorkingLayoutTest : FunSpec({
     }
 
     test("track placement validates the original volume under every future rail") {
-        val placement = MineWorkingPlacement(entrance, 0, "top")
+        val placement = legacyPlacement(entrance, 0, "top")
         val plan = MineWorkingLayout.plan(MineIncidentType.RAIL_EXTENSION, placement)
         val snapshot = plan.blocks.keys.associateWith { Material.STONE }.toMutableMap()
         (plan.walkable + plan.cartRoute).filter { it.z - entrance.z <= 1 }.forEach { snapshot[it] = Material.AIR }
@@ -185,3 +185,6 @@ private fun placementForward(placement: MineWorkingPlacement, position: Worksite
     2 -> placement.entrance.z - position.z
     else -> position.x - placement.entrance.x
 }
+
+private fun legacyPlacement(entrance: WorksitePosition, direction: Int, floorId: String, layoutSeed: Long = 0L, geometryVersion: Int = 4) =
+    MineWorkingPlacement(entrance, direction, floorId, layoutSeed, geometryVersion)

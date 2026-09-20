@@ -35,6 +35,7 @@ internal class MineWorkingController(
     private val state: WorksiteStatePort,
     private val tasks: WorksiteTaskPort,
     private val clock: () -> Long,
+    private val drive: MineDriveController,
 ) {
     private val pendingSaves = mutableSetOf<String>()
     private val retiring = mutableSetOf<String>()
@@ -86,6 +87,7 @@ internal class MineWorkingController(
             state.persistAsync()
         }
         presentation.reconcile(runtime, scene)
+        if (incident.type == MineIncidentType.TUNNEL_DRIVE && MineDriveLayout.enabled(working.placement)) return
         val operator = drillOperators[runtime.settings.id]?.let(org.bukkit.Bukkit::getPlayer)
         val drillFace = presentation.drillPosition(runtime, scene)
         val drilling = working.stage == MineWorkingStage.EXCAVATE && operator != null &&
@@ -108,6 +110,24 @@ internal class MineWorkingController(
             } ?: return
             if (access.allowInteraction("mine-working-cart:${runtime.settings.id}", CART_STEP_MILLIS)) {
                 advance(runtime, player, working.completed.size, scene.plan.cartRoute.size)
+            }
+        }
+    }
+
+    fun updateDrive(now: Long) {
+        registry.snapshot().filter { it.state.incident?.type == MineIncidentType.TUNNEL_DRIVE &&
+            it.settings.id !in retiring && it.settings.id !in completionGrace }.forEach { runtime ->
+            val working = runtime.state.incident?.working ?: return@forEach
+            if (!MineDriveLayout.enabled(working.placement) || !world.isReady(runtime)) return@forEach
+            val scene = world.scene(runtime) ?: return@forEach
+            drive.tick(runtime, scene, now, { participant(runtime, it) }) { player, final ->
+                val incident = runtime.state.incident ?: return@tick
+                val sequence = runtime.state.sequence
+                world.project(runtime, incident.type, final)
+                incidents.work(runtime, player, amount = (incident.required - incident.progress).coerceAtLeast(1))
+                beginCompletionGrace(runtime, sequence)
+                presentation.feedback(player, "drive-complete")
+                player.playSound(player.location, Sound.BLOCK_BELL_USE, .8f, 1.3f)
             }
         }
     }
@@ -176,6 +196,13 @@ internal class MineWorkingController(
     }
 
     fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean {
+        drive.zone(event.rightClicked)?.let { zone ->
+            event.isCancelled = true
+            val runtime = registry.byId(zone) ?: return true
+            if (event.hand == EquipmentSlot.HAND && participant(runtime, event.player) && world.isReady(runtime) &&
+                runtime.state.incident?.type == MineIncidentType.TUNNEL_DRIVE) drive.mount(runtime, event.player)
+            return true
+        }
         val (zone, target) = presentation.target(event.rightClicked) ?: return false
         event.isCancelled = true
         if (event.hand != EquipmentSlot.HAND) return true
@@ -371,6 +398,7 @@ internal class MineWorkingController(
     fun recover(player: Player) = travel.recover(player)
 
     fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
+        drive.release(player)
         drillOperators.entries.removeIf { it.value == player.uniqueId }
         registry.snapshot().filter { it.state.incident?.working != null }.forEach { equipment.clear(it, player.uniqueId) }
         when (reason) {
@@ -384,7 +412,7 @@ internal class MineWorkingController(
     fun isActive(identity: ServiceItemIdentity): Boolean = equipment.isActive(identity)
     fun release(playerId: UUID, identity: ServiceItemIdentity, reason: WorksitePlayerReleaseReason) = equipment.release(playerId, identity, reason)
 
-    fun transitioning(runtime: MineRuntime): Boolean = runtime.settings.id in pendingSaves ||
+    fun transitioning(runtime: MineRuntime): Boolean = runtime.settings.id in pendingSaves || drive.busy(runtime.settings.id) ||
         runtime.settings.id in retiring || runtime.settings.id in completionGrace || world.isRestoring(runtime)
 
     /** Used by admin replacement to end a completed scene without waiting for grace. */
@@ -406,6 +434,7 @@ internal class MineWorkingController(
         retiring += runtime.settings.id
         equipment.clear(runtime)
         drillOperators.remove(runtime.settings.id)
+        drive.cleanup(runtime.settings.id)
         presentation.cleanup(runtime.settings.id)
         val evacuated = if (retainedScene == null) {
             travel.evacuate(runtime.settings.id)
@@ -434,18 +463,21 @@ internal class MineWorkingController(
 
     fun process(): Int = world.process()
     fun reconcileLoaded() {
+        drive.reconcileLoaded()
         presentation.reconcileLoaded()
         world.reconcileLoaded()
         registry.snapshot().flatMap { it.region.world.players }.distinctBy { it.uniqueId }.forEach(::recover)
     }
     fun onChunkLoad(chunk: org.bukkit.Chunk) = world.onChunkLoad(chunk)
     fun beforeReload() {
+        drive.cleanup()
         // The lifecycle supervisor discards old save callbacks. Their locks must
         // not survive and prevent progress in the reconfigured working.
         pendingSaves.clear()
         placement.clear(); preparedPlacements.clear()
     }
     fun cleanup() {
+        drive.cleanup()
         registry.snapshot().forEach { runtime ->
             equipment.clear(runtime)
             presentation.cleanup(runtime.settings.id)
@@ -486,6 +518,7 @@ internal class MineWorkingController(
             warningAt = completedAt + HARD_DEADLINE_MILLIS - WARNING_MILLIS,
             deadlineAt = completedAt + HARD_DEADLINE_MILLIS,
         )
+        drive.cleanup(runtime.settings.id)
         presentation.cleanup(runtime.settings.id)
         world.retain(scene)
     }
@@ -519,7 +552,7 @@ internal class MineWorkingController(
     }
 
     private fun total(type: MineIncidentType, plan: MineWorkingPlan): Int = when (type) {
-        MineIncidentType.TUNNEL_DRIVE -> plan.excavation.size + plan.supports.size
+        MineIncidentType.TUNNEL_DRIVE -> if (MineDriveLayout.enabled(plan.placement)) MineDriveLayout.CONTRIBUTION_BUDGET else plan.excavation.size + plan.supports.size
         MineIncidentType.RAIL_EXTENSION, MineIncidentType.TRACK_DAMAGE -> plan.rubble.size + plan.rails.size + plan.cartRoute.size
         MineIncidentType.ORE_WORKSHOP -> MineWorkingEngine.BATCHES * (MineWorkingEngine.CRUSH_STROKES + 3)
         else -> error("Unsupported lateral working: $type")

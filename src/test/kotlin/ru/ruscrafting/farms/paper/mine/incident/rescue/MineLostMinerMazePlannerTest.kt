@@ -9,6 +9,19 @@ import ru.ruscrafting.farms.config.CuboidBounds
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 
 class MineLostMinerMazePlannerTest : FunSpec({
+    test("large rescues vary by seed and keep sparse separated lights") {
+        val layouts = (1L..16L).map { seed ->
+            val layout = MineLostMinerMazePlanner.plan(18, seed)
+            val cave = layout.copy(passages = MineLostMinerMazePlanner.chamberCells(layout, seed))
+            MineLostMinerMazePlanner.path(cave).size shouldBeGreaterThan 60
+            val lamps = MineLostMinerMazePlanner.lampCells(layout).toList()
+            (lamps.size <= 13) shouldBe true
+            lamps.all { it in layout.passages } shouldBe true
+            layout
+        }
+        (layouts.map { it.passages }.distinct().size >= 12) shouldBe true
+    }
+
     test("rescue cave keeps a long walk after rooms are widened") {
         val layout = MineLostMinerMazePlanner.plan(cells = 18, seed = 42L)
         val cave = layout.copy(passages = MineLostMinerMazePlanner.chamberCells(layout, 42L))

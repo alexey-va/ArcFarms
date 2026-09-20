@@ -39,7 +39,7 @@ scene lifecycle.
 
 | ID | Lifecycle | Service equipment |
 | --- | --- | --- |
-| `TUNNEL_DRIVE` | Right-click the drill cart to control the boring front, walk beside it while it cuts the real rock, then install supports at the completed front. | Drill cart and supports; neither becomes ordinary loot. |
+| `TUNNEL_DRIVE` | Mount the drilling machine with right-click; drive with W/S and steer with A/D. Bore to the goal around alternating bedrock ribs; overhead lights are installed along the cleared route. | Native carrier and animated display body; excavation produces no ordinary drops. |
 | `RAIL_EXTENSION` | Clear the collapse, click the rail markers to lay one continuous ordered line from the entrance, then run the checking minecart along it. | Rails and checking cart; the engine rejects out-of-order segments. |
 | `TRACK_DAMAGE` | Reuse the rail layout with the existing bed already present: clear rubble, replace damaged or missing segments, and run the checking cart. A persisted legacy incident without `working` remains readable by `MineTrackDamageIncident`. | Rails and checking cart; no new reward item. |
 
@@ -227,3 +227,34 @@ fixed. The older `rescue-cave-orbit` frame used the wrong scene and is excluded.
 - `src/main/kotlin/ru/ruscrafting/farms/persistence/MineLocationRepository.kt`
 - `src/main/resources/mine/compact-map-points.json`
 - `plugins/ArcFarms/data/mine-locations.json` (runtime override store)
+
+
+## Drivable passage and rescue repair — 0.44.4
+
+New `TUNNEL_DRIVE` scenes use geometry version 5: a 44-block journaled rock
+volume with two alternating bedrock ribs. Right-click the machine to board its
+native carrier, use W/S to drive and A/D to steer, and Shift to dismount. The
+49-part client display body follows the carrier; the cutter spins during work,
+with rock particles and drilling sounds. The cutter reveals bedrock without
+breaking it. Sparse hanging lamps follow the excavated route. Cell IDs, lamps,
+checkpoint and heading are saved asynchronously before block changes. Geometry
+version 4 scenes already in progress keep their original layout and controls.
+
+Lost Miner completion uses a nearby valid click on the NPC, independent of a
+stale portal return receipt. Flying within the cavern keeps the player inside
+its volume. Larger rescue caves use deterministic branching curved routes and
+spatially separated lamps. Existing journaled caves retain their built blocks.
+
+Admin edit now bypasses the early mine left-click gate as well as damage/break
+gates. Teleports, portals and zone changes retain the explicit edit session;
+quit, death, reload and shutdown still clear it. Foreign cancellations are not
+uncancelled.
+
+Verification: 74 focused Kotest checks, no failures or skips, including delayed
+save/failure/stale callbacks, journal reconstruction/restoration, repository
+roundtrip, all four drill orientations, 16 rescue seeds, miner clicks without a
+return receipt, and admin edit interaction/lifetime. Display validation inspected
+20 models over 65 poses with no coplanar overlap. `shadowJar` produced 0.44.4.
+Browser preview inspected the canonical drill model from the front and rear.
+Native steering smoothness, riding camera, sounds and particles still need a
+Minecraft player pass; these are not established by unit tests or browser QA.

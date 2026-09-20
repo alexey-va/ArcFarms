@@ -50,6 +50,42 @@ class MineWorkingWorldMockBukkitTest : FunSpec({
 
     afterEach { paper.close() }
 
+    test("driven excavation and lamps replay after restart without touching bedrock and restore originals") {
+        val fixture = fixture(world, MineIncidentType.TUNNEL_DRIVE, version = 5)
+        val sceneOwner = owner(plugin)
+        val workings = MineWorkingWorld(fixture.registry, sceneOwner, MockBukkitFarmBlockDataDecoder)
+        populate(world, fixture.plan, fixture.placement)
+        val originals = fixture.plan.blocks.keys.associateWith { block(world, it).blockData.asString }
+        workings.prewarm(fixture.runtime, fixture.type, fixture.placement)
+        repeat(256) { workings.process() }
+        workings.prepare(fixture.runtime, fixture.type, fixture.placement, fixture.nonce) shouldBe true
+        drain(sceneOwner, workings, fixture.runtime)
+        workings.isReady(fixture.runtime) shouldBe true
+        val carved = (3..8).flatMap { f -> (-1..1).map { s -> MineDriveLayout.id(s,f) } }.toSet()
+        val lamp = MineDriveLayout.id(0,5)
+        val bedrock = MineDriveLayout.id(0,12)
+        val progress = ru.ruscrafting.farms.domain.MineDriveProgress(carved + bedrock, setOf(lamp), lamp, 18f)
+        fixture.runtime.state = fixture.runtime.state.copy(incident = fixture.runtime.state.incident!!.let {
+            it.copy(working = it.working!!.copy(drive = progress))
+        })
+        workings.project(fixture.runtime)
+        block(world, MineDriveLayout.position(fixture.placement, lamp)).type shouldBe Material.AIR
+        block(world, MineDriveLayout.position(fixture.placement, lamp,4)).type shouldBe Material.LANTERN
+        block(world, MineDriveLayout.position(fixture.placement, bedrock)).type shouldBe Material.BEDROCK
+        workings.clearQueues()
+        val restartedOwner = owner(plugin)
+        val restarted = MineWorkingWorld(fixture.registry, restartedOwner, MockBukkitFarmBlockDataDecoder)
+        restarted.reconcileLoaded()
+        drain(restartedOwner, restarted, fixture.runtime)
+        restarted.isReady(fixture.runtime) shouldBe true
+        block(world, MineDriveLayout.position(fixture.placement, lamp)).type shouldBe Material.AIR
+        block(world, MineDriveLayout.position(fixture.placement, lamp,4)).type shouldBe Material.LANTERN
+        block(world, MineDriveLayout.position(fixture.placement, bedrock)).type shouldBe Material.BEDROCK
+        restarted.startRestore(fixture.runtime)
+        while (restarted.isRestoring(fixture.runtime)) restarted.process()
+        originals.forEach { (pos,data) -> block(world,pos).blockData.asString shouldBe data }
+    }
+
     test("tunnel projection survives restart and chunk reconciliation, then restores exact originals") {
         val fixture = fixture(world, MineIncidentType.TUNNEL_DRIVE)
         val firstOwner = owner(plugin)
@@ -208,11 +244,11 @@ class MineWorkingWorldMockBukkitTest : FunSpec({
     }
 })
 
-private fun fixture(world: WorldMock, type: MineIncidentType): MineWorkingFixture {
+private fun fixture(world: WorldMock, type: MineIncidentType, version: Int = 4): MineWorkingFixture {
     val placement = MineWorkingPlacement(
         WorksitePosition(world.name, 0, 64, 0),
         direction = 0,
-        floorId = "fixture-floor",
+        floorId = "fixture-floor", geometryVersion = version,
     )
     val plan = MineWorkingLayout.plan(type, placement)
     val runtime = MineRuntime(

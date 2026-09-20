@@ -32,6 +32,7 @@ internal class MineLostMinerIncident(
     private val maze: MineLostMinerMazeWorld,
     private val travel: ru.ruscrafting.farms.paper.worksite.WorksiteExpeditionTravel,
     private val creatures: MineRescueCreatures,
+    private val access: ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort,
     private val closingWarning: (Player, Int) -> Unit = { _, _ -> },
     private val clock: () -> Long = System::currentTimeMillis,
     private val minerLabel: () -> net.kyori.adventure.text.Component = { net.kyori.adventure.text.Component.empty() },
@@ -141,14 +142,20 @@ internal class MineLostMinerIncident(
     fun isRestoring(runtime: MineRuntime): Boolean = maze.isRestoring(runtime)
 
     fun complete(runtime: MineRuntime, player: Player): Boolean {
+        if (!active(runtime) || player.isDead || player.gameMode == GameMode.SPECTATOR ||
+            access.isAdminEditing(player) || !access.hasAccess(player, runtime.settings.permission)) return false
         val targetId = runtime.state.objective?.targets?.firstOrNull()?.id ?: return false
         val scene = maze.scene(runtime) ?: return false
-        if (!travel.retains(player) || !scene.contains(player.location) ||
+        // The NPC is the objective. Flying out and back (or reaching it on foot)
+        // must not make a valid nearby click depend on a vanished portal lease.
+        if (!scene.contains(player.location) ||
             player.location.distanceSquared(scene.target) > 25.0) return false
+        val hadReturn = travel.retains(player)
         val completed = incidents.completeTarget(runtime, targetId, player).accepted
         if (!completed) return false
         MineLostMinerMazeSounds.playFound(player)
         retainCompletedScene(runtime, scene, targetId)
+        if (!hadReturn) travel.evacuatePlayer(player, scene.surface)
         return true
     }
 

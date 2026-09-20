@@ -191,9 +191,12 @@ internal class MineModule(
     }
 
     override fun onInteract(event: PlayerInteractEvent, clicked: Block, player: Player): Boolean {
+        // LEFT_CLICK_BLOCK precedes BlockBreakEvent in Paper. Editors must pass
+        // this gate as well as the later damage/break guards.
+        if (access.isAdminEditing(player)) return false
         val runtime = registry.at(clicked.location)
         if (event.action == org.bukkit.event.block.Action.LEFT_CLICK_BLOCK &&
-            !access.isAdminEditing(player) && (runtime == null || access.hasAccess(player, runtime.settings.permission)) && incidents.canMine(player, clicked)) {
+            (runtime == null || access.hasAccess(player, runtime.settings.permission)) && incidents.canMine(player, clicked)) {
             event.setUseInteractedBlock(org.bukkit.event.Event.Result.ALLOW)
             event.setUseItemInHand(org.bukkit.event.Event.Result.ALLOW)
             return true

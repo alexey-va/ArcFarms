@@ -103,6 +103,7 @@ internal class MineComponentGraph(
         ru.ruscrafting.farms.paper.worksite.WorksiteExpeditionTravel(plugin, ports.tasks, ports.access, ports.state,
             java.nio.file.Path.of("data/recovery/mine-rescue-returns")),
         ru.ruscrafting.farms.paper.mine.incident.rescue.MineRescueCreatures(registry, incidentEntityEffects, ports.access),
+        ports.access,
         closingWarning = { player, seconds ->
             player.sendActionBar(locale?.renderPath("mine.working.closing-warning", player,
                 mapOf("seconds" to Component.text(seconds))) ?: Component.empty())
@@ -147,6 +148,7 @@ internal class MineComponentGraph(
         ru.ruscrafting.farms.paper.worksite.WorksiteExpeditionTravel(plugin, ports.tasks, ports.access, ports.state,
             java.nio.file.Path.of("data/recovery/mine-working-returns")),
         ports.access, ports.state, ports.tasks, clock,
+        ru.ruscrafting.farms.paper.mine.working.MineDriveController(plugin, workingWorld, ports.access, ports.state, ports.tasks, workingPresentation),
     )
     private val expeditionWorld = ru.ruscrafting.farms.paper.mine.expedition.MineExpeditionWorld(
         plugin, ru.ruscrafting.farms.paper.mine.expedition.BukkitMineExpeditionWorldRegistry(plugin),

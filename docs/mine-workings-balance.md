@@ -60,3 +60,14 @@ throughput and the resulting income per hour remain unmeasured.
 After delivery, verify that the active mine reward settings still match the
 source, service items are removed on every exit/recovery path, and one complete
 working produces exactly the existing order completion reward once.
+
+## Drivable tunnel update (0.44.4)
+
+The old drive budget was 90 excavation actions plus three supports (93). The
+new drive retains a single budget of 93, credited once when the machine reaches
+the destination. No actions, drops or XP are credited per excavated block.
+The cutter only changes journal-owned blocks. Vault and token deltas remain
+zero; order XP and item quantities remain unchanged. The route is 44 blocks
+long with two alternating bedrock bypasses at a commanded speed of 1.7 blocks
+per second. Actual traversal time, participant distribution and income per hour
+remain unmeasured; the reward cap does not establish equal player throughput.

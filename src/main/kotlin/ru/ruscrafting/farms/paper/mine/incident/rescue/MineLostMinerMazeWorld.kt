@@ -77,7 +77,7 @@ internal data class MineLostMinerMazeScene(
         }
 
     fun contains(location: Location): Boolean =
-        location.world === world && location.blockY in walkY..(walkY + 1) &&
+        location.world === world &&
             location.blockX to location.blockZ in walkable &&
             Triple(location.blockX, location.blockY, location.blockZ) in air &&
             Triple(location.blockX, location.blockY + 1, location.blockZ) in air
@@ -272,6 +272,9 @@ internal class MineLostMinerMazeWorld(
         val chambers = MineLostMinerMazePlanner.chamberCells(layout, layoutSeed).mapTo(hashSetOf()) { point ->
             MineLostMinerMazePoint(translatedAnchor.x + point.x - layout.start.x, translatedAnchor.z + point.z - layout.start.z)
         }
+        val lamps = MineLostMinerMazePlanner.lampCells(layout).mapTo(hashSetOf()) {
+            originX + it.x to originZ + it.z
+        }
         val planned = linkedMapOf<Triple<Int, Int, Int>, Pair<String, MineLostMinerMazeMarker>>()
         val floorMaterial = MaterialRules.material(runtime.settings.baseMaterial)
         // The rescue scene is temporary, but its wall must read as natural
@@ -293,7 +296,7 @@ internal class MineLostMinerMazeWorld(
         )
         for (x in originX until originX + layout.width) for (z in originZ until originZ + layout.height) {
             val passage = (x to z) in chamberSet
-            val lit = passage && ((x - originX) * 31 + (z - originZ)) % MAZE_LIGHT_SPACING == 0
+            val lit = passage && (x to z) in lamps
             val ceiling = MineLostMinerMazePlanner.chamberCeiling(layoutSeed, MineLostMinerMazePoint(x - originX + layout.start.x, z - originZ + layout.start.z))
             planned[Triple(x, baseY, z)] = floorData to MineLostMinerMazeMarker.NONE
             if (lit) planned[Triple(x, baseY - 1, z)] = underfloorLightData to MineLostMinerMazeMarker.NONE
@@ -580,7 +583,6 @@ internal class MineLostMinerMazeWorld(
         const val MAZE_CELLS = 18
         const val MAZE_SALT = 0x4c4f53544d415a45L
         const val MAX_SCENE_RECORDS = 16_384
-        const val MAZE_LIGHT_SPACING = 5
         const val MAZE_SUPPORT_SPACING = 11
         const val AIR_DATA = "minecraft:air"
     }

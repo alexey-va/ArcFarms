@@ -5,7 +5,7 @@ import {resolve,join,dirname} from 'node:path';
 import {pathToFileURL,fileURLToPath} from 'node:url';
 import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
-const [atelier,recipe,out]=process.argv.slice(2);
+const [atelier,recipe,out,...options]=process.argv.slice(2);
 if(!atelier||!recipe||!out)throw Error('Usage: node scripts/mine-preview/build.mjs <location-atelier-dir> <recipe> <output>');
 const root=resolve(atelier),own=dirname(fileURLToPath(import.meta.url));
 let source=await readFile(join(root,'cli.mjs'),'utf8');
@@ -15,5 +15,5 @@ source=source.replaceAll(/from '(\.\/[^']+)'/g,(_,p)=>`from ${JSON.stringify(pat
  .replace("const app = await source('app.js');",`const app = await source('app.js') + '\\n' + await readFile(${JSON.stringify(join(own,'displays.js'))},'utf8');`);
 const scratch=await mkdtemp(join(tmpdir(),'mine-preview-'));
 const cli=join(scratch,'compile.mjs');await writeFile(cli,source);
-const result=spawnSync(process.execPath,[cli,resolve(recipe),'--out',resolve(out)],{stdio:'inherit'});
+const result=spawnSync(process.execPath,[cli,resolve(recipe),'--out',resolve(out),...options],{stdio:'inherit'});
 process.exit(result.status??1);

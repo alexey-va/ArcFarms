@@ -29,7 +29,7 @@ data class MineWorkingPlacement(
         return entrance.copy(x = entrance.x + dx, y = entrance.y + up, z = entrance.z + dz)
     }
 
-    companion object { const val CURRENT_GEOMETRY_VERSION = 4 }
+    companion object { const val CURRENT_GEOMETRY_VERSION = 5 }
 }
 
 enum class MineWorkingStage {
@@ -43,15 +43,31 @@ data class MineWorkingState(
     val completed: Set<Int> = emptySet(),
     val batch: Int = 0,
     val heatStartedAt: Long = 0,
+    val drive: MineDriveProgress? = null,
 ) {
     init { validate() }
 
     fun validate() {
         placement.validate()
+        drive?.validate()
         require(completed.size <= 256 && completed.all { it in 0..255 })
         require(batch in 0 until MineWorkingEngine.BATCHES)
         require(heatStartedAt >= 0)
         require(stage == MineWorkingStage.HEAT || heatStartedAt == 0L)
+    }
+}
+
+/** Cell ids reference the replayable drilling ground, never arbitrary world coordinates. */
+data class MineDriveProgress(
+    val carved: Set<Int> = emptySet(),
+    val lamps: Set<Int> = emptySet(),
+    val checkpoint: Int = 42,
+    val heading: Float = 0f,
+) {
+    fun validate() {
+        require(carved.size <= 765 && carved.all { it in 0 until 765 })
+        require(lamps.size <= 128 && lamps.all { it in carved })
+        require(checkpoint in 0 until 765 && heading.isFinite())
     }
 }
 

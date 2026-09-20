@@ -52,6 +52,7 @@ import ru.ruscrafting.farms.paper.FarmGroundSpreadPolicy
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.FarmServiceInventoryPolicy
 import ru.ruscrafting.farms.paper.MaterialRules
+import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
@@ -306,7 +307,8 @@ internal class FarmEventRouter(
     fun retainOnTeleport(player: Player): Boolean =
         greenhouse.retains(player) || foodDelivery.participantRuntime(player, runtimes()) != null || actionIncidents.participantRuntime(player) != null
 
-    fun onQuit(player: Player, reason: String = "player_quit") {
+    fun onQuit(player: Player, releaseReason: WorksitePlayerReleaseReason = WorksitePlayerReleaseReason.QUIT) {
+        val reason = "worksite_${releaseReason.name.lowercase()}"
         routeAdmin.release(player)
         greenhouse.quit(player)
         greenhouse.releasePlayer(player.uniqueId, runtimes())
@@ -321,7 +323,9 @@ internal class FarmEventRouter(
         supplies.removeServiceItems(player, reason = reason)
         care.releasePlayer(player, reason)
         access.resetInteractionsContaining(player.uniqueId.toString())
-        worldAdmin.release(player)
+        if (releaseReason !in setOf(WorksitePlayerReleaseReason.TELEPORT_OUT,
+                WorksitePlayerReleaseReason.PORTAL_OUT, WorksitePlayerReleaseReason.ZONE_EXIT,
+                WorksitePlayerReleaseReason.OBJECTIVE_REPLACED)) worldAdmin.release(player)
     }
 
     fun onJoin(player: Player) {

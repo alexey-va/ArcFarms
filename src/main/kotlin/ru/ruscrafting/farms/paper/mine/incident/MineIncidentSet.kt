@@ -262,6 +262,7 @@ internal class MineIncidentSet(
     fun updateVisuals(now: Long) {
         process()
         expeditions?.updateVisuals(now)
+        workings.updateDrive(now)
         registry.snapshot().forEach { runtime ->
             if (runtime.state.incident?.type == ru.ruscrafting.farms.domain.MineIncidentType.ORE_WORKSHOP) {
                 workshop.tick(runtime, runtime.region.world.players, now)

@@ -9,7 +9,7 @@ import kotlin.math.*
 internal object MineDisplayBlueprints {
     val kinds = setOf("pipe_valve", "sluice", "coal_bunker", "feed_hopper", "casting_bed", "casting_rack",
         "assembly_bench", "crane_console", "furnace_console", "furnace", "waterwheel", "pump", "crusher",
-        "tank", "winch", "rack", "console", "valve", "finished_gear")
+        "tank", "winch", "rack", "console", "valve", "finished_gear", "drive_rig")
     data class Part(val material: Material, val center: Vector3f, val size: Vector3f,
         val angle: Float = 0f, val moving: Boolean = false, val pivot: Vector3f = Vector3f(), val motion: String = "rotate")
     fun model(kind: String): List<Part> = buildList {
@@ -46,6 +46,7 @@ internal object MineDisplayBlueprints {
             }
         }
         when(kind) {
+            "drive_rig" -> addAll(ru.ruscrafting.farms.paper.mine.working.MineDriveModel.parts)
             "pipe_valve" -> {
                 frame(4.2f,2.4f,4.2f)
                 // A supported pipe run with bolted flanges; the handwheel belongs to the pipe.

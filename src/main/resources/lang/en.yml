@@ -1271,7 +1271,7 @@ mine:
     creature_nest: '<color:#f2fff7>Creatures are chewing through rock. Destroy them and their glowing nests</color>'
     power_failure: '<color:#f2fff7>Legacy power incidents are kept for save compatibility and cannot be started manually</color>'
     lost_miner: '<color:#f2fff7>Enter the cave and find the miner. Right-click him to finish the rescue</color>'
-    tunnel_drive: '<color:#f2fff7>Control the drill cart with right-click and walk beside it while it bores the face, then install supports</color>'
+    tunnel_drive: '<color:#f2fff7>Board the drilling rig and bore to the glowing goal, steering around bedrock</color>'
     rail_extension: '<color:#f2fff7>Clear the collapse with a pickaxe, right-click the markers for rails and lay one continuous line, then escort the cart</color>'
     ore_workshop: '<color:#f2fff7>Carry the ore to the crusher, process the billet at the furnace, then take it to shipping</color>'
   expedition:
@@ -1346,6 +1346,10 @@ mine:
     inventory-full: '<red>Free an inventory slot: there is no room for the service item.</red>'
     needs-kit: '<yellow>Take the required service item before starting this stage.</yellow>'
     next-section: '<color:#f2fff7>Continue to the next section of the working.</color>'
+    drive-controls: '<color:#f2fff7>Right-click — mount · W/S — forward/back · A/D — steer · Shift — dismount. Avoid bedrock.</color>'
+    drive-blocked: '<color:#ffc857>Unbreakable rock. Reverse and steer around it.</color>'
+    drive-save-failed: '<red>The drill stopped because progress could not be saved. Contact an administrator.</red>'
+    drive-complete: '<color:#55d98b>Breakthrough! The tunnel is ready and its lights are installed.</color>'
     heat-wait: '<color:#ffc857>The billet is heating. Wait <seconds> sec., then right-click the furnace during the cooling window.</color>'
     heat-ready: '<color:#55d98b>The billet is ready. Right-click the furnace within <seconds> sec. to quench it.</color>'
     heat-missed: '<color:#ffad42>The cooling window was missed. The billet is heating again.</color>'
@@ -1356,6 +1360,7 @@ mine:
       ore: '<color:#c778ff>Ore batch</color>'
       billet: '<color:#d8a56d>Finished billet</color>'
     stage:
+      drive_goal: '<color:#55d98b>Bore a path to this chamber</color>'
       excavate: '<color:#d8a56d>Excavate</color>'
       support: '<color:#ffc857>Install supports</color>'
       clear_track: '<color:#b8c8c0>Clear the track</color>'
@@ -1366,7 +1371,7 @@ mine:
       heat: '<color:#ffad42>Heat the billet</color>'
       ship: '<color:#55d98b>Ship the billet</color>'
     hint:
-      excavate: '<color:#f2fff7>Control the drill cart with right-click and walk beside it while it bores the marked face</color>'
+      excavate: '<color:#d8a56d>Excavate</color>'
       support: '<color:#f2fff7>Right-click the marker: take supports and install the braces</color>'
       clear_track: '<color:#f2fff7>Use the pickaxe to clear the stones from the track</color>'
       lay_track: '<color:#f2fff7>Right-click the marker: take rail sections and lay them in order</color>'

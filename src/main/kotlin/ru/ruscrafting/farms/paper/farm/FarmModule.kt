@@ -370,7 +370,7 @@ internal class FarmModule(
 
     override fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
         if (reason == WorksitePlayerReleaseReason.JOIN_STALE) events.onJoin(player)
-        else events.onQuit(player, "worksite_${reason.name.lowercase()}")
+        else events.onQuit(player, reason)
     }
 
     override fun isActive(identity: ServiceItemIdentity): Boolean =

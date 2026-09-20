@@ -18,6 +18,7 @@ internal object MineWorkingLayout {
         seed: Long = placement.layoutSeed,
     ): MineWorkingPlan {
         require(type in SUPPORTED_TYPES) { "Mine incident $type is not a lateral working" }
+        if (type == MineIncidentType.TUNNEL_DRIVE && MineDriveLayout.enabled(placement)) return MineDriveLayout.plan(placement)
         val path = naturalPath().toMutableList()
         val localBlocks = linkedMapOf<LocalPoint, String>()
         val localWalkable = linkedSetOf<LocalPoint>()
