@@ -146,6 +146,8 @@ internal class MineModule(
     override fun onBreakHigh(event: BlockBreakEvent): Boolean =
         incidents.onBreak(event) || mining.onBreakHigh(event)
 
+    fun allowsTemporaryFlow(from: Location, to: Location) = incidents.allowsTemporaryFlow(from, to)
+
     override fun onBucketFill(event: org.bukkit.event.player.PlayerBucketFillEvent): Boolean = incidents.onBucketFill(event)
 
     override fun onBlockDamage(event: BlockDamageEvent): Boolean {

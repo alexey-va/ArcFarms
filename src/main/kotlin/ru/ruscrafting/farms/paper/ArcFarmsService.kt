@@ -500,6 +500,8 @@ class ArcFarmsService(
         if (worksiteEvents.protectsTemporaryBlock(event.blockPlaced.location)) event.isCancelled = true
         else if (!worksiteEvents.onBlockPlace(event)) farm.events.onBlockPlace(event)
     }
+    fun allowsTemporaryFlow(from: Location, to: Location) = mineModule.allowsTemporaryFlow(from, to)
+
     fun protectsTemporaryBlock(location: org.bukkit.Location): Boolean = worksiteEvents.protectsTemporaryBlock(location)
     fun statuses(): List<ActivityStatus> = worksites.statuses()
     fun enterpriseCompany(kind: ActivityKind) = enterprise.companyView(kind)

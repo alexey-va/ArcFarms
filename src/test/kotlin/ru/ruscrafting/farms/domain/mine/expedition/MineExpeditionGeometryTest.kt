@@ -10,9 +10,9 @@ import kotlin.math.abs
 class MineExpeditionGeometryTest : FunSpec({
     test("each scene is replayable, seed-sensitive and bounded") {
         MineExpeditionKind.entries.forEach { kind ->
-            val first = MineExpeditionGenerator.plan(kind, 0x51A7L)
-            val replay = MineExpeditionGenerator.plan(kind, 0x51A7L)
-            val other = MineExpeditionGenerator.plan(kind, 0x51A8L)
+            val first = MineExpeditionGenerator.plan(kind, 0x51A7L, geometryVersion = 1)
+            val replay = MineExpeditionGenerator.plan(kind, 0x51A7L, geometryVersion = 1)
+            val other = MineExpeditionGenerator.plan(kind, 0x51A8L, geometryVersion = 1)
 
             first shouldBe replay
             first.blocks shouldNotBe other.blocks
@@ -45,7 +45,7 @@ class MineExpeditionGeometryTest : FunSpec({
     }
 
     test("descent exposes every stop, supported walk and unobstructed front sightline") {
-        val plan = MineExpeditionGenerator.plan(MineExpeditionKind.LAST_DESCENT, 19L)
+        val plan = MineExpeditionGenerator.plan(MineExpeditionKind.LAST_DESCENT, 19L, geometryVersion = 1)
         plan.stations.keys.containsAll(setOf(
             "entry", "exit", "lift_top", "lift_middle", "lift_bottom", "power_supply", "power_socket",
             "counterweight_0", "counterweight_1", "counterweight_2", "core_valve_0", "core_valve_1",
@@ -70,7 +70,7 @@ class MineExpeditionGeometryTest : FunSpec({
     }
 
     test("ark has a meaningful plus-Z fork and the full crawler sweep is explicit") {
-        val plan = MineExpeditionGenerator.plan(MineExpeditionKind.DRILLING_ARK, 77L)
+        val plan = MineExpeditionGenerator.plan(MineExpeditionKind.DRILLING_ARK, 77L, geometryVersion = 1)
         val left = plan.routes.getValue("ark_left")
         val right = plan.routes.getValue("ark_right")
         left.first() shouldBe right.first()
@@ -99,7 +99,7 @@ class MineExpeditionGeometryTest : FunSpec({
     }
 
     test("factory stations are within interaction range of a walking route") {
-        val plan = MineExpeditionGenerator.plan(MineExpeditionKind.DEAD_FACTORY, 101L)
+        val plan = MineExpeditionGenerator.plan(MineExpeditionKind.DEAD_FACTORY, 101L, geometryVersion = 1)
         plan.stations.keys.containsAll(setOf(
             "entry", "exit", "water_valve_0", "water_valve_1", "water_valve_2", "fuel_supply", "furnace_input",
             "furnace_control", "pour_control", "crane_control", "assembly_socket",
@@ -114,7 +114,7 @@ class MineExpeditionGeometryTest : FunSpec({
 
     test("every serialized block uses a known vanilla material id") {
         MineExpeditionKind.entries.flatMap { kind ->
-            MineExpeditionGenerator.plan(kind, 0xB10CL).blocks.values
+            MineExpeditionGenerator.plan(kind, 0xB10CL, geometryVersion = 1).blocks.values
         }.map { it.substringAfter("minecraft:").substringBefore('[').uppercase() }.distinct().forEach { id ->
             Material.matchMaterial(id) shouldNotBe null
         }

@@ -9,7 +9,7 @@ import kotlin.math.abs
 /**
  * Deterministic natural working geometry. The old generated 3x5x15 recipe
  * encoded one straight corridor; this layout keeps the authored entry but
- * opens a 24-cell serpentine cave with a long side branch and coherent rock.
+ * opens an extended serpentine cave with a long side branch and coherent rock.
  */
 internal object MineWorkingLayout {
     fun plan(
@@ -279,15 +279,15 @@ internal object MineWorkingLayout {
 
     private fun naturalPath(): List<LocalPoint> {
         val points = mutableListOf<LocalPoint>()
-        // Twenty-four route cells: a straight three-block entry, a turn into
-        // the spacious chamber, then a long side branch and return shoulder.
-        // Forward never exceeds fourteen, keeping all four rotations inside
-        // the surveyed compact-mine corridor.
+        // The authored three-block entrance opens into two bends and a long rear gallery.
+        // Every rotation is validated against a captured world snapshot before placement.
         for (nextForward in 1..7) points += LocalPoint(0, 1, nextForward)
         for (nextSide in 1..3) points += LocalPoint(nextSide, 1, 7)
         for (nextForward in 8..10) points += LocalPoint(3, 1, nextForward)
         for (nextSide in 2 downTo -3) points += LocalPoint(nextSide, 1, 10)
-        for (nextForward in 11..14) points += LocalPoint(-3, 1, nextForward)
+        for (nextForward in 11..23) points += LocalPoint(-3, 1, nextForward)
+        for (nextSide in -2..4) points += LocalPoint(nextSide, 1, 23)
+        for (nextForward in 24..38) points += LocalPoint(4, 1, nextForward)
         return points
     }
 

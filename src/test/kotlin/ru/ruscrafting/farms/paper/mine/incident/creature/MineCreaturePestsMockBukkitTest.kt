@@ -66,6 +66,10 @@ class MineCreaturePestsMockBukkitTest : FunSpec({
         PaperMineCreatureNavigation.safeStep(runtime, Location(world, 5.5, 64.0, 5.5), 64) shouldBe true
         PaperMineCreatureNavigation.safeStep(runtime, Location(world, 6.5, 64.0, 5.5), 64) shouldBe false
         PaperMineCreatureNavigation.safeStep(runtime, Location(world, 5.5, 78.0, 5.5), 64) shouldBe false
+        world.getBlockAt(6, 65, 5).type = Material.STONE
+        PaperMineCreatureNavigation.safeStep(runtime, Location(world, 6.5, 66.0, 5.5), 64) shouldBe true
+        world.getBlockAt(7, 61, 5).type = Material.STONE
+        PaperMineCreatureNavigation.safeStep(runtime, Location(world, 7.5, 62.0, 5.5), 64) shouldBe false
     }
 })
 

@@ -1,11 +1,11 @@
 package ru.ruscrafting.farms.domain.mine.expedition
 
 /**
- * Pure entry point for reproducible mine scenes. The returned sparse block map
- * is directly serializable as a coordinate/block-data list; absent cells are
- * intentionally left as the world's natural solid stone.
+ * Reproducible scene plans. Version 1 is retained only for restoring old journals;
+ * current plans include their enclosing rock and live beside the configured mine.
  */
 object MineExpeditionGenerator {
-    fun plan(kind: MineExpeditionKind, seed: Long): MineExpeditionPlan =
-        MineExpeditionLayout.build(kind, seed)
+    @JvmOverloads
+    fun plan(kind: MineExpeditionKind, seed: Long, geometryVersion: Int = MineExpeditionPlacement.CURRENT_GEOMETRY_VERSION): MineExpeditionPlan =
+        if (geometryVersion == 1) MineExpeditionLayout.build(kind, seed) else MineCompactExpeditionLayout.build(kind, seed)
 }

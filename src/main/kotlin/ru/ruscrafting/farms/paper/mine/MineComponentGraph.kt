@@ -81,7 +81,7 @@ internal class MineComponentGraph(
     val trackDamage = MineTrackDamageIncident(registry, index, incidents, serviceItems, ports.state, locale)
     val gasLeak = MineGasLeakIncident(registry, index, incidents)
     val crystalResonance = MineCrystalResonanceIncident(registry, index, incidents)
-    val flooding = MineFloodingIncident(registry, index, incidents, incidentJournal, ports.state, ports.access)
+    val flooding = MineFloodingIncident(registry, index, incidents, incidentJournal, ports.state, ports.access, serviceItems, locale)
     val powerFailure = MinePowerFailureIncident(registry, index, incidents, incidentJournal, ports.state)
     val cartScene = MineCartScene(cartEffects)
     val extraction = MineExtractionController(
@@ -107,6 +107,7 @@ internal class MineComponentGraph(
                 mapOf("seconds" to Component.text(seconds))) ?: Component.empty())
         },
         clock = clock,
+        minerLabel = { locale?.renderPath("mine.rescue-miner-label", null) ?: Component.empty() },
     )
     val objectiveMarkers = MineObjectiveMarkerScene(incidentEntityEffects)
     private val workingWorld = ru.ruscrafting.farms.paper.mine.working.MineWorkingWorld(
@@ -126,7 +127,7 @@ internal class MineComponentGraph(
     )
     private val workingPresentation = ru.ruscrafting.farms.paper.mine.working.MineWorkingPresentation(
         plugin, locale, ru.ruscrafting.farms.paper.platform.PaperFarmTextDisplayRenderer,
-        PaperMineCartEffects(plugin, "mine_working_cart", ru.ruscrafting.farms.config.MineCartVisualSettings(), glowing = true),
+        ru.ruscrafting.farms.paper.mine.working.MineWorkingCart(plugin),
         { id -> lift?.floors()?.sortedByDescending { it.y }?.indexOfFirst { it.id == id }
             ?.takeIf { it >= 0 }?.plus(1) },
     )

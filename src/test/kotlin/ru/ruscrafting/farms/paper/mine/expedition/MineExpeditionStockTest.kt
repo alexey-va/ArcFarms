@@ -28,6 +28,7 @@ class MineExpeditionStockTest : FunSpec({
         val loader = ReadySceneLoader(world)
         val port = immediateMinePort()
         val stock = MineExpeditionStock(repository, port, port, loader)
+        stock.site = MineExpeditionSite("world", 40, 0, 64, 10.5, 64.0, 10.5)
         stock.activate()
         stock.maintain(1_000L)
         repository.records().size shouldBe 3
@@ -69,6 +70,7 @@ class MineExpeditionStockTest : FunSpec({
         val loader = ReadySceneLoader(world)
         val port = immediateMinePort()
         val stock = MineExpeditionStock(repository, port, port, loader)
+        stock.site = MineExpeditionSite("world", 40, 0, 64, 10.5, 64.0, 10.5)
         stock.activate()
         stock.maintain(1_000L)
         val runtime = MineRuntimeFactory.build(listOf(mineV2Settings()), emptyMap(), 5_000L, CuboidRegionGateway()).single()

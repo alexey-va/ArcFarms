@@ -84,7 +84,7 @@ class MineWorkingLayoutTest : FunSpec({
         MineWorkingLayout.validate(plan).shouldBeEmpty()
         plan.excavation.size shouldBe 90
         plan.supports.size shouldBe 3
-        plan.blocks.keys.maxOf { placementForward(placement, it) } shouldBe 14
+        plan.blocks.keys.maxOf { placementForward(placement, it) } shouldBe 38
         // The last branch shoulder is three cells off the forward axis and
         // remains inside the real compact-mine corridor for this direction.
         plan.inside(placement.position(-3, 1, 14)) shouldBe true

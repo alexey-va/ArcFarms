@@ -31,7 +31,7 @@ internal class MineRescueCreatures(
                 .filter { it.distanceSquared(scene.start) > 36 && it.distanceSquared(scene.target) > 9 }
                 .mapNotNull { location -> scene.pathDistanceToTarget(location)?.let { it to location } }
                 .sortedBy { it.first }.toList()
-            val points = (1..3).mapNotNull { ordinal -> candidates.getOrNull(candidates.size * ordinal / 4)?.second }
+            val points = (1..2).mapNotNull { ordinal -> candidates.getOrNull(candidates.size * ordinal / 3)?.second }
                 .distinctBy { it.blockX to it.blockZ }
             Guards(runtime.state.sequence, points.mapIndexed { index, point ->
                 "rescue_guard_$index" to WorksitePosition(scene.world.name, point.blockX, point.blockY, point.blockZ)
@@ -40,7 +40,14 @@ internal class MineRescueCreatures(
         current.expected.filterKeys { it !in current.defeated }.forEach { (id, point) ->
             if (current.living[id]?.let(effects::entity)?.isValid == true) return@forEach
             if (scene.world.isChunkLoaded(point.x shr 4, point.z shr 4)) {
-                current.living[id] = effects.spawn(runtime, MineIncidentEntityKind.RESCUE_CREATURE, id, point)
+                val spawned = effects.spawn(runtime, MineIncidentEntityKind.RESCUE_CREATURE, id, point)
+                current.living[id] = spawned
+                (effects.entity(spawned) as? org.bukkit.entity.Mob)?.apply {
+                    getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH)?.baseValue = 8.0
+                    health = 8.0
+                    getAttribute(org.bukkit.attribute.Attribute.ATTACK_DAMAGE)?.baseValue = 1.0
+                    getAttribute(org.bukkit.attribute.Attribute.MOVEMENT_SPEED)?.baseValue = 0.18
+                }
             }
         }
     }

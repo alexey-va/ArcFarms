@@ -72,9 +72,14 @@ internal class WorksiteExpeditionTravel(
                     }
                     sessions[player.uniqueId] = record
                     if (teleport && !authorizeTeleport(player, request.destination)) {
-                        sessions.remove(player.uniqueId, record)
                         failure(record, "entry_teleport_rejected")
-                        acknowledge(record)
+                        // A successful Bukkit call can still be redirected by another plugin.
+                        // Keep the return receipt until the player is actually back at the surface.
+                        if (player.world === request.surface.world && player.location.distanceSquared(request.surface) <= 25.0 ||
+                            authorizeTeleport(player, request.surface)) {
+                            sessions.remove(player.uniqueId, record)
+                            acknowledge(record)
+                        }
                     } else onEntered()
                 }
                 if (!entered) {
@@ -188,7 +193,8 @@ internal class WorksiteExpeditionTravel(
 
     private fun authorizeTeleport(player: Player, destination: Location): Boolean =
         teleports.authorize(player.uniqueId, destination) {
-            player.teleport(destination, PlayerTeleportEvent.TeleportCause.PLUGIN)
+            player.teleport(destination, PlayerTeleportEvent.TeleportCause.PLUGIN) &&
+                player.world === destination.world && player.location.distanceSquared(destination) <= 4.0
         }
 
     private fun acknowledge(record: FarmBurrowReturn) = tasks.runAsync(tasks.lifecycleToken()) {

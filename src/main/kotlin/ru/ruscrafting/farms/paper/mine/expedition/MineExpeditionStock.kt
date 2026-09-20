@@ -33,6 +33,8 @@ internal class MineExpeditionStock(
     private val claimed = hashSetOf<Long>()
     private val retiring = hashSetOf<Long>()
     private val failures = hashMapOf<String, String>()
+    var site: MineExpeditionSite? = null
+    private fun current(receipt: MineExpeditionSceneReceipt) = receipt.placement.geometryVersion == ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionPlacement.CURRENT_GEOMETRY_VERSION && receipt.placement.world == site?.world
     private var active = false
     private var nextRefill = 0L
     private val retryAfter = hashMapOf<String, Long>()
@@ -42,19 +44,21 @@ internal class MineExpeditionStock(
 
     fun maintain(now: Long) {
         if (!active || now < nextRefill) return
+        val site = site ?: return
         nextRefill = now + 1_000L
+        receipts.records().filter { !it.restoring && !current(it) }.forEach(::retire)
         retiring.toList().forEach { id -> receipts.findJournal(id)?.let(::retire) }
         MineExpeditionKind.entries.forEach { kind ->
-            val reserves = receipts.records().filter { it.kind == kind && it.reserved && !it.restoring && it.journalSequence !in claimed }
+            val reserves = receipts.records().filter { it.kind == kind && current(it) && it.reserved && !it.restoring && it.journalSequence !in claimed }
             reserves.forEach(loader::prepare)
             if (reserves.isNotEmpty() || kind in creating || now < (retryAfter["create:$kind"] ?: 0L)) return@forEach
             val id = receipts.allocateJournalSequence()
             require(id <= Int.MAX_VALUE) { "Expedition scene identifier exhausted" }
             // The shared scene owner fences restoration by zone, so each allocation needs its own owner.
             val owner = "reserve_${kind.name.lowercase()}_$id"
-            val placement = MineExpeditionAllocation.allocate(kind, id, receipts.records() + creating.values)
+            val placement = MineExpeditionAllocation.allocate(kind, id, receipts.records() + creating.values, site)
             val receipt = MineExpeditionSceneReceipt(owner, 0L, id, id, kind, placement,
-                MineExpeditionWorldGenerator.WORLD_NAME, 0.5, 193.0, 0.5, reserved = true,
+                site.world, site.surfaceX, site.surfaceY, site.surfaceZ, reserved = true,
                 journalZoneId = owner, journalSceneId = id.toInt())
             creating[kind] = receipt
             write("create:$kind", { receipts.commit(receipt) }, { creating.remove(kind) }) {
@@ -66,7 +70,7 @@ internal class MineExpeditionStock(
 
     fun available(type: MineIncidentType): Boolean = MineExpeditionEngine.kind(type)?.let(::available) != null
     private fun available(kind: MineExpeditionKind): MineExpeditionSceneReceipt? = receipts.records().firstOrNull {
-        it.kind == kind && it.reserved && !it.restoring && it.journalSequence !in claimed && it.journalSequence !in retiring && loader.prepared(it.journalSequence)?.ready == true
+        it.kind == kind && current(it) && it.reserved && !it.restoring && it.journalSequence !in claimed && it.journalSequence !in retiring && loader.prepared(it.journalSequence)?.ready == true
     }
 
     fun ensure(runtime: MineRuntime, surface: Location): MineExpeditionScene? {
@@ -75,7 +79,7 @@ internal class MineExpeditionStock(
         val kind = MineExpeditionEngine.kind(incident.type) ?: return null
         val key = key(runtime)
         receipts.find(runtime.settings.id, runtime.state.sequence, incident.objectiveNonce)?.let { receipt ->
-            if (receipt.restoring) return null
+            if (receipt.restoring || !current(receipt)) return null
             loader.prepare(receipt)
             return loader.prepared(receipt.journalSequence)?.takeIf { it.ready }?.also {
                 bind(it, receipt, surface)
@@ -86,7 +90,7 @@ internal class MineExpeditionStock(
             }
         }
         if ("claim:$key" in writes || key in failures) return null
-        val reserve = available(kind) ?: return null
+        val reserve = available(kind)?.takeIf { it.placement.world == surface.world.name } ?: return null
         val receipt = reserve.copy(zoneId = runtime.settings.id, sequence = runtime.state.sequence,
             objectiveNonce = incident.objectiveNonce, surfaceWorld = surface.world.name,
             surfaceX = surface.x, surfaceY = surface.y, surfaceZ = surface.z, surfaceYaw = surface.yaw, surfacePitch = surface.pitch,

@@ -77,7 +77,7 @@ internal class MineIncidentSet(
         gasLeak.tick(runtime, participants, now)
         caveIn.reconcile(runtime)
         trackDamage.reconcile(runtime)
-        participants.forEach { trackDamage.ensureKit(runtime, it) }
+        participants.forEach { trackDamage.ensureKit(runtime, it); flooding.ensureKit(runtime, it) }
         flooding.reconcile(runtime)
         powerFailure.reconcile(runtime)
         reconcileObjectiveMarkers(runtime)
@@ -115,6 +115,8 @@ internal class MineIncidentSet(
         }
         return handled
     }
+
+    fun allowsTemporaryFlow(from: Location, to: Location) = flooding.allowsFlow(from, to)
 
     fun onBucketFill(event: org.bukkit.event.player.PlayerBucketFillEvent): Boolean = flooding.onBucketFill(event)
 
@@ -183,7 +185,7 @@ internal class MineIncidentSet(
     }
 
     fun isActive(identity: ServiceItemIdentity): Boolean =
-        trackDamage.isActive(identity) || workings.isActive(identity)
+        trackDamage.isActive(identity) || flooding.isActive(identity) || workings.isActive(identity)
 
     fun release(playerId: UUID, identity: ServiceItemIdentity, reason: WorksitePlayerReleaseReason) {
         trackDamage.release(playerId, identity, reason)

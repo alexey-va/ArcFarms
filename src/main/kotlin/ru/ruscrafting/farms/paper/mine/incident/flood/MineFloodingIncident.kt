@@ -36,10 +36,39 @@ internal class MineFloodingIncident(
     private val journal: MineIncidentBlockJournal,
     private val state: WorksiteStatePort,
     private val access: ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort,
+    private val items: ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems? = null,
+    private val locale: ru.ruscrafting.farms.config.ArcFarmsLocale? = null,
 ) {
     private val pendingScoops = mutableSetOf<String>()
     private val drainedPositions = mutableMapOf<String, MutableSet<WorksitePosition>>()
     private val pendingPreparations = ConcurrentHashMap.newKeySet<String>()
+
+    private val lastScoopers = mutableMapOf<String, java.util.UUID>()
+
+    fun ensureKit(runtime: MineRuntime, player: Player) {
+        if (!active(runtime) || access.isAdminEditing(player) || !access.hasAccess(player, runtime.settings.permission) ||
+            player.gameMode == org.bukkit.GameMode.SPECTATOR) return
+        val identity = ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity(
+            ru.ruscrafting.farms.domain.ActivityKind.MINE, runtime.settings.id, runtime.state.sequence,
+            runtime.state.incident!!.objectiveNonce, ObjectiveTargetRole("flood_bucket"), player.uniqueId.toString())
+        if (items?.has(player, identity) == true) return
+        items?.issueTool(player, identity, Material.BUCKET,
+            locale?.renderPath("mine.flood-bucket", player) ?: net.kyori.adventure.text.Component.empty())
+    }
+
+    fun isActive(identity: ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity): Boolean {
+        val runtime = registry.byId(identity.zoneId) ?: return false
+        return identity.activity == ru.ruscrafting.farms.domain.ActivityKind.MINE && identity.role.value == "flood_bucket" &&
+            active(runtime) && runtime.state.sequence == identity.sequence && runtime.state.incident?.objectiveNonce == identity.objectiveNonce
+    }
+
+    fun allowsFlow(from: org.bukkit.Location, to: org.bukkit.Location): Boolean {
+        val runtime = registry.at(from) ?: return false
+        if (!active(runtime) || from.world !== to.world) return false
+        val owned = journal.positions(runtime, INCIDENT_ID).toSet()
+        return WorksitePosition(from.world.name, from.blockX, from.blockY, from.blockZ) in owned &&
+            WorksitePosition(to.world.name, to.blockX, to.blockY, to.blockZ) in owned
+    }
 
     fun start(runtime: MineRuntime, required: Int, now: Long): Boolean {
         val candidate = candidates(runtime, required).firstOrNull() ?: return false
@@ -54,8 +83,9 @@ internal class MineFloodingIncident(
     fun onInteractEntity(runtime: MineRuntime, targetId: String, player: Player): Boolean = false
 
     fun onInteract(event: PlayerInteractEvent): Boolean {
-        if (event.action != Action.RIGHT_CLICK_BLOCK) return false
-        val clicked = event.clickedBlock ?: return false
+        if (event.action !in setOf(Action.RIGHT_CLICK_BLOCK, Action.RIGHT_CLICK_AIR) || event.item?.type != Material.BUCKET) return false
+        val clicked = event.player.rayTraceBlocks(6.0, org.bukkit.FluidCollisionMode.ALWAYS)?.hitBlock
+            ?: event.clickedBlock ?: return false
         val runtime = registry.at(clicked.location) ?: return false
         if (!active(runtime)) return false
         val position = WorksitePosition(clicked.world.name, clicked.x, clicked.y, clicked.z)
@@ -106,7 +136,7 @@ internal class MineFloodingIncident(
             }
             .distinctBy { (_, position) -> position }.forEach { (ordinal, position) ->
                 if (position in existing) {
-                    journal.ensureTemporary(position, Material.WATER)
+                    // Flow levels and temporarily dry cells belong to vanilla fluid physics.
                 } else if (position.blockType() == Material.AIR && position !in drained && existing.isEmpty()) {
                     missing += ordinal to position
                 } else if (position.blockType() == Material.AIR && existing.isNotEmpty()) {
@@ -133,7 +163,14 @@ internal class MineFloodingIncident(
                 shapeWater(runtime)
             }
         }
-        if (missing.isEmpty()) shapeWater(runtime)
+        if (missing.isEmpty() && existing.isNotEmpty() && existing.none { it.blockType() == Material.WATER } &&
+            lastScoopers[key] != null && pendingScoops.none { it.startsWith("${runtime.settings.id}:${runtime.state.sequence}:") }) {
+            Bukkit.getPlayer(lastScoopers.getValue(key))?.let { player ->
+                runtime.state.objective?.targets?.firstOrNull { it.status != ObjectiveTargetStatus.COMPLETED }?.let {
+                    incidents.completeTarget(runtime, it.id, player)
+                }
+            }
+        }
         return missing.size
     }
 
@@ -156,6 +193,7 @@ internal class MineFloodingIncident(
         journal.restoreNow(clicked).whenComplete { restored, failure ->
             pendingScoops.remove(key)
             if (failure != null || restored != true || !active(runtime)) return@whenComplete
+            lastScoopers[incidentKey(runtime)] = player.uniqueId
             drainedPositions.getOrPut(incidentKey(runtime), ::linkedSetOf).add(clicked)
             val remaining = runtime.floodFootprint(target.position).any { it in journal.positions(runtime, INCIDENT_ID) }
             if (!remaining) {
@@ -173,6 +211,7 @@ internal class MineFloodingIncident(
     private fun clearDrained(runtime: MineRuntime) {
         val prefix = "${runtime.settings.id}:${runtime.state.sequence}:$INCIDENT_ID:"
         drainedPositions.keys.removeIf { it.startsWith(prefix) }
+        lastScoopers.keys.removeIf { it.startsWith(prefix) }
     }
 
     private fun active(runtime: MineRuntime): Boolean =
@@ -181,17 +220,18 @@ internal class MineFloodingIncident(
     private fun candidates(runtime: MineRuntime, required: Int): List<ObjectiveTargetCandidate> =
         orderMineIncidentPositions(
             runtime,
-            (index.targets(runtime.settings.id, MineAnchorRole.SUPPORT).map { it to MineAnchorRole.SUPPORT } +
-                index.targets(runtime.settings.id, MineAnchorRole.NEST).map { it to MineAnchorRole.NEST })
+            (index.loadedTargets(runtime.settings.id, MineAnchorRole.SUPPORT).map { it to MineAnchorRole.SUPPORT } +
+                index.loadedTargets(runtime.settings.id, MineAnchorRole.NEST).map { it to MineAnchorRole.NEST })
                 .distinctBy { it.first }
-                .filter { (position, role) ->
+                .sortedBy { (p, _) -> ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed.positionScore(runtime.state.sequence xor runtime.state.incidentCursor.toLong(), "flood", p.x, p.y, p.z) }
+                .asSequence().take(96).filter { (position, role) ->
                     index.isLiveTarget(runtime.settings.id, position, role, runtime.railMaterials) &&
                         position.blockType() != null &&
                         runtime.isIncidentSurface(position) && hasMineObjectiveMarkerSpace(position) &&
                         runtime.floodFootprint(position).let { footprint ->
                             footprint.size >= MIN_FLOOD_BLOCKS && footprint.all { water -> water.blockType() == Material.AIR }
                         }
-                }.map { it.first },
+                }.take(12).map { it.first }.toList(),
             1,
             0xF100DL,
         )
@@ -205,15 +245,15 @@ internal class MineFloodingIncident(
     private fun token(value: Int): String = if (value < 0) "m${value.toLong().absoluteValue}" else value.toString()
 
     private fun shapeWater(runtime: MineRuntime) {
-        runtime.state.objective?.targets.orEmpty().filter { it.status != ObjectiveTargetStatus.COMPLETED }.forEach { target ->
-            runtime.floodFootprint(target.position).forEach { position ->
-                val block = Bukkit.getWorld(position.world)?.takeIf { it.isChunkLoaded(position.x shr 4, position.z shr 4) }
-                    ?.getBlockAt(position.x, position.y, position.z) ?: return@forEach
-                if (block.type != Material.WATER) return@forEach
-                val data = block.blockData as? Levelled ?: return@forEach
-                data.level = 0
-                block.setBlockData(data, false)
-            }
+        // Every potential flow cell is durable before the first source receives a physics update.
+        val positions = journal.positions(runtime, INCIDENT_ID)
+        val source = positions.firstOrNull() ?: return
+        positions.drop(1).forEach { point ->
+            Bukkit.getWorld(point.world)?.getBlockAt(point.x, point.y, point.z)?.setType(Material.AIR, false)
+        }
+        Bukkit.getWorld(source.world)?.getBlockAt(source.x, source.y, source.z)?.let { block ->
+            block.setType(Material.AIR, false)
+            block.setType(Material.WATER, true)
         }
     }
 

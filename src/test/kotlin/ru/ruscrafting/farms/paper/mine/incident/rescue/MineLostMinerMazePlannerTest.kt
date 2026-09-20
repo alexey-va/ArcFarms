@@ -9,6 +9,12 @@ import ru.ruscrafting.farms.config.CuboidBounds
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 
 class MineLostMinerMazePlannerTest : FunSpec({
+    test("rescue cave keeps a long walk after rooms are widened") {
+        val layout = MineLostMinerMazePlanner.plan(cells = 18, seed = 42L)
+        val cave = layout.copy(passages = MineLostMinerMazePlanner.chamberCells(layout, 42L))
+        MineLostMinerMazePlanner.path(cave).size shouldBeGreaterThan 70
+    }
+
     test("same sequence and target produce a replayable perfect maze") {
         val first = MineLostMinerMazePlanner.plan(cells = 6, seed = 42L)
         val second = MineLostMinerMazePlanner.plan(cells = 6, seed = 42L)

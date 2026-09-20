@@ -34,6 +34,7 @@ internal class MineLostMinerIncident(
     private val creatures: MineRescueCreatures,
     private val closingWarning: (Player, Int) -> Unit = { _, _ -> },
     private val clock: () -> Long = System::currentTimeMillis,
+    private val minerLabel: () -> net.kyori.adventure.text.Component = { net.kyori.adventure.text.Component.empty() },
 ) {
     private val miners = mutableMapOf<String, UUID>()
     private val entrances = mutableMapOf<String, UUID>()
@@ -171,7 +172,7 @@ internal class MineLostMinerIncident(
     fun reconcileChunk(runtime: MineRuntime, chunk: Chunk): Int {
         if (!active(runtime)) {
             cleanupLegacyEntities(runtime)
-            completedScenes[key(runtime)]?.let { reconcileExit(runtime, it.scene, chunk) }
+
             return 0
         }
         val scene = maze.scene(runtime) ?: run {
@@ -192,7 +193,10 @@ internal class MineLostMinerIncident(
             MineIncidentEntityKind.MINER,
             mapOf(target.id to scene.targetPosition()),
         )
-        reconciled[target.id]?.let { miners[key(runtime)] = it }
+        reconciled[target.id]?.let { id ->
+            miners[key(runtime)] = id
+            effects.entity(id)?.apply { customName(minerLabel()); isCustomNameVisible = true }
+        }
         purgeMissing(runtime)
         cleanupLegacyEntities(runtime)
         return if (key(runtime) in miners) 1 else 0
@@ -288,7 +292,8 @@ internal class MineLostMinerIncident(
         miners.remove(key(runtime))?.let(effects::remove)
         entrances.remove(key(runtime))?.let(effects::remove)
         entranceHitboxes.remove(key(runtime))?.let(effects::remove)
-        reconcileExit(runtime, scene = scene, targetId = targetId)
+        effects.cleanup(runtime, MineIncidentEntityKind.MINER_MAZE_ENTRANCE)
+        effects.cleanup(runtime, MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX)
     }
 
     private fun reconcileExit(
@@ -311,6 +316,9 @@ internal class MineLostMinerIncident(
     }
 
     private fun tickCompletedScene(runtime: MineRuntime?, grace: CompletionGrace, now: Long) {
+        if (now > grace.completedAt + 1_500L) grace.scene.world.players.filter {
+            it.location.distanceSquared(grace.scene.start) <= 2.25 && travel.retains(it)
+        }.forEach { if (travel.exit(it)) entrants.remove(it.uniqueId) }
         if (now >= grace.deadlineAt) {
             evacuateAtDeadline(grace)
             retireCompleted(runtime, grace)

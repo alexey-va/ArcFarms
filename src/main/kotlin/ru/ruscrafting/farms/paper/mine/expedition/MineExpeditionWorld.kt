@@ -43,42 +43,8 @@ internal interface MineExpeditionWorldRegistry {
 
 /** Bukkit world owner used when the plugin does not provide its own world registry. */
 internal class BukkitMineExpeditionWorldRegistry(private val plugin: Plugin) : MineExpeditionWorldRegistry {
-    private val ownerKey = NamespacedKey(plugin, "mine_expeditions_owner")
-
-    override fun ensureWorld(): World? {
-        Bukkit.getWorld(MineExpeditionWorldGenerator.WORLD_NAME)?.let { world ->
-            validate(world)
-            configure(world)
-            return world
-        }
-        val creator = WorldCreator(MineExpeditionWorldGenerator.WORLD_NAME)
-            .environment(World.Environment.NORMAL)
-            .generateStructures(false)
-            .generator(MineExpeditionWorldGenerator())
-            .keepSpawnLoaded(TriState.FALSE)
-        val existed = java.io.File(Bukkit.getWorldContainer(), MineExpeditionWorldGenerator.WORLD_NAME).exists()
-        val world = Bukkit.createWorld(creator) ?: return null
-        if (existed) validate(world)
-        else world.persistentDataContainer.set(ownerKey, PersistentDataType.STRING, OWNER_MARKER)
-        configure(world)
-        return world
-    }
-
-    private fun validate(world: World) {
-        require(world.name == MineExpeditionWorldGenerator.WORLD_NAME) { "Unexpected expedition world" }
-        require(world.persistentDataContainer.get(ownerKey, PersistentDataType.STRING) == OWNER_MARKER) {
-            "Existing expedition world is not owned by ArcFarms"
-        }
-    }
-
-    private fun configure(world: World) {
-        world.setGameRule(GameRule.DO_WEATHER_CYCLE, false)
-        world.setGameRule(GameRule.DO_FIRE_TICK, false)
-        world.setGameRule(GameRule.DO_MOB_SPAWNING, false)
-        world.setSpawnFlags(false, false)
-        world.setStorm(false)
-        world.isThundering = false
-    }
+    // Compatibility lookup for restoring legacy receipts; never create another expedition world.
+    override fun ensureWorld(): World? = Bukkit.getWorld(MineExpeditionWorldGenerator.WORLD_NAME)
 
     companion object {
         const val OWNER_MARKER = "arc-farms-mine-expeditions-v1"
@@ -123,7 +89,14 @@ internal class MineExpeditionWorld(
     private val pending = ConcurrentHashMap<Long, Pending>()
     private val restoringLeases = ConcurrentHashMap<Long, MutableList<AutoCloseable>>()
     private val baselineRepairs = ConcurrentHashMap<Long, ArrayDeque<Pair<ExpeditionPoint, String>>>()
-    private var world: World? = null
+    private fun receiptWorld(receipt: MineExpeditionSceneReceipt): World? =
+        Bukkit.getWorld(receipt.placement.world) ?: registry.ensureWorld()?.takeIf { it.name == receipt.placement.world }
+
+    fun configure(runtime: MineRuntime, surface: Location) {
+        val bounds = runtime.region.bounds
+        stock.site = MineExpeditionSite(runtime.region.world.name, (bounds.minX + bounds.maxX) / 2,
+            bounds.minZ, surface.blockY, surface.x, surface.y, surface.z)
+    }
 
     fun initialize(prewarm: Boolean = true) {
         this.prewarm = prewarm
@@ -136,9 +109,11 @@ internal class MineExpeditionWorld(
                     if (failure != null) throw failure
                     storageLoaded = true
                     if (prewarm || receipts.records().isNotEmpty()) {
-                        world = requireNotNull(registry.ensureWorld()) { "Could not load expedition world" }
                         reconcileLoaded()
-                        receipts.records().forEach(::schedulePreparation)
+                        receipts.records().forEach { receipt ->
+                            if (receipt.placement.geometryVersion < 2 && !receipt.restoring) stock.retire(receipt)
+                            else schedulePreparation(receipt)
+                        }
                     }
                     stock.activate()
                 }.onFailure {
@@ -194,12 +169,12 @@ internal class MineExpeditionWorld(
     override fun prepared(id: Long): MineExpeditionScene? = scenes[id]
     override fun failure(id: Long): String? = failures[id]?.second
     override fun prepare(receipt: MineExpeditionSceneReceipt) {
-        if (world == null || scenes.containsKey(receipt.journalSequence) || pending.containsKey(receipt.journalSequence)) return
+        if (receiptWorld(receipt) == null || scenes.containsKey(receipt.journalSequence) || pending.containsKey(receipt.journalSequence)) return
         if (System.currentTimeMillis() < (failures[receipt.journalSequence]?.first ?: 0L)) return
         schedulePreparation(receipt)
     }
     override fun restore(receipt: MineExpeditionSceneReceipt) {
-        val world = world ?: return
+        val world = receiptWorld(receipt) ?: return
         val key = receipt.journalSequence
         pending.remove(key)?.leases?.forEach { runCatching(it::close) }
         baselineRepairs.remove(key)
@@ -251,7 +226,13 @@ internal class MineExpeditionWorld(
         )
     }
 
-    fun protects(location: Location): Boolean = location.world.name == MineExpeditionWorldGenerator.WORLD_NAME
+    fun protects(location: Location): Boolean = scenes.values.any { it.contains(location) } ||
+        receipts.records().any { receipt ->
+            val p = receipt.placement
+            p.geometryVersion >= 2 && location.world.name == p.world &&
+                location.blockX in p.originX - 24..p.originX + 24 && location.blockZ in p.originZ - 25..p.originZ + 25 &&
+                location.blockY in p.originY..p.originY + 29
+        }
 
     fun reconcileLoaded() {
         if (!storageLoaded) return
@@ -291,7 +272,7 @@ internal class MineExpeditionWorld(
         if (pending.putIfAbsent(key, work) != null) return
         val token = tasks.lifecycleToken()
         if (!tasks.runAsync(token) {
-            val result = runCatching { MineExpeditionGenerator.plan(receipt.kind, receipt.placement.seed) }
+            val result = runCatching { MineExpeditionGenerator.plan(receipt.kind, receipt.placement.seed, receipt.placement.geometryVersion) }
             if (!tasks.runSync(token) {
                 if (pending[key] !== work) return@runSync
                 result.onSuccess { plan -> capturePlan(receipt, plan, key) }
@@ -301,7 +282,7 @@ internal class MineExpeditionWorld(
     }
 
     private fun capturePlan(receipt: MineExpeditionSceneReceipt, plan: MineExpeditionPlan, key: Long) {
-        val world = world ?: return failPreparation(key, IllegalStateException("Expedition world disappeared"))
+        val world = receiptWorld(receipt) ?: return failPreparation(key, IllegalStateException("Expedition world disappeared"))
         val coordinates = plan.blocks.keys.map { local ->
             WorksiteChunkCoordinate(
                 (receipt.placement.originX + local.x) shr 4,
@@ -319,7 +300,7 @@ internal class MineExpeditionWorld(
         coordinates: List<WorksiteChunkCoordinate>,
         pendingState: Pending,
     ) {
-        val world = world ?: return failPreparation(key, IllegalStateException("Expedition world disappeared"))
+        val world = receiptWorld(receipt) ?: return failPreparation(key, IllegalStateException("Expedition world disappeared"))
         if (receipts.findJournal(key) == null) {
             failPreparation(key, IllegalStateException("Expedition receipt is no longer active"))
             return
@@ -362,7 +343,7 @@ internal class MineExpeditionWorld(
         key: Long,
         coordinates: List<WorksiteChunkCoordinate>,
     ) {
-        val world = world ?: return failPreparation(key, IllegalStateException("Expedition world disappeared"))
+        val world = receiptWorld(receipt) ?: return failPreparation(key, IllegalStateException("Expedition world disappeared"))
         prepared.scene(
             world, receipt.journalOwner, receipt.journalSequence, receipt.sceneId, surfaceFor(receipt, world), 0,
             start = at(world, receipt.placement, plan.spawn), end = at(world, receipt.placement, plan.exit),
@@ -422,7 +403,7 @@ internal class MineExpeditionWorld(
         val token = tasks.lifecycleToken()
         if (!tasks.runLater(token, 2L) {
             if (!pending.containsKey(key)) return@runLater
-            val currentWorld = world ?: return@runLater
+            val currentWorld = receiptWorld(receipt) ?: return@runLater
             if (prepared.hasLoadedSceneRecords(currentWorld, receipt.journalOwner, receipt.journalSequence, receipt.sceneId)) {
                 awaitPartialRestore(receipt, plan, key, coordinates)
             } else captureSnapshot(receipt, plan, key, coordinates)
@@ -475,11 +456,14 @@ internal class MineExpeditionWorld(
         val x = receipt.placement.originX + local.x
         val y = receipt.placement.originY + local.y
         val z = receipt.placement.originZ + local.z
-        val material = requireNotNull(snapshot.type(WorksitePosition(MineExpeditionWorldGenerator.WORLD_NAME, x, y, z))) {
+        val material = requireNotNull(snapshot.type(WorksitePosition(receipt.placement.world, x, y, z))) {
             "Expedition snapshot missed $x,$y,$z"
         }
+        require(receipt.placement.geometryVersion < 2 || material.isAir || material in setOf(org.bukkit.Material.STONE, org.bukkit.Material.DEEPSLATE, org.bukkit.Material.TUFF, org.bukkit.Material.ANDESITE, org.bukkit.Material.DIORITE, org.bukkit.Material.GRANITE)) {
+            "Nearby expedition cell overlaps existing terrain at $x,$y,$z ($material)"
+        }
         WorksitePreparedSceneRecord(
-            world = MineExpeditionWorldGenerator.WORLD_NAME,
+            world = receipt.placement.world,
             zoneId = receipt.journalOwner,
             sequence = receipt.journalSequence,
             sceneId = receipt.sceneId,
@@ -494,7 +478,7 @@ internal class MineExpeditionWorld(
     }.sortedWith(compareBy(WorksitePreparedSceneRecord::x, WorksitePreparedSceneRecord::y, WorksitePreparedSceneRecord::z))
 
     private fun install(receipt: MineExpeditionSceneReceipt, plan: MineExpeditionPlan, records: List<WorksitePreparedSceneRecord>) {
-        val world = world ?: return
+        val world = receiptWorld(receipt) ?: return
         val surface = surfaceFor(receipt, world)
         val preparedScene = WorksitePreparedScene(
             world, receipt.journalOwner, receipt.journalSequence, receipt.sceneId, surface,
@@ -535,7 +519,7 @@ internal class MineExpeditionWorld(
             if (scene == null) {
                 // Only retire the receipt after every relevant chunk has been loaded and inspected.
                 if (!restoringLeases.containsKey(key)) return@forEach
-                if (prepared.hasLoadedSceneRecords(world ?: return@forEach, receipt.journalOwner, receipt.journalSequence, receipt.sceneId)) {
+                if (prepared.hasLoadedSceneRecords(receiptWorld(receipt) ?: return@forEach, receipt.journalOwner, receipt.journalSequence, receipt.sceneId)) {
                     return@forEach
                 }
                 stock.remove(receipt) {

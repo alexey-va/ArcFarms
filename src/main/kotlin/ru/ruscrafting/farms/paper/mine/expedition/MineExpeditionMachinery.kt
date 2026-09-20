@@ -205,11 +205,11 @@ internal class MineExpeditionMachinery(
         if (scene.kind == MineExpeditionKind.DEAD_FACTORY && now - runtime.lastParticleAt >= PARTICLE_PERIOD &&
             state.stage != MineExpeditionStage.FACTORY_WATER) {
             runtime.lastParticleAt = now
-            val furnace = scene.at(ExpeditionPoint(20, 18, 1))
+            val furnace = scene.at(ExpeditionPoint(14, 11, 1))
             scene.world.spawnParticle(Particle.SMALL_FLAME, furnace.add(0.0, 4.0, 0.0), 2, 0.16, 0.24, 0.16, 0.0)
-            val wheel = scene.at(ExpeditionPoint(-22, 18, 0))
+            val wheel = scene.at(ExpeditionPoint(-15, 11, 0))
             scene.world.spawnParticle(Particle.DRIPPING_WATER, wheel.add(0.0, sin(phase) * 0.5, 0.0), 1, 0.08, 0.08, 0.08, 0.0)
-            val molten = scene.at(ExpeditionPoint(18, 11, -7))
+            val molten = scene.at(ExpeditionPoint(12, 5, -6))
             scene.world.spawnParticle(Particle.FLAME, molten.add(0.0, 0.12, 0.0), 1, 0.14, 0.02, 0.14, 0.0)
         }
     }
@@ -311,8 +311,8 @@ internal class MineExpeditionMachinery(
                 else -> 0.0
             }
             if (scene.kind == MineExpeditionKind.DEAD_FACTORY && role in setOf("crane", "core")) {
-                pivot.x = scene.at(ExpeditionPoint(18, 0, 0)).x - 18.0 * craneTravel
-                if (role == "core") pivot.y = scene.placement.originY + 12.0 + sin(craneTravel * Math.PI) * 4.0
+                pivot.x = scene.at(ExpeditionPoint(12, 0, 0)).x - 12.0 * craneTravel
+                if (role == "core") pivot.y = scene.placement.originY + 6.0 + sin(craneTravel * Math.PI) * 4.0
             }
             if (display.location.distanceSquared(pivot) > 0.0001) display.teleport(pivot)
             display.interpolationDuration = 4
@@ -321,7 +321,7 @@ internal class MineExpeditionMachinery(
             val scale = when {
                 role.startsWith("wheel") -> {
                     rotation.rotateZ((if (activeFactory) phase else 0.0).toFloat() + if (role == "wheel_cross") (Math.PI / 2).toFloat() else 0f)
-                    Vector3f(14f, 0.4f, 0.6f)
+                    Vector3f(10f, 0.4f, 0.6f)
                 }
                 role.startsWith("drill") -> {
                     rotation.rotateZ(phase.toFloat() * 2 + if (role == "drill_cross") (Math.PI / 2).toFloat() else 0f)
@@ -382,12 +382,12 @@ internal class MineExpeditionMachinery(
             "drill_cross" to center.offset(0, 1, 8),
         )
         MineExpeditionKind.DEAD_FACTORY -> linkedMapOf(
-            "wheel" to ExpeditionPoint(-22, 18, 0),
-            "wheel_cross" to ExpeditionPoint(-22, 18, 0),
-            "crane" to ExpeditionPoint(0, 20, -7),
-            "boiler" to ExpeditionPoint(20, 18, 1),
-            "molten" to ExpeditionPoint(18, 12, -7),
-            "core" to ExpeditionPoint(0, 12, -7),
+            "wheel" to ExpeditionPoint(-15, 11, 0),
+            "wheel_cross" to ExpeditionPoint(-15, 11, 0),
+            "crane" to ExpeditionPoint(0, 16, -6),
+            "boiler" to ExpeditionPoint(14, 11, 1),
+            "molten" to ExpeditionPoint(12, 6, -6),
+            "core" to ExpeditionPoint(0, 6, -6),
         )
     }
 

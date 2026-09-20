@@ -1152,6 +1152,8 @@ scoreboard:
     barn-fire: '<color:#b8c8c0>Aim at the fire and right-click</color>'
     frost: '<color:#b8c8c0>Blue columns mark fires; the gold one marks the woodpile</color>'
 mine:
+  flood-bucket: '<aqua>Flood bucket</aqua>'
+  rescue-miner-label: '<gold>Lost miner</gold> <yellow>• Right-click to help</yellow>'
   resources:
     coal: 'Coal'
     copper: 'Copper'
@@ -1245,7 +1247,7 @@ mine:
     crystal_resonance: '<color:#f2fff7>Right-click the glowing crystals</color>'
     creature_nest: '<color:#f2fff7>Creatures are chewing through rock. Destroy them and their glowing nests</color>'
     power_failure: '<color:#f2fff7>Legacy power incidents are kept for save compatibility and cannot be started manually</color>'
-    lost_miner: '<color:#f2fff7>Click the glowing entrance, find the miner inside, and leave through the marked exit</color>'
+    lost_miner: '<color:#f2fff7>Enter the cave and find the miner. Right-click him to finish the rescue</color>'
     tunnel_drive: '<color:#f2fff7>Control the drill cart with right-click and walk beside it while it bores the face, then install supports</color>'
     rail_extension: '<color:#f2fff7>Clear the collapse with a pickaxe, right-click the markers for rails and lay one continuous line, then escort the cart</color>'
     ore_workshop: '<color:#f2fff7>Carry the ore to the crusher, process the billet at the furnace, then take it to shipping</color>'

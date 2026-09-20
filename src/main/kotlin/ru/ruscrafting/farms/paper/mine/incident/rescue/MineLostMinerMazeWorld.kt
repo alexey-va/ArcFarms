@@ -553,9 +553,9 @@ internal class MineLostMinerMazeWorld(
     }
 
     private companion object {
-        const val MAZE_CELLS = 6
+        const val MAZE_CELLS = 18
         const val MAZE_SALT = 0x4c4f53544d415a45L
-        const val MAX_SCENE_RECORDS = 8_192
+        const val MAX_SCENE_RECORDS = 16_384
         const val MAZE_LIGHT_SPACING = 5
         const val MAZE_SUPPORT_SPACING = 11
         const val AIR_DATA = "minecraft:air"

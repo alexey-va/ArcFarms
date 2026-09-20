@@ -472,6 +472,7 @@ internal class MineWorkingController(
             warningAt = completedAt + HARD_DEADLINE_MILLIS - WARNING_MILLIS,
             deadlineAt = completedAt + HARD_DEADLINE_MILLIS,
         )
+        presentation.cleanup(runtime.settings.id)
         world.retain(scene)
     }
 

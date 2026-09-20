@@ -42,17 +42,29 @@ internal class MineCreatureNestIncident(
 ) {
     private val entities = mutableMapOf<String, MutableMap<MineIncidentEntityKind, MutableMap<String, java.util.UUID>>>()
 
+    private data class Brood(val points: MutableMap<String, WorksitePosition> = linkedMapOf(),
+        var nextBirth: Long = 0L, var births: Int = 0)
+    private val broods = mutableMapOf<String, Brood>()
+
     fun start(runtime: MineRuntime, required: Int, now: Long): Boolean {
         val candidates = candidates(runtime, required)
         if (candidates.size < required * COMPONENTS_PER_SITE) return false
         if (!incidents.start(runtime, MineIncidentType.CREATURE_NEST, candidates.size, now, candidates)) return false
-        runtime.region.world.loadedChunks.forEach { reconcileChunk(runtime, it) }
+        candidates.map { it.position }.distinctBy { (it.x shr 4) to (it.z shr 4) }.forEach { p ->
+            val world = runtime.region.world
+            if (world.isChunkLoaded(p.x shr 4, p.z shr 4)) reconcileChunk(runtime, world.getChunkAt(p.x shr 4, p.z shr 4))
+        }
         tick(runtime, emptyList(), now)
         return true
     }
 
     fun defeat(runtime: MineRuntime, targetId: String, player: Player): Boolean {
-        if (!active(runtime) || runtime.state.objective?.target(targetId)?.role?.value != CREATURE_ROLE) return false
+        if (!active(runtime)) return false
+        if (broods[key(runtime)]?.points?.remove(targetId) != null) {
+            removeTarget(runtime, MineIncidentEntityKind.CREATURE, targetId)
+            return true
+        }
+        if (runtime.state.objective?.target(targetId)?.role?.value != CREATURE_ROLE) return false
         removeTarget(runtime, MineIncidentEntityKind.CREATURE, targetId)
         val completed = incidents.completeTarget(runtime, targetId, player).accepted
         if (completed && !active(runtime)) cleanup(runtime)
@@ -119,7 +131,7 @@ internal class MineCreatureNestIncident(
         if (!active(runtime)) return 0
         val pending = runtime.state.objective?.targets.orEmpty().filter { it.status != ObjectiveTargetStatus.COMPLETED }
         reconcileKind(runtime, chunk, MineIncidentEntityKind.CREATURE, pending.filter { it.role.value == CREATURE_ROLE }
-            .associate { it.id to it.position })
+            .associate { it.id to it.position } + broods[key(runtime)]?.points.orEmpty())
         val nests = pending.filter { it.role.value == NEST_ROLE }.associate { it.id to it.position }
         reconcileKind(runtime, chunk, MineIncidentEntityKind.CREATURE_NEST_DISPLAY, nests)
         reconcileKind(runtime, chunk, MineIncidentEntityKind.CREATURE_NEST_HITBOX, nests)
@@ -148,14 +160,35 @@ internal class MineCreatureNestIncident(
     fun tick(runtime: MineRuntime, players: Collection<Player>, now: Long) {
         if (!active(runtime)) return
         val objective = runtime.state.objective ?: return
+        val brood = broods.getOrPut(key(runtime)) { Brood(nextBirth = now + 10_000L) }
+        brood.points.keys.removeIf { tracked(runtime, MineIncidentEntityKind.CREATURE)[it]?.let(effects::entity)?.isValid != true }
+        if (now >= brood.nextBirth && brood.births < 12 && spawnedCount(runtime) < 7 && players.isNotEmpty()) {
+            brood.nextBirth = now + 12_000L
+            val nest = objective.targets.firstOrNull { target ->
+                target.role.value == NEST_ROLE && target.status != ObjectiveTargetStatus.COMPLETED &&
+                    brood.points.keys.count { it.startsWith("${target.id}_brood_") } < 2 &&
+                    players.any { it.world === runtime.region.world && kotlin.math.abs(it.location.y - target.position.y - 1) <= 3.25 }
+            }
+            if (nest != null) {
+                val id = "${nest.id}_brood_${brood.births++}"
+                val point = nest.position.copy(y = nest.position.y + 1)
+                if (runtime.region.world.isChunkLoaded(point.x shr 4, point.z shr 4)) {
+                    brood.points[id] = point
+                    val entity = effects.spawn(runtime, MineIncidentEntityKind.CREATURE, id, point)
+                    tracked(runtime, MineIncidentEntityKind.CREATURE)[id] = entity
+                    effects.entity(entity)?.let { applyPresentation(it, MineIncidentEntityKind.CREATURE) }
+                }
+            }
+        }
         val mobs = tracked(runtime, MineIncidentEntityKind.CREATURE).mapNotNull { (targetId, id) ->
             val mob = effects.entity(id) as? org.bukkit.entity.Mob ?: return@mapNotNull null
-            objective.target(targetId)?.position?.let { mob to it }
+            (objective.target(targetId)?.position ?: brood.points[targetId])?.let { mob to it }
         }.toMap()
         pests?.tick(runtime, mobs, players, now)
     }
 
     fun cleanup(runtime: MineRuntime) {
+        broods.remove(key(runtime))
         pests?.cleanup(runtime)
         entities.remove(key(runtime))?.values?.flatMap { it.values }?.forEach(effects::remove)
         OWNED_KINDS.forEach { effects.cleanup(runtime, it) }

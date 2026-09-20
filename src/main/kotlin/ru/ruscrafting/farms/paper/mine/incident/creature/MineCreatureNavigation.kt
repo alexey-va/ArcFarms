@@ -38,12 +38,12 @@ internal object PaperMineCreatureNavigation : MineCreatureNavigation {
     }
 
     internal fun safeStep(runtime: MineRuntime, location: Location, floorY: Int): Boolean {
-        if (location.world !== runtime.region.world || abs(location.y - floorY) > 1.1 || !runtime.region.contains(location)) return false
+        if (location.world !== runtime.region.world || (location.y < floorY - 0.25 || location.y > floorY + 3.25) || !runtime.region.contains(location)) return false
         return listOf(-0.32, 0.32).all { dx -> listOf(-0.32, 0.32).all { dz ->
             val foot = location.clone().add(dx, 0.0, dz)
             val world = runtime.region.world
             world.isChunkLoaded(foot.blockX shr 4, foot.blockZ shr 4) &&
-                world.getBlockAt(foot.blockX, floorY - 1, foot.blockZ).type.isSolid
+                world.getBlockAt(foot.blockX, kotlin.math.floor(location.y - 0.05).toInt(), foot.blockZ).type.isSolid
         } }
     }
 }

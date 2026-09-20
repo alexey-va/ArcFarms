@@ -28,7 +28,7 @@ internal data class MineLostMinerMazeJournalRecord(
 internal object MineLostMinerMazeJournalCodec {
     private const val VERSION = 1
     private const val MAX_RECORDS_PER_CHUNK = 2_048
-    private const val MAX_SCENE_RECORDS = 8_192
+    private const val MAX_SCENE_RECORDS = 16_384
     private const val MAX_BLOCK_DATA_LENGTH = 512
     private const val MAX_JOURNAL_BYTES = 524_288
     private val ZONE_ID = Regex("[a-z0-9_-]{1,48}")

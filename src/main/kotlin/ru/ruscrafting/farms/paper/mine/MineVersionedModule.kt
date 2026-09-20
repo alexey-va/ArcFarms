@@ -160,6 +160,8 @@ internal class MineVersionedModule(
     override fun onBreakLowest(event: BlockBreakEvent): Boolean =
         (delegate as? WorksiteBlockBreakGuard)?.onBreakLowest(event) == true
 
+    fun allowsTemporaryFlow(from: Location, to: Location) = (delegate as? MineModule)?.allowsTemporaryFlow(from, to) == true
+
     override fun onBucketFill(event: org.bukkit.event.player.PlayerBucketFillEvent): Boolean = (delegate as? ru.ruscrafting.farms.paper.WorksiteBucketFillHandler)?.onBucketFill(event) == true
 
     override fun onBlockDamage(event: BlockDamageEvent): Boolean =

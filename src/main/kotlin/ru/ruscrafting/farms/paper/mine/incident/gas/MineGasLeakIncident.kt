@@ -23,6 +23,7 @@ internal class MineGasLeakIncident(
     private data class Session(
         val sequence: Long,
         var lastHazardAt: Long? = null,
+        var lastCloudAt: Long = 0L,
     )
 
     private val sessions = mutableMapOf<String, Session>()
@@ -55,7 +56,7 @@ internal class MineGasLeakIncident(
                 player.world === runtime.region.world
         }
         if (session.lastHazardAt?.let { now - it < HAZARD_PERIOD_MILLIS } == true) {
-            renderClouds(points, viewers)
+            renderClouds(session, points, viewers, now)
             return
         }
         session.lastHazardAt = now
@@ -67,17 +68,18 @@ internal class MineGasLeakIncident(
                 player.addPotionEffect(PotionEffect(PotionEffectType.NAUSEA, NAUSEA_DURATION_TICKS, 0, true, false, true))
             }
         }
-        renderClouds(points, viewers)
+        renderClouds(session, points, viewers, now)
     }
 
-    private fun renderClouds(points: Collection<org.bukkit.Location>, viewers: Collection<Player>) {
-        if (viewers.isEmpty()) return
+    private fun renderClouds(session: Session, points: Collection<org.bukkit.Location>, viewers: Collection<Player>, now: Long) {
+        if (viewers.isEmpty() || now - session.lastCloudAt < 250L) return
+        session.lastCloudAt = now
         points.forEach { point ->
             viewers.filter { it.location.distanceSquared(point) <= VIEW_RADIUS_SQUARED }.forEach { player ->
-                player.spawnParticle(Particle.CLOUD, point, CLOUD_COUNT, 1.8, 0.9, 1.8, 0.01)
-                player.spawnParticle(Particle.SMOKE, point.clone().add(0.0, 0.32, 0.0), SMOKE_COUNT, 1.4, 0.7, 1.4, 0.01)
-                player.spawnParticle(Particle.DUST, point, CLOUD_COUNT, 1.8, 0.8, 1.8, 0.0,
-                    Particle.DustOptions(org.bukkit.Color.fromRGB(139, 163, 89), 1.6f))
+                player.spawnParticle(Particle.CLOUD, point, CLOUD_COUNT, 3.8, 1.2, 3.8, 0.015)
+                player.spawnParticle(Particle.SMOKE, point.clone().add(0.0, 0.32, 0.0), SMOKE_COUNT, 2.8, 1.0, 2.8, 0.02)
+                player.spawnParticle(Particle.DUST, point, CLOUD_COUNT, 3.8, 1.1, 3.8, 0.0,
+                    Particle.DustOptions(org.bukkit.Color.fromRGB(139, 163, 89), 2.4f))
             }
         }
     }
@@ -88,11 +90,11 @@ internal class MineGasLeakIncident(
 
     private companion object {
         const val HAZARD_PERIOD_MILLIS = 1_000L
-        const val HAZARD_RADIUS_SQUARED = 3.5 * 3.5
+        const val HAZARD_RADIUS_SQUARED = 6.5 * 6.5
         const val VIEW_RADIUS_SQUARED = 40.0 * 40.0
         const val HIT_DAMAGE = 1.0
         const val NAUSEA_DURATION_TICKS = 60
-        const val CLOUD_COUNT = 10
-        const val SMOKE_COUNT = 5
+        const val CLOUD_COUNT = 36
+        const val SMOKE_COUNT = 18
     }
 }

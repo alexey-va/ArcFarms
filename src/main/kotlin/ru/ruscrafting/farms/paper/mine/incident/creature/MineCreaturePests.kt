@@ -34,14 +34,14 @@ internal class MineCreaturePests(
             val target = players.asSequence().filter { eligible(runtime, anchor, mob, it) }
                 .minByOrNull { it.location.distanceSquared(mob.location) }
             if (target == null) { navigation.stop(mob); return@forEach }
-            navigation.chase(mob, target.location.clone().apply { y = anchor.y.toDouble() }, runtime, anchor.y)
+            navigation.chase(mob, target.location, runtime, anchor.y)
             if (now >= session.nextAttack && target.gameMode != GameMode.CREATIVE &&
                 target.location.distanceSquared(mob.location) <= 2.6 && mob.hasLineOfSight(target)) {
                 mob.swingMainHand()
                 target.damage(3.0, mob)
                 session.nextAttack = now + 1_000L
             }
-            if (now >= session.nextDamage) damage(runtime, mob, anchor, target, session, now)
+            if (now >= session.nextDamage && !mob.hasLineOfSight(target)) damage(runtime, mob, anchor, target, session, now)
         }
     }
 
@@ -50,7 +50,7 @@ internal class MineCreaturePests(
     internal fun eligible(runtime: MineRuntime, anchor: WorksitePosition, mob: Mob, player: Player): Boolean =
         player.isValid && !player.isDead && player.gameMode != GameMode.SPECTATOR &&
             player.world === mob.world && runtime.region.contains(player.location) &&
-            abs(player.location.y - anchor.y) <= 2.0 && abs(mob.location.y - anchor.y) <= 1.1 &&
+            abs(player.location.y - anchor.y) <= 3.25 && abs(mob.location.y - anchor.y) <= 3.25 &&
             player.location.distanceSquared(mob.location) <= 24.0 * 24.0
 
     private fun damage(runtime: MineRuntime, mob: Mob, anchor: WorksitePosition, target: Player, session: Session, now: Long) {

@@ -225,12 +225,18 @@ internal class MineExpeditionController(
 
     private fun enter(runtime: MineRuntime, player: Player) {
         val surface = surfacePoint(runtime) ?: return
-        val scene = world.scene(runtime)?.takeIf { it.ready } ?: run {
+        val scene = world.scene(runtime)?.takeIf { it.ready && it.placement.geometryVersion >= 2 && it.world === runtime.region.world } ?: run {
             player.sendActionBar(render("preparing", player)); return
         }
         if (!near(player, surface, 5.0) || !access.hasAccess(player, runtime.settings.permission)) return
+        val destination = scene.station("entry")
+        if (!destination.block.isPassable || !destination.clone().add(0.0, 1.0, 0.0).block.isPassable ||
+            !destination.clone().add(0.0, -1.0, 0.0).block.type.isSolid) {
+            player.sendActionBar(render("preparing", player))
+            return
+        }
         travel.enter(WorksiteExpeditionTravel.EntryRequest(player, runtime.settings.id, runtime.state.sequence,
-            runtime.settings.permission, surface, scene.station("entry")), stillValid = {
+            runtime.settings.permission, surface, destination), stillValid = {
                 world.scene(runtime) === scene && scene.ready
             })
     }
@@ -262,7 +268,7 @@ internal class MineExpeditionController(
         }
         if (step.finished) {
             world.markCompleted(scene, clock())
-            markers.reconcile(scope(scene), exitMarkers(scene))
+            clearScene(scene)
             clearGateway(runtime)
             scene.world.spawnParticle(Particle.FIREWORK, player.location.clone().add(0.0, 1.5, 0.0), 24, 1.5, 0.8, 1.5, 0.05)
         }
@@ -321,8 +327,11 @@ internal class MineExpeditionController(
             if (runtime != null && world.scene(runtime) === scene) return@forEach
             if (!scene.ready) return@forEach
             if (scene.completedAt == 0L) world.markCompleted(scene, now)
-            markers.reconcile(scope(scene), exitMarkers(scene))
+            clearScene(scene)
             val elapsed = now - scene.completedAt
+            if (elapsed > 1_500L) scene.world.players.filter {
+                it.location.distanceSquared(scene.station("entry")) <= 2.25 && travel.retains(it)
+            }.forEach { exit(it, scene) }
             val occupants = scene.world.players.filter { it.gameMode != GameMode.SPECTATOR && scene.contains(it.location, 8.0) }
             if (elapsed < MIN_RETAIN_MILLIS) return@forEach
             if (elapsed >= MAX_RETAIN_MILLIS - WARNING_MILLIS) occupants.forEach { player ->
@@ -356,7 +365,11 @@ internal class MineExpeditionController(
     fun protects(location: Location): Boolean = world.protects(location)
     fun recover(player: Player) = travel.recover(player)
     fun onChunkLoad(chunk: Chunk) = world.onChunkLoad(chunk)
-    fun reconcileLoaded() { world.initialize(registry.snapshot().any(::configured)) }
+    fun reconcileLoaded() {
+        val runtime = registry.snapshot().firstOrNull(::configured)
+        runtime?.let { world.configure(it, requireNotNull(surfacePoint(it))) }
+        world.initialize(runtime != null)
+    }
     fun stockStatus(): List<MineExpeditionStockStatus> = world.stockStatus()
     fun rebuildStock(kind: ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionKind?): Int = world.rebuildStock(kind)
 

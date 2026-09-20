@@ -1,3 +1,47 @@
+# Mine expeditions — 0.43.0
+
+Current locations are compact, self-contained caves in the configured mine world.
+The scene stock allocates disjoint 64-block cells north of the mine, starting
+80 blocks beyond its boundary. No expedition world is created. Each stored
+receipt keeps its world, placement, seed, geometry version and original-block
+journal across restarts. Version 1 plans remain available solely to restore the
+old remote locations. New plans use version 2; occupied cells are not reused.
+
+- Last Descent: 43 × 30 × 45 blocks, three docks and an open-front lift with
+  20 blocks of travel. A copper engine sits behind the lower chamber.
+- Drilling Ark: 49 × 19 × 51 blocks, two short branches, timber frames,
+  hanging lamps and a complete clearance envelope for the crawler.
+- Dead Factory: 49 × 22 × 41 blocks, a water wheel, foundry, overhead crane
+  and separate working decks connected within one chamber.
+
+Entry requires a supported, passable destination in the same world as the mine.
+Travel verifies the actual position after Bukkit teleportation and preserves
+its return receipt if a redirected player cannot be returned safely.
+
+Lost Miner uses a 37 × 37 cave footprint with a winding route, side pockets,
+and two weaker guards (8 health, 1 attack damage). Right-clicking the labelled
+miner completes the rescue; there is no escort objective. Lateral workings now
+extend 38 blocks from their authored entrance; the track test uses a real
+minecart. Old geometry-version-3 workings are retired through their journals.
+
+Flooding issues a temporary empty bucket. Its complete 20–30-cell flow area is
+journalled before a water source activates; vanilla flow stays within those
+owned cells. The bucket also targets flowing water and remains empty. Glow
+sits beneath the water. Gas clouds have a 6.5-block hazard radius and bounded
+particle updates. Nests can produce up to two additional living creatures each,
+with at most seven tracked creatures and twelve births per incident. Creatures
+follow small supported height changes but reject paths descending into the shaft.
+
+Completion clears task markers, glow and interactive machinery immediately.
+The physical cave retains its existing departure grace; walking back to the
+expedition/rescue entrance returns a retained participant without an exit marker.
+The long-stop warning and occupied-location cleanup deadline remain in place.
+
+Validation and delivery of 0.43.0 are recorded below after activation. Historical
+release evidence follows and does not certify this release's client behaviour.
+
+---
+
 # Экспедиции шахты
 
 Три события отправляют игроков через подсвеченный вход из `old_shafts` в отдельную процедурную локацию. Обратно можно выйти через метки у входа и конца маршрута. Для игры достаточно обычного доступа к шахте.

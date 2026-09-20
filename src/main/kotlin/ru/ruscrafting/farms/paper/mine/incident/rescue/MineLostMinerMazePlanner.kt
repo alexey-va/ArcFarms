@@ -32,7 +32,8 @@ internal object MineLostMinerMazePlanner {
     )
 
     fun plan(cells: Int, seed: Long): MineLostMinerMazeLayout {
-        require(cells in 3..11) { "Lost-miner cave cell count must be in 3..11" }
+        require(cells in 3..18) { "Lost-miner cave cell count must be in 3..18" }
+        if (cells > 11) return windingCave(cells, seed)
         val width = cells * 2 + 1
         val start = MineLostMinerMazePoint(1, 1)
         val target = MineLostMinerMazePoint(width - 2, width - 2)
@@ -76,6 +77,30 @@ internal object MineLostMinerMazePlanner {
         passages += start
         passages += target
         return MineLostMinerMazeLayout(cells, passages, start, target)
+    }
+
+    private fun windingCave(cells: Int, seed: Long): MineLostMinerMazeLayout {
+        val last = cells * 2 - 1
+        val start = MineLostMinerMazePoint(3, 3)
+        val far = last - 3
+        val bends = listOf(start, MineLostMinerMazePoint(far, 3),
+            MineLostMinerMazePoint(far, last / 2), MineLostMinerMazePoint(3, last / 2),
+            MineLostMinerMazePoint(3, far), MineLostMinerMazePoint(far, far))
+        val passages = linkedSetOf(start)
+        bends.zipWithNext().forEach { (from, to) ->
+            var point = from
+            while (point != to) {
+                point = if (point.x != to.x) point.copy(x = point.x + (to.x - point.x).compareTo(0))
+                    else point.copy(z = point.z + (to.z - point.z).compareTo(0))
+                passages += point
+            }
+        }
+        // Short dead ends branch into separate pockets; the rock between switchbacks prevents shortcuts.
+        listOf(10, 22).forEach { x ->
+            val depth = 3 + (score(seed, x, 41) * 2).toInt()
+            for (z in 4..3 + depth) passages += MineLostMinerMazePoint(x, z)
+        }
+        return MineLostMinerMazeLayout(cells, passages, start, bends.last())
     }
 
     fun path(layout: MineLostMinerMazeLayout): List<MineLostMinerMazePoint> {
@@ -136,7 +161,7 @@ internal object MineLostMinerMazePlanner {
         // Re-introduce only a bounded connected subset of logical branches.
         // This retains alternate rescue approaches without turning every
         // logical passage into a room.
-        val branchBudget = (layout.cells * 2).coerceAtMost(layout.passages.size)
+        val branchBudget = (layout.cells * 3).coerceAtMost(layout.passages.size)
         repeat(branchBudget) {
             val next = layout.passages.asSequence()
                 .filter { it !in expanded }
@@ -149,7 +174,7 @@ internal object MineLostMinerMazePlanner {
         // Room centers are spread along the route so adjacent radii do not
         // blur into one giant square. The coherent contour keeps chambers
         // organic while every center remains attached to the route skeleton.
-        val centers = route.filterIndexed { index, _ -> index % 4 == 0 }.take(6)
+        val centers = route.filterIndexed { index, _ -> index % (if (layout.cells > 11) 16 else 4) == 0 }.take(7)
         centers.forEachIndexed { index, center ->
             val radius = 1 + (coherent01(seed, center.x * 0.31, 1.7, center.z * 0.31) * 3.0).toInt()
             addRoom(expanded, center, radius, seed + index * 31L, last)
@@ -203,7 +228,7 @@ internal object MineLostMinerMazeSitePlanner {
         cells: Int,
         margin: Int = 2,
     ): List<WorksitePosition> {
-        require(cells in 3..11)
+        require(cells in 3..18)
         require(margin >= 1)
         val width = cells * 2 + 1
         val clearance = width + margin

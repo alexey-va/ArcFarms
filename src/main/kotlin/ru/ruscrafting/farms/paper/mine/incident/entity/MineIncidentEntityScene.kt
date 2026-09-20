@@ -158,7 +158,7 @@ internal class PaperMineIncidentEntityEffects(plugin: Plugin) : MineIncidentEnti
                 if (kind == MineIncidentEntityKind.FLOOD_MARKER) {
                     block = Material.LIGHT_BLUE_STAINED_GLASS.createBlockData()
                     transformation = transformation.also {
-                        it.translation.set(0f, 0.9f, 0f)
+                        it.translation.set(0f, -0.02f, 0f)
                         it.scale.set(1f, 0.015f, 1f)
                     }
                 } else if (kind in ACTUAL_BLOCK_GLOW_KINDS) {

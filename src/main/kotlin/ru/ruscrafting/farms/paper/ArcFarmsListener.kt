@@ -53,8 +53,9 @@ class ArcFarmsListener(
         event.blockList().removeIf { service.protectsTemporaryBlock(it.location) }
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST)
     fun onTemporaryFluid(event: org.bukkit.event.block.BlockFromToEvent) {
+        if (service.allowsTemporaryFlow(event.block.location, event.toBlock.location)) { event.isCancelled = false; return }
         if (service.protectsTemporaryBlock(event.block.location) || service.protectsTemporaryBlock(event.toBlock.location)) event.isCancelled = true
     }
 
