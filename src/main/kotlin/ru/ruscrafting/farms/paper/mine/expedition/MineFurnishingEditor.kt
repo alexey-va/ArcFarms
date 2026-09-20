@@ -48,6 +48,10 @@ internal class MineFurnishingEditor(
     private val sessions = mutableMapOf<UUID,Session>()
     init {
         plugin.server.pluginManager.registerEvents(this,plugin)
+    }
+    /** Called by loaded-state activation, after the owning gameplay epoch becomes active. */
+    fun initialize() {
+        ready=false
         val token=tasks.lifecycleToken()
         repository.loadAsync().whenComplete { value,error -> tasks.runSync(token) {
             if(error == null) { state=value;ready=true }

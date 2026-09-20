@@ -385,6 +385,7 @@ internal class MineExpeditionController(
     fun onChunkLoad(chunk: Chunk) { world.onChunkLoad(chunk); markers.onChunkLoad(chunk); actions.removeOrphans(chunk.entities.asIterable()) }
     fun protects(entity: org.bukkit.entity.Entity) = actions.owns(entity)
     fun reconcileLoaded() {
+        editor?.initialize()
         actions.removeOrphans(Bukkit.getWorlds().flatMap { it.entities })
         val runtime = registry.snapshot().firstOrNull(::configured)
         runtime?.let { world.configure(it, requireNotNull(surfacePoint(it))) }
