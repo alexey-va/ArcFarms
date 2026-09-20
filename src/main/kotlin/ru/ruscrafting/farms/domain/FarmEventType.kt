@@ -1,5 +1,7 @@
 package ru.ruscrafting.farms.domain
 
+import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionEngine
+
 /** Shared interaction baseline for farm events. */
 enum class FarmEventArchetype { FIELD, PORTAL, UNDERGROUND }
 
@@ -50,7 +52,7 @@ object FarmEventTypeRegistry {
 
     private val mineDefinitions: Map<MineIncidentType, FarmEventTypeDefinition> = MineIncidentType.entries.associateWith { type ->
         val id = type.name.lowercase()
-        if (MineWorkingEngine.supports(type)) {
+        if (MineWorkingEngine.supports(type) || MineExpeditionEngine.supports(type)) {
             FarmEventTypeDefinition.UndergroundEvent("mine.guidance.title", "mine.guidance.$id", "mine.guidance.$id")
         } else FarmEventTypeDefinition.FieldEvent("mine.guidance.title", "mine.guidance.$id", "mine.guidance.$id")
     }

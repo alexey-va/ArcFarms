@@ -872,11 +872,11 @@ mine-zones:
       coal_order:
         mining-resources: [COAL]
         phases: {prospecting-required: 3, mining-required: 100, loading-required: 4}
-        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP]
+        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP, LAST_DESCENT, DRILLING_ARK, DEAD_FACTORY]
       iron_order:
         mining-resources: [IRON]
         phases: {prospecting-required: 3, mining-required: 100, loading-required: 4}
-        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP]
+        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP, LAST_DESCENT, DRILLING_ARK, DEAD_FACTORY]
   sand_quarry:
     enabled: true
     engine-version: 2

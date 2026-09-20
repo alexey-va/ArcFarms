@@ -100,6 +100,8 @@ internal class WorksitePreparedSceneOwner(
 ) {
     private data class SceneKey(val world: String, val zoneId: String, val sequence: Long, val sceneId: Int)
     private data class RecordKey(val world: String, val x: Int, val y: Int, val z: Int)
+    private data class ProjectionChunkKey(val scene: SceneKey, val chunkX: Int, val chunkZ: Int)
+    private data class ProjectionChunkState(val records: Int, val expected: Int, val active: Boolean)
 
     private val journalKey = NamespacedKey(plugin, "${namespace}_v1")
     private val buildQueue = ArrayDeque<WorksitePreparedSceneRecord>()
@@ -109,19 +111,100 @@ internal class WorksitePreparedSceneOwner(
     private val buildingKeys = linkedSetOf<RecordKey>()
     private val buildingSceneCounts = mutableMapOf<SceneKey, Int>()
     private val completedBuilds = linkedSetOf<SceneKey>()
+    private val projectionChunks = linkedMapOf<ProjectionChunkKey, ProjectionChunkState>()
+    private val preparations = linkedMapOf<SceneKey, ArrayDeque<List<WorksitePreparedSceneRecord>>>()
+    private val rejectedPreparations = linkedSetOf<SceneKey>()
     private val ticketedChunks = linkedMapOf<Triple<String, Int, Int>, AutoCloseable>()
     private val scenes = mutableMapOf<SceneKey, WorksitePreparedScene>()
+    private val scenePositions = mutableMapOf<SceneKey, Set<Triple<Int, Int, Int>>>()
 
     fun prepare(scenePlans: Collection<WorksitePreparedScene>): Boolean {
         require(scenePlans.isNotEmpty()) { "Prepared scene commit is empty" }
+        if (!scenePlans.all { validateBlockData(it.records) }) return false
         if (!commit(scenePlans)) return false
         scenePlans.forEach { scene ->
             scenes[scene.key()] = scene
+            scenePositions[scene.key()] = scene.records.mapTo(hashSetOf()) { Triple(it.x, it.y, it.z) }
             completedBuilds.remove(scene.key())
             ticket(scene)
             enqueueBuild(scene.records)
         }
         return true
+    }
+
+    /** Large scenes journal bounded slices before building them; partial journals recover through the same owner. */
+    fun prepareIncrementally(scene: WorksitePreparedScene, recordsPerSlice: Int = 1_024): Boolean {
+        require(recordsPerSlice in 1..4_096)
+        require(scene.records.isNotEmpty())
+        val key = scene.key()
+        if (key in scenes || key in preparations || restoring(scene.zoneId)) return false
+        require(scene.records.all {
+            it.world == scene.world.name && it.zoneId == scene.zoneId && it.sequence == scene.sequence &&
+                it.sceneId == scene.sceneId && it.totalRecords == scene.records.size
+        })
+        require(scene.records.map { it.key() }.toSet().size == scene.records.size) { "Prepared scene has duplicate positions" }
+        if (!validateBlockData(scene.records)) return false
+        scenes[key] = scene
+        scenePositions[key] = scene.records.mapTo(hashSetOf()) { Triple(it.x, it.y, it.z) }
+        completedBuilds.remove(key)
+        rejectedPreparations.remove(key)
+        ticket(scene)
+        preparations[key] = ArrayDeque(scene.records.chunked(recordsPerSlice))
+        return true
+    }
+
+    fun preparationFailed(zoneId: String, sequence: Long, sceneId: Int): Boolean =
+        rejectedPreparations.any { it.zoneId == zoneId && it.sequence == sequence && it.sceneId == sceneId }
+
+    /** Journal-first projection for a bounded set of scene-owned block changes. */
+    fun project(scene: WorksitePreparedScene, changes: Map<Triple<Int, Int, Int>, String>): Boolean {
+        require(changes.size <= 1_024) { "Prepared scene projection is too large" }
+        if (changes.isEmpty()) return true
+        val cached = scenes[scene.key()] ?: return false
+        val key = cached.key()
+        if (key in preparations || key in buildingSceneCounts) return false
+        val positions = scenePositions.getOrPut(key) { cached.records.mapTo(hashSetOf()) { Triple(it.x, it.y, it.z) } }
+        require(changes.keys.all { it in positions }) { "Prepared scene projection escapes its journal" }
+        require(changes.values.all { it.length in 1..512 && '\n' !in it && '\r' !in it }) {
+            "Prepared scene projection contains invalid BlockData"
+        }
+        val byChunk = changes.entries.groupBy { it.key.first shr 4 to (it.key.third shr 4) }
+        val previous = linkedMapOf<Chunk, ByteArray?>()
+        val projected = linkedMapOf<Chunk, List<WorksitePreparedSceneRecord>>()
+        return try {
+            byChunk.forEach { (chunkPosition, chunkChanges) ->
+                require(cached.world.isChunkLoaded(chunkPosition.first, chunkPosition.second)) { "Projection chunk is unloaded" }
+                val chunk = cached.world.getChunkAt(chunkPosition.first, chunkPosition.second)
+                val current = read(chunk) ?: error("Prepared scene journal is unreadable")
+                val changeMap = chunkChanges.associate { it.key to it.value }
+                val owned = current.filter { it.sceneKey() == key }
+                require(changeMap.keys.all { position -> owned.any { it.x == position.first && it.y == position.second && it.z == position.third } }) {
+                    "Prepared scene projection journal identity is missing"
+                }
+                previous[chunk] = chunk.persistentDataContainer.get(journalKey, PersistentDataType.BYTE_ARRAY)
+                val replacement = current.map { currentRecord ->
+                    changeMap[Triple(currentRecord.x, currentRecord.y, currentRecord.z)]
+                        ?.let { activeData -> currentRecord.copy(activeData = activeData) } ?: currentRecord
+                }
+                write(chunk, replacement)
+                projected[chunk] = replacement.filter { Triple(it.x, it.y, it.z) in changeMap.keys && it.sceneKey() == key }
+            }
+            val failed = projected.values.flatten().filterNot { apply(it, it.activeData) }
+            if (failed.isNotEmpty()) {
+                enqueueBuild(failed)
+                false
+            } else {
+                completedBuilds += key
+                true
+            }
+        } catch (failure: Throwable) {
+            previous.forEach { (chunk, payload) ->
+                if (payload == null) chunk.persistentDataContainer.remove(journalKey)
+                else chunk.persistentDataContainer.set(journalKey, PersistentDataType.BYTE_ARRAY, payload)
+            }
+            logger.log(Level.WARNING, "Could not project prepared scene ${cached.zoneId}/${cached.sequence}", failure)
+            false
+        }
     }
 
     fun ensurePreparedScene(
@@ -136,7 +219,7 @@ internal class WorksitePreparedSceneOwner(
         end: Location? = null,
         startMarker: String? = null,
         endMarker: String? = null,
-        shouldBuild: (WorksitePreparedScene) -> Boolean = { !it.ready },
+        shouldBuild: (WorksitePreparedScene) -> Boolean = { !isComplete(it) },
     ): Pair<WorksitePreparedSceneEnsureResult, WorksitePreparedScene?> {
         val existing = scene(
             world, zoneId, sequence, sceneId, surface, recoveryRadius,
@@ -149,7 +232,7 @@ internal class WorksitePreparedSceneOwner(
             return (if (!needsBuild) WorksitePreparedSceneEnsureResult.READY
             else WorksitePreparedSceneEnsureResult.BUILDING) to existing
         }
-        if (hasLoadedSceneRecords(world, zoneId, sequence, sceneId)) {
+        if (hasLoadedSceneRecordsInternal(world, zoneId, sequence, sceneId)) {
             beginRestore(world, zoneId, sequence)
             return WorksitePreparedSceneEnsureResult.BUILDING to null
         }
@@ -173,7 +256,7 @@ internal class WorksitePreparedSceneOwner(
     ): WorksitePreparedScene? {
         val key = SceneKey(world.name, zoneId, sequence, sceneId)
         scenes[key]?.let { cached ->
-            if (cached.ready) completedBuilds += key
+            if (isComplete(cached)) completedBuilds += key
             return cached
         }
         var records = loadedRecords(world, zoneId, sequence, sceneId)
@@ -185,13 +268,20 @@ internal class WorksitePreparedSceneOwner(
         }
         ticket(world, records)
         if (records.size != expected || records.any { it.totalRecords != expected }) return null
+        if (!validateBlockData(records)) return null
         val resolvedStart = start ?: markerLocation(world, records, startMarker) ?: return null
         val resolvedEnd = end ?: markerLocation(world, records, endMarker) ?: return null
         return WorksitePreparedScene(world, zoneId, sequence, sceneId, surface, resolvedStart, resolvedEnd, records)
             .also {
                 scenes[key] = it
-                if (it.ready) completedBuilds += key
+                scenePositions[key] = it.records.mapTo(hashSetOf()) { record -> Triple(record.x, record.y, record.z) }
+                if (isComplete(it)) completedBuilds += key
             }
+    }
+
+    /** O(1) completion signal maintained by the bounded build queue. */
+    fun isComplete(scene: WorksitePreparedScene): Boolean = scene.key().let { key ->
+        key in completedBuilds && key !in preparations && key !in buildingSceneCounts
     }
 
     /** Convenience overload for callers that already resolved marker locations. */
@@ -214,12 +304,26 @@ internal class WorksitePreparedSceneOwner(
         end = end,
     )
 
-    fun beginRestore(world: World, zoneId: String, sequence: Long) {
-        scenes.keys.filter { it.world == world.name && it.zoneId == zoneId && it.sequence == sequence }
+    fun beginRestore(world: World, zoneId: String, sequence: Long) = beginRestoreInternal(world, zoneId, sequence, null)
+
+    /** Narrow restore scope for owners that can retain multiple scenes in one shift sequence. */
+    fun beginRestore(world: World, zoneId: String, sequence: Long, sceneId: Int) =
+        beginRestoreInternal(world, zoneId, sequence, sceneId)
+
+    private fun beginRestoreInternal(world: World, zoneId: String, sequence: Long, sceneId: Int?) {
+        preparations.keys.removeIf { it.world == world.name && it.zoneId == zoneId && it.sequence == sequence &&
+            (sceneId == null || it.sceneId == sceneId) }
+        scenes.keys.filter { it.world == world.name && it.zoneId == zoneId && it.sequence == sequence &&
+            (sceneId == null || it.sceneId == sceneId) }
             .toList().forEach(scenes::remove)
-        completedBuilds.removeIf { it.world == world.name && it.zoneId == zoneId && it.sequence == sequence }
+        scenePositions.keys.removeIf { it.world == world.name && it.zoneId == zoneId && it.sequence == sequence &&
+            (sceneId == null || it.sceneId == sceneId) }
+        completedBuilds.removeIf { it.world == world.name && it.zoneId == zoneId && it.sequence == sequence &&
+            (sceneId == null || it.sceneId == sceneId) }
+        projectionChunks.keys.removeIf { it.scene.world == world.name && it.scene.zoneId == zoneId &&
+            it.scene.sequence == sequence && (sceneId == null || it.scene.sceneId == sceneId) }
         val records = world.loadedChunks.asSequence().flatMap { read(it).orEmpty().asSequence() }
-            .filter { it.zoneId == zoneId && it.sequence == sequence }
+            .filter { it.zoneId == zoneId && it.sequence == sequence && (sceneId == null || it.sceneId == sceneId) }
             .toList()
         cancelBuild(records)
         enqueueRestore(records.sortedByDescending(WorksitePreparedSceneRecord::y))
@@ -230,11 +334,15 @@ internal class WorksitePreparedSceneOwner(
         return key in queuedBuilds || key in queuedRestores
     }
 
+    /** Bounded recovery probe; callers must ensure the relevant chunks are loaded first. */
+    fun hasLoadedSceneRecords(world: World, zoneId: String, sequence: Long, sceneId: Int): Boolean =
+        hasLoadedSceneRecordsInternal(world, zoneId, sequence, sceneId)
+
     /** True while a durable record still owns this position, including an in-flight queue. */
     fun protects(location: Location): Boolean {
         val key = RecordKey(location.world.name, location.blockX, location.blockY, location.blockZ)
-        if (key in queuedBuilds || key in queuedRestores || scenes.values.any { scene ->
-            scene.records.any { it.key() == key }
+        if (key in queuedBuilds || key in queuedRestores || scenePositions.any { (scene, positions) ->
+            scene.world == location.world.name && Triple(location.blockX, location.blockY, location.blockZ) in positions
         }) return true
         if (!location.world.isChunkLoaded(location.blockX shr 4, location.blockZ shr 4)) return false
         return read(location.world.getChunkAt(location.blockX shr 4, location.blockZ shr 4))
@@ -246,7 +354,7 @@ internal class WorksitePreparedSceneOwner(
 
     /** O(1) lifecycle signal for callers waiting for baseline construction. */
     fun isBuilding(zoneId: String, sequence: Long, sceneId: Int? = null): Boolean =
-        buildingSceneCounts.keys.any {
+        (buildingSceneCounts.keys + preparations.keys).any {
             it.zoneId == zoneId && it.sequence == sequence && (sceneId == null || it.sceneId == sceneId)
         }
 
@@ -256,6 +364,7 @@ internal class WorksitePreparedSceneOwner(
         allowed: (WorksitePreparedSceneRecord) -> Boolean,
     ): Int {
         require(limit >= 1) { "Prepared scene block budget must be positive" }
+        processPreparation()
         val restored = processQueue(
             restoreQueue,
             queuedRestores,
@@ -285,8 +394,17 @@ internal class WorksitePreparedSceneOwner(
         val activeRecords = records.filter { record ->
             active(record.zoneId, record.sequence) && isActiveScene(record)
         }
+        val projectionStatus = activeRecords.associate { it.key() to hasActiveProjection(it) }
+        activeRecords.groupBy { it.sceneKey() }.forEach { (sceneKey, sceneRecords) ->
+            projectionChunks[ProjectionChunkKey(sceneKey, chunk.x, chunk.z)] = ProjectionChunkState(
+                records = sceneRecords.size,
+                expected = sceneRecords.first().totalRecords,
+                active = sceneRecords.all { projectionStatus[it.key()] == true },
+            )
+            markProjectionComplete(sceneKey)
+        }
         enqueueBuild(activeRecords.filter { record ->
-            record.sceneKey() !in completedBuilds && !hasActiveProjection(record)
+            record.sceneKey() !in completedBuilds && projectionStatus[record.key()] != true
         })
         enqueueRestore(records.filterNot { it in activeRecords }.sortedByDescending(WorksitePreparedSceneRecord::y))
     }
@@ -301,6 +419,8 @@ internal class WorksitePreparedSceneOwner(
     }
 
     fun clearQueues() {
+        preparations.clear()
+        rejectedPreparations.clear()
         buildQueue.clear()
         restoreQueue.clear()
         queuedBuilds.clear()
@@ -308,8 +428,24 @@ internal class WorksitePreparedSceneOwner(
         buildingKeys.clear()
         buildingSceneCounts.clear()
         completedBuilds.clear()
+        projectionChunks.clear()
+        scenePositions.clear()
         scenes.clear()
         ticketedChunks.entries.toList().forEach { (key, _) -> releaseTicket(key) }
+    }
+
+    private fun processPreparation() {
+        val (key, pending) = preparations.entries.firstOrNull() ?: return
+        val scene = scenes[key] ?: run { preparations.remove(key); return }
+        val records = pending.removeFirst()
+        if (!commit(listOf(scene.copy(records = records)))) {
+            preparations.remove(key)
+            rejectedPreparations += key
+            beginRestore(scene.world, scene.zoneId, scene.sequence)
+            return
+        }
+        enqueueBuild(records)
+        if (pending.isEmpty()) preparations.remove(key)
     }
 
     private fun commit(scenePlans: Collection<WorksitePreparedScene>): Boolean {
@@ -454,8 +590,17 @@ internal class WorksitePreparedSceneOwner(
             .filter { it.zoneId == zoneId && it.sequence == sequence && it.sceneId == sceneId }
             .toList()
 
-    private fun hasLoadedSceneRecords(world: World, zoneId: String, sequence: Long, sceneId: Int): Boolean =
+    private fun hasLoadedSceneRecordsInternal(world: World, zoneId: String, sequence: Long, sceneId: Int): Boolean =
         world.loadedChunks.any { chunk -> read(chunk).orEmpty().any { it.zoneId == zoneId && it.sequence == sequence && it.sceneId == sceneId } }
+
+    /** Decode each distinct palette value once before a recovered scene can become ready. */
+    private fun validateBlockData(records: Collection<WorksitePreparedSceneRecord>): Boolean = runCatching {
+        records.asSequence()
+            .flatMap { sequenceOf(it.originalData, it.activeData) }
+            .distinct()
+            .forEach(blockDataDecoder::decode)
+    }.onFailure { failure -> logger.log(Level.WARNING, "Could not validate prepared scene BlockData", failure) }
+        .isSuccess
 
     private fun markerLocation(world: World, records: List<WorksitePreparedSceneRecord>, marker: String?): Location? =
         marker?.let { wanted -> records.singleOrNull { it.marker == wanted }?.let { Location(world, it.x + 0.5, it.y.toDouble(), it.z + 0.5) } }
@@ -470,6 +615,15 @@ internal class WorksitePreparedSceneOwner(
                 val sceneKey = record.sceneKey()
                 buildingSceneCounts[sceneKey] = (buildingSceneCounts[sceneKey] ?: 0) + 1
             }
+        }
+    }
+
+    private fun markProjectionComplete(sceneKey: SceneKey) {
+        if (sceneKey in completedBuilds) return
+        val chunks = projectionChunks.filterKeys { it.scene == sceneKey }.values
+        val expected = chunks.firstOrNull()?.expected ?: return
+        if (chunks.sumOf(ProjectionChunkState::records) == expected && chunks.all(ProjectionChunkState::active)) {
+            completedBuilds += sceneKey
         }
     }
 

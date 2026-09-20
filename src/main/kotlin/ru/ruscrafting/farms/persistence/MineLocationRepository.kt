@@ -29,10 +29,11 @@ class MineLocationRepository(dataRoot: Path) : AutoCloseable {
             require(zoneId.matches(ZONE_PATTERN)) { "Invalid mine location zone: $zoneId" }
             require(zone.workshop.keys.all(MineLocationKeys::isWorkshop)) { "Unknown mine workshop point" }
             require(zone.workings.keys.all(MineLocationKeys::isWorking)) { "Unknown mine working point" }
+            require(zone.expeditions.keys.all(MineLocationKeys::isExpedition)) { "Unknown mine expedition point" }
             require((zone.workshop.keys + zone.workings.keys).distinct().size == zone.workshop.size + zone.workings.size) {
                 "Duplicate mine point key"
             }
-            (zone.workshop.values + zone.workings.values).forEach { position ->
+            (zone.workshop.values + zone.workings.values + zone.expeditions.values).forEach { position ->
                 // Re-run the domain checks after Gson deserialization, including finite values.
                 require(position.world.matches(WORLD_PATTERN)) { "Invalid mine point world" }
                 require(listOf(position.x, position.y, position.z).all(Double::isFinite)) {

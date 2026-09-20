@@ -7,10 +7,12 @@ import kotlin.math.floor
 object MineLocationKeys {
     val workshop = listOf("ore_input", "ore_crusher", "ore_furnace", "ore_output", "ore_shipping")
     val workings = (1..12).map { "working_$it" }
-    val all = workshop + workings
+    val expeditions = listOf("expedition_gate")
+    val all = workshop + workings + expeditions
 
     fun isWorkshop(value: String): Boolean = value in workshop
     fun isWorking(value: String): Boolean = value in workings
+    fun isExpedition(value: String): Boolean = value in expeditions
     fun isKnown(value: String): Boolean = value in all
 
     fun canonical(raw: String): String? = raw.lowercase().replace('-', '_').takeIf(::isKnown)
@@ -70,26 +72,32 @@ data class MineLocationPosition(
 data class MineZoneLocations(
     val workshop: Map<String, MineLocationPosition> = emptyMap(),
     val workings: Map<String, MineLocationPosition> = emptyMap(),
+    val expeditions: Map<String, MineLocationPosition> = emptyMap(),
 ) {
     init {
         require(workshop.keys.all(MineLocationKeys::isWorkshop)) { "Unknown mine workshop point" }
         require(workings.keys.all(MineLocationKeys::isWorking)) { "Unknown mine working point" }
         require(workshop.size <= MineLocationKeys.workshop.size) { "Too many mine workshop points" }
         require(workings.size <= MineLocationKeys.workings.size) { "Too many mine working points" }
+        require(expeditions.keys.all(MineLocationKeys::isExpedition)) { "Unknown mine expedition point" }
     }
 
     fun point(kind: String): MineLocationPosition? =
-        if (MineLocationKeys.isWorkshop(kind)) workshop[kind] else workings[kind]
+        when { MineLocationKeys.isWorkshop(kind) -> workshop[kind]
+            MineLocationKeys.isWorking(kind) -> workings[kind]
+            else -> expeditions[kind] }
 
     fun without(kind: String): MineZoneLocations = when {
         MineLocationKeys.isWorkshop(kind) -> copy(workshop = workshop - kind)
         MineLocationKeys.isWorking(kind) -> copy(workings = workings - kind)
+        MineLocationKeys.isExpedition(kind) -> copy(expeditions = expeditions - kind)
         else -> this
     }
 
     fun with(kind: String, position: MineLocationPosition): MineZoneLocations = when {
         MineLocationKeys.isWorkshop(kind) -> copy(workshop = workshop + (kind to position))
         MineLocationKeys.isWorking(kind) -> copy(workings = workings + (kind to position))
+        MineLocationKeys.isExpedition(kind) -> copy(expeditions = expeditions + (kind to position))
         else -> error("Unknown mine point: $kind")
     }
 }
@@ -105,7 +113,7 @@ data class MineLocations(
     fun without(zoneId: String, kind: String): MineLocations {
         val zone = zones[zoneId] ?: return this
         val remaining = zone.without(kind)
-        val updated = if (remaining.workshop.isEmpty() && remaining.workings.isEmpty()) zones - zoneId else zones + (zoneId to remaining)
+        val updated = if (remaining.workshop.isEmpty() && remaining.workings.isEmpty() && remaining.expeditions.isEmpty()) zones - zoneId else zones + (zoneId to remaining)
         return copy(zones = updated)
     }
 

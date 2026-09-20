@@ -20,6 +20,7 @@ class MineLocationRepositoryTest : FunSpec({
                     workings = mapOf(
                         "working_1" to MineLocationPosition("rc_atelier_compact_mine", 72.5, 97.0, 27.5),
                     ),
+                    expeditions = mapOf("expedition_gate" to MineLocationPosition("rc_atelier_compact_mine", 68.5, 111.0, 27.5)),
                 ),
             ),
         )

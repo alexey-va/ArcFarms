@@ -17,6 +17,7 @@ enum class MinePhase {
 enum class MineIncidentType {
     CAVE_IN, GAS_LEAK, FLOODING, TRACK_DAMAGE, CRYSTAL_RESONANCE, CREATURE_NEST, POWER_FAILURE, LOST_MINER,
     TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP,
+    LAST_DESCENT, DRILLING_ARK, DEAD_FACTORY,
 }
 
 data class MineOrder(val id: String, val incidents: List<MineIncidentType>) {
@@ -63,6 +64,8 @@ data class MineIncidentState(
     val scenarioPlacement: MineScenarioPlacement? = null,
     /** Optional for legacy saves; lateral workings retain their own physical placement and stage. */
     val working: MineWorkingState? = null,
+    /** Optional independent off-site expedition; null is valid until its scene is prepared. */
+    val expedition: ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionState? = null,
 ) {
     init {
         require(required in 1..100_000 && progress in 0..required)

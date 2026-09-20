@@ -46,6 +46,7 @@ internal class MineIncidentSet(
     private val workings: ru.ruscrafting.farms.paper.mine.working.MineWorkingController,
     private val workshop: ru.ruscrafting.farms.paper.mine.workshop.MineOreWorkshopController,
     private val access: WorksiteAccessPort,
+    private val expeditions: ru.ruscrafting.farms.paper.mine.expedition.MineExpeditionController? = null,
 ) {
     /** Farm-style admin switch: retire the current scene before forcing the requested incident. */
     fun forceAdmin(runtime: MineRuntime, type: ru.ruscrafting.farms.domain.MineIncidentType, now: Long): Boolean {
@@ -72,6 +73,7 @@ internal class MineIncidentSet(
         if (runtime.state.incident?.type != ru.ruscrafting.farms.domain.MineIncidentType.ORE_WORKSHOP) workings.tick(runtime, now)
         lostMiner.tick(runtime, now)
         workshop.tick(runtime, participants, now)
+        expeditions?.tick(runtime, now)
         gasLeak.tick(runtime, participants, now)
         caveIn.reconcile(runtime)
         trackDamage.reconcile(runtime)
@@ -83,16 +85,18 @@ internal class MineIncidentSet(
         lostMiner.reconcileMissing(runtime)
     }
 
-    fun process(): Int = lostMiner.process() + workings.process()
+    fun process(): Int = lostMiner.process() + workings.process() + (expeditions?.process() ?: 0)
 
     fun blocksOreSupply(runtime: MineRuntime): Boolean = workings.blocksOreSupply(runtime)
 
-    fun protectsTemporaryBlock(location: Location): Boolean = flooding.protects(location) || workings.protects(location) || lostMiner.protects(location)
+    fun protectsTemporaryBlock(location: Location): Boolean = expeditions?.protects(location) == true ||
+        flooding.protects(location) || workings.protects(location) || lostMiner.protects(location)
 
     fun retainOnTeleport(player: Player, destination: Location): Boolean =
-        workings.retains(player, destination) || lostMiner.retainOnTeleport(player, destination)
+        expeditions?.retains(player, destination) == true || workings.retains(player, destination) || lostMiner.retainOnTeleport(player, destination)
 
     fun onInteract(event: PlayerInteractEvent): Boolean {
+        if (expeditions?.onInteract(event) == true) return true
         val clicked = event.clickedBlock
         val runtime = clicked?.location?.let(registry::at)
         if (runtime != null && !canUseMineBlock(event.player, runtime)) {
@@ -111,6 +115,7 @@ internal class MineIncidentSet(
     fun onBucketFill(event: org.bukkit.event.player.PlayerBucketFillEvent): Boolean = flooding.onBucketFill(event)
 
     fun onBreak(event: BlockBreakEvent): Boolean {
+        if (expeditions?.onBreak(event) == true) return true
         val runtime = registry.at(event.block.location)
         if (runtime != null && !canUseMineBlock(event.player, runtime)) {
             event.isCancelled = true
@@ -120,6 +125,7 @@ internal class MineIncidentSet(
     }
 
     fun canMine(player: Player, block: org.bukkit.block.Block): Boolean {
+        if (expeditions?.canMine(player, block) == true) return true
         val runtime = registry.at(block.location)
         if (runtime != null && !canUseMineBlock(player, runtime)) return false
         return workings.canMine(player, block) || caveIn.canMine(player, block)
@@ -128,6 +134,7 @@ internal class MineIncidentSet(
     fun onMove(to: Location, player: Player): Boolean = lostMiner.onMove(to, player)
 
     fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean {
+        if (expeditions?.onInteractEntity(event) == true) return true
         if (workshop.onInteractEntity(event, registry.snapshot()) || workings.onInteractEntity(event)) return true
         val identity = objectiveMarkers.identity(event.rightClicked)
         if (identity == null || !identity.kind.isObjectiveMarkerHitbox) return lostMiner.onInteractEntity(event)
@@ -168,6 +175,7 @@ internal class MineIncidentSet(
         trackDamage.releasePlayer(player.uniqueId)
         lostMiner.releasePlayer(player, reason)
         workings.releasePlayer(player, reason)
+        expeditions?.releasePlayer(player, reason)
     }
 
     fun isActive(identity: ServiceItemIdentity): Boolean =
@@ -192,17 +200,18 @@ internal class MineIncidentSet(
             registry.snapshot().forEach(::abortIncompatibleObjective)
             lostMiner.activateLoadedState()
             workings.reconcileLoaded()
+            expeditions?.reconcileLoaded()
             registry.snapshot().forEach { runtime ->
                 caveIn.reconcile(runtime)
                 flooding.reconcile(runtime)
                 powerFailure.reconcile(runtime)
                 reconcileObjectiveMarkers(runtime)
             }
-        } else { lostMiner.onChunkLoad(chunk); workings.onChunkLoad(chunk) }
+        } else { lostMiner.onChunkLoad(chunk); workings.onChunkLoad(chunk); expeditions?.onChunkLoad(chunk) }
         return journal.restoreOrphans(registry.snapshot(), chunk)
     }
 
-    fun beforeReload() { workings.beforeReload(); workshop.cleanup() }
+    fun beforeReload() { workings.beforeReload(); workshop.cleanup(); expeditions?.beforeReload() }
 
     fun cleanup() {
         registry.snapshot().forEach { runtime ->
@@ -218,6 +227,7 @@ internal class MineIncidentSet(
         lostMiner.clearQueues()
         workings.cleanup()
         workshop.cleanup()
+        expeditions?.cleanup()
     }
 
     fun guardMovement(event: org.bukkit.event.player.PlayerMoveEvent): Boolean {
@@ -225,15 +235,17 @@ internal class MineIncidentSet(
         return workings.guardMovement(event)
     }
     fun updateVisuals(now: Long) {
+        expeditions?.updateVisuals(now)
         registry.snapshot().forEach { runtime ->
             if (runtime.state.incident?.type == ru.ruscrafting.farms.domain.MineIncidentType.ORE_WORKSHOP) {
                 workshop.tick(runtime, runtime.region.world.players, now)
             }
         }
     }
-    fun recoverPlayer(player: Player) { workings.recover(player); lostMiner.recover(player) }
+    fun recoverPlayer(player: Player) { workings.recover(player); lostMiner.recover(player); expeditions?.recover(player) }
 
     private fun clearActive(runtime: MineRuntime) {
+        expeditions?.retire(runtime)
         if (runtime.state.incident?.type == ru.ruscrafting.farms.domain.MineIncidentType.ORE_WORKSHOP) workshop.cleanup(runtime)
         if (runtime.state.incident?.working != null) workings.retire(runtime)
         runtime.state.incident?.serviceLeases?.values?.toSet().orEmpty().forEach(trackDamage::releasePlayer)

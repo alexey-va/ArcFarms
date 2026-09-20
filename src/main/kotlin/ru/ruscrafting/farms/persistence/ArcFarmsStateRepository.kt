@@ -18,6 +18,7 @@ import ru.ruscrafting.farms.domain.PendingFarmReward
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineResource
 import ru.ruscrafting.farms.domain.MineShiftState
+import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionEngine
 import ru.ruscrafting.farms.domain.MAX_FARM_PATCH_PLOTS
 import ru.ruscrafting.farms.domain.MAX_FARM_INCIDENTS
 import ru.ruscrafting.farms.domain.MAX_FARM_SPECIAL_PLOTS
@@ -594,10 +595,25 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
 
         private fun validateMine(mine: MineShiftState) {
             validateSequenceAndTimes(mine.sequence, mine.startedAt, mine.cooldownEndsAt)
+            require(mine.incident?.working == null || mine.incident.expedition == null) {
+                "Mine incident cannot carry both lateral-working and expedition state"
+            }
             mine.incident?.working?.let { working ->
                 working.validate()
                 require(ru.ruscrafting.farms.domain.MineWorkingEngine.supports(mine.incident.type)) {
                     "Lateral working state belongs to an incompatible mine incident"
+                }
+            }
+            mine.incident?.expedition?.let { expedition ->
+                expedition.validate()
+                require(MineExpeditionEngine.supports(mine.incident.type)) {
+                    "Expedition state belongs to an incompatible mine incident"
+                }
+                require(mine.incident.required == MineExpeditionEngine.required(mine.incident.type)) {
+                    "Expedition incident required count is inconsistent"
+                }
+                require(mine.incident.progress == MineExpeditionEngine.progress(mine.incident.type, expedition)) {
+                    "Expedition incident progress is inconsistent"
                 }
             }
             require(

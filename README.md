@@ -350,6 +350,23 @@ walk three laps, heat and quench at the furnace, then carry each of three
 billets to shipping. Service items are temporary work equipment and do not
 become ordinary loot.
 
+Three off-site expeditions open through the glowing `expedition_gate` point.
+**The Last Descent** takes a broad, open-front lift into a geological shaft,
+with counterweight cranks, carried power cells and a deep engine. **Drilling
+Ark** sends a tracked machine through branching caves: load fuel, clear its
+jammed drill, refill coolant and bring crystal cores aboard before returning.
+**The Dead Factory** connects a waterwheel, furnace, casting mould and gantry:
+turn valves by walking around the cranks, carry fuel, catch the furnace signal,
+pour metal and install the casting. Interactable targets glow; carried loads,
+rotating machinery and the crane are visible in the world.
+
+The scenes use deterministic noise geology and authored industrial landmarks.
+Their routes, machine sweeps and station clearances are reserved before detail
+placement. A completed location remains for at least one minute, then retires
+when players have moved clear; a five-minute deadline includes a warning.
+Temporary cargo and scenery produce no ordinary loot. See
+[`docs/mine-expeditions.md`](docs/mine-expeditions.md) for setup and verification.
+
 The source controller, scheduler, component graph, and domain lifecycle are
 wired in the current tree. The release evidence is recorded in
 [`docs/mine-scenarios.md`](docs/mine-scenarios.md). World placement, recovery of
@@ -478,7 +495,7 @@ are available through commands such as `/arcfarms admin point <zone> help`,
   `processing` is the centre of the whole workshop: stand on a clear 9×5
   platform and face its front. ArcFarms validates the footprint and shows its
   outline plus the input, mechanism, and output columns immediately.
-- `/arcfarms admin point <minezone> <ore_input|ore_crusher|ore_furnace|ore_output|ore_shipping|working_1..working_12>` —
+- `/arcfarms admin point <minezone> <ore_input|ore_crusher|ore_furnace|ore_output|ore_shipping|working_1..working_12|expedition_gate>` —
   save the player-feet location and round the facing yaw to a cardinal
   direction for a mine entrance or fixed workshop station. These locations can
   be adjusted by administrators inside the mine region.

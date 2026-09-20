@@ -30,10 +30,12 @@ internal class MineGuidanceSource(
     private val clock: () -> Long = System::currentTimeMillis,
     private val workingHint: (MineRuntime, Player, Long) -> Component? = { _, _, _ -> null },
     private val workingTargets: (MineRuntime, Player) -> List<WorksiteGuidanceTarget> = { _, _ -> emptyList() },
+    private val expeditionParticipants: () -> Collection<Player> = { emptyList() },
+    private val expeditionRuntime: (Player) -> MineRuntime? = { null },
 ) : WorksiteGuidanceSource {
     override fun participants(): Collection<Player> = registry.snapshot().flatMap { runtime ->
         runtime.region.world.players.filter { runtimeFor(it) === runtime }
-    }.distinctBy(Player::getUniqueId)
+    }.plus(expeditionParticipants()).distinctBy(Player::getUniqueId)
 
     override fun view(playerId: UUID): WorksiteGuidanceView? {
         val player = Bukkit.getPlayer(playerId) ?: return null
@@ -101,7 +103,9 @@ internal class MineGuidanceSource(
         MineResourceText.name(locale, resource, player)
 
     private fun targets(player: Player, runtime: MineRuntime): List<WorksiteGuidanceTarget> {
-        if (runtime.state.incident?.working != null) return workingTargets(runtime, player)
+        if (runtime.state.incident?.let { it.working != null ||
+                ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionEngine.supports(it.type) } == true)
+            return workingTargets(runtime, player)
         if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.MINING) return emptyList()
         val playerId = player.uniqueId
         val objective = runtime.state.objective?.targets.orEmpty().filter { target ->
@@ -123,7 +127,7 @@ internal class MineGuidanceSource(
         )
     }
 
-    private fun runtimeFor(player: Player): MineRuntime? = registry.forAudience(player.location)
+    private fun runtimeFor(player: Player): MineRuntime? = expeditionRuntime(player) ?: registry.forAudience(player.location)
 
     private fun WorksitePosition.guidance(id: String, role: ObjectiveTargetRole): WorksiteGuidanceTarget? {
         val world = Bukkit.getWorld(world) ?: return null

@@ -156,4 +156,48 @@ class WorksitePreparedSceneOwnerMockBukkitTest : FunSpec({
         world.getBlockAt(0, 64, 0).blockData.asString shouldBe "minecraft:farmland[moisture=7]"
         prepared.hasPendingBlock(plan.start) shouldBe false
     }
+
+    test("incremental preparation remains building until every journal slice is committed") {
+        val prepared = owner()
+        val cells = (0..2).map { scene(3, it) }
+        val combined = cells.first().copy(records = cells.flatMap { it.records }.map { it.copy(totalRecords = 3) })
+        prepared.prepareIncrementally(combined, recordsPerSlice = 1) shouldBe true
+        prepared.isBuilding("mine_zone", 12, 3) shouldBe true
+        prepared.process(1) { true } shouldBe 1
+        world.getBlockAt(0, 64, 0).type shouldBe Material.AIR
+        world.getBlockAt(2, 64, 0).type shouldBe Material.FARMLAND
+        prepared.isBuilding("mine_zone", 12, 3) shouldBe true
+        prepared.process(1) { true } shouldBe 1
+        prepared.process(1) { true } shouldBe 1
+        prepared.isBuilding("mine_zone", 12, 3) shouldBe false
+        combined.ready shouldBe true
+    }
+
+    test("retiring an incomplete preparation cancels future writes and restores committed originals") {
+        val prepared = owner()
+        val cells = (0..2).map { scene(3, it) }
+        val combined = cells.first().copy(records = cells.flatMap { it.records }.map { it.copy(totalRecords = 3) })
+        prepared.prepareIncrementally(combined, recordsPerSlice = 1) shouldBe true
+        prepared.process(1) { true } shouldBe 1
+        prepared.beginRestore(world, "mine_zone", 12)
+        repeat(5) { prepared.process(1) { true } }
+        cells.forEach { cell -> cell.start.block.blockData.asString shouldBe "minecraft:farmland[moisture=7]" }
+        prepared.isBuilding("mine_zone", 12, 3) shouldBe false
+        prepared.clearQueues()
+        leases shouldBe emptySet()
+    }
+
+    test("a crash between journal slices restores only committed cells without claiming untouched blocks") {
+        val prepared = owner()
+        val cells = (0..2).map { scene(3, it) }
+        val combined = cells.first().copy(records = cells.flatMap { it.records }.map { it.copy(totalRecords = 3) })
+        prepared.prepareIncrementally(combined, recordsPerSlice = 1) shouldBe true
+        prepared.process(1) { true } shouldBe 1
+        prepared.clearQueues()
+        val restarted = owner()
+        restarted.onChunkLoad(world.getChunkAt(0, 0), { _, _ -> false })
+        restarted.process(5) { true } shouldBe 1
+        cells.forEach { cell -> cell.start.block.blockData.asString shouldBe "minecraft:farmland[moisture=7]" }
+        restarted.protects(combined.start) shouldBe false
+    }
 })

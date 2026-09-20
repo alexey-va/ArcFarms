@@ -30,6 +30,7 @@ internal class MinePointService(
             else -> MineZoneLocations(
                 workshop = fallback.workshop + persisted.workshop,
                 workings = fallback.workings + persisted.workings,
+                expeditions = fallback.expeditions + persisted.expeditions,
             )
         }
     }

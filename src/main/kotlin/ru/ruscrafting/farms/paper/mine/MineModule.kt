@@ -149,6 +149,10 @@ internal class MineModule(
     override fun onBucketFill(event: org.bukkit.event.player.PlayerBucketFillEvent): Boolean = incidents.onBucketFill(event)
 
     override fun onBlockDamage(event: BlockDamageEvent): Boolean {
+        if (registry.at(event.block.location) == null && incidents.protectsTemporaryBlock(event.block.location)) {
+            event.isCancelled = !incidents.canMine(event.player, event.block)
+            return true
+        }
         val runtime = registry.at(event.block.location) ?: return false
         if (access.isAdminEditing(event.player)) return false
         if (access.hasAccess(event.player, runtime.settings.permission) && incidents.canMine(event.player, event.block)) {
@@ -167,12 +171,14 @@ internal class MineModule(
     }
 
     override fun onBreakLowest(event: BlockBreakEvent): Boolean {
+        if (incidents.protectsTemporaryBlock(event.block.location)) { event.isCancelled = true; return true }
         if (registry.at(event.block.location) == null || access.isAdminEditing(event.player)) return false
         event.isCancelled = true
         return true
     }
 
     override fun onBlockPlace(event: BlockPlaceEvent): Boolean {
+        if (incidents.protectsTemporaryBlock(event.blockPlaced.location)) { event.isCancelled = true; return true }
         val runtime = registry.at(event.blockPlaced.location) ?: return false
         if (incidents.protectsTemporaryBlock(event.blockPlaced.location)) { event.isCancelled = true; return true }
         if (access.isAdminEditing(event.player)) {
@@ -188,8 +194,8 @@ internal class MineModule(
 
     override fun onInteract(event: PlayerInteractEvent, clicked: Block, player: Player): Boolean {
         val runtime = registry.at(clicked.location)
-        if (event.action == org.bukkit.event.block.Action.LEFT_CLICK_BLOCK && runtime != null &&
-            !access.isAdminEditing(player) && access.hasAccess(player, runtime.settings.permission) && incidents.canMine(player, clicked)) {
+        if (event.action == org.bukkit.event.block.Action.LEFT_CLICK_BLOCK &&
+            !access.isAdminEditing(player) && (runtime == null || access.hasAccess(player, runtime.settings.permission)) && incidents.canMine(player, clicked)) {
             event.setUseInteractedBlock(org.bukkit.event.Event.Result.ALLOW)
             event.setUseItemInHand(org.bukkit.event.Event.Result.ALLOW)
             return true

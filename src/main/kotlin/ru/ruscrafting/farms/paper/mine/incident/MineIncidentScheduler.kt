@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.paper.mine.incident
 
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MinePhase
+import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionEngine
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.incident.cavein.MineCaveInIncident
 import ru.ruscrafting.farms.paper.mine.incident.creature.MineCreatureNestIncident
@@ -27,6 +28,7 @@ internal class MineIncidentScheduler(
     private val diagnostics: MineIncidentPlacementDiagnostics,
     private val state: WorksiteStatePort,
     private val workshop: ru.ruscrafting.farms.paper.mine.workshop.MineOreWorkshopController,
+    private val expeditions: ru.ruscrafting.farms.paper.mine.expedition.MineExpeditionController? = null,
 ) {
     private val retryAfter = mutableMapOf<String, Long>()
     private val diagnosed = mutableSetOf<String>()
@@ -73,6 +75,8 @@ internal class MineIncidentScheduler(
             MineIncidentType.TUNNEL_DRIVE, MineIncidentType.RAIL_EXTENSION -> workings.start(runtime, type, now)
             MineIncidentType.ORE_WORKSHOP -> workshop.start(runtime, ru.ruscrafting.farms.domain.MineWorkingEngine.BATCHES *
                 (ru.ruscrafting.farms.domain.MineWorkingEngine.CRUSH_STROKES + 3))
+            MineIncidentType.LAST_DESCENT, MineIncidentType.DRILLING_ARK, MineIncidentType.DEAD_FACTORY ->
+                expeditions?.start(runtime, type, now) == true
         }
         if (started) {
             diagnosed.remove(key)
@@ -89,6 +93,9 @@ internal class MineIncidentScheduler(
         return when {
             blocker != null -> MineIncidentPlacementReport(type, required(type), 0, 0, mapOf(blocker to 1))
             type == MineIncidentType.CAVE_IN -> caveIn.diagnostics(runtime)
+            MineExpeditionEngine.supports(type) -> if (expeditions?.configured(runtime) == true)
+                MineIncidentPlacementReport(type, 1, 1, 1, emptyMap())
+                else MineIncidentPlacementReport(type, 1, 0, 0, mapOf("expedition_gate_missing" to 1))
             type == MineIncidentType.ORE_WORKSHOP -> if (workshop.configured(runtime)) MineIncidentPlacementReport(type, 1, 1, 1, emptyMap())
                 else MineIncidentPlacementReport(type, 1, 0, 0, mapOf("workshop_points_missing" to 1))
             ru.ruscrafting.farms.domain.MineWorkingEngine.supports(type) -> workings.diagnostics(runtime, type)
@@ -137,6 +144,7 @@ internal class MineIncidentScheduler(
             MineIncidentType.CREATURE_NEST,
             MineIncidentType.LOST_MINER,
             MineIncidentType.TUNNEL_DRIVE, MineIncidentType.RAIL_EXTENSION, MineIncidentType.ORE_WORKSHOP,
+            MineIncidentType.LAST_DESCENT, MineIncidentType.DRILLING_ARK, MineIncidentType.DEAD_FACTORY,
         )
 
         private fun required(type: MineIncidentType): Int = when (type) {
@@ -144,6 +152,8 @@ internal class MineIncidentScheduler(
             MineIncidentType.FLOODING -> 1
             MineIncidentType.CREATURE_NEST -> 3
             MineIncidentType.LOST_MINER -> 1
+            MineIncidentType.LAST_DESCENT, MineIncidentType.DRILLING_ARK, MineIncidentType.DEAD_FACTORY ->
+                MineExpeditionEngine.required(type)
             else -> 2
         }
 
@@ -160,6 +170,9 @@ internal class MineIncidentScheduler(
             MineIncidentType.CREATURE_NEST to 2,
             MineIncidentType.POWER_FAILURE to 2,
             MineIncidentType.LOST_MINER to 3,
+            MineIncidentType.LAST_DESCENT to 2,
+            MineIncidentType.DRILLING_ARK to 2,
+            MineIncidentType.DEAD_FACTORY to 2,
         )
     }
 }

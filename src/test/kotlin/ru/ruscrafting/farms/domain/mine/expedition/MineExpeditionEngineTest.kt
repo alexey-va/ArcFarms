@@ -1,0 +1,98 @@
+package ru.ruscrafting.farms.domain.mine.expedition
+
+import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.shouldBe
+import ru.ruscrafting.farms.domain.MineIncidentType
+
+class MineExpeditionEngineTest : FunSpec({
+    val placement = MineExpeditionPlacement("rc_arcfarms_expeditions", 100, -32, 200, 73L)
+
+    test("required progress and idempotent descent actions are deterministic") {
+        MineExpeditionEngine.required(MineIncidentType.LAST_DESCENT) shouldBe 12
+        var state = MineExpeditionEngine.initial(MineIncidentType.LAST_DESCENT, placement)
+        MineExpeditionEngine.action(state) shouldBe MineExpeditionAction.MOTION
+        MineExpeditionEngine.advanceMotion(state, routeSteps = 2, steps = 1).state.motionStep shouldBe 1
+        val middle = MineExpeditionEngine.advanceMotion(state, routeSteps = 2, steps = 2)
+        middle.accepted shouldBe true
+        state = middle.state
+        state.stage shouldBe MineExpeditionStage.DESCENT_COUNTERWEIGHTS
+        MineExpeditionEngine.progress(MineIncidentType.LAST_DESCENT, state) shouldBe 1
+
+        state = (0..2).fold(state) { current, target ->
+            MineExpeditionEngine.completeTarget(current, target, 100L).state
+        }
+        state.stage shouldBe MineExpeditionStage.DESCENT_POWER_CELLS
+        MineExpeditionEngine.completeTarget(state, 0, 101L).accepted shouldBe true
+        state = (0..2).fold(state) { current, target ->
+            MineExpeditionEngine.completeTarget(current, target, 104L).state
+        }
+        state.stage shouldBe MineExpeditionStage.DESCENT_BOTTOM
+        MineExpeditionEngine.completeTarget(state, 0, 105L).accepted shouldBe false
+        state = MineExpeditionEngine.advanceMotion(state, routeSteps = 1).state
+        state.stage shouldBe MineExpeditionStage.DESCENT_CORE_VALVES
+        state = (0..2).fold(state) { current, target ->
+            MineExpeditionEngine.completeTarget(current, target, 106L).state
+        }
+        state.stage shouldBe MineExpeditionStage.DESCENT_ENGINE
+        val finished = MineExpeditionEngine.completeTarget(state, 0, 107L)
+        finished.finished shouldBe true
+        MineExpeditionEngine.progress(MineIncidentType.LAST_DESCENT, finished.state) shouldBe 12
+    }
+
+    test("ark branch is persisted and wrong stage or duplicate work is rejected") {
+        var state = MineExpeditionEngine.initial(MineIncidentType.DRILLING_ARK, placement)
+        state = (0..1).fold(state) { current, target ->
+            MineExpeditionEngine.completeTarget(current, target, 100L).state
+        }
+        state = MineExpeditionEngine.advanceMotion(state, routeSteps = 3, steps = 3).state
+        state.stage shouldBe MineExpeditionStage.ARK_BRANCH
+        MineExpeditionEngine.completeTarget(state, 0, 100L).accepted shouldBe false
+        state = MineExpeditionEngine.chooseBranch(state, 2).state
+        state.branch shouldBe 2
+        state.stage shouldBe MineExpeditionStage.ARK_JAM
+        MineExpeditionEngine.chooseBranch(state, 1).accepted shouldBe false
+        val first = MineExpeditionEngine.completeTarget(state, 0, 101L)
+        first.accepted shouldBe true
+        MineExpeditionEngine.completeTarget(first.state, 0, 102L).accepted shouldBe false
+        MineExpeditionEngine.progress(MineIncidentType.DRILLING_ARK, first.state) shouldBe 5
+    }
+
+    test("ark completes every persisted stage including survey cores and home motion") {
+        var state = MineExpeditionEngine.initial(MineIncidentType.DRILLING_ARK, placement)
+        state = (0..1).fold(state) { current, target -> MineExpeditionEngine.completeTarget(current, target, 100L).state }
+        state = MineExpeditionEngine.advanceMotion(state, routeSteps = 2, steps = 2).state
+        state = MineExpeditionEngine.chooseBranch(state, 1).state
+        state = (0..2).fold(state) { current, target -> MineExpeditionEngine.completeTarget(current, target, 101L).state }
+        state = (0..1).fold(state) { current, target -> MineExpeditionEngine.completeTarget(current, target, 102L).state }
+        state = MineExpeditionEngine.advanceMotion(state, routeSteps = 2, steps = 2).state
+        state = (0..2).fold(state) { current, target -> MineExpeditionEngine.completeTarget(current, target, 103L).state }
+        val finished = MineExpeditionEngine.advanceMotion(state, routeSteps = 2, steps = 2)
+        finished.finished shouldBe true
+        finished.state.stage shouldBe MineExpeditionStage.COMPLETE
+        MineExpeditionEngine.progress(MineIncidentType.DRILLING_ARK, finished.state) shouldBe 14
+    }
+
+    test("factory heat window can be reheated after a restart or missed attempt") {
+        var state = MineExpeditionEngine.initial(MineIncidentType.DEAD_FACTORY, placement)
+        state = (0..2).fold(state) { current, target ->
+            MineExpeditionEngine.completeTarget(current, target, 100L).state
+        }
+        state = (0..2).fold(state) { current, target ->
+            MineExpeditionEngine.completeTarget(current, target, 200L).state
+        }
+        state.stage shouldBe MineExpeditionStage.FACTORY_HEAT
+        MineExpeditionEngine.canFinishHeat(state, 4_199L) shouldBe false
+        MineExpeditionEngine.canFinishHeat(state, 4_200L) shouldBe true
+        MineExpeditionEngine.completeTarget(state, 0, 9_000L).accepted shouldBe false
+
+        state = MineExpeditionEngine.reheat(state, 9_000L)
+        val afterRestart = state.copy()
+        MineExpeditionEngine.canFinishHeat(afterRestart, 13_000L) shouldBe true
+        state = MineExpeditionEngine.completeTarget(afterRestart, 0, 13_000L).state
+        state = MineExpeditionEngine.completeTarget(state, 0, 13_001L).state
+        state = MineExpeditionEngine.completeTarget(state, 0, 13_002L).state
+        val finished = MineExpeditionEngine.completeTarget(state, 0, 13_003L)
+        finished.finished shouldBe true
+        MineExpeditionEngine.progress(MineIncidentType.DEAD_FACTORY, finished.state) shouldBe 10
+    }
+})
