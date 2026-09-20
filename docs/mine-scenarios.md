@@ -50,14 +50,15 @@ strokes, heat for 4 seconds, right-click the furnace during the following
 4-second cooling window, then carry the billet from `ore_output` to
 `ore_shipping`. A missed window reheats the same batch.
 
-The pending `.40` working/rescue contract specifies at least 60 seconds of
-grace, an 8-block clear area around the cave, a five-minute deadline and
-a 15-second warning. Entering the scene has no cancel action. The scene
-brightness contract is 15/15. The lateral working geometry is a 24-cell
-winding cave in the bounded region `x=72..87, z=12..41`, widened into large
-chambers with decoration. Rescue remains a separate off-site noise cave; its
-dimensions are unchanged by this working geometry. These are geometry rules,
-not a final client-visual claim.
+The active working contract provides at least 60 seconds of grace, an 8-block
+clear area around the cave, a five-minute deadline and a 15-second warning.
+Entering the scene has no cancel action. The scene brightness contract is
+15/15. The lateral working geometry is a 24-cell cave including the entry,
+with noise width 7–9, height 5–7 and maximum forward 14 in the bounded region
+`x=72..87, z=12..41`; it opens into large chambers with decoration. Rescue
+remains a separate off-site noise cave with unchanged dimensions; its QA
+lifecycle is documented below. These are geometry rules, not a final
+client-visual claim.
 
 ## Scheduling, points and recovery
 
@@ -93,65 +94,128 @@ unchanged, including the source `old_shafts` completion of 220 XP and 4 iron.
 
 ## Verification and delivery state
 
-The `.39` source cutoff is `a9e0ec74` and is pushed. CI run `35473091522` and
-Paper E2E run `35473091467` both succeeded; the focused `.39` report has 153
-passes and one known skip. `.39` is the historical QA and activated build,
-while `.40` is the pending final release because of the transient guidance and
-grace fixes.
+The final source cutoff is `b167f5a7d8bee2cf8d7e6f1fe90c1067ed76b907` and is
+pushed. The final report has 167 tests, 166 passes, 0 failures and 1 known
+skip. CI run `35475982937` and Paper E2E run `35475982915` both succeeded.
 
-ArcFarms `.39` reached `classic` at 22:32:55 UTC; the parallel ARC classic
-restart completed at 22:35 UTC. Health reported ready, the disk hash matched
-`dcb09a909d6848dd3be9119cf346c720ef2585ea35c985a6d6e53b392c8a8259`, and the
-server had one ArcFarms root JAR of 14,242,670 bytes. The process changed from
-PID 2913811 to 2920519.
+ArcFarms `0.40.40` is active on `classic`: activation was observed on 2026-09-19 at 23:32:24
+UTC, the server reported ready at 23:32:54 UTC, PID `2953352`, JAR SHA-256
+`6eb8a6d3f66d750848462984a1bda956ca8633852e61aac2702c1dfcf9d0121d`, size
+14,267,145 bytes. The final JAR transaction is
+`jar-20260919T233015Z-44971`; locale transaction
+`push-20260919T231439Z-36106` was classic-only.
 
-Native `.39` checks passed for the following actions:
+A subsequent coordinated ARC restart completed at 23:49:29 UTC; that server
+PID was `2963053`, and ArcFarms `0.40.40` remained enabled with native mine
+workings available.
 
-- `CAVE_IN`: 56/56 survival-mode interactions with an iron pick; each
-  per-block glow vanished when cleared and the final mined count stayed 35.
-- `FLOODING`: 30/30 owned water blocks at Y=83 were drained with native
-  `use_item` while holding `Bucket`, ending as empty `Bucket`; 21 nearby Y=81 blocks
-  were pre-existing and outside the incident footprint. The order returned to
-  `MINING` with progress 35/448.
-- `TRACK_DAMAGE`: 18/18 native rail-repair interactions passed.
-- `TUNNEL_DRIVE`: native QA bored 90/93 actions. The remaining three support
-  actions were partially performed by another player, so this is not a solo
-  completion claim.
-- `CREATURE_NEST`: rotation nonce 89 produced nests at `(9,115,42)`,
-  `(77,101,50)` and `(48,99,9)`; nonce 90 produced a different set at
-  `(74,115,37)`, `(11,99,46)` and `(47,110,83)`. At the first new nest,
-  client entity `3113` was the glowing `mangrove_roots` nest display and Husk
-  `3112` reported glowing. Native nest-kill was not tested in this pass; old
-  combat behavior is unchanged.
-- `LOST_MINER`: native click-entry, native exit and spectator flight from
-  Y=87 to Y=98 were confirmed by server NBT. The live route reached
-  `(43.5,87,102.5)`, then `(53.33,87,110.33)`; the villager target `3066` was
-  selected with mouse 0, hand 0 at 1.97 blocks, and the order returned to
-  `MINING` with progress 35/448. Full goal click passed natively, but `.39`
-  still reproduces immediate eject after completion; the new grace fix is pending.
-  Creative mode was used only to protect the QA actor from mobs, not to replace
-  the rescue combat interaction.
+After the ARC174 restart, the current runtime became ready at 00:09:41 UTC on
+2026-09-20 with PID `2983408`. The remote JAR hash remained
+`6eb8a6d3f66d750848462984a1bda956ca8633852e61aac2702c1dfcf9d0121d`, size
+14,267,145 bytes; the plugins API reported ArcFarms `0.40.40` enabled and OK,
+with server API at 20 TPS and Redis connected.
 
-Earlier native `0.40.38` checks remain historical QA: the workshop completed
-three batches in 18 actions; gas required two clicks among four candidate vents,
-showed CLOUD and SMOKE, changed health from 20 to 16.2 and applied Nausea NBT;
-resonance passed two target clicks with glow. The `.39` live workshop carry
-readback used input `Interaction` `1965` and a glowing `raw_iron` `ItemDisplay`
-`3128` at `(40.5,112,24.75)`, with player feet at `(40.5,111,25.5)`: the
-chest carry is exactly +1 Y and the old below-feet issue is fixed. Full `.40`
-workflow readback is still pending.
+Native `0.40.40` working readback covered the `ORE_WORKSHOP` to
+`RAIL_EXTENSION` transition with nonce 92 and one title. In survival, the
+player entered at `(70.5,111,27.5)` and walked continuously to
+`(79.34648,111,27.5)` without rollback; server NBT confirmed the path. Scene
+brightness NBT was 15/15. Visual inspection of geometry version 3 passed with
+the full pack; valid captures are
+[working-eye.png](https://github.com/alexey-va/ruscrafting-ops/blob/main/docs/assets/mine-20260920/working-eye.png)
+and
+[working-orbit.png](https://github.com/alexey-va/ruscrafting-ops/blob/main/docs/assets/mine-20260920/working-orbit.png).
+The viewer does
+not render glow outlines, so outline evidence is limited to server/protocol
+metadata and is not a client-outline claim.
 
-A forced `LOST_MINER` to `CAVE_IN` replacement reproduced a transient title
-from the old incident. Root commit `8327c29` for `.40` fixes
-`WorksiteGuidancePresenter`'s same-runtime `false → true` presentation path;
-its tests and build succeeded. The 60-second grace/8-block area/five-minute
-deadline/15-second warning change is also pending `.40` validation. The viewer
-cannot render outline pixels, so no final visual/client pass is claimed; the
-older `rescue-cave-orbit` frame used the wrong scene and is excluded.
+The active lateral working geometry is a 24-cell cave including the entry, with
+noise width 7–9, height 5–7 and maximum forward 14 in `x=72..87, z=12..41`.
+Rescue remains a separate off-site noise cave with unchanged dimensions.
 
-Immutable JAR
-`dcb09a909d6848dd3be9119cf346c720ef2585ea35c985a6d6e53b392c8a8259` is the
-activated `.39` artifact; `.40` remains the pending final release.
+`RAIL_EXTENSION` completed natively: 3/3 cobble targets became AIR, 12/12 rail
+markers accepted right-clicks, and 12/12 cart-escort checks completed (27/27).
+It finished around 23:44:09 UTC and preserved `MINING` progress 35/448. The
+player remained at `(80.35,111,25.43)` through 23:45:40 UTC (over 90 seconds);
+the cave remained present and the radius-3 readback contained 8 rail,
+4 spruce_log, 2 lantern and 2 iron_chain.
+
+The native exit reached `(68.3128,111,28.7099)`, beyond entry 72, before the
+pathfinder stuck on the main map; QA was disabled for the coordinated ARC
+restart. After QA disconnected at 23:47:32 UTC, the compact-world console
+probe `execute in compact if block 81 111 24 minecraft:stone run time query
+gametime` returned `The time11904811`, and the former rail was restored to
+STONE. This proves retention while inside and restoration after logout; it does
+not prove the `>8` online-player condition. The corresponding condition is
+covered by a unit test.
+
+`TUNNEL_DRIVE` nonce 93 used the bottom entrance `(72,82,27)`. Native cart
+control used `Interaction` `2632`; the cart reached 27/93 at 23:52:01 UTC at
+`(76.5,83,27.5)` with head Y=83.82, then 54/93 at `(79.5,83,24.5)` with the
+same head Y, without a cart-head jump. All 90/90 drill actions and 3/3 support
+actions completed through native interactions at 23:57:29 UTC (93/93 total),
+returning `MINING` progress 35/448. Support click entities were `2706`, `2708` and
+`2704`; the last was 2.28 blocks from player feet at `(75.5,83,30.5)`. QA
+positioning used console teleports after pathfinder stalls, including
+`(77.5,83,31.5)`, `(70.5,83,27.5)` and `(75.5,83,30.5)` in addition to the
+initial approach; gameplay progression used native interactions. This is not a
+claim of a fully native walk route.
+
+The wood-block display had brightness NBT 15/15 at `(75,84,33)` (console
+readback 23:53:12 UTC). For the live completion-distance, grace and clear-area check, after
+completion QA teleported to the workshop at `(40.5,111,25.5)` at 23:58:20 UTC;
+the support was still `SPRUCE_LOG` at 23:58:24 UTC (under 60 seconds), then was
+`DEEPSLATE` at 23:58:46 UTC, matching the original fixture. The console probe
+`execute if block 75 84 33 minecraft:spruce_log run time query gametime`
+returned `The time11916030`. This verifies the live minimum-60-second retention
+and clear-area restoration after teleport departure; it does not prove a
+walking threshold path.
+
+`LOST_MINER` nonce 94 survived the coordinated restarts. At 00:11:18 UTC,
+native `Interaction` `1939` clicked the entry from 1.61 blocks and led to
+`(43.5,87,102.5)`. Native movement reached `(53.5,87,110.55)`; at 00:11:54
+UTC, native villager `1942` interaction from 1.76 blocks returned the order to
+`MINING` 35/448 without eject. At 00:12:24 UTC the player was still at the
+miner location and the mobs/miner had been removed.
+
+The return pathfinder stalled, so at 00:13:11 UTC QA used a console teleport to
+the verified AIR cell `(43.5,87,104.5)`. Creative mode protected the QA actor
+from mobs throughout this rescue pass; native combat was not tested. At
+00:13:44 UTC the cave was still present at `(43.66,87,104.56)`; exit
+`Interaction` `1941` and glowing `BlockDisplay` `1940` remained for more than
+110 seconds after completion. At 00:13:45 UTC a native exit click from 1.89
+blocks reached surface `(34.5,87,11.5)` without immediate ejection. Cleanup
+ran in survival at 00:14:16 UTC; at 00:14:21 exactly one test bucket was
+removed. Both temporary permission nodes had expired, confirmed by an unset
+readback, and the bot quit at 00:14:30 UTC. This proves the native entry,
+find-miner, completion, retention and exit lifecycle; the return positioning
+included a console teleport and is not a fully native walk claim.
+
+The active immutable JAR remains
+`6eb8a6d3f66d750848462984a1bda956ca8633852e61aac2702c1dfcf9d0121d`.
+At 00:15 UTC the order readback was `MINING`, `incident=null`, `mined=35`,
+`cart=35`, `sequence=5`, `incidentCursor=94`. At 00:15:51 UTC `ARC_HEALTH`
+reported `up/ready=true`, `recovery_backlog=0`, `active_leases=0` and
+Redis/service `true`; bot offline/online `0` was confirmed after the 00:14
+quit. Physical off-site restoration to AIR was not separately confirmed.
+
+### Historical QA
+
+Historical `.39` native checks remain recorded for `CAVE_IN` 56/56,
+`FLOODING` 30/30 with an empty bucket, `TRACK_DAMAGE` 18/18 and
+`TUNNEL_DRIVE` 90/93 where the remaining three supports were partial work by
+another player, so no solo completion was claimed. Historical `.39` rescue
+checks covered native entry/exit and spectator flight Y=87 to Y=98 with server
+NBT, but immediate eject after completion reproduced in the historical `.39`
+build; that result is superseded by the final nonce 94 readback above.
+Historical `.39` creature rotation
+used distinct nonce 89/90 layouts; nest-kill was not tested. Historical
+`.40.38` checks covered the three-batch workshop, gas with two required clicks
+among four candidate vents, resonance, and the earlier rescue captures.
+
+The `.39` workshop carry readback used `Interaction` `1965` and glowing
+`raw_iron` `ItemDisplay` `3128` at `(40.5,112,24.75)`, with player feet at
+`(40.5,111,25.5)`: the carry was exactly +1 Y and the old below-feet issue was
+fixed. The older `rescue-cave-orbit` frame used the wrong scene and is excluded.
 
 ## Related sources
 
