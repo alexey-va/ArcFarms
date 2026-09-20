@@ -52,6 +52,12 @@ class MineExpeditionStockTest : FunSpec({
         loader.restored.size shouldBe 3
         loader.restored.none { it.journalSequence == scene.journalSequence } shouldBe true
         repository.find("old_shafts", 5, 100)!!.restoring shouldBe false
+        val retiringOwners = loader.restored.map { it.journalOwner }.toSet()
+        stock.maintain(3_000L)
+        val replacements = repository.records().filter { it.reserved && !it.restoring }
+        replacements.size shouldBe 3
+        replacements.none { it.journalOwner in retiringOwners } shouldBe true
+        stock.status().all { it.ready == 1 && it.retiring == 1 } shouldBe true
         stock.deactivate()
         repository.close()
     }

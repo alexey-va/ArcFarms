@@ -50,7 +50,8 @@ internal class MineExpeditionStock(
             if (reserves.isNotEmpty() || kind in creating || now < (retryAfter["create:$kind"] ?: 0L)) return@forEach
             val id = receipts.allocateJournalSequence()
             require(id <= Int.MAX_VALUE) { "Expedition scene identifier exhausted" }
-            val owner = "reserve_${kind.name.lowercase()}"
+            // The shared scene owner fences restoration by zone, so each allocation needs its own owner.
+            val owner = "reserve_${kind.name.lowercase()}_$id"
             val placement = MineExpeditionAllocation.allocate(kind, id, receipts.records() + creating.values)
             val receipt = MineExpeditionSceneReceipt(owner, 0L, id, id, kind, placement,
                 MineExpeditionWorldGenerator.WORLD_NAME, 0.5, 193.0, 0.5, reserved = true,
