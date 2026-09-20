@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.paper
 
 import com.google.gson.Gson
 import net.milkbowl.vault.economy.Economy
+import org.bukkit.generator.ChunkGenerator
 import org.bukkit.plugin.java.JavaPlugin
 import org.slf4j.LoggerFactory
 import ru.arc.core.PaperArcRuntime
@@ -31,6 +32,7 @@ import ru.ruscrafting.farms.persistence.FarmLocationRepository
 import ru.ruscrafting.farms.persistence.FarmRouteRepository
 import ru.ruscrafting.farms.persistence.FixedFarmCropJournal
 import ru.ruscrafting.farms.persistence.MineBlockJournal
+import ru.ruscrafting.farms.paper.mine.expedition.MineExpeditionWorldGenerator
 import java.nio.file.Files
 import java.util.logging.Level
 
@@ -52,6 +54,9 @@ open class ArcFarmsPlugin : JavaPlugin() {
     private var menu: ArcFarmsMenu? = null
     private var placeholderExpansion: ArcFarmsPlaceholderExpansion? = null
     private var pluginRuntime: PaperPluginRuntime? = null
+
+    override fun getDefaultWorldGenerator(worldName: String, id: String?): ChunkGenerator? =
+        if (worldName == MineExpeditionWorldGenerator.WORLD_NAME) MineExpeditionWorldGenerator() else null
 
     override fun onEnable() {
         saveDefaultConfig()
