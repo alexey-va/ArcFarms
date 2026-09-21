@@ -11,6 +11,22 @@ import kotlin.io.path.createTempDirectory
 import kotlin.io.path.writeText
 
 class MineLiftSettingsTest : FreeSpec({
+    "compact lift excludes its entire shaft including the pit below the last stop" {
+        val world=io.mockk.mockk<org.bukkit.World>()
+        io.mockk.every { world.name } returns "rc_atelier_compact_mine"
+        val settings=MineLiftSettings("main",world.name,21.5,43.5,4.8,6.4,6.0,
+            listOf(111.0,97.0,83.0).mapIndexed { i,y -> MineLiftFloor("floor_$i",y,
+                LiftPoint(28.5,y,43.5),LiftPoint(24.5,y,39.5)) })
+        for(y in listOf(-64.0,0.0,64.0,79.0,83.0,97.0,111.0,140.0,319.0)) {
+            settings.excludesEvent(org.bukkit.Location(world,21.5,y,43.5)) shouldBe true
+            settings.excludesEvent(org.bukkit.Location(world,24.5,y,46.5)) shouldBe true
+            settings.excludesEvent(org.bukkit.Location(world,28.5,y,43.5)) shouldBe false
+        }
+        val other=io.mockk.mockk<org.bukkit.World>()
+        io.mockk.every { other.name } returns "another_mine"
+        settings.excludesEvent(org.bukkit.Location(other,21.5,64.0,43.5)) shouldBe false
+    }
+
     "loads the legacy main profile and an enabled additional profile" {
         val root = writeConfig(additionalX = 10.0)
         try {

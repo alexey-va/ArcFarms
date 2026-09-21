@@ -310,3 +310,12 @@ legacy chunk after the replacement is ready). The display validator checked
 20 models in 65 animation poses with no coplanar overlap. Canonical cave exports
 were inspected in the offline browser preview; this does not establish native
 Minecraft driving, sound or particles.
+
+Lift pit correction (0.44.7): event exclusion covers the entire configured
+lift X/Z column, independent of the cabin stop heights. The compact lift's
+lowest stop is Y=83, but the inaccessible pit continues below the previous
+Y=80 cutoff. Cached candidates, final selection, persisted objective recovery
+and reserve replacement all apply the same exclusion. Cabin motion and
+boarding bounds are unchanged. Regression coverage uses real lift geometry
+with samples below the last stop, on floors, above the shaft and outside its
+horizontal footprint.

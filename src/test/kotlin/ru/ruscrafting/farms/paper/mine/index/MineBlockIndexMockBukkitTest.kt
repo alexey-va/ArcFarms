@@ -22,8 +22,11 @@ class MineBlockIndexMockBukkitTest : FunSpec({
     test("lift shaft anchors are excluded on cached reads and final validation at every height") {
         val world=paper.server.addSimpleWorld("world")
         val plugin=paper.createSimplePlugin("ShaftIndex")
+        val settings=ru.ruscrafting.farms.paper.mine.lift.MineLiftSettings("main",world.name,3.0,3.0,2.8,2.8,6.0,
+            listOf(100.0,90.0).mapIndexed { i,y -> ru.ruscrafting.farms.paper.mine.lift.MineLiftFloor("f$i",y,
+                ru.ruscrafting.farms.paper.mine.lift.LiftPoint(8.0,y,3.0),ru.ruscrafting.farms.paper.mine.lift.LiftPoint(8.0,y,2.0)) })
         val lift=io.mockk.mockk<ru.ruscrafting.farms.paper.mine.lift.MineLiftAccess>()
-        io.mockk.every { lift.excludesEvent(any()) } answers { firstArg<org.bukkit.Location>().x < 6.0 }
+        io.mockk.every { lift.excludesEvent(any()) } answers { settings.excludesEvent(firstArg()) }
         val definition=MineIndexDefinition("old_shafts",CuboidActivityRegion(world,"test",CuboidBounds(0,50,0,15,120,15)),setOf(Material.STONE))
         val index=MineBlockIndex(plugin,lift)
         val points=listOf(WorksitePosition("world",3,60,3),WorksitePosition("world",3,100,3),WorksitePosition("world",10,100,3))

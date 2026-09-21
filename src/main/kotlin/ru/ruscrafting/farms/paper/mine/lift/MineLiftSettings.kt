@@ -29,10 +29,10 @@ internal data class MineLiftSettings(
         kotlin.math.abs(point.x - x) < width / 2 + 0.3 && kotlin.math.abs(point.z - z) < depth / 2 + 0.3 &&
         point.y in (floors.minOf { it.y } - 2)..(floors.maxOf { it.y } + 4)
 
+    // Floor stops describe cabin travel, not shaft bounds: the inaccessible pit continues below them.
     fun excludesEvent(point: Location): Boolean = point.world.name == world &&
         kotlin.math.abs(point.x - x) <= width / 2 + 2.5 &&
-        kotlin.math.abs(point.z - z) <= depth / 2 + 2.5 &&
-        point.y in (floors.minOf { it.y } - 3)..(floors.maxOf { it.y } + 5)
+        kotlin.math.abs(point.z - z) <= depth / 2 + 2.5
 
     /** The cabin is an entity scene, so this is deliberately a soft reach bound around its live Y. */
     fun cabinContains(point: Location, cabinY: Double): Boolean = point.world.name == world &&

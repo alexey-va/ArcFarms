@@ -99,7 +99,8 @@ internal class MineIncidentCoordinator(
     fun invalidate(runtime: MineRuntime, targetId: String): Boolean {
         val objective = runtime.state.objective ?: return false
         val replacement = objective.reserve.firstOrNull { candidate ->
-            candidate.id != targetId && objective.targets.none { it.id == candidate.id || it.position == candidate.position }
+            allowed(runtime,candidate.position) && candidate.id != targetId &&
+                objective.targets.none { it.id == candidate.id || it.position == candidate.position }
         }
         val invalidated = ObjectiveTargetPool.invalidate(objective, targetId, replacement)
         if (!invalidated.accepted) return false
