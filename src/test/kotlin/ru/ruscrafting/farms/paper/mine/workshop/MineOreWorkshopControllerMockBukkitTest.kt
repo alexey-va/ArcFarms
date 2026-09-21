@@ -4,7 +4,11 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
+import io.mockk.mockkConstructor
+import io.mockk.Runs
+import io.mockk.unmockkConstructor
 import org.bukkit.Location
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Interaction
@@ -12,6 +16,7 @@ import org.bukkit.entity.ItemDisplay
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.persistence.PersistentDataType
+import ru.arc.paper.display.PacketBlockDisplay
 import org.mockbukkit.mockbukkit.world.WorldMock
 import ru.arc.core.Tasks
 import ru.arc.core.TestTaskScheduler
@@ -42,8 +47,13 @@ class MineOreWorkshopControllerMockBukkitTest : FunSpec({
         paper = MockBukkitTestRuntime.open()
         scheduler = TestTaskScheduler()
         Tasks.install(scheduler)
+        mockkConstructor(MineWorkshopMachines::class)
+        every { anyConstructed<MineWorkshopMachines>().create(any(), any()) } answers {
+            fixtureMachine(firstArg<String>(), secondArg<Location>())
+        }
     }
     afterEach {
+        unmockkConstructor(MineWorkshopMachines::class)
         Tasks.reset()
         paper.close()
     }
@@ -355,6 +365,34 @@ private fun workshopInteractions(world: WorldMock): List<Interaction> = workshop
 private fun roleEntity(world: WorldMock, role: String): Interaction = workshopInteractions(world).single { entity ->
     val key = entity.persistentDataContainer.keys.firstOrNull { it.key == "mine_ore_workshop_role" }
     key != null && entity.persistentDataContainer.get(key, PersistentDataType.STRING) == role
+}
+
+private fun fixtureMachine(role: String, at: Location): MineWorkshopMachines.Machine {
+    val body = mockk<PacketBlockDisplay>(relaxed = true)
+    every { body.isValid } returns true
+    every { body.location } returns at.clone()
+
+    val controls = if (role == "crusher") {
+        MineWorkshopMachines.CRUSH_CONTROLS.mapIndexed { index, control ->
+            control to at.clone().add(
+                (index - 1) * 1.55,
+                1.08,
+                1.98,
+            )
+        }.toMap()
+    } else {
+        emptyMap()
+    }
+    return mockk<MineWorkshopMachines.Machine>(relaxed = true).also { machine ->
+        every { machine.body } returns body
+        every { machine.controls } returns controls
+        every { machine.remove() } just Runs
+        every { machine.reset() } just Runs
+        every { machine.render(any(), any()) } just Runs
+        every { machine.pulse(any(), any()) } just Runs
+        every { machine.setMotionVisible(any(), any()) } just Runs
+        every { machine.highlight(any(), any()) } just Runs
+    }
 }
 
 // The controller keeps these keys private in production; tests use the same
