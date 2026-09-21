@@ -27,6 +27,20 @@ class FarmMoleBurrowJournalCodecTest : FunSpec({
         FarmMoleBurrowJournalCodec.decode(encoded, "sp11", 12, 28, -64, 320) shouldBe records
     }
 
+    test("shared journal supports the full height of a wide mine chamber within bounded limits") {
+        val chamber = (0 until 16).flatMap { x -> (0 until 16).flatMap { z -> (0 until 10).map { y ->
+            record.copy(x=192+x,z=448+z,y=64+y,zoneId="old_shafts",totalRecords=12_000)
+        } } }
+        val encoded = FarmMoleBurrowJournalCodec.encode(chamber,"sp11",12,28,-64,320)
+        FarmMoleBurrowJournalCodec.decode(encoded,"sp11",12,28,-64,320) shouldBe chamber
+        shouldThrow<IllegalArgumentException> {
+            FarmMoleBurrowJournalCodec.encode(listOf(record.copy(totalRecords=16_385)),"sp11",12,28,-64,320)
+        }
+        shouldThrow<IllegalArgumentException> {
+            FarmMoleBurrowJournalCodec.encode(List(4_097) { record },"sp11",12,28,-64,320)
+        }
+    }
+
     test("chunk journal rejects duplicate block ownership") {
         shouldThrow<IllegalArgumentException> {
             FarmMoleBurrowJournalCodec.encode(listOf(record, record.copy(marker = FarmMoleBurrowMarker.LAIR)), "sp11", 12, 28, -64, 320)

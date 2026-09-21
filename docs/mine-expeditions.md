@@ -438,12 +438,16 @@ releases the participant's transient operation. Both factory crushers have a
 active models alike. Unconnected decorative handwheels on the furnace and
 casting bed are removed. Mechanical valve controls remain on their pipework.
 
-### Wider drilling working (0.44.9)
+### Wider drilling working (0.44.10)
 
 New version-7 workings span 33 blocks instead of 17 across, with the same
 44-block depth and wider noise-shaped diamond chamber. Version-6 IDs retain
 their 17-column stride and exact geology on recovery. The wider journal stays
 bounded below 12,000 blocks; preparation remains on the existing sliced owner.
+The shared journal accepts up to 16,384 cells per scene and 4,096 per chunk
+(with its existing 512 KiB byte cap). A 2,560-cell chamber chunk round-trips,
+and world lifecycle tests rebuild both legacy and wide workings after restart
+and restore their exact original blocks.
 The chamber arrival ellipse is ten blocks across either side and five along
 the drive, rather than a narrow strip at its far wall. Ceiling lamps are placed
 roughly every four travelled blocks, and new chambers include five level-13
