@@ -95,7 +95,6 @@ internal object MineDisplayBlueprints {
                 box(Material.POLISHED_ANDESITE,0f,4.3f,-1.3f,4.4f,.35f,.6f)
                 box(Material.IRON_BLOCK,0f,3.7f,-1.3f,.17f,1.2f,.17f)
                 box(Material.POLISHED_BLACKSTONE,0f,3.1f,-1.3f,1.6f,1.2f,1.3f)
-                wheel(-2.7f,1.8f,.2f,.8f)
             }
             "casting_rack" -> {
                 frame(3.2f, 2.6f, 1.2f)
@@ -148,7 +147,6 @@ internal object MineDisplayBlueprints {
                 box(Material.POLISHED_ANDESITE,0f,11.3f,-1f,3.2f,.5f,3.2f)
                 box(Material.POLISHED_BLACKSTONE,0f,.9f,4.3f,2.6f,.45f,3.8f)
                 box(Material.ORANGE_STAINED_GLASS,0f,1.15f,4.3f,1.4f,.1f,3.6f)
-                wheel(-3.2f,2.4f,2f,1f)
             }
             "waterwheel" -> {
                 box(Material.POLISHED_DEEPSLATE,0f,.2f,0f,3f,.4f,6f)

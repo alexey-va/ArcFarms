@@ -7,7 +7,8 @@ import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionKind
 
 /** Permanent editable assemblies; gameplay adds glow only to the currently required controls. */
 internal object MineExpeditionFurnishings {
-    data class Fixture(val id:String,val model:String,val at:ExpeditionPoint,val scale:Float=1f)
+    data class Fixture(val id:String,val model:String,val at:ExpeditionPoint,val scale:Float=1f,val yaw:Int=0)
+    fun baseYaw(scene:MineExpeditionScene,id:String):Int = fixtures(scene).firstOrNull { it.id==id }?.yaw ?: 0
     fun parent(kind:MineExpeditionKind,id:String):String? = if(kind!=MineExpeditionKind.DEAD_FACTORY) null else when(id) {
         "furnace_input","furnace_control" -> "decor_furnace_left"
         "pour_control" -> "decor_furnace_right"
@@ -38,8 +39,8 @@ internal object MineExpeditionFurnishings {
         val decor=when(plan.kind) {
             MineExpeditionKind.DEAD_FACTORY -> listOf(
                 Fixture("decor_waterwheel","waterwheel",ExpeditionPoint(0,5,-23)),
-                Fixture("decor_crusher_left","crusher",ru.ruscrafting.farms.domain.mine.expedition.MineFactoryProgram.machines.getValue("decor_crusher_left"),2.2f),
-                Fixture("decor_crusher_right","crusher",ru.ruscrafting.farms.domain.mine.expedition.MineFactoryProgram.machines.getValue("decor_crusher_right"),2.2f),
+                Fixture("decor_crusher_left","crusher",ru.ruscrafting.farms.domain.mine.expedition.MineFactoryProgram.machines.getValue("decor_crusher_left"),2.2f,180),
+                Fixture("decor_crusher_right","crusher",ru.ruscrafting.farms.domain.mine.expedition.MineFactoryProgram.machines.getValue("decor_crusher_right"),2.2f,180),
                 Fixture("decor_furnace_left","furnace",ExpeditionPoint(-17,5,-13)),
                 Fixture("decor_furnace_right","furnace",ExpeditionPoint(17,5,-13)),
                 Fixture("decor_pump_left","pump",ru.ruscrafting.farms.domain.mine.expedition.MineFactoryProgram.machines.getValue("decor_pump_left"),1.8f),
@@ -64,7 +65,7 @@ internal object MineExpeditionFurnishings {
     }
     fun targets(scene:MineExpeditionScene,editor:MineFurnishingEditor?,active:Set<String>):List<MineExpeditionMarkers.Target> =
         fixtures(scene).filter { it.id !in active }.map { f ->
-            val yaw=editor?.yaw(scene,f.id) ?: 0
+            val yaw=editor?.yaw(scene,f.id) ?: f.yaw
             val p=editor?.position(scene,f.id,f.at) ?: f.at
             MineExpeditionMarkers.Target(f.id,scene.at(p),Material.CUT_COPPER,Component.empty(),model=f.model,modelScale=f.scale,
                 glowing=editor?.selected(scene.journalSequence,f.id)==true || active.any { parent(scene.kind,it)==f.id },yaw=yaw,editKey="${scene.journalSequence}/${f.id}",editBase=f.at)

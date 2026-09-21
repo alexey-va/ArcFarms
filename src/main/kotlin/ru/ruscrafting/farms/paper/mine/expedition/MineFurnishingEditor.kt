@@ -66,14 +66,14 @@ internal class MineFurnishingEditor(
         val anchor=parent?.let { key -> MineExpeditionFurnishings.fixtures(scene).firstOrNull { it.id==key }?.at }
         if(parent==null || anchor==null) return base.offset(own.x,own.y,own.z)
         val group=pose(scene.journalSequence,parent)
-        val radians=Math.toRadians(group.yaw.toDouble())
+        val radians=Math.toRadians(yaw(scene,parent).toDouble())
         val dx=(base.x-anchor.x).toDouble();val dz=(base.z-anchor.z).toDouble()
         val x=kotlin.math.round(dx*kotlin.math.cos(radians)+dz*kotlin.math.sin(radians)).toInt()
         val z=kotlin.math.round(-dx*kotlin.math.sin(radians)+dz*kotlin.math.cos(radians)).toInt()
         return ExpeditionPoint(anchor.x+x+group.x+own.x,base.y+group.y+own.y,anchor.z+z+group.z+own.z)
     }
-    fun yaw(scene:MineExpeditionScene,id:String):Int = (pose(scene.journalSequence,id).yaw+
-        (MineExpeditionFurnishings.parent(scene.kind,id)?.let { pose(scene.journalSequence,it).yaw } ?: 0))%360
+    fun yaw(scene:MineExpeditionScene,id:String):Int = (MineExpeditionFurnishings.baseYaw(scene,id)+pose(scene.journalSequence,id).yaw+
+        (MineExpeditionFurnishings.parent(scene.kind,id)?.let { MineExpeditionFurnishings.baseYaw(scene,it)+pose(scene.journalSequence,it).yaw } ?: 0))%360
     fun selected(site: Long,id: String) = sessions.values.any { it.key=="$site/$id" }
     fun locked(scene: MineExpeditionScene) = sessions.values.any { it.site==scene.journalSequence }
     fun command(player: Player, action: String?) {

@@ -42,7 +42,7 @@ allprojects {
       }
      }
      def recipe=[version:1,seed:73,title:kind.toString(),size:[max.x-min.x+1,max.y-min.y+1,max.z-min.z+1],palette:palette,operations:ops,
-       displayModels:models,displayAssemblies:fixtures.collect{f->[id:f.id,model:f.model,scale:f.scale,at:xyz(f.at).withIndex().collect{v,i->v+(i==1?0:0.5)}]},
+       displayModels:models,displayAssemblies:fixtures.collect{f->[id:f.id,model:f.model,scale:f.scale,yaw:f.yaw,at:xyz(f.at).withIndex().collect{v,i->v+(i==1?0:0.5)}]},
        subtitle:"Офлайн-превью · геометрия и display-модели из кода · свет условный",
        origin:xyz(plan.spawn.offset(0,-1,0)),route:(plan.routes['main'] ?: plan.walkingRoutes[0]).collect{p->xyz(p.offset(0,-1,0))},
        lighting:[targetLevel:8,samples:plan.walkingRoutes.flatten().unique().collect{p->xyz(p)}]]

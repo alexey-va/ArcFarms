@@ -421,3 +421,11 @@ Husk health/armor and wound preservation. This is not a full-suite pass.
   return-portal evidence applies to 0.44.2 only. Automatic approval previously
   rejected granting arcfarms.admin to the QA bot; no permission grant or
   impersonation was used to force that live scenario.
+
+Factory follow-up (0.44.6): once a pump, crusher, crane or press cycle is started,
+the participant may walk around the factory without cancelling it. The press
+keeps its casting on the table until completion; leaving the expedition still
+releases the participant's transient operation. Both factory crushers have a
+180-degree base heading, composed with saved editor offsets for static and
+active models alike. Unconnected decorative handwheels on the furnace and
+casting bed are removed. Mechanical valve controls remain on their pipework.

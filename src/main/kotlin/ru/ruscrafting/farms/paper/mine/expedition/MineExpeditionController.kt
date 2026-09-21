@@ -169,7 +169,7 @@ internal class MineExpeditionController(
             render(label, values = progressValues(state, now)), target.interaction == MineExpeditionInteraction.BREAK,
             model=if(target.interaction == MineExpeditionInteraction.BREAK || target.id=="drive") null else fixture?.model ?: MineExpeditionFurnishings.model(target.id,scene.kind),
             modelScale=fixture?.scale ?: 1f,
-            yaw=editor?.yaw(scene,target.id) ?: 0)
+            yaw=editor?.yaw(scene,target.id) ?: fixture?.yaw ?: 0)
     }
 
     private fun exitMarkers(scene: MineExpeditionScene): List<MineExpeditionMarkers.Target> =

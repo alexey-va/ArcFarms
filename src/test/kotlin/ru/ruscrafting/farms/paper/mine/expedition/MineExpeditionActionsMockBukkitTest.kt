@@ -35,6 +35,7 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         val player=paper.server.addPlayer().also { it.teleport(scene.at(target.position)) }
         actions.interact(scope,scene,state,player,target,1_000,{error("early credit")}) {}
         actions.interact(scope,scene,state,player,target,2_000,{error("duplicate credit")}) {}
+        player.teleport(scene.at(target.position).add(30.0,0.0,0.0))
         var completed=0
         actions.tick(scope,scene,state,targets,listOf(player),3_999,{_,_->completed++;true}) {_,_->}
         completed shouldBe 0
@@ -59,6 +60,7 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         actions.interact(scope, scene, state, player, target, 1_000, complete) {}
         actions.interact(scope, scene, state, player, target, 3_000, complete) {}
         actions.interact(scope, scene, state, other, target, 3_000, complete) {}
+        player.teleport(scene.at(target.position).add(20.0,0.0,0.0))
         actions.tick(scope, scene, state, listOf(target), listOf(player, other), 5_499, { _, s -> complete(s) }) { _, _ -> }
         completed shouldBe 0
         actions.tick(scope, scene, state, listOf(target), listOf(player, other), 5_500, { _, s -> complete(s) }) { _, _ -> }
@@ -112,7 +114,7 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         world.entities.filterIsInstance<ItemDisplay>().filter { it.isValid }.size shouldBe 0
     }
 
-    test("walking away cancels the press without losing its cargo and cleanup drops no items") {
+    test("walking away leaves the press running with its casting on the table and completes once") {
         val state = MineExpeditionState(scene.placement, MineExpeditionStage.FACTORY_INSTALL)
         val targets = MineExpeditionObjectives.targets(scene.plan, state, null)
         val player = paper.server.addPlayer()
@@ -122,10 +124,16 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         actions.interact(scope, scene, state, player, pickup, 1_000, { true }) {}
         player.teleport(scene.at(press.position))
         actions.interact(scope, scene, state, player, press, 2_000, { true }) {}
-        player.teleport(scene.at(press.position).add(7.0, 0.0, 0.0))
-        actions.tick(scope, scene, state, targets, listOf(player), 3_000, { _, _ -> error("cancelled press completed") }) { _, _ -> }
-        actions.operationPhase(scope, press.id, 5_000) shouldBe 0.0
+        player.teleport(scene.at(press.position).add(30.0, 0.0, 0.0))
+        actions.tick(scope, scene, state, targets, listOf(player), 3_000, { _, _ -> error("early press completion") }) { _, _ -> }
+        world.entities.filterIsInstance<ItemDisplay>().single().location shouldBe scene.at(press.position).add(0.0,1.9,0.0)
         actions.carrying(player, scope) shouldBe true
+        var completed=0
+        actions.tick(scope, scene, state, targets, listOf(player), 4_400, { _,step -> completed++; step.finished shouldBe true; true }) { _,_ -> }
+        actions.tick(scope, scene, state, targets, listOf(player), 5_000, { _,_ -> error("duplicate press completion") }) { _,_ -> }
+        completed shouldBe 1
+        actions.operationPhase(scope, press.id, 5_000) shouldBe 0.0
+        actions.carrying(player,scope) shouldBe false
         actions.clear(scope)
         actions.claimed(scope, state.stage, 0) shouldBe false
         world.entities.filter { it is ItemDisplay || it is org.bukkit.entity.Item }.size shouldBe 0

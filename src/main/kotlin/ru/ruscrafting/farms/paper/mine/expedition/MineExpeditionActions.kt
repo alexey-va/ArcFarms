@@ -133,7 +133,6 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
             val player=participants[id]
             val target=targets.firstOrNull { it.id==operation.objective }
             if(player==null || target==null || player.world !== scene.world || operation.cycle.stage!=state.stage ||
-                player.location.distanceSquared(scene.at(target.position))>36.0 ||
                 (state.stage==MineExpeditionStage.FACTORY_INSTALL && cargo[id]?.stage!=state.stage)) {
                 operations.remove(id);animateCrank(operation.objective,0.0)
                 return@forEach
