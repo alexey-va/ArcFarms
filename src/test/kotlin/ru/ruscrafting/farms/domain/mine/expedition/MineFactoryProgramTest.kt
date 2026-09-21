@@ -72,7 +72,7 @@ class MineFactoryProgramTest : FunSpec({
         }
     }
 
-    test("connected charge targets form raw, crush, and processed checkpoints") {
+    test("connected charge targets hand the processed checkpoint to the belt") {
         val base = MineExpeditionGenerator.plan(MineExpeditionKind.DEAD_FACTORY, 73)
         val plan = base.copy(stations = base.stations + connectedStations())
         val initial = MineExpeditionState(placement, MineExpeditionStage.FACTORY_COAL)
@@ -81,10 +81,12 @@ class MineFactoryProgramTest : FunSpec({
         )
         MineExpeditionObjectives.targets(plan, initial.copy(completed = setOf(0)), null)
             .single().id shouldBe "control_crusher_left"
-        MineExpeditionObjectives.targets(plan, initial.copy(completed = setOf(0, 1)), null)
-            .map { it.id to it.material } shouldBe listOf(
-                "crushed_output" to "RAW_IRON_BLOCK", "furnace_input" to "RAW_IRON_BLOCK",
-            )
+        val transfer = initial.copy(completed = setOf(0, 1))
+        MineExpeditionObjectives.targets(plan, transfer, null) shouldBe emptyList()
+        MineFactoryProgram.chargeTransferPending(transfer) shouldBe true
+        MineFactoryProgram.pressTransferPending(
+            plan, transfer.copy(stage = MineExpeditionStage.FACTORY_INSTALL, completed = emptySet()),
+        ) shouldBe true
     }
 
     test("legacy factory geometry keeps the mirrored commissioning and fuel contract") {

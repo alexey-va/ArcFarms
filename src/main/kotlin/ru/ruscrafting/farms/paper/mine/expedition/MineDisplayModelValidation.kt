@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper.mine.expedition
 
 import ru.ruscrafting.farms.paper.worksite.WorksiteDisplayGeometryValidator
+import ru.ruscrafting.farms.paper.mine.workshop.MineWorkshopModelValidation
 import kotlin.math.PI
 
 /** Build/export entry point. Never performs geometry audits on the gameplay thread. */
@@ -23,11 +24,13 @@ internal object MineDisplayModelValidation {
                 if (parts.none { it.moving }) break
             }
         }
+        addAll(MineWorkshopModelValidation.validate())
     }
 
     @JvmStatic fun main(args: Array<String>) {
         val issues = validate()
         check(issues.isEmpty()) { "Display z-fighting (${issues.size}):\n${issues.joinToString("\n")}" }
-        println("Display geometry: ${MineDisplayBlueprints.kinds.size} models, 65 animation poses, no coplanar overlaps")
+        println("Display geometry: ${MineDisplayBlueprints.kinds.size} blueprint models plus " +
+            "${MineWorkshopModelValidation.samples.size} workshop composite poses, no coplanar overlaps")
     }
 }

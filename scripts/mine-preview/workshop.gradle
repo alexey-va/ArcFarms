@@ -1,0 +1,139 @@
+// Export the authored ORE_WORKSHOP packet scene without duplicating its layout.
+// The task reads the pure MineWorkshopMachines.previewVisuals() source, so the
+// browser recipe is built from the same runtime parts, scales and yaw as the
+// live scene without constructing a Bukkit plugin or packet renderer.
+allprojects {
+    afterEvaluate {
+        tasks.register('exportMineWorkshopPreview') {
+            dependsOn 'classes'
+            doLast {
+                def urls = (sourceSets.main.runtimeClasspath + sourceSets.main.compileClasspath).files.collect { it.toURI().toURL() } as URL[]
+                def cl = new URLClassLoader(urls, (ClassLoader) null)
+                def machinesClass = cl.loadClass('ru.ruscrafting.farms.paper.mine.workshop.MineWorkshopMachines')
+                // Kotlin internal members carry a module suffix on the JVM. The
+                // @JvmStatic companion entry has no plugin/renderer dependency.
+                def visualsMethod = machinesClass.methods.find { method ->
+                    method.name == 'previewVisuals' && java.lang.reflect.Modifier.isStatic(method.modifiers) &&
+                        method.parameterTypes.length == 1 &&
+                        method.parameterTypes[0] == String.class
+                }
+                if (visualsMethod == null) throw new GradleException('MineWorkshopMachines.previewVisuals is unavailable')
+                visualsMethod.accessible = true
+                def geometryClass = cl.loadClass('ru.ruscrafting.farms.paper.mine.workshop.MineWorkshopGeometry')
+                def geometry = geometryClass.getField('INSTANCE').get(null)
+                def stations = geometryClass.getMethod('getSTATIONS').invoke(geometry)
+                def minX = geometryClass.getField('MIN_X').get(null) as Number
+                def minY = geometryClass.getField('MIN_Y').get(null) as Number
+                def minZ = geometryClass.getField('MIN_Z').get(null) as Number
+                def maxX = geometryClass.getField('MAX_X').get(null) as Number
+                def maxY = geometryClass.getField('MAX_Y').get(null) as Number
+                def maxZ = geometryClass.getField('MAX_Z').get(null) as Number
+                // Keep one clear floor layer below the authored machine feet.
+                // The runtime anchors are world Y=111, so relative Y=1 keeps
+                // their bases above the preview floor at Y=0.
+                def baseY = minY.doubleValue() - 1.0d
+                def point = { value -> [value.x as Number, value.y as Number, value.z as Number] }
+                def relative = { value -> [
+                    (value[0] as Number).doubleValue() - minX.doubleValue(),
+                    (value[1] as Number).doubleValue() - baseY,
+                    (value[2] as Number).doubleValue() - minZ.doubleValue(),
+                ] }
+                def palette = [:]
+                def materialIds = [:]
+                def blockId = { String block ->
+                    if (!materialIds.containsKey(block)) {
+                        def id = "m${materialIds.size()}"
+                        materialIds[block] = id
+                        palette[id] = [block: block, color: '#858580', name: block]
+                    }
+                    materialIds[block]
+                }
+                def operations = [[
+                    op: 'box', from: [0, 0, 0],
+                    to: [maxX.intValue() - minX.intValue(), 0, maxZ.intValue() - minZ.intValue()],
+                    material: blockId('minecraft:polished_deepslate'),
+                ]]
+                def models = [:]
+                def assemblies = []
+                def roles = ['ore', 'crusher', 'furnace', 'output', 'shipping']
+                def vec = { value -> [value.x as Number, value.y as Number, value.z as Number] }
+                roles.each { role ->
+                    def anchor = stations[role]
+                    if (anchor == null) throw new GradleException("Missing ORE_WORKSHOP anchor: ${role}")
+                    def anchorPoint = [anchor.x as Number, anchor.y as Number, anchor.z as Number]
+                    def visuals = visualsMethod.invoke(null, role)
+                    visuals.eachWithIndex { visual, index ->
+                        def part = visual.part
+                        if (part.idleHidden) return
+                        def modelId = "workshop_${role}_${index}"
+                        def material = "minecraft:${part.material.name().toLowerCase()}"
+                        // Display model parts use the raw block name, while the
+                        // recipe palette also needs to know about every asset
+                        // material used by those parts.
+                        blockId(material)
+                        models[modelId] = [[
+                            block: material,
+                            center: vec(part.center),
+                            size: vec(part.size),
+                            angle: part.angle,
+                            moving: part.moving,
+                            motion: part.motion,
+                            idleHidden: part.idleHidden,
+                            pivot: vec(part.pivot),
+                        ]]
+                        def offset = vec(visual.offset)
+                        def yawRadians = (visual.yaw as Number).doubleValue()
+                        def cosYaw = Math.cos(yawRadians)
+                        def sinYaw = Math.sin(yawRadians)
+                        // Runtime transforms rotate (part.center * scale +
+                        // offset) around the assembly anchor. The preview
+                        // root rotates the model parts, so rotate the local
+                        // offset into the root position to preserve parity.
+                        def rotatedOffset = [
+                            cosYaw * offset[0].doubleValue() + sinYaw * offset[2].doubleValue(),
+                            offset[1].doubleValue(),
+                            -sinYaw * offset[0].doubleValue() + cosYaw * offset[2].doubleValue(),
+                        ]
+                        def at = relative([
+                            anchorPoint[0].doubleValue() + rotatedOffset[0],
+                            anchorPoint[1].doubleValue() + rotatedOffset[1],
+                            anchorPoint[2].doubleValue() + rotatedOffset[2],
+                        ])
+                        assemblies << [
+                            id: "${role}_${index}",
+                            model: modelId,
+                            scale: visual.scale,
+                            yaw: yawRadians * 180.0 / Math.PI,
+                            at: at,
+                        ]
+                    }
+                }
+                def out = new File(project.findProperty('mineWorkshopPreviewOut') ?: '/private/tmp/mine-workshop-scenes')
+                out.mkdirs()
+                def recipe = [
+                    version: 1,
+                    seed: 0,
+                    title: 'ORE_WORKSHOP',
+                    size: [maxX.intValue() - minX.intValue() + 1, maxY.intValue() - baseY.intValue() + 1, maxZ.intValue() - minZ.intValue() + 1],
+                    palette: palette,
+                    operations: operations,
+                    displayModels: models,
+                    displayAssemblies: assemblies,
+                    subtitle: 'Офлайн-превью · live MineWorkshopMachines geometry',
+                    origin: [0, 0, 0],
+                    route: [[1, 0, 9], [1, 0, 7], [5, 0, 4], [11, 0, 4], [15, 0, 4]],
+                    preview: [defaultView: 'line', views: [
+                        [id: 'line', label: 'Вся линия', camera: [10, 8, 17], target: [9, 3, 5], fov: 78],
+                        [id: 'crusher', label: 'Дробилка и подача', camera: [4, 5, 14], target: [5, 3, 5], fov: 72],
+                        [id: 'furnace', label: 'Печь и пульт', camera: [12, 5, 14], target: [11, 4, 5], fov: 72],
+                        [id: 'casting', label: 'Заливка и охлаждение', camera: [17, 5, 13], target: [15, 3, 6], fov: 72],
+                        [id: 'cross', label: 'План цеха', camera: [28, 22, 28], target: [9, 0, 5], cutY: 6, fov: 70],
+                    ]],
+                ]
+                def file = new File(out, 'ore_workshop.atelier.json')
+                file.text = groovy.json.JsonOutput.toJson(recipe)
+                println("ORE_WORKSHOP ${assemblies.size()} static display parts -> ${file}")
+            }
+        }
+    }
+}

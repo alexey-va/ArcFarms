@@ -23,9 +23,13 @@ function poseExpeditionPart(mesh, part, phase) {
   const axis = part.motion === 'axle' ? new THREE.Vector3(1, 0, 0) : demoRotationAxis;
   let center = new THREE.Vector3(...part.center);
   let rotation = new THREE.Quaternion().setFromAxisAngle(axis, part.angle + angle);
-  if (['belt', 'cargo'].includes(part.motion)) {
+  if (part.motion === 'belt') {
     const [at, tangent] = beltPose(part, phase); center.add(at);
-    rotation = new THREE.Quaternion().setFromAxisAngle(demoRotationAxis, part.motion === 'belt' ? tangent : 0);
+    rotation = new THREE.Quaternion().setFromAxisAngle(demoRotationAxis, tangent);
+  } else if (part.motion === 'cargo') {
+    const cycle = ((phase + part.angle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) / (Math.PI * 2);
+    center.set(part.pivot[0] - 3.8 + cycle * 7.6 + part.center[0], part.pivot[1] + .58, part.pivot[2] + part.center[2]);
+    rotation.identity();
   } else if (part.moving && part.motion === 'press') center.y -= (1 - Math.cos(phase)) * .5;
   else if (part.moving && part.motion === 'feed') center.y -= ((phase / (Math.PI * 2) + part.angle) % 1) * 2.8;
   else if (part.moving && part.motion !== 'processed') {
@@ -33,6 +37,14 @@ function poseExpeditionPart(mesh, part, phase) {
     center.sub(pivot).applyAxisAngle(axis, angle).add(pivot);
   }
   mesh.visible = !part.idleHidden || expeditionDemo;
+  // The client renderer hides a completed load while resetting its transform.
+  // Keep the same disappearance in the preview instead of showing a return trip.
+  if (expeditionDemo && ['feed', 'cargo'].includes(part.motion)) {
+    const cycle = part.motion === 'feed'
+      ? ((phase / (Math.PI * 2) + part.angle) % 1 + 1) % 1
+      : ((phase + part.angle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) / (Math.PI * 2);
+    mesh.visible = cycle >= .04 && cycle <= .96;
+  }
   mesh.quaternion.copy(rotation);
   mesh.scale.set(...part.size);
   mesh.position.copy(new THREE.Vector3(...part.size).multiplyScalar(-.5).applyQuaternion(rotation).add(center));

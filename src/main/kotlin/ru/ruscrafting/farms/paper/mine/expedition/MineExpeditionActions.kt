@@ -15,6 +15,7 @@ import org.bukkit.inventory.ItemStack
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.domain.FarmProcessingCrankState
 import ru.ruscrafting.farms.domain.FarmProcessingCrankTracker
+import ru.ruscrafting.farms.domain.MineWorkshopHeat
 import ru.ruscrafting.farms.domain.mine.expedition.*
 import ru.ruscrafting.farms.paper.worksite.WorksiteCrankTethers
 import ru.ruscrafting.farms.paper.worksite.WorksiteCarriedDisplayRenderer
@@ -38,10 +39,16 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
     private data class Crank(val scope: String, val stage: MineExpeditionStage, val objective: String,
         var sample: FarmProcessingCrankState? = null, var radians: Double = 0.0)
     private data class Operation(val scope:String,val objective:String,val target:Int,val cycle:MineFactoryOperation)
+    private data class ChargeTransfer(var lastTick: Long, var elapsed: Long = 0L)
+    private data class PressTransfer(var lastTick: Long, var elapsed: Long = 0L)
     private data class Valve(val scope: String, val stage: MineExpeditionStage, val objective: String,
         var clicks: Int = 0, var nextClickAt: Long = 0, var lastPlayer: UUID? = null)
     private data class Pour(val scope: String, val owner: UUID, val cycle: MineFactoryPour, var readySignalled: Boolean = false)
+    private data class HeatSession(var state: MineWorkshopHeat, var lastTick: Long, var owner: UUID? = null)
     private val pours = mutableMapOf<String, Pour>()
+    private val heat = mutableMapOf<String, HeatSession>()
+    private val chargeTransfers = mutableMapOf<String, ChargeTransfer>()
+    private val pressTransfers = mutableMapOf<String, PressTransfer>()
     private val valves = mutableMapOf<Pair<String, String>, Valve>()
     private val operations=mutableMapOf<UUID,Operation>()
     private val renderer = WorksiteCarriedDisplayRenderer()
@@ -49,13 +56,24 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
     private val cranks = mutableMapOf<UUID, Crank>()
 
     fun operationPhase(scope:String,id:String,now:Long):Double = operations.values
-        .firstOrNull { it.scope==scope && it.objective==id }?.cycle?.progress(now)?.times(PI*2) ?: 0.0
+        .firstOrNull { it.scope==scope && it.objective==id }?.cycle?.progress(now)?.times(PI*2)
+        ?: pressTransfers[scope]?.takeIf { id == "assembly_socket" }
+            ?.elapsed?.let(MineFactoryPressCycle::strokePhase)
+        ?: 0.0
+    fun transferPhase(scope: String, id: String): Double = when (id) {
+        "charge_transfer" -> chargeTransfers[scope]?.elapsed?.let {
+            (it.toDouble() / CONNECTED_TRANSFER_MILLIS).coerceIn(0.0, 1.0) * PI * 2
+        } ?: 0.0
+        "roller_transfer" -> pressTransfers[scope]?.elapsed?.let(MineFactoryPressCycle::transferPhase) ?: 0.0
+        else -> 0.0
+    }
     fun owns(entity: Entity) = tethers.owns(entity) || carts.owns(entity)
     fun removeOrphans(entities: Iterable<Entity>) { tethers.removeOrphans(entities); carts.removeOrphans(entities) }
     fun pourLabel(scope: String, now: Long): String = pours[scope]?.let {
         if(it.cycle.ready(now)) "pour-close" else "pour-filling"
     } ?: "control.pour_console"
     fun pourReady(scope: String, now: Long): Boolean = pours[scope]?.cycle?.ready(now) == true
+    fun factoryHeat(scope: String): MineWorkshopHeat? = heat[scope]?.state
     fun pourValues(scope: String, now: Long): Map<String, Component> {
         val level = pours[scope]?.cycle?.level(now) ?: 0.0
         return mapOf("percent" to Component.text((level*100).toInt()))
@@ -67,6 +85,9 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
         }
         valves.values.filter { it.scope == scope && it.lastPlayer == player.uniqueId }.maxByOrNull { it.nextClickAt }?.let {
             return text("valve-progress", player, mapOf("count" to it.clicks, "total" to VALVE_CLICKS))
+        }
+        heat[scope]?.takeIf { it.owner == null || it.owner == player.uniqueId }?.let { session ->
+            return heatText(player, session.state)
         }
         operations[player.uniqueId]?.takeIf { it.scope == scope }?.let {
             return text("operation-progress", player, mapOf("percent" to (it.cycle.progress(now) * 100).toInt()))
@@ -130,6 +151,11 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
                 player.sendActionBar(text("turn", player))
             }
             MineExpeditionInteraction.OPERATE -> {
+                if (state.stage == MineExpeditionStage.FACTORY_HEAT &&
+                    MineFactoryProgram.usesConnectedCrusherLine(scene.plan)) {
+                    operateFactoryHeat(scope, scene, state, player, target, now, complete)
+                    return
+                }
                 if(state.stage in setOf(
                         MineExpeditionStage.FACTORY_WATER,
                         MineExpeditionStage.FACTORY_COAL,
@@ -151,6 +177,12 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
         targets: List<MineExpeditionObjective>, players: Collection<Player>, now: Long,
         complete: (Player, MineExpeditionStep) -> Boolean, animateCrank: (String, Double) -> Unit) {
         val participants = players.filter { it.isOnline && !it.isDead && scene.contains(it.location) }.associateBy(Player::getUniqueId)
+        tickFactoryHeat(scope, scene, state, targets, participants.values, now)
+        if (state.stage == MineExpeditionStage.FACTORY_HEAT && MineFactoryProgram.usesConnectedCrusherLine(scene.plan)) {
+            animateCrank("furnace_control", if (heat[scope]?.state?.airOpen == true) PI else 0.0)
+        }
+        tickConnectedChargeTransfer(scope, scene, state, participants.values, now, complete)
+        tickConnectedPressTransfer(scope, scene, state, participants.values, now, complete)
         if(state.stage==MineExpeditionStage.FACTORY_POUR && scope !in pours) animateCrank("pour_console",0.0)
         pours[scope]?.let { pour ->
             val player=participants[pour.owner]
@@ -241,6 +273,137 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
         if(operations.containsKey(player.uniqueId) || operations.values.any { it.scope==scope && it.objective==id }) return
         operations[player.uniqueId]=Operation(scope,id,target,MineFactoryOperation(state.stage,now))
         player.sendActionBar(text("operating",player))
+    }
+
+    private fun operateFactoryHeat(
+        scope: String,
+        scene: MineExpeditionScene,
+        state: MineExpeditionState,
+        player: Player,
+        target: MineExpeditionObjective,
+        now: Long,
+        complete: (MineExpeditionStep) -> Boolean,
+    ) {
+        if (target.target in state.completed || target.interaction != MineExpeditionInteraction.OPERATE) return
+        val receiver = scene.at(target.position)
+        if (player.world !== receiver.world || player.location.distanceSquared(receiver) > 25.0) return
+        val session = heat[scope]
+        if (session == null) {
+            // The first click opens the air path and starts the visual
+            // thermometer. Subsequent clicks toggle the same physical lever.
+            val started = MineWorkshopHeat(airOpen = false).toggleAir()
+            heat[scope] = HeatSession(started, now, player.uniqueId)
+            player.sendActionBar(heatText(player, started))
+            if (sounds()) player.playSound(receiver, Sound.BLOCK_LEVER_CLICK, .55f, 1.15f)
+            return
+        }
+        advanceHeat(session, now)
+        session.owner = player.uniqueId
+        if (session.state.ready) {
+            if (complete(MineExpeditionEngine.completeFactoryHeat(state, session.state, now))) heat.remove(scope)
+            else player.sendActionBar(heatText(player, session.state))
+            return
+        }
+        session.state = session.state.toggleAir()
+        session.lastTick = now
+        player.sendActionBar(heatText(player, session.state))
+        if (sounds()) player.playSound(receiver, Sound.BLOCK_LEVER_CLICK, .55f, if (session.state.airOpen) 1.15f else .8f)
+    }
+
+    private fun tickFactoryHeat(
+        scope: String,
+        scene: MineExpeditionScene,
+        state: MineExpeditionState,
+        targets: List<MineExpeditionObjective>,
+        participants: Collection<Player>,
+        now: Long,
+    ) {
+        val session = heat[scope] ?: return
+        if (state.stage != MineExpeditionStage.FACTORY_HEAT ||
+            targets.none { it.id == "furnace_control" && it.interaction == MineExpeditionInteraction.OPERATE }) {
+            heat.remove(scope)
+            return
+        }
+        // The furnace advances only while the expedition still has a live
+        // participant. A reload can recreate the session without granting a
+        // checkpoint, while an idle world does not catch up unattended heat.
+        if (participants.isNotEmpty()) advanceHeat(session, now) else session.lastTick = now
+    }
+
+    private fun advanceHeat(session: HeatSession, now: Long) {
+        val elapsed = (now - session.lastTick).coerceAtLeast(0L)
+        session.state = session.state.tick(elapsed)
+        session.lastTick = now
+    }
+
+    /** The visible belt owns the final charge hand-off; it needs no player cargo lease. */
+    private fun tickConnectedChargeTransfer(
+        scope: String,
+        scene: MineExpeditionScene,
+        state: MineExpeditionState,
+        participants: Collection<Player>,
+        now: Long,
+        complete: (Player, MineExpeditionStep) -> Boolean,
+    ) {
+        if (!MineFactoryProgram.usesConnectedCrusherLine(scene.plan) ||
+            !MineFactoryProgram.chargeTransferPending(state)) {
+            chargeTransfers.remove(scope)
+            return
+        }
+        if (participants.isEmpty()) {
+            chargeTransfers[scope]?.lastTick = now
+            return
+        }
+        val transfer = chargeTransfers[scope] ?: ChargeTransfer(now).also { chargeTransfers[scope] = it }
+        val elapsed = (now - transfer.lastTick).coerceIn(0L, TRANSFER_TICK_CAP_MILLIS)
+        transfer.elapsed = (transfer.elapsed + elapsed).coerceAtMost(CONNECTED_TRANSFER_MILLIS)
+        transfer.lastTick = now
+        if (transfer.elapsed < CONNECTED_TRANSFER_MILLIS) return
+        val driver = participants.first()
+        if (complete(driver, MineExpeditionEngine.completeTarget(state, 2, now))) {
+            chargeTransfers.remove(scope)
+        }
+    }
+
+    /** The placed billet is pressed automatically once an active participant remains. */
+    private fun tickConnectedPressTransfer(
+        scope: String,
+        scene: MineExpeditionScene,
+        state: MineExpeditionState,
+        participants: Collection<Player>,
+        now: Long,
+        complete: (Player, MineExpeditionStep) -> Boolean,
+    ) {
+        if (!MineFactoryProgram.pressTransferPending(scene.plan, state)) {
+            pressTransfers.remove(scope)
+            return
+        }
+        if (participants.isEmpty()) {
+            pressTransfers[scope]?.lastTick = now
+            return
+        }
+        val transfer = pressTransfers[scope] ?: PressTransfer(now).also { pressTransfers[scope] = it }
+        val elapsed = (now - transfer.lastTick).coerceIn(0L, TRANSFER_TICK_CAP_MILLIS)
+        transfer.elapsed = (transfer.elapsed + elapsed).coerceAtMost(MineFactoryPressCycle.TOTAL_MILLIS)
+        transfer.lastTick = now
+        if (transfer.elapsed < MineFactoryPressCycle.TOTAL_MILLIS) return
+        val driver = participants.first()
+        if (complete(driver, MineExpeditionEngine.completeTarget(state, 0, now))) {
+            pressTransfers.remove(scope)
+        }
+    }
+
+    private fun heatText(player: Player, state: MineWorkshopHeat): Component {
+        val key = when {
+            state.ready -> "factory-heat-ready"
+            state.airOpen -> "heat-rise"
+            else -> "heat-fall"
+        }
+        val path = if (state.ready) "mine.expedition.$key" else "mine.working.workshop.$key"
+        return locale?.renderPath(path, player, mapOf(
+            "temperature" to Component.text(state.temperature.toInt()),
+            "progress" to Component.text((state.progress * 100).toInt()),
+        )) ?: Component.text(key)
     }
 
     /**
@@ -338,6 +501,9 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
     }
     fun clear(scope: String) {
         pours.remove(scope)
+        heat.remove(scope)
+        chargeTransfers.remove(scope)
+        pressTransfers.remove(scope)
         valves.entries.removeIf { it.value.scope == scope }
         cargo.filterValues { it.scope == scope }.keys.toList().forEach(::release)
         cranks.filterValues { it.scope == scope }.keys.toList().forEach(::releaseCrank)
@@ -346,6 +512,9 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
     }
     fun cleanup() {
         pours.clear()
+        heat.clear()
+        chargeTransfers.clear()
+        pressTransfers.clear()
         valves.clear()
         cargo.keys.toList().forEach(::release)
         cranks.keys.toList().forEach(::releaseCrank)
@@ -359,8 +528,12 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
         val index = if (target.target >= 0) target.target else (0 until MineExpeditionEngine.targetCount(state))
             .firstOrNull { it !in state.completed && !claimed(scope, state.stage, it) } ?: return
         if (index in state.completed || claimed(scope, state.stage, index)) return
-        val held = if(state.stage in setOf(MineExpeditionStage.FACTORY_COAL,MineExpeditionStage.FACTORY_INSTALL)) {
-            val cart=runCatching { carts.spawn(scope,player,material(target.material)) }.getOrElse { error ->
+        val repairGear = state.stage == MineExpeditionStage.FACTORY_WATER && target.id.startsWith("repair_supply_")
+        val held = if (repairGear || state.stage in setOf(MineExpeditionStage.FACTORY_COAL,MineExpeditionStage.FACTORY_INSTALL)) {
+            val cart=runCatching {
+                if (repairGear) carts.spawnModel(scope, player, material(target.material), "loose_gear")
+                else carts.spawn(scope,player,material(target.material))
+            }.getOrElse { error ->
                 plugin.logger.log(java.util.logging.Level.WARNING,"Factory cargo cart failed scope=$scope player=${player.uniqueId}",error)
                 player.sendActionBar(text("cart-failed",player));return
             }
@@ -397,6 +570,8 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
 
     companion object {
         private const val VALVE_CLICKS = 8
+        private const val CONNECTED_TRANSFER_MILLIS = 6_000L
+        private const val TRANSFER_TICK_CAP_MILLIS = 1_000L
         fun material(name: String): Material = Material.matchMaterial(name) ?: Material.IRON_INGOT
     }
 }

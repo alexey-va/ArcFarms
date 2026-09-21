@@ -23,24 +23,30 @@ event markers; other expeditions may keep separate entry and exit portals.
    controls interpolate each click; powered rolls turn continuously until the event ends.
 2. Push an ore-and-coal cart from the bunker to the crusher inlet. Switch the
    feed lever: a six-second cycle drops visible material between counter-rotating
-   toothed rolls and carries fragments along the moving belt. Collect the mix
-   at its outlet and push the loaded cart to the furnace. Only the current source
-   or receiver is highlighted; stale or wrong receiver clicks cannot grant credit.
-3. Wait for the furnace's green ready signal and bell, then right-click its
-   control. The countdown is shown above the control and in the HUD. Its status
-   stack changes yellow to green together with a green glow and bright end-rod
-   particles. Fire and chimney smoke follow the heating/pouring stages.
+   toothed rolls and carries fragments along the top of the moving belt. The
+   processed charge is transferred by that belt into the furnace inlet and
+   completes the receiving checkpoint after its visible one-way journey; no second
+   cart or manual receiver step interrupts the line. Only the current source
+   or control is highlighted, and stale clicks cannot grant credit.
+3. Operate the furnace air control. Opening it raises the thermometer by 12
+   points per second and closing it lowers it by 6; keep the reading in the
+   60–78 green band for four cumulative seconds. The panel's thermometer, green signal and
+   bell show readiness, and a ready click advances the durable checkpoint.
+   Fire and chimney smoke follow the heating/pouring stages.
 4. Start the flow from the separate console beside the casting bed. Close it
-   with another right-click while the percentage and lever glow green at 65–90%. The
-   10-second fill has a 2.5-second success window, a bell, a rising molten surface,
-   droplets and lava sounds. Underdosing or overflow drains for a free retry;
-   leaving releases the control, and another worker cannot steal an active pour.
+   with another right-click while the percentage and lever glow green from
+   100% through 130% (the nominal fill is 100%). The 10-second fill has a
+   3-second success window; closing above 130% resets the batch for a free
+   retry. A bell, rising molten surface, droplets and lava sounds show the
+   flow; leaving releases the control, and another worker cannot steal an active
+   pour.
 5. Right-click the crane console. A 4.5-second cycle lifts the casting, moves it
-   along the overhead beam and lowers it onto the unloading table. The chain
-   length follows the load. The casting is absent before production and is
-   hidden while a participant carries it.
-6. Push the casting cart to the press; approach or right-click to unload. Its ram descends one block,
-   strikes with sparks, dust and an anvil sound, then returns. The final domain
+   along the overhead beam and lowers it onto the start of the roller conveyor.
+   The chain length follows the load. The casting is absent before production,
+   and the conveyor does not start until the placement has completed.
+6. The placed billet travels for four seconds from the conveyor start into the press; no second
+   press cart is spawned. Its ram descends one block, strikes with sparks, dust
+   and an anvil sound, then returns. The final domain
    checkpoint occurs after the whole 2.4-second stroke. The finished drive gear
    stays on the press for a 12-second result presentation with a bell, particles
    and return countdown; only then does automatic return occur. The return
@@ -223,7 +229,7 @@ release evidence below does not certify this release's client behaviour.
 
 ## Мёртвый завод — `DEAD_FACTORY`
 
-Связная производственная линия слева направо: большая валковая дробилка, конвейер, печь, заливка, роликовый стол и пресс. Сначала нужно найти выпавшую шестерню и установить на подсвеченный вал, открыть охлаждение и включить привод. Затем тележкой подать руду с углём, запустить дробление и перевезти готовую смесь к печи. По зелёному сигналу печи открыть выпуск; расплав виден в трубах и форме. Рычаг роликового стола готовит отливку к перевозке на пресс. После удара пресса игрок видит готовую деталь до возвращения. Вход смотрит на цех, подсветка указывает текущую операцию; работающая дробилка продолжает вращаться со звуком и пылью до конца ивента.
+Связная производственная линия слева направо: большая валковая дробилка, конвейер, печь, заливка, роликовый стол и пресс. Сначала нужно найти выпавшую шестерню и установить на подсвеченный вал, открыть охлаждение и включить привод. Затем тележкой подать руду с углём, запустить дробление, а лента сама подаст смесь в печь без второй тележки. Воздух печи держат в зелёном диапазоне 60–78% четыре секунды: открытая заслонка повышает температуру на 12 пунктов в секунду, закрытая снижает на 6. По зелёному сигналу печи открыть выпуск: успех заливки находится в окне 100–130%, а превышение 130% сбрасывает попытку. Кран опускает заготовку на начало роликового стола, после чего она движется в пресс. После удара пресса игрок видит готовую деталь до возвращения. Вход смотрит на цех, подсветка указывает текущую операцию; работающая дробилка продолжает вращаться со звуком и пылью до конца ивента.
 
 ## Управление и генерация
 

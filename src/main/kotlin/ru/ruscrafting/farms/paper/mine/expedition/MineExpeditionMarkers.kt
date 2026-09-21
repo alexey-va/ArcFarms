@@ -27,7 +27,8 @@ internal class MineExpeditionMarkers(
         val interactive: Boolean = true)
     private data class Marker(val displays: List<PacketBlockDisplay>, val hitbox: Interaction,
         val label: PacketTextDisplay, var target: Target, val parts: List<MineDisplayBlueprints.Part>,
-        var phase: Float = 0f, var signal: Material = Material.AIR)
+        var phase: Float = 0f, var signal: Material = Material.AIR,
+        val hiddenMotionUntil: MutableMap<String, Long> = mutableMapOf())
     private val key = NamespacedKey(plugin, keyName)
     private val markers = linkedMapOf<String, Marker>()
     private var renderer: PaperPacketDisplays? = null
@@ -104,9 +105,67 @@ internal class MineExpeditionMarkers(
         val matching = marker.parts.withIndex().filter { it.value.motion == motion }
         if (matching.isEmpty()) return
         if (matching.all { marker.displays[it.index].isVisibleByDefault == visible }) return
+        matching.forEach { marker.displays[it.index].interpolationDuration = 0 }
         matching.forEach { marker.displays[it.index].isVisibleByDefault = visible }
         positionParts(marker.displays, marker.parts, marker.target.yaw, marker.phase, marker.target.modelScale,
             onlyMoving=true, motion=motion)
+        if (visible) matching.forEach { marker.displays[it.index].interpolationDuration = DISPLAY_INTERPOLATION_TICKS }
+    }
+
+    /** Reposition a hidden moving part without exposing an endpoint-to-start jump. */
+    fun repositionMotion(scope: String, id: String, motion: String) {
+        val marker = markers["$scope/$id"] ?: return
+        val matching = marker.parts.withIndex().filter { it.value.motion == motion }
+        if (matching.isEmpty()) return
+        matching.forEach { marker.displays[it.index].interpolationDuration = 0 }
+        positionParts(marker.displays, marker.parts, marker.target.yaw, marker.phase, marker.target.modelScale,
+            onlyMoving=true, motion=motion)
+    }
+
+    /**
+     * Hide only the cargo pieces whose own phase crossed the one-way loop
+     * boundary.  Cargo pieces are intentionally phase-offset along the deck;
+     * a single global reset would make some pieces visibly jump back early.
+     */
+    fun motionLoopBoundary(scope: String, id: String, motion: String,
+        previousPhase: Double, currentPhase: Double, now: Long, hiddenMillis: Long) {
+        val marker = markers["$scope/$id"] ?: return
+        if (!previousPhase.isFinite() || !currentPhase.isFinite()) return
+        val matching = marker.parts.withIndex().filter { it.value.motion == motion }
+        if (matching.isEmpty()) return
+        val wrapped = mutableListOf<Int>()
+        matching.forEach { (index, part) ->
+            val previous = normalizedPhase(previousPhase + part.angle)
+            val current = normalizedPhase(currentPhase + part.angle)
+            val key = "$motion/$index"
+            if (current < previous) {
+                val display = marker.displays[index]
+                display.interpolationDuration = 0
+                display.isVisibleByDefault = false
+                marker.hiddenMotionUntil[key] = now + hiddenMillis
+                wrapped += index
+            } else if (marker.hiddenMotionUntil[key]?.let { now >= it } == true) {
+                marker.displays[index].interpolationDuration = DISPLAY_INTERPOLATION_TICKS
+                marker.displays[index].isVisibleByDefault = true
+                marker.hiddenMotionUntil.remove(key)
+            }
+        }
+        if (wrapped.isNotEmpty()) {
+            positionParts(marker.displays, marker.parts, marker.target.yaw, currentPhase.toFloat(),
+                marker.target.modelScale, onlyMoving=true, motion=motion)
+        }
+    }
+
+    /** Show a ten-segment furnace thermometer from the transient heat state. */
+    fun thermometer(scope: String, id: String, temperature: Double) {
+        val marker = markers["$scope/$id"] ?: return
+        val matching = marker.parts.withIndex().filter { it.value.motion == "thermometer" }
+        if (matching.isEmpty()) return
+        val visible = kotlin.math.ceil((temperature.coerceIn(0.0, 100.0) / 100.0) * matching.size).toInt()
+        matching.forEachIndexed { index, indexed ->
+            marker.displays[indexed.index].isVisibleByDefault = index < visible
+            marker.displays[indexed.index].interpolationDuration = 0
+        }
     }
 
     fun signal(scope: String, id: String, lit: Material) {
@@ -141,6 +200,11 @@ internal class MineExpeditionMarkers(
                 display.transformation=desired
             }
         }
+    }
+
+    private fun normalizedPhase(value: Double): Double {
+        val turn = Math.PI * 2.0
+        return ((value % turn) + turn) % turn
     }
 
     private fun spawn(id: String, target: Target): Marker {
@@ -214,7 +278,7 @@ internal class MineExpeditionMarkers(
         val labelHeight = when {
             portal(target) -> 3.25
             target.model in setOf("finished_gear","return_miner") -> 2.1
-            target.model in setOf("crane_console", "furnace_console", "machine_console", "mounted_console") -> 2.3
+            target.model in setOf("crane_console", "furnace_console", "furnace_air_console", "machine_console", "mounted_console") -> 2.3
             blueprint.isNotEmpty() -> 4.0*target.modelScale
             else -> 2.0
         }

@@ -1,5 +1,6 @@
 package ru.ruscrafting.farms.domain.mine.expedition
 
+import ru.ruscrafting.farms.domain.MineWorkshopHeat
 import ru.ruscrafting.farms.domain.MineIncidentType
 
 /**
@@ -126,14 +127,37 @@ object MineExpeditionEngine {
         return (state.motionStep.toDouble() / routeSteps).coerceIn(0.0, 1.0)
     }
 
-    fun completeTarget(current: MineExpeditionState, target: Int, now: Long): MineExpeditionStep {
+    fun completeTarget(current: MineExpeditionState, target: Int, now: Long): MineExpeditionStep =
+        completeTarget(current, target, now, controlledHeat = false)
+
+    /**
+     * The connected factory uses an air-controlled furnace rather than the
+     * legacy timed quench window. The durable checkpoint remains identical;
+     * only the transient readiness predicate changes.
+     */
+    fun completeFactoryHeat(
+        current: MineExpeditionState,
+        heat: MineWorkshopHeat,
+        now: Long,
+    ): MineExpeditionStep = if (current.stage == MineExpeditionStage.FACTORY_HEAT && heat.ready) {
+        completeTarget(current, 0, now, controlledHeat = true)
+    } else {
+        MineExpeditionStep(current, false)
+    }
+
+    private fun completeTarget(
+        current: MineExpeditionState,
+        target: Int,
+        now: Long,
+        controlledHeat: Boolean,
+    ): MineExpeditionStep {
         require(now >= 0L)
         val operation = action(current)
         val total = targetCount(current)
         if (operation !in setOf(MineExpeditionAction.TARGET, MineExpeditionAction.HEAT) ||
             target !in 0 until total || target in current.completed
         ) return MineExpeditionStep(current, false)
-        if (operation == MineExpeditionAction.HEAT && !canFinishHeat(current, now)) {
+        if (operation == MineExpeditionAction.HEAT && !controlledHeat && !canFinishHeat(current, now)) {
             return MineExpeditionStep(current, false)
         }
         val completed = current.completed + target

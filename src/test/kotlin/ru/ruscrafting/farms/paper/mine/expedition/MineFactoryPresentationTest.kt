@@ -15,7 +15,7 @@ import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.domain.mine.expedition.*
 
 class MineFactoryPresentationTest : FunSpec({
-    test("connected line shows material only during processing and output only until collection") {
+    test("connected line shows crusher feed during processing and cargo only during transfer") {
         val plugin = mockk<Plugin>(relaxed = true)
         val markers = mockk<MineExpeditionMarkers>(relaxed = true)
         every { markers.at(any(), any(), any(), any(), any()) } returns null
@@ -33,14 +33,38 @@ class MineFactoryPresentationTest : FunSpec({
         clearMocks(markers, answers = false)
         presentation.tick(scene, loaded, "factory", 1100, emptyMap(), processingCharge = true)
         verify { markers.motionVisible("furnish:8", "decor_crusher_left", "feed", true) }
+        verify { markers.motionVisible("furnish:8", "decor_conveyor_raw", "cargo", false) }
+        verify(exactly = 0) { markers.motionLoopBoundary(any(), any(), any(), any(), any(), any(), any()) }
+        clearMocks(markers, answers = false)
+        val transfer = loaded.copy(completed = setOf(0, 1))
+        presentation.tick(scene, transfer, "factory", 1200, mapOf("charge_transfer" to .25))
+        verify { markers.repositionMotion("furnish:8", "decor_conveyor_raw", "cargo") }
+        verify { markers.repositionMotion("factory", "decor_conveyor_raw", "cargo") }
+        clearMocks(markers, answers = false)
+        presentation.tick(scene, transfer, "factory", 1400, mapOf("charge_transfer" to .5))
+        verify { markers.motionLoopBoundary("furnish:8", "decor_conveyor_raw", "cargo", any(), any(), 1400, any()) }
         verify { markers.motionVisible("furnish:8", "decor_conveyor_raw", "cargo", true) }
         clearMocks(markers, answers = false)
-        presentation.tick(scene, loaded.copy(completed = setOf(0, 1)), "factory", 8000, emptyMap())
+        presentation.tick(scene, transfer, "factory", 8000,
+            mapOf("charge_transfer" to Math.PI))
         verify { markers.motionVisible("furnish:8", "decor_crusher_left", "feed", false) }
         verify { markers.motionVisible("factory", "crushed_output", "processed", true) }
         clearMocks(markers, answers = false)
         presentation.tick(scene, loaded.copy(stage = MineExpeditionStage.FACTORY_HEAT, completed = emptySet()), "factory", 9000, emptyMap())
         verify { markers.motionVisible("factory", "crushed_output", "processed", false) }
+        clearMocks(markers, answers = false)
+        presentation.tick(scene, loaded.copy(stage = MineExpeditionStage.FACTORY_CRANE), "factory", 10_000,
+            mapOf("crane_control" to Math.PI))
+        verify(exactly = 0) { markers.rotate("furnish:8", "decor_roller_table", any()) }
+        clearMocks(markers, answers = false)
+        presentation.tick(scene, loaded.copy(stage = MineExpeditionStage.FACTORY_INSTALL), "factory", 11_000,
+            mapOf("assembly_socket" to Math.PI))
+        verify(exactly = 0) { markers.rotate("furnish:8", "decor_roller_table", any()) }
+        verify { markers.rotate("furnish:8", "assembly_socket", Math.PI) }
+        clearMocks(markers, answers = false)
+        presentation.tick(scene, loaded.copy(stage = MineExpeditionStage.FACTORY_INSTALL), "factory", 11_100,
+            mapOf("roller_transfer" to Math.PI, "assembly_socket" to Math.PI))
+        verify(exactly = 1) { markers.rotate("furnish:8", "decor_roller_table", any()) }
     }
 
     test("running crusher rotates and emits bounded feedback after commissioning and during casting") {

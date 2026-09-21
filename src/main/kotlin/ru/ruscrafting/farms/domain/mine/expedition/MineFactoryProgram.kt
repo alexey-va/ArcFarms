@@ -20,6 +20,15 @@ object MineFactoryProgram {
      */
     fun usesConnectedCrusherLine(plan: MineExpeditionPlan): Boolean = "crusher_feed" in plan.stations
 
+    /** The third charge checkpoint is consumed by the belt at the furnace inlet. */
+    fun chargeTransferPending(state: MineExpeditionState): Boolean =
+        state.stage == MineExpeditionStage.FACTORY_COAL &&
+            0 in state.completed && 1 in state.completed && 2 !in state.completed
+
+    /** A connected crane has placed the billet; the conveyor now owns the press stroke. */
+    fun pressTransferPending(plan: MineExpeditionPlan, state: MineExpeditionState): Boolean =
+        usesConnectedCrusherLine(plan) && state.stage == MineExpeditionStage.FACTORY_INSTALL
+
     private fun commissioningControls(state: MineExpeditionState): List<String> = when(state.factoryProgram) {
         1 -> listOf("water_valve_0","control_pump_left","control_crusher_left")
         2 -> listOf("water_valve_2","control_pump_right","control_crusher_right")
@@ -79,7 +88,7 @@ object MineFactoryProgram {
         state: MineExpeditionState,
     ): List<MineExpeditionObjective> {
         val next = (0 until 3).firstOrNull { it !in state.completed } ?: return emptyList()
-        fun station(id: String): ExpeditionPoint = plan.stations.getValue(id)
+        fun station(id: String): ExpeditionPoint = MineFactoryLine.effectiveStation(plan, id)
         return when (next) {
             0 -> listOf(
                 MineExpeditionObjective(

@@ -8,7 +8,7 @@ import kotlin.math.sin
 
 /** Recognisable production assemblies, in block units: an open crusher, transport and service fittings. */
 internal object MineFactoryModels {
-    val kinds = setOf("factory_crusher", "factory_conveyor", "roller_table", "mounted_console",
+    val kinds = setOf("factory_crusher", "factory_conveyor", "roller_table", "mounted_console", "furnace_air_console",
         "charge_bunker", "inlet_hopper", "charge_hopper", "loose_gear", "gear_socket", "factory_water_header")
     val moltenPath = listOf(Vector3f(-8f,1.25f,0f), Vector3f(-8f,3.05f,0f),
         Vector3f(-3.3f,3.05f,0f), Vector3f(-3.3f,3.05f,-2.15f),
@@ -30,7 +30,7 @@ internal object MineFactoryModels {
         fun box(m: Material, x: Float, y: Float, z: Float, w: Float, h: Float, d: Float,
             angle: Float = 0f, motion: String = "fixed", pivot: Vector3f = Vector3f(), hidden: Boolean = false) {
             add(MineDisplayBlueprints.Part(m, Vector3f(x,y,z), Vector3f(w,h,d), angle,
-                motion != "fixed" && motion != "signal", pivot, motion, hidden))
+                motion != "fixed" && motion != "signal" && motion != "thermometer", pivot, motion, hidden))
         }
         fun gear(x: Float, y: Float, z: Float, radius: Float, motion: String = "fixed", hidden: Boolean = false) {
             val pivot = Vector3f(x,y,z)
@@ -119,7 +119,7 @@ internal object MineFactoryModels {
                 repeat(40) { i -> box(Material.DEEPSLATE_TILES,0f,0f,0f,.24f,.08f,2.15f,
                     (i*PI*2/40).toFloat(),"belt",Vector3f(0f,1.24f,0f)) }
                 repeat(5) { i -> box(if(i%2==0) Material.RAW_IRON_BLOCK else Material.COAL_BLOCK,
-                    0f,.37f,(i%2-.5f)*.7f,.49f,.38f,.52f,(i*PI*2/5).toFloat(),
+                    0f,.62f,(i%2-.5f)*.7f,.49f,.38f,.52f,(i*PI*2/5).toFloat(),
                     "cargo",Vector3f(0f,1.24f,0f),true) }
             }
             "roller_table" -> {
@@ -142,6 +142,29 @@ internal object MineFactoryModels {
                 box(Material.IRON_BLOCK,-.3f,1.34f,.4f,.12f,.5f,.12f,motion="lever",pivot=Vector3f(-.3f,1.1f,.4f))
                 box(Material.RED_CONCRETE,-.3f,1.62f,.4f,.35f,.18f,.23f,motion="lever",pivot=Vector3f(-.3f,1.1f,.4f))
             }
+            "furnace_air_console" -> {
+                // Air control is deliberately a small, readable service panel: the
+                // lever is the only clickable moving part and the thermometer is
+                // a stack of passive lights driven by MineExpeditionMarkers.
+                box(Material.POLISHED_BASALT,0f,1.15f,-.42f,.35f,.35f,.95f)
+                box(Material.WEATHERED_CUT_COPPER,0f,1.3f,0f,1.5f,1.05f,.42f)
+                box(Material.POLISHED_BLACKSTONE,0f,1.35f,.225f,1.25f,.75f,.035f)
+                box(Material.IRON_BLOCK,-.34f,1.34f,.4f,.12f,.5f,.12f,motion="lever",pivot=Vector3f(-.34f,1.1f,.4f))
+                box(Material.ORANGE_CONCRETE,-.34f,1.62f,.4f,.35f,.18f,.23f,motion="lever",pivot=Vector3f(-.34f,1.1f,.4f))
+                for (index in 0..9) {
+                    // The colours mark the fixed operating band (60..78)
+                    // rather than pretending that every visible LED is safe.
+                    // Above the band stays red even when the gauge is full.
+                    val segmentTemperature = 18f + (index + .5f) * 8.2f
+                    val material = when {
+                        segmentTemperature in 60f..78f -> Material.LIME_CONCRETE
+                        segmentTemperature > 78f -> Material.RED_CONCRETE
+                        else -> Material.YELLOW_CONCRETE
+                    }
+                    box(material,.34f,1.0f + index*.08f,.265f,.16f,.06f,.045f,
+                        motion="thermometer",hidden=true)
+                }
+            }
             "charge_bunker" -> {
                 legs(4.5f,3.5f,1.2f)
                 box(Material.POLISHED_DEEPSLATE,0f,.9f,0f,4.8f,.4f,3.8f)
@@ -161,13 +184,16 @@ internal object MineFactoryModels {
                 if(kind=="charge_hopper") for(x in listOf(-.4f,.4f)) for(z in listOf(-.4f,.4f))
                     box(Material.RAW_IRON_BLOCK,x,1.55f,z,.63f,.55f,.58f,motion="processed",hidden=true)
             }
-            "loose_gear" -> gear(0f,.72f,0f,.62f)
+            // Keep the pickup on the service side of the column rather than
+            // burying the actual gear model in the factory wall.
+            "loose_gear" -> gear(.75f,.72f,-.75f,.62f)
             "gear_socket" -> {
                 box(Material.POLISHED_BLACKSTONE,0f,1.35f,-.2f,1.75f,1.75f,.23f)
                 for(x in listOf(-.75f,.75f)) for(y in listOf(.6f,2.1f))
                     box(Material.IRON_BLOCK,x,y,-.05f,.15f,.15f,.15f)
                 box(Material.IRON_BLOCK,0f,1.35f,.14f,.28f,.28f,.55f)
-                gear(0f,1.35f,.48f,.63f,"installed_gear",true)
+                // The socket's west offset leaves clearance from the adjacent hopper.
+                gear(.72f,1.35f,-.38f,.63f,"installed_gear",true)
             }
         }
     }

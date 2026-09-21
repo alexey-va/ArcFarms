@@ -43,12 +43,23 @@ scene lifecycle.
 | `RAIL_EXTENSION` | Clear the collapse, click the rail markers to lay one continuous ordered line from the entrance, then run the checking minecart along it. | Rails and checking cart; the engine rejects out-of-order segments. |
 | `TRACK_DAMAGE` | Reuse the rail layout with the existing bed already present: clear rubble, replace damaged or missing segments, and run the checking cart. A persisted legacy incident without `working` remains readable by `MineTrackDamageIncident`. | Rails and checking cart; no new reward item. |
 
-`ORE_WORKSHOP` is a separate fixed workshop incident, not a side-working
-entrance. It uses the five mapped stations in order for three batches: carry
-ore from `ore_input` to `ore_crusher`, walk three laps for the three `CRUSH`
-strokes, heat for 4 seconds, right-click the furnace during the following
-4-second cooling window, then carry the billet from `ore_output` to
-`ore_shipping`. A missed window reheats the same batch.
+`ORE_WORKSHOP` is a fixed production line in the upper-floor north niche.
+For each of three batches, take ore and click the glowing feed hopper from the
+south aisle, then start the single crusher drive. Four seconds of crushing
+are followed by three seconds of one-way belt transfer into the furnace.
+The furnace air lever raises or lowers a visible thermometer; four cumulative
+seconds in its 60–78% green band make the melt ready. It stays ready until the
+operator clicks the tap, so there is no expiring quench window. Casting and
+cooling visibly finish before the output can be collected; no hand carry is
+required between the furnace, cooling line and output rack.
+
+The existing 18 durable checkpoints remain: per batch, load, drive start,
+crushing complete, belt delivery, controlled smelt and output collection.
+Transient animation/temperature resets safely after reload while completed
+checkpoints stay durable. Reconstructing a scene or repeating a click grants
+no extra work. The controller reuses `MineIncidentCoordinator`,
+`MineWorkingEngine`, shared worksite guidance/access and `WorksiteCarryable`;
+`MineWorkshopHeat` models only the new thermal-control verb.
 
 The active working contract provides at least 60 seconds of grace, an 8-block
 clear area around the cave, a five-minute deadline and a 15-second warning.

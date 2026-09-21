@@ -354,12 +354,16 @@ in the cavern takes the player back to the lift, including after completion;
 rail extension clears a collapse, lays one continuous line from clicked
 markers and tests it with a cart. `ORE_WORKSHOP` is a separate fixed mapped
 station chain in the upper-floor north alcove, with no side-working entrance.
-Carry visible ore to the hopper, open the feed lever, start the crushing rolls,
-and release the processed ore after the four-second cycle. Heat and quench at
-the furnace, then carry each of three billets to shipping. The three distinct
-levers have small hitboxes, smooth motion and next-action glow; the machines
-remain visible between events and leave the main aisle clear. Service items are temporary work equipment and do not
-become ordinary loot.
+Carry visible ore to the glowing front hopper and right-click it from the aisle.
+One drive lever starts the crushing rolls. Crushed ore falls into the collector
+and travels along the connected belt into the furnace automatically. Use the
+furnace air lever to keep its visible thermometer in the green band; once the
+melt is ready, the tap remains ready until clicked. Watch the metal pour, cast
+and cool, then collect the finished billet from the end of the connected line.
+There are three batches, with no intermediate carry between connected machines.
+Controls have their own hitboxes, animation and next-action glow. Machines stay
+visible between events and leave the main aisle clear. Temporary cargo never
+becomes ordinary loot.
 
 Three off-site expeditions open through the glowing `expedition_gate` point.
 One location of each kind is prepared ahead of time and retained across restarts.

@@ -32,4 +32,16 @@ class MineFactoryLineTest : FunSpec({
         plan.blocks[ExpeditionPoint(-33, 4, -20)] shouldBe "minecraft:polished_andesite"
         MineFactoryLine.formerFloorMaterial(ExpeditionPoint(0, 4, 0)) shouldBe "minecraft:polished_andesite"
     }
+
+    test("repair socket migration clears the hopper while preserving custom anchors") {
+        val plan = MineExpeditionGenerator.plan(MineExpeditionKind.DEAD_FACTORY, 18L)
+
+        plan.stations.getValue("crusher_repair") shouldBe ExpeditionPoint(-24, 5, -3)
+        MineFactoryLine.effectiveStation(plan, "crusher_repair") shouldBe ExpeditionPoint(-23, 5, -2)
+
+        val custom = ExpeditionPoint(-20, 5, -1)
+        MineFactoryLine.effectiveStation(
+            plan.copy(stations = plan.stations + ("crusher_repair" to custom)), "crusher_repair",
+        ) shouldBe custom
+    }
 })

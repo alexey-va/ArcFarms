@@ -5,48 +5,95 @@ import org.bukkit.Location
 import org.bukkit.Particle
 import org.bukkit.Sound
 import org.bukkit.plugin.Plugin
+import ru.ruscrafting.farms.domain.MineWorkshopHeat
 import ru.ruscrafting.farms.domain.mine.expedition.*
 
 /** Local, bounded feedback for commissioned machines and the current task. No extra timers or entities. */
 internal class MineFactoryPresentation(private val plugin:Plugin,private val markers:MineExpeditionMarkers) {
     private data class Frame(var nextParticles:Long=0,var nextSound:Long=0,var nextFlow:Long=0,var heatSignal:Long=-1,
-        var pressHit:Boolean=false)
+        var pressHit:Boolean=false, var cargoPhase:Double=Double.NaN, var cargoResetUntil:Long=0L)
     private val frames=mutableMapOf<Long,Frame>()
-    fun tick(scene:MineExpeditionScene,state:MineExpeditionState,scope:String,now:Long,angles:Map<String,Double>,processingCharge:Boolean=false) {
+    fun tick(scene:MineExpeditionScene,state:MineExpeditionState,scope:String,now:Long,angles:Map<String,Double>,processingCharge:Boolean=false,
+        heat: MineWorkshopHeat? = null) {
         if(scene.kind!=MineExpeditionKind.DEAD_FACTORY || scene.placement.geometryVersion<3) return
         if(state.stage==MineExpeditionStage.COMPLETE) { clear(scene); return }
         val f=frames.getOrPut(scene.journalSequence) { Frame() }
         val decor="furnish:${scene.journalSequence}"
         fun at(id:String,x:Double=0.0,y:Double=0.0,z:Double=0.0)=
             markers.at(scope,id,x,y,z) ?: markers.at(decor,id,x,y,z)
+        val connected=MineFactoryProgram.usesConnectedCrusherLine(scene.plan)
         val heating = state.stage == MineExpeditionStage.FACTORY_HEAT
-        val heatReady = heating && MineExpeditionEngine.canFinishHeat(state, now)
+        val activeHeat = if (connected && heating) heat ?: MineWorkshopHeat(airOpen = false) else null
+        val heatReady = if (activeHeat != null) activeHeat.ready else heating && MineExpeditionEngine.canFinishHeat(state, now)
         val light = if (heatReady) Material.LIME_CONCRETE else if (heating) Material.YELLOW_CONCRETE else Material.RED_CONCRETE
         markers.signal(scope, "furnace_control", light)
         markers.signal(decor, "furnace_control", light)
         val running=MineFactoryProgram.runningMachines(state,angles.filterValues { it>0.0 }.keys,scene.plan)
-        val connected=MineFactoryProgram.usesConnectedCrusherLine(scene.plan)
         val water=state.stage!=MineExpeditionStage.FACTORY_WATER ||
             if(connected) 1 in state.completed else state.completed.isNotEmpty()
         if(connected) {
+            // The action owner supplies a one-shot 0..TAU charge angle.  A missing angle
+            // means that no charge is travelling; the wall clock is reserved
+            // for the continuous crusher rotor below.
+            val chargePhase=angles["charge_transfer"] ?: 0.0
+            val chargeMoving=chargePhase>0.0 && chargePhase<Math.PI*2
             val processing=state.stage==MineExpeditionStage.FACTORY_COAL && 0 in state.completed &&
                 1 !in state.completed && processingCharge
-            val processed=state.stage==MineExpeditionStage.FACTORY_COAL && 1 in state.completed && 2 !in state.completed
+            val processedStored=state.stage==MineExpeditionStage.FACTORY_COAL && 1 in state.completed &&
+                2 !in state.completed
+            val transfer=processedStored && chargeMoving
             val repaired=state.stage!=MineExpeditionStage.FACTORY_WATER || 0 in state.completed
+            // The crusher consumes the loose load during its operation. The
+            // only moving cart is the processed charge after checkpoint 1;
+            // this keeps a one-shot transfer from being confused with the
+            // six-second crusher cycle itself.
+            val cargoVisible=transfer
+            val cargoPhase=chargePhase
+            val previousCargoPhase=f.cargoPhase
+            val cargoReset=cargoVisible && !previousCargoPhase.isFinite()
+            if (cargoReset) f.cargoResetUntil=now + CARGO_RESET_MILLIS
+            else if (!cargoVisible) {
+                f.cargoPhase=Double.NaN
+                f.cargoResetUntil=0L
+            }
+            val cargoRelease=cargoVisible && !cargoReset && f.cargoResetUntil>0L && now>=f.cargoResetUntil
             for(owner in listOf(scope,decor)) {
                 markers.motionVisible(owner,"decor_crusher_left","feed",processing)
-                markers.motionVisible(owner,"decor_conveyor_raw","cargo",processing)
-                markers.motionVisible(owner,"crushed_output","processed",processed)
+                if (cargoVisible) {
+                    if (cargoReset) {
+                        markers.motionVisible(owner,"decor_conveyor_raw","cargo",false)
+                        markers.rotate(owner,"decor_conveyor_raw",0.0)
+                        markers.repositionMotion(owner,"decor_conveyor_raw","cargo")
+                    } else {
+                        markers.motionLoopBoundary(owner,"decor_conveyor_raw","cargo",
+                            previousCargoPhase,cargoPhase,now,CARGO_RESET_MILLIS)
+                    }
+                    if (cargoRelease) markers.motionVisible(owner,"decor_conveyor_raw","cargo",true)
+                } else {
+                    markers.motionVisible(owner,"decor_conveyor_raw","cargo",false)
+                }
+                markers.motionVisible(owner,"crushed_output","processed",processedStored)
                 markers.motionVisible(owner,"crusher_repair","installed_gear",repaired)
             }
-            if("decor_crusher_left" in running) {
-                val beltPhase=(now%6_000L).toDouble()/6_000*Math.PI*2
-                markers.rotate(decor,"decor_conveyor_raw",beltPhase)
-                markers.rotate(decor,"crusher_repair",beltPhase)
-                markers.rotate(scope,"crusher_repair",beltPhase)
+            if (cargoVisible) {
+                f.cargoPhase=cargoPhase
+                if (cargoRelease) f.cargoResetUntil=0L
             }
-            if(state.stage==MineExpeditionStage.FACTORY_CRANE && (angles["crane_control"] ?: 0.0)>0.0)
-                markers.rotate(decor,"decor_roller_table",(now%2_000L).toDouble()/2_000*Math.PI*2)
+            if("decor_crusher_left" in running) {
+                val gearPhase=(now%6_000L).toDouble()/6_000*Math.PI*2
+                markers.rotate(decor,"crusher_repair",gearPhase)
+                markers.rotate(scope,"crusher_repair",gearPhase)
+            }
+            if (cargoVisible) markers.rotate(decor,"decor_conveyor_raw",chargePhase)
+            val rollerPhase=angles["roller_transfer"] ?: 0.0
+            if(state.stage==MineExpeditionStage.FACTORY_INSTALL && rollerPhase>0.0 && rollerPhase<Math.PI*2)
+                markers.rotate(decor,"decor_roller_table",rollerPhase)
+            // Keep the passive gauge visible at the closed-air starting value
+            // during heat, and clear it as soon as the stage leaves the
+            // furnace.  Static furnishing markers survive every stage.
+            val thermometerTemperature = activeHeat?.temperature ?: 0.0
+            markers.thermometer(scope, "furnace_control", thermometerTemperature)
+            markers.thermometer(decor, "furnace_control", thermometerTemperature)
         }
         val hot=state.stage in setOf(MineExpeditionStage.FACTORY_HEAT,MineExpeditionStage.FACTORY_POUR)
         val phase=(now%12_000L).toDouble()/12_000*Math.PI*2
@@ -55,7 +102,13 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
         val crusherPhase=(now%3_000L).toDouble()/3_000*Math.PI*2
         for(id in running) markers.rotate(decor,id,if(id.contains("crusher")) crusherPhase else phase)
         val press=angles["assembly_socket"] ?: 0.0
-        if(state.stage==MineExpeditionStage.FACTORY_INSTALL) markers.rotate(scope,"assembly_socket",press)
+        if(state.stage==MineExpeditionStage.FACTORY_INSTALL) {
+            // Connected INSTALL exposes no duplicate receiver target; its
+            // press lives in the persistent furnishing scope. Legacy plans
+            // keep the original objective marker in the player scope.
+            markers.rotate(scope,"assembly_socket",press)
+            if (connected) markers.rotate(decor,"assembly_socket",press)
+        }
         if(press==0.0) f.pressHit=false
         if(press>=Math.PI && !f.pressHit) {
             f.pressHit=true
@@ -63,8 +116,9 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
             particles(at("assembly_socket",y=1.8),Particle.CRIT,14,.65,.12,.6,.09)
             particles(at("assembly_socket",y=1.8),Particle.CLOUD,6,.5,.12,.4,.025)
         }
-        if(state.stage==MineExpeditionStage.FACTORY_HEAT && MineExpeditionEngine.canFinishHeat(state,now) && f.heatSignal!=state.heatStartedAt) {
-            f.heatSignal=state.heatStartedAt
+        val heatSignalKey=if (activeHeat != null) if (heatReady) 1L else 0L else state.heatStartedAt
+        if(state.stage==MineExpeditionStage.FACTORY_HEAT && heatReady && f.heatSignal!=heatSignalKey) {
+            f.heatSignal=heatSignalKey
             sound(at("furnace_control",y=2.2),Sound.BLOCK_NOTE_BLOCK_BELL,.8f,1.3f)
             particles(at("furnace_control",y=3.1),Particle.HAPPY_VILLAGER,10,.8,.2,.2,0.0)
         }
@@ -139,6 +193,7 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
     fun cleanup() { frames.clear() }
 
     private companion object {
+        const val CARGO_RESET_MILLIS = 100L
         val METAL_PATH=MineFactoryModels.moltenPath.map {
             org.bukkit.util.Vector(it.x.toDouble(),it.y.toDouble(),it.z.toDouble())
         }

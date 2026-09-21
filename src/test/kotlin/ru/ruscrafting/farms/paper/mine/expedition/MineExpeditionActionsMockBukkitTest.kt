@@ -353,16 +353,100 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
             { _, step -> complete(step) }) { _, _ -> }
         state.completed shouldBe setOf(0, 1)
 
+        // The processed charge now stays on the visible top-deck belt.  The
+        // action owner credits its third durable checkpoint after its one-way journey,
+        // without exposing a second cart or a manual furnace receiver.
         chargeTargets = MineExpeditionObjectives.targets(connected.plan, state, null)
-        val processedPickup = chargeTargets.single { it.interaction == MineExpeditionInteraction.PICKUP }
-        player.teleport(connected.at(processedPickup.position))
-        actions.interact("connected-factory", connected, state, player, processedPickup, 17_000, ::complete) {}
-        val furnace = MineExpeditionObjectives.targets(connected.plan, state, null)
-            .single { it.interaction == MineExpeditionInteraction.DELIVER }
-        player.teleport(connected.at(furnace.position))
-        actions.interact("connected-factory", connected, state, player, furnace, 17_100, ::complete) {}
+        chargeTargets shouldBe emptyList()
+        actions.tick("connected-factory", connected, state, emptyList(), listOf(player),
+            17_000L, { _, step -> complete(step) }) { _, _ -> }
+        actions.clear("connected-factory") // transient belt timing is safe to rebuild after reload
+        repeat(7) { index ->
+            actions.tick("connected-factory", connected, state, emptyList(), listOf(player),
+                18_000L + index * 1_000L, { _, step -> complete(step) }) { _, _ -> }
+        }
         state.stage shouldBe MineExpeditionStage.FACTORY_HEAT
         actions.carrying(player, "connected-factory") shouldBe false
+        world.entities.count { actions.owns(it) } shouldBe 0
+
+        // The same connected line places the billet before the automatic press
+        // stroke; no one-metre press cart or receiver objective is created.
+        state = state.copy(stage = MineExpeditionStage.FACTORY_INSTALL, completed = emptySet(), heatStartedAt = 0L)
+        MineExpeditionObjectives.targets(connected.plan, state, null) shouldBe emptyList()
+        repeat(5) { index ->
+            actions.tick("connected-factory", connected, state, emptyList(), listOf(player),
+                25_000L + index * 1_000L, { _, step -> complete(step) }) { _, _ -> }
+            actions.operationPhase("connected-factory", "assembly_socket", 29_000L) shouldBe 0.0
+        }
+        state.stage shouldBe MineExpeditionStage.FACTORY_INSTALL
+        actions.transferPhase("connected-factory", "roller_transfer") shouldBe Math.PI * 2
+        for (now in listOf(30_000L, 31_000L, 31_399L)) {
+            actions.tick("connected-factory", connected, state, emptyList(), listOf(player),
+                now, { _, _ -> error("press finished before its return stroke") }) { _, _ -> }
+        }
+        actions.tick("connected-factory", connected, state, emptyList(), listOf(player),
+            31_400L, { _, step -> complete(step) }) { _, _ -> }
+        state.stage shouldBe MineExpeditionStage.COMPLETE
+        world.entities.count { actions.owns(it) } shouldBe 0
+    }
+
+    test("connected furnace has a visible air control and preserves its ready result until clicked") {
+        val connected = scene.copyForConnectedActions()
+        var state = MineExpeditionState(connected.placement, MineExpeditionStage.FACTORY_HEAT)
+        val target = MineExpeditionObjectives.targets(connected.plan, state, null).single()
+        val player = paper.server.addPlayer().also { it.teleport(connected.at(target.position)) }
+        fun complete(step: MineExpeditionStep): Boolean {
+            if (step.accepted) state = step.state
+            return step.accepted
+        }
+        actions.interact(scope, connected, state, player, target, 1_000, ::complete) {}
+        actions.factoryHeat(scope)!!.airOpen shouldBe true
+        var now = 1_000L
+        var toggles = 0
+        while (!actions.factoryHeat(scope)!!.ready && now < 31_000L) {
+            now += 100L
+            actions.tick(scope, connected, state, listOf(target), listOf(player), now,
+                { _, _ -> error("heat must wait for the player to confirm") }) { _, _ -> }
+            val heat = actions.factoryHeat(scope)!!
+            if (!heat.ready && ((heat.airOpen && heat.temperature >= 75) || (!heat.airOpen && heat.temperature <= 63))) {
+                actions.interact(scope, connected, state, player, target, now, ::complete) {}
+                actions.factoryHeat(scope)!!.airOpen shouldBe !heat.airOpen
+                toggles++
+            }
+        }
+        (toggles > 0) shouldBe true
+        actions.factoryHeat(scope)!!.ready shouldBe true
+        val ready = actions.factoryHeat(scope)
+        actions.tick(scope, connected, state, listOf(target), listOf(player), now + 60_000,
+            { _, _ -> error("ready does not expire or auto-credit") }) { _, _ -> }
+        actions.factoryHeat(scope) shouldBe ready
+        actions.interact(scope, connected, state, player, target, now + 60_000, ::complete) {}
+        state.stage shouldBe MineExpeditionStage.FACTORY_POUR
+        actions.factoryHeat(scope) shouldBe null
+    }
+
+    test("connected conveyor pauses in an empty room without catching up or accepting a stale cart") {
+        val connected = scene.copyForConnectedActions()
+        var state = MineExpeditionState(connected.placement, MineExpeditionStage.FACTORY_COAL, completed = setOf(0, 1))
+        val player = paper.server.addPlayer().also { it.teleport(connected.surface) }
+        fun tick(now: Long, present: Boolean) {
+            actions.tick(scope, connected, state, emptyList(), if (present) listOf(player) else emptyList(), now,
+                { _, step -> if (step.accepted) state = step.state; step.accepted }) { _, _ -> }
+        }
+        tick(1_000, true)
+        tick(2_000, true)
+        val phase = actions.transferPhase(scope, "charge_transfer")
+        tick(60_000, false)
+        actions.transferPhase(scope, "charge_transfer") shouldBe phase
+        tick(60_000, true)
+        actions.transferPhase(scope, "charge_transfer") shouldBe phase
+        val stale = MineExpeditionObjective("furnace_input", connected.plan.stations.getValue("furnace_input"),
+            MineExpeditionInteraction.DELIVER, "IRON_NUGGET", 2)
+        actions.interact(scope, connected, state, player, stale, 60_000, { error("stale receiver") }) {}
+        state.completed shouldBe setOf(0, 1)
+        repeat(5) { tick(61_000L + it * 1_000L, true) }
+        state.stage shouldBe MineExpeditionStage.FACTORY_HEAT
+        actions.carrying(player, scope) shouldBe false
     }
 
     test("casting is a measured pour and cannot be completed by click spam or another player") {
@@ -376,20 +460,20 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         val complete:(MineExpeditionStep)->Boolean={ completed++;state=it.state;it.accepted }
         actions.interact(scope,scene,state,player,target,1000,complete) {}
         actions.interact(scope,scene,state,player,target,1100,complete) {}
-        actions.interact(scope,scene,state,other,target,7500,complete) {}
+        actions.interact(scope,scene,state,other,target,11_500,complete) {}
         completed shouldBe 0
-        actions.pourReady(scope,7499) shouldBe false
-        actions.pourReady(scope,7500) shouldBe true
-        actions.pourReady(scope,10000) shouldBe true
-        actions.pourReady(scope,10001) shouldBe false
-        actions.pourValues(scope,7500) shouldBe mapOf("percent" to net.kyori.adventure.text.Component.text(65))
-        actions.pourLabel(scope,7500) shouldBe "pour-close"
-        actions.interact(scope,scene,state,player,target,7500,{ false }) {}
-        actions.pourLabel(scope,7500) shouldBe "pour-close"
-        actions.interact(scope,scene,state,player,target,7500,complete) {}
+        actions.pourReady(scope,10_999) shouldBe false
+        actions.pourReady(scope,11_000) shouldBe true
+        actions.pourReady(scope,14_000) shouldBe true
+        actions.pourReady(scope,14_001) shouldBe false
+        actions.pourValues(scope,11_000) shouldBe mapOf("percent" to net.kyori.adventure.text.Component.text(100))
+        actions.pourLabel(scope,11_000) shouldBe "pour-close"
+        actions.interact(scope,scene,state,player,target,11_000,{ false }) {}
+        actions.pourLabel(scope,11_000) shouldBe "pour-close"
+        actions.interact(scope,scene,state,player,target,11_000,complete) {}
         completed shouldBe 1
         state.stage shouldBe MineExpeditionStage.FACTORY_CRANE
-        actions.pourReady(scope,7500) shouldBe false
+        actions.pourReady(scope,11_000) shouldBe false
         actions.interact(scope,scene,state,player,target,8000,complete) {}
         completed shouldBe 1
     }
@@ -403,13 +487,13 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         actions.pourLabel(scope,3000) shouldBe "control.pour_console"
         open(4000)
         var phase=1.0
-        actions.tick(scope,scene,state,listOf(target),listOf(player),14000,{_,_->error("overflow credited") }) { _,p->phase=p }
+        actions.tick(scope,scene,state,listOf(target),listOf(player),17_001,{_,_->error("overflow credited") }) { _,p->phase=p }
         phase shouldBe 0.0
-        actions.pourLabel(scope,14000) shouldBe "control.pour_console"
-        actions.pourReady(scope,14000) shouldBe false
-        open(15000)
-        actions.tick(scope,scene,state,listOf(target),emptyList(),16000,{_,_->error("departed casting credited") }) { _,_-> }
-        actions.pourLabel(scope,16000) shouldBe "control.pour_console"
+        actions.pourLabel(scope,17_001) shouldBe "control.pour_console"
+        actions.pourReady(scope,17_001) shouldBe false
+        open(18000)
+        actions.tick(scope,scene,state,listOf(target),emptyList(),19000,{_,_->error("departed casting credited") }) { _,_-> }
+        actions.pourLabel(scope,19000) shouldBe "control.pour_console"
     }
 
     test("cart contact and click delivery share one lease and leaving the factory retires every part") {
@@ -458,6 +542,7 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
     }
 
     test("factory crane uses only current models and its chain remains attached to the carried load") {
+        scene = scene.copyForConnectedActions()
         scene.refreshReady(building = false, complete = true)
         val plugin = paper.createSimplePlugin("FactoryMachineryTest")
         val machinery = MineExpeditionMachinery(plugin, { _, _ -> true })
@@ -479,8 +564,15 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         (kotlin.math.abs(chain.location.y - chain.transformation.scale.y / 2 - casting.location.y - .5) < .0001) shouldBe true
         chain.location.x shouldBe casting.location.x
         chain.location.z shouldBe casting.location.z
-        machinery.animate(scene, state.copy(stage = MineExpeditionStage.FACTORY_INSTALL), 4_500, cargoClaimed = true)
-        casting.transformation.scale.x shouldBe 0f
+        val installing = state.copy(stage = MineExpeditionStage.FACTORY_INSTALL)
+        machinery.animate(scene, installing, 4_500, cargoClaimed = true)
+        casting.transformation.scale.x shouldBe 1.6f
+        casting.location.x shouldBe scene.at(scene.plan.stations.getValue("crane_load")).x
+        casting.location.z shouldBe scene.at(scene.plan.stations.getValue("crane_load")).z
+        machinery.turn(scene, "roller_transfer", Math.PI * 2)
+        machinery.animate(scene, installing, 8_500)
+        casting.location.x shouldBe scene.at(scene.plan.stations.getValue("assembly_socket")).x
+        casting.location.z shouldBe scene.at(scene.plan.stations.getValue("assembly_socket")).z
         machinery.clear(scene)
         world.entities.filterIsInstance<org.bukkit.entity.BlockDisplay>().size shouldBe 0
     }
@@ -507,3 +599,9 @@ private class RecordingCartVisuals : MineFactoryCartVisuals {
     override fun spawn(at: Location,parts: List<MineDisplayBlueprints.Part>)=Body().also { bodies+=it }
     override fun close() { check(bodies.all { it.removed }) }
 }
+
+private fun MineExpeditionScene.copyForConnectedActions(): MineExpeditionScene = MineExpeditionScene(
+    plan.copy(stations = plan.stations + connectedStationsForActions()), placement, world,
+    "connected-thermal", 3, 3, 3, surface,
+    WorksitePreparedScene(world, "connected-thermal", 3, 3, surface, surface, surface, emptyList()),
+).also { it.refreshReady(building = false, complete = true) }

@@ -27,7 +27,8 @@ internal object MineExpeditionFurnishings {
         id=="fuel_supply" && kind==MineExpeditionKind.DEAD_FACTORY -> "charge_bunker"
         id=="crusher_feed" || id=="furnace_input" -> "inlet_hopper"
         id=="crushed_output" -> "charge_hopper"
-        id=="control_crusher_left" || id=="furnace_control" || id=="pour_console" || id=="crane_control" -> "mounted_console"
+        id=="control_crusher_left" || id=="pour_console" || id=="crane_control" -> "mounted_console"
+        id=="furnace_control" -> "furnace_air_console"
         id=="water_valve_1" -> "pipe_valve"
         id.startsWith("water_valve_") -> "pipe_valve"
         id.startsWith("repair_supply_") -> "loose_gear"
@@ -50,7 +51,10 @@ internal object MineExpeditionFurnishings {
         val stations=plan.stations.filterKeys { id ->
             id !in setOf("entry","exit") && !id.startsWith("lift_") && !id.startsWith("ark_") &&
                 !id.startsWith("jam_") && !id.startsWith("branch_") && id !in hiddenStations
-        }.map { (id,p) -> Fixture(id,model(id,plan.kind),p) }
+        }.map { (id, p) ->
+            Fixture(id, model(id, plan.kind),
+                if (id == "crusher_repair") MineFactoryLine.effectiveStation(plan, id) else p)
+        }
         val decor=when(plan.kind) {
             MineExpeditionKind.DEAD_FACTORY -> if(modernFactory) listOf(
                 Fixture("decor_waterwheel","waterwheel",MineFactoryLine.machines.getValue("decor_waterwheel")),

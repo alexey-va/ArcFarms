@@ -20,6 +20,7 @@ import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionMotion
 import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionPlan
 import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionStage
 import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionState
+import ru.ruscrafting.farms.domain.mine.expedition.MineFactoryProgram
 import kotlin.math.abs
 import kotlin.math.sin
 import java.util.UUID
@@ -203,7 +204,8 @@ internal class MineExpeditionMachinery(
         val runtime = runtime(scene, state, local) ?: return
         positionDisplays(scene, runtime, local, state, now, cargoClaimed)
         val phase = (now % ANIMATION_PERIOD).toDouble() / ANIMATION_PERIOD * Math.PI * 2.0
-        if (scene.kind == MineExpeditionKind.DEAD_FACTORY && scene.placement.geometryVersion<3 && now - runtime.lastParticleAt >= PARTICLE_PERIOD &&
+        if (scene.kind == MineExpeditionKind.DEAD_FACTORY && !MineFactoryProgram.usesConnectedCrusherLine(scene.plan) &&
+            scene.placement.geometryVersion<3 && now - runtime.lastParticleAt >= PARTICLE_PERIOD &&
             state.stage != MineExpeditionStage.FACTORY_WATER) {
             runtime.lastParticleAt = now
             val furnace = scene.at(if(scene.placement.geometryVersion>=3) furnishingPoint(scene,"decor_furnace_left",ExpeditionPoint(-17,12,-13)) else ExpeditionPoint(14,11,1))
@@ -316,7 +318,7 @@ internal class MineExpeditionMachinery(
             }
             var chainLength = 8f
             if (scene.kind == MineExpeditionKind.DEAD_FACTORY && role in setOf("crane", "core")) {
-                val modern = scene.placement.geometryVersion >= 3
+                val modern = MineFactoryProgram.usesConnectedCrusherLine(scene.plan)
                 val source = scene.plan.stations.getValue("pour_control")
                 val destination = scene.plan.stations["crane_load"] ?: scene.plan.stations.getValue("assembly_socket")
                 val from = if (modern) furnishingPoint(scene, "pour_control", source) else ExpeditionPoint(12, 5, -6)
@@ -330,13 +332,36 @@ internal class MineExpeditionMachinery(
                 chainLength = (ceilingY - (loadY + .5)).coerceAtLeast(.1).toFloat()
                 pivot.y = if (role == "core") loadY else ceilingY - chainLength / 2
             }
-            val pressing=state.stage==MineExpeditionStage.FACTORY_INSTALL && (runtime.crankAngles["assembly_socket"] ?: 0.0)>0
+            val pressPhase=(runtime.crankAngles["assembly_socket"] ?: 0.0).coerceAtLeast(0.0)
+            val pressing=state.stage==MineExpeditionStage.FACTORY_INSTALL && pressPhase>0
+            val modernPressLine=scene.kind==MineExpeditionKind.DEAD_FACTORY &&
+                MineFactoryProgram.usesConnectedCrusherLine(scene.plan) && "crane_load" in scene.plan.stations
+            val rollerPhase=(runtime.crankAngles["roller_transfer"] ?: 0.0).coerceAtLeast(0.0)
+            val rollerTravel=(rollerPhase/(Math.PI*2)).coerceIn(0.0,1.0)
             val poured=if(state.stage==MineExpeditionStage.FACTORY_POUR)
                 ((runtime.crankAngles["pour_control"] ?: 0.0)/(Math.PI*2)).coerceIn(0.0,1.0).toFloat() else 0f
-            if(scene.kind==MineExpeditionKind.DEAD_FACTORY && role=="core" && pressing) {
-                val press=furnishingPoint(scene,"assembly_socket",scene.plan.stations.getValue("assembly_socket"))
-                val at=scene.at(press).add(0.0,1.95,0.0)
-                pivot.x=at.x; pivot.y=at.y; pivot.z=at.z
+            if(scene.kind==MineExpeditionKind.DEAD_FACTORY && role=="core" &&
+                state.stage==MineExpeditionStage.FACTORY_INSTALL && (pressing || cargoClaimed || modernPressLine)) {
+                if (modernPressLine) {
+                    // Once the crane has placed the billet, the conveyor owns
+                    // it. Interpolate from its load rack to the press instead
+                    // of snapping straight to the press face.
+                    val start = furnishingPoint(scene,"crane_load",scene.plan.stations.getValue("crane_load"))
+                    val end = furnishingPoint(scene,"assembly_socket",scene.plan.stations.getValue("assembly_socket"))
+                    val from = scene.at(start).add(0.0,1.95,0.0)
+                    val to = scene.at(end).add(0.0,1.95,0.0)
+                    // The roller transfer owns the billet's trip to the press.
+                    // The press stroke angle must never move it before the
+                    // rollers have placed it at their far end.
+                    val transfer = rollerTravel
+                    pivot.x=from.x+(to.x-from.x)*transfer
+                    pivot.y=from.y+(to.y-from.y)*transfer
+                    pivot.z=from.z+(to.z-from.z)*transfer
+                } else if (pressing) {
+                    val press=furnishingPoint(scene,"assembly_socket",scene.plan.stations.getValue("assembly_socket"))
+                    val at=scene.at(press).add(0.0,1.95,0.0)
+                    pivot.x=at.x; pivot.y=at.y; pivot.z=at.z
+                }
             }
             if(scene.kind==MineExpeditionKind.DEAD_FACTORY && role=="molten") {
                 val bed=furnishingPoint(scene,"pour_control",scene.plan.stations.getValue("pour_control"))
@@ -355,7 +380,10 @@ internal class MineExpeditionMachinery(
                 }
                 scene.kind == MineExpeditionKind.DEAD_FACTORY && role == "crane" -> Vector3f(0.3f, chainLength, 0.3f)
                 scene.kind == MineExpeditionKind.DEAD_FACTORY && role == "core" -> {
-                    val visible = state.stage == MineExpeditionStage.FACTORY_CRANE ||
+                    val modernTransfer = modernPressLine && state.stage == MineExpeditionStage.FACTORY_INSTALL &&
+                        (rollerPhase > 0.0 || pressing)
+                    val modernPlaced = modernPressLine && state.stage == MineExpeditionStage.FACTORY_INSTALL
+                    val visible = state.stage == MineExpeditionStage.FACTORY_CRANE || modernPlaced || modernTransfer ||
                         (state.stage == MineExpeditionStage.FACTORY_INSTALL && !cargoClaimed)
                     if (visible || pressing) Vector3f(1.6f, 1.0f, 1.6f) else Vector3f(0f)
                 }
@@ -410,13 +438,13 @@ internal class MineExpeditionMachinery(
             "drill_cross" to center.offset(0, 1, 8),
         )
         MineExpeditionKind.DEAD_FACTORY -> linkedMapOf(
-            "wheel" to ExpeditionPoint(if (scene.placement.geometryVersion >= 3) -24 else -15, 11, 0),
-            "wheel_cross" to ExpeditionPoint(if (scene.placement.geometryVersion >= 3) -24 else -15, 11, 0),
+            "wheel" to ExpeditionPoint(if (MineFactoryProgram.usesConnectedCrusherLine(scene.plan)) -24 else -15, 11, 0),
+            "wheel_cross" to ExpeditionPoint(if (MineFactoryProgram.usesConnectedCrusherLine(scene.plan)) -24 else -15, 11, 0),
             "crane" to ExpeditionPoint(0, 16, -6),
-            "boiler" to if(scene.placement.geometryVersion>=3) furnishingPoint(scene,"decor_furnace_left",ExpeditionPoint(-17,12,-13)) else ExpeditionPoint(14,11,1),
-            "molten" to if(scene.placement.geometryVersion>=3) furnishingPoint(scene,"pour_control",scene.plan.stations.getValue("pour_control").offset(dy=2)) else ExpeditionPoint(12,6,-6),
+            "boiler" to if(MineFactoryProgram.usesConnectedCrusherLine(scene.plan)) furnishingPoint(scene,"decor_furnace_left",ExpeditionPoint(-17,12,-13)) else ExpeditionPoint(14,11,1),
+            "molten" to if(MineFactoryProgram.usesConnectedCrusherLine(scene.plan)) furnishingPoint(scene,"pour_control",scene.plan.stations.getValue("pour_control").offset(dy=2)) else ExpeditionPoint(12,6,-6),
             "core" to ExpeditionPoint(0, 6, -6),
-        ).filterKeys { scene.placement.geometryVersion < 3 || (!it.startsWith("wheel") && it != "boiler") }
+        ).filterKeys { !MineFactoryProgram.usesConnectedCrusherLine(scene.plan) || (!it.startsWith("wheel") && it != "boiler") }
     }
 
     private fun displayMaterial(kind: MineExpeditionKind, role: String): Material? = when (kind) {

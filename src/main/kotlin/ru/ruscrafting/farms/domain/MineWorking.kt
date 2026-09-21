@@ -94,13 +94,21 @@ object MineWorkingEngine {
         },
     )
 
-    fun completeTarget(current: MineWorkingState, target: Int, total: Int, now: Long): MineWorkingStep {
+    fun completeTarget(current: MineWorkingState, target: Int, total: Int, now: Long): MineWorkingStep =
+        complete(current, target, total, now, controlledHeat = false)
+
+    /** The fixed workshop has an air-control furnace rather than the legacy timed quench window. */
+    fun completeWorkshopHeat(current: MineWorkingState, heat: MineWorkshopHeat, now: Long): MineWorkingStep =
+        if (current.stage == MineWorkingStage.HEAT && heat.ready) complete(current, 0, 1, now, controlledHeat = true)
+        else MineWorkingStep(current, false)
+
+    private fun complete(current: MineWorkingState, target: Int, total: Int, now: Long, controlledHeat: Boolean): MineWorkingStep {
         require(total in 1..256 && now >= 0L)
         if (target !in 0 until total || target in current.completed) return MineWorkingStep(current, false)
         // Rails and the test cart advance along one continuous path.
         if (current.stage in setOf(MineWorkingStage.LAY_TRACK, MineWorkingStage.TEST_TRACK) &&
             target != current.completed.size) return MineWorkingStep(current, false)
-        if (current.stage == MineWorkingStage.HEAT && !canQuench(current, now)) return MineWorkingStep(current, false)
+        if (current.stage == MineWorkingStage.HEAT && !controlledHeat && !canQuench(current, now)) return MineWorkingStep(current, false)
         val next = current.copy(completed = current.completed + target)
         if (next.completed.size < total) return MineWorkingStep(next, true)
         val nextStage = when (current.stage) {

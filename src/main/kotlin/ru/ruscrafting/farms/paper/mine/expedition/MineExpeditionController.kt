@@ -19,6 +19,7 @@ import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.domain.MineIncidentType
+import ru.ruscrafting.farms.domain.MineWorkshopHeat
 import ru.ruscrafting.farms.domain.mine.expedition.*
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
 import ru.ruscrafting.farms.paper.mine.MineRuntime
@@ -102,6 +103,11 @@ internal class MineExpeditionController(
         val players = scene.world.players.filter { participant(runtime, scene, it) }
         markers.reconcile("exit:${scene.journalSequence}", exitMarkers(scene))
         if (!machinery.sync(scene, current)) return
+        if (MineFactoryProgram.usesConnectedCrusherLine(scene.plan)) {
+            for (id in listOf("charge_transfer", "roller_transfer")) {
+                machinery.turn(scene, id, actions.transferPhase(scope, id))
+            }
+        }
         if(current.stage==MineExpeditionStage.FACTORY_CRANE || current.stage==MineExpeditionStage.FACTORY_INSTALL) {
             val id=if(current.stage==MineExpeditionStage.FACTORY_CRANE) "crane_control" else "assembly_socket"
             machinery.turn(scene,id,actions.operationPhase(scope,id,now))
@@ -139,7 +145,8 @@ internal class MineExpeditionController(
             }
         }
         val latest = runtime.state.incident?.expedition ?: return
-        if (latest.stage == MineExpeditionStage.FACTORY_HEAT) {
+        if (latest.stage == MineExpeditionStage.FACTORY_HEAT &&
+            !MineFactoryProgram.usesConnectedCrusherLine(scene.plan)) {
             val reheated = MineExpeditionEngine.reheat(latest, now)
             if (reheated != latest) {
                 runtime.state = runtime.state.copy(incident = runtime.state.incident!!.copy(expedition = reheated))
@@ -158,7 +165,8 @@ internal class MineExpeditionController(
         markers.signal(scope, "pour_console", pourSignal)
         markers.signal("furnish:${scene.journalSequence}", "pour_console", Material.GRAY_CONCRETE)
         factoryPresentation.tick(scene,latest,scope,now,machinery.turns(scene),
-            actions.operationPhase(scope,"control_crusher_left",now)>0.0)
+            actions.operationPhase(scope,"control_crusher_left",now)>0.0,
+            actions.factoryHeat(scope))
     }
 
     private fun marker(scene: MineExpeditionScene, state: MineExpeditionState, target: MineExpeditionObjective,
@@ -176,7 +184,11 @@ internal class MineExpeditionController(
             state.stage == MineExpeditionStage.FACTORY_WATER && target.id.startsWith("control_pump_") -> "control.pump-start"
             state.stage == MineExpeditionStage.FACTORY_WATER && target.id.startsWith("control_crusher_") -> "control.crusher-start"
             state.stage == MineExpeditionStage.FACTORY_CRANE -> "control.crane-start"
-            state.stage == MineExpeditionStage.FACTORY_HEAT -> if (MineExpeditionEngine.canFinishHeat(state, now)) "heat-ready" else "heat-progress"
+            state.stage == MineExpeditionStage.FACTORY_HEAT -> {
+                val heat = actions.factoryHeat(scope(scene))
+                val connected = MineFactoryProgram.usesConnectedCrusherLine(scene.plan)
+                if (heat?.ready == true || (!connected && MineExpeditionEngine.canFinishHeat(state, now))) "heat-ready" else "heat-progress"
+            }
             state.stage == MineExpeditionStage.FACTORY_COAL && target.interaction == MineExpeditionInteraction.DELIVER -> "control.fuel-progress"
             state.stage == MineExpeditionStage.FACTORY_COAL && target.interaction == MineExpeditionInteraction.PICKUP -> "control.fuel-cart"
             target.interaction == MineExpeditionInteraction.POUR -> actions.pourLabel(scope(scene), now)
@@ -184,11 +196,29 @@ internal class MineExpeditionController(
             target.interaction == MineExpeditionInteraction.VALVE -> "control.valve"
             else -> "control.${target.id.replace(Regex("_[0-9]+$"), "")}" 
         }
-        val material = if (state.stage == MineExpeditionStage.FACTORY_HEAT && MineExpeditionEngine.canFinishHeat(state, now))
+        val factoryHeat = actions.factoryHeat(scope(scene))
+        val heatReady = if (MineFactoryProgram.usesConnectedCrusherLine(scene.plan)) {
+            factoryHeat?.ready == true
+        } else factoryHeat?.ready ?: MineExpeditionEngine.canFinishHeat(state, now)
+        val material = if (state.stage == MineExpeditionStage.FACTORY_HEAT && heatReady)
             Material.LIME_DYE else MineExpeditionActions.material(target.material)
+        val markerLabel = if (MineFactoryProgram.usesConnectedCrusherLine(scene.plan) &&
+            state.stage == MineExpeditionStage.FACTORY_HEAT) {
+            val heat = factoryHeat ?: MineWorkshopHeat(airOpen = false)
+            val heatKey = when {
+                heat.ready -> "factory-heat-ready"
+                heat.airOpen -> "heat-rise"
+                else -> "heat-fall"
+            }
+            val path = if (heat.ready) "mine.expedition.$heatKey" else "mine.working.workshop.$heatKey"
+            locale?.renderPath(path, null, mapOf(
+                "temperature" to Component.text(heat.temperature.toInt()),
+                "progress" to Component.text((heat.progress * 100).toInt()),
+            )) ?: render(label, values = progressValues(state, now, factoryHeat) + actions.pourValues(scope(scene),now))
+        } else render(label, values = progressValues(state, now, factoryHeat) + actions.pourValues(scope(scene),now))
         val fixture = MineExpeditionFurnishings.fixtures(scene).firstOrNull { it.id == target.id }
         return MineExpeditionMarkers.Target(target.id, scene.at(target.position), material,
-            render(label, values = progressValues(state, now) + actions.pourValues(scope(scene),now)), target.interaction == MineExpeditionInteraction.BREAK,
+            markerLabel, target.interaction == MineExpeditionInteraction.BREAK,
             model=if(target.interaction == MineExpeditionInteraction.BREAK || target.id=="drive") null else fixture?.model ?: MineExpeditionFurnishings.model(target.id,scene.kind),
             modelScale=fixture?.scale ?: 1f,
             yaw=editor?.yaw(scene,target.id) ?: fixture?.yaw ?: 0)
@@ -360,16 +390,38 @@ internal class MineExpeditionController(
         return when {
             scene?.ready != true || current == null -> render("preparing", player)
             !scene.contains(player.location) -> render("enter-hint", player)
+            MineFactoryProgram.usesConnectedCrusherLine(scene.plan) &&
+                current.stage == MineExpeditionStage.FACTORY_HEAT && actions.factoryHeat(scope(scene))?.ready == true ->
+                locale?.renderPath("mine.expedition.factory-heat-ready", player, mapOf(
+                    "temperature" to Component.text(actions.factoryHeat(scope(scene))!!.temperature.toInt()),
+                    "progress" to Component.text((actions.factoryHeat(scope(scene))!!.progress * 100).toInt()),
+                )) ?: render("heat-ready", player)
             actions.hint(scope(scene), player, now) != null -> actions.hint(scope(scene), player, now)
+            MineFactoryProgram.usesConnectedCrusherLine(scene.plan) &&
+                MineFactoryProgram.chargeTransferPending(current) -> render("line.auto-feed", player)
             MineFactoryProgram.usesConnectedCrusherLine(scene.plan) && current.stage in setOf(MineExpeditionStage.FACTORY_WATER,MineExpeditionStage.FACTORY_COAL) -> {
                 val checkpoint=(0..2).firstOrNull { it !in current.completed } ?: 2
                 val suffix=if(actions.carrying(player,scope(scene))) "-carry" else ""
                 val phase=if(current.stage==MineExpeditionStage.FACTORY_WATER) "commission" else "charge"
                 render("line.$phase-$checkpoint$suffix",player)
             }
+            MineFactoryProgram.pressTransferPending(scene.plan, current) -> render("line.auto-press", player)
             actions.carrying(player, scope(scene)) -> render(if (current.stage == MineExpeditionStage.FACTORY_COAL) "fuel-carry" else if(current.stage == MineExpeditionStage.FACTORY_INSTALL) "iron-cart-carry" else "carry", player)
             current.stage == MineExpeditionStage.FACTORY_WATER -> render("program.${current.factoryProgram}", player)
             current.stage == MineExpeditionStage.FACTORY_COAL -> render("fuel-progress", player, progressValues(current, now))
+            current.stage == MineExpeditionStage.FACTORY_HEAT &&
+                MineFactoryProgram.usesConnectedCrusherLine(scene.plan) -> {
+                val heat = actions.factoryHeat(scope(scene)) ?: MineWorkshopHeat(airOpen = false)
+                val key = when {
+                    heat.ready -> "heat-ready"
+                    heat.airOpen -> "heat-rise"
+                    else -> "heat-fall"
+                }
+                locale?.renderPath("mine.working.workshop.$key", player, mapOf(
+                    "temperature" to Component.text(heat.temperature.toInt()),
+                    "progress" to Component.text((heat.progress * 100).toInt()),
+                )) ?: Component.text(key)
+            }
             current.stage == MineExpeditionStage.FACTORY_HEAT -> render(
                 if (MineExpeditionEngine.canFinishHeat(current, now)) "heat-ready" else "heat-progress", player, progressValues(current, now))
             else -> render("stage.${current.stage.name.lowercase()}", player)
@@ -498,10 +550,12 @@ internal class MineExpeditionController(
             travel.record(player)?.let { it.zoneId == scene.zoneId && it.sequence == scene.sequence } == true
     private fun near(player: Player, location: Location, radius: Double): Boolean =
         player.world === location.world && player.location.distanceSquared(location) <= radius * radius
-    private fun progressValues(state: MineExpeditionState, now: Long): Map<String, Component> = mapOf(
+    private fun progressValues(state: MineExpeditionState, now: Long, heat: MineWorkshopHeat? = null): Map<String, Component> = mapOf(
         "count" to Component.text(state.completed.size),
         "total" to Component.text(MineExpeditionEngine.targetCount(state)),
         "seconds" to Component.text(((state.heatStartedAt + MineExpeditionEngine.HEAT_MILLIS - now).coerceAtLeast(0) + 999) / 1000),
+        "temperature" to Component.text((heat?.temperature ?: 0.0).toInt()),
+        "progress" to Component.text(((heat?.progress ?: 0.0) * 100).toInt()),
     )
     private fun render(key: String, player: Player? = null, values: Map<String, Component> = emptyMap()): Component =
         locale?.renderPath("mine.expedition.$key", player, values) ?: Component.text(key)

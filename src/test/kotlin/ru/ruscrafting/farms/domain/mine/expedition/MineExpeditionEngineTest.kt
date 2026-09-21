@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.domain.mine.expedition
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import ru.ruscrafting.farms.domain.MineWorkshopHeat
 import ru.ruscrafting.farms.domain.MineIncidentType
 
 class MineExpeditionEngineTest : FunSpec({
@@ -118,5 +119,18 @@ class MineExpeditionEngineTest : FunSpec({
         val finished = MineExpeditionEngine.completeTarget(state, 0, 13_003L)
         finished.finished shouldBe true
         MineExpeditionEngine.progress(MineIncidentType.DEAD_FACTORY, finished.state) shouldBe 10
+    }
+
+    test("connected factory heat completion uses the ready air-control state") {
+        val state = MineExpeditionState(placement, MineExpeditionStage.FACTORY_HEAT)
+        MineExpeditionEngine.completeFactoryHeat(state, MineWorkshopHeat(stableMillis = 3_999), 4_000)
+            .accepted shouldBe false
+        val step = MineExpeditionEngine.completeFactoryHeat(
+            state,
+            MineWorkshopHeat(temperature = 70.0, stableMillis = MineWorkshopHeat.REQUIRED_MILLIS),
+            12_000,
+        )
+        step.accepted shouldBe true
+        step.state.stage shouldBe MineExpeditionStage.FACTORY_POUR
     }
 })

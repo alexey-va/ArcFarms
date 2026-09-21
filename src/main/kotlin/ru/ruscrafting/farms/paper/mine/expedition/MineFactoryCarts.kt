@@ -31,7 +31,13 @@ internal class MineFactoryCarts(private val plugin: Plugin, private val visuals:
         var pushDirectionZ: Double)
     private val tethers = WorksiteCrankTethers(NamespacedKey(plugin, "mine_factory_cart_tether"))
 
-    fun spawn(scope: String, player: Player, material: Material): Cart {
+    fun spawn(scope: String, player: Player, material: Material): Cart = spawnInternal(scope, player, material, null)
+
+    /** Spawn a front-carried packet model while preserving the ordinary cart lease. */
+    fun spawnModel(scope: String, player: Player, material: Material, model: String): Cart =
+        spawnInternal(scope, player, material, model)
+
+    private fun spawnInternal(scope: String, player: Player, material: Material, modelOverride: String?): Cart {
         val at = WorksiteCarryable.carriedLocation(player, CART_DISTANCE, 0.0, position = WorksiteCarryPosition.FRONT)
         at.yaw = 0f; at.pitch = 0f
         val pushDirection = horizontalDirection(player)
@@ -39,7 +45,7 @@ internal class MineFactoryCarts(private val plugin: Plugin, private val visuals:
             at.x = player.location.x + pushDirection.first * CART_DISTANCE
             at.z = player.location.z + pushDirection.second * CART_DISTANCE
         }
-        val cartModel = when (material) {
+        val cartModel = modelOverride ?: when (material) {
             Material.COAL_BLOCK -> "cargo_cart_coal"
             // The crusher charge is physically the same heavy load before and
             // after processing; its dedicated blueprint makes that chain

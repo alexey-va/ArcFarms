@@ -44,6 +44,23 @@ object MineFactoryLine {
         "crusher_repair" to ExpeditionPoint(-24, 5, -3),
     )
 
+    /**
+     * Resolve a station through the small in-place geometry migration used by
+     * the connected factory.  The first geometry-v3 room placed the repair
+     * socket one block into the hopper/light envelope.  Existing journals and
+     * persisted plans must keep their authored map, while gameplay and the
+     * furnishing editor need the clear aisle anchor.  A non-legacy/custom
+     * point is returned unchanged, which also preserves explicit admin poses.
+     */
+    fun effectiveStation(plan: MineExpeditionPlan, id: String): ExpeditionPoint {
+        val point = plan.stations.getValue(id)
+        return if (id == "crusher_repair" && point == LEGACY_CRUSHER_REPAIR) {
+            point.offset(dx = 1, dz = 1)
+        } else {
+            point
+        }
+    }
+
     /** Physical owner used by the furnishing editor for relative child poses. */
     val owners: Map<String, String> = mapOf(
         "water_valve_1" to "decor_pump_left",
@@ -85,4 +102,5 @@ object MineFactoryLine {
 
     private const val POLISHED_ANDESITE = "minecraft:polished_andesite"
     private const val POLISHED_DEEPSLATE = "minecraft:polished_deepslate"
+    private val LEGACY_CRUSHER_REPAIR = ExpeditionPoint(-24, 5, -3)
 }

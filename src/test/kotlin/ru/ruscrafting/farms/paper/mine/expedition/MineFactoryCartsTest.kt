@@ -95,6 +95,14 @@ class MineFactoryCartsTest : FunSpec({
         visuals.bodies.single().parts.any { it.material == Material.RAW_IRON_BLOCK } shouldBe true
         carts.remove(cart)
     }
+
+    test("repair pickup uses the packet gear model rather than an item display") {
+        val player = paper.server.addPlayer()
+        player.teleport(Location(world, 0.5, 65.0, 0.5, 0f, 0f))
+        val cart = carts.spawnModel("factory:repair", player, Material.IRON_NUGGET, "loose_gear")
+        visuals.bodies.single().parts.any { it.material == Material.EXPOSED_CUT_COPPER } shouldBe true
+        carts.remove(cart)
+    }
 })
 
 private class FactoryCartVisualRecorder : MineFactoryCartVisuals {

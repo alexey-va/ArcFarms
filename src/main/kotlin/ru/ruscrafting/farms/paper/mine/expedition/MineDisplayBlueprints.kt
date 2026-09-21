@@ -304,7 +304,8 @@ internal object MineDisplayBlueprints {
     }
     fun center(part:Part,phase:Float):Vector3f = when {
         !part.moving -> Vector3f(part.center)
-        part.motion in setOf("belt","cargo") -> beltPose(part,phase).first.add(part.center)
+        part.motion=="belt" -> beltPose(part,phase).first.add(part.center)
+        part.motion=="cargo" -> topCargoPose(part,phase)
         part.motion=="feed" -> Vector3f(part.center).add(0f,-((phase/(PI.toFloat()*2)+part.angle).mod(1f))*2.8f,0f)
         part.motion=="processed" -> Vector3f(part.center)
         part.motion=="axle" -> Quaternionf().rotateX(phase).transform(Vector3f(part.center).sub(part.pivot)).add(part.pivot)
@@ -327,5 +328,18 @@ internal object MineDisplayBlueprints {
         if(distance<straight) return center.add(straight/2-distance,-radius,0f) to -PI.toFloat()
         val a=(distance-straight)/radius
         return center.add(-straight/2-sin(a)*radius,-cos(a)*radius,0f) to (-PI.toFloat()-a)
+    }
+
+    /**
+     * One-way charge motion. Cargo is deliberately kept on the top deck; the
+     * closed return path belongs to belt slats only. Presentation hides and
+     * repositions this part between cycles so a client never sees a backwards
+     * or underside jump.
+     */
+    private fun topCargoPose(part: Part, phase: Float): Vector3f {
+        val straight = 7.6f
+        val cycle = ((phase + part.angle).mod(PI.toFloat() * 2f) / (PI.toFloat() * 2f))
+        return Vector3f(part.pivot.x - straight / 2f + cycle * straight + part.center.x,
+            part.pivot.y + .58f, part.pivot.z + part.center.z)
     }
 }

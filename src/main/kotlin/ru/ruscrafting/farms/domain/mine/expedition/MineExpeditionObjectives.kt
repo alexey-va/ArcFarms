@@ -37,7 +37,11 @@ object MineExpeditionObjectives {
             return when (next) {
                 0 -> indexedCarry("fuel_supply", "crusher_feed", "RAW_IRON_BLOCK", 0)
                 1 -> listOf(objective("control_crusher_left", MineExpeditionInteraction.OPERATE, "GRINDSTONE", 1))
-                2 -> indexedCarry("crushed_output", "furnace_input", "RAW_IRON_BLOCK", 2)
+                // The charged mix rides the visible one-way belt into the
+                // furnace.  Its durable checkpoint is completed by the
+                // action owner after the one-way belt transfer, so no manual cart target
+                // or stale receiver hitbox is exposed here.
+                2 -> emptyList()
                 else -> emptyList()
             }
         }
@@ -73,7 +77,12 @@ object MineExpeditionObjectives {
                 plan.stations["pour_console"] ?: point("pour_control").offset(-4, 0, 1),
             ))
             MineExpeditionStage.FACTORY_CRANE -> listOf(objective("crane_control", MineExpeditionInteraction.OPERATE, "IRON_CHAIN", 0))
-            MineExpeditionStage.FACTORY_INSTALL -> carry(if ("crane_load" in plan.stations) "crane_load" else "crane_control", "assembly_socket", "IRON_BLOCK")
+            MineExpeditionStage.FACTORY_INSTALL -> if (MineFactoryProgram.usesConnectedCrusherLine(plan)) {
+                // The crane has already placed the billet at the conveyor
+                // start.  The press cycle is owned by the line, so it does
+                // not expose a one-metre cart or a duplicate receiver step.
+                emptyList()
+            } else carry(if ("crane_load" in plan.stations) "crane_load" else "crane_control", "assembly_socket", "IRON_BLOCK")
             MineExpeditionStage.COMPLETE -> emptyList()
         }
     }

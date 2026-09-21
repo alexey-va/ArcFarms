@@ -5,6 +5,7 @@ import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import org.bukkit.Material
 import org.bukkit.entity.BlockDisplay
 import org.bukkit.util.Transformation
 import org.joml.Vector3f
@@ -39,7 +40,7 @@ class MineDisplayBlueprintsTest : FunSpec({
     test("press moves the ram one block vertically and returns it without moving its frame") {
         val parts = MineDisplayBlueprints.model("assembly_bench")
         parts.count { it.motion == "press" } shouldBe 2
-        parts.forEach { part ->
+        parts.filter { it.motion == "press" }.forEach { part ->
             val rest = MineDisplayBlueprints.center(part, 0f)
             val bottom = MineDisplayBlueprints.center(part, PI.toFloat())
             val returned = MineDisplayBlueprints.center(part, (2 * PI).toFloat())
@@ -60,5 +61,28 @@ class MineDisplayBlueprintsTest : FunSpec({
         parts.filterNot { it.moving }.forEach { part ->
             MineDisplayBlueprints.center(part, PI.toFloat()) shouldBe part.center
         }
+    }
+    test("factory charge stays on the top deck and never follows the slat return") {
+        val parts = MineDisplayBlueprints.model("factory_conveyor").filter { it.motion == "cargo" }
+        parts.size shouldBe 5
+        parts.forEach { part ->
+            val atStart = MineDisplayBlueprints.center(part, 0f)
+            val atHalf = MineDisplayBlueprints.center(part, PI.toFloat())
+            (abs(atStart.y - 1.82f) < .0001f) shouldBe true
+            (abs(atHalf.y - 1.82f) < .0001f) shouldBe true
+            (atStart.y > part.pivot.y) shouldBe true
+            (atHalf.y > part.pivot.y) shouldBe true
+        }
+    }
+    test("factory furnace control contains a separate lever and thermometer") {
+        val parts = MineDisplayBlueprints.model("furnace_air_console")
+        parts.count { it.motion == "lever" } shouldBe 2
+        parts.count { it.motion == "thermometer" } shouldBe 10
+        val thermometer = parts.filter { it.motion == "thermometer" }
+        thermometer.all { it.idleHidden } shouldBe true
+        thermometer.maxOf { it.center.y } shouldBe 1.72f
+        thermometer.filter { it.material == Material.LIME_CONCRETE }.size shouldBe 2
+        thermometer.dropWhile { it.material != Material.LIME_CONCRETE }
+            .drop(2).all { it.material == Material.RED_CONCRETE } shouldBe true
     }
 })
