@@ -87,7 +87,12 @@ object MineFactoryProgram {
         plan: MineExpeditionPlan,
         state: MineExpeditionState,
     ): List<MineExpeditionObjective> {
-        val next = (0 until 3).firstOrNull { it !in state.completed } ?: return emptyList()
+        val next = if (MineFactoryExperiments.skipsDriveRepair(state) && 1 !in state.completed) {
+            // The valve owns both the omitted gear checkpoint and its own credit.
+            1
+        } else {
+            (0 until 3).firstOrNull { it !in state.completed }
+        } ?: return emptyList()
         fun station(id: String): ExpeditionPoint = MineFactoryLine.effectiveStation(plan, id)
         return when (next) {
             0 -> listOf(

@@ -48,9 +48,17 @@ object MineExpeditionEngine {
         else -> null
     }
 
-    fun initial(type: MineIncidentType, placement: MineExpeditionPlacement, factoryProgram: Int = 0): MineExpeditionState = MineExpeditionState(
+    fun initial(
+        type: MineIncidentType,
+        placement: MineExpeditionPlacement,
+        factoryProgram: Int = 0,
+        factoryExperiments: MineFactoryExperimentPlan? = null,
+    ): MineExpeditionState = MineExpeditionState(
         placement = placement,
         factoryProgram = if(type == MineIncidentType.DEAD_FACTORY && placement.geometryVersion >= 3) factoryProgram else 0,
+        factoryExperiments = if(type == MineIncidentType.DEAD_FACTORY && placement.geometryVersion >= 3) {
+            factoryExperiments
+        } else null,
         stage = when (kind(type)) {
             MineExpeditionKind.LAST_DESCENT -> MineExpeditionStage.DESCENT_MIDDLE
             MineExpeditionKind.DRILLING_ARK -> MineExpeditionStage.ARK_FUEL
@@ -157,12 +165,18 @@ object MineExpeditionEngine {
         if (operation !in setOf(MineExpeditionAction.TARGET, MineExpeditionAction.HEAT) ||
             target !in 0 until total || target in current.completed
         ) return MineExpeditionStep(current, false)
+        if (MineFactoryExperiments.blocksTarget(current, target)) {
+            return MineExpeditionStep(current, false)
+        }
         if (operation == MineExpeditionAction.HEAT && !controlledHeat && !canFinishHeat(current, now)) {
             return MineExpeditionStep(current, false)
         }
-        val completed = current.completed + target
-        if (completed.size < total) return MineExpeditionStep(current.copy(completed = completed), true)
-        return nextStage(current.copy(completed = completed), now)
+        val completed = MineFactoryExperiments.completedTargets(current, target)
+        val completedState = MineFactoryExperiments.recordGearResolution(
+            current.copy(completed = completed), target,
+        )
+        if (completed.size < total) return MineExpeditionStep(completedState, true)
+        return nextStage(completedState, now)
     }
 
     /** Advance at most a bounded number of route steps; the caller must enforce presence and reachability. */

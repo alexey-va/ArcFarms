@@ -4,6 +4,8 @@ import org.bukkit.Location
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionEngine
 import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionKind
+import ru.ruscrafting.farms.domain.mine.expedition.*
+import ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
@@ -28,6 +30,7 @@ internal class MineExpeditionStock(
     private val state: WorksiteStatePort,
     private val loader: MineExpeditionSceneLoader,
 ) {
+    private val experimentPresets = MineFactoryExperimentPresets()
     private val writes = hashSetOf<String>()
     private val creating = linkedMapOf<MineExpeditionKind, MineExpeditionSceneReceipt>()
     private val claimed = hashSetOf<Long>()
@@ -40,7 +43,7 @@ internal class MineExpeditionStock(
     private val retryAfter = hashMapOf<String, Long>()
 
     fun activate() { active = true; nextRefill = 0L }
-    fun deactivate() { active = false; writes.clear(); creating.clear(); claimed.clear(); retiring.clear(); failures.clear(); retryAfter.clear() }
+    fun deactivate() { active = false; experimentPresets.clear(); writes.clear(); creating.clear(); claimed.clear(); retiring.clear(); failures.clear(); retryAfter.clear() }
 
     fun maintain(now: Long) {
         if (!active || now < nextRefill) return
@@ -84,7 +87,7 @@ internal class MineExpeditionStock(
             return loader.prepared(receipt.journalSequence)?.takeIf { it.ready }?.also {
                 bind(it, receipt, surface)
                 if (incident.expedition == null || incident.expedition.placement != receipt.placement) {
-                    runtime.state = runtime.state.copy(incident = incident.copy(expedition = MineExpeditionEngine.initial(incident.type, receipt.placement, Math.floorMod(incident.objectiveNonce, 3L).toInt())))
+                    runtime.state = runtime.state.copy(incident = incident.copy(expedition = initial(receipt, incident.type)))
                     state.persistAsync()
                 }
             }
@@ -103,7 +106,7 @@ internal class MineExpeditionStock(
             if (key(runtime) == key && runtime.state.incident?.type == incident.type) {
                 loader.prepared(receipt.journalSequence)?.let { bind(it, receipt, surface) }
                 runtime.state = runtime.state.copy(incident = runtime.state.incident!!.copy(
-                    expedition = MineExpeditionEngine.initial(incident.type, receipt.placement, Math.floorMod(incident.objectiveNonce, 3L).toInt())))
+                    expedition = initial(receipt, incident.type)))
                 state.persistAsync()
             } else loader.prepared(receipt.journalSequence)?.let {
                 bind(it, receipt, surface)
@@ -113,6 +116,15 @@ internal class MineExpeditionStock(
         }
         return null
     }
+
+    fun configureFactoryExperiments(zoneId: String, preset: String): Boolean =
+        experimentPresets.configure(zoneId, preset)
+
+    private fun initial(receipt: MineExpeditionSceneReceipt, type: MineIncidentType) =
+        MineExpeditionEngine.initial(type, receipt.placement, Math.floorMod(receipt.objectiveNonce, 3L).toInt(),
+            if (type == MineIncidentType.DEAD_FACTORY && receipt.placement.geometryVersion >= 3)
+                experimentPresets.consume(receipt.zoneId, WorksiteDeterministicSeed.derive(
+                    receipt.objectiveNonce, receipt.sequence)) else null)
 
     fun failure(runtime: MineRuntime): String? = failures[key(runtime)] ?: runtime.state.incident?.let {
         receipts.find(runtime.settings.id, runtime.state.sequence, it.objectiveNonce)?.let { receipt -> loader.failure(receipt.journalSequence) }

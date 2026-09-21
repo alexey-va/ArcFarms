@@ -31,10 +31,8 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.platform.FarmBlockPassability
-import kotlin.math.PI
+import ru.ruscrafting.farms.paper.worksite.WorksiteWaterJet
 import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.sin
 
 private data class FireKey(val zoneId: String, val index: Int)
 
@@ -182,7 +180,9 @@ internal class FarmBarnFireIncident(
         ) return true
         val start = player.eyeLocation.clone().add(player.eyeLocation.direction.normalize().multiply(0.45))
         val direction = player.eyeLocation.direction.normalize()
-        renderJet(start, direction, config.sprayRange, config.particleStep, config.waterSideStreams)
+        if (settings().particles) {
+            WorksiteWaterJet.renderJet(start, direction, config.sprayRange, config.particleStep, config.waterSideStreams)
+        }
         val hits = hitsInSpray(runtime, start, direction, config.sprayRange, config.sprayHitRadius)
         if (hits.isEmpty()) {
             audience.sendActionBar(player, MessageKey.FARM_BARN_FIRE_AIM_HINT)
@@ -342,18 +342,16 @@ internal class FarmBarnFireIncident(
         range: Double,
         radius: Double,
     ): List<Int> = runtime.state.specialIncident?.let { incident ->
-        incident.active.mapNotNull { index ->
-            if (FireKey(runtime.settings.id, index) !in blocks) return@mapNotNull null
-            val point = incident.points.getOrNull(index)?.location() ?: return@mapNotNull null
-            if (point.world !== start.world) return@mapNotNull null
-            val relative = point.toVector().subtract(start.toVector())
-            val along = relative.dot(direction)
-            if (along !in 0.0..range) return@mapNotNull null
-            val closest = start.toVector().add(direction.clone().multiply(along))
-            val distanceSquared = point.toVector().distanceSquared(closest)
-            if (distanceSquared > radius * radius) null else Triple(index, along, distanceSquared)
-        }.sortedWith(compareBy<Triple<Int, Double, Double>> { it.second }.thenBy { it.third })
-            .map { it.first }
+        WorksiteWaterJet.hitTargets(
+            incident.active.mapNotNull { index ->
+                if (FireKey(runtime.settings.id, index) !in blocks) return@mapNotNull null
+                incident.points.getOrNull(index)?.location()?.let { index to it }
+            },
+            start,
+            direction,
+            range,
+            radius,
+        )
     }.orEmpty()
 
     private fun particleHotspots(runtime: FarmRuntime, tick: Long): List<Int> {
@@ -369,32 +367,6 @@ internal class FarmBarnFireIncident(
             active.size.toLong(),
         ).toInt()
         return List(limit) { offset -> active[(start + offset) % active.size] }
-    }
-
-    private fun renderJet(start: Location, direction: Vector, range: Double, step: Double, sideStreams: Int) {
-        if (!settings().particles) return
-        val forward = direction.clone().normalize()
-        val reference = if (abs(forward.y) < 0.92) Vector(0.0, 1.0, 0.0) else Vector(1.0, 0.0, 0.0)
-        val right = forward.clone().crossProduct(reference).normalize()
-        val up = right.clone().crossProduct(forward).normalize()
-        var distance = 0.0
-        var sample = 0
-        while (distance <= range) {
-            val center = start.clone().add(forward.clone().multiply(distance))
-            center.world.spawnParticle(Particle.SPLASH, center, 1, 0.06, 0.06, 0.06, 0.02)
-            if (sample % 2 == 0) {
-                val coneRadius = 0.12 + (distance / range).coerceIn(0.0, 1.0) * 0.82
-                repeat(sideStreams) { stream ->
-                    val angle = (stream.toDouble() / sideStreams * PI * 2.0) + sample * 0.47
-                    val spray = center.clone()
-                        .add(right.clone().multiply(cos(angle) * coneRadius))
-                        .add(up.clone().multiply(sin(angle) * coneRadius))
-                    spray.world.spawnParticle(Particle.SPLASH, spray, 2, 0.1, 0.1, 0.1, 0.045)
-                }
-            }
-            distance += step
-            sample++
-        }
     }
 
     private fun remove(key: FireKey, reason: String): Boolean {

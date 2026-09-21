@@ -83,6 +83,8 @@ data class MineExpeditionState(
     val heatStartedAt: Long = 0L,
     /** 0: water circuit, 1: left production line, 2: right production line. Missing legacy JSON means 0. */
     val factoryProgram: Int = 0,
+    /** Optional connected-factory side jobs; null preserves legacy expedition behavior. */
+    val factoryExperiments: MineFactoryExperimentPlan? = null,
 ) {
     init { validate() }
 
@@ -93,6 +95,7 @@ data class MineExpeditionState(
         }
         require(motionStep in 0..1_000_000) { "Expedition motion step is invalid" }
         require(factoryProgram in 0..2) { "Invalid factory program" }
+        factoryExperiments?.validate()
         require(branch in 0..2) { "Expedition branch is invalid" }
         require(heatStartedAt >= 0L) { "Expedition heat timestamp is invalid" }
         require(stage == MineExpeditionStage.FACTORY_HEAT || heatStartedAt == 0L) {

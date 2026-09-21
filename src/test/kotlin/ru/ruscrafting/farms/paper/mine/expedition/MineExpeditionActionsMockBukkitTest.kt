@@ -567,6 +567,15 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         (kotlin.math.abs(chain.location.y - chain.transformation.scale.y / 2 - casting.location.y - .5) < .0001) shouldBe true
         chain.location.x shouldBe casting.location.x
         chain.location.z shouldBe casting.location.z
+        val manual = casting.location.clone().add(.75, -.25, 1.25)
+        machinery.manualCrane(scene, manual)
+        machinery.animate(scene, state, 2_300)
+        casting.location shouldBe manual
+        chain.location.x shouldBe manual.x
+        chain.location.z shouldBe manual.z
+        (kotlin.math.abs(chain.location.y - chain.transformation.scale.y / 2 - manual.y - .5) < .0001) shouldBe true
+        world.entities.filterIsInstance<org.bukkit.entity.BlockDisplay>().size shouldBe 3
+        // A stale optional pose must not move the billet back after its durable landing.
         val installing = state.copy(stage = MineExpeditionStage.FACTORY_INSTALL)
         machinery.animate(scene, installing, 4_500, cargoClaimed = true)
         casting.transformation.scale.x shouldBe 1.6f

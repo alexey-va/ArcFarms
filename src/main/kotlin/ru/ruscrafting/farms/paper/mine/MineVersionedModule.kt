@@ -23,6 +23,7 @@ import ru.ruscrafting.farms.paper.WorksiteBlockBreakGuard
 import ru.ruscrafting.farms.paper.WorksiteBlockDamageHandler
 import ru.ruscrafting.farms.paper.WorksiteBlockPlaceHandler
 import ru.ruscrafting.farms.paper.WorksiteBlockInteractHandler
+import ru.ruscrafting.farms.paper.WorksitePlayerInteractHandler
 import ru.ruscrafting.farms.paper.WorksiteGuidanceHandler
 import ru.ruscrafting.farms.paper.WorksiteModule
 import ru.ruscrafting.farms.paper.WorksiteMoveHandler
@@ -69,7 +70,7 @@ internal class MineVersionedModule(
     lift: MineLiftAccess? = null,
     points: ru.ruscrafting.farms.paper.mine.point.MinePointService? = null,
 ) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockBreakGuard, WorksiteBlockDamageHandler, WorksiteBlockPlaceHandler, ru.ruscrafting.farms.paper.WorksiteBucketFillHandler,
-    WorksiteBlockInteractHandler,
+    WorksiteBlockInteractHandler, WorksitePlayerInteractHandler,
     WorksiteMoveHandler, WorksiteGuidanceHandler, WorksiteFastVisualHandler, WorksiteServiceItemOwner,
     WorksiteParticipantOwner, WorksiteEntityInteractHandler, WorksiteEntityDeathHandler, WorksiteEntityDamageHandler,
     WorksiteAdminHandler, WorksiteTeleportRetention, WorksiteTemporaryBlockOwner,
@@ -92,6 +93,8 @@ internal class MineVersionedModule(
     fun editExpeditionFurnishings(player: org.bukkit.entity.Player, action: String?) = (delegate as? MineModule)?.editExpeditionFurnishings(player,action)
     fun expeditionStock() = (delegate as? MineModule)?.expeditionStock().orEmpty()
     fun rebuildExpeditionStock(kind: ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionKind?) = (delegate as? MineModule)?.rebuildExpeditionStock(kind) ?: 0
+    fun configureFactoryExperiments(zoneId: String, preset: String): Boolean =
+        (delegate as? MineModule)?.configureFactoryExperiments(zoneId, preset) == true
 
     override val kind: ActivityKind get() = delegate.kind
     override val zoneCount: Int get() = delegate.zoneCount
@@ -176,6 +179,10 @@ internal class MineVersionedModule(
 
     override fun onInteract(event: PlayerInteractEvent, clicked: Block, player: Player): Boolean =
         (delegate as? WorksiteBlockInteractHandler)?.onInteract(event, clicked, player) == true
+
+    override fun onInteract(event: PlayerInteractEvent, player: Player): Boolean =
+        event.clickedBlock == null &&
+            (delegate as? WorksitePlayerInteractHandler)?.onInteract(event, player) == true
 
     override fun onMove(from: Location, to: Location, player: Player): Boolean =
         (delegate as? WorksiteMoveHandler)?.onMove(from, to, player) == true

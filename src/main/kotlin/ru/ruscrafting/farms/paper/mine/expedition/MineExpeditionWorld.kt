@@ -168,6 +168,7 @@ internal class MineExpeditionWorld(
 
     fun available(type: ru.ruscrafting.farms.domain.MineIncidentType): Boolean = stock.available(type)
     fun failure(runtime: MineRuntime): String? = stock.failure(runtime)
+    fun configureFactoryExperiments(zoneId: String, preset: String): Boolean = stock.configureFactoryExperiments(zoneId, preset)
     fun stockStatus(): List<MineExpeditionStockStatus> = stock.status()
     fun rebuildStock(kind: MineExpeditionKind?): Int = stock.rebuild(kind)
 
@@ -265,9 +266,9 @@ internal class MineExpeditionWorld(
         )
     }
 
-    fun protects(location: Location): Boolean = scenes.values.any {
-        it.contains(location) && (!it.ready || (!it.reserved && it.completedAt == 0L))
-    }
+    // Permanent rooms remain owned between runs and during the result display.
+    // The module applies its explicit admin-edit bypass before consulting this.
+    fun protects(location: Location): Boolean = scenes.values.any { it.contains(location) }
 
     fun reconcileLoaded() {
         if (!storageLoaded) return

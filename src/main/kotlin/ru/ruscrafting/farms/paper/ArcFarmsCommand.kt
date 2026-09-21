@@ -755,7 +755,7 @@ class ArcFarmsCommand(
         return when (args.size) {
             2 -> listOf("help", "edit", "inspect", "point", "unmanage", "blockreset", "backup", "stage", "next", "finish", "event", "route", "worksite", "expeditions") + ADMIN_SHORTCUTS
             3 -> when (action) {
-                "expeditions" -> listOf("status", "rebuild", "edit", "help")
+                "expeditions" -> listOf("status", "rebuild", "edit", "factory", "help")
                 "worksite" -> listOf("lumber", "mine", "help")
                 "edit", "inspect" -> listOf("help")
                 "point" -> (service.farmZoneIds() + service.mineZoneIds()) + "help"
@@ -765,7 +765,10 @@ class ArcFarmsCommand(
                 else -> emptyList()
             }
             4 -> when (action) {
-                "expeditions" -> listOf("all", "last_descent", "drilling_ark", "dead_factory")
+                "expeditions" -> when (args[2].lowercase()) {
+                    "factory" -> service.mineZoneIds() + "help"
+                    else -> listOf("all", "last_descent", "drilling_ark", "dead_factory")
+                }
                 "worksite" -> parseKind(args[2])?.let(service.worksiteAdmins::zoneIds).orEmpty() + "help"
                 "point" -> if (isMineZone(args.getOrNull(2))) service.minePointKinds() + "help" else POINT_ARGUMENTS + "help"
                 "stage" -> STAGE_STAGES + "help"
@@ -777,6 +780,7 @@ class ArcFarmsCommand(
                 else -> emptyList()
             }
             5 -> when (action) {
+                "expeditions" -> if (args[2].equals("factory", true)) MineExpeditionAdminCommand.FACTORY_PRESETS else emptyList()
                 "worksite" -> listOf("status", "start", "incident", "reindex", "help")
                 "route" -> if (args[3].lowercase() in setOf("start", "status", "clear", "remove")) {
                     (service.adminFarmRouteNames(args[2]) + "main").distinct()

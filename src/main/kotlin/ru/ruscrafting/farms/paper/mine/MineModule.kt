@@ -21,6 +21,7 @@ import ru.ruscrafting.farms.paper.WorksiteBlockBreakGuard
 import ru.ruscrafting.farms.paper.WorksiteBlockDamageHandler
 import ru.ruscrafting.farms.paper.WorksiteBlockPlaceHandler
 import ru.ruscrafting.farms.paper.WorksiteBlockInteractHandler
+import ru.ruscrafting.farms.paper.WorksitePlayerInteractHandler
 import ru.ruscrafting.farms.paper.WorksiteMoveHandler
 import ru.ruscrafting.farms.paper.WorksiteTeleportRetention
 import ru.ruscrafting.farms.paper.WorksiteTemporaryBlockOwner
@@ -86,7 +87,7 @@ internal class MineModule(
     private val veins: ru.ruscrafting.farms.paper.mine.mining.MineVeinController,
     private val pickaxes: MinePickaxeSupply,
 ) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockBreakGuard, WorksiteBlockDamageHandler, WorksiteBlockPlaceHandler, ru.ruscrafting.farms.paper.WorksiteBucketFillHandler,
-    WorksiteBlockInteractHandler,
+    WorksiteBlockInteractHandler, WorksitePlayerInteractHandler,
     WorksiteMoveHandler, WorksiteEntityInteractHandler, WorksiteEntityDeathHandler, WorksiteEntityDamageHandler, WorksiteFastVisualHandler,
     WorksiteParticipantOwner, WorksiteServiceItemOwner, WorksiteGuidanceHandler, WorksiteTeleportRetention, WorksiteTemporaryBlockOwner,
     ru.ruscrafting.farms.paper.WorksiteMovementGuard, ru.ruscrafting.farms.paper.WorksiteParticipantRecoveryOwner {
@@ -204,6 +205,11 @@ internal class MineModule(
         return incidents.onInteract(event) || loading.onInteract(event) || prospecting.onInteract(event)
     }
 
+    override fun onInteract(event: PlayerInteractEvent, player: Player): Boolean {
+        if (event.clickedBlock != null || access.isAdminEditing(player)) return false
+        return incidents.onInteract(event)
+    }
+
     override fun onMove(from: Location, to: Location, player: Player): Boolean =
         incidents.onMove(to, player) || loading.onMove(to, player) || extraction.onMove(from, to, player)
 
@@ -316,6 +322,8 @@ internal class MineModule(
     fun editExpeditionFurnishings(player: Player, action: String?) = incidents.editExpeditionFurnishings(player,action)
     fun expeditionStock() = incidents.expeditionStock()
     fun rebuildExpeditionStock(kind: ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionKind?) = incidents.rebuildExpeditionStock(kind)
+    fun configureFactoryExperiments(zoneId: String, preset: String): Boolean =
+        incidents.configureFactoryExperiments(zoneId, preset)
 
     fun adminStatus(zoneId: String): MineAdminStatus? = admin.status(zoneId)
     fun adminStart(zoneId: String, player: Player): Boolean = admin.start(zoneId, player)

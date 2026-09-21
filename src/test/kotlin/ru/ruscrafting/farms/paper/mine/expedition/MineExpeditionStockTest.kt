@@ -65,6 +65,38 @@ class MineExpeditionStockTest : FunSpec({
         repository.close()
     }
 
+    test("next factory preset survives unrelated ensures and never rerolls an initialized run") {
+        val world = paper.server.addSimpleWorld("world")
+        val repository = MineExpeditionSceneRepository(MemoryExpeditionStorage())
+        val loader = ReadySceneLoader(world)
+        val port = immediateMinePort()
+        val stock = MineExpeditionStock(repository, port, port, loader)
+        stock.site = MineExpeditionSite("world", 40, 0, 64, 10.5, 64.0, 10.5)
+        stock.activate()
+        stock.maintain(1_000L)
+        val runtime = MineRuntimeFactory.build(listOf(mineV2Settings()), emptyMap(), 5_000L, CuboidRegionGateway()).single()
+        val surface = Location(world, 10.5, 64.0, 10.5)
+        stock.configureFactoryExperiments("old_shafts", "all") shouldBe true
+        stock.ensure(runtime, surface) shouldBe null
+        runtime.state = MineShiftState(engineVersion = 2, phase = MinePhase.INCIDENT, orderId = "ore_run", sequence = 5,
+            incident = MineIncidentState(MineIncidentType.DEAD_FACTORY, required = 10, objectiveNonce = 100))
+        stock.ensure(runtime, surface)
+        val scene = stock.ensure(runtime, surface)!!
+        val selected = runtime.state.incident!!.expedition!!
+        selected.factoryExperiments!!.selected shouldBe MineFactoryExperiment.entries.toSet()
+        stock.configureFactoryExperiments("old_shafts", "none") shouldBe true
+        stock.ensure(runtime, surface)
+        runtime.state.incident!!.expedition shouldBe selected
+        stock.complete(scene, 3_000L)
+        stock.release(scene)
+        runtime.state = runtime.state.copy(incident = MineIncidentState(MineIncidentType.DEAD_FACTORY, required = 10, objectiveNonce = 101))
+        stock.ensure(runtime, surface)
+        stock.ensure(runtime, surface)
+        runtime.state.incident!!.expedition!!.factoryExperiments!!.selected shouldBe emptySet()
+        stock.deactivate()
+        repository.close()
+    }
+
     test("a late claim releases the permanent site without deleting its blocks") {
         val world = paper.server.addSimpleWorld("world")
         val storage = MemoryExpeditionStorage()
@@ -89,6 +121,32 @@ class MineExpeditionStockTest : FunSpec({
         loader.restored.size shouldBe 0
         runtime.state.incident shouldBe null
         repository.close()
+    }
+
+    test("permanent rooms stay protected while reserved and during the result display") {
+        val bukkitWorld = paper.server.addSimpleWorld("world")
+        val plugin = paper.createSimplePlugin("ExpeditionProtection")
+        val repository = MineExpeditionSceneRepository(MemoryExpeditionStorage())
+        val port = immediateMinePort()
+        val world = MineExpeditionWorld(plugin, mockk(), port, port, mockk(relaxed = true),
+            WorksitePreparedSceneBlockDataDecoder(MockBukkitFarmBlockDataDecoder::decode), repository)
+        val receipt = MineExpeditionSceneReceipt("reserve", 0, 1, 1, MineExpeditionKind.DEAD_FACTORY,
+            MineExpeditionPlacement("world", 0, 0, 0, 73), "world", 0.5, 64.0, 0.5,
+            reserved = true, journalZoneId = "reserve", journalSceneId = 1)
+        val loader = ReadySceneLoader(bukkitWorld)
+        loader.prepare(receipt)
+        val scene = loader.prepared(1)!!
+        // Substitute only world generation; exercise the production ownership gate.
+        val field = MineExpeditionWorld::class.java.getDeclaredField("scenes").apply { isAccessible = true }
+        @Suppress("UNCHECKED_CAST")
+        (field.get(world) as MutableMap<Long, MineExpeditionScene>)[1] = scene
+        for ((reserved, completed) in listOf(true to 0L, false to 0L, false to 5_000L)) {
+            scene.reserved = reserved
+            scene.completedAt = completed
+            world.protects(Location(bukkitWorld, .5, 64.0, .5)) shouldBe true
+            world.protects(Location(bukkitWorld, 20.5, 64.0, .5)) shouldBe false
+        }
+        world.close()
     }
 
     test("startup scene cleanup keeps its repository open until plugin shutdown") {

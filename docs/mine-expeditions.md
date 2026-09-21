@@ -16,9 +16,11 @@ event markers; other expeditions may keep separate entry and exit portals.
 
 ## Factory work
 
-1. Find the loose drive gear, fit it onto the crusher shaft, open the pump valve
+1. When a drive repair is selected, find the loose gear and fit it onto the crusher shaft. Open the pump valve
    with short right-click turns and switch the crusher's mounted start lever.
-   The selected repair pickup location persists through restart. Nearby workers
+   The repair and its pickup variant persist through restart. A normal run without
+   repair starts at the pump valve and credits the omitted gear checkpoint together
+   with that valve, preserving the ten-credit total. Nearby workers
    share valve progress; duplicate clicks inside 250 ms do not count. Hand-operated
    controls interpolate each click; powered rolls turn continuously until the event ends.
 2. Push an ore-and-coal cart from the bunker to the crusher inlet. Switch the
@@ -76,6 +78,45 @@ Both flows keep ten checkpoints. The continuous dark floor is migrated through
 bounded journal-first batches only where blocks still match the former default;
 custom floor blocks remain untouched. Arrival faces inward along the line, with
 one permanent return portal at the shared entry/exit anchor.
+
+## Optional factory interactions
+
+New connected-factory runs select zero to two distinct situations from six. The
+run's selection, finished situations and product shape are part of the existing
+expedition state. Restart does not reroll them. Old saved runs without this
+field keep their old behavior. Animation progress is transient and resumes from
+its safe start after restart; it cannot duplicate material or award extra credit.
+
+- **Rock jam:** a small stone is visibly wedged in the crusher. Right-clicks pry
+  it outward; the powered crusher stays stopped until it is removed.
+- **Press mould:** match one of three mould silhouettes to the sample at the
+  press. A wrong choice is recoverable. The completed product matches the form.
+- **Manual crane:** hook the existing casting, aim the load toward the highlighted
+  upstream landing, and lower it. The ordinary conveyor starts only after landing.
+- **Drive repair:** the existing loose-gear pickup and installation loop becomes
+  optional; it keeps the same ownership and restart guarantees.
+- **Conveyor routing:** move the guide to return accumulated material to the
+  production line. The existing charge remains a single production payload.
+- **Bearing cooling:** take the visible nozzle, aim water at the smoking bearing
+  and hold Shift. Spraying elsewhere does not cool the bearing.
+
+The active physical object receives glow. Captions name a short action; movement,
+material direction, steam and sound provide the feedback. Temporary apparatus
+and held displays are cleaned on departure, death, disconnect, stage change,
+reload and shutdown. No reward amount or drop chance changes.
+
+For repeatable testing, configure the **next** run, then start the event:
+
+```text
+/arcfarms admin expeditions factory old_shafts all
+/arcfarms admin event old_shafts dead_factory
+```
+
+Accepted presets: `random`, `none`, `all`, `rock`, `mould`, `crane`, `gear`,
+`route`, `cooling`. `random` removes a queued override. The setting is one-shot,
+scoped to that mine, and does not reset an active run. Pending admin overrides
+are transient; the chosen set is durable once its run starts. Never rebuild the
+permanent factory just to test a different interaction.
 
 ## Editing and preview
 

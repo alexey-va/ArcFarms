@@ -1,0 +1,47 @@
+// Uses the exact runtime fixtures; no second hand-authored set of experiment coordinates.
+allprojects {
+ afterEvaluate {
+  tasks.register('exportMineFactoryExperiments') {
+   dependsOn 'exportMineScenes'
+   doLast {
+    def out=new File(project.findProperty('minePreviewOut') ?: '/private/tmp/mine-0440-scenes')
+    def recipe=new groovy.json.JsonSlurper().parse(new File(out,'dead_factory.atelier.json'))
+    def urls=(sourceSets.main.runtimeClasspath+sourceSets.main.compileClasspath).files.collect{it.toURI().toURL()} as URL[]
+    def cl=new URLClassLoader(urls,(ClassLoader)null)
+    def layout=cl.loadClass('ru.ruscrafting.farms.paper.mine.expedition.MineFactoryExperimentLayout')
+    def blueprint=cl.loadClass('ru.ruscrafting.farms.paper.mine.expedition.MineDisplayBlueprints')
+    def fixtures=layout.getMethod('staticFixtures').invoke(layout.getField('INSTANCE').get(null))
+    def originals=recipe.displayAssemblies.collectEntries{[(it.id):it]}
+    def assembled=[]
+    fixtures.each { f ->
+     def base=originals[f.anchor]
+     if(base==null) throw new GradleException('Experiment anchor missing: '+f.anchor)
+     if(!recipe.displayModels.containsKey(f.model)) {
+      recipe.displayModels[f.model]=blueprint.getMethod('model',String.class).invoke(blueprint.getField('INSTANCE').get(null),f.model).collect{part ->
+       def block='minecraft:'+part.material.name().toLowerCase()
+       if(!recipe.palette.values().any{it.block==block}) recipe.palette['fx'+recipe.palette.size()]=[block:block,color:'#858580',name:block]
+       [block:block,center:[part.center.x,part.center.y,part.center.z],size:[part.size.x,part.size.y,part.size.z],angle:part.angle,moving:part.moving,motion:part.motion,idleHidden:part.idleHidden,pivot:[part.pivot.x,part.pivot.y,part.pivot.z]]
+      }
+     }
+     def a=Math.toRadians(base.yaw as double)
+     def x=f.offset.x*(base.scale as double);def z=f.offset.z*(base.scale as double)
+     def at=[base.at[0]+x*Math.cos(a)+z*Math.sin(a),base.at[1]+f.offset.y*(base.scale as double),base.at[2]-x*Math.sin(a)+z*Math.cos(a)]
+     assembled.add([id:f.id,model:f.model,scale:f.scale,yaw:base.yaw+f.yaw,at:at])
+    }
+    def ids=assembled.collect{it.id} as Set
+    recipe.displayAssemblies=recipe.displayAssemblies.findAll{!ids.contains(it.id)}+assembled
+    recipe.title='Завод · интерактивные ситуации'
+    recipe.subtitle='Витрина всех вариантов · реальные модели и привязки · офлайн-свет условный'
+    recipe.preview=[defaultView:'jam',views:[
+      [id:'jam',label:'Камень в дробилке',camera:[16,7.2,34],target:[16,7.2,28],fov:65],
+      [id:'route',label:'Развилка конвейера',camera:[23,9,36],target:[21,6.8,28],fov:65],
+      [id:'moulds',label:'Формы пресса',camera:[60,7.3,36],target:[60,6.3,29],fov:65],
+      [id:'cooling',label:'Шланг и подшипник',camera:[48,7.3,34],target:[50,6.6,28],fov:65],
+      [id:'crane',label:'Посадочное место крана',camera:[46,9,34],target:[46,7,27],fov:65],
+      [id:'line',label:'Общий вид',camera:[36,10,54],target:[36,7,27],fov:82]]]
+    new File(out,'factory_experiments.atelier.json').text=groovy.json.JsonOutput.toJson(recipe)
+    println('Factory experiment preview: '+assembled.size()+' runtime fixtures')
+   }
+  }
+ }
+}

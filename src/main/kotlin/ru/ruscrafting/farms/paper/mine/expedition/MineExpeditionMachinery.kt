@@ -48,6 +48,7 @@ internal class MineExpeditionMachinery(
         var projectedCenter: ExpeditionPoint? = null,
         var center: ExpeditionPoint? = null,
         var lastParticleAt: Long = 0L,
+        var manualCrane: Location? = null,
         val crankAngles: MutableMap<String, Double> = linkedMapOf(),
     )
 
@@ -71,6 +72,13 @@ internal class MineExpeditionMachinery(
         }
         runtime.center = local
         return true
+    }
+
+    /** The optional crane controller moves the existing billet and its existing chain together. */
+    fun manualCrane(scene: MineExpeditionScene, position: Location?) {
+        val runtime = runtimes[SceneKey(scene.world.name, scene.zoneId, scene.sequence, scene.objectiveNonce)] ?: return
+        runtime.manualCrane = position?.takeIf { it.world === scene.world && scene.contains(it) &&
+            it.x.isFinite() && it.y.isFinite() && it.z.isFinite() }?.clone()
     }
 
     /** Player-facing center used by guidance and objective placement. */
@@ -329,8 +337,11 @@ internal class MineExpeditionMachinery(
                     else ExpeditionPoint(0, 5, -6)
                 pivot.x = scene.at(from).x + (to.x - from.x) * craneTravel
                 pivot.z = scene.at(from).z + (to.z - from.z) * craneTravel
-                val loadY = scene.placement.originY + from.y + 2.2 +
+                var loadY = scene.placement.originY + from.y + 2.2 +
                     (to.y - from.y - .2) * craneTravel + sin(craneTravel * Math.PI) * 4.0
+                if (state.stage == MineExpeditionStage.FACTORY_CRANE) runtime.manualCrane?.let { pose ->
+                    pivot.x = pose.x; pivot.z = pose.z; loadY = pose.y
+                }
                 val ceilingY = scene.placement.originY + 17.0
                 chainLength = (ceilingY - (loadY + .5)).coerceAtLeast(.1).toFloat()
                 pivot.y = if (role == "core") loadY else ceilingY - chainLength / 2

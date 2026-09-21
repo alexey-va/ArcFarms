@@ -141,4 +141,38 @@ class ArcFarmsCommandAdminCoverageTest : FunSpec({
         verify(exactly = 0) { service.mineIncidentDiagnostics("old_shafts") }
         verify(exactly = 0) { locale.renderPath("admin.mine-point.help", any(), any()) }
     }
+
+    test("factory preset validates the configured zone and queues only the next dead factory") {
+        val player = mockk<Player>(relaxed = true) {
+            every { hasPermission("arcfarms.admin") } returns true
+        }
+        val service = mockk<ArcFarmsService>(relaxed = true) {
+            every { mineZoneIds() } returns listOf("compact_mine")
+            every { factoryExperiments("compact_mine", "rock") } returns true
+        }
+        val locale = mockk<ArcFarmsLocale>(relaxed = true) {
+            every { renderPath(any(), any(), any()) } returns Component.empty()
+        }
+        val handler = ArcFarmsCommand(service, locale, mockk<ArcFarmsMenu>(relaxed = true)) { Result.success(Unit) }
+
+        handler.onCommand(
+            player, mockk(relaxed = true), "arcfarms",
+            arrayOf("admin", "expeditions", "factory", "COMPACT_MINE", "rock"),
+        )
+
+        verify(exactly = 1) { service.factoryExperiments("compact_mine", "rock") }
+        verify(exactly = 1) {
+            locale.renderPath("admin.expeditions.factory.queued", player, any())
+        }
+
+        handler.onCommand(
+            player, mockk(relaxed = true), "arcfarms",
+            arrayOf("admin", "expeditions", "factory", "unknown", "random"),
+        )
+
+        verify(exactly = 1) {
+            locale.renderPath("admin.expeditions.factory.unknown-zone", player, any())
+        }
+        verify(exactly = 0) { service.factoryExperiments("unknown", "random") }
+    }
 })

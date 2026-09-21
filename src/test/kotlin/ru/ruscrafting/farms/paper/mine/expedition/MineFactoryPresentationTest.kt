@@ -67,6 +67,32 @@ class MineFactoryPresentationTest : FunSpec({
         verify(exactly = 1) { markers.rotate("furnish:8", "decor_roller_table", -Math.PI) }
     }
 
+    test("jam and hot bearing pause the powered crusher until the side job resolves") {
+        val plugin = mockk<Plugin>(relaxed = true)
+        val markers = mockk<MineExpeditionMarkers>(relaxed = true)
+        every { markers.at(any(), any(), any(), any(), any()) } returns null
+        val placement = MineExpeditionPlacement("world", 0, 60, 0, 73)
+        val scene = mockk<MineExpeditionScene> {
+            every { kind } returns MineExpeditionKind.DEAD_FACTORY
+            every { this@mockk.placement } returns placement
+            every { journalSequence } returns 8L
+            every { plan } returns MineExpeditionGenerator.plan(MineExpeditionKind.DEAD_FACTORY, 73L, 3)
+        }
+        val presentation = MineFactoryPresentation(plugin, markers)
+        for ((experiment, stage) in listOf(MineFactoryExperiment.ROCK_JAM to MineExpeditionStage.FACTORY_COAL,
+            MineFactoryExperiment.COOLING to MineExpeditionStage.FACTORY_HEAT)) {
+            val stuck = MineExpeditionState(placement, stage, completed = setOf(0),
+                factoryExperiments = MineFactoryExperimentPlan(setOf(experiment)))
+            presentation.tick(scene, stuck, "factory", 1000, emptyMap())
+            verify(exactly = 0) { markers.rotate("furnish:8", "decor_crusher_left", any()) }
+            clearMocks(markers, answers = false)
+            presentation.tick(scene, stuck.copy(factoryExperiments = stuck.factoryExperiments!!.copy(resolved = setOf(experiment))),
+                "factory", 1500, emptyMap())
+            verify { markers.rotate("furnish:8", "decor_crusher_left", any()) }
+            clearMocks(markers, answers = false)
+        }
+    }
+
     test("running crusher rotates and emits bounded feedback after commissioning and during casting") {
         val plugin = mockk<Plugin>(relaxed = true)
         every { plugin.config.getBoolean(any(), true) } returns true

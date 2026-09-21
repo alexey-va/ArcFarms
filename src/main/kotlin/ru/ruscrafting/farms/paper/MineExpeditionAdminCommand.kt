@@ -25,8 +25,36 @@ internal class MineExpeditionAdminCommand(private val service: ArcFarmsService, 
                 sender.sendMessage(locale.renderPath("admin.expeditions.rebuilding", sender,
                     mapOf("count" to Component.text(count))))
             }
+            "factory" -> configureFactory(sender, args.drop(1))
             else -> help(sender)
         }
     }
+
+    private fun configureFactory(sender: CommandSender, args: List<String>) {
+        val zoneArg = args.getOrNull(0)
+        val preset = args.getOrNull(1)?.lowercase()
+        if (args.size != 2 || preset == null || preset !in FACTORY_PRESETS) {
+            help(sender)
+            return
+        }
+        val zone = service.mineZoneIds().firstOrNull { it.equals(zoneArg, ignoreCase = true) }
+        if (zone == null) {
+            sender.sendMessage(locale.renderPath("admin.expeditions.factory.unknown-zone", sender,
+                mapOf("zone" to Component.text(zoneArg ?: "?"))))
+            return
+        }
+        if (service.factoryExperiments(zone, preset)) {
+            sender.sendMessage(locale.renderPath("admin.expeditions.factory.queued", sender,
+                mapOf("zone" to Component.text(zone), "preset" to Component.text(preset))))
+        } else {
+            sender.sendMessage(locale.renderPath("admin.expeditions.factory.rejected", sender,
+                mapOf("zone" to Component.text(zone))))
+        }
+    }
+
     private fun help(sender: CommandSender) { sender.sendMessage(locale.renderPath("admin.expeditions.help", sender)) }
+
+    companion object {
+        internal val FACTORY_PRESETS = listOf("random", "none", "all", "rock", "mould", "crane", "gear", "route", "cooling")
+    }
 }

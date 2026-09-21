@@ -11,6 +11,7 @@ import org.bukkit.entity.Interaction
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
 import org.bukkit.util.Transformation
+import org.bukkit.util.Vector
 import org.joml.Quaternionf
 import org.joml.Vector3f
 import ru.arc.paper.display.*
@@ -28,6 +29,7 @@ internal class MineExpeditionMarkers(
     private data class Marker(val displays: List<PacketBlockDisplay>, val hitbox: Interaction,
         val label: PacketTextDisplay, var target: Target, val parts: List<MineDisplayBlueprints.Part>,
         var phase: Float = 0f, var signal: Material = Material.AIR,
+        var offset: Vector = Vector(),
         val hiddenMotionUntil: MutableMap<String, Long> = mutableMapOf())
     private val key = NamespacedKey(plugin, keyName)
     private val markers = linkedMapOf<String, Marker>()
@@ -97,6 +99,23 @@ internal class MineExpeditionMarkers(
         if (marker.parts.isEmpty()) return
         marker.phase = radians.toFloat()
         positionParts(marker.displays,marker.parts,marker.target.yaw,marker.phase,marker.target.modelScale,onlyMoving=true)
+    }
+
+    /** Move a small control and its exact hitbox without reconciling a new entity each frame. */
+    fun translate(scope: String, id: String, localOffset: Vector) {
+        val marker = markers["$scope/$id"] ?: return
+        if (portal(marker.target) || marker.target.block ||
+            !localOffset.x.isFinite() || !localOffset.y.isFinite() || !localOffset.z.isFinite()) return
+        val world = Quaternionf().rotateY(Math.toRadians(marker.target.yaw.toDouble()).toFloat())
+            .transform(Vector3f(localOffset.x.toFloat(), localOffset.y.toFloat(), localOffset.z.toFloat()))
+        val next = Vector(world.x.toDouble(), world.y.toDouble(), world.z.toDouble())
+        if (marker.offset.distanceSquared(next) < .000001) return
+        val delta = next.clone().subtract(marker.offset)
+        val at = marker.target.location.clone().add(next)
+        marker.displays.forEach { it.teleport(at) }
+        marker.hitbox.teleport(marker.hitbox.location.clone().add(delta))
+        marker.label.teleport(marker.label.location.clone().add(delta))
+        marker.offset = next
     }
 
     /** Toggle one transient assembly motion without respawning the marker. */
@@ -277,8 +296,10 @@ internal class MineExpeditionMarkers(
         }
         val labelHeight = when {
             portal(target) -> 3.25
-            target.model in setOf("finished_gear","return_miner") -> 2.1
+            target.model in setOf("finished_gear","return_miner", "factory_product_plate", "factory_product_rod") -> 2.1
             target.model in setOf("crane_console", "furnace_console", "furnace_air_console", "machine_console", "mounted_console") -> 2.3
+            target.model?.startsWith("factory_") == true && (target.id.startsWith("fx_") || target.id.startsWith("factory_experiment_") || target.model == "factory_crane_landing") ->
+                (blueprint.maxOfOrNull { it.center.y + it.size.y / 2 } ?: 1f) * target.modelScale + .5
             blueprint.isNotEmpty() -> 4.0*target.modelScale
             else -> 2.0
         }

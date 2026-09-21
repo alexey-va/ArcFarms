@@ -410,6 +410,10 @@ class ArcFarmsService(
     internal fun editExpeditionFurnishings(player: Player, action: String?) = mineModule.editExpeditionFurnishings(player,action)
     internal fun expeditionStock() = mineModule.expeditionStock()
     internal fun rebuildExpeditionStock(kind: ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionKind?) = mineModule.rebuildExpeditionStock(kind)
+    fun factoryExperiments(zoneId: String, preset: String): Boolean {
+        val zone = mineZoneIds().firstOrNull { it.equals(zoneId, ignoreCase = true) } ?: return false
+        return mineModule.configureFactoryExperiments(zone, preset)
+    }
 
     fun mineZoneIds(): List<String> = worksiteAdmins.zoneIds(ActivityKind.MINE)
 

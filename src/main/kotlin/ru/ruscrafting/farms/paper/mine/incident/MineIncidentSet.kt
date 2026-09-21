@@ -90,6 +90,8 @@ internal class MineIncidentSet(
     fun editExpeditionFurnishings(player: Player, action: String?) = expeditions?.editFurnishings(player,action)
     fun expeditionStock() = expeditions?.stockStatus().orEmpty()
     fun rebuildExpeditionStock(kind: ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionKind?) = expeditions?.rebuildStock(kind) ?: 0
+    fun configureFactoryExperiments(zoneId: String, preset: String): Boolean =
+        expeditions?.configureFactoryExperiments(zoneId, preset) == true
 
     private var lastPreparationAt = 0L
 

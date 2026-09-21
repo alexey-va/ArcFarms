@@ -28,7 +28,11 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
         val light = if (heatReady) Material.LIME_CONCRETE else if (heating) Material.YELLOW_CONCRETE else Material.RED_CONCRETE
         markers.signal(scope, "furnace_control", light)
         markers.signal(decor, "furnace_control", light)
+        val pausedCrusher = MineFactoryExperiments.pending(state).any {
+            it == MineFactoryExperiment.ROCK_JAM || it == MineFactoryExperiment.COOLING
+        }
         val running=MineFactoryProgram.runningMachines(state,angles.filterValues { it>0.0 }.keys,scene.plan)
+            .filterNot { pausedCrusher && it.contains("crusher") }
         val water=state.stage!=MineExpeditionStage.FACTORY_WATER ||
             if(connected) 1 in state.completed else state.completed.isNotEmpty()
         if(connected) {
@@ -42,7 +46,8 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
             val processedStored=state.stage==MineExpeditionStage.FACTORY_COAL && 1 in state.completed &&
                 2 !in state.completed
             val transfer=processedStored && chargeMoving
-            val repaired=state.stage!=MineExpeditionStage.FACTORY_WATER || 0 in state.completed
+            val repaired=state.stage!=MineExpeditionStage.FACTORY_WATER || 0 in state.completed ||
+                state.factoryExperiments?.let { MineFactoryExperiment.DRIVE_REPAIR !in it.selected } == true
             // The crusher consumes the loose load during its operation. The
             // only moving cart is the processed charge after checkpoint 1;
             // this keeps a one-shot transfer from being confused with the
@@ -72,7 +77,8 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
                 } else {
                     markers.motionVisible(owner,"decor_conveyor_raw","cargo",false)
                 }
-                markers.motionVisible(owner,"crushed_output","processed",processedStored)
+                markers.motionVisible(owner,"crushed_output","processed",processedStored &&
+                    MineFactoryExperiment.ROUTING !in MineFactoryExperiments.pending(state))
                 markers.motionVisible(owner,"crusher_repair","installed_gear",repaired)
             }
             if (cargoVisible) {

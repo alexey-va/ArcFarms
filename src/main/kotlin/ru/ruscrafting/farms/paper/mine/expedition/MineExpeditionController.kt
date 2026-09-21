@@ -17,6 +17,9 @@ import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.plugin.Plugin
+import org.bukkit.util.Vector
+import org.joml.Quaternionf
+import org.joml.Vector3f
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MineWorkshopHeat
@@ -47,12 +50,14 @@ internal class MineExpeditionController(
     private val factoryPresentation=MineFactoryPresentation(plugin,markers)
     private val editor = tasks?.let { MineFurnishingEditor(plugin,it,locale,world::allScenes,markers) }
     private val actions = MineExpeditionActions(plugin, locale)
+    private val experiments = MineFactoryExperimentsController(plugin, markers, locale, ::fixturePosition)
     private val machinery = MineExpeditionMachinery(plugin, world::project) { scene,id,p ->
         editor?.position(scene,id,p) ?: p
     }
     private val drivers = mutableMapOf<String, Driver>()
     private val projectedStage = mutableMapOf<String, MineExpeditionStage>()
-    private val factoryResults = mutableMapOf<Long, Long>()
+    private data class FactoryResult(val until: Long, val model: String)
+    private val factoryResults = mutableMapOf<Long, FactoryResult>()
     private var lastRetentionTick = 0L
 
     fun configured(runtime: MineRuntime): Boolean = surfacePoint(runtime) != null
@@ -103,6 +108,10 @@ internal class MineExpeditionController(
         val players = scene.world.players.filter { participant(runtime, scene, it) }
         markers.reconcile("exit:${scene.journalSequence}", exitMarkers(scene))
         if (!machinery.sync(scene, current)) return
+        experiments.tick(scope, scene, current, players, now) { player, step -> commit(runtime, scene, player, current, step) }
+        if (runtime.state.incident?.expedition != current) return
+        machinery.manualCrane(scene, experiments.cranePosition(scope))
+        val pendingExperiment = MineFactoryExperiments.pending(current).isNotEmpty()
         if (MineFactoryProgram.usesConnectedCrusherLine(scene.plan)) {
             for (id in listOf("charge_transfer", "roller_transfer")) {
                 machinery.turn(scene, id, actions.transferPhase(scope, id))
@@ -115,7 +124,7 @@ internal class MineExpeditionController(
         machinery.animate(scene, current, now, actions.claimed(scope, current.stage, 0))
         projectStage(scene, current)
         val targets = targets(scene, current)
-        actions.tick(scope, scene, current, targets, players, now,
+        if (!pendingExperiment) actions.tick(scope, scene, current, targets, players, now,
             { player, step -> commit(runtime, scene, player, current, step) },
             { id, radians ->
                 markers.rotate(scope, id, if(id.startsWith("control_") || id=="pour_console") {
@@ -153,14 +162,16 @@ internal class MineExpeditionController(
                 statePort.persistAsync()
             }
         }
-        val activeTargets = targets(scene, latest).filterNot { target ->
+        val activeTargets = (if (pendingExperiment) emptyList() else targets(scene, latest)).filterNot { target ->
             target.target >= 0 && (
                 target.interaction == MineExpeditionInteraction.PICKUP && actions.claimed(scope, latest.stage, target.target) ||
                 MineFactoryProgram.usesConnectedCrusherLine(scene.plan) &&
                     target.interaction == MineExpeditionInteraction.DELIVER && !actions.claimed(scope, latest.stage, target.target))
         }
-        markers.reconcile("furnish:${scene.journalSequence}", MineExpeditionFurnishings.targets(scene,editor,activeTargets.mapTo(hashSetOf()) { it.id }))
-        markers.reconcile(scope, activeTargets.map { target -> marker(scene, latest, target, now) })
+        val experimentTargets = experiments.targets(scene, latest, now)
+        val visibleTargets = activeTargets.map { target -> marker(scene, latest, target, now) } + experimentTargets
+        markers.reconcile("furnish:${scene.journalSequence}", MineExpeditionFurnishings.targets(scene,editor,visibleTargets.mapTo(hashSetOf()) { it.id }))
+        markers.reconcile(scope, visibleTargets)
         val pourSignal = if (actions.pourReady(scope, now)) Material.LIME_CONCRETE else Material.YELLOW_CONCRETE
         markers.signal(scope, "pour_console", pourSignal)
         markers.signal("furnish:${scene.journalSequence}", "pour_console", Material.GRAY_CONCRETE)
@@ -257,6 +268,15 @@ internal class MineExpeditionController(
     }
 
     fun onInteract(event: PlayerInteractEvent): Boolean {
+        if (event.hand == EquipmentSlot.HAND && event.action in setOf(Action.RIGHT_CLICK_AIR, Action.RIGHT_CLICK_BLOCK)) {
+            val runtime = runtimeFor(event.player)
+            val scene = runtime?.let(world::scene)
+            val current = runtime?.state?.incident?.expedition
+            if (runtime != null && scene != null && current != null && participant(runtime, scene, event.player) &&
+                experiments.interactAir(scope(scene), scene, current, event.player, clock()) { step ->
+                    commit(runtime, scene, event.player, current, step)
+                }) { event.isCancelled = true; return true }
+        }
         val block = event.clickedBlock ?: return false
         if (event.hand != EquipmentSlot.HAND || event.action != Action.RIGHT_CLICK_BLOCK) return false
         val scene = world.allScenes().firstOrNull { it.contains(block.location) } ?: return false
@@ -275,6 +295,12 @@ internal class MineExpeditionController(
         val current = runtime.state.incident?.expedition ?: return
         if (world.scene(runtime) !== scene || !scene.ready || !participant(runtime, scene, player) ||
             !access.allowInteraction("mine-expedition:${player.uniqueId}", 200L)) return
+        if (MineFactoryExperiments.pending(current).isNotEmpty()) {
+            val target = experiments.targets(scene, current, clock()).firstOrNull { it.id == id } ?: return
+            if (!near(player, target.location, 5.0)) return
+            experiments.interact(scope(scene), scene, current, player, id, clock()) { step -> commit(runtime, scene, player, current, step) }
+            return
+        }
         val target = targets(scene, current).firstOrNull { it.id == id } ?: return
         if (!near(player, scene.at(target.position), 5.0)) return
         actions.interact(scope(scene), scene, current, player, target, clock(),
@@ -333,6 +359,7 @@ internal class MineExpeditionController(
 
     private fun exit(player: Player, scene: MineExpeditionScene) {
         actions.release(player)
+        experiments.release(player)
         machinery.release(player)
         if (travel.retains(player)) travel.exit(player) else travel.evacuatePlayer(player, scene.surface)
     }
@@ -354,6 +381,7 @@ internal class MineExpeditionController(
             drivers.remove(scope(scene))
             machinery.park(scene)
             actions.clear(scope(scene))
+            experiments.clear(scope(scene))
             machinery.sync(scene, step.state)
         }
         if (step.finished) {
@@ -361,7 +389,13 @@ internal class MineExpeditionController(
             clearScene(scene)
             clearGateway(runtime)
             if (scene.kind == MineExpeditionKind.DEAD_FACTORY) {
-                factoryResults[scene.journalSequence] = clock() + 12_000L
+                val plan = step.state.factoryExperiments
+                val model = if (plan != null && MineFactoryExperiment.MOULD in plan.resolved) when (plan.product) {
+                    1 -> "factory_product_plate"
+                    2 -> "factory_product_rod"
+                    else -> "finished_gear"
+                } else "finished_gear"
+                factoryResults[scene.journalSequence] = FactoryResult(clock() + 12_000L, model)
                 showFactoryResult(scene, clock(), first = true)
             } else scene.world.players.filter { scene.contains(it.location) }.toList().forEach { exit(it, scene) }
         }
@@ -394,6 +428,7 @@ internal class MineExpeditionController(
         return when {
             scene?.ready != true || current == null -> render("preparing", player)
             !scene.contains(player.location) -> render("enter-hint", player)
+            experiments.hint(scope(scene), player, current, now) != null -> experiments.hint(scope(scene), player, current, now)
             MineFactoryProgram.usesConnectedCrusherLine(scene.plan) &&
                 current.stage == MineExpeditionStage.FACTORY_HEAT && actions.factoryHeat(scope(scene))?.ready == true ->
                 locale?.renderPath("mine.expedition.factory-heat-ready", player, mapOf(
@@ -403,7 +438,7 @@ internal class MineExpeditionController(
             MineFactoryProgram.usesConnectedCrusherLine(scene.plan) &&
                 MineFactoryProgram.chargeTransferPending(current) -> render("line.auto-feed", player)
             MineFactoryProgram.usesConnectedCrusherLine(scene.plan) && current.stage in setOf(MineExpeditionStage.FACTORY_WATER,MineExpeditionStage.FACTORY_COAL) -> {
-                val checkpoint=(0..2).firstOrNull { it !in current.completed } ?: 2
+                val checkpoint=targets(scene,current).firstOrNull()?.target?.coerceAtLeast(0) ?: 2
                 val suffix=if(actions.carrying(player,scope(scene))) "-carry" else ""
                 val phase=if(current.stage==MineExpeditionStage.FACTORY_WATER) "commission" else "charge"
                 render("line.$phase-$checkpoint$suffix",player)
@@ -436,6 +471,9 @@ internal class MineExpeditionController(
         val current = runtime.state.incident?.expedition
         val positions = if (scene == null || current == null || !scene.contains(player.location)) {
             listOfNotNull(surfacePoint(runtime)?.let { "entry" to it })
+        } else if (MineFactoryExperiments.pending(current).isNotEmpty()) {
+            experiments.targets(scene, current, clock()).filter { it.glowing }
+                .sortedBy { it.location.distanceSquared(player.location) }.take(3).map { it.id to it.location }
         } else targets(scene, current).filter { target ->
             if (actions.carrying(player, scope(scene))) target.interaction == MineExpeditionInteraction.DELIVER
             else target.interaction != MineExpeditionInteraction.DELIVER
@@ -465,7 +503,8 @@ internal class MineExpeditionController(
     }
 
     private fun showFactoryResult(scene: MineExpeditionScene, now: Long, first: Boolean = false): Boolean {
-        val until = factoryResults[scene.journalSequence] ?: return false
+        val completed = factoryResults[scene.journalSequence] ?: return false
+        val until = completed.until
         if (now >= until) { factoryResults.remove(scene.journalSequence); return false }
         val base = scene.plan.stations.getValue("assembly_socket")
         val yaw = editor?.yaw(scene, "assembly_socket") ?: 0
@@ -475,7 +514,7 @@ internal class MineExpeditionController(
             .add(kotlin.math.sin(angle) * 1.4, 1.5, kotlin.math.cos(angle) * 1.4)
         markers.reconcile("furnish:${scene.journalSequence}", MineExpeditionFurnishings.targets(scene, editor, emptySet()))
         markers.reconcile("result:${scene.journalSequence}", listOf(MineExpeditionMarkers.Target(
-            "finished_gear", result, Material.IRON_BLOCK, render("result-label"), model = "finished_gear", yaw = yaw)))
+            "finished_product", result, Material.IRON_BLOCK, render("result-label"), model = completed.model, yaw = yaw)))
         markers.reconcile("exit:${scene.journalSequence}", exitMarkers(scene))
         scene.world.players.filter { scene.contains(it.location) }.forEach {
             it.sendActionBar(render("result-return", it, mapOf("seconds" to Component.text(((until - now + 999) / 1000).toString()))))
@@ -519,11 +558,13 @@ internal class MineExpeditionController(
             "arcfarms.admin",player.location.clone(),target),onEntered={ editor?.command(player,null) },
             stillValid={ scene.ready && scene.reserved && editor?.locked(scene)!=true })
     }
+    fun configureFactoryExperiments(zoneId: String, preset: String): Boolean =
+        registry.byId(zoneId)?.let { world.configureFactoryExperiments(it.settings.id, preset) } ?: false
     fun stockStatus(): List<MineExpeditionStockStatus> = world.stockStatus()
     fun rebuildStock(kind: ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionKind?): Int = world.rebuildStock(kind)
 
     fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
-        actions.release(player); machinery.release(player)
+        actions.release(player); experiments.release(player); machinery.release(player)
         drivers.entries.removeIf { it.value.playerId == player.uniqueId }
         when (reason) {
             WorksitePlayerReleaseReason.QUIT, WorksitePlayerReleaseReason.DEATH,
@@ -534,11 +575,11 @@ internal class MineExpeditionController(
 
     fun beforeReload() { cleanupVisuals(); world.beforeReload() }
     fun cleanup(shutdown: Boolean = false) { cleanupVisuals(); if (shutdown) { editor?.close(); world.close() } else world.beforeReload() }
-    private fun cleanupVisuals() { factoryResults.clear(); factoryPresentation.cleanup(); editor?.cancelPreviews(); actions.cleanup(); markers.cleanup(); machinery.cleanup(); drivers.clear(); projectedStage.clear() }
+    private fun cleanupVisuals() { factoryResults.clear(); factoryPresentation.cleanup(); editor?.cancelPreviews(); actions.cleanup(); experiments.cleanup(); markers.cleanup(); machinery.cleanup(); drivers.clear(); projectedStage.clear() }
     private fun clearScene(scene: MineExpeditionScene) {
         markers.clear("result:${scene.journalSequence}")
         factoryPresentation.clear(scene)
-        markers.clear(scope(scene)); actions.clear(scope(scene)); machinery.clear(scene)
+        markers.clear(scope(scene)); actions.clear(scope(scene)); experiments.clear(scope(scene)); machinery.clear(scene)
         drivers.remove(scope(scene)); projectedStage.remove(scope(scene))
     }
     private fun clearGateway(runtime: MineRuntime) = markers.clear(gatewayScope(runtime))
@@ -547,6 +588,15 @@ internal class MineExpeditionController(
             if (target.interaction == MineExpeditionInteraction.BREAK || target.id=="drive") target
             else target.copy(position=editor?.position(scene,target.id,target.position) ?: target.position)
         }
+    private fun fixturePosition(scene: MineExpeditionScene, id: String, offset: Vector): Location? {
+        val fixture = MineExpeditionFurnishings.fixtures(scene).firstOrNull { it.id == id } ?: return null
+        val point = editor?.position(scene, id, fixture.at) ?: fixture.at
+        val yaw = editor?.yaw(scene, id) ?: fixture.yaw
+        val shifted = Quaternionf().rotateY(Math.toRadians(yaw.toDouble()).toFloat())
+            .transform(Vector3f(offset.x.toFloat(), offset.y.toFloat(), offset.z.toFloat()).mul(fixture.scale))
+        return scene.at(point).add(shifted.x.toDouble(), shifted.y.toDouble(), shifted.z.toDouble())
+            .also { it.yaw = yaw.toFloat() }
+    }
     private fun participant(runtime: MineRuntime, scene: MineExpeditionScene, player: Player): Boolean =
         player.isOnline && !player.isDead && player.gameMode != GameMode.SPECTATOR && !access.isAdminEditing(player) &&
             access.hasAccess(player, runtime.settings.permission) && scene.contains(player.location) &&
