@@ -63,6 +63,7 @@ allprojects {
         [id:'right',label:'Правый цех',camera:[35,9,44],target:[54,9,29],fov:65],
         [id:'furnace',label:'Загрузка и печь',camera:[27,8,33],target:[19,9,23],fov:65],
         [id:'console',label:'Пульт с высоты игрока',camera:[28.5,6.62,45.5],target:[28.5,6.45,41.5],fov:65],
+        [id:'pour',label:'Труба заливки и форма',camera:[58,8.5,36],target:[54,7.8,26],fov:65],
         [id:'press',label:'Пресс и крановый пульт',camera:[37,8,54],target:[43,8,44],fov:65],
         [id:'cart',label:'Тележка и пульт дробилки',camera:[23,8,60],target:[23,6.2,51.5],fov:80],
         [id:'reverse',label:'От привода ко входу',camera:[36,9,17],target:[36,10,49],fov:72]]]

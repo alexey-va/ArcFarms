@@ -346,7 +346,11 @@ machine directly, without an entry marker (W/S to drill forward/backward, A/D to
 steer, Shift to leave). Turn freely through 360 degrees inside the owned working;
 the complete chassis stays within its boundary. Boring continues while driving,
 with a durable preparation buffer ahead of the cutter. Bore to the glowing diamond cavern,
-steer around bedrock ribs, and automatically install sparse overhead lights;
+choose either side of the central bedrock islands, and automatically install
+overhead lights. Both routes have room for the full machine to turn and reach
+the cavern without reversing. New workings use geometry 8; saved older workings
+keep their original terrain until their event ends. The helmeted return marker
+in the cavern takes the player back to the lift, including after completion;
 rail extension clears a collapse, lays one continuous line from clicked
 markers and tests it with a cart. `ORE_WORKSHOP` is a separate fixed mapped
 station chain with no side-working entrance: carry visible ore to the crusher,
@@ -378,7 +382,11 @@ dose molten metal from the casting console, run the overhead crane, then pull
 its casting to a powered press. Pumps and crushers have separate waist-height
 consoles beside their service aisles; those controls follow saved machine edits.
 The casting control opens the flow with one click: close it with a second click
-in the 65–90% green band. A short dose or overflow drains for a free retry.
+when the lever outline, indicator and percentage instruction turn green
+(65–90% full). The percentage and short instruction replace the redundant bar.
+Bright pulses travel along the glazed furnace conduit and drop into the mould
+only while the flow is open; the conduit follows the editable casting assembly.
+A short dose or overflow drains for a free retry.
 Fuel and iron carts use visible loads, rolling wheels and a vanilla leash;
 approaching the receiver and right-clicking both use the same delivery transition.
 Leaving the factory, disconnecting, stage replacement and reload retire the cart

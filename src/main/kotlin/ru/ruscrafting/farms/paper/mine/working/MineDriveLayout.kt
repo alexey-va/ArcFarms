@@ -5,7 +5,7 @@ import ru.ruscrafting.farms.domain.MineWorkingPlacement
 import ru.ruscrafting.farms.domain.worksite.WorksiteCoherentNoise
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 
-/** Solid, journalled drilling ground. Bedrock ribs leave alternating wide bypasses. */
+/** Solid, journalled drilling ground. Version 8 uses finite central masses with two bypasses. */
 internal object MineDriveLayout {
     const val HALF_WIDTH = 16
     const val LENGTH = 44
@@ -14,19 +14,29 @@ internal object MineDriveLayout {
     const val CONTRIBUTION_BUDGET = 93 // Previous drive: 90 face blocks + 3 supports.
     private const val AIR = "minecraft:air"
     private const val BEDROCK = "minecraft:bedrock"
+    private const val CENTRAL_MASS_GEOMETRY_VERSION = 8
 
     fun enabled(placement: MineWorkingPlacement) = placement.geometryVersion >= 5
     fun width(version: Int) = if(version>=7) HALF_WIDTH else 8
     private fun stride(version: Int) = width(version)*2+1
-    fun id(side: Int, forward: Int, version: Int = 7) = forward * stride(version) + side + width(version)
-    fun side(id: Int, version: Int = 7) = id % stride(version) - width(version)
-    fun forward(id: Int, version: Int = 7) = id / stride(version)
+    fun id(side: Int, forward: Int, version: Int = MineWorkingPlacement.CURRENT_GEOMETRY_VERSION) = forward * stride(version) + side + width(version)
+    fun side(id: Int, version: Int = MineWorkingPlacement.CURRENT_GEOMETRY_VERSION) = id % stride(version) - width(version)
+    fun forward(id: Int, version: Int = MineWorkingPlacement.CURRENT_GEOMETRY_VERSION) = id / stride(version)
     fun position(placement: MineWorkingPlacement, id: Int, up: Int = 1) = placement.position(side(id,placement.geometryVersion), up, forward(id,placement.geometryVersion))
-    fun bedrock(side: Int, forward: Int): Boolean =
+    /** Geometry 7 and earlier are persisted layouts; their one-sided ribs stay byte-for-byte addressable. */
+    private fun legacyBedrock(side: Int, forward: Int): Boolean =
         (forward in 12..14 && side <= 1) || (forward in 26..28 && side >= -1)
-    fun radius(forward: Int, version: Int = 7) = if (forward <= 1) 1 else if (forward == 2) 3 else width(version) - 1
-    fun insideBoundary(side: Int, forward: Int, version: Int = 7) = forward in 0 until LENGTH && kotlin.math.abs(side) <= radius(forward,version)
-    fun driveable(side: Int, forward: Int, version: Int = 7) = forward in 1 until LENGTH && kotlin.math.abs(side) <= radius(forward,version) && !bedrock(side, forward)
+
+    /** Geometry 8 keeps both bypasses usable by constraining each obstacle to a central island. */
+    private fun currentBedrock(side: Int, forward: Int): Boolean =
+        (forward in 12..14 && side in -2..2) || (forward in 26..28 && side in -2..2)
+
+    fun bedrock(side: Int, forward: Int, version: Int = MineWorkingPlacement.CURRENT_GEOMETRY_VERSION): Boolean =
+        if (version >= CENTRAL_MASS_GEOMETRY_VERSION) currentBedrock(side, forward)
+        else legacyBedrock(side, forward)
+    fun radius(forward: Int, version: Int = MineWorkingPlacement.CURRENT_GEOMETRY_VERSION) = if (forward <= 1) 1 else if (forward == 2) 3 else width(version) - 1
+    fun insideBoundary(side: Int, forward: Int, version: Int = MineWorkingPlacement.CURRENT_GEOMETRY_VERSION) = forward in 0 until LENGTH && kotlin.math.abs(side) <= radius(forward,version)
+    fun driveable(side: Int, forward: Int, version: Int = MineWorkingPlacement.CURRENT_GEOMETRY_VERSION) = forward in 1 until LENGTH && kotlin.math.abs(side) <= radius(forward,version) && !bedrock(side, forward, version)
     /** Broad arrival area inside the discovery cavern, including approaches around either bedrock rib. */
     fun reached(side: Double, forward: Double, version: Int): Boolean =
         forward>=35.0 && (side*side/(if(version>=7) 100.0 else 30.25)+(forward-39)*(forward-39)/25.0)<=1.0
@@ -80,7 +90,7 @@ internal object MineDriveLayout {
                 val opening = interior && (f <= 3 || f >= LENGTH - 4)
                 val noise = WorksiteCoherentNoise.sample(placement.layoutSeed, s * .3, up * .3, f * .24)
                 blocks[p] = when {
-                    interior && bedrock(s, f) -> BEDROCK
+                    interior && bedrock(s, f, placement.geometryVersion) -> BEDROCK
                     opening -> AIR
                     noise > .24 -> "minecraft:tuff"
                     noise < -.27 -> "minecraft:andesite"

@@ -275,12 +275,18 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         actions.interact(scope,scene,state,player,target,1100,complete) {}
         actions.interact(scope,scene,state,other,target,7500,complete) {}
         completed shouldBe 0
+        actions.pourReady(scope,7499) shouldBe false
+        actions.pourReady(scope,7500) shouldBe true
+        actions.pourReady(scope,10000) shouldBe true
+        actions.pourReady(scope,10001) shouldBe false
+        actions.pourValues(scope,7500) shouldBe mapOf("percent" to net.kyori.adventure.text.Component.text(65))
         actions.pourLabel(scope,7500) shouldBe "pour-close"
         actions.interact(scope,scene,state,player,target,7500,{ false }) {}
         actions.pourLabel(scope,7500) shouldBe "pour-close"
         actions.interact(scope,scene,state,player,target,7500,complete) {}
         completed shouldBe 1
         state.stage shouldBe MineExpeditionStage.FACTORY_CRANE
+        actions.pourReady(scope,7500) shouldBe false
         actions.interact(scope,scene,state,player,target,8000,complete) {}
         completed shouldBe 1
     }
@@ -297,6 +303,7 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         actions.tick(scope,scene,state,listOf(target),listOf(player),14000,{_,_->error("overflow credited") }) { _,p->phase=p }
         phase shouldBe 0.0
         actions.pourLabel(scope,14000) shouldBe "control.pour_console"
+        actions.pourReady(scope,14000) shouldBe false
         open(15000)
         actions.tick(scope,scene,state,listOf(target),emptyList(),16000,{_,_->error("departed casting credited") }) { _,_-> }
         actions.pourLabel(scope,16000) shouldBe "control.pour_console"

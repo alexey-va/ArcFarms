@@ -31,7 +31,7 @@ allprojects {
      println(name+': '+blocks.size()+' journal cells')
     }
     def pos=cl.loadClass('ru.ruscrafting.farms.domain.worksite.WorksitePosition').getConstructor(String.class,Integer.TYPE,Integer.TYPE,Integer.TYPE).newInstance('preview',0,0,0)
-    def placement=cl.loadClass('ru.ruscrafting.farms.domain.MineWorkingPlacement').getConstructor(pos.class,Integer.TYPE,String.class,Long.TYPE,Integer.TYPE).newInstance(pos,0,'preview',73L,7)
+    def placement=cl.loadClass('ru.ruscrafting.farms.domain.MineWorkingPlacement').getConstructor(pos.class,Integer.TYPE,String.class,Long.TYPE,Integer.TYPE).newInstance(pos,0,'preview',73L,8)
     def drive=instance('ru.ruscrafting.farms.paper.mine.working.MineDriveLayout')
     def drivePlan=drive.class.getMethod('plan',placement.class).invoke(drive,placement)
     def chamber=drivePlan.blocks.findAll{p,data->p.z>=34}.collectEntries{p,data->[([p.x,p.y,p.z]):data]}

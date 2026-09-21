@@ -48,13 +48,10 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
     fun pourLabel(scope: String, now: Long): String = pours[scope]?.let {
         if(it.cycle.ready(now)) "pour-close" else "pour-filling"
     } ?: "control.pour_console"
+    fun pourReady(scope: String, now: Long): Boolean = pours[scope]?.cycle?.ready(now) == true
     fun pourValues(scope: String, now: Long): Map<String, Component> {
         val level = pours[scope]?.cycle?.level(now) ?: 0.0
-        val fill = (level*20).toInt()
-        val meter = (0 until 20).fold(Component.empty()) { line,index -> line.append(Component.text(if(index<fill) "▰" else "▱",
-            if(index in 13..17) net.kyori.adventure.text.format.NamedTextColor.GREEN
-            else net.kyori.adventure.text.format.NamedTextColor.GRAY)) }
-        return mapOf("percent" to Component.text((level*100).toInt()), "meter" to meter)
+        return mapOf("percent" to Component.text((level*100).toInt()))
     }
     fun hint(scope: String, player: Player, now: Long): Component? {
         pours[scope]?.takeIf { it.owner==player.uniqueId }?.let {

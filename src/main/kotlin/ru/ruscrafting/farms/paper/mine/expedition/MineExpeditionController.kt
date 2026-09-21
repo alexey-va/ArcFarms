@@ -152,6 +152,9 @@ internal class MineExpeditionController(
         }
         markers.reconcile("furnish:${scene.journalSequence}", MineExpeditionFurnishings.targets(scene,editor,activeTargets.mapTo(hashSetOf()) { it.id }))
         markers.reconcile(scope, activeTargets.map { target -> marker(scene, latest, target, now) })
+        val pourSignal = if (actions.pourReady(scope, now)) Material.LIME_CONCRETE else Material.YELLOW_CONCRETE
+        markers.signal(scope, "pour_console", pourSignal)
+        markers.signal("furnish:${scene.journalSequence}", "pour_console", Material.GRAY_CONCRETE)
         factoryPresentation.tick(scene,latest,scope,now,machinery.turns(scene))
     }
 
@@ -186,7 +189,7 @@ internal class MineExpeditionController(
     fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean {
         if (actions.owns(event.rightClicked)) { event.isCancelled = true; return true }
         if (event.isCancelled) return false
-        val identity = markers.identity(event.rightClicked) ?: return false
+        val identity = markers.ownedIdentity(event.rightClicked) ?: return false
         event.isCancelled = true
         if (event.hand != EquipmentSlot.HAND || !near(event.player, event.rightClicked.location, 5.0)) return true
         val scope = identity.substringBeforeLast('/')

@@ -16,19 +16,26 @@ import org.joml.Vector3f
 import ru.arc.paper.display.*
 
 /** Large readable controls; only their click hitboxes are server entities. */
-internal class MineExpeditionMarkers(private val plugin: Plugin) {
+internal class MineExpeditionMarkers(
+    private val plugin: Plugin,
+    keyName: String = "mine_expedition_control",
+) {
     data class Target(val id: String, val location: Location, val material: Material, val label: Component,
         val block: Boolean = false, val model: String? = null, val modelScale: Float = 1f, val glowing: Boolean = true,
         val yaw: Int = 0, val editKey: String? = null,
         val editBase: ru.ruscrafting.farms.domain.mine.expedition.ExpeditionPoint? = null)
     private data class Marker(val displays: List<PacketBlockDisplay>, val hitbox: Interaction,
         val label: PacketTextDisplay, var target: Target, val parts: List<MineDisplayBlueprints.Part>, var signal: Material = Material.AIR)
-    private val key = NamespacedKey(plugin, "mine_expedition_control")
+    private val key = NamespacedKey(plugin, keyName)
     private val markers = linkedMapOf<String, Marker>()
     private var renderer: PaperPacketDisplays? = null
     private fun renderer() = renderer ?: PaperPacketDisplays(plugin).also { renderer = it }
 
     fun identity(entity: Entity): String? = entity.persistentDataContainer.get(key, PersistentDataType.STRING)
+    /** Returns an identity only when this marker owner still owns the live hitbox. */
+    fun ownedIdentity(entity: Entity): String? = identity(entity)?.takeIf { id ->
+        markers[id]?.hitbox?.uniqueId == entity.uniqueId
+    }
     fun editable(entity: Entity): Target? = identity(entity)?.let { markers[it]?.target }?.takeIf { it.editKey != null }
     private fun portal(t: Target) = t.id == "enter" || t.id.startsWith("return_")
 
@@ -89,10 +96,10 @@ internal class MineExpeditionMarkers(private val plugin: Plugin) {
         if (marker.signal == lit) return
         marker.signal = lit
         marker.parts.forEachIndexed { index, part ->
-            if (part.center.y >= 3.3f && part.material in setOf(Material.LIME_CONCRETE, Material.YELLOW_CONCRETE, Material.RED_CONCRETE)) {
-                val material = if (part.material == lit) lit else Material.GRAY_CONCRETE
+            if (part.motion == "signal" || (part.center.y >= 3.3f && part.material in setOf(Material.LIME_CONCRETE, Material.YELLOW_CONCRETE, Material.RED_CONCRETE))) {
+                val material = if (part.motion == "signal" || part.material == lit) lit else Material.GRAY_CONCRETE
                 marker.displays[index].blockData = material.createBlockData()
-                marker.displays[index].brightness = MineDisplayLighting.brightness(material, part.material == lit)
+                marker.displays[index].brightness = MineDisplayLighting.brightness(material, material != Material.GRAY_CONCRETE)
             }
         }
         val color = if (lit == Material.LIME_CONCRETE) Color.fromRGB(85, 217, 139) else Color.fromRGB(255, 187, 77)

@@ -36,10 +36,13 @@ internal object MineDriveMotion {
     }
 
     /** The whole small owned working is authorized once; checkpoint I/O never gates motion. */
-    val excavationCells: Set<Int> = cells(7)
-    private val legacyCells: Set<Int> = cells(6)
+    private val excavationCellsByVersion: Map<Int, Set<Int>> =
+        (0..ru.ruscrafting.farms.domain.MineWorkingPlacement.CURRENT_GEOMETRY_VERSION)
+            .associateWith { version -> cells(version) }
+    val excavationCells: Set<Int>
+        get() = excavationCellsByVersion.getValue(ru.ruscrafting.farms.domain.MineWorkingPlacement.CURRENT_GEOMETRY_VERSION)
     fun excavationCells(placement: ru.ruscrafting.farms.domain.MineWorkingPlacement) =
-        if(placement.geometryVersion>=7) excavationCells else legacyCells
+        excavationCellsByVersion.getValue(placement.geometryVersion)
     private fun cells(version: Int): Set<Int> = buildSet {
         for (s in -MineDriveLayout.width(version)..MineDriveLayout.width(version))
             for (f in 1 until MineDriveLayout.LENGTH) {

@@ -319,6 +319,10 @@ class MineWorkingLifecycleMockBukkitTest : FunSpec({
         val controller=MineWorkingController(registry,mockk(relaxed=true),sceneWorld,mockk(relaxed=true),mockk(relaxed=true),
             presentation,travel,access,mockk(relaxed=true),mockk(relaxed=true),{2000L},drive,{lift})
         val click=org.bukkit.event.player.PlayerInteractEntityEvent(player,entity,org.bukkit.inventory.EquipmentSlot.HAND)
+        // A preceding marker owner may cancel the native entity event before the
+        // worksite router reaches this owner. Return handling must still be
+        // idempotent and consume the exact return hitbox in that case.
+        click.isCancelled = true
         controller.onInteractEntity(click) shouldBe true
         verify(exactly=1) { travel.evacuatePlayer(player,lift) }
         verify(exactly=1) { travel.reconcile(player,inside=false) }

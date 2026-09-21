@@ -64,7 +64,7 @@ internal object MineDisplayBlueprints {
                 box(Material.POLISHED_BLACKSTONE,0f,1.4f,-.34f,1.4f,.45f,.18f)
                 box(Material.CYAN_STAINED_GLASS,-.3f,1.43f,-.21f,.6f,.25f,.03f)
                 box(Material.SEA_LANTERN,-.3f,1.43f,-.25f,.48f,.17f,.02f)
-                box(Material.LIME_CONCRETE,.48f,1.39f,-.22f,.2f,.18f,.06f)
+                box(Material.LIME_CONCRETE,.48f,1.39f,-.22f,.2f,.18f,.06f,motion="signal")
                 box(Material.POLISHED_BLACKSTONE,0f,1.36f,.24f,.55f,.05f,.45f)
                 box(Material.IRON_BLOCK,0f,1.57f,.24f,.1f,.4f,.1f,moving=true,pivot=Vector3f(0f,1.39f,.24f),motion="lever")
                 box(Material.RED_CONCRETE,0f,1.78f,.24f,.36f,.16f,.23f,moving=true,pivot=Vector3f(0f,1.39f,.24f),motion="lever")
@@ -141,6 +141,15 @@ internal object MineDisplayBlueprints {
                 box(Material.POLISHED_ANDESITE,0f,4.3f,-1.3f,4.4f,.35f,.6f)
                 box(Material.IRON_BLOCK,0f,3.7f,-1.3f,.17f,1.2f,.17f)
                 box(Material.POLISHED_BLACKSTONE,0f,3.1f,-1.3f,1.6f,1.2f,1.3f)
+                // Glazed molten-metal conduit: furnace outlet, elbow around the head, downward nozzle.
+                box(Material.ORANGE_STAINED_GLASS,0f,3.05f,-3.555f,.32f,.32f,2.49f)
+                box(Material.ORANGE_STAINED_GLASS,.525f,3.05f,-2.15f,1.37f,.32f,.32f)
+                box(Material.ORANGE_STAINED_GLASS,1.05f,3.05f,-1.065f,.32f,.32f,1.85f)
+                box(Material.ORANGE_STAINED_GLASS,1.05f,2.62f,-.3f,.32f,.54f,.32f)
+                for(z in listOf(-4.68f,-3.5f,-2.3f))
+                    box(Material.EXPOSED_CUT_COPPER,0f,3.05f,z,.45f,.45f,.13f)
+                box(Material.EXPOSED_CUT_COPPER,1.05f,3.05f,-1.9f,.45f,.45f,.13f)
+                box(Material.EXPOSED_CUT_COPPER,1.05f,2.43f,-.3f,.45f,.14f,.45f)
             }
             "casting_rack" -> {
                 frame(3.2f, 2.6f, 1.2f)

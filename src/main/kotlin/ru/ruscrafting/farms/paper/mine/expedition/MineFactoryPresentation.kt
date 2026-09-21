@@ -9,7 +9,7 @@ import ru.ruscrafting.farms.domain.mine.expedition.*
 
 /** Local, bounded feedback for the active production stage. No timers or persistent entities. */
 internal class MineFactoryPresentation(private val plugin:Plugin,private val markers:MineExpeditionMarkers) {
-    private data class Frame(var nextParticles:Long=0,var nextSound:Long=0,var heatSignal:Long=-1,
+    private data class Frame(var nextParticles:Long=0,var nextSound:Long=0,var nextFlow:Long=0,var heatSignal:Long=-1,
         var pressHit:Boolean=false)
     private val frames=mutableMapOf<Long,Frame>()
     fun tick(scene:MineExpeditionScene,state:MineExpeditionState,scope:String,now:Long,angles:Map<String,Double>) {
@@ -77,8 +77,18 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
         }
         val pouring=state.stage==MineExpeditionStage.FACTORY_POUR && (angles["pour_control"] ?: 0.0)>0
         if(pouring) {
+            if(now>=f.nextFlow) {
+                f.nextFlow=now+100
+                // Three bright travelling pulses follow the glazed pipe, including its elbows.
+                // Resolve each point through the editable assembly so rotation/movement cannot detach the effect.
+                for(pulse in 0..2) for(tail in 0..2) {
+                    val distance=((now%3_000L)/3_000.0*METAL_PATH_LENGTH+pulse*METAL_PATH_LENGTH/3-tail*.12+METAL_PATH_LENGTH)%METAL_PATH_LENGTH
+                    val p=metalPoint(distance)
+                    particles(at("pour_control",p.x,p.y,p.z),Particle.SMALL_FLAME,1,.025,.025,.025,0.0)
+                }
+            }
             if(particleTick) {
-                particles(at("pour_control",y=2.6,z=-1.0),Particle.FALLING_LAVA,4,.3,.3,.15,0.0)
+                particles(at("pour_control",x=1.05,y=2.30,z=-.3),Particle.FALLING_LAVA,3,.045,.025,.045,0.0)
                 particles(at("pour_control",y=1.8),Particle.SMALL_FLAME,5,1.1,.1,.7,.01)
             }
             if(soundTick) sound(at("pour_control",y=2.0),Sound.BLOCK_LAVA_POP,.65f,.65f)
@@ -102,4 +112,23 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
     }
     fun clear(scene:MineExpeditionScene) { frames.remove(scene.journalSequence) }
     fun cleanup() { frames.clear() }
+
+    private companion object {
+        val METAL_PATH=listOf(
+            org.bukkit.util.Vector(0.0,3.05,-4.8),
+            org.bukkit.util.Vector(0.0,3.05,-2.15),
+            org.bukkit.util.Vector(1.05,3.05,-2.15),
+            org.bukkit.util.Vector(1.05,3.05,-.3),
+            org.bukkit.util.Vector(1.05,2.35,-.3))
+        val METAL_PATH_LENGTH=METAL_PATH.zipWithNext().sumOf { (a,b)->a.distance(b) }
+        fun metalPoint(distance:Double):org.bukkit.util.Vector {
+            var remaining=distance
+            for((a,b) in METAL_PATH.zipWithNext()) {
+                val length=a.distance(b)
+                if(remaining<=length) return b.clone().subtract(a).multiply(remaining/length).add(a)
+                remaining-=length
+            }
+            return METAL_PATH.last().clone()
+        }
+    }
 }

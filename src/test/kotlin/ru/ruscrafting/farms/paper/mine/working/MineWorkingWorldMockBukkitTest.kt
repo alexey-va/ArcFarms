@@ -50,7 +50,7 @@ class MineWorkingWorldMockBukkitTest : FunSpec({
 
     afterEach { paper.close() }
 
-    listOf(5, 7).forEach { version ->
+    listOf(5, 7, 8).forEach { version ->
         test("driven excavation and lamps replay after restart without touching bedrock and restore originals v$version") {
             val fixture = fixture(world, MineIncidentType.TUNNEL_DRIVE, version = version)
             val sceneOwner = owner(plugin)

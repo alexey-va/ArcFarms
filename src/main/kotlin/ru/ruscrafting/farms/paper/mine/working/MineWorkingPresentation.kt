@@ -37,7 +37,7 @@ internal class MineWorkingPresentation(
     private val marker = locale?.let { WorksiteEntryMarker(it, textDisplays) }
     private val tag = NamespacedKey(plugin, "mine_working_marker")
     private val markers = mutableMapOf<String, MutableMap<String, Marker>>()
-    private val returnMarkers=ru.ruscrafting.farms.paper.mine.expedition.MineExpeditionMarkers(plugin)
+    private val returnMarkers=ru.ruscrafting.farms.paper.mine.expedition.MineExpeditionMarkers(plugin, "mine_working_return")
     private val returnTargets=mutableMapOf<String,MineWorkingTarget>()
     private val interactions = mutableMapOf<UUID, Pair<String, MineWorkingTarget>>()
 
