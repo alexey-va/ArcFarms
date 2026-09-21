@@ -46,7 +46,7 @@ internal class MineExpeditionMarkers(private val plugin: Plugin) {
                 remove(id); markers[id] = spawn(id, target);spawned++
             } else {
                 if (old.target.label != target.label) old.label.text(target.label)
-                if (old.target.glowing != target.glowing) old.displays.forEach { it.isGlowing = target.glowing }
+                if (old.target.glowing != target.glowing) old.displays.forEachIndexed { index,display -> display.isGlowing = target.glowing && (target.model!="machine_console" || old.parts[index].motion=="lever") }
                 old.target = target
             }
         }
@@ -127,7 +127,7 @@ internal class MineExpeditionMarkers(private val plugin: Plugin) {
         val blueprint=target.model?.let(MineDisplayBlueprints::model).orEmpty()
         when {
             blueprint.isNotEmpty() -> {
-                blueprint.forEach { part(it.material,0f,0f,0f,1f,1f,1f) }
+                blueprint.forEach { part(it.material,0f,0f,0f,1f,1f,1f, target.glowing && (target.model!="machine_console" || it.motion=="lever")) }
                 positionParts(visuals,blueprint,target.yaw,0f,target.modelScale)
             }
             portal(target) -> {
@@ -152,16 +152,21 @@ internal class MineExpeditionMarkers(private val plugin: Plugin) {
                 }
             }
         }
-        val hitbox = target.location.world.spawn(target.location, Interaction::class.java) {
-            it.interactionWidth = if (portal(target)) 2.7f else if (blueprint.isNotEmpty()) 2.8f*target.modelScale else 1.8f
-            it.interactionHeight = if (portal(target)) 3f else if (blueprint.isNotEmpty()) 3.6f*target.modelScale else 2f
+        val clickAt=target.location.clone()
+        if(target.model=="machine_console") {
+            val offset=Quaternionf().rotateY(Math.toRadians(target.yaw.toDouble()).toFloat()).transform(Vector3f(0f,1.14f,.24f))
+            clickAt.add(offset.x.toDouble(),offset.y.toDouble(),offset.z.toDouble())
+        }
+        val hitbox = target.location.world.spawn(clickAt, Interaction::class.java) {
+            it.interactionWidth = if (portal(target)) 2.7f else if (target.model=="machine_console") .85f else if (blueprint.isNotEmpty()) 2.8f*target.modelScale else 1.8f
+            it.interactionHeight = if (portal(target)) 3f else if (target.model=="machine_console") 1.05f else if (blueprint.isNotEmpty()) 3.6f*target.modelScale else 2f
             it.isResponsive = true; it.isPersistent = false
             it.persistentDataContainer.set(key, PersistentDataType.STRING, id)
         }
         val labelHeight = when {
             portal(target) -> 3.25
-            target.model == "finished_gear" -> 2.1
-            target.model in setOf("crane_console", "furnace_console") -> 2.3
+            target.model in setOf("finished_gear","return_miner") -> 2.1
+            target.model in setOf("crane_console", "furnace_console", "machine_console") -> 2.3
             blueprint.isNotEmpty() -> 4.0*target.modelScale
             else -> 2.0
         }

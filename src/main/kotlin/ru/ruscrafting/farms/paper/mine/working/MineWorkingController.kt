@@ -36,6 +36,7 @@ internal class MineWorkingController(
     private val tasks: WorksiteTaskPort,
     private val clock: () -> Long,
     private val drive: MineDriveController,
+    private val liftReturn: (MineRuntime) -> Location? = { null },
 ) {
     private val pendingSaves = mutableSetOf<String>()
     private val retiring = mutableSetOf<String>()
@@ -207,8 +208,16 @@ internal class MineWorkingController(
         event.isCancelled = true
         if (event.hand != EquipmentSlot.HAND) return true
         val runtime = registry.byId(zone) ?: return true
-        val scene = world.scene(runtime) ?: return true
-        if (target.id == "drill") {
+        val scene = completionGrace[zone]?.scene ?: world.scene(runtime) ?: return true
+        if(target.id=="return-lift") {
+            if(allowed(runtime,event.player) && scene.inside(event.player.location) && near(event.player,target.position)) {
+                drive.release(event.player)
+                if(travel.evacuatePlayer(event.player,liftReturn(runtime) ?: scene.surface())) {
+                    equipment.clear(runtime,event.player.uniqueId)
+                    travel.reconcile(event.player,inside=false)
+                }
+            }
+        } else if (target.id == "drill") {
             if (participant(runtime, event.player) && near(event.player, target.position)) {
                 if (drillOperators[runtime.settings.id] == event.player.uniqueId) drillOperators.remove(runtime.settings.id)
                 else drillOperators[runtime.settings.id] = event.player.uniqueId
@@ -496,6 +505,7 @@ internal class MineWorkingController(
         // so startup can resume it; a partial restore would discard originals
         // while the saved incident still expects the whole working.
         world.clearQueues()
+        presentation.close()
     }
 
     private fun isDrive(runtime: MineRuntime): Boolean = runtime.state.incident?.let {
@@ -528,10 +538,12 @@ internal class MineWorkingController(
         )
         drive.cleanup(runtime.settings.id)
         presentation.cleanup(runtime.settings.id)
+        presentation.reconcileReturn(runtime,scene,true)
         world.retain(scene)
     }
 
     private fun tickCompletionGrace(runtime: MineRuntime, grace: CompletionGrace, now: Long) {
+        presentation.reconcileReturn(runtime,grace.scene,true)
         if (now >= grace.deadlineAt) {
             forceCleanup(runtime)
             return

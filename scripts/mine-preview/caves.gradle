@@ -31,7 +31,7 @@ allprojects {
      println(name+': '+blocks.size()+' journal cells')
     }
     def pos=cl.loadClass('ru.ruscrafting.farms.domain.worksite.WorksitePosition').getConstructor(String.class,Integer.TYPE,Integer.TYPE,Integer.TYPE).newInstance('preview',0,0,0)
-    def placement=cl.loadClass('ru.ruscrafting.farms.domain.MineWorkingPlacement').getConstructor(pos.class,Integer.TYPE,String.class,Long.TYPE,Integer.TYPE).newInstance(pos,0,'preview',73L,6)
+    def placement=cl.loadClass('ru.ruscrafting.farms.domain.MineWorkingPlacement').getConstructor(pos.class,Integer.TYPE,String.class,Long.TYPE,Integer.TYPE).newInstance(pos,0,'preview',73L,7)
     def drive=instance('ru.ruscrafting.farms.paper.mine.working.MineDriveLayout')
     def drivePlan=drive.class.getMethod('plan',placement.class).invoke(drive,placement)
     def chamber=drivePlan.blocks.findAll{p,data->p.z>=34}.collectEntries{p,data->[([p.x,p.y,p.z]):data]}
@@ -39,6 +39,17 @@ allprojects {
      [id:'entry',label:'Из забоя',camera:[0.5,2.6,36.5],target:[0.5,3.5,42],fov:78],
      [id:'veins',label:'Жилы и свод',camera:[-3,2.6,39],target:[2,4,42],fov:82],
      [id:'section',label:'Форма в разрезе',camera:[16,17,56],target:[0,2,40],cutY:4]])
+    def chamberFile=new File(out,'diamond-cave.atelier.json')
+    def caveRecipe=new groovy.json.JsonSlurper().parse(chamberFile)
+    def head=instance('ru.ruscrafting.farms.paper.mine.expedition.MineDisplayBlueprints')
+    def headParts=head.class.getMethod('model',String.class).invoke(head,'return_miner').collect { part ->
+     def block='minecraft:'+part.material.name().toLowerCase()
+     if(!caveRecipe.palette.values().any { it.block==block }) caveRecipe.palette['h'+caveRecipe.palette.size()]=[block:block,color:'#777777',name:block]
+     [block:block,center:[part.center.x,part.center.y,part.center.z],size:[part.size.x,part.size.y,part.size.z],angle:part.angle,moving:false,motion:part.motion,pivot:[part.pivot.x,part.pivot.y,part.pivot.z]]
+    }
+    caveRecipe.displayModels=[return_miner:headParts]
+    caveRecipe.displayAssemblies=[[id:'return_lift',model:'return_miner',scale:1,yaw:180,at:[.5-Math.min(0,chamber.keySet().collect{it[0]}.min()),1,41.5-Math.min(0,chamber.keySet().collect{it[2]}.min())]]]
+    chamberFile.text=groovy.json.JsonOutput.toJson(caveRecipe)
     def planner=instance('ru.ruscrafting.farms.paper.mine.incident.rescue.MineLostMinerMazePlanner')
     def layout=planner.class.getMethod('plan',Integer.TYPE,Long.TYPE).invoke(planner,18,73L)
     def terrain=instance('ru.ruscrafting.farms.paper.mine.incident.rescue.MineLostMinerCaveBlocks')

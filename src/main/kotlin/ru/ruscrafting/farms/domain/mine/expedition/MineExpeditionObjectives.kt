@@ -1,6 +1,6 @@
 package ru.ruscrafting.farms.domain.mine.expedition
 
-enum class MineExpeditionInteraction { CRANK, VALVE, PICKUP, DELIVER, OPERATE, BREAK, BRANCH, MOTION }
+enum class MineExpeditionInteraction { CRANK, VALVE, POUR, PICKUP, DELIVER, OPERATE, BREAK, BRANCH, MOTION }
 
 data class MineExpeditionObjective(
     val id: String,
@@ -44,7 +44,7 @@ object MineExpeditionObjectives {
             MineExpeditionStage.FACTORY_WATER -> MineFactoryProgram.targets(plan,state)
             MineExpeditionStage.FACTORY_COAL -> carry("fuel_supply", "furnace_input", "COAL_BLOCK")
             MineExpeditionStage.FACTORY_HEAT -> listOf(objective("furnace_control", MineExpeditionInteraction.OPERATE, "BLAZE_POWDER", 0))
-            MineExpeditionStage.FACTORY_POUR -> listOf(objective("pour_control", MineExpeditionInteraction.VALVE, "LAVA_BUCKET", 0))
+            MineExpeditionStage.FACTORY_POUR -> listOf(objective("pour_console", MineExpeditionInteraction.POUR, "LAVA_BUCKET", 0, point("pour_control").offset(-4,0,1)))
             MineExpeditionStage.FACTORY_CRANE -> listOf(objective("crane_control", MineExpeditionInteraction.OPERATE, "IRON_CHAIN", 0))
             MineExpeditionStage.FACTORY_INSTALL -> carry(if ("crane_load" in plan.stations) "crane_load" else "crane_control", "assembly_socket", "IRON_BLOCK")
             MineExpeditionStage.COMPLETE -> emptyList()

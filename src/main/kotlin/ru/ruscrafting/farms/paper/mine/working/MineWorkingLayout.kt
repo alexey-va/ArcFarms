@@ -238,7 +238,7 @@ internal object MineWorkingLayout {
 
     fun validate(plan: MineWorkingPlan): List<String> = buildList {
         if (plan.blocks.isEmpty()) add("empty-footprint")
-        if (plan.blocks.size > MineWorkingPlanner.MAX_BLOCKS) add("footprint-too-large:${plan.blocks.size}")
+        if (plan.blocks.size > if(plan.type==MineIncidentType.TUNNEL_DRIVE && plan.placement.geometryVersion>=7) 12_000 else MineWorkingPlanner.MAX_BLOCKS) add("footprint-too-large:${plan.blocks.size}")
         if (plan.footprint != plan.blocks.keys) add("footprint-map-mismatch")
         if (plan.blocks.keys.any { it.world != plan.entrance.world }) add("mixed-world")
         val maxHeight = if (plan.type == MineIncidentType.TUNNEL_DRIVE && plan.placement.geometryVersion >= 6) 9 else MAX_HEIGHT

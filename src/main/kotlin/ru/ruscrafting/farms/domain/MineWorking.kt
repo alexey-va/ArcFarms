@@ -29,7 +29,7 @@ data class MineWorkingPlacement(
         return entrance.copy(x = entrance.x + dx, y = entrance.y + up, z = entrance.z + dz)
     }
 
-    companion object { const val CURRENT_GEOMETRY_VERSION = 6 }
+    companion object { const val CURRENT_GEOMETRY_VERSION = 7 }
 }
 
 enum class MineWorkingStage {
@@ -49,7 +49,7 @@ data class MineWorkingState(
 
     fun validate() {
         placement.validate()
-        drive?.validate()
+        drive?.validate(placement.geometryVersion)
         require(completed.size <= 256 && completed.all { it in 0..255 })
         require(batch in 0 until MineWorkingEngine.BATCHES)
         require(heatStartedAt >= 0)
@@ -66,11 +66,12 @@ data class MineDriveProgress(
     /** Durable permission to excavate within the already journalled scene; not yet carved. */
     val prepared: Set<Int> = emptySet(),
 ) {
-    fun validate() {
-        require(prepared.size <= 765 && prepared.all { it in 0 until 765 })
-        require(carved.size <= 765 && carved.all { it in 0 until 765 })
-        require(lamps.size <= 128 && lamps.all { it in carved })
-        require(checkpoint in 0 until 765 && heading.isFinite())
+    fun validate(geometryVersion: Int = MineWorkingPlacement.CURRENT_GEOMETRY_VERSION) {
+        val cells=if(geometryVersion>=7) 1485 else 765
+        require(prepared.size <= cells && prepared.all { it in 0 until cells })
+        require(carved.size <= cells && carved.all { it in 0 until cells })
+        require(lamps.size <= 256 && lamps.all { it in carved })
+        require(checkpoint in 0 until cells && heading.isFinite())
     }
 }
 

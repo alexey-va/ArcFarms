@@ -373,8 +373,17 @@ with counterweight cranks, carried power cells and a deep engine. **Drilling
 Ark** sends a tracked machine through branching caves: load fuel, clear its
 jammed drill, refill coolant and bring crystal cores aboard before returning.
 **The Dead Factory** connects a waterwheel, furnace, casting mould and gantry:
-turn valves by walking around the cranks, carry fuel, catch the furnace signal,
-pour metal, start the overhead crane, then carry its casting to a powered press.
+commission the water line, haul fuel by cart, catch the furnace signal,
+dose molten metal from the casting console, run the overhead crane, then pull
+its casting to a powered press. Pumps and crushers have separate waist-height
+consoles beside their service aisles; those controls follow saved machine edits.
+The casting control opens the flow with one click: close it with a second click
+in the 65–90% green band. A short dose or overflow drains for a free retry.
+Fuel and iron carts use visible loads, rolling wheels and a vanilla leash;
+approaching the receiver and right-clicking both use the same delivery transition.
+Leaving the factory, disconnecting, stage replacement and reload retire the cart
+and return any unfinished load. No inventory items or extra drops are created.
+The existing ten factory checkpoint credits and reward quantities are unchanged.
 The crane runs for 4.5 seconds; the press completes its 2.4-second down/up stroke
 before the final checkpoint. Water splashes, furnace fire/smoke, heat-ready bells,
 grinding dust, chain movement and press impacts follow the production stages.

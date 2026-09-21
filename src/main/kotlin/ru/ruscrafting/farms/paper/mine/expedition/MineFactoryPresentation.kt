@@ -27,9 +27,9 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
             MineFactoryProgram.targets(scene.plan,state).filter { it.interaction == MineExpeditionInteraction.OPERATE }.forEach { target ->
                 val angle=angles[target.id] ?: 0.0
                 if(angle>0.0) {
-                    markers.rotate(scope,target.id,angle*3)
-                    if(now>=f.nextSound) sound(at(target.id,y=2.0),if(target.id.contains("pump")) Sound.BLOCK_PISTON_EXTEND else Sound.BLOCK_GRINDSTONE_USE,.6f,.7f)
-                    if(now>=f.nextParticles) particles(at(target.id,y=2.2),if(target.id.contains("pump")) Particle.SPLASH else Particle.ASH,8,.5,.3,.5,.025)
+                    markers.rotate(decor,MineFactoryProgram.machine(target.id),angle*3)
+                    if(now>=f.nextSound) sound(at(MineFactoryProgram.machine(target.id),y=2.0),if(target.id.contains("pump")) Sound.BLOCK_PISTON_EXTEND else Sound.BLOCK_GRINDSTONE_USE,.6f,.7f)
+                    if(now>=f.nextParticles) particles(at(MineFactoryProgram.machine(target.id),y=2.2),if(target.id.contains("pump")) Particle.SPLASH else Particle.ASH,8,.5,.3,.5,.025)
                 }
             }
         }

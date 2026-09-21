@@ -20,7 +20,7 @@ permanent return portals remain available independently of event markers.
    Nearby players share progress; duplicate clicks inside 250 ms do not count.
    The wheel and pumps start after the first completed valve. Factory controls
    do not attach a leash or require walking around the machinery.
-2. Carry three visible fuel loads from the bunker into the feed hopper. The
+2. Right-click the bunker to attach a loaded cart. Pull three loads into the feed hopper. The
    crushers turn during loading/heating with dust and grinding sounds. Accepted
    deliveries burst coal fragments/clouds with a loading thud; HUD and hopper
    label show the shared 0/3–3/3 count. Carrying players are guided to the hopper.
@@ -28,13 +28,16 @@ permanent return portals remain available independently of event markers.
    control. The countdown is shown above the control and in the HUD. Its status
    stack changes yellow to green together with a green glow and bright end-rod
    particles. Fire and chimney smoke follow the heating/pouring stages.
-4. Right-click the casting valve repeatedly. The mould fills visibly, with molten droplets and
-   lava sounds while pouring.
+4. Start the flow from the separate console beside the casting bed. Close it
+   with another right-click while the meter is in the green 65–90% band. The
+   10-second fill has a 2.5-second success window, a bell, a rising molten surface,
+   droplets and lava sounds. Underdosing or overflow drains for a free retry;
+   leaving releases the control, and another worker cannot steal an active pour.
 5. Right-click the crane console. A 4.5-second cycle lifts the casting, moves it
    along the overhead beam and lowers it onto the unloading table. The chain
    length follows the load. The casting is absent before production and is
    hidden while a participant carries it.
-6. Carry the casting to the press and right-click. Its ram descends one block,
+6. Pull the casting cart to the press; approach or right-click to unload. Its ram descends one block,
    strikes with sparks, dust and an anvil sound, then returns. The final domain
    checkpoint occurs after the whole 2.4-second stroke. The finished drive gear
    stays on the press for a 12-second result presentation with a bell, particles
@@ -42,9 +45,12 @@ permanent return portals remain available independently of event markers.
    remain usable during work without objective glow, and glow after completion.
 
 A powered cycle belongs to one operator. Repeated clicks cannot restart or
-stack it. Leaving the site, changing stage, or moving more than six blocks from
-its control cancels the cycle. A cancelled press returns to rest and retains
-its carried casting; leaving the activity clears its temporary display. No
+stack it. Walking away inside the factory leaves it running; leaving the site
+or changing stage cancels it. The existing cargo lease also owns every cart:
+its packet body, rolling wheels, visible load and vanilla leash disappear on
+unload, departure, disconnect, stage change, reload and shutdown. Camera-only
+turns do not orbit the cart. Unfinished loads become available at the source
+again, and contact/click delivery cannot double-credit a load. No
 ordinary item drops are created. Sounds are local (32-block range), respect
 `ui.sounds`, and repeated effects are throttled; particles respect `ui.particles`.
 
@@ -56,8 +62,10 @@ per hour has not been measured and is not claimed to be unchanged.
 
 Commissioning now rotates between the original water circuit and the left/right
 production lines. Line programs require their valve, pump and crusher; the two
-powered machines animate for three seconds before granting a checkpoint, with
-sound and particles. The selected program persists through restart. All three
+powered machines have waist-height consoles beside the service aisle with
+separate 0.85 × 1.05-block lever hitboxes. They animate for three seconds before
+granting a checkpoint, with sound and particles. Controls follow admin edits
+to their parent machine, including rotations. The selected program persists through restart. All three
 keep ten credits, the established later production stages and the same editable
 static factory. Old saves retain the original water circuit.
 
@@ -429,3 +437,17 @@ releases the participant's transient operation. Both factory crushers have a
 180-degree base heading, composed with saved editor offsets for static and
 active models alike. Unconnected decorative handwheels on the furnace and
 casting bed are removed. Mechanical valve controls remain on their pipework.
+
+### Wider drilling working (0.44.9)
+
+New version-7 workings span 33 blocks instead of 17 across, with the same
+44-block depth and wider noise-shaped diamond chamber. Version-6 IDs retain
+their 17-column stride and exact geology on recovery. The wider journal stays
+bounded below 12,000 blocks; preparation remains on the existing sliced owner.
+The chamber arrival ellipse is ten blocks across either side and five along
+the drive, rather than a narrow strip at its far wall. Ceiling lamps are placed
+roughly every four travelled blocks, and new chambers include five level-13
+ambient lights. A helmeted miner-head marker remains usable during the retained
+completion grace and returns visitors to the configured second lift landing
+(top landing/working entrance fallback if unavailable). Only its return glow
+appears after completion. No extra ore drops or checkpoint rewards are granted.

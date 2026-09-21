@@ -111,7 +111,12 @@ internal class MineExpeditionController(
         val targets = targets(scene, current)
         actions.tick(scope, scene, current, targets, players, now,
             { player, step -> commit(runtime, scene, player, current, step) },
-            { id, radians -> markers.rotate(scope, id, radians); machinery.turn(scene, id, radians) })
+            { id, radians ->
+                markers.rotate(scope, id, if(id.startsWith("control_") || id=="pour_console") {
+                    if(radians>0.0) Math.PI else 0.0
+                } else radians)
+                machinery.turn(scene, if(id=="pour_console") "pour_control" else id, radians)
+            })
         if (runtime.state.incident?.expedition != current) return
         val driver = drivers[scope]
         if (driver != null && driver.stage == current.stage && now >= driver.nextStepAt) {
@@ -153,11 +158,13 @@ internal class MineExpeditionController(
     private fun marker(scene: MineExpeditionScene, state: MineExpeditionState, target: MineExpeditionObjective,
         now: Long): MineExpeditionMarkers.Target {
         val label = when {
-            state.stage == MineExpeditionStage.FACTORY_WATER && target.id.startsWith("decor_pump_") -> "control.pump-start"
-            state.stage == MineExpeditionStage.FACTORY_WATER && target.id.startsWith("decor_crusher_") -> "control.crusher-start"
+            state.stage == MineExpeditionStage.FACTORY_WATER && target.id.startsWith("control_pump_") -> "control.pump-start"
+            state.stage == MineExpeditionStage.FACTORY_WATER && target.id.startsWith("control_crusher_") -> "control.crusher-start"
             state.stage == MineExpeditionStage.FACTORY_CRANE -> "control.crane-start"
             state.stage == MineExpeditionStage.FACTORY_HEAT -> if (MineExpeditionEngine.canFinishHeat(state, now)) "heat-ready" else "heat-progress"
             state.stage == MineExpeditionStage.FACTORY_COAL && target.interaction == MineExpeditionInteraction.DELIVER -> "control.fuel-progress"
+            state.stage == MineExpeditionStage.FACTORY_COAL && target.interaction == MineExpeditionInteraction.PICKUP -> "control.fuel-cart"
+            target.interaction == MineExpeditionInteraction.POUR -> actions.pourLabel(scope(scene), now)
             target.interaction == MineExpeditionInteraction.CRANK -> "control.turn"
             target.interaction == MineExpeditionInteraction.VALVE -> "control.valve"
             else -> "control.${target.id.replace(Regex("_[0-9]+$"), "")}" 
@@ -166,7 +173,7 @@ internal class MineExpeditionController(
             Material.LIME_DYE else MineExpeditionActions.material(target.material)
         val fixture = MineExpeditionFurnishings.fixtures(scene).firstOrNull { it.id == target.id }
         return MineExpeditionMarkers.Target(target.id, scene.at(target.position), material,
-            render(label, values = progressValues(state, now)), target.interaction == MineExpeditionInteraction.BREAK,
+            render(label, values = progressValues(state, now) + actions.pourValues(scope(scene),now)), target.interaction == MineExpeditionInteraction.BREAK,
             model=if(target.interaction == MineExpeditionInteraction.BREAK || target.id=="drive") null else fixture?.model ?: MineExpeditionFurnishings.model(target.id,scene.kind),
             modelScale=fixture?.scale ?: 1f,
             yaw=editor?.yaw(scene,target.id) ?: fixture?.yaw ?: 0)
@@ -206,6 +213,8 @@ internal class MineExpeditionController(
         val scene = world.allScenes().firstOrNull { it.contains(block.location) } ?: return false
         val target = markers.nearest(block.location, "exit:${scene.journalSequence}")
             ?: markers.nearest(block.location, scope(scene)) ?: return false
+        // Lever controls accept a direct hit on their own small interaction volume.
+        if(target.model=="machine_console") return false
         event.isCancelled = true
         if (!near(event.player, target.location, 5.0)) return true
         if (target.id.startsWith("return_")) exit(event.player, scene)
@@ -337,7 +346,7 @@ internal class MineExpeditionController(
             scene?.ready != true || current == null -> render("preparing", player)
             !scene.contains(player.location) -> render("enter-hint", player)
             actions.hint(scope(scene), player, now) != null -> actions.hint(scope(scene), player, now)
-            actions.carrying(player, scope(scene)) -> render(if (current.stage == MineExpeditionStage.FACTORY_COAL) "fuel-carry" else "carry", player)
+            actions.carrying(player, scope(scene)) -> render(if (current.stage == MineExpeditionStage.FACTORY_COAL) "fuel-carry" else if(current.stage == MineExpeditionStage.FACTORY_INSTALL) "iron-cart-carry" else "carry", player)
             current.stage == MineExpeditionStage.FACTORY_WATER -> render("program.${current.factoryProgram}", player)
             current.stage == MineExpeditionStage.FACTORY_COAL -> render("fuel-progress", player, progressValues(current, now))
             current.stage == MineExpeditionStage.FACTORY_HEAT -> render(

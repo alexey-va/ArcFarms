@@ -12,10 +12,15 @@ internal object MineExpeditionFurnishings {
     fun parent(kind:MineExpeditionKind,id:String):String? = if(kind!=MineExpeditionKind.DEAD_FACTORY) null else when(id) {
         "furnace_input","furnace_control" -> "decor_furnace_left"
         "pour_control" -> "decor_furnace_right"
+        "pour_console" -> "pour_control"
+        "control_crusher_left", "control_crusher_right", "control_pump_left", "control_pump_right" -> ru.ruscrafting.farms.domain.mine.expedition.MineFactoryProgram.machine(id)
         "water_valve_1" -> "decor_waterwheel"
         else -> null
     }
+    fun childOf(kind:MineExpeditionKind,id:String,ancestor:String):Boolean =
+        generateSequence(parent(kind,id)) { parent(kind,it) }.any { it==ancestor }
     fun model(id:String,kind:MineExpeditionKind?=null):String = when {
+        id.startsWith("control_") || id=="pour_console" -> "machine_console"
         id=="water_valve_1" -> "sluice"
         id.startsWith("water_valve_") -> "pipe_valve"
         id=="furnace_input" -> "feed_hopper"
@@ -61,13 +66,18 @@ internal object MineExpeditionFurnishings {
                 Fixture("decor_sample_rack","rack",ExpeditionPoint(-24,5,10)),
             )
         }
-        return stations+decor
+        val controls = if(plan.kind==MineExpeditionKind.DEAD_FACTORY) {
+            ru.ruscrafting.farms.domain.mine.expedition.MineFactoryProgram.controls.map { (id,at) ->
+                Fixture(id,"machine_console",at)
+            } + Fixture("pour_console","machine_console",plan.stations.getValue("pour_control").offset(-4,0,1))
+        } else emptyList()
+        return stations+decor+controls
     }
     fun targets(scene:MineExpeditionScene,editor:MineFurnishingEditor?,active:Set<String>):List<MineExpeditionMarkers.Target> =
         fixtures(scene).filter { it.id !in active }.map { f ->
             val yaw=editor?.yaw(scene,f.id) ?: f.yaw
             val p=editor?.position(scene,f.id,f.at) ?: f.at
             MineExpeditionMarkers.Target(f.id,scene.at(p),Material.CUT_COPPER,Component.empty(),model=f.model,modelScale=f.scale,
-                glowing=editor?.selected(scene.journalSequence,f.id)==true || active.any { parent(scene.kind,it)==f.id },yaw=yaw,editKey="${scene.journalSequence}/${f.id}",editBase=f.at)
+                glowing=editor?.selected(scene.journalSequence,f.id)==true || active.any { !it.startsWith("control_") && it!="pour_console" && parent(scene.kind,it)==f.id },yaw=yaw,editKey="${scene.journalSequence}/${f.id}",editBase=f.at)
         }
 }

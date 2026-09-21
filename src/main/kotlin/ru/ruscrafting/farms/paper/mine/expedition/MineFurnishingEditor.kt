@@ -65,15 +65,15 @@ internal class MineFurnishingEditor(
         val parent=MineExpeditionFurnishings.parent(scene.kind,id)
         val anchor=parent?.let { key -> MineExpeditionFurnishings.fixtures(scene).firstOrNull { it.id==key }?.at }
         if(parent==null || anchor==null) return base.offset(own.x,own.y,own.z)
-        val group=pose(scene.journalSequence,parent)
-        val radians=Math.toRadians(yaw(scene,parent).toDouble())
+        val shifted=position(scene,parent,anchor)
+        val radians=Math.toRadians((yaw(scene,parent)-MineExpeditionFurnishings.baseYaw(scene,parent)).toDouble())
         val dx=(base.x-anchor.x).toDouble();val dz=(base.z-anchor.z).toDouble()
         val x=kotlin.math.round(dx*kotlin.math.cos(radians)+dz*kotlin.math.sin(radians)).toInt()
         val z=kotlin.math.round(-dx*kotlin.math.sin(radians)+dz*kotlin.math.cos(radians)).toInt()
-        return ExpeditionPoint(anchor.x+x+group.x+own.x,base.y+group.y+own.y,anchor.z+z+group.z+own.z)
+        return ExpeditionPoint(shifted.x+x+own.x,shifted.y+base.y-anchor.y+own.y,shifted.z+z+own.z)
     }
     fun yaw(scene:MineExpeditionScene,id:String):Int = (MineExpeditionFurnishings.baseYaw(scene,id)+pose(scene.journalSequence,id).yaw+
-        (MineExpeditionFurnishings.parent(scene.kind,id)?.let { MineExpeditionFurnishings.baseYaw(scene,it)+pose(scene.journalSequence,it).yaw } ?: 0))%360
+        (MineExpeditionFurnishings.parent(scene.kind,id)?.let { yaw(scene,it)-MineExpeditionFurnishings.baseYaw(scene,it) } ?: 0))%360
     fun selected(site: Long,id: String) = sessions.values.any { it.key=="$site/$id" }
     fun locked(scene: MineExpeditionScene) = sessions.values.any { it.site==scene.journalSequence }
     fun command(player: Player, action: String?) {
@@ -162,7 +162,7 @@ internal class MineFurnishingEditor(
         val p=position(scene,s.key!!.substringAfter('/'),base)
         val id=s.key!!.substringAfter('/')
         val fixtures=MineExpeditionFurnishings.fixtures(scene)
-        val affected=fixtures.filter { it.id==id || MineExpeditionFurnishings.parent(scene.kind,it.id)==id }
+        val affected=fixtures.filter { it.id==id || MineExpeditionFurnishings.childOf(scene.kind,it.id,id) }
         for(fixture in affected) {
             val anchor=position(scene,fixture.id,fixture.at)
             val turn=org.joml.Quaternionf().rotateY(Math.toRadians(yaw(scene,fixture.id).toDouble()).toFloat())

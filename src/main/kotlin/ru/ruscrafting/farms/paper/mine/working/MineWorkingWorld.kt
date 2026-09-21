@@ -222,7 +222,7 @@ internal class MineWorkingWorld(
         }
         val old = projectedDrive[key(runtime)]
         (progress.carved - old?.carved.orEmpty()).forEach { id ->
-            if (MineDriveLayout.driveable(MineDriveLayout.side(id), MineDriveLayout.forward(id))) {
+            if (MineDriveLayout.driveable(MineDriveLayout.side(id,plan.placement.geometryVersion), MineDriveLayout.forward(id,plan.placement.geometryVersion),plan.placement.geometryVersion)) {
                 for (up in 1..4) put(MineDriveLayout.position(plan.placement, id, up), AIR)
             }
         }

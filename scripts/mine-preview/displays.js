@@ -8,13 +8,14 @@ const demoRotationAxis = new THREE.Vector3(0, 0, 1);
 function poseExpeditionPart(mesh, part, phase) {
   const angle = !part.moving || part.motion === 'press' ? 0
     : part.motion === 'lever' ? Math.sin(phase / 2) * .5 : phase;
+  const axis = part.motion === 'axle' ? new THREE.Vector3(1, 0, 0) : demoRotationAxis;
   const center = new THREE.Vector3(...part.center);
   if (part.moving && part.motion === 'press') center.y -= (1 - Math.cos(phase)) * .5;
   else if (part.moving) {
     const pivot = new THREE.Vector3(...part.pivot);
-    center.sub(pivot).applyAxisAngle(demoRotationAxis, angle).add(pivot);
+    center.sub(pivot).applyAxisAngle(axis, angle).add(pivot);
   }
-  const rotation = new THREE.Quaternion().setFromAxisAngle(demoRotationAxis, part.angle + angle);
+  const rotation = new THREE.Quaternion().setFromAxisAngle(axis, part.angle + angle);
   mesh.quaternion.copy(rotation);
   mesh.scale.set(...part.size);
   mesh.position.copy(new THREE.Vector3(...part.size).multiplyScalar(-.5).applyQuaternion(rotation).add(center));

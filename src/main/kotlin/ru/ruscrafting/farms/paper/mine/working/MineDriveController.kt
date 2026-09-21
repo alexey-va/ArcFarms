@@ -56,7 +56,7 @@ internal class MineDriveController(
         val (side, forward) = MineDriveLayout.local(working.placement, at.x, at.z)
         durable.getOrPut(zone) { working.drive?.let { it.prepared + it.carved }.orEmpty() }
         if (driver != null && participant(driver) && driver.gameMode != GameMode.SPECTATOR &&
-            forward >= MineDriveLayout.LENGTH - 4 && abs(side) <= 2.5) {
+            MineDriveLayout.reached(side,forward,working.placement.geometryVersion)) {
             stop(rig)
             if (!busy(zone) && zone !in failed) { rigs.release(driver); reached(driver, working) }
             return
@@ -94,8 +94,8 @@ internal class MineDriveController(
         val allowed = durable.getValue(zone)
         // The whole chassis/cutter envelope stays inside owned space at all angles, including reverse.
         for ((s, f) in cells) {
-            if (!MineDriveLayout.insideBoundary(s, f)) { boundary = true; continue }
-            val id = MineDriveLayout.id(s, f)
+            if (!MineDriveLayout.insideBoundary(s, f,working.placement.geometryVersion)) { boundary = true; continue }
+            val id = MineDriveLayout.id(s, f,working.placement.geometryVersion)
             var solid = false
             var protected = false
             for (up in 1..4) {
@@ -109,16 +109,16 @@ internal class MineDriveController(
                 if (up <= 3 && !material.isAir) solid = true
             }
             if (solid) solidColumns += id
-            if (!protected && MineDriveLayout.driveable(s, f)) {
+            if (!protected && MineDriveLayout.driveable(s, f,working.placement.geometryVersion)) {
                 if (id in allowed) columns += id else if (solid) waiting = true
             } else if (solid && !protected) boundary = true
         }
         val current = runtime.state.incident?.working ?: return
-        val old = current.drive ?: MineDriveProgress(heading = rig.heading)
+        val old = current.drive ?: MineDriveProgress(checkpoint=MineDriveLayout.id(0,2,working.placement.geometryVersion),heading = rig.heading)
         val additions = columns - old.carved
-        val checkpoint = MineDriveLayout.id(floor(side + .5).toInt(), floor(forward + .5).toInt())
+        val checkpoint = MineDriveLayout.id(floor(side + .5).toInt(), floor(forward + .5).toInt(),working.placement.geometryVersion)
         val lamps = if (checkpoint in old.carved + additions && old.lamps.none { id ->
-                (MineDriveLayout.side(id)-side).pow(2) + (MineDriveLayout.forward(id)-forward).pow(2) < 49
+                (MineDriveLayout.side(id,working.placement.geometryVersion)-side).pow(2) + (MineDriveLayout.forward(id,working.placement.geometryVersion)-forward).pow(2) < 16
             }) old.lamps + checkpoint else old.lamps
         val progress = old.copy(carved = old.carved + additions, lamps = lamps,
             checkpoint = if (checkpoint in old.carved + additions) checkpoint else old.checkpoint,
@@ -147,8 +147,8 @@ internal class MineDriveController(
         val zone = runtime.settings.id
         if (busy(zone) || zone in failed) return
         val working = runtime.state.incident?.working ?: return
-        val old = working.drive ?: MineDriveProgress(heading = working.placement.direction * 90f)
-        val prepared = old.prepared + old.carved + MineDriveMotion.excavationCells
+        val old = working.drive ?: MineDriveProgress(checkpoint=MineDriveLayout.id(0,2,working.placement.geometryVersion),heading = working.placement.direction * 90f)
+        val prepared = old.prepared + old.carved + MineDriveMotion.excavationCells(working.placement)
         val next = old.copy(prepared = prepared)
         val needsBuffer = !durable.getValue(zone).containsAll(prepared)
         if (!needsBuffer && (saved[zone] == next || now < (saveAt[zone] ?: 0))) return

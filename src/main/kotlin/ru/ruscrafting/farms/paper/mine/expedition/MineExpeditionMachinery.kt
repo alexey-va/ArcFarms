@@ -330,6 +330,18 @@ internal class MineExpeditionMachinery(
                 chainLength = (ceilingY - (loadY + .5)).coerceAtLeast(.1).toFloat()
                 pivot.y = if (role == "core") loadY else ceilingY - chainLength / 2
             }
+            val pressing=state.stage==MineExpeditionStage.FACTORY_INSTALL && (runtime.crankAngles["assembly_socket"] ?: 0.0)>0
+            val poured=if(state.stage==MineExpeditionStage.FACTORY_POUR)
+                ((runtime.crankAngles["pour_control"] ?: 0.0)/(Math.PI*2)).coerceIn(0.0,1.0).toFloat() else 0f
+            if(scene.kind==MineExpeditionKind.DEAD_FACTORY && role=="core" && pressing) {
+                val press=furnishingPoint(scene,"assembly_socket",scene.plan.stations.getValue("assembly_socket"))
+                val at=scene.at(press).add(0.0,1.95,0.0)
+                pivot.x=at.x; pivot.y=at.y; pivot.z=at.z
+            }
+            if(scene.kind==MineExpeditionKind.DEAD_FACTORY && role=="molten") {
+                val bed=furnishingPoint(scene,"pour_control",scene.plan.stations.getValue("pour_control"))
+                pivot.y=scene.at(bed).y+1.73+poured*.4
+            }
             if (display.location.distanceSquared(pivot) > 0.0001) display.teleport(pivot)
             val rotation = Quaternionf()
             val scale = when {
@@ -345,13 +357,10 @@ internal class MineExpeditionMachinery(
                 scene.kind == MineExpeditionKind.DEAD_FACTORY && role == "core" -> {
                     val visible = state.stage == MineExpeditionStage.FACTORY_CRANE ||
                         (state.stage == MineExpeditionStage.FACTORY_INSTALL && !cargoClaimed)
-                    if (visible) Vector3f(1.6f, 1.0f, 1.6f) else Vector3f(0f)
+                    if (visible || pressing) Vector3f(1.6f, 1.0f, 1.6f) else Vector3f(0f)
                 }
                 scene.kind == MineExpeditionKind.DEAD_FACTORY && role == "molten" -> {
-                    val poured = if (state.stage == MineExpeditionStage.FACTORY_POUR)
-                        ((runtime.crankAngles["pour_control"] ?: 0.0) / (Math.PI * 2)).coerceIn(0.0, 1.0).toFloat()
-                    else 0f
-                    Vector3f(4f * poured, 0.2f, 1.5f)
+                    if(poured>0) Vector3f(3.4f,.1f,2.2f) else Vector3f(0f)
                 }
                 else -> Vector3f(0.8f)
             }

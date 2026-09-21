@@ -85,7 +85,7 @@ class MineDriveControllerMockBukkitTest : FunSpec({
         } finally { paper.close() }
     }
     test("bedrock and outer walls stop the complete machine without escaping or carving protected cells") {
-        for (location in listOf(0.0 to 10, 6.0 to 20)) {
+        for (location in listOf(0.0 to 10, 14.0 to 20)) {
             val paper = MockBukkitTestRuntime.open()
             try {
                 val (side,forward) = location

@@ -13,7 +13,7 @@ class MineDriveLayoutTest : FunSpec({
             val placement = MineWorkingPlacement(WorksitePosition("world", 50, 80, 50), direction, "middle", 72L)
             val plan = MineWorkingLayout.plan(MineIncidentType.TUNNEL_DRIVE, placement)
             MineWorkingLayout.validate(plan).shouldBeEmpty()
-            (plan.blocks.size <= 8000) shouldBe true
+            (plan.blocks.size <= 12000) shouldBe true
             val start = 0 to 2
             val seen = linkedSetOf(start)
             val queue = ArrayDeque<Pair<Int, Int>>().apply { add(start) }
@@ -54,7 +54,7 @@ class MineDriveLayoutTest : FunSpec({
         for (f in 200..330) fits(-4.5,f/10.0,0f) shouldBe true
         fits(0.0,12.0,0f) shouldBe false
         for (yaw in 0..359 step 5) {
-            fits(8.0,20.0,yaw.toFloat()) shouldBe false
+            fits(16.0,20.0,yaw.toFloat()) shouldBe false
             fits(0.0,44.0,yaw.toFloat()) shouldBe false
         }
     }
@@ -65,11 +65,33 @@ class MineDriveLayoutTest : FunSpec({
             val plan=MineDriveLayout.plan(p)
             val ore=MineDriveLayout.goalOres(plan)
             (ore.size >= 12) shouldBe true
-            val tops=(-6..6).map { s -> (1..9).lastOrNull { y -> plan.blocks[p.position(s,y,40)]=="minecraft:air" } ?: 0 }
+            val tops=(-14..14).map { s -> (1..9).lastOrNull { y -> plan.blocks[p.position(s,y,40)]=="minecraft:air" } ?: 0 }
             (tops.distinct().size >= 3) shouldBe true
             plan.blocks[p.position(0,1,41)] shouldBe "minecraft:air"
             (0..9).all { up -> (-8..8).all { side -> plan.blocks[p.position(side,up,44)] != "minecraft:air" } } shouldBe true
         }
+    }
+
+    test("wide workings preserve legacy cell coordinates and accept broad chamber arrivals") {
+        val p=MineWorkingPlacement(WorksitePosition("world",0,64,0),0,"top",19L)
+        val old=p.copy(geometryVersion=6)
+        val newPlan=MineDriveLayout.plan(p);val oldPlan=MineDriveLayout.plan(old)
+        (newPlan.blocks.size>oldPlan.blocks.size*1.8) shouldBe true
+        for(s in -7..7) for(f in 1..43) {
+            val legacy=f*17+s+8
+            MineDriveLayout.position(old,legacy) shouldBe old.position(s,1,f)
+            MineDriveLayout.position(p,MineDriveLayout.id(s,f)) shouldBe p.position(s,1,f)
+        }
+        val legacyCells=MineDriveMotion.excavationCells(old)
+        legacyCells.all { it<765 } shouldBe true
+        MineDriveMotion.excavationCells(p).all { it<1485 } shouldBe true
+        ru.ruscrafting.farms.domain.MineDriveProgress(prepared=legacyCells).validate(6)
+        ru.ruscrafting.farms.domain.MineDriveProgress(prepared=MineDriveMotion.excavationCells(p)).validate(7)
+        for(s in listOf(-8.0,0.0,8.0)) MineDriveLayout.reached(s,39.0,7) shouldBe true
+        MineDriveLayout.reached(0.0,32.0,7) shouldBe false
+        MineDriveLayout.reached(14.0,39.0,7) shouldBe false
+        newPlan.blocks[MineDriveLayout.returnPoint(p)] shouldBe "minecraft:air"
+        (newPlan.blocks.values.count { it.startsWith("minecraft:light[level=13") }>=4) shouldBe true
     }
 
     test("old saved drives retain their exact layer targets") {

@@ -15,6 +15,7 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
     lateinit var scene: MineExpeditionScene
     lateinit var actions: MineExpeditionActions
     val scope = "factory:1:1"
+    lateinit var cartVisuals: RecordingCartVisuals
 
     beforeEach {
         paper = MockBukkitTestRuntime.open()
@@ -24,14 +25,17 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         val surface = Location(world, 0.5, 65.0, 24.5)
         scene = MineExpeditionScene(plan, placement, world, "factory", 1, 1, 1, surface,
             WorksitePreparedScene(world, "factory", 1, 1, surface, surface, surface, emptyList()))
-        actions = MineExpeditionActions(paper.createSimplePlugin("FactoryActionsTest"), null)
+        val plugin=paper.createSimplePlugin("FactoryActionsTest")
+        // Packet transport is outside MockBukkit; retain real cargo/tether/lifecycle behavior.
+        cartVisuals=RecordingCartVisuals()
+        actions = MineExpeditionActions(plugin, null, MineFactoryCarts(plugin,cartVisuals))
     }
-    afterEach { actions.cleanup(); paper.close() }
+    afterEach { try { actions.cleanup();cartVisuals.bodies.all { it.removed } shouldBe true } finally { paper.close() } }
 
     test("variant pump and crusher run timed cycles before credit and stop after departure") {
         val state=MineExpeditionState(scene.placement,MineExpeditionStage.FACTORY_WATER,factoryProgram=1)
         val targets=MineExpeditionObjectives.targets(scene.plan,state,null)
-        val target=targets.first { it.id=="decor_pump_left" }
+        val target=targets.first { it.id=="control_pump_left" }
         val player=paper.server.addPlayer().also { it.teleport(scene.at(target.position)) }
         actions.interact(scope,scene,state,player,target,1_000,{error("early credit")}) {}
         actions.interact(scope,scene,state,player,target,2_000,{error("duplicate credit")}) {}
@@ -41,7 +45,7 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         completed shouldBe 0
         actions.tick(scope,scene,state,targets,listOf(player),4_000,{_,step->completed++;step.state.completed shouldBe setOf(1);true}) {_,_->}
         completed shouldBe 1
-        val crusher=targets.first { it.id=="decor_crusher_left" }
+        val crusher=targets.first { it.id=="control_crusher_left" }
         player.teleport(scene.at(crusher.position))
         actions.interact(scope,scene,state,player,crusher,5_000,{error("early credit")}) {}
         actions.tick(scope,scene,state,targets,emptyList(),6_000,{_,_->error("departed operator")}) {_,_->}
@@ -124,9 +128,10 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         actions.interact(scope, scene, state, player, pickup, 1_000, { true }) {}
         player.teleport(scene.at(press.position))
         actions.interact(scope, scene, state, player, press, 2_000, { true }) {}
-        player.teleport(scene.at(press.position).add(30.0, 0.0, 0.0))
+        player.teleport(scene.at(press.position).add(20.0, 0.0, 0.0))
         actions.tick(scope, scene, state, targets, listOf(player), 3_000, { _, _ -> error("early press completion") }) { _, _ -> }
-        world.entities.filterIsInstance<ItemDisplay>().single().location shouldBe scene.at(press.position).add(0.0,1.9,0.0)
+        world.entities.filterIsInstance<ItemDisplay>().size shouldBe 0
+        world.entities.count { actions.owns(it) } shouldBe 0 // unloaded cart releases its rope immediately
         actions.carrying(player, scope) shouldBe true
         var completed=0
         actions.tick(scope, scene, state, targets, listOf(player), 4_400, { _,step -> completed++; step.finished shouldBe true; true }) { _,_ -> }
@@ -257,6 +262,91 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         world.entities.filterIsInstance<org.bukkit.entity.Item>().size shouldBe 0
     }
 
+    test("casting is a measured pour and cannot be completed by click spam or another player") {
+        var state=MineExpeditionState(scene.placement,MineExpeditionStage.FACTORY_POUR)
+        val target=MineExpeditionObjectives.targets(scene.plan,state,null).single()
+        target.id shouldBe "pour_console"
+        target.interaction shouldBe MineExpeditionInteraction.POUR
+        val player=paper.server.addPlayer().also { it.teleport(scene.at(target.position)) }
+        val other=paper.server.addPlayer().also { it.teleport(player.location) }
+        var completed=0
+        val complete:(MineExpeditionStep)->Boolean={ completed++;state=it.state;it.accepted }
+        actions.interact(scope,scene,state,player,target,1000,complete) {}
+        actions.interact(scope,scene,state,player,target,1100,complete) {}
+        actions.interact(scope,scene,state,other,target,7500,complete) {}
+        completed shouldBe 0
+        actions.pourLabel(scope,7500) shouldBe "pour-close"
+        actions.interact(scope,scene,state,player,target,7500,{ false }) {}
+        actions.pourLabel(scope,7500) shouldBe "pour-close"
+        actions.interact(scope,scene,state,player,target,7500,complete) {}
+        completed shouldBe 1
+        state.stage shouldBe MineExpeditionStage.FACTORY_CRANE
+        actions.interact(scope,scene,state,player,target,8000,complete) {}
+        completed shouldBe 1
+    }
+
+    test("underdose overflow and departure reset a pour without credit") {
+        val state=MineExpeditionState(scene.placement,MineExpeditionStage.FACTORY_POUR)
+        val target=MineExpeditionObjectives.targets(scene.plan,state,null).single()
+        val player=paper.server.addPlayer().also { it.teleport(scene.at(target.position)) }
+        fun open(now:Long) { actions.interact(scope,scene,state,player,target,now,{ error("unexpected casting credit") }) {} }
+        open(1000);open(3000)
+        actions.pourLabel(scope,3000) shouldBe "control.pour_console"
+        open(4000)
+        var phase=1.0
+        actions.tick(scope,scene,state,listOf(target),listOf(player),14000,{_,_->error("overflow credited") }) { _,p->phase=p }
+        phase shouldBe 0.0
+        actions.pourLabel(scope,14000) shouldBe "control.pour_console"
+        open(15000)
+        actions.tick(scope,scene,state,listOf(target),emptyList(),16000,{_,_->error("departed casting credited") }) { _,_-> }
+        actions.pourLabel(scope,16000) shouldBe "control.pour_console"
+    }
+
+    test("cart contact and click delivery share one lease and leaving the factory retires every part") {
+        var state=MineExpeditionState(scene.placement,MineExpeditionStage.FACTORY_COAL)
+        val targets=MineExpeditionObjectives.targets(scene.plan,state,null)
+        val player=paper.server.addPlayer()
+        val pickup=targets.first();val delivery=targets.last()
+        fun take() {
+            player.teleport(scene.at(pickup.position))
+            actions.interact(scope,scene,state,player,pickup,1000,{ error("pickup credit") }) {}
+            actions.interact(scope,scene,state,player,pickup,1100,{ error("duplicate pickup credit") }) {}
+            world.entities.count { actions.owns(it) } shouldBe 1
+            world.entities.filterIsInstance<ItemDisplay>().size shouldBe 0
+        }
+        take()
+        val anchor=world.entities.single { actions.owns(it) }
+        val at=anchor.location
+        player.teleport(player.location.apply { yaw=180f })
+        actions.tick(scope,scene,state,targets,listOf(player),1200,{_,_->error("rotation credit") }) {_,_->}
+        anchor.location.x shouldBe at.x
+        anchor.location.z shouldBe at.z
+        val start=player.location
+        val end=scene.at(delivery.position)
+        var credits=0
+        repeat(70) { step ->
+            player.teleport(start.clone().add((end.x-start.x)*(step+1)/70,0.0,(end.z-start.z)*(step+1)/70))
+            actions.tick(scope,scene,state,MineExpeditionObjectives.targets(scene.plan,state,null),listOf(player),1300L+step*100,
+                {_,result-> credits++;state=result.state;result.accepted }) {_,_->}
+        }
+        credits shouldBe 1
+        actions.interact(scope,scene,state,player,delivery,9000,{ error("click after auto delivery") }) {}
+        actions.carrying(player,scope) shouldBe false
+        take()
+        player.teleport(Location(world,1000.0,65.0,1000.0))
+        actions.tick(scope,scene,state,targets,listOf(player),10000,{_,_->error("outside factory credit") }) {_,_->}
+        actions.carrying(player,scope) shouldBe false
+        world.entities.count { actions.owns(it) } shouldBe 0
+        actions.claimed(scope,state.stage,1) shouldBe false
+        take();actions.release(player)
+        world.entities.count { actions.owns(it) } shouldBe 0
+        take();actions.clear(scope)
+        world.entities.count { actions.owns(it) } shouldBe 0
+        take();actions.cleanup()
+        world.entities.count { actions.owns(it) } shouldBe 0
+        world.entities.filterIsInstance<org.bukkit.entity.BlockDisplay>().size shouldBe 0
+    }
+
     test("factory crane uses only current models and its chain remains attached to the carried load") {
         scene.refreshReady(building = false, complete = true)
         val plugin = paper.createSimplePlugin("FactoryMachineryTest")
@@ -285,3 +375,15 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         world.entities.filterIsInstance<org.bukkit.entity.BlockDisplay>().size shouldBe 0
     }
 })
+
+/** Records packet bodies without replacing world, player, native leash or cargo transitions. */
+private class RecordingCartVisuals : MineFactoryCartVisuals {
+    class Body : MineFactoryCartVisuals.Body {
+        var removed=false
+        override fun render(at: Location,yaw: Float,phase: Float) { check(!removed) }
+        override fun remove() { removed=true }
+    }
+    val bodies=mutableListOf<Body>()
+    override fun spawn(at: Location,parts: List<MineDisplayBlueprints.Part>)=Body().also { bodies+=it }
+    override fun close() { check(bodies.all { it.removed }) }
+}

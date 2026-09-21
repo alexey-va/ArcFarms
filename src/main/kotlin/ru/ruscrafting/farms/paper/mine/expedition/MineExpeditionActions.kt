@@ -22,16 +22,19 @@ import java.util.UUID
 import kotlin.math.PI
 import kotlin.math.abs
 
-/** Transient cargo leases and walking cranks; durable checkpoints belong to the domain engine. */
-internal class MineExpeditionActions(private val plugin: Plugin, private val locale: ArcFarmsLocale?) {
+/** Transient cargo leases, casting controls and walking cranks; durable checkpoints belong to the domain engine. */
+internal class MineExpeditionActions(private val plugin: Plugin, private val locale: ArcFarmsLocale?,
+    private val carts: MineFactoryCarts = MineFactoryCarts(plugin)) {
     private val tethers = WorksiteCrankTethers(NamespacedKey(plugin, "mine_expedition_crank_tether"))
     private var nextTetherWarning = 0L
-    private data class Cargo(val scope: String, val stage: MineExpeditionStage, val target: Int, val display: ItemDisplay)
+    private data class Cargo(val scope: String, val stage: MineExpeditionStage, val target: Int, val display: ItemDisplay? = null, val cart: MineFactoryCarts.Cart? = null)
     private data class Crank(val scope: String, val stage: MineExpeditionStage, val objective: String,
         var sample: FarmProcessingCrankState? = null, var radians: Double = 0.0)
     private data class Operation(val scope:String,val objective:String,val target:Int,val cycle:MineFactoryOperation)
     private data class Valve(val scope: String, val stage: MineExpeditionStage, val objective: String,
         var clicks: Int = 0, var nextClickAt: Long = 0, var lastPlayer: UUID? = null)
+    private data class Pour(val scope: String, val owner: UUID, val cycle: MineFactoryPour, var readySignalled: Boolean = false)
+    private val pours = mutableMapOf<String, Pour>()
     private val valves = mutableMapOf<Pair<String, String>, Valve>()
     private val operations=mutableMapOf<UUID,Operation>()
     private val renderer = WorksiteCarriedDisplayRenderer()
@@ -40,9 +43,24 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
 
     fun operationPhase(scope:String,id:String,now:Long):Double = operations.values
         .firstOrNull { it.scope==scope && it.objective==id }?.cycle?.progress(now)?.times(PI*2) ?: 0.0
-    fun owns(entity: Entity) = tethers.owns(entity)
-    fun removeOrphans(entities: Iterable<Entity>) = tethers.removeOrphans(entities)
+    fun owns(entity: Entity) = tethers.owns(entity) || carts.owns(entity)
+    fun removeOrphans(entities: Iterable<Entity>) { tethers.removeOrphans(entities); carts.removeOrphans(entities) }
+    fun pourLabel(scope: String, now: Long): String = pours[scope]?.let {
+        if(it.cycle.ready(now)) "pour-close" else "pour-filling"
+    } ?: "control.pour_console"
+    fun pourValues(scope: String, now: Long): Map<String, Component> {
+        val level = pours[scope]?.cycle?.level(now) ?: 0.0
+        val fill = (level*20).toInt()
+        val meter = (0 until 20).fold(Component.empty()) { line,index -> line.append(Component.text(if(index<fill) "▰" else "▱",
+            if(index in 13..17) net.kyori.adventure.text.format.NamedTextColor.GREEN
+            else net.kyori.adventure.text.format.NamedTextColor.GRAY)) }
+        return mapOf("percent" to Component.text((level*100).toInt()), "meter" to meter)
+    }
     fun hint(scope: String, player: Player, now: Long): Component? {
+        pours[scope]?.takeIf { it.owner==player.uniqueId }?.let {
+            return locale?.renderPath("mine.expedition.${pourLabel(scope,now)}",player,pourValues(scope,now))
+                ?: Component.text(pourLabel(scope,now))
+        }
         valves.values.filter { it.scope == scope && it.lastPlayer == player.uniqueId }.maxByOrNull { it.nextClickAt }?.let {
             return text("valve-progress", player, mapOf("count" to it.clicks, "total" to VALVE_CLICKS))
         }
@@ -62,6 +80,7 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
         target: MineExpeditionObjective, now: Long, complete: (MineExpeditionStep) -> Boolean,
         drive: () -> Unit) {
         when (target.interaction) {
+            MineExpeditionInteraction.POUR -> pour(scope,scene,state,player,target,now,complete)
             MineExpeditionInteraction.VALVE -> turnValve(scope, scene, state, player, target, now, complete)
             MineExpeditionInteraction.PICKUP -> pickup(scope, state, player, target)
             MineExpeditionInteraction.DELIVER -> {
@@ -69,6 +88,7 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
                 if (held.scope != scope || held.stage != state.stage) return
                 if(state.stage==MineExpeditionStage.FACTORY_INSTALL) {
                     startOperation(scope,state,player,target.id,held.target,now)
+                    if(operations[player.uniqueId]?.objective==target.id) held.cart?.let { carts.unload(it) }
                 } else if(complete(MineExpeditionEngine.completeTarget(state,held.target,now))) {
                     release(player)
                     if (state.stage == MineExpeditionStage.FACTORY_COAL) {
@@ -114,19 +134,48 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
     fun tick(scope: String, scene: MineExpeditionScene, state: MineExpeditionState,
         targets: List<MineExpeditionObjective>, players: Collection<Player>, now: Long,
         complete: (Player, MineExpeditionStep) -> Boolean, animateCrank: (String, Double) -> Unit) {
-        val participants = players.associateBy(Player::getUniqueId)
+        val participants = players.filter { it.isOnline && !it.isDead && scene.contains(it.location) }.associateBy(Player::getUniqueId)
+        if(state.stage==MineExpeditionStage.FACTORY_POUR && scope !in pours) animateCrank("pour_console",0.0)
+        pours[scope]?.let { pour ->
+            val player=participants[pour.owner]
+            if(player==null || state.stage!=MineExpeditionStage.FACTORY_POUR || pour.cycle.overflow(now)) {
+                pours.remove(scope)
+                animateCrank("pour_console",0.0)
+                if(player!=null && state.stage==MineExpeditionStage.FACTORY_POUR) {
+                    player.sendActionBar(text("pour-overflow",player))
+                    if(sounds()) player.playSound(player.location,Sound.BLOCK_FIRE_EXTINGUISH,.65f,.8f)
+                }
+            } else {
+                animateCrank("pour_console",pour.cycle.level(now)*PI*2)
+                if(pour.cycle.ready(now) && !pour.readySignalled) {
+                    pour.readySignalled=true
+                    if(sounds()) player.playSound(player.location,Sound.BLOCK_NOTE_BLOCK_BELL,.8f,1.5f)
+                }
+            }
+        }
         valves.entries.removeIf { (_, valve) -> valve.scope == scope &&
             (valve.stage != state.stage || targets.none { it.id == valve.objective && it.interaction == MineExpeditionInteraction.VALVE }) }
         valves.values.filter { it.scope == scope }.forEach { animateCrank(it.objective, it.clicks * PI * 2 / VALVE_CLICKS) }
         cargo.filterValues { it.scope == scope }.toMap().forEach { (id, held) ->
             val player = participants[id]
-            if (player == null || held.stage != state.stage || held.target in state.completed || !held.display.isValid) {
+            if (player == null || held.stage != state.stage || held.target in state.completed || held.display?.isValid == false) {
                 release(id)
             } else {
                 val target=operations[id]?.let { op -> targets.firstOrNull { it.id==op.objective } }
-                if(target!=null && state.stage==MineExpeditionStage.FACTORY_INSTALL)
-                    held.display.teleport(scene.at(target.position).add(0.0,1.9,0.0))
-                else renderer.move(held.display, player, 0.75, 0.85)
+                if(held.cart!=null) {
+                    if(!scene.contains(held.cart.at) || !carts.move(held.cart,player,now)) release(id)
+                    else if(!held.cart.unloaded) {
+                        val receiver=targets.firstOrNull { it.interaction==MineExpeditionInteraction.DELIVER }
+                        if(receiver!=null && player.location.distanceSquared(scene.at(receiver.position))<=2.8*2.8 &&
+                            held.cart.at.distanceSquared(scene.at(receiver.position))<=4.5*4.5) {
+                            interact(scope,scene,state,player,receiver,now,{ step -> complete(player,step) }) {}
+                        }
+                    }
+                } else if(held.display!=null) {
+                    if(target!=null && state.stage==MineExpeditionStage.FACTORY_INSTALL)
+                        held.display.teleport(scene.at(target.position).add(0.0,1.9,0.0))
+                    else renderer.move(held.display, player, 0.75, 0.85)
+                }
             }
         }
         operations.filterValues { it.scope==scope }.toMap().forEach { (id,operation) ->
@@ -177,6 +226,31 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
         operations[player.uniqueId]=Operation(scope,id,target,MineFactoryOperation(state.stage,now))
         player.sendActionBar(text("operating",player))
     }
+    private fun pour(scope: String, scene: MineExpeditionScene, state: MineExpeditionState, player: Player,
+        target: MineExpeditionObjective, now: Long, complete: (MineExpeditionStep) -> Boolean) {
+        if(state.stage!=MineExpeditionStage.FACTORY_POUR || target.target in state.completed || cargo.containsKey(player.uniqueId)) return
+        val current=pours[scope]
+        if(current==null) {
+            pours[scope]=Pour(scope,player.uniqueId,MineFactoryPour(now))
+            if(sounds()) player.playSound(scene.at(target.position),Sound.BLOCK_PISTON_EXTEND,.7f,.65f)
+            player.sendActionBar(text("pour-started",player))
+        } else {
+            if(current.owner!=player.uniqueId) { player.sendActionBar(text("pour-busy",player));return }
+            // Debounce the opening click; close only once, with an accepted checkpoint.
+            if(now-current.cycle.startedAt<500) return
+            if(current.cycle.ready(now)) {
+                if(complete(MineExpeditionEngine.completeTarget(state,target.target,now))) {
+                    pours.remove(scope)
+                    if(sounds()) player.playSound(scene.at(target.position),Sound.BLOCK_FIRE_EXTINGUISH,.9f,.8f)
+                    if(particles()) scene.world.spawnParticle(Particle.CLOUD,scene.at(target.position).add(0.0,1.7,0.0),12,.5,.3,.5,.03)
+                }
+            } else {
+                pours.remove(scope)
+                player.sendActionBar(text("pour-retry",player))
+                if(sounds()) player.playSound(scene.at(target.position),Sound.BLOCK_LAVA_EXTINGUISH,.6f,.8f)
+            }
+        }
+    }
     private fun turnValve(scope: String, scene: MineExpeditionScene, state: MineExpeditionState, player: Player,
         target: MineExpeditionObjective, now: Long, complete: (MineExpeditionStep) -> Boolean) {
         val center = scene.at(target.position)
@@ -202,11 +276,13 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
     }
     fun release(player: Player) = release(player.uniqueId)
     private fun release(id: UUID) {
-        cargo.remove(id)?.display?.let(renderer::remove)
+        cargo.remove(id)?.let { held -> held.display?.let(renderer::remove);held.cart?.let(carts::remove) }
+        pours.entries.removeIf { it.value.owner==id }
         releaseCrank(id)
         operations.remove(id)
     }
     fun clear(scope: String) {
+        pours.remove(scope)
         valves.entries.removeIf { it.value.scope == scope }
         cargo.filterValues { it.scope == scope }.keys.toList().forEach(::release)
         cranks.filterValues { it.scope == scope }.keys.toList().forEach(::releaseCrank)
@@ -214,11 +290,13 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
         operations.entries.removeIf { it.value.scope == scope }
     }
     fun cleanup() {
+        pours.clear()
         valves.clear()
         cargo.keys.toList().forEach(::release)
         cranks.keys.toList().forEach(::releaseCrank)
         tethers.cleanup(Bukkit.getWorlds().flatMap { it.entities })
         operations.clear()
+        carts.close()
     }
 
     private fun pickup(scope: String, state: MineExpeditionState, player: Player, target: MineExpeditionObjective) {
@@ -226,9 +304,19 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
         val index = if (target.target >= 0) target.target else (0 until MineExpeditionEngine.targetCount(state))
             .firstOrNull { it !in state.completed && !claimed(scope, state.stage, it) } ?: return
         if (index in state.completed || claimed(scope, state.stage, index)) return
-        val display = renderer.spawn(player, ItemStack(material(target.material)), ItemDisplay.ItemDisplayTransform.FIXED,
-            0.85f, 2f, 0.75, 0.85) { it.brightness = Display.Brightness(15, 15) }
-        cargo[player.uniqueId] = Cargo(scope, state.stage, index, display)
+        val held = if(state.stage in setOf(MineExpeditionStage.FACTORY_COAL,MineExpeditionStage.FACTORY_INSTALL)) {
+            val cart=runCatching { carts.spawn(scope,player,material(target.material)) }.getOrElse { error ->
+                plugin.logger.log(java.util.logging.Level.WARNING,"Factory cargo cart failed scope=$scope player=${player.uniqueId}",error)
+                player.sendActionBar(text("cart-failed",player));return
+            }
+            player.sendActionBar(text("cart-attached",player))
+            Cargo(scope,state.stage,index,cart=cart)
+        } else {
+            val display = renderer.spawn(player, ItemStack(material(target.material)), ItemDisplay.ItemDisplayTransform.FIXED,
+                0.85f, 2f, 0.75, 0.85) { it.brightness = Display.Brightness(15, 15) }
+            Cargo(scope, state.stage, index, display)
+        }
+        cargo[player.uniqueId] = held
         releaseCrank(player.uniqueId)
         if (sounds()) player.playSound(player.location, Sound.BLOCK_WOOD_PLACE, 0.65f, 0.8f)
     }

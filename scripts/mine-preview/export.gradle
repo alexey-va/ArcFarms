@@ -31,6 +31,15 @@ allprojects {
      def fixtureClass=cl.loadClass('ru.ruscrafting.farms.paper.mine.expedition.MineExpeditionFurnishings')
      def blueprintClass=cl.loadClass('ru.ruscrafting.farms.paper.mine.expedition.MineDisplayBlueprints')
      def fixtures=fixtureClass.getMethod('fixtures',plan.class).invoke(fixtureClass.getField('INSTANCE').get(null),plan)
+     // One preview-only loaded cart uses the exact runtime body; it is not permanent scenery.
+     if(kind.toString()=='DEAD_FACTORY') {
+      fixtures=new ArrayList(fixtures)
+      def pointClass=cl.loadClass('ru.ruscrafting.farms.domain.mine.expedition.ExpeditionPoint')
+      def point=pointClass.getConstructor(Integer.TYPE,Integer.TYPE,Integer.TYPE).newInstance(-14,5,20)
+      def fixtureType=cl.loadClass('ru.ruscrafting.farms.paper.mine.expedition.MineExpeditionFurnishings$Fixture')
+      fixtures.add(fixtureType.getConstructor(String.class,String.class,pointClass,Float.TYPE,Integer.TYPE)
+       .newInstance('preview_loaded_cart','cargo_cart_coal',point,1f,0))
+     }
      def models=[:]
      fixtures.each { fixture ->
       if(!models.containsKey(fixture.model)) {
@@ -55,6 +64,7 @@ allprojects {
         [id:'furnace',label:'Загрузка и печь',camera:[27,8,33],target:[19,9,23],fov:65],
         [id:'console',label:'Пульт с высоты игрока',camera:[28.5,6.62,45.5],target:[28.5,6.45,41.5],fov:65],
         [id:'press',label:'Пресс и крановый пульт',camera:[37,8,54],target:[43,8,44],fov:65],
+        [id:'cart',label:'Тележка и пульт дробилки',camera:[23,8,60],target:[23,6.2,51.5],fov:80],
         [id:'reverse',label:'От привода ко входу',camera:[36,9,17],target:[36,10,49],fov:72]]]
      if(kind.toString()=='LAST_DESCENT') recipe.preview=[defaultView:'entry',views:[
        [id:'entry',label:'Верхняя площадка',camera:[32,27,48],target:[30,24,28],fov:72],

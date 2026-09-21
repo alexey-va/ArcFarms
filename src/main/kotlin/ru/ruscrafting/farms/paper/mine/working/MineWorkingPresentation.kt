@@ -37,9 +37,14 @@ internal class MineWorkingPresentation(
     private val marker = locale?.let { WorksiteEntryMarker(it, textDisplays) }
     private val tag = NamespacedKey(plugin, "mine_working_marker")
     private val markers = mutableMapOf<String, MutableMap<String, Marker>>()
+    private val returnMarkers=ru.ruscrafting.farms.paper.mine.expedition.MineExpeditionMarkers(plugin)
+    private val returnTargets=mutableMapOf<String,MineWorkingTarget>()
     private val interactions = mutableMapOf<UUID, Pair<String, MineWorkingTarget>>()
 
-    fun target(entity: Entity): Pair<String, MineWorkingTarget>? = interactions[entity.uniqueId]
+    fun target(entity: Entity): Pair<String, MineWorkingTarget>? = returnMarkers.identity(entity)?.let { identity ->
+        val zone=identity.substringBefore('/').removePrefix("working-return:")
+        returnTargets[zone]?.let { zone to it }
+    } ?: interactions[entity.uniqueId]
         ?: drill.target(entity)?.let { (zone, position) -> zone to MineWorkingTarget("drill", position, "excavate") }
 
     fun drillPosition(runtime: MineRuntime, scene: MineWorkingScene): WorksitePosition? =
@@ -51,6 +56,7 @@ internal class MineWorkingPresentation(
     fun reconcile(runtime: MineRuntime, scene: MineWorkingScene) {
         val working = runtime.state.incident?.working ?: return
         highlights.reconcile(runtime, scene)
+        reconcileReturn(runtime,scene,false)
         val drive = scene.plan.type == ru.ruscrafting.farms.domain.MineIncidentType.TUNNEL_DRIVE && MineDriveLayout.enabled(working.placement)
         val targets = targets(runtime, scene).filter { it.label !in setOf("excavate", "clear_track") } +
             if (drive) emptyList() else listOf(MineWorkingTarget("entry", scene.plan.entrance.copy(y = scene.floor + 1), "entry"))
@@ -137,12 +143,25 @@ internal class MineWorkingPresentation(
         return locale?.renderPath("mine.working.entry", player, mapOf("floor" to floor))
     }
 
+    fun reconcileReturn(runtime: MineRuntime, scene: MineWorkingScene, completed: Boolean) {
+        if(scene.plan.type!=ru.ruscrafting.farms.domain.MineIncidentType.TUNNEL_DRIVE || !MineDriveLayout.enabled(scene.plan.placement)) return
+        val target=MineWorkingTarget("return-lift",MineDriveLayout.returnPoint(scene.plan.placement),"return-lift")
+        returnTargets[runtime.settings.id]=target
+        returnMarkers.reconcile("working-return:${runtime.settings.id}",listOf(
+            ru.ruscrafting.farms.paper.mine.expedition.MineExpeditionMarkers.Target(target.id,target.position.location(runtime.region.world),
+                org.bukkit.Material.CUT_COPPER,locale?.renderPath("mine.working.return-lift") ?: Component.text("return-lift"),
+                model="return_miner",yaw=Math.floorMod(180-scene.plan.placement.direction*90,360),glowing=completed)))
+    }
     fun cleanup(zoneId: String) {
+        returnTargets.remove(zoneId)
+        returnMarkers.clear("working-return:$zoneId")
         markers.remove(zoneId)?.values?.flatMap { it.entities }?.forEach { interactions.remove(it.uniqueId); it.remove() }
         cart.hide(zoneId)
         drill.cleanup(zoneId)
         highlights.cleanup(zoneId)
     }
+
+    fun close() { returnMarkers.cleanup();returnTargets.clear() }
 
     fun reconcileLoaded() {
         drill.reconcileLoaded()
@@ -150,7 +169,7 @@ internal class MineWorkingPresentation(
         Bukkit.getWorlds().forEach { world -> world.loadedChunks.forEach { chunk ->
             chunk.entities.filter { it.persistentDataContainer.has(tag, PersistentDataType.STRING) }.forEach(Entity::remove)
         } }
-        markers.clear(); interactions.clear()
+        markers.clear(); interactions.clear();returnMarkers.cleanup();returnTargets.clear()
     }
 
     private companion object {

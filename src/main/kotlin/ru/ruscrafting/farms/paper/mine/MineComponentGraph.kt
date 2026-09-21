@@ -149,6 +149,8 @@ internal class MineComponentGraph(
             java.nio.file.Path.of("data/recovery/mine-working-returns")),
         ports.access, ports.state, ports.tasks, clock,
         ru.ruscrafting.farms.paper.mine.working.MineDriveController(plugin, workingWorld, ports.access, ports.state, ports.tasks, workingPresentation),
+        { runtime -> lift?.floors()?.filter { it.exit.world === runtime.region.world }?.sortedByDescending { it.y }
+            ?.let { floors -> (floors.getOrNull(1) ?: floors.firstOrNull())?.exit?.clone() } },
     )
     private val expeditionWorld = ru.ruscrafting.farms.paper.mine.expedition.MineExpeditionWorld(
         plugin, ru.ruscrafting.farms.paper.mine.expedition.BukkitMineExpeditionWorldRegistry(plugin),

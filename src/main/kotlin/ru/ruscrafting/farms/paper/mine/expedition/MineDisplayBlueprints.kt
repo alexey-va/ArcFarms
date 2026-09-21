@@ -9,7 +9,7 @@ import kotlin.math.*
 internal object MineDisplayBlueprints {
     val kinds = setOf("pipe_valve", "sluice", "coal_bunker", "feed_hopper", "casting_bed", "casting_rack",
         "assembly_bench", "crane_console", "furnace_console", "furnace", "waterwheel", "pump", "crusher",
-        "tank", "winch", "rack", "console", "valve", "finished_gear", "drive_rig")
+        "tank", "winch", "rack", "console", "valve", "finished_gear", "drive_rig", "machine_console", "cargo_cart_coal", "cargo_cart_iron", "return_miner")
     data class Part(val material: Material, val center: Vector3f, val size: Vector3f,
         val angle: Float = 0f, val moving: Boolean = false, val pivot: Vector3f = Vector3f(), val motion: String = "rotate")
     fun model(kind: String): List<Part> = buildList {
@@ -46,6 +46,52 @@ internal object MineDisplayBlueprints {
             }
         }
         when(kind) {
+            "return_miner" -> {
+                box(Material.POLISHED_DEEPSLATE,0f,.16f,0f,1.4f,.32f,1.2f)
+                box(Material.CUT_COPPER,0f,.7f,0f,.5f,.7f,.5f)
+                box(Material.TERRACOTTA,0f,1.35f,0f,.9f,.9f,.8f)
+                box(Material.YELLOW_TERRACOTTA,0f,1.87f,0f,1.08f,.18f,.96f)
+                box(Material.YELLOW_TERRACOTTA,0f,1.72f,-.24f,.94f,.15f,.35f)
+                for(x in listOf(-.22f,.22f)) box(Material.POLISHED_BLACKSTONE,x,1.42f,.415f,.16f,.13f,.03f)
+                box(Material.DARK_OAK_PLANKS,0f,1.12f,.43f,.65f,.25f,.05f)
+                box(Material.IRON_BLOCK,0f,1.83f,.52f,.38f,.29f,.13f)
+                box(Material.SEA_LANTERN,0f,1.83f,.6f,.24f,.19f,.02f)
+            }
+            "machine_console" -> {
+                box(Material.POLISHED_DEEPSLATE,0f,.12f,0f,1.7f,.24f,1.1f)
+                box(Material.POLISHED_ANDESITE,0f,.65f,0f,.55f,.82f,.5f)
+                box(Material.WEATHERED_CUT_COPPER,0f,1.16f,0f,1.6f,.34f,1f)
+                box(Material.POLISHED_BLACKSTONE,0f,1.4f,-.34f,1.4f,.45f,.18f)
+                box(Material.CYAN_STAINED_GLASS,-.3f,1.43f,-.21f,.6f,.25f,.03f)
+                box(Material.SEA_LANTERN,-.3f,1.43f,-.25f,.48f,.17f,.02f)
+                box(Material.LIME_CONCRETE,.48f,1.39f,-.22f,.2f,.18f,.06f)
+                box(Material.POLISHED_BLACKSTONE,0f,1.36f,.24f,.55f,.05f,.45f)
+                box(Material.IRON_BLOCK,0f,1.57f,.24f,.1f,.4f,.1f,moving=true,pivot=Vector3f(0f,1.39f,.24f),motion="lever")
+                box(Material.RED_CONCRETE,0f,1.78f,.24f,.36f,.16f,.23f,moving=true,pivot=Vector3f(0f,1.39f,.24f),motion="lever")
+            }
+            "cargo_cart_coal", "cargo_cart_iron" -> {
+                box(Material.POLISHED_BLACKSTONE,0f,.58f,0f,1.5f,.2f,1.9f)
+                box(Material.WEATHERED_CUT_COPPER,0f,.72f,0f,1.35f,.08f,1.65f)
+                for(x in listOf(-.78f,.78f)) {
+                    box(Material.CUT_COPPER,x,.89f,0f,.12f,.5f,1.8f)
+                    box(Material.IRON_BLOCK,x,1.05f,1.12f,.09f,.09f,.55f)
+                }
+                box(Material.DARK_OAK_PLANKS,0f,1.05f,1.42f,1.75f,.13f,.15f)
+                for(z in listOf(-.85f,.85f)) box(Material.CUT_COPPER,0f,.9f,z,1.3f,.3f,.1f)
+                for(x in listOf(-.87f,.87f)) for(z in listOf(-.57f,.57f)) {
+                    val pivot=Vector3f(x,.32f,z)
+                    repeat(8) { i -> val a=i*PI.toFloat()/4
+                        box(Material.POLISHED_BLACKSTONE,x,.32f+cos(a)*.24f,z+sin(a)*.24f,.18f,.1f,.145f,a,true,pivot,"axle")
+                    }
+                    box(Material.IRON_BLOCK,x,.32f,z,.22f,.16f,.16f)
+                }
+                if(kind=="cargo_cart_coal") for(x in listOf(-.33f,.33f)) for(z in listOf(-.45f,.15f,.58f))
+                    box(Material.COAL_BLOCK,x,.99f,z,.59f,.4f,.38f)
+                else for(z in listOf(-.52f,0f,.52f)) {
+                    box(Material.IRON_BLOCK,0f,.9f,z,1.15f,.25f,.43f)
+                    box(Material.POLISHED_BASALT,0f,1.06f,z,.13f,.05f,.45f)
+                }
+            }
             "drive_rig" -> addAll(ru.ruscrafting.farms.paper.mine.working.MineDriveModel.parts)
             "pipe_valve" -> {
                 frame(4.2f,2.4f,4.2f)
@@ -232,9 +278,11 @@ internal object MineDisplayBlueprints {
         part.motion=="lever" -> sin(phase/2)*.5f
         else -> phase
     }
-    fun rotation(part: Part, phase: Float): Quaternionf = Quaternionf().rotateZ(part.angle+angle(part,phase))
+    fun rotation(part: Part, phase: Float): Quaternionf = if(part.motion=="axle")
+        Quaternionf().rotateX(part.angle+phase) else Quaternionf().rotateZ(part.angle+angle(part,phase))
     fun center(part:Part,phase:Float):Vector3f = when {
         !part.moving -> Vector3f(part.center)
+        part.motion=="axle" -> Quaternionf().rotateX(phase).transform(Vector3f(part.center).sub(part.pivot)).add(part.pivot)
         part.motion=="press" -> Vector3f(part.center).add(0f,-(1-cos(phase))*.5f,0f)
         else -> Quaternionf().rotateZ(angle(part,phase)).transform(Vector3f(part.center).sub(part.pivot)).add(part.pivot)
     }

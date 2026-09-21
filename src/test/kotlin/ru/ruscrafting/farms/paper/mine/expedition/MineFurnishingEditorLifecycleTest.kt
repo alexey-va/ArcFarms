@@ -38,6 +38,8 @@ class MineFurnishingEditorLifecycleTest : FunSpec({
                 editor.yaw(scene,"decor_crusher_left") shouldBe 180
                 MineExpeditionFurnishings.targets(scene,null,emptySet()).filter { it.id.startsWith("decor_crusher_") }
                     .map { it.yaw } shouldBe listOf(180,180)
+                val console=MineExpeditionFurnishings.fixtures(scene).first { it.id=="control_crusher_left" }
+                editor.position(scene,console.id,console.at) shouldBe console.at
                 supervisor.activate()
                 editor.initialize()
                 val deadline = System.nanoTime() + 2_000_000_000L
@@ -51,6 +53,8 @@ class MineFurnishingEditorLifecycleTest : FunSpec({
                 val crusher=MineExpeditionFurnishings.fixtures(scene).first { it.id=="decor_crusher_left" }
                 editor.position(scene,crusher.id,crusher.at) shouldBe crusher.at.offset(dx=4)
                 MineExpeditionFurnishings.targets(scene,editor,emptySet()).first { it.id==crusher.id }.yaw shouldBe 270
+                // Authored 180 degree crusher facing must not mirror the nearby control; admin rotation moves both.
+                editor.position(scene,console.id,console.at) shouldBe ExpeditionPoint(-8,5,5)
                 tasks.tokenRequests shouldBe 1
             } finally {
                 supervisor.close(); editor.close(); repository.close(); markers.cleanup()

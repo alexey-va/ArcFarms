@@ -293,6 +293,40 @@ class MineWorkingLifecycleMockBukkitTest : FunSpec({
         verify(exactly=1) { drive.mount(runtime,player) }
     }
 
+    test("discovery return head uses the configured lift landing without requiring an entrance lease") {
+        val world=paper.server.addSimpleWorld("world")
+        val player=paper.server.addPlayer("ReturningMiner")
+        val at=Location(world,4.5,65.0,4.5)
+        player.teleport(at)
+        val runtime=lifecycleRuntime(world)
+        val registry=MineRuntimeRegistry().also { it.replace(listOf(runtime)) }
+        val sceneWorld=mockk<MineWorkingWorld>(relaxed=true)
+        val scene=mockk<MineWorkingScene>(relaxed=true)
+        val presentation=mockk<MineWorkingPresentation>(relaxed=true)
+        val travel=mockk<WorksiteExpeditionTravel>(relaxed=true)
+        val access=mockk<WorksiteAccessPort>(relaxed=true)
+        val drive=mockk<MineDriveController>(relaxed=true)
+        val entity=world.spawn(at,org.bukkit.entity.Interaction::class.java)
+        val target=MineWorkingTarget("return-lift",WorksitePosition(world.name,4,65,4),"return-lift")
+        val lift=Location(world,72.5,97.0,27.5)
+        every { drive.zone(entity) } returns null
+        every { presentation.target(entity) } returns (runtime.settings.id to target)
+        every { sceneWorld.scene(runtime) } returns scene
+        every { scene.inside(any()) } returns true
+        every { access.hasAccess(player,runtime.settings.permission) } returns true
+        every { access.isAdminEditing(player) } returns false
+        every { travel.evacuatePlayer(player,lift) } returns true
+        val controller=MineWorkingController(registry,mockk(relaxed=true),sceneWorld,mockk(relaxed=true),mockk(relaxed=true),
+            presentation,travel,access,mockk(relaxed=true),mockk(relaxed=true),{2000L},drive,{lift})
+        val click=org.bukkit.event.player.PlayerInteractEntityEvent(player,entity,org.bukkit.inventory.EquipmentSlot.HAND)
+        controller.onInteractEntity(click) shouldBe true
+        verify(exactly=1) { travel.evacuatePlayer(player,lift) }
+        verify(exactly=1) { travel.reconcile(player,inside=false) }
+        player.teleport(at.clone().add(15.0,0.0,0.0))
+        controller.onInteractEntity(click)
+        verify(exactly=1) { travel.evacuatePlayer(player,lift) }
+    }
+
     test("completed working remains walkable during grace and restores after everyone leaves") {
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("GraceMiner")
