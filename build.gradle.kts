@@ -5,7 +5,7 @@ plugins {
     jacoco
 }
 group = "ru.ruscrafting"
-version = "0.44.11"
+version = "0.44.12"
 description = "Shared farm, lumbermill, and mine activities for RusCrafting"
 
 val integrationTestSourceSet = sourceSets.create("integrationTest") {

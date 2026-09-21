@@ -378,16 +378,19 @@ Ark** sends a tracked machine through branching caves: load fuel, clear its
 jammed drill, refill coolant and bring crystal cores aboard before returning.
 **The Dead Factory** connects a waterwheel, furnace, casting mould and gantry:
 commission the water line, haul fuel by cart, catch the furnace signal,
-dose molten metal from the casting console, run the overhead crane, then pull
+dose molten metal from the casting console, run the overhead crane, then push
 its casting to a powered press. Pumps and crushers have separate waist-height
 consoles beside their service aisles; those controls follow saved machine edits.
+Commissioned crushers keep turning throughout the remaining factory tasks, with
+light grinding dust and a periodic grinding/crunching sound, until the event ends.
 The casting control opens the flow with one click: close it with a second click
 when the lever outline, indicator and percentage instruction turn green
 (65–90% full). The percentage and short instruction replace the redundant bar.
 Bright pulses travel along the glazed furnace conduit and drop into the mould
 only while the flow is open; the conduit follows the editable casting assembly.
 A short dose or overflow drains for a free retry.
-Fuel and iron carts use visible loads, rolling wheels and a vanilla leash;
+Fuel and iron carts are pushed ahead of the player, with visible loads,
+rolling wheels and a vanilla leash;
 approaching the receiver and right-clicking both use the same delivery transition.
 Leaving the factory, disconnecting, stage replacement and reload retire the cart
 and return any unfinished load. No inventory items or extra drops are created.

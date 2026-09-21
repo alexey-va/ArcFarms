@@ -7,13 +7,14 @@ import org.bukkit.Sound
 import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.domain.mine.expedition.*
 
-/** Local, bounded feedback for the active production stage. No timers or persistent entities. */
+/** Local, bounded feedback for commissioned machines and the current task. No extra timers or entities. */
 internal class MineFactoryPresentation(private val plugin:Plugin,private val markers:MineExpeditionMarkers) {
     private data class Frame(var nextParticles:Long=0,var nextSound:Long=0,var nextFlow:Long=0,var heatSignal:Long=-1,
         var pressHit:Boolean=false)
     private val frames=mutableMapOf<Long,Frame>()
     fun tick(scene:MineExpeditionScene,state:MineExpeditionState,scope:String,now:Long,angles:Map<String,Double>) {
         if(scene.kind!=MineExpeditionKind.DEAD_FACTORY || scene.placement.geometryVersion<3) return
+        if(state.stage==MineExpeditionStage.COMPLETE) { clear(scene); return }
         val f=frames.getOrPut(scene.journalSequence) { Frame() }
         val decor="furnish:${scene.journalSequence}"
         fun at(id:String,x:Double=0.0,y:Double=0.0,z:Double=0.0)=
@@ -23,23 +24,14 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
         val light = if (heatReady) Material.LIME_CONCRETE else if (heating) Material.YELLOW_CONCRETE else Material.RED_CONCRETE
         markers.signal(scope, "furnace_control", light)
         markers.signal(decor, "furnace_control", light)
-        if (state.stage == MineExpeditionStage.FACTORY_WATER) {
-            MineFactoryProgram.targets(scene.plan,state).filter { it.interaction == MineExpeditionInteraction.OPERATE }.forEach { target ->
-                val angle=angles[target.id] ?: 0.0
-                if(angle>0.0) {
-                    markers.rotate(decor,MineFactoryProgram.machine(target.id),angle*3)
-                    if(now>=f.nextSound) sound(at(MineFactoryProgram.machine(target.id),y=2.0),if(target.id.contains("pump")) Sound.BLOCK_PISTON_EXTEND else Sound.BLOCK_GRINDSTONE_USE,.6f,.7f)
-                    if(now>=f.nextParticles) particles(at(MineFactoryProgram.machine(target.id),y=2.2),if(target.id.contains("pump")) Particle.SPLASH else Particle.ASH,8,.5,.3,.5,.025)
-                }
-            }
-        }
+        val running=MineFactoryProgram.runningMachines(state,angles.filterValues { it>0.0 }.keys)
         val water=state.stage!=MineExpeditionStage.FACTORY_WATER || state.completed.isNotEmpty()
         val hot=state.stage in setOf(MineExpeditionStage.FACTORY_HEAT,MineExpeditionStage.FACTORY_POUR)
         val phase=(now%12_000L).toDouble()/12_000*Math.PI*2
-        for(id in listOf("decor_waterwheel","decor_pump_left","decor_pump_right","decor_crusher_left","decor_crusher_right")) {
-            val working=water && (!id.contains("crusher") || state.stage in setOf(MineExpeditionStage.FACTORY_COAL,MineExpeditionStage.FACTORY_HEAT))
-            if(working) markers.rotate(decor,id,phase)
-        }
+        if(water) markers.rotate(decor,"decor_waterwheel",phase)
+        // A steady clock drives both startup and production: finishing the startup cycle never freezes the rotor.
+        val crusherPhase=(now%3_000L).toDouble()/3_000*Math.PI*2
+        for(id in running) markers.rotate(decor,id,if(id.contains("crusher")) crusherPhase else phase)
         val press=angles["assembly_socket"] ?: 0.0
         if(state.stage==MineExpeditionStage.FACTORY_INSTALL) markers.rotate(scope,"assembly_socket",press)
         if(press==0.0) f.pressHit=false
@@ -70,10 +62,20 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
             }
             if(soundTick) sound(at("decor_furnace_left",y=3.0,z=2.0),Sound.BLOCK_FURNACE_FIRE_CRACKLE,.65f,.85f)
         }
-        if(state.stage in setOf(MineExpeditionStage.FACTORY_COAL,MineExpeditionStage.FACTORY_HEAT)) {
-            if(particleTick) for(id in listOf("decor_crusher_left","decor_crusher_right"))
-                particles(at(id,y=2.2,z=.2),Particle.ASH,3,.45,.2,.5,.012)
-            if(soundTick) sound(at("decor_crusher_left",y=2.0),Sound.BLOCK_GRINDSTONE_USE,.4f,.65f)
+        for(id in running) {
+            if(id.contains("crusher")) {
+                if(particleTick) {
+                    particles(at(id,y=2.2,z=.2),Particle.ASH,4,.55,.2,.5,.012)
+                    particles(at(id,y=2.3,z=.2),Particle.CLOUD,2,.4,.12,.35,.006)
+                }
+                if(soundTick) {
+                    sound(at(id,y=2.0),Sound.BLOCK_GRINDSTONE_USE,.55f,.65f)
+                    sound(at(id,y=2.0),Sound.BLOCK_STONE_BREAK,.2f,.6f)
+                }
+            } else if(state.stage==MineExpeditionStage.FACTORY_WATER) {
+                if(particleTick) particles(at(id,y=2.2),Particle.SPLASH,8,.5,.3,.5,.025)
+                if(soundTick) sound(at(id,y=2.0),Sound.BLOCK_PISTON_EXTEND,.6f,.7f)
+            }
         }
         val pouring=state.stage==MineExpeditionStage.FACTORY_POUR && (angles["pour_control"] ?: 0.0)>0
         if(pouring) {
