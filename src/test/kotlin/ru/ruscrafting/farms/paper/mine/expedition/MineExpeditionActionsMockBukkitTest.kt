@@ -1,5 +1,6 @@
 package ru.ruscrafting.farms.paper.mine.expedition
 
+import com.google.gson.Gson
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import org.bukkit.Location
@@ -20,7 +21,12 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
     beforeEach {
         paper = MockBukkitTestRuntime.open()
         world = paper.server.addSimpleWorld("factory_operations")
-        val plan = MineExpeditionGenerator.plan(MineExpeditionKind.DEAD_FACTORY, 73L)
+        // Keep the long-standing action contract on a legacy station map; the
+        // connected-line flow below is covered by its own station extension.
+        // Retain crane_load so the existing press lease tests exercise their
+        // original casting cart path.
+        val currentPlan = MineExpeditionGenerator.plan(MineExpeditionKind.DEAD_FACTORY, 73L)
+        val plan = currentPlan.copy(stations = currentPlan.stations - "crusher_feed")
         val placement = MineExpeditionPlacement(world.name, 0, 60, 0, 73L)
         val surface = Location(world, 0.5, 65.0, 24.5)
         scene = MineExpeditionScene(plan, placement, world, "factory", 1, 1, 1, surface,
@@ -128,7 +134,8 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         actions.interact(scope, scene, state, player, pickup, 1_000, { true }) {}
         player.teleport(scene.at(press.position))
         actions.interact(scope, scene, state, player, press, 2_000, { true }) {}
-        player.teleport(scene.at(press.position).add(20.0, 0.0, 0.0))
+        // Cross the aisle while remaining inside the new production room.
+        player.teleport(scene.at(press.position).add(0.0, 0.0, 20.0))
         actions.tick(scope, scene, state, targets, listOf(player), 3_000, { _, _ -> error("early press completion") }) { _, _ -> }
         world.entities.filterIsInstance<ItemDisplay>().size shouldBe 0
         world.entities.count { actions.owns(it) } shouldBe 0 // unloaded cart releases its rope immediately
@@ -262,6 +269,102 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         world.entities.filterIsInstance<org.bukkit.entity.Item>().size shouldBe 0
     }
 
+    test("connected factory repairs in order and carries raw charge through crusher to furnace") {
+        val connectedPlan = scene.plan.copy(stations = scene.plan.stations + connectedStationsForActions())
+        val connected = MineExpeditionScene(
+            connectedPlan,
+            scene.placement,
+            world,
+            "connected-factory",
+            2,
+            2,
+            2,
+            scene.surface,
+            WorksitePreparedScene(world, "connected-factory", 2, 2, scene.surface, scene.surface, scene.surface, emptyList()),
+        ).also { it.refreshReady(building = false, complete = true) }
+        val player = paper.server.addPlayer()
+        var state = MineExpeditionState(connected.placement, MineExpeditionStage.FACTORY_WATER, factoryProgram = 2)
+        fun complete(step: MineExpeditionStep): Boolean {
+            if (step.accepted) state = step.state
+            return step.accepted
+        }
+
+        val waterTargets = MineExpeditionObjectives.targets(connected.plan, state, null)
+        val repairPickup = waterTargets.single { it.interaction == MineExpeditionInteraction.PICKUP }
+        player.teleport(connected.at(repairPickup.position))
+        actions.interact("connected-factory", connected, state, player, repairPickup, 1_100, ::complete) {}
+        actions.carrying(player, "connected-factory") shouldBe true
+
+        val wrongReceiver = MineExpeditionObjective(
+            "furnace_input", connected.plan.stations.getValue("furnace_input"),
+            MineExpeditionInteraction.DELIVER, "IRON_NUGGET", 0,
+        )
+        player.teleport(connected.at(wrongReceiver.position))
+        actions.interact("connected-factory", connected, state, player, wrongReceiver, 1_200, ::complete) {}
+        actions.carrying(player, "connected-factory") shouldBe true
+
+        val repairReceiver = MineExpeditionObjectives.targets(connected.plan, state, null)
+            .single { it.interaction == MineExpeditionInteraction.DELIVER }
+        player.teleport(connected.at(repairReceiver.position))
+        actions.interact("connected-factory", connected, state, player, repairReceiver, 1_300, ::complete) {}
+        state.completed shouldBe setOf(0)
+        actions.carrying(player, "connected-factory") shouldBe false
+
+        val restored = Gson().fromJson(Gson().toJson(state), MineExpeditionState::class.java)
+        restored.validate()
+        MineExpeditionObjectives.targets(connected.plan, restored, null).single().id shouldBe "water_valve_1"
+        state = restored
+
+        repeat(8) { index ->
+            val valve = MineExpeditionObjectives.targets(connected.plan, state, null).single()
+            player.teleport(connected.at(valve.position))
+            actions.interact("connected-factory", connected, state, player, valve, 2_000L + index * 300L, ::complete) {}
+        }
+        state.completed shouldBe setOf(0, 1)
+        val crusher = MineExpeditionObjectives.targets(connected.plan, state, null).single()
+        player.teleport(connected.at(crusher.position))
+        actions.interact("connected-factory", connected, state, player, crusher, 5_000, ::complete) {}
+        player.teleport(Location(world, 20.5, 65.0, 20.5)) // still inside the bounded expedition
+        actions.tick("connected-factory", connected, state, listOf(crusher), listOf(player), 7_999,
+            { _, step -> complete(step) }) { _, _ -> }
+        state.stage shouldBe MineExpeditionStage.FACTORY_WATER
+        actions.tick("connected-factory", connected, state, listOf(crusher), listOf(player), 8_000,
+            { _, step -> complete(step) }) { _, _ -> }
+        state.stage shouldBe MineExpeditionStage.FACTORY_COAL
+
+        var chargeTargets = MineExpeditionObjectives.targets(connected.plan, state, null)
+        val rawPickup = chargeTargets.single { it.interaction == MineExpeditionInteraction.PICKUP }
+        player.teleport(connected.at(rawPickup.position))
+        actions.interact("connected-factory", connected, state, player, rawPickup, 9_000, ::complete) {}
+        val rawDelivery = MineExpeditionObjectives.targets(connected.plan, state, null)
+            .single { it.interaction == MineExpeditionInteraction.DELIVER }
+        player.teleport(connected.at(rawDelivery.position))
+        actions.interact("connected-factory", connected, state, player, rawDelivery, 9_100, ::complete) {}
+        state.completed shouldBe setOf(0)
+
+        val process = MineExpeditionObjectives.targets(connected.plan, state, null).single()
+        player.teleport(connected.at(process.position))
+        actions.interact("connected-factory", connected, state, player, process, 10_000, ::complete) {}
+        player.teleport(Location(world, 20.5, 65.0, 20.5))
+        actions.tick("connected-factory", connected, state, listOf(process), listOf(player), 15_999,
+            { _, step -> complete(step) }) { _, _ -> }
+        state.completed shouldBe setOf(0)
+        actions.tick("connected-factory", connected, state, listOf(process), listOf(player), 16_000,
+            { _, step -> complete(step) }) { _, _ -> }
+        state.completed shouldBe setOf(0, 1)
+
+        chargeTargets = MineExpeditionObjectives.targets(connected.plan, state, null)
+        val processedPickup = chargeTargets.single { it.interaction == MineExpeditionInteraction.PICKUP }
+        player.teleport(connected.at(processedPickup.position))
+        actions.interact("connected-factory", connected, state, player, processedPickup, 17_000, ::complete) {}
+        val furnace = MineExpeditionObjectives.targets(connected.plan, state, null)
+            .single { it.interaction == MineExpeditionInteraction.DELIVER }
+        player.teleport(connected.at(furnace.position))
+        actions.interact("connected-factory", connected, state, player, furnace, 17_100, ::complete) {}
+        state.stage shouldBe MineExpeditionStage.FACTORY_HEAT
+        actions.carrying(player, "connected-factory") shouldBe false
+    }
+
     test("casting is a measured pour and cannot be completed by click spam or another player") {
         var state=MineExpeditionState(scene.placement,MineExpeditionStage.FACTORY_POUR)
         val target=MineExpeditionObjectives.targets(scene.plan,state,null).single()
@@ -382,6 +485,16 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         world.entities.filterIsInstance<org.bukkit.entity.BlockDisplay>().size shouldBe 0
     }
 })
+
+private fun connectedStationsForActions(): Map<String, ExpeditionPoint> = mapOf(
+    "crusher_feed" to ExpeditionPoint(-4, 5, 6),
+    "crushed_output" to ExpeditionPoint(4, 5, 6),
+    "crusher_repair" to ExpeditionPoint(-4, 5, 8),
+    "repair_supply_0" to ExpeditionPoint(-10, 5, 8),
+    "repair_supply_1" to ExpeditionPoint(0, 5, 8),
+    "repair_supply_2" to ExpeditionPoint(10, 5, 8),
+    "control_crusher_left" to ExpeditionPoint(-4, 5, 10),
+)
 
 /** Records packet bodies without replacing world, player, native leash or cargo transitions. */
 private class RecordingCartVisuals : MineFactoryCartVisuals {

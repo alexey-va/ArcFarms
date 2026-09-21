@@ -39,7 +39,19 @@ internal class MineFactoryCarts(private val plugin: Plugin, private val visuals:
             at.x = player.location.x + pushDirection.first * CART_DISTANCE
             at.z = player.location.z + pushDirection.second * CART_DISTANCE
         }
-        val parts = MineDisplayBlueprints.model(if(material == Material.COAL_BLOCK) "cargo_cart_coal" else "cargo_cart_iron")
+        val cartModel = when (material) {
+            Material.COAL_BLOCK -> "cargo_cart_coal"
+            // The crusher charge is physically the same heavy load before and
+            // after processing; its dedicated blueprint makes that chain
+            // readable without inventing a second cargo lease.
+            Material.RAW_IRON_BLOCK -> "cargo_cart_charge"
+            else -> "cargo_cart_iron"
+        }
+        // Keep old plugin jars able to load a restored journal while the
+        // connected-line blueprint is rolled out; the new resource is still
+        // selected whenever it is present.
+        val parts = runCatching { MineDisplayBlueprints.model(cartModel) }
+            .getOrElse { MineDisplayBlueprints.model("cargo_cart_iron") }
         var body: MineFactoryCartVisuals.Body? = null
         try {
             tethers.attach(scope, player, at.clone().add(0.0, .85, 0.0)).getOrThrow()

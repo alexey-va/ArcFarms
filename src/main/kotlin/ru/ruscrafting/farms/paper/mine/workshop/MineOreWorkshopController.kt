@@ -6,6 +6,7 @@ import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.Particle
+import org.bukkit.Sound
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Interaction
 import org.bukkit.entity.ItemDisplay
@@ -22,8 +23,6 @@ import org.bukkit.util.Transformation
 import org.joml.AxisAngle4f
 import org.joml.Vector3f
 import ru.ruscrafting.farms.config.ArcFarmsLocale
-import ru.ruscrafting.farms.domain.FarmProcessingCrankState
-import ru.ruscrafting.farms.domain.FarmProcessingCrankTracker
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineWorkingEngine
@@ -39,7 +38,6 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteGuidanceTarget
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import java.util.UUID
-import kotlin.math.PI
 
 /**
  * Fixed authored ore workshop. The stations are supplied by the map owner;
@@ -50,7 +48,7 @@ import kotlin.math.PI
  * drops the transient carried display and reconstructs the source station.
  */
 internal class MineOreWorkshopController(
-    plugin: Plugin,
+    private val plugin: Plugin,
     private val stationPoints: (MineRuntime) -> Map<String, Location>,
     private val incidents: MineIncidentCoordinator,
     private val access: WorksiteAccessPort,
@@ -63,6 +61,7 @@ internal class MineOreWorkshopController(
     private data class StationEntities(
         val machine: MineWorkshopMachines.Machine,
         val hitbox: Interaction,
+        val controls: Map<String, Interaction>,
         val material: Material,
     )
 
@@ -73,8 +72,6 @@ internal class MineOreWorkshopController(
         val batch: Int,
     )
 
-    private data class CrankKey(val zoneId: String, val playerId: UUID)
-
     private val machines = MineWorkshopMachines(plugin)
     private val zoneKey = NamespacedKey(plugin, "mine_ore_workshop_zone")
     private val roleKey = NamespacedKey(plugin, "mine_ore_workshop_role")
@@ -84,8 +81,8 @@ internal class MineOreWorkshopController(
     private val carriers = mutableMapOf<UUID, Carrier>()
     private val carriedDisplays = mutableMapOf<UUID, UUID>()
     private val carriedEntityRefs = mutableMapOf<UUID, ItemDisplay>()
-    private val crankStates = mutableMapOf<CrankKey, FarmProcessingCrankState>()
-    private val crankRadians = mutableMapOf<String, Double>()
+    /** Transient only: the drive lever owns a visible crushing cycle. */
+    private val crusherCycles = mutableMapOf<String, Long>()
 
     fun configured(runtime: MineRuntime): Boolean = points(runtime) != null
 
@@ -117,26 +114,28 @@ internal class MineOreWorkshopController(
         }
         val scene = ensureScene(runtime, points) ?: return
         val working = activeWorking(runtime)
+        ensureCrusherCycle(runtime.settings.id, working, now)
         updateStationState(runtime, scene, working)
+        scene.forEach { (id, entities) -> entities.machine.render(machinePhase(id, working, now), now) }
+        if (working?.stage == MineWorkingStage.CRUSH && crusherCycleRemaining(runtime.settings.id, now) > 0L && particlesEnabled()) {
+            points[CRUSHER]?.world?.spawnParticle(
+                Particle.CRIT,
+                points.getValue(CRUSHER).clone().add(0.0, .8, 0.0),
+                2,
+                .28,
+                .14,
+                .28,
+                .01,
+            )
+        }
         if (working?.stage == MineWorkingStage.HEAT) {
             points[FURNACE]?.let { furnace ->
-                furnace.world?.spawnParticle(Particle.FLAME, furnace.clone().add(0.0, 0.8, 0.0), 2, 0.18, 0.2, 0.18, 0.01)
-            }
-        }
-        // `participants` is intentionally accepted here so the root can use one
-        // reconcile call for visuals and participant discovery. Movement work is
-        // performed by tick, where the operation is rate-limited by the tracker.
-        if (participants.isNotEmpty() && working?.stage == MineWorkingStage.CRUSH) {
-            participants.filter { participant(runtime, it) }.forEach { player ->
-                val location = points[CRUSHER] ?: return@forEach
-                if (player.world === location.world && player.location.distanceSquared(location) <= CRANK_OUTER_RADIUS * CRANK_OUTER_RADIUS + 1.0) {
-                    player.spawnParticle(Particle.CRIT, player.location.clone().add(0.0, 0.4, 0.0), 1, 0.05, 0.05, 0.05, 0.0)
-                }
+                if (particlesEnabled()) furnace.world?.spawnParticle(Particle.FLAME, furnace.clone().add(0.0, 0.8, 0.0), 2, 0.18, 0.2, 0.18, 0.01)
             }
         }
     }
 
-    /** Advances carriers, heat windows and the physical crank. */
+    /** Advances carriers, heat windows and packet-only machine animation. */
     fun tick(runtime: MineRuntime, participants: Collection<Player>, now: Long) {
         reconcile(runtime, participants, now)
         val working = activeWorking(runtime) ?: run {
@@ -153,8 +152,7 @@ internal class MineOreWorkshopController(
                 statePort.persistAsync()
             }
         }
-        if (current.stage == MineWorkingStage.CRUSH) sampleCrank(runtime, participants, points[CRUSHER], now)
-        animateCrusher(runtime, points[CRUSHER], participants)
+        scenes[runtime.settings.id]?.forEach { (id, entities) -> entities.machine.render(machinePhase(id, current, now), now) }
     }
 
     fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING) ||
@@ -187,7 +185,8 @@ internal class MineOreWorkshopController(
         val sequence = event.rightClicked.persistentDataContainer.get(sequenceKey, PersistentDataType.LONG)
         if (sequence != null && sequence != runtime.state.sequence) return true
         val role = event.rightClicked.persistentDataContainer.get(roleKey, PersistentDataType.STRING) ?: return true
-        if (role !in STATIONS || !near(event.player, points(runtime)?.get(role))) return true
+        if (role !in ALL_INTERACTION_ROLES || !near(event.player, interactionPoint(runtime, role))) return true
+        ensureCrusherCycle(runtime.settings.id, activeWorking(runtime), clock())
         interactStation(runtime, event.player, role)
         return true
     }
@@ -215,13 +214,9 @@ internal class MineOreWorkshopController(
     fun release(player: Player, reason: String = "release") {
         val carrier = carriers.remove(player.uniqueId) ?: run {
             removeCarriedDisplay(player.uniqueId)
-            crankStates.keys.removeIf { it.playerId == player.uniqueId }
-            crankProgress.keys.removeIf { it.playerId == player.uniqueId }
             return
         }
         removeCarriedDisplay(player.uniqueId)
-        crankStates.keys.removeIf { it.playerId == player.uniqueId }
-        crankProgress.keys.removeIf { it.playerId == player.uniqueId }
         // The lease is transient. The persisted state has no inventory cargo to
         // restore, so returning simply makes the authored station visible again.
         if (reason.isNotBlank()) Unit
@@ -230,15 +225,26 @@ internal class MineOreWorkshopController(
 
     fun guidanceHint(runtime: MineRuntime, player: Player, now: Long): Component? {
         val working = activeWorking(runtime) ?: return null
+        ensureCrusherCycle(runtime.settings.id, working, now)
         val stage = working.stage.name.lowercase()
         val path = if (working.stage == MineWorkingStage.HEAT) {
             if (MineWorkingEngine.canQuench(working, now)) "heat-ready" else "heat-wait"
         } else "hint.$stage"
-        return locale?.renderPath("mine.working.$path", player, mapOf(
-            "batch" to Component.text(working.batch + 1),
-            "batches" to Component.text(MineWorkingEngine.BATCHES),
-            "seconds" to Component.text(((working.heatStartedAt + MineWorkingEngine.HEAT_MILLIS - now).coerceAtLeast(0) + 999) / 1000),
-        )) ?: Component.text("${stage.replace('_', ' ')} · batch ${working.batch + 1}/${MineWorkingEngine.BATCHES}")
+        val values = buildMap {
+            put("batch", Component.text(working.batch + 1))
+            put("batches", Component.text(MineWorkingEngine.BATCHES))
+            put("seconds", Component.text(((working.heatStartedAt + MineWorkingEngine.HEAT_MILLIS - now).coerceAtLeast(0) + 999) / 1000))
+            if (working.stage == MineWorkingStage.CRUSH) {
+                put("seconds", Component.text((crusherCycleRemaining(runtime.settings.id, now) + 999) / 1000))
+            }
+        }
+        val renderedPath = if (working.stage == MineWorkingStage.CRUSH) {
+            "mine.working.crusher-controls.${crusherGuidanceKey(runtime.settings.id, working, now)}"
+        } else {
+            "mine.working.$path"
+        }
+        return locale?.renderPath(renderedPath, player, values)
+            ?: Component.text("${stage.replace('_', ' ')} · batch ${working.batch + 1}/${MineWorkingEngine.BATCHES}")
     }
 
     fun guidanceTargets(runtime: MineRuntime, player: Player): List<WorksiteGuidanceTarget> {
@@ -257,8 +263,7 @@ internal class MineOreWorkshopController(
 
     fun cleanup(reason: String = "cleanup") {
         scenes.values.flatMap { it.values }.forEach { entities ->
-            entities.machine.remove()
-            entities.hitbox.remove()
+            removeStationEntities(entities)
         }
         carriedEntityRefs.values.forEach(Entity::remove)
         carriedDisplays.values.mapNotNull(Bukkit::getEntity).forEach(Entity::remove)
@@ -272,9 +277,7 @@ internal class MineOreWorkshopController(
         carriers.clear()
         carriedDisplays.clear()
         carriedEntityRefs.clear()
-        crankStates.clear()
-        crankProgress.clear()
-        crankRadians.clear()
+        crusherCycles.clear()
         if (reason.isNotBlank()) Unit
     }
 
@@ -300,10 +303,82 @@ internal class MineOreWorkshopController(
                 OUTPUT -> pickup(runtime, player, Cargo.BILLET, working)
                 SHIPPING -> deliver(runtime, player, Cargo.BILLET, working)
             }
-            MineWorkingStage.CRUSH -> Unit // movement around the crank is authoritative
+            MineWorkingStage.CRUSH -> {
+                val target = CRUSH_CONTROLS.indexOf(station)
+                if (target < 0) return
+                val expected = working.completed.size
+                if (target != expected) {
+                    crusherFeedback(runtime, player, CRUSH_CONTROLS.getOrElse(expected) { CRUSH_CONTROLS.last() }, accepted = false)
+                    return
+                }
+                val now = clock()
+                if (target == CRUSH_CONTROLS.lastIndex && crusherCycleRemaining(runtime.settings.id, now) > 0L) {
+                    crusherFeedback(runtime, player, station, accepted = false, seconds = crusherCycleRemaining(runtime.settings.id, now))
+                    return
+                }
+                if (advance(runtime, player, target, MineWorkingEngine.CRUSH_STROKES, now)) {
+                    if (target == 1) crusherCycles[runtime.settings.id] = now
+                    if (target == CRUSH_CONTROLS.lastIndex) crusherCycles.remove(runtime.settings.id)
+                    scenes[runtime.settings.id]?.get(CRUSHER)?.machine?.pulse(station, now)
+                    crusherFeedback(runtime, player, station, accepted = true)
+                }
+            }
             else -> Unit
         }
     }
+
+    private fun crusherFeedback(runtime: MineRuntime, player: Player, control: String, accepted: Boolean, seconds: Long = 0L) {
+        val point = interactionPoint(runtime, control) ?: points(runtime)?.get(CRUSHER) ?: return
+        val world = point.world ?: return
+        if (!accepted) {
+            if (soundsEnabled()) player.playSound(point, Sound.BLOCK_NOTE_BLOCK_BASS, .35f, .65f)
+            player.sendActionBar(crusherHint(runtime, player, control, seconds))
+            return
+        }
+        val sound = when (control) {
+            CRUSH_CONTROLS[0] -> Sound.BLOCK_CHAIN_PLACE
+            CRUSH_CONTROLS[1] -> Sound.BLOCK_GRINDSTONE_USE
+            else -> Sound.BLOCK_PISTON_EXTEND
+        }
+        val pitch = when (control) {
+            CRUSH_CONTROLS[0] -> 1.1f
+            CRUSH_CONTROLS[1] -> .7f
+            else -> .85f
+        }
+        if (soundsEnabled()) world.playSound(point, sound, .7f, pitch)
+        if (particlesEnabled()) {
+            if (control == CRUSH_CONTROLS[1]) {
+                world.spawnParticle(Particle.BLOCK, point.clone().add(0.0, .8, 0.0), 10, .35, .18, .35, .02,
+                    Material.IRON_BLOCK.createBlockData())
+            } else {
+                world.spawnParticle(if (control == CRUSH_CONTROLS[2]) Particle.HAPPY_VILLAGER else Particle.CRIT,
+                    point.clone().add(0.0, .8, 0.0), 6, .35, .18, .35, 0.0)
+            }
+            world.spawnParticle(Particle.CRIT, point.clone().add(0.0, .65, 0.0), 3, .18, .12, .18, .01)
+        }
+        val next = activeWorking(runtime)?.let { state ->
+            if (state.stage == MineWorkingStage.CRUSH) CRUSH_CONTROLS.getOrElse(state.completed.size) { CRUSH_CONTROLS.last() } else control
+        } ?: control
+        player.sendActionBar(crusherHint(runtime, player, next, crusherCycleRemaining(runtime.settings.id, clock())))
+    }
+
+    private fun crusherHint(runtime: MineRuntime, player: Player, control: String, seconds: Long = 0L): Component {
+        val values = buildMap {
+            activeWorking(runtime)?.let { working ->
+                put("batch", Component.text(working.batch + 1))
+                put("batches", Component.text(MineWorkingEngine.BATCHES))
+            }
+            if (seconds > 0L) put("seconds", Component.text((seconds + 999L) / 1000L))
+        }
+        val key = if (seconds > 0L && control == CRUSH_CONTROLS.last()) "processing"
+        else crusherControlKey(CRUSH_CONTROLS.indexOf(control))
+        return locale?.renderPath("mine.working.crusher-controls.$key", player, values)
+            ?: Component.text("Use the ${crusherControlLabel(control)} lever next")
+    }
+
+    private fun soundsEnabled(): Boolean = plugin.config.getBoolean("ui.sounds", true)
+
+    private fun particlesEnabled(): Boolean = plugin.config.getBoolean("ui.particles", true)
 
     private fun pickup(runtime: MineRuntime, player: Player, cargo: Cargo, working: ru.ruscrafting.farms.domain.MineWorkingState) {
         if (carriers.values.any { it.playerId == player.uniqueId }) return
@@ -360,40 +435,44 @@ internal class MineOreWorkshopController(
         }
     }
 
-    private fun sampleCrank(runtime: MineRuntime, participants: Collection<Player>, crusher: Location?, now: Long) {
-        val center = crusher ?: return
-        val working = activeWorking(runtime) ?: return
-        participants.filter { participant(runtime, it) }.forEach { player ->
-            if (player.world !== center.world || kotlin.math.abs(player.location.y - center.y) > 1.5) return@forEach
-            val key = CrankKey(runtime.settings.id, player.uniqueId)
-            val sample = FarmProcessingCrankTracker.sample(
-                crankStates[key], player.location.x, player.location.z,
-                center.x, center.z, CRANK_INNER_RADIUS, CRANK_OUTER_RADIUS,
-                radiusTolerance = 0.35, maxStepDistance = 2.0,
-            )
-            if (sample.state == null) crankStates.remove(key) else crankStates[key] = sample.state
-            if (sample.acceptedRadians <= 0.0) return@forEach
-            crankRadians[runtime.settings.id] = (crankRadians[runtime.settings.id] ?: 0.0) + sample.acceptedRadians
-            val accumulated = crankProgress.getOrPut(key) { 0.0 } + sample.acceptedRadians
-            if (accumulated + 1e-6 >= FarmProcessingCrankTracker.FULL_LAP_RADIANS) {
-                if (advance(runtime, player, working.completed.size, MineWorkingEngine.CRUSH_STROKES, now) &&
-                    activeWorking(runtime)?.stage == MineWorkingStage.CRUSH) {
-                    crankProgress[key] = (accumulated - FarmProcessingCrankTracker.FULL_LAP_RADIANS).coerceAtLeast(0.0)
-                }
-            } else crankProgress[key] = accumulated
+    private fun animationPhase(now: Long): Float = ((now % 60_000L).toFloat() / 1_000f) * ROLLER_SPEED
+
+    private fun machinePhase(role: String, working: ru.ruscrafting.farms.domain.MineWorkingState?, now: Long): Float =
+        if (role == CRUSHER && (working?.stage != MineWorkingStage.CRUSH || working.completed.size < 2)) 0f else animationPhase(now)
+
+    private fun ensureCrusherCycle(zoneId: String, working: ru.ruscrafting.farms.domain.MineWorkingState?, now: Long) {
+        if (working?.stage == MineWorkingStage.CRUSH && working.completed.containsAll(setOf(0, 1))) {
+            crusherCycles.putIfAbsent(zoneId, now)
+        } else {
+            crusherCycles.remove(zoneId)
         }
     }
 
-    private val crankProgress = mutableMapOf<CrankKey, Double>()
+    private fun crusherCycleRemaining(zoneId: String, now: Long): Long {
+        val started = crusherCycles[zoneId] ?: return 0L
+        return (CRUSH_CYCLE_MILLIS - (now - started)).coerceAtLeast(0L)
+    }
 
-    private fun animateCrusher(runtime: MineRuntime, crusher: Location?, participants: Collection<Player>) {
-        val machine = scenes[runtime.settings.id]?.get(CRUSHER)?.machine ?: return
-        val active = activeWorking(runtime)?.stage == MineWorkingStage.CRUSH
-        machine.turn(((crankRadians[runtime.settings.id] ?: 0.0) % (2 * PI)).toFloat())
-        machine.highlight(active)
-        if (active && participants.any { participant(runtime, it) }) {
-            crusher?.world?.spawnParticle(Particle.CRIT, crusher.clone().add(0.0, 0.55, 0.0), 2, 0.2, 0.15, 0.2, 0.01)
-        }
+    private fun crusherControlKey(index: Int): String = when (index.coerceIn(0, CRUSH_CONTROLS.lastIndex)) {
+        0 -> "feed"
+        1 -> "drive"
+        else -> "release"
+    }
+
+    private fun crusherControlLabel(control: String): String = when (crusherControlKey(CRUSH_CONTROLS.indexOf(control))) {
+        "feed" -> "feed"
+        "drive" -> "drive"
+        else -> "release"
+    }
+
+    private fun crusherGuidanceKey(
+        zoneId: String,
+        working: ru.ruscrafting.farms.domain.MineWorkingState,
+        now: Long,
+    ): String = if (working.completed.size >= 2 && crusherCycleRemaining(zoneId, now) > 0L) {
+        "processing"
+    } else {
+        crusherControlKey(working.completed.size)
     }
 
     private fun advance(runtime: MineRuntime, player: Player, target: Int, total: Int, now: Long): Boolean {
@@ -405,12 +484,10 @@ internal class MineOreWorkshopController(
         val result = incidents.work(runtime, player, state = next)
         if (!result.accepted) return false
         scenes[runtime.settings.id]?.let { scene ->
+            if (step.finished || step.state.stage != working.stage) {
+                scene[CRUSHER]?.machine?.reset()
+            }
             updateStationState(runtime, scene, activeWorking(runtime))
-        }
-        if (step.finished || step.state.stage != working.stage) {
-            crankStates.keys.removeIf { it.zoneId == runtime.settings.id }
-            crankProgress.keys.removeIf { it.zoneId == runtime.settings.id }
-            if (step.state.stage == MineWorkingStage.CRUSH) crankRadians[runtime.settings.id] = 0.0
         }
         return true
     }
@@ -441,27 +518,34 @@ internal class MineOreWorkshopController(
     private fun near(player: Player, point: Location?): Boolean = point != null && point.world === player.world &&
         point.distanceSquared(player.location) <= INTERACTION_DISTANCE_SQUARED
 
+    private fun interactionPoint(runtime: MineRuntime, role: String): Location? =
+        if (role in CRUSH_CONTROLS) scenes[runtime.settings.id]?.get(CRUSHER)?.machine?.controls?.get(role)
+        else points(runtime)?.get(role)
+
     private fun ensureScene(runtime: MineRuntime, points: Map<String, Location>): MutableMap<String, StationEntities>? {
         val zone = runtime.settings.id
         val current = scenes.getOrPut(zone) { linkedMapOf() }
         STATIONS.forEach { id ->
             val point = points[id] ?: return@forEach
             val existing = current[id]
-            if (existing != null && (!existing.machine.body.isValid || !existing.hitbox.isValid || existing.machine.body.location.world !== point.world || existing.hitbox.location.distanceSquared(point.clone().add(0.0, 0.35, 0.0)) > 0.001)) {
-                existing.machine.remove(); existing.hitbox.remove(); current.remove(id)
+            val controlsValid = existing?.controls?.all { (role, hitbox) ->
+                hitbox.isValid && existing.machine.controls[role]?.let { expected ->
+                    sameLocation(hitbox.location, hitboxBase(expected, CONTROL_HITBOX_HEIGHT))
+                } == true
+            } ?: false
+            if (existing != null && (!existing.machine.body.isValid || !existing.hitbox.isValid || !controlsValid ||
+                existing.machine.body.location.world !== point.world ||
+                    existing.hitbox.location.distanceSquared(hitboxBase(point.clone().add(0.0, 0.7, 0.0), STATION_HITBOX_HEIGHT)) > 0.001)) {
+                removeStationEntities(existing)
+                current.remove(id)
             }
             if (id !in current) {
                 val machine = machines.create(id, point)
-                val hitbox = point.world!!.spawn(point.clone().add(0.0, 0.35, 0.0), Interaction::class.java) { entity ->
-                    entity.interactionWidth = 2.4f
-                    entity.interactionHeight = 2.0f
-                    entity.isResponsive = false
-                    entity.isPersistent = false
-                    entity.persistentDataContainer.set(zoneKey, PersistentDataType.STRING, zone)
-                    entity.persistentDataContainer.set(roleKey, PersistentDataType.STRING, id)
-                    entity.persistentDataContainer.set(sequenceKey, PersistentDataType.LONG, runtime.state.sequence)
+                val hitbox = spawnHitbox(runtime, id, point.clone().add(0.0, 0.7, 0.0), 1.25f, STATION_HITBOX_HEIGHT)
+                val controls = machine.controls.mapValues { (role, controlPoint) ->
+                    spawnHitbox(runtime, role, controlPoint, .72f, CONTROL_HITBOX_HEIGHT)
                 }
-                current[id] = StationEntities(machine, hitbox, STATION_MATERIALS.getValue(id))
+                current[id] = StationEntities(machine, hitbox, controls, STATION_MATERIALS.getValue(id))
             }
         }
         return current
@@ -469,26 +553,66 @@ internal class MineOreWorkshopController(
 
     private fun updateStationState(runtime: MineRuntime, scene: Map<String, StationEntities>, working: ru.ruscrafting.farms.domain.MineWorkingState?) {
         val activeTargets = working?.let { targetStations(it.stage).toSet() }.orEmpty()
+        val expectedControl = working?.takeIf { it.stage == MineWorkingStage.CRUSH }
+            ?.let { CRUSH_CONTROLS.getOrNull(it.completed.size) }
+        val billetCarried = working?.let { state ->
+            carriers.values.any { it.zoneId == runtime.settings.id && it.cargo == Cargo.BILLET && it.batch == state.batch }
+        } == true
         scene.forEach { (id, entities) ->
             val glowing = id in activeTargets
-            entities.machine.highlight(glowing)
-            entities.hitbox.isResponsive = glowing
+            val activeControl = if (id == CRUSHER && glowing) expectedControl else null
+            entities.machine.setMotionVisible(
+                "feed",
+                id == CRUSHER && working?.stage == MineWorkingStage.CRUSH && working.completed.size >= 2,
+            )
+            entities.machine.setMotionVisible(
+                "processed",
+                id == OUTPUT && working?.stage == MineWorkingStage.SHIP && !billetCarried,
+            )
+            entities.machine.setMotionVisible("cargo", id == SHIPPING && working?.stage == MineWorkingStage.SHIP)
+            entities.machine.highlight(glowing, activeControl)
+            entities.hitbox.isResponsive = glowing && activeControl == null
             entities.hitbox.persistentDataContainer.set(sequenceKey, PersistentDataType.LONG, runtime.state.sequence)
+            entities.controls.forEach { (role, control) ->
+                control.isResponsive = role == activeControl
+                control.persistentDataContainer.set(sequenceKey, PersistentDataType.LONG, runtime.state.sequence)
+            }
         }
     }
+
+    private fun spawnHitbox(runtime: MineRuntime, role: String, location: Location, width: Float, height: Float): Interaction =
+        location.world!!.spawn(hitboxBase(location, height), Interaction::class.java) { entity ->
+            entity.interactionWidth = width
+            entity.interactionHeight = height
+            entity.isResponsive = false
+            entity.isPersistent = false
+            entity.persistentDataContainer.set(zoneKey, PersistentDataType.STRING, runtime.settings.id)
+            entity.persistentDataContainer.set(roleKey, PersistentDataType.STRING, role)
+            entity.persistentDataContainer.set(sequenceKey, PersistentDataType.LONG, runtime.state.sequence)
+        }
+
+    private fun hitboxBase(center: Location, height: Float): Location = center.clone().subtract(0.0, height / 2.0, 0.0)
+
+    private fun removeStationEntities(entities: StationEntities) {
+        entities.machine.remove()
+        entities.hitbox.remove()
+        entities.controls.values.forEach(Interaction::remove)
+    }
+
+    private fun sameLocation(left: Location, right: Location): Boolean =
+        left.world === right.world && left.distanceSquared(right) <= .001
 
     private fun clearTransient(zoneId: String) {
         carriers.filterValues { it.zoneId == zoneId }.keys.toList().forEach { playerId ->
             removeCarriedDisplay(playerId)
             carriers.remove(playerId)
         }
-        crankStates.keys.removeIf { it.zoneId == zoneId }
-        crankProgress.keys.removeIf { it.zoneId == zoneId }
-        crankRadians.remove(zoneId)
+        scenes[zoneId]?.values?.forEach { it.machine.reset() }
+        crusherCycles.remove(zoneId)
     }
 
     private fun clearScene(zoneId: String) {
-        scenes.remove(zoneId)?.values?.forEach { entities -> entities.machine.remove(); entities.hitbox.remove() }
+        scenes.remove(zoneId)?.values?.forEach(::removeStationEntities)
         clearTransient(zoneId)
     }
 
@@ -512,6 +636,8 @@ internal class MineOreWorkshopController(
         const val OUTPUT = "output"
         const val SHIPPING = "shipping"
         val STATIONS = listOf(ORE, CRUSHER, FURNACE, OUTPUT, SHIPPING)
+        val CRUSH_CONTROLS = MineWorkshopMachines.CRUSH_CONTROLS
+        val ALL_INTERACTION_ROLES = STATIONS + CRUSH_CONTROLS
         val STATION_MATERIALS = mapOf(
             ORE to Material.RAW_IRON,
             CRUSHER to Material.GRINDSTONE,
@@ -521,9 +647,11 @@ internal class MineOreWorkshopController(
         )
         const val INTERACTION_DISTANCE_SQUARED = 25.0
         const val DELIVERY_DISTANCE_SQUARED = 3.0625
+        const val STATION_HITBOX_HEIGHT = 1.4f
+        const val CONTROL_HITBOX_HEIGHT = .85f
         const val CARRY_FORWARD = 0.75
         const val CARRY_Y = 1.0
-        const val CRANK_INNER_RADIUS = 1.2
-        const val CRANK_OUTER_RADIUS = 3.2
+        const val CRUSH_CYCLE_MILLIS = 4_000L
+        const val ROLLER_SPEED = 2.6f
     }
 }

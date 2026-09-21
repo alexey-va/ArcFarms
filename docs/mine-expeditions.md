@@ -11,25 +11,27 @@ The factory is a 73 × 29 × 67 cavern with a symmetric production floor, clear
 light-stone aisles, dark technical pads, large display assemblies and 25 pendant
 lamps below the roof bars. Machinery is always present on prepared sites. Only
 current objectives acquire gameplay glow. Completion returns participants;
-permanent return portals remain available independently of event markers.
+the factory's single entry return portal remains available independently of
+event markers; other expeditions may keep separate entry and exit portals.
 
 ## Factory work
 
-1. Open three water valves with eight short right-click turns each. Each turn
-   rotates the valve by 45 degrees with a mechanical click and visible progress.
-   Nearby players share progress; duplicate clicks inside 250 ms do not count.
-   The wheel and pumps start after the first completed valve. Factory controls
-   do not attach a leash or require walking around the machinery.
-2. Right-click the bunker to attach a loaded cart. Pull three loads into the feed hopper. The
-   crushers turn during loading/heating with dust and grinding sounds. Accepted
-   deliveries burst coal fragments/clouds with a loading thud; HUD and hopper
-   label show the shared 0/3–3/3 count. Carrying players are guided to the hopper.
+1. Find the loose drive gear, fit it onto the crusher shaft, open the pump valve
+   with short right-click turns and switch the crusher's mounted start lever.
+   The selected repair pickup location persists through restart. Nearby workers
+   share valve progress; duplicate clicks inside 250 ms do not count. Hand-operated
+   controls interpolate each click; powered rolls turn continuously until the event ends.
+2. Push an ore-and-coal cart from the bunker to the crusher inlet. Switch the
+   feed lever: a six-second cycle drops visible material between counter-rotating
+   toothed rolls and carries fragments along the moving belt. Collect the mix
+   at its outlet and push the loaded cart to the furnace. Only the current source
+   or receiver is highlighted; stale or wrong receiver clicks cannot grant credit.
 3. Wait for the furnace's green ready signal and bell, then right-click its
    control. The countdown is shown above the control and in the HUD. Its status
    stack changes yellow to green together with a green glow and bright end-rod
    particles. Fire and chimney smoke follow the heating/pouring stages.
 4. Start the flow from the separate console beside the casting bed. Close it
-   with another right-click while the meter is in the green 65–90% band. The
+   with another right-click while the percentage and lever glow green at 65–90%. The
    10-second fill has a 2.5-second success window, a bell, a rising molten surface,
    droplets and lava sounds. Underdosing or overflow drains for a free retry;
    leaving releases the control, and another worker cannot steal an active pour.
@@ -37,12 +39,13 @@ permanent return portals remain available independently of event markers.
    along the overhead beam and lowers it onto the unloading table. The chain
    length follows the load. The casting is absent before production and is
    hidden while a participant carries it.
-6. Pull the casting cart to the press; approach or right-click to unload. Its ram descends one block,
+6. Push the casting cart to the press; approach or right-click to unload. Its ram descends one block,
    strikes with sparks, dust and an anvil sound, then returns. The final domain
    checkpoint occurs after the whole 2.4-second stroke. The finished drive gear
    stays on the press for a 12-second result presentation with a bell, particles
-   and return countdown; only then does automatic return occur. Return portals
-   remain usable during work without objective glow, and glow after completion.
+   and return countdown; only then does automatic return occur. The return
+   portal remains usable during work without objective glow, and glows after
+   completion.
 
 A powered cycle belongs to one operator. Repeated clicks cannot restart or
 stack it. Walking away inside the factory leaves it running; leaving the site
@@ -60,14 +63,12 @@ zero premium tokens, zero XP and zero ordinary reward items. Temporary fuel and
 castings remain non-loot displays. Added machine cycles change pacing; income
 per hour has not been measured and is not claimed to be unchanged.
 
-Commissioning now rotates between the original water circuit and the left/right
-production lines. Line programs require their valve, pump and crusher; the two
-powered machines have waist-height consoles beside the service aisle with
-separate 0.85 × 1.05-block lever hitboxes. They animate for three seconds before
-granting a checkpoint, with sound and particles. Controls follow admin edits
-to their parent machine, including rotations. The selected program persists through restart. All three
-keep ten credits, the established later production stages and the same editable
-static factory. Old saves retain the original water circuit.
+Modern factory plans expose `crusher_feed` and share one connected west-to-east
+line. Legacy plans without that station retain the old commissioning variants.
+Both flows keep ten checkpoints. The continuous dark floor is migrated through
+bounded journal-first batches only where blocks still match the former default;
+custom floor blocks remain untouched. Arrival faces inward along the line, with
+one permanent return portal at the shared entry/exit anchor.
 
 ## Editing and preview
 
@@ -80,7 +81,7 @@ asynchronously. Never rebuild a site whose manual changes should be retained.
 
 `scripts/mine-preview/export.gradle` exports geometry and display models from
 Kotlin. `scripts/mine-preview/build.mjs` builds an editable Atelier preview with
-eight factory camera positions. **Demo mechanisms** animates the same wheel,
+ten factory camera positions. **Demo mechanisms** animates the same rolls, conveyor, material fragments,
 lever and press transforms; it does not simulate gameplay, cargo, sound or
 particles. Schematics contain blocks only; ArcFarms owns display assemblies.
 
@@ -206,7 +207,7 @@ release evidence below does not certify this release's client behaviour.
 
 # Экспедиции шахты
 
-Три события отправляют игроков через подсвеченный вход из `old_shafts` в отдельную процедурную локацию. Обратно можно выйти через метки у входа и конца маршрута. Для игры достаточно обычного доступа к шахте.
+Три события отправляют игроков через подсвеченный вход из `old_shafts` в заранее подготовленные постоянные локации рядом с шахтой в том же мире. Их можно обустраивать вручную; завершение ивента не перестраивает комнаты. У завода один обратный портал, у длинных маршрутов — метки на обоих концах. Для игры достаточно обычного доступа к шахте.
 
 ## Последний спуск — `LAST_DESCENT`
 
@@ -222,7 +223,7 @@ release evidence below does not certify this release's client behaviour.
 
 ## Мёртвый завод — `DEAD_FACTORY`
 
-Большой подземный цех с водяным колесом, печью, медными трубами, краном и местом сборки двигателя. Игроки раскручивают три водяных вентиля, приносят три груза топлива и открывают выпуск по зелёному сигналу печи. Затем ходят вокруг ворота, заполняя форму, подводят отливку краном и переносят её к двигателю. Колесо вращается, форма заполняется, подвешенный груз перемещается вслед за работой ворота.
+Связная производственная линия слева направо: большая валковая дробилка, конвейер, печь, заливка, роликовый стол и пресс. Сначала нужно найти выпавшую шестерню и установить на подсвеченный вал, открыть охлаждение и включить привод. Затем тележкой подать руду с углём, запустить дробление и перевезти готовую смесь к печи. По зелёному сигналу печи открыть выпуск; расплав виден в трубах и форме. Рычаг роликового стола готовит отливку к перевозке на пресс. После удара пресса игрок видит готовую деталь до возвращения. Вход смотрит на цех, подсветка указывает текущую операцию; работающая дробилка продолжает вращаться со звуком и пылью до конца ивента.
 
 ## Управление и генерация
 

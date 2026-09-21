@@ -38,7 +38,7 @@ allprojects {
       def point=pointClass.getConstructor(Integer.TYPE,Integer.TYPE,Integer.TYPE).newInstance(-14,5,20)
       def fixtureType=cl.loadClass('ru.ruscrafting.farms.paper.mine.expedition.MineExpeditionFurnishings$Fixture')
       fixtures.add(fixtureType.getConstructor(String.class,String.class,pointClass,Float.TYPE,Integer.TYPE)
-       .newInstance('preview_loaded_cart','cargo_cart_coal',point,1f,0))
+       .newInstance('preview_loaded_cart','cargo_cart_charge',point,1f,0))
      }
      def models=[:]
      fixtures.each { fixture ->
@@ -46,7 +46,7 @@ allprojects {
        models[fixture.model]=blueprintClass.getMethod('model',String.class).invoke(blueprintClass.getField('INSTANCE').get(null),fixture.model).collect{part ->
         def block='minecraft:'+part.material.name().toLowerCase()
         if(!keys.containsKey(block)) { def id='m'+keys.size();keys[block]=id;palette[id]=[block:block,color:'#858580',name:block] }
-        [block:block,center:[part.center.x,part.center.y,part.center.z],size:[part.size.x,part.size.y,part.size.z],angle:part.angle,moving:part.moving,motion:part.motion,pivot:[part.pivot.x,part.pivot.y,part.pivot.z]]
+        [block:block,center:[part.center.x,part.center.y,part.center.z],size:[part.size.x,part.size.y,part.size.z],angle:part.angle,moving:part.moving,motion:part.motion,idleHidden:part.idleHidden,pivot:[part.pivot.x,part.pivot.y,part.pivot.z]]
        }
       }
      }
@@ -56,17 +56,16 @@ allprojects {
        origin:xyz(plan.spawn.offset(0,-1,0)),route:(plan.routes['main'] ?: plan.walkingRoutes[0]).collect{p->xyz(p.offset(0,-1,0))},
        lighting:[targetLevel:8,samples:plan.walkingRoutes.flatten().unique().collect{p->xyz(p)}]]
      if(kind.toString()=='DEAD_FACTORY') recipe.preview=[defaultView:'floor',views:[
-        [id:'floor',label:'Цех со входа',camera:[36,8,58],target:[36,11,20],fov:65],
-        [id:'cross',label:'Общий разрез',camera:[95,55,90],target:[36,8,30],cutY:19],
-        [id:'wheel',label:'Водяной привод',camera:[44,9,23],target:[36,11,10],fov:65],
-        [id:'left',label:'Левый цех',camera:[36,9,42],target:[15,10,23],fov:65],
-        [id:'right',label:'Правый цех',camera:[35,9,44],target:[54,9,29],fov:65],
-        [id:'furnace',label:'Загрузка и печь',camera:[27,8,33],target:[19,9,23],fov:65],
-        [id:'console',label:'Пульт с высоты игрока',camera:[28.5,6.62,45.5],target:[28.5,6.45,41.5],fov:65],
-        [id:'pour',label:'Труба заливки и форма',camera:[58,8.5,36],target:[54,7.8,26],fov:65],
-        [id:'press',label:'Пресс и крановый пульт',camera:[37,8,54],target:[43,8,44],fov:65],
-        [id:'cart',label:'Тележка и пульт дробилки',camera:[23,8,60],target:[23,6.2,51.5],fov:80],
-        [id:'reverse',label:'От привода ко входу',camera:[36,9,17],target:[36,10,49],fov:72]]]
+        [id:'floor',label:'Вся производственная линия',camera:[36,9,54],target:[36,8,27],fov:82],
+        [id:'cross',label:'План цеха',camera:[83,65,95],target:[36,5,31],cutY:19],
+        [id:'wheel',label:'Водоснабжение',camera:[23,9,19],target:[17,8,14],fov:75],
+        [id:'crusher',label:'Дробилка и конвейер',camera:[23,8,40],target:[16,8,27],fov:75],
+        [id:'console',label:'Встроенный пульт',camera:[16.5,6.62,35],target:[16.3,6.4,31.5],fov:70],
+        [id:'furnace',label:'Печь и подача металла',camera:[35,9,40],target:[30,9,26],fov:72],
+        [id:'pour',label:'Заливка и роликовая линия',camera:[48,8.5,38],target:[43,7.5,27],fov:75],
+        [id:'press',label:'Пресс',camera:[53,8,39],target:[58,8.3,27],fov:70],
+        [id:'cart',label:'Склад сырья и тележка',camera:[22,8,58],target:[14,7,49],fov:80],
+        [id:'reverse',label:'Вдоль конвейерной линии',camera:[7,10,37],target:[52,8,27],fov:80]]]
      if(kind.toString()=='LAST_DESCENT') recipe.preview=[defaultView:'entry',views:[
        [id:'entry',label:'Верхняя площадка',camera:[32,27,48],target:[30,24,28],fov:72],
        [id:'core',label:'Машинный зал внизу',camera:[38,7,44],target:[25,9,21],fov:70],

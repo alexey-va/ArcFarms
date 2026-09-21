@@ -23,9 +23,11 @@ internal class MineExpeditionMarkers(
     data class Target(val id: String, val location: Location, val material: Material, val label: Component,
         val block: Boolean = false, val model: String? = null, val modelScale: Float = 1f, val glowing: Boolean = true,
         val yaw: Int = 0, val editKey: String? = null,
-        val editBase: ru.ruscrafting.farms.domain.mine.expedition.ExpeditionPoint? = null)
+        val editBase: ru.ruscrafting.farms.domain.mine.expedition.ExpeditionPoint? = null,
+        val interactive: Boolean = true)
     private data class Marker(val displays: List<PacketBlockDisplay>, val hitbox: Interaction,
-        val label: PacketTextDisplay, var target: Target, val parts: List<MineDisplayBlueprints.Part>, var signal: Material = Material.AIR)
+        val label: PacketTextDisplay, var target: Target, val parts: List<MineDisplayBlueprints.Part>,
+        var phase: Float = 0f, var signal: Material = Material.AIR)
     private val key = NamespacedKey(plugin, keyName)
     private val markers = linkedMapOf<String, Marker>()
     private var renderer: PaperPacketDisplays? = null
@@ -48,12 +50,16 @@ internal class MineExpeditionMarkers(
             val id = "$scope/${target.id}"
             val old = markers[id]
             if (old == null || !old.hitbox.isValid || old.target.material != target.material ||
-                old.target.block != target.block || old.target.model != target.model || old.target.modelScale != target.modelScale || old.target.yaw != target.yaw || old.target.location != target.location) {
+                old.target.interactive != target.interactive || old.target.block != target.block || old.target.model != target.model || old.target.modelScale != target.modelScale || old.target.yaw != target.yaw || old.target.location != target.location) {
                 if(spawned>=2 || System.nanoTime()>deadline) continue
                 remove(id); markers[id] = spawn(id, target);spawned++
             } else {
                 if (old.target.label != target.label) old.label.text(target.label)
-                if (old.target.glowing != target.glowing) old.displays.forEachIndexed { index,display -> display.isGlowing = target.glowing && (target.model!="machine_console" || old.parts[index].motion=="lever") }
+                if (old.target.glowing != target.glowing) {
+                    old.displays.forEachIndexed { index, display ->
+                        display.isGlowing = glowFor(target, old.parts, index)
+                    }
+                }
                 old.target = target
             }
         }
@@ -88,7 +94,19 @@ internal class MineExpeditionMarkers(
         val marker = markers["$scope/$id"] ?: return
         if (portal(marker.target) || marker.target.block) return
         if (marker.parts.isEmpty()) return
-        positionParts(marker.displays,marker.parts,marker.target.yaw,radians.toFloat(),marker.target.modelScale,onlyMoving=true)
+        marker.phase = radians.toFloat()
+        positionParts(marker.displays,marker.parts,marker.target.yaw,marker.phase,marker.target.modelScale,onlyMoving=true)
+    }
+
+    /** Toggle one transient assembly motion without respawning the marker. */
+    fun motionVisible(scope: String, id: String, motion: String, visible: Boolean) {
+        val marker = markers["$scope/$id"] ?: return
+        val matching = marker.parts.withIndex().filter { it.value.motion == motion }
+        if (matching.isEmpty()) return
+        if (matching.all { marker.displays[it.index].isVisibleByDefault == visible }) return
+        matching.forEach { marker.displays[it.index].isVisibleByDefault = visible }
+        positionParts(marker.displays, marker.parts, marker.target.yaw, marker.phase, marker.target.modelScale,
+            onlyMoving=true, motion=motion)
     }
 
     fun signal(scope: String, id: String, lit: Material) {
@@ -106,15 +124,18 @@ internal class MineExpeditionMarkers(
         marker.displays.forEach { it.glowColorOverride = color }
     }
 
-    private fun positionParts(displays: List<PacketBlockDisplay>, parts: List<MineDisplayBlueprints.Part>, yaw: Int, phase: Float, scale: Float, onlyMoving: Boolean = false) {
+    private fun positionParts(displays: List<PacketBlockDisplay>, parts: List<MineDisplayBlueprints.Part>, yaw: Int,
+        phase: Float, scale: Float, onlyMoving: Boolean = false, motion: String? = null) {
         val worldRotation=Quaternionf().rotateY(Math.toRadians(yaw.toDouble()).toFloat())
         displays.zip(parts).forEach { (display,part) ->
             if(onlyMoving && !part.moving) return@forEach
+            if(motion != null && part.motion != motion) return@forEach
             val rotation=Quaternionf(worldRotation).mul(MineDisplayBlueprints.rotation(part,phase))
+            val continuousRotation = MineExpeditionMarkerGeometry.continuousRotation(rotation, display.transformation.leftRotation)
             val center=worldRotation.transform(MineDisplayBlueprints.center(part,phase).mul(scale))
             val corner=Vector3f(part.size).mul(-.5f*scale)
-            rotation.transform(corner).add(center)
-            val desired=Transformation(corner,rotation,Vector3f(part.size).mul(scale),Quaternionf())
+            continuousRotation.transform(corner).add(center)
+            val desired=Transformation(corner,continuousRotation,Vector3f(part.size).mul(scale),Quaternionf())
             if (display.transformation != desired) {
                 display.interpolationDelay=0
                 display.transformation=desired
@@ -124,17 +145,24 @@ internal class MineExpeditionMarkers(
 
     private fun spawn(id: String, target: Target): Marker {
         val visuals = mutableListOf<PacketBlockDisplay>()
-        fun part(material: Material, x: Float, y: Float, z: Float, sx: Float, sy: Float, sz: Float, glow: Boolean = target.glowing) {
-            visuals += renderer().spawnBlock(target.location, material.createBlockData()).apply {
+        fun part(material: Material, x: Float, y: Float, z: Float, sx: Float, sy: Float, sz: Float, glow: Boolean = target.glowing): PacketBlockDisplay {
+            return renderer().spawnBlock(target.location, material.createBlockData()).apply {
                 transformation = Transformation(Vector3f(x,y,z), Quaternionf(), Vector3f(sx,sy,sz), Quaternionf())
                 brightness = MineDisplayLighting.brightness(material); viewRange = 3f; isGlowing = glow
-                glowColorOverride = Color.fromRGB(255,187,77); interpolationDuration = 2
-            }
+                glowColorOverride = Color.fromRGB(255,187,77); interpolationDuration = DISPLAY_INTERPOLATION_TICKS
+            }.also { visuals += it }
         }
         val blueprint=target.model?.let(MineDisplayBlueprints::model).orEmpty()
         when {
             blueprint.isNotEmpty() -> {
-                blueprint.forEach { part(it.material,0f,0f,0f,1f,1f,1f, target.glowing && (target.model!="machine_console" || it.motion=="lever")) }
+                blueprint.forEachIndexed { index, it ->
+                    part(it.material,0f,0f,0f,1f,1f,1f,glowFor(target, blueprint, index)).apply {
+                        isVisibleByDefault = !it.idleHidden
+                        // Discrete hand-operated clicks get a quarter-second turn; continuous
+                        // factory drives retain the one-tick pose cadence.
+                        if(it.motion=="lever" || target.model in setOf("valve","pipe_valve")) interpolationDuration=5
+                    }
+                }
                 positionParts(visuals,blueprint,target.yaw,0f,target.modelScale)
             }
             portal(target) -> {
@@ -159,21 +187,34 @@ internal class MineExpeditionMarkers(
                 }
             }
         }
-        val clickAt=target.location.clone()
-        if(target.model=="machine_console") {
-            val offset=Quaternionf().rotateY(Math.toRadians(target.yaw.toDouble()).toFloat()).transform(Vector3f(0f,1.14f,.24f))
-            clickAt.add(offset.x.toDouble(),offset.y.toDouble(),offset.z.toDouble())
-        }
+        val hitboxBounds = if (blueprint.isNotEmpty())
+            MineExpeditionMarkerGeometry.hitbox(blueprint, target.yaw, target.modelScale)
+        else null
+        val clickAt = target.location.clone().add(
+            hitboxBounds?.center?.x?.toDouble() ?: 0.0,
+            hitboxBounds?.let { it.center.y-it.height/2f }?.toDouble() ?: 0.0,
+            hitboxBounds?.center?.z?.toDouble() ?: 0.0,
+        )
         val hitbox = target.location.world.spawn(clickAt, Interaction::class.java) {
-            it.interactionWidth = if (portal(target)) 2.7f else if (target.model=="machine_console") .85f else if (blueprint.isNotEmpty()) 2.8f*target.modelScale else 1.8f
-            it.interactionHeight = if (portal(target)) 3f else if (target.model=="machine_console") 1.05f else if (blueprint.isNotEmpty()) 3.6f*target.modelScale else 2f
+            it.interactionWidth = when {
+                !target.interactive -> 0f
+                portal(target) -> 2.7f
+                hitboxBounds != null -> hitboxBounds.width
+                else -> 1.8f
+            }
+            it.interactionHeight = when {
+                !target.interactive -> 0f
+                portal(target) -> 3f
+                hitboxBounds != null -> hitboxBounds.height
+                else -> 2f
+            }
             it.isResponsive = true; it.isPersistent = false
             it.persistentDataContainer.set(key, PersistentDataType.STRING, id)
         }
         val labelHeight = when {
             portal(target) -> 3.25
             target.model in setOf("finished_gear","return_miner") -> 2.1
-            target.model in setOf("crane_console", "furnace_console", "machine_console") -> 2.3
+            target.model in setOf("crane_console", "furnace_console", "machine_console", "mounted_console") -> 2.3
             blueprint.isNotEmpty() -> 4.0*target.modelScale
             else -> 2.0
         }
@@ -189,5 +230,66 @@ internal class MineExpeditionMarkers(
     private fun remove(id: String) {
         val marker = markers.remove(id) ?: return
         marker.displays.forEach { it.remove() }; marker.hitbox.remove(); marker.label.remove()
+    }
+
+    private companion object {
+        // MineModule is updated by the shared one-tick visual lane.
+        const val DISPLAY_INTERPOLATION_TICKS = 1
+    }
+
+    private fun glowFor(target: Target, parts: List<MineDisplayBlueprints.Part>, index: Int): Boolean {
+        return target.glowing && MineExpeditionMarkerGeometry.glows(parts, index)
+    }
+}
+
+internal data class MineExpeditionMarkerHitbox(val center: Vector3f, val width: Float, val height: Float)
+
+/** Geometry owned by the packet marker, kept pure so click regressions stay cheap to test. */
+internal object MineExpeditionMarkerGeometry {
+    private val ACTIONABLE_MOTIONS = setOf("rotate", "counter_rotate", "lever")
+    private const val MIN_WIDTH = .8f
+    private const val MIN_HEIGHT = .8f
+    private const val ACTION_PADDING = .16f
+
+    fun actionable(part: MineDisplayBlueprints.Part): Boolean =
+        part.moving && part.motion in ACTIONABLE_MOTIONS
+
+    fun glows(parts: List<MineDisplayBlueprints.Part>, index: Int): Boolean {
+        val part = parts.getOrNull(index)
+        return part == null || !parts.any(::actionable) || actionable(part)
+    }
+
+    fun hitbox(parts: List<MineDisplayBlueprints.Part>, yaw: Int, scale: Float): MineExpeditionMarkerHitbox? {
+        if (parts.isEmpty()) return null
+        val actionable = parts.filter(::actionable)
+        val relevant = actionable.ifEmpty { parts }
+        val worldRotation = Quaternionf().rotateY(Math.toRadians(yaw.toDouble()).toFloat())
+        val points = relevant.flatMap { part ->
+            corners(part).map { local -> worldRotation.transform(local.mul(scale)) }
+        }
+        if (points.isEmpty()) return null
+        val minX = points.minOf { it.x }; val maxX = points.maxOf { it.x }
+        val minY = points.minOf { it.y }; val maxY = points.maxOf { it.y }
+        val minZ = points.minOf { it.z }; val maxZ = points.maxOf { it.z }
+        val padding = if (actionable.isNotEmpty()) ACTION_PADDING else 0f
+        return MineExpeditionMarkerHitbox(
+            center = Vector3f((minX + maxX) / 2f, (minY + maxY) / 2f, (minZ + maxZ) / 2f),
+            width = maxOf(maxX - minX, maxZ - minZ).plus(padding * 2f).coerceAtLeast(MIN_WIDTH),
+            height = (maxY - minY).plus(padding * 2f).coerceAtLeast(MIN_HEIGHT),
+        )
+    }
+
+    /** Choose the quaternion sign closest to the last packet pose at a full turn. */
+    fun continuousRotation(next: Quaternionf, previous: Quaternionf): Quaternionf =
+        if (next.dot(previous) >= 0f) next else next.set(-next.x, -next.y, -next.z, -next.w)
+
+    private fun corners(part: MineDisplayBlueprints.Part): List<Vector3f> {
+        val rotation = MineDisplayBlueprints.rotation(part, 0f)
+        val center = MineDisplayBlueprints.center(part, 0f)
+        return buildList {
+            for (x in listOf(-.5f, .5f)) for (y in listOf(-.5f, .5f)) for (z in listOf(-.5f, .5f)) {
+                add(rotation.transform(Vector3f(part.size.x * x, part.size.y * y, part.size.z * z)).add(center))
+            }
+        }
     }
 }

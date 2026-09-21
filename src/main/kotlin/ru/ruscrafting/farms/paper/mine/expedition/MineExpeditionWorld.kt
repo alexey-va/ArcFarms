@@ -17,6 +17,7 @@ import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionGenerator
 import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionKind
 import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionPlan
 import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionPlacement
+import ru.ruscrafting.farms.domain.mine.expedition.MineFactoryLine
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.index.MineChunkTicket
 import ru.ruscrafting.farms.paper.worksite.WorksiteAsyncBlockScanner
@@ -39,6 +40,23 @@ import java.util.logging.Level
 
 internal interface MineExpeditionWorldRegistry {
     fun ensureWorld(): World?
+}
+
+/** Pure decision table used by the bounded live-floor migration and its tests. */
+internal object MineFactoryFloorMigration {
+    enum class Decision { PROJECT, COMPLETE, PRESERVE }
+
+    fun repairPending(baselinePending: Boolean, floorPending: Boolean): Boolean =
+        baselinePending || floorPending
+
+    fun decide(recordedActive: String, current: String, former: String, desired: String): Decision {
+        if (former == desired || recordedActive !in setOf(former, desired)) return Decision.PRESERVE
+        return when (current) {
+            desired -> Decision.COMPLETE
+            former -> Decision.PROJECT
+            else -> Decision.PRESERVE
+        }
+    }
 }
 
 /** Bukkit world owner used when the plugin does not provide its own world registry. */
@@ -90,8 +108,26 @@ internal class MineExpeditionWorld(
     private val pending = ConcurrentHashMap<Long, Pending>()
     private val restoringLeases = ConcurrentHashMap<Long, MutableList<AutoCloseable>>()
     private val baselineRepairs = ConcurrentHashMap<Long, ArrayDeque<Pair<ExpeditionPoint, String>>>()
+    private data class FactoryFloorRepair(
+        val point: ExpeditionPoint,
+        val former: String,
+        val desired: String,
+        val recordedActive: String,
+    )
+    private val factoryFloorRepairs = ConcurrentHashMap<Long, ArrayDeque<FactoryFloorRepair>>()
     private fun receiptWorld(receipt: MineExpeditionSceneReceipt): World? =
         Bukkit.getWorld(receipt.placement.world) ?: registry.ensureWorld()?.takeIf { it.name == receipt.placement.world }
+
+    private fun refreshReady(scene: MineExpeditionScene) {
+        val repairing = MineFactoryFloorMigration.repairPending(
+            baselinePending = !baselineRepairs[scene.journalSequence].isNullOrEmpty(),
+            floorPending = !factoryFloorRepairs[scene.journalSequence].isNullOrEmpty(),
+        )
+        scene.refreshReady(
+            repairing || prepared.isBuilding(scene.journalOwner, scene.journalSequence, scene.sceneId),
+            prepared.isComplete(scene.prepared),
+        )
+    }
 
     fun configure(runtime: MineRuntime, surface: Location) {
         val bounds = runtime.region.bounds
@@ -154,8 +190,7 @@ internal class MineExpeditionWorld(
             Triple(scene.placement.originX + point.x, scene.placement.originY + point.y, scene.placement.originZ + point.z)
         }
         return prepared.project(scene.prepared, worldChanges).also {
-            val repairing = !baselineRepairs[scene.journalSequence].isNullOrEmpty()
-            scene.refreshReady(repairing || prepared.isBuilding(scene.journalOwner, scene.journalSequence, scene.sceneId), prepared.isComplete(scene.prepared))
+            refreshReady(scene)
         }
     }
 
@@ -183,6 +218,7 @@ internal class MineExpeditionWorld(
         val key = receipt.journalSequence
         pending.remove(key)?.leases?.forEach { runCatching(it::close) }
         baselineRepairs.remove(key)
+        factoryFloorRepairs.remove(key)
         prepared.beginRestore(world, receipt.journalOwner, key, receipt.sceneId)
         if (scenes[key] == null) schedulePreparation(receipt)
     }
@@ -196,19 +232,16 @@ internal class MineExpeditionWorld(
         }
         receipts.records().filter { it.restoring && !restoringLeases.containsKey(it.journalSequence) }.forEach(::prepare)
         if (prewarm) stock.maintain(now)
-        val baselineProcessed = processBaseline(limit)
-        val preparedBudget = limit - baselineProcessed
+        val floorProcessed = processFactoryFloorRepairs(minOf(limit, FACTORY_FLOOR_BATCH))
+        val baselineProcessed = processBaseline(limit - floorProcessed)
+        val preparedBudget = limit - floorProcessed - baselineProcessed
         val processed = if (preparedBudget > 0) prepared.process(preparedBudget, allowed = { record ->
             receipts.records().any {
                 it.journalOwner == record.zoneId && it.journalSequence == record.sequence && it.sceneId == record.sceneId
             }
         }) else 0
         scenes.values.forEach { scene ->
-            if (!baselineRepairs[scene.journalSequence].isNullOrEmpty()) return@forEach
-            scene.refreshReady(
-                prepared.isBuilding(scene.journalOwner, scene.journalSequence, scene.sceneId),
-                prepared.isComplete(scene.prepared),
-            )
+            refreshReady(scene)
             if (scene.ready) stock.markBuilt(scene)
             if (scene.ready && announcedReady.add(scene.journalSequence)) {
                 buildingSince.remove(scene.journalSequence)
@@ -220,7 +253,7 @@ internal class MineExpeditionWorld(
             }
         }
         finishRestores()
-        return baselineProcessed + processed
+        return floorProcessed + baselineProcessed + processed
     }
 
     fun onChunkLoad(chunk: Chunk) {
@@ -257,6 +290,7 @@ internal class MineExpeditionWorld(
         pending.clear()
         restoringLeases.clear()
         baselineRepairs.clear()
+        factoryFloorRepairs.clear()
         prepared.clearQueues()
         scenes.clear()
     }
@@ -359,10 +393,10 @@ internal class MineExpeditionWorld(
             if (!receipt.restoring) {
                 buildingSince[key] = System.currentTimeMillis()
                 val baseline = if (receipt.placement.geometryVersion >= 3) emptyList() else baselineChanges(receipt, plan, recovered)
-                if (baseline.isEmpty()) scene.refreshReady(
-                    prepared.isBuilding(scene.journalOwner, scene.journalSequence, scene.sceneId),
-                    prepared.isComplete(scene.prepared),
-                ) else baselineRepairs[key] = ArrayDeque(baseline)
+                if (baseline.isEmpty()) baselineRepairs.remove(key)
+                else baselineRepairs[key] = ArrayDeque(baseline)
+                scheduleFactoryFloorMigration(receipt, plan, scene)
+                refreshReady(scene)
             }
             if (receipt.restoring) {
                 prepared.beginRestore(world, receipt.journalOwner, receipt.journalSequence, receipt.sceneId)
@@ -427,6 +461,7 @@ internal class MineExpeditionWorld(
     }
 
     private fun processBaseline(limit: Int): Int {
+        if (limit <= 0) return 0
         var remaining = limit
         var processed = 0
         baselineRepairs.entries.toList().forEach { (key, queue) ->
@@ -448,6 +483,72 @@ internal class MineExpeditionWorld(
             }
         }
         return processed
+    }
+
+    /**
+     * Reconciles only the authored floor palette of existing permanent factory
+     * scenes. Every live read and projection is bounded to the normal owner
+     * budget; a player-edited block is consumed from the queue without being
+     * changed.
+     */
+    private fun processFactoryFloorRepairs(limit: Int): Int {
+        if (limit <= 0) return 0
+        var remaining = limit
+        var processed = 0
+        factoryFloorRepairs.entries.toList().forEach { (key, queue) ->
+            if (remaining == 0) return@forEach
+            val scene = scenes[key] ?: return@forEach
+            val batch = mutableListOf<FactoryFloorRepair>()
+            while (remaining > 0 && queue.isNotEmpty()) {
+                val repair = queue.removeFirst()
+                remaining--
+                processed++
+                val x = scene.placement.originX + repair.point.x
+                val y = scene.placement.originY + repair.point.y
+                val z = scene.placement.originZ + repair.point.z
+                if (!scene.world.isChunkLoaded(x shr 4, z shr 4)) {
+                    queue.addFirst(repair)
+                    break
+                }
+                val current = scene.world.getBlockAt(x, y, z).blockData.asString
+                when (MineFactoryFloorMigration.decide(repair.recordedActive, current, repair.former, repair.desired)) {
+                    MineFactoryFloorMigration.Decision.COMPLETE,
+                    MineFactoryFloorMigration.Decision.PRESERVE -> Unit
+                    MineFactoryFloorMigration.Decision.PROJECT -> batch += repair
+                }
+            }
+            // One journal rewrite per affected chunk, not one full rewrite per floor block.
+            if (batch.isNotEmpty() && !project(scene, batch.associate { it.point to it.desired }))
+                batch.asReversed().forEach(queue::addFirst)
+            if (queue.isEmpty()) factoryFloorRepairs.remove(key, queue)
+        }
+        return processed
+    }
+
+    private fun scheduleFactoryFloorMigration(
+        receipt: MineExpeditionSceneReceipt,
+        plan: MineExpeditionPlan,
+        scene: MineExpeditionScene,
+    ) {
+        if (receipt.kind != MineExpeditionKind.DEAD_FACTORY || receipt.placement.geometryVersion < 3
+        ) return
+        val repairs = ArrayDeque<FactoryFloorRepair>()
+        scene.prepared.records.asSequence()
+            .filter { it.y - receipt.placement.originY == 4 }
+            .mapNotNull { record ->
+                val point = ExpeditionPoint(
+                    record.x - receipt.placement.originX,
+                    record.y - receipt.placement.originY,
+                    record.z - receipt.placement.originZ,
+                )
+                val former = MineFactoryLine.formerFloorMaterial(point) ?: return@mapNotNull null
+                val desired = plan.blocks[point] ?: return@mapNotNull null
+                if (former == desired || (record.activeData != former && record.activeData != desired)) return@mapNotNull null
+                FactoryFloorRepair(point, former, desired, record.activeData)
+            }
+            .forEach(repairs::addLast)
+        if (repairs.isEmpty()) factoryFloorRepairs.remove(receipt.journalSequence)
+        else factoryFloorRepairs[receipt.journalSequence] = repairs
     }
 
     private fun records(
@@ -526,6 +627,7 @@ internal class MineExpeditionWorld(
                 }
                 stock.remove(receipt) {
                     baselineRepairs.remove(key)
+                    factoryFloorRepairs.remove(key)
                     failures.remove(key)
                     restoringLeases.remove(key)?.forEach { lease -> runCatching(lease::close) }
                 }
@@ -537,6 +639,7 @@ internal class MineExpeditionWorld(
             if (!prepared.hasLoadedSceneRecords(scene.world, scene.journalOwner, scene.journalSequence, scene.sceneId)) {
                 stock.remove(receipt) {
                     baselineRepairs.remove(key)
+                    factoryFloorRepairs.remove(key)
                     failures.remove(key)
                     scenes.remove(key)
                 }
@@ -553,5 +656,7 @@ internal class MineExpeditionWorld(
     companion object {
         const val MAX_CHUNK_REQUESTS = 8
         const val PREPARATION_TIMEOUT = 180_000L
+        const val FACTORY_STATIC_JOURNAL = 18L
+        private const val FACTORY_FLOOR_BATCH = 128
     }
 }

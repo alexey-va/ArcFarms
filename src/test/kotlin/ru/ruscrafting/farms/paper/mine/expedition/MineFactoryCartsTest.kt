@@ -86,10 +86,19 @@ class MineFactoryCartsTest : FunSpec({
         (abs(cart.at.z - player.location.z) < .0001) shouldBe true
         carts.remove(cart)
     }
+
+    test("raw iron charge selects the connected-line cart load") {
+        val player = paper.server.addPlayer()
+        player.teleport(Location(world, 0.5, 65.0, 0.5, 0f, 0f))
+        val cart = carts.spawn("factory:charge", player, Material.RAW_IRON_BLOCK)
+
+        visuals.bodies.single().parts.any { it.material == Material.RAW_IRON_BLOCK } shouldBe true
+        carts.remove(cart)
+    }
 })
 
 private class FactoryCartVisualRecorder : MineFactoryCartVisuals {
-    class Body : MineFactoryCartVisuals.Body {
+    class Body(val parts: List<MineDisplayBlueprints.Part>) : MineFactoryCartVisuals.Body {
         var removed = false
         var lastPhase = 0f
 
@@ -105,7 +114,7 @@ private class FactoryCartVisualRecorder : MineFactoryCartVisuals {
 
     val bodies = mutableListOf<Body>()
 
-    override fun spawn(at: Location, parts: List<MineDisplayBlueprints.Part>) = Body().also {
+    override fun spawn(at: Location, parts: List<MineDisplayBlueprints.Part>) = Body(parts).also {
         bodies += it
     }
 

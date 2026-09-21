@@ -45,4 +45,67 @@ class MineFactoryProgramTest : FunSpec({
         MineFactoryProgram.runningMachines(state, emptySet()) shouldBe emptySet()
         MineFactoryProgram.runningMachines(state.copy(stage = MineExpeditionStage.ARK_FUEL), setOf("control_crusher_left")) shouldBe emptySet()
     }
+
+    test("connected line variants share the left machine pair and keep water checkpoints ordered") {
+        val base = MineExpeditionGenerator.plan(MineExpeditionKind.DEAD_FACTORY, 73)
+        val plan = base.copy(stations = base.stations + connectedStations())
+        for (program in 0..2) {
+            var state = MineExpeditionState(placement, MineExpeditionStage.FACTORY_WATER, factoryProgram = program)
+            MineFactoryProgram.targets(plan, state).map { it.id } shouldBe listOf(
+                "repair_supply_$program", "crusher_repair",
+            )
+            MineFactoryProgram.runningMachines(state, emptySet(), plan) shouldBe emptySet()
+
+            state = state.copy(completed = setOf(0))
+            MineFactoryProgram.targets(plan, state).single().id shouldBe "water_valve_1"
+            MineFactoryProgram.runningMachines(state, emptySet(), plan) shouldBe emptySet()
+
+            state = state.copy(completed = setOf(0, 1))
+            MineFactoryProgram.targets(plan, state).single().id shouldBe "control_crusher_left"
+            MineFactoryProgram.runningMachines(state, emptySet(), plan) shouldBe setOf("decor_pump_left")
+            MineFactoryProgram.runningMachines(state, setOf("control_crusher_left"), plan) shouldBe
+                setOf("decor_pump_left", "decor_crusher_left")
+
+            state = state.copy(stage = MineExpeditionStage.FACTORY_COAL, completed = emptySet())
+            MineFactoryProgram.runningMachines(state, emptySet(), plan) shouldBe
+                setOf("decor_pump_left", "decor_crusher_left")
+        }
+    }
+
+    test("connected charge targets form raw, crush, and processed checkpoints") {
+        val base = MineExpeditionGenerator.plan(MineExpeditionKind.DEAD_FACTORY, 73)
+        val plan = base.copy(stations = base.stations + connectedStations())
+        val initial = MineExpeditionState(placement, MineExpeditionStage.FACTORY_COAL)
+        MineExpeditionObjectives.targets(plan, initial, null).map { it.id to it.material } shouldBe listOf(
+            "fuel_supply" to "RAW_IRON_BLOCK", "crusher_feed" to "RAW_IRON_BLOCK",
+        )
+        MineExpeditionObjectives.targets(plan, initial.copy(completed = setOf(0)), null)
+            .single().id shouldBe "control_crusher_left"
+        MineExpeditionObjectives.targets(plan, initial.copy(completed = setOf(0, 1)), null)
+            .map { it.id to it.material } shouldBe listOf(
+                "crushed_output" to "RAW_IRON_BLOCK", "furnace_input" to "RAW_IRON_BLOCK",
+            )
+    }
+
+    test("legacy factory geometry keeps the mirrored commissioning and fuel contract") {
+        val plan = MineExpeditionGenerator.plan(MineExpeditionKind.DEAD_FACTORY, 73, geometryVersion = 1)
+        val water = MineExpeditionState(placement, MineExpeditionStage.FACTORY_WATER, factoryProgram = 1)
+        MineFactoryProgram.targets(plan, water).map { it.id } shouldBe listOf(
+            "water_valve_0", "control_pump_left", "control_crusher_left",
+        )
+        MineExpeditionObjectives.targets(plan, water.copy(stage = MineExpeditionStage.FACTORY_COAL), null)
+            .map { it.id to it.material } shouldBe listOf(
+                "fuel_supply" to "COAL_BLOCK", "furnace_input" to "COAL_BLOCK",
+            )
+    }
 })
+
+private fun connectedStations(): Map<String, ExpeditionPoint> = mapOf(
+    "crusher_feed" to ExpeditionPoint(-4, 5, 6),
+    "crushed_output" to ExpeditionPoint(4, 5, 6),
+    "crusher_repair" to ExpeditionPoint(-4, 5, 8),
+    "repair_supply_0" to ExpeditionPoint(-10, 5, 8),
+    "repair_supply_1" to ExpeditionPoint(0, 5, 8),
+    "repair_supply_2" to ExpeditionPoint(10, 5, 8),
+    "control_crusher_left" to ExpeditionPoint(-4, 5, 10),
+)

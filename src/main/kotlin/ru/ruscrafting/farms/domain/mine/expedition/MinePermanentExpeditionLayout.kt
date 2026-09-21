@@ -92,23 +92,23 @@ internal object MinePermanentExpeditionLayout {
         // Reserve the complete production hall before drawing its final floor after the routes.
         for(x in -33..33) for(z in -28..27) for(y in 5..20)
             b.put(ExpeditionPoint(x,y,z),MineExpeditionBuilder.AIR)
-        b.station("entry",ExpeditionPoint(-5,5,24));b.station("exit",ExpeditionPoint(5,5,24))
-        listOf(ExpeditionPoint(-27,5,-6),ExpeditionPoint(0,5,-18),ExpeditionPoint(27,5,-6)).forEachIndexed { i,p -> b.station("water_valve_$i",p) }
-        mapOf("fuel_supply" to ExpeditionPoint(-25,5,7),"furnace_input" to ExpeditionPoint(-17,5,-6),
-            "furnace_control" to ExpeditionPoint(-11,5,-12),"pour_control" to ExpeditionPoint(17,5,-6),
-            "crane_control" to ExpeditionPoint(-8,5,8),"crane_load" to ExpeditionPoint(8,5,-6),"assembly_socket" to ExpeditionPoint(8,5,11)).forEach(b::station)
-        b.route("main",listOf(b.stations.getValue("entry"),ExpeditionPoint(0,5,21),ExpeditionPoint(0,5,-16)))
-        // Keep the axial floor palette intact; route reservation does not scatter new paving across bays.
-        b.stations.values.toList().forEach { b.walk(listOf(ExpeditionPoint(0,5,it.z),it)) }
-        // Matching technical pads include the full machine envelopes and their service fittings.
-        // Light stone denotes the clear axial/cross aisles and the continuous perimeter of each pad.
-        for(x in -33..33) for(z in -28..27) b.put(ExpeditionPoint(x,4,z),"minecraft:polished_andesite")
-        for(side in listOf(-1,1)) for(zRange in listOf(-22..-3,3..22)) {
-            for(xx in 5..33) for(z in zRange) {
-                val border=xx==5 || xx==33 || z==zRange.first || z==zRange.last
-                b.put(ExpeditionPoint(side*xx,4,z),if(border) "minecraft:polished_andesite" else "minecraft:polished_deepslate")
+        MineFactoryLine.stations.forEach { (id, point) -> b.station(id, point) }
+        val entry = MineFactoryLine.stations.getValue("entry")
+        // One portal serves both arrival and return; the production line starts inward on -Z.
+        b.route("main", listOf(entry, ExpeditionPoint(0,5,14), ExpeditionPoint(0,5,-2), ExpeditionPoint(0,5,-16)))
+        // Every work point branches from the shared service aisle. The branches keep the
+        // controls and repair supplies connected to the line instead of creating islands.
+        MineFactoryLine.stations.filterKeys { it !in setOf("entry", "exit") }.forEach { (_, point) ->
+            val aisle = when {
+                point.z >= 6 -> ExpeditionPoint(0,5,14)
+                point.z <= -14 -> ExpeditionPoint(0,5,-15)
+                else -> ExpeditionPoint(0,5,-2)
             }
+            b.walk(listOf(aisle, point))
         }
+        // A light service aisle surrounds one continuous dark technical pad. The rear aisle
+        // leaves a clear approach to the water header and roof supports.
+        for(x in -33..33) for(z in -28..27) b.put(ExpeditionPoint(x,4,z), factoryFloorMaterial(x,z))
         for(z in -24..24 step 12) {
             for(x in listOf(-29,29)) {
                 for(y in 5..20) b.solid(ExpeditionPoint(x,y,z),if(y%5==0) "minecraft:chiseled_tuff_bricks" else "minecraft:polished_basalt[axis=y]")
@@ -155,6 +155,21 @@ internal object MinePermanentExpeditionLayout {
             if(b.blocks[p]==MineExpeditionBuilder.AIR) b.put(p,"minecraft:light[level=14]")
         }
         return finish(b)
+    }
+
+    private fun factoryFloorMaterial(x: Int, z: Int): String {
+        val light = "minecraft:polished_andesite"
+        val dark = "minecraft:polished_deepslate"
+        if (x in -28..28 && z in -18..5) {
+            val perimeter = x in setOf(-28,28) || z in setOf(-18,5)
+            return if (perimeter) light else dark
+        }
+        // Mirrored receiving/output pads sit at the ends of the broad light aisle.
+        if ((x in -28..-21 || x in 21..28) && z in 10..17) {
+            val perimeter = x in setOf(-28,-21,21,28) || z in setOf(10,17)
+            return if (perimeter) light else dark
+        }
+        return light
     }
 
     private fun finish(b: MineExpeditionBuilder): MineExpeditionPlan {

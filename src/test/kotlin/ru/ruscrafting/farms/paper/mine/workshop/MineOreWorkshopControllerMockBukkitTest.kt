@@ -7,10 +7,14 @@ import io.mockk.every
 import io.mockk.mockk
 import org.bukkit.Location
 import org.bukkit.entity.Entity
+import org.bukkit.entity.Interaction
 import org.bukkit.entity.ItemDisplay
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.inventory.EquipmentSlot
+import org.bukkit.persistence.PersistentDataType
 import org.mockbukkit.mockbukkit.world.WorldMock
+import ru.arc.core.Tasks
+import ru.arc.core.TestTaskScheduler
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.config.CuboidBounds
 import ru.ruscrafting.farms.domain.EngineResult
@@ -32,9 +36,17 @@ import java.util.concurrent.atomic.AtomicLong
 
 class MineOreWorkshopControllerMockBukkitTest : FunSpec({
     lateinit var paper: MockBukkitTestRuntime
+    lateinit var scheduler: TestTaskScheduler
 
-    beforeEach { paper = MockBukkitTestRuntime.open() }
-    afterEach { paper.close() }
+    beforeEach {
+        paper = MockBukkitTestRuntime.open()
+        scheduler = TestTaskScheduler()
+        Tasks.install(scheduler)
+    }
+    afterEach {
+        Tasks.reset()
+        paper.close()
+    }
 
     test("authored stations keep one nonpersistent scene across repeated reconcile and reload") {
         val world = paper.server.addSimpleWorld("workshop")
@@ -43,14 +55,14 @@ class MineOreWorkshopControllerMockBukkitTest : FunSpec({
         val controller = controller(plugin, runtime)
 
         controller.reconcile(runtime, now = 1_000L)
-        workshopEntities(world).filterIsInstance<ItemDisplay>() shouldHaveSize 5
+        workshopInteractions(world) shouldHaveSize 8
         controller.reconcile(runtime, now = 1_001L)
-        workshopEntities(world) shouldHaveSize 10
+        workshopInteractions(world) shouldHaveSize 8
 
         controller.cleanup("reload")
         workshopEntities(world) shouldHaveSize 0
         controller.reconcile(runtime, now = 1_002L)
-        workshopEntities(world) shouldHaveSize 10
+        workshopInteractions(world) shouldHaveSize 8
     }
 
     test("pickup is a carried ItemDisplay lease, repeated click is idempotent, and proximity drop advances LOAD") {
@@ -62,11 +74,11 @@ class MineOreWorkshopControllerMockBukkitTest : FunSpec({
         val player = paper.server.addPlayer("WorkshopMiner")
         val points = stationPoints(world)
         player.teleport(points.getValue("ore"))
-        val oreHitbox = workshopEntities(world).first { it.location.distanceSquared(points.getValue("ore")) < 1.0 }
+        val oreHitbox = roleEntity(world, "ore")
 
         controller.onInteractEntity(PlayerInteractEntityEvent(player, oreHitbox, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
         controller.onInteractEntity(PlayerInteractEntityEvent(player, oreHitbox, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
-        workshopEntities(world).filterIsInstance<ItemDisplay>() shouldHaveSize 6
+        workshopEntities(world).filterIsInstance<ItemDisplay>() shouldHaveSize 1
         val carried = workshopEntities(world).filterIsInstance<ItemDisplay>().single { display ->
             display.persistentDataContainer.keys.any { it.key == "mine_ore_workshop_carried" }
         }
@@ -74,12 +86,12 @@ class MineOreWorkshopControllerMockBukkitTest : FunSpec({
         (carried.location.y < player.eyeLocation.y) shouldBe true
         controller.tick(runtime, listOf(player), 1_050L)
         runtime.state.incident!!.working!!.stage shouldBe MineWorkingStage.LOAD
-        workshopEntities(world).filterIsInstance<ItemDisplay>() shouldHaveSize 6
+        workshopEntities(world).filterIsInstance<ItemDisplay>() shouldHaveSize 1
 
         player.teleport(points.getValue("crusher"))
         controller.tick(runtime, listOf(player), 1_100L)
         runtime.state.incident!!.working!!.stage shouldBe MineWorkingStage.CRUSH
-        workshopEntities(world).filterIsInstance<ItemDisplay>() shouldHaveSize 5
+        workshopEntities(world).filterIsInstance<ItemDisplay>() shouldHaveSize 0
     }
 
     test("walking around a different floor cannot turn the crusher") {
@@ -100,6 +112,72 @@ class MineOreWorkshopControllerMockBukkitTest : FunSpec({
         runtime.state.incident!!.working!!.completed shouldBe emptySet()
     }
 
+    test("crusher rejects the wrong lever and accepts only feed drive release") {
+        val world = paper.server.addSimpleWorld("workshop_controls")
+        val plugin = paper.createSimplePlugin("MineOreWorkshopControlsTest")
+        val runtime = activeRuntime(world, MineWorkingStage.CRUSH)
+        val now = AtomicLong(1_000L)
+        val controller = controller(plugin, runtime, nowSource = now::get)
+        val player = paper.server.addPlayer("WorkshopOperator")
+        controller.reconcile(runtime, now = 1_000L)
+
+        fun clickControl(role: String) {
+            val target = roleEntity(world, role)
+            player.teleport(target.location.clone().add(0.0, 0.8, 0.0))
+            controller.onInteractEntity(PlayerInteractEntityEvent(player, target, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
+        }
+
+        clickControl("crusher_drive")
+        runtime.state.incident!!.working!!.completed shouldBe emptySet()
+        runtime.state.incident!!.working!!.stage shouldBe MineWorkingStage.CRUSH
+
+        clickControl("crusher_feed")
+        runtime.state.incident!!.working!!.completed shouldBe setOf(0)
+        clickControl("crusher_feed")
+        runtime.state.incident!!.working!!.completed shouldBe setOf(0)
+        clickControl("crusher_drive")
+        runtime.state.incident!!.working!!.completed shouldBe setOf(0, 1)
+        clickControl("crusher_release")
+        runtime.state.incident!!.working!!.completed shouldBe setOf(0, 1)
+        runtime.state.incident!!.working!!.stage shouldBe MineWorkingStage.CRUSH
+        now.addAndGet(MineWorkingEngine.HEAT_MILLIS)
+        controller.reconcile(runtime, now = now.get())
+        clickControl("crusher_release")
+        runtime.state.incident!!.working!!.stage shouldBe MineWorkingStage.HEAT
+        runtime.state.incident!!.working!!.completed shouldBe emptySet()
+    }
+
+    test("persisted crusher drive restarts its transient cycle after scene reload") {
+        val world = paper.server.addSimpleWorld("workshop_restart")
+        val plugin = paper.createSimplePlugin("MineOreWorkshopRestartTest")
+        val runtime = activeRuntime(world, MineWorkingStage.CRUSH).also { current ->
+            val incident = requireNotNull(current.state.incident)
+            current.state = current.state.copy(incident = incident.copy(
+                working = requireNotNull(incident.working).copy(completed = setOf(0, 1)),
+            ))
+        }
+        val now = AtomicLong(1_000L)
+        val controller = controller(plugin, runtime, nowSource = now::get)
+        val player = paper.server.addPlayer("WorkshopRestartMiner")
+
+        controller.reconcile(runtime, now = now.get())
+        controller.cleanup("reload")
+        now.set(5_000L)
+        controller.reconcile(runtime, now = now.get())
+        val release = roleEntity(world, "crusher_release")
+        player.teleport(release.location.clone().add(0.0, 0.8, 0.0))
+        controller.onInteractEntity(PlayerInteractEntityEvent(player, release, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
+        runtime.state.incident!!.working!!.stage shouldBe MineWorkingStage.CRUSH
+        runtime.state.incident!!.working!!.completed shouldBe setOf(0, 1)
+
+        now.set(9_000L)
+        controller.reconcile(runtime, now = now.get())
+        val readyRelease = roleEntity(world, "crusher_release")
+        player.teleport(readyRelease.location.clone().add(0.0, 0.8, 0.0))
+        controller.onInteractEntity(PlayerInteractEntityEvent(player, readyRelease, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
+        runtime.state.incident!!.working!!.stage shouldBe MineWorkingStage.HEAT
+    }
+
     test("final cleanup removes station hitboxes and transient carried displays") {
         val world = paper.server.addSimpleWorld("workshop")
         val plugin = paper.createSimplePlugin("MineOreWorkshopCleanupTest")
@@ -108,7 +186,7 @@ class MineOreWorkshopControllerMockBukkitTest : FunSpec({
         controller.reconcile(runtime, now = 1_000L)
         val player = paper.server.addPlayer("WorkshopCleaner")
         player.teleport(stationPoints(world).getValue("ore"))
-        val oreHitbox = workshopEntities(world).first { it.location.distanceSquared(stationPoints(world).getValue("ore")) < 1.0 }
+        val oreHitbox = roleEntity(world, "ore")
         controller.onInteractEntity(PlayerInteractEntityEvent(player, oreHitbox, EquipmentSlot.HAND), listOf(runtime))
 
         controller.cleanup("shutdown")
@@ -122,20 +200,19 @@ class MineOreWorkshopControllerMockBukkitTest : FunSpec({
         var points = stationPoints(world)
         val controller = controller(plugin, runtime, pointSource = { points })
         controller.reconcile(runtime, now = 1_000L)
-        val oldOre = workshopEntities(world).minBy { it.location.distanceSquared(points.getValue("ore")) }
+        val oldOre = roleEntity(world, "ore")
 
         points = points.mapValues { (_, point) -> point.clone().add(1.0, 0.0, 0.0) }
         controller.reconcile(runtime, now = 1_001L)
 
-        workshopEntities(world) shouldHaveSize 10
+        workshopInteractions(world) shouldHaveSize 8
         oldOre.isValid shouldBe false
-        workshopEntities(world).filterIsInstance<ItemDisplay>() shouldHaveSize 5
-        workshopEntities(world).filterIsInstance<ItemDisplay>().all { display ->
-            display.location.x in 1.0..17.0
+        listOf("ore", "crusher", "furnace", "output", "shipping").all { role ->
+            roleEntity(world, role).location.x == points.getValue(role).x
         } shouldBe true
     }
 
-    test("three batches complete through carry, three physical crank laps, heat window, quench and shipping") {
+    test("three batches complete through carry, ordered lever steps, heat window, quench and shipping") {
         val world = paper.server.addSimpleWorld("workshop_full")
         val plugin = paper.createSimplePlugin("MineOreWorkshopFullFlowTest")
         val runtime = activeRuntime(world)
@@ -147,18 +224,15 @@ class MineOreWorkshopControllerMockBukkitTest : FunSpec({
 
         fun click(role: String) {
             player.teleport(points.getValue(role))
-            val target = workshopEntities(world).minBy { it.location.distanceSquared(points.getValue(role)) }
+            val target = roleEntity(world, role)
             controller.onInteractEntity(PlayerInteractEntityEvent(player, target, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
         }
 
-        fun lap() {
-            val center = points.getValue("crusher")
-            listOf(0, 45, 90, 135, 180, 225, 270, 315, 360).forEach { degrees ->
-                val radians = Math.toRadians(degrees.toDouble())
-                player.teleport(Location(world, center.x + 2.0 * kotlin.math.cos(radians), center.y, center.z + 2.0 * kotlin.math.sin(radians)))
-                now.incrementAndGet()
-                controller.tick(runtime, listOf(player), now.get())
-            }
+        fun clickControl(role: String) {
+            val target = roleEntity(world, role)
+            player.teleport(target.location.clone().add(0.0, 0.8, 0.0))
+            now.incrementAndGet()
+            controller.onInteractEntity(PlayerInteractEntityEvent(player, target, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
         }
 
         repeat(MineWorkingEngine.BATCHES) { batch ->
@@ -166,7 +240,11 @@ class MineOreWorkshopControllerMockBukkitTest : FunSpec({
             player.teleport(points.getValue("crusher"))
             now.incrementAndGet()
             controller.tick(runtime, listOf(player), now.get())
-            repeat(MineWorkingEngine.CRUSH_STROKES) { lap() }
+            clickControl("crusher_feed")
+            clickControl("crusher_drive")
+            now.addAndGet(MineWorkingEngine.HEAT_MILLIS)
+            controller.reconcile(runtime, now = now.get())
+            clickControl("crusher_release")
             runtime.state.incident!!.working!!.stage shouldBe MineWorkingStage.HEAT
 
             val heatStarted = runtime.state.incident!!.working!!.heatStartedAt
@@ -187,15 +265,25 @@ class MineOreWorkshopControllerMockBukkitTest : FunSpec({
         }
 
         runtime.state.incident shouldBe null
-        workshopEntities(world).filterIsInstance<ItemDisplay>() shouldHaveSize 5
+        workshopInteractions(world) shouldHaveSize 8
+    }
+
+    test("niche station points keep the south approach clear") {
+        val world = paper.server.addSimpleWorld("workshop_bounds")
+        val points = stationPoints(world)
+
+        points.values.all { point ->
+            point.x in 35.0..53.0 && point.y in 111.0..119.0 && point.z in 13.0..22.0
+        } shouldBe true
+        points.values.all { it.z >= 17.0 } shouldBe true
     }
 })
 
 private fun activeRuntime(world: WorldMock, stage: MineWorkingStage = MineWorkingStage.LOAD): MineRuntime {
-    val position = WorksitePosition(world.name, 0, 64, 0)
+    val position = WorksitePosition(world.name, 40, 111, 17)
     return MineRuntime(
         settings = mineV2Settings().copy(id = "authored_workshop"),
-        region = CuboidActivityRegion(world, "authored_workshop", CuboidBounds(-20, 50, -20, 20, 90, 20)),
+        region = CuboidActivityRegion(world, "authored_workshop", CuboidBounds(30, 100, 10, 60, 130, 30)),
         cooldownMillis = 0L,
         state = MineShiftState(
             engineVersion = 2,
@@ -216,11 +304,11 @@ private fun activeRuntime(world: WorldMock, stage: MineWorkingStage = MineWorkin
 }
 
 private fun stationPoints(world: org.bukkit.World): Map<String, Location> = mapOf(
-    "ore" to Location(world, 0.0, 64.0, 0.0),
-    "crusher" to Location(world, 4.0, 64.0, 0.0),
-    "furnace" to Location(world, 8.0, 64.0, 0.0),
-    "output" to Location(world, 12.0, 64.0, 0.0),
-    "shipping" to Location(world, 16.0, 64.0, 0.0),
+    "ore" to Location(world, 36.5, 111.0, 20.5),
+    "crusher" to Location(world, 40.5, 111.0, 17.5),
+    "furnace" to Location(world, 46.5, 111.0, 17.5),
+    "output" to Location(world, 50.5, 111.0, 17.5),
+    "shipping" to Location(world, 51.5, 111.0, 21.5),
 )
 
 private fun controller(
@@ -260,6 +348,13 @@ private fun controller(
 
 private fun workshopEntities(world: WorldMock): List<Entity> = world.entities.filter { entity ->
     entity.persistentDataContainer.keys.any { it.key == "mine_ore_workshop_zone" || it.key == "mine_ore_workshop_carried" }
+}
+
+private fun workshopInteractions(world: WorldMock): List<Interaction> = workshopEntities(world).filterIsInstance<Interaction>()
+
+private fun roleEntity(world: WorldMock, role: String): Interaction = workshopInteractions(world).single { entity ->
+    val key = entity.persistentDataContainer.keys.firstOrNull { it.key == "mine_ore_workshop_role" }
+    key != null && entity.persistentDataContainer.get(key, PersistentDataType.STRING) == role
 }
 
 // The controller keeps these keys private in production; tests use the same

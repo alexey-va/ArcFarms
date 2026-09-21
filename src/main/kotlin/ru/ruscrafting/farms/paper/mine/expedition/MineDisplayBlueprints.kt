@@ -9,11 +9,13 @@ import kotlin.math.*
 internal object MineDisplayBlueprints {
     val kinds = setOf("pipe_valve", "sluice", "coal_bunker", "feed_hopper", "casting_bed", "casting_rack",
         "assembly_bench", "crane_console", "furnace_console", "furnace", "waterwheel", "pump", "crusher",
-        "tank", "winch", "rack", "console", "valve", "finished_gear", "drive_rig", "machine_console", "cargo_cart_coal", "cargo_cart_iron", "return_miner")
+        "tank", "winch", "rack", "console", "valve", "finished_gear", "drive_rig", "machine_console", "cargo_cart_coal", "cargo_cart_iron", "cargo_cart_charge", "return_miner") + MineFactoryModels.kinds
     data class Part(val material: Material, val center: Vector3f, val size: Vector3f,
-        val angle: Float = 0f, val moving: Boolean = false, val pivot: Vector3f = Vector3f(), val motion: String = "rotate")
+        val angle: Float = 0f, val moving: Boolean = false, val pivot: Vector3f = Vector3f(), val motion: String = "rotate",
+        val idleHidden: Boolean = false)
     fun model(kind: String): List<Part> = buildList {
         require(kind in kinds) { "Unknown display model: $kind" }
+        if(kind in MineFactoryModels.kinds) { addAll(MineFactoryModels.model(kind)); return@buildList }
         fun box(m: Material, x: Float, y: Float, z: Float, w: Float, h: Float, d: Float,
             angle: Float = 0f, moving: Boolean = false, pivot: Vector3f = Vector3f(), motion:String="rotate") {
             add(Part(m, Vector3f(x,y,z), Vector3f(w,h,d), angle,moving,pivot,motion))
@@ -69,7 +71,7 @@ internal object MineDisplayBlueprints {
                 box(Material.IRON_BLOCK,0f,1.57f,.24f,.1f,.4f,.1f,moving=true,pivot=Vector3f(0f,1.39f,.24f),motion="lever")
                 box(Material.RED_CONCRETE,0f,1.78f,.24f,.36f,.16f,.23f,moving=true,pivot=Vector3f(0f,1.39f,.24f),motion="lever")
             }
-            "cargo_cart_coal", "cargo_cart_iron" -> {
+            "cargo_cart_coal", "cargo_cart_iron", "cargo_cart_charge" -> {
                 box(Material.POLISHED_BLACKSTONE,0f,.58f,0f,1.5f,.2f,1.9f)
                 box(Material.WEATHERED_CUT_COPPER,0f,.72f,0f,1.35f,.08f,1.65f)
                 for(x in listOf(-.78f,.78f)) {
@@ -85,8 +87,8 @@ internal object MineDisplayBlueprints {
                     }
                     box(Material.IRON_BLOCK,x,.32f,z,.22f,.16f,.16f)
                 }
-                if(kind=="cargo_cart_coal") for(x in listOf(-.33f,.33f)) for(z in listOf(-.45f,.15f,.58f))
-                    box(Material.COAL_BLOCK,x,.99f,z,.59f,.4f,.38f)
+                if(kind in setOf("cargo_cart_coal","cargo_cart_charge")) for(x in listOf(-.33f,.33f)) for(z in listOf(-.45f,.15f,.58f))
+                    box(if(kind=="cargo_cart_charge" && z!=.15f) Material.RAW_IRON_BLOCK else Material.COAL_BLOCK,x,.99f,z,.59f,.4f,.38f)
                 else for(z in listOf(-.52f,0f,.52f)) {
                     box(Material.IRON_BLOCK,0f,.9f,z,1.15f,.25f,.43f)
                     box(Material.POLISHED_BASALT,0f,1.06f,z,.13f,.05f,.45f)
@@ -141,15 +143,7 @@ internal object MineDisplayBlueprints {
                 box(Material.POLISHED_ANDESITE,0f,4.3f,-1.3f,4.4f,.35f,.6f)
                 box(Material.IRON_BLOCK,0f,3.7f,-1.3f,.17f,1.2f,.17f)
                 box(Material.POLISHED_BLACKSTONE,0f,3.1f,-1.3f,1.6f,1.2f,1.3f)
-                // Glazed molten-metal conduit: furnace outlet, elbow around the head, downward nozzle.
-                box(Material.ORANGE_STAINED_GLASS,0f,3.05f,-3.555f,.32f,.32f,2.49f)
-                box(Material.ORANGE_STAINED_GLASS,.525f,3.05f,-2.15f,1.37f,.32f,.32f)
-                box(Material.ORANGE_STAINED_GLASS,1.05f,3.05f,-1.065f,.32f,.32f,1.85f)
-                box(Material.ORANGE_STAINED_GLASS,1.05f,2.62f,-.3f,.32f,.54f,.32f)
-                for(z in listOf(-4.68f,-3.5f,-2.3f))
-                    box(Material.EXPOSED_CUT_COPPER,0f,3.05f,z,.45f,.45f,.13f)
-                box(Material.EXPOSED_CUT_COPPER,1.05f,3.05f,-1.9f,.45f,.45f,.13f)
-                box(Material.EXPOSED_CUT_COPPER,1.05f,2.43f,-.3f,.45f,.14f,.45f)
+                addAll(MineFactoryModels.moltenConduit())
             }
             "casting_rack" -> {
                 frame(3.2f, 2.6f, 1.2f)
@@ -160,14 +154,19 @@ internal object MineDisplayBlueprints {
                     box(Material.YELLOW_TERRACOTTA, x, .88f, 1.2f, .26f, 1.6f, .26f)
             }
             "assembly_bench" -> {
-                frame(4.2f,3.6f,4.8f)
+                frame(5.8f,4.4f,6.8f)
                 box(Material.POLISHED_ANDESITE,0f,1.3f,0f,4.4f,.4f,3.6f)
                 for(x in listOf(-1.4f,1.4f)) box(Material.IRON_BLOCK,x,1.7f,0f,.35f,.4f,2.5f)
                 box(Material.POLISHED_BLACKSTONE,0f,1.65f,0f,1.8f,.3f,1.7f)
-                box(Material.WEATHERED_CUT_COPPER,0f,4.7f,0f,4.4f,.7f,2f)
-                box(Material.IRON_BLOCK,0f,3.7f,0f,.7f,1.5f,.7f,moving=true,motion="press")
+                box(Material.WEATHERED_CUT_COPPER,0f,6.6f,0f,6.2f,.7f,3.1f)
+                box(Material.POLISHED_BASALT,0f,5.7f,0f,1.3f,1.2f,1.3f)
+                box(Material.IRON_BLOCK,0f,4.5f,0f,.7f,3.1f,.7f,moving=true,motion="press")
                 box(Material.POLISHED_ANDESITE,0f,2.95f,0f,2f,.3f,1.8f,moving=true,motion="press")
                 for(x in listOf(-1.8f,1.8f)) for(y in listOf(2.7f,3.8f)) box(Material.CUT_COPPER,x,y,.8f,.36f,.22f,.45f)
+                // The press is operated from its own front upright.
+                box(Material.WEATHERED_CUT_COPPER,2.8f,1.45f,2.25f,1f,.9f,.35f)
+                box(Material.IRON_BLOCK,2.8f,1.55f,2.5f,.12f,.4f,.12f,moving=true,pivot=Vector3f(2.8f,1.35f,2.5f),motion="lever")
+                box(Material.RED_CONCRETE,2.8f,1.8f,2.5f,.35f,.17f,.24f,moving=true,pivot=Vector3f(2.8f,1.35f,2.5f),motion="lever")
             }
             "crane_console", "furnace_console" -> {
                 frame(3.8f,2.2f,.95f)
@@ -191,6 +190,15 @@ internal object MineDisplayBlueprints {
                 frame(6.2f,5.8f,8.5f)
                 box(Material.POLISHED_BLACKSTONE,0f,.55f,0f,7f,.9f,6.8f)
                 box(Material.DEEPSLATE_BRICKS,0f,4.3f,-1.3f,5.6f,6.8f,3.4f)
+                // Glazed inspection door remains readable from the service aisle on a sideways line.
+                box(Material.ORANGE_STAINED_GLASS,-2.835f,3.15f,-1.3f,.05f,2f,1.9f)
+                for(z in listOf(-2.38f,-.22f)) box(Material.CUT_COPPER,-2.91f,3.15f,z,.2f,2.45f,.17f)
+                for(y in listOf(1.83f,4.47f)) box(Material.CUT_COPPER,-2.91f,y,-1.3f,.2f,.17f,2.5f)
+                for(z in listOf(-1.85f,-1.3f,-.75f)) box(Material.IRON_BLOCK,-2.925f,3.15f,z,.1f,2f,.1f)
+                // Rear charging mouth meets the conveyor after the furnace is yawed into the line.
+                box(Material.POLISHED_BLACKSTONE,0f,1.7f,-3.035f,2.5f,1.15f,.045f)
+                for(x in listOf(-1.35f,1.35f)) box(Material.EXPOSED_CUT_COPPER,x,1.7f,-3.1f,.18f,1.5f,.24f)
+                box(Material.EXPOSED_CUT_COPPER,0f,2.55f,-3.1f,2.9f,.16f,.24f)
                 for(x in listOf(-2.5f,2.5f)) box(Material.DEEPSLATE_BRICKS,x,3.2f,1.3f,1.1f,4.8f,2.3f)
                 box(Material.POLISHED_BLACKSTONE,0f,5.7f,1.7f,5.8f,1f,2.2f)
                 box(Material.ORANGE_STAINED_GLASS,0f,2.8f,2f,3.8f,2.4f,.18f)
@@ -283,16 +291,41 @@ internal object MineDisplayBlueprints {
         }
     }
     private fun angle(part:Part,phase:Float):Float = when {
-        !part.moving || part.motion=="press" -> 0f
+        !part.moving || part.motion in setOf("press","feed","processed") -> 0f
+        part.motion=="counter_rotate" -> -phase
         part.motion=="lever" -> sin(phase/2)*.5f
         else -> phase
     }
-    fun rotation(part: Part, phase: Float): Quaternionf = if(part.motion=="axle")
-        Quaternionf().rotateX(part.angle+phase) else Quaternionf().rotateZ(part.angle+angle(part,phase))
+    fun rotation(part: Part, phase: Float): Quaternionf = when(part.motion) {
+        "axle" -> Quaternionf().rotateX(part.angle+phase)
+        "belt" -> Quaternionf().rotateZ(beltPose(part,phase).second)
+        "cargo" -> Quaternionf()
+        else -> Quaternionf().rotateZ(part.angle+angle(part,phase))
+    }
     fun center(part:Part,phase:Float):Vector3f = when {
         !part.moving -> Vector3f(part.center)
+        part.motion in setOf("belt","cargo") -> beltPose(part,phase).first.add(part.center)
+        part.motion=="feed" -> Vector3f(part.center).add(0f,-((phase/(PI.toFloat()*2)+part.angle).mod(1f))*2.8f,0f)
+        part.motion=="processed" -> Vector3f(part.center)
         part.motion=="axle" -> Quaternionf().rotateX(phase).transform(Vector3f(part.center).sub(part.pivot)).add(part.pivot)
         part.motion=="press" -> Vector3f(part.center).add(0f,-(1-cos(phase))*.5f,0f)
         else -> Quaternionf().rotateZ(angle(part,phase)).transform(Vector3f(part.center).sub(part.pivot)).add(part.pivot)
+    }
+
+    /** Closed belt path: slats roll around the end drums instead of teleporting back across the deck. */
+    private fun beltPose(part:Part,phase:Float):Pair<Vector3f,Float> {
+        val straight=7.6f;val radius=.28f;val arc=PI.toFloat()*radius
+        var distance=((phase+part.angle).mod(PI.toFloat()*2)/(PI.toFloat()*2))*(straight*2+arc*2)
+        val center=Vector3f(part.pivot)
+        if(distance<straight) return center.add(-straight/2+distance,radius,0f) to 0f
+        distance-=straight
+        if(distance<arc) {
+            val a=distance/radius
+            return center.add(straight/2+sin(a)*radius,cos(a)*radius,0f) to -a
+        }
+        distance-=arc
+        if(distance<straight) return center.add(straight/2-distance,-radius,0f) to -PI.toFloat()
+        val a=(distance-straight)/radius
+        return center.add(-straight/2-sin(a)*radius,-cos(a)*radius,0f) to (-PI.toFloat()-a)
     }
 }

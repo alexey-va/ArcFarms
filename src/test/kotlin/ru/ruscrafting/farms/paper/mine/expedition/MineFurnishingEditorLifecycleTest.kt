@@ -35,9 +35,11 @@ class MineFurnishingEditorLifecycleTest : FunSpec({
             try {
                 tasks.tokenRequests shouldBe 0
                 editor.pose(16, "decor_furnace_left") shouldBe MineFurnishingPose()
-                editor.yaw(scene,"decor_crusher_left") shouldBe 180
+                editor.yaw(scene,"decor_crusher_left") shouldBe 0
                 MineExpeditionFurnishings.targets(scene,null,emptySet()).filter { it.id.startsWith("decor_crusher_") }
-                    .map { it.yaw } shouldBe listOf(180,180)
+                    .map { it.yaw } shouldBe listOf(0)
+                // Idle decorative machines must not intercept ray clicks intended for active controls.
+                MineExpeditionFurnishings.targets(scene,null,emptySet()).all { !it.interactive } shouldBe true
                 val console=MineExpeditionFurnishings.fixtures(scene).first { it.id=="control_crusher_left" }
                 editor.position(scene,console.id,console.at) shouldBe console.at
                 supervisor.activate()
@@ -48,13 +50,13 @@ class MineFurnishingEditorLifecycleTest : FunSpec({
                     Thread.sleep(5)
                 }
                 editor.pose(16, "decor_furnace_left") shouldBe pose
-                editor.yaw(scene,"decor_furnace_left") shouldBe 90
-                editor.yaw(scene,"decor_crusher_left") shouldBe 270
+                editor.yaw(scene,"decor_furnace_left") shouldBe 180
+                editor.yaw(scene,"decor_crusher_left") shouldBe 90
                 val crusher=MineExpeditionFurnishings.fixtures(scene).first { it.id=="decor_crusher_left" }
                 editor.position(scene,crusher.id,crusher.at) shouldBe crusher.at.offset(dx=4)
-                MineExpeditionFurnishings.targets(scene,editor,emptySet()).first { it.id==crusher.id }.yaw shouldBe 270
-                // Authored 180 degree crusher facing must not mirror the nearby control; admin rotation moves both.
-                editor.position(scene,console.id,console.at) shouldBe ExpeditionPoint(-8,5,5)
+                MineExpeditionFurnishings.targets(scene,editor,emptySet()).first { it.id==crusher.id }.yaw shouldBe 90
+                // Moving and turning the assembly carries its mounted control with it.
+                editor.position(scene,console.id,console.at) shouldBe ExpeditionPoint(-14,5,-8)
                 tasks.tokenRequests shouldBe 1
             } finally {
                 supervisor.close(); editor.close(); repository.close(); markers.cleanup()

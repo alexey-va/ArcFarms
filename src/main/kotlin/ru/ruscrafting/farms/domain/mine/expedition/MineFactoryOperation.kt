@@ -4,6 +4,7 @@ package ru.ruscrafting.farms.domain.mine.expedition
 internal data class MineFactoryOperation(val stage: MineExpeditionStage, val startedAt: Long) {
     val duration: Long = when(stage) {
         MineExpeditionStage.FACTORY_WATER -> 3_000L
+        MineExpeditionStage.FACTORY_COAL -> 6_000L
         MineExpeditionStage.FACTORY_CRANE -> 4_500L
         MineExpeditionStage.FACTORY_INSTALL -> 2_400L
         else -> error("Not a powered factory operation: $stage")

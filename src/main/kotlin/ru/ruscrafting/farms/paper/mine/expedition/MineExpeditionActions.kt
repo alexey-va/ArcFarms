@@ -27,7 +27,14 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
     private val carts: MineFactoryCarts = MineFactoryCarts(plugin)) {
     private val tethers = WorksiteCrankTethers(NamespacedKey(plugin, "mine_expedition_crank_tether"))
     private var nextTetherWarning = 0L
-    private data class Cargo(val scope: String, val stage: MineExpeditionStage, val target: Int, val display: ItemDisplay? = null, val cart: MineFactoryCarts.Cart? = null)
+    private data class Cargo(
+        val scope: String,
+        val stage: MineExpeditionStage,
+        val target: Int,
+        val material: String,
+        val display: ItemDisplay? = null,
+        val cart: MineFactoryCarts.Cart? = null,
+    )
     private data class Crank(val scope: String, val stage: MineExpeditionStage, val objective: String,
         var sample: FarmProcessingCrankState? = null, var radians: Double = 0.0)
     private data class Operation(val scope:String,val objective:String,val target:Int,val cycle:MineFactoryOperation)
@@ -76,6 +83,10 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
     fun interact(scope: String, scene: MineExpeditionScene, state: MineExpeditionState, player: Player,
         target: MineExpeditionObjective, now: Long, complete: (MineExpeditionStep) -> Boolean,
         drive: () -> Unit) {
+        // The connected line intentionally exposes one numbered checkpoint at
+        // a time.  Keep the durable completed set authoritative even when a
+        // stale marker or a direct interaction reaches this owner.
+        if (!factoryTargetIsPermitted(scene, state, target)) return
         when (target.interaction) {
             MineExpeditionInteraction.POUR -> pour(scope,scene,state,player,target,now,complete)
             MineExpeditionInteraction.VALVE -> turnValve(scope, scene, state, player, target, now, complete)
@@ -83,6 +94,8 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
             MineExpeditionInteraction.DELIVER -> {
                 val held = cargo[player.uniqueId] ?: return
                 if (held.scope != scope || held.stage != state.stage) return
+                if (MineFactoryProgram.usesConnectedCrusherLine(scene.plan) && held.material != target.material) return
+                if (!deliveryIsCurrent(scene, state, target, held.target)) return
                 if(state.stage==MineExpeditionStage.FACTORY_INSTALL) {
                     startOperation(scope,state,player,target.id,held.target,now)
                     if(operations[player.uniqueId]?.objective==target.id) held.cart?.let { carts.unload(it) }
@@ -95,7 +108,9 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
                             at.world.spawnParticle(Particle.BLOCK, at, 18, .6, .2, .6, Material.COAL_BLOCK.createBlockData())
                             at.world.spawnParticle(Particle.CLOUD, at, 5, .5, .2, .5, .025)
                         }
-                        player.sendActionBar(text("fuel-loaded", player, mapOf("count" to state.completed.size + 1, "total" to MineExpeditionEngine.targetCount(state))))
+                        val loadedKey=if(MineFactoryProgram.usesConnectedCrusherLine(scene.plan))
+                            if(target.id=="crusher_feed") "charge-loaded" else "mix-loaded" else "fuel-loaded"
+                        player.sendActionBar(text(loadedKey, player, mapOf("count" to state.completed.size + 1, "total" to MineExpeditionEngine.targetCount(state))))
                     }
                 }
             }
@@ -115,7 +130,11 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
                 player.sendActionBar(text("turn", player))
             }
             MineExpeditionInteraction.OPERATE -> {
-                if(state.stage in setOf(MineExpeditionStage.FACTORY_CRANE, MineExpeditionStage.FACTORY_WATER)) {
+                if(state.stage in setOf(
+                        MineExpeditionStage.FACTORY_WATER,
+                        MineExpeditionStage.FACTORY_COAL,
+                        MineExpeditionStage.FACTORY_CRANE,
+                    )) {
                     startOperation(scope,state,player,target.id,target.target,now)
                     return
                 }
@@ -223,6 +242,45 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
         operations[player.uniqueId]=Operation(scope,id,target,MineFactoryOperation(state.stage,now))
         player.sendActionBar(text("operating",player))
     }
+
+    /**
+     * Connected geometry uses a strict ordered factory line.  Legacy plans
+     * keep their original marker set, including tests and journals that still
+     * use a walking-crank substitute for a marker.
+     */
+    private fun factoryTargetIsPermitted(
+        scene: MineExpeditionScene,
+        state: MineExpeditionState,
+        target: MineExpeditionObjective,
+    ): Boolean {
+        if (!MineFactoryProgram.usesConnectedCrusherLine(scene.plan)) return true
+        if (state.stage !in setOf(
+                MineExpeditionStage.FACTORY_WATER,
+                MineExpeditionStage.FACTORY_COAL,
+                MineExpeditionStage.FACTORY_HEAT,
+                MineExpeditionStage.FACTORY_POUR,
+                MineExpeditionStage.FACTORY_CRANE,
+                MineExpeditionStage.FACTORY_INSTALL,
+            )) return true
+        return MineExpeditionObjectives.targets(scene.plan, state, null).any { expected ->
+            expected.id == target.id && expected.interaction == target.interaction &&
+                (expected.target < 0 || expected.target == target.target) && expected.material == target.material
+        }
+    }
+
+    /** Delivery is accepted only at the receiving station for the live lease. */
+    private fun deliveryIsCurrent(
+        scene: MineExpeditionScene,
+        state: MineExpeditionState,
+        target: MineExpeditionObjective,
+        heldTarget: Int,
+    ): Boolean {
+        val receiver = MineExpeditionObjectives.targets(scene.plan, state, null)
+            .filter { it.interaction == MineExpeditionInteraction.DELIVER && it.id == target.id }
+        return receiver.any { expected ->
+            expected.target < 0 || expected.target == heldTarget
+        }
+    }
     private fun pour(scope: String, scene: MineExpeditionScene, state: MineExpeditionState, player: Player,
         target: MineExpeditionObjective, now: Long, complete: (MineExpeditionStep) -> Boolean) {
         if(state.stage!=MineExpeditionStage.FACTORY_POUR || target.target in state.completed || cargo.containsKey(player.uniqueId)) return
@@ -307,11 +365,11 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
                 player.sendActionBar(text("cart-failed",player));return
             }
             player.sendActionBar(text("cart-attached",player))
-            Cargo(scope,state.stage,index,cart=cart)
+            Cargo(scope, state.stage, index, target.material, cart = cart)
         } else {
             val display = renderer.spawn(player, ItemStack(material(target.material)), ItemDisplay.ItemDisplayTransform.FIXED,
                 0.85f, 2f, 0.75, 0.85) { it.brightness = Display.Brightness(15, 15) }
-            Cargo(scope, state.stage, index, display)
+            Cargo(scope, state.stage, index, target.material, display = display)
         }
         cargo[player.uniqueId] = held
         releaseCrank(player.uniqueId)

@@ -22,6 +22,25 @@ object MineExpeditionObjectives {
             objective(source, MineExpeditionInteraction.PICKUP, material),
             objective(destination, MineExpeditionInteraction.DELIVER, material, position = delivery),
         )
+        fun indexedCarry(
+            source: String,
+            destination: String,
+            material: String,
+            target: Int,
+            delivery: ExpeditionPoint = point(destination),
+        ) = listOf(
+            objective(source, MineExpeditionInteraction.PICKUP, material, target),
+            objective(destination, MineExpeditionInteraction.DELIVER, material, target, delivery),
+        )
+        fun connectedChargeTargets(): List<MineExpeditionObjective> {
+            val next = (0 until 3).firstOrNull { it !in state.completed } ?: return emptyList()
+            return when (next) {
+                0 -> indexedCarry("fuel_supply", "crusher_feed", "RAW_IRON_BLOCK", 0)
+                1 -> listOf(objective("control_crusher_left", MineExpeditionInteraction.OPERATE, "GRINDSTONE", 1))
+                2 -> indexedCarry("crushed_output", "furnace_input", "RAW_IRON_BLOCK", 2)
+                else -> emptyList()
+            }
+        }
         val deck = machine ?: plan.stations["ark_start"] ?: plan.spawn
         return when (state.stage) {
             MineExpeditionStage.DESCENT_MIDDLE, MineExpeditionStage.DESCENT_BOTTOM,
@@ -42,9 +61,17 @@ object MineExpeditionObjectives {
             MineExpeditionStage.ARK_CORES -> many("survey", 3, MineExpeditionInteraction.PICKUP, "AMETHYST_CLUSTER") +
                 objective("core_rack", MineExpeditionInteraction.DELIVER, "AMETHYST_SHARD", position = deck.offset(-2, 0, -4))
             MineExpeditionStage.FACTORY_WATER -> MineFactoryProgram.targets(plan,state)
-            MineExpeditionStage.FACTORY_COAL -> carry("fuel_supply", "furnace_input", "COAL_BLOCK")
+            MineExpeditionStage.FACTORY_COAL -> if (MineFactoryProgram.usesConnectedCrusherLine(plan)) {
+                connectedChargeTargets()
+            } else carry("fuel_supply", "furnace_input", "COAL_BLOCK")
             MineExpeditionStage.FACTORY_HEAT -> listOf(objective("furnace_control", MineExpeditionInteraction.OPERATE, "BLAZE_POWDER", 0))
-            MineExpeditionStage.FACTORY_POUR -> listOf(objective("pour_console", MineExpeditionInteraction.POUR, "LAVA_BUCKET", 0, point("pour_control").offset(-4,0,1)))
+            MineExpeditionStage.FACTORY_POUR -> listOf(objective(
+                "pour_console",
+                MineExpeditionInteraction.POUR,
+                "LAVA_BUCKET",
+                0,
+                plan.stations["pour_console"] ?: point("pour_control").offset(-4, 0, 1),
+            ))
             MineExpeditionStage.FACTORY_CRANE -> listOf(objective("crane_control", MineExpeditionInteraction.OPERATE, "IRON_CHAIN", 0))
             MineExpeditionStage.FACTORY_INSTALL -> carry(if ("crane_load" in plan.stations) "crane_load" else "crane_control", "assembly_socket", "IRON_BLOCK")
             MineExpeditionStage.COMPLETE -> emptyList()

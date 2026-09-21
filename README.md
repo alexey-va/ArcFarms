@@ -353,9 +353,12 @@ keep their original terrain until their event ends. The helmeted return marker
 in the cavern takes the player back to the lift, including after completion;
 rail extension clears a collapse, lays one continuous line from clicked
 markers and tests it with a cart. `ORE_WORKSHOP` is a separate fixed mapped
-station chain with no side-working entrance: carry visible ore to the crusher,
-walk three laps, heat and quench at the furnace, then carry each of three
-billets to shipping. Service items are temporary work equipment and do not
+station chain in the upper-floor north alcove, with no side-working entrance.
+Carry visible ore to the hopper, open the feed lever, start the crushing rolls,
+and release the processed ore after the four-second cycle. Heat and quench at
+the furnace, then carry each of three billets to shipping. The three distinct
+levers have small hitboxes, smooth motion and next-action glow; the machines
+remain visible between events and leave the main aisle clear. Service items are temporary work equipment and do not
 become ordinary loot.
 
 Three off-site expeditions open through the glowing `expedition_gate` point.
@@ -376,11 +379,16 @@ ore orders mark the four nearest exposed, still-needed ores with bright particle
 with counterweight cranks, carried power cells and a deep engine. **Drilling
 Ark** sends a tracked machine through branching caves: load fuel, clear its
 jammed drill, refill coolant and bring crystal cores aboard before returning.
-**The Dead Factory** connects a waterwheel, furnace, casting mould and gantry:
-commission the water line, haul fuel by cart, catch the furnace signal,
-dose molten metal from the casting console, run the overhead crane, then push
-its casting to a powered press. Pumps and crushers have separate waist-height
-consoles beside their service aisles; those controls follow saved machine edits.
+**The Dead Factory** is one west-to-east production line: repair the crusher drive,
+open the cooling circuit, load an ore-and-coal cart and engage the crushing rolls.
+Visible fragments pass through the open hopper onto a moving conveyor. Collect
+the processed mix, load the furnace and catch its heat signal, dose molten metal
+through the glazed pipe into the mould, run the transfer crane and push the
+casting to the press. Controls are mounted beside their own inlet or machine,
+with glow on the actionable lever or wheel; controls follow saved machine edits.
+The room has one return portal, and arrival faces the production line. Its
+continuous technical floor migrates in bounded journaled batches while preserving
+administrator-edited blocks.
 Commissioned crushers keep turning throughout the remaining factory tasks, with
 light grinding dust and a periodic grinding/crunching sound, until the event ends.
 The casting control opens the flow with one click: close it with a second click

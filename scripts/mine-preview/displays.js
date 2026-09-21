@@ -5,17 +5,34 @@ let expeditionMovingParts = [];
 let expeditionDemo = false;
 let expeditionFrame = null;
 const demoRotationAxis = new THREE.Vector3(0, 0, 1);
+function beltPose(part, phase) {
+  const straight = 7.6, radius = .28, arc = Math.PI * radius;
+  let distance = (((phase + part.angle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2)) / (Math.PI * 2) * (straight * 2 + arc * 2);
+  const at = new THREE.Vector3(...part.pivot);
+  if (distance < straight) return [at.add(new THREE.Vector3(-straight / 2 + distance, radius, 0)), 0];
+  distance -= straight;
+  if (distance < arc) { const a = distance / radius; return [at.add(new THREE.Vector3(straight / 2 + Math.sin(a) * radius, Math.cos(a) * radius, 0)), -a]; }
+  distance -= arc;
+  if (distance < straight) return [at.add(new THREE.Vector3(straight / 2 - distance, -radius, 0)), -Math.PI];
+  const a = (distance - straight) / radius;
+  return [at.add(new THREE.Vector3(-straight / 2 - Math.sin(a) * radius, -Math.cos(a) * radius, 0)), -Math.PI - a];
+}
 function poseExpeditionPart(mesh, part, phase) {
-  const angle = !part.moving || part.motion === 'press' ? 0
-    : part.motion === 'lever' ? Math.sin(phase / 2) * .5 : phase;
+  const angle = !part.moving || ['press', 'feed', 'processed'].includes(part.motion) ? 0
+    : part.motion === 'lever' ? Math.sin(phase / 2) * .5 : part.motion === 'counter_rotate' ? -phase : phase;
   const axis = part.motion === 'axle' ? new THREE.Vector3(1, 0, 0) : demoRotationAxis;
-  const center = new THREE.Vector3(...part.center);
-  if (part.moving && part.motion === 'press') center.y -= (1 - Math.cos(phase)) * .5;
-  else if (part.moving) {
+  let center = new THREE.Vector3(...part.center);
+  let rotation = new THREE.Quaternion().setFromAxisAngle(axis, part.angle + angle);
+  if (['belt', 'cargo'].includes(part.motion)) {
+    const [at, tangent] = beltPose(part, phase); center.add(at);
+    rotation = new THREE.Quaternion().setFromAxisAngle(demoRotationAxis, part.motion === 'belt' ? tangent : 0);
+  } else if (part.moving && part.motion === 'press') center.y -= (1 - Math.cos(phase)) * .5;
+  else if (part.moving && part.motion === 'feed') center.y -= ((phase / (Math.PI * 2) + part.angle) % 1) * 2.8;
+  else if (part.moving && part.motion !== 'processed') {
     const pivot = new THREE.Vector3(...part.pivot);
     center.sub(pivot).applyAxisAngle(axis, angle).add(pivot);
   }
-  const rotation = new THREE.Quaternion().setFromAxisAngle(axis, part.angle + angle);
+  mesh.visible = !part.idleHidden || expeditionDemo;
   mesh.quaternion.copy(rotation);
   mesh.scale.set(...part.size);
   mesh.position.copy(new THREE.Vector3(...part.size).multiplyScalar(-.5).applyQuaternion(rotation).add(center));
@@ -51,7 +68,7 @@ demoToggle.textContent = 'Демо механизмов';
 demoToggle.setAttribute('aria-pressed', 'false');
 const demoNote = document.createElement('p');
 demoNote.className = 'subtle';
-demoNote.textContent = 'Движение деталей: колёса, рычаги и пресс. Звуки, частицы и перенос груза проверяются в Minecraft.';
+demoNote.textContent = 'Дробление сырья, встречные валки, конвейер, рычаги и пресс. Звуки, частицы и перенос груза проверяются в Minecraft.';
 demoPanel.append(demoToggle, demoNote);
 document.querySelector('aside').prepend(demoPanel);
 demoToggle.onclick = () => {
@@ -69,8 +86,8 @@ demoToggle.onclick = () => {
   const animate = now => {
     if (now - lastFrame >= 1000 / 30) {
       for (const { mesh, part } of expeditionMovingParts) {
-        const duration = part.motion === 'press' ? 2400 : part.motion === 'lever' ? 4500 : 12000;
-        const elapsed = (now - started) % (part.motion === 'rotate' ? duration : duration + 1600);
+        const duration = part.motion === 'press' ? 2400 : part.motion === 'lever' ? 4500 : ['belt', 'cargo'].includes(part.motion) ? 6000 : 3000;
+        const elapsed = (now - started) % (['press', 'lever'].includes(part.motion) ? duration + 1600 : duration);
         poseExpeditionPart(mesh, part, Math.min(1, elapsed / duration) * Math.PI * 2);
       }
       render();

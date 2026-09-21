@@ -15,6 +15,34 @@ import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.domain.mine.expedition.*
 
 class MineFactoryPresentationTest : FunSpec({
+    test("connected line shows material only during processing and output only until collection") {
+        val plugin = mockk<Plugin>(relaxed = true)
+        val markers = mockk<MineExpeditionMarkers>(relaxed = true)
+        every { markers.at(any(), any(), any(), any(), any()) } returns null
+        val placement = MineExpeditionPlacement("world", 0, 60, 0, 73)
+        val scene = mockk<MineExpeditionScene> {
+            every { kind } returns MineExpeditionKind.DEAD_FACTORY
+            every { this@mockk.placement } returns placement
+            every { journalSequence } returns 8L
+            every { plan } returns MineExpeditionGenerator.plan(MineExpeditionKind.DEAD_FACTORY, 73L, 3)
+        }
+        val presentation = MineFactoryPresentation(plugin, markers)
+        val loaded = MineExpeditionState(placement, MineExpeditionStage.FACTORY_COAL, completed = setOf(0))
+        presentation.tick(scene, loaded, "factory", 1000, emptyMap())
+        verify { markers.motionVisible("furnish:8", "decor_crusher_left", "feed", false) }
+        clearMocks(markers, answers = false)
+        presentation.tick(scene, loaded, "factory", 1100, emptyMap(), processingCharge = true)
+        verify { markers.motionVisible("furnish:8", "decor_crusher_left", "feed", true) }
+        verify { markers.motionVisible("furnish:8", "decor_conveyor_raw", "cargo", true) }
+        clearMocks(markers, answers = false)
+        presentation.tick(scene, loaded.copy(completed = setOf(0, 1)), "factory", 8000, emptyMap())
+        verify { markers.motionVisible("furnish:8", "decor_crusher_left", "feed", false) }
+        verify { markers.motionVisible("factory", "crushed_output", "processed", true) }
+        clearMocks(markers, answers = false)
+        presentation.tick(scene, loaded.copy(stage = MineExpeditionStage.FACTORY_HEAT, completed = emptySet()), "factory", 9000, emptyMap())
+        verify { markers.motionVisible("factory", "crushed_output", "processed", false) }
+    }
+
     test("running crusher rotates and emits bounded feedback after commissioning and during casting") {
         val plugin = mockk<Plugin>(relaxed = true)
         every { plugin.config.getBoolean(any(), true) } returns true
@@ -32,6 +60,7 @@ class MineFactoryPresentationTest : FunSpec({
             every { kind } returns MineExpeditionKind.DEAD_FACTORY
             every { this@mockk.placement } returns placement
             every { journalSequence } returns 1L
+            every { plan } returns MineExpeditionGenerator.plan(MineExpeditionKind.DEAD_FACTORY,73L,2)
         }
         val presentation = MineFactoryPresentation(plugin, markers)
         val water = MineExpeditionState(placement, MineExpeditionStage.FACTORY_WATER, completed = setOf(2), factoryProgram = 1)

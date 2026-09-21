@@ -147,20 +147,32 @@ internal class MineExpeditionController(
             }
         }
         val activeTargets = targets(scene, latest).filterNot { target ->
-            target.interaction == MineExpeditionInteraction.PICKUP && target.target >= 0 &&
-                actions.claimed(scope, latest.stage, target.target)
+            target.target >= 0 && (
+                target.interaction == MineExpeditionInteraction.PICKUP && actions.claimed(scope, latest.stage, target.target) ||
+                MineFactoryProgram.usesConnectedCrusherLine(scene.plan) &&
+                    target.interaction == MineExpeditionInteraction.DELIVER && !actions.claimed(scope, latest.stage, target.target))
         }
         markers.reconcile("furnish:${scene.journalSequence}", MineExpeditionFurnishings.targets(scene,editor,activeTargets.mapTo(hashSetOf()) { it.id }))
         markers.reconcile(scope, activeTargets.map { target -> marker(scene, latest, target, now) })
         val pourSignal = if (actions.pourReady(scope, now)) Material.LIME_CONCRETE else Material.YELLOW_CONCRETE
         markers.signal(scope, "pour_console", pourSignal)
         markers.signal("furnish:${scene.journalSequence}", "pour_console", Material.GRAY_CONCRETE)
-        factoryPresentation.tick(scene,latest,scope,now,machinery.turns(scene))
+        factoryPresentation.tick(scene,latest,scope,now,machinery.turns(scene),
+            actions.operationPhase(scope,"control_crusher_left",now)>0.0)
     }
 
     private fun marker(scene: MineExpeditionScene, state: MineExpeditionState, target: MineExpeditionObjective,
         now: Long): MineExpeditionMarkers.Target {
         val label = when {
+            MineFactoryProgram.usesConnectedCrusherLine(scene.plan) && target.id.startsWith("repair_supply_") -> "control.repair-pickup"
+            MineFactoryProgram.usesConnectedCrusherLine(scene.plan) && target.id=="crusher_repair" -> "control.repair-install"
+            MineFactoryProgram.usesConnectedCrusherLine(scene.plan) && state.stage==MineExpeditionStage.FACTORY_COAL -> when(target.id) {
+                "fuel_supply" -> "control.charge-cart"
+                "crusher_feed" -> "control.charge-load"
+                "control_crusher_left" -> "control.charge-crush"
+                "crushed_output" -> "control.mix-cart"
+                else -> "control.mix-load"
+            }
             state.stage == MineExpeditionStage.FACTORY_WATER && target.id.startsWith("control_pump_") -> "control.pump-start"
             state.stage == MineExpeditionStage.FACTORY_WATER && target.id.startsWith("control_crusher_") -> "control.crusher-start"
             state.stage == MineExpeditionStage.FACTORY_CRANE -> "control.crane-start"
@@ -183,7 +195,7 @@ internal class MineExpeditionController(
     }
 
     private fun exitMarkers(scene: MineExpeditionScene): List<MineExpeditionMarkers.Target> =
-        listOf("entry", "exit").map { id -> MineExpeditionMarkers.Target("return_$id", scene.station(id),
+        MineExpeditionPortalPolicy.returnStationIds(scene.plan).map { id -> MineExpeditionMarkers.Target("return_$id", scene.station(id),
             Material.RECOVERY_COMPASS, render("exit"), glowing = scene.reserved || scene.completedAt != 0L) }
 
     fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean {
@@ -273,7 +285,7 @@ internal class MineExpeditionController(
             player.sendActionBar(render("preparing", player)); return
         }
         if (!near(player, surface, 5.0) || !access.hasAccess(player, runtime.settings.permission)) return
-        val destination = scene.station("entry")
+        val destination = MineExpeditionPortalPolicy.arrival(scene.kind, scene.station("entry"))
         if (!destination.block.isPassable || !destination.clone().add(0.0, 1.0, 0.0).block.isPassable ||
             !destination.clone().add(0.0, -1.0, 0.0).block.type.isSolid) {
             player.sendActionBar(render("preparing", player))
@@ -349,6 +361,12 @@ internal class MineExpeditionController(
             scene?.ready != true || current == null -> render("preparing", player)
             !scene.contains(player.location) -> render("enter-hint", player)
             actions.hint(scope(scene), player, now) != null -> actions.hint(scope(scene), player, now)
+            MineFactoryProgram.usesConnectedCrusherLine(scene.plan) && current.stage in setOf(MineExpeditionStage.FACTORY_WATER,MineExpeditionStage.FACTORY_COAL) -> {
+                val checkpoint=(0..2).firstOrNull { it !in current.completed } ?: 2
+                val suffix=if(actions.carrying(player,scope(scene))) "-carry" else ""
+                val phase=if(current.stage==MineExpeditionStage.FACTORY_WATER) "commission" else "charge"
+                render("line.$phase-$checkpoint$suffix",player)
+            }
             actions.carrying(player, scope(scene)) -> render(if (current.stage == MineExpeditionStage.FACTORY_COAL) "fuel-carry" else if(current.stage == MineExpeditionStage.FACTORY_INSTALL) "iron-cart-carry" else "carry", player)
             current.stage == MineExpeditionStage.FACTORY_WATER -> render("program.${current.factoryProgram}", player)
             current.stage == MineExpeditionStage.FACTORY_COAL -> render("fuel-progress", player, progressValues(current, now))

@@ -7,35 +7,35 @@
           "world": "rc_atelier_compact_mine",
           "x": 36.5,
           "y": 111.0,
-          "z": 23.5,
+          "z": 20.5,
           "yaw": 0.0
         },
         "ore_crusher": {
           "world": "rc_atelier_compact_mine",
-          "x": 42.5,
+          "x": 40.5,
           "y": 111.0,
-          "z": 23.5,
+          "z": 17.5,
           "yaw": 0.0
         },
         "ore_furnace": {
           "world": "rc_atelier_compact_mine",
-          "x": 48.5,
+          "x": 46.5,
           "y": 111.0,
-          "z": 23.5,
+          "z": 17.5,
           "yaw": 0.0
         },
         "ore_output": {
           "world": "rc_atelier_compact_mine",
-          "x": 54.5,
+          "x": 50.5,
           "y": 111.0,
-          "z": 23.5,
+          "z": 17.5,
           "yaw": 0.0
         },
         "ore_shipping": {
           "world": "rc_atelier_compact_mine",
-          "x": 56.5,
+          "x": 51.5,
           "y": 111.0,
-          "z": 26.5,
+          "z": 21.5,
           "yaw": 0.0
         }
       },

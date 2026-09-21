@@ -12,7 +12,7 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
     private data class Frame(var nextParticles:Long=0,var nextSound:Long=0,var nextFlow:Long=0,var heatSignal:Long=-1,
         var pressHit:Boolean=false)
     private val frames=mutableMapOf<Long,Frame>()
-    fun tick(scene:MineExpeditionScene,state:MineExpeditionState,scope:String,now:Long,angles:Map<String,Double>) {
+    fun tick(scene:MineExpeditionScene,state:MineExpeditionState,scope:String,now:Long,angles:Map<String,Double>,processingCharge:Boolean=false) {
         if(scene.kind!=MineExpeditionKind.DEAD_FACTORY || scene.placement.geometryVersion<3) return
         if(state.stage==MineExpeditionStage.COMPLETE) { clear(scene); return }
         val f=frames.getOrPut(scene.journalSequence) { Frame() }
@@ -24,8 +24,30 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
         val light = if (heatReady) Material.LIME_CONCRETE else if (heating) Material.YELLOW_CONCRETE else Material.RED_CONCRETE
         markers.signal(scope, "furnace_control", light)
         markers.signal(decor, "furnace_control", light)
-        val running=MineFactoryProgram.runningMachines(state,angles.filterValues { it>0.0 }.keys)
-        val water=state.stage!=MineExpeditionStage.FACTORY_WATER || state.completed.isNotEmpty()
+        val running=MineFactoryProgram.runningMachines(state,angles.filterValues { it>0.0 }.keys,scene.plan)
+        val connected=MineFactoryProgram.usesConnectedCrusherLine(scene.plan)
+        val water=state.stage!=MineExpeditionStage.FACTORY_WATER ||
+            if(connected) 1 in state.completed else state.completed.isNotEmpty()
+        if(connected) {
+            val processing=state.stage==MineExpeditionStage.FACTORY_COAL && 0 in state.completed &&
+                1 !in state.completed && processingCharge
+            val processed=state.stage==MineExpeditionStage.FACTORY_COAL && 1 in state.completed && 2 !in state.completed
+            val repaired=state.stage!=MineExpeditionStage.FACTORY_WATER || 0 in state.completed
+            for(owner in listOf(scope,decor)) {
+                markers.motionVisible(owner,"decor_crusher_left","feed",processing)
+                markers.motionVisible(owner,"decor_conveyor_raw","cargo",processing)
+                markers.motionVisible(owner,"crushed_output","processed",processed)
+                markers.motionVisible(owner,"crusher_repair","installed_gear",repaired)
+            }
+            if("decor_crusher_left" in running) {
+                val beltPhase=(now%6_000L).toDouble()/6_000*Math.PI*2
+                markers.rotate(decor,"decor_conveyor_raw",beltPhase)
+                markers.rotate(decor,"crusher_repair",beltPhase)
+                markers.rotate(scope,"crusher_repair",beltPhase)
+            }
+            if(state.stage==MineExpeditionStage.FACTORY_CRANE && (angles["crane_control"] ?: 0.0)>0.0)
+                markers.rotate(decor,"decor_roller_table",(now%2_000L).toDouble()/2_000*Math.PI*2)
+        }
         val hot=state.stage in setOf(MineExpeditionStage.FACTORY_HEAT,MineExpeditionStage.FACTORY_POUR)
         val phase=(now%12_000L).toDouble()/12_000*Math.PI*2
         if(water) markers.rotate(decor,"decor_waterwheel",phase)
@@ -58,6 +80,7 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
         if(hot) {
             if(particleTick) {
                 particles(at("decor_furnace_left",y=2.8,z=2.3),Particle.SMALL_FLAME,5,1.3,.45,.1,.005)
+                if(connected) particles(at("decor_furnace_left",x=-3.0,y=3.0,z=-1.3),Particle.SMALL_FLAME,3,.4,.4,.07,.003)
                 particles(at("decor_furnace_left",y=11.5,z=-1.0),Particle.CAMPFIRE_COSY_SMOKE,2,.5,.15,.5,.025)
             }
             if(soundTick) sound(at("decor_furnace_left",y=3.0,z=2.0),Sound.BLOCK_FURNACE_FIRE_CRACKLE,.65f,.85f)
@@ -116,12 +139,9 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
     fun cleanup() { frames.clear() }
 
     private companion object {
-        val METAL_PATH=listOf(
-            org.bukkit.util.Vector(0.0,3.05,-4.8),
-            org.bukkit.util.Vector(0.0,3.05,-2.15),
-            org.bukkit.util.Vector(1.05,3.05,-2.15),
-            org.bukkit.util.Vector(1.05,3.05,-.3),
-            org.bukkit.util.Vector(1.05,2.35,-.3))
+        val METAL_PATH=MineFactoryModels.moltenPath.map {
+            org.bukkit.util.Vector(it.x.toDouble(),it.y.toDouble(),it.z.toDouble())
+        }
         val METAL_PATH_LENGTH=METAL_PATH.zipWithNext().sumOf { (a,b)->a.distance(b) }
         fun metalPoint(distance:Double):org.bukkit.util.Vector {
             var remaining=distance
