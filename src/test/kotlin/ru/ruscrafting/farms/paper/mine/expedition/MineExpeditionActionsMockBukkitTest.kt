@@ -400,21 +400,16 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
             return step.accepted
         }
         actions.interact(scope, connected, state, player, target, 1_000, ::complete) {}
-        actions.factoryHeat(scope)!!.airOpen shouldBe true
-        var now = 1_000L
-        var toggles = 0
-        while (!actions.factoryHeat(scope)!!.ready && now < 31_000L) {
-            now += 100L
+        actions.factoryHeat(scope)!!.running shouldBe true
+        actions.interact(scope, connected, state, player, target, 2_000, ::complete) {}
+        actions.factoryHeat(scope)!!.running shouldBe true
+        actions.factoryHeat(scope)!!.elapsedMillis shouldBe 1_000L
+        var now = 2_000L
+        repeat(5) {
+            now += 1_000L
             actions.tick(scope, connected, state, listOf(target), listOf(player), now,
                 { _, _ -> error("heat must wait for the player to confirm") }) { _, _ -> }
-            val heat = actions.factoryHeat(scope)!!
-            if (!heat.ready && ((heat.airOpen && heat.temperature >= 75) || (!heat.airOpen && heat.temperature <= 63))) {
-                actions.interact(scope, connected, state, player, target, now, ::complete) {}
-                actions.factoryHeat(scope)!!.airOpen shouldBe !heat.airOpen
-                toggles++
-            }
         }
-        (toggles > 0) shouldBe true
         actions.factoryHeat(scope)!!.ready shouldBe true
         val ready = actions.factoryHeat(scope)
         actions.tick(scope, connected, state, listOf(target), listOf(player), now + 60_000,
@@ -491,9 +486,12 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         phase shouldBe 0.0
         actions.pourLabel(scope,17_001) shouldBe "control.pour_console"
         actions.pourReady(scope,17_001) shouldBe false
+        actions.hint(scope, player, 17_500) shouldBe net.kyori.adventure.text.Component.text("pour-overflow")
         open(18000)
+        actions.hint(scope, player, 18_000) shouldBe net.kyori.adventure.text.Component.text("pour-filling")
         actions.tick(scope,scene,state,listOf(target),emptyList(),19000,{_,_->error("departed casting credited") }) { _,_-> }
         actions.pourLabel(scope,19000) shouldBe "control.pour_console"
+        actions.hint(scope, player, 19_100) shouldBe null
     }
 
     test("cart contact and click delivery share one lease and leaving the factory retires every part") {
@@ -543,6 +541,11 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
 
     test("factory crane uses only current models and its chain remains attached to the carried load") {
         scene = scene.copyForConnectedActions()
+        // Exercise the persisted geometry-v3 anchor; machinery must migrate
+        // this unchanged legacy value to the casting-side table end.
+        scene = MineExpeditionScene(scene.plan.copy(stations = scene.plan.stations +
+            ("crane_load" to ExpeditionPoint(17, 5, -6))), scene.placement, scene.world,
+            scene.zoneId, scene.sequence, scene.objectiveNonce, scene.journalSequence, scene.surface, scene.prepared)
         scene.refreshReady(building = false, complete = true)
         val plugin = paper.createSimplePlugin("FactoryMachineryTest")
         val machinery = MineExpeditionMachinery(plugin, { _, _ -> true })
@@ -567,8 +570,9 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         val installing = state.copy(stage = MineExpeditionStage.FACTORY_INSTALL)
         machinery.animate(scene, installing, 4_500, cargoClaimed = true)
         casting.transformation.scale.x shouldBe 1.6f
-        casting.location.x shouldBe scene.at(scene.plan.stations.getValue("crane_load")).x
-        casting.location.z shouldBe scene.at(scene.plan.stations.getValue("crane_load")).z
+        val craneLoad = MineFactoryLine.effectiveStation(scene.plan, "crane_load")
+        casting.location.x shouldBe scene.at(craneLoad).x
+        casting.location.z shouldBe scene.at(craneLoad).z
         machinery.turn(scene, "roller_transfer", Math.PI * 2)
         machinery.animate(scene, installing, 8_500)
         casting.location.x shouldBe scene.at(scene.plan.stations.getValue("assembly_socket")).x

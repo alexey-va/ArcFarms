@@ -28,16 +28,17 @@ event markers; other expeditions may keep separate entry and exit portals.
    completes the receiving checkpoint after its visible one-way journey; no second
    cart or manual receiver step interrupts the line. Only the current source
    or control is highlighted, and stale clicks cannot grant credit.
-3. Operate the furnace air control. Opening it raises the thermometer by 12
-   points per second and closing it lowers it by 6; keep the reading in the
-   60–78 green band for four cumulative seconds. The panel's thermometer, green signal and
-   bell show readiness, and a ready click advances the durable checkpoint.
+3. Start the furnace with its mounted handle. The automatic six-second heating
+   cycle shows a percentage; at 100% it turns green and rings a bell. Readiness
+   stays latched until the release click advances the durable checkpoint.
+   Repeated clicks cannot restart the run or switch it into cooling.
    Fire and chimney smoke follow the heating/pouring stages.
 4. Start the flow from the separate console beside the casting bed. Close it
    with another right-click while the percentage and lever glow green from
    100% through 130% (the nominal fill is 100%). The 10-second fill has a
    3-second success window; closing above 130% resets the batch for a free
-   retry. A bell, rising molten surface, droplets and lava sounds show the
+   retry. The player sees only the percentage, green from 100%, and a brief
+   red retry message after an overflow. A bell, rising molten surface, droplets and lava sounds show the
    flow; leaving releases the control, and another worker cannot steal an active
    pour.
 5. Right-click the crane console. A 4.5-second cycle lifts the casting, moves it
@@ -229,7 +230,7 @@ release evidence below does not certify this release's client behaviour.
 
 ## Мёртвый завод — `DEAD_FACTORY`
 
-Связная производственная линия слева направо: большая валковая дробилка, конвейер, печь, заливка, роликовый стол и пресс. Сначала нужно найти выпавшую шестерню и установить на подсвеченный вал, открыть охлаждение и включить привод. Затем тележкой подать руду с углём, запустить дробление, а лента сама подаст смесь в печь без второй тележки. Воздух печи держат в зелёном диапазоне 60–78% четыре секунды: открытая заслонка повышает температуру на 12 пунктов в секунду, закрытая снижает на 6. По зелёному сигналу печи открыть выпуск: успех заливки находится в окне 100–130%, а превышение 130% сбрасывает попытку. Кран опускает заготовку на начало роликового стола, после чего она движется в пресс. После удара пресса игрок видит готовую деталь до возвращения. Вход смотрит на цех, подсветка указывает текущую операцию; работающая дробилка продолжает вращаться со звуком и пылью до конца ивента.
+Связная производственная линия слева направо: большая валковая дробилка, конвейер, печь, заливка, роликовый стол и пресс. Сначала нужно найти выпавшую шестерню и установить на подсвеченный вал, открыть охлаждение и включить привод. Затем тележкой подать руду с углём, запустить дробление, а лента сама подаст смесь в печь без второй тележки. Рычаг запускает автоматический нагрев на шесть секунд. На 100% проценты становятся зелёными; готовая печь ждёт нажатия для выпуска металла. У заливки видны только проценты: на 100% подсветка зеленеет, при опоздании ненадолго появляется красное предложение повторить попытку. Кран опускает заготовку на начало роликового стола, после чего она движется в пресс. После удара пресса игрок видит готовую деталь до возвращения. Вход смотрит на цех, подсветка указывает текущую операцию; работающая дробилка продолжает вращаться со звуком и пылью до конца ивента.
 
 ## Управление и генерация
 

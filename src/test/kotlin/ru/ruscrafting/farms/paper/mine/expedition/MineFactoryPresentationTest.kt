@@ -64,7 +64,7 @@ class MineFactoryPresentationTest : FunSpec({
         clearMocks(markers, answers = false)
         presentation.tick(scene, loaded.copy(stage = MineExpeditionStage.FACTORY_INSTALL), "factory", 11_100,
             mapOf("roller_transfer" to Math.PI, "assembly_socket" to Math.PI))
-        verify(exactly = 1) { markers.rotate("furnish:8", "decor_roller_table", any()) }
+        verify(exactly = 1) { markers.rotate("furnish:8", "decor_roller_table", -Math.PI) }
     }
 
     test("running crusher rotates and emits bounded feedback after commissioning and during casting") {

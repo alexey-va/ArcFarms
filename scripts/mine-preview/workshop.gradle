@@ -123,10 +123,10 @@ allprojects {
                     origin: [0, 0, 0],
                     route: [[1, 0, 9], [1, 0, 7], [5, 0, 4], [11, 0, 4], [15, 0, 4]],
                     preview: [defaultView: 'line', views: [
-                        [id: 'line', label: 'Вся линия', camera: [10, 8, 17], target: [9, 3, 5], fov: 78],
-                        [id: 'crusher', label: 'Дробилка и подача', camera: [4, 5, 14], target: [5, 3, 5], fov: 72],
-                        [id: 'furnace', label: 'Печь и пульт', camera: [12, 5, 14], target: [11, 4, 5], fov: 72],
-                        [id: 'casting', label: 'Заливка и охлаждение', camera: [17, 5, 13], target: [15, 3, 6], fov: 72],
+                        [id: 'line', label: 'Вся линия', camera: [10, 6, 18], target: [9, 2.8, 5], fov: 70],
+                        [id: 'crusher', label: 'Дробилка и подача', camera: [5, 3, 12], target: [6, 2.8, 6], fov: 65],
+                        [id: 'furnace', label: 'Печь и пульт', camera: [12, 3, 12], target: [11.8, 2.7, 6.1], fov: 65],
+                        [id: 'casting', label: 'Заливка и охлаждение', camera: [18.5, 4, 12], target: [15.5, 2.3, 6.5], fov: 65],
                         [id: 'cross', label: 'План цеха', camera: [28, 22, 28], target: [9, 0, 5], cutY: 6, fov: 70],
                     ]],
                 ]

@@ -30,6 +30,7 @@ internal class MineWorkshopMachines(private val plugin: Plugin) {
         NEEDLE,
         MOLTEN,
         COOLING,
+        COOLING_ROLLERS,
     }
 
     internal data class Visual(
@@ -134,7 +135,8 @@ internal class MineWorkshopMachines(private val plugin: Plugin) {
                 captionLabel = null
             }
             val anchor = control?.let(controls::get)
-                ?: body.location.clone().add(0.0, 3.0, 2.0)
+                ?: interactionCenter?.clone()?.add(0.0, .85, 0.0)
+                ?: body.location.clone().add(0.0, 1.85, .65)
             val label = captionLabel ?: renderer.spawnText(
                 if (control != null) MineWorkshopGeometry.captionLocation(anchor) else anchor,
                 text,
@@ -209,7 +211,7 @@ internal class MineWorkshopMachines(private val plugin: Plugin) {
                 }
             }
             return when (visual.animation) {
-                Animation.ROLLERS -> true
+                Animation.ROLLERS, Animation.COOLING_ROLLERS -> true
                 Animation.FEED -> state.crushing
                 Animation.BELT -> true
                 Animation.CARGO -> state.transferActive
@@ -235,6 +237,7 @@ internal class MineWorkshopMachines(private val plugin: Plugin) {
                 Animation.ROLLERS -> if (state.crushing) cycle(now, 900L) else legacy
                 Animation.FEED -> if (state.crushing) cycle(now, 1_200L) else legacy
                 Animation.BELT, Animation.CARGO -> if (state.transferActive) state.transfer * TAU else legacy
+                Animation.COOLING_ROLLERS -> if (state.pouringActive) MineWorkshopAnimation.coolingProgress(state.pouring) * TAU * 4f else 0f
                 Animation.NEEDLE -> state.temperature * 2.45f
                 else -> legacy
             }
@@ -301,7 +304,9 @@ internal class MineWorkshopMachines(private val plugin: Plugin) {
         }
         val body = displays.firstOrNull() ?: error("Workshop model $role has no visual parts")
         val controls = controlLocations(role, at)
-        val interactionCenter = if (role == OUTPUT) at.clone().add(1.0, 1.25, 3.85) else null
+        val interactionCenter = if (role == OUTPUT) MineWorkshopGeometry.PICKUP_OFFSET.let {
+            at.clone().add(it.x.toDouble(), it.y.toDouble(), it.z.toDouble())
+        } else null
         return Machine(packetRenderer, role, body, displays, visuals, controls, interactionCenter)
             .also { it.render(0f, 0L) }
     }
@@ -318,11 +323,15 @@ internal class MineWorkshopMachines(private val plugin: Plugin) {
             path: List<Vector3f> = emptyList(),
         ) {
             MineDisplayBlueprints.model(kind).forEachIndexed { partIndex, sourcePart ->
+                // Workshop owns its short, waist-high outlet instead of the factory floor trough.
+                if (kind == "furnace" && sourcePart.center.z > 4f) return@forEachIndexed
+                // These generic yellow pads look like extra buttons beside the real drive handle.
+                if (kind == "factory_crusher" && sourcePart.material == Material.YELLOW_TERRACOTTA) return@forEachIndexed
                 // Sink the shared foundation slightly into the floor so the
                 // hopper and conveyor feet do not share its underside plane.
-                val part = if (kind == "factory_crusher" && partIndex == 0)
+                val part = if (kind in setOf("factory_crusher", "furnace") && partIndex == 0)
                     sourcePart.copy(center = Vector3f(sourcePart.center).add(0f, -.05f, 0f)) else sourcePart
-                val mapped = animation ?: when (part.motion) {
+                val mapped = animation ?: if (kind == "furnace" && part.material == Material.ORANGE_STAINED_GLASS) Animation.HEAT_CORE else when (part.motion) {
                     "rotate", "counter_rotate" -> Animation.ROLLERS
                     "feed" -> Animation.FEED
                     "belt" -> Animation.BELT
@@ -367,8 +376,7 @@ internal class MineWorkshopMachines(private val plugin: Plugin) {
             "crusher" -> {
                 model("factory_crusher", .6f)
                 model("inlet_hopper", .55f, Vector3f(0f, 0f, 2.15f), FEED)
-                part(Material.SEA_LANTERN, Vector3f(0f, 2.02f, 3.04f), Vector3f(.32f, .22f, .06f), motion = "signal", control = FEED)
-                model("mounted_console", .36f, Vector3f(1.45f, .95f, 2.05f), DRIVE)
+                addAll(MineWorkshopAttachments.crusherPanel())
                 // The collector overlaps the conveyor head so the material route is visibly joined.
                 part(Material.POLISHED_BLACKSTONE, Vector3f(0f, .72f, 0f), Vector3f(3.4f, .22f, 2.2f))
                 part(Material.CUT_COPPER, Vector3f(2.8f, .93f, -1.04f), Vector3f(3.0f, .14f, .16f))
@@ -381,36 +389,11 @@ internal class MineWorkshopMachines(private val plugin: Plugin) {
             "furnace" -> {
                 // Rotate the furnace so its rear charging mouth meets the x-axis conveyor.
                 model("furnace", .5f, yaw = MineWorkshopGeometry.FURNACE_YAW_RADIANS)
-                model("mounted_console", .36f, Vector3f(-1.35f, .95f, 2.65f), AIR)
-                model("mounted_console", .36f, Vector3f(.35f, .95f, 2.65f), TAP)
-                // South-facing heat window, green operating band and temperature needle.
-                part(Material.ORANGE_STAINED_GLASS, Vector3f(-2.97f, 3.15f, -1.3f), Vector3f(.08f, 1.55f, 1.7f), yaw = MineWorkshopGeometry.FURNACE_YAW_RADIANS, animation = Animation.HEAT_CORE)
-                // A one-block thermometer: 60..78% is exactly the green band.
-                part(Material.YELLOW_CONCRETE, Vector3f(-3.04f, 1.90f, -1.3f), Vector3f(.1f, .60f, .16f), yaw = MineWorkshopGeometry.FURNACE_YAW_RADIANS)
-                part(Material.LIME_CONCRETE, Vector3f(-3.04f, 2.29f, -1.3f), Vector3f(.1f, .18f, .16f), yaw = MineWorkshopGeometry.FURNACE_YAW_RADIANS)
-                part(Material.RED_CONCRETE, Vector3f(-3.04f, 2.49f, -1.3f), Vector3f(.1f, .22f, .16f), yaw = MineWorkshopGeometry.FURNACE_YAW_RADIANS)
-                part(Material.CUT_COPPER, Vector3f(-3.14f, 1.6f, -1.3f), Vector3f(.08f, .045f, .3f), yaw = MineWorkshopGeometry.FURNACE_YAW_RADIANS, animation = Animation.NEEDLE)
-                part(Material.ORANGE_STAINED_GLASS, Vector3f(0f, 2.55f, 2.15f), Vector3f(2.4f, .16f, .12f), yaw = MineWorkshopGeometry.FURNACE_YAW_RADIANS, animation = Animation.HEAT_CORE)
+                addAll(MineWorkshopAttachments.furnacePanel())
             }
-            "ore" -> {
-                model("inlet_hopper", .55f)
-                part(Material.SEA_LANTERN, Vector3f(0f, 2.02f, .98f), Vector3f(.35f, .22f, .05f), motion = "signal")
-            }
-            "output" -> {
-                model("casting_bed", .55f)
-                part(Material.POLISHED_BASALT, Vector3f(.15f, .9f, 2.25f), Vector3f(.22f, .38f, 4.1f))
-                part(Material.POLISHED_BASALT, Vector3f(1.85f, .9f, 2.25f), Vector3f(.22f, .38f, 4.1f))
-                part(Material.ORANGE_STAINED_GLASS, Vector3f(1f, 1.1f, 2.25f), Vector3f(1.5f, .12f, 3.7f))
-                part(Material.EXPOSED_CUT_COPPER, Vector3f(-.9f, 1.48f, 0f), Vector3f(1.8f, .22f, .22f))
-                part(Material.ORANGE_STAINED_GLASS, Vector3f(-.9f, 1.48f, 0f), Vector3f(1.55f, .1f, .1f))
-                part(Material.ORANGE_STAINED_GLASS, Vector3f(-2.9f, 1.62f, 0f), Vector3f(.34f, .3f, .34f), hidden = true, animation = Animation.MOLTEN, path = MineWorkshopGeometry.FURNACE_TO_CASTING)
-                part(Material.IRON_BLOCK, Vector3f(), Vector3f(.58f, .38f, .72f), hidden = true, animation = Animation.COOLING, path = MineWorkshopGeometry.CASTING_TO_RACK)
-            }
-            "shipping" -> {
-                // The old random belt is a passive, connected billet rack end now.
-                model("casting_rack", .72f)
-                part(Material.LIME_CONCRETE, Vector3f(0f, 1.95f, 0f), Vector3f(1.2f, .14f, .08f), motion = "signal")
-            }
+            "ore" -> model("inlet_hopper", .55f)
+            "output" -> addAll(MineWorkshopAttachments.casting())
+            "shipping" -> addAll(MineWorkshopAttachments.rack())
             else -> error("Unknown ore workshop machine role: $role")
         }
     }

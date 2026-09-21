@@ -53,7 +53,7 @@ internal object MineExpeditionFurnishings {
                 !id.startsWith("jam_") && !id.startsWith("branch_") && id !in hiddenStations
         }.map { (id, p) ->
             Fixture(id, model(id, plan.kind),
-                if (id == "crusher_repair") MineFactoryLine.effectiveStation(plan, id) else p)
+                if (id in setOf("crusher_repair", "crane_load")) MineFactoryLine.effectiveStation(plan, id) else p)
         }
         val decor=when(plan.kind) {
             MineExpeditionKind.DEAD_FACTORY -> if(modernFactory) listOf(

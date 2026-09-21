@@ -20,6 +20,8 @@ class MineFactoryLineTest : FunSpec({
         ).map(MineFactoryLine.machines::getValue).map(ExpeditionPoint::z).distinct() shouldBe listOf(-6)
         plan.stations.getValue("fuel_supply") shouldBe ExpeditionPoint(-25, 5, 15)
         plan.stations.getValue("water_valve_1") shouldBe ExpeditionPoint(-25, 5, -15)
+        plan.stations.getValue("crane_load") shouldBe ExpeditionPoint(8, 5, -6)
+        plan.stations.getValue("assembly_socket") shouldBe ExpeditionPoint(22, 5, -6)
     }
 
     test("new floor keeps the dark technical pad and light aisles") {
@@ -42,6 +44,19 @@ class MineFactoryLineTest : FunSpec({
         val custom = ExpeditionPoint(-20, 5, -1)
         MineFactoryLine.effectiveStation(
             plan.copy(stations = plan.stations + ("crusher_repair" to custom)), "crusher_repair",
+        ) shouldBe custom
+    }
+
+    test("saved press-side crane anchors migrate to the casting-side roller end") {
+        val base = MineExpeditionGenerator.plan(MineExpeditionKind.DEAD_FACTORY, 18L)
+        val plan = base.copy(stations = base.stations +
+            ("crane_load" to ExpeditionPoint(17, 5, -6)))
+
+        MineFactoryLine.effectiveStation(plan, "crane_load") shouldBe ExpeditionPoint(8, 5, -6)
+
+        val custom = ExpeditionPoint(11, 5, -6)
+        MineFactoryLine.effectiveStation(
+            plan.copy(stations = plan.stations + ("crane_load" to custom)), "crane_load",
         ) shouldBe custom
     }
 })

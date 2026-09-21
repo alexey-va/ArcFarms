@@ -152,15 +152,8 @@ internal object MineFactoryModels {
                 box(Material.IRON_BLOCK,-.34f,1.34f,.4f,.12f,.5f,.12f,motion="lever",pivot=Vector3f(-.34f,1.1f,.4f))
                 box(Material.ORANGE_CONCRETE,-.34f,1.62f,.4f,.35f,.18f,.23f,motion="lever",pivot=Vector3f(-.34f,1.1f,.4f))
                 for (index in 0..9) {
-                    // The colours mark the fixed operating band (60..78)
-                    // rather than pretending that every visible LED is safe.
-                    // Above the band stays red even when the gauge is full.
-                    val segmentTemperature = 18f + (index + .5f) * 8.2f
-                    val material = when {
-                        segmentTemperature in 60f..78f -> Material.LIME_CONCRETE
-                        segmentTemperature > 78f -> Material.RED_CONCRETE
-                        else -> Material.YELLOW_CONCRETE
-                    }
+                    // One-way progress: only the completed top segment is green.
+                    val material = if (index == 9) Material.LIME_CONCRETE else Material.YELLOW_CONCRETE
                     box(material,.34f,1.0f + index*.08f,.265f,.16f,.06f,.045f,
                         motion="thermometer",hidden=true)
                 }

@@ -22,7 +22,7 @@ internal object MineWorkshopVisualPose {
         state: MineWorkshopVisualState,
     ): Pose {
         val localCenter = if (visual.animation == MineWorkshopMachines.Animation.NEEDLE) {
-            Vector3f(visual.part.center).add(0f, state.temperature.coerceIn(0f, 1f), 0f)
+            Vector3f(visual.part.center).add(0f, state.temperature.coerceIn(0f, 1f) * .48f, 0f)
         } else if (visual.path.isNotEmpty() && visual.animation in PATH_ANIMATIONS) {
             interpolate(visual.path, progress(visual.animation, state))
         } else {

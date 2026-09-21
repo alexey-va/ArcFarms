@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.paper.mine.workshop
 
 import ru.ruscrafting.farms.paper.worksite.WorksiteDisplayGeometryValidator
 import kotlin.math.PI
+import org.joml.Vector3f
 
 /**
  * Pure geometry samples for the runtime workshop composites.  The existing
@@ -54,6 +55,14 @@ internal object MineWorkshopModelValidation {
         }
     }
 
+    /** Include station placement: local audits alone miss an output built over the next table. */
+    fun sceneBoxes(pouring: Float = -1f): List<WorksiteDisplayGeometryValidator.Box> =
+        MineWorkshopGeometry.STATIONS.flatMap { (role, anchor) ->
+            boxes(Sample(role, pouring = pouring)).map { box ->
+                box.copy(center = Vector3f(box.center).add(anchor.x.toFloat(), anchor.y.toFloat(), anchor.z.toFloat()))
+            }
+        }
+
     /** Return de-duplicated face conflicts across every sampled runtime pose. */
     fun validate(): List<String> = buildList {
         samples.forEach { sample ->
@@ -64,6 +73,14 @@ internal object MineWorkshopModelValidation {
                     add("${sample.role} phase=${sample.phase} transfer=${sample.transfer} pouring=${sample.pouring} " +
                         "$pair area=${conflict.area} gap=${conflict.separation}")
                 }
+            }
+        }
+        listOf(-1f, .4f, .7f, 1f).forEach { pouring ->
+            WorksiteDisplayGeometryValidator.conflicts(sceneBoxes(pouring)).filter { conflict ->
+                conflict.first.substringBefore(':') != conflict.second.substringBefore(':')
+            }.forEach { conflict ->
+                add("scene pouring=$pouring ${conflict.first}/${conflict.firstFace} <-> " +
+                    "${conflict.second}/${conflict.secondFace} area=${conflict.area} gap=${conflict.separation}")
             }
         }
     }

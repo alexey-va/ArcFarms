@@ -10,7 +10,7 @@ internal data class MineWorkshopVisualState(
     val crushing: Boolean = false,
     /** -1 when inactive, otherwise the one-way crusher-to-furnace progress. */
     val transfer: Float = -1f,
-    /** Furnace temperature normalized to the domain's relative gauge range. */
+    /** Automatic furnace heating progress. */
     val temperature: Float = 0f,
     val airOpen: Boolean = false,
     val heatReady: Boolean = false,

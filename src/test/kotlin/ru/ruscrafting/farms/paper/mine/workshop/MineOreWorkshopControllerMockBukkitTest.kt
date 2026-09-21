@@ -224,7 +224,7 @@ class MineOreWorkshopControllerMockBukkitTest : FunSpec({
         calls shouldHaveSize 1
     }
 
-    test("furnace air control reaches ready, has no expiring window, and starts the pour") {
+    test("furnace air control starts one automatic run, latches ready, and starts the pour") {
         val world = paper.server.addSimpleWorld("workshop_heat")
         val plugin = paper.createSimplePlugin("MineOreWorkshopHeatTest")
         val runtime = activeRuntime(world, MineWorkingStage.HEAT)
@@ -234,9 +234,6 @@ class MineOreWorkshopControllerMockBukkitTest : FunSpec({
         val player = paper.server.addPlayer("WorkshopHeater")
         player.teleport(stationPoints(world).getValue("furnace"))
         controller.reconcile(runtime, now = now.get())
-        val heatStart = now.get()
-        var closed = false
-        var reopened = false
         var ready = false
 
         fun clickControl(role: String) {
@@ -245,17 +242,13 @@ class MineOreWorkshopControllerMockBukkitTest : FunSpec({
             controller.onInteractEntity(PlayerInteractEntityEvent(player, target, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
         }
 
+        clickControl("furnace_air")
+        now.addAndGet(300L)
+        clickControl("furnace_air")
+        val heatStart = now.get()
         for (step in 0 until 300) {
             now.addAndGet(50L)
             controller.tick(runtime, listOf(player), now.get())
-            if (!closed && now.get() - heatStart >= 4_300L) {
-                clickControl("furnace_air")
-                closed = true
-            }
-            if (closed && !reopened && now.get() - heatStart >= 7_000L) {
-                clickControl("furnace_air")
-                reopened = true
-            }
             if (roleEntity(world, "furnace_tap").interactionHeight > 0f) {
                 ready = true
                 break
@@ -263,7 +256,7 @@ class MineOreWorkshopControllerMockBukkitTest : FunSpec({
         }
 
         ready shouldBe true
-        (now.get() - heatStart <= 9_000L) shouldBe true
+        (now.get() - heatStart <= 8_000L) shouldBe true
         runtime.state.incident!!.working!!.stage shouldBe MineWorkingStage.HEAT
 
         now.addAndGet(30_000L)
@@ -300,27 +293,19 @@ class MineOreWorkshopControllerMockBukkitTest : FunSpec({
         }
 
         fun finishHeat() {
+            clickControl("furnace_air")
             val heatStart = now.get()
-            var closed = false
-            var reopened = false
             var ready = false
             for (step in 0 until 300) {
                 now.addAndGet(50L)
                 controller.tick(runtime, listOf(player), now.get())
-                if (!closed && now.get() - heatStart >= 4_300L) {
-                    clickControl("furnace_air")
-                    closed = true
-                }
-                if (closed && !reopened && now.get() - heatStart >= 7_000L) {
-                    clickControl("furnace_air")
-                    reopened = true
-                }
                 if (roleEntity(world, "furnace_tap").interactionHeight > 0f) {
                     ready = true
                     break
                 }
             }
             ready shouldBe true
+            (now.get() - heatStart <= 8_000L) shouldBe true
             clickControl("furnace_tap")
         }
 

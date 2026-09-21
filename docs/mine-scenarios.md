@@ -47,19 +47,22 @@ scene lifecycle.
 For each of three batches, take ore and click the glowing feed hopper from the
 south aisle, then start the single crusher drive. Four seconds of crushing
 are followed by three seconds of one-way belt transfer into the furnace.
-The furnace air lever raises or lowers a visible thermometer; four cumulative
-seconds in its 60–78% green band make the melt ready. It stays ready until the
-operator clicks the tap, so there is no expiring quench window. Casting and
+The furnace start lever begins an automatic six-second run. Its percentage
+turns green at 100% and stays ready until the operator clicks the tap. No
+temperature balancing or expiring heat window is required. Casting and
 cooling visibly finish before the output can be collected; no hand carry is
 required between the furnace, cooling line and output rack.
 
 The existing 18 durable checkpoints remain: per batch, load, drive start,
 crushing complete, belt delivery, controlled smelt and output collection.
-Transient animation/temperature resets safely after reload while completed
+Transient animation/heating resets safely after reload while completed
 checkpoints stay durable. Reconstructing a scene or repeating a click grants
 no extra work. The controller reuses `MineIncidentCoordinator`,
 `MineWorkingEngine`, shared worksite guidance/access and `WorksiteCarryable`;
-`MineWorkshopHeat` models only the new thermal-control verb.
+`MineWorkshopHeat` owns the automatic heating cycle and latched ready state.
+Mounted controls share the same geometry as their hitboxes. The dedicated
+casting mould joins one roller bed and its end rack at a seam; reusable
+full-size casting assemblies are not stacked inside the compact workshop.
 
 The active working contract provides at least 60 seconds of grace, an 8-block
 clear area around the cave, a five-minute deadline and a 15-second warning.

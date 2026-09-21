@@ -81,8 +81,7 @@ class MineDisplayBlueprintsTest : FunSpec({
         val thermometer = parts.filter { it.motion == "thermometer" }
         thermometer.all { it.idleHidden } shouldBe true
         thermometer.maxOf { it.center.y } shouldBe 1.72f
-        thermometer.filter { it.material == Material.LIME_CONCRETE }.size shouldBe 2
-        thermometer.dropWhile { it.material != Material.LIME_CONCRETE }
-            .drop(2).all { it.material == Material.RED_CONCRETE } shouldBe true
+        thermometer.last().material shouldBe Material.LIME_CONCRETE
+        thermometer.dropLast(1).all { it.material == Material.YELLOW_CONCRETE } shouldBe true
     }
 })

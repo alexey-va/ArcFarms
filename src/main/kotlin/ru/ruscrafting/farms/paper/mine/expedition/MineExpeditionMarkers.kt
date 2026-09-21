@@ -161,7 +161,7 @@ internal class MineExpeditionMarkers(
         val marker = markers["$scope/$id"] ?: return
         val matching = marker.parts.withIndex().filter { it.value.motion == "thermometer" }
         if (matching.isEmpty()) return
-        val visible = kotlin.math.ceil((temperature.coerceIn(0.0, 100.0) / 100.0) * matching.size).toInt()
+        val visible = kotlin.math.floor((temperature.coerceIn(0.0, 100.0) / 100.0) * matching.size).toInt()
         matching.forEachIndexed { index, indexed ->
             marker.displays[indexed.index].isVisibleByDefault = index < visible
             marker.displays[indexed.index].interpolationDuration = 0

@@ -123,11 +123,11 @@ class MineExpeditionEngineTest : FunSpec({
 
     test("connected factory heat completion uses the ready air-control state") {
         val state = MineExpeditionState(placement, MineExpeditionStage.FACTORY_HEAT)
-        MineExpeditionEngine.completeFactoryHeat(state, MineWorkshopHeat(stableMillis = 3_999), 4_000)
+        MineExpeditionEngine.completeFactoryHeat(state, MineWorkshopHeat(running = true, elapsedMillis = 3_999), 4_000)
             .accepted shouldBe false
         val step = MineExpeditionEngine.completeFactoryHeat(
             state,
-            MineWorkshopHeat(temperature = 70.0, stableMillis = MineWorkshopHeat.REQUIRED_MILLIS),
+            MineWorkshopHeat(elapsedMillis = MineWorkshopHeat.REQUIRED_MILLIS),
             12_000,
         )
         step.accepted shouldBe true

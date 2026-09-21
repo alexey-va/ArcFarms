@@ -35,10 +35,10 @@ internal object MineWorkshopGeometry {
      * is on the south face so an operator can use the z >= 23 service aisle.
      */
     val CONTROL_OFFSETS: Map<String, Vector3f> = mapOf(
-        "crusher_feed" to Vector3f(0f, 1.55f, 2.65f),
-        "crusher_drive" to Vector3f(1.45f, 1.45f, 2.05f),
-        "furnace_air" to Vector3f(-1.35f, 1.45f, 2.65f),
-        "furnace_tap" to Vector3f(.35f, 1.45f, 2.65f),
+        "crusher_feed" to Vector3f(0f, 1.0f, 2.70f),
+        "crusher_drive" to Vector3f(1.72f, 1.48f, 1.94f),
+        "furnace_air" to Vector3f(.15f, 1.48f, 1.95f),
+        "furnace_tap" to Vector3f(1.15f, 1.48f, 1.95f),
     )
 
     fun controlLocation(anchor: Location, control: String): Location {
@@ -47,7 +47,7 @@ internal object MineWorkshopGeometry {
     }
 
     /** South-facing label offset used by the packet caption attached to a control. */
-    fun captionLocation(control: Location): Location = control.clone().add(0.0, 1.05, .18)
+    fun captionLocation(control: Location): Location = control.clone().add(0.0, .80, .18)
 
     /** Connector endpoints used by the preview and by the one-way display poses. */
     val CRUSHER_TO_FURNACE = listOf(
@@ -64,13 +64,13 @@ internal object MineWorkshopGeometry {
         Vector3f(3.666667f, 1.911111f, 0f),
     )
     val FURNACE_TO_CASTING = listOf(
-        Vector3f(-1.85f, 1.5f, 0f),
-        Vector3f(0f, 1.65f, 0f),
+        Vector3f(-2.5f, 1.29f, 0f),
+        Vector3f(1f, 1.29f, 0f),
     )
     val CASTING_TO_RACK = listOf(
-        // The cooling billet starts at the exact end of the molten pour.
-        // This is a visible hand-off, rather than a teleport to the rack.
-        Vector3f(0f, 1.65f, 0f),
-        Vector3f(1f, 1.25f, 3.85f),
+        // The formed billet sits on the rolls; its bottom meets the molten surface.
+        Vector3f(1f, 1.40f, 0f),
+        Vector3f(1f, 1.40f, 4.55f),
     )
+    val PICKUP_OFFSET: Vector3f get() = Vector3f(CASTING_TO_RACK.last())
 }

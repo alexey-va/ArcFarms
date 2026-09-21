@@ -23,7 +23,7 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
             markers.at(scope,id,x,y,z) ?: markers.at(decor,id,x,y,z)
         val connected=MineFactoryProgram.usesConnectedCrusherLine(scene.plan)
         val heating = state.stage == MineExpeditionStage.FACTORY_HEAT
-        val activeHeat = if (connected && heating) heat ?: MineWorkshopHeat(airOpen = false) else null
+        val activeHeat = if (connected && heating) heat ?: MineWorkshopHeat() else null
         val heatReady = if (activeHeat != null) activeHeat.ready else heating && MineExpeditionEngine.canFinishHeat(state, now)
         val light = if (heatReady) Material.LIME_CONCRETE else if (heating) Material.YELLOW_CONCRETE else Material.RED_CONCRETE
         markers.signal(scope, "furnace_control", light)
@@ -86,12 +86,18 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
             }
             if (cargoVisible) markers.rotate(decor,"decor_conveyor_raw",chargePhase)
             val rollerPhase=angles["roller_transfer"] ?: 0.0
-            if(state.stage==MineExpeditionStage.FACTORY_INSTALL && rollerPhase>0.0 && rollerPhase<Math.PI*2)
-                markers.rotate(decor,"decor_roller_table",rollerPhase)
-            // Keep the passive gauge visible at the closed-air starting value
-            // during heat, and clear it as soon as the stage leaves the
-            // furnace.  Static furnishing markers survive every stage.
-            val thermometerTemperature = activeHeat?.temperature ?: 0.0
+            if(state.stage==MineExpeditionStage.FACTORY_INSTALL && rollerPhase>0.0 && rollerPhase<Math.PI*2) {
+                // The roller axes point along +Z. Positive Z rotation moves
+                // their top surface toward -X, so derive the sign from the
+                // actual casting-to-press order instead of assuming a side.
+                val load = MineFactoryLine.effectiveStation(scene.plan, "crane_load")
+                val press = scene.plan.stations.getValue("assembly_socket")
+                val direction = if (press.x >= load.x) -1.0 else 1.0
+                markers.rotate(decor,"decor_roller_table",rollerPhase * direction)
+            }
+            // The thermometer is now a normalized six-second progress gauge,
+            // expressed as a percentage for the existing marker API.
+            val thermometerTemperature = activeHeat?.progress?.times(100.0) ?: 0.0
             markers.thermometer(scope, "furnace_control", thermometerTemperature)
             markers.thermometer(decor, "furnace_control", thermometerTemperature)
         }

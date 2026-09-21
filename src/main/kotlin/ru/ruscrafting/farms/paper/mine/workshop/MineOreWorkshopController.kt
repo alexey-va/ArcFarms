@@ -230,8 +230,8 @@ internal class MineOreWorkshopController(
             }
             MineWorkingStage.HEAT -> when {
                 process.heat.ready -> "heat-ready"
-                process.heat.airOpen -> "heat-rise"
-                else -> "heat-fall"
+                process.heat.running -> "heat-progress"
+                else -> "heat-start"
             }
             MineWorkingStage.SHIP -> if (now - process.started < POUR_MILLIS) "pouring" else "collect"
             else -> return null
@@ -246,7 +246,7 @@ internal class MineOreWorkshopController(
         return locale?.renderPath("mine.working.workshop.$key", player, mapOf(
             "batch" to Component.text(working.batch + 1),
             "batches" to Component.text(MineWorkingEngine.BATCHES),
-            "temperature" to Component.text(process.heat.temperature.toInt()),
+            "temperature" to Component.text((process.heat.progress * 100).toInt()),
             "progress" to Component.text((progress * 100).toInt()),
         )) ?: Component.text(key)
     }
@@ -258,7 +258,7 @@ internal class MineOreWorkshopController(
         val location = interactionPoint(runtime, target) ?: return emptyList()
         return listOf(WorksiteGuidanceTarget(
             "ore_workshop_$target", ObjectiveTargetRole("ore_workshop"), location,
-            if (process.heat.ready || process.heat.inBand) org.bukkit.Color.fromRGB(85, 217, 139)
+            if (process.heat.ready) org.bukkit.Color.fromRGB(85, 217, 139)
             else org.bukkit.Color.fromRGB(255, 183, 65),
         ))
     }
@@ -309,9 +309,13 @@ internal class MineOreWorkshopController(
             }
             MineWorkingStage.HEAT -> when {
                 station == AIR && !process.heat.ready -> {
-                    process.heat = process.heat.toggleAir()
-                    process.operator = player.uniqueId
-                    pulse(runtime, station, now, Sound.BLOCK_IRON_TRAPDOOR_OPEN)
+                    val wasRunning = process.heat.running
+                    process.heat = process.heat.start()
+                    if (!wasRunning) {
+                        process.operator = player.uniqueId
+                        process.lastTick = now
+                        pulse(runtime, station, now, Sound.BLOCK_IRON_TRAPDOOR_OPEN)
+                    }
                 }
                 station == TAP && process.heat.ready -> if (advance(runtime, player, 0, 1, now, process.heat)) {
                     pulse(runtime, station, now, Sound.BLOCK_LAVA_EXTINGUISH)
@@ -391,7 +395,11 @@ internal class MineOreWorkshopController(
     private fun actionRole(working: MineWorkingState, process: Process, now: Long, player: UUID? = null): String? = when (working.stage) {
         MineWorkingStage.LOAD -> if (player != null && carriers[player]?.batch != working.batch) ORE else FEED
         MineWorkingStage.CRUSH -> if (working.completed.isEmpty()) DRIVE else null
-        MineWorkingStage.HEAT -> if (process.heat.ready) TAP else AIR
+        MineWorkingStage.HEAT -> when {
+            process.heat.ready -> TAP
+            process.heat.running -> null
+            else -> AIR
+        }
         MineWorkingStage.SHIP -> if (now - process.started >= POUR_MILLIS) OUTPUT else null
         else -> null
     }
@@ -404,8 +412,8 @@ internal class MineOreWorkshopController(
             running = crushing || stage == MineWorkingStage.HEAT || stage == MineWorkingStage.SHIP,
             crushing = crushing && 1 !in working.completed,
             transfer = if (crushing && 1 in working.completed) (elapsed.toFloat() / TRANSFER_MILLIS).coerceIn(0f, 1f) else -1f,
-            temperature = if (stage == MineWorkingStage.HEAT) (process!!.heat.temperature / 100.0).toFloat() else 0f,
-            airOpen = process?.heat?.airOpen ?: false,
+            temperature = if (stage == MineWorkingStage.HEAT) process!!.heat.progress.toFloat() else 0f,
+            airOpen = process?.heat?.running ?: false,
             heatReady = stage == MineWorkingStage.HEAT && process!!.heat.ready,
             pouring = if (stage == MineWorkingStage.SHIP) (elapsed.toFloat() / POUR_MILLIS).coerceIn(0f, 1f) else -1f,
         )
@@ -438,10 +446,10 @@ internal class MineOreWorkshopController(
             CRUSHER -> Sound.BLOCK_GRINDSTONE_USE
             FURNACE -> Sound.BLOCK_FURNACE_FIRE_CRACKLE
             else -> Sound.BLOCK_FIRE_EXTINGUISH
-        }, .35f, if (role == FURNACE) (.65 + process.heat.temperature / 120.0).toFloat() else .75f)
+        }, .35f, if (role == FURNACE) (.65 + process.heat.progress * .35).toFloat() else .75f)
         if (particlesEnabled()) at.world?.spawnParticle(when (role) {
             CRUSHER -> Particle.CRIT
-            FURNACE -> if (process.heat.inBand || process.heat.ready) Particle.HAPPY_VILLAGER else Particle.FLAME
+            FURNACE -> if (process.heat.ready) Particle.HAPPY_VILLAGER else Particle.FLAME
             else -> Particle.CLOUD
         }, at, 4, .25, .2, .25, .01)
     }

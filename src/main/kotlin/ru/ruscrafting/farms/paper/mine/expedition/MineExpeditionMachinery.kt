@@ -20,6 +20,7 @@ import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionMotion
 import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionPlan
 import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionStage
 import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionState
+import ru.ruscrafting.farms.domain.mine.expedition.MineFactoryLine
 import ru.ruscrafting.farms.domain.mine.expedition.MineFactoryProgram
 import kotlin.math.abs
 import kotlin.math.sin
@@ -320,7 +321,9 @@ internal class MineExpeditionMachinery(
             if (scene.kind == MineExpeditionKind.DEAD_FACTORY && role in setOf("crane", "core")) {
                 val modern = MineFactoryProgram.usesConnectedCrusherLine(scene.plan)
                 val source = scene.plan.stations.getValue("pour_control")
-                val destination = scene.plan.stations["crane_load"] ?: scene.plan.stations.getValue("assembly_socket")
+                val destination = if ("crane_load" in scene.plan.stations)
+                    MineFactoryLine.effectiveStation(scene.plan, "crane_load")
+                else scene.plan.stations.getValue("assembly_socket")
                 val from = if (modern) furnishingPoint(scene, "pour_control", source) else ExpeditionPoint(12, 5, -6)
                 val to = if (modern) furnishingPoint(scene, if ("crane_load" in scene.plan.stations) "crane_load" else "assembly_socket", destination)
                     else ExpeditionPoint(0, 5, -6)
@@ -346,7 +349,8 @@ internal class MineExpeditionMachinery(
                     // Once the crane has placed the billet, the conveyor owns
                     // it. Interpolate from its load rack to the press instead
                     // of snapping straight to the press face.
-                    val start = furnishingPoint(scene,"crane_load",scene.plan.stations.getValue("crane_load"))
+                    val start = furnishingPoint(scene,"crane_load",
+                        MineFactoryLine.effectiveStation(scene.plan, "crane_load"))
                     val end = furnishingPoint(scene,"assembly_socket",scene.plan.stations.getValue("assembly_socket"))
                     val from = scene.at(start).add(0.0,1.95,0.0)
                     val to = scene.at(end).add(0.0,1.95,0.0)

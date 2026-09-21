@@ -36,7 +36,9 @@ object MineFactoryLine {
         "pour_control" to machines.getValue("pour_control"),
         "pour_console" to ExpeditionPoint(7, 5, -4),
         "crane_control" to ExpeditionPoint(15, 5, -2),
-        "crane_load" to ExpeditionPoint(17, 5, -6),
+        // The roller table spans x=8..18.  Casting arrives at its west/upstream
+        // end; the press is east at x=22.
+        "crane_load" to ExpeditionPoint(8, 5, -6),
         "assembly_socket" to machines.getValue("assembly_socket"),
         "repair_supply_0" to ExpeditionPoint(-28, 5, 11),
         "repair_supply_1" to ExpeditionPoint(-22, 5, 16),
@@ -47,17 +49,20 @@ object MineFactoryLine {
     /**
      * Resolve a station through the small in-place geometry migration used by
      * the connected factory.  The first geometry-v3 room placed the repair
-     * socket one block into the hopper/light envelope.  Existing journals and
-     * persisted plans must keep their authored map, while gameplay and the
-     * furnishing editor need the clear aisle anchor.  A non-legacy/custom
-     * point is returned unchanged, which also preserves explicit admin poses.
+     * socket one block into the hopper/light envelope and put the billet at
+     * the press-side end of the roller table. Existing journals and persisted
+     * plans keep their authored map, while gameplay needs the clear repair
+     * aisle and casting-side crane anchor. A non-legacy/custom point is
+     * returned unchanged, which also preserves explicit admin poses.
      */
     fun effectiveStation(plan: MineExpeditionPlan, id: String): ExpeditionPoint {
         val point = plan.stations.getValue(id)
-        return if (id == "crusher_repair" && point == LEGACY_CRUSHER_REPAIR) {
-            point.offset(dx = 1, dz = 1)
-        } else {
-            point
+        return when {
+            id == "crusher_repair" && point == LEGACY_CRUSHER_REPAIR ->
+                point.offset(dx = 1, dz = 1)
+            id == "crane_load" && point == LEGACY_CRANE_LOAD ->
+                UPSTREAM_CRANE_LOAD
+            else -> point
         }
     }
 
@@ -103,4 +108,6 @@ object MineFactoryLine {
     private const val POLISHED_ANDESITE = "minecraft:polished_andesite"
     private const val POLISHED_DEEPSLATE = "minecraft:polished_deepslate"
     private val LEGACY_CRUSHER_REPAIR = ExpeditionPoint(-24, 5, -3)
+    private val LEGACY_CRANE_LOAD = ExpeditionPoint(17, 5, -6)
+    private val UPSTREAM_CRANE_LOAD = ExpeditionPoint(8, 5, -6)
 }
