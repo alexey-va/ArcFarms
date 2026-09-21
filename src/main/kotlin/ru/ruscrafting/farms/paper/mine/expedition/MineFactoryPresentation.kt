@@ -23,6 +23,16 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
         val light = if (heatReady) Material.LIME_CONCRETE else if (heating) Material.YELLOW_CONCRETE else Material.RED_CONCRETE
         markers.signal(scope, "furnace_control", light)
         markers.signal(decor, "furnace_control", light)
+        if (state.stage == MineExpeditionStage.FACTORY_WATER) {
+            MineFactoryProgram.targets(scene.plan,state).filter { it.interaction == MineExpeditionInteraction.OPERATE }.forEach { target ->
+                val angle=angles[target.id] ?: 0.0
+                if(angle>0.0) {
+                    markers.rotate(scope,target.id,angle*3)
+                    if(now>=f.nextSound) sound(at(target.id,y=2.0),if(target.id.contains("pump")) Sound.BLOCK_PISTON_EXTEND else Sound.BLOCK_GRINDSTONE_USE,.6f,.7f)
+                    if(now>=f.nextParticles) particles(at(target.id,y=2.2),if(target.id.contains("pump")) Particle.SPLASH else Particle.ASH,8,.5,.3,.5,.025)
+                }
+            }
+        }
         val water=state.stage!=MineExpeditionStage.FACTORY_WATER || state.completed.isNotEmpty()
         val hot=state.stage in setOf(MineExpeditionStage.FACTORY_HEAT,MineExpeditionStage.FACTORY_POUR)
         val phase=(now%12_000L).toDouble()/12_000*Math.PI*2

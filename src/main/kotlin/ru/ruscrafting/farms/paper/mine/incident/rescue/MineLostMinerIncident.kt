@@ -54,6 +54,7 @@ internal class MineLostMinerIncident(
     fun prewarm(runtime: MineRuntime, now: Long) {
         if (now < (nextPreparationAt[key(runtime)] ?: 0L) || active(runtime) || transitioning(runtime)) return
         nextPreparationAt[key(runtime)] = now + 1_000
+        preparedTargets[key(runtime)]?.takeUnless(index::allowsEvent)?.let { preparedTargets.remove(key(runtime)) }
         val target = preparedTargets[key(runtime)] ?: candidateStock?.candidates(runtime, MineIncidentType.LOST_MINER)?.let { values ->
             if(values.isEmpty()) null else values[(candidateCursor[key(runtime)] ?: 0).mod(values.size)]
         }?.also {
@@ -69,7 +70,7 @@ internal class MineLostMinerIncident(
     fun start(runtime: MineRuntime, now: Long): Boolean {
         if (transitioning(runtime)) return false
         val target = preparedTargets[key(runtime)] ?: return false
-        if (maze.scene(runtime)?.ready != true) return false
+        if (!index.allowsEvent(target) || maze.scene(runtime)?.ready != true) return false
         val candidates = listOf(ObjectiveTargetCandidate("lost_miner_1", target, ObjectiveTargetRole("lost_miner"), 0))
         if (!incidents.start(runtime, MineIncidentType.LOST_MINER, 1, now, candidates)) return false
         reconcileMissing(runtime)
@@ -189,12 +190,12 @@ internal class MineLostMinerIncident(
     }
 
     fun activateLoadedState() {
-        maze.reconcileLoaded { zoneId, sequence -> registry.byId(zoneId)?.state?.sequence == sequence }
+        maze.reconcileLoaded(retainLegacy = ::active) { zoneId, sequence -> registry.byId(zoneId)?.state?.sequence == sequence }
         registry.snapshot().filter(::active).forEach(::reconcileMissing)
     }
 
     fun onChunkLoad(chunk: Chunk) {
-        maze.onChunkLoad(chunk) { zoneId, sequence -> activeOrRetained(zoneId, sequence) || registry.byId(zoneId)?.state?.sequence == sequence }
+        maze.onChunkLoad(chunk, retainLegacy = ::active) { zoneId, sequence -> activeOrRetained(zoneId, sequence) || registry.byId(zoneId)?.state?.sequence == sequence }
     }
 
     fun reconcileChunk(runtime: MineRuntime, chunk: Chunk): Int {

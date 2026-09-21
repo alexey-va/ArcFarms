@@ -242,6 +242,57 @@ class MineWorkingLifecycleMockBukkitTest : FunSpec({
         verify(exactly = 1) { travel.enterOnFoot(any(), any()) }
     }
 
+    test("drive boards without an entrance lease and allows approaching from inside the scene") {
+        val world = paper.server.addSimpleWorld("world")
+        val player = paper.server.addPlayer("WalkingMiner")
+        val from = Location(world, 4.5, 65.0, 4.5)
+        val to = Location(world, 5.5, 65.0, 5.5)
+        player.teleport(from)
+        val runtime = lifecycleRuntime(world).also { runtime ->
+            val incident=runtime.state.incident!!
+            val working=incident.working!!
+            runtime.state=runtime.state.copy(incident=incident.copy(type=MineIncidentType.TUNNEL_DRIVE,
+                working=working.copy(placement=working.placement.copy(geometryVersion=6))))
+        }
+        val registry = MineRuntimeRegistry().also { it.replace(listOf(runtime)) }
+        val placement = mockk<MineWorkingPlacementService>(relaxed = true)
+        val sceneWorld = mockk<MineWorkingWorld>(relaxed = true)
+        val scene = mockk<MineWorkingScene>(relaxed = true)
+        val incidents = mockk<MineIncidentCoordinator>(relaxed = true)
+        val equipment = mockk<MineWorkingEquipment>(relaxed = true)
+        val presentation = mockk<MineWorkingPresentation>(relaxed = true)
+        val travel = mockk<WorksiteExpeditionTravel>(relaxed = true)
+        val access = mockk<WorksiteAccessPort>(relaxed = true)
+        val state = mockk<WorksiteStatePort>(relaxed = true)
+        val tasks = mockk<WorksiteTaskPort>(relaxed = true)
+        every { sceneWorld.scene(runtime) } returns scene
+        every { sceneWorld.isReady(runtime) } returns true
+        every { scene.inside(to) } returns true
+        every { scene.surface() } returns from
+        every { travel.isAuthorized(player, to) } returns false
+        every { travel.record(player) } returns null
+        every { travel.retains(player) } returns false
+        every { access.isAdminEditing(player) } returns false
+        every { access.hasAccess(player, runtime.settings.permission) } returns true
+        val drive=mockk<MineDriveController>(relaxed=true)
+        val entity=world.spawn(from, org.bukkit.entity.Interaction::class.java)
+        every { drive.zone(entity) } returns runtime.settings.id
+        val controller = MineWorkingController(
+            registry, placement, sceneWorld, incidents, equipment, presentation, travel, access, state, tasks, { 2_000L }, drive = drive,
+        )
+
+        val event = PlayerMoveEvent(player, from, to)
+        controller.guardMovement(event) shouldBe false
+        event.isCancelled shouldBe false
+        val click=org.bukkit.event.player.PlayerInteractEntityEvent(player,entity,org.bukkit.inventory.EquipmentSlot.HAND)
+        controller.onInteractEntity(click) shouldBe true
+        verify(exactly=1) { drive.mount(runtime,player) }
+        verify(exactly=0) { travel.enterOnFoot(any(),any()) }
+        every { access.isAdminEditing(player) } returns true
+        controller.onInteractEntity(click)
+        verify(exactly=1) { drive.mount(runtime,player) }
+    }
+
     test("completed working remains walkable during grace and restores after everyone leaves") {
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("GraceMiner")

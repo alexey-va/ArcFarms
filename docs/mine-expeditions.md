@@ -54,6 +54,13 @@ zero premium tokens, zero XP and zero ordinary reward items. Temporary fuel and
 castings remain non-loot displays. Added machine cycles change pacing; income
 per hour has not been measured and is not claimed to be unchanged.
 
+Commissioning now rotates between the original water circuit and the left/right
+production lines. Line programs require their valve, pump and crusher; the two
+powered machines animate for three seconds before granting a checkpoint, with
+sound and particles. The selected program persists through restart. All three
+keep ten credits, the established later production stages and the same editable
+static factory. Old saves retain the original water circuit.
+
 ## Editing and preview
 
 `/arcfarms admin expeditions edit dead_factory` enters an idle prepared site in

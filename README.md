@@ -342,7 +342,7 @@ Mine incidents use the physical route. `TRACK_DAMAGE`, `TUNNEL_DRIVE` and
 `RAIL_EXTENSION` share a temporary side-working entered on foot from a mine
 floor: track damage clears the collapse, replaces missing rail sections and
 escorts a checking minecart; tunnel drive seats the player in a tracked drilling
-machine (W/S to drive, A/D to steer, Shift to leave). Bore a route to the goal,
+machine directly, without an entry marker (W to drill, S to reverse, A/D to steer, Shift to leave). Steering stays inward. Bore to the glowing diamond cavern,
 steer around bedrock ribs, and automatically install sparse overhead lights;
 rail extension clears a collapse, lays one continuous line from clicked
 markers and tests it with a cart. `ORE_WORKSHOP` is a separate fixed mapped

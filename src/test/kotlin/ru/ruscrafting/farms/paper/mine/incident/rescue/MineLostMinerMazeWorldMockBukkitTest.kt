@@ -33,18 +33,55 @@ class MineLostMinerMazeWorldMockBukkitTest : FunSpec({
 
     afterEach { paper.close() }
 
+    test("inactive legacy cave restores exact originals before the replacement is prepared") {
+        val runtime=runtime(world)
+        val target=ru.ruscrafting.farms.domain.worksite.WorksitePosition(world.name,10,63,10)
+        val port=ru.ruscrafting.farms.paper.mine.immediateMinePort()
+        val first=MineLostMinerMazeWorld(plugin,ArcFarmsDebug({false}) {},RecordingMazeRetention(),MockBukkitFarmBlockDataDecoder,port)
+        first.ensure(runtime,target)
+        repeat(256) { first.process(128) {true} }
+        val scene=first.ensure(runtime,target).second!!
+        scene.ready shouldBe true
+        scene.records.groupBy { it.x shr 4 to (it.z shr 4) }.forEach { (chunk,records) ->
+            world.getChunkAt(chunk.first,chunk.second).persistentDataContainer.set(org.bukkit.NamespacedKey(plugin,"mine_lost_miner_maze_v1"),
+                org.bukkit.persistence.PersistentDataType.BYTE_ARRAY,MineLostMinerMazeJournalCodec.encode(records.map { it.copy(geometryVersion=1) },world.name,chunk.first,chunk.second,world.minHeight,world.maxHeight))
+        }
+        first.clearQueues()
+        val next=MineLostMinerMazeWorld(plugin,ArcFarmsDebug({false}) {},RecordingMazeRetention(),MockBukkitFarmBlockDataDecoder,port)
+        next.reconcileLoaded(retainLegacy={_,_->false}) {_,_->true}
+        repeat(128) { next.process(128) {true} }
+        scene.records.forEach { world.getBlockAt(it.x,it.y,it.z).blockData.asString shouldBe it.originalData }
+        next.ensure(runtime,target)
+        repeat(256) { next.process(128) {true} }
+        val rebuilt=next.ensure(runtime,target).second!!
+        rebuilt.records.all { it.geometryVersion==2 } shouldBe true
+        val late=scene.records.first().copy(x=194,z=-63,originalData="minecraft:stone",mazeData="minecraft:cobblestone",
+            marker=MineLostMinerMazeMarker.NONE,totalRecords=1,geometryVersion=1)
+        val chunk=world.getChunkAt(late.x shr 4,late.z shr 4)
+        world.getBlockAt(late.x,late.y,late.z).type=org.bukkit.Material.COBBLESTONE
+        chunk.persistentDataContainer.set(org.bukkit.NamespacedKey(plugin,"mine_lost_miner_maze_v1"),
+            org.bukkit.persistence.PersistentDataType.BYTE_ARRAY,MineLostMinerMazeJournalCodec.encode(listOf(late),world.name,chunk.x,chunk.z,world.minHeight,world.maxHeight))
+        next.onChunkLoad(chunk,retainLegacy={_,_->true}) {_,_->true}
+        next.process(128) {true}
+        world.getBlockAt(late.x,late.y,late.z).type shouldBe org.bukkit.Material.STONE
+        next.isRestoring(runtime) shouldBe false
+        next.scene(runtime) shouldBe rebuilt
+        rebuilt.ready shouldBe true
+    }
+
     test("temporary maze builds from exact BlockData and restores after restart") {
         val runtime = runtime(world)
         val target = ru.ruscrafting.farms.domain.worksite.WorksitePosition(world.name, 10, 63, 10)
         val retention = RecordingMazeRetention()
-        val first = MineLostMinerMazeWorld(plugin, ArcFarmsDebug({ false }) {}, retention, MockBukkitFarmBlockDataDecoder)
+        val first = MineLostMinerMazeWorld(plugin, ArcFarmsDebug({ false }) {}, retention, MockBukkitFarmBlockDataDecoder, ru.ruscrafting.farms.paper.mine.immediateMinePort())
 
         first.ensure(runtime, target).first shouldBe MineLostMinerMazeEnsureResult.BUILDING
         // Capturing originals is now spread over ticks before the durable build is exposed.
         repeat(256) { first.process(128) { true } }
         val scene = requireNotNull(first.ensure(runtime, target).second)
         scene.records.shouldNotBeEmpty()
-        scene.records.any { it.mazeData == org.bukkit.Material.OCHRE_FROGLIGHT.createBlockData().asString } shouldBe true
+        scene.records.count { it.mazeData.startsWith("minecraft:lantern") }.let { it in 1..6 } shouldBe true
+        scene.records.all { it.geometryVersion == 2 } shouldBe true
         scene.records.all { it.x !in 0..20 || it.z !in 0..20 } shouldBe true
         scene.surface.blockX shouldBe target.x
         scene.surface.blockZ shouldBe target.z
@@ -55,7 +92,7 @@ class MineLostMinerMazeWorldMockBukkitTest : FunSpec({
 
         // A new owner sees the PDC journal and reconstructs the same entrance/target.
         first.clearQueues()
-        val restarted = MineLostMinerMazeWorld(plugin, ArcFarmsDebug({ false }) {}, retention, MockBukkitFarmBlockDataDecoder)
+        val restarted = MineLostMinerMazeWorld(plugin, ArcFarmsDebug({ false }) {}, retention, MockBukkitFarmBlockDataDecoder, ru.ruscrafting.farms.paper.mine.immediateMinePort())
         val recovered = requireNotNull(restarted.ensure(runtime, target).second)
         recovered.start shouldBe scene.start
         recovered.target shouldBe scene.target

@@ -28,6 +28,25 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
     }
     afterEach { actions.cleanup(); paper.close() }
 
+    test("variant pump and crusher run timed cycles before credit and stop after departure") {
+        val state=MineExpeditionState(scene.placement,MineExpeditionStage.FACTORY_WATER,factoryProgram=1)
+        val targets=MineExpeditionObjectives.targets(scene.plan,state,null)
+        val target=targets.first { it.id=="decor_pump_left" }
+        val player=paper.server.addPlayer().also { it.teleport(scene.at(target.position)) }
+        actions.interact(scope,scene,state,player,target,1_000,{error("early credit")}) {}
+        actions.interact(scope,scene,state,player,target,2_000,{error("duplicate credit")}) {}
+        var completed=0
+        actions.tick(scope,scene,state,targets,listOf(player),3_999,{_,_->completed++;true}) {_,_->}
+        completed shouldBe 0
+        actions.tick(scope,scene,state,targets,listOf(player),4_000,{_,step->completed++;step.state.completed shouldBe setOf(1);true}) {_,_->}
+        completed shouldBe 1
+        val crusher=targets.first { it.id=="decor_crusher_left" }
+        player.teleport(scene.at(crusher.position))
+        actions.interact(scope,scene,state,player,crusher,5_000,{error("early credit")}) {}
+        actions.tick(scope,scene,state,targets,emptyList(),6_000,{_,_->error("departed operator")}) {_,_->}
+        actions.operationPhase(scope,crusher.id,9_000) shouldBe 0.0
+    }
+
     test("crane waits for its whole cycle and repeated clicks cannot restart or duplicate it") {
         val state = MineExpeditionState(scene.placement, MineExpeditionStage.FACTORY_CRANE)
         val target = MineExpeditionObjectives.targets(scene.plan, state, null).single()

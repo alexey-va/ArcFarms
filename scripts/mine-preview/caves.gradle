@@ -1,0 +1,56 @@
+// The exact server planners, exported for cave silhouette and route review.
+allprojects {
+ afterEvaluate {
+  tasks.register('exportMineCaves') {
+   dependsOn 'classes'
+   doLast {
+    def cl=new URLClassLoader((sourceSets.main.runtimeClasspath+sourceSets.main.compileClasspath).files.collect{it.toURI().toURL()} as URL[],(ClassLoader)null)
+    def instance={name->cl.loadClass(name).getField('INSTANCE').get(null)}
+    def out=new File(project.findProperty('minePreviewOut') ?: '/private/tmp/mine-0445-scenes');out.mkdirs()
+    def export={name,title,blocks,route,views->
+     def palette=[:];def ids=[:];def ops=[]
+     def min=[0,0,0];def max=[0,0,0]
+     blocks.keySet().each { p -> (0..2).each { i -> min[i]=Math.min(min[i],p[i]);max[i]=Math.max(max[i],p[i]) } }
+     def xyz={p->(0..2).collect{i->p[i]-min[i]}}
+     blocks.each { p,data->
+      if(data!='minecraft:air') {
+       if(!ids.containsKey(data)) {def id='m'+ids.size();ids[data]=id;palette[id]=[block:data,color:'#777777',name:data]}
+       ops.add([op:'box',from:xyz(p),to:xyz(p),material:ids[data]])
+      }
+     }
+     def turns=route.findAll { p ->
+      def i=route.indexOf(p)
+      i==0 || i==route.size()-1 || (0..2).any { axis -> p[axis]-route[i-1][axis] != route[i+1][axis]-p[axis] }
+     }
+     def recipe=[version:1,seed:73,title:title,subtitle:'Геометрия из кода ArcFarms · офлайн-превью · свет условный',
+      size:(0..2).collect{i->max[i]-min[i]+1},palette:palette,operations:ops,origin:xyz(route.first()),route:turns.collect(xyz),
+      lighting:[targetLevel:6,samples:turns.collect{p->xyz([p[0],p[1]+1,p[2]])}],
+      preview:[defaultView:views.first().id,views:views.collect { v->
+       def q=new LinkedHashMap(v);q.camera=xyz(v.camera);q.target=xyz(v.target);if(q.containsKey('cutY'))q.cutY-=min[1];q }]]
+     new File(out,name+'.atelier.json').text=groovy.json.JsonOutput.toJson(recipe)
+     println(name+': '+blocks.size()+' journal cells')
+    }
+    def pos=cl.loadClass('ru.ruscrafting.farms.domain.worksite.WorksitePosition').getConstructor(String.class,Integer.TYPE,Integer.TYPE,Integer.TYPE).newInstance('preview',0,0,0)
+    def placement=cl.loadClass('ru.ruscrafting.farms.domain.MineWorkingPlacement').getConstructor(pos.class,Integer.TYPE,String.class,Long.TYPE,Integer.TYPE).newInstance(pos,0,'preview',73L,6)
+    def drive=instance('ru.ruscrafting.farms.paper.mine.working.MineDriveLayout')
+    def drivePlan=drive.class.getMethod('plan',placement.class).invoke(drive,placement)
+    def chamber=drivePlan.blocks.findAll{p,data->p.z>=34}.collectEntries{p,data->[([p.x,p.y,p.z]):data]}
+    export('diamond-cave','Алмазная камера',chamber,(37..42).collect{f->[0,0,f]},[
+     [id:'entry',label:'Из забоя',camera:[0.5,2.6,36.5],target:[0.5,3.5,42],fov:78],
+     [id:'veins',label:'Жилы и свод',camera:[-3,2.6,39],target:[2,4,42],fov:82],
+     [id:'section',label:'Форма в разрезе',camera:[16,17,56],target:[0,2,40],cutY:4]])
+    def planner=instance('ru.ruscrafting.farms.paper.mine.incident.rescue.MineLostMinerMazePlanner')
+    def layout=planner.class.getMethod('plan',Integer.TYPE,Long.TYPE).invoke(planner,18,73L)
+    def terrain=instance('ru.ruscrafting.farms.paper.mine.incident.rescue.MineLostMinerCaveBlocks')
+    def blocks=terrain.class.getMethod('plan',layout.class,Long.TYPE).invoke(terrain,layout,73L).collectEntries{p,data->[([p.first,p.second,p.third]):data]}
+    def path=planner.class.getMethod('path',layout.class).invoke(planner,layout)
+    def views=[[id:'section',label:'Пещера в разрезе',camera:[54,48,55],target:[18,1,18],cutY:4]]
+    [12,35,68].eachWithIndex { n,i->
+     def a=path[Math.min(n,path.size()-5)];def b=path[Math.min(n+1,path.size()-1)]
+     views.add([id:'walk'+i,label:'Внутри · '+(i+1),camera:[a.x+.5,2.6,a.z+.5],target:[b.x+.5,2.6,b.z+.5],fov:78])
+    }
+    export('lost-miner','Пещера пропавшего шахтёра',blocks,path.collect{p->[p.x,0,p.z]},views)
+   }
+  }
+ }
+}

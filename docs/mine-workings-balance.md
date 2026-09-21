@@ -71,3 +71,19 @@ zero; order XP and item quantities remain unchanged. The route is 44 blocks
 long with two alternating bedrock bypasses at a commanded speed of 1.7 blocks
 per second. Actual traversal time, participant distribution and income per hour
 remain unmeasured; the reward cap does not establish equal player throughput.
+
+
+## Diamond discovery and factory programs (0.44.5)
+
+Reviewed against the canonical ops `docs/knowledge/economy-inventory.md`, basic
+mine/resource-order sections. The diamond chamber is journal-owned scenery:
+normal block breaks remain protected, and drilling produces no item/XP drops.
+Before/after direct chamber issuance: 0/0 diamond items, 0/0 Vault coins,
+0/0 premium tokens, 0/0 XP. Existing order rewards are unchanged. Current SELL
+and future contract conversion therefore receive no additional diamond supply.
+
+Factory programs all retain ten checkpoint credits and the same final reward
+path; direct reward changes are 0 Vault, 0 tokens, 0 XP and 0 ordinary items.
+Tunnel Drive retains 93 contribution credits once at its goal. The new
+three-second machine cycles and wider caves alter pacing; hourly income has
+not been measured and is not asserted to be identical.

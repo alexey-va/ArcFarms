@@ -38,7 +38,7 @@ internal class MineIncidentCandidateStock(private val index: MineBlockIndex) {
     }
 
     fun candidates(runtime: MineRuntime, type: MineIncidentType): List<WorksitePosition> =
-        pools[runtime.settings.id to type]?.ready?.toList().orEmpty()
+        pools[runtime.settings.id to type]?.ready?.filter(index::allowsEvent).orEmpty()
 
     fun report(runtime: MineRuntime, type: MineIncidentType, required: Int): MineIncidentPlacementReport {
         val p = pools[runtime.settings.id to type]
@@ -52,7 +52,7 @@ internal class MineIncidentCandidateStock(private val index: MineBlockIndex) {
         if (!index.isLiveTarget(runtime.settings.id, p, role(type), runtime.railMaterials)) return false
         if (type == MineIncidentType.CRYSTAL_RESONANCE) return p.blockType() == Material.AMETHYST_CLUSTER && hasMineObjectiveMarkerSpace(p)
         if (!runtime.isIncidentSurface(p)) return false
-        if (type == MineIncidentType.FLOODING) return runtime.floodFootprint(p).let { it.size >= 20 && it.all { q -> q.blockType() == Material.AIR } }
+        if (type == MineIncidentType.FLOODING) return runtime.floodFootprint(p).let { it.size >= 20 && it.all { q -> index.allowsEvent(q) && q.blockType() == Material.AIR } }
         if (type == MineIncidentType.CREATURE_NEST) return (-2..2).all { dx -> (-2..2).all { dz ->
             dx * dx + dz * dz > 4 || index.isLiveTarget(runtime.settings.id, p.copy(x = p.x + dx, z = p.z + dz), MineAnchorRole.NEST, runtime.railMaterials)
         } }

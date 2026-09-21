@@ -33,11 +33,16 @@ internal data class MineIndexedTarget(
 }
 
 /** Chunk-local packed cache. Gameplay lookups never load chunks or scan the region. */
-internal class MineBlockIndex(private val plugin: Plugin) {
+internal class MineBlockIndex(private val plugin: Plugin, private val lift: ru.ruscrafting.farms.paper.mine.lift.MineLiftAccess? = null) {
     private data class ChunkKey(val world: String, val x: Int, val z: Int)
     private data class DirtyChunk(val zoneId: String, val chunk: ChunkKey)
     private val targetsByZone = mutableMapOf<String, MutableMap<ChunkKey, MutableMap<Int, Int>>>()
     private val dirtyChunks = linkedSetOf<DirtyChunk>()
+
+    fun allowsEvent(position: WorksitePosition): Boolean {
+        val world = Bukkit.getWorld(position.world) ?: return false
+        return lift?.excludesEvent(org.bukkit.Location(world, position.x + .5, position.y + 1.0, position.z + .5)) != true
+    }
 
     fun targets(zoneId: String, role: MineAnchorRole): Set<WorksitePosition> = collectTargets(zoneId, role, false)
 
@@ -70,7 +75,10 @@ internal class MineBlockIndex(private val plugin: Plugin) {
         val mask = 1 shl role.ordinal
         targetsByZone[zoneId]?.forEach { (chunk, entries) ->
             if (loadedOnly && Bukkit.getWorld(chunk.world)?.isChunkLoaded(chunk.x, chunk.z) != true) return@forEach
-            entries.forEach { (packed, roles) -> if (roles and mask != 0) add(position(chunk, packed)) }
+            entries.forEach { (packed, roles) -> if (roles and mask != 0) {
+                val p = position(chunk, packed)
+                if (role in setOf(MineAnchorRole.PROSPECT, MineAnchorRole.MINEABLE) || allowsEvent(p)) add(p)
+            } }
         }
     }
 
@@ -86,6 +94,7 @@ internal class MineBlockIndex(private val plugin: Plugin) {
         role: MineAnchorRole,
         railMaterials: Set<Material> = emptySet(),
     ): Boolean {
+        if (role !in setOf(MineAnchorRole.PROSPECT, MineAnchorRole.MINEABLE) && !allowsEvent(position)) return false
         val world = Bukkit.getWorld(position.world) ?: return false
         if (!world.isChunkLoaded(position.x shr 4, position.z shr 4)) return false
         val block = world.getBlockAt(position.x, position.y, position.z)

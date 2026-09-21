@@ -33,7 +33,9 @@ internal object MineLostMinerMazePlanner {
 
     fun plan(cells: Int, seed: Long): MineLostMinerMazeLayout {
         require(cells in 3..18) { "Lost-miner cave cell count must be in 3..18" }
-        if (cells > 11) return windingCave(cells, seed)
+        if (cells > 11) return (0L..7L).map { attempt ->
+            windingCave(cells, ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed.derive(seed, ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed.orderScore(attempt)))
+        }.maxBy { candidate -> path(candidate.copy(passages=chamberCells(candidate,seed))).size }
         val width = cells * 2 + 1
         val start = MineLostMinerMazePoint(1, 1)
         val target = MineLostMinerMazePoint(width - 2, width - 2)
@@ -80,7 +82,7 @@ internal object MineLostMinerMazePlanner {
     }
 
     private fun windingCave(cells: Int, seed: Long): MineLostMinerMazeLayout {
-        val count = if (cells >= 16) 5 else 4
+        val count = 4
         val spacing = (cells * 2 - 6).toDouble() / (count - 1)
         val root = MineLostMinerMazePoint(0, 0)
         // Rank tree edges from the shared deterministic seed. A bounded choice
@@ -103,10 +105,10 @@ internal object MineLostMinerMazePlanner {
             parents to route
         }.maxBy { it.second.size }
         fun position(point: MineLostMinerMazePoint): MineLostMinerMazePoint {
-            val jitterX = (coherent01(seed, point.x * 1.3, 8.1, point.z * 1.3) - 0.5) * 1.5
-            val jitterZ = (coherent01(seed, point.x * 1.3, 9.7, point.z * 1.3) - 0.5) * 1.5
-            return MineLostMinerMazePoint(kotlin.math.round(3 + point.x * spacing + jitterX).toInt(),
-                kotlin.math.round(3 + point.z * spacing + jitterZ).toInt())
+            val jitterX = (coherent01(seed, point.x * 1.3, 8.1, point.z * 1.3) - 0.5) * 5.0
+            val jitterZ = (coherent01(seed, point.x * 1.3, 9.7, point.z * 1.3) - 0.5) * 5.0
+            return MineLostMinerMazePoint(kotlin.math.round(3 + point.x * spacing + jitterX).toInt().coerceIn(2,cells*2-2),
+                kotlin.math.round(3 + point.z * spacing + jitterZ).toInt().coerceIn(2,cells*2-2))
         }
         val route = tree.second.map(::position)
         val passages = linkedSetOf<MineLostMinerMazePoint>()
@@ -122,7 +124,10 @@ internal object MineLostMinerMazePlanner {
                     fun curve(p: Int, q: Int, r: Int, s: Int): Int = kotlin.math.round(0.5 *
                         (2 * q + (-p + r) * t + (2 * p - 5 * q + 4 * r - s) * t * t +
                             (-p + 3 * q - 3 * r + s) * t * t * t)).toInt().coerceIn(2, cells * 2 - 2)
-                    val next = MineLostMinerMazePoint(curve(before.x, a.x, b.x, after.x), curve(before.z, a.z, b.z, after.z))
+                    val bend = WorksiteCoherentNoise.sample(seed, i * .71, t * 1.5, 3.7) * kotlin.math.sin(Math.PI*t) * 2.5
+                    val next = MineLostMinerMazePoint(
+                        (curve(before.x, a.x, b.x, after.x) + if (kotlin.math.abs(b.z-a.z)>kotlin.math.abs(b.x-a.x)) bend.toInt() else 0).coerceIn(2,cells*2-2),
+                        (curve(before.z, a.z, b.z, after.z) + if (kotlin.math.abs(b.x-a.x)>=kotlin.math.abs(b.z-a.z)) bend.toInt() else 0).coerceIn(2,cells*2-2))
                     while (previous != next) {
                         previous = if (previous.x != next.x) previous.copy(x = previous.x + (next.x - previous.x).compareTo(0))
                             else previous.copy(z = previous.z + (next.z - previous.z).compareTo(0))
@@ -142,9 +147,9 @@ internal object MineLostMinerMazePlanner {
     fun lampCells(layout: MineLostMinerMazeLayout): Set<MineLostMinerMazePoint> {
         val lamps = linkedSetOf<MineLostMinerMazePoint>()
         val route = path(layout)
-        val stride = (route.size / 9).coerceAtLeast(16)
+        val stride = (route.size / 4).coerceAtLeast(25)
         route.filterIndexed { index, _ -> index % stride == 0 }.forEach { point ->
-            if (lamps.none { (it.x - point.x) * (it.x - point.x) + (it.z - point.z) * (it.z - point.z) < 81 }) lamps += point
+            if (lamps.none { (it.x - point.x) * (it.x - point.x) + (it.z - point.z) * (it.z - point.z) < 144 }) lamps += point
         }
         if (lamps.none { (it.x - layout.target.x) * (it.x - layout.target.x) + (it.z - layout.target.z) * (it.z - layout.target.z) < 25 }) lamps += layout.target
         return lamps
@@ -221,9 +226,9 @@ internal object MineLostMinerMazePlanner {
         // Room centers are spread along the route so adjacent radii do not
         // blur into one giant square. The coherent contour keeps chambers
         // organic while every center remains attached to the route skeleton.
-        val centers = route.filterIndexed { index, _ -> index % (if (layout.cells > 11) 16 else 4) == 0 }.take(7)
+        val centers = route.filterIndexed { index, _ -> index % (if (layout.cells > 11) 22 else 4) == 0 }.take(7)
         centers.forEachIndexed { index, center ->
-            val radius = 1 + (coherent01(seed, center.x * 0.31, 1.7, center.z * 0.31) * 3.0).toInt()
+            val radius = (if(layout.cells > 11) 3 else 1) + (coherent01(seed, center.x * 0.31, 1.7, center.z * 0.31) * 3.0).toInt()
             addRoom(expanded, center, radius, seed + index * 31L, last)
         }
         return expanded

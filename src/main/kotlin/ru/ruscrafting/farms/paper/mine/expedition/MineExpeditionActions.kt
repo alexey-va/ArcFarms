@@ -98,7 +98,7 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
                 player.sendActionBar(text("turn", player))
             }
             MineExpeditionInteraction.OPERATE -> {
-                if(state.stage==MineExpeditionStage.FACTORY_CRANE) {
+                if(state.stage in setOf(MineExpeditionStage.FACTORY_CRANE, MineExpeditionStage.FACTORY_WATER)) {
                     startOperation(scope,state,player,target.id,target.target,now)
                     return
                 }

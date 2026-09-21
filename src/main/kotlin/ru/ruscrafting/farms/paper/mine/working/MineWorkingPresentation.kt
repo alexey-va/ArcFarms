@@ -51,7 +51,9 @@ internal class MineWorkingPresentation(
     fun reconcile(runtime: MineRuntime, scene: MineWorkingScene) {
         val working = runtime.state.incident?.working ?: return
         highlights.reconcile(runtime, scene)
-        val targets = targets(runtime, scene).filter { it.label !in setOf("excavate", "clear_track") } + MineWorkingTarget("entry", scene.plan.entrance.copy(y = scene.floor + 1), "entry")
+        val drive = scene.plan.type == ru.ruscrafting.farms.domain.MineIncidentType.TUNNEL_DRIVE && MineDriveLayout.enabled(working.placement)
+        val targets = targets(runtime, scene).filter { it.label !in setOf("excavate", "clear_track") } +
+            if (drive) emptyList() else listOf(MineWorkingTarget("entry", scene.plan.entrance.copy(y = scene.floor + 1), "entry"))
         val current = markers.getOrPut(runtime.settings.id) { linkedMapOf() }
         current.keys.toList().forEach { id ->
             val existing = current.getValue(id)

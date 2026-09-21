@@ -80,7 +80,7 @@ private fun driveFixture(paper: MockBukkitTestRuntime, startForward: Int = 2): D
     for (x in -1..1) for (z in -1..3) world.getChunkAt(x,z).load()
     val p = MineWorkingPlacement(WorksitePosition(world.name,0,64,0),0,"test")
     val plan = MineDriveLayout.plan(p)
-    plan.blocks.forEach { (pos,data) -> world.getBlockAt(pos.x,pos.y,pos.z).type = Material.valueOf(data.substringAfter(':').uppercase()) }
+    plan.blocks.forEach { (pos,data) -> world.getBlockAt(pos.x,pos.y,pos.z).type = Material.valueOf(data.substringAfter(':').substringBefore('[').uppercase()) }
     val runtime = MineRuntime(mineV2Settings(), CuboidActivityRegion(world,"test",CuboidBounds(-20,50,-20,50,100,60)),5000,
         MineShiftState(engineVersion=2, phase=MinePhase.INCIDENT, sequence=1, resumePhase=MinePhase.MINING,
             incident=MineIncidentState(MineIncidentType.TUNNEL_DRIVE,required=93,objectiveNonce=1,

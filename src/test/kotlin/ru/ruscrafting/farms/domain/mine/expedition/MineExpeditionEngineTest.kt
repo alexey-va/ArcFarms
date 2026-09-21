@@ -7,6 +7,30 @@ import ru.ruscrafting.farms.domain.MineIncidentType
 class MineExpeditionEngineTest : FunSpec({
     val placement = MineExpeditionPlacement("rc_arcfarms_expeditions", 100, -32, 200, 73L)
 
+    test("factory programs use different machines and survive JSON without changing ten checkpoint credits") {
+        val plan=MinePermanentExpeditionLayout.build(MineExpeditionKind.DEAD_FACTORY,73)
+        val routes=(0..2).map { program ->
+            var state=MineExpeditionEngine.initial(MineIncidentType.DEAD_FACTORY,placement,program)
+            val ids=MineExpeditionObjectives.targets(plan,state,null).map { it.id }
+            val gson=com.google.gson.Gson()
+            state=gson.fromJson(gson.toJson(state),MineExpeditionState::class.java)
+            state.validate();state.factoryProgram shouldBe program
+            var credits=0
+            while(state.stage!=MineExpeditionStage.COMPLETE) {
+                val now=if(state.stage==MineExpeditionStage.FACTORY_HEAT) state.heatStartedAt+4_000 else 100L
+                val next=MineExpeditionEngine.completeTarget(state,MineExpeditionEngine.currentTarget(state)!!,now)
+                next.accepted shouldBe true
+                credits+=MineExpeditionEngine.progressDelta(MineIncidentType.DEAD_FACTORY,state,next.state)
+                state=next.state
+            }
+            credits shouldBe 10
+            ids
+        }
+        routes.distinct().size shouldBe 3
+        val legacy="""{"placement":{"world":"world","originX":0,"originY":64,"originZ":0,"seed":1,"geometryVersion":3},"stage":"FACTORY_WATER","completed":[],"motionStep":0,"branch":0,"heatStartedAt":0}"""
+        com.google.gson.Gson().fromJson(legacy,MineExpeditionState::class.java).apply { validate() }.factoryProgram shouldBe 0
+    }
+
     test("required progress and idempotent descent actions are deterministic") {
         MineExpeditionEngine.required(MineIncidentType.LAST_DESCENT) shouldBe 12
         var state = MineExpeditionEngine.initial(MineIncidentType.LAST_DESCENT, placement)

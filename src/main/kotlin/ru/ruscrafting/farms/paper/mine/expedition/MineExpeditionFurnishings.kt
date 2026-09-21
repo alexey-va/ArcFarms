@@ -38,12 +38,12 @@ internal object MineExpeditionFurnishings {
         val decor=when(plan.kind) {
             MineExpeditionKind.DEAD_FACTORY -> listOf(
                 Fixture("decor_waterwheel","waterwheel",ExpeditionPoint(0,5,-23)),
-                Fixture("decor_crusher_left","crusher",ExpeditionPoint(-17,5,11),2.2f),
-                Fixture("decor_crusher_right","crusher",ExpeditionPoint(17,5,11),2.2f),
+                Fixture("decor_crusher_left","crusher",ru.ruscrafting.farms.domain.mine.expedition.MineFactoryProgram.machines.getValue("decor_crusher_left"),2.2f),
+                Fixture("decor_crusher_right","crusher",ru.ruscrafting.farms.domain.mine.expedition.MineFactoryProgram.machines.getValue("decor_crusher_right"),2.2f),
                 Fixture("decor_furnace_left","furnace",ExpeditionPoint(-17,5,-13)),
                 Fixture("decor_furnace_right","furnace",ExpeditionPoint(17,5,-13)),
-                Fixture("decor_pump_left","pump",ExpeditionPoint(-27,5,-17),1.8f),
-                Fixture("decor_pump_right","pump",ExpeditionPoint(27,5,-17),1.8f),
+                Fixture("decor_pump_left","pump",ru.ruscrafting.farms.domain.mine.expedition.MineFactoryProgram.machines.getValue("decor_pump_left"),1.8f),
+                Fixture("decor_pump_right","pump",ru.ruscrafting.farms.domain.mine.expedition.MineFactoryProgram.machines.getValue("decor_pump_right"),1.8f),
                 Fixture("decor_tank_left","tank",ExpeditionPoint(-27,5,17),1.8f),
                 Fixture("decor_tank_right","tank",ExpeditionPoint(27,5,17),1.8f),
             )

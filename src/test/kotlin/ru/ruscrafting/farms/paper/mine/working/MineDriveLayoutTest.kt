@@ -32,6 +32,27 @@ class MineDriveLayoutTest : FunSpec({
         }
     }
 
+    test("steering always faces into the working, including headings recovered from older saves") {
+        for(direction in 0..3) for(heading in -720..720 step 9) {
+            val inward=MineDriveLayout.inwardHeading(direction,heading.toFloat())
+            val dot=kotlin.math.cos(Math.toRadians((inward-direction*90).toDouble()))
+            (dot > .42) shouldBe true
+        }
+    }
+
+    test("diamond discovery has a vaulted irregular shell and exposed glowing ore targets") {
+        for(seed in 1L..12L) {
+            val p=MineWorkingPlacement(WorksitePosition("world",0,64,0),0,"top",seed)
+            val plan=MineDriveLayout.plan(p)
+            val ore=MineDriveLayout.goalOres(plan)
+            (ore.size >= 12) shouldBe true
+            val tops=(-6..6).map { s -> (1..9).lastOrNull { y -> plan.blocks[p.position(s,y,40)]=="minecraft:air" } ?: 0 }
+            (tops.distinct().size >= 3) shouldBe true
+            plan.blocks[p.position(0,1,41)] shouldBe "minecraft:air"
+            (0..9).all { up -> (-8..8).all { side -> plan.blocks[p.position(side,up,44)] != "minecraft:air" } } shouldBe true
+        }
+    }
+
     test("old saved drives retain their exact layer targets") {
         val plan = MineWorkingLayout.plan(MineIncidentType.TUNNEL_DRIVE,
             MineWorkingPlacement(WorksitePosition("world",0,64,0),0,"top",geometryVersion=4))

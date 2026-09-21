@@ -19,6 +19,24 @@ class MineBlockIndexMockBukkitTest : FunSpec({
     beforeEach { paper = MockBukkitTestRuntime.open() }
     afterEach { paper.close() }
 
+    test("lift shaft anchors are excluded on cached reads and final validation at every height") {
+        val world=paper.server.addSimpleWorld("world")
+        val plugin=paper.createSimplePlugin("ShaftIndex")
+        val lift=io.mockk.mockk<ru.ruscrafting.farms.paper.mine.lift.MineLiftAccess>()
+        io.mockk.every { lift.excludesEvent(any()) } answers { firstArg<org.bukkit.Location>().x < 6.0 }
+        val definition=MineIndexDefinition("old_shafts",CuboidActivityRegion(world,"test",CuboidBounds(0,50,0,15,120,15)),setOf(Material.STONE))
+        val index=MineBlockIndex(plugin,lift)
+        val points=listOf(WorksitePosition("world",3,60,3),WorksitePosition("world",3,100,3),WorksitePosition("world",10,100,3))
+        points.forEach { world.getBlockAt(it.x,it.y,it.z).type=Material.STONE }
+        index.replaceZone(definition,listOf(world.getChunkAt(0,0)),points.map { MineIndexedTarget(it,setOf(MineAnchorRole.MINER,MineAnchorRole.NEST,MineAnchorRole.MINEABLE)) })
+        for(role in listOf(MineAnchorRole.MINER,MineAnchorRole.NEST)) {
+            index.targets("old_shafts",role) shouldBe setOf(points.last())
+            index.loadedTargets("old_shafts",role) shouldBe setOf(points.last())
+            index.isLiveTarget("old_shafts",points.first(),role) shouldBe false
+        }
+        index.targets("old_shafts",MineAnchorRole.MINEABLE).size shouldBe 3
+    }
+
     test("rail material filter keeps the legacy default and only gates walkable floors") {
         val world = paper.server.addSimpleWorld("world")
         world.getChunkAt(0, 0).load()

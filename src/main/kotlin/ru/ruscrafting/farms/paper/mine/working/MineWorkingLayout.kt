@@ -241,7 +241,8 @@ internal object MineWorkingLayout {
         if (plan.blocks.size > MineWorkingPlanner.MAX_BLOCKS) add("footprint-too-large:${plan.blocks.size}")
         if (plan.footprint != plan.blocks.keys) add("footprint-map-mismatch")
         if (plan.blocks.keys.any { it.world != plan.entrance.world }) add("mixed-world")
-        if (plan.blocks.keys.any { it.y !in plan.entrance.y..(plan.entrance.y + MAX_HEIGHT) }) add("height-out-of-range")
+        val maxHeight = if (plan.type == MineIncidentType.TUNNEL_DRIVE && plan.placement.geometryVersion >= 6) 9 else MAX_HEIGHT
+        if (plan.blocks.keys.any { it.y !in plan.entrance.y..(plan.entrance.y + maxHeight) }) add("height-out-of-range")
         if (plan.shell.any { it !in plan.blocks }) add("shell-outside-footprint")
         if (plan.walkable.any { it !in plan.blocks }) add("walkable-outside-footprint")
         if (plan.fixtures.any { it !in plan.blocks }) add("fixture-outside-footprint")

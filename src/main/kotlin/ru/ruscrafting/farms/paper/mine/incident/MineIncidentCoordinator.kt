@@ -17,7 +17,15 @@ import ru.ruscrafting.farms.paper.mine.MineTransitionCoordinator
 internal class MineIncidentCoordinator(
     private val transitions: MineTransitionCoordinator,
     private val state: WorksiteStatePort,
+    private val lift: ru.ruscrafting.farms.paper.mine.lift.MineLiftAccess? = null,
 ) {
+    fun hasExcludedTargets(runtime: MineRuntime): Boolean = runtime.state.objective?.targets?.any {
+        !allowed(runtime,it.position)
+    } == true
+
+    private fun allowed(runtime: MineRuntime, p: ru.ruscrafting.farms.domain.worksite.WorksitePosition): Boolean =
+        p.world != runtime.region.world.name || lift?.excludesEvent(org.bukkit.Location(runtime.region.world,p.x+.5,p.y+1.0,p.z+.5)) != true
+
     fun start(
         runtime: MineRuntime,
         type: MineIncidentType,
@@ -26,6 +34,7 @@ internal class MineIncidentCoordinator(
         candidates: List<ObjectiveTargetCandidate> = emptyList(),
         working: ru.ruscrafting.farms.domain.MineWorkingState? = null,
     ): Boolean {
+        if (candidates.any { !allowed(runtime,it.position) }) return false
         val initial = MineShiftEngine.startIncident(runtime.state, type, required, now)
         val started = if (working == null) initial else initial.copy(state = initial.state.copy(
             incident = initial.state.incident?.copy(working = working),

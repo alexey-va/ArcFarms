@@ -47,8 +47,9 @@ object MineExpeditionEngine {
         else -> null
     }
 
-    fun initial(type: MineIncidentType, placement: MineExpeditionPlacement): MineExpeditionState = MineExpeditionState(
+    fun initial(type: MineIncidentType, placement: MineExpeditionPlacement, factoryProgram: Int = 0): MineExpeditionState = MineExpeditionState(
         placement = placement,
+        factoryProgram = if(type == MineIncidentType.DEAD_FACTORY && placement.geometryVersion >= 3) factoryProgram else 0,
         stage = when (kind(type)) {
             MineExpeditionKind.LAST_DESCENT -> MineExpeditionStage.DESCENT_MIDDLE
             MineExpeditionKind.DRILLING_ARK -> MineExpeditionStage.ARK_FUEL

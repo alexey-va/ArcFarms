@@ -70,10 +70,10 @@ internal class MineComponentGraph(
 ) {
     internal val registry = MineRuntimeRegistry()
     val recovery = MineBlockRecoveryController(journal, ports.access, ports.state, ports.tasks, clock)
-    val index = MineBlockIndex(plugin)
+    val index = MineBlockIndex(plugin, lift)
     private val incidentJournal = MineIncidentBlockJournal(recovery)
     private val transitions = MineTransitionCoordinator(ports.state, ports.stats, ports.audience, locale, incidentJournal)
-    private val incidents = MineIncidentCoordinator(transitions, ports.state)
+    private val incidents = MineIncidentCoordinator(transitions, ports.state, lift)
     private val blockScanner = WorksiteAsyncBlockScanner(ports.tasks)
     val caveIn = MineCaveInIncident(
         registry, index, incidents, incidentJournal, recovery, ports.audience, ports.state, blockScanner, lift, incidentEntityEffects,
@@ -97,7 +97,7 @@ internal class MineComponentGraph(
         plugin,
         debug,
         PaperMineLostMinerMazeChunkRetention(tickets),
-        blockDataDecoder,
+        blockDataDecoder, ports.tasks,
     )
     val lostMiner = MineLostMinerIncident(registry, index, incidents, incidentEntityEffects, lostMinerMaze,
         ru.ruscrafting.farms.paper.worksite.WorksiteExpeditionTravel(plugin, ports.tasks, ports.access, ports.state,

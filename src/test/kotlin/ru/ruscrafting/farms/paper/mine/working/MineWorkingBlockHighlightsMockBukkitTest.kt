@@ -28,6 +28,43 @@ class MineWorkingBlockHighlightsMockBukkitTest : FunSpec({
     beforeEach { paper = MockBukkitTestRuntime.open() }
     afterEach { paper.close() }
 
+    test("diamond goal outlines actual veins and retires every glow entity") {
+        val world = paper.server.addSimpleWorld("world")
+        val plugin = paper.createSimplePlugin("MineWorkingBlockHighlightsTest")
+        val placement = MineWorkingPlacement(
+            WorksitePosition(world.name, 18, 64, 18), direction = 0, floorId = "fixture-floor", geometryVersion = 6,
+        )
+        val plan = MineWorkingLayout.plan(MineIncidentType.TUNNEL_DRIVE, placement)
+        val runtime = MineRuntime(
+            settings = mineV2Settings(),
+            region = CuboidActivityRegion(world, "old_shafts", CuboidBounds(-32, 48, -32, 64, 80, 64)),
+            cooldownMillis = 0L,
+            state = MineShiftState(
+                engineVersion = 2,
+                phase = MinePhase.INCIDENT,
+                sequence = 11,
+                incident = MineIncidentState(
+                    type = MineIncidentType.TUNNEL_DRIVE,
+                    required = 1,
+                    objectiveNonce = 17,
+                    working = MineWorkingState(placement, MineWorkingStage.EXCAVATE),
+                ),
+            ),
+        )
+        val scene = mockk<MineWorkingScene>()
+        every { scene.plan } returns plan
+
+        MineDriveLayout.goalOres(plan).forEach { world.getBlockAt(it.x,it.y,it.z).type = Material.DEEPSLATE_DIAMOND_ORE }
+        val highlights=MineWorkingBlockHighlights(plugin)
+        highlights.reconcile(runtime,scene)
+        val glows=world.entities.filterIsInstance<BlockDisplay>()
+        (glows.size>=12) shouldBe true
+        glows.all { it.isGlowing && it.block.material==Material.DEEPSLATE_DIAMOND_ORE } shouldBe true
+        highlights.cleanup(runtime.settings.id)
+        world.entities.filterIsInstance<BlockDisplay>().size shouldBe 0
+    }
+
+
     test("support frame previews keep log axes and full brightness") {
         val world = paper.server.addSimpleWorld("world")
         val plugin = paper.createSimplePlugin("MineWorkingBlockHighlightsTest")

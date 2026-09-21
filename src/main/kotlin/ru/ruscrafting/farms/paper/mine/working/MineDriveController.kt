@@ -59,7 +59,7 @@ internal class MineDriveController(
         if (runtime.settings.id in saving || runtime.settings.id in failed) { rigs.render(rig, false); return }
         val input = driver.currentInput
         val steering = (if (input.isLeft) 1 else 0) - (if (input.isRight) 1 else 0)
-        rig.heading = ((rig.heading - steering * 2.8f) % 360 + 360) % 360
+        rig.heading = MineDriveLayout.inwardHeading(working.placement.direction, rig.heading - steering * 2.8f)
         val throttle = (if (input.isForward) 1 else 0) - (if (input.isBackward) 1 else 0)
         val radians = Math.toRadians(rig.heading.toDouble())
         val forward = Vector(-sin(radians), 0.0, cos(radians))

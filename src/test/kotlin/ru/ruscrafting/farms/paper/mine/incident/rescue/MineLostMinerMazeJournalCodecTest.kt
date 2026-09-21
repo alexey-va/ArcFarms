@@ -18,6 +18,17 @@ class MineLostMinerMazeJournalCodecTest : FunSpec({
         totalRecords = 2,
     )
 
+    test("version one journal remains readable for exact restoration") {
+        val bytes=java.io.ByteArrayOutputStream()
+        java.io.DataOutputStream(bytes).use { out ->
+            out.writeInt(1);out.writeInt(1);out.writeUTF(record.zoneId);out.writeLong(record.sequence)
+            out.writeInt(record.x);out.writeInt(record.y);out.writeInt(record.z)
+            out.writeUTF(record.originalData);out.writeUTF(record.mazeData)
+            out.writeByte(record.marker.ordinal);out.writeInt(record.totalRecords)
+        }
+        MineLostMinerMazeJournalCodec.decode(bytes.toByteArray(),"world",0,0,-64,320) shouldBe listOf(record)
+    }
+
     test("journal round trips the exact original BlockData and marker") {
         val records = listOf(record, record.copy(x = 13, marker = MineLostMinerMazeMarker.TARGET))
         val encoded = MineLostMinerMazeJournalCodec.encode(records, "world", 0, 0, -64, 320)

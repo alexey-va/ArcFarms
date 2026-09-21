@@ -41,7 +41,7 @@ object MineExpeditionObjectives {
             MineExpeditionStage.ARK_COOLANT -> carry("coolant_supply", "cooling", "WATER_BUCKET", deck.offset(2, 0, -2))
             MineExpeditionStage.ARK_CORES -> many("survey", 3, MineExpeditionInteraction.PICKUP, "AMETHYST_CLUSTER") +
                 objective("core_rack", MineExpeditionInteraction.DELIVER, "AMETHYST_SHARD", position = deck.offset(-2, 0, -4))
-            MineExpeditionStage.FACTORY_WATER -> many("water_valve", 3, MineExpeditionInteraction.VALVE, "GRINDSTONE")
+            MineExpeditionStage.FACTORY_WATER -> MineFactoryProgram.targets(plan,state)
             MineExpeditionStage.FACTORY_COAL -> carry("fuel_supply", "furnace_input", "COAL_BLOCK")
             MineExpeditionStage.FACTORY_HEAT -> listOf(objective("furnace_control", MineExpeditionInteraction.OPERATE, "BLAZE_POWDER", 0))
             MineExpeditionStage.FACTORY_POUR -> listOf(objective("pour_control", MineExpeditionInteraction.VALVE, "LAVA_BUCKET", 0))

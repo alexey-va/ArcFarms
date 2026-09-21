@@ -6,6 +6,9 @@ import org.bukkit.Location
 public interface MineLiftAccess {
     public data class FloorSnapshot(val id: String, val y: Double, val exit: Location)
 
+    /** Full configured swept shaft, including clearance for event models. */
+    public fun excludesEvent(point: Location): Boolean = false
+
     public fun floors(): List<FloorSnapshot>
     public fun beginMaintenance(ownerKey: String): Boolean
     public fun endMaintenance(ownerKey: String)

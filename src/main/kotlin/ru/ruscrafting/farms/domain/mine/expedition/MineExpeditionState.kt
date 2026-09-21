@@ -81,6 +81,8 @@ data class MineExpeditionState(
     val branch: Int = 0,
     /** Start of the current factory heat attempt. */
     val heatStartedAt: Long = 0L,
+    /** 0: water circuit, 1: left production line, 2: right production line. Missing legacy JSON means 0. */
+    val factoryProgram: Int = 0,
 ) {
     init { validate() }
 
@@ -90,6 +92,7 @@ data class MineExpeditionState(
             "Expedition target state is invalid"
         }
         require(motionStep in 0..1_000_000) { "Expedition motion step is invalid" }
+        require(factoryProgram in 0..2) { "Invalid factory program" }
         require(branch in 0..2) { "Expedition branch is invalid" }
         require(heatStartedAt >= 0L) { "Expedition heat timestamp is invalid" }
         require(stage == MineExpeditionStage.FACTORY_HEAT || heatStartedAt == 0L) {

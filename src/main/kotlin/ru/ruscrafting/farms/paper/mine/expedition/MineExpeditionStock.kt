@@ -84,7 +84,7 @@ internal class MineExpeditionStock(
             return loader.prepared(receipt.journalSequence)?.takeIf { it.ready }?.also {
                 bind(it, receipt, surface)
                 if (incident.expedition == null || incident.expedition.placement != receipt.placement) {
-                    runtime.state = runtime.state.copy(incident = incident.copy(expedition = MineExpeditionEngine.initial(incident.type, receipt.placement)))
+                    runtime.state = runtime.state.copy(incident = incident.copy(expedition = MineExpeditionEngine.initial(incident.type, receipt.placement, Math.floorMod(incident.objectiveNonce, 3L).toInt())))
                     state.persistAsync()
                 }
             }
@@ -103,7 +103,7 @@ internal class MineExpeditionStock(
             if (key(runtime) == key && runtime.state.incident?.type == incident.type) {
                 loader.prepared(receipt.journalSequence)?.let { bind(it, receipt, surface) }
                 runtime.state = runtime.state.copy(incident = runtime.state.incident!!.copy(
-                    expedition = MineExpeditionEngine.initial(incident.type, receipt.placement)))
+                    expedition = MineExpeditionEngine.initial(incident.type, receipt.placement, Math.floorMod(incident.objectiveNonce, 3L).toInt())))
                 state.persistAsync()
             } else loader.prepared(receipt.journalSequence)?.let {
                 bind(it, receipt, surface)

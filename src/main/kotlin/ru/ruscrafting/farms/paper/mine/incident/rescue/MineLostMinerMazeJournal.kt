@@ -22,12 +22,13 @@ internal data class MineLostMinerMazeJournalRecord(
     val mazeData: String,
     val marker: MineLostMinerMazeMarker,
     val totalRecords: Int,
+    val geometryVersion: Int = 1,
 )
 
 /** Strict, bounded chunk-PDC codec for the lost-miner scene. */
 internal object MineLostMinerMazeJournalCodec {
-    private const val VERSION = 1
-    private const val MAX_RECORDS_PER_CHUNK = 2_048
+    private const val VERSION = 2
+    private const val MAX_RECORDS_PER_CHUNK = 4_096
     private const val MAX_SCENE_RECORDS = 16_384
     private const val MAX_BLOCK_DATA_LENGTH = 512
     private const val MAX_JOURNAL_BYTES = 524_288
@@ -59,6 +60,7 @@ internal object MineLostMinerMazeJournalCodec {
                     output.writeUTF(record.mazeData)
                     output.writeByte(record.marker.ordinal)
                     output.writeInt(record.totalRecords)
+                    output.writeInt(record.geometryVersion)
                 }
             }
             bytes.toByteArray()
@@ -78,7 +80,8 @@ internal object MineLostMinerMazeJournalCodec {
         validateBounds(minHeight, maxHeight)
         require(raw.size <= MAX_JOURNAL_BYTES) { "Oversized lost-miner maze journal" }
         return DataInputStream(ByteArrayInputStream(raw)).use { input ->
-            require(input.readInt() == VERSION) { "Unsupported lost-miner maze journal version" }
+            val version = input.readInt()
+            require(version in 1..VERSION) { "Unsupported lost-miner maze journal version" }
             val count = input.readInt()
             require(count in 0..MAX_RECORDS_PER_CHUNK) { "Invalid lost-miner maze record count" }
             val records = List(count) {
@@ -94,6 +97,7 @@ internal object MineLostMinerMazeJournalCodec {
                     marker = MineLostMinerMazeMarker.entries.getOrNull(input.readUnsignedByte())
                         ?: error("Invalid lost-miner maze marker"),
                     totalRecords = input.readInt(),
+                    geometryVersion = if(version >= 2) input.readInt() else 1,
                 ).also { validate(it, world, chunkX, chunkZ, minHeight, maxHeight) }
             }
             validateUnique(records)
@@ -119,6 +123,7 @@ internal object MineLostMinerMazeJournalCodec {
         require(record.y in minHeight until maxHeight) { "Lost-miner maze record height is outside the world" }
         require(record.originalData.length in 1..MAX_BLOCK_DATA_LENGTH) { "Invalid original lost-miner maze BlockData" }
         require(record.mazeData.length in 1..MAX_BLOCK_DATA_LENGTH) { "Invalid active lost-miner maze BlockData" }
+        require(record.geometryVersion in 1..MineLostMinerCaveBlocks.GEOMETRY_VERSION) { "Invalid lost-miner geometry version" }
         require(record.totalRecords in 1..MAX_SCENE_RECORDS) { "Invalid lost-miner maze scene size" }
     }
 

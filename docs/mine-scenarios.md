@@ -266,3 +266,47 @@ identified the same 23 prior failures plus two old-drill fixtures inadvertently
 using the new default geometry. Those two fixtures now explicitly use version
 4. The expanded local selection passed 78 checks with no failures or skips.
 The 23 prior CI failures remain unresolved; the full suite is not green.
+
+
+## Direct boarding and cave placement — 0.44.5
+
+Tunnel Drive has no entrance activation marker or participation prerequisite.
+Right-click the actual machine; W drills, A/D steer within 65 degrees of the
+inward axis, S backs up through already cleared space. Reverse does not cut
+blocks. Bedrock and the journal boundary remain hard limits. The far objective
+is a closed, noise-shaped diamond chamber; cyan glow outlines up to 32 exposed
+ore blocks and disappears with the incident. Force cleanup also evacuates
+visitors without an entry receipt before restoring the scene.
+
+All indexed incident anchors and final objective selection exclude each
+configured lift's full swept shaft plus 2.5 blocks of model clearance. Existing
+unsafe objectives retire through their existing cleanup/journal owners on
+reconciliation. Ordinary ore indexing is unchanged. Authored working entrances
+and their complete generated volumes receive the same lift check.
+
+Lost Miner uses winding spline passages, broader attached chambers, volumetric
+stone layers and timber frames spanning narrow sections. Visible hanging
+lanterns are capped at six; dim invisible level-7 light keeps bends readable.
+Pure terrain selection and voxel planning run asynchronously with lifecycle
+and request-identity fencing; world capture and mutation retain their bounded
+budgets. Journal codec v2 reads v1 originals. Inactive old caves restore before
+replacement; an active rescue keeps its journal until its normal exit/cleanup.
+
+Dead Factory has three persisted commissioning programs: water circuit, left
+line, right line. The line programs activate a valve, a full-sized pump and a
+crusher. Each powered machine takes three seconds with rotation, local sound
+and particles. Leaving interrupts the cycle. Subsequent fuel, heat, pouring,
+crane and press stages remain in their established order. Program IDs survive
+JSON/restart; legacy saves use the original water circuit. Factory layouts and
+admin furnishing overrides are preserved.
+
+Canonical previews: `./gradlew -I scripts/mine-preview/caves.gradle exportMineCaves`.
+These show actual generator output, not a Minecraft client capture.
+
+Validation: 119 focused tests passed with no failures or skips, including direct
+boarding, inward steering, diamond shell/glow cleanup, lift exclusion, all three
+factory programs and restart recovery of old cave journals (including a late
+legacy chunk after the replacement is ready). The display validator checked
+20 models in 65 animation poses with no coplanar overlap. Canonical cave exports
+were inspected in the offline browser preview; this does not establish native
+Minecraft driving, sound or particles.

@@ -42,7 +42,7 @@ internal class MineWorkingPlacementService(
         val floors = lift?.floors().orEmpty().filter { it.exit.world === world }
         val seed = WorksiteDeterministicSeed.derive(search.sequence, type.name.hashCode().toLong() + search.cursor)
         val authored = points?.workingPlacements(runtime).orEmpty().mapNotNull { (id, point) ->
-            if (point.world != world.name) return@mapNotNull null
+            if (point.world != world.name || lift?.excludesEvent(org.bukkit.Location(world, point.x, point.y, point.z)) == true) return@mapNotNull null
             val floor = floors.minByOrNull { abs(it.exit.y - point.y) }?.id ?: id
             point.workingPlacement(floor, layoutSeed = seed)
         }
@@ -98,7 +98,7 @@ internal class MineWorkingPlacementService(
                         location.blockY in candidate.entrance.y..candidate.entrance.y + 5 &&
                             WorksitePosition(world.name, location.blockX, candidate.entrance.y + 1, location.blockZ) in plan.blocks
                     }
-                    !occupied && MineWorkingPlanner.rejection(plan) { position ->
+                    !occupied && plan.blocks.keys.none { p -> lift?.excludesEvent(org.bukkit.Location(world,p.x+.5,p.y+.5,p.z+.5)) == true } && MineWorkingPlanner.rejection(plan) { position ->
                         if (!world.isChunkLoaded(position.x shr 4, position.z shr 4)) null
                         else world.getBlockAt(position.x, position.y, position.z).type
                     } == null

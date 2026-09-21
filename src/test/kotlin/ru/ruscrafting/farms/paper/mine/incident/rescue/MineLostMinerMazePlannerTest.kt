@@ -15,7 +15,7 @@ class MineLostMinerMazePlannerTest : FunSpec({
             val cave = layout.copy(passages = MineLostMinerMazePlanner.chamberCells(layout, seed))
             MineLostMinerMazePlanner.path(cave).size shouldBeGreaterThan 60
             val lamps = MineLostMinerMazePlanner.lampCells(layout).toList()
-            (lamps.size <= 13) shouldBe true
+            (lamps.size <= 6) shouldBe true
             lamps.all { it in layout.passages } shouldBe true
             layout
         }

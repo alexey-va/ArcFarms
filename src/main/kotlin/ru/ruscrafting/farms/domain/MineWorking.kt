@@ -29,7 +29,7 @@ data class MineWorkingPlacement(
         return entrance.copy(x = entrance.x + dx, y = entrance.y + up, z = entrance.z + dz)
     }
 
-    companion object { const val CURRENT_GEOMETRY_VERSION = 5 }
+    companion object { const val CURRENT_GEOMETRY_VERSION = 6 }
 }
 
 enum class MineWorkingStage {

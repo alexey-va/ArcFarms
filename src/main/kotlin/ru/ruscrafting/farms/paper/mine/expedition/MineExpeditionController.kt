@@ -153,6 +153,8 @@ internal class MineExpeditionController(
     private fun marker(scene: MineExpeditionScene, state: MineExpeditionState, target: MineExpeditionObjective,
         now: Long): MineExpeditionMarkers.Target {
         val label = when {
+            state.stage == MineExpeditionStage.FACTORY_WATER && target.id.startsWith("decor_pump_") -> "control.pump-start"
+            state.stage == MineExpeditionStage.FACTORY_WATER && target.id.startsWith("decor_crusher_") -> "control.crusher-start"
             state.stage == MineExpeditionStage.FACTORY_CRANE -> "control.crane-start"
             state.stage == MineExpeditionStage.FACTORY_HEAT -> if (MineExpeditionEngine.canFinishHeat(state, now)) "heat-ready" else "heat-progress"
             state.stage == MineExpeditionStage.FACTORY_COAL && target.interaction == MineExpeditionInteraction.DELIVER -> "control.fuel-progress"
@@ -162,9 +164,11 @@ internal class MineExpeditionController(
         }
         val material = if (state.stage == MineExpeditionStage.FACTORY_HEAT && MineExpeditionEngine.canFinishHeat(state, now))
             Material.LIME_DYE else MineExpeditionActions.material(target.material)
+        val fixture = MineExpeditionFurnishings.fixtures(scene).firstOrNull { it.id == target.id }
         return MineExpeditionMarkers.Target(target.id, scene.at(target.position), material,
             render(label, values = progressValues(state, now)), target.interaction == MineExpeditionInteraction.BREAK,
-            model=if(target.interaction == MineExpeditionInteraction.BREAK || target.id=="drive") null else MineExpeditionFurnishings.model(target.id,scene.kind),
+            model=if(target.interaction == MineExpeditionInteraction.BREAK || target.id=="drive") null else fixture?.model ?: MineExpeditionFurnishings.model(target.id,scene.kind),
+            modelScale=fixture?.scale ?: 1f,
             yaw=editor?.yaw(scene,target.id) ?: 0)
     }
 
@@ -334,6 +338,7 @@ internal class MineExpeditionController(
             !scene.contains(player.location) -> render("enter-hint", player)
             actions.hint(scope(scene), player, now) != null -> actions.hint(scope(scene), player, now)
             actions.carrying(player, scope(scene)) -> render(if (current.stage == MineExpeditionStage.FACTORY_COAL) "fuel-carry" else "carry", player)
+            current.stage == MineExpeditionStage.FACTORY_WATER -> render("program.${current.factoryProgram}", player)
             current.stage == MineExpeditionStage.FACTORY_COAL -> render("fuel-progress", player, progressValues(current, now))
             current.stage == MineExpeditionStage.FACTORY_HEAT -> render(
                 if (MineExpeditionEngine.canFinishHeat(current, now)) "heat-ready" else "heat-progress", player, progressValues(current, now))

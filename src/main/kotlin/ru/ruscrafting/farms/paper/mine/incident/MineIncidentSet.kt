@@ -298,7 +298,7 @@ internal class MineIncidentSet(
     private fun abortIncompatibleObjective(runtime: MineRuntime): Boolean {
         val incident = runtime.state.incident ?: return false
         val objective = runtime.state.objective
-        val incompatible = when (incident.type) {
+        val incompatible = coordinator.hasExcludedTargets(runtime) || when (incident.type) {
             ru.ruscrafting.farms.domain.MineIncidentType.POWER_FAILURE -> true
             ru.ruscrafting.farms.domain.MineIncidentType.ORE_WORKSHOP ->
                 incident.working?.placement?.floorId?.startsWith("authored-") != true

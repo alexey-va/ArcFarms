@@ -326,6 +326,9 @@ internal class MineWorkingController(
             return false
         }
         if (travel.isAuthorized(event.player, event.to)) return false
+        // Same-world drive: boarding and walking do not require a portal receipt.
+        if (registry.snapshot().any { isDrive(it) && allowed(it, event.player) &&
+                world.isReady(it) && world.scene(it)?.inside(event.to) == true }) return false
         val runtime = registry.snapshot().firstOrNull { candidate ->
             (world.scene(candidate) ?: completionGrace[candidate.settings.id]?.scene)?.inside(event.to) == true
         }
@@ -429,7 +432,8 @@ internal class MineWorkingController(
         retire(runtime, grace?.scene)
     }
 
-    private fun retire(runtime: MineRuntime, retainedScene: MineWorkingScene?) {
+    private fun retire(runtime: MineRuntime, retained: MineWorkingScene?) {
+        val retainedScene = retained ?: world.scene(runtime)
         placement.cancel(runtime.settings.id)
         retiring += runtime.settings.id
         equipment.clear(runtime)
@@ -494,11 +498,15 @@ internal class MineWorkingController(
         world.clearQueues()
     }
 
+    private fun isDrive(runtime: MineRuntime): Boolean = runtime.state.incident?.let {
+        it.type == MineIncidentType.TUNNEL_DRIVE && it.working?.placement?.let(MineDriveLayout::enabled) == true
+    } == true
+
     private fun participant(runtime: MineRuntime, player: Player): Boolean = allowed(runtime, player) &&
-        travel.record(player)?.let { it.zoneId == runtime.settings.id && it.sequence == runtime.state.sequence } == true
+        (isDrive(runtime) || travel.record(player)?.let { it.zoneId == runtime.settings.id && it.sequence == runtime.state.sequence } == true)
 
     private fun allowed(runtime: MineRuntime, player: Player): Boolean =
-        player.isOnline && !player.isDead && player.world === runtime.region.world &&
+        player.isOnline && !player.isDead && player.gameMode != org.bukkit.GameMode.SPECTATOR && player.world === runtime.region.world &&
             !access.isAdminEditing(player) && access.hasAccess(player, runtime.settings.permission)
 
     private fun near(player: Player, position: WorksitePosition): Boolean = player.world.name == position.world &&

@@ -301,6 +301,8 @@ internal class MineLiftRuntime(
     }
 
     /** Read-only configured floor facts for maintenance planning; values come from the loaded settings. */
+    override fun excludesEvent(point: Location): Boolean = settings.excludesEvent(point)
+
     override fun floors(): List<MineLiftAccess.FloorSnapshot> {
         val config = settings
         val world = Bukkit.getWorld(config.world) ?: return emptyList()

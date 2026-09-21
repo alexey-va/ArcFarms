@@ -1295,7 +1295,13 @@ mine:
     turn: '<color:#f2fff7>Walk around the crank to turn the mechanism</color>'
     heat-wait: '<color:#f2fff7>Wait for the green signal at the furnace</color>'
     heat-ready: '<color:#55d98b>The furnace is ready — right-click now</color>'
+    program:
+      '0': '<color:#f2fff7>Restore the water circuit: open the three glowing valves.</color>'
+      '1': '<color:#f2fff7>Start the left line: the valve, pump and crusher are glowing.</color>'
+      '2': '<color:#f2fff7>Start the right line: the valve, pump and crusher are glowing.</color>'
     control:
+      pump-start: '<color:#f2fff7>Right-click · start the pump</color>'
+      crusher-start: '<color:#f2fff7>Right-click · start the crusher</color>'
       fuel-progress: '<color:#f2fff7>Fuel <count>/<total> · right-click to load the furnace</color>'
       valve: '<color:#f2fff7>Right-click · turn the valve</color>'
       crane-start: '<color:#f2fff7>Right-click · start the crane</color>'
@@ -1346,7 +1352,7 @@ mine:
     inventory-full: '<red>Free an inventory slot: there is no room for the service item.</red>'
     needs-kit: '<yellow>Take the required service item before starting this stage.</yellow>'
     next-section: '<color:#f2fff7>Continue to the next section of the working.</color>'
-    drive-controls: '<color:#f2fff7>Right-click — mount · W/S — forward/back · A/D — steer · Shift — dismount. Avoid bedrock.</color>'
+    drive-controls: '<color:#f2fff7>Right-click — mount · W — drill toward the diamond glow · A/D — avoid bedrock · S — reverse · Shift — dismount.</color>'
     drive-blocked: '<color:#ffc857>Unbreakable rock. Reverse and steer around it.</color>'
     drive-save-failed: '<red>The drill stopped because progress could not be saved. Contact an administrator.</red>'
     drive-complete: '<color:#55d98b>Breakthrough! The tunnel is ready and its lights are installed.</color>'

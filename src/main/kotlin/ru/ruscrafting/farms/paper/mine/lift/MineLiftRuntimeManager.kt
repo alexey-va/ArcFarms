@@ -24,11 +24,13 @@ internal class MineLiftRuntimeManager(
 ) : AutoCloseable, CommandExecutor, TabCompleter, MineLiftAccess {
     private val riderOwners = mutableMapOf<UUID, String>()
     private val runtimes: Map<String, MineLiftRuntime>
+    private val excludedShafts: List<MineLiftSettings>
 
     init {
         val configured = MineLiftSettings.loadAll(plugin.dataFolder.toPath()) { id, failure ->
             plugin.logger.log(Level.SEVERE, "Mine lift $id configuration rejected; lift remains closed", failure)
         }
+        excludedShafts = configured
         lateinit var allRuntimes: Collection<MineLiftRuntime>
         val created = linkedMapOf<String, MineLiftRuntime>()
         configured.forEach { settings ->
@@ -75,6 +77,8 @@ internal class MineLiftRuntimeManager(
     }
 
     fun ownsTeleport(event: PlayerTeleportEvent): Boolean = runtimes.values.any { it.ownsTeleport(event) }
+
+    override fun excludesEvent(point: org.bukkit.Location): Boolean = excludedShafts.any { it.excludesEvent(point) }
 
     override fun floors(): List<MineLiftAccess.FloorSnapshot> = runtimes["main"]?.floors().orEmpty()
 

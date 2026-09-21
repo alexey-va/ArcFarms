@@ -28,8 +28,10 @@ internal class MineWorkingBlockHighlights(plugin: Plugin) {
             if (!data.material.isAir) expected[position] = data
             else if (fallback != null) expected[position] = fallback.createBlockData()
         }
-        // Trace the entrance itself so it remains visible from across the level.
-        for (side in -2..2) for (up in 1..4) {
+        val drive = scene.plan.type == ru.ruscrafting.farms.domain.MineIncidentType.TUNNEL_DRIVE && MineDriveLayout.enabled(working.placement)
+        if (drive) MineDriveLayout.goalOres(scene.plan).forEach { add(it) }
+        // Trace the entrance for on-foot work; a drive has its glowing vehicle and diamond destination.
+        if (!drive) for (side in -2..2) for (up in 1..4) {
             if (kotlin.math.abs(side) == 2 || up == 4) add(working.placement.position(side, up, 0))
         }
         when (working.stage) {
@@ -52,7 +54,7 @@ internal class MineWorkingBlockHighlights(plugin: Plugin) {
             val display = (current[position]?.let(Bukkit::getEntity) as? BlockDisplay)?.takeIf { it.isValid }
                 ?: world.spawn(org.bukkit.Location(world, position.x.toDouble(), position.y.toDouble(), position.z.toDouble()), BlockDisplay::class.java)
                     .also { current[position] = it.uniqueId; it.persistentDataContainer.set(tag, PersistentDataType.STRING, runtime.settings.id) }
-            WorksiteBlockGlow.apply(display, data, Color.fromRGB(255, 194, 84))
+            WorksiteBlockGlow.apply(display, data, if (drive) Color.fromRGB(80, 235, 255) else Color.fromRGB(255, 194, 84))
         }
     }
 

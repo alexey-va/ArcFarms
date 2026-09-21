@@ -117,10 +117,12 @@ internal class MineLostMinerMazeWorld(
     private val debug: ArcFarmsDebug,
     private val chunkRetention: MineLostMinerMazeChunkRetention,
     private val blockDataDecoder: FarmBlockDataDecoder = PaperFarmBlockDataDecoder,
+    tasks: ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort,
 ) {
     private data class RecordKey(val world: String, val x: Int, val y: Int, val z: Int)
     private data class ChunkKey(val world: String, val x: Int, val z: Int)
 
+    private val preparation = MineLostMinerCavePreparation(tasks,plugin.logger)
     private val journalKey = NamespacedKey(plugin, "mine_lost_miner_maze_v1")
     private val scenes = mutableMapOf<String, MineLostMinerMazeScene>()
     private val builds = ArrayDeque<MineLostMinerMazeJournalRecord>()
@@ -133,6 +135,7 @@ internal class MineLostMinerMazeWorld(
     private val journalRecords = mutableMapOf<String, MutableMap<RecordKey, MineLostMinerMazeJournalRecord>>()
     private val readyScenes = mutableSetOf<String>()
     private val retiringScenes = mutableSetOf<String>()
+    private val obsoleteByScene = mutableMapOf<String, MutableSet<RecordKey>>()
 
     private data class Capture(val key: String, val world: World, val zone: String, val sequence: Long,
         val surface: Location, val start: Location, val target: Location,
@@ -146,8 +149,12 @@ internal class MineLostMinerMazeWorld(
         val key = sceneKey(runtime)
         if (failedCaptures.remove(key)) return MineLostMinerMazeEnsureResult.UNAVAILABLE to null
         if (key in captures) return MineLostMinerMazeEnsureResult.BUILDING to null
-        if (key in retiringScenes) return MineLostMinerMazeEnsureResult.BUILDING to null
+        if (key in retiringScenes || key in obsoleteByScene) return MineLostMinerMazeEnsureResult.BUILDING to null
         scenes[key]?.let { scene ->
+            if (scene.records.any { it.geometryVersion < MineLostMinerCaveBlocks.GEOMETRY_VERSION } && runtime.state.incident?.type != ru.ruscrafting.farms.domain.MineIncidentType.LOST_MINER) {
+                beginRestore(scene.world,scene.zoneId,scene.sequence)
+                return MineLostMinerMazeEnsureResult.BUILDING to null
+            }
             if (key in readyScenes) return MineLostMinerMazeEnsureResult.READY to scene
             ticket(scene.world, scene.records)
             enqueueBuild(scene.records)
@@ -155,7 +162,8 @@ internal class MineLostMinerMazeWorld(
             if (ready) readyScenes += key
             return (if (ready) MineLostMinerMazeEnsureResult.READY else MineLostMinerMazeEnsureResult.BUILDING) to scene
         }
-        val layout = MineLostMinerMazePlanner.plan(MAZE_CELLS, seed(runtime, target))
+        val terrain = preparation.prepare(runtime.settings.id,key,seed(runtime,target)) ?: return MineLostMinerMazeEnsureResult.BUILDING to null
+        val layout = terrain.layout
         val candidates = MineLostMinerMazeSitePlanner.candidates(runtime.region.bounds, target, MAZE_CELLS)
             .sortedBy { position ->
                 ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed.positionScore(seed(runtime, target),
@@ -170,6 +178,10 @@ internal class MineLostMinerMazeWorld(
         }
         val recovered = records(runtime.settings.id, runtime.state.sequence)
         if (recovered.isNotEmpty()) {
+            if (recovered.any { it.geometryVersion < MineLostMinerCaveBlocks.GEOMETRY_VERSION } && runtime.state.incident?.type != ru.ruscrafting.farms.domain.MineIncidentType.LOST_MINER) {
+                beginRestore(runtime.region.world,runtime.settings.id,runtime.state.sequence)
+                return MineLostMinerMazeEnsureResult.BUILDING to null
+            }
             val recoveredScene = sceneFromRecords(runtime.region.world, runtime.settings.id, runtime.state.sequence, target, recovered)
             if (recoveredScene == null) {
                 debug.event("mine_lost_miner_maze_recovery_incomplete", "zone" to runtime.settings.id, "sequence" to runtime.state.sequence)
@@ -184,7 +196,7 @@ internal class MineLostMinerMazeWorld(
         }
         var scene: MineLostMinerMazeScene? = null
         for (anchor in candidates) {
-            scene = preview(runtime, anchor, layout, target)
+            scene = preview(runtime, anchor, terrain, target)
             if (key in captures) return MineLostMinerMazeEnsureResult.BUILDING to null
             if (scene != null) break
         }
@@ -208,7 +220,7 @@ internal class MineLostMinerMazeWorld(
 
     fun scene(runtime: MineRuntime): MineLostMinerMazeScene? = scenes[sceneKey(runtime)]
 
-    fun isRestoring(runtime: MineRuntime): Boolean = sceneKey(runtime) in retiringScenes
+    fun isRestoring(runtime: MineRuntime): Boolean = sceneKey(runtime) in retiringScenes || sceneKey(runtime) in obsoleteByScene
 
     fun owns(location: Location): Boolean {
         val key = RecordKey(location.world.name, location.blockX, location.blockY, location.blockZ)
@@ -235,21 +247,31 @@ internal class MineLostMinerMazeWorld(
         return restored + processQueue(builds, queuedBuilds, limit - restored, restore = false, active)
     }
 
-    fun onChunkLoad(chunk: Chunk, active: (String, Long) -> Boolean) {
+    fun onChunkLoad(chunk: Chunk, retainLegacy: (String, Long) -> Boolean = { _, _ -> true }, active: (String, Long) -> Boolean) {
         val records = read(chunk) ?: return
         index(records)
-        enqueueBuild(records.filter { active(it.zoneId, it.sequence) })
-        enqueueRestore(records.filterNot { active(it.zoneId, it.sequence) })
+        // A late legacy chunk must not retire an already rebuilt scene sharing its order sequence.
+        val obsolete = records.map(::sceneKey).distinct().flatMap { key ->
+            val known=journalRecords[key]?.values.orEmpty()
+            val current=known.any { it.geometryVersion == MineLostMinerCaveBlocks.GEOMETRY_VERSION }
+            known.filter { it.geometryVersion < MineLostMinerCaveBlocks.GEOMETRY_VERSION &&
+                (current || !retainLegacy(it.zoneId,it.sequence)) }
+        }
+        obsolete.forEach { obsoleteByScene.getOrPut(sceneKey(it)) { hashSetOf() }.add(it.key()) }
+        cancelBuild(obsolete)
+        enqueueBuild(records.filter { it !in obsolete && active(it.zoneId,it.sequence) })
+        enqueueRestore(obsolete + records.filter { !active(it.zoneId,it.sequence) })
     }
 
-    fun reconcileLoaded(active: (String, Long) -> Boolean) =
-        Bukkit.getWorlds().forEach { world -> world.loadedChunks.forEach { onChunkLoad(it, active) } }
+    fun reconcileLoaded(retainLegacy: (String, Long) -> Boolean = { _, _ -> true }, active: (String, Long) -> Boolean) =
+        Bukkit.getWorlds().forEach { world -> world.loadedChunks.forEach { onChunkLoad(it, retainLegacy, active) } }
 
     fun clearQueues() {
+        preparation.clear()
         captures.clear(); failedCaptures.clear(); decodedData.clear()
         builds.clear(); restores.clear(); queuedBuilds.clear(); queuedRestores.clear(); scenes.clear()
         readyScenes.clear()
-        retiringScenes.clear()
+        retiringScenes.clear(); obsoleteByScene.clear()
         journalRecords.clear()
         requestedChunks.clear()
         tickets.entries.toList().forEach { (key, lease) -> releaseTicket(key, lease) }
@@ -258,75 +280,26 @@ internal class MineLostMinerMazeWorld(
     private fun preview(
         runtime: MineRuntime,
         anchor: WorksitePosition,
-        layout: MineLostMinerMazeLayout,
+        terrain: MineLostMinerCavePreparation.Plan,
         surfaceTarget: WorksitePosition,
     ): MineLostMinerMazeScene? {
         val world = runtime.region.world
         if (anchor.world != world.name) return null
+        val layout = terrain.layout
         val originX = anchor.x - layout.start.x
         val originZ = anchor.z - layout.start.z
         val baseY = anchor.y
-        if (baseY <= world.minHeight || baseY + 6 >= world.maxHeight) return null
-        val layoutSeed = seed(runtime, surfaceTarget)
-        val translatedAnchor = anchorPoint(layout, anchor)
-        val chambers = MineLostMinerMazePlanner.chamberCells(layout, layoutSeed).mapTo(hashSetOf()) { point ->
-            MineLostMinerMazePoint(translatedAnchor.x + point.x - layout.start.x, translatedAnchor.z + point.z - layout.start.z)
-        }
-        val lamps = MineLostMinerMazePlanner.lampCells(layout).mapTo(hashSetOf()) {
-            originX + it.x to originZ + it.z
-        }
-        val planned = linkedMapOf<Triple<Int, Int, Int>, Pair<String, MineLostMinerMazeMarker>>()
-        val floorMaterial = MaterialRules.material(runtime.settings.baseMaterial)
-        // The rescue scene is temporary, but its wall must read as natural
-        // rock. The configured temporary material used to make a cobble maze.
-        val wallMaterial = Material.DEEPSLATE
-        if (!floorMaterial.isSolid || floorMaterial.hasGravity()) return null
-        if (!wallMaterial.isSolid || wallMaterial.hasGravity()) return null
-        val floorData = floorMaterial.createBlockData().asString
-        val wallData = wallMaterial.createBlockData().asString
-        val lightData = "minecraft:lantern[hanging=true,waterlogged=false]"
-        val underfloorLightData = Material.OCHRE_FROGLIGHT.createBlockData().asString
-        val postData = "minecraft:stripped_spruce_log[axis=y]"
-        val beamData = "minecraft:stripped_spruce_log[axis=x]"
-        val chamberSet = chambers.mapTo(hashSetOf()) { it.x to it.z }
+        if (baseY <= world.minHeight || baseY + 9 >= world.maxHeight) return null
         val start = MineLostMinerMazePoint(anchor.x, anchor.z)
-        val mazeTarget = MineLostMinerMazePoint(
-            originX + layout.target.x,
-            originZ + layout.target.z,
-        )
-        for (x in originX until originX + layout.width) for (z in originZ until originZ + layout.height) {
-            val passage = (x to z) in chamberSet
-            val lit = passage && (x to z) in lamps
-            val ceiling = MineLostMinerMazePlanner.chamberCeiling(layoutSeed, MineLostMinerMazePoint(x - originX + layout.start.x, z - originZ + layout.start.z))
-            planned[Triple(x, baseY, z)] = floorData to MineLostMinerMazeMarker.NONE
-            if (lit) planned[Triple(x, baseY - 1, z)] = underfloorLightData to MineLostMinerMazeMarker.NONE
-            val marker = when (x to z) {
-                start.x to start.z -> MineLostMinerMazeMarker.START
-                mazeTarget.x to mazeTarget.z -> MineLostMinerMazeMarker.TARGET
-                else -> MineLostMinerMazeMarker.NONE
-            }
-            for (up in 1..5) {
-                planned[Triple(x, baseY + up, z)] =
-                    (if (passage && up <= ceiling) AIR_DATA else wallData) to
-                        (if (up == 1) marker else MineLostMinerMazeMarker.NONE)
-            }
-            planned[Triple(x, baseY + ceiling + 1, z)] = wallData to MineLostMinerMazeMarker.NONE
-            if (lit) planned[Triple(x, baseY + ceiling, z)] = lightData to MineLostMinerMazeMarker.NONE
-            if (passage && ((x - originX) * 13 + (z - originZ) * 7) % MAZE_SUPPORT_SPACING == 0) {
-                if ((x - 1 to z) !in chamberSet) for (y in baseY + 1..baseY + ceiling) {
-                    planned[Triple(x - 1, y, z)] = postData to MineLostMinerMazeMarker.NONE
-                }
-                if ((x + 1 to z) !in chamberSet) for (y in baseY + 1..baseY + ceiling) {
-                    planned[Triple(x + 1, y, z)] = postData to MineLostMinerMazeMarker.NONE
-                }
-                for (beamX in x - 1..x + 1) {
-                    if ((beamX to z) !in chamberSet || beamX == x) {
-                        planned[Triple(beamX, baseY + ceiling + 1, z)] = beamData to MineLostMinerMazeMarker.NONE
-                    }
-                }
-                if (lit) planned[Triple(x, baseY + ceiling, z)] = lightData to MineLostMinerMazeMarker.NONE
-            }
-        }
+        val mazeTarget = MineLostMinerMazePoint(originX + layout.target.x, originZ + layout.target.z)
+        val planned = terrain.blocks.mapKeys { (p,_) ->
+            Triple(originX+p.first,baseY+p.second,originZ+p.third)
+        }.mapValues { (p,data) -> data to when {
+            p.second != baseY+1 -> MineLostMinerMazeMarker.NONE
+            p.first == start.x && p.third == start.z -> MineLostMinerMazeMarker.START
+            p.first == mazeTarget.x && p.third == mazeTarget.z -> MineLostMinerMazeMarker.TARGET
+            else -> MineLostMinerMazeMarker.NONE
+        } }
         if (planned.size > MAX_SCENE_RECORDS) return null
         if (planned.keys.any { (x, _, z) ->
                 x in runtime.region.bounds.minX..runtime.region.bounds.maxX && z in runtime.region.bounds.minZ..runtime.region.bounds.maxZ
@@ -356,7 +329,7 @@ internal class MineLostMinerMazeWorld(
             }
             val data=decodedData.getOrPut(active.first) { blockDataDecoder.decode(active.first).asString }
             capture.records += MineLostMinerMazeJournalRecord(capture.world.name,capture.zone,capture.sequence,
-                p.first,p.second,p.third,block.blockData.asString,data,active.second,capture.entries.size)
+                p.first,p.second,p.third,block.blockData.asString,data,active.second,capture.entries.size, MineLostMinerCaveBlocks.GEOMETRY_VERSION)
             count++
         }
         if(capture.cursor == capture.entries.size) {
@@ -421,7 +394,7 @@ internal class MineLostMinerMazeWorld(
             }
             val owned = current.filter { existing ->
                 pending.any { it.key() == existing.key() } &&
-                    if (restore) sceneKey(existing) in retiringScenes || !active(existing) else active(existing)
+                    if (restore) sceneKey(existing) in retiringScenes || existing.key() in obsoleteByScene[sceneKey(existing)].orEmpty() || !active(existing) else active(existing)
             }
             val changed = owned.filter { record ->
                 val block = world.getBlockAt(record.x, record.y, record.z)
@@ -483,6 +456,10 @@ internal class MineLostMinerMazeWorld(
     }
 
     private fun forget(record: MineLostMinerMazeJournalRecord) {
+        obsoleteByScene[sceneKey(record)]?.let { keys ->
+            keys.remove(record.key())
+            if(keys.isEmpty()) obsoleteByScene.remove(sceneKey(record))
+        }
         val sceneKey = "${record.zoneId}:${record.sequence}"
         journalRecords[sceneKey]?.let { indexed ->
             indexed.remove(record.key())
@@ -579,7 +556,7 @@ internal class MineLostMinerMazeWorld(
         return ready
     }
 
-    private companion object {
+    internal companion object {
         const val MAZE_CELLS = 18
         const val MAZE_SALT = 0x4c4f53544d415a45L
         const val MAX_SCENE_RECORDS = 16_384
