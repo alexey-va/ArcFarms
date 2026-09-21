@@ -32,11 +32,30 @@ class MineDriveLayoutTest : FunSpec({
         }
     }
 
-    test("steering always faces into the working, including headings recovered from older saves") {
-        for(direction in 0..3) for(heading in -720..720 step 9) {
-            val inward=MineDriveLayout.inwardHeading(direction,heading.toFloat())
-            val dot=kotlin.math.cos(Math.toRadians((inward-direction*90).toDouble()))
-            (dot > .42) shouldBe true
+    test("headings wrap without an inward angle clamp") {
+        for (heading in -1080..1080 step 9) {
+            val actual = MineDriveMotion.heading(heading.toFloat())
+            (actual >= 0f && actual < 360f) shouldBe true
+            (kotlin.math.abs(kotlin.math.sin(Math.toRadians((actual-heading).toDouble()))) < .000001) shouldBe true
+        }
+        MineDriveMotion.heading(180f) shouldBe 180f
+        MineDriveMotion.heading(270f) shouldBe 270f
+    }
+
+    test("full chassis can turn sideways around both ribs and return through the same area") {
+        fun fits(s: Double, f: Double, yaw: Float) = MineDriveMotion.footprint(s,f,yaw).all { (x,z) ->
+            MineDriveLayout.insideBoundary(x,z) && !MineDriveLayout.bedrock(x,z)
+        }
+        for (yaw in 0..360 step 2) fits(0.0,20.0,yaw.toFloat()) shouldBe true
+        // Sideways traversals previously forbidden by the +/-65 degree heading clamp.
+        for (x in 0..45) fits(x/10.0,7.0,270f) shouldBe true
+        for (f in 70..190) fits(4.5,f/10.0,0f) shouldBe true
+        for (x in -45..45) fits(x/10.0,20.0,90f) shouldBe true
+        for (f in 200..330) fits(-4.5,f/10.0,0f) shouldBe true
+        fits(0.0,12.0,0f) shouldBe false
+        for (yaw in 0..359 step 5) {
+            fits(8.0,20.0,yaw.toFloat()) shouldBe false
+            fits(0.0,44.0,yaw.toFloat()) shouldBe false
         }
     }
 

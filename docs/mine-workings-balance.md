@@ -87,3 +87,23 @@ path; direct reward changes are 0 Vault, 0 tokens, 0 XP and 0 ordinary items.
 Tunnel Drive retains 93 contribution credits once at its goal. The new
 three-second machine cycles and wider caves alter pacing; hourly income has
 not been measured and is not asserted to be identical.
+
+
+## Free steering and continuous boring (0.44.8)
+
+Reviewed against the canonical economy inventory's ArcFarms mine row. The
+excavation buffer is preparation permission, not an action or reward. Boring in
+reverse, turning and retracing a carved cell never add contribution credits.
+Before/after per drive: 93/93 contribution credits, issued once at the goal;
+0/0 Vault coins, 0/0 premium tokens, 0/0 XP and 0/0 ordinary item drops directly
+from excavation. Existing order rewards, quotas, cooldowns and food rolls are
+unchanged. No additional ore enters SELL or the planned contract replacement.
+
+Commanded peak speed changes from 1.7 to 2.4 blocks/second, with acceleration
+and braking rather than resetting velocity while awaiting every write. For an
+identical unobstructed route, motion-only time is 70.8% of the old value; this
+is a theoretical bound, not a measured 41.2% increase in hourly rewards.
+Removing forced waits and allowing better detours can shorten this incident;
+full order completion remains gated by the unchanged mining/loading phases
+and cooldown. Per-hour XP/items and indirect conversion remain unmeasured.
+No price, payout, probability, multiplier or currency conversion is changed.

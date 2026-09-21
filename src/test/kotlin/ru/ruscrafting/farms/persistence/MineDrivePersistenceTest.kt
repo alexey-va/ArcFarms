@@ -10,11 +10,18 @@ class MineDrivePersistenceTest : FunSpec({
     test("drilled cells lamps and carrier checkpoint survive the real state repository") {
         val root = Files.createTempDirectory("mine-drive-roundtrip")
         val working = MineWorkingState(MineWorkingPlacement(WorksitePosition("mine",30,64,50),1,"upper"),
-            MineWorkingStage.EXCAVATE, drive = MineDriveProgress(setOf(42,59,60),setOf(42),59,95f))
+            MineWorkingStage.EXCAVATE, drive = MineDriveProgress(setOf(42,59,60),setOf(42),59,275f,prepared=setOf(42,59,60,61,62)))
         val expected = ArcFarmsState(mines = mapOf("shafts" to MineShiftState(engineVersion=2,
             phase=MinePhase.INCIDENT, sequence=7, resumePhase=MinePhase.MINING,
             incident=MineIncidentState(MineIncidentType.TUNNEL_DRIVE,required=93,objectiveNonce=9,working=working))))
         ArcFarmsStateRepository(root).use { it.saveAsync(expected).get() }
         ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
+        // Saves from before the excavation buffer have no prepared property.
+        val path = root.resolve("data/state.json")
+        val json = Files.readString(path)
+        Files.writeString(path, json.replace(Regex(",?\\s*\"prepared\"\\s*:\\s*\\[[^]]*]"), ""))
+        val legacyWorking = working.copy(drive = working.drive!!.copy(prepared=emptySet()))
+        val legacyMine = expected.mines.getValue("shafts").let { it.copy(incident=it.incident!!.copy(working=legacyWorking)) }
+        ArcFarmsStateRepository(root).use { it.load() shouldBe expected.copy(mines=mapOf("shafts" to legacyMine)) }
     }
 })

@@ -16,13 +16,6 @@ internal object MineDriveLayout {
     private const val BEDROCK = "minecraft:bedrock"
 
     fun enabled(placement: MineWorkingPlacement) = placement.geometryVersion >= 5
-    /** Keep steering around ribs, but never face the lift or excavate backwards. */
-    fun inwardHeading(direction: Int, heading: Float): Float {
-        val base = direction * 90f
-        val delta = ((heading - base + 540f) % 360f + 360f) % 360f - 180f
-        return (base + delta.coerceIn(-65f, 65f) + 360f) % 360f
-    }
-
     fun id(side: Int, forward: Int) = forward * STRIDE + side + HALF_WIDTH
     fun side(id: Int) = id % STRIDE - HALF_WIDTH
     fun forward(id: Int) = id / STRIDE
@@ -30,6 +23,7 @@ internal object MineDriveLayout {
     fun bedrock(side: Int, forward: Int): Boolean =
         (forward in 12..14 && side <= 1) || (forward in 26..28 && side >= -1)
     fun radius(forward: Int) = if (forward <= 1) 1 else if (forward == 2) 3 else HALF_WIDTH - 1
+    fun insideBoundary(side: Int, forward: Int) = forward in 0 until LENGTH && kotlin.math.abs(side) <= radius(forward)
     fun driveable(side: Int, forward: Int) = forward in 1 until LENGTH && kotlin.math.abs(side) <= radius(forward) && !bedrock(side, forward)
     fun local(placement: MineWorkingPlacement, x: Double, z: Double): Pair<Double, Double> {
         val dx = x - placement.entrance.x - .5

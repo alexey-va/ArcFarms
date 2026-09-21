@@ -23,7 +23,7 @@ import ru.ruscrafting.farms.paper.mine.expedition.MineDisplayLighting
 /** Native carrier owns rider motion. Client-only body parts follow its observed pose. */
 internal class MineDriveRig(private val plugin: Plugin) {
     data class Rig(val cart: Minecart, val body: List<PacketBlockDisplay>, var heading: Float,
-        var phase: Float = 0f, var effectAt: Long = 0, var hintAt: Long = 0, val hitbox: Interaction? = null)
+        var phase: Float = 0f, var effectAt: Long = 0, var hintAt: Long = 0, val hitbox: Interaction? = null, var speed: Double = 0.0, var soundAt: Long = 0)
     private val tag = NamespacedKey(plugin, "mine_drive_carrier")
     private val rigs = mutableMapOf<String, Rig>()
     private var renderer: PaperPacketDisplays? = null
@@ -84,7 +84,7 @@ internal class MineDriveRig(private val plugin: Plugin) {
     }
 
     fun release(player: Player) {
-        rigs.values.filter { player in it.cart.passengers }.forEach { it.cart.removePassenger(player); it.cart.velocity = Vector() }
+        rigs.values.filter { player in it.cart.passengers }.forEach { it.cart.removePassenger(player); it.cart.velocity = Vector(); it.speed = 0.0 }
     }
     fun cleanup(zone: String) { rigs.remove(zone)?.let { it.cart.eject(); it.cart.remove(); it.hitbox?.remove(); it.body.forEach(PacketBlockDisplay::remove) } }
     fun cleanup() { rigs.keys.toList().forEach(::cleanup); renderer?.close(); renderer = null }

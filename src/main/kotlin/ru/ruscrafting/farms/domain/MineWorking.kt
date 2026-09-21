@@ -63,8 +63,11 @@ data class MineDriveProgress(
     val lamps: Set<Int> = emptySet(),
     val checkpoint: Int = 42,
     val heading: Float = 0f,
+    /** Durable permission to excavate within the already journalled scene; not yet carved. */
+    val prepared: Set<Int> = emptySet(),
 ) {
     fun validate() {
+        require(prepared.size <= 765 && prepared.all { it in 0 until 765 })
         require(carved.size <= 765 && carved.all { it in 0 until 765 })
         require(lamps.size <= 128 && lamps.all { it in carved })
         require(checkpoint in 0 until 765 && heading.isFinite())

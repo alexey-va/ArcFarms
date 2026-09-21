@@ -271,9 +271,12 @@ The 23 prior CI failures remain unresolved; the full suite is not green.
 ## Direct boarding and cave placement — 0.44.5
 
 Tunnel Drive has no entrance activation marker or participation prerequisite.
-Right-click the actual machine; W drills, A/D steer within 65 degrees of the
-inward axis, S backs up through already cleared space. Reverse does not cut
-blocks. Bedrock and the journal boundary remain hard limits. The far objective
+Right-click the actual machine. As of 0.44.8, W/S drive and excavate in both
+directions, while A/D turn through the full 360 degrees. The swept chassis and
+cutter stay inside the owned working; bedrock remains unbreakable. The bounded
+excavation volume is authorized before use, with no per-block waiting on
+checkpoint persistence. Blocks are removed only at the machine, not when the
+buffer is reserved. A failed save stops before any unreserved excavation. The far objective
 is a closed, noise-shaped diamond chamber; cyan glow outlines up to 32 exposed
 ore blocks and disappears with the incident. Force cleanup also evacuates
 visitors without an entry receipt before restoring the scene.
@@ -295,7 +298,7 @@ replacement; an active rescue keeps its journal until its normal exit/cleanup.
 Dead Factory has three persisted commissioning programs: water circuit, left
 line, right line. The line programs activate a valve, a full-sized pump and a
 crusher. Each powered machine takes three seconds with rotation, local sound
-and particles. Leaving interrupts the cycle. Subsequent fuel, heat, pouring,
+and particles. Leaving the expedition interrupts the cycle; walking away inside it does not. Subsequent fuel, heat, pouring,
 crane and press stages remain in their established order. Program IDs survive
 JSON/restart; legacy saves use the original water circuit. Factory layouts and
 admin furnishing overrides are preserved.
