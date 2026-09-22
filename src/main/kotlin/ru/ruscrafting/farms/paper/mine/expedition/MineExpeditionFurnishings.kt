@@ -48,7 +48,11 @@ internal object MineExpeditionFurnishings {
     fun fixtures(scene:MineExpeditionScene):List<Fixture> = fixtures(scene.plan)
     fun fixtures(plan:ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionPlan):List<Fixture> {
         val modernFactory = plan.kind==MineExpeditionKind.DEAD_FACTORY && plan.stations.containsKey("crusher_feed")
-        val hiddenStations = if(modernFactory) setOf("water_valve_0","water_valve_2") else emptySet()
+        // Old basket anchors remain in journals for compatibility, but the
+        // connected conveyor now carries the charge straight into the furnace.
+        val hiddenStations = if(modernFactory) setOf(
+            "water_valve_0", "water_valve_2", "crushed_output", "furnace_input",
+        ) else emptySet()
         val stations=plan.stations.filterKeys { id ->
             id !in setOf("entry","exit") && !id.startsWith("lift_") && !id.startsWith("ark_") &&
                 !id.startsWith("jam_") && !id.startsWith("branch_") && id !in hiddenStations &&
