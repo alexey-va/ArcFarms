@@ -8,10 +8,10 @@ allprojects {
     def generator=cl.loadClass('ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionGenerator')
     def kindClass=cl.loadClass('ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionKind')
     def instance=generator.getField('INSTANCE').get(null)
-    def method=generator.getMethod('plan',kindClass,Long.TYPE,Integer.TYPE)
+    def method=generator.getMethod('plan',kindClass,Long.TYPE)
     def out=new File(project.findProperty('minePreviewOut') ?: '/private/tmp/mine-0440-scenes');out.mkdirs()
-    kindClass.enumConstants.each { kind ->
-     def plan=method.invoke(instance,kind,73L,3)
+    kindClass.enumConstants.findAll { !project.hasProperty('minePreviewKind') || it.toString()==project.property('minePreviewKind') }.each { kind ->
+     def plan=method.invoke(instance,kind,73L)
      def min=plan.bounds.min;def max=plan.bounds.max
      def xyz={p->[p.x-min.x,p.y-min.y,p.z-min.z]}
      def palette=[:];def keys=[:];def ops=[]
@@ -66,10 +66,13 @@ allprojects {
         [id:'press',label:'Пресс',camera:[53,8,39],target:[58,8.3,27],fov:70],
         [id:'cart',label:'Склад сырья и тележка',camera:[22,8,58],target:[14,7,49],fov:80],
         [id:'reverse',label:'Вдоль конвейерной линии',camera:[7,10,37],target:[52,8,27],fov:80]]]
-     if(kind.toString()=='LAST_DESCENT') recipe.preview=[defaultView:'entry',views:[
-       [id:'entry',label:'Верхняя площадка',camera:[32,27,48],target:[30,24,28],fov:72],
-       [id:'core',label:'Машинный зал внизу',camera:[38,7,44],target:[25,9,21],fov:70],
-       [id:'section',label:'Шахта в разрезе',camera:[95,60,95],target:[30,16,30],cutZ:34]]]
+     if(kind.toString()=='LAST_DESCENT') recipe.preview=[defaultView:'abyss',views:[
+       [id:'entry',label:'Прибытие на верхний причал',camera:[33,58.62,52],target:[32,56,28],fov:78],
+       [id:'abyss',label:'48 блоков над бездной',camera:[16.5,59.5,39.2],target:[34,27,23],fov:80],
+       [id:'middle',label:'Подвесной ремонтный балкон',camera:[43,39,25],target:[16,30,40],fov:78],
+       [id:'core',label:'Глубинная насосная',camera:[33,10.62,35],target:[33,14,52],fov:80],
+       [id:'lake',label:'Озеро под подъёмником',camera:[42,12,30],target:[17,19,16],fov:80],
+       [id:'section',label:'Вся пещера в разрезе',camera:[88,78,120],target:[33,32,30],cutZ:45,cutY:63]]]
      if(kind.toString()=='DRILLING_ARK') recipe.preview=[defaultView:'entry',views:[
        [id:'entry',label:'Буровой ковчег',camera:[44,8,16],target:[32,8,30],fov:72],
        [id:'service',label:'Ремонтная площадка',camera:[52,7,17],target:[58,7,26],fov:65],

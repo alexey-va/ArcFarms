@@ -51,6 +51,7 @@ internal class MineExpeditionController(
     private val editor = tasks?.let { MineFurnishingEditor(plugin,it,locale,world::allScenes,markers) }
     private val actions = MineExpeditionActions(plugin, locale)
     private val experiments = MineFactoryExperimentsController(plugin, markers, locale, ::fixturePosition)
+    private val descentPresentation = MineDescentPresentation(plugin, markers)
     private val machinery = MineExpeditionMachinery(plugin, world::project) { scene,id,p ->
         editor?.position(scene,id,p) ?: p
     }
@@ -165,7 +166,7 @@ internal class MineExpeditionController(
         val activeTargets = (if (pendingExperiment) emptyList() else targets(scene, latest)).filterNot { target ->
             target.target >= 0 && (
                 target.interaction == MineExpeditionInteraction.PICKUP && actions.claimed(scope, latest.stage, target.target) ||
-                MineFactoryProgram.usesConnectedCrusherLine(scene.plan) &&
+                (MineFactoryProgram.usesConnectedCrusherLine(scene.plan) || modernDescent(scene)) &&
                     target.interaction == MineExpeditionInteraction.DELIVER && !actions.claimed(scope, latest.stage, target.target))
         }
         val experimentTargets = experiments.targets(scene, latest, now)
@@ -178,11 +179,27 @@ internal class MineExpeditionController(
         factoryPresentation.tick(scene,latest,scope,now,machinery.turns(scene),
             actions.operationPhase(scope,"control_crusher_left",now)>0.0,
             actions.factoryHeat(scope))
+        descentPresentation.tick(scene, latest, scope, now, machinery.turns(scene),
+            moving = drivers[scope]?.started == true,
+            pumpStarting = actions.operationPhase(scope, "core_valve_2", now) > 0.0,
+            cellClaimed = actions.claimed(scope, MineExpeditionStage.DESCENT_POWER_CELLS, 0))
     }
 
     private fun marker(scene: MineExpeditionScene, state: MineExpeditionState, target: MineExpeditionObjective,
         now: Long): MineExpeditionMarkers.Target {
         val label = when {
+            modernDescent(scene) -> when (target.id) {
+                "counterweight_0" -> "control.descent-brake-jam"
+                "counterweight_1" -> "control.descent-tension"
+                "counterweight_2" -> "control.descent-brake-release"
+                "power_supply" -> "control.descent-cell-source"
+                "power_socket" -> "control.descent-cell-socket"
+                "core_valve_0" -> "control.descent-intake"
+                "core_valve_1" -> "control.descent-prime"
+                "core_valve_2" -> "control.descent-pump-start"
+                "drive" -> if (state.stage == MineExpeditionStage.DESCENT_ENGINE) "control.descent-up" else "control.descent-down"
+                else -> "control.${target.id.replace(Regex("_[0-9]+$"), "")}"
+            }
             MineFactoryProgram.usesConnectedCrusherLine(scene.plan) && target.id.startsWith("repair_supply_") -> "control.repair-pickup"
             MineFactoryProgram.usesConnectedCrusherLine(scene.plan) && target.id=="crusher_repair" -> "control.repair-install"
             MineFactoryProgram.usesConnectedCrusherLine(scene.plan) && state.stage==MineExpeditionStage.FACTORY_COAL -> when(target.id) {
@@ -234,7 +251,8 @@ internal class MineExpeditionController(
         val fixture = MineExpeditionFurnishings.fixtures(scene).firstOrNull { it.id == target.id }
         return MineExpeditionMarkers.Target(target.id, scene.at(target.position), material,
             markerLabel, target.interaction == MineExpeditionInteraction.BREAK,
-            model=if(target.interaction == MineExpeditionInteraction.BREAK || target.id=="drive") null else fixture?.model ?: MineExpeditionFurnishings.model(target.id,scene.kind),
+            model=if (target.interaction == MineExpeditionInteraction.BREAK || target.id=="drive") null
+                else fixture?.model ?: MineExpeditionFurnishings.model(target.id,scene.kind,modernDescent(scene)),
             modelScale=fixture?.scale ?: 1f,
             yaw=editor?.yaw(scene,target.id) ?: fixture?.yaw ?: 0)
     }
@@ -396,6 +414,11 @@ internal class MineExpeditionController(
                 if (current.stage == MineExpeditionStage.ARK_JAM && index !in current.completed) "minecraft:tuff" else "minecraft:air" }
             if (!world.project(scene, blocks)) return
         }
+        if (modernDescent(scene) && current.stage == MineExpeditionStage.DESCENT_COUNTERWEIGHTS) {
+            val brake = scene.plan.stations.getValue("counterweight_0").offset(dz = -2)
+            val block = if (0 in current.completed) "minecraft:air" else "minecraft:stone"
+            if (!world.project(scene, mapOf(brake to block))) return
+        }
         projectedStage[scope(scene)] = current.stage
     }
 
@@ -446,6 +469,7 @@ internal class MineExpeditionController(
                     "temperature" to Component.text((heat.progress * 100).toInt()),
                 )) ?: Component.text(key)
             }
+            modernDescent(scene) -> render("stage.descent_v4_${current.stage.name.removePrefix("DESCENT_").lowercase()}", player)
             current.stage == MineExpeditionStage.FACTORY_HEAT -> render(
                 if (MineExpeditionEngine.canFinishHeat(current, now)) "heat-ready" else "heat-progress", player, progressValues(current, now))
             else -> render("stage.${current.stage.name.lowercase()}", player)
@@ -561,11 +585,11 @@ internal class MineExpeditionController(
 
     fun beforeReload() { cleanupVisuals(); world.beforeReload() }
     fun cleanup(shutdown: Boolean = false) { cleanupVisuals(); if (shutdown) { editor?.close(); world.close() } else world.beforeReload() }
-    private fun cleanupVisuals() { factoryResults.clear(); factoryPresentation.cleanup(); editor?.cancelPreviews(); actions.cleanup(); experiments.cleanup(); markers.cleanup(); machinery.cleanup(); drivers.clear(); projectedStage.clear() }
+    private fun cleanupVisuals() { factoryResults.clear(); factoryPresentation.cleanup(); descentPresentation.cleanup(); editor?.cancelPreviews(); actions.cleanup(); experiments.cleanup(); markers.cleanup(); machinery.cleanup(); drivers.clear(); projectedStage.clear() }
     private fun clearScene(scene: MineExpeditionScene) {
         markers.clear("result:${scene.journalSequence}")
         factoryPresentation.clear(scene)
-        markers.clear(scope(scene)); actions.clear(scope(scene)); experiments.clear(scope(scene)); machinery.clear(scene)
+        markers.clear(scope(scene)); descentPresentation.clear(scene); actions.clear(scope(scene)); experiments.clear(scope(scene)); machinery.clear(scene)
         drivers.remove(scope(scene)); projectedStage.remove(scope(scene))
     }
     private fun clearGateway(runtime: MineRuntime) = markers.clear(gatewayScope(runtime))
@@ -574,6 +598,9 @@ internal class MineExpeditionController(
             if (target.interaction == MineExpeditionInteraction.BREAK || target.id=="drive") target
             else target.copy(position=editor?.position(scene,target.id,target.position) ?: target.position)
         }
+
+    private fun modernDescent(scene: MineExpeditionScene): Boolean =
+        scene.kind == MineExpeditionKind.LAST_DESCENT && scene.placement.geometryVersion >= 4
     private fun fixturePosition(scene: MineExpeditionScene, id: String, offset: Vector): Location? {
         val fixture = MineExpeditionFurnishings.fixtures(scene).firstOrNull { it.id == id } ?: return null
         val point = editor?.position(scene, id, fixture.at) ?: fixture.at

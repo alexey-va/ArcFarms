@@ -1,11 +1,55 @@
 # Mine expeditions — permanent locations and factory operation
 
-Geometry version 3 uses separate 112-block cells in the configured mine world,
+Current scenes use separate 112-block cells in the configured mine world,
 starting 112 blocks beyond the mine boundary. A completed site returns to the
 ready stock without regenerating its terrain. The durable `siteBuilt` receipt
 preserves administrator block edits across restarts. Explicit `rebuild` retires
 unused sites through their original-block journals and prepares replacements.
 Legacy geometry versions remain readable for recovery.
+
+## Last Descent — 0.45.0
+
+Last Descent alone uses geometry version 4: a 67 × 69 × 62 rock volume around
+one open cavern, with a 48-block lift journey. The upper arrival pier frames
+the abyss, a suspended western balcony holds the lift brake and power circuit,
+and a lower stone apron holds the deep pump. Rock strata, a recessed waterfall,
+an enclosed lake, anchored beams and practical lamps give the journey depth.
+The moving deck's full sweep and three-wide service routes remain clear.
+
+The player descends to the repair balcony, breaks the stone in the brake,
+walks the tension winch and releases the mounted lever. One spare power cell
+restores the lift, then the second trip reaches the pump station. Opening the
+intake valve and priming its wheel makes the starter available; its six-second
+startup turns the pump. The final action is a real return ride to the top.
+Glow identifies one current operation. Wheels, pistons, cable lengths, power
+signals and local sound follow gameplay state. Leaving or restarting releases
+transient controls and cargo through the existing lifecycle owners.
+
+Version 1–3 placements keep their previous gameplay and reconstruction recipe.
+Only an idle obsolete Last Descent reserve is retired through its original-block
+journal. An occupied legacy expedition finishes with its old rules. Factory and
+Drilling Ark remain geometry 3, preserving their receipts and edited scenery.
+No admin `rebuild all` is part of this rollout.
+
+The event still accounts for twelve contribution checkpoints. The single
+power-cell installation carries the old three-credit budget; return travel
+takes the former final starter credit. No new reward or per-block loot exists.
+The longer travel and shorter supply task change pacing; hourly income has not
+been measured. See `mine-workings-balance.md` for the currency-separated review.
+
+Preview: `exportMineScenes -PminePreviewKind=LAST_DESCENT` exports the current
+version, including its exact models, to the normal Atelier build path. Six
+camera presets cover arrival, the abyss, repair balcony, pump, lake and section.
+The demo animation is a model preview, not a simulation of participants or
+the durable state machine.
+
+Verification for 0.45.0: focused state-machine, legacy motion and scene-stock
+tests pass. The final geometry/model/locale slice passes 14 tests; all 72 display
+blueprints and 22 workshop poses pass the overlap validator. Atelier reports
+129 sampled walking positions at light level 8 or above, with no unknown
+materials. These checks do not certify a full Minecraft-client playthrough.
+
+## Factory layout
 
 The factory is a 73 × 29 × 67 cavern with a symmetric production floor, clear
 light-stone aisles, dark technical pads, large display assemblies and 25 pendant
@@ -261,7 +305,7 @@ release evidence below does not certify this release's client behaviour.
 
 ## Последний спуск — `LAST_DESCENT`
 
-Высокая пещера с тремя причалами, геологическими слоями, деревянными крепями, водой и большим медным двигателем. Игроки едут на общей платформе, на средней станции раскручивают три ворота противовесов и переносят три силовых элемента. Затем спускаются к двигателю, открывают три вентиля и включают пускатель.
+Единая глубокая пещера с перепадом 48 блоков, подвесным ремонтным балконом и насосной над подземным озером. На средней остановке игроки освобождают тормоз от камня, натягивают трос воротом, отпускают рычаг и устанавливают один силовой элемент. Внизу открывают впуск, прокручивают пусковой маховик и запускают большой насос. Завершение — совместный подъём к верхнему причалу. Сохранённые сцены версий 1–3 продолжают старый сценарий до освобождения площадки.
 
 Платформа 7×5 блоков движется вместе с пассажирами. Передняя сторона, направленная по локальной оси +Z, открыта: передних перил нет. Shift позволяет сойти; после выхода управляющего движение останавливается. Станционные полы соединяются с краем платформы и не пересекают её вертикальный путь.
 

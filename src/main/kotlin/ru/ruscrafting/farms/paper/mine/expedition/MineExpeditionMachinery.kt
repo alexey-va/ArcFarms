@@ -15,6 +15,7 @@ import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.domain.mine.expedition.ExpeditionPoint
 import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionKind
+import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionEngine
 import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionMachines
 import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionMotion
 import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionPlan
@@ -90,8 +91,9 @@ internal class MineExpeditionMachinery(
         MineExpeditionStage.DESCENT_POWER_CELLS,
             -> scene.plan.stations.getValue("lift_middle")
         MineExpeditionStage.DESCENT_CORE_VALVES,
-        MineExpeditionStage.DESCENT_ENGINE,
             -> scene.plan.stations.getValue("lift_bottom")
+        MineExpeditionStage.DESCENT_ENGINE -> if (MineExpeditionEngine.isModernLastDescent(state))
+            MineExpeditionMotion.position(scene.plan, state) else scene.plan.stations.getValue("lift_bottom")
 
         MineExpeditionStage.ARK_FUEL -> scene.plan.stations.getValue("ark_start")
         MineExpeditionStage.ARK_FORK -> MineExpeditionMotion.position(scene.plan, state)
@@ -113,7 +115,8 @@ internal class MineExpeditionMachinery(
         MineExpeditionStage.FACTORY_INSTALL,
             -> scene.plan.stations.getValue("crane_control")
         MineExpeditionStage.COMPLETE -> when (scene.kind) {
-            MineExpeditionKind.LAST_DESCENT -> scene.plan.stations.getValue("lift_bottom")
+            MineExpeditionKind.LAST_DESCENT -> if (MineExpeditionEngine.isModernLastDescent(state))
+                scene.plan.stations.getValue("lift_top") else scene.plan.stations.getValue("lift_bottom")
             MineExpeditionKind.DRILLING_ARK -> scene.plan.stations.getValue("ark_start")
             MineExpeditionKind.DEAD_FACTORY -> scene.plan.stations.getValue("crane_control")
         }
@@ -122,7 +125,7 @@ internal class MineExpeditionMachinery(
     fun center(scene: MineExpeditionScene, state: MineExpeditionState): Location? = scene.at(localCenter(scene, state))
 
     fun motionSteps(scene: MineExpeditionScene, state: MineExpeditionState): Int =
-        if (isMotion(state.stage)) MineExpeditionMotion.steps(scene.plan, state) else 0
+        if (isMotion(state, scene)) MineExpeditionMotion.steps(scene.plan, state) else 0
 
     /**
      * Projects the target machine first, then moves the native seats with
@@ -134,7 +137,7 @@ internal class MineExpeditionMachinery(
         after: MineExpeditionState,
         participants: Collection<Player>,
     ): Boolean {
-        if (!scene.ready || !isMotion(before.stage) || before.placement != after.placement) return false
+        if (!scene.ready || !isMotion(before, scene) || before.placement != after.placement) return false
         val oldCenter = localCenter(scene, before)
         val target = targetAfter(scene.plan, before, after)
         if (target == oldCenter && before.stage == after.stage) return false
@@ -317,6 +320,20 @@ internal class MineExpeditionMachinery(
         displayAnchors(scene, local).forEach { (role, anchor) ->
             val display = runtime.displays[role] ?: return@forEach
             if (!display.isValid) return@forEach
+            if (scene.kind == MineExpeditionKind.LAST_DESCENT && scene.placement.geometryVersion >= 4 &&
+                role.startsWith("lift_chain_")) {
+                val bottom = local.y + 2
+                val top = scene.plan.stations["lift_top"]?.y?.plus(6) ?: 63
+                val length = (top - bottom).coerceAtLeast(1)
+                display.teleport(scene.at(ExpeditionPoint(
+                    if (role.endsWith("left")) local.x - 3 else local.x + 3,
+                    bottom, local.z - 2)))
+                display.transformation = display.transformation.also { transform ->
+                    transform.translation.set(-.09f, 0f, -.09f)
+                    transform.scale.set(.18f, length.toFloat(), .18f)
+                }
+                return@forEach
+            }
             val pivot = scene.at(anchor)
             val activeFactory = state.stage != MineExpeditionStage.FACTORY_WATER
             val crank = runtime.crankAngles["crane_control"] ?: 0.0
@@ -440,11 +457,15 @@ internal class MineExpeditionMachinery(
     }
 
     private fun displayAnchors(scene: MineExpeditionScene, center: ExpeditionPoint): Map<String, ExpeditionPoint> = when (scene.kind) {
-        MineExpeditionKind.LAST_DESCENT -> linkedMapOf(
-            "drive" to center.offset(0, 2, -2),
-            "frame" to center.offset(-2, 1, -2),
-            "core" to center.offset(2, 1, -2),
-        )
+        MineExpeditionKind.LAST_DESCENT -> linkedMapOf<String, ExpeditionPoint>().apply {
+            put("drive", center.offset(0, 2, -2))
+            put("frame", center.offset(-2, 1, -2))
+            put("core", center.offset(2, 1, -2))
+            if (scene.placement.geometryVersion >= 4) {
+                put("lift_chain_left", center.offset(-3, 2, -2))
+                put("lift_chain_right", center.offset(3, 2, -2))
+            }
+        }
         MineExpeditionKind.DRILLING_ARK -> linkedMapOf(
             "drive" to center.offset(0, 2, -4),
             "boiler" to center.offset(0, 1, -2),
@@ -467,6 +488,7 @@ internal class MineExpeditionMachinery(
             "drive" -> Material.REDSTONE_BLOCK
             "frame" -> Material.COPPER_BLOCK
             "core" -> Material.SEA_LANTERN
+            "lift_chain_left", "lift_chain_right" -> Material.IRON_CHAIN
             else -> null
         }
         MineExpeditionKind.DRILLING_ARK -> when (role) {
@@ -529,7 +551,9 @@ internal class MineExpeditionMachinery(
             abs(player.x - center.x) <= (if (lift) 2.9 else 3.9) && abs(player.z - center.z) <= (if (lift) 2.0 else 5.9)
     }
 
-    private fun isMotion(stage: MineExpeditionStage): Boolean = stage in MOVING_STAGES
+    private fun isMotion(state: MineExpeditionState, scene: MineExpeditionScene): Boolean =
+        state.stage in MOVING_STAGES || (scene.kind == MineExpeditionKind.LAST_DESCENT &&
+            state.stage == MineExpeditionStage.DESCENT_ENGINE && MineExpeditionEngine.isModernLastDescent(state))
 
     private companion object {
         val MOVING_STAGES = setOf(

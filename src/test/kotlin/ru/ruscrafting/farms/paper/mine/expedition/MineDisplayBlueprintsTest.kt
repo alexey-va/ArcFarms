@@ -84,4 +84,15 @@ class MineDisplayBlueprintsTest : FunSpec({
         thermometer.last().material shouldBe Material.LIME_CONCRETE
         thermometer.dropLast(1).all { it.material == Material.YELLOW_CONCRETE } shouldBe true
     }
+    test("descent source and socket carry the same visible copper cell contract") {
+        val sourceCells = MineDisplayBlueprints.model("descent_battery_rack").filter { it.motion == "descent_cell" }
+        sourceCells.count() shouldBe 2
+        sourceCells.any { it.material == Material.COPPER_BLOCK && !it.idleHidden } shouldBe true
+        sourceCells.any { it.material == Material.REDSTONE_BLOCK && !it.idleHidden } shouldBe true
+
+        val socketCell = MineDisplayBlueprints.model("descent_power_socket").single { it.motion == "descent_cell" }
+        socketCell.material shouldBe Material.COPPER_BLOCK
+        socketCell.idleHidden shouldBe true
+        (socketCell.size.z > .16f) shouldBe true
+    }
 })

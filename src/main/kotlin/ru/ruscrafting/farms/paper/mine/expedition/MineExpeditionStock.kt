@@ -37,7 +37,12 @@ internal class MineExpeditionStock(
     private val retiring = hashSetOf<Long>()
     private val failures = hashMapOf<String, String>()
     var site: MineExpeditionSite? = null
-    private fun current(receipt: MineExpeditionSceneReceipt) = receipt.placement.geometryVersion == ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionPlacement.CURRENT_GEOMETRY_VERSION && receipt.placement.world == site?.world
+    private fun current(receipt: MineExpeditionSceneReceipt) =
+        receipt.placement.geometryVersion == MineExpeditionGenerator.currentGeometryVersion(receipt.kind) &&
+            receipt.placement.world == site?.world
+    private fun compatible(receipt: MineExpeditionSceneReceipt) =
+        receipt.placement.geometryVersion in 1..MineExpeditionPlacement.CURRENT_GEOMETRY_VERSION &&
+            receipt.placement.world == site?.world
     private var active = false
     private var nextRefill = 0L
     private val retryAfter = hashMapOf<String, Long>()
@@ -49,7 +54,7 @@ internal class MineExpeditionStock(
         if (!active || now < nextRefill) return
         val site = site ?: return
         nextRefill = now + 1_000L
-        receipts.records().filter { !it.restoring && !current(it) }.forEach(::retire)
+        receipts.records().filter { !it.restoring && it.reserved && !current(it) }.forEach(::retire)
         retiring.toList().forEach { id -> receipts.findJournal(id)?.let(::retire) }
         MineExpeditionKind.entries.forEach { kind ->
             val reserves = receipts.records().filter { it.kind == kind && current(it) && it.reserved && !it.restoring && it.journalSequence !in claimed }
@@ -82,7 +87,7 @@ internal class MineExpeditionStock(
         val kind = MineExpeditionEngine.kind(incident.type) ?: return null
         val key = key(runtime)
         receipts.find(runtime.settings.id, runtime.state.sequence, incident.objectiveNonce)?.let { receipt ->
-            if (receipt.restoring || !current(receipt)) return null
+            if (receipt.restoring || !compatible(receipt)) return null
             loader.prepare(receipt)
             return loader.prepared(receipt.journalSequence)?.takeIf { it.ready }?.also {
                 bind(it, receipt, surface)

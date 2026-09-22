@@ -1,5 +1,29 @@
 # Mine lateral workings balance
 
+## Last Descent redesign (0.45.0)
+
+Reviewed against the canonical economy inventory's ArcFarms mine and planned
+SELL-to-contract rows. This replaces one existing incident and leaves the
+selection pool, order quotas, reward configuration and completion ledger intact.
+
+| Unit per completed order | Before | After | Change from redesign |
+| --- | --- | --- | --- |
+| Vault coins | Existing configured reward | Same | 0 |
+| Premium tokens | No expedition grant | Same | 0 |
+| XP | Existing order reward | Same | 0 |
+| Ordinary items | Existing order reward | Same | 0 |
+| Contribution checkpoints | 12 for Last Descent | 12 | 0 |
+
+The repair stone and power cell are scene/service materials, not saleable loot.
+The existing one-time order reward remains the only reward path. One power-cell
+delivery now credits the former three-delivery budget, and a return ride owns
+the final credit. Two 24-block descents plus a 48-block ascent replace twenty
+blocks of old travel. Net completion time and participant distribution remain
+unmeasured; equal rewards do not imply equal earnings per hour. There is no new
+item supply for current SELL or future contracts and no currency conversion.
+
+---
+
 This is a balance note for `TUNNEL_DRIVE`, `RAIL_EXTENSION`, `ORE_WORKSHOP`,
 and the reworked `TRACK_DAMAGE`. The change adds work to an existing mine order; it does not add
 a reward, price, chance, quota completion grant, or currency conversion.

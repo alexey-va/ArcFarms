@@ -50,10 +50,24 @@ object MineExpeditionObjectives {
             MineExpeditionStage.DESCENT_MIDDLE, MineExpeditionStage.DESCENT_BOTTOM,
             MineExpeditionStage.ARK_FORK, MineExpeditionStage.ARK_CHAMBER, MineExpeditionStage.ARK_HOME -> listOf(
                 objective("drive", MineExpeditionInteraction.MOTION, "LEVER", position = deck.offset(2, 0, -1)))
-            MineExpeditionStage.DESCENT_COUNTERWEIGHTS -> many("counterweight", 3, MineExpeditionInteraction.CRANK, "GRINDSTONE")
-            MineExpeditionStage.DESCENT_POWER_CELLS -> carry("power_supply", "power_socket", "COPPER_BLOCK")
-            MineExpeditionStage.DESCENT_CORE_VALVES -> many("core_valve", 3, MineExpeditionInteraction.VALVE, "HEAVY_CORE")
-            MineExpeditionStage.DESCENT_ENGINE -> listOf(objective("core_start", MineExpeditionInteraction.OPERATE, "LIGHTNING_ROD", 0))
+            MineExpeditionStage.DESCENT_ENGINE -> listOf(objective("drive", MineExpeditionInteraction.MOTION, "LEVER",
+                position = deck.offset(2, 0, -1))).takeIf { MineExpeditionEngine.isModernLastDescent(state) }
+                ?: listOf(objective("core_start", MineExpeditionInteraction.OPERATE, "LIGHTNING_ROD", 0))
+            MineExpeditionStage.DESCENT_COUNTERWEIGHTS -> if (MineExpeditionEngine.isModernLastDescent(state)) listOf(
+                objective("counterweight_0", MineExpeditionInteraction.BREAK, "STONE", 0,
+                    point("counterweight_0").offset(dz = -2)),
+                objective("counterweight_1", MineExpeditionInteraction.CRANK, "GRINDSTONE", 1),
+                objective("counterweight_2", MineExpeditionInteraction.OPERATE, "LEVER", 2),
+            ).firstOrNull { it.target !in state.completed }?.let(::listOf) ?: emptyList()
+                else many("counterweight", 3, MineExpeditionInteraction.CRANK, "GRINDSTONE")
+            MineExpeditionStage.DESCENT_POWER_CELLS -> if (MineExpeditionEngine.isModernLastDescent(state))
+                indexedCarry("power_supply", "power_socket", "COPPER_BLOCK", 0) else carry("power_supply", "power_socket", "COPPER_BLOCK")
+            MineExpeditionStage.DESCENT_CORE_VALVES -> if (MineExpeditionEngine.isModernLastDescent(state)) listOf(
+                objective("core_valve_0", MineExpeditionInteraction.VALVE, "HEAVY_CORE", 0),
+                objective("core_valve_1", MineExpeditionInteraction.CRANK, "GRINDSTONE", 1),
+                objective("core_valve_2", MineExpeditionInteraction.OPERATE, "LEVER", 2),
+            ).firstOrNull { it.target !in state.completed }?.let(::listOf) ?: emptyList()
+                else many("core_valve", 3, MineExpeditionInteraction.VALVE, "HEAVY_CORE")
             MineExpeditionStage.ARK_FUEL -> carry("fuel_supply", "boiler", "COAL_BLOCK", deck.offset(-2, 0, -2))
             MineExpeditionStage.ARK_BRANCH -> listOf(
                 objective("branch_left", MineExpeditionInteraction.BRANCH, "RAIL", 1, deck.offset(-2, 0, 2)),

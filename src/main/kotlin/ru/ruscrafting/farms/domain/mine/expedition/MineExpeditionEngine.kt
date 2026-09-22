@@ -48,6 +48,10 @@ object MineExpeditionEngine {
         else -> null
     }
 
+    /** Geometry v4 is the authored Last Descent route; v1-v3 retain their old verbs. */
+    fun isModernLastDescent(state: MineExpeditionState): Boolean =
+        state.placement.geometryVersion >= 4
+
     fun initial(
         type: MineIncidentType,
         placement: MineExpeditionPlacement,
@@ -77,7 +81,7 @@ object MineExpeditionEngine {
         require(state.stage in sequence) { "Expedition stage ${state.stage} does not belong to $type" }
         val index = sequence.indexOf(state.stage)
         return sequence.take(index).sumOf(::checkpointWeight) + when (action(state)) {
-            MineExpeditionAction.TARGET, MineExpeditionAction.HEAT -> state.completed.size
+            MineExpeditionAction.TARGET, MineExpeditionAction.HEAT -> completedCredits(state)
             MineExpeditionAction.MOTION, MineExpeditionAction.BRANCH, MineExpeditionAction.COMPLETE -> 0
         }
     }
@@ -97,6 +101,9 @@ object MineExpeditionEngine {
         MineExpeditionStage.ARK_HOME,
             -> MineExpeditionAction.MOTION
 
+        MineExpeditionStage.DESCENT_ENGINE -> if (isModernLastDescent(state))
+            MineExpeditionAction.MOTION else MineExpeditionAction.TARGET
+
         MineExpeditionStage.ARK_BRANCH -> MineExpeditionAction.BRANCH
         MineExpeditionStage.FACTORY_HEAT -> MineExpeditionAction.HEAT
         MineExpeditionStage.COMPLETE -> MineExpeditionAction.COMPLETE
@@ -106,13 +113,13 @@ object MineExpeditionEngine {
     /** Target count for the current target/heat stage; motion and branch use their own methods. */
     fun targetCount(state: MineExpeditionState): Int = when (state.stage) {
         MineExpeditionStage.DESCENT_COUNTERWEIGHTS,
-        MineExpeditionStage.DESCENT_POWER_CELLS,
         MineExpeditionStage.DESCENT_CORE_VALVES,
         MineExpeditionStage.ARK_JAM,
         MineExpeditionStage.ARK_CORES,
             -> 3
+        MineExpeditionStage.DESCENT_POWER_CELLS -> if (isModernLastDescent(state)) 1 else 3
         MineExpeditionStage.ARK_FUEL, MineExpeditionStage.ARK_COOLANT -> 2
-        MineExpeditionStage.DESCENT_ENGINE,
+        MineExpeditionStage.DESCENT_ENGINE -> if (isModernLastDescent(state)) 0 else 1
         MineExpeditionStage.FACTORY_HEAT,
         MineExpeditionStage.FACTORY_POUR,
         MineExpeditionStage.FACTORY_CRANE,
@@ -165,6 +172,14 @@ object MineExpeditionEngine {
         if (operation !in setOf(MineExpeditionAction.TARGET, MineExpeditionAction.HEAT) ||
             target !in 0 until total || target in current.completed
         ) return MineExpeditionStep(current, false)
+        if (isModernLastDescent(current) &&
+            current.stage in setOf(
+                MineExpeditionStage.DESCENT_COUNTERWEIGHTS,
+                MineExpeditionStage.DESCENT_POWER_CELLS,
+                MineExpeditionStage.DESCENT_CORE_VALVES,
+            ) && currentTarget(current) != target) {
+            return MineExpeditionStep(current, false)
+        }
         if (MineFactoryExperiments.blocksTarget(current, target)) {
             return MineExpeditionStep(current, false)
         }
@@ -254,6 +269,11 @@ object MineExpeditionEngine {
         MineExpeditionStage.FACTORY_WATER, MineExpeditionStage.FACTORY_COAL -> 3
         else -> 0
     }
+
+    private fun completedCredits(state: MineExpeditionState): Int =
+        if (state.stage == MineExpeditionStage.DESCENT_POWER_CELLS && isModernLastDescent(state)) {
+            if (state.completed.isEmpty()) 0 else 3
+        } else state.completed.size
 
     private fun nextStage(current: MineExpeditionState, now: Long): MineExpeditionStep {
         val next = when (current.stage) {

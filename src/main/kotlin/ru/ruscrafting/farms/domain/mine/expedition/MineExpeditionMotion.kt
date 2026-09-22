@@ -37,6 +37,12 @@ object MineExpeditionMotion {
     private fun waypoints(plan: MineExpeditionPlan, state: MineExpeditionState): List<ExpeditionPoint> = when (state.stage) {
         MineExpeditionStage.DESCENT_MIDDLE -> plan.routes.getValue("lift").take(2)
         MineExpeditionStage.DESCENT_BOTTOM -> plan.routes.getValue("lift").drop(1).take(2)
+        MineExpeditionStage.DESCENT_ENGINE -> {
+            require(MineExpeditionEngine.isModernLastDescent(state)) {
+                "Legacy descent engine has no movement route"
+            }
+            plan.routes.getValue("lift").asReversed()
+        }
         MineExpeditionStage.ARK_FORK -> {
             val start = plan.stations.getValue("ark_start")
             val mid = plan.stations.getValue("ark_mid")

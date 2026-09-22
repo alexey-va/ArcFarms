@@ -23,7 +23,17 @@ internal object MineExpeditionFurnishings {
         }
     fun childOf(kind:MineExpeditionKind,id:String,ancestor:String):Boolean =
         generateSequence(parent(kind,id)) { parent(kind,it) }.any { it==ancestor }
-    fun model(id:String,kind:MineExpeditionKind?=null):String = when {
+    fun model(id:String,kind:MineExpeditionKind?=null,modernDescent:Boolean=false):String = when {
+        modernDescent && id in setOf("counterweight_0", "brake_housing", "descent_brake_housing") -> "descent_brake_housing"
+        modernDescent && id in setOf("counterweight_1", "tension_winch", "descent_tension_winch") -> "descent_tension_winch"
+        modernDescent && id in setOf("counterweight_2", "brake_lever", "descent_brake_lever") -> "descent_brake_lever"
+        modernDescent && id in setOf("power_supply", "battery_supply", "descent_battery_rack") -> "descent_battery_rack"
+        modernDescent && id in setOf("power_socket", "battery_socket", "descent_power_socket") -> "descent_power_socket"
+        modernDescent && id in setOf("core_valve_0", "intake_valve", "descent_intake_valve") -> "descent_intake_valve"
+        modernDescent && id in setOf("core_valve_1", "priming_wheel", "hand_priming_wheel", "descent_priming_wheel") -> "descent_priming_wheel"
+        modernDescent && id in setOf("core_valve_2", "core_start", "starter_console", "descent_starter_console") -> "descent_starter_console"
+        modernDescent && id in setOf("descent_pump", "decor_descent_pump") -> "descent_pump"
+        modernDescent && id in setOf("upper_winder", "descent_upper_winder", "decor_descent_winder", "decor_descent_upper_winder") -> "descent_upper_winder"
         id=="fuel_supply" && kind==MineExpeditionKind.DEAD_FACTORY -> "charge_bunker"
         id=="crusher_feed" || id=="furnace_input" -> "inlet_hopper"
         id=="crushed_output" -> "charge_hopper"
@@ -48,18 +58,24 @@ internal object MineExpeditionFurnishings {
     fun fixtures(scene:MineExpeditionScene):List<Fixture> = fixtures(scene.plan)
     fun fixtures(plan:ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionPlan):List<Fixture> {
         val modernFactory = plan.kind==MineExpeditionKind.DEAD_FACTORY && plan.stations.containsKey("crusher_feed")
+        // v4 keeps the historical station ids but uses the pump sentinel to
+        // select its physical assemblies and keep that sentinel out of targets.
+        val modernDescent = plan.kind==MineExpeditionKind.LAST_DESCENT && plan.stations.containsKey("descent_pump")
         // Old basket anchors remain in journals for compatibility, but the
         // connected conveyor now carries the charge straight into the furnace.
         val hiddenStations = if(modernFactory) setOf(
             "water_valve_0", "water_valve_2", "crushed_output", "furnace_input",
+        ) else if (modernDescent) setOf(
+            "counterweight_0", "descent_pump", "descent_upper_winder", "decor_descent_winder", "core_start",
         ) else emptySet()
         val stations=plan.stations.filterKeys { id ->
             id !in setOf("entry","exit") && !id.startsWith("lift_") && !id.startsWith("ark_") &&
                 !id.startsWith("jam_") && !id.startsWith("branch_") && id !in hiddenStations &&
                 !(modernFactory && (id == "crusher_repair" || id.startsWith("repair_supply_")))
         }.map { (id, p) ->
-            Fixture(id, model(id, plan.kind),
-                if (id in setOf("crusher_repair", "crane_load")) MineFactoryLine.effectiveStation(plan, id) else p)
+            Fixture(id, model(id, plan.kind, modernDescent),
+                if (id in setOf("crusher_repair", "crane_load")) MineFactoryLine.effectiveStation(plan, id) else p,
+                scale = if (modernDescent && id in setOf("counterweight_1", "core_valve_1")) .6f else 1f)
         }
         val decor=when(plan.kind) {
             MineExpeditionKind.DEAD_FACTORY -> if(modernFactory) listOf(
@@ -82,7 +98,13 @@ internal object MineExpeditionFurnishings {
                 Fixture("decor_tank_left","tank",ExpeditionPoint(-27,5,17),1.8f),
                 Fixture("decor_tank_right","tank",ExpeditionPoint(27,5,17),1.8f),
             )
-            MineExpeditionKind.LAST_DESCENT -> listOf(
+            MineExpeditionKind.LAST_DESCENT -> if (modernDescent) listOf(
+                // The breakable stone is projected two blocks in front of this
+                // housing; keep the assembly at its original authored anchor.
+                Fixture("decor_descent_brake", "descent_brake_housing", plan.stations.getValue("counterweight_0")),
+                Fixture("decor_descent_pump", "descent_pump", plan.stations.getValue("descent_pump")),
+                Fixture("decor_descent_winder", "descent_upper_winder", ExpeditionPoint(-13,57,15)),
+            ) else listOf(
                 Fixture("decor_top_winch","winch",ExpeditionPoint(-12,25,8)),
                 Fixture("decor_top_rack","rack",ExpeditionPoint(12,25,8)),
                 Fixture("decor_middle_pump","pump",ExpeditionPoint(12,15,-8)),

@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.paper.mine.expedition
 
 import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionKind
 import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionPlacement
+import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionGenerator
 import ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed
 import ru.ruscrafting.farms.persistence.MineExpeditionSceneReceipt
 
@@ -19,7 +20,8 @@ internal object MineExpeditionAllocation {
             val z = site.northZ - 112 - slot / 3 * 112
             if (occupied.none { it.placement.world == site.world &&
                     kotlin.math.abs(it.placement.originX - x) < 100 && kotlin.math.abs(it.placement.originZ - z) < 100 }) {
-                return MineExpeditionPlacement(site.world, x, site.floorY - 5, z, seed)
+                return MineExpeditionPlacement(site.world, x, site.floorY - 5, z, seed,
+                    MineExpeditionGenerator.currentGeometryVersion(kind))
             }
         }
         error("All nearby expedition sites are occupied")

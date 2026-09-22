@@ -7,7 +7,7 @@ class MineCompactExpeditionTest : FunSpec({
     test("nearby caves have complete enclosing shells and safe supported entry points") {
         MineExpeditionKind.entries.forEach { kind ->
             listOf(71L, 999L).forEach { seed ->
-                val plan = MineExpeditionGenerator.plan(kind, seed)
+                val plan = MineExpeditionGenerator.plan(kind, seed, geometryVersion = 3)
                 val min = plan.bounds.min; val max = plan.bounds.max
                 (max.x - min.x in 60..80 && max.z - min.z in 60..80 && max.y <= 40) shouldBe true
                 for (x in min.x..max.x) for (z in min.z..max.z) {

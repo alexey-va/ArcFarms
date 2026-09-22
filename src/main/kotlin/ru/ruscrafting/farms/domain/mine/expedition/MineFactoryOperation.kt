@@ -7,6 +7,7 @@ internal data class MineFactoryOperation(val stage: MineExpeditionStage, val sta
         MineExpeditionStage.FACTORY_COAL -> 6_000L
         MineExpeditionStage.FACTORY_CRANE -> 4_500L
         MineExpeditionStage.FACTORY_INSTALL -> 2_400L
+        MineExpeditionStage.DESCENT_CORE_VALVES -> 6_000L
         else -> error("Not a powered factory operation: $stage")
     }
     fun progress(now: Long): Double = ((now-startedAt).toDouble()/duration).coerceIn(0.0,1.0)

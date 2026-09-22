@@ -379,8 +379,9 @@ Creature nests stay inside the walkable ring. Their glowing creatures pursue pla
 on the same floor, including creative players, and temporarily chew through nearby
 rock and ore. Their bounded damage is journaled and produces no drops. Ordinary
 ore orders mark the four nearest exposed, still-needed ores with bright particles.
-**The Last Descent** takes a broad, open-front lift into a geological shaft,
-with counterweight cranks, carried power cells and a deep engine. **Drilling
+**The Last Descent** crosses a 48-block abyss on an open-front lift. Repair its
+jammed brake on a suspended balcony, restore power with one cell, restart the
+deep pump and ride back to the upper pier. **Drilling
 Ark** sends a tracked machine through branching caves: load fuel, clear its
 jammed drill, refill coolant and bring crystal cores aboard before returning.
 **The Dead Factory** is one west-to-east production line: repair the crusher drive,

@@ -7,7 +7,8 @@ data class MineExpeditionPlacement(
     val originY: Int,
     val originZ: Int,
     val seed: Long,
-    val geometryVersion: Int = CURRENT_GEOMETRY_VERSION,
+    /** Legacy callers that do not know a scene kind keep the v3 contract. */
+    val geometryVersion: Int = DEFAULT_GEOMETRY_VERSION,
 ) {
     init { validate() }
 
@@ -23,7 +24,8 @@ data class MineExpeditionPlacement(
     }
 
     companion object {
-        const val CURRENT_GEOMETRY_VERSION = 3
+        const val CURRENT_GEOMETRY_VERSION = 4
+        const val DEFAULT_GEOMETRY_VERSION = 3
         const val WORLD_MIN = -29_999_984
         const val WORLD_MAX = 29_999_984
         private val WORLD_ID = Regex("[A-Za-z0-9._-]{1,128}")

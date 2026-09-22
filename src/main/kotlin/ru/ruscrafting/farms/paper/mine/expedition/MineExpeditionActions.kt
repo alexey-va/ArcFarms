@@ -173,6 +173,11 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
                     startOperation(scope,state,player,target.id,target.target,now)
                     return
                 }
+                if (MineExpeditionEngine.isModernLastDescent(state) &&
+                    state.stage == MineExpeditionStage.DESCENT_CORE_VALVES) {
+                    startOperation(scope, state, player, target.id, target.target, now)
+                    return
+                }
                 if (!complete(MineExpeditionEngine.completeTarget(state, target.target, now)) &&
                     state.stage == MineExpeditionStage.FACTORY_HEAT) player.sendActionBar(text("heat-wait", player))
             }

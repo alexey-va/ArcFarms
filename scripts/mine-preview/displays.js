@@ -80,7 +80,7 @@ demoToggle.textContent = 'Демо механизмов';
 demoToggle.setAttribute('aria-pressed', 'false');
 const demoNote = document.createElement('p');
 demoNote.className = 'subtle';
-demoNote.textContent = 'Дробление сырья, встречные валки, конвейер, рычаги и пресс. Звуки, частицы и перенос груза проверяются в Minecraft.';
+demoNote.textContent = 'Демонстрация движения механизмов. Порядок заданий, поездка на платформе, звук и перенос груза проверяются в Minecraft.';
 demoPanel.append(demoToggle, demoNote);
 document.querySelector('aside').prepend(demoPanel);
 demoToggle.onclick = () => {
