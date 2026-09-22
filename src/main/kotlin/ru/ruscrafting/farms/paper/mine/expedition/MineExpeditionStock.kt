@@ -39,7 +39,8 @@ internal class MineExpeditionStock(
     var site: MineExpeditionSite? = null
     private fun current(receipt: MineExpeditionSceneReceipt) =
         receipt.placement.geometryVersion == MineExpeditionGenerator.currentGeometryVersion(receipt.kind) &&
-            receipt.placement.world == site?.world
+            receipt.placement.world == site?.world &&
+            site?.let { !MineExpeditionAllocation.needsRelocation(receipt, it) } == true
     private fun compatible(receipt: MineExpeditionSceneReceipt) =
         receipt.placement.geometryVersion in 1..MineExpeditionPlacement.CURRENT_GEOMETRY_VERSION &&
             receipt.placement.world == site?.world

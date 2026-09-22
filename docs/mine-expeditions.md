@@ -31,6 +31,13 @@ journal. An occupied legacy expedition finishes with its old rules. Factory and
 Drilling Ark remain geometry 3, preserving their receipts and edited scenery.
 No admin `rebuild all` is part of this rollout.
 
+In 0.45.1 the upper entry is aligned to the configured surface height: a surface
+at Y=111 yields origin Y=54 and roof Y=122. The previous short-room Y offset
+placed the tall cavern through surface dirt and was correctly rejected by the
+terrain-overlap guard. Only an unbuilt idle v4 receipt at the former height is
+retired and reallocated; built or occupied scenes are preserved. The terrain
+allowlist and journalled restoration remain unchanged.
+
 The event still accounts for twelve contribution checkpoints. The single
 power-cell installation carries the old three-credit budget; return travel
 takes the former final starter credit. No new reward or per-block loot exists.

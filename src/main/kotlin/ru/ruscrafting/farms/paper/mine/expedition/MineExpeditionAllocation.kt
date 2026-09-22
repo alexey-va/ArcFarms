@@ -3,6 +3,7 @@ package ru.ruscrafting.farms.paper.mine.expedition
 import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionKind
 import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionPlacement
 import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionGenerator
+import ru.ruscrafting.farms.domain.mine.expedition.MineLastDescentLayout
 import ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed
 import ru.ruscrafting.farms.persistence.MineExpeditionSceneReceipt
 
@@ -11,6 +12,14 @@ internal data class MineExpeditionSite(val world: String, val centerX: Int, val 
 
 /** Nearby disjoint 112-block cells north of the authored mine and its side workings. */
 internal object MineExpeditionAllocation {
+    fun originY(kind: MineExpeditionKind, site: MineExpeditionSite): Int =
+        site.floorY - if (kind == MineExpeditionKind.LAST_DESCENT) MineLastDescentLayout.ENTRY_Y else 5
+
+    /** Retry only an unbuilt idle v4 receipt allocated with the former short-room height. */
+    fun needsRelocation(receipt: MineExpeditionSceneReceipt, site: MineExpeditionSite): Boolean =
+        receipt.reserved && !receipt.siteBuilt && receipt.kind == MineExpeditionKind.LAST_DESCENT &&
+            receipt.placement.geometryVersion == 4 && receipt.placement.originY != originY(receipt.kind, site)
+
     fun allocate(kind: MineExpeditionKind, id: Long, occupied: Collection<MineExpeditionSceneReceipt>,
         site: MineExpeditionSite): MineExpeditionPlacement {
         val seed = WorksiteDeterministicSeed.derive(id, kind.ordinal.toLong())
@@ -20,7 +29,7 @@ internal object MineExpeditionAllocation {
             val z = site.northZ - 112 - slot / 3 * 112
             if (occupied.none { it.placement.world == site.world &&
                     kotlin.math.abs(it.placement.originX - x) < 100 && kotlin.math.abs(it.placement.originZ - z) < 100 }) {
-                return MineExpeditionPlacement(site.world, x, site.floorY - 5, z, seed,
+                return MineExpeditionPlacement(site.world, x, originY(kind, site), z, seed,
                     MineExpeditionGenerator.currentGeometryVersion(kind))
             }
         }

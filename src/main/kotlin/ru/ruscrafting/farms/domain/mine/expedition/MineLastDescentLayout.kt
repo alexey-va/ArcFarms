@@ -7,12 +7,13 @@ import kotlin.math.sin
 
 /** Geometry v4: one continuous abyss, with three small structures attached to its walls. */
 internal object MineLastDescentLayout {
+    const val ENTRY_Y = 57
     private const val AIR = MineExpeditionBuilder.AIR
     private const val STONE = "minecraft:deepslate"
     private const val BEAM = "minecraft:polished_basalt[axis=y]"
     private const val COPPER = "minecraft:weathered_cut_copper"
     private const val STEEL = "minecraft:polished_andesite"
-    private val stops = listOf(57, 33, 9)
+    private val stops = listOf(ENTRY_Y, 33, 9)
 
     fun build(seed: Long): MineExpeditionPlan {
         val b = MineExpeditionBuilder(MineExpeditionKind.LAST_DESCENT, seed,
@@ -27,8 +28,8 @@ internal object MineLastDescentLayout {
         pad(b, -21..21, 9, 5..28)
         pad(b, -4..4, 9, 3..5)
 
-        b.station("entry", ExpeditionPoint(0, 57, 25))
-        b.station("exit", ExpeditionPoint(0, 57, 25))
+        b.station("entry", ExpeditionPoint(0, ENTRY_Y, 25))
+        b.station("exit", ExpeditionPoint(0, ENTRY_Y, 25))
         listOf("lift_top", "lift_middle", "lift_bottom").zip(stops).forEach { (name, y) ->
             // Lift stations describe a moving deck, never a permanent floor across the shaft.
             b.stations[name] = ExpeditionPoint(0, y, 0)
