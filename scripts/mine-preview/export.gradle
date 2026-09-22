@@ -46,7 +46,7 @@ allprojects {
        models[fixture.model]=blueprintClass.getMethod('model',String.class).invoke(blueprintClass.getField('INSTANCE').get(null),fixture.model).collect{part ->
         def block='minecraft:'+part.material.name().toLowerCase()
         if(!keys.containsKey(block)) { def id='m'+keys.size();keys[block]=id;palette[id]=[block:block,color:'#858580',name:block] }
-        [block:block,center:[part.center.x,part.center.y,part.center.z],size:[part.size.x,part.size.y,part.size.z],angle:part.angle,moving:part.moving,motion:part.motion,idleHidden:part.idleHidden,pivot:[part.pivot.x,part.pivot.y,part.pivot.z]]
+        [block:block,center:[part.center.x,part.center.y,part.center.z],size:[part.size.x,part.size.y,part.size.z],angle:part.angle,moving:part.moving,motion:part.motion,idleHidden:part.idleHidden,inspection:part.inspection,pivot:[part.pivot.x,part.pivot.y,part.pivot.z]]
        }
       }
      }
@@ -56,6 +56,9 @@ allprojects {
        origin:xyz(plan.spawn.offset(0,-1,0)),route:(plan.routes['main'] ?: plan.walkingRoutes[0]).collect{p->xyz(p.offset(0,-1,0))},
        lighting:[targetLevel:8,samples:plan.walkingRoutes.flatten().unique().collect{p->xyz(p)}]]
      if(kind.toString()=='DEAD_FACTORY') {
+     def yaml=cl.loadClass('org.bukkit.configuration.file.YamlConfiguration').getMethod('loadConfiguration',File.class).invoke(null,file('src/main/resources/lang/ru.yml'))
+     def guide=yaml.getConfigurationSection('mine.expedition.engine-guide')
+     recipe.inspectionCatalog=guide.getKeys(false).collectEntries { id -> [(id):[title:guide.getString(id+'.title').replaceAll('<[^>]*>',''),description:guide.getString(id+'.description').replaceAll('<[^>]*>','')]] }
      def dieselClass=cl.loadClass('ru.ruscrafting.farms.paper.mine.expedition.MineDieselGeneratorModel')
      def dieselModel=dieselClass.getField('INSTANCE').get(null)
      def vec={ p -> [p.x,p.y,p.z] }

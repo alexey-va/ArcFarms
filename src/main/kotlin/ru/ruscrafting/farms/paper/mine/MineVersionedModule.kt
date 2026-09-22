@@ -69,6 +69,7 @@ internal class MineVersionedModule(
     rewardGrants: WorksiteRewardGrantService? = null,
     lift: MineLiftAccess? = null,
     points: ru.ruscrafting.farms.paper.mine.point.MinePointService? = null,
+    dieselGeneratorEnabled: () -> Boolean = { true },
 ) : WorksiteModule<MineShiftState>, WorksiteBlockBreakHandler, WorksiteBlockBreakGuard, WorksiteBlockDamageHandler, WorksiteBlockPlaceHandler, ru.ruscrafting.farms.paper.WorksiteBucketFillHandler,
     WorksiteBlockInteractHandler, WorksitePlayerInteractHandler,
     WorksiteMoveHandler, WorksiteGuidanceHandler, WorksiteFastVisualHandler, WorksiteServiceItemOwner,
@@ -82,6 +83,7 @@ internal class MineVersionedModule(
             rewardGrants = rewardGrants,
             lift = lift,
             points = points,
+            dieselGeneratorEnabled = dieselGeneratorEnabled,
         ).module
     } else {
         MineController(

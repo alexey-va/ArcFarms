@@ -16,7 +16,7 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
         var nextGeneratorExhaust:Long=0L, var nextGeneratorRumble:Long=0L)
     private val frames=mutableMapOf<Long,Frame>()
     fun tick(scene:MineExpeditionScene,state:MineExpeditionState,scope:String,now:Long,angles:Map<String,Double>,processingCharge:Boolean=false,
-        heat: MineWorkshopHeat? = null) {
+        heat: MineWorkshopHeat? = null, dieselGeneratorEnabled: Boolean = true) {
         if(scene.kind!=MineExpeditionKind.DEAD_FACTORY || scene.placement.geometryVersion<3) return
         if(state.stage==MineExpeditionStage.COMPLETE) { clear(scene); return }
         val f=frames.getOrPut(scene.journalSequence) { Frame() }
@@ -37,8 +37,8 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
         val ready = MineFactoryGeneratorCycle.ready(state, now)
         val running=commissioned.filterNot { (pausedCrusher || !ready) && it.contains("crusher") }
         // A local jam stops the crusher, not the factory's electrical supply.
-        val generatorRunning=connected && "decor_crusher_left" in commissioned
-        if (connected) {
+        val generatorRunning=dieselGeneratorEnabled && connected && "decor_crusher_left" in commissioned
+        if (connected && dieselGeneratorEnabled) {
             val signal = if (!generatorRunning) Material.RED_CONCRETE else if (ready) Material.LIME_CONCRETE else Material.YELLOW_CONCRETE
             markers.signal(decor, "decor_diesel_generator", signal)
             if (generatorRunning) {
@@ -48,6 +48,11 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
             } else {
                 angles["generator_flywheel"]?.let { markers.rotate(decor, "decor_diesel_generator", it) }
             }
+        }
+        if (!dieselGeneratorEnabled) {
+            f.generatorBeat = -1L
+            f.nextGeneratorExhaust = 0L
+            f.nextGeneratorRumble = 0L
         }
         f.generatorRunning=generatorRunning
         val water=state.stage!=MineExpeditionStage.FACTORY_WATER ||

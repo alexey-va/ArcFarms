@@ -212,4 +212,25 @@ class MineFactoryPresentationTest : FunSpec({
         presentation.cleanup()
     }
 
+    test("disabled diesel cutaway performs no generator lookup, animation or effects") {
+        val plugin = mockk<Plugin>(relaxed = true)
+        val markers = mockk<MineExpeditionMarkers>(relaxed = true)
+        every { markers.at(any(), any(), any(), any(), any()) } returns null
+        val placement = MineExpeditionPlacement("world", 0, 60, 0, 73)
+        val scene = mockk<MineExpeditionScene> {
+            every { kind } returns MineExpeditionKind.DEAD_FACTORY
+            every { this@mockk.placement } returns placement
+            every { journalSequence } returns 13L
+            every { plan } returns MineExpeditionGenerator.plan(MineExpeditionKind.DEAD_FACTORY, 73L, 3)
+        }
+        val state = MineExpeditionState(placement, MineExpeditionStage.FACTORY_COAL, factoryGeneratorStartedAt = 1_000L)
+        MineFactoryPresentation(plugin, markers).tick(
+            scene, state, "factory", 1_050L, emptyMap(), dieselGeneratorEnabled = false,
+        )
+
+        verify(exactly = 0) { markers.at(any(), "decor_diesel_generator", any(), any(), any()) }
+        verify(exactly = 0) { markers.rotate(any(), "decor_diesel_generator", any()) }
+        verify(exactly = 0) { markers.signal(any(), "decor_diesel_generator", any()) }
+    }
+
 })

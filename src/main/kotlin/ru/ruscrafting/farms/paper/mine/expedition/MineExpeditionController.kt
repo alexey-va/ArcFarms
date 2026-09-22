@@ -44,9 +44,11 @@ internal class MineExpeditionController(
     private val locale: ArcFarmsLocale?,
     private val clock: () -> Long,
     tasks: WorksiteTaskPort? = null,
+    private val dieselGeneratorEnabled: () -> Boolean = { true },
 ) {
     private data class Driver(val playerId: UUID, val stage: MineExpeditionStage, var nextStepAt: Long, var started: Boolean = false)
     private val markers = MineExpeditionMarkers(plugin)
+    private val engineGuide = MineEngineGuide(plugin, markers, locale)
     private val factoryPresentation=MineFactoryPresentation(plugin,markers)
     private val editor = tasks?.let { MineFurnishingEditor(plugin,it,locale,world::allScenes,markers) }
     private val actions = MineExpeditionActions(plugin, locale)
@@ -91,6 +93,7 @@ internal class MineExpeditionController(
 
     /** Fast presentation lane also keeps large scene construction bounded across ticks. */
     fun updateVisuals(now: Long) {
+        if (dieselGeneratorEnabled()) engineGuide.reconcile() else engineGuide.close()
         world.process()
         editor?.tick()
         registry.snapshot().forEach { runtime ->
@@ -171,14 +174,16 @@ internal class MineExpeditionController(
         }
         val experimentTargets = if (MineFactoryGeneratorCycle.ready(latest, now)) experiments.targets(scene, latest, now) else emptyList()
         val visibleTargets = activeTargets.map { target -> marker(scene, latest, target, now) } + experimentTargets
-        markers.reconcile("furnish:${scene.journalSequence}", MineExpeditionFurnishings.targets(scene,editor,visibleTargets.mapTo(hashSetOf()) { it.id }))
+        markers.reconcile("furnish:${scene.journalSequence}", MineExpeditionFurnishings.targets(
+            scene, editor, visibleTargets.mapTo(hashSetOf()) { it.id }, dieselGeneratorEnabled(),
+        ))
         markers.reconcile(scope, visibleTargets)
         val pourSignal = if (actions.pourReady(scope, now)) Material.LIME_CONCRETE else Material.YELLOW_CONCRETE
         markers.signal(scope, "pour_console", pourSignal)
         markers.signal("furnish:${scene.journalSequence}", "pour_console", Material.GRAY_CONCRETE)
         factoryPresentation.tick(scene,latest,scope,now,machinery.turns(scene),
             actions.operationPhase(scope,"control_crusher_left",now)>0.0,
-            actions.factoryHeat(scope))
+            actions.factoryHeat(scope), dieselGeneratorEnabled())
         descentPresentation.tick(scene, latest, scope, now, machinery.turns(scene),
             moving = drivers[scope]?.started == true,
             pumpStarting = actions.operationPhase(scope, "core_valve_2", now) > 0.0,
@@ -501,7 +506,9 @@ internal class MineExpeditionController(
         markers.retainSites(world.allScenes().filter { it.ready }.mapTo(hashSetOf()) { it.journalSequence })
         world.allScenes().filter { it.ready }.forEach { scene ->
             markers.reconcile("exit:${scene.journalSequence}", exitMarkers(scene))
-            if (scene.reserved) markers.reconcile("furnish:${scene.journalSequence}", MineExpeditionFurnishings.targets(scene,editor,emptySet()))
+            if (scene.reserved) markers.reconcile("furnish:${scene.journalSequence}", MineExpeditionFurnishings.targets(
+                scene, editor, emptySet(), dieselGeneratorEnabled(),
+            ))
         }
         world.retainedScenes().forEach { scene ->
             val runtime = registry.byId(scene.zoneId)
@@ -527,7 +534,9 @@ internal class MineExpeditionController(
         // Stand the finished gear on the front of the bench, clear of the raised ram.
         val result = scene.at(editor?.position(scene, "assembly_socket", base) ?: base)
             .add(kotlin.math.sin(angle) * 1.4, 1.5, kotlin.math.cos(angle) * 1.4)
-        markers.reconcile("furnish:${scene.journalSequence}", MineExpeditionFurnishings.targets(scene, editor, emptySet()))
+        markers.reconcile("furnish:${scene.journalSequence}", MineExpeditionFurnishings.targets(
+            scene, editor, emptySet(), dieselGeneratorEnabled(),
+        ))
         markers.reconcile("result:${scene.journalSequence}", listOf(MineExpeditionMarkers.Target(
             "finished_product", result, Material.IRON_BLOCK, render("result-label"), model = completed.model, yaw = yaw)))
         markers.reconcile("exit:${scene.journalSequence}", exitMarkers(scene))
@@ -590,7 +599,7 @@ internal class MineExpeditionController(
 
     fun beforeReload() { cleanupVisuals(); world.beforeReload() }
     fun cleanup(shutdown: Boolean = false) { cleanupVisuals(); if (shutdown) { editor?.close(); world.close() } else world.beforeReload() }
-    private fun cleanupVisuals() { factoryResults.clear(); factoryPresentation.cleanup(); descentPresentation.cleanup(); editor?.cancelPreviews(); actions.cleanup(); experiments.cleanup(); markers.cleanup(); machinery.cleanup(); drivers.clear(); projectedStage.clear() }
+    private fun cleanupVisuals() { engineGuide.close(); factoryResults.clear(); factoryPresentation.cleanup(); descentPresentation.cleanup(); editor?.cancelPreviews(); actions.cleanup(); experiments.cleanup(); markers.cleanup(); machinery.cleanup(); drivers.clear(); projectedStage.clear() }
     private fun clearScene(scene: MineExpeditionScene) {
         markers.clear("result:${scene.journalSequence}")
         factoryPresentation.clear(scene)

@@ -80,6 +80,30 @@ internal class MineExpeditionMarkers(
         return target.location.clone().add(offset.x.toDouble(),offset.y.toDouble(),offset.z.toDouble())
     }
 
+    /** Only retained, rendered engines participate; editor transforms and current animation are authoritative. */
+    fun inspectEngine(player: org.bukkit.entity.Player, maxDistance: Double = 8.0): MineDisplayInspection.Hit? {
+        val eye = player.eyeLocation
+        val block = player.rayTraceBlocks(maxDistance, org.bukkit.FluidCollisionMode.NEVER)
+        var closest = block?.hitPosition?.distance(eye.toVector())?.coerceAtMost(maxDistance) ?: maxDistance
+        var selected: MineDisplayInspection.Hit? = null
+        for (marker in markers.values) {
+            val target = marker.target
+            if (target.model != MineDieselGeneratorModel.kind || target.location.world !== eye.world ||
+                target.location.distanceSquared(eye) > 400.0 || target.modelScale <= 0f) continue
+            val inverse = Quaternionf().rotateY(-Math.toRadians(target.yaw.toDouble()).toFloat())
+            val origin = eye.toVector().subtract(target.location.toVector()).subtract(marker.offset)
+            val localEye = inverse.transform(Vector3f(origin.x.toFloat(), origin.y.toFloat(), origin.z.toFloat()))
+                .div(target.modelScale)
+            val heading = eye.direction
+            val localRay = inverse.transform(Vector3f(heading.x.toFloat(), heading.y.toFloat(), heading.z.toFloat()))
+            val hit = MineDisplayInspection.pick(marker.parts, marker.phase, localEye, localRay,
+                (closest / target.modelScale).toFloat()) ?: continue
+            closest = hit.distance * target.modelScale.toDouble()
+            selected = hit
+        }
+        return selected
+    }
+
     fun clear(scope: String) = markers.keys.filter { it.startsWith("$scope/") }.forEach(::remove)
     fun retainSites(ids: Set<Long>) {
         markers.keys.filter { key ->

@@ -12,7 +12,7 @@ internal object MineDisplayBlueprints {
         "tank", "winch", "rack", "console", "valve", "finished_gear", "drive_rig", "machine_console", "cargo_cart_coal", "cargo_cart_iron", "cargo_cart_charge", "return_miner", "factory_diesel_generator") + ru.ruscrafting.farms.paper.mine.working.MineRailDriveModel.kinds + setOf("rail_drive_rig") + MineFactoryModels.kinds + MineFactoryExperimentModels.kinds + MineFactoryCraneModels.kinds + MineDescentModels.kinds
     data class Part(val material: Material, val center: Vector3f, val size: Vector3f,
         val angle: Float = 0f, val moving: Boolean = false, val pivot: Vector3f = Vector3f(), val motion: String = "rotate",
-        val idleHidden: Boolean = false)
+        val idleHidden: Boolean = false, val inspection: String? = null)
     fun model(kind: String): List<Part> = buildList {
         require(kind in kinds) { "Unknown display model: $kind" }
         if (kind == "factory_diesel_generator") { addAll(MineDieselGeneratorModel.model()); return@buildList }

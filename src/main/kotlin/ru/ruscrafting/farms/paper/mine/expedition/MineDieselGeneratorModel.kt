@@ -29,6 +29,7 @@ internal object MineDieselGeneratorModel {
         (4f * PI / 3f).toFloat(), (2f * PI / 3f).toFloat(), 0f)
 
     fun model(): List<MineDisplayBlueprints.Part> = buildList {
+        var currentInspection: String? = null
         fun box(
             material: Material,
             x: Float, y: Float, z: Float,
@@ -37,12 +38,14 @@ internal object MineDieselGeneratorModel {
             moving: Boolean = false,
             pivot: Vector3f = Vector3f(),
             motion: String = "fixed",
+            inspection: String? = currentInspection,
         ) {
             add(MineDisplayBlueprints.Part(material, Vector3f(x, y, z), Vector3f(width, height, depth),
-                angle, moving, pivot, motion))
+                angle, moving, pivot, motion, inspection = inspection))
         }
 
-        fun tube(material: Material, a: Vector3f, b: Vector3f, diameter: Float = .2f) {
+        fun tube(material: Material, a: Vector3f, b: Vector3f, diameter: Float = .2f,
+                 inspection: String? = currentInspection) {
             val dx = abs(b.x - a.x)
             val dy = abs(b.y - a.y)
             val dz = abs(b.z - a.z)
@@ -50,18 +53,20 @@ internal object MineDieselGeneratorModel {
             // Straight runs meet the larger elbow collars face to face.
             when {
                 dx >= dy && dx >= dz -> box(material, center.x, center.y, center.z,
-                    max(.04f, dx), diameter, diameter)
+                    max(.04f, dx), diameter, diameter, inspection = inspection)
                 dy >= dx && dy >= dz -> box(material, center.x, center.y, center.z,
-                    diameter, max(.04f, dy), diameter)
+                    diameter, max(.04f, dy), diameter, inspection = inspection)
                 else -> box(material, center.x, center.y, center.z,
-                    diameter, diameter, max(.04f, dz))
+                    diameter, diameter, max(.04f, dz), inspection = inspection)
             }
         }
 
-        fun elbow(material: Material, point: Vector3f, diameter: Float = .3f) =
-            box(material, point.x, point.y, point.z, diameter, diameter, diameter)
+        fun elbow(material: Material, point: Vector3f, diameter: Float = .3f,
+                  inspection: String? = currentInspection) =
+            box(material, point.x, point.y, point.z, diameter, diameter, diameter, inspection = inspection)
 
-        fun hose(material: Material, points: List<Vector3f>, diameter: Float = .2f) {
+        fun hose(material: Material, points: List<Vector3f>, diameter: Float = .2f,
+                 inspection: String? = currentInspection) {
             val route = points.filterIndexed { index, point ->
                 if (index == 0 || index == points.lastIndex) true else {
                     val incoming = Vector3f(point).sub(points[index - 1])
@@ -85,9 +90,9 @@ internal object MineDieselGeneratorModel {
             route.zipWithNext().forEachIndexed { index, (a, b) ->
                 val start = if (index > 0) inset(a, b) else a
                 val end = if (index + 1 < route.lastIndex) inset(b, a) else b
-                tube(material, start, end, diameter)
+                tube(material, start, end, diameter, inspection)
             }
-            route.drop(1).dropLast(1).forEach { elbow(material, it, diameter * 1.3f) }
+            route.drop(1).dropLast(1).forEach { elbow(material, it, diameter * 1.3f, inspection) }
         }
 
         /** A segmented disk with its axis along local Z. */
@@ -99,6 +104,7 @@ internal object MineDieselGeneratorModel {
             motion: String = "fixed",
             pivot: Vector3f = Vector3f(cx, cy, cz),
             phase: Float = 0f,
+            inspection: String? = currentInspection,
         ) {
             val moving = motion != "fixed"
             val rim = min(.24f, max(.12f, radius * .11f))
@@ -107,7 +113,7 @@ internal object MineDieselGeneratorModel {
             repeat(segments) { index ->
                 val a = phase + index * step
                 box(material, cx + cos(a) * radius, cy + sin(a) * radius, cz,
-                    rim, tangent, depth, a, moving, pivot, motion)
+                    rim, tangent, depth, a, moving, pivot, motion, inspection)
             }
         }
 
@@ -119,27 +125,29 @@ internal object MineDieselGeneratorModel {
             motion: String = "fixed",
             pivot: Vector3f = Vector3f(cx, cy, cz),
             phase: Float = 0f,
+            inspection: String? = currentInspection,
         ) {
             val moving = motion != "fixed"
             repeat(count) { index ->
                 val a = phase + index * 2f * PI.toFloat() / count
                 val mid = (radius + inner) / 2f
                 box(material, cx + cos(a) * mid, cy + sin(a) * mid, cz,
-                    radius - inner, .16f, depth, a, moving, pivot, motion)
+                    radius - inner, .16f, depth, a, moving, pivot, motion, inspection)
             }
             box(Material.IRON_BLOCK, cx, cy, cz, inner * 2f, inner * 2f, depth * 1.7f,
-                moving = moving, pivot = pivot, motion = motion)
+                moving = moving, pivot = pivot, motion = motion, inspection = inspection)
         }
 
         fun arcZ(material: Material, cx: Float, cy: Float, cz: Float, radius: Float,
-                 start: Float, end: Float, depth: Float, segments: Int = 8) {
+                 start: Float, end: Float, depth: Float, segments: Int = 8,
+                 inspection: String? = currentInspection) {
             val rim = min(.16f, max(.1f, radius * .12f))
             val step = (end - start) / segments
             val tangent = max(.08f, 2f * (radius - rim / 2f) * tan(abs(step) / 2f) - .035f)
             repeat(segments) { index ->
                 val a = start + (index + .5f) * step
                 box(material, cx + cos(a) * radius, cy + sin(a) * radius, cz,
-                    rim, tangent, depth, a)
+                    rim, tangent, depth, a, inspection = inspection)
             }
         }
 
@@ -149,13 +157,14 @@ internal object MineDieselGeneratorModel {
          * -X side still reads as a continuous steel barrel.
          */
         fun halfLinerY(material: Material, cx: Float, cy: Float, cz: Float,
-                       radius: Float, height: Float, segments: Int = 6) {
+                       radius: Float, height: Float, segments: Int = 6,
+                       inspection: String? = currentInspection) {
             val step = PI.toFloat() / segments
             val side = .06f
             repeat(segments) { index ->
                 val a = PI.toFloat() / 2f + (index + .5f) * step
                 box(material, cx + cos(a) * radius, cy, cz + sin(a) * radius,
-                    side, height, side)
+                    side, height, side, inspection = inspection)
             }
         }
 
@@ -179,6 +188,7 @@ internal object MineDieselGeneratorModel {
         }
 
         // --- radiator pack and fan at the -Z end -------------------------------
+        currentInspection = "radiator"
         box(Material.BLACK_CONCRETE, 0f, 3.48f, -6.82f, 4.14f, 4.38f, .28f)
         for (x in listOf(-2.16f, 2.16f))
             box(Material.POLISHED_BASALT, x, 3.48f, -6.99f, .3f, 4.82f, .48f)
@@ -193,6 +203,7 @@ internal object MineDieselGeneratorModel {
             box(Material.CUT_COPPER, x, 3.48f, -7.22f, .09f, 4.05f, .1f)
         ringZ(Material.POLISHED_ANDESITE, 0f, 3.48f, -7.28f, 1.76f, .14f,
             segments = 16)
+        currentInspection = "fan"
         ringZ(Material.IRON_BLOCK, 0f, 3.48f, -7.38f, 1.52f, .12f,
             segments = 12, motion = "rotate")
         spokesZ(Material.POLISHED_BASALT, 0f, 3.48f, -7.39f, 1.43f, .28f, .11f,
@@ -203,6 +214,7 @@ internal object MineDieselGeneratorModel {
                 .77f, .36f, .1f, a + .24f, moving = true,
                 pivot = Vector3f(0f, 3.48f, -7.47f), motion = "rotate")
         }
+        currentInspection = "radiator"
         for (x in listOf(-1.98f, 1.98f))
             box(Material.YELLOW_CONCRETE, x, 5.92f, -7.27f, .34f, .18f, .08f)
         box(Material.RED_CONCRETE, 1.82f, 5.52f, -7.3f, .18f, .18f, .08f, motion = "signal")
@@ -211,6 +223,7 @@ internal object MineDieselGeneratorModel {
 
         // Coolant ports touch the lower and upper radiator tanks.  The black
         // runs are hoses; the copper collars are the visible port flanges.
+        currentInspection = "cooling"
         hose(Material.BLACK_CONCRETE, listOf(
             Vector3f(-1.45f, 1.7f, -6.55f), Vector3f(-1.45f, 1.7f, -4.15f),
             Vector3f(-1.45f, 2.15f, -4.15f), Vector3f(-1.45f, 2.15f, -3.55f)), .25f)
@@ -225,15 +238,19 @@ internal object MineDieselGeneratorModel {
         // climbs to the fan-height idler, and the idler's shaft enters the
         // radiator hub.  Every run is axis-aligned so each collar is a real
         // contact point instead of a diagonal display box.
+        currentInspection = "crankshaft"
         ringZ(Material.POLISHED_ANDESITE, 0f, 1.8f, -4.05f, .72f, .18f,
             segments = 12, motion = "rotate", pivot = Vector3f(0f, 1.8f, -4.05f))
         spokesZ(Material.POLISHED_BASALT, 0f, 1.8f, -4.05f, .64f, .25f, .16f,
             count = 6, motion = "rotate", pivot = Vector3f(0f, 1.8f, -4.05f))
+        currentInspection = "fan"
         ringZ(Material.POLISHED_ANDESITE, 0f, 3.48f, -4.05f, .62f, .18f,
             segments = 12, motion = "rotate", pivot = Vector3f(0f, 3.48f, -4.05f))
         spokesZ(Material.POLISHED_BASALT, 0f, 3.48f, -4.05f, .54f, .22f, .16f,
             count = 6, motion = "rotate", pivot = Vector3f(0f, 3.48f, -4.05f))
+        currentInspection = "crankshaft"
         tube(Material.IRON_BLOCK, Vector3f(0f, 1.8f, -3.55f), Vector3f(0f, 1.8f, -4.05f), .24f)
+        currentInspection = "fan"
         tube(Material.IRON_BLOCK, Vector3f(0f, 3.48f, -4.05f), Vector3f(0f, 3.48f, -7.28f), .2f)
         // A closed, same-plane belt: lower pulley gets its bottom arc and the
         // fan-height idler gets the top arc; straight tangents join both sides.
@@ -246,12 +263,14 @@ internal object MineDieselGeneratorModel {
         // --- lower crankcase, open service side, and crankshaft ----------------
         // Keep the sump below the crank centerline; the service-side upper
         // crankcase remains open so the moving webs and journals are visible.
+        currentInspection = null
         box(Material.POLISHED_BLACKSTONE, 0f, .78f, 0f, 3.72f, .72f, 7.12f)
         box(Material.DEEPSLATE_BRICKS, -.9f, 1.35f, 0f, 1.55f, .42f, 6.78f)
         box(Material.POLISHED_BASALT, -1.62f, 3.72f, 0f, .46f, 2.8f, 6.7f)
         box(Material.POLISHED_BASALT, -1.89f, 3.7f, 0f, .18f, 3.2f, 6.5f)
         // Six bolted inspection covers keep the intact side legible as an
         // engine casting; the opposite side deliberately exposes the linkage.
+        currentInspection = "cylinder"
         for (z in cylinderZ) {
             box(Material.WEATHERED_CUT_COPPER, -2.025f, 3.7f, z, .09f, 1.85f, .83f)
             box(Material.POLISHED_ANDESITE, -2.09f, 3.7f, z, .04f, 1.48f, .65f)
@@ -260,10 +279,12 @@ internal object MineDieselGeneratorModel {
             box(Material.POLISHED_BASALT, -2.15f, 3.7f, z, .1f, .12f, .28f)
         }
         for (z in listOf(-3.42f, 3.42f)) {
+            currentInspection = null
             box(Material.DEEPSLATE_BRICKS, 0f, 3.06f, z, 3.55f, 2.22f, .32f)
             box(Material.CUT_COPPER, 0f, 4.15f, z, 3.72f, .18f, .16f)
         }
         // End bearings and seven short journals leave a visible crank line.
+        currentInspection = "crankshaft"
         for (z in listOf(-3.28f, -2.20f, -1.10f, 0f, 1.10f, 2.20f, 3.28f))
             box(Material.IRON_BLOCK, 0f, 1.8f, z, .3f, .3f, .72f)
         for (z in listOf(-3.05f, -1.95f, -.85f, .85f, 1.95f, 3.05f))
@@ -273,6 +294,7 @@ internal object MineDieselGeneratorModel {
         // rod.  Piston and rod centers are intentionally local offsets from the
         // crank pivot; the parent presentation computes the live pin positions.
         cylinderZ.forEachIndexed { index, z ->
+            currentInspection = "crankshaft"
             val phase = crankPhases[index]
             val radius = .45f
             val webX = -radius * sin(phase)
@@ -284,16 +306,19 @@ internal object MineDieselGeneratorModel {
             }
             box(Material.CUT_COPPER, webX, webY, z, .28f, .28f, .3f,
                 phase, moving = true, pivot = pivot, motion = "rotate")
+            currentInspection = "piston"
             box(Material.POLISHED_ANDESITE, 0f, 0f, 0f, .64f, .28f, .68f,
                 moving = true, pivot = pivot, motion = "diesel_piston_$index")
             box(Material.CUT_COPPER, 0f, -.18f, 0f, .5f, .1f, .54f,
                 moving = true, pivot = pivot, motion = "diesel_piston_$index")
+            currentInspection = "connecting-rod"
             box(Material.IRON_BLOCK, 0f, 0f, 0f, .18f, 2.5f, .18f,
                 moving = true, pivot = pivot, motion = "diesel_rod_$index")
         }
 
         // --- six cylinder barrels, heads, rocker covers, and injector lines ---
         cylinderZ.forEachIndexed { index, z ->
+            currentInspection = "cylinder"
             halfLinerY(Material.POLISHED_BASALT, 0f, 4.18f, z, .51f, 1.72f)
             halfLinerY(Material.IRON_BLOCK, 0f, 5.0f, z, .49f, .18f)
             // Open +X head section: the two valve faces and injector actually
@@ -305,6 +330,7 @@ internal object MineDieselGeneratorModel {
             box(Material.CUT_COPPER, -.60f, 5.84f, z, .28f, .1f, .6f)
             // One high-pressure injector per cylinder; the nozzle ends above
             // the piston crown in the exposed combustion chamber (no spark plug).
+            currentInspection = "injector"
             box(Material.IRON_BLOCK, -.17f, 5.48f, z, .12f, .80f, .12f,
                 motion = "diesel_injector_body_$index")
             box(Material.POLISHED_BASALT, -.17f, 6.13f, z, .23f, .26f, .18f)
@@ -324,6 +350,7 @@ internal object MineDieselGeneratorModel {
         val camX = .10f
         val camY = 6.5f
         val camPivot = Vector3f(camX, camY, 0f)
+        currentInspection = "camshaft"
         box(Material.IRON_BLOCK, camX, camY, -.2f, .16f, .16f, 7.1f,
             moving = true, pivot = camPivot, motion = "diesel_cam")
         box(Material.POLISHED_BASALT, -.64f, 5.42f, 0f, .20f, .1f, 6.78f)
@@ -335,6 +362,7 @@ internal object MineDieselGeneratorModel {
         }
         cylinderZ.forEachIndexed { index, z ->
             for (inlet in listOf(false, true)) {
+                currentInspection = "camshaft"
                 val lobeZ = z + if (inlet) .23f else -.23f
                 val phase = MineDieselGeneratorMotion.camAngle(index, inlet)
                 val pivot = Vector3f(camX, camY, lobeZ)
@@ -343,6 +371,7 @@ internal object MineDieselGeneratorModel {
                 box(Material.CUT_COPPER, camX + sin(phase) * .22f, camY - cos(phase) * .22f,
                     lobeZ, .18f, .42f, .15f, phase, true, pivot, "diesel_cam")
                 val motion = "diesel_valve_${if (inlet) "inlet" else "exhaust"}_$index"
+                currentInspection = if (inlet) "inlet-valve" else "exhaust-valve"
                 box(Material.IRON_BLOCK, camX, 6.124f, lobeZ, .9f, .12f, .19f,
                     moving = true, motion = motion)
                 // Stem joins the direct follower to a face inside the cylinder.
@@ -369,6 +398,7 @@ internal object MineDieselGeneratorModel {
             }
         }
         // Separate timing belt connects the crank and cam at a 2:1 ratio.
+        currentInspection = "timing-belt"
         val timingZ = -3.8f
         fun timingPulley(cx: Float, cy: Float, r: Float, motion: String) {
             ringZ(Material.CUT_COPPER, cx, cy, timingZ, r, .12f, 12, motion)
@@ -390,6 +420,7 @@ internal object MineDieselGeneratorModel {
                 .07f, a.distance(b), .055f, atan2(-(b.x - a.x), b.y - a.y))
         }
         // Keep the inspection rail below the pistons and open cylinder heads.
+        currentInspection = null
         for (z in listOf(-3.2f, -1.6f, 0f, 1.6f, 3.2f))
             box(Material.POLISHED_BASALT, 1.72f, 2.94f, z, .18f, .6f, .16f)
         for (y in listOf(2.55f, 3.33f))
@@ -397,6 +428,7 @@ internal object MineDieselGeneratorModel {
         box(Material.YELLOW_CONCRETE, 1.83f, 2.94f, -2.75f, .08f, .34f, .54f)
 
         // --- exhaust manifold, turbo, intake, filter, muffler, and stack --------
+        currentInspection = "exhaust"
         for (z in cylinderZ) {
             hose(Material.POLISHED_BLACKSTONE, listOf(
                 Vector3f(-.72f, 5.28f, z), Vector3f(-1.25f, 5.28f, z),
@@ -406,6 +438,7 @@ internal object MineDieselGeneratorModel {
         hose(Material.POLISHED_BASALT, listOf(
             Vector3f(-1.82f, 5.48f, -2.75f), Vector3f(-2.08f, 5.48f, -2.75f),
             Vector3f(-2.08f, 5.48f, 3.02f)), .3f)
+        currentInspection = "turbo"
         ringZ(Material.POLISHED_ANDESITE, -1.9f, 5.62f, 3.4f, .62f, .5f,
             segments = 12)
         ringZ(Material.CUT_COPPER, -1.9f, 5.62f, 3.7f, .44f, .18f, segments = 12)
@@ -415,6 +448,7 @@ internal object MineDieselGeneratorModel {
             box(Material.IRON_BLOCK, -1.9f + cos(angle) * .7f, 5.62f + sin(angle) * .7f, 3.38f,
                 .12f, .22f, .2f, angle)
         }
+        currentInspection = "intake"
         hose(Material.POLISHED_BLACKSTONE, listOf(
             Vector3f(-1.48f, 6.0f, 3.4f), Vector3f(-.95f, 6.0f, 3.4f),
             Vector3f(-.95f, 6.35f, 3.4f), Vector3f(-.95f, 6.35f, 2.9f),
@@ -437,6 +471,7 @@ internal object MineDieselGeneratorModel {
         for (z in listOf(2.54f, 2.9f, 3.26f))
             box(Material.CYAN_STAINED_GLASS, 2.15f, 6.85f, z, .6f, .12f, .12f)
         // Exhaust muffler and the bounded smoke mouth (x=-2.12,y=7.28,z=4.25).
+        currentInspection = "exhaust"
         box(Material.POLISHED_BASALT, -2.08f, 6.22f, 4.18f, 1.0f, .8f, 1.55f)
         box(Material.POLISHED_BASALT, -2.25f, 3.55f, 4.7f, .12f, 5.7f, .12f)
         box(Material.CUT_COPPER, -2.25f, .77f, 4.7f, .32f, .1f, .32f)
@@ -454,7 +489,9 @@ internal object MineDieselGeneratorModel {
         box(Material.YELLOW_TERRACOTTA, -2.08f, 7.05f, 4.48f, .16f, .3f, .1f)
 
         // --- coupling, flywheel, and alternator at the +Z end ------------------
+        currentInspection = "crankshaft"
         box(Material.IRON_BLOCK, 0f, 1.8f, 3.65f, .36f, .36f, .95f)
+        currentInspection = "flywheel"
         ringZ(Material.POLISHED_ANDESITE, 0f, 1.8f, 4.08f, 1.42f, .28f,
             segments = 16, motion = "rotate", pivot = Vector3f(0f, 1.8f, 4.08f))
         spokesZ(Material.POLISHED_BASALT, 0f, 1.8f, 4.08f, 1.32f, .34f, .22f,
@@ -463,6 +500,7 @@ internal object MineDieselGeneratorModel {
             moving = true, pivot = Vector3f(0f, 1.8f, 4.08f), motion = "rotate")
         // Alternator centerline is the same Y=1.8 crank/flywheel axis.  Its
         // housing starts above the skid and the real shaft enters its hub.
+        currentInspection = "alternator"
         box(Material.POLISHED_BASALT, 0f, 1.8f, 5.5f, 3.0f, 2.6f, 2.0f)
         ringZ(Material.POLISHED_ANDESITE, 0f, 1.8f, 6.52f, 1.38f, .2f, segments = 16)
         ringZ(Material.CUT_COPPER, 0f, 1.8f, 6.66f, 1.16f, .14f, segments = 12)
@@ -482,6 +520,7 @@ internal object MineDieselGeneratorModel {
             Vector3f(2.0f, 2.55f, 5.72f), Vector3f(2.18f, 2.55f, 5.72f)), .16f)
 
         // --- battery, starter leads, and service instrument cabinet -------------
+        currentInspection = "battery"
         box(Material.POLISHED_DEEPSLATE, 2.0f, 1.02f, -4.78f, 1.18f, .3f, 1.9f)
         box(Material.POLISHED_BASALT, 2.0f, 1.68f, -4.78f, 1.02f, 1.1f, 1.68f)
         for (z in listOf(-5.3f, -4.78f, -4.26f)) {
@@ -496,6 +535,7 @@ internal object MineDieselGeneratorModel {
 
         // The cabinet is at the alternator end, on two feet, so it cannot
         // occlude the six-cylinder service path or float above the skid.
+        currentInspection = "control-panel"
         for (z in listOf(4.2f, 5.35f)) {
             box(Material.POLISHED_DEEPSLATE, 2.08f, .52f, z, .86f, .2f, .36f)
             box(Material.POLISHED_BASALT, 2.08f, .95f, z, .28f, .72f, .28f)
@@ -513,6 +553,7 @@ internal object MineDieselGeneratorModel {
         box(Material.POLISHED_BLACKSTONE, 2.5f, 1.95f, 4.78f, .08f, .38f, 1.0f)
         for (z in listOf(4.42f, 5.14f))
             box(Material.IRON_BLOCK, 2.59f, 1.95f, z, .08f, .28f, .12f)
+        currentInspection = "battery"
         hose(Material.BLACK_CONCRETE, listOf(
             Vector3f(2.51f, 1.8f, 4.78f), Vector3f(2.51f, 1.5f, 4.78f),
             Vector3f(2.18f, 1.5f, 4.78f), Vector3f(2.18f, 1.5f, -4.78f),
@@ -520,6 +561,7 @@ internal object MineDieselGeneratorModel {
 
         // A pair of yellow service plaques and fasteners make the open cutaway
         // read as a maintained industrial machine rather than loose decoration.
+        currentInspection = "control-panel"
         for (z in listOf(-1.9f, 1.9f)) {
             box(Material.YELLOW_TERRACOTTA, 2.55f, 1.12f, z, .08f, .28f, .5f)
             box(Material.IRON_BLOCK, 2.63f, 1.12f, z - .18f, .08f, .08f, .08f)

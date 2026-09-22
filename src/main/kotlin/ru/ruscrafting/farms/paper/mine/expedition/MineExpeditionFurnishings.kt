@@ -127,8 +127,10 @@ internal object MineExpeditionFurnishings {
         } else emptyList()
         return stations+decor+controls
     }
-    fun targets(scene:MineExpeditionScene,editor:MineFurnishingEditor?,active:Set<String>):List<MineExpeditionMarkers.Target> =
-        fixtures(scene).filter { it.id !in active && (!it.id.startsWith("repair_supply_") || editor?.locked(scene)==true) }.map { f ->
+    fun targets(scene:MineExpeditionScene,editor:MineFurnishingEditor?,active:Set<String>,
+        dieselGeneratorEnabled:Boolean=true):List<MineExpeditionMarkers.Target> =
+        fixtures(scene).filter { (dieselGeneratorEnabled || it.id!="decor_diesel_generator") && it.id !in active &&
+            (!it.id.startsWith("repair_supply_") || editor?.locked(scene)==true) }.map { f ->
             val yaw=editor?.yaw(scene,f.id) ?: f.yaw
             val p=editor?.position(scene,f.id,f.at) ?: f.at
             MineExpeditionMarkers.Target(f.id,scene.at(p),Material.CUT_COPPER,Component.empty(),model=f.model,modelScale=f.scale,

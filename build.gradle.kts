@@ -5,7 +5,7 @@ plugins {
     jacoco
 }
 group = "ru.ruscrafting"
-version = "0.45.6"
+version = "0.45.7"
 description = "Shared farm, lumbermill, and mine activities for RusCrafting"
 
 val integrationTestSourceSet = sourceSets.create("integrationTest") {
@@ -27,7 +27,7 @@ repositories {
 java { toolchain { languageVersion.set(JavaLanguageVersion.of(25)) } }
 kotlin { jvmToolchain(25) }
 
-val arcCoreVersion = "2.7.11"
+val arcCoreVersion = "2.7.12"
 
 dependencies {
     implementation(kotlin("stdlib"))
@@ -118,6 +118,7 @@ tasks {
         exclude("io/papermc/**")
         // ARC is the sole native sidebar host; consumers share only its API class identity.
         exclude("ru/arc/paper/sidebar/**")
+        exclude("ru/arc/paper/inspection/**")
     }
     check { dependsOn(shadowJar, "integrationTest") }
 }

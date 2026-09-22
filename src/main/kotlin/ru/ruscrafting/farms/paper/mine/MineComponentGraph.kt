@@ -67,6 +67,7 @@ internal class MineComponentGraph(
     private val tickets: MineChunkTicket = MineChunkTicketRegistry(plugin),
     creatureNavigation: ru.ruscrafting.farms.paper.mine.incident.creature.MineCreatureNavigation = ru.ruscrafting.farms.paper.mine.incident.creature.PaperMineCreatureNavigation,
     blockDataDecoder: ru.ruscrafting.farms.paper.platform.FarmBlockDataDecoder = ru.ruscrafting.farms.paper.platform.PaperFarmBlockDataDecoder,
+    private val dieselGeneratorEnabled: () -> Boolean = { true },
 ) {
     internal val registry = MineRuntimeRegistry()
     val recovery = MineBlockRecoveryController(journal, ports.access, ports.state, ports.tasks, clock)
@@ -169,7 +170,7 @@ internal class MineComponentGraph(
             org.bukkit.Bukkit.getWorld(point.world)?.let { world ->
                 org.bukkit.Location(world, point.x, point.y, point.z, point.yaw, 0f)
             }
-        } }, ports.access, ports.state, locale, clock, ports.tasks,
+        } }, ports.access, ports.state, locale, clock, ports.tasks, dieselGeneratorEnabled,
     )
     val incidentScheduler = MineIncidentScheduler(
         caveIn, gasLeak, flooding, trackDamage, crystalResonance, creatureNest, powerFailure, lostMiner,

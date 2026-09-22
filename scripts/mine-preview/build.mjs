@@ -47,7 +47,7 @@ let source=await readFile(join(root,'cli.mjs'),'utf8');
 source=source.replaceAll(/from '(\.\/[^']+)'/g,(_,p)=>`from ${JSON.stringify(pathToFileURL(resolve(root,p)).href)}`)
  .replace('createRequire(import.meta.url)',`createRequire(${JSON.stringify(pathToFileURL(join(root,'cli.mjs')).href)})`)
  .replace('const ROOT = dirname(fileURLToPath(import.meta.url));',`const ROOT = ${JSON.stringify(root)};`)
- .replace("const app = await source('app.js');",`const app = await source('app.js') + '\\n' + ${JSON.stringify(`const DIESEL_EFFECT_ASSETS_AVAILABLE = ${dieselEffectAssetsAvailable};`)} + '\\n' + await readFile(${JSON.stringify(join(own,'diesel-effects.js'))},'utf8') + '\\n' + await readFile(${JSON.stringify(join(own,'displays.js'))},'utf8');`);
+ .replace("const app = await source('app.js');",`const app = await source('app.js') + '\\n' + ${JSON.stringify(`const DIESEL_EFFECT_ASSETS_AVAILABLE = ${dieselEffectAssetsAvailable};`)} + '\\n' + await readFile(${JSON.stringify(join(own,'diesel-effects.js'))},'utf8') + '\\n' + await readFile(${JSON.stringify(join(own,'displays.js'))},'utf8') + '\\n' + await readFile(${JSON.stringify(join(own,'inspection.js'))},'utf8');`);
 const scratch=await mkdtemp(join(tmpdir(),'mine-preview-'));
 const cli=join(scratch,'compile.mjs');await writeFile(cli,source);
 const result=spawnSync(process.execPath,[cli,resolve(recipe),'--out',outDir,...cliOptions],{stdio:'inherit'});

@@ -1295,6 +1295,64 @@ mine:
     generator-start: '<color:#f2fff7>ПКМ по маховику · запустить дизель</color>'
     generator-cranking: '<color:#f2fff7>Раскручиваем маховик · <count>/<total></color>'
     generator-warming: '<color:#f2fff7>Дизель набирает обороты · <percent>%</color>'
+    engine-guide:
+      cylinder:
+        title: '<color:#f2fff7>Цилиндр</color>'
+        description: '<color:#b8c4c8>Направляет поршень. Вверху сжимается воздух и сгорает топливо.</color>'
+      piston:
+        title: '<color:#f2fff7>Поршень</color>'
+        description: '<color:#b8c4c8>Давление газов толкает его вниз и передаётся на шатун.</color>'
+      connecting-rod:
+        title: '<color:#f2fff7>Шатун</color>'
+        description: '<color:#b8c4c8>Связывает поршень с коленвалом и передаёт усилие.</color>'
+      crankshaft:
+        title: '<color:#f2fff7>Коленвал</color>'
+        description: '<color:#b8c4c8>Превращает ход поршней во вращение общего вала.</color>'
+      camshaft:
+        title: '<color:#f2fff7>Распредвал</color>'
+        description: '<color:#b8c4c8>Кулачки открывают клапаны. Вращается вдвое медленнее коленвала.</color>'
+      inlet-valve:
+        title: '<color:#f2fff7>Впускной клапан</color>'
+        description: '<color:#b8c4c8>Впускает воздух в цилиндр. Пружина возвращает клапан в седло.</color>'
+      exhaust-valve:
+        title: '<color:#f2fff7>Выпускной клапан</color>'
+        description: '<color:#b8c4c8>Выпускает отработавшие газы после рабочего хода.</color>'
+      injector:
+        title: '<color:#f2fff7>Топливная форсунка</color>'
+        description: '<color:#b8c4c8>Впрыскивает дизтопливо в горячий сжатый воздух. Искра не нужна.</color>'
+      timing-belt:
+        title: '<color:#f2fff7>Ремень ГРМ</color>'
+        description: '<color:#b8c4c8>Связывает коленвал и распредвал, сохраняя фазы клапанов.</color>'
+      flywheel:
+        title: '<color:#f2fff7>Маховик</color>'
+        description: '<color:#b8c4c8>Накапливает энергию вращения. Раскрутите его для запуска дизеля.</color>'
+      alternator:
+        title: '<color:#f2fff7>Электрогенератор</color>'
+        description: '<color:#b8c4c8>Преобразует вращение двигателя в электричество для цеха.</color>'
+      radiator:
+        title: '<color:#f2fff7>Радиатор</color>'
+        description: '<color:#b8c4c8>Отдаёт воздуху тепло охлаждающей жидкости.</color>'
+      fan:
+        title: '<color:#f2fff7>Вентилятор</color>'
+        description: '<color:#b8c4c8>Прогоняет воздух через радиатор и помогает отводить тепло.</color>'
+      cooling:
+        title: '<color:#f2fff7>Контур охлаждения</color>'
+        description: '<color:#b8c4c8>Проводит охлаждающую жидкость между двигателем и радиатором.</color>'
+      turbo:
+        title: '<color:#f2fff7>Турбокомпрессор</color>'
+        description: '<color:#b8c4c8>Энергия выхлопа помогает нагнетать больше воздуха в цилиндры.</color>'
+      intake:
+        title: '<color:#f2fff7>Впуск</color>'
+        description: '<color:#b8c4c8>Подаёт очищенный воздух к впускным клапанам.</color>'
+      exhaust:
+        title: '<color:#f2fff7>Выпуск и глушитель</color>'
+        description: '<color:#b8c4c8>Отводит отработавшие газы и смягчает выхлоп.</color>'
+      battery:
+        title: '<color:#f2fff7>Аккумулятор</color>'
+        description: '<color:#b8c4c8>Питает вспомогательные электрические цепи двигателя.</color>'
+      control-panel:
+        title: '<color:#f2fff7>Щит генератора</color>'
+        description: '<color:#b8c4c8>Приборы и индикаторы помогают следить за работой установки.</color>'
     valve-progress: '<color:#f2fff7>Водяной контур · <count>/<total></color>'
     result-label: '<color:#f2fff7>Готово! Вы изготовили приводную шестерню</color>'
     result-return: '<color:#f2fff7>Шестерня готова! Осмотрите результат · возврат через <seconds> сек.</color>'

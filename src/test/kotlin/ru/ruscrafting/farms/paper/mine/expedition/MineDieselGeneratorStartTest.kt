@@ -105,6 +105,30 @@ class MineDieselGeneratorStartTest : FunSpec({
         state.factoryGeneratorStartedAt shouldBe 6_750L
     }
 
+    test("disabled cutaway is omitted while the lightweight flywheel checkpoint remains") {
+        val enabled = MineExpeditionFurnishings.targets(scene, null, emptySet(), dieselGeneratorEnabled = true)
+        enabled.single { it.id == "decor_diesel_generator" }.model shouldBe MineDieselGeneratorModel.kind
+
+        val disabled = MineExpeditionFurnishings.targets(scene, null, emptySet(), dieselGeneratorEnabled = false)
+        disabled.none { it.id == "decor_diesel_generator" } shouldBe true
+
+        var state = MineExpeditionState(scene.placement, MineExpeditionStage.FACTORY_WATER, completed = setOf(0, 1))
+        val startTarget = MineFactoryProgram.targets(plan, state).single()
+        startTarget.id shouldBe "generator_flywheel"
+        val player = paper.server.addPlayer().also { it.teleport(scene.at(startTarget.position)) }
+        var accepted = false
+        repeat(8) { index ->
+            actions.interact(scope, scene, state, player, startTarget, 10_000L + index * 250L, { step ->
+                state = step.state
+                accepted = step.accepted || accepted
+                step.accepted
+            }) {}
+        }
+        accepted shouldBe true
+        state.stage shouldBe MineExpeditionStage.FACTORY_COAL
+        state.factoryGeneratorStartedAt shouldBe 11_750L
+    }
+
     test("connected production cargo cannot be picked up until the startup ramp ends") {
         val state = MineExpeditionState(
             scene.placement,

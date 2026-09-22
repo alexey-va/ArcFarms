@@ -18,6 +18,7 @@ ui:
   bossbars: true
   particles: true
   sounds: true
+  diesel-generator-enabled: true
   title-stay-seconds: 4
   task-hint-cooldown-millis: 900
   task-title-cooldown-millis: 8000

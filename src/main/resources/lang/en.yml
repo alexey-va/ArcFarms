@@ -1295,6 +1295,64 @@ mine:
     generator-start: '<color:#f2fff7>Right-click the flywheel · start the diesel</color>'
     generator-cranking: '<color:#f2fff7>Cranking the flywheel · <count>/<total></color>'
     generator-warming: '<color:#f2fff7>Diesel warming up · <percent>%</color>'
+    engine-guide:
+      cylinder:
+        title: '<color:#f2fff7>Cylinder</color>'
+        description: '<color:#b8c4c8>Guides the piston. Air is compressed and fuel burns at the top.</color>'
+      piston:
+        title: '<color:#f2fff7>Piston</color>'
+        description: '<color:#b8c4c8>Combustion pressure pushes it down and drives the connecting rod.</color>'
+      connecting-rod:
+        title: '<color:#f2fff7>Connecting rod</color>'
+        description: '<color:#b8c4c8>Links the piston to the crankshaft and transfers its force.</color>'
+      crankshaft:
+        title: '<color:#f2fff7>Crankshaft</color>'
+        description: '<color:#b8c4c8>Turns the pistons'' up-and-down motion into shaft rotation.</color>'
+      camshaft:
+        title: '<color:#f2fff7>Camshaft</color>'
+        description: '<color:#b8c4c8>Its lobes open the valves. It turns at half the crankshaft speed.</color>'
+      inlet-valve:
+        title: '<color:#f2fff7>Intake valve</color>'
+        description: '<color:#b8c4c8>Lets air into the cylinder. Its spring closes the valve again.</color>'
+      exhaust-valve:
+        title: '<color:#f2fff7>Exhaust valve</color>'
+        description: '<color:#b8c4c8>Releases burnt gases after the power stroke.</color>'
+      injector:
+        title: '<color:#f2fff7>Fuel injector</color>'
+        description: '<color:#b8c4c8>Injects diesel into hot compressed air. No ignition spark is needed.</color>'
+      timing-belt:
+        title: '<color:#f2fff7>Timing belt</color>'
+        description: '<color:#b8c4c8>Keeps the crankshaft and camshaft in time with the valve cycle.</color>'
+      flywheel:
+        title: '<color:#f2fff7>Flywheel</color>'
+        description: '<color:#b8c4c8>Stores rotational energy. Turn it to start the diesel engine.</color>'
+      alternator:
+        title: '<color:#f2fff7>Alternator</color>'
+        description: '<color:#b8c4c8>Converts engine rotation into electricity for the factory.</color>'
+      radiator:
+        title: '<color:#f2fff7>Radiator</color>'
+        description: '<color:#b8c4c8>Transfers heat from the engine coolant to the surrounding air.</color>'
+      fan:
+        title: '<color:#f2fff7>Cooling fan</color>'
+        description: '<color:#b8c4c8>Pushes air through the radiator to remove heat.</color>'
+      cooling:
+        title: '<color:#f2fff7>Cooling circuit</color>'
+        description: '<color:#b8c4c8>Carries coolant between the engine and the radiator.</color>'
+      turbo:
+        title: '<color:#f2fff7>Turbocharger</color>'
+        description: '<color:#b8c4c8>Uses exhaust energy to supply more air to the cylinders.</color>'
+      intake:
+        title: '<color:#f2fff7>Air intake</color>'
+        description: '<color:#b8c4c8>Supplies filtered air to the intake valves.</color>'
+      exhaust:
+        title: '<color:#f2fff7>Exhaust and muffler</color>'
+        description: '<color:#b8c4c8>Carries burnt gases away and reduces exhaust noise.</color>'
+      battery:
+        title: '<color:#f2fff7>Battery</color>'
+        description: '<color:#b8c4c8>Supplies the engine''s auxiliary electrical circuits.</color>'
+      control-panel:
+        title: '<color:#f2fff7>Generator control panel</color>'
+        description: '<color:#b8c4c8>Gauges and indicators show the condition of the generator.</color>'
     valve-progress: '<color:#f2fff7>Water circuit · <count>/<total></color>'
     result-label: '<color:#f2fff7>Done! You manufactured a drive gear</color>'
     result-return: '<color:#f2fff7>Gear complete! Inspect your work · returning in <seconds> sec.</color>'

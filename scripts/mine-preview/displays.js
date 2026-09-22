@@ -99,6 +99,7 @@ buildMesh = function () {
     for (const part of recipe.displayModels[assembly.model]) {
       const compiled = { materials: [{ block: 'minecraft:air' }, { block: part.block }], blocks: [[0, 0, 0, 1]], get: () => 0 };
       const mesh = createVanillaMesh(compiled, Infinity, lightMode === 'clay', false, null, Infinity);
+      if (assembly.model === 'factory_diesel_generator') mesh.userData.engineInspection = part.inspection ?? null;
       poseExpeditionPart(mesh, part, 0);
       root.add(mesh);
       if (part.moving) expeditionMovingParts.push({ mesh, part, model: assembly.model });
