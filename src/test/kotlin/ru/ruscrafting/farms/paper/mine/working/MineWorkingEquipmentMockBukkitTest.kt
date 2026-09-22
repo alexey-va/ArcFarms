@@ -80,6 +80,18 @@ class MineWorkingEquipmentMockBukkitTest : FunSpec({
         player.inventory.storageContents.filterNotNull().count { it.type == Material.SPRUCE_LOG } shouldBe 1
     }
 
+    test("rail cassette cannot duplicate its shared lease and is reclaimed on scene cleanup") {
+        equipment.issue(runtime,player,"rail_cassette",Material.RAIL,cargo=true) shouldBe true
+        equipment.issue(runtime,player,"rail_cassette",Material.RAIL,cargo=true) shouldBe true
+        player.inventory.storageContents.filterNotNull().count { it.type==Material.RAIL } shouldBe 1
+        val other=paper.server.addPlayer("OtherWorker")
+        equipment.issue(runtime,other,"rail_cassette",Material.RAIL,cargo=true) shouldBe false
+        equipment.has(runtime,player,"rail_cassette") shouldBe true
+        equipment.clear(runtime)
+        equipment.has(runtime,player,"rail_cassette") shouldBe false
+        runtime.state.incident!!.serviceLeases shouldBe emptyMap()
+        player.inventory.storageContents.filterNotNull().none { it.type==Material.RAIL } shouldBe true
+    }
     test("failed service-item creation rolls back the reserved lease") {
         repeat(player.inventory.storageContents.size) { slot ->
             player.inventory.setItem(slot, org.bukkit.inventory.ItemStack(Material.COBBLESTONE, slot + 1))

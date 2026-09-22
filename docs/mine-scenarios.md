@@ -40,8 +40,18 @@ scene lifecycle.
 | ID | Lifecycle | Service equipment |
 | --- | --- | --- |
 | `TUNNEL_DRIVE` | Mount the drilling machine with right-click; drive with W/S and steer with A/D. Bore to the goal around alternating bedrock ribs; overhead lights are installed along the cleared route. | Native carrier and animated display body; excavation produces no ordinary drops. |
-| `RAIL_EXTENSION` | Clear the collapse, click the rail markers to lay one continuous ordered line from the entrance, then run the checking minecart along it. | Rails and checking cart; the engine rejects out-of-order segments. |
+| `RAIL_EXTENSION` | Drive the tracklayer to the glowing diamond chamber. The cutter opens rock, the rear feed lays a continuous rail line and lights are installed automatically. This variant generates no bedrock obstacles. Occasionally dismount to free a jammed sleeper or insert a spare rail cassette. | Native drive carrier with an animated drill, sleeper press and rail rollers; temporary cassette uses the shared service-item lease. |
 | `TRACK_DAMAGE` | Reuse the rail layout with the existing bed already present: clear rubble, replace damaged or missing segments, and run the checking cart. A persisted legacy incident without `working` remains readable by `MineTrackDamageIncident`. | Rails and checking cart; no new reward item. |
+
+Since 0.44.18, geometry 9 rail workings use `MineDriveController`, `MineDriveRig`
+and the existing prepared-scene journal. Persisted geometry 8 and older keeps
+its legacy rail stages and restoration. A centreline records cardinal rail
+connections, including bends; reversing withdraws the last sections so native
+minecart rail physics cannot capture the steering carrier. On arrival the
+entire connected route is committed before completion. Zero to two maintenance
+stops are seeded once by the persisted layout seed; the current service and
+partial progress survive restart. Maintenance never adds rewards or work
+contribution: the previous rail completion budget remains unchanged.
 
 `ORE_WORKSHOP` is a fixed production line in the upper-floor north niche.
 For each of three batches, take ore and click the glowing feed hopper from the

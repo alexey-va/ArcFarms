@@ -23,7 +23,7 @@ class MineWorkingEngineTest : FunSpec({
     }
 
     test("rails form a continuous line before a cart can traverse it") {
-        var state = MineWorkingEngine.initial(MineIncidentType.RAIL_EXTENSION, placement)
+        var state = MineWorkingEngine.initial(MineIncidentType.RAIL_EXTENSION, placement.copy(geometryVersion=8))
         state = MineWorkingEngine.completeTarget(state, 0, 1, 100).state
         state.stage shouldBe MineWorkingStage.LAY_TRACK
         MineWorkingEngine.completeTarget(state, 1, 2, 101).accepted shouldBe false

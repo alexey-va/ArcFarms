@@ -110,6 +110,6 @@ internal class MineWorkingEquipment(
 
     private companion object {
         const val ROLE_PREFIX = "working_"
-        val ROLES = listOf("supports", "rails", "ore", "billet")
+        val ROLES = listOf("supports", "rails", "ore", "billet", "rail_cassette")
     }
 }

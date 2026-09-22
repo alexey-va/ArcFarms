@@ -52,6 +52,73 @@ class MineDriveControllerMockBukkitTest : FunSpec({
             } finally { paper.close() }
         }
     }
+    for(outcome in listOf("saved","failed","stale")) {
+        test("cassette consumption waits for its durable service fence - $outcome") {
+            val paper=MockBukkitTestRuntime.open()
+            try {
+                val f=driveFixture(paper,type=MineIncidentType.RAIL_EXTENSION,prepared=true)
+                val current=f.runtime.state.incident!!.working!!
+                val rail=MineRailProgress(service=MineRailService(0,MineRailServiceKind.CASSETTE,1))
+                f.runtime.state=f.runtime.state.copy(incident=f.runtime.state.incident!!.copy(
+                    working=current.copy(drive=current.drive!!.copy(rail=rail))))
+                var consumed=false
+                f.controller.service(f.runtime,MineRailProgression.finishService(rail)) { consumed=true } shouldBe true
+                consumed shouldBe false
+                if(outcome=="stale") f.controller.cleanup(f.runtime.settings.id)
+                if(outcome=="failed") f.saves.single().completeExceptionally(IllegalStateException("disk full"))
+                else f.saves.single().complete(Unit)
+                consumed shouldBe (outcome=="saved")
+            } finally { paper.close() }
+        }
+    }
+    test("rail machine drives through former bedrock ribs and pauses only for selected maintenance") {
+        val paper=MockBukkitTestRuntime.open()
+        try {
+            val f=driveFixture(paper,type=MineIncidentType.RAIL_EXTENSION)
+            f.tick();f.saves.first().complete(Unit)
+            var stops=0
+            repeat(235) {
+                f.tick()
+                f.saves.filterNot { it.isDone }.toList().forEach { it.complete(Unit) }
+                val work=f.runtime.state.incident!!.working!!
+                val rail=work.drive!!.rail
+                if(rail?.service!=null) {
+                    f.cart.velocity shouldBe Vector()
+                    f.controller.service(f.runtime,MineRailProgression.finishService(rail)) shouldBe true
+                    f.tick()
+                    f.cart.velocity shouldBe Vector()
+                    f.saves.filterNot { it.isDone }.toList().forEach { it.complete(Unit) }
+                    stops++
+                } else (f.cart.velocity.z>0) shouldBe true
+                f.at.add(f.cart.velocity)
+            }
+            (f.at.z>27) shouldBe true
+            val rail=f.runtime.state.incident!!.working!!.drive!!.rail!!
+            rail.validate(1485)
+            (rail.route.size>25) shouldBe true
+            (stops<=2) shouldBe true
+            f.scene.plan.blocks.values.none { it.contains("bedrock") } shouldBe true
+        } finally { paper.close() }
+    }
+    test("rail goal waits for a continuous route and durable final projection") {
+        val paper=MockBukkitTestRuntime.open()
+        try {
+            val f=driveFixture(paper,type=MineIncidentType.RAIL_EXTENSION,startForward=40,prepared=true)
+            val work=f.runtime.state.incident!!.working!!
+            val rails=MineRailProgress(route=(0..40).map { MineDriveLayout.id(0,it) },serviced=setOf(0,1))
+            f.runtime.state=f.runtime.state.copy(incident=f.runtime.state.incident!!.copy(working=work.copy(
+                drive=work.drive!!.copy(checkpoint=MineDriveLayout.id(0,40),rail=rails))))
+            var reached=0
+            f.controller.tick(f.runtime,f.scene,1000,{true}) { _,_->reached++ }
+            reached shouldBe 0
+            f.controller.busy(f.runtime.settings.id) shouldBe true
+            f.saves.last().complete(Unit)
+            f.controller.tick(f.runtime,f.scene,1050,{true}) { _,_->reached++ }
+            reached shouldBe 1
+            f.runtime.state.incident!!.working!!.drive!!.rail!!.finished shouldBe true
+            verify(exactly=1) { f.rigs.release(f.player) }
+        } finally { paper.close() }
+    }
     test("straight driving cuts every new face without a zero-speed tick during slow checkpoint writes") {
         val paper = MockBukkitTestRuntime.open()
         try {
@@ -139,19 +206,19 @@ private class DriveFixture(val controller: MineDriveController, val runtime: Min
 }
 
 private fun driveFixture(paper: MockBukkitTestRuntime, startForward: Int = 2,
-    startSide: Double = 0.0, prepared: Boolean = false, heading: Float = 0f): DriveFixture {
+    startSide: Double = 0.0, prepared: Boolean = false, heading: Float = 0f, type:MineIncidentType=MineIncidentType.TUNNEL_DRIVE): DriveFixture {
     val world = paper.server.addSimpleWorld("world")
     val plugin = paper.createSimplePlugin("DriveTest")
     for (x in -1..1) for (z in -1..3) world.getChunkAt(x,z).load()
     val p = MineWorkingPlacement(WorksitePosition(world.name,0,64,0),0,"test")
-    val plan = MineDriveLayout.plan(p)
+    val plan = MineDriveLayout.plan(p,type)
     plan.blocks.forEach { (pos,data) -> world.getBlockAt(pos.x,pos.y,pos.z).type = Material.valueOf(data.substringAfter(':').substringBefore('[').uppercase()) }
     val reserved = (0 until MineDriveLayout.MAX_CELLS).filterTo(linkedSetOf()) {
-        MineDriveLayout.driveable(MineDriveLayout.side(it),MineDriveLayout.forward(it))
+        MineDriveLayout.driveable(MineDriveLayout.side(it),MineDriveLayout.forward(it),rail=type==MineIncidentType.RAIL_EXTENSION)
     }
     val runtime = MineRuntime(mineV2Settings(), CuboidActivityRegion(world,"test",CuboidBounds(-20,50,-20,50,100,60)),5000,
         MineShiftState(engineVersion=2, phase=MinePhase.INCIDENT, sequence=1, resumePhase=MinePhase.MINING,
-            incident=MineIncidentState(MineIncidentType.TUNNEL_DRIVE,required=93,objectiveNonce=1,
+            incident=MineIncidentState(type,required=93,objectiveNonce=1,
                 working=MineWorkingState(p,MineWorkingStage.EXCAVATE,
                     drive=if(prepared) MineDriveProgress(prepared=reserved) else null))))
     val at = p.position(0,1,startForward).location(world).add(startSide,0.0,0.0)

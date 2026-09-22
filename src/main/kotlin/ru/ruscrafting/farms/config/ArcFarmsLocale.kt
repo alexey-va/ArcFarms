@@ -906,11 +906,12 @@ class ArcFarmsLocale(
             mineIncidents.mapTo(this) { "mine.guidance.$it" }
             listOf(
                 "entry", "preparing", "inventory-full", "needs-kit", "next-section", "heat-wait", "heat-ready",
-                "heat-missed", "returned",
+                "heat-missed", "returned", "rail-controls", "rail-complete", "rail-jammed", "rail-empty",
+                "rail-service-jam-target", "rail-service-cassette-target", "rail-service-feeder-target", "rail-cassette-carried", "rail-service-done",
             ).mapTo(this) { "mine.working.$it" }
-            listOf("supports", "rails", "ore", "billet")
+            listOf("supports", "rails", "ore", "billet", "rail_cassette")
                 .mapTo(this) { "mine.working.item.$it" }
-            listOf("excavate", "support", "clear_track", "lay_track", "test_track", "load", "crush", "heat", "ship")
+            listOf("excavate", "support", "clear_track", "lay_track", "test_track", "load", "crush", "heat", "ship", "rail_goal")
                 .mapTo(this) { "mine.working.stage.$it" }
             listOf("excavate", "support", "clear_track", "lay_track", "test_track", "load", "crush", "heat", "ship")
                 .mapTo(this) { "mine.working.hint.$it" }

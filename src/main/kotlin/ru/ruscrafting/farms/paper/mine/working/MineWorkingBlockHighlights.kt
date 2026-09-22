@@ -28,7 +28,7 @@ internal class MineWorkingBlockHighlights(plugin: Plugin) {
             if (!data.material.isAir) expected[position] = data
             else if (fallback != null) expected[position] = fallback.createBlockData()
         }
-        val drive = scene.plan.type == ru.ruscrafting.farms.domain.MineIncidentType.TUNNEL_DRIVE && MineDriveLayout.enabled(working.placement)
+        val drive = MineDriveLayout.machine(scene.plan.type, working.placement)
         if (drive) MineDriveLayout.goalOres(scene.plan).forEach { add(it) }
         // Trace the entrance for on-foot work; a drive has its glowing vehicle and diamond destination.
         if (!drive) for (side in -2..2) for (up in 1..4) {

@@ -141,16 +141,20 @@ internal class MineComponentGraph(
             org.bukkit.Bukkit.getWorld(point.world)?.let { world -> station to org.bukkit.Location(world, point.x, point.y, point.z, point.yaw, 0f) }
         }.toMap() }, incidents, ports.access, ports.state, locale, clock,
     )
+    private val workingEquipment = ru.ruscrafting.farms.paper.mine.working.MineWorkingEquipment(registry, serviceItems, ports.state, locale)
+    private val driveController = ru.ruscrafting.farms.paper.mine.working.MineDriveController(plugin, workingWorld, ports.access, ports.state, ports.tasks, workingPresentation)
+    private val railDriveService = ru.ruscrafting.farms.paper.mine.working.MineRailDriveService(plugin,workingEquipment,workingPresentation,driveController,ports.access)
     val workings = ru.ruscrafting.farms.paper.mine.working.MineWorkingController(
         registry, ru.ruscrafting.farms.paper.mine.working.MineWorkingPlacementService(index, blockScanner, lift, ports.state, points),
-        workingWorld, incidents, ru.ruscrafting.farms.paper.mine.working.MineWorkingEquipment(registry, serviceItems, ports.state, locale),
+        workingWorld, incidents, workingEquipment,
         workingPresentation,
         ru.ruscrafting.farms.paper.worksite.WorksiteExpeditionTravel(plugin, ports.tasks, ports.access, ports.state,
             java.nio.file.Path.of("data/recovery/mine-working-returns")),
         ports.access, ports.state, ports.tasks, clock,
-        ru.ruscrafting.farms.paper.mine.working.MineDriveController(plugin, workingWorld, ports.access, ports.state, ports.tasks, workingPresentation),
+        driveController,
         { runtime -> lift?.floors()?.filter { it.exit.world === runtime.region.world }?.sortedByDescending { it.y }
             ?.let { floors -> (floors.getOrNull(1) ?: floors.firstOrNull())?.exit?.clone() } },
+        railDriveService,
     )
     private val expeditionWorld = ru.ruscrafting.farms.paper.mine.expedition.MineExpeditionWorld(
         plugin, ru.ruscrafting.farms.paper.mine.expedition.BukkitMineExpeditionWorldRegistry(plugin),

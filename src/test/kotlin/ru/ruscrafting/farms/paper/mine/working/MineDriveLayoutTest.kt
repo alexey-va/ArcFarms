@@ -15,6 +15,24 @@ private data class DriveRouteState(
 )
 
 class MineDriveLayoutTest : FunSpec({
+    test("rail machine geometry has an owned continuous bedrock-free volume in all directions") {
+        for(direction in 0..3) {
+            val p=MineWorkingPlacement(WorksitePosition("mine",50,80,50),direction,"top",72L)
+            val plan=MineWorkingLayout.plan(MineIncidentType.RAIL_EXTENSION,p)
+            MineWorkingLayout.validate(plan).shouldBeEmpty()
+            plan.type shouldBe MineIncidentType.RAIL_EXTENSION
+            plan.blocks.values.none { it.contains("bedrock") } shouldBe true
+            val prepared=MineDriveMotion.excavationCells(p,true)
+            for(f in 3..40) (MineDriveLayout.id(0,f) in prepared) shouldBe true
+            (MineDriveLayout.goalOres(plan).size>=12) shouldBe true
+            val old=MineWorkingLayout.plan(MineIncidentType.RAIL_EXTENSION,p.copy(geometryVersion=8))
+            old.rails.isNotEmpty() shouldBe true
+            old.cartRoute.isNotEmpty() shouldBe true
+            MineDriveLayout.machine(old.type,old.placement) shouldBe false
+            ru.ruscrafting.farms.domain.MineWorkingEngine.initial(plan.type,p).stage shouldBe ru.ruscrafting.farms.domain.MineWorkingStage.EXCAVATE
+        }
+    }
+
     test("geometry 7 retains the legacy one-sided ribs in every orientation") {
         for (direction in 0..3) {
             val version = 7

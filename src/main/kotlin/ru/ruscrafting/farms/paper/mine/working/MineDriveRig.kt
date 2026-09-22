@@ -23,7 +23,7 @@ import ru.ruscrafting.farms.paper.mine.expedition.MineDisplayLighting
 /** Native carrier owns rider motion. Client-only body parts follow its observed pose. */
 internal class MineDriveRig(private val plugin: Plugin) {
     data class Rig(val cart: Minecart, val body: List<PacketBlockDisplay>, var heading: Float,
-        var phase: Float = 0f, var effectAt: Long = 0, var hintAt: Long = 0, val hitbox: Interaction? = null, var speed: Double = 0.0, var soundAt: Long = 0)
+        var phase: Float = 0f, var effectAt: Long = 0, var hintAt: Long = 0, val hitbox: Interaction? = null, var speed: Double = 0.0, var soundAt: Long = 0, var railSoundAt: Long = 0, val rail: Boolean = false, var maintenance: Boolean = false)
     private val tag = NamespacedKey(plugin, "mine_drive_carrier")
     private val rigs = mutableMapOf<String, Rig>()
     private var renderer: PaperPacketDisplays? = null
@@ -51,12 +51,13 @@ internal class MineDriveRig(private val plugin: Plugin) {
             it.isResponsive = true
             it.persistentDataContainer.set(tag, PersistentDataType.STRING, runtime.settings.id)
         }
-        val body = MineDriveModel.parts.map { part -> renderer().spawnBlock(at, part.material.createBlockData()).apply {
+        val rail=MineDriveLayout.rail(requireNotNull(runtime.state.incident).type,working.placement)
+        val body = (if(rail) MineRailDriveModel.parts else MineDriveModel.parts).map { part -> renderer().spawnBlock(at, part.material.createBlockData()).apply {
             brightness = MineDisplayLighting.brightness(part.material)
             viewRange = 2f; teleportDuration = 1; interpolationDuration = 1
             glowColorOverride = Color.fromRGB(255,190,85)
         } }
-        return Rig(cart, body, heading, hitbox = hitbox).also { rigs[runtime.settings.id] = it; render(it, false) }
+        return Rig(cart, body, heading, hitbox = hitbox, rail = rail).also { rigs[runtime.settings.id] = it; render(it, false) }
     }
 
     fun mount(runtime: MineRuntime, player: Player): Boolean {
@@ -71,7 +72,7 @@ internal class MineDriveRig(private val plugin: Plugin) {
         val rotation = Quaternionf().rotateY(-Math.toRadians(rig.heading.toDouble()).toFloat())
         val at = rig.cart.location.clone().also { it.yaw = 0f; it.pitch = 0f }
         rig.hitbox?.takeIf { it.location != at }?.teleport(at)
-        rig.body.zip(MineDriveModel.parts).forEach { (display, part) ->
+        rig.body.zip(if(rig.rail) MineRailDriveModel.parts else MineDriveModel.parts).forEach { (display, part) ->
             val local = MineDisplayBlueprints.rotation(part, rig.phase)
             val rotated = Quaternionf(rotation).mul(local)
             val center = rotation.transform(MineDisplayBlueprints.center(part, rig.phase))
@@ -79,7 +80,7 @@ internal class MineDriveRig(private val plugin: Plugin) {
             val pose = Transformation(corner, rotated, Vector3f(part.size), Quaternionf())
             if (display.transformation != pose) { display.interpolationDelay = 0; display.transformation = pose }
             if (display.location != at) display.teleport(at)
-            display.isGlowing = rig.cart.passengers.isEmpty()
+            display.isGlowing = !rig.maintenance && rig.cart.passengers.isEmpty()
         }
     }
 

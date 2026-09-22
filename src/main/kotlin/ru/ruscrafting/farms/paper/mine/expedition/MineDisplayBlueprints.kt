@@ -9,12 +9,14 @@ import kotlin.math.*
 internal object MineDisplayBlueprints {
     val kinds = setOf("pipe_valve", "sluice", "coal_bunker", "feed_hopper", "casting_bed", "casting_rack",
         "assembly_bench", "crane_console", "furnace_console", "furnace", "waterwheel", "pump", "crusher",
-        "tank", "winch", "rack", "console", "valve", "finished_gear", "drive_rig", "machine_console", "cargo_cart_coal", "cargo_cart_iron", "cargo_cart_charge", "return_miner") + MineFactoryModels.kinds + MineFactoryExperimentModels.kinds + MineFactoryCraneModels.kinds
+        "tank", "winch", "rack", "console", "valve", "finished_gear", "drive_rig", "machine_console", "cargo_cart_coal", "cargo_cart_iron", "cargo_cart_charge", "return_miner") + ru.ruscrafting.farms.paper.mine.working.MineRailDriveModel.kinds + setOf("rail_drive_rig") + MineFactoryModels.kinds + MineFactoryExperimentModels.kinds + MineFactoryCraneModels.kinds
     data class Part(val material: Material, val center: Vector3f, val size: Vector3f,
         val angle: Float = 0f, val moving: Boolean = false, val pivot: Vector3f = Vector3f(), val motion: String = "rotate",
         val idleHidden: Boolean = false)
     fun model(kind: String): List<Part> = buildList {
         require(kind in kinds) { "Unknown display model: $kind" }
+        if(kind == "rail_drive_rig") { addAll(ru.ruscrafting.farms.paper.mine.working.MineRailDriveModel.parts); return@buildList }
+        if(kind in ru.ruscrafting.farms.paper.mine.working.MineRailDriveModel.kinds) { addAll(ru.ruscrafting.farms.paper.mine.working.MineRailDriveModel.model(kind)); return@buildList }
         if(kind in MineFactoryCraneModels.kinds) { addAll(MineFactoryCraneModels.model(kind)); return@buildList }
         if(kind in MineFactoryExperimentModels.kinds) { addAll(MineFactoryExperimentModels.model(kind)); return@buildList }
         if(kind in MineFactoryModels.kinds) { addAll(MineFactoryModels.model(kind)); return@buildList }

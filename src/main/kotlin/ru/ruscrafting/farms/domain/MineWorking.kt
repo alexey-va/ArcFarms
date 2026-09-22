@@ -29,7 +29,7 @@ data class MineWorkingPlacement(
         return entrance.copy(x = entrance.x + dx, y = entrance.y + up, z = entrance.z + dz)
     }
 
-    companion object { const val CURRENT_GEOMETRY_VERSION = 8 }
+    companion object { const val CURRENT_GEOMETRY_VERSION = 9 }
 }
 
 enum class MineWorkingStage {
@@ -65,9 +65,11 @@ data class MineDriveProgress(
     val heading: Float = 0f,
     /** Durable permission to excavate within the already journalled scene; not yet carved. */
     val prepared: Set<Int> = emptySet(),
+    val rail: MineRailProgress? = null,
 ) {
     fun validate(geometryVersion: Int = MineWorkingPlacement.CURRENT_GEOMETRY_VERSION) {
         val cells=if(geometryVersion>=7) 1485 else 765
+        rail?.validate(cells)
         require(prepared.size <= cells && prepared.all { it in 0 until cells })
         require(carved.size <= cells && carved.all { it in 0 until cells })
         require(lamps.size <= 256 && lamps.all { it in carved })
@@ -88,7 +90,8 @@ object MineWorkingEngine {
         placement,
         when (type) {
             MineIncidentType.TUNNEL_DRIVE -> MineWorkingStage.EXCAVATE
-            MineIncidentType.RAIL_EXTENSION, MineIncidentType.TRACK_DAMAGE -> MineWorkingStage.CLEAR_TRACK
+            MineIncidentType.RAIL_EXTENSION -> if (placement.geometryVersion >= 9) MineWorkingStage.EXCAVATE else MineWorkingStage.CLEAR_TRACK
+            MineIncidentType.TRACK_DAMAGE -> MineWorkingStage.CLEAR_TRACK
             MineIncidentType.ORE_WORKSHOP -> MineWorkingStage.LOAD
             else -> error("Not a lateral working incident: $type")
         },

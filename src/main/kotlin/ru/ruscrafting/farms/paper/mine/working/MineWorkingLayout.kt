@@ -18,7 +18,7 @@ internal object MineWorkingLayout {
         seed: Long = placement.layoutSeed,
     ): MineWorkingPlan {
         require(type in SUPPORTED_TYPES) { "Mine incident $type is not a lateral working" }
-        if (type == MineIncidentType.TUNNEL_DRIVE && MineDriveLayout.enabled(placement)) return MineDriveLayout.plan(placement)
+        if (MineDriveLayout.machine(type, placement)) return MineDriveLayout.plan(placement, type)
         val path = naturalPath().toMutableList()
         val localBlocks = linkedMapOf<LocalPoint, String>()
         val localWalkable = linkedSetOf<LocalPoint>()
@@ -238,10 +238,10 @@ internal object MineWorkingLayout {
 
     fun validate(plan: MineWorkingPlan): List<String> = buildList {
         if (plan.blocks.isEmpty()) add("empty-footprint")
-        if (plan.blocks.size > if(plan.type==MineIncidentType.TUNNEL_DRIVE && plan.placement.geometryVersion>=7) 12_000 else MineWorkingPlanner.MAX_BLOCKS) add("footprint-too-large:${plan.blocks.size}")
+        if (plan.blocks.size > if(MineDriveLayout.machine(plan.type, plan.placement) && plan.placement.geometryVersion>=7) 12_000 else MineWorkingPlanner.MAX_BLOCKS) add("footprint-too-large:${plan.blocks.size}")
         if (plan.footprint != plan.blocks.keys) add("footprint-map-mismatch")
         if (plan.blocks.keys.any { it.world != plan.entrance.world }) add("mixed-world")
-        val maxHeight = if (plan.type == MineIncidentType.TUNNEL_DRIVE && plan.placement.geometryVersion >= 6) 9 else MAX_HEIGHT
+        val maxHeight = if (MineDriveLayout.machine(plan.type, plan.placement) && plan.placement.geometryVersion >= 6) 9 else MAX_HEIGHT
         if (plan.blocks.keys.any { it.y !in plan.entrance.y..(plan.entrance.y + maxHeight) }) add("height-out-of-range")
         if (plan.shell.any { it !in plan.blocks }) add("shell-outside-footprint")
         if (plan.walkable.any { it !in plan.blocks }) add("walkable-outside-footprint")
@@ -261,14 +261,14 @@ internal object MineWorkingLayout {
         if (plan.type == MineIncidentType.TUNNEL_DRIVE && plan.excavation.any { plan.blocks[it] == AIR }) {
             add("tunnel-excavation-is-air")
         }
-        if (plan.type != MineIncidentType.TUNNEL_DRIVE && plan.excavation.any { plan.blocks[it] != AIR }) {
+        if (!MineDriveLayout.machine(plan.type, plan.placement) && plan.type != MineIncidentType.TUNNEL_DRIVE && plan.excavation.any { plan.blocks[it] != AIR }) {
             add("open-working-excavation-blocked")
         }
         if (plan.type == MineIncidentType.TRACK_DAMAGE && plan.rubble.size != 3) add("track-damage-must-have-three-gaps")
         if (plan.type == MineIncidentType.TRACK_DAMAGE && plan.rails.size != plan.rubble.size) add("track-damage-rails-must-match-gaps")
-        if (plan.type == MineIncidentType.RAIL_EXTENSION && plan.rubble.isEmpty()) add("rail-extension-without-rubble")
+        if (plan.type == MineIncidentType.RAIL_EXTENSION && !MineDriveLayout.rail(plan.type,plan.placement) && plan.rubble.isEmpty()) add("rail-extension-without-rubble")
         if (plan.type == MineIncidentType.TUNNEL_DRIVE && plan.excavation.isEmpty()) add("tunnel-without-excavation")
-        if (plan.type in TRACK_TYPES && (plan.rails.isEmpty() || plan.cartRoute.isEmpty())) add("track-without-route")
+        if (plan.type in TRACK_TYPES && !MineDriveLayout.rail(plan.type,plan.placement) && (plan.rails.isEmpty() || plan.cartRoute.isEmpty())) add("track-without-route")
         if (plan.type !in TRACK_TYPES && plan.rails.isNotEmpty()) add("unexpected-track-route")
         if (plan.supportFrames.any { frame -> frame.keys.any { it in plan.walkable } }) add("support-crosses-walkable")
     }
@@ -332,7 +332,7 @@ internal object MineWorkingLayout {
     private fun railState(route: List<LocalPoint>, index: Int, placement: MineWorkingPlacement): String =
         railData(route.map { placement.absolute(it) }, index)
 
-    private fun railData(route: List<WorksitePosition>, index: Int): String {
+    internal fun railData(route: List<WorksitePosition>, index: Int): String {
         val current = route[index]
         // Rail shape stores the connection sides of the current block. The
         // previous edge therefore points current -> previous; using

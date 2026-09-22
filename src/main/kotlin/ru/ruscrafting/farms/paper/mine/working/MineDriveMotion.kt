@@ -41,12 +41,13 @@ internal object MineDriveMotion {
             .associateWith { version -> cells(version) }
     val excavationCells: Set<Int>
         get() = excavationCellsByVersion.getValue(ru.ruscrafting.farms.domain.MineWorkingPlacement.CURRENT_GEOMETRY_VERSION)
-    fun excavationCells(placement: ru.ruscrafting.farms.domain.MineWorkingPlacement) =
-        excavationCellsByVersion.getValue(placement.geometryVersion)
-    private fun cells(version: Int): Set<Int> = buildSet {
+    private val railCells = cells(ru.ruscrafting.farms.domain.MineWorkingPlacement.CURRENT_GEOMETRY_VERSION, true)
+    fun excavationCells(placement: ru.ruscrafting.farms.domain.MineWorkingPlacement, rail: Boolean = false) =
+        if (rail) railCells else excavationCellsByVersion.getValue(placement.geometryVersion)
+    private fun cells(version: Int, rail: Boolean = false): Set<Int> = buildSet {
         for (s in -MineDriveLayout.width(version)..MineDriveLayout.width(version))
             for (f in 1 until MineDriveLayout.LENGTH) {
-                if (MineDriveLayout.driveable(s,f,version)) add(MineDriveLayout.id(s,f,version))
+                if (MineDriveLayout.driveable(s,f,version,rail)) add(MineDriveLayout.id(s,f,version))
             }
     }
 }

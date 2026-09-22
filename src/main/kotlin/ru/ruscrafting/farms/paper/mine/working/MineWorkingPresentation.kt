@@ -57,7 +57,7 @@ internal class MineWorkingPresentation(
         val working = runtime.state.incident?.working ?: return
         highlights.reconcile(runtime, scene)
         reconcileReturn(runtime,scene,false)
-        val drive = scene.plan.type == ru.ruscrafting.farms.domain.MineIncidentType.TUNNEL_DRIVE && MineDriveLayout.enabled(working.placement)
+        val drive = MineDriveLayout.machine(scene.plan.type, working.placement)
         val targets = targets(runtime, scene).filter { it.label !in setOf("excavate", "clear_track") } +
             if (drive) emptyList() else listOf(MineWorkingTarget("entry", scene.plan.entrance.copy(y = scene.floor + 1), "entry"))
         val current = markers.getOrPut(runtime.settings.id) { linkedMapOf() }
@@ -98,8 +98,8 @@ internal class MineWorkingPresentation(
                 if (index in working.completed) null else MineWorkingTarget(index.toString(), position, label)
             }.let { if (one) it.take(1) else it.take(9) }
         fun station(id: String) = plan.stations[id]?.let { listOf(MineWorkingTarget(id, it, id)) }.orEmpty()
-        if (scene.plan.type == ru.ruscrafting.farms.domain.MineIncidentType.TUNNEL_DRIVE && MineDriveLayout.enabled(working.placement)) {
-            return listOf(MineWorkingTarget("drive-goal", working.placement.position(0,1,MineDriveLayout.LENGTH - 3), "drive_goal"))
+        if (MineDriveLayout.machine(scene.plan.type, working.placement)) {
+            return listOf(MineWorkingTarget("drive-goal", working.placement.position(0,1,MineDriveLayout.LENGTH - 3), if(MineDriveLayout.rail(scene.plan.type,working.placement)) "rail_goal" else "drive_goal"))
         }
         return when (working.stage) {
             MineWorkingStage.EXCAVATE -> blocks(plan.excavation, "excavate", one = true)
@@ -114,6 +114,9 @@ internal class MineWorkingPresentation(
         }
     }
 
+    fun text(path: String, player: Player? = null): Component =
+        locale?.renderPath("mine.working.$path", player) ?: Component.empty()
+
     fun feedback(player: Player, path: String, values: Map<String, Component> = emptyMap()) {
         player.sendActionBar(locale?.renderPath("mine.working.$path", player, values) ?: Component.empty())
     }
@@ -123,7 +126,11 @@ internal class MineWorkingPresentation(
         val readyToQuench = MineWorkingEngine.canQuench(working, now)
         val path = if (working.stage == MineWorkingStage.HEAT) {
             if (readyToQuench) "heat-ready" else "heat-wait"
-        } else if (runtime.state.incident?.type == ru.ruscrafting.farms.domain.MineIncidentType.TUNNEL_DRIVE && MineDriveLayout.enabled(working.placement)) "drive-controls"
+        } else if (runtime.state.incident?.type?.let { MineDriveLayout.machine(it,working.placement) } == true) {
+            val rail=working.drive?.rail
+            if(rail?.service != null) if(rail.service.kind==ru.ruscrafting.farms.domain.MineRailServiceKind.JAM) "rail-jammed" else "rail-empty"
+            else if(runtime.state.incident?.type==ru.ruscrafting.farms.domain.MineIncidentType.RAIL_EXTENSION) "rail-controls" else "drive-controls"
+        }
         else "hint.${working.stage.name.lowercase()}"
         val deadline = working.heatStartedAt + MineWorkingEngine.HEAT_MILLIS +
             if (readyToQuench) MineWorkingEngine.HEAT_WINDOW_MILLIS else 0L
@@ -144,7 +151,7 @@ internal class MineWorkingPresentation(
     }
 
     fun reconcileReturn(runtime: MineRuntime, scene: MineWorkingScene, completed: Boolean) {
-        if(scene.plan.type!=ru.ruscrafting.farms.domain.MineIncidentType.TUNNEL_DRIVE || !MineDriveLayout.enabled(scene.plan.placement)) return
+        if(!MineDriveLayout.machine(scene.plan.type,scene.plan.placement)) return
         val target=MineWorkingTarget("return-lift",MineDriveLayout.returnPoint(scene.plan.placement),"return-lift")
         returnTargets[runtime.settings.id]=target
         returnMarkers.reconcile("working-return:${runtime.settings.id}",listOf(

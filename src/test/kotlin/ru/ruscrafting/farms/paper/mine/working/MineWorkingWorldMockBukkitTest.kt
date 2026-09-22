@@ -50,6 +50,53 @@ class MineWorkingWorldMockBukkitTest : FunSpec({
 
     afterEach { paper.close() }
 
+    test("machine rails and lamps reconstruct then restore the exact shared scene journal") {
+        val fixture=fixture(world,MineIncidentType.RAIL_EXTENSION,version=9)
+        val sceneOwner=owner(plugin)
+        val workings=MineWorkingWorld(fixture.registry,sceneOwner,MockBukkitFarmBlockDataDecoder)
+        populate(world,fixture.plan,fixture.placement)
+        val originals=fixture.plan.blocks.keys.associateWith { block(world,it).blockData.asString }
+        workings.prewarm(fixture.runtime,fixture.type,fixture.placement)
+        repeat(256) { workings.process() }
+        workings.prepare(fixture.runtime,fixture.type,fixture.placement,fixture.nonce) shouldBe true
+        drain(sceneOwner,workings,fixture.runtime)
+        workings.isReady(fixture.runtime) shouldBe true
+        val route=(0..20).map { MineDriveLayout.id(0,it) }
+        val progress=ru.ruscrafting.farms.domain.MineDriveProgress(
+            carved=route.toSet(),lamps=setOf(route[10]),checkpoint=route.last(),
+            rail=ru.ruscrafting.farms.domain.MineRailProgress(route=route))
+        fixture.runtime.state=fixture.runtime.state.copy(incident=fixture.runtime.state.incident!!.let {
+            it.copy(working=it.working!!.copy(drive=progress))
+        })
+        workings.project(fixture.runtime)
+        block(world,MineDriveLayout.position(fixture.placement,route[12])).type shouldBe Material.RAIL
+        block(world,MineDriveLayout.position(fixture.placement,route[20])).type shouldBe Material.AIR
+        block(world,MineDriveLayout.position(fixture.placement,route[12],0)).type shouldBe Material.POLISHED_ANDESITE
+        // Reversing withdraws the tail instead of leaving rails under the native vehicle.
+        val reversed=progress.copy(checkpoint=route[17],rail=progress.rail!!.copy(route=route.take(18)))
+        fixture.runtime.state=fixture.runtime.state.copy(incident=fixture.runtime.state.incident!!.let {
+            it.copy(working=it.working!!.copy(drive=reversed))
+        })
+        workings.project(fixture.runtime)
+        block(world,MineDriveLayout.position(fixture.placement,route[16])).type shouldBe Material.AIR
+        workings.clearQueues()
+        val restoredOwner=owner(plugin)
+        val restored=MineWorkingWorld(fixture.registry,restoredOwner,MockBukkitFarmBlockDataDecoder)
+        restored.reconcileLoaded();drain(restoredOwner,restored,fixture.runtime)
+        restored.isReady(fixture.runtime) shouldBe true
+        block(world,MineDriveLayout.position(fixture.placement,route[12])).type shouldBe Material.RAIL
+        block(world,MineDriveLayout.position(fixture.placement,route[10],4)).type shouldBe Material.LANTERN
+        val final=reversed.copy(rail=reversed.rail!!.copy(finished=true))
+        fixture.runtime.state=fixture.runtime.state.copy(incident=fixture.runtime.state.incident!!.let {
+            it.copy(working=it.working!!.copy(drive=final))
+        })
+        restored.project(fixture.runtime)
+        final.rail!!.route.forEach { block(world,MineDriveLayout.position(fixture.placement,it)).type shouldBe Material.RAIL }
+        restored.startRestore(fixture.runtime)
+        while(restored.isRestoring(fixture.runtime)) restored.process()
+        originals.forEach { (p,data)->block(world,p).blockData.asString shouldBe data }
+    }
+
     listOf(5, 7, 8).forEach { version ->
         test("driven excavation and lamps replay after restart without touching bedrock and restore originals v$version") {
             val fixture = fixture(world, MineIncidentType.TUNNEL_DRIVE, version = version)

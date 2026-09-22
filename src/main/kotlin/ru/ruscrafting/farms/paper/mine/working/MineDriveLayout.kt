@@ -17,6 +17,9 @@ internal object MineDriveLayout {
     private const val CENTRAL_MASS_GEOMETRY_VERSION = 8
 
     fun enabled(placement: MineWorkingPlacement) = placement.geometryVersion >= 5
+    fun rail(type: MineIncidentType, placement: MineWorkingPlacement) = type == MineIncidentType.RAIL_EXTENSION && placement.geometryVersion >= 9
+    fun machine(type: MineIncidentType, placement: MineWorkingPlacement) =
+        (type == MineIncidentType.TUNNEL_DRIVE && enabled(placement)) || rail(type, placement)
     fun width(version: Int) = if(version>=7) HALF_WIDTH else 8
     private fun stride(version: Int) = width(version)*2+1
     fun id(side: Int, forward: Int, version: Int = MineWorkingPlacement.CURRENT_GEOMETRY_VERSION) = forward * stride(version) + side + width(version)
@@ -36,7 +39,7 @@ internal object MineDriveLayout {
         else legacyBedrock(side, forward)
     fun radius(forward: Int, version: Int = MineWorkingPlacement.CURRENT_GEOMETRY_VERSION) = if (forward <= 1) 1 else if (forward == 2) 3 else width(version) - 1
     fun insideBoundary(side: Int, forward: Int, version: Int = MineWorkingPlacement.CURRENT_GEOMETRY_VERSION) = forward in 0 until LENGTH && kotlin.math.abs(side) <= radius(forward,version)
-    fun driveable(side: Int, forward: Int, version: Int = MineWorkingPlacement.CURRENT_GEOMETRY_VERSION) = forward in 1 until LENGTH && kotlin.math.abs(side) <= radius(forward,version) && !bedrock(side, forward, version)
+    fun driveable(side: Int, forward: Int, version: Int = MineWorkingPlacement.CURRENT_GEOMETRY_VERSION, rail: Boolean = false) = forward in 1 until LENGTH && kotlin.math.abs(side) <= radius(forward,version) && (rail || !bedrock(side, forward, version))
     /** Broad arrival area inside the discovery cavern, including approaches around either bedrock rib. */
     fun reached(side: Double, forward: Double, version: Int): Boolean =
         forward>=35.0 && (side*side/(if(version>=7) 100.0 else 30.25)+(forward-39)*(forward-39)/25.0)<=1.0
@@ -78,7 +81,8 @@ internal object MineDriveLayout {
         }
     }
 
-    fun plan(placement: MineWorkingPlacement): MineWorkingPlan {
+    fun plan(placement: MineWorkingPlacement, type: MineIncidentType = MineIncidentType.TUNNEL_DRIVE): MineWorkingPlan {
+        val rail = rail(type, placement)
         val blocks = linkedMapOf<WorksitePosition, String>()
         val walkable = linkedSetOf<WorksitePosition>()
         val halfWidth=width(placement.geometryVersion)
@@ -90,7 +94,7 @@ internal object MineDriveLayout {
                 val opening = interior && (f <= 3 || f >= LENGTH - 4)
                 val noise = WorksiteCoherentNoise.sample(placement.layoutSeed, s * .3, up * .3, f * .24)
                 blocks[p] = when {
-                    interior && bedrock(s, f, placement.geometryVersion) -> BEDROCK
+                    interior && !rail && bedrock(s, f, placement.geometryVersion) -> BEDROCK
                     opening -> AIR
                     noise > .24 -> "minecraft:tuff"
                     noise < -.27 -> "minecraft:andesite"
@@ -101,7 +105,7 @@ internal object MineDriveLayout {
         }
         if (placement.geometryVersion >= 6) diamondChamber(placement, blocks, walkable)
         val excavation = (4 until LENGTH - 4).map { placement.position(0, 1, it) }.filter { blocks[it] != AIR }
-        return MineWorkingPlan(MineIncidentType.TUNNEL_DRIVE, placement, blocks, blocks.keys,
+        return MineWorkingPlan(type, placement, blocks, blocks.keys,
             blocks.keys - walkable, walkable, excavation, emptyList(), emptyList(), emptyList(), emptyList(),
             emptyList(), emptyMap(), emptySet(), placement.entrance)
     }

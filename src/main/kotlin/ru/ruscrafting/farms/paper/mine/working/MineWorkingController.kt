@@ -37,6 +37,7 @@ internal class MineWorkingController(
     private val clock: () -> Long,
     private val drive: MineDriveController,
     private val liftReturn: (MineRuntime) -> Location? = { null },
+    private val railService: MineRailDriveService? = null,
 ) {
     private val pendingSaves = mutableSetOf<String>()
     private val retiring = mutableSetOf<String>()
@@ -88,7 +89,7 @@ internal class MineWorkingController(
             state.persistAsync()
         }
         presentation.reconcile(runtime, scene)
-        if (incident.type == MineIncidentType.TUNNEL_DRIVE && MineDriveLayout.enabled(working.placement)) return
+        if (MineDriveLayout.machine(incident.type, working.placement)) return
         val operator = drillOperators[runtime.settings.id]?.let(org.bukkit.Bukkit::getPlayer)
         val drillFace = presentation.drillPosition(runtime, scene)
         val drilling = working.stage == MineWorkingStage.EXCAVATE && operator != null &&
@@ -116,18 +117,19 @@ internal class MineWorkingController(
     }
 
     fun updateDrive(now: Long) {
-        registry.snapshot().filter { it.state.incident?.type == MineIncidentType.TUNNEL_DRIVE &&
+        registry.snapshot().filter { isDrive(it) &&
             it.settings.id !in retiring && it.settings.id !in completionGrace }.forEach { runtime ->
             val working = runtime.state.incident?.working ?: return@forEach
             if (!MineDriveLayout.enabled(working.placement) || !world.isReady(runtime)) return@forEach
             val scene = world.scene(runtime) ?: return@forEach
+            railService?.tick(runtime,now)
             drive.tick(runtime, scene, now, { participant(runtime, it) }) { player, final ->
                 val incident = runtime.state.incident ?: return@tick
                 val sequence = runtime.state.sequence
                 world.project(runtime, incident.type, final)
                 incidents.work(runtime, player, amount = (incident.required - incident.progress).coerceAtLeast(1))
                 beginCompletionGrace(runtime, sequence)
-                presentation.feedback(player, "drive-complete")
+                presentation.feedback(player, if(incident.type==MineIncidentType.RAIL_EXTENSION) "rail-complete" else "drive-complete")
                 player.playSound(player.location, Sound.BLOCK_BELL_USE, .8f, 1.3f)
             }
         }
@@ -197,11 +199,17 @@ internal class MineWorkingController(
     }
 
     fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean {
+        if(event.hand==EquipmentSlot.HAND) for(runtime in registry.snapshot()) {
+            if(isDrive(runtime) && participant(runtime,event.player) && world.isReady(runtime) &&
+                railService?.interact(runtime,event.player,event.rightClicked)==true) {
+                event.isCancelled=true; return true
+            }
+        }
         drive.zone(event.rightClicked)?.let { zone ->
             event.isCancelled = true
             val runtime = registry.byId(zone) ?: return true
             if (event.hand == EquipmentSlot.HAND && participant(runtime, event.player) && world.isReady(runtime) &&
-                runtime.state.incident?.type == MineIncidentType.TUNNEL_DRIVE) drive.mount(runtime, event.player)
+                isDrive(runtime)) drive.mount(runtime, event.player)
             return true
         }
         val (zone, target) = presentation.target(event.rightClicked) ?: return false
@@ -330,6 +338,16 @@ internal class MineWorkingController(
     }
 
     fun guardMovement(event: PlayerMoveEvent): Boolean {
+        // Drivers can enter without an expedition receipt, so equipment departure
+        // is also checked against the physical scene rather than only return records.
+        registry.snapshot().filter { isDrive(it) }.forEach { runtime ->
+            val scene = world.scene(runtime)
+            if (scene?.inside(event.from) == true && (event.player.gameMode == org.bukkit.GameMode.SPECTATOR || !scene.inside(event.to))) {
+                equipment.clear(runtime,event.player.uniqueId)
+                railService?.release(event.player)
+                drive.release(event.player)
+            }
+        }
         if (event.player.gameMode == org.bukkit.GameMode.SPECTATOR) {
             travel.reconcile(event.player, inside = false)
             return false
@@ -411,6 +429,7 @@ internal class MineWorkingController(
 
     fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
         drive.release(player)
+        railService?.release(player)
         drillOperators.entries.removeIf { it.value == player.uniqueId }
         registry.snapshot().filter { it.state.incident?.working != null }.forEach { equipment.clear(it, player.uniqueId) }
         when (reason) {
@@ -448,6 +467,7 @@ internal class MineWorkingController(
         equipment.clear(runtime)
         drillOperators.remove(runtime.settings.id)
         drive.cleanup(runtime.settings.id)
+        railService?.cleanup(runtime.settings.id)
         presentation.cleanup(runtime.settings.id)
         val evacuated = if (retainedScene == null) {
             travel.evacuate(runtime.settings.id)
@@ -477,6 +497,7 @@ internal class MineWorkingController(
     fun process(): Int = world.process()
     fun reconcileLoaded() {
         drive.reconcileLoaded()
+        railService?.cleanup()
         presentation.reconcileLoaded()
         world.reconcileLoaded()
         registry.snapshot().flatMap { it.region.world.players }.distinctBy { it.uniqueId }.forEach(::recover)
@@ -484,6 +505,7 @@ internal class MineWorkingController(
     fun onChunkLoad(chunk: org.bukkit.Chunk) = world.onChunkLoad(chunk)
     fun beforeReload() {
         drive.cleanup()
+        railService?.cleanup()
         // The lifecycle supervisor discards old save callbacks. Their locks must
         // not survive and prevent progress in the reconfigured working.
         pendingSaves.clear()
@@ -491,6 +513,7 @@ internal class MineWorkingController(
     }
     fun cleanup() {
         drive.cleanup()
+        railService?.cleanup()
         registry.snapshot().forEach { runtime ->
             equipment.clear(runtime)
             presentation.cleanup(runtime.settings.id)
@@ -509,7 +532,7 @@ internal class MineWorkingController(
     }
 
     private fun isDrive(runtime: MineRuntime): Boolean = runtime.state.incident?.let {
-        it.type == MineIncidentType.TUNNEL_DRIVE && it.working?.placement?.let(MineDriveLayout::enabled) == true
+        it.working?.placement?.let { placement -> MineDriveLayout.machine(it.type,placement) } == true
     } == true
 
     private fun participant(runtime: MineRuntime, player: Player): Boolean = allowed(runtime, player) &&
@@ -537,6 +560,7 @@ internal class MineWorkingController(
             deadlineAt = completedAt + HARD_DEADLINE_MILLIS,
         )
         drive.cleanup(runtime.settings.id)
+        railService?.cleanup(runtime.settings.id)
         presentation.cleanup(runtime.settings.id)
         presentation.reconcileReturn(runtime,scene,true)
         world.retain(scene)
@@ -573,7 +597,12 @@ internal class MineWorkingController(
 
     private fun total(type: MineIncidentType, plan: MineWorkingPlan): Int = when (type) {
         MineIncidentType.TUNNEL_DRIVE -> if (MineDriveLayout.enabled(plan.placement)) MineDriveLayout.CONTRIBUTION_BUDGET else plan.excavation.size + plan.supports.size
-        MineIncidentType.RAIL_EXTENSION, MineIncidentType.TRACK_DAMAGE -> plan.rubble.size + plan.rails.size + plan.cartRoute.size
+        MineIncidentType.RAIL_EXTENSION -> if(MineDriveLayout.rail(type,plan.placement)) {
+            // Preserve the old event's contribution budget for the same seed and anchor.
+            val legacy=MineWorkingLayout.plan(type,plan.placement.copy(geometryVersion=8))
+            legacy.rubble.size+legacy.rails.size+legacy.cartRoute.size
+        } else plan.rubble.size+plan.rails.size+plan.cartRoute.size
+        MineIncidentType.TRACK_DAMAGE -> plan.rubble.size + plan.rails.size + plan.cartRoute.size
         MineIncidentType.ORE_WORKSHOP -> MineWorkingEngine.BATCHES * (MineWorkingEngine.CRUSH_STROKES + 3)
         else -> error("Unsupported lateral working: $type")
     }

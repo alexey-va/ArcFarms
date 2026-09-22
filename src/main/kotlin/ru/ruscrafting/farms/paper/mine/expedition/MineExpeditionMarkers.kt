@@ -300,6 +300,8 @@ internal class MineExpeditionMarkers(
             target.model in setOf("crane_console", "furnace_console", "furnace_air_console", "machine_console", "mounted_console") -> 2.3
             target.model?.startsWith("factory_") == true && (target.id.startsWith("fx_") || target.id.startsWith("factory_experiment_") || target.model.startsWith("factory_crane_")) ->
                 (blueprint.maxOfOrNull { it.center.y + it.size.y / 2 } ?: 1f) * target.modelScale + .5
+            target.model?.startsWith("rail_drive_") == true ->
+                (blueprint.maxOfOrNull { it.center.y + it.size.y / 2 } ?: 1f) * target.modelScale + .45
             blueprint.isNotEmpty() -> 4.0*target.modelScale
             else -> 2.0
         }

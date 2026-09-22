@@ -242,7 +242,8 @@ class MineWorkingLifecycleMockBukkitTest : FunSpec({
         verify(exactly = 1) { travel.enterOnFoot(any(), any()) }
     }
 
-    test("drive boards without an entrance lease and allows approaching from inside the scene") {
+    for (driveType in listOf(MineIncidentType.TUNNEL_DRIVE,MineIncidentType.RAIL_EXTENSION)) {
+    test("$driveType boards without an entrance lease and reclaims equipment on departure") {
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("WalkingMiner")
         val from = Location(world, 4.5, 65.0, 4.5)
@@ -251,8 +252,8 @@ class MineWorkingLifecycleMockBukkitTest : FunSpec({
         val runtime = lifecycleRuntime(world).also { runtime ->
             val incident=runtime.state.incident!!
             val working=incident.working!!
-            runtime.state=runtime.state.copy(incident=incident.copy(type=MineIncidentType.TUNNEL_DRIVE,
-                working=working.copy(placement=working.placement.copy(geometryVersion=6))))
+            runtime.state=runtime.state.copy(incident=incident.copy(type=driveType,
+                working=working.copy(placement=working.placement.copy(geometryVersion=9))))
         }
         val registry = MineRuntimeRegistry().also { it.replace(listOf(runtime)) }
         val placement = mockk<MineWorkingPlacementService>(relaxed = true)
@@ -275,10 +276,11 @@ class MineWorkingLifecycleMockBukkitTest : FunSpec({
         every { access.isAdminEditing(player) } returns false
         every { access.hasAccess(player, runtime.settings.permission) } returns true
         val drive=mockk<MineDriveController>(relaxed=true)
+        val railService=mockk<MineRailDriveService>(relaxed=true)
         val entity=world.spawn(from, org.bukkit.entity.Interaction::class.java)
         every { drive.zone(entity) } returns runtime.settings.id
         val controller = MineWorkingController(
-            registry, placement, sceneWorld, incidents, equipment, presentation, travel, access, state, tasks, { 2_000L }, drive = drive,
+            registry, placement, sceneWorld, incidents, equipment, presentation, travel, access, state, tasks, { 2_000L }, drive = drive, railService=railService,
         )
 
         val event = PlayerMoveEvent(player, from, to)
@@ -291,6 +293,12 @@ class MineWorkingLifecycleMockBukkitTest : FunSpec({
         every { access.isAdminEditing(player) } returns true
         controller.onInteractEntity(click)
         verify(exactly=1) { drive.mount(runtime,player) }
+        val outside=Location(world,100.0,65.0,100.0)
+        controller.guardMovement(PlayerMoveEvent(player,to,outside)) shouldBe false
+        verify(exactly=1) { equipment.clear(runtime,player.uniqueId) }
+        verify(exactly=1) { railService.release(player) }
+        verify(exactly=1) { drive.release(player) }
+    }
     }
 
     test("discovery return head uses the configured lift landing without requiring an entrance lease") {

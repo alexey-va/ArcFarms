@@ -161,6 +161,10 @@ internal class MineWorkingWorld(
         val working = incident?.working ?: workingOverride ?: return
         val plan = scene(runtime)?.plan ?: return
         val changes = linkedMapOf<WorksitePosition, String>()
+        if (MineDriveLayout.machine(type, plan.placement)) {
+            projectDrive(runtime, plan, working)
+            return
+        }
         when (type) {
             MineIncidentType.TUNNEL_DRIVE -> {
                 if (MineDriveLayout.enabled(plan.placement)) {
@@ -222,13 +226,26 @@ internal class MineWorkingWorld(
         }
         val old = projectedDrive[key(runtime)]
         (progress.carved - old?.carved.orEmpty()).forEach { id ->
-            if (MineDriveLayout.driveable(MineDriveLayout.side(id,plan.placement.geometryVersion), MineDriveLayout.forward(id,plan.placement.geometryVersion),plan.placement.geometryVersion)) {
+            if (MineDriveLayout.driveable(MineDriveLayout.side(id,plan.placement.geometryVersion), MineDriveLayout.forward(id,plan.placement.geometryVersion),plan.placement.geometryVersion,MineDriveLayout.rail(plan.type,plan.placement))) {
                 for (up in 1..4) put(MineDriveLayout.position(plan.placement, id, up), AIR)
             }
         }
         (progress.lamps - old?.lamps.orEmpty()).forEach { id ->
             put(MineDriveLayout.position(plan.placement, id, 5), "minecraft:stripped_spruce_log[axis=y]")
             put(MineDriveLayout.position(plan.placement, id, 4), "minecraft:lantern[hanging=true,waterlogged=false]")
+        }
+        if (MineDriveLayout.rail(plan.type,plan.placement)) {
+            val route = progress.rail?.route.orEmpty().map { MineDriveLayout.position(plan.placement,it) }
+            val previous = old?.rail?.route.orEmpty().map { MineDriveLayout.position(plan.placement,it) }.toSet()
+            // Leave the native carrier's immediate footprint free of rail physics;
+            // the rear laying head commits sections as the chassis clears them.
+            val laidIds = progress.rail?.let { ru.ruscrafting.farms.domain.MineRailProgression.laid(it,progress.checkpoint) }.orEmpty().toSet()
+            val laid = route.filterIndexed { index,_ -> progress.rail!!.route[index] in laidIds }
+            for(p in previous - laid.toSet()) put(p,AIR)
+            laid.forEach { p ->
+                put(p.copy(y=p.y-1), "minecraft:polished_andesite")
+                put(p, MineWorkingLayout.railData(route,route.indexOf(p)))
+            }
         }
         projectedDrive[key(runtime)] = progress
     }
