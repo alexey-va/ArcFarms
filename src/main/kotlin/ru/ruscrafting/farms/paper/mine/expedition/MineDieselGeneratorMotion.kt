@@ -18,7 +18,7 @@ internal object MineDieselGeneratorMotion {
     const val CRANK_RADIUS = .45f
     const val ROD_LENGTH = 2.5f
     val motions = (0..5).flatMap { listOf("diesel_piston_$it", "diesel_rod_$it",
-        "diesel_valve_inlet_$it", "diesel_valve_exhaust_$it") }.toSet()
+        "diesel_valve_inlet_$it", "diesel_valve_exhaust_$it", "diesel_spring_inlet_$it", "diesel_spring_exhaust_$it") }.toSet()
     private val offsets = floatArrayOf(0f, (2 * PI / 3).toFloat(), (4 * PI / 3).toFloat(),
         (4 * PI / 3).toFloat(), (2 * PI / 3).toFloat(), 0f)
 
@@ -40,7 +40,7 @@ internal object MineDieselGeneratorMotion {
         phase + offsets[part.motion.last().digitToInt()]
 
     fun rotation(part: MineDisplayBlueprints.Part, phase: Float): Quaternionf {
-        if (part.motion.startsWith("diesel_valve_")) return Quaternionf().rotateZ(part.angle)
+        if (part.motion.startsWith("diesel_valve_") || part.motion.startsWith("diesel_spring_")) return Quaternionf().rotateZ(part.angle)
         if (part.motion.startsWith("diesel_piston_")) return Quaternionf().rotateZ(part.angle)
         val x = CRANK_RADIUS * sin(phase(part, phase))
         val rise = sqrt(ROD_LENGTH * ROD_LENGTH - x * x)
@@ -48,6 +48,9 @@ internal object MineDieselGeneratorMotion {
     }
 
     fun center(part: MineDisplayBlueprints.Part, phase: Float): Vector3f {
+        if (part.motion.startsWith("diesel_spring_")) return Vector3f(part.center).add(0f,
+            -valveLift(part.motion.last().digitToInt(), part.motion.startsWith("diesel_spring_inlet_"), phase) *
+                ((part.center.y - 5.59f) / .37f).coerceIn(0f, 1f), 0f)
         if (part.motion.startsWith("diesel_valve_")) return Vector3f(part.center).add(0f,
             -valveLift(part.motion.last().digitToInt(), part.motion.startsWith("diesel_valve_inlet_"), phase), 0f)
         val theta = phase(part, phase)

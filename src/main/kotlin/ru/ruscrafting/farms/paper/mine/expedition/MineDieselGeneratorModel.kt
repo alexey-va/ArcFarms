@@ -151,7 +151,7 @@ internal object MineDieselGeneratorModel {
         fun halfLinerY(material: Material, cx: Float, cy: Float, cz: Float,
                        radius: Float, height: Float, segments: Int = 6) {
             val step = PI.toFloat() / segments
-            val side = max(.12f, radius * .30f)
+            val side = .06f
             repeat(segments) { index ->
                 val a = PI.toFloat() / 2f + (index + .5f) * step
                 box(material, cx + cos(a) * radius, cy, cz + sin(a) * radius,
@@ -294,33 +294,42 @@ internal object MineDieselGeneratorModel {
 
         // --- six cylinder barrels, heads, rocker covers, and injector lines ---
         cylinderZ.forEachIndexed { index, z ->
-            halfLinerY(Material.POLISHED_BASALT, 0f, 4.18f, z, .46f, 1.72f)
-            halfLinerY(Material.IRON_BLOCK, 0f, 5.0f, z, .44f, .18f)
-            box(Material.POLISHED_ANDESITE, .2f, 5.22f, z, 1.9f, .46f, .9f)
-            // Rear half-cover leaves the cam lobes and valve followers exposed.
-            box(Material.WEATHERED_CUT_COPPER, -.26f, 5.63f, z, 1.05f, .32f, .78f)
-            box(Material.CUT_COPPER, -.26f, 5.84f, z, .94f, .1f, .6f)
-            for (x in listOf(-.28f)) {
-                tube(Material.CUT_COPPER, Vector3f(x, 5.88f, z), Vector3f(x, 6.48f, z), .09f)
-                box(Material.IRON_BLOCK, x, 6.52f, z, .14f, .14f, .14f)
-            }
-            // A small service bolt pair keeps each cylinder readable as its own unit.
-            for (x in listOf(-.64f, .12f))
-                box(Material.IRON_BLOCK, x, 5.92f, z, .12f, .1f, .12f)
+            halfLinerY(Material.POLISHED_BASALT, 0f, 4.18f, z, .51f, 1.72f)
+            halfLinerY(Material.IRON_BLOCK, 0f, 5.0f, z, .49f, .18f)
+            // Open +X head section: the two valve faces and injector actually
+            // enter the bore, while rear casting and end cheeks retain its outline.
+            box(Material.POLISHED_ANDESITE, -.60f, 5.22f, z, .3f, .46f, .94f)
+            for (end in listOf(-1f, 1f))
+                box(Material.POLISHED_ANDESITE, .12f, 5.22f, z + end * .435f, 1.14f, .46f, .07f)
+            box(Material.WEATHERED_CUT_COPPER, -.60f, 5.63f, z, .3f, .32f, .78f)
+            box(Material.CUT_COPPER, -.60f, 5.84f, z, .28f, .1f, .6f)
+            // One high-pressure injector per cylinder; the nozzle ends above
+            // the piston crown in the exposed combustion chamber (no spark plug).
+            box(Material.IRON_BLOCK, -.17f, 5.48f, z, .12f, .80f, .12f,
+                motion = "diesel_injector_body_$index")
+            box(Material.POLISHED_BASALT, -.17f, 6.13f, z, .23f, .26f, .18f)
+            box(Material.CUT_COPPER, -.17f, 5.94f, z, .28f, .12f, .22f)
+            box(Material.IRON_BLOCK, -.17f, 6.37f, z, .11f, .22f, .11f)
+            box(Material.IRON_BLOCK, -.17f, 5.0f, z, .055f, .16f, .055f,
+                motion = "diesel_injector_tip_$index")
+            hose(Material.CUT_COPPER, listOf(Vector3f(-.65f, 6.52f, z),
+                Vector3f(-.17f, 6.52f, z), Vector3f(-.17f, 6.40f, z)), .075f)
+            box(Material.IRON_BLOCK, -.65f, 5.92f, z, .12f, .1f, .12f)
         }
-        box(Material.WEATHERED_CUT_COPPER, -.28f, 6.58f, 0f, .54f, .18f, 6.5f)
+        box(Material.WEATHERED_CUT_COPPER, -.65f, 6.58f, 0f, .26f, .18f, 6.5f)
         for (z in cylinderZ)
-            box(Material.IRON_BLOCK, -.28f, 6.72f, z, .16f, .16f, .52f)
+            box(Material.IRON_BLOCK, -.65f, 6.72f, z, .16f, .1f, .30f)
 
         // --- exposed overhead camshaft and twelve direct valve followers -----
-        val camX = .85f
+        val camX = .10f
         val camY = 6.5f
         val camPivot = Vector3f(camX, camY, 0f)
         box(Material.IRON_BLOCK, camX, camY, -.2f, .16f, .16f, 7.1f,
             moving = true, pivot = camPivot, motion = "diesel_cam")
-        box(Material.POLISHED_BASALT, camX, 5.42f, 0f, .52f, .1f, 6.78f)
+        box(Material.POLISHED_BASALT, -.64f, 5.42f, 0f, .20f, .1f, 6.78f)
         for (z in listOf(-3.3f, -2.2f, -1.1f, 0f, 1.1f, 2.2f, 3.3f)) {
-            box(Material.POLISHED_ANDESITE, camX, 5.98f, z, .42f, 1.04f, .14f)
+            box(Material.POLISHED_BASALT, -.15f, 5.42f, z, .78f, .1f, .12f)
+            box(Material.POLISHED_ANDESITE, camX, 5.985f, z, .28f, 1.03f, .12f)
             box(Material.CUT_COPPER, camX, camY, z, .48f, .48f, .16f)
             box(Material.IRON_BLOCK, camX, 6.79f, z, .18f, .1f, .12f)
         }
@@ -336,11 +345,27 @@ internal object MineDieselGeneratorModel {
                 val motion = "diesel_valve_${if (inlet) "inlet" else "exhaust"}_$index"
                 box(Material.IRON_BLOCK, camX, 6.124f, lobeZ, .9f, .12f, .19f,
                     moving = true, motion = motion)
-                box(Material.IRON_BLOCK, camX, 5.764f, lobeZ, .07f, .6f, .07f,
+                // Stem joins the direct follower to a face inside the cylinder.
+                box(Material.IRON_BLOCK, camX, 5.5595f, lobeZ, .055f, 1.009f, .055f,
                     moving = true, motion = motion)
-                box(Material.POLISHED_ANDESITE, camX, 5.43f, lobeZ, .24f, .07f, .24f,
+                box(if (inlet) Material.IRON_BLOCK else Material.COPPER_BLOCK,
+                    camX, 5.02f, lobeZ, .24f, .07f, .24f, moving = true, motion = motion)
+                box(Material.POLISHED_BASALT, camX, 5.45f, lobeZ, .13f, .16f, .13f)
+                box(Material.IRON_BLOCK, camX, 5.56f, lobeZ, .24f, .06f, .24f)
+                box(Material.IRON_BLOCK, camX, 5.995f, lobeZ, .24f, .07f, .24f,
                     moving = true, motion = motion)
-                box(Material.POLISHED_BASALT, camX, 5.66f, lobeZ, .19f, .3f, .19f)
+                // Four square wire turns compress between the fixed seat and
+                // moving retainer; the block palette keeps their small edges readable.
+                for (coil in 0..3) {
+                    val cy = 5.61f + coil * .102f
+                    val spring = "diesel_spring_${if (inlet) "inlet" else "exhaust"}_$index"
+                    for (side in listOf(-1f, 1f)) {
+                        box(Material.IRON_BLOCK, camX + side * .085f, cy, lobeZ, .025f, .025f, .195f,
+                            moving = true, motion = spring)
+                        box(Material.IRON_BLOCK, camX, cy, lobeZ + side * .085f, .145f, .025f, .025f,
+                            moving = true, motion = spring)
+                    }
+                }
             }
         }
         // Separate timing belt connects the crank and cam at a 2:1 ratio.
@@ -364,12 +389,12 @@ internal object MineDieselGeneratorModel {
             box(Material.BLACK_CONCRETE, (a.x + b.x) / 2, (a.y + b.y) / 2, timingZ,
                 .07f, a.distance(b), .055f, atan2(-(b.x - a.x), b.y - a.y))
         }
-        // +X inspection rails frame the open side without turning it into a box.
+        // Keep the inspection rail below the pistons and open cylinder heads.
         for (z in listOf(-3.2f, -1.6f, 0f, 1.6f, 3.2f))
-            box(Material.POLISHED_BASALT, 1.72f, 4.25f, z, .18f, 2.25f, .16f)
-        for (y in listOf(3.16f, 5.34f))
+            box(Material.POLISHED_BASALT, 1.72f, 2.94f, z, .18f, .6f, .16f)
+        for (y in listOf(2.55f, 3.33f))
             box(Material.CUT_COPPER, 1.72f, y, 0f, .2f, .18f, 6.55f)
-        box(Material.YELLOW_CONCRETE, 1.83f, 5.05f, -2.75f, .08f, .34f, .54f)
+        box(Material.YELLOW_CONCRETE, 1.83f, 2.94f, -2.75f, .08f, .34f, .54f)
 
         // --- exhaust manifold, turbo, intake, filter, muffler, and stack --------
         for (z in cylinderZ) {
@@ -393,16 +418,15 @@ internal object MineDieselGeneratorModel {
         hose(Material.POLISHED_BLACKSTONE, listOf(
             Vector3f(-1.48f, 6.0f, 3.4f), Vector3f(-.95f, 6.0f, 3.4f),
             Vector3f(-.95f, 6.35f, 3.4f), Vector3f(-.95f, 6.35f, 2.9f),
-            Vector3f(-.15f, 6.35f, 2.9f), Vector3f(1.85f, 6.35f, 2.9f),
-            Vector3f(1.85f, 5.98f, 2.9f)), .2f)
-        // Intake plenum on the service side.
+            Vector3f(-1.5f, 6.35f, 2.9f), Vector3f(-1.5f, 6.12f, 2.9f)), .2f)
+        // The intake stays behind the cutaway, above the exhaust collector.
         for (z in cylinderZ) {
             hose(Material.BLACK_CONCRETE, listOf(
-                Vector3f(.72f, 5.66f, z), Vector3f(1.3f, 5.66f, z),
-                Vector3f(1.72f, 5.66f, z), Vector3f(1.72f, 5.98f, z)), .16f)
-            box(Material.EXPOSED_CUT_COPPER, 1.05f, 5.66f, z, .2f, .2f, .2f)
+                Vector3f(-.72f, 5.66f, z), Vector3f(-1.5f, 5.66f, z),
+                Vector3f(-1.5f, 6.12f, z)), .16f)
+            box(Material.EXPOSED_CUT_COPPER, -1.05f, 5.66f, z, .2f, .2f, .2f)
         }
-        box(Material.WEATHERED_CUT_COPPER, 1.85f, 5.98f, 0f, .32f, .32f, 6.15f)
+        box(Material.WEATHERED_CUT_COPPER, -1.5f, 6.12f, 0f, .32f, .32f, 6.15f)
         hose(Material.BLACK_CONCRETE, listOf(
             Vector3f(2.2f, 6.72f, 2.9f), Vector3f(2.2f, 7.05f, 2.9f),
             Vector3f(2.2f, 7.05f, 3.3f), Vector3f(-1.9f, 7.05f, 3.3f),
@@ -496,10 +520,10 @@ internal object MineDieselGeneratorModel {
 
         // A pair of yellow service plaques and fasteners make the open cutaway
         // read as a maintained industrial machine rather than loose decoration.
-        for (z in listOf(-2.75f, 2.75f)) {
-            box(Material.YELLOW_TERRACOTTA, 2.05f, 5.8f, z, .08f, .28f, .5f)
-            box(Material.IRON_BLOCK, 2.12f, 5.62f, z - .22f, .08f, .12f, .12f)
-            box(Material.IRON_BLOCK, 2.12f, 5.62f, z + .22f, .08f, .12f, .12f)
+        for (z in listOf(-1.9f, 1.9f)) {
+            box(Material.YELLOW_TERRACOTTA, 2.55f, 1.12f, z, .08f, .28f, .5f)
+            box(Material.IRON_BLOCK, 2.63f, 1.12f, z - .18f, .08f, .08f, .08f)
+            box(Material.IRON_BLOCK, 2.63f, 1.12f, z + .18f, .08f, .08f, .08f)
         }
     }
 }
