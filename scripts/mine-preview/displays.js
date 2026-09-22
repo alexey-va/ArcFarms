@@ -5,7 +5,7 @@ let expeditionMovingParts = [];
 let expeditionDemo = false;
 let expeditionFrame = null;
 const demoRotationAxis = new THREE.Vector3(0, 0, 1);
-const dieselMotions = new Set(Array.from({ length: 6 }, (_, i) => [`diesel_piston_${i}`, `diesel_rod_${i}`]).flat());
+const dieselMotions = new Set(Array.from({ length: 6 }, (_, i) => [`diesel_piston_${i}`, `diesel_rod_${i}`, `diesel_valve_inlet_${i}`, `diesel_valve_exhaust_${i}`]).flat());
 function beltPose(part, phase) {
   const straight = 7.6, radius = .28, arc = Math.PI * radius;
   let distance = (((phase + part.angle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2)) / (Math.PI * 2) * (straight * 2 + arc * 2);
@@ -20,11 +20,17 @@ function beltPose(part, phase) {
 }
 function poseExpeditionPart(mesh, part, phase) {
   const angle = !part.moving || ['press', 'feed', 'processed'].includes(part.motion) ? 0
-    : part.motion === 'lever' ? Math.sin(phase / 2) * .5 : part.motion === 'counter_rotate' ? -phase : phase;
+    : part.motion === 'diesel_cam' ? phase / 2 : part.motion === 'lever' ? Math.sin(phase / 2) * .5 : part.motion === 'counter_rotate' ? -phase : phase;
   const axis = part.motion === 'axle' ? new THREE.Vector3(1, 0, 0) : demoRotationAxis;
   let center = new THREE.Vector3(...part.center);
   let rotation = new THREE.Quaternion().setFromAxisAngle(axis, part.angle + angle);
-  if (dieselMotions.has(part.motion)) {
+  if (part.motion.startsWith('diesel_valve_') && dieselMotions.has(part.motion)) {
+    const cylinder = Number(part.motion.slice(-1));
+    const theta = phase / 2 - ([0, 2, 1, 4, 5, 3][cylinder] * Math.PI / 3 +
+      (part.motion.startsWith('diesel_valve_inlet_') ? 5 : 3) * Math.PI / 4);
+    center.y -= Math.max(0, .22 * Math.cos(theta) + .21 * Math.abs(Math.cos(theta)) + .09 * Math.abs(Math.sin(theta)) - .316);
+    rotation.setFromAxisAngle(demoRotationAxis, part.angle);
+  } else if (dieselMotions.has(part.motion)) {
     // Exact slider-crank geometry shared with MineDieselGeneratorMotion.
     const offsets = [0, 2, 4, 4, 2, 0];
     const theta = phase + offsets[Number(part.motion.slice(-1))] * Math.PI / 3;
@@ -81,7 +87,7 @@ buildMesh = function () {
       const mesh = createVanillaMesh(compiled, Infinity, lightMode === 'clay', false, null, Infinity);
       poseExpeditionPart(mesh, part, 0);
       root.add(mesh);
-      if (part.moving) expeditionMovingParts.push({ mesh, part });
+      if (part.moving) expeditionMovingParts.push({ mesh, part, model: assembly.model });
     }
     expeditionDisplays.add(root);
   }
@@ -112,10 +118,11 @@ demoToggle.onclick = () => {
   let lastFrame = -Infinity;
   const animate = now => {
     if (now - lastFrame >= 1000 / 30) {
-      for (const { mesh, part } of expeditionMovingParts) {
-        const duration = part.motion === 'press' ? 2400 : part.motion === 'lever' ? 4500 : ['belt', 'cargo'].includes(part.motion) ? 6000 : 3000;
+      for (const { mesh, part, model } of expeditionMovingParts) {
+        const diesel = model === 'factory_diesel_generator';
+        const duration = diesel ? 6000 : part.motion === 'press' ? 2400 : part.motion === 'lever' ? 4500 : ['belt', 'cargo'].includes(part.motion) ? 6000 : 3000;
         const elapsed = (now - started) % (['press', 'lever'].includes(part.motion) ? duration + 1600 : duration);
-        poseExpeditionPart(mesh, part, Math.min(1, elapsed / duration) * Math.PI * 2);
+        poseExpeditionPart(mesh, part, Math.min(1, elapsed / duration) * Math.PI * (diesel ? 4 : 2));
       }
       render();
       lastFrame = now;

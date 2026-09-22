@@ -38,6 +38,7 @@ allprojects {
      recipe.preview=[defaultView:'service',views:[
       [id:'service',label:'Двигатель и генератор',camera:[27,12,27],target:[9,3.7,12],fov:60],
       [id:'linkage',label:'Поршни, шатуны и коленвал',camera:[20,5.2,12],target:[9,3.9,12],fov:62],
+      [id:'camshaft',label:'Распредвал и клапаны',camera:[18,11,18],target:[9.85,7.1,12],fov:58],
       [id:'radiator',label:'Радиатор и привод вентилятора',camera:[17,7,-2],target:[9,3.8,7],fov:55],
       [id:'rear',label:'Турбонаддув и выпуск',camera:[-13,12,3],target:[9,4,12],fov:62],
       [id:'alternator',label:'Электрогенератор и щит',camera:[15,7,27],target:[9,3.7,17],fov:50],

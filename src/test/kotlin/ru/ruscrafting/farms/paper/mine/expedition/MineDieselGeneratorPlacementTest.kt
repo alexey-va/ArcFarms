@@ -20,7 +20,7 @@ class MineDieselGeneratorPlacementTest : FunSpec({
             (yaw.transform(Vector3f(1f, 0f, 0f)).x < -.99f) shouldBe true
             val min = Vector3f(Float.POSITIVE_INFINITY)
             val max = Vector3f(Float.NEGATIVE_INFINITY)
-            for (part in MineDisplayBlueprints.model(fixture.model)) for (step in 0..16) {
+            for (part in MineDisplayBlueprints.model(fixture.model)) for (step in 0..32) {
                 val phase = (step * PI / 8).toFloat()
                 val center = MineDisplayBlueprints.center(part, phase)
                 val rotation = MineDisplayBlueprints.rotation(part, phase)

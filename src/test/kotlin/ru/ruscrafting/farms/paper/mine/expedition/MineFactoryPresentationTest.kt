@@ -36,6 +36,9 @@ class MineFactoryPresentationTest : FunSpec({
         verify { markers.rotate("furnish:8", "decor_diesel_generator", any()) }
         verify { markers.signal("furnish:8", "decor_diesel_generator", org.bukkit.Material.LIME_CONCRETE) }
         clearMocks(markers, answers = false)
+        presentation.tick(scene, preparing, "factory", 4500, mapOf("control_crusher_left" to .5))
+        verify { markers.rotate("furnish:8", "decor_diesel_generator", 3 * Math.PI) }
+        clearMocks(markers, answers = false)
         val jammed = preparing.copy(stage = MineExpeditionStage.FACTORY_COAL, completed = setOf(0),
             factoryExperiments = MineFactoryExperimentPlan(setOf(MineFactoryExperiment.ROCK_JAM)))
         presentation.tick(scene, jammed, "factory", 1200, emptyMap())

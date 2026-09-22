@@ -37,7 +37,7 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
         val generatorRunning=connected && "decor_crusher_left" in commissioned
         if (connected) {
             markers.signal(decor, "decor_diesel_generator", if (generatorRunning) Material.LIME_CONCRETE else Material.RED_CONCRETE)
-            if (generatorRunning) markers.rotate(decor, "decor_diesel_generator", (now%3_000L)/3_000.0*Math.PI*2)
+            if (generatorRunning) markers.rotate(decor, "decor_diesel_generator", (now%6_000L)/3_000.0*Math.PI*2)
         }
         val water=state.stage!=MineExpeditionStage.FACTORY_WATER ||
             if(connected) 1 in state.completed else state.completed.isNotEmpty()

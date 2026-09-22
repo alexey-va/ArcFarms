@@ -19,6 +19,11 @@ The crank, flywheel and alternator share the longitudinal Z axis at Y=1.8.
 with radius 0.45, rod length 2.5 and paired cylinder phases 1/6, 2/5 and 3/4.
 The preview mirrors these transforms. One displayed revolution takes three
 seconds so the mechanism can be inspected; this is not an engine RPM simulation.
+The exposed camshaft turns once per two crank revolutions. Twelve cam noses
+drive separate inlet/exhaust followers, with a visible front timing belt.
+Runtime and preview share a six-second, 720-degree crank cycle so the cam does
+not jump back after the first crank revolution. The split head covers expose
+this mechanism from the aisle and the dedicated camshaft preview camera.
 
 `MineFactoryPresentation` powers the display from the existing commissioning
 state. A stopped or jammed crusher does not switch off a commissioned supply.

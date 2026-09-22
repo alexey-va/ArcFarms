@@ -4,6 +4,7 @@ import org.bukkit.Material
 import org.joml.Vector3f
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
@@ -212,7 +213,8 @@ internal object MineDieselGeneratorModel {
             Vector3f(-1.45f, 1.7f, -6.55f), Vector3f(-1.45f, 1.7f, -4.15f),
             Vector3f(-1.45f, 2.15f, -4.15f), Vector3f(-1.45f, 2.15f, -3.55f)), .25f)
         hose(Material.BLACK_CONCRETE, listOf(
-            Vector3f(1.25f, 5.35f, -6.55f), Vector3f(1.25f, 5.35f, -3.1f),
+            Vector3f(1.25f, 5.35f, -6.55f), Vector3f(1.25f, 5.35f, -4.4f),
+            Vector3f(2.15f, 5.35f, -4.4f), Vector3f(2.15f, 5.35f, -3.1f),
             Vector3f(.6f, 5.35f, -3.1f)), .25f)
         for (x in listOf(-1.45f, 1.25f))
             box(Material.CUT_COPPER, x, if (x < 0f) 1.7f else 5.35f, -6.55f, .46f, .46f, .3f)
@@ -292,23 +294,74 @@ internal object MineDieselGeneratorModel {
         cylinderZ.forEachIndexed { index, z ->
             halfLinerY(Material.POLISHED_BASALT, 0f, 4.18f, z, .46f, 1.72f)
             halfLinerY(Material.IRON_BLOCK, 0f, 5.0f, z, .44f, .18f)
-            box(Material.POLISHED_ANDESITE, 0f, 5.22f, z, 1.38f, .46f, .9f)
-            box(Material.WEATHERED_CUT_COPPER, 0f, 5.63f, z, 1.3f, .32f, .78f)
-            box(Material.CUT_COPPER, 0f, 5.84f, z, .98f, .1f, .6f)
-            box(Material.POLISHED_BLACKSTONE, .69f, 5.63f, z, .08f, .38f, .65f)
-            box(Material.YELLOW_TERRACOTTA, .765f, 5.74f, z, .07f, .15f, .3f)
-            // Two injector lines rise from the cover into the common rail.
-            for (x in listOf(-.28f, .28f)) {
+            box(Material.POLISHED_ANDESITE, .2f, 5.22f, z, 1.9f, .46f, .9f)
+            // Rear half-cover leaves the cam lobes and valve followers exposed.
+            box(Material.WEATHERED_CUT_COPPER, -.26f, 5.63f, z, 1.05f, .32f, .78f)
+            box(Material.CUT_COPPER, -.26f, 5.84f, z, .94f, .1f, .6f)
+            for (x in listOf(-.28f)) {
                 tube(Material.CUT_COPPER, Vector3f(x, 5.88f, z), Vector3f(x, 6.48f, z), .09f)
                 box(Material.IRON_BLOCK, x, 6.52f, z, .14f, .14f, .14f)
             }
             // A small service bolt pair keeps each cylinder readable as its own unit.
-            for (x in listOf(-.48f, .48f))
+            for (x in listOf(-.64f, .12f))
                 box(Material.IRON_BLOCK, x, 5.92f, z, .12f, .1f, .12f)
         }
-        box(Material.WEATHERED_CUT_COPPER, 0f, 6.58f, 0f, .82f, .18f, 6.5f)
+        box(Material.WEATHERED_CUT_COPPER, -.28f, 6.58f, 0f, .54f, .18f, 6.5f)
         for (z in cylinderZ)
-            box(Material.IRON_BLOCK, 0f, 6.72f, z, .16f, .16f, .52f)
+            box(Material.IRON_BLOCK, -.28f, 6.72f, z, .16f, .16f, .52f)
+
+        // --- exposed overhead camshaft and twelve direct valve followers -----
+        val camX = .85f
+        val camY = 6.5f
+        val camPivot = Vector3f(camX, camY, 0f)
+        box(Material.IRON_BLOCK, camX, camY, -.2f, .16f, .16f, 7.1f,
+            moving = true, pivot = camPivot, motion = "diesel_cam")
+        box(Material.POLISHED_BASALT, camX, 5.42f, 0f, .52f, .1f, 6.78f)
+        for (z in listOf(-3.3f, -2.2f, -1.1f, 0f, 1.1f, 2.2f, 3.3f)) {
+            box(Material.POLISHED_ANDESITE, camX, 5.98f, z, .42f, 1.04f, .14f)
+            box(Material.CUT_COPPER, camX, camY, z, .48f, .48f, .16f)
+            box(Material.IRON_BLOCK, camX, 6.79f, z, .18f, .1f, .12f)
+        }
+        cylinderZ.forEachIndexed { index, z ->
+            for (inlet in listOf(false, true)) {
+                val lobeZ = z + if (inlet) .23f else -.23f
+                val phase = MineDieselGeneratorMotion.camAngle(index, inlet)
+                val pivot = Vector3f(camX, camY, lobeZ)
+                ringZ(Material.POLISHED_ANDESITE, camX, camY, lobeZ, .25f, .13f,
+                    segments = 8, motion = "diesel_cam", pivot = pivot, phase = phase)
+                box(Material.CUT_COPPER, camX + sin(phase) * .22f, camY - cos(phase) * .22f,
+                    lobeZ, .18f, .42f, .15f, phase, true, pivot, "diesel_cam")
+                val motion = "diesel_valve_${if (inlet) "inlet" else "exhaust"}_$index"
+                box(Material.IRON_BLOCK, camX, 6.124f, lobeZ, .9f, .12f, .19f,
+                    moving = true, motion = motion)
+                box(Material.IRON_BLOCK, camX, 5.764f, lobeZ, .07f, .6f, .07f,
+                    moving = true, motion = motion)
+                box(Material.POLISHED_ANDESITE, camX, 5.43f, lobeZ, .24f, .07f, .24f,
+                    moving = true, motion = motion)
+                box(Material.POLISHED_BASALT, camX, 5.66f, lobeZ, .19f, .3f, .19f)
+            }
+        }
+        // Separate timing belt connects the crank and cam at a 2:1 ratio.
+        val timingZ = -3.8f
+        fun timingPulley(cx: Float, cy: Float, r: Float, motion: String) {
+            ringZ(Material.CUT_COPPER, cx, cy, timingZ, r, .12f, 12, motion)
+            spokesZ(Material.IRON_BLOCK, cx, cy, timingZ, r - .07f, .14f, .1f, 4, motion)
+            ringZ(Material.BLACK_CONCRETE, cx, cy, timingZ, r + .08f, .07f, 16)
+        }
+        timingPulley(0f, 1.8f, .35f, "rotate")
+        timingPulley(camX, camY, .7f, "diesel_cam")
+        val dx = camX; val dy = camY - 1.8f
+        val length = kotlin.math.sqrt(dx * dx + dy * dy)
+        val ratio = -.35f / length
+        val tangent = kotlin.math.sqrt(1f - ratio * ratio)
+        for (side in listOf(-1f, 1f)) {
+            val nx = ratio * dx / length - side * tangent * dy / length
+            val ny = ratio * dy / length + side * tangent * dx / length
+            val a = Vector3f(nx * .43f, 1.8f + ny * .43f, timingZ)
+            val b = Vector3f(camX + nx * .78f, camY + ny * .78f, timingZ)
+            box(Material.BLACK_CONCRETE, (a.x + b.x) / 2, (a.y + b.y) / 2, timingZ,
+                .07f, a.distance(b), .055f, atan2(-(b.x - a.x), b.y - a.y))
+        }
         // +X inspection rails frame the open side without turning it into a box.
         for (z in listOf(-3.2f, -1.6f, 0f, 1.6f, 3.2f))
             box(Material.POLISHED_BASALT, 1.72f, 4.25f, z, .18f, 2.25f, .16f)

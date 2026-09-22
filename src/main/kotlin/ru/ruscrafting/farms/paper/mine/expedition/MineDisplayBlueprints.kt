@@ -299,6 +299,7 @@ internal object MineDisplayBlueprints {
     private fun angle(part:Part,phase:Float):Float = when {
         !part.moving || part.motion in setOf("press","feed","processed") -> 0f
         part.motion=="counter_rotate" -> -phase
+        part.motion=="diesel_cam" -> phase/2
         part.motion=="lever" -> sin(phase/2)*.5f
         else -> phase
     }
