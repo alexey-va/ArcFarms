@@ -27,10 +27,28 @@ class MineFactoryExperimentLocaleTest : FunSpec({
             "parkour" to ops.resolve("parkour/plugins/ArcFarms"),
         )
         val expected = setOf(
-            "rock-pry", "rock-free", "mould-select", "mould-wrong", "mould-fitting",
-            "crane-grab", "crane-aim", "crane-drop", "crane-miss",
-            "route-switch", "route-return", "route-moving",
-            "cooling-pickup", "cooling-aim", "cooling-progress", "busy",
+            "rock-pry",
+            "rock-free",
+            "rock-context",
+            "rock-context-short",
+            "cooling-pickup",
+            "cooling-context",
+            "cooling-context-short",
+            "cooling-connected",
+            "cooling-progress",
+            "cooling-finished",
+            "crane-context",
+            "crane-console", "crane-landing",
+            "crane-grab",
+            "crane-lift",
+            "crane-lower",
+            "crane-move",
+            "crane-left",
+            "crane-right",
+            "crane-forward",
+            "crane-back",
+            "crane-miss",
+            "busy",
         )
         val values = roots.mapValues { (_, root) ->
             listOf("ru", "en").associateWith { language ->
@@ -41,6 +59,7 @@ class MineFactoryExperimentLocaleTest : FunSpec({
                 section.keys shouldBe expected
                 section.forEach { (key, text) ->
                     text.isNotBlank() shouldBe true
+                    listOf("ПКМ", "ЛКМ", "Shift", "Right-click").any { it in text } shouldBe false
                     val placeholders = Regex("<([a-z][a-z0-9_-]*)>")
                         .findAll(text)
                         .map { it.groupValues[1] }

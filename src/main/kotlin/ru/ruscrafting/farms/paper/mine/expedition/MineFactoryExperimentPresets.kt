@@ -12,7 +12,7 @@ internal class MineFactoryExperimentPresets {
         val selected = when (preset) {
             "random" -> { next.remove(zone); return true }
             "none" -> emptySet()
-            "all" -> MineFactoryExperiment.entries.toSet()
+            "all" -> MineFactoryExperiments.supported
             else -> SINGLE[preset]?.let(::setOf) ?: return false
         }
         next[zone] = selected
@@ -26,9 +26,9 @@ internal class MineFactoryExperimentPresets {
 
     private companion object {
         val SINGLE = mapOf(
-            "rock" to MineFactoryExperiment.ROCK_JAM, "mould" to MineFactoryExperiment.MOULD,
-            "crane" to MineFactoryExperiment.MANUAL_CRANE, "gear" to MineFactoryExperiment.DRIVE_REPAIR,
-            "route" to MineFactoryExperiment.ROUTING, "cooling" to MineFactoryExperiment.COOLING,
+            "rock" to MineFactoryExperiment.ROCK_JAM,
+            "crane" to MineFactoryExperiment.MANUAL_CRANE,
+            "cooling" to MineFactoryExperiment.COOLING,
         )
     }
 }

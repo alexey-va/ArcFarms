@@ -27,7 +27,8 @@ internal object MineExpeditionFurnishings {
         id=="fuel_supply" && kind==MineExpeditionKind.DEAD_FACTORY -> "charge_bunker"
         id=="crusher_feed" || id=="furnace_input" -> "inlet_hopper"
         id=="crushed_output" -> "charge_hopper"
-        id=="control_crusher_left" || id=="pour_console" || id=="crane_control" -> "mounted_console"
+        id=="control_crusher_left" || id=="pour_console" -> "mounted_console"
+        id=="crane_control" -> "mounted_console"
         id=="furnace_control" -> "furnace_air_console"
         id=="water_valve_1" -> "pipe_valve"
         id.startsWith("water_valve_") -> "pipe_valve"
@@ -50,7 +51,8 @@ internal object MineExpeditionFurnishings {
         val hiddenStations = if(modernFactory) setOf("water_valve_0","water_valve_2") else emptySet()
         val stations=plan.stations.filterKeys { id ->
             id !in setOf("entry","exit") && !id.startsWith("lift_") && !id.startsWith("ark_") &&
-                !id.startsWith("jam_") && !id.startsWith("branch_") && id !in hiddenStations
+                !id.startsWith("jam_") && !id.startsWith("branch_") && id !in hiddenStations &&
+                !(modernFactory && (id == "crusher_repair" || id.startsWith("repair_supply_")))
         }.map { (id, p) ->
             Fixture(id, model(id, plan.kind),
                 if (id in setOf("crusher_repair", "crane_load")) MineFactoryLine.effectiveStation(plan, id) else p)

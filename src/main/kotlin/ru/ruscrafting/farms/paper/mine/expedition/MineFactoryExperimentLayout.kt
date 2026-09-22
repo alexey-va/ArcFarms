@@ -59,7 +59,7 @@ internal object MineFactoryExperimentLayout {
         anchor = "decor_roller_table",
         offset = Vector(-2.20, 0.0, 2.00),
         model = "factory_hose_reel",
-        scale = 0.64f,
+        scale = 0.85f,
     )
 
     val hoseNozzle = Fixture(
@@ -67,7 +67,7 @@ internal object MineFactoryExperimentLayout {
         anchor = "decor_roller_table",
         offset = Vector(-1.00, 0.0, 2.00),
         model = "factory_hose_nozzle",
-        scale = 0.64f,
+        scale = 0.85f,
     )
 
     val hotBearing = Fixture(
@@ -121,8 +121,6 @@ internal object MineFactoryExperimentLayout {
     fun mould(index: Int): Fixture = moulds[index.coerceIn(moulds.indices)]
 
     /** Preview/export consumers can enumerate every stable pose without state. */
-    fun staticFixtures(): List<Fixture> = listOf(
-        rockJam, routeGate, routeBin, hoseReel, hoseNozzle, hotBearing,
-        craneControl, craneLanding, mouldSocket,
-    ) + moulds
+    fun staticFixtures(): List<Fixture> = listOf(rockJam, hoseReel, hoseNozzle, hotBearing, craneLanding) +
+        MineFactoryCraneLayout.staticFixtures()
 }

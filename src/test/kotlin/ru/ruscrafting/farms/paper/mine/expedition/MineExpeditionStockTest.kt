@@ -83,7 +83,7 @@ class MineExpeditionStockTest : FunSpec({
         stock.ensure(runtime, surface)
         val scene = stock.ensure(runtime, surface)!!
         val selected = runtime.state.incident!!.expedition!!
-        selected.factoryExperiments!!.selected shouldBe MineFactoryExperiment.entries.toSet()
+        selected.factoryExperiments!!.selected shouldBe MineFactoryExperiments.supported
         stock.configureFactoryExperiments("old_shafts", "none") shouldBe true
         stock.ensure(runtime, surface)
         runtime.state.incident!!.expedition shouldBe selected
@@ -93,6 +93,67 @@ class MineExpeditionStockTest : FunSpec({
         stock.ensure(runtime, surface)
         stock.ensure(runtime, surface)
         runtime.state.incident!!.expedition!!.factoryExperiments!!.selected shouldBe emptySet()
+        stock.deactivate()
+        repository.close()
+    }
+
+    test("connected saved factories normalize retired jobs and a missing plan from the stable journal seed") {
+        val world = paper.server.addSimpleWorld("world")
+        val repository = MineExpeditionSceneRepository(MemoryExpeditionStorage())
+        val loader = ReadySceneLoader(world)
+        val port = immediateMinePort()
+        val stock = MineExpeditionStock(repository, port, port, loader)
+        stock.site = MineExpeditionSite("world", 40, 0, 64, 10.5, 64.0, 10.5)
+        stock.activate()
+        stock.maintain(1_000L)
+        val runtime = MineRuntimeFactory.build(listOf(mineV2Settings()), emptyMap(), 5_000L, CuboidRegionGateway()).single()
+        val surface = Location(world, 10.5, 64.0, 10.5)
+        runtime.state = MineShiftState(
+            engineVersion = 2,
+            phase = MinePhase.INCIDENT,
+            orderId = "ore_run",
+            sequence = 5,
+            incident = MineIncidentState(MineIncidentType.DEAD_FACTORY, required = 10, objectiveNonce = 100),
+        )
+        stock.ensure(runtime, surface)
+        stock.ensure(runtime, surface)!!
+        val initialized = runtime.state.incident!!.expedition!!
+        val oldPlan = MineFactoryExperimentPlan(
+            selected = setOf(
+                MineFactoryExperiment.ROCK_JAM,
+                MineFactoryExperiment.MOULD,
+                MineFactoryExperiment.DRIVE_REPAIR,
+            ),
+            resolved = setOf(MineFactoryExperiment.MOULD, MineFactoryExperiment.ROCK_JAM),
+            product = 2,
+        )
+
+        runtime.state = runtime.state.copy(incident = runtime.state.incident!!.copy(
+            expedition = initialized.copy(
+                stage = MineExpeditionStage.FACTORY_COAL,
+                completed = setOf(0, 1),
+                factoryExperiments = oldPlan,
+            ),
+        ))
+        stock.ensure(runtime, surface)
+        val normalized = runtime.state.incident!!.expedition!!
+        normalized.completed shouldBe setOf(0, 1)
+        normalized.factoryExperiments!!.selected shouldBe setOf(MineFactoryExperiment.ROCK_JAM)
+        normalized.factoryExperiments!!.resolved shouldBe setOf(MineFactoryExperiment.ROCK_JAM)
+        normalized.factoryExperiments!!.product shouldBe 2
+
+        runtime.state = runtime.state.copy(incident = runtime.state.incident!!.copy(
+            expedition = normalized.copy(
+                stage = MineExpeditionStage.FACTORY_COAL,
+                completed = setOf(0, 1, 2),
+                factoryExperiments = null,
+            ),
+        ))
+        stock.ensure(runtime, surface)
+        val missingPlan = runtime.state.incident!!.expedition!!.factoryExperiments
+        missingPlan shouldBe MineFactoryExperimentPlan()
+        runtime.state.incident!!.expedition!!.completed shouldBe setOf(0, 1, 2)
+
         stock.deactivate()
         repository.close()
     }

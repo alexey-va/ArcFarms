@@ -34,10 +34,10 @@ allprojects {
     recipe.subtitle='Витрина всех вариантов · реальные модели и привязки · офлайн-свет условный'
     recipe.preview=[defaultView:'jam',views:[
       [id:'jam',label:'Камень в дробилке',camera:[16,7.2,34],target:[16,7.2,28],fov:65],
-      [id:'route',label:'Развилка конвейера',camera:[23,9,36],target:[21,6.8,28],fov:65],
-      [id:'moulds',label:'Формы пресса',camera:[60,7.3,36],target:[60,6.3,29],fov:65],
       [id:'cooling',label:'Шланг и подшипник',camera:[48,7.3,34],target:[50,6.6,28],fov:65],
-      [id:'crane',label:'Посадочное место крана',camera:[46,9,34],target:[46,7,27],fov:65],
+      [id:'crane',label:'Кран · пульт и путь отливки',camera:[41,10,41],target:[41,7,28],fov:65],
+      [id:'panel',label:'Кнопки крана',camera:[43.5,7.5,42],target:[43.5,6.3,31.5],fov:70],
+      [id:'consoles',label:'Пульты на основаниях',camera:[34,7,33],target:[37,6,30],fov:65],
       [id:'line',label:'Общий вид',camera:[36,10,54],target:[36,7,27],fov:82]]]
     new File(out,'factory_experiments.atelier.json').text=groovy.json.JsonOutput.toJson(recipe)
     println('Factory experiment preview: '+assembled.size()+' runtime fixtures')

@@ -12,7 +12,7 @@ object MineFactoryLine {
         "decor_crusher_left" to ExpeditionPoint(-22, 5, -6),
         "decor_conveyor_raw" to ExpeditionPoint(-14, 5, -6),
         "decor_furnace_left" to ExpeditionPoint(-7, 5, -6),
-        "pour_control" to ExpeditionPoint(5, 5, -6),
+        "pour_control" to ExpeditionPoint(1, 5, -6),
         "decor_roller_table" to ExpeditionPoint(13, 5, -6),
         "assembly_socket" to ExpeditionPoint(22, 5, -6),
         "decor_pump_left" to ExpeditionPoint(-25, 5, -18),
@@ -34,8 +34,8 @@ object MineFactoryLine {
         "furnace_input" to ExpeditionPoint(-10, 5, -2),
         "furnace_control" to ExpeditionPoint(-5, 5, -2),
         "pour_control" to machines.getValue("pour_control"),
-        "pour_console" to ExpeditionPoint(7, 5, -4),
-        "crane_control" to ExpeditionPoint(15, 5, -2),
+        "pour_console" to ExpeditionPoint(3, 5, -3),
+        "crane_control" to ExpeditionPoint(7, 5, -2),
         // The roller table spans x=8..18.  Casting arrives at its west/upstream
         // end; the press is east at x=22.
         "crane_load" to ExpeditionPoint(8, 5, -6),

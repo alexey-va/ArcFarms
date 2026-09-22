@@ -16,13 +16,13 @@ event markers; other expeditions may keep separate entry and exit portals.
 
 ## Factory work
 
-1. When a drive repair is selected, find the loose gear and fit it onto the crusher shaft. Open the pump valve
-   with short right-click turns and switch the crusher's mounted start lever.
-   The repair and its pickup variant persist through restart. A normal run without
-   repair starts at the pump valve and credits the omitted gear checkpoint together
-   with that valve, preserving the ten-credit total. Nearby workers
-   share valve progress; duplicate clicks inside 250 ms do not count. Hand-operated
-   controls interpolate each click; powered rolls turn continuously until the event ends.
+1. Open the pump valve and switch the crusher's start lever. Its two drive
+   gears belong to the roller shafts; the detached repair gear/socket is removed.
+   Opening the water circuit also credits the omitted repair checkpoint, preserving
+   the ten-credit total. Nearby workers share valve progress; duplicate clicks
+   inside 250 ms do not count. Hand controls interpolate each turn; powered rolls
+   turn continuously until the event ends. Consoles have floor-mounted plinths
+   and uprights, with the handles kept at player height.
 2. Push an ore-and-coal cart from the bunker to the crusher inlet. Switch the
    feed lever: a six-second cycle drops visible material between counter-rotating
    toothed rolls and carries fragments along the top of the moving belt. The
@@ -43,10 +43,11 @@ event markers; other expeditions may keep separate entry and exit portals.
    red retry message after an overflow. A bell, rising molten surface, droplets and lava sounds show the
    flow; leaving releases the control, and another worker cannot steal an active
    pour.
-5. Right-click the crane console. A 4.5-second cycle lifts the casting, moves it
-   along the overhead beam and lowers it onto the start of the roller conveyor.
-   The chain length follows the load. The casting is absent before production,
-   and the conveyor does not start until the placement has completed.
+5. Transfer the casting across the seven-block crane span. In a normal run,
+   the console starts an automatic lift, traverse and lowering cycle. The manual
+   variant uses the physical six-button console described below. The chain follows
+   the load. No casting is visible before production, and the receiving conveyor
+   starts only after placement has completed.
 6. The placed billet travels for four seconds from the conveyor start into the press; no second
    press cart is spawned. Its ram descends one block, strikes with sparks, dust
    and an anvil sound, then returns. The final domain
@@ -81,29 +82,31 @@ one permanent return portal at the shared entry/exit anchor.
 
 ## Optional factory interactions
 
-New connected-factory runs select zero to two distinct situations from six. The
-run's selection, finished situations and product shape are part of the existing
-expedition state. Restart does not reroll them. Old saved runs without this
-field keep their old behavior. Animation progress is transient and resumes from
-its safe start after restart; it cannot duplicate material or award extra credit.
+New connected-factory runs select zero to two distinct situations from three.
+The selected and resolved situations are persisted with the expedition; restarting
+never rerolls an existing choice. Retired mould, gear and routing situations are
+filtered from old saved plans without resetting checkpoints. An older run without
+a plan receives an empty selection. Animation progress safely resets after restart;
+no extra material or checkpoint credit is created.
 
-- **Rock jam:** a small stone is visibly wedged in the crusher. Right-clicks pry
-  it outward; the powered crusher stays stopped until it is removed.
-- **Press mould:** match one of three mould silhouettes to the sample at the
-  press. A wrong choice is recoverable. The completed product matches the form.
-- **Manual crane:** hook the existing casting, aim the load toward the highlighted
-  upstream landing, and lower it. The ordinary conveyor starts only after landing.
-- **Drive repair:** the existing loose-gear pickup and installation loop becomes
-  optional; it keeps the same ownership and restart guarantees.
-- **Conveyor routing:** move the guide to return accumulated material to the
-  production line. The existing charge remains a single production payload.
-- **Bearing cooling:** take the visible nozzle, aim water at the smoking bearing
-  and hold Shift. Spraying elsewhere does not cool the bearing.
+- **Rock jam:** a small stone visibly blocks the crusher. Three separated pries
+  draw it out; the rolls remain stopped until it is removed.
+- **Bearing overheating:** smoke and sparks mark the hot bearing. A short notice
+  explains why the line stopped. Taking the nozzle starts water immediately;
+  aim it at the hot part. A visible hose connects the reel and held nozzle, and
+  water, steam and local sounds make the cooling visible. There is no sneak gate.
+- **Manual crane:** use the floor-mounted console to lift the existing casting,
+  move it left/right/forward/back in bounded steps, then lower it onto the glowing
+  conveyor landing. Buttons have separate hitboxes. A misplaced load stays where
+  it was lowered: lift it again and correct the position. Leaving releases the
+  controller and returns the unfinished load to its source. The conveyor starts
+  only after the actual lowering animation reaches the correct landing.
 
-The active physical object receives glow. Captions name a short action; movement,
-material direction, steam and sound provide the feedback. Temporary apparatus
-and held displays are cleaned on departure, death, disconnect, stage change,
-reload and shutdown. No reward amount or drop chance changes.
+Glow marks the current task. Short labels name objects and actions; a one-time
+notice explains each incident and its purpose. Temporary apparatus and held
+displays are cleaned on departure, death, disconnect, stage change, reload and
+shutdown. No reward amount or drop chance changes. The permanent room and saved
+administrator furnishing placements are retained.
 
 For repeatable testing, configure the **next** run, then start the event:
 
@@ -112,8 +115,7 @@ For repeatable testing, configure the **next** run, then start the event:
 /arcfarms admin event old_shafts dead_factory
 ```
 
-Accepted presets: `random`, `none`, `all`, `rock`, `mould`, `crane`, `gear`,
-`route`, `cooling`. `random` removes a queued override. The setting is one-shot,
+Accepted presets: `random`, `none`, `all`, `rock`, `crane`, `cooling`. `random` removes a queued override. The setting is one-shot,
 scoped to that mine, and does not reset an active run. Pending admin overrides
 are transient; the chosen set is durable once its run starts. Never rebuild the
 permanent factory just to test a different interaction.

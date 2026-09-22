@@ -75,87 +75,17 @@ class MineFactoryExperimentsControllerTest : FunSpec({
         controller.pryProgress(scope()) shouldBe 0.0
     }
 
-    test("mould rejects the wrong silhouette, then animates the matching piece into the socket") {
-        val product = 1
-        val state = state(MineExpeditionStage.FACTORY_INSTALL, emptySet(), MineFactoryExperiment.MOULD, product)
-        val player = paper.server.addPlayer("MouldWorker")
-        val steps = mutableListOf<MineExpeditionStep>()
-        val complete: (MineExpeditionStep) -> Boolean = { steps += it; it.accepted }
-        controller.targets(scene, state, 0L)
-
-        val wrong = MineFactoryExperimentLayout.mould((product + 1) % 3).id
-        val correct = MineFactoryExperimentLayout.mould(product).id
-        controller.interact(scope(), scene, state, player, wrong, 0L, complete) shouldBe true
-        steps.size shouldBe 0
-        controller.interact(scope(), scene, state, player, correct, 200L, complete) shouldBe true
-        steps.size shouldBe 0
-
-        controller.tick(scope(), scene, state, listOf(player), 850L) { _, step -> complete(step) }
-        steps.size shouldBe 1
-        steps.single().state.factoryExperiments!!.resolved shouldBe setOf(MineFactoryExperiment.MOULD)
-        visuals.rendered.map { it.model } shouldContain "mould_plate_piece"
-    }
-
-    test("routing sends the visible ore to the accumulator and back before the normal destination resolves") {
-        val state = state(MineExpeditionStage.FACTORY_COAL, setOf(0, 1), MineFactoryExperiment.ROUTING)
-        val player = paper.server.addPlayer("RoutingWorker")
-        val steps = mutableListOf<MineExpeditionStep>()
-        val complete: (MineExpeditionStep) -> Boolean = { steps += it; it.accepted }
-        val gate = MineFactoryExperimentLayout.routeGate.id
-
-        controller.interact(scope(), scene, state, player, gate, 0L, complete) shouldBe true
-        controller.tick(scope(), scene, state, listOf(player), 2_500L) { _, step -> complete(step) }
-        controller.routeProgress(scope()) shouldBe 1.0
-        controller.routeOrePosition(scope()) shouldNotBe null
-        steps.size shouldBe 0
-
-        controller.interact(scope(), scene, state, player, gate, 2_700L, complete) shouldBe true
-        controller.tick(scope(), scene, state, listOf(player), 5_200L) { _, step -> complete(step) }
-        steps.size shouldBe 1
-        steps.single().state.stage shouldBe MineExpeditionStage.FACTORY_HEAT
-        steps.single().state.completed shouldBe emptySet()
-        steps.single().state.factoryExperiments!!.resolved shouldBe setOf(MineFactoryExperiment.ROUTING)
-        visuals.rendered.map { it.model } shouldContain "ore_piece"
-    }
-
-    test("manual crane follows a bounded aim, refuses an early drop, then resolves at the landing") {
-        val state = state(MineExpeditionStage.FACTORY_CRANE, emptySet(), MineFactoryExperiment.MANUAL_CRANE)
-        val player = paper.server.addPlayer("CraneWorker")
-        val steps = mutableListOf<MineExpeditionStep>()
-        val complete: (MineExpeditionStep) -> Boolean = { steps += it; it.accepted }
-        val landing = scene.at(MineFactoryLine.stations.getValue("crane_load")).add(0.0, 2.0, 0.0)
-        val aimPlane = landing.clone().add(0.0, -.5, 0.0)
-        val feet = Location(world, landing.x, 65.0, landing.z + 4.0)
-
-        controller.interact(scope(), scene, state, player, MineFactoryExperimentLayout.craneControl.id, 0L, complete) shouldBe true
-        lookAt(player, feet, aimPlane)
-        controller.interactAir(scope(), scene, state, player, 250L, complete) shouldBe true
-        steps.size shouldBe 0
-
-        // The packet pose moves no more than its per-tick bound.  Several
-        // bounded ticks are enough to travel from the pour console to the
-        // upstream roller landing without teleporting through the press.
-        listOf(250L, 500L, 750L, 1_000L, 1_250L).forEach { now ->
-            controller.tick(scope(), scene, state, listOf(player), now) { _, step -> complete(step) }
-        }
-        controller.interactAir(scope(), scene, state, player, 1_500L, complete) shouldBe true
-        steps.size shouldBe 1
-        steps.single().state.stage shouldBe MineExpeditionStage.FACTORY_INSTALL
-        val pose = requireNotNull(controller.cranePosition(scope()))
-        (abs(pose.x - landing.x) < .001 && abs(pose.y - landing.y) < .001 && abs(pose.z - landing.z) < .001) shouldBe true
-    }
-
-    test("cooling needs a held hose and a directed spray, then resolves after the full hold") {
+    test("taking the hose starts a visible directed spray without sneak or another click") {
         val state = state(MineExpeditionStage.FACTORY_HEAT, emptySet(), MineFactoryExperiment.COOLING)
         val player = paper.server.addPlayer("CoolingWorker")
         val steps = mutableListOf<MineExpeditionStep>()
         val complete: (org.bukkit.entity.Player, MineExpeditionStep) -> Boolean = { _, step -> steps += step; step.accepted }
-        val bearing = requireNotNull(fixturePosition(scene, "decor_roller_table", Vector(0.0, .90 + .43, 1.55 + .08)))
+        val bearing = requireNotNull(fixturePosition(scene, "decor_roller_table", Vector(0.0, .90 + .43 * .68, 1.55 + .08 * .68)))
         val feet = Location(world, bearing.x - 3.0, 64.0, bearing.z)
         controller.targets(scene, state, 0L)
-        controller.interact(scope(), scene, state, player, MineFactoryExperimentLayout.hoseReel.id, 0L) { it.accepted } shouldBe true
+        controller.interact(scope(), scene, state, player, MineFactoryExperimentLayout.hoseNozzle.id, 0L) { it.accepted } shouldBe true
 
-        player.isSneaking = true
+        player.isSneaking = false
         lookAt(player, feet, bearing)
         controller.tick(scope(), scene, state, listOf(player), 250L, complete)
         (controller.coolingProgress(scope()) > 0.0) shouldBe true
@@ -168,26 +98,29 @@ class MineFactoryExperimentsControllerTest : FunSpec({
         controller.coolingProgress(scope()) shouldBe beforeMiss
 
         lookAt(player, feet, bearing)
-        listOf(750L, 1_000L, 1_250L, 1_500L, 1_750L, 2_000L, 2_250L, 2_500L, 2_750L, 3_000L, 3_250L, 3_500L)
+        (750L..4_500L step 250L)
             .forEach { now -> controller.tick(scope(), scene, state, listOf(player), now, complete) }
         steps.size shouldBe 1
         steps.single().state.factoryExperiments!!.resolved shouldBe setOf(MineFactoryExperiment.COOLING)
         visuals.rendered.map { it.model } shouldContain "hose_nozzle_held"
+        visuals.rendered.map { it.model } shouldContain "hose_link"
     }
 
     test("release, ineligible-player ticks and clear remove transient ownership and visuals") {
         val state = state(MineExpeditionStage.FACTORY_HEAT, emptySet(), MineFactoryExperiment.COOLING)
         val player = paper.server.addPlayer("CleanupWorker")
+        player.teleport(requireNotNull(fixturePosition(scene, "decor_roller_table", Vector(-2.0, 0.0, 4.0))))
         controller.targets(scene, state, 0L)
-        controller.interact(scope(), scene, state, player, MineFactoryExperimentLayout.hoseReel.id, 0L) { it.accepted } shouldBe true
+        controller.interact(scope(), scene, state, player, MineFactoryExperimentLayout.hoseNozzle.id, 0L) { it.accepted } shouldBe true
         player.isSneaking = false
         controller.tick(scope(), scene, state, listOf(player), 250L) { _, _ -> true }
         visuals.rendered.map { it.model } shouldContain "hose_nozzle_held"
+        visuals.rendered.map { it.model } shouldContain "hose_link"
 
         controller.tick(scope(), scene, state, emptyList(), 500L) { _, _ -> error("owner left") }
         controller.coolingProgress(scope()) shouldBe 0.0
         controller.release(player)
-        visuals.removed shouldContain (scope() to "held-hose-nozzle")
+        visuals.cleared shouldContain scope()
         controller.clear(scope())
         visuals.cleared shouldContain scope()
         controller.cleanup()

@@ -268,22 +268,14 @@ internal class MineExpeditionController(
     }
 
     fun onInteract(event: PlayerInteractEvent): Boolean {
-        if (event.hand == EquipmentSlot.HAND && event.action in setOf(Action.RIGHT_CLICK_AIR, Action.RIGHT_CLICK_BLOCK)) {
-            val runtime = runtimeFor(event.player)
-            val scene = runtime?.let(world::scene)
-            val current = runtime?.state?.incident?.expedition
-            if (runtime != null && scene != null && current != null && participant(runtime, scene, event.player) &&
-                experiments.interactAir(scope(scene), scene, current, event.player, clock()) { step ->
-                    commit(runtime, scene, event.player, current, step)
-                }) { event.isCancelled = true; return true }
-        }
         val block = event.clickedBlock ?: return false
         if (event.hand != EquipmentSlot.HAND || event.action != Action.RIGHT_CLICK_BLOCK) return false
         val scene = world.allScenes().firstOrNull { it.contains(block.location) } ?: return false
         val target = markers.nearest(block.location, "exit:${scene.journalSequence}")
             ?: markers.nearest(block.location, scope(scene)) ?: return false
         // Lever controls accept a direct hit on their own small interaction volume.
-        if(target.model=="machine_console") return false
+        if(target.model=="machine_console" || target.model=="factory_crane_panel" ||
+            target.model?.startsWith("factory_crane_button_")==true) return false
         event.isCancelled = true
         if (!near(event.player, target.location, 5.0)) return true
         if (target.id.startsWith("return_")) exit(event.player, scene)
@@ -389,13 +381,7 @@ internal class MineExpeditionController(
             clearScene(scene)
             clearGateway(runtime)
             if (scene.kind == MineExpeditionKind.DEAD_FACTORY) {
-                val plan = step.state.factoryExperiments
-                val model = if (plan != null && MineFactoryExperiment.MOULD in plan.resolved) when (plan.product) {
-                    1 -> "factory_product_plate"
-                    2 -> "factory_product_rod"
-                    else -> "finished_gear"
-                } else "finished_gear"
-                factoryResults[scene.journalSequence] = FactoryResult(clock() + 12_000L, model)
+                factoryResults[scene.journalSequence] = FactoryResult(clock() + 12_000L, "finished_gear")
                 showFactoryResult(scene, clock(), first = true)
             } else scene.world.players.filter { scene.contains(it.location) }.toList().forEach { exit(it, scene) }
         }

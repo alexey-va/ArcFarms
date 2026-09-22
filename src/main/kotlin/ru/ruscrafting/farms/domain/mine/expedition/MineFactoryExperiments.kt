@@ -34,25 +34,63 @@ object MineFactoryExperiments {
     private const val PRODUCT_SALT = 0x4D46455850524F44L
     private const val ORDER_SALT = 0x4D4645584F524445L
 
+    /**
+     * Current side jobs.  The enum deliberately retains the retired values so
+     * Gson can still read journals written by older plugin versions, but they
+     * must not be selected or gate a newly loaded run.
+     */
+    val supported: Set<MineFactoryExperiment> = linkedSetOf(
+        MineFactoryExperiment.ROCK_JAM,
+        MineFactoryExperiment.MANUAL_CRANE,
+        MineFactoryExperiment.COOLING,
+    )
+
     /** Select zero to two distinct experiments, or use an explicit test/admin selection. */
     fun select(seed: Long, forced: Set<MineFactoryExperiment>? = null): MineFactoryExperimentPlan {
-        val selected = forced?.toSet() ?: run {
+        val selected = forced?.filterTo(linkedSetOf()) { isSupported(it) } ?: run {
             val count = Math.floorMod(WorksiteDeterministicSeed.orderScore(seed, COUNT_SALT), 3L).toInt()
-            MineFactoryExperiment.entries
+            supported
                 .sortedWith(compareBy<MineFactoryExperiment> {
                     WorksiteDeterministicSeed.orderScore(seed, ORDER_SALT + it.ordinal)
                 }.thenBy { it.ordinal })
                 .take(count)
-                .toSet()
+                .toCollection(linkedSetOf())
         }
         val product = Math.floorMod(WorksiteDeterministicSeed.orderScore(seed, PRODUCT_SALT), 3L).toInt()
         return MineFactoryExperimentPlan(selected = selected, product = product)
+    }
+
+    /** True only for side jobs belonging to the current policy. */
+    fun isSupported(experiment: MineFactoryExperiment): Boolean = experiment in supported
+
+    /**
+     * Removes retired side jobs from an already persisted plan without
+     * changing the product or any ordinary expedition checkpoint.
+     */
+    fun normalize(plan: MineFactoryExperimentPlan): MineFactoryExperimentPlan {
+        val selected = plan.selected.filterTo(linkedSetOf()) { isSupported(it) }
+        val resolved = plan.resolved.filterTo(linkedSetOf()) { isSupported(it) }.intersect(selected)
+        return if (selected == plan.selected && resolved == plan.resolved) plan
+        else plan.copy(selected = selected, resolved = resolved)
+    }
+
+    /**
+     * Normalizes a connected dead-factory state in place. A missing plan is
+     * treated as an empty current-policy plan; an existing plan is filtered
+     * instead of being reselected, so a reload never introduces new work or
+     * changes completed progress.
+     */
+    fun normalizeConnected(state: MineExpeditionState): MineExpeditionState {
+        val plan = state.factoryExperiments?.let(::normalize) ?: MineFactoryExperimentPlan()
+        return if (plan == state.factoryExperiments) state
+        else state.copy(factoryExperiments = plan)
     }
 
     /** Side jobs currently actionable at the persisted stage/checkpoint. */
     fun pending(state: MineExpeditionState): Set<MineFactoryExperiment> {
         val plan = state.factoryExperiments ?: return emptySet()
         return plan.selected.asSequence()
+            .filter { isSupported(it) }
             .filter { it !in plan.resolved }
             .filter { eligible(state, it) }
             .toCollection(linkedSetOf())
@@ -92,7 +130,7 @@ object MineFactoryExperiments {
 
     /** Guards for the ordinary numbered target API. */
     internal fun blocksTarget(state: MineExpeditionState, target: Int): Boolean {
-        val plan = state.factoryExperiments ?: return false
+        if (state.factoryExperiments == null) return false
         if (state.stage == MineExpeditionStage.FACTORY_WATER ||
             state.stage == MineExpeditionStage.FACTORY_COAL
         ) {
@@ -106,9 +144,6 @@ object MineFactoryExperiments {
             }
             if (next != null && target != next) return true
         }
-        if (MineFactoryExperiment.DRIVE_REPAIR !in plan.selected &&
-            state.stage == MineExpeditionStage.FACTORY_WATER && target == 0
-        ) return true
         return when {
             MineFactoryExperiment.ROCK_JAM in pending(state) &&
                 state.stage == MineExpeditionStage.FACTORY_COAL && target == 1 -> true
@@ -124,9 +159,9 @@ object MineFactoryExperiments {
         }
     }
 
+    /** Every connected persisted plan uses the current policy; the old gear job is retired. */
     internal fun skipsDriveRepair(state: MineExpeditionState): Boolean =
-        state.factoryExperiments != null &&
-            MineFactoryExperiment.DRIVE_REPAIR !in state.factoryExperiments.selected
+        state.factoryExperiments != null
 
     /** Water valve 1 replaces the omitted gear loop while preserving both credits. */
     internal fun completedTargets(

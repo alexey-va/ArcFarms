@@ -11,15 +11,8 @@ import org.bukkit.util.Vector
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.domain.mine.expedition.*
 import ru.ruscrafting.farms.paper.worksite.WorksiteWaterJet
-import kotlin.math.PI
 
-/**
- * Runtime owner for the optional connected-factory experiments.
- *
- * Durable selection and resolution stay in [MineFactoryExperiments]. This
- * owner keeps only player ownership, animation progress and packet-facing
- * poses. It deliberately never creates a cargo lease or ordinary item drop.
- */
+/** Owns the retained factory interruptions; the crane has its own physical control owner. */
 internal class MineFactoryExperimentsController(
     private val plugin: Plugin,
     private val markers: MineExpeditionMarkers,
@@ -29,244 +22,108 @@ internal class MineFactoryExperimentsController(
 ) {
     private val sessions = mutableMapOf<String, MineFactoryExperimentSession>()
     private val targetFactory = MineFactoryExperimentTargets(locale, position)
-    private val visualScenes = MineFactoryExperimentVisualScenes(plugin, targetFactory, visuals, ::scope, sessions)
+    private val crane = MineFactoryCraneControls(plugin, markers, targetFactory)
 
-    /** Stable packet targets for the current pending experiment. */
     fun targets(scene: MineExpeditionScene, state: MineExpeditionState, now: Long): List<MineExpeditionMarkers.Target> {
         if (!supported(scene)) return emptyList()
-        val scope = scope(scene)
-        val pending = MineFactoryExperiments.pending(state).firstOrNull()
-        if (pending == null) {
-            sessions.remove(scope)
-            if (state.stage == MineExpeditionStage.FACTORY_INSTALL) visualScenes.renderInstalledMould(scene, state, scope)
-            else visuals.clear(scope)
-            return emptyList()
-        }
-        val session = session(scope, scene, pending, now)
+        val key = scope(scene)
+        val pending = MineFactoryExperiments.pending(state).firstOrNull() ?: run { clear(key); return emptyList() }
+        val session = session(key, scene, pending, now)
         return when (pending) {
-            MineFactoryExperiment.ROCK_JAM -> listOfNotNull(
-                targetFactory.target(
-                    scene,
-                    MineFactoryExperimentLayout.rockJam,
-                    Material.TUFF,
-                    "rock-pry",
-                    values = mapOf("count" to Component.text(session.pryCount), "total" to Component.text(PRY_COUNT)),
-                ),
-            )
-            MineFactoryExperiment.MOULD -> visualScenes.mouldTargets(scene, state, session)
-            MineFactoryExperiment.MANUAL_CRANE -> visualScenes.craneTargets(scene, session)
-            MineFactoryExperiment.DRIVE_REPAIR -> emptyList()
-            MineFactoryExperiment.ROUTING -> listOfNotNull(
-                targetFactory.target(
-                    scene,
-                    MineFactoryExperimentLayout.routeGate,
-                    Material.COPPER_BLOCK,
-                    when (session.routeCycle) {
-                        ROUTE_IDLE, ROUTE_WAITING -> "route-switch"
-                        ROUTE_OUTBOUND -> "route-return"
-                        else -> "route-moving"
-                    },
-                ),
-                targetFactory.target(scene, MineFactoryExperimentLayout.routeBin, Material.POLISHED_DEEPSLATE, "route-return", glowing = false)?.copy(label = Component.empty()),
-            )
-            MineFactoryExperiment.COOLING -> visualScenes.coolingTargets(scene, session)
+            MineFactoryExperiment.ROCK_JAM -> listOfNotNull(targetFactory.target(
+                scene, MineFactoryExperimentLayout.rockJam, Material.TUFF, "rock-pry"))
+            MineFactoryExperiment.COOLING -> coolingTargets(scene, session)
+            MineFactoryExperiment.MANUAL_CRANE -> crane.targets(scene, state, now)
+            else -> emptyList() // Retired enum names remain readable in old persisted state.
         }
     }
 
-    /** Handles an experiment target before the normal objective action owner. */
-    fun interact(
-        scope: String,
-        scene: MineExpeditionScene,
-        state: MineExpeditionState,
-        player: Player,
-        id: String,
-        now: Long,
-        complete: (MineExpeditionStep) -> Boolean,
-    ): Boolean {
+    fun interact(scope: String, scene: MineExpeditionScene, state: MineExpeditionState, player: Player,
+        id: String, now: Long, complete: (MineExpeditionStep) -> Boolean): Boolean {
         if (!supported(scene) || scope != scope(scene)) return false
         val experiment = MineFactoryExperiments.pending(state).firstOrNull() ?: return false
+        if (experiment == MineFactoryExperiment.MANUAL_CRANE)
+            return crane.interact(scope, scene, state, player, id, now, complete)
         val session = session(scope, scene, experiment, now)
-        if (experiment != MineFactoryExperiment.DRIVE_REPAIR && !acceptInput(session, now)) return true
+        if (session.lastInput != Long.MIN_VALUE && now - session.lastInput < 180L) return true
+        session.lastInput = now
+        if (session.owner != null && session.owner != player.uniqueId) {
+            player.sendActionBar(targetFactory.text("busy", player)); return true
+        }
         return when (experiment) {
             MineFactoryExperiment.ROCK_JAM -> interactRock(scope, state, player, id, now, session, complete)
-            MineFactoryExperiment.MOULD -> interactMould(scene, state, player, id, now, session, complete)
-            MineFactoryExperiment.MANUAL_CRANE -> interactCrane(scope, state, player, id, now, session, complete)
-            MineFactoryExperiment.DRIVE_REPAIR -> false
-            MineFactoryExperiment.ROUTING -> interactRouting(scope, state, player, id, now, session, complete)
-            MineFactoryExperiment.COOLING -> interactCooling(scene, state, player, id, now, session)
+            MineFactoryExperiment.COOLING -> {
+                if (id != MineFactoryExperimentLayout.hoseNozzle.id) return false
+                session.owner = player.uniqueId
+                session.hoseEquipped = true
+                session.lastTick = now
+                player.sendMessage(targetFactory.text("cooling-connected", player))
+                true
+            }
+            else -> false
         }
     }
 
-    /** Handles right-click air/block while the crane operator is already aiming. */
-    fun interactAir(
-        scope: String,
-        scene: MineExpeditionScene,
-        state: MineExpeditionState,
-        player: Player,
-        now: Long,
-        complete: (MineExpeditionStep) -> Boolean,
-    ): Boolean {
-        if (!supported(scene) || scope != scope(scene) ||
-            MineFactoryExperiments.pending(state).firstOrNull() != MineFactoryExperiment.MANUAL_CRANE
-        ) return false
-        val session = sessions[scope] ?: return false
-        if (!session.grabbed || session.owner != player.uniqueId) return false
-        if (!acceptInput(session, now)) return true
-        val landing = session.landing ?: landingPosition(scene).also { session.landing = it }
-        val source = sourcePosition(scene)
-        val bounds = MineFactoryExperimentMotion.Bounds(
-            minOf(source.x, landing.x) - 1.0,
-            maxOf(source.x, landing.x) + 1.0,
-            minOf(source.z, landing.z) - 2.0,
-            maxOf(source.z, landing.z) + 2.0,
-        )
-        val aim = MineFactoryExperimentMotion.boundedAim(
-            player.eyeLocation,
-            player.eyeLocation.direction,
-            MineFactoryExperimentMotion.AimPlane(landing.y - CRANE_LOAD_HEIGHT, bounds),
-        )?.also { it.y = landing.y }
-        if (aim == null || MineFactoryExperimentMotion.distanceSquared(aim, landing.toVector()) > CRANE_SNAP_RADIUS * CRANE_SNAP_RADIUS ||
-            !craneSettled(session, landing)
-        ) {
-            player.sendActionBar(targetFactory.text("crane-miss", player))
-            return true
-        }
-        val step = MineFactoryExperiments.resolve(state, MineFactoryExperiment.MANUAL_CRANE, now)
-        if (step.accepted && complete(step)) {
-            session.current = landing.clone()
-            session.grabbed = false
-            session.owner = null
-        }
-        return true
-    }
-
-    /** Advances side-job timers and emits bounded particle/sound feedback. */
-    fun tick(
-        scope: String,
-        scene: MineExpeditionScene,
-        state: MineExpeditionState,
-        players: Collection<Player>,
-        now: Long,
-        complete: (Player, MineExpeditionStep) -> Boolean,
-    ) {
+    fun tick(scope: String, scene: MineExpeditionScene, state: MineExpeditionState, players: Collection<Player>,
+        now: Long, complete: (Player, MineExpeditionStep) -> Boolean) {
         if (!supported(scene) || scope != scope(scene)) return
-        val experiment = MineFactoryExperiments.pending(state).firstOrNull()
-        val session = sessions[scope]
-        if (session == null || experiment == null || session.experiment != experiment) {
-            if (session != null) visuals.clear(scope)
-            sessions.remove(scope)
-            return
+        val experiment = MineFactoryExperiments.pending(state).firstOrNull() ?: run { clear(scope); return }
+        val session = session(scope, scene, experiment, now)
+        players.filter { session.informed.add(it.uniqueId) }.forEach { player ->
+            val key = when (experiment) {
+                MineFactoryExperiment.ROCK_JAM -> "rock-context"
+                MineFactoryExperiment.COOLING -> "cooling-context"
+                else -> "crane-context"
+            }
+            player.sendMessage(targetFactory.text(key, player))
         }
-        if (session.owner != null && players.none { it.uniqueId == session.owner }) {
-            resetTransient(scope, session)
+        if (experiment == MineFactoryExperiment.MANUAL_CRANE) {
+            crane.tick(scope, scene, state, players, now, complete); return
         }
-        when (experiment) {
-            MineFactoryExperiment.MOULD -> visualScenes.tickMould(scope, state, players, now, session, complete)
-            MineFactoryExperiment.ROUTING -> tickRouting(scope, state, players, now, session, complete)
-            MineFactoryExperiment.COOLING -> tickCooling(scope, state, players, now, session, complete)
-            MineFactoryExperiment.MANUAL_CRANE -> tickCrane(scope, scene, state, players, now, session)
-            else -> Unit
-        }
+        if (session.owner != null && players.none { it.uniqueId == session.owner }) resetTransient(scope, session)
+        if (experiment == MineFactoryExperiment.COOLING) tickCooling(scope, state, players, now, session, complete)
     }
 
-    /** Action-bar hint for the active experiment; null means ordinary guidance may speak. */
-    fun hint(scope: String, player: Player, state: MineExpeditionState, now: Long): Component? {
-        val experiment = MineFactoryExperiments.pending(state).firstOrNull() ?: return null
-        val session = sessions[scope]
-        return when (experiment) {
-            MineFactoryExperiment.ROCK_JAM -> targetFactory.text(
-                "rock-pry",
-                player,
-                mapOf("count" to Component.text(session?.pryCount ?: 0), "total" to Component.text(PRY_COUNT)),
-            )
-            MineFactoryExperiment.MOULD -> targetFactory.text("mould-select", player)
-            MineFactoryExperiment.MANUAL_CRANE -> targetFactory.text(
-                if (session?.grabbed == true) "crane-aim" else "crane-grab",
-                player,
-            )
-            MineFactoryExperiment.DRIVE_REPAIR -> null
-            MineFactoryExperiment.ROUTING -> targetFactory.text(
-                when (session?.routeCycle) { ROUTE_RETURNING, ROUTE_DONE -> "route-moving"; ROUTE_OUTBOUND -> "route-return"; else -> "route-switch" },
-                player,
-            )
-            MineFactoryExperiment.COOLING -> targetFactory.text(
-                if (session?.hoseEquipped == true) "cooling-aim" else "cooling-pickup",
-                player,
-                mapOf("percent" to Component.text(((session?.sprayMillis ?: 0L) * 100 / COOLING_MILLIS).coerceIn(0L, 100L))),
-            )
+    fun hint(scope: String, player: Player, state: MineExpeditionState, now: Long): Component? =
+        when (MineFactoryExperiments.pending(state).firstOrNull()) {
+            MineFactoryExperiment.ROCK_JAM -> targetFactory.text("rock-context-short", player)
+            MineFactoryExperiment.COOLING -> {
+                val session = sessions[scope]
+                targetFactory.text(if (session?.hoseEquipped == true) "cooling-progress" else "cooling-context-short", player,
+                    mapOf("percent" to Component.text((coolingProgress(scope) * 100).toInt())))
+            }
+            MineFactoryExperiment.MANUAL_CRANE -> crane.hint(scope, player)
+            else -> null
         }
-    }
 
-    /** Core center used by the parent machinery while the manual crane is aimed. */
-    fun cranePosition(scope: String): Location? = sessions[scope]?.current?.clone()
-
-    /** Exposed for the parent packet-offset hook; no target location is changed. */
+    fun cranePosition(scope: String): Location? = crane.position(scope)
     fun pryProgress(scope: String): Double = sessions[scope]?.let {
         MineFactoryExperimentMotion.pryProgress(it.pryCount, PRY_COUNT)
     } ?: 0.0
-
-    /** Exposed for the parent packet-offset hook and tests. */
-    fun routeProgress(scope: String): Double = sessions[scope]?.routeProgress ?: 0.0
-
-    /** Dynamic ore pose for the parent marker transform hook; no cart or lease is created. */
-    fun routeOrePosition(scope: String): Location? {
-        val session = sessions[scope] ?: return null
-        if (session.experiment != MineFactoryExperiment.ROUTING || session.routeCycle == ROUTE_IDLE) return null
-        val from = beltPosition(session.scene, -2.0) ?: return null
-        val buffer = beltPosition(session.scene, -3.4) ?: return null
-        val inlet = beltPosition(session.scene, 3.8) ?: return null
-        val phase = if (session.startedAt < 0L) 1.0 else session.routeProgress.coerceIn(0.0, 1.0)
-        return when (session.routeCycle) {
-            ROUTE_OUTBOUND -> interpolate(from, buffer, phase, 0.0)
-            ROUTE_WAITING -> buffer
-            ROUTE_RETURNING -> interpolate(buffer, inlet, phase, 0.0)
-            ROUTE_DONE -> inlet
-            else -> null
-        }
-    }
-
-    fun coolingProgress(scope: String): Double =
-        ((sessions[scope]?.sprayMillis?.toDouble() ?: 0.0) / COOLING_MILLIS.toDouble())
-            .coerceIn(0.0, 1.0)
-
+    fun coolingProgress(scope: String): Double = ((sessions[scope]?.sprayMillis ?: 0L).toDouble() / COOLING_MILLIS).coerceIn(0.0, 1.0)
     fun release(player: Player) {
-        sessions.entries.filter { it.value.owner == player.uniqueId }.forEach { (scope, session) ->
-            resetTransient(scope, session)
-        }
+        crane.release(player)
+        sessions.entries.filter { it.value.owner == player.uniqueId }.forEach { (key, session) -> resetTransient(key, session) }
     }
+    fun clear(scope: String) { sessions.remove(scope); visuals.clear(scope); crane.clear(scope) }
+    fun cleanup() { sessions.clear(); visuals.cleanup(); crane.cleanup() }
 
-    fun clear(scope: String) {
-        sessions.remove(scope)
+    private fun resetTransient(scope: String, session: MineFactoryExperimentSession) {
+        session.owner = null; session.pryCount = 0; session.hoseEquipped = false; session.sprayMillis = 0L
+        markers.translate(scope, MineFactoryExperimentLayout.rockJam.id, Vector())
         visuals.clear(scope)
     }
 
-    fun cleanup() {
-        sessions.clear()
-        visuals.cleanup()
-    }
-
-    private fun resetTransient(scope: String, session: MineFactoryExperimentSession) {
-        session.owner = null
-        when (session.experiment) {
-            MineFactoryExperiment.ROCK_JAM -> {
-                session.pryCount = 0
-                markers.translate(scope, MineFactoryExperimentLayout.rockJam.id, Vector())
-            }
-            MineFactoryExperiment.MOULD -> {
-                visualScenes.resetMould(scope, session)
-            }
-            MineFactoryExperiment.MANUAL_CRANE -> {
-                session.grabbed = false
-                session.current = sourcePosition(session.scene)
-            }
-            MineFactoryExperiment.COOLING -> {
-                session.hoseEquipped = false
-                session.sprayMillis = 0L
-                visuals.remove(scope, HELD_NOZZLE_ID)
-            }
-            MineFactoryExperiment.ROUTING, MineFactoryExperiment.DRIVE_REPAIR -> Unit
-        }
-    }
+    private fun coolingTargets(scene: MineExpeditionScene, session: MineFactoryExperimentSession): List<MineExpeditionMarkers.Target> = listOfNotNull(
+        targetFactory.target(scene, MineFactoryExperimentLayout.hoseReel, Material.COPPER_BLOCK, "cooling-pickup",
+            interactive = false, glowing = false)?.copy(label = Component.empty()),
+        targetFactory.target(scene, MineFactoryExperimentLayout.hoseNozzle, Material.CUT_COPPER, "cooling-pickup",
+            interactive = !session.hoseEquipped, glowing = !session.hoseEquipped,
+            model = if (session.hoseEquipped) "factory_hose_stand" else "factory_hose_nozzle")
+            ?.let { if (session.hoseEquipped) it.copy(label = Component.empty()) else it },
+        targetFactory.target(scene, MineFactoryExperimentLayout.hotBearing, Material.ORANGE_STAINED_GLASS, "cooling-progress",
+            values = mapOf("percent" to Component.text((session.sprayMillis * 100 / COOLING_MILLIS).coerceIn(0, 100))))
+    )
 
     private fun interactRock(
         scope: String,
@@ -311,363 +168,81 @@ internal class MineFactoryExperimentsController(
         }
     }
 
-    private fun interactMould(
-        scene: MineExpeditionScene,
-        state: MineExpeditionState,
-        player: Player,
-        id: String,
-        now: Long,
-        session: MineFactoryExperimentSession,
-        complete: (MineExpeditionStep) -> Boolean,
-    ): Boolean {
-        val choice = (0..2).firstOrNull { MineFactoryExperimentLayout.mould(it).id == id }
-            ?: return id == MineFactoryExperimentLayout.mouldSocket.id
-        val plan = state.factoryExperiments ?: return true
-        if (session.mouldChoice >= 0) return true
-        if (choice != plan.product) {
-            player.sendActionBar(targetFactory.text("mould-wrong", player))
-            return true
+    private fun tickCooling(scope: String, state: MineExpeditionState, players: Collection<Player>, now: Long,
+        session: MineFactoryExperimentSession, complete: (Player, MineExpeditionStep) -> Boolean) {
+        val bearing = bearingCenter(session.scene) ?: return
+        if (now >= session.nextParticles && plugin.config.getBoolean("ui.particles", true)) {
+            session.nextParticles = now + 150L
+            bearing.world.spawnParticle(Particle.SMOKE, bearing, 4, .13, .18, .13, .025)
+            bearing.world.spawnParticle(Particle.ELECTRIC_SPARK, bearing, 2, .08, .08, .08, .025)
         }
-        session.owner = player.uniqueId
-        session.mouldChoice = choice
-        session.mouldStartedAt = now
-        session.lastTick = now
-        player.sendActionBar(targetFactory.text("mould-fitting", player))
-        return true
-    }
-
-    private fun interactCrane(
-        scope: String,
-        state: MineExpeditionState,
-        player: Player,
-        id: String,
-        now: Long,
-        session: MineFactoryExperimentSession,
-        complete: (MineExpeditionStep) -> Boolean,
-    ): Boolean {
-        if (id == MineFactoryExperimentLayout.craneControl.id) {
-            if (session.owner != null && session.owner != player.uniqueId) return true
-            session.owner = player.uniqueId
-            session.grabbed = true
-            session.lastTick = now
-            if (session.current == null) session.current = sourcePosition(session.scene)
-            if (session.landing == null) session.landing = landingPosition(session.scene)
-            sound(session.current, Sound.BLOCK_CHAIN_PLACE, .7f)
-            return true
-        }
-        if (id != MineFactoryExperimentLayout.craneLanding.id || !session.grabbed || session.owner != player.uniqueId) {
-            return id == MineFactoryExperimentLayout.craneLanding.id
-        }
-        if (!craneSettled(session, session.landing ?: landingPosition(session.scene))) {
-            player.sendActionBar(targetFactory.text("crane-miss", player))
-            return true
-        }
-        val step = MineFactoryExperiments.resolve(state, MineFactoryExperiment.MANUAL_CRANE, now)
-        if (step.accepted && complete(step)) {
-            session.current = session.landing?.clone()
-            session.grabbed = false
-            session.owner = null
-        }
-        return true
-    }
-
-    private fun interactRouting(
-        scope: String,
-        state: MineExpeditionState,
-        player: Player,
-        id: String,
-        now: Long,
-        session: MineFactoryExperimentSession,
-        complete: (MineExpeditionStep) -> Boolean,
-    ): Boolean {
-        if (id != MineFactoryExperimentLayout.routeGate.id) {
-            return id == "control_crusher_left" || id == "crushed_output" || id == MineFactoryExperimentLayout.routeBin.id
-        }
-        if (session.owner != null && session.owner != player.uniqueId) return true
-        session.owner = player.uniqueId
-        when (session.routeCycle) {
-            ROUTE_IDLE -> {
-                session.routeCycle = ROUTE_OUTBOUND
-                session.startedAt = now
-                session.lastTick = now
-                sound(targetFactory.location(session.scene, MineFactoryExperimentLayout.routeGate), Sound.BLOCK_LEVER_CLICK, .7f)
-            }
-            ROUTE_WAITING -> {
-                session.routeCycle = ROUTE_RETURNING
-                session.startedAt = now
-                session.lastTick = now
-                sound(targetFactory.location(session.scene, MineFactoryExperimentLayout.routeGate), Sound.BLOCK_LEVER_CLICK, 1.1f)
-            }
-            ROUTE_DONE -> resolveRouting(scope, state, player, now, session) { _, step -> complete(step) }
-        }
-        return true
-    }
-
-    private fun interactCooling(
-        scene: MineExpeditionScene,
-        state: MineExpeditionState,
-        player: Player,
-        id: String,
-        now: Long,
-        session: MineFactoryExperimentSession,
-    ): Boolean {
-        if (id == MineFactoryExperimentLayout.hoseNozzle.id || id == MineFactoryExperimentLayout.hoseReel.id) {
-            if (session.owner != null && session.owner != player.uniqueId) return true
-            session.owner = player.uniqueId
-            session.hoseEquipped = true
-            session.lastTick = now
-            return true
-        }
-        return id == MineFactoryExperimentLayout.hotBearing.id
-    }
-
-    private fun tickRouting(
-        scope: String,
-        state: MineExpeditionState,
-        players: Collection<Player>,
-        now: Long,
-        session: MineFactoryExperimentSession,
-        complete: (Player, MineExpeditionStep) -> Boolean,
-    ) {
-        val owner = session.owner?.let { id -> players.firstOrNull { it.uniqueId == id } }
-        if (session.routeCycle == ROUTE_DONE) {
-            owner?.let { resolveRouting(scope, state, it, now, session, complete) }
-            return
-        }
-        if (session.startedAt < 0L) return
-        session.routeProgress = MineFactoryExperimentMotion.phase(session.startedAt, now, ROUTING_MILLIS)
-        when (session.routeCycle) {
-            ROUTE_OUTBOUND -> {
-                markers.rotate(scope, MineFactoryExperimentLayout.routeGate.id, session.routeProgress * PI / 2.0)
-                renderRouteOre(scope, session)
-                if (session.routeProgress >= 1.0) {
-                    session.routeCycle = ROUTE_WAITING
-                    session.startedAt = -1L
-                    owner?.sendActionBar(targetFactory.text("route-switch", owner))
-                }
-            }
-            ROUTE_RETURNING -> {
-                markers.rotate(scope, MineFactoryExperimentLayout.routeGate.id, (1.0 - session.routeProgress) * PI / 2.0)
-                renderRouteOre(scope, session)
-                if (session.routeProgress >= 1.0) {
-                    session.routeCycle = ROUTE_DONE
-                    session.startedAt = -1L
-                    owner?.let { resolveRouting(scope, state, it, now, session, complete) }
-                }
-            }
-        }
-    }
-
-    private fun resolveRouting(
-        scope: String,
-        state: MineExpeditionState,
-        player: Player,
-        now: Long,
-        session: MineFactoryExperimentSession,
-        complete: ((Player, MineExpeditionStep) -> Boolean)? = null,
-    ) {
-        val step = MineFactoryExperiments.resolve(state, MineFactoryExperiment.ROUTING, now)
-        if (step.accepted && (complete == null || complete(player, step))) {
-            visuals.remove(scope, ROUTE_ORE_ID)
-            sessions.remove(scope)
-        }
-    }
-
-    private fun renderRouteOre(scope: String, session: MineFactoryExperimentSession) {
-        val at = routeOrePosition(scope) ?: return
-        visuals.render(scope, ROUTE_ORE_ID, at, "ore_piece", .85f, glowing = false)
-    }
-
-    private fun interpolate(from: Location, to: Location, phase: Double, yOffset: Double): Location =
-        from.clone().add(
-            (to.x - from.x) * phase,
-            yOffset + (to.y - from.y) * phase,
-            (to.z - from.z) * phase,
-        )
-
-    private fun beltPosition(scene: MineExpeditionScene, x: Double): Location? =
-        targetFactory.location(scene, MineFactoryExperimentLayout.Fixture(
-            "route-material", "decor_conveyor_raw", Vector(x, 1.80, 0.0), "", 1f))
-
-    private fun tickCooling(
-        scope: String,
-        state: MineExpeditionState,
-        players: Collection<Player>,
-        now: Long,
-        session: MineFactoryExperimentSession,
-        complete: (Player, MineExpeditionStep) -> Boolean,
-    ) {
-        renderBearingSmoke(session)
         if (!session.hoseEquipped) return
-        val owner = session.owner?.let { id -> players.firstOrNull { it.uniqueId == id } }
-        if (owner == null || !owner.isSneaking) {
-            session.lastTick = now
-            owner?.let { renderHeldNozzle(scope, it) }
-            return
-        }
-        val elapsed = (now - session.lastTick).coerceIn(0L, MAX_TICK_MILLIS)
+        val owner = players.firstOrNull { it.uniqueId == session.owner } ?: return
+        val reel = targetFactory.location(session.scene, MineFactoryExperimentLayout.hoseReel) ?: return
+        if (owner.location.distanceSquared(reel) > 64.0) { resetTransient(scope, session); return }
+        val elapsed = (now - session.lastTick).coerceIn(0L, 250L)
         session.lastTick = now
-        val hit = renderCoolingJet(scope, session, owner, now)
+        val eye = owner.eyeLocation
+        val nozzle = eye.clone().add(eye.direction.clone().multiply(.65)).add(0.0, -.35, 0.0)
+        val direction = eye.direction.clone().normalize()
+        visuals.render(scope, HELD_NOZZLE_ID, nozzle, "hose_nozzle_held", .85f, eye.yaw, eye.pitch)
+        renderHose(scope, reel.add(0.0, .65, .15), nozzle)
+        // Taking the nozzle opens its water supply. Aim is the interaction;
+        // there is no hidden Shift or repeated-click requirement.
+        val spray = nozzle.clone().add(direction.clone().multiply(.55))
+        val hit = WorksiteWaterJet.hitTargets(listOf("bearing" to bearing), spray, direction, 4.5, .8).isNotEmpty()
+        if (plugin.config.getBoolean("ui.particles", true)) {
+            WorksiteWaterJet.renderJet(spray, direction, 4.5, .35, 2)
+            if (hit) bearing.world.spawnParticle(Particle.CLOUD, bearing, 3, .18, .25, .18, .035)
+        }
+        if (now >= session.nextWaterSound && plugin.config.getBoolean("ui.sounds", true)) {
+            session.nextWaterSound = now + 450L
+            owner.playSound(nozzle, Sound.ITEM_BUCKET_EMPTY, .3f, 1.1f)
+            if (hit) bearing.world.playSound(bearing, Sound.BLOCK_FIRE_EXTINGUISH, .55f, 1.25f)
+        }
         if (!hit) return
         session.sprayMillis = (session.sprayMillis + elapsed).coerceAtMost(COOLING_MILLIS)
         if (session.sprayMillis < COOLING_MILLIS) return
         val step = MineFactoryExperiments.resolve(state, MineFactoryExperiment.COOLING, now)
-        if (step.accepted && complete(owner, step)) sessions.remove(scope)
+        if (step.accepted && complete(owner, step)) {
+            owner.sendMessage(targetFactory.text("cooling-finished", owner))
+            visuals.clear(scope); sessions.remove(scope)
+        }
     }
 
-    private fun tickCrane(
-        scope: String,
-        scene: MineExpeditionScene,
-        state: MineExpeditionState,
-        players: Collection<Player>,
-        now: Long,
-        session: MineFactoryExperimentSession,
-    ) {
-        if (!session.grabbed || session.owner == null) return
-        val owner = players.firstOrNull { it.uniqueId == session.owner } ?: return
-        val current = session.current ?: sourcePosition(scene).also { session.current = it }
-        val source = sourcePosition(scene)
-        val landing = session.landing ?: landingPosition(scene).also { session.landing = it }
-        val bounds = MineFactoryExperimentMotion.Bounds(
-            minOf(source.x, landing.x) - 1.0,
-            maxOf(source.x, landing.x) + 1.0,
-            minOf(source.z, landing.z) - 2.0,
-            maxOf(source.z, landing.z) + 2.0,
+    private fun bearingCenter(scene: MineExpeditionScene): Location? {
+        val fixture = MineFactoryExperimentLayout.hotBearing
+        val local = fixture.copyOffset().add(Vector(0.0, .43 * fixture.scale, .08 * fixture.scale))
+        return position(scene, fixture.anchor, local)
+    }
+
+    private fun renderHose(scope: String, reel: Location, nozzle: Location) {
+        fun point(t: Double): Location = reel.clone().add(
+            (nozzle.x - reel.x) * t,
+            (nozzle.y - reel.y) * t - kotlin.math.sin(t * Math.PI) * .35,
+            (nozzle.z - reel.z) * t,
         )
-        val aim = MineFactoryExperimentMotion.boundedAim(
-            owner.eyeLocation,
-            owner.eyeLocation.direction,
-            MineFactoryExperimentMotion.AimPlane(landing.y - CRANE_LOAD_HEIGHT, bounds),
-        )?.also { it.y = landing.y } ?: return
-        // The broad painted pad catches the aim; the load itself still travels
-        // smoothly to its center before a drop can be accepted.
-        if (aim.distanceSquared(landing.toVector()) <= CRANE_SNAP_RADIUS * CRANE_SNAP_RADIUS) {
-            aim.copy(landing.toVector())
+        repeat(16) { index ->
+            val from = point(index / 16.0); val to = point((index + 1) / 16.0)
+            val delta = to.toVector().subtract(from.toVector())
+            val center = from.clone().add(delta.clone().multiply(.5))
+            center.direction = delta
+            visuals.render(scope, "hose-link-$index", center, "hose_link", delta.length().toFloat().coerceAtLeast(.015f), center.yaw, center.pitch)
         }
-        val delta = (now - session.lastTick).coerceIn(0L, MAX_TICK_MILLIS)
-        session.lastTick = now
-        val smooth = MineFactoryExperimentMotion.smooth(current.toVector(), aim, CRANE_STEP_PER_TICK * (delta / 50.0))
-        session.current = current.clone().apply { x = smooth.x; y = smooth.y; z = smooth.z }
-        if (current.distanceSquared(session.current!!) > .001 &&
-            (session.lastSound == Long.MIN_VALUE || now >= session.lastSound)) {
-            sound(session.current, Sound.BLOCK_CHAIN_STEP, .65f)
-            session.lastSound = now + 450L
-        }
-    }
-
-    private fun craneSettled(session: MineFactoryExperimentSession, landing: Location): Boolean {
-        val current = session.current ?: return false
-        return MineFactoryExperimentMotion.distanceSquared(current.toVector(), landing.toVector()) <=
-            .09 && kotlin.math.abs(current.y - landing.y) <= CRANE_LOWER_TOLERANCE
-    }
-
-    private fun renderCoolingJet(scope: String, session: MineFactoryExperimentSession, owner: Player, now: Long): Boolean {
-        val nozzle = heldNozzleLocation(owner)
-        val bearing = targetFactory.location(session.scene, MineFactoryExperimentLayout.hotBearing) ?: return false
-        val direction = owner.eyeLocation.direction.clone().normalize()
-        val hit = WorksiteWaterJet.hitTargets(
-            listOf("bearing" to bearing.clone().add(0.0, .43, .08)),
-            nozzle,
-            direction,
-            COOLING_RANGE,
-            COOLING_RADIUS,
-        ).isNotEmpty()
-        renderHeldNozzle(scope, owner)
-        if (plugin.config.getBoolean("ui.particles", true)) {
-            WorksiteWaterJet.renderJet(nozzle.clone().add(direction.clone().multiply(.5)), direction, COOLING_RANGE, 0.35, 2)
-            if (hit) {
-                bearing.world.spawnParticle(Particle.CLOUD, bearing.clone().add(0.0, 0.7, 0.0), 2, .18, .18, .18, .01)
-                bearing.world.spawnParticle(Particle.SMOKE, bearing.clone().add(0.0, 0.7, 0.0), 1, .12, .15, .12, .01)
-            }
-        }
-        if (hit && plugin.config.getBoolean("ui.sounds", true) && (session.lastSound == Long.MIN_VALUE || now >= session.lastSound)) {
-            session.lastSound = now + 300L
-            bearing.world.playSound(bearing, Sound.BLOCK_FIRE_EXTINGUISH, .45f, 1.25f)
-            owner.playSound(owner.location, Sound.ITEM_BUCKET_EMPTY, .25f, 1.3f)
-        }
-        return hit
-    }
-
-    private fun renderBearingSmoke(session: MineFactoryExperimentSession) {
-        if (!plugin.config.getBoolean("ui.particles", true)) return
-        val bearing = targetFactory.location(session.scene, MineFactoryExperimentLayout.hotBearing) ?: return
-        val world = bearing.world ?: return
-        world.spawnParticle(Particle.SMOKE, bearing.clone().add(0.0, .7, 0.0), 1, .12, .15, .12, .01)
-    }
-
-    private fun sound(at: Location?, sound: Sound, pitch: Float) {
-        if (at != null && plugin.config.getBoolean("ui.sounds", true)) at.world.playSound(at, sound, .45f, pitch)
-    }
-
-    private fun renderHeldNozzle(scope: String, owner: Player) {
-        val eye = owner.eyeLocation
-        visuals.render(
-            scope,
-            HELD_NOZZLE_ID,
-            heldNozzleLocation(owner),
-            "hose_nozzle_held",
-            HELD_NOZZLE_SCALE,
-            eye.yaw,
-            eye.pitch,
-        )
-    }
-
-    private fun heldNozzleLocation(owner: Player): Location {
-        val eye = owner.eyeLocation
-        return eye.clone().add(eye.direction.clone().normalize().multiply(.5)).add(0.0, -.4, 0.0)
     }
 
     private fun session(scope: String, scene: MineExpeditionScene, experiment: MineFactoryExperiment, now: Long): MineFactoryExperimentSession {
-        val existing = sessions[scope]
-        if (existing != null && existing.experiment == experiment) return existing
-        val created = MineFactoryExperimentSession(scene, experiment, lastTick = now)
-        if (experiment == MineFactoryExperiment.MANUAL_CRANE) {
-            created.current = sourcePosition(scene)
-            created.landing = landingPosition(scene)
-        }
-        sessions[scope] = created
-        return created
+        val old = sessions[scope]
+        if (old?.experiment == experiment) return old
+        if (old != null) { visuals.clear(scope); crane.clear(scope) }
+        return MineFactoryExperimentSession(scene, experiment, lastTick = now).also { sessions[scope] = it }
     }
-
-    private fun sourcePosition(scene: MineExpeditionScene): Location =
-        targetFactory.location(scene, MineFactoryExperimentLayout.Fixture("source", "pour_control", Vector(0.0, 2.2, 0.0), "", 1f))
-            ?: scene.at(MineFactoryLine.effectiveStation(scene.plan, "pour_control")).add(0.0, 2.2, 0.0)
-
-    private fun landingPosition(scene: MineExpeditionScene): Location =
-        targetFactory.location(scene, MineFactoryExperimentLayout.Fixture("landing", "crane_load", Vector(0.0, 2.0, 0.0), "", 1f))
-            ?: scene.at(MineFactoryLine.effectiveStation(scene.plan, "crane_load")).add(0.0, 2.0, 0.0)
-
-    private fun acceptInput(session: MineFactoryExperimentSession, now: Long): Boolean {
-        if (session.lastInput != Long.MIN_VALUE && now - session.lastInput < INPUT_COOLDOWN) return false
-        session.lastInput = now
-        return true
-    }
-
-    private fun supported(scene: MineExpeditionScene): Boolean =
-        scene.kind == MineExpeditionKind.DEAD_FACTORY && scene.placement.geometryVersion >= 3 &&
-            MineFactoryProgram.usesConnectedCrusherLine(scene.plan)
-
-    private fun scope(scene: MineExpeditionScene): String = "${scene.zoneId}:${scene.sequence}:${scene.objectiveNonce}"
-
+    private fun supported(scene: MineExpeditionScene): Boolean = scene.kind == MineExpeditionKind.DEAD_FACTORY &&
+        scene.placement.geometryVersion >= 3 && MineFactoryProgram.usesConnectedCrusherLine(scene.plan)
+    private fun scope(scene: MineExpeditionScene) = "${scene.zoneId}:${scene.sequence}:${scene.objectiveNonce}"
     private companion object {
-        const val ROUTE_IDLE = 0
-        const val ROUTE_OUTBOUND = 1
-        const val ROUTE_WAITING = 2
-        const val ROUTE_RETURNING = 3
-        const val ROUTE_DONE = 4
         const val PRY_COUNT = 3
-        const val INPUT_COOLDOWN = 180L
-        const val ROUTING_MILLIS = 2_500L
-        const val COOLING_MILLIS = 2_500L
-        const val COOLING_RANGE = 3.5
-        const val COOLING_RADIUS = .72
-        const val MAX_TICK_MILLIS = 250L
-        const val CRANE_STEP_PER_TICK = 0.22
-        const val CRANE_SNAP_RADIUS = 1.8
-        const val CRANE_LOAD_HEIGHT = .5
-        const val CRANE_LOWER_TOLERANCE = .18
-        const val HELD_NOZZLE_SCALE = .64f
+        const val COOLING_MILLIS = 3_500L
         const val HELD_NOZZLE_ID = "held-hose-nozzle"
-        const val ROUTE_ORE_ID = "route-ore"
     }
 }

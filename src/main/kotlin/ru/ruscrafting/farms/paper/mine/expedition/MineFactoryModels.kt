@@ -10,7 +10,7 @@ import kotlin.math.sin
 internal object MineFactoryModels {
     val kinds = setOf("factory_crusher", "factory_conveyor", "roller_table", "mounted_console", "furnace_air_console",
         "charge_bunker", "inlet_hopper", "charge_hopper", "loose_gear", "gear_socket", "factory_water_header")
-    val moltenPath = listOf(Vector3f(-8f,1.25f,0f), Vector3f(-8f,3.05f,0f),
+    val moltenPath = listOf(Vector3f(-4f,1.25f,0f), Vector3f(-4f,3.05f,0f),
         Vector3f(-3.3f,3.05f,0f), Vector3f(-3.3f,3.05f,-2.15f),
         Vector3f(1.05f,3.05f,-2.15f), Vector3f(1.05f,3.05f,-.3f), Vector3f(1.05f,2.35f,-.3f))
 
@@ -134,6 +134,12 @@ internal object MineFactoryModels {
                 for(x in listOf(-4f,4f)) box(Material.YELLOW_TERRACOTTA,x,2.1f,-1.4f,.25f,1.4f,.25f)
             }
             "mounted_console" -> {
+                // The station anchor is the floor surface (world y=5).  Keep
+                // the controls at their existing human height, but give the
+                // panel a broad plinth and two rigid uprights down to local y=0.
+                box(Material.POLISHED_DEEPSLATE,0f,.08f,0f,1.65f,.16f,1f)
+                for(x in listOf(-.48f,.48f))
+                    box(Material.POLISHED_BASALT,x,.50f,-.06f,.28f,.72f,.36f)
                 box(Material.POLISHED_BASALT,0f,1.15f,-.42f,.35f,.35f,.95f)
                 box(Material.WEATHERED_CUT_COPPER,0f,1.3f,0f,1.3f,.95f,.4f)
                 box(Material.POLISHED_BLACKSTONE,0f,1.35f,.225f,1.1f,.7f,.035f)
@@ -146,6 +152,11 @@ internal object MineFactoryModels {
                 // Air control is deliberately a small, readable service panel: the
                 // lever is the only clickable moving part and the thermometer is
                 // a stack of passive lights driven by MineExpeditionMarkers.
+                // This panel uses the same floor anchor as mounted_console while
+                // retaining its reachable lever and gauge heights.
+                box(Material.POLISHED_DEEPSLATE,0f,.08f,0f,1.85f,.16f,1f)
+                for(x in listOf(-.56f,.56f))
+                    box(Material.POLISHED_BASALT,x,.50f,-.05f,.30f,.72f,.38f)
                 box(Material.POLISHED_BASALT,0f,1.15f,-.42f,.35f,.35f,.95f)
                 box(Material.WEATHERED_CUT_COPPER,0f,1.3f,0f,1.5f,1.05f,.42f)
                 box(Material.POLISHED_BLACKSTONE,0f,1.35f,.225f,1.25f,.75f,.035f)

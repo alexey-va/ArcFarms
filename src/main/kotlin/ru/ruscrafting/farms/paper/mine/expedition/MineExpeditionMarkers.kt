@@ -298,16 +298,23 @@ internal class MineExpeditionMarkers(
             portal(target) -> 3.25
             target.model in setOf("finished_gear","return_miner", "factory_product_plate", "factory_product_rod") -> 2.1
             target.model in setOf("crane_console", "furnace_console", "furnace_air_console", "machine_console", "mounted_console") -> 2.3
-            target.model?.startsWith("factory_") == true && (target.id.startsWith("fx_") || target.id.startsWith("factory_experiment_") || target.model == "factory_crane_landing") ->
+            target.model?.startsWith("factory_") == true && (target.id.startsWith("fx_") || target.id.startsWith("factory_experiment_") || target.model.startsWith("factory_crane_")) ->
                 (blueprint.maxOfOrNull { it.center.y + it.size.y / 2 } ?: 1f) * target.modelScale + .5
             blueprint.isNotEmpty() -> 4.0*target.modelScale
             else -> 2.0
         }
-        val label = renderer().spawnText(target.location.clone().add(0.0, labelHeight, 0.0), target.label).apply {
-            billboard = Display.Billboard.CENTER; brightness = Display.Brightness(15,15); viewRange = .65f
-            backgroundColor = Color.fromARGB(100,12,18,24); isShadowed = true; isSeeThrough = true
+        val buttonCaption = target.model in setOf("factory_crane_button_lift", "factory_crane_button_lower")
+        val labelAt = if (buttonCaption) {
+            val offset = Quaternionf().rotateY(Math.toRadians(target.yaw.toDouble()).toFloat())
+                .transform(Vector3f(0f, -.55f, .215f))
+            target.location.clone().add(offset.x.toDouble(), offset.y.toDouble(), offset.z.toDouble()).apply { yaw = target.yaw.toFloat() }
+        } else target.location.clone().add(0.0, labelHeight, 0.0)
+        val label = renderer().spawnText(labelAt, target.label).apply {
+            billboard = if (buttonCaption) Display.Billboard.FIXED else Display.Billboard.CENTER
+            brightness = Display.Brightness(15,15); viewRange = .65f
+            backgroundColor = Color.fromARGB(100,12,18,24); isShadowed = true; isSeeThrough = !buttonCaption
             lineWidth = 180
-            transformation = Transformation(Vector3f(), Quaternionf(), Vector3f(.75f), Quaternionf())
+            transformation = Transformation(Vector3f(), Quaternionf(), Vector3f(if (buttonCaption) .6f else .75f), Quaternionf())
         }
         return Marker(visuals,hitbox,label,target,blueprint)
     }

@@ -86,8 +86,15 @@ internal class MineExpeditionStock(
             loader.prepare(receipt)
             return loader.prepared(receipt.journalSequence)?.takeIf { it.ready }?.also {
                 bind(it, receipt, surface)
-                if (incident.expedition == null || incident.expedition.placement != receipt.placement) {
-                    runtime.state = runtime.state.copy(incident = incident.copy(expedition = initial(receipt, incident.type)))
+                val existing = incident.expedition
+                val normalized = when {
+                    existing == null || existing.placement != receipt.placement -> initial(receipt, incident.type)
+                    incident.type == MineIncidentType.DEAD_FACTORY && receipt.placement.geometryVersion >= 3 ->
+                        MineFactoryExperiments.normalizeConnected(existing)
+                    else -> existing
+                }
+                if (normalized != existing) {
+                    runtime.state = runtime.state.copy(incident = incident.copy(expedition = normalized))
                     state.persistAsync()
                 }
             }
@@ -123,8 +130,10 @@ internal class MineExpeditionStock(
     private fun initial(receipt: MineExpeditionSceneReceipt, type: MineIncidentType) =
         MineExpeditionEngine.initial(type, receipt.placement, Math.floorMod(receipt.objectiveNonce, 3L).toInt(),
             if (type == MineIncidentType.DEAD_FACTORY && receipt.placement.geometryVersion >= 3)
-                experimentPresets.consume(receipt.zoneId, WorksiteDeterministicSeed.derive(
-                    receipt.objectiveNonce, receipt.sequence)) else null)
+                experimentPresets.consume(receipt.zoneId, experimentSeed(receipt)) else null)
+
+    private fun experimentSeed(receipt: MineExpeditionSceneReceipt): Long =
+        WorksiteDeterministicSeed.derive(receipt.objectiveNonce, receipt.sequence)
 
     fun failure(runtime: MineRuntime): String? = failures[key(runtime)] ?: runtime.state.incident?.let {
         receipts.find(runtime.settings.id, runtime.state.sequence, it.objectiveNonce)?.let { receipt -> loader.failure(receipt.journalSequence) }

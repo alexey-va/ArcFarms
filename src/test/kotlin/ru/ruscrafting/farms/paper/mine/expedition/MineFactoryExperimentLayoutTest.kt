@@ -69,7 +69,7 @@ class MineFactoryExperimentLayoutTest : FunSpec({
         // routeBin uses the existing supported charge hopper at crushed_output;
         // a second off-deck factory_route_bin is intentionally absent.
         MineFactoryExperimentLayout.staticFixtures().count { it.model == "factory_route_bin" } shouldBe 0
-        MineFactoryExperimentLayout.staticFixtures().count { it.id == "crushed_output" } shouldBe 1
+        MineFactoryExperimentLayout.staticFixtures().count { it.id == "crushed_output" } shouldBe 0
     }
 })
 

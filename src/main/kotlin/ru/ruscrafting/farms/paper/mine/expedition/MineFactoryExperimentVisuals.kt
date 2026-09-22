@@ -121,6 +121,7 @@ internal object MineFactoryExperimentVisualGeometry {
     private const val NOZZLE_PEDESTAL_PARTS = 2
 
     fun parts(model: String): List<MineDisplayBlueprints.Part> = when (model) {
+        "hose_link" -> listOf(MineDisplayBlueprints.Part(Material.BLACK_WOOL, Vector3f(), Vector3f(.22f, .22f, 1.02f)))
         "ore_piece" -> listOf(
             MineDisplayBlueprints.Part(Material.RAW_IRON_BLOCK, Vector3f(), Vector3f(.3f)),
         )

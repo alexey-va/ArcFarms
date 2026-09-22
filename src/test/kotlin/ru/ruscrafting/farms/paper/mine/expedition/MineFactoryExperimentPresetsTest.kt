@@ -10,7 +10,7 @@ class MineFactoryExperimentPresetsTest : FunSpec({
         val presets = MineFactoryExperimentPresets()
         presets.configure("mine", "all") shouldBe true
         presets.consume("other", 17) shouldBe MineFactoryExperiments.select(17)
-        presets.consume("mine", 17).selected shouldBe MineFactoryExperiment.entries.toSet()
+        presets.consume("mine", 17).selected shouldBe MineFactoryExperiments.supported
         presets.consume("mine", 17) shouldBe MineFactoryExperiments.select(17)
     }
     test("none is explicit and invalid input never overwrites a pending override") {
@@ -20,6 +20,20 @@ class MineFactoryExperimentPresetsTest : FunSpec({
         presets.consume("mine", 17).selected shouldBe emptySet()
         presets.configure("mine", "rock") shouldBe true
         presets.consume("mine", 19).selected shouldBe setOf(MineFactoryExperiment.ROCK_JAM)
+        presets.configure("mine", "mould") shouldBe false
+        presets.configure("mine", "route") shouldBe false
+        presets.configure("mine", "gear") shouldBe false
+    }
+    test("current admin presets expose rock, crane and cooling only") {
+        val presets = MineFactoryExperimentPresets()
+        for ((name, experiment) in listOf(
+            "rock" to MineFactoryExperiment.ROCK_JAM,
+            "crane" to MineFactoryExperiment.MANUAL_CRANE,
+            "cooling" to MineFactoryExperiment.COOLING,
+        )) {
+            presets.configure("mine", name) shouldBe true
+            presets.consume("mine", 17).selected shouldBe setOf(experiment)
+        }
     }
     test("random and lifecycle cleanup discard pending admin overrides") {
         val presets = MineFactoryExperimentPresets()

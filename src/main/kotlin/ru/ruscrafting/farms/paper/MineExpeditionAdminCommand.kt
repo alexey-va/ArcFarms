@@ -55,6 +55,6 @@ internal class MineExpeditionAdminCommand(private val service: ArcFarmsService, 
     private fun help(sender: CommandSender) { sender.sendMessage(locale.renderPath("admin.expeditions.help", sender)) }
 
     companion object {
-        internal val FACTORY_PRESETS = listOf("random", "none", "all", "rock", "mould", "crane", "gear", "route", "cooling")
+        internal val FACTORY_PRESETS = listOf("random", "none", "all", "rock", "crane", "cooling")
     }
 }
