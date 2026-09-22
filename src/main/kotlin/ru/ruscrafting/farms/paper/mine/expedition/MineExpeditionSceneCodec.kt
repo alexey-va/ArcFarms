@@ -89,13 +89,16 @@ internal object MineExpeditionSceneCodec : WorksitePreparedSceneCodec {
             require(it.world == world && it.x shr 4 == chunkX && it.z shr 4 == chunkZ)
             require(it.y in minHeight until maxHeight)
             require(it.zoneId.matches(Regex("[a-z0-9_-]{1,48}")))
-            require(it.sequence >= 0 && it.sceneId >= 0 && it.totalRecords in 1..MAX_SCENE_RECORDS)
+            require(it.sequence >= 0 && it.sceneId >= 0 && it.totalRecords in 1..MAX_SCENE_RECORDS) {
+                "Invalid expedition scene identity or total: ${it.totalRecords} (limit $MAX_SCENE_RECORDS)"
+            }
             require(it.marker == "NONE")
             require(it.originalData.length in 1..512 && it.activeData.length in 1..512)
         }
     }
 
-    const val MAX_SCENE_RECORDS = 262_144
+    // The v4 Last Descent enclosing volume contains 286,626 journalled cells.
+    const val MAX_SCENE_RECORDS = 327_680
     private const val MAX_RECORDS_PER_CHUNK = 32_768
     private const val MAX_PALETTE = 2_048
     private const val MAX_SCENES = 64

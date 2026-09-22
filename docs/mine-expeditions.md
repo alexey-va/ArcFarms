@@ -38,6 +38,11 @@ terrain-overlap guard. Only an unbuilt idle v4 receipt at the former height is
 retired and reallocated; built or occupied scenes are preserved. The terrain
 allowlist and journalled restoration remain unchanged.
 
+Version 0.45.2 accommodates the complete 286,626-cell v4 journal with a bounded
+327,680-cell scene limit. The per-chunk record limit, 2 MiB payload cap, palette
+limits and journal wire version remain unchanged. A generated-scene round-trip
+test covers every chunk and exact original/active BlockData before delivery.
+
 The event still accounts for twelve contribution checkpoints. The single
 power-cell installation carries the old three-credit budget; return travel
 takes the former final starter credit. No new reward or per-block loot exists.
