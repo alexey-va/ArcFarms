@@ -11,6 +11,10 @@ import kotlin.math.sqrt
 
 /** Slider-crank linkage for the six cylinders; all distances are model-local blocks. */
 internal object MineDieselGeneratorMotion {
+    const val CYCLE_MILLIS = 6_000L
+    const val IGNITION_MILLIS = 1_000L
+    const val IGNITION_WINDOW_MILLIS = 180L
+    const val EXHAUST_MILLIS = 450L
     const val CRANK_RADIUS = .45f
     const val ROD_LENGTH = 2.5f
     val motions = (0..5).flatMap { listOf("diesel_piston_$it", "diesel_rod_$it",
@@ -20,6 +24,7 @@ internal object MineDieselGeneratorMotion {
 
     // Evenly spaced firing TDCs, matching the authored crank throws.
     private val firingSteps = intArrayOf(0, 2, 1, 4, 5, 3)
+    fun ignitionCylinder(now: Long): Int = firingSteps.indexOf(((now % CYCLE_MILLIS) / IGNITION_MILLIS).toInt())
     fun camAngle(cylinder: Int, inlet: Boolean): Float =
         -(firingSteps[cylinder] * PI / 3 + if (inlet) 5 * PI / 4 else 3 * PI / 4).toFloat()
 

@@ -23,6 +23,8 @@ internal object MineDieselGeneratorModel {
     const val kind = "factory_diesel_generator"
 
     private val cylinderZ = floatArrayOf(-2.75f, -1.65f, -.55f, .55f, 1.65f, 2.75f)
+    val combustionPoints = cylinderZ.map { Vector3f(.16f, 4.94f, it) }
+    val exhaustMouth = Vector3f(-2.08f, 7.42f, 4.18f)
     private val crankPhases = floatArrayOf(0f, (2f * PI / 3f).toFloat(), (4f * PI / 3f).toFloat(),
         (4f * PI / 3f).toFloat(), (2f * PI / 3f).toFloat(), 0f)
 
@@ -420,7 +422,11 @@ internal object MineDieselGeneratorModel {
             Vector3f(-2.08f, 5.62f, 3.82f), Vector3f(-2.08f, 5.62f, 4.18f),
             Vector3f(-2.08f, 5.82f, 4.18f)), .28f)
         tube(Material.POLISHED_BASALT, Vector3f(-2.08f, 6.62f, 4.18f), Vector3f(-2.08f, 7.22f, 4.18f), .38f)
-        box(Material.IRON_BLOCK, -2.08f, 7.3f, 4.18f, .62f, .14f, .62f)
+        // Open rim around the exhaust outlet; particles originate above it.
+        for (dx in listOf(-.25f, .25f))
+            box(Material.IRON_BLOCK, -2.08f + dx, 7.3f, 4.18f, .12f, .14f, .62f)
+        for (dz in listOf(-.25f, .25f))
+            box(Material.IRON_BLOCK, -2.08f, 7.3f, 4.18f + dz, .38f, .14f, .12f)
         box(Material.YELLOW_TERRACOTTA, -2.08f, 7.05f, 4.48f, .16f, .3f, .1f)
 
         // --- coupling, flywheel, and alternator at the +Z end ------------------

@@ -163,13 +163,13 @@ internal class MineExpeditionController(
                 statePort.persistAsync()
             }
         }
-        val activeTargets = (if (pendingExperiment) emptyList() else targets(scene, latest)).filterNot { target ->
+        val activeTargets = (if (pendingExperiment || !MineFactoryGeneratorCycle.ready(latest, now)) emptyList() else targets(scene, latest)).filterNot { target ->
             target.target >= 0 && (
                 target.interaction == MineExpeditionInteraction.PICKUP && actions.claimed(scope, latest.stage, target.target) ||
                 (MineFactoryProgram.usesConnectedCrusherLine(scene.plan) || modernDescent(scene)) &&
                     target.interaction == MineExpeditionInteraction.DELIVER && !actions.claimed(scope, latest.stage, target.target))
         }
-        val experimentTargets = experiments.targets(scene, latest, now)
+        val experimentTargets = if (MineFactoryGeneratorCycle.ready(latest, now)) experiments.targets(scene, latest, now) else emptyList()
         val visibleTargets = activeTargets.map { target -> marker(scene, latest, target, now) } + experimentTargets
         markers.reconcile("furnish:${scene.journalSequence}", MineExpeditionFurnishings.targets(scene,editor,visibleTargets.mapTo(hashSetOf()) { it.id }))
         markers.reconcile(scope, visibleTargets)
@@ -209,6 +209,7 @@ internal class MineExpeditionController(
                 "crushed_output" -> "control.mix-cart"
                 else -> "control.mix-load"
             }
+            target.id == "generator_flywheel" -> "generator-start"
             state.stage == MineExpeditionStage.FACTORY_WATER && target.id.startsWith("control_pump_") -> "control.pump-start"
             state.stage == MineExpeditionStage.FACTORY_WATER && target.id.startsWith("control_crusher_") -> "control.crusher-start"
             state.stage == MineExpeditionStage.FACTORY_CRANE -> "control.crane-start"
@@ -251,7 +252,7 @@ internal class MineExpeditionController(
         val fixture = MineExpeditionFurnishings.fixtures(scene).firstOrNull { it.id == target.id }
         return MineExpeditionMarkers.Target(target.id, scene.at(target.position), material,
             markerLabel, target.interaction == MineExpeditionInteraction.BREAK,
-            model=if (target.interaction == MineExpeditionInteraction.BREAK || target.id=="drive") null
+            model=if (target.interaction == MineExpeditionInteraction.BREAK || target.id in setOf("drive", "generator_flywheel")) null
                 else fixture?.model ?: MineExpeditionFurnishings.model(target.id,scene.kind,modernDescent(scene)),
             modelScale=fixture?.scale ?: 1f,
             yaw=editor?.yaw(scene,target.id) ?: fixture?.yaw ?: 0)
@@ -305,6 +306,7 @@ internal class MineExpeditionController(
         val current = runtime.state.incident?.expedition ?: return
         if (world.scene(runtime) !== scene || !scene.ready || !participant(runtime, scene, player) ||
             !access.allowInteraction("mine-expedition:${player.uniqueId}", 200L)) return
+        if (!MineFactoryGeneratorCycle.ready(current, clock())) return
         if (MineFactoryExperiments.pending(current).isNotEmpty()) {
             val target = experiments.targets(scene, current, clock()).firstOrNull { it.id == id } ?: return
             if (!near(player, target.location, 5.0)) return
@@ -437,6 +439,8 @@ internal class MineExpeditionController(
         return when {
             scene?.ready != true || current == null -> render("preparing", player)
             !scene.contains(player.location) -> render("enter-hint", player)
+            !MineFactoryGeneratorCycle.ready(current, now) -> render("generator-warming", player, mapOf(
+                "percent" to Component.text((MineFactoryGeneratorCycle.progress(current, now) * 100).toInt())))
             experiments.hint(scope(scene), player, current, now) != null -> experiments.hint(scope(scene), player, current, now)
             MineFactoryProgram.usesConnectedCrusherLine(scene.plan) &&
                 current.stage == MineExpeditionStage.FACTORY_HEAT && actions.factoryHeat(scope(scene))?.ready == true ->
@@ -448,6 +452,7 @@ internal class MineExpeditionController(
                 MineFactoryProgram.chargeTransferPending(current) -> render("line.auto-feed", player)
             MineFactoryProgram.usesConnectedCrusherLine(scene.plan) && current.stage in setOf(MineExpeditionStage.FACTORY_WATER,MineExpeditionStage.FACTORY_COAL) -> {
                 val checkpoint=targets(scene,current).firstOrNull()?.target?.coerceAtLeast(0) ?: 2
+                if (current.stage == MineExpeditionStage.FACTORY_WATER && checkpoint == 2) return render("generator-hint", player)
                 val suffix=if(actions.carrying(player,scope(scene))) "-carry" else ""
                 val phase=if(current.stage==MineExpeditionStage.FACTORY_WATER) "commission" else "charge"
                 render("line.$phase-$checkpoint$suffix",player)

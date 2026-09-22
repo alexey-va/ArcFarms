@@ -55,6 +55,14 @@ allprojects {
        subtitle:"Офлайн-превью · геометрия и display-модели из кода · свет условный",
        origin:xyz(plan.spawn.offset(0,-1,0)),route:(plan.routes['main'] ?: plan.walkingRoutes[0]).collect{p->xyz(p.offset(0,-1,0))},
        lighting:[targetLevel:8,samples:plan.walkingRoutes.flatten().unique().collect{p->xyz(p)}]]
+     if(kind.toString()=='DEAD_FACTORY') {
+     def dieselClass=cl.loadClass('ru.ruscrafting.farms.paper.mine.expedition.MineDieselGeneratorModel')
+     def dieselModel=dieselClass.getField('INSTANCE').get(null)
+     def vec={ p -> [p.x,p.y,p.z] }
+     recipe.dieselEffects=[combustion:dieselClass.getMethod('getCombustionPoints').invoke(dieselModel).collect(vec),
+       exhaust:vec(dieselClass.getMethod('getExhaustMouth').invoke(dieselModel)),firingOrder:[0,2,1,5,3,4],
+       cycleMillis:6000,ignitionMillis:1000,ignitionWindowMillis:180,exhaustMillis:450]
+     }
      if(kind.toString()=='DEAD_FACTORY') recipe.preview=[defaultView:'floor',views:[
         [id:'floor',label:'Вся производственная линия',camera:[36,9,54],target:[36,8,27],fov:82],
         [id:'generator',label:'Дизель-генератор · сервисная сторона',camera:[47,10,32],target:[60.5,8.3,43.5],fov:64],

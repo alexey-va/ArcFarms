@@ -32,11 +32,12 @@ class MineFactoryPresentationTest : FunSpec({
         verify(exactly = 0) { markers.rotate(any(), "decor_diesel_generator", any()) }
         verify { markers.signal("furnish:8", "decor_diesel_generator", org.bukkit.Material.RED_CONCRETE) }
         clearMocks(markers, answers = false)
-        presentation.tick(scene, preparing, "factory", 1100, mapOf("control_crusher_left" to .5))
+        presentation.tick(scene, preparing, "factory", 1100, mapOf("generator_flywheel" to .5))
         verify { markers.rotate("furnish:8", "decor_diesel_generator", any()) }
-        verify { markers.signal("furnish:8", "decor_diesel_generator", org.bukkit.Material.LIME_CONCRETE) }
+        verify { markers.signal("furnish:8", "decor_diesel_generator", org.bukkit.Material.RED_CONCRETE) }
+        verify(exactly = 0) { markers.rotate(any(), "decor_crusher_left", any()) }
         clearMocks(markers, answers = false)
-        presentation.tick(scene, preparing, "factory", 4500, mapOf("control_crusher_left" to .5))
+        presentation.tick(scene, preparing.copy(stage = MineExpeditionStage.FACTORY_COAL), "factory", 4500, emptyMap())
         verify { markers.rotate("furnish:8", "decor_diesel_generator", 3 * Math.PI) }
         clearMocks(markers, answers = false)
         val jammed = preparing.copy(stage = MineExpeditionStage.FACTORY_COAL, completed = setOf(0),
@@ -170,4 +171,45 @@ class MineFactoryPresentationTest : FunSpec({
         presentation.clear(scene)
         presentation.cleanup()
     }
+    test("diesel ignition pulses use ramp phase, are deduplicated and stop with the scene") {
+        val plugin = mockk<Plugin>(relaxed = true)
+        every { plugin.config.getBoolean(any(), true) } returns true
+        val world = mockk<World>(relaxed = true)
+        val base = Location(world, 0.0, 60.0, 0.0)
+        val player = mockk<Player>(relaxed = true)
+        every { player.location } returns base
+        every { world.players } returns listOf(player)
+        val markers = mockk<MineExpeditionMarkers>(relaxed = true)
+        every { markers.at(any(), any(), any(), any(), any()) } answers {
+            if (secondArg<String>() == "decor_diesel_generator")
+                base.clone().add(arg<Double>(2), arg<Double>(3), arg<Double>(4)) else null
+        }
+        val placement = MineExpeditionPlacement("world", 0, 60, 0, 73)
+        val scene = mockk<MineExpeditionScene> {
+            every { kind } returns MineExpeditionKind.DEAD_FACTORY
+            every { this@mockk.placement } returns placement
+            every { journalSequence } returns 9L
+            every { plan } returns MineExpeditionGenerator.plan(MineExpeditionKind.DEAD_FACTORY, 73L, 3)
+        }
+        val state = MineExpeditionState(placement, MineExpeditionStage.FACTORY_COAL, factoryGeneratorStartedAt = 1000L)
+        val presentation = MineFactoryPresentation(plugin, markers)
+        presentation.tick(scene, state, "factory", 1000, emptyMap())
+        presentation.tick(scene, state, "factory", 1050, emptyMap())
+        val ignition = MineDieselGeneratorModel.combustionPoints[5] // crank phase 2PI at the eighth hand turn
+        val ignitionAt = base.clone().add(ignition.x.toDouble(), ignition.y.toDouble(), ignition.z.toDouble())
+        verify(exactly = 1) { world.spawnParticle(Particle.SMALL_FLAME, ignitionAt, 3, any<Double>(), any<Double>(), any<Double>(), any<Double>()) }
+        verify(exactly = 1) { player.playSound(any<Location>(), Sound.BLOCK_NOTE_BLOCK_BASEDRUM, any<Float>(), any<Float>()) }
+        verify(exactly = 0) { markers.rotate(any(), "decor_crusher_left", any()) }
+        verify { markers.signal("furnish:9", "decor_diesel_generator", org.bukkit.Material.YELLOW_CONCRETE) }
+        clearMocks(markers, world, player, answers = false)
+        presentation.tick(scene, state, "factory", 7000, emptyMap())
+        verify { markers.rotate("furnish:9", "decor_crusher_left", any()) }
+        verify { markers.signal("furnish:9", "decor_diesel_generator", org.bukkit.Material.LIME_CONCRETE) }
+        clearMocks(markers, world, player, answers = false)
+        presentation.tick(scene, state.copy(stage = MineExpeditionStage.COMPLETE), "factory", 8000, emptyMap())
+        verify { world wasNot Called }
+        verify { player wasNot Called }
+        presentation.cleanup()
+    }
+
 })

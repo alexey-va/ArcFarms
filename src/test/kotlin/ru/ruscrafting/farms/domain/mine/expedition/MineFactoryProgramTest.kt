@@ -61,10 +61,10 @@ class MineFactoryProgramTest : FunSpec({
             MineFactoryProgram.runningMachines(state, emptySet(), plan) shouldBe emptySet()
 
             state = state.copy(completed = setOf(0, 1))
-            MineFactoryProgram.targets(plan, state).single().id shouldBe "control_crusher_left"
+            MineFactoryProgram.targets(plan, state).single().id shouldBe "generator_flywheel"
             MineFactoryProgram.runningMachines(state, emptySet(), plan) shouldBe setOf("decor_pump_left")
-            MineFactoryProgram.runningMachines(state, setOf("control_crusher_left"), plan) shouldBe
-                setOf("decor_pump_left", "decor_crusher_left")
+            MineFactoryProgram.runningMachines(state, setOf("control_crusher_left", "generator_flywheel"), plan) shouldBe
+                setOf("decor_pump_left")
 
             state = state.copy(stage = MineExpeditionStage.FACTORY_COAL, completed = emptySet())
             MineFactoryProgram.runningMachines(state, emptySet(), plan) shouldBe

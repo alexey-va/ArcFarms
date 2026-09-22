@@ -2,8 +2,19 @@
 // The schematic contains blocks only; these assemblies remain owned by ArcFarms.
 let expeditionDisplays = null;
 let expeditionMovingParts = [];
+let dieselEffectPools = [];
 let expeditionDemo = false;
 let expeditionFrame = null;
+let expeditionDemoStartedAt = 0;
+let dieselFlywheelTurns = 0;
+let dieselLastClickAt = -Infinity;
+let dieselTurnStartedAt = 0;
+let dieselTurnStartPhase = 0;
+let dieselTurnTargetPhase = 0;
+let dieselIgnitionAt = null;
+const dieselFlywheelTurnMillis = 220;
+const dieselClickCooldownMillis = 250;
+const dieselDrivenModels = new Set(['factory_crusher', 'factory_conveyor', 'roller_table', 'furnace']);
 const demoRotationAxis = new THREE.Vector3(0, 0, 1);
 const dieselMotions = new Set(Array.from({ length: 6 }, (_, i) => [`diesel_piston_${i}`, `diesel_rod_${i}`, `diesel_valve_inlet_${i}`, `diesel_valve_exhaust_${i}`]).flat());
 function beltPose(part, phase) {
@@ -73,6 +84,8 @@ function poseExpeditionPart(mesh, part, phase) {
 const buildBlockScene = buildMesh;
 buildMesh = function () {
   buildBlockScene();
+  dieselEffectPools.forEach((pool) => pool.dispose());
+  dieselEffectPools = [];
   if (expeditionDisplays) { world.remove(expeditionDisplays); disposeVanillaMesh(expeditionDisplays); }
   expeditionDisplays = new THREE.Group();
   expeditionMovingParts = [];
@@ -89,6 +102,10 @@ buildMesh = function () {
       root.add(mesh);
       if (part.moving) expeditionMovingParts.push({ mesh, part, model: assembly.model });
     }
+    if (assembly.model === 'factory_diesel_generator') {
+      const effects = createDieselEffects(root, recipe.dieselEffects);
+      if (effects) dieselEffectPools.push(effects);
+    }
     expeditionDisplays.add(root);
   }
   world.add(expeditionDisplays);
@@ -99,35 +116,101 @@ demoPanel.className = 'section';
 const demoToggle = document.createElement('button');
 demoToggle.textContent = 'Демо механизмов';
 demoToggle.setAttribute('aria-pressed', 'false');
+const dieselFlywheelButton = document.createElement('button');
+const hasDieselGenerator = (recipe.displayAssemblies ?? []).some(({ model }) => model === 'factory_diesel_generator');
+dieselFlywheelButton.hidden = !hasDieselGenerator;
+const dieselStatus = document.createElement('p');
+dieselStatus.className = 'subtle';
+dieselStatus.hidden = !hasDieselGenerator;
 const demoNote = document.createElement('p');
 demoNote.className = 'subtle';
 demoNote.textContent = 'Демонстрация движения механизмов. Порядок заданий, поездка на платформе, звук и перенос груза проверяются в Minecraft.';
-demoPanel.append(demoToggle, demoNote);
+function refreshDieselControls(now = performance.now()) {
+  dieselFlywheelButton.textContent = `Прокрутить маховик · ${dieselFlywheelTurns}/8`;
+  if (dieselIgnitionAt === null || now < dieselIgnitionAt) {
+    dieselStatus.textContent = `Маховик: ${dieselFlywheelTurns}/8`;
+  } else {
+    const rampElapsed = now - dieselIgnitionAt;
+    dieselStatus.textContent = rampElapsed < 6000
+      ? `Дизель набирает обороты · ${Math.round(dieselRampSpeed(rampElapsed) * 100)}%`
+      : 'Дизель работает';
+  }
+}
+demoPanel.append(demoToggle, dieselFlywheelButton, dieselStatus, demoNote);
 document.querySelector('aside').prepend(demoPanel);
-demoToggle.onclick = () => {
-  expeditionDemo = !expeditionDemo;
+function setExpeditionDemo(enabled, now = performance.now()) {
+  if (enabled === expeditionDemo) return;
+  expeditionDemo = enabled;
   demoToggle.setAttribute('aria-pressed', String(expeditionDemo));
   if (expeditionFrame !== null) cancelAnimationFrame(expeditionFrame);
   expeditionFrame = null;
   if (!expeditionDemo) {
     for (const { mesh, part } of expeditionMovingParts) poseExpeditionPart(mesh, part, 0);
+    dieselEffectPools.forEach((pool) => pool.reset());
+    dieselFlywheelTurns = 0;
+    dieselLastClickAt = -Infinity;
+    dieselTurnStartedAt = now;
+    dieselTurnStartPhase = 0;
+    dieselTurnTargetPhase = 0;
+    dieselIgnitionAt = null;
+    refreshDieselControls(now);
     render();
     return;
   }
-  const started = performance.now();
+  expeditionDemoStartedAt = now;
   let lastFrame = -Infinity;
   const animate = now => {
+    if (!expeditionDemo) return;
     if (now - lastFrame >= 1000 / 30) {
+      const demoElapsed = now - expeditionDemoStartedAt;
+      const dieselElapsed = dieselIgnitionAt === null ? null : now - dieselIgnitionAt;
+      const dieselReady = dieselElapsed !== null && dieselElapsed >= 6000;
+      const manualProgress = Math.min(1, Math.max(0, (now - dieselTurnStartedAt) / dieselFlywheelTurnMillis));
+      const easedManualProgress = manualProgress * manualProgress * (3 - 2 * manualProgress);
+      const dieselPhase = dieselElapsed !== null && dieselElapsed >= 0
+        ? dieselRampPhase(dieselElapsed)
+        : dieselTurnStartPhase + (dieselTurnTargetPhase - dieselTurnStartPhase) * easedManualProgress;
       for (const { mesh, part, model } of expeditionMovingParts) {
         const diesel = model === 'factory_diesel_generator';
+        if (hasDieselGenerator && !diesel && dieselDrivenModels.has(model) && !dieselReady) {
+          poseExpeditionPart(mesh, part, 0);
+          continue;
+        }
+        if (diesel && (dieselElapsed === null || dieselElapsed < 0)) {
+          poseExpeditionPart(mesh, part, dieselPhase);
+          continue;
+        }
         const duration = diesel ? 6000 : part.motion === 'press' ? 2400 : part.motion === 'lever' ? 4500 : ['belt', 'cargo'].includes(part.motion) ? 6000 : 3000;
-        const elapsed = (now - started) % (['press', 'lever'].includes(part.motion) ? duration + 1600 : duration);
-        poseExpeditionPart(mesh, part, Math.min(1, elapsed / duration) * Math.PI * (diesel ? 4 : 2));
+        const elapsed = demoElapsed % (['press', 'lever'].includes(part.motion) ? duration + 1600 : duration);
+        poseExpeditionPart(mesh, part, diesel ? dieselPhase : Math.min(1, elapsed / duration) * Math.PI * 2);
       }
+      if (dieselElapsed !== null && dieselElapsed >= 0) {
+        dieselEffectPools.forEach((pool) => {
+          const dieselCyclePosition = ((dieselPhase / (Math.PI * 4)) * pool.cycleMillis) % pool.cycleMillis;
+          pool.tick(dieselElapsed, dieselCyclePosition);
+        });
+      } else dieselEffectPools.forEach((pool) => pool.reset());
+      refreshDieselControls(now);
       render();
       lastFrame = now;
     }
     expeditionFrame = requestAnimationFrame(animate);
   };
   expeditionFrame = requestAnimationFrame(animate);
+}
+demoToggle.onclick = () => setExpeditionDemo(!expeditionDemo);
+dieselFlywheelButton.onclick = () => {
+  const now = performance.now();
+  if (!hasDieselGenerator || dieselFlywheelTurns >= 8 || now - dieselLastClickAt < dieselClickCooldownMillis) return;
+  if (!expeditionDemo) setExpeditionDemo(true, now);
+  dieselLastClickAt = now;
+  const currentProgress = Math.min(1, Math.max(0, (now - dieselTurnStartedAt) / dieselFlywheelTurnMillis));
+  const easedCurrentProgress = currentProgress * currentProgress * (3 - 2 * currentProgress);
+  dieselTurnStartPhase = dieselTurnStartPhase + (dieselTurnTargetPhase - dieselTurnStartPhase) * easedCurrentProgress;
+  dieselFlywheelTurns++;
+  dieselTurnTargetPhase = dieselFlywheelTurns * Math.PI / 4;
+  dieselTurnStartedAt = now;
+  if (dieselFlywheelTurns === 8) dieselIgnitionAt = now + dieselFlywheelTurnMillis;
+  refreshDieselControls(now);
 };
+refreshDieselControls();

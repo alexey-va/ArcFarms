@@ -131,3 +131,18 @@ Removing forced waits and allowing better detours can shorten this incident;
 full order completion remains gated by the unchanged mining/loading phases
 and cooldown. Per-hour XP/items and indirect conversion remain unmeasured.
 No price, payout, probability, multiplier or currency conversion is changed.
+
+
+## Diesel manual start (0.45.5)
+
+Reviewed against the canonical economy inventory's mine/order sections. The
+third commissioning checkpoint replaces the crusher's three-second lever cycle
+with eight shared flywheel clicks (250 ms minimum spacing) and a six-second
+engine ramp. This retains the same one commissioning credit and ten total
+factory credits; no click or engine revolution awards progress independently.
+Before/after direct startup issuance: 0/0 Vault coins, 0/0 premium tokens,
+0/0 XP, 0/0 ordinary items. Existing order grants and the planned SELL-to-contract
+transition remain unchanged. Ideal local input plus ramp takes at least 7.75 s
+instead of 3 s, excluding travel; order throughput and player income per hour
+are unmeasured. Old already-commissioned journals resume without a new charge
+or reward. Production cannot credit checkpoints while the new ramp is pending.

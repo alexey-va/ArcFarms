@@ -11,7 +11,9 @@ import ru.ruscrafting.farms.domain.mine.expedition.*
 /** Local, bounded feedback for commissioned machines and the current task. No extra timers or entities. */
 internal class MineFactoryPresentation(private val plugin:Plugin,private val markers:MineExpeditionMarkers) {
     private data class Frame(var nextParticles:Long=0,var nextSound:Long=0,var nextFlow:Long=0,var heatSignal:Long=-1,
-        var pressHit:Boolean=false, var cargoPhase:Double=Double.NaN, var cargoResetUntil:Long=0L)
+        var pressHit:Boolean=false, var cargoPhase:Double=Double.NaN, var cargoResetUntil:Long=0L,
+        var generatorRunning:Boolean=false, var generatorBeat:Long=-1L,
+        var nextGeneratorExhaust:Long=0L, var nextGeneratorRumble:Long=0L)
     private val frames=mutableMapOf<Long,Frame>()
     fun tick(scene:MineExpeditionScene,state:MineExpeditionState,scope:String,now:Long,angles:Map<String,Double>,processingCharge:Boolean=false,
         heat: MineWorkshopHeat? = null) {
@@ -32,13 +34,22 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
             it == MineFactoryExperiment.ROCK_JAM || it == MineFactoryExperiment.COOLING
         }
         val commissioned=MineFactoryProgram.runningMachines(state,angles.filterValues { it>0.0 }.keys,scene.plan)
-        val running=commissioned.filterNot { pausedCrusher && it.contains("crusher") }
+        val ready = MineFactoryGeneratorCycle.ready(state, now)
+        val running=commissioned.filterNot { (pausedCrusher || !ready) && it.contains("crusher") }
         // A local jam stops the crusher, not the factory's electrical supply.
         val generatorRunning=connected && "decor_crusher_left" in commissioned
         if (connected) {
-            markers.signal(decor, "decor_diesel_generator", if (generatorRunning) Material.LIME_CONCRETE else Material.RED_CONCRETE)
-            if (generatorRunning) markers.rotate(decor, "decor_diesel_generator", (now%6_000L)/3_000.0*Math.PI*2)
+            val signal = if (!generatorRunning) Material.RED_CONCRETE else if (ready) Material.LIME_CONCRETE else Material.YELLOW_CONCRETE
+            markers.signal(decor, "decor_diesel_generator", signal)
+            if (generatorRunning) {
+                val phase = MineFactoryGeneratorCycle.phase(state, now)
+                markers.rotate(decor, "decor_diesel_generator", phase % (Math.PI * 4))
+                generatorEffects(f, decor, now, phase, MineFactoryGeneratorCycle.speed(state, now))
+            } else {
+                angles["generator_flywheel"]?.let { markers.rotate(decor, "decor_diesel_generator", it) }
+            }
         }
+        f.generatorRunning=generatorRunning
         val water=state.stage!=MineExpeditionStage.FACTORY_WATER ||
             if(connected) 1 in state.completed else state.completed.isNotEmpty()
         if(connected) {
@@ -194,6 +205,37 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
             sound(at("crane_control",y=2.0),Sound.BLOCK_CHAIN_STEP,.7f,.6f)
         if(state.stage==MineExpeditionStage.FACTORY_INSTALL && press>0 && press<Math.PI && soundTick)
             sound(at("assembly_socket",y=3.0),Sound.BLOCK_PISTON_EXTEND,.7f,.55f)
+    }
+    private fun generatorEffects(frame: Frame, decor: String, now: Long, phase: Double, speed: Double) {
+        fun at(point: org.joml.Vector3f) = markers.at(decor, "decor_diesel_generator",
+            point.x.toDouble(), point.y.toDouble(), point.z.toDouble())
+        val body = markers.at(decor, "decor_diesel_generator", 0.0, 2.5, 0.0)
+        if (!frame.generatorRunning) sound(body, Sound.BLOCK_PISTON_EXTEND, .2f, .6f)
+        val position = phase / (Math.PI * 4) * MineDieselGeneratorMotion.CYCLE_MILLIS
+        val beat = kotlin.math.floor(position / MineDieselGeneratorMotion.IGNITION_MILLIS + 1e-7).toLong()
+        if (beat != frame.generatorBeat) {
+            frame.generatorBeat=beat
+            // Never replay missed beats after a lag spike, or flash a cylinder
+            // whose piston has already left the compression TDC window.
+            if (position - beat * MineDieselGeneratorMotion.IGNITION_MILLIS < MineDieselGeneratorMotion.IGNITION_WINDOW_MILLIS) {
+                val cylinder=MineDieselGeneratorMotion.ignitionCylinder(beat * MineDieselGeneratorMotion.IGNITION_MILLIS)
+                particles(at(MineDieselGeneratorModel.combustionPoints[cylinder]), Particle.SMALL_FLAME, 3,
+                    .085, .025, .11, .002)
+                sound(body, Sound.BLOCK_NOTE_BLOCK_BASEDRUM, .28f, (.5 + .15 * speed).toFloat())
+                sound(body, Sound.BLOCK_PISTON_CONTRACT, .1f, (.55 + .2 * speed).toFloat())
+                if (beat % 2L == 0L) sound(body, Sound.BLOCK_CHAIN_STEP, .075f, (.7 + .2 * speed).toFloat())
+            }
+        }
+        if (now >= frame.nextGeneratorExhaust) {
+            frame.nextGeneratorExhaust=now+(MineDieselGeneratorMotion.EXHAUST_MILLIS / speed).toLong()
+            val mouth=at(MineDieselGeneratorModel.exhaustMouth)
+            particles(mouth, Particle.CAMPFIRE_COSY_SMOKE, 1, .035, .02, .035, .008)
+            particles(mouth, Particle.SMOKE, 1, .05, .025, .05, .018)
+        }
+        if (now >= frame.nextGeneratorRumble) {
+            frame.nextGeneratorRumble=now+3_000L
+            sound(body, Sound.BLOCK_GRINDSTONE_USE, .09f, (.5 + .1 * speed).toFloat())
+        }
     }
     fun finished(at: Location, first: Boolean) {
         if (first) sound(at, Sound.BLOCK_NOTE_BLOCK_BELL, 1f, .8f)

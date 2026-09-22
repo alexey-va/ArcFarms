@@ -64,7 +64,7 @@ internal object MineExpeditionFurnishings {
         // Old basket anchors remain in journals for compatibility, but the
         // connected conveyor now carries the charge straight into the furnace.
         val hiddenStations = if(modernFactory) setOf(
-            "water_valve_0", "water_valve_2", "crushed_output", "furnace_input",
+            "water_valve_0", "water_valve_2", "crushed_output", "furnace_input", "generator_flywheel",
         ) else if (modernDescent) setOf(
             "counterweight_0", "descent_pump", "descent_upper_winder", "decor_descent_winder", "core_start",
         ) else emptySet()
@@ -89,7 +89,7 @@ internal object MineExpeditionFurnishings {
                 Fixture("decor_tank_left","tank",MineFactoryLine.machines.getValue("decor_tank_left")),
                 // The open service side faces the central aisle; the skid is
                 // clear of the production line and the east control cabin.
-                Fixture("decor_diesel_generator","factory_diesel_generator",ExpeditionPoint(24,5,10),1f,180),
+                Fixture("decor_diesel_generator","factory_diesel_generator",MineFactoryLine.machines.getValue("decor_diesel_generator"),1f,180),
             ) else listOf(
                 Fixture("decor_waterwheel","waterwheel",ExpeditionPoint(0,5,-23)),
                 Fixture("decor_crusher_left","crusher",ru.ruscrafting.farms.domain.mine.expedition.MineFactoryProgram.machines.getValue("decor_crusher_left"),2.2f,180),

@@ -87,6 +87,8 @@ data class MineExpeditionState(
     val factoryProgram: Int = 0,
     /** Optional connected-factory side jobs; null preserves legacy expedition behavior. */
     val factoryExperiments: MineFactoryExperimentPlan? = null,
+    /** Ignition time for the diesel generator; missing legacy JSON means already commissioned. */
+    val factoryGeneratorStartedAt: Long = 0L,
 ) {
     init { validate() }
 
@@ -100,6 +102,7 @@ data class MineExpeditionState(
         factoryExperiments?.validate()
         require(branch in 0..2) { "Expedition branch is invalid" }
         require(heatStartedAt >= 0L) { "Expedition heat timestamp is invalid" }
+        require(factoryGeneratorStartedAt >= 0L) { "Expedition generator timestamp is invalid" }
         require(stage == MineExpeditionStage.FACTORY_HEAT || heatStartedAt == 0L) {
             "Heat timestamp belongs to a non-heat expedition stage"
         }

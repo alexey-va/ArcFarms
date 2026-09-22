@@ -9,6 +9,7 @@ package ru.ruscrafting.farms.domain.mine.expedition
  */
 object MineFactoryLine {
     val machines: Map<String, ExpeditionPoint> = linkedMapOf(
+        "decor_diesel_generator" to ExpeditionPoint(24, 5, 10),
         "decor_crusher_left" to ExpeditionPoint(-22, 5, -6),
         "decor_conveyor_raw" to ExpeditionPoint(-14, 5, -6),
         "decor_furnace_left" to ExpeditionPoint(-7, 5, -6),
@@ -22,6 +23,7 @@ object MineFactoryLine {
 
     /** All authored station anchors, including compatibility valve aliases. */
     val stations: Map<String, ExpeditionPoint> = linkedMapOf(
+        "generator_flywheel" to ExpeditionPoint(24, 5, 6),
         "entry" to ExpeditionPoint(0, 5, 24),
         "exit" to ExpeditionPoint(0, 5, 24),
         "water_valve_0" to ExpeditionPoint(-27, 5, -6),
@@ -56,7 +58,7 @@ object MineFactoryLine {
      * returned unchanged, which also preserves explicit admin poses.
      */
     fun effectiveStation(plan: MineExpeditionPlan, id: String): ExpeditionPoint {
-        val point = plan.stations.getValue(id)
+        val point = plan.stations[id] ?: if (id == "generator_flywheel") stations.getValue(id) else error("Missing factory station: $id")
         return when {
             id == "crusher_repair" && point == LEGACY_CRUSHER_REPAIR ->
                 point.offset(dx = 1, dz = 1)
@@ -68,6 +70,7 @@ object MineFactoryLine {
 
     /** Physical owner used by the furnishing editor for relative child poses. */
     val owners: Map<String, String> = mapOf(
+        "generator_flywheel" to "decor_diesel_generator",
         "water_valve_1" to "decor_pump_left",
         "crusher_feed" to "decor_crusher_left",
         "control_crusher_left" to "decor_crusher_left",

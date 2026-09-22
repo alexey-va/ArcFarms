@@ -71,7 +71,7 @@ object MineFactoryProgram {
         return when (state.stage) {
             MineExpeditionStage.FACTORY_WATER -> buildSet {
                 if (1 in state.completed || "water_valve_1" in startingControls) add("decor_pump_left")
-                if (2 in state.completed || "control_crusher_left" in startingControls) add("decor_crusher_left")
+                if (2 in state.completed) add("decor_crusher_left")
             }
             MineExpeditionStage.FACTORY_COAL,
             MineExpeditionStage.FACTORY_HEAT,
@@ -113,8 +113,8 @@ object MineFactoryProgram {
             )
             2 -> listOf(
                 MineExpeditionObjective(
-                    "control_crusher_left", station("control_crusher_left"),
-                    MineExpeditionInteraction.OPERATE, "GRINDSTONE", 2,
+                    "generator_flywheel", station("generator_flywheel"),
+                    MineExpeditionInteraction.VALVE, "AIR", 2,
                 ),
             )
             else -> emptyList()

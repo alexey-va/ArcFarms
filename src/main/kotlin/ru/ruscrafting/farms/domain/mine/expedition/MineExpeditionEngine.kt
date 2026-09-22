@@ -38,6 +38,7 @@ object MineExpeditionEngine {
         MineExpeditionStage.FACTORY_CRANE,
         MineExpeditionStage.FACTORY_INSTALL,
     )
+    private val factoryProcessingStages = factoryStages.drop(1)
 
     fun supports(type: MineIncidentType): Boolean = kind(type) != null
 
@@ -171,6 +172,9 @@ object MineExpeditionEngine {
         val total = targetCount(current)
         if (operation !in setOf(MineExpeditionAction.TARGET, MineExpeditionAction.HEAT) ||
             target !in 0 until total || target in current.completed
+        ) return MineExpeditionStep(current, false)
+        if (current.stage in factoryProcessingStages && current.factoryGeneratorStartedAt > 0L &&
+            !MineFactoryGeneratorCycle.ready(current, now)
         ) return MineExpeditionStep(current, false)
         if (isModernLastDescent(current) &&
             current.stage in setOf(

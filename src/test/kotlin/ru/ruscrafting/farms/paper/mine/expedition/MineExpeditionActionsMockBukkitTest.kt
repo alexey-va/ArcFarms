@@ -321,35 +321,35 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
             actions.interact("connected-factory", connected, state, player, valve, 2_000L + index * 300L, ::complete) {}
         }
         state.completed shouldBe setOf(0, 1)
-        val crusher = MineExpeditionObjectives.targets(connected.plan, state, null).single()
-        player.teleport(connected.at(crusher.position))
-        actions.interact("connected-factory", connected, state, player, crusher, 5_000, ::complete) {}
-        player.teleport(Location(world, 20.5, 65.0, 20.5)) // still inside the bounded expedition
-        actions.tick("connected-factory", connected, state, listOf(crusher), listOf(player), 7_999,
-            { _, step -> complete(step) }) { _, _ -> }
-        state.stage shouldBe MineExpeditionStage.FACTORY_WATER
-        actions.tick("connected-factory", connected, state, listOf(crusher), listOf(player), 8_000,
-            { _, step -> complete(step) }) { _, _ -> }
+        val flywheel = MineExpeditionObjectives.targets(connected.plan, state, null).single()
+        flywheel.id shouldBe "generator_flywheel"
+        player.teleport(connected.at(flywheel.position))
+        repeat(8) { index ->
+            actions.interact("connected-factory", connected, state, player, flywheel, 5_000L + index * 250L, ::complete) {}
+        }
         state.stage shouldBe MineExpeditionStage.FACTORY_COAL
+        state.factoryGeneratorStartedAt shouldBe 6_750L
+        MineFactoryGeneratorCycle.ready(state, 12_749) shouldBe false
+        MineFactoryGeneratorCycle.ready(state, 12_750) shouldBe true
 
         var chargeTargets = MineExpeditionObjectives.targets(connected.plan, state, null)
         val rawPickup = chargeTargets.single { it.interaction == MineExpeditionInteraction.PICKUP }
         player.teleport(connected.at(rawPickup.position))
-        actions.interact("connected-factory", connected, state, player, rawPickup, 9_000, ::complete) {}
+        actions.interact("connected-factory", connected, state, player, rawPickup, 15_000, ::complete) {}
         val rawDelivery = MineExpeditionObjectives.targets(connected.plan, state, null)
             .single { it.interaction == MineExpeditionInteraction.DELIVER }
         player.teleport(connected.at(rawDelivery.position))
-        actions.interact("connected-factory", connected, state, player, rawDelivery, 9_100, ::complete) {}
+        actions.interact("connected-factory", connected, state, player, rawDelivery, 15_100, ::complete) {}
         state.completed shouldBe setOf(0)
 
         val process = MineExpeditionObjectives.targets(connected.plan, state, null).single()
         player.teleport(connected.at(process.position))
-        actions.interact("connected-factory", connected, state, player, process, 10_000, ::complete) {}
+        actions.interact("connected-factory", connected, state, player, process, 16_000, ::complete) {}
         player.teleport(Location(world, 20.5, 65.0, 20.5))
-        actions.tick("connected-factory", connected, state, listOf(process), listOf(player), 15_999,
+        actions.tick("connected-factory", connected, state, listOf(process), listOf(player), 21_999,
             { _, step -> complete(step) }) { _, _ -> }
         state.completed shouldBe setOf(0)
-        actions.tick("connected-factory", connected, state, listOf(process), listOf(player), 16_000,
+        actions.tick("connected-factory", connected, state, listOf(process), listOf(player), 22_000,
             { _, step -> complete(step) }) { _, _ -> }
         state.completed shouldBe setOf(0, 1)
 
@@ -359,11 +359,11 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         chargeTargets = MineExpeditionObjectives.targets(connected.plan, state, null)
         chargeTargets shouldBe emptyList()
         actions.tick("connected-factory", connected, state, emptyList(), listOf(player),
-            17_000L, { _, step -> complete(step) }) { _, _ -> }
+            23_000L, { _, step -> complete(step) }) { _, _ -> }
         actions.clear("connected-factory") // transient belt timing is safe to rebuild after reload
         repeat(7) { index ->
             actions.tick("connected-factory", connected, state, emptyList(), listOf(player),
-                18_000L + index * 1_000L, { _, step -> complete(step) }) { _, _ -> }
+                24_000L + index * 1_000L, { _, step -> complete(step) }) { _, _ -> }
         }
         state.stage shouldBe MineExpeditionStage.FACTORY_HEAT
         actions.carrying(player, "connected-factory") shouldBe false
@@ -375,17 +375,17 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         MineExpeditionObjectives.targets(connected.plan, state, null) shouldBe emptyList()
         repeat(5) { index ->
             actions.tick("connected-factory", connected, state, emptyList(), listOf(player),
-                25_000L + index * 1_000L, { _, step -> complete(step) }) { _, _ -> }
-            actions.operationPhase("connected-factory", "assembly_socket", 29_000L) shouldBe 0.0
+                31_000L + index * 1_000L, { _, step -> complete(step) }) { _, _ -> }
+            actions.operationPhase("connected-factory", "assembly_socket", 35_000L) shouldBe 0.0
         }
         state.stage shouldBe MineExpeditionStage.FACTORY_INSTALL
         actions.transferPhase("connected-factory", "roller_transfer") shouldBe Math.PI * 2
-        for (now in listOf(30_000L, 31_000L, 31_399L)) {
+        for (now in listOf(36_000L, 37_000L, 37_399L)) {
             actions.tick("connected-factory", connected, state, emptyList(), listOf(player),
                 now, { _, _ -> error("press finished before its return stroke") }) { _, _ -> }
         }
         actions.tick("connected-factory", connected, state, emptyList(), listOf(player),
-            31_400L, { _, step -> complete(step) }) { _, _ -> }
+            37_400L, { _, step -> complete(step) }) { _, _ -> }
         state.stage shouldBe MineExpeditionStage.COMPLETE
         world.entities.count { actions.owns(it) } shouldBe 0
     }
