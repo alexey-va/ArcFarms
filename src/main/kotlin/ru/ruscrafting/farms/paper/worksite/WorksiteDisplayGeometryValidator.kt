@@ -22,6 +22,12 @@ internal object WorksiteDisplayGeometryValidator {
     }
     private data class Face(val id: String, val name: String, val normal: Vector3d, val origin: Vector3d,
         val u: Vector3d, val v: Vector3d, val corners: List<Vector3d>)
+    private data class Bounds(val min: Vector3d, val max: Vector3d) {
+        fun separated(other: Bounds): Boolean = (0..2).any { axis ->
+            max.get(axis) + PLANE_TOLERANCE < other.min.get(axis) ||
+                other.max.get(axis) + PLANE_TOLERANCE < min.get(axis)
+        }
+    }
 
     fun conflicts(boxes: List<Box>): List<Conflict> {
         require(boxes.map { it.id }.distinct().size == boxes.size) { "Duplicate display part IDs" }
@@ -34,8 +40,18 @@ internal object WorksiteDisplayGeometryValidator {
             }
             faces(box)
         }
+        // Large mechanical models contain hundreds of small, distant parts.
+        // Disjoint swept face bounds cannot overlap; retain the plane tolerance
+        // here so this broad phase never drops near-coplanar narrow-phase hits.
+        val bounds = faces.map { boxFaces ->
+            val min = Vector3d(Double.POSITIVE_INFINITY)
+            val max = Vector3d(Double.NEGATIVE_INFINITY)
+            boxFaces.forEach { face -> face.corners.forEach { min.min(it); max.max(it) } }
+            Bounds(min, max)
+        }
         return buildList {
             for (i in faces.indices) for (j in i + 1 until faces.size) {
+                if (bounds[i].separated(bounds[j])) continue
                 for (a in faces[i]) for (b in faces[j]) {
                     if (a.normal.dot(b.normal) < .99999999) continue
                     val distance = abs(Vector3d(b.origin).sub(a.origin).dot(a.normal))

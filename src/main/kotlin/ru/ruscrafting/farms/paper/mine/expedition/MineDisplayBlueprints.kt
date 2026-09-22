@@ -9,12 +9,13 @@ import kotlin.math.*
 internal object MineDisplayBlueprints {
     val kinds = setOf("pipe_valve", "sluice", "coal_bunker", "feed_hopper", "casting_bed", "casting_rack",
         "assembly_bench", "crane_console", "furnace_console", "furnace", "waterwheel", "pump", "crusher",
-        "tank", "winch", "rack", "console", "valve", "finished_gear", "drive_rig", "machine_console", "cargo_cart_coal", "cargo_cart_iron", "cargo_cart_charge", "return_miner") + ru.ruscrafting.farms.paper.mine.working.MineRailDriveModel.kinds + setOf("rail_drive_rig") + MineFactoryModels.kinds + MineFactoryExperimentModels.kinds + MineFactoryCraneModels.kinds + MineDescentModels.kinds
+        "tank", "winch", "rack", "console", "valve", "finished_gear", "drive_rig", "machine_console", "cargo_cart_coal", "cargo_cart_iron", "cargo_cart_charge", "return_miner", "factory_diesel_generator") + ru.ruscrafting.farms.paper.mine.working.MineRailDriveModel.kinds + setOf("rail_drive_rig") + MineFactoryModels.kinds + MineFactoryExperimentModels.kinds + MineFactoryCraneModels.kinds + MineDescentModels.kinds
     data class Part(val material: Material, val center: Vector3f, val size: Vector3f,
         val angle: Float = 0f, val moving: Boolean = false, val pivot: Vector3f = Vector3f(), val motion: String = "rotate",
         val idleHidden: Boolean = false)
     fun model(kind: String): List<Part> = buildList {
         require(kind in kinds) { "Unknown display model: $kind" }
+        if (kind == "factory_diesel_generator") { addAll(MineDieselGeneratorModel.model()); return@buildList }
         if(kind == "rail_drive_rig") { addAll(ru.ruscrafting.farms.paper.mine.working.MineRailDriveModel.parts); return@buildList }
         if(kind in ru.ruscrafting.farms.paper.mine.working.MineRailDriveModel.kinds) { addAll(ru.ruscrafting.farms.paper.mine.working.MineRailDriveModel.model(kind)); return@buildList }
         if(kind in MineFactoryCraneModels.kinds) { addAll(MineFactoryCraneModels.model(kind)); return@buildList }
@@ -301,7 +302,9 @@ internal object MineDisplayBlueprints {
         part.motion=="lever" -> sin(phase/2)*.5f
         else -> phase
     }
-    fun rotation(part: Part, phase: Float): Quaternionf = when(part.motion) {
+    fun rotation(part: Part, phase: Float): Quaternionf = if (part.motion in MineDieselGeneratorMotion.motions) {
+        MineDieselGeneratorMotion.rotation(part, phase)
+    } else when(part.motion) {
         "axle" -> Quaternionf().rotateX(part.angle+phase)
         "belt" -> Quaternionf().rotateZ(beltPose(part,phase).second)
         "cargo" -> Quaternionf()
@@ -309,6 +312,7 @@ internal object MineDisplayBlueprints {
     }
     fun center(part:Part,phase:Float):Vector3f = when {
         !part.moving -> Vector3f(part.center)
+        part.motion in MineDieselGeneratorMotion.motions -> MineDieselGeneratorMotion.center(part, phase)
         part.motion=="belt" -> beltPose(part,phase).first.add(part.center)
         part.motion=="cargo" -> topCargoPose(part,phase)
         part.motion=="feed" -> Vector3f(part.center).add(0f,-((phase/(PI.toFloat()*2)+part.angle).mod(1f))*2.8f,0f)

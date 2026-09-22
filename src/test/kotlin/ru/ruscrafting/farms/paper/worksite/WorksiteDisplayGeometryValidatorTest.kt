@@ -52,4 +52,9 @@ class WorksiteDisplayGeometryValidatorTest : FunSpec({
         val b = Box("b", rotation.transform(Vector3f(.3f, 0f, 0f)), Vector3f(1f, .8f, .1f), rotation)
         WorksiteDisplayGeometryValidator.conflicts(listOf(a, b)).size shouldBe 2
     }
+    test("broad phase retains near-coplanar thin plates despite separated volumes") {
+        val a = Box("a", Vector3f(), Vector3f(1f, 1f, .0002f))
+        val b = Box("b", Vector3f(.1f, .1f, .0007f), Vector3f(.8f, .8f, .0002f))
+        WorksiteDisplayGeometryValidator.conflicts(listOf(a, b)).size shouldBe 2
+    }
 })

@@ -31,8 +31,14 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
         val pausedCrusher = MineFactoryExperiments.pending(state).any {
             it == MineFactoryExperiment.ROCK_JAM || it == MineFactoryExperiment.COOLING
         }
-        val running=MineFactoryProgram.runningMachines(state,angles.filterValues { it>0.0 }.keys,scene.plan)
-            .filterNot { pausedCrusher && it.contains("crusher") }
+        val commissioned=MineFactoryProgram.runningMachines(state,angles.filterValues { it>0.0 }.keys,scene.plan)
+        val running=commissioned.filterNot { pausedCrusher && it.contains("crusher") }
+        // A local jam stops the crusher, not the factory's electrical supply.
+        val generatorRunning=connected && "decor_crusher_left" in commissioned
+        if (connected) {
+            markers.signal(decor, "decor_diesel_generator", if (generatorRunning) Material.LIME_CONCRETE else Material.RED_CONCRETE)
+            if (generatorRunning) markers.rotate(decor, "decor_diesel_generator", (now%3_000L)/3_000.0*Math.PI*2)
+        }
         val water=state.stage!=MineExpeditionStage.FACTORY_WATER ||
             if(connected) 1 in state.completed else state.completed.isNotEmpty()
         if(connected) {
@@ -201,7 +207,12 @@ internal class MineFactoryPresentation(private val plugin:Plugin,private val mar
         if(at==null || !plugin.config.getBoolean("ui.particles",true)) return
         at.world.spawnParticle(type,at,count,x,y,z,speed)
     }
-    fun clear(scene:MineExpeditionScene) { frames.remove(scene.journalSequence) }
+    fun clear(scene:MineExpeditionScene) {
+        frames.remove(scene.journalSequence)
+        if (MineFactoryProgram.usesConnectedCrusherLine(scene.plan)) {
+            markers.signal("furnish:${scene.journalSequence}", "decor_diesel_generator", Material.RED_CONCRETE)
+        }
+    }
     fun cleanup() { frames.clear() }
 
     private companion object {

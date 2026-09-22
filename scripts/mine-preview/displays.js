@@ -5,6 +5,7 @@ let expeditionMovingParts = [];
 let expeditionDemo = false;
 let expeditionFrame = null;
 const demoRotationAxis = new THREE.Vector3(0, 0, 1);
+const dieselMotions = new Set(Array.from({ length: 6 }, (_, i) => [`diesel_piston_${i}`, `diesel_rod_${i}`]).flat());
 function beltPose(part, phase) {
   const straight = 7.6, radius = .28, arc = Math.PI * radius;
   let distance = (((phase + part.angle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2)) / (Math.PI * 2) * (straight * 2 + arc * 2);
@@ -23,7 +24,21 @@ function poseExpeditionPart(mesh, part, phase) {
   const axis = part.motion === 'axle' ? new THREE.Vector3(1, 0, 0) : demoRotationAxis;
   let center = new THREE.Vector3(...part.center);
   let rotation = new THREE.Quaternion().setFromAxisAngle(axis, part.angle + angle);
-  if (part.motion === 'belt') {
+  if (dieselMotions.has(part.motion)) {
+    // Exact slider-crank geometry shared with MineDieselGeneratorMotion.
+    const offsets = [0, 2, 4, 4, 2, 0];
+    const theta = phase + offsets[Number(part.motion.slice(-1))] * Math.PI / 3;
+    const x = -.45 * Math.sin(theta), y = .45 * Math.cos(theta);
+    const rise = Math.sqrt(2.5 * 2.5 - x * x);
+    if (part.motion.startsWith('diesel_piston_')) {
+      center.add(new THREE.Vector3(...part.pivot)).add(new THREE.Vector3(0, y + rise, 0));
+      rotation.setFromAxisAngle(demoRotationAxis, part.angle);
+    } else {
+      const tilt = Math.atan2(x, rise);
+      center.applyAxisAngle(demoRotationAxis, tilt).add(new THREE.Vector3(...part.pivot)).add(new THREE.Vector3(x / 2, y + rise / 2, 0));
+      rotation.setFromAxisAngle(demoRotationAxis, part.angle + tilt);
+    }
+  } else if (part.motion === 'belt') {
     const [at, tangent] = beltPose(part, phase); center.add(at);
     rotation = new THREE.Quaternion().setFromAxisAngle(demoRotationAxis, tangent);
   } else if (part.motion === 'cargo') {

@@ -87,6 +87,9 @@ internal object MineExpeditionFurnishings {
                 Fixture("decor_roller_table","roller_table",MineFactoryLine.machines.getValue("decor_roller_table")),
                 Fixture("decor_pump_left","pump",MineFactoryLine.machines.getValue("decor_pump_left")),
                 Fixture("decor_tank_left","tank",MineFactoryLine.machines.getValue("decor_tank_left")),
+                // The open service side faces the central aisle; the skid is
+                // clear of the production line and the east control cabin.
+                Fixture("decor_diesel_generator","factory_diesel_generator",ExpeditionPoint(24,5,10),1f,180),
             ) else listOf(
                 Fixture("decor_waterwheel","waterwheel",ExpeditionPoint(0,5,-23)),
                 Fixture("decor_crusher_left","crusher",ru.ruscrafting.farms.domain.mine.expedition.MineFactoryProgram.machines.getValue("decor_crusher_left"),2.2f,180),

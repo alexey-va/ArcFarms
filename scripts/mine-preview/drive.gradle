@@ -1,4 +1,4 @@
-// Canonical drill model exported as a standalone inspection stage.
+// Canonical machine models exported as a standalone inspection stage.
 allprojects {
  afterEvaluate {
   tasks.register('exportMineDrive') {
@@ -8,12 +8,13 @@ allprojects {
     def cl=new URLClassLoader(urls,(ClassLoader)null)
     def blueprints=cl.loadClass('ru.ruscrafting.farms.paper.mine.expedition.MineDisplayBlueprints')
     def rail = project.findProperty('mineDrivePreviewKind') == 'rail_drive_rig'
-    def kind = rail ? 'rail_drive_rig' : 'drive_rig'
+    def diesel = project.findProperty('mineDrivePreviewKind') == 'factory_diesel_generator'
+    def kind = diesel ? 'factory_diesel_generator' : rail ? 'rail_drive_rig' : 'drive_rig'
     def palette=[floor:[block:'minecraft:polished_deepslate',color:'#54565a',name:'Полигон']]
     def model=blueprints.getMethod('model',String.class).invoke(blueprints.getField('INSTANCE').get(null),kind).collect { p ->
      def block='minecraft:'+p.material.name().toLowerCase()
      if(!palette.values().any{it.block==block}) palette['m'+palette.size()]=[block:block,color:'#858580',name:block]
-     [block:block,center:[p.center.x,p.center.y,p.center.z],size:[p.size.x,p.size.y,p.size.z],angle:p.angle,moving:p.moving,motion:p.motion,pivot:[p.pivot.x,p.pivot.y,p.pivot.z]]
+     [block:block,center:[p.center.x,p.center.y,p.center.z],size:[p.size.x,p.size.y,p.size.z],angle:p.angle,moving:p.moving,motion:p.motion,idleHidden:p.idleHidden,pivot:[p.pivot.x,p.pivot.y,p.pivot.z]]
     }
     def recipe=[version:1,seed:73,title:rail ? 'Путеукладчик' : 'Проходческая машина',size:[10,7,12],palette:palette,
      subtitle:'Модель из кода ArcFarms · демо механики · условный свет · движение и звуки проверяются в игре',
@@ -27,8 +28,23 @@ allprojects {
       [id:'plan',label:'Вид сверху',camera:[4.5,10,5.5],target:[4.5,1,5.6],fov:50],
       [id:'feed',label:'Укладочный узел',camera:[5.6,2.9,1.6],target:[4.5,2,4.2],fov:50]]]]
     if(rail) recipe.preview.views.each { v -> v.camera = v.camera.withIndex().collect { c,i -> v.target[i] + (c-v.target[i])*1.65 } }
+    if(diesel) {
+     recipe.title='Промышленный дизель-генератор'
+     recipe.size=[18,12,24]
+     recipe.operations=[[op:'box',from:[1,0,1],to:[16,0,22],material:'floor']]
+     recipe.origin=[9,0,12];recipe.route=[[13,0,5],[13,0,19]]
+     recipe.lighting=[targetLevel:8,samples:[[13,1,12]]]
+     recipe.displayAssemblies=[[id:'generator',model:kind,scale:1,at:[9,1,12]]]
+     recipe.preview=[defaultView:'service',views:[
+      [id:'service',label:'Двигатель и генератор',camera:[27,12,27],target:[9,3.7,12],fov:60],
+      [id:'linkage',label:'Поршни, шатуны и коленвал',camera:[20,5.2,12],target:[9,3.9,12],fov:62],
+      [id:'radiator',label:'Радиатор и привод вентилятора',camera:[17,7,-2],target:[9,3.8,7],fov:55],
+      [id:'rear',label:'Турбонаддув и выпуск',camera:[-13,12,3],target:[9,4,12],fov:62],
+      [id:'alternator',label:'Электрогенератор и щит',camera:[15,7,27],target:[9,3.7,17],fov:50],
+      [id:'plan',label:'Компоновка сверху',camera:[9,25,12.1],target:[9,1,12],fov:55]]]
+    }
     def out=new File(project.findProperty('minePreviewOut') ?: '/private/tmp/mine-0444-scenes');out.mkdirs()
-    new File(out,rail ? 'rail_drive.atelier.json' : 'tunnel_drive.atelier.json').text=groovy.json.JsonOutput.toJson(recipe)
+    new File(out,diesel ? 'diesel_generator.atelier.json' : rail ? 'rail_drive.atelier.json' : 'tunnel_drive.atelier.json').text=groovy.json.JsonOutput.toJson(recipe)
     println('Drive parts: '+model.size())
    }
   }

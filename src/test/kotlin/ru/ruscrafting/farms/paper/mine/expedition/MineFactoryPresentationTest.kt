@@ -15,6 +15,38 @@ import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.domain.mine.expedition.*
 
 class MineFactoryPresentationTest : FunSpec({
+    test("diesel supply starts with commissioning, survives a crusher jam and switches off on completion") {
+        val plugin = mockk<Plugin>(relaxed = true)
+        val markers = mockk<MineExpeditionMarkers>(relaxed = true)
+        every { markers.at(any(), any(), any(), any(), any()) } returns null
+        val placement = MineExpeditionPlacement("world", 0, 60, 0, 73)
+        val scene = mockk<MineExpeditionScene> {
+            every { kind } returns MineExpeditionKind.DEAD_FACTORY
+            every { this@mockk.placement } returns placement
+            every { journalSequence } returns 8L
+            every { plan } returns MineExpeditionGenerator.plan(MineExpeditionKind.DEAD_FACTORY, 73L, 3)
+        }
+        val presentation = MineFactoryPresentation(plugin, markers)
+        val preparing = MineExpeditionState(placement, MineExpeditionStage.FACTORY_WATER, completed = setOf(0, 1))
+        presentation.tick(scene, preparing, "factory", 1000, emptyMap())
+        verify(exactly = 0) { markers.rotate(any(), "decor_diesel_generator", any()) }
+        verify { markers.signal("furnish:8", "decor_diesel_generator", org.bukkit.Material.RED_CONCRETE) }
+        clearMocks(markers, answers = false)
+        presentation.tick(scene, preparing, "factory", 1100, mapOf("control_crusher_left" to .5))
+        verify { markers.rotate("furnish:8", "decor_diesel_generator", any()) }
+        verify { markers.signal("furnish:8", "decor_diesel_generator", org.bukkit.Material.LIME_CONCRETE) }
+        clearMocks(markers, answers = false)
+        val jammed = preparing.copy(stage = MineExpeditionStage.FACTORY_COAL, completed = setOf(0),
+            factoryExperiments = MineFactoryExperimentPlan(setOf(MineFactoryExperiment.ROCK_JAM)))
+        presentation.tick(scene, jammed, "factory", 1200, emptyMap())
+        verify { markers.rotate("furnish:8", "decor_diesel_generator", any()) }
+        verify(exactly = 0) { markers.rotate(any(), "decor_crusher_left", any()) }
+        clearMocks(markers, answers = false)
+        presentation.tick(scene, jammed.copy(stage = MineExpeditionStage.COMPLETE), "factory", 1500, emptyMap())
+        verify(exactly = 0) { markers.rotate(any(), "decor_diesel_generator", any()) }
+        verify { markers.signal("furnish:8", "decor_diesel_generator", org.bukkit.Material.RED_CONCRETE) }
+    }
+
     test("connected line shows crusher feed during processing and cargo only during transfer") {
         val plugin = mockk<Plugin>(relaxed = true)
         val markers = mockk<MineExpeditionMarkers>(relaxed = true)
